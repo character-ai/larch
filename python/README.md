@@ -12,6 +12,8 @@ imported by runtime code.
 - `logging_util.py` — breadcrumbs + JSONL journal (observability only)
 - `redact.py`, `retry.py` — ports of `redact-secrets.sh` / `lib-net.sh`
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
+- `version_bump.py`, `changelog.py` — Phase 2 ports of bump-version / CHANGELOG scripts
+  (not wired into the live `/implement` path until Phase 7)
 - `test_<module>.py` — colocated unit tests; `test_stdlib_only.py` enforces stdlib-only imports
 
 ## Dependencies

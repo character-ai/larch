@@ -137,6 +137,57 @@ def test_rev_count_raises_ship_error_on_non_integer_stdout() -> None:
         _ = git.rev_count(runner, "main", "HEAD")
 
 
+def test_fetch_and_show_file_argv() -> None:
+    runner = StubRunner(
+        {
+            ("git", "fetch", "origin", "main", "--quiet"): CommandResult(
+                ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
+            ),
+            ("git", "show", "HEAD:file.txt"): CommandResult(
+                ("git", "show", "HEAD:file.txt"), 0, "content\n", "", 0.01
+            ),
+        },
+    )
+    assert git.fetch(runner, "origin", "main").returncode == 0
+    shown = git.show_file(runner, "HEAD:file.txt")
+    assert shown.stdout == "content\n"
+
+
+def test_diff_and_rebase_helpers() -> None:
+    runner = StubRunner(
+        {
+            ("git", "diff", "--name-only", "base", "HEAD"): CommandResult(
+                ("git", "diff", "--name-only", "base", "HEAD"),
+                0,
+                "a.txt\n",
+                "",
+                0.01,
+            ),
+            ("git", "diff", "-M", "--name-status", "base", "HEAD", "--", "skills"): CommandResult(
+                ("git", "diff", "-M", "--name-status", "base", "HEAD", "--", "skills"),
+                0,
+                "M\tskills/x/SKILL.md\n",
+                "",
+                0.01,
+            ),
+            ("git", "rebase", "--onto", "HEAD~2", "HEAD~1"): CommandResult(
+                ("git", "rebase", "--onto", "HEAD~2", "HEAD~1"), 0, "", "", 0.01
+            ),
+        },
+    )
+    names = git.diff_name_only(runner, "base", "HEAD")
+    assert "a.txt" in names.stdout
+    status = git.diff_name_status(
+        runner,
+        "base",
+        "HEAD",
+        paths=("skills",),
+        find_renames=True,
+    )
+    assert "SKILL.md" in status.stdout
+    assert git.rebase_onto(runner, "HEAD~2", "HEAD~1").returncode == 0
+
+
 def test_value_helper_raises_on_failure() -> None:
     runner = StubRunner(
         {

@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+import os
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
 from errors import ShipError
@@ -19,8 +20,14 @@ class LogSubjects:
     subjects: tuple[str, ...]
 
 
-def _run(runner: Runner, argv: Sequence[str], *, cwd: str | None = None) -> CommandResult:
-    return runner.run(list(argv), cwd=cwd)
+def _run(
+    runner: Runner,
+    argv: Sequence[str],
+    *,
+    cwd: str | None = None,
+    env: Mapping[str, str] | None = None,
+) -> CommandResult:
+    return runner.run(list(argv), cwd=cwd, env=env)
 
 
 def _ensure_success(result: CommandResult) -> CommandResult:
@@ -150,3 +157,172 @@ def ls_files(
     argv = ["git", "ls-files", *paths]
     result = _ensure_success(_run(runner, argv, cwd=cwd))
     return tuple(line for line in result.stdout.splitlines() if line)
+
+
+def fetch(
+    runner: Runner,
+    remote: str,
+    ref: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(runner, ["git", "fetch", remote, ref, "--quiet"], cwd=cwd)
+
+
+def show_file(
+    runner: Runner,
+    spec: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(runner, ["git", "show", spec], cwd=cwd)
+
+
+def commit(
+    runner: Runner,
+    message: str,
+    *,
+    only: str | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    argv = ["git", "commit", "-m", message]
+    if only is not None:
+        argv.extend(["--only", only])
+    return _run(runner, argv, cwd=cwd)
+
+
+def add(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:
+    return _run(runner, ["git", "add", path], cwd=cwd)
+
+
+def diff_name_status(
+    runner: Runner,
+    base: str,
+    head: str,
+    *,
+    paths: Sequence[str] = (),
+    find_renames: bool = False,
+    cwd: str | None = None,
+) -> CommandResult:
+    argv = ["git", "diff"]
+    if find_renames:
+        argv.append("-M")
+    argv.extend(["--name-status", base, head, "--", *paths])
+    return _run(runner, argv, cwd=cwd)
+
+
+def diff_name_only(
+    runner: Runner,
+    base: str,
+    head: str,
+    *,
+    paths: Sequence[str] = (),
+    cwd: str | None = None,
+) -> CommandResult:
+    argv = ["git", "diff", "--name-only", base, head]
+    if paths:
+        argv.extend(["--", *paths])
+    return _run(runner, argv, cwd=cwd)
+
+
+def diff_tree_name_only(
+    runner: Runner,
+    ref: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(
+        runner,
+        ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", ref],
+        cwd=cwd,
+    )
+
+
+def rebase_onto(
+    runner: Runner,
+    newbase: str,
+    upstream: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    env = {**os.environ, "GIT_SEQUENCE_EDITOR": "true"}
+    return _run(
+        runner,
+        ["git", "rebase", "--onto", newbase, upstream],
+        cwd=cwd,
+        env=env,
+    )
+
+
+def rev_list_count(
+    runner: Runner,
+    rev_range: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(runner, ["git", "rev-list", "--count", rev_range], cwd=cwd)
+
+
+def status_porcelain(
+    runner: Runner,
+    *,
+    untracked_files: str = "all",
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(
+        runner,
+        ["git", "status", "--porcelain", f"--untracked-files={untracked_files}"],
+        cwd=cwd,
+    )
+
+
+def try_rev_parse(runner: Runner, ref: str, *, cwd: str | None = None) -> str | None:
+    result = _run(runner, ["git", "rev-parse", ref], cwd=cwd)
+    if result.returncode != 0:
+        return None
+    return result.stdout.strip()
+
+
+def try_merge_base(
+    runner: Runner,
+    left: str,
+    right: str,
+    *,
+    cwd: str | None = None,
+) -> str | None:
+    result = _run(runner, ["git", "merge-base", left, right], cwd=cwd)
+    if result.returncode != 0:
+        return None
+    text = result.stdout.strip()
+    return text or None
+
+
+def log_subject(
+    runner: Runner,
+    ref: str,
+    *,
+    cwd: str | None = None,
+) -> str:
+    result = _run(runner, ["git", "log", "-1", "--format=%s", ref], cwd=cwd)
+    if result.returncode != 0:
+        return ""
+    return result.stdout.strip()
+
+
+def unstage(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:
+    return _run(runner, ["git", "reset", "HEAD", path], cwd=cwd)
+
+
+def diff_quiet(
+    runner: Runner,
+    path: str,
+    *,
+    cached: bool = False,
+    cwd: str | None = None,
+) -> bool:
+    """Return True when path has no working-tree or index diff."""
+    argv = ["git", "diff", "--quiet", "--", path]
+    if cached:
+        argv = ["git", "diff", "--cached", "--quiet", "--", path]
+    result = _run(runner, argv, cwd=cwd)
+    return result.returncode == 0
