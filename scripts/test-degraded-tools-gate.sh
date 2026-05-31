@@ -47,6 +47,7 @@ assert_rc "$rc" 0 "all-healthy exit 0"
 assert_contains "$out" "DEGRADED=false" "all-healthy DEGRADED=false"
 assert_contains "$out" "CODEX_STATE=ok" "all-healthy codex ok"
 assert_contains "$out" "CURSOR_STATE=ok" "all-healthy cursor ok"
+assert_contains "$out" "BOTH_DOWN=false" "all-healthy BOTH_DOWN=false"
 assert_not_contains "$out" "DEGRADED_EXPLANATION_BEGIN" "all-healthy no explanation"
 
 # --- Case 2: codex probe-failed, cursor ok → degraded, probe-failed phrasing ---

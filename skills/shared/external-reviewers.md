@@ -32,12 +32,16 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh \
   --skill <design|implement|review|research>
 ```
 
-Parse `DEGRADED`, `CODEX_STATE`, `CURSOR_STATE`, `BOTH_DOWN`:
+Parse `DEGRADED`, `CODEX_STATE`, `CURSOR_STATE`, `BOTH_DOWN`.
+
+**Canonical interactive predicate**: a run is interactive for this gate when the skill is allowed to call `AskUserQuestion` in the invoking context. `/design`, `/implement`, and `/research` use the skill's normal interactive branch; `/review` uses the same branch only outside `--subagent` mode. Subagents, `claude -p`, cron, eval, and autonomous-loop runs are non-interactive and must use the non-blocking notice/log path below.
+
+Then apply the gate result:
 
 - **`DEGRADED=false`** — both tools healthy; proceed silently (the per-tool warning prints above are unaffected).
 - **`DEGRADED=true`** — lift the explanation block between `DEGRADED_EXPLANATION_BEGIN` / `DEGRADED_EXPLANATION_END`, then:
   - **Interactive run, `BOTH_DOWN=false`** (exactly one tool unavailable) — print the explanation block as a plain notice and proceed without prompting. Write the `.degraded-tools-gate-prompted` sentinel under the session tmpdir after printing the notice (same sentinel as the ask-path) so re-entry does not re-warn.
-  - **Interactive run, `BOTH_DOWN=true`** (both tools unavailable) — present the explanation block and fire `AskUserQuestion`. **`/design` and `/implement`** use **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; **`/review`** uses **Continue (degraded waterfall)** / **Abort**; **`/research`** uses **Continue (degraded)** / **Abort**. On **Continue**, write the `.degraded-tools-gate-prompted` sentinel under the session tmpdir (same sentinel as the notice path) so re-entry does not re-prompt, then proceed with availability-gated dispatch per skill. On **Abort**, print `**⚠ /<skill>: aborted by operator — external tool unhealthy; re-run once it recovers.**`, clean up the session tmpdir, and stop the skill (run no further steps).
+  - **Interactive run, `BOTH_DOWN` is not exactly `false`** (both tools unavailable, or empty/unset/parse failed) — present the explanation block and fire `AskUserQuestion`. **`/design` and `/implement`** use **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**, and on **Continue** proceed with reduced-panel dispatch. **`/review`** uses **Continue (degraded waterfall)** / **Abort**, and on **Continue** proceeds with its Step 0 dispatch waterfall. **`/research`** uses **Continue (degraded)** / **Abort**, and on **Continue** proceeds with its Codex-first / Claude-fallback lane topology. On **Continue**, write the `.degraded-tools-gate-prompted` sentinel under the session tmpdir (same sentinel as the notice path) so re-entry does not re-prompt. On **Abort**, print `**⚠ /<skill>: aborted by operator — external tool unhealthy; re-run once it recovers.**`, clean up the session tmpdir, and stop the skill (run no further steps).
   - **Fail-safe polarity** — auto-proceed only when `BOTH_DOWN` is **exactly** `false`; when `BOTH_DOWN` is empty, unset, or any other value, treat as `BOTH_DOWN=true` and prompt. Callers must use `[[ "$BOTH_DOWN" == "false" ]]` (exact-string check), not `[[ "$BOTH_DOWN" != "true" ]]`, to avoid silent auto-proceed on empty parse.
   - **Non-interactive / autonomous run** (cron, `claude -p`, `<<autonomous-loop>>`, eval) — do **NOT** block. Print the explanation block once as a notice and, when a session tmpdir exists, log it to `execution-issues.md` under `Warnings`; then proceed degraded — the waterfall guarantees completion. This mirrors the autonomous carve-outs that already bracket `AskUserQuestion` in `/implement`.
 

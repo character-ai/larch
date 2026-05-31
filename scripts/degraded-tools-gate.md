@@ -12,10 +12,10 @@ gate itself lives in the skill orchestrator — see the "Degraded-tools gate
 (Step 0)" procedure in `skills/shared/external-reviewers.md`, which `/design`,
 `/implement`, `/review`, and `/research` Step 0 invoke. The orchestrator runs
 this helper; when `DEGRADED=true` it lifts the explanation block. On
-interactive runs, `AskUserQuestion` applies only when `BOTH_DOWN=true` (both
-tools down); when `BOTH_DOWN=false` (exactly one tool down) the orchestrator
-prints the explanation (including the auto-proceed notice) and proceeds without
-prompting.
+interactive runs, `AskUserQuestion` applies unless `BOTH_DOWN` is exactly
+`false` (exactly one tool down); empty, unset, or malformed values are
+fail-safe prompt cases. When `BOTH_DOWN=false`, the orchestrator prints the
+explanation (including the auto-proceed notice) and proceeds without prompting.
 
 ## Availability rule
 
