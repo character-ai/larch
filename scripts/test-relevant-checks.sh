@@ -416,6 +416,19 @@ setup_parse_codex_usage_repo() {
     )
 }
 
+setup_python_source_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b python-source-change
+        mkdir -p python
+        printf '%s\n' "VALUE = 1" > python/config.py
+        git add python/config.py
+        git commit -q -m "touch python source"
+    )
+}
+
 echo "=== Section 3h: verifier-source routing ==="
 
 REPO_3H="$TMPROOT/repo-verifier-source"
@@ -446,6 +459,19 @@ make_stub_dir "$STUB_3J" present absent
 run_checks "$REPO_3J" "$(controlled_path "$STUB_3J")"
 assert_exit_eq "3j: parse codex usage change exits 0" "$RUN_EXIT" 0
 assert_stdout_not_contains "3j: does not route test-check-contains-pins" "$RUN_OUT" "test-check-contains-pins"
+
+echo "=== Section 3k: Python direct targets with missing lint tools ==="
+
+REPO_3K="$TMPROOT/repo-python-source"
+STUB_3K="$TMPROOT/stub-python-source"
+setup_python_source_repo "$REPO_3K"
+make_stub_dir "$STUB_3K" present absent
+run_checks "$REPO_3K" "$(controlled_path "$STUB_3K")"
+assert_exit_eq "3k: Python source change exits 0 without py-lint tools" "$RUN_EXIT" 0
+assert_stdout_contains "3k: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
+assert_stdout_contains "3k: routes py-test only" "$RUN_OUT" "=== Running direct relevant make target(s): py-test ==="
+assert_stdout_contains "3k: make invokes py-test" "$RUN_OUT" "make stub: py-test"
+assert_stdout_not_contains "3k: does not invoke py-lint when tools are missing" "$RUN_OUT" "make stub: py-lint"
 
 echo "=== Section 4: preflight failure ==="
 

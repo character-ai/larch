@@ -44,9 +44,29 @@ append_target_once() {
     esac
 }
 
+maybe_append_py_lint_target() {
+    local missing="" tool=""
+    for tool in ruff pylint pyright; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            missing="${missing}${missing:+ }$tool"
+        fi
+    done
+
+    if [ -n "$missing" ]; then
+        if [ "${PY_LINT_SKIP_WARNED:-0}" -eq 0 ]; then
+            echo "WARNING: Python lint tools not found on PATH ($missing) — skipping py-lint direct relevant target"
+            PY_LINT_SKIP_WARNED=1
+        fi
+        return 0
+    fi
+
+    append_target_once py-lint
+}
+
 run_direct_relevant_targets() {
     local f=""
     DIRECT_TARGETS=""
+    PY_LINT_SKIP_WARNED=0
     while IFS= read -r f; do
         case "$f" in
             scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|scripts/write-run-params.sh)
@@ -155,7 +175,7 @@ run_direct_relevant_targets() {
         esac
         case "$f" in
             python/*.py|python/pyproject.toml|python/ruff.toml|python/pyrightconfig.json|python/requirements-dev.txt|python/requirements-test.txt)
-                append_target_once py-lint
+                maybe_append_py_lint_target
                 append_target_once py-test
                 ;;
         esac
