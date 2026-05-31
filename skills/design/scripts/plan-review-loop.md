@@ -46,6 +46,10 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 
 `plan-size-trigger` is a breadcrumb from an auto-revised round, not the hard prompt itself. The caller must re-run the complete Step 2b.5 plan-size procedure before prompting so `check-plan-size.sh` refreshes the current trigger KVs, then honor the hard prompt's **Split / Override / Cancel** contract: Split enters Split-path, Override records the strongly discouraged escape hatch and continues the surrounding review flow, and Cancel exits.
 
+## Convergence (multi-round)
+
+When `--round-cap` is present on argv, the driver may exit `LOOP_STATUS=converged` after **one** non-degraded qualifying round — there is no multi-round streak. Convergence requires non-nit `ACCEPTED_COUNT <= 5`, `IMPORTANT_ACCEPTED_COUNT == 0`, and nit-severity accepted findings excluded from the non-nit total (`NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT` on stdout). Zero-findings rounds additionally require `COLLECT_OK_COUNT > 0`; otherwise `LOOP_STATUS=degraded-empty-collector`. `TALLY_PLAN_REVIEW_STATUS=tally-error` aborts before revise/convergence checks. Normative narrative: `skills/design/references/plan-review.md` § Multi-round loop.
+
 ## Durable handoff: `.step3-plan-review-result.env`
 
 Normalized KVs for SKILL.md Step 3.5 and Gate B across Bash fence boundaries. Values use a controlled vocabulary (no raw user content). See `plan-review-loop.sh` function `write_step3_result_env`.

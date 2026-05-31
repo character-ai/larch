@@ -1628,7 +1628,27 @@ out_sc=$(run_loop "$DSC" 1 --round-cap 1)
 printf '%s\n' "$out_sc" | grep -q '^LOOP_STATUS=cap-hit$' || fail "snapshot failure on terminal round should preserve cap-hit"
 printf '%s\n' "$out_sc" | grep -q '^REASON=cap-hit,snapshot-failed$' || fail "terminal cap-hit should append snapshot-failed reason"
 
-echo "=== multi-round: degraded round resets convergence streak and dedup failure does not leak ==="
+echo "=== snapshot failure preserves terminal converged status ==="
+DSNC="$TMP/snap-converged-status"
+mkdir -p "$DSNC"
+printf 'plan\n\ndiff_lines: 1\n' >"$DSNC/plan.txt"
+printf 'feat\n' >"$DSNC/feature-description.txt"
+ln -s "$DSNC/feature-description.txt" "$DSNC/plan-voter-slots.ndjson"
+write_scout
+write_dispatch_one_slot
+write_collect one_nit
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_snc=$(run_loop "$DSNC" 1 --round-cap 5)
+printf '%s\n' "$out_snc" | grep -q '^LOOP_STATUS=converged$' || fail "snapshot failure on qualifying round should preserve converged"
+printf '%s\n' "$out_snc" | grep -q '^REASON=converged,snapshot-failed$' || fail "qualifying converged round should append snapshot-failed reason"
+
+echo "=== multi-round: degraded round then converged round; dedup failure does not leak ==="
 DDR="$TMP/degraded-reset"
 mkdir -p "$DDR"
 printf 'plan\n\ndiff_lines: 1\n' >"$DDR/plan.txt"
@@ -1970,6 +1990,44 @@ out_many=$(run_loop "$DMANY" 1 --round-cap 5)
 printf '%s\n' "$out_many" | grep -q '^LOOP_STATUS=converged$' || fail "nit-only accepted should converge"
 printf '%s\n' "$out_many" | grep -q '^NIT_ACCEPTED_COUNT=1$' || fail "nit-only path should count one nit"
 printf '%s\n' "$out_many" | grep -q '^NON_NIT_ACCEPTED_COUNT=0$' || fail "nit-only path should count zero non-nit"
+
+echo "=== multi-round: many nits plus three latent converges (nits excluded from non-nit gate) ==="
+DMNL="$TMP/many-nits-three-latent-converge"
+mkdir -p "$DMNL"
+printf 'plan\n\ndiff_lines: 1\n' >"$DMNL/plan.txt"
+printf 'feat\n' >"$DMNL/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect many_nits_three_latent
+cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;; *) shift 2 ;; esac
+done
+v1="$DESIGN_TMPDIR/v1.txt"
+v2="$DESIGN_TMPDIR/v2.txt"
+_vote=$'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: YES\nFINDING_6: YES\nFINDING_7: YES\nFINDING_8: YES\nFINDING_9: YES\nFINDING_10: YES\nFINDING_11: YES\nFINDING_12: YES\nFINDING_13: YES\n'
+printf '%s' "$_vote" >"$v1"
+printf '%s' "$_vote" >"$v2"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$DESIGN_TMPDIR/voter-paths.list"
+printf '%s\n' "$v1" "$v2" >"$DESIGN_TMPDIR/voter-paths.list"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
+EOS
+chmod +x "$STUB/dispatch-plan-voters.sh"
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_mnl=$(run_loop "$DMNL" 1 --round-cap 5)
+printf '%s\n' "$out_mnl" | grep -q '^LOOP_STATUS=converged$' || fail "many nits plus three latent should converge"
+printf '%s\n' "$out_mnl" | grep -q '^REASON=converged$' || fail "many nits plus three latent should use converged reason"
+printf '%s\n' "$out_mnl" | grep -q '^NIT_ACCEPTED_COUNT=10$' || fail "many nits path should count ten nits"
+printf '%s\n' "$out_mnl" | grep -q '^NON_NIT_ACCEPTED_COUNT=3$' || fail "many nits path should count three non-nit latent"
+printf '%s\n' "$out_mnl" | grep -q '^ROUNDS_COMPLETED=1$' || fail "many nits plus three latent should finish in one round"
 
 echo "=== multi-round: important finding blocks convergence until a clean round ==="
 DIRS="$TMP/important-blocks-converge"
