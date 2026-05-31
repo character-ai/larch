@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:42-49	apply_bump unmerged paths raise Stalled	apply-bump.sh emits APPLIED=false plus exit 4 on stdout; ship-pr and parity tests consume KV output, not exceptions. Raising Stalled drops the machine-readable contract and blurs unmerged (exit 4) vs dirty-tree (exit 1).	Return ApplyResult(applied=False, error=...) for unmerged; reserve Stalled for bump_branch_guard. Document Phase 7 exit-code mapping to 4.
