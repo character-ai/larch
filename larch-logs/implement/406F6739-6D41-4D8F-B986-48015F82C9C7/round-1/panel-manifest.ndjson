@@ -1,0 +1,10 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.12/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.12/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.12/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.12/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.12/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.12/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-bash-driver","tool":"cursor","output":"<TMPDIR>/round-1/dyn-bash-driver-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-bash-driver-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-round-state","tool":"cursor","output":"<TMPDIR>/round-1/dyn-round-state-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-round-state-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-quiet-io","tool":"cursor","output":"<TMPDIR>/round-1/dyn-quiet-io-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-quiet-io-prompt.md","weight":1,"focus_area":"architecture"}
+{"slot":"dyn-harness-parity","tool":"cursor","output":"<TMPDIR>/round-1/dyn-harness-parity-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-harness-parity-prompt.md","weight":1,"focus_area":"code-quality"}

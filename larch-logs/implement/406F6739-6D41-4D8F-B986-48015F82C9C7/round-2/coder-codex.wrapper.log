@@ -1,0 +1,8 @@
+Reading additional input from stdin...
+2026-05-31T03:43:29.115116Z ERROR codex_core::session: failed to record rollout items: thread 019e7c21-1045-7a83-ad3e-cf9a644c3d06 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-31T03:43:29.115116Z ERROR codex_core::session: failed to record rollout items: thread 019e7c21-1045-7a83-ad3e-cf9a644c3d06 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---

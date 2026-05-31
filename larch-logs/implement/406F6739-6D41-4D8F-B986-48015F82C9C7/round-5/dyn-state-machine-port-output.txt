@@ -1,0 +1,15 @@
+Reviewing the branch diff and comparing the Step 3 state-machine port against the removed SKILL.md fences.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+Compared against `main`’s inline Step 3 fences (deleted hunks in the precomputed diff) and the current `skills/design/scripts/run-step3-review.sh`:
+
+- **Cap-reached, tally-error / degraded-empty-collector rollback, panel-failed keep-count, and `_step3_prior_round_count` before rollback** match the old logic. `_step3_prior_round_count` is initialized to `0` before the numeric guard (`run-step3-review.sh:143-146`), which is at least as safe as the old `${_step3_prior_round_count:-0}` rollback.
+- **Pending-round persist** still happens immediately before `plan-review-loop.sh` (`run-step3-review.sh:190-192` → `200+`), satisfying the documented crash-slot rule. It now runs **after** HARD `write-cursor` instead of before it (old `SKILL.md` persisted at the top of the non-cap branch). That is a deliberate semantic change: `write-cursor` failure no longer leaves an inflated `review-round-count.txt` (old main consumed a slot on `exit 1`; new driver rolls back and hands off `LOOP_STATUS=panel-failed` — covered by `test-run-step3-review.sh` and `run-step3-review.md`).
+- **Round `plan-review/round-*` cleanup** still runs on cap-reached entries (moved into the driver before the cap branch; same as old fence ordering relative to launch).
+- **Extra hardening** (not regressions): stale `.step3-plan-review-result.env` removed before launch (`197-199`); inner-result file-first + stdout merge preserved; `${CODEX_PRESENT:-false}` only affects **unset** vars (empty string still fails argv validation in `plan-review-loop.sh`, same as before).
+
+Branch commits (since `main`): `b9806b39d` extract driver through `b08ec57f5` round-4 review fixes (9 commits). No additional correctness defects found in the state-machine port beyond the intentional cursor-failure / orchestrator-handoff improvements above.

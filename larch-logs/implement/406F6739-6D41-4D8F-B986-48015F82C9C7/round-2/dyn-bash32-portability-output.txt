@@ -1,0 +1,28 @@
+Reviewing branch changes for Bash 3.2 portability. Reading the diff, new scripts, and authoring guidelines.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+Reviewed the four new/changed shell entrypoints on branch `sergey-zhupanov/implementing-design-refactor-extract-ste-3244` (5 commits since `main`, head `d996fa9b5`) against `BASH_AUTHORING.md` §3 and `scripts/lint-bash32.sh` forbidden constructs.
+
+**`local -a allowlist=("$@")` in `phase_driver_read_result_env`** (`skills/design/scripts/lib-phase-driver.sh:62`) is not a Bash 4+ feature. Indexed arrays and `local -a name=(list)` are supported on macOS Bash 3.2; `BASH_AUTHORING.md` forbids only `declare -A` / `local -n`, `mapfile`/`readarray`, `${var^^}`/`${var,,}`, `&>>`, and `coproc`. The same `local -a …=()` pattern already appears in committed drivers such as `skills/design/scripts/design-driver.sh` and `skills/review-and-fix/scripts/review-and-fix.sh`. `lint-bash32.sh` does not flag plain `local -a`.
+
+**Constructs checked in the new scripts — all Bash 3.2–safe:**
+
+| Construct | Where | Verdict |
+|-----------|--------|---------|
+| `(( ))` / `10#` base | `run-step3-review.sh:89-99`, `test-*.sh` counters | Supported |
+| `[[ … =~ … ]]` | `run-step3-review.sh:153-253` | Supported (Bash 3.0+) |
+| `printf -v` / `${!_key:-}` | `run-step3-review.sh:235-247`, `SKILL.md:864` | Supported |
+| `<<<` here-strings | `run-step3-review.sh:169`, `251` | Supported (Bash 3.0+) |
+| `${haystack:0:300}` | `test-run-step3-review.sh:33` | Supported |
+| `launcher_env=(…)` + `"${launcher_env[@]}"` | `test-run-step3-review.sh:83` | Supported |
+
+No `declare -A`, `local -n`, `mapfile`/`readarray`, case-conversion expansions, `&>>`, or `coproc` appear in `lib-phase-driver.sh`, `run-step3-review.sh`, `test-lib-phase-driver.sh`, or `test-run-step3-review.sh`.
+
+**Minor non-portability notes (not Bash 3.2 defects):**
+
+- `run-step3-review.sh:221-225` declares `_allow=(…)` but never uses it (the port keeps the inline `case` allowlist instead of calling `phase_driver_read_result_env`). Dead code only; harmless on 3.2.
+- `phase_driver_read_result_env` is exercised by `test-lib-phase-driver.sh` but not yet consumed by `run-step3-review.sh`; that is an architecture/API choice, not a portability gap.
+- Round 1 commit `d996fa9b5` (“Apply relevant-checks fixes”) implies `make lint-bash32` / `relevant-checks` already passed on this branch; I could not re-run those commands in Ask mode.

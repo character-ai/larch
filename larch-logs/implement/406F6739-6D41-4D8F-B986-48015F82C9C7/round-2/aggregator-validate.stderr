@@ -1,0 +1,8 @@
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Branch on `_plan_review_rc` in SKILL (2=config error exit; 1=cursor/abort or pan')
+warning: fix text for slot 'dyn-driver-orchestrator-boundary-output.txt' in FINDING_25 not traceable to scoped input (first 80 chars: 'Drop the unused keys from the orchestrator allowlist (keep them driver-internal)')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_25 not traceable to scoped input (first 80 chars: 'Consolidate when a run-step2 phase-driver lands under #3133  ### OOS_2: [OUT_OF_')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_25 not traceable to scoped input (first 80 chars: 'update approval-gates in a follow-up  ### OOS_3: [OUT_OF_SCOPE] phase_driver_rea')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_25 not traceable to scoped input (first 80 chars: 'Use lib in driver or defer until next driver lands')
+warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_25 not traceable to scoped input (first 80 chars: 'Wire driver to lib helper in a follow-up refactor  ### OOS_4: [OUT_OF_SCOPE] Plu')
+warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_25 not traceable to scoped input (first 80 chars: 'belongs in a session-env hardening change  ### OOS_5: [OUT_OF_SCOPE] Collector s')
+warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_25 not traceable to scoped input (first 80 chars: 'follow existing DESIGN_TMPDIR symlink conventions used elsewhere in design scrip')

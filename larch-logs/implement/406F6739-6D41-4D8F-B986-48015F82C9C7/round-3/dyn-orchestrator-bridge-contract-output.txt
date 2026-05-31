@@ -1,0 +1,18 @@
+Reviewing the branch diff and tracing the Step 3 orchestrator bridge contract between the driver and SKILL.md.
+### In-Scope Findings
+
+- **architecture** `skills/design/SKILL.md:856-884` — The Step 3 bridge sources `$DESIGN_TMPDIR/.step3-review-result.env` whenever the file exists, without checking `_plan_review_rc`. On a failed `run-step3-review.sh` run (exit `2` for argv/config, or exit `1` if `phase_driver_write_result_env` refuses a symlink target), the driver does not refresh that file, but the fence still loads the **previous** run’s `LOOP_STATUS` / cap KVs. Round 2 removed the old “any non-zero rc → force `panel-failed`” guard, so a configuration error can now print the exit-2 warning yet still branch on stale `LOOP_STATUS=complete` (or `converged`) from an earlier Gate C / Gate A re-entry. **Suggested fix:** Gate sourcing on success only (`[[ "${_plan_review_rc:-0}" -eq 0 ]]` before reading the result env), or delete/rename the result env at the start of the fence / on non-zero rc; then fall through to stdout fallback and the existing empty-`LOOP_STATUS` → `panel-failed` path.
+
+- **architecture** `skills/design/scripts/run-step3-review.sh:286-295` — Driver `emit_kv` breadcrumbs omit `STEP3_REVIEW_ROUND_NUM` and `ROUND_NUM` even though both are written to `.step3-review-result.env` (`run-step3-review.sh:272-284`) and the SKILL bridge allowlists them for stdout fallback (`skills/design/SKILL.md:873`). If the orchestrator refuses to source a symlinked `.step3-review-result.env` (`skills/design/SKILL.md:857-858`) but stdout still carries `LOOP_STATUS`, the bridge can take a branch using a stale in-session `ROUND_NUM`—notably the MainAgent re-tally path that builds `plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/findings-classification.tsv` (`skills/design/SKILL.md:905`). **Suggested fix:** Add `emit_kv STEP3_REVIEW_ROUND_NUM` and `emit_kv ROUND_NUM` alongside the other terminal breadcrumbs so stdout fallback matches the normalized result-env contract.
+
+### Out-of-Scope Observations
+
+- **Dropped inner keys (`REASON`, `REVISE_STATUS`, `CONVERGENCE_STREAK`, `COLLECT_*`, `VOTER_1_PARSE_RATE_STATUS`):** The driver still parses them from `.step3-plan-review-result.env` for loop handoff (`run-step3-review.sh:219-248`) but does not copy them into `.step3-review-result.env`. That matches the documented normalized surface (`run-step3-review.md:34-36`) and is **not** a silent orchestrator regression: `skills/design/SKILL.md` has no references to those shell variables after the bridge; Gate B passive-summary prose in `approval-gates.md` reads `round-summary.env` / the inner env file directly, not the bridge allowlist.
+
+- **SKILL case allowlist vs `phase_driver_write_result_env`:** The keys sourced in `skills/design/SKILL.md:863-874` match the keys written in `run-step3-review.sh:272-284` (including `ROUND_NUM`, added in round 2).
+
+- **`_allow=()` in `run-step3-review.sh:219-223`:** Unused dead code; parsing uses inline `case` arms instead (`code-quality`, not bridge-contract).
+
+- **`approval-gates.md`:** Still normatively names `.step3-plan-review-result.env` for Gate B multi-round display; the Step 3 branch matrix now points at `.step3-review-result.env`. Both files coexist after a successful run; this is doc drift, not a missing bridge key for gate dispatch.
+
+- **Branch commits (6):** `b9806b39d` (extract), implement log, relevant-checks, round-1/2 review fixes culminating in `a423720a4`.
