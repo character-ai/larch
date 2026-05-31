@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:18	`failure_reason` uses `head-changed` not bash `head-changed-after-dispatch`	`run_check_fix_loop` will not map vendor HEAD moves to terminal `head-changed` / `TRANSIENT`; they become `dispatch-failed`	Match `scripts/ship-pr.sh:202-203` and `scripts/lint-fix-loop.sh:436-451`; use `head-changed-after-dispatch` in `FixOutcome` and loop handling

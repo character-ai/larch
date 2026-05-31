@@ -1,0 +1,5 @@
+Reading additional input from stdin...
+2026-05-31T18:54:31.486354Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+❌ codex agent: FAILED (exit code 1, 130s elapsed, output 0 bytes)

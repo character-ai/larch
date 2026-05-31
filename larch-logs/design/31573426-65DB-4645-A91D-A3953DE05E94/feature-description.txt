@@ -1,0 +1,44 @@
+ship-pr -> Python Phase 4: Local checks & fixer loop
+
+> Part of the **ship-pr.sh → Python** rework. **Full plan, research findings, and cross-phase context: #3132.**
+
+## Shared context (applies to every phase)
+
+**Why this exists.** `scripts/ship-pr.sh` (~3,400 lines) is the `/implement` post-review state machine (rebase → checks → bump → PR → CI → merge → post-merge). Its high failure rate is the motivation for a typed, unit-tested Python rewrite under a new flat `python/` directory shared by all larch skills.
+
+**Locked architecture decisions:**
+1. **Single idempotent process** — recovery via gh/git **ground truth**, NOT a persisted state file. No `ship-pr-state.sh`, no `--resume-phase`.
+2. **Strangler-fig cutover** — zero change to the live `/implement` path until Phase 7.
+3. **Reimplement logic in Python** — shell out only to `git`, `gh`, agent CLIs, and the consumer test runner.
+
+**Runtime vs. dev dependencies.** Runtime imports **stdlib only** (Python ≥ 3.12). `ruff`/`pylint`/`pyright`/`pytest` are **dev/CI-only**.
+
+**Conventions:** flat `python/` (no subdirs); tests colocated `python/test_<module>.py`; constants in `config.py`; immutable frozen dataclasses; injectable `proc.run` seam; outbound text through `redact.py`.
+
+**Quality bars:** pass **Python Lint** + **Python Tests**; **bash-parity test** per ported component; do not delete a shared `.sh` until a caller grep is zero.
+
+**This phase is worked by `/design`**, then `/implement`.
+
+---
+
+## Phase 4 — Local checks & fixer loop
+
+The "Lint and Tests" step: run the consumer repo's local checks and converge them to green using the fixer waterfall.
+
+### Module to create
+- **`checks.py`**
+  - run the consumer repo's relevant checks / pre-commit (shell out — this is the consumer's runner, not larch's to reimplement);
+  - parse results into a typed record;
+  - drive a **capped lint-fix loop**: on failure, invoke the fixer-agent waterfall (from `agents.py`), re-run checks, repeat until clean or the cap is hit;
+  - **gap to fold in:** explicit **escalation** (`Stalled` / `NeedsUserInput`) when the loop cannot converge, instead of silently giving up.
+
+### `.sh` to port / read
+`run-relevant-checks-captured.sh` (orchestration only), `lint-fix-loop.sh`, and the `run_checks_phase` logic in `ship-pr.sh`.
+
+### Acceptance criteria
+- Loop convergence, cap enforcement, and escalation all unit-tested with a **stub checks runner** and **stub agent waterfall**.
+- Parity vs `lint-fix-loop.sh` for the fix-attempt accounting.
+
+### Dependencies
+**Blocked by:** Phase 1.
+
