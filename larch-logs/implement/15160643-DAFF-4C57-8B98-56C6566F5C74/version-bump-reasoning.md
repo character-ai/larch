@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `4e4b652b0` (chore(larch-logs): flush design run 657071F3-B85A-4B8C-8705-BBA2232EC915 [skip ci] (#3259))
-- **Current version**: `47.0.13`
+- **Base commit**: `70cc0fca5` (Fixes #3250: Add Override and proceed to /design Step 2b.5 hard trigger (#3262))
+- **Current version**: `47.0.14`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `47.0.14`
+- **New version**: `47.0.15`
 
 ### PATCH rationale
 
