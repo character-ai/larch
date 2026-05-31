@@ -1,0 +1,14 @@
+[OOS] cleanup.sh: nested-activity retention and untested find-failure path (#3212 follow-ups)
+
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt
+**Phase**: implement
+**Vote tally**: YES=2-3/NO=0 combined
+
+## Description
+
+`skills/cleanup/scripts/cleanup.sh` has two related gaps after PR #3212 landed: (1) The cleanup now uses top-level directory mtime only to determine staleness. An active session directory with an old root mtime but fresh nested files may be deleted. The PR #3212 tradeoff (depth-bounded nested scan vs. top-level only) should be documented, or a bounded `find -maxdepth N` check added. (2) `skills/cleanup/scripts/test-cleanup.sh` has no test case for the `find` failure return path (rc=2) introduced by the pre-filter pattern. A broken `find` under a session dir would skip deletion without the harness catching the behavioral change. Suggested: add a stubbed `find`-failure scenario to `test-cleanup.sh`. Both gaps are in `skills/cleanup/scripts/cleanup.sh` and `skills/cleanup/scripts/test-cleanup.sh`.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*

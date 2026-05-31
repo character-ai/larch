@@ -1,0 +1,16 @@
+Reviewing the implementation plan and validating it against the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	SECURITY.md:234	SECURITY.md ### UPDATED block does not explicitly rewrite the closing operator sentence that still carries the inverted deep-touch / top-level-mtime removal claim	Implementer replaces enumeration and nested-scan bullets per the plan but leaves the final operator clause; auditors and operators still read that deep-only activity leads to removal at the window, contradicting nested-activity retention in should_remove_by_age	In the SECURITY.md ### UPDATED block require rewriting the closing operator sentence: preserve keepalive and no in-run-protection warnings; drop the inverted deep-touch removal claim; state depth-5 nested retention and the depth-bound tradeoff instead
+2	in_scope	important	correctness	plan.txt:24-25 / skills/cleanup/scripts/cleanup.md:12-13	cleanup.md update adds fail-safe and enumeration fail-open bullets but does not retire the existing line-12 swallowed-enumeration invariant	Implementer keeps bullet 12 while adding new fail-safe and fail-open bullets; the contract doc then reads as all age-pass find failures are silent with no warning, contradicting the nested-scan larch_err warning at cleanup.sh:23-25	In the cleanup.md ### UPDATED block explicitly remove or replace invariant bullet 12 so only top-level enumeration failures are fail-open and nested-scan failures are fail-safe with warning
+
+### 1. [security] `SECURITY.md:234` — Closing operator sentence not in rewrite scope
+
+The plan correctly flags the backwards deep-touch claim in Summary and quotes it in the `### UPDATED: SECURITY.md` block, but the rewrite instructions only say to preserve the never-delete-through-symlink trust boundary and the unredacted-secrets sentences. The closing operator clause — *"Operators should not run `/cleanup` expecting keepalive or in-run protection … (a directory touched only deep-down may retain an old top-level mtime and be removed at the window)"* — mixes a still-valid keepalive warning with the inverted removal model. Nothing in the UPDATED block tells implementers to rewrite that sentence.
+
+**Suggested revision:** Require an explicit rewrite of the closing operator sentence: keep the keepalive / no in-run-protection guidance; drop the top-level-mtime and inverted deep-touch removal claim; align with depth-5 nested retention and the depth-bound tradeoff.
+
+### 2. [correctness] `plan.txt:24-25` / `skills/cleanup/scripts/cleanup.md:12-13` — Stale line-12 invariant not retired
+
+The `cleanup.md` section replaces the wrong retention and enumeration bullets (lines 9–10) and adds new depth-5, fail-safe, and enumeration fail-open bullets, but it only names symlink-reaping and bash-3.2 bullets in the keep list. Existing line 12 ("Age-pass `find` enumeration errors are swallowed … no warning") is ambiguous enough to cover nested-scan failures, which contradicts runtime behavior at ```23:25:skills/cleanup/scripts/cleanup.sh```.
+
+**Suggested revision:** In the `cleanup.md` ### UPDATED block, explicitly remove or replace line 12 so enumeration fail-open (silent) and nested-scan fail-safe (warn + keep) are not both present in conflicting form.

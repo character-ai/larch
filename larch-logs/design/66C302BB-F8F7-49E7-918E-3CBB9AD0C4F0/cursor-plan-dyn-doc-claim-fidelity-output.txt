@@ -1,0 +1,22 @@
+Reviewing the plan against the repository: reading the plan file and the cited implementation and test files.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/skills.md:47	Plan omits user-facing catalog doc that repeats the same stale retention claim	After the four listed doc fixes, `docs/skills.md` still says "Age is measured by each entry's top-level mtime," contradicting nested `maxdepth 5` behavior and the plan's "correcting all four committed docs" drift mitigation	Add `### UPDATED: docs/skills.md` — reword the `/cleanup` blurb to match the nested-activity model (or mirror the updated `skills/cleanup/SKILL.md` sentence)
+2	in_scope	important	security	SECURITY.md:234	Proposed SECURITY rewrite preserve list is incomplete	Plan only says to preserve symlink trust boundary and unredacted-secrets sentences; implementers may drop the accurate "Age-pass find enumeration errors are swallowed … cleanup exits 0" prose still true at `cleanup.sh:58,107`	Extend the SECURITY.md block to explicitly KEEP enumeration-swallow behavior (and dangling-reap / operator non-protection sentences unless intentionally reworded)
+3	in_scope	nit	correctness	skills/cleanup/scripts/test-cleanup.md:26	Edit-in-sync trigger not aligned with planned `cleanup.md` change	`cleanup.md` will switch its Edit-in-sync trigger to bounded nested-activity / `maxdepth 5`; `test-cleanup.md` will still say "top-level mtime age pruning" after a one-case add	In the same PR, reword line 26 to match the updated `cleanup.md` trigger (nested scan + find-failure fail-safe)
+
+**1. correctness — `docs/skills.md:47` (in_scope, important)**  
+The plan lists four docs with stale "top-level mtime" retention wording (`skills/cleanup/SKILL.md:9`, `skills/cleanup/scripts/cleanup.md:9-10`, `docs/configuration-and-permissions.md:284`, `SECURITY.md:234`). `docs/skills.md:47` has the same claim ("Age is measured by each entry's top-level mtime") but is not in the file list. Failure modes claim four-doc correction stops drift; that is incomplete.
+
+**2. security — `SECURITY.md:234` (in_scope, important)**  
+Gap 1 and Gap 2 preconditions check out in current code: `should_remove_by_age` at `skills/cleanup/scripts/cleanup.sh:18-28` uses `find "$entry" -maxdepth 5 -mtime -"$RETENTION_DAYS"`; `stale-toplevel-with-fresh-deep-child-kept` exists at `skills/cleanup/scripts/test-cleanup.sh:154-164`. Current `SECURITY.md:234` is backwards (both passes described with `-mtime +N`; closing sentence says deep-only touch leads to removal, opposite of `stale-toplevel-with-fresh-deep-child-kept`). Proposed replacement matches `cleanup.sh` (cache enum without age pre-filter at `:58`, `/tmp` pre-filter at `:107`, nested gate at `:23-28`). The plan's preserve list only names symlink boundary and unredacted-secrets; it should also require keeping enumeration-error swallowing (`2>/dev/null` / `|| true`), or that trust-boundary detail may be dropped during rewrite.
+
+**3. correctness — `skills/cleanup/scripts/test-cleanup.md:26` (in_scope, nit)**  
+Planned `cleanup.md` Edit-in-sync reword is not mirrored for `test-cleanup.md:26`; low risk if the harness file is already being edited.
+
+**Verified (no finding)**  
+- Substring `failed to scan session activity` matches `larch_err` at `cleanup.sh:24` (`Warning: failed to scan session activity for '$entry'; skipping deletion.`); `invalid-retention-fallback` shows stderr in `CASE_OUTPUT` via `2>&1` (`test-cleanup.sh:71-79`, `:173`).  
+- Proposed SECURITY/configuration/SKILL replacement text matches current `cleanup.sh` behavior.  
+- Plan does not need to change runtime logic for Gap 1.
+
+**[OUT_OF_SCOPE]**  
+- `docs/linting.md:285` — `make test-cleanup` row still says "top-level mtime age pruning"; not in the plan's four-doc set. Track for a follow-up doc sync if desired.
