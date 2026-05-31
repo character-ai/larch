@@ -855,7 +855,9 @@ grep -Fq 'ROUTE=cancel-pause-load' "$DESIGN_ROUTE_SH" \
   || fail "(FINDING_5) design-route.sh must emit ROUTE=cancel-pause-load for invalid pause resume"
 grep -Fq 'step-name-registry.tsv missing' "$DESIGN_ROUTE_SH" \
   || fail "(FINDING_8) design-route.sh must fail when step-name-registry.tsv is missing"
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 init_write_env_line=$(grep -nF 'phase_driver_write_result_env "$RESULT_ENV" "${_init_kvs[@]}"' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 init_emit_status_line=$(grep -nF 'emit_kv INIT_STATUS "$INIT_STATUS"' "$DESIGN_INIT_SH" | tail -1 | cut -d: -f1 || true)
 [[ -n "$init_write_env_line" && -n "$init_emit_status_line" ]] \
   || fail "(FINDING_36) design-init-runparams.sh missing success-path result-env write / stdout emit anchors"

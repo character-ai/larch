@@ -204,7 +204,7 @@ step_registry_present() {
 
 step_is_registered() {
     local step="$1" registry="$PLUGIN_ROOT/skills/design/scripts/step-name-registry.tsv"
-    [[ -f "$registry" ]] || return 2
+    step_registry_present || return 2
     awk -F '\t' -v step="$step" 'NR > 1 && $1 == step { found=1; exit } END { exit found ? 0 : 1 }' "$registry"
 }
 
