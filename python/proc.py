@@ -59,15 +59,19 @@ def run(
     stream_stdout = stdout if stdout is not None else subprocess.PIPE
     stream_stderr = stderr if stderr is not None else subprocess.PIPE
     popen_text = stream_stdout is subprocess.PIPE and stream_stderr is subprocess.PIPE
+    popen_kwargs: dict[str, object] = {
+        "stdout": stream_stdout,
+        "stderr": stream_stderr,
+        "cwd": cwd,
+        "env": None if env is None else dict(env),
+    }
+    if popen_text:
+        popen_kwargs["text"] = True
+        popen_kwargs["errors"] = "replace"
     if timeout is not None:
         with subprocess.Popen(
             argv_tuple,
-            stdout=stream_stdout,
-            stderr=stream_stderr,
-            text=popen_text,
-            errors="replace",
-            cwd=cwd,
-            env=None if env is None else dict(env),
+            **popen_kwargs,
         ) as proc:
             try:
                 out_data, err_data = proc.communicate(timeout=timeout)
@@ -103,16 +107,17 @@ def run(
                 check=False,
             )
         else:
-            completed = subprocess.run(
-                argv_tuple,
-                stdout=stream_stdout,
-                stderr=stream_stderr,
-                text=popen_text,
-                errors="replace",
-                cwd=cwd,
-                env=None if env is None else dict(env),
-                check=False,
-            )
+            run_kwargs: dict[str, object] = {
+                "stdout": stream_stdout,
+                "stderr": stream_stderr,
+                "cwd": cwd,
+                "env": None if env is None else dict(env),
+                "check": False,
+            }
+            if popen_text:
+                run_kwargs["text"] = True
+                run_kwargs["errors"] = "replace"
+            completed = subprocess.run(argv_tuple, **run_kwargs)
         duration = time.monotonic() - start
         result = CommandResult(
             argv=argv_tuple,

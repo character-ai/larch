@@ -10,7 +10,7 @@ ship-pr → Python **Phase 4: Local checks & fixer loop**. Create `python/checks
 
 ### NEW: `python/checks.py`
 
-The Phase-4 module. Imports stdlib + siblings only (`config`, `proc`, `agents`, `outcomes`, `redact`, `git`, `errors`); must import cleanly with no import-time side effects (enforced by `test_stdlib_only.py`). Members:
+The Phase-4 module. Imports stdlib + siblings only (`config`, `proc`, `outcomes`, `redact`, `git`); must import cleanly with no import-time side effects (enforced by `test_stdlib_only.py`). Members:
 
 - **`ChecksResult` (frozen dataclass)** — typed port of `run-relevant-checks-captured.sh` machine output: `ok: bool`, `exit_code: int`, `site: str`, `redacted_log_path: str | None`, `phase: str` (`agent-lint` / `pre-commit` / `unknown`), `coverage: str` (`full` / `post-check-only` / `changed-file-only`), `skipped: bool` (RELEVANT_CHECKS_SKIPPED), `warn: str | None`.
 - **`FixOutcome` (frozen dataclass)** — typed port of `lint-fix-loop.sh` machine output: `status: str` (`applied` / `no-changes` / `main-agent-required` / `failed`), `delta_paths: tuple[str, ...]`, `failure_reason: str | None`, `commit_sha: str | None`, `head_changed: bool`, `coder_tool: str | None`.
@@ -50,7 +50,7 @@ Add one `checks.py` bullet to the Layout list (port of local checks + fixer loop
 
 ### Failure modes
 
-1. **Launcher-surface / waterfall divergence** — routing local fixes through `agents.launch_tier` / `launch-*-ci.sh` / `agents.run_waterfall` would diverge from `lint-fix-loop.sh`'s `run-external-agent.sh` wrappers. Earliest signal: a dispatch-argv parity test sees `launch-codex-ci.sh` or a waterfall short-circuit. Mitigation: shell out `run-external-agent.sh` with `run_codex`/`run_cursor` argv shapes; ordered codex→cursor only; classifiers-only from `agents`.
+1. **Launcher-surface / waterfall divergence** — routing local fixes through `agents.launch_tier` / `launch-*-ci.sh` / `agents.run_waterfall` would diverge from `lint-fix-loop.sh`'s `run-external-agent.sh` wrappers. Earliest signal: a dispatch-argv parity test sees `launch-codex-ci.sh` or a waterfall short-circuit. Mitigation: shell out `run-external-agent.sh` with `run_codex`/`run_cursor` argv shapes; ordered codex→cursor only; do not import `agents` on the local fixer path (bash #3207).
 2. **Forbidden-path / commit git side effects under test** — raw git via `Runner` risks mutating the real tree in tests. Earliest signal: a test touches the working tree. Mitigation: inject a stub `Runner` for unit tests; gate any real-git integration test behind a `tmp_path` git fixture or skip it.
 3. **Redaction gap** — a fixer prompt could leak an unredacted path/secret. Earliest signal: a redaction test on a seeded secret fails. Mitigation: route all log→prompt content through `redact.redact()` and assert it in tests.
 

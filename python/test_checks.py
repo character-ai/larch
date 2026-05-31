@@ -452,7 +452,7 @@ def test_run_check_fix_loop_dispatch_first_fallback_redacted_chmod(tmp_path: Pat
         initial_redacted_log=str(initial),
         allowed_tmpdir=str(tmp_path),
     )
-    fallback = Path(str(raw) + ".redacted")
+    fallback = raw.with_name(f"{raw.stem}.redacted.log")
     assert loop.status == "ok"
     assert dispatched == [str(initial), str(fallback)]
     assert fallback.stat().st_mode & 0o777 == 0o600
@@ -538,7 +538,7 @@ def test_run_check_fix_loop_check_first_fallback_redacted_chmod(tmp_path: Path) 
         fixer=fixer,
         dispatch_first=False,
     )
-    fallback = Path(str(raw) + ".redacted")
+    fallback = raw.with_name(f"{raw.stem}.redacted.log")
     assert loop.status == "ok"
     assert dispatched == [str(fallback)]
     assert fallback.stat().st_mode & 0o777 == 0o600
@@ -565,15 +565,19 @@ def test_run_check_fix_loop_main_agent_required(tmp_path: Path) -> None:
     def checks_runner() -> checks.ChecksResult:
         return fail
 
+    captured: list[checks.FixOutcome] = []
+
     def fixer(_log: str) -> checks.FixOutcome:
-        return checks.FixOutcome(
+        outcome = checks.FixOutcome(
             status="main-agent-required",
             delta_paths=(),
-            failure_reason=None,
+            failure_reason="dispatch-failed",
             commit_sha=None,
             head_changed=False,
             coder_tool=None,
         )
+        captured.append(outcome)
+        return outcome
 
     loop = checks.run_check_fix_loop(
         checks_runner=checks_runner,
@@ -582,7 +586,45 @@ def test_run_check_fix_loop_main_agent_required(tmp_path: Path) -> None:
         max_iter=3,
     )
     assert loop.status == "main-agent-required"
+    assert captured[0].failure_reason == "dispatch-failed"
     assert checks.escalate(loop.status).outcome == Outcome.NEEDS_USER_INPUT
+
+
+def test_run_check_fix_loop_check_first_no_changes_stale(tmp_path: Path) -> None:
+    raw_log = tmp_path / "fail.log"
+    _ = raw_log.write_text("error\n", encoding="utf-8")
+    redacted = tmp_path / "fail.redacted.log"
+    _ = redacted.write_text("error\n", encoding="utf-8")
+    fail = checks.ChecksResult(
+        ok=False,
+        exit_code=1,
+        site="step6",
+        redacted_log_path=str(redacted),
+        phase="pre-commit",
+        coverage="changed-file-only",
+        skipped=False,
+        warn=None,
+        raw_log_path=str(raw_log),
+    )
+
+    def checks_runner() -> checks.ChecksResult:
+        return fail
+
+    loop = checks.run_check_fix_loop(
+        checks_runner=checks_runner,
+        fixer=lambda _log: checks.FixOutcome(
+            status="no-changes",
+            delta_paths=(),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool="codex",
+        ),
+        dispatch_first=False,
+        max_iter=3,
+    )
+    assert loop.status == "no-changes-stale"
+    assert checks.escalate(loop.status).outcome == Outcome.STALLED
 
 
 def test_run_check_fix_loop_failed_head_changed(tmp_path: Path) -> None:
@@ -1812,8 +1854,114 @@ def test_run_relevant_checks_redaction_failure_removes_partial_file(
         repo_root=str(repo),
     )
     assert result.redacted_log_path is None
+    assert result.warn == "redaction-failed"
+    assert result.raw_log_path is None
     redacted = session / "relevant-checks" / "step6-1.redacted.log"
     assert not redacted.exists()
+
+
+def test_validate_tmpdir_rejects_empty_xdg_cache_home(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = tmp_path / "claude-implement-empty-xdg"
+    session.mkdir()
+    monkeypatch.setenv("XDG_CACHE_HOME", "")
+    monkeypatch.chdir(tmp_path)
+    assert checks.validate_tmpdir(str(session)) is None
+
+
+def test_run_check_fix_loop_redaction_failed_dispatch_failed(tmp_path: Path) -> None:
+    fail = checks.ChecksResult(
+        ok=False,
+        exit_code=1,
+        site="step6",
+        redacted_log_path=None,
+        phase="pre-commit",
+        coverage="changed-file-only",
+        skipped=False,
+        warn="redaction-failed",
+        raw_log_path=None,
+    )
+
+    def fixer_must_not_run(_log: str) -> checks.FixOutcome:
+        raise AssertionError("fixer must not run")
+
+    loop = checks.run_check_fix_loop(
+        checks_runner=lambda: fail,
+        fixer=fixer_must_not_run,
+        dispatch_first=False,
+        max_iter=3,
+    )
+    assert loop.status == "dispatch-failed"
+
+
+def test_run_checks_phase_dispatch_first_wiring(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    session = cache / "larch" / "sessions" / "claude-implement-dispatch-first"
+    session.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    initial = session / "initial.redacted.log"
+    _ = initial.write_text("error\n", encoding="utf-8")
+    after = session / "after.redacted.log"
+    _ = after.write_text("error\n", encoding="utf-8")
+    checks_sequence = [
+        checks.ChecksResult(
+            ok=False,
+            exit_code=1,
+            site="step6",
+            redacted_log_path=str(after),
+            phase="pre-commit",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=None,
+            raw_log_path=str(after),
+        ),
+        checks.ChecksResult(
+            ok=True,
+            exit_code=0,
+            site="step6",
+            redacted_log_path=None,
+            phase="unknown",
+            coverage="full",
+            skipped=False,
+            warn=None,
+        ),
+    ]
+
+    def fake_checks(runner: StubRunner, **kwargs: object) -> checks.ChecksResult:
+        _ = runner, kwargs
+        return checks_sequence.pop(0)
+
+    def fake_fix(runner: StubRunner, **kwargs: object) -> checks.FixOutcome:
+        _ = runner, kwargs
+        return checks.FixOutcome(
+            status="applied",
+            delta_paths=("fixed.py",),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool="codex",
+        )
+
+    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    monkeypatch.setattr(checks, "run_lint_fix", fake_fix)
+    result = checks.run_checks_phase(
+        StubRunner(),
+        tmpdir=str(session),
+        repo_root=str(repo),
+        codex_present=True,
+        cursor_present=False,
+        dispatch_first=True,
+        initial_redacted_log=str(initial),
+    )
+    assert result.outcome == Outcome.OK
+    assert result.payload == ("fixed.py",)
 
 
 @pytest.mark.skipif(

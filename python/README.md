@@ -18,7 +18,7 @@ imported by runtime code.
   today; RST changelog commit is deferred until Phase 7 (no bash `commit-changelog` counterpart for RST).
 - `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)
-- `test_<module>.py` — colocated unit tests; `test_stdlib_only.py` enforces stdlib-only imports
+- `test_<module>.py` — colocated unit tests; `test_checks_bash_parity.py` bash-sourced parity harness; `test_stdlib_only.py` enforces stdlib-only imports
 
 ## Dependencies
 

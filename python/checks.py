@@ -112,7 +112,8 @@ def validate_tmpdir(tmpdir: str) -> Path | None:
     basename = canonical.name
     if not basename.startswith(("claude-implement-", "claude-review-")):
         return None
-    cache_root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+    xdg_cache = os.environ.get("XDG_CACHE_HOME", "").strip()
+    cache_root = Path(xdg_cache) if xdg_cache else Path.home() / ".cache"
     accepted_root: Path | None = None
     cache_sessions = _canonical_dir(cache_root / "larch" / "sessions")
     if cache_sessions is not None and _under_root(canonical, cache_sessions):
@@ -375,6 +376,7 @@ def run_relevant_checks(
                 coverage="changed-file-only",
                 skipped=False,
                 warn=None,
+                raw_log_path=str(log_file),
             )
         if not log_file.is_file() or log_file.is_symlink() or log_file.parent.resolve() != log_dir.resolve():
             return ChecksResult(
@@ -441,11 +443,11 @@ def run_relevant_checks(
             exit_code=1,
             site=site,
             redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
+            phase=phase,
+            coverage=coverage,
             skipped=False,
-            warn=warn,
-            raw_log_path=str(log_file),
+            warn="redaction-failed",
+            raw_log_path=None,
         )
     return ChecksResult(
         ok=False,
@@ -829,7 +831,7 @@ def _run_codex(
         argv=[
             "bash",
             "-c",
-            'exec "$@" >"$1" 2>"$2"',
+            'exec "${@:3}" >"$1" 2>"$2"',
             "bash",
             str(codex_events),
             str(codex_wrapper_log),
@@ -918,7 +920,7 @@ def _run_cursor(
         )
         return 1
     model_args, auth_args = launch
-    wrap_script = '"$1" "$2"; status=$?; printf X; exit "$status"'
+    wrap_script = '{ "$1" "$2"; status=$?; printf X; exit $status; } 2>>"$3"'
     wrap_result = runner.run(
         [
             "bash",
@@ -927,6 +929,7 @@ def _run_cursor(
             "bash",
             str(scripts_dir / "cursor-wrap-prompt.sh"),
             prompt_body,
+            str(preflight_log),
         ],
         cwd=repo_root,
     )
@@ -957,7 +960,7 @@ def _run_cursor(
         argv=[
             "bash",
             "-c",
-            'exec "$@" >"$1" 2>&1',
+            'exec "${@:2}" >"$1" 2>&1',
             "bash",
             str(cursor_wrapper_log),
             *argv,
@@ -1379,6 +1382,13 @@ def _handle_fix_outcome(
     return False
 
 
+def _fallback_redacted_path(raw: Path) -> Path:
+    """On-demand redacted log path (capture uses ``<site>-<n>.redacted.log``)."""
+    if raw.name.endswith(".log"):
+        return raw.with_name(f"{raw.name[:-4]}.redacted.log")
+    return raw.with_suffix(raw.suffix + ".redacted")
+
+
 def _status_for_missing_redacted_log(
     checks: ChecksResult,
     *,
@@ -1386,6 +1396,8 @@ def _status_for_missing_redacted_log(
     dispatch_first_post_apply: bool,
 ) -> str:
     """Map a failed redacted-log resolution to loop.status (bash parity)."""
+    if checks.warn == "redaction-failed":
+        return "dispatch-failed"
     if checks.redacted_log_path:
         redacted = Path(checks.redacted_log_path)
         if allowed_tmpdir is not None and _resolve_checks_log_path(str(redacted), allowed_tmpdir) is None:
@@ -1411,6 +1423,8 @@ def _redacted_log_for_dispatch(
     *,
     allowed_tmpdir: Path | None,
 ) -> str | None:
+    if checks.warn == "redaction-failed":
+        return None
     if checks.redacted_log_path:
         redacted = Path(checks.redacted_log_path)
         if allowed_tmpdir is not None and _resolve_checks_log_path(str(redacted), allowed_tmpdir) is None:
@@ -1432,7 +1446,7 @@ def _redacted_log_for_dispatch(
     log_text = _read_log_file_text(raw)
     if log_text is None:
         return None
-    redacted = raw.with_suffix(raw.suffix + ".redacted")
+    redacted = _fallback_redacted_path(raw)
     try:
         _ = redacted.write_text(redact.redact(log_text), encoding="utf-8")
         redacted.chmod(0o600)
@@ -1505,6 +1519,10 @@ def run_check_fix_loop(
                 loop.status = "ok"
                 loop.delta_paths = tuple(delta_accum)
                 return loop
+            if checks.warn == "redaction-failed":
+                loop.status = "dispatch-failed"
+                loop.delta_paths = tuple(delta_accum)
+                return loop
             raw_path = checks.raw_log_path
             if not raw_path or not Path(raw_path).is_file() or Path(raw_path).stat().st_size == 0:
                 empty_failures += 1
@@ -1528,6 +1546,15 @@ def run_check_fix_loop(
                 return loop
             fix = fixer(redacted_path)
             if not _handle_fix_outcome(fix, delta_accum=delta_accum, loop=loop):
+                loop.delta_paths = tuple(delta_accum)
+                return loop
+            if loop.last_fix_status == "no-changes":
+                recheck = checks_runner()
+                if recheck.ok or recheck.skipped:
+                    loop.status = "ok"
+                    loop.delta_paths = tuple(delta_accum)
+                    return loop
+                loop.status = "no-changes-stale"
                 loop.delta_paths = tuple(delta_accum)
                 return loop
     loop.status = "exhausted"
