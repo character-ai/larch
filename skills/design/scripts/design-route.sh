@@ -182,20 +182,26 @@ emit_route_result() {
     for e in "${ERROR_LINES[@]+"${ERROR_LINES[@]}"}"; do
         kvs+=("ERROR=$e")
     done
+    if ! phase_driver_write_result_env "$RESULT_ENV" "${kvs[@]}"; then
+        exit 1
+    fi
     local kv
     for kv in "${kvs[@]}"; do
         emit_kv "${kv%%=*}" "${kv#*=}"
     done
-    if ! phase_driver_write_result_env "$RESULT_ENV" "${kvs[@]}"; then
-        exit 1
-    fi
     exit 0
+}
+
+step_is_registered() {
+    local step="$1" registry="$PLUGIN_ROOT/skills/design/scripts/step-name-registry.tsv"
+    [[ -f "$registry" ]] || return 1
+    awk -F '\t' -v step="$step" 'NR > 1 && $1 == step { found=1; exit } END { exit found ? 0 : 1 }' "$registry"
 }
 
 # 1. Resume detection
 if grep -Fq '<!-- larch:design-pause:start -->' "$ISSUE_BODY_FILE"; then
     set +e
-    _pause_out=$("$PLUGIN_ROOT/scripts/design-pause-load.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"} 2>&1)
+    _pause_out=$("$PLUGIN_ROOT/scripts/design-pause-load.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"})
     _pause_rc=$?
     set -e
     _load_ok=false
@@ -216,12 +222,16 @@ if grep -Fq '<!-- larch:design-pause:start -->' "$ISSUE_BODY_FILE"; then
     done <<<"${_pause_out:-}"
     if [[ "${_pause_rc:-0}" -ne 0 ]]; then
         ERROR_LINES+=("design-pause-load-failed")
-        ROUTE=cancel-pause-load
+        _load_ok=false
+    fi
+    if [[ "$_load_ok" == true && -n "$_step" ]] && step_is_registered "$_step"; then
+        ROUTE="resume@${_step}"
+        RESUME_STEP="$_step"
         emit_route_result
     fi
     if [[ "$_load_ok" == true && -n "$_step" ]]; then
-        ROUTE="resume@${_step}"
-        RESUME_STEP="$_step"
+        ERROR_LINES+=("pause-load-invalid-step")
+        ROUTE=cancel-pause-load
         emit_route_result
     fi
     if [[ "$_load_ok" == true ]]; then

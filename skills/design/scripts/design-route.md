@@ -26,7 +26,7 @@ The driver does not fetch the issue body or resolve `REPO` itself.
 
 ## Responsibilities
 
-1. Resume: `LOAD_OK=true` with `STEP` → `ROUTE=resume@<STEP>` + resume KVs; `LOAD_OK=true` without `STEP` or a hard loader failure → `ROUTE=cancel-pause-load` + `ERROR`; `LOAD_OK=false` → emit `WARN`/`ERROR`, fall through to steps 2–4 (no early `ROUTE=proceed`).
+1. Resume: `LOAD_OK=true` with a `STEP` present in `step-name-registry.tsv` → `ROUTE=resume@<STEP>` + resume KVs; `LOAD_OK=true` without `STEP` or with an unregistered step → `ROUTE=cancel-pause-load` + `ERROR`; `LOAD_OK=false` or a non-zero loader exit → emit `WARN`/`ERROR`, fall through to steps 2–4 (no early `ROUTE=proceed`). The loader's stdout is the only parsed contract stream; stderr diagnostics are ignored by this parser.
 2. Title-eligibility: lifecycle → `cancel-title-filter` + `TITLE_FILTER_REASON=lifecycle` + marker; archival → `cancel-title-filter` + `archival`; brainstorm prefix → `BRAINSTORM_PREFIX=true` only.
 3. Re-entry guard: `MARKER_HIT=true` → `cancel-reentry-guard` + age/TTL/path KVs; miss or helper rc 2 → continue.
 4. Verdict: clarify label → `clarify`; well-formed plan block → `already-planned`; else `proceed`. Malformed plan markers → absent.
@@ -53,6 +53,6 @@ Safe to re-run on the same inputs; no user prompts.
 
 ## Harness
 
-`scripts/test-design-structure.sh` (Step 0b extracted-shape greps; no dedicated offline harness per #3245).
+`scripts/test-design-structure.sh` (Step 0b extracted-shape greps) and `scripts/test-design-route.sh` (offline route table).
 
-Orchestrator handoff: Step 3–shaped `set +e` capture (`_route_out`), file-first allowlisted read of `.design-route-result.env` (symlink refusal), `case` loop — routing keys via `printf -v`, `WARN`/`ERROR` printed immediately; stdout merge fills missing routing keys only; abort on exit `2` or unexpected non-zero before `ROUTE` branches. Does **not** call `phase_driver_read_result_env`.
+Orchestrator handoff: Step 3–shaped `set +e` capture (`_route_out`), file-first allowlisted read of `.design-route-result.env` (symlink refusal), `case` loop — routing keys via `printf -v`, `WARN`/`ERROR` printed immediately from the file-first loop before `case ROUTE`; stdout merge fills missing routing keys only; abort on exit `2` or unexpected non-zero before `ROUTE` branches. Does **not** call `phase_driver_read_result_env`.

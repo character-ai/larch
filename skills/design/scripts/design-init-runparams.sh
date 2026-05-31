@@ -185,12 +185,18 @@ if ! "${_wdce_args[@]}"; then
 fi
 
 # 3. [DESIGNING] rename
-if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designing ${REPO:+--repo "$REPO"} 2>&1); then
-    case "$_rename_out" in
-        RENAMED=true) RENAMED=true ;;
-        RENAMED=false) RENAMED=false ;;
-        *) RENAMED=true ;;
-    esac
+if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designing ${REPO:+--repo "$REPO"}); then
+    _rename_seen=false
+    while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
+        case "$_rename_line" in
+            RENAMED=true) RENAMED=true; _rename_seen=true ;;
+            RENAMED=false) RENAMED=false; _rename_seen=true ;;
+        esac
+    done <<<"${_rename_out:-}"
+    if [[ "$_rename_seen" != true ]]; then
+        RENAMED=false
+        add_warn "Step 0 — [DESIGNING] rename returned unknown output"
+    fi
 else
     add_warn "Step 0 — [DESIGNING] rename failed"
 fi

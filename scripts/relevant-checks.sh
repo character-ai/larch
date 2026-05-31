@@ -87,8 +87,11 @@ run_direct_relevant_targets() {
     PYTHON_PY_CHANGED=0
     while IFS= read -r f; do
         case "$f" in
-            scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|scripts/write-run-params.sh)
+            scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|scripts/write-run-params.sh|skills/design/scripts/design-init-runparams.sh|skills/design/scripts/design-init-runparams.md)
                 append_target_once test-step0b-router-flag-recovery
+                ;;
+            scripts/test-design-route.sh|scripts/test-design-route.md|skills/design/scripts/design-route.sh|skills/design/scripts/design-route.md)
+                append_target_once test-design-route
                 ;;
         esac
         case "$f" in

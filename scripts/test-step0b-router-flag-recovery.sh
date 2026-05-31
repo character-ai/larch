@@ -183,4 +183,104 @@ set -e
 grep -Fq -- '--tool jq(router-flags-merge)' "$SPY8" \
   || fail "case8: append-tool-failure tool args drifted: $(cat "$SPY8")"
 
+# Case 9: exercise the actual driver missing-file warning path. The writer exits
+# successfully but intentionally does not create run-params.json, so the driver's
+# no-fallback degraded path must emit WARN through the result env.
+PLUGIN9="$TMPROOT/plugin9"; D9="$TMPROOT/design9"
+mkdir -p "$PLUGIN9/scripts" "$D9"
+cat >"$PLUGIN9/scripts/write-run-params.sh" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+cat >"$PLUGIN9/scripts/write-design-current-env.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$out" ]] || exit 2
+printf 'DESIGN_TMPDIR=x\n' >"$out"
+SH
+cat >"$PLUGIN9/scripts/tracking-issue-write.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'RENAMED=false\nNEW_TITLE=Feature\n'
+SH
+chmod +x "$PLUGIN9/scripts/"*.sh
+set +e
+CLAUDE_PLUGIN_ROOT="$PLUGIN9" "$DESIGN_INIT" \
+  --design-tmpdir "$D9" \
+  --issue 9 \
+  --session-id RUN9 \
+  --claude-pid 12345 \
+  --classification SIMPLE \
+  --partition-requested true \
+  --brainstorm-requested false \
+  --manual-requested false >/dev/null 2>&1
+rc9=$?
+set -e
+[[ "$rc9" -eq 0 ]] || fail "case9: design-init-runparams.sh returned $rc9"
+grep -Fq 'WARN=**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults.' "$D9/.design-init-runparams-result.env" \
+  || fail "case9: driver missing-file warning absent: $(cat "$D9/.design-init-runparams-result.env")"
+
+# Case 10: exercise the actual driver jq-unavailable path. PATH contains only
+# the stubs needed by the driver and shell utilities, not jq.
+PLUGIN10="$TMPROOT/plugin10"; D10="$TMPROOT/design10"; STUB10="$TMPROOT/stub10"
+mkdir -p "$PLUGIN10/scripts" "$D10" "$STUB10"
+cat >"$PLUGIN10/scripts/write-run-params.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift 2 || true ;;
+  esac
+done
+[[ -n "$out" ]] || exit 2
+printf '{"partition_requested":false,"brainstorm_requested":false,"manual_gate_b":false}\n' >"$out"
+SH
+cat >"$PLUGIN10/scripts/write-design-current-env.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$out" ]] || exit 2
+printf 'DESIGN_TMPDIR=x\n' >"$out"
+SH
+cat >"$PLUGIN10/scripts/tracking-issue-write.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'RENAMED=false\nNEW_TITLE=Feature\n'
+SH
+chmod +x "$PLUGIN10/scripts/"*.sh
+ln -s /bin/mkdir "$STUB10/mkdir"
+ln -s /usr/bin/mktemp "$STUB10/mktemp"
+ln -s /usr/bin/dirname "$STUB10/dirname"
+ln -s /bin/pwd "$STUB10/pwd"
+ln -s /bin/mv "$STUB10/mv"
+ln -s /bin/rm "$STUB10/rm"
+set +e
+PATH="$STUB10:/bin" CLAUDE_PLUGIN_ROOT="$PLUGIN10" /bin/bash "$DESIGN_INIT" \
+  --design-tmpdir "$D10" \
+  --issue 10 \
+  --session-id RUN10 \
+  --claude-pid 12345 \
+  --classification SIMPLE \
+  --partition-requested false \
+  --brainstorm-requested true \
+  --manual-requested false >/dev/null 2>&1
+rc10=$?
+set -e
+[[ "$rc10" -eq 0 ]] || fail "case10: design-init-runparams.sh returned $rc10"
+grep -Fq 'WARN=**⚠ 0b: partition, brainstorm, and/or manual requested but jq is unavailable' "$D10/.design-init-runparams-result.env" \
+  || fail "case10: driver jq-unavailable warning absent: $(cat "$D10/.design-init-runparams-result.env")"
+
 echo "PASS: test-step0b-router-flag-recovery.sh"

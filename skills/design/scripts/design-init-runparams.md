@@ -50,4 +50,4 @@ Rename and run-params writes are idempotent on replay.
 
 `scripts/test-design-structure.sh` (env-before-rename line-order, jq-merge greps); `scripts/test-step0b-router-flag-recovery.sh` replicates jq-merge.
 
-Orchestrator handoff: `_init_out` capture + file-first `.design-init-runparams-result.env` read + stdout merge; exit `2` / unexpected non-zero abort; `INIT_STATUS=contract-drift` only after `_init_rc=1` with successful KV merge.
+Orchestrator handoff: `_init_out` capture + file-first `.design-init-runparams-result.env` read + stdout merge; exit `2` / unexpected non-zero abort; `_init_rc=1` may carry `INIT_STATUS=contract-drift` or `INIT_STATUS=env-refresh-failed`, with dedicated operator banners for both after successful KV merge.

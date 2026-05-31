@@ -38,9 +38,8 @@ contains "$SKILL_MD" '[--hard]' 'SKILL argument hint must expose --hard as the s
 absent "$SKILL_MD" '[--simple|' 'SKILL argument hint must not restore [--simple|--hard] tier alternation'
 contains "$SKILL_MD" 'The default tier is SIMPLE' 'SKILL must document default SIMPLE tier resolution'
 contains "$SKILL_MD" '**Tier resolution**' 'SKILL must document non-interactive Tier resolution sub-step'
-if ! grep -Fq 'default tier: SIMPLE (no --hard)' "$SKILL_MD" && ! grep -Fq 'default tier: SIMPLE (no --hard)' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" 2>/dev/null; then
-  fail 'SKILL or design-init-runparams.sh must pin default-tier write-run-params reason string'
-fi
+grep -Fq 'default tier: SIMPLE (no --hard)' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
+  || fail 'design-init-runparams.sh must pin default-tier write-run-params reason string'
 absent "$SKILL_MD" '**Tier gate**' 'SKILL must not retain retired Step 0 Tier gate sub-step'
 absent "$SKILL_MD" 'cancelled-tier-gate' 'SKILL must not retain cancelled-tier-gate outcome'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -107,9 +106,8 @@ contains "$SKILL_MD" 'the four primary options are **Approve final design** / **
 contains "$SKILL_MD" 'Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**' 'SKILL missing Gate C cap-omission prose with See full plan'
 contains "$SKILL_MD" 'plan review MUST ALWAYS run the full Step 3 panel' 'SKILL missing full-panel Step 3 contract'
 
-if ! grep -Fq 'sketch_budget=0' "$SKILL_MD" && ! grep -Fq 'sketch_budget=0' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" 2>/dev/null; then
-  fail 'SKILL or design-init-runparams.sh must pin SIMPLE sketch_budget=0'
-fi
+grep -Fq 'sketch_budget=0' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
+  || fail 'design-init-runparams.sh must pin SIMPLE sketch_budget=0'
 absent "$SKILL_MD" 'review_budget=quick' 'SKILL must not pin v1 review_budget=quick'
 absent "$SKILL_MD" 'invoke-plan-validator-if-not-quick.sh' 'SKILL must not reference old validator helper'
 absent "$SKILL_MD" 'read-design-review-budget.sh' 'SKILL must not reference old budget reader'
@@ -119,9 +117,8 @@ absent "$SKILL_MD" 'design-l3-velocity-notified-2670' 'SKILL must not retain Ste
 contains "$SKILL_MD" 'contract drift' 'SKILL missing Step 0b contract-drift abort prose'
 contains "$SKILL_MD" 'aborting before silent tier downgrade' 'SKILL missing silent tier downgrade abort pin'
 contains "$SKILL_MD" 'bash scripts/test-write-run-params.sh' 'SKILL missing contract-drift repro command'
-if ! grep -Fq 'refusing to recreate it with fallback defaults' "$SKILL_MD" && ! grep -Fq 'refusing to recreate it with fallback defaults' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" 2>/dev/null; then
-  fail 'SKILL or design-init-runparams.sh missing no-fallback run-params warning'
-fi
+grep -Fq 'refusing to recreate it with fallback defaults' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
+  || fail 'design-init-runparams.sh missing no-fallback run-params warning'
 absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must not retain old HARD fallback recovery reason'
 
 contains "$FLAGS_MD" 'Plan-command validator runs unconditionally on both SIMPLE and HARD' 'flags.md missing unconditional validator contract'
@@ -732,6 +729,10 @@ grep -Fq -- '--claude-pid "$CLAUDE_PID"' "$DESIGN_INIT_SH" \
   || fail "(FINDING_13) design-init-runparams.sh current-design-env refresh must pass --claude-pid"
 grep -Fq '_wdce_args+=(--manual-requested true)' "$DESIGN_INIT_SH" \
   || fail "(FINDING_13) design-init-runparams.sh must add --manual-requested only on manual runs"
+grep -Fq 'INIT_STATUS=env-refresh-failed' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_20) design-init-runparams.sh must emit env-refresh-failed on write-design-current-env.sh failure"
+grep -Fq 'write-design-current-env.sh failed during Step 0b env refresh' "$SKILL_MD" \
+  || fail "(FINDING_20) SKILL.md missing dedicated env-refresh-failed operator banner"
 init_refresh_line=$(grep -nF 'write-design-current-env.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
 init_rename_line=$(grep -nF 'tracking-issue-write.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
 init_run_params_line=$(grep -nF 'write-run-params.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
@@ -783,8 +784,71 @@ grep -Fq 'MARK_START=' "$DESIGN_ROUTE_SH" \
   || fail "(FINDING_4) design-route.sh must pin MARK_START plan marker regex"
 grep -Fq 'MARK_END=' "$DESIGN_ROUTE_SH" \
   || fail "(FINDING_4) design-route.sh must pin MARK_END plan marker regex"
-grep -E 'WARN\)|ERROR\)' "$SKILL_MD" >/dev/null \
-  || fail "(FINDING_1 R5) SKILL.md Step 0b file-first route loop must print WARN/ERROR as breadcrumbs"
+step0b_block=$(awk '/^### 0b /,/^### Final summary block$/' "$SKILL_MD")
+# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
+printf '%s\n' "$step0b_block" | grep -Fq 'printf '\''%s\n'\'' "WARN=$_value"' \
+  || fail "(FINDING_1 R5) SKILL.md Step 0b file-first route loop must immediately print WARN breadcrumbs"
+# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
+printf '%s\n' "$step0b_block" | grep -Fq 'printf '\''%s\n'\'' "ERROR=$_value"' \
+  || fail "(FINDING_1 R5) SKILL.md Step 0b file-first route loop must immediately print ERROR breadcrumbs"
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+printf '%s\n' "$step0b_block" | grep -Fq 'On `LOAD_OK=false` fallthrough inside the driver, `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.' \
+  || fail "(FINDING_10) SKILL.md Step 0b missing LOAD_OK=false fallthrough breadcrumb prose"
+printf '%s\n' "$step0b_block" | grep -Fq '_route_warn_lines' \
+  || fail "(FINDING_10) SKILL.md Step 0b missing route warning collection"
+printf '%s\n' "$step0b_block" | grep -Fq '_route_error_lines' \
+  || fail "(FINDING_10) SKILL.md Step 0b missing route error collection"
+printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_AGE=0' \
+  || fail "(FINDING_7) SKILL.md Step 0b must default MARKER_AGE before reentry guard branch"
+printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_TTL=300' \
+  || fail "(FINDING_7) SKILL.md Step 0b must default MARKER_TTL before reentry guard branch"
+printf '%s\n' "$step0b_block" | grep -Fq '_wdce_resume_args' \
+  || fail "(FINDING_9) SKILL.md Step 0b missing resume write-design-current-env args array"
+# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
+printf '%s\n' "$step0b_block" | grep -Fq '${REPO:+--repo "$REPO"}' \
+  || fail "(FINDING_9) SKILL.md Step 0b resume env refresh must thread repo"
+printf '%s\n' "$step0b_block" | grep -Fq '_wdce_resume_rc=$?' \
+  || fail "(FINDING_18) SKILL.md Step 0b resume env refresh must capture rc"
+printf '%s\n' "$step0b_block" | grep -Fq 'resume env refresh failed via write-design-current-env.sh' \
+  || fail "(FINDING_18) SKILL.md Step 0b resume env refresh must handle failure"
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+printf '%s\n' "$step0b_block" | grep -Fq 'only when `ROUTE=proceed`' \
+  || fail "(FINDING_15) SKILL.md Step 0b sub-step 6 must be ROUTE=proceed guarded"
+
+skill_fetch_line=$(printf '%s\n' "$step0b_block" | grep -nF '2. **Fetch issue' | head -1 | cut -d: -f1 || true)
+skill_route_line=$(printf '%s\n' "$step0b_block" | grep -nF '2.5. **Route driver**' | head -1 | cut -d: -f1 || true)
+skill_clarify_line=$(printf '%s\n' "$step0b_block" | grep -nF '3. **Clarify loop**' | head -1 | cut -d: -f1 || true)
+[[ -n "$skill_fetch_line" && -n "$skill_route_line" && -n "$skill_clarify_line" ]] \
+  || fail "(FINDING_4) SKILL.md Step 0b missing fetch / route / clarify anchors"
+if (( skill_fetch_line >= skill_route_line || skill_route_line >= skill_clarify_line )); then
+  fail "(FINDING_4) SKILL.md Step 0b must fetch before route driver before clarify"
+fi
+
+route_resume_line=$(grep -nF '# 1. Resume detection' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
+route_title_line=$(grep -nF '# 2. Title-eligibility' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
+route_reentry_line=$(grep -nF '# 3. Re-entry guard' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
+route_verdict_line=$(grep -nF '# 4. Verdict' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
+[[ -n "$route_resume_line" && -n "$route_title_line" && -n "$route_reentry_line" && -n "$route_verdict_line" ]] \
+  || fail "(FINDING_4) design-route.sh missing route phase comment anchors"
+if (( route_resume_line >= route_title_line || route_title_line >= route_reentry_line || route_reentry_line >= route_verdict_line )); then
+  fail "(FINDING_4) design-route.sh must run resume before title before re-entry before verdict"
+fi
+grep -Fq 'step_is_registered' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_14) design-route.sh must re-validate resume STEP against registry"
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+grep -Fq 'design-pause-load.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"})' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_14) design-route.sh must capture pause-load stdout only"
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+grep -Fq 'phase_driver_write_result_env "$RESULT_ENV"' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_19) design-route.sh must write result env"
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+write_env_line=$(grep -nF 'phase_driver_write_result_env "$RESULT_ENV"' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+emit_kv_line=$(grep -nF 'emit_kv "${kv%%=*}" "${kv#*=}"' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
+[[ -n "$write_env_line" && -n "$emit_kv_line" ]] || fail "(FINDING_19) design-route.sh missing result-env write / stdout emit anchors"
+if (( write_env_line >= emit_kv_line )); then
+  fail "(FINDING_19) design-route.sh must write result env before stdout ROUTE emission"
+fi
 
 # Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned in plan-review.md + renderer.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'

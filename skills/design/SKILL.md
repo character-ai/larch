@@ -232,8 +232,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    BRAINSTORM_PREFIX=false
    TITLE_FILTER_REASON=""
    TITLE_FILTER_MARKER=""
-   MARKER_AGE=""
-   MARKER_TTL=""
+   MARKER_AGE=0
+   MARKER_TTL=300
    DESIGN_REENTRY_MARKER_PATH=""
    RESUME_STEP=""
    _route_warn_lines=()
@@ -247,8 +247,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
          case "$_key" in
            ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
              printf -v "$_key" '%s' "$_value" ;;
-           WARN) [[ " ${_route_warn_lines[*]} " == *" $_value "* ]] || _route_warn_lines+=("$_value") ;;
-           ERROR) [[ " ${_route_error_lines[*]} " == *" $_value "* ]] || _route_error_lines+=("$_value") ;;
+           WARN) if [[ " ${_route_warn_lines[*]} " != *" $_value "* ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
+           ERROR) if [[ " ${_route_error_lines[*]} " != *" $_value "* ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
          esac
        done <"$DESIGN_TMPDIR/.design-route-result.env"
      fi
@@ -258,16 +258,12 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
      case "$_key" in
        ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
          [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
-       WARN) [[ " ${_route_warn_lines[*]} " == *" $_value "* ]] || _route_warn_lines+=("$_value") ;;
-       ERROR) [[ " ${_route_error_lines[*]} " == *" $_value "* ]] || _route_error_lines+=("$_value") ;;
+      WARN) if [[ " ${_route_warn_lines[*]} " != *" $_value "* ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
+      ERROR) if [[ " ${_route_error_lines[*]} " != *" $_value "* ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
      esac
    done <<<"${_route_out:-}"
-   for _w in "${_route_warn_lines[@]}"; do
-     [[ -n "$_w" ]] && printf '%s\n' "WARN=$_w"
-   done
-   for _e in "${_route_error_lines[@]}"; do
-     [[ -n "$_e" ]] && printf '%s\n' "ERROR=$_e"
-   done
+   for _w in "${_route_warn_lines[@]}"; do :; done
+   for _e in "${_route_error_lines[@]}"; do :; done
    if [[ "$BRAINSTORM_PREFIX" == true ]]; then
      brainstorm_requested=true
      printf '%s\n' "**ℹ /design: detected Brainstorm title prefix — auto-enabling brainstorm mode (run-params \`brainstorm_requested=true\`) even though --brainstorm was not on argv.**"
@@ -326,8 +322,15 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
          --claude-pid "$PPID"
        )
        [[ "$_manual_resume" == true ]] && _wdce_resume_args+=(--manual-requested true)
-       "${_wdce_resume_args[@]}" ${REPO:+--repo "$REPO"}
-       printf '%s\n' "🔓 resumed from STEP=${RESUME_STEP}" ;;
+      set +e
+      "${_wdce_resume_args[@]}" ${REPO:+--repo "$REPO"}
+      _wdce_resume_rc=$?
+      set -e
+      if [[ "${_wdce_resume_rc:-0}" -ne 0 ]]; then
+        printf '%s\n' "**⚠ /design: resume env refresh failed via write-design-current-env.sh (exit ${_wdce_resume_rc}); aborting before resumed STEP=${RESUME_STEP}. Inspect source-env.sh / write-design-current-env.sh diagnostics and re-invoke /design.**" >&2
+        exit 1
+      fi
+      printf '%s\n' "🔓 resumed from STEP=${RESUME_STEP}" ;;
    esac
    ```
 
@@ -342,7 +345,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
 4. **Already-planned branch** when `ROUTE=already-planned`: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` before the terminal already-planned hygiene / **Final summary block** / exit **0**. Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
 5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Set mental boolean `partition_requested` to `true` when `-p` or `--partition` was parsed on argv, else `false`. Set mental boolean `brainstorm_requested` to `true` when `--brainstorm` was parsed on argv **or** auto-enabled by the route driver's `BRAINSTORM_PREFIX`, else `false`. Set mental boolean `manual_requested` to `true` when `--manual` or `-m` was parsed on argv, else `false`. No `AskUserQuestion` on this sub-step.
-6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt), then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `write-run-params.sh`, and router-flag jq-merge.
+6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `write-run-params.sh`, and router-flag jq-merge.
 
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -390,6 +393,10 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    done <<<"${_init_out:-}"
    if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == contract-drift ]]; then
      printf '%s\n' "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**" >&2
+     exit 1
+   fi
+   if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == env-refresh-failed ]]; then
+     printf '%s\n' "**⚠ /design: write-design-current-env.sh failed during Step 0b env refresh; aborting before rename/run-params. Inspect source-env.sh / write-design-current-env.sh diagnostics, then re-invoke /design.**" >&2
      exit 1
    fi
    if [[ "${_init_rc:-0}" -eq 1 ]]; then
