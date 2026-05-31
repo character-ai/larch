@@ -1,0 +1,3 @@
+skills/review-and-fix/scripts/review-and-fix.sh
+skills/review-and-fix/scripts/test-review-and-fix.sh
+skills/review-and-fix/scripts/review-and-fix.md

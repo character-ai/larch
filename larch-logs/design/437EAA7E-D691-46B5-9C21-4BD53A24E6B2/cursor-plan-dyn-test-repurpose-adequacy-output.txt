@@ -1,0 +1,36 @@
+Reviewing the plan against the codebase contracts you listed.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/review-and-fix.sh:372-387,415-422,552-555; skills/review-and-fix/scripts/test-review-and-fix.sh:482-501; plan.txt §D	Repurposed stub that mutates snapshotted other.txt cannot drive exit 2 via round_tracked_dirty_outside_manifest when round_dir is passed	Post-dispatch round_coder_delta_paths already excludes carryover only when git diff pre_head -- path matches the snapshot (382-384). Appending to other.txt during dispatch breaks that match, so other.txt is written into coder-stage-paths.txt. The guard skips any manifest-listed path (419) before path_is_pre_coder_carryover runs (plan item 2). With outside-manifest-break-carryover the round commits (scoped pathspec includes other.txt), returns CODER_STATUS=applied and rc 0 — contradicting plan §D exit 2 / HEAD unchanged / dirty paths outside coder delta. The plan edge case at lines 165-166 states this path hits manifest continue and never reaches carryover; that conflicts with §D fail-closed assertions. Same breakage applies on current main if only the stub is swapped in before production guard changes	Do not repurpose manifest-outside-orchestrator around append-to-other.txt + exit 2. Either (minimal) drop §D orchestrator repurposing and keep fail-closed coverage in extracted guard negative control (plan §A: delete snapshot or mutate vs snapshot) plus unchanged single-arg manifest-outside-guard; or repurpose the case to assert CODER_STATUS=applied with git show HEAD listing other.txt after the stub mutates carryover (validates mutated snapshotted dirt becomes coder delta). If integration fail-closed is still required with round_dir, the plan must name a scenario that leaves tracked dirt outside coder-stage-paths.txt without matching path_is_pre_coder_carryover — the current append stub does not
+
+1. **correctness** — `skills/review-and-fix/scripts/review-and-fix.sh:372-387,415-422,552-555`, `skills/review-and-fix/scripts/test-review-and-fix.sh:482-501`, plan §D — Repurposing `manifest-outside-orchestrator` with `TEST_AGENT_BEHAVIOR=outside-manifest-break-carryover` (append to `other.txt` during dispatch) cannot produce the planned exit `2` / `CODER_STATUS=failed` / unchanged HEAD through `round_tracked_dirty_outside_manifest` when `round_dir` is passed (as in production at line 552 and plan item 4).
+
+`round_coder_delta_paths` already treats a pre-snapshotted path as carryover only when `git diff "$pre_head" -- "$path" | cmp -s` matches the snapshot; any stub append breaks that match and **includes** `other.txt` in `coder-stage-paths.txt`:
+
+```372:387:skills/review-and-fix/scripts/review-and-fix.sh
+round_coder_delta_paths() {
+    ...
+        if [[ -s "$pre_tracked" ]] && grep -Fxq "$path" "$pre_tracked"; then
+            snap=$(pre_coder_path_diff_file "$round_dir" "$path")
+            if [[ -f "$snap" ]] && git diff "$pre_head" -- "$path" | cmp -s - "$snap"; then
+                continue
+            fi
+        fi
+        printf '%s\n' "$path"
+```
+
+The guard only returns “fire” for dirty paths **not** in that manifest:
+
+```415:422:skills/review-and-fix/scripts/review-and-fix.sh
+round_tracked_dirty_outside_manifest() {
+    local manifest="$1" path
+    while IFS= read -r path || [[ -n "$path" ]]; do
+        [[ -n "$path" ]] || continue
+        grep -Fxq "$path" "$manifest" 2>/dev/null && continue
+        return 0
+```
+
+After the stub runs, `other.txt` is manifest-listed, so the guard does not reach a fail-closed path; the round proceeds to scoped commit (plan item 5) with both `src/main.py` and `other.txt` in the pathspec. The plan’s own edge case (lines 165-166) describes this (“guard hits the manifest `continue`”) but §D still expects fail-closed orchestrator assertions — an implementer will hit `make test-review-and-fix` failures expecting `rc 2`.
+
+**Stub contract (plan focus 1):** Mirroring `codex-success` (`src/main.py` edit, `APPLIED: FINDING_1` to `--output-last-message` and `--output`, token JSON, exit `0` at `test-review-and-fix.sh:105-110`) is sufficient for post-dispatch coder output; no extra sentinel files are required. **cmp timing (focus 2):** Snapshot is taken before dispatch at `review-and-fix.sh:1235-1237`; post-dispatch `cmp` correctly detects the append — but that detection **adds** the path to the manifest rather than leaving it outside for the guard. **Existing assertions (focus 3):** Current `manifest-outside-orchestrator` only checks `rc`, `CODER_STATUS=failed`, and HEAD (`498-501`); no stale stderr/HEAD substrings beyond what §D plans to add — the gap is the wrong expected outcome, not missed assertion updates.
+
+**Suggested revision:** Remove §D’s append stub + exit-`2` repurposing; keep fail-closed proof in §A extracted negative control and the unchanged single-arg `manifest-outside-guard` block (`463-480`). Optionally repurpose the orchestrator to assert **applied** with `other.txt` in `git show HEAD` when carryover is mutated (confirms mutated snapshotted dirt becomes coder delta), or omit §D as duplicate of §A+B under the SIMPLE minimum-change bar.

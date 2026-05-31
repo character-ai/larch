@@ -1,0 +1,104 @@
+[BUG] (URGENT) Review-fixes coder dispatch fails repeatedly when main-agent commits manual edits between review rounds
+
+
+Review-fixes coder dispatch (Cursor/Codex) fails repeatedly when main-agent commits manual edits between review rounds
+
+## Context
+
+During `/implement` run `ACA45728-FC41-4E91-AD8F-94F5BCAA3467` (issue #3227), the external coder dispatch failed in rounds 2, 3, and 4, requiring the main agent to apply all accepted review findings manually. The failure pattern was consistent across rounds and points to a structural issue with how `review-and-fix.sh` validates the coder's output when the pre-coder HEAD baseline no longer matches expectations.
+
+## Failure Sequence
+
+**Round 2:** Both Codex and Cursor were dispatched to apply 7 accepted findings. Both returned `CODER_STATUS=failed`. The `coder.env` showed the dispatch completed but the commit was rejected. `run-step5-review.sh` returned `STEP5_REVIEW_STATUS=coder-main-agent-required`.
+
+**Round 3:** Round 3 was triggered by the main agent starting at `--starting-round 3` after manually committing the round 2 fixes. Cursor applied 12 fixes and staged them, but `review-and-fix.sh` output `⚠ review-and-fix: round 3 dirty paths outside coder delta; refusing to commit` and exited with code 2. The staged changes were correct (all 12 findings applied), but the dirty-tree guard rejected the commit.
+
+**Round 4:** Same pattern — Codex and Cursor both failed dispatch. `CODER_STATUS=failed`.
+
+## Root Cause
+
+The failure in round 3 (and the subsequent rounds) traces to how `review-and-fix.sh` validates the coder's changes against the **pre-coder-head.txt** baseline.
+
+The guard works as follows:
+1. Before dispatching the coder, `review-and-fix.sh` records the current HEAD in `$IMPLEMENT_TMPDIR/round-N/pre-coder-head.txt`.
+2. After the coder exits, it checks that the only changed paths are within the coder's expected delta (the manifest or the staged edits).
+3. If paths exist that changed SINCE the pre-coder HEAD but are outside the coder delta, it refuses to commit with "dirty paths outside coder delta".
+
+**The problem**: When the main agent manually commits review fixes (as required by `STEP5_REVIEW_STATUS=coder-main-agent-required`), those commits advance the `git HEAD`. When `run-step5-review.sh` is re-invoked with `--starting-round N+1`, it picks up the new HEAD as the starting point for round N+1's pre-coder baseline. But the manual commit from round N is still "visible" in the diff relative to what the round N+1 coder expects — specifically, the files the main agent touched in round N's fix are in the diff, but NOT in the round N+1 coder's manifest/expected paths.
+
+This creates a cascade:
+- Round 2 fails → main agent applies fixes in commit `51001756e`
+- Round 3 starts at commit `51001756e` as baseline
+- Round 3 coder produces its own staged changes (all 12 from round 3 accepted findings)
+- But `pre-coder-head.txt` for round 3 is set to `51001756e` (the manual fix commit)
+- The dirty-tree check compares the post-coder working tree against `51001756e`
+- It finds paths that were changed by Cursor (correctly, as part of round 3 fixes) but flags them as "outside coder delta" because they are also in the round 2 manual fix commit
+
+**Simpler formulation**: the `pre-coder-path-diffs/` snapshot was computed against the round 3 pre-coder HEAD, but that HEAD already contains files from round 2's manual fix that overlap with round 3's expected delta. The dirty-tree guard treats these as "unexpected" because the coder's manifest didn't account for the manual-fix-to-coder-fix path overlap.
+
+## Specific Mechanism in `review-and-fix.sh`
+
+Looking at `$IMPLEMENT_TMPDIR/round-3/pre-coder-head.txt` (value = `51001756e`) and `review-and-fix.sh`'s post-dispatch dirty-tree check:
+
+```bash
+# The guard computes paths changed since pre-coder-head:
+git diff --name-only "$pre_coder_head"..HEAD
+# Subtracts the coder's expected delta (from manifest or staged files)
+# Anything remaining → "dirty paths outside coder delta"
+```
+
+When round 2's manual fix commit and round 3's Cursor fix both touch overlapping files (e.g., `scripts/test-ship-pr.sh`), the overlap appears as "unexpected" dirty paths.
+
+## Contributing Factor: LARCH_QUIET_DISABLE and set-e Interactions
+
+A secondary contributing factor was discovered during CI investigation: the implement launchers (`launch-cursor-implement.sh`, `launch-codex-implement.sh`) had a latent Bash 5.x `set -e` incompatibility:
+
+```bash
+# Old (pre-fix):
+[[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
+[[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
+```
+
+On Bash 5.x (CI Linux), `[[ -s path ]] && cmd` where `path` doesn't exist exits with code 1. Under `set -euo pipefail`, this aborts the launcher before `emit_kv` runs. This was masked in production runs (where quiet mode sets up FD redirects that prevent `set -e` from propagating out of command substitutions) but exposed when `LARCH_QUIET_DISABLE=1` was set in the new test harness.
+
+## Proposed Fix
+
+### Fix 1: Update pre-coder HEAD after main-agent manual commits
+
+In `run-step5-review.sh`, when re-invoking with `--starting-round N+1` after a `coder-main-agent-required` outcome, reset `pre-coder-head.txt` to the CURRENT HEAD (including any manual commits) before dispatching the next round's coder:
+
+```bash
+# In run-step5-review.sh, before dispatch for round N+1:
+git rev-parse HEAD > "$IMPLEMENT_TMPDIR/round-$((N+1))/pre-coder-head.txt"
+```
+
+This ensures the dirty-tree guard compares against the post-manual-fix HEAD rather than a stale snapshot.
+
+### Fix 2: Skip the dirty-tree guard for files already touched by the main agent
+
+Alternatively, `review-and-fix.sh`'s dirty-tree guard could be augmented to exclude paths that were touched in commits made by the main agent (not the coder) since the last successful coder dispatch. This could be tracked in a sentinel file listing "main-agent-committed paths."
+
+### Fix 3 (defense-in-depth): Bash 5.x compatibility fix
+
+Already applied in PR #3270: change the launcher's MANIFEST/QA_PENDING check from `&&` to `if` form:
+
+```bash
+# Fixed:
+if [[ -s "$MANIFEST_PATH" ]];   then MANIFEST_WRITTEN=true;   fi
+if [[ -s "$QA_PENDING_PATH" ]]; then QA_PENDING_WRITTEN=true; fi
+```
+
+## Impact
+
+When this failure pattern occurs:
+- The main agent must manually apply all accepted review findings for multiple rounds (~40+ manual edits per round)
+- Each manual commit advances HEAD and triggers the cascade for subsequent rounds
+- The review loop effectively becomes "main agent only" with no external coder assistance
+- Token cost for main-agent manual implementation significantly exceeds the cost of external coder dispatch (~$100+ per occurrence)
+
+## References
+
+- Run: `ACA45728-FC41-4E91-AD8F-94F5BCAA3467`
+- PR: #3270
+- Issue: #3227
+- Affected rounds: 2, 3, 4 (5 rounds total, Cursor succeeded only in rounds 1 and 5)

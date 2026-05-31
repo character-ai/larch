@@ -1,0 +1,48 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -69,23 +69,18 @@
+-3. Add `round_has_non_carryover_tracked_residue` beside the guard — shared by the post-commit follow-up entry (564) and the post-follow-up fail-closed check (574). It walks `git status --porcelain --untracked-files=no`, extracts each tracked path as `${line:3}` (trim trailing space; sufficient for this harness — rename ` -> ` lines are out of scope for #3272), skips manifest paths, warns-and-skips carryover via `path_is_pre_coder_carryover`, and returns `0` when any remaining tracked path needs action:
++3. Add `round_has_non_carryover_tracked_residue` beside the guard — shared by the post-commit follow-up entry (564) and the post-follow-up fail-closed check (574). It walks `capture_round_tracked_paths` (same source as the pre-commit guard), warns-and-skips only carryover paths via `path_is_pre_coder_carryover`, and returns `0` for any remaining tracked path — including manifest-listed paths re-dirtied by a hook after the primary commit. Not skipping manifest paths is intentional: hook residue on `src/main.py` must still drive the follow-up commit:
+ 
+ ```text
+ round_has_non_carryover_tracked_residue() {
+-    local manifest="$1" round_dir="$2" pre_head="" line path
++    local manifest="$1" round_dir="$2" pre_head="" path
+     if [[ -n "$round_dir" && -s "$round_dir/pre-coder-head.txt" ]]; then
+         pre_head="$(cat "$round_dir/pre-coder-head.txt")"
+     fi
+-    while IFS= read -r line || [[ -n "$line" ]]; do
+-        [[ -n "$line" ]] || continue
+-        path="${line:3}"
+-        path="${path%%[[:space:]]}"
+-        [[ -n "$path" ]] || continue
+-        grep -Fxq "$path" "$manifest" 2>/dev/null && continue
++    while IFS= read -r path || [[ -n "$path" ]]; do
++        [[ -n "$path" ]] || continue
+         if [[ -n "$pre_head" ]] && path_is_pre_coder_carryover "$round_dir" "$pre_head" "$path"; then
+             larch_err "⚠ review-and-fix: pre-existing dirty path carried over (not committed): $path"
+             continue
+         fi
+         return 0
+-    done < <(git status --porcelain --untracked-files=no 2>/dev/null || true)
++    done < <(capture_round_tracked_paths)
+     return 1
+ }
+ ```
+@@ -133,4 +128,5 @@
+ - Negative control: re-run with the snapshot deleted (or `other.txt` mutated so its diff no longer matches the snapshot) and assert the guard still fires (`return 0`), proving genuinely-changed/unsnapshotted dirt is not silently excluded.
+ - Leave the existing single-arg `manifest-outside-guard` assertion (current lines 463-480) unchanged; it must keep firing, proving backward compatibility when `round_dir` is omitted.
++- Repurpose `manifest-outside-orchestrator` (lines 482-501): before `run_review_and_fix`, mutate `other.txt` again so its diff no longer matches the snapshot (breaking the carryover predicate); assert exit 2, `CODER_STATUS=failed`, and no round commit — proving genuine non-carryover outside-manifest dirt still fails closed with the two-arg guard.
+ 
+ **B. Orchestrator — carryover-only residue after commit (FINDING_1):**
+@@ -159,3 +155,3 @@
+-Update **Round-mode post-commit residue re-check** (lines 56–57): the follow-up block runs only when `round_has_non_carryover_tracked_residue` finds non-carryover tracked porcelain (e.g. hook re-touched a manifest path); carryover-only porcelain after the primary or follow-up commit skips follow-up / does not fail the round. Persistent non-carryover tracked residue after follow-up still fails closed. Add both breadcrumbs to the breadcrumb list (lines 124–132): `⚠ review-and-fix: pre-existing dirty path carried over (not committed): <path>` and retain the existing post-follow-up failure breadcrumb for genuine residue.
++Update **Round-mode post-commit residue re-check** (lines 56–57): the follow-up block runs only when `round_has_non_carryover_tracked_residue` finds non-carryover tracked dirt; the helper walks `capture_round_tracked_paths` (not porcelain) and does not skip manifest-listed paths — hook residue on a manifest path (e.g. hook re-touched `src/main.py`) returns `0` and triggers follow-up. Carryover-only residue after the primary or follow-up commit skips follow-up / does not fail the round. Persistent non-carryover tracked residue after follow-up still fails closed. Add both breadcrumbs to the breadcrumb list (lines 124–132): `⚠ review-and-fix: pre-existing dirty path carried over (not committed): <path>` and retain the existing post-follow-up failure breadcrumb for genuine residue.
+@@ -172,3 +168,3 @@
+-- `make test-review-and-fix`: extracted carryover guard (positive + negative control), unchanged `manifest-outside-guard` / `manifest-outside-orchestrator`, new `carryover-orchestrator` and `staged-carryover-orchestrator` integration cases, plus existing `round-hook-residue` (follow-up still works for non-carryover hook dirt).
++- `make test-review-and-fix`: extracted carryover guard (positive + negative control), unchanged `manifest-outside-guard`; `manifest-outside-orchestrator` repurposed to assert genuine fail-closed with non-matching carryover snapshot, new `carryover-orchestrator` and `staged-carryover-orchestrator` integration cases, plus existing `round-hook-residue` (follow-up still works for non-carryover hook dirt).
+@@ -180,3 +176,3 @@
+ review-and-fix.sh ≈ +48 lines (predicate + extended guard + residue helper + post-commit gates + scoped commits); test-review-and-fix.sh ≈ +78 lines; review-and-fix.md ≈ +12 lines. Mostly additive, no mechanical churn, no deletions of note.
+ 
+-diff_lines: 138
++diff_lines: 133
