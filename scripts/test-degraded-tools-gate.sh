@@ -93,7 +93,7 @@ assert_contains "$out" "CODEX_STATE=binary-missing" "binary-false-present-true â
 assert_contains "$out" "DEGRADED=true" "binary-false-present-true degraded"
 
 # --- Case 7: present-only wiring (binary-found omitted, as /design/review/research call it) ---
-out=$(CODEX_BINARY_FOUND= CURSOR_BINARY_FOUND= bash "$GATE" --codex-present true --cursor-present false --skill review) && rc=$? || rc=$?
+out=$(CODEX_BINARY_FOUND='' CURSOR_BINARY_FOUND='' bash "$GATE" --codex-present true --cursor-present false --skill review) && rc=$? || rc=$?
 assert_rc "$rc" 0 "present-only exit 0"
 assert_contains "$out" "DEGRADED=true" "present-only degraded (cursor down)"
 assert_contains "$out" "CODEX_STATE=ok" "present-only codex ok without binary-found"

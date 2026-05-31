@@ -101,8 +101,6 @@ fi
 
 WATERFALL_SH="${LARCH_DISPATCH_WITH_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
 dispatch_ok=true
-all_outputs=""
-all_tools=""
 wf_rc=0
 if [[ -s "$manifest" ]]; then
     set +e
@@ -123,8 +121,6 @@ if [[ -s "$manifest" ]]; then
         key="${line%%=*}"
         value="${line#*=}"
         case "$key" in
-            ALL_OUTPUT_FILES) all_outputs="$value" ;;
-            ALL_OUTPUT_TOOLS) all_tools="$value" ;;
             DISPATCH_OK) dispatch_ok="$value" ;;
             WARN) emit_kv WARN "$value" ;;
         esac

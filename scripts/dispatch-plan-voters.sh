@@ -156,15 +156,11 @@ else
     waterfall_output=$'DISPATCH_OK=true\nALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\n'
 fi
 
-all_outputs=""
-all_tools=""
 dispatch_ok="true"
 while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     value="${line#*=}"
     case "$key" in
-        ALL_OUTPUT_FILES) all_outputs="$value" ;;
-        ALL_OUTPUT_TOOLS) all_tools="$value" ;;
         DISPATCH_OK) dispatch_ok="$value" ;;
         WARN) emit_kv WARN "$value" ;;
     esac
