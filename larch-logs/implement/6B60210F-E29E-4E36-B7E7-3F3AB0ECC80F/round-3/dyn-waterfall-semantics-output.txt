@@ -1,0 +1,14 @@
+Reviewing waterfall semantics in `python/agents.py` against the bash reference and scout checklist.
+### In-Scope Findings
+
+- **correctness** `python/agents.py:212-222` — `run_waterfall` short-circuits on `attempt.failure.failure_class == "other"`, but `run_ci_fix_vendor` in `scripts/ship-pr.sh:2076-2083` uses `ship_pr_read_launcher_failure_class "$fail_file"`, which only honors the last `LAUNCHER_FAILURE_CLASS=` line and maps missing/unknown values to `health` (see `scripts/ship-pr.sh:1696-1706` and `python/parse_launcher_failure_class` at `python/agents.py:67-80`). `classify_launch_failure` can still label the same capture `other` when KV lines are absent but stderr/output match parse/timeout/unknown heuristics. A Phase 7 `launch_fn` that fills `TierAttempt.failure` via classify instead of parse would short-circuit when bash would fall through to the next tier. **Suggested fix:** Have the short-circuit branch call `parse_launcher_failure_class` on the launcher capture path (extend `TierAttempt` with `failure_log` if needed), or document and test an invariant that `launch_fn` must set `failure.failure_class` only from `parse_launcher_failure_class`, not `classify_launch_failure`.
+
+- **correctness** `python/agents.py:198-203,248` — When `first_tier` is set but not an element of `tiers`, rotation is skipped yet `first` stays `first_tier`, so at `idx == 0` the attempted tier (e.g. `cursor`) fails `tier == first` and a first-tier `other` failure never short-circuits. Bash always sets `first_tier=${tiers[$offset]}` from the same fixed triple (`scripts/ship-pr.sh:2032-2033`), so this mismatch cannot occur there. **Suggested fix:** If `first_tier not in tier_list`, treat `first` as `tier_list[0]` after any rotation (or raise), and add a unit test for `first_tier` absent from `tiers`.
+
+### Out-of-Scope Observations
+
+- **Refusal vs output_file:** `classify_launch_failure` applies `_REFUSAL_RE` only to `sidecar` and `_PARSE_RE` to both `sidecar` and `output_file` (`python/agents.py:103-115`), matching `external_classify_launch_failure` in `scripts/lib-external-launcher-common.sh:255-273`. The parity vector with refusal only in `output_file` (`python/test_agents.py:91`) encodes that both sides classify as `other`/`unknown`, not `refusal` — not a regression.
+
+- **Rotation / `idx == 0`:** When `first_tier` is in `tier_list`, rotation makes `tier_list[0] == first_tier`, so `idx == 0` aligns with bash `waterfall_iter == 0` and `tier == first_tier` for the first launched tier. `wrapper_rc == 2` fall-through matches bash because short-circuit requires `wrapper_rc == 0` (`scripts/ship-pr.sh:2076`); Python advances `idx` without a separate counter.
+
+- **Branch commits (since merge-base with main):** `a6fb8beac` Add ship-pr Python Phase 1…; `929f244bf` chore(larch-logs)…; `a8a657d8e` / `eca4b21ec` relevant-checks; `0ed5744ec` / `202f93e28` review rounds.
