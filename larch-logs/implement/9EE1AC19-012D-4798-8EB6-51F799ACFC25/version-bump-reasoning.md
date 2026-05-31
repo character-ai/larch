@@ -1,6 +1,6 @@
 # Version Bump Reasoning
 
-- **Base commit**: `aed82564e` (Fixes #3273: Wire --risk forwarding in launch-review.sh, fix launch-cursor launchers FINDING_6, add behavioral tests for STDERR_SINK and risk round-trip (#3293))
+- **Base commit**: `dc94a23fa` (chore(larch-logs): flush design run 4A83C0D5-013E-4228-ACF2-6D4247110CE5 [skip ci] (#3295))
 - **Current version**: `47.0.25`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
