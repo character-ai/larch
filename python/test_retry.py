@@ -141,6 +141,27 @@ def test_with_transient_retry_backoff_schedule() -> None:
     ]
 
 
+def test_with_transient_retry_predicate_branch() -> None:
+    sleeps: list[float] = []
+    attempts = {"n": 0}
+
+    def fn() -> tuple[str, int, str]:
+        attempts["n"] += 1
+        if attempts["n"] < 2:
+            return "", 1, "permission denied"
+        return "ok", 0, ""
+
+    result = retry.with_transient_retry(
+        fn,
+        predicate=lambda text: "permission denied" in text,
+        sleeper=sleeps.append,
+        max_attempts=3,
+    )
+    assert result.value == "ok"
+    assert result.attempts == 2
+    assert sleeps == [float(config.TRANSIENT_RETRY_BACKOFF_SEC[0])]
+
+
 def test_with_transient_retry_reuses_last_backoff() -> None:
     sleeps: list[float] = []
     attempts = {"n": 0}

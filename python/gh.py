@@ -1,7 +1,9 @@
 """Typed gh CLI operations with per-operation retry policy.
 
-Read helpers retry transient failures via ``with_transient_retry`` then
-``_ensure_success``, which raises ``ShipError`` on exhaustion (fail-fast).
+Read helpers retry transient failures via ``with_transient_retry`` and return
+the last ``CommandResult`` (including after retry exhaustion). Typed parsers
+raise ``TransientNetworkError`` (with ``result`` set) or ``ShipError`` on
+non-zero reads; use ``*_read`` helpers when the last result must be inspected.
 Mutating helpers return the last ``CommandResult`` without retry.
 """
 
@@ -15,9 +17,9 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import redact
-from errors import ShipError
+from errors import ShipError, TransientNetworkError
 from proc import CommandResult, Runner
-from retry import RetryResult, with_transient_retry
+from retry import RetryResult, is_transient_net_signature, with_transient_retry
 
 
 @dataclass(frozen=True)
@@ -49,11 +51,26 @@ def _combined(result: CommandResult) -> str:
     return result.stdout + result.stderr
 
 
+def _redact_gh_scalar(text: str) -> str:
+    """Redact a single gh CLI field without redact()'s line-oriented trailing newline."""
+    redacted = redact.redact(text)
+    if text and not text.endswith("\n") and redacted.endswith("\n"):
+        return redacted[:-1]
+    return redacted
+
+
 def _ensure_success(result: CommandResult) -> CommandResult:
     if result.returncode != 0:
         msg = f"gh command failed ({result.returncode}): {' '.join(result.argv)}"
         raise ShipError(msg)
     return result
+
+
+def _raise_read_failure(result: CommandResult) -> None:
+    msg = f"gh command failed ({result.returncode}): {' '.join(result.argv)}"
+    if is_transient_net_signature(_combined(result)):
+        raise TransientNetworkError(msg, result=result)
+    raise ShipError(msg)
 
 
 def _require_json_keys(
@@ -116,6 +133,28 @@ def _retry_read(
     return retried.value
 
 
+def pr_view_read(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        [
+            "pr",
+            "view",
+            str(number),
+            "--repo",
+            repo,
+            "--json",
+            "number,url,state,headRefName",
+        ],
+        cwd=cwd,
+    )
+
+
 def pr_view(
     runner: Runner,
     number: int,
@@ -123,21 +162,9 @@ def pr_view(
     repo: str,
     cwd: str | None = None,
 ) -> PullRequest:
-    result = _ensure_success(
-        _retry_read(
-            runner,
-            [
-                "pr",
-                "view",
-                str(number),
-                "--repo",
-                repo,
-                "--json",
-                "number,url,state,headRefName",
-            ],
-            cwd=cwd,
-        ),
-    )
+    result = pr_view_read(runner, number, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        _raise_read_failure(result)
     data = _loads_json(result.stdout, context="pr view")
     if not isinstance(data, dict):
         msg = "gh JSON parse failed (pr view): expected object"
@@ -155,6 +182,33 @@ def pr_view(
     )
 
 
+def pr_for_branch_read(
+    runner: Runner,
+    branch: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        [
+            "pr",
+            "list",
+            "--repo",
+            repo,
+            "--head",
+            branch,
+            "--state",
+            "open",
+            "--json",
+            "number,url,state,headRefName",
+            "--limit",
+            "1",
+        ],
+        cwd=cwd,
+    )
+
+
 def pr_for_branch(
     runner: Runner,
     branch: str,
@@ -162,26 +216,9 @@ def pr_for_branch(
     repo: str,
     cwd: str | None = None,
 ) -> PullRequest | None:
-    result = _ensure_success(
-        _retry_read(
-            runner,
-            [
-                "pr",
-                "list",
-                "--repo",
-                repo,
-                "--head",
-                branch,
-                "--state",
-                "open",
-                "--json",
-                "number,url,state,headRefName",
-                "--limit",
-                "1",
-            ],
-            cwd=cwd,
-        ),
-    )
+    result = pr_for_branch_read(runner, branch, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        _raise_read_failure(result)
     rows_obj = _loads_json(result.stdout or "[]", context="pr list")
     if not isinstance(rows_obj, list):
         msg = "gh JSON parse failed (pr list): expected array"
@@ -216,6 +253,8 @@ def pr_create(
     branch: str,
     title: str,
     body: str,
+    base: str | None = None,
+    assignee: str | None = "@me",
     draft: bool = False,
     cwd: str | None = None,
 ) -> PullRequest:
@@ -231,12 +270,16 @@ def pr_create(
             "--head",
             branch,
             "--title",
-            title,
+            _redact_gh_scalar(title),
             body_flag,
             body_path,
             "--json",
             "number,url,state,headRefName",
         ]
+        if assignee is not None:
+            argv.extend(["--assignee", assignee])
+        if base is not None:
+            argv.extend(["--base", base])
         if draft:
             argv.append("--draft")
         result = _gh(runner, argv, cwd=cwd)
@@ -294,6 +337,32 @@ def pr_merge(
     )
 
 
+def run_list_read(
+    runner: Runner,
+    *,
+    repo: str,
+    branch: str,
+    limit: int = 5,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        [
+            "run",
+            "list",
+            "--repo",
+            repo,
+            "--branch",
+            branch,
+            "--limit",
+            str(limit),
+            "--json",
+            "databaseId,status,conclusion",
+        ],
+        cwd=cwd,
+    )
+
+
 def run_list(
     runner: Runner,
     *,
@@ -302,24 +371,9 @@ def run_list(
     limit: int = 5,
     cwd: str | None = None,
 ) -> tuple[WorkflowRun, ...]:
-    result = _ensure_success(
-        _retry_read(
-            runner,
-            [
-                "run",
-                "list",
-                "--repo",
-                repo,
-                "--branch",
-                branch,
-                "--limit",
-                str(limit),
-                "--json",
-                "databaseId,status,conclusion",
-            ],
-            cwd=cwd,
-        ),
-    )
+    result = run_list_read(runner, repo=repo, branch=branch, limit=limit, cwd=cwd)
+    if result.returncode != 0:
+        _raise_read_failure(result)
     rows_obj = _loads_json(result.stdout or "[]", context="run list")
     if not isinstance(rows_obj, list):
         msg = "gh JSON parse failed (run list): expected array"
@@ -327,7 +381,8 @@ def run_list(
     runs: list[WorkflowRun] = []
     for row in rows_obj:
         if not isinstance(row, dict):
-            continue
+            msg = "gh JSON parse failed (run list): expected object row"
+            raise ShipError(msg)
         _require_json_keys(
             row,
             ("databaseId", "status"),
@@ -343,6 +398,28 @@ def run_list(
     return tuple(runs)
 
 
+def run_view_read(
+    runner: Runner,
+    run_id: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        [
+            "run",
+            "view",
+            str(run_id),
+            "--repo",
+            repo,
+            "--json",
+            "databaseId,status,conclusion",
+        ],
+        cwd=cwd,
+    )
+
+
 def run_view(
     runner: Runner,
     run_id: int,
@@ -350,21 +427,9 @@ def run_view(
     repo: str,
     cwd: str | None = None,
 ) -> WorkflowRun:
-    result = _ensure_success(
-        _retry_read(
-            runner,
-            [
-                "run",
-                "view",
-                str(run_id),
-                "--repo",
-                repo,
-                "--json",
-                "databaseId,status,conclusion",
-            ],
-            cwd=cwd,
-        ),
-    )
+    result = run_view_read(runner, run_id, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        _raise_read_failure(result)
     data = _loads_json(result.stdout, context="run view")
     if not isinstance(data, dict):
         msg = "gh JSON parse failed (run view): expected object"
@@ -377,6 +442,28 @@ def run_view(
     )
 
 
+def failed_jobs_read(
+    runner: Runner,
+    run_id: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        [
+            "run",
+            "view",
+            str(run_id),
+            "--repo",
+            repo,
+            "--json",
+            "jobs",
+        ],
+        cwd=cwd,
+    )
+
+
 def failed_jobs(
     runner: Runner,
     run_id: int,
@@ -384,21 +471,9 @@ def failed_jobs(
     repo: str,
     cwd: str | None = None,
 ) -> tuple[FailedJob, ...]:
-    result = _ensure_success(
-        _retry_read(
-            runner,
-            [
-                "run",
-                "view",
-                str(run_id),
-                "--repo",
-                repo,
-                "--json",
-                "jobs",
-            ],
-            cwd=cwd,
-        ),
-    )
+    result = failed_jobs_read(runner, run_id, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        _raise_read_failure(result)
     payload = _loads_json(result.stdout, context="failed jobs")
     if not isinstance(payload, dict):
         msg = "gh JSON parse failed (failed jobs): expected object"
@@ -461,7 +536,7 @@ def issue_edit(
 ) -> CommandResult:
     argv = ["issue", "edit", issue, "--repo", repo]
     if title is not None:
-        argv.extend(["--title", title])
+        argv.extend(["--title", _redact_gh_scalar(title)])
     if body is not None:
         with _body_file_args(body) as (body_flag, body_path):
             argv.extend([body_flag, body_path])

@@ -33,6 +33,14 @@ class Runner(Protocol):
         ...
 
 
+def _decode_output(value: str | bytes | None) -> str:
+    if value is None:
+        return ""
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    return value
+
+
 def run(
     argv: Sequence[str],
     *,
@@ -44,12 +52,44 @@ def run(
     """Run a subprocess with timeout and captured stdout/stderr."""
     argv_tuple = tuple(argv)
     start = time.monotonic()
-    try:
+    if timeout is not None:
+        proc = subprocess.Popen(
+            argv_tuple,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            errors="replace",
+            cwd=cwd,
+            env=None if env is None else dict(env),
+        )
+        try:
+            stdout, stderr = proc.communicate(timeout=timeout)
+        except subprocess.TimeoutExpired as exc:
+            proc.kill()
+            rest_out, rest_err = proc.communicate()
+            duration = time.monotonic() - start
+            result = CommandResult(
+                argv=argv_tuple,
+                returncode=config.PROC_TIMEOUT_EXIT_CODE,
+                stdout=_decode_output(exc.stdout) + _decode_output(rest_out),
+                stderr=_decode_output(exc.stderr) + _decode_output(rest_err),
+                duration=duration,
+            )
+        else:
+            duration = time.monotonic() - start
+            result = CommandResult(
+                argv=argv_tuple,
+                returncode=proc.returncode,
+                stdout=stdout,
+                stderr=stderr,
+                duration=duration,
+            )
+    else:
         completed = subprocess.run(
             argv_tuple,
             capture_output=True,
             text=True,
-            timeout=timeout,
+            errors="replace",
             cwd=cwd,
             env=None if env is None else dict(env),
             check=False,
@@ -60,15 +100,6 @@ def run(
             returncode=completed.returncode,
             stdout=completed.stdout,
             stderr=completed.stderr,
-            duration=duration,
-        )
-    except subprocess.TimeoutExpired as exc:
-        duration = time.monotonic() - start
-        result = CommandResult(
-            argv=argv_tuple,
-            returncode=config.PROC_TIMEOUT_EXIT_CODE,
-            stdout=(exc.stdout or "") if isinstance(exc.stdout, str) else "",
-            stderr=(exc.stderr or "") if isinstance(exc.stderr, str) else "",
             duration=duration,
         )
     if check and result.returncode != 0:

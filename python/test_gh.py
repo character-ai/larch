@@ -10,7 +10,7 @@ import pytest
 
 import config
 import gh
-from errors import ShipError
+from errors import ShipError, TransientNetworkError
 from proc import CommandResult
 
 
@@ -259,9 +259,208 @@ def test_pr_view_exhausts_transient_retries() -> None:
     runner = RecordingRunner(
         responses=[transient, transient, transient],
     )
-    with pytest.raises(ShipError):
+    with pytest.raises(TransientNetworkError) as exc_info:
         gh.pr_view(runner, 1, repo="o/r")
+    assert exc_info.value.result is transient
     assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
+
+
+def test_pr_view_read_returns_last_result_on_exhaustion() -> None:
+    transient = CommandResult(
+        ("gh", "pr", "view", "1"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    runner = RecordingRunner(
+        responses=[transient, transient, transient],
+    )
+    result = gh.pr_view_read(runner, 1, repo="o/r")
+    assert result.returncode == 1
+    assert "Could not resolve host" in result.stderr
+    assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
+
+
+def test_run_list_retries_transient_then_succeeds() -> None:
+    transient = CommandResult(
+        ("gh", "run", "list"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    success = CommandResult(
+        ("gh", "run", "list"),
+        0,
+        '[{"databaseId":7,"status":"completed","conclusion":"success"}]',
+        "",
+        0.01,
+    )
+    runner = RecordingRunner(responses=[transient, success])
+    runs = gh.run_list(runner, repo="o/r", branch="feat", limit=1)
+    assert runs[0].database_id == 7
+    assert len(runner.calls) == 2
+
+
+def test_run_list_exhausts_transient_retries() -> None:
+    transient = CommandResult(
+        ("gh", "run", "list"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    runner = RecordingRunner(
+        responses=[transient, transient, transient],
+    )
+    with pytest.raises(TransientNetworkError):
+        gh.run_list(runner, repo="o/r", branch="feat", limit=1)
+    assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
+
+
+def test_run_view_retries_transient_then_succeeds() -> None:
+    transient = CommandResult(
+        ("gh", "run", "view", "11"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    success = CommandResult(
+        ("gh", "run", "view", "11"),
+        0,
+        '{"databaseId":11,"status":"completed","conclusion":"success"}',
+        "",
+        0.01,
+    )
+    runner = RecordingRunner(responses=[transient, success])
+    run = gh.run_view(runner, 11, repo="o/r")
+    assert run.database_id == 11
+    assert len(runner.calls) == 2
+
+
+def test_run_view_exhausts_transient_retries() -> None:
+    transient = CommandResult(
+        ("gh", "run", "view", "11"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    runner = RecordingRunner(
+        responses=[transient, transient, transient],
+    )
+    with pytest.raises(TransientNetworkError):
+        gh.run_view(runner, 11, repo="o/r")
+    assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
+
+
+def test_failed_jobs_retries_transient_then_succeeds() -> None:
+    transient = CommandResult(
+        ("gh", "run", "view", "11"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    success = CommandResult(
+        ("gh", "run", "view", "11"),
+        0,
+        '{"jobs":[{"name":"lint","conclusion":"failure"}]}',
+        "",
+        0.01,
+    )
+    runner = RecordingRunner(responses=[transient, success])
+    failed = gh.failed_jobs(runner, 11, repo="o/r")
+    assert [job.name for job in failed] == ["lint"]
+    assert len(runner.calls) == 2
+
+
+def test_failed_jobs_exhausts_transient_retries() -> None:
+    transient = CommandResult(
+        ("gh", "run", "view", "11"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    runner = RecordingRunner(
+        responses=[transient, transient, transient],
+    )
+    with pytest.raises(TransientNetworkError):
+        gh.failed_jobs(runner, 11, repo="o/r")
+    assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
+
+
+def test_run_list_raises_on_malformed_row() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "run", "list"),
+                0,
+                '["not-a-dict"]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    with pytest.raises(ShipError, match="expected object row"):
+        gh.run_list(runner, repo="o/r", branch="feat", limit=1)
+
+
+def test_pr_create_passes_base_and_assignee() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    _ = gh.pr_create(
+        runner,
+        repo="o/r",
+        branch="feat",
+        title="t",
+        body="b",
+        base="main",
+        assignee="@me",
+    )
+    create_argv = runner.calls[1]
+    assert "--base" in create_argv
+    assert "main" in create_argv
+    assert "--assignee" in create_argv
+    assert "@me" in create_argv
+
+
+def test_pr_create_redacts_title() -> None:
+    token = "ghp_" + "a" * 36
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    _ = gh.pr_create(
+        runner,
+        repo="o/r",
+        branch="feat",
+        title=f"PR {token}",
+        body="b",
+    )
+    title_idx = runner.calls[1].index("--title") + 1
+    assert token not in runner.calls[1][title_idx]
 
 
 def test_pr_merge_not_retried_on_transient() -> None:

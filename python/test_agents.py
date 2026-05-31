@@ -249,19 +249,12 @@ def test_waterfall_first_tier_absent_from_tiers_short_circuits(tmp_path: Path) -
     assert result.attempts[0].tier == "cursor"
 
 
-def test_waterfall_classify_other_without_kv_does_not_short_circuit() -> None:
+def test_waterfall_classify_other_without_kv_short_circuits() -> None:
     tiers = list(config.FIXER_TIER_ORDER)
     calls: list[str] = []
 
     def launch_fn(tier: str) -> TierAttempt:
         calls.append(tier)
-        if tier == tiers[-1]:
-            return TierAttempt(
-                tier=tier,
-                wrapper_rc=0,
-                launcher_exit=0,
-                failure=LaunchFailure("none", ""),
-            )
         return TierAttempt(
             tier=tier,
             wrapper_rc=0,
@@ -270,6 +263,24 @@ def test_waterfall_classify_other_without_kv_does_not_short_circuit() -> None:
         )
 
     result = agents.run_waterfall(tiers, launch_fn, first_tier=tiers[0])
-    assert result.winning_tier == tiers[-1]
-    assert len(calls) == len(tiers)
-    assert result.short_circuited is False
+    assert result.winning_tier is None
+    assert len(calls) == 1
+    assert result.short_circuited is True
+
+
+@pytest.mark.skipif(
+    not LIB_COMMON.is_file() or shutil.which("bash") is None,
+    reason="bash or lib-external-launcher-common.sh unavailable",
+)
+def test_parity_classify_success() -> None:
+    py = agents.classify_launch_failure(0)
+    bash_cls, bash_reason = _bash_classify(
+        "0",
+        "/dev/null",
+        "non-auth",
+        "1",
+        "cursor",
+        "",
+    )
+    assert py.failure_class == bash_cls
+    assert py.reason == bash_reason

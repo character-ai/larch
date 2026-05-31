@@ -29,3 +29,19 @@ def test_run_timeout_returns_configured_rc() -> None:
         timeout=0.1,
     )
     assert result.returncode == config.PROC_TIMEOUT_EXIT_CODE
+
+
+def test_run_timeout_captures_partial_output() -> None:
+    result = proc.run(
+        [
+            sys.executable,
+            "-u",
+            "-c",
+            "import sys, time; print('partial-out', flush=True); "
+            "print('partial-err', file=sys.stderr, flush=True); time.sleep(5)",
+        ],
+        timeout=0.1,
+    )
+    assert result.returncode == config.PROC_TIMEOUT_EXIT_CODE
+    assert "partial-out" in result.stdout
+    assert "partial-err" in result.stderr

@@ -81,6 +81,20 @@ def parse_launcher_failure_class(log_file: str | Path | None) -> str:
     return "health"
 
 
+def effective_failure_class(attempt: TierAttempt) -> str:
+    """Failure class from capture log when present, else ``attempt.failure``."""
+    if attempt.failure_log is not None:
+        path = Path(attempt.failure_log)
+        if path.is_file():
+            last = ""
+            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+                if line.startswith("LAUNCHER_FAILURE_CLASS="):
+                    last = line.split("=", 1)[1].strip().strip("\r")
+            if last in ("none", "health", "other"):
+                return last
+    return attempt.failure.failure_class
+
+
 def classify_launch_failure(
     launcher_exit: int,
     sidecar: str | Path | None = None,
@@ -210,7 +224,7 @@ def run_waterfall(
                 winning_tier=tier,
                 attempts=tuple(attempts),
             )
-        failure_class = parse_launcher_failure_class(attempt.failure_log)
+        failure_class = effective_failure_class(attempt)
         if (
             idx == 0
             and tier == first

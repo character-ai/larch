@@ -511,6 +511,24 @@ assert_stdout_contains "3l: missing Python lint tools warning" "$RUN_OUT" "WARNI
 assert_stdout_contains "3l: missing pytest warning" "$RUN_OUT" "WARNING: pytest not found on PATH"
 assert_stdout_not_contains "3l: does not invoke py-test when pytest is missing" "$RUN_OUT" "make stub: py-test"
 
+make_stub_dir_with_py_tools() {
+    local dir="$1" pre_commit="$2" agent_rc="${3:-absent}"
+    make_stub_dir "$dir" "$pre_commit" "$agent_rc"
+    local tool
+    for tool in ruff pylint pyright pytest; do
+        cat > "$dir/$tool" <<'EOF'
+#!/usr/bin/env bash
+echo "${0##*/} stub: $*"
+exit 0
+EOF
+        chmod +x "$dir/$tool"
+    done
+}
+
+controlled_path_with_py_tools() {
+    controlled_path "$1"
+}
+
 echo "=== Section 3m: Python .pylintrc-only routing ==="
 
 REPO_3M="$TMPROOT/repo-python-pylintrc"
@@ -521,6 +539,23 @@ run_checks "$REPO_3M" "$(controlled_path_no_py_tools "$STUB_3M")"
 assert_exit_eq "3m: .pylintrc-only change exits 0 without Python tools" "$RUN_EXIT" 0
 assert_stdout_contains "3m: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
 assert_stdout_contains "3m: missing pytest warning" "$RUN_OUT" "WARNING: pytest not found on PATH"
+
+echo "=== Section 3n: Python direct targets with all tools on PATH ==="
+
+REPO_3N="$TMPROOT/repo-python-all-tools"
+STUB_3N="$TMPROOT/stub-python-all-tools"
+setup_python_source_repo "$REPO_3N"
+make_stub_dir_with_py_tools "$STUB_3N" present absent
+run_checks "$REPO_3N" "$(controlled_path_with_py_tools "$STUB_3N")"
+assert_exit_eq "3n: Python source change exits 0 with py tools" "$RUN_EXIT" 0
+assert_stdout_not_contains "3n: no missing lint tools warning" "$RUN_OUT" \
+    "WARNING: Python lint tools not found on PATH"
+assert_stdout_not_contains "3n: no missing pytest warning" "$RUN_OUT" \
+    "WARNING: pytest not found on PATH"
+assert_stdout_contains "3n: routes py-lint and py-test" "$RUN_OUT" \
+    "=== Running direct relevant make target(s): py-lint py-test ==="
+assert_stdout_contains "3n: make invokes py-lint and py-test" "$RUN_OUT" \
+    "make stub: py-lint py-test"
 
 echo "=== Section 4: preflight failure ==="
 
