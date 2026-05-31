@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:757-766	Check 20 still pins sub-step 2.5 title-filter anchors and fetch→2.5→3 line-order awk	After Step 0b rewrite, title-eligibility moves into design-route.sh and numeric sub-steps change; structure test fails even when the extraction is correct	Replace Check 20 with greps on design-route.sh plus orchestrator cancel-title-filter-before-clarify ordering (drop or rewrite the 2.5 / filter_line awk)

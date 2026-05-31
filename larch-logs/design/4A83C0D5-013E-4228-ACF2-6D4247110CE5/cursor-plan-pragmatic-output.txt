@@ -1,0 +1,17 @@
+Two material gaps in the proposed Step 0b handoff contract; everything else aligns with `#3244` / Step 3 patterns and current `SKILL.md` behavior.
+
+**1. [correctness]** `skills/design/SKILL.md` (proposed Step 0b route handoff, ~268–285)
+
+The plan separates allowlisted `printf -v` keys from `WARN`/`ERROR` breadcrumbs and adds a post-merge “re-emit non-empty `WARN` / `ERROR`” step, but it only spells out stdout handling for those keys. Step 3’s fence (`skills/design/SKILL.md:864–870`, mirrored in `skills/design/scripts/test-step3-orchestrator-fence.sh:36–41`) prints `WARN` from the **result env file** in the file-first loop. If implementers follow the proposed allowlist literally, `WARN`/`ERROR` written only to `.design-route-result.env` (e.g. `LOAD_OK=false` fallthrough per Round 1) may never print—regression vs today’s sub-step 2.5-bis breadcrumb.
+
+**Suggested revision:** In the route-handoff fence, add `WARN|ERROR)` arms to **both** the file-first and stdout-merge `case` blocks (same pattern as Step 3 `WARN)`), and/or define re-emit as an explicit pass over those keys in `.design-route-result.env`. Pin the loop arms in `scripts/test-design-structure.sh`, not just prose grep.
+
+**2. [correctness]** `skills/design/SKILL.md` (proposed init invocation, ~302)
+
+`design-route.sh` is invoked as `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh"`, but the init fence shows bare `design-init-runparams.sh`, which breaks the plugin-root path convention used elsewhere and risks a wrong script on `PATH`/cwd.
+
+**Suggested revision:** Use `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh"` in the init fence (and in `design-init-runparams.md` Caller section).
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:268-285 (proposed Step 0b route handoff)	WARN/ERROR breadcrumb contract omits file-first loop arms	LOAD_OK=false (or other pause-load failures) writes WARN/ERROR only to .design-route-result.env; orchestrator allowlists exclude them from printf -v and only document stdout breadcrumbs, so fallthrough can lose warnings that sub-step 2.5-bis prints today	Add WARN|ERROR) cases to both file-first and stdout-merge loops (mirror Step 3 WARN handling in skills/design/scripts/test-step3-orchestrator-fence.sh); align the re-emit step with those bindings; optionally grep loop arms in scripts/test-design-structure.sh
+1	in_scope	important	correctness	skills/design/SKILL.md:302 (proposed Step 0b init invocation)	Init driver invoked without CLAUDE_PLUGIN_ROOT path	Relative design-init-runparams.sh can resolve to the wrong script or fail outside the consumer plugin root, unlike design-route.sh and other design scripts	Invoke "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh" in SKILL.md and document the same in design-init-runparams.md Caller

@@ -1,0 +1,4 @@
+Reading additional input from stdin...
+2026-05-31T15:56:16.459132Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: no native root CA certificates found (errors: [Error { context: "failed to load system trust settings", kind: Os(Error { code: -36, message: "I/O error." }) }]), url: wss://chatgpt.com/backend-api/codex/responses
+2026-05-31T15:56:23.354654Z ERROR codex_core::session: failed to record rollout items: thread 019e7ebf-d32a-78e1-bff8-733569748065 not found
+❌ codex agent: FAILED (exit code 1, 40s elapsed, output 0 bytes)

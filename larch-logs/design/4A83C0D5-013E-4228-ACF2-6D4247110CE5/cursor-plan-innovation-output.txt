@@ -1,0 +1,30 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:757-766	Check 20 still pins sub-step 2.5 title-filter anchors and fetch→2.5→3 line-order awk	After Step 0b rewrite, title-eligibility moves into design-route.sh and numeric sub-steps change; structure test fails even when the extraction is correct	Replace Check 20 with greps on design-route.sh plus orchestrator cancel-title-filter-before-clarify ordering (drop or rewrite the 2.5 / filter_line awk)
+2	in_scope	important	correctness	scripts/test-design-structure.sh:857-871	Check 24 awk still requires title_has_lifecycle_reject_prefix inside SKILL.md Step 0b	Post-refactor lifecycle predicates live only in design-route.sh; Check 24 fails while the driver contract is correct	Rewrite Check 24 to assert ordering inside design-route.sh (and optional SKILL ROUTE branch order), not title helper symbols in SKILL.md
+3	in_scope	important	correctness	plan.txt:146-153 / skills/design/scripts/design-route.sh (proposed)	Verdict step cites grep -c only but needs start/end line order for end-before-start	With exactly one start and one end marker, grep -c cannot detect end-before-start; malformed bodies could route already-planned incorrectly	Specify grep -n (or awk) line extraction matching scripts/plan-block-read.sh:144-148, not count-only grep
+4	in_scope	important	risk-integration	plan.txt:276-285	Step 0b handoff omits WARN/ERROR in file-first case arms; re-emit step assumes unset variables	LOAD_OK=false pause-load ERROR written only to .design-route-result.env may never print if stdout capture is empty and Step 3 merge is copied literally	Add WARN|ERROR) breadcrumb arms to both file-first and stdout merge loops (print only, no printf -v); drop redundant re-emit or bind vars during merge
+5	in_scope	nit	correctness	plan.txt:259-261 / skills/design/SKILL.md (proposed)	Sub-step 2 says parse clarify-label presence but not the label name or mechanism	Orchestrator may pass wrong --has-clarify-label to design-route.sh and skip or force clarify incorrectly	Name needs-design-clarification explicitly and pin a deterministic jq test from the existing gh labels JSON (same label as scripts/clarify-label.sh)
+
+**1. [architecture / correctness] `test-design-structure.sh` Check 20 not fully re-pointed**
+
+The plan’s harness section redirects title-eligibility **greps** to `design-route.sh` but does not mention updating Check 20’s hard-coded anchors at ```757:766:scripts/test-design-structure.sh``` (`2.5. **Title-eligibility filter**`, `fetch_line` / `filter_line` / `clarify_line` ordering). After landing, title filtering is inside the driver, not sub-step 2.5 in `SKILL.md`, so CI will fail unless that block is rewritten.
+
+**2. [correctness] `test-design-structure.sh` Check 24 awk still targets SKILL.md**
+
+Check 24 at ```857:871:scripts/test-design-structure.sh``` requires `title_has_lifecycle_reject_prefix` in the Step 0b section of `SKILL.md`. The plan moves that logic into `design-route.sh`. The plan’s Check 24 bullet adds driver greps but does not say to remove or replace this awk probe.
+
+**3. [correctness] Plan-block verdict needs line numbers, not counts alone**
+
+`design-route.sh` verdict step (plan lines 146–153) emphasizes `grep -c -E` but also requires `end_line >= start_line` and “end before start → absent,” which ```144:148:scripts/plan-block-read.sh``` implements with `grep -n`. Count-only checks cannot distinguish a single reversed pair. Align the driver spec with `plan-block-read.sh` line extraction.
+
+**4. [risk-integration] WARN/ERROR breadcrumb handoff under-specified in SKILL fence**
+
+Round 2–3 findings require pause-load `WARN`/`ERROR` on every path before `ROUTE` branches. The proposed fence allowlists routing keys in the file-first loop (plan lines 279–281) but not `WARN`/`ERROR`, and it says to “re-emit” them after merge without defining shell variables. Copying the Step 3 fence (```860:888:skills/design/SKILL.md```), which only handles `WARN` on stdout, can drop file-only `ERROR=` from `.design-route-result.env`. Add explicit `WARN`/`ERROR` breadcrumb handling in **both** merge loops.
+
+**5. [correctness / nit] Clarify-label parsing should be pinned**
+
+Sub-step 2 adds “parse clarify-label presence” without naming `needs-design-clarification` or a concrete jq/bash check from the `gh issue view … --json labels` fetch. Today clarify routing is orchestrator-implied; the new `--has-clarify-label` argv needs one normative predicate to avoid drift.
+
+---
+
+**[OUT_OF_SCOPE]** `plan.txt` / `skills/design/scripts/design-route.sh` — A shared `plan-block-present` helper (sourced by `plan-block-read.sh` and `design-route.sh`) would reduce regex drift; duplicating pairing rules is acceptable minimum scope for #3245 and need not expand this PR.
