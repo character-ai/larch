@@ -1127,10 +1127,12 @@ MODEL_ARGS_OUT=$(cd "$REPO_ROOT" && \
         --agent-prompt "$AGENT_PROMPT" \
         --timeout 30)
 if [[ "$MODEL_ARGS_OUT" == *"LAUNCHER_EXIT=1"* ]] \
-    && [[ -s "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" ]]; then
+    && [[ -s "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" ]] \
+    && grep -Fq 'agent-model-args.sh' "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" \
+    && grep -Fq 'cntrl' "${MODEL_ARGS_TRANSCRIPT}.stderr-tail"; then
     pass
 else
-    fail "stderr-tail-model-args" "model-args path must write stderr-tail; out=$MODEL_ARGS_OUT"
+    fail "stderr-tail-model-args" "model-args path must write redacted stderr-tail with model error; out=$MODEL_ARGS_OUT tail=$(cat "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" 2>/dev/null)"
 fi
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

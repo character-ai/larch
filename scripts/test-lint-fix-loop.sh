@@ -983,6 +983,9 @@ case9_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case9_out")
 grep -Fq 'LARCH_LINT_FIX_CODEX_STDERR_PROBE' "$case9_run_dir/codex.log.stderr-tail" \
     || fail "case9 stderr-tail must contain codex stderr probe"
 
+grep -Fq 'return "$cursor_rc"' "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
+    || fail "lint-fix-loop.sh run_cursor must return cursor_rc on failure"
+
 # Case 10: cursor failure preserves agent stderr-tail (no wrapper clobber).
 CASE10="$TMPROOT/case10"
 REPO10="$CASE10/repo"
@@ -994,11 +997,11 @@ make_repo "$REPO10"
 make_fixture_scripts "$SCRIPTS10"
 make_session "$SESSION10"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$SESSION10/session-env.sh"
-export LARCH_CURSOR_MODEL=stub-cursor-model
 printf 'synthetic checks failure\n' > "$CHECKS10"
 write_wrapper_cursor_fail_preserve_tail "$WRAPPER10"
 
 case10_result=$(LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux CURSOR_API_KEY='' \
+    LARCH_CURSOR_MODEL=stub-cursor-model \
     run_case "$SCRIPTS10" "$REPO10" "$SESSION10" "$CHECKS10" "$WRAPPER10")
 case10_rc=$(printf '%s\n' "$case10_result" | sed -n '1p')
 case10_out=$(printf '%s\n' "$case10_result" | sed -n '2,$p')
@@ -1024,12 +1027,13 @@ make_repo "$REPO11"
 make_fixture_scripts "$SCRIPTS11"
 make_session "$SESSION11"
 printf 'CODEX_PRESENT=false\nCURSOR_PRESENT=true\n' > "$SESSION11/session-env.sh"
-export LARCH_CURSOR_MODEL=stub-cursor-model
 printf 'synthetic checks failure\n' > "$CHECKS11"
 write_wrapper_cursor_fail_diag_only "$WRAPPER11"
 
 case11_result=$(LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux CURSOR_API_KEY='' \
+    LARCH_CURSOR_MODEL=stub-cursor-model \
     run_case "$SCRIPTS11" "$REPO11" "$SESSION11" "$CHECKS11" "$WRAPPER11")
+unset LARCH_CURSOR_MODEL
 case11_rc=$(printf '%s\n' "$case11_result" | sed -n '1p')
 case11_out=$(printf '%s\n' "$case11_result" | sed -n '2,$p')
 [[ "$case11_rc" == "0" ]] || fail "case11 expected rc 0, got $case11_rc"

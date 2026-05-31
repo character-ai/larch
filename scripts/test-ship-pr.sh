@@ -6539,6 +6539,67 @@ else
     fail "run_lint_fix_loop_capture must emit on-disk tail when LINT_FIX_STATUS is absent"
 fi
 
+# #3227: real launch-cursor-ci.sh producer writes stderr-tail; caller surfaces it.
+root=$(mktemp -d "$TMP_BASE/real-cursor-ci-producer.XXXXXX")
+impl=$(mktemp -d "$TMP_BASE/real-cursor-ci-producer-impl.XXXXXX")
+write_subject "$root"
+write_stubs "$root"
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'base\n' >"$root/README.md"
+git -C "$root" add README.md
+git -C "$root" commit -q -m base
+stub_bin="$impl/stub-bin"
+mkdir -p "$stub_bin"
+cat > "$stub_bin/cursor" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'LARCH_REAL_CURSOR_CI_STDERR_PROBE\n' >&2
+exit 1
+STUB
+chmod +x "$stub_bin/cursor"
+tier_out="$impl/real-ci-tier"
+set +e
+(
+    cd "$root" && \
+    PATH="$stub_bin:$PATH" \
+    IMPLEMENT_TMPDIR="$impl" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    LARCH_CURSOR_MODEL="stub-cursor-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    LARCH_QUIET_DISABLE=1 \
+    "$REPO_ROOT/scripts/launch-cursor-ci.sh" \
+        --role fix \
+        --output "$tier_out" \
+        --run-id test-run \
+        --repo owner/repo \
+        --timeout 30
+) >"$impl/launcher.stdout" 2>"$impl/launcher.stderr"
+producer_rc=$?
+set -e
+if [[ -s "${tier_out}.stderr-tail" ]] \
+    && grep -Fq 'LARCH_REAL_CURSOR_CI_STDERR_PROBE' "${tier_out}.stderr-tail"; then
+    ok "real launch-cursor-ci.sh writes stderr-tail on agent failure"
+else
+    fail "real launch-cursor-ci.sh must produce stderr-tail from agent stderr"
+    sed 's/^/    /' "$impl/launcher.stderr" 2>/dev/null || true
+fi
+caller_err="$impl/real-ci-caller.stderr"
+set +e
+(
+    cd "$root" && IMPLEMENT_TMPDIR="$impl" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+        bash -c 'source "'"$REPO_ROOT"'/scripts/ship-pr.sh"; _surface_ci_stderr_tail "'"$tier_out"'"'
+) 2>"$caller_err"
+set -e
+if grep -Fq 'LARCH_REAL_CURSOR_CI_STDERR_PROBE' "$caller_err"; then
+    ok "real CI launcher stderr-tail reaches caller-scope chat surfacing"
+else
+    fail "real CI launcher stderr-tail must surface via _surface_ci_stderr_tail"
+fi
+
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ship-pr: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
     exit 1

@@ -28,10 +28,7 @@ _lint_fix_set_stderr_tail_stem() {
     [[ -n "$stem" ]] || return 0
     if [[ -s "${stem}.stderr-tail" ]]; then
         _LINT_FIX_STDERR_TAIL_STEM="$stem"
-        return 0
     fi
-    # Fallback: keep first stem when no tail file exists yet (avoids empty stem)
-    [[ -z "$_LINT_FIX_STDERR_TAIL_STEM" ]] && _LINT_FIX_STDERR_TAIL_STEM="$stem"
 }
 
 IMPLEMENT_TMPDIR=""
@@ -266,8 +263,6 @@ _run_cursor_record_early_fail() {
     _lint_fix_set_stderr_tail_stem "$run_dir/cursor.log"
     if [[ -n "$log_file" && -s "$log_file" ]]; then
         write_failed_agent_stderr_tail "$log_file" "$run_dir/cursor.log" || true
-    elif [[ ! -s "${run_dir}/cursor.log.stderr-tail" ]]; then
-        write_failed_agent_stderr_tail "$run_dir/cursor.log" "$run_dir/cursor.log" || true
     fi
 }
 
@@ -303,8 +298,10 @@ run_cursor() {
         if [[ ! -s "${run_dir}/cursor.log.stderr-tail" ]]; then
             if [[ -s "${run_dir}/cursor.log.diag" ]]; then
                 write_failed_agent_stderr_tail "${run_dir}/cursor.log.diag" "$run_dir/cursor.log" || true
-            else
-                write_failed_agent_stderr_tail "$run_dir/cursor.log" "$run_dir/cursor.log" || true
+            elif [[ -s "$preflight_log" ]]; then
+                write_failed_agent_stderr_tail "$preflight_log" "$run_dir/cursor.log" || true
+            elif [[ -s "${run_dir}/cursor.wrapper.log" ]]; then
+                write_failed_agent_stderr_tail "${run_dir}/cursor.wrapper.log" "$run_dir/cursor.log" || true
             fi
         fi
         _lint_fix_set_stderr_tail_stem "$run_dir/cursor.log"

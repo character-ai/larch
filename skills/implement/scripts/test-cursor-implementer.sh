@@ -908,6 +908,46 @@ else
     fail "stderr-tail-agent" "expected LAUNCHER_EXIT=1 and redacted stderr-tail; out=$FAIL_TAIL_OUT tail=$(cat "$FAIL_TAIL_TAIL" 2>/dev/null)"
 fi
 
+# Test: post-failure path prefers .diag over non-empty sidecar (no sidecar clobber).
+CLOBBER_TRANSCRIPT="$SCRATCH/clobber-diag-transcript.txt"
+CLOBBER_SIDECAR="$SCRATCH/clobber-diag-sidecar.log"
+CLOBBER_MANIFEST="$SCRATCH/clobber-diag-manifest.json"
+CLOBBER_TAIL="${CLOBBER_TRANSCRIPT}.stderr-tail"
+CLOBBER_BIN="$SCRATCH/clobber-diag-bin"
+mkdir -p "$CLOBBER_BIN"
+printf 'LARCH_SIDECAR_DECOY_ONLY\n' >"$CLOBBER_SIDECAR"
+cat > "$CLOBBER_BIN/cursor" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'LARCH_DIAG_PROBE_PREFERRED\n' >&2
+exit 1
+EOF
+chmod +x "$CLOBBER_BIN/cursor"
+CLOBBER_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$CLOBBER_BIN:$PATH" \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_CURSOR_MODEL="stub-cursor-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$LAUNCHER" \
+        --transcript-path "$CLOBBER_TRANSCRIPT" \
+        --sidecar-log "$CLOBBER_SIDECAR" \
+        --manifest-path "$CLOBBER_MANIFEST" \
+        --qa-pending-path "$SCRATCH/clobber-diag-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$CLOBBER_OUT" == *"LAUNCHER_EXIT=1"* ]] \
+    && [[ -s "$CLOBBER_TAIL" ]] \
+    && grep -Fq 'LARCH_DIAG_PROBE_PREFERRED' "$CLOBBER_TAIL" \
+    && ! grep -Fq 'LARCH_SIDECAR_DECOY_ONLY' "$CLOBBER_TAIL"; then
+    pass
+else
+    fail "stderr-tail-diag-over-sidecar" "expected diag-based tail without sidecar decoy; out=$CLOBBER_OUT tail=$(cat "$CLOBBER_TAIL" 2>/dev/null)"
+fi
+
 # Bounded line/byte caps on oversized sidecar (test-lib-failed-agent-stderr-tail contract).
 # shellcheck source=scripts/lib-failed-agent-stderr-tail.sh disable=SC1091
 source "$REPO_ROOT/scripts/lib-failed-agent-stderr-tail.sh"

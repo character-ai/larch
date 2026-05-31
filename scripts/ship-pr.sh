@@ -2150,9 +2150,13 @@ run_ci_fix_vendor() {
                 } > "$detail_log"
                 larch_err "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
                 state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
-                if [ -s "${ci_fix_out_base}.${winning_tier}.stderr-tail" ]; then
-                    _surface_ci_stderr_tail "${ci_fix_out_base}.${winning_tier}"
+                _ffnh_tier_stem="${ci_fix_out_base}.${winning_tier}"
+                if [[ ! -s "${_ffnh_tier_stem}.stderr-tail" ]]; then
+                    if [[ -s "${_ffnh_tier_stem}.diag" ]]; then
+                        write_failed_agent_stderr_tail "${_ffnh_tier_stem}.diag" "$_ffnh_tier_stem" || true
+                    fi
                 fi
+                _surface_ci_stderr_tail "$_ffnh_tier_stem"
                 record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
                 return 1
             fi

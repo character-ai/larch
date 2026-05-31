@@ -2657,4 +2657,71 @@ grep -Fq 'LARCH_TEST_STDERR_TAIL_MARKER' "$DTAIL/loop.stderr" \
 grep -Fq 'LARCH_TEST_STDERR_TAIL_MARKER' "$DTAIL/plan-review-collector.stderr" \
     || fail "stderr tail marker must reach collector stderr log"
 
+write_collect_empty_fail() {
+    cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'collector crashed with no stdout\n' >&2
+exit 1
+EOS
+    chmod +x "$STUB/collect-agent-results.sh"
+}
+
+echo "=== stubbed driver: empty collector stdout fails closed (panel-failed) ==="
+DEMPTY="$TMP/collector-empty-fail"
+mkdir -p "$DEMPTY"
+printf 'plan\n' >"$DEMPTY/plan.txt"
+printf 'feat\n' >"$DEMPTY/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect_empty_fail
+write_voters_three
+set +e
+out_empty=$(run_loop "$DEMPTY")
+empty_rc=$?
+set -e
+[[ "$empty_rc" -eq 1 ]] || fail "empty collector failure should exit 1"
+if printf '%s\n' "$out_empty" | grep -q '^LOOP_STATUS=panel-failed$'; then
+    :
+elif grep -Fq 'collector failed with empty stdout' "$DEMPTY/voting-tally.md" 2>/dev/null \
+    && [[ -f "$DEMPTY/plan-review/round-1/findings-classification.tsv" ]]; then
+    :
+else
+    fail "empty collector failure should fail closed (rc=$empty_rc out=$out_empty)"
+fi
+
+echo "=== stubbed driver: collector stderr tail reaches quiet tee log (#3227) ==="
+DQUIET="$TMP/stderr-tail-fd4-quiet"
+mkdir -p "$DQUIET"
+printf 'plan\n' >"$DQUIET/plan.txt"
+printf 'feat\n' >"$DQUIET/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect_failing_tail
+write_voters_three
+set +e
+(
+    export CLAUDE_PLUGIN_ROOT="$ROOT"
+    export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh"
+    export LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$STUB/dispatch-plan-review-panel.sh"
+    export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
+    export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"
+    export LARCH_PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$ROOT/skills/design/scripts/tally-plan-review.sh}"
+    export LARCH_PLAN_REVIEW_REVISE_SH="${LARCH_PLAN_REVIEW_REVISE_SH:-$ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
+    export LARCH_AGGREGATOR_DISABLED=1
+    unset LARCH_QUIET_DISABLE
+    bash "$PLR" \
+        --design-tmpdir "$DQUIET" \
+        --plan-file "$DQUIET/plan.txt" \
+        --feature-file "$DQUIET/feature-description.txt" \
+        --codex-present true \
+        --cursor-present true \
+        --round-num 1
+) >"$DQUIET/loop.stdout" 2>"$DQUIET/loop.stderr"
+quiet_rc=$?
+set -e
+[[ "$quiet_rc" -eq 0 ]] || fail "quiet collector stderr tail loop should exit 0"
+grep -Fq 'LARCH_TEST_STDERR_TAIL_MARKER' "$DQUIET/plan-review-collector.stderr" \
+    || fail "stderr tail marker must reach plan-review-collector.stderr under quiet"
+
 printf '%s\n' "test-plan-review-loop: ok"

@@ -353,7 +353,9 @@ if (( LAUNCHER_EXIT != 0 )); then
     _AUTH_VERDICT=$(external_auth_verdict "codex" "$SIDECAR_LOG")
     [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
     append_launch_failure "2" "codex-implement" "$LAUNCHER_EXIT" "$SIDECAR_LOG" "$_VERDICT" "$AUTH_ATTEMPT"
-    write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true
+    if [[ ! -s "${TRANSCRIPT_PATH}.stderr-tail" ]] && [[ -s "$SIDECAR_LOG" ]]; then
+        write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true
+    fi
 fi
 
 MANIFEST_WRITTEN=false
