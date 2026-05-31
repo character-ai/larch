@@ -1,0 +1,89 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/rebase.py (plan §_force_push_branch)	Force-push parity cites `rebase-push.sh` PUSH_REMOTE/strict lease, but `run_rebase_rebump` pushes via `git-force-push.sh`	Fork/topic branches: rebump always fetches/pushes `origin` with a plain `--force-with-lease` (no pinned OID, no `branch.*.pushRemote`), while the plan ports `rebase-push.sh` `PUSH_REMOTE` + one-shot `EXPECTED_REMOTE_OID` (`scripts/rebase-push.sh:272-287` vs `scripts/git-force-push.sh:85-114`, `scripts/ship-pr.sh:3114-3121`)	Wire `_force_push_branch` to the rebump tail authority (`git-force-push.sh`) or document an intentional upgrade; if keeping `rebase-push.sh` semantics, add `PUSH_REMOTE` resolution and single OID lease there
+2	in_scope	important	correctness	python/rebase.py (plan §5–6)	No `HAS_BUMP=false` short-circuit before classify/apply/changelog	Bash skips the entire re-bump block when `HAS_BUMP` is false (`scripts/ship-pr.sh:3020-3107`); the plan always runs classify → regression guard → `apply_bump` → `_commit_changelog_after_rebump`	Add a `has_bump` (or equivalent) gate matching bash: sync/rebase/push only when bumping is disabled; skip classify/apply/changelog tail when false
+3	in_scope	important	correctness	python/rebase.py (plan §5–6)	No skip when `bump_type == "NONE"`	Bash only calls `apply-bump.sh` and `ship_pr_commit_changelog_after_rebump` when bump type is not NONE (`scripts/ship-pr.sh:3074-3087`); the plan always applies and commits changelog after classify	Wrap `apply_bump` and `_commit_changelog_after_rebump` in `if bump_type != "NONE" and new_version` (same predicate as bash)
+4	in_scope	important	correctness	python/rebase.py (plan lines 29-31)	Driver contract `rebase_attempt+1` is off-by-one vs bash `REBASE_COUNT >= 20`	Bash allows entry when stored count is 0–19 (20 episodes). Passing `count+1` makes `rebase_attempt >= 20` true when count is 19, blocking the 20th rebump	Pass `REBASE_COUNT` at entry (not `+1`), or compare with `>` / document `max_attempts+1`; align tests to 20 allowed episodes
+
+**1. [correctness] Force-push authority mismatch (`python/rebase.py` plan §`_force_push_branch`)**
+
+The plan ports `_force_push_branch` from `rebase-push.sh` (PUSH_REMOTE order, `EXPECTED_REMOTE_OID` computed once, three jittered retries):
+
+```272:287:scripts/rebase-push.sh
+PUSH_REMOTE=$(git config --get "branch.$CURRENT_BRANCH.pushRemote" 2>/dev/null || true)
+if [[ -z "$PUSH_REMOTE" ]]; then
+    PUSH_REMOTE=$(git config --get "branch.$CURRENT_BRANCH.remote" 2>/dev/null || true)
+fi
+...
+EXPECTED_REMOTE_OID=$(git rev-parse "$PUSH_REMOTE/$CURRENT_BRANCH" 2>/dev/null || printf '')
+LEASE_ARG="--force-with-lease=$LEASE_REF:$EXPECTED_REMOTE_OID"
+```
+
+`run_rebase_rebump` actually force-pushes through `git-force-push.sh`, which hardcodes `origin`, uses unpinned `--force-with-lease`, and allows at most two push attempts with a fixed 5s sleep:
+
+```3114:3121:scripts/ship-pr.sh
+    if [ "$defer_push" != true ]; then
+        fail_file=$(failure_capture_path rebase)
+        "$SCRIPT_DIR/git-force-push.sh" > "$fail_file" 2>&1
+```
+
+```85:114:scripts/git-force-push.sh
+git fetch origin "$BRANCH" 2>/dev/null || true
+if push_with_lease; then
+...
+"$SLEEP_SCRIPT_DIR/sleep-seconds.sh" 5 >/dev/null 2>&1 || sleep 5
+if push_with_lease; then
+```
+
+**Suggested revision:** Port the rebump tail (`git-force-push.sh`) unless the plan explicitly upgrades to `rebase-push.sh` semantics; document which script is authoritative for Phase 3.
+
+---
+
+**2. [correctness] Missing `HAS_BUMP=false` gate (plan §5–6)**
+
+Bash wraps classify/apply/changelog in `HAS_BUMP != false`:
+
+```3020:3021:scripts/ship-pr.sh
+    if [ "$(read_state HAS_BUMP)" != "false" ]; then
+```
+
+The plan always runs re-classify, regression guard, `apply_bump`, and `_commit_changelog_after_rebump` with no equivalent gate.
+
+**Suggested revision:** Add an explicit `has_bump` input or caller contract; skip steps 5–6 when false (still allow sync/rebase/push per bash).
+
+---
+
+**3. [correctness] Missing `bump_type == "NONE"` skip (plan §5–6)**
+
+Apply and changelog commit run only when bump type is not NONE:
+
+```3074:3087:scripts/ship-pr.sh
+        if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
+            ...
+            if ! ship_pr_commit_changelog_after_rebump "$new_version" "$fail_file"; then
+```
+
+The plan does not gate `apply_bump` or `_commit_changelog_after_rebump` on NONE.
+
+**Suggested revision:** Mirror the bash predicate before apply and changelog tail.
+
+---
+
+**4. [correctness] `rebase_attempt+1` off-by-one (plan lines 29–31)**
+
+Bash stalls when `REBASE_COUNT >= 20` at entry (`scripts/ship-pr.sh:3173-3178`), allowing runs while count is 0–19. The plan tells the driver to pass `rebase_attempt+1` while stalling on `rebase_attempt >= 20`, which blocks the run when stored count is 19.
+
+**Suggested revision:** Pass stored `REBASE_COUNT` at entry (not incremented), or adjust the comparison so 20 episodes remain allowed.
+
+---
+
+**Verified alignments (no finding):**
+
+- `--allow-changelog-only --max-depth 20` on drop-bump (`scripts/ship-pr.sh:3244`)
+- Versioned companion drop via `drop-changelog-commit.sh --version "$old_version"` (`scripts/ship-pr.sh:655-656`), not generic subject replay — matches plan #2952 argument
+- `REBASE_MAX_ATTEMPTS: Final = 20` ↔ `_max_rebases=20` (`scripts/ship-pr.sh:3173`)
+- Rebase pre-pass `--ours` for `.claude-plugin/plugin.json`, `version.go`, `go.sum` (`scripts/ship-pr.sh:3306-3321`)
+- Version-regression guard uses `${base_remote}/${base_ref}:.claude-plugin/plugin.json` and semver bump correction (`scripts/ship-pr.sh:3034-3071`) — plan’s `_semver_lt` / `_apply_bump_type` mapping is appropriate
+- `_sync_local_main` matches `git-sync-local-main.sh` absent/main guard/`branch -f` behavior
+- Non-conflict rebase failure with no unmerged paths → abort matches `rebase-push.sh:242-253`
+
+**Exonerated / out of scope per plan locked decisions:** reasoning-file rewrite after correction, `gh pr edit`, Phase 14 resume flag, `run_recovery_waterfall` vs `NeedsUserInput`, larch-logs pre-fixup, `refresh-run-logs`, `record_failure` — explicitly deferred to future `ship.py`.

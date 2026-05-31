@@ -1,0 +1,15 @@
+ISSUE_1_NUMBER=3309
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/3309
+ISSUE_1_TITLE=[OOS] rebase.py: port driver-owned refresh-run-logs + larch-logs pre-drop fixup
+ISSUE_1_BLOCKER_LINKS_APPLIED=1
+ISSUE_2_NUMBER=3310
+ISSUE_2_URL=https://github.com/character-ai/larch/issues/3310
+ISSUE_2_TITLE=[OOS] rebase.py: add defer_push / HAS_BUMP inputs for run_rebase_rebump parity
+ISSUE_2_BLOCKER_LINKS_APPLIED=1
+ISSUE_3_NUMBER=3311
+ISSUE_3_URL=https://github.com/character-ai/larch/issues/3311
+ISSUE_3_TITLE=[OOS] rebase.py: reconcile version-regression guard base with apply_bump origin/main hardcode
+ISSUE_3_BLOCKER_LINKS_APPLIED=1
+ISSUES_CREATED=3
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
