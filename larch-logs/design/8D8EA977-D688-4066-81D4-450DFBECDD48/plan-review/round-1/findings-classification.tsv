@@ -1,0 +1,10 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Cursor	YES	true	major	excellent	false	Cursor
+FINDING_2	Cursor-Edge, Codex-Edge, Cursor-Innovation, Codex-Innovation, Cursor-Requirements, Codex-Requirements, Cursor-dyn-ci-toolchain, Codex-dyn-ci-toolchain	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Cursor	YES	true	major	excellent	false	Cursor
+FINDING_3	Cursor-Edge, Codex-Edge	exonerated	YES	true	minor	good	false	Claude	EXONERATE	true	minor	good	false	Cursor	EXONERATE	true	minor	good	false	Cursor
+FINDING_4	Codex-Pragmatic	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Cursor	YES	true	major	excellent	false	Cursor
+FINDING_5	Cursor-Requirements, Codex-Requirements	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Cursor	YES	true	major	excellent	false	Cursor
+FINDING_6	Cursor-Requirements, Codex-Requirements	exonerated	YES	true	major	good	false	Claude	EXONERATE	true	minor	good	false	Cursor	EXONERATE	true	minor	good	false	Cursor
+FINDING_7	Cursor-dyn-redaction-parity, Codex-dyn-redaction-parity	exonerated	YES	true	major	excellent	false	Claude	EXONERATE	partially-true	minor	good	false	Cursor	EXONERATE	partially-true	minor	good	false	Cursor
+FINDING_8	Codex-dyn-ci-toolchain	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Cursor	YES	true	major	excellent	false	Cursor
+FINDING_9	Cursor-dyn-migration-boundary, Codex-dyn-migration-boundary	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Cursor	YES	true	major	excellent	false	Cursor

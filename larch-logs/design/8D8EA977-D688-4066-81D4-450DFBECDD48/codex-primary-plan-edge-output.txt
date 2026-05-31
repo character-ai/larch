@@ -1,0 +1,11 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	plan.txt:134-146	Python lint commands do not bind to the new python-scoped configs	The proposed CI job runs ruff check, pylint, and pyright from repo root while the configs live under python/. Ruff/pyright will not discover child configs from the root, and pylint with no target can fail before checking the new tree. The job can either scan unrelated repo Python files or fail without exercising the intended modules.	Run the lint job from working-directory: python, or pass explicit config/project/targets: ruff check python --config python/ruff.toml, pylint python/*.py --rcfile=python/.pylintrc, pyright -p python/pyrightconfig.json. Mirror the same explicit commands in make py-lint.
+1	in_scope	latent	correctness	plan.txt:18-23,89-98	Agents waterfall drops the current rotated first-tier contract	The plan pins a fixed cursor,codex,claude order and tests waterfall behavior against that order, but the existing ship-pr CI-fix path rotates the starting tier by start_attempt % 3 and keys first-fixer-non-health off that rotated first tier. With a fixed first tier, repeated outer attempts can keep short-circuiting on the same Cursor non-health failure and never give Codex or Claude the first-fixer slot.	Add a start_attempt/offset input to the agents waterfall, rotate the base tier tuple per invocation, and test that first-fixer-non-health applies to the rotated first tier.
+
+1. [risk-integration] `plan.txt:134-146`  
+Concern: The proposed lint commands are not scoped to `python/` in a way that guarantees the new configs are used.  
+Suggested revision: Make the CI and Makefile commands explicitly target `python/` and the configs under `python/`.
+
+2. [correctness] `plan.txt:18-23,89-98`  
+Concern: The proposed `agents.py` contract omits the existing CI-fix start-tier rotation documented in `scripts/ship-pr.md:145-147` and implemented in `scripts/ship-pr.sh:2032-2035`.  
+Suggested revision: Preserve rotation as part of the Python waterfall API and parity tests.

@@ -1,0 +1,4 @@
+Operator explicitly overrode the Step 2b.5 hard plan-size trigger (diff-added=2700 > 2000).
+Chose "Other: No, override -- continue as per plan" instead of Split / Cancel.
+Phase 1 is a deliberately-scoped foundation phase (1 of 7); full-surface depth was chosen in Round 1.
+Proceeded to Step 3 plan review with the current plan.txt unchanged. No partition, no cancel.

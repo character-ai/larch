@@ -1,0 +1,6 @@
+Step 3 plan-review loop exited LOOP_STATUS=plan-size-trigger after auto-applying 6 accepted findings
+(the revised plan still trips diff-added > 2000). Operator gave an explicit standing override of this
+exact hard plan-size gate at Step 2b.5 ("Other: No, override -- continue as per plan"). Honored the
+standing override: skipped the Split/Cancel re-prompt, skipped Gate B and Step 3.6 per the
+plan-size-trigger branch matrix, and continued to Step 3b. Final control remains at Gate C (Step 4b).
+6 accepted findings already applied to plan.txt by the loop; 3 findings exonerated.
