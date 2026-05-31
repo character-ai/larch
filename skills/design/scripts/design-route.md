@@ -20,7 +20,7 @@ The driver does not fetch the issue body or resolve `REPO` itself.
 
 ## Derived / session inputs
 
-- `$PLUGIN_ROOT/scripts/design-pause-load.sh` when body contains `<!-- larch:design-pause:start -->` (optional `${REPO:+--repo}`).
+- `$PLUGIN_ROOT/scripts/design-pause-load.sh` when the body matches the same `larch:design-pause:start` line regex as `design-pause-load.sh` (optional `${REPO:+--repo}`).
 - `scripts/lib-title-eligibility.sh`, `scripts/lib-design-reentry-guard.sh`.
 - Plan markers `MARK_START` / `MARK_END` copied verbatim from `scripts/plan-block-read.sh` lines 20–21.
 

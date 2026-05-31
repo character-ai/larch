@@ -247,8 +247,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
          case "$_key" in
            ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
              printf -v "$_key" '%s' "$_value" ;;
-           WARN) if [[ " ${_route_warn_lines[*]} " != *" $_value "* ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
-           ERROR) if [[ " ${_route_error_lines[*]} " != *" $_value "* ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
+           WARN) _route_warn_dup=false; for _w in "${_route_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _route_warn_dup=true; break; }; done; if [[ "$_route_warn_dup" != true ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
+           ERROR) _route_err_dup=false; for _e in "${_route_error_lines[@]}"; do [[ "$_e" == "$_value" ]] && { _route_err_dup=true; break; }; done; if [[ "$_route_err_dup" != true ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
          esac
        done <"$DESIGN_TMPDIR/.design-route-result.env"
      fi
@@ -258,8 +258,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
      case "$_key" in
        ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
          [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
-      WARN) if [[ " ${_route_warn_lines[*]} " != *" $_value "* ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
-      ERROR) if [[ " ${_route_error_lines[*]} " != *" $_value "* ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
+      WARN) _route_warn_dup=false; for _w in "${_route_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _route_warn_dup=true; break; }; done; if [[ "$_route_warn_dup" != true ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
+      ERROR) _route_err_dup=false; for _e in "${_route_error_lines[@]}"; do [[ "$_e" == "$_value" ]] && { _route_err_dup=true; break; }; done; if [[ "$_route_err_dup" != true ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
      esac
    done <<<"${_route_out:-}"
    if [[ "$BRAINSTORM_PREFIX" == true ]]; then
@@ -399,15 +399,11 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
      esac
    done <<<"${_init_out:-}"
    if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == contract-drift ]]; then
-     printf '%s\n' "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**" >&2
+     printf '%s\n' "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. If a prior attempt renamed the issue to [DESIGNING] without writing run-params.json, re-run /design from Step 0b after fixing write-run-params.sh — do not route from a stale or missing run-params.json. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**" >&2
      exit 1
    fi
    if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == env-refresh-failed ]]; then
      printf '%s\n' "**⚠ /design: write-design-current-env.sh failed during Step 0b env refresh; aborting before rename/run-params. Inspect source-env.sh / write-design-current-env.sh diagnostics, then re-invoke /design.**" >&2
-     exit 1
-   fi
-   if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == rename-failed ]]; then
-     printf '%s\n' "**⚠ /design: [DESIGNING] rename failed during Step 0b; aborting before run-params. Inspect tracking-issue-write.sh diagnostics, then re-invoke /design.**" >&2
      exit 1
    fi
    if [[ "${_init_rc:-0}" -eq 0 && ( "$INIT_STATUS" != ok || ! -f "$DESIGN_TMPDIR/run-params.json" ) ]]; then

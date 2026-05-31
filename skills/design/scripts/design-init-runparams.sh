@@ -184,7 +184,7 @@ if ! "${_wdce_args[@]}"; then
     exit 1
 fi
 
-# 3. [DESIGNING] rename
+# 3. [DESIGNING] rename (best-effort; run-params write follows)
 if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designing ${REPO:+--repo "$REPO"}); then
     _rename_seen=false
     while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
@@ -194,22 +194,10 @@ if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "
         esac
     done <<<"${_rename_out:-}"
     if [[ "$_rename_seen" != true ]]; then
-        INIT_STATUS=rename-failed
-        emit_kv INIT_STATUS "$INIT_STATUS"
-        phase_driver_write_result_env "$RESULT_ENV" \
-            "INIT_STATUS=$INIT_STATUS" \
-            "RUN_PARAMS_PATH=$RUN_PARAMS_PATH" \
-            "DESIGN_CLASSIFICATION=$DESIGN_CLASSIFICATION" || exit 1
-        exit 1
+        add_warn "**⚠ 0b: tracking-issue-write.sh rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
     fi
 else
-    INIT_STATUS=rename-failed
-    emit_kv INIT_STATUS "$INIT_STATUS"
-    phase_driver_write_result_env "$RESULT_ENV" \
-        "INIT_STATUS=$INIT_STATUS" \
-        "RUN_PARAMS_PATH=$RUN_PARAMS_PATH" \
-        "DESIGN_CLASSIFICATION=$DESIGN_CLASSIFICATION" || exit 1
-    exit 1
+    add_warn "**⚠ 0b: [DESIGNING] rename failed (tracking-issue-write.sh); continuing with run-params write. Re-invoke /design or rename manually if the title is still wrong.**"
 fi
 
 # 4. write-run-params.sh

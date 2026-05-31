@@ -46,6 +46,10 @@ Stops before Step 0c; does not write `feature-description.txt` (orchestrator-own
 
 Rename and run-params writes are idempotent on replay.
 
+## Partial-state retry
+
+Rename runs before `write-run-params.sh`. If rename succeeds but `write-run-params.sh` exits non-zero (`INIT_STATUS=contract-drift`), the issue title may already show `[DESIGNING]` without a fresh `run-params.json`. Retries must re-run the full driver from Step 0b; do not route from a stale or missing `run-params.json` until `INIT_STATUS=ok` and the file exist.
+
 ## Harness
 
 `scripts/test-design-structure.sh` (env-before-rename line-order, jq-merge greps); `scripts/test-step0b-router-flag-recovery.sh` replicates jq-merge.

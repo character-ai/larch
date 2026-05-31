@@ -866,8 +866,10 @@ grep -Fq 'missing or invalid ROUTE after design-route.sh' "$SKILL_MD" \
   || fail "(FINDING_19) SKILL.md Step 0b missing ROUTE validation after design-route handoff"
 grep -Fq 'exited 0 without INIT_STATUS=ok and run-params.json' "$SKILL_MD" \
   || fail "(FINDING_20) SKILL.md Step 0b missing init success-path validation"
-grep -Fq 'rename-failed' "$SKILL_MD" \
-  || fail "(FINDING_21) SKILL.md Step 0b missing rename-failed abort branch"
+grep -Fq 'continuing with run-params write' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_21) design-init-runparams.sh missing best-effort rename warn+continue"
+grep -Fq 'Partial-state retry' "$REPO_ROOT/skills/design/scripts/design-init-runparams.md" \
+  || fail "(FINDING_21) design-init-runparams.md missing partial-state retry contract"
 
 # Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned in plan-review.md + renderer.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'

@@ -19,6 +19,12 @@ usage() {
 
 MARK_START='^[[:space:]]*<!--[[:space:]]+larch:plan:start[[:space:]]+-->[[:space:]]*$'
 MARK_END='^[[:space:]]*<!--[[:space:]]+larch:plan:end[[:space:]]+-->[[:space:]]*$'
+PAUSE_MARK_START='^[[:space:]]*<!--[[:space:]]+larch:design-pause:start[[:space:]]+-->[[:space:]]*$'
+
+pause_marker_present() {
+    local body_file="$1"
+    grep -q -E "$PAUSE_MARK_START" "$body_file" 2>/dev/null
+}
 
 validate_plain_scalar() {
     local label="$1" value="$2"
@@ -203,7 +209,7 @@ step_is_registered() {
 }
 
 # 1. Resume detection
-if grep -Fq '<!-- larch:design-pause:start -->' "$ISSUE_BODY_FILE"; then
+if pause_marker_present "$ISSUE_BODY_FILE"; then
     set +e
     _pause_out=$("$PLUGIN_ROOT/scripts/design-pause-load.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"})
     _pause_rc=$?
@@ -272,7 +278,17 @@ fi
 # 3. Re-entry guard
 # shellcheck source=scripts/lib-design-reentry-guard.sh
 source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"
-_reentry_out="$(design_reentry_marker_hit "$ISSUE" "$CLAUDE_PID" 2>/dev/null || true)"
+_reentry_rc=0
+_reentry_out=""
+set +e
+_reentry_out="$(design_reentry_marker_hit "$ISSUE" "$CLAUDE_PID" 2>&1)"
+_reentry_rc=$?
+set -e
+if [[ "$_reentry_rc" -eq 2 ]]; then
+    while IFS= read -r _rline || [[ -n "$_rline" ]]; do
+        [[ -n "$_rline" ]] && WARN_LINES+=("reentry-guard: $_rline")
+    done <<<"${_reentry_out:-}"
+fi
 _marker_hit=false
 for _rkv in $_reentry_out; do
     case "$_rkv" in
