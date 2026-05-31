@@ -510,8 +510,12 @@ eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
 snap_dir="$(pre_coder_snapshot_dir "$carryover_round_dir")"
+_repo_root_cg=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
 case "$snap_dir" in
     "$carryover_round_dir"/*) fail "pre_coder_snapshot_dir must not be under round_dir" ;;
+esac
+case "$snap_dir" in
+    "$_repo_root_cg"/*|"$_repo_root_cg") fail "pre_coder_snapshot_dir must not be under the repo root (coder grant root)" ;;
 esac
 mkdir -p "$snap_dir/pre-coder-path-diffs" "$carryover_round_dir"
 printf '%s\n' "$carryover_pre_head" > "$snap_dir/pre-coder-head.txt"
@@ -552,8 +556,12 @@ eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
 index_snap_dir="$(pre_coder_snapshot_dir "$index_carryover_round_dir")"
+_repo_root_icg=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
 case "$index_snap_dir" in
     "$index_carryover_round_dir"/*) fail "pre_coder_snapshot_dir must not be under round_dir" ;;
+esac
+case "$index_snap_dir" in
+    "$_repo_root_icg"/*|"$_repo_root_icg") fail "pre_coder_snapshot_dir must not be under the repo root (coder grant root)" ;;
 esac
 mkdir -p "$index_snap_dir/pre-coder-path-diffs" "$index_carryover_round_dir"
 printf '%s\n' "$index_carryover_pre_head" > "$index_snap_dir/pre-coder-head.txt"
@@ -2923,21 +2931,6 @@ if section_runs step5-starting-round; then
     grep -Fq 'count_prior_degraded_rounds returned non-numeric entry_prior_deg=bogus' "$STEP5_LAST_ERR" \
         || fail "step5 entry-prior-deg-nonnumeric missing stderr"
     pass "step5-starting-round entry-prior-deg-nonnumeric"
-
-    # Case: if IMPLEMENT_TMPDIR is inside the repo grant, snapshots relocate outside PWD.
-    step5_reset_case snapshot-outside-pwd-grant
-    case_dir="$STEP5_LAST_CASE_DIR"
-    make_work_repo "$case_dir/work"
-    mkdir -p "$case_dir/work/.larch-session"
-    round_dir="$case_dir/work/.larch-session/round-1"
-    snap_dir=$(cd "$case_dir/work" && pre_coder_snapshot_dir "$round_dir")
-    case "$snap_dir" in
-        "$case_dir/work"/*) fail "pre_coder_snapshot_dir must not be under PWD when IMPLEMENT_TMPDIR is inside repo" ;;
-    esac
-    case "$snap_dir" in
-        "$round_dir"/*) fail "pre_coder_snapshot_dir must not be under round_dir" ;;
-    esac
-    pass "step5-starting-round snapshot-outside-pwd-grant"
 
     # Case: terminal lint-fix arm surfaces STDERR_TAIL_PATH before stall envelope.
     step5_reset_case lint-fix-terminal-tail

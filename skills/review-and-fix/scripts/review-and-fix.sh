@@ -351,20 +351,6 @@ capture_round_tracked_paths() {
 
 pre_coder_snapshot_dir() {
     local round_dir="$1"
-    local round_base round_name pwd_phys base_phys hash tmp_root
-    round_base=$(dirname "$round_dir")
-    round_name=$(basename "$round_dir")
-    pwd_phys=$(pwd -P 2>/dev/null || pwd)
-    if base_phys=$(cd "$round_base" 2>/dev/null && pwd -P); then
-        case "${base_phys}/" in
-            "${pwd_phys}/"*)
-                hash=$(printf '%s\n' "$base_phys" | cksum | awk '{print $1 "-" $2}')
-                tmp_root="${TMPDIR:-/tmp}"
-                printf '%s/larch-pre-coder-snapshots/%s/%s\n' "${tmp_root%/}" "$hash" "$round_name"
-                return 0
-                ;;
-        esac
-    fi
     printf '%s/.pre-coder-snapshots/%s\n' "$(dirname "$round_dir")" "$(basename "$round_dir")"
 }
 
