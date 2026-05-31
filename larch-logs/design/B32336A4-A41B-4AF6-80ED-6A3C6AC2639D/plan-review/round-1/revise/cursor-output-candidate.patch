@@ -1,0 +1,143 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -10,11 +10,20 @@
+ BOTH_DOWN=false
+ if [ "$CODEX_STATE" != "ok" ] && [ "$CURSOR_STATE" != "ok" ]; then
+     BOTH_DOWN=true
+ fi
+ ```
+ 
+ Emit `BOTH_DOWN` immediately after `CURSOR_STATE` (so output order is `DEGRADED`, `CODEX_STATE`, `CURSOR_STATE`, `BOTH_DOWN`):
+ 
+ ```bash
+ emit_kv BOTH_DOWN "$BOTH_DOWN"
+ ```
+ 
+-Change the trailing question line in the explanation block to be conditional on `BOTH_DOWN`. In the current `if [[ "$SKILL_LABEL" == "design" ]]` branch, replace the final `emit "Continue in this degraded mode, or abort and retry once the tool is healthy?"` with:
++Condition the explanation block’s closing lines on `BOTH_DOWN` in **both** skill-label branches.
++
++In the `if [[ "$SKILL_LABEL" == "design" ]]` branch, replace the final `emit "Continue in this degraded mode, or abort and retry once the tool is healthy?"` with:
+ 
+ ```bash
+ if [[ "$BOTH_DOWN" == "true" ]]; then
+     emit "Continue in this degraded mode, or abort and retry once the tool is healthy?"
+ else
+     emit "⚠ Warning: proceeding automatically (one tool available). Retry once the unavailable tool is healthy."
+ fi
+ ```
+ 
+-Apply the same `BOTH_DOWN`-conditioned final line to the `else` branch of the skill label check.
++In the `else` branch (implement / review / research / other non-design labels), replace **both** trailing question emits (current lines 146–147: `Continue in this degraded mode (backup waterfall)…` and `the tool is healthy?`) with the same `BOTH_DOWN` if/else — do **not** leave a second question line on the single-tool-down path:
++
++```bash
++if [[ "$BOTH_DOWN" == "true" ]]; then
++    emit "Continue in this degraded mode (backup waterfall), or abort and retry once"
++    emit "the tool is healthy?"
++else
++    emit "⚠ Warning: proceeding automatically (one tool available). Retry once the unavailable tool is healthy."
++fi
++```
+ 
+ ### UPDATED: `scripts/degraded-tools-gate.md`
+ 
++In the contract intro (lines 14–16), replace “when `DEGRADED=true` presents the explanation and asks the operator” with BOTH_DOWN-aware wording: on an **interactive** run the orchestrator **prompts only when `BOTH_DOWN=true`** (both externals down); when `DEGRADED=true` and `BOTH_DOWN=false` (exactly one external down), it prints the explanation block as a notice and proceeds without `AskUserQuestion`.
++
+ In the `## Output (stdout KV)` section, add `BOTH_DOWN` to the emitted-fields list:
+ - `BOTH_DOWN=true|false` — `true` iff **both** `CODEX_STATE != ok` AND `CURSOR_STATE != ok`; `false` when exactly one tool is down or both are ok.
+ 
+ In the `## Edit-in-sync` table, no new rows are needed (the four SKILL.md callers and `external-reviewers.md` are already listed).
+ 
+ ### UPDATED: `scripts/test-degraded-tools-gate.sh`
+ 
+ For existing Cases 2, 3 (single-tool-down): add `assert_contains "$out" "BOTH_DOWN=false"` assertion.
+ 
+ For existing Case 4 (both-probe-failed): add `assert_contains "$out" "BOTH_DOWN=true"` assertion.
+ 
++Extend **Case 3** (`--skill implement`, cursor down, codex ok): assert explanation contains `proceeding automatically` and does **not** contain `Continue in this degraded mode` (pins the non-design `else` branch closing lines).
++
+ Add two new Cases (13, 14) that verify the explanation-block last-line text differs:
+-- Case 13: single tool down → explanation must contain "proceeding automatically" and must NOT contain "Continue in this degraded mode".
+-- Case 14: both tools down → explanation must contain "Continue in this degraded mode" and must NOT contain "proceeding automatically".
++- Case 13: single tool down, `--skill design` → explanation must contain `proceeding automatically` and must NOT contain `Continue in this degraded mode`.
++- Case 14: both tools down, `--skill design` → explanation must contain `Continue in this degraded mode` and must NOT contain `proceeding automatically`.
+ 
+ ### UPDATED: `skills/shared/external-reviewers.md`
+ 
++Reword the §Degraded-tools gate intro (line 26): the skill MUST **tell the operator** when an external tool is unhealthy at session start; require **explicit confirmation only when `BOTH_DOWN=true`** (both unavailable). When exactly one external is down (`BOTH_DOWN=false`), print the explanation as a notice and proceed on interactive runs without blocking for a choice.
++
+ In §Degraded-tools gate (Step 0), update two places:
+ 
+-1. In the parse step, add `BOTH_DOWN` to the parsed variables list: "Parse `DEGRADED`, `CODEX_STATE`, `CURSOR_STATE`, `BOTH_DOWN`".
++1. In the parse step, add `BOTH_DOWN` to the parsed variables list: "Parse `DEGRADED`, `CODEX_STATE`, `CURSOR_STATE`, `BOTH_DOWN`". **Parse fallback (updated skills):** when `DEGRADED=true` and `BOTH_DOWN` is missing or not exactly `true`/`false`, treat `BOTH_DOWN=true` (prompt with `AskUserQuestion`) — do not auto-proceed on a missing flag. Mirror this fallback in each SKILL.md Step 0 gate bullet.
+ 
+ 2. Replace the `DEGRADED=true` Interactive-run branch:
+ 
+ Current:
+ > **Interactive run** — present the explanation block and fire `AskUserQuestion` with two options: **Continue** and **Abort**. On **Continue**, proceed. On **Abort**, print the warning and stop.
+ 
+ Replace with two sub-branches keyed on `BOTH_DOWN`:
+ > **Interactive run, `BOTH_DOWN=false`** (exactly one tool unavailable) — print the explanation block as a plain notice and proceed without prompting. The operator does not need to confirm: one tool is still available and the run will complete. The explanation block already ends with the "proceeding automatically" notice.
+ > **Interactive run, `BOTH_DOWN=true`** (both tools unavailable) — present the explanation block and fire `AskUserQuestion` with two options: **Continue** and **Abort**. On **Continue**, proceed. On **Abort**, print `**⚠ /<skill>: aborted by operator — external tool unhealthy; re-run once it recovers.**`, clean up the session tmpdir, and stop.
+ 
+ ### UPDATED: `skills/design/SKILL.md` Step 0a gate paragraph
+ 
+ Change the `If DEGRADED=true on an interactive run` sentence from a single branch to two:
+ 
+ Current: "If `DEGRADED=true` on an **interactive** run, present the `DEGRADED_EXPLANATION_BEGIN`…`END` block and fire `AskUserQuestion` with **Continue** / **Abort**; on **Abort**, run `cleanup-tmpdir.sh` and stop."
+ 
+-Replace with: "If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN=false` (exactly one tool unavailable), print the explanation block as a notice and proceed without prompting; when `BOTH_DOWN=true` (both tools unavailable), present the explanation block and fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Abort**, run `cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"` and stop."
++Replace with: "If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN=false` (exactly one tool unavailable), print the explanation block as a notice and proceed without prompting; when `BOTH_DOWN=true` (both tools unavailable), or when `BOTH_DOWN` is missing/not `true`/`false`, present the explanation block and fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Abort**, run `cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"` and stop."
+ 
+ (No change to the non-interactive / autonomous branch or to the sentinel guard.)
+ 
+ ### UPDATED: `skills/implement/SKILL.md` gate paragraph
+ 
+ Same two-branch prose change as design. Current: "If `DEGRADED=true` on an **interactive** run, present … fire `AskUserQuestion` (**Continue** / **Abort**); on **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup."
+ 
+-Replace with: "If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN=false`, print the explanation block as a notice and proceed; when `BOTH_DOWN=true`, present the explanation block and fire `AskUserQuestion` (**Continue (reduced panel …)** / **Abort**); on **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup."
++Replace with: "If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN=false`, print the explanation block as a notice and proceed; when `BOTH_DOWN=true`, or when `BOTH_DOWN` is missing/not `true`/`false`, present the explanation block and fire `AskUserQuestion` (**Continue (reduced panel …)** / **Abort**); on **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup."
+ 
+ ### UPDATED: `skills/research/SKILL.md` gate paragraph
+ 
+ Same two-branch prose change. Current: "If `DEGRADED=true` on an **interactive** run (`[[ -t 0 ]]`), present … fire `AskUserQuestion` with **Continue (degraded)** / **Abort**; on **Abort**, run `cleanup-tmpdir.sh` and stop."
+ 
+-Replace with: "If `DEGRADED=true` on an **interactive** run (`[[ -t 0 ]]`): when `BOTH_DOWN=false`, print the explanation block as a notice and proceed; when `BOTH_DOWN=true`, present the explanation block and fire `AskUserQuestion` with **Continue (degraded)** / **Abort**; on **Abort**, run `cleanup-tmpdir.sh --dir "$RESEARCH_TMPDIR"` and stop."
++Replace with: "If `DEGRADED=true` on an **interactive** run (`[[ -t 0 ]]`): when `BOTH_DOWN=false`, print the explanation block as a notice and proceed; when `BOTH_DOWN=true`, or when `BOTH_DOWN` is missing/not `true`/`false`, present the explanation block and fire `AskUserQuestion` with **Continue (degraded)** / **Abort**; on **Abort**, run `cleanup-tmpdir.sh --dir "$RESEARCH_TMPDIR"` and stop."
+ 
+ ### UPDATED: `skills/review/SKILL.md` gate paragraph
+ 
+ Same two-branch prose change. Current: "If `DEGRADED=true` on an **interactive, non-subagent** run, present … fire `AskUserQuestion` with **Continue (degraded waterfall)** / **Abort**; on **Abort**, run `cleanup-tmpdir.sh` and stop."
+ 
+-Replace with: "If `DEGRADED=true` on an **interactive, non-subagent** run: when `BOTH_DOWN=false`, print the explanation block as a notice and proceed; when `BOTH_DOWN=true`, present the explanation block and fire `AskUserQuestion` with **Continue (degraded waterfall)** / **Abort**; on **Abort**, run `cleanup-tmpdir.sh --dir "$REVIEW_TMPDIR"` and stop."
++Replace with: "If `DEGRADED=true` on an **interactive, non-subagent** run: when `BOTH_DOWN=false`, print the explanation block as a notice and proceed; when `BOTH_DOWN=true`, or when `BOTH_DOWN` is missing/not `true`/`false`, present the explanation block and fire `AskUserQuestion` with **Continue (degraded waterfall)** / **Abort**; on **Abort**, run `cleanup-tmpdir.sh --dir "$REVIEW_TMPDIR"` and stop."
+ 
+ ### Approach
+ 
+ Introduce a `BOTH_DOWN` sentinel that makes the single-tool-down vs both-down distinction explicit at the detector level. This lets all four callers and `external-reviewers.md` use a single conditional instead of re-deriving the logic from `CODEX_STATE`/`CURSOR_STATE` themselves.
+ 
+-The explanation-block text change in `degraded-tools-gate.sh` ensures that the block the caller prints already says the right thing regardless of whether the caller uses it as a notice or as a question preamble.
++The explanation-block text change in `degraded-tools-gate.sh` (both skill-label branches, including the two-line non-design question) ensures that the block the caller prints already says the right thing regardless of whether the caller uses it as a notice or as a question preamble.
+ 
+ ### Edge cases
+ 
+ - `BOTH_DOWN` is always `false` when `DEGRADED=false` (trivially, nothing to branch on). Callers only consult `BOTH_DOWN` when `DEGRADED=true`.
+@@ -78,10 +98,10 @@
+ - Autonomous/non-interactive behavior is unchanged: the existing `On a non-interactive run, log and proceed` branch stays as-is; `BOTH_DOWN` is irrelevant on that path.
+-- Test harness: existing cases that assert explanation-block presence remain valid; the two new Cases (13/14) pin the last-line text divergence.
++- Test harness: existing cases that assert explanation-block presence remain valid; Case 3 pins non-design closing lines; Cases 13/14 pin design closing lines.
+ 
+ ### Failure modes
+ 
+-- If a caller does not parse `BOTH_DOWN` from the gate output, `BOTH_DOWN` is unset and the caller defaults to the old "ask always" behavior — no regression.
+-- If `degraded-tools-gate.sh` emits `BOTH_DOWN` before callers are updated (partial deploy), callers silently ignore the new KV and behave as before — safe rollout order.
++- **Updated skills:** if `BOTH_DOWN` is not parsed or not exactly `true`/`false` while `DEGRADED=true`, treat `BOTH_DOWN=true` and prompt (fail-safe — avoids auto-proceed when both externals are down).
++- **Partial deploy (old skill text only):** if the gate emits `BOTH_DOWN` but a skill has not yet been updated to parse it, the skill keeps legacy ask-always behavior — safe rollout order is gate + docs first, then SKILL.md / external-reviewers.md.
+ 
+ ### Testing strategy
+ 
+-- `test-degraded-tools-gate.sh`: add `BOTH_DOWN` assertions to existing Cases 2–4; add Cases 13–14 for explanation text divergence. Run: `bash scripts/test-degraded-tools-gate.sh`.
++- `test-degraded-tools-gate.sh`: add `BOTH_DOWN` assertions to existing Cases 2–4; extend Case 3 for non-design explanation closing lines; add Cases 13–14 for design closing lines. Run: `bash scripts/test-degraded-tools-gate.sh`.
+ - No new integration test needed: `make lint` already wires `test-degraded-tools-gate` into the pre-commit check.
+ 
+-diff_lines: 90
++diff_lines: 108
