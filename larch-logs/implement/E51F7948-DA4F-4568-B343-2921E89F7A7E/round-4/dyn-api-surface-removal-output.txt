@@ -1,0 +1,13 @@
+Reviewing the branch diff and scanning for lingering references to removed symbols.
+### In-Scope Findings
+
+No issues found. Cross-repo sweep for the removed symbols (`fallback_group`, `reuse_slot_result`, `waterfall-group-results`, `PHASE2_RELAUNCH_COUNT`, `LARCH_DESIGN_CONVERGENCE_THRESHOLD`, `--convergence-threshold`) shows:
+
+- **Runtime surface clean:** Non-test `.sh` under `skills/` and `scripts/` has no `fallback_group` setters/readers; `scripts/dispatch-with-waterfall.sh` contains none of the reuse helpers or `phase2_relaunch` accounting.
+- **Companion docs clean:** `docs/`, `docs/workflow-lifecycle.md`, `skills/shared/topology.tsv`, and `skills/design/references/{plan-review,decompose-panel,assessor}.md` have no stale references.
+- **Guard present and wired:** `scripts/test-no-grouped-reuse-guard.sh` is added in the diff (Makefile `test-harnesses-1`, `agent-lint.toml` entry); the script file exists on the branch.
+- **Design clients converted:** `dispatch-plan-review-panel.sh` and `decompose-panel-dispatch.sh` invoke `--no-fallback` and no longer emit `fallback_group`; voters/assessors follow the availability matrix per the plan.
+
+### Out-of-Scope Observations
+
+NO_ISSUES_FOUND

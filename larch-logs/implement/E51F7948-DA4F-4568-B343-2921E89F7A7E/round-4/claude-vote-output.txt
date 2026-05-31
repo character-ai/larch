@@ -1,0 +1,36 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- two-caller pattern; extracting shared helper is premature abstraction per KARPATHY §2
+FINDING_2: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- can't verify sed anchor from diff; latent fragility real but fix adds significant complexity for single caller
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- COMBINED_FALLBACK_COUNT=0 under --no-fallback is correct behavior; zero fallbacks means no fallback-based degradation
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- can't verify from diff; cosmetic message parameterization adds complexity for a prompt string
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- latent quality concern; can't verify from diff; compressed floor is documented intent
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=true -- test gap is real; plan allows EFFECTIVE_ASSESSORS=0 path so Claude assertion depends on implementation choice
+FINDING_9: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- can't verify dead cp stub from diff; REAL_CP line was removed; cosmetic cleanup
+FINDING_10: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- can't verify PHASE2_RELAUNCH_COUNT in stubs from diff; extra stub KVs don't affect test correctness
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security observation with no stated problem
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security observation with no stated problem
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security observation with no stated problem
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security observation with no stated problem
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security observation with no stated problem
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security observation with no stated problem
+OOS_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=true -- plausible and important; both-absent validation miss path not visible in diff
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=true -- plausible architecture concern; decompose-panel-dispatch.sh changes not in diff
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dynamic-only manifest is hypothetical; no current caller uses that shape
+FINDING_23: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- can't verify pattern differences from diff; latent inconsistency
+OOS_24: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_25: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_26: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_27: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=true -- same test gap as FINDING_8 but for assessors; plan allows EFFECTIVE_ASSESSORS=0 so uncertainty about which path was implemented
+FINDING_28: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- plan says "(Opus)" for both-absent floor; can't verify model pinning from diff
+FINDING_29: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_30: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive portability observation with no stated problem
+OOS_31: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive stderr observation with no stated problem
+OOS_32: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_33: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_34: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_35: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation that fallback counter is unaffected; no stated problem
+OOS_36: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation that wiring is correct; no stated problem

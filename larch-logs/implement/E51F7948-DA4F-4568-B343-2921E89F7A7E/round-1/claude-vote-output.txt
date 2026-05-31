@@ -1,0 +1,50 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- plan-review.md was substantially updated in the diff; specific line 231 claim unverifiable; most relevant sections were updated
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- reviewer itself says extract only when a third caller appears; premature abstraction for two callers
+FINDING_10: EXONERATE CORRECTNESS=uncertain SEVERITY=latent QUALITY=weak UNCERTAIN=true -- cannot verify duplication claim from diff alone; premature extraction for latent concern
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- indentation inconsistency is real but too minor for its own GitHub issue
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- Claude fallback section still says "5 Cursor + 5 Codex static slots" which is stale under availability gating
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- adding post-launch first-line validation to both-absent path is disproportionate to nit severity
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- DISPATCH_OK=true for intentional drops is correct by contract; the actual bug is downstream in plan-review-loop (covered by FINDING_12/36)
+FINDING_18: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- positive security observation affirming correct implementation; no actionable concern
+FINDING_20: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- positive security observation; no actionable concern
+FINDING_21: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- positive observation about manifest construction safety; no actionable concern
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- positive observation about Claude paths safety; no actionable concern
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- positive observation about env-var fix security; no actionable concern
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- positive observation affirming no new security regressions; no actionable concern
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-existing LLM prompt injection surface via tampered scout manifest; real and concrete enough to file
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- printf-built JSON is safe while paths stay under session tmpdir; too minor for separate issue
+FINDING_27: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_28: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_29: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_30: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_31: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- hung generic Claude launch is a pre-existing risk class; adding a different timeout is an enhancement
+FINDING_32: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_33: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_34: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_35: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_36: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_37: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- stale doc mention of removed KV has no runtime impact; too minor for separate issue
+FINDING_38: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- positive observation about aligned collect path; no actionable concern
+FINDING_39: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- test stub gap leaves decompose index misalignment uncovered; real and worth filing
+FINDING_40: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- /review using legacy waterfall is by design and explicitly out of scope; no concern
+FINDING_41: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_42: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- same bug as in-scope FINDING_35 which already covers assessor path misassignment; separate OOS issue would be redundant
+FINDING_43: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- voter test stub always appends all slots regardless of failure, leaving compacted-array misalignment untested; worth filing
+FINDING_44: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- stale dispatch-plan-voters.md doc mention; minor cleanup not worth separate issue
+FINDING_45: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_46: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=true -- flag-based callers fully protected; env-only sensitivity is a documentation gap not a runtime bug requiring code change
+FINDING_47: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- pre-existing /design SKILL.md gap; fix requires changes outside this PR's scope and is a separate concern
+FINDING_48: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same concern as in-scope FINDING_13 which covers degraded explanation update; filing separate OOS issue is redundant
+FINDING_49: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- positive observation that Cases 8-9 are adequately isolated; no actionable concern
+FINDING_50: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- degraded-tools-gate.md contract not updated to document env-var fallback behavior and flag-over-env precedence; worth filing

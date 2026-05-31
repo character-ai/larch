@@ -1,0 +1,9 @@
+Reviewing the `--no-fallback` path in `dispatch-with-waterfall.sh`: reading the diff and the implementation.
+Checking whether `STATIC_DISPATCH_OK` can stay true when all `--no-fallback` slots fail, and whether any caller relies on that alone.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **code-quality** `skills/design/scripts/dispatch-plan-review-panel.md:11-13` — The panel contract still documents `PHASE2_RELAUNCH_COUNT` and “grouped phase-2 relaunches” in the combined metering rule, but this branch removes grouped reuse and `PHASE2_RELAUNCH_COUNT` from `scripts/dispatch-with-waterfall.sh`. That mismatch is documentation drift, not a runtime defect in the `--no-fallback` path.
+- **architecture** `scripts/dispatch-with-waterfall.sh:469` — `ALL_SLOTS_DROPPED` is emitted when `--no-fallback` drops every manifest slot, but no in-tree consumer reads that KV; degradation is handled instead via empty paths files plus `DEGRADED_ROUND` / `_succeeded_paths` logic in `dispatch-plan-review-panel.sh` and `plan-review-loop.sh`.
+- **correctness** `scripts/dispatch-with-waterfall.sh:450-453` — On the default (non-`--no-fallback`) path, `ALL_OUTPUT_FILES` / paths-file assembly still includes every manifest index even when `final_outputs[i]` is empty; blank paths-file lines are skipped by `collect-agent-results.sh` (lines 239–248). That behavior predates this change and is unrelated to the new drop semantics, which correctly omit empty slots only when `--no-fallback` is set (lines 446–448, 475–477).

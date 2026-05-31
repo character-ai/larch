@@ -1,0 +1,16 @@
+Reviewing branch changes with focus on `degraded-tools-gate.sh` env-var fallback and integration risk.
+### In-Scope Findings
+
+- **risk-integration** `skills/review/SKILL.md:29`, `skills/research/SKILL.md:139` — The branch makes `scripts/degraded-tools-gate.sh` honor `CODEX_*` / `CURSOR_*` from the environment when argv flags are omitted (lines 36–68), while `skills/shared/external-reviewers.md` and `/design` / `/implement` Step 0 were tightened to require explicit `--codex-binary-found` / `--codex-present` / etc. `/review` and `/research` still tell the orchestrator to invoke the gate “with the … values from the session-setup output” without the same “do not omit flags” wording. In a long-lived shell where Step 0 exports linger from an earlier skill or an earlier probe, a follow-up `/review` or `/research` run that exports once and calls the gate with only `--skill` can classify from stale env: e.g. leftover `CODEX_PRESENT=true` / `CURSOR_PRESENT=true` yields `DEGRADED=false` and no prompt when a tool is actually down; stale `false` values yield a false `DEGRADED=true`. Warnings go through `larch_err` to stderr (`scripts/lib-quiet.sh:127-139`); agents that only parse stdout KV never see them. **Suggested fix:** Mirror the `/design` / `/implement` gate bullet in `skills/review/SKILL.md` and `skills/research/SKILL.md` (explicit four flags from the current Step 0 parse in the same Bash block, no env-only inheritance), and add a harness case that simulates stale exports plus flag omission to lock the failure mode.
+
+- **risk-integration** `scripts/test-degraded-tools-gate.sh` — Cases 8–9 cover env-only invocation and cases 7/7b cover present-only + cleared binary env, but there is no regression for flag-over-env precedence (scout checklist item 4): env `CODEX_PRESENT=false` with `--codex-present true` should yield `CODEX_STATE=ok` and no env-inheritance WARNING. Without that case, a future argv-order or `_SET` regression could reintroduce silent misclassification on the path `/design` and `/implement` now depend on. **Suggested fix:** Add a case that exports contradictory env, passes explicit flags matching the intended probe, captures `2>&1`, asserts the flag-side states and `assert_not_contains` for all four WARNING lines.
+
+### Out-of-Scope Observations
+
+- **Verified OK (no issue):** `_SET` distinguishes omitted flags from explicit empty values (`--codex-binary-found ""` / `--codex-present ""` set `*_SET=true` and suppress warnings at `scripts/degraded-tools-gate.sh:48-51` vs `57-68`). Case 7b is consistent: empty `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` collapse via `${var:-unknown}` to `unknown`, so the `!= "unknown"` warning predicate does not fire. Cases 8–9 correctly use `2>&1` and assert WARNING substrings. Flag parsing runs after env init, so explicit flags win when both are supplied. `larch_err` WARNINGs go to stderr (and FD 4 under quiet init).
+
+- Case 7 still omits `2>&1` and does not assert absence of WARNING; case 7b covers that path.
+
+- `scripts/test-degraded-tools-gate.md` does not yet document cases 8–9 / 7b (doc-only drift).
+
+- Pre-branch run logs show env-only `degraded-tools-gate.sh --skill implement` invocations; that pattern is now intentional for harnesses but remains risky for production orchestrators that skip explicit flags.

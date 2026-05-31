@@ -1,0 +1,25 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- identical if/else branches differ only by empty skip; merge without behavior change
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- COMBINED_FALLBACK_COUNT branch is dead under always-on --no-fallback but harmless
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stub omits ALL_SLOTS_DROPPED but production waterfall emits it; low-risk harness gap
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- hard 4s wall clock can flake; structural no-SENTINEL_TIMEOUT checks already cover the regression
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive note that reuse_slot_result removal fixes prior failure mode; not a new issue to file
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- env fallbacks are documented and warned; skill paths require explicit flags
+FINDING_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirms slug constraints and no new in-scope vulnerability; not actionable as an issue
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_21: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms empty-manifest synthetic branch is sound; no defect to file
+FINDING_22: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms parse-rate mv path still works; not a problem report
+FINDING_23: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms production empty paths-file path is sound
+FINDING_24: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational harness-isolation note, not a concrete defect
+FINDING_25: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- clarifies subtest scope vs loop coverage; not a filing-worthy problem

@@ -1,0 +1,25 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- dead branch is real but harmless cleanup with no runtime effect under current --no-fallback callers
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive confirmation of a fix already in this branch, not a problem worth filing
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- env fallbacks are documented and normalized; residual mis-invocation risk does not warrant a separate issue now
+FINDING_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- explicitly states no new in-scope vulnerability; informational only
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_21: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes correct behavior, not a defect to file
+FINDING_22: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms parse-rate retry still works; not an actionable problem
+FINDING_23: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms integration is sound; not a defect to file
+FINDING_24: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- isolation is adequate; pre-existing sentinel edge is not worth a new issue
+FINDING_25: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional subtest scope split, not a coverage gap worth filing
