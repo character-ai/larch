@@ -263,7 +263,7 @@ def test_rebase_onto_strips_git_dir_override(monkeypatch: pytest.MonkeyPatch) ->
             return CommandResult(tuple(argv), 0, "", "", 0.01)
 
     _ = git.rebase_onto(CaptureRunner(), "HEAD~2", "HEAD~1")
-    env = cast(dict[str, str], captured["env"])
+    env = cast("dict[str, str]", captured["env"])
     assert "GIT_DIR" not in env
     assert "GIT_WORK_TREE" not in env
     assert env.get("GIT_SEQUENCE_EDITOR") == "true"

@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 from collections.abc import Mapping, Sequence
+from pathlib import Path
 from dataclasses import dataclass
 
 import config
@@ -236,7 +237,7 @@ def commit_with_trailer(
             argv.extend(["--only", only])
         return _run(runner, argv, cwd=cwd)
     finally:
-        os.unlink(tmp_path)
+        Path(tmp_path).unlink()
 
 
 def add(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:

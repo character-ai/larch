@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import shutil
 import subprocess
-from collections.abc import Sequence
-from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
 
 import redact
-from proc import CommandResult
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 SECRETS_SH = REPO_ROOT / "scripts" / "redact-secrets.sh"

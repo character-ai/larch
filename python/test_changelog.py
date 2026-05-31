@@ -7,6 +7,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 import pytest
 
@@ -376,7 +377,7 @@ Version 1.0.0 (2026-01-01)
     assert bash.returncode == 0, bash.stderr
     bash_text = (repo / "CHANGELOG.rst").read_text(encoding="utf-8")
     repo_py = tmp_path / "repo_py"
-    shutil.copytree(repo, repo_py)
+    _ = shutil.copytree(repo, repo_py)
     assert changelog.auto_resolve(ProcRunner(), "CHANGELOG.rst", cwd=str(repo_py)) is True
     py_text = (repo_py / "CHANGELOG.rst").read_text(encoding="utf-8")
     assert py_text == bash_text
@@ -485,9 +486,12 @@ Version 2.0.0 (2026-02-02)
 
 - Next
 """
-    ours_lines: list[str] = ours.splitlines()
-    theirs_lines: list[str] = theirs.splitlines()
-    merged = changelog._auto_resolve_rst(ours_lines, theirs_lines)  # pyright: ignore[reportPrivateUsage]
+    ours_lines = list(ours.splitlines())
+    theirs_lines = list(theirs.splitlines())
+    merged = changelog._auto_resolve_rst(  # pyright: ignore[reportPrivateUsage]
+        cast("list[str]", ours_lines),
+        cast("list[str]", theirs_lines),
+    )
     assert merged is not None
     assert "- Tail line" in "\n".join(merged)
     assert "- Branch" in "\n".join(merged)
@@ -1085,7 +1089,7 @@ def test_parity_auto_resolve_subprocess(tmp_path: Path) -> None:
     assert bash.returncode == 0, bash.stderr
     bash_text = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
     repo_py = tmp_path / "repo_py"
-    shutil.copytree(repo, repo_py)
+    _ = shutil.copytree(repo, repo_py)
     runner = ProcRunner()
     assert changelog.auto_resolve(runner, "CHANGELOG.md", cwd=str(repo_py)) is True
     py_text = (repo_py / "CHANGELOG.md").read_text(encoding="utf-8")
