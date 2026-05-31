@@ -1,0 +1,12 @@
+scripts/run-external-agent.sh
+scripts/lib-external-launcher-common.sh
+scripts/launch-review.sh
+scripts/collect-agent-results.sh
+scripts/run-external-agent.md
+scripts/lib-external-launcher-common.md
+scripts/collect-agent-results.md
+scripts/launch-review.md
+scripts/test-run-external-agent.sh
+scripts/test-lib-external-launcher-common.sh
+scripts/test-launch-review.sh
+scripts/test-collect-agent-retry.sh

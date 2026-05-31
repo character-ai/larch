@@ -1,0 +1,20 @@
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-30T22:20:50.399803Z ERROR codex_core::session: failed to record rollout items: thread 019e7af9-bae1-7d21-b583-af423689a57f not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-30T22:20:52.520310Z ERROR codex_core::session: failed to record rollout items: thread 019e7af9-bbc7-7d03-8a0b-7d8ca7132ee0 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-30T22:20:55.409560Z ERROR codex_core::session: failed to record rollout items: thread 019e7af9-b798-7af3-a575-ec2aac860bed not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-30T22:20:58.403720Z ERROR codex_core::session: failed to record rollout items: thread 019e7af9-c566-75f0-903c-347ebff370d0 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---

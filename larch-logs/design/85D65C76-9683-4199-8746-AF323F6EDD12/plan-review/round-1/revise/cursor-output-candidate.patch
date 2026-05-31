@@ -1,0 +1,69 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -24,9 +24,9 @@
+ - Init: add `STDERR_SINK=""` to each branch's init block (codex ~line 100-110; cursor ~line 630-644).
+ - Parse: add `--stderr-sink) STDERR_SINK="${2:?--stderr-sink requires a value}"; shift 2 ;;` to both argv-parse loops (codex ~line 131; cursor ~line 661), before the `*) unknown flag` arm. This stops the retry forward from hitting `exit 2`.
+-- Validate the value symmetric to `run-external-agent.sh`: reject `..` traversal and embedded newline/CR before use. Reuse `validate_meta_scalar_path` if the script already sources the lib that defines it; otherwise add a minimal inline guard. Fail with `exit 2` and a `launch-review.sh:`-prefixed message on bad input.
++- Validate only when non-empty, symmetric to `--output` and `run-external-agent.sh --stderr-sink`: after the existing `source …/lib-validate-meta-path.sh` / `validate_meta_scalar_path --output` block in each branch, add `[[ -n "$STDERR_SINK" ]] && { validate_meta_scalar_path --stderr-sink "$STDERR_SINK" || exit 1; }`. The allowlist rejects embedded newline/CR and other out-of-charset bytes; it does **not** reject `..` at parse time (same as `--output`). No separate `launch-review.sh:`-prefixed `..` guard here — `..` fail-closed stays in `validate_retry_stderr_sink_or_mark` at collector retry.
+ - Thread to the inner launches: after each branch's parse, build `_RUN_EXTERNAL_SINK_ARGS=()` then `[[ -n "$STDERR_SINK" ]] && _RUN_EXTERNAL_SINK_ARGS+=(--stderr-sink "$STDERR_SINK")`. Insert `"${_RUN_EXTERNAL_SINK_ARGS[@]+"${_RUN_EXTERNAL_SINK_ARGS[@]}"}"` into each `"$RUN_EXTERNAL"` invocation after `--timeout "$TIMEOUT"` and before `--` (codex: both the SIDECAR and the `/dev/null` branches, ~lines 529 and 546; cursor: ~line 957, after `--capture-stdout-only`).
+ - Record in outer-meta: change both append call sites (codex ~line 594, cursor ~line 1010) to pass the sink as the 6th arg with an empty 5th risk arg to preserve the current `${RISK:-high}` default: `…_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD" "" "$STDERR_SINK"`.
+ - Note: for `launch-review.sh`'s current capture modes the threaded sink is inert (codex routes stderr to `${OUTPUT}.sidecar`; cursor uses `--capture-stdout-only`, where the tail selector ignores `explicit_sink`). The change is correct/safe defensive plumbing — accept-and-honor rather than accept-and-ignore — and future-proofs the lane. The functional stderr-preservation win lands in the CMD_JSON path below.
+@@ -68,7 +68,7 @@
+ - Document the optional `STDERR_SINK=<path>` base-`.meta` field: written only when `--stderr-sink` is non-empty; consumed by `collect-agent-results.sh` on CMD_JSON retry.
+ 
+ ### UPDATED: `scripts/lib-external-launcher-common.md`
+-- Update the `external_launcher_append_outer_meta` signature to `<meta_path> <outer_launcher_path> <prompt_file_sidecar> <workdir> [risk] [stderr_sink]` and document the optional `STDERR_SINK=` line (written only when the 6th arg is non-empty; empty 5th arg keeps the `high` risk default).
++- Update the `external_launcher_append_outer_meta` signature to `<meta_path> <outer_launcher_path> <prompt_file_sidecar> <workdir> [risk] [stderr_sink]` and document the optional `STDERR_SINK=` line (written only when the 6th arg is non-empty; empty 5th arg keeps the `high` risk default).
+ 
+ ### UPDATED: `scripts/collect-agent-results.md`
+ - Document `META_STDERR_SINK` parsing at both parse sites, the `..` validation symmetric to `OUTER_LAUNCHER`, and `--stderr-sink` forwarding across both outer-launcher and both CMD_JSON retry paths.
+@@ -75,7 +75,7 @@
+ - Document `META_STDERR_SINK` parsing at both parse sites, the `..` validation symmetric to `OUTER_LAUNCHER`, and `--stderr-sink` forwarding across both outer-launcher and both CMD_JSON retry paths.
+ 
+ ### UPDATED: `scripts/launch-review.md`
+-- Document the new `--stderr-sink PATH` flag: accepted on both tool lanes, validated, threaded to the inner `run-external-agent.sh`, and recorded in the outer `.meta` for retry round-trip.
++- Document the new `--stderr-sink PATH` flag: accepted on both tool lanes; when non-empty, validated through `validate_meta_scalar_path` with the same `[A-Za-z0-9._/-]` allowlist and exit 1 as `--output` (charset-only — no parse-time `..` rejection); threaded to the inner `run-external-agent.sh`; recorded in the outer `.meta` for retry round-trip.
+ 
+ ### UPDATED: `scripts/test-run-external-agent.sh`
+ - Assert the base `.meta` includes `STDERR_SINK=<path>` when `--stderr-sink` is passed, and omits the line entirely when it is absent (no-sink byte-stability).
+@@ -85,7 +85,7 @@
+ - Assert `external_launcher_append_outer_meta` writes `STDERR_SINK=` when the 6th arg is non-empty and omits it when empty/absent; assert the empty 5th risk arg still records `OUTER_LAUNCHER_RISK=high`.
+ 
+ ### UPDATED: `scripts/test-launch-review.sh`
+-- Per `.claude/rules/launcher-argv-test-coverage.md`: assert `--stderr-sink` is accepted (no `exit 2`) on both lanes, that a bad value (`..`/newline) is rejected with the exact message + exit code, that the value is threaded to the inner `run-external-agent.sh` argv, and that it lands in the outer `.meta`.
++- Per `.claude/rules/launcher-argv-test-coverage.md`: assert `--stderr-sink` is accepted (no `exit 2`) on both lanes; assert charset/outside-bytes rejection before side effects on both lanes (exit `1`, stderr `ERROR: --stderr-sink contains bytes outside`, symmetric to case G for `--output` — do **not** pin `..` rejection at parse time); assert the value is threaded to the inner `run-external-agent.sh` argv; assert it lands in the outer `.meta`.
+ 
+ ### UPDATED: `scripts/test-collect-agent-retry.sh`
+ - Assert `--stderr-sink` is forwarded on outer-launcher retry (both the `launch_outer_retry_or_mark()` helper and the inline empty-output path) and on CMD_JSON retry (both `launch_cmd_json_retry_or_mark()` and the inline path); assert a `..` value fails closed via `mark_retry_metadata_invalid`; assert no `--stderr-sink` is forwarded when the field is absent.
+@@ -95,11 +95,11 @@
+ for outer-launcher lanes), each only when a sink is set. `collect-agent-results.sh` parses it at
+ both `.meta` parse sites, validates it like `OUTER_LAUNCHER` (reject `..`), and forwards
+ `--stderr-sink` in all four retry sites when non-empty. `launch-review.sh` learns the flag so the
+-outer-launcher forward is accepted instead of dying on `exit 2`. The change is additive and
++outer-launcher forward is accepted instead of dying on `exit 2`. Parse-time validation is charset-only (matching `--output` / `run-external-agent.sh`); `..` fail-closed is collector-side only. The change is additive and
+ conditional, so every existing no-sink lane is byte-for-byte unchanged.
+ 
+ ## Edge cases
+ - No sink set (the common case): no `.meta` line, no forwarded flag, behavior identical to today.
+-- Sink with `..` traversal: collector marks the retry metadata invalid (fail-closed), symmetric to `OUTER_LAUNCHER`; `run-external-agent.sh` re-validates on the inner call.
++- Sink with `..` traversal: passes launch-review / run-external-agent parse (charset-only, same as `--output` with `..`); collector `validate_retry_stderr_sink_or_mark` marks retry metadata invalid (fail-closed), symmetric to `OUTER_LAUNCHER`; `run-external-agent.sh` re-validates charset on the inner call.
+ - `launch-review.sh` sink is inert for its current capture modes (codex → `.sidecar`; cursor → `--capture-stdout-only` `.diag`): the selector only prefers a non-empty sink, so it correctly falls back; the sink still round-trips through meta.
+ - CMD_JSON retry: `--stderr-sink` is a `run-external-agent.sh` flag (before `--`), not part of `CMD_JSON`, so it is forwarded via `RETRY_ARGS`, not reconstructed from the tool argv.
+ 
+@@ -108,7 +108,7 @@
+ 1. Forwarding `--stderr-sink` to a launcher that rejects unknown flags → `exit 2`, retry breaks. Mitigation: `launch-review.sh` learns the flag; the CMD_JSON path forwards to `run-external-agent.sh`, which already accepts it. Signal: `test-collect-agent-retry.sh` + `test-launch-review.sh`.
+-2. `.meta` grammar corruption from a newline-bearing sink value. Mitigation: `validate_meta_scalar_path` in `run-external-agent.sh` and the symmetric guard in `launch-review.sh`; the value is single-line by contract. Signal: meta-write assertions.
++2. `.meta` grammar corruption from a newline-bearing sink value. Mitigation: `validate_meta_scalar_path` in `run-external-agent.sh` and the symmetric charset guard in `launch-review.sh` (exit 1, same as `--output`); the value is single-line by contract. Signal: meta-write assertions + launcher harness case G parity.
+ 3. Parity drift — fixing codex but not cursor, or the function but not the inline copy. Mitigation: apply to both lanes and all four retry sites; harnesses assert both. Signal: `test-launch-review.sh` + `test-collect-agent-retry.sh`.
+ 
+ ## Testing strategy
+@@ -120,6 +120,6 @@
+ Four shell scripts edited surgically (~10-25 changed lines each), four `.md` siblings, four
+ harness extensions. No new files.
+ 
+-diff_added: 220
+-diff_deleted: 30
+-diff_lines: 250
++diff_added: 215
++diff_deleted: 28
++diff_lines: 243
