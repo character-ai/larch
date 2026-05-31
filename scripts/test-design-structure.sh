@@ -57,7 +57,9 @@ contains "$SKILL_MD" 'Skip sketches only when `design_classification == SIMPLE`'
 contains "$SKILL_MD" 'This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**.' 'SKILL missing SIMPLE designer emphasis'
 contains "$SKILL_MD" 'This is a HARD-tier design. Bias the plan toward **thoroughness**.' 'SKILL missing HARD designer emphasis'
 contains "$RUN_STEP3_SH" 'review-round-count.txt' 'run-step3-review.sh missing review-round counter'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" '--round-cap "$ROUND_CAP"' 'run-step3-review.sh must pass round-cap to plan-review-loop'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" '--convergence-threshold "$CONVERGENCE_THRESHOLD"' 'run-step3-review.sh must pass convergence-threshold to plan-review-loop'
 # shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
 contains "$SKILL_MD" '--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"' 'SKILL must pass explicit round-cap to run-step3-review.sh'
@@ -82,6 +84,7 @@ contains "$SKILL_MD" 'MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-erro
 contains "$SKILL_MD" '`LOOP_STATUS=converged|cap-hit` — proceed to Gate B **passive-summary mode**' 'SKILL missing passive-summary branch matrix entry'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" '`LOOP_STATUS=emit-plan-failed` — treat as a Step 3 post-apply failure' 'SKILL missing emit-plan-failed branch matrix entry'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" 'review-round cap (${_round_cap}) reached for ${_tier}' 'run-step3-review.sh missing Step 3 cap breadcrumb emit'
 contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b/4/4b with existing artifacts' 'SKILL missing cap short-circuit Gate B bypass'
 contains "$SKILL_MD" 'Gate B would otherwise re-surface stale accepted findings from an earlier round' 'SKILL missing stale-finding cap rationale'
@@ -917,6 +920,7 @@ contains "$SKILL_MD" 'write-original --design-tmpdir' 'SKILL.md Step 2b missing 
 contains "$SKILL_MD" 'assess-plan-round.sh' 'SKILL.md Step 3.6 missing assess-plan-round.sh'
 contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-review-round-cursor reference'
 contains "$SKILL_MD" 'write-cursor --design-tmpdir' 'SKILL.md missing round-cursor advancement write-cursor'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" '--round-num "$ROUND_NUM"' 'run-step3-review.sh missing --round-num ROUND_NUM to plan-review-loop'
 contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'
 contains "$SKILL_MD" 'passive-summary auto-continue, auto-apply, Apply all, or full one-by-one without abort' 'SKILL.md missing passive-summary Step 3.6 settle path'

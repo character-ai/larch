@@ -839,7 +839,7 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 
 ### Plan review driver (`run-step3-review.sh`)
 
-**Scout, panel dispatch, collection, aggregation, voting, and tally** still run inside `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh` (see `plan-review-loop.md`). Step 3 invokes `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh` for the cap guard, round-cursor advance, loop launch, result normalization, and `review-round-count.txt` persist/rollback (contract: `run-step3-review.md`, harness `test-run-step3-review.sh`).
+**Scout, panel dispatch, collection, aggregation, voting, and tally** still run inside `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/plan-review-loop.sh` (see `plan-review-loop.md`). Step 3 invokes `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh` for the cap guard, round-cursor advance, loop launch, result normalization, and `review-round-count.txt` persist/rollback (contracts: `run-step3-review.md`, `lib-phase-driver.sh` / `lib-phase-driver.md`; harnesses: `test-run-step3-review.sh` / `test-run-step3-review.md`, `test-lib-phase-driver.sh` / `test-lib-phase-driver.md`).
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 

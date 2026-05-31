@@ -74,7 +74,11 @@ set +e
 out="$("${launcher_env[@]}" "$LAUNCHER" --round-cap 5 --convergence-threshold 3 2>&1)"
 rc=$?
 set -e
-[[ "$rc" -eq 2 ]] && pass 'missing design-tmpdir exits 2' || fail "missing design-tmpdir rc=$rc"
+if [[ "$rc" -eq 2 ]]; then
+    pass 'missing design-tmpdir exits 2'
+else
+    fail "missing design-tmpdir rc=$rc"
+fi
 assert_contains "$out" '--design-tmpdir is required' 'missing design-tmpdir error'
 
 echo "=== cap-reached short-circuit ==="
@@ -87,7 +91,11 @@ out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D1" --round-cap 5 --convergence-threshold 3)"
 rc=$?
 set -e
-[[ "$rc" -eq 0 ]] && pass 'cap-reached exit 0' || fail "cap-reached rc=$rc"
+if [[ "$rc" -eq 0 ]]; then
+    pass 'cap-reached exit 0'
+else
+    fail "cap-reached rc=$rc"
+fi
 assert_contains "$out" 'LOOP_STATUS=cap-reached' 'cap-reached KV'
 assert_contains "$out" 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' 'skipped-cap-reached KV'
 grep -Fq 'LOOP_STATUS=cap-reached' "$D1/.step3-review-result.env" || fail 'result env cap-reached'
@@ -99,7 +107,11 @@ write_common_inputs "$D2" SIMPLE
 stub="$(write_loop_stub "$D2" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D2" --round-cap 5 --convergence-threshold 3 >/dev/null
-[[ "$(cat "$D2/review-round-count.txt")" == "1" ]] && pass 'pending round persisted' || fail 'pending round not persisted'
+if [[ "$(cat "$D2/review-round-count.txt")" == "1" ]]; then
+    pass 'pending round persisted'
+else
+    fail 'pending round not persisted'
+fi
 
 echo "=== tally-error rollback ==="
 D3="$TMP/tally"
@@ -108,7 +120,11 @@ printf '2\n' >"$D3/review-round-count.txt"
 stub="$(write_loop_stub "$D3" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=tally-error\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 2")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D3" --round-cap 5 --convergence-threshold 3 >/dev/null
-[[ "$(cat "$D3/review-round-count.txt")" == "2" ]] && pass 'tally-error rollback' || fail 'tally-error should rollback count'
+if [[ "$(cat "$D3/review-round-count.txt")" == "2" ]]; then
+    pass 'tally-error rollback'
+else
+    fail 'tally-error should rollback count'
+fi
 
 echo "=== degraded-empty-collector rollback ==="
 D4="$TMP/degraded"
@@ -117,7 +133,11 @@ printf '1\n' >"$D4/review-round-count.txt"
 stub="$(write_loop_stub "$D4" "printf 'LOOP_STATUS=degraded-empty-collector\nACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=skipped\nVOTING_TALLY_FILE=\n'; exit 0")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D4" --round-cap 5 --convergence-threshold 3 >/dev/null
-[[ "$(cat "$D4/review-round-count.txt")" == "1" ]] && pass 'degraded-empty-collector rollback' || fail 'degraded rollback failed'
+if [[ "$(cat "$D4/review-round-count.txt")" == "1" ]]; then
+    pass 'degraded-empty-collector rollback'
+else
+    fail 'degraded rollback failed'
+fi
 
 echo "=== panel-failed keeps round ==="
 D5="$TMP/panel"
@@ -126,7 +146,11 @@ printf '1\n' >"$D5/review-round-count.txt"
 stub="$(write_loop_stub "$D5" "printf 'LOOP_STATUS=panel-failed\nACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=panel-failed\nAGGREGATOR_STATUS=skipped\nVOTING_TALLY_FILE=\n'; exit 1")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D5" --round-cap 5 --convergence-threshold 3 >/dev/null
-[[ "$(cat "$D5/review-round-count.txt")" == "2" ]] && pass 'panel-failed keeps round' || fail 'panel-failed should keep pending round'
+if [[ "$(cat "$D5/review-round-count.txt")" == "2" ]]; then
+    pass 'panel-failed keeps round'
+else
+    fail 'panel-failed should keep pending round'
+fi
 
 echo "=== unknown LOOP_STATUS normalizes to panel-failed ==="
 D6="$TMP/weird"
@@ -137,8 +161,16 @@ out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'unknown status normalized'
 
 echo "=== normalized result env keys ==="
-grep -Fq 'LOOP_STATUS=' "$D6/.step3-review-result.env" && pass 'result env has LOOP_STATUS' || fail 'result env missing LOOP_STATUS'
-grep -Fq 'REVIEW_ROUND_COUNT=' "$D6/.step3-review-result.env" && pass 'result env has REVIEW_ROUND_COUNT' || fail 'result env missing REVIEW_ROUND_COUNT'
+if grep -Fq 'LOOP_STATUS=' "$D6/.step3-review-result.env"; then
+    pass 'result env has LOOP_STATUS'
+else
+    fail 'result env missing LOOP_STATUS'
+fi
+if grep -Fq 'REVIEW_ROUND_COUNT=' "$D6/.step3-review-result.env"; then
+    pass 'result env has REVIEW_ROUND_COUNT'
+else
+    fail 'result env missing REVIEW_ROUND_COUNT'
+fi
 
 TOTAL=$((PASS + FAIL))
 if [[ "$FAIL" -eq 0 ]]; then

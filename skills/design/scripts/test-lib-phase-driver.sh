@@ -48,20 +48,36 @@ assert_file_equals() {
 echo "=== session_get ==="
 kv_file="$TMP/session.env"
 printf 'FOO=bar\nBAZ=qux\n' >"$kv_file"
-[[ "$(phase_driver_session_get "$kv_file" FOO "")" == bar ]] && pass 'session_get hit' || fail 'session_get hit'
-[[ "$(phase_driver_session_get "$kv_file" MISSING dflt)" == dflt ]] && pass 'session_get default' || fail 'session_get default'
+if [[ "$(phase_driver_session_get "$kv_file" FOO "")" == bar ]]; then
+    pass 'session_get hit'
+else
+    fail 'session_get hit'
+fi
+if [[ "$(phase_driver_session_get "$kv_file" MISSING dflt)" == dflt ]]; then
+    pass 'session_get default'
+else
+    fail 'session_get default'
+fi
 
 echo "=== resolve_plugin_root ==="
 session="$TMP/plugin-session.env"
 printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$REPO_ROOT" >"$session"
-(
+if (
     unset CLAUDE_PLUGIN_ROOT
     [[ "$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$session")" == "$REPO_ROOT" ]]
-) && pass 'resolve from session-env' || fail 'resolve from session-env'
-(
+); then
+    pass 'resolve from session-env'
+else
+    fail 'resolve from session-env'
+fi
+if (
     unset CLAUDE_PLUGIN_ROOT
     [[ "$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "")" == "$REPO_ROOT" ]]
-) && pass 'resolve tree-walk fallback' || fail 'resolve tree-walk fallback'
+); then
+    pass 'resolve tree-walk fallback'
+else
+    fail 'resolve tree-walk fallback'
+fi
 
 echo "=== write_result_env ==="
 result="$TMP/out.env"

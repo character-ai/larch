@@ -2,6 +2,7 @@
 # Shared phase-driver primitives for /design Step 3+ drivers (sourced only; no shebang).
 
 if [[ "${LARCH_LIB_PHASE_DRIVER_LOADED:-}" == "1" ]]; then
+    # shellcheck disable=SC2317 # Guard is reachable on repeated sourcing.
     return 0 2>/dev/null || exit 0
 fi
 LARCH_LIB_PHASE_DRIVER_LOADED=1

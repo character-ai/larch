@@ -16,10 +16,13 @@ grep -Fq 'run-step3-review.sh' "$SKILL_MD" \
     || fail 'SKILL.md must invoke run-step3-review.sh'
 grep -Fq 'The Step 3.5 continuation block below is bypassed on this path.' "$SKILL_MD" \
     || fail 'SKILL missing explicit Step 3.5 bypass prose'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 grep -Fq 'including `LOOP_STATUS=panel-failed`' "$SKILL_MD" \
     || fail 'SKILL missing panel-failed counter-consumption prose'
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 grep -Fq 'MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`' "$SKILL_MD" \
     || fail 'SKILL missing tally-error non-consumption prose'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 grep -Fq 'review-round cap (${_round_cap}) reached for ${_tier}' "$ROOT/skills/design/scripts/run-step3-review.sh" \
     || fail 'run-step3-review.sh missing Step 3 cap breadcrumb emit'
 grep -Fq 'refusing to clean symlinked plan-review directory' "$ROOT/skills/design/scripts/run-step3-review.sh" \
