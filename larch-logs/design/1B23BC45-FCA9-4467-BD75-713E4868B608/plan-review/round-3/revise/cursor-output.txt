@@ -1,0 +1,41 @@
+Verifying the test file context so the plan revision matches the codebase.
+Checking whether the index carryover case has a similar negative control:
+--- a/plan.txt
++++ b/plan.txt
+@@ -18,7 +18,8 @@
+ ### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.sh`
+ - In both carryover cases (worktree ~494-531, index ~533-563), derive `snap_dir="$(pre_coder_snapshot_dir "$round_dir")"` and stage `pre-coder-head.txt`, `pre-coder-tracked-paths.txt`, and `pre-coder-path-diffs/*.patch` there instead of under `round_dir`. Add `pre_coder_snapshot_dir` to the `eval` list in each case (before the file-path helpers). `coder-stage-paths.txt` stays in `round_dir`.
++- In the worktree carryover case (~494-531), repoint the negative-control `rm -f` (~524) to `"$(pre_coder_path_diff_file "$round_dir" other.txt)"` (after eval of `pre_coder_path_diff_file` / carryover helpers) — not `"$carryover_round_dir/pre-coder-path-diffs/other.txt.patch"`. After relocation the old path is a no-op; the patch remains under `snap_dir` and the negative control (`manifest-carryover-guard negative control should fire without snapshot`) fails silently or flakes.
+ - Add a small assertion that `pre_coder_snapshot_dir "$round_dir"` does not start with `"$round_dir/"` (regression guard for the coder-unreachability invariant).
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/review-and-fix.md`
+@@ -32,7 +33,7 @@
+ - Note that `pre-coder-head.txt` is read from and written to the relocated snapshot dir via `pre_coder_snapshot_dir` (structural-diff telemetry and `run_implement_mav_apply` head write). Document that MAV does not invoke `snapshot_pre_coder_tracked_state`.
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.md`
+-- Note that the carryover tests stage snapshots at the relocated dir and assert the location invariant.
++- Note that the carryover tests stage snapshots at the relocated dir, assert the location invariant, and that the worktree negative control deletes the patch via `pre_coder_path_diff_file` (not a stale `round_dir` path).
+ 
+ ## Approach
+ - One trusted location for all three pre-coder artifacts (`pre-coder-head.txt`, `pre-coder-tracked-paths.txt`, `pre-coder-path-diffs/`), derived from `round_dir` but outside the coder's write grant.
+@@ -52,7 +53,7 @@
+ - MAV apply: `run_implement_mav_apply` writes only `pre-coder-head.txt` today — relocation moves that file only; no `snapshot_pre_coder_tracked_state` call. Carryover predicates on MAV rounds stay fail-closed for tracked paths (unchanged vs pre-change MAV).
+ 
+ ## Failure modes
+-1. **Missed reader or writer left at the old path** — any `pre-coder-*` read or pre-dispatch write still pointing at `round_dir` silently mis-resolves; the predicate fails closed (over-commits genuine dirt or zeroes telemetry). Earliest signal: carryover tests fail, step5 `structural_loc` reads 0. Mitigation: grep-sweep every `pre-coder-head.txt` / `pre-coder-tracked-paths.txt` / `pre-coder-path-diffs` literal (`run_implement_mav_apply`: head write/read only); tests cover worktree and index carryover. Accidentally calling `snapshot_pre_coder_tracked_state` from MAV would widen carryover tolerance vs today's head-only behavior.
++1. **Missed reader or writer left at the old path** — any `pre-coder-*` read or pre-dispatch write still pointing at `round_dir` silently mis-resolves; the predicate fails closed (over-commits genuine dirt or zeroes telemetry). Earliest signal: carryover tests fail, step5 `structural_loc` reads 0. Mitigation: grep-sweep every `pre-coder-head.txt` / `pre-coder-tracked-paths.txt` / `pre-coder-path-diffs` literal (`run_implement_mav_apply`: head write/read only); tests cover worktree and index carryover; worktree negative-control `rm -f` must target `pre_coder_path_diff_file`, not `$round_dir/pre-coder-path-diffs/...`. Accidentally calling `snapshot_pre_coder_tracked_state` from MAV would widen carryover tolerance vs today's head-only behavior.
+ 2. **`--full-auto` sandbox assumption wrong** — relocation assumes `codex exec --full-auto` confines writes to `-C "$PWD"` plus `--add-dir` roots. If `--full-auto` granted full-disk write, the sibling dir would still be reachable. Earliest signal: a coder can write outside its `--add-dir` roots in manual testing. Mitigation: relocation is necessary regardless; hardening the sandbox flags is a separate follow-up (OOS) if the assumption fails.
+ 3. **`round_dir` parent inside the coder grant** — a future caller passing a `round_dir` whose parent is reachable would re-expose the sibling dir. Earliest signal: location-invariant test still passes (it only checks "not under round_dir") while the real grant differs. Mitigation: document the parent-unreachability invariant in `review-and-fix.md`; the production caller uses `$IMPLEMENT_TMPDIR/round-<N>`.
+ 
+ ## Testing strategy
+-- `bash skills/review-and-fix/scripts/test-review-and-fix.sh` — updated worktree + index carryover cases pass against the relocated dir; new location-invariant assertion guards the security property.
++- `bash skills/review-and-fix/scripts/test-review-and-fix.sh` — updated worktree + index carryover cases pass against the relocated dir; worktree negative control deletes the relocated patch; new location-invariant assertion guards the security property.
+ - `bash scripts/relevant-checks.sh` after edits (repo-wide pre-commit hooks: bash32 portability, bare-grep-probe, script-md siblings, shellcheck).
+ 
+ ## Out-of-scope (candidate follow-ups)
+@@ -61,4 +62,4 @@
+ - Hardening `codex exec` sandbox flags if `--full-auto` proves too permissive.
+ - MAV rounds: full `snapshot_pre_coder_tracked_state` / carryover parity with main Step 5 rounds (this change relocates MAV's head file only).
+ 
+-diff_lines: 106
++diff_lines: 108

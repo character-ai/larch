@@ -1,0 +1,25 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	plan.txt:12,37-40; skills/review-and-fix/scripts/test-review-and-fix.sh (proposed assertion)	Plan claims relocated snapshots sit outside Codex --add-dir "$PWD" without stating the IMPLEMENT_TMPDIR-not-under-PWD precondition	Codex grants are -C "$PWD", --add-dir "$round_dir" ($IMPLEMENT_TMPDIR/round-N), --add-dir "$PWD" (repo root). Snapshot path is $IMPLEMENT_TMPDIR/.pre-coder-snapshots/round-N. That is outside --add-dir round_dir, but still inside --add-dir "$PWD" whenever IMPLEMENT_TMPDIR is under the repo (harness uses $work/implement; API allows it). A hostile coder could still tamper with snapshots in that layout. Proposed test only asserts snap_dir is not under round_dir/, not outside PWD.	Qualify plan.txt:12 and Approach bullet 40: unreachable vs Codex requires IMPLEMENT_TMPDIR outside $PWD (production: session-setup cache via run-step5-review.sh:144). Document the invariant in review-and-fix.md. Do not claim unconditional --add-dir PWD exclusion unless adding enforcement (out of scope for SIMPLE).
+
+1. **[security]** `plan.txt:12,37-40` — The plan states the relocated snapshot dir is “outside the Codex coder's `--add-dir "$round_dir"` and `--add-dir "$PWD"` grants.” That is only half true without a precondition.
+
+**Codex dispatch grant map** (`skills/review-and-fix/scripts/review-and-fix.sh:273-277`, sole `codex exec` site; `review-implement-step5-loop.sh` has no Codex invocation—it calls `review-and-fix.sh` / `apply_findings_with_coder`):
+
+| Flag | Resolved root | Write grant (per plan’s `--full-auto` assumption) |
+|------|----------------|---------------------------------------------------|
+| `-C "$PWD"` | Repo root at dispatch | CWD / primary workspace |
+| `--add-dir "$round_dir"` | `$IMPLEMENT_TMPDIR/round-<N>` (1162) | That directory tree only |
+| `--add-dir "$PWD"` | Entire repo working tree | Any path under repo root |
+
+**Proposed snapshot root:** `$(dirname "$round_dir")/.pre-coder-snapshots/$(basename "$round_dir")` → `$IMPLEMENT_TMPDIR/.pre-coder-snapshots/round-<N>`.
+
+- Outside `--add-dir "$round_dir"`: **yes** (sibling under `$IMPLEMENT_TMPDIR`, not under `round-<N>/`).
+- Outside `--add-dir "$PWD"`: **only if** `$IMPLEMENT_TMPDIR` is not inside `$PWD`. Production `/implement` uses `session-setup.sh` cache (`~/.cache/larch/sessions/...`, 234-270) and `run-step5-review.sh:144` canonicalizes before calling review-and-fix; that layout satisfies isolation. Callers passing an in-repo `--implement-tmpdir` (tests at `test-review-and-fix.sh:287-289`, `352`) leave snapshots under the `$PWD` grant, so relocation does not harden against Codex tampering there.
+
+**Cursor path (plan line 40):** Matches code—`cursor agent ... --workspace "$PWD"` at `review-and-fix.sh:296`; no `--add-dir` for `round_dir` or `$IMPLEMENT_TMPDIR`. Cursor cannot reach tmpdir snapshots when `$IMPLEMENT_TMPDIR` is outside the repo.
+
+**`$IMPLEMENT_TMPDIR` absolute / outside `$PWD`:** Not enforced in `review-and-fix.sh:67,1122` (directory check only). Canonicalized on the production Step 5 entry path at `scripts/run-step5-review.sh:144`. `session-setup.sh` `mktemp` paths are absolute.
+
+**Suggested revision:** Qualify the security claim and Approach bullet to name the production invariant (`IMPLEMENT_TMPDIR` outside repo / `$PWD`); document it in `review-and-fix.md`. Keep the proposed `snap_dir` vs `round_dir/` test; treat a `$PWD` boundary check as optional follow-up (runtime enforcement is scope creep for SIMPLE).
+
+[OUT_OF_SCOPE] `skills/review-and-fix/scripts/review-and-fix.sh:67` — Add `IMPLEMENT_TMPDIR="$(cd ... && pwd -P)"` plus a fail-closed guard that tmpdir is not under `$PWD`; would close the API/harness gap but is not required for production `/implement` and expands beyond minimum relocation.

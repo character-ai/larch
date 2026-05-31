@@ -1,0 +1,6 @@
+skills/review-and-fix/scripts/review-and-fix.sh
+skills/review-and-fix/scripts/review-implement-step5-loop.sh
+skills/review-and-fix/scripts/test-review-and-fix.sh
+skills/review-and-fix/scripts/review-and-fix.md
+skills/review-and-fix/scripts/review-implement-step5-loop.md
+skills/review-and-fix/scripts/test-review-and-fix.md

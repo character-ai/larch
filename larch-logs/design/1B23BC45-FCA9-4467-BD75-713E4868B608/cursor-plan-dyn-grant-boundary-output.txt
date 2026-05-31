@@ -1,0 +1,3 @@
+Reading the plan and tracing coder-dispatch grant boundaries in the referenced scripts.
+{"no_issues_found": true}
+

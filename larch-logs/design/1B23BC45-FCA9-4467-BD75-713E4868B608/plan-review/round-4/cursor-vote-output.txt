@@ -1,0 +1,1 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan overclaims PWD exclusion, but production IMPLEMENT_TMPDIR is outside the repo via session-setup cache and failure mode 3 already documents the parent-grant precondition.
