@@ -20,6 +20,7 @@
 #   DEGRADED=true|false
 #   CODEX_STATE=ok|binary-missing|probe-failed
 #   CURSOR_STATE=ok|binary-missing|probe-failed
+#   BOTH_DOWN=true|false
 #   DEGRADED_EXPLANATION_BEGIN
 #   <multi-line explanation lines>
 #   DEGRADED_EXPLANATION_END
@@ -101,9 +102,15 @@ if [ "$CODEX_STATE" != "ok" ] || [ "$CURSOR_STATE" != "ok" ]; then
     DEGRADED=true
 fi
 
+BOTH_DOWN=false
+if [ "$CODEX_STATE" != "ok" ] && [ "$CURSOR_STATE" != "ok" ]; then
+    BOTH_DOWN=true
+fi
+
 emit_kv DEGRADED "$DEGRADED"
 emit_kv CODEX_STATE "$CODEX_STATE"
 emit_kv CURSOR_STATE "$CURSOR_STATE"
+emit_kv BOTH_DOWN "$BOTH_DOWN"
 
 [ "$DEGRADED" = "true" ] || exit 0
 
@@ -132,7 +139,11 @@ if [[ "$SKILL_LABEL" == "design" ]]; then
     emit "reviewer covering all archetype lenses. Expect fewer reviewers and possible"
     emit "zero-findings / degraded tally paths — not per-slot Codex→Cursor→Claude waterfall."
     emit ""
-    emit "Continue in this degraded mode, or abort and retry once the tool is healthy?"
+    if [[ "$BOTH_DOWN" == "true" ]]; then
+        emit "Continue in this degraded mode, or abort and retry once the tool is healthy?"
+    else
+        emit "⚠ Warning: proceeding automatically (one tool available). Retry once the unavailable tool is healthy."
+    fi
 else
     emit "What this means: multi-tool roles (reviewer/voter panels, decomposition, the"
     emit "implementer, and CI/fix coders) run through the per-slot backup waterfall —"
@@ -143,8 +154,12 @@ else
     emit "than substituted (e.g. /design Codex dialectic buckets and Codex sketch"
     emit "personalities when Codex is down)."
     emit ""
-    emit "Continue in this degraded mode (backup waterfall), or abort and retry once"
-    emit "the tool is healthy?"
+    if [[ "$BOTH_DOWN" == "true" ]]; then
+        emit "Continue in this degraded mode (backup waterfall), or abort and retry once"
+        emit "the tool is healthy?"
+    else
+        emit "⚠ Warning: proceeding automatically (one tool available). Retry once the unavailable tool is healthy."
+    fi
 fi
 emit DEGRADED_EXPLANATION_END
 

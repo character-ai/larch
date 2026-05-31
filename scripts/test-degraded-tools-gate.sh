@@ -56,6 +56,7 @@ assert_rc "$rc" 0 "codex-probe-failed exit 0"
 assert_contains "$out" "DEGRADED=true" "codex-probe-failed degraded"
 assert_contains "$out" "CODEX_STATE=probe-failed" "codex-probe-failed state"
 assert_contains "$out" "CURSOR_STATE=ok" "codex-probe-failed cursor ok"
+assert_contains "$out" "BOTH_DOWN=false" "codex-probe-failed BOTH_DOWN=false"
 assert_contains "$out" "DEGRADED_EXPLANATION_BEGIN" "codex-probe-failed explanation begin"
 assert_contains "$out" "DEGRADED_EXPLANATION_END" "codex-probe-failed explanation end"
 assert_contains "$out" "runtime health probe failed" "codex-probe-failed phrasing"
@@ -68,6 +69,7 @@ assert_rc "$rc" 0 "cursor-binary-missing exit 0"
 assert_contains "$out" "DEGRADED=true" "cursor-binary-missing degraded"
 assert_contains "$out" "CURSOR_STATE=binary-missing" "cursor-binary-missing state"
 assert_contains "$out" "CODEX_STATE=ok" "cursor-binary-missing codex ok"
+assert_contains "$out" "BOTH_DOWN=false" "cursor-binary-missing BOTH_DOWN=false"
 assert_contains "$out" "CLI binary not found" "cursor-binary-missing phrasing"
 assert_contains "$out" "/implement run" "cursor-binary-missing skill label"
 
@@ -78,6 +80,7 @@ assert_rc "$rc" 0 "both-probe-failed exit 0"
 assert_contains "$out" "DEGRADED=true" "both-probe-failed degraded"
 assert_contains "$out" "CODEX_STATE=probe-failed" "both-probe-failed codex"
 assert_contains "$out" "CURSOR_STATE=probe-failed" "both-probe-failed cursor"
+assert_contains "$out" "BOTH_DOWN=true" "both-probe-failed BOTH_DOWN=true"
 
 # --- Case 5: empty binary-found + empty present → generic `unavailable` ---
 out=$(bash "$GATE" --codex-binary-found "" --codex-present "" \
@@ -155,6 +158,20 @@ assert_contains "$out" "WARNING: --codex-present omitted" "stale-env omission wa
 out=$(bash "$GATE" --bogus 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 2 "unknown-flag exit 2"
 assert_contains "$out" "unknown argument" "unknown-flag message"
+
+# --- Case 13: single tool down → auto-proceed notice, not Continue-or-abort question ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present false \
+    --cursor-binary-found true --cursor-present true --skill design) && rc=$? || rc=$?
+assert_rc "$rc" 0 "single-down-explanation exit 0"
+assert_contains "$out" "proceeding automatically" "single-down-explanation auto-proceed notice"
+assert_not_contains "$out" "Continue in this degraded mode" "single-down-explanation no Continue prompt"
+
+# --- Case 14: both tools down → Continue-or-abort question, not auto-proceed notice ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present false \
+    --cursor-binary-found true --cursor-present false --skill design) && rc=$? || rc=$?
+assert_rc "$rc" 0 "both-down-explanation exit 0"
+assert_contains "$out" "Continue in this degraded mode" "both-down-explanation Continue prompt"
+assert_not_contains "$out" "proceeding automatically" "both-down-explanation no auto-proceed notice"
 
 printf 'test-degraded-tools-gate: PASS=%d FAIL=%d\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

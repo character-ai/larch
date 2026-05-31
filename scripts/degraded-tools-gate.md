@@ -46,6 +46,7 @@ orchestrator shells).
 - `DEGRADED=true|false` — `true` iff either tool's state is not `ok`.
 - `CODEX_STATE=ok|binary-missing|probe-failed`
 - `CURSOR_STATE=ok|binary-missing|probe-failed`
+- `BOTH_DOWN=true|false` — `true` iff **both** `CODEX_STATE != ok` AND `CURSOR_STATE != ok`; `false` when exactly one tool is down or both are ok.
 - When `DEGRADED=true`, a multi-line explanation block bracketed by
   `DEGRADED_EXPLANATION_BEGIN` / `DEGRADED_EXPLANATION_END` (lifted verbatim by
   the orchestrator for presentation).
