@@ -258,6 +258,9 @@ case "$FALLBACK_COUNT" in ''|*[!0-9]*) FALLBACK_COUNT=0 ;; esac
 case "$COMBINED_FALLBACK_COUNT" in ''|*[!0-9]*) COMBINED_FALLBACK_COUNT="$FALLBACK_COUNT" ;; esac
 DEGRADED_ROUND=false
 [[ "${STATIC_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_ROUND=true
+if (( 10#$COMBINED_FALLBACK_COUNT > floor_half )); then
+    DEGRADED_ROUND=true
+fi
 _paths_sidecar="${ALL_OUTPUT_FILES_PATH:-${_manifest}.output-files}"
 _succeeded_paths=0
 if [[ -f "$_paths_sidecar" ]]; then

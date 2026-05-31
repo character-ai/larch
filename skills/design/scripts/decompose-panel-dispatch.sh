@@ -293,6 +293,9 @@ case "$FALLBACK_COUNT" in ''|*[!0-9]*) FALLBACK_COUNT=0 ;; esac
 case "$COMBINED_FALLBACK_COUNT" in ''|*[!0-9]*) COMBINED_FALLBACK_COUNT="$FALLBACK_COUNT" ;; esac
 DEGRADED_PANEL=false
 [[ "${STATIC_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_PANEL=true
+if (( 10#$COMBINED_FALLBACK_COUNT > floor_half )); then
+    DEGRADED_PANEL=true
+fi
 _succeeded_paths=0
 if [[ -n "$ALL_OUTPUT_FILES_PATH" && -f "$ALL_OUTPUT_FILES_PATH" ]]; then
     while IFS= read -r _dp || [[ -n "$_dp" ]]; do
