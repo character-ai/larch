@@ -883,10 +883,12 @@ FAIL_TAIL_TRANSCRIPT="$SCRATCH/fail-tail-transcript.txt"
 FAIL_TAIL_SIDECAR="$SCRATCH/fail-tail-sidecar.log"
 FAIL_TAIL_MANIFEST="$SCRATCH/fail-tail-manifest.json"
 FAIL_TAIL_TAIL="${FAIL_TAIL_TRANSCRIPT}.stderr-tail"
+set +e
 FAIL_TAIL_OUT=$(cd "$REPO_ROOT" && \
     PATH="$FAIL_TAIL_BIN:$PATH" \
     STUB_MANIFEST_PATH="$FAIL_TAIL_MANIFEST" \
     IMPLEMENT_TMPDIR='' \
+    LARCH_TOKEN_BUDGET_CAP_IMPLEMENT='' \
     LARCH_CURSOR_MODEL="stub-cursor-model" \
     CURSOR_API_KEY="" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
@@ -899,7 +901,8 @@ FAIL_TAIL_OUT=$(cd "$REPO_ROOT" && \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
-        --timeout 30)
+        --timeout 30) || true
+set -e
 if [[ "$FAIL_TAIL_OUT" == *"LAUNCHER_EXIT=1"* ]] \
     && [[ -s "$FAIL_TAIL_TAIL" ]] \
     && grep -Fq 'LARCH_CURSOR_IMPLEMENT_STDERR_TAIL_PROBE' "$FAIL_TAIL_TAIL" \
@@ -925,9 +928,11 @@ printf 'LARCH_DIAG_PROBE_PREFERRED\n' >&2
 exit 1
 EOF
 chmod +x "$CLOBBER_BIN/cursor"
+set +e
 CLOBBER_OUT=$(cd "$REPO_ROOT" && \
     PATH="$CLOBBER_BIN:$PATH" \
     IMPLEMENT_TMPDIR='' \
+    LARCH_TOKEN_BUDGET_CAP_IMPLEMENT='' \
     LARCH_CURSOR_MODEL="stub-cursor-model" \
     CURSOR_API_KEY="" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
@@ -940,7 +945,8 @@ CLOBBER_OUT=$(cd "$REPO_ROOT" && \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
-        --timeout 30)
+        --timeout 30) || true
+set -e
 if [[ "$CLOBBER_OUT" == *"LAUNCHER_EXIT=1"* ]] \
     && [[ -s "$CLOBBER_TAIL" ]] \
     && grep -Fq 'LARCH_DIAG_PROBE_PREFERRED' "$CLOBBER_TAIL" \
@@ -982,6 +988,7 @@ fi
 # Test: model-args failure writes stderr-tail before run-external-agent.
 MODEL_ARGS_CURSOR_TRANSCRIPT="$SCRATCH/model-args-cursor-transcript.txt"
 MODEL_ARGS_CURSOR_SIDECAR="$SCRATCH/model-args-cursor-sidecar.log"
+set +e
 MODEL_ARGS_CURSOR_OUT=$(cd "$REPO_ROOT" && \
     IMPLEMENT_TMPDIR='' \
     LARCH_TOKEN_BUDGET_CAP_IMPLEMENT='' \
@@ -997,7 +1004,8 @@ MODEL_ARGS_CURSOR_OUT=$(cd "$REPO_ROOT" && \
         --plan-file "$PLAN" \
         --feature-file "$FEATURE" \
         --agent-prompt "$AGENT_PROMPT" \
-        --timeout 30)
+        --timeout 30) || true
+set -e
 if [[ "$MODEL_ARGS_CURSOR_OUT" == *"LAUNCHER_EXIT=1"* ]] \
     && [[ -s "${MODEL_ARGS_CURSOR_TRANSCRIPT}.stderr-tail" ]]; then
     pass
