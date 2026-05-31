@@ -44,7 +44,7 @@ Express a native GitHub blocked-by relationship between two issues using the `ad
 
 **Source**: [`skills/cleanup/SKILL.md`](../skills/cleanup/SKILL.md)
 
-Remove stale larch session temp directories from `~/.cache/larch/sessions/` and `/tmp` by age (`LARCH_CLEANUP_RETENTION_DAYS`, default 7). An entry is removed only when no file within the bounded `find -maxdepth 5` scan is newer than the cutoff; a directory with fresh deep activity (≤ 5 levels) is retained even when its top-level mtime is old. Reaps dangling `current-design-env-*.sh` symlinks. Always runnable — reports `SESSION_COUNT` for visibility but does not abort when multiple Claude sessions are active.
+Remove stale larch session temp directories from `~/.cache/larch/sessions/` and `/tmp` by age (`LARCH_CLEANUP_RETENTION_DAYS`, default 7). Directories are removed only when no file within the bounded `find -maxdepth 5` scan is newer than the cutoff; a directory with fresh deep activity (≤ 5 levels) is retained even when its top-level mtime is old. Matching loose `/tmp` files are removed by top-level age and pattern match. Reaps dangling `current-design-env-*.sh` symlinks. Always runnable — reports `SESSION_COUNT` for visibility but does not abort when multiple Claude sessions are active.
 
 ## `/design`
 

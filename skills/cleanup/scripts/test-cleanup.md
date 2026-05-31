@@ -7,9 +7,9 @@ The harness runs `skills/cleanup/scripts/cleanup.sh` with `XDG_CACHE_HOME` point
 Covered cases:
 
 - **multiple-claude-no-abort**: stub `pgrep -x claude` reports three PIDs; cleanup exits 0 and emits `SESSION_COUNT=3` (informational only — no singleton abort)
-- **stale-dir-removed**: session directory with stale top-level mtime (older than retention cutoff) is deleted; `CACHE_REMOVED=1`
+- **stale-dir-removed**: session directory with stale top-level mtime and no fresh descendant activity within depth 5 is deleted; `CACHE_REMOVED=1`
 - **fresh-dir-kept**: session directory with recent mtime is retained; `CACHE_REMOVED=0`
-- **stale-dir-with-keepalive-removed**: stale session directory that still carries `.larch-keepalive` is removed when top-level mtime is past the retention cutoff; `CACHE_REMOVED=1`
+- **stale-dir-with-keepalive-removed**: stale session directory that still carries `.larch-keepalive` is removed when neither the top-level mtime nor bounded descendant scan shows fresh activity; `CACHE_REMOVED=1`
 - **symlinked-session-dir-skipped**: top-level session entry that is a symlink to another tree is not traversed with `rm -rf`; `CACHE_REMOVED=0`
 - **stale-toplevel-with-fresh-deep-child-kept**: stale session root mtime but a fresh file at depth 1; directory retained because descendant activity within depth 5 is newer than the retention cutoff
 - **find-failure-skips-deletion**: nested-scan `find` fails (stub exits 2 on `-maxdepth 5`); cleanup exits 0, stderr warns `failed to scan session activity`, stale session dir is kept; `CACHE_REMOVED=0`
