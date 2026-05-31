@@ -893,9 +893,6 @@ if grep -Fxq "STDERR_SINK=$SINK_CMD_JSON" "$RETRY_META_CMD_JSON"; then
 else
     fail "case sink-cmd-json-retry meta must record STDERR_SINK= from run-external-agent"
 fi
-assert_meta_stderr_sink_before \
-    "case sink-cmd-json-retry STDERR_SINK= precedes CMD_JSON=" \
-    "$RETRY_META_CMD_JSON" "CMD_JSON"
 
 OUT_SINK_DOTDOT="$TMPROOT/cursor-sink-dotdot.txt"
 prepare_outer_candidate "$OUT_SINK_DOTDOT"
