@@ -6051,6 +6051,7 @@ wf_caller_err="$impl/caller.stderr"
 set +e
 (
     cd "$root" || exit 1
+    # shellcheck disable=SC2030,SC2031
     export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl"
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
@@ -6058,13 +6059,14 @@ set +e
 ) >"$impl/wf.stdout" 2>"$wf_caller_err"
 wf_rc=$?
 set -e
+# shellcheck disable=SC2031
 if [[ "$wf_rc" -eq 0 ]] \
     && grep -Fq 'LARCH_RECOVERY_WF_STDERR_PROBE' "$wf_caller_err" \
     && [[ -f "$impl/recovery-wf-verify-sentinel.txt" ]]; then
     ok "recovery waterfall surfaces stderr-tail and runs verifier only after launcher success"
 else
     fail "recovery waterfall must surface tail on launcher_exit failure and advance to codex verify"
-    sed 's/^/    wf_rc: /' <<<"$wf_rc"
+    printf '    wf_rc: %s\n' "$wf_rc"
     sed 's/^/    stderr: /' "$wf_caller_err" 2>/dev/null || true
 fi
 
@@ -6139,6 +6141,7 @@ ci_fix_err="$tmp/ci-fix-caller.stderr"
 set +e
 (
     cd "$root" || exit 1
+    # shellcheck disable=SC2030,SC2031
     export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" STATE_FILE
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
@@ -6150,6 +6153,7 @@ if grep -Fq 'LARCH_CI_FIX_VENDOR_STDERR_PROBE' "$ci_fix_err"; then
     ok "run_ci_fix_vendor surfaces tier stderr-tail to caller stderr on launcher failure"
 else
     fail "run_ci_fix_vendor must emit stderr-tail to caller stderr when LAUNCHER_EXIT!=0"
+    printf '    ci_fix_rc: %s\n' "$ci_fix_rc"
     sed 's/^/    stderr: /' "$ci_fix_err" 2>/dev/null || true
 fi
 
