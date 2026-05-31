@@ -101,8 +101,9 @@ printf '%s\n' "$out2" | grep -q '^STEP_STARTED=VALIDATE_PLAN_COMMANDS$' || fail 
 
 hard_row=$'| `--hard` |'
 grep -Fq "$hard_row" "$DESIGN_SKILL" || fail "design SKILL missing hard tier row"
-grep -Fq 'design_classification=SIMPLE' "$DESIGN_SKILL" || fail "design SKILL missing SIMPLE v2 mapping pin"
-grep -Fq 'design_classification=HARD' "$DESIGN_SKILL" || fail "design SKILL missing HARD v2 mapping pin"
+# Tier-mapping pins moved to design-init-runparams.sh (#3245); check the driver.
+command grep -Fq 'default tier: SIMPLE' "$SCRIPT_DIR/design-init-runparams.sh" || fail "design SKILL missing SIMPLE v2 mapping pin"
+command grep -Fq 'argv tier: --hard' "$SCRIPT_DIR/design-init-runparams.sh" || fail "design SKILL missing HARD v2 mapping pin"
 grep -Fq 'invoke-plan-validator.sh' "$DESIGN_SKILL" || fail "design SKILL missing unconditional validator helper pin"
 
 echo "PASS: test-design-driver.sh"

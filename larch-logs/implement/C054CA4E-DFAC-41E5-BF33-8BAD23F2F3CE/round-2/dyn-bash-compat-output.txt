@@ -1,0 +1,19 @@
+Reviewing the branch diff and driver scripts for Bash 3.2 correctness.
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/design-init-runparams.sh:188-193` — `tracking-issue-write.sh rename` emits **two** `emit_kv` lines (`RENAMED=…` and `NEW_TITLE=…`), but the driver matches `_rename_out` with a single-line `case` pattern. Under Bash 3.2 (and later), `case` compares the **entire** captured string, so a normal idempotent response like `RENAMED=false\nNEW_TITLE=…` does not match `RENAMED=false)` and falls through to `*) RENAMED=true`, flipping a successful no-op rename into `RENAMED=true` in `.design-init-runparams-result.env` and stdout. The branch’s `test-step0b-router-flag-recovery.sh` case 8 stub only prints one line, so it does not catch this. **Suggested fix:** Parse rename stdout line-by-line (same KV loop used elsewhere), or match with a multiline-safe test (e.g. `grep -q '^RENAMED=false$'` on each line) and default to `RENAMED=false` on unknown output instead of `RENAMED=true`.
+
+### Out-of-Scope Observations
+
+Bash 3.2 portability checks on the new drivers look sound for this repo’s conventions:
+
+- `${WARN_LINES[@]+"${WARN_LINES[@]}"}` in `design-route.sh` and `design-init-runparams.sh` is the same empty-array / `set -u` idiom used elsewhere (e.g. `scripts/launch-review.sh`).
+- `local -a kvs=(…)` with conditional `kvs+=()` in `emit_route_result` is valid on macOS Bash 3.2.
+- `printf -v` in `skills/design/SKILL.md` Step 0b fences is available in Bash 3.1+.
+- `[[ … =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]` in `validate_repo` matches existing repo helpers (`design-pause-load.sh`, `write-design-current-env.sh`).
+- `${REPO:+--repo "$REPO"}` in drivers and SKILL fences correctly omits `--repo` when `REPO` is empty and quotes it when set.
+- `start_count=$(grep -c …) || start_count=0` in `plan_block_present` mirrors `scripts/plan-block-read.sh:113-114` and is safe under `set -euo pipefail` because the `||` absorbs `grep`’s exit 1 when count is zero.
+
+`skills/design/SKILL.md` uses `for _w in "${_route_warn_lines[@]}"` without the `[@]+` guard, but arrays are initialized with `=()` first; that is safe on Bash 3.2 with `set -u` and is not a portability defect.
+
+**Branch commits (since merge-base with `main`):** `abfbc565c`, `fee289551`, `25e5f2ab4`, `d479acd41`, `ffcdd6ffa`.

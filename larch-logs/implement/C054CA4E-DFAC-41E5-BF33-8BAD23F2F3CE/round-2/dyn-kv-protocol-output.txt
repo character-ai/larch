@@ -1,0 +1,18 @@
+Reviewing the KV protocol between the new drivers and SKILL.md orchestrator fences.
+### In-Scope Findings
+
+- **architecture** `skills/design/scripts/design-route.md:58` — The sibling contract says the file-first `.design-route-result.env` loop prints `WARN`/`ERROR` “immediately,” but `skills/design/SKILL.md:247-270` only appends those keys into `_route_warn_lines` / `_route_error_lines` and prints once after the stdout merge (lines 265–270). Driver keys and orchestrator `case` arms are aligned (`design-route.sh:166-184` ↔ `SKILL.md:248-262`), and pause-load visibility before `ROUTE` branching still works when stdout capture is empty, but the three-way KV contract (`.md`, SKILL, Step 3 precedent at `SKILL.md:906-907`) disagrees on mechanism. **Suggested fix:** Update `design-route.md` to describe the deferred dedupe-and-print handoff (or change the SKILL file-first branches to immediate `printf 'WARN=%s\n'` / `printf 'ERROR=%s\n'` if immediate emission is normative).
+
+- **architecture** `skills/design/scripts/design-init-runparams.md:53` — The orchestrator handoff paragraph documents only `INIT_STATUS=contract-drift` for `_init_rc=1`, while the driver also emits `INIT_STATUS=env-refresh-failed` on `write-design-current-env.sh` failure (`design-init-runparams.sh:177-184`, allowlist `design-init-runparams.md:31-38`). `SKILL.md:370-397` merges KVs for both `_init_rc=0` and `_init_rc=1`, then special-cases `contract-drift` (391–393) and falls through to a generic `INIT_STATUS=…` abort (395–397) for `env-refresh-failed`—not silent, but the documented KV contract omits the second terminal status and offers no operator-facing remediation text comparable to contract-drift. **Suggested fix:** Extend `design-init-runparams.md` orchestrator handoff to list both `contract-drift` and `env-refresh-failed`; add a dedicated SKILL banner for `env-refresh-failed` pointing at `write-design-current-env.sh` / `source-env.sh` diagnostics.
+
+- **architecture** `skills/design/SKILL.md:378-388` — Post-gate init handoff prints `WARN` on every file-first and stdout hit without deduplication, while the route handoff dedupes `WARN`/`ERROR` before a single print pass (`247-270`). When both the result env and `_init_out` carry the same `WARN` (e.g. rename failure from `design-init-runparams.sh:195`), operators can see duplicate breadcrumbs—an inconsistent dual-channel merge rule across the two Step 0b drivers. **Suggested fix:** Reuse the route pattern (accumulate `WARN` lines, print once after merge) or gate stdout `WARN` printing when the value was already consumed from the file.
+
+### Out-of-Scope Observations
+
+- **KV key parity (route):** `emit_route_result` in `design-route.sh:166-184` and the SKILL file-first/stdout `case` lists at `SKILL.md:248-262` cover the same routing keys (`ROUTE`, `BRAINSTORM_PREFIX`, title-filter, reentry, resume KVs); `WARN`/`ERROR` are intentionally not stored via `printf -v`. No missing driver↔orchestrator routing keys found.
+
+- **`cancel-pause-load`:** Emitted by `design-route.sh:217-230` and handled in the orchestrator `case` at `SKILL.md:276-278` with an explicit abort banner—present in the branch diff though absent from the plan’s acceptance ROUTE enum list; not a protocol gap.
+
+- **`env-refresh-failed` behavior:** Orchestrator does read merged `INIT_STATUS` before abort; the issue is contract documentation and operator messaging, not a silent drop of the KV.
+
+- **Harness:** `scripts/test-design-structure.sh:786-787` only checks that `WARN)`/`ERROR)` appear in `SKILL.md`, not that printing is immediate vs deferred; weak relative to Round 5 wording but pre-existing test precision limits.

@@ -1,0 +1,40 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplication is real but shared-extraction is optional hygiene for this refactor slice.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Two-file validator drift is possible but consolidating now adds little beyond DRY.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Step 0b defers WARN/ERROR printing while the repo-wide grep and design-route.md still claim immediate emission.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Structure tests pin symbols but not fetch→route→clarify or driver internal step order.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Multiline rename stdout makes the single-line case miss RENAMED=false and default to RENAMED=true.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Non-zero pause-load rc hard-aborts cancel-pause-load instead of LOAD_OK=false fallthrough to later gates.
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Orchestrator no longer defaults MARKER_AGE/MARKER_TTL before reentry arithmetic and banners.
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- cancel-pause-load is implemented but absent from plan acceptance ROUTE enum.
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Resume path threads ${REPO:+--repo} in SKILL but structure tests lack that pin.
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- No CI greps for LOAD_OK=false fallthrough prose or pre-case ROUTE WARN/ERROR re-emit.
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan_block_present has marker greps only, no stub-body routing table tests.
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Plan explicitly deferred a dedicated offline routing harness for #3245.
+FINDING_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- Cases 1-7 replicate merge logic; only case 8 exercises design-init-runparams.sh.
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Merging pause-load stderr into parsed LOAD_OK/STEP lines enables spoofed resume routing.
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Prose already skips sub-steps 3-6 on resume@; missing ROUTE=proceed fence is orchestrator-discipline not a proven bug.
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Unquoted dedup glob is real but unlikely for typical WARN tokens.
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- Cached issue-body vs pause-load gh re-fetch can diverge but fix cost exceeds typical #3245 scope.
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Resume write-design-current-env at SKILL.md:329 has no rc handling before resumed banner.
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- emit_route_result prints ROUTE on stdout before result-env write refusal exits 1.
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- env-refresh-failed is emitted but plan acceptance and operator messaging only document contract-drift.
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Init handoff may duplicate WARN lines; cosmetic compared to route dedupe pattern.
+FINDING_22: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- OR greps pass if literals remain only in SKILL.md after driver removal.
+OOS_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Extra REPO resolve on clarify path is inefficient but not worth a standalone issue.
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Unrelated test-plan-review-loop poll-interval change bundled on branch; note in PR test plan.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- larch-logs markdown lint exclusion is intentional and unrelated to Step 0b.
+OOS_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Reentry word-splitting is pre-existing and safe for current KV shape.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Newline-in-value gap matches unchanged tmpdir trust model; not worth filing alone.
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Rename stderr/2>&1 concern is already covered by in-scope FINDING_5.
+OOS_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Empty-array [@]+ idiom is intentional and matches repo convention.
+OOS_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- local -a kvs in emit_route_result is valid Bash 3.2.
+OOS_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- printf -v in Step 0b fences is supported on target Bash.
+OOS_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- validate_repo regex matches existing helpers; not a distinct issue.
+OOS_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ${REPO:+--repo "$REPO"} quoting is correct as written.
+OOS_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan_block_present grep/arrays are Bash-3.2-safe as implemented.
+OOS_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Driver and orchestrator routing KV parity is satisfied.
+OOS_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- cancel-pause-load wiring exists; gap is acceptance/docs (FINDING_8).
+OOS_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- INIT_STATUS is read before abort; issue is documentation (FINDING_20).
+OOS_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Harness timing weakness is subsumed by in-scope FINDING_3.
+OOS_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Case 8 adequately exercises driver jq-failure and append-tool-failure path.
+OOS_18: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- OR check redundancy is minor and covered by FINDING_22.

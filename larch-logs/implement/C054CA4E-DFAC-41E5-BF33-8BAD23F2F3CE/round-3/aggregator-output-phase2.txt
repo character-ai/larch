@@ -1,0 +1,171 @@
+Normalized aggregator output from the supplied reviewer slots. Positive security attestations (input FINDING_11–16) are omitted — they describe mitigations, not behavioral risks. Security slots’ `[OUT_OF_SCOPE]` items are kept as separate `### OOS_N:` blocks.
+
+### FINDING_1: test-design-route harness missing from HEAD; CI/relevant-checks fail
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `test-design-route` is registered in `Makefile`, `scripts/relevant-checks.sh`, and `agent-lint.toml`, but `scripts/test-design-route.sh` and `scripts/test-design-route.md` are not committed. On a clean checkout, `make test-design-route` / `make test-harnesses-13` and `relevant-checks` fail with a missing script.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Commit scripts/test-design-route.sh and scripts/test-design-route.md or remove Makefile/relevant-checks/agent-lint references until the harness ships
+  - From cursor-specialist-testing-output.txt: Commit scripts/test-design-route.sh and scripts/test-design-route.md or remove Makefile/relevant-checks registrations until they ship.
+  - From cursor-specialist-plan-fidelity-output.txt: Commit scripts/test-design-route.sh and scripts/test-design-route.md with the wiring or revert all test-design-route references
+
+### FINDING_2: New test-design-route harness conflicts with plan Round 1 Decision 2
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: A dedicated `scripts/test-design-route.sh` harness expands CI/contributor surface (Makefile shard, agent-lint, relevant-checks) beyond the plan’s “two updated harnesses only / no new driver test harnesses” decision. Future work may assume no third harness exists unless the plan and acceptance are updated.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Fold cases into test-design-structure.sh per plan, or update plan/acceptance to bless test-design-route.sh and document why.
+  - From cursor-specialist-plan-fidelity-output.txt: Remove test-design-route harness and restore design-route.md harness text to test-design-structure.sh only
+
+### FINDING_3: Empty or invalid ROUTE after `_route_rc=0` (no Step 0b verdict guard)
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt, dyn-handoff-protocol-output.txt
+- **Severity**: important
+- **Concern**: After a successful route driver exit, the orchestrator merges KVs but does not require non-empty `ROUTE` in the allowed verdict set. Symlink refusal on `.design-route-result.env` (file skipped) plus empty `_route_out` can leave `ROUTE=""` with `_route_rc=0`. The `case "${ROUTE:-}"` arm handles only cancel/resume patterns; `clarify`, `already-planned`, and `proceed` depend on later prose guards, so execution may continue without clarify/already-planned/proceed gates or the sub-step 6 init path — unlike Step 3’s explicit invalid `LOOP_STATUS` handling.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Abort when ROUTE is empty after _route_rc=0 or treat symlink refusal as a hard failure before ROUTE branches
+  - From cursor-specialist-edge-cases-output.txt: Abort before ROUTE case when ROUTE is empty or unknown; mirror Step 3 LOOP_STATUS guard; add structure-test pin.
+  - From dyn-handoff-protocol-output.txt: Immediately after the stdout merge loops and before brainstorm handling, abort with a Step-0b configuration/operational banner when `ROUTE` is empty or not in the known verdict set (mirror Step 3’s `LOOP_STATUS` validation pattern in `skills/design/scripts/test-step3-orchestrator-fence.sh:65-67`).
+
+### FINDING_4: Init handoff treats `_init_rc=0` as success without `INIT_STATUS=ok` / run-params.json
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: After `_init_rc=0`, the orchestrator does not require merged `INIT_STATUS=ok` and a persisted `run-params.json`. Symlink-refused init result env and empty `_init_out` can still advance Step 0b without tier/router flags in `run-params.json`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: After merge on rc=0 require INIT_STATUS=ok and run-params.json exists; abort with explicit banner otherwise.
+
+### FINDING_5: Issue rename failure is WARN-only; init still exits 0
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: In `design-init-runparams.sh`, rename failure is logged as WARN only; `write-run-params` still runs and the driver exits 0. The proceed path can continue with `run-params.json` while the issue title is still not `[DESIGNING]`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Fail init on rename failure or add orchestrator title-state gate before Step 0c.
+
+### FINDING_6: Init driver emits stdout KVs before `phase_driver_write_result_env`
+- **Reviewer(s)**: dyn-driver-contract-drift-output.txt
+- **Severity**: important
+- **Concern**: On the init success path, `emit_kv` lines go to stdout before `phase_driver_write_result_env`, inverting the route driver contract (result file before stdout). With file-first merge and fill-only stdout, a stale result file (e.g. `INIT_STATUS=contract-drift`) can win over stdout `INIT_STATUS=ok` if the atomic write fails, misclassifying a successful init body.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-driver-contract-drift-output.txt: Mirror `design-route.sh`’s `emit_route_result`: build `_init_kvs`, call `phase_driver_write_result_env` first, then loop `emit_kv`; extend `test-design-structure.sh` with the same write-before-`emit_kv` line-order assert used for the route driver.
+  - From dyn-driver-contract-drift-output.txt: Add parallel greps/line-order checks on `design-init-runparams.sh` for `phase_driver_write_result_env "$RESULT_ENV"` preceding the success-path `emit_kv INIT_STATUS` block (and optionally a negative grep that success-path `emit_kv` does not appear above the final `phase_driver_write_result_env`).
+
+### FINDING_7: test-step0b-router-flag-recovery cases 8–10 exceed planned case count
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: Cases 8–10 were added beyond the plan’s limit of seven unchanged cases. The plan called for re-pointing comments only; the branch adds driver integration cases without a plan update.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Revert Cases 8-10 or amend plan acceptance to document expanded coverage
+
+### FINDING_8: `cancel-pause-load` ROUTE not in plan acceptance enum
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: Runtime emits a seventh `ROUTE` value (`cancel-pause-load`) while supplied acceptance lists six. Documentation and plan enum are out of sync with `design-route.sh` / `SKILL.md` / `design-route.md`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Update plan acceptance and enum documentation or map to existing cancel route
+
+### FINDING_9: No-op loops over `_route_warn_lines` / `_route_error_lines`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: Post-merge `for` loops over `_route_warn_lines` and `_route_error_lines` are no-ops (`:; done`). WARN/ERROR are already printed in file-first/stdout merge arms; dead loops suggest missing pre-ROUTE re-emit and may invite duplicate re-adds.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Remove the loops or implement intentional re-emit once and dedupe merge-time prints.
+  - From cursor-specialist-correctness-output.txt: Remove no-op loops or implement explicit re-emit from _route_warn_lines/_route_error_lines
+  - From cursor-specialist-edge-cases-output.txt: Remove loops or implement explicit post-merge WARN/ERROR re-emit if still required.
+  - From cursor-specialist-plan-fidelity-output.txt: Remove no-op loops or add explicit WARN ERROR re-emit if required
+
+### FINDING_10: `plan_block_present` duplicates `plan-block-read.sh` pairing rules
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: Marker pairing logic in `design-route.sh` can drift when `plan-block-read.sh` is fixed alone, causing incorrect `already-planned` routing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Extract shared presence helper or single source of truth for marker pairing.
+
+### FINDING_11: Duplicated `validate_plain_scalar` / `validate_repo` across route and init drivers
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: Argv validation fixes must be applied in both `design-route.sh` and `design-init-runparams.sh`, risking skew between drivers.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Centralize in lib-phase-driver.sh or lib-design-driver-argv.sh.
+
+### FINDING_12: `cancel-pause-load` lacks grep pins in `test-design-structure.sh`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: Invalid pause resume / `cancel-pause-load` routing is covered only by `test-design-route.sh`; structure tests lack anchors in `SKILL.md` and `design-route.sh`, so orchestrator or driver regressions may not fail structure CI.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Add grep anchors in test-design-structure.sh for cancel-pause-load in SKILL.md and design-route.sh.
+
+### FINDING_13: Missing `step-name-registry.tsv` routes valid pause resumes to `cancel-pause-load`
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: If the registry is absent, `step_is_registered` fails and valid pause resumes abort as `cancel-pause-load` (partial plugin tree: pause-load OK, resume always aborts).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Distinguish missing registry (operational error) from unknown step; or fail driver init if registry is absent
+
+### FINDING_14: `INIT_STATUS=env-refresh-failed` outside documented plan allowlist
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: New init status is emitted but not in the plan/`design-init-runparams.md` contract; consumers of the documented `INIT_STATUS` set may miss handling.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Extend plan and design-init-runparams.md allowlist or collapse into documented statuses
+
+### FINDING_15: jq router-flag merge failure only logged to execution-issues.md
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: On jq merge failure, operators may still see `INIT_STATUS=ok` while partition/brainstorm/manual argv flags do not persist across subshells.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: add_warn on jq failure with operator-visible text in addition to append-tool-failure.sh.
+
+---
+
+### OOS_1: [OUT_OF_SCOPE] `eval` for `nocasematch` restore in lib-title-eligibility.sh
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: Long-standing `eval "$_saved_shopt"` pattern at `scripts/lib-title-eligibility.sh:38,42` in a file the diff only sources, not modifies.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_2: [OUT_OF_SCOPE] Unquoted `for _rkv in $_reentry_out` word-splitting
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: Inherited from prior inline Step 0b at `skills/design/scripts/design-route.sh:268`; values today are numeric or fixed-path KVs from `lib-design-reentry-guard.sh`.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_3: [OUT_OF_SCOPE] No-op WARN/ERROR loops are inert, not a missing flush
+- **Reviewer(s)**: dyn-handoff-protocol-output.txt, dyn-driver-contract-drift-output.txt
+- **Severity**: nit
+- **Concern**: Loops at `skills/design/SKILL.md:265-266` do not perform side-channel flush; breadcrumbs are printed in file-first/stdout `case` arms (`250-251`, `261-262`); arrays exist for dedup only. Behavior appears correct; loops are misleading dead code relative to plan wording.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_4: [OUT_OF_SCOPE] `cancel-pause-load` wiring correct at runtime
+- **Reviewer(s)**: dyn-handoff-protocol-output.txt
+- **Severity**: nit
+- **Concern**: `design-route.sh` emits `cancel-pause-load` with exit 0; orchestrator aborts in the matching `case` arm (`272-274`).
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_5: [OUT_OF_SCOPE] Stdout merge fill-only logic for routing keys
+- **Reviewer(s)**: dyn-handoff-protocol-output.txt
+- **Severity**: nit
+- **Concern**: `[[ -n "${!_key:-}" ]] || printf -v` avoids overwriting file-sourced keys with empty stdout; empty pre-init `ROUTE=""` still allows stdout to populate `ROUTE`.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_6: [OUT_OF_SCOPE] Init handoff exit-code fence structure
+- **Reviewer(s)**: dyn-handoff-protocol-output.txt
+- **Severity**: nit
+- **Concern**: Init handoff (`373-405`) matches intended `_init_rc=2` / unexpected non-zero abort and `_init_rc=1` merge-then-`INIT_STATUS` handling; no separate in-scope defect beyond prose-gated sub-step 6 when `ROUTE=proceed` is not honored.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_7: [OUT_OF_SCOPE] Structure-test grep literals present in drivers
+- **Reviewer(s)**: dyn-driver-contract-drift-output.txt
+- **Severity**: nit
+- **Concern**: Scout-listed `grep -Fq` literals (`design-pause-load.sh`, `step_is_registered`, `phase_driver_write_result_env`, `INIT_STATUS=env-refresh-failed`, `_wdce_args+=(--manual-requested true)`) are present; no silent harness/string drift for those pins.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_8: [OUT_OF_SCOPE] Router-flag-recovery cases 8–10 stubbing sufficient
+- **Reviewer(s)**: dyn-driver-contract-drift-output.txt
+- **Severity**: nit
+- **Concern**: Cases 8–10 invoke real `design-init-runparams.sh` with stubbed `CLAUDE_PLUGIN_ROOT` helpers adequate for jq-failure, missing-file WARN, and jq-unavailable paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_9: [OUT_OF_SCOPE] test-design-route.sh useful despite plan “no new harness” decision
+- **Reviewer(s)**: dyn-driver-contract-drift-output.txt
+- **Severity**: important
+- **Concern**: Branch adds `scripts/test-design-route.sh` (Makefile-wired) despite #3245 “no new driver test harnesses”; documented in `design-route.md` and exercises `cancel-pause-load` / plan-marker routing usefully.
+- **Suggested revisions (informational for voters; coder decides)**:

@@ -1,0 +1,60 @@
+# design-route.sh
+
+**Consumer**: `/design` Step 0b — pre-gate phase driver (resume detection, title-eligibility, re-entry guard, single `ROUTE=` verdict).
+
+**Caller**: `skills/design/SKILL.md` Step 0b (after issue fetch and `REPO` resolve; before clarify / already-planned `AskUserQuestion` gates).
+
+## Argv
+
+| Flag | Required | Notes |
+|------|----------|-------|
+| `--design-tmpdir PATH` | yes | `cd … && pwd -P` |
+| `--issue N` | yes | Positive integer |
+| `--issue-title STR` | yes | No embedded newline/CR |
+| `--issue-body-file PATH` | yes | Readable regular file; not a symlink |
+| `--has-clarify-label true\|false` | yes | Orchestrator parses issue labels |
+| `--claude-pid N` | yes | Positive integer |
+| `--repo OWNER/REPO` | no | Forwarded from orchestrator; validated when present |
+
+The driver does not fetch the issue body or resolve `REPO` itself.
+
+## Derived / session inputs
+
+- `$PLUGIN_ROOT/scripts/design-pause-load.sh` when the body matches the same `larch:design-pause:start` line regex as `design-pause-load.sh` (optional `${REPO:+--repo}`).
+- `scripts/lib-title-eligibility.sh`, `scripts/lib-design-reentry-guard.sh`.
+- Plan markers `MARK_START` / `MARK_END` copied verbatim from `scripts/plan-block-read.sh` lines 20–21.
+
+## Responsibilities
+
+1. Resume: `LOAD_OK=true` with a `STEP` present in `step-name-registry.tsv` → `ROUTE=resume@<STEP>` + resume KVs; `LOAD_OK=true` without `STEP` or with an unregistered step → `ROUTE=cancel-pause-load` + `ERROR`; missing `step-name-registry.tsv` → exit `2` (configuration error, not `cancel-pause-load`); `LOAD_OK=false` or a non-zero loader exit → emit `WARN`/`ERROR`, fall through to steps 2–4 (no early `ROUTE=proceed`). The loader's stdout is the only parsed contract stream; stderr diagnostics are ignored by this parser.
+2. Title-eligibility: lifecycle → `cancel-title-filter` + `TITLE_FILTER_REASON=lifecycle` + marker; archival → `cancel-title-filter` + `archival`; brainstorm prefix → `BRAINSTORM_PREFIX=true` only.
+3. Re-entry guard: `MARKER_HIT=true` → `cancel-reentry-guard` + age/TTL/path KVs; miss or helper rc 2 → continue.
+4. Verdict: clarify label → `clarify`; well-formed plan block → `already-planned`; else `proceed`. Malformed plan markers → absent.
+
+**`ROUTE` verdict set** (orchestrator-validated): `proceed`, `clarify`, `already-planned`, `cancel-title-filter`, `cancel-reentry-guard`, `cancel-pause-load`, `resume@<STEP>` (registered step name).
+
+## Result env (`.design-route-result.env`)
+
+Allowlist: `ROUTE`, `BRAINSTORM_PREFIX`, `TITLE_FILTER_REASON`, `TITLE_FILTER_MARKER`, `MARKER_AGE`, `MARKER_TTL`, `DESIGN_REENTRY_MARKER_PATH`, `RESUME_STEP`, `SESSION_ID`, `RUN_ID`, `TIER`, `BRAINSTORM_DONE`, `WARN`, `ERROR`.
+
+## Exit codes
+
+| Code | When |
+|------|------|
+| `0` | Any routing verdict (including cancel routes) |
+| `1` | `phase_driver_write_result_env` refusal |
+| `2` | Argv / body-file / repo config error |
+
+## LLM boundary
+
+Stops before clarify loop, already-planned `AskUserQuestion`, verbal `/larch:issue`, and user-facing cancel banners (orchestrator-owned).
+
+## Idempotency
+
+Safe to re-run on the same inputs; no user prompts.
+
+## Harness
+
+`scripts/test-design-structure.sh` (Step 0b extracted-shape greps and route verdict anchors).
+
+Orchestrator handoff: Step 3–shaped `set +e` capture (`_route_out`), file-first allowlisted read of `.design-route-result.env` (symlink refusal), `case` loop — routing keys via `printf -v`, `WARN`/`ERROR` printed immediately from the file-first loop before `case ROUTE`; stdout merge fills missing routing keys only; abort on exit `2` or unexpected non-zero before `ROUTE` branches. Does **not** call `phase_driver_read_result_env`.

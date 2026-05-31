@@ -203,163 +203,219 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 1. Consume the mental argv bindings from Step **0-pre** (`hard_requested`, `partition_requested`, `brainstorm_requested`, `manual_requested`, `no_dedup_requested`, optional `run_id`). Remaining tokens after flags:
    - If the first token matches `^[0-9]+$`, set `ISSUE_NUMBER` to that value.
-   - Else the remainder is **verbal feature text**: invoke **`/larch:issue`** via the Skill tool (forward `--no-dedup` when set). Parse the created issue number into `ISSUE_NUMBER`. The title-eligibility filter at sub-step **2.5** still applies once the issue is fetched — if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
-2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure. Bind `ISSUE_TITLE` from the JSON `title` field.
-2.5-bis. **Resume detection** — run immediately after sub-step 2 and before the title-eligibility filter. If the fetched issue body contains `<!-- larch:design-pause:start -->`, resolve `REPO` via `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` (fallback to `gh repo view`, leave empty on failure), then run:
-
-   ```bash
-   "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-load.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-   ```
-
-   Parse `LOAD_OK=` from stdout. On `LOAD_OK=true`, re-export `SESSION_ID`, `RUN_ID`, `TIER`, and `BRAINSTORM_DONE` from the loader stdout; print any returned `WARN=` lines as warning breadcrumbs before resuming; refresh the stable env symlink with `write-design-current-env.sh --output "$DESIGN_TMPDIR/source-env.sh" --design-tmpdir "$DESIGN_TMPDIR" --session-id "$SESSION_ID" --issue-number "$ISSUE_NUMBER" --claude-pid "$PPID"` (plus `--manual-requested true` if restored run params require it); print `🔓 resumed from STEP=<id>`. If `STEP=0c`, do **not** skip Step 0b clarify handling; resume at Step 0b sub-step 3 (Clarify loop), then continue through Step 0c and onward. Otherwise skip sub-steps 2.5 through 6 and route directly to the named `STEP=<id>`. Do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes on the resumed non-`0c` path. On `LOAD_OK=false`, print any `WARN=` / `ERROR=` as a warning breadcrumb and continue as a fresh run through sub-step 2.5.
-2.5. **Title-eligibility filter** — run **after** resume detection and **before** sub-step 3. Mandatory predicate order: (a) lifecycle-reject (exit on match), (b) archival-report (exit on match), (c) brainstorm (set flag and continue on match). Earlier checks short-circuit.
-
-   1. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib-title-eligibility.sh`.
-   2. Capture the lifecycle marker first, e.g. `lifecycle_reject_marker="$(title_has_lifecycle_reject_prefix "$ISSUE_TITLE" || true)"`. If `lifecycle_reject_marker` is non-empty: export `SUMMARY_OUTCOME=cancelled-title-filter`, run the `### Final summary block` fenced bash block below, then print `**⚠ /design: issue title starts with managed lifecycle marker <token> — refusing to design. Rename the title (drop the bracket prefix) and re-invoke /design.**` to stderr (substitute the captured marker) and exit **1**. `$DESIGN_TMPDIR` is preserved (Step 6 cleanup gates on `PLAN_WRITE_OK=true` and approved outcomes; both are absent on this path).
-   3. If `title_has_archival_report_prefix "$ISSUE_TITLE"` matches: export `SUMMARY_OUTCOME=cancelled-title-filter`, run the **Final summary block**, then print `**⚠ /design: issue title matches archival report-prefix \`[... Report]\` — refusing to design. Such titles are reserved for \`/research\` / \`/report-tokens\` artifacts. Rename the title and re-invoke /design.**` to stderr and exit **1**.
-   4. If `title_starts_with_brainstorm "$ISSUE_TITLE"` matches: print `**ℹ /design: detected Brainstorm title prefix — auto-enabling brainstorm mode (run-params \`brainstorm_requested=true\`) even though --brainstorm was not on argv.**` to chat (bold info banner) and set mental `brainstorm_requested=true` for sub-step 6 / `write-run-params.sh`. Do **not** exit.
-   Session-cache spurious re-entry guard runs next; see scripts/lib-design-reentry-guard.sh for grammar.
-2.6. **Session-cache spurious re-entry guard** — run after the title-eligibility filter and before the clarify loop.
-
-   1. Source `${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-reentry-guard.sh`.
-   2. Call `design_reentry_marker_hit "$ISSUE_NUMBER" "$PPID"` and parse the stdout KV line.
-   3. On `MARKER_HIT=true`: export `SUMMARY_OUTCOME=cancelled-reentry-guard`, set `LARCH_DESIGN_REENTRY_GUARD_PPID` to `$PPID`, set `DESIGN_REENTRY_MARKER_PATH` from `design_reentry_marker_path`, run the **Final summary block**, compute the remaining TTL seconds, then print the refusal banner below with the issue, PPID, age, TTL, and remaining seconds substituted. Exit **1** and preserve `$DESIGN_TMPDIR`.
-   4. On miss (`MARKER_HIT=false`, exit 1), proceed to sub-step 3. On helper return 2, print the helper's KV line as a warning and proceed to sub-step 3 because caller-error should not create a hard block on a fresh design.
-
-   ```text
-   **⚠ /design: refusing spurious re-entry — guard=session-cache issue=#<N> ppid=<PPID> marker_age=<seconds>s ttl=<TTL>s. Wait <remaining>s or delete <DESIGN_REENTRY_MARKER_PATH> to override.**
-   ```
-
-   Reference Bash shape:
+   - Else the remainder is **verbal feature text**: invoke **`/larch:issue`** via the Skill tool (forward `--no-dedup` when set). Parse the created issue number into `ISSUE_NUMBER`. The route driver at sub-step **2.5** still applies title-eligibility once the issue is fetched — if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
+2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure. Bind `ISSUE_TITLE` from the JSON `title` field. Write the fetched `body` to `$DESIGN_TMPDIR/issue-body.txt`. Set `HAS_CLARIFY_LABEL=true` when the `needs-design-clarification` label is present, else `HAS_CLARIFY_LABEL=false`. **Resolve `REPO`** once for explicit `gh --repo` threading: prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so downstream helpers use the hub default.
+2.5. **Route driver** — `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` (contract: `design-route.md`). Resume detection (via `${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-load.sh` when the body carries a pause marker), title-eligibility, re-entry guard, and `ROUTE=` verdict run inside the driver; cancel banners and `AskUserQuestion` gates stay here.
 
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-   # shellcheck source=scripts/lib-design-reentry-guard.sh
-   source "${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-reentry-guard.sh"
-   _reentry_out="$(design_reentry_marker_hit "$ISSUE_NUMBER" "$PPID" || true)"
-   MARKER_HIT=false
+   set +e
+   _route_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh" \
+     --design-tmpdir "$DESIGN_TMPDIR" \
+     --issue "$ISSUE_NUMBER" \
+     --issue-title "$ISSUE_TITLE" \
+     --issue-body-file "$DESIGN_TMPDIR/issue-body.txt" \
+     --has-clarify-label "$HAS_CLARIFY_LABEL" \
+     --claude-pid "$PPID" \
+     ${REPO:+--repo "$REPO"})
+   _route_rc=$?
+   set -e
+   if [[ "${_route_rc:-0}" -eq 2 ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-route.sh configuration error (exit 2); aborting /design**" >&2
+     exit 1
+   fi
+   if [[ "${_route_rc:-0}" -ne 0 ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-route.sh failed (exit ${_route_rc}); aborting /design**" >&2
+     exit 1
+   fi
+   ROUTE=""
+   BRAINSTORM_PREFIX=false
+   TITLE_FILTER_REASON=""
+   TITLE_FILTER_MARKER=""
    MARKER_AGE=0
    MARKER_TTL=300
-   for _pair in $_reentry_out; do
-     case "$_pair" in
-       MARKER_HIT=*) MARKER_HIT="${_pair#MARKER_HIT=}" ;;
-       MARKER_AGE=*) MARKER_AGE="${_pair#MARKER_AGE=}" ;;
-       MARKER_TTL=*) MARKER_TTL="${_pair#MARKER_TTL=}" ;;
-     esac
-   done
-   if [ "$MARKER_HIT" = true ]; then
-     MARKER_REMAINING=$((MARKER_TTL - MARKER_AGE))
-     [ "$MARKER_REMAINING" -lt 0 ] && MARKER_REMAINING=0
-     export SUMMARY_OUTCOME=cancelled-reentry-guard
-     LARCH_DESIGN_REENTRY_GUARD_PPID="$PPID"
-     DESIGN_REENTRY_MARKER_PATH="$(design_reentry_marker_path "$ISSUE_NUMBER" "$PPID")"
-     export CLAUDE_PLUGIN_ROOT
-     SUMMARY_MODE_STRING=""
-     if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; then
-       SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
+   DESIGN_REENTRY_MARKER_PATH=""
+   RESUME_STEP=""
+   _route_warn_lines=()
+   _route_error_lines=()
+   if [[ -f "$DESIGN_TMPDIR/.design-route-result.env" ]]; then
+     if [[ -L "$DESIGN_TMPDIR/.design-route-result.env" ]]; then
+       printf '%s\n' "**⚠ Step 0b: design-route result env is a symlink; refusing to source**"
+     else
+       while IFS= read -r _line || [[ -n "$_line" ]]; do
+         _key="${_line%%=*}"; _value="${_line#*=}"
+         case "$_key" in
+           ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
+             printf -v "$_key" '%s' "$_value" ;;
+           WARN) _route_warn_dup=false; for _w in "${_route_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _route_warn_dup=true; break; }; done; if [[ "$_route_warn_dup" != true ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
+           ERROR) _route_err_dup=false; for _e in "${_route_error_lines[@]}"; do [[ "$_e" == "$_value" ]] && { _route_err_dup=true; break; }; done; if [[ "$_route_err_dup" != true ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
+         esac
+       done <"$DESIGN_TMPDIR/.design-route-result.env"
      fi
-     [ -n "$SUMMARY_MODE_STRING" ] || SUMMARY_MODE_STRING=N/A
-     DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
-       "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
-       --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}" \
-       --mode "${SUMMARY_MODE_STRING}" \
-       ${REPO:+--repo "$REPO"} \
-       --post-publish-only
-     printf '%s\n' "**⚠ /design: refusing spurious re-entry — guard=session-cache issue=#${ISSUE_NUMBER} ppid=${PPID} marker_age=${MARKER_AGE}s ttl=${MARKER_TTL}s. Wait ${MARKER_REMAINING}s or delete ${DESIGN_REENTRY_MARKER_PATH} to override.**" >&2
+   fi
+   while IFS= read -r _line || [[ -n "$_line" ]]; do
+     _key="${_line%%=*}"; _value="${_line#*=}"
+     case "$_key" in
+       ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
+         [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
+      WARN) _route_warn_dup=false; for _w in "${_route_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _route_warn_dup=true; break; }; done; if [[ "$_route_warn_dup" != true ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
+      ERROR) _route_err_dup=false; for _e in "${_route_error_lines[@]}"; do [[ "$_e" == "$_value" ]] && { _route_err_dup=true; break; }; done; if [[ "$_route_err_dup" != true ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
+     esac
+   done <<<"${_route_out:-}"
+   if [[ "$BRAINSTORM_PREFIX" == true ]]; then
+     brainstorm_requested=true
+     printf '%s\n' "**ℹ /design: detected Brainstorm title prefix — auto-enabling brainstorm mode (run-params \`brainstorm_requested=true\`) even though --brainstorm was not on argv.**"
+   fi
+   case "${ROUTE:-}" in
+     cancel-pause-load)
+       printf '%s\n' "**⚠ /design: pause resume state could not be loaded safely; aborting before fresh routing. Inspect pause-load ERROR breadcrumbs above, fix the pause block, then re-invoke /design.**" >&2
+       exit 1 ;;
+     cancel-title-filter)
+       export SUMMARY_OUTCOME=cancelled-title-filter
+       export CLAUDE_PLUGIN_ROOT
+       SUMMARY_MODE_STRING=N/A
+       DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
+         "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
+         --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}" \
+         --mode "${SUMMARY_MODE_STRING}" \
+         ${REPO:+--repo "$REPO"} \
+         --post-publish-only
+       if [[ "$TITLE_FILTER_REASON" == lifecycle ]]; then
+         printf '%s\n' "**⚠ /design: issue title starts with managed lifecycle marker ${TITLE_FILTER_MARKER:-<token>} — refusing to design. Rename the title (drop the bracket prefix) and re-invoke /design.**" >&2
+       else
+         printf '%s\n' "**⚠ /design: issue title matches archival report-prefix \`[... Report]\` — refusing to design. Such titles are reserved for \`/research\` / \`/report-tokens\` artifacts. Rename the title and re-invoke /design.**" >&2
+       fi
+       exit 1 ;;
+     cancel-reentry-guard)
+       MARKER_REMAINING=$((MARKER_TTL - MARKER_AGE))
+       [[ "$MARKER_REMAINING" -lt 0 ]] && MARKER_REMAINING=0
+       export SUMMARY_OUTCOME=cancelled-reentry-guard
+       LARCH_DESIGN_REENTRY_GUARD_PPID="$PPID"
+       export CLAUDE_PLUGIN_ROOT
+       SUMMARY_MODE_STRING=""
+       if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
+         SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
+       fi
+       [[ -n "$SUMMARY_MODE_STRING" ]] || SUMMARY_MODE_STRING=N/A
+       DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
+         "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
+         --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}" \
+         --mode "${SUMMARY_MODE_STRING}" \
+         ${REPO:+--repo "$REPO"} \
+         --post-publish-only
+       printf '%s\n' "**⚠ /design: refusing spurious re-entry — guard=session-cache issue=#${ISSUE_NUMBER} ppid=${PPID} marker_age=${MARKER_AGE}s ttl=${MARKER_TTL}s. Wait ${MARKER_REMAINING}s or delete ${DESIGN_REENTRY_MARKER_PATH} to override.**" >&2
+       exit 1 ;;
+     resume@*)
+       RESUME_STEP="${ROUTE#resume@}"
+       _manual_resume=false
+       if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
+         [[ "$(jq -r '.manual_gate_b // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" == true ]] && _manual_resume=true
+       fi
+       _wdce_resume_args=(
+         "${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.sh"
+         --output "$DESIGN_TMPDIR/source-env.sh"
+         --design-tmpdir "$DESIGN_TMPDIR"
+         --session-id "$SESSION_ID"
+         --issue-number "$ISSUE_NUMBER"
+         --claude-pid "$PPID"
+       )
+       [[ "$_manual_resume" == true ]] && _wdce_resume_args+=(--manual-requested true)
+      set +e
+      "${_wdce_resume_args[@]}" ${REPO:+--repo "$REPO"}
+      _wdce_resume_rc=$?
+      set -e
+      if [[ "${_wdce_resume_rc:-0}" -ne 0 ]]; then
+        printf '%s\n' "**⚠ /design: resume env refresh failed via write-design-current-env.sh (exit ${_wdce_resume_rc}); aborting before resumed STEP=${RESUME_STEP}. Inspect source-env.sh / write-design-current-env.sh diagnostics and re-invoke /design.**" >&2
+        exit 1
+      fi
+      printf '%s\n' "🔓 resumed from STEP=${RESUME_STEP}" ;;
+   esac
+   _route_valid=false
+   case "${ROUTE:-}" in
+     proceed|clarify|already-planned|cancel-title-filter|cancel-reentry-guard|cancel-pause-load) _route_valid=true ;;
+     resume@*) [[ -n "${ROUTE#resume@}" ]] && _route_valid=true ;;
+   esac
+   if [[ "$_route_valid" != true ]]; then
+     printf '%s\n' "**⚠ Step 0b: missing or invalid ROUTE after design-route.sh; aborting /design**" >&2
      exit 1
    fi
    ```
-3. **Clarify loop** when `needs-design-clarification` label is present — follow `skills/implement/SKILL.md` Preflight clarify semantics:
+
+   On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes). On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. On `LOAD_OK=false` fallthrough inside the driver, `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
+
+3. **Clarify loop** when `ROUTE=clarify` (or `resume@0c`) — follow `skills/implement/SKILL.md` Preflight clarify semantics:
    1. `clarify-state.sh`, fetch the request comment body, `AskUserQuestion`, compose plan sections, `redact-secrets.sh`, and `plan-block-write.sh --content-file`. **Only when `plan-block-write.sh` exits 0**, continue to sub-steps 3.2–3.6; otherwise follow implement Preflight failure handling for a failed plan write (do not run publish, clarify response post, label removal, or rename in this branch).
    2. Resolve `REPO` for explicit `gh --repo` threading: prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so downstream helpers use the hub default.
    3. When `SESSION_ID` is non-empty, run publish under `set +e` so post-push `exit 1` does not abort before stdout is parsed: `set +e; _publish_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"} 2> "$DESIGN_TMPDIR/design-log-publish.failure.log"); _publish_rc=$?; set -e`; parse `PUBLISH_OK` from `_publish_out` regardless of `_publish_rc`. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). If `_publish_rc` is non-zero and `_publish_out` lacks a `PUBLISH_OK=` line, treat as unexpected shell failure. On `PUBLISH_OK=false`, append `$DESIGN_TMPDIR/design-log-publish.failure.log` under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md"`, then continue (do not roll back the successful plan write from sub-step 3.1).
    4. Run `clarify-comment-post.sh --kind response`, then `clarify-label.sh --action remove`.
    5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
    6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
-4. **Already-planned branch** when a `larch:plan` block exists and clarification is clean: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` before the terminal already-planned hygiene / **Final summary block** / exit **0**. Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
-5. **Tier resolution**: set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). No `AskUserQuestion` on this sub-step.
-5.5. **Rename issue to `[DESIGNING]`** (best-effort, idempotent) now that all cancel paths have been cleared. Resolve `REPO` via `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` or `gh repo view` fallback if not already bound. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). On non-zero exit, log `Step 0 — [DESIGNING] rename failed` to `Warnings` in `$DESIGN_TMPDIR/execution-issues.md` and continue.
-5.5-bis. **Refresh issue-bound env immediately after rename** so `/larch:pause` can find `ISSUE_NUMBER` even if pause is invoked before sub-step 6. Re-run `write-design-current-env.sh --output "$DESIGN_TMPDIR/source-env.sh" --design-tmpdir "$DESIGN_TMPDIR" --session-id "$SESSION_ID" --issue-number "$ISSUE_NUMBER" --claude-pid "$PPID"` and append `--manual-requested true` only when `manual_requested=true`.
-6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt). **Tier mapping** to `write-run-params.sh` and **partition + brainstorm + manual Gate B persistence**:
-   - Set mental boolean `partition_requested` to `true` when `-p` or `--partition` was parsed on argv, else `false`.
-   - Set mental boolean `brainstorm_requested` to `true` when `--brainstorm` was parsed on argv **or** auto-enabled by the Step 0b Brainstorm title-prefix check, else `false`.
-   - Set mental boolean `manual_requested` to `true` when `--manual` or `-m` was parsed on argv, else `false`.
-   - Immediately refresh `$DESIGN_TMPDIR/source-env.sh` via `write-design-current-env.sh` so subsequent Bash blocks can source `ISSUE_NUMBER` and `MANUAL_REQUESTED` from the stable session-env file instead of relying on prompt-local argv memory. Pass `--issue-number "$ISSUE_NUMBER"` on that follow-up invocation, and append `--manual-requested true` only when `manual_requested=true` (omit the flag entirely when `manual_requested=false`). Keep the existing `--output`, `--design-tmpdir`, `--session-id`, and `--claude-pid "$PPID"` arguments.
-   - Default (no `--hard`): `design_classification=SIMPLE`, `design_classification_reason="default tier: SIMPLE (no --hard)"`, `design_classification_source=caller-forwarded`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE`.
-   - `--hard`: `design_classification=HARD`, `design_classification_reason="argv tier: --hard"`, `design_classification_source=caller-forwarded`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`.
-   Set `design_classification_source=caller-forwarded` (the orchestrator forwards tier selection; `run-params.json` is not re-derived from argv here).
+4. **Already-planned branch** when `ROUTE=already-planned`: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` before the terminal already-planned hygiene / **Final summary block** / exit **0**. Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
+5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Set mental boolean `partition_requested` to `true` when `-p` or `--partition` was parsed on argv, else `false`. Set mental boolean `brainstorm_requested` to `true` when `--brainstorm` was parsed on argv **or** auto-enabled by the route driver's `BRAINSTORM_PREFIX`, else `false`. Set mental boolean `manual_requested` to `true` when `--manual` or `-m` was parsed on argv, else `false`. No `AskUserQuestion` on this sub-step.
+6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `write-run-params.sh`, and router-flag jq-merge.
 
-```bash
-[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-_wdce_step0b_args=(
-  "${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.sh"
-  --output "$DESIGN_TMPDIR/source-env.sh"
-  --design-tmpdir "$DESIGN_TMPDIR"
-  --session-id "$SESSION_ID"
-  --issue-number "$ISSUE_NUMBER"
-  --claude-pid "$PPID"
-)
-if [[ "$manual_requested" == true ]]; then
-  _wdce_step0b_args+=(--manual-requested true)
-fi
-"${_wdce_step0b_args[@]}"
-[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-if [[ "$design_classification" == SIMPLE ]]; then
-  design_classification_reason="default tier: SIMPLE (no --hard)"
-  design_classification_source=caller-forwarded
-  # SIMPLE skips the sketch phase; Step 2a consumes 0 as the no-sketch sentinel.
-  sketch_budget=0
-  review_budget=full
-  workflow_path=SIMPLE
-elif [[ "$design_classification" == HARD ]]; then
-  design_classification_reason="argv tier: --hard"
-  design_classification_source=caller-forwarded
-  # HARD always runs the four personality sketch slots before dialectic.
-  sketch_budget=4
-  review_budget=full
-  workflow_path=HARD
-fi
-${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
-  --classification "$design_classification" \
-  --reason "$design_classification_reason" \
-  --source "$design_classification_source" \
-  --sketch-budget "$sketch_budget" \
-  --review-budget "$review_budget" \
-  --workflow-path "$workflow_path" \
-  --partition-requested "$partition_requested" \
-  --brainstorm-requested "$brainstorm_requested" \
-  --manual-gate-b "$manual_requested" \
-  --output "$DESIGN_TMPDIR/run-params.json"
-```
-
-If the helper exits non-zero, treat it as **contract drift** between SKILL.md and `scripts/write-run-params.sh` (issue #3077). Print `**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**` to stderr and exit 1. `$DESIGN_TMPDIR` is preserved (Step 6 cleanup is gated on `PLAN_WRITE_OK=true`, which is not set on this path).
-
-**Router-flag persistence on write failure**: when argv-derived `partition_requested`, `brainstorm_requested`, **or** `manual_requested` is `true` and `command -v jq` succeeds, ensure all three flags persist so Step **1d.5** / Step **2b.5** / Gate B still see them after a subshell re-read. Use one canonical merge rule: `partition_requested` and `brainstorm_requested` are true-only OR-merges, while `manual_gate_b` is overwritten from the current argv-derived `manual_requested` value because this run's Gate B mode must be authoritative and a stale persisted `true` must not silently force manual mode after the operator omitted `--manual`.
-
-```bash
-if [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$manual_requested" == true ]] && command -v jq >/dev/null 2>&1; then
-  if [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
-    _rp_merge=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge.XXXXXX")
-    _rp_err=$(mktemp "${TMPDIR:-/tmp}/larch-router-flags-merge-err.XXXXXX")
-    if jq -c \
-      --argjson merge_p "$([[ "$partition_requested" == true ]] && echo true || echo false)" \
-      --argjson merge_b "$([[ "$brainstorm_requested" == true ]] && echo true || echo false)" \
-      --argjson merge_m "$([[ "$manual_requested" == true ]] && echo true || echo false)" \
-      '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .manual_gate_b = $merge_m' \
-      "$DESIGN_TMPDIR/run-params.json" >"$_rp_merge" 2>"$_rp_err"; then
-      mv -f "$_rp_merge" "$DESIGN_TMPDIR/run-params.json"
-      rm -f "$_rp_err"
-    else
-      "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 0b" --tool "jq(router-flags-merge)" --exit-code 1 --category Warnings --output-file "$_rp_err" >/dev/null 2>&1 || true
-      rm -f "$_rp_merge" "$_rp_err"
-    fi
-  else
-    printf '%s\n' "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
-  fi
-elif [[ "$partition_requested" == true || "$brainstorm_requested" == true || "$manual_requested" == true ]]; then
-  printf '%s\n' "**⚠ 0b: partition, brainstorm, and/or manual requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**"
-fi
-```
+   ```bash
+   [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   set +e
+   _init_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh" \
+     --design-tmpdir "$DESIGN_TMPDIR" \
+     --issue "$ISSUE_NUMBER" \
+     --session-id "$SESSION_ID" \
+     --claude-pid "$PPID" \
+     --classification "$design_classification" \
+     --partition-requested "$partition_requested" \
+     --brainstorm-requested "$brainstorm_requested" \
+     --manual-requested "$manual_requested" \
+     ${REPO:+--repo "$REPO"})
+   _init_rc=$?
+   set -e
+   if [[ "${_init_rc:-0}" -eq 2 ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh configuration error (exit 2); aborting /design**" >&2
+     exit 1
+   fi
+   if [[ "${_init_rc:-0}" -ne 0 && "${_init_rc:-0}" -ne 1 ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh failed (exit ${_init_rc}); aborting /design**" >&2
+     exit 1
+   fi
+   INIT_STATUS=""
+   if [[ -f "$DESIGN_TMPDIR/.design-init-runparams-result.env" ]]; then
+     if [[ -L "$DESIGN_TMPDIR/.design-init-runparams-result.env" ]]; then
+       printf '%s\n' "**⚠ Step 0b: design-init-runparams result env is a symlink; refusing to source**"
+     else
+       while IFS= read -r _line || [[ -n "$_line" ]]; do
+         _key="${_line%%=*}"; _value="${_line#*=}"
+         case "$_key" in
+           INIT_STATUS|RENAMED|RUN_PARAMS_PATH|DESIGN_CLASSIFICATION) printf -v "$_key" '%s' "$_value" ;;
+           WARN) printf '%s\n' "WARN=$_value" ;;
+         esac
+       done <"$DESIGN_TMPDIR/.design-init-runparams-result.env"
+     fi
+   fi
+   while IFS= read -r _line || [[ -n "$_line" ]]; do
+     _key="${_line%%=*}"; _value="${_line#*=}"
+     case "$_key" in
+       INIT_STATUS|RENAMED|RUN_PARAMS_PATH|DESIGN_CLASSIFICATION) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
+       WARN) printf '%s\n' "WARN=$_value" ;;
+     esac
+   done <<<"${_init_out:-}"
+   if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == contract-drift ]]; then
+     printf '%s\n' "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. If a prior attempt renamed the issue to [DESIGNING] without writing run-params.json, re-run /design from Step 0b after fixing write-run-params.sh — do not route from a stale or missing run-params.json. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**" >&2
+     exit 1
+   fi
+   if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == env-refresh-failed ]]; then
+     printf '%s\n' "**⚠ /design: write-design-current-env.sh failed during Step 0b env refresh; aborting before rename/run-params. Inspect source-env.sh / write-design-current-env.sh diagnostics, then re-invoke /design.**" >&2
+     exit 1
+   fi
+   if [[ "${_init_rc:-0}" -eq 0 && ( "$INIT_STATUS" != ok || ! -f "$DESIGN_TMPDIR/run-params.json" ) ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh exited 0 without INIT_STATUS=ok and run-params.json; aborting /design**" >&2
+     exit 1
+   fi
+   if [[ "${_init_rc:-0}" -eq 1 ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS=${INIT_STATUS:-unknown}); aborting /design**" >&2
+     exit 1
+   fi
+   [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   ```
 
 ### Final summary block
 
@@ -1318,4 +1374,6 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh` — writes the `larch:plan` block into the issue body. Sibling: `plan-block-write.md` (under `scripts/`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh` — publishes `$DESIGN_TMPDIR` to `larch-logs/design/<RUN_ID>/` via disposable worktree + PR. Sibling: `design-log-publish.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` — Step 0b pre-gate route driver. Sibling: `design-route.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` — Step 0b post-gate init driver. Sibling: `design-init-runparams.md`.
 - `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh` — resolves `design_classification` (`SIMPLE`|`HARD`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks and defaults to HARD with a warning on read failure. Sibling: `read-design-classification.md`.

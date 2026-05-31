@@ -1,0 +1,8 @@
+warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_2 not traceable to scoped input (first 80 chars: 'Document the partial-state retry contract in the `.md` sibling and SKILL banner,')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Extend the existing harness with stubbed dependencies and invoke `design-init-ru')
+warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Validate all KV values for newline/CR before `phase_driver_write_result_env`; co')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_9 not traceable to scoped input (first 80 chars: 'Factor validators into `lib-phase-driver.sh` and source from both drivers.')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Share one helper or call `plan-block-read.sh` for body-file presence checks.')
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Refresh acceptance bullets to match `design-route.md` and landed drivers.  ### O')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'Keep or split to separate PR for clarity.  ### OOS_2: [OUT_OF_SCOPE] `larch-logs')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_12 not traceable to scoped input (first 80 chars: 'No action required for Step 0b review.  ### OOS_3: [OUT_OF_SCOPE] CI structure t')

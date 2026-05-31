@@ -1,0 +1,21 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- WARN/ERROR print inline at merge; arrays only dedupe, no missing re-emit path found
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- latent; pause-load values are fixed literals today
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- valid DRY nit, not worth blocking this refactor
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate marker logic is maintenance debt, behavior matches today
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- dual handoff fences are intentional until allowlists stabilize
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- acceptance doc drift only; drivers and .md siblings are authoritative
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- unrelated test tweak, no defect to file
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- bundled lint exclusion is harmless scope noise
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- observational only; tracking-issue-write always emits RENAMED KV
+OOS_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms safe allowlisted printf -v pattern, not a regression
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing Step 3 tradeoff, not new Step 0b defect
+OOS_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer found no defect
+OOS_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer found no defect
+OOS_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate init WARN lines are cosmetic inconsistency, low impact
