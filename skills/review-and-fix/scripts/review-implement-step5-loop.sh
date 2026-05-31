@@ -336,6 +336,7 @@ run_implement_loop() {
         fi
 
         structural_loc=0
+        local post_pre_head_file
         post_pre_head_file="$(pre_coder_snapshot_dir "$post_round_dir")/pre-coder-head.txt"
         if [[ -s "$post_pre_head_file" && -s "${post_round_dir}/post-coder-head.txt" ]]; then
             set +e

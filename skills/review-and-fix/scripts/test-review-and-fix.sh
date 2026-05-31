@@ -2653,6 +2653,7 @@ if section_runs step5-starting-round; then
     # shellcheck disable=SC1091
     . "$REPO_ROOT/scripts/lib-implement-round-cap.sh"
     eval "$(declare -f count_prior_degraded_rounds | sed '1s/count_prior_degraded_rounds/step5_original_count_prior_degraded_rounds/')"
+    eval "$(sed -n '/^pre_coder_snapshot_dir()/,/^}/p' "$SCRIPT")"
     # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
@@ -2923,6 +2924,21 @@ if section_runs step5-starting-round; then
         || fail "step5 entry-prior-deg-nonnumeric missing stderr"
     pass "step5-starting-round entry-prior-deg-nonnumeric"
 
+    # Case: if IMPLEMENT_TMPDIR is inside the repo grant, snapshots relocate outside PWD.
+    step5_reset_case snapshot-outside-pwd-grant
+    case_dir="$STEP5_LAST_CASE_DIR"
+    make_work_repo "$case_dir/work"
+    mkdir -p "$case_dir/work/.larch-session"
+    round_dir="$case_dir/work/.larch-session/round-1"
+    snap_dir=$(cd "$case_dir/work" && pre_coder_snapshot_dir "$round_dir")
+    case "$snap_dir" in
+        "$case_dir/work"/*) fail "pre_coder_snapshot_dir must not be under PWD when IMPLEMENT_TMPDIR is inside repo" ;;
+    esac
+    case "$snap_dir" in
+        "$round_dir"/*) fail "pre_coder_snapshot_dir must not be under round_dir" ;;
+    esac
+    pass "step5-starting-round snapshot-outside-pwd-grant"
+
     # Case: terminal lint-fix arm surfaces STDERR_TAIL_PATH before stall envelope.
     step5_reset_case lint-fix-terminal-tail
     case_dir="$STEP5_LAST_CASE_DIR"
@@ -3015,10 +3031,6 @@ STUB
             awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$file" 2>/dev/null || true
         }
         count_high_severity_accepted() { printf '0\n'; }
-        pre_coder_snapshot_dir() {
-            local round_dir="$1"
-            printf '%s/.pre-coder-snapshots/%s\n' "$(dirname "$round_dir")" "$(basename "$round_dir")"
-        }
         _implement_round_body() {
             IRF_LAST_ROUND_STATUS=fix-applied
             IRF_LAST_CODER_STATUS=applied
@@ -3064,10 +3076,6 @@ STUB
         kv_get() {
             local file="$1" key="$2"
             awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$file" 2>/dev/null || true
-        }
-        pre_coder_snapshot_dir() {
-            local round_dir="$1"
-            printf '%s/.pre-coder-snapshots/%s\n' "$(dirname "$round_dir")" "$(basename "$round_dir")"
         }
         apply_findings_with_coder() {
             local findings_file="$1" round_dir="$2" coder_env="$3" round_num_dec="$4"
