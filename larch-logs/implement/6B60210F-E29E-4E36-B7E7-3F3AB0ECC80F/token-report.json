@@ -277,16 +277,67 @@
             }
           }
         ]
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 29,
+          "cache_read": 4922906,
+          "cache_create": 43047,
+          "cache_create_5m": 43047,
+          "cache_create_1h": 0,
+          "output": 13711,
+          "total": 4979693
+        },
+        "skills": [
+          {
+            "skill": "bump-version",
+            "totals": {
+              "input": 17,
+              "cache_read": 2933500,
+              "cache_create": 16060,
+              "cache_create_5m": 16060,
+              "cache_create_1h": 0,
+              "output": 8418,
+              "total": 2957995
+            }
+          },
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 12,
+              "cache_read": 1989406,
+              "cache_create": 26987,
+              "cache_create_5m": 26987,
+              "cache_create_1h": 0,
+              "output": 5293,
+              "total": 2021698
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 48,
-      "cache_read": 5558407,
-      "cache_create": 377114,
-      "cache_create_5m": 377114,
+      "input": 77,
+      "cache_read": 10481313,
+      "cache_create": 420161,
+      "cache_create_5m": 420161,
       "cache_create_1h": 0,
-      "output": 18455,
-      "total": 5954024
+      "output": 32166,
+      "total": 10933717
     }
   },
   "codex": {
@@ -381,6 +432,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -491,6 +558,22 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -500,12 +583,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 48,
-    "cache_read": 5558407,
-    "cache_create_5m": 377114,
+    "input": 77,
+    "cache_read": 10481313,
+    "cache_create_5m": 420161,
     "cache_create_1h": 0,
-    "output": 18455,
-    "total": 5954024
+    "output": 32166,
+    "total": 10933717
   },
   "BUCKETS_codex": {
     "input": 681933,

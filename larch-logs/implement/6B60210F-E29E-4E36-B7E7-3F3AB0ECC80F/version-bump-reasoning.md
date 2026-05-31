@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `4e4b652b0` (chore(larch-logs): flush design run 657071F3-B85A-4B8C-8705-BBA2232EC915 [skip ci] (#3259))
-- **Current version**: `47.0.15`
+- **Base commit**: `ceff41e3e` (Fixes #3243: Relax review-loop convergence to single round with ≤5 non-nit accepted (#3265))
+- **Current version**: `47.0.16`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `47.0.16`
+- **New version**: `47.0.17`
 
 ### PATCH rationale
 
