@@ -1,0 +1,75 @@
+### FINDING_1: OOS errexit probes export CLAUDE_PLUGIN_ROOT after source (PLUGIN_ROOT / gate stub)
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: OOS errexit probes export `CLAUDE_PLUGIN_ROOT` after `source`, so `PLUGIN_ROOT` is frozen to `REPO_ROOT` and the no-op gate stub under `tmp/plugin` is never used. Probes exercise the real `oos-disposition-gate.sh` and repo git context; errexit assertions can pass while violating plan hermeticity and may flake if real gate behavior changes. Export `CLAUDE_PLUGIN_ROOT` (or set `PLUGIN_ROOT`) before sourcing `ship-pr.sh` so `gate_script` resolves to the stub.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_2: ship-pr.md errexit section documents wrong baseline `set` line
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: The new errexit invariant documents `set +uo pipefail` (or equivalent) while `ship-pr.sh` runs with `set -uo pipefail` and errexit intentionally off (`set -e` not enabled). Maintainers may misread nounset/pipefail/errexit baseline, copy the wrong `set` line into `ship-pr.sh`, and re-break CI capture or errexit discipline.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: State set -uo pipefail with errexit off (set +e), matching scripts/ship-pr.sh:4-7.
+  - From cursor-specialist-testing-output.txt: Change +uo to -uo to match scripts/ship-pr.sh:4.
+  - From cursor-specialist-edge-cases-output.txt: Replace with set -uo pipefail to match scripts/ship-pr.sh:4.
+  - From cursor-specialist-plan-fidelity-output.txt: Replace with `set -uo pipefail` and clarify errexit is intentionally off (no `set -e`).
+
+### FINDING_3: run_pr_prep_phase redundant outer errexit save/restore
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `run_pr_prep_phase` duplicates save/restore around a helper that already manages errexit. Extra nesting and six lines per call site without added safety once the helper is correct. Remove outer `set +e` wrappers and call the helper directly (plan allowed this simplification).
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_4: prprep-first / prprep-recovery probes duplicate production wrapper snippets
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: `prprep-first` and `prprep-recovery` probes embed copy-pasted wrapper snippets instead of calling production entry points. Production wrapper edits may not update tests; probes could false-pass on stale patterns. Call `run_pr_prep_phase` with `run_recovery_waterfall` stubbed or share a small `with_saved_errexit` helper.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_5: Inconsistent errexit flag variable naming (`_had_errexit` vs `had_errexit`)
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `_had_errexit` in OOS paths vs `had_errexit` in `run_lint_fix_loop_capture` for the same idiom. Minor inconsistency when searching or extending errexit patterns. Align variable naming with `run_lint_fix_loop_capture`.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_6: No subprocess test for documented exit 3/4 after local harness failure under errexit
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Unit probes cover toggles and capture in isolation but not `ship-pr.sh` exiting with a documented code after a failing local harness in `evaluate-failure`. A regression in routing/translation could restore raw harness exit 2 while errexit-section tests still pass. Add a minimal subprocess test (e.g. fix-loop-style subject) asserting exit 3 with `ci-local-unfixable` (or stall 4), not exit 2, when the harness fails under errexit.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_7: Harness capture test missing errexit-on success path
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: Harness capture test only covers a failing command under `set -e`. Success path with errexit on is untested; a broken `||` pattern could wrongly leave `_RCC_CMD_RC` at 0 after failure or mishandle success. Add sub-case with exit-0 command asserting `RCC_CMD_RC=0` and shell survival.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_1: [OUT_OF_SCOPE] Section inventory comment omits errexit section
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: The section list comment in `scripts/test-ship-pr.sh` omits errexit even though errexit runs in default full `test-ship-pr` invocations. Contributors may not discover errexit tests when debugging section failures. Add errexit to the listed sections when editing that header.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_2: [OUT_OF_SCOPE] die_usage exits 2 outside orchestrator CI table
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: `die_usage` exits 2 separately from the orchestrator CI exit table. Unrelated exit 2 can still confuse incident triage. Pre-existing; address in a separate exit-code hygiene change if the orchestrator table should cover usage errors.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_3: [OUT_OF_SCOPE] `_run_per_job_command_once` not errexit-hardened
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `_run_per_job_command_once` still uses the pre-change `cmd > log 2>&1` pattern without `||` hardening. Safe today only while every call stays under `if`; a future bare call (or leaked errexit) could abort verification before callers handle failure. Unchanged by this branch; plan explicitly left it alone. Harden or add test only if call sites change.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_4: [OUT_OF_SCOPE] Pre-existing arbitrary command surface via `_PJA_ARGV`
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: Arbitrary command execution would require poisoning `_PJA_ARGV` outside `_per_job_argv()`; callers today only set argv through the whitelist dispatcher. Pre-existing design surface, not introduced or widened by this diff.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_5: [OUT_OF_SCOPE] `recovery_waterfall` OOS gate call without outer errexit save/restore
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: `recovery_waterfall` invokes the OOS gate without outer `set +e`; non-zero return with leaked errexit could abort before `verify_rc=$?`. Only matters if errexit leaks again from elsewhere; not introduced by this branch. Optional follow-up: wrap call in the same save/restore pattern or rely on helper-only hardening.
+- **Suggested revisions (informational for voters; coder decides)**:
