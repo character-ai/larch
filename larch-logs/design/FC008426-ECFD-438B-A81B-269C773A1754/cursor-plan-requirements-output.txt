@@ -1,0 +1,31 @@
+Validating the Phase 6 CI monitor plan against bash sources and Phase-1 Python modules.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/ci_monitor.py (proposed evaluate_failure)	No detached-HEAD guard before the fix loop	`scripts/ship-pr.sh` stalls on `git symbolic-ref` failure before each `run_evaluate_failure` attempt (`2525-2530`); the plan omits this while porting that loop	Vendor fix/stage may run on a detached HEAD and return misleading `pushed`/`head-changed` instead of a stall	At the start of each `evaluate_failure` outer attempt, require a named branch via `git.current_branch` (or `symbolic-ref` through `Runner`); on failure return `FixResult`/`MonitorResult` mapped to `STALLED` with detached-head detail (parity `exit_stall` `10-detached-head`)
+2	in_scope	important	correctness	python/ci_monitor.py (proposed poll_ci); python/test_ci_monitor.py (proposed)	`poll_ci` 3-strike rule misaligned with `ci-wait.sh`	`ci-wait.sh` increments `ci_failures` only when `ci-status.sh` output has no parseable `CI_STATUS`, then forces `pending` (`201-211`); `status=error` is handled by `ci-decide.sh` as immediate `bail` (`80-84`). The plan bundles “3-consecutive empty/`error`” and tests “3 consecutive `error`”	Implementers may wait for three `error` statuses or bail on a single transient `gh` glitch differently than bash; false `bail` or extra polls	Count only invalid/empty `gather_status` results toward `CI_MONITOR_STATUS_FAILURE_BAIL`, emit `pending` between strikes, and `bail` on the third; treat `CiStatus.status == "error"` via `decide()` as immediate `bail` on that poll. Update the `poll_ci` test bullet accordingly
+3	in_scope	important	architecture	python/ci_monitor.py (proposed monitor)	`rebase_then_evaluate` defers all fixing to a later `monitor()` that starts with `poll_ci`	Bash handles `rebase_then_evaluate` by calling `run_rebase_rebump` then `run_evaluate_failure` in one handler (`scripts/ship-pr.sh:3547-3549`) without re-entering `ci-wait.sh`. The plan emits `goto_rebase` only and relies on a later `monitor()` → `poll_ci`	After rebase, CI may still be `pending`; `poll_ci` can block in `wait` while bash already collects logs and may dispatch the vendor waterfall	Split requirements: (a) Phase-6 `monitor` signal is fine if Phase-7 documents that `rebase_then_evaluate` must run `evaluate_failure` immediately after rebase using the preserved `failed_run_id`, without waiting for a green poll; or (b) add a post-rebase entry (e.g. `monitor(..., after_rebase_evaluate=True)`) that skips `poll_ci` and calls `evaluate_failure` directly. Remove or correct the `ship-pr.sh:3547-3549` parity citation for same-call behavior
+
+**1. [correctness] Detached HEAD guard missing from `evaluate_failure`**
+
+The plan ports `run_evaluate_failure`’s outer loop (`evaluate_failure`, lines 44–45 of the plan) but does not mention the per-attempt detached-HEAD check in `scripts/ship-pr.sh:2525-2530`. Phase-1 already exposes `git.current_branch` in `python/git.py:37-44`. Without an equivalent guard, fix/vendor work can proceed on a detached HEAD and surface the wrong terminal status.
+
+**Suggested revision:** At the top of each outer attempt in `evaluate_failure`, verify a named branch; on failure return immediately with a stall-class outcome (map to `StepResult`/`STALLED` with detached-head detail), and add a stubbed unit test.
+
+---
+
+**2. [correctness] `poll_ci` three-strike semantics vs `ci-wait.sh`**
+
+`ci-wait.sh` treats three consecutive **unparseable** `ci-status.sh` outputs as bail-worthy (`201-211`), while `ci-decide.sh` bails immediately on `status=error` (`80-84`). The plan’s `poll_ci` line and testing bullet (“3 consecutive `error`”) conflate these paths.
+
+**Suggested revision:** Document and implement a counter only for empty/invalid `gather_status` results (intermediate `pending`), and immediate `bail` when `decide()` sees `error`; align `test_ci_monitor.py` with that split.
+
+---
+
+**3. [architecture] `rebase_then_evaluate` — fix timing after rebase**
+
+The plan correctly forbids fixing **before** rebase (`did_fixing=False`, acceptance line 133). Bash still runs **`run_evaluate_failure` immediately after rebase** in the same action handler (`3547-3549`), without another `ci-wait.sh` poll. The proposed `monitor()` always re-enters through `poll_ci`, which can sit in `wait` while bash would already be in the fix path.
+
+**Suggested revision:** Either document an explicit Phase-7 driver obligation (rebase → call `evaluate_failure` with saved `failed_run_id`, no poll), or extend the Phase-6 API for a post-rebase fast path; fix the misleading parity citation.
+
+---
+
+**Exonerated (SIMPLE lane):** deterministic backoff vs bash `RANDOM` jitter (plan line 75 is explicit); dropping `append-token-record` / `run_per_job_local_fix_loop` (explicit Phase-4/5 deferral); `MonitorResult` carrying bail tokens via `StepResult.detail`; `launch-claude-ci` skip listed in Edge cases (line 93) for implementers to wire in default `launch_fn`; unrelated “Readability Style” block in the prompt (plan is Phase 6 CI monitor only).
