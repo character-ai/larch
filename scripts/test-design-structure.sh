@@ -12,7 +12,8 @@ PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 PLAN_LOOP_SH="$REPO_ROOT/skills/design/scripts/plan-review-loop.sh"
 PLAN_REVIEW_LOOP_SH="$PLAN_LOOP_SH"
-PR_LOOP_MD="$REPO_ROOT/skills/design/scripts/plan-review-loop.md"
+RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
+RUN_STEP3_MD="$REPO_ROOT/skills/design/scripts/run-step3-review.md"
 MAKEFILE="$REPO_ROOT/Makefile"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
 
@@ -55,17 +56,26 @@ contains "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_SIMPLE' 'SKILL missing SIMPLE sketc
 contains "$SKILL_MD" 'Skip sketches only when `design_classification == SIMPLE`' 'SKILL missing Anti-pattern #1 SIMPLE carve-out prose'
 contains "$SKILL_MD" 'This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**.' 'SKILL missing SIMPLE designer emphasis'
 contains "$SKILL_MD" 'This is a HARD-tier design. Bias the plan toward **thoroughness**.' 'SKILL missing HARD designer emphasis'
-contains "$SKILL_MD" 'review-round-count.txt' 'SKILL missing review-round counter'
+contains "$RUN_STEP3_SH" 'review-round-count.txt' 'run-step3-review.sh missing review-round counter'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+contains "$RUN_STEP3_SH" '--round-cap "$ROUND_CAP"' 'run-step3-review.sh must pass round-cap to plan-review-loop'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+contains "$RUN_STEP3_SH" '--convergence-threshold "$CONVERGENCE_THRESHOLD"' 'run-step3-review.sh must pass convergence-threshold to plan-review-loop'
 # shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
-contains "$SKILL_MD" '--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"' 'SKILL must pass explicit round-cap to plan-review-loop'
-absent "$SKILL_MD" '--convergence-threshold' 'SKILL must not pass removed convergence-threshold to plan-review-loop'
-contains "$SKILL_MD" '.step3-plan-review-result.env' 'SKILL must source step3 plan-review result env'
-contains "$SKILL_MD" 'result env is a symlink; ignoring it and using stdout fallback only' 'SKILL missing symlink-safe step3 result env warning'
+contains "$SKILL_MD" '--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"' 'SKILL must pass explicit round-cap to run-step3-review.sh'
+# shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
+contains "$SKILL_MD" '--convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"' 'SKILL must pass convergence-threshold to run-step3-review.sh'
+contains "$RUN_STEP3_SH" '.step3-plan-review-result.env' 'run-step3-review.sh must read step3 plan-review result env'
+contains "$RUN_STEP3_SH" 'result env is a symlink; ignoring it and using stdout fallback only' 'run-step3-review.sh missing symlink-safe step3 result env warning'
 contains "$SKILL_MD" 'invoke-plan-validator.sh' 'SKILL missing renamed validator helper'
-contains "$SKILL_MD" 'read-design-classification.sh' 'SKILL missing classification reader'
-contains "$SKILL_MD" '.step3-review-cap.env' 'SKILL missing persisted Step 3 cap state file'
-contains "$SKILL_MD" 'STEP3_REVIEW_CAP_REACHED=false' 'SKILL missing persisted cap-false state'
-contains "$SKILL_MD" 'STEP3_REVIEW_ROUND_NUM=' 'SKILL missing persisted Step 3 round number state'
+contains "$RUN_STEP3_SH" 'read-design-classification.sh' 'run-step3-review.sh missing classification reader'
+contains "$RUN_STEP3_SH" '.step3-review-cap.env' 'run-step3-review.sh missing persisted Step 3 cap state file'
+contains "$RUN_STEP3_SH" 'STEP3_REVIEW_CAP_REACHED=false' 'run-step3-review.sh missing persisted cap-false state'
+contains "$RUN_STEP3_SH" 'STEP3_REVIEW_ROUND_NUM=' 'run-step3-review.sh missing persisted Step 3 round number state'
+contains "$SKILL_MD" 'run-step3-review.sh' 'SKILL must invoke run-step3-review.sh'
+contains "$SKILL_MD" 'step3 review result env is a symlink; refusing to source' 'SKILL must read allowlisted KVs from .step3-review-result.env'
+[[ -x "$RUN_STEP3_SH" ]] || fail 'run-step3-review.sh must be executable'
+[[ -f "$RUN_STEP3_MD" ]] || fail "run-step3-review.md missing: $RUN_STEP3_MD"
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'including `LOOP_STATUS=panel-failed`' 'SKILL missing panel-failed counter-consumption contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -74,7 +84,8 @@ contains "$SKILL_MD" 'MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-erro
 contains "$SKILL_MD" '`LOOP_STATUS=converged|cap-hit` — proceed to Gate B **passive-summary mode**' 'SKILL missing passive-summary branch matrix entry'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" '`LOOP_STATUS=emit-plan-failed` — treat as a Step 3 post-apply failure' 'SKILL missing emit-plan-failed branch matrix entry'
-contains "$SKILL_MD" 'review-round cap (' 'SKILL missing Step 3 cap breadcrumb prose'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+contains "$RUN_STEP3_SH" 'review-round cap (${_round_cap}) reached for ${_tier}' 'run-step3-review.sh missing Step 3 cap breadcrumb emit'
 contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b/4/4b with existing artifacts' 'SKILL missing cap short-circuit Gate B bypass'
 contains "$SKILL_MD" 'Gate B would otherwise re-surface stale accepted findings from an earlier round' 'SKILL missing stale-finding cap rationale'
 contains "$SKILL_MD" 'The Step 3.5 continuation block below is bypassed on this path.' 'SKILL missing explicit Step 3.5 bypass prose'
@@ -178,12 +189,17 @@ grep -Fq 'ACTION=FINALIZE' "$SKILL_MD" \
   || fail "(14b3) SKILL.md missing ACTION=FINALIZE emission"
 grep -Fq 'design-driver.sh' "$SKILL_MD" \
   || fail "(14b4) SKILL.md missing design-driver.sh dispatcher invocation"
-grep -Fq 'plan-review-loop.sh' "$SKILL_MD" \
-  || fail "(14c0) SKILL.md missing plan-review-loop.sh Step 3 driver invocation"
-grep -Fq 'set +e' "$SKILL_MD" \
-  || fail "(14c0b) SKILL.md missing set +e guard adjacent to plan-review-loop.sh"
+grep -Fq 'run-step3-review.sh' "$SKILL_MD" \
+  || fail "(14c0) SKILL.md missing run-step3-review.sh Step 3 driver invocation"
+grep -Fq 'set +e' "$RUN_STEP3_SH" \
+  || fail "(14c0b) run-step3-review.sh missing set +e guard around plan-review-loop.sh"
 grep -Fq '_plan_review_rc=$?' "$SKILL_MD" \
-  || fail "(14c0c) SKILL.md missing _plan_review_rc capture for plan-review-loop.sh"
+  || fail "(14c0c) SKILL.md missing _plan_review_rc capture for run-step3-review.sh"
+# shellcheck disable=SC2016 # Markdown/bash excerpt literal; $DESIGN_TMPDIR must not expand here.
+contains "$SKILL_MD" '-f "$DESIGN_TMPDIR/.step3-review-result.env"' 'SKILL must source .step3-review-result.env when present'
+contains "$SKILL_MD" 'WARN) printf' 'SKILL must re-emit WARN lines from step3 review handoff'
+contains "$SKILL_MD" 'missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed' 'SKILL must default missing LOOP_STATUS to panel-failed (not hard abort on driver exit 1)'
+contains "$SKILL_MD" 'configuration error (exit 2)' 'SKILL must warn on run-step3-review.sh exit 2'
 grep -Fq 'scout-plan-archetypes-wrapper.sh' "$PLAN_REVIEW_LOOP_SH" \
   || fail "(14c1) plan-review-loop.sh missing scout-plan-archetypes-wrapper.sh"
 grep -Fq 'dispatch-plan-review-panel.sh' "$PLAN_REVIEW_LOOP_SH" \
@@ -368,20 +384,8 @@ if ! [[ "$chk_line" -gt "$emit_line" ]]; then
 fi
 grep -Fq '## Plan Size — Hard Trigger' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing hard-trigger plan-size header"
-grep -Fq "**Override and proceed** is an explicit, loudly-discouraged operator escape hatch, not a \`--partition\` downgrade" "$SKILL_MD" \
-  || fail "(FINDING_21) SKILL.md hard branch must document Override escape-hatch invariant"
-grep -Fq 'Override and proceed (advised against)' "$SKILL_MD" \
-  || fail "(FINDING_21) SKILL.md hard branch must offer Override and proceed option label"
-# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-hard_prompt_line=$(grep -nF '`AskUserQuestion` with exactly three options in this order: **"Let my panel of agents split this feature for you"** / **"Override and proceed (advised against)"** / **"Cancel"**' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$hard_prompt_line" ]] \
-  || fail "(FINDING_9) SKILL.md hard branch must pin Split / Override / Cancel option order"
-grep -Fq 'The **Override and proceed (advised against)** option description MUST read: STRONGLY DISCOURAGED. Proceeding with this oversized plan is quite likely to SEVERELY degrade the quality of the reviews and the resulting design. We advise against it. Pick this only if you knowingly accept that risk; splitting is almost always better.' "$SKILL_MD" \
-  || fail "(FINDING_9) SKILL.md hard branch must pin strongly discouraged Override description"
-grep -Fq 'Do not reuse stale or missing KVs from the Step 3 stdout/env handoff.' "$SKILL_MD" \
-  || fail "(FINDING_1) SKILL.md plan-size-trigger path must rerun fresh plan-size KVs before prompting"
-grep -Fq 'honor the hard prompt'\''s **Split / Override / Cancel** contract' "$PR_LOOP_MD" \
-  || fail "(FINDING_8) plan-review-loop.md must document plan-size-trigger Split / Override / Cancel breadcrumb"
+grep -Fq '(no **Continue** option — hard triggers' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md hard branch must document no-Continue invariant"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 grep -Fq 'Step 1c sprawl heuristic' "$DISCUSSION_MD" \
   || fail "(FINDING_21) discussion-rounds.md missing Step 1c sprawl hook"
@@ -400,10 +404,8 @@ grep -Fq 'DIFF_DELETED=' "$SKILL_MD" \
   || fail "(3175) SKILL.md Step 2b.5 must parse DIFF_DELETED"
 grep -Fq 'MECHANICAL_CHURN=' "$SKILL_MD" \
   || fail "(3175) SKILL.md Step 2b.5 must parse MECHANICAL_CHURN"
-grep -Fq 'plan-body gate still requires the Split / Override / Cancel prompt' "$SKILL_MD" \
+grep -Fq 'plan-body gate still requires Split/Cancel' "$SKILL_MD" \
   || fail "(3175) SKILL.md must document plan-body hard + SOFT_ADVISORY combined advisory"
-grep -Fq 'plan-body gate still requires the Split / Override / Cancel prompt' "$PLAN_LOOP_SH" \
-  || fail "(3175) plan-review-loop.sh must document plan-body hard + SOFT_ADVISORY combined advisory"
 grep -Fq 'diff_added' "$SKILL_MD" \
   || fail "(3175) SKILL.md missing diff_added preservation/recompute language"
 grep -Fq 'diff_deleted' "$SKILL_MD" \
@@ -923,7 +925,8 @@ contains "$SKILL_MD" 'write-original --design-tmpdir' 'SKILL.md Step 2b missing 
 contains "$SKILL_MD" 'assess-plan-round.sh' 'SKILL.md Step 3.6 missing assess-plan-round.sh'
 contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-review-round-cursor reference'
 contains "$SKILL_MD" 'write-cursor --design-tmpdir' 'SKILL.md missing round-cursor advancement write-cursor'
-contains "$SKILL_MD" "--round-num \"\$ROUND_NUM\"" 'SKILL.md missing --round-num ROUND_NUM to plan-review-loop'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+contains "$RUN_STEP3_SH" '--round-num "$ROUND_NUM"' 'run-step3-review.sh missing --round-num ROUND_NUM to plan-review-loop'
 contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'
 contains "$SKILL_MD" 'passive-summary auto-continue, auto-apply, Apply all, or full one-by-one without abort' 'SKILL.md missing passive-summary Step 3.6 settle path'
 contains "$SKILL_MD" 'Passive-summary auto-continue routes through Step 3.6 before Step 3b' 'SKILL.md missing passive-summary auto-continue Step 3.6 routing pin'
@@ -935,7 +938,7 @@ contains "$APPROVAL_MD" 'Passive-summary auto-continue routes through Step 3.6 b
 # shellcheck disable=SC2016 # backticks are literal markdown pins
 contains "$APPROVAL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `panel-failed`) bypass Step 3.5 and Step 3.6 before Step 3b' 'approval-gates.md missing Gate-B-bypass Step 3.5/3.6 coverage pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
-contains "$SKILL_MD" 'set `TALLY_PLAN_REVIEW_STATUS=ok`, `LOOP_STATUS=complete`, and persist `.step3-plan-review-result.env` from the re-tally so Gate B does not read stale 0-judge fallback state' 'SKILL.md missing MainAgent re-tally state refresh pin'
+contains "$SKILL_MD" 'set `TALLY_PLAN_REVIEW_STATUS=ok`, `LOOP_STATUS=complete`, and persist both `.step3-plan-review-result.env` and `.step3-review-result.env` from the re-tally so Gate B and later Step 3 logic do not read stale 0-judge fallback state' 'SKILL.md missing MainAgent re-tally state refresh pin'
 # shellcheck disable=SC2016 # $ tokens are literal markdown pins
 contains "$SKILL_MD" '--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/findings-classification.tsv"' 'SKILL.md missing MainAgent re-tally findings-classification-out pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins

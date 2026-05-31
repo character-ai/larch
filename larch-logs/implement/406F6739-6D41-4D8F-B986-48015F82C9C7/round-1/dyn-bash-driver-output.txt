@@ -1,0 +1,15 @@
+**Branch:** 3 commits since `main` (`b9806b39d` extract, `a4fb82a02` lint fixes, `1f5b1c922` run log).
+
+### In-Scope Findings
+
+- **correctness** `skills/design/SKILL.md:849-868` — The Step 3 fence captures `_plan_review_rc` but never branches on it, and it only hydrates orchestrator state from `.step3-review-result.env` when the file exists and is not a symlink. If `run-step3-review.sh` exits non-zero before `phase_driver_write_result_env` (e.g. HARD cursor `exit 1` at `skills/design/scripts/run-step3-review.sh:173-174`, argv/`fail` exit 2, or a failed atomic write), a **leftover** `.step3-review-result.env` from an earlier Step 3 entry (Gate C / Gate A re-run) can still be sourced and drive the post-loop matrix with stale `LOOP_STATUS` (e.g. prior `complete` while this pass never launched the panel). **Suggested fix:** At the start of `run-step3-review.sh`, remove or overwrite `.step3-review-result.env` (and on any non-zero exit before the final write, write a failure sentinel or unlink it). In `SKILL.md`, require `_plan_review_rc -eq 0` (and optionally a freshness marker) before sourcing; if the driver failed or the env is missing/symlink-refused, treat as `panel-failed` and do not trust a prior file.
+
+- **correctness** `skills/design/SKILL.md:849-874` — Prose says “driver stdout KVs are fallback only,” but the fence never parses `_plan_review_out` into `LOOP_STATUS`, `TALLY_PLAN_REVIEW_STATUS`, etc. (unlike the removed inline block, which merged stdout after the inner result env). With `larch_quiet_init` in the driver, `emit_kv` breadcrumbs go to FD 3, not stdout, so command substitution cannot recover them anyway. If `.step3-review-result.env` is missing or symlink-blocked, the orchestrator ends up with empty/unset gate variables while the branch matrix still runs. **Suggested fix:** Either restore stdout KV parsing in the fence when the result env is absent/refused (matching the old file-first-then-stdout pattern), or drop the stdout-fallback claim and fail closed when the normalized env cannot be read; optionally mirror critical keys on stdout under `LARCH_QUIET_DISABLE=1` for harness-visible fallback.
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/design/scripts/run-step3-review.sh:146-155` — Inner re-check of `STEP3_REVIEW_CAP_REACHED` after re-sourcing `.step3-review-cap.env` is unreachable in normal flow (cap is already decided at lines 99–115); harmless dead branch from merging two former SKILL fences, not a behavioral regression by itself.
+
+- **risk-integration** `skills/design/scripts/plan-review-loop.sh:908-918` — Collector stderr is buffered to a file and replayed after the command finishes; unlikely to change `LOOP_STATUS` / tally state, but may affect live diagnostic streaming during long collects.
+
+- **code-quality** `skills/design/scripts/run-step3-review.sh:203-207` — `_allow` array is unused; parsing is duplicated inline (no runtime effect).

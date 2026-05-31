@@ -1,0 +1,41 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "skills/design/scripts/lib-phase-driver.sh", "lines_added": 77, "lines_removed": 0},
+    {"path": "skills/design/scripts/lib-phase-driver.md", "lines_added": 40, "lines_removed": 0},
+    {"path": "skills/design/scripts/run-step3-review.sh", "lines_added": 281, "lines_removed": 0},
+    {"path": "skills/design/scripts/run-step3-review.md", "lines_added": 56, "lines_removed": 0},
+    {"path": "skills/design/scripts/test-lib-phase-driver.sh", "lines_added": 93, "lines_removed": 0},
+    {"path": "skills/design/scripts/test-lib-phase-driver.md", "lines_added": 3, "lines_removed": 0},
+    {"path": "skills/design/scripts/test-run-step3-review.sh", "lines_added": 149, "lines_removed": 0},
+    {"path": "skills/design/scripts/test-run-step3-review.md", "lines_added": 3, "lines_removed": 0},
+    {"path": "skills/design/SKILL.md", "lines_added": 21, "lines_removed": 147},
+    {"path": "scripts/test-design-structure.sh", "lines_added": 23, "lines_removed": 15},
+    {"path": "skills/design/scripts/test-step3-review-cap.sh", "lines_added": 80, "lines_removed": 128},
+    {"path": "skills/design/scripts/test-step3-review-cap.md", "lines_added": 1, "lines_removed": 1},
+    {"path": "skills/design/scripts/plan-review-loop.md", "lines_added": 1, "lines_removed": 1},
+    {"path": "docs/configuration-and-permissions.md", "lines_added": 2, "lines_removed": 2},
+    {"path": "skills/design/references/flags.md", "lines_added": 1, "lines_removed": 1},
+    {"path": ".claude/rules/launcher-argv-test-coverage.md", "lines_added": 2, "lines_removed": 1},
+    {"path": "Makefile", "lines_added": 8, "lines_removed": 2}
+  ],
+  "tests_added_or_modified": [
+    "skills/design/scripts/test-lib-phase-driver.sh",
+    "skills/design/scripts/test-run-step3-review.sh",
+    "skills/design/scripts/test-step3-review-cap.sh",
+    "scripts/test-design-structure.sh"
+  ],
+  "summary_bullets": [
+    "Extract Step 3 plan-review orchestration into run-step3-review.sh with shared lib-phase-driver primitives",
+    "Collapse SKILL.md cap-guard and loop-wrapper fences into a single driver invoke while preserving branch-matrix behavior",
+    "Wire regression harnesses and Makefile shard targets for the new driver and shared lib"
+  ],
+  "commit_message": "Extract Step 3 plan-review phase driver (run-step3-review)\n\nMove review-round cap guard, HARD round-cursor advance, plan-review-loop invocation, result normalization, and review-round-count persist/rollback from skills/design/SKILL.md into run-step3-review.sh backed by lib-phase-driver.sh. Retarget structure and cap harnesses; sync docs and launcher argv coverage.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {
+    "questions": []
+  }
+}

@@ -404,4 +404,31 @@ out_rv=$(run_loop_fixture "$DRV" --round-cap 2)
 printf '%s\n' "$out_rv" | grep -q '^LOOP_STATUS=revision-failed$' || fail "revision-failed integration path missing"
 grep -q '^LOOP_STATUS=revision-failed$' "$DRV/.step3-plan-review-result.env" || fail "revision-failed env missing"
 
+echo "=== run-step3-review.sh driver boundary (stubbed loop) ==="
+DSTEP3="$TMP/step3-driver"
+mkdir -p "$DSTEP3"
+printf '## Plan\n\nDo thing.\n\ndiff_lines: 3\n' >"$DSTEP3/plan.txt"
+printf 'feat\n' >"$DSTEP3/feature-description.txt"
+cat >"$DSTEP3/run-params.json" <<'EOF'
+{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"SIMPLE","partition_requested":false,"brainstorm_requested":false}
+EOF
+loop_stub="$DSTEP3/plan-review-loop-stub.sh"
+cat >"$loop_stub" <<'EOS'
+#!/usr/bin/env bash
+printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'
+exit 0
+EOS
+chmod +x "$loop_stub"
+RUN_STEP3="$ROOT/skills/design/scripts/run-step3-review.sh"
+set +e
+driver_out=$(env -u LARCH_QUIET_LOG_FILE CLAUDE_PLUGIN_ROOT="$ROOT" LARCH_QUIET_DISABLE=1 \
+    RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" bash "$RUN_STEP3" \
+    --design-tmpdir "$DSTEP3" --round-cap 5 --convergence-threshold 3 2>&1)
+driver_rc=$?
+set -e
+[[ "$driver_rc" -eq 0 ]] || fail "run-step3-review integration rc=$driver_rc: $driver_out"
+printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=complete$' || fail 'driver integration missing LOOP_STATUS=complete'
+grep -q '^LOOP_STATUS=complete$' "$DSTEP3/.step3-review-result.env" || fail 'driver integration missing normalized result env'
+[[ "$(cat "$DSTEP3/review-round-count.txt")" == "1" ]] || fail 'driver integration should persist round 1'
+
 printf '%s\n' 'test-design-multi-round-integration: ok'

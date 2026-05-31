@@ -1,0 +1,50 @@
+Reviewing quiet-io behavior: tracing `emit_kv`/`emit` after `larch_quiet_init` and how SKILL.md captures driver stdout.
+Branch commits since `main`: `b9806b39d` (extract driver), `1f5b1c922` (larch-logs), `a4fb82a02` / `2a8f4e0ac` / `d996fa9b5` / `a423720a4` (checks + review rounds).
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+The scout’s “stdout-KV fallback is dead after `larch_quiet_init`” hypothesis does **not** hold for this branch. Quiet mode is designed for exactly the `$(run-step3-review.sh …)` pattern in `skills/design/SKILL.md`.
+
+**How `emit` / `emit_kv` route in quiet mode**
+
+`larch_quiet_init` snapshots the process’s current FD 1 (the command-substitution pipe when invoked as `_plan_review_out=$(…)`) onto FD 3, then redirects FD 1/2 to the quiet log:
+
+```73:78:scripts/lib-quiet.sh
+    exec 3>&1
+    exec 4>&2
+    export LARCH_QUIET_ACTIVE=1
+    export LARCH_QUIET_PID=$$
+    export LARCH_QUIET_LOG_FILE="$log_file"
+    exec >>"$log_file" 2>&1
+```
+
+Contract output goes to FD 3, not the redirected FD 1:
+
+```174:178:scripts/lib-quiet.sh
+    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+        printf '%s=%s\n' "$key" "$value" >&3
+    else
+        printf '%s=%s\n' "$key" "$value"
+    fi
+```
+
+`scripts/lib-quiet.md` documents this as the “caller-visible stream”; `scripts/test-lib-quiet.sh` already asserts `emit_kv` is visible under `out=$(helper …)` without `LARCH_QUIET_DISABLE`.
+
+**Driver → orchestrator path**
+
+`run-step3-review.sh` calls `larch_quiet_init` then ends with `emit_kv` breadcrumbs (`skills/design/scripts/run-step3-review.sh:286-295`). Those lines reach `_plan_review_out` in `skills/design/SKILL.md:850-876` via FD 3. The orchestrator’s primary handoff is `.step3-review-result.env` (`856-867`); the `while … <<<"${_plan_review_out:-}"` block (`869-876`) is a real fallback when `LOOP_STATUS` is still empty after sourcing the file (e.g. symlink refusal on the result env).
+
+**Inner `plan-review-loop.sh` and `LARCH_QUIET_DISABLE=1`**
+
+The comment at `run-step3-review.sh:199-200` applies to the **nested** substitution only. The inner loop is invoked with `LARCH_QUIET_DISABLE=1` so its contract lines land on FD 1 inside `_plan_review_out=$(…)` (`200-208`), which the driver then parses (`240-249`). That is sufficient for inner-loop capture; the driver’s own `emit_kv` calls do not need a separate disable.
+
+**Harness**
+
+`skills/design/scripts/test-run-step3-review.sh` uses `launcher_env=(env -u LARCH_QUIET_LOG_FILE …)` and does not set `LARCH_QUIET_DISABLE`, yet asserts on captured `$out` (e.g. `LOOP_STATUS=cap-reached` at lines 141-151). That matches the FD 3 contract, not a test-only escape hatch.
+
+**Doc wording (non-defect)**
+
+`run-step3-review.md:30` and `SKILL.md:890` say “stdout fallback”; after quiet init that is technically the FD 3 caller-visible stream, not post-redirect FD 1. Behavior is correct; clearer docs could point at `scripts/lib-quiet.md` (as `skills/design/references/flags.md` already does for other helpers).

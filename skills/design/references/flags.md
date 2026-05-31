@@ -16,7 +16,7 @@
 
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
 - `--run-id <ID>`: optional stable run id. Default empty.
-- `--partition` / `-p`: public boolean flag, default `false`. Semantics: when set, Step **2b.5** routes directly to the **Split-path** (decomposition panel) when no hard threshold fired — no Continue option, no threshold inspection. Hard triggers still show the hard **Split/Override/Cancel** prompt: Split enters Split-path, Override records the strongly discouraged escape hatch and continues the surrounding review flow, and Cancel exits. `--partition` is the user-initiated override that fires Split-path on small plans; it cannot auto-downgrade a hard trigger. The flag is persisted to `$DESIGN_TMPDIR/run-params.json` as `partition_requested` (boolean) via `scripts/write-run-params.sh` so Gate B and post-plan discussion re-entries read it from a fresh Bash subshell without re-parsing argv.
+- `--partition` / `-p`: public boolean flag, default `false`. Semantics: when set, Step **2b.5** routes directly to the **Split-path** (decomposition panel) when no hard threshold fired — no Continue option, no threshold inspection. Hard plans still show the hard **Split/Cancel** prompt before entering Split-path automatically; `--partition` is the user-initiated override that fires the same path on small plans. The flag is persisted to `$DESIGN_TMPDIR/run-params.json` as `partition_requested` (boolean) via `scripts/write-run-params.sh` so Gate B and post-plan discussion re-entries read it from a fresh Bash subshell without re-parsing argv.
 - `--brainstorm`: public boolean flag, default `false`. When set, Step **1d.5** runs after Round 1 discussion and before Step **1d.7** outline-approval (Gate A re-entry only post-plan) (see `references/brainstorm.md`). Persisted as `brainstorm_requested` (boolean) in `run-params.json` via `scripts/write-run-params.sh`.
 - `--manual` / `-m`: public boolean flag, default `false`. When set, restores today's Gate B 3-option `AskUserQuestion` (Apply all / Go through each / Switch to discussion mode) on every Gate B entry. Default (`false`) makes Gate B auto-apply every accepted finding to `$DESIGN_TMPDIR/plan.txt` after printing a compact findings list. Persisted as `manual_gate_b` (boolean) in `run-params.json` via `scripts/write-run-params.sh`. Scope: Gate B only — Gate A (Step 1e) discussion sub-rounds and Gate C (Step 4b) final approval are unchanged in both modes. Whole-run sticky: parsed once at argv, read on every Gate B entry including Step 3 re-entries from Gate C(c) "Re-run review panel". Independent of all tier/partition/brainstorm flags (no mutual exclusion).
 
@@ -32,7 +32,7 @@ Mechanical evaluation lives in `skills/design/scripts/check-plan-size.sh` (sibli
 
 The historical **ownership-domains** sprawl heuristic from early design notes is **not** part of L1; it is intentionally omitted (Round 1 decision on issue #2670).
 
-**Hard trigger** — any one suffices (explicit, strongly-discouraged Override-and-proceed escape hatch in the hard `AskUserQuestion`; `--partition` still cannot auto-downgrade a hard trigger):
+**Hard trigger** — any one suffices (no operator Continue override in the hard `AskUserQuestion`):
 
 - Plan body line count **>** 800.
 - `diff_added` trailer **>** 2000 when present in the final metadata block immediately above `diff_lines:`; otherwise legacy `diff_lines` trailer **>** 1500.
@@ -43,11 +43,12 @@ The historical **ownership-domains** sprawl heuristic from early design notes is
 
 ## Multi-round loop env vars
 
-Normative argv validation lives in `skills/design/scripts/plan-review-loop.sh` (`--round-cap`). SKILL.md Step 3 passes `"${LARCH_DESIGN_ROUND_CAP:-5}"` when the env var is unset or empty. Invalid explicit values cause `plan-review-loop.sh` argv validation to fail before any review round launches. Step 3 normalizes that failure to the `panel-failed` branch, skips Gate B, and proceeds to Step 3b / Step 4 / Gate C with the pre-review `plan.txt` unchanged. There is no silent fallback or clamping. Convergence is a hardcoded single-round rule: one non-degraded round with `NON_NIT_ACCEPTED_COUNT <= 5`, `IMPORTANT_ACCEPTED_COUNT == 0`, and nit-severity accepted findings excluded from the non-nit total. See `docs/configuration-and-permissions.md` § Environment Variables.
+Normative argv validation lives in `skills/design/scripts/plan-review-loop.sh` (`--round-cap`, `--convergence-threshold`). SKILL.md Step 3 (via `run-step3-review.sh`) passes `"${LARCH_DESIGN_ROUND_CAP:-5}"` and `"${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"` when the env vars are unset or empty. Invalid explicit values cause `plan-review-loop.sh` argv validation to fail before any review round launches. Step 3 normalizes that failure to the `panel-failed` branch, skips Gate B, and proceeds to Step 3b / Step 4 / Gate C with the pre-review `plan.txt` unchanged. There is no silent fallback or clamping. See `docs/configuration-and-permissions.md` § Environment Variables.
 
 | Variable | Default (unset/empty) | Invalid explicit values | Semantics |
 |---|---|---|---|
 | `LARCH_DESIGN_ROUND_CAP` | `5` | Non-numeric or non-positive → `plan-review-loop.sh` argv validation exit `2`; Step 3 surfaces `panel-failed` and continues at Step 3b (Gate B skipped) | Upper bound on **inner** plan-review rounds inside one Step 3 `plan-review-loop.sh` invocation. The Step 3 **review-run counter** (tier-derived cap: SIMPLE = `3`, HARD = `5`) limits Gate C re-entries separately — `LARCH_DESIGN_ROUND_CAP` is **not** clamped against that tier cap; the two layers compose. |
+| `LARCH_DESIGN_CONVERGENCE_THRESHOLD` | `3` | Non-numeric or negative → `plan-review-loop.sh` argv validation exit `2`; Step 3 surfaces `panel-failed` and continues at Step 3b (Gate B skipped) | Per-round `ACCEPTED_COUNT` bound that, combined with zero `IMPORTANT_ACCEPTED_COUNT` across two consecutive non-degraded rounds, triggers convergence. |
 
 ## Helper output — `TRIGGER_REASONS`
 

@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- real double-parse but low-risk maintenance nit
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- cosmetic indentation only
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ordering change is plausible intentional cap accounting
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- exit 2 already defaults empty LOOP_STATUS to panel-failed
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- harness mirroring SKILL fence is normal; shared extraction is optional follow-up
+OOS_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing launcher pattern gap, not a regression
+OOS_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- matches documented same-UID tmpdir trust model
+OOS_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- unchanged pre-extract trust boundary
+OOS_17: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+OOS_18: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- pre-existing read-cursor abort pattern
+OOS_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
