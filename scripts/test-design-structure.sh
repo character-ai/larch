@@ -195,7 +195,7 @@ grep -Fq 'set +e' "$RUN_STEP3_SH" \
   || fail "(14c0b) run-step3-review.sh missing set +e guard around plan-review-loop.sh"
 grep -Fq '_plan_review_rc=$?' "$SKILL_MD" \
   || fail "(14c0c) SKILL.md missing _plan_review_rc capture for run-step3-review.sh"
-contains "$SKILL_MD" '${_plan_review_rc:-0}" -eq 0' 'SKILL must gate .step3-review-result.env on driver success'
+contains "$SKILL_MD" "\${_plan_review_rc:-0}\" -eq 0" 'SKILL must gate .step3-review-result.env on driver success'
 contains "$SKILL_MD" 'configuration error (exit 2)' 'SKILL must warn on run-step3-review.sh exit 2'
 grep -Fq 'scout-plan-archetypes-wrapper.sh' "$PLAN_REVIEW_LOOP_SH" \
   || fail "(14c1) plan-review-loop.sh missing scout-plan-archetypes-wrapper.sh"
