@@ -137,6 +137,7 @@ plugin_root_awk_count=$(grep -Fxc '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${I
 [[ "$plugin_root_awk_count" == "3" ]] \
   || fail "session-env.sh awk fallback count ($plugin_root_awk_count) expected 3"
 
+# shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
 legacy_fence_count=$(grep -Fxc 'if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then' "$SKILL_MD" || true)
 [[ "$legacy_fence_count" == "0" ]] \
   || fail "legacy 4-line awk fence opener count ($legacy_fence_count) expected 0"

@@ -365,7 +365,7 @@ else
     pass
 fi
 if ! ( unset CLAUDE_PLUGIN_ROOT
-       # shellcheck disable=SC1090
+       # shellcheck disable=SC1090,SC1091
        . "$resume_tmp/plugin-root.env"
        [[ "$CLAUDE_PLUGIN_ROOT" == "$plugin_root_value" ]] ); then
     fail "G.4 resume-tail plugin-root.env does not source cleanly"
