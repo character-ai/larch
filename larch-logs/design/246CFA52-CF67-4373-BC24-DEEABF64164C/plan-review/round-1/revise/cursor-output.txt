@@ -1,0 +1,160 @@
+Reviewing the shell scripts referenced in the findings so the plan revisions match bash behavior.
+--- a/plan.txt
++++ b/plan.txt
+@@ -24,7 +24,8 @@
+ - `classify_bump(runner, *, cwd=None) -> BumpClassification` — frozen record
+   `(current_version, new_version, bump_type, major_reasons, minor_reasons,
+   reasoning)`. Reimplements: read `.claude-plugin/plugin.json` `.version`;
+   resolve BASE via `merge-base` against local `main` then `origin/main`;
+-  idempotency walk (HEAD past transparent `Update CHANGELOG for ` /
+-  `chore(larch-logs): ` commits → `Bump version to X.Y.Z` ⇒ `NONE`);
++  idempotency walk (at most `IDEMPOTENCY_DEPTH=3` commits from HEAD): a commit
++  is transparent only when subject matches `Update CHANGELOG for ` or
++  `chore(larch-logs): ` **and** `git diff-tree --name-only` paths satisfy
++  CHANGELOG.md-only or `larch-logs/**` respectively (bash
++  `idempotency_commit_is_transparent`); subject-only spoofing without matching
++  paths does not skip (bash `test-classify-bump.sh` test 5); resolved ref with
++  `^Bump version to X.Y.Z$` ⇒ `NONE`;
+   `git diff -M --name-status BASE HEAD -- skills agents`; D/A/R on
+   `skills/*/SKILL.md` + `agents/*.md` → MAJOR/MINOR; M → frontmatter `name:`
+   change (MAJOR) and `argument-hint:` `--flag` token-set add (MINOR) / remove
+   (MAJOR). Highest severity wins; PATCH default.
+-- `apply_bump(runner, new_version, *, cwd=None) -> ApplyResult` — frozen
++- `apply_bump(runner, new_version, *, cwd=None) -> ApplyResult` — frozen
+   `(applied, new_version, commit_sha, error)`. Reimplements: unmerged-path
+-  precheck (raise `Stalled`, parity exit 4), clean-tree check tolerating
++  precheck → `ApplyResult(applied=False, error=<unmerged paths message>)`
++  (parity `apply-bump.sh` `APPLIED=false` + exit 4; **do not** raise `Stalled`
++  here — reserve `Stalled` for `bump_branch_guard` only; Phase 7 driver maps
++  this result to exit 4), clean-tree check tolerating
+   `*.launcher-stderr` / `*.redacted.log` untracked artifacts, `plugin.json`
+   semver validate, backup + atomic rewrite + stage, **fetch-and-verify retry
+   loop** (same-version race + `NEW_VERSION < origin/main` regression →
+@@ -35,8 +40,14 @@
+ - `bump_branch_guard(branch_name, current_branch, *, forked) -> None` — raise
+   `Stalled` on empty branch, branch/name mismatch, or non-forked `main`/`master`
+   (forked may proceed). Mirrors `ship-pr.sh` `run_bump_phase` guards 1-3.
++- `check_bump_version_pre(runner, *, cwd=None, implement_tmpdir=None) ->
++  BumpPreCheck` — frozen `(has_bump, commits_before, status)`; full
++  `check-bump-version.sh --mode pre` parity: `has_bump` when
++  `.claude/skills/bump-version/SKILL.md` exists; `commits_before` + `status`
++  (`ok|missing_main_ref|git_error`) via local-`main`-then-`origin/main`
++  `rev-list` count (fail-closed enum, shared with post); best-effort optional
++  `touch {implement_tmpdir}/.bump-version-armed` when tmpdir is set and skill
++  exists (parity #1878; write failure is non-fatal).
+ - `verify_bump_commit_count(runner, before_count, *, cwd=None) -> BumpVerify` —
+   `check-bump-version.sh --mode post` parity: `VERIFIED=true` only when the
+   base-ref status is `ok` and count delta is exactly +1 (fail-closed on
+@@ -44,8 +55,12 @@
+ - `drop_bump_commit(runner, *, max_depth=10, allow_changelog_only=False,
+   bump_files=None, cwd=None) -> DropResult` — walk for `Bump version to X.Y.Z`;
+   4 guards (clean tracked tree, subject regex, parent exists, changed files ⊆
+-  allowed set {`.claude-plugin/plugin.json`[, `CHANGELOG.md`]} with
+-  `bump_files` override + `--allow-changelog-only`); drop via `reset --hard
++  allowed set); Guard 4 matches bash **exact** sorted `diff-name-only` equality
++  (`LC_ALL=C`): default path allows only `.claude-plugin/plugin.json` or that
++  file plus `CHANGELOG.md` (multiline sorted string, not subset); custom
++  `LARCH_BUMP_FILES` path requires `BUMP_FILE_FOUND` (≥1 non-CHANGELOG bump
++  file) unless `allow_changelog_only` and changed files == `CHANGELOG.md`;
++  `bump_files` override + `--allow-changelog-only`); drop via `reset --hard
+   HEAD~1` (found at HEAD) or `rebase --onto parent upstream` (found below HEAD).
+   No-op paths return `DropResult(dropped=False, ...)`.
+ 
+@@ -88,9 +103,12 @@
+ ### NEW: `python/test_version_bump.py`
+ 
+ `StubRunner`-based unit tests (deterministic argv→`CommandResult`) for: classify
+-D/A/R/M and idempotency-NONE; branch-guard stall matrix (empty / mismatch /
+-non-forked main / forked-proceed); apply same-version-race and regression
+-re-classification; verify fail-closed on `missing_main_ref`/`git_error`;
++D/A/R/M, transparent path guards, `IDEMPOTENCY_DEPTH=3` cap, and
++idempotency-NONE; subject-only CHANGELOG spoof over skills → MINOR (bash test 5);
++branch-guard stall matrix (empty / mismatch / non-forked main / forked-proceed);
++apply unmerged → `applied=False` (not `Stalled`); apply same-version-race and
++regression re-classification; `check_bump_version_pre` HAS_BUMP/status/armed
++sentinel; verify fail-closed on `missing_main_ref`/`git_error`;
+ drop-bump guard refusals and the two drop paths. Plus `@pytest.mark.skipif`
+ bash-parity tests that build a temporary git repo fixture (`tmp_path`,
+ `git init`, seeded commits, `plugin.json`) and assert the Python output matches
+-`classify-bump.sh` / `apply-bump.sh` / `drop-bump-commit.sh` on the same fixture.
++`classify-bump.sh` / `apply-bump.sh` / `check-bump-version.sh` (pre and post) /
++`drop-bump-commit.sh` on the same fixture.
+ 
+ ### NEW: `python/test_changelog.py`
+ 
+@@ -118,7 +136,8 @@
+ `CHANGELOG_COMMIT_SUBJECT_TEMPLATE = "Update CHANGELOG for {version}"`,
+ `SEMVER_RE` pattern string, `PLUGIN_JSON_PATH = ".claude-plugin/plugin.json"`,
+ `CHANGELOG_DEFAULT_PATH = "CHANGELOG.md"`, `DEFAULT_BUMP_FILES`,
+-`DROP_BUMP_MAX_DEPTH = 10`, `DROP_CHANGELOG_MAX_DEPTH = 20`,
++`DROP_BUMP_MAX_DEPTH = 10`, `DROP_CHANGELOG_MAX_DEPTH = 20`,
++`IDEMPOTENCY_DEPTH = 3`, `BUMP_VERSION_ARMED_SENTINEL = ".bump-version-armed"`,
+ `APPLY_BUMP_MAX_RETRIES = 10`, transparent-commit subject prefixes, and the
+ classify scope dirs (`skills`, `agents`). `ENV_LARCH_BUMP_FILES = "LARCH_BUMP_FILES"`.
+ 
+@@ -131,6 +150,8 @@
+   string transforms for changelog text. The same-version-race/regression and
+   branch-guard "gaps" become first-class, directly unit-tested functions instead
+   of being buried in a shell loop.
++- Split `check-bump-version.sh` into `check_bump_version_pre` and
++  `verify_bump_commit_count` so Rebase + Re-bump pre/post contracts are both
++  on the Python surface without a partial port.
+ - Reuse, do not fork, the `proc.Runner` seam and `git.py`. Extend `git.py`
+   additively for the missing primitives so both modules and their tests share
+   one injectable surface.
+@@ -141,8 +162,13 @@
+ ## Edge cases
+ 
+ - `classify_bump`: no local `main` (fall back to `origin/main`); detached HEAD /
+-  unresolvable merge-base (raise `ShipError`); rename detection (`-M`) so a moved
+-  SKILL.md is MAJOR; wording-only flag-bullet edits must **not** trip MAJOR
+-  (token-set cancellation); idempotency must look past transparent CHANGELOG and
+-  `larch-logs` commits but stop at the first non-transparent commit.
+-- `apply_bump`: unmerged paths → distinct stall (parity exit 4), not generic
+-  dirty-tree; tolerate only `*.launcher-stderr` / `*.redacted.log` untracked
++  unresolvable merge-base (raise `ShipError`); rename detection (`-M`) so a moved
++  SKILL.md is MAJOR; wording-only flag-bullet edits must **not** trip MAJOR
++  (token-set cancellation); transparent walk capped at depth 3 with per-commit
++  path guards (CHANGELOG-only / `larch-logs/**`); forged transparent subjects
++  over `skills/` still classify from the real diff.
++- `apply_bump`: unmerged paths → `ApplyResult(applied=False, …)` (Phase 7 exit 4),
++  not `Stalled` and not conflated with dirty-tree exit 1; tolerate only
++  `*.launcher-stderr` / `*.redacted.log` untracked
+   artifacts; retry cap reached → `applied=False` with the race error; rollback
+   must restore `plugin.json` and unstage on commit failure.
++- `drop_bump_commit`: multiset equality, not ⊆ — extra allowed paths or
++  CHANGELOG-only without `--allow-changelog-only` must refuse drop.
+ - `changelog`: missing `Unreleased` section (anchor on the Semantic Versioning
+   intro line); duplicate `## [X.Y.Z]` headings (error, no write); blank section
+   body → extract returns None; RST document-title underline (`====`) skipped so
+@@ -155,6 +181,11 @@
+    mitigation: derive the RST section grammar directly from
+    `auto-resolve-changelog.sh`'s `is_rst_adornment`/title-index functions and
+    reuse one shared RST-section helper for both auto-resolve and the editors.
++2. **`Stalled` vs `ApplyResult` on apply paths.** Raising `Stalled` for unmerged
++   would break KV parity and collapse exit 4 with branch-guard stalls. Signal:
++   parity tests expect `APPLIED=false`; mitigation: unmerged returns
++   `ApplyResult`; only `bump_branch_guard` raises `Stalled`.
+ 2. **Parity tests need git/bash fixtures that flake or are skipped in CI.** If
+    the `skipif` guard hides a real divergence, the port looks green while drifting
+    from the `.sh`. Signal: parity tests skipped in the Python Tests job log;
+@@ -170,7 +201,8 @@
+   convention; run under `make py-test` (pytest) and pass `make py-lint`
+   (ruff + pylint + pyright, stdlib-only).
+ - Three test layers: (a) `StubRunner` unit tests for git-coupled logic and the
+-  gap paths (branch-guard, same-version-race, regression-correction); (b) pure
++  gap paths (branch-guard, same-version-race, regression-correction,
++  check-bump pre/post, idempotency depth/path guards); (b) pure
+   in-memory unit tests for changelog text transforms over Markdown **and** RST
+   fixtures; (c) `@pytest.mark.skipif(... bash/.sh unavailable)` bash-parity tests
+   that subprocess the real `.sh` against a temp git-repo / temp-file fixture and
+@@ -185,5 +217,5 @@
+ extension; the user accepted the full eight-script scope in design Round 1.
+ 
+-diff_added: 1900
++diff_added: 2080
+ diff_deleted: 40
+-diff_lines: 1940
++diff_lines: 2120
+
+
