@@ -1,0 +1,88 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -14,7 +14,8 @@
+   - **codex-implement** (`launch-codex-implement.sh`): redirects `2>"$SIDECAR_LOG"` where `--sidecar-log` = `${TOOL_TAG}-impl.log` (NOT `${TRANSCRIPT}.sidecar`), so `select_failed_agent_stderr_source` misses the real stderr. **`agent-model-args.sh` failure** appends to `$SIDECAR_LOG` and exits before the auth-retry loop, so the planned post-loop `write_failed_agent_stderr_tail` never runs. Gap = no usable tail on agent run **or** model-args early exit + no surfacing.
+   - **lint-fix-loop** (`lint-fix-loop.sh`): `run_codex` redirects `2>"$codex_wrapper_log"` (default mode; stderr not discoverable by `run-external-agent`). `run_cursor` uses `--capture-stdout` with stem `$run_dir/cursor.log`, so `run-external-agent` already writes `${run_dir}/cursor.log.stderr-tail` on failure; `cursor.wrapper.log` is wrapper/progress only. Gap for codex = no usable tail + no surfacing; gap for cursor = `run_cursor` does not propagate exit status (failure hooks never run) + no caller-scope surfacing under FD-2 redirects. (**cursor-implement** model-args failure in `launch-cursor-implement.sh` exits before `run-external-agent`, so auto-write never runs — same early-exit gap as codex model-args.)
++  - **cursor-implement auth preflight** (`PREFLIGHT_RC` ~262–272 in `launch-cursor-implement.sh`): after `MODEL_ARGS_RC`, `cursor_launcher_setup_auth_argv` failures append to `$SIDECAR_LOG` and exit before `run-external-agent`; without an explicit producer write, `${TRANSCRIPT_PATH}.stderr-tail` is never created and step2 consumer surfacing is a no-op despite actionable sidecar stderr (FINDING_3/4/5/7).
+ - Consumers today swallow the tail: `step2-implement.sh` `emit_bailed` emits only `SIDECAR_LOG=<path>` KV; `ship-pr.sh` CI-launcher sites do `2>>"$wf_log"` then revert+`continue`; `lint-fix-loop.sh` returns rc without tail KV; production callers of lint-fix (`run_lint_fix_loop_capture`, step5 loop) redirect FD 2 to capture files.
+ - Disable knob `LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0` already makes the lib write/emit no-ops; all edits below inherit that (no new guard needed).
+ 
+@@ -22,7 +23,7 @@
+ 
+ 1. **Producer guarantee**: after any failed launcher attempt with actionable stderr in a known capture file, `${stem}.stderr-tail` must exist on disk — including **pre-agent** failures (`MODEL_ARGS_RC` in implement launchers) where `$SIDECAR_LOG` is populated but `run-external-agent` never ran. Where `run-external-agent.sh` already writes it (cursor `--capture-stdout-only` after agent run; cursor `--capture-stdout` in lint-fix `run_cursor`; codex-ci `${OUTPUT}.sidecar`), add nothing. Where the real stderr is captured to a non-discoverable path (codex-implement agent run, lint-fix `run_codex`), add an explicit on-failure `write_failed_agent_stderr_tail "<captured-stderr>" "<stem>"`.
++   Extend pre-agent coverage to **cursor `PREFLIGHT_RC`** (~262–272): mirror the `MODEL_ARGS_RC` producer write after `$SIDECAR_LOG` is populated.
+ 2. **Consumer surfacing**: at the lane's failure choke point in a scope whose stderr reaches chat (orchestrator FD 4 under quiet), call `emit_failed_agent_stderr_tail_larch_err "<stem>"` via `emit_failed_agent_stderr_tail_larch_err` or a shared helper. Do **not** rely on in-loop `emit_failed_agent_stderr_tail_larch_err` inside subprocesses whose FD 2 was redirected by the parent (`2>"$fail_file"`, `2>&1` capture).
+ 
+ Each implementer edit MUST first verify the lane's actual `run-external-agent` mode (`default` vs `--capture-stdout` vs `--capture-stdout-only`) before deciding whether the producer step is a no-op.
+@@ -40,9 +41,11 @@
+ ### UPDATED: `scripts/launch-cursor-implement.sh`
+ - Source `lib-failed-agent-stderr-tail.sh` before the `MODEL_ARGS_RC` early-exit branch (same placement rationale as codex-implement).
+ - **`MODEL_ARGS_RC` early exit** (`if [[ "$MODEL_ARGS_RC" -ne 0 ]]` ~237–248, after sidecar append): `write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true` before timing/KV emit / `exit 0`. `run-external-agent` is never called on this path (FINDING_1).
++- **`PREFLIGHT_RC` early exit** (`if [[ "$PREFLIGHT_RC" != "0" ]]` ~262–272, after `cat "$PREFLIGHT_ERR" >> "$SIDECAR_LOG"`): `write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true` before `emit_timing_record` / KV emit / `exit 0`. Symmetric with `MODEL_ARGS_RC`; `run-external-agent` never runs (FINDING_3/4/5/7).
+ - Verify the launcher uses `run-external-agent --capture-stdout-only` (not `--capture-stdout`) for the agent run. If so, `run-external-agent` already writes `${TRANSCRIPT_PATH}.stderr-tail` on agent failure from `${TRANSCRIPT_PATH}.diag` → **no additional producer edit on the agent path**. Consumer in `step2-implement.sh` covers surfacing.
+ - If verification shows a different capture mode, mirror the codex-implement producer write from the launcher's actual captured-stderr file on the agent-failure path. Add only what verification shows is missing.
+ 
+ ### UPDATED: `skills/implement/scripts/step2-implement.sh`
+ - Source `lib-failed-agent-stderr-tail.sh` once near the top (alongside `lib-quiet.sh`).
+-- In `emit_bailed()` (the external-implementer failure/bail envelope), before `exit 0`, call `emit_failed_agent_stderr_tail_larch_err "$TRANSCRIPT_PATH" || true` so a failed implementer's redacted tail reaches chat. Keep the existing `SIDECAR_LOG=`/`TRANSCRIPT=` KV lines and `ORCHESTRATOR_EDIT_AUTHORITY forbidden`.
+-- Confirm this fires on the runtime-failure path (non-zero `LAUNCHER_EXIT` with no manifest), not only on `emit_bailed`. If the failure path returns without `emit_bailed`, add the same emit there.
++- **Stale-artifact hygiene (FINDING_2)**: immediately after `TRANSCRIPT_PATH` / `SIDECAR_LOG` are defined (~257–258), `rm -f "${TRANSCRIPT_PATH}.stderr-tail"` (optionally `"${TRANSCRIPT_PATH}.diag"`) so a reused `IMPLEMENT_TMPDIR` cannot leave a prior run's tail on disk. Repeat in Step 3 cleanup (~606) alongside the existing transcript/sidecar `rm -f`: include `"${TRANSCRIPT_PATH}.stderr-tail"` (and optional `.diag`).
++- **Consumer surfacing (runtime failure only)**: do **not** call `emit_failed_agent_stderr_tail_larch_err` from generic `emit_bailed()` — many bail reasons (`qa-loop-exceeded`, branch guards, `manifest-schema-invalid`, resume paths) run **before** Step 3 cleanup (~606) and would surface a stale prior-run tail if one remained. Instead, on each of the three `emit_bailed "$RUNTIME_FAILURE_TOKEN"` choke points (~704–715: non-zero wrapper exit, `MANIFEST_WRITTEN != true`, non-zero `LAUNCHER_EXIT`), call `emit_failed_agent_stderr_tail_larch_err "$TRANSCRIPT_PATH" || true` immediately **before** `emit_bailed "$RUNTIME_FAILURE_TOKEN"`. Keep existing `SIDECAR_LOG=`/`TRANSCRIPT=` KV lines and `ORCHESTRATOR_EDIT_AUTHORITY forbidden` inside `emit_bailed`.
+ 
+ ### UPDATED: `scripts/ship-pr.sh`
+@@ -108,10 +111,14 @@
+ - Add a case: stub `agent-model-args.sh` non-zero with known stderr → `$SIDECAR_LOG`; assert `${TRANSCRIPT_PATH}.stderr-tail` exists before launcher exits (model-args path, no agent run).
+ 
+ ### UPDATED: `skills/implement/scripts/test-cursor-implementer.sh`
+ - Add the analogous assertion for the cursor-implement path: on agent failure with `--capture-stdout-only`, assert `${TRANSCRIPT}.stderr-tail` is present (producer is `run-external-agent`; launcher is consumer-only via step2).
+ - Add a case: stub `cursor_launcher_load_model_args` (or `agent-model-args.sh` equivalent) non-zero with stderr in `$SIDECAR_LOG`; assert `${TRANSCRIPT_PATH}.stderr-tail` on early exit (model-args path).
++- Add a case: stub `cursor_launcher_setup_auth_argv` non-zero (`PREFLIGHT_RC`, `LAUNCHER_EXIT=2`) with known stderr in `$SIDECAR_LOG`; assert `${TRANSCRIPT_PATH}.stderr-tail` on preflight exit (no agent run).
+ 
+ ### UPDATED: `scripts/test-ship-pr.sh`
+@@ -128,6 +135,9 @@
+ ### UPDATED: `scripts/launch-codex-implement.md`
+ - Document that on failure the launcher writes `${TRANSCRIPT_PATH}.stderr-tail` (redacted, bounded) via the shared lib. One or two lines.
+ 
++### UPDATED: `scripts/launch-cursor-implement.md`
++- Mirror `launch-codex-implement.md`: on failure the launcher writes `${TRANSCRIPT_PATH}.stderr-tail` (redacted, bounded) via the shared lib on **`MODEL_ARGS_RC`** and **`PREFLIGHT_RC`** pre-agent paths; agent failures rely on `run-external-agent --capture-stdout-only` when verification confirms that mode. One or two lines (FINDING_8 / external-tool-launcher parity).
++
+ ### UPDATED: `scripts/lint-fix-loop.md`
+ - Document codex on-failure producer write; cursor failure relies on `run-external-agent --capture-stdout` tail with optional fallback write only when missing; `STDERR_TAIL_PATH` KV for caller-scope surfacing; no in-loop chat emit under redirected FD 2.
+ 
+@@ -145,7 +155,7 @@
+ - Reuse `lib-failed-agent-stderr-tail.sh` everywhere; never re-implement tail/redaction.
+ - Keep edits additive and on the failure branch only — success paths untouched; `${OUTPUT}.stderr-tail` still removed on success by `run-external-agent.sh`.
+ - Do not modify `run-external-agent.sh` (avoid regressing review/research lanes); push per-lane producer fixes into lanes with non-standard stderr capture.
+-- Implement launchers: every non-success exit that leaves actionable content in `$SIDECAR_LOG` must call `write_failed_agent_stderr_tail` (model-args branch **and** post-auth-retry agent-failure branch for codex; model-args branch for cursor; agent path for cursor when `run-external-agent` does not run).
++- Implement launchers: every non-success exit that leaves actionable content in `$SIDECAR_LOG` must call `write_failed_agent_stderr_tail` (model-args branch **and** post-auth-retry agent-failure branch for codex; **model-args and preflight branches** for cursor; agent path for cursor when `run-external-agent` does not run).
+ - Distinguish **`--capture-stdout-only`** (cursor CI/implement launchers → `.diag` source) from **`--capture-stdout`** (lint-fix `run_cursor` → `.log`/`.diag` source). Do not treat them interchangeably in verification steps.
+ - `ship-pr.sh` gets `_surface_ci_stderr_tail` plus `_surface_lint_fix_stderr_tail` to avoid repeating source+emit and to centralize caller-scope lint-fix surfacing.
+ - Recovery waterfall: capture/parse `LAUNCHER_EXIT` from CI launcher stdout (not only shell exit); surface on `LAUNCHER_EXIT`, `tier_rc`, or existing `${output}.stderr-tail`.
+@@ -158,6 +168,7 @@
+ - Empty/missing captured stderr: `write_failed_agent_stderr_tail` returns non-zero and `rm`s stale tail; `|| true` guards keep normal failure paths.
+ - Quiet vs non-quiet: `emit_failed_agent_stderr_tail_larch_err` routes through `larch_err` (FD 3/4-aware). Tests run with `LARCH_QUIET_DISABLE=1` where FD 2 is asserted directly.
+ - **Model-args / pre-agent failure**: implement launchers populate `$SIDECAR_LOG` and exit before `run-external-agent`; producer write must run in the `MODEL_ARGS_RC` branch, not only after the auth-retry loop.
++- **Cursor auth preflight / pre-agent failure**: `PREFLIGHT_RC` branch must mirror `MODEL_ARGS_RC` producer write before `exit 0`.
++- **Stale stderr-tail on tmpdir reuse (FINDING_2)**: prior failed implement runs can leave `${TRANSCRIPT_PATH}.stderr-tail`; many `emit_bailed` paths precede Step 3 cleanup — rm at path definition + Step 3 cleanup; surface tail only on `$RUNTIME_FAILURE_TOKEN` paths, not inside generic `emit_bailed`.
+ - Auth-retry loop (codex-implement): producer write only after final attempt fails (existing `if (( LAUNCHER_EXIT != 0 ))` after loop).
+ - CI fix-loop stem: always `$tier_out` for `--output`; recovery waterfall keeps `$output` (already tier-specific path).
+ - Recovery waterfall: `tier_rc=0` with non-zero `LAUNCHER_EXIT` or non-empty `${output}.stderr-tail` still surfaces (CI launchers always exit 0).
+@@ -172,6 +183,7 @@
+ 6. **`run_cursor` false success**: without `cursor_rc` propagation, failure hooks and `STDERR_TAIL_PATH` never run. Mitigation: mirror `run_codex` return semantics before any tail logic.
+ 7. **Secret leak**: only emit `${stem}.stderr-tail` produced by the lib redactors; never `cat` raw capture files.
++8. **Stale tail on unrelated bail (FINDING_2)**: unconditional `emit_failed_agent_stderr_tail_larch_err` inside generic `emit_bailed()` plus reused `IMPLEMENT_TMPDIR` surfaces a previous run's `${TRANSCRIPT_PATH}.stderr-tail` on branch/qa/manifest bails that occur before Step 3 cleanup. Mitigation: `rm -f` stale tail immediately after path definition and in Step 3 cleanup; emit only immediately before `emit_bailed "$RUNTIME_FAILURE_TOKEN"`.
+ 
+ ## Testing strategy
+ 
+@@ -179,6 +191,7 @@
+ - Gap 1 producer: `test-codex-implementer.sh`, `test-cursor-implementer.sh` → `make test-codex-implementer test-cursor-implementer`.
+ - Gap 1 producer (model-args): same harnesses — assert `.stderr-tail` on `MODEL_ARGS_RC` early exit without stubbing a full agent run.
++- Gap 1 producer (cursor preflight): `test-cursor-implementer.sh` — assert `.stderr-tail` on `PREFLIGHT_RC` early exit without stubbing a full agent run.
+ - Gap 1 consumer: `test-ship-pr.sh` (CI `$tier_out` + lint-fix caller-scope) → `make test-ship-pr`.
+ - Lint-fix producer/KV: `test-lint-fix-loop.sh` (tail files + `STDERR_TAIL_PATH`, no false-positive in-loop FD-2-only test) → `make test-lint-fix-loop`.
+ - Step5 consumer: extend or add harness coverage that `step5_parse_lint_capture_file` stashes `STDERR_TAIL_PATH` before capture-file removal and terminal arms surface under `set -e` with empty-stem no-op (if no dedicated test exists, document in `review-implement-step5-loop` harness notes).
+@@ -186,4 +199,4 @@
+ - Existing `test-lib-failed-agent-stderr-tail` and `test-run-external-agent` continue to cover the library; `run-external-agent.sh` unchanged.
+ 
+-diff_lines: 304
++diff_lines: 322

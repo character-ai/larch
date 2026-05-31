@@ -1,0 +1,19 @@
+I now have all the evidence needed. Let me compile the findings.
+
+**Lane-state verification summary:**
+
+- **codex-ci** (`launch-codex-ci.sh:173`): `SIDECAR_LOG="${OUTPUT}.sidecar"`, and the `run-external-agent.sh` call at line 207 has `2>"$SIDECAR_LOG"`, so codex stderr lands in `${OUTPUT}.sidecar`. `select_failed_agent_stderr_source` (default mode) finds it. Plan claim ✓.
+
+- **codex-implement** (`step2-implement.sh:257-258`): `TRANSCRIPT_PATH="${TOOL_TAG}-impl-transcript.txt"`, `SIDECAR_LOG="${TOOL_TAG}-impl.log"`. The `run-external-agent.sh` call in `launch-codex-implement.sh:338` has `2>"$SIDECAR_LOG"`, so stderr lands in `codex-impl.log`. `select_failed_agent_stderr_source` (default mode) looks for `codex-impl-transcript.txt.sidecar` which does not exist. Plan claim ✓.
+
+- **cursor-implement** (`launch-cursor-implement.sh:295`): actual flag is `--capture-stdout-only`, not `--capture-stdout`. With this flag, `_launch_capture_stdout_only` sends cursor stderr to `${TRANSCRIPT_PATH}.diag`. `select_failed_agent_stderr_source(capture_stdout_only=true)` finds `${TRANSCRIPT_PATH}.diag` first, so the tail IS produced. Plan's conclusion ("no producer edit needed") is correct. But the plan names the wrong flag as the verification criterion.
+
+- **lint-fix-loop `run_codex`** (`lint-fix-loop.sh:237`): `2>"$codex_wrapper_log"` sends codex stderr to `codex.wrapper.log`. `select_failed_agent_stderr_source` (default mode) looks for `codex.log.sidecar` which does not exist. Plan claim ✓.
+
+- **lint-fix-loop `run_cursor`** (`lint-fix-loop.sh:252-258`): uses `--capture-stdout`, so `run-external-agent.sh` internally launches cursor with `"$@" > "$OUTPUT_FILE" 2>&1 &` (run-external-agent.sh:233). Cursor stdout+stderr go to `cursor.log`. `select_failed_agent_stderr_source(capture_stdout=true)` finds `cursor.log` and `write_failed_agent_stderr_tail` **already writes `cursor.log.stderr-tail`**. The plan's claim "no usable tail produced" for this lane is **incorrect**.
+
+---
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lint-fix-loop.sh:252-258	Plan claims run_cursor produces no tail, but --capture-stdout mode already makes run-external-agent.sh write cursor.log.stderr-tail from cursor.log	Plan proposes write_failed_agent_stderr_tail "$run_dir/cursor.wrapper.log" "$run_dir/cursor.log" which overwrites the already-correct tail (sourced from cursor's actual output in cursor.log) with run-external-agent.sh wrapper progress messages from cursor.wrapper.log — exact Failure Mode #1 from the plan's own edge-case section	For run_cursor in lint-fix-loop, omit the producer write (run-external-agent.sh already handles it via --capture-stdout); add only the consumer emit: emit_failed_agent_stderr_tail_larch_err "$run_dir/cursor.log" || true on non-zero rc, mirroring the codex-ci pattern
+1	in_scope	latent	correctness	scripts/launch-cursor-implement.sh:291-295	Plan's "verify first" hedge names the wrong flag: it says verify launcher uses run-external-agent --capture-stdout, but actual flag is --capture-stdout-only (mutually exclusive per run-external-agent.sh:94-96)	An implementer who reads --capture-stdout-only ≠ --capture-stdout may follow the "If it does NOT capture-stdout, mirror codex-implement producer write" branch, calling write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" which would overwrite the already-correct ${TRANSCRIPT_PATH}.stderr-tail (sourced from ${TRANSCRIPT_PATH}.diag = cursor's actual stderr) with $SIDECAR_LOG content (run-external-agent.sh wrapper messages)	Update the plan to name the actual flag --capture-stdout-only and clarify that both --capture-stdout and --capture-stdout-only modes satisfy the "tail already produced" criterion; confirm that select_failed_agent_stderr_source with capture_stdout_only=true finds ${TRANSCRIPT_PATH}.diag, so no producer write is needed

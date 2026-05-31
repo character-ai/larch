@@ -1,0 +1,18 @@
+Reviewing the plan and tracing STDERR_TAIL_PATH contract through the named consumers.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/review-implement-step5-loop.sh:243-244	Step5 plan parses STDERR_TAIL_PATH from $lint_out on failure but the loop deletes the capture file before the failure case arms run	Implementer adds emit only inside main-agent-required|failed|* branches after rm -f "$lint_out"; KV lines are gone so STDERR_TAIL_PATH/CODER_LOG_FILE cannot be read and tails never reach chat	Parse STDERR_TAIL_PATH (prefer) and CODER_LOG_FILE from $lint_out immediately after step5_parse_lint_capture_file and before rm -f "$lint_out"; on terminal non-applied statuses call emit_failed_agent_stderr_tail_larch_err on the chosen stem (or extend step5_parse_lint_capture_file to set globals in the same read loop)
+2	in_scope	important	correctness	plan.txt:56-57 vs scripts/ship-pr.sh:43-44	Step5 consumer spec lacks ship-pr parity for empty/missing stem and set -e safety	Calling emit_failed_agent_stderr_tail_larch_err with an empty stem or when ${stem}.stderr-tail is missing returns 1; under set -e the step5 loop can abort before step5_emit_final_envelope, skipping the intended stall exit	Mirror _surface_lint_fix_stderr_tail: prefer non-empty STDERR_TAIL_PATH stem (no .stderr-tail suffix), else non-empty CODER_LOG_FILE; skip emit when both empty; use emit_failed_agent_stderr_tail_larch_err ... || true
+
+**1. Step5 capture file removed before failure handling** (`correctness`)  
+Plan lines 56–57 tell step5 to parse `STDERR_TAIL_PATH=` / `CODER_LOG_FILE=` from `$lint_out` when lint-fix fails. In the current loop, `step5_parse_lint_capture_file` runs at ```243:244:skills/review-and-fix/scripts/review-implement-step5-loop.sh``` and `rm -f "$lint_out"` runs on the next line, before the `case` on `STEP5_LINT_STATUS` (```245:296:skills/review-and-fix/scripts/review-implement-step5-loop.sh```). Surfacing added only inside those branches cannot read the KV block. The plan does not require updating `step5_parse_lint_capture_file`, but it must say to extract the stem **before** `rm` (or extend the parser to set globals in the same pass as `LINT_FIX_STATUS`).
+
+**2. Step5 missing empty-stem / `|| true` contract** (`correctness`)  
+`emit_failed_agent_stderr_tail_larch_err` returns 1 when `${stem}.stderr-tail` is absent (```186:196:scripts/lib-failed-agent-stderr-tail.sh```). Ship-pr’s planned `_surface_lint_fix_stderr_tail` explicitly uses a non-empty stem and `|| true` (plan lines 43–44). Step5’s plan (lines 56–57) does not. Step5 runs under `set -e`; a missing tail file could abort the loop before stall envelopes fire.
+
+**Exonerated / adequately specified**
+
+- **KV format**: Plan line 54 defines key `STDERR_TAIL_PATH`, stem without `.stderr-tail`, emitted only when `_LINT_FIX_STDERR_TAIL_STEM` is set on dispatch-failed; success paths stay unchanged (lines 100, 110–111).  
+- **`ship-pr` consumer**: Lines 43–47 cover parse, non-empty stem, `CODER_LOG_FILE` fallback, and caller-scope surfacing including `main-agent-required` with exit 0.  
+- **`CODER_LOG_FILE` asymmetry**: Step5 plan line 57 includes the same fallback as ship-pr; not ship-pr-only.  
+- **`step5_parse_lint_capture_file`**: Ad-hoc pre-`rm` parse or a parser extension both work; no mandatory parser change if timing is fixed.  
+- **`fail_status` paths without `STDERR_TAIL_PATH`**: Out of agent-dispatch scope for this SIMPLE change.

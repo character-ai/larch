@@ -1,0 +1,54 @@
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/scripts/step2-implement.sh:606-606
+- **Concern**: Step 3 cleanup omits `${TRANSCRIPT_PATH}.stderr-tail`. Scenario: Reusing the same `IMPLEMENT_TMPDIR`, a prior failed implement run can leave `*.stderr-tail` on disk; a later step2 invocation can `emit_bailed` before line 606 (resume/`--answers`, qa-loop, branch guards) and the planned `emit_failed_agent_stderr_tail_larch_err` inside `emit_bailed()` would surface the previous run’s tail as current failure context (misleading chat diagnostics).
+- **Proposed resolution**: Add `rm -f "${TRANSCRIPT_PATH}.stderr-tail"` (and optionally `${TRANSCRIPT_PATH}.diag`) to the Step 3 cleanup at 606 and once right after `TRANSCRIPT_PATH`/`SIDECAR_LOG` are defined (~258); or gate tail emit to `RUNTIME_FAILURE_TOKEN` only.
+
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/launch-cursor-implement.sh:262-272
+- **Concern**: Cursor auth preflight early exit has no producer write. Scenario: After `MODEL_ARGS_RC`, `cursor_launcher_setup_auth_argv` failures append to `$SIDECAR_LOG` and exit before `run-external-agent`; the plan only adds `write_failed_agent_stderr_tail` for `MODEL_ARGS_RC`, so `LAUNCHER_EXIT=2` preflight failures never create `${TRANSCRIPT_PATH}.stderr-tail` and step2 consumer surfacing stays silent despite actionable sidecar stderr.
+- **Proposed resolution**: Mirror the `MODEL_ARGS_RC` branch: `write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true` before timing/KV emit on the `PREFLIGHT_RC != 0` path (with `lib-failed-agent-stderr-tail.sh` sourced earlier).
+
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/launch-cursor-implement.sh:262-272
+- **Concern**: Cursor auth preflight failure exits with SIDECAR_LOG populated but no write_failed_agent_stderr_tail. Scenario: LAUNCHER_EXIT=2 preflight failures (e.g. missing keychain/API key) reach step2 via emit_bailed while ${TRANSCRIPT_PATH}.stderr-tail was never written; consumer emit is a no-op
+- **Proposed resolution**: Mirror the MODEL_ARGS_RC branch: after appending PREFLIGHT_ERR to SIDECAR_LOG call write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true before timing/KV emit / exit 0
+
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-dyn-fd-chain-tracer
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/launch-cursor-implement.sh:262-272
+- **Concern**: Plan covers MODEL_ARGS_RC producer write but not auth preflight early exit. Scenario: PREFLIGHT_RC failure appends to SIDECAR_LOG and exits before run-external-agent; no write_failed_agent_stderr_tail and step2 only surfaces via emit_bailed reading ${TRANSCRIPT}.stderr-tail
+- **Proposed resolution**: Mirror the MODEL_ARGS_RC branch: after cat PREFLIGHT_ERR into SIDECAR_LOG call write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true before timing/KV emit
+
+
+### FINDING_7:
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/launch-cursor-implement.sh:262-272
+- **Concern**: PREFLIGHT_RC early-exit path omitted from write_failed_agent_stderr_tail coverage. Scenario: When cursor_launcher_setup_auth_argv fails, $SIDECAR_LOG is populated (line 260) but run-external-agent never runs; plan adds the producer write only to the MODEL_ARGS_RC branch (~237-248) and is silent about the PREFLIGHT_RC branch (~262-272), so that path exits without ${TRANSCRIPT_PATH}.stderr-tail — violating the plan's own Uniform pattern ("after any failed launcher attempt with actionable stderr in a known capture file, ${stem}.stderr-tail must exist on disk — including pre-agent failures")
+- **Proposed resolution**: Add write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true before emit_timing_record inside the PREFLIGHT_RC if-block, symmetrically with the MODEL_ARGS_RC treatment already specified; source the lib before PREFLIGHT_RC runs (same placement direction the plan gives for MODEL_ARGS_RC)
+
+
+### FINDING_8:
+- **Reviewer(s)**: unknown-slot
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: scripts/launch-cursor-implement.md
+- **Concern**: Sibling .md not listed in any UPDATED section despite launcher modification. Scenario: Plan adds UPDATED: scripts/launch-codex-implement.md but omits the cursor counterpart; .claude/rules/external-tool-launcher-parity.md requires both sibling .md contracts updated together when behavior diverges across the codex/cursor launcher family
+- **Proposed resolution**: Add ### UPDATED: scripts/launch-cursor-implement.md with a one-line note mirroring the launch-codex-implement.md documentation entry (failure writes ${TRANSCRIPT_PATH}.stderr-tail via the shared lib on MODEL_ARGS_RC and PREFLIGHT_RC paths)
+
+

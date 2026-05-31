@@ -1,0 +1,38 @@
+Reviewing the plan and inspecting proposed call sites for FD-2 (stderr capture) scope.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lint-fix-loop.sh:221-239 scripts/ship-pr.sh:123-127	Planned `emit_failed_agent_stderr_tail_larch_err` inside `run_codex`/`run_cursor` is not on an orchestrator-visible FD when `lint-fix-loop.sh` runs under quiet `ship-pr.sh`	`ship-pr` calls `larch_quiet_init` then runs `output=$(lint-fix-loop.sh … 2>"$fail_file")`. The child also calls `larch_quiet_init`, rebinding FD 4 to the parent’s already-redirected FD 2 (`exec 4>&2` after parent quiet). `larch_err` tail lines land in the quiet log and/or `fail_file`, not chat — the main `ship-pr-ci-*` path (#3227 goal)	Surface tails from `ship-pr` after `run_lint_fix_loop_capture` (e.g. extend `_surface_ci_stderr_tail` to read `${run_dir}/codex.log` / `cursor.log` stems, with a KV for `run_dir` on agent failure), or tee subprocess stderr to parent FD 4 at `run_lint_fix_loop_capture` like `plan-review-loop.sh:752-762`; do not rely on in-loop emit alone for ship-pr sites
+2	in_scope	important	correctness	skills/implement/scripts/step2-implement.sh:264-275 skills/implement/scripts/step2-implement.sh:1061-1077	Plan wires tail emit only into `emit_bailed()`; manifest `status=bailed` bypasses it	External implementer writes a bailed manifest with `LAUNCHER_EXIT=0`; execution takes the `bailed)` case at 1061-1077 (direct `emit_kv`, no `emit_bailed`). Producer may leave `${TRANSCRIPT_PATH}.stderr-tail`, but no consumer emit runs — tail never reaches chat (not FD-2 redirect; same surfacing gap)	Add `emit_failed_agent_stderr_tail_larch_err "$TRANSCRIPT_PATH" || true` in the `bailed)` branch before `exit 0`, or route that branch through `emit_bailed` with the manifest reason
+
+**1. [correctness] `lint-fix-loop.sh` emit sites vs quiet `ship-pr` parent (FD-2 live)**
+
+The plan places write+emit in `run_codex` / `run_cursor` on failure (`plan.txt` lines 44-45). Those calls use `emit_failed_agent_stderr_tail_larch_err` → `larch_err` (`scripts/lib-failed-agent-stderr-tail.sh:186-194`, `scripts/lib-quiet.sh:147-149`).
+
+Inside `run_codex`, only the agent subprocess uses `2>"$codex_wrapper_log"` (`scripts/lint-fix-loop.sh:237`); a failure-branch emit after that line is not inside that redirect. The problem is the **caller** scope:
+
+```123:127:scripts/ship-pr.sh
+    output=$("$SCRIPT_DIR/lint-fix-loop.sh" \
+        --tmpdir "$IMPLEMENT_TMPDIR" \
+        --site "$site" \
+        --checks-log "$redacted_log" \
+        ${extra_args[@]+"${extra_args[@]}"} 2>"$fail_file")
+```
+
+`ship-pr` is quiet-inited in `main` (`scripts/ship-pr.sh:3552`). The child re-inits quiet and sets FD 4 from FD 2 (`scripts/lib-quiet.sh:73-78`), which is already the quiet log in the parent. Tail diagnostics never reach the orchestrator FD 4/chat path for `ship-pr-ci-initial` / `ship-pr-ci-merge` / `ship-pr-ci-per-job`.
+
+**Exonerated for FD-2 at the other named sites:** `emit_bailed()` in `step2-implement.sh` runs in the dispatcher process after `run_launcher >… 2>&1` (`645-648`); `2>&1` applies only to the launcher child, not `emit_bailed`. `step2` is invoked from `run-step2-dispatch.sh` without a parent quiet session, so `larch_err` FD 4 stays orchestrator-visible. Recovery-waterfall failure handling at `scripts/ship-pr.sh:2745-2747` is in `run_recovery_waterfall` itself, outside the launcher’s `2>>"$wf_log"` (`2728-2741`); `_surface_ci_stderr_tail` there uses ship-pr’s own `larch_err` — FD-2 safe. Primary CI fix-loop failure handling at `2056-2075` is the same pattern (redirect only on the launcher line).
+
+**2. [correctness] `step2` manifest `bailed` path**
+
+Plan step 35-36 targets `emit_bailed()` only. Runtime launcher failures already call `emit_bailed` (`703-715`). Codex-authored `status=bailed` uses a separate branch:
+
+```1061:1077:skills/implement/scripts/step2-implement.sh
+    bailed)
+        BR=$(jq -r --arg fallback "$BAILED_NO_REASON_TOKEN" '.bail_reason // $fallback' "$MANIFEST_RAW_PATH")
+        ...
+        emit_kv STATUS bailed
+        ...
+        emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
+        ;;
+```
+
+No tail emit is planned there; the plan’s “confirm non-`emit_bailed` failure path” note is not satisfied for this common external-implementer outcome.
