@@ -6049,12 +6049,18 @@ chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" 
     "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
 printf 'RUN_ID=test-run\nREPO=owner/repo\nREPO_UNAVAILABLE=false\n' >"$impl/ship-pr-state.sh"
 wf_state_file="$impl/ship-pr-state.sh"
+# Vendor stubs so command -v cursor/codex/claude all succeed regardless of CI env
+mkdir -p "$impl/vendor-bin"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$impl/vendor-bin/cursor"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$impl/vendor-bin/codex"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$impl/vendor-bin/claude"
+chmod +x "$impl/vendor-bin/cursor" "$impl/vendor-bin/codex" "$impl/vendor-bin/claude"
 wf_caller_err="$impl/caller.stderr"
 set +e
 (
     cd "$root" || exit 1
     # shellcheck disable=SC2030,SC2031
-    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl" STATE_FILE="$wf_state_file"
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl" STATE_FILE="$wf_state_file" PATH="$impl/vendor-bin:$PATH"
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
     IMPLEMENT_TMPDIR="$impl"; STATE_FILE="$wf_state_file"  # re-set after ship-pr.sh init clears them
@@ -6128,12 +6134,17 @@ chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" 
     "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
 printf 'RUN_ID=test-run\nREPO=owner/repo\nREPO_UNAVAILABLE=false\n' >"$impl/ship-pr-state.sh"
 wf_exit0_state_file="$impl/ship-pr-state.sh"
+mkdir -p "$impl/vendor-bin"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$impl/vendor-bin/cursor"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$impl/vendor-bin/codex"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$impl/vendor-bin/claude"
+chmod +x "$impl/vendor-bin/cursor" "$impl/vendor-bin/codex" "$impl/vendor-bin/claude"
 wf_exit0_err="$impl/caller.stderr"
 set +e
 (
     cd "$root" || exit 1
     # shellcheck disable=SC2030,SC2031
-    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl" STATE_FILE="$wf_exit0_state_file"
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl" STATE_FILE="$wf_exit0_state_file" PATH="$impl/vendor-bin:$PATH"
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
     IMPLEMENT_TMPDIR="$impl"; STATE_FILE="$wf_exit0_state_file"  # re-set after ship-pr.sh init clears them
@@ -6351,12 +6362,17 @@ chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" 
     "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
 printf 'RUN_ID=test-run\nREPO=owner/repo\nREPO_UNAVAILABLE=false\n' >"$impl/ship-pr-state.sh"
 tier_rc_state_file="$impl/ship-pr-state.sh"
+mkdir -p "$impl/vendor-bin"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$impl/vendor-bin/cursor"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$impl/vendor-bin/codex"
+printf '#!/usr/bin/env bash\nexit 0\n' >"$impl/vendor-bin/claude"
+chmod +x "$impl/vendor-bin/cursor" "$impl/vendor-bin/codex" "$impl/vendor-bin/claude"
 tier_rc_err="$impl/tier-rc-caller.stderr"
 set +e
 (
     cd "$root" || exit 1
     # shellcheck disable=SC2030,SC2031
-    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl" STATE_FILE="$tier_rc_state_file"
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl" STATE_FILE="$tier_rc_state_file" PATH="$impl/vendor-bin:$PATH"
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
     IMPLEMENT_TMPDIR="$impl"; STATE_FILE="$tier_rc_state_file"  # re-set after ship-pr.sh init clears them
@@ -6573,6 +6589,7 @@ STUB
 chmod +x "$stub_bin/cursor"
 tier_out="$impl/real-ci-tier"
 set +e
+# shellcheck disable=SC2031
 (
     cd "$root" && \
     PATH="$stub_bin:$PATH" \
