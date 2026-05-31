@@ -132,6 +132,18 @@ def test_extract_blank_returns_none() -> None:
     assert changelog.extract_version_body(text, "1.0.0", fmt=ChangelogFormat.MARKDOWN) is None
 
 
+def test_rst_extract_blank_returns_none() -> None:
+    text = """\
+Changelog
+=========
+
+Version 1.0.0 (2026-01-01)
+--------------------------
+
+"""
+    assert changelog.extract_version_body(text, "1.0.0", fmt=ChangelogFormat.RST) is None
+
+
 def test_write_entry_no_anchor_raises() -> None:
     with pytest.raises(ChangelogError) as exc:
         _ = changelog.write_changelog_entry(
@@ -254,6 +266,116 @@ def test_parity_drop_changelog_noop(tmp_path: Path) -> None:
     not AUTO_RESOLVE.is_file() or shutil.which("bash") is None,
     reason="auto-resolve-changelog.sh or bash unavailable",
 )
+def test_parity_auto_resolve_rst_stages(tmp_path: Path) -> None:
+    ours = """Changelog
+=========
+
+Unreleased
+----------
+
+- Base
+
+Version 1.0.0 (2026-01-01)
+--------------------------
+
+- Tail
+"""
+    theirs = """Changelog
+=========
+
+Unreleased
+----------
+
+- Base
+- Branch
+
+Version 1.0.0 (2026-01-01)
+--------------------------
+
+- Tail
+"""
+    path = tmp_path / "CHANGELOG.rst"
+    _ = path.write_text("", encoding="utf-8")
+
+    runner = StubRunner(
+        {
+            ("git", "show", ":2:CHANGELOG.rst"): CommandResult(
+                ("git", "show", ":2:CHANGELOG.rst"), 0, ours, "", 0.01
+            ),
+            ("git", "show", ":3:CHANGELOG.rst"): CommandResult(
+                ("git", "show", ":3:CHANGELOG.rst"), 0, theirs, "", 0.01
+            ),
+        },
+    )
+    assert changelog.auto_resolve(runner, "CHANGELOG.rst", cwd=str(tmp_path)) is True
+    merged = path.read_text(encoding="utf-8")
+    assert "- Branch" in merged
+    assert "- Base" in merged
+    assert "- Tail" in merged
+
+
+@pytest.mark.skipif(
+    not AUTO_RESOLVE.is_file() or shutil.which("bash") is None,
+    reason="auto-resolve-changelog.sh or bash unavailable",
+)
+def test_parity_auto_resolve_rst_subprocess(tmp_path: Path) -> None:
+    rst_base = """\
+Changelog
+=========
+
+Unreleased
+----------
+
+- Pending
+
+Version 1.0.0 (2026-01-01)
+--------------------------
+
+- Old
+"""
+    repo = tmp_path / "repo"
+    _ = repo.mkdir()
+    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+    base_rst = rst_base.replace("- Pending", "- Base only")
+    branch_rst = rst_base.replace("- Pending", "- Base only\n- Branch")
+    main_rst = rst_base.replace("- Pending", "- Main only")
+    _ = (repo / "CHANGELOG.rst").write_text(base_rst, encoding="utf-8")
+    _ = subprocess.run(["git", "add", "CHANGELOG.rst"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "base"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "checkout", "-q", "-b", "feature"], cwd=repo, check=True)
+    _ = (repo / "CHANGELOG.rst").write_text(branch_rst, encoding="utf-8")
+    _ = subprocess.run(["git", "add", "CHANGELOG.rst"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "feature"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+    _ = (repo / "CHANGELOG.rst").write_text(main_rst, encoding="utf-8")
+    _ = subprocess.run(["git", "add", "CHANGELOG.rst"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "main"], cwd=repo, check=True)
+    merge = subprocess.run(
+        ["git", "merge", "feature"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert merge.returncode != 0, "fixture must leave merge in conflict"
+    bash = subprocess.run(
+        ["bash", str(AUTO_RESOLVE), "CHANGELOG.rst"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert bash.returncode == 0, bash.stderr
+    bash_text = (repo / "CHANGELOG.rst").read_text(encoding="utf-8")
+    repo_py = tmp_path / "repo_py"
+    shutil.copytree(repo, repo_py)
+    assert changelog.auto_resolve(ProcRunner(), "CHANGELOG.rst", cwd=str(repo_py)) is True
+    py_text = (repo_py / "CHANGELOG.rst").read_text(encoding="utf-8")
+    assert py_text == bash_text
+
+
 def test_parity_auto_resolve_markdown_fixture(tmp_path: Path) -> None:
     ours = """# Changelog
 
@@ -640,17 +762,18 @@ def test_parity_auto_resolve_subprocess(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _ = repo.mkdir()
     _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
-    ours = MD_SAMPLE.replace("- Pending", "- Base only")
-    theirs = MD_SAMPLE.replace("- Pending", "- Base only\n- Branch")
-    _ = (repo / "CHANGELOG.md").write_text(ours, encoding="utf-8")
+    base = MD_SAMPLE.replace("- Pending", "- Base only")
+    branch = MD_SAMPLE.replace("- Pending", "- Base only\n- Branch")
+    main = MD_SAMPLE.replace("- Pending", "- Main only")
+    _ = (repo / "CHANGELOG.md").write_text(base, encoding="utf-8")
     _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
     _ = subprocess.run(["git", "commit", "-q", "-m", "base"], cwd=repo, check=True)
     _ = subprocess.run(["git", "checkout", "-q", "-b", "feature"], cwd=repo, check=True)
-    _ = (repo / "CHANGELOG.md").write_text(theirs, encoding="utf-8")
+    _ = (repo / "CHANGELOG.md").write_text(branch, encoding="utf-8")
     _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
     _ = subprocess.run(["git", "commit", "-q", "-m", "feature"], cwd=repo, check=True)
     _ = subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
-    _ = (repo / "CHANGELOG.md").write_text(ours + "\n# main edit\n", encoding="utf-8")
+    _ = (repo / "CHANGELOG.md").write_text(main, encoding="utf-8")
     _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
     _ = subprocess.run(["git", "commit", "-q", "-m", "main"], cwd=repo, check=True)
     merge = subprocess.run(
@@ -660,23 +783,19 @@ def test_parity_auto_resolve_subprocess(tmp_path: Path) -> None:
         text=True,
         check=False,
     )
-    if merge.returncode != 0:
-        bash = subprocess.run(
-            ["bash", str(AUTO_RESOLVE), "CHANGELOG.md"],
-            cwd=repo,
-            capture_output=True,
-            text=True,
-            check=False,
-        )
-        if bash.returncode == 0:
-            bash_text = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
-            repo_py = tmp_path / "repo_py"
-            shutil.copytree(repo, repo_py)
-            runner = ProcRunner()
-            assert changelog.auto_resolve(runner, "CHANGELOG.md", cwd=str(repo_py)) is True
-            py_text = (repo_py / "CHANGELOG.md").read_text(encoding="utf-8")
-            assert py_text == bash_text
-        else:
-            pytest.skip("could not produce merge conflict for auto-resolve parity")
-    else:
-        pytest.skip("merge did not conflict")
+    assert merge.returncode != 0, "fixture must leave merge in conflict"
+    bash = subprocess.run(
+        ["bash", str(AUTO_RESOLVE), "CHANGELOG.md"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert bash.returncode == 0, bash.stderr
+    bash_text = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
+    repo_py = tmp_path / "repo_py"
+    shutil.copytree(repo, repo_py)
+    runner = ProcRunner()
+    assert changelog.auto_resolve(runner, "CHANGELOG.md", cwd=str(repo_py)) is True
+    py_text = (repo_py / "CHANGELOG.md").read_text(encoding="utf-8")
+    assert py_text == bash_text

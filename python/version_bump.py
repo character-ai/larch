@@ -14,7 +14,13 @@ from typing import Literal
 import config
 import git
 import redact
-from bump_worktree import DropResult, porcelain_tracked_only, sorted_changed_files
+from bump_worktree import (
+    DropResult,
+    drop_replay_commit,
+    find_commit_depth,
+    porcelain_tracked_only,
+    sorted_changed_files,
+)
 from errors import ShipError, Stalled
 from proc import Runner
 
@@ -310,12 +316,8 @@ def classify_bump(runner: Runner, *, cwd: str | None = None) -> BumpClassificati
         elif status == "M" and _public_surface_path(old_path):
             old_show = git.show_file(runner, f"{base}:{old_path}", cwd=cwd)
             new_show = git.show_file(runner, f"HEAD:{old_path}", cwd=cwd)
-            if old_show.returncode != 0:
-                msg = f"git show {base}:{old_path} failed"
-                raise ShipError(msg)
-            if new_show.returncode != 0:
-                msg = f"git show HEAD:{old_path} failed"
-                raise ShipError(msg)
+            if old_show.returncode != 0 or new_show.returncode != 0:
+                continue
             old_fm = _extract_frontmatter(old_show.stdout)
             new_fm = _extract_frontmatter(new_show.stdout)
 
@@ -674,15 +676,12 @@ def drop_bump_commit(
     if tracked:
         return DropResult(dropped=False, error="uncommitted tracked changes")
 
-    found_at = -1
-    for depth in range(max_depth):
-        ref = f"HEAD~{depth}"
-        if git.try_rev_parse(runner, ref, cwd=cwd) is None:
-            break
-        subject = git.log_subject(runner, ref, cwd=cwd)
-        if _BUMP_SUBJECT_RE.fullmatch(subject):
-            found_at = depth
-            break
+    found_at = find_commit_depth(
+        runner,
+        max_depth=max_depth,
+        subject_matches=lambda subject: bool(_BUMP_SUBJECT_RE.fullmatch(subject or "")),
+        cwd=cwd,
+    )
 
     if found_at < 0:
         return DropResult(dropped=False, error="no bump commit found")
@@ -718,17 +717,14 @@ def drop_bump_commit(
         return DropResult(dropped=False, error=_redact_outbound("unexpected changed files"))
 
     old_sha = git.rev_parse(runner, f"HEAD~{found_at}", cwd=cwd)
-
-    if found_at == 0:
-        reset = git.reset(runner, "--hard", "HEAD~1", cwd=cwd)
-        if reset.returncode != 0:
-            return DropResult(dropped=False, error="git reset --hard HEAD~1 failed")
-    else:
-        newbase = f"HEAD~{found_at + 1}"
-        upstream = f"HEAD~{found_at}"
-        rebase = git.rebase_onto(runner, newbase, upstream, cwd=cwd)
-        if rebase.returncode != 0:
-            _ = git.rebase(runner, "--abort", cwd=cwd)
-            return DropResult(dropped=False, error="git rebase --onto failed")
+    replay_err = drop_replay_commit(
+        runner,
+        found_at=found_at,
+        cwd=cwd,
+        reset_error="git reset --hard HEAD~1 failed",
+        rebase_error="git rebase --onto failed",
+    )
+    if replay_err is not None:
+        return DropResult(dropped=False, error=replay_err)
 
     return DropResult(dropped=True, old_sha=old_sha)

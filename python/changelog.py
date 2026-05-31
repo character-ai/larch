@@ -11,7 +11,13 @@ from pathlib import Path
 import config
 import git
 import redact
-from bump_worktree import DropResult, porcelain_tracked_only, sorted_changed_files
+from bump_worktree import (
+    DropResult,
+    drop_replay_commit,
+    find_subject_commit_depth,
+    porcelain_tracked_only,
+    sorted_changed_files,
+)
 from proc import Runner
 
 _VERSION_HEADING_MD = re.compile(r"^## \[([0-9]+\.[0-9]+\.[0-9]+)\] - ")
@@ -140,12 +146,10 @@ def _rst_merge_first_index(lines: list[str]) -> int:
         return -1
     fh1 = indices[0]
     ul = lines[fh1 + 1]
-    release_indices = set(_rst_release_section_indices(lines))
     is_doc_title = (
         is_rst_adornment(ul, lines[fh1])
         and ul
         and all(c == "=" for c in ul)
-        and (lines[fh1] == "Changelog" or fh1 not in release_indices)
     )
     if is_doc_title:
         if len(indices) < _MIN_RST_SECTIONS_FOR_DOC_TITLE_SKIP:
@@ -359,8 +363,8 @@ def _insert_md_at_anchor(
         if in_unreleased and line.startswith("## ["):
             in_unreleased = False
             if not inserted:
-                out.append("")
                 out.extend(block)
+                out.append("")
                 inserted = True
             out.append(line)
             continue
@@ -402,7 +406,6 @@ def _write_md_entry(
     out: list[str] = []
     inserted = False
     skipping = False
-    in_unreleased = False
     match_count = 0
     entry_from_version_match = False
 
@@ -425,8 +428,6 @@ def _write_md_entry(
             match_count += 1
             if match_count > 1:
                 raise ChangelogError("duplicate version heading", code=4)
-            if in_unreleased:
-                in_unreleased = False
             emit_entry()
             skipping = True
             continue
@@ -437,41 +438,10 @@ def _write_md_entry(
             entry_from_version_match = False
         if skipping:
             continue
-        if line.startswith("## [Unreleased]"):
-            out.append(line)
-            in_unreleased = True
-            continue
-        if in_unreleased and line.startswith("## ["):
-            in_unreleased = False
-            if not inserted:
-                out.extend(entry)
-                out.append("")
-                inserted = True
-            out.append(line)
-            continue
-        if in_unreleased:
-            out.append(line)
-            continue
-        if (
-            not has_unreleased
-            and "and this project adheres to [Semantic Versioning]" in line
-        ):
-            out.append(line)
-            if not inserted:
-                out.append("")
-                out.extend(entry)
-                inserted = True
-            continue
-        if not inserted and line.startswith("## ["):
-            out.extend(entry)
-            out.append("")
-            inserted = True
         out.append(line)
 
-    if in_unreleased and not inserted:
-        out.append("")
-        out.extend(entry)
-        inserted = True
+    if not inserted:
+        out, inserted = _insert_md_at_anchor(out, entry, has_unreleased=has_unreleased)
     if not inserted:
         return _insert_md_version_anchor(text, version, entry_lines=entry)
     result = "\n".join(out)
@@ -503,15 +473,32 @@ def _write_rst_entry(
     ):
         raise ChangelogError("duplicate version heading", code=4)
 
+    ends_with_newline = text.endswith("\n")
     if replaces_version and replaces_version != version:
         return _drop_rst_section(
-            _insert_rst_after(lines, anchor, entry_lines),
+            _insert_rst_after(
+                lines,
+                anchor,
+                entry_lines,
+                ends_with_newline=ends_with_newline,
+            ),
             replaces_version,
         )
-    return _insert_rst_after(lines, anchor, entry_lines)
+    return _insert_rst_after(
+        lines,
+        anchor,
+        entry_lines,
+        ends_with_newline=ends_with_newline,
+    )
 
 
-def _insert_rst_after(lines: list[str], anchor: int, entry_lines: list[str]) -> str:
+def _insert_rst_after(
+    lines: list[str],
+    anchor: int,
+    entry_lines: list[str],
+    *,
+    ends_with_newline: bool,
+) -> str:
     insert_at = _rst_section_end_index(lines, anchor)
     out = lines[:insert_at]
     if out and out[-1].strip():
@@ -521,7 +508,7 @@ def _insert_rst_after(lines: list[str], anchor: int, entry_lines: list[str]) -> 
         out.append("")
     out.extend(lines[insert_at:])
     result = "\n".join(out)
-    return result + "\n"
+    return result + ("\n" if ends_with_newline else "")
 
 
 def _auto_resolve_markdown(ours: list[str], theirs: list[str]) -> list[str] | None:
@@ -816,14 +803,12 @@ def drop_changelog_commit(
         return DropResult(dropped=False, error="dirty worktree")
 
     expected = config.CHANGELOG_COMMIT_SUBJECT_TEMPLATE.format(version=version)
-    found_at = -1
-    for depth in range(max_depth):
-        ref = f"HEAD~{depth}"
-        if git.try_rev_parse(runner, ref, cwd=cwd) is None:
-            break
-        if git.log_subject(runner, ref, cwd=cwd) == expected:
-            found_at = depth
-            break
+    found_at = find_subject_commit_depth(
+        runner,
+        max_depth=max_depth,
+        subject=expected,
+        cwd=cwd,
+    )
 
     if found_at < 0:
         return DropResult(dropped=False, error="no changelog commit found")
@@ -842,19 +827,14 @@ def drop_changelog_commit(
         return DropResult(dropped=False, error=_redact_outbound("unexpected files"))
 
     old_sha = git.rev_parse(runner, f"HEAD~{found_at}", cwd=cwd)
-    if found_at == 0:
-        reset = git.reset(runner, "--hard", "HEAD~1", cwd=cwd)
-        if reset.returncode != 0:
-            return DropResult(dropped=False, error="reset failed")
-    else:
-        rebase = git.rebase_onto(
-            runner,
-            f"HEAD~{found_at + 1}",
-            f"HEAD~{found_at}",
-            cwd=cwd,
-        )
-        if rebase.returncode != 0:
-            _ = git.rebase(runner, "--abort", cwd=cwd)
-            return DropResult(dropped=False, error="rebase failed")
+    replay_err = drop_replay_commit(
+        runner,
+        found_at=found_at,
+        cwd=cwd,
+        reset_error="reset failed",
+        rebase_error="rebase failed",
+    )
+    if replay_err is not None:
+        return DropResult(dropped=False, error=replay_err)
 
     return DropResult(dropped=True, old_sha=old_sha)

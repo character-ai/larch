@@ -923,6 +923,18 @@ def test_drop_rebase_onto_when_bump_below_head(tmp_path: Path) -> None:
     assert "Bump version to 2.0.0" not in log.stdout
 
 
+def test_drop_bump_extra_file_refuses_drop(tmp_path: Path) -> None:
+    repo = _init_bump_repo(tmp_path)
+    plugin = repo / ".claude-plugin/plugin.json"
+    _ = plugin.write_text('{"version":"2.0.0"}\n', encoding="utf-8")
+    _ = (repo / "README.md").write_text("extra\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", plugin, "README.md"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 2.0.0"], cwd=repo, check=True)
+    result = version_bump.drop_bump_commit(ProcRunner(), cwd=str(repo))
+    assert result.dropped is False
+    assert "unexpected" in result.error.lower()
+
+
 def test_drop_allow_changelog_only(tmp_path: Path) -> None:
     repo = _init_bump_repo(tmp_path)
     changelog_md = repo / "CHANGELOG.md"
@@ -1006,6 +1018,40 @@ def test_parity_classify_idempotency_cases(tmp_path: Path, case: str) -> None:
             cwd=repo,
             check=True,
         )
+    elif case == "test3":
+        plugin = repo / ".claude-plugin/plugin.json"
+        _ = plugin.write_text('{"version":"1.2.3"}\n', encoding="utf-8")
+        _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
+        _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 1.2.3"], cwd=repo, check=True)
+        with (repo / "CHANGELOG.md").open("a", encoding="utf-8") as fh:
+            fh.write("\n- New fix.\n")
+        _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+        _ = subprocess.run(
+            ["git", "commit", "-q", "-m", "Update CHANGELOG for 1.2.3"],
+            cwd=repo,
+            check=True,
+        )
+        log_dir = repo / "larch-logs/implement/run-1"
+        _ = log_dir.mkdir(parents=True)
+        _ = (log_dir / "manifest.json").write_text("{}\n", encoding="utf-8")
+        _ = subprocess.run(["git", "add", log_dir], cwd=repo, check=True)
+        _ = subprocess.run(
+            ["git", "commit", "-q", "-m", "chore(larch-logs): flush implement run run-1"],
+            cwd=repo,
+            check=True,
+        )
+    elif case == "test4":
+        _ = (repo / "README.md").write_text("feature\n", encoding="utf-8")
+        _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "commit", "-q", "-m", "Feature work"], cwd=repo, check=True)
+        with (repo / "CHANGELOG.md").open("a", encoding="utf-8") as fh:
+            fh.write("\n- Feature note.\n")
+        _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+        _ = subprocess.run(
+            ["git", "commit", "-q", "-m", "Update CHANGELOG for 1.2.3"],
+            cwd=repo,
+            check=True,
+        )
     elif case == "test5":
         skill = repo / "skills/new-skill/SKILL.md"
         _ = skill.parent.mkdir(parents=True)
@@ -1016,6 +1062,13 @@ def test_parity_classify_idempotency_cases(tmp_path: Path, case: str) -> None:
             cwd=repo,
             check=True,
         )
+    expected_bump = {
+        "test1": "NONE",
+        "test2": "NONE",
+        "test3": "NONE",
+        "test4": "PATCH",
+        "test5": None,
+    }
     bash = subprocess.run(
         ["bash", str(CLASSIFY_SH)],
         cwd=repo,
@@ -1026,6 +1079,8 @@ def test_parity_classify_idempotency_cases(tmp_path: Path, case: str) -> None:
     py = version_bump.classify_bump(ProcRunner(), cwd=str(repo))
     bash_kv = _parse_kv(bash.stdout)
     assert py.bump_type == bash_kv.get("BUMP_TYPE")
+    if expected_bump[case] is not None:
+        assert py.bump_type == expected_bump[case]
 
 
 @pytest.mark.skipif(
