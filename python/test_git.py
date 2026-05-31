@@ -175,6 +175,23 @@ def test_fetch_and_show_file_argv() -> None:
     assert shown.stdout == "content\n"
 
 
+def test_diff_tree_name_only_invocation() -> None:
+    runner = StubRunner(
+        {
+            ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD~1"): CommandResult(
+                ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD~1"),
+                0,
+                "CHANGELOG.md\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+    result = git.diff_tree_name_only(runner, "HEAD~1")
+    assert result.returncode == 0
+    assert "CHANGELOG.md" in result.stdout
+
+
 def test_diff_and_rebase_helpers() -> None:
     runner = StubRunner(
         {

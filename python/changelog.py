@@ -152,6 +152,15 @@ def _rst_merge_first_index(lines: list[str]) -> int:
     return fh1
 
 
+def _rst_title_adornment_char(lines: list[str], title_idx: int) -> str | None:
+    if title_idx + 1 >= len(lines):
+        return None
+    ul = lines[title_idx + 1]
+    if is_rst_adornment(ul, lines[title_idx]):
+        return ul[0]
+    return None
+
+
 def _rst_section_end_index(lines: list[str], anchor: int) -> int:
     """Index of the next section after the anchor title (exclusive end of anchor block)."""
     release_indices = _rst_release_section_indices(lines)
@@ -163,9 +172,16 @@ def _rst_section_end_index(lines: list[str], anchor: int) -> int:
     for idx in release_indices:
         if idx > anchor:
             return idx
-    for idx in _rst_title_indices(lines):
-        if idx > anchor + 1:
-            return idx
+    if not release_indices:
+        return len(lines)
+    anchor_char = _rst_title_adornment_char(lines, anchor)
+    if anchor_char is not None:
+        for idx in _rst_title_indices(lines):
+            if idx <= anchor:
+                continue
+            if _rst_title_adornment_char(lines, idx) == anchor_char:
+                return idx
+        return len(lines)
     return len(lines)
 
 
@@ -811,10 +827,12 @@ def commit_changelog(
     add_result = git.add(runner, path, cwd=cwd)
     if add_result.returncode != 0:
         _ = changelog_path.write_text(original_text, encoding="utf-8")
+        _ = git.unstage(runner, path, cwd=cwd)
         return CommitResult(committed=False, error=_redact_outbound("git add failed"))
-    commit_result = git.commit(runner, msg, only=path, cwd=cwd)
+    commit_result = git.commit_with_trailer(runner, msg, only=path, cwd=cwd)
     if commit_result.returncode != 0:
         _ = changelog_path.write_text(original_text, encoding="utf-8")
+        _ = git.unstage(runner, path, cwd=cwd)
         return CommitResult(committed=False, error=_redact_outbound("git commit failed"))
     sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
     return CommitResult(committed=True, commit_sha=sha)

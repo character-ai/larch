@@ -41,6 +41,10 @@ ship-pr failed-job tables) needs the same toolchain as CI: `pip install -r pytho
 for lint (including **Node** on PATH for pyright) and `pip install -r python/requirements-test.txt`
 for tests.
 
+Twin-repo parity tests that source `scripts/lib-changelog.sh` require **bash** and **gawk** on
+PATH (the bash helpers use `gawk` for RST changelog transforms). CI `python-tests` installs `gawk`;
+local runs without it skip those cases via `pytest.mark.skipif`.
+
 The live `/implement` path still uses bash until Phase 7 (`LARCH_SHIP_PR_IMPL=python`).
 
 ## Phase 1 wiring outside `python/`

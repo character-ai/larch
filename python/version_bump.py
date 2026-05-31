@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal
@@ -130,11 +131,11 @@ def _public_surface_path(path: str) -> bool:
 
 def _extract_frontmatter(content: str) -> str:
     lines = content.splitlines()
-    if not lines or lines[0].strip() != "---":
+    if not lines or lines[0] != "---":
         return ""
     buf: list[str] = []
     for line in lines[1:]:
-        if line.strip() == "---":
+        if line == "---":
             return "\n".join(buf)
         buf.append(line)
     return ""
@@ -494,10 +495,8 @@ def apply_bump(
                 "in-progress merge or rebase before bumping.",
             ),
         )
-    non_internal = [
-        line for line in raw
-        if not _tolerated_untracked(line)
-    ]
+    tolerated = [line for line in raw if _tolerated_untracked(line)]
+    non_internal = [line for line in raw if not _tolerated_untracked(line)]
     if non_internal:
         return ApplyResult(
             applied=False,
@@ -506,6 +505,13 @@ def apply_bump(
                 "present); refusing to bump version.",
             ),
         )
+    if tolerated:
+        internal_list = " ".join(line[3:] for line in tolerated)
+        warn = (
+            "WARN: larch-internal untracked artifacts present "
+            f"(tolerated before bump): {internal_list}\n"
+        )
+        _ = sys.stderr.write(_redact_outbound(warn))
 
     try:
         original_current = _read_plugin_version(plugin_path)
@@ -626,6 +632,23 @@ def apply_bump(
     return ApplyResult(applied=True, new_version=new_version, commit_sha=sha)
 
 
+def _parse_larch_bump_files_env(env_bump: str) -> tuple[str, ...] | None:
+    """Parse colon-separated bump paths; None when empty or malformed (fail-closed)."""
+    segments: list[str] = []
+    for part in env_bump.split(":"):
+        if part == "":
+            return None
+        trimmed = part.strip()
+        if not trimmed:
+            return None
+        if ":" in trimmed:
+            return None
+        segments.append(trimmed)
+    if not segments:
+        return None
+    return tuple(segments)
+
+
 def _guard4_allows(
   changed: str,
   *,
@@ -693,15 +716,15 @@ def drop_bump_commit(
     env_bump = os.environ.get(config.ENV_LARCH_BUMP_FILES)
     effective_bump_files = bump_files
     if env_bump is not None and bump_files is None:
-        segments = [s.strip() for s in env_bump.split(":") if s.strip()]
-        if not segments:
+        parsed = _parse_larch_bump_files_env(env_bump)
+        if parsed is None:
             return DropResult(
                 dropped=False,
                 error=_redact_outbound(
                     "LARCH_BUMP_FILES is set but empty after parsing; refusing to drop",
                 ),
             )
-        effective_bump_files = tuple(segments)
+        effective_bump_files = parsed
 
     if not _guard4_allows(
         changed,

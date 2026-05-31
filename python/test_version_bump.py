@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 import json
 import shutil
 import subprocess
@@ -75,6 +76,37 @@ def _parse_kv(stdout: str) -> dict[str, str]:
             key, value = line.split("=", 1)
             out[key] = value
     return out
+
+
+@pytest.mark.skipif(
+    not APPLY_SH.is_file() or shutil.which("bash") is None,
+    reason="apply-bump.sh or bash unavailable",
+)
+def test_parity_apply_bump_warns_on_tolerated_untracked(tmp_path: Path) -> None:
+    repo_bash = _init_bump_repo(tmp_path / "bash")
+    repo_py = _init_bump_repo(tmp_path / "py")
+    for repo in (repo_bash, repo_py):
+        _ = (repo / "dispatch.launcher-stderr").write_text("noise\n", encoding="utf-8")
+    bash = subprocess.run(
+        ["bash", str(APPLY_SH), "--new-version", "1.2.3"],
+        cwd=repo_bash,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    stderr_capture = io.StringIO()
+    orig_stderr = version_bump.sys.stderr
+    version_bump.sys.stderr = stderr_capture
+    try:
+        py = version_bump.apply_bump(ProcRunner(), "1.2.3", cwd=str(repo_py))
+    finally:
+        version_bump.sys.stderr = orig_stderr
+    assert "WARN:" in bash.stderr
+    assert "larch-internal untracked artifacts" in bash.stderr
+    assert "WARN:" in stderr_capture.getvalue()
+    assert "larch-internal untracked artifacts" in stderr_capture.getvalue()
+    bash_kv = _parse_kv(bash.stdout)
+    assert bash_kv.get("APPLIED", "").lower() == str(py.applied).lower()
 
 
 def test_apply_bump_error_redaction() -> None:
@@ -377,6 +409,20 @@ def test_drop_empty_larch_bump_files_fail_closed(
     monkeypatch.setenv(config.ENV_LARCH_BUMP_FILES, "::")
     result = version_bump.drop_bump_commit(ProcRunner(), cwd=str(repo))
     assert result.dropped is False
+
+
+def test_drop_larch_bump_files_rejects_empty_segment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _init_bump_repo(tmp_path)
+    plugin = repo / ".claude-plugin/plugin.json"
+    _ = plugin.write_text('{"version":"2.0.0"}\n', encoding="utf-8")
+    _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 2.0.0"], cwd=repo, check=True)
+    monkeypatch.setenv(config.ENV_LARCH_BUMP_FILES, "version.go::package.json")
+    result = version_bump.drop_bump_commit(ProcRunner(), cwd=str(repo))
+    assert result.dropped is False
     assert "empty" in result.error.lower()
 
 
@@ -655,6 +701,52 @@ def test_classify_deleted_skill_major(tmp_path: Path) -> None:
     assert any("Deleted" in reason for reason in result.major_reasons)
 
 
+@pytest.mark.skipif(
+    not CLASSIFY_SH.is_file() or shutil.which("bash") is None,
+    reason="classify-bump.sh or bash unavailable",
+)
+def test_parity_classify_deleted_skill_major(tmp_path: Path) -> None:
+    repo = _init_bump_repo(tmp_path)
+    skill = repo / "skills/base/SKILL.md"
+    _ = subprocess.run(["git", "rm", "-q", str(skill.relative_to(repo))], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "remove base skill"], cwd=repo, check=True)
+    bash = subprocess.run(
+        ["bash", str(CLASSIFY_SH)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    py = version_bump.classify_bump(ProcRunner(), cwd=str(repo))
+    bash_kv = _parse_kv(bash.stdout)
+    assert py.bump_type == bash_kv.get("BUMP_TYPE") == "MAJOR"
+    assert py.new_version == bash_kv.get("NEW_VERSION")
+
+
+@pytest.mark.skipif(
+    not CLASSIFY_SH.is_file() or shutil.which("bash") is None,
+    reason="classify-bump.sh or bash unavailable",
+)
+def test_parity_classify_added_skill_minor(tmp_path: Path) -> None:
+    repo = _init_bump_repo(tmp_path)
+    skill = repo / "skills/new-skill/SKILL.md"
+    _ = skill.parent.mkdir(parents=True)
+    _ = skill.write_text("---\nname: new-skill\n---\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", skill], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "add skill"], cwd=repo, check=True)
+    bash = subprocess.run(
+        ["bash", str(CLASSIFY_SH)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    py = version_bump.classify_bump(ProcRunner(), cwd=str(repo))
+    bash_kv = _parse_kv(bash.stdout)
+    assert py.bump_type == bash_kv.get("BUMP_TYPE") == "MINOR"
+    assert py.new_version == bash_kv.get("NEW_VERSION")
+
+
 def test_drop_reset_at_head(tmp_path: Path) -> None:
     repo = _init_bump_repo(tmp_path)
     plugin = repo / ".claude-plugin/plugin.json"
@@ -836,6 +928,11 @@ def test_classify_changelog_subject_spoof_skills_minor(tmp_path: Path) -> None:
     assert result.bump_type == "MINOR"
 
 
+def test_extract_frontmatter_requires_exact_delimiters() -> None:
+    assert version_bump._extract_frontmatter(" ---\nname: x\n---\n") == ""  # pyright: ignore[reportPrivateUsage]
+    assert version_bump._extract_frontmatter("---\nname: x\n---\n") == "name: x"  # pyright: ignore[reportPrivateUsage]
+
+
 def test_classify_added_skill_minor(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     plugin = repo / ".claude-plugin"
@@ -938,6 +1035,43 @@ def test_classify_modified_argument_hint_minor(tmp_path: Path) -> None:
     )
     result = version_bump.classify_bump(runner, cwd=str(repo))
     assert result.bump_type == "MINOR"
+
+
+@pytest.mark.skipif(
+    not DROP_SH.is_file() or shutil.which("bash") is None,
+    reason="drop-bump-commit.sh or bash unavailable",
+)
+def test_parity_drop_bump_below_head(tmp_path: Path) -> None:
+    def _seed(repo: Path) -> None:
+        _ = (repo / "README.md").write_text("feature\n", encoding="utf-8")
+        _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "commit", "-q", "-m", "feature"], cwd=repo, check=True)
+        plugin = repo / ".claude-plugin/plugin.json"
+        _ = plugin.write_text('{"version":"2.0.0"}\n', encoding="utf-8")
+        _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
+        _ = subprocess.run(
+            ["git", "commit", "-q", "-m", "Bump version to 2.0.0"],
+            cwd=repo,
+            check=True,
+        )
+
+    repo_bash = _init_bump_repo(tmp_path / "bash")
+    repo_py = _init_bump_repo(tmp_path / "py")
+    _seed(repo_bash)
+    _seed(repo_py)
+    bash = subprocess.run(
+        ["bash", str(DROP_SH)],
+        cwd=repo_bash,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    py = version_bump.drop_bump_commit(ProcRunner(), cwd=str(repo_py))
+    bash_kv = _parse_kv(bash.stdout)
+    assert bash_kv.get("DROPPED", "").lower() == "true"
+    assert str(py.dropped).lower() == bash_kv.get("DROPPED", "").lower()
+    assert json.loads((repo_py / ".claude-plugin/plugin.json").read_text())["version"] == "1.2.2"
+    assert json.loads((repo_bash / ".claude-plugin/plugin.json").read_text())["version"] == "1.2.2"
 
 
 def test_drop_rebase_onto_when_bump_below_head(tmp_path: Path) -> None:

@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import os
+import tempfile
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 
+import config
 from errors import ShipError
 from proc import CommandResult, Runner
 
@@ -191,6 +193,50 @@ def commit(
     if only is not None:
         argv.extend(["--only", only])
     return _run(runner, argv, cwd=cwd)
+
+
+def commit_with_trailer(
+    runner: Runner,
+    message: str,
+    *,
+    only: str | None = None,
+    cwd: str | None = None,
+) -> CommandResult:
+    """Commit via temp file + interpret-trailers (parity with scripts/git-commit.sh)."""
+    trailer = config.GIT_COMMIT_CO_AUTHORED_BY_TRAILER
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".txt",
+        delete=False,
+    ) as handle:
+        _ = handle.write(f"{message}\n")
+        tmp_path = handle.name
+    try:
+        trailer_result = _run(
+            runner,
+            [
+                "git",
+                "interpret-trailers",
+                "--in-place",
+                "--if-exists",
+                "addIfDifferent",
+                "--if-missing",
+                "add",
+                "--trailer",
+                trailer,
+                tmp_path,
+            ],
+            cwd=cwd,
+        )
+        if trailer_result.returncode != 0:
+            return trailer_result
+        argv = ["git", "commit", "--file", tmp_path]
+        if only is not None:
+            argv.extend(["--only", only])
+        return _run(runner, argv, cwd=cwd)
+    finally:
+        os.unlink(tmp_path)
 
 
 def add(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:

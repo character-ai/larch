@@ -76,3 +76,4 @@ CLASSIFY_SCOPE_DIRS: Final[tuple[str, ...]] = ("skills", "agents")
 ENV_LARCH_BUMP_FILES: Final = "LARCH_BUMP_FILES"
 BUMP_VERSION_SKILL_PATH: Final = ".claude/skills/bump-version/SKILL.md"
 APPLY_BUMP_ALLOWED_UNTRACKED_SUFFIXES: Final = (".launcher-stderr", ".redacted.log")
+GIT_COMMIT_CO_AUTHORED_BY_TRAILER: Final = "Co-Authored-By: Claude Code <noreply@anthropic.com>"

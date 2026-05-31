@@ -498,12 +498,22 @@ def test_duplicate_count_rst_ignores_subsections() -> None:
     assert changelog.duplicate_version_heading_count(text, "1.0.0", fmt=ChangelogFormat.RST) == 1
 
 
-def test_commit_changelog_uses_only_path(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    _ = repo.mkdir()
-    _ = (repo / "CHANGELOG.md").write_text(MD_SAMPLE, encoding="utf-8")
-    runner = StubRunner(
-        {
+@dataclass
+class _ChangelogCommitRunner:
+    """Stub runner that accepts dynamic temp paths for git commit --file."""
+
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,  # pylint: disable=unused-argument
+        cwd: str | None = None,  # pylint: disable=unused-argument
+        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
+        check: bool = False,  # pylint: disable=unused-argument
+    ) -> CommandResult:
+        _ = timeout, cwd, env, check
+        key = tuple(argv)
+        fixed: dict[tuple[str, ...], CommandResult] = {
             ("git", "status", "--porcelain", "--untracked-files=no"): CommandResult(
                 ("git", "status", "--porcelain", "--untracked-files=no"), 0, "", "", 0.01
             ),
@@ -516,19 +526,35 @@ def test_commit_changelog_uses_only_path(tmp_path: Path) -> None:
             ("git", "add", "CHANGELOG.md"): CommandResult(
                 ("git", "add", "CHANGELOG.md"), 0, "", "", 0.01
             ),
-            ("git", "commit", "-m", "Update CHANGELOG for 9.9.9", "--only", "CHANGELOG.md"): CommandResult(
-                ("git", "commit", "-m", "Update CHANGELOG for 9.9.9", "--only", "CHANGELOG.md"),
-                0,
-                "",
-                "",
-                0.01,
-            ),
             ("git", "rev-parse", "HEAD"): CommandResult(
                 ("git", "rev-parse", "HEAD"), 0, "deadbeef\n", "", 0.01
             ),
-        },
-    )
-    result = changelog.commit_changelog(runner, "9.9.9", cwd=str(repo))
+        }
+        if key in fixed:
+            return fixed[key]
+        if (
+            len(argv) >= 2
+            and argv[0] == "git"
+            and argv[1] == "interpret-trailers"
+        ):
+            return CommandResult(key, 0, "", "", 0.01)
+        if (
+            len(argv) >= 4
+            and argv[0] == "git"
+            and argv[1] == "commit"
+            and argv[2] == "--file"
+            and tuple(argv[-2:]) == ("--only", "CHANGELOG.md")
+        ):
+            return CommandResult(key, 0, "", "", 0.01)
+        msg = f"unexpected argv: {argv}"
+        raise AssertionError(msg)
+
+
+def test_commit_changelog_uses_only_path(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _ = repo.mkdir()
+    _ = (repo / "CHANGELOG.md").write_text(MD_SAMPLE, encoding="utf-8")
+    result = changelog.commit_changelog(_ChangelogCommitRunner(), "9.9.9", cwd=str(repo))
     assert result.committed is True
 
 
@@ -582,6 +608,77 @@ def test_parity_commit_changelog_twin_repos(tmp_path: Path) -> None:
     assert bash_kv.get("COMMITTED", "").lower() == str(py.committed).lower()
     if py.committed:
         assert py.commit_sha
+
+
+@pytest.mark.skipif(
+    not COMMIT_CHANGELOG.is_file() or shutil.which("bash") is None,
+    reason="commit-changelog.sh or bash unavailable",
+)
+def test_parity_commit_changelog_committed_true_log_subject(tmp_path: Path) -> None:
+    repo_bash = tmp_path / "bash"
+    repo_py = tmp_path / "py"
+    for repo in (repo_bash, repo_py):
+        _ = repo.mkdir()
+        _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "config", "user.email", "t@e.com"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+        _ = (repo / "CHANGELOG.md").write_text(MD_SAMPLE, encoding="utf-8")
+        _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+    bash = subprocess.run(
+        [
+            "bash",
+            str(COMMIT_CHANGELOG),
+            "--version",
+            "7.7.7",
+            "--replaces-version",
+            "1.0.0",
+        ],
+        cwd=repo_bash,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    py = changelog.commit_changelog(
+        ProcRunner(),
+        "7.7.7",
+        replaces_version="1.0.0",
+        cwd=str(repo_py),
+    )
+    bash_kv = {k: v for line in bash.stdout.splitlines() if "=" in line for k, v in [line.split("=", 1)]}
+    assert bash_kv.get("COMMITTED", "").lower() == "true"
+    assert py.committed is True
+    bash_subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"],
+        cwd=repo_bash,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    py_subject = subprocess.run(
+        ["git", "log", "-1", "--format=%s"],
+        cwd=repo_py,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout.strip()
+    assert bash_subject == py_subject == "Update CHANGELOG for 7.7.7"
+    bash_body = subprocess.run(
+        ["git", "log", "-1", "--format=%B"],
+        cwd=repo_bash,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    py_body = subprocess.run(
+        ["git", "log", "-1", "--format=%B"],
+        cwd=repo_py,
+        capture_output=True,
+        text=True,
+        check=True,
+    ).stdout
+    assert bash_body == py_body
+    assert "Co-Authored-By: Claude Code <noreply@anthropic.com>" in py_body
 
 
 @pytest.mark.skipif(
@@ -686,6 +783,33 @@ def test_rst_duplicate_raises_code_4() -> None:
     assert exc.value.code == 4
 
 
+def test_rst_insert_unreleased_subsections_no_version_yet() -> None:
+    text = """\
+Changelog
+=========
+
+Unreleased
+----------
+
+Changed
+~~~~~~~
+
+- Pending
+"""
+    out = changelog.write_changelog_entry(
+        text,
+        "1.1.0",
+        "Added\n~~~~~\n\n- Feature\n",
+        fmt=ChangelogFormat.RST,
+    )
+    lines = out.splitlines()
+    unreleased_idx = next(i for i, line in enumerate(lines) if line == "Unreleased")
+    version_idx = next(i for i, line in enumerate(lines) if line.startswith("Version 1.1.0"))
+    pending_idx = next(i for i, line in enumerate(lines) if line.strip() == "- Pending")
+    feature_idx = next(i for i, line in enumerate(lines) if line.strip() == "- Feature")
+    assert unreleased_idx < pending_idx < version_idx < feature_idx
+
+
 def test_rst_insert_after_unreleased_keeps_pending_under_unreleased() -> None:
     out = changelog.write_changelog_entry(
         RST_SAMPLE,
@@ -703,6 +827,57 @@ def test_rst_insert_after_unreleased_keeps_pending_under_unreleased() -> None:
 def test_auto_resolve_rejects_path_outside_repo(tmp_path: Path) -> None:
     with pytest.raises(ChangelogError, match="escapes"):
         _ = changelog._resolve_repo_path(tmp_path, "../outside.md")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_commit_changelog_unstages_on_commit_failure(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _ = repo.mkdir()
+    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.email", "t@e.com"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+    _ = (repo / "CHANGELOG.md").write_text(MD_SAMPLE, encoding="utf-8")
+    _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+
+    class FailCommitRunner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+        ) -> CommandResult:
+            _ = timeout, cwd, env, check
+            key = tuple(argv)
+            if key == ("git", "status", "--porcelain", "--untracked-files=no"):
+                return CommandResult(key, 0, "", "", 0.01)
+            if key == ("git", "diff", "--quiet", "--", "CHANGELOG.md"):
+                return CommandResult(key, 1, "", "", 0.01)
+            if key == ("git", "diff", "--cached", "--quiet", "--", "CHANGELOG.md"):
+                return CommandResult(key, 1, "", "", 0.01)
+            if key == ("git", "add", "CHANGELOG.md"):
+                return CommandResult(key, 0, "", "", 0.01)
+            if len(argv) >= 2 and argv[0] == "git" and argv[1] == "interpret-trailers":
+                return CommandResult(key, 0, "", "", 0.01)
+            if len(argv) >= 2 and argv[0] == "git" and argv[1] == "commit":
+                return CommandResult(key, 1, "", "commit failed", 0.01)
+            if key == ("git", "reset", "HEAD", "CHANGELOG.md"):
+                return CommandResult(key, 0, "", "", 0.01)
+            msg = f"unexpected argv: {argv}"
+            raise AssertionError(msg)
+
+    result = changelog.commit_changelog(FailCommitRunner(), "9.9.9", cwd=str(repo))
+    assert result.committed is False
+    porcelain = subprocess.run(
+        ["git", "status", "--porcelain", "CHANGELOG.md"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert porcelain.stdout == ""
 
 
 def test_commit_changelog_rejects_path_outside_repo(tmp_path: Path) -> None:
