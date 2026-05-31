@@ -93,6 +93,23 @@ def test_tmpdir_and_operator_paths() -> None:
     )
 
 
+@pytest.mark.parametrize(
+    ("vector", "expected"),
+    [
+        ("cwd=/Users/example/foo,bar,", "cwd=<OPERATOR_REPO_PATH>,bar,"),
+        ("cwd=/Users/example/foo;bar;", "cwd=<OPERATOR_REPO_PATH>;bar;"),
+        ("cwd=/Users/example/foo:bar:", "cwd=<OPERATOR_REPO_PATH>:bar:"),
+        ('{"cwd":"/Users/example/my}repo"}', '{"cwd":"/Users/example/my}repo"}'),
+        (
+            r"foo\n/Users/example/my,repo,",
+            r"foo\n<OPERATOR_REPO_PATH>,repo,",
+        ),
+    ],
+)
+def test_operator_delimiter_repo_segments(vector: str, expected: str) -> None:
+    assert redact.redact(vector).rstrip("\n") == expected
+
+
 def test_idempotent() -> None:
     once = redact.redact("/tmp/larch-design-breadcrumbs.ABC123/private.txt")
     twice = redact.redact(once)
@@ -125,8 +142,22 @@ def test_parity_redact_secrets_sample() -> None:
     not TMPDIR_SH.is_file() or shutil.which("bash") is None,
     reason="bash or redact-tmpdir-paths.sh unavailable",
 )
-def test_parity_redact_tmpdir_sample() -> None:
-    vector = "/tmp/claude-implement-larch1-G2GITf"
+@pytest.mark.parametrize(
+    "vector",
+    [
+        "/tmp/claude-implement-larch1-G2GITf",
+        "/tmp/claude-implement-AbC123",
+        "/Users/example/larch3/scripts/foo.sh",
+        "cwd=/Users/example/my.repo,",
+        'cwd=/home/example/my.repo,',
+        '{"cwd":"/Users/example/my.repo"}',
+        '{"cwd":"/Users/example/my.repo","x":1}',
+        r"foo\n/Users/example/larch3/scripts/foo.sh",
+        "cwd=/Users/example/foo,bar,",
+        '{"cwd":"/Users/example/my}repo"}',
+    ],
+)
+def test_parity_redact_tmpdir_vectors(vector: str) -> None:
     py_out = redact.redact(vector)
     bash_out = _bash_redact(TMPDIR_SH, vector)
     assert _parity_normalize(py_out) == _parity_normalize(bash_out)

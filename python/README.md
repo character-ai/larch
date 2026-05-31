@@ -38,3 +38,7 @@ for lint (including **Node** on PATH for pyright) and `pip install -r python/req
 for tests.
 
 The live `/implement` path still uses bash until Phase 7 (`LARCH_SHIP_PR_IMPL=python`).
+
+## Phase 1 wiring outside `python/`
+
+Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, harnesses). **`scripts/ship-pr.sh`** is an intentional fifth wiring change: failed-job replay maps `python-lint` / `python-tests` CI jobs to `make py-lint` / `make py-test` (see `scripts/test-ship-pr.sh` replay cases). Revert only if replay stays allowlist-only until a later phase.

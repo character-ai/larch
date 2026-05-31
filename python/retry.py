@@ -42,15 +42,27 @@ def is_transient_net_signature(text: str) -> bool:
         return True
     if "Connection reset by peer" in text:
         return True
-    if "EOF" in text and "during" in text and text.index("EOF") < text.index("during"):
+    if (
+        "EOF" in text
+        and "during" in text
+        and text.index("EOF") < text.index("during")
+    ):
         return True
     if "context deadline exceeded" in text:
         return True
     if "no valid output 3 times" in text:
         return True
-    if "git fetch" in text and "failed" in text and text.index("git fetch") < text.index("failed"):
+    if (
+        "git fetch" in text
+        and "failed" in text
+        and text.index("git fetch") < text.index("failed")
+    ):
         return True
-    if "lookup" in text and "no such host" in text and text.index("lookup") < text.index("no such host"):
+    if (
+        "lookup" in text
+        and "no such host" in text
+        and text.index("lookup") < text.index("no such host")
+    ):
         return True
     return "no such host" in text
 
@@ -86,5 +98,4 @@ def with_transient_retry(
         backoff_index = min(attempt - 1, len(config.TRANSIENT_RETRY_BACKOFF_SEC) - 1)
         backoff = config.TRANSIENT_RETRY_BACKOFF_SEC[backoff_index]
         sleeper(float(backoff))
-    msg = "unreachable"
-    raise RuntimeError(msg)
+    assert False, "loop totality"

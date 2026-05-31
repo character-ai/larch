@@ -33,6 +33,7 @@ class TierAttempt:
     wrapper_rc: int
     launcher_exit: int
     failure: LaunchFailure
+    failure_log: str | Path | None = None
 
 
 @dataclass(frozen=True)
@@ -200,7 +201,7 @@ def run_waterfall(
         start = tier_list.index(first_tier)
         tier_list = [*tier_list[start:], *tier_list[:start]]
     attempts: list[TierAttempt] = []
-    first = first_tier or (tier_list[0] if tier_list else "")
+    first = tier_list[0] if tier_list else ""
     for idx, tier in enumerate(tier_list):
         attempt = launch_fn(tier)
         attempts.append(attempt)
@@ -209,11 +210,12 @@ def run_waterfall(
                 winning_tier=tier,
                 attempts=tuple(attempts),
             )
+        failure_class = parse_launcher_failure_class(attempt.failure_log)
         if (
             idx == 0
             and tier == first
             and attempt.wrapper_rc == 0
-            and attempt.failure.failure_class == "other"
+            and failure_class == "other"
         ):
             return WaterfallResult(
                 winning_tier=None,

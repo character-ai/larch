@@ -146,7 +146,3 @@ def ls_files(
     argv = ["git", "ls-files", *paths]
     result = _ensure_success(_run(runner, argv, cwd=cwd))
     return tuple(line for line in result.stdout.splitlines() if line)
-
-
-def parse_json_stdout(result: CommandResult) -> object:
-    return json.loads(result.stdout or "null")

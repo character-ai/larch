@@ -281,6 +281,70 @@ def test_pr_merge_not_retried_on_transient() -> None:
     assert len(runner.calls) == 1
 
 
+def test_pr_for_branch_returns_none_when_empty() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+        ],
+    )
+    assert gh.pr_for_branch(runner, "feat", repo="o/r") is None
+
+
+def test_pr_for_branch_parses_open_pr() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "list"),
+                0,
+                '[{"number":3,"url":"u","state":"OPEN","headRefName":"feat"}]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    pr = gh.pr_for_branch(runner, "feat", repo="o/r")
+    assert pr is not None
+    assert pr.number == 3
+
+
+def test_pr_for_branch_retries_transient_then_succeeds() -> None:
+    transient = CommandResult(
+        ("gh", "pr", "list"),
+        1,
+        "",
+        "fatal: Could not resolve host",
+        0.01,
+    )
+    success = CommandResult(
+        ("gh", "pr", "list"),
+        0,
+        '[{"number":5,"url":"u","state":"OPEN","headRefName":"b"}]',
+        "",
+        0.01,
+    )
+    runner = RecordingRunner(responses=[transient, success])
+    pr = gh.pr_for_branch(runner, "b", repo="o/r")
+    assert pr is not None
+    assert pr.number == 5
+    assert len(runner.calls) == 2
+
+
+def test_pr_merge_unknown_method_raises() -> None:
+    runner = RecordingRunner()
+    with pytest.raises(ShipError, match="unknown merge_method"):
+        gh.pr_merge(runner, 1, repo="o/r", merge_method="squish")
+
+
+def test_pr_view_raises_ship_error_on_invalid_json() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), 0, "not-json", "", 0.01),
+        ],
+    )
+    with pytest.raises(ShipError, match="JSON parse failed"):
+        gh.pr_view(runner, 1, repo="o/r")
+
+
 def test_pr_view_raises_ship_error_on_missing_json_keys() -> None:
     runner = RecordingRunner(
         responses=[

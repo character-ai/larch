@@ -432,8 +432,7 @@ jobs:
       - name: Install Python lint dependencies
         run: pip install -r python/requirements-dev.txt
       - name: Run Python linters
-        working-directory: python
-        run: ruff check . && pylint . && pyright
+        run: make py-lint
 
   python-tests:
     runs-on: ubuntu-latest
@@ -448,5 +447,4 @@ jobs:
       - name: Install Python test dependencies
         run: pip install -r python/requirements-test.txt
       - name: Run Python tests
-        working-directory: python
-        run: pytest
+        run: make py-test

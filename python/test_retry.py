@@ -91,6 +91,33 @@ def test_parity_is_transient_net_signature(text: str) -> None:
     assert retry.is_transient_net_signature(text) == _bash_is_transient(text)
 
 
+@pytest.mark.parametrize(
+    "text",
+    [
+        "during request: unexpected EOF",
+        "failed before git fetch",
+    ],
+)
+def test_ordered_substrings_reversed_do_not_match(text: str) -> None:
+    assert retry.is_transient_net_signature(text) is False
+
+
+@pytest.mark.skipif(
+    not LIB_NET.is_file() or shutil.which("bash") is None,
+    reason="bash or lib-net.sh unavailable",
+)
+@pytest.mark.parametrize(
+    "text",
+    [
+        "during request: unexpected EOF",
+        "failed before git fetch",
+    ],
+)
+def test_parity_reversed_substrings_not_transient(text: str) -> None:
+    assert retry.is_transient_net_signature(text) is False
+    assert _bash_is_transient(text) is False
+
+
 def test_with_transient_retry_backoff_schedule() -> None:
     sleeps: list[float] = []
 

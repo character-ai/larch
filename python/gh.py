@@ -1,4 +1,9 @@
-"""Typed gh CLI operations with per-operation retry policy."""
+"""Typed gh CLI operations with per-operation retry policy.
+
+Read helpers retry transient failures via ``with_transient_retry`` then
+``_ensure_success``, which raises ``ShipError`` on exhaustion (fail-fast).
+Mutating helpers return the last ``CommandResult`` without retry.
+"""
 
 from __future__ import annotations
 
@@ -63,6 +68,22 @@ def _require_json_keys(
         raise ShipError(msg)
 
 
+def _loads_json(text: str, *, context: str) -> object:
+    try:
+        return json.loads(text or "null")
+    except json.JSONDecodeError as exc:
+        msg = f"gh JSON parse failed ({context}): {exc}"
+        raise ShipError(msg) from exc
+
+
+def _as_int(value: object, *, context: str, field: str) -> int:
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError) as exc:
+        msg = f"gh JSON field {field!r} is not an int ({context})"
+        raise ShipError(msg) from exc
+
+
 @contextmanager
 def _body_file_args(body: str) -> Iterator[tuple[str, str]]:
     redacted = redact.redact(body)
@@ -86,6 +107,7 @@ def _retry_read(
     *,
     cwd: str | None = None,
 ) -> CommandResult:
+    """Retry reads on transient net failures; return last result (may be non-zero)."""
     def attempt() -> tuple[CommandResult, int, str]:
         res = _gh(runner, argv, cwd=cwd)
         return res, res.returncode, _combined(res)
@@ -116,14 +138,17 @@ def pr_view(
             cwd=cwd,
         ),
     )
-    data = json.loads(result.stdout)
+    data = _loads_json(result.stdout, context="pr view")
+    if not isinstance(data, dict):
+        msg = "gh JSON parse failed (pr view): expected object"
+        raise ShipError(msg)
     _require_json_keys(
         data,
         ("number", "url", "state", "headRefName"),
         context="pr view",
     )
     return PullRequest(
-        number=int(data["number"]),
+        number=_as_int(data["number"], context="pr view", field="number"),
         url=str(data["url"]),
         state=str(data["state"]),
         head_ref=str(data["headRefName"]),
@@ -157,17 +182,23 @@ def pr_for_branch(
             cwd=cwd,
         ),
     )
-    rows = json.loads(result.stdout or "[]")
-    if not rows:
+    rows_obj = _loads_json(result.stdout or "[]", context="pr list")
+    if not isinstance(rows_obj, list):
+        msg = "gh JSON parse failed (pr list): expected array"
+        raise ShipError(msg)
+    if not rows_obj:
         return None
-    row = rows[0]
+    row = rows_obj[0]
+    if not isinstance(row, dict):
+        msg = "gh JSON parse failed (pr list): expected object row"
+        raise ShipError(msg)
     _require_json_keys(
         row,
         ("number", "url", "state", "headRefName"),
         context="pr list",
     )
     return PullRequest(
-        number=int(row["number"]),
+        number=_as_int(row["number"], context="pr list", field="number"),
         url=str(row["url"]),
         state=str(row["state"]),
         head_ref=str(row["headRefName"]),
@@ -215,14 +246,17 @@ def pr_create(
             if recovered is not None:
                 return recovered
         _ensure_success(result)
-    data = json.loads(result.stdout)
+    data = _loads_json(result.stdout, context="pr create")
+    if not isinstance(data, dict):
+        msg = "gh JSON parse failed (pr create): expected object"
+        raise ShipError(msg)
     _require_json_keys(
         data,
         ("number", "url", "state", "headRefName"),
         context="pr create",
     )
     return PullRequest(
-        number=int(data["number"]),
+        number=_as_int(data["number"], context="pr create", field="number"),
         url=str(data["url"]),
         state=str(data["state"]),
         head_ref=str(data["headRefName"]),
@@ -237,11 +271,15 @@ def pr_merge(
     merge_method: str = "squash",
     cwd: str | None = None,
 ) -> CommandResult:
-    flag = {
+    flag_map = {
         "squash": "--squash",
         "merge": "--merge",
         "rebase": "--rebase",
-    }.get(merge_method, "--squash")
+    }
+    flag = flag_map.get(merge_method)
+    if flag is None:
+        msg = f"unknown merge_method: {merge_method!r}"
+        raise ShipError(msg)
     return _gh(
         runner,
         [
@@ -282,9 +320,14 @@ def run_list(
             cwd=cwd,
         ),
     )
-    rows = json.loads(result.stdout or "[]")
+    rows_obj = _loads_json(result.stdout or "[]", context="run list")
+    if not isinstance(rows_obj, list):
+        msg = "gh JSON parse failed (run list): expected array"
+        raise ShipError(msg)
     runs: list[WorkflowRun] = []
-    for row in rows:
+    for row in rows_obj:
+        if not isinstance(row, dict):
+            continue
         _require_json_keys(
             row,
             ("databaseId", "status"),
@@ -292,7 +335,7 @@ def run_list(
         )
         runs.append(
             WorkflowRun(
-                database_id=int(row["databaseId"]),
+                database_id=_as_int(row["databaseId"], context="run list", field="databaseId"),
                 status=str(row["status"]),
                 conclusion=row.get("conclusion"),  # type: ignore[arg-type]
             ),
@@ -322,10 +365,13 @@ def run_view(
             cwd=cwd,
         ),
     )
-    data = json.loads(result.stdout)
+    data = _loads_json(result.stdout, context="run view")
+    if not isinstance(data, dict):
+        msg = "gh JSON parse failed (run view): expected object"
+        raise ShipError(msg)
     _require_json_keys(data, ("databaseId", "status"), context="run view")
     return WorkflowRun(
-        database_id=int(data["databaseId"]),
+        database_id=_as_int(data["databaseId"], context="run view", field="databaseId"),
         status=str(data["status"]),
         conclusion=data.get("conclusion"),
     )
@@ -353,7 +399,10 @@ def failed_jobs(
             cwd=cwd,
         ),
     )
-    payload = json.loads(result.stdout)
+    payload = _loads_json(result.stdout, context="failed jobs")
+    if not isinstance(payload, dict):
+        msg = "gh JSON parse failed (failed jobs): expected object"
+        raise ShipError(msg)
     jobs = payload.get("jobs", [])
     if not isinstance(jobs, list):
         msg = "gh JSON missing required keys ['jobs'] (failed jobs)"

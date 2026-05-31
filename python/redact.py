@@ -15,11 +15,12 @@ _AKIA_RE = re.compile(r"AKIA[0-9A-Z]{16}")
 _JWT_RE = re.compile(
     r"eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}",
 )
+_PEM_ANCHOR = r"^[\t \v\f\r>]*"
 _PEM_BEGIN_RE = re.compile(
-    r"^[ \t>]*-----BEGIN [A-Z ]*PRIVATE KEY-----",
+    rf"{_PEM_ANCHOR}-----BEGIN [A-Z ]*PRIVATE KEY-----",
 )
 _PEM_END_RE = re.compile(
-    r"^[ \t>]*-----END [A-Z ]*PRIVATE KEY-----",
+    rf"{_PEM_ANCHOR}-----END [A-Z ]*PRIVATE KEY-----",
 )
 _UNTERMINATED_MARKER = (
     "[content truncated — unterminated PEM block; tail of body dropped for safety]"
@@ -30,6 +31,15 @@ _SESSION_SUFFIX = (
 )
 _BOUNDARY = r"[^A-Za-z0-9_./-]"
 _NOT_PATH = r"[^/\s\"\\]"
+_USER_SEG = r"[^/\s\"\\]+"
+_REPO_SLASH = r"[^/\s\"\\]+"
+_REPO_COMMA = r"[^/\s\"\\,]+"
+_REPO_SEMI = r"[^/\s\"\\;]+"
+_REPO_COLON = r"[^/\s\"\\:]+"
+_REPO_BRACE = r"[^/\s\"\\\"}]+"
+_REPO_QUOTE_COMMA = r"[^/\s\"\\\"},]+"
+_REPO_QUOTE_END = r"[^/\s\"\\\"]+"
+_REPO_EOL = r"[^/\s\"\\]+"
 
 _TMPDIR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
@@ -75,101 +85,115 @@ _TMPDIR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
 _OPERATOR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(
-            rf"(^|{_BOUNDARY})(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+)/",
+            rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_SLASH})/",
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}/",
     ),
     (
         re.compile(
-            rf"(^|{_BOUNDARY})(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+),",
+            rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_COMMA}),",
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO},",
     ),
     (
         re.compile(
-            rf"(^|{_BOUNDARY})(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+);",
+            rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_SEMI});",
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO};",
     ),
     (
         re.compile(
-            rf"(^|{_BOUNDARY})(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+):",
+            rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_COLON}):",
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}:",
     ),
     (
         re.compile(
-            rf"(^|{_BOUNDARY})(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+)\"}}",
+            rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_BRACE})\"}}",
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}"}}',
     ),
     (
         re.compile(
-            rf"(^|{_BOUNDARY})(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+)\",",
+            rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_QUOTE_COMMA})\",",
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}",',
     ),
     (
         re.compile(
-            rf"(^|{_BOUNDARY})(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+)\"$",
+            rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_QUOTE_END})\"$",
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}"',
     ),
     (
         re.compile(
-            rf"(^|{_BOUNDARY})(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+)$",
+            rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_EOL})$",
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}",
     ),
     (
         re.compile(
-            rf"(\\n)(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+)/",
+            rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_SLASH})/",
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}/",
     ),
     (
         re.compile(
-            rf"(\\n)(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+),",
+            rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_COMMA}),",
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO},",
     ),
     (
         re.compile(
-            rf"(\\n)(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+);",
+            rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_SEMI});",
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO};",
     ),
     (
         re.compile(
-            rf"(\\n)(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+):",
+            rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_COLON}):",
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}:",
     ),
     (
         re.compile(
-            rf"(\\n)(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+)\"}}",
+            rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_BRACE})\"}}",
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}"}}',
     ),
     (
         re.compile(
-            rf"(\\n)(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+)\",",
+            rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_QUOTE_COMMA})\",",
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}",',
     ),
     (
         re.compile(
-            rf"(\\n)(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+)\"$",
+            rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_QUOTE_END})\"$",
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}"',
     ),
     (
         re.compile(
-            rf"(\\n)(/Users|/home)/({_NOT_PATH}+)/({_NOT_PATH}+)$",
+            rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_EOL})$",
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}",
     ),
 )
+
+
+def _split_on_newline_only(text: str) -> list[str]:
+    """Split on LF only (bash redact-secrets stream model)."""
+    if not text:
+        return []
+    parts = text.split("\n")
+    lines: list[str] = []
+    for index, part in enumerate(parts):
+        if index < len(parts) - 1:
+            lines.append(part + "\n")
+        elif part:
+            lines.append(part)
+    return lines
 
 
 def _redact_line_local(line: str) -> str:
@@ -181,18 +205,19 @@ def _redact_line_local(line: str) -> str:
 
 def _redact_secrets_pem(text: str) -> tuple[str, bool]:
     """Apply PEM swallowing; return (text, saw_unterminated)."""
-    lines = text.splitlines(keepends=True)
+    lines = _split_on_newline_only(text)
     if not lines and text:
         lines = [text]
     out: list[str] = []
     in_pem = False
     unterminated = False
     for line in lines:
+        logical = line.rstrip("\n")
         if in_pem:
-            if _PEM_END_RE.match(line.rstrip("\n")):
+            if _PEM_END_RE.match(logical):
                 in_pem = False
             continue
-        if _PEM_BEGIN_RE.match(line.rstrip("\n")):
+        if _PEM_BEGIN_RE.match(logical):
             out.append(config.REDACTED_PRIVATE_KEY + ("\n" if line.endswith("\n") else ""))
             in_pem = True
             continue
