@@ -238,8 +238,17 @@ exit 0
 STUB
 chmod +x "$STUB_SCRIPTS/write-run-params.sh"
 D11="$TMPROOT/driver11"
+# Build a PATH directory that has all tools needed by the script except jq, so
+# command -v jq returns non-zero on every platform (e.g. /usr/bin/jq on Ubuntu CI).
+_no_jq_path="$TMPROOT/no-jq-path"
+mkdir -p "$_no_jq_path"
+for _cmd in bash sh dirname basename mktemp mv rm mkdir cat printf chmod; do
+  _real=$(command -v "$_cmd" 2>/dev/null || true)
+  [ -n "$_real" ] && ln -sf "$_real" "$_no_jq_path/$_cmd"
+done
+# jq intentionally absent from _no_jq_path
 set +e
-out11=$(run_design_init "$D11" true false false "/usr/bin:/bin" 2>&1)
+out11=$(run_design_init "$D11" true false false "$_no_jq_path" 2>&1)
 rc11=$?
 set -e
 [[ "$rc11" -eq 0 ]] || fail "case11: jq-unavailable driver rc=$rc11 out=$out11"
