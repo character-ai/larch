@@ -111,6 +111,24 @@ is_relevant_checks_clean() {
     printf '%s\n' "$1" | grep -qE '^RELEVANT_CHECKS_(OK|SKIPPED)=true '
 }
 
+_surface_ci_stderr_tail() {
+    local stem="$1"
+    [[ -n "$stem" ]] || return 0
+    # shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+    source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
+    emit_failed_agent_stderr_tail_larch_err "$stem" || true
+}
+
+_surface_lint_fix_stderr_tail() {
+    local fix_out="$1" stem=""
+    stem=$(printf '%s\n' "$fix_out" | awk -F= '/^STDERR_TAIL_PATH=/ { print substr($0, index($0,"=")+1); exit }')
+    if [[ -z "$stem" ]]; then
+        stem=$(printf '%s\n' "$fix_out" | awk -F= '/^CODER_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+    fi
+    [[ -n "$stem" ]] || return 0
+    _surface_ci_stderr_tail "$stem"
+}
+
 run_lint_fix_loop_capture() {
     local fail_file=$1 site=$2 redacted_log=$3 out_var=$4 rc_var=$5 target_cmd_args_file=${6:-}
     local output rc had_errexit=0
@@ -129,6 +147,13 @@ run_lint_fix_loop_capture() {
     (( had_errexit )) && set -e
     printf -v "$out_var" '%s' "$output"
     printf -v "$rc_var" '%s' "$rc"
+    local lint_status=""
+    lint_status=$(printf '%s\n' "$output" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
+    if [[ "$rc" -ne 0 ]] \
+        || [[ "$lint_status" == "failed" || "$lint_status" == "main-agent-required" ]] \
+        || { [[ -z "$lint_status" ]] && [[ "$rc" -ne 0 ]]; }; then
+        _surface_lint_fix_stderr_tail "$output"
+    fi
 }
 
 _RCC_STATUS=""
@@ -2061,6 +2086,7 @@ run_ci_fix_vendor() {
         launcher_exit="${launcher_exit:-0}"
 
         if [ "$wrapper_rc" -eq 2 ]; then
+            _surface_ci_stderr_tail "$tier_out"
             record_failure "$phase" "$(basename "$launcher") fix (validation)" "$wrapper_rc" "$fail_file" "CI Issues"
             _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
             waterfall_iter=$(( waterfall_iter + 1 ))
@@ -2071,6 +2097,7 @@ run_ci_fix_vendor() {
             winning_tier=$tier
             break
         fi
+        _surface_ci_stderr_tail "$tier_out"
         record_failure "$phase" "$(basename "$launcher") fix (wrapper_rc=$wrapper_rc, launcher_exit=${launcher_exit:-0})" "${launcher_exit:-$wrapper_rc}" "$fail_file" "CI Issues"
         _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
         if [ "$waterfall_iter" -eq 0 ] && [ "$wrapper_rc" -eq 0 ] && [ "$tier" = "$first_tier" ]; then
@@ -2764,27 +2791,34 @@ run_recovery_waterfall() {
             return 1
         fi
         tier_rc=1
+        launcher_exit=0
         output="$IMPLEMENT_TMPDIR/recovery-${wf_phase}-${tier}-$(date +%s).out"
+        launcher_stdout="$IMPLEMENT_TMPDIR/recovery-${wf_phase}-${tier}-launcher-$$.out"
         case "$tier" in
             cursor)
                 if command -v cursor >/dev/null 2>&1; then
                     "$SCRIPT_DIR/launch-cursor-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
-                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
+                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
             codex)
                 if command -v codex >/dev/null 2>&1; then
                     "$SCRIPT_DIR/launch-codex-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
-                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
+                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
             claude)
                 if command -v claude >/dev/null 2>&1; then
                     "$SCRIPT_DIR/launch-claude-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
-                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
+                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
         esac
+        launcher_exit=$(awk -F= '/^LAUNCHER_EXIT=/ { print $2; exit }' "$launcher_stdout" 2>/dev/null || true)
+        launcher_exit="${launcher_exit:-0}"
+        if [ "$tier_rc" -ne 0 ] || [ "$launcher_exit" -ne 0 ] || [ -s "${output}.stderr-tail" ]; then
+            _surface_ci_stderr_tail "$output"
+        fi
         if [ "$tier_rc" -ne 0 ]; then
             recovery_waterfall_paths_delta_revert "$baseline_dir/tracked" "$baseline_dir/untracked" "$wf_log"
             continue

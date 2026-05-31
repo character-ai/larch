@@ -46,6 +46,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
 larch_quiet_init
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
@@ -238,6 +240,7 @@ if [[ "$MODEL_ARGS_RC" -ne 0 ]]; then
     : > "$SIDECAR_LOG"
     cat "$MODEL_ARGS_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
     rm -f "$MODEL_ARGS_ERR"
+    write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true
     emit_timing_record "$MODEL_ARGS_RC"
     emit_kv LAUNCHER_EXIT "$MODEL_ARGS_RC"
     emit_kv MANIFEST_WRITTEN false

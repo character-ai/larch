@@ -4,6 +4,9 @@
 
 # shellcheck disable=SC2034
 
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$PLUGIN_ROOT/scripts/lib-failed-agent-stderr-tail.sh"
+
 step5_parse_kv_tokens() {
     # Always exits 0 under set -e; absent key yields empty stdout (callers use [[ -n "$v" ]]).
     local line="$1" key="$2" tok
@@ -47,14 +50,31 @@ step5_parse_checks_capture_file() {
 step5_parse_lint_capture_file() {
     local file="$1" line="" v=""
     STEP5_LINT_STATUS=""
+    STEP5_LINT_STDERR_TAIL_STEM=""
+    STEP5_LINT_CODER_LOG_STEM=""
     while IFS= read -r line || [[ -n "$line" ]]; do
         [[ -z "$line" ]] && continue
         v="$(step5_parse_kv_tokens "$line" LINT_FIX_STATUS)"
         [[ -n "$v" ]] && STEP5_LINT_STATUS="$v"
+        v="$(step5_parse_kv_tokens "$line" STDERR_TAIL_PATH)"
+        [[ -n "$v" ]] && STEP5_LINT_STDERR_TAIL_STEM="$v"
+        v="$(step5_parse_kv_tokens "$line" CODER_LOG_FILE)"
+        [[ -n "$v" ]] && STEP5_LINT_CODER_LOG_STEM="$v"
     done <"$file"
     if [[ -z "${STEP5_LINT_STATUS:-}" ]]; then
         printf '%s\n' "step5_parse_lint_capture_file: required field missing (LINT_FIX_STATUS) in capture file: $file" >&2
     fi
+}
+
+step5_surface_lint_stderr_tail() {
+    local stem=""
+    if [[ -n "${STEP5_LINT_STDERR_TAIL_STEM:-}" ]]; then
+        stem="$STEP5_LINT_STDERR_TAIL_STEM"
+    elif [[ -n "${STEP5_LINT_CODER_LOG_STEM:-}" ]]; then
+        stem="$STEP5_LINT_CODER_LOG_STEM"
+    fi
+    [[ -n "$stem" ]] || return 0
+    emit_failed_agent_stderr_tail_larch_err "$stem" || true
 }
 
 step5_emit_final_envelope() {
@@ -246,6 +266,7 @@ run_implement_loop() {
                     applied)
                         lint_attempts=$((lint_attempts + 1))
                         if (( lint_attempts >= 10#$lint_max )); then
+                            step5_surface_lint_stderr_tail
                             step5_emit_final_envelope stall true lint-fix-attempt-cap "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                             flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                             exit 2
@@ -265,11 +286,13 @@ run_implement_loop() {
                         fi
                         ;;
                     main-agent-required)
+                        step5_surface_lint_stderr_tail
                         step5_emit_final_envelope stall true lint-fix-main-agent-required "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                         exit 2
                         ;;
                     failed)
+                        step5_surface_lint_stderr_tail
                         step5_emit_final_envelope stall true lint-fix-failed "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                         exit 2
@@ -285,11 +308,13 @@ run_implement_loop() {
                         if [[ "$STEP5_CHK_RELEVANT_CHECKS_SKIPPED" == "true" || "$STEP5_CHK_RELEVANT_CHECKS_OK" == "true" ]]; then
                             break
                         fi
+                        step5_surface_lint_stderr_tail
                         step5_emit_final_envelope stall true lint-fix-failed "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                         exit 2
                         ;;
                     *)
+                        step5_surface_lint_stderr_tail
                         step5_emit_final_envelope stall true lint-fix-failed "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                         exit 2

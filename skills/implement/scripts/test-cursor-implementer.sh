@@ -860,6 +860,73 @@ else
     fail "cap-hit-no-invoke" "cap_hit path must not invoke the underlying Cursor binary"
 fi
 
+# Test: agent failure leaves ${TRANSCRIPT}.stderr-tail (producer: run-external-agent).
+FAIL_TAIL_BIN="$SCRATCH/fail-tail-bin"
+mkdir -p "$FAIL_TAIL_BIN"
+cat > "$FAIL_TAIL_BIN/cursor" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+printf 'cursor agent failure\n' >&2
+cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
+{"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+exit 1
+EOF
+chmod +x "$FAIL_TAIL_BIN/cursor"
+FAIL_TAIL_TRANSCRIPT="$SCRATCH/fail-tail-transcript.txt"
+FAIL_TAIL_SIDECAR="$SCRATCH/fail-tail-sidecar.log"
+FAIL_TAIL_MANIFEST="$SCRATCH/fail-tail-manifest.json"
+FAIL_TAIL_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$FAIL_TAIL_BIN:$PATH" \
+    STUB_MANIFEST_PATH="$FAIL_TAIL_MANIFEST" \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_CURSOR_MODEL="stub-cursor-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$LAUNCHER" \
+        --transcript-path "$FAIL_TAIL_TRANSCRIPT" \
+        --sidecar-log "$FAIL_TAIL_SIDECAR" \
+        --manifest-path "$FAIL_TAIL_MANIFEST" \
+        --qa-pending-path "$SCRATCH/fail-tail-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$FAIL_TAIL_OUT" == *"LAUNCHER_EXIT=1"* ]] \
+    && [[ -s "${FAIL_TAIL_TRANSCRIPT}.stderr-tail" ]]; then
+    pass
+else
+    fail "stderr-tail-agent" "cursor agent failure must produce stderr-tail; out=$FAIL_TAIL_OUT"
+fi
+
+# Test: model-args failure writes stderr-tail before run-external-agent.
+MODEL_ARGS_CURSOR_TRANSCRIPT="$SCRATCH/model-args-cursor-transcript.txt"
+MODEL_ARGS_CURSOR_SIDECAR="$SCRATCH/model-args-cursor-sidecar.log"
+MODEL_ARGS_CURSOR_OUT=$(cd "$REPO_ROOT" && \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_CURSOR_MODEL=$'bad\x01model' \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$LAUNCHER" \
+        --transcript-path "$MODEL_ARGS_CURSOR_TRANSCRIPT" \
+        --sidecar-log "$MODEL_ARGS_CURSOR_SIDECAR" \
+        --manifest-path "$SCRATCH/model-args-cursor-manifest.json" \
+        --qa-pending-path "$SCRATCH/model-args-cursor-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$MODEL_ARGS_CURSOR_OUT" == *"LAUNCHER_EXIT=1"* ]] \
+    && [[ -s "${MODEL_ARGS_CURSOR_TRANSCRIPT}.stderr-tail" ]]; then
+    pass
+else
+    fail "stderr-tail-model-args" "cursor model-args path must write stderr-tail; out=$MODEL_ARGS_CURSOR_OUT"
+fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-cursor-implementer.sh — $PASS_COUNT/$TOTAL assertions"

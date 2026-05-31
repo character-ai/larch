@@ -34,8 +34,10 @@ write_subject() {
     cp "$REPO_ROOT/scripts/auto-resolve-changelog.sh" "$root/scripts/auto-resolve-changelog.sh"
     cp "$REPO_ROOT/scripts/oos-disposition-shared.inc.bash" "$root/scripts/oos-disposition-shared.inc.bash"
     cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
+    cp "$REPO_ROOT/scripts/redact-tmpdir-paths.sh" "$root/scripts/redact-tmpdir-paths.sh"
+    cp "$REPO_ROOT/scripts/lib-failed-agent-stderr-tail.sh" "$root/scripts/lib-failed-agent-stderr-tail.sh"
     cp "$REPO_ROOT/scripts/ci-failed-jobs.sh" "$root/scripts/ci-failed-jobs.sh"
-    chmod +x "$root/scripts/redact-secrets.sh" "$root/scripts/ci-failed-jobs.sh"
+    chmod +x "$root/scripts/redact-secrets.sh" "$root/scripts/redact-tmpdir-paths.sh" "$root/scripts/ci-failed-jobs.sh"
     cp "$REPO_ROOT/skills/implement/scripts/oos-disposition-gate.sh" "$root/skills/implement/scripts/oos-disposition-gate.sh"
     cp "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$root/skills/implement/scripts/oos-non-security-block-count.awk"
     chmod +x "$root/scripts/ship-pr.sh" "$root/scripts/auto-resolve-changelog.sh" "$root/skills/implement/scripts/oos-disposition-gate.sh"
@@ -5990,6 +5992,50 @@ if grep -aF $'\x1b' <<< "$fallback_out" >/dev/null; then
     fail "append_tool_failure_local fallback still contains ESC"
 else
     ok "append_tool_failure_local fallback strips ESC"
+fi
+
+# #3227: caller-scope stderr-tail surfacing for CI tier stems and lint-fix capture.
+root=$(mktemp -d "$TMP_BASE/stderr-tail.XXXXXX")
+write_subject "$root"
+tmp="$root/session"
+mkdir -p "$tmp"
+tier_out="$tmp/ci-tier-out"
+printf 'LARCH_SHIP_PR_CI_STDERR_TAIL_PROBE\n' > "${tier_out}.stderr-tail"
+caller_err="$tmp/caller-stderr.err"
+set +e
+(
+    cd "$root" && IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+        bash -c 'source scripts/ship-pr.sh; _surface_ci_stderr_tail "'"$tier_out"'"'
+) 2>"$caller_err"
+set -e
+if grep -Fq 'LARCH_SHIP_PR_CI_STDERR_TAIL_PROBE' "$caller_err"; then
+    ok "CI stderr-tail helper surfaces tier stem to caller stderr"
+else
+    fail "CI stderr-tail helper must emit tier_out tail to caller stderr"
+fi
+
+run_dir="$tmp/lint-run"
+mkdir -p "$run_dir"
+printf 'LARCH_SHIP_PR_LINT_STDERR_TAIL_PROBE\n' > "$run_dir/codex.log.stderr-tail"
+cat > "$root/scripts/lint-fix-loop.sh" <<STUB
+#!/usr/bin/env bash
+printf 'LINT_FIX_STATUS=main-agent-required\n'
+printf 'FAILURE_REASON=dispatch-failed\n'
+printf 'STDERR_TAIL_PATH=%s\n' "$run_dir/codex.log"
+STUB
+chmod +x "$root/scripts/lint-fix-loop.sh"
+fail_file="$tmp/lint-fail.err"
+lint_caller_err="$tmp/lint-caller.err"
+set +e
+(
+    cd "$root" && IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+        bash -c 'source scripts/ship-pr.sh; run_lint_fix_loop_capture "'"$fail_file"'" test-site /dev/null fix_out fix_rc'
+) >"$tmp/lint-out.txt" 2>"$lint_caller_err"
+set -e
+if grep -Fq 'LARCH_SHIP_PR_LINT_STDERR_TAIL_PROBE' "$lint_caller_err"; then
+    ok "run_lint_fix_loop_capture surfaces lint-fix stderr-tail to caller stderr"
+else
+    fail "run_lint_fix_loop_capture must emit STDERR_TAIL_PATH tail to caller stderr (not only fail_file)"
 fi
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then

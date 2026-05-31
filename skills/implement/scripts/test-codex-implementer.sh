@@ -1028,6 +1028,78 @@ else
     fail "cap-hit-no-invoke" "cap_hit path must not invoke the underlying Codex binary"
 fi
 
+# Test: agent failure writes redacted ${TRANSCRIPT}.stderr-tail from SIDECAR_LOG.
+FAIL_STDERR_BIN="$SCRATCH/fail-stderr-bin"
+mkdir -p "$FAIL_STDERR_BIN"
+cat > "$FAIL_STDERR_BIN/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'failed codex transcript\n' > "$output_path"
+printf 'LARCH_CODEX_IMPLEMENT_STDERR_TAIL_PROBE\n' >&2
+cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
+{"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+exit 1
+EOF
+chmod +x "$FAIL_STDERR_BIN/codex"
+FAIL_STDERR_TRANSCRIPT="$SCRATCH/fail-stderr-transcript.txt"
+FAIL_STDERR_SIDECAR="$SCRATCH/fail-stderr-sidecar.log"
+FAIL_STDERR_MANIFEST="$SCRATCH/fail-stderr-manifest.json"
+FAIL_STDERR_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$FAIL_STDERR_BIN:$PATH" \
+    STUB_MANIFEST_PATH="$FAIL_STDERR_MANIFEST" \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$LAUNCHER" \
+        --transcript-path "$FAIL_STDERR_TRANSCRIPT" \
+        --sidecar-log "$FAIL_STDERR_SIDECAR" \
+        --manifest-path "$FAIL_STDERR_MANIFEST" \
+        --qa-pending-path "$SCRATCH/fail-stderr-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$FAIL_STDERR_OUT" == *"LAUNCHER_EXIT=1"* ]] \
+    && [[ -s "${FAIL_STDERR_TRANSCRIPT}.stderr-tail" ]] \
+    && grep -Fq 'LARCH_CODEX_IMPLEMENT_STDERR_TAIL_PROBE' "${FAIL_STDERR_TRANSCRIPT}.stderr-tail"; then
+    pass
+else
+    fail "stderr-tail-agent" "expected LAUNCHER_EXIT=1 and redacted stderr-tail; out=$FAIL_STDERR_OUT tail=$(cat "${FAIL_STDERR_TRANSCRIPT}.stderr-tail" 2>/dev/null)"
+fi
+
+# Test: model-args failure writes stderr-tail before agent run.
+MODEL_ARGS_TRANSCRIPT="$SCRATCH/model-args-transcript.txt"
+MODEL_ARGS_SIDECAR="$SCRATCH/model-args-sidecar.log"
+MODEL_ARGS_OUT=$(cd "$REPO_ROOT" && \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_CODEX_MODEL=$'bad\x01model' \
+    "$LAUNCHER" \
+        --transcript-path "$MODEL_ARGS_TRANSCRIPT" \
+        --sidecar-log "$MODEL_ARGS_SIDECAR" \
+        --manifest-path "$SCRATCH/model-args-manifest.json" \
+        --qa-pending-path "$SCRATCH/model-args-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$MODEL_ARGS_OUT" == *"LAUNCHER_EXIT=1"* ]] \
+    && [[ -s "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" ]]; then
+    pass
+else
+    fail "stderr-tail-model-args" "model-args path must write stderr-tail; out=$MODEL_ARGS_OUT"
+fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-codex-implementer.sh — $PASS_COUNT/$TOTAL assertions"

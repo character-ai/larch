@@ -73,6 +73,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$PLUGIN_ROOT/scripts/lib-failed-agent-stderr-tail.sh"
 larch_quiet_init
 
 TMPDIR_ARG=""
@@ -271,6 +273,7 @@ emit_bailed() {
     # External-implementer bail: orchestrator MUST NOT run main-agent Edit/Write.
     # See SKILL.md NEVER #10 and Step 2 entry preconditions matrix.
     emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
+    emit_failed_agent_stderr_tail_larch_err "$TRANSCRIPT_PATH" || true
     exit 0
 }
 

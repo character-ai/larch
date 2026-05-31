@@ -405,6 +405,31 @@ write_collect_one_nit() {
     write_collect one_nit
 }
 
+write_collect_failing_tail() {
+    cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' '--- failed agent stderr tail ---' >&2
+printf '%s\n' 'LARCH_TEST_STDERR_TAIL_MARKER' >&2
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --paths-file) paths="${2:?}"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --substantive-validation|--validation-mode|--structured-reviewer-validation) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$paths" && -f "$paths" ]] || exit 1
+while IFS= read -r p || [[ -n "$p" ]]; do
+    [[ -z "$p" ]] && continue
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=FAIL\nEXIT_CODE=1\n\n' "$p"
+done <"$paths"
+exit 1
+EOS
+    chmod +x "$STUB/collect-agent-results.sh"
+}
+
 write_collect() {
     local mode="${1:?}"
     cat >"$STUB/collect-agent-results.sh" <<EOS
@@ -2614,5 +2639,22 @@ printf '%s\n' "$dedup_nonnumeric_log" | grep -q 'dedup-sweep:' && fail "non-nume
 [[ ! -e "$backup_nonnumeric" ]] || fail "non-numeric dedup output should remove pre-revise backup"
 compgen -G "$DPNONNUM/.plan-dedup.*" >/dev/null && fail "non-numeric dedup output should clean temporary dedup file"
 rm -f "$STUB/python3"
+
+echo "=== stubbed driver: collector stderr tail reaches FD 2 and log (#3227) ==="
+DTAIL="$TMP/stderr-tail-fd2"
+mkdir -p "$DTAIL"
+printf 'plan\n' >"$DTAIL/plan.txt"
+printf 'feat\n' >"$DTAIL/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect_failing_tail
+write_voters_three
+set +e
+run_loop "$DTAIL" 2>"$DTAIL/loop.stderr" >/dev/null
+set -e
+grep -Fq 'LARCH_TEST_STDERR_TAIL_MARKER' "$DTAIL/loop.stderr" \
+    || fail "stderr tail marker must reach loop FD 2"
+grep -Fq 'LARCH_TEST_STDERR_TAIL_MARKER' "$DTAIL/plan-review-collector.stderr" \
+    || fail "stderr tail marker must reach collector stderr log"
 
 printf '%s\n' "test-plan-review-loop: ok"
