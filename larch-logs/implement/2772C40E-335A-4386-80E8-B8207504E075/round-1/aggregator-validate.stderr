@@ -1,0 +1,5 @@
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_1 not traceable to scoped input (first 80 chars: 'Call `path_is_pre_coder_carryover` from `round_coder_delta_paths` instead of dup')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_3 not traceable to scoped input (first 80 chars: 'Add a `bootstrap_carryover_repo` helper used by all three cases.')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Compare index and worktree consistently in the predicate and snapshot (e.g. incl')
+warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Snapshot and compare combined worktree+cached diff vs `pre_head` (or compare tre')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_8 not traceable to scoped input (first 80 chars: 'Add a stub that mutates `other.txt` in the worktree, or assert manifest excludes')

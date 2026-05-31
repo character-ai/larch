@@ -1,0 +1,20 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Valid DRY nit; shared predicate call is optional cleanup, not a behavioral defect.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Guard and residue helper can double-warn; noisy stderr only, outcomes unchanged.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Repeated carryover fixture blocks are real but a helper is optional test hygiene.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate cleanup enumeration is real maintainability debt already in #3285 scope, not worth a separate issue.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Carryover predicate compares worktree diff only; index-only coder mutations can slip through as unchanged carryover.
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- review-and-fix.md breadcrumb list omits the post-follow-up failure string emitted at review-and-fix.sh:609.
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- No test covers #3227 clean-tree manual-commit overlap; branch tests only dispatch-time carryover.
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Stub deliberately models git add/restore; extra worktree-mutation case is optional, not a coverage hole for this PR.
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Commit-count assertion would harden tests but existing HEAD and pathspec checks already catch the main failure mode.
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Direct residue-helper unit test is nice-to-have; orchestrator and guard tests already exercise the gate.
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- staged-carryover-orchestrator asserts outcome but not the carryover warning grep present in carryover-orchestrator.
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Worktree-only cmp breaks after add+restore on unstaged carryover; unchanged index carryover can be misclassified as outside-manifest dirt.
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Warn-and-leave carryover across rounds is intentional #3272 behavior per plan, not an unhandled defect.
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate per-path warnings overlap FINDING_2; log noise only.
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Stub diverges from plan append by design to keep other.txt outside manifest; comment-only doc alignment suffices.
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Codex --add-dir on round_dir lets a hostile coder tamper with pre-dispatch snapshots; worth a defense-in-depth follow-up issue.
+FINDING_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Pre-existing documented cleanup posture in SECURITY.md, not introduced or worsened by this branch.
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Warn-and-skip on enumeration failure is intentional #3274 behavior with tests and SECURITY.md sync.
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Convergence-threshold removal is intentional #3285 dead-config cleanup, not a regression to file.
+FINDING_20: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate scope note: #3272 targets dispatch-time carryover, not #3227 clean-tree manual-commit overlap.
