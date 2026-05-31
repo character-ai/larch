@@ -221,6 +221,8 @@ grep -Fq 'jq(router-flags-merge)' "$D10/execution-issues.md" \
   || fail "case10: execution-issues.md missing jq(router-flags-merge) append"
 
 # Case 11: jq unavailable emits WARN on production driver stdout (write-run-params stubbed; merge needs jq).
+# Unlink the symlink before writing so we don't clobber the real scripts/write-run-params.sh.
+rm -f "$STUB_SCRIPTS/write-run-params.sh"
 cat >"$STUB_SCRIPTS/write-run-params.sh" <<'STUB'
 #!/usr/bin/env bash
 out=""
