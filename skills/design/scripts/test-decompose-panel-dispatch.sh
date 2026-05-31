@@ -367,4 +367,38 @@ grep -Fq 'decomp-claude-generic-output.txt' "$D10/decompose/panel-outputs.ndjson
     || fail "both-absent must record generic Claude output path"
 grep -Fq 'PANEL_STATUS=ok' "$D10/out.kv" || fail "both-absent generic path should yield ok panel status"
 
+echo "=== both-absent generic launch failure => DEGRADED_PANEL=true ==="
+D11="$TMP/m11"
+prep_common "$D11"
+PLUGIN_FAIL="$TMP/plugin-fail-stub"
+mkdir -p "$PLUGIN_FAIL/scripts" "$PLUGIN_FAIL/skills/design/scripts"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_FAIL/scripts/"
+cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_FAIL/scripts/"
+cat >"$PLUGIN_FAIL/scripts/launch-claude-review.sh" <<'CLAUDE_FAIL_STUB'
+#!/usr/bin/env bash
+OUTPUT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) OUTPUT="${2:?}"; shift 2 ;;
+        --prompt-file|--mode|--timeout|--timing-task-kind|--feature-file) shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf 'no recommendation heading\n' >"$OUTPUT"
+printf '1\n' >"${OUTPUT}.done"
+CLAUDE_FAIL_STUB
+chmod +x "$PLUGIN_FAIL/scripts/launch-claude-review.sh"
+DECOMPOSE_PANEL_WATERFALL_SH="$STUB9" \
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_FAIL" \
+    "$PANEL" \
+    --design-tmpdir "$D11" \
+    --codex-present false \
+    --cursor-present false \
+    --mode plan \
+    --plan-file "$D11/plan.txt" \
+    --timeout 30 >"$D11/out.kv"
+grep -Fq 'DEGRADED_PANEL=true' "$D11/out.kv" || fail "both-absent generic failure should set DEGRADED_PANEL=true"
+grep -Fq 'PANEL_STATUS=panel-failed' "$D11/out.kv" || fail "both-absent generic failure should set panel-failed"
+grep -Fq 'DISPATCH_OK=false' "$D11/out.kv" || fail "both-absent generic failure should set DISPATCH_OK=false"
+
 echo "PASS: test-decompose-panel-dispatch.sh"

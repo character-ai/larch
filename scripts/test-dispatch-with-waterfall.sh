@@ -503,7 +503,9 @@ out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_FAIL=true \
     --no-fallback \
     --mode description \
     --timeout 5)
-assert_line "DISPATCH_OK=true" "$out"
+assert_line "DISPATCH_OK=false" "$out"
+assert_line "STATIC_DISPATCH_OK=false" "$out"
+assert_line "ALL_SLOTS_DROPPED=true" "$out"
 assert_line "FALLBACK_COUNT=0" "$out"
 assert_line "ALL_OUTPUT_FILES=" "$out"
 [[ ! -s "${manifest}.output-files" ]] || { echo "FAIL: no-fallback drop should emit empty paths-file" >&2; cat "${manifest}.output-files" >&2; exit 1; }
@@ -553,10 +555,24 @@ out=$(PATH="$STUB_BIN:$PATH" \
     --mode description \
     --timeout 5)
 _elapsed=$(( $(date +%s) - _start ))
-assert_line "DISPATCH_OK=true" "$out"
+assert_line "DISPATCH_OK=false" "$out"
+assert_line "STATIC_DISPATCH_OK=false" "$out"
+assert_line "ALL_SLOTS_DROPPED=true" "$out"
 [[ "$_elapsed" -lt 4 ]] || { echo "FAIL: no-fallback absent slot took too long (${_elapsed}s)" >&2; exit 1; }
 if grep -Fq 'SENTINEL_TIMEOUT' <<<"$out"; then
     echo "FAIL: no-fallback absent must not emit SENTINEL_TIMEOUT" >&2
+    exit 1
+fi
+_absent_paths="${manifest}.output-files"
+_collect_absent_start=$(date +%s)
+_collect_absent_out=$(LARCH_QUIET_DISABLE=1 bash "$REPO_ROOT/scripts/collect-agent-results.sh" \
+    --timeout 5 \
+    --paths-file "$_absent_paths" 2>&1) || true
+_collect_absent_elapsed=$(( $(date +%s) - _collect_absent_start ))
+[[ "$_collect_absent_elapsed" -lt 4 ]] || { echo "FAIL: collect on no-fallback absent took too long (${_collect_absent_elapsed}s)" >&2; exit 1; }
+if grep -Fq 'STATUS=SENTINEL_TIMEOUT' <<<"$_collect_absent_out"; then
+    echo "FAIL: collect on no-fallback absent must not SENTINEL_TIMEOUT" >&2
+    printf '%s\n' "$_collect_absent_out" >&2
     exit 1
 fi
 

@@ -282,9 +282,10 @@ pv_abs=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,
 
 stub_log="$TMP/dispatch-with-waterfall.log"
 argv_log="$TMP/dispatch-with-waterfall.argv"
-out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$stub_log" PLAN_VOTER_ARGV_LOG="$argv_log" \
+out_healthy=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$stub_log" PLAN_VOTER_ARGV_LOG="$argv_log" \
     "$SCRIPT" --ballot-file "$BALLOT_PARSE_IDS" --design-tmpdir "$TMP/healthy" --codex-available true --cursor-available true)
-grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" || { echo "FAIL: healthy path missing VOTER_1 launched" >&2; exit 1; }
+out="$out_healthy"
+grep -Fq 'VOTER_1_STATUS=launched' <<< "$out_healthy" || { echo "FAIL: healthy path missing VOTER_1 launched" >&2; exit 1; }
 grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || { echo "FAIL: healthy path did not keep codex primary" >&2; exit 1; }
 grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || { echo "FAIL: healthy path did not keep cursor primary" >&2; exit 1; }
 assert_key_order "healthy dispatcher stdout" "$(printf '%s\n' "$out" | stdout_key_order)" "$EXPECTED_ORDER_WITH_PATHS"
@@ -327,9 +328,12 @@ for _pv_prompt in "$TMP/healthy/codex-plan-voter-prompt.txt" "$TMP/healthy/curso
 done
 grep -Fq $'voter-2\tcodex' "$stub_log" || { echo "FAIL: healthy stub log missing codex slot wiring" >&2; exit 1; }
 grep -Fq $'voter-3\tcursor' "$stub_log" || { echo "FAIL: healthy stub log missing cursor slot wiring" >&2; exit 1; }
-grep -Fq 'VOTER_PATHS_FILE=' <<< "$out" || { echo "FAIL: healthy stub missing VOTER_PATHS_FILE" >&2; exit 1; }
-pv_h=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
+grep -Fq 'VOTER_PATHS_FILE=' <<< "$out_healthy" || { echo "FAIL: healthy stub missing VOTER_PATHS_FILE" >&2; exit 1; }
+pv_h=$(printf '%s\n' "$out_healthy" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
 pv_lines=$(wc -l < "$pv_h" | tr -d ' ')
+VOTER_1_STATUS=$(printf '%s\n' "$out_healthy" | awk -F= '$1=="VOTER_1_STATUS"{print $2;exit}')
+VOTER_2_STATUS=$(printf '%s\n' "$out_healthy" | awk -F= '$1=="VOTER_2_STATUS"{print $2;exit}')
+VOTER_3_STATUS=$(printf '%s\n' "$out_healthy" | awk -F= '$1=="VOTER_3_STATUS"{print $2;exit}')
 effective_paths=0
 for st in "$VOTER_1_STATUS" "$VOTER_2_STATUS" "$VOTER_3_STATUS"; do
     [[ "$st" != "failed" ]] && effective_paths=$((effective_paths + 1))
@@ -359,8 +363,8 @@ set -e
 [[ "$rc_invalid_tmpdir" -eq 2 ]] || fail "dotdot tmpdir should be rejected before launch"
 grep -Fq "must not contain '.' or '..' segments" <<< "$out_invalid_tmpdir" || fail "dotdot tmpdir diagnostic missing"
 
-for status2 in launched fallback failed; do
-    for status3 in launched fallback failed; do
+for status2 in launched failed; do
+    for status3 in launched failed; do
         case_dir="$TMP/status-${status2}-${status3}"
         out_status=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_SLOT_2_STATUS="$status2" PLAN_VOTER_SLOT_3_STATUS="$status3" PLAN_VOTER_STUB_LOG="$case_dir.log" \
             "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$case_dir" --codex-available true --cursor-available true)

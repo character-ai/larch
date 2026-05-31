@@ -53,7 +53,7 @@ Stdout is `KEY=value` only:
 - optional `DEGRADED_PANEL_WARNING`
 - `DISPATCH_OK`
 
-`fallback` means the slot completed on Claude after waterfall fallback. `failed` means the final output file is missing, empty, or still narrative-only after the parse-rate retry path. When fewer than three effective judges produce substantive vote output, the script may emit a degraded-panel warning.
+Under `--no-fallback`, external voter slots emit `launched` when `ALL_OUTPUT_FILES` / `ALL_OUTPUT_TOOLS` from the waterfall name a non-empty final path (including collector retry paths such as `<manifest>-retry.txt` while the manifest path stays empty). `failed` means the final output file is missing, empty, or still narrative-only after the parse-rate retry path. `fallback` is reserved for legacy multi-phase waterfall runs where the final tool is Claude; plan-review voters do not promote `launched` to `fallback` when the tool remains codex or cursor. When fewer than three effective judges produce substantive vote output, the script may emit a degraded-panel warning.
 
 ## Primary callers
 

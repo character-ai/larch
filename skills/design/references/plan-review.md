@@ -93,8 +93,8 @@ For fallback reviewer slots: invoke via Agent tool with subagent_type: `larch:co
 ## Voter prompts
 
 - **Voter 1**: **Claude** — `launch-claude-review.sh` subprocess (`scripts/dispatch-plan-voters.sh`) with the voting prompt (same rubric as before: subagent-shaped instructions are expressed in the prompt; execution is subprocess-bound). Instruct: `"You are a senior code reviewer on a voting panel. You will vote YES, NO, or EXONERATE on proposed modifications to an implementation plan. Be scrupulous — only vote YES for findings that are correct, important, and worth revising the plan for. Vote EXONERATE if the concern is legitimate but not worth implementing in this PR. When voting, also consider proportionality: vote EXONERATE (not YES) if the finding's concern is legitimate but the proposed change would introduce more complexity than the issue warrants. For OOS ballot rows, use the same rubric as Codex/Cursor voters: For OOS_N: items in plan review (or items prefixed with [OUT_OF_SCOPE] in code review): vote based on whether the **problem described** is real, concrete, and worth filing as a GitHub issue. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy. When in doubt between YES and EXONERATE, prefer EXONERATE."`
-- **Voter 2**: Codex — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file. `VOTER_2_STATUS=fallback` means the waterfall already ran a Claude subprocess fallback for this slot; include `VOTER_2_PATH` in tallying. Do NOT launch a duplicate replacement.
-- **Voter 3**: Cursor — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file. `VOTER_3_STATUS=fallback` means the waterfall already ran a Claude subprocess fallback; include `VOTER_3_PATH` in tallying. Do NOT launch a duplicate replacement.
+- **Voter 2**: Codex — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file (`--no-fallback`). `VOTER_2_PATH` is taken from the waterfall `ALL_OUTPUT_FILES` entry for the codex slot (final collector path when retry succeeds). `VOTER_2_STATUS=launched` when that path is non-empty; `failed` otherwise. Do NOT launch a duplicate replacement.
+- **Voter 3**: Cursor — launch through `${CLAUDE_PLUGIN_ROOT}/scripts/dispatch-plan-voters.sh` using the ballot file (`--no-fallback`). `VOTER_3_PATH` is taken from the waterfall `ALL_OUTPUT_FILES` entry for the cursor slot. `VOTER_3_STATUS=launched` when that path is non-empty; `failed` otherwise. Do NOT launch a duplicate replacement.
 
 For Codex, Cursor, and their Claude replacement voters, instruct each: `"You are a senior engineer on a voting panel deciding which proposed plan modifications should be accepted. When voting, also consider proportionality: vote EXONERATE (not YES) if the finding's concern is legitimate but the proposed change would introduce more complexity than the issue warrants. When in doubt between YES and EXONERATE, prefer EXONERATE."`
 
@@ -149,7 +149,7 @@ _plan_voter_dispatch_file="$(mktemp "$DESIGN_TMPDIR/breadcrumbs/dispatch-plan-vo
   > "$_plan_voter_dispatch_file"
 ```
 
-`VOTER_2_STATUS=fallback` means the waterfall already ran a Claude fallback for that slot and `VOTER_2_PATH` contains the Claude output — do NOT launch a duplicate replacement. `VOTER_3_STATUS=fallback` is analogous for Voter 3. Include voter paths with `STATUS=launched` or `STATUS=fallback` in vote tallying; only exclude paths with `STATUS=failed`.
+Include voter paths with `STATUS=launched` in vote tallying; only exclude paths with `STATUS=failed`. Under `--no-fallback`, `fallback` is not emitted for external voters.
 
 **Voter line format**: Voters output one anchored line per ballot item. The vote token remains immediately after the ID, followed by lowercase forensic rating axes:
 

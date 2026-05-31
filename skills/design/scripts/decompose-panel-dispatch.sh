@@ -189,16 +189,19 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     FALLBACK_COUNT=0
     COMBINED_FALLBACK_COUNT=0
     STATIC_DISPATCH_OK="$_generic_dispatch_ok"
-    DEGRADED_PANEL=false
     usable=0
     [[ "$_status" == "ok" ]] && usable=1
     PANEL_STATUS="ok"
     (( usable == 0 )) && PANEL_STATUS="panel-failed"
-  printf '%s\n' "$_dispatch_out"
-  emit_kv PANEL_OUTPUTS_FILE "$_panel_rows"
-  emit_kv DEGRADED_PANEL "$DEGRADED_PANEL"
-  emit_kv PANEL_STATUS "$PANEL_STATUS"
-  exit 0
+    DEGRADED_PANEL=false
+    if (( usable == 0 )) || [[ "$_generic_dispatch_ok" != "true" ]]; then
+        DEGRADED_PANEL=true
+    fi
+    printf '%s\n' "$_dispatch_out"
+    emit_kv PANEL_OUTPUTS_FILE "$_panel_rows"
+    emit_kv DEGRADED_PANEL "$DEGRADED_PANEL"
+    emit_kv PANEL_STATUS "$PANEL_STATUS"
+    exit 0
 fi
 
 for _a in "${_archetypes[@]}"; do
@@ -263,6 +266,7 @@ FALLBACK_COUNT=""
 COMBINED_FALLBACK_COUNT=""
 STATIC_DISPATCH_OK=""
 ALL_OUTPUT_FILES_PATH=""
+ALL_SLOTS_DROPPED=""
 
 while IFS= read -r _line || [[ -n "$_line" ]]; do
     [[ -n "$_line" ]] || continue
@@ -274,6 +278,7 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
         COMBINED_FALLBACK_COUNT) COMBINED_FALLBACK_COUNT="$_value" ;;
         STATIC_DISPATCH_OK) STATIC_DISPATCH_OK="$_value" ;;
         ALL_OUTPUT_FILES_PATH) ALL_OUTPUT_FILES_PATH="$_value" ;;
+        ALL_SLOTS_DROPPED) ALL_SLOTS_DROPPED="$_value" ;;
         WARN) emit_kv WARN "$_value" ;;
     esac
 done <<<"$_dispatch_out"
@@ -305,6 +310,7 @@ fi
 if (( _decomp_slot_count > 0 && _succeeded_paths < _decomp_slot_count )); then
     DEGRADED_PANEL=true
 fi
+[[ "$ALL_SLOTS_DROPPED" == "true" ]] && DEGRADED_PANEL=true
 
 usable=0
 _panel_rows="$DECOMP_DIR/panel-outputs.ndjson"
@@ -343,7 +349,7 @@ while IFS= read -r row || [[ -n "$row" ]]; do
         if _outp_resolved=$(_match_resolved_output "$_outp"); then
             :
         else
-            _outp_resolved="$_outp"
+            _outp_resolved=""
         fi
     else
         if [[ "$_warned_missing_paths" != true ]]; then
@@ -353,7 +359,7 @@ while IFS= read -r row || [[ -n "$row" ]]; do
         _outp_resolved="$_outp"
     fi
     _status="missing"
-    if [[ -f "$_outp_resolved" ]] && grep -Eq '^[[:space:]]*## Recommendation' "$_outp_resolved"; then
+    if [[ -n "$_outp_resolved" && -f "$_outp_resolved" ]] && grep -Eq '^[[:space:]]*## Recommendation' "$_outp_resolved"; then
         _status="ok"
         usable=$((usable + 1))
     elif [[ -f "$_outp_resolved" ]]; then

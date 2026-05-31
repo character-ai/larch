@@ -45,7 +45,10 @@ while [[ $# -gt 0 ]]; do
     --require-result-pattern) REQUIRE_PATTERN="${2:?}"; shift 2 ;;
     --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
     --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
-    --mode|--timeout|--feature-file|--no-fallback) shift 2 ;;
+    --mode|--timeout|--feature-file|--no-fallback)
+      [[ -n "${PLAN_ASSESSOR_WF_ARGS_LOG:-}" ]] && printf '%s\n' "$1" >>"${PLAN_ASSESSOR_WF_ARGS_LOG}"
+      shift 2
+      ;;
     *) shift ;;
   esac
 done
@@ -102,6 +105,8 @@ export LARCH_LAUNCH_CLAUDE_REVIEW_SH="$PLUGIN_STUB/scripts/launch-claude-review.
 export LARCH_DISPATCH_WITH_WATERFALL_SH="$PLUGIN_STUB/scripts/dispatch-with-waterfall.sh"
 export DESIGN_TMPDIR="$TMP"
 export PLAN_ASSESSOR_TRACE_FILE="$TMP/waterfall.trace"
+export PLAN_ASSESSOR_WF_ARGS_LOG="$TMP/wf-args.log"
+: >"$PLAN_ASSESSOR_WF_ARGS_LOG"
 unset IMPLEMENT_TMPDIR || true
 
 out=$(LARCH_QUIET_DISABLE='' "$SUBJECT" \
@@ -118,6 +123,44 @@ printf '%s\n' "$out" | grep -Fq 'DISPATCH_OK=true' || fail 'DISPATCH_OK not true
 printf '%s\n' "$out" | grep -Fq 'CLAUDE_ASSESSOR_PATH=' || fail 'missing claude path kv'
 printf '%s\n' "$out" | grep -Fq 'DEGRADED_PANEL_WARNING=false' || fail 'happy path should not be degraded'
 grep -Fq 'plan-assessor' "$TMP/plan-assessor-slots.ndjson" || fail 'missing manifest'
+[[ "$(grep -c . "$TMP/plan-assessor-slots.ndjson" || true)" == "2" ]] || fail 'both-present assessor manifest should have two rows'
+grep -Fq -- '--no-fallback' "$PLAN_ASSESSOR_WF_ARGS_LOG" || fail 'assessor waterfall must pass --no-fallback'
+
+mkdir -p "$TMP/codex-only" "$TMP/cursor-only" "$TMP/both-absent"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
+  --design-tmpdir "$TMP/codex-only" \
+  --round-num 2 \
+  --plan-original "$TMP/o.txt" \
+  --plan-prev "$TMP/p.txt" \
+  --plan-current "$TMP/c.txt" \
+  --feature-file "$TMP/feature.txt" \
+  --codex-present true \
+  --cursor-present false)
+[[ "$(grep -c . "$TMP/codex-only/plan-assessor-slots.ndjson" || true)" == "1" ]] || fail 'codex-only assessor manifest should have one row'
+grep -Fq '"tool":"codex"' "$TMP/codex-only/plan-assessor-slots.ndjson" || fail 'codex-only manifest must be codex row'
+
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
+  --design-tmpdir "$TMP/cursor-only" \
+  --round-num 2 \
+  --plan-original "$TMP/o.txt" \
+  --plan-prev "$TMP/p.txt" \
+  --plan-current "$TMP/c.txt" \
+  --feature-file "$TMP/feature.txt" \
+  --codex-present false \
+  --cursor-present true)
+[[ "$(grep -c . "$TMP/cursor-only/plan-assessor-slots.ndjson" || true)" == "1" ]] || fail 'cursor-only assessor manifest should have one row'
+grep -Fq '"tool":"cursor"' "$TMP/cursor-only/plan-assessor-slots.ndjson" || fail 'cursor-only manifest must be cursor row'
+
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
+  --design-tmpdir "$TMP/both-absent" \
+  --round-num 2 \
+  --plan-original "$TMP/o.txt" \
+  --plan-prev "$TMP/p.txt" \
+  --plan-current "$TMP/c.txt" \
+  --feature-file "$TMP/feature.txt" \
+  --codex-present false \
+  --cursor-present false)
+[[ ! -s "$TMP/both-absent/plan-assessor-slots.ndjson" ]] || fail 'both-absent assessor manifest must be empty'
 
 out=$(CURSOR_STUB_MODE=narrate LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --design-tmpdir "$TMP" \

@@ -51,6 +51,24 @@ rc=$?
 set -e
 [[ "$rc" == 2 ]] || fail "expected exit 2 when --round-num exceeds --round-cap, got $rc"
 
+echo "=== removed --convergence-threshold flag rejected ==="
+DCT="$TMP/convergence-threshold-removed"
+mkdir -p "$DCT"
+printf 'plan\n' >"$DCT/plan.txt"
+printf 'feat\n' >"$DCT/feature-description.txt"
+set +e
+ct_out=$("$PLR" \
+    --design-tmpdir "$DCT" \
+    --plan-file "$DCT/plan.txt" \
+    --feature-file "$DCT/feature-description.txt" \
+    --codex-present true \
+    --cursor-present true \
+    --convergence-threshold 3 2>&1)
+ct_rc=$?
+set -e
+[[ "$ct_rc" -eq 2 ]] || fail "expected exit 2 for removed --convergence-threshold, got $ct_rc"
+printf '%s\n' "$ct_out" | grep -Fq 'unknown option' || fail "removed --convergence-threshold should fail via unknown option path"
+
 write_scout() {
     cat >"$STUB/scout-plan-archetypes-wrapper.sh" <<'EOS'
 #!/usr/bin/env bash
@@ -891,6 +909,45 @@ out1c=$(run_loop "$D1C" --codex-present false --cursor-present true)
 printf '%s\n' "$out1c" | grep -vq 'SENTINEL_TIMEOUT' || fail "codex-down collect path must not emit SENTINEL_TIMEOUT"
 printf '%s\n' "$out1c" | grep -vq '^LOOP_STATUS=panel-failed$' || fail "codex-down must not surface panel-failed"
 printf '%s\n' "$out1c" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete for cursor-only collect"
+
+echo "=== real panel dispatch + collect with stubbed externals only ==="
+export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
+export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
+export LARCH_TRANSIENT_RETRY_DELAY=0
+DREAL="$TMP/zreal"
+mkdir -p "$DREAL"
+printf '## Plan\n\nDo thing.\n\ndiff_lines: 1\n' >"$DREAL/plan.txt"
+printf 'feat\n' >"$DREAL/feature-description.txt"
+EXTSTUB="$TMP/ext-stub-bin"
+mkdir -p "$EXTSTUB"
+cat >"$EXTSTUB/cursor" <<'EXTCUR'
+#!/usr/bin/env bash
+out=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output" ]]; then out="$arg"; fi
+    last="$arg"
+done
+[[ -n "$out" ]] || exit 8
+mkdir -p "$(dirname "$out")"
+printf '{"no_issues_found": true}\n' >"$out"
+printf '0\n' >"${out}.done"
+EXTCUR
+cat >"$EXTSTUB/codex" <<'EXTCOD'
+#!/usr/bin/env bash
+exit 7
+EXTCOD
+chmod +x "$EXTSTUB/cursor" "$EXTSTUB/codex"
+write_scout
+export LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$ROOT/skills/design/scripts/dispatch-plan-review-panel.sh"
+export LARCH_PLAN_REVIEW_COLLECT_SH="$ROOT/scripts/collect-agent-results.sh"
+write_voters_three
+out_real=$(PATH="$EXTSTUB:$PATH" run_loop "$DREAL" --codex-present false --cursor-present true --timeout 30)
+printf '%s\n' "$out_real" | grep -vq 'SENTINEL_TIMEOUT' || fail "real panel/collect path must not emit SENTINEL_TIMEOUT"
+printf '%s\n' "$out_real" | grep -vq '^LOOP_STATUS=panel-failed$' || fail "real panel/collect path must not surface panel-failed"
+printf '%s\n' "$out_real" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' \
+    || fail "real panel/collect path should reach skipped-empty-findings with no_issues_found outputs"
+unset LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH LARCH_PLAN_REVIEW_COLLECT_SH
 
 echo "=== panel-failed path writes header-only classification TSV ==="
 D1P="$TMP/z1p"

@@ -157,17 +157,53 @@ else
 fi
 
 dispatch_ok="true"
+all_output_files=""
+all_output_tools=""
 while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     value="${line#*=}"
     case "$key" in
         DISPATCH_OK) dispatch_ok="$value" ;;
+        ALL_OUTPUT_FILES) all_output_files="$value" ;;
+        ALL_OUTPUT_TOOLS) all_output_tools="$value" ;;
         WARN) emit_kv WARN "$value" ;;
     esac
 done <<< "$waterfall_output"
 
-VOTER_2_TOOL=codex
-VOTER_3_TOOL=cursor
+_wf_files=()
+_wf_tools=()
+if [[ -n "$all_output_files" ]]; then
+    # shellcheck disable=SC2206
+    _wf_files=($all_output_files)
+fi
+if [[ -n "$all_output_tools" ]]; then
+    # shellcheck disable=SC2206
+    _wf_tools=($all_output_tools)
+fi
+_wf_idx=0
+while IFS= read -r _vrow || [[ -n "$_vrow" ]]; do
+    [[ -n "$_vrow" ]] || continue
+    _vtool=$(printf '%s' "$_vrow" | jq -r '.tool // empty')
+    case "$_vtool" in
+        codex)
+            if [[ "$CODEX_AVAILABLE" == "true" && $_wf_idx -lt ${#_wf_files[@]} ]]; then
+                VOTER_2_PATH="${_wf_files[$_wf_idx]}"
+                VOTER_2_TOOL="${_wf_tools[$_wf_idx]:-codex}"
+                _wf_idx=$((_wf_idx + 1))
+            fi
+            ;;
+        cursor)
+            if [[ "$CURSOR_AVAILABLE" == "true" && $_wf_idx -lt ${#_wf_files[@]} ]]; then
+                VOTER_3_PATH="${_wf_files[$_wf_idx]}"
+                VOTER_3_TOOL="${_wf_tools[$_wf_idx]:-cursor}"
+                _wf_idx=$((_wf_idx + 1))
+            fi
+            ;;
+    esac
+done <"$manifest"
+
+VOTER_2_TOOL="${VOTER_2_TOOL:-codex}"
+VOTER_3_TOOL="${VOTER_3_TOOL:-cursor}"
 VOTER_2_STATUS="failed"
 VOTER_3_STATUS="failed"
 if [[ "$CODEX_AVAILABLE" == "true" ]]; then

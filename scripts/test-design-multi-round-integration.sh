@@ -216,12 +216,23 @@ export LARCH_AGGREGATOR_DISABLED=1
 
 out=$(run_loop_fixture "$TMP/design" --round-cap 3)
 printf '%s\n' "$out" | grep -q '^LOOP_STATUS=converged$' || fail "expected converged from integration loop"
+printf '%s\n' "$out" | grep -q '^REASON=converged$' || fail "expected REASON=converged from integration loop"
+printf '%s\n' "$out" | grep -q '^NIT_ACCEPTED_COUNT=1$' || fail "expected NIT_ACCEPTED_COUNT=1 from integration loop"
+printf '%s\n' "$out" | grep -q '^NON_NIT_ACCEPTED_COUNT=0$' || fail "expected NON_NIT_ACCEPTED_COUNT=0 from integration loop"
 
 [[ -d "$TMP/design/plan-review/round-1" ]] || fail "round-1 missing"
 [[ -d "$TMP/design/plan-review/round-2" ]] || fail "round-2 missing"
 [[ -f "$TMP/design/plan-review/round-1/round-summary.env" ]] || fail "round-summary missing"
-grep -q '^DEGRADED_PANEL=1$' "$TMP/design/plan-review/round-1/round-summary.env" || fail "round-1 summary should record degraded panel"
+_r1_summary="$TMP/design/plan-review/round-1/round-summary.env"
+grep -q '^NON_NIT_ACCEPTED_COUNT=5$' "$_r1_summary" \
+    || fail "round-1 summary should record five non-nit accepted (six latent rows, one not tallied); have:$(printf '\n%s' "$(cat "$_r1_summary" 2>/dev/null || echo missing)")"
+grep -q '^DEGRADED_PANEL=1$' "$_r1_summary" \
+    || fail "round-1 summary should record degraded panel from COMBINED_FALLBACK_COUNT stub"
+grep -vq '^LOOP_STATUS=converged$' "$TMP/design/plan-review/round-1/round-summary.env" \
+    || fail "round-1 summary must not converge with six latent findings"
 grep -q '^LOOP_STATUS=converged$' "$TMP/design/plan-review/round-2/round-summary.env" || fail "round-2 summary should record converged"
+grep -q '^NIT_ACCEPTED_COUNT=1$' "$TMP/design/plan-review/round-2/round-summary.env" || fail "round-2 summary should record one nit"
+grep -q '^NON_NIT_ACCEPTED_COUNT=0$' "$TMP/design/plan-review/round-2/round-summary.env" || fail "round-2 summary should record zero non-nit"
 cmp -s "$TMP/design/plan.txt" "$TMP/design/plan-review/round-2/plan.txt" || fail "round-2 snapshot plan must match final plan"
 [[ -f "$TMP/design/plan-review/round-2/findings-classification.tsv" ]] || fail "round-2 classification TSV missing"
 printf '%s\n' "$out" | grep -q '^ROUNDS_COMPLETED=2$' || fail "integration loop should converge on round 2"

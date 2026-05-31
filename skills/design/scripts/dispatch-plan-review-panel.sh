@@ -85,9 +85,9 @@ if [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]]; then
 fi
 
 DISPATCH_WATERFALL_SH="${DISPATCH_PLAN_REVIEW_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
-_panel_paths="$DESIGN_TMPDIR/plan-review-panel-paths.txt"
 
 if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
+    _panel_paths="$DESIGN_TMPDIR/plan-review-panel-paths.txt"
     _generic_output="$DESIGN_TMPDIR/claude-plan-generic-output.txt"
     _generic_prompt="$DESIGN_TMPDIR/claude-plan-generic.prompt"
     {
@@ -120,7 +120,11 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
             awk 'NF { print; exit }' "$_generic_output" 2>/dev/null || true
         )
         if [[ -n "$_generic_first" ]] && printf '%s\n' "$_generic_first" | grep -Eq -- "$_generic_first_line_ere"; then
-            if [[ -s "${_generic_output}.tsv" || -s "${_generic_output}.jsonl" ]]; then
+            if [[ -x "$PLUGIN_ROOT/scripts/validate-research-output.sh" ]] && \
+                "$PLUGIN_ROOT/scripts/validate-research-output.sh" \
+                    --structured-reviewer-mode \
+                    --write-structured "${_generic_output}.tsv" \
+                    "$_generic_output" >/dev/null 2>&1; then
                 _generic_dispatch_ok=true
                 _generic_degraded=false
             fi
@@ -228,6 +232,7 @@ FALLBACK_COUNT=""
 COMBINED_FALLBACK_COUNT=""
 STATIC_DISPATCH_OK=""
 ALL_OUTPUT_FILES_PATH=""
+ALL_SLOTS_DROPPED=""
 
 while IFS= read -r _line || [[ -n "$_line" ]]; do
     [[ -n "$_line" ]] || continue
@@ -239,6 +244,7 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
         COMBINED_FALLBACK_COUNT) COMBINED_FALLBACK_COUNT="$_value" ;;
         STATIC_DISPATCH_OK) STATIC_DISPATCH_OK="$_value" ;;
         ALL_OUTPUT_FILES_PATH) ALL_OUTPUT_FILES_PATH="$_value" ;;
+        ALL_SLOTS_DROPPED) ALL_SLOTS_DROPPED="$_value" ;;
         WARN) emit_kv WARN "$_value" ;;
     esac
 done <<<"$_dispatch_out"
@@ -271,6 +277,7 @@ fi
 if (( slot_count > 0 && _succeeded_paths < slot_count )); then
     DEGRADED_ROUND=true
 fi
+[[ "$ALL_SLOTS_DROPPED" == "true" ]] && DEGRADED_ROUND=true
 
 printf '%s\n' "$_dispatch_out"
 emit_kv DYNAMIC_SLOT_COUNT "$dyn_slots"
