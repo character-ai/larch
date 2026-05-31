@@ -1,0 +1,160 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+## Implementation Plan
+
+Fix the undocumented `ship-pr.sh` exit 2 by removing the `set -e` state leak that lets a failing local CI harness abort the script with its raw exit code, and harden the harness rc-capture so a future leak cannot reproduce the crash. SIMPLE tier: smallest change that fixes the root cause; no routing changes.
+
+## Root cause
+
+- `scripts/ship-pr.sh` runs `set -uo pipefail` by design (lines 4-7: "Intentionally no `set -e`"). Every helper call captures `rc` explicitly.
+- `run_pr_prep_phase` and its helper `run_oos_disposition_gate_if_required_before_oos_pending_false` wrap their OOS-gate calls in `set +e` … `set -e`, but the trailing `set -e` is **unconditional** at lines **1052**, **1557**, and **1567**. Unlike the correct save/restore idiom at lines **139-147** (`run_lint_fix_loop_capture`), these sites enable errexit even though the script baseline is `set +e`, and `set` options are global, so errexit leaks out of `run_pr_prep_phase`.
+- `run_pr_prep_phase` runs before the CI phases. With errexit leaked on, `run_evaluate_failure` → `run_per_job_local_fix_loop` → `run_captured_cmd_then_fix_loop` → `_run_per_job_command_capture` (lines **2262-2267**) runs the local harness via the set-e-fragile pattern `"${_PJA_ARGV[@]}" > "$_RCC_RAW_LOG_PATH" 2>&1` immediately followed by `_RCC_CMD_RC=$?`. A failing harness (e.g. `make test-harnesses-12` exiting non-zero) trips errexit at the harness line and aborts the whole script with the raw harness code (2) **before** `_RCC_CMD_RC=$?` runs.
+- Result matches the incident exactly: `⚠ ship-pr: running local CI job test-harnesses-12` (printed at line 2263) immediately followed by `SHIP_PR_EXIT=2`, with `BAIL_REASON` empty (cleared at line 2518) and `STALL_TRACKING=false` (no stall reached). Exit 2 is not in the documented orchestrator exit table (0, 3, 4, 5, 6).
+- The issue's proposed fix (translate the code in `run_evaluate_failure`) cannot work alone: errexit aborts the script at the harness invocation before any translation logic is reached.
+
+## Files to modify/create
+
+### UPDATED: `scripts/ship-pr.sh`
+Two changes, both confined to the errexit handling. Code references, identifiers, and flag names stay byte-stable.
+
+1. **Stop the errexit leak at the three toggle sites (lines 1045-1052, 1554-1557, 1564-1567).** Replace each unconditional trailing `set -e` with the conditional save/restore idiom already used at lines 139-147, so errexit is restored to its prior state (off, per the script baseline) instead of being force-enabled.
+
+   - `run_oos_disposition_gate_if_required_before_oos_pending_false` (lines 1045-1053): before `set +e`, snapshot prior errexit (`local _had_errexit=0; case $- in *e*) _had_errexit=1 ;; esac`); after `gate_rc=$?`, replace `set -e` with `(( _had_errexit )) && set -e`.
+   - `run_pr_prep_phase` first OOS-gate call (lines 1554-1557): same snapshot before `set +e`; replace the trailing `set -e` at 1557 with the conditional restore.
+   - `run_pr_prep_phase` recovery-waterfall OOS-gate call (lines 1564-1567, nested in `if run_recovery_waterfall …; then`): same snapshot before `set +e`; replace the trailing `set -e` at 1567 with the conditional restore.
+
+   Declare the `_had_errexit` flag with `local` so it never leaks into global scope; in `run_pr_prep_phase` it may be declared once with the function's other locals and reset before each `case`, or captured inline at each of the two sites — either is acceptable as long as both restores are conditional.
+
+   Note: once the helper self-manages errexit (first bullet), the outer wrappers in `run_pr_prep_phase` are technically redundant. The plan keeps them with the save/restore idiom rather than deleting them, for defense-in-depth and consistency with line 139-147; deleting the now-redundant outer `set +e`/`set -e` pairs is an acceptable equivalent the reviewers may prefer.
+
+2. **Harden the harness rc-capture in `_run_per_job_command_capture` (lines 2262-2267).** Make the capture errexit-safe so a future leak cannot abort the script at the harness line. Replace
+
+   ```
+       "${_PJA_ARGV[@]}" > "$_RCC_RAW_LOG_PATH" 2>&1
+       _RCC_CMD_RC=$?
+   ```
+
+   with
+
+   ```
+       _RCC_CMD_RC=0
+       "${_PJA_ARGV[@]}" > "$_RCC_RAW_LOG_PATH" 2>&1 || _RCC_CMD_RC=$?
+   ```
+
+   This preserves the existing contract: `_RCC_CMD_RC` is `0` on success and the real exit code on failure (callers read `${_RCC_CMD_RC:-1}` at lines 280/304; global default `_RCC_CMD_RC=1` at line 173 is unchanged). The `||` makes the harness command a tested command, so errexit never fires on it.
+
+   Leave `_run_per_job_command_once` (lines 2269-2273) unchanged: it returns the harness rc and is always invoked under `if …; then` (lines 2333, 2365, 2465), so errexit is already suspended for it. Leave `run_evaluate_failure`'s helper captures (`gh-run-logs.sh` ~2527, `ci-failed-jobs.sh` ~2567, `ci-rerun-failed.sh` ~2496) unchanged: they are protected by the leak fix above; hardening them is out of scope for this fix.
+
+### UPDATED: `scripts/test-ship-pr.sh`
+Add a focused regression section (gated by the existing `section_runs` mechanism) that sources `scripts/ship-pr.sh` under the side-effect-free source guard (line 3805; same pattern as the existing source-witness test at lines 889-905) and asserts:
+
+1. **No errexit leak.** With errexit on in the test shell, after invoking each fixed toggle path the option `$-` no longer reports `e` being force-set by the helper — i.e. errexit state is restored to its pre-call value, not unconditionally enabled. Drive this by stubbing the OOS gate script so `run_oos_disposition_gate_if_required_before_oos_pending_false` runs deterministically, then check `$-` after the call.
+2. **Harness capture is errexit-safe.** With `set -e` active in the test shell, set `_PJA_ARGV` to a command that exits non-zero (e.g. `(false)` / `sh -c 'exit 2'`), call `_run_per_job_command_capture`, and assert the function returns without aborting the shell **and** `_RCC_CMD_RC` equals the command's real exit code (2), not 0.
+
+Use the existing test harness helpers and `set -euo pipefail` test-script convention. Keep stubs Bash 3.2-compatible.
+
+### UPDATED: `scripts/ship-pr.md`
+Add a short maintainer note (sibling-contract rule) under the existing errexit/strict-mode discussion: the `set +e` … `set -e` OOS-gate blocks must restore the prior errexit state (save/restore idiom), because the script baseline is `set +e` and a leaked `set -e` aborts the later CI-fix harness rc-capture. Do not change the documented exit-code table (exit 2 was never a documented orchestrator code; this fix removes the path that produced it).
+
+## Approach
+
+- Treat this as an errexit-invariant restoration, not an exit-code translation. The documented exits already cover the confirmed-failure outcomes once the crash is removed: an unfixable local job exits 3 with `BAIL_REASON=ci-local-unfixable:<jobs>` (lines 2384/2484), and a fixable-but-exhausted job stalls at exit 4 (`…-max-retries`). No change to `run_evaluate_failure` routing or to `needs_user_bail_reason` / `is_autonomous_exit3_bail_reason`.
+- Reuse the in-repo save/restore idiom (lines 139-147) verbatim in shape so the fix is consistent and review-obvious.
+- Keep the change surgical: only the three toggle sites and the one harness-capture site are touched in `ship-pr.sh`.
+
+## Edge cases
+
+- **Errexit genuinely on at a toggle site.** The conditional restore re-enables errexit only when it was on before the `set +e`, so callers that legitimately run under errexit keep their state. With the current `set +e` baseline this is a no-op, which is the intended outcome.
+- **Harness exits 0.** `_RCC_CMD_RC=0` initializer plus `|| _RCC_CMD_RC=$?` leaves `_RCC_CMD_RC=0`; the `_RCC_CMD_RC -eq 0` success branch (lines 280/304) is unchanged.
+- **Harness exits with a documented orchestrator code (e.g. 2 from a nested helper).** The raw code is now captured into `_RCC_CMD_RC` and flows through the normal fix-loop / unfixable / stall logic instead of escaping as the process exit code.
+- **`pipefail` interaction.** The hardened line is a simple redirected command, not a pipeline, so `pipefail` is irrelevant to it; behavior is unchanged.
+- **Bash 3.2.** `case $- in *e*)`, `local`, and `|| var=$?` are all 3.2-safe; no Bash 4+ constructs are introduced.
+
+## Failure modes
+
+- **Incomplete leak fix.** If only the harness capture is hardened but a toggle site still force-enables errexit, a different unguarded `cmd; rc=$?` site (e.g. `gh-run-logs.sh` capture) could abort instead. Mitigation: fix all three toggle sites; earliest signal: any new undocumented non-{0,3,4,5,6} exit from `ship-pr.sh`. The regression test's leak assertion guards this.
+- **Over-broad restore.** Force-enabling errexit elsewhere (wrong "fix") would re-introduce the class of bug. Mitigation: only restore prior state conditionally; never add an unconditional `set -e`. Signal: `make test-harnesses` / `test-ship-pr.sh` failures.
+- **Contract drift with `_RCC_CMD_RC` consumers.** If the initializer is omitted, a success could leave a stale non-zero value. Mitigation: keep `_RCC_CMD_RC=0` before the `||` capture; the harness test asserts both success (0) and failure (real rc) values.
+
+## Testing strategy
+
+- New regression assertions in `scripts/test-ship-pr.sh` (above): errexit not leaked after the fixed toggle paths; `_run_per_job_command_capture` is errexit-safe and records the real rc.
+- Run the existing suite to confirm no regressions: `make test-harnesses` (or the targeted shard) and `bash scripts/test-ship-pr.sh`.
+- Run `bash scripts/relevant-checks.sh` (lint, shellcheck, bash32) after the edits.
+
+diff_lines: 70
+
+</plan>
+
+<findings>
+### FINDING_1: Errexit-on-only leak test cannot detect unconditional `set -e`
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation
+- **Severity**: important
+- **Concern**: The planned and harness-specified errexit-leak regression runs with errexit already enabled (`e` already in `$-`). Production `ship-pr.sh` deliberately avoids global `set -e` (baseline `set +e` at lines 4–7), while the defect is an unconditional `set -e` after a local `set +e` (e.g. at lines 1557/1567 and in the helper at 1045–1053). If errexit is on before the exercised path, both before- and after-call `$-` still contain `e`, so a missed unconditional `set -e` after restore still passes and the assertion cannot tell a bad force-enable from a correct restore.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Primary assertion: `set +e` before each toggle path, invoke the path, then assert `$-` does not contain `e`. Optional second case: `set -e` before call, assert `e` remains after restore
+  - From Cursor-Innovation: Add an explicit `set +e` subtest (or snapshot `$-` before/after with pre-call `set +e`) so failure leaves `e` in `$-`; keep the errexit-on harness subtest separate
+
+
+### FINDING_2: Leak regression does not exercise pr-prep outer `set +e` / `set -e` wrappers
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The regression test only drives `run_oos_disposition_gate_if_required_before_oos_pending_false` and does not exercise the `run_pr_prep_phase` outer `set +e` … `set -e` wrappers at `scripts/ship-pr.sh:1554–1567` that the plan also fixes. An implementer could fix the helper (lines 1045–1053) but leave unconditional `set -e` at 1557/1567; the new test would pass while errexit still leaks on the production pr-prep path before CI evaluation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Extend the leak assertion to cover pr-prep: minimal `write_state` + `IMPLEMENT_TMPDIR`/`STATE_FILE`, stub `oos-disposition-gate.sh`, invoke the same outer snapshot/`set +e`/gate/`gate_rc=$?`/conditional-restore sequence (or a thin wrapper mirroring 1554-1557), and assert `$-` is unchanged; keep the helper-only case as a second assertion
+
+
+</findings>
+
+<feature>
+# [BUG] (URGENT) ship-pr.sh exits undocumented code 2 when local CI harness confirms failure
+
+## Problem
+
+During an `/implement --merge` run for issue #3243, `ship-pr.sh` exited with code **2** after printing:
+
+```
+⚠ ship-pr: running local CI job test-harnesses-12
+SHIP_PR_EXIT=2
+```
+
+Exit code **2** is not in `ship-pr.sh`'s documented orchestrator exit table, which only covers: 0, 3, 4, 5, 6. The orchestrator has no handler for it and falls out of the normal state machine.
+
+## Root Cause
+
+`ship-pr.sh` has an autonomous CI-fix path: when it detects a CI failure it runs the corresponding local harness (e.g. `make test-harnesses-12`) to confirm the failure is locally reproducible before attempting a fix. If that local harness exits non-zero — confirming the failure — `ship-pr.sh` exits with code **2**, propagating the harness's exit code directly without translating it to a documented orchestrator code.
+
+The `ship-pr-state.sh` on this path has `STALL_TRACKING=false` and `BAIL_REASON=` (empty), so none of the normal recovery branches (stall, bail, conflict) match.
+
+## Impact
+
+- Orchestrator receives exit 2 with no handler → manual recovery required: read `ship-pr-state.sh` for `PHASE`, re-invoke `ship-pr.sh` without `--resume-phase` to continue from persisted state.
+- In the incident run (PR #3265, run `0B6CCD67-F8AC-4EA2-9375-7134D5D8AE4C`) the CI failure was a genuine regression in the PR. The main agent diagnosed it and applied a fix inline, then re-invoked `ship-pr.sh` successfully — but this required manual orchestrator recovery that should have been automated.
+- Any future run where the local harness confirms a real CI failure will require the same manual intervention until this is fixed.
+
+## Suggested Fix (outline)
+
+The "local harness confirmed failure" path should exit with a documented code rather than propagating the raw harness exit. The natural mapping is:
+
+**Exit 3 with `BAIL_REASON=first-fixer-non-health`** — this is the existing orchestrator path for "Cursor CI-fix launcher reports `LAUNCHER_FAILURE_CLASS=other`." It triggers the **autonomous main-agent CI-fix sub-procedure** in `SKILL.md` Step 8+, which:
+1. Captures fresh CI logs via `gh-run-logs.sh`
+2. Uses Claude tool calls to apply a minimal fix
+3. Runs `run-relevant-checks-captured.sh` to validate
+4. Commits and pushes
+5. Re-invokes `ship-pr.sh`
+
+This is exactly the right flow when a local harness confirms the failure. The details are TBD, but the conceptual change: when `ship-pr.sh`'s local-harness-run exits non-zero, write `BAIL_REASON=first-fixer-non-health` and `FAILED_RUN_ID=<CI run id>` to `ship-pr-state.sh`, then exit 3.
+
+## Reproduction Context
+
+- Run: `0B6CCD67-F8AC-4EA2-9375-7134D5D8AE4C` (`/implement --merge 3243`)
+- PR: #3265
+- CI failures: `test-harnesses (12)` and `test-harnesses (6)`, CI run `26702887256`
+- Underlying bug: `review-and-fix.sh` Part A convergence called `important_findings_present` on a missing `findings.md`, returning exit 2 → `classifier-failed`
+
+</feature>
