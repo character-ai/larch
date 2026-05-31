@@ -12,8 +12,9 @@ from __future__ import annotations
 import json
 import re
 import tempfile
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Generator, Mapping, Sequence
 from contextlib import contextmanager
+from typing import cast
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -94,6 +95,26 @@ def _loads_json(text: str, *, context: str) -> object:
         raise ShipError(msg) from exc
 
 
+def _as_json_object(data: object, *, context: str) -> dict[str, object]:
+    if not isinstance(data, dict):
+        msg = f"gh JSON parse failed ({context}): expected object"
+        raise ShipError(msg)
+    return cast("dict[str, object]", data)
+
+
+def _as_json_list(data: object, *, context: str) -> list[object]:
+    if not isinstance(data, list):
+        msg = f"gh JSON parse failed ({context}): expected array"
+        raise ShipError(msg)
+    return cast("list[object]", data)
+
+
+def _optional_str(value: object) -> str | None:
+    if value is None:
+        return None
+    return str(value)
+
+
 def _as_int(value: object, *, context: str, field: str) -> int:
     try:
         return int(value)  # type: ignore[arg-type]
@@ -103,7 +124,7 @@ def _as_int(value: object, *, context: str, field: str) -> int:
 
 
 @contextmanager
-def _body_file_args(body: str) -> Iterator[tuple[str, str]]:
+def _body_file_args(body: str) -> Generator[tuple[str, str], None, None]:
     redacted = redact.redact(body)
     with tempfile.NamedTemporaryFile(
         mode="w",
@@ -111,7 +132,7 @@ def _body_file_args(body: str) -> Iterator[tuple[str, str]]:
         suffix=".md",
         delete=False,
     ) as handle:
-        handle.write(redacted)
+        _ = handle.write(redacted)
         path = handle.name
     try:
         yield "--body-file", path
@@ -166,10 +187,7 @@ def pr_view(
     result = pr_view_read(runner, number, repo=repo, cwd=cwd)
     if result.returncode != 0:
         _raise_read_failure(result)
-    data = _loads_json(result.stdout, context="pr view")
-    if not isinstance(data, dict):
-        msg = "gh JSON parse failed (pr view): expected object"
-        raise ShipError(msg)
+    data = _as_json_object(_loads_json(result.stdout, context="pr view"), context="pr view")
     _require_json_keys(
         data,
         ("number", "url", "state", "headRefName"),
@@ -220,16 +238,13 @@ def pr_for_branch(
     result = pr_for_branch_read(runner, branch, repo=repo, cwd=cwd)
     if result.returncode != 0:
         _raise_read_failure(result)
-    rows_obj = _loads_json(result.stdout or "[]", context="pr list")
-    if not isinstance(rows_obj, list):
-        msg = "gh JSON parse failed (pr list): expected array"
-        raise ShipError(msg)
+    rows_obj = _as_json_list(
+        _loads_json(result.stdout or "[]", context="pr list"),
+        context="pr list",
+    )
     if not rows_obj:
         return None
-    row = rows_obj[0]
-    if not isinstance(row, dict):
-        msg = "gh JSON parse failed (pr list): expected object row"
-        raise ShipError(msg)
+    row = _as_json_object(rows_obj[0], context="pr list row")
     _require_json_keys(
         row,
         ("number", "url", "state", "headRefName"),
@@ -318,11 +333,11 @@ def pr_create(
             )
             if recovered is not None:
                 return recovered
-        _ensure_success(result)
-    data = _loads_json(result.stdout, context="pr create")
-    if not isinstance(data, dict):
-        msg = "gh JSON parse failed (pr create): expected object"
-        raise ShipError(msg)
+        _ = _ensure_success(result)
+    data = _as_json_object(
+        _loads_json(result.stdout, context="pr create"),
+        context="pr create",
+    )
     _require_json_keys(
         data,
         ("number", "url", "state", "headRefName"),
@@ -404,15 +419,13 @@ def run_list(
     result = run_list_read(runner, repo=repo, branch=branch, limit=limit, cwd=cwd)
     if result.returncode != 0:
         _raise_read_failure(result)
-    rows_obj = _loads_json(result.stdout or "[]", context="run list")
-    if not isinstance(rows_obj, list):
-        msg = "gh JSON parse failed (run list): expected array"
-        raise ShipError(msg)
+    rows_obj = _as_json_list(
+        _loads_json(result.stdout or "[]", context="run list"),
+        context="run list",
+    )
     runs: list[WorkflowRun] = []
-    for row in rows_obj:
-        if not isinstance(row, dict):
-            msg = "gh JSON parse failed (run list): expected object row"
-            raise ShipError(msg)
+    for row_obj in rows_obj:
+        row = _as_json_object(row_obj, context="run list row")
         _require_json_keys(
             row,
             ("databaseId", "status"),
@@ -422,7 +435,7 @@ def run_list(
             WorkflowRun(
                 database_id=_as_int(row["databaseId"], context="run list", field="databaseId"),
                 status=str(row["status"]),
-                conclusion=row.get("conclusion"),  # type: ignore[arg-type]
+                conclusion=_optional_str(row.get("conclusion")),
             ),
         )
     return tuple(runs)
@@ -460,15 +473,12 @@ def run_view(
     result = run_view_read(runner, run_id, repo=repo, cwd=cwd)
     if result.returncode != 0:
         _raise_read_failure(result)
-    data = _loads_json(result.stdout, context="run view")
-    if not isinstance(data, dict):
-        msg = "gh JSON parse failed (run view): expected object"
-        raise ShipError(msg)
+    data = _as_json_object(_loads_json(result.stdout, context="run view"), context="run view")
     _require_json_keys(data, ("databaseId", "status"), context="run view")
     return WorkflowRun(
         database_id=_as_int(data["databaseId"], context="run view", field="databaseId"),
         status=str(data["status"]),
-        conclusion=data.get("conclusion"),
+        conclusion=_optional_str(data.get("conclusion")),
     )
 
 
@@ -504,18 +514,20 @@ def failed_jobs(
     result = failed_jobs_read(runner, run_id, repo=repo, cwd=cwd)
     if result.returncode != 0:
         _raise_read_failure(result)
-    payload = _loads_json(result.stdout, context="failed jobs")
-    if not isinstance(payload, dict):
-        msg = "gh JSON parse failed (failed jobs): expected object"
-        raise ShipError(msg)
-    jobs = payload.get("jobs", [])
-    if not isinstance(jobs, list):
+    payload = _as_json_object(
+        _loads_json(result.stdout, context="failed jobs"),
+        context="failed jobs",
+    )
+    jobs_raw = payload.get("jobs", [])
+    if not isinstance(jobs_raw, list):
         msg = "gh JSON missing required keys ['jobs'] (failed jobs)"
         raise ShipError(msg)
+    jobs = cast("list[object]", jobs_raw)
     failed: list[FailedJob] = []
-    for job in jobs:
-        if not isinstance(job, dict):
+    for job_obj in jobs:
+        if not isinstance(job_obj, dict):
             continue
+        job = cast("dict[str, object]", job_obj)
         if job.get("conclusion") != "failure":
             continue
         _require_json_keys(job, ("name",), context="failed jobs")

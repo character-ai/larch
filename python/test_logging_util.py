@@ -5,10 +5,12 @@ from __future__ import annotations
 import json
 from io import StringIO
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 import config
+
+if TYPE_CHECKING:
+    import pytest
 import logging_util
 
 

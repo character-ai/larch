@@ -43,7 +43,7 @@ def test_parse_launcher_failure_class_missing_kv_defaults_health(
     tmp_path: Path,
 ) -> None:
     log_file = tmp_path / "capture.log"
-    log_file.write_text("ordinary launcher output\n", encoding="utf-8")
+    _ = log_file.write_text("ordinary launcher output\n", encoding="utf-8")
     assert agents.parse_launcher_failure_class(log_file) == "health"
     assert agents.parse_launcher_failure_class(tmp_path / "missing.log") == "health"
     assert agents.parse_launcher_failure_class(None) == "health"
@@ -51,7 +51,7 @@ def test_parse_launcher_failure_class_missing_kv_defaults_health(
 
 def test_parse_launcher_failure_class_reads_last_kv(tmp_path: Path) -> None:
     log_file = tmp_path / "capture.log"
-    log_file.write_text(
+    _ = log_file.write_text(
         "LAUNCHER_FAILURE_CLASS=health\nLAUNCHER_FAILURE_CLASS=other\n",
         encoding="utf-8",
     )
@@ -103,8 +103,8 @@ def test_parity_classify_launch_failures(
 ) -> None:
     sidecar = tmp_path / "sidecar.log"
     output = tmp_path / "output.txt"
-    sidecar.write_text(sidecar_text, encoding="utf-8")
-    output.write_text(output_text, encoding="utf-8")
+    _ = sidecar.write_text(sidecar_text, encoding="utf-8")
+    _ = output.write_text(output_text, encoding="utf-8")
     py = agents.classify_launch_failure(
         launcher_exit,
         sidecar,
@@ -142,7 +142,7 @@ def test_build_launch_argv_per_tier(tier: str) -> None:
 def test_waterfall_short_circuits_on_first_other(tmp_path: Path) -> None:
     tiers = list(config.FIXER_TIER_ORDER)
     log_file = tmp_path / "capture.log"
-    log_file.write_text("LAUNCHER_FAILURE_CLASS=other\n", encoding="utf-8")
+    _ = log_file.write_text("LAUNCHER_FAILURE_CLASS=other\n", encoding="utf-8")
 
     def launch_fn(tier: str) -> TierAttempt:
         return TierAttempt(
@@ -188,7 +188,7 @@ def test_waterfall_rotates_first_tier(tmp_path: Path) -> None:
     tiers = ["cursor", "codex", "claude"]
     calls: list[str] = []
     log_file = tmp_path / "capture.log"
-    log_file.write_text("LAUNCHER_FAILURE_CLASS=other\n", encoding="utf-8")
+    _ = log_file.write_text("LAUNCHER_FAILURE_CLASS=other\n", encoding="utf-8")
 
     def launch_fn(tier: str) -> TierAttempt:
         calls.append(tier)
@@ -234,7 +234,7 @@ def test_waterfall_continues_on_wrapper_rc_2() -> None:
 def test_waterfall_first_tier_absent_from_tiers_short_circuits(tmp_path: Path) -> None:
     tiers = ["cursor", "codex"]
     log_file = tmp_path / "capture.log"
-    log_file.write_text("LAUNCHER_FAILURE_CLASS=other\n", encoding="utf-8")
+    _ = log_file.write_text("LAUNCHER_FAILURE_CLASS=other\n", encoding="utf-8")
 
     def launch_fn(tier: str) -> TierAttempt:
         return TierAttempt(
@@ -275,7 +275,7 @@ def test_waterfall_continues_when_log_missing_failure_class_kv(
     tiers = list(config.FIXER_TIER_ORDER)
     calls: list[str] = []
     log_file = tmp_path / "capture.log"
-    log_file.write_text("ordinary launcher output\n", encoding="utf-8")
+    _ = log_file.write_text("ordinary launcher output\n", encoding="utf-8")
 
     def launch_fn(tier: str) -> TierAttempt:
         calls.append(tier)

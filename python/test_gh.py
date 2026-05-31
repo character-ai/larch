@@ -260,7 +260,7 @@ def test_pr_view_raises_before_json_on_failure() -> None:
         ],
     )
     with pytest.raises(ShipError):
-        gh.pr_view(runner, 1, repo="o/r")
+        _ = gh.pr_view(runner, 1, repo="o/r")
 
 
 def test_pr_view_retries_transient_then_succeeds() -> None:
@@ -296,7 +296,7 @@ def test_pr_view_exhausts_transient_retries() -> None:
         responses=[transient, transient, transient],
     )
     with pytest.raises(TransientNetworkError) as exc_info:
-        gh.pr_view(runner, 1, repo="o/r")
+        _ = gh.pr_view(runner, 1, repo="o/r")
     assert exc_info.value.result is transient
     assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
 
@@ -351,7 +351,7 @@ def test_run_list_exhausts_transient_retries() -> None:
         responses=[transient, transient, transient],
     )
     with pytest.raises(TransientNetworkError):
-        gh.run_list(runner, repo="o/r", branch="feat", limit=1)
+        _ = gh.run_list(runner, repo="o/r", branch="feat", limit=1)
     assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
 
 
@@ -388,7 +388,7 @@ def test_run_view_exhausts_transient_retries() -> None:
         responses=[transient, transient, transient],
     )
     with pytest.raises(TransientNetworkError):
-        gh.run_view(runner, 11, repo="o/r")
+        _ = gh.run_view(runner, 11, repo="o/r")
     assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
 
 
@@ -425,7 +425,7 @@ def test_failed_jobs_exhausts_transient_retries() -> None:
         responses=[transient, transient, transient],
     )
     with pytest.raises(TransientNetworkError):
-        gh.failed_jobs(runner, 11, repo="o/r")
+        _ = gh.failed_jobs(runner, 11, repo="o/r")
     assert len(runner.calls) == config.TRANSIENT_RETRY_MAX_ATTEMPTS
 
 
@@ -441,8 +441,8 @@ def test_run_list_raises_on_malformed_row() -> None:
             ),
         ],
     )
-    with pytest.raises(ShipError, match="expected object row"):
-        gh.run_list(runner, repo="o/r", branch="feat", limit=1)
+    with pytest.raises(ShipError, match="run list row"):
+        _ = gh.run_list(runner, repo="o/r", branch="feat", limit=1)
 
 
 def test_pr_create_passes_base_and_assignee() -> None:
@@ -567,7 +567,7 @@ def test_pr_for_branch_retries_transient_then_succeeds() -> None:
 def test_pr_merge_unknown_method_raises() -> None:
     runner = RecordingRunner()
     with pytest.raises(ShipError, match="unknown merge_method"):
-        gh.pr_merge(runner, 1, repo="o/r", merge_method="squish")
+        _ = gh.pr_merge(runner, 1, repo="o/r", merge_method="squish")
 
 
 def test_pr_view_raises_ship_error_on_invalid_json() -> None:
@@ -577,7 +577,7 @@ def test_pr_view_raises_ship_error_on_invalid_json() -> None:
         ],
     )
     with pytest.raises(ShipError, match="JSON parse failed"):
-        gh.pr_view(runner, 1, repo="o/r")
+        _ = gh.pr_view(runner, 1, repo="o/r")
 
 
 def test_pr_view_raises_ship_error_on_missing_json_keys() -> None:
@@ -593,4 +593,4 @@ def test_pr_view_raises_ship_error_on_missing_json_keys() -> None:
         ],
     )
     with pytest.raises(ShipError, match="missing required keys"):
-        gh.pr_view(runner, 1, repo="o/r")
+        _ = gh.pr_view(runner, 1, repo="o/r")

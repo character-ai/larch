@@ -53,7 +53,7 @@ def run(
     argv_tuple = tuple(argv)
     start = time.monotonic()
     if timeout is not None:
-        proc = subprocess.Popen(
+        with subprocess.Popen(
             argv_tuple,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
@@ -61,29 +61,29 @@ def run(
             errors="replace",
             cwd=cwd,
             env=None if env is None else dict(env),
-        )
-        try:
-            stdout, stderr = proc.communicate(timeout=timeout)
-        except subprocess.TimeoutExpired as exc:
-            proc.kill()
-            rest_out, rest_err = proc.communicate()
-            duration = time.monotonic() - start
-            result = CommandResult(
-                argv=argv_tuple,
-                returncode=config.PROC_TIMEOUT_EXIT_CODE,
-                stdout=_decode_output(exc.stdout) + _decode_output(rest_out),
-                stderr=_decode_output(exc.stderr) + _decode_output(rest_err),
-                duration=duration,
-            )
-        else:
-            duration = time.monotonic() - start
-            result = CommandResult(
-                argv=argv_tuple,
-                returncode=proc.returncode,
-                stdout=stdout,
-                stderr=stderr,
-                duration=duration,
-            )
+        ) as proc:
+            try:
+                stdout, stderr = proc.communicate(timeout=timeout)
+            except subprocess.TimeoutExpired as exc:
+                proc.kill()
+                rest_out, rest_err = proc.communicate()
+                duration = time.monotonic() - start
+                result = CommandResult(
+                    argv=argv_tuple,
+                    returncode=config.PROC_TIMEOUT_EXIT_CODE,
+                    stdout=_decode_output(exc.stdout) + _decode_output(rest_out),
+                    stderr=_decode_output(exc.stderr) + _decode_output(rest_err),
+                    duration=duration,
+                )
+            else:
+                duration = time.monotonic() - start
+                result = CommandResult(
+                    argv=argv_tuple,
+                    returncode=proc.returncode,
+                    stdout=stdout,
+                    stderr=stderr,
+                    duration=duration,
+                )
     else:
         completed = subprocess.run(
             argv_tuple,

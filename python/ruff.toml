@@ -79,6 +79,7 @@ ignore = [
     "N818",
     "S603",
     "UP047",
+    "UP046",
 ]
 
 [lint.per-file-ignores]

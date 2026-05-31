@@ -86,4 +86,4 @@ def test_runtime_modules_are_stdlib_only() -> None:
 
 def test_runtime_modules_import_cleanly() -> None:
     for mod in RUNTIME_MODULES:
-        importlib.import_module(mod)
+        _ = importlib.import_module(mod)

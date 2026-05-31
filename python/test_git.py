@@ -134,7 +134,7 @@ def test_rev_count_raises_ship_error_on_non_integer_stdout() -> None:
         },
     )
     with pytest.raises(ShipError, match="non-integer stdout"):
-        git.rev_count(runner, "main", "HEAD")
+        _ = git.rev_count(runner, "main", "HEAD")
 
 
 def test_value_helper_raises_on_failure() -> None:
@@ -150,4 +150,4 @@ def test_value_helper_raises_on_failure() -> None:
         },
     )
     with pytest.raises(ShipError):
-        git.rev_parse(runner, "HEAD")
+        _ = git.rev_parse(runner, "HEAD")

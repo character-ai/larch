@@ -156,7 +156,7 @@ def test_parity_redact_secrets_sample() -> None:
         "/tmp/claude-implement-AbC123",
         "/Users/example/larch3/scripts/foo.sh",
         "cwd=/Users/example/my.repo,",
-        'cwd=/home/example/my.repo,',
+        "cwd=/home/example/my.repo,",
         '{"cwd":"/Users/example/my.repo"}',
         '{"cwd":"/Users/example/my.repo","x":1}',
         r"foo\n/Users/example/larch3/scripts/foo.sh",

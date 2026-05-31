@@ -98,4 +98,4 @@ def with_transient_retry(
         backoff_index = min(attempt - 1, len(config.TRANSIENT_RETRY_BACKOFF_SEC) - 1)
         backoff = config.TRANSIENT_RETRY_BACKOFF_SEC[backoff_index]
         sleeper(float(backoff))
-    assert False, "loop totality"
+    raise AssertionError("loop totality")
