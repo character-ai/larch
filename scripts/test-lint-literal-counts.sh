@@ -329,7 +329,7 @@ EOF
 git -C "$TMPROOT" add larch-logs/implement/run/final-summary.md >/dev/null 2>&1
 stderr_file=$(mktemp)
 rc=$(run_lint "$stderr_file")
-assert_case "t (git worktree skips larch-logs markdown)" 0 "$stderr_file" "$rc" ""
+assert_case "t (git worktree skips larch-logs markdown)" 0 "$stderr_file" "$rc"
 if grep -Fq "larch-logs/implement/run/final-summary.md" "$stderr_file"; then
     echo "FAIL [t (git worktree skips larch-logs markdown)]: scanned excluded larch-logs path" >&2
     FAIL=$((FAIL + 1))
