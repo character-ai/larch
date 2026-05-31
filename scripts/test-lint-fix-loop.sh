@@ -968,7 +968,7 @@ export LARCH_CURSOR_MODEL=stub-cursor-model
 printf 'synthetic checks failure\n' > "$CHECKS10"
 write_wrapper_cursor_fail_preserve_tail "$WRAPPER10"
 
-case10_result=$(LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux CURSOR_API_KEY= \
+case10_result=$(LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux CURSOR_API_KEY='' \
     run_case "$SCRIPTS10" "$REPO10" "$SESSION10" "$CHECKS10" "$WRAPPER10")
 case10_rc=$(printf '%s\n' "$case10_result" | sed -n '1p')
 case10_out=$(printf '%s\n' "$case10_result" | sed -n '2,$p')
