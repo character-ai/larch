@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from typing import cast
 
 import pytest
 
@@ -137,6 +138,95 @@ def test_rev_count_raises_ship_error_on_non_integer_stdout() -> None:
         _ = git.rev_count(runner, "main", "HEAD")
 
 
+def test_commit_and_add_build_argv() -> None:
+    runner = StubRunner(
+        {
+            ("git", "add", "CHANGELOG.md"): CommandResult(
+                ("git", "add", "CHANGELOG.md"), 0, "", "", 0.01
+            ),
+            ("git", "commit", "-m", "Update CHANGELOG for 1.0.0", "--only", "CHANGELOG.md"): CommandResult(
+                ("git", "commit", "-m", "Update CHANGELOG for 1.0.0", "--only", "CHANGELOG.md"),
+                0,
+                "",
+                "",
+                0.01,
+            ),
+        },
+    )
+    assert git.add(runner, "CHANGELOG.md").returncode == 0
+    assert (
+        git.commit(runner, "Update CHANGELOG for 1.0.0", only="CHANGELOG.md").returncode == 0
+    )
+
+
+def test_fetch_and_show_file_argv() -> None:
+    runner = StubRunner(
+        {
+            ("git", "fetch", "origin", "main", "--quiet"): CommandResult(
+                ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
+            ),
+            ("git", "show", "HEAD:file.txt"): CommandResult(
+                ("git", "show", "HEAD:file.txt"), 0, "content\n", "", 0.01
+            ),
+        },
+    )
+    assert git.fetch(runner, "origin", "main").returncode == 0
+    shown = git.show_file(runner, "HEAD:file.txt")
+    assert shown.stdout == "content\n"
+
+
+def test_diff_tree_name_only_invocation() -> None:
+    runner = StubRunner(
+        {
+            ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD~1"): CommandResult(
+                ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD~1"),
+                0,
+                "CHANGELOG.md\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+    result = git.diff_tree_name_only(runner, "HEAD~1")
+    assert result.returncode == 0
+    assert "CHANGELOG.md" in result.stdout
+
+
+def test_diff_and_rebase_helpers() -> None:
+    runner = StubRunner(
+        {
+            ("git", "diff", "--name-only", "base", "HEAD"): CommandResult(
+                ("git", "diff", "--name-only", "base", "HEAD"),
+                0,
+                "a.txt\n",
+                "",
+                0.01,
+            ),
+            ("git", "diff", "-M", "--name-status", "base", "HEAD", "--", "skills"): CommandResult(
+                ("git", "diff", "-M", "--name-status", "base", "HEAD", "--", "skills"),
+                0,
+                "M\tskills/x/SKILL.md\n",
+                "",
+                0.01,
+            ),
+            ("git", "rebase", "--onto", "HEAD~2", "HEAD~1"): CommandResult(
+                ("git", "rebase", "--onto", "HEAD~2", "HEAD~1"), 0, "", "", 0.01
+            ),
+        },
+    )
+    names = git.diff_name_only(runner, "base", "HEAD")
+    assert "a.txt" in names.stdout
+    status = git.diff_name_status(
+        runner,
+        "base",
+        "HEAD",
+        paths=("skills",),
+        find_renames=True,
+    )
+    assert "SKILL.md" in status.stdout
+    assert git.rebase_onto(runner, "HEAD~2", "HEAD~1").returncode == 0
+
+
 def test_value_helper_raises_on_failure() -> None:
     runner = StubRunner(
         {
@@ -151,3 +241,29 @@ def test_value_helper_raises_on_failure() -> None:
     )
     with pytest.raises(ShipError):
         _ = git.rev_parse(runner, "HEAD")
+
+
+def test_rebase_onto_strips_git_dir_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIT_DIR", "/evil")
+    monkeypatch.setenv("GIT_WORK_TREE", "/evil")
+    captured: dict[str, object] = {}
+
+    class CaptureRunner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+        ) -> CommandResult:
+            _ = timeout, cwd, check
+            captured["env"] = dict(env) if env else {}
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    _ = git.rebase_onto(CaptureRunner(), "HEAD~2", "HEAD~1")
+    env = cast("dict[str, str]", captured["env"])
+    assert "GIT_DIR" not in env
+    assert "GIT_WORK_TREE" not in env
+    assert env.get("GIT_SEQUENCE_EDITOR") == "true"

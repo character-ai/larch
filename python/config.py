@@ -57,3 +57,23 @@ REDACTED_OPERATOR_REPO: Final = "<OPERATOR_REPO_PATH>"
 PROC_TIMEOUT_EXIT_CODE: Final = EXIT_TIMEOUT
 
 ToolName = Literal["cursor", "codex", "claude"]
+
+# Version bump / changelog (Phase 2 ports; not wired into live path until Phase 7)
+BUMP_COMMIT_SUBJECT_TEMPLATE: Final = "Bump version to {version}"
+CHANGELOG_COMMIT_SUBJECT_TEMPLATE: Final = "Update CHANGELOG for {version}"
+SEMVER_RE: Final = r"^[0-9]+\.[0-9]+\.[0-9]+$"
+PLUGIN_JSON_PATH: Final = ".claude-plugin/plugin.json"
+CHANGELOG_DEFAULT_PATH: Final = "CHANGELOG.md"
+DEFAULT_BUMP_FILES: Final = (".claude-plugin/plugin.json",)
+DROP_BUMP_MAX_DEPTH: Final = 10
+DROP_CHANGELOG_MAX_DEPTH: Final = 20
+IDEMPOTENCY_DEPTH: Final = 3
+BUMP_VERSION_ARMED_SENTINEL: Final = ".bump-version-armed"
+APPLY_BUMP_MAX_RETRIES: Final = 10
+TRANSPARENT_CHANGELOG_SUBJECT_PREFIX: Final = "Update CHANGELOG for "
+TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX: Final = "chore(larch-logs): "
+CLASSIFY_SCOPE_DIRS: Final[tuple[str, ...]] = ("skills", "agents")
+ENV_LARCH_BUMP_FILES: Final = "LARCH_BUMP_FILES"
+BUMP_VERSION_SKILL_PATH: Final = ".claude/skills/bump-version/SKILL.md"
+APPLY_BUMP_ALLOWED_UNTRACKED_SUFFIXES: Final = (".launcher-stderr", ".redacted.log")
+GIT_COMMIT_CO_AUTHORED_BY_TRAILER: Final = "Co-Authored-By: Claude Code <noreply@anthropic.com>"

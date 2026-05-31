@@ -439,6 +439,8 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
+      - name: Install gawk for lib-changelog parity tests
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq gawk
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"

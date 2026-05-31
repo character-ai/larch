@@ -1,0 +1,10 @@
+Reviewing branch changes for bash-parity correctness: reading the diff, commit history, and comparing Python implementations to the shell originals.
+### In-Scope Findings
+
+- **correctness** `python/changelog.py:363-368` — In `_insert_md_at_anchor`, when closing an `## [Unreleased]` block at the next `## [` heading, Python appends the new entry block and then a blank line before the following heading (`out.extend(block)` then `out.append("")`). `scripts/lib-changelog.sh` `write_changelog_entry` does the opposite on that path: it prints a blank line first, then the entry lines (`print ""` then `for … print e[i]`), then the next heading. That changes blank-line spacing between Unreleased content and the inserted version section relative to bash; `test_parity_write_changelog_entry` is the right guard, but the control-flow order is visibly inverted. **Suggested fix:** In the `in_unreleased and line.startswith("## [")` branch, match bash by emitting `out.append("")` before `out.extend(block)` (keep the trailing `out.append(line)` for the next heading unchanged). The `END` path at `389-392` already uses blank-then-block and should stay as-is.
+
+### Out-of-Scope Observations
+
+- Idempotency walk in `python/version_bump.py:197-207` (`_idempotency_ref` / `_idempotency_transparent`) matches `.claude/skills/bump-version/scripts/classify-bump.sh:89-126`: depth capped at 3, subject prefixes plus path guards (CHANGELOG-only vs `larch-logs/**`), and subject-only spoofing does not skip classification.
+- `auto_resolve` / `_auto_resolve_markdown` / `_auto_resolve_rst` align with `scripts/auto-resolve-changelog.sh` on heading equality, tail comparison (`tails_match` / `sh2==0` handling), body union, and RST doc-title skip via `_rst_merge_first_index`.
+- Round 3 already fixed classify `git show` failures to `continue` (bash parity) and refactored `_write_md_entry` to delegate anchor insertion to `_insert_md_at_anchor`; drop paths share `bump_worktree.drop_replay_commit`.

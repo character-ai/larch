@@ -1,4 +1,4 @@
-# ship-pr Python foundation (Phase 1)
+# ship-pr Python foundation (Phase 1–2)
 
 Flat `python/` tree for the in-progress `scripts/ship-pr.sh` → Python rework. **Runtime
 modules import stdlib only** (Python ≥ 3.12). Linters and pytest are dev/CI-only and are never
@@ -12,6 +12,10 @@ imported by runtime code.
 - `logging_util.py` — breadcrumbs + JSONL journal (observability only)
 - `redact.py`, `retry.py` — ports of `redact-secrets.sh` / `lib-net.sh`
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
+- `bump_worktree.py` — shared drop/worktree helpers (`DropResult`, porcelain, sorted diff)
+- `version_bump.py`, `changelog.py` — Phase 2 ports of bump-version / CHANGELOG scripts
+  (not wired into the live `/implement` path until Phase 7). `commit_changelog` is Markdown-only
+  today; RST changelog commit is deferred until Phase 7 (no bash `commit-changelog` counterpart for RST).
 - `test_<module>.py` — colocated unit tests; `test_stdlib_only.py` enforces stdlib-only imports
 
 ## Dependencies
@@ -36,6 +40,10 @@ CI `python-lint` / `python-tests` jobs. Per-job CI replay (`make py-lint` / `mak
 ship-pr failed-job tables) needs the same toolchain as CI: `pip install -r python/requirements-dev.txt`
 for lint (including **Node** on PATH for pyright) and `pip install -r python/requirements-test.txt`
 for tests.
+
+Twin-repo parity tests that source `scripts/lib-changelog.sh` require **bash** and **gawk** on
+PATH (the bash helpers use `gawk` for RST changelog transforms). CI `python-tests` installs `gawk`;
+local runs without it skip those cases via `pytest.mark.skipif`.
 
 The live `/implement` path still uses bash until Phase 7 (`LARCH_SHIP_PR_IMPL=python`).
 

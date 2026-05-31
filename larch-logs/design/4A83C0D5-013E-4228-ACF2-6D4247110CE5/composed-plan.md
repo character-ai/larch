@@ -380,7 +380,7 @@ Re-point the Step 0b assertions to the extracted shape (no new test files):
 ### UPDATED: `scripts/test-step0b-router-flag-recovery.sh`
 Re-point header + `recovery_merge_if_needed` comments to
 "Replicates design-init-runparams.sh Step 0b router-flag jq-merge". Replica logic and
-7 cases unchanged. <!-- lint-literal-counts: allow historical count in committed design log -->
+existing cases unchanged.
 
 ## Edge cases
 - Resume `STEP=0c`: orchestrator still runs clarify-then-continue; other steps jump.
