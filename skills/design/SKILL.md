@@ -853,7 +853,7 @@ _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review
   --convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}")
 _plan_review_rc=$?
 set -e
-if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
+if [[ "${_plan_review_rc:-0}" -eq 0 && -f "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
   if [[ -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
     printf '%s\n' "**⚠ Step 3: step3 review result env is a symlink; refusing to source**"
   else
@@ -892,8 +892,8 @@ Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected fi
 - `LOOP_STATUS=complete` — proceed to Gate B (legacy single-pass callers without `--round-cap` also land here; Gate B may auto-apply when `manual_gate_b=false`). Gate-B-settled path proceeds through Step 3.6 after Gate B and any Step 2b.5 return.
 - `LOOP_STATUS=converged|cap-hit` — proceed to Gate B **passive-summary mode** (findings already auto-applied inside the loop; do not re-apply them at Gate B). Passive-summary auto-continue routes through Step 3.6 before Step 3b.
 - `LOOP_STATUS=revision-failed` — proceed to Gate B with the warning banner and the full 3-option manual-style prompt for un-applied final-round findings. Gate-B-settled path proceeds through Step 3.6 after Gate B and any Step 2b.5 return.
-- `LOOP_STATUS=tally-error` — roll back `review-round-count.txt` (handled above); print `**⚠ Step 3: tally error in round ${ROUNDS_COMPLETED:-?}; loop aborted; current plan preserved.**` and short-circuit to Step 3b (skip Gate B **and Step 3.6**). Print `⏩ 3.6: assessor — skipped (Step 3 tally-error short-circuit)`.
-- `LOOP_STATUS=degraded-empty-collector` — roll back `review-round-count.txt`; print `**⚠ Step 3: round ${ROUNDS_COMPLETED:-?} had zero findings AND zero successful collectors; treated as panel degradation, not convergence.**` and short-circuit to Step 3b (skip Gate B and Step 3.6). Print `⏩ 3.6: assessor — skipped (Step 3 degraded-empty-collector short-circuit)`.
+- `LOOP_STATUS=tally-error` — roll back `review-round-count.txt` (`run-step3-review.sh` persist/rollback); print `**⚠ Step 3: tally error in round ${ROUNDS_COMPLETED:-?}; loop aborted; current plan preserved.**` and short-circuit to Step 3b (skip Gate B **and Step 3.6**). Print `⏩ 3.6: assessor — skipped (Step 3 tally-error short-circuit)`.
+- `LOOP_STATUS=degraded-empty-collector` — roll back `review-round-count.txt` (`run-step3-review.sh` persist/rollback); print `**⚠ Step 3: round ${ROUNDS_COMPLETED:-?} had zero findings AND zero successful collectors; treated as panel degradation, not convergence.**` and short-circuit to Step 3b (skip Gate B and Step 3.6). Print `⏩ 3.6: assessor — skipped (Step 3 degraded-empty-collector short-circuit)`.
 - `LOOP_STATUS=zero-findings-degraded-panel` — do not treat the round as converged; proceed to Gate B, whose zero-findings short-circuit still continues to Step 3.6 before Step 3b.
 - `LOOP_STATUS=plan-size-trigger` — run the Step 2b.5 Split-path / Cancel `AskUserQuestion` handler first, then short-circuit to Step 3b; skip Gate B and Step 3.6. Print `⏩ 3.6: assessor — skipped (Step 3 plan-size-trigger short-circuit)`.
 - `LOOP_STATUS=plan-validator-defects` — run the shared plan-command validator failure body first, then short-circuit to Step 3b; skip Gate B and Step 3.6. Print `⏩ 3.6: assessor — skipped (Step 3 plan-validator-defects short-circuit)`.

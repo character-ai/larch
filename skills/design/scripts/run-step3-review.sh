@@ -166,8 +166,6 @@ else
                     emit '**⚠ Step 3: failed to advance plan-review round cursor; aborting before review launch.**'
                     LOOP_STATUS=panel-failed
                     TALLY_PLAN_REVIEW_STATUS=panel-failed
-                    printf '%s\n' "${_step3_prior_round_count:-0}" >"$ROUND_COUNT_FILE"
-                    REVIEW_ROUND_COUNT="${_step3_prior_round_count:-0}"
                     phase_driver_write_result_env "$RESULT_ENV" \
                         "LOOP_STATUS=${LOOP_STATUS:-}" \
                         "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}" \
@@ -184,7 +182,7 @@ else
                     emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
                     emit_kv TALLY_PLAN_REVIEW_STATUS "${TALLY_PLAN_REVIEW_STATUS:-}"
                     emit_kv REVIEW_ROUND_COUNT "${REVIEW_ROUND_COUNT:-0}"
-                    exit 0
+                    exit 1
                 fi
                 ROUND_NUM=$_next_cursor
             fi
@@ -216,11 +214,6 @@ else
         AGGREGATOR_STATUS=""
         VOTING_TALLY_FILE=""
         IMPORTANT_ACCEPTED_COUNT=""
-        _allow=(
-            LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED
-            REASON REVISE_STATUS CONVERGENCE_STREAK COLLECT_OK_COUNT COLLECT_FAILURE_COUNT
-            TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS
-        )
         if [[ -f "$INNER_RESULT_ENV" ]]; then
             if [[ -L "$INNER_RESULT_ENV" ]]; then
                 emit '**⚠ Step 3: result env is a symlink; ignoring it and using stdout fallback only**'
@@ -228,12 +221,15 @@ else
                 while IFS= read -r _line || [[ -n "$_line" ]]; do
                     _key="${_line%%=*}"
                     _value="${_line#*=}"
-                    case "$_key" in
-                        LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | CONVERGENCE_STREAK | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS)
-                            printf -v "$_key" '%s' "$_value"
-                            ;;
-                        WARN) emit_kv WARN "$_value" ;;
-                    esac
+                    printf -v "$_key" '%s' "$_value"
+                done < <(phase_driver_read_result_env "$INNER_RESULT_ENV" \
+                    LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
+                    REASON REVISE_STATUS CONVERGENCE_STREAK COLLECT_OK_COUNT COLLECT_FAILURE_COUNT \
+                    TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS)
+                while IFS= read -r _line || [[ -n "$_line" ]]; do
+                    _key="${_line%%=*}"
+                    _value="${_line#*=}"
+                    [[ "$_key" == WARN ]] && emit_kv WARN "$_value"
                 done <"$INNER_RESULT_ENV"
             fi
         fi
@@ -269,7 +265,7 @@ else
         fi
 fi
 
-phase_driver_write_result_env "$RESULT_ENV" \
+if ! phase_driver_write_result_env "$RESULT_ENV" \
     "LOOP_STATUS=${LOOP_STATUS:-}" \
     "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}" \
     "STEP3_REVIEW_CAP_REACHED=${STEP3_REVIEW_CAP_REACHED:-false}" \
@@ -281,10 +277,15 @@ phase_driver_write_result_env "$RESULT_ENV" \
     "ROUNDS_COMPLETED=${ROUNDS_COMPLETED:-}" \
     "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}" \
     "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
-    "REVIEW_ROUND_COUNT=${REVIEW_ROUND_COUNT:-0}"
+    "REVIEW_ROUND_COUNT=${REVIEW_ROUND_COUNT:-0}"; then
+    emit_kv WARN "Step 3: refusing to write symlinked result env $(basename "$RESULT_ENV")"
+    exit 1
+fi
 
 emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
 emit_kv STEP3_REVIEW_CAP_REACHED "${STEP3_REVIEW_CAP_REACHED:-false}"
+emit_kv STEP3_REVIEW_ROUND_NUM "${STEP3_REVIEW_ROUND_NUM:-}"
+emit_kv ROUND_NUM "${ROUND_NUM:-}"
 emit_kv ACCEPTED_COUNT "${ACCEPTED_COUNT:-}"
 emit_kv IMPORTANT_ACCEPTED_COUNT "${IMPORTANT_ACCEPTED_COUNT:-}"
 emit_kv DEGRADED_PANEL "${DEGRADED_PANEL:-}"

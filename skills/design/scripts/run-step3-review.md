@@ -39,7 +39,8 @@ The driver does **not** re-read `LARCH_DESIGN_*` env vars.
 
 | Code | When |
 |------|------|
-| `0` | Normal completion (any `LOOP_STATUS`, including HARD cursor-advance `panel-failed` handoff) |
+| `0` | Normal completion (any settled `LOOP_STATUS`) |
+| `1` | HARD `snapshot-plan-round.sh` write-cursor failure before review launch (`panel-failed` handoff, pending round left persisted) or refusal to write symlinked `.step3-review-result.env` |
 | `2` | Argv / missing executable inner loop |
 
 ## Idempotency

@@ -173,6 +173,21 @@ fi
 [[ ! -e "$D1B/plan-review/round-1" ]] || fail 'cap-reached should remove stale round-1'
 [[ ! -e "$D1B/plan-review/round-2" ]] || fail 'cap-reached should remove stale round-2'
 
+echo "=== symlinked plan-review round dir skipped during cleanup ==="
+D1S="$TMP/symlink-round"
+write_common_inputs "$D1S" SIMPLE
+mkdir -p "$D1S/plan-review/round-1" "$D1S/plan-review/round-keeper"
+printf 'stale\n' >"$D1S/plan-review/round-1/stale.txt"
+printf 'keep-me\n' >"$D1S/plan-review/round-keeper/stale.txt"
+ln -s "$D1S/plan-review/round-keeper" "$D1S/plan-review/round-2"
+stub="$(write_loop_stub "$D1S" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D1S" --round-cap 5 --convergence-threshold 3)"
+assert_contains "$out" 'refusing to remove symlinked round artifact round-2' 'symlinked round cleanup warning'
+[[ ! -e "$D1S/plan-review/round-1" ]] || fail 'non-symlink round-1 should be removed during cleanup'
+[[ -f "$D1S/plan-review/round-keeper/stale.txt" ]] || fail 'symlinked round-2 target must survive cleanup'
+[[ -L "$D1S/plan-review/round-2" ]] || fail 'symlinked round-2 link should remain'
+
 echo "=== non-numeric review-round-count treated as zero ==="
 D1C="$TMP/bad-count"
 write_common_inputs "$D1C" SIMPLE
@@ -304,17 +319,17 @@ out="$("${launcher_env[@]}" RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$snap_stub" \
     --design-tmpdir "$D10" --round-cap 5 --convergence-threshold 3)"
 rc=$?
 set -e
-if [[ "$rc" -eq 0 ]]; then
-    pass 'write-cursor failure exit 0'
+if [[ "$rc" -eq 1 ]]; then
+    pass 'write-cursor failure exit 1'
 else
     fail "write-cursor failure rc=$rc"
 fi
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'write-cursor failure panel-failed'
 grep -Fq 'LOOP_STATUS=panel-failed' "$D10/.step3-review-result.env" || fail 'result env panel-failed on cursor failure'
-if [[ "$(cat "$D10/review-round-count.txt" 2>/dev/null || echo missing)" == "0" ]]; then
-    pass 'write-cursor failure rolls back round count'
+if [[ "$(cat "$D10/review-round-count.txt" 2>/dev/null || echo missing)" == "1" ]]; then
+    pass 'write-cursor failure keeps pending round persisted'
 else
-    fail 'write-cursor failure should roll back round count to 0'
+    fail 'write-cursor failure should leave review-round-count at 1'
 fi
 
 echo "=== stale inner result env ignored after launcher failure ==="
@@ -355,6 +370,23 @@ out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D8" --round-cap 5 --convergence-threshold 3)"
 assert_contains "$out" 'LOOP_STATUS=complete' 'inner file loop status wins'
 grep -Fq 'AGGREGATOR_STATUS=file' "$D8/.step3-review-result.env" || fail 'inner file aggregator should win over stdout'
+
+echo "=== invalid round-cap via real plan-review-loop normalizes to panel-failed ==="
+D11="$TMP/invalid-cap-real"
+write_common_inputs "$D11" SIMPLE
+out="$("${launcher_env[@]}" "$LAUNCHER" \
+    --design-tmpdir "$D11" --round-cap 0 --convergence-threshold 3 2>&1)"
+assert_contains "$out" 'LOOP_STATUS=panel-failed' 'invalid round-cap panel-failed'
+grep -Fq 'LOOP_STATUS=panel-failed' "$D11/.step3-review-result.env" || fail 'invalid round-cap result env panel-failed'
+
+echo "=== terminal stdout breadcrumbs include round identifiers ==="
+D11B="$TMP/breadcrumb-rounds"
+write_common_inputs "$D11B" SIMPLE
+stub="$(write_loop_stub "$D11B" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D11B" --round-cap 5 --convergence-threshold 3)"
+assert_contains "$out" 'STEP3_REVIEW_ROUND_NUM=1' 'stdout STEP3_REVIEW_ROUND_NUM breadcrumb'
+assert_contains "$out" 'ROUND_NUM=1' 'stdout ROUND_NUM breadcrumb'
 
 echo "=== symlinked inner result env falls back to stdout ==="
 D9="$TMP/symlink-inner"
