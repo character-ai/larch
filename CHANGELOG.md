@@ -54,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove grouped reuse-by-copy from the waterfall dispatcher and add --no-fallback drop-on-failure mode for design panels
 - Emit only Codex/Cursor slots that are actually available, with a single generic Claude reviewer when both externals are absent
 - Fix degraded-tools-gate env-var inputs and add a guard harness so fallback_group cannot return
+- Surface failed-agent stderr tails end-to-end for implement, CI, and lint-fix lanes using the shared #3202 library
+- Write stderr-tail artifacts on codex-implement model-args and agent-failure paths; consume them in step2, ship-pr, and Step 5
+- Add plan-review-loop collector FD-2 tail regression coverage (#3227)
 
 ## [47.0.18] - 2026-05-30
 
