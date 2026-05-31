@@ -33,14 +33,13 @@ The driver does **not** re-read `LARCH_DESIGN_*` env vars.
 
 ## Normalized result env (`.step3-review-result.env`)
 
-`LOOP_STATUS`, `TALLY_PLAN_REVIEW_STATUS`, `STEP3_REVIEW_CAP_REACHED`, `STEP3_REVIEW_ROUND_NUM`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `ROUNDS_COMPLETED`, `AGGREGATOR_STATUS`, `VOTING_TALLY_FILE`, `REVIEW_ROUND_COUNT`.
+`LOOP_STATUS`, `TALLY_PLAN_REVIEW_STATUS`, `STEP3_REVIEW_CAP_REACHED`, `STEP3_REVIEW_ROUND_NUM`, `ROUND_NUM`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `ROUNDS_COMPLETED`, `AGGREGATOR_STATUS`, `VOTING_TALLY_FILE`, `REVIEW_ROUND_COUNT`.
 
 ## Exit codes
 
 | Code | When |
 |------|------|
-| `0` | Normal completion (any `LOOP_STATUS`) |
-| `1` | HARD round-cursor advance failure (orchestrator abort) |
+| `0` | Normal completion (any `LOOP_STATUS`, including HARD cursor-advance `panel-failed` handoff) |
 | `2` | Argv / missing executable inner loop |
 
 ## Idempotency

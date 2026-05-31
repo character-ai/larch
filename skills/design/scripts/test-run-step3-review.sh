@@ -152,6 +152,41 @@ assert_contains "$out" 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' 'skipped-c
 grep -Fq 'LOOP_STATUS=cap-reached' "$D1/.step3-review-result.env" || fail 'result env cap-reached'
 [[ "$(cat "$D1/review-round-count.txt")" == "3" ]] || fail 'cap-reached leaves counter unchanged'
 
+echo "=== cap-reached cleans stale round forensics ==="
+D1B="$TMP/cap-cleanup"
+write_common_inputs "$D1B" SIMPLE
+printf '3\n' >"$D1B/review-round-count.txt"
+mkdir -p "$D1B/plan-review/round-1" "$D1B/plan-review/round-2"
+printf 'stale\n' >"$D1B/plan-review/round-1/stale.txt"
+printf 'stale\n' >"$D1B/plan-review/round-2/stale.txt"
+stub="$(write_loop_stub "$D1B" 'exit 97')"
+set +e
+"${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D1B" --round-cap 5 --convergence-threshold 3 >/dev/null
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then
+    pass 'cap-reached cleanup exit 0'
+else
+    fail "cap-reached cleanup rc=$rc"
+fi
+[[ ! -e "$D1B/plan-review/round-1" ]] || fail 'cap-reached should remove stale round-1'
+[[ ! -e "$D1B/plan-review/round-2" ]] || fail 'cap-reached should remove stale round-2'
+
+echo "=== non-numeric review-round-count treated as zero ==="
+D1C="$TMP/bad-count"
+write_common_inputs "$D1C" SIMPLE
+printf 'abc\n' >"$D1C/review-round-count.txt"
+stub="$(write_loop_stub "$D1C" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D1C" --round-cap 5 --convergence-threshold 3)"
+assert_contains "$out" 'review-round-count.txt non-numeric' 'non-numeric count warning'
+if [[ "$(cat "$D1C/review-round-count.txt")" == "1" ]]; then
+    pass 'non-numeric count treated as zero then round 1 persisted'
+else
+    fail 'non-numeric count should persist round 1'
+fi
+
 echo "=== pending round persisted before launch ==="
 D2="$TMP/persist"
 write_common_inputs "$D2" SIMPLE
@@ -224,6 +259,64 @@ out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D6" --round-cap 5 --convergence-threshold 3)"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'unknown status normalized'
 
+echo "=== unexpected LOOP_STATUS preserved on non-zero rc ==="
+D6B="$TMP/revision-failed-rc"
+write_common_inputs "$D6B" SIMPLE
+stub="$(write_loop_stub "$D6B" "printf 'LOOP_STATUS=revision-failed\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D6B" --round-cap 5 --convergence-threshold 3)"
+assert_contains "$out" 'LOOP_STATUS=revision-failed' 'revision-failed preserved on rc 1'
+if [[ "$out" == *'treating as panel-failed'* && "$out" != *'missing or invalid LOOP_STATUS'* ]]; then
+    fail 'unexpected rc should not coerce revision-failed to panel-failed'
+else
+    pass 'revision-failed not coerced to panel-failed'
+fi
+
+echo "=== main-agent-vote-required preserved on non-zero rc ==="
+D6C="$TMP/main-agent-rc"
+write_common_inputs "$D6C" SIMPLE
+stub="$(write_loop_stub "$D6C" "printf 'LOOP_STATUS=main-agent-vote-required\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D6C" --round-cap 5 --convergence-threshold 3)"
+assert_contains "$out" 'LOOP_STATUS=main-agent-vote-required' 'main-agent-vote-required preserved on rc 1'
+grep -Fq 'LOOP_STATUS=main-agent-vote-required' "$D6C/.step3-review-result.env" || fail 'result env main-agent-vote-required'
+
+echo "=== HARD write-cursor failure handoff ==="
+D10="$TMP/cursor-fail"
+write_common_inputs "$D10" HARD
+printf '1\n' >"$D10/plan-review-round-cursor.txt"
+printf 'plan snapshot\n' >"$D10/plan-after-round-1.txt"
+snap_stub="$D10/snapshot-plan-round-stub.sh"
+cat >"$snap_stub" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}" in
+    read-cursor) printf 'ROUND_CURSOR=1\n'; exit 0 ;;
+    write-cursor) exit 1 ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$snap_stub"
+loop_stub="$(write_loop_stub "$D10" 'exit 97')"
+set +e
+out="$("${launcher_env[@]}" RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$snap_stub" \
+    RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" "$LAUNCHER" \
+    --design-tmpdir "$D10" --round-cap 5 --convergence-threshold 3)"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then
+    pass 'write-cursor failure exit 0'
+else
+    fail "write-cursor failure rc=$rc"
+fi
+assert_contains "$out" 'LOOP_STATUS=panel-failed' 'write-cursor failure panel-failed'
+grep -Fq 'LOOP_STATUS=panel-failed' "$D10/.step3-review-result.env" || fail 'result env panel-failed on cursor failure'
+if [[ "$(cat "$D10/review-round-count.txt" 2>/dev/null || echo missing)" == "0" ]]; then
+    pass 'write-cursor failure rolls back round count'
+else
+    fail 'write-cursor failure should roll back round count to 0'
+fi
+
 echo "=== stale inner result env ignored after launcher failure ==="
 D7="$TMP/stale"
 write_common_inputs "$D7" SIMPLE
@@ -275,7 +368,7 @@ grep -Fq 'AGGREGATOR_STATUS=stdout' "$D9/.step3-review-result.env" || fail 'syml
 
 echo "=== normalized result env keys ==="
 assert_file_has_keys "$D6/.step3-review-result.env" 'result env' \
-    LOOP_STATUS TALLY_PLAN_REVIEW_STATUS STEP3_REVIEW_CAP_REACHED STEP3_REVIEW_ROUND_NUM \
+    LOOP_STATUS TALLY_PLAN_REVIEW_STATUS STEP3_REVIEW_CAP_REACHED STEP3_REVIEW_ROUND_NUM ROUND_NUM \
     ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED AGGREGATOR_STATUS \
     VOTING_TALLY_FILE REVIEW_ROUND_COUNT
 

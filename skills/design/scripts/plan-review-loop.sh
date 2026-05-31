@@ -787,26 +787,12 @@ _collect_stderr_fd=2
 if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
     _collect_stderr_fd=4
 fi
-: > "$_collect_err"
-_collect_err_fifo="$DESIGN_TMPDIR/.plan-review-collector.stderr.fifo"
-rm -f "$_collect_err_fifo"
-mkfifo "$_collect_err_fifo"
-tee -a "$_collect_err" >&${_collect_stderr_fd} <"$_collect_err_fifo" &
-_collect_tee_pid=$!
-set +e
 _collect_out=$(LARCH_QUIET_DISABLE=1 "$PLAN_REVIEW_COLLECT_SH" \
     --timeout "$COLLECT_TIMEOUT" \
     --substantive-validation \
     --validation-mode \
     --structured-reviewer-validation \
-    --paths-file "$PANEL_PATHS_FILE" 2>"$_collect_err_fifo")
-_collect_rc=$?
-set -e
-wait "$_collect_tee_pid" || true
-rm -f "$_collect_err_fifo"
-if [[ "$_collect_rc" -ne 0 ]]; then
-    return "$_collect_rc"
-fi
+    --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd}))
 _last_collect_out="$_collect_out"
 
 _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"

@@ -73,7 +73,7 @@ contains "$RUN_STEP3_SH" '.step3-review-cap.env' 'run-step3-review.sh missing pe
 contains "$RUN_STEP3_SH" 'STEP3_REVIEW_CAP_REACHED=false' 'run-step3-review.sh missing persisted cap-false state'
 contains "$RUN_STEP3_SH" 'STEP3_REVIEW_ROUND_NUM=' 'run-step3-review.sh missing persisted Step 3 round number state'
 contains "$SKILL_MD" 'run-step3-review.sh' 'SKILL must invoke run-step3-review.sh'
-contains "$SKILL_MD" '.step3-review-result.env' 'SKILL must source step3 review result env'
+contains "$SKILL_MD" 'step3 review result env is a symlink; refusing to source' 'SKILL must read allowlisted KVs from .step3-review-result.env'
 [[ -x "$RUN_STEP3_SH" ]] || fail 'run-step3-review.sh must be executable'
 [[ -f "$RUN_STEP3_MD" ]] || fail "run-step3-review.md missing: $RUN_STEP3_MD"
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.

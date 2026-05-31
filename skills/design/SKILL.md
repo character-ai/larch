@@ -860,7 +860,7 @@ if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
     while IFS= read -r _line || [[ -n "$_line" ]]; do
       _key="${_line%%=*}"; _value="${_line#*=}"
       case "$_key" in
-        LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|REVIEW_ROUND_COUNT)
+        LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
           printf -v "$_key" '%s' "$_value" ;;
       esac
     done <"$DESIGN_TMPDIR/.step3-review-result.env"
@@ -870,14 +870,13 @@ if [[ -z "${LOOP_STATUS:-}" ]]; then
   while IFS= read -r _line || [[ -n "$_line" ]]; do
     _key="${_line%%=*}"; _value="${_line#*=}"
     case "$_key" in
-      LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|REVIEW_ROUND_COUNT)
+      LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
         printf -v "$_key" '%s' "$_value" ;;
     esac
   done <<<"${_plan_review_out:-}"
 fi
-if [[ "${_plan_review_rc:-0}" -ne 0 && "${LOOP_STATUS:-}" != "main-agent-vote-required" ]]; then
-  printf '%s\n' "**⚠ Step 3: run-step3-review.sh exited non-zero; treating plan review as panel-failed**"
-  LOOP_STATUS=panel-failed
+if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
+  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
 fi
 if [[ -z "${LOOP_STATUS:-}" ]]; then
   printf '%s\n' "**⚠ Step 3: missing LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"

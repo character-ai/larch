@@ -116,39 +116,30 @@ EOF
 fi
 
 REVIEW_ROUND_COUNT="$_round_count"
+ROUND_NUM=""
+
+if [[ -d "$DESIGN_TMPDIR/plan-review" && ! -L "$DESIGN_TMPDIR/plan-review" ]]; then
+    _pr_phys=$(cd "$DESIGN_TMPDIR/plan-review" && pwd -P) || _pr_phys=""
+    if [[ -n "$_pr_phys" ]]; then
+        for _child in "$_pr_phys"/round-[0-9]*; do
+            [[ -d "$_child" ]] || continue
+            if [[ -L "$_child" ]]; then
+                emit_kv WARN "Step 3: refusing to remove symlinked round artifact $(basename "$_child")"
+                continue
+            fi
+            rm -rf "$_child"
+        done
+    else
+        emit_kv WARN 'Step 3: plan-review directory could not be resolved; skipping round cleanup'
+    fi
+elif [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
+    emit_kv WARN 'Step 3: refusing to clean symlinked plan-review directory'
+fi
 
 if [[ "$STEP3_REVIEW_CAP_REACHED" == true ]]; then
     LOOP_STATUS=cap-reached
     TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached
 else
-    if [[ -d "$DESIGN_TMPDIR/plan-review" && ! -L "$DESIGN_TMPDIR/plan-review" ]]; then
-        _pr_phys=$(cd "$DESIGN_TMPDIR/plan-review" && pwd -P) || _pr_phys=""
-        if [[ -n "$_pr_phys" ]]; then
-            for _child in "$_pr_phys"/round-[0-9]*; do
-                [[ -d "$_child" ]] || continue
-                if [[ -L "$_child" ]]; then
-                    emit_kv WARN "Step 3: refusing to remove symlinked round artifact $(basename "$_child")"
-                    continue
-                fi
-                rm -rf "$_child"
-            done
-        else
-            emit_kv WARN 'Step 3: plan-review directory could not be resolved; skipping round cleanup'
-        fi
-    elif [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
-        emit_kv WARN 'Step 3: refusing to clean symlinked plan-review directory'
-    fi
-
-    if [[ -f "$CAP_ENV" ]]; then
-        # shellcheck source=/dev/null
-        source "$CAP_ENV"
-    fi
-
-    if [[ "${STEP3_REVIEW_CAP_REACHED:-false}" == true ]]; then
-        emit '⏩ 3: plan review — cap reached; skipping'
-        LOOP_STATUS=cap-reached
-        TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached
-    else
         _step3_prior_round_count=0
         if [[ "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
             _step3_prior_round_count=$((STEP3_REVIEW_ROUND_NUM - 1))
@@ -160,8 +151,9 @@ else
         if [[ -z "$_wp_round" ]]; then
             _wp_round=$(sed -n 's/.*"workflow_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null | head -1)
         fi
+        _snap_sh="${RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH:-$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh}"
         if [[ "$_wp_round" == HARD ]]; then
-            _cursor_out=$("$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh" read-cursor --design-tmpdir "$DESIGN_TMPDIR")
+            _cursor_out=$("$_snap_sh" read-cursor --design-tmpdir "$DESIGN_TMPDIR")
             while IFS= read -r _cline || [[ -n "$_cline" ]]; do
                 case "$_cline" in
                     ROUND_CURSOR=*) ROUND_NUM="${_cline#ROUND_CURSOR=}" ;;
@@ -169,16 +161,19 @@ else
             done <<<"$_cursor_out"
             if [[ -f "$DESIGN_TMPDIR/plan-after-round-${ROUND_NUM}.txt" ]]; then
                 _next_cursor=$((10#${ROUND_NUM} + 1))
-                if ! "$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh" \
+                if ! "$_snap_sh" \
                     write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$_next_cursor"; then
                     emit '**⚠ Step 3: failed to advance plan-review round cursor; aborting before review launch.**'
                     LOOP_STATUS=panel-failed
                     TALLY_PLAN_REVIEW_STATUS=panel-failed
+                    printf '%s\n' "${_step3_prior_round_count:-0}" >"$ROUND_COUNT_FILE"
+                    REVIEW_ROUND_COUNT="${_step3_prior_round_count:-0}"
                     phase_driver_write_result_env "$RESULT_ENV" \
                         "LOOP_STATUS=${LOOP_STATUS:-}" \
                         "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}" \
                         "STEP3_REVIEW_CAP_REACHED=${STEP3_REVIEW_CAP_REACHED:-false}" \
                         "STEP3_REVIEW_ROUND_NUM=${STEP3_REVIEW_ROUND_NUM:-}" \
+                        "ROUND_NUM=${ROUND_NUM:-}" \
                         "ACCEPTED_COUNT=${ACCEPTED_COUNT:-}" \
                         "IMPORTANT_ACCEPTED_COUNT=${IMPORTANT_ACCEPTED_COUNT:-}" \
                         "DEGRADED_PANEL=${DEGRADED_PANEL:-}" \
@@ -186,7 +181,10 @@ else
                         "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}" \
                         "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
                         "REVIEW_ROUND_COUNT=${REVIEW_ROUND_COUNT:-0}"
-                    exit 1
+                    emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
+                    emit_kv TALLY_PLAN_REVIEW_STATUS "${TALLY_PLAN_REVIEW_STATUS:-}"
+                    emit_kv REVIEW_ROUND_COUNT "${REVIEW_ROUND_COUNT:-0}"
+                    exit 0
                 fi
                 ROUND_NUM=$_next_cursor
             fi
@@ -256,7 +254,6 @@ else
         fi
         if [[ "${_plan_review_rc:-0}" -ne 0 && "$LOOP_STATUS" != panel-failed && "$LOOP_STATUS" != main-agent-vote-required ]]; then
             emit "**⚠ plan-review-loop.sh exited with rc=$_plan_review_rc and unexpected LOOP_STATUS=$LOOP_STATUS**"
-            LOOP_STATUS=panel-failed
         fi
         if [[ "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
             _persist_round=true
@@ -270,7 +267,6 @@ else
                 REVIEW_ROUND_COUNT="$STEP3_REVIEW_ROUND_NUM"
             fi
         fi
-    fi
 fi
 
 phase_driver_write_result_env "$RESULT_ENV" \
@@ -278,6 +274,7 @@ phase_driver_write_result_env "$RESULT_ENV" \
     "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}" \
     "STEP3_REVIEW_CAP_REACHED=${STEP3_REVIEW_CAP_REACHED:-false}" \
     "STEP3_REVIEW_ROUND_NUM=${STEP3_REVIEW_ROUND_NUM:-}" \
+    "ROUND_NUM=${ROUND_NUM:-}" \
     "ACCEPTED_COUNT=${ACCEPTED_COUNT:-}" \
     "IMPORTANT_ACCEPTED_COUNT=${IMPORTANT_ACCEPTED_COUNT:-}" \
     "DEGRADED_PANEL=${DEGRADED_PANEL:-}" \

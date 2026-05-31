@@ -78,6 +78,16 @@ if (
 else
     fail 'resolve tree-walk fallback'
 fi
+other_root="$TMP/other-plugin-root"
+mkdir -p "$other_root"
+if (
+    export CLAUDE_PLUGIN_ROOT="$other_root"
+    [[ "$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$session")" == "$other_root" ]]
+); then
+    pass 'CLAUDE_PLUGIN_ROOT overrides session-env'
+else
+    fail 'CLAUDE_PLUGIN_ROOT overrides session-env'
+fi
 
 echo "=== write_result_env ==="
 result="$TMP/out.env"
