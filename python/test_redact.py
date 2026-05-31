@@ -26,6 +26,24 @@ def _bash_redact(helper: Path, text: str) -> str:
     return proc.stdout
 
 
+def _bash_redact_pipeline(text: str) -> str:
+    tmpdir_proc = subprocess.run(
+        [str(TMPDIR_SH)],
+        input=text,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    secrets_proc = subprocess.run(
+        [str(SECRETS_SH)],
+        input=tmpdir_proc.stdout,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    return secrets_proc.stdout
+
+
 @pytest.mark.parametrize(
     "vector",
     [
@@ -112,3 +130,77 @@ def test_parity_redact_tmpdir_sample() -> None:
     py_out = redact.redact(vector)
     bash_out = _bash_redact(TMPDIR_SH, vector)
     assert _parity_normalize(py_out) == _parity_normalize(bash_out)
+
+
+@pytest.mark.skipif(
+    not SECRETS_SH.is_file()
+    or not TMPDIR_SH.is_file()
+    or shutil.which("bash") is None,
+    reason="bash redaction pipeline unavailable",
+)
+@pytest.mark.parametrize(
+    "vector",
+    [
+        "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD",
+        "ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH",
+        "AKIAIOSFODNN7EXAMPLE",
+        "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0."
+        "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c",
+        "/tmp/claude-implement-larch1-G2GITf",
+        "prefix sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD suffix",
+    ],
+)
+def test_parity_redact_pipeline_vectors(vector: str) -> None:
+    py_out = redact.redact(vector)
+    bash_out = _bash_redact_pipeline(vector)
+    assert _parity_normalize(py_out) == _parity_normalize(bash_out)
+
+
+UNTERMINATED_BODY = (
+    "opening text\n"
+    "-----BEGIN RSA PRIVATE KEY-----\n"
+    "MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Q\n"
+    "KUpRKfFLfRYC9AIKjbJTWit+CqvjWYzvQwECAwEAAQJAIJLixBy2qpFoS4DSmoEm\n"
+    "tail-that-should-not-silently-survive"
+)
+
+INDENTED_BODY = (
+    "prefix line\n"
+    "> -----BEGIN RSA PRIVATE KEY-----\n"
+    "> MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9Cnzj4p4WGeKLs1Pt8Q\n"
+    "> -----END RSA PRIVATE KEY-----\n"
+    "    -----BEGIN OPENSSH PRIVATE KEY-----\n"
+    "    b3BlbnNzaC1rZXktdjEAAAAABG5vbmUAAAAEbm9uZQAAAAAAAAABAAABlwAAAA\n"
+    "    -----END OPENSSH PRIVATE KEY-----\n"
+    "suffix line"
+)
+
+
+@pytest.mark.skipif(
+    not SECRETS_SH.is_file()
+    or not TMPDIR_SH.is_file()
+    or shutil.which("bash") is None,
+    reason="bash redaction pipeline unavailable",
+)
+def test_parity_unterminated_pem_pipeline() -> None:
+    py_out = redact.redact(UNTERMINATED_BODY)
+    bash_out = _bash_redact_pipeline(UNTERMINATED_BODY)
+    assert _parity_normalize(py_out) == _parity_normalize(bash_out)
+    assert "tail-that-should-not-silently-survive" not in py_out
+    assert "content truncated" in py_out
+
+
+@pytest.mark.skipif(
+    not SECRETS_SH.is_file()
+    or not TMPDIR_SH.is_file()
+    or shutil.which("bash") is None,
+    reason="bash redaction pipeline unavailable",
+)
+def test_parity_indented_pem_pipeline() -> None:
+    py_out = redact.redact(INDENTED_BODY)
+    bash_out = _bash_redact_pipeline(INDENTED_BODY)
+    assert _parity_normalize(py_out) == _parity_normalize(bash_out)
+    assert "<REDACTED-PRIVATE-KEY>" in py_out
+    assert "MIIBOgIBAAJB" not in py_out
+    assert "prefix line" in py_out
+    assert "suffix line" in py_out

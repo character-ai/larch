@@ -39,6 +39,25 @@ def test_classify_success() -> None:
     assert failure == LaunchFailure("none", "")
 
 
+def test_parse_launcher_failure_class_missing_kv_defaults_health(
+    tmp_path: Path,
+) -> None:
+    log_file = tmp_path / "capture.log"
+    log_file.write_text("ordinary launcher output\n", encoding="utf-8")
+    assert agents.parse_launcher_failure_class(log_file) == "health"
+    assert agents.parse_launcher_failure_class(tmp_path / "missing.log") == "health"
+    assert agents.parse_launcher_failure_class(None) == "health"
+
+
+def test_parse_launcher_failure_class_reads_last_kv(tmp_path: Path) -> None:
+    log_file = tmp_path / "capture.log"
+    log_file.write_text(
+        "LAUNCHER_FAILURE_CLASS=health\nLAUNCHER_FAILURE_CLASS=other\n",
+        encoding="utf-8",
+    )
+    assert agents.parse_launcher_failure_class(log_file) == "other"
+
+
 def test_classify_timeout() -> None:
     failure = agents.classify_launch_failure(config.EXIT_TIMEOUT)
     assert failure.failure_class == "other"

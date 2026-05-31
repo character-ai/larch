@@ -63,10 +63,23 @@ maybe_append_py_lint_target() {
     append_target_once py-lint
 }
 
+maybe_append_py_test_target() {
+    if ! command -v pytest >/dev/null 2>&1; then
+        if [ "${PY_TEST_SKIP_WARNED:-0}" -eq 0 ]; then
+            echo "WARNING: pytest not found on PATH — skipping py-test direct relevant target"
+            PY_TEST_SKIP_WARNED=1
+        fi
+        return 0
+    fi
+
+    append_target_once py-test
+}
+
 run_direct_relevant_targets() {
     local f=""
     DIRECT_TARGETS=""
     PY_LINT_SKIP_WARNED=0
+    PY_TEST_SKIP_WARNED=0
     while IFS= read -r f; do
         case "$f" in
             scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|scripts/write-run-params.sh)
@@ -174,9 +187,9 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
-            python/*.py|python/pyproject.toml|python/ruff.toml|python/pyrightconfig.json|python/requirements-dev.txt|python/requirements-test.txt)
+            python/*.py|python/pyproject.toml|python/ruff.toml|python/pyrightconfig.json|python/.pylintrc|python/requirements-dev.txt|python/requirements-test.txt)
                 maybe_append_py_lint_target
-                append_target_once py-test
+                maybe_append_py_test_target
                 ;;
         esac
     done <<< "$MODIFIED_FILES"

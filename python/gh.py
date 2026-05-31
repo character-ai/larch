@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Sequence
+import tempfile
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
+from pathlib import Path
 
+import redact
 from errors import ShipError
 from proc import CommandResult, Runner
 from retry import RetryResult, with_transient_retry
@@ -47,6 +51,35 @@ def _ensure_success(result: CommandResult) -> CommandResult:
     return result
 
 
+def _require_json_keys(
+    data: Mapping[str, object],
+    keys: Sequence[str],
+    *,
+    context: str,
+) -> None:
+    missing = [key for key in keys if key not in data]
+    if missing:
+        msg = f"gh JSON missing required keys {missing!r} ({context})"
+        raise ShipError(msg)
+
+
+@contextmanager
+def _body_file_args(body: str) -> Iterator[tuple[str, str]]:
+    redacted = redact.redact(body)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".md",
+        delete=False,
+    ) as handle:
+        handle.write(redacted)
+        path = handle.name
+    try:
+        yield "--body-file", path
+    finally:
+        Path(path).unlink(missing_ok=True)
+
+
 def _retry_read(
     runner: Runner,
     argv: Sequence[str],
@@ -58,7 +91,7 @@ def _retry_read(
         return res, res.returncode, _combined(res)
 
     retried: RetryResult[CommandResult] = with_transient_retry(attempt)
-    return _ensure_success(retried.value)
+    return retried.value
 
 
 def pr_view(
@@ -68,20 +101,27 @@ def pr_view(
     repo: str,
     cwd: str | None = None,
 ) -> PullRequest:
-    result = _retry_read(
-        runner,
-        [
-            "pr",
-            "view",
-            str(number),
-            "--repo",
-            repo,
-            "--json",
-            "number,url,state,headRefName",
-        ],
-        cwd=cwd,
+    result = _ensure_success(
+        _retry_read(
+            runner,
+            [
+                "pr",
+                "view",
+                str(number),
+                "--repo",
+                repo,
+                "--json",
+                "number,url,state,headRefName",
+            ],
+            cwd=cwd,
+        ),
     )
     data = json.loads(result.stdout)
+    _require_json_keys(
+        data,
+        ("number", "url", "state", "headRefName"),
+        context="pr view",
+    )
     return PullRequest(
         number=int(data["number"]),
         url=str(data["url"]),
@@ -97,34 +137,45 @@ def pr_for_branch(
     repo: str,
     cwd: str | None = None,
 ) -> PullRequest | None:
-    result = _retry_read(
-        runner,
-        [
-            "pr",
-            "list",
-            "--repo",
-            repo,
-            "--head",
-            branch,
-            "--state",
-            "open",
-            "--json",
-            "number,url,state,headRefName",
-            "--limit",
-            "1",
-        ],
-        cwd=cwd,
+    result = _ensure_success(
+        _retry_read(
+            runner,
+            [
+                "pr",
+                "list",
+                "--repo",
+                repo,
+                "--head",
+                branch,
+                "--state",
+                "open",
+                "--json",
+                "number,url,state,headRefName",
+                "--limit",
+                "1",
+            ],
+            cwd=cwd,
+        ),
     )
     rows = json.loads(result.stdout or "[]")
     if not rows:
         return None
     row = rows[0]
+    _require_json_keys(
+        row,
+        ("number", "url", "state", "headRefName"),
+        context="pr list",
+    )
     return PullRequest(
         number=int(row["number"]),
         url=str(row["url"]),
         state=str(row["state"]),
         head_ref=str(row["headRefName"]),
     )
+
+
+def _is_create_conflict(text: str) -> bool:
+    return "pull request for branch" in text and "already exists" in text
 
 
 def pr_create(
@@ -140,24 +191,36 @@ def pr_create(
     existing = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
     if existing is not None:
         return existing
-    argv = [
-        "pr",
-        "create",
-        "--repo",
-        repo,
-        "--head",
-        branch,
-        "--title",
-        title,
-        "--body",
-        body,
-        "--json",
-        "number,url,state,headRefName",
-    ]
-    if draft:
-        argv.append("--draft")
-    result = _ensure_success(_gh(runner, argv, cwd=cwd))
+    with _body_file_args(body) as (body_flag, body_path):
+        argv = [
+            "pr",
+            "create",
+            "--repo",
+            repo,
+            "--head",
+            branch,
+            "--title",
+            title,
+            body_flag,
+            body_path,
+            "--json",
+            "number,url,state,headRefName",
+        ]
+        if draft:
+            argv.append("--draft")
+        result = _gh(runner, argv, cwd=cwd)
+    if result.returncode != 0:
+        if _is_create_conflict(_combined(result)):
+            recovered = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
+            if recovered is not None:
+                return recovered
+        _ensure_success(result)
     data = json.loads(result.stdout)
+    _require_json_keys(
+        data,
+        ("number", "url", "state", "headRefName"),
+        context="pr create",
+    )
     return PullRequest(
         number=int(data["number"]),
         url=str(data["url"]),
@@ -201,31 +264,40 @@ def run_list(
     limit: int = 5,
     cwd: str | None = None,
 ) -> tuple[WorkflowRun, ...]:
-    result = _retry_read(
-        runner,
-        [
-            "run",
-            "list",
-            "--repo",
-            repo,
-            "--branch",
-            branch,
-            "--limit",
-            str(limit),
-            "--json",
-            "databaseId,status,conclusion",
-        ],
-        cwd=cwd,
+    result = _ensure_success(
+        _retry_read(
+            runner,
+            [
+                "run",
+                "list",
+                "--repo",
+                repo,
+                "--branch",
+                branch,
+                "--limit",
+                str(limit),
+                "--json",
+                "databaseId,status,conclusion",
+            ],
+            cwd=cwd,
+        ),
     )
     rows = json.loads(result.stdout or "[]")
-    return tuple(
-        WorkflowRun(
-            database_id=int(row["databaseId"]),
-            status=str(row["status"]),
-            conclusion=row.get("conclusion"),
+    runs: list[WorkflowRun] = []
+    for row in rows:
+        _require_json_keys(
+            row,
+            ("databaseId", "status"),
+            context="run list",
         )
-        for row in rows
-    )
+        runs.append(
+            WorkflowRun(
+                database_id=int(row["databaseId"]),
+                status=str(row["status"]),
+                conclusion=row.get("conclusion"),  # type: ignore[arg-type]
+            ),
+        )
+    return tuple(runs)
 
 
 def run_view(
@@ -235,20 +307,23 @@ def run_view(
     repo: str,
     cwd: str | None = None,
 ) -> WorkflowRun:
-    result = _retry_read(
-        runner,
-        [
-            "run",
-            "view",
-            str(run_id),
-            "--repo",
-            repo,
-            "--json",
-            "databaseId,status,conclusion",
-        ],
-        cwd=cwd,
+    result = _ensure_success(
+        _retry_read(
+            runner,
+            [
+                "run",
+                "view",
+                str(run_id),
+                "--repo",
+                repo,
+                "--json",
+                "databaseId,status,conclusion",
+            ],
+            cwd=cwd,
+        ),
     )
     data = json.loads(result.stdout)
+    _require_json_keys(data, ("databaseId", "status"), context="run view")
     return WorkflowRun(
         database_id=int(data["databaseId"]),
         status=str(data["status"]),
@@ -263,26 +338,37 @@ def failed_jobs(
     repo: str,
     cwd: str | None = None,
 ) -> tuple[FailedJob, ...]:
-    result = _retry_read(
-        runner,
-        [
-            "run",
-            "view",
-            str(run_id),
-            "--repo",
-            repo,
-            "--json",
-            "jobs",
-        ],
-        cwd=cwd,
+    result = _ensure_success(
+        _retry_read(
+            runner,
+            [
+                "run",
+                "view",
+                str(run_id),
+                "--repo",
+                repo,
+                "--json",
+                "jobs",
+            ],
+            cwd=cwd,
+        ),
     )
     payload = json.loads(result.stdout)
     jobs = payload.get("jobs", [])
-    return tuple(
-        FailedJob(name=str(job["name"]), conclusion=str(job.get("conclusion", "")))
-        for job in jobs
-        if job.get("conclusion") == "failure"
-    )
+    if not isinstance(jobs, list):
+        msg = "gh JSON missing required keys ['jobs'] (failed jobs)"
+        raise ShipError(msg)
+    failed: list[FailedJob] = []
+    for job in jobs:
+        if not isinstance(job, dict):
+            continue
+        if job.get("conclusion") != "failure":
+            continue
+        _require_json_keys(job, ("name",), context="failed jobs")
+        failed.append(
+            FailedJob(name=str(job["name"]), conclusion=str(job.get("conclusion", ""))),
+        )
+    return tuple(failed)
 
 
 def run_rerun(
@@ -307,11 +393,12 @@ def issue_comment(
     repo: str,
     cwd: str | None = None,
 ) -> CommandResult:
-    return _gh(
-        runner,
-        ["issue", "comment", issue, "--repo", repo, "--body", body],
-        cwd=cwd,
-    )
+    with _body_file_args(body) as (body_flag, body_path):
+        return _gh(
+            runner,
+            ["issue", "comment", issue, "--repo", repo, body_flag, body_path],
+            cwd=cwd,
+        )
 
 
 def issue_edit(
@@ -327,5 +414,7 @@ def issue_edit(
     if title is not None:
         argv.extend(["--title", title])
     if body is not None:
-        argv.extend(["--body", body])
+        with _body_file_args(body) as (body_flag, body_path):
+            argv.extend([body_flag, body_path])
+            return _gh(runner, argv, cwd=cwd)
     return _gh(runner, argv, cwd=cwd)

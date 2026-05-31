@@ -31,4 +31,10 @@ make py-lint   # cd python && ruff check . && pylint . && pyright
 make py-test   # cd python && pytest
 ```
 
+`make lint` does not invoke `py-lint` or `py-test`; use those targets explicitly or rely on
+CI `python-lint` / `python-tests` jobs. Per-job CI replay (`make py-lint` / `make py-test` from
+ship-pr failed-job tables) needs the same toolchain as CI: `pip install -r python/requirements-dev.txt`
+for lint (including **Node** on PATH for pyright) and `pip install -r python/requirements-test.txt`
+for tests.
+
 The live `/implement` path still uses bash until Phase 7 (`LARCH_SHIP_PR_IMPL=python`).

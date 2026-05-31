@@ -64,6 +64,22 @@ def is_transient_infra_failure(
     return path.stat().st_size == 0
 
 
+def parse_launcher_failure_class(log_file: str | Path | None) -> str:
+    """Last LAUNCHER_FAILURE_CLASS= from launcher capture; unknown/missing → health."""
+    if log_file is None:
+        return "health"
+    path = Path(log_file)
+    if not path.is_file():
+        return "health"
+    last = ""
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("LAUNCHER_FAILURE_CLASS="):
+            last = line.split("=", 1)[1].strip().strip("\r")
+    if last in ("none", "health", "other"):
+        return last
+    return "health"
+
+
 def classify_launch_failure(
     launcher_exit: int,
     sidecar: str | Path | None = None,

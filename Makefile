@@ -22,7 +22,7 @@
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: py-lint py-test test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-awk-multibyte-regex lint-only
+lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-bare-grep-probe lint-awk-multibyte-regex lint-only
 
 py-lint:
 	cd python && ruff check . && pylint . && pyright
