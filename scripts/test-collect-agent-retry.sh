@@ -813,8 +813,8 @@ assert_line "case corrupt-risk status" "STATUS=OK" "$RESULT_CORRUPT_RISK"
 assert_line "case corrupt-risk reviewer file" "REVIEWER_FILE=${OUT_CORRUPT_RISK%.txt}-retry.txt" "$RESULT_CORRUPT_RISK"
 
 # STDERR_SINK retry forwarding and fail-closed .. guard.
-if grep -F -- '_outer_sink_args+=(--stderr-sink "$META_STDERR_SINK")' "$COLLECTOR" >/dev/null \
-    && grep -F -- 'RETRY_ARGS+=(--stderr-sink "$META_STDERR_SINK")' "$COLLECTOR" >/dev/null; then
+if grep -F -- "_outer_sink_args+=(--stderr-sink \"\$META_STDERR_SINK\")" "$COLLECTOR" >/dev/null \
+    && grep -F -- "RETRY_ARGS+=(--stderr-sink \"\$META_STDERR_SINK\")" "$COLLECTOR" >/dev/null; then
     ok "collector forwards META_STDERR_SINK on outer and CMD_JSON retry paths"
 else
     fail "collector must forward --stderr-sink on outer-launcher and CMD_JSON retry paths"

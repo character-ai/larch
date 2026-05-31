@@ -1378,7 +1378,7 @@ if grep -Fq "unknown flag: --stderr-sink" "$TMPDIR/stderr-sink-accept-codex.stde
 else
     pass
 fi
-if grep -F -- '_RUN_EXTERNAL_SINK_ARGS+=(--stderr-sink "$STDERR_SINK")' "$REPO_ROOT/scripts/launch-review.sh" >/dev/null; then
+if grep -F -- "_RUN_EXTERNAL_SINK_ARGS+=(--stderr-sink \"\$STDERR_SINK\")" "$REPO_ROOT/scripts/launch-review.sh" >/dev/null; then
     pass
 else
     fail "launch-review.sh codex lane must thread --stderr-sink to run-external-agent.sh"
