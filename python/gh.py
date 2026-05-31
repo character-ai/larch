@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from collections.abc import Sequence
+from dataclasses import dataclass
 
+from errors import ShipError
 from proc import CommandResult, Runner
 from retry import RetryResult, with_transient_retry
 
@@ -39,6 +40,13 @@ def _combined(result: CommandResult) -> str:
     return result.stdout + result.stderr
 
 
+def _ensure_success(result: CommandResult) -> CommandResult:
+    if result.returncode != 0:
+        msg = f"gh command failed ({result.returncode}): {' '.join(result.argv)}"
+        raise ShipError(msg)
+    return result
+
+
 def _retry_read(
     runner: Runner,
     argv: Sequence[str],
@@ -50,7 +58,7 @@ def _retry_read(
         return res, res.returncode, _combined(res)
 
     retried: RetryResult[CommandResult] = with_transient_retry(attempt)
-    return retried.value
+    return _ensure_success(retried.value)
 
 
 def pr_view(
@@ -98,6 +106,8 @@ def pr_for_branch(
             repo,
             "--head",
             branch,
+            "--state",
+            "open",
             "--json",
             "number,url,state,headRefName",
             "--limit",
@@ -146,7 +156,7 @@ def pr_create(
     ]
     if draft:
         argv.append("--draft")
-    result = _gh(runner, argv, cwd=cwd)
+    result = _ensure_success(_gh(runner, argv, cwd=cwd))
     data = json.loads(result.stdout)
     return PullRequest(
         number=int(data["number"]),

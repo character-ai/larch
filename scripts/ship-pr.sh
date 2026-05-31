@@ -2163,6 +2163,12 @@ _per_job_argv() {
         agent-sync)
             _PJA_ARGV=(make agent-sync)
             ;;
+        python-lint)
+            _PJA_ARGV=(make py-lint)
+            ;;
+        python-tests)
+            _PJA_ARGV=(make py-test)
+            ;;
         *)
             return 1
             ;;

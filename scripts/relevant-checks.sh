@@ -153,6 +153,12 @@ run_direct_relevant_targets() {
                 append_target_once test-lib-net
                 ;;
         esac
+        case "$f" in
+            python/*.py|python/pyproject.toml|python/ruff.toml|python/pyrightconfig.json|python/requirements-dev.txt|python/requirements-test.txt)
+                append_target_once py-lint
+                append_target_once py-test
+                ;;
+        esac
     done <<< "$MODIFIED_FILES"
 
     if [ -n "$DIRECT_TARGETS" ]; then

@@ -52,6 +52,8 @@ def test_is_transient_net_signature(text: str, expected: bool) -> None:
         "Could not resolve host: api.github.com",
         "fatal: unable to access 'https://github.com/x/y.git/': Failed to connect",
         "dial tcp: lookup foo.example: no such host",
+        "failed during EOF cleanup",
+        "failed after git fetch",
     ],
 )
 def test_parity_is_transient_net_signature(text: str) -> None:
@@ -79,3 +81,16 @@ def test_with_transient_retry_backoff_schedule() -> None:
         float(config.TRANSIENT_RETRY_BACKOFF_SEC[0]),
         float(config.TRANSIENT_RETRY_BACKOFF_SEC[1]),
     ]
+
+
+def test_with_transient_retry_reuses_last_backoff() -> None:
+    sleeps: list[float] = []
+    attempts = {"n": 0}
+
+    def fn() -> tuple[str, int, str]:
+        attempts["n"] += 1
+        return "", 1, "fatal: Could not resolve host"
+
+    result = retry.with_transient_retry(fn, sleeper=sleeps.append, max_attempts=4)
+    assert result.attempts == 4
+    assert sleeps == [2.0, 4.0, 4.0]

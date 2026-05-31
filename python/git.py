@@ -3,9 +3,10 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
 from collections.abc import Sequence
+from dataclasses import dataclass
 
+from errors import ShipError
 from proc import CommandResult, Runner
 
 
@@ -23,17 +24,24 @@ def _run(runner: Runner, argv: Sequence[str], *, cwd: str | None = None) -> Comm
     return runner.run(list(argv), cwd=cwd)
 
 
+def _ensure_success(result: CommandResult) -> CommandResult:
+    if result.returncode != 0:
+        msg = f"git command failed ({result.returncode}): {' '.join(result.argv)}"
+        raise ShipError(msg)
+    return result
+
+
 def rev_parse(runner: Runner, ref: str, *, cwd: str | None = None) -> str:
-    result = _run(runner, ["git", "rev-parse", ref], cwd=cwd)
+    result = _ensure_success(_run(runner, ["git", "rev-parse", ref], cwd=cwd))
     return result.stdout.strip()
 
 
 def current_branch(runner: Runner, *, cwd: str | None = None) -> str:
-    result = _run(
+    result = _ensure_success(_run(
         runner,
         ["git", "symbolic-ref", "--short", "HEAD"],
         cwd=cwd,
-    )
+    ))
     return result.stdout.strip()
 
 
@@ -48,11 +56,11 @@ def rev_count(
     *,
     cwd: str | None = None,
 ) -> int:
-    result = _run(
+    result = _ensure_success(_run(
         runner,
         ["git", "rev-list", "--count", f"{left}..{right}"],
         cwd=cwd,
-    )
+    ))
     return int(result.stdout.strip() or "0")
 
 
@@ -63,7 +71,7 @@ def merge_base(
     *,
     cwd: str | None = None,
 ) -> str:
-    result = _run(runner, ["git", "merge-base", left, right], cwd=cwd)
+    result = _ensure_success(_run(runner, ["git", "merge-base", left, right], cwd=cwd))
     return result.stdout.strip()
 
 
@@ -111,7 +119,7 @@ def reset(
 
 
 def status(runner: Runner, *, cwd: str | None = None) -> GitStatus:
-    result = _run(runner, ["git", "status", "--porcelain"], cwd=cwd)
+    result = _ensure_success(_run(runner, ["git", "status", "--porcelain"], cwd=cwd))
     return GitStatus(porcelain=result.stdout)
 
 
@@ -121,11 +129,11 @@ def log_subjects(
     *,
     cwd: str | None = None,
 ) -> LogSubjects:
-    result = _run(
+    result = _ensure_success(_run(
         runner,
         ["git", "log", "--format=%s", rev_range],
         cwd=cwd,
-    )
+    ))
     lines = tuple(line for line in result.stdout.splitlines() if line)
     return LogSubjects(subjects=lines)
 
@@ -136,7 +144,7 @@ def ls_files(
     cwd: str | None = None,
 ) -> tuple[str, ...]:
     argv = ["git", "ls-files", *paths]
-    result = _run(runner, argv, cwd=cwd)
+    result = _ensure_success(_run(runner, argv, cwd=cwd))
     return tuple(line for line in result.stdout.splitlines() if line)
 
 

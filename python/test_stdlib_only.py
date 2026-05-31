@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import importlib
 import sys
 from pathlib import Path
 
@@ -31,16 +32,40 @@ def _collect_imports(path: Path) -> list[tuple[int, str]]:
     found: list[tuple[int, str]] = []
 
     class Visitor(ast.NodeVisitor):
+        def _record_dynamic_import(self, node: ast.Call) -> None:
+            if not node.args or not isinstance(node.args[0], ast.Constant):
+                return
+            if not isinstance(node.args[0].value, str):
+                return
+            name = node.args[0].value
+            if not name:
+                return
+            found.append((node.lineno, name.split(".")[0]))
+
         def visit_Import(self, node: ast.Import) -> None:
             for alias in node.names:
                 found.append((node.lineno, alias.name.split(".")[0]))
 
         def visit_ImportFrom(self, node: ast.ImportFrom) -> None:
-            if node.module is None:
-                return
             pkg = path.stem
-            resolved = _resolve_import(node.module, package=pkg)
+            if node.module is None:
+                for alias in node.names:
+                    found.append((node.lineno, alias.name.split(".")[0]))
+                return
+            resolved = _resolve_import("." * node.level + node.module, package=pkg)
             found.append((node.lineno, resolved.split(".")[0]))
+
+        def visit_Call(self, node: ast.Call) -> None:
+            if isinstance(node.func, ast.Name) and node.func.id == "__import__":
+                self._record_dynamic_import(node)
+            if (
+                isinstance(node.func, ast.Attribute)
+                and node.func.attr == "import_module"
+                and isinstance(node.func.value, ast.Name)
+                and node.func.value.id == "importlib"
+            ):
+                self._record_dynamic_import(node)
+            self.generic_visit(node)
 
     Visitor().visit(tree)
     return found
@@ -48,7 +73,7 @@ def _collect_imports(path: Path) -> list[tuple[int, str]]:
 
 def test_runtime_modules_are_stdlib_only() -> None:
     stdlib = set(sys.stdlib_module_names)
-    sibling = {p.stem for p in PYTHON_DIR.glob("*.py")}
+    sibling = set(RUNTIME_MODULES)
     violations: list[str] = []
     for mod in RUNTIME_MODULES:
         path = PYTHON_DIR / f"{mod}.py"
@@ -57,3 +82,8 @@ def test_runtime_modules_are_stdlib_only() -> None:
                 continue
             violations.append(f"{mod}.py:{lineno}: {root}")
     assert not violations, "non-stdlib imports:\n" + "\n".join(violations)
+
+
+def test_runtime_modules_import_cleanly() -> None:
+    for mod in RUNTIME_MODULES:
+        importlib.import_module(mod)

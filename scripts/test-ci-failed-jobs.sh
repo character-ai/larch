@@ -220,7 +220,7 @@ workflow_jobs=$(awk '
 ' "$REPO_ROOT/.github/workflows/ci.yaml")
 for job in $workflow_jobs; do
     case "$job" in
-        lint|lint-mermaid|shellcheck|test-harnesses|agent-lint|agnix|gitleaks|trufflehog|agent-sync|smoke-dialectic)
+        lint|lint-mermaid|shellcheck|test-harnesses|agent-lint|agnix|gitleaks|trufflehog|agent-sync|smoke-dialectic|python-lint|python-tests)
             ok "workflow job mapped: $job"
             ;;
         *)

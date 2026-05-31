@@ -214,8 +214,8 @@ def _redact_tmpdir_paths(text: str) -> str:
 
 def redact(text: str) -> str:
     """Redact secrets and session tmpdir literals; idempotent."""
-    secrets_out, _ = _redact_secrets_pem(text)
-    paths_out = _redact_tmpdir_paths(secrets_out)
+    paths_out = _redact_tmpdir_paths(text)
+    paths_out, _ = _redact_secrets_pem(paths_out)
     # Parity with redact-secrets.sh awk: line-oriented output ends with newline.
     if paths_out and not paths_out.endswith("\n"):
         paths_out += "\n"

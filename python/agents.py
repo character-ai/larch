@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
 from pathlib import Path
 from collections.abc import Callable, Sequence
+from dataclasses import dataclass
 
 import config
 from proc import CommandResult, Runner
@@ -84,17 +84,18 @@ def classify_launch_failure(
         return LaunchFailure(failure_class="health", reason="health-probe")
     if launcher_exit == config.EXIT_TIMEOUT:
         return LaunchFailure(failure_class="other", reason="timeout")
-    for path in (sidecar, output_file):
-        if not path:
-            continue
-        p = Path(path)
-        if not p.is_file():
-            continue
-        text = p.read_text(encoding="utf-8", errors="replace")
+    if sidecar:
+        p = Path(sidecar)
+        text = p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
         if _PARSE_RE.search(text):
             return LaunchFailure(failure_class="other", reason="parse")
         if _REFUSAL_RE.search(text):
             return LaunchFailure(failure_class="other", reason="refusal")
+    if output_file:
+        p = Path(output_file)
+        text = p.read_text(encoding="utf-8", errors="replace") if p.is_file() else ""
+        if _PARSE_RE.search(text):
+            return LaunchFailure(failure_class="other", reason="parse")
     return LaunchFailure(failure_class="other", reason="unknown")
 
 
@@ -178,9 +179,13 @@ def run_waterfall(
 
     Health-class failures fall through to the next tier.
     """
+    tier_list = list(tiers)
+    if first_tier and first_tier in tier_list:
+        start = tier_list.index(first_tier)
+        tier_list = [*tier_list[start:], *tier_list[:start]]
     attempts: list[TierAttempt] = []
-    first = first_tier or (tiers[0] if tiers else "")
-    for idx, tier in enumerate(tiers):
+    first = first_tier or (tier_list[0] if tier_list else "")
+    for idx, tier in enumerate(tier_list):
         attempt = launch_fn(tier)
         attempts.append(attempt)
         if attempt.launcher_exit == 0 and attempt.wrapper_rc == 0:

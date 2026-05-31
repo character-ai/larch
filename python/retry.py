@@ -5,7 +5,7 @@ from __future__ import annotations
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
-from typing import TypeVar
+from typing import Generic, TypeVar
 
 import config
 
@@ -42,21 +42,21 @@ def is_transient_net_signature(text: str) -> bool:
         return True
     if "Connection reset by peer" in text:
         return True
-    if "EOF" in text and "during" in text:
+    if "EOF" in text and "during" in text and text.index("EOF") < text.index("during"):
         return True
     if "context deadline exceeded" in text:
         return True
     if "no valid output 3 times" in text:
         return True
-    if "git fetch" in text and "failed" in text:
+    if "git fetch" in text and "failed" in text and text.index("git fetch") < text.index("failed"):
         return True
-    if "lookup" in text and "no such host" in text:
+    if "lookup" in text and "no such host" in text and text.index("lookup") < text.index("no such host"):
         return True
     return "no such host" in text
 
 
 @dataclass(frozen=True)
-class RetryResult[T]:
+class RetryResult(Generic[T]):
     value: T
     attempts: int
     last_returncode: int = 0
@@ -83,7 +83,8 @@ def with_transient_retry(
             return RetryResult(value=value, attempts=attempt, last_returncode=rc)
         if attempt >= max_attempts:
             return RetryResult(value=value, attempts=attempt, last_returncode=rc)
-        backoff = config.TRANSIENT_RETRY_BACKOFF_SEC[attempt - 1]
+        backoff_index = min(attempt - 1, len(config.TRANSIENT_RETRY_BACKOFF_SEC) - 1)
+        backoff = config.TRANSIENT_RETRY_BACKOFF_SEC[backoff_index]
         sleeper(float(backoff))
     msg = "unreachable"
     raise RuntimeError(msg)

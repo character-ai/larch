@@ -56,6 +56,56 @@ def test_parity_classify_timeout() -> None:
     assert py.reason == bash_reason
 
 
+@pytest.mark.skipif(
+    not LIB_COMMON.is_file() or shutil.which("bash") is None,
+    reason="bash or lib-external-launcher-common.sh unavailable",
+)
+@pytest.mark.parametrize(
+    ("launcher_exit", "sidecar_text", "output_text", "auth_verdict", "binary_present", "tool"),
+    [
+        (127, "", "", "unclassified", "0", "cursor"),
+        (1, "", "", "auth", "1", "cursor"),
+        (8, "", "", "non-auth", "1", "cursor"),
+        (1, "invalid json", "", "non-auth", "1", "cursor"),
+        (1, "refused to continue", "", "non-auth", "1", "cursor"),
+        (1, "", "parse error", "non-auth", "1", "cursor"),
+        (1, "", "refused to continue", "non-auth", "1", "cursor"),
+        (99, "", "ordinary failure", "non-auth", "1", "cursor"),
+    ],
+)
+def test_parity_classify_launch_failures(
+    tmp_path: Path,
+    launcher_exit: int,
+    sidecar_text: str,
+    output_text: str,
+    auth_verdict: str,
+    binary_present: str,
+    tool: str,
+) -> None:
+    sidecar = tmp_path / "sidecar.log"
+    output = tmp_path / "output.txt"
+    sidecar.write_text(sidecar_text, encoding="utf-8")
+    output.write_text(output_text, encoding="utf-8")
+    py = agents.classify_launch_failure(
+        launcher_exit,
+        sidecar,
+        auth_verdict=auth_verdict,
+        binary_present=binary_present == "1",
+        tool=tool,
+        output_file=output,
+    )
+    bash_cls, bash_reason = _bash_classify(
+        str(launcher_exit),
+        str(sidecar),
+        auth_verdict,
+        binary_present,
+        tool,
+        str(output),
+    )
+    assert py.failure_class == bash_cls
+    assert py.reason == bash_reason
+
+
 def test_build_launch_argv_cursor() -> None:
     argv = agents.build_launch_argv(
         "cursor",
@@ -108,3 +158,21 @@ def test_waterfall_falls_through_health() -> None:
     result = agents.run_waterfall(tiers, launch_fn, first_tier=tiers[0])
     assert result.winning_tier == tiers[-1]
     assert len(calls) == len(tiers)
+
+
+def test_waterfall_rotates_first_tier() -> None:
+    tiers = ["cursor", "codex", "claude"]
+    calls: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        calls.append(tier)
+        return TierAttempt(
+            tier=tier,
+            wrapper_rc=0,
+            launcher_exit=1,
+            failure=LaunchFailure("other", "unknown"),
+        )
+
+    result = agents.run_waterfall(tiers, launch_fn, first_tier="codex")
+    assert calls == ["codex"]
+    assert result.short_circuited is True

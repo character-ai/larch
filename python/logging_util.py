@@ -10,9 +10,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
+import config
+
 
 def _quiet_disabled() -> bool:
-    return os.environ.get("LARCH_QUIET_DISABLE", "").lower() in {
+    return os.environ.get(config.ENV_LARCH_QUIET_DISABLE, "").lower() in {
         "1",
         "true",
         "yes",

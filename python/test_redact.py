@@ -81,6 +81,13 @@ def test_idempotent() -> None:
     assert once == twice
 
 
+def test_tmpdir_redaction_precedes_secret_redaction() -> None:
+    text = "/tmp/claude-implement-sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD/file"
+    out = redact.redact(text)
+    assert out == "<TMPDIR>/file\n"
+    assert "<REDACTED-TOKEN>" not in out
+
+
 def _parity_normalize(text: str) -> str:
     return text.rstrip("\n")
 
