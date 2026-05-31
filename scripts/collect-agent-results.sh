@@ -513,6 +513,7 @@ parse_retry_meta() {
     META_OUTER_LAUNCHER_PROMPT_FILE=""
     META_OUTER_LAUNCHER_WORKDIR=""
     META_OUTER_LAUNCHER_RISK=""
+    META_STDERR_SINK=""
     while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
         meta_key="${meta_line%%=*}"
         meta_val="${meta_line#*=}"
@@ -527,8 +528,21 @@ parse_retry_meta() {
             OUTER_LAUNCHER_PROMPT_FILE) META_OUTER_LAUNCHER_PROMPT_FILE="$meta_val" ;;
             OUTER_LAUNCHER_WORKDIR) META_OUTER_LAUNCHER_WORKDIR="$meta_val" ;;
             OUTER_LAUNCHER_RISK) META_OUTER_LAUNCHER_RISK="$meta_val" ;;
+            STDERR_SINK) META_STDERR_SINK="$meta_val" ;;
         esac
     done < "$meta_path"
+}
+
+validate_retry_stderr_sink_or_mark() {
+    local idx="$1"
+    local orig_output="$2"
+    case "$META_STDERR_SINK" in
+        *..*)
+            mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: STDERR_SINK contains .."
+            return 1
+            ;;
+    esac
+    return 0
 }
 
 validate_retry_timeout_or_mark() {
@@ -625,6 +639,9 @@ launch_outer_retry_or_mark() {
         high|low) ;;
         *) META_OUTER_LAUNCHER_RISK=high ;;
     esac
+    validate_retry_stderr_sink_or_mark "$idx" "$orig_output" || return 1
+    _outer_sink_args=()
+    [[ -n "$META_STDERR_SINK" ]] && _outer_sink_args+=(--stderr-sink "$META_STDERR_SINK")
     (
         cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
         env -u LARCH_ALLOW_TEST_HOOKS \
@@ -635,7 +652,8 @@ launch_outer_retry_or_mark() {
                 --output "$retry_output" \
                 --timeout "$timeout_value" \
                 --risk "$META_OUTER_LAUNCHER_RISK" \
-                --prompt-file "$prompt_file"
+                --prompt-file "$prompt_file" \
+                "${_outer_sink_args[@]+"${_outer_sink_args[@]}"}"
     ) >/dev/null 2>&1 &
     eval "$launched_var=1"
     eval "$sentinels_var+=(\"\${retry_output}.done\")"
@@ -672,6 +690,8 @@ launch_cmd_json_retry_or_mark() {
     elif [[ "$META_CAPTURE_STDOUT_ONLY" == "true" ]]; then
         RETRY_ARGS+=(--capture-stdout-only)
     fi
+    validate_retry_stderr_sink_or_mark "$idx" "$orig_output" || return 1
+    [[ -n "$META_STDERR_SINK" ]] && RETRY_ARGS+=(--stderr-sink "$META_STDERR_SINK")
     RETRY_ARGS+=(--)
 
     CMD_ARR=()
@@ -890,6 +910,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         META_OUTER_LAUNCHER_PROMPT_FILE=""
         META_OUTER_LAUNCHER_WORKDIR=""
         META_OUTER_LAUNCHER_RISK=""
+        META_STDERR_SINK=""
         while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
             meta_key="${meta_line%%=*}"
             meta_val="${meta_line#*=}"
@@ -904,6 +925,7 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                 OUTER_LAUNCHER_PROMPT_FILE) META_OUTER_LAUNCHER_PROMPT_FILE="$meta_val" ;;
                 OUTER_LAUNCHER_WORKDIR) META_OUTER_LAUNCHER_WORKDIR="$meta_val" ;;
                 OUTER_LAUNCHER_RISK) META_OUTER_LAUNCHER_RISK="$meta_val" ;;
+                STDERR_SINK) META_STDERR_SINK="$meta_val" ;;
             esac
         done < "$META"
 
@@ -995,6 +1017,11 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                 high|low) ;;
                 *) META_OUTER_LAUNCHER_RISK=high ;;
             esac
+            if ! validate_retry_stderr_sink_or_mark "${RETRY_INDICES[$j]}" "$ORIG_OUTPUT"; then
+                continue
+            fi
+            _outer_sink_args=()
+            [[ -n "$META_STDERR_SINK" ]] && _outer_sink_args+=(--stderr-sink "$META_STDERR_SINK")
             (
                 cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
                 # Sanitize test-hook env vars before exec (R2_FINDING_1 of
@@ -1018,7 +1045,8 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
                         --output "$RETRY_OUTPUT" \
                         --timeout "$META_TIMEOUT" \
                         --risk "$META_OUTER_LAUNCHER_RISK" \
-                        --prompt-file "$META_OUTER_LAUNCHER_PROMPT_FILE"
+                        --prompt-file "$META_OUTER_LAUNCHER_PROMPT_FILE" \
+                        "${_outer_sink_args[@]+"${_outer_sink_args[@]}"}"
             ) >/dev/null 2>&1 &
             RETRY_SENTINELS+=("${RETRY_OUTPUT}.done")
             RETRY_LAUNCHED[j]=1
@@ -1059,6 +1087,10 @@ if [[ ${#RETRY_FILES[@]} -gt 0 ]]; then
         elif [[ "$META_CAPTURE_STDOUT_ONLY" == "true" ]]; then
             RETRY_ARGS+=(--capture-stdout-only)
         fi
+        if ! validate_retry_stderr_sink_or_mark "${RETRY_INDICES[$j]}" "$ORIG_OUTPUT"; then
+            continue
+        fi
+        [[ -n "$META_STDERR_SINK" ]] && RETRY_ARGS+=(--stderr-sink "$META_STDERR_SINK")
         RETRY_ARGS+=(--)
 
         # Deserialize CMD_JSON into a Bash array. Bash 3.2 portability:

@@ -200,6 +200,30 @@ else
     fail "missing/empty events parse should still append sidecar diagnostic"
 fi
 
+# external_launcher_append_outer_meta: optional STDERR_SINK= line.
+APPEND_META="$TMPDIR_ROOT/append-outer.meta"
+printf 'TOOL=cursor\nTIMEOUT=5\n' > "$APPEND_META"
+external_launcher_append_outer_meta "$APPEND_META" "/repo/scripts/launch-review.sh" "/tmp/out.prompt" "/tmp/work" "" "/tmp/custom.stderr.log"
+if grep -Fxq 'STDERR_SINK=/tmp/custom.stderr.log' "$APPEND_META"; then
+    pass
+else
+    fail "append_outer_meta with stderr_sink must write STDERR_SINK= line"
+fi
+if grep -Fxq 'OUTER_LAUNCHER_RISK=high' "$APPEND_META"; then
+    pass
+else
+    fail "append_outer_meta empty 5th risk arg must record OUTER_LAUNCHER_RISK=high"
+fi
+
+APPEND_META_NO_SINK="$TMPDIR_ROOT/append-outer-no-sink.meta"
+printf 'TOOL=cursor\nTIMEOUT=5\n' > "$APPEND_META_NO_SINK"
+external_launcher_append_outer_meta "$APPEND_META_NO_SINK" "/repo/scripts/launch-review.sh" "/tmp/out.prompt" "/tmp/work"
+if grep -q '^STDERR_SINK=' "$APPEND_META_NO_SINK" 2>/dev/null; then
+    fail "append_outer_meta without stderr_sink must omit STDERR_SINK= line"
+else
+    pass
+fi
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-lib-external-launcher-common.sh — %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     for f in "${FAILURES[@]}"; do

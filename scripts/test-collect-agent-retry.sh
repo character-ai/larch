@@ -812,6 +812,33 @@ RESULT_CORRUPT_RISK=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_COR
 assert_line "case corrupt-risk status" "STATUS=OK" "$RESULT_CORRUPT_RISK"
 assert_line "case corrupt-risk reviewer file" "REVIEWER_FILE=${OUT_CORRUPT_RISK%.txt}-retry.txt" "$RESULT_CORRUPT_RISK"
 
+# STDERR_SINK retry forwarding and fail-closed .. guard.
+if grep -F -- '_outer_sink_args+=(--stderr-sink "$META_STDERR_SINK")' "$COLLECTOR" >/dev/null \
+    && grep -F -- 'RETRY_ARGS+=(--stderr-sink "$META_STDERR_SINK")' "$COLLECTOR" >/dev/null; then
+    ok "collector forwards META_STDERR_SINK on outer and CMD_JSON retry paths"
+else
+    fail "collector must forward --stderr-sink on outer-launcher and CMD_JSON retry paths"
+fi
+
+OUT_SINK_DOTDOT="$TMPROOT/cursor-sink-dotdot.txt"
+prepare_outer_candidate "$OUT_SINK_DOTDOT"
+write_outer_meta "$OUT_SINK_DOTDOT" "$REPO_ROOT/scripts/launch-review.sh" \
+    "${OUT_SINK_DOTDOT}.prompt" "$WORKDIR_Q" \
+    'STDERR_SINK=/tmp/../etc/passwd'
+assert_fail_closed "case-sink-dotdot" "$OUT_SINK_DOTDOT" "Retry metadata invalid: STDERR_SINK contains .."
+
+OUT_SINK_ABSENT="$TMPROOT/cursor-sink-absent.txt"
+STDERR_SINK_ABSENT="$TMPROOT/case-sink-absent.stderr"
+write_empty_candidate "$OUT_SINK_ABSENT"
+write_meta "$OUT_SINK_ABSENT" "$(json_array bash "$HELPER" --output "$OUT_SINK_ABSENT")"
+RESULT_SINK_ABSENT=$(run_collector bash "$OUT_SINK_ABSENT" "$STDERR_SINK_ABSENT")
+assert_line "case sink-absent status" "STATUS=OK" "$RESULT_SINK_ABSENT"
+if grep -q '^STDERR_SINK=' "${OUT_SINK_ABSENT}.meta" 2>/dev/null; then
+    fail "case sink-absent meta must not carry STDERR_SINK="
+else
+    ok "case sink-absent meta omits STDERR_SINK="
+fi
+
 # Case cap_hit: output file whose first line is STATUS=cap_hit is classified
 # as STATUS=cap_hit by collect-agent-results.sh and does NOT
 # trigger a retry (no .meta file required, no retry output created).

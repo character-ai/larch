@@ -17,6 +17,7 @@ external_launcher_append_outer_meta() {
     local prompt_file_sidecar="$3"
     local workdir="$4"
     local risk="${5:-${RISK:-high}}"
+    local stderr_sink="${6:-}"
     [[ -f "$meta_path" ]] || return 0
     case "$risk" in
         high|low) ;;
@@ -27,6 +28,7 @@ external_launcher_append_outer_meta() {
         printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "$prompt_file_sidecar"
         printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$workdir"
         printf 'OUTER_LAUNCHER_RISK=%s\n' "$risk"
+        [[ -n "$stderr_sink" ]] && printf 'STDERR_SINK=%s\n' "$stderr_sink"
     } >> "$meta_path"
 }
 

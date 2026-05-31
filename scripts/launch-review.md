@@ -13,6 +13,10 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   share the session render cache.
 - `--output` is validated through `scripts/lib-validate-meta-path.sh` before
   launcher side effects.
+- Optional `--stderr-sink PATH` is accepted on both Codex and Cursor lanes,
+  validated with the same `[A-Za-z0-9._/-]` allowlist as `--output`, threaded
+  to inner `run-external-agent.sh` invocations, and recorded in the outer
+  `.meta` as `STDERR_SINK=` when non-empty (for collector retry round-trip).
 - Codex and Cursor append `OUTER_LAUNCHER=<repo>/scripts/launch-review.sh`
   metadata and store `${OUTPUT}.prompt` so `collect-agent-results.sh` can replay
   retries through the same launcher with `--tool <tool>`.
