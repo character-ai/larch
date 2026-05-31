@@ -1,4 +1,9 @@
-"""Local relevant-checks runner and lint-fix loop (ship-pr Phase 4)."""
+"""Local relevant-checks runner and lint-fix loop (ship-pr Phase 4).
+
+Local fixer dispatch mirrors ``lint-fix-loop.sh`` (#3207): non-zero codex/cursor
+launch maps to ``main-agent-required`` with ``failure_reason=dispatch-failed``;
+``agents.classify_launch_failure`` is not used on this path (unlike CI fixer).
+"""
 
 from __future__ import annotations
 
@@ -323,7 +328,18 @@ def run_relevant_checks(
                 skipped=False,
                 warn=None,
             )
-        log_text = log_file.read_text(encoding="utf-8")
+        log_text = _read_log_text_bounded(log_file, _PROMPT_TAIL_BYTES)
+        if log_text is None:
+            return ChecksResult(
+                ok=False,
+                exit_code=1,
+                site=site,
+                redacted_log_path=None,
+                phase="unknown",
+                coverage="changed-file-only",
+                skipped=False,
+                warn=None,
+            )
     except OSError:
         with contextlib.suppress(OSError):
             os.close(log_fd)
@@ -392,13 +408,12 @@ def run_relevant_checks(
     )
 
 
-def _scripts_dir(repo_root: str) -> Path:
-    _ = repo_root
+def _plugin_scripts_dir() -> Path:
     return Path(__file__).resolve().parents[1] / "scripts"
 
 
-def _run_external_agent_sh(repo_root: str) -> Path:
-    return _scripts_dir(repo_root) / "run-external-agent.sh"
+def _run_external_agent_sh() -> Path:
+    return _plugin_scripts_dir() / "run-external-agent.sh"
 
 
 def _site_label(site: str) -> str:
@@ -413,12 +428,24 @@ def _is_known_site(site: str) -> bool:
     return site in _SITE_LABELS
 
 
-def _read_log_tail(path: Path, max_bytes: int) -> str:
-    data = path.read_bytes()
+def _read_log_text_bounded(path: Path, max_bytes: int) -> str | None:
+    try:
+        if not path.is_file() or path.is_symlink():
+            return None
+        data = path.read_bytes()
+    except OSError:
+        return None
     if len(data) <= max_bytes:
         return data.decode("utf-8", errors="replace")
     chunk = data[-max_bytes:]
-    return f"[truncated to last {_PROMPT_TAIL_BYTES} bytes]\n" + chunk.decode("utf-8", errors="replace")
+    return f"[truncated to last {max_bytes} bytes]\n" + chunk.decode("utf-8", errors="replace")
+
+
+def _read_log_tail(path: Path, max_bytes: int) -> str:
+    text = _read_log_text_bounded(path, max_bytes)
+    if text is None:
+        return ""
+    return text
 
 
 def _sanitize_log_fence(text: str) -> str:
@@ -483,7 +510,7 @@ def _compose_prompt(
         "UNFIXABLE: lint failure originates in a vendored file under third-party/ that this loop is not allowed to edit",
         "```",
         "",
-        f"Checks log path: {checks_log}",
+        f"Checks log path: {redact.redact(str(checks_log))}",
         f"Checks log bytes: {log_bytes}",
         "",
         "## Checks Log",
@@ -663,6 +690,7 @@ def _load_cursor_launch_argv(
     lib = scripts_dir / "lib-cursor-launcher-common.sh"
     script = """
 set -euo pipefail
+SCRIPT_DIR="$(cd "$(dirname "$1")" && pwd)"
 source "$1"
 cursor_launcher_load_model_args 2>>"$2"
 cursor_launcher_setup_auth_argv 2>>"$2"
@@ -670,7 +698,10 @@ printf '%s\\0' "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
 printf '\\0__DELIM__\\0'
 printf '%s\\0' "${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}"
 """
-    result = runner.run(["bash", "-c", script, "bash", str(lib), str(preflight_log)])
+    result = runner.run(
+        ["bash", "-c", script, "bash", str(lib), str(preflight_log)],
+        cwd=str(scripts_dir.parent),
+    )
     if result.returncode != 0:
         return None
     parts = result.stdout.split("\0__DELIM__\0")
@@ -730,7 +761,8 @@ def _run_codex(
     )
     codex_events = run_dir / "codex.events.jsonl"
     codex_wrapper_log = run_dir / "codex.wrapper.log"
-    for path in (codex_events, codex_wrapper_log):
+    codex_sidecar = run_dir / "codex.sidecar"
+    for path in (codex_events, codex_wrapper_log, codex_sidecar):
         if path.exists():
             _ = path.unlink(missing_ok=True)
     result = _run_with_serial_lock(
@@ -992,8 +1024,8 @@ def run_lint_fix(
             head_changed=False,
             coder_tool=None,
         )
-    scripts = _scripts_dir(repo_root)
-    run_external = _run_external_agent_sh(repo_root)
+    scripts = _plugin_scripts_dir()
+    run_external = _run_external_agent_sh()
     if not run_external.is_file() or not os.access(run_external, os.X_OK):
         return FixOutcome(
             status="failed",
@@ -1283,6 +1315,33 @@ def _handle_fix_outcome(
     return False
 
 
+def _status_for_missing_redacted_log(
+    checks: ChecksResult,
+    *,
+    allowed_tmpdir: Path | None,
+    dispatch_first_post_apply: bool,
+) -> str:
+    """Map a failed redacted-log resolution to loop.status (bash parity)."""
+    if checks.redacted_log_path:
+        redacted = Path(checks.redacted_log_path)
+        if allowed_tmpdir is not None and _resolve_checks_log_path(str(redacted), allowed_tmpdir) is None:
+            return "dispatch-failed"
+        if redacted.is_file() and not redacted.is_symlink():
+            return "dispatch-failed"
+    raw_path = checks.raw_log_path
+    if not raw_path:
+        return "exhausted" if dispatch_first_post_apply else "dispatch-failed"
+    raw = Path(raw_path)
+    if allowed_tmpdir is not None and _resolve_checks_log_path(str(raw), allowed_tmpdir) is None:
+        return "dispatch-failed"
+    try:
+        if not raw.is_file() or raw.is_symlink() or raw.stat().st_size == 0:
+            return "exhausted" if dispatch_first_post_apply else "dispatch-failed"
+    except OSError:
+        return "exhausted" if dispatch_first_post_apply else "dispatch-failed"
+    return "dispatch-failed"
+
+
 def _redacted_log_for_dispatch(
     checks: ChecksResult,
     *,
@@ -1306,12 +1365,12 @@ def _redacted_log_for_dispatch(
             return None
     except OSError:
         return None
+    log_text = _read_log_text_bounded(raw, _PROMPT_TAIL_BYTES)
+    if log_text is None:
+        return None
     redacted = raw.with_suffix(raw.suffix + ".redacted")
     try:
-        _ = redacted.write_text(
-            redact.redact(raw.read_text(encoding="utf-8")),
-            encoding="utf-8",
-        )
+        _ = redacted.write_text(redact.redact(log_text), encoding="utf-8")
         redacted.chmod(0o600)
     except OSError:
         return None
@@ -1335,6 +1394,8 @@ def run_check_fix_loop(
     delta_accum: list[str] = []
     empty_failures = 0
     canonical_tmp = Path(allowed_tmpdir) if allowed_tmpdir else None
+    if (dispatch_first or initial_redacted_log) and canonical_tmp is None:
+        return LoopResult(status="dispatch-failed")
     redacted_log_for_dispatch = initial_redacted_log or ""
     if redacted_log_for_dispatch and canonical_tmp is not None:
         resolved = _resolve_checks_log_path(redacted_log_for_dispatch, canonical_tmp)
@@ -1364,7 +1425,11 @@ def run_check_fix_loop(
                 allowed_tmpdir=canonical_tmp,
             )
             if redacted_path is None:
-                loop.status = "dispatch-failed"
+                loop.status = _status_for_missing_redacted_log(
+                    checks,
+                    allowed_tmpdir=canonical_tmp,
+                    dispatch_first_post_apply=True,
+                )
                 loop.delta_paths = tuple(delta_accum)
                 return loop
             redacted_log_for_dispatch = redacted_path
@@ -1388,7 +1453,11 @@ def run_check_fix_loop(
                 allowed_tmpdir=canonical_tmp,
             )
             if redacted_path is None:
-                loop.status = "dispatch-failed"
+                loop.status = _status_for_missing_redacted_log(
+                    checks,
+                    allowed_tmpdir=canonical_tmp,
+                    dispatch_first_post_apply=False,
+                )
                 loop.delta_paths = tuple(delta_accum)
                 return loop
             fix = fixer(redacted_path)
@@ -1419,25 +1488,35 @@ def run_checks_phase(
     codex_present: bool,
     cursor_present: bool,
     site: str = "step6",
+    checks_site: str | None = None,
+    fix_site: str | None = None,
     dispatch_first: bool = False,
     max_iter: int | None = None,
     initial_redacted_log: str | None = None,
     target_cmd_display: str | None = None,
 ) -> StepResult:
-    """Wire checks + lint-fix loop and escalate."""
+    """Wire checks + lint-fix loop and escalate.
+
+    Default ``site`` applies to both capture (``run_relevant_checks``) and fix
+    (``run_lint_fix``). Live ship-pr Step 6 uses ``step6`` for capture and
+    ``ship-pr-ci-initial`` for fix; pass ``checks_site`` / ``fix_site`` for that
+    split. ``run_checks_with_lint_fix_loop`` uses dispatch-first with distinct sites.
+    """
     canonical_tmp = validate_tmpdir(tmpdir)
     if canonical_tmp is None:
         return StepResult(Outcome.TRANSIENT, "invalid-tmpdir")
-    if not _is_known_site(site):
+    capture_site = checks_site if checks_site is not None else site
+    lint_site = fix_site if fix_site is not None else site
+    if not _is_known_site(capture_site) or not _is_known_site(lint_site):
         return StepResult(Outcome.TRANSIENT, "unknown-site")
-    if not _target_cmd_display_valid(site, target_cmd_display):
+    if not _target_cmd_display_valid(lint_site, target_cmd_display):
         return StepResult(Outcome.TRANSIENT, "target-cmd-display-invalid")
     run_parent = str(canonical_tmp / "lint-fix-loop")
 
     def checks_runner() -> ChecksResult:
         return run_relevant_checks(
             runner,
-            site=site,
+            site=capture_site,
             tmpdir=tmpdir,
             repo_root=repo_root,
         )
@@ -1445,7 +1524,7 @@ def run_checks_phase(
     def fixer(log_path: str) -> FixOutcome:
         return run_lint_fix(
             runner,
-            site=site,
+            site=lint_site,
             checks_log=log_path,
             repo_root=repo_root,
             codex_present=codex_present,
