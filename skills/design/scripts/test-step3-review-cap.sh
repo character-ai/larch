@@ -61,8 +61,7 @@ run_driver() {
         RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" \
         "$LAUNCHER" \
         --design-tmpdir "$design_tmpdir" \
-        --round-cap 5 \
-        --convergence-threshold 3
+        --round-cap 5
 }
 
 echo "=== missing counter starts at round 1 ==="

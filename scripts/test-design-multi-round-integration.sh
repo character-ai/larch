@@ -434,7 +434,7 @@ RUN_STEP3="$ROOT/skills/design/scripts/run-step3-review.sh"
 set +e
 driver_out=$(env -u LARCH_QUIET_LOG_FILE CLAUDE_PLUGIN_ROOT="$ROOT" LARCH_QUIET_DISABLE=1 \
     RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" bash "$RUN_STEP3" \
-    --design-tmpdir "$DSTEP3" --round-cap 5 --convergence-threshold 3 2>&1)
+    --design-tmpdir "$DSTEP3" --round-cap 5 2>&1)
 driver_rc=$?
 set -e
 [[ "$driver_rc" -eq 0 ]] || fail "run-step3-review integration rc=$driver_rc: $driver_out"

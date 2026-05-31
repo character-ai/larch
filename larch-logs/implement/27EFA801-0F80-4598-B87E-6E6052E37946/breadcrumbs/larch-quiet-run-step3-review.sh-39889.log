@@ -1,0 +1,2 @@
+Usage: run-step3-review.sh --design-tmpdir PATH --round-cap N
+run-step3-review.sh: unknown option: --bogus

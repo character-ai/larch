@@ -853,8 +853,7 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 set +e
 _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
   --design-tmpdir "$DESIGN_TMPDIR" \
-  --round-cap "${LARCH_DESIGN_ROUND_CAP:-5}" \
-  --convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}")
+  --round-cap "${LARCH_DESIGN_ROUND_CAP:-5}")
 _plan_review_rc=$?
 set -e
 if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then

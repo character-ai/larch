@@ -53,12 +53,21 @@ CACHE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/sessions"
 CACHE_REMOVED=0
 
 if [[ -d "$CACHE_DIR" ]]; then
-    while IFS= read -r -d $'\0' entry; do
-        if should_remove_by_age "$entry"; then
-            rm -rf "$entry"
-            (( CACHE_REMOVED++ )) || true
+    if _cache_list=$(mktemp "${TMPDIR:-/tmp}/larch-cleanup-*.XXXXXX"); then
+        if find "$CACHE_DIR" -mindepth 1 -maxdepth 1 ! -type l -print0 >"$_cache_list" 2>/dev/null; then
+            while IFS= read -r -d $'\0' entry; do
+                if should_remove_by_age "$entry"; then
+                    rm -rf "$entry"
+                    (( CACHE_REMOVED++ )) || true
+                fi
+            done < "$_cache_list" || true
+        else
+            larch_err "Warning: failed to enumerate '$CACHE_DIR'; skipping cache cleanup."
         fi
-    done < <(find "$CACHE_DIR" -mindepth 1 -maxdepth 1 ! -type l -print0 2>/dev/null) || true
+        rm -f "$_cache_list"
+    else
+        larch_err "Warning: failed to allocate temp list for cache cleanup; skipping cache cleanup."
+    fi
 fi
 
 emit_kv CACHE_REMOVED "$CACHE_REMOVED"
@@ -97,17 +106,26 @@ for _pattern in "${TMP_PATTERNS[@]}"; do
 done
 
 if [[ -d "$TMP_ROOT" ]]; then
-    while IFS= read -r -d $'\0' entry; do
-        if [[ -d "$entry" && ! -L "$entry" ]]; then
-            if should_remove_by_age "$entry"; then
-                rm -rf "$entry"
-                (( TMP_REMOVED++ )) || true
-            fi
-        elif [[ -f "$entry" ]]; then
-            rm -f "$entry"
-            (( TMP_REMOVED++ )) || true
+    if _tmp_list=$(mktemp "${TMPDIR:-/tmp}/larch-cleanup-*.XXXXXX"); then
+        if find "$TMP_ROOT" -mindepth 1 -maxdepth 1 ! -type l -mtime +"$RETENTION_DAYS" \( "${_find_name_args[@]}" \) -print0 >"$_tmp_list" 2>/dev/null; then
+            while IFS= read -r -d $'\0' entry; do
+                if [[ -d "$entry" && ! -L "$entry" ]]; then
+                    if should_remove_by_age "$entry"; then
+                        rm -rf "$entry"
+                        (( TMP_REMOVED++ )) || true
+                    fi
+                elif [[ -f "$entry" ]]; then
+                    rm -f "$entry"
+                    (( TMP_REMOVED++ )) || true
+                fi
+            done < "$_tmp_list" || true
+        else
+            larch_err "Warning: failed to enumerate '$TMP_ROOT'; skipping /tmp cleanup."
         fi
-    done < <(find "$TMP_ROOT" -mindepth 1 -maxdepth 1 ! -type l -mtime +"$RETENTION_DAYS" \( "${_find_name_args[@]}" \) -print0 2>/dev/null) || true
+        rm -f "$_tmp_list"
+    else
+        larch_err "Warning: failed to allocate temp list for /tmp cleanup; skipping /tmp cleanup."
+    fi
 fi
 
 emit_kv TMP_REMOVED "$TMP_REMOVED"

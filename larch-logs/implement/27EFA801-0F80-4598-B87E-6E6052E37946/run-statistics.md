@@ -1,0 +1,1 @@
+Run 27EFA801-0F80-4598-B87E-6E6052E37946: 0 accepted OOS item(s) filed as issues, 1 rejected (triage rule 2 — pre-existing optional < 30 LOC stub quality fix; covered by new seam test in test-run-step3-review.sh).

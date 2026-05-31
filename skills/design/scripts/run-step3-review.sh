@@ -14,12 +14,11 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: run-step3-review.sh --design-tmpdir PATH --round-cap N --convergence-threshold N'
+    larch_err 'Usage: run-step3-review.sh --design-tmpdir PATH --round-cap N'
 }
 
 DESIGN_TMPDIR_ARG=""
 ROUND_CAP=""
-CONVERGENCE_THRESHOLD=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -31,11 +30,6 @@ while [[ $# -gt 0 ]]; do
         --round-cap)
             [[ $# -ge 2 ]] || fail '--round-cap requires a value'
             ROUND_CAP="$2"
-            shift 2
-            ;;
-        --convergence-threshold)
-            [[ $# -ge 2 ]] || fail '--convergence-threshold requires a value'
-            CONVERGENCE_THRESHOLD="$2"
             shift 2
             ;;
         -h | --help)
@@ -51,7 +45,6 @@ done
 
 [[ -n "$DESIGN_TMPDIR_ARG" ]] || { usage; fail '--design-tmpdir is required'; }
 [[ -n "$ROUND_CAP" ]] || { usage; fail '--round-cap is required'; }
-[[ -n "$CONVERGENCE_THRESHOLD" ]] || { usage; fail '--convergence-threshold is required'; }
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
 export DESIGN_TMPDIR

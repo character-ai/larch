@@ -56,6 +56,23 @@ EOF
     chmod +x "$path"
 }
 
+write_stub_enum_failure() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+for arg in "$@"; do
+    if [[ "$arg" == "-mindepth" ]]; then
+        exit 2
+    fi
+done
+
+exec /usr/bin/find "$@"
+EOF
+    chmod +x "$path"
+}
+
 write_stub_pgrep() {
     local path="$1" count="$2"
     cat > "$path" <<EOF
@@ -182,6 +199,59 @@ run_cleanup "$work"
 [[ "$CASE_RC" -eq 0 ]] || fail "stale-toplevel-with-fresh-deep-child-kept exit $CASE_RC"
 [[ -d "$CASE_SESSIONS/stale-parent" ]] || fail "stale-toplevel-with-fresh-deep-child-kept must retain dir when a descendant is fresh"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "stale-toplevel-with-fresh-deep-child-kept CACHE_REMOVED"
+
+# --- enumeration-failure-warns ------------------------------------------------
+work="$TMP/enumeration-failure-warns"
+mkdir -p "$work/xdg-cache/larch/sessions/stale-enum-fail"
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-enum-fail"
+mkdir -p "$work/bin"
+write_stub_enum_failure "$work/bin/find"
+PATH_PREFIX="$work/bin:"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+unset PATH_PREFIX
+[[ "$CASE_RC" -eq 0 ]] || fail "enumeration-failure-warns exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "failed to enumerate" "enumeration-failure-warns warning"
+[[ -d "$CASE_SESSIONS/stale-enum-fail" ]] || fail "enumeration-failure-warns should keep dir when enumeration find fails"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "enumeration-failure-warns CACHE_REMOVED"
+
+# --- enumeration-failure-warns-tmp --------------------------------------------
+work="$TMP/enumeration-failure-warns-tmp"
+mkdir -p "$work/tmp-root/claude-implement-stale-enum-fail"
+touch -t "$STALE_TS" -- "$work/tmp-root/claude-implement-stale-enum-fail"
+mkdir -p "$work/bin"
+write_stub_enum_failure "$work/bin/find"
+PATH_PREFIX="$work/bin:"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+unset PATH_PREFIX
+[[ "$CASE_RC" -eq 0 ]] || fail "enumeration-failure-warns-tmp exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "failed to enumerate" "enumeration-failure-warns-tmp warning"
+[[ -d "$work/tmp-root/claude-implement-stale-enum-fail" ]] || fail "enumeration-failure-warns-tmp should keep dir when enumeration find fails"
+assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "0" "enumeration-failure-warns-tmp TMP_REMOVED"
+
+# --- mktemp-allocation-failure-warns ------------------------------------------
+work="$TMP/mktemp-allocation-failure-warns"
+mkdir -p "$work/xdg-cache/larch/sessions/stale-mktemp-fail" "$work/tmp-root/claude-implement-mktemp-fail"
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-mktemp-fail" \
+    "$work/tmp-root/claude-implement-mktemp-fail"
+mkdir -p "$work/not-writable"
+chmod 000 "$work/not-writable"
+TMPDIR="$work/not-writable"
+export TMPDIR
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+chmod 755 "$work/not-writable"
+unset TMPDIR
+[[ "$CASE_RC" -eq 0 ]] || fail "mktemp-allocation-failure-warns exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "failed to allocate temp list for cache cleanup" "mktemp-allocation-failure-warns cache warning"
+assert_contains "$CASE_OUTPUT" "failed to allocate temp list for /tmp cleanup" "mktemp-allocation-failure-warns tmp warning"
+[[ -d "$CASE_SESSIONS/stale-mktemp-fail" ]] || fail "mktemp-allocation-failure-warns should keep cache dir"
+[[ -d "$work/tmp-root/claude-implement-mktemp-fail" ]] || fail "mktemp-allocation-failure-warns should keep tmp dir"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "mktemp-allocation-failure-warns CACHE_REMOVED"
+assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "0" "mktemp-allocation-failure-warns TMP_REMOVED"
+kv_get CACHE_REMOVED "$CASE_OUTPUT" >/dev/null
+kv_get TMP_REMOVED "$CASE_OUTPUT" >/dev/null
 
 # --- find-failure-skips-deletion ----------------------------------------------
 # Tied to should_remove_by_age maxdepth 5 bound (see cleanup.md Edit-in-sync).
