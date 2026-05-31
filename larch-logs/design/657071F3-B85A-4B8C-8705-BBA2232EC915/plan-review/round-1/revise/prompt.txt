@@ -1,0 +1,197 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Implementation Plan — #3227: stderr-tail surfacing for implement/CI/lint-fix lanes + plan-review-loop tail test
+
+SIMPLE tier. Additive, contract-preserving, reuses the #3202 library `scripts/lib-failed-agent-stderr-tail.sh`. No new tail/redaction logic. No change to the already-wired review/research/sketch lanes.
+
+## Background (verified)
+
+- `run-external-agent.sh` already, on agent failure (timeout or non-zero), runs `select_failed_agent_stderr_source` → `write_failed_agent_stderr_tail "$src" "$OUTPUT"` (writes `${OUTPUT}.stderr-tail`) and `emit_failed_agent_stderr_tail_raw "$OUTPUT"` (FD 2). It removes `${OUTPUT}.stderr-tail` on success/empty.
+- `select_failed_agent_stderr_source` prefers `${OUTPUT}.sidecar` (default mode), or `$OUTPUT` then `${OUTPUT}.diag` (capture-stdout mode).
+- Per-lane state today:
+  - **codex-ci** (`launch-codex-ci.sh`): captures stderr to `SIDECAR_LOG="${OUTPUT}.sidecar"` → `${OUTPUT}.stderr-tail` IS produced. Gap = consumer never surfaces it.
+  - **cursor-ci / cursor-implement**: route through `run-external-agent --capture-stdout` (cursor buffers stdout); the transcript is the stderr source → `${OUTPUT}.stderr-tail` IS produced. Gap = consumer never surfaces it.
+  - **codex-implement** (`launch-codex-implement.sh`): redirects `2>"$SIDECAR_LOG"` where `--sidecar-log` = `${TOOL_TAG}-impl.log` (NOT `${TRANSCRIPT}.sidecar`), so `select_failed_agent_stderr_source` misses the real stderr. Gap = no usable tail produced + no surfacing.
+  - **lint-fix-loop** (`lint-fix-loop.sh`): `run_codex` redirects `2>"$codex_wrapper_log"`, `run_cursor` `2>&1 > cursor.wrapper.log`; the real stderr lands in `*.wrapper.log` (not `${OUTPUT}.sidecar`). Gap = no usable tail produced + no surfacing.
+- Consumers today swallow the tail: `step2-implement.sh` `emit_bailed` emits only `SIDECAR_LOG=<path>` KV; `ship-pr.sh` CI-launcher sites do `2>>"$wf_log"` then revert+`continue`; `lint-fix-loop.sh` returns the rc.
+- Disable knob `LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0` already makes the lib write/emit no-ops; all edits below inherit that (no new guard needed).
+
+## Uniform pattern applied to every lane
+
+1. **Producer guarantee**: after a failed agent run, `${stem}.stderr-tail` must exist. Where `run-external-agent.sh` already writes it (cursor capture-stdout lanes; codex-ci `${OUTPUT}.sidecar`), add nothing. Where the real stderr is captured to a non-discoverable path (codex-implement, lint-fix-loop), add an explicit on-failure `write_failed_agent_stderr_tail "<captured-stderr>" "<stem>"`.
+2. **Consumer surfacing**: on the lane's failure choke point, emit `${stem}.stderr-tail` to chat via `emit_failed_agent_stderr_tail_larch_err "<stem>"` (quiet-safe; no-op when the tail file is absent/empty).
+
+Each implementer edit MUST first verify the lane's actual `run-external-agent` mode (default vs `--capture-stdout`) before deciding whether the producer step is a no-op, rather than assuming.
+
+## Files to modify/create
+
+### UPDATED: `scripts/launch-codex-implement.sh`
+- After the auth-retry loop, inside the existing `if (( LAUNCHER_EXIT != 0 )); then` block (currently only calls `append_launch_failure`), add a producer write: source nothing new (the launcher already sources `lib-quiet.sh`; source `lib-failed-agent-stderr-tail.sh` near the other `source` lines), then `write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true`. `$SIDECAR_LOG` holds codex's real stderr. This yields `${TRANSCRIPT_PATH}.stderr-tail`.
+- Do NOT change the `--sidecar-log` arg, the `2>"$SIDECAR_LOG"` redirect, or any emitted KV (preserve the dispatcher's stdout contract).
+
+### UPDATED: `scripts/launch-cursor-implement.sh`
+- Verify the launcher uses `run-external-agent --capture-stdout`. If so, `run-external-agent` already writes `${TRANSCRIPT_PATH}.stderr-tail` on failure → no producer edit needed (consumer in `step2-implement.sh` covers it). If it does NOT capture-stdout, mirror the codex-implement producer write from the launcher's captured-stderr file. Add only what verification shows is missing.
+
+### UPDATED: `skills/implement/scripts/step2-implement.sh`
+- Source `lib-failed-agent-stderr-tail.sh` once near the top (alongside `lib-quiet.sh`).
+- In `emit_bailed()` (the external-implementer failure/bail envelope), before `exit 0`, call `emit_failed_agent_stderr_tail_larch_err "$TRANSCRIPT_PATH" || true` so a failed implementer's redacted tail reaches chat. Keep the existing `SIDECAR_LOG=`/`TRANSCRIPT=` KV lines and `ORCHESTRATOR_EDIT_AUTHORITY forbidden`.
+- Confirm this fires on the runtime-failure path (non-zero `LAUNCHER_EXIT` with no manifest), not only on `emit_bailed`. If the failure path returns without `emit_bailed`, add the same emit there.
+
+### UPDATED: `scripts/ship-pr.sh`
+- Add one small helper `_surface_ci_stderr_tail <output>` that sources `lib-failed-agent-stderr-tail.sh` (guarded so it sources once) and calls `emit_failed_agent_stderr_tail_larch_err "$1" || true`.
+- Call it at each CI-launcher failure choke point — at minimum the recovery-waterfall block (`if [ "$tier_rc" -ne 0 ]; then ... continue`, near the `launch-cursor-ci.sh`/`launch-codex-ci.sh` dispatch ~lines 2728-2740) and the primary fix-loop CI-launcher site (~lines 2044-2045 and its result handling) — passing the same `$output` path used for `--output`. Emit before the revert/continue so the tail is not lost.
+
+### UPDATED: `scripts/lint-fix-loop.sh`
+- It already sources `lib-codex-launcher-common.sh` / `lib-cursor-launcher-common.sh`; source `lib-failed-agent-stderr-tail.sh` too.
+- In `run_codex`, on `codex_rc != 0`, `write_failed_agent_stderr_tail "$codex_wrapper_log" "$run_dir/codex.log" || true` then `emit_failed_agent_stderr_tail_larch_err "$run_dir/codex.log" || true`.
+- In `run_cursor`, on non-zero, do the analogous write+emit from `$run_dir/cursor.wrapper.log` against stem `$run_dir/cursor.log`.
+- Keep existing telemetry sidecar / events handling untouched.
+
+### UPDATED: `skills/design/scripts/test-plan-review-loop.sh`
+- Add a stub helper `write_collect_failing_tail()` that writes a `collect-agent-results.sh` stub which (a) prints a recognizable fenced tail to its **stderr** — e.g. `--- failed agent stderr tail ---` plus a unique token `LARCH_TEST_STDERR_TAIL_MARKER` — and (b) emits a stdout KV block for a failed/empty panel (mirroring a real collector failure).
+- Add a test case: set up a design tmpdir, `write_scout` + a dispatch stub + `write_collect_failing_tail` + `write_voters_three`; run `outc=$(run_loop "$D" 2>"$D/loop.stderr")`; assert the marker appears in `$D/loop.stderr` (reached FD 2 / chat) AND in `$D/plan-review-collector.stderr` (tee'd to log). This guards the `plan-review-loop.sh:752-762` tee `2> >(tee -a "$_collect_err" >&${_collect_stderr_fd})`.
+- If the assertion fails against current code, fix the tee minimally in `skills/design/scripts/plan-review-loop.sh` (Decision 7); otherwise leave `plan-review-loop.sh` unchanged.
+
+### UPDATED: `skills/implement/scripts/test-codex-implementer.sh`
+- Add a case: force a non-zero launcher exit with a stubbed codex that writes known text to stderr (captured into `$SIDECAR_LOG`); assert `${TRANSCRIPT_PATH}.stderr-tail` exists, is non-empty, and is redacted-bounded.
+
+### UPDATED: `skills/implement/scripts/test-cursor-implementer.sh`
+- Add the analogous assertion only for whatever the cursor-implement producer path actually guarantees (`${TRANSCRIPT}.stderr-tail` present on failure). If cursor-implement is consumer-only (capture-stdout already produces it), assert the pre-existing `.stderr-tail` is present on failure.
+
+### UPDATED: `scripts/test-ship-pr.sh`
+- Add a case (or extend the fix-loop section) stubbing a failing CI launcher whose `${output}.stderr-tail` exists; assert `ship-pr.sh` emits the tail to its stderr (chat) at the failure choke point.
+
+### UPDATED: `scripts/test-lint-fix-loop.sh`
+- Add a case forcing `run_codex` (and `run_cursor`) failure with known wrapper-log stderr; assert the redacted tail is written to `${run_dir}/codex.log.stderr-tail` and emitted to the loop's stderr.
+
+### UPDATED: `scripts/launch-codex-implement.md`
+- Document that on failure the launcher writes `${TRANSCRIPT_PATH}.stderr-tail` (redacted, bounded) via the shared lib. One or two lines.
+
+### UPDATED: `scripts/lint-fix-loop.md`
+- Document the on-failure redacted stderr-tail write+emit for both codex and cursor lanes.
+
+### UPDATED: `scripts/ship-pr.md`
+- Note that CI-launcher failures now surface the launcher's `${output}.stderr-tail` to chat.
+
+### UPDATED: `skills/design/scripts/test-plan-review-loop.md`
+- Add the new case to the harness contract's case list (FD-2 tail surfacing on panel-reviewer failure).
+
+### UPDATED: `CHANGELOG.md`
+- One entry under the next version: extend #3202 stderr-tail surfacing to the implement/CI/lint-fix lanes (end-to-end to chat) and add a plan-review-loop FD-2 tail regression test. Reference #3227.
+
+### UPDATED: `SECURITY.md`
+- One line: failed-agent stderr tails for the implement/CI/lint-fix lanes are surfaced to chat through the same redaction path (`redact-tmpdir-paths.sh` → `redact-secrets.sh`, 30-line / 5120-byte cap) as the #3202 review/research lanes.
+
+## Approach
+
+- Reuse `lib-failed-agent-stderr-tail.sh` everywhere; never re-implement tail/redaction. The producer (`write_failed_agent_stderr_tail`) and consumer (`emit_failed_agent_stderr_tail_larch_err`) primitives already exist and are quiet-safe.
+- Keep edits additive and on the failure branch only — success paths are untouched, and `${OUTPUT}.stderr-tail` is already removed on success by `run-external-agent.sh`.
+- Do not modify `run-external-agent.sh` (avoid regressing the already-wired review/research lanes); push the per-lane producer guarantee into the lane that owns the non-standard stderr redirect.
+- `ship-pr.sh` gets a single tiny helper to avoid repeating the source+emit at multiple CI-launcher sites.
+
+## Edge cases
+
+- `LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0`: lib write/emit become no-ops; lanes stay silent. No extra guard.
+- Tail file already produced by `run-external-agent.sh` (cursor capture-stdout, codex-ci): consumer `emit_failed_agent_stderr_tail_larch_err` reads the existing file; producer step is a verified no-op (do not double-write/clobber).
+- Empty/missing captured stderr: `write_failed_agent_stderr_tail` returns non-zero and `rm`s the stale tail; the `|| true` guards keep the lane on its normal failure path.
+- Quiet vs non-quiet: `emit_failed_agent_stderr_tail_larch_err` routes through `larch_err` (FD 3/4-aware); in `plan-review-loop.sh` the tee already selects FD 4 under quiet. Tests run with `LARCH_QUIET_DISABLE=1` so FD 2 is asserted.
+- Redaction must run before any chat emit (the lib already pipes through both redactors) — no raw stderr file is ever printed directly.
+- Auth-retry loop: only emit after the final attempt fails, not per-retry (the existing `if (( LAUNCHER_EXIT != 0 ))` block already sits after the loop).
+
+## Failure modes
+
+1. **Double or wrong-source tail**: editing a lane that already produces `${OUTPUT}.stderr-tail` could clobber the good tail with a worse source. Warning signal: harness shows the transcript instead of stderr in the tail. Mitigation: verify each lane's `run-external-agent` mode first; only add a producer write where the source is non-discoverable.
+2. **Tail swallowed by an outer redirect**: a consumer emit placed on a code path whose FD 2 is redirected to a log (e.g. inside ship-pr's `2>>"$wf_log"` scope) would not reach chat. Warning signal: tail appears in the log but not chat. Mitigation: emit from the consumer scope (ship-pr's loop body, step2's envelope) whose stderr reaches the orchestrator, not from inside the launcher subshell; the Gap-2 test asserts FD-2 delivery directly.
+3. **Secret leak via unredacted tail**: surfacing raw stderr to a public-ish chat surface could leak secrets. Warning signal: secret-shaped text in chat. Mitigation: only ever emit `${stem}.stderr-tail`, which the lib produced through `redact-tmpdir-paths.sh` + `redact-secrets.sh`; never `cat` the raw capture.
+
+## Testing strategy
+
+- Gap 2: new `test-plan-review-loop.sh` case asserting a failing panel reviewer's tail reaches FD 2 (chat) and the collector-stderr log. `make test-plan-review-loop`.
+- Gap 1 producer: `test-codex-implementer.sh` (+ `test-cursor-implementer.sh` as applicable) assert `${TRANSCRIPT}.stderr-tail` exists + redacted on failure. `make test-codex-implementer test-cursor-implementer`.
+- Gap 1 consumer: `test-lint-fix-loop.sh` and `test-ship-pr.sh` assert the redacted tail is emitted to the script's stderr at the failure choke point. `make test-lint-fix-loop test-ship-pr`.
+- Run `bash scripts/relevant-checks.sh` after edits (shellcheck, bash32, raw-stderr-after-quiet-init lint, md-sibling checks).
+- No assertion is added against `run-external-agent.sh` (unchanged); existing `test-lib-failed-agent-stderr-tail` and `test-run-external-agent` continue to cover the library and producer.
+
+diff_lines: 210
+
+</plan>
+
+<findings>
+### FINDING_2: ship-pr CI fix-loop surfaces stderr from wrong output stem
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The fix-loop passes `--output "$tier_out"` to CI launchers, but the plan only names `$output` for `_surface_ci_stderr_tail` at the primary CI-launcher site. If recovery uses `$output` at the fix-loop choke point, `emit_failed_agent_stderr_tail_larch_err` may look for the wrong stem while `${tier_out}.stderr-tail` already exists on disk, so chat stays silent.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Spell the fix-loop stem explicitly ($tier_out) in ### UPDATED: scripts/ship-pr.sh and call _surface_ci_stderr_tail "$tier_out" on the failure branch before _ci_fix_rollback/continue (including first-fixer-non-health return at ~2081 if that path skips the generic failure block).
+
+
+### FINDING_3: lint-fix `run_cursor` producer from `cursor.wrapper.log` can clobber good tail
+- **Reviewer(s)**: Cursor-Edge, Cursor-Innovation, unknown-slot
+- **Severity**: important
+- **Concern**: The plan adds `write_failed_agent_stderr_tail` from `cursor.wrapper.log` on failure, but `run_cursor` uses `--capture-stdout`, so `run-external-agent.sh` already writes `${run_dir}/cursor.log.stderr-tail` from merged agent output in `cursor.log`. `cursor.wrapper.log` only holds wrapper/progress lines; an unconditional producer write can overwrite the correct tail with wrapper chatter (the plan’s own Failure mode #1).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: After verifying non-zero exit, consumer-only `emit_failed_agent_stderr_tail_larch_err "$run_dir/cursor.log" || true`; add `write_failed_agent_stderr_tail` only if that tail file is missing, sourcing `cursor.log` not `cursor.wrapper.log`
+  - From Cursor-Innovation: Match codex-ci/cursor-implement: verify mode first; on failure emit only if `${run_dir}/cursor.log.stderr-tail` is missing, then producer-write from the real capture path
+  - From unknown-slot: Drop the producer write for `run_cursor`; only add the consumer: `emit_failed_agent_stderr_tail_larch_err "$run_dir/cursor.log" \|\| true`. The plan's own "Approach" already states: "Where run-external-agent.sh already writes it (cursor capture-stdout lanes), add nothing."
+  - From unknown-slot: Drop the producer write for `run_cursor`; it is already a no-op lane. Only add the consumer emit after a non-zero return: `emit_failed_agent_stderr_tail_larch_err "$run_dir/cursor.log" \|\| true`. The plan's analogy to `run_codex` does not hold because `run_codex` uses default (no-capture) mode so codex's stderr reaches `codex_wrapper_log` through inherited fd2, while `run_cursor` uses `--capture-stdout` which intercepts cursor's fd1+fd2 into `cursor.log` inside `run-external-agent.sh` before the outer redirect applies.
+  - From unknown-slot: For run_cursor in lint-fix-loop, omit the producer write (run-external-agent.sh already handles it via --capture-stdout); add only the consumer emit: emit_failed_agent_stderr_tail_larch_err "$run_dir/cursor.log" || true on non-zero rc, mirroring the codex-ci pattern
+
+
+### FINDING_4: `run_cursor` does not propagate `run-external-agent` exit status
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan adds on-failure tail write/emit inside `run_cursor`, but the function never propagates `run-external-agent` exit status (unlike `run_codex` with `|| codex_rc=$?` and `return "$codex_rc"`). Cursor agent failures can leave `run_cursor` succeeding, so failure hooks never run and lint-fix cursor failures stay silent.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add cursor_rc capture and return (mirror run_codex: `|| cursor_rc=$?` then `return "$cursor_rc"`) before relying on in-function failure hooks
+
+
+### FINDING_5: in-loop `emit_failed_agent_stderr_tail_larch_err` is swallowed by caller FD 2 redirects
+- **Reviewer(s)**: Cursor-Innovation, unknown-slot
+- **Severity**: important
+- **Concern**: `emit_failed_agent_stderr_tail_larch_err` inside `lint-fix-loop.sh` `run_codex`/`run_cursor` runs after `larch_quiet_init` snapshots FD 2 into FD 4. Production callers redirect FD 2 before subprocess start (`ship-pr.sh` `run_lint_fix_loop_capture` uses `2>"$fail_file"`; `review-implement-step5-loop.sh` uses `2>&1` into a capture file), so `larch_err` goes to the capture file, not chat. Isolated `test-lint-fix-loop.sh` without those redirects can pass while production stays silent.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: After the `lint-fix-loop.sh` call (or in `_rcc_handle_fix_status`), surface `${run_dir}/codex.log.stderr-tail` or `${run_dir}/cursor.log.stderr-tail` via `_surface_ci_stderr_tail` / `emit_failed_agent_stderr_tail_larch_err` using `LINT_FIX_RUN_DIR`/`CODER_LOG_FILE` from stdout when present; keep in-loop emit only for orchestrator-direct invocations
+  - From unknown-slot: Keep the producer writes (write_failed_agent_stderr_tail) in run_codex/run_cursor — they write the tail file to disk regardless of FD-2 redirect. Remove the consumer emit_failed_agent_stderr_tail_larch_err from run_codex/run_cursor. Add a consumer in ship-pr.sh's run_lint_fix_loop_capture (lines 115-131) after the subprocess exits: have lint-fix-loop.sh emit LINT_FIX_STDERR_TAIL_PATH=<path> via emit_kv (FD 3) on failure, then parse that path from $output and call _surface_ci_stderr_tail from the caller scope whose FD 4 reaches chat. Apply the same pattern to review-implement-step5-loop.sh:241's post-exit handling.
+  - From unknown-slot: Move the emit to the calling scope where FD4->chat: in run_lint_fix_loop_capture (ship-pr.sh:114-132) add a _surface_ci_stderr_tail-style call after the $(...) returns non-zero; similarly at review-implement-step5-loop.sh:241-244. Alternatively emit the tail path as a stdout KV (e.g. STDERR_TAIL_PATH=...) from lint-fix-loop.sh so callers in FD4->chat context can re-emit it.
+
+
+### FINDING_6: plan Background mislabels cursor lanes as `--capture-stdout`
+- **Reviewer(s)**: Cursor-Innovation, unknown-slot
+- **Severity**: important
+- **Concern**: Background states cursor-ci and cursor-implement use `run-external-agent --capture-stdout`, but both launchers use `--capture-stdout-only`. The plan’s binary tree has no branch for that flag; implementers may follow the wrong producer template or skip verification that an existing `${OUTPUT}.stderr-tail` is sufficient.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Fix the background bullet; in `launch-cursor-implement.sh` verification, require `--capture-stdout-only` and treat existing `${TRANSCRIPT_PATH}.stderr-tail` as sufficient before any producer edit
+  - From unknown-slot: Correct the Background to note that both cursor-ci and cursor-implement use `--capture-stdout-only`; extend the verification instruction to note that `--capture-stdout-only` also produces `${OUTPUT}.stderr-tail` (via `${OUTPUT}.diag` as the source), so no producer edit is needed for either cursor lane
+
+
+</findings>
+
+<feature>
+Extend stderr-tail surfacing to implement launchers and add plan-review-loop tail test
+
+Surfaced during `/implement` run for #3202 (Surface failed agent stderr tail to chat).
+
+Two related coverage gaps in #3202's stderr-tail surfacing, both accepted as out-of-scope by the code-review panel (vote tally: YES=3 each):
+
+## Gap 1: Implement launchers lack stderr-tail surfacing
+
+`scripts/launch-codex-*.sh` and `scripts/launch-cursor-*.sh` implement launchers lack a `${OUTPUT}.sidecar` choke point. The #3202 plan explicitly called this out of scope (SIMPLE tier): "lint-fix-loop (codex.wrapper.log) and implement launchers lack `${OUTPUT}.sidecar` at the choke point; do not claim foreground chat surfacing for those lanes without a follow-up stderr-source hook."
+
+`/implement` codex/cursor failures in these lanes still have no chat-surfaced stderr tail. Estimated ~30–50 LOC across 4+ launcher files to wire a stderr-source hook.
+
+## Gap 2: Design plan-review-loop tail-surfacing test missing
+
+`skills/design/scripts/plan-review-loop.sh` captures collector stderr to a log and tees it to FD 2/4 on successful collect, but the harness (`test-plan-review-loop.sh`) has no behavioral test case asserting stderr tails actually reach FD 2 when a panel reviewer fails. A #3119-style design panel regression could pass all collector unit tests while silently dropping tails to the log rather than chat.
+
+Needs a new harness case with failing panel stubs asserting tail surfacing, ~30–50 LOC.
+
+---
+*Auto-filed by larch `/implement` run `A7FD6AAD-B170-4891-99E3-D61BD94AFFD1` via OOS triage rule 3 (combined per-run medium-bug items).*
+
+
+</feature>

@@ -1,0 +1,42 @@
+Merging the eight raw inputs into four distinct findings (ship-pr recovery gap, step2 stale tail, cursor preflight producer gap, docs parity).
+
+
+### FINDING_1: Recovery waterfall ignores LAUNCHER_EXIT when tier_rc is 0
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: CI launchers can exit 0 while encoding agent failure in `LAUNCHER_EXIT` with `tier_rc` still 0. Recovery-waterfall stderr surfacing and revert/`continue` are anchored only on `tier_rc != 0`, so the block at 2745–2747 never runs, tails are not surfaced before detached-head/verify, and verify can run on a failed tier.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: After each launcher esac (~2744), capture stdout, parse LAUNCHER_EXIT, and when tier_rc!=0 OR LAUNCHER_EXIT!=0 OR -s ${output}.stderr-tail: call _surface_ci_stderr_tail then recovery_waterfall_paths_delta_revert and continue before detached-head/verify
+  - From Cursor-Pragmatic: Add an explicit post-launcher block (after capturing/parsing stdout, before detached-head/verify): if LAUNCHER_EXIT -ne 0 or -s "${output}.stderr-tail" then _surface_ci_stderr_tail "$output" and continue
+
+### FINDING_2: Step 3 cleanup leaves stale `${TRANSCRIPT_PATH}.stderr-tail`
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Concern**: Step 3 cleanup omits `${TRANSCRIPT_PATH}.stderr-tail`. When reusing the same `IMPLEMENT_TMPDIR`, a prior failed implement run can leave `*.stderr-tail` on disk; a later step2 invocation can `emit_bailed` before line 606 (resume/`--answers`, qa-loop, branch guards), and `emit_failed_agent_stderr_tail_larch_err` inside `emit_bailed()` would surface the previous run’s tail as current failure context (misleading chat diagnostics).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Add `rm -f "${TRANSCRIPT_PATH}.stderr-tail"` (and optionally `${TRANSCRIPT_PATH}.diag`) to the Step 3 cleanup at 606 and once right after `TRANSCRIPT_PATH`/`SIDECAR_LOG` are defined (~258); or gate tail emit to `RUNTIME_FAILURE_TOKEN` only.
+
+### FINDING_3: Cursor auth preflight exit omits `write_failed_agent_stderr_tail`
+- **Reviewer(s)**: Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, unknown-slot
+- **Severity**: important
+- **Concern**: The plan adds `write_failed_agent_stderr_tail` for `MODEL_ARGS_RC` but not for the `PREFLIGHT_RC` early-exit path (~262–272). After `cursor_launcher_setup_auth_argv` fails, errors append to `$SIDECAR_LOG` and the launcher exits before `run-external-agent`; `${TRANSCRIPT_PATH}.stderr-tail` is never written, so step2 consumer surfacing via `emit_bailed` reading that file stays silent despite actionable sidecar stderr—violating the plan’s uniform “after any failed launcher attempt with actionable stderr in a known capture file, `${stem}.stderr-tail` must exist” pattern, including pre-agent failures (`LAUNCHER_EXIT=2`).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Mirror the `MODEL_ARGS_RC` branch: `write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true` before timing/KV emit on the `PREFLIGHT_RC != 0` path (with `lib-failed-agent-stderr-tail.sh` sourced earlier).
+  - From Cursor-Innovation: Mirror the MODEL_ARGS_RC branch: after appending PREFLIGHT_ERR to SIDECAR_LOG call write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true before timing/KV emit / exit 0
+  - From Cursor-Pragmatic: Mirror the MODEL_ARGS_RC branch: after cat PREFLIGHT_ERR into SIDECAR_LOG call write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true before timing/KV emit
+  - From unknown-slot: Add write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true before emit_timing_record inside the PREFLIGHT_RC if-block, symmetrically with the MODEL_ARGS_RC treatment already specified; source the lib before PREFLIGHT_RC runs (same placement direction the plan gives for MODEL_ARGS_RC)
+
+### FINDING_4: [OUT_OF_SCOPE] `launch-cursor-implement.md` missing from plan UPDATED section
+- **Reviewer(s)**: unknown-slot
+- **Severity**: nit
+- **Concern**: Sibling `.md` not listed in any UPDATED section despite launcher modification. Plan adds `UPDATED: scripts/launch-codex-implement.md` but omits the cursor counterpart; `.claude/rules/external-tool-launcher-parity.md` requires both sibling `.md` contracts updated together when behavior diverges across the codex/cursor launcher family.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add ### UPDATED: scripts/launch-cursor-implement.md with a one-line note mirroring the launch-codex-implement.md documentation entry (failure writes ${TRANSCRIPT_PATH}.stderr-tail via the shared lib on MODEL_ARGS_RC and PREFLIGHT_RC paths)
+
+---
+
+**Merge notes (for voters, not machine output):**
+- **FINDING_1** ← raw FINDING_1 + FINDING_6 (same `ship-pr.sh` LAUNCHER_EXIT vs `tier_rc` gap).
+- **FINDING_3** ← raw FINDING_3 + FINDING_4 + FINDING_5 + FINDING_7 (same `launch-cursor-implement.sh` preflight producer gap).
+- **FINDING_2** and **FINDING_4** (aggregator) / raw FINDING_8 kept separate (step2 cleanup vs plan-doc parity; different fixes and severity).
+- No `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` line — four non-empty finding blocks.

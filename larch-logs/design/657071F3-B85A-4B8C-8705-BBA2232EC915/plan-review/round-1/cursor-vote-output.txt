@@ -1,0 +1,7 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- capture-stdout-only already writes ${TRANSCRIPT}.stderr-tail from .diag; SIDECAR is wrapper chatter, not the missing agent stderr source
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan tells implementers to pass $output at the fix-loop site but run_ci_fix_vendor uses --output "$tier_out"
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- run_cursor uses --capture-stdout so run-external-agent already writes cursor.log.stderr-tail; plan producer from cursor.wrapper.log would clobber it
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- run_cursor never captures or returns run-external-agent exit status unlike run_codex, so planned failure hooks never run
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- ship-pr and step5 call lint-fix-loop with FD2 redirected before larch_quiet_init snapshots it, so in-loop emit goes to capture files not chat
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan Background claims cursor lanes use --capture-stdout but launch-cursor-implement.sh and launch-cursor-ci.sh use --capture-stdout-only
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- resolve-conflict CI failures at ship-pr.sh:3278-3290 use the same fail_file redirect pattern with no stderr-tail surfacing in plan scope

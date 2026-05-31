@@ -1,0 +1,21 @@
+Reading the plan and the launcher scripts it references to verify lane-state claims.
+Checking whether `run_cursor` in lint-fix-loop already gets a stderr-tail from `run-external-agent` on failure:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:11,30-31;scripts/launch-cursor-ci.sh:201;scripts/launch-cursor-implement.sh:295	Background and cursor-implement verify step name --capture-stdout but both launchers use --capture-stdout-only	Literal verify treats capture-stdout-only as missing and adds a codex-style producer write from SIDECAR_LOG, duplicating or clobbering the tail run-external-agent already builds from .diag/transcript	Rename the mode in Background and the verify bullet to --capture-stdout-only; producer no-op when select_failed_agent_stderr_source would already populate ${TRANSCRIPT_PATH}.stderr-tail on failure
+2	in_scope	important	correctness	plan.txt:44-45;scripts/lint-fix-loop.sh:252-258	Proposed run_cursor always write_failed_agent_stderr_tail from cursor.wrapper.log	run-external-agent --capture-stdout already prefers $run_dir/cursor.log on failure; wrapper.log is outer-shell capture and can replace a better agent tail (plan failure mode 1)	Producer no-op when ${run_dir}/cursor.log.stderr-tail exists after failure; write from cursor.wrapper.log only if that file is absent
+
+1. **[correctness]** The plan’s Background (line 11) and `launch-cursor-implement.sh` verify bullet (lines 30–31) say **cursor-ci / cursor-implement** use `run-external-agent --capture-stdout`. In the repo today both use **`--capture-stdout-only`**:
+
+```201:201:scripts/launch-cursor-ci.sh
+        --capture-stdout-only \
+```
+
+```295:295:scripts/launch-cursor-implement.sh
+        --capture-stdout-only \
+```
+
+`select_failed_agent_stderr_source` treats those modes differently (`scripts/lib-failed-agent-stderr-tail.sh:67-71` prefers `${output}.diag` before the transcript for stdout-only). The lane still gets `${OUTPUT}.stderr-tail` from `run-external-agent.sh` on failure in the common case; the gap is consumer surfacing, as the plan says. Risk: an implementer who verifies only for `--capture-stdout` will not find it and may add a codex-implement-style producer from `$SIDECAR_LOG`, which is unnecessary scope and can worsen the tail. **Revision:** State `--capture-stdout-only` in Background and the verify step; no-op the producer when `${TRANSCRIPT_PATH}.stderr-tail` is already present after failure.
+
+2. **[correctness]** Verified current lanes match the plan’s *motivation* for codex-ci (`SIDECAR_LOG="${OUTPUT}.sidecar"` at `scripts/launch-codex-ci.sh:173`, `2>"$SIDECAR_LOG"` at 207), codex-implement (`SIDECAR_LOG` from `--sidecar-log` = `$TMPDIR_ARG/${TOOL_TAG}-impl.log` at `skills/implement/scripts/step2-implement.sh:258`, `2>"$SIDECAR_LOG"` at `scripts/launch-codex-implement.sh:338`), and lint-fix codex (`2>"$codex_wrapper_log"` at `scripts/lint-fix-loop.sh:237`). For **lint-fix `run_cursor`**, the proposed unconditional `write_failed_agent_stderr_tail "$run_dir/cursor.wrapper.log" "$run_dir/cursor.log"` conflicts with the plan’s own “verified no-op / don’t clobber” rule (lines 93, 101): `run-external-agent` is invoked with `--capture-stdout` (`scripts/lint-fix-loop.sh:252`), so failure already targets `$run_dir/cursor.log` while `cursor.wrapper.log` is only the outer redirect. **Revision:** Emit in `run_cursor` on failure; add a producer write from `cursor.wrapper.log` only if `${run_dir}/cursor.log.stderr-tail` is missing.
+
+**Exonerated (lane-state):** codex-ci / codex-implement / lint-fix codex current-state claims; codex-implement producer using `$SIDECAR_LOG` → `${TRANSCRIPT_PATH}.stderr-tail`; ship-pr consumer-only for CI launchers when `${output}.stderr-tail` exists; step2 `emit_bailed` covering runtime launcher failures (`skills/implement/scripts/step2-implement.sh:703-715`).
