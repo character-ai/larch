@@ -149,7 +149,7 @@ if [ "$_ss_rc" -ne 0 ]; then
   exit "$_ss_rc"
 fi
 
-SESSION_TMPDIR= SESSION_ID= CODEX_AVAILABLE= CURSOR_AVAILABLE= CODEX_PRESENT= CURSOR_PRESENT=
+SESSION_TMPDIR= SESSION_ID= CODEX_AVAILABLE= CURSOR_AVAILABLE= CODEX_PRESENT= CURSOR_PRESENT= CODEX_BINARY_FOUND= CURSOR_BINARY_FOUND=
 while IFS= read -r _line || [ -n "$_line" ]; do
   [ -z "$_line" ] && continue
   case "$_line" in
@@ -159,6 +159,8 @@ while IFS= read -r _line || [ -n "$_line" ]; do
     CURSOR_AVAILABLE=*) CURSOR_AVAILABLE="${_line#CURSOR_AVAILABLE=}" ;;
     CODEX_PRESENT=*) CODEX_PRESENT="${_line#CODEX_PRESENT=}" ;;
     CURSOR_PRESENT=*) CURSOR_PRESENT="${_line#CURSOR_PRESENT=}" ;;
+    CODEX_BINARY_FOUND=*) CODEX_BINARY_FOUND="${_line#CODEX_BINARY_FOUND=}" ;;
+    CURSOR_BINARY_FOUND=*) CURSOR_BINARY_FOUND="${_line#CURSOR_BINARY_FOUND=}" ;;
   esac
 done <<< "$_ss_out"
 
@@ -182,6 +184,8 @@ _wdce_args=(
 [ -n "$CURSOR_PRESENT" ] && _wdce_args+=(--cursor-present "$CURSOR_PRESENT")
 [ -n "$CODEX_AVAILABLE" ] && _wdce_args+=(--codex-available "$CODEX_AVAILABLE")
 [ -n "$CURSOR_AVAILABLE" ] && _wdce_args+=(--cursor-available "$CURSOR_AVAILABLE")
+[ -n "$CODEX_BINARY_FOUND" ] && _wdce_args+=(--codex-binary-found "$CODEX_BINARY_FOUND")
+[ -n "$CURSOR_BINARY_FOUND" ] && _wdce_args+=(--cursor-binary-found "$CURSOR_BINARY_FOUND")
 "${_wdce_args[@]}"
 ```
 
@@ -193,7 +197,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 **Execution-issues logging**: Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` to `$DESIGN_TMPDIR/execution-issues.md` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
-**Degraded-tools gate (#3207).** After the presence parse above, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with the `CODEX_BINARY_FOUND` / `CODEX_PRESENT` / `CURSOR_BINARY_FOUND` / `CURSOR_PRESENT` values from the session-setup output and `--skill design`. If `DEGRADED=true` on an **interactive** run, present the `DEGRADED_EXPLANATION_BEGIN`…`END` block and fire `AskUserQuestion` with **Continue (degraded waterfall)** / **Abort**; on **Abort**, run `${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"` and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
+**Degraded-tools gate (#3207).** After the presence parse above, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` from the session-setup parse above (do not omit flags and rely on shell exports) and `--skill design`. If `DEGRADED=true` on an **interactive** run, present the `DEGRADED_EXPLANATION_BEGIN`…`END` block and fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Abort**, run `${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"` and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
 
 ### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 

@@ -41,7 +41,8 @@ assert_rc() {
 
 # --- Case 1: all healthy → not degraded, no explanation block ---
 out=$(bash "$GATE" --codex-binary-found true --codex-present true \
-    --cursor-binary-found true --cursor-present true --skill design) && rc=$? || rc=$?
+    --cursor-binary-found true --cursor-present true --skill design 2>&1) && rc=$? || rc=$?
+assert_not_contains "$out" "WARNING:" "all-healthy must not emit WARNING"
 assert_rc "$rc" 0 "all-healthy exit 0"
 assert_contains "$out" "DEGRADED=false" "all-healthy DEGRADED=false"
 assert_contains "$out" "CODEX_STATE=ok" "all-healthy codex ok"
@@ -93,13 +94,64 @@ assert_contains "$out" "CODEX_STATE=binary-missing" "binary-false-present-true �
 assert_contains "$out" "DEGRADED=true" "binary-false-present-true degraded"
 
 # --- Case 7: present-only wiring (binary-found omitted, as /design/review/research call it) ---
-out=$(bash "$GATE" --codex-present true --cursor-present false --skill review) && rc=$? || rc=$?
+out=$(CODEX_BINARY_FOUND='' CURSOR_BINARY_FOUND='' bash "$GATE" --codex-present true --cursor-present false --skill review) && rc=$? || rc=$?
 assert_rc "$rc" 0 "present-only exit 0"
 assert_contains "$out" "DEGRADED=true" "present-only degraded (cursor down)"
 assert_contains "$out" "CODEX_STATE=ok" "present-only codex ok without binary-found"
 assert_contains "$out" "CURSOR_STATE=unavailable" "present-only cursor generic unavailable"
 
-# --- Case 8: unknown flag → exit 2 ---
+# --- Case 8: env-var cursor-ok (no flags) ---
+out=$(CODEX_BINARY_FOUND=true CODEX_PRESENT=false CURSOR_BINARY_FOUND=true CURSOR_PRESENT=true \
+    bash "$GATE" --skill implement 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 0 "env-var cursor-ok exit 0"
+assert_contains "$out" "CURSOR_STATE=ok" "env-var cursor-ok cursor state"
+assert_contains "$out" "CODEX_STATE=probe-failed" "env-var cursor-ok codex probe-failed"
+assert_contains "$out" "DEGRADED=true" "env-var cursor-ok degraded"
+assert_contains "$out" "WARNING: --codex-binary-found omitted" "env-var cursor-ok codex-binary warning"
+assert_contains "$out" "WARNING: --codex-present omitted" "env-var cursor-ok codex-present warning"
+assert_contains "$out" "WARNING: --cursor-binary-found omitted" "env-var cursor-ok cursor-binary warning"
+assert_contains "$out" "WARNING: --cursor-present omitted" "env-var cursor-ok cursor-present warning"
+
+# --- Case 9: env-var codex-ok (no flags) ---
+out=$(CODEX_BINARY_FOUND=true CODEX_PRESENT=true CURSOR_BINARY_FOUND=true CURSOR_PRESENT=false \
+    bash "$GATE" --skill implement 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 0 "env-var codex-ok exit 0"
+assert_contains "$out" "CODEX_STATE=ok" "env-var codex-ok codex state"
+assert_contains "$out" "CURSOR_STATE=probe-failed" "env-var codex-ok cursor probe-failed"
+assert_contains "$out" "DEGRADED=true" "env-var codex-ok degraded"
+assert_contains "$out" "WARNING: --codex-binary-found omitted" "env-var codex-ok codex-binary warning"
+assert_contains "$out" "WARNING: --codex-present omitted" "env-var codex-ok codex-present warning"
+assert_contains "$out" "WARNING: --cursor-binary-found omitted" "env-var codex-ok cursor-binary warning"
+assert_contains "$out" "WARNING: --cursor-present omitted" "env-var codex-ok cursor-present warning"
+
+# --- Case 7b: present-only with cleared binary env must not WARN ---
+out=$(CODEX_BINARY_FOUND='' CURSOR_BINARY_FOUND='' bash "$GATE" --codex-present true --cursor-present false --skill review 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 0 "present-only no-warn exit 0"
+assert_not_contains "$out" "WARNING:" "present-only with flags must not emit WARNING"
+
+# --- Case 10: flag-over-env precedence (contradictory env, explicit flags win) ---
+out=$(CODEX_BINARY_FOUND=false CODEX_PRESENT=false CURSOR_BINARY_FOUND=false CURSOR_PRESENT=false \
+    bash "$GATE" \
+        --codex-binary-found true --codex-present true \
+        --cursor-binary-found true --cursor-present true \
+        --skill design 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 0 "flag-over-env exit 0"
+assert_contains "$out" "DEGRADED=false" "flag-over-env not degraded"
+assert_contains "$out" "CODEX_STATE=ok" "flag-over-env codex ok"
+assert_contains "$out" "CURSOR_STATE=ok" "flag-over-env cursor ok"
+assert_not_contains "$out" "WARNING: --codex-binary-found omitted" "flag-over-env no codex-binary warning"
+assert_not_contains "$out" "WARNING: --codex-present omitted" "flag-over-env no codex-present warning"
+assert_not_contains "$out" "WARNING: --cursor-binary-found omitted" "flag-over-env no cursor-binary warning"
+assert_not_contains "$out" "WARNING: --cursor-present omitted" "flag-over-env no cursor-present warning"
+
+# --- Case 11: stale env with flag omission misclassifies without stderr WARNING visibility on stdout ---
+out=$(CODEX_BINARY_FOUND=true CODEX_PRESENT=true CURSOR_BINARY_FOUND=true CURSOR_PRESENT=true \
+    bash "$GATE" --skill review 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 0 "stale-env omission exit 0"
+assert_contains "$out" "DEGRADED=false" "stale-env omission uses inherited env"
+assert_contains "$out" "WARNING: --codex-present omitted" "stale-env omission warns on codex-present"
+
+# --- Case 12: unknown flag → exit 2 ---
 out=$(bash "$GATE" --bogus 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 2 "unknown-flag exit 2"
 assert_contains "$out" "unknown argument" "unknown-flag message"

@@ -19,6 +19,7 @@
 .PHONY: test-persist-implement-run-flags
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence
+.PHONY: test-no-grouped-reuse-guard
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -70,7 +71,7 @@ lint-awk-multibyte-regex:
 # appended to one shard line.
 test-harnesses: test-harnesses-1 test-harnesses-2 test-harnesses-3 test-harnesses-4 test-harnesses-5 test-harnesses-6 test-harnesses-7 test-harnesses-8 test-harnesses-9 test-harnesses-10 test-harnesses-11 test-harnesses-12 test-harnesses-13 test-harnesses-14 test-harnesses-15 test-harnesses-16 test-harnesses-17 test-harnesses-18 test-harnesses-19 test-harnesses-20
 
-test-harnesses-1: test-check-reviewers test-lib-title-eligibility test-degraded-tools-gate
+test-harnesses-1: test-check-reviewers test-lib-title-eligibility test-degraded-tools-gate test-no-grouped-reuse-guard
 
 test-harnesses-2: test-launch-cursor-ci test-launch-claude-ci
 
@@ -959,6 +960,9 @@ test-check-reviewers:
 
 test-degraded-tools-gate:
 	bash scripts/harness-timer.sh $@ bash scripts/test-degraded-tools-gate.sh
+
+test-no-grouped-reuse-guard:
+	bash scripts/harness-timer.sh $@ bash scripts/test-no-grouped-reuse-guard.sh
 
 test-check-generators:
 	bash scripts/harness-timer.sh $@ bash scripts/test-check-generators.sh

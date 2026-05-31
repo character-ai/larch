@@ -261,7 +261,7 @@ _count_collector_evidence() {
     local rec st
     while IFS= read -r rec || [[ -n "$rec" ]]; do
         [[ -z "$rec" ]] && continue
-        IFS=$'\x1f' read -r _rf _tool st _xc _fr <<< "$rec" || true
+        IFS=$'\x1f' read -r _rf _tool st _xc _fr _sidecar <<< "$rec" || true
         case "$st" in
             OK) collect_ok_count=$((collect_ok_count + 1)) ;;
             *) collect_failure_count=$((collect_failure_count + 1)) ;;
@@ -290,13 +290,14 @@ def main():
             d[k] = v
         if "REVIEWER_FILE" in d or "STATUS" in d:
             sys.stdout.write(
-                "%s\x1f%s\x1f%s\x1f%s\x1f%s\n"
+                "%s\x1f%s\x1f%s\x1f%s\x1f%s\x1f%s\n"
                 % (
                     d.get("REVIEWER_FILE", ""),
                     d.get("TOOL", ""),
                     d.get("STATUS", ""),
                     d.get("EXIT_CODE", "0"),
                     d.get("FAILURE_REASON", ""),
+                    d.get("STRUCTURED_SIDECAR", ""),
                 )
             )
 
@@ -744,6 +745,7 @@ FALLBACK_COUNT="0"
 COMBINED_FALLBACK_COUNT=""
 DEGRADED_ROUND="false"
 DYNAMIC_SLOT_COUNT="0"
+ALL_SLOTS_DROPPED="false"
 while IFS= read -r _line || [[ -n "$_line" ]]; do
     _key="${_line%%=*}"
     _value="${_line#*=}"
@@ -756,6 +758,7 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
         COMBINED_FALLBACK_COUNT) COMBINED_FALLBACK_COUNT="$_value" ;;
         DEGRADED_ROUND) DEGRADED_ROUND="$_value" ;;
         DYNAMIC_SLOT_COUNT) DYNAMIC_SLOT_COUNT="$_value" ;;
+        ALL_SLOTS_DROPPED) ALL_SLOTS_DROPPED="$_value" ;;
         WARN) emit_kv WARN "$_value" ;;
     esac
 done <<< "$_panel_raw"
@@ -768,7 +771,8 @@ if [[ -n "$PANEL_PATHS_FILE" && -f "$PANEL_PATHS_FILE" && -s "$PANEL_PATHS_FILE"
     _paths_readable=1
 fi
 
-if [[ "$_paths_readable" -eq 0 ]]; then
+if [[ "$_paths_readable" -eq 0 && "$PANEL_DISPATCH_OK" != "true" \
+    && "$ALL_SLOTS_DROPPED" != "true" && "$DEGRADED_ROUND" != "true" ]]; then
     write_empty_review_artifacts "**Plan-review panel dispatch failed; voting was not run.**" "$round_num"
     : > "$DESIGN_TMPDIR/ballot.txt"
     TALLY_PLAN_REVIEW_STATUS=panel-failed
@@ -787,12 +791,17 @@ _collect_stderr_fd=2
 if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
     _collect_stderr_fd=4
 fi
-_collect_out=$(LARCH_QUIET_DISABLE=1 "$PLAN_REVIEW_COLLECT_SH" \
-    --timeout "$COLLECT_TIMEOUT" \
-    --substantive-validation \
-    --validation-mode \
-    --structured-reviewer-validation \
-    --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd}))
+_collect_out=""
+if [[ "$_paths_readable" -eq 1 ]]; then
+    _collect_out=$(LARCH_QUIET_DISABLE=1 "$PLAN_REVIEW_COLLECT_SH" \
+        --timeout "$COLLECT_TIMEOUT" \
+        --substantive-validation \
+        --validation-mode \
+        --structured-reviewer-validation \
+        --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd}))
+else
+    emit_kv WARN "plan-review-panel: dispatch produced no reviewer paths (--no-fallback drops)"
+fi
 _last_collect_out="$_collect_out"
 
 _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
@@ -814,6 +823,15 @@ _dispatch_degraded_panel=0
 if (( 10#$COMBINED_FALLBACK_COUNT > floor_half )); then
     _dispatch_degraded_panel=1
 fi
+if [[ "$_paths_readable" -eq 1 ]]; then
+    _path_ok_count=0
+    while IFS= read -r _pp || [[ -n "$_pp" ]]; do
+        [[ -n "$_pp" ]] && _path_ok_count=$((_path_ok_count + 1))
+    done < "$PANEL_PATHS_FILE"
+    if (( slot_count > 0 && _path_ok_count < slot_count )); then
+        _dispatch_degraded_panel=1
+    fi
+fi
 
 _dirty_out=$("$PLUGIN_ROOT/scripts/check-mid-run-dirty-tree.sh" --mode checkpoint || true)
 if grep -qE '^STATUS=(dirty|unknown)$' <<< "$_dirty_out"; then
@@ -825,7 +843,7 @@ _findings_tmp="$DESIGN_TMPDIR/findings.md.tmp"
 : > "$_findings_tmp"
 while IFS= read -r _rec || [[ -n "$_rec" ]]; do
     [[ -z "$_rec" ]] && continue
-    IFS=$'\x1f' read -r _rf _tool _st _xc _fr <<< "$_rec" || true
+    IFS=$'\x1f' read -r _rf _tool _st _xc _fr _sidecar <<< "$_rec" || true
     _slot_name=$(plan_review_slot_for_reviewer "$_manifest" "$_rf")
     _human=$(plan_slot_human_label "$_slot_name")
     if [[ "$_st" != "OK" ]]; then
@@ -845,12 +863,21 @@ while IFS= read -r _rec || [[ -n "$_rec" ]]; do
             --output-file "$_fail_log" \
             --redact >/dev/null 2>&1 || true
     else
-        _tsv="${_rf}.tsv"
+        _structured_path=""
+        if [[ -n "$_sidecar" && -f "$_sidecar" ]]; then
+            _structured_path="$_sidecar"
+        elif [[ -f "${_rf}.tsv" ]]; then
+            _structured_path="${_rf}.tsv"
+        elif [[ -f "${_rf}.jsonl" ]]; then
+            _structured_path="${_rf}.jsonl"
+        else
+            _structured_path="${_rf}.tsv"
+        fi
         _frag=$(mktemp "$DESIGN_TMPDIR/.plan-find-frag.XXXXXX")
-        python3 - "$_rf" "$_human" "$_tsv" <<'PY' > "$_frag" 2>/dev/null || true
-import csv, sys
+        python3 - "$_rf" "$_human" "$_structured_path" <<'PY' > "$_frag" 2>/dev/null || true
+import csv, json, sys
 
-reviewer_path, slot, tsv_path = sys.argv[1:4]
+reviewer_path, slot, structured_path = sys.argv[1:4]
 fi = 1
 oi = 1
 
@@ -877,15 +904,47 @@ def emit_oos(n, slot, sev, focus, loc, what, scen, fix):
     print()
 
 
-def main():
+def load_rows(path):
     rows = []
+    if path.endswith(".jsonl"):
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        obj = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    if not isinstance(obj, dict):
+                        continue
+                    rows.append(
+                        {
+                            "scope": obj.get("scope", ""),
+                            "severity": obj.get("severity", ""),
+                            "focus_area": obj.get("focus_area", ""),
+                            "location": obj.get("location", ""),
+                            "what": obj.get("what", ""),
+                            "scenario_or_breakage": obj.get("scenario_or_breakage", ""),
+                            "suggested_fix": obj.get("suggested_fix", ""),
+                        }
+                    )
+        except OSError:
+            rows = []
+        return rows
     try:
-        with open(tsv_path, "r", encoding="utf-8", errors="replace") as fh:
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
             rdr = csv.DictReader(fh, delimiter="\t")
             for row in rdr:
                 rows.append(row)
     except OSError:
         rows = []
+    return rows
+
+
+def main():
+    rows = load_rows(structured_path)
     if not rows:
         return
     fi = 1

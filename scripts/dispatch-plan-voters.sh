@@ -135,43 +135,61 @@ VOTER_1_STATUS="launched"
 manifest="$DESIGN_TMPDIR/plan-voter-slots.ndjson"
 VOTER_2_PATH="$DESIGN_TMPDIR/codex-vote-output.txt"
 VOTER_3_PATH="$DESIGN_TMPDIR/cursor-vote-output.txt"
-{
-    printf '{"slot":"voter-2","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$VOTER_2_PATH" "$codex_prompt"
-    printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_PATH" "$cursor_prompt"
-} > "$manifest"
+: >"$manifest"
+if [[ "$CODEX_AVAILABLE" == "true" ]]; then
+    printf '{"slot":"voter-2","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$VOTER_2_PATH" "$codex_prompt" >>"$manifest"
+fi
+if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
+    printf '{"slot":"voter-3","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$VOTER_3_PATH" "$cursor_prompt" >>"$manifest"
+fi
 
-waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
-    --slots-file "$manifest" \
-    --codex-present "$CODEX_AVAILABLE" \
-    --cursor-present "$CURSOR_AVAILABLE" \
-    --mode description \
-    --timeout 1860)
+waterfall_output=""
+if [[ -s "$manifest" ]]; then
+    waterfall_output=$("$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh" \
+        --slots-file "$manifest" \
+        --codex-present "$CODEX_AVAILABLE" \
+        --cursor-present "$CURSOR_AVAILABLE" \
+        --mode description \
+        --no-fallback \
+        --timeout 1860)
+else
+    waterfall_output=$'DISPATCH_OK=true\n'
+fi
 
-all_outputs=""
-all_tools=""
 dispatch_ok="true"
+waterfall_files=""
+waterfall_tools=""
 while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     value="${line#*=}"
     case "$key" in
-        ALL_OUTPUT_FILES) all_outputs="$value" ;;
-        ALL_OUTPUT_TOOLS) all_tools="$value" ;;
         DISPATCH_OK) dispatch_ok="$value" ;;
+        ALL_OUTPUT_FILES) waterfall_files="$value" ;;
+        ALL_OUTPUT_TOOLS) waterfall_tools="$value" ;;
         WARN) emit_kv WARN "$value" ;;
     esac
 done <<< "$waterfall_output"
 
-read -r -a outputs_arr <<< "$all_outputs"
-read -r -a tools_arr <<< "$all_tools"
-
-VOTER_2_PATH="${outputs_arr[0]:-}"
-VOTER_3_PATH="${outputs_arr[1]:-}"
-VOTER_2_TOOL="${tools_arr[0]:-codex}"
-VOTER_3_TOOL="${tools_arr[1]:-cursor}"
-VOTER_2_STATUS="launched"
-VOTER_3_STATUS="launched"
-[[ "$VOTER_2_TOOL" == "claude" ]] && VOTER_2_STATUS="fallback"
-[[ "$VOTER_3_TOOL" == "claude" ]] && VOTER_3_STATUS="fallback"
+VOTER_2_TOOL=codex
+VOTER_3_TOOL=cursor
+IFS=' ' read -r -a _waterfall_files <<< "$waterfall_files"
+IFS=' ' read -r -a _waterfall_tools <<< "$waterfall_tools"
+for _wf_i in "${!_waterfall_tools[@]}"; do
+    case "${_waterfall_tools[$_wf_i]}" in
+        codex) VOTER_2_PATH="${_waterfall_files[$_wf_i]:-$VOTER_2_PATH}" ;;
+        cursor) VOTER_3_PATH="${_waterfall_files[$_wf_i]:-$VOTER_3_PATH}" ;;
+    esac
+done
+VOTER_2_STATUS="failed"
+VOTER_3_STATUS="failed"
+if [[ "$CODEX_AVAILABLE" == "true" ]]; then
+    VOTER_2_STATUS="launched"
+fi
+if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
+    VOTER_3_STATUS="launched"
+fi
+[[ "$VOTER_2_STATUS" == "launched" && "$VOTER_2_TOOL" == "claude" ]] && VOTER_2_STATUS="fallback"
+[[ "$VOTER_3_STATUS" == "launched" && "$VOTER_3_TOOL" == "claude" ]] && VOTER_3_STATUS="fallback"
 [[ -s "$VOTER_2_PATH" ]] || VOTER_2_STATUS="failed"
 [[ -s "$VOTER_3_PATH" ]] || VOTER_3_STATUS="failed"
 

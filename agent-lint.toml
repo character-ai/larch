@@ -374,6 +374,9 @@ exclude = [
   # harness is covered by the test-degraded-tools-gate target.
   "scripts/test-degraded-tools-gate.sh",
   "scripts/test-degraded-tools-gate.md",
+  # scripts/test-no-grouped-reuse-guard.sh is the Makefile-only post-condition
+  # harness for grouped-reuse rip-out; covered by test-no-grouped-reuse-guard.
+  "scripts/test-no-grouped-reuse-guard.sh",
   # scripts/test-launch-claude-subprocess.sh is the Makefile-only regression
   # harness for scripts/launch-claude-subprocess.sh. The launcher itself is
   # runtime-referenced from /review; the harness is not invoked from skill

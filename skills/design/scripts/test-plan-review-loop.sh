@@ -51,6 +51,24 @@ rc=$?
 set -e
 [[ "$rc" == 2 ]] || fail "expected exit 2 when --round-num exceeds --round-cap, got $rc"
 
+echo "=== removed --convergence-threshold flag rejected ==="
+DCT="$TMP/convergence-threshold-removed"
+mkdir -p "$DCT"
+printf 'plan\n' >"$DCT/plan.txt"
+printf 'feat\n' >"$DCT/feature-description.txt"
+set +e
+ct_out=$("$PLR" \
+    --design-tmpdir "$DCT" \
+    --plan-file "$DCT/plan.txt" \
+    --feature-file "$DCT/feature-description.txt" \
+    --codex-present true \
+    --cursor-present true \
+    --convergence-threshold 3 2>&1)
+ct_rc=$?
+set -e
+[[ "$ct_rc" -eq 2 ]] || fail "expected exit 2 for removed --convergence-threshold, got $ct_rc"
+printf '%s\n' "$ct_out" | grep -Fq 'unknown option' || fail "removed --convergence-threshold should fail via unknown option path"
+
 write_scout() {
     cat >"$STUB/scout-plan-archetypes-wrapper.sh" <<'EOS'
 #!/usr/bin/env bash
@@ -282,6 +300,105 @@ set -euo pipefail
 printf 'DISPATCH_OK=false\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=false\n'
 EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
+write_dispatch_empty_paths_ok() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --plan-file|--feature-file|--codex-present|--cursor-present|--timeout) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+: >"$PATHS"
+: >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=false\nDEGRADED_ROUND=true\nALL_SLOTS_DROPPED=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
+write_dispatch_both_absent_generic() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+CODEX_PRESENT=""
+CURSOR_PRESENT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
+        --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
+        --plan-file|--feature-file|--timeout) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+[[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]] || exit 3
+OUT="$DESIGN_TMPDIR/claude-plan-generic-output.txt"
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+: >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+printf 'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n' >"${OUT}.tsv"
+printf '{"no_issues_found":true}\n' >"$OUT"
+printf '0\n' >"${OUT}.done"
+printf '%s\n' "$OUT" >"$PATHS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nDEGRADED_ROUND=false\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
+write_dispatch_cursor_only() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --plan-file|--feature-file|--codex-present|--cursor-present|--timeout) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+OUT="$DESIGN_TMPDIR/cursor-plan-arch-output.txt"
+PROMPT="$DESIGN_TMPDIR/render-plan-cursor-arch.prompt"
+printf '%s\n' '{"slot":"cursor-plan-arch","tool":"cursor","output":"'"$OUT"'","prompt_file":"'"$PROMPT"'"}' >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+: >"$OUT"
+: >"$PROMPT"
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+printf '%s\n' "$OUT" >"$PATHS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
+write_collect_no_sentinel_timeout() {
+    cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+paths=""
+timeout=60
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --paths-file) paths="${2:?}"; shift 2 ;;
+        --timeout) timeout="${2:?}"; shift 2 ;;
+        --substantive-validation|--validation-mode|--structured-reviewer-validation) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$paths" && -f "$paths" ]] || exit 0
+while IFS= read -r p || [[ -n "$p" ]]; do
+    [[ -n "$p" ]] || continue
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\nFAILURE_REASON=\n\n' "$p"
+done <"$paths"
+EOS
+    chmod +x "$STUB/collect-agent-results.sh"
 }
 
 write_collect_one_nit() {
@@ -791,6 +908,94 @@ out1r2=$(run_loop "$D1R2" 2)
 printf '%s\n' "$out1r2" | grep -q '^ROUNDS_COMPLETED=2$' || fail "expected round-2 ROUNDS_COMPLETED kv"
 [[ -f "$D1R2/plan-review/round-2/findings-classification.tsv" ]] || fail "round-2 classification TSV missing"
 [[ ! -e "$D1R2/plan-review/round-1/findings-classification.tsv" ]] || fail "round-2 run must not write round-1 TSV"
+
+echo "=== empty paths with DISPATCH_OK=true => zero-findings (not panel-failed) ==="
+D1E="$TMP/z1e"
+mkdir -p "$D1E"
+printf 'plan\n' >"$D1E/plan.txt"
+printf 'feat\n' >"$D1E/feature-description.txt"
+write_scout
+write_dispatch_empty_paths_ok
+write_collect empty
+write_voters_three
+set +e
+out1e=$(run_loop "$D1E")
+rc1e=$?
+set -e
+[[ "$rc1e" -eq 0 ]] || fail "empty paths with DISPATCH_OK=true should exit 0"
+printf '%s\n' "$out1e" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings for empty paths dispatch"
+printf '%s\n' "$out1e" | grep -vq '^LOOP_STATUS=panel-failed$' || fail "empty paths must not surface panel-failed"
+
+echo "=== both-absent generic Claude path reaches zero-findings tally ==="
+D1G="$TMP/z1g"
+mkdir -p "$D1G"
+printf 'plan\n' >"$D1G/plan.txt"
+printf 'feat\n' >"$D1G/feature-description.txt"
+write_scout
+write_dispatch_both_absent_generic
+write_collect empty
+write_voters_three
+set +e
+out1g=$(run_loop "$D1G" --codex-present false --cursor-present false)
+rc1g=$?
+set -e
+[[ "$rc1g" -eq 0 ]] || fail "both-absent generic path should exit 0"
+printf '%s\n' "$out1g" | grep -vq 'SENTINEL_TIMEOUT' || fail "both-absent generic path must not emit SENTINEL_TIMEOUT"
+printf '%s\n' "$out1g" | grep -vq '^LOOP_STATUS=panel-failed$' || fail "both-absent generic path must not surface panel-failed"
+printf '%s\n' "$out1g" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings for both-absent generic path"
+
+echo "=== codex-down cursor-only paths: collect without SENTINEL_TIMEOUT ==="
+D1C="$TMP/z1c"
+mkdir -p "$D1C"
+printf 'plan\n' >"$D1C/plan.txt"
+printf 'feat\n' >"$D1C/feature-description.txt"
+write_scout
+write_dispatch_cursor_only
+write_collect_no_sentinel_timeout
+write_voters_three
+out1c=$(run_loop "$D1C" --codex-present false --cursor-present true)
+printf '%s\n' "$out1c" | grep -vq 'SENTINEL_TIMEOUT' || fail "codex-down collect path must not emit SENTINEL_TIMEOUT"
+printf '%s\n' "$out1c" | grep -vq '^LOOP_STATUS=panel-failed$' || fail "codex-down must not surface panel-failed"
+printf '%s\n' "$out1c" | grep -q '^LOOP_STATUS=complete$' || fail "expected complete for cursor-only collect"
+
+echo "=== real panel dispatch + collect with stubbed externals only ==="
+export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
+export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
+export LARCH_TRANSIENT_RETRY_DELAY=0
+DREAL="$TMP/zreal"
+mkdir -p "$DREAL"
+printf '## Plan\n\nDo thing.\n\ndiff_lines: 1\n' >"$DREAL/plan.txt"
+printf 'feat\n' >"$DREAL/feature-description.txt"
+EXTSTUB="$TMP/ext-stub-bin"
+mkdir -p "$EXTSTUB"
+cat >"$EXTSTUB/cursor" <<'EXTCUR'
+#!/usr/bin/env bash
+out=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output" ]]; then out="$arg"; fi
+    last="$arg"
+done
+[[ -n "$out" ]] || exit 8
+mkdir -p "$(dirname "$out")"
+printf '{"no_issues_found": true}\n' >"$out"
+printf '0\n' >"${out}.done"
+EXTCUR
+cat >"$EXTSTUB/codex" <<'EXTCOD'
+#!/usr/bin/env bash
+exit 7
+EXTCOD
+chmod +x "$EXTSTUB/cursor" "$EXTSTUB/codex"
+write_scout
+export LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$ROOT/skills/design/scripts/dispatch-plan-review-panel.sh"
+export LARCH_PLAN_REVIEW_COLLECT_SH="$ROOT/scripts/collect-agent-results.sh"
+write_voters_three
+out_real=$(PATH="$EXTSTUB:$PATH" run_loop "$DREAL" --codex-present false --cursor-present true --timeout 30)
+printf '%s\n' "$out_real" | grep -vq 'SENTINEL_TIMEOUT' || fail "real panel/collect path must not emit SENTINEL_TIMEOUT"
+printf '%s\n' "$out_real" | grep -vq '^LOOP_STATUS=panel-failed$' || fail "real panel/collect path must not surface panel-failed"
+printf '%s\n' "$out_real" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' \
+    || fail "real panel/collect path should reach skipped-empty-findings with no_issues_found outputs"
+unset LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH LARCH_PLAN_REVIEW_COLLECT_SH
 
 echo "=== panel-failed path writes header-only classification TSV ==="
 D1P="$TMP/z1p"

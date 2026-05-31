@@ -1,0 +1,25 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=important QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_4: YES CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_5: YES CORRECTNESS=uncertain SEVERITY=important QUALITY=good UNCERTAIN=true
+FINDING_6: YES CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_7: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_9: NO CORRECTNESS=true SEVERITY=important QUALITY=no-fix UNCERTAIN=false -- problem already removed by this diff; no issue to file
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- env fallback is intentional with explicit WARNING stderr output and norm_bool/norm_tristate mitigations; filing adds little value over the existing design docs
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirms no new vulnerability; nothing to file
+FINDING_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_14: YES CORRECTNESS=uncertain SEVERITY=latent QUALITY=adequate UNCERTAIN=true
+FINDING_15: YES CORRECTNESS=true SEVERITY=important QUALITY=good UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- PR organization concern; not worth filing as a code issue
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_19: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_21: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirms correctness; nothing to file
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirms mitigation is sound; nothing to file
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirms integration is sound; nothing to file
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirms isolation is sound; nothing to file
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirms test scope is correct; nothing to file

@@ -1,0 +1,150 @@
+Normalized aggregator output from the supplied reviewer slots. Positive security attestations (removed reuse, paths-file contract, jq manifests, etc.) are omitted — they describe mitigations already in the branch, not actionable risks. `dyn-dispatch-ok-semantics` FINDING_36 is omitted for the same reason.
+
+### FINDING_1: Duplicate both-absent generic-Claude launch blocks
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: Parallel both-absent generic-Claude launch blocks in `dispatch-plan-review-panel.sh` (89–145) and `decompose-panel-dispatch.sh` (136–204) diverge in prompt assembly and validation. Fixing TSV/sentinel handling on one path without the other leaves inconsistent degraded floors and panel contracts.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_2: Fragile decompose generic prompt extraction
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: Generic decompose prompt uses `sed` anchored on "Your focus:" plus `head -n 8`. Template edits that move or rename that section break the combined prompt without test failure until runtime.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_3: Inert COMBINED_FALLBACK_COUNT degradation under --no-fallback
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: `COMBINED_FALLBACK_COUNT > floor_half` degradation heuristic in `plan-review-loop.sh` (813–821) and `dispatch-plan-review-panel.sh` (262–268) is inert for `--no-fallback` design panels. Operators may believe Claude/cross-tool padding fired when only slot drops occurred.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_4: Duplicate ALL_OUTPUT_FILES assembly branches
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: Duplicate if/else branches when assembling `ALL_OUTPUT_FILES` in `dispatch-with-waterfall.sh` (463–471). Minor maintenance noise; no functional regression identified.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_5: Misleading write_dynamic_prompt vendor wording
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `write_dynamic_prompt` claims Cursor + Codex when only one vendor is present (`dispatch-plan-review-panel.sh:67`), producing misleading dynamic-slot instructions in single-vendor runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_6: Plan voter path mis-assignment under compact --no-fallback outputs
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, dyn-bash-portability-output.txt, dyn-dispatch-ok-semantics-output.txt
+- **Severity**: important
+- **Concern**: Under `--no-fallback`, `dispatch-with-waterfall.sh` emits a compact `ALL_OUTPUT_FILES` / `ALL_OUTPUT_TOOLS` list that omits dropped slots while preserving manifest order for survivors only. `dispatch-plan-voters.sh` (183–203) still walks every manifest row (codex before cursor) and advances a sequential index whenever it handles an available tool, without binding outputs to the matching manifest `.output` / `.tool`. If Voter 2 (codex) fails and Voter 3 (cursor) succeeds, the sole cursor path can be assigned to `VOTER_2_PATH` / `VOTER_2_TOOL` while Voter 3 stays on the default path — wrong vendor attribution, double-read, or failed tally versus the old positional mapping that included empty placeholders per slot.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Match waterfall outputs to manifest .output paths (like decompose-panel-dispatch.sh) or emit per-slot path KVs; add codex-fail/cursor-ok harness assertions.
+  - From dyn-bash-portability-output.txt: Drop the index-based re-map for plan voters under `--no-fallback` and mirror `skills/design/scripts/dispatch-plan-assessors.sh:129-145`: keep stable manifest paths (`$DESIGN_TMPDIR/codex-vote-output.txt` / `cursor-vote-output.txt`), derive `VOTER_*_STATUS` from non-empty output (and parse-rate), and only read `ALL_OUTPUT_TOOLS` if you still need tool identity. If alternate paths must be supported, match by manifest `.output` or basename like `skills/design/scripts/decompose-panel-dispatch.sh:328-337`, advancing `_wf_idx` only when a resolved path is bound.
+  - From dyn-dispatch-ok-semantics-output.txt: For each manifest row, select the waterfall output whose `ALL_OUTPUT_TOOLS` entry matches that row’s `.tool` (or read the compact paths-file with explicit slot/tool metadata) instead of positional `_wf_idx` advancement; add a harness case with codex phase-1 failure and cursor success asserting `VOTER_2_STATUS=failed`, `VOTER_3_STATUS=launched`, and `VOTER_3_TOOL=cursor`.
+
+### FINDING_7: Thin both-absent generic Claude prompt bodies
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: Both-absent generic prompt uses only `head -n 1` per archetype plus one shared tail, not full per-lens `render` bodies (`dispatch-plan-review-panel.sh:96-102`). Externals both down on HARD plan: single Claude reviewer gets thinner lens guidance than five separate reviewers; may under-report findings but does not stall.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_8: Both-absent assessor harness lacks Claude floor assertions
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `test-dispatch-plan-assessors.sh` (154–163) only checks empty manifest on both-absent runs, not Claude assessor floor output. A change that skips `launch-claude-review` or marks `CLAUDE_ASSESSOR_STATUS` failed while leaving manifest empty would pass CI despite violating acceptance single-Claude-assessor floor.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: After both-absent run assert on $out: CLAUDE_ASSESSOR_STATUS=launched non-empty CLAUDE_ASSESSOR_PATH DISPATCH_OK=true (and degraded warning if intended).
+  - From cursor-specialist-plan-fidelity-output.txt: Assert CLAUDE_ASSESSOR_STATUS=launched and non-empty Claude assessor output on both-absent.
+
+### FINDING_9: Dead cp stub in waterfall test harness
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: Dead `cp` stub remains in `test-dispatch-with-waterfall.sh` (76–96) after grouped-reuse tests were removed. Maintainers may reintroduce or debug cp-fail reuse paths that no longer exist in production; stub adds noise with zero assertions.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_10: Stale PHASE2_RELAUNCH_COUNT in panel test stubs
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: Stubs in `test-dispatch-plan-review-panel.sh` (43–49) still emit removed `PHASE2_RELAUNCH_COUNT` KV. Downstream code that still requires it will not fail harnesses that mimic production stdout shape.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_11: All-static slot drop sets DISPATCH_OK=false and panel-fails
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: Under `--no-fallback`, when every static slot drops (`dispatch-with-waterfall.sh` 411–426; `plan-review-loop.sh` 772–782), `DISPATCH_OK=false` and an empty paths-file cause `plan-review-loop` to treat the round as panel-failed (exit 1) instead of degraded zero-findings tally required by plan edge cases and `test-plan-review-loop.sh:846-861`. Plan Step 3 expects `dispatch_ok` to stay true for dropped `--no-fallback` slots; the all-static-empty `dispatch_ok=false` block contradicts that and couples to hard panel-failure.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_12: Both-absent generic validation failure panel-fails whole round
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: Both-absent generic path in `dispatch-plan-review-panel.sh` (133–145) clears `PANEL_PATHS_FILE` and sets `DISPATCH_OK=false` when structured validation fails. Claude may return usable prose but fail `validate-research-output` or first-line ERE; `plan-review-loop` then panel-fails the whole round instead of degrading. Output path should remain in `PANEL_PATHS_FILE` with `DEGRADED_ROUND=true` on validation miss; reserve panel-failed for launch hard-failure.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_13: Decompose panel falls back to manifest paths when ALL_OUTPUT_FILES empty
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: When `ALL_OUTPUT_FILES_PATH` is empty, `decompose-panel-dispatch.sh` (354–360) falls back to manifest output paths for all rows. If all `--no-fallback` slots fail, `panel-outputs.ndjson` lists manifest paths as missing/unparsed though nothing should be collected. When `_resolved_paths` is empty, skip manifest fallback rows or emit a single explicit degraded row.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_14: dispatch_ok not cleared on dynamic-only total failure
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: `dispatch-with-waterfall.sh` (411–427) does not clear `dispatch_ok` when only dynamic slots exist and all fail under `--no-fallback`. Hypothetical dynamic-only manifest: `ALL_SLOTS_DROPPED` with `DISPATCH_OK=true` yields inconsistent soft vs hard failure vs static-only total drop.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_15: Divergent first-line ERE between generic and waterfall paths
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Generic and waterfall first-line ERE patterns differ (`dispatch-plan-review-panel.sh:104,226`). Output accepted on both-absent floor could be dropped on single-vendor waterfall for the same bytes.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_16: Generic Claude floor may not pin Opus per plan
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: Plan specifies generic Claude (Opus); implementation uses default `launch-claude-review` without Opus pin (`dispatch-plan-review-panel.sh:106-111`). Both-absent floor may run a non-Opus model while plan/docs promise Opus.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_1: [OUT_OF_SCOPE] Scout slug path interpolation without charset guard
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: important
+- **Concern**: Dynamic scout slugs from `scout-plan-manifest.json` are interpolated into filesystem paths without a slug charset guard (`dispatch-plan-review-panel.sh:183-210`). `larch_design_tmpdir_validate` rejects `..` on the tmpdir root, not slug segments; hostile or malformed manifest could write outside intended flat naming. Pre-existing; not introduced by availability gating.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_2: [OUT_OF_SCOPE] printf-built NDJSON manifests in voters/assessors
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: NDJSON rows in `dispatch-plan-voters.sh` (139-144) and `dispatch-plan-assessors.sh` (95-100) are built with `printf '{"…":"%s",…}'` instead of `jq -nc`. Paths under allowlisted `DESIGN_TMPDIR` limit practical risk, but `"` or `\` in a path would corrupt the manifest. Pre-existing pattern on this branch.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_3: [OUT_OF_SCOPE] Stale eight-proposal header in decompose-aggregator
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: Stale eight-proposal header after availability-gated dispatch (`decompose-aggregator.sh:82`). Operator sees wrong slot-count expectation in merged prompt.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_4: [OUT_OF_SCOPE] Unquoted _wf_files array expansion in dispatch-plan-voters
+- **Reviewer(s)**: dyn-bash-portability-output.txt
+- **Severity**: nit
+- **Concern**: Unquoted `_wf_files=($all_output_files)` / `_wf_tools=($all_output_tools)` (`dispatch-plan-voters.sh:176-181`) follow the same space-delimited `emit_kv` contract as the rest of the waterfall stack; paths under `DESIGN_TMPDIR` are conventionally space-free — consistent with repo practice, not a new Bash 3.2 hazard on this branch.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_5: [OUT_OF_SCOPE] degraded-tools-gate stderr vs stdout parsing for ad-hoc callers
+- **Reviewer(s)**: dyn-bash-portability-output.txt
+- **Severity**: latent
+- **Concern**: `degraded-tools-gate.sh` WARNINGs on stderr via `larch_err`; canonical callers pass explicit flags so production KV parsing on stdout is unaffected. Harness cases 8–9 use `2>&1`; merged capture is risky only for ad-hoc callers that omit flags, rely on env, and parse stdout without ignoring non-`KEY=value` lines (case 11 documents that posture).
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_6: [OUT_OF_SCOPE] dispatch-plan-voters.md describes legacy three-phase waterfall
+- **Reviewer(s)**: dyn-bash-portability-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/dispatch-plan-voters.md:16-22` still describes legacy three-phase waterfall; script now passes `--no-fallback` (`dispatch-plan-voters.sh:153`). Doc drift only, not a runtime defect.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_7: [OUT_OF_SCOPE] assess-plan-round aborts on waterfall DISPATCH_OK=false for all-dropped externals
+- **Reviewer(s)**: dyn-dispatch-ok-semantics-output.txt
+- **Severity**: latent
+- **Concern**: `--no-fallback` treats per-slot drops as non-fatal when any static slot survives, but `assess-plan-round.sh` (222-232) still aborts tally whenever waterfall `DISPATCH_OK=false`, including Claude succeeded with both external assessor rows dropped (`ALL_SLOTS_DROPPED`). Outside the four in-scope callers but same semantic asymmetry as design panel paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_8: [OUT_OF_SCOPE] FALLBACK_COUNTER_FILE only affects /review-style callers
+- **Reviewer(s)**: dyn-dispatch-ok-semantics-output.txt
+- **Severity**: nit
+- **Concern**: Design panel/voter callers do not pass `--fallback-counter-file`; forcing `combined_fallback=0` under `--no-fallback` does not under-report in those paths. Only `/review`-style callers that opt into the counter file are affected.
+- **Suggested revisions (informational for voters; coder decides)**:

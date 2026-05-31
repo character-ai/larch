@@ -1,0 +1,10 @@
+Reviewing branch changes with focus on `degraded-tools-gate.sh` correctness.
+Checking how the gate is invoked and extracting the degraded-tools-gate diff.
+Verifying warning behavior for cases 7b and 11:
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **correctness** `scripts/test-degraded-tools-gate.sh:147-152` — Case 11’s env-only invocation (`CODEX_*=true`, only `--skill review`) correctly yields `DEGRADED=false` when inherited env is internally consistent, and the implementation emits **four** stderr warnings (all `*_SET=false` with non-default/non-empty values at `scripts/degraded-tools-gate.sh:57-68`). The harness only asserts `WARNING: --codex-present omitted`, so a future regression that dropped the three `*-binary-found` / `cursor-present` warnings would still pass; the “stale-env omission uses inherited env” assertion is sound for classification, not for full warning coverage.
+- **correctness** `scripts/degraded-tools-gate.sh:57-68` — Case 7b suppression is correct: `CODEX_BINARY_FOUND=''` / `CURSOR_BINARY_FOUND=''` collapse to `unknown` via `${var:-unknown}` before the warning checks, so `!= "unknown"` is false and no binary-found warnings fire while `--codex-present` / `--cursor-present` set `*_SET=true`. Present-only callers that **omit** flags but leave stale non-empty `CODEX_BINARY_FOUND=true` in the shell can still classify Codex as `ok` instead of present-only `unavailable`; production SKILLs now require all four explicit flags (`skills/shared/external-reviewers.md:36-32`), which mitigates this footgun outside tests.
+- **code-quality** `scripts/test-degraded-tools-gate.sh:96-101` vs `127-130` — Case 7 does not redirect stderr (`2>&1`); case 7b does. Both target the same present-only + cleared-binary-env shape; inconsistency only affects whether warnings would fail the “no WARNING” assertion if binary env were not cleared.

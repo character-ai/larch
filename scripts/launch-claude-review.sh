@@ -29,6 +29,7 @@ EXPLICIT_CONTEXT_FILES=()
 TIMEOUT="1800"
 TIMING_TASK_KIND="claude-review"
 ROLE="reviewer"
+MODEL=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -38,6 +39,7 @@ while [[ $# -gt 0 ]]; do
         --prompt) PROMPT="${2:?--prompt requires a value}"; shift 2 ;;
         --mode) MODE="${2:?--mode requires a value}"; shift 2 ;;
         --role) ROLE="${2:?--role requires a value}"; shift 2 ;;
+        --model) MODEL="${2:?--model requires a value}"; shift 2 ;;
         --description-text) DESCRIPTION_TEXT="${2:?--description-text requires a value}"; shift 2 ;;
         --scope-files) SCOPE_FILES="${2:?--scope-files requires a value}"; shift 2 ;;
         --diff-file) DIFF_FILE="${2:?--diff-file requires a value}"; shift 2 ;;
@@ -160,11 +162,10 @@ unset explicit_context_file
 rm -f "${OUTPUT}.stderr-tail"
 SUBPROCESS_STDERR=$(mktemp "$(dirname "$OUTPUT")/claude-subprocess-stderr.XXXXXX")
 set +e
+_subprocess_args=(--prompt-file "$PROMPT_FILE" --output-file "$OUTPUT" --timeout "$TIMEOUT" --timing-task-kind "$TIMING_TASK_KIND")
+[[ -n "$MODEL" ]] && _subprocess_args+=(--model "$MODEL")
 "$SCRIPT_DIR/launch-claude-subprocess.sh" \
-    --prompt-file "$PROMPT_FILE" \
-    --output-file "$OUTPUT" \
-    --timeout "$TIMEOUT" \
-    --timing-task-kind "$TIMING_TASK_KIND" \
+    "${_subprocess_args[@]}" \
     ${allow_root_args[@]+"${allow_root_args[@]}"} \
     ${ctx_args[@]+"${ctx_args[@]}"} 2> "$SUBPROCESS_STDERR"
 rc=$?

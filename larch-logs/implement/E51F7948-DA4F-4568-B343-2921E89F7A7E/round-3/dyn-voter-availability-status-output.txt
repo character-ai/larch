@@ -1,0 +1,14 @@
+Reviewing branch changes with focus on `dispatch-plan-voters.sh` voter availability and status derivation.
+### In-Scope Findings
+
+- **correctness** `scripts/dispatch-plan-voters.sh:159-182` — Voter 2/3 success is inferred only from `[[ -s "$VOTER_2_PATH" ]]` / `[[ -s "$VOTER_3_PATH" ]]` on the fixed manifest paths (`codex-vote-output.txt`, `cursor-vote-output.txt`). The branch removed parsing of `ALL_OUTPUT_FILES` / `ALL_OUTPUT_TOOLS` from `waterfall_output`, but `dispatch-with-waterfall.sh` still records the collector’s final path in those keys (e.g. when `collect-agent-results.sh` empty-output retry succeeds with `REVIEWER_FILE=<orig>-retry.txt` while the manifest path stays empty). In that case the waterfall run can succeed while this script marks the slot `failed`, omits it from `plan-voter-paths.txt`, and under-counts judges. **Suggested fix:** Restore availability-indexed parsing of `ALL_OUTPUT_FILES` / `ALL_OUTPUT_TOOLS` (or read `ALL_OUTPUT_FILES_PATH`) to set `VOTER_*_PATH` and tool before the `-s` guards; keep `--no-fallback` on the waterfall invocation.
+
+- **correctness** `scripts/test-dispatch-plan-voters.sh:362-368` — The `status2`/`status3` matrix still requires `VOTER_2_STATUS=fallback` / `VOTER_3_STATUS=fallback`, but `dispatch-plan-voters.sh:169-180` hardcodes `VOTER_2_TOOL=codex` and `VOTER_3_TOOL=cursor`, so the `VOTER_*_TOOL == claude` → `fallback` promotion can never run; a stub “fallback” run will emit `launched` instead and the harness should fail. **Suggested fix:** Drop `fallback` from that matrix (expect `launched` when the stub writes substantive output) or reintroduce tool attribution from waterfall stdout before status derivation; sync `scripts/dispatch-plan-voters.md` and `skills/design/references/plan-review.md` with the no-Claude-pad voter contract.
+
+### Out-of-Scope Observations
+
+- **code-quality** `scripts/dispatch-plan-voters.sh:179-180` — Dead code: `fallback` status can never be set after hardcoding vendor tools; harmless at runtime but contradicts docs that still describe waterfall Claude fallback for voters 2/3.
+
+- **code-quality** `scripts/test-dispatch-plan-voters.sh:334-336` — The healthy-path `effective_paths` loop uses `$VOTER_1_STATUS` / `$VOTER_2_STATUS` / `$VOTER_3_STATUS` shell variables that are never populated from `$out`, so the assertion does not actually validate path-file line count against emitted statuses (it often passes with `effective_paths=3` by accident).
+
+- **risk-integration** `scripts/dispatch-plan-voters.md:14-22` — Still documents three-phase waterfall and reading `ALL_OUTPUT_FILES` for externals; implementation now uses availability-gated manifest + `--no-fallback` and no longer reads those keys.

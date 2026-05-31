@@ -11,6 +11,8 @@
 #                               [--cursor-present <true|false>] \
 #                               [--codex-available <true|false>] \
 #                               [--cursor-available <true|false>] \
+#                               [--codex-binary-found <true|false>] \
+#                               [--cursor-binary-found <true|false>] \
 #                               [--repo <owner/repo>] \
 #                               [--issue-number <n>] \
 #                               [--claude-pid <pid>]
@@ -49,6 +51,8 @@ CODEX_PRESENT=""
 CURSOR_PRESENT=""
 CODEX_AVAILABLE=""
 CURSOR_AVAILABLE=""
+CODEX_BINARY_FOUND=""
+CURSOR_BINARY_FOUND=""
 CODEX_PRESENT_SET=false
 CURSOR_PRESENT_SET=false
 CODEX_AVAILABLE_SET=false
@@ -69,6 +73,8 @@ while [[ $# -gt 0 ]]; do
     --cursor-present)   CURSOR_PRESENT="$2"; CURSOR_PRESENT_SET=true; shift 2 ;;
     --codex-available)  CODEX_AVAILABLE="$2"; CODEX_AVAILABLE_SET=true; shift 2 ;;
     --cursor-available) CURSOR_AVAILABLE="$2"; CURSOR_AVAILABLE_SET=true; shift 2 ;;
+    --codex-binary-found)  CODEX_BINARY_FOUND="$2"; shift 2 ;;
+    --cursor-binary-found) CURSOR_BINARY_FOUND="$2"; shift 2 ;;
     --repo)             REPO="$2"; shift 2 ;;
     --issue-number)     ISSUE_NUMBER="$2"; shift 2 ;;
     --claude-pid)       CLAUDE_PID="$2"; CLAUDE_PID_SPECIFIED=1; shift 2 ;;
@@ -92,6 +98,8 @@ validate_bool codex-present "$CODEX_PRESENT"
 validate_bool cursor-present "$CURSOR_PRESENT"
 validate_bool codex-available "$CODEX_AVAILABLE"
 validate_bool cursor-available "$CURSOR_AVAILABLE"
+validate_bool codex-binary-found "$CODEX_BINARY_FOUND"
+validate_bool cursor-binary-found "$CURSOR_BINARY_FOUND"
 validate_bool manual-requested "$MANUAL_REQUESTED"
 
 if [[ -n "$ISSUE_NUMBER" && ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
@@ -197,6 +205,8 @@ validate_bool cursor-available "$CURSOR_AVAILABLE"
   [[ -n "$CURSOR_PRESENT" ]] && build_export CURSOR_PRESENT "$CURSOR_PRESENT"
   [[ -n "$CODEX_AVAILABLE" ]] && build_export CODEX_AVAILABLE "$CODEX_AVAILABLE"
   [[ -n "$CURSOR_AVAILABLE" ]] && build_export CURSOR_AVAILABLE "$CURSOR_AVAILABLE"
+  [[ -n "$CODEX_BINARY_FOUND" ]] && build_export CODEX_BINARY_FOUND "$CODEX_BINARY_FOUND"
+  [[ -n "$CURSOR_BINARY_FOUND" ]] && build_export CURSOR_BINARY_FOUND "$CURSOR_BINARY_FOUND"
   [[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]] && build_export CLAUDE_PLUGIN_ROOT "$CLAUDE_PLUGIN_ROOT_VALUE"
 } > "${OUTPUT}.tmp.$$"
 

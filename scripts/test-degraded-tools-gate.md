@@ -7,7 +7,9 @@ degraded-external-tools gate detector). Full contract lives in the primary
 Covers the state-classification matrix (`ok` / `binary-missing` / `probe-failed`
 / generic `unavailable`) for each tool, the `DEGRADED` boolean, the binary-gate
 precedence rule, explanation-block presence/absence, present-only wiring (binary
--found omitted, as `/design` / `/review` / `/research` call it), the `--skill`
+-found omitted, as `/design` / `/review` / `/research` call it; case 7 clears
+`CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` in the child env so inherited runner
+exports cannot skew classification), the `--skill`
 label, and the unknown-flag exit-2 path.
 
 Run via `make test-degraded-tools-gate` (registered in the Makefile `.PHONY` list

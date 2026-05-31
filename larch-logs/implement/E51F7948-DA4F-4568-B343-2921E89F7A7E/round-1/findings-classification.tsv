@@ -1,0 +1,51 @@
+finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
+FINDING_1	cursor-specialist-structure-output.txt	accepted	YES	true	nit	adequate	false	YES	true	minor	good	false	YES	true	minor	good	false
+FINDING_10	cursor-specialist-structure-output.txt	exonerated	EXONERATE	uncertain		weak	true	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	weak	false
+FINDING_11	cursor-specialist-structure-output.txt	exonerated	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	adequate	false	YES	true	nit	adequate	false
+FINDING_12	cursor-specialist-correctness-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	excellent	false	YES	true	major	good	false
+FINDING_13	cursor-specialist-correctness-output.txt	accepted	YES	true	minor	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_14	cursor-specialist-correctness-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_15	cursor-specialist-correctness-output.txt	accepted	YES	partially-true	minor	adequate	true	YES	partially-true	minor	good	false	YES	true	minor	good	false
+FINDING_16	cursor-specialist-correctness-output.txt	accepted	EXONERATE	true	nit	weak	false	YES	true	minor	good	false	YES	true	nit	good	false
+FINDING_17	cursor-specialist-correctness-output.txt	accepted	EXONERATE	partially-true	nit	weak	false	YES	true	major	excellent	false	YES	true	minor	good	false
+FINDING_18	cursor-specialist-testing-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	partially-true	major	good	false
+FINDING_19	cursor-specialist-security-output.txt	rejected	NO	false-positive	uncertain	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_2	cursor-specialist-structure-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_20	cursor-specialist-security-output.txt	rejected	NO	false-positive	uncertain	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_21	cursor-specialist-security-output.txt	rejected	NO	false-positive	uncertain	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_22	cursor-specialist-security-output.txt	rejected	NO	false-positive	uncertain	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_23	cursor-specialist-security-output.txt	rejected	NO	false-positive	uncertain	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_24	cursor-specialist-security-output.txt	rejected	NO	false-positive	uncertain	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_25	cursor-specialist-security-output.txt	accepted	YES	true	minor	adequate	false	YES	true	minor	adequate	false	YES	true	minor	adequate	false
+FINDING_26	cursor-specialist-security-output.txt	exonerated	EXONERATE	true	nit	weak	false	EXONERATE	partially-true	nit	weak	false	EXONERATE	partially-true	nit	weak	false
+FINDING_27	cursor-specialist-edge-cases-output.txt	accepted	YES	true	major	good	false	YES	true	major	excellent	false	YES	true	major	excellent	false
+FINDING_28	cursor-specialist-edge-cases-output.txt	accepted	YES	true	major	good	false	YES	true	major	excellent	false	YES	true	major	excellent	false
+FINDING_29	cursor-specialist-edge-cases-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	excellent	false	YES	true	major	good	false
+FINDING_3	cursor-specialist-structure-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_30	cursor-specialist-edge-cases-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_31	cursor-specialist-edge-cases-output.txt	exonerated	EXONERATE	true		weak	true	EXONERATE	partially-true	minor	weak	false	EXONERATE	partially-true	minor	adequate	false
+FINDING_32	cursor-specialist-plan-fidelity-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_33	dyn-no-fallback-protocol-output.txt	accepted	YES	true	major	excellent	false	YES	true	major	excellent	false	YES	true	major	excellent	false
+FINDING_34	dyn-no-fallback-protocol-output.txt	accepted	YES	true	major	excellent	false	YES	true	major	excellent	false	YES	true	major	excellent	false
+FINDING_35	dyn-no-fallback-protocol-output.txt	accepted	YES	true	major	excellent	false	YES	true	major	excellent	false	YES	true	major	excellent	false
+FINDING_36	dyn-no-fallback-protocol-output.txt	accepted	YES	true	major	excellent	false	YES	true	major	excellent	false	YES	true	major	good	false
+FINDING_37	dyn-no-fallback-protocol-output.txt	accepted	EXONERATE	true	nit	weak	false	YES	true	nit	adequate	false	YES	true	nit	adequate	false
+FINDING_38	dyn-no-fallback-protocol-output.txt	rejected	NO	false-positive	uncertain	no-fix	false	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_39	dyn-no-fallback-protocol-output.txt	accepted	YES	true	minor	adequate	false	YES	true	minor	good	false	YES	true	minor	good	false
+FINDING_4	cursor-specialist-structure-output.txt	accepted	EXONERATE	uncertain	minor	weak	true	YES	true	major	good	false	YES	true	major	good	false
+FINDING_40	dyn-no-fallback-protocol-output.txt	rejected	NO	false-positive	uncertain	no-fix	false	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_41	dyn-voter-index-alignment-output.txt	accepted	YES	true	major	excellent	false	YES	true	major	excellent	false	YES	true	major	excellent	false
+FINDING_42	dyn-voter-index-alignment-output.txt	accepted	EXONERATE	true	major	adequate	false	YES	true	major	excellent	false	YES	true	major	good	false
+FINDING_43	dyn-voter-index-alignment-output.txt	accepted	YES	true	minor	adequate	false	YES	true	minor	good	false	YES	true	minor	good	false
+FINDING_44	dyn-voter-index-alignment-output.txt	accepted	EXONERATE	true	nit	weak	false	YES	true	minor	good	false	YES	true	minor	good	false
+FINDING_45	dyn-env-var-inheritance-output.txt	accepted	YES	true	minor	good	false	YES	true	minor	good	false	YES	true	minor	good	false
+FINDING_46	dyn-env-var-inheritance-output.txt	accepted	EXONERATE	partially-true		weak	true	YES	true	major	good	false	YES	partially-true	minor	good	false
+FINDING_47	dyn-env-var-inheritance-output.txt	accepted	EXONERATE	partially-true		adequate	true	YES	true	minor	good	false	YES	true	minor	good	false
+FINDING_48	dyn-env-var-inheritance-output.txt	accepted	EXONERATE	true	minor	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_49	dyn-env-var-inheritance-output.txt	rejected	NO	false-positive	uncertain	no-fix	false	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_5	cursor-specialist-structure-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_50	dyn-env-var-inheritance-output.txt	accepted	YES	true	nit	adequate	false	YES	true	minor	adequate	false	YES	true	minor	adequate	false
+FINDING_6	cursor-specialist-structure-output.txt	exonerated	YES	true		adequate	true	EXONERATE	true	nit	adequate	false	EXONERATE	true	nit	adequate	false
+FINDING_7	cursor-specialist-structure-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	adequate	false
+FINDING_8	cursor-specialist-structure-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	adequate	false
+FINDING_9	cursor-specialist-structure-output.txt	exonerated	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	weak	false

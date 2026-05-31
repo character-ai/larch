@@ -91,52 +91,64 @@ CLAUDE_STATUS=launched
 [[ "$claude_rc" -eq 0 && -s "$CLAUDE_PATH" ]] || CLAUDE_STATUS=failed
 
 manifest="$DESIGN_TMPDIR/plan-assessor-slots.ndjson"
-{
-    printf '{"slot":"plan-assessor","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$CODEX_PATH" "$prompt_file"
-    printf '{"slot":"plan-assessor","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$CURSOR_PATH" "$prompt_file"
-} >"$manifest"
+: >"$manifest"
+if [[ "$CODEX_PRESENT" == "true" ]]; then
+    printf '{"slot":"plan-assessor","tool":"codex","output":"%s","prompt_file":"%s"}\n' "$CODEX_PATH" "$prompt_file" >>"$manifest"
+fi
+if [[ "$CURSOR_PRESENT" == "true" ]]; then
+    printf '{"slot":"plan-assessor","tool":"cursor","output":"%s","prompt_file":"%s"}\n' "$CURSOR_PATH" "$prompt_file" >>"$manifest"
+fi
 
 WATERFALL_SH="${LARCH_DISPATCH_WITH_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
-set +e
-waterfall_output=$("$WATERFALL_SH" \
-    --slots-file "$manifest" \
-    --codex-present "$CODEX_PRESENT" \
-    --cursor-present "$CURSOR_PRESENT" \
-    --mode description \
-    --timeout "$TIMEOUT" \
-    --feature-file "$FEATURE_FILE" \
-    --require-result-pattern "$ASSESSMENT_PATTERN")
-wf_rc=$?
-set -e
-larch_err "→ assessor-dispatch: round=${ROUND_NUM} waterfall-rc=${wf_rc}"
-
 dispatch_ok=true
-all_outputs=""
-all_tools=""
-while IFS= read -r line || [[ -n "$line" ]]; do
-    key="${line%%=*}"
-    value="${line#*=}"
-    case "$key" in
-        ALL_OUTPUT_FILES) all_outputs="$value" ;;
-        ALL_OUTPUT_TOOLS) all_tools="$value" ;;
-        DISPATCH_OK) dispatch_ok="$value" ;;
-        WARN) emit_kv WARN "$value" ;;
-    esac
-done <<<"$waterfall_output"
+wf_rc=0
+if [[ -s "$manifest" ]]; then
+    set +e
+    waterfall_output=$("$WATERFALL_SH" \
+        --slots-file "$manifest" \
+        --codex-present "$CODEX_PRESENT" \
+        --cursor-present "$CURSOR_PRESENT" \
+        --mode description \
+        --no-fallback \
+        --timeout "$TIMEOUT" \
+        --feature-file "$FEATURE_FILE" \
+        --require-result-pattern "$ASSESSMENT_PATTERN")
+    wf_rc=$?
+    set -e
+    larch_err "→ assessor-dispatch: round=${ROUND_NUM} waterfall-rc=${wf_rc}"
 
-read -r -a outputs_arr <<< "$all_outputs"
-read -r -a tools_arr <<< "$all_tools"
-CODEX_PATH="${outputs_arr[0]:-$CODEX_PATH}"
-CURSOR_PATH="${outputs_arr[1]:-$CURSOR_PATH}"
-CODEX_TOOL="${tools_arr[0]:-codex}"
-CURSOR_TOOL="${tools_arr[1]:-cursor}"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        key="${line%%=*}"
+        value="${line#*=}"
+        case "$key" in
+            DISPATCH_OK) dispatch_ok="$value" ;;
+            WARN) emit_kv WARN "$value" ;;
+        esac
+    done <<<"$waterfall_output"
 
+    # Under --no-fallback, ALL_OUTPUT_FILES is compact; keep stable manifest paths.
+    CODEX_TOOL=codex
+    CURSOR_TOOL=cursor
+else
+    larch_err "→ assessor-dispatch: round=${ROUND_NUM} waterfall-skipped (no external tools)"
+fi
+
+CODEX_TOOL="${CODEX_TOOL:-codex}"
+CURSOR_TOOL="${CURSOR_TOOL:-cursor}"
 CODEX_STATUS=launched
 CURSOR_STATUS=launched
-[[ "$CODEX_TOOL" == "claude" ]] && CODEX_STATUS=fallback
-[[ "$CURSOR_TOOL" == "claude" ]] && CURSOR_STATUS=fallback
+[[ "$CODEX_PRESENT" != "true" ]] && CODEX_STATUS=failed
+[[ "$CURSOR_PRESENT" != "true" ]] && CURSOR_STATUS=failed
+[[ "$CODEX_STATUS" == "launched" && "$CODEX_TOOL" == "claude" ]] && CODEX_STATUS=fallback
+[[ "$CURSOR_STATUS" == "launched" && "$CURSOR_TOOL" == "claude" ]] && CURSOR_STATUS=fallback
 [[ -s "$CODEX_PATH" ]] || CODEX_STATUS=failed
 [[ -s "$CURSOR_PATH" ]] || CURSOR_STATUS=failed
+if [[ -s "$CODEX_PATH" ]] && ! grep -Eq -- "$ASSESSMENT_PATTERN" "$CODEX_PATH"; then
+    CODEX_STATUS=failed
+fi
+if [[ -s "$CURSOR_PATH" ]] && ! grep -Eq -- "$ASSESSMENT_PATTERN" "$CURSOR_PATH"; then
+    CURSOR_STATUS=failed
+fi
 
 degraded_warning=false
 effective=0
