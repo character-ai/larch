@@ -1,0 +1,27 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan §"UPDATED: skills/review-and-fix/scripts/review-and-fix.sh" → Nit counter bullet; plan §"Failure modes" → "Nit miscount" bullet	Plan prescribes **Nit** as the /implement nit marker, but findings.md (aggregator output) uses `- **Severity**: nit` (lowercase, per agents/orchestrator-aggregator.md:30-37 and confirmed in larch-logs/implement/1446FF4C-B070-45B2-901C-4EAD31252CB9/round-3/findings.md:25). If the implementer mirrors important_findings_present (which uses **[Ii]mportant** patterns) for nit, no line in findings.md will match.	NIT_ACCEPTED_COUNT=0 in every /implement round; nit findings are never subtracted from the convergence count; the ≤5 bound applies to all accepted findings including nits — directly contradicting the plan's stated nit-exclusion goal for /implement while /design (which specifies ^- \*\*Severity\*\*: nit) works correctly.	Specify ^- \*\*Severity\*\*: nit as the /implement nit marker, identical to the /design _count_nit_findings helper; both loops' findings.md files are produced by the orchestrator-aggregator which outputs `- **Severity**: important|latent|nit` (lowercase) — not **Nit** bold prose.
+1	in_scope	important	correctness	plan §"UPDATED: skills/review-and-fix/scripts/review-and-fix.sh" → "Derive non-nit accepted = accepted_count − nit_count" sentence	Plan counts nit findings from findings.md (all findings, including rejected) but subtracts from accepted_count (accepted-only). The /design parallel correctly scans accepted-plan-findings.md (accepted-only). When nit findings are rejected — common since nits are optional — nit_count > nit_accepted_count, making non_nit_accepted = accepted_count − nit_count_all undercount actual non-nit accepted.	Round with 8 accepted non-nit + 4 rejected nit + 0 accepted nit: accepted_count=8, nit_count_from_findings_md=4, non_nit_accepted=max(0,8−4)=4 (≤5, converges). Actual non-nit accepted=8 (>5, should not converge). The loop terminates while 8 non-nit issues remain accepted.	Count nit findings from the round's accepted-findings.md (accepted-only), matching /design's pattern of scanning accepted-plan-findings.md; the accepted-findings.md per-round file already exists at $IMPLEMENT_TMPDIR/round-N/accepted-findings.md.
+
+---
+
+**1. Wrong nit marker for `/implement`** — in-scope, important, correctness
+
+Plan section "UPDATED: `skills/review-and-fix/scripts/review-and-fix.sh`", Nit counter bullet says: "the nit marker is `**Nit**` / severity `nit` per `reviewer-templates.md`". The "Failure modes" section reinforces this asymmetry: "reuse the exact `- **Severity**: nit` (design) / `**Nit**` (implement) markers".
+
+Evidence against this claim: `agents/orchestrator-aggregator.md:30` specifies the output format as `- **Severity**: important|latent|nit`. Actual `larch-logs/implement/1446FF4C-B070-45B2-901C-4EAD31252CB9/round-3/findings.md:25` contains `- **Severity**: nit` — not `**Nit**`. Both `/design`'s `accepted-plan-findings.md` and `/implement`'s `findings.md` are written by the same orchestrator-aggregator and share the identical format.
+
+The `/design` section correctly specifies `^- \*\*Severity\*\*: nit` (plan, `_count_nit_findings` bullet, mirroring `_count_important_findings` at `skills/design/scripts/plan-review-loop.sh:200` which matches `^- \*\*Severity\*\*: important`). The `/implement` section prescribes `**Nit**` — a bold prose marker that does not appear in the aggregator's output format. An implementer following the plan and mirroring `important_findings_present`'s `\*\*[Ii]mportant\*\*` pattern for nit (`\*\*[Nn]it\*\*`) would match zero lines in `findings.md`. `NIT_ACCEPTED_COUNT` stays 0 every round; nits count toward the ≤5 bound in `/implement` while being excluded correctly in `/design`.
+
+**Suggested fix**: Change both the Nit counter bullet and the "Failure modes" → Nit miscount mitigation for `/implement` to specify `^- \*\*Severity\*\*: nit` (same as `/design`). The claimed format difference between the two loops does not exist; both consume orchestrator-aggregator output.
+
+---
+
+**2. Nit count sourced from wrong file in `/implement`** — in-scope, important, correctness
+
+Plan section "UPDATED: `skills/review-and-fix/scripts/review-and-fix.sh`", "Derive non-nit accepted" sentence: count nit findings from "a round's `findings.md`" then subtract from `accepted_count`.
+
+`findings.md` contains all findings for the round — accepted and rejected. `accepted_count` is the voted-accepted count only. When nit findings are rejected by the panel (common: nits are optional), `nit_count_all > nit_accepted_count`. The formula `non_nit_accepted = accepted_count − nit_count_all` then undercounts actual non-nit accepted, potentially enabling premature convergence.
+
+Concrete breakage: 8 accepted non-nit findings + 4 rejected nit findings in the round. `findings.md` contains 4 nit findings (all rejected). `accepted_count=8`, `nit_count=4`, `non_nit_accepted=max(0,8−4)=4`. Formula says converge (4≤5). Actual non-nit accepted=8, should not converge.
+
+The `/design` loop correctly computes `NIT_ACCEPTED_COUNT` from `accepted-plan-findings.md` (accepted-only, `plan-review-loop.sh:1285`). The `/implement` equivalent is `$IMPLEMENT_TMPDIR/round-N/accepted-findings.md`, which is already produced per round. **Suggested fix**: count nit findings from `accepted-findings.md`, not `findings.md`, to match the `/design` pattern.

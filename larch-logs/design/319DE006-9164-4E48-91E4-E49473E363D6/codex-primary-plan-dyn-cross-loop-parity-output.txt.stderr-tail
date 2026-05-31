@@ -1,0 +1,4 @@
+Reading additional input from stdin...
+2026-05-31T01:30:48.165966Z ERROR rmcp::transport::worker: worker quit with fatal: Unexpected content type: Some("text/plain; body: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused"), when send initialized notification
+2026-05-31T01:30:57.570339Z ERROR codex_core::session: failed to record rollout items: thread 019e7ba7-ab7d-7b62-ae69-9af2a98fb56b not found
+❌ codex agent: FAILED (exit code 1, 31s elapsed, output 0 bytes)

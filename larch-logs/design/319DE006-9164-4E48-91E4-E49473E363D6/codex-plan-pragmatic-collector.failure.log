@@ -1,0 +1,25 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-pragmatic-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 30s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-pragmatic-output.txt)
+
+{"no_issues_found": true}
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-pragmatic-output.txt.diag)
+
+Failed with exit code 1 after 30s. Output size: 0 bytes.
+
+## Failed-agent stderr tail (<TMPDIR>/codex-primary-plan-pragmatic-output.txt.stderr-tail)
+
+Reading additional input from stdin...
+2026-05-31T01:30:56.838297Z ERROR codex_core::session: failed to record rollout items: thread 019e7ba7-a128-7322-b440-52dc548179f8 not found
+❌ codex agent: FAILED (exit code 1, 30s elapsed, output 0 bytes)
+
+## Launcher stderr (<TMPDIR>/codex-primary-plan-pragmatic-output.txt.launch-stderr)
+
+rm: /tmp/larch-codex-review-home-2myQ9r/.tmp/plugins-clone-Lf1vPn/plugins: Permission denied
+rm: /tmp/larch-codex-review-home-2myQ9r/.tmp/plugins-clone-Lf1vPn: Permission denied
+rm: /tmp/larch-codex-review-home-2myQ9r/.tmp: Permission denied
+rm: /tmp/larch-codex-review-home-2myQ9r: Permission denied
+

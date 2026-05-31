@@ -1,0 +1,18 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/review-and-fix.sh:1372-1405	Plan's nit counter scans `findings.md` (ALL findings) and subtracts from `accepted_count` (ACCEPTED only), mixing populations	When rejected nit findings outnumber accepted nit findings, `nit_count` is inflated: e.g., 7 rejected nits + 6 accepted latent ⇒ accepted_count=6, nit_count=7, non_nit_accepted=max(0,6−7)=0 ≤5 → loop exits prematurely despite 6 actual non-nit accepted findings that should have blocked convergence (6>5)	Count nit-severity findings from `accepted_file` (accepted-findings.md), mirroring `count_high_severity_accepted` which already scans `accepted_file` — not `findings.md`. The nit marker `**Nit**` is correct; only the source file must change.
+
+---
+
+**Finding 1 — detail**
+
+The plan (§ `### UPDATED: skills/review-and-fix/scripts/review-and-fix.sh`, Nit counter paragraph) says:
+
+> "add a helper to count `**Nit**`-severity findings in a round's `findings.md` … Derive non-nit accepted = `accepted_count − nit_count`"
+
+`findings.md` at `$IMPLEMENT_TMPDIR/round-N/findings.md` is the **pre-classifier** findings file: it contains every finding the panel surfaced, both accepted and rejected. `accepted_count` is the **post-classifier** count from `review-core.env:ACCEPTED_COUNT`. Subtracting the total nit count (all findings) from the accepted count (accepted findings only) underestimates `non_nit_accepted` whenever the classifier rejects any nit-severity finding.
+
+The existing `count_high_severity_accepted` (lines 122–129) already demonstrates the correct pattern: it scans `accepted_file` (the accepted-findings.md passed explicitly) — not `findings.md`. The plan cross-references this function ("mirror … `count_high_severity_accepted`") but then prescribes `findings.md`, contradicting the function it cites.
+
+The `/design` loop's analogous nit counter is unaffected: it correctly proposes `_count_nit_findings` on `accepted-plan-findings.md` — the same file `ACCEPTED_COUNT` and `IMPORTANT_ACCEPTED_COUNT` already use.
+
+**Suggested fix**: replace the `findings.md` reference in the nit-count step with `accepted_file` (the variable already in scope, defaulting to `$round_dir/accepted-findings.md`). The `**Nit**` marker string is correct and requires no change; only the source file changes to align nit count and accepted count on the same population.

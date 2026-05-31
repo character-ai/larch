@@ -1,0 +1,31 @@
+Reviewing the plan against reviewer output formats and existing grep patterns for nit/important finding counts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/review-and-fix.sh:57-58	Implement nit counter specified as **Nit** grep on findings.md but aggregate output uses lowercase - **Severity**: nit	Production round findings.md has ### FINDING_N: titles and - **Severity**: nit lines (aggregate-findings.sh:248-250; larch-logs round files). A **Nit** pattern matches reviewer-templates prose only; NIT count stays 0 so every accepted finding counts toward ≤5 and nit exclusion never applies	Mirror design: awk/grep ^- \*\*Severity\*\*: nit on the accepted artifact (see finding 2), not **Nit** heading patterns from important_findings_present
+2	in_scope	important	correctness	skills/review-and-fix/scripts/review-and-fix.sh:57-58	Nit count source is round findings.md but non_nit subtracts from ACCEPTED_COUNT	With 6 accepted latent and many rejected nits only in findings.md, nit_count inflates, NON_NIT_ACCEPTED floors to 0, and the loop converges despite 6 accepted non-nit findings	Count nits in round-N/accepted-findings.md (same block awk as plan-review-loop _count_nit_findings on accepted-plan-findings.md), not the full ballot findings.md
+3	in_scope	nit	correctness	plan.txt:134-136	Failure-modes mitigation pairs design - **Severity**: nit with implement **Nit**	Reinforces the wrong implement marker during implementation and review	Mention only - **Severity**: nit for both loops in Failure modes / Approach nit-counter bullets
+
+1. **[correctness]** `skills/review-and-fix/scripts/review-and-fix.sh` (plan § review-and-fix, lines 57–58): The `/implement` nit helper is specified to count `**Nit**` in `findings.md` by mirroring `important_findings_present`. Post-aggregate `findings.md` does not use that shape. Canonical merged blocks require a severity line and use lowercase values:
+
+```248:250:skills/review/scripts/aggregate-findings.sh
+_SEVERITY_LINE = re.compile(
+    r"(?m)^-\s*\*\*Severity\*\*:\s*(important|latent|nit)\s*$", re.IGNORECASE
+)
+```
+
+Example consumed output:
+
+```13:16:larch-logs/implement/8A4084D2-3DF7-4EB0-98A3-A766757FF4B0/round-1/findings.md
+### FINDING_3: SKILL.md intro shows non-sparse marketplace add
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+```
+
+`reviewer-templates.md` `**Nit**` tags are reviewer prose; they are not what `review-and-fix.sh` reads after aggregation. **Revision:** use the same `^- \*\*Severity\*\*: nit` awk pattern as the proposed design `_count_nit_findings`, not `**Nit**` grep.
+
+2. **[correctness]** `skills/review-and-fix/scripts/review-and-fix.sh` (plan § review-and-fix, lines 57–58): Nit subtraction is tied to `findings.md` while `ACCEPTED_COUNT` counts only accepted findings. Design correctly counts nits in `accepted-plan-findings.md` (plan line 34; renderer at `plan-review-loop.sh:828`). **Revision:** count nits in `$IMPLEMENT_TMPDIR/round-${round}/accepted-findings.md` and compute `NON_NIT_ACCEPTED = ACCEPTED_COUNT - NIT_ACCEPTED_COUNT` (floor 0).
+
+3. **[correctness]** `plan.txt:134-136`: Failure-modes text documents implement marker `**Nit**`; update to `- **Severity**: nit` for both loops to avoid implementer drift.
+
+**Design loop (plan lines 34, 828):** Proposed `^- \*\*Severity\*\*: nit` on `accepted-plan-findings.md` matches `_count_important_findings` (`plan-review-loop.sh:200`) and the renderer — no design-side marker defect.
+
+**[OUT_OF_SCOPE]** `important_findings_present` (`review-and-fix.sh:103`) matches `**Important**` headings / `[important]` concern tags, not `- **Severity**: important` in production `findings.md`. The plan keeps that helper unchanged; fixing it is separate from nit-marker fidelity.

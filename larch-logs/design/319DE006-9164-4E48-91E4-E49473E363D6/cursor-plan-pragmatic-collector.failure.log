@@ -1,0 +1,26 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/cursor-plan-pragmatic-output.txt|TOOL=cursor|STATUS=NOT_SUBSTANTIVE|EXIT_CODE=0|FAILURE_REASON=structured records not found after repair
+
+## Reviewer output (<TMPDIR>/cursor-plan-pragmatic-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	integration	skills/design/scripts/plan-review-loop.sh:389	Plan omits removing CONVERGENCE_STREAK from _write_round_summary	round-summary.env still writes CONVERGENCE_STREAK=0 while emit_loop_kvs and write_step3_result_env drop the key; plan grep sweep targets zero CONVERGENCE_STREAK under skills/design runtime	Add plan-review-loop.sh bullet to delete printf CONVERGENCE_STREAK at line 389 and drop CONVERGENCE_STREAK from plan-review-loop.md round-summary.env keys list (line 52)
+2	in_scope	nit	architecture	skills/design/references/approval-gates.md:209	Stale LARCH_DESIGN_CONVERGENCE_THRESHOLD in Gate B carve-out prose	Operators reading approval-gates still see env-tunable convergence bound after flags.md and configuration-and-permissions.md remove it	Add approval-gates.md to Files to modify: bound loop-internal revision by LARCH_DESIGN_ROUND_CAP and hardcoded single-round <=5 accepted / 0 important only
+
+1. **[integration]** `skills/design/scripts/plan-review-loop.sh:389` — The plan removes `CONVERGENCE_STREAK` from `emit_loop_kvs`, `write_step3_result_env`, and loop logic, but not from `_write_round_summary`, which still prints `CONVERGENCE_STREAK` into every `plan-review/round-N/round-summary.env`. That conflicts with the testing strategy’s “zero `CONVERGENCE_STREAK` hits under `skills/design` runtime” and leaves a misleading per-round artifact. **Suggested revision:** Delete the `printf 'CONVERGENCE_STREAK=...'` line in `_write_round_summary` and remove `CONVERGENCE_STREAK` from the `round-summary.env` schema in `plan-review-loop.md` (line 52), not only the stdout KV table.
+
+2. **[architecture]** `skills/design/references/approval-gates.md:209` — The Gate B “loop-internal carve-out” still cites `LARCH_DESIGN_CONVERGENCE_THRESHOLD` alongside `LARCH_DESIGN_ROUND_CAP`. That file is absent from the plan’s file list while `flags.md`, `plan-review.md`, and the two docs/ env sections are updated. **Suggested revision:** Add `approval-gates.md` and describe the hardcoded single-round rule (≤5 accepted, 0 important) with no env var.
+
+## Reviewer stderr (<TMPDIR>/cursor-plan-pragmatic-output.txt.diag)
+
+(empty: <TMPDIR>/cursor-plan-pragmatic-output.txt.diag)
+
+## Failed-agent stderr tail (<TMPDIR>/cursor-plan-pragmatic-output.txt.stderr-tail)
+
+(file missing: <TMPDIR>/cursor-plan-pragmatic-output.txt.stderr-tail)
+
+## Launcher stderr (<TMPDIR>/cursor-plan-pragmatic-output.txt.launch-stderr)
+
+(empty: <TMPDIR>/cursor-plan-pragmatic-output.txt.launch-stderr)
+
