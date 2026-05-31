@@ -255,6 +255,18 @@ run_cleanup "$work"
 [[ ! -d "$work/tmp-root/claude-implement-fixture" ]] || fail "stale-tmp-dir-removed should delete stale /tmp fixture"
 assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "1" "stale-tmp-dir-removed TMP_REMOVED"
 
+# --- stale-tmp-toplevel-with-fresh-deep-child-kept ----------------------------
+work="$TMP/stale-tmp-toplevel-with-fresh-deep-child-kept"
+mkdir -p "$work/tmp-root/claude-implement-stale-parent"
+printf 'fresh\n' > "$work/tmp-root/claude-implement-stale-parent/child.txt"
+touch -t "$FRESH_TS" -- "$work/tmp-root/claude-implement-stale-parent/child.txt"
+touch -t "$STALE_TS" -- "$work/tmp-root/claude-implement-stale-parent"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "stale-tmp-toplevel-with-fresh-deep-child-kept exit $CASE_RC"
+[[ -d "$work/tmp-root/claude-implement-stale-parent" ]] || fail "stale-tmp-toplevel-with-fresh-deep-child-kept must retain dir when a descendant is fresh"
+assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "0" "stale-tmp-toplevel-with-fresh-deep-child-kept TMP_REMOVED"
+
 # --- stale-tmp-file-removed ---------------------------------------------------
 work="$TMP/stale-tmp-file-removed"
 mkdir -p "$work/tmp-root"

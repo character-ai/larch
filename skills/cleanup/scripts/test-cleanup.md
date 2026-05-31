@@ -21,7 +21,7 @@ Covered cases:
 - **stale-tmp-toplevel-with-fresh-deep-child-kept**: stale `/tmp` pattern dir mtime but a fresh nested file; directory retained; `TMP_REMOVED=0`
 - **stale-tmp-file-removed**: stale loose file matching a `/tmp` pattern (e.g. `larch4-review.diff`) under `LARCH_TEST_TMP_ROOT` is deleted; `TMP_REMOVED=1`
 - **nonlarch-tmp-untouched**: stale non-larch entry under `LARCH_TEST_TMP_ROOT` is not removed; `TMP_REMOVED=0`
-- **deep-session-freshness-probe-bounded**: nested session layout with fresh activity beyond `FRESH_DESCENDANT_MAXDEPTH` (removed) vs within the cap (retained); completes in under 10 seconds
+- **deep-session-freshness-probe-bounded**: nested session layout with fresh activity beyond the hard-coded depth-5 bound (removed) vs within the bound (retained); completes in under 10 seconds
 - **large-tmp-scales**: ~2000 non-matching entries plus one stale `claude-implement-*` dir; completes in under 60 seconds, matching dir removed, non-matching untouched
 
 Stdout contract under test: `SESSION_COUNT`, `CACHE_REMOVED`, `TMP_REMOVED`, and `SYMLINKS_REMOVED` (`emit_kv` lines). Retention default and validation match `parse_retention_days` in `cleanup.sh` (default 7; positive integer required, otherwise warn and use 7).
