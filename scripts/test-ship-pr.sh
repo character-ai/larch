@@ -6047,15 +6047,17 @@ exit 0
 STUB
 chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" \
     "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
+printf 'RUN_ID=test-run\nREPO=owner/repo\nREPO_UNAVAILABLE=false\n' >"$impl/ship-pr-state.sh"
+wf_state_file="$impl/ship-pr-state.sh"
 wf_caller_err="$impl/caller.stderr"
 set +e
 (
     cd "$root" || exit 1
     # shellcheck disable=SC2030,SC2031
-    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl"
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl" STATE_FILE="$wf_state_file"
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
-    IMPLEMENT_TMPDIR="$impl"  # re-set after ship-pr.sh init clears it
+    IMPLEMENT_TMPDIR="$impl"; STATE_FILE="$wf_state_file"  # re-set after ship-pr.sh init clears them
     run_recovery_waterfall checks fix "" checks-step6
 ) >"$impl/wf.stdout" 2>"$wf_caller_err"
 wf_rc=$?
@@ -6124,15 +6126,17 @@ exit 0
 STUB
 chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" \
     "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
+printf 'RUN_ID=test-run\nREPO=owner/repo\nREPO_UNAVAILABLE=false\n' >"$impl/ship-pr-state.sh"
+wf_exit0_state_file="$impl/ship-pr-state.sh"
 wf_exit0_err="$impl/caller.stderr"
 set +e
 (
     cd "$root" || exit 1
     # shellcheck disable=SC2030,SC2031
-    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl"
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl" STATE_FILE="$wf_exit0_state_file"
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
-    IMPLEMENT_TMPDIR="$impl"  # re-set after ship-pr.sh init clears it
+    IMPLEMENT_TMPDIR="$impl"; STATE_FILE="$wf_exit0_state_file"  # re-set after ship-pr.sh init clears them
     run_recovery_waterfall checks fix "" checks-step6
 ) >"$impl/wf.stdout" 2>"$wf_exit0_err"
 wf_exit0_rc=$?
@@ -6223,7 +6227,7 @@ set +e
     export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" STATE_FILE
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
-    IMPLEMENT_TMPDIR="$tmp"  # re-set after ship-pr.sh init clears it
+    IMPLEMENT_TMPDIR="$tmp"; STATE_FILE="$tmp/ship-pr-state.sh"  # re-set after ship-pr.sh init clears them
     run_ci_fix_vendor ci-initial run123 0 0 "" 0
 ) >"$tmp/ci-fix.stdout" 2>"$ci_fix_err"
 ci_fix_rc=$?
@@ -6289,7 +6293,7 @@ set +e
     export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" STATE_FILE
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
-    IMPLEMENT_TMPDIR="$tmp"  # re-set after ship-pr.sh init clears it
+    IMPLEMENT_TMPDIR="$tmp"; STATE_FILE="$tmp/ship-pr-state.sh"  # re-set after ship-pr.sh init clears them
     run_ci_fix_vendor ci-initial run123 0 0 "" 0
 ) >"$tmp/wrapper-rc2.stdout" 2>"$rc2_err"
 rc2_fix_rc=$?
@@ -6345,15 +6349,17 @@ exit 0
 STUB
 chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" \
     "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
+printf 'RUN_ID=test-run\nREPO=owner/repo\nREPO_UNAVAILABLE=false\n' >"$impl/ship-pr-state.sh"
+tier_rc_state_file="$impl/ship-pr-state.sh"
 tier_rc_err="$impl/tier-rc-caller.stderr"
 set +e
 (
     cd "$root" || exit 1
     # shellcheck disable=SC2030,SC2031
-    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl"
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl" STATE_FILE="$tier_rc_state_file"
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
-    IMPLEMENT_TMPDIR="$impl"  # re-set after ship-pr.sh init clears it
+    IMPLEMENT_TMPDIR="$impl"; STATE_FILE="$tier_rc_state_file"  # re-set after ship-pr.sh init clears them
     run_recovery_waterfall checks fix "" checks-step6
 ) >"$impl/tier-rc.stdout" 2>"$tier_rc_err"
 tier_rc_wf_rc=$?
@@ -6412,6 +6418,7 @@ set +e
     export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" STATE_FILE
     # shellcheck disable=SC1091
     source "$root/scripts/ship-pr.sh"
+    IMPLEMENT_TMPDIR="$tmp"; STATE_FILE="$tmp/ship-pr-state.sh"  # re-set after ship-pr.sh init clears them
     run_ci_fix_vendor ci-initial run123 0 0 "" 0
 ) >"$tmp/ff.stdout" 2>"$ff_err"
 ff_rc=$?
@@ -6583,10 +6590,10 @@ set +e
         --repo owner/repo \
         --timeout 30
 ) >"$impl/launcher.stdout" 2>"$impl/launcher.stderr"
-producer_rc=$?
 set -e
-[[ "$producer_rc" -ne 0 ]] \
-    || fail "real launch-cursor-ci.sh should fail when cursor exits nonzero"
+_launcher_exit=$(grep '^LAUNCHER_EXIT=' "$impl/launcher.stdout" 2>/dev/null | cut -d= -f2- | tr -d '\r' || true)
+[[ "$_launcher_exit" != "0" ]] \
+    || fail "real launch-cursor-ci.sh should encode nonzero LAUNCHER_EXIT when cursor exits nonzero (launcher always exits 0; result is in KV)"
 if [[ -s "${tier_out}.stderr-tail" ]] \
     && grep -Fq 'LARCH_REAL_CURSOR_CI_STDERR_PROBE' "${tier_out}.stderr-tail"; then
     ok "real launch-cursor-ci.sh writes stderr-tail on agent failure"
