@@ -188,10 +188,9 @@ while IFS= read -r row || [[ -n "$row" ]]; do
             all_tools+=("$effective_tool")
             ;;
         retry-waterfall:voter-2)
-            # Historical harness name: keep substantive output so parse-rate does not
-            # depend on the unused voter-2-retry stub branch (manifest has only two slots).
-            printf 'FINDING_1: YES\nOOS_1: NO -- codex primary ok\n' > "$output"
-            all_outputs+=("$output")
+            retry_output="${output%.txt}-retry.txt"
+            printf 'FINDING_1: YES\nOOS_1: NO -- codex retry ok\n' > "$retry_output"
+            all_outputs+=("$retry_output")
             all_tools+=("$effective_tool")
             ;;
         retry-waterfall:voter-3)
@@ -392,7 +391,7 @@ stub_log_retry="$TMP/dispatch-with-waterfall-retry.log"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_MODE=retry-waterfall PLAN_VOTER_STUB_LOG="$stub_log_retry" \
     "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/retry-waterfall" --codex-available true --cursor-available true)
 voter2_path=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_2_PATH"{print $2; exit}')
-grep -Fq 'codex-vote-output.txt' <<< "$voter2_path" || { echo "FAIL: retry waterfall should preserve canonical voter output path" >&2; exit 1; }
+grep -Fq 'codex-vote-output-retry.txt' <<< "$voter2_path" || { echo "FAIL: retry waterfall should use resolved retry voter output path" >&2; exit 1; }
 grep -Fq 'FINDING_1:' "$voter2_path" || { echo "FAIL: retry waterfall voter2 output missing FINDING vote line" >&2; exit 1; }
 grep -Fq 'OOS_1:' "$voter2_path" || { echo "FAIL: retry waterfall voter2 output missing OOS vote line" >&2; exit 1; }
 grep -Fq $'voter-2\tcodex' "$stub_log_retry" || { echo "FAIL: retry stub log missing codex slot wiring" >&2; exit 1; }

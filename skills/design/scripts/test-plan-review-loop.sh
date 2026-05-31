@@ -318,7 +318,37 @@ done
 PATHS="$DESIGN_TMPDIR/panel-paths.txt"
 : >"$PATHS"
 : >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
-printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nDEGRADED_ROUND=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=false\nDEGRADED_ROUND=true\nALL_SLOTS_DROPPED=true\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
+write_dispatch_both_absent_generic() {
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+CODEX_PRESENT=""
+CURSOR_PRESENT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
+        --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
+        --plan-file|--feature-file|--timeout) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+[[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]] || exit 3
+OUT="$DESIGN_TMPDIR/claude-plan-generic-output.txt"
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+: >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+printf 'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n' >"${OUT}.tsv"
+printf '{"no_issues_found":true}\n' >"$OUT"
+printf '0\n' >"${OUT}.done"
+printf '%s\n' "$OUT" >"$PATHS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=true\nDEGRADED_ROUND=false\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$PATHS" "$PATHS"
 EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
@@ -895,6 +925,24 @@ set -e
 [[ "$rc1e" -eq 0 ]] || fail "empty paths with DISPATCH_OK=true should exit 0"
 printf '%s\n' "$out1e" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings for empty paths dispatch"
 printf '%s\n' "$out1e" | grep -vq '^LOOP_STATUS=panel-failed$' || fail "empty paths must not surface panel-failed"
+
+echo "=== both-absent generic Claude path reaches zero-findings tally ==="
+D1G="$TMP/z1g"
+mkdir -p "$D1G"
+printf 'plan\n' >"$D1G/plan.txt"
+printf 'feat\n' >"$D1G/feature-description.txt"
+write_scout
+write_dispatch_both_absent_generic
+write_collect empty
+write_voters_three
+set +e
+out1g=$(run_loop "$D1G" --codex-present false --cursor-present false)
+rc1g=$?
+set -e
+[[ "$rc1g" -eq 0 ]] || fail "both-absent generic path should exit 0"
+printf '%s\n' "$out1g" | grep -vq 'SENTINEL_TIMEOUT' || fail "both-absent generic path must not emit SENTINEL_TIMEOUT"
+printf '%s\n' "$out1g" | grep -vq '^LOOP_STATUS=panel-failed$' || fail "both-absent generic path must not surface panel-failed"
+printf '%s\n' "$out1g" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings for both-absent generic path"
 
 echo "=== codex-down cursor-only paths: collect without SENTINEL_TIMEOUT ==="
 D1C="$TMP/z1c"

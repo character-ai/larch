@@ -139,11 +139,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
                     "$_generic_output" >/dev/null 2>&1; then
                 _generic_dispatch_ok=true
                 _generic_degraded=false
-            else
-                _generic_dispatch_ok=true
             fi
-        else
-            _generic_dispatch_ok=true
         fi
     fi
     if [[ "$_generic_has_output" != true ]]; then

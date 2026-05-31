@@ -332,6 +332,7 @@ collect_phase() {
 phase1_outputs=()
 phase2_outputs=()
 phase3_outputs=()
+phase1_failed=()
 
 phase1_queue=()
 reset_phase
@@ -349,9 +350,18 @@ collect_phase phase1_failed
 
 fallback_count=0
 phase3_failed=()
+dispatch_ok=true
+static_dispatch_ok=true
+dynamic_dispatch_ok=true
 
 if [[ "$NO_FALLBACK" == "true" ]]; then
     combined_fallback=0
+    for idx in "${phase1_queue[@]+"${phase1_queue[@]}"}" "${phase1_failed[@]+"${phase1_failed[@]}"}"; do
+        case "${slot_names[$idx]}" in
+            dyn-*) dynamic_dispatch_ok=false ;;
+            *) static_dispatch_ok=false ;;
+        esac
+    done
 else
     phase2_queue=("${phase1_queue[@]+"${phase1_queue[@]}"}" "${phase1_failed[@]+"${phase1_failed[@]}"}")
 
@@ -393,9 +403,6 @@ if [[ -n "$FALLBACK_COUNTER_FILE" ]]; then
     mv "$tmp" "$FALLBACK_COUNTER_FILE"
 fi
 
-dispatch_ok=true
-static_dispatch_ok=true
-dynamic_dispatch_ok=true
 for idx in "${phase3_failed[@]+"${phase3_failed[@]}"}"; do
     # shellcheck disable=SC2004
     final_outputs[$idx]="$(output_for_phase "${slot_outputs[$idx]}" phase3)"
@@ -443,14 +450,9 @@ done
 all_output_files=()
 all_output_tools=()
 for ((i=0; i<slot_count; i++)); do
-    if [[ "$NO_FALLBACK" == "true" ]]; then
-        [[ -n "${final_outputs[$i]}" ]] || continue
-        all_output_files+=("${final_outputs[$i]}")
-        all_output_tools+=("${final_tools[$i]}")
-    else
-        all_output_files+=("${final_outputs[$i]}")
-        all_output_tools+=("${final_tools[$i]}")
-    fi
+    [[ "$NO_FALLBACK" == "true" && -z "${final_outputs[$i]}" ]] && continue
+    all_output_files+=("${final_outputs[$i]}")
+    all_output_tools+=("${final_tools[$i]}")
 done
 
 emit_kv PHASE1_SLOTS "${phase1_outputs[*]-}"

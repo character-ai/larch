@@ -157,18 +157,29 @@ else
 fi
 
 dispatch_ok="true"
+waterfall_files=""
+waterfall_tools=""
 while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     value="${line#*=}"
     case "$key" in
         DISPATCH_OK) dispatch_ok="$value" ;;
+        ALL_OUTPUT_FILES) waterfall_files="$value" ;;
+        ALL_OUTPUT_TOOLS) waterfall_tools="$value" ;;
         WARN) emit_kv WARN "$value" ;;
     esac
 done <<< "$waterfall_output"
 
-# Under --no-fallback, ALL_OUTPUT_FILES is compact; keep stable manifest paths.
 VOTER_2_TOOL=codex
 VOTER_3_TOOL=cursor
+IFS=' ' read -r -a _waterfall_files <<< "$waterfall_files"
+IFS=' ' read -r -a _waterfall_tools <<< "$waterfall_tools"
+for _wf_i in "${!_waterfall_tools[@]}"; do
+    case "${_waterfall_tools[$_wf_i]}" in
+        codex) VOTER_2_PATH="${_waterfall_files[$_wf_i]:-$VOTER_2_PATH}" ;;
+        cursor) VOTER_3_PATH="${_waterfall_files[$_wf_i]:-$VOTER_3_PATH}" ;;
+    esac
+done
 VOTER_2_STATUS="failed"
 VOTER_3_STATUS="failed"
 if [[ "$CODEX_AVAILABLE" == "true" ]]; then

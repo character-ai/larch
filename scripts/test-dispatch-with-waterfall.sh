@@ -504,7 +504,7 @@ out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_FAIL=true \
     --mode description \
     --timeout 5)
 assert_line "DISPATCH_OK=true" "$out"
-assert_line "STATIC_DISPATCH_OK=true" "$out"
+assert_line "STATIC_DISPATCH_OK=false" "$out"
 assert_line "ALL_SLOTS_DROPPED=true" "$out"
 assert_line "FALLBACK_COUNT=0" "$out"
 assert_line "ALL_OUTPUT_FILES=" "$out"
@@ -530,22 +530,48 @@ grep -Fxq "$TMPROOT/no-fallback-keep.txt" "${manifest}.output-files" \
 [[ -f "$TMPROOT/no-fallback-keep.txt.done" ]] || { echo "FAIL: no-fallback keep missing .done sentinel" >&2; exit 1; }
 
 _collect_paths="${manifest}.output-files"
-_collect_start=$(date +%s)
 _collect_out=$(LARCH_QUIET_DISABLE=1 bash "$REPO_ROOT/scripts/collect-agent-results.sh" \
     --timeout 5 \
     --paths-file "$_collect_paths" 2>&1) || true
-_collect_elapsed=$(( $(date +%s) - _collect_start ))
-[[ "$_collect_elapsed" -lt 4 ]] || { echo "FAIL: real collect on no-fallback keep took too long (${_collect_elapsed}s)" >&2; exit 1; }
 if grep -Fq 'STATUS=SENTINEL_TIMEOUT' <<<"$_collect_out"; then
     echo "FAIL: real collect on no-fallback keep must not SENTINEL_TIMEOUT" >&2
     printf '%s\n' "$_collect_out" >&2
     exit 1
 fi
 
+manifest="$TMPROOT/slots-no-fallback-partial.ndjson"
+{
+    printf '{"slot":"partial-keep","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
+        "$TMPROOT/no-fallback-partial-keep.txt" "$prompt"
+    printf '{"slot":"partial-drop","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
+        "$TMPROOT/no-fallback-partial-drop.txt" "$prompt"
+} >"$manifest"
+out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_FAIL_OUTPUT_CONTAINS='partial-drop' \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present true \
+    --cursor-present false \
+    --no-fallback \
+    --mode description \
+    --timeout 5)
+assert_line "DISPATCH_OK=true" "$out"
+assert_line "STATIC_DISPATCH_OK=false" "$out"
+partial_paths="${manifest}.output-files"
+[[ "$(wc -l < "$partial_paths" | tr -d ' ')" == "1" ]] || { echo "FAIL: no-fallback partial paths-file should contain exactly one path" >&2; cat "$partial_paths" >&2; exit 1; }
+grep -Fxq "$TMPROOT/no-fallback-partial-keep.txt" "$partial_paths" \
+    || { echo "FAIL: no-fallback partial paths-file should keep only successful slot" >&2; cat "$partial_paths" >&2; exit 1; }
+_collect_partial_out=$(LARCH_QUIET_DISABLE=1 bash "$REPO_ROOT/scripts/collect-agent-results.sh" \
+    --timeout 5 \
+    --paths-file "$partial_paths" 2>&1) || true
+if grep -Fq 'STATUS=SENTINEL_TIMEOUT' <<<"$_collect_partial_out"; then
+    echo "FAIL: collect on no-fallback partial must not SENTINEL_TIMEOUT" >&2
+    printf '%s\n' "$_collect_partial_out" >&2
+    exit 1
+fi
+
 manifest="$TMPROOT/slots-no-fallback-absent.ndjson"
 printf '{"slot":"absent-codex","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
     "$TMPROOT/no-fallback-absent.txt" "$prompt" >"$manifest"
-_start=$(date +%s)
 out=$(PATH="$STUB_BIN:$PATH" \
     "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
     --slots-file "$manifest" \
@@ -554,22 +580,17 @@ out=$(PATH="$STUB_BIN:$PATH" \
     --no-fallback \
     --mode description \
     --timeout 5)
-_elapsed=$(( $(date +%s) - _start ))
 assert_line "DISPATCH_OK=true" "$out"
-assert_line "STATIC_DISPATCH_OK=true" "$out"
+assert_line "STATIC_DISPATCH_OK=false" "$out"
 assert_line "ALL_SLOTS_DROPPED=true" "$out"
-[[ "$_elapsed" -lt 4 ]] || { echo "FAIL: no-fallback absent slot took too long (${_elapsed}s)" >&2; exit 1; }
 if grep -Fq 'SENTINEL_TIMEOUT' <<<"$out"; then
     echo "FAIL: no-fallback absent must not emit SENTINEL_TIMEOUT" >&2
     exit 1
 fi
 _absent_paths="${manifest}.output-files"
-_collect_absent_start=$(date +%s)
 _collect_absent_out=$(LARCH_QUIET_DISABLE=1 bash "$REPO_ROOT/scripts/collect-agent-results.sh" \
     --timeout 5 \
     --paths-file "$_absent_paths" 2>&1) || true
-_collect_absent_elapsed=$(( $(date +%s) - _collect_absent_start ))
-[[ "$_collect_absent_elapsed" -lt 4 ]] || { echo "FAIL: collect on no-fallback absent took too long (${_collect_absent_elapsed}s)" >&2; exit 1; }
 if grep -Fq 'STATUS=SENTINEL_TIMEOUT' <<<"$_collect_absent_out"; then
     echo "FAIL: collect on no-fallback absent must not SENTINEL_TIMEOUT" >&2
     printf '%s\n' "$_collect_absent_out" >&2

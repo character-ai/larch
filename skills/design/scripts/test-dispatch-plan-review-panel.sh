@@ -312,7 +312,12 @@ printf '1\tin_scope\tnit\tcorrectness\tloc\twhat\tscenario\tfix\n' >>"${OUTPUT}.
 printf 'schema_version\tin_scope\tnit\tcorrectness\tloc\twhat\tscenario\tfix\n' >"$OUTPUT"
 printf '0\n' >"${OUTPUT}.done"
 CLAUDE_STUB
+cat >"$PLUGIN_STUB/scripts/validate-research-output.sh" <<'VALIDATE_STUB'
+#!/usr/bin/env bash
+exit 0
+VALIDATE_STUB
 chmod +x "$PLUGIN_STUB/scripts/launch-claude-review.sh"
+chmod +x "$PLUGIN_STUB/scripts/validate-research-output.sh"
 D10="$TMP/s10"
 prep "$D10"
 printf '{"archetypes":[]}\n' >"$D10/scout-plan-manifest.json"
@@ -329,6 +334,43 @@ _paths_file=$(grep '^PANEL_PATHS_FILE=' "$D10/out.env" | head -1 | cut -d= -f2-)
 [[ -n "$_paths_file" && -f "$_paths_file" ]] || fail "both-absent missing panel paths file"
 [[ "$(grep -c . "$_paths_file")" == "1" ]] || fail "both-absent expected exactly one reviewer path"
 grep -Fq 'claude-plan-generic-output.txt' "$_paths_file" || fail "both-absent path must be generic Claude output"
+
+echo "=== both-absent malformed generic output => dispatch not ok ==="
+PLUGIN_BAD="$TMP/plugin-bad-generic"
+mkdir -p "$PLUGIN_BAD/scripts" "$PLUGIN_BAD/skills/design/scripts" "$PLUGIN_BAD/skills/design/references"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_BAD/scripts/"
+cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_BAD/scripts/"
+cp "$REPO_ROOT/scripts/read-design-classification.sh" "$PLUGIN_BAD/scripts/"
+cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_BAD/skills/design/scripts/"
+cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_BAD/skills/design/references/"
+chmod +x "$PLUGIN_BAD/scripts/read-design-classification.sh" \
+    "$PLUGIN_BAD/skills/design/scripts/render-plan-review-prompt.sh"
+cat >"$PLUGIN_BAD/scripts/launch-claude-review.sh" <<'BAD_CLAUDE_STUB'
+#!/usr/bin/env bash
+OUTPUT=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) OUTPUT="${2:?}"; shift 2 ;;
+        --prompt-file|--mode|--model|--timeout|--timing-task-kind|--plan-file|--feature-file) shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf 'narrative only\n' >"$OUTPUT"
+printf '0\n' >"${OUTPUT}.done"
+BAD_CLAUDE_STUB
+chmod +x "$PLUGIN_BAD/scripts/launch-claude-review.sh"
+D10B="$TMP/s10b"
+prep "$D10B"
+printf '{"archetypes":[]}\n' >"$D10B/scout-plan-manifest.json"
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_BAD" \
+    "$PANEL" \
+    --design-tmpdir "$D10B" \
+    --codex-present false \
+    --cursor-present false \
+    --plan-file "$D10B/plan.txt" \
+    --timeout 60 >"$D10B/out.env"
+grep -Fq 'DISPATCH_OK=false' "$D10B/out.env" || fail "malformed generic output should not dispatch ok"
 
 echo "=== codex-down panel paths: collect stub completes without SENTINEL_TIMEOUT ==="
 COLLECT_STUB="$TMP/collect-stub.sh"
@@ -402,7 +444,12 @@ printf '{"schema_version":1,"scope":"in_scope","severity":"nit","focus_area":"co
 printf '{"schema_version":1,"scope":"in_scope","severity":"nit","focus_area":"correctness","location":"loc","what":"w","scenario_or_breakage":"s","suggested_fix":"f"}\n' >"$OUTPUT"
 printf '0\n' >"${OUTPUT}.done"
 JSONL_STUB
+cat >"$PLUGIN_JSONL/scripts/validate-research-output.sh" <<'VALIDATE_STUB'
+#!/usr/bin/env bash
+exit 0
+VALIDATE_STUB
 chmod +x "$PLUGIN_JSONL/scripts/launch-claude-review.sh"
+chmod +x "$PLUGIN_JSONL/scripts/validate-research-output.sh"
 DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     CLAUDE_PLUGIN_ROOT="$PLUGIN_JSONL" \
     "$PANEL" \

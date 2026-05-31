@@ -44,6 +44,8 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     --cursor-present false \
     --codex-available true \
     --cursor-available false \
+    --codex-binary-found true \
+    --cursor-binary-found false \
     --issue-number 2588
 
 [ -f "$out_file" ] || fail "case1: output file not created"
@@ -61,7 +63,9 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "$CURSOR_PRESENT" = "false" ] || exit 17
     [ "$CODEX_AVAILABLE" = "true" ] || exit 18
     [ "$CURSOR_AVAILABLE" = "false" ] || exit 19
-    [ "$CLAUDE_PLUGIN_ROOT" = "$REPO_ROOT" ] || exit 20
+    [ "$CODEX_BINARY_FOUND" = "true" ] || exit 20
+    [ "$CURSOR_BINARY_FOUND" = "false" ] || exit 21
+    [ "$CLAUDE_PLUGIN_ROOT" = "$REPO_ROOT" ] || exit 22
 ) || fail "case1: sourcing did not set expected vars (subshell exit $?)"
 
 # Stable symlink should point at the output
