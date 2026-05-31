@@ -4,6 +4,10 @@
 set -euo pipefail
 
 export LARCH_QUIET_DISABLE=1
+# Fast poll intervals so stub-backed invocations don't pay the production
+# 10s (run-external-agent) or 5s (wait-for-reviewers) sleep cycles.
+export RUN_EXTERNAL_AGENT_POLL_INTERVAL="${RUN_EXTERNAL_AGENT_POLL_INTERVAL:-0.05}"
+export WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-0.05}"
 # Hermetic harness: callers (e.g. Claude Code) may export LARCH_QUIET_BREADCRUMB_FD
 # so breadcrumbs route to a non-stdout FD; this test suite checks stdout for
 # KV envelopes and stderr for operator breadcrumbs.
