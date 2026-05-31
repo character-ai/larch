@@ -1,0 +1,43 @@
+Add "override and proceed" option to /design Step 2b.5 hard-trigger prompt
+
+## Summary
+
+Add an **"override and proceed"** option to the `/design` Step 2b.5 hard-trigger `AskUserQuestion` (in `skills/design/SKILL.md`).
+
+## Current behavior
+
+When `HARD_TRIGGER_FIRED=true` — plan-body line count **> 800**, or `diff_added` **> 2000** (legacy `diff_lines` **> 1500**) — the Step 2b.5 **hard branch** fires an `AskUserQuestion` with **exactly two** options:
+
+1. "Let my panel of agents split this feature for you"
+2. "Cancel"
+
+This is deliberate: SKILL.md notes "(no **Continue** option — hard triggers are never downgradeable by `--partition`)". There is intentionally no escape hatch to proceed with an oversized plan.
+
+## Requested change
+
+Add a **third** option that lets the operator override the hard trigger and proceed straight to plan review (Step 3) with the current oversized plan. Requirements:
+
+1. **Prominent anti-recommendation.** The new option's label/description must very prominently state that overriding is **quite likely to severely degrade the quality of the reviews and the resulting plan**, and that we **advise against it**.
+2. **Position: next-to-last.** It must be shown as the next-to-last choice — i.e. **between** the Split option and Cancel. Final option order:
+   - "Let my panel of agents split this feature for you"
+   - **Override and proceed (advised against — likely severe quality degradation)**
+   - "Cancel"
+
+## Motivating example
+
+> "As I flagged: `HARD_TRIGGER_FIRED=true` (reason diff-added: 2700 > 2000). Plan body is only 238 lines (under the 800 plan-body trigger), so this is purely the diff-size trigger — driven by the full-surface scope you chose in Round 1."
+
+In cases like this the operator may knowingly accept the risk and want to proceed rather than split or cancel.
+
+## Scope
+
+The larch `/design` skill itself:
+
+- Primary: `skills/design/SKILL.md` Step 2b.5 **Hard branch** (the `AskUserQuestion` option list and the on-Override routing to Step 3).
+- Any structure-test pins that assert the current "exactly two options" wording (e.g. `scripts/test-design-structure.sh`).
+- Possibly `skills/design/references/flags.md` / `references/approval-gates.md` cross-references that describe the hard branch as having no Continue/override option.
+
+## Out of scope
+
+- The partition (`--partition` / `-p`) flow and soft-advisory (`mechanical_churn`) behavior are unchanged.
+- The hard-trigger thresholds themselves are unchanged.

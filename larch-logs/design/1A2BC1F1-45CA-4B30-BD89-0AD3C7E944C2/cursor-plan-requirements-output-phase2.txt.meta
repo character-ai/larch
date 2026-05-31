@@ -1,0 +1,5 @@
+TOOL=codex
+TIMEOUT=1860
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=false
+OUTPUT_FILE=<TMPDIR>/cursor-plan-requirements-output-phase2.txt

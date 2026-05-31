@@ -1,0 +1,7 @@
+skills/design/SKILL.md
+skills/design/scripts/plan-review-loop.sh
+skills/design/scripts/plan-review-loop.md
+skills/design/references/approval-gates.md
+skills/design/references/flags.md
+scripts/test-design-structure.sh
+README.md

@@ -1,0 +1,55 @@
+### FINDING_1:
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/plan-review-loop.sh:575
+- **Concern**: Stale user-visible breadcrumb not updated. Scenario: When `SOFT_ADVISORY=true` fires under a HARD trigger, the script prints "plan-body gate still requires Split/Cancel" to the user — but after this PR lands there will be three options (Split / Override / Cancel). The plan updates the SKILL.md prose and the `test-design-structure.sh` pin for that phrase, but does not list `plan-review-loop.sh` in its modified-files section.
+- **Proposed resolution**: User sees contradictory guidance: the `AskUserQuestion` shows three options while the preceding breadcrumb names only two. Add `skills/design/scripts/plan-review-loop.sh` to the modified-files list and update line 575 from `plan-body gate still requires Split/Cancel` to `plan-body gate still requires the Split / Override / Cancel prompt` (or the exact phrase chosen for SKILL.md). Also update `plan-review-loop.md` sibling per `.claude/rules/script-md-siblings.md`.
+
+### FINDING_2:
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:63-66 (proposed); skills/design/references/discussion-rounds.md:27-28 (proposed)
+- **Concern**: Override audit omits required append-tool-failure.sh flags and sprawl has no log contract. Scenario: Plan text shows only --category/--exit-code/--tool/--redact; scripts/append-tool-failure.sh requires --log, --site, and --output-file (file must exist). Sprawl Override only says append a Warnings entry. With || true the gate proceeds but the run log often has no override record while prompts claim it is recorded
+- **Proposed resolution**: Mirror the existing validate-plan-commands Override block (SKILL.md:1401): write a small capture file first, then append with --log, --site (design Step 2b.5 / Step 1c / Step 1d), --tool (e.g. operator-override-hard-trigger / operator-override-sprawl-heuristic), --exit-code 0, --output-file, --redact
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/references/discussion-rounds.md:27-48
+- **Concern**: Sprawl Override audit omits the full append-tool-failure.sh contract. Scenario: On Override, prose only says append a Warnings entry; append-tool-failure.sh requires --log, --site, --tool, --exit-code, --category, and --output-file (file must exist). A minimal implementation can skip the write or call the helper without a log file and get exit 2; audit is lost despite || true
+- **Proposed resolution**: Mirror the existing plan-command Override pattern in skills/design/SKILL.md (~1401): write $DESIGN_TMPDIR/operator-override-sprawl.log first, then append with --site design Step 1c sprawl heuristic or design Step 1d sprawl heuristic, --tool operator-override-sprawl, --exit-code 0, --category Warnings, --redact
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:781-779 (proposed On-Override)
+- **Concern**: Hard-trigger audit uses abbreviated append-tool-failure.sh flags. Scenario: Plan cites only --category, --exit-code, --tool, and --redact; append-tool-failure.sh requires --log, --site, and --output-file (scripts/append-tool-failure.sh:68-73). With || true the override still proceeds but run-log audit may be missing while copy promises recording
+- **Proposed resolution**: Match the full invocation pattern at skills/design/SKILL.md:1401 (--log, --site design Step 2b.5, --output-file for the trigger-context log, then --redact)
+
+### FINDING_5:
+- **Reviewer(s)**: unknown-slot
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: skills/design/references/discussion-rounds.md
+- **Concern**: Override option added to Steps 1c/1d semantic-sprawl heuristic beyond feature description scope. Scenario: Feature description scope is "Step 2b.5 Hard branch" only; the out-of-scope section does not list the sprawl heuristic, and the plan silently expands to add Override to discussion-rounds.md Step 1c and Step 1d sprawl prompts plus a new test pin in test-design-structure.sh — diff widens beyond minimum-change contract
+- **Proposed resolution**: Remove the discussion-rounds.md sprawl-heuristic Override additions and confine the change to SKILL.md Step 2b.5, approval-gates.md, flags.md, README.md, and test-design-structure.sh; if the sprawl expansion is intentional, call it out explicitly in the plan's ## Scope section
+
+### FINDING_6:
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/references/discussion-rounds.md (Step 1c sprawl bullet, Step 1d sprawl sentence); skills/design/SKILL.md (Step 2b.5 test pin DISCUSSION_MD coverage)
+- **Concern**: Override-and-proceed extended to Step 1c/1d semantic-sprawl heuristic — not in feature description scope. Scenario: Feature description scope is explicit: "Primary: `skills/design/SKILL.md` Step 2b.5 **Hard branch**"; sprawl heuristic extension adds distinct semantics (no plan exists at Step 1c/1d — Override continues the pre-plan flow, not to plan review), additional prose edits in discussion-rounds.md, and an extra test pin for $DISCUSSION_MD. Per SIMPLE tier bias, this widens the diff and introduces a behaviorally different escape-hatch that was not asked for.
+- **Proposed resolution**: Limit this PR to Step 2b.5 hard-trigger Override only. File a follow-up issue for sprawl-prompt Override if desired. Remove the discussion-rounds.md edits and the DISCUSSION_MD test pin from this change; the Step 1d "Split / Cancel only, no Continue" sentence and the Step 1c "exactly two options" prose stay as-is.
+
+### FINDING_7:
+- **Reviewer(s)**: unknown-slot, unknown-slot
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/references/flags.md:19
+- **Concern**: `--partition` bullet describes the hard-trigger-alongside-partition case as showing the "hard **Split/Cancel** prompt" — two options only. Scenario: After the plan lands, the hard trigger prompt shows Split/Override/Cancel (three options). An operator reading this bullet would be told two options exist when three do. The plan explicitly excludes this bullet ("Do NOT touch the separate `--partition` bullet") but the bullet's final clause describes the hard prompt, not only the partition-only no-AskUserQuestion path.
+- **Proposed resolution**: Add a minimal update inside the `--partition` bullet to change "the hard **Split/Cancel** prompt" to "the hard **Split/Override/Cancel** prompt". The preceding "no Continue option, no threshold inspection" clause describes the partition-only (no hard trigger) path and is correct as-is; only the hard-trigger-alongside-partition description needs updating.
