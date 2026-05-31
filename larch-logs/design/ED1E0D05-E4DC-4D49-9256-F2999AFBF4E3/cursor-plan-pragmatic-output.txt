@@ -1,0 +1,22 @@
+Reading the implementation plan and tracing the files it references.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:1000	Post-loop branch matrix still tells the orchestrator to read `.step3-plan-review-result.env` first, but the plan moves normalized handoff to `.step3-review-result.env` and also says to keep that matrix prose unchanged.	After the driver runs, the LLM may re-read the inner loop artifact (missing cap-reached normalization and round-count semantics) or miss the driver envelope entirely.	Update the matrix header (and any Step 3 prose that still names the inner file for post-driver dispatch) to source `.step3-review-result.env`; keep `.step3-plan-review-result.env` only for MainAgent re-tally refresh paths.
+2	in_scope	important	correctness	skills/design/SKILL.md:917-930	Plan wraps the whole phase in `set +e` + rc capture, but HARD cursor-advance failure stays `exit 1` inside the new driver. Today that `exit 1` aborts the Step 3 fence before `set +e`.	Orchestrator can continue with no/stale `.step3-review-result.env` and enter the branch matrix after a fatal pre-launch error.	Specify orchestrator behavior: fail closed on driver rc≠0 before sourcing, or have the driver emit a terminal result env and exit 0 for cursor-advance failure (preserve hard-stop semantics).
+3	in_scope	important	correctness	skills/design/SKILL.md:52-53	UPDATED SKILL.md lists invoking `run-step3-review.sh` but not passing `--round-cap` / `--convergence-threshold`, while the driver contract says it does not re-read `LARCH_DESIGN_*` env.	Orchestrator may call the driver without expanded caps; argv validation or inner-loop defaults diverge from today's `"${LARCH_DESIGN_ROUND_CAP:-5}"` / `"${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"` expansion in SKILL.md.	Add the explicit SKILL.md fence invocation with both flags expanded exactly as today.
+4	in_scope	important	risk-integration	scripts/test-design-structure.sh:181-186	Plan retargets 14c0b/14c0c pins but not (14c0) `plan-review-loop.sh` in SKILL.md; line 912 still pins `--round-num "$ROUND_NUM"` in SKILL.md.	`make test-design-structure` fails on the same PR once Step 3 no longer invokes `plan-review-loop.sh` directly.	Extend the harness update: move (14c0), (14c0b), (14c0c), and the `--round-num` pin to `run-step3-review.sh`; assert SKILL.md invokes the driver and sources `.step3-review-result.env`.
+
+**1. [correctness] Post-loop branch matrix points at the wrong result file** (`skills/design/SKILL.md:1000`)
+
+The plan creates `.step3-review-result.env` as the orchestrator handoff, but the UPDATED SKILL.md bullet says to keep the post-loop branch matrix prose unchanged while Approach says the matrix should read the normalized file. The matrix header still says read `.step3-plan-review-result.env` first. That inner file is written by `plan-review-loop.sh` and lacks driver-level normalization (cap-reached KVs, round-count rollback, unknown-status coercion).
+
+**2. [correctness] `set +e` wrapper changes HARD cursor failure from hard abort to soft continue** (`skills/design/SKILL.md:917-930`)
+
+Cursor-advance failure uses `exit 1` before the loop. In today's inline fence that aborts Step 3 because it runs under default `set -e`. The proposed fence wraps the whole driver in `set +e` and only captures rc. The plan does not say to stop Step 3 when the driver exits non-zero before writing `.step3-review-result.env`.
+
+**3. [correctness] SKILL.md driver invocation omits required argv** (plan `skills/design/SKILL.md` UPDATED section)
+
+`run-step3-review.sh` is specified to take `--round-cap` and `--convergence-threshold` from the orchestrator and not re-read env. The SKILL.md update section names the script call but not those flags. Without an explicit fence, env expansion can drop out of the orchestrator boundary.
+
+**4. [risk-integration] `test-design-structure.sh` retarget list is incomplete** (`scripts/test-design-structure.sh:181-186`, `:912`)
+
+The plan lists many pin moves but not (14c0) or the `--round-num "$ROUND_NUM"` pin. Both still grep SKILL.md for strings that move into `run-step3-review.sh`. Same-PR CI will fail unless those checks are retargeted too.

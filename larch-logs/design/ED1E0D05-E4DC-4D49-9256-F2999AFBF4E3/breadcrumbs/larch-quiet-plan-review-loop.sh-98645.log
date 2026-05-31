@@ -1,0 +1,27 @@
+timing-ledger.sh: WARNING: vendor must be codex or cursor
+SCOUT_STATUS=ok
+SCOUT_MANIFEST=<TMPDIR>/scout-plan-manifest.json
+SCOUT_ARCHETYPE_COUNT=3
+WARN=cost-fallback-exceeded-threshold
+DEDUPE_REUSED=true
+DEDUPE_REUSED_FROM=cursor-plan-edge
+DEDUPE_REUSED_TOOL=cursor
+DEDUPE_REUSED=true
+DEDUPE_REUSED_FROM=cursor-plan-innovation
+DEDUPE_REUSED_TOOL=cursor
+PHASE1_SLOTS=<TMPDIR>/cursor-plan-arch-output.txt <TMPDIR>/cursor-plan-edge-output.txt <TMPDIR>/cursor-plan-innovation-output.txt <TMPDIR>/cursor-plan-pragmatic-output.txt <TMPDIR>/cursor-plan-requirements-output.txt <TMPDIR>/cursor-plan-dyn-harness-pin-migration-output.txt <TMPDIR>/cursor-plan-dyn-result-env-naming-output.txt <TMPDIR>/cursor-plan-dyn-makefile-shard-wiring-output.txt
+PHASE2_SLOTS=<TMPDIR>/codex-primary-plan-arch-output-phase2.txt <TMPDIR>/codex-primary-plan-pragmatic-output-phase2.txt <TMPDIR>/codex-primary-plan-requirements-output-phase2.txt <TMPDIR>/codex-primary-plan-dyn-harness-pin-migration-output-phase2.txt <TMPDIR>/codex-primary-plan-dyn-result-env-naming-output-phase2.txt <TMPDIR>/codex-primary-plan-dyn-makefile-shard-wiring-output-phase2.txt
+PHASE3_SLOTS=<TMPDIR>/cursor-plan-arch-output-phase3.txt <TMPDIR>/cursor-plan-pragmatic-output-phase3.txt <TMPDIR>/cursor-plan-requirements-output-phase3.txt <TMPDIR>/cursor-plan-dyn-harness-pin-migration-output-phase3.txt <TMPDIR>/cursor-plan-dyn-result-env-naming-output-phase3.txt <TMPDIR>/cursor-plan-dyn-makefile-shard-wiring-output-phase3.txt <TMPDIR>/codex-primary-plan-pragmatic-output-phase3.txt <TMPDIR>/codex-primary-plan-requirements-output-phase3.txt <TMPDIR>/codex-primary-plan-dyn-harness-pin-migration-output-phase3.txt <TMPDIR>/codex-primary-plan-dyn-result-env-naming-output-phase3.txt <TMPDIR>/codex-primary-plan-dyn-makefile-shard-wiring-output-phase3.txt
+ALL_OUTPUT_FILES=<TMPDIR>/cursor-plan-arch-output-phase3.txt <TMPDIR>/codex-primary-plan-arch-output-phase2.txt <TMPDIR>/cursor-plan-edge-output.txt <TMPDIR>/codex-primary-plan-edge-output.txt <TMPDIR>/cursor-plan-innovation-output.txt <TMPDIR>/codex-primary-plan-innovation-output.txt <TMPDIR>/cursor-plan-pragmatic-output-phase3.txt <TMPDIR>/codex-primary-plan-pragmatic-output-phase3.txt <TMPDIR>/cursor-plan-requirements-output-phase3.txt <TMPDIR>/codex-primary-plan-requirements-output-phase3.txt <TMPDIR>/cursor-plan-dyn-harness-pin-migration-output-phase3.txt <TMPDIR>/codex-primary-plan-dyn-harness-pin-migration-output-phase3.txt <TMPDIR>/cursor-plan-dyn-result-env-naming-output-phase3.txt <TMPDIR>/codex-primary-plan-dyn-result-env-naming-output-phase3.txt <TMPDIR>/cursor-plan-dyn-makefile-shard-wiring-output-phase3.txt <TMPDIR>/codex-primary-plan-dyn-makefile-shard-wiring-output-phase3.txt
+ALL_OUTPUT_FILES_PATH=<TMPDIR>/plan-review-slots.ndjson.output-files
+ALL_OUTPUT_TOOLS=claude cursor cursor cursor cursor cursor claude claude claude claude claude claude claude claude claude claude
+FALLBACK_COUNT=11
+PHASE2_RELAUNCH_COUNT=0
+COMBINED_FALLBACK_COUNT=11
+WARN=cost-fallback-exceeded-threshold
+DISPATCH_OK=true
+STATIC_DISPATCH_OK=true
+DYNAMIC_DISPATCH_OK=true
+DYNAMIC_SLOT_COUNT=6
+DEGRADED_ROUND=true
+PANEL_PATHS_FILE=<TMPDIR>/plan-review-slots.ndjson.output-files

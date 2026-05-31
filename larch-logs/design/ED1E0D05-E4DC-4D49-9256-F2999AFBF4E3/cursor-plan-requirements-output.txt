@@ -1,0 +1,16 @@
+Reviewing the plan against stated requirements and validating proposed changes against the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:172-174	The plan moves the Step 3 driver bash fence (including the `# Focus area enum anchor for CI` comment at skills/design/SKILL.md:995) into run-step3-review.sh but does not require keeping that anchor in SKILL.md or retargeting check (14a).	make test-design-structure fails with "(14a) SKILL.md must keep exactly 1 focus-area enum anchor comment".	Keep exactly one anchor comment in skills/design/SKILL.md (e.g. above the new driver fence), or extend scripts/test-design-structure.sh to accept the anchor in skills/design/scripts/run-step3-review.sh.
+2	in_scope	important	correctness	scripts/test-design-structure.sh:181-182	test-design-structure.sh (14c0) still requires plan-review-loop.sh in SKILL.md; the plan replaces the inline Step 3 invocation with run-step3-review.sh and only lists retargeting 14c0b/14c0c.	make test-design-structure fails "(14c0) SKILL.md missing plan-review-loop.sh Step 3 driver invocation" even when the refactor is correct.	Retarget (14c0) to grep run-step3-review.sh in SKILL.md (and optionally assert plan-review-loop.sh only in skills/design/scripts/run-step3-review.sh).
+3	in_scope	important	correctness	scripts/test-design-structure.sh:62	Pin 62 still requires `.step3-plan-review-result.env` in SKILL.md; the plan has the orchestrator source `$DESIGN_TMPDIR/.step3-review-result.env` from the new driver.	make test-design-structure fails "SKILL must source step3 plan-review result env" or implementers keep sourcing the wrong file.	Update pin 62 to `.step3-review-result.env` (and drop the SKILL.md requirement for the inner loop file unless prose still sources it after MainAgent re-tally).
+
+**1. Focus-area CI anchor (14a)**  
+The anchor at `skills/design/SKILL.md:995` lives in the fence that moves into `run-step3-review.sh`. Check (14a) still requires exactly one anchor in `SKILL.md`. The plan does not say to keep it in the skill or to retarget the harness.
+
+**2. plan-review-loop.sh pin (14c0)**  
+The plan retargets 14c0b/14c0c to `run-step3-review.sh` but not 14c0, which still greps `plan-review-loop.sh` in `SKILL.md`. After the refactor, Step 3 should invoke the new driver, not the loop script directly.
+
+**3. Result-env pin (62)**  
+The orchestrator is meant to source `.step3-review-result.env`; pin 62 still expects `.step3-plan-review-result.env` in `SKILL.md`. That mismatch will break `make test-design-structure` unless the pin is updated.
+
+Per SIMPLE tier guidance, I did not flag: dual-file handoff (loop `.step3-plan-review-result.env` vs driver `.step3-review-result.env`), stale “SKILL.md sole writer” prose, or `docs/linting.md` still describing harness extraction from `SKILL.md`.

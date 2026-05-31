@@ -1,0 +1,15 @@
+Reading the plan and tracing the cited codebase paths.
+1. **integration / important** — `scripts/test-design-structure.sh` Check (14a) requires exactly one focus-area enum anchor comment in `skills/design/SKILL.md`. The plan moves the only anchor (currently at the end of the Step 3 plan-review driver fence, `skills/design/SKILL.md:995`) into `run-step3-review.sh` but does not preserve it in SKILL or retarget Check (14a). `make test-design-structure` will fail after the extraction.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	integration	scripts/test-design-structure.sh:172-174	Focus-area enum anchor not preserved after Step 3 fence collapse	Check (14a) greps SKILL.md for exactly one anchor comment; moving the driver block removes the sole match and fails make test-design-structure	Add the anchor comment to the new collapsed SKILL.md driver-invoke fence, or retarget Check (14a) to require it in run-step3-review.sh instead
+
+2. **correctness / important** — The plan’s normalized result contract (`plan.txt` lines 41, 44–45; proposed `run-step3-review.md`) lists a short `emit_kv` key set, while the inline parser today allowlists thirteen loop keys (`skills/design/SKILL.md:962-973`) and Gate B passive-summary tables read `REVISE_STATUS` and related fields from `.step3-plan-review-result.env` (`skills/design/references/approval-gates.md:100`). If the implementer writes only the short list to `.step3-review-result.env`, orchestrator shell state after `source` will miss keys the branch matrix and main-agent path still expect.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:41-45	Normalized .step3-review-result.env key set is underspecified vs inline parser	Implementer may forward only the listed emit_kv breadcrumbs; orchestrator loses REASON REVISE_STATUS CONVERGENCE_STREAK COLLECT_* VOTER_1_PARSE_RATE_STATUS needed by branch-matrix messages and main-agent re-tally paths	Document in run-step3-review.md that .step3-review-result.env must carry the full inline allowlist (or explicitly state inner .step3-plan-review-result.env remains authoritative and branch-matrix prose must say so)
+
+3. **[OUT_OF_SCOPE] / latent** — `docs/linting.md:226` still says `test-step3-review-cap` extracts guard/driver blocks from SKILL.md; after the PR it will read `run-step3-review.sh`. Doc drift only; not in the plan’s file list.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	latent	architecture	docs/linting.md:226	linting.md harness description not in plan update list	Operators reading linting.md will look for Step 3 logic in SKILL.md after extraction	Add a linting.md row for test-run-step3-review and test-lib-phase-driver; update the test-step3-review-cap description to cite run-step3-review.sh
