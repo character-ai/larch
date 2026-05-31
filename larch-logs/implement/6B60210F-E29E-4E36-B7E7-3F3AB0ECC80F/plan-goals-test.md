@@ -10,9 +10,11 @@ Implement issue #3234: [IMPLEMENTING] ship-pr -> Python Phase 1: Foundation & sh
 Stand up a flat `python/` tree (stdlib-only runtime, Python >= 3.12) holding the 11 foundation
 modules every later phase builds on, wire two new CI gates (Python Lint, Python Tests), add the
 linter/test configs, `make py-lint` / `py-test`, a `python/README.md`, and an `AGENTS.md`
-repo-layout note. Strangler-fig: **no change to the live `/implement` orchestration path** —
-`ship-pr.sh` is untouched; `scripts/ci-failed-jobs.sh` gains two new job-name entries so `ship-pr`
-does not misclassify the new CI jobs as `ci-local-unfixable`. Decisions locked in Round 1: full
+repo-layout note. Strangler-fig: **no change to the live `/implement` orchestration path** except
+an intentional fifth wiring edit to `scripts/ship-pr.sh` (failed-job replay maps `python-lint` /
+`python-tests` CI jobs to `make py-lint` / `make py-test`); `scripts/ci-failed-jobs.sh` gains two
+new job-name entries so `ship-pr` does not misclassify the new CI jobs as `ci-local-unfixable`.
+Decisions locked in Round 1: full
 operation surface for `git.py` / `gh.py` / `agents.py`, parity tests for the modules with a clean
 bash counterpart (`redact`, `retry`, `agents`), exact tool versions pinned now.
 
@@ -192,8 +194,14 @@ for now (stdlib-only runtime, not yet wired into the live `/implement` path unti
 Add the two new Python CI job IDs (`python-lint`, `python-tests`) to the set of job names
 recognized by `ship-pr`. Without this entry, a failing Python Lint or Python Tests job would cause
 `ship-pr` to classify it as `ci-local-unfixable` and exit prematurely — breaking the strangler
-boundary for the live `/implement` path even though `ship-pr.sh` itself is untouched. This is a
+boundary for the live `/implement` path. This is a
 purely additive allowlist change; no existing logic is modified.
+
+### UPDATED: `scripts/ship-pr.sh`
+Map failed `python-lint` / `python-tests` CI jobs to `make py-lint` / `make py-test` in
+`_per_job_argv` so local per-job replay matches CI; install `python/requirements-*.txt` before
+replay when tools are missing (see `scripts/test-ship-pr.sh` replay cases). Intentional fifth
+wiring edit outside `python/`; revert only if replay stays allowlist-only until a later phase.
 
 ## Approach
 
@@ -210,8 +218,9 @@ purely additive allowlist change; no existing logic is modified.
   requirements files).
 - Lint and test toolchains are split into `requirements-dev.txt` (ruff/pylint/pyright) and
   `requirements-test.txt` (pytest) so the Python Tests CI job never requires Node.
-- Strangler-fig: nothing here is imported by any `.sh` or skill; `ship-pr.sh` is untouched;
-  `ci-failed-jobs.sh` gains two allowlist entries to preserve the live-path strangler boundary.
+- Strangler-fig: nothing here is imported by any `.sh` or skill; live orchestration stays in bash;
+  `scripts/ship-pr.sh` gains replay wiring for the two new CI jobs; `ci-failed-jobs.sh` gains two
+  allowlist entries to preserve the live-path strangler boundary.
 
 ## Edge cases
 
@@ -279,9 +288,11 @@ purely additive allowlist change; no existing logic is modified.
 - All foundation modules importable + unit-tested in isolation (stub `proc.run`) → the colocated
   `test_*.py` set.
 - `redact.py` passes a parity test vs `redact-secrets.sh` → `test_redact.py` parity section.
-- Zero change to the live `/implement` orchestration path → `ship-pr.sh` untouched; only additive
-  `python/**` files plus the four enumerated `UPDATED:` edits (ci.yaml jobs, Makefile targets,
-  AGENTS.md note, ci-failed-jobs.sh allowlist).
+- Zero change to the live `/implement` orchestration path except the intentional fifth wiring edit:
+  `scripts/ship-pr.sh` maps failed `python-lint` / `python-tests` jobs to `make py-lint` /
+  `make py-test` replay (see `scripts/test-ship-pr.sh` replay cases); only additive `python/**`
+  files plus five enumerated `UPDATED:` edits (ci.yaml jobs, Makefile targets, AGENTS.md note,
+  ci-failed-jobs.sh allowlist, ship-pr.sh replay wiring).
 
 ## Diff size estimate
 
@@ -299,7 +310,11 @@ net-new hand-written code, so no `mechanical_churn` downgrade is claimed.
 - `retry.py` parity vs `scripts/lib-net.sh` `is_transient_net_signature`; `agents.py` parity vs `external_classify_launch_failure` in `scripts/lib-external-launcher-common.sh` (identical canonical failure tokens).
 - `test_stdlib_only.py` proves no runtime module imports a non-stdlib package at any AST depth (module-level and function-local).
 - `make py-lint` and `make py-test` run the same toolchains as CI.
-- Zero change to the live `/implement` orchestration path: `scripts/ship-pr.sh` is untouched; only additive `python/**` files plus four enumerated edits (`.github/workflows/ci.yaml`, `Makefile`, `AGENTS.md`, `scripts/ci-failed-jobs.sh` allowlist).
+- Zero change to the live `/implement` orchestration path except the intentional fifth wiring edit:
+  `scripts/ship-pr.sh` maps failed `python-lint` / `python-tests` jobs to `make py-lint` /
+  `make py-test` replay; only additive `python/**` files plus five enumerated edits
+  (`.github/workflows/ci.yaml`, `Makefile`, `AGENTS.md`, `scripts/ci-failed-jobs.sh` allowlist,
+  `scripts/ship-pr.sh` replay wiring).
 
 diff_lines: 2700
 

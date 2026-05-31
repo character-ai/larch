@@ -41,10 +41,13 @@ _REPO_QUOTE_COMMA = r"[^/\s\"\\\"},]+"
 _REPO_QUOTE_END = r"[^/\s\"\\\"]+"
 _REPO_EOL = r"[^/\s\"\\]+"
 
+_ML = re.MULTILINE
+
 _TMPDIR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(
             rf"(^|{_BOUNDARY})/(private/)?tmp/+({_NOT_PATH}+/)*{_SESSION_SUFFIX}",
+            _ML,
         ),
         rf"\1{config.REDACTED_TMPDIR}",
     ),
@@ -52,24 +55,28 @@ _TMPDIR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(
             rf"(^|{_BOUNDARY})/(private/)?var/folders/[^/]+/[^/]+/T/"
             rf"({_NOT_PATH}+/)*{_SESSION_SUFFIX}",
+            _ML,
         ),
         rf"\1{config.REDACTED_TMPDIR}",
     ),
     (
         re.compile(
             rf"(^|{_BOUNDARY})/({_NOT_PATH}+/)*larch/sessions/{_SESSION_SUFFIX}",
+            _ML,
         ),
         rf"\1{config.REDACTED_TMPDIR}",
     ),
     (
         re.compile(
             rf"(\\n)/({_NOT_PATH}+/)*larch/sessions/{_SESSION_SUFFIX}",
+            _ML,
         ),
         rf"\1{config.REDACTED_TMPDIR}",
     ),
     (
         re.compile(
             rf"(\\n)/(private/)?tmp/+({_NOT_PATH}+/)*{_SESSION_SUFFIX}",
+            _ML,
         ),
         rf"\1{config.REDACTED_TMPDIR}",
     ),
@@ -77,6 +84,7 @@ _TMPDIR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
         re.compile(
             rf"(\\n)/(private/)?var/folders/[^/]+/[^/]+/T/"
             rf"({_NOT_PATH}+/)*{_SESSION_SUFFIX}",
+            _ML,
         ),
         rf"\1{config.REDACTED_TMPDIR}",
     ),
@@ -86,96 +94,112 @@ _OPERATOR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(
             rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_SLASH})/",
+            _ML,
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}/",
     ),
     (
         re.compile(
             rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_COMMA}),",
+            _ML,
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO},",
     ),
     (
         re.compile(
             rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_SEMI});",
+            _ML,
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO};",
     ),
     (
         re.compile(
             rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_COLON}):",
+            _ML,
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}:",
     ),
     (
         re.compile(
             rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_BRACE})\"}}",
+            _ML,
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}"}}',
     ),
     (
         re.compile(
             rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_QUOTE_COMMA})\",",
+            _ML,
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}",',
     ),
     (
         re.compile(
             rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_QUOTE_END})\"$",
+            _ML,
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}"',
     ),
     (
         re.compile(
             rf"(^|{_BOUNDARY})(/Users|/home)/({_USER_SEG})/({_REPO_EOL})$",
+            _ML,
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}",
     ),
     (
         re.compile(
             rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_SLASH})/",
+            _ML,
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}/",
     ),
     (
         re.compile(
             rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_COMMA}),",
+            _ML,
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO},",
     ),
     (
         re.compile(
             rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_SEMI});",
+            _ML,
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO};",
     ),
     (
         re.compile(
             rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_COLON}):",
+            _ML,
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}:",
     ),
     (
         re.compile(
             rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_BRACE})\"}}",
+            _ML,
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}"}}',
     ),
     (
         re.compile(
             rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_QUOTE_COMMA})\",",
+            _ML,
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}",',
     ),
     (
         re.compile(
             rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_QUOTE_END})\"$",
+            _ML,
         ),
         rf'\1{config.REDACTED_OPERATOR_REPO}"',
     ),
     (
         re.compile(
             rf"(\\n)(/Users|/home)/({_USER_SEG})/({_REPO_EOL})$",
+            _ML,
         ),
         rf"\1{config.REDACTED_OPERATOR_REPO}",
     ),

@@ -84,14 +84,7 @@ def parse_launcher_failure_class(log_file: str | Path | None) -> str:
 def effective_failure_class(attempt: TierAttempt) -> str:
     """Failure class from capture log when present, else ``attempt.failure``."""
     if attempt.failure_log is not None:
-        path = Path(attempt.failure_log)
-        if path.is_file():
-            last = ""
-            for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-                if line.startswith("LAUNCHER_FAILURE_CLASS="):
-                    last = line.split("=", 1)[1].strip().strip("\r")
-            if last in ("none", "health", "other"):
-                return last
+        return parse_launcher_failure_class(attempt.failure_log)
     return attempt.failure.failure_class
 
 
@@ -130,6 +123,9 @@ def classify_launch_failure(
     return LaunchFailure(failure_class="other", reason="unknown")
 
 
+_DEFAULT_SCRIPTS_DIR = Path(__file__).resolve().parents[1] / "scripts"
+
+
 def build_launch_argv(
     tier: str,
     *,
@@ -140,6 +136,7 @@ def build_launch_argv(
     plan_file: str | None = None,
     failure_log: str | None = None,
     timeout_sec: int = config.SUBPROCESS_DEFAULT_TIMEOUT_SEC,
+    scripts_dir: str | Path | None = None,
 ) -> list[str]:
     """Build per-tool launcher argv (parity with launch-*-ci.sh flags)."""
     script_map = {
@@ -151,8 +148,9 @@ def build_launch_argv(
     if script is None:
         msg = f"unknown tier: {tier}"
         raise ValueError(msg)
+    root = Path(scripts_dir) if scripts_dir is not None else _DEFAULT_SCRIPTS_DIR
     argv = [
-        f"scripts/{script}",
+        str(root / script),
         "--role",
         role,
         "--output",

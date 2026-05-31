@@ -126,6 +126,42 @@ def test_pr_create_recovers_after_create_conflict() -> None:
     assert runner.calls[1][runner.calls[1].index("--body-file") + 1].endswith(".md")
 
 
+def test_pr_create_recovers_from_conflict_stderr_url_when_list_empty() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"),
+                1,
+                "",
+                (
+                    'a pull request for branch "feat" into branch "main" already exists:\n'
+                    "https://github.com/o/r/pull/789\n"
+                ),
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "list"),
+                1,
+                "",
+                "no such hosted repository",
+                0.01,
+            ),
+        ],
+    )
+    pr = gh.pr_create(
+        runner,
+        repo="o/r",
+        branch="feat",
+        title="t",
+        body="b",
+    )
+    assert pr.number == 789
+    assert pr.url == "https://github.com/o/r/pull/789"
+    assert pr.head_ref == "feat"
+    assert len(runner.calls) == 3
+
+
 def test_pr_create_uses_body_file_not_inline_body() -> None:
     runner = RecordingRunner(
         responses=[

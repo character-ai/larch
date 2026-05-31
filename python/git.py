@@ -60,7 +60,12 @@ def rev_count(
         ["git", "rev-list", "--count", f"{left}..{right}"],
         cwd=cwd,
     ))
-    return int(result.stdout.strip() or "0")
+    text = result.stdout.strip() or "0"
+    try:
+        return int(text)
+    except ValueError as exc:
+        msg = f"git rev-list --count returned non-integer stdout: {text!r}"
+        raise ShipError(msg) from exc
 
 
 def merge_base(

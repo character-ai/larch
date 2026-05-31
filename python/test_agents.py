@@ -134,7 +134,8 @@ def test_build_launch_argv_per_tier(tier: str) -> None:
         run_id="run",
         repo="o/r",
     )
-    assert argv[0] == f"scripts/launch-{tier}-ci.sh"
+    assert argv[0].endswith(f"launch-{tier}-ci.sh")
+    assert Path(argv[0]).is_absolute()
     assert "--role" in argv
 
 
@@ -266,6 +267,37 @@ def test_waterfall_classify_other_without_kv_short_circuits() -> None:
     assert result.winning_tier is None
     assert len(calls) == 1
     assert result.short_circuited is True
+
+
+def test_waterfall_continues_when_log_missing_failure_class_kv(
+    tmp_path: Path,
+) -> None:
+    tiers = list(config.FIXER_TIER_ORDER)
+    calls: list[str] = []
+    log_file = tmp_path / "capture.log"
+    log_file.write_text("ordinary launcher output\n", encoding="utf-8")
+
+    def launch_fn(tier: str) -> TierAttempt:
+        calls.append(tier)
+        if tier == tiers[-1]:
+            return TierAttempt(
+                tier=tier,
+                wrapper_rc=0,
+                launcher_exit=0,
+                failure=LaunchFailure("none", ""),
+            )
+        return TierAttempt(
+            tier=tier,
+            wrapper_rc=0,
+            launcher_exit=1,
+            failure=LaunchFailure("other", "unknown"),
+            failure_log=log_file,
+        )
+
+    result = agents.run_waterfall(tiers, launch_fn, first_tier=tiers[0])
+    assert result.winning_tier == tiers[-1]
+    assert len(calls) == len(tiers)
+    assert result.short_circuited is False
 
 
 @pytest.mark.skipif(

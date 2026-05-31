@@ -10,6 +10,7 @@ Mutating helpers return the last ``CommandResult`` without retry.
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
@@ -246,6 +247,25 @@ def _is_create_conflict(text: str) -> bool:
     return "pull request for branch" in text and "already exists" in text
 
 
+_PR_CONFLICT_URL_RE = re.compile(r"https?://[^\s]+/pull/\d+")
+
+
+def _recover_pr_from_conflict_text(text: str, *, branch: str) -> PullRequest | None:
+    matches = _PR_CONFLICT_URL_RE.findall(text)
+    if not matches:
+        return None
+    url = matches[-1]
+    number_match = re.search(r"/(\d+)$", url)
+    if number_match is None:
+        return None
+    return PullRequest(
+        number=int(number_match.group(1)),
+        url=url,
+        state="OPEN",
+        head_ref=branch,
+    )
+
+
 def pr_create(
     runner: Runner,
     *,
@@ -285,7 +305,17 @@ def pr_create(
         result = _gh(runner, argv, cwd=cwd)
     if result.returncode != 0:
         if _is_create_conflict(_combined(result)):
-            recovered = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
+            conflict_text = _combined(result)
+            try:
+                recovered = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
+            except (ShipError, TransientNetworkError):
+                recovered = None
+            if recovered is not None:
+                return recovered
+            recovered = _recover_pr_from_conflict_text(
+                conflict_text,
+                branch=branch,
+            )
             if recovered is not None:
                 return recovered
         _ensure_success(result)

@@ -2175,6 +2175,41 @@ _per_job_argv() {
     esac
 }
 
+_prepare_python_job_toolchain() {
+    local job_name=$1 req_file="" missing="" tool=""
+    case "$job_name" in
+        python-lint)
+            req_file="$PLUGIN_ROOT/python/requirements-dev.txt"
+            if [ -f "$req_file" ] && command -v python3 >/dev/null 2>&1; then
+                python3 -m pip install -q -r "$req_file" 2>/dev/null || true
+            fi
+            for tool in ruff pylint pyright; do
+                if ! command -v "$tool" >/dev/null 2>&1; then
+                    missing="${missing}${missing:+ }$tool"
+                fi
+            done
+            if [ -n "$missing" ]; then
+                larch_err "⚠ ship-pr: python-lint replay skipped — missing tools on PATH ($missing); install python/requirements-dev.txt (and Node for pyright) or rely on vendor fixer"
+                return 1
+            fi
+            if ! command -v node >/dev/null 2>&1; then
+                larch_err "⚠ ship-pr: python-lint replay may fail — node not on PATH (pyright requires Node)"
+            fi
+            ;;
+        python-tests)
+            req_file="$PLUGIN_ROOT/python/requirements-test.txt"
+            if [ -f "$req_file" ] && command -v python3 >/dev/null 2>&1; then
+                python3 -m pip install -q -r "$req_file" 2>/dev/null || true
+            fi
+            if ! command -v pytest >/dev/null 2>&1; then
+                larch_err "⚠ ship-pr: python-tests replay skipped — pytest not on PATH; install python/requirements-test.txt or rely on vendor fixer"
+                return 1
+            fi
+            ;;
+        *) return 0 ;;
+    esac
+}
+
 _write_per_job_args_file() {
     local path=$1 token
     : > "$path"
@@ -2243,6 +2278,7 @@ _verify_failed_jobs_locally() {
         job_token=$job_name
         [[ -n "$shard" ]] && job_token="${job_token}-${shard}"
         _per_job_argv "$job_name" "$shard" || { unfixable+=("$job_token"); continue; }
+        _prepare_python_job_toolchain "$job_name" || { unfixable+=("$job_token"); continue; }
         args_file="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-args.txt"
         _write_per_job_args_file "$args_file"
         _PJL_LOG_PATH="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}.verify.log"
@@ -2348,6 +2384,7 @@ run_per_job_local_fix_loop() {
         job_token=$job_name
         [[ -n "$shard" ]] && job_token="${job_token}-${shard}"
         _per_job_argv "$job_name" "$shard" || { unfixable+=("$job_token"); continue; }
+        _prepare_python_job_toolchain "$job_name" || { unfixable+=("$job_token"); continue; }
         args_file="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}-args.txt"
         _write_per_job_args_file "$args_file"
         _PJL_LOG_PATH="$IMPLEMENT_TMPDIR/per-job-${phase}-${job_token}.log"

@@ -110,6 +110,13 @@ def test_operator_delimiter_repo_segments(vector: str, expected: str) -> None:
     assert redact.redact(vector).rstrip("\n") == expected
 
 
+def test_operator_multiline_eol_redaction() -> None:
+    text = "line one\n/Users/example/myrepo\nline three"
+    out = redact.redact(text)
+    assert "/Users/example/myrepo" not in out
+    assert "<OPERATOR_REPO_PATH>" in out
+
+
 def test_idempotent() -> None:
     once = redact.redact("/tmp/larch-design-breadcrumbs.ABC123/private.txt")
     twice = redact.redact(once)

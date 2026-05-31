@@ -121,6 +121,22 @@ def test_operation_helpers_build_expected_argv() -> None:
     assert git.ls_files(runner, "a.txt", "b.txt") == ("a.txt",)
 
 
+def test_rev_count_raises_ship_error_on_non_integer_stdout() -> None:
+    runner = StubRunner(
+        {
+            ("git", "rev-list", "--count", "main..HEAD"): CommandResult(
+                ("git", "rev-list", "--count", "main..HEAD"),
+                0,
+                "not-a-number\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+    with pytest.raises(ShipError, match="non-integer stdout"):
+        git.rev_count(runner, "main", "HEAD")
+
+
 def test_value_helper_raises_on_failure() -> None:
     runner = StubRunner(
         {
