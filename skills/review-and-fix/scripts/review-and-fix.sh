@@ -32,7 +32,7 @@ source "$PLUGIN_ROOT/scripts/lib-implement-round-cap.sh"
 usage() {
     larch_err "Usage:"
     larch_err "  review-and-fix.sh --findings-file FILE --review-tmpdir DIR [--session-env-path FILE]"
-    larch_err "  review-and-fix.sh --implement-tmpdir DIR --mode diff --round-num N [--convergence-threshold N] [context flags]"
+    larch_err "  review-and-fix.sh --implement-tmpdir DIR --mode diff --round-num N [context flags]"
 }
 
 FINDINGS_FILE=""
@@ -57,7 +57,7 @@ ROUND_CAP=""
 CODEX_AVAILABLE="${CODEX_AVAILABLE:-}"
 CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-}"
 DYNAMIC_ARCHETYPES_CLI=""
-CONVERGENCE_THRESHOLD=""
+readonly CONVERGENCE_NON_NIT_MAX=5
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -74,7 +74,6 @@ while [[ $# -gt 0 ]]; do
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --starting-round) STARTING_ROUND="${2:?--starting-round requires a value}"; shift 2 ;;
         --round-cap) ROUND_CAP="${2:?--round-cap requires a value}"; shift 2 ;;
-        --convergence-threshold) CONVERGENCE_THRESHOLD="${2:?--convergence-threshold requires a value}"; shift 2 ;;
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --dynamic-archetypes) DYNAMIC_ARCHETYPES_CLI="${2:?--dynamic-archetypes requires a value}"; shift 2 ;;
@@ -126,6 +125,22 @@ count_high_severity_accepted() {
     n=$(grep -cE '(^### FINDING_[0-9]+:.*(\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)|\*\*[Ii]mportant\*\*)' "$file" 2>/dev/null || true)
     [[ "$n" =~ ^[0-9]+$ ]] || n=0
     printf '%s\n' "$n"
+}
+
+_count_nit_accepted_findings() {
+    local path="$1"
+    [[ -f "$path" ]] || { printf '0'; return 0; }
+    awk '
+        /^### FINDING_[0-9]+:/ {
+            if (in_block && nit) c++
+            in_block=1
+            nit=0
+            next
+        }
+        in_block && /^- \*\*Severity\*\*: nit/ { nit=1 }
+        in_block && /^### / { if (nit) c++; in_block=0; nit=0; next }
+        END { if (in_block && nit) c++; print c+0 }
+    ' "$path"
 }
 
 append_round_oos_artifact() {
@@ -1043,11 +1058,6 @@ _implement_round_body() {
     [[ -x "$REVIEW_CORE_SH" ]] || { larch_err "review-and-fix.sh: review-core.sh not executable: $REVIEW_CORE_SH"; exit 2; }
     [[ -x "$RUN_EXTERNAL_AGENT_SH" ]] || { larch_err "review-and-fix.sh: run-external-agent.sh not executable: $RUN_EXTERNAL_AGENT_SH"; exit 2; }
     command -v jq >/dev/null 2>&1 || { larch_err "review-and-fix.sh: jq is required"; exit 2; }
-    if [[ -n "$CONVERGENCE_THRESHOLD" && ! "$CONVERGENCE_THRESHOLD" =~ ^[0-9]+$ ]]; then
-        larch_err "review-and-fix.sh: --convergence-threshold must be a non-negative integer"
-        exit 2
-    fi
-
     if [[ "$CODEX_AVAILABLE" != "true" && "$CODEX_AVAILABLE" != "false" ]]; then
         codex_present=$(session_get CODEX_PRESENT false)
         CODEX_AVAILABLE="$codex_present"
@@ -1369,39 +1379,34 @@ _implement_round_body() {
         exit_code="$core_rc"
     fi
 
-    # Part A: Convergence heuristic — early-termination on two consecutive low-accept rounds.
-    # Count only non-degraded rounds and only terminal clean statuses.
-    local small_threshold="${CONVERGENCE_THRESHOLD:-3}"
+    # Part A: Convergence heuristic — one non-degraded round with <=5 non-nit accepted and no Important findings.
     important_scan_abort=0
-    if convergence_candidate_status "$status" && [[ "$degraded_this_round" == false && "$round_num_dec" -ge 2 ]]; then
-        local prev_round_a=0
-        local prev_core_out_a=""
-        local prev_accepted_a
+    if convergence_candidate_status "$status" && [[ "$degraded_this_round" == false ]]; then
+        local accepted_count_dec=0 nit_count=0 non_nit_accepted=0
         local important_scan_files=()
 
-        prev_round_a=$(find_previous_non_degraded_round "$IMPLEMENT_TMPDIR" "$((round_num_dec - 1))")
-        if (( prev_round_a >= 1 )); then
-            prev_core_out_a="$IMPLEMENT_TMPDIR/round-${prev_round_a}/review-core.env"
-            prev_accepted_a=$(kv_get "$prev_core_out_a" ACCEPTED_COUNT)
-            prev_accepted_a="${prev_accepted_a:-999}"
-            if [[ "$prev_accepted_a" =~ ^[0-9]+$ ]] && \
-               (( 10#$prev_accepted_a <= 10#$small_threshold )) && \
-               (( accepted_count <= 10#$small_threshold )); then
-                important_scan_files+=(
-                    "$IMPLEMENT_TMPDIR/round-${prev_round_a}/findings.md"
-                    "$IMPLEMENT_TMPDIR/round-${round_num_dec}/findings.md"
-                )
-                if important_findings_present "${important_scan_files[@]}"; then
-                    :
-                else
-                    local important_rc=$?
-                    if [[ "$important_rc" -eq 2 ]]; then
-                        important_scan_abort=1
-                    else
-                        larch_err "⏳ /implement Step 5: converged after round ${round_num_dec} (round ${round_num_dec}=${accepted_count}, round ${prev_round_a}=${prev_accepted_a} both <= ${small_threshold}; degraded rounds excluded)."
-                        status="converged-small-changes"
-                    fi
-                fi
+        if [[ "$accepted_count" =~ ^[0-9]+$ ]]; then
+            accepted_count_dec=$((10#$accepted_count))
+        fi
+        nit_count=$(_count_nit_accepted_findings "$accepted_file")
+        nit_count=$((10#${nit_count:-0}))
+        if (( nit_count > accepted_count_dec )); then
+            nit_count=$accepted_count_dec
+        fi
+        non_nit_accepted=$((accepted_count_dec - nit_count))
+        if (( non_nit_accepted <= CONVERGENCE_NON_NIT_MAX )); then
+            important_scan_files+=("$IMPLEMENT_TMPDIR/round-${round_num_dec}/findings.md")
+            local important_rc=1
+            if important_findings_present "${important_scan_files[@]}"; then
+                important_rc=0
+            else
+                important_rc=$?
+            fi
+            if [[ "$important_rc" -eq 2 ]]; then
+                important_scan_abort=1
+            elif [[ "$important_rc" -eq 1 ]]; then
+                larch_err "⏳ /implement Step 5: converged after round ${round_num_dec} (${non_nit_accepted} non-nit accepted, ${nit_count} nit excluded; <= ${CONVERGENCE_NON_NIT_MAX}; no Important findings)."
+                status="converged-small-changes"
             fi
         fi
     fi
