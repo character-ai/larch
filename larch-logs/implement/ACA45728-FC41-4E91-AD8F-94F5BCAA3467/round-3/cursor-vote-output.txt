@@ -1,0 +1,39 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated surfacing helpers are acceptable for two callers
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- separate early-fail vs agent-fail paths are intentional and test-covered
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- attempt-cap arm usually has no stashed stem; harmless no-op emit
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- redundant write is defensive when stderr-sink and explicit producer both run
+FINDING_6: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true -- plan empty-with-failure gate missing; realistic only on truncated stdout
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- orphaned recovery stdout files are minor tmpdir growth, not a functional defect
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true -- same latent empty-status gap as FINDING_6
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- attempt-cap path rarely retains prior failure stems
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- FD-2 tail case is scoped; hard-fail test already pins LOOP_STATUS
+FINDING_14: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true -- duplicate of FINDING_6/9 empty-status harness gap
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- CI runtime risk is operational monitoring, not a code defect
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit subject, not a reviewable defect
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit subject, not a reviewable defect
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit subject, not a reviewable defect
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit subject, not a reviewable defect
+FINDING_20: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit subject, not a reviewable defect
+FINDING_21: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit subject, not a reviewable defect
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- descriptive architecture note, not a finding
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- descriptive architecture note, not a finding
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- descriptive architecture note, not a finding
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- descriptive architecture note, not a finding
+FINDING_26: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security summary, not a defect
+FINDING_27: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- partial redaction is documented accepted operational risk in SECURITY.md
+FINDING_28: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- collector tee/redaction behavior predates #3227; harness only locks regression
+FINDING_29: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_30: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_31: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_32: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- auth-retry sidecar clear may drop earlier stderr but fix cost outweighs rare impact
+FINDING_33: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same recovery tmpdir growth as FINDING_7
+FINDING_34: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_35: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true -- plan empty-with-failure surfacing not wired in run_lint_fix_loop_capture
+FINDING_36: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_37: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- working tree already contains the _collect_rc gate; commit completes the fix
+FINDING_38: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_39: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative no-defect note, not an actionable issue

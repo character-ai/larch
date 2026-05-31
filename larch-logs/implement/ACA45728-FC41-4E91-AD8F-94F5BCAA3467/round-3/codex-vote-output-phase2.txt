@@ -1,0 +1,39 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated surfacing helpers are real but a shared lib extract is optional polish
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- two cursor tail-write sites are redundant but behavior is consistent
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- call is a no-op when stems are empty; removing it is trivial cleanup only
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- extra write after --stderr-sink is redundant I/O, not a functional bug
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- lint-fix-loop always emits LINT_FIX_STATUS on normal paths; empty status needs a broken subprocess
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same latent empty-status edge as FINDING_6; not realistically emitted by lint-fix-loop
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- attempt-cap path rarely has a stashed stem after applied; retaining stems adds state complexity
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- harness already exercises surfacing via main-agent-required on the same gate as failed
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- tail-to-FD-2 contract is pinned; LOOP_STATUS assertion is extra coverage not required for #3227
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_6/9; defensive empty-status surfacing is plan-optional hardening
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- operational CI monitoring concern, not a code defect in the feature
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit title, not a reviewable defect
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit title, not a reviewable defect
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit title, not a reviewable defect
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit title, not a reviewable defect
+FINDING_20: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit title, not a reviewable defect
+FINDING_21: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- ballot item is a commit title, not a reviewable defect
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documents existing safe producer behavior, not a problem to fix
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documents existing safe consumer behavior, not a problem to fix
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documents intentional caller-scope design, not a defect
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational note about unchanged run-external-agent, not a finding
+FINDING_26: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security summary states no new issues introduced
+FINDING_27: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- partial redaction is documented accepted operational risk in SECURITY.md
+FINDING_28: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- predates #3227; separate hardening issue if pursued at all
+FINDING_29: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- #3229 fail-safe retention is intentional and already documented
+FINDING_30: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- HEAD already has _collect_rc and parseable-output gate at 764-783
+FINDING_31: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_32: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- auth-retry truncation is real but cumulative stderr across retries is disproportionate complexity
+FINDING_33: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_34: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_35: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan empty-with-failure guard is defensive; lint-fix-loop does not emit empty status in practice
+FINDING_36: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- same regression as FINDING_30; already fixed on HEAD with set +e, _collect_rc, and panel-failed gate
+FINDING_37: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes fix already present in tree, not an open defect
+FINDING_38: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- panel-failed collector test already exists at test-plan-review-loop.sh 2115-2135
+FINDING_39: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive scope note, not a defect worth filing

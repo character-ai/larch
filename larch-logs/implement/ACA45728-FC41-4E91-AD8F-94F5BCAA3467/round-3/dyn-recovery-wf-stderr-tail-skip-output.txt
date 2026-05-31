@@ -1,0 +1,18 @@
+Reviewing recovery-waterfall stderr-tail logic: reading the diff and relevant `ship-pr.sh` / launcher code.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+Reviewed `run_recovery_waterfall` in `scripts/ship-pr.sh` (roughly 2742–2785) against the scout checklist:
+
+1. **`launch-claude-ci.sh` and `.stderr-tail` on success** — The Claude CI launcher never sources `lib-failed-agent-stderr-tail.sh` or calls `write_failed_agent_stderr_tail`. It captures CLI stderr to `${OUTPUT}.stderr` only (`scripts/launch-claude-ci.sh` ~176–189, 216). A successful run therefore does not create `${output}.stderr-tail`, so the new `[ -s "${output}.stderr-tail" ]` branch cannot falsely skip the Claude tier on a healthy launcher exit alone.
+
+2. **`launcher_exit` reset per tier** — At the top of each `for tier in cursor codex claude` iteration, `tier_rc=1` and `launcher_exit=0` are set (`scripts/ship-pr.sh` 2749–2750) before `launcher_exit` is reparsed from that tier’s own `launcher_stdout` file (`recovery-${wf_phase}-${tier}-launcher-$$.out`, 2752–2774). A failed cursor tier’s parsed exit cannot bleed into the codex/claude iterations.
+
+3. **Missing tier binary** — When `command -v` fails, the launcher is not invoked, `tier_rc` stays `1`, and the loop hits the `tier_rc -ne 0` revert/`continue` path (2778–2780). `_surface_ci_stderr_tail` is guarded with `|| true` via `emit_failed_agent_stderr_tail_larch_err` (`scripts/ship-pr.sh` 116–119, `scripts/lib-failed-agent-stderr-tail.sh` 189–191); a fresh `${output}` stem normally has no tail file.
+
+4. **Intentional `LAUNCHER_EXIT=0` + non-empty tail** — Cursor/codex CI paths use `run-external-agent.sh`, which `rm -f`s `${OUTPUT}.stderr-tail` at startup and again on agent success (`scripts/run-external-agent.sh` 151, 330–333). The new skip when `tier_rc=0`, `launcher_exit=0`, and `-s "${output}.stderr-tail"` is deliberate coverage for agent failure with a misleading KV (encoded in `scripts/test-ship-pr.sh` ~6071–6145). That matches the plan’s recovery-waterfall requirement to treat a non-empty tail as failure even when the launcher shell exit is 0.
+
+Pre-existing nuance (not introduced by this branch): `output` uses `date +%s` and `launcher_stdout` omits a timestamp, so two recovery-waterfall invocations in the same second and phase could share paths; cursor/codex runs still clear `.stderr-tail` via `run-external-agent` startup. The Claude lane does not get that cleanup, but production Claude CI never writes `.stderr-tail`, so a false skip would still need an external/stale artifact.

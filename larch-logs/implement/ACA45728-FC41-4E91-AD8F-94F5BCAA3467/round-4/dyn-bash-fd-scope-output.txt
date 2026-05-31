@@ -1,0 +1,19 @@
+Reviewing the branch diff and tracing stderr-tail emit call sites for FD scope correctness.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **correctness** `scripts/ship-pr.sh:3329-3347` — The legacy resolve-conflict launcher path still captures launcher output with `> "$fail_file" 2>&1` and never calls `_surface_ci_stderr_tail`, so a failed `launch-*-ci.sh --role resolve-conflict` run can leave `${conflict_out}.stderr-tail` on disk without chat surfacing. That is a coverage gap (design OOS accepted it), not an emit-inside-redirect bug: no `emit_failed_agent_stderr_tail_larch_err` runs in that redirected scope.
+
+Audited call sites match the intended producer/consumer split:
+
+| Location | Emit/write | FD scope |
+|----------|------------|----------|
+| `scripts/launch-codex-implement.sh`, `scripts/launch-cursor-implement.sh` | `write_failed_agent_stderr_tail` only | Producer; no in-launcher emit |
+| `scripts/lint-fix-loop.sh` | `write_failed_agent_stderr_tail` only | Producer; no in-loop emit (per plan) |
+| `scripts/ship-pr.sh:132-163` | `_surface_lint_fix_stderr_tail` after `output=$(lint-fix-loop.sh … 2>"$fail_file")` | Parent scope after subshell returns |
+| `scripts/ship-pr.sh:2096,2107` | `_surface_ci_stderr_tail` after `> "$fail_file" 2>&1` launcher | Parent scope; launcher redirect does not affect emit |
+| `scripts/ship-pr.sh:2785` | `_surface_ci_stderr_tail` after recovery launcher `2>>"$wf_log"` | Parent scope |
+| `skills/implement/scripts/step2-implement.sh:276,1080` | `emit_failed_agent_stderr_tail_larch_err` in `emit_bailed` / bailed case | After `run_launcher >"$LAUNCHER_TMP" 2>&1`; quiet init routes via FD 4 |
+
+`emit_failed_agent_stderr_tail_larch_err` → `larch_err` uses the quiet contract (`>&2` plus `>&4` when `LARCH_QUIET_PID=$$`), so surfacing from `ship-pr.sh` / `step2-implement.sh` / Step 5 reaches chat even though those scripts redirect ordinary stderr to quiet logs.

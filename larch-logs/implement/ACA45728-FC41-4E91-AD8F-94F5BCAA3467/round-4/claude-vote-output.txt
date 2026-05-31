@@ -1,0 +1,22 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- `run_recovery_waterfall` uses `wf_role` for both fix and resolve-conflict; the modified function calls `_surface_ci_stderr_tail "$output"` on all tiers/roles at lines 2784-2786; no separate legacy resolve-conflict launcher path exists
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- two call sites with 3-line stem-selection logic; extracting a shared helper adds abstraction for marginal benefit at this scale
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- two separate revert/continue blocks are functionally correct; the split makes tier_rc vs launcher_exit semantics explicit rather than obscuring them
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- awk re-runs in an elif branch that only fires when lint_status is empty; the redundancy is negligible in practice
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- acknowledged as harmless no-op since STDERR_TAIL_PATH is unset on applied-status paths; no wrong tail emitted
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- cursor-implement has no auth-retry loop visible in the diff; `cursor_launcher_setup_auth_argv` runs once and exits on failure; scenario may not apply to cursor-implement as written
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- overlap with lib harness is documentation redundancy, not a correctness risk; consolidation would reduce coverage surface
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-redacted emit is the accepted #3202 architecture; plan explicitly calls this "accepted operator diagnostic tradeoff"; re-redacting at emit would be redundant
+FINDING_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- both `run-external-agent` (via --stderr-sink) and the explicit call read from the same `$codex_wrapper_log` source; functionally idempotent double-write, not a clobber with different content
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_20: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- `_surface_ci_stderr_tail "$tier_out"` is called at line 2107 before `record_failure`, `_ci_fix_rollback`, and the first-fixer-non-health `return 1` at line 2116; tail IS surfaced on that path
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_22: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

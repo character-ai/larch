@@ -1,0 +1,15 @@
+Reviewing the branch diff and `lint-fix-loop.sh` cursor tail logic.
+Checking whether `write_failed_agent_stderr_tail` can overwrite when the first `early_fail` branch runs with a pre-existing tail:
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **`scripts/lint-fix-loop.sh:253-301`** — Reviewed against the scout checklist: `preflight_log` is truncated at `run_cursor` entry (`: >"$preflight_log"` at line 266) before any `2>>"$preflight_log"` redirect, and all three preflight failure sites (`cursor_launcher_load_model_args`, `cursor_launcher_setup_auth_argv`, `cursor-wrap-prompt.sh`) pass a non-empty `$preflight_log` into `_run_cursor_record_early_fail`. Neither helper reads `cursor.wrapper.log` as a stderr source.
+
+- **Agent-failure priority (lines 291-299)** — When `run-external-agent --capture-stdout` has already written `${run_dir}/cursor.log.stderr-tail`, the `[[ ! -s ... ]]` guard skips all backfill, so wrapper progress in `cursor.wrapper.log` cannot clobber the agent tail. When the tail is absent, fallback order is `.diag` then `cursor.log`, matching the contract in `scripts/lint-fix-loop.md` (lines 66-69). Case 10 and case 11 in `scripts/test-lint-fix-loop.sh` exercise preserve-no-clobber and diag-only fallback respectively.
+
+- **Guard asymmetry in `_run_cursor_record_early_fail` (lines 256-259 vs 293-299)** — The preflight helper writes unconditionally from `log_file` when it is non-empty, while the agent branch only writes when `.stderr-tail` is missing. That is inconsistent on paper, but in the current linear `run_cursor` flow preflight exits always occur before `run-external-agent` runs, so a run-external-agent-produced tail cannot exist yet on those paths; this is not triggerable in production today.
+
+- **Test gap** — `scripts/test-lint-fix-loop.sh` has no dedicated case asserting `${run_dir}/cursor.log.stderr-tail` and `STDERR_TAIL_PATH` on cursor **preflight** failure (model-args / wrap / auth), analogous to the implement-launcher model-args tests added elsewhere on this branch.

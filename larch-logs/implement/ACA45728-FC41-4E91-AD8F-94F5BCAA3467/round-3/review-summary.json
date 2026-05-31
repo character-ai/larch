@@ -1,0 +1,31 @@
+{
+  "schema_version": 3,
+  "rounds_completed": 3,
+  "reviewer_output_paths": [
+    "<TMPDIR>/round-3/claude-vote-output.txt",
+    "<TMPDIR>/round-3/cursor-specialist-correctness-output.txt",
+    "<TMPDIR>/round-3/cursor-specialist-edge-cases-output.txt",
+    "<TMPDIR>/round-3/cursor-specialist-plan-fidelity-output.txt",
+    "<TMPDIR>/round-3/cursor-specialist-security-output.txt",
+    "<TMPDIR>/round-3/cursor-specialist-structure-output.txt",
+    "<TMPDIR>/round-3/cursor-specialist-testing-output.txt",
+    "<TMPDIR>/round-3/cursor-vote-output.txt",
+    "<TMPDIR>/round-3/dyn-plan-review-collect-or-true-output.txt",
+    "<TMPDIR>/round-3/dyn-recovery-wf-stderr-tail-skip-output.txt",
+    "<TMPDIR>/round-3/dyn-step5-arm-surface-coverage-output.txt"
+  ],
+  "panel": {
+    "scout_status": "ok",
+    "static_slot_count": 6,
+    "dynamic_slot_count": 3,
+    "total_slot_count": 9
+  },
+  "finding_counts": {
+    "total_accepted": 12,
+    "total_rejected": 18,
+    "total_exonerated": 7
+  },
+  "accepted_count": 12,
+  "rejected_count": 18,
+  "exonerated_count": 7
+}
