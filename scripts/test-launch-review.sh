@@ -1651,6 +1651,32 @@ PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_FA
     "$LAUNCHER" --output "$OUT_B3_FALSE_JSON" --timeout 5 --prompt "false json mention" >/dev/null 2>"$TMPDIR/case-b3-false-json.stderr"
 assert_equals "case B3 prose mentioning no_issues_found still degrades" "CURSOR_DEGRADED_RESPONSE" "$(cat "$OUT_B3_FALSE_JSON")"
 
+# Case B3 (#3283): narration + trailing JSON sentinel preserves result (shape A fix).
+# Reproduces cursor-plan-innovation shape: Cursor prepends 1 narration line before
+# the no-issues sentinel; the legit-short gate previously false-degraded this.
+OUT_B3_NARR_JSON="$TMPDIR/cursor-b3-narr-json.txt"
+B3_NARR_JSON=$'Validating the plan against the cited code paths.\n{"no_issues_found": true}'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_NARR_JSON" \
+    "$LAUNCHER" --output "$OUT_B3_NARR_JSON" --timeout 5 --prompt "narration then sentinel" >/dev/null 2>"$TMPDIR/case-b3-narr-json.stderr"
+assert_equals "case B3 narration + JSON sentinel preserves result (#3283)" "$B3_NARR_JSON" "$(cat "$OUT_B3_NARR_JSON")"
+
+# Case B3 (#3283): narration + trailing NO_ISSUES_FOUND preserves result (shape A fix).
+# Reproduces cursor-plan-requirements shape: 2 narration lines then legacy sentinel.
+OUT_B3_NARR_NIF="$TMPDIR/cursor-b3-narr-nif.txt"
+B3_NARR_NIF=$'Validating the plan against the cited code paths.\nAll cited code paths are correct.\nNO_ISSUES_FOUND'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_NARR_NIF" \
+    "$LAUNCHER" --output "$OUT_B3_NARR_NIF" --timeout 5 --prompt "2 narration then NIF" >/dev/null 2>"$TMPDIR/case-b3-narr-nif.stderr"
+assert_equals "case B3 2 narration lines + NO_ISSUES_FOUND preserves result (#3283)" "$B3_NARR_NIF" "$(cat "$OUT_B3_NARR_NIF")"
+
+# Case B3 (#3283): voter ballot grammar preserves result (shape B fix).
+# Reproduces cursor voter slot 3: compact FINDING_N: YES/NO/EXONERATE ballot that
+# previously tripped the >1000-tok/<500-byte heuristic and was false-degraded.
+OUT_B3_BALLOT="$TMPDIR/cursor-b3-ballot.txt"
+B3_BALLOT=$'FINDING_1: YES This is a real finding.\nFINDING_2: YES Confirmed.\nFINDING_3: EXONERATE Not relevant.'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=3068 CURSOR_STUB_RESULT="$B3_BALLOT" \
+    "$LAUNCHER" --output "$OUT_B3_BALLOT" --timeout 5 --prompt "voter ballot" >/dev/null 2>"$TMPDIR/case-b3-ballot.stderr"
+assert_equals "case B3 voter ballot grammar preserves result (#3283)" "$B3_BALLOT" "$(cat "$OUT_B3_BALLOT")"
+
 # Case C: --prompt-file preserves trailing newlines through the wrapper prompt.
 # Issue #1529: the wrapper output (last argv to cursor) has the form
 # ` /max-mode on. Prompt: <preamble>\n\n<body>`. Verify the wrapper prefix,

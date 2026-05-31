@@ -74,10 +74,14 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   gets the distinct marker.
 - Cursor JSON envelopes with high `usage.outputTokens` but a very short
   extracted `.result` are promoted to `CURSOR_DEGRADED_RESPONSE` before the
-  result is installed. The heuristic is skipped for legitimate terse sentinels:
-  `NO_ISSUES_FOUND`, JSON containing `"no_issues_found": true`, and first lines
-  beginning with `schema_version`. Current thresholds are
-  `outputTokens > 1000` and extracted result bytes `< 500`.
+  result is installed. The heuristic is skipped for legitimate terse sentinels
+  and structures validated by `scripts/validate-research-output.sh --validation-mode`:
+  `NO_ISSUES_FOUND`, JSON containing `"no_issues_found": true` (on the first
+  or last non-empty line when the last differs from the first — covers
+  Cursor's narration-then-sentinel shape, #3283), inline TSV records,
+  and voter ballot grammar with at least one `FINDING_N: YES|NO|EXONERATE`
+  line (#3283). Current thresholds are `outputTokens > 1000` and extracted
+  result bytes `< 500`.
 - Codex sets `CODEX_SANDBOX_MODE=read-only` and emits a static
   `STATUS=clean MODE=baseline REASON=codex-sandbox-read-only` sidecar without
   running the scan — `--sandbox read-only` blocks writes at the syscall level,
