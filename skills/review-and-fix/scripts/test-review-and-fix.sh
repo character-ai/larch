@@ -2317,6 +2317,8 @@ fi  # end section: convergence
 if section_runs parsers; then
     parsers_tmp="$TMP/parsers-harness"
     mkdir -p "$parsers_tmp"
+    PLUGIN_ROOT="$REPO_ROOT"
+    export PLUGIN_ROOT
     # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
@@ -2397,6 +2399,45 @@ if section_runs parsers; then
     ) || fail "parsers lint-malformed: set -e or LINT_STATUS should stay empty"
     grep -Fq 'required field missing' "$err" || fail "parsers lint-malformed: missing stderr"
     pass "parsers lint-malformed-stderr-only"
+
+    cap="$parsers_tmp/lint-stderr-tail-path.txt"
+    err="$parsers_tmp/lint-stderr-tail-path.stderr"
+    stem="$parsers_tmp/lint-run/codex.log"
+    mkdir -p "$(dirname "$stem")"
+    printf 'LARCH_STEP5_STDERR_TAIL_PROBE\n' >"${stem}.stderr-tail"
+    {
+        printf '%s\n' 'LINT_FIX_STATUS=main-agent-required'
+        printf 'STDERR_TAIL_PATH=%s\n' "$stem"
+    } >"$cap"
+    : >"$err"
+    step5_parse_lint_capture_file "$cap" 2>>"$err"
+    [[ "${STEP5_LINT_STDERR_TAIL_STEM:-}" == "$stem" ]] \
+        || fail "parsers lint-stderr-tail-path: STDERR_TAIL_PATH stem"
+    step5_surface_err="$parsers_tmp/step5-surface.stderr"
+    : >"$step5_surface_err"
+    (
+        set -euo pipefail
+        step5_surface_lint_stderr_tail
+    ) 2>>"$step5_surface_err" || true
+    grep -Fq 'LARCH_STEP5_STDERR_TAIL_PROBE' "$step5_surface_err" \
+        || fail "parsers step5_surface_lint_stderr_tail must emit seeded tail under set -e"
+    pass "parsers step5-surface-lint-stderr-tail"
+
+    cap="$parsers_tmp/lint-empty-stem.txt"
+    err="$parsers_tmp/lint-empty-stem.stderr"
+    printf '%s\n' 'LINT_FIX_STATUS=failed' >"$cap"
+    STEP5_LINT_STDERR_TAIL_STEM=""
+    STEP5_LINT_CODER_LOG_STEM=""
+    : >"$err"
+    (
+        set -euo pipefail
+        step5_parse_lint_capture_file "$cap" 2>>"$err"
+        step5_surface_lint_stderr_tail
+        printf 'survived-empty-stem\n'
+    ) >"$parsers_tmp/lint-empty-stem.stdout" 2>>"$err" || fail "parsers lint-empty-stem: set -e abort"
+    grep -Fq 'survived-empty-stem' "$parsers_tmp/lint-empty-stem.stdout" \
+        || fail "parsers lint-empty-stem: expected no-op surface"
+    pass "parsers step5-surface-empty-stem-noop"
 
     STEP5_CHK_STATUS=""
     STEP5_CHK_FAILURE_REASON=""

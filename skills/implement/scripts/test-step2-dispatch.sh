@@ -1672,6 +1672,58 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 22: emit_bailed surfaces failed-agent stderr tail on dispatcher stderr.
+# ---------------------------------------------------------------------------
+TMP22="$SCRATCH/test22"; mkdir -p "$TMP22"
+printf 'fresh-step2-22\n' > "$TMP22/session-id"
+SCRATCH_REPO22="$SCRATCH/scratch-repo-22"
+mkdir -p "$SCRATCH_REPO22"
+git -C "$SCRATCH_REPO22" init -q -b feature/step2-stderr-tail
+git -C "$SCRATCH_REPO22" config user.email "test@example.com"
+git -C "$SCRATCH_REPO22" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO22/README.md"
+git -C "$SCRATCH_REPO22" add README.md
+git -C "$SCRATCH_REPO22" commit -q -m "init"
+cat > "$TMP22/session-env.sh" <<'ENV'
+ISSUE_NUMBER=3227
+FORKED_TARGET=false
+ENV
+STUB_BIN_22="$SCRATCH/stub-bin-22"; mkdir -p "$STUB_BIN_22"
+cat > "$STUB_BIN_22/cursor" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'LARCH_STEP2_EMIT_BAILED_STDERR_PROBE\n' >&2
+exit 1
+EOF
+chmod +x "$STUB_BIN_22/cursor"
+STDERR_22="$TMP22/dispatcher.stderr"
+set +e
+(
+    cd "$SCRATCH_REPO22" && \
+    PATH="$STUB_BIN_22:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP22" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>"$STDERR_22"
+) >"$TMP22/stdout.txt"
+_rc22=$?
+set -e
+OUT_22=$(cat "$TMP22/stdout.txt")
+if [[ "$_rc22" -ne 0 ]]; then
+    fail 22 "dispatcher exited non-zero rc=$_rc22 out=$OUT_22 err=$(cat "$STDERR_22" 2>/dev/null || true)"
+elif [[ "$OUT_22" != *"STATUS=bailed"* ]] || [[ "$OUT_22" != *"REASON=cursor-runtime-failure"* ]]; then
+    fail 22 "expected cursor-runtime-failure bail; got: $OUT_22"
+elif grep -Fq 'LARCH_STEP2_EMIT_BAILED_STDERR_PROBE' "$STDERR_22"; then
+    pass
+else
+    fail 22 "emit_bailed must surface transcript stderr-tail on dispatcher stderr"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary.
 # ---------------------------------------------------------------------------
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

@@ -791,7 +791,8 @@ K3_EXPECTED=$(printf 'LAUNCHER_EXIT=2\nMANIFEST_WRITTEN=false\nQA_PENDING_WRITTE
 if [[ "$K3_OUT" == "$K3_EXPECTED" ]] \
    && [[ -s "$K3_SIDECAR" ]] \
    && grep -Fq 'cursor-auth-preflight' "$K3_SIDECAR" \
-   && grep -Fq 'security delete-generic-password -a cursor-user' "$K3_SIDECAR"; then
+   && grep -Fq 'security delete-generic-password -a cursor-user' "$K3_SIDECAR" \
+   && [[ -s "${K3_TRANSCRIPT}.stderr-tail" ]]; then
     pass
 else
     fail K3 "preflight failure on Darwin should emit KV envelope with LAUNCHER_EXIT=2 and actionable SIDECAR_LOG; got stdout=$K3_OUT sidecar=$(cat "$K3_SIDECAR" 2>/dev/null)"

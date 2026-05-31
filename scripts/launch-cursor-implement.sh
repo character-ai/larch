@@ -263,6 +263,7 @@ cursor_launcher_setup_auth_argv 2> "$PREFLIGHT_ERR" || PREFLIGHT_RC=$?
 cat "$PREFLIGHT_ERR" >> "$SIDECAR_LOG" 2>/dev/null || true
 rm -f "$PREFLIGHT_ERR"
 if [[ "$PREFLIGHT_RC" != "0" ]]; then
+    write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true
     emit_timing_record "$PREFLIGHT_RC"
     emit_kv LAUNCHER_EXIT "$PREFLIGHT_RC"
     emit_kv MANIFEST_WRITTEN false

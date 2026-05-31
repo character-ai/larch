@@ -5994,6 +5994,165 @@ else
     ok "append_tool_failure_local fallback strips ESC"
 fi
 
+# #3227: recovery waterfall surfaces launcher_exit failure and advances without verify.
+root=$(mktemp -d "$TMP_BASE/recovery-wf-stderr.XXXXXX")
+impl=$(mktemp -d "$TMP_BASE/recovery-wf-stderr-impl.XXXXXX")
+write_subject "$root"
+write_stubs "$root"
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'base\n' >"$root/README.md"
+git -C "$root" add README.md
+git -C "$root" commit -q -m base
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'LARCH_RECOVERY_WF_STDERR_PROBE\n' > "${output}.stderr-tail"
+printf 'LAUNCHER_EXIT=1\n'
+exit 0
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'LAUNCHER_EXIT=0\n'
+exit 0
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+  printf 'verify-called\n' >> "$IMPLEMENT_TMPDIR/recovery-wf-verify-sentinel.txt"
+fi
+echo "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=full"
+exit 0
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" \
+    "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
+wf_caller_err="$impl/caller.stderr"
+set +e
+(
+    cd "$root" || exit 1
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl"
+    # shellcheck disable=SC1091
+    source "$root/scripts/ship-pr.sh"
+    run_recovery_waterfall checks fix "" checks-step6
+) >"$impl/wf.stdout" 2>"$wf_caller_err"
+wf_rc=$?
+set -e
+if [[ "$wf_rc" -eq 0 ]] \
+    && grep -Fq 'LARCH_RECOVERY_WF_STDERR_PROBE' "$wf_caller_err" \
+    && [[ -f "$impl/recovery-wf-verify-sentinel.txt" ]]; then
+    ok "recovery waterfall surfaces stderr-tail and runs verifier only after launcher success"
+else
+    fail "recovery waterfall must surface tail on launcher_exit failure and advance to codex verify"
+    sed 's/^/    wf_rc: /' <<<"$wf_rc"
+    sed 's/^/    stderr: /' "$wf_caller_err" 2>/dev/null || true
+fi
+
+# #3227: _surface_ci_stderr_tail emits on every call in one process (no re-source guard).
+root=$(mktemp -d "$TMP_BASE/stderr-tail-resurface.XXXXXX")
+write_subject "$root"
+tmp="$root/session"
+mkdir -p "$tmp"
+tier_out="$tmp/ci-tier-out-resurface"
+printf 'LARCH_SHIP_PR_CI_STDERR_TAIL_RESURFACE_PROBE\n' > "${tier_out}.stderr-tail"
+resurface_err="$tmp/resurface-caller.err"
+set +e
+(
+    cd "$root" && IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+        bash -c 'source scripts/ship-pr.sh; _surface_ci_stderr_tail "'"$tier_out"'"; _surface_ci_stderr_tail "'"$tier_out"'"'
+) 2>"$resurface_err"
+set -e
+resurface_count=$(grep -c 'LARCH_SHIP_PR_CI_STDERR_TAIL_RESURFACE_PROBE' "$resurface_err" || true)
+if [[ "$resurface_count" -eq 2 ]]; then
+    ok "CI stderr-tail helper surfaces on repeated calls in one process"
+else
+    fail "CI stderr-tail helper must not no-op after first call (got count=$resurface_count)"
+fi
+
+# #3227: run_ci_fix_vendor surfaces pre-seeded tier stderr-tail on caller stderr.
+root=$(mktemp -d "$TMP_BASE/ci-fix-vendor-stderr.XXXXXX")
+write_subject "$root"
+write_stubs "$root"
+tmp=$(mktemp -d "$root/session.XXXXXX")
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'base\n' >"$root/README.md"
+git -C "$root" add README.md
+git -C "$root" commit -q -m base
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'LARCH_CI_FIX_VENDOR_STDERR_PROBE\n' > "${output}.stderr-tail"
+printf 'LAUNCHER_EXIT=1\n'
+exit 0
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'X\n' >> README.md
+printf 'LAUNCHER_EXIT=0\n'
+exit 0
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+printf 'RUN_ID=test-run\nREPO=owner/repo\n' >"$tmp/ship-pr-state.sh"
+STATE_FILE="$tmp/ship-pr-state.sh"
+ci_fix_err="$tmp/ci-fix-caller.stderr"
+set +e
+(
+    cd "$root" || exit 1
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" STATE_FILE
+    # shellcheck disable=SC1091
+    source "$root/scripts/ship-pr.sh"
+    run_ci_fix_vendor ci-initial run123 0 0 "" 0
+) >"$tmp/ci-fix.stdout" 2>"$ci_fix_err"
+ci_fix_rc=$?
+set -e
+if grep -Fq 'LARCH_CI_FIX_VENDOR_STDERR_PROBE' "$ci_fix_err"; then
+    ok "run_ci_fix_vendor surfaces tier stderr-tail to caller stderr on launcher failure"
+else
+    fail "run_ci_fix_vendor must emit stderr-tail to caller stderr when LAUNCHER_EXIT!=0"
+    sed 's/^/    stderr: /' "$ci_fix_err" 2>/dev/null || true
+fi
+
 # #3227: caller-scope stderr-tail surfacing for CI tier stems and lint-fix capture.
 root=$(mktemp -d "$TMP_BASE/stderr-tail.XXXXXX")
 write_subject "$root"

@@ -235,6 +235,36 @@ EOF
     chmod +x "$path"
 }
 
+write_wrapper_cursor_fail_diag_only() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+tool=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --tool) tool="$2"; shift 2 ;;
+        --capture-stdout) shift ;;
+        --stderr-sink) shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+
+[[ -n "$output" ]] || exit 9
+if [[ "$tool" == "cursor" ]]; then
+    printf 'LARCH_LINT_FIX_CURSOR_DIAG_PROBE\n' > "${output}.diag"
+    exit 1
+fi
+exit 1
+EOF
+    chmod +x "$path"
+}
+
 write_wrapper_cursor_fail_preserve_tail() {
     local path="$1"
     cat > "$path" <<'EOF'
@@ -982,5 +1012,32 @@ grep -Fq 'agent stderr from cursor agent' "$case10_run_dir/cursor.log.stderr-tai
     || fail "case10 stderr-tail must retain agent stderr"
 grep -Fq 'wrapper progress noise' "$case10_run_dir/cursor.log.stderr-tail" \
     && fail "case10 stderr-tail must not contain wrapper progress text"
+
+# Case 11: cursor failure with .diag only writes stderr-tail via fallback.
+CASE11="$TMPROOT/case11"
+REPO11="$CASE11/repo"
+SCRIPTS11="$CASE11/scripts"
+SESSION11="$CASE11/session"
+CHECKS11="$CASE11/checks.log"
+WRAPPER11="$CASE11/wrapper.sh"
+make_repo "$REPO11"
+make_fixture_scripts "$SCRIPTS11"
+make_session "$SESSION11"
+printf 'CODEX_PRESENT=false\nCURSOR_PRESENT=true\n' > "$SESSION11/session-env.sh"
+export LARCH_CURSOR_MODEL=stub-cursor-model
+printf 'synthetic checks failure\n' > "$CHECKS11"
+write_wrapper_cursor_fail_diag_only "$WRAPPER11"
+
+case11_result=$(LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux CURSOR_API_KEY='' \
+    run_case "$SCRIPTS11" "$REPO11" "$SESSION11" "$CHECKS11" "$WRAPPER11")
+case11_rc=$(printf '%s\n' "$case11_result" | sed -n '1p')
+case11_out=$(printf '%s\n' "$case11_result" | sed -n '2,$p')
+[[ "$case11_rc" == "0" ]] || fail "case11 expected rc 0, got $case11_rc"
+assert_contains "$case11_out" 'LINT_FIX_STATUS=main-agent-required' "case11 status"
+case11_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case11_out")
+[[ -s "$case11_run_dir/cursor.log.stderr-tail" ]] \
+    || fail "case11 expected cursor.log.stderr-tail from diag fallback"
+grep -Fq 'LARCH_LINT_FIX_CURSOR_DIAG_PROBE' "$case11_run_dir/cursor.log.stderr-tail" \
+    || fail "case11 stderr-tail must contain diag probe"
 
 echo "test-lint-fix-loop: ok"

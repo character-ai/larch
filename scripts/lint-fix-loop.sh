@@ -250,16 +250,36 @@ run_codex() {
     return "$codex_rc"
 }
 
+_run_cursor_record_early_fail() {
+    local run_dir="$1" log_file="$2"
+    _LINT_FIX_STDERR_TAIL_STEM="$run_dir/cursor.log"
+    if [[ -n "$log_file" && -s "$log_file" ]]; then
+        write_failed_agent_stderr_tail "$log_file" "$run_dir/cursor.log" || true
+    elif [[ ! -s "${run_dir}/cursor.log.stderr-tail" ]]; then
+        write_failed_agent_stderr_tail "$run_dir/cursor.log" "$run_dir/cursor.log" || true
+    fi
+}
+
 run_cursor() {
     local run_dir="$1" prompt_body="$2"
-    local cursor_rc=0
-    cursor_launcher_load_model_args || return 1
-    cursor_launcher_setup_auth_argv || return 1
+    local cursor_rc=0 preflight_log="$run_dir/cursor.preflight.log"
+    : >"$preflight_log"
+    cursor_launcher_load_model_args 2>>"$preflight_log" || {
+        _run_cursor_record_early_fail "$run_dir" "$preflight_log"
+        return 1
+    }
+    cursor_launcher_setup_auth_argv 2>>"$preflight_log" || {
+        _run_cursor_record_early_fail "$run_dir" "$preflight_log"
+        return 1
+    }
     local _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor"
     external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
     local _wrapped_prompt
-    _wrapped_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || return 1
+    _wrapped_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; } 2>>"$preflight_log") || {
+        _run_cursor_record_early_fail "$run_dir" "$preflight_log"
+        return 1
+    }
     _wrapped_prompt=${_wrapped_prompt%X}
     "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$run_dir/cursor.log" --timeout 1800 --capture-stdout -- \
         cursor agent -p --trust \

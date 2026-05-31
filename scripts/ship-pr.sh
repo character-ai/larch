@@ -21,6 +21,8 @@ source "$SCRIPT_DIR/lib-finalize-state-keys.sh" || { larch_err "ship-pr.sh: fail
 # shellcheck source=scripts/lib-changelog.sh
 source "$SCRIPT_DIR/lib-changelog.sh" || { larch_err "ship-pr.sh: failed to source lib-changelog.sh"; exit 1; }
 [[ "${LARCH_LIB_CHANGELOG_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-changelog.sh sourced but sentinel missing"; exit 1; }
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh" || { larch_err "ship-pr.sh: failed to source lib-failed-agent-stderr-tail.sh"; exit 1; }
 
 STATE_FILE=""
 IMPLEMENT_TMPDIR=""
@@ -114,8 +116,6 @@ is_relevant_checks_clean() {
 _surface_ci_stderr_tail() {
     local stem="$1"
     [[ -n "$stem" ]] || return 0
-    # shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
-    source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
     emit_failed_agent_stderr_tail_larch_err "$stem" || true
 }
 
@@ -150,8 +150,7 @@ run_lint_fix_loop_capture() {
     local lint_status=""
     lint_status=$(printf '%s\n' "$output" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
     if [[ "$rc" -ne 0 ]] \
-        || [[ "$lint_status" == "failed" || "$lint_status" == "main-agent-required" ]] \
-        || { [[ -z "$lint_status" ]] && [[ "$rc" -ne 0 ]]; }; then
+        || [[ "$lint_status" == "failed" || "$lint_status" == "main-agent-required" ]]; then
         _surface_lint_fix_stderr_tail "$output"
     fi
 }
@@ -2820,6 +2819,10 @@ run_recovery_waterfall() {
             _surface_ci_stderr_tail "$output"
         fi
         if [ "$tier_rc" -ne 0 ]; then
+            recovery_waterfall_paths_delta_revert "$baseline_dir/tracked" "$baseline_dir/untracked" "$wf_log"
+            continue
+        fi
+        if [ "$launcher_exit" -ne 0 ] || [ -s "${output}.stderr-tail" ]; then
             recovery_waterfall_paths_delta_revert "$baseline_dir/tracked" "$baseline_dir/untracked" "$wf_log"
             continue
         fi

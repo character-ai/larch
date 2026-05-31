@@ -799,7 +799,7 @@ if [[ "$_paths_readable" -eq 1 ]]; then
         --substantive-validation \
         --validation-mode \
         --structured-reviewer-validation \
-        --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd})) || _collect_rc=$?
+        --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd})) || true
 else
     emit_kv WARN "plan-review-panel: dispatch produced no reviewer paths (--no-fallback drops)"
 fi

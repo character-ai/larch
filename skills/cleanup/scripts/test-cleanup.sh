@@ -199,6 +199,21 @@ assert_contains "$CASE_OUTPUT" "failed to scan session activity" "find-failure-s
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "find-failure-skips-deletion CACHE_REMOVED"
 unset PATH_PREFIX
 
+# --- find-failure-skips-deletion-tmp ------------------------------------------
+work="$TMP/find-failure-skips-deletion-tmp"
+mkdir -p "$work/tmp-root/claude-implement-stale-scan-fail"
+touch -t "$STALE_TS" -- "$work/tmp-root/claude-implement-stale-scan-fail"
+mkdir -p "$work/bin"
+write_stub_find_failure "$work/bin/find"
+PATH_PREFIX="$work/bin:"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "find-failure-skips-deletion-tmp exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "failed to scan session activity" "find-failure-skips-deletion-tmp warning"
+[[ -d "$work/tmp-root/claude-implement-stale-scan-fail" ]] || fail "find-failure-skips-deletion-tmp should keep dir when nested scan find fails"
+assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "0" "find-failure-skips-deletion-tmp TMP_REMOVED"
+unset PATH_PREFIX
+
 # --- invalid-retention-fallback -----------------------------------------------
 work="$TMP/invalid-retention-fallback"
 mkdir -p "$work/xdg-cache/larch/sessions/old-session"
