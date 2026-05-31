@@ -1,0 +1,258 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Implementation Plan — Fix dirty-tree guard false-positive on pre-existing carryover dirt (#3272)
+
+## Summary
+
+The round-mode dirty-tree guard `round_tracked_dirty_outside_manifest` in `review-and-fix.sh` refuses a legitimate coder commit ("dirty paths outside coder delta") whenever the working tree carries pre-existing untouched dirt at coder-dispatch time. The manifest builder `round_coder_delta_paths` already excludes that pre-existing/unchanged dirt via the `pre-coder-path-diffs` snapshot, but the guard never learned the same exclusion. Teach the guard to recognize snapshotted, unchanged carryover paths, warn about them, and commit only the coder's delta. Genuinely-new dirt outside the delta still fails closed.
+
+This is NOT the issue's "Fix 1": `pre-coder-head.txt` is already written as current HEAD at `review-and-fix.sh:1235` just before each round's coder dispatch, and `run-step5-review.sh` never writes it — resetting it is a no-op. "Fix 3" (Bash 5.x launcher `&&`→`if`) already merged in PR #3270.
+
+## Root cause (code-grounded)
+
+- `capture_round_tracked_paths` (`review-and-fix.sh`) returns all uncommitted tracked paths (`git diff --name-only` ∪ `--cached`).
+- `snapshot_pre_coder_tracked_state` snapshots each pre-dispatch dirty path's diff vs `pre-coder-head` into `pre-coder-path-diffs/<safe>.patch` and records the path set in `pre-coder-tracked-paths.txt`.
+- `round_coder_delta_paths` (the manifest builder) **excludes** a path when it is in `pre-coder-tracked-paths.txt` and its current `git diff <pre_head> -- <path>` still equals the snapshot (i.e. the coder left it unchanged).
+- The guard `round_tracked_dirty_outside_manifest` iterates every dirty path from `capture_round_tracked_paths` and fires (`return 0`) for any path not in the manifest — with NO carryover exclusion. So a pre-existing, coder-untouched path is in the dirty set, absent from the manifest, and wrongly flagged → `review-and-fix.sh:553` refuses the commit (`CODER_STATUS=failed`, return `2`).
+
+## Files to modify/create
+
+### UPDATED: `skills/review-and-fix/scripts/review-and-fix.sh`
+
+Three surgical changes, all confined to the round-mode commit path:
+
+1. Add a small predicate `path_is_pre_coder_carryover` next to `round_coder_delta_paths` / `round_tracked_dirty_outside_manifest`. It reuses the existing `pre_coder_path_diff_file` helper and mirrors the exclusion check at the current lines 380-384:
+
+```text
+path_is_pre_coder_carryover() {
+    local round_dir="$1" pre_head="$2" path="$3"
+    local pre_tracked="$round_dir/pre-coder-tracked-paths.txt" snap
+    [[ -n "$pre_head" ]] || return 1
+    [[ -s "$pre_tracked" ]] && grep -Fxq "$path" "$pre_tracked" || return 1
+    snap=$(pre_coder_path_diff_file "$round_dir" "$path")
+    [[ -f "$snap" ]] || return 1
+    git diff "$pre_head" -- "$path" | cmp -s - "$snap"
+}
+```
+
+2. Extend `round_tracked_dirty_outside_manifest` with an OPTIONAL second arg `round_dir`. When `round_dir` is supplied and `pre-coder-head.txt` is readable, a dirty path that is not in the manifest is skipped (with an `larch_err` warning) when it is carryover; otherwise the guard still fires. When `round_dir` is absent (legacy/unit-test single-arg call), behavior is byte-identical to today (fail closed):
+
+```text
+round_tracked_dirty_outside_manifest() {
+    local manifest="$1" round_dir="${2:-}" path pre_head=""
+    if [[ -n "$round_dir" && -s "$round_dir/pre-coder-head.txt" ]]; then
+        pre_head="$(cat "$round_dir/pre-coder-head.txt")"
+    fi
+    while IFS= read -r path || [[ -n "$path" ]]; do
+        [[ -n "$path" ]] || continue
+        grep -Fxq "$path" "$manifest" 2>/dev/null && continue
+        # #3272: a pre-existing dirty path the coder left untouched is carryover,
+        # not unexpected coder dirt — warn and skip rather than fail the commit.
+        if [[ -n "$pre_head" ]] && path_is_pre_coder_carryover "$round_dir" "$pre_head" "$path"; then
+            larch_err "⚠ review-and-fix: pre-existing dirty path carried over (not committed): $path"
+            continue
+        fi
+        return 0
+    done < <(capture_round_tracked_paths)
+    return 1
+}
+```
+
+3. Update the single call site inside `apply_findings_with_coder` (current line 552) to pass `round_dir`:
+
+```text
+if round_tracked_dirty_outside_manifest "$stage_manifest" "$round_dir"; then
+```
+
+No other call site exists (grep `round_tracked_dirty_outside_manifest`). The `stage_round_dirty_paths` / `git add` staging path is unchanged: only manifest paths are staged, so carryover dirt stays uncommitted and is surfaced by the warning.
+
+### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.sh`
+
+Add a regression case in the `dispatch` section (the `section_runs dispatch` block that already contains `manifest-outside-guard`), mirroring the existing sed-extract pattern at the current lines 463-480:
+
+- `make_work_repo`, commit a baseline `other.txt`, capture `pre_head=$(git rev-parse HEAD)`.
+- Build the round-dir fixture: `pre-coder-head.txt` = `pre_head`; append a change to `other.txt`; write `pre-coder-tracked-paths.txt` listing `other.txt`; write `pre-coder-path-diffs/other.txt.patch` = `git diff "$pre_head" -- other.txt` (the carryover snapshot, matching current content). Also dirty `src/main.py` and write the manifest `coder-stage-paths.txt` = `src/main.py`.
+- Define a `larch_err` stub (`larch_err() { printf '%s\n' "$*" >&2; }`) and sed-extract `pre_coder_path_diff_file`, `capture_round_tracked_paths`, `path_is_pre_coder_carryover`, and `round_tracked_dirty_outside_manifest`.
+- Positive assertion: `round_tracked_dirty_outside_manifest coder-stage-paths.txt <round_dir>` returns non-zero (does NOT fire) — `other.txt` is recognized as carryover.
+- Negative control: re-run with the snapshot deleted (or `other.txt` mutated so its diff no longer matches the snapshot) and assert the guard still fires (`return 0`), proving genuinely-changed/unsnapshotted dirt is not silently excluded.
+- Leave the existing single-arg `manifest-outside-guard` assertion (current lines 463-480) unchanged; it must keep firing, proving backward compatibility when `round_dir` is omitted.
+
+### UPDATED: `skills/review-and-fix/scripts/review-and-fix.md`
+
+Update the round-mode commit contract paragraph ("Round mode (`round_num > 0`) owns commits …") so the "Dirty tracked paths outside that manifest fail closed" sentence records the new carryover exclusion: pre-existing dirty paths that were snapshotted before dispatch and left unchanged by the coder are excluded from the fail-closed check, logged via the `larch_err` warning breadcrumb, and left uncommitted; only genuinely-new dirt outside the manifest still fails closed (`CODER_STATUS=failed`, return `2`). Add the new warning breadcrumb to the breadcrumb list.
+
+## Approach
+
+Align the guard's exclusion with the manifest builder's existing exclusion, rather than re-architecting the snapshot machinery. The new predicate is a direct extraction of the check already present in `round_coder_delta_paths`, so the two stay semantically in lock-step. The optional-arg design keeps the change additive and preserves every current caller and test.
+
+## Edge cases
+
+- **No `round_dir` arg** (the extracted-function unit test, any future single-arg caller): `pre_head` stays empty, the carryover branch is never entered, fail-closed behavior is identical to today.
+- **`round_dir` given but `pre-coder-head.txt` missing/empty** (rev-parse failed and the file was removed at line 1235): `pre_head` empty → fail closed (safe default).
+- **Pre-existing path the coder DID change**: its diff no longer matches the snapshot, so `round_coder_delta_paths` includes it in the manifest; the guard hits the manifest `continue` and never reaches the carryover check.
+- **New untracked files**: `capture_round_tracked_paths` ignores untracked paths; the empty-manifest untracked-only failure in `stage_round_dirty_paths` is unaffected.
+- **Clean tree (no pre-existing dirt)**: `pre-coder-tracked-paths.txt` is empty, the carryover predicate returns 1 for every path, behavior is unchanged.
+- **Paths with `/` or `\\`**: snapshot filename uses the existing `pre_coder_path_diff_file` `tr "/\\" "__"` mapping; `grep -Fxq` matches exact lines — consistent with current code.
+
+## Failure modes
+
+1. **Carryover false-negative silently drops a real coder edit.** Mitigation: the predicate requires path-in-snapshot AND an exact `git diff | cmp` match; any coder edit breaks the match, so a changed path cannot be misclassified. Earliest signal: the negative-control assertion (changed/unsnapshotted dirt still fires). Simplest mitigation if it regresses: the assertion fails in `make test-review-and-fix`.
+2. **`git diff | cmp` under `set -o pipefail`.** A failed `git diff` (bad `pre_head`) makes the pipe non-zero → predicate returns false → fail closed. The function runs inside an `if` condition where `set -e` is suspended, matching the existing `round_coder_delta_paths` usage of the same `git diff … | cmp -s` idiom (current line 382). No new top-level pipe exposure.
+3. **Warning noise on large carryover sets.** One `larch_err` line per carried-over path. Acceptable and informative; mirrors per-path breadcrumb style elsewhere. If excessive, a future change can summarize — out of scope here.
+
+## Testing strategy
+
+- `make test-review-and-fix` (harness `skills/review-and-fix/scripts/test-review-and-fix.sh`): the new carryover regression case (positive + negative control) plus the unchanged existing `manifest-outside-guard` and `manifest-outside-orchestrator` assertions.
+- `bash scripts/relevant-checks.sh` for shell lint (shellcheck, `make lint-bash32` Bash 3.2 portability — the change uses only `${2:-}`, `local`, `grep -Fxq`, `cmp -s`, `git diff | cmp`, no Bash 4+ constructs).
+- Manual confirmation that `grep` usages stay inside the `bash review-and-fix.sh` runtime (wrapper-function trap does not apply to child `bash`), matching surrounding code.
+
+## Diff size estimate
+
+review-and-fix.sh ≈ +18 lines (new predicate + guard arg + warning + call site); test-review-and-fix.sh ≈ +38 lines; review-and-fix.md ≈ +5 lines. Mostly additive, no mechanical churn, no deletions of note.
+
+diff_lines: 61
+
+</plan>
+
+<findings>
+### FINDING_1: Post-commit residue check still fails on allowed carryover
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Codex-Requirements, Codex-Edge, Codex-Innovation, Cursor-Innovation, Codex-Pragmatic, Cursor-Requirements, Cursor-dyn-round-commit-contract, Cursor-dyn-snapshot-parity, Codex-dyn-round-commit-contract
+- **Severity**: important
+- **Concern**: The proposed carryover exclusion only applies before the primary round commit. After that commit succeeds, unchanged pre-existing tracked carryover can still appear in `git status --porcelain --untracked-files=no`, causing the follow-up commit path or final residue check to fail the round with `CODER_STATUS=failed` even though carryover was intended to remain uncommitted.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Gate the follow-up block (564) and the post-follow-up porcelain check (574) on non-carryover tracked dirt only, reusing path_is_pre_coder_carryover with round_dir/pre-coder-head.txt. Update review-and-fix.md lines 56-57 to document carryover exclusion in the follow-up contract. Add an orchestrator regression (pre-existing dirty other.txt + coder edits src/main.py, exit 0, CODER_STATUS=applied) or extend the plan test section to require it.
+  - From Codex-Arch, Codex-Requirements: Apply the same carryover exclusion to the post-commit residue path: if remaining tracked dirt is only unchanged snapshotted carryover, skip the follow-up and leave it uncommitted; if manifest paths remain dirty, keep the existing follow-up commit; if genuinely-new outside-manifest dirt remains, fail closed. Add an integration-style regression around apply_findings_with_coder, not only the extracted guard.
+  - From Codex-Edge, Codex-Innovation: Apply the same carryover exclusion to the post-commit residue path, so follow-up commits run only for non-carryover tracked residue or manifest paths actually dirtied by hooks
+  - From Cursor-Innovation: Apply the same carryover predicate (or a small helper) in the follow-up residue check: enter follow-up only for non-carryover hook/manifest residue; treat carryover-only porcelain as warn-and-continue to `CODER_STATUS=applied`; document in `review-and-fix.md` § post-commit block
+  - From Codex-Pragmatic: Extend the same carryover exclusion to the post-commit tracked-residue check before attempting the follow-up commit, or only enter the follow-up path when non-carryover tracked residue remains. Add the regression at orchestrator/apply_findings level, not only the extracted guard predicate.
+  - From Cursor-Requirements, Cursor-dyn-round-commit-contract: Apply the same carryover exclusion to the follow-up entry (564) and the post-follow-up residual check (574-577), or document and implement an explicit allowlist so unchanged carryover does not trigger failure
+  - From Cursor-dyn-snapshot-parity: Apply the same path_is_pre_coder_carryover filter to the follow-up trigger/residue logic (skip follow-up or treat porcelain as clean when only carryover remains), or document and test that this path is out of scope for #3272
+  - From Codex-dyn-round-commit-contract: Make the post-commit residue gate carryover-aware as well: only run/fail the follow-up path for non-carryover tracked residue, and add a full round-mode regression beyond the extracted guard test
+
+
+### FINDING_2: Pre-staged carryover can be included in the round commit
+- **Reviewer(s)**: Codex-Edge, Codex-Innovation, Codex-dyn-snapshot-parity, Codex-dyn-round-commit-contract, Codex-dyn-regression-harness
+- **Severity**: important
+- **Concern**: The carryover guard can skip pre-existing staged carryover, but the round commit is unscoped and `git-commit.sh` commits whatever is already staged when no paths are passed. As a result, an outside-manifest path that was staged before coder dispatch can be included in the coder commit, violating the intended carryover exclusion.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Scope the round commit to coder-stage-paths.txt, for example via git-commit.sh --only --pathspec-from-file "$stage_manifest", or otherwise unstage/protect outside-manifest carryover before commit
+  - From Codex-Innovation: Constrain the round commit to manifest paths, for example git-commit.sh --only --pathspec-from-file "$stage_manifest", and add a staged-carryover regression
+  - From Codex-dyn-snapshot-parity: Scope both the primary and follow-up round commits to coder-stage-paths.txt, for example with git-commit.sh --only --pathspec-from-file "$stage_manifest", or fail closed/unstage snapshotted staged carryover before committing; add a staged-carryover regression case so the guard and commit path are tested together
+  - From Codex-dyn-round-commit-contract: Commit the round with the existing scoped pathspec contract, e.g. git-commit.sh --only --pathspec-from-file "$stage_manifest", and add a regression with pre-existing staged carryover proving it remains staged/uncommitted while coder delta commits
+  - From Codex-dyn-regression-harness: Add the minimum staged-carryover guard: do not exempt paths present in git diff --name-only --cached, or explicitly unstage skipped carryover before git-commit.sh. Add one regression fixture with pre-coder staged other.txt, snapshot present, manifest src/main.py, and assert the guard still fires.
+
+
+</findings>
+
+<feature>
+[BUG] (URGENT) Review-fixes coder dispatch fails repeatedly when main-agent commits manual edits between review rounds
+
+
+Review-fixes coder dispatch (Cursor/Codex) fails repeatedly when main-agent commits manual edits between review rounds
+
+## Context
+
+During `/implement` run `ACA45728-FC41-4E91-AD8F-94F5BCAA3467` (issue #3227), the external coder dispatch failed in rounds 2, 3, and 4, requiring the main agent to apply all accepted review findings manually. The failure pattern was consistent across rounds and points to a structural issue with how `review-and-fix.sh` validates the coder's output when the pre-coder HEAD baseline no longer matches expectations.
+
+## Failure Sequence
+
+**Round 2:** Both Codex and Cursor were dispatched to apply 7 accepted findings. Both returned `CODER_STATUS=failed`. The `coder.env` showed the dispatch completed but the commit was rejected. `run-step5-review.sh` returned `STEP5_REVIEW_STATUS=coder-main-agent-required`.
+
+**Round 3:** Round 3 was triggered by the main agent starting at `--starting-round 3` after manually committing the round 2 fixes. Cursor applied 12 fixes and staged them, but `review-and-fix.sh` output `⚠ review-and-fix: round 3 dirty paths outside coder delta; refusing to commit` and exited with code 2. The staged changes were correct (all 12 findings applied), but the dirty-tree guard rejected the commit.
+
+**Round 4:** Same pattern — Codex and Cursor both failed dispatch. `CODER_STATUS=failed`.
+
+## Root Cause
+
+The failure in round 3 (and the subsequent rounds) traces to how `review-and-fix.sh` validates the coder's changes against the **pre-coder-head.txt** baseline.
+
+The guard works as follows:
+1. Before dispatching the coder, `review-and-fix.sh` records the current HEAD in `$IMPLEMENT_TMPDIR/round-N/pre-coder-head.txt`.
+2. After the coder exits, it checks that the only changed paths are within the coder's expected delta (the manifest or the staged edits).
+3. If paths exist that changed SINCE the pre-coder HEAD but are outside the coder delta, it refuses to commit with "dirty paths outside coder delta".
+
+**The problem**: When the main agent manually commits review fixes (as required by `STEP5_REVIEW_STATUS=coder-main-agent-required`), those commits advance the `git HEAD`. When `run-step5-review.sh` is re-invoked with `--starting-round N+1`, it picks up the new HEAD as the starting point for round N+1's pre-coder baseline. But the manual commit from round N is still "visible" in the diff relative to what the round N+1 coder expects — specifically, the files the main agent touched in round N's fix are in the diff, but NOT in the round N+1 coder's manifest/expected paths.
+
+This creates a cascade:
+- Round 2 fails → main agent applies fixes in commit `51001756e`
+- Round 3 starts at commit `51001756e` as baseline
+- Round 3 coder produces its own staged changes (all 12 from round 3 accepted findings)
+- But `pre-coder-head.txt` for round 3 is set to `51001756e` (the manual fix commit)
+- The dirty-tree check compares the post-coder working tree against `51001756e`
+- It finds paths that were changed by Cursor (correctly, as part of round 3 fixes) but flags them as "outside coder delta" because they are also in the round 2 manual fix commit
+
+**Simpler formulation**: the `pre-coder-path-diffs/` snapshot was computed against the round 3 pre-coder HEAD, but that HEAD already contains files from round 2's manual fix that overlap with round 3's expected delta. The dirty-tree guard treats these as "unexpected" because the coder's manifest didn't account for the manual-fix-to-coder-fix path overlap.
+
+## Specific Mechanism in `review-and-fix.sh`
+
+Looking at `$IMPLEMENT_TMPDIR/round-3/pre-coder-head.txt` (value = `51001756e`) and `review-and-fix.sh`'s post-dispatch dirty-tree check:
+
+```bash
+# The guard computes paths changed since pre-coder-head:
+git diff --name-only "$pre_coder_head"..HEAD
+# Subtracts the coder's expected delta (from manifest or staged files)
+# Anything remaining → "dirty paths outside coder delta"
+```
+
+When round 2's manual fix commit and round 3's Cursor fix both touch overlapping files (e.g., `scripts/test-ship-pr.sh`), the overlap appears as "unexpected" dirty paths.
+
+## Contributing Factor: LARCH_QUIET_DISABLE and set-e Interactions
+
+A secondary contributing factor was discovered during CI investigation: the implement launchers (`launch-cursor-implement.sh`, `launch-codex-implement.sh`) had a latent Bash 5.x `set -e` incompatibility:
+
+```bash
+# Old (pre-fix):
+[[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
+[[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
+```
+
+On Bash 5.x (CI Linux), `[[ -s path ]] && cmd` where `path` doesn't exist exits with code 1. Under `set -euo pipefail`, this aborts the launcher before `emit_kv` runs. This was masked in production runs (where quiet mode sets up FD redirects that prevent `set -e` from propagating out of command substitutions) but exposed when `LARCH_QUIET_DISABLE=1` was set in the new test harness.
+
+## Proposed Fix
+
+### Fix 1: Update pre-coder HEAD after main-agent manual commits
+
+In `run-step5-review.sh`, when re-invoking with `--starting-round N+1` after a `coder-main-agent-required` outcome, reset `pre-coder-head.txt` to the CURRENT HEAD (including any manual commits) before dispatching the next round's coder:
+
+```bash
+# In run-step5-review.sh, before dispatch for round N+1:
+git rev-parse HEAD > "$IMPLEMENT_TMPDIR/round-$((N+1))/pre-coder-head.txt"
+```
+
+This ensures the dirty-tree guard compares against the post-manual-fix HEAD rather than a stale snapshot.
+
+### Fix 2: Skip the dirty-tree guard for files already touched by the main agent
+
+Alternatively, `review-and-fix.sh`'s dirty-tree guard could be augmented to exclude paths that were touched in commits made by the main agent (not the coder) since the last successful coder dispatch. This could be tracked in a sentinel file listing "main-agent-committed paths."
+
+### Fix 3 (defense-in-depth): Bash 5.x compatibility fix
+
+Already applied in PR #3270: change the launcher's MANIFEST/QA_PENDING check from `&&` to `if` form:
+
+```bash
+# Fixed:
+if [[ -s "$MANIFEST_PATH" ]];   then MANIFEST_WRITTEN=true;   fi
+if [[ -s "$QA_PENDING_PATH" ]]; then QA_PENDING_WRITTEN=true; fi
+```
+
+## Impact
+
+When this failure pattern occurs:
+- The main agent must manually apply all accepted review findings for multiple rounds (~40+ manual edits per round)
+- Each manual commit advances HEAD and triggers the cascade for subsequent rounds
+- The review loop effectively becomes "main agent only" with no external coder assistance
+- Token cost for main-agent manual implementation significantly exceeds the cost of external coder dispatch (~$100+ per occurrence)
+
+## References
+
+- Run: `ACA45728-FC41-4E91-AD8F-94F5BCAA3467`
+- PR: #3270
+- Issue: #3227
+- Affected rounds: 2, 3, 4 (5 rounds total, Cursor succeeded only in rounds 1 and 5)
+
+</feature>
