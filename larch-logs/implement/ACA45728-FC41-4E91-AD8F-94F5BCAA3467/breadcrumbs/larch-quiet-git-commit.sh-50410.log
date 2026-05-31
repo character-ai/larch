@@ -1,0 +1,2 @@
+[sergey-zhupanov/implementing-extend-stderr-tail-surfacin-3227 b10276745] Debug: add ERR trap to test-cursor-implementer.sh to find set-e abort line
+ 1 file changed, 1 insertion(+)
