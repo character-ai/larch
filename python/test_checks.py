@@ -437,7 +437,7 @@ def test_run_relevant_checks_fail_produces_redacted_log(
     check_script = scripts / "relevant-checks.sh"
     _ = check_script.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     _ = check_script.chmod(0o755)
-    secret = "sk-ant-api03-abcdefghijklmnopqrstuvwxyz1234567890"
+    secret = "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD"
     runner = StubRunner([_ok(f"=== Running pre-commit\n{secret}\n", rc=1)])
     result = checks.run_relevant_checks(
         runner,
@@ -568,7 +568,7 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
 
 def test_compose_prompt_redacts_secrets(tmp_path: Path) -> None:
     log = tmp_path / "checks.log"
-    secret = "ghp_abcdefghijklmnopqrstuvwxyz1234567890"
+    secret = "ghp_" + "a" * 36
     _ = log.write_text(secret + "\n", encoding="utf-8")
     prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
         checks_log=log,
