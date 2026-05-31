@@ -1,0 +1,3 @@
+Reviewing the plan and auditing `scripts/ship-pr.sh` for errexit toggle/capture sites and call paths.
+Verifying call order from `run_pr_prep_phase` to CI evaluation and whether any alternate errexit source exists:
+{"no_issues_found": true}

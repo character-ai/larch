@@ -1,0 +1,35 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -44,12 +44,22 @@
+ ### UPDATED: `scripts/test-ship-pr.sh`
+ Add a focused regression section (gated by the existing `section_runs` mechanism) that sources `scripts/ship-pr.sh` under the side-effect-free source guard (line 3805; same pattern as the existing source-witness test at lines 889-905) and asserts:
+ 
+-1. **No errexit leak.** With errexit on in the test shell, after invoking each fixed toggle path the option `$-` no longer reports `e` being force-set by the helper — i.e. errexit state is restored to its pre-call value, not unconditionally enabled. Drive this by stubbing the OOS gate script so `run_oos_disposition_gate_if_required_before_oos_pending_false` runs deterministically, then check `$-` after the call.
+-2. **Harness capture is errexit-safe.** With `set -e` active in the test shell, set `_PJA_ARGV` to a command that exits non-zero (e.g. `(false)` / `sh -c 'exit 2'`), call `_run_per_job_command_capture`, and assert the function returns without aborting the shell **and** `_RCC_CMD_RC` equals the command's real exit code (2), not 0.
++1. **No errexit leak (baseline-off primary).** With `set +e` in the test shell (`e` absent from `$-`), invoke each fixed toggle path and assert `$-` still does not contain `e` afterward. An unconditional trailing `set -e` leaves `e` in `$-` and must fail this assertion; an errexit-on-only check cannot distinguish a bad force-enable from a correct restore when `e` was already set before the call. Stub `skills/implement/scripts/oos-disposition-gate.sh` (or the resolved gate path) so the gate body runs deterministically. Exercise all three production toggle surfaces:
++   - **Helper** (`run_oos_disposition_gate_if_required_before_oos_pending_false`, lines 1045–1053): call directly under the source guard with `IMPLEMENT_TMPDIR`/`STATE_FILE` set.
++   - **Pr-prep first outer wrapper** (lines 1554–1557): minimal pr-prep fixture (`write_state`, `IMPLEMENT_TMPDIR`, `STATE_FILE`, empty/zero-byte OOS accept files so the gate path runs) and invoke the same outer sequence production uses—save/restore snapshot, `set +e`, gate helper, `gate_rc=$?`, conditional restore—not the helper alone.
++   - **Pr-prep recovery outer wrapper** (lines 1564–1567): same fixture; stub or short-circuit `run_recovery_waterfall` so the nested `set +e` … gate … `gate_rc=$?` … conditional-restore block runs (or mirror that block verbatim in the subtest).
++2. **No errexit leak (restore-when-on secondary).** Separate subtest per path above: `set -e` before the call, invoke the path, assert `$-` still contains `e` after restore (conditional re-enable only when errexit was on).
++3. **Harness capture is errexit-safe.** With `set -e` active in the test shell, set `_PJA_ARGV` to a command that exits non-zero (e.g. `(false)` / `sh -c 'exit 2'`), call `_run_per_job_command_capture`, and assert the function returns without aborting the shell **and** `_RCC_CMD_RC` equals the command's real exit code (2), not 0.
+ 
+ Use the existing test harness helpers and `set -euo pipefail` test-script convention. Keep stubs Bash 3.2-compatible.
+ 
+@@ -73,7 +83,7 @@
+ 
+ ## Failure modes
+ 
+-- **Incomplete leak fix.** If only the harness capture is hardened but a toggle site still force-enables errexit, a different unguarded `cmd; rc=$?` site (e.g. `gh-run-logs.sh` capture) could abort instead. Mitigation: fix all three toggle sites; earliest signal: any new undocumented non-{0,3,4,5,6} exit from `ship-pr.sh`. The regression test's leak assertion guards this.
++- **Incomplete leak fix.** If only the harness capture is hardened but any toggle site (helper or either `run_pr_prep_phase` outer wrapper at 1557/1567) still force-enables errexit, a different unguarded `cmd; rc=$?` site (e.g. `gh-run-logs.sh` capture) could abort instead. Mitigation: fix all three toggle sites; earliest signal: any new undocumented non-{0,3,4,5,6} exit from `ship-pr.sh`. The regression suite's baseline-off leak assertions (helper + both pr-prep outers) guard this.
+ - **Over-broad restore.** Force-enabling errexit elsewhere (wrong "fix") would re-introduce the class of bug. Mitigation: only restore prior state conditionally; never add an unconditional `set -e`. Signal: `make test-harnesses` / `test-ship-pr.sh` failures.
+ - **Contract drift with `_RCC_CMD_RC` consumers.** If the initializer is omitted, a success could leave a stale non-zero value. Mitigation: keep `_RCC_CMD_RC=0` before the `||` capture; the harness test asserts both success (0) and failure (real rc) values.
+ 
+ ## Testing strategy
+ 
+-- New regression assertions in `scripts/test-ship-pr.sh` (above): errexit not leaked after the fixed toggle paths; `_run_per_job_command_capture` is errexit-safe and records the real rc.
++- New regression assertions in `scripts/test-ship-pr.sh` (above): with `set +e`, all three toggle surfaces leave `$-` without `e`; with `set -e`, restore-when-on subtests keep `e`; `_run_per_job_command_capture` is errexit-safe and records the real rc.
+ - Run the existing suite to confirm no regressions: `make test-harnesses` (or the targeted shard) and `bash scripts/test-ship-pr.sh`.
+ - Run `bash scripts/relevant-checks.sh` (lint, shellcheck, bash32) after the edits.
+ 
+-diff_lines: 70
++diff_lines: 95
