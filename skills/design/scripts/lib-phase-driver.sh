@@ -69,6 +69,12 @@ phase_driver_read_result_env() {
         value="${line#*=}"
         for allowed in "${allowlist[@]}"; do
             if [[ "$key" == "$allowed" ]]; then
+                case "$value" in
+                    *$'\n'* | *$'\r'*)
+                        larch_err "phase_driver_read_result_env: value for key ${key} must not contain newline or carriage return"
+                        continue 2
+                        ;;
+                esac
                 printf '%s=%s\n' "$key" "$value"
                 break
             fi

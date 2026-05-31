@@ -326,10 +326,10 @@ else
 fi
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'write-cursor failure panel-failed'
 grep -Fq 'LOOP_STATUS=panel-failed' "$D10/.step3-review-result.env" || fail 'result env panel-failed on cursor failure'
-if [[ "$(cat "$D10/review-round-count.txt" 2>/dev/null || echo missing)" == "1" ]]; then
-    pass 'write-cursor failure keeps pending round persisted'
+if [[ "$(cat "$D10/review-round-count.txt" 2>/dev/null || echo missing)" == "0" ]]; then
+    pass 'write-cursor failure rolls back review-round-count'
 else
-    fail 'write-cursor failure should leave review-round-count at 1'
+    fail 'write-cursor failure should roll back review-round-count to 0'
 fi
 
 echo "=== stale inner result env ignored after launcher failure ==="
@@ -379,6 +379,14 @@ out="$("${launcher_env[@]}" "$LAUNCHER" \
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'invalid round-cap panel-failed'
 grep -Fq 'LOOP_STATUS=panel-failed' "$D11/.step3-review-result.env" || fail 'invalid round-cap result env panel-failed'
 
+echo "=== invalid convergence-threshold normalizes to panel-failed ==="
+D11C="$TMP/invalid-convergence"
+write_common_inputs "$D11C" SIMPLE
+out="$("${launcher_env[@]}" "$LAUNCHER" \
+    --design-tmpdir "$D11C" --round-cap 5 --convergence-threshold abc 2>&1)"
+assert_contains "$out" 'LOOP_STATUS=panel-failed' 'invalid convergence-threshold panel-failed'
+grep -Fq 'LOOP_STATUS=panel-failed' "$D11C/.step3-review-result.env" || fail 'invalid convergence-threshold result env panel-failed'
+
 echo "=== terminal stdout breadcrumbs include round identifiers ==="
 D11B="$TMP/breadcrumb-rounds"
 write_common_inputs "$D11B" SIMPLE
@@ -397,6 +405,46 @@ out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D9" --round-cap 5 --convergence-threshold 3)"
 assert_contains "$out" 'LOOP_STATUS=complete' 'symlink inner stdout fallback loop status'
 grep -Fq 'AGGREGATOR_STATUS=stdout' "$D9/.step3-review-result.env" || fail 'symlink inner should use stdout fallback'
+
+echo "=== symlinked outer result env refuses write with WARN ==="
+D12="$TMP/symlink-outer"
+write_common_inputs "$D12" SIMPLE
+ln -sf "$D12/outer-target.env" "$D12/.step3-review-result.env"
+stub="$(write_loop_stub "$D12" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
+set +e
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D12" --round-cap 5 --convergence-threshold 3 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 1 ]]; then
+    pass 'symlinked outer result env exit 1'
+else
+    fail "symlinked outer result env rc=$rc"
+fi
+assert_contains "$out" 'refusing to write symlinked result env' 'symlinked outer write refusal WARN'
+assert_contains "$out" 'LOOP_STATUS=complete' 'symlinked outer still emits LOOP_STATUS on stdout'
+[[ -L "$D12/.step3-review-result.env" ]] || fail 'symlinked outer result env must remain a symlink'
+[[ ! -f "$D12/outer-target.env" ]] || fail 'symlinked outer must not mutate write target'
+
+echo "=== cap-reached with symlinked outer result env still emits cap-reached ==="
+D12B="$TMP/symlink-outer-cap"
+write_common_inputs "$D12B" SIMPLE
+printf '3\n' >"$D12B/review-round-count.txt"
+ln -sf "$D12B/outer-cap-target.env" "$D12B/.step3-review-result.env"
+loop_stub="$(write_loop_stub "$D12B" 'exit 97')"
+set +e
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" "$LAUNCHER" \
+    --design-tmpdir "$D12B" --round-cap 5 --convergence-threshold 3 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 1 ]]; then
+    pass 'cap-reached symlinked outer exit 1'
+else
+    fail "cap-reached symlinked outer rc=$rc"
+fi
+assert_contains "$out" 'LOOP_STATUS=cap-reached' 'cap-reached symlinked outer stdout LOOP_STATUS'
+assert_contains "$out" 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' 'cap-reached symlinked outer stdout tally'
+[[ -L "$D12B/.step3-review-result.env" ]] || fail 'cap-reached symlinked outer must remain a symlink'
 
 echo "=== normalized result env keys ==="
 assert_file_has_keys "$D6/.step3-review-result.env" 'result env' \

@@ -143,8 +143,6 @@ else
         _step3_prior_round_count=0
         if [[ "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
             _step3_prior_round_count=$((STEP3_REVIEW_ROUND_NUM - 1))
-            printf '%s\n' "$STEP3_REVIEW_ROUND_NUM" >"$ROUND_COUNT_FILE"
-            REVIEW_ROUND_COUNT="$STEP3_REVIEW_ROUND_NUM"
         fi
         ROUND_NUM=1
         _wp_round=$(jq -r '.workflow_path // ""' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo "")
@@ -182,10 +180,16 @@ else
                     emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
                     emit_kv TALLY_PLAN_REVIEW_STATUS "${TALLY_PLAN_REVIEW_STATUS:-}"
                     emit_kv REVIEW_ROUND_COUNT "${REVIEW_ROUND_COUNT:-0}"
+                    printf '%s\n' "${_step3_prior_round_count:-0}" >"$ROUND_COUNT_FILE"
+                    REVIEW_ROUND_COUNT="${_step3_prior_round_count:-0}"
                     exit 1
                 fi
                 ROUND_NUM=$_next_cursor
             fi
+        fi
+        if [[ "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
+            printf '%s\n' "$STEP3_REVIEW_ROUND_NUM" >"$ROUND_COUNT_FILE"
+            REVIEW_ROUND_COUNT="$STEP3_REVIEW_ROUND_NUM"
         fi
         _feature_file="${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt"
         _plan_loop_sh="${RUN_STEP3_PLAN_REVIEW_LOOP_SH:-$PLUGIN_ROOT/skills/design/scripts/plan-review-loop.sh}"
@@ -221,7 +225,11 @@ else
                 while IFS= read -r _line || [[ -n "$_line" ]]; do
                     _key="${_line%%=*}"
                     _value="${_line#*=}"
-                    printf -v "$_key" '%s' "$_value"
+                    case "$_key" in
+                        LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | CONVERGENCE_STREAK | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS)
+                            printf -v "$_key" '%s' "$_value"
+                            ;;
+                    esac
                 done < <(phase_driver_read_result_env "$INNER_RESULT_ENV" \
                     LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
                     REASON REVISE_STATUS CONVERGENCE_STREAK COLLECT_OK_COUNT COLLECT_FAILURE_COUNT \
@@ -265,6 +273,19 @@ else
         fi
 fi
 
+emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
+emit_kv STEP3_REVIEW_CAP_REACHED "${STEP3_REVIEW_CAP_REACHED:-false}"
+emit_kv STEP3_REVIEW_ROUND_NUM "${STEP3_REVIEW_ROUND_NUM:-}"
+emit_kv ROUND_NUM "${ROUND_NUM:-}"
+emit_kv ACCEPTED_COUNT "${ACCEPTED_COUNT:-}"
+emit_kv IMPORTANT_ACCEPTED_COUNT "${IMPORTANT_ACCEPTED_COUNT:-}"
+emit_kv DEGRADED_PANEL "${DEGRADED_PANEL:-}"
+emit_kv ROUNDS_COMPLETED "${ROUNDS_COMPLETED:-}"
+emit_kv TALLY_PLAN_REVIEW_STATUS "${TALLY_PLAN_REVIEW_STATUS:-}"
+emit_kv AGGREGATOR_STATUS "${AGGREGATOR_STATUS:-}"
+emit_kv VOTING_TALLY_FILE "${VOTING_TALLY_FILE:-}"
+emit_kv REVIEW_ROUND_COUNT "${REVIEW_ROUND_COUNT:-0}"
+
 if ! phase_driver_write_result_env "$RESULT_ENV" \
     "LOOP_STATUS=${LOOP_STATUS:-}" \
     "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}" \
@@ -281,18 +302,5 @@ if ! phase_driver_write_result_env "$RESULT_ENV" \
     emit_kv WARN "Step 3: refusing to write symlinked result env $(basename "$RESULT_ENV")"
     exit 1
 fi
-
-emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
-emit_kv STEP3_REVIEW_CAP_REACHED "${STEP3_REVIEW_CAP_REACHED:-false}"
-emit_kv STEP3_REVIEW_ROUND_NUM "${STEP3_REVIEW_ROUND_NUM:-}"
-emit_kv ROUND_NUM "${ROUND_NUM:-}"
-emit_kv ACCEPTED_COUNT "${ACCEPTED_COUNT:-}"
-emit_kv IMPORTANT_ACCEPTED_COUNT "${IMPORTANT_ACCEPTED_COUNT:-}"
-emit_kv DEGRADED_PANEL "${DEGRADED_PANEL:-}"
-emit_kv ROUNDS_COMPLETED "${ROUNDS_COMPLETED:-}"
-emit_kv TALLY_PLAN_REVIEW_STATUS "${TALLY_PLAN_REVIEW_STATUS:-}"
-emit_kv AGGREGATOR_STATUS "${AGGREGATOR_STATUS:-}"
-emit_kv VOTING_TALLY_FILE "${VOTING_TALLY_FILE:-}"
-emit_kv REVIEW_ROUND_COUNT "${REVIEW_ROUND_COUNT:-0}"
 
 exit 0

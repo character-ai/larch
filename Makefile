@@ -18,7 +18,7 @@
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 .PHONY: test-persist-implement-run-flags
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-awk-multibyte-regex test-lint-awk-multibyte-regex
-.PHONY: test-design-multi-round-integration test-lib-design-round-artifacts
+.PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -86,7 +86,7 @@ test-harnesses-7: test-agent-model-args test-body-file-title test-ci-wait test-c
 
 test-harnesses-8: test-aggregate-findings test-cache-key-discipline test-ci-wait-exit-trap test-compose-review-findings test-dispatch-plan-voters test-gather-context test-implement-fork-env test-launch-claude-subprocess test-merge-pr test-persist-implement-run-flags test-post-tracking-issue test-relevant-checks-validation test-review-relevant-checks-helper test-session-env-roundtrip test-tally-code-votes
 
-test-harnesses-9: test-alias-structure test-cache-root-validation test-clarify-comment test-create-pr test-dispatch-with-waterfall test-revise-plan-with-waterfall test-generate-code-flow-diagram test-launch-codex-ci test-mermaid-fragments test-preflight-args test-render-findings-batch test-review-structure test-session-setup-presence-defaults test-tally-plan-review test-findings-classification test-review-findings-classification test-plan-review-loop test-lib-design-round-artifacts test-design-multi-round-integration test-step3-review-cap test-run-step3-review test-lib-phase-driver test-snapshot-plan-round test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round
+test-harnesses-9: test-alias-structure test-cache-root-validation test-clarify-comment test-create-pr test-dispatch-with-waterfall test-revise-plan-with-waterfall test-generate-code-flow-diagram test-launch-codex-ci test-mermaid-fragments test-preflight-args test-render-findings-batch test-review-structure test-session-setup-presence-defaults test-tally-plan-review test-findings-classification test-review-findings-classification test-plan-review-loop test-lib-design-round-artifacts test-design-multi-round-integration test-step3-review-cap test-run-step3-review test-step3-orchestrator-fence test-lib-phase-driver test-snapshot-plan-round test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round
 
 test-harnesses-10: test-alias-target-resolution test-capture-session-transcript test-clarify-state test-cursor-implementer test-drop-bump-commit test-drop-changelog-commit test-classify-bump test-commit-changelog test-generate-topology-docs test-implement-rebase-macro test-rebase-checkpoint-probe test-launch-review test-oos-disposition-gate test-render-lane-status test-session-setup-repo-fallback test-tally-vote
 
@@ -491,6 +491,9 @@ test-step3-review-cap:
 
 test-run-step3-review:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-run-step3-review.sh
+
+test-step3-orchestrator-fence:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-step3-orchestrator-fence.sh
 
 test-lib-phase-driver:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-lib-phase-driver.sh

@@ -40,7 +40,7 @@ The driver does **not** re-read `LARCH_DESIGN_*` env vars.
 | Code | When |
 |------|------|
 | `0` | Normal completion (any settled `LOOP_STATUS`) |
-| `1` | HARD `snapshot-plan-round.sh` write-cursor failure before review launch (`panel-failed` handoff, pending round left persisted) or refusal to write symlinked `.step3-review-result.env` |
+| `1` | HARD `snapshot-plan-round.sh` write-cursor failure before review launch (`panel-failed` handoff in `.step3-review-result.env`; orchestrator continues into the Step 3 branch matrix — not a hard SKILL fence abort; round count rolled back) or refusal to write symlinked `.step3-review-result.env` (normalized `emit_kv` breadcrumbs still emitted on stdout) |
 | `2` | Argv / missing executable inner loop |
 
 ## Idempotency

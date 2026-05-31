@@ -104,10 +104,28 @@ echo "=== read_result_env ==="
 phase_driver_read_result_env "$result" A B >"$TMP/read.out"
 assert_contains "$(cat "$TMP/read.out")" 'A=1' 'read_result_env allowlist A'
 assert_contains "$(cat "$TMP/read.out")" 'B=two' 'read_result_env allowlist B'
+tampered="$TMP/tampered.env"
+printf 'A=1\nB=two\nEVIL=leak\n' >"$tampered"
+phase_driver_read_result_env "$tampered" A B >"$TMP/filtered.out"
+if grep -q 'EVIL=' "$TMP/filtered.out"; then
+    fail 'read_result_env should filter non-allowlisted keys'
+else
+    pass 'read_result_env filters non-allowlisted keys'
+fi
 if phase_driver_read_result_env "$TMP/symlink.env" A 2>/dev/null; then
     fail 'read_result_env should refuse symlink source'
 else
     pass 'read_result_env refuses symlink source'
+fi
+
+echo "=== read_result_env multiline rejection ==="
+multiline="$TMP/multiline.env"
+printf '%s' $'REASON=line1\rPATH=/evil' >"$multiline"
+phase_driver_read_result_env "$multiline" REASON PATH >"$TMP/multiline.out" 2>/dev/null || true
+if [[ -s "$TMP/multiline.out" ]]; then
+    fail 'read_result_env must not emit multiline allowlisted values'
+else
+    pass 'read_result_env rejects multiline spill'
 fi
 
 TOTAL=$((PASS + FAIL))

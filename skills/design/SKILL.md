@@ -853,7 +853,7 @@ _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review
   --convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}")
 _plan_review_rc=$?
 set -e
-if [[ "${_plan_review_rc:-0}" -eq 0 && -f "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
+if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
   if [[ -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
     printf '%s\n' "**⚠ Step 3: step3 review result env is a symlink; refusing to source**"
   else
@@ -862,19 +862,19 @@ if [[ "${_plan_review_rc:-0}" -eq 0 && -f "$DESIGN_TMPDIR/.step3-review-result.e
       case "$_key" in
         LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
           printf -v "$_key" '%s' "$_value" ;;
+        WARN) printf '%s\n' "WARN=$_value" ;;
       esac
     done <"$DESIGN_TMPDIR/.step3-review-result.env"
   fi
 fi
-if [[ -z "${LOOP_STATUS:-}" ]]; then
-  while IFS= read -r _line || [[ -n "$_line" ]]; do
-    _key="${_line%%=*}"; _value="${_line#*=}"
-    case "$_key" in
-      LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
-        printf -v "$_key" '%s' "$_value" ;;
-    esac
-  done <<<"${_plan_review_out:-}"
-fi
+while IFS= read -r _line || [[ -n "$_line" ]]; do
+  _key="${_line%%=*}"; _value="${_line#*=}"
+  case "$_key" in
+    LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
+      [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
+    WARN) printf '%s\n' "WARN=$_value" ;;
+  esac
+done <<<"${_plan_review_out:-}"
 if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
   printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
 fi
