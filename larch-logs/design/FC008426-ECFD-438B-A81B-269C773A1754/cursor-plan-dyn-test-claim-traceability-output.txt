@@ -1,0 +1,12 @@
+Reading the plan and cross-referencing behavioral claims against named tests.
+
+
+Cross-referencing plan claims with bash parity sources and checking for gaps.
+
+
+Checking how the plan models log collection vs bash `gh_logs_rc=3` deferral:
+
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/ci_monitor.py (planned; plan L29,L42-43)	`monitor` collects logs once and passes `logs_redacted` into `evaluate_failure`; `collect_failed_logs` collapses in-progress to empty `str` with no rc=3 signal; `evaluate_failure` never re-collects per outer attempt	Bash `run_evaluate_failure` calls `gh-run-logs.sh` every outer attempt and on rc=3 skips vendor dispatch with backoff (`scripts/ship-pr.sh:2532-2568`). A single upfront empty string can dispatch fixers on unavailable logs and cannot recover when the run later finishes — Edge case L83 ("defer the fixer this attempt") is untestable on the fix path	Have `evaluate_failure` call `collect_failed_logs` each outer attempt (or return a tri-state/`LogCapture` with in-progress); on in-progress apply backoff and skip `run_ci_fix` without consuming the outer cap; add `evaluate_failure` test mirroring `test-ship-pr-fix-loop-2632.inc.sh` t12 deferral
+1	in_scope	important	correctness	python/test_ci_monitor.py (planned; plan L78,L103-106)	Edge case "`already_running` does not consume the transient budget" has no `evaluate_failure` test; only `rerun_failed` unit coverage	`rerun_failed` returning `already_running=True` could still increment `transient_retries` inside `evaluate_failure`, burning the single bash rerun slot (`scripts/ship-pr.sh:2506-2509`, `scripts/ci-rerun-failed.md:5`)	Add `evaluate_failure` case: stub `rerun_failed` → `already_running=True`, assert returned `no-changes` and `transient_retries` unchanged (or a second transient-eligible rerun still allowed)

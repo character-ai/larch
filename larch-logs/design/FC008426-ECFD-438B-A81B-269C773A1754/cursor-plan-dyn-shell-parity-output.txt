@@ -1,0 +1,47 @@
+Reading the plan and the referenced shell scripts to verify parity claims.
+Checking whether the plan documents single-empty poll behavior and how `monitor` wires log collection:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/ci-wait.sh:200-216	Plan poll_ci/tests claim 3-consecutive empty or error statuses bail; bash only counts empty ci-status parse (no CI_STATUS= line)	CI_STATUS=error from gather_status goes to decide() and bails on the first poll; counting error toward CI_MONITOR_STATUS_FAILURE_BAIL mis-implements the loop and the parity table	Limit the counter to consecutive empty/unparseable status reads; on status=error call decide() immediately (error→bail per ci-decide.sh:79-84)
+2	in_scope	important	correctness	scripts/ship-pr.sh:2500-2514	Plan evaluate_failure always returns no-changes after the transient rerun branch when transient_retries < CI_MONITOR_TRANSIENT_RERUN_MAX	Bash only returns early when ci-rerun-failed reports RERUN_SUBMITTED=true; on failure it record_failure and falls through to the _max_fix=3 fix loop	Match ship-pr: return no-changes only on successful/already_running rerun; on rerun failure continue into the capped fix loop (do not treat as terminal no-changes)
+3	in_scope	important	correctness	scripts/ship-pr.sh:2522-2573	Plan monitor does one-shot gh.failed_jobs + classify_failed_jobs + collect_failed_logs before evaluate_failure; bash re-runs gh-run-logs.sh and ci-failed-jobs.sh on each _fix_attempt inside run_evaluate_failure	Bash rc=3 in-progress defers vendor for that attempt then retries log fetch on the next attempt; a single upfront empty log blocks all three fix attempts and never retries classification after CI moves	Move collect_failed_logs (and job re-classification) inside evaluate_failure's per-attempt loop; on in-progress return a defer status and continue/backoff without dispatching the fixer (parity with lines 2567-2690)
+4	in_scope	nit	correctness	scripts/gh-run-logs.sh:51-53	Plan collect_failed_logs and tests specify in-progress → empty; gh-run-logs still tails 100 lines of the captured message then exits 3	Tests asserting empty logs diverge from gh-run-logs.sh even though run_evaluate_failure mainly uses rc=3 to defer	Have collect_failed_logs return a defer indicator (or rc=3 parity) and optional tailed text; align tests with defer semantics not mandatory empty string
+
+**1. [correctness]** `poll_ci` three-strike rule vs `ci-wait.sh` (`scripts/ci-wait.sh:200-216`)
+
+The plan (`plan.txt` line 23, testing line 96) says **3-consecutive empty/`error` statuses → bail**. Bash increments `ci_failures` only when `CI_STATUS` is **empty** after parsing `ci-status.sh` output; on failure it forces `pending` and still calls `ci-decide.sh` until the third strike. A valid `CI_STATUS=error` line resets `ci_failures` and `ci-decide.sh` bails immediately (`scripts/ci-decide.sh:79-84`), not after three polls.
+
+**Suggested revision:** Document and implement three-strike only for missing/unparseable status output; route `error` through `decide()` on every poll.
+
+---
+
+**2. [correctness]** Transient rerun failure fallthrough vs `run_evaluate_failure` (`scripts/ship-pr.sh:2500-2514`)
+
+The plan (`plan.txt` lines 40-41, edge case 74-76) says when `transient_retries < CI_MONITOR_TRANSIENT_RERUN_MAX`, call `rerun_failed` only and **return `no-changes`**. Bash returns early only when `RERUN_SUBMITTED=true` (lines 2505-2511); otherwise it `record_failure` and **enters** the `_max_fix=3` loop (line 2514 onward).
+
+**Suggested revision:** Return `no-changes` only after a successful or `already_running` rerun; on rerun failure, fall through to the fix loop like bash.
+
+---
+
+**3. [correctness / architecture]** One-shot log/job collection vs per-attempt loop (`scripts/ship-pr.sh:2522-2573`)
+
+`monitor` is specified to call `gh.failed_jobs`, `classify_failed_jobs`, and `collect_failed_logs` once, then `evaluate_failure(...)` (`plan.txt` line 41). Inside `run_evaluate_failure`, each `_fix_attempt` re-invokes `gh-run-logs.sh` (2533) and, when logs are ready, `ci-failed-jobs.sh` (2573). Edge case 80 requires **rc=3 defer per attempt** (2567-2568), not a single upfront empty log for all three attempts.
+
+**Suggested revision:** Re-collect logs (and refresh failed-job classification) inside `evaluate_failure`'s fix loop; surface an in-progress/defer outcome and backoff without running the vendor waterfall.
+
+---
+
+**4. [correctness]** In-progress log contract vs `gh-run-logs.sh` (`scripts/gh-run-logs.sh:51-53`)
+
+The plan says in-progress → **empty/deferred** (`plan.txt` lines 27, 98). Bash still runs `tail -100` on the captured output and exits **3**. Fixing finding 3 matters more than tail content; tests that require empty strings would not match the shell helper.
+
+**Suggested revision:** Model defer via rc=3 (or a typed defer flag); treat tail content as optional parity, not required empty string.
+
+---
+
+**[OUT_OF_SCOPE]** Detached-HEAD guard before each fix attempt (`scripts/ship-pr.sh:2525-2530`) — not in Phase 6 `evaluate_failure` API; driver/Phase 7 may own it.
+
+**[OUT_OF_SCOPE]** `run_per_job_local_fix_loop` / `CI_FIX_REBASE_PENDING` paths (`scripts/ship-pr.sh:2540-2657`) — plan explicitly drops Phase 4 per-job fixer in favor of CI waterfall only.
+
+**[OUT_OF_SCOPE]** Jittered `RANDOM` backoff (`scripts/ship-pr.sh:2557-2561`, 2684-2689`) — plan documents deterministic attempt-index backoff by design.
+
+**Exonerated (parity otherwise holds):** `ci-decide.sh` matrix and caps 50/20/10 with merge-past-cap (`scripts/ci-decide.sh:101-150`); `NO_CHECKS` bail before decide (`scripts/ci-wait.sh:218-222`); suspend window >60s not charged (`scripts/ci-wait.sh:276-285`); `MAX_POLLS=(TIMEOUT+9)/10` vs `ceil(timeout/CI_WAIT_POLL_INTERVAL_SEC)`; `ci-failed-jobs.sh` fixable set and matrix/malformed rules (`scripts/ci-failed-jobs.sh:29-124`); `ci-rerun-failed.sh` already-running grep (`scripts/ci-rerun-failed.sh:70-75`); transient budget and `_max_fix=3` (`scripts/ship-pr.sh:2500-2521`); `first-fixer-non-health` HEAD-unchanged check (`scripts/ship-pr.sh:2143-2167`).

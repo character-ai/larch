@@ -1,0 +1,61 @@
+Verifying bash parity for the accepted findings before emitting the revised plan diff.
+
+Emitting the unified plan revision diff incorporating both accepted findings.
+--- a/plan.txt
++++ b/plan.txt
+@@ -68,7 +68,7 @@
+ - `evaluate_failure(runner, *, run_id, repo, classified, logs_redacted, plan_file, transient_retries, fix_attempts, cwd, launch_fn=None, sleep_fn=time.sleep) -> FixResult` — port of `run_evaluate_failure`: when `transient_retries < config.CI_MONITOR_TRANSIENT_RERUN_MAX`, `rerun_failed` only (no fix; count toward the transient budget unless `already_running`) and return `no-changes`; otherwise loop the fix path up to `config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS` (3) with jittered backoff via `sleep_fn` (deterministic seed via attempt index — `Math.random`/`Date.now` are unavailable; vary backoff by attempt index, not RNG), threading `start_attempt` into each `run_ci_fix` call. Per outer attempt: `run_ci_fix` → on `local-unfixable` bail immediately (do not consume further outer attempts); on `verify-failed` consume the outer attempt, apply backoff, and **re-drive** `run_ci_fix` (parity with `run_evaluate_failure` `vendor_rc=4` → `per_job_verification_retry` without push); on `head-changed` return immediately; on `pushed` return `pushed`; on `waterfall-failed`/`first-fixer-non-health` return as-is. After the outer cap is exhausted with `verify-failed` still outstanding → `waterfall-failed` with `detail`/`failed_verify` naming the jobs (parity with `exit_stall` `10-max-retries` / `12-max-retries` — distinct from `ci-local-unfixable`, which is reserved for `no-local-equivalent` rows only).
+-- `monitor(runner, *, pr, repo, base_remote="origin", base_ref="main", empty_checks_grace=0, iteration=0, rebase_count=0, fix_attempts=0, transient_retries=0, plan_file=None, cwd=None, launch_fn=None, sleep_fn=time.sleep, clock=time.monotonic) -> MonitorResult` — the driver entrypoint. `poll_ci` → on `merge`/`already_merged` → `OK` (no GOTO-Rebase); on `rebase`/`pass+behind` → `goto_rebase=True`, `did_fixing=False`, `OK`; on `evaluate_failure`/`rebase_then_evaluate` → `gh.failed_jobs` + `classify_failed_jobs` + `collect_failed_logs` + `evaluate_failure(...)`, then `goto_rebase=True` when fixing pushed work, map FixResult.status → `StepResult` (`pushed`→`OK`+GOTO-Rebase; `head-changed`→`STALLED`; `local-unfixable`/`waterfall-failed`/`first-fixer-non-health`/`verify-failed` after outer exhaustion→`STALLED` with detail); on `bail` → `STALLED` with `bail_reason`. The GOTO-Rebase loop + its cap stay in the Phase-7 driver.
++- `monitor(runner, *, pr, repo, base_remote="origin", base_ref="main", empty_checks_grace=0, iteration=0, rebase_count=0, fix_attempts=0, transient_retries=0, plan_file=None, cwd=None, launch_fn=None, sleep_fn=time.sleep, clock=time.monotonic) -> MonitorResult` — the driver entrypoint. `poll_ci` → on `merge`/`already_merged` → `OK` (no GOTO-Rebase); on `rebase`/`rebase_then_evaluate` → `goto_rebase=True`, `did_fixing=False`, `OK` (parity `ship-pr.sh:3547-3549`: rebase before fix; Phase-7 driver re-enters `monitor` after rebase — **do not** call `evaluate_failure` while still behind); on `evaluate_failure` only → `gh.failed_jobs` + `classify_failed_jobs` + `collect_failed_logs` + `evaluate_failure(...)`, then `goto_rebase=True` when fixing pushed work, map `FixResult.status` → `StepResult` (`pushed`→`OK`+GOTO-Rebase; `head-changed`→`STALLED`; `first-fixer-non-health`→`NEEDS_USER_INPUT` with `detail` naming the token; `local-unfixable`/`waterfall-failed`/`verify-failed` after outer exhaustion→`STALLED` with detail); on `bail` → `bail_reason=fix-attempts-exhausted` → `NEEDS_USER_INPUT` (parity `needs_user_bail_reason` / exit 3); other bails (iteration/rebase timeout caps, 3-consecutive-status failure, `NO_CHECKS`, etc.) → `STALLED` with `bail_reason`. The GOTO-Rebase loop + its cap stay in the Phase-7 driver.
+ 
+ ### NEW: `python/test_ci_monitor.py`
+ 
+@@ -95,6 +95,7 @@
+ - **Two fixer surfaces are distinct.** The CI fixer is the launch-`*`-ci.sh waterfall via `agents.run_waterfall` (`FIXER_TIER_ORDER = cursor,codex,claude`). Phase 4's `run-external-agent.sh` per-job local fixer is explicitly out — when a fixable job still fails its local `make` re-verify after a winning vendor tier, return `verify-failed` and let `evaluate_failure` re-drive the CI waterfall (capped at `CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS` with backoff; Round 1 Decision 3), never import/duplicate `checks.py` and never map fixable verify regression to `local-unfixable` on the first failure.
+ - **Decoupled rebase.** `stage_and_push` does a normal push; on any pushed fix `monitor` returns `goto_rebase=True` and the driver re-bases (Phase 3) + force-pushes. No `run_rebase_rebump` inline (Round 1 Decision 4).
++- **`rebase_then_evaluate` is rebase-only in `monitor`.** Like `rebase`, emit `goto_rebase` without fixing; the driver runs Phase-3 rebase then calls `monitor` again (which may then see `evaluate_failure`). Matches `ship-pr.sh` ordering (rebase before `run_evaluate_failure`).
+ - **No logging side effects.** Drop the bash `append-token-record.sh`/`refresh-run-logs.sh` calls inside stage/push — log flushing is Phase 5 / driver territory.
+ - **Determinism.** All subprocess work via `proc.Runner`; all wall-clock via injected `sleep_fn`/`clock`; backoff varies by attempt index (no `random`). Frozen dataclasses between functions.
+ 
+@@ -102,6 +103,7 @@
+ - `gh pr checks` empty array → `NO_CHECKS` only when `empty_checks_grace > 0` after the grace sleep, else `pending` (parity).
+ - `git fetch <base>` fails → `pending`/`behind_count=0` to force a retry instead of trusting stale refs.
+ - Squash-merge race: `behind > 0` but `HEAD..<base>` contains `(#<pr>)` → `merged`, `behind=0`, clear `failed_run_id`.
++- `rebase_then_evaluate` → `goto_rebase` only (no `evaluate_failure` in the same `monitor` call); fixing runs only after the driver rebases and re-polls.
+ - `merge` is allowed even after a safety-limit cap is hit; safety limits only block non-merge actions.
+ - Transient first failure (`transient_retries < 1`) → `rerun_failed` only; `already_running` does not consume the transient budget.
+ - `no-local-equivalent` jobs (`gitleaks`, `trufflehog`, unknown) → never fixed locally → `local-unfixable` bail with the sanitized job list (immediate; parity with `_verify_failed_jobs_locally` exit 3 for non-fixable rows).
+@@ -118,6 +120,8 @@
+ 2. **Coupling leak into Phase 3/4/5.** Importing `rebase.py`/`checks.py` or calling `run_rebase_rebump`/`run-external-agent.sh` would break "blocked by Phase 1 only" and diverge from the decoupled driver contract. Earliest signal: `test_stdlib_only.py` import graph / a grep for sibling imports. Mitigation: depend only on Phase-1 modules; rebase is a returned signal; per-job re-fix re-drives the CI waterfall via `verify-failed` → outer retry, not `checks.py`.
+ 3. **Redaction gap in collected logs.** A failed-job log could leak a secret/path into a fixer prompt or returned text. Earliest signal: a seeded-secret redaction test on `collect_failed_logs`. Mitigation: route all `--log-failed` output through `redact.redact()` before it leaves `collect_failed_logs`; assert it.
+ 4. **Verify-failure misclassified as `local-unfixable`.** A fixable job that fails `make` re-verify after a winning vendor tier would end the fix loop on the first miss instead of re-driving the waterfall (regression vs `run_evaluate_failure` `vendor_rc=4` retry). Earliest signal: `test_ci_monitor.py` case where stub `verify_job_locally` fails once then passes on the second `run_ci_fix` outer attempt. Mitigation: `run_ci_fix` returns `verify-failed` + `failed_verify` for fixable regressions only; `evaluate_failure` owns outer backoff/retry; reserve `local-unfixable` for `no-local-equivalent` rows.
++5. **`rebase_then_evaluate` inline fix while behind.** Dispatching `evaluate_failure` before rebase would fix against a stale base and diverge from `ship-pr.sh:3547-3549`. Earliest signal: `test_ci_monitor.py` `rebase_then_evaluate` asserts `did_fixing=False` and no `evaluate_failure`/`launch_fn` calls. Mitigation: same branch as `rebase` in `monitor`.
++6. **Exit-3 terminals mapped to `STALLED`.** `fix-attempts-exhausted` bail or `first-fixer-non-health` fix result routed to `STALLED` would block autonomous exit-3 handling in the Phase-7 driver. Earliest signal: parity tests on `monitor` bail/fix terminals. Mitigation: explicit `NEEDS_USER_INPUT` for those tokens only; keep timeout/`NO_CHECKS`/rebase-cap bails on `STALLED`.
+ 
+ ## Testing strategy
+ 
+@@ -133,8 +137,8 @@
+ - `run_ci_fix`: stub `launch_fn` — winning tier → local-verify all fixable jobs → `pushed`; first-fixer non-health short-circuit; HEAD-changed → `head-changed`; winning tier with no commit → `first-fixer-non-health`; `no-local-equivalent` present → `local-unfixable`; fixable job fails `make` re-verify → `verify-failed` with `failed_verify` populated (no push); baseline rollback on losing tier; `git-commit.sh` argv asserted; no `launch-*` then push uses normal `git.push` (no force-push).
+ - `evaluate_failure`: `transient_retries<1` → `rerun_failed` only; fix loop capped at 3 with backoff via stub `sleep_fn`; `verify-failed` on attempt 1 with passing verify on attempt 2 → second `run_ci_fix` invoked (assert `launch_fn` call count == 2) then `pushed`; `verify-failed` on all 3 outers → `waterfall-failed` (not `local-unfixable`); `local-unfixable` only when classified `unfixable` non-empty; `head-changed` → STALL.
+-- `monitor`: `merge`→`OK`, no GOTO-Rebase; `rebase`→`OK`+`goto_rebase`; `evaluate_failure`→fix→`OK`+`goto_rebase` when pushed; `bail`→`STALLED`; `local-unfixable`/`waterfall-failed`→`STALLED`.
++- `monitor`: `merge`→`OK`, no GOTO-Rebase; `rebase` and `rebase_then_evaluate`→`OK`+`goto_rebase`, `did_fixing=False`, no `evaluate_failure`/`launch_fn`; `evaluate_failure` action→fix path→`OK`+`goto_rebase` when pushed; `bail`/`fix-attempts-exhausted`→`NEEDS_USER_INPUT`; other `bail` reasons (poll timeout, `NO_CHECKS`, iteration/rebase caps) → `STALLED`; `first-fixer-non-health` fix terminal→`NEEDS_USER_INPUT`; `local-unfixable`/`waterfall-failed`/exhausted `verify-failed`→`STALLED`.
+ - stdlib-only + clean import auto-covered by `test_stdlib_only.py`.
+ 
+ ## Acceptance
+@@ -145,10 +149,12 @@
+ - Collected logs are redacted (`collect_failed_logs` routed through `redact.redact()`, asserted on a seeded secret).
+ - Fixable post-vendor verify regression uses `verify-failed` + outer retry; `local-unfixable` is reserved for `no-local-equivalent` jobs only.
++- Exit-3 parity: `bail`/`fix-attempts-exhausted` and fix-path `first-fixer-non-health` map to `NEEDS_USER_INPUT`; other bails remain `STALLED`.
++- `rebase_then_evaluate` does not dispatch fixes before rebase (`did_fixing=False`, same as `rebase`).
+ - No import of `checks.py`/`rebase.py`/`merge.py`/`run_logs.py`/`ship.py`; `gh.py`/`git.py` unedited; the live `/implement` path unchanged and no `.sh` deleted.
+ - `make py-lint` (ruff + pylint + pyright) and `make py-test` (pytest) pass.
+ 
+ ## Diff size estimate
+ 
+-New module + colocated tests dominate (mostly additions): module ~600 lines, tests ~600 lines, `config.py` ~15, `README.md` ~2.
++New module + colocated tests dominate (mostly additions): module ~620 lines, tests ~640 lines, `config.py` ~15, `README.md` ~2.
+ 
+-diff_added: 1220
+-diff_lines: 1240
++diff_added: 1275
++diff_lines: 1295

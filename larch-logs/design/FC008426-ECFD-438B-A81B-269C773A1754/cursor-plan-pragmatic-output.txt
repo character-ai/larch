@@ -1,0 +1,35 @@
+Validating the plan against bash parity sources and Phase-1 Python modules.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:44-45	`rebase_then_evaluate` only sets `goto_rebase` and defers all fixing to a later `monitor()` call	Bash handles `rebase_then_evaluate` by calling `run_rebase_rebump` then `run_evaluate_failure` in the same turn (`scripts/ship-pr.sh:3547-3549`), without re-polling CI. After driver rebase, a second `poll_ci` can return `wait`/`pending` while the failed run is still in flight, so `evaluate_failure` never runs when bash would already be collecting logs and dispatching fixers	Document Phase-7 contract explicitly: either (a) after rebase for `rebase_then_evaluate`, call `evaluate_failure` immediately with the pre-rebase `failed_run_id` (no poll), or (b) add a `monitor(..., force_evaluate_failure=True)` / driver hook that skips `poll_ci` and jumps to `evaluate_failure` when the prior action was `rebase_then_evaluate`
+2	in_scope	important	correctness	plan.txt:40,130	Acceptance and `run_ci_fix` prose say `first-fixer-non-health` only after `stage_and_push` when `baseline_head == post_stage_head`, but the same plan delegates the pre-verify first-tier `other` short-circuit to `agents.run_waterfall`	Bash returns `first-fixer-non-health` immediately on first-tier non-health launcher failure with no staging (`scripts/ship-pr.sh:2115-2121`); tests also require a pre-verify short-circuit (`plan.txt:118`). Narrow acceptance/`run_ci_fix` wording to two paths: (1) `WaterfallResult.short_circuited` → `first-fixer-non-health` with no push; (2) post-`stage_and_push` HEAD unchanged → same status after successful stage
+3	in_scope	important	risk-integration	plan.txt:41	`stage_and_push` is only `git add` + commit + `git.push`; bash `_stage_and_push_ci_fixes` also runs `run_checks_with_lint_fix_loop` before commit when `checks_site` is set (`scripts/ship-pr.sh:1945-1948`)	Vendor fixes that pass per-job `make` replay can still fail repo-wide lint gates that bash repairs before push; pushes may fail CI again or skip lint-fix deltas bash would commit	Either add an explicit scoped-out note in Approach (per-job verify only, no `lint-fix-loop`), or add a minimal pre-push hook in `stage_and_push`/`run_ci_fix` parity with `_stage_and_push_ci_fixes` (even a single `make lint-only` when fixable jobs include `lint`)
+4	in_scope	nit	correctness	plan.txt:41	CI-fix commit message specified as `Apply CI fixes (<label>)` while live bash uses `Fix CI failure` (`scripts/ship-pr.sh:1859`; many `scripts/test-ship-pr.sh` assertions)	Phase-7 cutover or mixed bash/Python runs can break subject-line regressions and operator log grep habits	Use bash subject `Fix CI failure` unless Phase 4 already standardizes a different message repo-wide
+5	in_scope	nit	correctness	plan.txt:36	`prepare_python_toolchain` installs `requirements-dev.txt` / `requirements-test.txt` without the `python/` prefix	Bash installs from `$PLUGIN_ROOT/python/requirements-*.txt` (`scripts/ship-pr.sh:2228-2248`); wrong paths make python jobs falsely `local-unfixable`	Resolve paths relative to repo/plugin root (e.g. `python/requirements-dev.txt` from `cwd`)
+
+**1. [correctness]** `plan.txt:44-45` — `rebase_then_evaluate` handling diverges from bash.
+
+The plan treats `rebase_then_evaluate` like `rebase`: `goto_rebase` only, fix later. Bash runs `run_evaluate_failure` immediately after rebase in the same handler:
+
+```3547:3549:scripts/ship-pr.sh
+        rebase_then_evaluate)
+            run_rebase_rebump "$phase"
+            run_evaluate_failure "$phase"
+```
+
+Splitting across driver re-entry plus `poll_ci` can stall on `pending`/`wait` instead of entering the fix loop.
+
+**2. [correctness]** `plan.txt:40,130` — `first-fixer-non-health` has two bash paths; acceptance text describes only one.
+
+Pre-verify short-circuit (no stage) and post-stage HEAD-unchanged both exist in bash (`scripts/ship-pr.sh:2115-2121`, `2140-2167`). Acceptance line 130 and the “only when staging completes” sentence in `run_ci_fix` would drop the pre-verify path despite tests at `plan.txt:118`.
+
+**3. [risk-integration]** `plan.txt:41` — `stage_and_push` omits bash pre-commit lint-fix loop.
+
+Per-job `verify_job_locally` does not replace `run_checks_with_lint_fix_loop` in `_stage_and_push_ci_fixes`. Call this out in Approach or add parity.
+
+**4. [correctness]** `plan.txt:41` — CI-fix commit subject differs from bash.
+
+**5. [correctness]** `plan.txt:36` — Python requirements paths should include `python/`.
+
+**[OUT_OF_SCOPE]** `plan.txt:69-70` / `scripts/ship-pr.sh:2579-2638` — Omitting `run_per_job_local_fix_loop` before the vendor waterfall is an intentional scope cut (documented). Phase-7 driver should not assume full `run_evaluate_failure` parity until that path is owned elsewhere.
+
+**[OUT_OF_SCOPE]** `scripts/ship-pr.sh:2540-2565` — No `CI_FIX_REBASE_PENDING` staging-only retry in `ci_monitor`; Phase-7 state machine must cover post-fix/rebase staging if still required at cutover.

@@ -1,0 +1,31 @@
+Reading the implementation plan and exploring the cited codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:24 / scripts/ci-status.sh:145-174	gather_status omits gh pr checks text fallback	When --json output is empty or not an array, bash parses plain gh pr checks text; the plan only specifies the JSON path, so gather_status can mis-classify fail/pending/pass.	Port the scripts/ci-status.sh:145-174 fallback in gather_status (or document an explicit Phase-7-only gap).
+2	in_scope	important	correctness	plan.txt:44 / scripts/ship-pr.sh:3547-3549	rebase_then_evaluate defers fix until a later monitor poll	Bash runs run_rebase_rebump then run_evaluate_failure in one handler without re-polling; monitor returns goto_rebase only and the next call starts with poll_ci, which can ACTION=wait on pending CI for up to CI_WAIT_TIMEOUT_SEC while bash would already enter evaluate_failure (including in_progress log deferral).	Document the intentional divergence in the Phase-7 driver contract, or preserve bash ordering: after rebase, call evaluate_failure without blocking on poll_ci wait (e.g. driver hook or monitor flag).
+3	in_scope	important	correctness	plan.txt:44 / scripts/ship-pr.sh:2526-2530	evaluate_failure lacks detached-HEAD guard	Bash exits stall before the fix loop when HEAD is detached; the plan's evaluate_failure has no equivalent, so run_ci_fix/stage_and_push can run on a detached HEAD and fail opaquely or corrupt state.	Add the scripts/ship-pr.sh:2526-2530 symbolic-ref check at the top of evaluate_failure; return head-changed or a dedicated STALLED/NEEDS_USER_INPUT mapping consistent with Phase-7 driver.
+4	in_scope	important	risk-integration	plan.txt:44 / scripts/ship-pr.sh:2497-2498	No guard when failed_run_id is empty before evaluate_failure	Bash exit_stalls when FAILED_RUN_ID is unset; monitor passes CiStatus.failed_run_id into evaluate_failure with no stated empty check, so rerun/logs/fix can target run_id="" and burn outer attempts or error silently.	At monitor/evaluate_failure entry, if failed_run_id is missing/blank, return STALLED (or bail) with detail instead of calling gh helpers.
+5	out_of_scope	latent	architecture	plan.txt:44 / scripts/ship-pr.sh:2540-2565	CI_FIX_REBASE_PENDING staging path not ported	evaluate_failure in bash can stage pending CI-fix deltas without a vendor waterfall when CI_FIX_REBASE_PENDING=true; the plan omits this branch, so Phase-7 wiring may drop a push-only recovery path.	[OUT_OF_SCOPE] Either add a monitor/evaluate_failure parameter and branch for rebase-pending staging in Phase 7, or record an explicit non-parity note in the Phase-7 driver plan.
+
+**1. [correctness] `gather_status` missing `gh pr checks` text fallback** (`plan.txt:24`, `scripts/ci-status.sh:145-174`)
+
+The plan ports only the JSON `gh pr checks --json name,state,bucket,link` path. Bash falls back to plain-text parsing when JSON is empty or not an array. Without that fallback, `gather_status` can report `pending` or `pass` while checks actually failed, mis-routing `decide()` and the driver.
+
+**2. [correctness] `rebase_then_evaluate` inserts `poll_ci` before fix** (`plan.txt:44`, `scripts/ship-pr.sh:3547-3549`)
+
+Bash runs `run_rebase_rebump` and `run_evaluate_failure` back-to-back in one `ci-wait` handler. The plan returns `goto_rebase` only; the next `monitor()` begins with `poll_ci`, which may `wait` on pending CI for the full poll budget while bash would already be in `evaluate_failure` (including rc=3 log deferral). This is the largest behavioral gap relative to current `ship-pr.sh`.
+
+**3. [correctness] `evaluate_failure` missing detached-HEAD guard** (`plan.txt:44`, `scripts/ship-pr.sh:2526-2530`)
+
+Bash stalls before the fix loop on detached HEAD. The proposed `evaluate_failure` has no equivalent guard.
+
+**4. [risk-integration] Empty `failed_run_id` not handled** (`plan.txt:44`, `scripts/ship-pr.sh:2497-2498`)
+
+Bash `exit_stall`s when `FAILED_RUN_ID` is empty. The plan does not require a check before `evaluate_failure(run_id=...)`, risking useless gh calls and outer-attempt churn when link parsing fails.
+
+**5. [OUT_OF_SCOPE] `CI_FIX_REBASE_PENDING` branch omitted** (`plan.txt:44`, `scripts/ship-pr.sh:2540-2565`)
+
+Bash can stage and push pending CI-fix work without running the vendor waterfall. The Phase 6 plan does not mention this path; track for Phase 7 driver/state wiring.
+
+---
+
+**Exonerated (SIMPLE lane):** intentional exclusion of Phase 4 `run_per_job_local_fix_loop`; deterministic backoff vs bash `RANDOM` jitter; `run_waterfall` pre-verify `first-fixer-non-health` (covered in tests despite narrow acceptance wording); `MonitorResult` counter handoff deferred to Phase 7 driver.

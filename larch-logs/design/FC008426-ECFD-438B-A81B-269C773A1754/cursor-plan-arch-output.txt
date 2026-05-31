@@ -1,0 +1,36 @@
+Reading the implementation plan and exploring referenced codebase paths.
+
+
+Validating the plan against bash sources and Phase-1 Python modules.
+
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:44	`evaluate_failure` always returns after the transient `rerun_failed` path	Bash `run_evaluate_failure` only early-returns when rerun submits successfully; on `ci-rerun-failed.sh` failure it records the failure and still enters the 3-attempt vendor fix loop (`scripts/ship-pr.sh:2500-2521`). The plan’s unconditional `return no-changes` after any transient rerun skips fixes when the rerun fails.	After `rerun_failed`, return `no-changes` only when a new rerun was submitted (and optionally when `already_running`); otherwise fall through to the outer fix loop like bash.
+2	in_scope	important	risk-integration	plan.txt:40-41	Redacted failure logs are not specified as an on-disk path under `IMPLEMENT_TMPDIR`	`collect_failed_logs` yields in-memory `LogCollectResult.text`, but `launch-*-ci.sh` requires `--failure-log` as an absolute existing file under `IMPLEMENT_TMPDIR` (`scripts/launch-cursor-ci.sh:87-93`). Passing raw text or a path outside tmpdir makes `build_launch_argv` launches fail validation.	In `run_ci_fix`, when `logs.state == "ready"`, write redacted text to a temp file under `output_dir`/`IMPLEMENT_TMPDIR`, pass that path to `build_launch_argv`, and document cleanup in the plan/tests.
+3	in_scope	important	correctness	plan.txt:45	`monitor` maps all non-exit-3 `bail` actions to `STALLED`	Bash routes several `ci-wait` bail reasons (e.g. `ci-status.sh returned no valid output 3 times consecutively`) through `is_transient_net_signature` → `exit_transient_net` / exit 6 (`scripts/ship-pr.sh:3564-3565`, `python/retry.py:53-54`), not a stall. Mapping them to `STALLED` breaks Phase-7 transient retry.	On `action == "bail"`, if `retry.is_transient_net_signature(bail_reason)` (or equivalent), return `StepResult(Outcome.TRANSIENT, detail=bail_reason)`; reserve `STALLED` for non-transient bails.
+
+**1. [correctness]** Transient rerun must not block the fix loop (`plan.txt:44`, `scripts/ship-pr.sh:2500-2521`)
+
+The plan says that when `transient_retries < CI_MONITOR_TRANSIENT_RERUN_MAX`, `evaluate_failure` runs `rerun_failed` and returns `no-changes`. Bash only returns early when rerun submission succeeds. If `ci-rerun-failed.sh` fails, bash records the failure and continues into the capped vendor-fix loop. Unconditional `no-changes` would skip that loop after a failed rerun.
+
+**Suggested revision:** Return `no-changes` only when a new rerun was submitted (and treat `already_running` per existing budget rules); otherwise proceed to the outer `run_ci_fix` loop.
+
+**2. [risk-integration]** `--failure-log` needs a compliant filesystem path (`plan.txt:40-41`, `scripts/launch-cursor-ci.sh:87-93`)
+
+The plan threads redacted logs as `LogCollectResult.text` and refers to a “redacted path” for `build_launch_argv`, but launchers require an absolute, existing file under `IMPLEMENT_TMPDIR`. In-memory text or a path outside tmpdir will fail launcher validation.
+
+**Suggested revision:** Add an explicit step in `run_ci_fix`: persist redacted logs to a temp file under `output_dir` or `IMPLEMENT_TMPDIR`, pass that path to `build_launch_argv`, and assert path rules in tests.
+
+**3. [correctness]** Transient-network bails should map to `TRANSIENT`, not `STALLED` (`plan.txt:45`, `scripts/ship-pr.sh:3564-3565`)
+
+The plan routes all non-exit-3 `bail` outcomes to `STALLED`. Bash classifies signatures such as `no valid output 3 times` via `is_transient_net_signature` and exits through the transient-net path (exit 6). `python/retry.py` already ports that classifier and is listed as a dependency, but `monitor` does not use it for bail mapping.
+
+**Suggested revision:** In `monitor`, when `Decision.action == "bail"` and `retry.is_transient_net_signature(bail_reason)`, return `Outcome.TRANSIENT`; keep `STALLED` for non-transient bails only.
+
+---
+
+[OUT_OF_SCOPE] **Detached-HEAD guard in `evaluate_failure`** — Bash checks `git symbolic-ref HEAD` before each outer attempt and stalls (`scripts/ship-pr.sh:2526-2530`). The plan omits this; Phase-7 driver could own it via `git.current_branch`, but it is not specified.
+
+[OUT_OF_SCOPE] **Omission of `run_per_job_local_fix_loop`** — Intentional per plan Approach (vendor waterfall + `verify-failed` outer retry only); not a plan defect.
+
+[OUT_OF_SCOPE] **`resolve_plan_file` / `PLAN_FILE` under-`IMPLEMENT_TMPDIR` validation** — Bash enforces before `--plan-file` (`scripts/ship-pr.sh:447-478`); plan passes `plan_file` through without stating validation (likely Phase-7 driver duty).

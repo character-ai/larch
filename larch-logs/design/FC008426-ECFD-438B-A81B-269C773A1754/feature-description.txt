@@ -1,0 +1,48 @@
+ship-pr -> Python Phase 6: CI monitor loop
+
+> Part of the **ship-pr.sh → Python** rework. **Full plan, research findings, and cross-phase context: #3132.**
+
+## Shared context (applies to every phase)
+
+**Why this exists.** `scripts/ship-pr.sh` (~3,400 lines) is the `/implement` post-review state machine (rebase → checks → bump → PR → CI → merge → post-merge). Its high failure rate is the motivation for a typed, unit-tested Python rewrite under a new flat `python/` directory shared by all larch skills.
+
+**Locked architecture decisions:**
+1. **Single idempotent process** — recovery via gh/git **ground truth**, NOT a persisted state file. No `ship-pr-state.sh`, no `--resume-phase`.
+2. **Strangler-fig cutover** — zero change to the live `/implement` path until Phase 7.
+3. **Reimplement logic in Python** — shell out only to `git`, `gh`, agent CLIs, and the consumer test runner.
+
+**Runtime vs. dev dependencies.** Runtime imports **stdlib only** (Python ≥ 3.12). `ruff`/`pylint`/`pyright`/`pytest` are **dev/CI-only**.
+
+**Conventions:** flat `python/` (no subdirs); tests colocated `python/test_<module>.py`; constants in `config.py`; immutable frozen dataclasses; injectable `proc.run` seam; outbound text through `redact.py`.
+
+**Quality bars:** pass **Python Lint** + **Python Tests**; **bash-parity test** per ported component; do not delete a shared `.sh` until a caller grep is zero.
+
+**This phase is worked by `/design`**, then `/implement`.
+
+---
+
+## Phase 6 — CI monitor loop
+
+The largest, riskiest unit. Watches remote CI and, on failure, fixes it locally and signals the driver to re-rebase.
+
+### Module to create
+- **`ci_monitor.py`**
+  - **poll** CI for the PR (via `gh`);
+  - **classify** the outcome (green / failures / rebase-needed / transient);
+  - on failure, **collect all failed jobs + their error logs**, passed through `redact.py`;
+  - drive the **fixer waterfall** to fix issues locally and re-run the failed jobs until they pass (capped);
+  - emit a **"fixing work was done → caller should `GOTO Rebase`"** signal;
+  - **gaps to fold in:** retry/transient caps, **HEAD-changed** detection (branch moved underneath the run), **`first-fixer-non-health`** short-circuit, rerun-failed-only.
+
+The `GOTO Rebase` loop itself (and its iteration cap) is wired by the Phase 7 driver; this module owns the monitor + fix + signal.
+
+### `.sh` to port / read
+`ci-wait.sh`, `ci-failed-jobs.sh`, `ci-rerun-failed.sh`, `gh-run-logs.sh`, and the `run_evaluate_failure` logic in `ship-pr.sh`.
+
+### Acceptance criteria
+- Poll/classify, the fix loop, cap enforcement, HEAD-changed handling, and the `GOTO Rebase` signal all unit-tested with **stub `gh` and stub agent waterfall**.
+- Collected logs are redacted; parity vs `ci-wait.sh` action classification.
+
+### Dependencies
+**Blocked by:** Phase 1.
+
