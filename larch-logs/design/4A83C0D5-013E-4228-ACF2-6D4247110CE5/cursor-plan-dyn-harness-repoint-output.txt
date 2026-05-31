@@ -1,0 +1,23 @@
+Reviewing the plan against `scripts/test-design-structure.sh` and related design scripts.
+Searching for Step 0b-related assertions and cross-referencing the plan's coverage.
+Inspecting SKILL.md Step 0b and related checks for gaps.
+Checking a few more Step 0b assertions against the plan's coverage.
+**1. Tier-contract greps omitted from harness re-point list** (`correctness`)  
+`scripts/test-design-structure.sh:40-41,96` still grep `SKILL.md` for `**Tier resolution**`, `default tier: SIMPLE (no --hard)`, and `sketch_budget=0`. Those strings live only in Step 0b sub-step 5/6 inline tier mapping today (`skills/design/SKILL.md:280-311`). The plan moves tier mapping to `design-init-runparams.sh` but the UPDATED harness section does not re-point or drop these three greps. Post-extraction they fail even though the driver carries the contract.
+
+**2. Check 20 legacy sub-step structure greps not specified for replacement** (`correctness`)  
+`scripts/test-design-structure.sh:757-765,775` pin removed sub-step headers (`2.5. **Title-eligibility filter**`), fetch→2.5→3 line ordering, and `Mandatory predicate order: (a) lifecycle-reject`. The plan covers moving `title_has_*` to `design-route.sh` and adjusting orchestrator cancel-before-clarify ordering, but does not say to drop or replace these structure greps. They fail after Step 0b rewrite.
+
+**3. Check 21 pause/env anchors target removed orchestrator sub-steps** (`correctness`)  
+`scripts/test-design-structure.sh:848-853` grep `2.5-bis. **Resume detection**`, `design-pause-load.sh`, and `5.5-bis. **Refresh issue-bound env immediately after rename**` in `SKILL.md`. After extraction, resume detection and pause-load move to `design-route.sh`; the post-rename refresh sub-step is removed (single pre-rename refresh in `design-init-runparams.sh`). The plan says “re-point” these anchors but does not name replacement targets (`design-route.sh` for pause-load; driver env-before-rename instead of 5.5-bis). Stale literals give false green pre-extraction and fail post-extraction.
+
+**4. Router-flag recovery greps partially uncovered** (`correctness`)  
+`scripts/test-design-structure.sh:492-496` grep `--brainstorm-requested "$brainstorm_requested"` and the outer `[[ "$partition_requested" == true || ... ]]` recovery guard in `SKILL.md`. The plan re-points the canonical jq filter and `--manual-gate-b` / `--manual-requested` greps to the driver but does not list these two. Both move into `design-init-runparams.sh`; leaving them on `SKILL.md` fails post-extraction.
+
+**Env-before-rename assert: mechanically feasible — EXONERATE.** The plan’s FINDING_2 pin compares first-invocation line numbers of `write-design-current-env.sh` vs `tracking-issue-write.sh rename` within `design-init-runparams.sh` (plan lines 249-251; driver steps 2→3 at plan lines 163-169). Same-file line comparison is valid; no cross-file issue.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:40-41,96	Tier-contract greps not in plan re-point list	Greps for **Tier resolution**, default-tier reason, and sketch_budget=0 only match Step 0b inline mapping removed by extraction; CI fails after landing	Add explicit re-point to design-init-runparams.sh (or drop if covered by FINDING_13 driver pins)
+1	in_scope	important	correctness	scripts/test-design-structure.sh:757-765,775	Check 20 legacy sub-step greps uncovered	2.5 header, fetch→2.5→3 ordering, and Mandatory predicate order greps target removed Step 0b sub-steps; fail post-rewrite	Plan should drop/replace with design-route.sh predicate pins plus orchestrator cancel-title-filter-before-clarify ordering only
+1	in_scope	important	correctness	scripts/test-design-structure.sh:848-853	Check 21 pins obsolete orchestrator sub-step literals	2.5-bis, design-pause-load.sh, and 5.5-bis post-rename anchors removed or relocated; false green now, fail after extraction	Replace with design-route.sh pause-load pin and design-init-runparams.sh env-before-rename pin; remove 5.5-bis post-rename header grep
+1	in_scope	important	correctness	scripts/test-design-structure.sh:492-496	Router-flag outer guard and --brainstorm-requested greps omitted from re-point list	#3008 covers jq filter but not recovery guard conditional or write-run-params --brainstorm-requested argv pin	Add both greps to design-init-runparams.sh re-point list alongside FINDING_14/#3008 items

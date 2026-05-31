@@ -1,0 +1,16 @@
+Reviewing the plan and cross-checking KV allowlist consistency across the four specification surfaces.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md (proposed Step 0b route handoff; plan lines 249-258)	WARN and ERROR are in the design-route driver result-env allowlist (plan lines 143-147) and in design-route.md, but the proposed orchestrator file-first case lists only eleven printf -v keys and excludes WARN/ERROR; stdout is breadcrumb-only; a separate pre-ROUTE re-emit step assumes values exist without defining how file-sourced WARN/ERROR are loaded	LOAD_OK=false fallthrough writes ERROR (and WARN) into .design-route-result.env via the driver; file-first read skips those keys; stdout merge may be empty under larch_quiet_init; post-merge re-emit is a no-op; operator loses pause-load failure breadcrumbs and clarify/plan gates may run without the intended warning (regression vs Round 2 FINDING_1 / FINDING_4)	Align the four surfaces: keep WARN and ERROR on the driver allowlist; in the SKILL fence add WARN|ERROR to the file-first case (file-first printf -v or Step-3-style breadcrumb plus one pre-ROUTE emit—drop the contradictory do-not-printf -v line); mirror the same keys in the stdout merge loop; document identical handling in design-route.md; pin file-read WARN|ERROR in test-design-structure.sh (plan line 315 only greps re-emit prose today)
+
+**1. [correctness]** `skills/design/SKILL.md` (proposed Step 0b route handoff; plan § UPDATED ~249–258)
+
+The **design-init** allowlist is consistent across the plan’s four surfaces (`INIT_STATUS`, `RENAMED`, `RUN_PARAMS_PATH`, `DESIGN_CLASSIFICATION`, `WARN` in driver spec, `.md`, SKILL merge list, and harness re-pointing). No mismatch found there.
+
+For **design-route**, the driver allowlist (plan NEW `design-route.sh` ~143–147) and companion `.md` include `WARN` and `ERROR` alongside branching keys `ROUTE`, `BRAINSTORM_PREFIX`, etc. The proposed SKILL handoff does not:
+
+- Include `WARN` or `ERROR` in the file-first `case` allowlist (only eleven keys get `printf -v`).
+- Define how file-sourced `WARN`/`ERROR` reach the mandated “re-emit … before any `ROUTE` branch” step when the spec also says those keys must not use `printf -v`.
+
+Step 3 precedent (`skills/design/SKILL.md` ~864–887) handles `WARN` in **both** passes with `WARN) printf '%s\n' "WARN=$_value" ;;` during the file read. The route proposal omits the file-pass analogue for `WARN` and `ERROR` while still requiring a post-merge re-emit—so values present only in `.design-route-result.env` (the common path when `phase_driver_write_result_env` succeeds) are silently dropped. That breaks Round 2’s goal of restoring sub-step 2.5-bis breadcrumbs on every fresh-run path, not only `cancel-title-filter`.
+
+**Suggested revision (minimum):** Treat `WARN` and `ERROR` like Step 3—add `WARN|ERROR)` to the file-first loop and stdout merge (with file-first precedence for stdout), **or** use `printf -v` plus a single pre-branch re-emit and delete the “do not `printf -v`” line. Mirror the same rule in `design-route.md` and add a structure-test grep for `WARN|ERROR)` in the route fence, not only “pre-ROUTE `ERROR` re-emit” prose.

@@ -1,0 +1,20 @@
+**⚠ Degraded plan-review panel: 2/3 effective judges produced substantive vote output.**
+launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
+launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
+**⚠ Voter cursor: 4/4 ballot items returned JUDGE_ERROR — voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at <TMPDIR>/cursor-vote-output.txt.**
+**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.**
+launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
+**⚠ Voter cursor: 4/4 ballot items returned JUDGE_ERROR — voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at <TMPDIR>/cursor-vote-output.txt.**
+**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.**
+launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
+rm: /tmp/larch-codex-review-home-e7KPLC/.tmp/plugins-clone-oirMkQ/plugins: Permission denied
+rm: /tmp/larch-codex-review-home-e7KPLC/.tmp/plugins-clone-oirMkQ: Permission denied
+rm: /tmp/larch-codex-review-home-e7KPLC/.tmp: Permission denied
+rm: /tmp/larch-codex-review-home-e7KPLC: Permission denied
+**⚠ Voter cursor: 1/1 ballot items returned JUDGE_ERROR — voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at <TMPDIR>/cursor-vote-output.txt.**
+**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.**
+launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
+**⚠ Voter cursor: 3/3 ballot items returned JUDGE_ERROR — voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at <TMPDIR>/cursor-vote-output.txt.**
+**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.**
+launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
+cp: <TMPDIR>/plan-review/round-5/revise/claude-output-candidate.patch and <TMPDIR>/plan-review/round-5/revise/claude-output-candidate.patch are identical (not copied).

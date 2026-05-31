@@ -1,0 +1,109 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -83,7 +83,7 @@
+   as succeeded (FINDING_3).
+ 
+-Round 4 (this revision):
++Round 4 (prior revision):
+ - After sub-step 2 fetch (once `issue-body.txt` is written), the orchestrator
+   resolves `REPO` once via `resolve-repo.sh` with `gh repo view` fallback (same
+   prose as today's sub-steps 2.5-bis / 5.5 / clarify 3.2) and passes
+@@ -94,8 +94,19 @@
+   multi-remote clones — not only when drivers happen to re-resolve internally
+   (FINDING_1). The orchestrator `resume@` env-refresh also threads
+   `${REPO:+--repo "$REPO"}` on `write-design-current-env.sh` when `manual_gate_b`
+-  restoration applies.
+-
++  restoration applies.
++
++Round 5 (this revision):
++- The file-first `while` loop over `.design-route-result.env` adds explicit
++  `WARN|ERROR` case branches that print breadcrumbs immediately (not `printf -v`
++  into a var); only routing keys are stored. Stdout merge fills only missing
++  routing keys; stdout WARN/ERROR also print as breadcrumbs. Ensures pause-load
++  fallthrough WARN/ERROR surface when stdout capture is empty (FINDING_1).
++- Check 20 in `test-design-structure.sh` drops the obsolete sub-step
++  `2.5. **Title-eligibility filter**` awk line-order check; replaces with greps
++  on `design-route.sh` for the three title predicates plus orchestrator
++  `cancel-title-filter`-before-`clarify` ordering in SKILL.md (FINDING_2).
++
+ The clarify-loop gate, the already-planned `AskUserQuestion`, the verbal-create
+ `/larch:issue` call, all cancel banners, the Final summary block, and the
+ contract-drift abort stay in the orchestrator (issue "Must not").
+@@ -175,11 +186,12 @@
+ `design-pause-load.sh` threads the consumer remote. Documents orchestrator handoff:
+-Step 3–shaped file-first `.design-route-result.env` read + stdout merge over
+-`_route_out`; abort on driver exit 2 / unexpected non-zero before ROUTE branches
+-(see `test-step3-orchestrator-fence.sh` / `SKILL.md` Step 3 fence). States
+-orchestrator does **not** call `phase_driver_read_result_env`.
++Step 3–shaped file-first `.design-route-result.env` read + stdout merge over
++`_route_out`; the file-first loop uses a `case` — routing keys stored via
++`printf -v`, `WARN`/`ERROR` keys printed as breadcrumbs immediately (not stored);
++abort on driver exit 2 / unexpected non-zero before ROUTE branches
++(see `test-step3-orchestrator-fence.sh` / `SKILL.md` Step 3 fence). States
++orchestrator does **not** call `phase_driver_read_result_env`.
+ 
+ ### NEW: `skills/design/scripts/design-init-runparams.sh`
+@@ -256,13 +268,15 @@
+   - Only on `_route_rc=0`: file-first allowlisted read of
+     `$DESIGN_TMPDIR/.design-route-result.env` (refuse symlink with warning prose);
+-    then second loop over `_route_out` filling only keys not already set from the
+-    file. Allowlist keys: `ROUTE`, `BRAINSTORM_PREFIX`, `TITLE_FILTER_REASON`,
+-    `TITLE_FILTER_MARKER`, `MARKER_AGE`, `MARKER_TTL`, `DESIGN_REENTRY_MARKER_PATH`,
+-    `RESUME_STEP`, `SESSION_ID`, `RUN_ID`, `TIER`, `BRAINSTORM_DONE`; `WARN` and
+-    `ERROR` lines from stdout print as breadcrumbs (do not `printf -v` them). **Do
+-    not** invoke `phase_driver_read_result_env` in this fence.
++    the file-first `while` loop uses a `case` — routing keys (`ROUTE`,
++    `BRAINSTORM_PREFIX`, `TITLE_FILTER_REASON`, `TITLE_FILTER_MARKER`, `MARKER_AGE`,
++    `MARKER_TTL`, `DESIGN_REENTRY_MARKER_PATH`, `RESUME_STEP`, `SESSION_ID`,
++    `RUN_ID`, `TIER`, `BRAINSTORM_DONE`) are stored via `printf -v`; `WARN` and
++    `ERROR` keys print immediately as breadcrumbs (not stored — same Step 3
++    treatment). Then second loop over `_route_out` fills only routing keys not
++    already set from the file; stdout `WARN`/`ERROR` also print as breadcrumbs.
++    **Do not** invoke `phase_driver_read_result_env` in this fence.
+   - Immediately after successful KV merge, **before any ROUTE branch**: re-emit
+     non-empty `WARN` / `ERROR` as warning breadcrumbs.
+@@ -375,9 +389,14 @@
+ - **FINDING_1 / jq-merge logging**: grep `design-init-runparams.sh` for
+   `append-tool-failure.sh`, `jq(router-flags-merge)`, `larch-router-flags-merge`,
+   site `design Step 0b`, and both warning strings ("refusing to recreate" / "jq is
+   unavailable"); re-point `--manual-gate-b` / `--manual-requested` greps to driver.
+-- Check 20: title-eligibility greps → `design-route.sh`; orchestrator banner greps
+-  retained; ordering: orchestrator handles `cancel-title-filter` before `clarify`.
++- Check 20: **drop** the obsolete sub-step `2.5. **Title-eligibility filter**` awk
++  line-order check; replace with: grep `design-route.sh` for
++  `title_has_lifecycle_reject_prefix`, `title_has_archival_report_prefix`, and
++  `title_starts_with_brainstorm`; grep SKILL.md Step 0b for the orchestrator
++  `cancel-title-filter` banner at a position before the `clarify` branch (ordering
++  assert replaces awk line-order); orchestrator cancel banner greps retained.
+ - Check 24: `design-route.sh` contains lifecycle + `design_reentry_marker_hit`;
+   orchestrator route order title-filter → reentry → clarify.
+@@ -409,6 +428,11 @@
+ - Check 21: re-point pause-load / env anchors to driver + orchestrator resume prose.
+ - Checks 25/26 unchanged.
+ - Executable assertions for both new drivers.
++- **FINDING_1 R5 / file-first WARN/ERROR**: grep SKILL.md Step 0b for a
++  `WARN|ERROR` case branch or immediate print inside the file-first
++  `.design-route-result.env` while-loop (confirms file-only WARN/ERROR surface
++  as breadcrumbs, not only via stdout merge).
+ 
+ ### UPDATED: `scripts/test-step0b-router-flag-recovery.sh`
+ Re-point header + `recovery_merge_if_needed` comments to
+@@ -468,6 +492,11 @@
+ 11. **Missing REPO forward → wrong `gh` remote on fork clones** (FINDING_1 R4).
+     Mitigation: orchestrator resolve once after fetch; `${REPO:+--repo}` on both driver
+     argv and resume `write-design-current-env.sh`; structure-test greps.
++12. **File-first loop drops WARN/ERROR → silent pause-load failures** (FINDING_1 R5).
++    Mitigation: file-first loop adds `WARN|ERROR)` case branches that print
++    breadcrumbs immediately; stdout merge also prints WARN/ERROR; pre-branch
++    re-emit still fires for accumulated routing vars.
+ 
+ ## Testing strategy
+ - No new test harnesses (Round 1 Decision 2).
+@@ -500,4 +529,4 @@
+-diff_added: 640
+-diff_deleted: 110
+-diff_lines: 750
++diff_added: 650
++diff_deleted: 112
++diff_lines: 762

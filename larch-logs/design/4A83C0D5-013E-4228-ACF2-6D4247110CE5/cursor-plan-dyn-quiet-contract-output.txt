@@ -1,0 +1,30 @@
+Reviewing the plan against the quiet contract and related phase-driver code.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:249-258	Route Step 0b file-first handoff omits WARN and ERROR cases in the result-env read loop	Step 3 precedent prints WARN from `.step3-review-result.env` during file-first read (`WARN) printf '%s\n' "WARN=$_value"` at lines 869-870). The proposed route fence lists ROUTE and routing keys for `printf -v` but defers WARN/ERROR only to stdout merge plus a separate re-emit step without defining shell variables to re-emit from. If `_route_out` is empty while `.design-route-result.env` still carries pause-load `WARN=`/`ERROR=` (stdout-only fallback edge case in the plan), breadcrumbs never print and LOAD_OK=false parity with today sub-step 2.5-bis is lost	Add `WARN|ERROR)` branches to the file-first `while` loop mirroring Step 3 (`printf '%s\n' "${_key}=${_value}"`), and add `ERROR)` to the `_route_out` merge loop; drop the extra re-emit step or bind vars there only if file and stdout are deduped
+2	in_scope	important	correctness	skills/design/scripts/design-init-runparams.sh:210-214	Router-flag jq/run-params missing warnings use bare `emit` instead of `emit_kv WARN`	After `larch_quiet_init`, `emit` writes to FD 3 (`scripts/lib-quiet.sh:158-163`), so lines land in `_init_out`. The proposed init handoff only merges allowlisted `KEY=VALUE` rows and says log `WARN=` breadcrumbs (`SKILL.md` plan lines 276-282); non-KV `emit` prose is skipped like Step 3 non-KV lines in `_plan_review_out`. Today the same strings are `printf` in the orchestrator block (`skills/design/SKILL.md:357-360`) and are always visible	Use `emit_kv WARN "<same string>"` for both warning paths (match rename `WARN=` at plan line 193) so the existing stdout-merge `WARN)` case surfaces them
+
+## Findings
+
+1. **[correctness]** `skills/design/SKILL.md` (proposed Step 0b route fence, plan lines 249–258) — The Step 3–shaped handoff is incomplete for `WARN`/`ERROR` on the file-first path. Live Step 3 already handles `WARN` during the result-env read:
+
+```864:871:skills/design/SKILL.md
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+      _key="${_line%%=*}"; _value="${_line#*=}"
+      case "$_key" in
+        LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
+          printf -v "$_key" '%s' "$_value" ;;
+        WARN) printf '%s\n' "WARN=$_value" ;;
+      esac
+    done <"$DESIGN_TMPDIR/.step3-review-result.env"
+```
+
+The plan’s route fence excludes `WARN`/`ERROR` from file-first handling, relies on `_route_out` merge plus an undefined “re-emit non-empty WARN/ERROR” step, and never adds an `ERROR)` case (needed for `design-pause-load.sh` `emit_kv ERROR`, e.g. `scripts/design-pause-load.sh:29-30`). **Suggested revision:** Add `WARN|ERROR)` to the file-first loop and `ERROR)` to the stdout merge loop (same `printf '%s\n' "${_key}=${_value}"` shape as Step 3 `WARN`); remove the redundant second re-emit unless you explicitly dedupe file vs stdout.
+
+2. **[correctness]** `skills/design/scripts/design-init-runparams.sh` (proposed lines 210–214) — Relocated jq/run-params warnings call `emit` with markdown prose. Under the quiet contract, `emit` is contract-stream output on FD 3, not operator stderr (`scripts/lib-quiet.md:18-19`; `scripts/lib-quiet.sh:158-163`). The init orchestrator only documents KV merge for `WARN` among diagnostics, so those lines stay inside `_init_out` and are not printed—unlike today’s orchestrator `printf` at `skills/design/SKILL.md:357-360`. **Suggested revision:** Use `emit_kv WARN "…"` for both strings (same channel as rename failure at plan line 193).
+
+## Exonerated (quiet-contract checks)
+
+- **`larch_quiet_init` before emits:** Both proposed drivers call `larch_quiet_init` after sourcing `lib-phase-driver.sh` (which pulls in `scripts/lib-quiet.sh`), matching `run-step3-review.sh:8-9`. Quiet mode does not suppress `emit_kv`; it routes contract lines to FD 3, which command substitution captures when the child’s FD 1 is the pipe (`scripts/lib-quiet.sh:53-57`, `scripts/test-lib-quiet.sh:45-50`).
+- **Dual output (`phase_driver_write_result_env` + `emit_kv`):** Consistent with `skills/design/scripts/lib-phase-driver.md:16-17` and Step 3; the orchestrator must not use `phase_driver_read_result_env` alone (plan correctly mirrors Step 3).
+- **`fail()` / exit 2 via `larch_err`:** Correctly on FD 4, outside captured stdout; orchestrator abort banners are appropriate.
+- **Subprocess `design-pause-load.sh`:** Captured via `$(…)` inside the route driver gets its own quiet init with FD 3 wired to the parent pipe; forwarding via `emit_kv` into the route result env is sound if the orchestrator reads `WARN`/`ERROR` from file and stdout as above.

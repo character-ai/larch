@@ -1,0 +1,31 @@
+Reviewing the plan and related test scripts against the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	<TMPDIR>/plan.txt:156-177	`test-design-structure.sh` update list is incomplete versus existing Step 0b SKILL pins	After inline Step 0b removal, `make lint` still greps `SKILL.md` for `#2754` recovery-guard / `--brainstorm-requested` (scripts/test-design-structure.sh:492-499) and tier strings `**Tier resolution**`, `default tier: SIMPLE (no --hard)`, `sketch_budget=0` (scripts/test-design-structure.sh:40-41,96) that move only into `design-init-runparams.sh`; implementer following the plan’s ~70-line harness delta hits false-red CI or ad-hoc fixes	Add explicit re-point rows for scripts/test-design-structure.sh:492-499 and :40-41,:96 to `skills/design/scripts/design-init-runparams.sh` (or drop only if intentionally retired)
+2	in_scope	latent	correctness	<TMPDIR>/plan.txt:172-174	Check 24 re-point pins title→reentry→clarify only, not resume→title inside `design-route.sh`	`design-route.sh` must run `design-pause-load.sh` before title-eligibility (plan.txt:49-55); reordering would resume a paused body through lifecycle/archival title cancels or skip resume on fresh runs with no failing assertion	Extend the Check 24 awk (or one line-order grep) so `design-pause-load.sh` precedes `title_has_lifecycle_reject_prefix` in `skills/design/scripts/design-route.sh`
+
+**1. [risk-integration] Incomplete harness inventory in the plan (`plan.txt:156-177`)**
+
+The planned `scripts/test-design-structure.sh` edits cover FINDING_13/14, Check 20/21/24, and warning re-points, but omit several greps that still target inline Step 0b bash in `SKILL.md` today:
+
+- `#2754` recovery surface at ```492:499:scripts/test-design-structure.sh``` (`--brainstorm-requested`, outer `partition_requested || brainstorm_requested || manual_requested` guard, partial jq arm)
+- Tier / run-params literals at ```40:41:scripts/test-design-structure.sh``` and ```96:96:scripts/test-design-structure.sh``` (`**Tier resolution**`, `default tier: SIMPLE (no --hard)`, `sketch_budget=0`)
+
+Those strings live only in Step 0b sub-steps 5–6 (```280:332:skills/design/SKILL.md```), which the plan removes in favor of `design-init-runparams.sh`. Re-pointing is implied by the extraction but not listed; an implementer who updates only the bullets in the plan will leave red structure tests.
+
+**Suggested revision:** Add three explicit harness bullets: re-point `#2754` greps to `design-init-runparams.sh`; re-point tier/sketch literals to the driver (or document which orchestrator prose anchors replace them).
+
+---
+
+**2. [correctness] Resume-before-title ordering not pinned (`plan.txt:172-174`)**
+
+Check 24 is re-pointed to assert `title_has_lifecycle_reject_prefix` before `design_reentry_marker_hit` in `design-route.sh`, and orchestrator handling of `cancel-title-filter` before clarify. The plan’s driver contract requires resume detection first (```49:55:<TMPDIR>/plan.txt```), matching current ```215:215:skills/design/SKILL.md``` behavior. No planned assertion covers that ordering; title-filter could be moved ahead of `design-pause-load.sh` without a failing test.
+
+**Suggested revision:** Extend Check 24 with a minimal line-order check: `design-pause-load.sh` before `title_has_lifecycle_reject_prefix` in `design-route.sh`.
+
+---
+
+**Exonerated (minimum-change bias):**
+
+- `scripts/test-step0b-router-flag-recovery.sh`: Re-pointing comments while keeping the seven-case replica is enough for jq-merge semantics; the `#3008` full-filter grep move covers drift with the driver.
+- Collapsed env refresh (5.5-bis removal): FINDING_13 re-point plus driver responsibility order is adequate for the intentional single-refresh cleanup.
+- `append-tool-failure.sh` on jq merge failure, rename-before-refresh ordering, and new offline driver harnesses: not pinned pre-extraction; out of scope for this minimum-change lane.
