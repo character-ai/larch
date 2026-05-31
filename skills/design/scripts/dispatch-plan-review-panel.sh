@@ -102,9 +102,9 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
         printf '%s\n' "You are a combined plan-review panel applying all five standard archetype lenses in a single pass. Address each lens below, then follow the shared output contract."
         printf '\n'
         for _archetype in arch edge innovation pragmatic requirements; do
-            _role_line=$(bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-                --archetype "$_archetype" --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR" \
-                | head -n 1)
+            _role_render=$(bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+                --archetype "$_archetype" --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR")
+            _role_line="${_role_render%%$'\n'*}"
             printf '%s\n\n' "$_role_line"
         done
         append_shared_prompt_tail "$PLAN_FILE"
