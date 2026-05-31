@@ -933,7 +933,7 @@ contains "$APPROVAL_MD" 'Passive-summary auto-continue routes through Step 3.6 b
 # shellcheck disable=SC2016 # backticks are literal markdown pins
 contains "$APPROVAL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `panel-failed`) bypass Step 3.5 and Step 3.6 before Step 3b' 'approval-gates.md missing Gate-B-bypass Step 3.5/3.6 coverage pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
-contains "$SKILL_MD" 'set `TALLY_PLAN_REVIEW_STATUS=ok`, `LOOP_STATUS=complete`, and persist `.step3-plan-review-result.env` from the re-tally so Gate B does not read stale 0-judge fallback state' 'SKILL.md missing MainAgent re-tally state refresh pin'
+contains "$SKILL_MD" 'set `TALLY_PLAN_REVIEW_STATUS=ok`, `LOOP_STATUS=complete`, and persist both `.step3-plan-review-result.env` and `.step3-review-result.env` from the re-tally so Gate B and later Step 3 logic do not read stale 0-judge fallback state' 'SKILL.md missing MainAgent re-tally state refresh pin'
 # shellcheck disable=SC2016 # $ tokens are literal markdown pins
 contains "$SKILL_MD" '--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/findings-classification.tsv"' 'SKILL.md missing MainAgent re-tally findings-classification-out pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins
