@@ -1,0 +1,23 @@
+Reviewing the branch diff and launcher parity for `--stderr-sink` handling.
+Checking launcher dispatch and comparing codex vs cursor `--stderr-sink` wiring in detail.
+**Branch commits** (since `main`):
+
+- `38b7bee1f` — Forward `--stderr-sink` through collector retry paths  
+- `cc702bb5a` — chore(larch-logs): flush implement run  
+- `baad7d1db` — Apply relevant-checks fixes (Step 3)
+
+### In-Scope Findings
+
+- **architecture** `scripts/test-launch-review.sh:1381-1384` — The codex suite’s “threading” check greps the whole `scripts/launch-review.sh` for `_RUN_EXTERNAL_SINK_ARGS+=(--stderr-sink "$STDERR_SINK")`, which also appears in `_launch_cursor` (~692–693). It does not assert that sink args are expanded on the codex `RUN_EXTERNAL` calls (~541, ~559). A regression that removed only those expansions while leaving cursor’s (~976) and both init blocks would still pass, so the harness does not guard codex lane wiring despite the plan’s parity requirement. **Suggested fix:** Assert codex-specific forwarding (e.g. two `"${_RUN_EXTERNAL_SINK_ARGS[@]+"${_RUN_EXTERNAL_SINK_ARGS[@]}"}"` expansions inside `_launch_codex`, or stub-capture `run-external-agent.sh` argv in the codex subshell) and mirror the same pattern for cursor (one expansion after `--capture-stdout-only`).
+
+- **architecture** `scripts/test-launch-review.sh:2709-2741` — The cursor stderr-sink block accepts the flag and checks outer `.meta` but has no lane-specific inner-argv assertion, while the codex block adds the weak file-wide grep above. Per `.claude/rules/launcher-argv-test-coverage.md` and `.claude/rules/external-tool-launcher-parity.md`, that leaves cursor with weaker regression coverage for the same shared surface even though `scripts/launch-review.sh` implementation is symmetric (init/parse/validate at ~111–157 vs ~652–693, meta append at ~604 vs ~1028, `RUN_EXTERNAL` at ~541/559 vs ~976). **Suggested fix:** Extend the cursor subshell with the same lane-scoped argv contract as codex (prefer stub-based checks over whole-file greps).
+
+### Out-of-Scope Observations
+
+- **architecture** `scripts/test-collect-agent-retry.sh:815-840` — Forwarding is checked only via static `grep` on `collect-agent-results.sh` plus a `..` fail-closed case; there is no behavioral test that a retry exec actually receives `--stderr-sink` on outer-launcher or CMD_JSON paths (function vs inline). This gap is collector-wide, not codex/cursor launcher drift.
+
+- **architecture** `scripts/launch-review.sh:159-164` vs `694-704` — Pre-existing timeout rejection messages still differ between codex (`positive integer (seconds), got …`) and cursor (`positive integer` / `>= 1`); unchanged by this branch.
+
+- **correctness** `scripts/collect-agent-results.md` / NS-retry path — NOT_SUBSTANTIVE outer-launcher retries still do not parse or forward `STDERR_SINK`; only empty-output retry paths were extended (pre-existing scope boundary, not amplified by this diff).
+
+- **architecture** `scripts/launch-review.sh` capture modes — Codex redirects fd2 to `${OUTPUT}.sidecar` and cursor uses `--capture-stdout-only`; `--stderr-sink` is documented as inert for `.stderr-tail` on those lanes today but still round-trips through `.meta` for collector retries. That matches the plan and is not a codex/cursor parity defect.

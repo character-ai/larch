@@ -1,0 +1,8 @@
+Reviewing the branch diff and commit history, focusing on STDERR_SINK handling across all collector retry paths.
+Examining collector retry paths and comparing helper vs inline implementations for asymmetry.
+Checking whether NS-retry and empty-output paths share validation ordering, and whether duplicate `.meta` keys could cause issues:
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **code-quality** `scripts/test-collect-agent-retry.sh:815-820` — New STDERR_SINK coverage is static source greps (`grep -F -- "_outer_sink_args+=..."` / `RETRY_ARGS+=...`) rather than a behavioral harness that records the retried argv (similar to existing outer-launcher cases Q/V/W). A regression that dropped forwarding in one of the two duplicated blocks while leaving a single surviving line could still pass. **Suggested fix:** Add an integration case (stub launcher or `run-external-agent.sh` wrapper log) that asserts `--stderr-sink <path>` appears on the retry exec for both outer-launcher and CMD_JSON paths, mirroring how case Q exercises outer replay end-to-end.

@@ -491,6 +491,23 @@ fi
 # 19g. Invalid --stderr-sink is rejected before launch (symmetric with --output).
 assert_rejected_stderr_sink "reject-stderr-sink-equals" "$TMPDIR/stderr-sink-reject.txt" "$TMPDIR/bad=stderr-sink.log"
 
+# 19h. Base .meta records STDERR_SINK= when --stderr-sink is set.
+META_SINK_OUT="$TMPDIR/meta-sink-output.txt"
+META_SINK_FILE="$TMPDIR/meta-sink-path.log"
+run_subject "meta-sink-present" "$META_SINK_OUT" --stderr-sink "$META_SINK_FILE" -- bash -c 'printf ok'
+assert_equals "meta-sink-present exit" "0" "$RUN_CODE"
+assert_grep "meta-sink-present meta line" "^STDERR_SINK=$META_SINK_FILE$" "${META_SINK_OUT}.meta"
+
+# 19i. Base .meta omits STDERR_SINK= entirely when --stderr-sink is absent (byte-stability).
+META_NO_SINK_OUT="$TMPDIR/meta-no-sink-output.txt"
+run_subject "meta-no-sink" "$META_NO_SINK_OUT" -- bash -c 'printf ok'
+assert_equals "meta-no-sink exit" "0" "$RUN_CODE"
+if grep -q '^STDERR_SINK=' "${META_NO_SINK_OUT}.meta" 2>/dev/null; then
+    fail "meta-no-sink must omit STDERR_SINK= line when flag absent"
+else
+    pass
+fi
+
 # Plan traceability: collector shares lib stderr-tail fence helper with this wrapper.
 if grep -Fq '_emit_collector_stderr_tail_file' "$REPO_ROOT/scripts/collect-agent-results.sh"; then
     pass

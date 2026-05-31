@@ -1354,6 +1354,41 @@ set -e
 assert_eq "codex-add-dir reject symlink exit" "2" "$CAD_SYMLINK_RC"
 assert_grep "codex-add-dir reject symlink message" "--codex-add-dir is not a directory" "$TMPDIR/codex-add-dir-symlink.stderr"
 
+# --stderr-sink argv validation and forwarding (parity with --output charset guard).
+SS_REJECT_OUT="$TMPDIR/stderr-sink-reject-codex.txt"
+SS_REJECT_ERR="$TMPDIR/stderr-sink-reject-codex.stderr"
+set +e
+"$LAUNCHER" --output "$SS_REJECT_OUT" --timeout 5 --prompt "x" \
+    --stderr-sink "$TMPDIR/bad"$'\n'"sink.log" >/dev/null 2>"$SS_REJECT_ERR"
+SS_REJECT_RC=$?
+set -e
+assert_eq "stderr-sink reject newline exit" "1" "$SS_REJECT_RC"
+assert_grep "stderr-sink reject newline message" "ERROR: --stderr-sink contains bytes outside" "$SS_REJECT_ERR"
+
+SS_ACCEPT_OUT="$TMPDIR/stderr-sink-accept-codex.txt"
+SS_ACCEPT_SINK="$TMPDIR/stderr-sink-accept-codex.sidecar.log"
+SS_ACCEPT_META="${SS_ACCEPT_OUT}.meta"
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-stderr-sink-accept-codex-$$" \
+    "$LAUNCHER" --output "$SS_ACCEPT_OUT" --timeout 5 --prompt "review prompt" \
+    --stderr-sink "$SS_ACCEPT_SINK" >/dev/null 2>"$TMPDIR/stderr-sink-accept-codex.stderr"
+set -e
+if grep -Fq "unknown flag: --stderr-sink" "$TMPDIR/stderr-sink-accept-codex.stderr" 2>/dev/null; then
+    fail "stderr-sink flag not recognized on codex lane"
+else
+    pass
+fi
+if grep -F -- "_RUN_EXTERNAL_SINK_ARGS+=(--stderr-sink \"\$STDERR_SINK\")" "$REPO_ROOT/scripts/launch-review.sh" >/dev/null; then
+    pass
+else
+    fail "launch-review.sh codex lane must thread --stderr-sink to run-external-agent.sh"
+fi
+if [[ -f "$SS_ACCEPT_META" ]] && grep -Fxq "STDERR_SINK=$SS_ACCEPT_SINK" "$SS_ACCEPT_META"; then
+    pass
+else
+    fail "codex lane must record STDERR_SINK= in outer .meta when --stderr-sink is set"
+fi
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-launch-review.sh --tool codex - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAILURES[@]}" >&2
@@ -2670,6 +2705,41 @@ rm -f "$SL_OBS_CURSOR_EXHAUSTED_COUNT"
 
 # Restore normal cursor stub for remaining tests.
 ln -sf "$STUB_BIN/cursor-sl" "$STUB_BIN/cursor"
+
+# --stderr-sink argv validation and forwarding (cursor lane parity).
+CSS_REJECT_OUT="$TMPDIR/stderr-sink-reject-cursor.txt"
+CSS_REJECT_ERR="$TMPDIR/stderr-sink-reject-cursor.stderr"
+set +e
+"$LAUNCHER" --output "$CSS_REJECT_OUT" --timeout 5 --prompt "x" \
+    --stderr-sink "$TMPDIR/bad"$'\n'"sink.log" >/dev/null 2>"$CSS_REJECT_ERR"
+CSS_REJECT_RC=$?
+set -e
+assert_equals "stderr-sink reject newline exit (cursor)" "1" "$CSS_REJECT_RC"
+if grep -Fq "ERROR: --stderr-sink contains bytes outside" "$CSS_REJECT_ERR" 2>/dev/null; then
+    pass
+else
+    fail "stderr-sink reject newline message (cursor)"
+fi
+
+CSS_ACCEPT_OUT="$TMPDIR/stderr-sink-accept-cursor.txt"
+CSS_ACCEPT_SINK="$TMPDIR/stderr-sink-accept-cursor.sidecar.log"
+CSS_ACCEPT_META="${CSS_ACCEPT_OUT}.meta"
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-stderr-sink-accept-cursor-$$" \
+    CURSOR_API_KEY="test-key" \
+    "$LAUNCHER" --output "$CSS_ACCEPT_OUT" --timeout 5 --prompt "review prompt" \
+    --stderr-sink "$CSS_ACCEPT_SINK" >/dev/null 2>"$TMPDIR/stderr-sink-accept-cursor.stderr"
+set -e
+if grep -Fq "unknown flag: --stderr-sink" "$TMPDIR/stderr-sink-accept-cursor.stderr" 2>/dev/null; then
+    fail "stderr-sink flag not recognized on cursor lane"
+else
+    pass
+fi
+if [[ -f "$CSS_ACCEPT_META" ]] && grep -Fxq "STDERR_SINK=$CSS_ACCEPT_SINK" "$CSS_ACCEPT_META"; then
+    pass
+else
+    fail "cursor lane must record STDERR_SINK= in outer .meta when --stderr-sink is set"
+fi
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-launch-review.sh --tool cursor - %s failed, %s passed\n' "$FAIL" "$PASS" >&2

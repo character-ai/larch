@@ -196,6 +196,9 @@ fi
     echo "CAPTURE_STDOUT=$CAPTURE_STDOUT"
     echo "CAPTURE_STDOUT_ONLY=$CAPTURE_STDOUT_ONLY"
     echo "OUTPUT_FILE=$OUTPUT_FILE"
+    if [[ -n "$STDERR_SINK" ]]; then
+        printf 'STDERR_SINK=%s\n' "$STDERR_SINK"
+    fi
     printf 'CMD_JSON=%s\n' "$META_CMD_JSON"
 } > "${OUTPUT_FILE}.meta"
 
