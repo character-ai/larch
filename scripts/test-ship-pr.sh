@@ -6580,6 +6580,8 @@ set +e
 ) >"$impl/launcher.stdout" 2>"$impl/launcher.stderr"
 producer_rc=$?
 set -e
+[[ "$producer_rc" -ne 0 ]] \
+    || fail "real launch-cursor-ci.sh should fail when cursor exits nonzero"
 if [[ -s "${tier_out}.stderr-tail" ]] \
     && grep -Fq 'LARCH_REAL_CURSOR_CI_STDERR_PROBE' "${tier_out}.stderr-tail"; then
     ok "real launch-cursor-ci.sh writes stderr-tail on agent failure"

@@ -983,6 +983,7 @@ case9_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case9_out")
 grep -Fq 'LARCH_LINT_FIX_CODEX_STDERR_PROBE' "$case9_run_dir/codex.log.stderr-tail" \
     || fail "case9 stderr-tail must contain codex stderr probe"
 
+# shellcheck disable=SC2016 # Intentional literal source-code assertion.
 grep -Fq 'return "$cursor_rc"' "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
     || fail "lint-fix-loop.sh run_cursor must return cursor_rc on failure"
 
