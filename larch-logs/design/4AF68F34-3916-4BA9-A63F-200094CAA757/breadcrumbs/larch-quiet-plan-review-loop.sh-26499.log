@@ -1,0 +1,2 @@
+plan-review-loop.sh: unknown option: --bogus-xyz
+Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--round-cap N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]

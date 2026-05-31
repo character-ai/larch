@@ -1,0 +1,61 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -14,12 +14,15 @@
+ 
+ ### UPDATED: `skills/cleanup/scripts/cleanup.sh`
+ Make the top-level enumeration `find` exit observable on both passes. Today both passes use `done < <(find … 2>/dev/null) || true`; process substitution hides `find`'s exit, so an enumeration failure (e.g. unreadable `~/.cache/larch/sessions/`) is silent.
+ 
+-- **Cache pass** (the `if [[ -d "$CACHE_DIR" ]]` block): redirect the enumeration into a `mktemp` file, branch on `find`'s exit, then read NUL-delimited from that file:
+-  - `if find "$CACHE_DIR" -mindepth 1 -maxdepth 1 ! -type l -print0 >"$_cache_list" 2>/dev/null; then` … existing `while IFS= read -r -d $'\0' entry; do … done < "$_cache_list"` (loop body unchanged) … `else larch_err "Warning: failed to enumerate '$CACHE_DIR'; skipping cache cleanup."` … `fi`; then `rm -f "$_cache_list"`.
+-- **`/tmp` pass** (the `if [[ -d "$TMP_ROOT" ]]` block): same wrap, preserving the existing `-mtime +"$RETENTION_DAYS" \( "${_find_name_args[@]}" \)` predicate and the dir/file branch in the loop body. Warning text: `Warning: failed to enumerate '$TMP_ROOT'; skipping /tmp cleanup.`
+-- Temp files via `mktemp "${TMPDIR:-/tmp}/larch-cleanup-*.XXXXXX"`; `rm -f` after each pass. Bash 3.2-only (no `mapfile`/assoc arrays). Drop the now-redundant trailing `|| true` on these two loops (the `if find` branch owns the exit decision).
+-- **Invariant**: only the FAILURE path changes. Normal-path counts, NUL-safe iteration, `! -type l`, the `maxdepth 5` nested confirm, and the `/tmp` `-mtime +N` pre-filter are byte-for-byte preserved. The nested-scan fail-safe (`should_remove_by_age`, "failed to scan session activity") is untouched.
++- **Cache pass** (the `if [[ -d "$CACHE_DIR" ]]` block): allocate `$_cache_list` via guarded `mktemp`; on allocation failure, `larch_err "Warning: failed to allocate temp list for cache cleanup; skipping cache cleanup."` and skip (count 0). Else redirect enumeration into the temp file, branch on `find`'s exit, then read NUL-delimited from that file:
++  - `if find "$CACHE_DIR" -mindepth 1 -maxdepth 1 ! -type l -print0 >"$_cache_list" 2>/dev/null; then` … existing `while IFS= read -r -d $'\0' entry; do … done < "$_cache_list" || true` (loop body unchanged; **retain `|| true`**) … `else larch_err "Warning: failed to enumerate '$CACHE_DIR'; skipping cache cleanup."` … `fi`; `rm -f "$_cache_list"` on all paths.
++- **`/tmp` pass** (the `if [[ -d "$TMP_ROOT" ]]` block): same wrap (guarded `mktemp` for `$_tmp_list` first), preserving the existing `-mtime +"$RETENTION_DAYS" \( "${_find_name_args[@]}" \)` predicate and the dir/file branch in the loop body. Allocation warning: `Warning: failed to allocate temp list for /tmp cleanup; skipping /tmp cleanup.` Enumeration warning: `Warning: failed to enumerate '$TMP_ROOT'; skipping /tmp cleanup.` Read loop: `done < "$_tmp_list" || true`.
++- Temp files via `mktemp "${TMPDIR:-/tmp}/larch-cleanup-*.XXXXXX"`; `rm -f` after each pass on every path (success, `find` failure, allocation skip). Bash 3.2-only (no `mapfile`/assoc arrays).
++- **Guard `mktemp` under `set -e`**: use `if _list=$(mktemp …); then` (or equivalent) so a missing/unwritable `${TMPDIR:-/tmp}` cannot abort cleanup before `emit_kv CACHE_REMOVED` / `TMP_REMOVED` — warn, skip that pass with count 0, continue (FINDING_1).
++- **Keep `|| true` on both `while read` loops** when reading from the temp file. The `if find` branch owns only top-level enumeration exit; removing `|| true` would let loop-body failures (e.g. `rm`) trip errexit and exit non-zero outside enumeration handling (FINDING_3).
++- **Invariant**: only top-level enumeration/allocation FAILURE paths change. Normal-path counts, NUL-safe iteration, `! -type l`, the `maxdepth 5` nested confirm, the `/tmp` `-mtime +N` pre-filter, loop-body errexit suppression (`|| true` on read loops), and the nested-scan fail-safe (`should_remove_by_age`, "failed to scan session activity") are preserved.
+ 
+ ### UPDATED: `skills/cleanup/scripts/cleanup.md`
+-- Rewrite the "Enumeration-pass fail-open" invariant bullet: a failed top-level enumeration `find` now emits a `larch_err` warning and skips that pass (counts stay 0; cleanup still exits 0) — a fail-safe parallel to the nested-scan fail-safe, no longer fail-open.
+-- Extend the **Edit-in-sync** bullet so it names the enumeration fail-safe (not only the nested-scan path) as a trigger for updating `test-cleanup.sh` and `SECURITY.md`.
++- Rewrite the "Enumeration-pass fail-open" invariant bullet: a failed top-level enumeration `find` **or** failure to allocate the temp list (`mktemp`) now emits a `larch_err` warning and skips that pass (counts stay 0; cleanup still exits 0 and still emits removal-count KVs) — a fail-safe parallel to the nested-scan fail-safe, no longer fail-open.
++- Extend the **Edit-in-sync** bullet so it names the enumeration / temp-list allocation fail-safes (not only the nested-scan path) as triggers for updating `test-cleanup.sh` and `SECURITY.md`.
+ 
+ ### UPDATED: `skills/cleanup/scripts/test-cleanup.sh`
+ - Add `write_stub_enum_failure`: a `find` stub that exits non-zero only when argv contains `-mindepth 1` (used solely by the two enumeration passes — the nested scan uses `-maxdepth 5`, the symlink reaper uses `-maxdepth 1` without `-mindepth`), else `exec /usr/bin/find "$@"`. Mirror the structure of the existing `write_stub_find_failure`.
+ - Add two cases mirroring the existing `find-failure-skips-deletion` / `-tmp` pair: `enumeration-failure-warns` (cache) and `enumeration-failure-warns-tmp` (/tmp). Each asserts: exit 0, output contains `failed to enumerate`, and `CACHE_REMOVED`/`TMP_REMOVED` == 0.
++- Add `mktemp-allocation-failure-warns`: run with an unwritable `TMPDIR` (e.g. `export TMPDIR="$TMP/not-writable"`) so guarded `mktemp` fails before `find`; assert exit 0, stderr/contract stream contains a temp-list allocation warning, affected pass count(s) == 0, and `CACHE_REMOVED`/`TMP_REMOVED` KVs are still present (cleanup did not abort under `set -e`).
+ - Leave the existing nested-scan failure cases intact (they still pass: enumeration `find` succeeds, only `-maxdepth 5` fails).
+ 
+ ### UPDATED: `SECURITY.md`
+-In the `/cleanup` session-tmpdir retention note, change the clause "a failed top-level enumeration `find` is swallowed — the pass exits 0 with counts at 0 and emits no warning (fail-open)" to describe the new fail-safe: the enumeration failure now warns via `larch_err` and skips that pass (count 0), cleanup still exits 0.
++In the `/cleanup` session-tmpdir retention note, change the clause "a failed top-level enumeration `find` is swallowed — the pass exits 0 with counts at 0 and emits no warning (fail-open)" to describe the new fail-safe: enumeration failure or failure to allocate the temp list for enumeration now warns via `larch_err` and skips that pass (count 0), cleanup still exits 0 and still emits removal-count KVs.
+ 
+ ### UPDATED: `skills/design/scripts/run-step3-review.sh`
+ Remove the dead `--convergence-threshold` plumbing (the var is only forwarded — no other logic):
+@@ -88,11 +91,13 @@
+ ## Edge cases
+ - **cleanup.sh**: `find` writes partial output then fails mid-enumeration → the `if find` branch catches the non-zero exit, the partial temp file is discarded (warn + skip), temp file removed. `mktemp` lives under `${TMPDIR:-/tmp}`, distinct from the scanned root, so the test's `LARCH_TEST_TMP_ROOT` override is unaffected.
++- **`mktemp` failure**: missing/unwritable `${TMPDIR:-/tmp}` → guarded skip with `larch_err` warning, pass count 0, script continues to the next pass and still reaches `emit_kv` for both removal counts.
+ - **Existing nested-scan tests**: unaffected — the enumeration `find` succeeds; only the `-maxdepth 5` scan fails, so `should_remove_by_age` still warns "failed to scan session activity" and keeps the entry.
+ - **run-step3-review.sh callers**: only `SKILL.md` and the three test files pass `--convergence-threshold`; all are updated in the same change, so no caller is left passing a now-rejected flag to the driver.
+ 
+ ## Failure modes
++- **Unguarded `mktemp` (regression)**: without the guard, `set -e` aborts before `CACHE_REMOVED`/`TMP_REMOVED` KVs when the temp dir is bad — contradicts the planned fail-safe. Earliest signal: `mktemp-allocation-failure-warns`. Mitigation: guarded allocation on both passes.
+ - **Stub-key collision (test)**: keying `write_stub_enum_failure` on `-mindepth 1` is precise — the nested scan (`-maxdepth 5`) and symlink reaper (`-maxdepth 1`, no `-mindepth`) do not match, so the new test fails the enumeration only. Earliest signal: the existing nested-scan cases would break if the key were wrong. Mitigation: run the full `test-cleanup.sh` after editing.
+ - **Stale structure pin**: if `test-design-structure.sh:63/67` are not removed, CI fails after dropping the forwarding. Earliest signal: `make lint` / structure harness. Mitigation: both assertions are in this plan's file list.
+ - **Missed convergence reference**: a forgotten `--convergence-threshold` usage in a test leaves a now-invalid argv. Earliest signal: that test's run (driver no longer accepts the flag → exits 2). Mitigation: grep `convergence` across `skills/ scripts/ docs/` after edits; the complete surface is enumerated above.
+@@ -100,7 +105,7 @@
+ - `bash skills/design/scripts/test-step3-review-cap.sh`, `bash scripts/test-design-multi-round-integration.sh`, `bash skills/design/scripts/test-plan-review-loop.sh` — confirm green after argv edits.
+ - `bash scripts/test-design-structure.sh` — confirm green after removing the two convergence pins.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) — repo-wide pre-commit incl. `make lint-bash32`, shellcheck, markdownlint, and `script-md-siblings`.
+ 
+-diff_added: 110
+-diff_deleted: 80
+-diff_lines: 190
++diff_added: 128
++diff_deleted: 78
++diff_lines: 206

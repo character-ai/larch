@@ -1,0 +1,6 @@
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-31T15:57:39.390451Z ERROR rmcp::transport::worker: worker quit with fatal: Transport channel closed, when UnexpectedContentType(Some("text/plain; body: upstream connect error or disconnect/reset before headers. retried and the latest reset reason: remote connection failure, transport failure reason: delayed connect error: Connection refused"))
+2026-05-31T15:57:42.875351Z ERROR codex_core::session: failed to record rollout items: thread 019e7ec1-5040-73f2-bcf0-a69701a26e30 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
