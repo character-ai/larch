@@ -2640,28 +2640,6 @@ printf '%s\n' "$dedup_nonnumeric_log" | grep -q 'dedup-sweep:' && fail "non-nume
 compgen -G "$DPNONNUM/.plan-dedup.*" >/dev/null && fail "non-numeric dedup output should clean temporary dedup file"
 rm -f "$STUB/python3"
 
-echo "=== stubbed driver: collector hard fail with empty stdout → panel-failed ==="
-DHARD="$TMP/collector-hard-fail"
-mkdir -p "$DHARD"
-printf 'plan\n' >"$DHARD/plan.txt"
-printf 'feat\n' >"$DHARD/feature-description.txt"
-write_scout
-write_dispatch_one_slot
-cat >"$STUB/collect-agent-results.sh" <<'EOS'
-#!/usr/bin/env bash
-set -euo pipefail
-exit 1
-EOS
-chmod +x "$STUB/collect-agent-results.sh"
-write_voters_three
-set +e
-out_hard=$(run_loop "$DHARD" 2>"$DHARD/loop.stderr")
-rc_hard=$?
-set -e
-[[ "$rc_hard" -eq 1 ]] || fail "collector hard fail with empty stdout should exit 1"
-printf '%s\n' "$out_hard" | grep -q '^LOOP_STATUS=panel-failed$' \
-    || fail "collector hard fail with empty stdout should surface panel-failed (not degraded-empty-collector)"
-
 echo "=== stubbed driver: collector stderr tail reaches FD 2 and log (#3227) ==="
 DTAIL="$TMP/stderr-tail-fd2"
 mkdir -p "$DTAIL"

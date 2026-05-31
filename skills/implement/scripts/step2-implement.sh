@@ -1077,6 +1077,13 @@ case "$STATUS" in
         emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
         emit_kv SIDECAR_LOG "$SIDECAR_LOG"
         emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
+        if [[ ! -s "${TRANSCRIPT_PATH}.stderr-tail" ]]; then
+            if [[ -s "${TRANSCRIPT_PATH}.diag" ]]; then
+                write_failed_agent_stderr_tail "${TRANSCRIPT_PATH}.diag" "$TRANSCRIPT_PATH" || true
+            elif [[ -s "$SIDECAR_LOG" ]]; then
+                write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true
+            fi
+        fi
         emit_failed_agent_stderr_tail_larch_err "$TRANSCRIPT_PATH" || true
         ;;
 esac

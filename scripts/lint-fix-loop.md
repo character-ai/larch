@@ -64,9 +64,13 @@ Behavior:
    overwrite the Codex exit code, and the raw `.events.jsonl` artifact is not
    a committed run-log artifact.
    `run_cursor()` uses `--capture-stdout`; `run-external-agent.sh` writes
-   `${run_dir}/cursor.log.stderr-tail` on failure. The helper does not read
-   `cursor.wrapper.log` as a stderr source; it only backfills from
-   `${run_dir}/cursor.log` / `.diag` when the tail file is missing. Neither
+   `${run_dir}/cursor.log.stderr-tail` on failure. Model-args, auth, and
+   wrap-prompt failures before spawn are captured in
+   `$run_dir/cursor.preflight.log` and may be written to
+   `${run_dir}/cursor.log.stderr-tail` via `_run_cursor_record_early_fail`.
+   The helper does not read `cursor.wrapper.log` as a stderr source; it only
+   backfills from `${run_dir}/cursor.log` / `.diag` when the tail file is
+   missing. Neither
    `run_cursor()` nor `run_codex()` emit tails to chat in-loop — parent
    redirects (for example `run_lint_fix_loop_capture` with `2>"$fail_file"`)
    capture FD 2; `ship-pr.sh` and Step 5 parse `STDERR_TAIL_PATH` and surface

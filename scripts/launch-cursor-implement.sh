@@ -313,6 +313,9 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         AUTH_ATTEMPT=$((AUTH_ATTEMPT + 1))
         : > "$SIDECAR_LOG" 2>/dev/null || true
         : > "${TRANSCRIPT_PATH}.diag" 2>/dev/null || true
+        # Preserve .stderr-tail across retry; run-external-agent overwrites it on
+        # a new failure or removes it on success, so deletion here is a no-op at best
+        # and loses the prior tail at worst (when the retry fails with empty diag).
         continue
     fi
     break
@@ -327,6 +330,7 @@ if (( LAUNCHER_EXIT != 0 )); then
         _FAILURE_OUTPUT="${TRANSCRIPT_PATH}.diag"
     fi
     append_launch_failure "2" "cursor-implement" "$LAUNCHER_EXIT" "$_FAILURE_OUTPUT" "$_VERDICT" "$AUTH_ATTEMPT"
+    write_failed_agent_stderr_tail "$_FAILURE_OUTPUT" "$TRANSCRIPT_PATH" || true
 fi
 
 cursor_launcher_append_outer_meta "${TRANSCRIPT_PATH}.meta" "$SCRIPT_DIR/launch-cursor-implement.sh" "$PROMPT_FILE_SIDECAR" "$PWD"
@@ -346,6 +350,17 @@ MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false
 [[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
 [[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
+
+if [[ "$MANIFEST_WRITTEN" == true ]] && command -v jq >/dev/null 2>&1; then
+    _manifest_status=$(jq -r 'if type=="object" then .status // "" else "" end' "$MANIFEST_PATH" 2>/dev/null || true)
+    if [[ "$_manifest_status" == "bailed" ]]; then
+        _bailed_tail_src="${TRANSCRIPT_PATH}.diag"
+        if [[ ! -s "$_bailed_tail_src" ]]; then
+            _bailed_tail_src="$SIDECAR_LOG"
+        fi
+        write_failed_agent_stderr_tail "$_bailed_tail_src" "$TRANSCRIPT_PATH" || true
+    fi
+fi
 
 emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
 emit_kv MANIFEST_WRITTEN "$MANIFEST_WRITTEN"

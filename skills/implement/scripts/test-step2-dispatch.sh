@@ -1672,6 +1672,56 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 23: manifest status=bailed surfaces pre-written stderr-tail on dispatcher stderr.
+# ---------------------------------------------------------------------------
+TMP23="$SCRATCH/test23"; mkdir -p "$TMP23"
+printf 'fresh-step2-23\n' > "$TMP23/session-id"
+STUB_BIN_23="$SCRATCH/stub-bin-23"; mkdir -p "$STUB_BIN_23"
+cat > "$STUB_BIN_23/cursor" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+cat > "$STUB_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "bailed",
+  "bail_reason": "stub-manifest-bailed"
+}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf 'LARCH_STEP2_MANIFEST_BAILED_STDERR_PROBE\n' >&2
+printf 'stub cursor stdout\n'
+EOF
+chmod +x "$STUB_BIN_23/cursor"
+STDERR_23="$TMP23/dispatcher.stderr"
+set +e
+(
+    cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN_23:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STUB_MANIFEST_PATH="$TMP23/manifest.json" \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP23" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>"$STDERR_23"
+) >"$TMP23/stdout.txt"
+_rc23=$?
+set -e
+OUT_23=$(cat "$TMP23/stdout.txt")
+if [[ "$_rc23" -ne 0 ]]; then
+    fail 23 "dispatcher exited non-zero rc=$_rc23 out=$OUT_23"
+elif [[ "$OUT_23" != *"STATUS=bailed"* ]] || [[ "$OUT_23" != *"REASON=stub-manifest-bailed"* ]]; then
+    fail 23 "expected manifest-driven bail; got: $OUT_23"
+elif grep -Fq 'LARCH_STEP2_MANIFEST_BAILED_STDERR_PROBE' "$STDERR_23"; then
+    pass
+else
+    fail 23 "manifest status=bailed must surface pre-written stderr-tail on dispatcher stderr"
+fi
+
+# ---------------------------------------------------------------------------
 # Test 22: emit_bailed surfaces failed-agent stderr tail on dispatcher stderr.
 # ---------------------------------------------------------------------------
 TMP22="$SCRATCH/test22"; mkdir -p "$TMP22"

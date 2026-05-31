@@ -26,13 +26,11 @@ _LINT_FIX_STDERR_TAIL_STEM=""
 _lint_fix_set_stderr_tail_stem() {
     local stem="$1"
     [[ -n "$stem" ]] || return 0
-    if [[ -n "$_LINT_FIX_STDERR_TAIL_STEM" && -s "${_LINT_FIX_STDERR_TAIL_STEM}.stderr-tail" ]]; then
-        return 0
-    fi
     if [[ -s "${stem}.stderr-tail" ]]; then
         _LINT_FIX_STDERR_TAIL_STEM="$stem"
         return 0
     fi
+    # Fallback: keep first stem when no tail file exists yet (avoids empty stem)
     [[ -z "$_LINT_FIX_STDERR_TAIL_STEM" ]] && _LINT_FIX_STDERR_TAIL_STEM="$stem"
 }
 

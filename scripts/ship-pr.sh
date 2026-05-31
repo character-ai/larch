@@ -2150,6 +2150,9 @@ run_ci_fix_vendor() {
                 } > "$detail_log"
                 larch_err "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
                 state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
+                if [ -s "${ci_fix_out_base}.${winning_tier}.stderr-tail" ]; then
+                    _surface_ci_stderr_tail "${ci_fix_out_base}.${winning_tier}"
+                fi
                 record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
                 return 1
             fi
@@ -3386,6 +3389,12 @@ run_rebase_rebump() {
                     --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
                     ${_launch_extra[@]+"${_launch_extra[@]}"} --timeout 600 > "$fail_file" 2>&1
                 rc=$?
+            fi
+            local _conflict_launcher_exit
+            _conflict_launcher_exit=$(awk -F= '/^LAUNCHER_EXIT=/ {print $2; exit}' "$fail_file" 2>/dev/null || true)
+            _conflict_launcher_exit="${_conflict_launcher_exit:-0}"
+            if [ "$rc" -ne 0 ] || [ "$_conflict_launcher_exit" -ne 0 ] || [ -s "${conflict_out}.stderr-tail" ]; then
+                _surface_ci_stderr_tail "$conflict_out"
             fi
             [ "$rc" -eq 0 ] || record_failure conflict-resolution "$tool_label" "$rc" "$fail_file" "External Reviewer Issues"
             fail_file=$(failure_capture_path conflict-resolution)

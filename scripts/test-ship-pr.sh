@@ -6233,6 +6233,135 @@ else
     sed 's/^/    stderr: /' "$ci_fix_err" 2>/dev/null || true
 fi
 
+# #3227: run_ci_fix_vendor wrapper_rc=2 surfaces pre-seeded tier stderr-tail before codex tier.
+root=$(mktemp -d "$TMP_BASE/ci-fix-wrapper-rc2-stderr.XXXXXX")
+write_subject "$root"
+write_stubs "$root"
+tmp=$(mktemp -d "$root/session.XXXXXX")
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'base\n' >"$root/README.md"
+git -C "$root" add README.md
+git -C "$root" commit -q -m base
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'LARCH_CI_FIX_WRAPPER_RC2_STDERR_PROBE\n' > "${output}.stderr-tail"
+exit 2
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'X\n' >> README.md
+printf 'LAUNCHER_EXIT=0\n'
+exit 0
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+printf 'RUN_ID=test-run\nREPO=owner/repo\n' >"$tmp/ship-pr-state.sh"
+STATE_FILE="$tmp/ship-pr-state.sh"
+rc2_err="$tmp/wrapper-rc2-caller.stderr"
+set +e
+(
+    cd "$root" || exit 1
+    # shellcheck disable=SC2030,SC2031
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$tmp" STATE_FILE
+    # shellcheck disable=SC1091
+    source "$root/scripts/ship-pr.sh"
+    run_ci_fix_vendor ci-initial run123 0 0 "" 0
+) >"$tmp/wrapper-rc2.stdout" 2>"$rc2_err"
+rc2_fix_rc=$?
+set -e
+if grep -Fq 'LARCH_CI_FIX_WRAPPER_RC2_STDERR_PROBE' "$rc2_err"; then
+    ok "run_ci_fix_vendor wrapper_rc=2 surfaces pre-seeded tier stderr-tail on caller stderr"
+else
+    fail "run_ci_fix_vendor wrapper_rc=2 must surface stderr-tail before advancing to codex tier"
+    printf '    rc2_fix_rc: %s\n' "$rc2_fix_rc"
+    sed 's/^/    stderr: /' "$rc2_err" 2>/dev/null || true
+fi
+
+# #3227: recovery waterfall tier_rc-only failure surfaces safely and advances.
+root=$(mktemp -d "$TMP_BASE/recovery-wf-tier-rc.XXXXXX")
+impl=$(mktemp -d "$TMP_BASE/recovery-wf-tier-rc-impl.XXXXXX")
+write_subject "$root"
+write_stubs "$root"
+git -C "$root" init -q
+git -C "$root" config user.email test@example.invalid
+git -C "$root" config user.name Test
+printf 'base\n' >"$root/README.md"
+git -C "$root" add README.md
+git -C "$root" commit -q -m base
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) output="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf 'LAUNCHER_EXIT=0\n'
+exit 0
+STUB
+cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+  printf 'verify-called\n' >> "$IMPLEMENT_TMPDIR/recovery-wf-tier-rc-verify.txt"
+fi
+echo "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=full"
+exit 0
+STUB
+chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" \
+    "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
+tier_rc_err="$impl/tier-rc-caller.stderr"
+set +e
+(
+    cd "$root" || exit 1
+    # shellcheck disable=SC2030,SC2031
+    export CLAUDE_PLUGIN_ROOT="$root" IMPLEMENT_TMPDIR="$impl"
+    # shellcheck disable=SC1091
+    source "$root/scripts/ship-pr.sh"
+    run_recovery_waterfall checks fix "" checks-step6
+) >"$impl/tier-rc.stdout" 2>"$tier_rc_err"
+tier_rc_wf_rc=$?
+set -e
+# shellcheck disable=SC2031
+if [[ "$tier_rc_wf_rc" -eq 0 ]] && [[ -f "$impl/recovery-wf-tier-rc-verify.txt" ]]; then
+    ok "recovery waterfall tier_rc-only failure advances without LAUNCHER_EXIT or tail file"
+else
+    fail "recovery waterfall must advance after tier_rc-only cursor failure"
+    printf '    tier_rc_wf_rc: %s\n' "$tier_rc_wf_rc"
+    sed 's/^/    stderr: /' "$tier_rc_err" 2>/dev/null || true
+fi
+
 # #3227: first-fixer-non-health surfaces tier stderr-tail before early return.
 root=$(mktemp -d "$TMP_BASE/first-fixer-stderr.XXXXXX")
 write_subject "$root"
@@ -6385,6 +6514,29 @@ if grep -Fq 'LARCH_SHIP_PR_LINT_FAILED_STATUS_PROBE' "$lint_failed_err"; then
     ok "run_lint_fix_loop_capture surfaces lint-fix stderr-tail on LINT_FIX_STATUS=failed"
 else
     fail "run_lint_fix_loop_capture must emit failed-status stderr-tail to caller stderr"
+fi
+
+run_dir_tailonly="$tmp/lint-run-tailonly"
+mkdir -p "$run_dir_tailonly"
+printf 'LARCH_SHIP_PR_LINT_TAIL_ONLY_PROBE\n' > "$run_dir_tailonly/codex.log.stderr-tail"
+cat > "$root/scripts/lint-fix-loop.sh" <<STUB
+#!/usr/bin/env bash
+printf 'STDERR_TAIL_PATH=%s\n' "$run_dir_tailonly/codex.log"
+exit 0
+STUB
+chmod +x "$root/scripts/lint-fix-loop.sh"
+fail_file_tailonly="$tmp/lint-fail-tailonly.err"
+lint_tailonly_err="$tmp/lint-tailonly.err"
+set +e
+(
+    cd "$root" && IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+        bash -c 'source scripts/ship-pr.sh; run_lint_fix_loop_capture "'"$fail_file_tailonly"'" test-site /dev/null fix_out fix_rc'
+) >"$tmp/lint-tailonly-out.txt" 2>"$lint_tailonly_err"
+set -e
+if grep -Fq 'LARCH_SHIP_PR_LINT_TAIL_ONLY_PROBE' "$lint_tailonly_err"; then
+    ok "run_lint_fix_loop_capture surfaces lint-fix stderr-tail when LINT_FIX_STATUS is empty"
+else
+    fail "run_lint_fix_loop_capture must emit on-disk tail when LINT_FIX_STATUS is absent"
 fi
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
