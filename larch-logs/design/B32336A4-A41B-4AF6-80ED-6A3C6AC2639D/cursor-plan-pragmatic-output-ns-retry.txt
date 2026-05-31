@@ -1,0 +1,16 @@
+Reading the plan and tracing the cited codebase paths.
+
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/shared/external-reviewers.md:26	Section intro still requires the operator choose on every degraded run	After BOTH_DOWN=false auto-proceed, the canonical Step 0 contract contradicts the new single-tool-down behavior	Reword line 26 to require explicit confirmation only when BOTH_DOWN=true; single-tool-down may proceed after a notice
+1	in_scope	important	integration	skills/shared/external-reviewers.md:39-40	Plan replaces the Interactive bullet but leaves sibling skill-specific bullets under DEGRADED=true	The reduced-panel / degraded-waterfall Continue-label bullets remain peers of the new BOTH_DOWN branches and read as applying to notice-only paths too	Nest the /design / /implement and /review / /research Continue-label guidance under the BOTH_DOWN=true interactive sub-branch only
+1	in_scope	important	correctness	skills/shared/external-reviewers.md:43	Edge case claims the sentinel fires on BOTH_DOWN=false notice paths but the procedure never says to touch it	BOTH_DOWN=false skips AskUserQuestion; on /implement dirty-tree or resume-plan-tail re-entry the gate re-runs and re-prints the explanation	In the BOTH_DOWN=false sub-branch (and line 43), require the same sentinel check/touch before proceed; say re-warn/re-ask not only re-prompt
+1	in_scope	latent	correctness	scripts/degraded-tools-gate.md:14-16	Contract intro still says the orchestrator always asks on DEGRADED=true	Operators reading degraded-tools-gate.md miss that single-tool-down interactive runs auto-proceed	Amend lines 14-16 to match BOTH_DOWN branching (prompt only when BOTH_DOWN=true)
+
+1. **[architecture]** `skills/shared/external-reviewers.md:26` — The opening #3207 sentence still says the skill MUST tell the operator and let them choose on every degraded run. That conflicts with the proposed BOTH_DOWN=false notice-and-proceed path. Revise the intro to limit mandatory confirmation to BOTH_DOWN=true.
+
+2. **[integration]** `skills/shared/external-reviewers.md:39-40` — The plan replaces the Interactive-run bullet but does not relocate the sibling bullets about `/design`/`/implement` reduced-panel labels and `/review`/`/research` waterfall labels. Those bullets remain peers under `DEGRADED=true` and will read as governing the auto-proceed path. Nest them under the BOTH_DOWN=true interactive sub-branch only.
+
+3. **[correctness]** `skills/shared/external-reviewers.md:43` — The plan’s edge-case note says the `.degraded-tools-gate-prompted` sentinel fires in both sub-branches, but the proposed BOTH_DOWN=false branch never instructs touching the sentinel, and line 43 only mentions re-prompt. Without an explicit touch on the notice path, Step 0 re-entry (e.g. `/implement` resume) can re-print the degraded explanation. Add sentinel check/touch to the BOTH_DOWN=false sub-branch and broaden line 43 to cover re-warn as well as re-ask.
+
+4. **[correctness]** `scripts/degraded-tools-gate.md:14-16` — The plan updates the Output KV section for BOTH_DOWN but leaves the intro stating the orchestrator always asks when DEGRADED=true. Update those lines to document BOTH_DOWN-conditioned prompting so the contract matches the detector and skill changes.
