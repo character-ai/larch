@@ -245,9 +245,13 @@ Default `120` (positive integer). When the `$DESIGN_TMPDIR/plan.txt` line count 
 
 ### `LARCH_DESIGN_ROUND_CAP`
 
-Default `5` (positive integer). When unset or empty, SKILL.md Step 3 expands `"${LARCH_DESIGN_ROUND_CAP:-5}"` before passing `--round-cap` to `plan-review-loop.sh`. Non-numeric or non-positive explicit values cause `plan-review-loop.sh` argv validation to exit `2` — no silent fallback or clamping. Step 3 treats that argv-validation failure as a `panel-failed` review outcome, skips Gate B entirely, and proceeds through Step 3b / Step 4 / Gate C with the pre-review `plan.txt` unchanged. This cap bounds **inner** multi-round plan-review iterations within one Step 3 invocation. The Step 3 **review-run counter** (SIMPLE = `3`, HARD = `5`) limits Gate C re-entries separately; the two limits compose and neither clamps the other. See `skills/design/references/flags.md` § Multi-round loop env vars and `skills/design/references/plan-review.md` § Multi-round loop.
+Default `5` (positive integer). When unset or empty, SKILL.md Step 3 invokes `run-step3-review.sh`, which expands `"${LARCH_DESIGN_ROUND_CAP:-5}"` before passing `--round-cap` to `plan-review-loop.sh`. Non-numeric or non-positive explicit values cause `plan-review-loop.sh` argv validation to exit `2` — no silent fallback or clamping. Step 3 treats that argv-validation failure as a `panel-failed` review outcome, skips Gate B entirely, and proceeds through Step 3b / Step 4 / Gate C with the pre-review `plan.txt` unchanged. This cap bounds **inner** multi-round plan-review iterations within one Step 3 invocation. The Step 3 **review-run counter** (SIMPLE = `3`, HARD = `5`) limits Gate C re-entries separately; the two limits compose and neither clamps the other. See `skills/design/references/flags.md` § Multi-round loop env vars and `skills/design/references/plan-review.md` § Multi-round loop.
 
-**Contrast with `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`:** the plan-summary threshold normalizes invalid values silently to `120`; `LARCH_DESIGN_ROUND_CAP` does **not** share that normalization. Plan-review convergence (≤5 non-nit accepted, 0 important; nits excluded) is hardcoded in `plan-review-loop.sh` — see `skills/design/references/plan-review.md` § Multi-round loop.
+### `LARCH_DESIGN_CONVERGENCE_THRESHOLD`
+
+Default `3` (non-negative integer). When unset or empty, SKILL.md Step 3 invokes `run-step3-review.sh`, which expands `"${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"` before passing `--convergence-threshold` to `plan-review-loop.sh`. Non-numeric or negative explicit values cause argv validation to exit `2` — no silent fallback. Step 3 treats that argv-validation failure as a `panel-failed` review outcome, skips Gate B entirely, and proceeds through Step 3b / Step 4 / Gate C with the pre-review `plan.txt` unchanged. Combined with zero `IMPORTANT_ACCEPTED_COUNT` across two consecutive non-degraded rounds, bounds the per-round `ACCEPTED_COUNT` that can trigger loop convergence. See `skills/design/references/flags.md` § Multi-round loop env vars and `skills/design/references/plan-review.md` § Multi-round loop.
+
+**Contrast with `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`:** the plan-summary threshold normalizes invalid values silently to `120`; the loop env vars above do **not** share that normalization.
 
 #### Per-vendor rates (`/implement` final summary)
 
@@ -277,7 +281,7 @@ When set to `true`, `/implement` Step 17 prints the full per-step token/timing t
 
 ### `LARCH_CLEANUP_RETENTION_DAYS`
 
-Retention window for `/cleanup` age-based session directory pruning. Default: `7` (positive integer days). `/cleanup` removes directories under `~/.cache/larch/sessions/` and matching `/tmp` larch directory patterns only when no file within a bounded scan (`find -maxdepth 5`) was modified inside the retention window, so a directory with fresh deep activity is retained. Matching loose `/tmp` files are removed by top-level age and pattern match. Non-numeric or non-positive explicit values warn on stderr and fall back to `7`. See `skills/cleanup/scripts/cleanup.md` for the script contract.
+Retention window for `/cleanup` age-based session directory pruning. Default: `7` (positive integer days). `/cleanup` removes entries under `~/.cache/larch/sessions/` and matching `/tmp` larch patterns when the entry's top-level mtime is older than the cutoff. Non-numeric or non-positive explicit values warn on stderr and fall back to `7`. See `skills/cleanup/scripts/cleanup.md` for the script contract.
 
 ### `LARCH_BUMP_FILES`
 

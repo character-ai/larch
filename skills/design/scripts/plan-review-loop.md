@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 3 — multi-round plan-review driver (legacy single-pass when `--round-cap` is omitted on argv).
 
-**Primary callers**: `skills/design/SKILL.md` Step 3 (foreground Bash block).
+**Primary callers**: `skills/design/scripts/run-step3-review.sh` (invoked from `skills/design/SKILL.md` Step 3).
 
 ## Invariants
 
