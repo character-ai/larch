@@ -9,9 +9,10 @@
 3. **Cardinality.** The count of `LARCH_TIMING_LEDGER=` rehydration reads equals the count of `LARCH_TOKEN_SESSION_ID=` rehydration reads, equals the count of the three-key `export` line, equals the count of `IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"` assignments, equals the count of `export IMPLEMENT_TMPDIR` lines. `IMPLEMENT_TMPDIR` is load-bearing because `scripts/timing-ledger.sh` validates `LARCH_TIMING_LEDGER` against `timing_allowed_roots` (which only includes `IMPLEMENT_TMPDIR` when it is env-set).
 4. **Plugin-root coverage.** Every fenced ` ```bash ` block in
    `skills/implement/SKILL.md` that uses `${CLAUDE_PLUGIN_ROOT}` MUST contain
-   the same-fence `LARCH_CLAUDE_PLUGIN_ROOT` awk rehydration guard. The guard
-   intentionally avoids `read-session-env-key.sh`, because finding that helper
-   is the thing being rehydrated.
+   the same-fence `plugin-root.env` source guard (canonical) or, on
+   pre-bootstrap sites only (Step 0 foreground, dirty-tree recovery, legacy
+   structured-invocation pin), the `session-env.sh` awk fallback. Cardinality:
+   41 source guards, 3 awk fallbacks, zero legacy 4-line `if`/`fi` fences.
 
 ## Wiring
 

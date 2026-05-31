@@ -15,9 +15,9 @@
 # `export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"` rather than
 # rehydrating via read-session-env-key.sh.
 #   C) Every fenced ```bash block that uses `${CLAUDE_PLUGIN_ROOT}` contains
-#      the local `LARCH_CLAUDE_PLUGIN_ROOT` awk rehydration guard, so nested
-#      Bash calls can recover the plugin root from session-env without
-#      depending on the root variable to find the reader script.
+#      the plugin-root.env source guard (canonical) or, on pre-bootstrap sites
+#      only, the session-env.sh awk fallback, so nested Bash calls can recover
+#      the plugin root without depending on the root variable to find helpers.
 
 set -euo pipefail
 
@@ -76,9 +76,8 @@ awk '
 ' "$SKILL_MD" || fail "one or more timing-ledger / timing-report fences are missing LARCH_TIMING_LEDGER rehydration (see stderr above)"
 
 # Invariant C: every fenced bash block that uses CLAUDE_PLUGIN_ROOT must carry
-# the same-fence plugin-root rehydration guard. The guard reads session-env via
-# awk instead of read-session-env-key.sh because the latter itself lives under
-# CLAUDE_PLUGIN_ROOT.
+# the same-fence plugin-root rehydration guard (plugin-root.env source, or
+# session-env.sh awk on pre-bootstrap sites only).
 awk '
   BEGIN { in_fence=0; has_plugin_root=0; has_root_rehydration=0; fence_start=0; offending=0 }
   /^```bash$/ {
@@ -86,7 +85,7 @@ awk '
   }
   /^```$/ && in_fence {
     if (has_plugin_root && !has_root_rehydration) {
-      printf "skills/implement/SKILL.md fence starting at line %d: CLAUDE_PLUGIN_ROOT use lacks LARCH_CLAUDE_PLUGIN_ROOT rehydration in the same fence\n", fence_start > "/dev/stderr"
+      printf "skills/implement/SKILL.md fence starting at line %d: CLAUDE_PLUGIN_ROOT use lacks plugin-root rehydration in the same fence\n", fence_start > "/dev/stderr"
       offending=1
     }
     in_fence=0; has_plugin_root=0; has_root_rehydration=0; next
@@ -95,12 +94,15 @@ awk '
     if (index($0, "${CLAUDE_PLUGIN_ROOT}") > 0) {
       has_plugin_root=1
     }
+    if (index($0, "plugin-root.env") > 0 && index($0, ". \"$IMPLEMENT_TMPDIR/plugin-root.env\"") > 0) {
+      has_root_rehydration=1
+    }
     if (index($0, "LARCH_CLAUDE_PLUGIN_ROOT=") > 0 && index($0, "awk") > 0) {
       has_root_rehydration=1
     }
   }
   END { exit offending }
-' "$SKILL_MD" || fail "one or more CLAUDE_PLUGIN_ROOT fences are missing LARCH_CLAUDE_PLUGIN_ROOT rehydration (see stderr above)"
+' "$SKILL_MD" || fail "one or more CLAUDE_PLUGIN_ROOT fences are missing plugin-root rehydration (see stderr above)"
 
 # Additional consistency check: every read-session-env-key.sh fetch of
 # LARCH_TIMING_LEDGER MUST be matched by a fetch of LARCH_TOKEN_SESSION_ID in
@@ -126,9 +128,17 @@ tmpdir_export_count=$(grep -Fxc 'export IMPLEMENT_TMPDIR' "$SKILL_MD" || true)
   || fail "IMPLEMENT_TMPDIR export count ($tmpdir_export_count) does not match token rehydration count ($token_read_count)"
 
 # shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
-plugin_root_read_count=$(grep -Fxc '  CLAUDE_PLUGIN_ROOT=$(awk '\''BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)' "$SKILL_MD" || true)
-plugin_root_export_count=$(grep -Fxc 'export CLAUDE_PLUGIN_ROOT' "$SKILL_MD" || true)
-[[ "$plugin_root_read_count" == "$plugin_root_export_count" ]] \
-  || fail "CLAUDE_PLUGIN_ROOT read count ($plugin_root_read_count) does not match export count ($plugin_root_export_count)"
+plugin_root_source_count=$(grep -Fxc '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"' "$SKILL_MD" || true)
+[[ "$plugin_root_source_count" == "41" ]] \
+  || fail "plugin-root.env source guard count ($plugin_root_source_count) expected 41"
 
-echo "PASS: test-implement-timing-rehydration.sh ($token_read_count timing sites; $plugin_root_read_count plugin-root sites covered)"
+# shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
+plugin_root_awk_count=$(grep -Fxc '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '\''BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)' "$SKILL_MD" || true)
+[[ "$plugin_root_awk_count" == "3" ]] \
+  || fail "session-env.sh awk fallback count ($plugin_root_awk_count) expected 3"
+
+legacy_fence_count=$(grep -Fxc 'if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then' "$SKILL_MD" || true)
+[[ "$legacy_fence_count" == "0" ]] \
+  || fail "legacy 4-line awk fence opener count ($legacy_fence_count) expected 0"
+
+echo "PASS: test-implement-timing-rehydration.sh ($token_read_count timing sites; $plugin_root_source_count plugin-root source guards; $plugin_root_awk_count awk fallbacks)"
