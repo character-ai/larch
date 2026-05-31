@@ -77,17 +77,23 @@
 #   59. --write-structured writes normalized records
 # Cases added for #2455 (first-non-empty-line sentinel relaxation):
 #   60. --validation-mode NO_ISSUES_FOUND + trailing note → exit 0
-#   61. --validation-mode trailing note + NO_ISSUES_FOUND (sentinel NOT first) → exit 2
+#   61. --validation-mode trailing note + NO_ISSUES_FOUND (sentinel as last line) → exit 0
 #   62. --structured-reviewer-mode NO_ISSUES_FOUND + trailing note → exit 0
 #   63. --structured-reviewer-mode trailing note + NO_ISSUES_FOUND (sentinel NOT first) → exit 5
 #   64. --validation-mode JSON no-findings + trailing note → exit 0
-#   65. --validation-mode trailing note + JSON sentinel (NOT first) → exit 2
+#   65. --validation-mode trailing note + JSON sentinel (sentinel as last line) → exit 0
 #   66. --structured-reviewer-mode JSON no-findings + trailing note → exit 0
 #   67. --structured-reviewer-mode trailing note + JSON sentinel (NOT first) → exit 5
 #   68. --validation-mode pretty-printed multi-line JSON no-findings → exit 0
 #   69. --structured-reviewer-mode pretty-printed multi-line JSON no-findings → exit 0
 #   70. --validation-mode pretty-printed multi-line JSON no-findings + trailing note → exit 0
 #   71. --structured-reviewer-mode pretty-printed multi-line JSON no-findings + trailing note → exit 0
+# Cases added for #3283 (false-degrade: narration+sentinel and ballot grammar):
+#   72. --validation-mode 2 narration lines + NO_ISSUES_FOUND (last line) → exit 0
+#   73. --validation-mode 2 narration lines + JSON sentinel (last line) → exit 0
+#   74. --validation-mode ballot: FINDING_N YES/NO/EXONERATE lines → exit 0
+#   75. --validation-mode ballot with narration preamble → exit 0
+#   76. --validation-mode prose mentioning NO_ISSUES_FOUND inline (single line) → exit 2
 #
 # Usage:
 #   bash scripts/test-validate-research-output.sh
@@ -567,11 +573,11 @@ F60="$TMPROOT/case60-nif-with-note.txt"
 printf 'NO_ISSUES_FOUND\n\nVerification: scripts/test-dispatch-code-voters.sh could not run in this read-only session because mktemp failed.\n' > "$F60"
 run_case "case 60: --validation-mode NO_ISSUES_FOUND + trailing note → exit 0" 0 --validation-mode "$F60"
 
-# Case 61: --validation-mode sentinel NOT on first line → not short-circuited → exit 2 (body thin)
-# Choice: sentinel-not-first is treated as normal content; four words, no citation → exit 2
+# Case 61: --validation-mode sentinel as LAST non-blank line (narration preamble) → exit 0 (#3283)
+# Cursor's narration-then-sentinel pattern: 1 narration line prepended before NO_ISSUES_FOUND.
 F61="$TMPROOT/case61-note-then-nif.txt"
 printf 'Verification: mktemp failed.\n\nNO_ISSUES_FOUND\n' > "$F61"
-run_case "case 61: --validation-mode sentinel NOT first → exit 2 (body thin, not short-circuited)" 2 --validation-mode "$F61"
+run_case "case 61: --validation-mode narration + sentinel as last line → exit 0" 0 --validation-mode "$F61"
 
 # Case 62: --structured-reviewer-mode NO_ISSUES_FOUND on first line + trailing note → exit 0
 F62="$TMPROOT/case62-srm-nif-with-note.txt"
@@ -588,10 +594,11 @@ F64="$TMPROOT/case64-json-with-note.txt"
 printf '{"no_issues_found": true}\n\nVerification: scripts/test-dispatch-code-voters.sh could not run in this read-only session because mktemp failed.\n' > "$F64"
 run_case "case 64: --validation-mode JSON no-findings + trailing note → exit 0" 0 --validation-mode "$F64"
 
-# Case 65: --validation-mode JSON sentinel NOT on first line → exit 2 (body thin)
+# Case 65: --validation-mode JSON sentinel as LAST non-blank line (narration preamble) → exit 0 (#3283)
+# Cursor's narration-then-sentinel pattern: 1 narration line prepended before JSON sentinel.
 F65="$TMPROOT/case65-note-then-json.txt"
 printf 'Verification: mktemp failed.\n\n{"no_issues_found": true}\n' > "$F65"
-run_case "case 65: --validation-mode JSON sentinel NOT first → exit 2 (body thin, not short-circuited)" 2 --validation-mode "$F65"
+run_case "case 65: --validation-mode narration + JSON sentinel as last line → exit 0" 0 --validation-mode "$F65"
 
 # Case 66: --structured-reviewer-mode JSON no-findings on first line + trailing note → exit 0
 F66="$TMPROOT/case66-srm-json-with-note.txt"
@@ -642,6 +649,36 @@ cat > "$F71" <<'EOF'
 Verification: scripts/test-dispatch-code-voters.sh could not run in this read-only session because mktemp failed.
 EOF
 run_case "case 71: --structured-reviewer-mode pretty-printed JSON + trailing note → exit 0" 0 --structured-reviewer-mode "$F71"
+
+# Case 72: --validation-mode 2 narration lines + NO_ISSUES_FOUND as last line → exit 0 (#3283)
+# Reproduces cursor-plan-requirements shape: 2 narration lines then sentinel.
+F72="$TMPROOT/case72-two-narration-nif.txt"
+printf 'Validating the plan against the cited code paths.\nAll cited code paths and helper calls are correct.\nNO_ISSUES_FOUND\n' > "$F72"
+run_case "case 72: --validation-mode 2 narration lines + NO_ISSUES_FOUND last → exit 0" 0 --validation-mode "$F72"
+
+# Case 73: --validation-mode 2 narration lines + JSON sentinel as last line → exit 0 (#3283)
+# Reproduces cursor-plan-innovation shape: narration then JSON sentinel.
+F73="$TMPROOT/case73-two-narration-json.txt"
+printf 'Validating the plan against the cited code paths.\nAll cited code paths and helper calls are correct.\n{"no_issues_found": true}\n' > "$F73"
+run_case "case 73: --validation-mode 2 narration lines + JSON sentinel last → exit 0" 0 --validation-mode "$F73"
+
+# Case 74: --validation-mode voter ballot grammar → exit 0 (#3283)
+# Reproduces cursor voter slot: compact ballot with FINDING_N: YES/NO/EXONERATE lines.
+F74="$TMPROOT/case74-ballot.txt"
+printf 'FINDING_1: YES This is a valid finding worth fixing.\nFINDING_2: YES Another valid finding.\nFINDING_3: EXONERATE Not relevant to the changed code.\n' > "$F74"
+run_case "case 74: --validation-mode ballot grammar → exit 0" 0 --validation-mode "$F74"
+
+# Case 75: --validation-mode ballot with narration preamble → exit 0 (#3283)
+F75="$TMPROOT/case75-ballot-with-preamble.txt"
+printf 'Reviewing the findings against the diff.\nFINDING_1: NO This finding does not apply here.\nFINDING_2: YES Confirmed.\n' > "$F75"
+run_case "case 75: --validation-mode ballot with narration preamble → exit 0" 0 --validation-mode "$F75"
+
+# Case 76: --validation-mode prose mentioning sentinel inline (single line) → exit 2 (#3283)
+# This is the B3 false-positive guard: a single line mentioning the sentinel
+# inline must NOT be accepted by the last-line check (FIRST_LINE == LAST_LINE).
+F76="$TMPROOT/case76-inline-mention.txt"
+printf 'This body only mentions NO_ISSUES_FOUND inline.\n' > "$F76"
+run_case "case 76: --validation-mode inline sentinel mention single line → exit 2" 2 --validation-mode "$F76"
 
 echo ""
 echo "=== Summary ==="

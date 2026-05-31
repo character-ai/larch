@@ -70,6 +70,16 @@
 #     on the full trimmed non-blank body, then (if needed) the first JSON value is
 #     decoded so pretty-printed sentinels with trailing operational notes still match;
 #     trailing content after a recognized sentinel is accepted and preserved,
+#   - additionally accepts a file whose LAST non-empty line is a clean
+#     `NO_ISSUES_FOUND` literal or a valid JSON no-findings sentinel (when the
+#     last non-empty line differs from the first non-empty line), covering
+#     Cursor's narration-then-sentinel output shape (1–2 narration lines
+#     prepended before the actual sentinel); prose that merely MENTIONS the
+#     sentinel inline on a single line is not accepted by this check,
+#   - accepts a voter ballot containing at least one line matching
+#     `FINDING_N: YES|NO|EXONERATE` (N = one or more digits) as substantive
+#     without word-count or citation checks; valid ballots are intentionally
+#     compact and this pattern is unambiguous voter output grammar,
 #   - maps a file whose entire trimmed content equals `CURSOR_EMPTY_RESPONSE`
 #     or `CURSOR_DEGRADED_RESPONSE` to exit 5 with a diagnostic so the
 #     collector can surface STATUS=CURSOR_EMPTY_RESPONSE,
@@ -417,9 +427,15 @@ fi
 #     non-empty line must be the legacy literal or begin JSON that decodes (via
 #     `jq` on the first line, then `jq` on the full trimmed body, then first-value
 #     decode when needed) to `no_issues_found: true` (trailing lines may hold
-#     operational notes). A sentinel that appears only later in the file, or on
-#     the same line as other non-whitespace text before the sentinel, does not
-#     short-circuit and falls through to normal validation.
+#     operational notes). Alternatively the last non-empty line may be the
+#     legacy literal or a clean JSON sentinel (covers Cursor's pattern of
+#     prepending 1-2 narration lines before the sentinel). This does NOT apply
+#     when the sentinel appears only on the first line and last line is different
+#     prose — that case falls through to normal validation.
+#   - Voter ballot grammar: at least one line matching
+#     `FINDING_N: YES|NO|EXONERATE` (where N is one or more digits) is accepted
+#     without word-count or citation checks, since valid ballots are
+#     intentionally compact.
 if [[ "$VALIDATION_MODE" == "true" ]]; then
     TRIMMED=$(trimmed_nonblank_content "$INPUT")
     if [[ "$TRIMMED" == "CURSOR_EMPTY_RESPONSE" || "$TRIMMED" == "CURSOR_DEGRADED_RESPONSE" ]]; then
@@ -432,6 +448,26 @@ if [[ "$VALIDATION_MODE" == "true" ]]; then
         exit 0
     fi
     if json_no_issues_found_short_circuit "$TRIMMED" "$FIRST_LINE"; then
+        exit 0
+    fi
+    # Last-line sentinel: accept when the final non-blank line is a clean
+    # no-issues sentinel, covering Cursor's narration-then-sentinel pattern.
+    # Guard: only when LAST_LINE differs from FIRST_LINE (a single-line body
+    # whose sole content mentions the sentinel inline is not accepted here).
+    _last_line=$(printf '%s\n' "$TRIMMED" | awk 'NF { last=$0 } END { print last }')
+    if [[ "$_last_line" != "$FIRST_LINE" ]]; then
+        if [[ "$_last_line" == "NO_ISSUES_FOUND" ]]; then
+            exit 0
+        fi
+        if json_no_issues_found_short_circuit "$_last_line" "$_last_line"; then
+            exit 0
+        fi
+    fi
+    unset _last_line
+    # Ballot grammar: accept a voter ballot with at least one FINDING_N:
+    # YES/NO/EXONERATE line as substantive without word-count or citation
+    # checks. Valid ballots are intentionally compact (often < 500 bytes).
+    if grep -Eq '^FINDING_[0-9]+:[[:space:]]*(YES|NO|EXONERATE)' "$INPUT"; then
         exit 0
     fi
     # Inline-TSV short-circuit: Cursor may be unable to write the TSV sidecar
