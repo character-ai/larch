@@ -368,8 +368,10 @@ if ! [[ "$chk_line" -gt "$emit_line" ]]; then
 fi
 grep -Fq '## Plan Size — Hard Trigger' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing hard-trigger plan-size header"
-grep -Fq '(no **Continue** option — hard triggers' "$SKILL_MD" \
-  || fail "(FINDING_21) SKILL.md hard branch must document no-Continue invariant"
+grep -Fq "**Override and proceed** is an explicit, loudly-discouraged operator escape hatch, not a \`--partition\` downgrade" "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md hard branch must document Override escape-hatch invariant"
+grep -Fq 'Override and proceed (advised against)' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md hard branch must offer Override and proceed option label"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 grep -Fq 'Step 1c sprawl heuristic' "$DISCUSSION_MD" \
   || fail "(FINDING_21) discussion-rounds.md missing Step 1c sprawl hook"
@@ -388,8 +390,10 @@ grep -Fq 'DIFF_DELETED=' "$SKILL_MD" \
   || fail "(3175) SKILL.md Step 2b.5 must parse DIFF_DELETED"
 grep -Fq 'MECHANICAL_CHURN=' "$SKILL_MD" \
   || fail "(3175) SKILL.md Step 2b.5 must parse MECHANICAL_CHURN"
-grep -Fq 'plan-body gate still requires Split/Cancel' "$SKILL_MD" \
+grep -Fq 'plan-body gate still requires the Split / Override / Cancel prompt' "$SKILL_MD" \
   || fail "(3175) SKILL.md must document plan-body hard + SOFT_ADVISORY combined advisory"
+grep -Fq 'plan-body gate still requires the Split / Override / Cancel prompt' "$PLAN_LOOP_SH" \
+  || fail "(3175) plan-review-loop.sh must document plan-body hard + SOFT_ADVISORY combined advisory"
 grep -Fq 'diff_added' "$SKILL_MD" \
   || fail "(3175) SKILL.md missing diff_added preservation/recompute language"
 grep -Fq 'diff_deleted' "$SKILL_MD" \

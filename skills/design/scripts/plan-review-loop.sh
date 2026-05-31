@@ -572,7 +572,7 @@ _run_post_apply_pipeline() {
         diff_deleted=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_DELETED" { print $2; found=1 } END { if (!found) print "" }')
         diff_lines=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_LINES" { print $2; found=1 } END { if (!found) print "" }')
         if [[ "$hard" == "true" ]]; then
-            printf '⏩ plan-review: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=%s DIFF_DELETED=%s DIFF_LINES=%s); plan-body gate still requires Split/Cancel\n' \
+            printf '⏩ plan-review: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=%s DIFF_DELETED=%s DIFF_LINES=%s); plan-body gate still requires the Split / Override / Cancel prompt\n' \
                 "${diff_added:-}" "${diff_deleted:-}" "${diff_lines:-}"
         else
             printf '⏩ plan-review: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=%s DIFF_DELETED=%s DIFF_LINES=%s); proceeding\n' \
