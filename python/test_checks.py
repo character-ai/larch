@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -1012,7 +1012,8 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     assert str(repo) in leaf
     assert leaf[-1]
     assert "lib-external-launcher-common.sh" in flat
-    assert "--tool" in flat and "codex" in flat
+    assert "--tool" in flat
+    assert "codex" in flat
 
 
 def test_run_lint_fix_dispatch_failure_ignores_health_classification(
@@ -1242,7 +1243,8 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
     assert outcome.status == "main-agent-required"
     flat = " ".join(arg for call, _kw in runner.calls for arg in call)
     assert "lib-external-launcher-common.sh" in flat
-    assert "--tool" in flat and "cursor" in flat
+    assert "--tool" in flat
+    assert "cursor" in flat
     wrap_call, wrap_kwargs = next(
         (call, kw) for call, kw in runner.calls if "cursor-wrap-prompt.sh" in " ".join(call)
     )
@@ -1746,7 +1748,7 @@ def test_read_log_text_bounded_uses_seek_not_full_read(
     log = tmp_path / "large.log"
     _ = log.write_bytes(b"x" * (checks._PROMPT_TAIL_BYTES + 5000))  # pyright: ignore[reportPrivateUsage]
 
-    def fail_read_bytes(self: object, *_args: object, **_kwargs: object) -> bytes:
+    def fail_read_bytes(_self: object, *_args: object, **_kwargs: object) -> bytes:
         raise AssertionError("read_bytes must not load entire log for tail reads")
 
     monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
@@ -1766,12 +1768,20 @@ def test_run_relevant_checks_rejects_invalid_tmpdir() -> None:
     assert result.exit_code == 2
 
 
+def _session_path_under_tmp(name: str) -> Path:
+    return Path("/tmp") / f"claude-implement-{name}"
+
+
+def _session_path_under_private_tmp(name: str) -> Path:
+    return Path("/private/tmp") / f"claude-implement-{name}"
+
+
 @pytest.mark.parametrize(
     "session_path",
     [
-        pytest.param(lambda name: Path("/tmp") / f"claude-implement-{name}", id="tmp"),
+        pytest.param(_session_path_under_tmp, id="tmp"),
         pytest.param(
-            lambda name: Path("/private/tmp") / f"claude-implement-{name}",
+            _session_path_under_private_tmp,
             id="private_tmp",
             marks=pytest.mark.skipif(
                 not Path("/private/tmp").is_dir(),
@@ -1782,11 +1792,10 @@ def test_run_relevant_checks_rejects_invalid_tmpdir() -> None:
 )
 def test_validate_tmpdir_accepts_tmp_roots(
     tmp_path: Path,
-    session_path: object,
+    session_path: Callable[[str], Path],
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    assert callable(session_path)
-    session = session_path(tmp_path.name)  # type: ignore[operator]
+    session = session_path(tmp_path.name)
     session.mkdir(parents=True, exist_ok=True)
     monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
     assert checks.validate_tmpdir(str(session)) == session.resolve()
@@ -1871,7 +1880,7 @@ def test_validate_tmpdir_rejects_empty_xdg_cache_home(
     assert checks.validate_tmpdir(str(session)) is None
 
 
-def test_run_check_fix_loop_redaction_failed_dispatch_failed(tmp_path: Path) -> None:
+def test_run_check_fix_loop_redaction_failed_dispatch_failed() -> None:
     fail = checks.ChecksResult(
         ok=False,
         exit_code=1,
@@ -1991,7 +2000,7 @@ def test_run_relevant_checks_marks_step6_ledger(
     )
     ledger_calls = [
         call for call, _kw in runner.calls
-        if any(name.endswith("token-ledger.sh") or name.endswith("timing-ledger.sh") for name in call)
+        if any(name.endswith(("token-ledger.sh", "timing-ledger.sh")) for name in call)
     ]
     assert len(ledger_calls) == 2
     assert all("Step 6 — checks second pass" in " ".join(call) for call in ledger_calls)

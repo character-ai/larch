@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 import time
 from dataclasses import dataclass
-from typing import Protocol
+from typing import Any, Protocol
 from collections.abc import Mapping, Sequence
 
 import config
@@ -59,7 +59,7 @@ def run(
     stream_stdout = stdout if stdout is not None else subprocess.PIPE
     stream_stderr = stderr if stderr is not None else subprocess.PIPE
     popen_text = stream_stdout is subprocess.PIPE and stream_stderr is subprocess.PIPE
-    popen_kwargs: dict[str, object] = {
+    popen_kwargs: dict[str, Any] = {
         "stdout": stream_stdout,
         "stderr": stream_stderr,
         "cwd": cwd,
@@ -106,18 +106,26 @@ def run(
                 env=None if env is None else dict(env),
                 check=False,
             )
+        elif popen_text:
+            completed = subprocess.run(
+                argv_tuple,
+                stdout=stream_stdout,
+                stderr=stream_stderr,
+                cwd=cwd,
+                env=None if env is None else dict(env),
+                text=True,
+                errors="replace",
+                check=False,
+            )
         else:
-            run_kwargs: dict[str, object] = {
-                "stdout": stream_stdout,
-                "stderr": stream_stderr,
-                "cwd": cwd,
-                "env": None if env is None else dict(env),
-                "check": False,
-            }
-            if popen_text:
-                run_kwargs["text"] = True
-                run_kwargs["errors"] = "replace"
-            completed = subprocess.run(argv_tuple, **run_kwargs)
+            completed = subprocess.run(
+                argv_tuple,
+                stdout=stream_stdout,
+                stderr=stream_stderr,
+                cwd=cwd,
+                env=None if env is None else dict(env),
+                check=False,
+            )
         duration = time.monotonic() - start
         result = CommandResult(
             argv=argv_tuple,

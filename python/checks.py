@@ -155,13 +155,6 @@ def _target_cmd_display_valid(site: str, target_cmd_display: str | None) -> bool
     )
 
 
-def _parse_checks_log(text: str) -> tuple[bool, bool, bool]:
-    has_precommit = "=== Running pre-commit" in text
-    has_agent_lint = "=== Running agent-lint ===" in text
-    has_agent_lint_warning = "WARNING: agent-lint not found on PATH" in text
-    return has_precommit, has_agent_lint, has_agent_lint_warning
-
-
 def _scan_checks_log_markers(path: Path) -> tuple[bool, bool, bool]:
     """Stream-scan the full log for phase/coverage markers (bash grep parity)."""
     has_precommit = False
@@ -491,7 +484,7 @@ def _read_log_text_bounded(path: Path, max_bytes: int) -> str | None:
             if size <= max_bytes:
                 data = handle.read()
             else:
-                handle.seek(size - max_bytes)
+                _ = handle.seek(size - max_bytes)
                 data = handle.read()
     except OSError:
         return None
