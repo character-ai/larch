@@ -443,9 +443,14 @@ done
 all_output_files=()
 all_output_tools=()
 for ((i=0; i<slot_count; i++)); do
-  [[ -n "${final_outputs[$i]}" ]] || continue
-  all_output_files+=("${final_outputs[$i]}")
-  all_output_tools+=("${final_tools[$i]}")
+    if [[ "$NO_FALLBACK" == "true" ]]; then
+        [[ -n "${final_outputs[$i]}" ]] || continue
+        all_output_files+=("${final_outputs[$i]}")
+        all_output_tools+=("${final_tools[$i]}")
+    else
+        all_output_files+=("${final_outputs[$i]}")
+        all_output_tools+=("${final_tools[$i]}")
+    fi
 done
 
 emit_kv PHASE1_SLOTS "${phase1_outputs[*]-}"

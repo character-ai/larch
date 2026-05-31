@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
-# decompose-panel-dispatch.sh — fixed 8-slot decomposition panel (4 archetypes x 2 vendors).
+# decompose-panel-dispatch.sh — availability-gated decomposition panel (present-vendor
+# slots per archetype; generic Claude floor when both vendors are absent).
 # Topology composition: renders prompts + dispatch-with-waterfall
 set -euo pipefail
 
@@ -149,48 +150,50 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
         tail -n +2 "$_tail_src"
     } >"$_generic_prompt"
     rm -f "$_tail_src"
-  set +e
-  "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
-    --output "$_generic_output" \
-    --prompt-file "$_generic_prompt" \
-    --mode description \
-    --timeout "$TIMEOUT" \
-    --timing-task-kind claude-decomp-generic \
-    --feature-file "$FEATURE_FILE" \
-    >/dev/null 2>"${_generic_output}.launch-stderr"
-  _generic_rc=$?
-  set -e
-  [[ -f "${_generic_output}.done" ]] || printf '%s\n' "$_generic_rc" >"${_generic_output}.done"
-  _status="missing"
-  if [[ -f "$_generic_output" ]] && grep -Eq '^[[:space:]]*## Recommendation' "$_generic_output"; then
-    _status="ok"
-  elif [[ -f "$_generic_output" ]]; then
-    _status="unparsed"
-  fi
-  jq -nc \
-    --arg archetype "generic" \
-    --arg vendor claude \
-    --arg output "$_generic_output" \
-    --arg status "$_status" \
-    '{archetype:$archetype,vendor:$vendor,output:$output,status:$status}' >>"$_panel_rows"
-  _dispatch_out=$(
-    printf 'DISPATCH_OK=true\n'
-    printf 'FALLBACK_COUNT=0\n'
-    printf 'COMBINED_FALLBACK_COUNT=0\n'
-    printf 'STATIC_DISPATCH_OK=true\n'
-    printf 'DYNAMIC_DISPATCH_OK=true\n'
-  )
-  _wf_rc=0
-  ALL_OUTPUT_FILES_PATH=""
-  DISPATCH_OK=true
-  FALLBACK_COUNT=0
-  COMBINED_FALLBACK_COUNT=0
-  STATIC_DISPATCH_OK=true
-  DEGRADED_PANEL=false
-  usable=0
-  [[ "$_status" == "ok" ]] && usable=1
-  PANEL_STATUS="ok"
-  (( usable == 0 )) && PANEL_STATUS="panel-failed"
+    set +e
+    "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
+        --output "$_generic_output" \
+        --prompt-file "$_generic_prompt" \
+        --mode description \
+        --timeout "$TIMEOUT" \
+        --timing-task-kind claude-decomp-generic \
+        --feature-file "$FEATURE_FILE" \
+        >/dev/null 2>"${_generic_output}.launch-stderr"
+    _generic_rc=$?
+    set -e
+    [[ -f "${_generic_output}.done" ]] || printf '%s\n' "$_generic_rc" >"${_generic_output}.done"
+    _status="missing"
+    if [[ -f "$_generic_output" ]] && grep -Eq '^[[:space:]]*## Recommendation' "$_generic_output"; then
+        _status="ok"
+    elif [[ -f "$_generic_output" ]]; then
+        _status="unparsed"
+    fi
+    jq -nc \
+        --arg archetype "generic" \
+        --arg vendor claude \
+        --arg output "$_generic_output" \
+        --arg status "$_status" \
+        '{archetype:$archetype,vendor:$vendor,output:$output,status:$status}' >>"$_panel_rows"
+    _generic_dispatch_ok=false
+    [[ "$_generic_rc" -eq 0 && "$_status" == "ok" ]] && _generic_dispatch_ok=true
+    _dispatch_out=$(
+        printf 'DISPATCH_OK=%s\n' "$_generic_dispatch_ok"
+        printf 'FALLBACK_COUNT=0\n'
+        printf 'COMBINED_FALLBACK_COUNT=0\n'
+        printf 'STATIC_DISPATCH_OK=%s\n' "$_generic_dispatch_ok"
+        printf 'DYNAMIC_DISPATCH_OK=true\n'
+    )
+    _wf_rc=0
+    ALL_OUTPUT_FILES_PATH=""
+    DISPATCH_OK="$_generic_dispatch_ok"
+    FALLBACK_COUNT=0
+    COMBINED_FALLBACK_COUNT=0
+    STATIC_DISPATCH_OK="$_generic_dispatch_ok"
+    DEGRADED_PANEL=false
+    usable=0
+    [[ "$_status" == "ok" ]] && usable=1
+    PANEL_STATUS="ok"
+    (( usable == 0 )) && PANEL_STATUS="panel-failed"
   printf '%s\n' "$_dispatch_out"
   emit_kv PANEL_OUTPUTS_FILE "$_panel_rows"
   emit_kv DEGRADED_PANEL "$DEGRADED_PANEL"
@@ -280,12 +283,23 @@ done <<<"$_dispatch_out"
 : "${STATIC_DISPATCH_OK:-true}"
 : "${ALL_OUTPUT_FILES_PATH:-}"
 
-floor_half=$((8 / 2))
+_decomp_slot_count=0
+while IFS= read -r _drow || [[ -n "$_drow" ]]; do
+    [[ -n "$_drow" ]] || continue
+    _decomp_slot_count=$((_decomp_slot_count + 1))
+done <"$_manifest"
+floor_half=$((_decomp_slot_count / 2))
 case "$FALLBACK_COUNT" in ''|*[!0-9]*) FALLBACK_COUNT=0 ;; esac
 case "$COMBINED_FALLBACK_COUNT" in ''|*[!0-9]*) COMBINED_FALLBACK_COUNT="$FALLBACK_COUNT" ;; esac
 DEGRADED_PANEL=false
 [[ "${STATIC_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_PANEL=true
-if (( 10#$COMBINED_FALLBACK_COUNT > floor_half )); then
+_succeeded_paths=0
+if [[ -n "$ALL_OUTPUT_FILES_PATH" && -f "$ALL_OUTPUT_FILES_PATH" ]]; then
+    while IFS= read -r _dp || [[ -n "$_dp" ]]; do
+        [[ -n "$_dp" ]] && _succeeded_paths=$((_succeeded_paths + 1))
+    done <"$ALL_OUTPUT_FILES_PATH"
+fi
+if (( _decomp_slot_count > 0 && _succeeded_paths < _decomp_slot_count )); then
     DEGRADED_PANEL=true
 fi
 
@@ -293,9 +307,8 @@ usable=0
 _panel_rows="$DECOMP_DIR/panel-outputs.ndjson"
 : >"$_panel_rows"
 
-# Read the dispatcher's resolved paths (one per slot, manifest order) so panel
-# rows reflect phase-2/phase-3 fallback files instead of the original manifest
-# phase-1 path. Bash 3.2-compatible: no mapfile/readarray.
+# Read the dispatcher's compact paths-file (one line per succeeded slot, manifest order).
+# Bash 3.2-compatible: no mapfile/readarray.
 _resolved_paths=()
 if [[ -n "$ALL_OUTPUT_FILES_PATH" && -f "$ALL_OUTPUT_FILES_PATH" ]]; then
     while IFS= read -r _rp_line || [[ -n "$_rp_line" ]]; do
@@ -305,17 +318,12 @@ fi
 
 _match_resolved_output() {
     local manifest_out="$1"
-    local rp _base _mbase _alt
+    local rp _base _mbase
     _base=$(basename "$manifest_out")
     for rp in "${_resolved_paths[@]}"; do
         [[ "$rp" == "$manifest_out" ]] && { printf '%s' "$rp"; return 0; }
         _mbase=$(basename "$rp")
         [[ "$_mbase" == "$_base" ]] && { printf '%s' "$rp"; return 0; }
-    done
-    for _alt in "${manifest_out%.txt}-phase2.txt" "${manifest_out%.txt}-phase3.txt"; do
-        for rp in "${_resolved_paths[@]}"; do
-            [[ "$rp" == "$_alt" ]] && { printf '%s' "$rp"; return 0; }
-        done
     done
     return 1
 }

@@ -143,6 +143,12 @@ CURSOR_STATUS=launched
 [[ "$CURSOR_STATUS" == "launched" && "$CURSOR_TOOL" == "claude" ]] && CURSOR_STATUS=fallback
 [[ -s "$CODEX_PATH" ]] || CODEX_STATUS=failed
 [[ -s "$CURSOR_PATH" ]] || CURSOR_STATUS=failed
+if [[ -s "$CODEX_PATH" ]] && ! grep -Eq -- "$ASSESSMENT_PATTERN" "$CODEX_PATH"; then
+    CODEX_STATUS=failed
+fi
+if [[ -s "$CURSOR_PATH" ]] && ! grep -Eq -- "$ASSESSMENT_PATTERN" "$CURSOR_PATH"; then
+    CURSOR_STATUS=failed
+fi
 
 degraded_warning=false
 effective=0

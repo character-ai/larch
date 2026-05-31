@@ -75,14 +75,9 @@ while IFS= read -r row; do
     if [[ "${CURSOR_STUB_MODE:-ok}" == narrate ]]; then
       trace="${PLAN_ASSESSOR_TRACE_FILE:?}"
       printf '%s\n' 'phase1:cursor:narrative-only' >>"$trace"
-      phase2_output="${output%.txt}-phase2.txt"
-      printf '%s\n' 'phase2:codex:narrative-only' >>"$trace"
-      printf 'Still narrating instead of emitting an ASSESSMENT line.\n' >"$phase2_output"
-      phase3_output="${output%.txt}-phase3.txt"
-      printf '%s\n' 'phase3:claude:narrative-only' >>"$trace"
-      printf 'Claude narration without structured verdict.\n' >"$phase3_output"
-      printf 'DISPATCH_OK=false\nALL_OUTPUT_FILES=%s %s\nALL_OUTPUT_TOOLS=codex claude\n' "$out1" "$phase3_output"
-      exit 0
+      printf 'Still narrating instead of emitting an ASSESSMENT line.\n' >"$output"
+      out2="$output"
+      tool_out2=cursor
     elif [[ "$CURSOR_PRESENT" == false ]]; then
       printf 'ASSESSMENT: TIE\nREASONING: cursor fallback\nQUALIFICATIONS: c qual\n' >"$output"
       tool_out2=claude
@@ -133,11 +128,13 @@ out=$(CURSOR_STUB_MODE=narrate LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --feature-file "$TMP/feature.txt" \
   --codex-present true \
   --cursor-present true)
-printf '%s\n' "$out" | grep -Fq 'DISPATCH_OK=false' || fail 'narration-only cursor output must fail dispatch contract'
+printf '%s\n' "$out" | grep -Fq 'DISPATCH_OK=true' || fail 'drop-on-failure assessor dispatch should remain DISPATCH_OK=true'
 printf '%s\n' "$out" | grep -Fq 'DEGRADED_PANEL_WARNING=true' || fail 'narration-only cursor output should mark degraded panel'
 grep -Fqx 'phase1:cursor:narrative-only' "$TMP/waterfall.trace" || fail 'narration-only cursor case must record cursor phase-1 attempt'
-grep -Fqx 'phase2:codex:narrative-only' "$TMP/waterfall.trace" || fail 'narration-only cursor case must record codex phase-2 retry'
-grep -Fqx 'phase3:claude:narrative-only' "$TMP/waterfall.trace" || fail 'narration-only cursor case must record claude phase-3 retry'
+grep -Fq 'phase2:codex' "$TMP/waterfall.trace" && fail 'narration-only cursor case must not record phase-2 codex retry'
+grep -Fq 'phase3:claude' "$TMP/waterfall.trace" && fail 'narration-only cursor case must not record phase-3 claude retry'
+jq -s -e 'all(.[]; has("fallback_group") | not)' "$TMP/plan-assessor-slots.ndjson" >/dev/null \
+    || fail 'assessor manifest must not include fallback_group'
 
 cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'STUB'
 #!/usr/bin/env bash

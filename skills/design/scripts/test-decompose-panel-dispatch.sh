@@ -181,11 +181,7 @@ DECOMPOSE_PANEL_WATERFALL_SH="$STUB4" \
 grep -Fq 'PANEL_STATUS=degraded' "$D4/out.kv" || fail "expected degraded when waterfall fails with usable outputs"
 grep -Fq 'DEGRADED_PANEL=true' "$D4/out.kv" || fail "expected DEGRADED_PANEL true"
 
-echo "=== plan mode: resolved-paths panel rows ==="
-# When the dispatcher resolves a slot through phase-2/phase-3 fallback, the
-# `ALL_OUTPUT_FILES_PATH` line for that slot points at the fallback file. The
-# panel must record THAT path in `panel-outputs.ndjson`, not the manifest's
-# original phase-1 path, so operator presentation sees the recovered content.
+echo "=== plan mode: partial slot drop under --no-fallback ==="
 D5="$TMP/m5"
 prep_common "$D5"
 STUB5="$TMP/stub5.sh"
@@ -213,9 +209,6 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     mkdir -p "$(dirname "$out")"
     if [[ "$first" == true ]]; then
         printf 'narration only, no heading\n' >"$out"
-        phase2_out="${out%.txt}-phase2.txt"
-        printf '## Recommendation\nsplit\n' >"$phase2_out"
-        printf '%s\n' "$phase2_out" >>"$paths_out"
         first=false
     else
         printf '## Recommendation\nsplit\n' >"$out"
@@ -223,7 +216,7 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     fi
 done <"$slots"
 printf 'DISPATCH_OK=true\n'
-printf 'FALLBACK_COUNT=1\n'
+printf 'FALLBACK_COUNT=0\n'
 printf 'STATIC_DISPATCH_OK=true\n'
 printf 'DYNAMIC_DISPATCH_OK=true\n'
 printf 'ALL_OUTPUT_FILES_PATH=%s\n' "$paths_out"
@@ -242,31 +235,47 @@ DECOMPOSE_PANEL_WATERFALL_SH="$STUB5" \
     --mode plan \
     --plan-file "$D5/plan.txt" \
     --timeout 30 >"$D5/out.kv"
+grep -Fq 'DEGRADED_PANEL=true' "$D5/out.kv" || fail "partial slot drop should mark degraded panel"
+_paths5=$(grep '^ALL_OUTPUT_FILES_PATH=' "$D5/out.kv" | head -1 | cut -d= -f2-)
+[[ "$(grep -c . "$_paths5" || true)" == "7" ]] || fail "partial drop should list seven succeeded paths"
+grep -Fq -- '-phase2.txt' "$_paths5" && fail "no-fallback partial drop must not list phase-2 recovery paths"
 first_row=$(sed -n '1p' "$D5/decompose/panel-outputs.ndjson")
 first_status=$(printf '%s' "$first_row" | jq -r '.status')
-first_output=$(printf '%s' "$first_row" | jq -r '.output')
-[[ "$first_status" == "ok" ]] || fail "expected resolved-paths first row status=ok got '$first_status'"
-case "$first_output" in
-    *-phase2.txt) ;;
-    *) fail "expected first row output to point at phase-2 fallback path, got '$first_output'" ;;
-esac
-[[ -f "$first_output" ]] || fail "resolved phase-2 path does not exist: $first_output"
-grep -Fq '## Recommendation' "$first_output" \
-    || fail "resolved phase-2 file missing Recommendation heading"
+[[ "$first_status" == "unparsed" || "$first_status" == "missing" ]] \
+    || fail "dropped slot row should be unparsed/missing, got '$first_status'"
 
-echo "=== DEGRADED_PANEL from COMBINED_FALLBACK_COUNT only (8 slots, half=4) ==="
+echo "=== DEGRADED_PANEL when paths-file has fewer entries than manifest slots ==="
 D6="$TMP/m6"
 prep_common "$D6"
 STUB6="$TMP/stub6.sh"
-make_stub >"$STUB6"
+cat >"$STUB6" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+paths_out="${WATERFALL_STUB_PATHS_OUT:?}"
+slots=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --slots-file) slots="${2:?}"; shift 2 ;;
+        --paths-file) paths_out="${2:?}"; shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+: >"$paths_out"
+n=0
+while IFS= read -r row || [[ -n "$row" ]]; do
+    [[ -n "$row" ]] || continue
+    out=$(printf '%s' "$row" | jq -r '.output // empty')
+    mkdir -p "$(dirname "$out")"
+    printf '## Recommendation\nsplit\n' >"$out"
+    n=$((n + 1))
+    (( n <= 4 )) && printf '%s\n' "$out" >>"$paths_out"
+done <"$slots"
+printf 'DISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nALL_OUTPUT_FILES_PATH=%s\n' "$paths_out"
+STUB
 chmod +x "$STUB6"
 : >"$D6/wf.log"
 DECOMPOSE_PANEL_WATERFALL_SH="$STUB6" \
-    WATERFALL_STUB_LOG="$D6/wf.log" \
     WATERFALL_STUB_PATHS_OUT="$D6/paths.out" \
-    W_STUB_FALLBACK_COUNT=0 \
-    W_STUB_COMBINED_FALLBACK_COUNT=5 \
-    W_STUB_STATIC_OK=true \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     "$PANEL" \
     --design-tmpdir "$D6" \
@@ -275,6 +284,87 @@ DECOMPOSE_PANEL_WATERFALL_SH="$STUB6" \
     --mode plan \
     --plan-file "$D6/plan.txt" \
     --timeout 30 >"$D6/out.kv"
-grep -Fq 'DEGRADED_PANEL=true' "$D6/out.kv" || fail "COMBINED_FALLBACK_COUNT=5 with FALLBACK_COUNT=0 should degrade on 8 slots"
+grep -Fq 'DEGRADED_PANEL=true' "$D6/out.kv" || fail "partial paths-file should mark degraded panel on 8 slots"
+
+echo "=== availability matrix: codex-down => cursor-only rows ==="
+D8="$TMP/m8"
+prep_common "$D8"
+STUB8="$TMP/stub8.sh"
+make_stub >"$STUB8"
+chmod +x "$STUB8"
+: >"$D8/wf.log"
+DECOMPOSE_PANEL_WATERFALL_SH="$STUB8" \
+    WATERFALL_STUB_LOG="$D8/wf.log" \
+    WATERFALL_STUB_PATHS_OUT="$D8/paths.out" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D8" \
+    --codex-present false \
+    --cursor-present true \
+    --mode plan \
+    --plan-file "$D8/plan.txt" \
+    --timeout 30 >"$D8/out.kv"
+[[ "$(grep -c . "$D8/decompose/decompose-slots.ndjson" || true)" == "4" ]] || fail "codex-down expected 4 cursor rows"
+grep -Fq 'decomp-codex-' "$D8/decompose/decompose-slots.ndjson" && fail "codex-down must not emit codex rows"
+grep -Fq -- '--no-fallback' "$D8/wf.log" || fail "codex-down dispatch must pass --no-fallback"
+
+echo "=== availability matrix: cursor-down => codex-only rows ==="
+D9="$TMP/m9"
+prep_common "$D9"
+STUB9="$TMP/stub9.sh"
+make_stub >"$STUB9"
+chmod +x "$STUB9"
+: >"$D9/wf.log"
+DECOMPOSE_PANEL_WATERFALL_SH="$STUB9" \
+    WATERFALL_STUB_LOG="$D9/wf.log" \
+    WATERFALL_STUB_PATHS_OUT="$D9/paths.out" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D9" \
+    --codex-present true \
+    --cursor-present false \
+    --mode plan \
+    --plan-file "$D9/plan.txt" \
+    --timeout 30 >"$D9/out.kv"
+[[ "$(grep -c . "$D9/decompose/decompose-slots.ndjson" || true)" == "4" ]] || fail "cursor-down expected 4 codex rows"
+grep -Fq 'decomp-cursor-' "$D9/decompose/decompose-slots.ndjson" && fail "cursor-down must not emit cursor rows"
+grep -Fq -- '--no-fallback' "$D9/wf.log" || fail "cursor-down dispatch must pass --no-fallback"
+
+echo "=== availability matrix: both-absent => generic Claude reviewer ==="
+PLUGIN_STUB="$TMP/plugin-stub"
+mkdir -p "$PLUGIN_STUB/scripts" "$PLUGIN_STUB/skills/design/scripts"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/"
+cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/"
+cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'CLAUDE_STUB'
+#!/usr/bin/env bash
+OUTPUT="" PROMPT_FILE=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) OUTPUT="${2:?}"; shift 2 ;;
+        --prompt-file) PROMPT_FILE="${2:?}"; shift 2 ;;
+        --mode|--timeout|--timing-task-kind|--feature-file) shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf '## Recommendation\nGeneric decomposition.\n' >"$OUTPUT"
+printf '0\n' >"${OUTPUT}.done"
+CLAUDE_STUB
+chmod +x "$PLUGIN_STUB/scripts/launch-claude-review.sh"
+D10="$TMP/m10"
+prep_common "$D10"
+DECOMPOSE_PANEL_WATERFALL_SH="$STUB9" \
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" \
+    "$PANEL" \
+    --design-tmpdir "$D10" \
+    --codex-present false \
+    --cursor-present false \
+    --mode plan \
+    --plan-file "$D10/plan.txt" \
+    --timeout 30 >"$D10/out.kv"
+[[ ! -s "$D10/decompose/decompose-slots.ndjson" ]] || fail "both-absent must emit zero manifest rows"
+[[ "$(grep -c . "$D10/decompose/panel-outputs.ndjson" || true)" == "1" ]] || fail "both-absent expected one generic panel row"
+grep -Fq 'decomp-claude-generic-output.txt' "$D10/decompose/panel-outputs.ndjson" \
+    || fail "both-absent must record generic Claude output path"
+grep -Fq 'PANEL_STATUS=ok' "$D10/out.kv" || fail "both-absent generic path should yield ok panel status"
 
 echo "PASS: test-decompose-panel-dispatch.sh"

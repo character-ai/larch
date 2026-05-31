@@ -101,7 +101,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
         done
         append_shared_prompt_tail "$PLAN_FILE"
     } >"$_generic_prompt"
-    _generic_first_line_ere='^[[:space:]]*(schema_version|\{"no_issues_found)'
+    _generic_first_line_ere='^[[:space:]]*(schema_version|\{"no_issues_found|\{"schema_version)'
     set +e
     "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
         --output "$_generic_output" \
@@ -120,8 +120,10 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
             awk 'NF { print; exit }' "$_generic_output" 2>/dev/null || true
         )
         if [[ -n "$_generic_first" ]] && printf '%s\n' "$_generic_first" | grep -Eq -- "$_generic_first_line_ere"; then
-            _generic_dispatch_ok=true
-            _generic_degraded=false
+            if [[ -s "${_generic_output}.tsv" || -s "${_generic_output}.jsonl" ]]; then
+                _generic_dispatch_ok=true
+                _generic_degraded=false
+            fi
         fi
     fi
     if [[ "$_generic_dispatch_ok" == "true" ]]; then
@@ -256,11 +258,14 @@ case "$FALLBACK_COUNT" in ''|*[!0-9]*) FALLBACK_COUNT=0 ;; esac
 case "$COMBINED_FALLBACK_COUNT" in ''|*[!0-9]*) COMBINED_FALLBACK_COUNT="$FALLBACK_COUNT" ;; esac
 DEGRADED_ROUND=false
 [[ "${STATIC_DISPATCH_OK:-true}" == "false" ]] && DEGRADED_ROUND=true
-if (( 10#$COMBINED_FALLBACK_COUNT > floor_half )); then
-    DEGRADED_ROUND=true
-fi
 _paths_sidecar="${ALL_OUTPUT_FILES_PATH:-${_manifest}.output-files}"
-if [[ "${DISPATCH_OK:-}" == "true" && -f "$_paths_sidecar" && ! -s "$_paths_sidecar" && slot_count -gt 0 ]]; then
+_succeeded_paths=0
+if [[ -f "$_paths_sidecar" ]]; then
+    while IFS= read -r _pp || [[ -n "$_pp" ]]; do
+        [[ -n "$_pp" ]] && _succeeded_paths=$((_succeeded_paths + 1))
+    done <"$_paths_sidecar"
+fi
+if (( slot_count > 0 && _succeeded_paths < slot_count )); then
     DEGRADED_ROUND=true
 fi
 

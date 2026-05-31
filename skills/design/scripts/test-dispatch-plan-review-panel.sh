@@ -52,11 +52,19 @@ printf 'STATIC_DISPATCH_OK=%s\n' "$static_ok"
 printf 'DYNAMIC_DISPATCH_OK=true\n'
 _outpath="$(dirname "$log")/a.txt"
 : >"$_outpath"
+path_lines="${W_STUB_PATH_LINES:-$n}"
+case "$path_lines" in ''|*[!0-9]*) path_lines="$n" ;; esac
+if [[ -n "${WATERFALL_STUB_PATHS_OUT:-}" ]]; then
+    : >"${WATERFALL_STUB_PATHS_OUT}"
+    _i=0
+    while IFS= read -r _row || [[ -n "$_row" ]]; do
+        [[ -n "$_row" ]] || continue
+        _i=$((_i + 1))
+        (( _i <= path_lines )) && printf '%s\n' "$_outpath" >>"${WATERFALL_STUB_PATHS_OUT}"
+    done <"$slots"
+fi
 printf 'ALL_OUTPUT_FILES=%s\n' "$_outpath"
 printf 'ALL_OUTPUT_TOOLS=cursor\n'
-if [[ -n "${WATERFALL_STUB_PATHS_OUT:-}" ]]; then
-    printf '%s\n' "$_outpath" >"${WATERFALL_STUB_PATHS_OUT}"
-fi
 printf 'ALL_OUTPUT_FILES_PATH=%s\n' "${WATERFALL_STUB_PATHS_OUT:-$_outpath}"
 STUB
 chmod +x "$STUB"
@@ -145,7 +153,7 @@ if grep -Rq '\*\*Reviewer\*\*' "$D2"/render-plan-*.prompt "$D2"/render-plan-curs
     fail "unexpected **Reviewer** instruction in rendered prompts"
 fi
 
-echo "=== DEGRADED_ROUND boundary (14 slots, half=7) ==="
+echo "=== DEGRADED_ROUND when all manifest slots have paths (14 slots) ==="
 D3="$TMP/s3"
 prep "$D3"
 cp "$D2/scout-plan-manifest.json" "$D3/scout-plan-manifest.json"
@@ -154,7 +162,7 @@ log3="$D3/wf.log"
 DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     WATERFALL_STUB_LOG="$log3" \
     WATERFALL_STUB_PATHS_OUT="$D3/paths.out" \
-    W_STUB_FALLBACK_COUNT=7 \
+    W_STUB_PATH_LINES=14 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     "$PANEL" \
     --design-tmpdir "$D3" \
@@ -162,7 +170,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --cursor-present true \
     --plan-file "$D3/plan.txt" \
     --timeout 60 >"$D3/out.env"
-grep -Fq 'DEGRADED_ROUND=false' "$D3/out.env" || fail "7 fallbacks on 14 slots should not degrade"
+grep -Fq 'DEGRADED_ROUND=false' "$D3/out.env" || fail "full paths-file on 14 slots should not degrade"
 
 D4="$TMP/s4"
 prep "$D4"
@@ -172,7 +180,7 @@ log4="$D4/wf.log"
 DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     WATERFALL_STUB_LOG="$log4" \
     WATERFALL_STUB_PATHS_OUT="$D4/paths.out" \
-    W_STUB_FALLBACK_COUNT=8 \
+    W_STUB_PATH_LINES=7 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     "$PANEL" \
     --design-tmpdir "$D4" \
@@ -180,7 +188,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --cursor-present true \
     --plan-file "$D4/plan.txt" \
     --timeout 60 >"$D4/out.env"
-grep -Fq 'DEGRADED_ROUND=true' "$D4/out.env" || fail "8 fallbacks on 14 slots should degrade"
+grep -Fq 'DEGRADED_ROUND=true' "$D4/out.env" || fail "partial paths-file (7/14) should degrade"
 
 D5="$TMP/s5"
 prep "$D5"
@@ -201,7 +209,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --timeout 60 >"$D5/out.env"
 grep -Fq 'DEGRADED_ROUND=true' "$D5/out.env" || fail "static dispatch false should degrade"
 
-echo "=== DEGRADED_ROUND from COMBINED_FALLBACK_COUNT only (14 slots, half=7) ==="
+echo "=== DEGRADED_ROUND when paths-file is empty but slots were manifest (14 slots) ==="
 D7="$TMP/s7"
 prep "$D7"
 cp "$D2/scout-plan-manifest.json" "$D7/scout-plan-manifest.json"
@@ -210,8 +218,7 @@ log7="$D7/wf.log"
 DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     WATERFALL_STUB_LOG="$log7" \
     WATERFALL_STUB_PATHS_OUT="$D7/paths.out" \
-    W_STUB_FALLBACK_COUNT=0 \
-    W_STUB_COMBINED_FALLBACK_COUNT=8 \
+    W_STUB_PATH_LINES=0 \
     W_STUB_STATIC_OK=true \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     "$PANEL" \
@@ -220,7 +227,7 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --cursor-present true \
     --plan-file "$D7/plan.txt" \
     --timeout 60 >"$D7/out.env"
-grep -Fq 'DEGRADED_ROUND=true' "$D7/out.env" || fail "COMBINED_FALLBACK_COUNT=8 with FALLBACK_COUNT=0 should degrade on 14 slots"
+grep -Fq 'DEGRADED_ROUND=true' "$D7/out.env" || fail "empty paths-file with manifest slots should degrade"
 
 echo "=== quoted tmpdir path keeps ndjson valid ==="
 D6="$TMP/quote\"dir"
@@ -300,7 +307,9 @@ while [[ $# -gt 0 ]]; do
         *) shift ;;
     esac
 done
-printf 'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n' >"$OUTPUT"
+printf 'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n' >"${OUTPUT}.tsv"
+printf '1\tin_scope\tnit\tcorrectness\tloc\twhat\tscenario\tfix\n' >>"${OUTPUT}.tsv"
+printf 'schema_version\tin_scope\tnit\tcorrectness\tloc\twhat\tscenario\tfix\n' >"$OUTPUT"
 printf '0\n' >"${OUTPUT}.done"
 CLAUDE_STUB
 chmod +x "$PLUGIN_STUB/scripts/launch-claude-review.sh"
@@ -362,5 +371,55 @@ _collect11=$(LARCH_QUIET_DISABLE=1 bash "$COLLECT_STUB" \
     --timeout 5 \
     --paths-file "$_paths11" 2>/dev/null || true)
 printf '%s\n' "$_collect11" | grep -Fq 'SENTINEL_TIMEOUT' && fail "codex-down collect must not return SENTINEL_TIMEOUT under short timeout"
+
+echo "=== both-absent: real collect reads jsonl structured sidecar ==="
+COLLECT_REAL="$REPO_ROOT/scripts/collect-agent-results.sh"
+D12="$TMP/s12"
+prep "$D12"
+printf '{"archetypes":[]}\n' >"$D12/scout-plan-manifest.json"
+PLUGIN_JSONL="$TMP/plugin-jsonl"
+mkdir -p "$PLUGIN_JSONL/scripts" "$PLUGIN_JSONL/skills/design/scripts"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_JSONL/scripts/"
+cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_JSONL/scripts/"
+cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_JSONL/skills/design/scripts/"
+cp "$REPO_ROOT/scripts/read-design-classification.sh" "$PLUGIN_JSONL/scripts/"
+mkdir -p "$PLUGIN_JSONL/skills/design/references"
+cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_JSONL/skills/design/references/"
+chmod +x "$PLUGIN_JSONL/scripts/read-design-classification.sh" \
+    "$PLUGIN_JSONL/skills/design/scripts/render-plan-review-prompt.sh"
+cat >"$PLUGIN_JSONL/scripts/launch-claude-review.sh" <<'JSONL_STUB'
+#!/usr/bin/env bash
+OUTPUT="" PROMPT_FILE=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) OUTPUT="${2:?}"; shift 2 ;;
+        --prompt-file) PROMPT_FILE="${2:?}"; shift 2 ;;
+        --mode|--timeout|--timing-task-kind|--plan-file|--feature-file) shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf '{"schema_version":1,"scope":"in_scope","severity":"nit","focus_area":"correctness","location":"loc","what":"w","scenario_or_breakage":"s","suggested_fix":"f"}\n' >"${OUTPUT}.jsonl"
+printf '{"schema_version":1,"scope":"in_scope","severity":"nit","focus_area":"correctness","location":"loc","what":"w","scenario_or_breakage":"s","suggested_fix":"f"}\n' >"$OUTPUT"
+printf '0\n' >"${OUTPUT}.done"
+JSONL_STUB
+chmod +x "$PLUGIN_JSONL/scripts/launch-claude-review.sh"
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_JSONL" \
+    "$PANEL" \
+    --design-tmpdir "$D12" \
+    --codex-present false \
+    --cursor-present false \
+    --plan-file "$D12/plan.txt" \
+    --timeout 60 >"$D12/out.env"
+grep -Fq 'DISPATCH_OK=true' "$D12/out.env" || fail "jsonl generic path should dispatch ok"
+_paths12=$(grep '^PANEL_PATHS_FILE=' "$D12/out.env" | head -1 | cut -d= -f2-)
+_generic12=$(sed -n '1p' "$_paths12")
+_collect12=$(LARCH_QUIET_DISABLE=1 bash "$COLLECT_REAL" \
+    --timeout 5 \
+    --structured-reviewer-validation \
+    --paths-file "$_paths12" 2>&1) || true
+printf '%s\n' "$_collect12" | grep -Fq 'STATUS=SENTINEL_TIMEOUT' && fail "jsonl both-absent collect must not SENTINEL_TIMEOUT"
+printf '%s\n' "$_collect12" | grep -Fq "STRUCTURED_SIDECAR=${_generic12}.jsonl" \
+    || fail "jsonl both-absent collect must emit jsonl STRUCTURED_SIDECAR"
 
 echo "All dispatch-plan-review-panel harness assertions passed."

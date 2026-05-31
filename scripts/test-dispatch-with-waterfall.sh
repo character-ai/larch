@@ -527,6 +527,19 @@ grep -Fxq "$TMPROOT/no-fallback-keep.txt" "${manifest}.output-files" \
     || { echo "FAIL: no-fallback keep should list succeeded path" >&2; exit 1; }
 [[ -f "$TMPROOT/no-fallback-keep.txt.done" ]] || { echo "FAIL: no-fallback keep missing .done sentinel" >&2; exit 1; }
 
+_collect_paths="${manifest}.output-files"
+_collect_start=$(date +%s)
+_collect_out=$(LARCH_QUIET_DISABLE=1 bash "$REPO_ROOT/scripts/collect-agent-results.sh" \
+    --timeout 5 \
+    --paths-file "$_collect_paths" 2>&1) || true
+_collect_elapsed=$(( $(date +%s) - _collect_start ))
+[[ "$_collect_elapsed" -lt 4 ]] || { echo "FAIL: real collect on no-fallback keep took too long (${_collect_elapsed}s)" >&2; exit 1; }
+if grep -Fq 'STATUS=SENTINEL_TIMEOUT' <<<"$_collect_out"; then
+    echo "FAIL: real collect on no-fallback keep must not SENTINEL_TIMEOUT" >&2
+    printf '%s\n' "$_collect_out" >&2
+    exit 1
+fi
+
 manifest="$TMPROOT/slots-no-fallback-absent.ndjson"
 printf '{"slot":"absent-codex","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
     "$TMPROOT/no-fallback-absent.txt" "$prompt" >"$manifest"
