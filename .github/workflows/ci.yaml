@@ -417,3 +417,36 @@ jobs:
         # Invokes scripts/dialectic-smoke-test.sh directly; the `make smoke-dialectic`
         # target is equivalent and exists for local developer convenience.
         run: bash scripts/dialectic-smoke-test.sh
+
+  python-lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: python/requirements-dev.txt
+      - uses: actions/setup-node@v5
+      - name: Install Python lint dependencies
+        run: pip install -r python/requirements-dev.txt
+      - name: Run Python linters
+        working-directory: python
+        run: ruff check . && pylint . && pyright
+
+  python-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: python/requirements-test.txt
+      - name: Install Python test dependencies
+        run: pip install -r python/requirements-test.txt
+      - name: Run Python tests
+        working-directory: python
+        run: pytest

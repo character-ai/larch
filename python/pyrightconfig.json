@@ -1,0 +1,18 @@
+{
+  "typeCheckingMode": "strict",
+  "pythonVersion": "3.12",
+  "pythonPlatform": "Linux",
+  "include": ["."],
+  "exclude": [".venv/**"],
+  "enableExperimentalFeatures": true,
+  "reportUntypedFunctionDecorator": "error",
+  "reportUntypedClassDecorator": "error",
+  "reportUntypedBaseClass": "error",
+  "reportUntypedNamedTuple": "error",
+  "reportPrivateUsage": "error",
+  "reportUnusedCallResult": "error",
+  "analyzeUnannotatedFunctions": true,
+  "reportFunctionMemberAccess": "error",
+  "reportMissingImports": "error",
+  "reportMissingParameterType": "error"
+}
