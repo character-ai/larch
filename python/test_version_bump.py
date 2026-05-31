@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -15,6 +16,7 @@ import pytest
 import config
 import proc
 import version_bump
+from bump_worktree import drop_replay_commit, sorted_changed_files
 from errors import ShipError, Stalled
 from proc import CommandResult
 
@@ -87,12 +89,15 @@ def test_parity_apply_bump_warns_on_tolerated_untracked(tmp_path: Path) -> None:
     repo_py = _init_bump_repo(tmp_path / "py")
     for repo in (repo_bash, repo_py):
         _ = (repo / "dispatch.launcher-stderr").write_text("noise\n", encoding="utf-8")
+    # LARCH_QUIET_DISABLE=1 prevents lib-quiet.sh from redirecting stderr to a
+    # log file, so the WARN message reaches the captured stderr as expected.
     bash = subprocess.run(
         ["bash", str(APPLY_SH), "--new-version", "1.2.3"],
         cwd=repo_bash,
         capture_output=True,
         text=True,
         check=False,
+        env={**os.environ, "LARCH_QUIET_DISABLE": "1"},
     )
     stderr_capture = io.StringIO()
     orig_stderr = version_bump.sys.stderr
@@ -1130,8 +1135,6 @@ def test_drop_allow_changelog_only(tmp_path: Path) -> None:
 
 
 def test_sorted_changed_files_c_locale_order(tmp_path: Path) -> None:
-    from bump_worktree import sorted_changed_files
-
     repo = _init_bump_repo(tmp_path)
     _ = subprocess.run(
         ["git", "commit", "-q", "--allow-empty", "-m", "empty"],
@@ -1184,7 +1187,7 @@ def test_parity_classify_idempotency_cases(tmp_path: Path, case: str) -> None:
         _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
         _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 1.2.3"], cwd=repo, check=True)
         with (repo / "CHANGELOG.md").open("a", encoding="utf-8") as fh:
-            fh.write("\n- New fix.\n")
+            _ = fh.write("\n- New fix.\n")
         _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
         _ = subprocess.run(
             ["git", "commit", "-q", "-m", "Update CHANGELOG for 1.2.3"],
@@ -1197,7 +1200,7 @@ def test_parity_classify_idempotency_cases(tmp_path: Path, case: str) -> None:
         _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
         _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 1.2.3"], cwd=repo, check=True)
         with (repo / "CHANGELOG.md").open("a", encoding="utf-8") as fh:
-            fh.write("\n- New fix.\n")
+            _ = fh.write("\n- New fix.\n")
         _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
         _ = subprocess.run(
             ["git", "commit", "-q", "-m", "Update CHANGELOG for 1.2.3"],
@@ -1218,7 +1221,7 @@ def test_parity_classify_idempotency_cases(tmp_path: Path, case: str) -> None:
         _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
         _ = subprocess.run(["git", "commit", "-q", "-m", "Feature work"], cwd=repo, check=True)
         with (repo / "CHANGELOG.md").open("a", encoding="utf-8") as fh:
-            fh.write("\n- Feature note.\n")
+            _ = fh.write("\n- Feature note.\n")
         _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
         _ = subprocess.run(
             ["git", "commit", "-q", "-m", "Update CHANGELOG for 1.2.3"],
@@ -1329,8 +1332,6 @@ def test_parity_drop_bump_success_plugin_only(tmp_path: Path) -> None:
 
 
 def test_drop_replay_abort_failure_reports_stuck_rebase() -> None:
-    from bump_worktree import drop_replay_commit
-
     runner = StubRunner(
         {
             ("git", "rebase", "--onto", "HEAD~2", "HEAD~1"): CommandResult(
