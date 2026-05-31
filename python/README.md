@@ -16,6 +16,7 @@ imported by runtime code.
 - `version_bump.py`, `changelog.py` — Phase 2 ports of bump-version / CHANGELOG scripts
   (not wired into the live `/implement` path until Phase 7). `commit_changelog` is Markdown-only
   today; RST changelog commit is deferred until Phase 7 (no bash `commit-changelog` counterpart for RST).
+- `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4)
 - `test_<module>.py` — colocated unit tests; `test_stdlib_only.py` enforces stdlib-only imports
 
 ## Dependencies
