@@ -1,0 +1,28 @@
+Checking repo bash conventions and mktemp usage patterns for comparison.
+Checking how similar scripts guard temp-file cleanup under `set -e`:
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+**Branch commits** (since `main`): `717fb8202` (design run logs), `4e97d59cd` (cleanup enumeration fail-safe + convergence-threshold removal), `25d20f33e` (implement run logs).
+
+**`set -e` / `emit_kv` path (workstream A)** — The new enumeration paths match the planned fail-safe contract:
+
+- **Guarded `mktemp`**: `if _cache_list=$(mktemp …); then` / `if _tmp_list=$(mktemp …); then` prevents `set -e` from aborting on allocation failure; the `mktemp-allocation-failure-warns` case covers unwritable `TMPDIR` and still expects both removal KVs.
+- **Guarded `find`**: enumeration failure branches to `larch_err` + skip; no read loop runs on failure.
+- **Read loops**: `done < "$_list" || true` is required even for an empty enumeration (first `read` returns 1); without it, a successful `find` with zero entries could trip `errexit` before `emit_kv`.
+- **Loop body**: `(( … )) || true` on counters is unchanged; `rm -rf` / `rm -f` in the body share the same `set -e` behavior as the pre-change process-substitution loops (not introduced by this diff).
+
+**Temp lifecycle** — On every path where `mktemp` succeeds, `rm -f "$_cache_list"` / `rm -f "$_tmp_list"` runs once at the end of that pass (success, `find` failure, or after the read loop). Allocation-failure branches never create a list file. There is no early `exit` between allocation and `rm -f` in these blocks.
+
+**`/tmp` predicates** — The `/tmp` enumeration `find` is unchanged aside from redirection: `-mindepth 1 -maxdepth 1 ! -type l -mtime +"$RETENTION_DAYS" \( "${_find_name_args[@]}" \) -print0` at `skills/cleanup/scripts/cleanup.sh:110`, matching the prior process-substitution form.
+
+**`mktemp` template** — `${TMPDIR:-/tmp}/larch-cleanup-*.XXXXXX` is Bash 3.2–safe (external `mktemp`, no Bash 4+ features). The trailing six `X` characters satisfy BSD and GNU `mktemp`; the literal `*` is part of the filename prefix, not a glob. This matches the plan and is exercised on Darwin in CI via `test-cleanup.sh`.
+
+**Minor consistency (pre-existing style, not a regression)** — `rm -f` on the list temps at `cleanup.sh:67,125` is not suffixed with `|| true`. An extremely unusual unlink failure could abort before `emit_kv`, which would weaken the “always emit count KVs” story; repo-wide temp cleanup is mixed (`launch-review.sh` sometimes uses `|| true`, many design scripts do not). Optional hardening only.
+
+**Still fail-open (unchanged by this branch)** — The symlink-reaper pass at `cleanup.sh:142` still uses `done < <(find …) || true`, so a failed top-level `find` there remains silent with count 0. That was out of plan scope (#3260 targeted only the cache and `/tmp` enumeration passes).
+
+**Workstream B** (convergence-threshold removal) is argv/doc/test plumbing with no new Bash 3.2 surface beyond standard `case`/argv parsing; no portability issues spotted in the diff for that workstream.
