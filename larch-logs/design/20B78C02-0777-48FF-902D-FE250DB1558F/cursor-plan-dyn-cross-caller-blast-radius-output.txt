@@ -1,0 +1,25 @@
+Reviewing the plan and tracing all callers of the session-env writers.
+**Caller inventory (outside `/implement` runtime)**
+
+| Caller | Path | Gets `plugin-root.env`? | Test/CI breakage? |
+|--------|------|-------------------------|-------------------|
+| `/design` Step 0 | `skills/design/SKILL.md:146` | No — `session-setup.sh` without `--write-session-env`; uses `write-design-current-env.sh` | N/A |
+| `/review` Step 0 | `skills/review/SKILL.md:27` | No — same | N/A |
+| `/research` Step 0 | `skills/research/SKILL.md:125` | No — same | N/A |
+| CI: token propagation harness | `skills/implement/scripts/test-implement-review-token-propagation.sh:37-42,70-75` | Yes when `CLAUDE_PLUGIN_ROOT=$REPO_ROOT` (line 10) | No — asserts only `$REVIEW_ENV` KV content |
+| CI: check-reviewers | `scripts/test-check-reviewers.sh:336-339` | Yes if shell has `CLAUDE_PLUGIN_ROOT` | No — reads `$SESS_W` only |
+| CI: presence defaults | `scripts/test-session-setup-presence-defaults.sh:56-120` | Yes if env has `CLAUDE_PLUGIN_ROOT` | No — file-value asserts only |
+| CI: roundtrip (direct writer) | `scripts/test-session-env-roundtrip.sh:203+` | Plan adds explicit sibling tests | Covered by plan |
+
+No harness asserts “only `session-env.sh` exists” or directory cardinality. OOS for `/design`/`/review` SKILL changes is consistent: those skills never invoke the writer; the skill-agnostic writer only affects `--write-session-env` paths (implement bootstrap + the harnesses above).
+
+---
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-implement-timing-rehydration.sh:78-103	Plan updates only the awk-line grep at 128-132; Invariant C awk still requires LARCH_CLAUDE_PLUGIN_ROOT= plus awk in the same fence	After SKILL.md swaps 40 awk fences for the plugin-root.env source one-liner, every ${CLAUDE_PLUGIN_ROOT} fence fails Invariant C and make test-implement-timing-rehydration exits non-zero despite plan claiming harness update is complete	Rewrite Invariant C (and header comment lines 17-20) to accept the new guarded source pattern (e.g. plugin-root.env -f and dot) instead of awk on session-env.sh; retire the export-count parity check at 130-132 as already planned
+
+**1. correctness** — `scripts/test-implement-timing-rehydration.sh:78-103`
+
+The plan retires the awk-form grep at lines 128-132 but leaves **Invariant C** untouched. That block still sets `has_root_rehydration` only when a fence contains both `LARCH_CLAUDE_PLUGIN_ROOT=` and `awk` (lines 98-99). The proposed one-liner sources `$IMPLEMENT_TMPDIR/plugin-root.env` and matches neither token, so every post-refactor `${CLAUDE_PLUGIN_ROOT}` fence fails and `make lint` breaks.
+
+**Suggested revision:** Extend the planned harness edit to rewrite Invariant C (and the comment at lines 17-20) for the new source-line contract; keep the planned retirement of the read/export count parity at 128-132.

@@ -1,0 +1,2 @@
+Reading the implementation plan and exploring the codebase paths it references.
+{"no_issues_found": true}

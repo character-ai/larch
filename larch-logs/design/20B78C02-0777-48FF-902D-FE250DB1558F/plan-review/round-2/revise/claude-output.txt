@@ -1,0 +1,31 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -15,8 +15,10 @@
+ - Reuse the already-validated `CLAUDE_PLUGIN_ROOT_VALUE` (validated at the existing `^[A-Za-z0-9_./~+-]{1,512}$` + absolute-path checks, write-session-env.sh:136-145) — no new validation, no injection surface.
+ - Write atomically via `mktemp "${PLUGIN_ROOT_ENV}.tmp.XXXXXX"` + `mv`, mirroring the existing main-output pattern.
+-- Factor the sibling emit into a small `emit_plugin_root_env <path> <value>` helper in this script (same guards, validation already done by caller); call it from the main-output branch and from `implement-bootstrap.sh` resume sync so the write shape stays single-sourced.
++- Make `write-session-env.sh` source-safe: define `emit_plugin_root_env <path> <value>` at the top of the script (before any argument parsing), then wrap the existing main body in `if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then ... fi` (the ship-pr.sh pattern). Sourcing the file loads only the helper without running argument parsing or the main-output write.
++- Factor the sibling emit into `emit_plugin_root_env` (same guards, validation already done by caller); call it from the main-output branch (inside the `BASH_SOURCE` guard) and expose it for `implement-bootstrap.sh` resume sync via sourcing — so the write shape stays single-sourced.
+ - Update the usage-header comment block (the `# Output:` stanza, write-session-env.sh:24-29) to document the new sibling output, its sourceable form, and its skip conditions.
+ 
+ ### UPDATED: `scripts/write-session-env.md`
+ - Document the new `plugin-root.env` sibling output: path = dirname of `--output`; sourceable `CLAUDE_PLUGIN_ROOT=` + `export`; atomic temp+mv; skipped for `/dev/null` and when `CLAUDE_PLUGIN_ROOT` is empty.
++- Document the source-safe refactor: `write-session-env.sh` may be sourced to load `emit_plugin_root_env` without executing argument parsing; the `BASH_SOURCE` guard is the mechanism; sourcing is the intended call pattern for `implement-bootstrap.sh`'s resume branch.
+ - State it is additive for **every** `--write-session-env` caller (skill-agnostic); only `/implement`'s SKILL.md consumes it today. Note the contrast with `session-env.sh` ("not safe to source").
+@@ -23,5 +25,5 @@
+ 
+ ### UPDATED: `scripts/implement-bootstrap.sh`
+-- In the `--resume-plan-tail` reuse branch (`resume_existing_tmpdir`, lines 563-586): after re-reading keys from `$IMPLEMENT_TMPDIR/session-env.sh` and **before** the closing `fi` of that branch, when `plugin-root.env` is absent and `LARCH_CLAUDE_PLUGIN_ROOT` is non-empty, call `emit_plugin_root_env "$IMPLEMENT_TMPDIR/plugin-root.env" "$_root"` where `_root` is read via `"$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_PLUGIN_ROOT --default ""` (bootstrap already resolves helpers under `$SCRIPT_DIR` — no chicken-and-egg). Idempotent when the sibling already exists from a prior Step 0 write or an earlier sync in the same run.
++- In the `--resume-plan-tail` reuse branch (`resume_existing_tmpdir`, lines 563-586): after re-reading keys from `$IMPLEMENT_TMPDIR/session-env.sh` and **before** the closing `fi` of that branch, when `plugin-root.env` is absent and `LARCH_CLAUDE_PLUGIN_ROOT` is non-empty, load the helper via `. "$SCRIPT_DIR/write-session-env.sh"` (safe to source after the `BASH_SOURCE` guard is in place — sourcing loads only `emit_plugin_root_env`, not the argument-parsing main body), then call `emit_plugin_root_env "$IMPLEMENT_TMPDIR/plugin-root.env" "$_root"` where `_root` is read via `"$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_PLUGIN_ROOT --default ""`. Idempotent when the sibling already exists from a prior Step 0 write or an earlier sync in the same run.
+ - Document the resume-tail sibling sync in `scripts/implement-bootstrap.md` (resume idempotency / legacy-tmpdir subsection).
+ 
+ ### UPDATED: `skills/implement/SKILL.md`
+@@ -86,6 +88,6 @@
+ - Run `make lint` (repo-wide pre-commit hooks).
+ 
+-diff_added: 135
++diff_added: 140
+ diff_deleted: 175
+ mechanical_churn: true
+-diff_lines: 310
++diff_lines: 315

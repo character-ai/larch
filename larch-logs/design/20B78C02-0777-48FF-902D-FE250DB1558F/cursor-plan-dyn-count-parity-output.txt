@@ -1,0 +1,20 @@
+Reading the plan and auditing numeric fence claims against `skills/implement/SKILL.md`.
+Verifying the prose-example vs test-count conflict and the failure-mode grep wording.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-implement-timing-rehydration.sh:46	Proposed grep -Fxc source-line count is 40 but prelude rewrite adds the same guarded source line to the Bash block prelude example fence	Implementer follows plan.txt:41 and inserts the canonical source line at skills/implement/SKILL.md:116-121; CI assertion (a) expects exactly 40 matches and fails with 41 (or implementer omits the doc example and drifts from the documented canonical form)	Either assert source-line count 41 with an explicit comment that one match is documentation-only, or show the canonical line outside a grep-counted ```bash fence (prose-only / indented non-bash fence) while keeping Approach line 62’s “not an executable site” contract
+2	in_scope	important	correctness	plan.txt:29-33	Post-Step-0 (37 sites) bullet lists all 40 awk line numbers including pre-bootstrap 106, 308, and 467 under source-only replacement text	Mechanical pass applies only the one-line source guard to Step 0 foreground (skills/implement/SKILL.md:307-311), dirty-tree recovery (:466-469), and legacy pin (:105-108); on cold start or legacy resume before plugin-root.env exists, CLAUDE_PLUGIN_ROOT stays empty and later ${CLAUDE_PLUGIN_ROOT}/... calls break	Split inventories: 37 post-Step-0 line numbers only under the first bullet; list 106, 308, 467 solely under the pre-bootstrap bullet with source+awk+export
+3	in_scope	important	correctness	plan.txt:77	Failure-mode verification says post-edit awk-line grep on SKILL.md should be 0 while the plan retains 3 pre-bootstrap awk fallbacks	Implementer treats Failure modes as the acceptance checklist and deletes or “fixes” the three required awk lines; or chases a nonexistent zero-awk state while debugging CI	Change mitigation to grep -Fxc awk-extract == 3 and old 4-line if-opener == 0; align with test assertion (b) in plan.txt:46
+
+**Verified counts (current repo, pre-PR)** — for parity only; not findings:
+
+| Claim | Actual (`skills/implement/SKILL.md`) |
+|-------|--------------------------------------|
+| Full 4-line fence (`if` … `session-env.sh`; then) | **41** (`grep -Fxc` on opener) |
+| Awk one-liner `BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="}` | **41** (lines 106, 118, 308, 467, … 1620) |
+| `export CLAUDE_PLUGIN_ROOT` | **41** |
+| Stale prose “43 existing sites” (line 123) | **Wrong**; should be 41 total fences or 40 executable + 1 doc example (plan already plans to fix) |
+| Plan’s 40 line numbers | **Match** all awk lines except **118** (doc example); 106/308/467 are the three pre-bootstrap sites |
+| Plan split 40 + 1 = 41 | **Consistent** with file |
+| Opening “41 inline awk fences” | **Consistent** |
+
+All 40 listed plan line numbers sit on the byte-identical awk assign line inside a 4-line fence today; line 118 is the 41st fence and is correctly excluded from the inventory.

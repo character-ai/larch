@@ -1,0 +1,20 @@
+Auditing plan enumeration claims against `skills/implement/SKILL.md` — reading the plan and verifying counts in the skill file.
+Checking for `${CLAUDE_PLUGIN_ROOT}` fences missing the rehydration pattern and verifying the proposed test grep strings.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:48,79	Invariant (b) requires exactly 3 post-migration awk-extract lines but Failure modes mitigation says post-edit awk grep count must be 0	After a correct migration grep -Fxc of the one-line LARCH_CLAUDE_PLUGIN_ROOT= awk extract still returns 3 at skills/implement/SKILL.md:106,308,467; following line 79 treats any non-zero count as incomplete replacement or uses ==0 as success and fails CI or blocks merge	Align plan.txt:79 with assertion (b): old 4-line if-opener grep ==0 and pinned one-line awk-extract grep ==3; drop awk !=0 as a failure signal
+**1. [correctness] plan.txt:48,79** — Invariant (b) pins post-migration `awk`-extract count at **3** (pre-bootstrap only: `skills/implement/SKILL.md:106`, `:308`, `:467`), but Failure modes says mitigation is “verify post-edit grep count is **0**” and uses `awk line … != 0` as an incomplete-replacement signal. A correct migration always leaves three one-line extracts; `!= 0` is not a useful failure detector and `== 0` contradicts (b). **Revision:** Require old 4-line `if` opener count `== 0` and pinned one-line extract count `== 3`.
+
+---
+
+**Audit summary (evidence vs current `skills/implement/SKILL.md`):**
+
+| Claim | Verified |
+|-------|----------|
+| 41 `index($0,p)==1` awk-extract lines | Yes (`grep` count 41; lines include `:118`) |
+| 40-line replacement list excludes `:118` | Yes; list has 40 entries; `37+3=40` executable |
+| Pre-bootstrap `:106`, `:308`, `:467` | All three are in the 40-line list |
+| 37 post-Step-0 | `40 − 3 = 37` |
+| 41 `if` openers / 41 `export CLAUDE_PLUGIN_ROOT` | Both count 41 today |
+| `40 executable + 1 prose` vs opening “41 inline awk” | Consistent (no `~41` in plan) |
+| Invariant (a) `37+3+1=41` source lines; (b) `3` awk | Arithmetically consistent with breakdown |
+| Line `:118` non-executable site | Yes — prelude documentation fence (`:116-121`); no `${CLAUDE_PLUGIN_ROOT}/…` path in that fence; safe to exclude from the 40-site replacement set while still rewriting the example in § Bash block prelude |

@@ -1,0 +1,38 @@
+Reviewing the cited locations to normalize and merge findings accurately.
+Structured aggregator output (plain text; no empty-merge attestation).
+
+### FINDING_1: Sourcing `write-session-env.sh` must not enable errexit in `implement-bootstrap`
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge
+- **Severity**: important
+- **Concern**: `implement-bootstrap.sh` runs with `set -uo pipefail` (no errexit) so Step 0 can treat helper failures as best-effort. A proposed resume path that sources `write-session-env.sh` would run its top-level `set -euo pipefail` (line 32 today), lib-quiet init, argument parsing, and validation in the bootstrap shell. That leaks errexit into bootstrap and can abort resume on benign failures (e.g. missing `--output` on the sourced path, or any command that fails under `-e`). The `BASH_SOURCE` guard must be scoped so nothing outside it leaves `-e` or `exit` active in the parent shell.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Define emit_plugin_root_env before the guard; move set -euo pipefail lib-quiet init and argument parsing inside if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; or run . write-session-env.sh and emit_plugin_root_env in a subshell so errexit does not leak
+  - From Cursor-Edge: Keep set -euo pipefail lib-quiet init argument parsing validation and main write inside the BASH_SOURCE guard; only emit_plugin_root_env outside
+
+### FINDING_2: `emit_plugin_root_env` needs a sourced return contract, not `exit`
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Concern**: When `emit_plugin_root_env` is invoked from a sourced bootstrap during `--resume-plan-tail`, using `exit` on skip or invalid values terminates the entire bootstrap script instead of returning control to the caller. Only the argv0 execution path should use `exit`; the sourced path must use `return`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Use return 0 on skip/invalid value; reserve exit for argv0 execution path only
+
+### FINDING_3: Timing-rehydration test assertion (b) may not match post-migration SKILL fence shape
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: `scripts/test-implement-timing-rehydration.sh` assertion (b) at lines 128–132 counts exact standalone lines via `grep -Fxc` for `  CLAUDE_PLUGIN_ROOT=$(awk ...`. If the same PR migrates pre-bootstrap fences in `skills/implement/SKILL.md` (e.g. lines 105–108, 307–311, 466–469) to a single compound line starting with `[` with `CLAUDE_PLUGIN_ROOT=$(awk` embedded after `&&`, the literal-line count drops (possibly to 0 or ≠ expected parity) while Invariant C’s awk fence scan may still pass—so `make test-implement-timing-rehydration` fails or parity is lost without a detector aligned to the new template.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: After SKILL migration, awk-extract grep count is 0 (or not 3); `make test-implement-timing-rehydration` fails or the parity check is retired without a replacement that matches the new shape In the same PR, change assertion (b) to count lines containing `CLAUDE_PLUGIN_ROOT=$(awk` and `LARCH_CLAUDE_PLUGIN_ROOT=` (or match the exact compound-line template), and align `test-implement-timing-rehydration.md` invariant 4 / Invariant C with that detector
+
+**Merge notes (for voters, not machine fields):**
+- Input FINDING_1 and FINDING_2 share one behavioral risk (sourced writer pollutes bootstrap shell options / abort semantics); merged into aggregated FINDING_1 with max severity **important**.
+- Input FINDING_3 is a distinct contract (`return` vs `exit` inside the helper); kept as aggregated FINDING_2.
+- Input FINDING_4 is an independent test/SKILL parity risk; kept as aggregated FINDING_3.
+- No `[OUT_OF_SCOPE]` tags in the supplied inputs; no `### OOS_N:` blocks.
+### OOS_1:
+- **Description**: SECURITY.md not in plan file list. Scenario: New sourceable plugin-root.env contradicts awk-only consumer wording
+- **Reviewer**: Cursor-Edge
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: SECURITY.md:234
+- **Phase**: design
+
