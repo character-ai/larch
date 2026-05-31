@@ -4,7 +4,7 @@ title = "larch gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Test fixtures (scripts/test-redact-secrets.sh, scripts/test-create-pr.sh, scripts/test-merge-pr.sh, scripts/test-tracking-issue-write.md, scripts/test-relevant-checks-helper-failure.sh, skills/issue/scripts/test-add-blocked-by.sh, scripts/test-ship-pr.sh, skills/review-and-fix/scripts/test-review-and-fix.sh, skills/review/scripts/test-review-core.sh), redaction-scanner source (scripts/redact-secrets.sh), tracking-issue-write lifecycle helper and its contract doc (scripts/tracking-issue-write.sh, scripts/tracking-issue-write.md), committed run-logs (larch-logs/**) which contain UUID-shaped LARCH_TOKEN_SESSION_ID values that trigger generic-api-key false positives, and the .gitleaks.toml self-allowlist — these paths legitimately contain token-shaped strings throughout. Documentation files (README.md, CHANGELOG.md, SECURITY.md, skills/issue/SKILL.md, skills/issue/scripts/create-one.sh) are intentionally NOT allowlisted — see SECURITY.md 'Layered secret scanning' (#375)."
+description = "Test fixtures (scripts/test-redact-secrets.sh, scripts/test-create-pr.sh, scripts/test-merge-pr.sh, scripts/test-tracking-issue-write.md, scripts/test-relevant-checks-helper-failure.sh, skills/issue/scripts/test-add-blocked-by.sh, scripts/test-ship-pr.sh, skills/review-and-fix/scripts/test-review-and-fix.sh, skills/review/scripts/test-review-core.sh, python/test_redact.py), redaction-scanner source (scripts/redact-secrets.sh), tracking-issue-write lifecycle helper and its contract doc (scripts/tracking-issue-write.sh, scripts/tracking-issue-write.md), committed run-logs (larch-logs/**) which contain UUID-shaped LARCH_TOKEN_SESSION_ID values that trigger generic-api-key false positives, ignored Python development artifacts (python/.venv/**, python/.pytest_cache/**, python/__pycache__/**), and the .gitleaks.toml self-allowlist — these paths legitimately contain token-shaped strings throughout. Documentation files (README.md, CHANGELOG.md, SECURITY.md, skills/issue/SKILL.md, skills/issue/scripts/create-one.sh) are intentionally NOT allowlisted — see SECURITY.md 'Layered secret scanning' (#375)."
 paths = [
     '''^\.gitleaks\.toml$''',
     '''^scripts/redact-secrets\.sh$''',
@@ -33,6 +33,10 @@ paths = [
     '''^scripts/test-larch-log-write-round\.sh$''',
     '''^scripts/test-implement-structure\.sh$''',
     '''^skills/implement/scripts/test-write-rejected-findings\.sh$''',
+    '''^python/test_redact\.py$''',
+    '''^python/\.venv/''',
+    '''^python/\.pytest_cache/''',
+    '''^python/__pycache__/''',
 ]
 # Commits that add synthetic test-fixture keys (sk-ant-* and PEM/RSA) to test
 # scripts or changelog prose. All are historically published patterns, not real credentials.

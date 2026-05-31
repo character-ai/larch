@@ -44,9 +44,47 @@ append_target_once() {
     esac
 }
 
+maybe_append_py_lint_target() {
+    local missing="" tool=""
+    for tool in ruff pylint pyright; do
+        if ! command -v "$tool" >/dev/null 2>&1; then
+            missing="${missing}${missing:+ }$tool"
+        fi
+    done
+
+    if [ -n "$missing" ]; then
+        PY_LINT_SKIPPED=1
+        if [ "${PY_LINT_SKIP_WARNED:-0}" -eq 0 ]; then
+            echo "WARNING: Python lint tools not found on PATH ($missing) — skipping py-lint direct relevant target"
+            PY_LINT_SKIP_WARNED=1
+        fi
+        return 0
+    fi
+
+    append_target_once py-lint
+}
+
+maybe_append_py_test_target() {
+    if ! command -v pytest >/dev/null 2>&1; then
+        PY_TEST_SKIPPED=1
+        if [ "${PY_TEST_SKIP_WARNED:-0}" -eq 0 ]; then
+            echo "WARNING: pytest not found on PATH — skipping py-test direct relevant target"
+            PY_TEST_SKIP_WARNED=1
+        fi
+        return 0
+    fi
+
+    append_target_once py-test
+}
+
 run_direct_relevant_targets() {
     local f=""
     DIRECT_TARGETS=""
+    PY_LINT_SKIP_WARNED=0
+    PY_TEST_SKIP_WARNED=0
+    PY_LINT_SKIPPED=0
+    PY_TEST_SKIPPED=0
+    PYTHON_PY_CHANGED=0
     while IFS= read -r f; do
         case "$f" in
             scripts/test-step0b-router-flag-recovery.sh|scripts/test-step0b-router-flag-recovery.md|scripts/write-run-params.sh)
@@ -153,7 +191,25 @@ run_direct_relevant_targets() {
                 append_target_once test-lib-net
                 ;;
         esac
+        case "$f" in
+            python/*.py)
+                PYTHON_PY_CHANGED=1
+                maybe_append_py_lint_target
+                maybe_append_py_test_target
+                ;;
+            python/pyproject.toml|python/ruff.toml|python/pyrightconfig.json|python/.pylintrc|python/requirements-dev.txt|python/requirements-test.txt)
+                maybe_append_py_lint_target
+                maybe_append_py_test_target
+                ;;
+        esac
     done <<< "$MODIFIED_FILES"
+
+    if [ "$PYTHON_PY_CHANGED" -eq 1 ]; then
+        if [ "$PY_LINT_SKIPPED" -eq 1 ] || [ "$PY_TEST_SKIPPED" -eq 1 ]; then
+            echo "ERROR: python/*.py changed but Python lint/test tools are missing from PATH — install python/requirements-dev.txt and python/requirements-test.txt (Node required for pyright)"
+            return 1
+        fi
+    fi
 
     if [ -n "$DIRECT_TARGETS" ]; then
         local targets=()

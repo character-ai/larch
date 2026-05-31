@@ -3460,6 +3460,8 @@ check_case agent-lint "" "make agent-lint"
 check_case agnix "" "make agnix"
 check_case smoke-dialectic "" "make smoke-dialectic"
 check_case agent-sync "" "make agent-sync"
+check_case python-lint "" "make py-lint"
+check_case python-tests "" "make py-test"
 STUB
 chmod +x "$tmp/per-job-argv-check.sh"
 set +e

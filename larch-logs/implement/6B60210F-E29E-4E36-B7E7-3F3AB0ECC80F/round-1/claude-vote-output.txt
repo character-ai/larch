@@ -1,0 +1,55 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- mutable service objects vs frozen value records is appropriate; BreadcrumbWriter.stream mutability is useful for test redirection
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan explicitly says "copied + sanitized"; full pylintrc is standard practice; active-only config would lose disabled-message context
+FINDING_12: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan said "import each" before AST-parsing; implementation only AST-parses, missing import-time failure detection
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- different stub shapes (dict vs queue) serve different test scenarios; premature sharing adds coupling at Phase 1
+FINDING_15: YES CORRECTNESS=uncertain SEVERITY=major QUALITY=adequate UNCERTAIN=true -- bash run_ci_fix_vendor rotation behavior unverifiable from diff; first_tier/index semantics may diverge on offset first tier
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- EXIT_STALL is consistent with errors.Stalled and outcomes.Outcome.STALLED; renaming needs cross-phase coordination
+FINDING_18: YES CORRECTNESS=uncertain SEVERITY=major QUALITY=adequate UNCERTAIN=true -- test-ci-failed-jobs.sh not in diff; plausible its allowlist omits the new python-lint/python-tests job names
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- 0.1s sleep with 0.1s timeout is negligible; timeout tests unavoidably use real time
+FINDING_23: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- AGENTS.md explicitly requires SECURITY.md update when security-relevant behavior changes; gitleaks allowlist is security-relevant
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- redaction belongs at call sites not at wrapper layer; Python path not live; Phase 7 concern
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- auto-redaction in logging would over-redact; bash equivalents do not auto-redact; apply at use sites in Phase 7
+FINDING_26: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- streaming mode not in Phase 1 plan; not a regression introduced by this diff
+FINDING_27: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- version-pinned without hashing is standard practice for dev-only toolchains; maintenance overhead disproportionate to risk
+FINDING_28: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- redact.py is a second redaction implementation; SECURITY.md should document it per AGENTS.md policy
+FINDING_29: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- reversed-token error messages are extremely rare; practical parity divergence negligible
+FINDING_30: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- check-then-create is adequate for Phase 1; concurrent race recovery is Phase 7 scope
+FINDING_31: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- IndexError if TRANSIENT_RETRY_MAX_ATTEMPTS exceeds len(TRANSIENT_RETRY_BACKOFF_SEC)+1
+FINDING_32: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- classify_fn intent is embedded in TierAttempt.failure returned by launch_fn; API evolved coherently
+FINDING_33: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- gitleaks edit is clearly required to prevent false positives; plan omission is a documentation gap not a code problem
+FINDING_34: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- sampling key constants is standard practice; exhaustive constant testing provides no safety value
+FINDING_35: YES CORRECTNESS=uncertain SEVERITY=major QUALITY=adequate UNCERTAIN=true -- ship-pr.sh _per_job_argv not in diff; classifying python-lint/tests as fixable without a local command mapping would cause live recovery failure
+FINDING_36: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_37: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer observed no issue; not a finding
+FINDING_38: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- test module stems in sibling set allow runtime modules to import test_* which depends on dev packages, defeating the guard
+FINDING_39: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- from . import x produces module=None; current guard silently skips it, violating the "all import forms" contract
+FINDING_40: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer provided commit metadata, not a behavioral finding
+FINDING_41: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive confirmation, not a problem statement
+FINDING_42: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive confirmation, not a problem statement
+FINDING_43: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pytest pythonpath applies only during test runs; production entrypoints do not read pyproject.toml
+FINDING_44: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same gap as FINDING_3; gh retry-policy tests are missing regardless of urgency classification
+FINDING_45: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive confirmation, not a finding
+FINDING_46: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive confirmation, not a finding
+FINDING_47: YES CORRECTNESS=uncertain SEVERITY=major QUALITY=adequate UNCERTAIN=true -- redact() applies secrets before tmpdir; if production pipeline is tmpdir-first, path fragments with secret-shaped suffixes may leak structure
+FINDING_48: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- contextual observation, not a problem statement
+FINDING_49: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- existing bash call site ordering inconsistency predates this branch but is worth tracking
+FINDING_50: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer confirmed future item; not a regression introduced by this diff
+FINDING_51: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- fail-closed behavior is correct; stderr warning observability parity is non-critical in non-live code
+FINDING_52: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- parameter typed as bool; truthiness divergence only matters at a shell bridge that does not exist in Phase 1
+FINDING_53: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- speculative future concern; current usage passes all tiers in order; tier skipping would be handled at call sites
+FINDING_54: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- repo-relative launcher paths require a documented cwd invariant before Phase 7 wiring
+FINDING_55: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- by Phase 1 design; plan explicitly scopes rollback/verify/BAIL_REASON to later phases

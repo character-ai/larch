@@ -1,0 +1,14 @@
+Reviewing CI integration wiring across the diff and key integration files.
+### In-Scope Findings
+
+- **risk-integration** `scripts/ship-pr.sh:2134-2169` — `ci-failed-jobs.sh` now classifies `python-lint` and `python-tests` as `fixable`, but `_per_job_argv` has no matching cases (only `lint`, `shellcheck`, `test-harnesses`, etc.). When either Python job fails on a PR, `run_per_job_local_fix_loop` / `_verify_failed_jobs_locally` treat the row as fixable in the TSV, `_per_job_argv` returns 1, the job is pushed into `unfixable[]`, and ship-pr exits 3 with `BAIL_REASON=ci-local-unfixable:python-lint` (or `python-tests`) instead of replaying `make py-lint` / `make py-test`. The allowlist change avoids `unknown-job-name`, but live `/implement` CI recovery for these new blocking jobs is still broken. **Suggested fix:** Add `python-lint)` → `_PJA_ARGV=(make py-lint)` and `python-tests)` → `_PJA_ARGV=(make py-test)` to `_per_job_argv`, and extend `scripts/test-ship-pr.sh` `ci_per_job_argv_table` (~3454–3462) with the same expectations so drift is caught in harnesses.
+
+- **risk-integration** `scripts/test-ci-failed-jobs.sh:221-228` — The workflow-drift guard enumerates every job in `.github/workflows/ci.yaml` but its `case` arm still only allows the pre-Phase-1 set (`lint|…|smoke-dialectic`). With `python-lint` and `python-tests` added to the workflow, `make test-ci-failed-jobs` (and the CI `test-harnesses` shard that runs it) will fail with `workflow job missing from ci-failed-jobs mapping: python-lint` even though `scripts/ci-failed-jobs.sh:31` already maps those IDs. **Suggested fix:** Add `python-lint|python-tests` to the harness `case` list (alongside the existing fixable/gitleaks/trufflehog split), or derive the allowed set from the same source as `job_class()` so workflow, classifier, and harness cannot drift again.
+
+### Out-of-Scope Observations
+
+- **risk-integration** `scripts/ci-failed-jobs.md:68-72` — The “Fixable jobs” list still omits `python-lint` and `python-tests` while `scripts/ci-failed-jobs.sh:31` includes them; operator docs will misdescribe ship-pr behavior until updated.
+
+- **risk-integration** `docs/linting.md` — No mention of the new `python-lint` / `python-tests` CI jobs or `make py-lint` / `make py-test`; `AGENTS.md` and `python/README.md` cover the Makefile targets, but the canonical CI linting doc does not yet describe the second Python toolchain path.
+
+- GitHub Actions ↔ Makefile command parity for the new jobs looks correct: `.github/workflows/ci.yaml:434-436` and `Makefile:27-28` both use `cd python && ruff check . && pylint . && pyright` and `cd python && pytest`; pip cache paths match `python/requirements-dev.txt` vs `python/requirements-test.txt`; `setup-node@v5` is present only on `python-lint`, matching the pyright/Node requirement in the plan.

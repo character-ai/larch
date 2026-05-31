@@ -1,0 +1,38 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Phase 1 foundation modules are intentionally API-only with no live wiring; the plan explicitly defers orchestration to later phases
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- additive six-line change that is necessary for CI-fix parity; plan's "untouched" language addressed live orchestration path, not every line of the file
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- concern is speculative; existing parity tests would surface concrete divergence; FINDING_8 covers the test-coverage gap
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- two-site duplication in Phase 1 foundation; no third consumer yet; premature abstraction
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- minor structural smell; sidecar vs output_file scan differs intentionally (refusal check present only on sidecar)
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- spot-checking 6 constants is adequate for Phase 1; full enumeration adds marginal value
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Python API is intentionally bool-typed; parity tests convert strings correctly; divergence only arises if callers pass raw strings
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- OOS_8 explicitly confirms executable-script invocation is acceptable when cwd is repo root
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- doc gap overlaps with FINDING_1; resolving FINDING_1 implies the doc fix
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same root as FINDING_4; doc-only discrepancy, not a code defect
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- large config is per-plan and necessary for pylint; trimming is cosmetic
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive verification, not a defect worth filing
+OOS_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive verification, not a defect worth filing
+OOS_9: NO CORRECTNESS=uncertain SEVERITY=nit QUALITY=no-fix UNCERTAIN=true -- reviewer opinion that conflicts with FINDING_1; not a concrete problem to file
+OOS_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- README-only edits not triggering py-lint is negligible impact; not worth an issue
+OOS_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- expected Phase 1 boundary; absence of wiring is the entire point of the strangler-fig approach

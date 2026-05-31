@@ -1,0 +1,12 @@
+Reviewing the branch diff with focus on `gh.py` retry policy, `pr_create` TOCTOU, and temp-file lifecycle.
+### In-Scope Findings
+
+- **risk-integration** `python/gh.py:286-291` — `pr_create`’s TOCTOU recovery only re-queries `pr_for_branch` after a create conflict; if that list call returns `[]` (index lag) or exhausts transient retries, the function falls through to `_ensure_success(result)` or raises from `_raise_read_failure` inside `pr_for_branch`, even though `gh pr create` typically embeds the existing PR URL in stderr (see `scripts/create-pr.sh:192-229` and the `create_exists_persistent_list` harness in `scripts/test-create-pr.sh:168-177`). The live bash path recovers via URL regex in that case, so a future Python cutover can falsely fail `/implement` PR creation while the PR already exists. **Suggested fix:** After `_is_create_conflict`, keep the `pr_for_branch` fast path but add the bash-equivalent fallback: regex-extract `https?://…/pull/\d+` from `_combined(result)`, derive the PR number, and return a `PullRequest` (optionally one non-retried `pr view` if `headRefName` is required); add a `test_gh.py` case mirroring `create_exists_persistent_list`.
+
+### Out-of-Scope Observations
+
+- Mutating helpers (`pr_merge`, `run_rerun`, `issue_comment`, `issue_edit`) call `_gh` directly with no `_retry_read` / `with_transient_retry` wrapper — matches the plan’s asymmetric retry policy.
+- `_body_file_args` (`python/gh.py:104-118`) closes and writes the temp file before `yield`; `finally: Path(path).unlink(missing_ok=True)` runs on `_gh` failure; `redact.redact()` runs before file creation so a redaction error cannot leak a path; `pr_create` parses stdout only after the `with` block exits (`python/gh.py:264-292`), so no post-delete body-file read occurs (covered by `test_pr_create_uses_body_file_not_inline_body`).
+- `_redact_gh_scalar` (`python/gh.py:54-59`) correctly strips `redact()`’s line-oriented trailing newline for scalar gh flags while preserving an intentional trailing newline on the input title.
+- `pr_create` performs at most one create attempt and one conflict recovery list pass — no internal create/list loop.
+- By design, `scripts/create-pr.sh` still wraps `gh pr create` in `with_transient_retry` (`scripts/create-pr.sh:268-280`) while Python does not; that divergence is plan-intentional (duplicate-create avoidance), not a defect in this branch’s stated policy.

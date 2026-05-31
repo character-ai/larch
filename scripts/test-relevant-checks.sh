@@ -201,6 +201,15 @@ controlled_path() {
     fi
 }
 
+controlled_path_no_py_tools() {
+    local stub_dir="$1"
+    if [[ -n "$PATH_GIT_DIR" ]]; then
+        printf '%s:%s:/bin:/usr/bin\n' "$stub_dir" "$PATH_GIT_DIR"
+    else
+        printf '%s:/bin:/usr/bin\n' "$stub_dir"
+    fi
+}
+
 run_checks() {
     local repo="$1" path_value="$2"
     set +e
@@ -416,6 +425,32 @@ setup_parse_codex_usage_repo() {
     )
 }
 
+setup_python_source_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b python-source-change
+        mkdir -p python
+        printf '%s\n' "VALUE = 1" > python/config.py
+        git add python/config.py
+        git commit -q -m "touch python source"
+    )
+}
+
+setup_python_pylintrc_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b python-pylintrc-change
+        mkdir -p python
+        printf '%s\n' "[MASTER]" > python/.pylintrc
+        git add python/.pylintrc
+        git commit -q -m "touch pylintrc only"
+    )
+}
+
 echo "=== Section 3h: verifier-source routing ==="
 
 REPO_3H="$TMPROOT/repo-verifier-source"
@@ -446,6 +481,78 @@ make_stub_dir "$STUB_3J" present absent
 run_checks "$REPO_3J" "$(controlled_path "$STUB_3J")"
 assert_exit_eq "3j: parse codex usage change exits 0" "$RUN_EXIT" 0
 assert_stdout_not_contains "3j: does not route test-check-contains-pins" "$RUN_OUT" "test-check-contains-pins"
+
+echo "=== Section 3k: Python direct targets with missing lint tools ==="
+
+REPO_3K="$TMPROOT/repo-python-source"
+STUB_3K="$TMPROOT/stub-python-source"
+setup_python_source_repo "$REPO_3K"
+make_stub_dir "$STUB_3K" present absent
+run_checks "$REPO_3K" "$(controlled_path "$STUB_3K")"
+assert_exit_eq "3k: Python source change fails closed without py-lint tools" "$RUN_EXIT" 1
+assert_stdout_contains "3k: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
+assert_stdout_contains "3k: fail-closed error when python/*.py changed" "$RUN_OUT" "ERROR: python/*.py changed but Python lint/test tools are missing from PATH"
+assert_stdout_not_contains "3k: does not invoke py-lint when tools are missing" "$RUN_OUT" "make stub: py-lint"
+assert_stdout_not_contains "3k: does not invoke py-test when tools are missing" "$RUN_OUT" "make stub: py-test"
+
+echo "=== Section 3l: Python direct targets with missing pytest ==="
+
+REPO_3L="$TMPROOT/repo-python-no-pytest"
+STUB_3L="$TMPROOT/stub-python-no-pytest"
+setup_python_source_repo "$REPO_3L"
+make_stub_dir "$STUB_3L" present absent
+run_checks "$REPO_3L" "$(controlled_path_no_py_tools "$STUB_3L")"
+assert_exit_eq "3l: Python source change fails closed without pytest" "$RUN_EXIT" 1
+assert_stdout_contains "3l: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
+assert_stdout_contains "3l: missing pytest warning" "$RUN_OUT" "WARNING: pytest not found on PATH"
+assert_stdout_contains "3l: fail-closed error when python/*.py changed" "$RUN_OUT" "ERROR: python/*.py changed but Python lint/test tools are missing from PATH"
+assert_stdout_not_contains "3l: does not invoke py-test when pytest is missing" "$RUN_OUT" "make stub: py-test"
+
+make_stub_dir_with_py_tools() {
+    local dir="$1" pre_commit="$2" agent_rc="${3:-absent}"
+    make_stub_dir "$dir" "$pre_commit" "$agent_rc"
+    local tool
+    for tool in ruff pylint pyright pytest; do
+        cat > "$dir/$tool" <<'EOF'
+#!/usr/bin/env bash
+echo "${0##*/} stub: $*"
+exit 0
+EOF
+        chmod +x "$dir/$tool"
+    done
+}
+
+controlled_path_with_py_tools() {
+    controlled_path "$1"
+}
+
+echo "=== Section 3m: Python .pylintrc-only routing ==="
+
+REPO_3M="$TMPROOT/repo-python-pylintrc"
+STUB_3M="$TMPROOT/stub-python-pylintrc"
+setup_python_pylintrc_repo "$REPO_3M"
+make_stub_dir "$STUB_3M" present absent
+run_checks "$REPO_3M" "$(controlled_path_no_py_tools "$STUB_3M")"
+assert_exit_eq "3m: .pylintrc-only change exits 0 without Python tools" "$RUN_EXIT" 0
+assert_stdout_contains "3m: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
+assert_stdout_contains "3m: missing pytest warning" "$RUN_OUT" "WARNING: pytest not found on PATH"
+
+echo "=== Section 3n: Python direct targets with all tools on PATH ==="
+
+REPO_3N="$TMPROOT/repo-python-all-tools"
+STUB_3N="$TMPROOT/stub-python-all-tools"
+setup_python_source_repo "$REPO_3N"
+make_stub_dir_with_py_tools "$STUB_3N" present absent
+run_checks "$REPO_3N" "$(controlled_path_with_py_tools "$STUB_3N")"
+assert_exit_eq "3n: Python source change exits 0 with py tools" "$RUN_EXIT" 0
+assert_stdout_not_contains "3n: no missing lint tools warning" "$RUN_OUT" \
+    "WARNING: Python lint tools not found on PATH"
+assert_stdout_not_contains "3n: no missing pytest warning" "$RUN_OUT" \
+    "WARNING: pytest not found on PATH"
+assert_stdout_contains "3n: routes py-lint and py-test" "$RUN_OUT" \
+    "=== Running direct relevant make target(s): py-lint py-test ==="
+assert_stdout_contains "3n: make invokes py-lint and py-test" "$RUN_OUT" \
+    "make stub: py-lint py-test"
 
 echo "=== Section 4: preflight failure ==="
 

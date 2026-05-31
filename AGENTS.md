@@ -6,6 +6,8 @@ This repository **is** the larch Claude Code plugin. Editing here modifies what 
 
 Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary (docs, CI config, `.claude/skills/`, `.claude/rules/`, dev settings).
 
+`python/` holds the in-progress `ship-pr.sh` → Python rework tree. It is dev/CI-only for now: runtime modules are stdlib-only and are not wired into the live `/implement` path until Phase 7 (`LARCH_SHIP_PR_IMPL=python` cutover). See `python/README.md` for layout and `make py-lint` / `make py-test`.
+
 ## Load Semantics
 
 - **Tier 1a: Claude root imports** — `CLAUDE.md` is the Claude Code entrypoint and imports `AGENTS.md`, `KARPATHY_CLAUDE.md`, and `BASH_AUTHORING.md` with `@...` lines.
