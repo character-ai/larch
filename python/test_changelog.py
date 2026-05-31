@@ -342,7 +342,7 @@ Version 1.0.0 (2026-01-01)
 """
     repo = tmp_path / "repo"
     _ = repo.mkdir()
-    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
     _ = subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, check=True)
     _ = subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
     base_rst = rst_base.replace("- Pending", "- Base only")
@@ -1056,7 +1056,9 @@ def test_auto_resolve_markdown_tail_mismatch_returns_false(tmp_path: Path) -> No
 def test_parity_auto_resolve_subprocess(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _ = repo.mkdir()
-    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "init", "-q", "-b", "main"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.email", "t@example.com"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
     base = MD_SAMPLE.replace("- Pending", "- Base only")
     branch = MD_SAMPLE.replace("- Pending", "- Base only\n- Branch")
     main = MD_SAMPLE.replace("- Pending", "- Main only")
