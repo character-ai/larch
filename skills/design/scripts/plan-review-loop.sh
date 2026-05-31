@@ -787,6 +787,10 @@ fi
 
 # --- Step 5: collect ---
 _collect_err="$DESIGN_TMPDIR/plan-review-collector.stderr"
+_collect_stderr_fd=2
+if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+    _collect_stderr_fd=4
+fi
 _collect_out=""
 if [[ "$_paths_readable" -eq 1 ]]; then
     _collect_out=$(LARCH_QUIET_DISABLE=1 "$PLAN_REVIEW_COLLECT_SH" \
@@ -794,7 +798,7 @@ if [[ "$_paths_readable" -eq 1 ]]; then
         --substantive-validation \
         --validation-mode \
         --structured-reviewer-validation \
-        --paths-file "$PANEL_PATHS_FILE" 2>>"$_collect_err")
+        --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd}))
 else
     emit_kv WARN "plan-review-panel: dispatch produced no reviewer paths (--no-fallback drops)"
 fi
