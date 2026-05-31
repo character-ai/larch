@@ -15,7 +15,6 @@ export LARCH_TRANSIENT_RETRY_DELAY=0
 
 STUB_BIN="$TMPROOT/bin"
 mkdir -p "$STUB_BIN"
-REAL_CP="$(command -v cp)"
 cat > "$STUB_BIN/codex" <<'STUB'
 #!/usr/bin/env bash
 out=""
@@ -543,7 +542,10 @@ out=$(PATH="$STUB_BIN:$PATH" \
 _elapsed=$(( $(date +%s) - _start ))
 assert_line "DISPATCH_OK=true" "$out"
 [[ "$_elapsed" -lt 4 ]] || { echo "FAIL: no-fallback absent slot took too long (${_elapsed}s)" >&2; exit 1; }
-grep -Fq 'SENTINEL_TIMEOUT' <<<"$out" && { echo "FAIL: no-fallback absent must not emit SENTINEL_TIMEOUT" >&2; exit 1; } || true
+if grep -Fq 'SENTINEL_TIMEOUT' <<<"$out"; then
+    echo "FAIL: no-fallback absent must not emit SENTINEL_TIMEOUT" >&2
+    exit 1
+fi
 
 # --- legacy multi-phase fallback (ungrouped; default path without --no-fallback) ---
 
