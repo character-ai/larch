@@ -75,7 +75,7 @@ def iter_markdown_files(root: Path) -> list[Path]:
         files = [
             root / rel.decode("utf-8")
             for rel in result.stdout.split(b"\0")
-            if rel and not rel.decode("utf-8").startswith("larch-logs/")
+            if rel
         ]
         return sorted(path for path in files if path.is_file() and not path.is_symlink())
 

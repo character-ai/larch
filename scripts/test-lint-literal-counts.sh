@@ -320,6 +320,19 @@ else
 fi
 rm -f "$stderr_file"
 
+# --- Case t: larch-logs markdown stays in git-mode scope ------------------
+reset_tree
+git -C "$TMPROOT" init >/dev/null 2>&1
+write_md "$TMPROOT/larch-logs/implement/run/final-summary.md" <<'EOF'
+5 reviewers
+EOF
+git -C "$TMPROOT" add larch-logs/implement/run/final-summary.md >/dev/null 2>&1
+stderr_file=$(mktemp)
+rc=$(run_lint "$stderr_file")
+assert_case "t (git worktree scans larch-logs markdown)" 1 "$stderr_file" "$rc" \
+    "larch-logs/implement/run/final-summary.md:1:"
+rm -f "$stderr_file"
+
 # --- Case r: positional arguments rejected --------------------------------
 reset_tree
 stderr_file=$(mktemp)

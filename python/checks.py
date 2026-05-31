@@ -11,6 +11,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
+import agents
 import config
 import git
 import redact
@@ -160,7 +161,7 @@ def _phase_from_markers(*, ok: bool, has_precommit: bool, has_agent_lint: bool) 
     return "unknown"
 
 
-def _allocate_log_file(log_dir: Path, site: str) -> Path | None:
+def _allocate_log_file(log_dir: Path, site: str) -> tuple[int, Path] | None:
     for attempt in range(1, 101):
         log_file = log_dir / f"{site}-{attempt}.log"
         try:
@@ -170,8 +171,7 @@ def _allocate_log_file(log_dir: Path, site: str) -> Path | None:
         except OSError:
             return None
         else:
-            os.close(fd)
-            return log_file
+            return fd, log_file
     return None
 
 
@@ -183,7 +183,12 @@ def run_relevant_checks(
     repo_root: str,
 ) -> ChecksResult:
     """Port of run-relevant-checks-captured.sh orchestration."""
-    if not site or not re.fullmatch(r"[A-Za-z0-9._-]+", site) or site.startswith("."):
+    if (
+        not site
+        or not re.fullmatch(r"[A-Za-z0-9._-]+", site)
+        or site.startswith(".")
+        or ".." in site
+    ):
         return ChecksResult(
             ok=False,
             exit_code=2,
@@ -267,8 +272,8 @@ def run_relevant_checks(
             skipped=False,
             warn=None,
         )
-    log_file = _allocate_log_file(log_dir, site)
-    if log_file is None:
+    allocated = _allocate_log_file(log_dir, site)
+    if allocated is None:
         return ChecksResult(
             ok=False,
             exit_code=1,
@@ -279,12 +284,39 @@ def run_relevant_checks(
             skipped=False,
             warn=None,
         )
+    log_fd, log_file = allocated
     result = runner.run(
         [str(check_script)],
         cwd=str(repo),
     )
-    _ = log_file.write_text(result.stdout + result.stderr, encoding="utf-8")
-    log_text = log_file.read_text(encoding="utf-8")
+    try:
+        with os.fdopen(log_fd, "w", encoding="utf-8") as handle:
+            _ = handle.write(result.stdout + result.stderr)
+        if not log_file.is_file() or log_file.is_symlink() or log_file.parent.resolve() != log_dir.resolve():
+            return ChecksResult(
+                ok=False,
+                exit_code=1,
+                site=site,
+                redacted_log_path=None,
+                phase="unknown",
+                coverage="changed-file-only",
+                skipped=False,
+                warn=None,
+            )
+        log_text = log_file.read_text(encoding="utf-8")
+    except OSError:
+        with contextlib.suppress(OSError):
+            os.close(log_fd)
+        return ChecksResult(
+            ok=False,
+            exit_code=1,
+            site=site,
+            redacted_log_path=None,
+            phase="unknown",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=None,
+        )
     has_precommit, has_agent_lint, has_warn = _parse_checks_log(log_text)
     ok = result.returncode == 0
     coverage = _coverage_from_markers(
@@ -312,9 +344,21 @@ def run_relevant_checks(
         )
     attempt = log_file.name.rsplit("-", 1)[-1].removesuffix(".log")
     redacted_file = log_dir / f"{site}-{attempt}.redacted.log"
-    _ = redacted_file.write_text(redact.redact(log_text), encoding="utf-8")
-    with contextlib.suppress(OSError):
+    try:
+        _ = redacted_file.write_text(redact.redact(log_text), encoding="utf-8")
         redacted_file.chmod(0o600)
+    except OSError:
+        return ChecksResult(
+            ok=False,
+            exit_code=1,
+            site=site,
+            redacted_log_path=None,
+            phase="unknown",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=warn,
+            raw_log_path=str(log_file),
+        )
     return ChecksResult(
         ok=False,
         exit_code=result.returncode,
@@ -329,7 +373,8 @@ def run_relevant_checks(
 
 
 def _scripts_dir(repo_root: str) -> Path:
-    return Path(repo_root) / "scripts"
+    _ = repo_root
+    return Path(__file__).resolve().parents[1] / "scripts"
 
 
 def _run_external_agent_sh(repo_root: str) -> Path:
@@ -342,6 +387,10 @@ def _site_label(site: str) -> str:
         msg = f"unknown site: {site}"
         raise ValueError(msg)
     return label
+
+
+def _is_known_site(site: str) -> bool:
+    return site in _SITE_LABELS
 
 
 def _read_log_tail(path: Path, max_bytes: int) -> str:
@@ -523,15 +572,18 @@ def _run_with_serial_lock(
     cwd: str | None,
 ) -> CommandResult:
     delay = os.environ.get("LARCH_EXTERNAL_SERIAL_LOCK_DELAY", "0.5")
+    if not re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", delay):
+        delay = "0.5"
     lib = scripts_dir / "lib-external-launcher-common.sh"
     wrapper = (
-        f'source "{lib}"\n'
-        f'external_serial_lock_acquire _SERIAL_LOCK "{tool}"\n'
-        f'external_serial_lock_release_after "$_SERIAL_LOCK" "{delay}"\n'
+        'source "$1"\n'
+        'external_serial_lock_acquire _SERIAL_LOCK "$2"\n'
+        'external_serial_lock_release_after "$_SERIAL_LOCK" "$3"\n'
+        'shift 3\n'
         'exec "$@"\n'
     )
     return runner.run(
-        ["bash", "-c", wrapper, "bash", *argv],
+        ["bash", "-c", wrapper, "bash", str(lib), tool, delay, *argv],
         cwd=cwd,
     )
 
@@ -580,16 +632,16 @@ def _load_cursor_launch_argv(
     preflight_log: Path,
 ) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
     lib = scripts_dir / "lib-cursor-launcher-common.sh"
-    script = f"""
+    script = """
 set -euo pipefail
-source "{lib}"
-cursor_launcher_load_model_args 2>>"{preflight_log}"
-cursor_launcher_setup_auth_argv 2>>"{preflight_log}"
-printf '%s\\0' "${{MODEL_ARGS[@]+"${{MODEL_ARGS[@]}}"}}"
+source "$1"
+cursor_launcher_load_model_args 2>>"$2"
+cursor_launcher_setup_auth_argv 2>>"$2"
+printf '%s\\0' "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
 printf '\\0__DELIM__\\0'
-printf '%s\\0' "${{CURSOR_AUTH_ARGS[@]+"${{CURSOR_AUTH_ARGS[@]}}"}}"
+printf '%s\\0' "${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}"
 """
-    result = runner.run(["bash", "-c", script])
+    result = runner.run(["bash", "-c", script, "bash", str(lib), str(preflight_log)])
     if result.returncode != 0:
         return None
     parts = result.stdout.split("\0__DELIM__\0")
@@ -656,20 +708,70 @@ def _run_codex(
         runner,
         scripts_dir=scripts_dir,
         tool="codex",
-        argv=argv,
+        argv=[
+            "bash",
+            "-c",
+            'exec "$@" >"$1" 2>"$2"',
+            "bash",
+            str(codex_events),
+            str(codex_wrapper_log),
+            *argv,
+        ],
         cwd=repo_root,
     )
-    if result.returncode == 0 and codex_events.is_file():
+    if result.returncode != 0:
+        _write_failed_agent_stderr_tail(
+            runner,
+            scripts_dir=scripts_dir,
+            source=codex_wrapper_log,
+            output=run_dir / "codex.log",
+            cwd=repo_root,
+        )
+    if codex_events.is_file():
         plugin_root = scripts_dir.parent
         sidecar = run_dir / "codex.sidecar"
         record = (
-            f"set -euo pipefail\n"
-            f'source "{scripts_dir / "lib-codex-launcher-common.sh"}"\n'
-            "codex_launcher_record_usage_from_events "
-            f'"{plugin_root}" "{codex_events}" "{sidecar}" "codex_lint_fix" || true\n'
+            "set -euo pipefail\n"
+            'source "$1"\n'
+            'codex_launcher_record_usage_from_events "$2" "$3" "$4" "codex_lint_fix" || true\n'
         )
-        _ = runner.run(["bash", "-c", record], cwd=repo_root)
+        _ = runner.run(
+            [
+                "bash",
+                "-c",
+                record,
+                "bash",
+                str(scripts_dir / "lib-codex-launcher-common.sh"),
+                str(plugin_root),
+                str(codex_events),
+                str(sidecar),
+            ],
+            cwd=repo_root,
+        )
     return result.returncode
+
+
+def _write_failed_agent_stderr_tail(
+    runner: Runner,
+    *,
+    scripts_dir: Path,
+    source: Path,
+    output: Path,
+    cwd: str,
+) -> None:
+    script = 'source "$1"\nwrite_failed_agent_stderr_tail "$2" "$3" || true\n'
+    _ = runner.run(
+        [
+            "bash",
+            "-c",
+            script,
+            "bash",
+            str(scripts_dir / "lib-failed-agent-stderr-tail.sh"),
+            str(source),
+            str(output),
+        ],
+        cwd=cwd,
+    )
 
 
 def _run_cursor(
@@ -689,16 +791,35 @@ def _run_cursor(
         preflight_log=preflight_log,
     )
     if launch is None:
+        _write_failed_agent_stderr_tail(
+            runner,
+            scripts_dir=scripts_dir,
+            source=preflight_log,
+            output=run_dir / "cursor.log",
+            cwd=repo_root,
+        )
         return 1
     model_args, auth_args = launch
-    wrap_script = (
-        f'"{scripts_dir / "cursor-wrap-prompt.sh"}" "$1"; '
-        'status=$?; printf X; exit "$status"'
-    )
+    wrap_script = '"$1" "$2"; status=$?; printf X; exit "$status"'
     wrap_result = runner.run(
-        ["bash", "-c", wrap_script, "bash", prompt_body],
+        [
+            "bash",
+            "-c",
+            wrap_script,
+            "bash",
+            str(scripts_dir / "cursor-wrap-prompt.sh"),
+            prompt_body,
+        ],
+        cwd=repo_root,
     )
     if wrap_result.returncode != 0:
+        _write_failed_agent_stderr_tail(
+            runner,
+            scripts_dir=scripts_dir,
+            source=preflight_log,
+            output=run_dir / "cursor.log",
+            cwd=repo_root,
+        )
         return wrap_result.returncode
     wrapped = wrap_result.stdout.removesuffix("X")
     argv = _build_cursor_argv(
@@ -709,27 +830,45 @@ def _run_cursor(
         model_args=model_args,
         auth_args=auth_args,
     )
-    return _run_with_serial_lock(
+    cursor_log = run_dir / "cursor.log"
+    cursor_wrapper_log = run_dir / "cursor.wrapper.log"
+    result = _run_with_serial_lock(
         runner,
         scripts_dir=scripts_dir,
         tool="cursor",
-        argv=argv,
+        argv=[
+            "bash",
+            "-c",
+            'exec "$@" >"$1" 2>&1',
+            "bash",
+            str(cursor_wrapper_log),
+            *argv,
+        ],
         cwd=repo_root,
-    ).returncode
+    )
+    if result.returncode != 0 and not Path(str(cursor_log) + ".stderr-tail").is_file():
+        for source in (Path(str(cursor_log) + ".diag"), preflight_log, cursor_wrapper_log):
+            if source.is_file() and source.stat().st_size > 0:
+                _write_failed_agent_stderr_tail(
+                    runner,
+                    scripts_dir=scripts_dir,
+                    source=source,
+                    output=cursor_log,
+                    cwd=repo_root,
+                )
+                break
+    return result.returncode
 
 
-def _head_changed_after_dispatch(
+def _head_change_invalid_after_dispatch(
     runner: Runner,
     *,
     cwd: str,
     baseline_head: str,
+    current_head: str,
     baseline_branch: str,
     baseline_clean: bool,
 ) -> bool:
-    try:
-        current_head = git.rev_parse(runner, "HEAD", cwd=cwd)
-    except Exception:
-        return True
     if current_head == baseline_head:
         return False
     try:
@@ -763,7 +902,7 @@ def _post_dispatch_forbidden_revert(
     baseline_tracked: tuple[str, ...],
     baseline_untracked: tuple[str, ...],
 ) -> int:
-    _ = baseline_tracked
+    _ = baseline_tracked, baseline_untracked
     current_tracked = _capture_tracked_paths(runner, cwd=cwd)
     current_untracked = _capture_untracked_paths(runner, cwd=cwd)
     revert_count = 0
@@ -774,7 +913,7 @@ def _post_dispatch_forbidden_revert(
         seen.add(path)
         if not _path_matches_forbidden(path, forbidden):
             continue
-        if path in baseline_untracked:
+        if path in current_untracked:
             _ = runner.run(["rm", "-f", "--", path], cwd=cwd)
         else:
             _ = runner.run(["git", "checkout", "--", path], cwd=cwd)
@@ -795,6 +934,15 @@ def run_lint_fix(
 ) -> FixOutcome:
     """Port of lint-fix-loop.sh single dispatch."""
     log_path = Path(checks_log)
+    if not _is_known_site(site):
+        return FixOutcome(
+            status="failed",
+            delta_paths=(),
+            failure_reason="unknown-site",
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+        )
     if not log_path.is_file() or log_path.is_symlink():
         return FixOutcome(
             status="failed",
@@ -865,6 +1013,8 @@ def run_lint_fix(
         target_cmd_display=target_cmd_display,
     )
     coder_tool: str | None = None
+    codex_failure: agents.LaunchFailure | None = None
+    cursor_failure: agents.LaunchFailure | None = None
     dispatch_rc = 1
     if codex_present:
         dispatch_rc = _run_codex(
@@ -877,6 +1027,13 @@ def run_lint_fix(
         )
         if dispatch_rc == 0:
             coder_tool = "codex"
+        else:
+            codex_failure = agents.classify_launch_failure(
+                dispatch_rc,
+                run_dir / "codex.wrapper.log",
+                tool="codex",
+                output_file=run_dir / "codex.log",
+            )
     if coder_tool is None and cursor_present:
         dispatch_rc = _run_cursor(
             runner,
@@ -888,7 +1045,28 @@ def run_lint_fix(
         )
         if dispatch_rc == 0:
             coder_tool = "cursor"
+        else:
+            cursor_failure = agents.classify_launch_failure(
+                dispatch_rc,
+                run_dir / "cursor.log.stderr-tail",
+                tool="cursor",
+                output_file=run_dir / "cursor.log",
+            )
     if coder_tool is None:
+        launch_failures = [
+            failure
+            for failure in (codex_failure, cursor_failure)
+            if failure is not None
+        ]
+        if launch_failures and any(f.failure_class == "health" for f in launch_failures):
+            return FixOutcome(
+                status="failed",
+                delta_paths=(),
+                failure_reason="dispatch-failed",
+                commit_sha=None,
+                head_changed=False,
+                coder_tool=None,
+            )
         return FixOutcome(
             status="main-agent-required",
             delta_paths=(),
@@ -897,10 +1075,22 @@ def run_lint_fix(
             head_changed=False,
             coder_tool=None,
         )
-    if _head_changed_after_dispatch(
+    try:
+        current_head = git.rev_parse(runner, "HEAD", cwd=cwd)
+    except Exception:
+        return FixOutcome(
+            status="failed",
+            delta_paths=(),
+            failure_reason="head-unresolved-after-dispatch",
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=coder_tool,
+        )
+    if _head_change_invalid_after_dispatch(
         runner,
         cwd=cwd,
         baseline_head=baseline_head,
+        current_head=current_head,
         baseline_branch=baseline_branch,
         baseline_clean=baseline_clean,
     ):
@@ -912,10 +1102,6 @@ def run_lint_fix(
             head_changed=True,
             coder_tool=coder_tool,
         )
-    try:
-        current_head = git.rev_parse(runner, "HEAD", cwd=cwd)
-    except Exception:
-        current_head = ""
     commit_sha: str | None = None
     head_changed = False
     if current_head != baseline_head:
@@ -929,7 +1115,20 @@ def run_lint_fix(
             if line.strip()
         )
         if _forbidden_paths_match_count(committed_paths, forbidden) > 0:
-            _ = git.reset(runner, "--hard", baseline_head, cwd=cwd)
+            reset_result = git.reset(runner, "--hard", baseline_head, cwd=cwd)
+            try:
+                reset_head = git.rev_parse(runner, "HEAD", cwd=cwd)
+            except Exception:
+                reset_head = ""
+            if reset_result.returncode != 0 or reset_head != baseline_head:
+                return FixOutcome(
+                    status="failed",
+                    delta_paths=(),
+                    failure_reason="forbidden-path-reset-failed",
+                    commit_sha=None,
+                    head_changed=False,
+                    coder_tool=coder_tool,
+                )
             return FixOutcome(
                 status="failed",
                 delta_paths=(),
@@ -1126,6 +1325,7 @@ def run_check_fix_loop(
                         redact.redact(raw_text),
                         encoding="utf-8",
                     )
+                    Path(redacted_log_for_dispatch).chmod(0o600)
             except OSError:
                 loop.status = "dispatch-failed"
                 loop.delta_paths = tuple(delta_accum)
@@ -1181,9 +1381,15 @@ def run_checks_phase(
     dispatch_first: bool = False,
     max_iter: int | None = None,
     initial_redacted_log: str | None = None,
+    target_cmd_display: str | None = None,
 ) -> StepResult:
     """Wire checks + lint-fix loop and escalate."""
-    run_parent = str(Path(tmpdir) / "lint-fix-loop")
+    canonical_tmp = validate_tmpdir(tmpdir)
+    if canonical_tmp is None:
+        return StepResult(Outcome.TRANSIENT, "invalid-tmpdir")
+    if not _is_known_site(site):
+        return StepResult(Outcome.TRANSIENT, "unknown-site")
+    run_parent = str(canonical_tmp / "lint-fix-loop")
 
     def checks_runner() -> ChecksResult:
         return run_relevant_checks(
@@ -1202,6 +1408,7 @@ def run_checks_phase(
             codex_present=codex_present,
             cursor_present=cursor_present,
             run_parent=run_parent,
+            target_cmd_display=target_cmd_display,
         )
 
     loop = run_check_fix_loop(
