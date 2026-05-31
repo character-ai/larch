@@ -506,6 +506,7 @@ printf 'other.txt\n' > "$carryover_round_dir/pre-coder-tracked-paths.txt"
 git -C "$work_carryover_guard" diff "$carryover_pre_head" -- other.txt > "$carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
 : > "$carryover_round_dir/pre-coder-path-diffs/other.txt.cached.patch"
 printf 'src/main.py\n' > "$carryover_round_dir/coder-stage-paths.txt"
+# shellcheck disable=SC2317  # stub for eval'd carryover helpers from review-and-fix.sh
 larch_err() { printf '%s\n' "$*" >&2; }
 eval "$(sed -n '/^pre_coder_path_diff_file/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^pre_coder_path_cached_diff_file/,/^}/p' "$SCRIPT")"

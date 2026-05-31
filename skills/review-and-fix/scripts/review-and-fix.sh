@@ -406,7 +406,7 @@ path_matches_pre_coder_snapshot() {
 
 round_coder_delta_paths() {
     local round_dir="$1" pre_head="$2" paths_file="$3"
-    local pre_tracked="$round_dir/pre-coder-tracked-paths.txt" path snap
+    local pre_tracked="$round_dir/pre-coder-tracked-paths.txt" path
 
     {
         git diff --name-only "$pre_head" 2>/dev/null || true
