@@ -1,0 +1,2 @@
+Reading the plan and cross-checking cited line numbers and symbols against the repository.
+{"no_issues_found": true}

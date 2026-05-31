@@ -1,0 +1,41 @@
+Reviewing the codebase to align the plan revision with current MAV behavior and reviewer findings.
+Producing the unified plan diff incorporating FINDING_1 (MAV: relocate head only, no `snapshot_pre_coder_tracked_state`).
+--- a/plan.txt
++++ b/plan.txt
+@@ -24,7 +24,7 @@
+ ### UPDATED: `skills/review-and-fix/scripts/review-implement-step5-loop.sh`
+ - In the structural-diff telemetry block (~line 339-341), read `pre-coder-head.txt` from `pre_coder_snapshot_dir "$post_round_dir"`. This file is sourced from `review-and-fix.sh` (line 3), so the helper is in scope. Keep reading `post-coder-head.txt` from `$post_round_dir`. Net effect: telemetry uses the single trusted copy (tamper-resistant as a bonus).
+-- In `run_implement_mav_apply` (~line 398, before `apply_findings_with_coder`): mirror the main round snapshot call site in `review-and-fix.sh` (~1300): `mkdir -p "$(pre_coder_snapshot_dir "$round_dir")"`, write `pre-coder-head.txt` there (keep the `rm -f` on rev-parse failure), and call `snapshot_pre_coder_tracked_state "$round_dir" "$(cat …)"` when the head file is non-empty. Leave `post-coder-head.txt` in `round_dir` (line 408).
++- In `run_implement_mav_apply` (~line 398, before `apply_findings_with_coder`): relocate **only** `pre-coder-head.txt` to match today's head-only behavior — `mkdir -p "$(pre_coder_snapshot_dir "$round_dir")"`, write `pre-coder-head.txt` there (keep the `rm -f` on rev-parse failure). Do **not** call `snapshot_pre_coder_tracked_state` (adding tracked snapshots would widen #3272 carryover tolerance on MAV rounds). Leave `post-coder-head.txt` in `round_dir` (line 408).
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.sh`
+@@ -40,7 +40,7 @@
+ ### UPDATED: `skills/review-and-fix/scripts/review-implement-step5-loop.md`
+-- Note that `pre-coder-head.txt` is read from and written to the relocated snapshot dir via `pre_coder_snapshot_dir` (structural-diff telemetry and `run_implement_mav_apply` pre-dispatch snapshot).
++- Note that `pre-coder-head.txt` is read from and written to the relocated snapshot dir via `pre_coder_snapshot_dir` (structural-diff telemetry and `run_implement_mav_apply` head write). Document that MAV does not invoke `snapshot_pre_coder_tracked_state`.
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.md`
+@@ -50,7 +50,7 @@
+ - Relocation only: every carryover comparison (`path_matches_pre_coder_snapshot`, `path_is_pre_coder_carryover`, and callers) keeps identical logic; only the storage path changes. #3272 classification stays byte-identical.
+-- Both pre-dispatch snapshot writers (`review-and-fix.sh` main round path ~1300 and `run_implement_mav_apply` ~398) use the same relocated dir before coder dispatch.
++- Main round pre-dispatch (~1300) relocates all three pre-coder artifacts via `snapshot_pre_coder_tracked_state`; MAV `run_implement_mav_apply` (~398) relocates only `pre-coder-head.txt` under the same helper-derived dir (head-only parity — no new carryover snapshots on MAV).
+ - The Codex dispatch is the only path with `round_dir` write access; Cursor uses `--workspace "$PWD"` and never reached `round_dir` (it lives under `$IMPLEMENT_TMPDIR`, outside the repo).
+ - Repoint the step5-loop telemetry consumer rather than keep a duplicate `round_dir` copy — single source of truth, 1-line change, and the telemetry read becomes tamper-resistant too.
+@@ -61,6 +61,7 @@
+ - Absent `pre-coder-head.txt` (rev-parse failure / detached state): behavior unchanged — predicate returns "not carryover".
+ - `coder-stage-paths.txt` and `post-coder-head.txt` are coder/post-dispatch outputs, not pre-coder snapshots — they stay in `round_dir`.
++- MAV apply: `run_implement_mav_apply` writes only `pre-coder-head.txt` today — relocation moves that file only; no `snapshot_pre_coder_tracked_state` call. Carryover predicates on MAV rounds stay fail-closed for tracked paths (unchanged vs pre-change MAV).
+ 
+ ## Failure modes
+-1. **Missed reader or writer left at the old path** — any `pre-coder-*` read or pre-dispatch write still pointing at `round_dir` silently mis-resolves; the predicate fails closed (over-commits genuine dirt or zeroes telemetry). Earliest signal: carryover tests fail, step5 `structural_loc` reads 0, or MAV-apply rounds mis-build manifests when pre-dispatch dirt exists. Mitigation: grep-sweep every `pre-coder-head.txt` / `pre-coder-tracked-paths.txt` / `pre-coder-path-diffs` literal (include `run_implement_mav_apply`); tests cover worktree and index carryover.
++1. **Missed reader or writer left at the old path** — any `pre-coder-*` read or pre-dispatch write still pointing at `round_dir` silently mis-resolves; the predicate fails closed (over-commits genuine dirt or zeroes telemetry). Earliest signal: carryover tests fail, step5 `structural_loc` reads 0. Mitigation: grep-sweep every `pre-coder-head.txt` / `pre-coder-tracked-paths.txt` / `pre-coder-path-diffs` literal (`run_implement_mav_apply`: head write/read only); tests cover worktree and index carryover. Accidentally calling `snapshot_pre_coder_tracked_state` from MAV would widen carryover tolerance vs today's head-only behavior.
+ 2. **`--full-auto` sandbox assumption wrong** — relocation assumes `codex exec --full-auto` confines writes to `-C "$PWD"` plus `--add-dir` roots. If `--full-auto` granted full-disk write, the sibling dir would still be reachable. Earliest signal: a coder can write outside its `--add-dir` roots in manual testing. Mitigation: relocation is necessary regardless; hardening the sandbox flags is a separate follow-up (OOS) if the assumption fails.
+ 3. **`round_dir` parent inside the coder grant** — a future caller passing a `round_dir` whose parent is reachable would re-expose the sibling dir. Earliest signal: location-invariant test still passes (it only checks "not under round_dir") while the real grant differs. Mitigation: document the parent-unreachability invariant in `review-and-fix.md`; the production caller uses `$IMPLEMENT_TMPDIR/round-<N>`.
+@@ -76,4 +77,5 @@
+ ## Out-of-scope (candidate follow-ups)
+ - Narrowing or removing the Codex coder's `--add-dir "$round_dir"` grant.
+ - Hardening `codex exec` sandbox flags if `--full-auto` proves too permissive.
++- MAV rounds: full `snapshot_pre_coder_tracked_state` / carryover parity with main Step 5 rounds (this change relocates MAV's head file only).
+ 
+-diff_lines: 108
++diff_lines: 106
