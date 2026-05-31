@@ -468,7 +468,7 @@ clear_pr_state() {
 # separate Makefile target (test-ship-pr-state, -postmerge, -fix-loop,
 # -transient, -phase14) so the CI matrix can pack them as independent harness rows.
 # Running the script without --section is equivalent to running all listed
-# sections sequentially (state, postmerge, fix-loop, transient, phase14;
+# sections sequentially (state, postmerge, fix-loop, transient, phase14, errexit;
 # backward-compat for local dev).
 # ──────────────────────────────────────────────────────────────────────────────
 SECTION=""
@@ -5962,6 +5962,153 @@ else
 fi
 
 # end section: phase14
+fi
+
+if section_runs errexit; then
+_setup_oos_gate_errexit_fixture() {
+    local tmp=$1 plugin_root=$2
+    mkdir -p "$plugin_root/skills/implement/scripts"
+    cat > "$plugin_root/skills/implement/scripts/oos-disposition-gate.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+    chmod +x "$plugin_root/skills/implement/scripts/oos-disposition-gate.sh"
+    write_state "$tmp/ship-pr-state.sh" pr-prep
+    mkdir -p "$tmp/larch-logs/implement/test-run"
+    printf 'test-run\n' > "$tmp/session-id"
+}
+
+_assert_errexit_off() {
+    local label=$1 out=$2
+    if grep -qxF 'ERREXIT=off' "$out"; then
+        ok "$label"
+    else
+        fail "$label"
+        sed 's/^/    out: /' "$out"
+    fi
+}
+
+_assert_errexit_on() {
+    local label=$1 out=$2
+    if grep -qxF 'ERREXIT=on' "$out"; then
+        ok "$label"
+    else
+        fail "$label"
+        sed 's/^/    out: /' "$out"
+    fi
+}
+
+_run_oos_errexit_probe() {
+    local tmp=$1 plugin_root=$2 mode=$3 surface=$4 out=$5 err=$6
+    local errexit_flag probe
+    case "$mode" in
+        off) errexit_flag='+e' ;;
+        on) errexit_flag='-e' ;;
+        *) return 1 ;;
+    esac
+    case "$surface" in
+        helper)
+            probe='run_oos_disposition_gate_if_required_before_oos_pending_false
+gate_rc=$?
+case $- in *e*) echo ERREXIT=on ;; *) echo ERREXIT=off ;; esac'
+            ;;
+        prprep-first)
+            probe='_had_errexit=0
+case $- in *e*) _had_errexit=1 ;; esac
+set +e
+run_oos_disposition_gate_if_required_before_oos_pending_false
+gate_rc=$?
+(( _had_errexit )) && set -e
+case $- in *e*) echo ERREXIT=on ;; *) echo ERREXIT=off ;; esac'
+            ;;
+        prprep-recovery)
+            probe='if true; then
+    _had_errexit=0
+    case $- in *e*) _had_errexit=1 ;; esac
+    set +e
+    run_oos_disposition_gate_if_required_before_oos_pending_false
+    gate_rc=$?
+    (( _had_errexit )) && set -e
+fi
+case $- in *e*) echo ERREXIT=on ;; *) echo ERREXIT=off ;; esac'
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+    set +e
+    (
+        cd "$REPO_ROOT" || exit 1
+        bash -c "
+            set +uo pipefail
+            set ${errexit_flag}
+            export CLAUDE_PLUGIN_ROOT=\"${plugin_root}\"
+            source \"scripts/ship-pr.sh\"
+            STATE_FILE=\"${tmp}/ship-pr-state.sh\"
+            IMPLEMENT_TMPDIR=\"${tmp}\"
+            ${probe}
+        "
+    ) >"$out" 2>"$err"
+    printf '%s' "$?"
+}
+
+tmp=$(make_tmpdir)
+plugin_root="$tmp/plugin"
+_setup_oos_gate_errexit_fixture "$tmp" "$plugin_root"
+
+for surface in helper prprep-first prprep-recovery; do
+    _run_oos_errexit_probe "$tmp" "$plugin_root" off "$surface" \
+        "$tmp/${surface}-baseline-off.out" "$tmp/${surface}-baseline-off.err"
+    probe_rc=$?
+    if [[ "$probe_rc" -eq 0 ]]; then
+        _assert_errexit_off "OOS gate ${surface} preserves baseline-off errexit" \
+            "$tmp/${surface}-baseline-off.out"
+    else
+        fail "OOS gate ${surface} baseline-off probe aborted (rc=$probe_rc)"
+        sed 's/^/    err: /' "$tmp/${surface}-baseline-off.err" | head -n 10 || true
+    fi
+
+    _run_oos_errexit_probe "$tmp" "$plugin_root" on "$surface" \
+        "$tmp/${surface}-baseline-on.out" "$tmp/${surface}-baseline-on.err"
+    probe_rc=$?
+    if [[ "$probe_rc" -eq 0 ]]; then
+        _assert_errexit_on "OOS gate ${surface} restores errexit when caller had set -e" \
+            "$tmp/${surface}-baseline-on.out"
+    else
+        fail "OOS gate ${surface} baseline-on probe aborted (rc=$probe_rc)"
+        sed 's/^/    err: /' "$tmp/${surface}-baseline-on.err" | head -n 10 || true
+    fi
+done
+
+harness_tmp=$(make_tmpdir)
+harness_log="$harness_tmp/harness.log"
+set +e
+(
+    cd "$REPO_ROOT" || exit 1
+    bash -c '
+        set +uo pipefail
+        set -e
+        source "scripts/ship-pr.sh"
+        _PJL_LOG_PATH="'"$harness_log"'"
+        _PJA_ARGV=(bash -c "exit 2")
+        _run_per_job_command_capture
+        echo "RCC_CMD_RC=${_RCC_CMD_RC}"
+        echo SURVIVED=1
+    '
+) >"$harness_tmp/harness.out" 2>"$harness_tmp/harness.err"
+harness_rc=$?
+set -e
+if [[ "$harness_rc" -eq 0 ]] \
+    && grep -qxF 'SURVIVED=1' "$harness_tmp/harness.out" \
+    && grep -qxF 'RCC_CMD_RC=2' "$harness_tmp/harness.out"; then
+    ok "_run_per_job_command_capture is errexit-safe and records harness rc"
+else
+    fail "_run_per_job_command_capture must survive set -e and capture rc 2 (shell rc=$harness_rc)"
+    sed 's/^/    out: /' "$harness_tmp/harness.out" || true
+    sed 's/^/    err: /' "$harness_tmp/harness.err" | head -n 10 || true
+fi
+
+# end section: errexit
 fi
 
 echo "=== append_tool_failure_local fallback relay sanitizes control bytes ==="
