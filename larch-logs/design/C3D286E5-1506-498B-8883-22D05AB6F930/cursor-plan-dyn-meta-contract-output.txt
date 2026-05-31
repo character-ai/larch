@@ -1,0 +1,14 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-collect-agent-retry.sh:29-31 / scripts/collect-agent-results.sh:595-617	Outer-launcher runtime case points OUTER_LAUNCHER at an argv-recording stub	Collector rejects non-canonical OUTER_LAUNCHER (must be real repo launch-review.sh; no symlinks). A stub path fails case-s2-style validation or never exercises the real replay chain.	Keep OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-review.sh (mirror case Q). Assert forwarding via retry artifact: STDERR_SINK= on ${retry_output}.meta and/or --stderr-sink on run-external-agent (extend HELPER logging only for CMD_JSON path).
+
+### 1. [correctness] `scripts/test-collect-agent-retry.sh` (plan §test-collect-agent-retry) / `scripts/collect-agent-results.sh:595-617`
+
+The proposed outer-launcher runtime `--stderr-sink` case says to set `OUTER_LAUNCHER` to an “argv-recording stub.” That conflicts with the collector’s canonical launcher guard, which requires `OUTER_LAUNCHER` to resolve to the real `scripts/launch-review.sh` (regular file, canonical path, executable)—see ```595:617:scripts/collect-agent-results.sh``` and existing rejection coverage at ```702:708:scripts/test-collect-agent-retry.sh```.
+
+**Concern:** Implementing the plan literally produces a fail-closed retry or a test that does not exercise production forwarding.
+
+**Suggested revision:** Reuse the case Q pattern (`write_outer_meta` with `$REPO_ROOT/scripts/launch-review.sh`, `prepare_outer_candidate`, `CURSOR_STUB_BIN` on `PATH`). Assert `--stderr-sink` delivery via retry side effects (e.g. `STDERR_SINK=` on `${retry_output}.meta` after `run-external-agent.sh` runs, or sink-file presence). Reserve argv logging for the CMD_JSON path only (via the existing `HELPER` / `run-external-agent.sh` boundary).
+
+---
+
+Production wiring in the plan matches the helper contract: ```14:32:scripts/lib-external-launcher-common.sh``` (`[risk]` then `[stderr_sink]`); FINDING_12’s `"$RISK"` / `"$STDERR_SINK"` fifth/sixth args at ```604:604:scripts/launch-review.sh``` and ```1028:1028:scripts/launch-review.sh```; FINDING_6’s `"" ""` on the two four-arg cursor launchers; collector replay already forwards `--risk` and `--stderr-sink` at ```643:656:scripts/collect-agent-results.sh``` and ```1023:1049:scripts/collect-agent-results.sh```. No other `*_append_outer_meta` call sites are omitted.

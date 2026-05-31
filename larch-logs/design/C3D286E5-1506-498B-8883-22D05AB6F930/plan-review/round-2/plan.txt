@@ -1,0 +1,68 @@
+# Implementation Plan — Complete stderr forwarding coverage (launcher round-trip, risk wiring, behavioral tests)
+
+SIMPLE-tier. Smallest change that closes the three live gaps. Part 1 (#3257) is dropped: it is already fixed by #3270 (commit `12677a01e`) at `ship-pr.sh:3401` and `ship-pr.sh:2835`.
+
+## Files to modify/create
+
+### UPDATED: `scripts/launch-review.sh`
+FINDING_12 — capture `--risk` and forward it as the 5th `*_launcher_append_outer_meta` arg. The flag is parsed but discarded today, so collector retries always get `OUTER_LAUNCHER_RISK=high`.
+- Codex lane:
+  - Initialize `RISK=""` next to `STDERR_SINK=""` (near line 111).
+  - In the `--risk)` case (line 131), keep the non-empty validation and add `RISK="$2"` before `shift 2` (replace the value-discarding `shift 2`).
+  - At the `codex_launcher_append_outer_meta ... "$PWD" "" "$STDERR_SINK"` call (line 604), pass `"$RISK"` as the 5th arg in place of the literal `""`.
+- Cursor lane (mirror, same file): `RISK=""` init near `STDERR_SINK=""` (near line 652); capture in the `--risk)` case (line 672); pass `"$RISK"` as the 5th arg at the `cursor_launcher_append_outer_meta` call (line 1028).
+- Empty `RISK` (no `--risk` given) preserves today's behavior: the function default `${5:-${RISK:-high}}` resolves to `high`, so only callers that pass `--risk` change behavior.
+
+### UPDATED: `scripts/launch-cursor-implement.sh`
+FINDING_6 — at the `cursor_launcher_append_outer_meta "${TRANSCRIPT_PATH}.meta" "$SCRIPT_DIR/launch-cursor-implement.sh" "$PROMPT_FILE_SIDECAR" "$PWD"` call (line 339), append two empty positional args: `"" ""` (5th = risk, 6th = stderr_sink). Documents both optional slots and guards against future arg-position drift. No new flag acceptance. Behavior is unchanged: empty 5th keeps the existing `OUTER_LAUNCHER_RISK=high`; empty 6th omits the `STDERR_SINK=` line (the current 4-arg result).
+
+### UPDATED: `scripts/launch-cursor-ci.sh`
+FINDING_6 — at the `cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-cursor-ci.sh" "$PROMPT_FILE" "$PWD"` call (line 227), append `"" ""` as above. Same no-op-today/future-proofing rationale.
+(Parity note: `launch-codex-implement.sh` and `launch-codex-ci.sh` do NOT call `*_append_outer_meta` at all, so FINDING_6 has no codex-side edit — a classified, intentional asymmetry per `.claude/rules/external-tool-launcher-parity.md`.)
+
+### UPDATED: `scripts/test-launch-review.sh`
+Two changes, both lanes (codex and cursor invocation blocks):
+1. FINDING_1/2 (FINDING_2 revision) — remove the static source grep at line 1381 (`grep -F -- "_RUN_EXTERNAL_SINK_ARGS+=(--stderr-sink \"\$STDERR_SINK\")" …/launch-review.sh`) and do not assert on leaf codex/cursor argv for `--stderr-sink` (the flag is consumed at the `run-external-agent.sh` boundary). On the existing accept-path stubbed runs (`SS_ACCEPT_*` / `CSS_ACCEPT_*`, lines 1368-1390 / 2724-2742), keep the newline-reject checks and the `grep -Fxq "STDERR_SINK=$…_SINK"` outer `.meta` line check. Add a wrapper-ownership assertion on `${…_OUT}.meta`: the first physical line matching `^STDERR_SINK=` must appear before the first line matching `^OUTER_LAUNCHER=` (run-external-agent writes base meta before `*_launcher_append_outer_meta`; same contract as `scripts/test-run-external-agent.sh` #19h). Apply symmetrically in codex and cursor lanes. Only if ordering is ambiguous in practice, add a test-only `$STUB_BIN/run-external-agent.sh` shim that logs `"$@"` then `exec`s the real script and assert `--stderr-sink` plus the sink path — do not rely on leaf argv alone.
+2. FINDING_12 — add a `--risk` round-trip test in both lanes: invoke the launcher with `--risk low` and assert the outer `.meta` contains `OUTER_LAUNCHER_RISK=low`; invoke without `--risk` and assert `OUTER_LAUNCHER_RISK=high` (the fail-closed default). This directly catches the discarded-flag regression.
+
+### UPDATED: `scripts/test-collect-agent-retry.sh`
+FINDING_1 (FINDING_3/4 revisions) — replace the static source grep at lines 815-821 (`_outer_sink_args+=(--stderr-sink …)` / `RETRY_ARGS+=(--stderr-sink …)` against `$COLLECTOR`) with runtime artifact assertions. Do not point `OUTER_LAUNCHER` at an argv-recording stub (collector validation requires canonical `$REPO_ROOT/scripts/launch-review.sh`; see cases Q/W/Z) and do not put `run-external-agent.sh` in `CMD_JSON` (shape allowlists reject it; cases P2–P4). Two runtime cases after the existing `corrupt-risk` block (lines 800-813):
+- **Outer-launcher retry (FINDING_3):** mirror case Q (lines 650-660): `prepare_outer_candidate`, `write_outer_meta` with `OUTER_LAUNCHER=$REPO_ROOT/scripts/launch-review.sh`, valid prompt sidecar/workdir, plus `STDERR_SINK=<abs path under $TMPROOT>`. Run `PATH="$CURSOR_STUB_BIN:$PATH" run_collector …` (codex mirror: case Q2 pattern with codex stub + `LARCH_CODEX_MODEL`). On success, assert `${OUT%.txt}-retry.txt.meta` contains `STDERR_SINK=<sink>` and the first `^STDERR_SINK=` line precedes the first `^OUTER_LAUNCHER=` (retry meta from real `run-external-agent.sh` inside launch-review). Stub only the leaf CLI via PATH.
+- **CMD_JSON retry (FINDING_4):** mirror case A / sink-dotdot-cmd-json fixture shape: `write_empty_candidate`, `write_meta_body` with valid `TOOL=cursor`, `CMD_JSON=$(json_array bash "$HELPER" --output "$OUT")`, and `STDERR_SINK=<abs sink>`; `run_collector`. Assert `${OUT%.txt}-retry.txt.meta` records `STDERR_SINK=<sink>` from real `scripts/run-external-agent.sh` on the CMD_JSON retry path; optionally assert the first `^STDERR_SINK=` precedes `^CMD_JSON=`.
+Keep the existing fail-closed `..` guard cases (lines 823-840) and the sink-absent case (842-852) unchanged.
+
+### UPDATED: `scripts/launch-review.md`
+FINDING_12 doc sync (script-md-siblings rule): add one line noting `--risk high|low` is captured and forwarded as `OUTER_LAUNCHER_RISK` in the outer `.meta` so `collect-agent-results.sh` replays empty-output retries with the caller's risk-gated effort. No other `.md` needs updating: `lib-external-launcher-common.md` already documents the 5th/6th args, and FINDING_6 is behavior-neutral for the cursor launcher `.md` files.
+
+## Approach
+- Pure wiring + test-fidelity cleanup. FINDING_12 changes one real behavior (a discarded flag becomes functional); FINDING_6 is a documentary no-op; FINDING_1/2/3/4 replace source greps and invalid harness shapes with runtime meta artifact assertions at the `run-external-agent.sh` boundary (canonical outer launcher + valid CMD_JSON fixtures).
+- Preserve the `external_launcher_append_outer_meta` contract verbatim: `<meta_path> <outer_launcher_path> <prompt_file_sidecar> <workdir> [risk] [stderr_sink]`.
+- Keep both `launch-review.sh` lanes symmetric (launcher-parity rule): the risk capture lands identically in the codex and cursor blocks.
+
+## Edge cases
+- No `--risk` passed: `RISK=""` → outer `.meta` keeps `OUTER_LAUNCHER_RISK=high` (unchanged). Round-trip test asserts this default branch too.
+- Invalid `--risk` value passed at the launcher: existing `[[ -n "${2:-}" ]]` guard still rejects empty; any non-empty value flows to the function, which normalizes anything other than `high|low` to `high` (fail-closed). No new validation added at the launcher (matches current contract).
+- FINDING_6 empty 6th arg: function still emits no `STDERR_SINK=` line, so the sink-absent meta invariant holds; existing meta tests stay green.
+- Collector outer-retry tests must use canonical `launch-review.sh` and valid vendor-shaped `CMD_JSON`; invalid launcher paths or inner-command shapes fail closed before forwarding is exercised (do not weaken validation).
+- Test stubs: argv-recording must not perturb exit codes/timing the harness already asserts; reuse existing stub plumbing rather than introducing a new global stub.
+
+## Failure modes
+- Risk capture wired in only one `launch-review.sh` lane → asymmetric behavior. Mitigation: the round-trip test runs in both the codex and cursor lane blocks; a one-lane fix fails the other lane's assertion.
+- Runtime assertion targets leaf argv or outer-only duplicate `STDERR_SINK=` after `OUTER_LAUNCHER=` → false green (FINDING_2). Mitigation: require the first `^STDERR_SINK=` line before the first `^OUTER_LAUNCHER=` on primary launch-review `.meta`; keep the existing `grep -Fxq` line check as secondary evidence.
+- Outer-retry test uses non-canonical `OUTER_LAUNCHER` stub → harness fails closed or pressures validation weakening (FINDING_3). Mitigation: keep `$REPO_ROOT/scripts/launch-review.sh`, stub leaf CLI only (case Q pattern).
+- CMD_JSON retry embeds `run-external-agent.sh` or other disallowed argv → retry rejected or wrong path (FINDING_4). Mitigation: valid `json_array bash "$HELPER"` cursor fixture (case A); assert `${retry}.meta` wrapper ownership.
+- A converted runtime test depends on a stub that differs from real `run-external-agent.sh` → false green/red. Mitigation: keep `scripts/run-external-agent.sh` and canonical `launch-review.sh` real; stub only leaf binaries on PATH.
+
+## Testing strategy
+- `bash scripts/test-launch-review.sh` (both `--tool codex` and `--tool cursor`): risk round-trip (low + default); stderr-sink meta ordering (`STDERR_SINK=` before `OUTER_LAUNCHER=`) plus existing outer-line checks; newline-reject checks stay green.
+- `bash scripts/test-collect-agent-retry.sh`: outer-launcher (case Q + `STDERR_SINK`) and CMD_JSON (case A + `STDERR_SINK`) runtime retry-meta assertions pass; fail-closed `..` and sink-absent cases stay green.
+- `bash scripts/relevant-checks.sh` (or `make lint`): shellcheck, bash 3.2 lint, bare-grep-probe, script-md-siblings all green.
+- Manual sanity (per `.claude/rules/verify-external-tool-invocations.md`): run `scripts/launch-review.sh --tool codex --help` and confirm `--risk` is still accepted; inspect a generated `.meta` to confirm `OUTER_LAUNCHER_RISK` reflects the passed `--risk` and wrapper `STDERR_SINK=` precedes `OUTER_LAUNCHER=`.
+
+## Out of scope
+- Part 1 (#3257) — already fixed by #3270; no fix and no test.
+- Adding `--stderr-sink`/`--risk` flag acceptance to the cursor implement/CI launchers.
+- Any static-grep → runtime conversion beyond the finding-named assertions.
+- Weakening `collect-agent-results.sh` canonical `OUTER_LAUNCHER` validation or CMD_JSON shape allowlists to accommodate test stubs.
+
+diff_lines: 125
