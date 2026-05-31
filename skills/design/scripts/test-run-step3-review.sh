@@ -84,7 +84,7 @@ launcher_env=(env -u LARCH_QUIET_LOG_FILE CLAUDE_PLUGIN_ROOT="$REPO_ROOT")
 
 echo "=== missing --design-tmpdir ==="
 set +e
-out="$("${launcher_env[@]}" "$LAUNCHER" --round-cap 5 --convergence-threshold 3 2>&1)"
+out="$("${launcher_env[@]}" "$LAUNCHER" --round-cap 5 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 2 ]]; then
@@ -98,7 +98,7 @@ echo "=== missing --round-cap ==="
 DARGV="$TMP/argv"
 write_common_inputs "$DARGV" SIMPLE
 set +e
-out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --convergence-threshold 3 2>&1)"
+out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 2 ]]; then
@@ -108,21 +108,9 @@ else
 fi
 assert_contains "$out" '--round-cap is required' 'missing round-cap error'
 
-echo "=== missing --convergence-threshold ==="
-set +e
-out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --round-cap 5 2>&1)"
-rc=$?
-set -e
-if [[ "$rc" -eq 2 ]]; then
-    pass 'missing convergence-threshold exits 2'
-else
-    fail "missing convergence-threshold rc=$rc"
-fi
-assert_contains "$out" '--convergence-threshold is required' 'missing convergence-threshold error'
-
 echo "=== unknown option ==="
 set +e
-out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --round-cap 5 --convergence-threshold 3 --bogus 2>&1)"
+out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --round-cap 5 --bogus 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 2 ]]; then
@@ -139,7 +127,7 @@ printf '3\n' >"$D1/review-round-count.txt"
 stub="$(write_loop_stub "$D1" 'exit 97')"
 set +e
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D1" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D1" --round-cap 5)"
 rc=$?
 set -e
 if [[ "$rc" -eq 0 ]]; then
@@ -162,7 +150,7 @@ printf 'stale\n' >"$D1B/plan-review/round-2/stale.txt"
 stub="$(write_loop_stub "$D1B" 'exit 97')"
 set +e
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D1B" --round-cap 5 --convergence-threshold 3 >/dev/null
+    --design-tmpdir "$D1B" --round-cap 5 >/dev/null
 rc=$?
 set -e
 if [[ "$rc" -eq 0 ]]; then
@@ -182,7 +170,7 @@ printf 'keep-me\n' >"$D1S/plan-review/round-keeper/stale.txt"
 ln -s "$D1S/plan-review/round-keeper" "$D1S/plan-review/round-2"
 stub="$(write_loop_stub "$D1S" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D1S" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D1S" --round-cap 5)"
 assert_contains "$out" 'refusing to remove symlinked round artifact round-2' 'symlinked round cleanup warning'
 [[ ! -e "$D1S/plan-review/round-1" ]] || fail 'non-symlink round-1 should be removed during cleanup'
 [[ -f "$D1S/plan-review/round-keeper/stale.txt" ]] || fail 'symlinked round-2 target must survive cleanup'
@@ -194,7 +182,7 @@ write_common_inputs "$D1C" SIMPLE
 printf 'abc\n' >"$D1C/review-round-count.txt"
 stub="$(write_loop_stub "$D1C" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D1C" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D1C" --round-cap 5)"
 assert_contains "$out" 'review-round-count.txt non-numeric' 'non-numeric count warning'
 if [[ "$(cat "$D1C/review-round-count.txt")" == "1" ]]; then
     pass 'non-numeric count treated as zero then round 1 persisted'
@@ -207,7 +195,7 @@ D2="$TMP/persist"
 write_common_inputs "$D2" SIMPLE
 stub="$(write_loop_stub "$D2" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D2" --round-cap 5 --convergence-threshold 3 >/dev/null
+    --design-tmpdir "$D2" --round-cap 5 >/dev/null
 if [[ "$(cat "$D2/review-round-count.txt")" == "1" ]]; then
     pass 'pending round persisted'
 else
@@ -220,7 +208,7 @@ write_common_inputs "$D3" HARD
 printf '2\n' >"$D3/review-round-count.txt"
 stub="$(write_loop_stub "$D3" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=tally-error\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 2")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D3" --round-cap 5 --convergence-threshold 3 >/dev/null
+    --design-tmpdir "$D3" --round-cap 5 >/dev/null
 if [[ "$(cat "$D3/review-round-count.txt")" == "2" ]]; then
     pass 'tally-error rollback'
 else
@@ -233,7 +221,7 @@ write_common_inputs "$D3B" HARD
 printf '2\n' >"$D3B/review-round-count.txt"
 stub="$(write_loop_stub "$D3B" "printf 'LOOP_STATUS=tally-error\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D3B" --round-cap 5 --convergence-threshold 3 >/dev/null
+    --design-tmpdir "$D3B" --round-cap 5 >/dev/null
 if [[ "$(cat "$D3B/review-round-count.txt")" == "2" ]]; then
     pass 'loop-status tally-error rollback'
 else
@@ -246,7 +234,7 @@ write_common_inputs "$D4" SIMPLE
 printf '1\n' >"$D4/review-round-count.txt"
 stub="$(write_loop_stub "$D4" "printf 'LOOP_STATUS=degraded-empty-collector\nACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=skipped\nVOTING_TALLY_FILE=\n'; exit 0")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D4" --round-cap 5 --convergence-threshold 3 >/dev/null
+    --design-tmpdir "$D4" --round-cap 5 >/dev/null
 if [[ "$(cat "$D4/review-round-count.txt")" == "1" ]]; then
     pass 'degraded-empty-collector rollback'
 else
@@ -259,7 +247,7 @@ write_common_inputs "$D5" SIMPLE
 printf '1\n' >"$D5/review-round-count.txt"
 stub="$(write_loop_stub "$D5" "printf 'LOOP_STATUS=panel-failed\nACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=panel-failed\nAGGREGATOR_STATUS=skipped\nVOTING_TALLY_FILE=\n'; exit 1")"
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D5" --round-cap 5 --convergence-threshold 3 >/dev/null
+    --design-tmpdir "$D5" --round-cap 5 >/dev/null
 if [[ "$(cat "$D5/review-round-count.txt")" == "2" ]]; then
     pass 'panel-failed keeps round'
 else
@@ -271,7 +259,7 @@ D6="$TMP/weird"
 write_common_inputs "$D6" SIMPLE
 stub="$(write_loop_stub "$D6" "printf 'LOOP_STATUS=weird-status\n'; exit 1")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D6" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D6" --round-cap 5)"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'unknown status normalized'
 
 echo "=== unexpected LOOP_STATUS preserved on non-zero rc ==="
@@ -279,7 +267,7 @@ D6B="$TMP/revision-failed-rc"
 write_common_inputs "$D6B" SIMPLE
 stub="$(write_loop_stub "$D6B" "printf 'LOOP_STATUS=revision-failed\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D6B" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D6B" --round-cap 5)"
 assert_contains "$out" 'LOOP_STATUS=revision-failed' 'revision-failed preserved on rc 1'
 if [[ "$out" == *'treating as panel-failed'* && "$out" != *'missing or invalid LOOP_STATUS'* ]]; then
     fail 'unexpected rc should not coerce revision-failed to panel-failed'
@@ -292,7 +280,7 @@ D6C="$TMP/main-agent-rc"
 write_common_inputs "$D6C" SIMPLE
 stub="$(write_loop_stub "$D6C" "printf 'LOOP_STATUS=main-agent-vote-required\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D6C" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D6C" --round-cap 5)"
 assert_contains "$out" 'LOOP_STATUS=main-agent-vote-required' 'main-agent-vote-required preserved on rc 1'
 grep -Fq 'LOOP_STATUS=main-agent-vote-required' "$D6C/.step3-review-result.env" || fail 'result env main-agent-vote-required'
 
@@ -316,7 +304,7 @@ loop_stub="$(write_loop_stub "$D10" 'exit 97')"
 set +e
 out="$("${launcher_env[@]}" RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH="$snap_stub" \
     RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" "$LAUNCHER" \
-    --design-tmpdir "$D10" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D10" --round-cap 5)"
 rc=$?
 set -e
 if [[ "$rc" -eq 1 ]]; then
@@ -342,7 +330,7 @@ TALLY_PLAN_REVIEW_STATUS=ok
 EOF
 stub="$(write_loop_stub "$D7" 'exit 2')"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D7" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D7" --round-cap 5)"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'stale inner env ignored'
 if grep -Fq 'ACCEPTED_COUNT=9' "$D7/.step3-review-result.env"; then
     fail 'stale accepted count leaked into normalized result env'
@@ -367,7 +355,7 @@ COLLECT_FAILURE_COUNT=0
 EOF
 printf 'LOOP_STATUS=panel-failed\nACCEPTED_COUNT=7\nAGGREGATOR_STATUS=stdout\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D8" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D8" --round-cap 5)"
 assert_contains "$out" 'LOOP_STATUS=complete' 'inner file loop status wins'
 grep -Fq 'AGGREGATOR_STATUS=file' "$D8/.step3-review-result.env" || fail 'inner file aggregator should win over stdout'
 
@@ -375,36 +363,43 @@ echo "=== invalid round-cap via real plan-review-loop normalizes to panel-failed
 D11="$TMP/invalid-cap-real"
 write_common_inputs "$D11" SIMPLE
 out="$("${launcher_env[@]}" "$LAUNCHER" \
-    --design-tmpdir "$D11" --round-cap 0 --convergence-threshold 3 2>&1)"
+    --design-tmpdir "$D11" --round-cap 0 2>&1)"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'invalid round-cap panel-failed'
 grep -Fq 'LOOP_STATUS=panel-failed' "$D11/.step3-review-result.env" || fail 'invalid round-cap result env panel-failed'
 
-echo "=== loop is not forwarded --convergence-threshold ==="
-D11C="$TMP/no-ct-forward"
-write_common_inputs "$D11C" SIMPLE
-ct_stub="$D11C/ct-stub.sh"
-cat >"$ct_stub" <<'STUBEOF'
+echo "=== driver argv matches plan-review-loop contract ==="
+D_SEAM="$TMP/integration-seam"
+write_common_inputs "$D_SEAM" SIMPLE
+seam_stub="$D_SEAM/plan-review-loop-seam.sh"
+cat >"$seam_stub" <<'STUBEOF'
 #!/usr/bin/env bash
 set -euo pipefail
-printf '%s\n' "$@" >"${CT_ARGV_FILE:-/dev/null}"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir|--plan-file|--feature-file|--codex-present|--cursor-present|--round-num|--round-cap|--timeout)
+            shift 2
+            ;;
+        *)
+            printf 'plan-review-loop.sh: unknown option: %s\n' "$1" >&2
+            exit 2
+            ;;
+    esac
+done
 printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'
+exit 0
 STUBEOF
-chmod +x "$ct_stub"
-CT_ARGV_FILE="$D11C/loop-argv.txt"
-"${launcher_env[@]}" CT_ARGV_FILE="$CT_ARGV_FILE" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$ct_stub" "$LAUNCHER" \
-    --design-tmpdir "$D11C" --round-cap 5 --convergence-threshold 3 >/dev/null
-if grep -Fq -- '--convergence-threshold' "$CT_ARGV_FILE" 2>/dev/null; then
-    fail 'loop should not receive --convergence-threshold'
-else
-    pass 'loop is not forwarded --convergence-threshold'
-fi
+chmod +x "$seam_stub"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$seam_stub" "$LAUNCHER" \
+    --design-tmpdir "$D_SEAM" --round-cap 5)"
+assert_contains "$out" 'LOOP_STATUS=complete' 'integration seam settled LOOP_STATUS'
+grep -Fq 'LOOP_STATUS=complete' "$D_SEAM/.step3-review-result.env" || fail 'integration seam result env complete'
 
 echo "=== terminal stdout breadcrumbs include round identifiers ==="
 D11B="$TMP/breadcrumb-rounds"
 write_common_inputs "$D11B" SIMPLE
 stub="$(write_loop_stub "$D11B" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D11B" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D11B" --round-cap 5)"
 assert_contains "$out" 'STEP3_REVIEW_ROUND_NUM=1' 'stdout STEP3_REVIEW_ROUND_NUM breadcrumb'
 assert_contains "$out" 'ROUND_NUM=1' 'stdout ROUND_NUM breadcrumb'
 
@@ -414,7 +409,7 @@ write_common_inputs "$D9" SIMPLE
 ln -s "$D9/elsewhere.env" "$D9/.step3-plan-review-result.env"
 stub="$(write_loop_stub "$D9" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=stdout\nVOTING_TALLY_FILE=\n'; exit 0")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D9" --round-cap 5 --convergence-threshold 3)"
+    --design-tmpdir "$D9" --round-cap 5)"
 assert_contains "$out" 'LOOP_STATUS=complete' 'symlink inner stdout fallback loop status'
 grep -Fq 'AGGREGATOR_STATUS=stdout' "$D9/.step3-review-result.env" || fail 'symlink inner should use stdout fallback'
 
@@ -425,7 +420,7 @@ ln -sf "$D12/outer-target.env" "$D12/.step3-review-result.env"
 stub="$(write_loop_stub "$D12" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 set +e
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
-    --design-tmpdir "$D12" --round-cap 5 --convergence-threshold 3 2>&1)"
+    --design-tmpdir "$D12" --round-cap 5 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 1 ]]; then
@@ -446,7 +441,7 @@ ln -sf "$D12B/outer-cap-target.env" "$D12B/.step3-review-result.env"
 loop_stub="$(write_loop_stub "$D12B" 'exit 97')"
 set +e
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$loop_stub" "$LAUNCHER" \
-    --design-tmpdir "$D12B" --round-cap 5 --convergence-threshold 3 2>&1)"
+    --design-tmpdir "$D12B" --round-cap 5 2>&1)"
 rc=$?
 set -e
 if [[ "$rc" -eq 1 ]]; then

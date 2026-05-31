@@ -63,8 +63,6 @@ contains "$RUN_STEP3_SH" '--round-cap "$ROUND_CAP"' 'run-step3-review.sh must pa
 absent "$RUN_STEP3_SH" '--convergence-threshold "$CONVERGENCE_THRESHOLD"' 'run-step3-review.sh must NOT forward convergence-threshold to plan-review-loop'
 # shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
 contains "$SKILL_MD" '--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"' 'SKILL must pass explicit round-cap to run-step3-review.sh'
-# shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
-contains "$SKILL_MD" '--convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"' 'SKILL must pass convergence-threshold to run-step3-review.sh'
 contains "$RUN_STEP3_SH" '.step3-plan-review-result.env' 'run-step3-review.sh must read step3 plan-review result env'
 contains "$RUN_STEP3_SH" 'result env is a symlink; ignoring it and using stdout fallback only' 'run-step3-review.sh missing symlink-safe step3 result env warning'
 contains "$SKILL_MD" 'invoke-plan-validator.sh' 'SKILL missing renamed validator helper'

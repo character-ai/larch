@@ -10,7 +10,6 @@
 |------|----------|-------|
 | `--design-tmpdir PATH` | yes | Validated with `cd … && pwd -P` |
 | `--round-cap N` | yes | Orchestrator expands `${LARCH_DESIGN_ROUND_CAP:-5}` |
-| `--convergence-threshold N` | yes | Orchestrator expands `${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}` |
 
 The driver does **not** re-read `LARCH_DESIGN_*` env vars.
 
