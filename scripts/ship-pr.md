@@ -64,7 +64,7 @@ The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-f
 
 ## Errexit invariant
 
-`ship-pr.sh` runs with `set +uo pipefail` (no errexit) by design: helper outcomes are read from stdout envelopes and explicit `rc` captures. Any `set +e` … gate/helper block must **restore the prior errexit state** via the save/restore idiom (`case $- in *e*) had_errexit=1 ;; esac` before `set +e`, then `(( had_errexit )) && set -e` after `rc=$?`) — never an unconditional trailing `set -e`. Unconditional restore leaks errexit into later CI phases and can abort the script with a raw helper exit code outside the documented orchestrator table below.
+`ship-pr.sh` runs with `set -uo pipefail` (nounset and pipefail on; errexit intentionally off — no `set -e`) by design: helper outcomes are read from stdout envelopes and explicit `rc` captures. Any `set +e` … gate/helper block must **restore the prior errexit state** via the save/restore idiom (`case $- in *e*) had_errexit=1 ;; esac` before `set +e`, then `(( had_errexit )) && set -e` after `rc=$?`) — never an unconditional trailing `set -e`. Unconditional restore leaks errexit into later CI phases and can abort the script with a raw helper exit code outside the documented orchestrator table below.
 
 ## Exit Codes
 

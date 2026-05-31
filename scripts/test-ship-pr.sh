@@ -468,7 +468,7 @@ clear_pr_state() {
 # separate Makefile target (test-ship-pr-state, -postmerge, -fix-loop,
 # -transient, -phase14) so the CI matrix can pack them as independent harness rows.
 # Running the script without --section is equivalent to running all listed
-# sections sequentially (state, postmerge, fix-loop, transient, phase14;
+# sections sequentially (state, postmerge, fix-loop, transient, phase14, errexit;
 # backward-compat for local dev).
 # ──────────────────────────────────────────────────────────────────────────────
 SECTION=""
@@ -6042,10 +6042,10 @@ case $- in *e*) echo ERREXIT=on ;; *) echo ERREXIT=off ;; esac'
         bash -c "
             set +uo pipefail
             set ${errexit_flag}
+            export CLAUDE_PLUGIN_ROOT=\"${plugin_root}\"
             source \"scripts/ship-pr.sh\"
             STATE_FILE=\"${tmp}/ship-pr-state.sh\"
             IMPLEMENT_TMPDIR=\"${tmp}\"
-            export CLAUDE_PLUGIN_ROOT=\"${plugin_root}\"
             ${probe}
         "
     ) >"$out" 2>"$err"
