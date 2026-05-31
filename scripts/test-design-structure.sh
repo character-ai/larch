@@ -38,7 +38,9 @@ contains "$SKILL_MD" '[--hard]' 'SKILL argument hint must expose --hard as the s
 absent "$SKILL_MD" '[--simple|' 'SKILL argument hint must not restore [--simple|--hard] tier alternation'
 contains "$SKILL_MD" 'The default tier is SIMPLE' 'SKILL must document default SIMPLE tier resolution'
 contains "$SKILL_MD" '**Tier resolution**' 'SKILL must document non-interactive Tier resolution sub-step'
-contains "$SKILL_MD" 'default tier: SIMPLE (no --hard)' 'SKILL must pin default-tier write-run-params reason string'
+if ! grep -Fq 'default tier: SIMPLE (no --hard)' "$SKILL_MD" && ! grep -Fq 'default tier: SIMPLE (no --hard)' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" 2>/dev/null; then
+  fail 'SKILL or design-init-runparams.sh must pin default-tier write-run-params reason string'
+fi
 absent "$SKILL_MD" '**Tier gate**' 'SKILL must not retain retired Step 0 Tier gate sub-step'
 absent "$SKILL_MD" 'cancelled-tier-gate' 'SKILL must not retain cancelled-tier-gate outcome'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -105,7 +107,9 @@ contains "$SKILL_MD" 'the four primary options are **Approve final design** / **
 contains "$SKILL_MD" 'Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**' 'SKILL missing Gate C cap-omission prose with See full plan'
 contains "$SKILL_MD" 'plan review MUST ALWAYS run the full Step 3 panel' 'SKILL missing full-panel Step 3 contract'
 
-contains "$SKILL_MD" 'sketch_budget=0' 'SKILL must pin SIMPLE sketch_budget=0'
+if ! grep -Fq 'sketch_budget=0' "$SKILL_MD" && ! grep -Fq 'sketch_budget=0' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" 2>/dev/null; then
+  fail 'SKILL or design-init-runparams.sh must pin SIMPLE sketch_budget=0'
+fi
 absent "$SKILL_MD" 'review_budget=quick' 'SKILL must not pin v1 review_budget=quick'
 absent "$SKILL_MD" 'invoke-plan-validator-if-not-quick.sh' 'SKILL must not reference old validator helper'
 absent "$SKILL_MD" 'read-design-review-budget.sh' 'SKILL must not reference old budget reader'
@@ -115,7 +119,9 @@ absent "$SKILL_MD" 'design-l3-velocity-notified-2670' 'SKILL must not retain Ste
 contains "$SKILL_MD" 'contract drift' 'SKILL missing Step 0b contract-drift abort prose'
 contains "$SKILL_MD" 'aborting before silent tier downgrade' 'SKILL missing silent tier downgrade abort pin'
 contains "$SKILL_MD" 'bash scripts/test-write-run-params.sh' 'SKILL missing contract-drift repro command'
-contains "$SKILL_MD" 'refusing to recreate it with fallback defaults' 'SKILL missing no-fallback run-params warning'
+if ! grep -Fq 'refusing to recreate it with fallback defaults' "$SKILL_MD" && ! grep -Fq 'refusing to recreate it with fallback defaults' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" 2>/dev/null; then
+  fail 'SKILL or design-init-runparams.sh missing no-fallback run-params warning'
+fi
 absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must not retain old HARD fallback recovery reason'
 
 contains "$FLAGS_MD" 'Plan-command validator runs unconditionally on both SIMPLE and HARD' 'flags.md missing unconditional validator contract'
@@ -502,13 +508,13 @@ assert_p3119_family_b_fence_absent "$PLAN_REVIEW_MD" "plan-review.md"
 assert_p3119_family_b_fence_absent "$DIALPROTO_MD" "dialectic-protocol.md"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
 grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
-  || fail "(2754) SKILL.md write-run-params invocation missing --brainstorm-requested"
+  || fail "(2754) SKILL.md design-init-runparams invocation missing --brainstorm-requested"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt
-grep -Fq -- '[[ "$partition_requested" == true || "$brainstorm_requested" == true || "$manual_requested" == true ]]' "$SKILL_MD" \
-  || fail "(2754) SKILL.md recovery guard missing partition OR brainstorm OR manual"
+grep -Fq -- '[[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$MANUAL_REQUESTED" == true ]]' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
+  || fail "(2754) design-init-runparams.sh recovery guard missing partition OR brainstorm OR manual"
 # shellcheck disable=SC2016 # jq filter literal
-grep -Fq -- '.brainstorm_requested = (.brainstorm_requested == true or $merge_b)' "$SKILL_MD" \
-  || fail "(2754) SKILL.md jq merge missing brainstorm_requested arm"
+grep -Fq -- '.brainstorm_requested = (.brainstorm_requested == true or $merge_b)' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
+  || fail "(2754) design-init-runparams.sh jq merge missing brainstorm_requested arm"
 grep -Fq '⏩ 1d.5: brainstorm — skipped' "$BRAINSTORM_MD" \
   || fail "(2754) brainstorm.md missing skip breadcrumb literal"
 grep -Fq 'plan-review-feature-context.txt' "$REPO_ROOT/skills/design/scripts/plan-review-loop.sh" \
@@ -611,26 +617,37 @@ grep -Fq 'Parse public flags (`--hard`, `-p`/`--partition`, `--brainstorm`, `--m
 grep -Fq '| `--manual` / `-m` |' "$SKILL_MD" \
   || fail "(2930) SKILL.md compact flag table missing --manual/-m row"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
-grep -Fq -- '--manual-gate-b "$manual_requested"' "$SKILL_MD" \
-  || fail "(2930) SKILL.md write-run-params invocation missing --manual-gate-b"
+grep -Fq -- '--manual-requested "$manual_requested"' "$SKILL_MD" \
+  || fail "(2930) SKILL.md design-init-runparams invocation missing --manual-requested"
 # shellcheck disable=SC2016 # Markdown literal; backticks are prose, not shell expansion.
-grep -Fq 'append `--manual-requested true` only when `manual_requested=true`' "$SKILL_MD" \
-  || fail "(FINDING_16) SKILL.md must omit --manual-requested on non-manual runs"
-# shellcheck disable=SC2016 # jq filter literal
-grep -Fq -- 'manual_gate_b = $merge_m' "$SKILL_MD" \
-  || fail "(FINDING_14) SKILL.md jq merge must overwrite manual_gate_b from current argv state"
-# shellcheck disable=SC2016 # jq filter literal: $merge_p/$merge_b/$merge_m are jq vars, not shell vars.
-grep -Fq -- '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .manual_gate_b = $merge_m' "$SKILL_MD" \
-  || fail "(#3008) SKILL.md canonical Step 0b jq-merge filter must remain pinned for test-step0b-router-flag-recovery.sh"
-# shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
-grep -Fq 'refusing to recreate it with fallback defaults' "$SKILL_MD" \
-  || fail "(2930) SKILL.md fallback-missing path must refuse to recreate run-params with defaults"
-# shellcheck disable=SC2016 # literal shell snippet anchor in SKILL.md
-if grep -Fq -- '--manual-gate-b "${manual_requested:-false}"' "$SKILL_MD"; then
-  fail "(2930) SKILL.md must not retain fallback write-run-params --manual-gate-b call"
+if ! grep -Fq 'append `--manual-requested true` only when `manual_requested=true`' "$SKILL_MD" \
+  && ! grep -Fq 'Append `--manual-requested true` on that follow-up invocation only when `manual_requested=true`' "$SKILL_MD"; then
+  fail "(FINDING_16) SKILL.md must omit --manual-requested on non-manual runs"
 fi
-grep -Fq 'partition, brainstorm, and/or manual requested but jq is unavailable' "$SKILL_MD" \
-  || fail "(2930) SKILL.md jq-unavailable warning missing manual"
+DESIGN_ROUTE_SH="$REPO_ROOT/skills/design/scripts/design-route.sh"
+DESIGN_INIT_SH="$REPO_ROOT/skills/design/scripts/design-init-runparams.sh"
+[[ -x "$DESIGN_ROUTE_SH" ]] || fail "design-route.sh must be executable"
+[[ -x "$DESIGN_INIT_SH" ]] || fail "design-init-runparams.sh must be executable"
+# shellcheck disable=SC2016 # jq filter literal
+grep -Fq -- 'manual_gate_b = $merge_m' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_14) design-init-runparams.sh jq merge must overwrite manual_gate_b from current argv state"
+# shellcheck disable=SC2016 # jq filter literal: $merge_p/$merge_b/$merge_m are jq vars, not shell vars.
+grep -Fq -- '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .manual_gate_b = $merge_m' "$DESIGN_INIT_SH" \
+  || fail "(#3008) design-init-runparams.sh canonical Step 0b jq-merge filter must remain pinned for test-step0b-router-flag-recovery.sh"
+grep -Fq 'append-tool-failure.sh' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_1) design-init-runparams.sh must call append-tool-failure.sh on jq-merge failure"
+grep -Fq 'jq(router-flags-merge)' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_1) design-init-runparams.sh must pin jq(router-flags-merge) tool name"
+grep -Fq 'larch-router-flags-merge' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_1) design-init-runparams.sh must use larch-router-flags-merge temp paths"
+grep -Fq 'design Step 0b' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_1) design-init-runparams.sh must pin design Step 0b site for jq-merge failure"
+grep -Fq 'refusing to recreate it with fallback defaults' "$DESIGN_INIT_SH" \
+  || fail "(2930) design-init-runparams.sh fallback-missing path must refuse to recreate run-params with defaults"
+grep -Fq 'partition, brainstorm, and/or manual requested but jq is unavailable' "$DESIGN_INIT_SH" \
+  || fail "(2930) design-init-runparams.sh jq-unavailable warning missing manual"
+grep -Fq -- '--manual-requested true' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_16) design-init-runparams.sh must support --manual-requested on manual runs"
 # shellcheck disable=SC2016 # flags.md list marker uses backticks
 grep -Fq '`--manual` / `-m`:' "$FLAGS_MD" \
   || fail "(2930) flags.md missing --manual/-m bullet anchor"
@@ -699,32 +716,66 @@ grep -Fq 'When Gate B resolves `manual_gate_b=false`, it auto-applies findings o
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
 grep -Fq 'it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation' "$SKILL_MD" \
   || fail "(FINDING_7) SKILL.md Step 3.5 missing zero-findings-before-mode pin"
-step0b_second_bash=$(awk '
-  /^### 0b / { flag=1; next }
-  /^### Final summary block$/ && flag { flag=0 }
-  flag && /^```bash$/ { c++; next }
-  flag && c == 1 && /^```$/ { c=0; next }
-  flag && c == 1 { print }
-' "$SKILL_MD")
-[[ -n "$step0b_second_bash" ]] \
-  || fail "(FINDING_13) could not extract Step 0b run-params bash block"
-printf '%s\n' "$step0b_second_bash" | grep -Fq 'write-design-current-env.sh' \
-  || fail "(FINDING_13) Step 0b run-params bash block must refresh current-design-env before write-run-params"
+grep -Fq 'design-init-runparams.sh' "$SKILL_MD" \
+  || fail "(FINDING_13) SKILL.md Step 0b must invoke design-init-runparams.sh"
+grep -Fq 'write-design-current-env.sh' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_13) design-init-runparams.sh must call write-design-current-env.sh"
+grep -Fq 'write-run-params.sh' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_13) design-init-runparams.sh must call write-run-params.sh"
+grep -Fq 'tracking-issue-write.sh' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_13) design-init-runparams.sh must call tracking-issue-write.sh rename"
 # shellcheck disable=SC2016 # grep literal contains shell variables and quotes intentionally
-printf '%s\n' "$step0b_second_bash" | grep -Fq -- '--issue-number "$ISSUE_NUMBER"' \
-  || fail "(FINDING_13) Step 0b current-design-env refresh must pass --issue-number"
+grep -Fq -- '--issue-number "$ISSUE"' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_13) design-init-runparams.sh current-design-env refresh must pass --issue-number"
 # shellcheck disable=SC2016 # grep literal contains shell variables and quotes intentionally
-printf '%s\n' "$step0b_second_bash" | grep -Fq -- '--claude-pid "$PPID"' \
-  || fail "(FINDING_13) Step 0b current-design-env refresh must pass --claude-pid \"\$PPID\""
-printf '%s\n' "$step0b_second_bash" | grep -Fq '_wdce_step0b_args+=(--manual-requested true)' \
-  || fail "(FINDING_13) Step 0b current-design-env refresh must add --manual-requested only on manual runs"
-step0b_refresh_line=$(printf '%s\n' "$step0b_second_bash" | grep -nF 'write-design-current-env.sh' | head -1 | cut -d: -f1 || true)
-step0b_run_params_line=$(printf '%s\n' "$step0b_second_bash" | grep -nF 'write-run-params.sh' | head -1 | cut -d: -f1 || true)
-[[ -n "$step0b_refresh_line" && -n "$step0b_run_params_line" ]] \
-  || fail "(FINDING_13) could not locate Step 0b refresh and write-run-params lines"
-if (( step0b_refresh_line >= step0b_run_params_line )); then
-  fail "(FINDING_13) Step 0b must refresh current-design-env before write-run-params"
+grep -Fq -- '--claude-pid "$CLAUDE_PID"' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_13) design-init-runparams.sh current-design-env refresh must pass --claude-pid"
+grep -Fq '_wdce_args+=(--manual-requested true)' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_13) design-init-runparams.sh must add --manual-requested only on manual runs"
+init_refresh_line=$(grep -nF 'write-design-current-env.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
+init_rename_line=$(grep -nF 'tracking-issue-write.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
+init_run_params_line=$(grep -nF 'write-run-params.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
+[[ -n "$init_refresh_line" && -n "$init_rename_line" && -n "$init_run_params_line" ]] \
+  || fail "(FINDING_13) could not locate design-init-runparams.sh env/rename/run-params lines"
+if (( init_refresh_line >= init_rename_line || init_refresh_line >= init_run_params_line )); then
+  fail "(FINDING_2) design-init-runparams.sh must refresh current-design-env before rename and write-run-params"
 fi
+grep -Fq 'design-route.sh configuration error (exit 2)' "$SKILL_MD" \
+  || fail "(FINDING_3) SKILL.md Step 0b missing design-route.sh exit 2 abort prose"
+grep -Fq 'design-init-runparams.sh configuration error (exit 2)' "$SKILL_MD" \
+  || fail "(FINDING_3) SKILL.md Step 0b missing design-init-runparams.sh exit 2 abort prose"
+grep -Fq '_route_out=' "$SKILL_MD" \
+  || fail "(FINDING_2) SKILL.md Step 0b missing _route_out capture"
+grep -Fq '_init_out=' "$SKILL_MD" \
+  || fail "(FINDING_2) SKILL.md Step 0b missing _init_out capture"
+grep -Fq '.design-route-result.env' "$SKILL_MD" \
+  || fail "(FINDING_2) SKILL.md Step 0b missing .design-route-result.env file-first read"
+grep -Fq '.design-init-runparams-result.env' "$SKILL_MD" \
+  || fail "(FINDING_2) SKILL.md Step 0b missing .design-init-runparams-result.env file-first read"
+if grep -Fq 'phase_driver_read_result_env' "$SKILL_MD"; then
+  step0b_block=$(awk '/^### 0b /,/^### Final summary block$/' "$SKILL_MD")
+  if printf '%s\n' "$step0b_block" | grep -Fq 'phase_driver_read_result_env'; then
+    fail "(FINDING_2) SKILL.md Step 0b must not call phase_driver_read_result_env"
+  fi
+fi
+grep -Fq 'issue-body.txt' "$SKILL_MD" \
+  || fail "(FINDING_1 R4) SKILL.md Step 0b must write issue-body.txt after fetch"
+grep -Fq 'resolve-repo.sh' "$SKILL_MD" \
+  || fail "(FINDING_1 R4) SKILL.md Step 0b must resolve REPO after fetch"
+grep -Fq '${REPO:+--repo "$REPO"}' "$SKILL_MD" \
+  || fail "(FINDING_1 R4) SKILL.md Step 0b must thread REPO on driver invocations"
+grep -Fq 'design-pause-load.sh' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_1 R4) design-route.sh must invoke design-pause-load.sh"
+grep -Fq '${REPO:+--repo' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_1 R4) design-route.sh must thread REPO on design-pause-load.sh"
+grep -Fq '${REPO:+--repo' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_1 R4) design-init-runparams.sh must thread REPO on tracking-issue-write.sh rename"
+grep -Fq 'MARK_START=' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_4) design-route.sh must pin MARK_START plan marker regex"
+grep -Fq 'MARK_END=' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_4) design-route.sh must pin MARK_END plan marker regex"
+grep -E 'WARN\)|ERROR\)' "$SKILL_MD" >/dev/null \
+  || fail "(FINDING_1 R5) SKILL.md Step 0b file-first route loop must print WARN/ERROR as breadcrumbs"
 
 # Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned in plan-review.md + renderer.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'
@@ -765,27 +816,13 @@ printf '%s\n' "$step3_block" | grep -Fq '## Plan Candidate for Review' \
 gate_c_block=$(awk '/^## Gate C/,/^## State invariants/' "$APPROVAL_MD")
 printf '%s\n' "$gate_c_block" | grep -Fq '## Final Design Plan' \
   || fail "(18) approval-gates.md Gate C block missing ## Final Design Plan anchor"
-# Check 20 (#2800): Step 0b title-eligibility filter anchors.
-grep -Fq '2.5. **Title-eligibility filter**' "$SKILL_MD" \
-  || fail "(20) SKILL.md missing Step 0b sub-step 2.5 Title-eligibility filter"
-fetch_line=$(grep -n '^2\. \*\*Fetch issue\*\*:' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-filter_line=$(grep -n '^2\.5\. \*\*Title-eligibility filter\*\*' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-clarify_line=$(grep -n '^3\. \*\*Clarify loop\*\*' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$fetch_line" && -n "$filter_line" && -n "$clarify_line" ]] \
-  || fail "(20) Step 0b sub-step 2 / 2.5 / 3 anchors missing"
-if (( fetch_line >= filter_line || filter_line >= clarify_line )); then
-  fail "(20) Step 0b ordering must be 2 → 2.5 → 3 (lines $fetch_line $filter_line $clarify_line)"
-fi
-grep -Fq 'title_has_lifecycle_reject_prefix' "$SKILL_MD" \
-  || fail "(20) SKILL.md missing title_has_lifecycle_reject_prefix"
-grep -Fq "Source \`\${CLAUDE_PLUGIN_ROOT}/scripts/lib-title-eligibility.sh\`." "$SKILL_MD" \
-  || fail "(20) SKILL.md missing lib-title-eligibility.sh source line"
-grep -Fq 'title_has_archival_report_prefix' "$SKILL_MD" \
-  || fail "(20) SKILL.md missing title_has_archival_report_prefix"
-grep -Fq 'title_starts_with_brainstorm' "$SKILL_MD" \
-  || fail "(20) SKILL.md missing title_starts_with_brainstorm"
-grep -Fq 'Mandatory predicate order: (a) lifecycle-reject' "$SKILL_MD" \
-  || fail "(20) SKILL.md missing mandatory predicate ordering rule"
+# Check 20 (#2800): Step 0b title-eligibility filter anchors (extracted to design-route.sh).
+grep -Fq 'title_has_lifecycle_reject_prefix' "$DESIGN_ROUTE_SH" \
+  || fail "(20) design-route.sh missing title_has_lifecycle_reject_prefix"
+grep -Fq 'title_has_archival_report_prefix' "$DESIGN_ROUTE_SH" \
+  || fail "(20) design-route.sh missing title_has_archival_report_prefix"
+grep -Fq 'title_starts_with_brainstorm' "$DESIGN_ROUTE_SH" \
+  || fail "(20) design-route.sh missing title_starts_with_brainstorm"
 grep -Fq 'cancelled-title-filter' "$SKILL_MD" \
   || fail "(20) SKILL.md missing cancelled-title-filter enum"
 grep -Fq 'issue title starts with managed lifecycle marker' "$SKILL_MD" \
@@ -794,6 +831,13 @@ grep -Fq 'issue title matches archival report-prefix' "$SKILL_MD" \
   || fail "(20) SKILL.md missing archival-report-reject banner text"
 grep -Fq 'detected Brainstorm title prefix — auto-enabling brainstorm mode' "$SKILL_MD" \
   || fail "(20) SKILL.md missing brainstorm info banner text"
+title_cancel_line=$(grep -n 'cancel-title-filter' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+clarify_line=$(grep -n '^3\. \*\*Clarify loop\*\*' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$title_cancel_line" && -n "$clarify_line" ]] \
+  || fail "(20) Step 0b cancel-title-filter / clarify anchors missing"
+if (( title_cancel_line >= clarify_line )); then
+  fail "(20) Step 0b orchestrator must handle cancel-title-filter before clarify branch"
+fi
 echo "PASS: (20) Step 0b title-eligibility filter anchors OK"
 
 # Check 21 (#2959): pause/resume prelude and completion sentinels.
@@ -857,20 +901,26 @@ assert_step_completion_sentinels() {
 
 assert_bash_fences_have_pause_check
 assert_step_completion_sentinels
-grep -Fq '2.5-bis. **Resume detection**' "$SKILL_MD" \
-  || fail "(21) SKILL.md missing resume detection sub-step"
-grep -Fq 'design-pause-load.sh' "$SKILL_MD" \
-  || fail "(21) SKILL.md missing design-pause-load.sh invocation"
-grep -Fq '5.5-bis. **Refresh issue-bound env immediately after rename**' "$SKILL_MD" \
-  || fail "(21) SKILL.md missing post-rename env refresh"
+grep -Fq 'design-route.sh' "$SKILL_MD" \
+  || fail "(21) SKILL.md missing design-route.sh invocation"
+grep -Fq 'design-pause-load.sh' "$DESIGN_ROUTE_SH" \
+  || fail "(21) design-route.sh missing design-pause-load.sh invocation"
+grep -Fq 'write-design-current-env.sh' "$SKILL_MD" \
+  || fail "(21) SKILL.md missing resume env refresh via write-design-current-env.sh"
+grep -Fq 'write-design-current-env.sh' "$DESIGN_INIT_SH" \
+  || fail "(21) design-init-runparams.sh must refresh env before rename (single refresh)"
 echo "PASS: (21) /design pause/resume structure anchors OK"
 
 # Checks 24-26 (#2935): /design same-session re-entry guard pins.
+grep -Fq 'title_has_lifecycle_reject_prefix' "$DESIGN_ROUTE_SH" \
+  || fail "(24) design-route.sh missing title_has_lifecycle_reject_prefix"
+grep -Fq 'design_reentry_marker_hit' "$DESIGN_ROUTE_SH" \
+  || fail "(24) design-route.sh missing design_reentry_marker_hit"
 step0b_reentry_order=$(awk '
   /^### 0b / { in0b=1; next }
   /^### Final summary block$/ && in0b { in0b=0 }
-  in0b && /title_has_lifecycle_reject_prefix/ && !title { title=NR }
-  in0b && /design_reentry_marker_hit/ && !guard { guard=NR }
+  in0b && /cancel-title-filter/ && !title { title=NR }
+  in0b && /cancel-reentry-guard/ && !guard { guard=NR }
   in0b && /^3\. \*\*Clarify loop\*\*/ && !clarify { clarify=NR }
   END {
     if (!title || !guard || !clarify) exit 2
@@ -879,7 +929,7 @@ step0b_reentry_order=$(awk '
 ' "$SKILL_MD" || echo "$?")
 case "${step0b_reentry_order:-0}" in
   0) ;;
-  1|2) fail "(24) SKILL.md missing design_reentry_marker_hit invocation OR sub-step 2.6 placed outside [2.5 .. 3] window" ;;
+  1|2) fail "(24) SKILL.md missing cancel-title-filter / cancel-reentry-guard orchestrator branches OR clarify ordering regression" ;;
   *) fail "(24) unexpected Step 0b re-entry guard ordering check exit: ${step0b_reentry_order:-?}" ;;
 esac
 
@@ -901,8 +951,10 @@ esac
 
 grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$SKILL_MD" \
   || fail "(26) SKILL.md missing literal session-cache banner"
-grep -Fq 'delete <DESIGN_REENTRY_MARKER_PATH> to override.' "$SKILL_MD" \
-  || fail "(26) SKILL.md must document DESIGN_REENTRY_MARKER_PATH in the session-cache banner literal"
+if ! grep -Fq 'delete <DESIGN_REENTRY_MARKER_PATH> to override.' "$SKILL_MD" \
+  && ! grep -Fq 'delete ${DESIGN_REENTRY_MARKER_PATH} to override.' "$SKILL_MD"; then
+  fail "(26) SKILL.md must document DESIGN_REENTRY_MARKER_PATH in the session-cache banner literal"
+fi
 echo "PASS: (24-26) Step 0b/5c re-entry guard anchors OK"
 
 # Check FINDING_2667 (#2667): Gate B severity precedence prose in approval-gates.md.

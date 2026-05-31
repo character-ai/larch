@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression harness for SKILL.md Step 0b router-flag jq-merge recovery.
+# Regression harness for design-init-runparams.sh Step 0b router-flag jq-merge recovery.
 set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
@@ -26,7 +26,7 @@ merge_run_params() {
   rm -f "$_rp_err"
 }
 
-# Replicates SKILL.md Step 0b outer guard: recovery runs only when at least one argv flag
+# Replicates design-init-runparams.sh Step 0b outer guard: recovery runs only when at least one argv flag
 # is true and jq exists; when the output file is missing it warns and does not recreate it.
 recovery_merge_if_needed() {
   local out="$1" partition_requested="$2" brainstorm_requested="$3" manual_requested="$4"
