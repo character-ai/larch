@@ -1,0 +1,2 @@
+[sergey-zhupanov/implementing-extend-stderr-tail-surfacin-3227 ac0a74d26] Fix CI: restore STATE_FILE+IMPLEMENT_TMPDIR after sourcing ship-pr.sh in tests
+ 1 file changed, 18 insertions(+), 11 deletions(-)
