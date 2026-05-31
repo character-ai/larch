@@ -849,6 +849,25 @@ emit_kv_line=$(grep -nF 'emit_kv "${kv%%=*}" "${kv#*=}"' "$DESIGN_ROUTE_SH" | he
 if (( write_env_line >= emit_kv_line )); then
   fail "(FINDING_19) design-route.sh must write result env before stdout ROUTE emission"
 fi
+grep -Fq 'cancel-pause-load' "$SKILL_MD" \
+  || fail "(FINDING_5) SKILL.md Step 0b missing cancel-pause-load orchestrator branch"
+grep -Fq 'ROUTE=cancel-pause-load' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_5) design-route.sh must emit ROUTE=cancel-pause-load for invalid pause resume"
+grep -Fq 'step-name-registry.tsv missing' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_8) design-route.sh must fail when step-name-registry.tsv is missing"
+init_write_env_line=$(grep -nF 'phase_driver_write_result_env "$RESULT_ENV" "${_init_kvs[@]}"' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
+init_emit_status_line=$(grep -nF 'emit_kv INIT_STATUS "$INIT_STATUS"' "$DESIGN_INIT_SH" | tail -1 | cut -d: -f1 || true)
+[[ -n "$init_write_env_line" && -n "$init_emit_status_line" ]] \
+  || fail "(FINDING_36) design-init-runparams.sh missing success-path result-env write / stdout emit anchors"
+if (( init_write_env_line >= init_emit_status_line )); then
+  fail "(FINDING_36) design-init-runparams.sh must write result env before stdout INIT_STATUS emission"
+fi
+grep -Fq 'missing or invalid ROUTE after design-route.sh' "$SKILL_MD" \
+  || fail "(FINDING_19) SKILL.md Step 0b missing ROUTE validation after design-route handoff"
+grep -Fq 'exited 0 without INIT_STATUS=ok and run-params.json' "$SKILL_MD" \
+  || fail "(FINDING_20) SKILL.md Step 0b missing init success-path validation"
+grep -Fq 'rename-failed' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md Step 0b missing rename-failed abort branch"
 
 # Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned in plan-review.md + renderer.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'

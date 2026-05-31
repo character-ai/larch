@@ -7,7 +7,7 @@
 .PHONY: test-larch-log-write-round test-lib-title-eligibility test-lib-title-markers test-read-design-classification
 .PHONY: test-scout-dynamic-archetypes
 .PHONY: test-extract-plan-scope-paths test-git-commit-only
-.PHONY: test-design-reentry-guard test-design-route
+.PHONY: test-design-reentry-guard
 .PHONY: test-snapshot-plan-round test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
@@ -93,7 +93,7 @@ test-harnesses-10: test-design-log-publish test-clarify-comment test-tally-plan-
 test-harnesses-11: test-set-up-forked-open-source-repo test-design-multi-round-integration test-tracking-issue-summary test-scout-dynamic-archetypes test-dispatch-code-voters-regressions-r1-r2 test-token-report test-render-specialist-prompt test-sessionstart test-check-mid-run-dirty-tree test-block-submodule test-launch-claude-ci test-review-and-fix-parsers test-review-and-fix-step5-starting-round test-list-issues test-generate-code-flow-diagram test-relevant-checks-byte-budget test-commit-implementation test-no-grouped-reuse-guard test-cleanup-tmpdir test-legacy-title-prefix-literals-scope
 
 test-harnesses-12: test-dispatch-panel-reuse test-dispatch-panel-limits test-oos-file-conflict-deps test-cursor-implementer test-dispatch-code-voters-retry-codex-fail-and-fallback test-prompt-template-invariants test-launch-claude-review test-larch-log-write-round test-render-run-summary test-write-design-current-env test-scrub-submodule-paths test-cache-key-discipline test-deny-edit-write test-false-positive-keywords test-finalize-plan test-audit-edit-write test-gather-context test-orchestrator-scope-sync test-render-final-summary-bash32
-test-harnesses-13: test-launch-codex-ci test-dispatch-code-voters-retry-cursor test-allocate-candidates test-design-structure test-design-route test-mermaid-fragments test-local-cleanup test-lint-bash32 test-auto-resolve-changelog test-parse-plan-commands test-step0b-router-flag-recovery test-lib-cursor-auth test-implement-rebase-macro test-git-commit-only test-lib-submodule-prohibition test-anti-improvised-wakeup
+test-harnesses-13: test-launch-codex-ci test-dispatch-code-voters-retry-cursor test-allocate-candidates test-design-structure test-mermaid-fragments test-local-cleanup test-lint-bash32 test-auto-resolve-changelog test-parse-plan-commands test-step0b-router-flag-recovery test-lib-cursor-auth test-implement-rebase-macro test-git-commit-only test-lib-submodule-prohibition test-anti-improvised-wakeup
 
 test-harnesses-14: test-ship-pr-fix-loop test-dispatch-plan-review-panel test-step-7a test-wait-for-reviewers test-dispatch-code-voters-regressions-r3-codex test-tally-plan-assessor test-lint-awk-multibyte-regex test-append-tool-failure test-lint-bare-grep-probe test-relevant-checks-helper-failure test-lint-skill-md-flag-signature test-lint-no-raw-stderr-after-quiet-init test-lib-net test-lib-design-tmpdir test-token-report-summary-format test-research-angle-prompts test-implement-relevant-checks-anti-halt
 
@@ -395,9 +395,6 @@ test-alias-structure:
 
 test-design-structure:
 	bash scripts/harness-timer.sh $@ bash scripts/test-design-structure.sh
-
-test-design-route:
-	bash scripts/harness-timer.sh $@ bash scripts/test-design-route.sh
 
 test-design-reentry-guard:
 	bash scripts/harness-timer.sh $@ bash scripts/test-design-reentry-guard.sh

@@ -192,9 +192,13 @@ emit_route_result() {
     exit 0
 }
 
+step_registry_present() {
+    [[ -f "$PLUGIN_ROOT/skills/design/scripts/step-name-registry.tsv" ]]
+}
+
 step_is_registered() {
     local step="$1" registry="$PLUGIN_ROOT/skills/design/scripts/step-name-registry.tsv"
-    [[ -f "$registry" ]] || return 1
+    [[ -f "$registry" ]] || return 2
     awk -F '\t' -v step="$step" 'NR > 1 && $1 == step { found=1; exit } END { exit found ? 0 : 1 }' "$registry"
 }
 
@@ -224,12 +228,17 @@ if grep -Fq '<!-- larch:design-pause:start -->' "$ISSUE_BODY_FILE"; then
         ERROR_LINES+=("design-pause-load-failed")
         _load_ok=false
     fi
-    if [[ "$_load_ok" == true && -n "$_step" ]] && step_is_registered "$_step"; then
-        ROUTE="resume@${_step}"
-        RESUME_STEP="$_step"
-        emit_route_result
-    fi
     if [[ "$_load_ok" == true && -n "$_step" ]]; then
+        _step_reg_rc=0
+        step_is_registered "$_step" || _step_reg_rc=$?
+        if [[ "$_step_reg_rc" -eq 0 ]]; then
+            ROUTE="resume@${_step}"
+            RESUME_STEP="$_step"
+            emit_route_result
+        fi
+        if [[ "$_step_reg_rc" -eq 2 ]]; then
+            fail "step-name-registry.tsv missing"
+        fi
         ERROR_LINES+=("pause-load-invalid-step")
         ROUTE=cancel-pause-load
         emit_route_result

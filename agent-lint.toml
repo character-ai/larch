@@ -967,11 +967,6 @@ exclude = [
   # scripts/test-alias-structure.md. Same Makefile-only pattern.
   "scripts/test-alias-structure.sh",
   "scripts/test-design-structure.sh",
-  # scripts/test-design-route.sh is a Makefile-only offline route-table
-  # harness for skills/design/scripts/design-route.sh; the sibling .md is
-  # its contract. Same pattern as the adjacent design harnesses.
-  "scripts/test-design-route.sh",
-  "scripts/test-design-route.md",
   # scripts/test-design-reentry-guard.sh is a Makefile-only harness for
   # scripts/lib-design-reentry-guard.sh, a sourced-only /design Step 0b
   # library; the sibling .md is a contract file.

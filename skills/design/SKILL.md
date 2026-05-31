@@ -262,8 +262,6 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
       ERROR) if [[ " ${_route_error_lines[*]} " != *" $_value "* ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
      esac
    done <<<"${_route_out:-}"
-   for _w in "${_route_warn_lines[@]}"; do :; done
-   for _e in "${_route_error_lines[@]}"; do :; done
    if [[ "$BRAINSTORM_PREFIX" == true ]]; then
      brainstorm_requested=true
      printf '%s\n' "**ℹ /design: detected Brainstorm title prefix — auto-enabling brainstorm mode (run-params \`brainstorm_requested=true\`) even though --brainstorm was not on argv.**"
@@ -332,6 +330,15 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
       fi
       printf '%s\n' "🔓 resumed from STEP=${RESUME_STEP}" ;;
    esac
+   _route_valid=false
+   case "${ROUTE:-}" in
+     proceed|clarify|already-planned|cancel-title-filter|cancel-reentry-guard|cancel-pause-load) _route_valid=true ;;
+     resume@*) [[ -n "${ROUTE#resume@}" ]] && _route_valid=true ;;
+   esac
+   if [[ "$_route_valid" != true ]]; then
+     printf '%s\n' "**⚠ Step 0b: missing or invalid ROUTE after design-route.sh; aborting /design**" >&2
+     exit 1
+   fi
    ```
 
    On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes). On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. On `LOAD_OK=false` fallthrough inside the driver, `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
@@ -397,6 +404,14 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    fi
    if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == env-refresh-failed ]]; then
      printf '%s\n' "**⚠ /design: write-design-current-env.sh failed during Step 0b env refresh; aborting before rename/run-params. Inspect source-env.sh / write-design-current-env.sh diagnostics, then re-invoke /design.**" >&2
+     exit 1
+   fi
+   if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == rename-failed ]]; then
+     printf '%s\n' "**⚠ /design: [DESIGNING] rename failed during Step 0b; aborting before run-params. Inspect tracking-issue-write.sh diagnostics, then re-invoke /design.**" >&2
+     exit 1
+   fi
+   if [[ "${_init_rc:-0}" -eq 0 && ( "$INIT_STATUS" != ok || ! -f "$DESIGN_TMPDIR/run-params.json" ) ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh exited 0 without INIT_STATUS=ok and run-params.json; aborting /design**" >&2
      exit 1
    fi
    if [[ "${_init_rc:-0}" -eq 1 ]]; then

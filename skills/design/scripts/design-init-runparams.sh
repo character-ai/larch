@@ -194,11 +194,22 @@ if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "
         esac
     done <<<"${_rename_out:-}"
     if [[ "$_rename_seen" != true ]]; then
-        RENAMED=false
-        add_warn "Step 0 — [DESIGNING] rename returned unknown output"
+        INIT_STATUS=rename-failed
+        emit_kv INIT_STATUS "$INIT_STATUS"
+        phase_driver_write_result_env "$RESULT_ENV" \
+            "INIT_STATUS=$INIT_STATUS" \
+            "RUN_PARAMS_PATH=$RUN_PARAMS_PATH" \
+            "DESIGN_CLASSIFICATION=$DESIGN_CLASSIFICATION" || exit 1
+        exit 1
     fi
 else
-    add_warn "Step 0 — [DESIGNING] rename failed"
+    INIT_STATUS=rename-failed
+    emit_kv INIT_STATUS "$INIT_STATUS"
+    phase_driver_write_result_env "$RESULT_ENV" \
+        "INIT_STATUS=$INIT_STATUS" \
+        "RUN_PARAMS_PATH=$RUN_PARAMS_PATH" \
+        "DESIGN_CLASSIFICATION=$DESIGN_CLASSIFICATION" || exit 1
+    exit 1
 fi
 
 # 4. write-run-params.sh
@@ -246,14 +257,6 @@ elif [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$M
     add_warn '**⚠ 0b: partition, brainstorm, and/or manual requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**'
 fi
 
-emit_kv INIT_STATUS "$INIT_STATUS"
-emit_kv RENAMED "$RENAMED"
-emit_kv RUN_PARAMS_PATH "$RUN_PARAMS_PATH"
-emit_kv DESIGN_CLASSIFICATION "$DESIGN_CLASSIFICATION"
-for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
-    emit_kv WARN "$_warn"
-done
-
 _init_kvs=(
     "INIT_STATUS=$INIT_STATUS"
     "RENAMED=$RENAMED"
@@ -266,4 +269,11 @@ done
 if ! phase_driver_write_result_env "$RESULT_ENV" "${_init_kvs[@]}"; then
     exit 1
 fi
+emit_kv INIT_STATUS "$INIT_STATUS"
+emit_kv RENAMED "$RENAMED"
+emit_kv RUN_PARAMS_PATH "$RUN_PARAMS_PATH"
+emit_kv DESIGN_CLASSIFICATION "$DESIGN_CLASSIFICATION"
+for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
+    emit_kv WARN "$_warn"
+done
 exit 0
