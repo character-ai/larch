@@ -45,6 +45,19 @@ assert_file_equals() {
     fi
 }
 
+assert_file_has_keys() {
+    local file="$1" label="$2"
+    shift 2
+    local key
+    for key in "$@"; do
+        if grep -Fq "${key}=" "$file"; then
+            pass "$label has $key"
+        else
+            fail "$label missing $key"
+        fi
+    done
+}
+
 write_common_inputs() {
     local dir="$1" classification="$2"
     mkdir -p "$dir"
@@ -80,6 +93,44 @@ else
     fail "missing design-tmpdir rc=$rc"
 fi
 assert_contains "$out" '--design-tmpdir is required' 'missing design-tmpdir error'
+
+echo "=== missing --round-cap ==="
+DARGV="$TMP/argv"
+write_common_inputs "$DARGV" SIMPLE
+set +e
+out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --convergence-threshold 3 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then
+    pass 'missing round-cap exits 2'
+else
+    fail "missing round-cap rc=$rc"
+fi
+assert_contains "$out" '--round-cap is required' 'missing round-cap error'
+
+echo "=== missing --convergence-threshold ==="
+set +e
+out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --round-cap 5 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then
+    pass 'missing convergence-threshold exits 2'
+else
+    fail "missing convergence-threshold rc=$rc"
+fi
+assert_contains "$out" '--convergence-threshold is required' 'missing convergence-threshold error'
+
+echo "=== unknown option ==="
+set +e
+out="$("${launcher_env[@]}" "$LAUNCHER" --design-tmpdir "$DARGV" --round-cap 5 --convergence-threshold 3 --bogus 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then
+    pass 'unknown option exits 2'
+else
+    fail "unknown option rc=$rc"
+fi
+assert_contains "$out" 'unknown option: --bogus' 'unknown option error'
 
 echo "=== cap-reached short-circuit ==="
 D1="$TMP/cap"
@@ -126,6 +177,19 @@ else
     fail 'tally-error should rollback count'
 fi
 
+echo "=== loop-status tally-error rollback ==="
+D3B="$TMP/loop-tally"
+write_common_inputs "$D3B" HARD
+printf '2\n' >"$D3B/review-round-count.txt"
+stub="$(write_loop_stub "$D3B" "printf 'LOOP_STATUS=tally-error\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
+"${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D3B" --round-cap 5 --convergence-threshold 3 >/dev/null
+if [[ "$(cat "$D3B/review-round-count.txt")" == "2" ]]; then
+    pass 'loop-status tally-error rollback'
+else
+    fail 'loop-status tally-error should rollback count'
+fi
+
 echo "=== degraded-empty-collector rollback ==="
 D4="$TMP/degraded"
 write_common_inputs "$D4" SIMPLE
@@ -160,17 +224,60 @@ out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D6" --round-cap 5 --convergence-threshold 3)"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'unknown status normalized'
 
+echo "=== stale inner result env ignored after launcher failure ==="
+D7="$TMP/stale"
+write_common_inputs "$D7" SIMPLE
+cat >"$D7/.step3-plan-review-result.env" <<'EOF'
+LOOP_STATUS=complete
+ACCEPTED_COUNT=9
+TALLY_PLAN_REVIEW_STATUS=ok
+EOF
+stub="$(write_loop_stub "$D7" 'exit 2')"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D7" --round-cap 5 --convergence-threshold 3)"
+assert_contains "$out" 'LOOP_STATUS=panel-failed' 'stale inner env ignored'
+if grep -Fq 'ACCEPTED_COUNT=9' "$D7/.step3-review-result.env"; then
+    fail 'stale accepted count leaked into normalized result env'
+else
+    pass 'stale accepted count did not leak'
+fi
+
+echo "=== inner result env takes precedence over stdout ==="
+D8="$TMP/file-precedence"
+write_common_inputs "$D8" SIMPLE
+stub="$(write_loop_stub "$D8" "cat >\"\$DESIGN_TMPDIR/.step3-plan-review-result.env\" <<'EOF'
+LOOP_STATUS=complete
+ACCEPTED_COUNT=2
+IMPORTANT_ACCEPTED_COUNT=1
+DEGRADED_PANEL=0
+ROUNDS_COMPLETED=1
+TALLY_PLAN_REVIEW_STATUS=ok
+AGGREGATOR_STATUS=file
+VOTING_TALLY_FILE=file-tally.md
+COLLECT_OK_COUNT=1
+COLLECT_FAILURE_COUNT=0
+EOF
+printf 'LOOP_STATUS=panel-failed\nACCEPTED_COUNT=7\nAGGREGATOR_STATUS=stdout\n'; exit 0")"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D8" --round-cap 5 --convergence-threshold 3)"
+assert_contains "$out" 'LOOP_STATUS=complete' 'inner file loop status wins'
+grep -Fq 'AGGREGATOR_STATUS=file' "$D8/.step3-review-result.env" || fail 'inner file aggregator should win over stdout'
+
+echo "=== symlinked inner result env falls back to stdout ==="
+D9="$TMP/symlink-inner"
+write_common_inputs "$D9" SIMPLE
+ln -s "$D9/elsewhere.env" "$D9/.step3-plan-review-result.env"
+stub="$(write_loop_stub "$D9" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=stdout\nVOTING_TALLY_FILE=\n'; exit 0")"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D9" --round-cap 5 --convergence-threshold 3)"
+assert_contains "$out" 'LOOP_STATUS=complete' 'symlink inner stdout fallback loop status'
+grep -Fq 'AGGREGATOR_STATUS=stdout' "$D9/.step3-review-result.env" || fail 'symlink inner should use stdout fallback'
+
 echo "=== normalized result env keys ==="
-if grep -Fq 'LOOP_STATUS=' "$D6/.step3-review-result.env"; then
-    pass 'result env has LOOP_STATUS'
-else
-    fail 'result env missing LOOP_STATUS'
-fi
-if grep -Fq 'REVIEW_ROUND_COUNT=' "$D6/.step3-review-result.env"; then
-    pass 'result env has REVIEW_ROUND_COUNT'
-else
-    fail 'result env missing REVIEW_ROUND_COUNT'
-fi
+assert_file_has_keys "$D6/.step3-review-result.env" 'result env' \
+    LOOP_STATUS TALLY_PLAN_REVIEW_STATUS STEP3_REVIEW_CAP_REACHED STEP3_REVIEW_ROUND_NUM \
+    ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED AGGREGATOR_STATUS \
+    VOTING_TALLY_FILE REVIEW_ROUND_COUNT
 
 TOTAL=$((PASS + FAIL))
 if [[ "$FAIL" -eq 0 ]]; then

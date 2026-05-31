@@ -98,6 +98,7 @@ esac
 
 if ((_round_count >= _round_cap)); then
     emit "**⚠ Step 3: review-round cap (${_round_cap}) reached for ${_tier}; skipping panel and continuing to Step 3b, Step 4, then Gate C.**"
+    emit '⏩ 3: plan review — cap reached; skipping'
     STEP3_REVIEW_CAP_REACHED=true
     STEP3_REVIEW_ROUND_NUM=""
     cat >"$CAP_ENV" <<'EOF'
@@ -171,6 +172,20 @@ else
                 if ! "$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh" \
                     write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$_next_cursor"; then
                     emit '**⚠ Step 3: failed to advance plan-review round cursor; aborting before review launch.**'
+                    LOOP_STATUS=panel-failed
+                    TALLY_PLAN_REVIEW_STATUS=panel-failed
+                    phase_driver_write_result_env "$RESULT_ENV" \
+                        "LOOP_STATUS=${LOOP_STATUS:-}" \
+                        "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}" \
+                        "STEP3_REVIEW_CAP_REACHED=${STEP3_REVIEW_CAP_REACHED:-false}" \
+                        "STEP3_REVIEW_ROUND_NUM=${STEP3_REVIEW_ROUND_NUM:-}" \
+                        "ACCEPTED_COUNT=${ACCEPTED_COUNT:-}" \
+                        "IMPORTANT_ACCEPTED_COUNT=${IMPORTANT_ACCEPTED_COUNT:-}" \
+                        "DEGRADED_PANEL=${DEGRADED_PANEL:-}" \
+                        "ROUNDS_COMPLETED=${ROUNDS_COMPLETED:-}" \
+                        "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}" \
+                        "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
+                        "REVIEW_ROUND_COUNT=${REVIEW_ROUND_COUNT:-0}"
                     exit 1
                 fi
                 ROUND_NUM=$_next_cursor
@@ -179,6 +194,9 @@ else
         _feature_file="${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt"
         _plan_loop_sh="${RUN_STEP3_PLAN_REVIEW_LOOP_SH:-$PLUGIN_ROOT/skills/design/scripts/plan-review-loop.sh}"
         [[ -x "$_plan_loop_sh" ]] || fail "plan-review-loop.sh not executable: $_plan_loop_sh"
+        if [[ -e "$INNER_RESULT_ENV" && ! -L "$INNER_RESULT_ENV" ]]; then
+            rm -f "$INNER_RESULT_ENV"
+        fi
         set +e
         # Subprocess stdout must reach command substitution; quiet init redirects FD 1.
         _plan_review_out=$(LARCH_QUIET_DISABLE=1 "$_plan_loop_sh" \
@@ -238,6 +256,7 @@ else
         fi
         if [[ "${_plan_review_rc:-0}" -ne 0 && "$LOOP_STATUS" != panel-failed && "$LOOP_STATUS" != main-agent-vote-required ]]; then
             emit "**⚠ plan-review-loop.sh exited with rc=$_plan_review_rc and unexpected LOOP_STATUS=$LOOP_STATUS**"
+            LOOP_STATUS=panel-failed
         fi
         if [[ "${STEP3_REVIEW_ROUND_NUM:-}" =~ ^[0-9]+$ ]]; then
             _persist_round=true

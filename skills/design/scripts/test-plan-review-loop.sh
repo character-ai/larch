@@ -680,6 +680,42 @@ run_loop() {
         "$@"
 }
 
+echo "=== collector stderr is forwarded and captured ==="
+DSTD="$TMP/collector-stderr"
+mkdir -p "$DSTD"
+printf 'plan\n\ndiff_lines: 1\n' >"$DSTD/plan.txt"
+printf 'feat\n' >"$DSTD/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --paths-file) paths="${2:?}"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --substantive-validation|--validation-mode|--structured-reviewer-validation) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+printf 'collector stderr marker\n' >&2
+while IFS= read -r p || [[ -n "$p" ]]; do
+    [[ -z "$p" ]] && continue
+    {
+        printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix"
+        printf '%s\n' "in_scope	important	correctness	src/a	Collector stderr finding	scenario	fix"
+    } >"${p}.tsv"
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+chmod +x "$STUB/collect-agent-results.sh"
+write_voters_three
+err_file="$DSTD/stderr.txt"
+run_loop "$DSTD" >"$DSTD/stdout.txt" 2>"$err_file"
+grep -Fq 'collector stderr marker' "$err_file" || fail "collector stderr was not forwarded"
+grep -Fq 'collector stderr marker' "$DSTD/plan-review-collector.stderr" || fail "collector stderr was not captured"
+
 echo "=== stubbed driver: COMBINED_FALLBACK_COUNT degrades zero-findings path ==="
 DC="$TMP/zc"
 mkdir -p "$DC"

@@ -54,42 +54,6 @@ EOF
     printf '%s\n' "$stub"
 }
 
-write_snapshot_stub() {
-    local dir="$1"
-    mkdir -p "$dir/skills/design/scripts"
-    cat >"$dir/skills/design/scripts/snapshot-plan-round.sh" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-subcmd="${1:?}"
-shift
-design_tmpdir=""
-value=""
-while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --design-tmpdir) design_tmpdir="${2:?}"; shift 2 ;;
-        --value) value="${2:?}"; shift 2 ;;
-        *) shift ;;
-    esac
-done
-case "$subcmd" in
-    read-cursor)
-        current=1
-        [[ -f "$design_tmpdir/plan-review-round-cursor.txt" ]] && current="$(cat "$design_tmpdir/plan-review-round-cursor.txt")"
-        printf 'ROUND_CURSOR=%s\n' "$current"
-        ;;
-    write-cursor)
-        printf '%s\n' "$value" >"$design_tmpdir/plan-review-round-cursor.txt"
-        printf 'write-cursor:%s\n' "$value" >>"$design_tmpdir/snapshot.log"
-        ;;
-    *)
-        echo "unexpected snapshot subcmd: $subcmd" >&2
-        exit 2
-        ;;
-esac
-EOF
-    chmod +x "$dir/skills/design/scripts/snapshot-plan-round.sh"
-}
-
 run_driver() {
     local design_tmpdir="$1" stub="$2"
     env -u LARCH_QUIET_LOG_FILE CLAUDE_PLUGIN_ROOT="$ROOT" \
@@ -116,6 +80,7 @@ stub="$(write_loop_stub "$D2" 'exit 97')"
 driver_out=$(run_driver "$D2" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expected cap-reached loop status'
 printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' || fail 'expected skipped-cap-reached tally status'
+printf '%s\n' "$driver_out" | grep -q 'cap reached; skipping' || fail 'expected cap-reached skip breadcrumb'
 [[ "$(cat "$D2/review-round-count.txt")" == "3" ]] || fail 'cap-reached path must leave counter unchanged'
 
 echo "=== panel-failed consumes the pending round ==="
@@ -139,7 +104,6 @@ printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=panel-failed' || fail 'invali
 echo "=== passive-summary statuses parse and persist across Step 3 entries ==="
 DP="$TMPROOT/passive-summary"
 write_common_inputs "$DP" HARD
-write_snapshot_stub "$DP"
 mkdir -p "$DP/plan-review/round-1" "$DP/plan-review/round-2"
 printf 'stale\n' >"$DP/plan-review/round-1/stale.txt"
 printf 'stale\n' >"$DP/plan-review/round-2/stale.txt"
@@ -162,7 +126,6 @@ write_common_inputs "$DH" HARD
 printf '1\n' >"$DH/review-round-count.txt"
 printf '1\n' >"$DH/plan-review-round-cursor.txt"
 printf 'round1 snapshot\n' >"$DH/plan-after-round-1.txt"
-write_snapshot_stub "$DH"
 stub="$DH/round-num-stub.sh"
 cat >"$stub" <<'STUBEOF'
 #!/usr/bin/env bash
@@ -187,7 +150,6 @@ printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=complete' || fail 'hard round
 echo "=== tally-error does not consume the pending round ==="
 D4="$TMPROOT/tally-error"
 write_common_inputs "$D4" HARD
-write_snapshot_stub "$D4"
 printf '2\n' >"$D4/review-round-count.txt"
 stub="$(write_loop_stub "$D4" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=tally-error\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 2")"
 driver_out=$(run_driver "$D4" "$stub")
