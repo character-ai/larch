@@ -206,8 +206,7 @@ else
             --codex-present "${CODEX_PRESENT:-false}" \
             --cursor-present "${CURSOR_PRESENT:-false}" \
             --round-num "$ROUND_NUM" \
-            --round-cap "$ROUND_CAP" \
-            --convergence-threshold "$CONVERGENCE_THRESHOLD")
+            --round-cap "$ROUND_CAP")
         _plan_review_rc=$?
         set -e
 
