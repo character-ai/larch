@@ -1,0 +1,120 @@
+# Further factoring out /implement into bash Phase 1: collapse inline awk plugin-root rehydration to a sourced env file
+
+## Context
+
+Every Bash tool block in `skills/implement/SKILL.md` after Step 0 must re-derive
+`CLAUDE_PLUGIN_ROOT` before it can call any `${CLAUDE_PLUGIN_ROOT}/...` helper,
+because the Claude Code Bash tool does not preserve shell state between calls and
+`CLAUDE_PLUGIN_ROOT` is not in the inherited environment after Step 0. Today this
+is done with a **4-line awk fence** repeated verbatim:
+
+```bash
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
+export CLAUDE_PLUGIN_ROOT
+```
+
+There are **~41 byte-identical instances** of this fence in
+`skills/implement/SKILL.md` (the "Bash block prelude" section's own prose says
+43). At ~4 lines each that is ~160 lines of repeated boilerplate re-read into
+context on every `/implement` run and re-emitted at every step boundary. This is
+pure context bloat with zero behavioral value — every instance resolves the same
+single value.
+
+The "Bash block prelude" section documents the current rationale for inlining:
+
+> The awk extract intentionally avoids `source "$IMPLEMENT_TMPDIR/session-env.sh"`
+> because it would pull in the entire session-env namespace and might shadow
+> caller-side state. A sourced helper script is NOT feasible: until
+> `CLAUDE_PLUGIN_ROOT` is set, the orchestrator has no portable way to find the
+> helper.
+
+## Analysis
+
+Both halves of the stated rationale are real but **narrower than the conclusion
+drawn from them**:
+
+1. *"Can't find the helper until `CLAUDE_PLUGIN_ROOT` is set"* — true only for a
+   helper located **under `$CLAUDE_PLUGIN_ROOT`** (genuine chicken-and-egg). It
+   does **not** apply to a file under `$IMPLEMENT_TMPDIR`: every one of the ~41
+   sites is post-Step-0 and already guards on `[ -n "${IMPLEMENT_TMPDIR:-}" ]`,
+   so `$IMPLEMENT_TMPDIR` is always known and a file there is always findable
+   without `CLAUDE_PLUGIN_ROOT`.
+
+2. *"Don't source `session-env.sh` (namespace shadowing)"* — true for the full
+   `session-env.sh`, which carries the whole session namespace. It does **not**
+   apply to a **purpose-built minimal file** containing only the one export.
+
+So the constraints rule out *sourcing `session-env.sh`* and *a plugin-rooted
+helper*, but they do **not** rule out a minimal, tmpdir-local env file. The
+"sourced helper is NOT feasible" conclusion over-generalizes from the
+plugin-rooted case to all sourced files.
+
+## Proposal
+
+1. Have the sanctioned session-env writer (`scripts/write-session-env.sh`,
+   already invoked via `scripts/session-setup.sh` at Step 0 — it already writes
+   `LARCH_CLAUDE_PLUGIN_ROOT=` into `session-env.sh`) **also** emit a minimal
+   sibling `$IMPLEMENT_TMPDIR/plugin-root.env` containing exactly:
+
+   ```bash
+   CLAUDE_PLUGIN_ROOT=<value>
+   export CLAUDE_PLUGIN_ROOT
+   ```
+
+   This keeps NEVER #14 intact: the file is produced by a sanctioned writer, not
+   by prompt-side `printf`/`>>`. It is a new output of an existing writer, not a
+   mutation of `session-env.sh`.
+
+2. Replace each 4-line awk fence with a **single guarded source line** that
+   preserves the existing idempotency/guard semantics:
+
+   ```bash
+   [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+   ```
+
+   - No-op when `CLAUDE_PLUGIN_ROOT` is already set (e.g., the very first Step 0
+     site on a cold start, where the value is already in the environment and
+     `plugin-root.env` may not exist yet — the `-f` guard covers that).
+   - Sources only the single export — no namespace shadowing.
+
+### Expected benefit
+
+- ~3 lines × ~41 sites ≈ **120+ lines** of prompt context removed from
+  `skills/implement/SKILL.md`; smaller per-step boundary footprint on every run.
+- **No behavioral change** — same value resolved, fewer characters; determinism
+  unchanged. This is a context-cost win, not a turn-count win.
+- Shrinks the surface that the "byte-identical fences" convention has to police.
+
+### Caveats / verification (in scope for the implementing PR)
+
+- Keep the **first Step 0 site** correct on cold start (`CLAUDE_PLUGIN_ROOT`
+  already in env, `plugin-root.env` not yet written) — the guarded source no-ops
+  there.
+- Re-check `scripts/lint-skill-md-flag-signature.sh` (it carries plugin-root-token
+  assumptions about SKILL.md fences) and the rehydration-touching tests
+  (`scripts/test-implement-timing-rehydration.sh`,
+  `scripts/test-run-step5-review.sh`, `scripts/test-run-step1-plan-log.sh`);
+  update or retire any assertion that assumes the awk form.
+- Update the "Bash block prelude" section of `skills/implement/SKILL.md` to
+  document the new one-line form as canonical and explain why the tmpdir-local
+  minimal file sidesteps both original objections.
+- Add a writer-side regression assertion that `plugin-root.env` is emitted and
+  sources cleanly (extend `scripts/test-session-setup-*` / `write-session-env`
+  coverage).
+- Run `make lint` (exercises the relevant pre-commit hooks repo-wide).
+
+### Out of scope (potential follow-ups)
+
+- The same fence pattern exists in other skills (`/design`, `/review`);
+  generalizing the helper across skills is a separate change.
+- Child helper scripts that read other session-env keys via
+  `read-session-env-key.sh` are unaffected — they run after `CLAUDE_PLUGIN_ROOT`
+  is already resolved in their block.
+
+---
+
+*Filed as part of a follow-up sweep to factor more of `/implement` out of the
+prompt for cost minimization and determinism. This item is self-contained and
+independent of the other extraction proposals from that sweep.*

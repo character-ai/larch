@@ -1,0 +1,98 @@
+## Implementation Plan
+
+Collapse the 41 inline awk plugin-root rehydration fences in `skills/implement/SKILL.md` into a single sourced env file. A sanctioned writer emits a minimal `plugin-root.env`; post-Step-0 Bash blocks source it instead of re-deriving `CLAUDE_PLUGIN_ROOT` with a 4-line awk block. Three pre-bootstrap sites retain a one-line session-env.sh awk fallback when the sibling is absent (legacy resume tmpdirs). `implement-bootstrap.sh` resume-tail syncs the sibling before later blocks. Refactor-only: same resolved value, ~110+ fewer lines of prompt boilerplate. Scope is `/implement` only (Round 1). SIMPLE tier — smallest change that achieves the goal.
+
+## Files to modify/create
+
+### UPDATED: `scripts/write-session-env.sh`
+- After the existing atomic main-output write (the `else` branch, after `mv "$TMPFILE" "$OUTPUT"`), emit a sibling `plugin-root.env` in the same directory as `--output`: `PLUGIN_ROOT_ENV="$(dirname "$OUTPUT")/plugin-root.env"`.
+- Guard the sibling write on **both** `[[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]]` **and** `[[ "$OUTPUT" != "/dev/null" ]]`. Skip silently otherwise (no value to write; `/dev/null` would map to `/dev/plugin-root.env`).
+- Content is **sourceable** (unlike `session-env.sh`):
+  ```
+  CLAUDE_PLUGIN_ROOT=<value>
+  export CLAUDE_PLUGIN_ROOT
+  ```
+- Reuse the already-validated `CLAUDE_PLUGIN_ROOT_VALUE` (validated at the existing `^[A-Za-z0-9_./~+-]{1,512}$` + absolute-path checks, write-session-env.sh:136-145) — no new validation, no injection surface.
+- Write atomically via `mktemp "${PLUGIN_ROOT_ENV}.tmp.XXXXXX"` + `mv`, mirroring the existing main-output pattern.
+- Make `write-session-env.sh` source-safe (ship-pr.sh / argv0-guard pattern): define `emit_plugin_root_env <path> <value>` **before** the `BASH_SOURCE` guard and before any top-level side effects. Place `set -euo pipefail` (write-session-env.sh:32 today), lib-quiet init, argument parsing, validation, and the main-output write **inside** `if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then ... fi` only — sourcing must load **only** `emit_plugin_root_env` and must **not** enable errexit or run argv parsing in the parent (`implement-bootstrap.sh` runs `set -uo pipefail` without `-e` so Step 0 helpers stay best-effort).
+- Factor the sibling emit into `emit_plugin_root_env`; inside the function, re-apply the existing `^[A-Za-z0-9_./~+-]{1,512}$` + absolute-path checks on the value argument before writing — on skip or invalid value use **`return 0`** (not `exit`) so a sourced resume-tail call does not terminate bootstrap; reserve `exit` for the argv0 execution path only. The resume-tail caller in `implement-bootstrap.sh` provides an unvalidated value from `session-env.sh`, so the function must not trust its caller. Call it from the main-output branch (inside the `BASH_SOURCE` guard) and expose it for `implement-bootstrap.sh` resume sync via sourcing — write shape stays single-sourced.
+- Update the usage-header comment block (the `# Output:` stanza, write-session-env.sh:24-29) to document the new sibling output, its sourceable form, and its skip conditions.
+
+### UPDATED: `scripts/write-session-env.md`
+- Document the new `plugin-root.env` sibling output: path = dirname of `--output`; sourceable `CLAUDE_PLUGIN_ROOT=` + `export`; atomic temp+mv; skipped for `/dev/null` and when `CLAUDE_PLUGIN_ROOT` is empty.
+- Document the source-safe refactor: `emit_plugin_root_env` is defined before the `BASH_SOURCE` guard; `set -euo pipefail`, lib-quiet init, and argument parsing run only under the guard so sourcing does not leak errexit into bootstrap (`set -uo pipefail`). Sourcing is the intended call pattern for `implement-bootstrap.sh`'s resume branch.
+- Document `emit_plugin_root_env` return contract: skip/invalid uses `return 0`; `exit` is argv0-only.
+- State it is additive for **every** `--write-session-env` caller (skill-agnostic); only `/implement`'s SKILL.md consumes it today. Note the contrast with `session-env.sh` ("not safe to source").
+
+### UPDATED: `scripts/implement-bootstrap.sh`
+- In the `--resume-plan-tail` reuse branch (`resume_existing_tmpdir`, lines 563-586): after re-reading keys from `$IMPLEMENT_TMPDIR/session-env.sh` and **before** the closing `fi` of that branch, when `plugin-root.env` is absent and `LARCH_CLAUDE_PLUGIN_ROOT` is non-empty, load the helper via `. "$SCRIPT_DIR/write-session-env.sh"` (safe only after the guard scopes `set -euo pipefail` and argv parsing to argv0 — sourcing loads only `emit_plugin_root_env`), then call `emit_plugin_root_env "$IMPLEMENT_TMPDIR/plugin-root.env" "$_root"` where `_root` is read via `"$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_PLUGIN_ROOT --default ""`. Idempotent when the sibling already exists from a prior Step 0 write or an earlier sync in the same run.
+- Document the resume-tail sibling sync in `scripts/implement-bootstrap.md` (resume idempotency / legacy-tmpdir subsection): guard-scoped sourcing (no errexit leak); idempotent `emit_plugin_root_env`; `return 0` on skip/invalid inside the helper.
+
+### UPDATED: `skills/implement/SKILL.md`
+- **Post-Step-0 (37 sites):** replace each 4-line awk fence (every `index($0,p)==1` occurrence **except** the prose example at line 118 and the three pre-bootstrap sites below) with one guarded source line:
+  ```bash
+  [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+  ```
+  Preserve the `[ -n "${IMPLEMENT_TMPDIR:-}" ]` guard from the awk form so the line stays a safe no-op under `set -u` when `IMPLEMENT_TMPDIR` is unset. The fence sites are the 40 lines: 106, 308, 467, 565, 642, 663, 719, 762, 835, 848, 865, 880, 890, 909, 931, 958, 986, 997, 1008, 1041, 1060, 1076, 1093, 1106, 1122, 1150, 1185, 1218, 1281, 1382, 1400, 1417, 1433, 1451, 1468, 1500, 1537, 1558, 1596, 1620 (line numbers shift as edits apply — match on the byte-identical 4-line block, not absolute offsets).
+- **Pre-bootstrap (3 sites — run before or without a fresh `write-session-env.sh` on legacy resume tmpdirs):** Step 0 foreground (`:307-311`), dirty-tree recovery (`:466-469`), and the legacy structured-invocation pin (`:105-108`). At these sites only, use the guarded source line **plus** a second line — the existing one-line awk extract (no `if`/`fi` wrapper) when `plugin-root.env` is still absent, then `export CLAUDE_PLUGIN_ROOT`:
+  ```bash
+  [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+  [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+  export CLAUDE_PLUGIN_ROOT
+  ```
+  After bootstrap resume-tail sync, later blocks in the same run hit only the source line; the awk line is a legacy/resume safety net, not the post-Step-0 canonical form.
+- Rewrite the **"Bash block prelude"** prose section (lines 114-123): document the one-line source form as canonical for post-Step-0 blocks; document the two-line source+awk fallback for pre-bootstrap sites; replace the embedded 4-line awk example (line 118 + its `if`/`fi`/`export`) with the canonical post-Step-0 source line; explain why the tmpdir-local minimal file sidesteps both original objections (namespace shadowing applies only to full `session-env.sh`; the chicken-and-egg applies only to a plugin-rooted helper, not a `$IMPLEMENT_TMPDIR`-local file every post-Step-0 site already knows). Correct the stale "43 existing sites" count (40 executable: 37 post-Step-0 source-only + 3 pre-bootstrap source+awk).
+- Do **not** touch the `read-session-env-key.sh` rehydration prose for other keys (e.g. `LARCH_TOKEN_SESSION_ID`) — those run after `CLAUDE_PLUGIN_ROOT` is resolved and are unaffected.
+
+### UPDATED: `scripts/test-implement-timing-rehydration.sh`
+- **Rewrite Invariant C** (awk block at lines 78-103): a fence using `${CLAUDE_PLUGIN_ROOT}` passes when the same fence contains **either** (1) `plugin-root.env` and `. "$IMPLEMENT_TMPDIR/plugin-root.env"` (new canonical guard), **or** (2) `LARCH_CLAUDE_PLUGIN_ROOT=` with `awk` (pre-bootstrap legacy fallback only). Drop the awk-only detector (`index($0, "awk")` tied solely to `LARCH_CLAUDE_PLUGIN_ROOT=`). Update the file-header comment (lines 17-20) to describe the plugin-root.env source guard instead of the awk rehydration guard.
+- Retire/replace the awk/export parity assertion at lines 128-132 (`plugin_root_read_count` via `grep -Fxc` of the awk-extract line equated to `plugin_root_export_count`). New assertions against `$SKILL_MD`: (a) guarded source line count is **41** (37 post-Step-0 source-only + 3 pre-bootstrap + 1 prelude prose fence); (b) awk-extract line count is **3** (pre-bootstrap fallback sites only — not zero); (c) no remaining 4-line `if`/`fi` awk fence (`grep -Fxc` of the old `if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then` opener == 0). Keep invariants A, B, and the read-session-env-key cardinality checks intact.
+
+### UPDATED: `scripts/test-implement-timing-rehydration.md`
+- Rewrite **invariant 4 (Plugin-root coverage)** to match the new Invariant C: same-fence `plugin-root.env` sourcing is the canonical guard; session-env.sh awk is an allowed same-fence fallback only on pre-bootstrap sites (Step 0 foreground, dirty-tree recovery, legacy pin).
+
+### UPDATED: `scripts/test-session-env-roundtrip.sh`
+- Add writer-side regression for the new sibling (this file is the writer's existing harness; no new `test-write-session-env.sh`):
+  - With `--output <tmp>/session-env.sh` and `CLAUDE_PLUGIN_ROOT` set, assert `<tmp>/plugin-root.env` exists, contains `CLAUDE_PLUGIN_ROOT=<value>` and `export CLAUDE_PLUGIN_ROOT`, and **sources cleanly** in a fresh shell: `( unset CLAUDE_PLUGIN_ROOT; . <tmp>/plugin-root.env; [ "$CLAUDE_PLUGIN_ROOT" = "<value>" ] )`.
+  - Assert it is **not** written when `--output=/dev/null`.
+  - Assert it is **not** written when `CLAUDE_PLUGIN_ROOT` is empty/unset.
+- Add resume-tail regression (offline): with a tmpdir containing only `session-env.sh` with `LARCH_CLAUDE_PLUGIN_ROOT=<abs-path>` and no `plugin-root.env`, invoke the bootstrap resume sync path (or call `emit_plugin_root_env` with the same inputs the resume branch uses) and assert `plugin-root.env` is created and sources cleanly.
+- Assert `emit_plugin_root_env` with an invalid value returns `0` without terminating a parent shell running `set -uo pipefail` (mirror bootstrap; catches `exit` mistaken for `return`).
+
+## Approach
+- One sanctioned writer (`write-session-env.sh`) gains one new output; the prompt only ever **sources** it. NEVER #14 (no prompt-side `session-env.sh` writes) stays intact — `plugin-root.env` is a new writer output, not a prompt-side `printf`/`>>`.
+- Resume/dirty-tree legacy tmpdirs: bootstrap resume-tail calls the same `emit_plugin_root_env` helper when the sibling is missing; pre-bootstrap SKILL fences keep a one-line awk fallback until sync runs or the sibling already exists from a prior write.
+- The writer change is general (fires for any `--write-session-env` caller), which also seeds the deferred `/design`+`/review` harmonization OOS without coupling to it.
+- Replacement is mechanical: 37 post-Step-0 source-only sites + 3 pre-bootstrap source+awk sites (Round 1 decision); the prose example is handled as documentation, not as an executable site.
+
+## Edge cases
+- **Cold start / first post-Step-0 site**: `plugin-root.env` may not exist yet and `CLAUDE_PLUGIN_ROOT` is already in the env. The `-z` guard (already set) and `-f` guard (file absent) each make the source line a no-op. Writer emits the file at Step 0 via `session-setup.sh --write-session-env` before any later block runs.
+- **Resume / dirty-tree / legacy tmpdir (`--resume-plan-tail`)**: `session-env.sh` exists but `plugin-root.env` may not (resume branch skips `write-session-env.sh`). Pre-bootstrap SKILL blocks (Step 0 foreground, dirty-tree recovery) use source-then-awk so the first touch still resolves from `LARCH_CLAUDE_PLUGIN_ROOT=`; bootstrap resume-tail then emits the sibling for the rest of the run. Post-Step-0 blocks after bootstrap see only the source line.
+- **`set -u`**: `${CLAUDE_PLUGIN_ROOT:-}` and `${IMPLEMENT_TMPDIR:-}` keep the test no-fail when either is unset; the bare `"$IMPLEMENT_TMPDIR/plugin-root.env"` is reached only after `[ -n "${IMPLEMENT_TMPDIR:-}" ]` passes.
+- **Unconditional-export nuance**: the awk form ran `export CLAUDE_PLUGIN_ROOT` unconditionally; the source line exports only when it fires. Since `CLAUDE_PLUGIN_ROOT` is never inherited into a post-Step-0 block, the `-z` guard is true at every block top, so the source line always fires and exports — behavioral equivalence holds.
+- **`/dev/null` output**: sibling write skipped, mirroring the main-output `/dev/null` carve-out (avoids writing `/dev/plugin-root.env`).
+- **Sourced writer / bootstrap errexit**: resume-tail `. write-session-env.sh` must not run top-level `set -e` or argv parsing in the parent shell; the `BASH_SOURCE` guard scopes those to argv0 only.
+- **Child-script `read_kv()` idiom is unrelated**: `skills/implement/scripts/{write-final-report,post-tracking-issue,slack-issue-announce,refresh-execution-issues}.sh` use a generic parameterized `awk -v k=...` KV reader, not the rehydration fence. Out of scope; do not touch.
+
+## Failure modes
+- **`plugin-root.env` not emitted at Step 0** (writer guard wrong, or `--write-session-env` path unexpected) → every post-Step-0 block silently fails to resolve `CLAUDE_PLUGIN_ROOT`, breaking `${CLAUDE_PLUGIN_ROOT}/...` calls. Earliest signal: writer-roundtrip regression fails; `/implement` Step 1+ helper calls error with empty path. Mitigation: the new `test-session-env-roundtrip.sh` assertion pins emission; keep the `-f` guard so a missing file is a clean no-op rather than a sourced error.
+- **Resume tmpdir without sibling sync** (bootstrap resume branch omits `emit_plugin_root_env`) → pre-bootstrap blocks still recover via awk fallback; post-Step-0 blocks after bootstrap fail if sync never ran. Earliest signal: resume-tail regression in `test-session-env-roundtrip.sh`; `/implement` Step 0 resume then Step 1+ empty `${CLAUDE_PLUGIN_ROOT}`.
+- **Invariant C left awk-only** → CI fails on every post-Step-0 fence after SKILL migration even if grep parity passes. Earliest signal: `make test-implement-timing-rehydration` immediately after SKILL edit; mitigation: rewrite Invariant C and `test-implement-timing-rehydration.md` invariant 4 in the same PR.
+- **Stale awk-form assertion left in `test-implement-timing-rehydration.sh`** → CI passes vacuously (0==0) while silently no longer testing rehydration. Earliest signal: caught now in plan; mitigation: replace with absent-old / present-new assertions above.
+- **`emit_plugin_root_env` uses `exit` on skip/invalid when called from sourced bootstrap** → bootstrap aborts mid resume-tail; Step 0+ may never run. Earliest signal: resume with invalid `LARCH_CLAUDE_PLUGIN_ROOT` or empty value after read. Mitigation: `return 0` on skip/invalid inside the function; argv0-only `exit`.
+- **`write-session-env.sh` sourced with top-level `set -e` outside the guard** → errexit leaks into `implement-bootstrap.sh`; benign helper/cmd failures abort resume. Earliest signal: resume-tail path fails on non-fatal errors. Mitigation: keep `set -euo pipefail`, lib-quiet init, and argv parsing inside `BASH_SOURCE==$0` only; only `emit_plugin_root_env` outside the guard.
+- **Non-uniform replacement** (a fence left as awk, or a `read_kv()` idiom edited by mistake) → mixed rehydration mechanisms or a broken child script. Earliest signal: `make lint` / `grep -Fc` of the awk line on SKILL.md != 0. Mitigation: match on the exact 4-line block; verify post-edit grep count is 0 in SKILL.md and child scripts are untouched.
+
+## Testing strategy
+- Extend `scripts/test-session-env-roundtrip.sh` with the writer-side `plugin-root.env` regression (emit, content, sources-cleanly, `/dev/null` skip, empty-value skip).
+- Extend `scripts/test-session-env-roundtrip.sh` with resume-tail sibling sync regression (legacy tmpdir: session-env only → emit → source).
+- Update `scripts/test-implement-timing-rehydration.sh` to assert the new one-line form and the absence of the awk form.
+- Update `scripts/test-implement-timing-rehydration.sh` Invariant C and `scripts/test-implement-timing-rehydration.md` invariant 4 (plugin-root.env sourcing, not awk-only).
+- Run the named rehydration tests `scripts/test-run-step5-review.sh` and `scripts/test-run-step1-plan-log.sh` (key-only refs; expected unaffected).
+- Verify `scripts/lint-skill-md-flag-signature.sh` still resolves the unchanged `${CLAUDE_PLUGIN_ROOT}/...` path tokens.
+- Run `make lint` (repo-wide pre-commit hooks).
+
+diff_added: 158
+diff_deleted: 176
+mechanical_churn: true
+diff_lines: 334

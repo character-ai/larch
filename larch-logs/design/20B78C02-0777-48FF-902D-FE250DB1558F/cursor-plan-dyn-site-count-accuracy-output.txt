@@ -1,0 +1,22 @@
+I'll read the plan and `skills/implement/SKILL.md` to verify fence-site counts and the pre-bootstrap locations.
+Checking full 4-line block counts and whether any pre-bootstrap sites were missed.
+Checking for bash fences between Step 0 and the first post-Step-0 site that use the awk block:
+## Findings
+
+1. **correctness** — `scripts/test-implement-timing-rehydration.sh` (plan § UPDATED, assertion `(a)`) vs `skills/implement/SKILL.md:114-121` (planned Bash block prelude rewrite): The plan asserts guarded `plugin-root.env` source-line count **40** via `grep -Fxc`, but also requires replacing the prelude’s embedded ```bash``` example (current 4-line block at `117-120`) with the **same byte-identical** canonical one-liner used at all 40 executable fences. That yields **41** grep matches (40 runtime fences + 1 documentation fence). CI will fail after a correct SKILL migration unless the assertion is **41**, the prelude example is excluded from the grep (undocumented), or the doc example intentionally diverges (conflicts with “canonical” wording).
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-implement-timing-rehydration.sh:48 (planned assertion a); skills/implement/SKILL.md:114-121 (planned prelude rewrite)	Guarded source-line grep count 40 conflicts with prelude doc fence using the same canonical line	Implementer replaces all 40 executable fences plus the Bash block prelude ```bash``` example with the identical source one-liner; `grep -Fxc` returns 41 and `make test-implement-timing-rehydration` fails despite correct migration	Set assertion (a) to **41** with an inline comment “40 executable + 1 prelude doc example”, or document an explicit grep exclusion for the prelude section; do not leave count at 40 while requiring a byte-identical prelude example
+
+---
+
+**Count verification (evidence summary, not additional findings):**
+
+| Count | Evidence | Plan alignment |
+|-------|----------|----------------|
+| **41** awk `index($0,p)==1` lines today | `grep` on `skills/implement/SKILL.md` | Plan intro “41 inline awk” ✓ |
+| **41** `if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]…session-env.sh` openers | same file | Matches 41 awk lines |
+| **40** executable fences | All 41 openers minus prose `:117` | Plan list of 40 awk-line numbers matches grep exactly (`106,308,467,…,1620`; `:118` excluded) ✓ |
+| **37** post-Step-0 + **3** pre-bootstrap | `:105-108`, `:307-311`, `:466-469` only pre-Step-0 / legacy-resume paths; no other 4-line blocks between `:308` and `:565` | Pre-bootstrap set complete ✓ |
+| Stale **43** in prose `:123` | Actual count is **41** (40 executable + 1 prose `:118`) | Plan’s correction to “40 executable” is accurate; 43 is simply wrong (+2) |
+| Byte-identical matching | All 40 executable sites share the same 4-line inner block; dirty-tree `:466-469` only adds `IMPLEMENT_TMPDIR` prefix lines | “Match block, not offsets” is robust; absolute line numbers are hints only ✓ |

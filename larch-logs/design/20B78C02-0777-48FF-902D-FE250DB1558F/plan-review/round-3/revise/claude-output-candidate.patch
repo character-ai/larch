@@ -1,0 +1,30 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -15,7 +15,7 @@
+ - Write atomically via `mktemp "${PLUGIN_ROOT_ENV}.tmp.XXXXXX"` + `mv`, mirroring the existing main-output pattern.
+ - Make `write-session-env.sh` source-safe: define `emit_plugin_root_env <path> <value>` at the top of the script (before any argument parsing), then wrap the existing main body in `if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then ... fi` (the ship-pr.sh pattern). Sourcing the file loads only the helper without running argument parsing or the main-output write.
+-- Factor the sibling emit into `emit_plugin_root_env` (same guards, validation already done by caller); call it from the main-output branch (inside the `BASH_SOURCE` guard) and expose it for `implement-bootstrap.sh` resume sync via sourcing — so the write shape stays single-sourced.
++- Factor the sibling emit into `emit_plugin_root_env`; inside the function, re-apply the existing `^[A-Za-z0-9_./~+-]{1,512}$` + absolute-path checks on the value argument before writing — skip the write when validation fails (same as empty/missing). The resume-tail caller in `implement-bootstrap.sh` provides an unvalidated value from `session-env.sh`, so the function must not trust its caller. Call it from the main-output branch (inside the `BASH_SOURCE` guard) and expose it for `implement-bootstrap.sh` resume sync via sourcing — so the write shape stays single-sourced.
+ - Update the usage-header comment block (the `# Output:` stanza, write-session-env.sh:24-29) to document the new sibling output, its sourceable form, and its skip conditions.
+ 
+ ### UPDATED: `scripts/write-session-env.md`
+@@ -45,7 +45,7 @@
+ 
+ ### UPDATED: `scripts/test-implement-timing-rehydration.sh`
+ - **Rewrite Invariant C** (awk block at lines 78-103): a fence using `${CLAUDE_PLUGIN_ROOT}` passes when the same fence contains **either** (1) `plugin-root.env` and `. "$IMPLEMENT_TMPDIR/plugin-root.env"` (new canonical guard), **or** (2) `LARCH_CLAUDE_PLUGIN_ROOT=` with `awk` (pre-bootstrap legacy fallback only). Drop the awk-only detector (`index($0, "awk")` tied solely to `LARCH_CLAUDE_PLUGIN_ROOT=`). Update the file-header comment (lines 17-20) to describe the plugin-root.env source guard instead of the awk rehydration guard.
+-- Retire/replace the awk/export parity assertion at lines 128-132 (`plugin_root_read_count` via `grep -Fxc` of the awk-extract line equated to `plugin_root_export_count`). New assertions against `$SKILL_MD`: (a) guarded source line count is **40**; (b) awk-extract line count is **3** (pre-bootstrap fallback sites only — not zero); (c) no remaining 4-line `if`/`fi` awk fence (`grep -Fxc` of the old `if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then` opener == 0). Keep invariants A, B, and the read-session-env-key cardinality checks intact.
++- Retire/replace the awk/export parity assertion at lines 128-132 (`plugin_root_read_count` via `grep -Fxc` of the awk-extract line equated to `plugin_root_export_count`). New assertions against `$SKILL_MD`: (a) guarded source line count is **41** (37 post-Step-0 source-only + 3 pre-bootstrap + 1 prelude prose fence); (b) awk-extract line count is **3** (pre-bootstrap fallback sites only — not zero); (c) no remaining 4-line `if`/`fi` awk fence (`grep -Fxc` of the old `if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then` opener == 0). Keep invariants A, B, and the read-session-env-key cardinality checks intact.
+ 
+ ### UPDATED: `scripts/test-implement-timing-rehydration.md`
+ - Rewrite **invariant 4 (Plugin-root coverage)** to match the new Invariant C: same-fence `plugin-root.env` sourcing is the canonical guard; session-env.sh awk is an allowed same-fence fallback only on pre-bootstrap sites (Step 0 foreground, dirty-tree recovery, legacy pin).
+@@ -87,7 +87,7 @@
+ - Verify `scripts/lint-skill-md-flag-signature.sh` still resolves the unchanged `${CLAUDE_PLUGIN_ROOT}/...` path tokens.
+ - Run `make lint` (repo-wide pre-commit hooks).
+ 
+-diff_added: 140
+-diff_deleted: 175
++diff_added: 146
++diff_deleted: 176
+ mechanical_churn: true
+-diff_lines: 315
++diff_lines: 322

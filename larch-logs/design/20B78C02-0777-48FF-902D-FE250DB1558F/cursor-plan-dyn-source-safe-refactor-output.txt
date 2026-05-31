@@ -1,0 +1,30 @@
+Reviewing the plan and related scripts against the proposed BASH_SOURCE dual-mode contract.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/write-session-env.sh:32-53; scripts/implement-bootstrap.sh:4-7,563-586; plan.txt:16-17	`BASH_SOURCE` guard scope is underspecified: plan places `emit_plugin_root_env` before argument parsing but leaves `set -euo pipefail`, `lib-quiet` init, and top-level `OUTPUT`/`REPO`/reviewer vars outside the guard	Sourcing from the resume branch runs after `REPO`/`CODEX_PRESENT`/etc. are loaded (`implement-bootstrap.sh:570-579`). Un-guarded `set -e` flips on errexit in a host that intentionally omits `-e`; un-guarded `REPO=""` and peers clobber resume state before later bootstrap logic	Match `scripts/ship-pr.sh` intent: only `emit_plugin_root_env` stays outside the guard; move `set -euo pipefail`, `SCRIPT_DIR`/lib init, variable init, parsing, validation, and both atomic writes inside `if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then … fi` (ship-pr omits `-e` at file scope for the same host reason)
+2	in_scope	important	correctness	scripts/write-session-env.md:1-41; plan.txt:21-24	Planned `write-session-env.md` edits document the sibling file and name sourcing but not the full dual-mode contract (run vs source exit behaviour; which outputs fire per mode; source-time side effects)	Callers reading only the updated md may assume sourcing is side-effect-free and that exit `0`/`1` still apply; that diverges from plan.txt:16-17 and from current exit-code text at `write-session-env.sh:30`	Add bullets: direct execution unchanged (`0`/`1`, writes `session-env.sh` + `plugin-root.env`); sourced mode defines only `emit_plugin_root_env`, runs no argv parsing, performs no main `session-env.sh` write unless the caller invokes the helper; document that top-level `set -e`/variable init must not run on source (tie to finding 1)
+
+**1. [correctness]** `scripts/write-session-env.sh:32-53` / `plan.txt:16-17` — The plan says to define `emit_plugin_root_env` before argument parsing and wrap the “existing main body” in `if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then … fi`, but it does not pin what “main body” includes. Today those lines run unconditionally on every load:
+
+```32:53:scripts/write-session-env.sh
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=scripts/lib-quiet.sh
+source "$SCRIPT_DIR/lib-quiet.sh"
+larch_quiet_init
+
+OUTPUT=""
+REPO=""
+REPO_UNAVAILABLE=""
+CODEX_PRESENT=""
+CURSOR_PRESENT=""
+...
+```
+
+`implement-bootstrap.sh` deliberately runs without errexit (`implement-bootstrap.sh:4-7`) and, on `--resume-plan-tail`, repopulates `REPO`, `CODEX_PRESENT`, and related names immediately before the planned `. "$SCRIPT_DIR/write-session-env.sh"` (`implement-bootstrap.sh:570-579`). Sourcing with `set -e` or those assignments still outside the guard would enable `-e` mid-phase and reset `REPO=""` (and overlapping reviewer vars). The cited `ship-pr.sh` pattern avoids this: file-scope `set -uo pipefail` without `-e`, and only `main "$@"` behind the guard (`scripts/ship-pr.sh:4-7`, `3811`). **Suggested revision:** Only `emit_plugin_root_env` lives outside the guard; everything from `set -euo pipefail` through the main and sibling writes stays inside it.
+
+**2. [correctness]** `scripts/write-session-env.md:1-41` / `plan.txt:21-24` — Planned doc updates cover `plugin-root.env` and mention sourcing for `implement-bootstrap.sh`, but not run-vs-source exit codes or outputs. Current contract is single-mode: exit `0`/`1` and “not safe to source” for the `--output` file (`write-session-env.md:3`, `write-session-env.sh:30`). The plan claims sourcing “loads only `emit_plugin_root_env`” (`plan.txt:16-17`) while leaving source-time side effects unspecified in the md delta. **Suggested revision:** Add an explicit dual-mode table: subprocess/direct run = full writer + exits; source = function definition only, no argv parse, no `session-env.sh` write unless `emit_plugin_root_env` is called; cross-link that top-level `set -e`/vars must not run on source.
+
+**Verified (no finding):** Direct subprocess callers (`scripts/session-setup.sh:499`, `scripts/implement-bootstrap.sh:675`, `scripts/test-session-env-roundtrip.sh`) keep `BASH_SOURCE[0] == $0` and still hit the guarded main path. The `BASH_SOURCE` test itself is Bash 3.2–safe. `emit_plugin_root_env` re-validation for the resume path matches the security need described in the plan.
+
+**[OUT_OF_SCOPE]** `scripts/test-session-env-roundtrip.sh` — No planned assertion that sourcing does not enable `-e` or clobber `REPO`; worth a one-liner regression if finding 1 is fixed, but not required for minimum-change correctness if the guard structure is explicit in the plan.

@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan's Failure modes section already covers the broader case; coder should naturally mirror lines 674-679 pattern; plan-level over-specification adds complexity without commensurate value
