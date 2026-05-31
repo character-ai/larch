@@ -17,6 +17,9 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   validated with the same `[A-Za-z0-9._/-]` allowlist as `--output`, threaded
   to inner `run-external-agent.sh` invocations, and recorded in the outer
   `.meta` as `STDERR_SINK=` when non-empty (for collector retry round-trip).
+- Optional `--risk high|low` is captured and forwarded as `OUTER_LAUNCHER_RISK`
+  in the outer `.meta` so `collect-agent-results.sh` replays empty-output
+  retries with the caller's risk-gated effort setting.
 - Codex and Cursor append `OUTER_LAUNCHER=<repo>/scripts/launch-review.sh`
   metadata and store `${OUTPUT}.prompt` so `collect-agent-results.sh` can replay
   retries through the same launcher with `--tool <tool>`.

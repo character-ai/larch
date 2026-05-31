@@ -96,6 +96,19 @@ assert_regex() {
     if grep -Eq -- "$pattern" "$file"; then pass; else fail "$label: expected $file to match regex $pattern"; fi
 }
 
+assert_meta_stderr_sink_before_outer_launcher() {
+    local label="$1"
+    local meta="$2"
+    local sink_ln outer_ln
+    sink_ln=$(grep -m 1 -n '^STDERR_SINK=' "$meta" 2>/dev/null | cut -d: -f1)
+    outer_ln=$(grep -m 1 -n '^OUTER_LAUNCHER=' "$meta" 2>/dev/null | cut -d: -f1)
+    if [[ -n "$sink_ln" && -n "$outer_ln" && "$sink_ln" -lt "$outer_ln" ]]; then
+        pass
+    else
+        fail "$label"
+    fi
+}
+
 set +e
 "$LAUNCHER" >/dev/null 2>"$TMPDIR/missing.stderr"
 RC=$?
@@ -1378,15 +1391,38 @@ if grep -Fq "unknown flag: --stderr-sink" "$TMPDIR/stderr-sink-accept-codex.stde
 else
     pass
 fi
-if grep -F -- "_RUN_EXTERNAL_SINK_ARGS+=(--stderr-sink \"\$STDERR_SINK\")" "$REPO_ROOT/scripts/launch-review.sh" >/dev/null; then
-    pass
-else
-    fail "launch-review.sh codex lane must thread --stderr-sink to run-external-agent.sh"
-fi
 if [[ -f "$SS_ACCEPT_META" ]] && grep -Fxq "STDERR_SINK=$SS_ACCEPT_SINK" "$SS_ACCEPT_META"; then
     pass
 else
     fail "codex lane must record STDERR_SINK= in outer .meta when --stderr-sink is set"
+fi
+assert_meta_stderr_sink_before_outer_launcher \
+    "codex lane outer .meta STDERR_SINK= precedes OUTER_LAUNCHER=" "$SS_ACCEPT_META"
+
+RISK_LOW_OUT="$TMPDIR/risk-low-codex.txt"
+RISK_LOW_META="${RISK_LOW_OUT}.meta"
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-risk-low-codex-$$" \
+    "$LAUNCHER" --output "$RISK_LOW_OUT" --timeout 5 --prompt "review prompt" \
+    --risk low >/dev/null 2>"$TMPDIR/risk-low-codex.stderr"
+set -e
+if [[ -f "$RISK_LOW_META" ]] && grep -Fxq 'OUTER_LAUNCHER_RISK=low' "$RISK_LOW_META"; then
+    pass
+else
+    fail "codex lane must record OUTER_LAUNCHER_RISK=low when --risk low is set"
+fi
+
+RISK_DEFAULT_OUT="$TMPDIR/risk-default-codex.txt"
+RISK_DEFAULT_META="${RISK_DEFAULT_OUT}.meta"
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-risk-default-codex-$$" \
+    "$LAUNCHER" --output "$RISK_DEFAULT_OUT" --timeout 5 --prompt "review prompt" \
+    >/dev/null 2>"$TMPDIR/risk-default-codex.stderr"
+set -e
+if [[ -f "$RISK_DEFAULT_META" ]] && grep -Fxq 'OUTER_LAUNCHER_RISK=high' "$RISK_DEFAULT_META"; then
+    pass
+else
+    fail "codex lane must record OUTER_LAUNCHER_RISK=high when --risk is omitted"
 fi
 
 if (( FAIL > 0 )); then
@@ -1470,6 +1506,19 @@ assert_regex() {
         pass
     else
         fail "$label: expected $path to match regex $pattern"
+    fi
+}
+
+assert_meta_stderr_sink_before_outer_launcher() {
+    local label="$1"
+    local meta="$2"
+    local sink_ln outer_ln
+    sink_ln=$(grep -m 1 -n '^STDERR_SINK=' "$meta" 2>/dev/null | cut -d: -f1)
+    outer_ln=$(grep -m 1 -n '^OUTER_LAUNCHER=' "$meta" 2>/dev/null | cut -d: -f1)
+    if [[ -n "$sink_ln" && -n "$outer_ln" && "$sink_ln" -lt "$outer_ln" ]]; then
+        pass
+    else
+        fail "$label"
     fi
 }
 
@@ -2765,6 +2814,36 @@ if [[ -f "$CSS_ACCEPT_META" ]] && grep -Fxq "STDERR_SINK=$CSS_ACCEPT_SINK" "$CSS
     pass
 else
     fail "cursor lane must record STDERR_SINK= in outer .meta when --stderr-sink is set"
+fi
+assert_meta_stderr_sink_before_outer_launcher \
+    "cursor lane outer .meta STDERR_SINK= precedes OUTER_LAUNCHER=" "$CSS_ACCEPT_META"
+
+RISK_LOW_OUT="$TMPDIR/risk-low-cursor.txt"
+RISK_LOW_META="${RISK_LOW_OUT}.meta"
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-risk-low-cursor-$$" \
+    CURSOR_API_KEY="test-key" \
+    "$LAUNCHER" --output "$RISK_LOW_OUT" --timeout 5 --prompt "review prompt" \
+    --risk low >/dev/null 2>"$TMPDIR/risk-low-cursor.stderr"
+set -e
+if [[ -f "$RISK_LOW_META" ]] && grep -Fxq 'OUTER_LAUNCHER_RISK=low' "$RISK_LOW_META"; then
+    pass
+else
+    fail "cursor lane must record OUTER_LAUNCHER_RISK=low when --risk low is set"
+fi
+
+RISK_DEFAULT_OUT="$TMPDIR/risk-default-cursor.txt"
+RISK_DEFAULT_META="${RISK_DEFAULT_OUT}.meta"
+set +e
+PATH="$STUB_BIN:$PATH" USER="larch-test-risk-default-cursor-$$" \
+    CURSOR_API_KEY="test-key" \
+    "$LAUNCHER" --output "$RISK_DEFAULT_OUT" --timeout 5 --prompt "review prompt" \
+    >/dev/null 2>"$TMPDIR/risk-default-cursor.stderr"
+set -e
+if [[ -f "$RISK_DEFAULT_META" ]] && grep -Fxq 'OUTER_LAUNCHER_RISK=high' "$RISK_DEFAULT_META"; then
+    pass
+else
+    fail "cursor lane must record OUTER_LAUNCHER_RISK=high when --risk is omitted"
 fi
 
 if [[ "$FAIL" -ne 0 ]]; then

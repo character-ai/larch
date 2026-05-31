@@ -72,6 +72,20 @@ assert_no_line_prefix() {
     fi
 }
 
+assert_meta_stderr_sink_before() {
+    local label="$1"
+    local meta="$2"
+    local before_prefix="$3"
+    local sink_ln before_ln
+    sink_ln=$(grep -m 1 -n '^STDERR_SINK=' "$meta" 2>/dev/null | cut -d: -f1)
+    before_ln=$(grep -m 1 -n "^${before_prefix}=" "$meta" 2>/dev/null | cut -d: -f1)
+    if [[ -n "$sink_ln" && -n "$before_ln" && "$sink_ln" -lt "$before_ln" ]]; then
+        ok "$label"
+    else
+        fail "$label"
+    fi
+}
+
 STUB_BIN="$TMPROOT/bin"
 mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/cursor" <<'CURSOR_SHAPE_STUB'
@@ -812,12 +826,72 @@ RESULT_CORRUPT_RISK=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_COR
 assert_line "case corrupt-risk status" "STATUS=OK" "$RESULT_CORRUPT_RISK"
 assert_line "case corrupt-risk reviewer file" "REVIEWER_FILE=${OUT_CORRUPT_RISK%.txt}-retry.txt" "$RESULT_CORRUPT_RISK"
 
-# STDERR_SINK retry forwarding and fail-closed .. guard.
-if grep -F -- "_outer_sink_args+=(--stderr-sink \"\$META_STDERR_SINK\")" "$COLLECTOR" >/dev/null \
-    && grep -F -- "RETRY_ARGS+=(--stderr-sink \"\$META_STDERR_SINK\")" "$COLLECTOR" >/dev/null; then
-    ok "collector forwards META_STDERR_SINK on outer and CMD_JSON retry paths"
+# STDERR_SINK retry forwarding (runtime meta artifacts) and fail-closed .. guard.
+OUT_SINK_OUTER="$TMPROOT/cursor-sink-outer-retry.txt"
+STDERR_SINK_OUTER="$TMPROOT/case-sink-outer-retry.stderr"
+WORKDIR_SINK_OUTER="$TMPROOT/workdir-sink-outer-retry"
+SINK_OUTER="$TMPROOT/case-sink-outer-retry.sink"
+mkdir -p "$WORKDIR_SINK_OUTER"
+prepare_outer_candidate "$OUT_SINK_OUTER"
+write_outer_meta "$OUT_SINK_OUTER" "$REPO_ROOT/scripts/launch-review.sh" \
+    "${OUT_SINK_OUTER}.prompt" "$WORKDIR_SINK_OUTER" \
+    "STDERR_SINK=$SINK_OUTER"
+export CURSOR_STUB_RESULT="POST-PROCESSED OK"
+RESULT_SINK_OUTER=$(PATH="$CURSOR_STUB_BIN:$PATH" run_collector bash "$OUT_SINK_OUTER" "$STDERR_SINK_OUTER")
+RETRY_META_OUTER="${OUT_SINK_OUTER%.txt}-retry.txt.meta"
+assert_line "case sink-outer-retry status" "STATUS=OK" "$RESULT_SINK_OUTER"
+if grep -Fxq "STDERR_SINK=$SINK_OUTER" "$RETRY_META_OUTER"; then
+    ok "case sink-outer-retry meta records STDERR_SINK="
 else
-    fail "collector must forward --stderr-sink on outer-launcher and CMD_JSON retry paths"
+    fail "case sink-outer-retry meta must record STDERR_SINK= from run-external-agent"
+fi
+assert_meta_stderr_sink_before \
+    "case sink-outer-retry STDERR_SINK= precedes OUTER_LAUNCHER=" \
+    "$RETRY_META_OUTER" "OUTER_LAUNCHER"
+
+OUT_SINK_OUTER_CODEX="$TMPROOT/codex-sink-outer-retry.txt"
+STDERR_SINK_OUTER_CODEX="$TMPROOT/case-sink-outer-retry-codex.stderr"
+WORKDIR_SINK_OUTER_CODEX="$TMPROOT/workdir-sink-outer-retry-codex"
+SINK_OUTER_CODEX="$TMPROOT/case-sink-outer-retry-codex.sink"
+mkdir -p "$WORKDIR_SINK_OUTER_CODEX"
+prepare_outer_candidate "$OUT_SINK_OUTER_CODEX"
+{
+    printf 'TOOL=codex\n'
+    printf 'TIMEOUT=2\n'
+    printf 'CAPTURE_STDOUT=false\n'
+    printf 'CAPTURE_STDOUT_ONLY=false\n'
+    printf 'OUTPUT_FILE=%s\n' "$OUT_SINK_OUTER_CODEX"
+    printf 'OUTER_LAUNCHER=%s\n' "$REPO_ROOT/scripts/launch-review.sh"
+    printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "${OUT_SINK_OUTER_CODEX}.prompt"
+    printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$WORKDIR_SINK_OUTER_CODEX"
+    printf 'STDERR_SINK=%s\n' "$SINK_OUTER_CODEX"
+} > "${OUT_SINK_OUTER_CODEX}.meta"
+RESULT_SINK_OUTER_CODEX=$(LARCH_CODEX_MODEL=test-codex-model run_collector bash "$OUT_SINK_OUTER_CODEX" "$STDERR_SINK_OUTER_CODEX")
+RETRY_META_OUTER_CODEX="${OUT_SINK_OUTER_CODEX%.txt}-retry.txt.meta"
+assert_line "case sink-outer-retry-codex status" "STATUS=OK" "$RESULT_SINK_OUTER_CODEX"
+if grep -Fxq "STDERR_SINK=$SINK_OUTER_CODEX" "$RETRY_META_OUTER_CODEX"; then
+    ok "case sink-outer-retry-codex meta records STDERR_SINK="
+else
+    fail "case sink-outer-retry-codex meta must record STDERR_SINK= from run-external-agent"
+fi
+assert_meta_stderr_sink_before \
+    "case sink-outer-retry-codex STDERR_SINK= precedes OUTER_LAUNCHER=" \
+    "$RETRY_META_OUTER_CODEX" "OUTER_LAUNCHER"
+
+OUT_SINK_CMD_JSON="$TMPROOT/cursor-sink-cmd-json-retry.txt"
+STDERR_SINK_CMD_JSON="$TMPROOT/case-sink-cmd-json-retry.stderr"
+SINK_CMD_JSON="$TMPROOT/case-sink-cmd-json-retry.sink"
+write_empty_candidate "$OUT_SINK_CMD_JSON"
+write_meta_body "$OUT_SINK_CMD_JSON" \
+    "STDERR_SINK=$SINK_CMD_JSON" \
+    "CMD_JSON=$(json_array bash "$HELPER" --output "$OUT_SINK_CMD_JSON")"
+RESULT_SINK_CMD_JSON=$(run_collector bash "$OUT_SINK_CMD_JSON" "$STDERR_SINK_CMD_JSON")
+RETRY_META_CMD_JSON="${OUT_SINK_CMD_JSON%.txt}-retry.txt.meta"
+assert_line "case sink-cmd-json-retry status" "STATUS=OK" "$RESULT_SINK_CMD_JSON"
+if grep -Fxq "STDERR_SINK=$SINK_CMD_JSON" "$RETRY_META_CMD_JSON"; then
+    ok "case sink-cmd-json-retry meta records STDERR_SINK="
+else
+    fail "case sink-cmd-json-retry meta must record STDERR_SINK= from run-external-agent"
 fi
 
 OUT_SINK_DOTDOT="$TMPROOT/cursor-sink-dotdot.txt"

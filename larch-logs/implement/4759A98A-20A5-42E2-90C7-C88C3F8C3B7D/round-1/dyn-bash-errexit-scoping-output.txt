@@ -1,0 +1,32 @@
+Reviewing the branch diff and inspecting `ship-pr.sh` for errexit scoping and nounset safety.
+Checking risk normalization and whether the inner gate function's `return` interacts with restored errexit.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+The `ship-pr.sh` errexit changes (commit `b38c780d2`, #3267) are **load-bearing**, not dead code. The script header intentionally omits `set -e` (`scripts/ship-pr.sh:4-7`), but `lib-quiet.sh` unconditionally re-enables errexit after every redacted diagnostic:
+
+```113:116:scripts/lib-quiet.sh
+    set +e
+    _out=$(printf '%s\n' "$_buf" | "$helper" --streaming --state-file "$state_file" 2>/dev/null)
+    _rc=$?
+    set -e
+```
+
+Because `ship-pr.sh` sources `lib-quiet.sh` and calls `larch_err` throughout, errexit can be ON before the OOS-gate blocks even though the script never sets `-e` itself. The old unconditional trailing `set -e` at the three OOS-gate sites therefore **leaked** errexit into later CI phases (documented in `scripts/ship-pr.md:774`); that leak caused `_run_per_job_command_capture` failures to abort the orchestrator with an undocumented exit instead of recording `_RCC_CMD_RC`. Replacing those with the save/restore idiom (`case $- in *e*) _had_errexit=1 ;; esac` / `set +e` / `(( _had_errexit )) && set -e`) is the correct fix and matches the existing pattern in `run_lint_fix_loop_capture` (`scripts/ship-pr.sh:139-147`).
+
+The `_run_per_job_command_capture` and `_run_per_job_command_once` hardening is also sound under nounset and errexit:
+
+- `_PJA_ARGV` is initialized at file scope (`scripts/ship-pr.sh:2176`) and reset on every `_per_job_argv` call; callers gate with `_per_job_argv ... || continue` before invoking the runners (`scripts/ship-pr.sh:2327`, `2368`), so `"${_PJA_ARGV[@]}"` is never unset.
+- With an empty array, `"${_PJA_ARGV[@]}"` produces zero words (no nounset fault under `set -u`).
+- The `|| _RCC_CMD_RC=$?` / `|| _once_rc=$?` patterns correctly capture failing harness exit codes when errexit is accidentally ON; `_run_per_job_command_capture` sets `_RCC_CMD_RC` rather than returning nonzero, so it does not trip errexit itself.
+- `(( _had_errexit )) && set -e` is safe: `(( 0 ))` is the first operand of `&&`, so errexit does not fire on the false arithmetic result.
+
+Nested save/restore in `run_pr_prep_phase` wrapping `run_oos_disposition_gate_if_required_before_oos_pending_false` is redundant but correct—the outer `set +e` means the inner helper sees errexit off and does not re-enable it on the success path.
+
+Pre-existing asymmetry (not introduced by this branch): several older blocks use bare `set +e` without any restore (`scripts/ship-pr.sh:654-658`, `707-710`, `771-774`). They never leak errexit ON the way the old OOS-gate blocks did, but they would leave errexit OFF if it had been ON entering those blocks. Given `ship-pr.sh`'s explicit rc-capture design, that is likely acceptable.
+
+One latent pre-existing edge: `run_oos_disposition_gate_if_required_before_oos_pending_false` is also called without an outer `set +e` wrapper from the recovery waterfall (`scripts/ship-pr.sh:2873`). If errexit is ON at that call site and the gate returns nonzero, the inner `(( _had_errexit )) && set -e` followed by `return "$gate_rc"` can abort before `verify_rc=$?` is captured. The branch improves the common path by stopping `run_pr_prep_phase` from unconditionally enabling errexit on success; it does not fix this unwrapped call site.
+
+The primary feature commit (`33b85f448`) — `--risk` forwarding, FINDING_6 empty positional args, and behavioral stderr-sink tests — does not touch `ship-pr.sh` and was not the focus of this errexit review; no defects were identified there under the assigned scope.
