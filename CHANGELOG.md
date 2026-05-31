@@ -1,5 +1,11 @@
 # Changelog
 
+## 47.0.23 (2026-05-31)
+- Second-pass LPT rebalance: corrected ship-pr-\* test timings (postmerge/state/rebase-phase14 now run at ~34s each after a recent commit, not ~11s as the 10-run IQR estimate showed). All non-anchor shards target ~70s; shard 1 holds test-ship-pr alone at ~94s; shard 3 holds test-dispatch-code-voters-happy at ~125s.
+- Full LPT rebalance of CI test-harness shards using IQR-trimmed means from 10 CI runs: all 17 non-anchor shards now target ~63s (down from spread of 25–146s). New anchors: shard 1 (test-ship-pr 78s), shard 3 (test-dispatch-code-voters-happy 125s), shard 4 (test-dispatch-code-voters-edge 66s).
+- Fix test-gather-context harness running against the full 67k-file repo: use a minimal 6-file fixture git repo instead, reducing runtime from ~120s to <1s and eliminating run-to-run variance caused by CI runner disk/CPU load.
+- Rebalance CI test-harness shards: 21-test targeted redistribution based on LARCH_HARNESS_TIMING rows from CI run 26717897077. Max shard time drops from 145.9s to 125.3s (fixed by test-dispatch-code-voters-happy anchor); min rises from 25s to 48s; spread halves. Key moves: test-launch-codex-ci joins shard 2 with the other launch-\*-ci tests; test-review-and-fix-convergence rejoins test-review-and-fix-dispatch in shard 6; test-gather-context companions stripped from shard 8 (97s); test-dispatch-with-waterfall moved to shard 7 with related dispatch tests; shard 9 reduced from 146s to 75s; shard 16 reduced from 108s to 94s.
+
 ## 47.0.3 (2026-05-29)
 
 - Codex/Cursor backup-waterfall gaps + degraded-tools health gate (#3207): new Step-0 `scripts/degraded-tools-gate.sh` detector wired into `/design`, `/implement`, `/review`, `/research` — when Codex or Cursor is unavailable the skill presents an explanation and asks (via `AskUserQuestion`) whether to continue with the backup waterfall or abort; non-interactive/autonomous runs auto-proceed with a logged notice. Explicit `--coder` now waterfalls (`codex`→cursor→claude, `cursor`→codex→claude) instead of bailing; `review-and-fix` / `lint-fix` coders waterfall to the Claude main-agent tier when both externals are exhausted; `/design` sketches skip an unavailable tool's slot (fewer sketches) rather than substituting Claude.
