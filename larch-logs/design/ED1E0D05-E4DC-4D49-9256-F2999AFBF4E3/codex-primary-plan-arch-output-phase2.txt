@@ -1,0 +1,22 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	skills/design/SKILL.md:53	UPDATED fence says orchestrator should source `.step3-review-result.env`	SECURITY.md requires allowlisted line-by-line parsing for Step 3 loop-result env files; shell-sourcing a same-UID-writable `.env` reintroduces injection risk the current fence avoids for `.step3-plan-review-result.env`	In `run-step3-review.md` and the SKILL fence, specify allowlisted parse via `phase_driver_read_result_env` (or the existing read loop), not `source`
+2	in_scope	important	correctness	skills/design/scripts/run-step3-review.sh:36-41	Plan argv lists only `--design-tmpdir`, `--round-cap`, and `--convergence-threshold`	Subprocess driver will not inherit `IMPLEMENT_TMPDIR` (not written to `current-design-env-*.sh`); `--feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt"` can silently fall back to the wrong tmpdir in linked sessions	Document derived inputs in `run-step3-review.md` (mirror `run-step2-dispatch.md`): re-source `current-design-env-$PPID.sh` or accept explicit `--codex-present`/`--cursor-present`/`--feature-file`; preserve `IMPLEMENT_TMPDIR` resolution
+3	in_scope	important	correctness	skills/design/scripts/test-step3-review-cap.sh:14-28	Plan says re-target cap tests to `run-step3-review.sh` but not how	Harness `extract_block` is SKILL-markdown-specific; blocks move out of fenced prose, so `make test-step3-review-cap` breaks unless the harness is redesigned	Replace extraction with direct `run-step3-review.sh` invocations (or shared test helpers) and keep cap/rollback assertions; note this in the plan Testing strategy
+
+**1. Security — do not `source` the new result env** (`skills/design/SKILL.md`, planned fence)
+
+The plan’s UPDATED `SKILL.md` section says the orchestrator should **source** `$DESIGN_TMPDIR/.step3-review-result.env`. That conflicts with `SECURITY.md`, which treats `.step3-plan-review-result.env` as untrusted data and requires allowlisted parsing. The live Step 3 driver fence already uses a read loop, not `source`, for that file.
+
+**2. Correctness — subprocess loses `IMPLEMENT_TMPDIR` for `--feature-file`** (planned `run-step3-review.sh`)
+
+Today’s inline fence passes `--feature-file "${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt"`. `write-design-current-env.sh` exports `CODEX_PRESENT` / `CURSOR_PRESENT` / `CLAUDE_PLUGIN_ROOT`, but not `IMPLEMENT_TMPDIR`. A separate `run-step3-review.sh` process will not see `IMPLEMENT_TMPDIR` unless the plan requires exporting it, passing `--feature-file`, or re-reading session state. The plan’s argv list omits this; `run-step3-review.md` “derived sources” is named but not specified in the plan body (unlike `run-step2-dispatch.md`).
+
+**3. Correctness — `test-step3-review-cap.sh` extraction strategy** (`skills/design/scripts/test-step3-review-cap.sh:14-28`)
+
+The cap harness pulls bash blocks from `SKILL.md` via markdown anchors. After the refactor, cap logic lives in `run-step3-review.sh`. The plan lists harness updates but does not require replacing `extract_block` with script invocation. That is the highest-risk harness gap called out in Failure modes, and it needs an explicit approach in the plan.
+
+---
+
+[OUT_OF_SCOPE] **docs/linting.md** — no planned row for `test-run-step3-review` / `test-lib-phase-driver` (Makefile only); harmless doc drift.
+
+[OUT_OF_SCOPE] **Post-loop matrix intro** (`skills/design/SKILL.md:1000`) — still references `.step3-plan-review-result.env`; acceptable if `.step3-review-result.env` is fence handoff only and loop/MainAgent/Gate B keep the inner file (plan driver step 4 already bridges them). Worth a one-line contract note in `run-step3-review.md`, not a blocker.
