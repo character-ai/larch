@@ -135,6 +135,7 @@ def build_launch_argv(
     repo: str,
     plan_file: str | None = None,
     failure_log: str | None = None,
+    conflict_files: str | None = None,
     timeout_sec: int = config.SUBPROCESS_DEFAULT_TIMEOUT_SEC,
     scripts_dir: str | Path | None = None,
 ) -> list[str]:
@@ -166,6 +167,8 @@ def build_launch_argv(
         argv.extend(["--plan-file", plan_file])
     if failure_log:
         argv.extend(["--failure-log", failure_log])
+    if conflict_files:
+        argv.extend(["--conflict-files", conflict_files])
     return argv
 
 
@@ -179,6 +182,7 @@ def launch_tier(
     repo: str,
     plan_file: str | None = None,
     failure_log: str | None = None,
+    conflict_files: str | None = None,
     timeout_sec: int = config.SUBPROCESS_DEFAULT_TIMEOUT_SEC,
     cwd: str | None = None,
 ) -> CommandResult:
@@ -190,6 +194,7 @@ def launch_tier(
         repo=repo,
         plan_file=plan_file,
         failure_log=failure_log,
+        conflict_files=conflict_files,
         timeout_sec=timeout_sec,
     )
     return runner.run(argv, timeout=float(timeout_sec), cwd=cwd)

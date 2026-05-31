@@ -245,6 +245,140 @@ def test_value_helper_raises_on_failure() -> None:
         _ = git.rev_parse(runner, "HEAD")
 
 
+def test_try_current_branch_detached() -> None:
+    runner = StubRunner(
+        {
+            ("git", "symbolic-ref", "--short", "HEAD"): CommandResult(
+                ("git", "symbolic-ref", "--short", "HEAD"),
+                128,
+                "",
+                "fatal: HEAD detached",
+                0.01,
+            ),
+        },
+    )
+    assert git.try_current_branch(runner) is None
+
+
+def test_unmerged_paths_argv() -> None:
+    runner = StubRunner(
+        {
+            ("git", "diff", "--name-only", "--diff-filter=U"): CommandResult(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                0,
+                "a.txt\nb.txt\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+    assert git.unmerged_paths(runner) == ["a.txt", "b.txt"]
+
+
+def test_checkout_ours_argv() -> None:
+    runner = StubRunner(
+        {
+            ("git", "checkout", "--ours", "--", "f.txt"): CommandResult(
+                ("git", "checkout", "--ours", "--", "f.txt"),
+                0,
+                "",
+                "",
+                0.01,
+            ),
+        },
+    )
+    assert git.checkout_ours(runner, "f.txt").returncode == 0
+
+
+def test_is_ancestor_mapping() -> None:
+    runner = StubRunner(
+        {
+            ("git", "merge-base", "--is-ancestor", "main", "HEAD"): CommandResult(
+                ("git", "merge-base", "--is-ancestor", "main", "HEAD"),
+                0,
+                "",
+                "",
+                0.01,
+            ),
+            ("git", "merge-base", "--is-ancestor", "other", "HEAD"): CommandResult(
+                ("git", "merge-base", "--is-ancestor", "other", "HEAD"),
+                1,
+                "",
+                "",
+                0.01,
+            ),
+        },
+    )
+    assert git.is_ancestor(runner, "main", "HEAD") is True
+    assert git.is_ancestor(runner, "other", "HEAD") is False
+
+
+def test_rebase_continue_sets_editors(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("GIT_DIR", "/evil")
+    captured: dict[str, object] = {}
+
+    class CaptureRunner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+        ) -> CommandResult:
+            _ = timeout, cwd, check
+            captured["env"] = dict(env) if env else {}
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    _ = git.rebase_continue(CaptureRunner())
+    env = cast("dict[str, str]", captured["env"])
+    assert env.get("GIT_SEQUENCE_EDITOR") == "true"
+    assert env.get("GIT_EDITOR") == "true"
+
+
+def test_rebase_skip_argv() -> None:
+    runner = StubRunner(
+        {
+            ("git", "rebase", "--skip"): CommandResult(
+                ("git", "rebase", "--skip"), 0, "", "", 0.01
+            ),
+        },
+    )
+    assert git.rebase_skip(runner).returncode == 0
+
+
+def test_force_push_with_lease_expecting_argv() -> None:
+    runner = StubRunner(
+        {
+            (
+                "git",
+                "push",
+                "--force-with-lease=refs/heads/feat:abc123",
+                "origin",
+            ): CommandResult(
+                (
+                    "git",
+                    "push",
+                    "--force-with-lease=refs/heads/feat:abc123",
+                    "origin",
+                ),
+                0,
+                "",
+                "",
+                0.01,
+            ),
+        },
+    )
+    result = git.force_push_with_lease_expecting(
+        runner,
+        "origin",
+        "refs/heads/feat",
+        "abc123",
+    )
+    assert result.returncode == 0
+
+
 def test_rebase_onto_strips_git_dir_override(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("GIT_DIR", "/evil")
     monkeypatch.setenv("GIT_WORK_TREE", "/evil")

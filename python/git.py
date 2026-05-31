@@ -60,6 +60,16 @@ def branch(runner: Runner, name: str, *, cwd: str | None = None) -> CommandResul
     return _run(runner, ["git", "branch", name], cwd=cwd)
 
 
+def branch_force(
+    runner: Runner,
+    name: str,
+    start_point: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(runner, ["git", "branch", "-f", name, start_point], cwd=cwd)
+
+
 def rev_count(
     runner: Runner,
     left: str,
@@ -295,7 +305,79 @@ def _git_subprocess_env() -> dict[str, str]:
         if key not in ("GIT_DIR", "GIT_WORK_TREE")
     }
     env["GIT_SEQUENCE_EDITOR"] = "true"
+    env["GIT_EDITOR"] = "true"
     return env
+
+
+def try_current_branch(runner: Runner, *, cwd: str | None = None) -> str | None:
+    result = _run(
+        runner,
+        ["git", "symbolic-ref", "--short", "HEAD"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return None
+    text = result.stdout.strip()
+    return text or None
+
+
+def unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
+    result = _run(
+        runner,
+        ["git", "diff", "--name-only", "--diff-filter=U"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return []
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def checkout_ours(
+    runner: Runner,
+    *paths: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    argv = ["git", "checkout", "--ours", "--", *paths]
+    return _run(runner, argv, cwd=cwd)
+
+
+def is_ancestor(
+    runner: Runner,
+    ancestor: str,
+    descendant: str,
+    *,
+    cwd: str | None = None,
+) -> bool:
+    result = _run(
+        runner,
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=cwd,
+    )
+    return result.returncode == 0
+
+
+def rebase_continue(runner: Runner, *, cwd: str | None = None) -> CommandResult:
+    return _run(runner, ["git", "rebase", "--continue"], cwd=cwd)
+
+
+def rebase_skip(runner: Runner, *, cwd: str | None = None) -> CommandResult:
+    return _run(runner, ["git", "rebase", "--skip"], cwd=cwd)
+
+
+def force_push_with_lease_expecting(
+    runner: Runner,
+    remote: str,
+    refspec: str,
+    expected_oid: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    lease = f"{refspec}:{expected_oid}"
+    return _run(
+        runner,
+        ["git", "push", f"--force-with-lease={lease}", remote],
+        cwd=cwd,
+    )
 
 
 def rebase_onto(

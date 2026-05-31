@@ -125,6 +125,19 @@ def test_parity_classify_launch_failures(
     assert py.reason == bash_reason
 
 
+def test_build_launch_argv_conflict_files() -> None:
+    argv = agents.build_launch_argv(
+        "cursor",
+        role=config.FIXER_ROLE,
+        output="/tmp/out",
+        run_id="run",
+        repo="o/r",
+        conflict_files="a,b",
+    )
+    idx = argv.index("--conflict-files")
+    assert argv[idx + 1] == "a,b"
+
+
 @pytest.mark.parametrize("tier", list(config.FIXER_TIER_ORDER))
 def test_build_launch_argv_per_tier(tier: str) -> None:
     argv = agents.build_launch_argv(
