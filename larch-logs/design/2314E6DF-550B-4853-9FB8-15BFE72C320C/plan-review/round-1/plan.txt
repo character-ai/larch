@@ -1,0 +1,173 @@
+# Implementation Plan — ship-pr → Python Phase 3: Rebase component
+
+Create `python/rebase.py`: a pure, idempotent rebase component that brings the feature
+branch up to date on `origin/main`, deterministically auto-resolves trivial/bump-only/
+CHANGELOG conflicts, drops the stale bump (+ companion CHANGELOG) commit before replay,
+runs an in-process fixer-agent waterfall for non-trivial conflicts, re-classifies/re-bumps,
+and force-pushes with lease. The module returns a typed `StepResult`/`Outcome` and raises
+`NeedsUserInput`/`Stalled` on exhaustion. No persisted state machine; recovery is from
+git/gh ground truth (locked decision #1). No live `/implement` wiring (locked decision #2).
+
+## Files to modify/create
+
+### NEW: `python/rebase.py`
+Public entry point and helpers. All git/agent shell-outs go through an injected `proc.Runner`.
+
+- `@dataclass(frozen=True) RebaseResult` — `outcome: Outcome`, `rebased: bool`, `pushed: bool`,
+  `new_version: str | None`, `attempts: int`, `detail: str` (redacted).
+- `rebase_and_rebump(runner, launch_fn, *, base_remote="origin", base_ref="main", repo, run_id,
+  cwd=None, max_attempts=config.REBASE_MAX_ATTEMPTS) -> RebaseResult` — the orchestration:
+  1. **Ground-truth guards** — resolve branch via `git.try_current_branch` (non-raising; detached
+     HEAD / symbolic-ref failure → `None`) → `Stalled` when absent; never let `ShipError` from
+     `git.current_branch` escape this path;
+     derive the attempt count from git state, not a persisted counter; cap at `max_attempts`.
+  2. **Drop stale bump** — `version_bump.drop_bump_commit(runner, allow_changelog_only=False)`;
+     on `DropResult.dropped=False` with a non-"no match" error, raise `Stalled` (mirror the bash
+     "stalling to prevent stale-bump push" guard). When `dropped=True`, call
+     `_stage_rebump_bullets(runner, *, old_version, cwd)` (bash `ship_pr_stage_rebump_bullets`
+     parity): parse `old_version` from the dropped bump subject (`BUMP_COMMIT_SUBJECT_TEMPLATE` /
+     `_BUMP_SUBJECT_RE` on `git.log_subject` at `drop.old_sha`); `changelog.extract_version_body`
+     into a bullets staging file; `changelog.drop_changelog_commit(runner, old_version)` — on
+     `dropped=False` with a non-"no match" error, raise `Stalled` (never generic
+     `find_subject_commit_depth` + `drop_replay_commit` for the companion commit).
+  3. **Fetch + rebase** — `git.fetch(base_remote, base_ref)`; skip when
+     `git.is_ancestor(runner, base_target, "HEAD")` is true (already-fresh short-circuit); else
+     `git.rebase(base_target)`.
+  4. **Conflict loop** — `_resolve_conflicts` until the in-progress rebase finishes or escalation
+     (no per-rebase episode cap; bash `rebase-push.sh --keep-on-conflict` keeps resolving across
+     multi-hop `--continue` conflicts). See `_resolve_conflicts`.
+  5. **Re-classify / re-bump** — `version_bump.classify_bump`, then `version_bump.apply_bump`;
+     guard against version regression (recompute, never lower the existing target).
+  6. **Post-bump CHANGELOG** — `_commit_changelog_after_rebump(runner, new_version, old_version,
+     bullets_path, *, cwd)` (bash `ship_pr_commit_changelog_after_rebump`): when staged bullets
+     exist, `changelog.write_changelog_entry` then `changelog.commit_changelog` without
+     `replaces_version`; else `commit_changelog` with `replaces_version` from `old_version` when
+     valid and distinct, or origin/main plugin.json version fallback; `Stalled` on failure /
+     unverified section (same-version replay / #2952 / #3102 parity).
+  7. **Force-push** — `_force_push_branch` (strict lease + bounded retry).
+  Return `RebaseResult(Outcome.OK, ...)` on success.
+- `_stage_rebump_bullets(runner, *, old_version, bullets_path, cwd) -> None` — extract bullets,
+  versioned `drop_changelog_commit`, clear bullets file on refusal; mirrors
+  `ship_pr_stage_rebump_bullets` / `drop-changelog-commit.sh --version OLD`.
+- `_commit_changelog_after_rebump(runner, new_version, old_version, bullets_path, *, cwd) -> None`
+  — mirrors `ship_pr_commit_changelog_after_rebump`; raises `Stalled` on hard failure.
+- `_resolve_conflicts(runner, launch_fn, *, repo, run_id, cwd) -> None` — one conflict round:
+  1. Enumerate unmerged paths (`git.diff_name_only --diff-filter=U`, via a small git helper).
+  2. **Deterministic pre-pass** — for each unmerged path: CHANGELOG → `changelog.auto_resolve`;
+     `.claude-plugin/plugin.json` / `LARCH_BUMP_FILES` (bump-commit only) / auto-generated →
+     checkout upstream (stage-2) and stage. Track which paths remain.
+  3. If unmerged paths remain (non-trivial): build the per-file fixer prompt (the Phase 1–4
+     conflict context from `conflict-resolution.md` — "upstream (main)" / "feature branch commit"
+     labels, never ours/theirs), then `agents.run_waterfall(config.FIXER_TIER_ORDER, launch_fn,
+     first_tier=...)`. The injected `launch_fn` shells out to the agent CLI (built via
+     `agents.launch_tier`) which resolves in the working tree; a `WaterfallResult.winning_tier`
+     means the agent ran. Re-check unmerged paths.
+  4. If unmerged paths still remain after the waterfall: raise `NeedsUserInput` (uncertain
+     conflicts the component cannot resolve — the future `ship.py` driver owns user escalation).
+  5. `git.rebase_continue(runner)` (editor-suppressed). Exit 0 → done. New conflict (later commit)
+     → call `_resolve_conflicts` again with a **fresh** unmerged-path list (multi-hop parity;
+     no artificial round cap). Empty/already-applied → `git rebase --skip`.
+- `_force_push_branch(runner, *, cwd, sleep_fn=time.sleep) -> CommandResult` — resolve `PUSH_REMOTE`
+  (`branch.<b>.pushRemote` → `branch.<b>.remote` → `origin`), fetch the remote branch, compute
+  `EXPECTED_REMOTE_OID`, strict `git.force_push_with_lease_expecting`, bounded retry via `retry.py`
+  with the injectable `sleep_fn`; short-circuit success when remote tip already equals local HEAD.
+
+### NEW: `python/test_rebase.py`
+Colocated deterministic-path parity tests (stub `proc.Runner` + stub `launch_fn`; no real
+cursor/codex/claude, no network). Mirror the `test_version_bump.py` `ProcRunner`/stub pattern.
+Cases: drop-bump + drop-changelog replay correctness; already-fresh short-circuit; trivial
+auto-resolve dispatch (CHANGELOG via `changelog.auto_resolve`, plugin.json via upstream checkout);
+non-trivial conflict → stub waterfall win → `rebase --continue`; multi-hop conflict (second
+`--continue` conflicts → fresh list); fixer waterfall exhaustion → `NeedsUserInput`; attempt-cap
+exhaustion → `Stalled`; detached-HEAD → `Stalled` via `try_current_branch`; versioned companion
+changelog drop (`drop_changelog_commit` + bullet staging, Stalled on guarded refusal); post-bump
+`commit_changelog` / `write_changelog_entry` tail (bullets path, `replaces_version` fallback,
+same-version replay); re-bump version-regression guard; force-push
+strict-lease argv + retry/short-circuit with a stub `sleep_fn`.
+
+### UPDATED: `python/config.py`
+Add `REBASE_MAX_ATTEMPTS: Final = 20` (bash `_max_rebases`) and a `FIXER_ROLE` label string. Reuse the
+existing `FIXER_TIER_ORDER`, `WATERFALL_MAX_TIERS`, `DROP_BUMP_MAX_DEPTH`, `DROP_CHANGELOG_MAX_DEPTH`.
+Do **not** add a `FIXER_CONFLICT_MAX_ROUNDS` cap — bash rebase has no reviewer-voting round limit
+on multi-hop `--continue`; only `REBASE_MAX_ATTEMPTS` bounds outer retries.
+
+### UPDATED: `python/git.py`
+Add thin typed primitives `rebase.py` needs (and future phases reuse):
+- `try_current_branch(runner, *, cwd=None) -> str | None` — `git symbolic-ref --short HEAD`;
+  return `None` on non-zero exit (detached HEAD) without raising `ShipError`.
+- `is_ancestor(runner, ancestor, descendant, *, cwd=None) -> bool` — `git merge-base
+  --is-ancestor` (exit 0 → True; used for already-fresh short-circuit).
+- `rebase_continue(runner, *, cwd=None)` — `git rebase --continue` with both `GIT_SEQUENCE_EDITOR`
+  and `GIT_EDITOR` set to `true` (extend `_git_subprocess_env` to also set `GIT_EDITOR`).
+- `rebase_skip(runner, *, cwd=None)` — `git rebase --skip`.
+- `force_push_with_lease_expecting(runner, remote, refspec, expected_oid, *, cwd=None)` — strict
+  `git push --force-with-lease=<refspec>:<expected_oid> <remote>`. Leave the existing loose
+  `force_push_with_lease` untouched (backward-compat; one test caller).
+Reuse the existing `git.rebase(runner, "--abort")` pattern for abort (precedent in `bump_worktree`).
+
+### UPDATED: `python/test_git.py`
+Add stub-runner cases for `try_current_branch` (detached → `None`), `is_ancestor` (argv/exit-code
+mapping), `rebase_continue` (env carries suppressed editors), `rebase_skip`, and
+`force_push_with_lease_expecting` (strict lease argv shape).
+
+### UPDATED: `python/README.md`
+Add a Phase 3 line under the layout/phase notes: `rebase.py` — Phase 3 port (auto-resolve,
+drop-bump, in-process fixer waterfall, force-lease); dev/CI-only until Phase 7.
+
+## Approach
+- Reimplement logic in Python; shell out only to `git`/agent CLIs through the injected `Runner`
+  (locked decision #3). Reuse the Phase 1/2 surfaces (`changelog.auto_resolve`,
+  `version_bump.*`, `bump_worktree.*`, `git.*`, `agents.run_waterfall`) — do not re-implement them.
+- The fixer is **full and in-process** (Round 1 decision): rebase.py builds the conflict prompt,
+  runs the waterfall, then verifies the tree and continues the rebase. Tests inject a stub
+  `launch_fn`, so no real agent runs.
+- Idempotent and stateless: every decision (what to drop, whether already fresh, how many attempts)
+  reads from git ground truth. No `REBASE_COUNT` file, no resume flags, no `record_failure`
+  issue-logging, no larch-logs fixup — those stay with the future `ship.py` driver.
+- Escalation is by return value: uncertain conflicts the waterfall cannot clear → `NeedsUserInput`;
+  attempt-cap / unrecoverable git state → `Stalled`. The component never prompts or exits the process.
+
+## Edge cases
+- Detached HEAD before rebase → `Stalled` via `try_current_branch` (no `ShipError` leak).
+- `drop_bump_commit` returns `dropped=False` with a real error (dirty tree, parent missing) →
+  `Stalled`; "no bump commit found" is benign (nothing to drop) → continue.
+- Companion changelog drop uses versioned `changelog.drop_changelog_commit`; guarded
+  `dropped=False` → `Stalled` (prevents #2952 replay loop).
+- Re-bump always ends with `_commit_changelog_after_rebump` after `apply_bump` (plugin.json-only
+  bump commit is insufficient for push parity).
+- HEAD already contains `base_target` → already-fresh short-circuit (skip rebase, still re-bump+push
+  in push mode).
+- Fork mode: `PUSH_REMOTE` ≠ `base_remote`; resolve via per-branch pushRemote/remote config.
+- Force-push lease rejected but remote tip already equals local HEAD (a prior attempt landed) →
+  treat as success.
+- Multi-hop rebase: a later replayed commit conflicts after a clean resolution → re-enumerate the
+  fresh unmerged-path list each `--continue` iteration (never reuse the stale list).
+- Empty/already-applied commit during `--continue` → `git rebase --skip`, then retry.
+
+## Failure modes
+- **Stale-bump replay loop** — dropping the bump but not its companion CHANGELOG commit would replay
+  `Update CHANGELOG …` forever. Signal: `drop_replay_commit` returns non-None or the CHANGELOG
+  subject reappears. Mitigation: versioned `changelog.drop_changelog_commit` after bullet extract;
+  `Stalled` if the companion drop fails (not generic subject-depth replay).
+- **Bump without CHANGELOG tail** — `apply_bump` alone leaves no `Update CHANGELOG for NEW` commit.
+  Mitigation: `_commit_changelog_after_rebump` with bullets / `replaces_version` fallback; `Stalled` on failure.
+- **Lease overwrite of a concurrent runner** — refreshing the lease OID across retries could clobber
+  another push. Signal: lease rejection after a remote-tip change. Mitigation: compute
+  `EXPECTED_REMOTE_OID` once and reuse it across retries (bash parity), short-circuit on tip==HEAD.
+- **Infinite rebase storm** — repeated `ACTION=rebase` triggers. Signal: attempt count ≥
+  `REBASE_MAX_ATTEMPTS`. Mitigation: hard cap derived from git state → `Stalled`.
+
+## Testing strategy
+- Colocated `python/test_rebase.py` with a stub `proc.Runner` (scripted per-argv `CommandResult`)
+  and a stub `launch_fn` returning canned `TierAttempt`s. Cover every deterministic path, the
+  waterfall win/exhaust branches, `REBASE_MAX_ATTEMPTS` cap, multi-hop `--continue`, and the
+  force-push lease/retry argv.
+- Extend `python/test_git.py` for the five new git helpers (`try_current_branch`, `is_ancestor`,
+  plus the three rebase/push helpers).
+- Bars: `make py-lint` (ruff + pylint + pyright) and `make py-test` green; `test_stdlib_only.py`
+  still passes (rebase.py imports stdlib + sibling modules only). No twin-repo harness against the
+  embedded `run_rebase_rebump` (Round 1 decision: deterministic-path parity via unit tests).
+
+diff_added: 1340
+diff_deleted: 18
+diff_lines: 1360

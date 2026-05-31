@@ -1,0 +1,41 @@
+v1	mark	1780260155	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1780260400	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780260288	1780260400	112	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780260402	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780260288	1780260402	114	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780260409	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780260288	1780260409	121	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780260411	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780260288	1780260411	123	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780260432	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780260288	1780260432	144	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780260457	implement	-	cursor	cursor-phase2-aggregator	1780260436	1780260457	21	aggregator-output-phase2.txt	0	complete
+v1	vendor	1780260622	implement	-	cursor	cursor-phase1-voter-3	1780260576	1780260622	46	cursor-vote-output.txt	0	complete
+v1	vendor	1780260710	implement	-	cursor	cursor-review	1780260636	1780260710	74	cursor-output.txt	0	complete
+v1	vendor	1780260926	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780260832	1780260926	94	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780260944	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780260832	1780260944	112	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780260944	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780260832	1780260944	112	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780260945	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780260832	1780260945	113	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780260955	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780260832	1780260955	123	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780260990	implement	-	cursor	cursor-phase2-aggregator	1780260959	1780260990	31	aggregator-output-phase2.txt	0	complete
+v1	vendor	1780261154	implement	-	cursor	cursor-phase1-voter-3	1780261102	1780261154	52	cursor-vote-output.txt	0	complete
+v1	vendor	1780261230	implement	-	cursor	cursor-review	1780261158	1780261230	72	cursor-output.txt	0	complete
+v1	vendor	1780261449	implement	-	cursor	cursor-phase1-dyn-cursor-plan-test-gap-map	1780261366	1780261449	83	cursor-plan-dyn-test-gap-map-output.txt	0	complete
+v1	vendor	1780261453	implement	-	cursor	cursor-phase1-dyn-cursor-plan-phase-api-surface	1780261366	1780261453	87	cursor-plan-dyn-phase-api-surface-output.txt	0	complete
+v1	vendor	1780261459	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780261366	1780261459	93	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780261472	implement	-	cursor	cursor-phase1-dyn-cursor-plan-bash-parity	1780261366	1780261472	106	cursor-plan-dyn-bash-parity-output.txt	0	complete
+v1	vendor	1780261480	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780261366	1780261480	114	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780261480	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780261366	1780261480	114	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780261489	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780261366	1780261489	123	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780261502	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780261366	1780261502	136	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780261537	implement	-	cursor	cursor-phase2-aggregator	1780261506	1780261537	31	aggregator-output-phase2.txt	0	complete
+v1	vendor	1780261827	implement	-	cursor	cursor-phase1-voter-3	1780261775	1780261827	52	cursor-vote-output.txt	0	complete
+v1	vendor	1780261919	implement	-	cursor	cursor-review	1780261837	1780261919	82	cursor-output.txt	0	complete
+v1	vendor	1780264036	implement	-	cursor	cursor-review	1780263965	1780264036	71	cursor-output.txt	0	complete
+v1	vendor	1780264226	implement	-	cursor	cursor-phase1-dyn-cursor-plan-phase-surface-contract	1780264132	1780264226	94	cursor-plan-dyn-phase-surface-contract-output.txt	0	complete
+v1	vendor	1780264244	implement	-	cursor	cursor-phase1-dyn-cursor-plan-bash-source-fidelity	1780264132	1780264244	112	cursor-plan-dyn-bash-source-fidelity-output.txt	0	complete
+v1	vendor	1780264247	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780264132	1780264247	115	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780264254	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780264132	1780264254	122	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780264265	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780264132	1780264265	133	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780264267	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780264132	1780264267	135	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780264268	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780264132	1780264268	136	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780264286	implement	-	cursor	cursor-phase1-dyn-cursor-plan-test-branch-coverage	1780264132	1780264285	153	cursor-plan-dyn-test-branch-coverage-output.txt	0	complete
+v1	mark	1780264472	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1780264491	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1780264523	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1780264778	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

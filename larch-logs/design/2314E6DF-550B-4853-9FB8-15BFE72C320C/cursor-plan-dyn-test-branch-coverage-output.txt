@@ -1,0 +1,13 @@
+Reading the plan and cross-referencing it with the codebase and test infrastructure.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/rebase.py (planned L87-88)	Duplicate-heading guard calls duplicate_version_heading_count with wrong arity	Plan uses changelog.duplicate_version_heading_count(new_version) but python/changelog.py:219-224 requires (text, version, fmt=...); literal implementation raises TypeError or mis-detects duplicates and skips stall on concurrent same-version merges	In step 6 duplicate-heading guard, read CHANGELOG.md (or use git.show_file) and call duplicate_version_heading_count(text, new_version, fmt=ChangelogFormat.MARKDOWN) > 0 per scripts/ship-pr.sh:705-706 parity
+
+1. **[correctness]** `python/rebase.py` (planned, step 6 duplicate-heading guard) — The plan calls `changelog.duplicate_version_heading_count(new_version) > 0`, but the Phase 2 API is `duplicate_version_heading_count(text: str, version: str, *, fmt: ChangelogFormat) -> int` (`python/changelog.py:219-224`). Following the plan literally breaks the guard or the build. **Suggested revision:** Match bash (`scripts/ship-pr.sh:705-706`): load `CHANGELOG.md` text, then `duplicate_version_heading_count(text, new_version, fmt=ChangelogFormat.MARKDOWN) > 0`.
+
+**Coverage cross-check (no additional findings):**
+
+- **`_changelog_ready_after_rebump` + `committed=False`:** Named in `python/test_rebase.py` plan (`benign committed=False`, plan L174-175); matches `_commit_changelog_after_rebump` (plan L98-100).
+- **`noop_same_ref`:** Covered as force-push `tip==HEAD short-circuit` (plan L179-180); aligns with `scripts/git-force-push.sh:100-104`.
+- **`_is_empty_or_already_applied_rebase_error`:** Behavioral coverage via empty/already-applied vs hook-failure `--continue` cases (plan L169-170); substring list is specified at plan L105-108 for implementation.
+- **Stubs (`ProcRunner`, `TierAttempt`, `CommandResult`):** Consistent with `python/test_version_bump.py:21-71` (`ProcRunner`/`StubRunner` + `proc.CommandResult`) and `python/test_agents.py:13-148` (`agents.TierAttempt` for `launch_fn`); plan L156-157 correctly references both runner patterns.
+- **Other execution paths** (skip-after-continue failure, force-push `dirty_worktree`, benign `drop_bump` “no match”, `_sync_local_main` sub-branches): Addressed in plan behavior/edge sections; inferable from bundled test cases or EXONERATED under SIMPLE minimum-change bias.
