@@ -2272,9 +2272,10 @@ _run_per_job_command_capture() {
 }
 
 _run_per_job_command_once() {
-    local log_path=$1
+    local log_path=$1 _once_rc=0
     larch_err "⚠ ship-pr: verifying local CI job ${_PJL_JOB_TOKEN:-unknown}"
-    "${_PJA_ARGV[@]}" > "$log_path" 2>&1
+    "${_PJA_ARGV[@]}" > "$log_path" 2>&1 || _once_rc=$?
+    return "$_once_rc"
 }
 
 _sanitize_bail_list() {
