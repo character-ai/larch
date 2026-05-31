@@ -1,0 +1,5 @@
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+2026-05-30T22:51:56.754403Z ERROR codex_core::session: failed to record rollout items: thread 019e7b14-cd55-7fe3-9610-31ed6dcac892 not found
+⏳ codex agent: still running (2m elapsed)
+❌ codex agent: FAILED (exit code 1, 120s elapsed, output 0 bytes)

@@ -1,0 +1,277 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+# Plan: "Override and proceed" option for /design oversized-feature gates
+
+Add a third option — **Override and proceed (advised against)** — to the two `/design`
+prompts that gate an oversized feature: the Step 2b.5 plan-size **Hard branch** and the
+Step 1c/1d **semantic-sprawl** heuristic. The option carries a prominent anti-recommendation,
+sits **next-to-last** (Split / Override / Cancel), proceeds without a second confirmation, and
+writes a Warnings audit entry to the run log. Thresholds and the `--partition` flow do not change.
+
+## Approach
+
+The override behaves exactly like the existing **No-trigger branch**: it logs an audit note and
+**returns to the caller**. The caller's existing routing then decides where to go next:
+
+- Initial Step 2b -> Step 2b.5 hard override -> return -> Step 3 (plan review).
+- Gate B re-emit -> Step 2b.5 hard override -> return -> Step 3b (per Gate B flow).
+- Step 3 `LOOP_STATUS=plan-size-trigger` -> hard handler override -> return -> the existing
+  "short-circuit to Step 3b".
+- Step 1c/1d sprawl override -> return -> the normal pre-plan flow (no split, no cancel).
+
+Reusing "return to caller" keeps the change small and uniform: the override sets no
+`SUMMARY_OUTCOME` and never exits, so no new cancellation outcome is introduced and
+`render-final-summary.sh` (and its test) stay untouched.
+
+Each override appends a `### Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` through
+`append-tool-failure.sh` (`--category Warnings --exit-code 0 --redact`), so the committed run
+log records that the operator bypassed the gate. The audit write is best-effort (`|| true`) and
+never blocks the operator's chosen action.
+
+The new option is always shown when the prompt fires; the prominent warning is the only
+guardrail (no flag, no second confirmation). `--partition` still cannot auto-downgrade a hard
+trigger — the override is an explicit, loudly-discouraged operator escape hatch, a different
+thing from a `--partition` downgrade.
+
+## Option wording (load-bearing)
+
+Both prompts use the same label and a context-appropriate description.
+
+- Label (both prompts): `Override and proceed (advised against)`
+- Hard-branch description: `STRONGLY DISCOURAGED. Proceeding with this oversized plan is quite
+  likely to SEVERELY degrade the quality of the reviews and the resulting design. We advise
+  against it. Pick this only if you knowingly accept that risk; splitting is almost always
+  better. The override is recorded in the run log.`
+- Sprawl description: `STRONGLY DISCOURAGED. Designing this over-broad feature in one pass is
+  quite likely to SEVERELY degrade the quality of the reviews and the resulting design. We
+  advise against it. Pick this only if you knowingly accept that risk; splitting is almost
+  always better. The override is recorded in the run log.`
+
+Option order on both prompts (next-to-last placement): Split / Override / Cancel. The Split and
+Cancel labels and their existing on-select behavior are preserved verbatim.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+- Step 2b.5 **Hard branch** (the `## Plan Size — Hard Trigger` paragraph): change "exactly two
+  options" to three options; add the **Override and proceed (advised against)** option as the
+  next-to-last choice (Split / Override / Cancel); keep the `## Plan Size — Hard Trigger`
+  header, the Split label, and the Cancel branch (`SUMMARY_OUTCOME=cancelled-plan-size-hard`)
+  unchanged.
+- Replace the stale parenthetical "(no **Continue** option — hard triggers are never
+  downgradeable by `--partition`)" with text that keeps the non-downgradeable-by-`--partition`
+  invariant but states the override is an explicit, loudly-discouraged operator escape hatch
+  (not a `--partition` downgrade). This new sentence is the pinned invariant (see test below).
+- Add the On-**Override** behavior: write the trigger context (`TRIGGER_REASONS`, `PLAN_LINES`,
+  `DIFF_LINES`, `DIFF_ADDED`, `DIFF_DELETED`) to a small log file, append it to
+  `execution-issues.md` via `append-tool-failure.sh --category Warnings --exit-code 0 --tool
+  operator-override-hard-trigger --redact` (best-effort), print a loud `**⚠ 2b.5: operator
+  overrode plan-size hard trigger; review quality may be severely degraded.**` breadcrumb, then
+  **return to the caller** like the No-trigger branch (step 6). Note it sets no `SUMMARY_OUTCOME`
+  and re-prompts on every subsequent firing (not sticky).
+- Soft-advisory line (`HARD_TRIGGER_FIRED=true` + `SOFT_ADVISORY=true`): change "plan-body gate
+  still requires Split/Cancel" to "plan-body gate still requires the Split / Override / Cancel
+  prompt". (Coupled with the test pin at the `plan-body gate still requires` line.)
+- Step 3 post-loop branch matrix, `LOOP_STATUS=plan-size-trigger` line: add a short parenthetical
+  that Override returns and the existing "short-circuit to Step 3b" continues. Behavior is
+  already correct because Override returns; this is a clarity-only edit.
+
+### UPDATED: `skills/design/references/discussion-rounds.md`
+- Step 1c **semantic sprawl heuristic** (the `semantic sprawl heuristic` bullet): change "exactly
+  two options" to three; add the same **Override and proceed (advised against)** option as the
+  next-to-last choice; on Override, append the Warnings audit entry and continue the normal Step
+  1c flow (do not split, do not cancel). Keep the `Step 1c sprawl heuristic` / `semantic sprawl
+  heuristic` phrases and the `cancelled-sprawl` Cancel branch unchanged.
+- Step 1d sprawl reference: change "Split / Cancel only, no Continue" to describe the three-option
+  set with the override-continues semantics. Keep the `per Step 1d invocation` once-cap phrase
+  unchanged (the override does not re-arm the heuristic).
+
+### UPDATED: `skills/design/references/approval-gates.md`
+- The Gate B / Step 2b.5 cross-reference that reads "fires an `AskUserQuestion` with Split /
+  Cancel only (no Continue option) when `HARD_TRIGGER_FIRED=true`": reword to include the
+  Override option. Keep the `Step 2b.5` token (a separate structure-test pin depends on it).
+
+### UPDATED: `skills/design/references/flags.md`
+- Plan-size thresholds section, the "**Hard trigger** — any one suffices (no operator Continue
+  override in the hard `AskUserQuestion`)" line: reword the parenthetical to note the explicit,
+  strongly-discouraged Override-and-proceed escape hatch and that `--partition` still cannot
+  auto-downgrade a hard trigger. Do NOT touch the separate `--partition` bullet (its "no Continue
+  option, no threshold inspection" describes the partition branch, which fires no
+  `AskUserQuestion` and gains no override).
+
+### UPDATED: `scripts/test-design-structure.sh`
+- Replace the pin `grep -Fq '(no **Continue** option — hard triggers'` (and its FINDING_21 fail
+  message) with a `grep -Fq` on the new pinned invariant sentence from SKILL.md.
+- Add a pin asserting the option label `Override and proceed (advised against)` appears in both
+  `$SKILL_MD` and `$DISCUSSION_MD`.
+- Update the pin `grep -Fq 'plan-body gate still requires Split/Cancel'` to
+  `plan-body gate still requires the Split / Override / Cancel prompt` to match the SKILL.md
+  soft-advisory edit.
+- Leave all unrelated pins untouched (`## Plan Size — Hard Trigger`, `Step 1c sprawl heuristic`,
+  `semantic sprawl heuristic`, `per Step 1d invocation`, the `Step 2b.5` approval-gates pin, the
+  `SOFT_ADVISORY=`/`DIFF_ADDED=`/`DIFF_DELETED=`/`MECHANICAL_CHURN=` parse pins, the sub-step
+  transition string, the `cancelled-plan-size-hard` enum, and the Step 1d-sprawl-return pin).
+
+### UPDATED: `README.md`
+- The `/design` row that says "hard triggers still show the hard `Split`/`Cancel` prompt before
+  that same Split-path": change to `Split`/`Override`/`Cancel` for accuracy. One-clause precision
+  fix per the drift-prone-prose rule.
+
+## Edge cases
+
+- **Not sticky**: the hard prompt re-fires on every oversized re-emit (e.g. a Gate B revision
+  that is still oversized). Each override re-prompts and logs its own audit entry.
+- **`--partition` + hard trigger**: the hard branch still fires with all three options; Override
+  proceeds, Split enters Split-path. The partition branch (partition set, no hard trigger) is
+  unchanged — it routes straight to Split-path with no `AskUserQuestion`, so it gains no override.
+- **Sprawl at Step 1c vs Step 1d**: both continue the normal pre-plan flow on Override; the
+  once-per-step sprawl cap is unchanged (override does not re-arm the heuristic).
+- **`plan-size-trigger` mid-review**: Override returns from the hard handler and the existing
+  "short-circuit to Step 3b" carries the run forward; no extra review round runs.
+- **Audit-log helper fails or is absent**: the `append-tool-failure.sh` call is best-effort
+  (`|| true`); the override still proceeds. Logging never blocks the operator's choice.
+- **AskUserQuestion `Other` free-text**: unchanged — existing gate Other-handling applies.
+
+## Failure modes
+
+1. **Stale cross-reference drift.** Missing one of the four prose surfaces (SKILL.md,
+   discussion-rounds, approval-gates, flags, README) leaves docs that contradict the new option.
+   Earliest signal: the plan-review panel or a later run-log audit flags the contradiction.
+   Mitigation: the file list enumerates every stale "no Continue / Split-Cancel-only" surface;
+   structure-test pins lock the SKILL.md + discussion-rounds invariants.
+2. **Coupled test pin not updated -> CI red.** Editing the SKILL.md "(no Continue ...)" prose or
+   the soft-advisory line without updating the matching `test-design-structure.sh` pin fails CI.
+   Earliest signal: `bash scripts/test-design-structure.sh` fails locally or in `/implement`
+   Step 5 / CI. Mitigation: pair every pinned-prose edit with its pin update in the same commit.
+3. **Override mistaken for a cancel/exit.** If implemented as setting `SUMMARY_OUTCOME` or
+   exiting, the run aborts instead of proceeding. Earliest signal: the run ends after override
+   rather than reaching Step 3 / Step 3b. Mitigation: spec Override to mirror the No-trigger
+   branch — return to caller, no `SUMMARY_OUTCOME`, no exit.
+
+## Testing strategy
+
+- Update `scripts/test-design-structure.sh` pins as above; add the Override-label pin. Run
+  `bash scripts/test-design-structure.sh` — must pass.
+- Run `bash scripts/relevant-checks.sh` (or `make lint`) over the edited files: agent-lint,
+  markdownlint (MD038 code-span whitespace), bash32, readability-preamble, bare-grep-probe,
+  foreground-markers, and renderer-substitution checks must pass.
+- `skills/design/scripts/check-plan-size.sh` is NOT modified (thresholds unchanged), so
+  `test-check-plan-size.sh` stays green with no edits. `render-final-summary.sh` is untouched
+  (no new outcome), so `test-render-final-summary.sh` stays green. Run both to confirm no
+  regression.
+- Limitation: the override routing is prompt-side (the orchestrator fires the `AskUserQuestion`
+  and branches in prose), so there is no script unit test for the actual override path. The
+  structure tests pin the prose contract; the behavior itself is verified by manual QA of a
+  `/design` run that trips the hard trigger and picks Override.
+
+## Out of scope
+
+- Hard-trigger thresholds (`plan-body > 800`, `diff_added > 2000`, legacy `diff_lines > 1500`)
+  and the `mechanical_churn` soft-advisory: unchanged.
+- The `--partition` routing and the Split-path / decomposition panel: unchanged.
+- No new flag and no second confirmation gate.
+
+diff_added: 55
+diff_deleted: 20
+diff_lines: 75
+
+</plan>
+
+<findings>
+### FINDING_1: Stale plan-review-loop breadcrumb omits Override option
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Concern**: When `SOFT_ADVISORY=true` fires under a HARD trigger, the script still prints a two-option breadcrumb (“plan-body gate still requires Split/Cancel”) while the operator prompt will offer three options (Split / Override / Cancel). The plan updates SKILL.md and `test-design-structure.sh` for that phrase but does not include `plan-review-loop.sh` in its modified-files list, so user-visible guidance can contradict `AskUserQuestion`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add `skills/design/scripts/plan-review-loop.sh` to the modified-files list and update line 575 from `plan-body gate still requires Split/Cancel` to `plan-body gate still requires the Split / Override / Cancel prompt` (or the exact phrase chosen for SKILL.md). Also update `plan-review-loop.md` sibling per `.claude/rules/script-md-siblings.md`.
+
+
+### FINDING_2: Override audit omits full append-tool-failure.sh contract
+- **Reviewer(s)**: unknown-slot, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Planned Override audit prose (hard trigger in SKILL.md and sprawl in `discussion-rounds.md`) cites only a subset of `append-tool-failure.sh` flags (`--category`, `--exit-code`, `--tool`, `--redact`, or “append a Warnings entry”). The helper requires `--log`, `--site`, and `--output-file` (file must exist). A minimal implementation can skip the write, call without a log path, or exit 2; with `|| true` the gate still proceeds but run logs often lack the promised override record.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Mirror the existing validate-plan-commands Override block (SKILL.md:1401): write a small capture file first, then append with --log, --site (design Step 2b.5 / Step 1c / Step 1d), --tool (e.g. operator-override-hard-trigger / operator-override-sprawl-heuristic), --exit-code 0, --output-file, --redact
+  - From Cursor-Innovation: Mirror the existing plan-command Override pattern in skills/design/SKILL.md (~1401): write $DESIGN_TMPDIR/operator-override-sprawl.log first, then append with --site design Step 1c sprawl heuristic or design Step 1d sprawl heuristic, --tool operator-override-sprawl, --exit-code 0, --category Warnings, --redact
+  - From Cursor-Pragmatic: Match the full invocation pattern at skills/design/SKILL.md:1401 (--log, --site design Step 2b.5, --output-file for the trigger-context log, then --redact)
+
+
+### FINDING_3: Step 1c/1d sprawl Override widens scope beyond Step 2b.5 Hard branch
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Concern**: Feature scope targets Step 2b.5 Hard branch only, but the plan extends Override-and-proceed to Step 1c/1d semantic-sprawl heuristics in `discussion-rounds.md` (and related SKILL.md / `test-design-structure.sh` pins). That adds distinct semantics (pre-plan flow vs plan review), extra prose and test surface, and behavior not called out in scope—conflicting with minimum-change / SIMPLE-tier expectations unless explicitly justified in the plan.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Remove the discussion-rounds.md sprawl-heuristic Override additions and confine the change to SKILL.md Step 2b.5, approval-gates.md, flags.md, README.md, and test-design-structure.sh; if the sprawl expansion is intentional, call it out explicitly in the plan's ## Scope section
+  - From unknown-slot: Limit this PR to Step 2b.5 hard-trigger Override only. File a follow-up issue for sprawl-prompt Override if desired. Remove the discussion-rounds.md edits and the DISCUSSION_MD test pin from this change; the Step 1d "Split / Cancel only, no Continue" sentence and the Step 1c "exactly two options" prose stay as-is.
+
+
+### FINDING_4: flags.md partition bullet still describes two-option hard prompt
+- **Reviewer(s)**: unknown-slot
+- **Severity**: important
+- **Concern**: The `--partition` bullet in `skills/design/references/flags.md` describes the hard-trigger-alongside-partition case as showing a “hard **Split/Cancel** prompt” (two options). After the change, that prompt is Split / Override / Cancel. The plan says not to touch the partition-only path clauses, but the bullet’s hard-trigger clause is stale and misleads operators.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From unknown-slot: Add a minimal update inside the `--partition` bullet to change "the hard **Split/Cancel** prompt" to "the hard **Split/Override/Cancel** prompt". The preceding "no Continue option, no threshold inspection" clause describes the partition-only (no hard trigger) path and is correct as-is; only the hard-trigger-alongside-partition description needs updating.
+
+---
+
+**Merge notes (diagnostic, not part of machine output):**
+- Input FINDING_2–4 → aggregated **FINDING_2** (same audit-contract risk; distinct verbatim fixes preserved).
+- Input FINDING_5–6 → aggregated **FINDING_3** (same scope-creep risk; severity **important** over **nit**).
+- Input FINDING_1 and FINDING_7 kept separate (different files and fixes despite similar “two vs three options” theme).
+
+
+</findings>
+
+<feature>
+Add "override and proceed" option to /design Step 2b.5 hard-trigger prompt
+
+## Summary
+
+Add an **"override and proceed"** option to the `/design` Step 2b.5 hard-trigger `AskUserQuestion` (in `skills/design/SKILL.md`).
+
+## Current behavior
+
+When `HARD_TRIGGER_FIRED=true` — plan-body line count **> 800**, or `diff_added` **> 2000** (legacy `diff_lines` **> 1500**) — the Step 2b.5 **hard branch** fires an `AskUserQuestion` with **exactly two** options:
+
+1. "Let my panel of agents split this feature for you"
+2. "Cancel"
+
+This is deliberate: SKILL.md notes "(no **Continue** option — hard triggers are never downgradeable by `--partition`)". There is intentionally no escape hatch to proceed with an oversized plan.
+
+## Requested change
+
+Add a **third** option that lets the operator override the hard trigger and proceed straight to plan review (Step 3) with the current oversized plan. Requirements:
+
+1. **Prominent anti-recommendation.** The new option's label/description must very prominently state that overriding is **quite likely to severely degrade the quality of the reviews and the resulting plan**, and that we **advise against it**.
+2. **Position: next-to-last.** It must be shown as the next-to-last choice — i.e. **between** the Split option and Cancel. Final option order:
+   - "Let my panel of agents split this feature for you"
+   - **Override and proceed (advised against — likely severe quality degradation)**
+   - "Cancel"
+
+## Motivating example
+
+> "As I flagged: `HARD_TRIGGER_FIRED=true` (reason diff-added: 2700 > 2000). Plan body is only 238 lines (under the 800 plan-body trigger), so this is purely the diff-size trigger — driven by the full-surface scope you chose in Round 1."
+
+In cases like this the operator may knowingly accept the risk and want to proceed rather than split or cancel.
+
+## Scope
+
+The larch `/design` skill itself:
+
+- Primary: `skills/design/SKILL.md` Step 2b.5 **Hard branch** (the `AskUserQuestion` option list and the on-Override routing to Step 3).
+- Any structure-test pins that assert the current "exactly two options" wording (e.g. `scripts/test-design-structure.sh`).
+- Possibly `skills/design/references/flags.md` / `references/approval-gates.md` cross-references that describe the hard branch as having no Continue/override option.
+
+## Out of scope
+
+- The partition (`--partition` / `-p`) flow and soft-advisory (`mechanical_churn`) behavior are unchanged.
+- The hard-trigger thresholds themselves are unchanged.
+
+</feature>

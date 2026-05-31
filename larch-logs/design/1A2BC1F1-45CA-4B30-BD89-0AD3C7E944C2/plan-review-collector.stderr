@@ -1,0 +1,13 @@
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+2026-05-30T22:51:14.702946Z ERROR codex_core::session: failed to record rollout items: thread 019e7b14-d4ca-75c2-8d24-07021a617434 not found
+❌ codex agent: FAILED (exit code 1, 71s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+2026-05-30T22:51:54.379358Z ERROR codex_core::session: failed to record rollout items: thread 019e7b14-d4dc-79b0-a501-37ab6316bc5a not found
+⏳ codex agent: still running (2m elapsed)
+❌ codex agent: FAILED (exit code 1, 120s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---

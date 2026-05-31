@@ -1,0 +1,20 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:1008	`LOOP_STATUS=plan-size-trigger` branch still names a Split-path/Cancel-only handler; planned edit is only a parenthetical	Implementer can treat mid-review `plan-size-trigger` as a reduced two-option prompt (no Override) or skip re-running `check-plan-size.sh`, so audit KVs/`## Plan Size — Hard Trigger` context are missing and Override never appears after plan-review revision	Replace `Split-path / Cancel` with normative text to run Step 2b.5 steps 1–4 hard branch (fresh `check-plan-size.sh` capture, Split/Override/Cancel `AskUserQuestion`, On-Override audit + return); state Override then short-circuits to Step 3b; do not rely on a clarity-only parenthetical alone
+
+**1. [correctness] `skills/design/SKILL.md:1008` — `plan-size-trigger` handler wording**
+
+The post-loop matrix still tells the orchestrator to run the “Step 2b.5 Split-path / Cancel `AskUserQuestion` handler”:
+
+```1008:1008:skills/design/SKILL.md
+- `LOOP_STATUS=plan-size-trigger` — run the Step 2b.5 Split-path / Cancel `AskUserQuestion` handler first, then short-circuit to Step 3b; skip Gate B and Step 3.6. Print `⏩ 3.6: assessor — skipped (Step 3 plan-size-trigger short-circuit)`.
+```
+
+The plan only adds a parenthetical that Override returns before the existing 3b short-circuit; it does not reword this line. That conflicts with the new hard branch (three options, audit log needs `TRIGGER_REASONS` / `PLAN_LINES` / etc. from a fresh `check-plan-size.sh` capture in steps 2–3). `plan-review-loop.sh` sets `LOOP_STATUS=plan-size-trigger` but does not persist those KVs for the orchestrator.
+
+**Scenario:** After a revising round trips the hard gate, the agent follows line 1008 literally, offers Split/Cancel only (or proceeds without re-sizing), and never surfaces **Override and proceed (advised against)** or a structured Warnings entry—undermining the main mid-review escape hatch.
+
+**Suggested revision:** In the SKILL.md edit list, replace “Split-path / Cancel handler” with “Step 2b.5 hard branch (steps 1–4: `check-plan-size.sh`, then Split / Override / Cancel prompt)” and keep the Override → return → Step 3b short-circuit explicit.
+
+---
+
+**Exonerated (SIMPLE / minimum-change):** Gate B Approach bullet saying “→ Step 3b” without naming 3.6 (authoritative `SKILL.md:1045` and `approval-gates.md:160` stay unchanged). Best-effort audit with `|| true`. `AskUserQuestion` `Other` bypass without structured audit (pre-existing; plan marks unchanged). No new tests for prompt-side routing (acceptable for this PR). Sprawl Override deferred per scope.

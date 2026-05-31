@@ -1,0 +1,19 @@
+Reviewing the plan against the repository: reading the plan and the cited pin/grep sources.
+Checking related prose surfaces and whether any pins would break after the planned edits.
+Checking whether the plan specifies the replacement invariant text and scanning for other stale cross-references.
+Pin-alignment checks against current repo state:
+
+**(a)** `(no **Continue** option — hard triggers` — present verbatim in `skills/design/SKILL.md:781` (full parenthetical continues through `` `--partition` ``).
+
+**(b)** `plan-body gate still requires Split/Cancel` — present verbatim in `skills/design/SKILL.md:778`.
+
+**(c)** Planned pin updates cover the two substrings above; untouched pins (`## Plan Size — Hard Trigger`, `Step 1c sprawl heuristic`, `semantic sprawl heuristic`, `per Step 1d invocation`, `Step 2b.5`, SOFT_ADVISORY/DIFF_* pins, `cancelled-plan-size-hard`, Step 1d-sprawl-return) remain valid after the proposed edits.
+
+**(d)** New label `Override and proceed (advised against)` does not conflict with existing `grep -Fq 'Override'` at `scripts/test-design-structure.sh:225` (validator label at `skills/design/SKILL.md:1398`); the new pin is more specific.
+
+One integration gap outside the pin contract:
+
+1. **[OUT_OF_SCOPE] risk-integration** — `skills/design/scripts/plan-review-loop.sh:575` — Plan updates the soft-advisory suffix in `SKILL.md:778` but omits the duplicate printf in `plan-review-loop.sh`, which still emits `plan-body gate still requires Split/Cancel` — On Gate B re-emit paths where `mechanical_churn` co-fires with a plan-body hard trigger, operators see advisory text that contradicts the new Split/Override/Cancel contract — Mirror the SKILL.md suffix change in the one-line printf at `plan-review-loop.sh:575`, or document why that echo is intentionally frozen.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	latent	risk-integration	skills/design/scripts/plan-review-loop.sh:575	Soft-advisory printf not listed in plan file set despite SKILL.md suffix change	Mechanical-churn + hard-trigger re-emit shows stale Split/Cancel advisory while gate offers three options	Mirror SKILL.md suffix in the printf or document intentional exclusion

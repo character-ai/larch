@@ -1,0 +1,12 @@
+Operator aborted the Step 3 plan-review loop after round 1.
+
+Root cause: the codex reviewer CLI repeatedly failed (exit 1) with
+"failed to record rollout items: thread <id> not found" and produced 0-byte output,
+so the per-slot waterfall kept retrying, making the loop run for hours (bug).
+
+Round 1 DID complete with a valid tally (degraded panel: codex down; Claude + Cursor voted):
+  ACCEPTED_COUNT=4 (all important, unanimous), TALLY_PLAN_REVIEW_STATUS=ok, REVISE_STATUS=ok,
+  COLLECT_OK_COUNT=12, COLLECT_FAILURE_COUNT=2.
+All 4 accepted findings (plan-review-loop.sh breadcrumb sync; full append-tool-failure.sh
+audit contract; narrow scope to Step 2b.5 only; flags.md --partition hard-trigger clause) are
+reflected in the finalized plan.txt. Rounds 2+ were not run.

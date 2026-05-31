@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:1008	`LOOP_STATUS=plan-size-trigger` still names a "Split-path / Cancel" handler though Override is a third hard-branch outcome that returns without entering Split-path	An implementer can wire plan-size-trigger to a two-option Split/Cancel flow and never surface Override on the mid-review re-prompt (the #3118 escape path)	In the same edit, replace "Split-path / Cancel `AskUserQuestion` handler" with "Step 2b.5 hard-branch (Split / Override / Cancel) handler" and keep the planned Override parenthetical
+
+### 1. correctness — `skills/design/SKILL.md:1008`
+
+The plan adds Override to Step 2b.5 step 4 but only plans a parenthetical on the `plan-size-trigger` matrix line. That line still says to run the **"Split-path / Cancel"** handler. Override returns like the no-trigger branch and does not enter Split-path. Mid-review `plan-size-trigger` is the main re-prompt path after `plan-review-loop.sh` detects a hard threshold.
+
+**Suggested revision:** Reword line 1008 to call the **hard-branch (Split / Override / Cancel)** handler, not Split-path / Cancel, and keep the Override-return parenthetical the plan already specifies.

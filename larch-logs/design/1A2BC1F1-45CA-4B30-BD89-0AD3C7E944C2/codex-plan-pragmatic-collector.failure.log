@@ -1,0 +1,35 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-pragmatic-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 120s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-pragmatic-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:781-779 (proposed On-Override)	Hard-trigger audit uses abbreviated append-tool-failure.sh flags	Plan cites only --category, --exit-code, --tool, and --redact; append-tool-failure.sh requires --log, --site, and --output-file (scripts/append-tool-failure.sh:68-73). With || true the override still proceeds but run-log audit may be missing while copy promises recording	Match the full invocation pattern at skills/design/SKILL.md:1401 (--log, --site design Step 2b.5, --output-file for the trigger-context log, then --redact)
+2	in_scope	important	correctness	skills/design/references/discussion-rounds.md:27-28 (proposed sprawl Override)	Sprawl Override audit contract underspecified vs hard branch	Hard branch specifies trigger context file plus append-tool-failure; sprawl only says append Warnings. Implementer may omit --site/--tool/--output-file or skip capture, weakening sprawl audit parity	Spell the same append-tool-failure.sh shape for Step 1c/1d (--site design Step 1c sprawl heuristic or design Step 1d sprawl heuristic, --tool operator-override-sprawl-heuristic, context log file) in discussion-rounds.md
+3	in_scope	important	correctness	skills/design/references/flags.md:19	--partition bullet left saying Split/Cancel after hard section gains Override	Plan rewords Hard trigger in flags.md but forbids editing the --partition bullet, which still says hard plans show Split/Cancel. Same file will contradict the new three-option gate	Allow a one-clause fix on line 19 only (Split/Override/Cancel) or add a cross-reference in the Hard trigger section; do not leave stale Split/Cancel-only text beside updated thresholds
+
+**1. [correctness]** Hard-trigger `append-tool-failure.sh` invocation in the plan (SKILL.md On-Override) omits required `--log`, `--site`, and `--output-file`. The script fails usage without them; with `|| true` the operator proceeds but the promised run-log entry may never be written.
+
+**2. [correctness]** Sprawl Override in `discussion-rounds.md` only says “append Warnings audit entry” without the concrete `append-tool-failure.sh` contract used elsewhere (e.g. validator Override at `skills/design/SKILL.md:1401`), so sprawl bypasses may not be logged consistently.
+
+**3. [correctness]** `flags.md:19` will remain inaccurate if only the Hard trigger paragraph is reworded: it still says hard plans show a **Split/Cancel** prompt while the plan explicitly says not to edit that `--partition` bullet.
+
+**[OUT_OF_SCOPE] [risk-integration]** `skills/design/scripts/plan-review-loop.sh:575` duplicates the soft-advisory string `plan-body gate still requires Split/Cancel`; the plan updates SKILL.md but not this printf, so mid-review breadcrumbs can drift after the change. Consider aligning that line when touching plan-size prose (not required for the prompt-side gate to work).
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-pragmatic-output.txt.diag)
+
+Failed with exit code 1 after 120s. Output size: 0 bytes.
+
+## Failed-agent stderr tail (<TMPDIR>/codex-primary-plan-pragmatic-output.txt.stderr-tail)
+
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+2026-05-30T22:51:54.379358Z ERROR codex_core::session: failed to record rollout items: thread 019e7b14-d4dc-79b0-a501-37ab6316bc5a not found
+⏳ codex agent: still running (2m elapsed)
+❌ codex agent: FAILED (exit code 1, 120s elapsed, output 0 bytes)
+
+## Launcher stderr (<TMPDIR>/codex-primary-plan-pragmatic-output.txt.launch-stderr)
+
+(empty: <TMPDIR>/codex-primary-plan-pragmatic-output.txt.launch-stderr)
+
