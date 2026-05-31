@@ -109,6 +109,7 @@ TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 TOKEN_BUDGET_CAP=""
 CODEX_ADD_DIR=""
 STDERR_SINK=""
+RISK=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -128,7 +129,7 @@ while [[ $# -gt 0 ]]; do
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { larch_err "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value"; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
-        --risk) [[ -n "${2:-}" ]] || { larch_err "launch-review.sh: --risk requires a value"; exit 2; }; shift 2 ;;
+        --risk) [[ -n "${2:-}" ]] || { larch_err "launch-review.sh: --risk requires a value"; exit 2; }; RISK="$2"; shift 2 ;;
         --codex-add-dir) CODEX_ADD_DIR="${2:?--codex-add-dir requires a value}"; shift 2 ;;
         --stderr-sink) STDERR_SINK="${2:?--stderr-sink requires a value}"; shift 2 ;;
         *) larch_err "launch-review.sh: unknown flag: $1"; exit 2 ;;
@@ -601,7 +602,7 @@ if (( EXIT_CODE == 0 )) && [[ "$SIDECAR" != "/dev/null" && -f "$SIDECAR" ]]; the
     printf 'codex-status: ok (no stderr emitted during agent run)\n' >> "$SIDECAR" 2>/dev/null || true
 fi
 
-codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD" "" "$STDERR_SINK"
+codex_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD" "$RISK" "$STDERR_SINK"
 
 if [[ "$SIDECAR" != "/dev/null" ]]; then
     codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR" "codex_review"
@@ -650,6 +651,7 @@ FEATURE_FILE=""
 TIMING_TASK_KIND="${LARCH_TIMING_TASK_KIND:-}"
 TOKEN_BUDGET_CAP=""
 STDERR_SINK=""
+RISK=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -669,7 +671,7 @@ while [[ $# -gt 0 ]]; do
         --feature-file) FEATURE_FILE="${2:?--feature-file requires a value}"; shift 2 ;;
         --timing-task-kind) [[ -n "${2:-}" && "${2}" != --* ]] || { larch_err "launch-review.sh: --timing-task-kind requires a non-empty, non-flag-like value"; exit 2; }; TIMING_TASK_KIND="$2"; shift 2 ;;
         --token-budget-cap) case "${2:-}" in ''|*[!0-9]*) larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2 ;; esac; (( 10#${2:-0} >= 1 )) || { larch_err "launch-review.sh: --token-budget-cap requires a positive integer"; exit 2; }; TOKEN_BUDGET_CAP="$2"; shift 2 ;;
-        --risk) [[ -n "${2:-}" ]] || { larch_err "launch-review.sh: --risk requires a value"; exit 2; }; shift 2 ;;
+        --risk) [[ -n "${2:-}" ]] || { larch_err "launch-review.sh: --risk requires a value"; exit 2; }; RISK="$2"; shift 2 ;;
         --stderr-sink) STDERR_SINK="${2:?--stderr-sink requires a value}"; shift 2 ;;
         *) larch_err "launch-review.sh: unknown flag: $1"; exit 2 ;;
     esac
@@ -1025,7 +1027,7 @@ if (( EXIT_CODE == 0 )) && [[ "$SIDECAR" != "/dev/null" && -f "$SIDECAR" ]]; the
     printf 'cursor-status: ok (no stderr emitted during agent run)\n' >> "$SIDECAR" 2>/dev/null || true
 fi
 
-cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD" "" "$STDERR_SINK"
+cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD" "$RISK" "$STDERR_SINK"
 
 # Test-only deterministic hook (FINDING_1 of /review round 1 hardening): the
 # legacy `eval "$LARCH_TEST_TRAP_AFTER_INNER_DONE"` was an env-var → arbitrary-

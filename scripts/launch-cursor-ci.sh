@@ -224,7 +224,7 @@ if (( LAUNCHER_EXIT != 0 )); then
     append_launch_failure "CI $ROLE" "cursor-ci" "$LAUNCHER_EXIT" "${OUTPUT}.diag" "$_VERDICT" "$AUTH_ATTEMPT"
 fi
 
-cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-cursor-ci.sh" "$PROMPT_FILE" "$PWD"
+cursor_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-cursor-ci.sh" "$PROMPT_FILE" "$PWD" "" ""
 cursor_launcher_promote_inner_done "$OUTPUT"
 
 END_S=$(date +%s)
