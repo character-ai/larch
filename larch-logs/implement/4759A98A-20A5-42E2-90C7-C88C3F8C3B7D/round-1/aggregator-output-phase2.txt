@@ -1,0 +1,92 @@
+Normalized aggregator output from the supplied reviewer slots. Positive attestations (correctness/testing/edge-cases confirmations for `--risk` forwarding, ordering contract alignment, CI wiring, and symmetric wiring) are omitted — they describe working behavior, not actionable risks.
+
+### FINDING_1: Duplicate meta ordering assert helpers across harnesses
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `assert_meta_stderr_sink_before_outer_launcher` is duplicated in codex and cursor subshells in `scripts/test-launch-review.sh`; `scripts/test-collect-agent-retry.sh` has a third near-copy with a generic `before_prefix`. If ordering rules change (e.g. also assert before `CMD_JSON` on primary launch), maintainers must update three copies and subshells can drift.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Hoist one shared `assert_meta_key_before_key` helper at file scope or in a sourced test lib; reuse from both lanes and `test-collect-agent-retry.sh`.
+
+### FINDING_2: Duplicated inline codex outer-meta fixture blocks
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: New codex sink-outer-retry case in `scripts/test-collect-agent-retry.sh` inlines the same `TOOL=codex` meta `printf` block as case Q2 instead of a helper. Future meta field additions for codex outer-retry fixtures require editing multiple inline blocks; risk of Q2 and sink-outer-retry diverging.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Extract `write_codex_outer_meta` (or parameterize `write_outer_meta` by `TOOL`) and use it for Q2 and sink-outer-retry.
+
+### FINDING_3: Ordering assert failures lack meta debug context
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `assert_meta_stderr_sink_before_outer_launcher` calls `fail "$label"` with no meta context on mismatch. An ordering regression shows only the label string, not which line numbers were found, slowing harness debugging.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: On failure, emit `sink_ln`, `outer_ln`, and a short head of the meta file like other asserts in these harnesses.
+
+### FINDING_4: CMD_JSON retry ordering assert is tautological
+- **Reviewer(s)**: dyn-meta-ordering-contract-output.txt
+- **Severity**: latent
+- **Concern**: The new `assert_meta_stderr_sink_before … CMD_JSON` check on the CMD_JSON retry path in `scripts/test-collect-agent-retry.sh` (896–898) is tautological, not a runtime forwarding contract. That path invokes real `scripts/run-external-agent.sh` via `collect-agent-results.sh` `RETRY_ARGS` and never calls `*_launcher_append_outer_meta`, so retry `.meta` is written only by `run-external-agent.sh` in a fixed block where `STDERR_SINK=` always precedes `CMD_JSON=`. Whenever the preceding `grep -Fxq "STDERR_SINK=$SINK_CMD_JSON"` passes, the ordering assertion must also pass regardless of whether `RETRY_ARGS+=(--stderr-sink …)` forwarding regressed. It adds no regression signal beyond the presence check and can read as validating wrapper ownership when no wrapper participates.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-meta-ordering-contract-output.txt: Drop the CMD_JSON ordering assertion, or replace it with a check that actually distinguishes forwarding paths—for example assert `^STDERR_SINK=` appears before the first `^OUTER_LAUNCHER=` on outer-launcher retry metas only (already done at `scripts/test-collect-agent-retry.sh:848-850` / `877-879`), or add a test-only `run-external-agent.sh` shim that logs argv and assert `--stderr-sink` is present on the CMD_JSON retry invocation.
+
+### FINDING_5: [OUT_OF_SCOPE] Branch stacks unrelated commits vs main
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: Six commits vs `main` mix #3273 with unrelated fixes/docs/tests (structure) / five additional commits outside the stderr/risk plan (edge-cases). Reviewers must mentally filter a large diff; bisecting a regression to stderr/risk work is harder.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Prefer separate PRs or clearly separated commits when landing stacked work (observation only).
+  - From cursor-specialist-edge-cases-output.txt: **Why OOS:** not modified by `33b85f448`; separate issues/PR scope.
+
+### FINDING_6: [OUT_OF_SCOPE] Large unrelated doc delta in launch-review.md
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: Full-branch diff adds large #3283 degraded-response docs in the same file as the #3273 `--risk` bullet. Doc readers may conflate two features in one changelog-style edit.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Keep #3273 doc delta minimal in the feature commit (already true in 33b85f448).
+
+### FINDING_7: [OUT_OF_SCOPE] Append path may write duplicate STDERR_SINK= after OUTER_LAUNCHER=
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: Append path can write a second `STDERR_SINK=` after `OUTER_LAUNCHER=`; collector keeps the last value. If base and append sinks ever differed, retries could pick the wrong sink silently. Pre-existing; optional hardening is dedupe-on-read or omit 6th arg when `run-external-agent` already wrote base `STDERR_SINK=`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: optional hardening is dedupe-on-read or omit 6th arg when run-external-agent already wrote base STDERR_SINK=.
+
+### FINDING_8: [OUT_OF_SCOPE] corrupt-risk case does not assert normalized retry meta
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: **risk-integration** `scripts/test-collect-agent-retry.sh:814-827` — The existing `corrupt-risk` case verifies outer-retry succeeds with invalid input `OUTER_LAUNCHER_RISK=medium` but does not assert the retry `.meta` records normalized `OUTER_LAUNCHER_RISK=high`. Pre-existing; not introduced by this diff. A follow-up assertion would close the collector→launcher→retry-meta loop for risk normalization.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: A follow-up assertion would close the collector→launcher→retry-meta loop for risk normalization.
+
+### FINDING_9: [OUT_OF_SCOPE] No primary-path test for --risk medium normalization
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: **risk-integration** `scripts/test-launch-review.sh` — No primary-path test that `--risk medium` (non-`high|low`) normalizes to `OUTER_LAUNCHER_RISK=high` in outer `.meta`. Plan edge case documents this via `external_launcher_append_outer_meta`; only `low` + default are required. Pre-existing gap, not amplified by this change.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_10: [OUT_OF_SCOPE] No dedicated harness for .meta byte-stability after explicit "" "" args
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: **risk-integration** `scripts/test-launch-cursor-ci.sh` / `scripts/test-launch-cursor-implement.sh` — No dedicated harness asserts FINDING 6 `.meta` byte-stability after adding explicit `"" ""` args. Coverage relies on `scripts/test-lib-external-launcher-common.sh` function-level tests; acceptable given behavior-neutral intent.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_11: [OUT_OF_SCOPE] Empty 5th arg to append_outer_meta can inherit shell RISK env
+- **Reviewer(s)**: cursor-specialist-security-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: **risk-integration** `scripts/lib-external-launcher-common.sh:19` — Empty 5th positional to `external_launcher_append_outer_meta` uses `${5:-${RISK:-high}}`, so an exported `RISK` in the environment can influence `OUTER_LAUNCHER_RISK` without an explicit launcher `--risk`. Pre-existing; FINDING 6’s explicit `""` does not change that.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: **Suggested fix:** Only if you want to pin behavior: treat empty `$5` as “use default high” without env fallback (e.g. separate unset vs empty handling).
+  - From cursor-specialist-edge-cases-output.txt: **Why OOS:** unchanged semantics; FINDING_6 only makes empty slots explicit.
+
+### FINDING_12: [OUT_OF_SCOPE] Docs claim risk-gated effort; launch paths still always high-effort
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: nit
+- **Concern**: **risk-integration** `scripts/launch-review.sh:478` vs `launch-review.md:20-22` — Docs now state `--risk` drives “risk-gated effort” on collector replay, but Codex still always invokes `agent-model-args.sh --with-effort` and Cursor still wraps with `/max-mode on` regardless of parsed `RISK` (including on retry). Pre-existing execution gap; the PR improves meta fidelity but does not close it. **Impact:** Operational mismatch, not a privilege-escalation path (retries stay high-effort when meta says `low`).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Narrow docs or gate effort on normalized `RISK` if you want meta and behavior aligned.
+
+### FINDING_13: [OUT_OF_SCOPE] Collector retry stderr-sink validation is partial before relaunch
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: nit
+- **Concern**: **security** `scripts/collect-agent-results.sh:536-545` — `validate_retry_stderr_sink_or_mark` only rejects `..` in `META_STDERR_SINK`; full `[A-Za-z0-9._/-]` validation happens later when `launch-review.sh` / `run-external-agent.sh` receive `--stderr-sink`. Pre-existing; mitigated on the outer-retry path by launcher re-validation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: **Suggested fix:** Optional defense-in-depth: call `validate_meta_scalar_path` in the collector before retry launch. Other branch commits (`cleanup.sh` enumeration warnings, `ship-pr.sh` errexit preservation, `review-and-fix.sh` pathspec-only staging) are reliability or fail-closed hardening, not new trust-boundary regressions.
