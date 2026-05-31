@@ -744,6 +744,15 @@ grep -Fq 'design-route.sh configuration error (exit 2)' "$SKILL_MD" \
   || fail "(FINDING_3) SKILL.md Step 0b missing design-route.sh exit 2 abort prose"
 grep -Fq 'design-init-runparams.sh configuration error (exit 2)' "$SKILL_MD" \
   || fail "(FINDING_3) SKILL.md Step 0b missing design-init-runparams.sh exit 2 abort prose"
+# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
+grep -Fq 'design-route.sh failed (exit ${_route_rc}); aborting /design' "$SKILL_MD" \
+  || fail "(FINDING_9) SKILL.md Step 0b missing design-route.sh operational failure abort prose"
+# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
+grep -Fq 'design-init-runparams.sh failed (exit ${_init_rc}); aborting /design' "$SKILL_MD" \
+  || fail "(FINDING_9) SKILL.md Step 0b missing design-init-runparams.sh operational failure abort prose"
+# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
+grep -Fq 'design-init-runparams.sh failed (INIT_STATUS=${INIT_STATUS:-unknown}); aborting /design' "$SKILL_MD" \
+  || fail "(FINDING_9) SKILL.md Step 0b missing design-init-runparams.sh exit-1 status abort prose"
 grep -Fq '_route_out=' "$SKILL_MD" \
   || fail "(FINDING_2) SKILL.md Step 0b missing _route_out capture"
 grep -Fq '_init_out=' "$SKILL_MD" \

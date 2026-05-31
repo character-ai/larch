@@ -143,7 +143,11 @@ RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
 INIT_STATUS=ok
 RENAMED=false
 DESIGN_CLASSIFICATION="$CLASSIFICATION"
-WARN_VALUE=""
+WARN_LINES=()
+
+add_warn() {
+    WARN_LINES+=("$1")
+}
 
 if [[ "$CLASSIFICATION" == SIMPLE ]]; then
     design_classification_reason='default tier: SIMPLE (no --hard)'
@@ -170,7 +174,15 @@ _wdce_args=(
 if [[ "$MANUAL_REQUESTED" == true ]]; then
     _wdce_args+=(--manual-requested true)
 fi
-"${_wdce_args[@]}"
+if ! "${_wdce_args[@]}"; then
+    INIT_STATUS=env-refresh-failed
+    emit_kv INIT_STATUS "$INIT_STATUS"
+    phase_driver_write_result_env "$RESULT_ENV" \
+        "INIT_STATUS=$INIT_STATUS" \
+        "RUN_PARAMS_PATH=$RUN_PARAMS_PATH" \
+        "DESIGN_CLASSIFICATION=$DESIGN_CLASSIFICATION" || exit 1
+    exit 1
+fi
 
 # 3. [DESIGNING] rename
 if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designing ${REPO:+--repo "$REPO"} 2>&1); then
@@ -180,7 +192,7 @@ if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "
         *) RENAMED=true ;;
     esac
 else
-    WARN_VALUE="Step 0 — [DESIGNING] rename failed"
+    add_warn "Step 0 — [DESIGNING] rename failed"
 fi
 
 # 4. write-run-params.sh
@@ -222,17 +234,19 @@ if [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$MAN
             rm -f "$_rp_merge" "$_rp_err"
         fi
     else
-        printf '%s\n' "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
+        add_warn "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
     fi
 elif [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$MANUAL_REQUESTED" == true ]]; then
-    printf '%s\n' '**⚠ 0b: partition, brainstorm, and/or manual requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**'
+    add_warn '**⚠ 0b: partition, brainstorm, and/or manual requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**'
 fi
 
 emit_kv INIT_STATUS "$INIT_STATUS"
 emit_kv RENAMED "$RENAMED"
 emit_kv RUN_PARAMS_PATH "$RUN_PARAMS_PATH"
 emit_kv DESIGN_CLASSIFICATION "$DESIGN_CLASSIFICATION"
-[[ -n "$WARN_VALUE" ]] && emit_kv WARN "$WARN_VALUE"
+for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
+    emit_kv WARN "$_warn"
+done
 
 _init_kvs=(
     "INIT_STATUS=$INIT_STATUS"
@@ -240,7 +254,9 @@ _init_kvs=(
     "RUN_PARAMS_PATH=$RUN_PARAMS_PATH"
     "DESIGN_CLASSIFICATION=$DESIGN_CLASSIFICATION"
 )
-[[ -n "$WARN_VALUE" ]] && _init_kvs+=("WARN=$WARN_VALUE")
+for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
+    _init_kvs+=("WARN=$_warn")
+done
 if ! phase_driver_write_result_env "$RESULT_ENV" "${_init_kvs[@]}"; then
     exit 1
 fi

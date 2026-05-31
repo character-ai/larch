@@ -5,6 +5,7 @@ export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT=$(cd "$(dirname "$0")/.." && pwd -P)
 WRITER="$REPO_ROOT/scripts/write-run-params.sh"
+DESIGN_INIT="$REPO_ROOT/skills/design/scripts/design-init-runparams.sh"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 TMPROOT=$(mktemp -d "${TMPDIR:-/tmp}/larch-step0b-recovery.XXXXXX")
@@ -120,5 +121,66 @@ set +e; write_then_recover "$OUT7B" SIMPLE "$SPY7B" false false true; rc7b=$?; s
 [[ -e "$SPY7B" ]] || fail "case7b: recovery did not complete after successful write (spy absent)"
 jq -e '.manual_gate_b == true' "$OUT7B" >/dev/null \
   || fail "case7b: recovery did not flip manual_gate_b false->true; got $(cat "$OUT7B")"
+
+# Case 8: the harness must exercise the actual driver jq-failure path, including
+# append-tool-failure.sh, instead of only duplicating the merge helper.
+PLUGIN8="$TMPROOT/plugin8"; D8="$TMPROOT/design8"; STUB8="$TMPROOT/stub8"; SPY8="$TMPROOT/append-tool-failure.args"
+mkdir -p "$PLUGIN8/scripts" "$D8" "$STUB8"
+cat >"$PLUGIN8/scripts/write-run-params.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift 2 || true ;;
+  esac
+done
+[[ -n "$out" ]] || exit 2
+printf '{"partition_requested":false,"brainstorm_requested":false,"manual_gate_b":false}\n' >"$out"
+SH
+cat >"$PLUGIN8/scripts/write-design-current-env.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$out" ]] || exit 2
+printf 'DESIGN_TMPDIR=x\n' >"$out"
+SH
+cat >"$PLUGIN8/scripts/tracking-issue-write.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'RENAMED=false\n'
+SH
+cat >"$PLUGIN8/scripts/append-tool-failure.sh" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >"$SPY8"
+SH
+cat >"$STUB8/jq" <<'SH'
+#!/usr/bin/env bash
+printf 'stub jq failure\n' >&2
+exit 5
+SH
+chmod +x "$PLUGIN8/scripts/"*.sh "$STUB8/jq"
+set +e
+PATH="$STUB8:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN8" "$DESIGN_INIT" \
+  --design-tmpdir "$D8" \
+  --issue 8 \
+  --session-id RUN8 \
+  --claude-pid 12345 \
+  --classification SIMPLE \
+  --partition-requested true \
+  --brainstorm-requested false \
+  --manual-requested false >/dev/null 2>&1
+rc8=$?
+set -e
+[[ "$rc8" -eq 0 ]] || fail "case8: design-init-runparams.sh returned $rc8"
+[[ -s "$SPY8" ]] || fail "case8: append-tool-failure path was not executed on jq failure"
+grep -Fq -- '--tool jq(router-flags-merge)' "$SPY8" \
+  || fail "case8: append-tool-failure tool args drifted: $(cat "$SPY8")"
 
 echo "PASS: test-step0b-router-flag-recovery.sh"

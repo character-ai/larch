@@ -176,10 +176,10 @@ emit_route_result() {
     [[ -n "$TIER" ]] && kvs+=("TIER=$TIER")
     [[ -n "$BRAINSTORM_DONE" ]] && kvs+=("BRAINSTORM_DONE=$BRAINSTORM_DONE")
     local w e
-    for w in "${WARN_LINES[@]}"; do
+    for w in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
         kvs+=("WARN=$w")
     done
-    for e in "${ERROR_LINES[@]}"; do
+    for e in "${ERROR_LINES[@]+"${ERROR_LINES[@]}"}"; do
         kvs+=("ERROR=$e")
     done
     local kv
@@ -194,7 +194,10 @@ emit_route_result() {
 
 # 1. Resume detection
 if grep -Fq '<!-- larch:design-pause:start -->' "$ISSUE_BODY_FILE"; then
-    _pause_out=$("$PLUGIN_ROOT/scripts/design-pause-load.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"} 2>/dev/null || true)
+    set +e
+    _pause_out=$("$PLUGIN_ROOT/scripts/design-pause-load.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"} 2>&1)
+    _pause_rc=$?
+    set -e
     _load_ok=false
     _step=""
     while IFS= read -r _pline || [[ -n "$_pline" ]]; do
@@ -211,9 +214,19 @@ if grep -Fq '<!-- larch:design-pause:start -->' "$ISSUE_BODY_FILE"; then
             ERROR) ERROR_LINES+=("$_pval") ;;
         esac
     done <<<"${_pause_out:-}"
+    if [[ "${_pause_rc:-0}" -ne 0 ]]; then
+        ERROR_LINES+=("design-pause-load-failed")
+        ROUTE=cancel-pause-load
+        emit_route_result
+    fi
     if [[ "$_load_ok" == true && -n "$_step" ]]; then
         ROUTE="resume@${_step}"
         RESUME_STEP="$_step"
+        emit_route_result
+    fi
+    if [[ "$_load_ok" == true ]]; then
+        ERROR_LINES+=("pause-load-missing-step")
+        ROUTE=cancel-pause-load
         emit_route_result
     fi
 fi
@@ -242,13 +255,13 @@ fi
 source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"
 _reentry_out="$(design_reentry_marker_hit "$ISSUE" "$CLAUDE_PID" 2>/dev/null || true)"
 _marker_hit=false
-while IFS= read -r _rline || [[ -n "$_rline" ]]; do
-    case "$_rline" in
-        MARKER_HIT=*) _marker_hit="${_rline#MARKER_HIT=}" ;;
-        MARKER_AGE=*) MARKER_AGE="${_rline#MARKER_AGE=}" ;;
-        MARKER_TTL=*) MARKER_TTL="${_rline#MARKER_TTL=}" ;;
+for _rkv in $_reentry_out; do
+    case "$_rkv" in
+        MARKER_HIT=*) _marker_hit="${_rkv#MARKER_HIT=}" ;;
+        MARKER_AGE=*) MARKER_AGE="${_rkv#MARKER_AGE=}" ;;
+        MARKER_TTL=*) MARKER_TTL="${_rkv#MARKER_TTL=}" ;;
     esac
-done <<<"${_reentry_out:-}"
+done
 if [[ "$_marker_hit" == true ]]; then
     ROUTE=cancel-reentry-guard
     DESIGN_REENTRY_MARKER_PATH="$(design_reentry_marker_path "$ISSUE" "$CLAUDE_PID" 2>/dev/null || true)"

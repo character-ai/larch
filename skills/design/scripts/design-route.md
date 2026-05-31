@@ -26,7 +26,7 @@ The driver does not fetch the issue body or resolve `REPO` itself.
 
 ## Responsibilities
 
-1. Resume: `LOAD_OK=true` → `ROUTE=resume@<STEP>` + resume KVs; `LOAD_OK=false` → emit `WARN`/`ERROR`, fall through to steps 2–4 (no early `ROUTE=proceed`).
+1. Resume: `LOAD_OK=true` with `STEP` → `ROUTE=resume@<STEP>` + resume KVs; `LOAD_OK=true` without `STEP` or a hard loader failure → `ROUTE=cancel-pause-load` + `ERROR`; `LOAD_OK=false` → emit `WARN`/`ERROR`, fall through to steps 2–4 (no early `ROUTE=proceed`).
 2. Title-eligibility: lifecycle → `cancel-title-filter` + `TITLE_FILTER_REASON=lifecycle` + marker; archival → `cancel-title-filter` + `archival`; brainstorm prefix → `BRAINSTORM_PREFIX=true` only.
 3. Re-entry guard: `MARKER_HIT=true` → `cancel-reentry-guard` + age/TTL/path KVs; miss or helper rc 2 → continue.
 4. Verdict: clarify label → `clarify`; well-formed plan block → `already-planned`; else `proceed`. Malformed plan markers → absent.

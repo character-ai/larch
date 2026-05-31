@@ -247,8 +247,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
          case "$_key" in
            ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
              printf -v "$_key" '%s' "$_value" ;;
-           WARN) printf '%s\n' "WARN=$_value"; _route_warn_lines+=("$_value") ;;
-           ERROR) printf '%s\n' "ERROR=$_value"; _route_error_lines+=("$_value") ;;
+           WARN) [[ " ${_route_warn_lines[*]} " == *" $_value "* ]] || _route_warn_lines+=("$_value") ;;
+           ERROR) [[ " ${_route_error_lines[*]} " == *" $_value "* ]] || _route_error_lines+=("$_value") ;;
          esac
        done <"$DESIGN_TMPDIR/.design-route-result.env"
      fi
@@ -258,8 +258,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
      case "$_key" in
        ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
          [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
-       WARN) printf '%s\n' "WARN=$_value"; _route_warn_lines+=("$_value") ;;
-       ERROR) printf '%s\n' "ERROR=$_value"; _route_error_lines+=("$_value") ;;
+       WARN) [[ " ${_route_warn_lines[*]} " == *" $_value "* ]] || _route_warn_lines+=("$_value") ;;
+       ERROR) [[ " ${_route_error_lines[*]} " == *" $_value "* ]] || _route_error_lines+=("$_value") ;;
      esac
    done <<<"${_route_out:-}"
    for _w in "${_route_warn_lines[@]}"; do
@@ -273,6 +273,9 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
      printf '%s\n' "**ℹ /design: detected Brainstorm title prefix — auto-enabling brainstorm mode (run-params \`brainstorm_requested=true\`) even though --brainstorm was not on argv.**"
    fi
    case "${ROUTE:-}" in
+     cancel-pause-load)
+       printf '%s\n' "**⚠ /design: pause resume state could not be loaded safely; aborting before fresh routing. Inspect pause-load ERROR breadcrumbs above, fix the pause block, then re-invoke /design.**" >&2
+       exit 1 ;;
      cancel-title-filter)
        export SUMMARY_OUTCOME=cancelled-title-filter
        export CLAUDE_PLUGIN_ROOT
@@ -387,6 +390,10 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    done <<<"${_init_out:-}"
    if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == contract-drift ]]; then
      printf '%s\n' "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**" >&2
+     exit 1
+   fi
+   if [[ "${_init_rc:-0}" -eq 1 ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS=${INIT_STATUS:-unknown}); aborting /design**" >&2
      exit 1
    fi
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh

@@ -21,21 +21,21 @@
 ## Responsibilities
 
 1. Tier map: SIMPLE → `sketch_budget=0`, `workflow_path=SIMPLE`; HARD → `sketch_budget=4`, `workflow_path=HARD`; `source=caller-forwarded`.
-2. **Single** `write-design-current-env.sh` **before** `[DESIGNING]` rename (`--manual-requested true` only when manual).
+2. **Single** `write-design-current-env.sh` **before** `[DESIGNING]` rename (`--manual-requested true` only when manual); non-zero → `INIT_STATUS=env-refresh-failed`, exit `1`.
 3. `tracking-issue-write.sh rename --state designing` with `${REPO:+--repo}`; rename failure → `WARN=`.
 4. `write-run-params.sh` → `run-params.json`; non-zero → `INIT_STATUS=contract-drift`, exit `1`.
 5. Full router-flag jq-merge block (guard, `mktemp` paths, filter, `mv`, `append-tool-failure.sh` on jq failure, both warning strings).
 
 ## Result env (`.design-init-runparams-result.env`)
 
-Allowlist: `INIT_STATUS` (`ok` \| `contract-drift`), `RENAMED`, `RUN_PARAMS_PATH`, `DESIGN_CLASSIFICATION`, `WARN`.
+Allowlist: `INIT_STATUS` (`ok` \| `contract-drift` \| `env-refresh-failed`), `RENAMED`, `RUN_PARAMS_PATH`, `DESIGN_CLASSIFICATION`, `WARN`.
 
 ## Exit codes
 
 | Code | When |
 |------|------|
 | `0` | Success |
-| `1` | `write-run-params.sh` contract drift (`INIT_STATUS=contract-drift` in result env) |
+| `1` | `write-design-current-env.sh` failure (`INIT_STATUS=env-refresh-failed`) or `write-run-params.sh` contract drift (`INIT_STATUS=contract-drift` in result env) |
 | `2` | Argv / repo config error |
 
 ## LLM boundary
