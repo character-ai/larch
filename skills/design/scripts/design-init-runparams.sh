@@ -222,7 +222,7 @@ if [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$MAN
             rm -f "$_rp_merge" "$_rp_err"
         fi
     else
-        printf '%s\n' '**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run `bash scripts/test-write-run-params.sh` and fix the Step 0b contract drift first.**'
+        printf '%s\n' "**⚠ 0b: run-params.json missing after write-run-params.sh; refusing to recreate it with fallback defaults. Re-run \`bash scripts/test-write-run-params.sh\` and fix the Step 0b contract drift first.**"
     fi
 elif [[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$MANUAL_REQUESTED" == true ]]; then
     printf '%s\n' '**⚠ 0b: partition, brainstorm, and/or manual requested but jq is unavailable — flags may not persist across subshell boundaries; install jq or re-supply flags after subshell boundaries.**'

@@ -762,13 +762,13 @@ grep -Fq 'issue-body.txt' "$SKILL_MD" \
   || fail "(FINDING_1 R4) SKILL.md Step 0b must write issue-body.txt after fetch"
 grep -Fq 'resolve-repo.sh' "$SKILL_MD" \
   || fail "(FINDING_1 R4) SKILL.md Step 0b must resolve REPO after fetch"
-grep -Fq '${REPO:+--repo "$REPO"}' "$SKILL_MD" \
+grep -Fq "\${REPO:+--repo \"\$REPO\"}" "$SKILL_MD" \
   || fail "(FINDING_1 R4) SKILL.md Step 0b must thread REPO on driver invocations"
 grep -Fq 'design-pause-load.sh' "$DESIGN_ROUTE_SH" \
   || fail "(FINDING_1 R4) design-route.sh must invoke design-pause-load.sh"
-grep -Fq '${REPO:+--repo' "$DESIGN_ROUTE_SH" \
+grep -Fq "\${REPO:+--repo" "$DESIGN_ROUTE_SH" \
   || fail "(FINDING_1 R4) design-route.sh must thread REPO on design-pause-load.sh"
-grep -Fq '${REPO:+--repo' "$DESIGN_INIT_SH" \
+grep -Fq "\${REPO:+--repo" "$DESIGN_INIT_SH" \
   || fail "(FINDING_1 R4) design-init-runparams.sh must thread REPO on tracking-issue-write.sh rename"
 grep -Fq 'MARK_START=' "$DESIGN_ROUTE_SH" \
   || fail "(FINDING_4) design-route.sh must pin MARK_START plan marker regex"
@@ -952,7 +952,7 @@ esac
 grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$SKILL_MD" \
   || fail "(26) SKILL.md missing literal session-cache banner"
 if ! grep -Fq 'delete <DESIGN_REENTRY_MARKER_PATH> to override.' "$SKILL_MD" \
-  && ! grep -Fq 'delete ${DESIGN_REENTRY_MARKER_PATH} to override.' "$SKILL_MD"; then
+  && ! grep -Fq "delete \${DESIGN_REENTRY_MARKER_PATH} to override." "$SKILL_MD"; then
   fail "(26) SKILL.md must document DESIGN_REENTRY_MARKER_PATH in the session-cache banner literal"
 fi
 echo "PASS: (24-26) Step 0b/5c re-entry guard anchors OK"
