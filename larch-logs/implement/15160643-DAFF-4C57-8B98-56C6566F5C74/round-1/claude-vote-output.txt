@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- both writers source the same $STDERR_SINK variable so the duplicate lines are always identical; last-wins parsing produces the same result, no real divergence risk
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- test-collect-agent-retry.sh only exercises the .. guard through an outer-launcher candidate; no test covers the CMD_JSON code path through validate_retry_stderr_sink_or_mark
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- diff shows collect-agent-results.md was updated to include META_STDERR_SINK in the Empty-output retry prerequisites paragraph; run-external-agent.md also documents the new field
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=false -- Bash subshells copy all variables at creation time so each (…) & captures its own snapshot of _outer_sink_args; no shared-state race is possible
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing deliberate design for background retry launchers, not introduced by this PR
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing cosmetic inconsistency with no functional impact, not introduced by this PR
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
