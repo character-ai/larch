@@ -153,19 +153,15 @@ if [[ -s "$manifest" ]]; then
         --no-fallback \
         --timeout 1860)
 else
-    waterfall_output=$'DISPATCH_OK=true\nALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\n'
+    waterfall_output=$'DISPATCH_OK=true\n'
 fi
 
 dispatch_ok="true"
-all_output_files=""
-all_output_tools=""
 while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     value="${line#*=}"
     case "$key" in
         DISPATCH_OK) dispatch_ok="$value" ;;
-        ALL_OUTPUT_FILES) all_output_files="$value" ;;
-        ALL_OUTPUT_TOOLS) all_output_tools="$value" ;;
         WARN) emit_kv WARN "$value" ;;
     esac
 done <<< "$waterfall_output"
