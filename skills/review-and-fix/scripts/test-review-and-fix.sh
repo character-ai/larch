@@ -158,6 +158,17 @@ case "${TEST_AGENT_BEHAVIOR:-codex-success}:$tool" in
     printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
     exit 0
     ;;
+  outside-manifest-break-carryover:codex)
+    printf 'modified by codex stub\n' >> src/main.py
+    # Stage snapshotted carryover then restore worktree to HEAD so the path stays
+    # in capture_round_tracked_paths but not in the auto-built manifest.
+    git add other.txt
+    git restore --source=HEAD --worktree other.txt
+    printf 'APPLIED: FINDING_1\n' > "$last_message"
+    printf 'APPLIED: FINDING_1\n' > "$output"
+    printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
+    exit 0
+    ;;
   *)
     [[ "$tool" == "codex" ]] && printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
     printf 'failed\n' > "$output"
@@ -479,6 +490,97 @@ eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
     exit 1
 ) || fail "manifest-outside-guard should detect dirty tracked path outside manifest"
 
+work_carryover_guard="$TMP/manifest-carryover-guard"
+make_work_repo "$work_carryover_guard"
+printf 'outside manifest\n' >> "$work_carryover_guard/other.txt"
+git -C "$work_carryover_guard" add other.txt
+git -C "$work_carryover_guard" commit -qm 'add other.txt'
+carryover_pre_head=$(git -C "$work_carryover_guard" rev-parse HEAD)
+printf 'outside manifest\n' >> "$work_carryover_guard/other.txt"
+printf 'modified by coder\n' >> "$work_carryover_guard/src/main.py"
+carryover_round_dir="$work_carryover_guard/implement/round-1"
+mkdir -p "$carryover_round_dir/pre-coder-path-diffs"
+printf '%s\n' "$carryover_pre_head" > "$carryover_round_dir/pre-coder-head.txt"
+printf 'other.txt\n' > "$carryover_round_dir/pre-coder-tracked-paths.txt"
+git -C "$work_carryover_guard" diff "$carryover_pre_head" -- other.txt > "$carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
+printf 'src/main.py\n' > "$carryover_round_dir/coder-stage-paths.txt"
+larch_err() { printf '%s\n' "$*" >&2; }
+eval "$(sed -n '/^pre_coder_path_diff_file/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
+(
+    cd "$work_carryover_guard"
+    if round_tracked_dirty_outside_manifest "$carryover_round_dir/coder-stage-paths.txt" "$carryover_round_dir"; then
+        exit 0
+    fi
+    exit 1
+) && fail "manifest-carryover-guard should skip unchanged carryover path"
+rm -f "$carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
+(
+    cd "$work_carryover_guard"
+    if round_tracked_dirty_outside_manifest "$carryover_round_dir/coder-stage-paths.txt" "$carryover_round_dir"; then
+        exit 0
+    fi
+    exit 1
+) || fail "manifest-carryover-guard negative control should fire without snapshot"
+
+work_carryover_orchestrator="$TMP/carryover-orchestrator"
+make_work_repo "$work_carryover_orchestrator"
+printf 'outside manifest\n' >> "$work_carryover_orchestrator/other.txt"
+git -C "$work_carryover_orchestrator" add other.txt
+git -C "$work_carryover_orchestrator" commit -qm 'add other.txt'
+printf 'outside manifest\n' >> "$work_carryover_orchestrator/other.txt"
+implement_carryover="$work_carryover_orchestrator/implement"
+mkdir -p "$implement_carryover"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_carryover/session-env.sh"
+carryover_initial_head=$(git -C "$work_carryover_orchestrator" rev-parse HEAD)
+set +e
+out_carryover=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_carryover_orchestrator" \
+    --implement-tmpdir "$implement_carryover" --mode diff --round-num 1 \
+    --session-env-path "$implement_carryover/session-env.sh" --run-id carryover-run 2>&1)
+rc_carryover=$?
+set -e
+[[ "$rc_carryover" -eq 0 ]] || { echo "$out_carryover" >&2; fail "carryover-orchestrator expected exit 0 got $rc_carryover"; }
+grep -Fq 'CODER_STATUS=applied' <<< "$out_carryover" || fail "carryover-orchestrator coder applied"
+[[ "$(git -C "$work_carryover_orchestrator" rev-parse HEAD)" != "$carryover_initial_head" ]] \
+    || fail "carryover-orchestrator HEAD should advance"
+git -C "$work_carryover_orchestrator" log -1 --format='%s' | grep -Fq 'Address code review feedback (round 1)' \
+    || fail "carryover-orchestrator commit message"
+git -C "$work_carryover_orchestrator" show --name-only --format='' HEAD | grep -Fxq 'src/main.py' \
+    || fail "carryover-orchestrator commit should include src/main.py"
+git -C "$work_carryover_orchestrator" show --name-only --format='' HEAD | grep -Fxq 'other.txt' \
+    && fail "carryover-orchestrator commit must not include other.txt"
+git -C "$work_carryover_orchestrator" status --porcelain --untracked-files=no | grep -Fq 'other.txt' \
+    || fail "carryover-orchestrator other.txt should remain dirty"
+grep -Fq 'pre-existing dirty path carried over (not committed): other.txt' <<< "$out_carryover" \
+    || fail "carryover-orchestrator carryover warning breadcrumb"
+
+work_staged_carryover_orchestrator="$TMP/staged-carryover-orchestrator"
+make_work_repo "$work_staged_carryover_orchestrator"
+printf 'outside manifest\n' >> "$work_staged_carryover_orchestrator/other.txt"
+git -C "$work_staged_carryover_orchestrator" add other.txt
+git -C "$work_staged_carryover_orchestrator" commit -qm 'add other.txt'
+printf 'outside manifest\n' >> "$work_staged_carryover_orchestrator/other.txt"
+git -C "$work_staged_carryover_orchestrator" add other.txt
+implement_staged_carryover="$work_staged_carryover_orchestrator/implement"
+mkdir -p "$implement_staged_carryover"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_staged_carryover/session-env.sh"
+set +e
+out_staged_carryover=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_staged_carryover_orchestrator" \
+    --implement-tmpdir "$implement_staged_carryover" --mode diff --round-num 1 \
+    --session-env-path "$implement_staged_carryover/session-env.sh" --run-id staged-carryover-run)
+rc_staged_carryover=$?
+set -e
+[[ "$rc_staged_carryover" -eq 0 ]] || { echo "$out_staged_carryover" >&2; fail "staged-carryover-orchestrator expected exit 0 got $rc_staged_carryover"; }
+grep -Fq 'CODER_STATUS=applied' <<< "$out_staged_carryover" || fail "staged-carryover-orchestrator coder applied"
+git -C "$work_staged_carryover_orchestrator" show --name-only --format='' HEAD | grep -Fxq 'src/main.py' \
+    || fail "staged-carryover-orchestrator commit should include src/main.py"
+git -C "$work_staged_carryover_orchestrator" show --name-only --format='' HEAD | grep -Fxq 'other.txt' \
+    && fail "staged-carryover-orchestrator commit must not include other.txt"
+git -C "$work_staged_carryover_orchestrator" diff --cached --name-only | grep -Fxq 'other.txt' \
+    || fail "staged-carryover-orchestrator other.txt should remain staged"
+
 work_manifest_outside_orchestrator="$TMP/manifest-outside-orchestrator"
 make_work_repo "$work_manifest_outside_orchestrator"
 printf 'outside manifest\n' >> "$work_manifest_outside_orchestrator/other.txt"
@@ -490,13 +592,15 @@ mkdir -p "$implement_manifest_outside"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_manifest_outside/session-env.sh"
 manifest_outside_initial_head=$(git -C "$work_manifest_outside_orchestrator" rev-parse HEAD)
 set +e
-out_manifest_outside=$(TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_manifest_outside_orchestrator" \
+out_manifest_outside=$(TEST_AGENT_BEHAVIOR=outside-manifest-break-carryover run_review_and_fix "$work_manifest_outside_orchestrator" \
     --implement-tmpdir "$implement_manifest_outside" --mode diff --round-num 1 \
-    --session-env-path "$implement_manifest_outside/session-env.sh" --run-id manifest-outside-run)
+    --session-env-path "$implement_manifest_outside/session-env.sh" --run-id manifest-outside-run 2>&1)
 rc_manifest_outside=$?
 set -e
 [[ "$rc_manifest_outside" -eq 2 ]] || { echo "$out_manifest_outside" >&2; fail "manifest-outside-orchestrator expected exit 2 got $rc_manifest_outside"; }
 grep -Fq 'CODER_STATUS=failed' <<< "$out_manifest_outside" || fail "manifest-outside-orchestrator coder failed"
+grep -Fq 'dirty paths outside coder delta' <<< "$out_manifest_outside" \
+    || fail "manifest-outside-orchestrator dirty-path refusal breadcrumb"
 [[ "$(git -C "$work_manifest_outside_orchestrator" rev-parse HEAD)" == "$manifest_outside_initial_head" ]] \
     || fail "manifest-outside-orchestrator should not create round commit"
 

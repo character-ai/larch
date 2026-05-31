@@ -412,11 +412,46 @@ stage_round_dirty_paths() {
     done < "$paths_file"
 }
 
+path_is_pre_coder_carryover() {
+    local round_dir="$1" pre_head="$2" path="$3"
+    local pre_tracked="$round_dir/pre-coder-tracked-paths.txt" snap
+    [[ -n "$pre_head" ]] || return 1
+    [[ -s "$pre_tracked" ]] && grep -Fxq "$path" "$pre_tracked" || return 1
+    snap=$(pre_coder_path_diff_file "$round_dir" "$path")
+    [[ -f "$snap" ]] || return 1
+    git diff "$pre_head" -- "$path" | cmp -s - "$snap"
+}
+
 round_tracked_dirty_outside_manifest() {
-    local manifest="$1" path
+    local manifest="$1" round_dir="${2:-}" path pre_head=""
+    if [[ -n "$round_dir" && -s "$round_dir/pre-coder-head.txt" ]]; then
+        pre_head="$(cat "$round_dir/pre-coder-head.txt")"
+    fi
     while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
         grep -Fxq "$path" "$manifest" 2>/dev/null && continue
+        # #3272: a pre-existing dirty path the coder left untouched is carryover,
+        # not unexpected coder dirt — warn and skip rather than fail the commit.
+        if [[ -n "$pre_head" ]] && path_is_pre_coder_carryover "$round_dir" "$pre_head" "$path"; then
+            larch_err "⚠ review-and-fix: pre-existing dirty path carried over (not committed): $path"
+            continue
+        fi
+        return 0
+    done < <(capture_round_tracked_paths)
+    return 1
+}
+
+round_has_non_carryover_tracked_residue() {
+    local round_dir="$1" pre_head="" path
+    if [[ -n "$round_dir" && -s "$round_dir/pre-coder-head.txt" ]]; then
+        pre_head="$(cat "$round_dir/pre-coder-head.txt")"
+    fi
+    while IFS= read -r path || [[ -n "$path" ]]; do
+        [[ -n "$path" ]] || continue
+        if [[ -n "$pre_head" ]] && path_is_pre_coder_carryover "$round_dir" "$pre_head" "$path"; then
+            larch_err "⚠ review-and-fix: pre-existing dirty path carried over (not committed): $path"
+            continue
+        fi
         return 0
     done < <(capture_round_tracked_paths)
     return 1
@@ -549,21 +584,20 @@ apply_findings_with_coder() {
             write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
             return 2
         fi
-        if round_tracked_dirty_outside_manifest "$stage_manifest"; then
+        if round_tracked_dirty_outside_manifest "$stage_manifest" "$round_dir"; then
             larch_err "⚠ review-and-fix: round $round_num dirty paths outside coder delta; refusing to commit"
             write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
             return 2
         fi
-        if ! "$PLUGIN_ROOT/scripts/git-commit.sh" -m "Address code review feedback (round $round_num)" >>"$round_dir/coder-commit.log" 2>&1; then
+        if ! "$PLUGIN_ROOT/scripts/git-commit.sh" --only --pathspec-from-file "$stage_manifest" \
+                -m "Address code review feedback (round $round_num)" >>"$round_dir/coder-commit.log" 2>&1; then
             write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
             return 2
         fi
         commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
-        # --untracked-files=no intentional: coder output may include legitimately
-        # untracked new files; untracked-only hook residue is handled by ship-pr.
-        if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+        if round_has_non_carryover_tracked_residue "$round_dir"; then
             if stage_round_dirty_paths "$round_dir" "$round_dir/coder-commit.log" && \
-                "$PLUGIN_ROOT/scripts/git-commit.sh" \
+                "$PLUGIN_ROOT/scripts/git-commit.sh" --only --pathspec-from-file "$stage_manifest" \
                     -m "Address code review feedback (round $round_num) — follow-up" \
                     >>"$round_dir/coder-commit.log" 2>&1; then
                 commit_sha=$(git rev-parse HEAD 2>/dev/null || true)
@@ -571,7 +605,7 @@ apply_findings_with_coder() {
                 write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
                 return 2
             fi
-            if [[ -n "$(git status --porcelain --untracked-files=no 2>/dev/null)" ]]; then
+            if round_has_non_carryover_tracked_residue "$round_dir"; then
                 larch_err "⚠ review-and-fix: round $round_num left tracked changes uncommitted after follow-up"
                 write_coder_failed_result "$result_file" "$tool_file" "$tool_log" "$scrubbed_count" "$scrub_count"
                 return 2
