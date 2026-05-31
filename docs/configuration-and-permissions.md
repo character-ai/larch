@@ -281,7 +281,7 @@ When set to `true`, `/implement` Step 17 prints the full per-step token/timing t
 
 ### `LARCH_CLEANUP_RETENTION_DAYS`
 
-Retention window for `/cleanup` age-based session directory pruning. Default: `7` (positive integer days). `/cleanup` removes entries under `~/.cache/larch/sessions/` and matching `/tmp` larch patterns when the entry's top-level mtime is older than the cutoff. Non-numeric or non-positive explicit values warn on stderr and fall back to `7`. See `skills/cleanup/scripts/cleanup.md` for the script contract.
+Retention window for `/cleanup` age-based session directory pruning. Default: `7` (positive integer days). `/cleanup` removes directories under `~/.cache/larch/sessions/` and matching `/tmp` larch directory patterns only when no file within a bounded scan (`find -maxdepth 5`) was modified inside the retention window, so a directory with fresh deep activity is retained. Matching loose `/tmp` files are removed by top-level age and pattern match. Non-numeric or non-positive explicit values warn on stderr and fall back to `7`. See `skills/cleanup/scripts/cleanup.md` for the script contract.
 
 ### `LARCH_BUMP_FILES`
 

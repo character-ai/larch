@@ -38,25 +38,20 @@ kv_get() {
 
 write_stub_find_failure() {
     local path="$1"
-    local fail_target="$2"
-    cat > "$path" <<EOF
+    cat > "$path" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
-fail_target="${fail_target}"
-target=""
-for arg in "\$@"; do
-    if [[ "\$arg" != -* ]]; then
-        target="\$arg"
-        break
+# Fail only should_remove_by_age nested scan (-maxdepth 5 adjacent pair).
+prev=""
+for arg in "$@"; do
+    if [[ "$prev" == "-maxdepth" && "$arg" == "5" ]]; then
+        exit 2
     fi
+    prev="$arg"
 done
 
-if [[ "\$target" == "\$fail_target" ]]; then
-    exit 1
-fi
-
-exec /usr/bin/find "\$@"
+exec /usr/bin/find "$@"
 EOF
     chmod +x "$path"
 }
@@ -188,6 +183,22 @@ run_cleanup "$work"
 [[ -d "$CASE_SESSIONS/stale-parent" ]] || fail "stale-toplevel-with-fresh-deep-child-kept must retain dir when a descendant is fresh"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "stale-toplevel-with-fresh-deep-child-kept CACHE_REMOVED"
 
+# --- find-failure-skips-deletion ----------------------------------------------
+# Tied to should_remove_by_age maxdepth 5 bound (see cleanup.md Edit-in-sync).
+work="$TMP/find-failure-skips-deletion"
+mkdir -p "$work/xdg-cache/larch/sessions/stale-scan-fail"
+touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/stale-scan-fail"
+mkdir -p "$work/bin"
+write_stub_find_failure "$work/bin/find"
+PATH_PREFIX="$work/bin:"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "find-failure-skips-deletion exit $CASE_RC"
+assert_contains "$CASE_OUTPUT" "failed to scan session activity" "find-failure-skips-deletion warning"
+[[ -d "$CASE_SESSIONS/stale-scan-fail" ]] || fail "find-failure-skips-deletion should keep dir when nested scan find fails"
+assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "find-failure-skips-deletion CACHE_REMOVED"
+unset PATH_PREFIX
+
 # --- invalid-retention-fallback -----------------------------------------------
 work="$TMP/invalid-retention-fallback"
 mkdir -p "$work/xdg-cache/larch/sessions/old-session"
@@ -244,6 +255,18 @@ run_cleanup "$work"
 [[ ! -d "$work/tmp-root/claude-implement-fixture" ]] || fail "stale-tmp-dir-removed should delete stale /tmp fixture"
 assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "1" "stale-tmp-dir-removed TMP_REMOVED"
 
+# --- stale-tmp-toplevel-with-fresh-deep-child-kept ----------------------------
+work="$TMP/stale-tmp-toplevel-with-fresh-deep-child-kept"
+mkdir -p "$work/tmp-root/claude-implement-stale-parent"
+printf 'fresh\n' > "$work/tmp-root/claude-implement-stale-parent/child.txt"
+touch -t "$FRESH_TS" -- "$work/tmp-root/claude-implement-stale-parent/child.txt"
+touch -t "$STALE_TS" -- "$work/tmp-root/claude-implement-stale-parent"
+unset LARCH_CLEANUP_RETENTION_DAYS
+run_cleanup "$work"
+[[ "$CASE_RC" -eq 0 ]] || fail "stale-tmp-toplevel-with-fresh-deep-child-kept exit $CASE_RC"
+[[ -d "$work/tmp-root/claude-implement-stale-parent" ]] || fail "stale-tmp-toplevel-with-fresh-deep-child-kept must retain dir when a descendant is fresh"
+assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "0" "stale-tmp-toplevel-with-fresh-deep-child-kept TMP_REMOVED"
+
 # --- stale-tmp-file-removed ---------------------------------------------------
 work="$TMP/stale-tmp-file-removed"
 mkdir -p "$work/tmp-root"
@@ -264,22 +287,6 @@ run_cleanup "$work"
 [[ "$CASE_RC" -eq 0 ]] || fail "nonlarch-tmp-untouched exit $CASE_RC"
 [[ -d "$work/tmp-root/unrelated-junk" ]] || fail "nonlarch-tmp-untouched should keep non-larch entry"
 assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "0" "nonlarch-tmp-untouched TMP_REMOVED"
-
-# --- find-failure-skips-deletion ----------------------------------------------
-work="$TMP/find-failure-skips-deletion"
-mkdir -p "$work/xdg-cache/larch/sessions/fail-find"
-touch -t "$STALE_TS" -- "$work/xdg-cache/larch/sessions/fail-find"
-mkdir -p "$work/bin"
-write_stub_find_failure "$work/bin/find" "$work/xdg-cache/larch/sessions/fail-find"
-PATH_PREFIX="$work/bin:"
-unset LARCH_CLEANUP_RETENTION_DAYS
-run_cleanup "$work"
-[[ "$CASE_RC" -eq 0 ]] || fail "find-failure-skips-deletion exit $CASE_RC"
-[[ -d "$CASE_SESSIONS/fail-find" ]] || fail "find-failure-skips-deletion should keep dir when find fails"
-assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "find-failure-skips-deletion CACHE_REMOVED"
-assert_contains "$CASE_OUTPUT" "Warning: failed to scan session activity for '${work}/xdg-cache/larch/sessions/fail-find'; skipping deletion." "find-failure-skips-deletion warning"
-unset PATH_PREFIX
-
 
 # --- deep-session-freshness-probe-bounded -------------------------------------
 work="$TMP/deep-session-freshness-probe-bounded"

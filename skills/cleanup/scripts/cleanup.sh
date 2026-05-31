@@ -15,6 +15,9 @@ PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
+# Nested activity scan is bounded at maxdepth 5 (cost tradeoff): files deeper than
+# five levels do not protect the directory from removal. When the scan find exits
+# non-zero, warn and keep the entry (skip deletion) rather than delete blindly.
 should_remove_by_age() {
     local entry="$1"
     local recent=""
