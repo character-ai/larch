@@ -408,24 +408,6 @@ for idx in "${phase3_failed[@]+"${phase3_failed[@]}"}"; do
     esac
 done
 
-if [[ "$NO_FALLBACK" == "true" ]]; then
-    _static_slot_count=0
-    _static_empty_count=0
-    for ((i=0; i<slot_count; i++)); do
-        case "${slot_names[$i]}" in
-            dyn-*) ;;
-            *)
-                _static_slot_count=$((_static_slot_count + 1))
-                [[ -z "${final_outputs[$i]}" ]] && _static_empty_count=$((_static_empty_count + 1))
-                ;;
-        esac
-    done
-    if (( _static_slot_count > 0 && _static_empty_count == _static_slot_count )); then
-        static_dispatch_ok=false
-        dispatch_ok=false
-    fi
-fi
-
 if [[ ${#phase3_failed[@]} -gt 0 ]]; then
     _wf_tail_replay_paths=()
     for idx in "${phase3_failed[@]}"; do

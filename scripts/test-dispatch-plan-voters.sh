@@ -164,8 +164,10 @@ while IFS= read -r row || [[ -n "$row" ]]; do
                 ;;
             *) echo "unknown requested status: $requested_status" >&2; exit 2 ;;
         esac
-        all_outputs+=("$output")
-        all_tools+=("$effective_tool")
+        if [[ "$requested_status" != "failed" ]]; then
+            all_outputs+=("$output")
+            all_tools+=("$effective_tool")
+        fi
     else
         case "$mode:$slot" in
         healthy:*)
@@ -223,8 +225,8 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     fi
     printf '%s\t%s\t%s\t%s\n' "$slot" "$tool" "$output" "$prompt_file" >> "${PLAN_VOTER_STUB_LOG:?}"
 done < "$slots_file"
-printf 'ALL_OUTPUT_FILES=%s\n' "${all_outputs[*]}"
-printf 'ALL_OUTPUT_TOOLS=%s\n' "${all_tools[*]}"
+printf 'ALL_OUTPUT_FILES=%s\n' "${all_outputs[*]-}"
+printf 'ALL_OUTPUT_TOOLS=%s\n' "${all_tools[*]-}"
 printf 'DISPATCH_OK=true\n'
 STUB
 chmod +x "$PLUGIN_ROOT_STUB/scripts/dispatch-with-waterfall.sh"
@@ -301,6 +303,13 @@ out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_S
     "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/codex-only" --codex-available true --cursor-available false)
 grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || fail "codex-only missing voter 2 codex"
 grep -Fq 'VOTER_3_STATUS=failed' <<< "$out" || fail "codex-only voter 3 should be failed/absent"
+
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_SLOT_2_STATUS=failed PLAN_VOTER_SLOT_3_STATUS=launched PLAN_VOTER_STUB_LOG="$TMP/stub-codex-fail-cursor-ok.log" \
+    "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/codex-fail-cursor-ok" --codex-available true --cursor-available true)
+grep -Fq 'VOTER_2_STATUS=failed' <<< "$out" || fail 'codex-fail/cursor-ok must mark VOTER_2 failed'
+grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" || fail 'codex-fail/cursor-ok must mark VOTER_3 launched'
+grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || fail 'codex-fail/cursor-ok must keep VOTER_3_TOOL=cursor'
+grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || fail 'codex-fail/cursor-ok must keep VOTER_2_TOOL=codex'
 
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$TMP/stub-cursor-only.log" \
     "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/cursor-only" --codex-available false --cursor-available true)

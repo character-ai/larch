@@ -161,6 +161,11 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --codex-present false \
   --cursor-present false)
 [[ ! -s "$TMP/both-absent/plan-assessor-slots.ndjson" ]] || fail 'both-absent assessor manifest must be empty'
+printf '%s\n' "$out" | grep -Fq 'DISPATCH_OK=true' || fail 'both-absent assessor dispatch should remain DISPATCH_OK=true'
+printf '%s\n' "$out" | grep -Fq 'CLAUDE_ASSESSOR_STATUS=launched' || fail 'both-absent must launch Claude assessor floor'
+_claude_assessor_path=$(printf '%s\n' "$out" | awk -F= '$1=="CLAUDE_ASSESSOR_PATH"{print substr($0,index($0,"=")+1);exit}')
+[[ -n "$_claude_assessor_path" && -s "$_claude_assessor_path" ]] \
+    || fail 'both-absent must produce non-empty Claude assessor output'
 
 out=$(CURSOR_STUB_MODE=narrate LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --design-tmpdir "$TMP" \

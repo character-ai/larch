@@ -63,8 +63,16 @@ append_shared_prompt_tail() {
 
 write_dynamic_prompt() {
     local slug="$1" plan_path="$2" body_file="$3" out="$4"
+    local vendor_note=""
+    if [[ "$CODEX_PRESENT" == "true" && "$CURSOR_PRESENT" == "true" ]]; then
+        vendor_note=" (Cursor + Codex)"
+    elif [[ "$CURSOR_PRESENT" == "true" ]]; then
+        vendor_note=" (Cursor)"
+    elif [[ "$CODEX_PRESENT" == "true" ]]; then
+        vendor_note=" (Codex)"
+    fi
     {
-        printf '%s\n' "You are a supplementary plan-review specialist (dynamic archetype \`${slug}\`). The static /design panel already covers Arch, Edge, Innovation, Pragmatic, and Requirements (Cursor + Codex). Apply the same evidence discipline: compare the written plan to current repository state. Focus directive:"
+        printf '%s\n' "You are a supplementary plan-review specialist (dynamic archetype \`${slug}\`). The static /design panel already covers Arch, Edge, Innovation, Pragmatic, and Requirements${vendor_note}. Apply the same evidence discipline: compare the written plan to current repository state. Focus directive:"
         printf '\n'
         cat "$body_file"
         printf '\n'
@@ -107,6 +115,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
         --output "$_generic_output" \
         --prompt-file "$_generic_prompt" \
         --mode description \
+        --model claude-opus-4-7 \
         --timeout "$TIMEOUT" \
         --timing-task-kind claude-plan-generic \
         "${waterfall_extra[@]+"${waterfall_extra[@]}"}" >/dev/null 2>"${_generic_output}.launch-stderr"
@@ -115,7 +124,10 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
     [[ -f "${_generic_output}.done" ]] || printf '%s\n' "$_generic_rc" >"${_generic_output}.done"
     _generic_dispatch_ok=false
     _generic_degraded=true
+    _generic_has_output=false
     if [[ "$_generic_rc" -eq 0 && -s "$_generic_output" ]]; then
+        _generic_has_output=true
+        printf '%s\n' "$_generic_output" >"$_panel_paths"
         _generic_first=$(
             awk 'NF { print; exit }' "$_generic_output" 2>/dev/null || true
         )
@@ -127,12 +139,14 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
                     "$_generic_output" >/dev/null 2>&1; then
                 _generic_dispatch_ok=true
                 _generic_degraded=false
+            else
+                _generic_dispatch_ok=true
             fi
+        else
+            _generic_dispatch_ok=true
         fi
     fi
-    if [[ "$_generic_dispatch_ok" == "true" ]]; then
-        printf '%s\n' "$_generic_output" >"$_panel_paths"
-    else
+    if [[ "$_generic_has_output" != true ]]; then
         : >"$_panel_paths"
     fi
     emit_kv DISPATCH_OK "$_generic_dispatch_ok"

@@ -745,6 +745,7 @@ FALLBACK_COUNT="0"
 COMBINED_FALLBACK_COUNT=""
 DEGRADED_ROUND="false"
 DYNAMIC_SLOT_COUNT="0"
+ALL_SLOTS_DROPPED="false"
 while IFS= read -r _line || [[ -n "$_line" ]]; do
     _key="${_line%%=*}"
     _value="${_line#*=}"
@@ -757,6 +758,7 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
         COMBINED_FALLBACK_COUNT) COMBINED_FALLBACK_COUNT="$_value" ;;
         DEGRADED_ROUND) DEGRADED_ROUND="$_value" ;;
         DYNAMIC_SLOT_COUNT) DYNAMIC_SLOT_COUNT="$_value" ;;
+        ALL_SLOTS_DROPPED) ALL_SLOTS_DROPPED="$_value" ;;
         WARN) emit_kv WARN "$_value" ;;
     esac
 done <<< "$_panel_raw"
@@ -769,7 +771,8 @@ if [[ -n "$PANEL_PATHS_FILE" && -f "$PANEL_PATHS_FILE" && -s "$PANEL_PATHS_FILE"
     _paths_readable=1
 fi
 
-if [[ "$_paths_readable" -eq 0 && "$PANEL_DISPATCH_OK" != "true" ]]; then
+if [[ "$_paths_readable" -eq 0 && "$PANEL_DISPATCH_OK" != "true" \
+    && "$ALL_SLOTS_DROPPED" != "true" && "$DEGRADED_ROUND" != "true" ]]; then
     write_empty_review_artifacts "**Plan-review panel dispatch failed; voting was not run.**" "$round_num"
     : > "$DESIGN_TMPDIR/ballot.txt"
     TALLY_PLAN_REVIEW_STATUS=panel-failed

@@ -352,11 +352,14 @@ while IFS= read -r row || [[ -n "$row" ]]; do
             _outp_resolved=""
         fi
     else
+        if [[ "$ALL_SLOTS_DROPPED" == "true" ]]; then
+            continue
+        fi
         if [[ "$_warned_missing_paths" != true ]]; then
-            larch_err "decompose-panel-dispatch.sh: ALL_OUTPUT_FILES_PATH empty or missing; falling back to manifest paths for panel-outputs rows"
+            larch_err "decompose-panel-dispatch.sh: ALL_OUTPUT_FILES_PATH empty or missing; skipping manifest rows (no resolved paths)"
             _warned_missing_paths=true
         fi
-        _outp_resolved="$_outp"
+        continue
     fi
     _status="missing"
     if [[ -n "$_outp_resolved" && -f "$_outp_resolved" ]] && grep -Eq '^[[:space:]]*## Recommendation' "$_outp_resolved"; then

@@ -503,8 +503,8 @@ out=$(PATH="$STUB_BIN:$PATH" CODEX_STUB_FAIL=true \
     --no-fallback \
     --mode description \
     --timeout 5)
-assert_line "DISPATCH_OK=false" "$out"
-assert_line "STATIC_DISPATCH_OK=false" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+assert_line "STATIC_DISPATCH_OK=true" "$out"
 assert_line "ALL_SLOTS_DROPPED=true" "$out"
 assert_line "FALLBACK_COUNT=0" "$out"
 assert_line "ALL_OUTPUT_FILES=" "$out"
@@ -555,8 +555,8 @@ out=$(PATH="$STUB_BIN:$PATH" \
     --mode description \
     --timeout 5)
 _elapsed=$(( $(date +%s) - _start ))
-assert_line "DISPATCH_OK=false" "$out"
-assert_line "STATIC_DISPATCH_OK=false" "$out"
+assert_line "DISPATCH_OK=true" "$out"
+assert_line "STATIC_DISPATCH_OK=true" "$out"
 assert_line "ALL_SLOTS_DROPPED=true" "$out"
 [[ "$_elapsed" -lt 4 ]] || { echo "FAIL: no-fallback absent slot took too long (${_elapsed}s)" >&2; exit 1; }
 if grep -Fq 'SENTINEL_TIMEOUT' <<<"$out"; then
