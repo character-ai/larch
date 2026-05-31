@@ -28,7 +28,7 @@ external_launcher_append_outer_meta() {
         printf 'OUTER_LAUNCHER_PROMPT_FILE=%s\n' "$prompt_file_sidecar"
         printf 'OUTER_LAUNCHER_WORKDIR=%s\n' "$workdir"
         printf 'OUTER_LAUNCHER_RISK=%s\n' "$risk"
-        [[ -n "$stderr_sink" ]] && printf 'STDERR_SINK=%s\n' "$stderr_sink"
+        if [[ -n "$stderr_sink" ]]; then printf 'STDERR_SINK=%s\n' "$stderr_sink"; fi
     } >> "$meta_path"
 }
 
