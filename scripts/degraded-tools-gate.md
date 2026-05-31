@@ -11,9 +11,11 @@ It is a **pure detector**: it never prompts and never blocks. The interactive
 gate itself lives in the skill orchestrator — see the "Degraded-tools gate
 (Step 0)" procedure in `skills/shared/external-reviewers.md`, which `/design`,
 `/implement`, `/review`, and `/research` Step 0 invoke. The orchestrator runs
-this helper, and when `DEGRADED=true` presents the explanation and asks the
-operator (via `AskUserQuestion`) whether to continue with the degraded
-waterfall or abort.
+this helper; when `DEGRADED=true` it lifts the explanation block. On
+interactive runs, `AskUserQuestion` applies only when `BOTH_DOWN=true` (both
+tools down); when `BOTH_DOWN=false` (exactly one tool down) the orchestrator
+prints the explanation (including the auto-proceed notice) and proceeds without
+prompting.
 
 ## Availability rule
 
@@ -57,8 +59,10 @@ Exit code is `0` on valid argv (degraded or not); `2` on an unknown flag
 ## Test harness
 
 `scripts/test-degraded-tools-gate.sh` — covers the state-classification matrix
-(ok / binary-missing / probe-failed for each tool), the `DEGRADED` boolean,
-explanation-block presence/absence, the `--skill` label, and the unknown-flag
+(ok / binary-missing / probe-failed for each tool), the `DEGRADED` boolean, the
+`BOTH_DOWN` KV, explanation-block presence/absence (including Cases 13–16:
+single-tool-down auto-proceed notice vs both-down Continue prompt, design and
+non-design `--skill` branches), the `--skill` label, and the unknown-flag
 exit-2 path. Wired into `make lint` via the `test-degraded-tools-gate` target.
 
 ## Edit-in-sync

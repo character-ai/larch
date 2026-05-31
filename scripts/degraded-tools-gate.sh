@@ -8,9 +8,10 @@
 #
 # This script is a PURE DETECTOR. It never prompts and never blocks. The skill
 # orchestrator consumes the KV output and, when DEGRADED=true, presents the
-# explanation and asks the operator (via AskUserQuestion) whether to continue
-# with the degraded waterfall or abort — see skills/shared/external-reviewers.md
-# "Degraded-tools gate (Step 0)".
+# explanation: on interactive runs it asks via AskUserQuestion only when
+# BOTH_DOWN=true (both tools down); when BOTH_DOWN=false (one tool down) it
+# prints the explanation as a notice and auto-proceeds — see
+# skills/shared/external-reviewers.md "Degraded-tools gate (Step 0)".
 #
 # A tool is AVAILABLE only when its binary is found AND its runtime probe
 # passed (binary-found=true AND present=true), matching the codex_available /

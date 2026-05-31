@@ -72,6 +72,8 @@ assert_contains "$out" "CODEX_STATE=ok" "cursor-binary-missing codex ok"
 assert_contains "$out" "BOTH_DOWN=false" "cursor-binary-missing BOTH_DOWN=false"
 assert_contains "$out" "CLI binary not found" "cursor-binary-missing phrasing"
 assert_contains "$out" "/implement run" "cursor-binary-missing skill label"
+assert_contains "$out" "proceeding automatically" "cursor-binary-missing auto-proceed notice"
+assert_not_contains "$out" "Continue in this degraded mode" "cursor-binary-missing no Continue prompt"
 
 # --- Case 4: both unavailable (binary present, probes failed) → degraded ---
 out=$(bash "$GATE" --codex-binary-found true --codex-present false \
@@ -81,6 +83,9 @@ assert_contains "$out" "DEGRADED=true" "both-probe-failed degraded"
 assert_contains "$out" "CODEX_STATE=probe-failed" "both-probe-failed codex"
 assert_contains "$out" "CURSOR_STATE=probe-failed" "both-probe-failed cursor"
 assert_contains "$out" "BOTH_DOWN=true" "both-probe-failed BOTH_DOWN=true"
+assert_contains "$out" "Continue in this degraded mode (backup waterfall)" "both-probe-failed backup-waterfall prompt"
+assert_contains "$out" "the tool is healthy?" "both-probe-failed Continue question line 2"
+assert_not_contains "$out" "proceeding automatically" "both-probe-failed no auto-proceed notice"
 
 # --- Case 5: empty binary-found + empty present → generic `unavailable` ---
 out=$(bash "$GATE" --codex-binary-found "" --codex-present "" \
@@ -88,6 +93,7 @@ out=$(bash "$GATE" --codex-binary-found "" --codex-present "" \
 assert_rc "$rc" 0 "empty-codex exit 0"
 assert_contains "$out" "DEGRADED=true" "empty-codex degraded"
 assert_contains "$out" "CODEX_STATE=unavailable" "empty-codex → generic unavailable"
+assert_contains "$out" "BOTH_DOWN=false" "empty-codex BOTH_DOWN=false"
 assert_contains "$out" "/this run" "default skill label"
 
 # --- Case 6: present=true but binary-found=false is still binary-missing (binary gate wins) ---
@@ -95,6 +101,7 @@ out=$(bash "$GATE" --codex-binary-found false --codex-present true \
     --cursor-binary-found true --cursor-present true) && rc=$? || rc=$?
 assert_contains "$out" "CODEX_STATE=binary-missing" "binary-false-present-true → binary-missing"
 assert_contains "$out" "DEGRADED=true" "binary-false-present-true degraded"
+assert_contains "$out" "BOTH_DOWN=false" "binary-false-present-true BOTH_DOWN=false"
 
 # --- Case 7: present-only wiring (binary-found omitted, as /design/review/research call it) ---
 out=$(CODEX_BINARY_FOUND='' CURSOR_BINARY_FOUND='' bash "$GATE" --codex-present true --cursor-present false --skill review) && rc=$? || rc=$?
@@ -102,6 +109,9 @@ assert_rc "$rc" 0 "present-only exit 0"
 assert_contains "$out" "DEGRADED=true" "present-only degraded (cursor down)"
 assert_contains "$out" "CODEX_STATE=ok" "present-only codex ok without binary-found"
 assert_contains "$out" "CURSOR_STATE=unavailable" "present-only cursor generic unavailable"
+assert_contains "$out" "BOTH_DOWN=false" "present-only BOTH_DOWN=false"
+assert_contains "$out" "proceeding automatically" "present-only auto-proceed notice"
+assert_not_contains "$out" "Continue in this degraded mode" "present-only no Continue prompt"
 
 # --- Case 8: env-var cursor-ok (no flags) ---
 out=$(CODEX_BINARY_FOUND=true CODEX_PRESENT=false CURSOR_BINARY_FOUND=true CURSOR_PRESENT=true \
@@ -110,6 +120,7 @@ assert_rc "$rc" 0 "env-var cursor-ok exit 0"
 assert_contains "$out" "CURSOR_STATE=ok" "env-var cursor-ok cursor state"
 assert_contains "$out" "CODEX_STATE=probe-failed" "env-var cursor-ok codex probe-failed"
 assert_contains "$out" "DEGRADED=true" "env-var cursor-ok degraded"
+assert_contains "$out" "BOTH_DOWN=false" "env-var cursor-ok BOTH_DOWN=false"
 assert_contains "$out" "WARNING: --codex-binary-found omitted" "env-var cursor-ok codex-binary warning"
 assert_contains "$out" "WARNING: --codex-present omitted" "env-var cursor-ok codex-present warning"
 assert_contains "$out" "WARNING: --cursor-binary-found omitted" "env-var cursor-ok cursor-binary warning"
@@ -122,6 +133,7 @@ assert_rc "$rc" 0 "env-var codex-ok exit 0"
 assert_contains "$out" "CODEX_STATE=ok" "env-var codex-ok codex state"
 assert_contains "$out" "CURSOR_STATE=probe-failed" "env-var codex-ok cursor probe-failed"
 assert_contains "$out" "DEGRADED=true" "env-var codex-ok degraded"
+assert_contains "$out" "BOTH_DOWN=false" "env-var codex-ok BOTH_DOWN=false"
 assert_contains "$out" "WARNING: --codex-binary-found omitted" "env-var codex-ok codex-binary warning"
 assert_contains "$out" "WARNING: --codex-present omitted" "env-var codex-ok codex-present warning"
 assert_contains "$out" "WARNING: --cursor-binary-found omitted" "env-var codex-ok cursor-binary warning"
@@ -131,6 +143,7 @@ assert_contains "$out" "WARNING: --cursor-present omitted" "env-var codex-ok cur
 out=$(CODEX_BINARY_FOUND='' CURSOR_BINARY_FOUND='' bash "$GATE" --codex-present true --cursor-present false --skill review 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 0 "present-only no-warn exit 0"
 assert_not_contains "$out" "WARNING:" "present-only with flags must not emit WARNING"
+assert_contains "$out" "BOTH_DOWN=false" "present-only no-warn BOTH_DOWN=false"
 
 # --- Case 10: flag-over-env precedence (contradictory env, explicit flags win) ---
 out=$(CODEX_BINARY_FOUND=false CODEX_PRESENT=false CURSOR_BINARY_FOUND=false CURSOR_PRESENT=false \
@@ -172,6 +185,20 @@ out=$(bash "$GATE" --codex-binary-found true --codex-present false \
 assert_rc "$rc" 0 "both-down-explanation exit 0"
 assert_contains "$out" "Continue in this degraded mode" "both-down-explanation Continue prompt"
 assert_not_contains "$out" "proceeding automatically" "both-down-explanation no auto-proceed notice"
+
+# --- Case 15: single tool down, implement skill → non-design auto-proceed notice ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present false \
+    --cursor-binary-found true --cursor-present true --skill implement) && rc=$? || rc=$?
+assert_rc "$rc" 0 "implement-single-down exit 0"
+assert_contains "$out" "proceeding automatically" "implement-single-down auto-proceed notice"
+assert_not_contains "$out" "Continue in this degraded mode" "implement-single-down no Continue prompt"
+
+# --- Case 16: both tools down, review skill → non-design Continue prompt ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present false \
+    --cursor-binary-found true --cursor-present false --skill review) && rc=$? || rc=$?
+assert_rc "$rc" 0 "review-both-down exit 0"
+assert_contains "$out" "Continue in this degraded mode (backup waterfall)" "review-both-down backup-waterfall prompt"
+assert_not_contains "$out" "proceeding automatically" "review-both-down no auto-proceed notice"
 
 printf 'test-degraded-tools-gate: PASS=%d FAIL=%d\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

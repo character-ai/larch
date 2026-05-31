@@ -5,9 +5,12 @@ degraded-external-tools gate detector). Full contract lives in the primary
 `scripts/degraded-tools-gate.md`.
 
 Covers the state-classification matrix (`ok` / `binary-missing` / `probe-failed`
-/ generic `unavailable`) for each tool, the `DEGRADED` boolean, the binary-gate
-precedence rule, explanation-block presence/absence, present-only wiring (binary
--found omitted, as `/design` / `/review` / `/research` call it; case 7 clears
+/ generic `unavailable`) for each tool, the `DEGRADED` boolean, the `BOTH_DOWN`
+KV, the binary-gate precedence rule, explanation-block presence/absence
+(including Cases 13–16: single-tool-down `proceeding automatically` notice vs
+both-down `Continue in this degraded mode` prompt for design and
+implement/review branches), present-only wiring (binary-found omitted, as
+`/design` / `/review` / `/research` call it; case 7 clears
 `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` in the child env so inherited runner
 exports cannot skew classification), the `--skill`
 label, and the unknown-flag exit-2 path.
