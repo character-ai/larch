@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import datetime
 from enum import Enum
 from pathlib import Path
 
@@ -22,7 +22,7 @@ _MIN_RST_SECTIONS_FOR_DOC_TITLE_SKIP = 2
 
 
 def _today_iso() -> str:
-    return datetime.now(tz=UTC).date().isoformat()
+    return datetime.now().astimezone().date().isoformat()
 
 
 class ChangelogFormat(Enum):
@@ -140,11 +140,29 @@ def _rst_merge_first_index(lines: list[str]) -> int:
         return -1
     fh1 = indices[0]
     ul = lines[fh1 + 1]
-    if is_rst_adornment(ul, lines[fh1]) and ul and all(c == "=" for c in ul):
+    release_indices = set(_rst_release_section_indices(lines))
+    is_doc_title = (
+        is_rst_adornment(ul, lines[fh1])
+        and ul
+        and all(c == "=" for c in ul)
+        and (lines[fh1] == "Changelog" or fh1 not in release_indices)
+    )
+    if is_doc_title:
         if len(indices) < _MIN_RST_SECTIONS_FOR_DOC_TITLE_SKIP:
             return -1
         return indices[1]
     return fh1
+
+
+def _rst_section_end_index(lines: list[str], anchor: int) -> int:
+    """Index of the next section after the anchor title (exclusive end of anchor block)."""
+    for idx in _rst_release_section_indices(lines):
+        if idx > anchor:
+            return idx
+    for idx in _rst_title_indices(lines):
+        if idx > anchor + 1:
+            return idx
+    return len(lines)
 
 
 def _md_first_heading_index(lines: list[str]) -> int:
@@ -321,6 +339,56 @@ def _entry_block_md(version: str, categories: str) -> list[str]:
     return block
 
 
+def _insert_md_at_anchor(
+    lines: list[str],
+    block: list[str],
+    *,
+    has_unreleased: bool | None = None,
+) -> tuple[list[str], bool]:
+    """Insert block at the canonical Markdown anchor; return (lines, inserted)."""
+    if has_unreleased is None:
+        has_unreleased = any(line.startswith("## [Unreleased]") for line in lines)
+    out: list[str] = []
+    inserted = False
+    in_unreleased = False
+    for line in lines:
+        if line.startswith("## [Unreleased]"):
+            out.append(line)
+            in_unreleased = True
+            continue
+        if in_unreleased and line.startswith("## ["):
+            in_unreleased = False
+            if not inserted:
+                out.append("")
+                out.extend(block)
+                inserted = True
+            out.append(line)
+            continue
+        if in_unreleased:
+            out.append(line)
+            continue
+        if (
+            not has_unreleased
+            and "and this project adheres to [Semantic Versioning]" in line
+        ):
+            out.append(line)
+            if not inserted:
+                out.append("")
+                out.extend(block)
+                inserted = True
+            continue
+        if not inserted and line.startswith("## ["):
+            out.extend(block)
+            out.append("")
+            inserted = True
+        out.append(line)
+    if in_unreleased and not inserted:
+        out.append("")
+        out.extend(block)
+        inserted = True
+    return out, inserted
+
+
 def _write_md_entry(
     text: str,
     version: str,
@@ -336,13 +404,15 @@ def _write_md_entry(
     skipping = False
     in_unreleased = False
     match_count = 0
+    entry_from_version_match = False
 
     def emit_entry() -> None:
-        nonlocal inserted
+        nonlocal inserted, entry_from_version_match
         if inserted:
             return
         out.extend(entry)
         inserted = True
+        entry_from_version_match = True
 
     for line in lines:
         version_match = line.startswith(f"## [{version}] - ")
@@ -361,7 +431,10 @@ def _write_md_entry(
             skipping = True
             continue
         if skipping and line.startswith("## ["):
+            if entry_from_version_match:
+                out.append("")
             skipping = False
+            entry_from_version_match = False
         if skipping:
             continue
         if line.startswith("## [Unreleased]"):
@@ -415,7 +488,7 @@ def _write_rst_entry(
     lines = text.splitlines()
     today = _today_iso()
     title = f"Version {version} ({today})"
-    underline = "=" * len(title)
+    underline = "-" * len(title)
     entry_lines = [title, underline, ""]
     if categories.strip():
         entry_lines.extend(categories.rstrip("\n").splitlines())
@@ -439,11 +512,14 @@ def _write_rst_entry(
 
 
 def _insert_rst_after(lines: list[str], anchor: int, entry_lines: list[str]) -> str:
-    out = lines[: anchor + 2]
-    out.append("")
+    insert_at = _rst_section_end_index(lines, anchor)
+    out = lines[:insert_at]
+    if out and out[-1].strip():
+        out.append("")
     out.extend(entry_lines)
-    out.append("")
-    out.extend(lines[anchor + 2 :])
+    if insert_at < len(lines):
+        out.append("")
+    out.extend(lines[insert_at:])
     result = "\n".join(out)
     return result + "\n"
 
@@ -509,6 +585,46 @@ def _auto_resolve_rst(ours: list[str], theirs: list[str]) -> list[str] | None:
     return out
 
 
+def _md_has_any_l2_heading(text: str) -> bool:
+    return any(line.startswith("## ") for line in text.splitlines())
+
+
+def _md_first_heading_line(text: str) -> str:
+    for line in text.splitlines():
+        if line.startswith("## "):
+            return line
+    return ""
+
+
+def _detect_conflict_format(ours_text: str, theirs_text: str, path: str) -> ChangelogFormat | None:
+    """Resolve merge format for extensionless paths (parity with auto-resolve-changelog.sh)."""
+    basename = Path(path).name
+    if basename.endswith(".rst"):
+        return ChangelogFormat.RST
+    if basename.endswith(".md"):
+        return ChangelogFormat.MARKDOWN
+    has2 = _md_has_any_l2_heading(ours_text)
+    has3 = _md_has_any_l2_heading(theirs_text)
+    if has2 or has3:
+        h2 = _md_first_heading_line(ours_text)
+        h3 = _md_first_heading_line(theirs_text)
+        if h2 and h3 and h2 == h3:
+            return ChangelogFormat.MARKDOWN
+        return None
+    return ChangelogFormat.RST
+
+
+def _resolve_repo_path(root: Path, rel_path: str) -> Path:
+    base = root.resolve()
+    target = (base / rel_path).resolve()
+    try:
+        _ = target.relative_to(base)
+    except ValueError as exc:
+        msg = f"path escapes repository root: {rel_path}"
+        raise ChangelogError(msg) from exc
+    return target
+
+
 def auto_resolve(runner: Runner, conflict_path: str, *, cwd: str | None = None) -> bool:
     """Merge :2: and :3: changelog conflict stages when headings/tails match."""
     ours_result = git.show_file(runner, f":2:{conflict_path}", cwd=cwd)
@@ -518,7 +634,9 @@ def auto_resolve(runner: Runner, conflict_path: str, *, cwd: str | None = None) 
 
     ours_lines = ours_result.stdout.splitlines()
     theirs_lines = theirs_result.stdout.splitlines()
-    fmt = detect_format(ours_result.stdout, path=conflict_path)
+    fmt = _detect_conflict_format(ours_result.stdout, theirs_result.stdout, conflict_path)
+    if fmt is None:
+        return False
 
     merged: list[str] | None
     if fmt == ChangelogFormat.MARKDOWN:
@@ -530,7 +648,7 @@ def auto_resolve(runner: Runner, conflict_path: str, *, cwd: str | None = None) 
         return False
 
     root = Path(cwd) if cwd else Path.cwd()
-    target = root / conflict_path
+    target = _resolve_repo_path(root, conflict_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     text = "\n".join(merged)
     if ours_result.stdout.endswith("\n"):
@@ -549,45 +667,7 @@ def _insert_md_version_anchor(
     lines = text.splitlines()
     today = _today_iso()
     block = entry_lines if entry_lines is not None else [f"## [{version}] - {today}"]
-    out: list[str] = []
-    inserted = False
-    has_unreleased = any(line.startswith("## [Unreleased]") for line in lines)
-    in_unreleased = False
-    for line in lines:
-        if line.startswith("## [Unreleased]"):
-            out.append(line)
-            in_unreleased = True
-            continue
-        if in_unreleased and line.startswith("## ["):
-            in_unreleased = False
-            if not inserted:
-                out.append("")
-                out.extend(block)
-                inserted = True
-            out.append(line)
-            continue
-        if in_unreleased:
-            out.append(line)
-            continue
-        if (
-            not has_unreleased
-            and "and this project adheres to [Semantic Versioning]" in line
-        ):
-            out.append(line)
-            if not inserted:
-                out.append("")
-                out.extend(block)
-                inserted = True
-            continue
-        if not inserted and line.startswith("## ["):
-            out.extend(block)
-            out.append("")
-            inserted = True
-        out.append(line)
-    if in_unreleased and not inserted:
-        out.append("")
-        out.extend(block)
-        inserted = True
+    out, inserted = _insert_md_at_anchor(lines, block)
     if not inserted:
         raise ChangelogError("no anchor found for changelog entry", code=3)
     result = "\n".join(out)
@@ -647,7 +727,10 @@ def commit_changelog(
         )
 
     root = Path(cwd) if cwd else Path.cwd()
-    changelog_path = root / path
+    try:
+        changelog_path = _resolve_repo_path(root, path)
+    except ChangelogError as exc:
+        return CommitResult(committed=False, error=_redact_outbound(str(exc)))
     if not changelog_path.is_file():
         return CommitResult(committed=False, error=_redact_outbound(f"{path} not found"))
 

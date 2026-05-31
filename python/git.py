@@ -27,6 +27,8 @@ def _run(
     cwd: str | None = None,
     env: Mapping[str, str] | None = None,
 ) -> CommandResult:
+    if env is None:
+        env = _git_subprocess_env()
     return runner.run(list(argv), cwd=cwd, env=env)
 
 
@@ -260,7 +262,6 @@ def rebase_onto(
         runner,
         ["git", "rebase", "--onto", newbase, upstream],
         cwd=cwd,
-        env=_git_subprocess_env(),
     )
 
 

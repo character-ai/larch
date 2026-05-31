@@ -310,8 +310,14 @@ def classify_bump(runner: Runner, *, cwd: str | None = None) -> BumpClassificati
         elif status == "M" and _public_surface_path(old_path):
             old_show = git.show_file(runner, f"{base}:{old_path}", cwd=cwd)
             new_show = git.show_file(runner, f"HEAD:{old_path}", cwd=cwd)
-            old_fm = _extract_frontmatter(old_show.stdout if old_show.returncode == 0 else "")
-            new_fm = _extract_frontmatter(new_show.stdout if new_show.returncode == 0 else "")
+            if old_show.returncode != 0:
+                msg = f"git show {base}:{old_path} failed"
+                raise ShipError(msg)
+            if new_show.returncode != 0:
+                msg = f"git show HEAD:{old_path} failed"
+                raise ShipError(msg)
+            old_fm = _extract_frontmatter(old_show.stdout)
+            new_fm = _extract_frontmatter(new_show.stdout)
 
             old_name = _frontmatter_field(old_fm, "name")
             new_name = _frontmatter_field(new_fm, "name")

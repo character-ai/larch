@@ -1,4 +1,4 @@
-# ship-pr Python foundation (Phase 1)
+# ship-pr Python foundation (Phase 1–2)
 
 Flat `python/` tree for the in-progress `scripts/ship-pr.sh` → Python rework. **Runtime
 modules import stdlib only** (Python ≥ 3.12). Linters and pytest are dev/CI-only and are never
@@ -12,6 +12,7 @@ imported by runtime code.
 - `logging_util.py` — breadcrumbs + JSONL journal (observability only)
 - `redact.py`, `retry.py` — ports of `redact-secrets.sh` / `lib-net.sh`
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
+- `bump_worktree.py` — shared drop/worktree helpers (`DropResult`, porcelain, sorted diff)
 - `version_bump.py`, `changelog.py` — Phase 2 ports of bump-version / CHANGELOG scripts
   (not wired into the live `/implement` path until Phase 7)
 - `test_<module>.py` — colocated unit tests; `test_stdlib_only.py` enforces stdlib-only imports

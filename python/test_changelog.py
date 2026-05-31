@@ -116,7 +116,7 @@ def test_parity_extract_version_body_md(tmp_path: Path) -> None:
         'changelog_extract_version_body "1.0.0" "$1" CHANGELOG.md\n'
     )
     bash = subprocess.run(
-        ["bash", "-c", script, str(dest)],
+        ["bash", "-c", script, "_", str(dest)],
         cwd=tmp_path,
         capture_output=True,
         text=True,
@@ -177,8 +177,10 @@ def test_detect_format_by_extension() -> None:
 
 
 @pytest.mark.skipif(
-    not LIB_CHANGELOG.is_file() or shutil.which("bash") is None,
-    reason="lib-changelog.sh or bash unavailable",
+    not LIB_CHANGELOG.is_file()
+    or shutil.which("bash") is None
+    or shutil.which("gawk") is None,
+    reason="lib-changelog.sh, bash, or gawk unavailable",
 )
 def test_parity_first_version_heading(tmp_path: Path) -> None:
     path = tmp_path / "CHANGELOG.md"
@@ -194,8 +196,7 @@ def test_parity_first_version_heading(tmp_path: Path) -> None:
         text=True,
         check=False,
     )
-    if bash.returncode != 0:
-        pytest.skip("lib-changelog.sh awk match() capture needs gawk (macOS awk fails)")
+    assert bash.returncode == 0
     py = changelog.first_version_heading(MD_SAMPLE, fmt=ChangelogFormat.MARKDOWN)
     assert py == bash.stdout.strip()
 
@@ -453,3 +454,229 @@ def test_parity_commit_changelog_twin_repos(tmp_path: Path) -> None:
     assert bash_kv.get("COMMITTED", "").lower() == str(py.committed).lower()
     if py.committed:
         assert py.commit_sha
+
+
+@pytest.mark.skipif(
+    not LIB_CHANGELOG.is_file() or shutil.which("bash") is None,
+    reason="lib-changelog.sh or bash unavailable",
+)
+def test_parity_write_changelog_entry(tmp_path: Path) -> None:
+    _ = (tmp_path / "CHANGELOG.md").write_text(MD_SAMPLE, encoding="utf-8")
+    cats = tmp_path / "categories.md"
+    _ = cats.write_text("### Added\n\n- Feature\n", encoding="utf-8")
+    dest_bash = tmp_path / "out_bash.md"
+    script = (
+        f'source "{LIB_CHANGELOG}"\n'
+        f'write_changelog_entry "1.1.0" "{cats}" "{dest_bash}"\n'
+    )
+    bash = subprocess.run(
+        ["bash", "-c", script],
+        cwd=tmp_path,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert bash.returncode == 0
+    py = changelog.write_changelog_entry(
+        MD_SAMPLE,
+        "1.1.0",
+        cats.read_text(encoding="utf-8"),
+        fmt=ChangelogFormat.MARKDOWN,
+    )
+    assert py.rstrip("\n") == dest_bash.read_text(encoding="utf-8").rstrip("\n")
+
+
+def test_write_md_retitle_blank_line_before_next_heading() -> None:
+    text = (
+        "# Changelog\n\n## [Unreleased]\n\n## [1.0.0] - 2026-01-01\n\n### Fixed\n\n- Old\n"
+    )
+    out = changelog.write_changelog_entry(
+        text,
+        "2.0.0",
+        "### Added\n\n- New\n",
+        fmt=ChangelogFormat.MARKDOWN,
+        replaces_version="1.0.0",
+    )
+    assert "\n\n## [2.0.0]" in out or "\n\n## [2.0.0]" in out.replace("\r\n", "\n")
+    assert "## [2.0.0]" in out
+    idx = out.index("## [2.0.0]")
+    after = out[idx:].splitlines()
+    assert after[0].startswith("## [2.0.0]")
+    rest = out[out.index("## [Unreleased]") :]
+    assert "\n\n## [Unreleased]" in rest or rest.count("\n\n") >= 1
+
+
+def test_write_duplicate_raises_code_4() -> None:
+    dup = (
+        MD_SAMPLE
+        + "\n## [1.1.0] - 2026-02-02\n\n### X\n\n- y\n"
+        + "\n## [1.1.0] - 2026-03-03\n\n### Y\n\n- z\n"
+    )
+    with pytest.raises(ChangelogError) as exc:
+        _ = changelog.write_changelog_entry(
+            dup,
+            "1.1.0",
+            "### Added\n\n- w\n",
+            fmt=ChangelogFormat.MARKDOWN,
+        )
+    assert exc.value.code == 4
+
+
+def test_rst_extract_version_body() -> None:
+    body = changelog.extract_version_body(RST_SAMPLE, "1.0.0", fmt=ChangelogFormat.RST)
+    assert body is not None
+    assert "Old" in body
+
+
+def test_rst_write_retitle() -> None:
+    out = changelog.write_changelog_entry(
+        RST_SAMPLE,
+        "2.0.0",
+        "Added\n~~~~~\n\n- New\n",
+        fmt=ChangelogFormat.RST,
+        replaces_version="1.0.0",
+    )
+    assert "Version 2.0.0" in out
+    assert "Version 1.0.0" not in out
+
+
+def test_rst_duplicate_raises_code_4() -> None:
+    title1 = "Version 1.1.0 (2026-02-02)"
+    title2 = "Version 1.1.0 (2026-03-03)"
+    dup = (
+        RST_SAMPLE
+        + f"\n{title1}\n{'-' * len(title1)}\n\n"
+        + f"\n{title2}\n{'-' * len(title2)}\n\n"
+    )
+    with pytest.raises(ChangelogError) as exc:
+        _ = changelog.write_changelog_entry(
+            dup,
+            "1.1.0",
+            "Added\n~~~~~\n\n- x\n",
+            fmt=ChangelogFormat.RST,
+        )
+    assert exc.value.code == 4
+
+
+def test_rst_insert_after_unreleased_keeps_pending_under_unreleased() -> None:
+    out = changelog.write_changelog_entry(
+        RST_SAMPLE,
+        "1.1.0",
+        "Added\n~~~~~\n\n- Feature\n",
+        fmt=ChangelogFormat.RST,
+    )
+    lines = out.splitlines()
+    unreleased_idx = next(i for i, line in enumerate(lines) if line == "Unreleased")
+    version_idx = next(i for i, line in enumerate(lines) if line.startswith("Version 1.1.0"))
+    pending_idx = next(i for i, line in enumerate(lines) if line.strip() == "- Pending")
+    assert unreleased_idx < pending_idx < version_idx
+
+
+def test_auto_resolve_rejects_path_outside_repo(tmp_path: Path) -> None:
+    with pytest.raises(ChangelogError, match="escapes"):
+        _ = changelog._resolve_repo_path(tmp_path, "../outside.md")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_commit_changelog_rejects_path_outside_repo(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _ = repo.mkdir()
+    _ = (repo / "CHANGELOG.md").write_text(MD_SAMPLE, encoding="utf-8")
+    result = changelog.commit_changelog(ProcRunner(), "1.0.0", path="../CHANGELOG.md", cwd=str(repo))
+    assert result.committed is False
+    assert "root" in result.error.lower() or "escapes" in result.error.lower()
+
+
+def test_detect_conflict_format_extensionless_mismatch() -> None:
+    ours = "## [Unreleased]\n"
+    theirs = "## [Different]\n"
+    assert changelog._detect_conflict_format(ours, theirs, "CHANGELOG") is None  # pyright: ignore[reportPrivateUsage]
+
+
+def test_detect_conflict_format_extensionless_match() -> None:
+    ours = "## [Unreleased]\n\n### Changed\n"
+    theirs = "## [Unreleased]\n\n### Added\n"
+    fmt = changelog._detect_conflict_format(ours, theirs, "CHANGELOG")  # pyright: ignore[reportPrivateUsage]
+    assert fmt == ChangelogFormat.MARKDOWN
+
+
+@pytest.mark.skipif(
+    not DROP_CHANGELOG.is_file() or shutil.which("bash") is None,
+    reason="drop-changelog-commit.sh or bash unavailable",
+)
+def test_parity_drop_changelog_success(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _ = repo.mkdir()
+    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.email", "t@e.com"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+    _ = (repo / "CHANGELOG.md").write_text(MD_SAMPLE, encoding="utf-8")
+    _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+    _ = subprocess.run(
+        ["bash", str(COMMIT_CHANGELOG), "--version", "9.9.9"],
+        cwd=repo,
+        capture_output=True,
+        check=False,
+    )
+    bash = subprocess.run(
+        ["bash", str(DROP_CHANGELOG), "--version", "9.9.9"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    repo2 = tmp_path / "repo2"
+    shutil.copytree(repo, repo2)
+    py = changelog.drop_changelog_commit(ProcRunner(), "9.9.9", cwd=str(repo2))
+    bash_kv = {k: v for line in bash.stdout.splitlines() if "=" in line for k, v in [line.split("=", 1)]}
+    assert str(py.dropped).lower() == bash_kv.get("DROPPED", "").lower()
+
+
+@pytest.mark.skipif(
+    not AUTO_RESOLVE.is_file() or shutil.which("bash") is None,
+    reason="auto-resolve-changelog.sh or bash unavailable",
+)
+def test_parity_auto_resolve_subprocess(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _ = repo.mkdir()
+    _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+    ours = MD_SAMPLE.replace("- Pending", "- Base only")
+    theirs = MD_SAMPLE.replace("- Pending", "- Base only\n- Branch")
+    _ = (repo / "CHANGELOG.md").write_text(ours, encoding="utf-8")
+    _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "base"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "checkout", "-q", "-b", "feature"], cwd=repo, check=True)
+    _ = (repo / "CHANGELOG.md").write_text(theirs, encoding="utf-8")
+    _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "feature"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "checkout", "-q", "main"], cwd=repo, check=True)
+    _ = (repo / "CHANGELOG.md").write_text(ours + "\n# main edit\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "main"], cwd=repo, check=True)
+    merge = subprocess.run(
+        ["git", "merge", "feature"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if merge.returncode != 0:
+        bash = subprocess.run(
+            ["bash", str(AUTO_RESOLVE), "CHANGELOG.md"],
+            cwd=repo,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if bash.returncode == 0:
+            bash_text = (repo / "CHANGELOG.md").read_text(encoding="utf-8")
+            repo_py = tmp_path / "repo_py"
+            shutil.copytree(repo, repo_py)
+            runner = ProcRunner()
+            assert changelog.auto_resolve(runner, "CHANGELOG.md", cwd=str(repo_py)) is True
+            py_text = (repo_py / "CHANGELOG.md").read_text(encoding="utf-8")
+            assert py_text == bash_text
+        else:
+            pytest.skip("could not produce merge conflict for auto-resolve parity")
+    else:
+        pytest.skip("merge did not conflict")

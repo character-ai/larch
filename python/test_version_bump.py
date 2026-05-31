@@ -85,7 +85,10 @@ def test_bump_branch_guard_matrix() -> None:
         version_bump.bump_branch_guard("feat", "other", forked=False)
     with pytest.raises(Stalled):
         version_bump.bump_branch_guard("main", "main", forked=False)
+    with pytest.raises(Stalled):
+        version_bump.bump_branch_guard("master", "master", forked=False)
     version_bump.bump_branch_guard("main", "main", forked=True)
+    version_bump.bump_branch_guard("master", "master", forked=True)
 
 
 def test_apply_same_version_race_retries(tmp_path: Path) -> None:
@@ -644,3 +647,420 @@ def test_drop_reset_at_head(tmp_path: Path) -> None:
     result = version_bump.drop_bump_commit(ProcRunner(), cwd=str(repo))
     assert result.dropped is True
     assert json.loads(plugin.read_text(encoding="utf-8"))["version"] == "1.2.2"
+
+
+def _classify_stub(
+    *,
+    head_subject: str = "Feature",
+    transparent_chain: list[tuple[str, list[str]]] | None = None,
+    name_status: str = "",
+    merge_base: str = "base1234567890",
+) -> StubRunner:
+    """Build StubRunner for classify_bump idempotency / diff edges."""
+    responses: dict[tuple[str, ...], CommandResult] = {
+        ("git", "fetch", "origin", "main", "--quiet"): CommandResult(
+            ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
+        ),
+        ("git", "merge-base", "main", "HEAD"): CommandResult(
+            ("git", "merge-base", "main", "HEAD"), 0, f"{merge_base}\n", "", 0.01
+        ),
+        ("git", "log", "-1", "--format=%s", "HEAD"): CommandResult(
+            ("git", "log", "-1", "--format=%s", "HEAD"), 0, f"{head_subject}\n", "", 0.01
+        ),
+        (
+            "git",
+            "diff",
+            "-M",
+            "--name-status",
+            merge_base,
+            "HEAD",
+            "--",
+            "skills",
+            "agents",
+        ): CommandResult(
+            (
+                "git",
+                "diff",
+                "-M",
+                "--name-status",
+                merge_base,
+                "HEAD",
+                "--",
+                "skills",
+                "agents",
+            ),
+            0,
+            name_status,
+            "",
+            0.01,
+        ),
+    }
+    chain = transparent_chain or []
+    for depth, (subject, files) in enumerate(chain):
+        ref = "HEAD" if depth == 0 else f"HEAD~{depth}"
+        responses[("git", "rev-parse", ref)] = CommandResult(
+            ("git", "rev-parse", ref), 0, f"sha{depth}\n", "", 0.01
+        )
+        responses[("git", "log", "-1", "--format=%s", ref)] = CommandResult(
+            ("git", "log", "-1", "--format=%s", ref), 0, f"{subject}\n", "", 0.01
+        )
+        file_lines = "\n".join(files) + ("\n" if files else "")
+        responses[
+            ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", ref)
+        ] = CommandResult(
+            ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", ref),
+            0,
+            file_lines,
+            "",
+            0.01,
+        )
+    if not chain:
+        responses[("git", "rev-parse", "HEAD")] = CommandResult(
+            ("git", "rev-parse", "HEAD"), 0, "sha0\n", "", 0.01
+        )
+        responses[
+            ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+        ] = CommandResult(
+            ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"),
+            0,
+            "",
+            "",
+            0.01,
+        )
+    else:
+        next_ref = f"HEAD~{len(chain)}"
+        responses[("git", "rev-parse", next_ref)] = CommandResult(
+            ("git", "rev-parse", next_ref), 1, "", "", 0.01
+        )
+        responses[("git", "log", "-1", "--format=%s", next_ref)] = CommandResult(
+            ("git", "log", "-1", "--format=%s", next_ref), 0, head_subject, "", 0.01
+        )
+    return StubRunner(responses)
+
+
+def test_classify_idempotency_transparent_path_guard_refuses(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.0.0"}\n', encoding="utf-8")
+    runner = _classify_stub(
+        head_subject="Feature",
+        transparent_chain=[
+            (
+                f"{config.TRANSPARENT_CHANGELOG_SUBJECT_PREFIX}1.0.0",
+                ["README.md"],
+            ),
+        ],
+        name_status="",
+    )
+    result = version_bump.classify_bump(runner, cwd=str(repo))
+    assert result.bump_type == "PATCH"
+
+
+def test_classify_idempotency_depth_cap_at_three(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.0.0"}\n', encoding="utf-8")
+    chain = [
+        (
+            f"{config.TRANSPARENT_CHANGELOG_SUBJECT_PREFIX}1.0.{i}",
+            [config.CHANGELOG_DEFAULT_PATH],
+        )
+        for i in range(3)
+    ]
+    runner = _classify_stub(
+        head_subject="Bump version to 9.9.9",
+        transparent_chain=chain,
+    )
+    result = version_bump.classify_bump(runner, cwd=str(repo))
+    assert result.bump_type == "NONE"
+
+
+def test_classify_bump_at_idem_ref_none(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.2.3"}\n', encoding="utf-8")
+    runner = _classify_stub(
+        head_subject="Bump version to 1.2.3",
+        transparent_chain=[
+            (
+                f"{config.TRANSPARENT_CHANGELOG_SUBJECT_PREFIX}1.2.3",
+                [config.CHANGELOG_DEFAULT_PATH],
+            ),
+        ],
+    )
+    result = version_bump.classify_bump(runner, cwd=str(repo))
+    assert result.bump_type == "NONE"
+
+
+def test_classify_changelog_subject_spoof_skills_minor(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.0.0"}\n', encoding="utf-8")
+    runner = _classify_stub(
+        head_subject=f"{config.TRANSPARENT_CHANGELOG_SUBJECT_PREFIX}1.2.3",
+        name_status="A\tskills/new-skill/SKILL.md\n",
+    )
+    runner.responses[
+        ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD")
+    ] = CommandResult(
+        ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD"),
+        0,
+        "skills/new-skill/SKILL.md\n",
+        "",
+        0.01,
+    )
+    result = version_bump.classify_bump(runner, cwd=str(repo))
+    assert result.bump_type == "MINOR"
+
+
+def test_classify_added_skill_minor(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.0.0"}\n', encoding="utf-8")
+    runner = _classify_stub(name_status="A\tskills/new/SKILL.md\n")
+    result = version_bump.classify_bump(runner, cwd=str(repo))
+    assert result.bump_type == "MINOR"
+
+
+def test_classify_renamed_skill_major(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.0.0"}\n', encoding="utf-8")
+    runner = _classify_stub(
+        name_status="R100\tskills/old/SKILL.md\tskills/new/SKILL.md\n",
+    )
+    result = version_bump.classify_bump(runner, cwd=str(repo))
+    assert result.bump_type == "MAJOR"
+
+
+def test_classify_modified_argument_hint_minor(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.0.0"}\n', encoding="utf-8")
+    old_fm = "---\nname: x\nargument-hint: [--a]\n---\n"
+    new_fm = "---\nname: x\nargument-hint: [--a --b]\n---\n"
+    runner = StubRunner(
+        {
+            ("git", "fetch", "origin", "main", "--quiet"): CommandResult(
+                ("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01
+            ),
+            ("git", "merge-base", "main", "HEAD"): CommandResult(
+                ("git", "merge-base", "main", "HEAD"), 0, "base\n", "", 0.01
+            ),
+            ("git", "log", "-1", "--format=%s", "HEAD"): CommandResult(
+                ("git", "log", "-1", "--format=%s", "HEAD"), 0, "work\n", "", 0.01
+            ),
+            ("git", "rev-parse", "HEAD"): CommandResult(
+                ("git", "rev-parse", "HEAD"), 0, "sha\n", "", 0.01
+            ),
+            (
+                "git",
+                "diff",
+                "-M",
+                "--name-status",
+                "base",
+                "HEAD",
+                "--",
+                "skills",
+                "agents",
+            ): CommandResult(
+                (
+                    "git",
+                    "diff",
+                    "-M",
+                    "--name-status",
+                    "base",
+                    "HEAD",
+                    "--",
+                    "skills",
+                    "agents",
+                ),
+                0,
+                "M\tskills/x/SKILL.md\n",
+                "",
+                0.01,
+            ),
+            ("git", "show", "base:skills/x/SKILL.md"): CommandResult(
+                ("git", "show", "base:skills/x/SKILL.md"), 0, old_fm, "", 0.01
+            ),
+            ("git", "show", "HEAD:skills/x/SKILL.md"): CommandResult(
+                ("git", "show", "HEAD:skills/x/SKILL.md"), 0, new_fm, "", 0.01
+            ),
+        },
+    )
+    result = version_bump.classify_bump(runner, cwd=str(repo))
+    assert result.bump_type == "MINOR"
+
+
+def test_drop_rebase_onto_when_bump_below_head(tmp_path: Path) -> None:
+    repo = _init_bump_repo(tmp_path)
+    _ = (repo / "README.md").write_text("feature\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "feature"], cwd=repo, check=True)
+    plugin = repo / ".claude-plugin/plugin.json"
+    _ = plugin.write_text('{"version":"2.0.0"}\n', encoding="utf-8")
+    _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 2.0.0"], cwd=repo, check=True)
+    result = version_bump.drop_bump_commit(ProcRunner(), cwd=str(repo))
+    assert result.dropped is True
+    assert json.loads(plugin.read_text(encoding="utf-8"))["version"] == "1.2.2"
+    log = subprocess.run(
+        ["git", "log", "--oneline", "-3"],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert "Bump version to 2.0.0" not in log.stdout
+
+
+def test_drop_allow_changelog_only(tmp_path: Path) -> None:
+    repo = _init_bump_repo(tmp_path)
+    changelog_md = repo / "CHANGELOG.md"
+    _ = changelog_md.write_text(
+        changelog_md.read_text(encoding="utf-8") + "\n## [1.2.3] - 2026-01-01\n",
+        encoding="utf-8",
+    )
+    _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+    _ = subprocess.run(
+        ["git", "commit", "-q", "-m", "Bump version to 1.2.3"],
+        cwd=repo,
+        check=True,
+    )
+    result = version_bump.drop_bump_commit(
+        ProcRunner(),
+        allow_changelog_only=True,
+        cwd=str(repo),
+    )
+    assert result.dropped is True
+
+
+def test_sorted_changed_files_c_locale_order(tmp_path: Path) -> None:
+    from bump_worktree import sorted_changed_files
+
+    repo = _init_bump_repo(tmp_path)
+    _ = subprocess.run(
+        ["git", "commit", "-q", "--allow-empty", "-m", "empty"],
+        cwd=repo,
+        check=True,
+    )
+    files = "äfile\nbfile\n"
+    ordered = sorted(files.strip().split("\n"), key=lambda s: s.encode())
+    runner = StubRunner(
+        {
+            ("git", "diff", "--name-only", "HEAD~1", "HEAD"): CommandResult(
+                ("git", "diff", "--name-only", "HEAD~1", "HEAD"),
+                0,
+                files,
+                "",
+                0.01,
+            ),
+        },
+    )
+    assert sorted_changed_files(runner, "HEAD~1", "HEAD", cwd=str(repo)) == "\n".join(ordered)
+
+
+@pytest.mark.skipif(
+    not CLASSIFY_SH.is_file() or shutil.which("bash") is None,
+    reason="classify-bump.sh or bash unavailable",
+)
+@pytest.mark.parametrize(
+    "case",
+    [
+        "test1",
+        "test2",
+        "test3",
+        "test4",
+        "test5",
+    ],
+)
+def test_parity_classify_idempotency_cases(tmp_path: Path, case: str) -> None:
+    harness = REPO_ROOT / ".claude/skills/bump-version/scripts/test-classify-bump.sh"
+    if not harness.is_file():
+        pytest.skip("test-classify-bump.sh unavailable")
+    repo = _init_bump_repo(tmp_path / case)
+    if case == "test1":
+        plugin = repo / ".claude-plugin/plugin.json"
+        _ = plugin.write_text('{"version":"1.2.3"}\n', encoding="utf-8")
+        _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
+        _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 1.2.3"], cwd=repo, check=True)
+    elif case == "test2":
+        plugin = repo / ".claude-plugin/plugin.json"
+        _ = plugin.write_text('{"version":"1.2.3"}\n', encoding="utf-8")
+        _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
+        _ = subprocess.run(["git", "commit", "-q", "-m", "Bump version to 1.2.3"], cwd=repo, check=True)
+        with (repo / "CHANGELOG.md").open("a", encoding="utf-8") as fh:
+            fh.write("\n- New fix.\n")
+        _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+        _ = subprocess.run(
+            ["git", "commit", "-q", "-m", "Update CHANGELOG for 1.2.3"],
+            cwd=repo,
+            check=True,
+        )
+    elif case == "test5":
+        skill = repo / "skills/new-skill/SKILL.md"
+        _ = skill.parent.mkdir(parents=True)
+        _ = skill.write_text("---\nname: new-skill\n---\n", encoding="utf-8")
+        _ = subprocess.run(["git", "add", skill], cwd=repo, check=True)
+        _ = subprocess.run(
+            ["git", "commit", "-q", "-m", "Update CHANGELOG for 1.2.3"],
+            cwd=repo,
+            check=True,
+        )
+    bash = subprocess.run(
+        ["bash", str(CLASSIFY_SH)],
+        cwd=repo,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    py = version_bump.classify_bump(ProcRunner(), cwd=str(repo))
+    bash_kv = _parse_kv(bash.stdout)
+    assert py.bump_type == bash_kv.get("BUMP_TYPE")
+
+
+@pytest.mark.skipif(
+    not DROP_SH.is_file() or shutil.which("bash") is None,
+    reason="drop-bump-commit.sh or bash unavailable",
+)
+def test_parity_drop_bump_allow_changelog_only(tmp_path: Path) -> None:
+    def _changelog_only_bump(repo: Path) -> None:
+        changelog_md = repo / "CHANGELOG.md"
+        _ = changelog_md.write_text(
+            changelog_md.read_text(encoding="utf-8") + "\n## [1.2.3] - 2026-01-01\n",
+            encoding="utf-8",
+        )
+        _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+        _ = subprocess.run(
+            ["git", "commit", "-q", "-m", "Bump version to 1.2.3"],
+            cwd=repo,
+            check=True,
+        )
+
+    repo_bash = _init_bump_repo(tmp_path / "bash")
+    repo_py = _init_bump_repo(tmp_path / "py")
+    _changelog_only_bump(repo_bash)
+    _changelog_only_bump(repo_py)
+    bash = subprocess.run(
+        ["bash", str(DROP_SH), "--allow-changelog-only"],
+        cwd=repo_bash,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    py = version_bump.drop_bump_commit(
+        ProcRunner(),
+        allow_changelog_only=True,
+        cwd=str(repo_py),
+    )
+    bash_kv = _parse_kv(bash.stdout)
+    assert str(py.dropped).lower() == bash_kv.get("DROPPED", "").lower()
