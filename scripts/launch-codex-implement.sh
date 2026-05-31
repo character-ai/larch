@@ -360,8 +360,8 @@ fi
 
 MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false
-[[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
-[[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
+if [[ -s "$MANIFEST_PATH" ]];   then MANIFEST_WRITTEN=true;   fi
+if [[ -s "$QA_PENDING_PATH" ]]; then QA_PENDING_WRITTEN=true; fi
 
 # Preserve a parseable JSONL file even when the wrapper emitted no stdout
 # (for example, stderr-only auth failures). That keeps usage parsing in the

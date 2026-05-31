@@ -351,8 +351,8 @@ cursor_launcher_promote_inner_done "$TRANSCRIPT_PATH"
 
 MANIFEST_WRITTEN=false
 QA_PENDING_WRITTEN=false
-[[ -s "$MANIFEST_PATH" ]]   && MANIFEST_WRITTEN=true
-[[ -s "$QA_PENDING_PATH" ]] && QA_PENDING_WRITTEN=true
+if [[ -s "$MANIFEST_PATH" ]];   then MANIFEST_WRITTEN=true;   fi
+if [[ -s "$QA_PENDING_PATH" ]]; then QA_PENDING_WRITTEN=true; fi
 
 if [[ "$MANIFEST_WRITTEN" == true ]] && command -v jq >/dev/null 2>&1; then
     _manifest_status=$(jq -r 'if type=="object" then .status // "" else "" end' "$MANIFEST_PATH" 2>/dev/null || true)
