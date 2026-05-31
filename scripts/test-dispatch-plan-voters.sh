@@ -122,6 +122,7 @@ while [[ $# -gt 0 ]]; do
         --slots-file) [[ -n "${PLAN_VOTER_ARGV_LOG:-}" ]] && printf '%s\n' "$2" >> "$PLAN_VOTER_ARGV_LOG"; slots_file="$2"; shift 2 ;;
         --codex-present) [[ -n "${PLAN_VOTER_ARGV_LOG:-}" ]] && printf '%s\n' "$2" >> "$PLAN_VOTER_ARGV_LOG"; CODEX_PRESENT="$2"; shift 2 ;;
         --cursor-present) [[ -n "${PLAN_VOTER_ARGV_LOG:-}" ]] && printf '%s\n' "$2" >> "$PLAN_VOTER_ARGV_LOG"; CURSOR_PRESENT="$2"; shift 2 ;;
+        --no-fallback) shift ;;
         --mode|--timeout) [[ -n "${PLAN_VOTER_ARGV_LOG:-}" ]] && printf '%s\n' "$2" >> "$PLAN_VOTER_ARGV_LOG"; shift 2 ;;
         *) shift ;;
     esac
@@ -271,30 +272,39 @@ out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_S
 grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" || { echo "FAIL: absent-tools path missing VOTER_1 launched" >&2; exit 1; }
 grep -Fq 'VOTER_1_TOOL=claude' <<< "$out" || { echo "FAIL: absent-tools path missing VOTER_1_TOOL" >&2; exit 1; }
 grep -Fq 'VOTER_1_PARSE_RATE_STATUS=OK' <<< "$out" || { echo "FAIL: absent-tools path missing VOTER_1 parse-rate OK" >&2; exit 1; }
-grep -Fq 'VOTER_2_STATUS=fallback' <<< "$out"
-grep -Fq 'VOTER_3_STATUS=fallback' <<< "$out"
-grep -Fq 'VOTER_2_TOOL=claude' <<< "$out"
-grep -Fq 'VOTER_3_TOOL=claude' <<< "$out"
-grep -Fq 'DISPATCH_OK=true' <<< "$out"
-voter2_path=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_2_PATH"{print $2; exit}')
-grep -Fq 'OOS_N:' "$TMP/absent/codex-plan-voter-prompt.txt" || { echo "FAIL: plan-voter prompt missing OOS rows" >&2; exit 1; }
-grep -Fq 'FINDING_1: YES' "$voter2_path" || { echo "FAIL: voter2 output missing FINDING vote line" >&2; exit 1; }
-grep -Fq 'OOS_1: NO' "$voter2_path" || { echo "FAIL: voter2 output missing OOS vote line" >&2; exit 1; }
-test -f "${voter2_path%.txt}-first-pass.txt" || { echo "FAIL: claude fallback first-pass sidecar missing" >&2; exit 1; }
+grep -Fq 'VOTER_2_STATUS=failed' <<< "$out" || { echo "FAIL: absent-tools VOTER_2 should be failed" >&2; exit 1; }
+grep -Fq 'VOTER_3_STATUS=failed' <<< "$out" || { echo "FAIL: absent-tools VOTER_3 should be failed" >&2; exit 1; }
+grep -Fq 'DISPATCH_OK=true' <<< "$out" || { echo "FAIL: absent-tools DISPATCH_OK" >&2; exit 1; }
 grep -Fq 'VOTER_PATHS_FILE=' <<< "$out" || { echo "FAIL: absent-tools dispatch missing VOTER_PATHS_FILE" >&2; exit 1; }
 pv_abs=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
 [[ -f "$pv_abs" ]] || { echo "FAIL: plan voter paths file missing" >&2; exit 1; }
-[[ $(wc -l < "$pv_abs" | tr -d ' ') -eq 3 ]] || { echo "FAIL: absent-tools plan-voter paths should list three judges" >&2; exit 1; }
+[[ $(wc -l < "$pv_abs" | tr -d ' ') -eq 1 ]] || { echo "FAIL: absent-tools plan-voter paths should list Claude only" >&2; exit 1; }
 
 stub_log="$TMP/dispatch-with-waterfall.log"
 argv_log="$TMP/dispatch-with-waterfall.argv"
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$stub_log" PLAN_VOTER_ARGV_LOG="$argv_log" \
-    "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/healthy" --codex-available true --cursor-available true)
+    "$SCRIPT" --ballot-file "$BALLOT_PARSE_IDS" --design-tmpdir "$TMP/healthy" --codex-available true --cursor-available true)
 grep -Fq 'VOTER_1_STATUS=launched' <<< "$out" || { echo "FAIL: healthy path missing VOTER_1 launched" >&2; exit 1; }
 grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || { echo "FAIL: healthy path did not keep codex primary" >&2; exit 1; }
 grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || { echo "FAIL: healthy path did not keep cursor primary" >&2; exit 1; }
 assert_key_order "healthy dispatcher stdout" "$(printf '%s\n' "$out" | stdout_key_order)" "$EXPECTED_ORDER_WITH_PATHS"
 tr '\n' ' ' < "$argv_log" | grep -Fq -- '--timeout 1860' || fail "waterfall timeout should be 1860"
+grep -Fq -- '--no-fallback' "$argv_log" || fail "plan-voter waterfall must pass --no-fallback"
+manifest_healthy="$TMP/healthy/plan-voter-slots.ndjson"
+[[ -s "$manifest_healthy" ]] || fail "healthy run missing voter manifest"
+jq -s -e 'all(.[]; has("fallback_group") | not)' "$manifest_healthy" >/dev/null \
+    || fail "voter manifest must not include fallback_group"
+[[ "$(jq -s 'length' "$manifest_healthy")" == "2" ]] || fail "healthy run expected two external voter rows"
+
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$TMP/stub-codex-only.log" \
+    "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/codex-only" --codex-available true --cursor-available false)
+grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || fail "codex-only missing voter 2 codex"
+grep -Fq 'VOTER_3_STATUS=failed' <<< "$out" || fail "codex-only voter 3 should be failed/absent"
+
+out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$TMP/stub-cursor-only.log" \
+    "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/cursor-only" --codex-available false --cursor-available true)
+grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || fail "cursor-only missing voter 3 cursor"
+grep -Fq 'VOTER_2_STATUS=failed' <<< "$out" || fail "cursor-only voter 2 should be failed/absent"
 grep -Fq 'OOS_N:' "$TMP/healthy/codex-plan-voter-prompt.txt" || { echo "FAIL: healthy codex prompt missing OOS rows" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/cursor-plan-voter-prompt.txt" || { echo "FAIL: healthy cursor prompt missing OOS rows" >&2; exit 1; }
 grep -Fq 'OOS_N:' "$TMP/healthy/claude-plan-voter-prompt.txt" || { echo "FAIL: healthy claude voter1 prompt missing OOS rows" >&2; exit 1; }
@@ -319,7 +329,16 @@ grep -Fq $'voter-2\tcodex' "$stub_log" || { echo "FAIL: healthy stub log missing
 grep -Fq $'voter-3\tcursor' "$stub_log" || { echo "FAIL: healthy stub log missing cursor slot wiring" >&2; exit 1; }
 grep -Fq 'VOTER_PATHS_FILE=' <<< "$out" || { echo "FAIL: healthy stub missing VOTER_PATHS_FILE" >&2; exit 1; }
 pv_h=$(printf '%s\n' "$out" | awk -F= '$1=="VOTER_PATHS_FILE"{print substr($0,index($0,"=")+1);exit}')
-[[ -f "$pv_h" && $(wc -l < "$pv_h" | tr -d ' ') -eq 3 ]] || { echo "FAIL: healthy plan-voter paths file" >&2; exit 1; }
+pv_lines=$(wc -l < "$pv_h" | tr -d ' ')
+effective_paths=0
+for st in "$VOTER_1_STATUS" "$VOTER_2_STATUS" "$VOTER_3_STATUS"; do
+    [[ "$st" != "failed" ]] && effective_paths=$((effective_paths + 1))
+done
+[[ -f "$pv_h" && "$pv_lines" -eq "$effective_paths" ]] || {
+    echo "FAIL: healthy plan-voter paths file (lines=$pv_lines expected=$effective_paths)" >&2
+    grep -E '^VOTER_[123]_(STATUS|PATH|PARSE)=' <<<"$out" >&2 || true
+    exit 1
+}
 
 out_all_failed=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" CLAUDE_STUB_MODE=fail PLAN_VOTER_SLOT_2_STATUS=failed PLAN_VOTER_SLOT_3_STATUS=failed PLAN_VOTER_STUB_LOG="$TMP/all-failed.log" \
     "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/all-failed" --codex-available true --cursor-available true)

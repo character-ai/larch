@@ -29,7 +29,7 @@ while [[ $# -gt 0 ]]; do
         --slots-file) slots="${2:?}"; shift 2 ;;
         --plan-file) plan="${2:?}"; shift 2 ;;
         --feature-file) shift 2 ;;
-        --codex-present|--cursor-present|--mode|--timeout|--require-first-line-pattern) shift 2 ;;
+        --codex-present|--cursor-present|--mode|--timeout|--require-first-line-pattern|--no-fallback) shift 2 ;;
         *) shift 1 ;;
     esac
 done
@@ -87,17 +87,15 @@ grep -Fq -- '--require-first-line-pattern ^[[:space:]]*(schema_version|\{"no_iss
     || fail "plan-review first-line pattern not forwarded"
 manifest_line_count=$(grep -c . "$D1/plan-review-slots.ndjson" || true)
 [[ "$manifest_line_count" == "10" ]] || fail "expected 10 ndjson lines, got $manifest_line_count"
-jq -s -e 'all(.[]; .fallback_group != null)' "$D1/plan-review-slots.ndjson" >/dev/null \
-    || fail "every static plan-review row must include fallback_group"
+grep -Fq -- '--no-fallback' "$log1" || fail "plan-review dispatch must pass --no-fallback"
+jq -s -e 'all(.[]; has("fallback_group") | not)' "$D1/plan-review-slots.ndjson" >/dev/null \
+    || fail "plan-review rows must not include fallback_group"
 for archetype in arch edge innovation pragmatic requirements; do
-    expected="plan-${archetype}"
-    got_count=$(jq -r --arg fg "$expected" 'select(.fallback_group == $fg) | .slot' "$D1/plan-review-slots.ndjson" | wc -l | tr -d ' ')
-    [[ "$got_count" == "2" ]] || fail "expected static fallback_group $expected on two rows, got $got_count"
-    jq -s -e --arg a "$archetype" --arg fg "$expected" '
+    jq -s -e --arg a "$archetype" '
         [.[] | select(.slot == ("cursor-plan-" + $a) or .slot == ("codex-plan-" + $a))]
-        | length == 2 and all(.[]; .fallback_group == $fg)
+        | length == 2
     ' "$D1/plan-review-slots.ndjson" >/dev/null \
-        || fail "static fallback_group pairing mismatch for $archetype"
+        || fail "both vendors expected for static archetype $archetype"
 done
 
 echo "=== two dynamic archetypes => 14 slots ==="
@@ -127,15 +125,14 @@ grep -Fq 'DYNAMIC_SLOT_COUNT=4' "$D2/out.env" || fail "expected 4 dynamic slot r
 grep -Fq 'dyn-cursor-plan-alpha' "$D2/plan-review-slots.ndjson" || fail "dyn cursor alpha"
 grep -Fq 'dyn-codex-plan-beta' "$D2/plan-review-slots.ndjson" || fail "dyn codex beta"
 jq -e . "$D2/plan-review-slots.ndjson" >/dev/null || fail "manifest must remain valid ndjson"
-jq -s -e 'all(.[]; .fallback_group != null)' "$D2/plan-review-slots.ndjson" >/dev/null \
-    || fail "every static+dynamic plan-review row must include fallback_group"
+jq -s -e 'all(.[]; has("fallback_group") | not)' "$D2/plan-review-slots.ndjson" >/dev/null \
+    || fail "dynamic plan-review rows must not include fallback_group"
 for slug in alpha beta; do
-    expected="plan-dyn-${slug}"
-    jq -s -e --arg s "$slug" --arg fg "$expected" '
+    jq -s -e --arg s "$slug" '
         [.[] | select(.slot == ("dyn-cursor-plan-" + $s) or .slot == ("dyn-codex-plan-" + $s))]
-        | length == 2 and all(.[]; .fallback_group == $fg)
+        | length == 2
     ' "$D2/plan-review-slots.ndjson" >/dev/null \
-        || fail "dynamic fallback_group pairing mismatch for $slug"
+        || fail "both vendors expected for dynamic slug $slug"
 done
 
 echo "=== prompts must not demand **Reviewer** attribution line ==="
@@ -237,5 +234,86 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --plan-file "$D6/plan.txt" \
     --timeout 60 >"$D6/out.env"
 jq -e . "$D6/plan-review-slots.ndjson" >/dev/null || fail "quoted tmpdir path must not corrupt ndjson"
+
+echo "=== availability matrix: codex-down => cursor-only rows ==="
+D8="$TMP/s8"
+prep "$D8"
+printf '{"archetypes":[]}\n' >"$D8/scout-plan-manifest.json"
+log8="$D8/wf.log"
+: >"$log8"
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    WATERFALL_STUB_LOG="$log8" \
+    WATERFALL_STUB_PATHS_OUT="$D8/paths.out" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D8" \
+    --codex-present false \
+    --cursor-present true \
+    --plan-file "$D8/plan.txt" \
+    --timeout 60 >"$D8/out.env"
+[[ "$(grep -c . "$D8/plan-review-slots.ndjson" || true)" == "5" ]] || fail "codex-down expected 5 cursor rows"
+grep -Fq 'codex-plan-' "$D8/plan-review-slots.ndjson" && fail "codex-down must not emit codex rows"
+
+echo "=== availability matrix: cursor-down => codex-only rows ==="
+D9="$TMP/s9"
+prep "$D9"
+printf '{"archetypes":[]}\n' >"$D9/scout-plan-manifest.json"
+log9="$D9/wf.log"
+: >"$log9"
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    WATERFALL_STUB_LOG="$log9" \
+    WATERFALL_STUB_PATHS_OUT="$D9/paths.out" \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D9" \
+    --codex-present true \
+    --cursor-present false \
+    --plan-file "$D9/plan.txt" \
+    --timeout 60 >"$D9/out.env"
+[[ "$(grep -c . "$D9/plan-review-slots.ndjson" || true)" == "5" ]] || fail "cursor-down expected 5 codex rows"
+grep -Fq 'cursor-plan-' "$D9/plan-review-slots.ndjson" && fail "cursor-down must not emit cursor rows"
+
+echo "=== availability matrix: both-absent => generic Claude reviewer ==="
+PLUGIN_STUB="$TMP/plugin-stub"
+mkdir -p "$PLUGIN_STUB/scripts" "$PLUGIN_STUB/skills/design/scripts"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/"
+cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/"
+cp "$REPO_ROOT/scripts/read-design-classification.sh" "$PLUGIN_STUB/scripts/"
+cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_STUB/skills/design/scripts/"
+chmod +x "$PLUGIN_STUB/scripts/read-design-classification.sh" \
+    "$PLUGIN_STUB/skills/design/scripts/render-plan-review-prompt.sh"
+mkdir -p "$PLUGIN_STUB/skills/design/references"
+cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_STUB/skills/design/references/"
+cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'CLAUDE_STUB'
+#!/usr/bin/env bash
+OUTPUT="" PROMPT_FILE=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) OUTPUT="${2:?}"; shift 2 ;;
+        --prompt-file) PROMPT_FILE="${2:?}"; shift 2 ;;
+        --mode|--timeout|--timing-task-kind|--plan-file|--feature-file) shift 2 ;;
+        *) shift ;;
+    esac
+done
+printf 'schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n' >"$OUTPUT"
+printf '0\n' >"${OUTPUT}.done"
+CLAUDE_STUB
+chmod +x "$PLUGIN_STUB/scripts/launch-claude-review.sh"
+D10="$TMP/s10"
+prep "$D10"
+printf '{"archetypes":[]}\n' >"$D10/scout-plan-manifest.json"
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" \
+    "$PANEL" \
+    --design-tmpdir "$D10" \
+    --codex-present false \
+    --cursor-present false \
+    --plan-file "$D10/plan.txt" \
+    --timeout 60 >"$D10/out.env"
+[[ ! -s "$D10/plan-review-slots.ndjson" ]] || fail "both-absent must emit zero manifest rows"
+_paths_file=$(grep '^PANEL_PATHS_FILE=' "$D10/out.env" | head -1 | cut -d= -f2-)
+[[ -n "$_paths_file" && -f "$_paths_file" ]] || fail "both-absent missing panel paths file"
+[[ "$(grep -c . "$_paths_file")" == "1" ]] || fail "both-absent expected exactly one reviewer path"
+grep -Fq 'claude-plan-generic-output.txt' "$_paths_file" || fail "both-absent path must be generic Claude output"
 
 echo "All dispatch-plan-review-panel harness assertions passed."

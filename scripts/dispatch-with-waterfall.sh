@@ -29,6 +29,7 @@ COMPETITION_NOTICE_FILE=""
 WATERFALL_PATHS_FILE=""
 REQUIRE_RESULT_PATTERN=""
 REQUIRE_FIRST_LINE_PATTERN=""
+NO_FALLBACK=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -49,6 +50,7 @@ while [[ $# -gt 0 ]]; do
         --paths-file) WATERFALL_PATHS_FILE="${2:?--paths-file requires a value}"; shift 2 ;;
         --require-result-pattern) REQUIRE_RESULT_PATTERN="${2:?--require-result-pattern requires a value}"; shift 2 ;;
         --require-first-line-pattern) REQUIRE_FIRST_LINE_PATTERN="${2:?--require-first-line-pattern requires a value}"; shift 2 ;;
+        --no-fallback) NO_FALLBACK=true; shift ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-with-waterfall.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -90,39 +92,12 @@ slot_tools=()
 slot_outputs=()
 slot_agents=()
 slot_prompts=()
-slot_fallback_groups=()
-has_fallback_groups=false
-
-contains_tsv_unsafe() {
-    case "$1" in
-        *$'\t'*|*$'\r'*|*$'\n'*)
-            return 0
-            ;;
-        *)
-            return 1
-            ;;
-    esac
-}
 
 manifest_validation_fail() {
     local msg="$1"
     emit_kv STEP_FAILED MANIFEST_VALIDATION
     larch_err "dispatch-with-waterfall.sh: $msg"
     exit 2
-}
-
-resolve_existing_path() {
-    local path="$1"
-    if command -v realpath >/dev/null 2>&1; then
-        realpath "$path"
-    elif command -v readlink >/dev/null 2>&1 && readlink -f "$path" >/dev/null 2>&1; then
-        readlink -f "$path"
-    else
-        local dir base
-        dir=$(dirname "$path")
-        base=$(basename "$path")
-        printf '%s/%s\n' "$(cd "$dir" && pwd -P)" "$base"
-    fi
 }
 
 while IFS= read -r row || [[ -n "$row" ]]; do
@@ -134,9 +109,8 @@ while IFS= read -r row || [[ -n "$row" ]]; do
             elif (.tool != "codex" and .tool != "cursor") then error("tool must be codex or cursor")
             elif ((.output | type) != "string" or (.output | length) == 0) then error("output must be a non-empty string")
             elif ((has("agent") and (.agent != null) and ((.agent | type) != "string")) or
-                  (has("prompt_file") and (.prompt_file != null) and ((.prompt_file | type) != "string")) or
-                  (has("fallback_group") and (.fallback_group != null) and ((.fallback_group | type) != "string"))) then
-                error("agent, prompt_file, and fallback_group must be strings when present")
+                  (has("prompt_file") and (.prompt_file != null) and ((.prompt_file | type) != "string"))) then
+                error("agent and prompt_file must be strings when present")
             else
                 true
             end
@@ -155,7 +129,6 @@ while IFS= read -r row || [[ -n "$row" ]]; do
     esac
     slot_agent=$(printf '%s' "$row" | jq -r '.agent // empty')
     slot_prompt=$(printf '%s' "$row" | jq -r '.prompt_file // empty')
-    slot_fallback_group=$(printf '%s' "$row" | jq -r '.fallback_group // empty')
     if [[ -n "$slot_agent" && -n "$slot_prompt" ]]; then
         larch_err "dispatch-with-waterfall.sh: slot '$slot_name' must not set both agent and prompt_file"
         exit 2
@@ -164,18 +137,11 @@ while IFS= read -r row || [[ -n "$row" ]]; do
         larch_err "dispatch-with-waterfall.sh: slot '$slot_name' must set either agent or prompt_file"
         exit 2
     fi
-    if [[ -n "$slot_fallback_group" ]]; then
-        has_fallback_groups=true
-        contains_tsv_unsafe "$slot_fallback_group" && manifest_validation_fail "slot '$slot_name' fallback_group contains a tab, newline, or carriage return"
-        contains_tsv_unsafe "$slot_name" && manifest_validation_fail "slot name for grouped slot contains a tab, newline, or carriage return"
-        contains_tsv_unsafe "$slot_output" && manifest_validation_fail "slot '$slot_name' output path contains a tab, newline, or carriage return"
-    fi
     slot_names+=("$slot_name")
     slot_tools+=("$slot_tool")
     slot_outputs+=("$slot_output")
     slot_agents+=("$slot_agent")
     slot_prompts+=("$slot_prompt")
-    slot_fallback_groups+=("$slot_fallback_group")
 done < "$SLOTS_FILE"
 
 slot_count=${#slot_names[@]}
@@ -190,16 +156,6 @@ for ((i=0; i<slot_count; i++)); do
     final_outputs+=("")
     final_tools+=("")
 done
-
-GROUP_LEDGER=""
-REUSED_INDICES_FILE=""
-if [[ "$has_fallback_groups" == "true" ]]; then
-    resolved_slots_file=$(resolve_existing_path "$SLOTS_FILE")
-    GROUP_LEDGER="$(dirname "$resolved_slots_file")/waterfall-group-results.tsv"
-    REUSED_INDICES_FILE="$(dirname "$resolved_slots_file")/.waterfall-reused-indices"
-    : >"$GROUP_LEDGER"
-    : >"$REUSED_INDICES_FILE"
-fi
 
 present_for_tool() {
     case "$1" in
@@ -289,59 +245,6 @@ launch_slot() {
     phase_tools+=("$tool")
 }
 
-append_group_ledger_ok() {
-    local idx="$1" tool="$2" output="$3"
-    [[ "$has_fallback_groups" == "true" ]] || return 0
-    [[ -n "${slot_fallback_groups[$idx]}" ]] || return 0
-    printf '%s\t%s\t%s\t%s\t%s\n' \
-        "${slot_fallback_groups[$idx]}" \
-        "${slot_names[$idx]}" \
-        "$tool" \
-        "$output" \
-        ok >>"$GROUP_LEDGER"
-}
-
-find_group_ok_for_tool() {
-    local group="$1" tool="$2"
-    [[ -n "$GROUP_LEDGER" && -f "$GROUP_LEDGER" ]] || return 1
-    awk -F '\t' -v g="$group" -v t="$tool" '
-        $1 == g && $3 == t && $5 == "ok" {
-            line = $2 "\t" $4 "\t" $3
-        }
-        END { if (line) print line }
-    ' "$GROUP_LEDGER"
-}
-
-reuse_slot_result() {
-    local idx="$1" source_slot_name="$2" source_output_path="$3" source_tool="$4"
-    local target="${slot_outputs[$idx]}"
-    mkdir -p "$(dirname "$target")" || return 1
-    cp -p "$source_output_path" "$target" || { rm -f "$target" 2>/dev/null || true; return 1; }
-    {
-        printf 'DEDUPE_REUSED_FROM=%s\n' "$source_slot_name"
-        printf 'DEDUPE_REUSED_TOOL=%s\n' "$source_tool"
-    } >"${target}.dedup" || { rm -f "$target" "${target}.dedup" 2>/dev/null || true; return 1; }
-    printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-        "${slot_fallback_groups[$idx]}" \
-        "${slot_names[$idx]}" \
-        "$source_tool" \
-        "$target" \
-        reused \
-        "$source_slot_name" >>"$GROUP_LEDGER" || { rm -f "$target" "${target}.dedup" 2>/dev/null || true; return 1; }
-    emit_kv DEDUPE_REUSED true
-    emit_kv DEDUPE_REUSED_FROM "$source_slot_name"
-    emit_kv DEDUPE_REUSED_TOOL "$source_tool"
-    final_outputs[idx]="$target"
-    final_tools[idx]="$source_tool"
-    [[ -n "$REUSED_INDICES_FILE" ]] && printf '%s\n' "$idx" >>"$REUSED_INDICES_FILE"
-}
-
-idx_was_reused() {
-    local idx="$1"
-    [[ -n "$REUSED_INDICES_FILE" && -f "$REUSED_INDICES_FILE" ]] || return 1
-    grep -Fxq "$idx" "$REUSED_INDICES_FILE"
-}
-
 collect_phase() {
     local failed_var="$1"
     local idx output tool block key value status rf check_file
@@ -422,9 +325,6 @@ collect_phase() {
             final_outputs[$idx]="${rf:-$output}"
             # shellcheck disable=SC2004
             final_tools[$idx]="$tool"
-            if [[ "$status" == "OK" || "$status" == "cap_hit" ]]; then
-                append_group_ledger_ok "$idx" "$tool" "${final_outputs[$idx]}"
-            fi
         else
             failed+=("$idx")
         fi
@@ -453,86 +353,43 @@ for ((i=0; i<slot_count; i++)); do
     fi
 done
 collect_phase phase1_failed
-phase2_queue=("${phase1_queue[@]+"${phase1_queue[@]}"}" "${phase1_failed[@]+"${phase1_failed[@]}"}")
 
-reset_phase
-phase3_seed=()
-phase2_grouped=()
-for idx in "${phase2_queue[@]+"${phase2_queue[@]}"}"; do
-    primary="${slot_tools[$idx]}"
-    alt=$(other_tool "$primary" || true)
-    if [[ -n "$alt" ]] && present_for_tool "$alt"; then
-        if [[ "$has_fallback_groups" == "true" && -n "${slot_fallback_groups[$idx]}" ]]; then
-            phase2_grouped+=("$idx")
-        else
+fallback_count=0
+phase3_failed=()
+
+if [[ "$NO_FALLBACK" == "true" ]]; then
+    combined_fallback=0
+else
+    phase2_queue=("${phase1_queue[@]+"${phase1_queue[@]}"}" "${phase1_failed[@]+"${phase1_failed[@]}"}")
+
+    reset_phase
+    phase3_seed=()
+    for idx in "${phase2_queue[@]+"${phase2_queue[@]}"}"; do
+        primary="${slot_tools[$idx]}"
+        alt=$(other_tool "$primary" || true)
+        if [[ -n "$alt" ]] && present_for_tool "$alt"; then
             out=$(output_for_phase "${slot_outputs[$idx]}" phase2)
             phase2_outputs+=("$out")
             launch_slot "$idx" phase2 "$alt" "$out"
-        fi
-    else
-        phase3_seed+=("$idx")
-    fi
-done
-collect_phase phase2_ungrouped_failed
-
-phase2_relaunch_count=0
-phase2_grouped_failed=()
-processed_groups=()
-for grouped_idx in "${phase2_grouped[@]+"${phase2_grouped[@]}"}"; do
-    group="${slot_fallback_groups[$grouped_idx]}"
-    already_group=false
-    for seen_group in "${processed_groups[@]+"${processed_groups[@]}"}"; do
-        if [[ "$seen_group" == "$group" ]]; then
-            already_group=true
-            break
+        else
+            phase3_seed+=("$idx")
         fi
     done
-    [[ "$already_group" == "true" ]] && continue
-    processed_groups+=("$group")
-    for idx in "${phase2_grouped[@]+"${phase2_grouped[@]}"}"; do
-        [[ "${slot_fallback_groups[$idx]}" == "$group" ]] || continue
-        reuse_fell_through=false
-        primary="${slot_tools[$idx]}"
-        alt=$(other_tool "$primary" || true)
-        source_row="$(find_group_ok_for_tool "$group" "$alt" || true)"
-        if [[ -n "$source_row" ]]; then
-            IFS=$'\t' read -r source_slot source_output source_tool <<<"$source_row"
-            # Stale or otherwise unreadable reuse outputs fall through to the
-            # standard phase-2 relaunch path below.
-            if reuse_slot_result "$idx" "$source_slot" "$source_output" "$source_tool"; then
-                continue
-            fi
-            reuse_fell_through=true
-        fi
-        reset_phase
-        out=$(output_for_phase "${slot_outputs[$idx]}" phase2)
-        phase2_outputs+=("$out")
-        [[ "$reuse_fell_through" == "true" ]] && phase2_relaunch_count=$((phase2_relaunch_count + 1))
-        launch_slot "$idx" phase2 "$alt" "$out"
-        phase2_one_failed=()
-        collect_phase phase2_one_failed
-        if [[ ${#phase2_one_failed[@]} -gt 0 ]]; then
-            phase2_grouped_failed+=("${phase2_one_failed[@]}")
-        fi
+    collect_phase phase2_failed
+
+    phase3_queue=("${phase3_seed[@]+"${phase3_seed[@]}"}" "${phase2_failed[@]+"${phase2_failed[@]}"}")
+
+    reset_phase
+    for idx in "${phase3_queue[@]+"${phase3_queue[@]}"}"; do
+        out=$(output_for_phase "${slot_outputs[$idx]}" phase3)
+        phase3_outputs+=("$out")
+        fallback_count=$((fallback_count + 1))
+        launch_slot "$idx" phase3 claude "$out"
     done
-done
+    collect_phase phase3_failed
 
-phase2_failed=("${phase2_ungrouped_failed[@]+"${phase2_ungrouped_failed[@]}"}" "${phase2_grouped_failed[@]+"${phase2_grouped_failed[@]}"}")
-phase3_queue=("${phase3_seed[@]+"${phase3_seed[@]}"}" "${phase2_failed[@]+"${phase2_failed[@]}"}")
-
-fallback_count=0
-reset_phase
-for idx in "${phase3_queue[@]+"${phase3_queue[@]}"}"; do
-    idx_was_reused "$idx" && continue
-    out=$(output_for_phase "${slot_outputs[$idx]}" phase3)
-    phase3_outputs+=("$out")
-    fallback_count=$((fallback_count + 1))
-    launch_slot "$idx" phase3 claude "$out"
-done
-phase3_failed=()
-collect_phase phase3_failed
-
-combined_fallback=$((fallback_count + phase2_relaunch_count))
+    combined_fallback=$fallback_count
+fi
 
 if [[ -n "$FALLBACK_COUNTER_FILE" ]]; then
     prior=0
@@ -590,14 +447,21 @@ for ((i=0; i<slot_count; i++)); do
     esac
 done
 
+all_output_files=()
+all_output_tools=()
+for ((i=0; i<slot_count; i++)); do
+  [[ -n "${final_outputs[$i]}" ]] || continue
+  all_output_files+=("${final_outputs[$i]}")
+  all_output_tools+=("${final_tools[$i]}")
+done
+
 emit_kv PHASE1_SLOTS "${phase1_outputs[*]-}"
 emit_kv PHASE2_SLOTS "${phase2_outputs[*]-}"
 emit_kv PHASE3_SLOTS "${phase3_outputs[*]-}"
-emit_kv ALL_OUTPUT_FILES "${final_outputs[*]-}"
+emit_kv ALL_OUTPUT_FILES "${all_output_files[*]-}"
 emit_kv ALL_OUTPUT_FILES_PATH "$resolved_paths_file"
-emit_kv ALL_OUTPUT_TOOLS "${final_tools[*]-}"
+emit_kv ALL_OUTPUT_TOOLS "${all_output_tools[*]-}"
 emit_kv FALLBACK_COUNT "$fallback_count"
-emit_kv PHASE2_RELAUNCH_COUNT "$phase2_relaunch_count"
 emit_kv COMBINED_FALLBACK_COUNT "$combined_fallback"
 [[ -n "$warn" ]] && emit_kv WARN "$warn"
 emit_kv DISPATCH_OK "$dispatch_ok"
@@ -606,6 +470,10 @@ emit_kv DYNAMIC_DISPATCH_OK "$dynamic_dispatch_ok"
 
 paths_tmp=$(mktemp "${paths_dir}/.dispatch-waterfall-paths.XXXXXX")
 for ((i=0; i<slot_count; i++)); do
-    printf '%s\n' "${final_outputs[$i]}" >> "$paths_tmp"
+    p="${final_outputs[$i]}"
+    if [[ "$NO_FALLBACK" == "true" && -z "$p" ]]; then
+        continue
+    fi
+    printf '%s\n' "$p" >> "$paths_tmp"
 done
 mv -f "$paths_tmp" "$resolved_paths_file"

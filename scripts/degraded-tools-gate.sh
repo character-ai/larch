@@ -33,10 +33,10 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh" || { echo "degraded-tools-gate.sh: failed to source lib-quiet.sh" >&2; exit 1; }
 larch_quiet_init
 
-CODEX_BINARY_FOUND="unknown"
-CODEX_PRESENT=""
-CURSOR_BINARY_FOUND="unknown"
-CURSOR_PRESENT=""
+CODEX_BINARY_FOUND="${CODEX_BINARY_FOUND:-unknown}"
+CODEX_PRESENT="${CODEX_PRESENT:-}"
+CURSOR_BINARY_FOUND="${CURSOR_BINARY_FOUND:-unknown}"
+CURSOR_PRESENT="${CURSOR_PRESENT:-}"
 SKILL_LABEL="this"
 
 while [[ $# -gt 0 ]]; do

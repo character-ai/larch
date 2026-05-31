@@ -45,7 +45,7 @@ while [[ $# -gt 0 ]]; do
     --require-result-pattern) REQUIRE_PATTERN="${2:?}"; shift 2 ;;
     --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
     --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
-    --mode|--timeout|--feature-file) shift 2 ;;
+    --mode|--timeout|--feature-file|--no-fallback) shift 2 ;;
     *) shift ;;
   esac
 done
@@ -174,7 +174,7 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --feature-file "$TMP/feature.txt" \
   --codex-present false \
   --cursor-present true)
-printf '%s\n' "$out" | grep -Fq 'CODEX_ASSESSOR_STATUS=fallback' || fail 'codex-unavailable path should surface fallback'
+printf '%s\n' "$out" | grep -Fq 'CODEX_ASSESSOR_STATUS=failed' || fail 'codex-unavailable path should mark codex assessor failed'
 
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --design-tmpdir "$TMP" \
@@ -185,7 +185,7 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --feature-file "$TMP/feature.txt" \
   --codex-present true \
   --cursor-present false)
-printf '%s\n' "$out" | grep -Fq 'CURSOR_ASSESSOR_STATUS=fallback' || fail 'cursor-unavailable path should surface fallback'
+printf '%s\n' "$out" | grep -Fq 'CURSOR_ASSESSOR_STATUS=failed' || fail 'cursor-unavailable path should mark cursor assessor failed'
 
 cat >"$PLUGIN_STUB/scripts/launch-claude-review.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -211,9 +211,9 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --feature-file "$TMP/feature.txt" \
   --codex-present false \
   --cursor-present false)
-printf '%s\n' "$out" | grep -Fq 'DISPATCH_OK=true' || fail 'dual-fallback path should still satisfy dispatch contract'
-printf '%s\n' "$out" | grep -Fq 'CODEX_ASSESSOR_STATUS=fallback' || fail 'dual-fallback path should surface codex fallback'
-printf '%s\n' "$out" | grep -Fq 'CURSOR_ASSESSOR_STATUS=fallback' || fail 'dual-fallback path should surface cursor fallback'
+printf '%s\n' "$out" | grep -Fq 'DISPATCH_OK=true' || fail 'both-external-absent path should still satisfy dispatch contract'
+printf '%s\n' "$out" | grep -Fq 'CODEX_ASSESSOR_STATUS=failed' || fail 'both-external-absent path should mark codex assessor failed'
+printf '%s\n' "$out" | grep -Fq 'CURSOR_ASSESSOR_STATUS=failed' || fail 'both-external-absent path should mark cursor assessor failed'
 
 if LARCH_QUIET_DISABLE=1 "$SUBJECT" \
   --design-tmpdir "$TMP" \

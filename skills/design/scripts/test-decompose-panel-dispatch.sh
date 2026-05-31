@@ -36,7 +36,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --slots-file) slots="${2:?}"; shift 2 ;;
         --paths-file) paths_out="${2:?}"; shift 2 ;;
-        --codex-present|--cursor-present|--mode|--timeout|--plan-file|--feature-file) shift 2 ;;
+        --codex-present|--cursor-present|--mode|--timeout|--plan-file|--feature-file|--no-fallback) shift 2 ;;
         *) shift 1 ;;
     esac
 done
@@ -96,15 +96,15 @@ rows=$(grep -c . "$D1/decompose/panel-outputs.ndjson" || true)
 [[ "$rows" == "8" ]] || fail "expected 8 panel rows got $rows"
 grep -Fq 'Plan body.' "$D1/decompose/render-decomp-cursor-decomposition-specialist.prompt" \
     || fail "plan body missing from rendered prompt"
-jq -s -e 'all(.[]; .fallback_group != null)' "$D1/decompose/decompose-slots.ndjson" >/dev/null \
-    || fail "every decompose slot must include fallback_group"
+grep -Fq -- '--no-fallback' "$D1/wf.log" || fail "decompose dispatch must pass --no-fallback"
+jq -s -e 'all(.[]; has("fallback_group") | not)' "$D1/decompose/decompose-slots.ndjson" >/dev/null \
+    || fail "decompose slots must not include fallback_group"
 for archetype in decomposition-specialist dependency-analyst scope-minimalist risk-isolation; do
-    expected="decomp-${archetype}"
-    jq -s -e --arg a "$archetype" --arg fg "$expected" '
+    jq -s -e --arg a "$archetype" '
         [.[] | select(.slot == ("decomp-cursor-" + $a) or .slot == ("decomp-codex-" + $a))]
-        | length == 2 and all(.[]; .fallback_group == $fg)
+        | length == 2
     ' "$D1/decompose/decompose-slots.ndjson" >/dev/null \
-        || fail "fallback_group pairing mismatch for $archetype"
+        || fail "both vendors expected for decompose archetype $archetype"
 done
 
 # Recommendation-heading gate threaded to the waterfall (Fix 2 caller adoption).
@@ -200,7 +200,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --slots-file) slots="${2:?}"; shift 2 ;;
         --paths-file) paths_out="${2:?}"; shift 2 ;;
-        --codex-present|--cursor-present|--mode|--timeout|--plan-file|--feature-file) shift 2 ;;
+        --codex-present|--cursor-present|--mode|--timeout|--plan-file|--feature-file|--no-fallback) shift 2 ;;
         *) shift 1 ;;
     esac
 done

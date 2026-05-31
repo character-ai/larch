@@ -99,7 +99,23 @@ assert_contains "$out" "DEGRADED=true" "present-only degraded (cursor down)"
 assert_contains "$out" "CODEX_STATE=ok" "present-only codex ok without binary-found"
 assert_contains "$out" "CURSOR_STATE=unavailable" "present-only cursor generic unavailable"
 
-# --- Case 8: unknown flag → exit 2 ---
+# --- Case 8: env-var cursor-ok (no flags) ---
+out=$(CODEX_BINARY_FOUND=true CODEX_PRESENT=false CURSOR_BINARY_FOUND=true CURSOR_PRESENT=true \
+    bash "$GATE" --skill implement) && rc=$? || rc=$?
+assert_rc "$rc" 0 "env-var cursor-ok exit 0"
+assert_contains "$out" "CURSOR_STATE=ok" "env-var cursor-ok cursor state"
+assert_contains "$out" "CODEX_STATE=probe-failed" "env-var cursor-ok codex probe-failed"
+assert_contains "$out" "DEGRADED=true" "env-var cursor-ok degraded"
+
+# --- Case 9: env-var codex-ok (no flags) ---
+out=$(CODEX_BINARY_FOUND=true CODEX_PRESENT=true CURSOR_BINARY_FOUND=true CURSOR_PRESENT=false \
+    bash "$GATE" --skill implement) && rc=$? || rc=$?
+assert_rc "$rc" 0 "env-var codex-ok exit 0"
+assert_contains "$out" "CODEX_STATE=ok" "env-var codex-ok codex state"
+assert_contains "$out" "CURSOR_STATE=probe-failed" "env-var codex-ok cursor probe-failed"
+assert_contains "$out" "DEGRADED=true" "env-var codex-ok degraded"
+
+# --- Case 10: unknown flag → exit 2 ---
 out=$(bash "$GATE" --bogus 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 2 "unknown-flag exit 2"
 assert_contains "$out" "unknown argument" "unknown-flag message"

@@ -11,15 +11,9 @@ Input is an NDJSON slots file. Each row must contain:
 
 Rows may include optional metadata such as `weight` and `focus_area`; the dispatcher preserves validation compatibility and ignores those fields at launch time.
 
-Rows may also include optional `fallback_group`. Empty or absent
-`fallback_group` keeps legacy behavior: no group ledger is created and the slot
-participates in the normal per-slot waterfall. When at least one row has a
-group, the dispatcher writes `<dirname-of-resolved-slots-file>/waterfall-group-results.tsv`
-as grouped slots settle.
-
 Per-slot launcher stderr is captured to `${output}.launch-stderr` (stdout remains `/dev/null`) so launcher-level validation failures are recoverable and surfaced by `collect-agent-results.sh` via the failed-agent stderr tail path (#3202).
 
-Phases:
+## Phases (default)
 
 1. Launch each slot on its assigned external tool when `--<tool>-present true`.
 2. Failed or absent phase-1 slots launch on the other present external tool.
@@ -27,61 +21,41 @@ Phases:
 
 Each phase is collected with `scripts/collect-agent-results.sh --summary-only`; `STATUS=OK` and `STATUS=cap_hit` settle a slot. Other statuses advance to the next phase, and a phase-3 failure leaves `DISPATCH_OK=false`.
 
-Grouped dedup:
+No result is ever copied between slots. Grouped reuse-by-copy (`fallback_group`, group ledger, `.dedup` sidecars) was removed.
 
-- The ledger schema is TSV: `group<TAB>slot_name<TAB>tool<TAB>output_path<TAB>status`, with optional sixth `source_slot` only for reused rows.
-- `status` is a single token: `ok` for a fresh successful result, `reused` when a slot copied another slot's result.
-- Phase-1 and phase-2 `STATUS=OK` results for grouped slots append `ok` rows.
-- Phase-2 launches are serialized within each `fallback_group`. Before launching a grouped phase-2 slot, the dispatcher looks for the most recent existing `ok` row for the same group and fallback tool, so a fresh post-relaunch result supersedes any older row. If found, it copies that output to the slot's phase-1 output path, records final bookkeeping, and skips the launch.
-- If the phase-2 reuse copy fails for any `cp` failure mode, most commonly a stale ledger row whose source output has been deleted, the dispatcher falls through to a normal phase-2 relaunch on the fallback tool rather than aborting under `set -e`.
-  These relaunches feed `PHASE2_RELAUNCH_COUNT` and the cost-threshold warning alongside phase-3 Claude fallback work.
-- Ungrouped phase-2 slots remain on the legacy parallel path.
-- Reused slots write `${output}.dedup` with exactly:
+## `--no-fallback` (single-phase, drop-on-failure)
 
-```text
-DEDUPE_REUSED_FROM=<source_slot>
-DEDUPE_REUSED_TOOL=<source_tool>
-```
+When `--no-fallback` is set:
 
-They also emit `DEDUPE_REUSED=true`, `DEDUPE_REUSED_FROM`, and
-`DEDUPE_REUSED_TOOL` KVs and are included in `ALL_OUTPUT_FILES` /
-`ALL_OUTPUT_TOOLS` without entering phase 3.
+- Only phase 1 runs. Slots whose tool is absent (not `--<tool>-present`) or whose phase-1 collection is not `OK`/`cap_hit` are **dropped** (`final_outputs[idx]` stays empty; `DISPATCH_OK` remains `true` for the run).
+- Phase 2 and phase 3 are skipped.
+- The paths-file and `ALL_OUTPUT_FILES` / `ALL_OUTPUT_TOOLS` stdout lists include **only** succeeded slots (empty dropped slots are omitted).
 
-Example: `decomp-cursor-arch` and `decomp-codex-arch` share
-`fallback_group="decomp-arch"`. If the codex primary succeeds in phase 1 and
-the cursor primary fails, the cursor slot's phase-2 codex fallback reuses
-`decomp-codex-arch`; the cursor output sidecar contains
-`DEDUPE_REUSED_FROM=decomp-codex-arch`.
+`/design` plan-review, decompose, assessor, and plan-voter panels use this mode with availability-gated slot emission so absent tools are not manifest rows at all.
 
-Stdout keys:
+## Stdout keys
 
 - `PHASE1_SLOTS`, `PHASE2_SLOTS`, `PHASE3_SLOTS`
 - `ALL_OUTPUT_FILES`
-- `ALL_OUTPUT_FILES_PATH` — absolute/resolved path to the line-oriented paths-file (one output path per line, slot order); default file is `<slots-file>.output-files`, overridable with `--paths-file <path>`
+- `ALL_OUTPUT_FILES_PATH` — absolute/resolved path to the line-oriented paths-file (one output path per line, slot order for non-empty entries under `--no-fallback`); default file is `<slots-file>.output-files`, overridable with `--paths-file <path>`
 - `ALL_OUTPUT_TOOLS`
 - `FALLBACK_COUNT`
-- `PHASE2_RELAUNCH_COUNT`
-- `COMBINED_FALLBACK_COUNT` = `FALLBACK_COUNT` + `PHASE2_RELAUNCH_COUNT` (the same value the WARN compares against `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD`)
-- `WARN=cost-fallback-exceeded-threshold` when combined phase-2 fall-through + phase-3 Claude count exceeds `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD` (default 3)
+- `COMBINED_FALLBACK_COUNT` (equals `FALLBACK_COUNT`; phase-2 relaunch accounting was removed with grouped reuse)
+- `WARN=cost-fallback-exceeded-threshold` when `COMBINED_FALLBACK_COUNT` exceeds `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD` (default 3)
 - `DISPATCH_OK=true|false`
 
-Flags:
+## Flags
 
+- `--no-fallback` — single-phase, drop-on-failure; see above.
 - `--paths-file <path>` — write the final paths list to this path instead of the default `<slots-file>.output-files`. The file is replaced atomically each run (temp file in the same directory + `mv`).
-- `--require-result-pattern <regex>` — caller-supplied ERE (`grep -E`) that a `STATUS=OK` result file must match for the slot to settle on the assigned phase tool. Pre-validated once after argv parse against empty stdin; if the pattern is not a valid ERE (`grep` rc > 1) the dispatcher exits **2** with `larch_err` before any slot launches. Applied only to `STATUS=OK`; `STATUS=cap_hit` bypasses the gate so the launcher-side token-budget skip remains terminal. On a `STATUS=OK` pattern miss, the slot is routed through the existing `failed[]` path (phase-1 → phase-2 → phase-3 fallback) with no new exit codes or sidecar files. When the flag is unset (default), behavior is unchanged.
-- `--require-first-line-pattern <regex>` — caller-supplied ERE (`grep -E`) that
-  only the first non-blank line of a `STATUS=OK` result file must match. It is
-  pre-validated with the same invalid-ERE behavior as `--require-result-pattern`
-  and shares the same fallback semantics on mismatch. Use this when a structured
-  response must start with a schema marker; `--require-result-pattern` keeps its
-  any-line search semantics for callers whose header may appear after prose.
+- `--require-result-pattern <regex>` — caller-supplied ERE (`grep -E`) that a `STATUS=OK` result file must match for the slot to settle on the assigned phase tool. Pre-validated once after argv parse against empty stdin; if the pattern is not a valid ERE (`grep` rc > 1) the dispatcher exits **2** with `larch_err` before any slot launches. Applied only to `STATUS=OK`; `STATUS=cap_hit` bypasses the gate so the launcher-side token-budget skip remains terminal. On a `STATUS=OK` pattern miss, the slot is routed through the existing `failed[]` path (phase-1 → phase-2 → phase-3 fallback) unless `--no-fallback` is set (then the slot is dropped). When the flag is unset (default), behavior is unchanged except reuse removal.
+- `--require-first-line-pattern <regex>` — same pre-validation and fallback semantics as `--require-result-pattern`, but only the first non-blank line must match.
 
 Current opt-in callers for any-line matching are `skills/design/scripts/decompose-aggregator.sh` and `skills/design/scripts/decompose-panel-dispatch.sh`, both passing `^[[:space:]]*## Recommendation`. The plan-review panel dispatcher uses `--require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)'` so narration followed by valid-looking TSV cannot settle the slot.
 
-Guards:
+## Guards
 
 - Empty slots manifest (zero JSON rows) exits **2** with `slots file contains no slot rows` and does not emit stdout KVs or write a paths-file.
 - Any resolved final output path containing a literal newline or carriage return exits **2** before writing the paths-file (line-oriented contract).
-- For grouped rows, `fallback_group`, `slot`, and `output` must not contain tab, newline, or carriage return. Violations print `STEP_FAILED=MANIFEST_VALIDATION` to stdout, emit a diagnostic on stderr, and exit non-zero before launches.
 
-Regression harness: `scripts/test-dispatch-with-waterfall.sh`.
+Regression harness: `scripts/test-dispatch-with-waterfall.sh`. Rip-out guard: `scripts/test-no-grouped-reuse-guard.sh`.

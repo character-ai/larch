@@ -76,65 +76,6 @@ _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
 _scout_manifest="$DESIGN_TMPDIR/scout-plan-manifest.json"
 : >"$_manifest"
 
-for _archetype in arch edge innovation pragmatic requirements; do
-    bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-        --archetype "$_archetype" --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR" \
-        >"$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt"
-    bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-        --archetype "$_archetype" --vendor codex --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR" \
-        >"$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt"
-done
-
-for _archetype in arch edge innovation pragmatic requirements; do
-    jq -nc \
-        --arg slot "cursor-plan-${_archetype}" \
-        --arg tool cursor \
-        --arg output "$DESIGN_TMPDIR/cursor-plan-${_archetype}-output.txt" \
-        --arg prompt_file "$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt" \
-        --arg fallback_group "plan-${_archetype}" \
-        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
-    jq -nc \
-        --arg slot "codex-plan-${_archetype}" \
-        --arg tool codex \
-        --arg output "$DESIGN_TMPDIR/codex-primary-plan-${_archetype}-output.txt" \
-        --arg prompt_file "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt" \
-        --arg fallback_group "plan-${_archetype}" \
-        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
-done
-
-if [[ -s "$_scout_manifest" ]] && jq -e '.archetypes | type == "array"' "$_scout_manifest" >/dev/null 2>&1; then
-    while IFS= read -r row || [[ -n "$row" ]]; do
-        [[ -n "$row" ]] || continue
-        _slug=$(printf '%s' "$row" | jq -r '.name // empty')
-        [[ -n "$_slug" ]] || continue
-        _body_tmp=$(mktemp "${DESIGN_TMPDIR}/dyn-body.XXXXXX")
-        printf '%s' "$row" | jq -r '.prompt_body // empty' >"$_body_tmp"
-        write_dynamic_prompt "$_slug" "$PLAN_FILE" "$_body_tmp" "$DESIGN_TMPDIR/render-plan-cursor-dyn-${_slug}.prompt"
-        write_dynamic_prompt "$_slug" "$PLAN_FILE" "$_body_tmp" "$DESIGN_TMPDIR/render-plan-codex-dyn-${_slug}.prompt"
-        rm -f "$_body_tmp"
-        jq -nc \
-            --arg slot "dyn-cursor-plan-${_slug}" \
-            --arg tool cursor \
-            --arg output "$DESIGN_TMPDIR/cursor-plan-dyn-${_slug}-output.txt" \
-            --arg prompt_file "$DESIGN_TMPDIR/render-plan-cursor-dyn-${_slug}.prompt" \
-            --arg fallback_group "plan-dyn-${_slug}" \
-            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
-        jq -nc \
-            --arg slot "dyn-codex-plan-${_slug}" \
-            --arg tool codex \
-            --arg output "$DESIGN_TMPDIR/codex-primary-plan-dyn-${_slug}-output.txt" \
-            --arg prompt_file "$DESIGN_TMPDIR/render-plan-codex-dyn-${_slug}.prompt" \
-            --arg fallback_group "plan-dyn-${_slug}" \
-            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
-    done < <(jq -c '.archetypes[]?' "$_scout_manifest")
-fi
-
-slot_count=0
-while IFS= read -r _row || [[ -n "$_row" ]]; do
-    [[ -n "$_row" ]] || continue
-    slot_count=$((slot_count + 1))
-done <"$_manifest"
-
 waterfall_extra=()
 if [[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]]; then
     waterfall_extra+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
@@ -144,6 +85,114 @@ if [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]]; then
 fi
 
 DISPATCH_WATERFALL_SH="${DISPATCH_PLAN_REVIEW_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
+_panel_paths="$DESIGN_TMPDIR/plan-review-panel-paths.txt"
+
+if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
+    _generic_output="$DESIGN_TMPDIR/claude-plan-generic-output.txt"
+    _generic_prompt="$DESIGN_TMPDIR/claude-plan-generic.prompt"
+    {
+        printf '%s\n' "You are a combined plan-review panel applying all five standard archetype lenses in a single pass. Address each lens below, then follow the shared output contract."
+        printf '\n'
+        for _archetype in arch edge innovation pragmatic requirements; do
+            _role_line=$(bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+                --archetype "$_archetype" --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR" \
+                | head -n 1)
+            printf '%s\n\n' "$_role_line"
+        done
+        append_shared_prompt_tail "$PLAN_FILE"
+    } >"$_generic_prompt"
+    set +e
+    "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
+        --output "$_generic_output" \
+        --prompt-file "$_generic_prompt" \
+        --mode description \
+        --timeout "$TIMEOUT" \
+        --timing-task-kind claude-plan-generic \
+        "${waterfall_extra[@]+"${waterfall_extra[@]}"}" >/dev/null 2>"${_generic_output}.launch-stderr"
+    _generic_rc=$?
+    set -e
+    [[ -f "${_generic_output}.done" ]] || printf '%s\n' "$_generic_rc" >"${_generic_output}.done"
+    printf '%s\n' "$_generic_output" >"$_panel_paths"
+    emit_kv DISPATCH_OK true
+    emit_kv FALLBACK_COUNT 0
+    emit_kv COMBINED_FALLBACK_COUNT 0
+    emit_kv STATIC_DISPATCH_OK true
+    emit_kv DYNAMIC_SLOT_COUNT 0
+    emit_kv DEGRADED_ROUND false
+    emit_kv PANEL_PATHS_FILE "$_panel_paths"
+    exit 0
+fi
+
+for _archetype in arch edge innovation pragmatic requirements; do
+    if [[ "$CURSOR_PRESENT" == "true" ]]; then
+        bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+            --archetype "$_archetype" --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR" \
+            >"$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt"
+    fi
+    if [[ "$CODEX_PRESENT" == "true" ]]; then
+        bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
+            --archetype "$_archetype" --vendor codex --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR" \
+            >"$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt"
+    fi
+done
+
+for _archetype in arch edge innovation pragmatic requirements; do
+    if [[ "$CURSOR_PRESENT" == "true" ]]; then
+        jq -nc \
+            --arg slot "cursor-plan-${_archetype}" \
+            --arg tool cursor \
+            --arg output "$DESIGN_TMPDIR/cursor-plan-${_archetype}-output.txt" \
+            --arg prompt_file "$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt" \
+            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+    fi
+    if [[ "$CODEX_PRESENT" == "true" ]]; then
+        jq -nc \
+            --arg slot "codex-plan-${_archetype}" \
+            --arg tool codex \
+            --arg output "$DESIGN_TMPDIR/codex-primary-plan-${_archetype}-output.txt" \
+            --arg prompt_file "$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt" \
+            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+    fi
+done
+
+if [[ -s "$_scout_manifest" ]] && jq -e '.archetypes | type == "array"' "$_scout_manifest" >/dev/null 2>&1; then
+    while IFS= read -r row || [[ -n "$row" ]]; do
+        [[ -n "$row" ]] || continue
+        _slug=$(printf '%s' "$row" | jq -r '.name // empty')
+        [[ -n "$_slug" ]] || continue
+        _body_tmp=$(mktemp "${DESIGN_TMPDIR}/dyn-body.XXXXXX")
+        printf '%s' "$row" | jq -r '.prompt_body // empty' >"$_body_tmp"
+        if [[ "$CURSOR_PRESENT" == "true" ]]; then
+            write_dynamic_prompt "$_slug" "$PLAN_FILE" "$_body_tmp" "$DESIGN_TMPDIR/render-plan-cursor-dyn-${_slug}.prompt"
+        fi
+        if [[ "$CODEX_PRESENT" == "true" ]]; then
+            write_dynamic_prompt "$_slug" "$PLAN_FILE" "$_body_tmp" "$DESIGN_TMPDIR/render-plan-codex-dyn-${_slug}.prompt"
+        fi
+        rm -f "$_body_tmp"
+        if [[ "$CURSOR_PRESENT" == "true" ]]; then
+            jq -nc \
+                --arg slot "dyn-cursor-plan-${_slug}" \
+                --arg tool cursor \
+                --arg output "$DESIGN_TMPDIR/cursor-plan-dyn-${_slug}-output.txt" \
+                --arg prompt_file "$DESIGN_TMPDIR/render-plan-cursor-dyn-${_slug}.prompt" \
+                '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+        fi
+        if [[ "$CODEX_PRESENT" == "true" ]]; then
+            jq -nc \
+                --arg slot "dyn-codex-plan-${_slug}" \
+                --arg tool codex \
+                --arg output "$DESIGN_TMPDIR/codex-primary-plan-dyn-${_slug}-output.txt" \
+                --arg prompt_file "$DESIGN_TMPDIR/render-plan-codex-dyn-${_slug}.prompt" \
+                '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+        fi
+    done < <(jq -c '.archetypes[]?' "$_scout_manifest")
+fi
+
+slot_count=0
+while IFS= read -r _row || [[ -n "$_row" ]]; do
+    [[ -n "$_row" ]] || continue
+    slot_count=$((slot_count + 1))
+done <"$_manifest"
 
 _dispatch_out=$("$DISPATCH_WATERFALL_SH" \
     --slots-file "$_manifest" \
@@ -151,6 +200,7 @@ _dispatch_out=$("$DISPATCH_WATERFALL_SH" \
     --cursor-present "$CURSOR_PRESENT" \
     --mode description \
     --plan-file "$PLAN_FILE" \
+    --no-fallback \
     --require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)' \
     --timeout "$TIMEOUT" \
     "${waterfall_extra[@]+"${waterfall_extra[@]}"}")

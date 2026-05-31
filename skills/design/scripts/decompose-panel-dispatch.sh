@@ -129,23 +129,94 @@ _manifest="$DECOMP_DIR/decompose-slots.ndjson"
 : >"$_manifest"
 
 _archetypes=(decomposition-specialist dependency-analyst scope-minimalist risk-isolation)
+_panel_rows="$DECOMP_DIR/panel-outputs.ndjson"
+: >"$_panel_rows"
+
+if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
+    _generic_output="$DECOMP_DIR/decomp-claude-generic-output.txt"
+    _generic_prompt="$DECOMP_DIR/decomp-claude-generic.prompt"
+    _tail_src="$DECOMP_DIR/.generic-tail-src.prompt"
+    render_prompt decomposition-specialist "$_tail_src"
+    {
+        printf '%s\n' "You are a combined decomposition panel applying all four standard archetype lenses in a single pass. Address each lens below, then follow the shared output contract."
+        printf '\n'
+        for _a in "${_archetypes[@]}"; do
+            _arch_file="$PROMPTS_DIR/${_a}.txt"
+            [[ -f "$_arch_file" ]] || fail "missing archetype template: $_arch_file"
+            sed -n '1,/^Your focus:/p' "$_arch_file" | head -n 8
+            printf '\n'
+        done
+        tail -n +2 "$_tail_src"
+    } >"$_generic_prompt"
+    rm -f "$_tail_src"
+  set +e
+  "$PLUGIN_ROOT/scripts/launch-claude-review.sh" \
+    --output "$_generic_output" \
+    --prompt-file "$_generic_prompt" \
+    --mode description \
+    --timeout "$TIMEOUT" \
+    --timing-task-kind claude-decomp-generic \
+    --feature-file "$FEATURE_FILE" \
+    >/dev/null 2>"${_generic_output}.launch-stderr"
+  _generic_rc=$?
+  set -e
+  [[ -f "${_generic_output}.done" ]] || printf '%s\n' "$_generic_rc" >"${_generic_output}.done"
+  _status="missing"
+  if [[ -f "$_generic_output" ]] && grep -Eq '^[[:space:]]*## Recommendation' "$_generic_output"; then
+    _status="ok"
+  elif [[ -f "$_generic_output" ]]; then
+    _status="unparsed"
+  fi
+  jq -nc \
+    --arg archetype "generic" \
+    --arg vendor claude \
+    --arg output "$_generic_output" \
+    --arg status "$_status" \
+    '{archetype:$archetype,vendor:$vendor,output:$output,status:$status}' >>"$_panel_rows"
+  _dispatch_out=$(
+    printf 'DISPATCH_OK=true\n'
+    printf 'FALLBACK_COUNT=0\n'
+    printf 'COMBINED_FALLBACK_COUNT=0\n'
+    printf 'STATIC_DISPATCH_OK=true\n'
+    printf 'DYNAMIC_DISPATCH_OK=true\n'
+  )
+  _wf_rc=0
+  ALL_OUTPUT_FILES_PATH=""
+  DISPATCH_OK=true
+  FALLBACK_COUNT=0
+  COMBINED_FALLBACK_COUNT=0
+  STATIC_DISPATCH_OK=true
+  DEGRADED_PANEL=false
+  usable=0
+  [[ "$_status" == "ok" ]] && usable=1
+  PANEL_STATUS="ok"
+  (( usable == 0 )) && PANEL_STATUS="panel-failed"
+  printf '%s\n' "$_dispatch_out"
+  emit_kv PANEL_OUTPUTS_FILE "$_panel_rows"
+  emit_kv DEGRADED_PANEL "$DEGRADED_PANEL"
+  emit_kv PANEL_STATUS "$PANEL_STATUS"
+  exit 0
+fi
+
 for _a in "${_archetypes[@]}"; do
-    render_prompt "$_a" "$DECOMP_DIR/render-decomp-cursor-${_a}.prompt"
-    render_prompt "$_a" "$DECOMP_DIR/render-decomp-codex-${_a}.prompt"
-    jq -nc \
-        --arg slot "decomp-cursor-${_a}" \
-        --arg tool cursor \
-        --arg output "$DECOMP_DIR/decomp-cursor-${_a}-output.txt" \
-        --arg prompt_file "$DECOMP_DIR/render-decomp-cursor-${_a}.prompt" \
-        --arg fallback_group "decomp-${_a}" \
-        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
-    jq -nc \
-        --arg slot "decomp-codex-${_a}" \
-        --arg tool codex \
-        --arg output "$DECOMP_DIR/decomp-codex-${_a}-output.txt" \
-        --arg prompt_file "$DECOMP_DIR/render-decomp-codex-${_a}.prompt" \
-        --arg fallback_group "decomp-${_a}" \
-        '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file,fallback_group:$fallback_group}' >>"$_manifest"
+    if [[ "$CURSOR_PRESENT" == "true" ]]; then
+        render_prompt "$_a" "$DECOMP_DIR/render-decomp-cursor-${_a}.prompt"
+        jq -nc \
+            --arg slot "decomp-cursor-${_a}" \
+            --arg tool cursor \
+            --arg output "$DECOMP_DIR/decomp-cursor-${_a}-output.txt" \
+            --arg prompt_file "$DECOMP_DIR/render-decomp-cursor-${_a}.prompt" \
+            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+    fi
+    if [[ "$CODEX_PRESENT" == "true" ]]; then
+        render_prompt "$_a" "$DECOMP_DIR/render-decomp-codex-${_a}.prompt"
+        jq -nc \
+            --arg slot "decomp-codex-${_a}" \
+            --arg tool codex \
+            --arg output "$DECOMP_DIR/decomp-codex-${_a}-output.txt" \
+            --arg prompt_file "$DECOMP_DIR/render-decomp-codex-${_a}.prompt" \
+            '{slot:$slot,tool:$tool,output:$output,prompt_file:$prompt_file}' >>"$_manifest"
+    fi
 done
 
 WATERFALL_SH="${DECOMPOSE_PANEL_WATERFALL_SH:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
@@ -161,6 +232,7 @@ _dispatch_out=$("$WATERFALL_SH" \
     --codex-present "$CODEX_PRESENT" \
     --cursor-present "$CURSOR_PRESENT" \
     --mode description \
+    --no-fallback \
     --require-result-pattern '^[[:space:]]*## Recommendation' \
     "${_wf_extra[@]}")
 _wf_rc=$?
