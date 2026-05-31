@@ -1395,18 +1395,25 @@ _implement_round_body() {
         fi
         non_nit_accepted=$((accepted_count_dec - nit_count))
         if (( non_nit_accepted <= CONVERGENCE_NON_NIT_MAX )); then
-            important_scan_files+=("$IMPLEMENT_TMPDIR/round-${round_num_dec}/findings.md")
-            local important_rc=1
-            if important_findings_present "${important_scan_files[@]}"; then
-                important_rc=0
-            else
-                important_rc=$?
-            fi
-            if [[ "$important_rc" -eq 2 ]]; then
+            local _findings_path="$IMPLEMENT_TMPDIR/round-${round_num_dec}/findings.md"
+            [[ -r "$_findings_path" ]] && important_scan_files+=("$_findings_path")
+            if [[ ${#important_scan_files[@]} -gt 0 ]]; then
+                local important_rc=1
+                if important_findings_present "${important_scan_files[@]}"; then
+                    important_rc=0
+                else
+                    important_rc=$?
+                fi
+                if [[ "$important_rc" -eq 2 ]]; then
+                    important_scan_abort=1
+                elif [[ "$important_rc" -eq 1 ]]; then
+                    larch_err "⏳ /implement Step 5: converged after round ${round_num_dec} (${non_nit_accepted} non-nit accepted, ${nit_count} nit excluded; <= ${CONVERGENCE_NON_NIT_MAX}; no Important findings)."
+                    status="converged-small-changes"
+                fi
+            elif (( non_nit_accepted > 0 )); then
+                # Accepted findings exist but findings.md is not readable — fail closed.
+                larch_err "review-and-fix.sh: findings file not readable for Important check: $_findings_path"
                 important_scan_abort=1
-            elif [[ "$important_rc" -eq 1 ]]; then
-                larch_err "⏳ /implement Step 5: converged after round ${round_num_dec} (${non_nit_accepted} non-nit accepted, ${nit_count} nit excluded; <= ${CONVERGENCE_NON_NIT_MAX}; no Important findings)."
-                status="converged-small-changes"
             fi
         fi
     fi

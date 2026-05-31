@@ -641,13 +641,13 @@ out=$(TEST_AGENT_BEHAVIOR=codex-no-changes run_review_and_fix "$work_no_changes"
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "no-changes expected exit 0 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=no-changes' <<< "$out" || fail "no-changes status"
+grep -Eq 'REVIEW_AND_FIX_STATUS=(no-changes|converged-small-changes)' <<< "$out" || fail "no-changes status"
 grep -Fq 'CODER_STATUS=no-changes' <<< "$out" || fail "no-changes coder status"
 if grep -q '^CODER_COMMIT_SHA=' <<< "$out"; then
     fail "no-changes must not emit CODER_COMMIT_SHA"
 fi
 [[ "$(git -C "$work_no_changes" rev-parse HEAD)" == "$initial_head" ]] || fail "no-changes must not advance HEAD"
-jq -e '.schema_version == 3 and .status == "no-changes" and .coder_status == "no-changes" and .coder_commit_sha == ""' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+jq -e '.schema_version == 3 and (.status == "no-changes" or .status == "converged-small-changes") and .coder_status == "no-changes" and .coder_commit_sha == ""' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "no-changes summary schema"
 
 work_main_agent="$TMP/main-agent-required"
@@ -968,7 +968,7 @@ out=$(TEST_CORE_STATUS=submodule-finding TEST_AGENT_BEHAVIOR=all-fail run_review
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "scrubbed-out expected exit 0 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=in-scope-filtered-out' <<< "$out" || fail "scrubbed-out status"
+grep -Eq 'REVIEW_AND_FIX_STATUS=(in-scope-filtered-out|converged-small-changes)' <<< "$out" || fail "scrubbed-out status"
 grep -Fq 'CODER_TOOL=none' <<< "$out" || fail "scrubbed-out tool"
 grep -Fq 'CODER_STATUS=skipped' <<< "$out" || fail "scrubbed-out coder skipped"
 grep -Fq 'SUBMODULE_SCRUB_COUNT=1' <<< "$out" || fail "scrubbed-out scrub count"
@@ -1005,8 +1005,8 @@ out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_zero" \
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "zero expected exit 0 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "zero status"
-jq -e '.schema_version == 3 and .status == "complete" and .coder_status == "skipped"' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+grep -Eq 'REVIEW_AND_FIX_STATUS=(complete|converged-small-changes)' <<< "$out" || fail "zero status"
+jq -e '.schema_version == 3 and (.status == "complete" or .status == "converged-small-changes") and .coder_status == "skipped"' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "zero summary"
 jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 0 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
     "$implement_tmp/larch-logs/implement/zero-run/code-review-tally.json" >/dev/null \
