@@ -827,6 +827,18 @@ write_outer_meta "$OUT_SINK_DOTDOT" "$REPO_ROOT/scripts/launch-review.sh" \
     'STDERR_SINK=/tmp/../etc/passwd'
 assert_fail_closed "case-sink-dotdot" "$OUT_SINK_DOTDOT" "Retry metadata invalid: STDERR_SINK contains .."
 
+OUT_SINK_DOTDOT_CMD_JSON="$TMPROOT/cursor-sink-dotdot-cmd-json.txt"
+write_empty_candidate "$OUT_SINK_DOTDOT_CMD_JSON"
+write_meta_body "$OUT_SINK_DOTDOT_CMD_JSON" \
+    'STDERR_SINK=/tmp/../etc/passwd' \
+    "CMD_JSON=$(json_array bash "$HELPER" --output "$OUT_SINK_DOTDOT_CMD_JSON")"
+assert_fail_closed "case-sink-dotdot-cmd-json" "$OUT_SINK_DOTDOT_CMD_JSON" "Retry metadata invalid: STDERR_SINK contains .."
+if [[ -e "${OUT_SINK_DOTDOT_CMD_JSON%.txt}-retry.txt.done" ]]; then
+    fail "case-sink-dotdot-cmd-json must be rejected before run-external-agent launch"
+else
+    ok "case-sink-dotdot-cmd-json rejected before run-external-agent launch"
+fi
+
 OUT_SINK_ABSENT="$TMPROOT/cursor-sink-absent.txt"
 STDERR_SINK_ABSENT="$TMPROOT/case-sink-absent.stderr"
 write_empty_candidate "$OUT_SINK_ABSENT"
