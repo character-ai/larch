@@ -1,0 +1,24 @@
+Reviewing the branch diff and degraded-tools gate implementation for explanation-text coherence.
+Checking `emit_kv` output format and whether Case 2's scenario matches Case 13.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **code-quality** `scripts/test-degraded-tools-gate.sh:52-63` vs `175-180` — Case 2 and Case 13 use the same inputs (codex probe-failed, cursor ok, `--skill design`) but only Case 13 asserts explanation last-line text (`proceeding automatically` / no `Continue in this degraded mode`). The implementation is covered today; dropping Case 13 would leave Case 2 unable to catch a broken design-branch `BOTH_DOWN` conditional.
+
+- **code-quality** `scripts/test-degraded-tools-gate.sh:42-50` — Case 1 (all healthy) does not assert `BOTH_DOWN=false`, though `scripts/degraded-tools-gate.sh:111-116` emits it before the `DEGRADED` early exit. A regression that moved `emit_kv BOTH_DOWN` after `[ "$DEGRADED" = "true" ] || exit 0` would not be caught on the healthy path.
+
+**Branch commits (since `main`):** `84fdf39e0` Degraded-tools gate: auto-proceed when one tool is down (#3291); `be24465b0` chore(larch-logs); `273ecc427` Address code review feedback (round 1).
+
+**Scout checklist (verified, no defects):**
+
+| Check | Result |
+|--------|--------|
+| Design branch inner `BOTH_DOWN` conditional | Present at `scripts/degraded-tools-gate.sh:143-147` |
+| Non-design (`else`) inner `BOTH_DOWN` conditional | Present at `scripts/degraded-tools-gate.sh:158-163` |
+| `BOTH_DOWN` KV before early exit | Emitted at `111-114`, exit guard at `116` |
+| Auto-proceed string | Exact: `proceeding automatically` in `146` / `162` — matches Cases 3, 7, 13, 15 |
+| Both-down design prompt | `144`: substring `Continue in this degraded mode` — Case 14 |
+| Both-down non-design prompt | `159-160`: `Continue in this degraded mode (backup waterfall)` + `the tool is healthy?` — Cases 4, 16 |

@@ -1,0 +1,16 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Cases 13/14/16 cover different skill labels for explanation-text branches not exercised by Cases 2-4; only Case 15 is a true duplicate of Case 3's skill; maintenance concern is real but minor
+FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- a structural grep on SKILL.md prose for exact-string checks adds fragile meta-linting with high maintenance cost relative to the marginal safety benefit
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- BOTH_DOWN logic is a simple two-state AND; misclassification for binary-missing is implausible given covered unit tests for that state
+OOS_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- caller contract mandates all four flags and WARNING fires on omission; requiring flag presence inside the detector breaks the pure-detector contract and adds complexity disproportionate to the low-probability scenario
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- concern targets the LLM-orchestration architecture broadly, not this diff specifically; a mechanical gate helper is a separate, larger undertaking
+OOS_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- sentinel's stated purpose is re-prompt prevention; extra notice reprint on resume is a minor UX issue, not a correctness defect; fix complexity is disproportionate
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- interactive-predicate divergence (bare prose vs [[ -t 0 ]]) is pre-existing across all four callers and not worsened by this diff; unifying is a separate task
+OOS_16: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
