@@ -425,6 +425,58 @@ def test_run_check_fix_loop_dispatch_first_fallback_redacted_chmod(tmp_path: Pat
     assert fallback.stat().st_mode & 0o777 == 0o600
 
 
+def test_run_check_fix_loop_check_first_fallback_redacted_chmod(tmp_path: Path) -> None:
+    raw = tmp_path / "fail.log"
+    secret = "ghp_" + "a" * 36
+    _ = raw.write_text(f"{secret}\n", encoding="utf-8")
+    checks_sequence = [
+        checks.ChecksResult(
+            ok=False,
+            exit_code=1,
+            site="step6",
+            redacted_log_path=None,
+            phase="pre-commit",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=None,
+            raw_log_path=str(raw),
+        ),
+        checks.ChecksResult(
+            ok=True,
+            exit_code=0,
+            site="step6",
+            redacted_log_path=None,
+            phase="unknown",
+            coverage="full",
+            skipped=False,
+            warn=None,
+        ),
+    ]
+    dispatched: list[str] = []
+
+    def fixer(log: str) -> checks.FixOutcome:
+        dispatched.append(log)
+        return checks.FixOutcome(
+            status="applied",
+            delta_paths=("a.py",),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool="codex",
+        )
+
+    loop = checks.run_check_fix_loop(
+        checks_runner=lambda: checks_sequence.pop(0),
+        fixer=fixer,
+        dispatch_first=False,
+    )
+    fallback = Path(str(raw) + ".redacted")
+    assert loop.status == "ok"
+    assert dispatched == [str(fallback)]
+    assert fallback.stat().st_mode & 0o777 == 0o600
+    assert secret not in fallback.read_text(encoding="utf-8")
+
+
 def test_run_check_fix_loop_main_agent_required(tmp_path: Path) -> None:
     raw_log = tmp_path / "fail.log"
     _ = raw_log.write_text("error\n", encoding="utf-8")
@@ -526,6 +578,28 @@ def test_run_relevant_checks_skipped_when_script_absent(
     assert result.ok is True
 
 
+def test_run_relevant_checks_broken_symlink_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    session = cache / "larch" / "sessions" / "claude-implement-test"
+    session.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    scripts.mkdir(parents=True)
+    (scripts / "relevant-checks.sh").symlink_to(repo / "missing.sh")
+    result = checks.run_relevant_checks(
+        StubRunner(),
+        site="step6",
+        tmpdir=str(session),
+        repo_root=str(repo),
+    )
+    assert result.ok is False
+    assert result.exit_code == 1
+
+
 def test_run_relevant_checks_parses_markers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -554,6 +628,56 @@ def test_run_relevant_checks_parses_markers(
     assert result.ok is True
     assert result.coverage == "full"
     assert result.warn is None
+
+
+def test_run_relevant_checks_agent_lint_missing_warn(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    session = cache / "larch" / "sessions" / "claude-implement-test"
+    session.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    scripts.mkdir(parents=True)
+    check_script = scripts / "relevant-checks.sh"
+    _ = check_script.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
+    _ = check_script.chmod(0o755)
+    runner = StubRunner([_ok("WARNING: agent-lint not found on PATH\n")])
+    result = checks.run_relevant_checks(
+        runner,
+        site="step6",
+        tmpdir=str(session),
+        repo_root=str(repo),
+    )
+    assert result.ok is True
+    assert result.warn == "agent-lint-missing"
+
+
+def test_run_relevant_checks_post_check_only_coverage(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    session = cache / "larch" / "sessions" / "claude-implement-test"
+    session.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    scripts.mkdir(parents=True)
+    check_script = scripts / "relevant-checks.sh"
+    _ = check_script.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
+    _ = check_script.chmod(0o755)
+    runner = StubRunner([_ok("=== Running agent-lint ===\n")])
+    result = checks.run_relevant_checks(
+        runner,
+        site="step6",
+        tmpdir=str(session),
+        repo_root=str(repo),
+    )
+    assert result.ok is True
+    assert result.coverage == "post-check-only"
 
 
 def test_run_relevant_checks_fail_produces_redacted_log(
@@ -775,6 +899,45 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     assert leaf[-1]
 
 
+def test_run_lint_fix_dispatch_failure_ignores_health_classification(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text("lint error\n", encoding="utf-8")
+    head = "abc123"
+
+    def fail_codex(*_args: object, **_kwargs: object) -> int:
+        return 1
+
+    def classify_must_not_run(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("dispatch failure classification must not select status")
+
+    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    monkeypatch.setattr("agents.classify_launch_failure", classify_must_not_run)
+    runner = StubRunner([
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok(head + "\n"),  # rev-parse HEAD
+        _ok("main\n"),  # symbolic-ref
+        _ok(""),  # submodule foreach
+    ])
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        codex_present=True,
+        cursor_present=False,
+        run_parent=str(tmp_path / "runs"),
+    )
+    assert outcome.status == "main-agent-required"
+    assert outcome.failure_reason == "dispatch-failed"
+
+
 def test_run_lint_fix_git_commit_applied_path(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -854,6 +1017,79 @@ def test_run_lint_fix_forbidden_reset_failure_is_structural(tmp_path: Path) -> N
     assert outcome.failure_reason == "forbidden-path-reset-failed"
 
 
+def test_run_lint_fix_committed_forbidden_delta_reset_success_is_violation(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text("lint error\n", encoding="utf-8")
+    head = "abc123"
+    moved = "def456"
+    runner = StubRunner([
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok(head + "\n"),  # baseline HEAD
+        _ok("main\n"),  # baseline branch
+        _ok(""),  # submodule foreach
+        _ok(""),  # codex dispatch succeeds
+        _ok(moved + "\n"),  # current HEAD after dispatch
+        _ok("main\n"),  # current branch
+        _ok(""),  # merge-base --is-ancestor
+        _ok(head + "\n"),  # current parent
+        _ok("", rc=1),  # no second parent
+        _ok(".gitmodules\n"),  # committed forbidden path
+        _ok(""),  # reset succeeds
+        _ok(head + "\n"),  # HEAD reset
+    ])
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        codex_present=True,
+        cursor_present=False,
+        run_parent=str(tmp_path / "runs"),
+    )
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "forbidden-path-violation"
+
+
+def test_run_lint_fix_forbidden_worktree_delta_is_reverted(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text("lint error\n", encoding="utf-8")
+    head = "abc123"
+    runner = StubRunner([
+        _ok(""),  # baseline tracked diff
+        _ok(""),  # baseline cached diff
+        _ok(""),  # baseline untracked status
+        _ok(head + "\n"),  # baseline HEAD
+        _ok("main\n"),  # branch
+        _ok(""),  # submodule foreach
+        _ok(""),  # codex dispatch succeeds
+        _ok(head + "\n"),  # current HEAD after dispatch
+        _ok(".gitmodules\n"),  # forbidden-revert tracked diff
+        _ok(""),  # forbidden-revert cached diff
+        _ok(""),  # forbidden-revert untracked status
+        _ok(""),  # git checkout -- .gitmodules
+    ])
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        codex_present=True,
+        cursor_present=False,
+        run_parent=str(tmp_path / "runs"),
+    )
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "forbidden-path-violation"
+    assert any(call[:3] == ("git", "checkout", "--") for call, _kw in runner.calls)
+
+
 def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -889,6 +1125,15 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
         call for call, _kw in runner.calls
         if "cursor" in call and "agent" in call
     )
+    idx = list(cursor_call).index(str(checks._run_external_agent_sh(str(repo))))  # pyright: ignore[reportPrivateUsage]
+    argv = list(cursor_call)[idx:]
+    assert argv[1:3] == ["--tool", "cursor"]
+    assert "--timeout" in argv
+    assert "1800" in argv
+    assert "--capture-stdout" in argv
+    assert "launch-cursor-ci.sh" not in " ".join(argv)
+    leaf = argv[argv.index("--") + 1 :]
+    assert leaf[:4] == ["cursor", "agent", "-p", "--trust"]
     assert "--workspace" in cursor_call
     assert str(repo) in cursor_call
 
@@ -964,10 +1209,100 @@ def test_run_checks_phase_threads_target_cmd_display(
         repo_root=str(repo),
         codex_present=False,
         cursor_present=False,
+        site="ship-pr-ci-per-job",
         target_cmd_display="make py-test",
     )
     assert result.outcome == Outcome.NEEDS_USER_INPUT
     assert captured == ["make py-test"]
+
+
+def test_run_checks_phase_rejects_target_cmd_display_for_non_per_job(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    session = cache / "larch" / "sessions" / "claude-implement-test"
+    session.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    result = checks.run_checks_phase(
+        StubRunner(),
+        tmpdir=str(session),
+        repo_root=str(repo),
+        codex_present=False,
+        cursor_present=False,
+        site="step6",
+        target_cmd_display="make py-test",
+    )
+    assert result.outcome == Outcome.TRANSIENT
+    assert result.detail == "target-cmd-display-invalid"
+
+
+def test_run_checks_phase_requires_target_cmd_display_for_per_job(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    session = cache / "larch" / "sessions" / "claude-implement-test"
+    session.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    result = checks.run_checks_phase(
+        StubRunner(),
+        tmpdir=str(session),
+        repo_root=str(repo),
+        codex_present=False,
+        cursor_present=False,
+        site="ship-pr-ci-per-job",
+    )
+    assert result.outcome == Outcome.TRANSIENT
+    assert result.detail == "target-cmd-display-invalid"
+
+
+def test_run_lint_fix_rejects_checks_log_outside_run_parent_root(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    log = outside / "checks.log"
+    _ = log.write_text("lint error\n", encoding="utf-8")
+    outcome = checks.run_lint_fix(
+        StubRunner(),
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        codex_present=True,
+        cursor_present=False,
+        run_parent=str(tmp_path / "session" / "lint-fix-loop"),
+    )
+    assert outcome.status == "failed"
+    assert outcome.failure_reason == "checks-log-invalid"
+
+
+def test_run_check_fix_loop_rejects_initial_log_outside_allowed_tmpdir(tmp_path: Path) -> None:
+    session = tmp_path / "session"
+    session.mkdir()
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    initial = outside / "initial.redacted.log"
+    _ = initial.write_text("error\n", encoding="utf-8")
+
+    def checks_runner() -> checks.ChecksResult:
+        raise AssertionError("checks must not run before confined initial log")
+
+    def fixer(_log: str) -> checks.FixOutcome:
+        raise AssertionError("fixer must not receive an unconfined log")
+
+    loop = checks.run_check_fix_loop(
+        checks_runner=checks_runner,
+        fixer=fixer,
+        dispatch_first=True,
+        initial_redacted_log=str(initial),
+        allowed_tmpdir=str(session),
+    )
+    assert loop.status == "dispatch-failed"
 
 
 def test_compose_prompt_redacts_secrets(tmp_path: Path) -> None:
@@ -982,3 +1317,24 @@ def test_compose_prompt_redacts_secrets(tmp_path: Path) -> None:
     )
     assert secret not in prompt
     assert config.REDACTED_TOKEN in prompt
+
+
+def test_compose_prompt_includes_submodule_prohibition(tmp_path: Path) -> None:
+    log = tmp_path / "checks.log"
+    _ = log.write_text("failure\n", encoding="utf-8")
+    prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+        checks_log=log,
+        site_label="Step 6",
+        submodule_paths=("vendor/lib",),
+        target_cmd_display=None,
+    )
+    assert "## PROHIBITION: Submodules" in prompt
+    assert "- vendor/lib" in prompt
+    assert "Do NOT touch `.git/`, `.gitmodules`, or any path under a submodule." in prompt
+
+
+def test_read_log_tail_truncation_uses_constant(tmp_path: Path) -> None:
+    log = tmp_path / "large.log"
+    _ = log.write_bytes(b"a" * (checks._PROMPT_TAIL_BYTES + 1))  # pyright: ignore[reportPrivateUsage]
+    text = checks._read_log_tail(log, checks._PROMPT_TAIL_BYTES)  # pyright: ignore[reportPrivateUsage]
+    assert text.startswith(f"[truncated to last {checks._PROMPT_TAIL_BYTES} bytes]\n")  # pyright: ignore[reportPrivateUsage]

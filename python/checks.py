@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final
 
-import agents
 import config
 import git
 import redact
@@ -30,6 +29,8 @@ _PROMPT_TAIL_BYTES: Final = 60000
 _RUN_EXTERNAL_TIMEOUT: Final = 1800
 _RCC_MAX_ITER_CAP: Final = 6
 _EMPTY_FAILURE_CAP: Final = 2
+_ASCII_CONTROL_MAX: Final = 31
+_ASCII_DELETE: Final = 127
 
 
 @dataclass(frozen=True)
@@ -104,11 +105,7 @@ def validate_tmpdir(tmpdir: str) -> Path | None:
     if canonical is None:
         return None
     basename = canonical.name
-    if basename.startswith("claude-implement-"):
-        prefix = "claude-implement"
-    elif basename.startswith("claude-review-"):
-        prefix = "claude-review"
-    else:
+    if not basename.startswith(("claude-implement-", "claude-review-")):
         return None
     cache_root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
     accepted_root: Path | None = None
@@ -124,9 +121,32 @@ def validate_tmpdir(tmpdir: str) -> Path | None:
                 break
     if accepted_root is None:
         return None
-    if prefix not in {"claude-implement", "claude-review"}:
-        return None
     return canonical
+
+
+def _resolve_checks_log_path(candidate: str, allowed_root: Path) -> Path | None:
+    path = Path(candidate)
+    try:
+        if not path.is_file() or path.is_symlink():
+            return None
+        resolved = path.resolve(strict=True)
+        root = allowed_root.resolve(strict=True)
+    except OSError:
+        return None
+    if not _under_root(resolved, root) or resolved == root:
+        return None
+    return resolved
+
+
+def _target_cmd_display_valid(site: str, target_cmd_display: str | None) -> bool:
+    if site != "ship-pr-ci-per-job":
+        return target_cmd_display is None
+    if target_cmd_display is None or target_cmd_display == "":
+        return False
+    return not any(
+        ord(char) <= _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE
+        for char in target_cmd_display
+    )
 
 
 def _parse_checks_log(text: str) -> tuple[bool, bool, bool]:
@@ -398,7 +418,7 @@ def _read_log_tail(path: Path, max_bytes: int) -> str:
     if len(data) <= max_bytes:
         return data.decode("utf-8", errors="replace")
     chunk = data[-max_bytes:]
-    return "[truncated to last 60000 bytes]\n" + chunk.decode("utf-8", errors="replace")
+    return f"[truncated to last {_PROMPT_TAIL_BYTES} bytes]\n" + chunk.decode("utf-8", errors="replace")
 
 
 def _sanitize_log_fence(text: str) -> str:
@@ -425,7 +445,6 @@ def _compose_prompt(
     body = _read_log_tail(checks_log, _PROMPT_TAIL_BYTES)
     body = _sanitize_log_fence(body)
     redacted_body = redact.redact(body)
-    sub_lines = "\n".join(submodule_paths)
     parts = [
         "# Relevant checks fix",
         "",
@@ -436,22 +455,32 @@ def _compose_prompt(
         "Make the minimum necessary edits under the current repository root.",
         "Do NOT commit; the parent script owns staging and commits.",
         "",
-        "Do not modify git submodules or paths listed under .gitmodules.",
     ]
-    if sub_lines:
-        parts.extend(["Submodule paths:", sub_lines])
+    parts.extend(["## PROHIBITION: Submodules"])
+    if submodule_paths:
+        parts.extend([
+            "Do NOT read, edit, create, delete, move, or otherwise modify any path equal to or under these submodule paths:",
+            *[f"- {path}" for path in submodule_paths],
+        ])
+    else:
+        parts.append("No checked-out submodule paths were discovered for this repository.")
+    parts.append(
+        "Do NOT touch `.git/`, `.gitmodules`, or any path under a submodule. "
+        "If a finding or fix appears to require touching one of those paths, skip it.",
+    )
     parts.extend([
         "",
         "When done, report on a single final line in this exact shape:",
-        "  FIXED: <comma-separated repo-relative paths> | <short check-failure description>",
+        "  FIXED: <comma-separated repo-relative paths of files you changed> | <short check-failure description>",
         "If you cannot fix the failure, instead report on a single final line:",
         "  UNFIXABLE: <one-paragraph reason>",
-        "**Do NOT** prepend, append, or interleave narrative prose around that final line.",
+        "**Do NOT** prepend, append, or interleave narrative prose around that final line. "
+        "Tool output from your edits is fine; the result line must be the last line.",
         "",
         "## Acceptable final-line shapes",
         "```",
-        "FIXED: scripts/foo.sh,scripts/foo.md | markdownlint MD038 violation",
-        "UNFIXABLE: lint failure originates in a vendored file under third-party/",
+        "FIXED: scripts/foo.sh,scripts/foo.md | markdownlint MD038 violation on inner-whitespace code span",
+        "UNFIXABLE: lint failure originates in a vendored file under third-party/ that this loop is not allowed to edit",
         "```",
         "",
         f"Checks log path: {checks_log}",
@@ -933,7 +962,6 @@ def run_lint_fix(
     target_cmd_display: str | None = None,
 ) -> FixOutcome:
     """Port of lint-fix-loop.sh single dispatch."""
-    log_path = Path(checks_log)
     if not _is_known_site(site):
         return FixOutcome(
             status="failed",
@@ -943,7 +971,19 @@ def run_lint_fix(
             head_changed=False,
             coder_tool=None,
         )
-    if not log_path.is_file() or log_path.is_symlink():
+    if not _target_cmd_display_valid(site, target_cmd_display):
+        return FixOutcome(
+            status="failed",
+            delta_paths=(),
+            failure_reason="target-cmd-display-invalid",
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+        )
+    parent = Path(run_parent)
+    canonical_tmp = parent.parent
+    log_path = _resolve_checks_log_path(checks_log, canonical_tmp)
+    if log_path is None:
         return FixOutcome(
             status="failed",
             delta_paths=(),
@@ -983,7 +1023,6 @@ def run_lint_fix(
         )
     cwd = repo_root
     site_label = _site_label(site)
-    parent = Path(run_parent)
     parent.mkdir(parents=True, exist_ok=True)
     run_dir = Path(tempfile.mkdtemp(prefix=f"{site}.", dir=str(parent)))
     baseline_tracked = _capture_tracked_paths(runner, cwd=cwd)
@@ -1013,11 +1052,8 @@ def run_lint_fix(
         target_cmd_display=target_cmd_display,
     )
     coder_tool: str | None = None
-    codex_failure: agents.LaunchFailure | None = None
-    cursor_failure: agents.LaunchFailure | None = None
-    dispatch_rc = 1
     if codex_present:
-        dispatch_rc = _run_codex(
+        codex_rc = _run_codex(
             runner,
             scripts_dir=scripts,
             run_external=run_external,
@@ -1025,17 +1061,10 @@ def run_lint_fix(
             repo_root=repo_root,
             prompt_body=prompt_body,
         )
-        if dispatch_rc == 0:
+        if codex_rc == 0:
             coder_tool = "codex"
-        else:
-            codex_failure = agents.classify_launch_failure(
-                dispatch_rc,
-                run_dir / "codex.wrapper.log",
-                tool="codex",
-                output_file=run_dir / "codex.log",
-            )
     if coder_tool is None and cursor_present:
-        dispatch_rc = _run_cursor(
+        cursor_rc = _run_cursor(
             runner,
             scripts_dir=scripts,
             run_external=run_external,
@@ -1043,30 +1072,9 @@ def run_lint_fix(
             repo_root=repo_root,
             prompt_body=prompt_body,
         )
-        if dispatch_rc == 0:
+        if cursor_rc == 0:
             coder_tool = "cursor"
-        else:
-            cursor_failure = agents.classify_launch_failure(
-                dispatch_rc,
-                run_dir / "cursor.log.stderr-tail",
-                tool="cursor",
-                output_file=run_dir / "cursor.log",
-            )
     if coder_tool is None:
-        launch_failures = [
-            failure
-            for failure in (codex_failure, cursor_failure)
-            if failure is not None
-        ]
-        if launch_failures and any(f.failure_class == "health" for f in launch_failures):
-            return FixOutcome(
-                status="failed",
-                delta_paths=(),
-                failure_reason="dispatch-failed",
-                commit_sha=None,
-                head_changed=False,
-                coder_tool=None,
-            )
         return FixOutcome(
             status="main-agent-required",
             delta_paths=(),
@@ -1275,6 +1283,43 @@ def _handle_fix_outcome(
     return False
 
 
+def _redacted_log_for_dispatch(
+    checks: ChecksResult,
+    *,
+    allowed_tmpdir: Path | None,
+) -> str | None:
+    if checks.redacted_log_path:
+        redacted = Path(checks.redacted_log_path)
+        if allowed_tmpdir is not None and _resolve_checks_log_path(str(redacted), allowed_tmpdir) is None:
+            return None
+        if redacted.is_file() and not redacted.is_symlink():
+            return str(redacted)
+        return None
+    raw_path = checks.raw_log_path
+    if not raw_path:
+        return None
+    raw = Path(raw_path)
+    if allowed_tmpdir is not None and _resolve_checks_log_path(str(raw), allowed_tmpdir) is None:
+        return None
+    try:
+        if not raw.is_file() or raw.is_symlink() or raw.stat().st_size == 0:
+            return None
+    except OSError:
+        return None
+    redacted = raw.with_suffix(raw.suffix + ".redacted")
+    try:
+        _ = redacted.write_text(
+            redact.redact(raw.read_text(encoding="utf-8")),
+            encoding="utf-8",
+        )
+        redacted.chmod(0o600)
+    except OSError:
+        return None
+    if allowed_tmpdir is not None and _resolve_checks_log_path(str(redacted), allowed_tmpdir) is None:
+        return None
+    return str(redacted)
+
+
 def run_check_fix_loop(
     *,
     checks_runner: Callable[[], ChecksResult],
@@ -1282,13 +1327,18 @@ def run_check_fix_loop(
     dispatch_first: bool = False,
     max_iter: int | None = None,
     initial_redacted_log: str | None = None,
+    allowed_tmpdir: str | None = None,
 ) -> LoopResult:
     """Port of run_captured_cmd_then_fix_loop."""
     cap = normalize_max_iter(max_iter)
     loop = LoopResult(status="exhausted")
     delta_accum: list[str] = []
     empty_failures = 0
+    canonical_tmp = Path(allowed_tmpdir) if allowed_tmpdir else None
     redacted_log_for_dispatch = initial_redacted_log or ""
+    if redacted_log_for_dispatch and canonical_tmp is not None:
+        resolved = _resolve_checks_log_path(redacted_log_for_dispatch, canonical_tmp)
+        redacted_log_for_dispatch = str(resolved) if resolved is not None else ""
 
     for _attempt in range(1, cap + 1):
         if dispatch_first:
@@ -1309,27 +1359,15 @@ def run_check_fix_loop(
                 loop.status = "no-changes-stale"
                 loop.delta_paths = tuple(delta_accum)
                 return loop
-            raw_path = checks.raw_log_path or checks.redacted_log_path
-            if not raw_path or not Path(raw_path).is_file():
-                loop.status = "exhausted"
-                loop.delta_paths = tuple(delta_accum)
-                return loop
-            try:
-                redacted_log_for_dispatch = checks.redacted_log_path or ""
-                if not redacted_log_for_dispatch:
-                    raw_text = Path(raw_path).read_text(encoding="utf-8")
-                    redacted_log_for_dispatch = str(
-                        Path(raw_path).with_suffix(Path(raw_path).suffix + ".redacted"),
-                    )
-                    _ = Path(redacted_log_for_dispatch).write_text(
-                        redact.redact(raw_text),
-                        encoding="utf-8",
-                    )
-                    Path(redacted_log_for_dispatch).chmod(0o600)
-            except OSError:
+            redacted_path = _redacted_log_for_dispatch(
+                checks,
+                allowed_tmpdir=canonical_tmp,
+            )
+            if redacted_path is None:
                 loop.status = "dispatch-failed"
                 loop.delta_paths = tuple(delta_accum)
                 return loop
+            redacted_log_for_dispatch = redacted_path
         else:
             checks = checks_runner()
             if checks.ok or checks.skipped:
@@ -1345,8 +1383,11 @@ def run_check_fix_loop(
                     return loop
                 continue
             empty_failures = 0
-            redacted_path = checks.redacted_log_path
-            if not redacted_path:
+            redacted_path = _redacted_log_for_dispatch(
+                checks,
+                allowed_tmpdir=canonical_tmp,
+            )
+            if redacted_path is None:
                 loop.status = "dispatch-failed"
                 loop.delta_paths = tuple(delta_accum)
                 return loop
@@ -1389,6 +1430,8 @@ def run_checks_phase(
         return StepResult(Outcome.TRANSIENT, "invalid-tmpdir")
     if not _is_known_site(site):
         return StepResult(Outcome.TRANSIENT, "unknown-site")
+    if not _target_cmd_display_valid(site, target_cmd_display):
+        return StepResult(Outcome.TRANSIENT, "target-cmd-display-invalid")
     run_parent = str(canonical_tmp / "lint-fix-loop")
 
     def checks_runner() -> ChecksResult:
@@ -1417,5 +1460,6 @@ def run_checks_phase(
         dispatch_first=dispatch_first,
         max_iter=max_iter,
         initial_redacted_log=initial_redacted_log,
+        allowed_tmpdir=str(canonical_tmp),
     )
     return escalate(loop.status, delta_paths=loop.delta_paths)
