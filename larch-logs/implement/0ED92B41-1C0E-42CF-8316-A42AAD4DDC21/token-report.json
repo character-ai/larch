@@ -303,16 +303,107 @@
           "total": 0
         },
         "skills": []
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "cache_read": 0,
+          "cache_create": 0,
+          "cache_create_5m": 0,
+          "cache_create_1h": 0,
+          "output": 0,
+          "total": 0
+        },
+        "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 6,
+          "cache_read": 500659,
+          "cache_create": 144011,
+          "cache_create_5m": 144011,
+          "cache_create_1h": 0,
+          "output": 1807,
+          "total": 646483
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 6,
+              "cache_read": 500659,
+              "cache_create": 144011,
+              "cache_create_5m": 144011,
+              "cache_create_1h": 0,
+              "output": 1807,
+              "total": 646483
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 2,
+          "cache_read": 326138,
+          "cache_create": 1813,
+          "cache_create_5m": 1813,
+          "cache_create_1h": 0,
+          "output": 1024,
+          "total": 328977
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 16 — rejected findings",
+            "totals": {
+              "input": 2,
+              "cache_read": 326138,
+              "cache_create": 1813,
+              "cache_create_5m": 1813,
+              "cache_create_1h": 0,
+              "output": 1024,
+              "total": 328977
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 29,
+          "cache_read": 4483439,
+          "cache_create": 373347,
+          "cache_create_5m": 373347,
+          "cache_create_1h": 0,
+          "output": 12471,
+          "total": 4869286
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 17 — final report",
+            "totals": {
+              "input": 29,
+              "cache_read": 4483439,
+              "cache_create": 373347,
+              "cache_create_5m": 373347,
+              "cache_create_1h": 0,
+              "output": 12471,
+              "total": 4869286
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 56,
-      "cache_read": 6724780,
-      "cache_create": 365383,
-      "cache_create_5m": 365383,
+      "input": 93,
+      "cache_read": 12035016,
+      "cache_create": 884554,
+      "cache_create_5m": 884554,
       "cache_create_1h": 0,
-      "output": 24558,
-      "total": 7114777
+      "output": 39860,
+      "total": 12959523
     }
   },
   "codex": {
@@ -423,6 +514,38 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
         "totals": {
           "input": 0,
           "output": 0,
@@ -549,6 +672,38 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8a — changelog",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -558,12 +713,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 56,
-    "cache_read": 6724780,
-    "cache_create_5m": 365383,
+    "input": 93,
+    "cache_read": 12035016,
+    "cache_create_5m": 884554,
     "cache_create_1h": 0,
-    "output": 24558,
-    "total": 7114777
+    "output": 39860,
+    "total": 12959523
   },
   "BUCKETS_codex": {
     "input": 268879,
