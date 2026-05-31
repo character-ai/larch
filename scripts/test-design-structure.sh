@@ -12,6 +12,7 @@ PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 PLAN_LOOP_SH="$REPO_ROOT/skills/design/scripts/plan-review-loop.sh"
 PLAN_REVIEW_LOOP_SH="$PLAN_LOOP_SH"
+PR_LOOP_MD="$REPO_ROOT/skills/design/scripts/plan-review-loop.md"
 MAKEFILE="$REPO_ROOT/Makefile"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
 
@@ -372,6 +373,16 @@ grep -Fq "**Override and proceed** is an explicit, loudly-discouraged operator e
   || fail "(FINDING_21) SKILL.md hard branch must document Override escape-hatch invariant"
 grep -Fq 'Override and proceed (advised against)' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md hard branch must offer Override and proceed option label"
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+hard_prompt_line=$(grep -nF '`AskUserQuestion` with exactly three options in this order: **"Let my panel of agents split this feature for you"** / **"Override and proceed (advised against)"** / **"Cancel"**' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+[[ -n "$hard_prompt_line" ]] \
+  || fail "(FINDING_9) SKILL.md hard branch must pin Split / Override / Cancel option order"
+grep -Fq 'The **Override and proceed (advised against)** option description MUST read: STRONGLY DISCOURAGED. Proceeding with this oversized plan is quite likely to SEVERELY degrade the quality of the reviews and the resulting design. We advise against it. Pick this only if you knowingly accept that risk; splitting is almost always better.' "$SKILL_MD" \
+  || fail "(FINDING_9) SKILL.md hard branch must pin strongly discouraged Override description"
+grep -Fq 'Do not reuse stale or missing KVs from the Step 3 stdout/env handoff.' "$SKILL_MD" \
+  || fail "(FINDING_1) SKILL.md plan-size-trigger path must rerun fresh plan-size KVs before prompting"
+grep -Fq 'honor the hard prompt'\''s **Split / Override / Cancel** contract' "$PR_LOOP_MD" \
+  || fail "(FINDING_8) plan-review-loop.md must document plan-size-trigger Split / Override / Cancel breadcrumb"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 grep -Fq 'Step 1c sprawl heuristic' "$DISCUSSION_MD" \
   || fail "(FINDING_21) discussion-rounds.md missing Step 1c sprawl hook"
