@@ -1,0 +1,159 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+# Implementation Plan — #3274
+
+Two independent workstreams plus a folded-in regression fix:
+
+- **A. cleanup.sh enumeration fail-safe (#3260a)** — warn (not silent fail-open) when the top-level enumeration `find` fails, on both passes; sync docs/test/SECURITY.
+- **B. Convergence-threshold dead-config removal (folded-in Step 3 regression)** — `run-step3-review.sh` forwards `--convergence-threshold` to `plan-review-loop.sh`, which rejects unknown options (exit 2). #3265 replaced per-round convergence with a hardcoded single-round rule (`CONVERGENCE_NON_NIT_MAX=5`) and removed the flag from the loop, so the env var is dead. Remove the plumbing end-to-end and add the missing integration-seam test.
+
+**Already-resolved — NO edits (evidence-backed no-ops):**
+- **#3255 (item 1)**: the stale `LARCH_DESIGN_CONVERGENCE_THRESHOLD` reference in `approval-gates.md:209` was already removed by #3265 — that line now cites `LARCH_DESIGN_ROUND_CAP` + "the hardcoded single-round convergence rule." Nothing to remove there. (Workstream B removes the env var that survives *elsewhere*; it does not re-touch `approval-gates.md`.)
+- **#3260b (item 2.2)**: the cache/`/tmp` `find` predicate asymmetry is already documented in `cleanup.md` ("The cache pass enumerates all non-symlink top-level entries with no age pre-filter … the `/tmp` pass pre-filters top-level entries by `-mtime +N`").
+
+## Files to modify/create
+
+### UPDATED: `skills/cleanup/scripts/cleanup.sh`
+Make the top-level enumeration `find` exit observable on both passes. Today both passes use `done < <(find … 2>/dev/null) || true`; process substitution hides `find`'s exit, so an enumeration failure (e.g. unreadable `~/.cache/larch/sessions/`) is silent.
+
+- **Cache pass** (the `if [[ -d "$CACHE_DIR" ]]` block): redirect the enumeration into a `mktemp` file, branch on `find`'s exit, then read NUL-delimited from that file:
+  - `if find "$CACHE_DIR" -mindepth 1 -maxdepth 1 ! -type l -print0 >"$_cache_list" 2>/dev/null; then` … existing `while IFS= read -r -d $'\0' entry; do … done < "$_cache_list"` (loop body unchanged) … `else larch_err "Warning: failed to enumerate '$CACHE_DIR'; skipping cache cleanup."` … `fi`; then `rm -f "$_cache_list"`.
+- **`/tmp` pass** (the `if [[ -d "$TMP_ROOT" ]]` block): same wrap, preserving the existing `-mtime +"$RETENTION_DAYS" \( "${_find_name_args[@]}" \)` predicate and the dir/file branch in the loop body. Warning text: `Warning: failed to enumerate '$TMP_ROOT'; skipping /tmp cleanup.`
+- Temp files via `mktemp "${TMPDIR:-/tmp}/larch-cleanup-*.XXXXXX"`; `rm -f` after each pass. Bash 3.2-only (no `mapfile`/assoc arrays). Drop the now-redundant trailing `|| true` on these two loops (the `if find` branch owns the exit decision).
+- **Invariant**: only the FAILURE path changes. Normal-path counts, NUL-safe iteration, `! -type l`, the `maxdepth 5` nested confirm, and the `/tmp` `-mtime +N` pre-filter are byte-for-byte preserved. The nested-scan fail-safe (`should_remove_by_age`, "failed to scan session activity") is untouched.
+
+### UPDATED: `skills/cleanup/scripts/cleanup.md`
+- Rewrite the "Enumeration-pass fail-open" invariant bullet: a failed top-level enumeration `find` now emits a `larch_err` warning and skips that pass (counts stay 0; cleanup still exits 0) — a fail-safe parallel to the nested-scan fail-safe, no longer fail-open.
+- Extend the **Edit-in-sync** bullet so it names the enumeration fail-safe (not only the nested-scan path) as a trigger for updating `test-cleanup.sh` and `SECURITY.md`.
+
+### UPDATED: `skills/cleanup/scripts/test-cleanup.sh`
+- Add `write_stub_enum_failure`: a `find` stub that exits non-zero only when argv contains `-mindepth 1` (used solely by the two enumeration passes — the nested scan uses `-maxdepth 5`, the symlink reaper uses `-maxdepth 1` without `-mindepth`), else `exec /usr/bin/find "$@"`. Mirror the structure of the existing `write_stub_find_failure`.
+- Add two cases mirroring the existing `find-failure-skips-deletion` / `-tmp` pair: `enumeration-failure-warns` (cache) and `enumeration-failure-warns-tmp` (/tmp). Each asserts: exit 0, output contains `failed to enumerate`, and `CACHE_REMOVED`/`TMP_REMOVED` == 0.
+- Leave the existing nested-scan failure cases intact (they still pass: enumeration `find` succeeds, only `-maxdepth 5` fails).
+
+### UPDATED: `SECURITY.md`
+In the `/cleanup` session-tmpdir retention note, change the clause "a failed top-level enumeration `find` is swallowed — the pass exits 0 with counts at 0 and emits no warning (fail-open)" to describe the new fail-safe: the enumeration failure now warns via `larch_err` and skips that pass (count 0), cleanup still exits 0.
+
+### UPDATED: `skills/design/scripts/run-step3-review.sh`
+Remove the dead `--convergence-threshold` plumbing (the var is only forwarded — no other logic):
+- Drop `--convergence-threshold N` from the usage string.
+- Drop `CONVERGENCE_THRESHOLD=""` init, the `--convergence-threshold)` argv arm, and the `[[ -n "$CONVERGENCE_THRESHOLD" ]] || … required` check.
+- Drop the `--convergence-threshold "$CONVERGENCE_THRESHOLD"` line from the `plan-review-loop.sh` invocation.
+- Keep all `--round-cap` handling unchanged.
+
+### UPDATED: `skills/design/scripts/run-step3-review.md`
+Remove the `--convergence-threshold N` Argv table row and any "expands `${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}`" note. Keep the `--round-cap` row.
+
+### UPDATED: `skills/design/SKILL.md`
+In the Step 3 `run-step3-review.sh` invocation, remove the `--convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"` argument line (keep `--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"`). No other Step 3 prose references the flag.
+
+### UPDATED: `skills/design/references/flags.md`
+- Fix the "Multi-round loop env vars" prose: `plan-review-loop.sh` validates `--round-cap` only (drop `--convergence-threshold`); the Step 3 driver passes only `${LARCH_DESIGN_ROUND_CAP:-5}`.
+- Remove the `LARCH_DESIGN_CONVERGENCE_THRESHOLD` row from the env-var table (and its stale "two consecutive non-degraded rounds" semantics — superseded by the hardcoded single-round rule).
+
+### UPDATED: `docs/configuration-and-permissions.md`
+- Remove the `### LARCH_DESIGN_CONVERGENCE_THRESHOLD` section.
+- Fix the following "Contrast with `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`" note so it refers to the singular remaining loop env var (`LARCH_DESIGN_ROUND_CAP`) instead of "the loop env vars above".
+
+### UPDATED: `scripts/test-design-structure.sh`
+Remove the two `contains` assertions that pin the dead forwarding: `run-step3-review.sh must pass convergence-threshold to plan-review-loop` and `SKILL must pass convergence-threshold to run-step3-review.sh`. Keep the two `--round-cap` pins.
+
+### UPDATED: `skills/design/scripts/test-run-step3-review.sh`
+- Remove `--convergence-threshold 3` from every passing-case invocation.
+- Remove the `missing --convergence-threshold` exits-2 case and the `invalid convergence-threshold normalizes to panel-failed` case.
+- Fix the `unknown option` case to use a still-valid bogus flag (drop the `--convergence-threshold 3` prefix, keep `--bogus`).
+- **NEW integration-seam test** (the gap that hid this bug): add a case whose loop stub mirrors `plan-review-loop.sh`'s argv contract — accept only the real flags (`--design-tmpdir`, `--plan-file`, `--feature-file`, `--codex-present`, `--cursor-present`, `--round-num`, `--round-cap`, `--timeout`) and `exit 2` on any unknown option (the real loop's `*) … unknown option … exit 2` shape). Assert the driver drives it to a normal settled `LOOP_STATUS` (no `unknown option`, no `panel-failed` from a rejected forwarded flag). This catches future forwarding drift between the driver and the real loop.
+
+### UPDATED: `skills/design/scripts/test-step3-review-cap.sh`
+Remove `--convergence-threshold 3` from the `run_driver` helper invocation.
+
+### UPDATED: `scripts/test-design-multi-round-integration.sh`
+Remove `--convergence-threshold 3` from the `run-step3-review.sh` driver-boundary invocation.
+
+**No change** to `skills/design/scripts/plan-review-loop.sh` (it correctly rejects unknown options; convergence is hardcoded via `CONVERGENCE_NON_NIT_MAX`) or `skills/design/scripts/test-plan-review-loop.sh` (its "removed `--convergence-threshold` flag rejected" case stays valid and now documents the intended end state).
+
+## Approach
+- Workstream A is a localized failure-path instrumentation in one script + truthful doc/test/SECURITY sync. The temp-file wrap is the standard idiom for capturing `find`'s exit while keeping NUL-safe streaming; it is the minimal change that makes the failure observable without altering normal behavior.
+- Workstream B is mechanical dead-config deletion. The env var has exactly one consumer chain (`SKILL.md` → `run-step3-review.sh` → forward), and the forward target rejects it. Removing it end-to-end fixes the live mismatch and completes the half-done removal the #3255 author assumed.
+- The two workstreams are independent and could land as separate commits, but share one issue/PR.
+
+## Edge cases
+- **cleanup.sh**: `find` writes partial output then fails mid-enumeration → the `if find` branch catches the non-zero exit, the partial temp file is discarded (warn + skip), temp file removed. `mktemp` lives under `${TMPDIR:-/tmp}`, distinct from the scanned root, so the test's `LARCH_TEST_TMP_ROOT` override is unaffected.
+- **Existing nested-scan tests**: unaffected — the enumeration `find` succeeds; only the `-maxdepth 5` scan fails, so `should_remove_by_age` still warns "failed to scan session activity" and keeps the entry.
+- **run-step3-review.sh callers**: only `SKILL.md` and the three test files pass `--convergence-threshold`; all are updated in the same change, so no caller is left passing a now-rejected flag to the driver.
+
+## Failure modes
+- **Stub-key collision (test)**: keying `write_stub_enum_failure` on `-mindepth 1` is precise — the nested scan (`-maxdepth 5`) and symlink reaper (`-maxdepth 1`, no `-mindepth`) do not match, so the new test fails the enumeration only. Earliest signal: the existing nested-scan cases would break if the key were wrong. Mitigation: run the full `test-cleanup.sh` after editing.
+- **Stale structure pin**: if `test-design-structure.sh:63/67` are not removed, CI fails after dropping the forwarding. Earliest signal: `make lint` / structure harness. Mitigation: both assertions are in this plan's file list.
+- **Missed convergence reference**: a forgotten `--convergence-threshold` usage in a test leaves a now-invalid argv. Earliest signal: that test's run (driver no longer accepts the flag → exits 2). Mitigation: grep `convergence` across `skills/ scripts/ docs/` after edits; the complete surface is enumerated above.
+
+## Testing strategy
+- `bash skills/cleanup/scripts/test-cleanup.sh` — existing cases plus the two new enumeration-failure cases (cache + /tmp).
+- `bash skills/design/scripts/test-run-step3-review.sh` — updated convergence assertions + the new integration-seam case.
+- `bash skills/design/scripts/test-step3-review-cap.sh`, `bash scripts/test-design-multi-round-integration.sh`, `bash skills/design/scripts/test-plan-review-loop.sh` — confirm green after argv edits.
+- `bash scripts/test-design-structure.sh` — confirm green after removing the two convergence pins.
+- `bash scripts/relevant-checks.sh` (or `make lint`) — repo-wide pre-commit incl. `make lint-bash32`, shellcheck, markdownlint, and `script-md-siblings`.
+
+diff_added: 110
+diff_deleted: 80
+diff_lines: 190
+
+</plan>
+
+<findings>
+### FINDING_1: Unguarded `mktemp` can abort cleanup before count KVs
+- **Reviewer(s)**: Codex-Edge, Codex-Innovation
+- **Severity**: important
+- **Concern**: The planned temp-file enumeration wraps `find` with `mktemp`-backed lists. Under `set -e`, if `TMPDIR` (or the default temp location) is missing or unwritable, `mktemp` exits non-zero before any guarded `find` failure branch runs. Cleanup then aborts without emitting the required removal-count key-values, contradicting the planned fail-safe where `/cleanup` still exits 0 when enumeration fails.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Guard each mktemp call: on allocation failure, emit a larch_err warning, skip that pass with count 0, and continue to the next pass; or fall back to /tmp before deciding to skip
+  - From Codex-Innovation: Guard mktemp failure and warn/skip that pass, or use a known writable fallback; add one focused harness case for bad TMPDIR
+
+
+### FINDING_3: Removing loop-level `|| true` changes loop-body failure semantics
+- **Reviewer(s)**: Codex-Requirements, Codex-dyn-cleanup-fail-safe
+- **Severity**: important
+- **Concern**: The plan drops the `|| true` on the two `while read` loops (lines 55–61 and 99–110 in the proposed shape) as redundant after moving `find` into an `if` branch. In Bash, that `|| true` on the process-substitution pipeline also suppresses errexit for failures inside the loop body (e.g. `rm` failures). Removing it changes behavior beyond top-level enumeration `find` failures: `/cleanup` can exit non-zero and skip planned temp-file cleanup, even though the plan only intends to change enumeration failure handling.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Keep || true on the two while loops after reading the temp files; the separated if find branch still observes enumeration failure without changing loop-body failure behavior
+  - From Codex-dyn-cleanup-fail-safe: Keep || true on the two read loops after redirecting from the temp files, so the if find branch owns only enumeration failure handling while loop-body failure handling stays unchanged
+
+
+</findings>
+
+<feature>
+# [OOS] cleanup.sh enumeration fail-open + predicate asymmetry docs, and remove stale LARCH_DESIGN_CONVERGENCE_THRESHOLD from approval-gates.md
+
+(Combined tracking issue #3274, from #3255 and #3260.)
+
+## Description
+
+Two small independent fixes: a stale env-var reference in docs and two behavioral/documentation gaps in cleanup.sh.
+
+### 1. Remove stale `LARCH_DESIGN_CONVERGENCE_THRESHOLD` from `approval-gates.md` (#3255)
+
+`skills/design/references/approval-gates.md:209` still references `LARCH_DESIGN_CONVERGENCE_THRESHOLD` alongside `LARCH_DESIGN_ROUND_CAP` in the Gate B apply contract note. That env var was fully removed by #3243, but `approval-gates.md` was absent from the plan's explicit update list.
+
+**Suggested fix**: Remove the stale `LARCH_DESIGN_CONVERGENCE_THRESHOLD` reference at line 209.
+
+- **Location**: `skills/design/references/approval-gates.md:209`
+- **Severity**: nit
+
+### 2. `cleanup.sh` enumeration failure behaviors — silent fail-open and cache/tmp predicate asymmetry (#3260)
+
+`skills/cleanup/scripts/cleanup.sh:61,110` — Two related behavioral gaps:
+
+1. When the top-level enumeration `find` fails (e.g. permission denied on `~/.cache/larch/sessions/`), cleanup silently exits 0 with zero removals and emits no warning, making it indistinguishable from a successful run that found nothing stale. Fix: add a `larch_err` warning parallel to the nested-scan fail-safe at line 26-28.
+2. The cache pass enumerates all non-symlink top-level entries (no age pre-filter) and relies on `should_remove_by_age` to gate deletion; the `/tmp` pass pre-filters by `-mtime +"$RETENTION_DAYS"` before calling `should_remove_by_age`. A `/tmp` directory with a fresh top-level mtime but stale nested activity would never be enumerated and would not be removed, unlike an equivalent cache entry. The asymmetry is intentional but undocumented. Fix: document it in `cleanup.md`.
+
+- **Location**: `skills/cleanup/scripts/cleanup.sh:61,110`, `skills/cleanup/scripts/cleanup.md`
+- **Severity**: low
+
+</feature>
