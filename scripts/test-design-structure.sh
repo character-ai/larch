@@ -61,8 +61,22 @@ contains "$RUN_STEP3_SH" 'review-round-count.txt' 'run-step3-review.sh missing r
 contains "$RUN_STEP3_SH" '--round-cap "$ROUND_CAP"' 'run-step3-review.sh must pass round-cap to plan-review-loop'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 absent "$RUN_STEP3_SH" '--convergence-threshold "$CONVERGENCE_THRESHOLD"' 'run-step3-review.sh must NOT forward convergence-threshold to plan-review-loop'
+absent "$SKILL_MD" '--convergence-threshold' 'SKILL.md must NOT pass convergence-threshold to run-step3-review.sh'
+absent "$SKILL_MD" 'LARCH_DESIGN_CONVERGENCE_THRESHOLD' 'SKILL.md must NOT reference LARCH_DESIGN_CONVERGENCE_THRESHOLD'
 # shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
 contains "$SKILL_MD" '--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"' 'SKILL must pass explicit round-cap to run-step3-review.sh'
+TR_RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/test-run-step3-review.sh"
+contains "$TR_RUN_STEP3_SH" 'driver argv matches plan-review-loop contract' \
+  'test-run-step3-review.sh missing plan-review-loop integration-seam case'
+_plan_forward_flags=(--design-tmpdir --plan-file --feature-file --codex-present --cursor-present --round-num --round-cap)
+for _pf in "${_plan_forward_flags[@]}"; do
+  grep -Fq -- "$_pf" "$PLAN_LOOP_SH" \
+    || fail "plan-review-loop.sh missing $_pf in argv parser"
+  grep -Fq -- "$_pf" "$RUN_STEP3_SH" \
+    || fail "run-step3-review.sh missing $_pf forward to plan-review-loop"
+  grep -Fq -- "$_pf" "$TR_RUN_STEP3_SH" \
+    || fail "test-run-step3-review.sh integration-seam stub missing $_pf (sync with plan-review-loop.sh)"
+done
 contains "$RUN_STEP3_SH" '.step3-plan-review-result.env' 'run-step3-review.sh must read step3 plan-review result env'
 contains "$RUN_STEP3_SH" 'result env is a symlink; ignoring it and using stdout fallback only' 'run-step3-review.sh missing symlink-safe step3 result env warning'
 contains "$SKILL_MD" 'invoke-plan-validator.sh' 'SKILL missing renamed validator helper'

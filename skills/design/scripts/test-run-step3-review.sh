@@ -368,6 +368,8 @@ assert_contains "$out" 'LOOP_STATUS=panel-failed' 'invalid round-cap panel-faile
 grep -Fq 'LOOP_STATUS=panel-failed' "$D11/.step3-review-result.env" || fail 'invalid round-cap result env panel-failed'
 
 echo "=== driver argv matches plan-review-loop contract ==="
+# Edit-in-sync: seam stub argv whitelist must match plan-review-loop.sh case parser
+# and every flag run-step3-review.sh forwards; scripts/test-design-structure.sh pins drift.
 D_SEAM="$TMP/integration-seam"
 write_common_inputs "$D_SEAM" SIMPLE
 seam_stub="$D_SEAM/plan-review-loop-seam.sh"

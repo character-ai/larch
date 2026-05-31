@@ -209,11 +209,11 @@ write_stub_enum_failure "$work/bin/find"
 PATH_PREFIX="$work/bin:"
 unset LARCH_CLEANUP_RETENTION_DAYS
 run_cleanup "$work"
+unset PATH_PREFIX
 [[ "$CASE_RC" -eq 0 ]] || fail "enumeration-failure-warns exit $CASE_RC"
 assert_contains "$CASE_OUTPUT" "failed to enumerate" "enumeration-failure-warns warning"
 [[ -d "$CASE_SESSIONS/stale-enum-fail" ]] || fail "enumeration-failure-warns should keep dir when enumeration find fails"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "enumeration-failure-warns CACHE_REMOVED"
-unset PATH_PREFIX
 
 # --- enumeration-failure-warns-tmp --------------------------------------------
 work="$TMP/enumeration-failure-warns-tmp"
@@ -224,11 +224,11 @@ write_stub_enum_failure "$work/bin/find"
 PATH_PREFIX="$work/bin:"
 unset LARCH_CLEANUP_RETENTION_DAYS
 run_cleanup "$work"
+unset PATH_PREFIX
 [[ "$CASE_RC" -eq 0 ]] || fail "enumeration-failure-warns-tmp exit $CASE_RC"
 assert_contains "$CASE_OUTPUT" "failed to enumerate" "enumeration-failure-warns-tmp warning"
 [[ -d "$work/tmp-root/claude-implement-stale-enum-fail" ]] || fail "enumeration-failure-warns-tmp should keep dir when enumeration find fails"
 assert_eq "$(kv_get TMP_REMOVED "$CASE_OUTPUT")" "0" "enumeration-failure-warns-tmp TMP_REMOVED"
-unset PATH_PREFIX
 
 # --- mktemp-allocation-failure-warns ------------------------------------------
 work="$TMP/mktemp-allocation-failure-warns"
@@ -244,7 +244,8 @@ run_cleanup "$work"
 chmod 755 "$work/not-writable"
 unset TMPDIR
 [[ "$CASE_RC" -eq 0 ]] || fail "mktemp-allocation-failure-warns exit $CASE_RC"
-assert_contains "$CASE_OUTPUT" "failed to allocate temp list" "mktemp-allocation-failure-warns warning"
+assert_contains "$CASE_OUTPUT" "failed to allocate temp list for cache cleanup" "mktemp-allocation-failure-warns cache warning"
+assert_contains "$CASE_OUTPUT" "failed to allocate temp list for /tmp cleanup" "mktemp-allocation-failure-warns tmp warning"
 [[ -d "$CASE_SESSIONS/stale-mktemp-fail" ]] || fail "mktemp-allocation-failure-warns should keep cache dir"
 [[ -d "$work/tmp-root/claude-implement-mktemp-fail" ]] || fail "mktemp-allocation-failure-warns should keep tmp dir"
 assert_eq "$(kv_get CACHE_REMOVED "$CASE_OUTPUT")" "0" "mktemp-allocation-failure-warns CACHE_REMOVED"
