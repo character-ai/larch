@@ -19,7 +19,7 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 
 ## Argv
 
-`--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (starting round; default 1), optional `--round-cap N` (enables multi-round when present on argv; default value from `LARCH_DESIGN_ROUND_CAP` only applies when the flag is passed), optional `--convergence-threshold N` (default `${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}`), `--codex-present`, `--cursor-present`, optional `--timeout` (default 1860), `--help`. The per-round scout invocation (`$PLAN_REVIEW_SCOUT_SH`, default `scout-plan-archetypes-wrapper.sh`) receives the same `--codex-present` / `--cursor-present` values.
+`--design-tmpdir`, `--plan-file`, optional `--feature-file`, `--round-num` (starting round; default 1), optional `--round-cap N` (enables multi-round when present on argv; default value from `LARCH_DESIGN_ROUND_CAP` only applies when the flag is passed), `--codex-present`, `--cursor-present`, optional `--timeout` (default 1860), `--help`. The per-round scout invocation (`$PLAN_REVIEW_SCOUT_SH`, default `scout-plan-archetypes-wrapper.sh`) receives the same `--codex-present` / `--cursor-present` values.
 
 **Legacy contract**: omit `--round-cap` → single pass, `LOOP_STATUS=complete`, no inner revise loop.
 
@@ -36,8 +36,9 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 | `TALLY_PLAN_REVIEW_STATUS` | Always |
 | `VOTING_TALLY_FILE` | Always |
 | `VOTER_1_PARSE_RATE_STATUS` | Always |
-| `CONVERGENCE_STREAK` | Multi-round |
-| `REASON` | When annotated (`zero-findings`, `zero-findings-degraded-panel`, `streak`, `cap-hit`, `revision-failed`, `manual-gate-b`, etc.) |
+| `NIT_ACCEPTED_COUNT` | Multi-round |
+| `NON_NIT_ACCEPTED_COUNT` | Multi-round |
+| `REASON` | When annotated (`zero-findings`, `zero-findings-degraded-panel`, `converged`, `cap-hit`, `revision-failed`, `manual-gate-b`, etc.) |
 | `REVISE_STATUS` | Multi-round revise path |
 | `COLLECT_OK_COUNT` / `COLLECT_FAILURE_COUNT` | Multi-round |
 
@@ -45,13 +46,17 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 
 `plan-size-trigger` is a breadcrumb from an auto-revised round, not the hard prompt itself. The caller must re-run the complete Step 2b.5 plan-size procedure before prompting so `check-plan-size.sh` refreshes the current trigger KVs, then honor the hard prompt's **Split / Override / Cancel** contract: Split enters Split-path, Override records the strongly discouraged escape hatch and continues the surrounding review flow, and Cancel exits.
 
+## Convergence (multi-round)
+
+When `--round-cap` is present on argv, the driver may exit `LOOP_STATUS=converged` after **one** non-degraded qualifying round — there is no multi-round streak. Convergence requires non-nit `ACCEPTED_COUNT <= 5`, `IMPORTANT_ACCEPTED_COUNT == 0`, and nit-severity accepted findings excluded from the non-nit total (`NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT` on stdout). Zero-findings rounds additionally require `COLLECT_OK_COUNT > 0`; otherwise `LOOP_STATUS=degraded-empty-collector`. `TALLY_PLAN_REVIEW_STATUS=tally-error` aborts before revise/convergence checks. Normative narrative: `skills/design/references/plan-review.md` § Multi-round loop.
+
 ## Durable handoff: `.step3-plan-review-result.env`
 
 Normalized KVs for SKILL.md Step 3.5 and Gate B across Bash fence boundaries. Values use a controlled vocabulary (no raw user content). See `plan-review-loop.sh` function `write_step3_result_env`.
 
 ## `round-summary.env` schema
 
-Written under `plan-review/round-N/round-summary.env` after each round's outcome is known. Keys: `ROUND_NUM`, `LOOP_STATUS` (terminal rounds only), `REASON`, `CONVERGENCE_STREAK`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `TALLY_PLAN_REVIEW_STATUS`, `AGGREGATOR_STATUS`, `REVISE_STATUS`, `REVISE_WINNING_TIER`, `PLAN_HASH_BEFORE_REVISE`, `PLAN_HASH_AFTER_REVISE`, `COLLECT_OK_COUNT`, `COLLECT_FAILURE_COUNT`. Successful tier-4 fallback rounds preserve `REVISE_STATUS=ok-fallback` here instead of being normalized to `ok`.
+Written under `plan-review/round-N/round-summary.env` after each round's outcome is known. Keys: `ROUND_NUM`, `LOOP_STATUS` (terminal rounds only), `REASON`, `NIT_ACCEPTED_COUNT`, `NON_NIT_ACCEPTED_COUNT`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `TALLY_PLAN_REVIEW_STATUS`, `AGGREGATOR_STATUS`, `REVISE_STATUS`, `REVISE_WINNING_TIER`, `PLAN_HASH_BEFORE_REVISE`, `PLAN_HASH_AFTER_REVISE`, `COLLECT_OK_COUNT`, `COLLECT_FAILURE_COUNT`. Successful tier-4 fallback rounds preserve `REVISE_STATUS=ok-fallback` here instead of being normalized to `ok`.
 
 ## Exit codes
 

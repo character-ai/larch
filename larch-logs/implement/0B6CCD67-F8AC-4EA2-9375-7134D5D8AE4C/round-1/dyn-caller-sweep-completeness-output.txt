@@ -1,0 +1,10 @@
+Performing a read-only caller-sweep review: reading the diff and searching the repo for stale convergence references.
+### In-Scope Findings
+
+- **risk-integration** `docs/configuration-and-permissions.md:250` — The `LARCH_DESIGN_ROUND_CAP` contrast paragraph still says plan-review convergence uses a “non-nit accepted bound **and streak**” even though this branch removes `CONVERGENCE_STREAK`, the two-round streak machinery, and `LOOP_REASON=streak` everywhere else (`plan-review-loop.md`, `plan-review-loop.sh`, integration harnesses). That line was introduced when the `LARCH_DESIGN_CONVERGENCE_THRESHOLD` section was deleted, so operators reading the env-var contract may believe streak-based stopping still exists. **Suggested fix:** Reword line 250 to match `skills/design/references/flags.md` and `plan-review.md` — e.g. “Plan-review convergence (≤5 non-nit accepted, 0 important; nits excluded) is hardcoded in `plan-review-loop.sh`” — with no mention of streak.
+
+### Out-of-Scope Observations
+
+Caller-sweep results under `skills/`, `scripts/`, `agents/`, `.claude/`, and `docs/` (excluding `larch-logs/`): no runtime hits for `--convergence-threshold`, `LARCH_DESIGN_CONVERGENCE_THRESHOLD`, or `CONVERGENCE_STREAK`. `skills/design/SKILL.md` Step 3 passes only `--round-cap`; `scripts/test-design-structure.sh:61` pins `--convergence-threshold` absent. `plan-review-loop.md` documents `NIT_ACCEPTED_COUNT` / `NON_NIT_ACCEPTED_COUNT` and `REASON=converged`; `test-step3-review-cap.sh` stubs use `REASON=converged` without streak KVs. Commits on branch: `4559726a7` (feature), `6c43d28e0` (larch-logs flush), plus two merged fixes.
+
+Cosmetic only: `skills/design/scripts/test-plan-review-loop.sh:1631` still labels a case “resets convergence streak” in the echo string (harness prose, not a caller).

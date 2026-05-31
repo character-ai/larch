@@ -37,7 +37,7 @@ source "$SCRIPT_DIR/../../../scripts/lib-design-round-artifacts.sh"
 source "$SCRIPT_DIR/lib-plan-optional-trailers.sh"
 
 usage() {
-    larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--round-cap N] [--convergence-threshold N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
+    larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--round-cap N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
 }
 
 DESIGN_TMPDIR=""
@@ -45,7 +45,7 @@ PLAN_FILE=""
 FEATURE_FILE=""
 ROUND_NUM="1"
 ROUND_CAP="${LARCH_DESIGN_ROUND_CAP:-5}"
-CONVERGENCE_THRESHOLD="${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"
+readonly CONVERGENCE_NON_NIT_MAX=5
 ROUND_CAP_ARG_SEEN=0
 CODEX_PRESENT=""
 CURSOR_PRESENT=""
@@ -60,7 +60,8 @@ revise_status=""
 revise_winning_tier=""
 LOOP_REASON=""
 IMPORTANT_ACCEPTED_COUNT=0
-CONVERGENCE_STREAK=0
+NIT_ACCEPTED_COUNT=0
+NON_NIT_ACCEPTED_COUNT=0
 COLLECT_OK_COUNT=0
 COLLECT_FAILURE_COUNT=0
 PLAN_HASH_BEFORE_REVISE=""
@@ -81,7 +82,6 @@ while [[ $# -gt 0 ]]; do
         --feature-file) FEATURE_FILE="${2:?}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?}"; shift 2 ;;
         --round-cap) ROUND_CAP="${2:?}"; ROUND_CAP_ARG_SEEN=1; shift 2 ;;
-        --convergence-threshold) CONVERGENCE_THRESHOLD="${2:?}"; shift 2 ;;
         --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
         --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
         --timeout) PANEL_TIMEOUT="${2:?}"; COLLECT_TIMEOUT="${2:?}"; shift 2 ;;
@@ -106,8 +106,6 @@ if (( ROUND_CAP_ARG_SEEN )); then
         larch_err "plan-review-loop.sh: --round-num must not exceed --round-cap"
         exit 2
     fi
-    case "$CONVERGENCE_THRESHOLD" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --convergence-threshold must be a non-negative integer"; exit 2 ;; esac
-    CONVERGENCE_THRESHOLD=$((10#$CONVERGENCE_THRESHOLD))
 fi
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
@@ -144,7 +142,8 @@ emit_loop_kvs() {
     emit_kv TALLY_PLAN_REVIEW_STATUS "$tally_status"
     emit_kv VOTING_TALLY_FILE "$voting_tally_file"
     emit_kv VOTER_1_PARSE_RATE_STATUS "$voter1_parse"
-    emit_kv CONVERGENCE_STREAK "${CONVERGENCE_STREAK:-0}"
+    emit_kv NIT_ACCEPTED_COUNT "${NIT_ACCEPTED_COUNT:-0}"
+    emit_kv NON_NIT_ACCEPTED_COUNT "${NON_NIT_ACCEPTED_COUNT:-0}"
     emit_kv REASON "${LOOP_REASON:-}"
     emit_kv REVISE_STATUS "${revise_status:-}"
     emit_kv COLLECT_OK_COUNT "${COLLECT_OK_COUNT:-0}"
@@ -162,7 +161,8 @@ write_step3_result_env() {
         printf 'ROUNDS_COMPLETED=%s\n' "${1:-$ROUND_NUM}"
         printf 'REASON=%s\n' "${LOOP_REASON:-}"
         printf 'REVISE_STATUS=%s\n' "${revise_status:-}"
-        printf 'CONVERGENCE_STREAK=%s\n' "${CONVERGENCE_STREAK:-0}"
+        printf 'NIT_ACCEPTED_COUNT=%s\n' "${NIT_ACCEPTED_COUNT:-0}"
+        printf 'NON_NIT_ACCEPTED_COUNT=%s\n' "${NON_NIT_ACCEPTED_COUNT:-0}"
         printf 'AGGREGATOR_STATUS=%s\n' "${AGGREGATOR_STATUS:-}"
         printf 'TALLY_PLAN_REVIEW_STATUS=%s\n' "${TALLY_PLAN_REVIEW_STATUS:-}"
         printf 'VOTING_TALLY_FILE=%s\n' "${VOTING_TALLY_FILE:-}"
@@ -201,6 +201,38 @@ _count_important_findings() {
         in_block && /^### / { if (important) c++; in_block=0; important=0; next }
         END { if (in_block && important) c++; print c+0 }
     ' "$path"
+}
+
+_count_nit_findings() {
+    local path="$1"
+    [[ -f "$path" ]] || { printf '0'; return 0; }
+    awk '
+        /^### FINDING_[0-9]+:/ {
+            if (in_block && nit) c++
+            in_block=1
+            nit=0
+            next
+        }
+        in_block && /^- \*\*Severity\*\*: nit/ { nit=1 }
+        in_block && /^### / { if (nit) c++; in_block=0; nit=0; next }
+        END { if (in_block && nit) c++; print c+0 }
+    ' "$path"
+}
+
+_update_nit_accepted_counts() {
+    local accepted_path="$1"
+    NIT_ACCEPTED_COUNT=$(_count_nit_findings "$accepted_path")
+    NIT_ACCEPTED_COUNT=$((10#${NIT_ACCEPTED_COUNT:-0}))
+    if (( NIT_ACCEPTED_COUNT > ACCEPTED_COUNT )); then
+        NIT_ACCEPTED_COUNT=$ACCEPTED_COUNT
+    fi
+    NON_NIT_ACCEPTED_COUNT=$((ACCEPTED_COUNT - NIT_ACCEPTED_COUNT))
+}
+
+_round_qualifies_for_convergence() {
+    [[ "${DEGRADED_PANEL:-0}" -ne 1 ]] \
+        && (( NON_NIT_ACCEPTED_COUNT <= CONVERGENCE_NON_NIT_MAX )) \
+        && [[ "${IMPORTANT_ACCEPTED_COUNT:-0}" -eq 0 ]]
 }
 
 _read_manual_gate_b() {
@@ -386,7 +418,8 @@ _write_round_summary() {
         printf 'ROUND_NUM=%s\n' "$round_num"
         printf 'LOOP_STATUS=%s\n' "$loop_status"
         printf 'REASON=%s\n' "$reason"
-        printf 'CONVERGENCE_STREAK=%s\n' "${CONVERGENCE_STREAK:-0}"
+        printf 'NIT_ACCEPTED_COUNT=%s\n' "${NIT_ACCEPTED_COUNT:-0}"
+        printf 'NON_NIT_ACCEPTED_COUNT=%s\n' "${NON_NIT_ACCEPTED_COUNT:-0}"
         printf 'ACCEPTED_COUNT=%s\n' "${ACCEPTED_COUNT:-0}"
         printf 'IMPORTANT_ACCEPTED_COUNT=%s\n' "${IMPORTANT_ACCEPTED_COUNT:-0}"
         printf 'DEGRADED_PANEL=%s\n' "${DEGRADED_PANEL:-0}"
@@ -1219,8 +1252,6 @@ fi
 
 # --- Multi-round mode ---
 round_num=$ROUND_NUM
-convergence_streak=0
-CONVERGENCE_STREAK=0
 manual_mode=false
 if [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
     _mg=$(_read_manual_gate_b "$DESIGN_TMPDIR/run-params.json")
@@ -1256,6 +1287,8 @@ while (( round_num <= ROUND_CAP )); do
         LOOP_REASON=panel-failed
         revise_status=skipped
         IMPORTANT_ACCEPTED_COUNT=0
+        NIT_ACCEPTED_COUNT=0
+        NON_NIT_ACCEPTED_COUNT=0
         _count_collector_evidence
         if ! _snapshot_round_dir "$round_num"; then
             LOOP_REASON=snapshot-failed
@@ -1272,6 +1305,8 @@ while (( round_num <= ROUND_CAP )); do
         LOOP_REASON=tally-error
         revise_status=skipped
         IMPORTANT_ACCEPTED_COUNT=0
+        NIT_ACCEPTED_COUNT=0
+        NON_NIT_ACCEPTED_COUNT=0
         _count_collector_evidence
         _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
     fi
@@ -1283,6 +1318,7 @@ while (( round_num <= ROUND_CAP )); do
         ACCEPTED_COUNT=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)
     fi
     IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
+    _update_nit_accepted_counts "$DESIGN_TMPDIR/accepted-plan-findings.md"
     PLAN_HASH_BEFORE_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
 
     if [[ "$ACCEPTED_COUNT" -eq 0 ]]; then
@@ -1330,18 +1366,10 @@ while (( round_num <= ROUND_CAP )); do
 
     _next_terminal_status=""
     _next_terminal_reason=""
-    _next_convergence_streak="$convergence_streak"
     if ! _snapshot_round_dir "$round_num"; then
-        if [[ "$DEGRADED_PANEL" -eq 1 ]]; then
-            _next_convergence_streak=0
-        elif [[ "$ACCEPTED_COUNT" -le "$CONVERGENCE_THRESHOLD" && "$IMPORTANT_ACCEPTED_COUNT" -eq 0 ]]; then
-            _next_convergence_streak=$((convergence_streak + 1))
-            if (( _next_convergence_streak >= 2 )); then
-                _next_terminal_status=converged
-                _next_terminal_reason=streak
-            fi
-        else
-            _next_convergence_streak=0
+        if _round_qualifies_for_convergence; then
+            _next_terminal_status=converged
+            _next_terminal_reason=converged
         fi
         if [[ -z "$_next_terminal_status" && $round_num -eq $ROUND_CAP ]]; then
             _next_terminal_status=cap-hit
@@ -1350,7 +1378,6 @@ while (( round_num <= ROUND_CAP )); do
         if [[ -n "$_next_terminal_status" ]]; then
             LOOP_STATUS="$_next_terminal_status"
             LOOP_REASON="${_next_terminal_reason},snapshot-failed"
-            CONVERGENCE_STREAK="$_next_convergence_streak"
             _write_round_summary "$round_num" "$LOOP_STATUS" "$LOOP_REASON" "${revise_status:-ok}"
             _terminal_exit 0 "$round_num"
         fi
@@ -1360,21 +1387,11 @@ while (( round_num <= ROUND_CAP )); do
         _terminal_exit 1 "$round_num"
     fi
 
-    if [[ "$DEGRADED_PANEL" -eq 1 ]]; then
-        convergence_streak=0
-        CONVERGENCE_STREAK=0
-    elif [[ "$ACCEPTED_COUNT" -le "$CONVERGENCE_THRESHOLD" && "$IMPORTANT_ACCEPTED_COUNT" -eq 0 ]]; then
-        convergence_streak=$((convergence_streak + 1))
-        CONVERGENCE_STREAK=$convergence_streak
-        if (( convergence_streak >= 2 )); then
-            LOOP_STATUS=converged
-            LOOP_REASON=streak
-            _write_round_summary "$round_num" converged streak "${revise_status:-ok}"
-            _terminal_exit 0 "$round_num"
-        fi
-    else
-        convergence_streak=0
-        CONVERGENCE_STREAK=0
+    if _round_qualifies_for_convergence; then
+        LOOP_STATUS=converged
+        LOOP_REASON=converged
+        _write_round_summary "$round_num" converged converged "${revise_status:-ok}"
+        _terminal_exit 0 "$round_num"
     fi
 
     if (( round_num == ROUND_CAP )); then

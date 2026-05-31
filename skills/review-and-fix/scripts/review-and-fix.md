@@ -44,10 +44,10 @@ Flags:
 - `--cursor-available true|false`
 - `--dynamic-archetypes 0-8` (default: `6` in orchestrator mode when `--implement-tmpdir` is set, `0` in standalone mode)
 - `--no-dynamic-archetypes` (equivalent to `--dynamic-archetypes 0`)
-- `--convergence-threshold N` (default: `3`) — two consecutive rounds with `ACCEPTED_COUNT ≤ N`
-  (and no Important findings in either round) trigger early-termination with
-  `REVIEW_AND_FIX_STATUS=converged-small-changes`. Degraded rounds are excluded from the
-  consecutive-rounds check.
+- Convergence (hardcoded): one non-degraded round with ≤5 non-nit accepted findings and no
+  Important findings in that round triggers early-termination with
+  `REVIEW_AND_FIX_STATUS=converged-small-changes`. Nit-severity accepted findings are excluded
+  from the non-nit count (`accepted-findings.md` population only). Degraded rounds never qualify.
 
 Orchestrator mode invokes `skills/review/scripts/review-core.sh` once with `--output-dir "$IMPLEMENT_TMPDIR/round-N"`, `--panel hard` (fixed internally — not a public `review-and-fix.sh` argv token), and `--dynamic-archetypes "$DYNAMIC_ARCHETYPES"`. `DYNAMIC_ARCHETYPES` is resolved in priority order: `--dynamic-archetypes` / `--no-dynamic-archetypes` CLI args > **non-empty** `LARCH_DYNAMIC_ARCHETYPES_MAX` in the process environment (an empty export is ignored so session-env can supply the cap) > `LARCH_DYNAMIC_ARCHETYPES_MAX` in session-env > `6` (default when `--implement-tmpdir` is set) > `0` (standalone default). On round 1 it captures `$IMPLEMENT_TMPDIR/pre-review-untracked.txt` via `scripts/snapshot-untracked.sh` so Step 6 can detect review-created untracked files, and writes `$IMPLEMENT_TMPDIR/pre-review-head.txt` (current HEAD SHA) so `check-review-changes.sh --head-baseline` can detect the per-round commits this script makes during Step 5. When `--run-id` is set, both pre-review snapshot files are also flushed to the `pre-review-untracked` and `pre-review-head` run-log batches under `$IMPLEMENT_TMPDIR/larch-logs`.
 
@@ -59,7 +59,7 @@ Step 5 ledger marks are owned by the parent `/implement` Step 5 preamble, not by
 
 Exit codes:
 
-- `0`: no accepted findings remain for this round (`complete`), OR `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot, OR `coder-main-agent-required` (#3207) when no external coder could apply the accepted fixes (Codex → Cursor both exhausted) and the parent main agent must apply them itself — the Claude tier of the coder waterfall, OR `no-changes` when the coder dispatch exited 0 but did not modify the working tree (the parent halts the loop — re-running the same review would produce the same fixed point), OR `fix-applied` (`REVIEW_AND_FIX_STATUS=fix-applied`) when a coder applied accepted findings AND the script committed them as `Address code review feedback (round N)` — the parent runs relevant checks and decides whether to call the script for the next round, OR `converged-small-changes` when two consecutive non-degraded rounds both had `ACCEPTED_COUNT ≤ convergence-threshold` and neither contained Important findings — the parent must stop the review loop.
+- `0`: no accepted findings remain for this round (`complete`), OR `main-agent-vote-required` when no voting judges were available and the parent must adjudicate the ballot, OR `coder-main-agent-required` (#3207) when no external coder could apply the accepted fixes (Codex → Cursor both exhausted) and the parent main agent must apply them itself — the Claude tier of the coder waterfall, OR `no-changes` when the coder dispatch exited 0 but did not modify the working tree (the parent halts the loop — re-running the same review would produce the same fixed point), OR `fix-applied` (`REVIEW_AND_FIX_STATUS=fix-applied`) when a coder applied accepted findings AND the script committed them as `Address code review feedback (round N)` — the parent runs relevant checks and decides whether to call the script for the next round, OR `converged-small-changes` when one non-degraded round had ≤5 non-nit accepted findings and no Important findings in that round (nits excluded from the count) — the parent must stop the review loop.
 - `2`: panel failure, coder failure, submodule violation, or persistent tracked porcelain after round-mode follow-up (`CODER_STATUS=failed`); parent `/implement` treats this as blocking.
 
 Compatibility note: out-of-tree callers must detect applied fixes via `REVIEW_AND_FIX_STATUS=fix-applied` on exit `0`. Do not rely on exit `3`; successful fix application no longer uses that exit code.

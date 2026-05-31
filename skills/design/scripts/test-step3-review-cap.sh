@@ -181,7 +181,7 @@ write_snapshot_stub "$DP"
 mkdir -p "$DP/plan-review/round-1" "$DP/plan-review/round-2"
 printf 'stale\n' >"$DP/plan-review/round-1/stale.txt"
 printf 'stale\n' >"$DP/plan-review/round-2/stale.txt"
-write_loop_stub "$DP" "mkdir -p \"$DP/plan-review/round-1\"; printf 'fresh\n' >\"$DP/plan-review/round-1/new.txt\"; printf 'LOOP_STATUS=converged\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nREASON=streak\nREVISE_STATUS=ok\nCONVERGENCE_STREAK=2\nCOLLECT_OK_COUNT=1\nCOLLECT_FAILURE_COUNT=0\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=$DP/voting-tally.md\nVOTER_1_PARSE_RATE_STATUS=ok\n'; exit 0"
+write_loop_stub "$DP" "mkdir -p \"$DP/plan-review/round-1\"; printf 'fresh\n' >\"$DP/plan-review/round-1/new.txt\"; printf 'LOOP_STATUS=converged\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nREASON=converged\nREVISE_STATUS=ok\nNIT_ACCEPTED_COUNT=0\nNON_NIT_ACCEPTED_COUNT=1\nCOLLECT_OK_COUNT=1\nCOLLECT_FAILURE_COUNT=0\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=$DP/voting-tally.md\nVOTER_1_PARSE_RATE_STATUS=ok\n'; exit 0"
 run_guard "$DP" >/tmp/larch-step3-cap.guardp1.out
 driver_out=$(run_driver "$DP")
 printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=converged$' || fail "expected converged passive-summary status"
@@ -189,7 +189,7 @@ printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=converged$' || fail "expecte
 [[ -f "$DP/plan-review/round-1/new.txt" ]] || fail "fresh round-1 artifact missing after first entry"
 [[ ! -e "$DP/plan-review/round-1/stale.txt" ]] || fail "stale round-1 artifact should be cleaned before launch"
 [[ ! -e "$DP/plan-review/round-2/stale.txt" ]] || fail "stale round-2 artifact should be cleaned before launch"
-write_loop_stub "$DP" "mkdir -p \"$DP/plan-review/round-2\"; printf 'fresh\n' >\"$DP/plan-review/round-2/new.txt\"; printf 'LOOP_STATUS=cap-hit\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nREASON=cap-hit\nREVISE_STATUS=ok\nCONVERGENCE_STREAK=1\nCOLLECT_OK_COUNT=1\nCOLLECT_FAILURE_COUNT=0\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=$DP/voting-tally.md\nVOTER_1_PARSE_RATE_STATUS=ok\n'; exit 0"
+write_loop_stub "$DP" "mkdir -p \"$DP/plan-review/round-2\"; printf 'fresh\n' >\"$DP/plan-review/round-2/new.txt\"; printf 'LOOP_STATUS=cap-hit\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nREASON=cap-hit\nREVISE_STATUS=ok\nNIT_ACCEPTED_COUNT=0\nNON_NIT_ACCEPTED_COUNT=1\nCOLLECT_OK_COUNT=1\nCOLLECT_FAILURE_COUNT=0\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=$DP/voting-tally.md\nVOTER_1_PARSE_RATE_STATUS=ok\n'; exit 0"
 run_guard "$DP" >/tmp/larch-step3-cap.guardp2.out
 driver_out=$(run_driver "$DP")
 printf '%s\n' "$driver_out" | grep -q '^LOOP_STATUS=cap-hit$' || fail "expected cap-hit passive-summary status"

@@ -1,0 +1,8 @@
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_4 not traceable to scoped input (first 80 chars: 'Add integration case forcing snapshot failure after `NON_NIT_ACCEPTED_COUNT<=5` ')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Wire `many_nits_three_latent` into a converging `run_loop` and assert `NIT_ACCEP')
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add a test invoking `write_collect many_nits_three_latent` asserting converged `')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add round-3 clean stub with Important only in round-2 `findings.md`; expect `con')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_7 not traceable to scoped input (first 80 chars: 'Expect exit 2 from `review-and-fix.sh` and `plan-review-loop.sh` when passed `--')
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Add a short Convergence (multi-round) subsection aligned with `plan-review.md`. ')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Split or document intentional merge batch in PR description.')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_10 not traceable to scoped input (first 80 chars: 'Split PR or isolate commits for reviewability.  ### OOS_2: [OUT_OF_SCOPE] Top-le')

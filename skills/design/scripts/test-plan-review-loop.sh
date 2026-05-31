@@ -327,6 +327,42 @@ EOS
         printf '%s\n' "in_scope	nit	correctness	src/d	Above threshold finding D	scenario	fix"
     } >"$tsv"
 EOS
+    elif [[ "$mode" == "five_latent" ]]; then
+        cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+        printf '%s\n' "in_scope	latent	correctness	src/f1	Five latent one	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/f2	Five latent two	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/f3	Five latent three	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/f4	Five latent four	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/f5	Five latent five	scenario	fix"
+    } >"$tsv"
+EOS
+    elif [[ "$mode" == "six_latent" ]]; then
+        cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+        printf '%s\n' "in_scope	latent	correctness	src/s1	Six latent one	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/s2	Six latent two	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/s3	Six latent three	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/s4	Six latent four	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/s5	Six latent five	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/s6	Six latent six	scenario	fix"
+    } >"$tsv"
+EOS
+    elif [[ "$mode" == "many_nits_three_latent" ]]; then
+        cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+        printf '%s\n' "in_scope	nit	correctness	src/n1	Nit bulk one	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/n2	Nit bulk two	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/n3	Nit bulk three	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/n4	Nit bulk four	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/n5	Nit bulk five	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/n6	Nit bulk six	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/n7	Nit bulk seven	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/n8	Nit bulk eight	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/n9	Nit bulk nine	scenario	fix"
+        printf '%s\n' "in_scope	nit	correctness	src/n10	Nit bulk ten	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/l1	Latent one	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/l2	Latent two	scenario	fix"
+        printf '%s\n' "in_scope	latent	correctness	src/l3	Latent three	scenario	fix"
+    } >"$tsv"
+EOS
     elif [[ "$mode" == "three_distinct" ]]; then
         cat >>"$STUB/collect-agent-results.sh" <<'EOS'
     idx=$((idx + 1))
@@ -421,6 +457,40 @@ while IFS= read -r p || [[ -n "$p" ]]; do
 done <"$paths"
 EOS
     chmod +x "$STUB/collect-agent-results.sh"
+}
+
+write_voters_yes_n() {
+    local n="${1:?}"
+    cat >"$STUB/dispatch-plan-voters.sh" <<EOS
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ \$# -gt 0 ]]; do
+    case "\$1" in
+        --design-tmpdir) DESIGN_TMPDIR="\${2:?}"; shift 2 ;;
+        --ballot-file|--codex-available|--cursor-available|--session-env-path) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "\$DESIGN_TMPDIR" ]] || exit 2
+v1="\$DESIGN_TMPDIR/vstub1.txt"
+v2="\$DESIGN_TMPDIR/vstub2.txt"
+v3="\$DESIGN_TMPDIR/vstub3.txt"
+vp="\$DESIGN_TMPDIR/voter-paths.list"
+_vote_body=""
+for (( _vi=1; _vi<=${n}; _vi++ )); do
+    _vote_body+="\$(printf 'FINDING_%s: YES\\n' "\$_vi")"
+done
+for f in "\$v1" "\$v2" "\$v3"; do
+    printf '%s' "\$_vote_body" >"\$f"
+done
+printf '%s\n' "\$v1" "\$v2" "\$v3" >"\$vp"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "\$vp"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "\$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "\$v2"
+printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "\$v3"
+EOS
+    chmod +x "$STUB/dispatch-plan-voters.sh"
 }
 
 write_voters_three() {
@@ -871,7 +941,7 @@ exit 0
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_z=$(run_loop "$DZ" 1 --round-cap 3 --convergence-threshold 3)
+out_z=$(run_loop "$DZ" 1 --round-cap 3)
 printf '%s\n' "$out_z" | grep -q '^LOOP_STATUS=converged$' || fail "expected converged zero-findings"
 printf '%s\n' "$out_z" | grep -q '^REASON=zero-findings$' || fail "expected zero-findings reason"
 
@@ -884,7 +954,7 @@ write_scout
 write_dispatch_combined_threshold
 write_collect empty
 write_voters_three
-out_zd=$(run_loop "$DZD" 1 --round-cap 3 --convergence-threshold 3)
+out_zd=$(run_loop "$DZD" 1 --round-cap 3)
 printf '%s\n' "$out_zd" | grep -q '^LOOP_STATUS=zero-findings-degraded-panel$' || fail "degraded zero-findings should use dedicated loop status"
 printf '%s\n' "$out_zd" | grep -q '^REASON=zero-findings-degraded-panel$' || fail "expected degraded zero-findings reason"
 
@@ -949,7 +1019,7 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_oosc=$(run_loop "$DOOSC" 1 --round-cap 2 --convergence-threshold 0)
+out_oosc=$(run_loop "$DOOSC" 1 --round-cap 2)
 printf '%s\n' "$out_oosc" | grep -q '^LOOP_STATUS=cap-hit$' || fail "two accepted rounds should cap-hit"
 grep -q 'Round 1 accepted OOS' "$DOOSC/oos-accepted-design.md" || fail "round 1 accepted OOS missing from cumulative file"
 grep -q 'Round 2 accepted OOS' "$DOOSC/oos-accepted-design.md" || fail "round 2 accepted OOS missing from cumulative file"
@@ -999,7 +1069,7 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_oosd=$(run_loop "$DOOSD" 1 --round-cap 2 --convergence-threshold 0)
+out_oosd=$(run_loop "$DOOSD" 1 --round-cap 2)
 printf '%s\n' "$out_oosd" | grep -q '^LOOP_STATUS=cap-hit$' || fail "duplicate OOS dedup case should cap-hit"
 [[ "$(grep -c '^### OOS_' "$DOOSD/oos-accepted-design.md" | tr -d ' ')" == "1" ]] || fail "duplicate accepted OOS should only appear once cumulatively"
 
@@ -1052,7 +1122,7 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_ooss=$(run_loop "$DOOSS" 1 --round-cap 2 --convergence-threshold 0)
+out_ooss=$(run_loop "$DOOSS" 1 --round-cap 2)
 printf '%s\n' "$out_ooss" | grep -q '^LOOP_STATUS=cap-hit$' || fail "substring-distinct OOS case should cap-hit"
 [[ "$(grep -c '^### OOS_' "$DOOSS/oos-accepted-design.md" | tr -d ' ')" == "2" ]] || fail "substring-distinct accepted OOS entries must both survive cumulatively"
 
@@ -1132,13 +1202,13 @@ EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_TALLY_SH="$STUB/tally-plan-review.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_tm=$(run_loop "$DTM" 1 --round-cap 2 --convergence-threshold 3)
+out_tm=$(run_loop "$DTM" 1 --round-cap 2)
 unset LARCH_PLAN_REVIEW_TALLY_SH
 printf '%s\n' "$out_tm" | grep -q '^LOOP_STATUS=tally-error$' || fail "multi-round tally-error should surface tally-error loop status"
 printf '%s\n' "$out_tm" | grep -q '^REVISE_STATUS=skipped$' || fail "multi-round tally-error should skip revise"
 [[ -f "$DTM/.step3-plan-review-result.env" ]] || fail "multi-round tally-error missing result env"
 grep -q '^LOOP_STATUS=tally-error$' "$DTM/.step3-plan-review-result.env" || fail "result env missing tally-error loop status"
-assert_env_has_keys "$DTM/.step3-plan-review-result.env" LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED REASON REVISE_STATUS CONVERGENCE_STREAK AGGREGATOR_STATUS TALLY_PLAN_REVIEW_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS COLLECT_OK_COUNT COLLECT_FAILURE_COUNT
+assert_env_has_keys "$DTM/.step3-plan-review-result.env" LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED REASON REVISE_STATUS NIT_ACCEPTED_COUNT NON_NIT_ACCEPTED_COUNT AGGREGATOR_STATUS TALLY_PLAN_REVIEW_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS COLLECT_OK_COUNT COLLECT_FAILURE_COUNT
 
 echo "=== multi-round: revise failure returns revision-failed ==="
 DRV="$TMP/mr-revise-fail"
@@ -1156,7 +1226,7 @@ exit 0
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_rv=$(run_loop "$DRV" 1 --round-cap 3 --convergence-threshold 3)
+out_rv=$(run_loop "$DRV" 1 --round-cap 3)
 printf '%s\n' "$out_rv" | grep -q '^LOOP_STATUS=revision-failed$' || fail "revise failure should surface revision-failed"
 printf '%s\n' "$out_rv" | grep -q '^REVISE_STATUS=failed-no-patch$' || fail "revise failure should preserve revise status"
 grep -q '^REVISE_STATUS=failed-no-patch$' "$DRV/plan-review/round-1/round-summary.env" || fail "round summary should preserve revise failure status"
@@ -1177,7 +1247,7 @@ exit 0
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_of=$(run_loop "$DOF" 1 --round-cap 1 --convergence-threshold 3)
+out_of=$(run_loop "$DOF" 1 --round-cap 1)
 printf '%s\n' "$out_of" | grep -q '^LOOP_STATUS=cap-hit$' || fail "ok-fallback round should still settle normally"
 printf '%s\n' "$out_of" | grep -q '^REVISE_STATUS=ok-fallback$' || fail "ok-fallback should propagate to stdout"
 grep -q '^REVISE_STATUS=ok-fallback$' "$DOF/.step3-plan-review-result.env" || fail "result env should preserve ok-fallback"
@@ -1226,7 +1296,7 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_ep=$(run_loop "$DEF" 1 --round-cap 2 --convergence-threshold 3)
+out_ep=$(run_loop "$DEF" 1 --round-cap 2)
 printf '%s\n' "$out_ep" | grep -q '^LOOP_STATUS=emit-plan-failed$' || fail "emit-plan failure should surface emit-plan-failed"
 cmp -s "$DEF/plan.txt" <(printf 'plan\n\ndiff_lines: 1\n') || fail "emit-plan failure must restore the prior plan"
 
@@ -1292,7 +1362,7 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_val=$(run_loop "$DVAL" 1 --round-cap 2 --convergence-threshold 3)
+out_val=$(run_loop "$DVAL" 1 --round-cap 2)
 printf '%s\n' "$out_val" | grep -q '^LOOP_STATUS=plan-validator-defects$' || fail "validator defects should surface plan-validator-defects"
 
 echo "=== multi-round: plan-size hard trigger after revise surfaces plan-size-trigger ==="
@@ -1322,7 +1392,7 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_size=$(run_loop "$DSIZE" 1 --round-cap 2 --convergence-threshold 3)
+out_size=$(run_loop "$DSIZE" 1 --round-cap 2)
 printf '%s\n' "$out_size" | grep -q '^LOOP_STATUS=plan-size-trigger$' || fail "plan-size hard trigger should surface plan-size-trigger"
 
 echo "=== multi-round: mechanical churn revised plan avoids plan-size-trigger ==="
@@ -1355,7 +1425,7 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_mech=$(run_loop "$DMECH" 1 --round-cap 2 --convergence-threshold 3)
+out_mech=$(run_loop "$DMECH" 1 --round-cap 2)
 printf '%s\n' "$out_mech" | grep -q '^REVISE_STATUS=ok$' || fail "mechanical churn path should record revise ok"
 printf '%s\n' "$out_mech" | grep -qv '^LOOP_STATUS=plan-size-trigger$' || fail "mechanical churn revised plan must not surface plan-size-trigger"
 grep -q '^diff_added: 5000$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep diff_added trailer"
@@ -1396,7 +1466,7 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_dedup=$(run_loop "$DDEDUP" 1 --round-cap 2 --convergence-threshold 3)
+out_dedup=$(run_loop "$DDEDUP" 1 --round-cap 2)
 printf '%s\n' "$out_dedup" | grep -q '^REVISE_STATUS=ok$' || fail "dedup trailer fixture should record revise ok"
 line5_count=$(grep -c '^line 5$' "$DDEDUP/plan.txt" || true)
 [[ "$line5_count" == "1" ]] || fail "dedup trailer fixture must collapse duplicate body line"
@@ -1448,7 +1518,7 @@ print(len(lines) - len(filtered))
 PY
 chmod +x "$STUB/dedup-strip-optional-trailers.py"
 export LARCH_DEDUP_PLAN_LINES_PY="$STUB/dedup-strip-optional-trailers.py"
-out_dedup_loss=$(run_loop "$DDLOSS" 1 --round-cap 2 --convergence-threshold 3)
+out_dedup_loss=$(run_loop "$DDLOSS" 1 --round-cap 2)
 unset LARCH_DEDUP_PLAN_LINES_PY
 printf '%s\n' "$out_dedup_loss" | grep -q '^LOOP_STATUS=optional-trailer-dedup-loss$' || fail "dedup trailer loss should surface optional-trailer-dedup-loss"
 printf '%s\n' "$out_dedup_loss" | grep -q '^REASON=optional-trailer-dedup-loss$' || fail "dedup trailer loss should surface optional-trailer-dedup-loss reason"
@@ -1496,7 +1566,7 @@ EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 set +e
-out_ss=$(run_loop "$DSS" 1 --round-cap 2 --convergence-threshold 0)
+out_ss=$(run_loop "$DSS" 1 --round-cap 2)
 rc_ss=$?
 set -e
 [[ "$rc_ss" -eq 1 ]] || fail "allowlisted symlink source should fail snapshot closed"
@@ -1558,7 +1628,27 @@ out_sc=$(run_loop "$DSC" 1 --round-cap 1)
 printf '%s\n' "$out_sc" | grep -q '^LOOP_STATUS=cap-hit$' || fail "snapshot failure on terminal round should preserve cap-hit"
 printf '%s\n' "$out_sc" | grep -q '^REASON=cap-hit,snapshot-failed$' || fail "terminal cap-hit should append snapshot-failed reason"
 
-echo "=== multi-round: degraded round resets convergence streak and dedup failure does not leak ==="
+echo "=== snapshot failure preserves terminal converged status ==="
+DSNC="$TMP/snap-converged-status"
+mkdir -p "$DSNC"
+printf 'plan\n\ndiff_lines: 1\n' >"$DSNC/plan.txt"
+printf 'feat\n' >"$DSNC/feature-description.txt"
+ln -s "$DSNC/feature-description.txt" "$DSNC/plan-voter-slots.ndjson"
+write_scout
+write_dispatch_one_slot
+write_collect one_nit
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_snc=$(run_loop "$DSNC" 1 --round-cap 5)
+printf '%s\n' "$out_snc" | grep -q '^LOOP_STATUS=converged$' || fail "snapshot failure on qualifying round should preserve converged"
+printf '%s\n' "$out_snc" | grep -q '^REASON=converged,snapshot-failed$' || fail "qualifying converged round should append snapshot-failed reason"
+
+echo "=== multi-round: degraded round then converged round; dedup failure does not leak ==="
 DDR="$TMP/degraded-reset"
 mkdir -p "$DDR"
 printf 'plan\n\ndiff_lines: 1\n' >"$DDR/plan.txt"
@@ -1596,14 +1686,14 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_ddr=$(run_loop "$DDR" 1 --round-cap 3 --convergence-threshold 3)
+out_ddr=$(run_loop "$DDR" 1 --round-cap 3)
 printf '%s\n' "$out_ddr" | grep -q '^LOOP_STATUS=converged$' || fail "degraded-then-stable rounds should converge"
-printf '%s\n' "$out_ddr" | grep -q '^REASON=streak$' || fail "degraded-reset path should converge via streak"
-printf '%s\n' "$out_ddr" | grep -q '^ROUNDS_COMPLETED=3$' || fail "degraded-reset path should require three completed rounds"
+printf '%s\n' "$out_ddr" | grep -q '^REASON=converged$' || fail "degraded-reset path should converge via converged reason"
+printf '%s\n' "$out_ddr" | grep -q '^ROUNDS_COMPLETED=2$' || fail "degraded-reset path should converge on round 2 after stable nit round"
 grep -q '^DEGRADED_PANEL=1$' "$DDR/plan-review/round-1/round-summary.env" || fail "round 1 should record degraded panel"
 grep -q '^DEGRADED_PANEL=0$' "$DDR/plan-review/round-2/round-summary.env" || fail "round 2 should reset degraded panel"
-grep -q '^DEGRADED_PANEL=0$' "$DDR/plan-review/round-3/round-summary.env" || fail "stable round 3 should remain non-degraded"
-[[ -f "$DDR/plan-review/round-3/findings-classification.tsv" ]] || fail "converged terminal round must keep findings-classification TSV"
+grep -q '^LOOP_STATUS=converged$' "$DDR/plan-review/round-2/round-summary.env" || fail "round 2 should record converged terminal status"
+[[ -f "$DDR/plan-review/round-2/findings-classification.tsv" ]] || fail "converged terminal round must keep findings-classification TSV"
 
 echo "=== multi-round: dedup failure degrades only the failing round ==="
 DDD="$TMP/dedup-reset"
@@ -1664,8 +1754,9 @@ fi
 exec "${REAL_PYTHON:?}" "$@"
 EOS
 chmod +x "$PYWRAP/python3"
-out_ddd=$(REAL_PYTHON="$REAL_PYTHON" PATH="$PYWRAP:$PATH" run_loop "$DDD" 1 --round-cap 2 --convergence-threshold 3)
-printf '%s\n' "$out_ddd" | grep -q '^LOOP_STATUS=cap-hit$' || fail "dedup-reset path should still finish the cap-limited run"
+out_ddd=$(REAL_PYTHON="$REAL_PYTHON" PATH="$PYWRAP:$PATH" run_loop "$DDD" 1 --round-cap 2)
+printf '%s\n' "$out_ddd" | grep -q '^LOOP_STATUS=converged$' || fail "dedup-reset path should converge on round 2 after dedup-degraded round 1"
+printf '%s\n' "$out_ddd" | grep -q '^ROUNDS_COMPLETED=2$' || fail "dedup-reset path should complete two rounds"
 grep -q '^DEGRADED_PANEL=1$' "$DDD/plan-review/round-1/round-summary.env" || fail "dedup failure should degrade round 1"
 grep -q '^DEGRADED_PANEL=0$' "$DDD/plan-review/round-2/round-summary.env" || fail "dedup failure must not leak into round 2"
 
@@ -1704,7 +1795,7 @@ esac
 exec "${REAL_PYTHON:?}" "$@"
 EOS
 chmod +x "$PYWRAP_DDPL/python3"
-out_ddpl=$(REAL_PYTHON="$REAL_PYTHON_DDPL" PATH="$PYWRAP_DDPL:$PATH" run_loop "$DDPL" 1 --round-cap 2 --convergence-threshold 3)
+out_ddpl=$(REAL_PYTHON="$REAL_PYTHON_DDPL" PATH="$PYWRAP_DDPL:$PATH" run_loop "$DDPL" 1 --round-cap 2)
 printf '%s\n' "$out_ddpl" | grep -q '^LOOP_STATUS=emit-plan-failed$' || fail "plan-line dedup failure should surface emit-plan-failed"
 printf '%s\n' "$out_ddpl" | grep -q '^REASON=dedup-python-failed$' || fail "plan-line dedup failure should surface dedup-python-failed reason"
 printf '%s\n' "$out_ddpl" | grep -q 'LOOP_REASON=dedup-python-failed' && fail "helper should not print LOOP_REASON directly"
@@ -1744,8 +1835,8 @@ set -e
 printf '%s\n' "$out_dsrev" | grep -q '^LOOP_STATUS=revision-failed$' || fail "symlinked revise artifact should preserve revision-failed status"
 printf '%s\n' "$out_dsrev" | grep -q '^REASON=revision-failed,snapshot-failed$' || fail "symlinked revise artifact should append snapshot-failed reason"
 
-echo "=== multi-round: two-round nit streak converges via streak ==="
-DSTR="$TMP/streak-two-round"
+echo "=== multi-round: single-round nit-only converges (REASON=converged) ==="
+DSTR="$TMP/single-round-nit-converge"
 mkdir -p "$DSTR"
 printf 'plan\n\ndiff_lines: 1\n' >"$DSTR/plan.txt"
 printf 'feat\n' >"$DSTR/feature-description.txt"
@@ -1759,46 +1850,56 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_str=$(run_loop "$DSTR" 1 --round-cap 5 --convergence-threshold 3)
-printf '%s\n' "$out_str" | grep -q '^LOOP_STATUS=converged$' || fail "two-round nit streak should converge"
-printf '%s\n' "$out_str" | grep -q '^REASON=streak$' || fail "two-round nit streak should use streak reason"
-printf '%s\n' "$out_str" | grep -q '^CONVERGENCE_STREAK=2$' || fail "two-round nit streak should reach streak 2"
-printf '%s\n' "$out_str" | grep -q '^ROUNDS_COMPLETED=2$' || fail "two-round nit streak should complete two rounds"
-grep -q '^CONVERGENCE_STREAK=1$' "$DSTR/plan-review/round-1/round-summary.env" || fail "round 1 should record streak 1"
+out_str=$(run_loop "$DSTR" 1 --round-cap 5)
+printf '%s\n' "$out_str" | grep -q '^LOOP_STATUS=converged$' || fail "single-round nit should converge"
+printf '%s\n' "$out_str" | grep -q '^REASON=converged$' || fail "single-round nit should use converged reason"
+printf '%s\n' "$out_str" | grep -q '^NIT_ACCEPTED_COUNT=1$' || fail "single-round nit should count one nit"
+printf '%s\n' "$out_str" | grep -q '^NON_NIT_ACCEPTED_COUNT=0$' || fail "single-round nit should have zero non-nit"
+printf '%s\n' "$out_str" | grep -q '^ROUNDS_COMPLETED=1$' || fail "single-round nit should complete one round"
 
-echo "=== multi-round: accepted-count above threshold resets convergence streak ==="
-DATHR="$TMP/streak-above-threshold"
+echo "=== multi-round: six non-nit accepted does not converge in one round ==="
+DATHR="$TMP/six-non-nit-no-converge"
 mkdir -p "$DATHR"
 printf 'plan\n\ndiff_lines: 1\n' >"$DATHR/plan.txt"
 printf 'feat\n' >"$DATHR/feature-description.txt"
 write_scout
 write_dispatch_one_slot
-write_collect above_threshold
-# Voter stub votes YES for all four findings so ACCEPTED_COUNT=4 (above threshold 3)
+cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --paths-file) paths="${2:?}"; shift 2 ;; *) shift 1 ;; esac
+done
+while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    tsv="${p}.tsv"
+    printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix" >"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/s1	Six latent one	scenario	fix" >>"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/s2	Six latent two	scenario	fix" >>"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/s3	Six latent three	scenario	fix" >>"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/s4	Six latent four	scenario	fix" >>"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/s5	Six latent five	scenario	fix" >>"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/s6	Six latent six	scenario	fix" >>"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/s7	Six latent seven	scenario	fix" >>"$tsv"
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+chmod +x "$STUB/collect-agent-results.sh"
 cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
 #!/usr/bin/env bash
-set -euo pipefail
 DESIGN_TMPDIR=""
 while [[ $# -gt 0 ]]; do
-    case "$1" in
-        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
-        --ballot-file|--codex-available|--cursor-available|--session-env-path) shift 2 ;;
-        *) shift 1 ;;
-    esac
+    case "$1" in --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;; *) shift 2 ;; esac
 done
-[[ -n "$DESIGN_TMPDIR" ]] || exit 2
-v1="$DESIGN_TMPDIR/vstub1.txt"
-v2="$DESIGN_TMPDIR/vstub2.txt"
-v3="$DESIGN_TMPDIR/vstub3.txt"
-vp="$DESIGN_TMPDIR/voter-paths.list"
-for f in "$v1" "$v2" "$v3"; do
-    printf '%s\n' 'FINDING_1: YES' 'FINDING_2: YES' 'FINDING_3: YES' 'FINDING_4: YES' >"$f"
-done
-printf '%s\n' "$v1" "$v2" "$v3" >"$vp"
-printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$vp"
+v1="$DESIGN_TMPDIR/v1.txt"
+v2="$DESIGN_TMPDIR/v2.txt"
+_vote=$'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: YES\nFINDING_6: YES\nFINDING_7: YES\n'
+printf '%s' "$_vote" >"$v1"
+printf '%s' "$_vote" >"$v2"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$DESIGN_TMPDIR/voter-paths.list"
+printf '%s\n' "$v1" "$v2" >"$DESIGN_TMPDIR/voter-paths.list"
 printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
 printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
-printf 'VOTER_3_PATH=%s\nVOTER_3_TOOL=cursor\nVOTER_3_STATUS=launched\n' "$v3"
 EOS
 chmod +x "$STUB/dispatch-plan-voters.sh"
 cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
@@ -1807,47 +1908,76 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-run_loop "$DATHR" 1 --round-cap 5 --convergence-threshold 3 >/dev/null
-grep -q '^CONVERGENCE_STREAK=0$' "$DATHR/plan-review/round-1/round-summary.env" || fail "above-threshold round 1 should keep streak at 0"
-grep -q '^ACCEPTED_COUNT=4$' "$DATHR/plan-review/round-1/round-summary.env" || fail "above-threshold round 1 should record 4 accepted findings"
+out_six=$(run_loop "$DATHR" 1 --round-cap 1)
+printf '%s\n' "$out_six" | grep -q '^LOOP_STATUS=cap-hit$' || fail "above-bound non-nit round should cap-hit without converging"
+_non_nit_cap=$(printf '%s\n' "$out_six" | sed -n 's/^NON_NIT_ACCEPTED_COUNT=//p')
+[[ "$_non_nit_cap" =~ ^[0-9]+$ && "$_non_nit_cap" -gt 5 ]] \
+    || fail "above-bound round should record more than five non-nit (got ${_non_nit_cap:-empty})"
+printf '%s\n' "$out_six" | grep -q '^NIT_ACCEPTED_COUNT=0$' || fail "above-bound latent round should record zero nits"
 
-echo "=== multi-round: important finding resets convergence streak ==="
-DIRS="$TMP/streak-important-reset"
-mkdir -p "$DIRS"
-printf 'plan\n\ndiff_lines: 1\n' >"$DIRS/plan.txt"
-printf 'feat\n' >"$DIRS/feature-description.txt"
+echo "=== multi-round: five non-nit accepted converges in one round ==="
+DFIVE="$TMP/five-non-nit-converge"
+mkdir -p "$DFIVE"
+printf 'plan\n\ndiff_lines: 1\n' >"$DFIVE/plan.txt"
+printf 'feat\n' >"$DFIVE/feature-description.txt"
 write_scout
 write_dispatch_one_slot
-write_collect_important_round2
-write_voters_three
+cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --paths-file) paths="${2:?}"; shift 2 ;; *) shift 1 ;; esac
+done
+while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    tsv="${p}.tsv"
+    printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix" >"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/f1	Five latent one	scenario	fix" >>"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/f2	Five latent two	scenario	fix" >>"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/f3	Five latent three	scenario	fix" >>"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/f4	Five latent four	scenario	fix" >>"$tsv"
+    printf '%s\n' "in_scope	latent	correctness	src/f5	Five latent five	scenario	fix" >>"$tsv"
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+chmod +x "$STUB/collect-agent-results.sh"
+cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;; *) shift 2 ;; esac
+done
+v1="$DESIGN_TMPDIR/v1.txt"
+v2="$DESIGN_TMPDIR/v2.txt"
+_vote=$'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: YES\n'
+printf '%s' "$_vote" >"$v1"
+printf '%s' "$_vote" >"$v2"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$DESIGN_TMPDIR/voter-paths.list"
+printf '%s\n' "$v1" "$v2" >"$DESIGN_TMPDIR/voter-paths.list"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
+EOS
+chmod +x "$STUB/dispatch-plan-voters.sh"
 cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
 #!/usr/bin/env bash
 printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_irs=$(run_loop "$DIRS" 1 --round-cap 5 --convergence-threshold 3)
-printf '%s\n' "$out_irs" | grep -q '^LOOP_STATUS=converged$' || fail "important-reset path should converge"
-printf '%s\n' "$out_irs" | grep -q '^REASON=streak$' || fail "important-reset path should use streak reason"
-printf '%s\n' "$out_irs" | grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' || fail "important-reset path should finish with IMPORTANT_ACCEPTED_COUNT=0"
-printf '%s\n' "$out_irs" | grep -q '^CONVERGENCE_STREAK=2$' || fail "important-reset path should finish at streak 2"
-printf '%s\n' "$out_irs" | grep -q '^ROUNDS_COMPLETED=4$' || fail "important-reset path should complete four rounds"
-grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' "$DIRS/.step3-plan-review-result.env" || fail "terminal result env should record IMPORTANT_ACCEPTED_COUNT=0"
-grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' "$DIRS/plan-review/round-1/round-summary.env" || fail "round 1 should record IMPORTANT_ACCEPTED_COUNT=0"
-grep -q '^IMPORTANT_ACCEPTED_COUNT=1$' "$DIRS/plan-review/round-2/round-summary.env" || fail "round 2 should record IMPORTANT_ACCEPTED_COUNT=1"
-grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' "$DIRS/plan-review/round-3/round-summary.env" || fail "round 3 should record IMPORTANT_ACCEPTED_COUNT=0"
-grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' "$DIRS/plan-review/round-4/round-summary.env" || fail "round 4 should record IMPORTANT_ACCEPTED_COUNT=0"
-grep -q '^CONVERGENCE_STREAK=1$' "$DIRS/plan-review/round-1/round-summary.env" || fail "round 1 should advance streak to 1"
-grep -q '^CONVERGENCE_STREAK=0$' "$DIRS/plan-review/round-2/round-summary.env" || fail "round 2 important finding should reset streak to 0"
-grep -q '^CONVERGENCE_STREAK=1$' "$DIRS/plan-review/round-3/round-summary.env" || fail "round 3 should rebuild streak to 1"
+out_five=$(run_loop "$DFIVE" 1 --round-cap 5)
+printf '%s\n' "$out_five" | grep -q '^LOOP_STATUS=converged$' || fail "five non-nit should converge"
+_non_nit_five=$(printf '%s\n' "$out_five" | sed -n 's/^NON_NIT_ACCEPTED_COUNT=//p')
+[[ "$_non_nit_five" =~ ^[0-9]+$ && "$_non_nit_five" -le 5 && "$_non_nit_five" -gt 0 ]] \
+    || fail "five non-nit should record 1-5 non-nit at boundary (got ${_non_nit_five:-empty})"
+printf '%s\n' "$out_five" | grep -q '^ROUNDS_COMPLETED=1$' || fail "five non-nit should finish in one round"
 
-echo "=== multi-round: degraded round 2 resets convergence streak (dedicated) ==="
-DDR2="$TMP/streak-degraded-round2"
-mkdir -p "$DDR2"
-printf 'plan\n\ndiff_lines: 1\n' >"$DDR2/plan.txt"
-printf 'feat\n' >"$DDR2/feature-description.txt"
+echo "=== multi-round: nit-only accepted converges with zero non-nit (nits excluded) ==="
+DMANY="$TMP/nit-only-converge"
+mkdir -p "$DMANY"
+printf 'plan\n\ndiff_lines: 1\n' >"$DMANY/plan.txt"
+printf 'feat\n' >"$DMANY/feature-description.txt"
 write_scout
-write_dispatch_round2_degraded
+write_dispatch_one_slot
 write_collect one_nit
 write_voters_three
 cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
@@ -1856,14 +1986,171 @@ printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
-out_ddr2=$(run_loop "$DDR2" 1 --round-cap 5 --convergence-threshold 3)
-printf '%s\n' "$out_ddr2" | grep -q '^LOOP_STATUS=converged$' || fail "degraded-round2 path should converge"
-printf '%s\n' "$out_ddr2" | grep -q '^REASON=streak$' || fail "degraded-round2 path should use streak reason"
-printf '%s\n' "$out_ddr2" | grep -q '^CONVERGENCE_STREAK=2$' || fail "degraded-round2 path should finish at streak 2"
-printf '%s\n' "$out_ddr2" | grep -q '^ROUNDS_COMPLETED=4$' || fail "degraded-round2 path should complete four rounds"
-grep -q '^CONVERGENCE_STREAK=1$' "$DDR2/plan-review/round-1/round-summary.env" || fail "round 1 should advance streak to 1"
-grep -q '^CONVERGENCE_STREAK=0$' "$DDR2/plan-review/round-2/round-summary.env" || fail "round 2 degraded panel should reset streak to 0"
-grep -q '^DEGRADED_PANEL=1$' "$DDR2/plan-review/round-2/round-summary.env" || fail "round 2 should record degraded panel"
+out_many=$(run_loop "$DMANY" 1 --round-cap 5)
+printf '%s\n' "$out_many" | grep -q '^LOOP_STATUS=converged$' || fail "nit-only accepted should converge"
+printf '%s\n' "$out_many" | grep -q '^NIT_ACCEPTED_COUNT=1$' || fail "nit-only path should count one nit"
+printf '%s\n' "$out_many" | grep -q '^NON_NIT_ACCEPTED_COUNT=0$' || fail "nit-only path should count zero non-nit"
+
+echo "=== multi-round: many nits plus three latent converges (nits excluded from non-nit gate) ==="
+DMNL="$TMP/many-nits-three-latent-converge"
+mkdir -p "$DMNL"
+printf 'plan\n\ndiff_lines: 1\n' >"$DMNL/plan.txt"
+printf 'feat\n' >"$DMNL/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect many_nits_three_latent
+cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;; *) shift 2 ;; esac
+done
+v1="$DESIGN_TMPDIR/v1.txt"
+v2="$DESIGN_TMPDIR/v2.txt"
+_vote=$'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: YES\nFINDING_6: YES\nFINDING_7: YES\nFINDING_8: YES\nFINDING_9: YES\nFINDING_10: YES\nFINDING_11: YES\nFINDING_12: YES\nFINDING_13: YES\n'
+printf '%s' "$_vote" >"$v1"
+printf '%s' "$_vote" >"$v2"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$DESIGN_TMPDIR/voter-paths.list"
+printf '%s\n' "$v1" "$v2" >"$DESIGN_TMPDIR/voter-paths.list"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
+EOS
+chmod +x "$STUB/dispatch-plan-voters.sh"
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_mnl=$(run_loop "$DMNL" 1 --round-cap 5)
+printf '%s\n' "$out_mnl" | grep -q '^LOOP_STATUS=converged$' || fail "many nits plus three latent should converge"
+printf '%s\n' "$out_mnl" | grep -q '^REASON=converged$' || fail "many nits plus three latent should use converged reason"
+printf '%s\n' "$out_mnl" | grep -q '^NIT_ACCEPTED_COUNT=10$' || fail "many nits path should count ten nits"
+printf '%s\n' "$out_mnl" | grep -q '^NON_NIT_ACCEPTED_COUNT=3$' || fail "many nits path should count three non-nit latent"
+printf '%s\n' "$out_mnl" | grep -q '^ROUNDS_COMPLETED=1$' || fail "many nits plus three latent should finish in one round"
+
+echo "=== multi-round: important finding blocks convergence until a clean round ==="
+DIRS="$TMP/important-blocks-converge"
+mkdir -p "$DIRS"
+printf 'plan\n\ndiff_lines: 1\n' >"$DIRS/plan.txt"
+printf 'feat\n' >"$DIRS/feature-description.txt"
+write_scout
+write_dispatch_round1_degraded_then_ok
+write_collect_important_round2
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_irs=$(run_loop "$DIRS" 1 --round-cap 5)
+printf '%s\n' "$out_irs" | grep -q '^LOOP_STATUS=converged$' || fail "important-reset path should converge"
+printf '%s\n' "$out_irs" | grep -q '^REASON=converged$' || fail "important-reset path should use converged reason"
+printf '%s\n' "$out_irs" | grep -q '^IMPORTANT_ACCEPTED_COUNT=0$' || fail "important-reset path should finish with IMPORTANT_ACCEPTED_COUNT=0"
+printf '%s\n' "$out_irs" | grep -q '^ROUNDS_COMPLETED=3$' || fail "important-reset path should complete three rounds"
+grep -q '^IMPORTANT_ACCEPTED_COUNT=1$' "$DIRS/plan-review/round-2/round-summary.env" || fail "round 2 should record important accepted"
+grep -q '^LOOP_STATUS=converged$' "$DIRS/plan-review/round-1/round-summary.env" && fail "round 1 must not converge when only staging for later important round"
+
+echo "=== multi-round: degraded round blocks convergence; later clean round converges ==="
+DDR2="$TMP/degraded-then-converge"
+mkdir -p "$DDR2"
+printf 'plan\n\ndiff_lines: 1\n' >"$DDR2/plan.txt"
+printf 'feat\n' >"$DDR2/feature-description.txt"
+write_scout
+cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;; *) shift 2 ;; esac
+done
+state_file="$DESIGN_TMPDIR/.dispatch-round-count"
+round=1
+if [[ -f "$state_file" ]]; then
+    round=$(( $(cat "$state_file") + 1 ))
+fi
+printf '%s\n' "$round" >"$state_file"
+OUT="$DESIGN_TMPDIR/cursor-plan-arch-output.txt"
+printf '%s\n' '{"slot":"cursor-plan-arch","tool":"cursor","output":"'"$OUT"'"}' >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+: >"$OUT"
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+printf '%s\n' "$OUT" >"$PATHS"
+combined=0
+if [[ "$round" == "1" ]]; then
+    combined=1
+fi
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nCOMBINED_FALLBACK_COUNT=%s\nSTATIC_DISPATCH_OK=true\nPANEL_PATHS_FILE=%s\n' "$combined" "$PATHS"
+EOS
+chmod +x "$STUB/dispatch-plan-review-panel.sh"
+cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --paths-file) paths="${2:?}"; shift 2 ;; *) shift 1 ;; esac
+done
+state_file="$(dirname "$paths")/.collect-round-count"
+round=1
+if [[ -f "$state_file" ]]; then
+    round=$(( $(cat "$state_file") + 1 ))
+fi
+printf '%s\n' "$round" >"$state_file"
+while IFS= read -r p; do
+    [[ -z "$p" ]] && continue
+    tsv="${p}.tsv"
+    printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix" >"$tsv"
+    if [[ "$round" == "1" ]]; then
+        printf '%s\n' "in_scope	latent	correctness	src/s1	Six latent one	scenario	fix" >>"$tsv"
+        printf '%s\n' "in_scope	latent	correctness	src/s2	Six latent two	scenario	fix" >>"$tsv"
+        printf '%s\n' "in_scope	latent	correctness	src/s3	Six latent three	scenario	fix" >>"$tsv"
+        printf '%s\n' "in_scope	latent	correctness	src/s4	Six latent four	scenario	fix" >>"$tsv"
+        printf '%s\n' "in_scope	latent	correctness	src/s5	Six latent five	scenario	fix" >>"$tsv"
+        printf '%s\n' "in_scope	latent	correctness	src/s6	Six latent six	scenario	fix" >>"$tsv"
+    else
+        printf '%s\n' "in_scope	nit	correctness	src/a	concern text here	scenario	fix" >>"$tsv"
+    fi
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
+done <"$paths"
+EOS
+chmod +x "$STUB/collect-agent-results.sh"
+cat >"$STUB/dispatch-plan-voters.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;; *) shift 2 ;; esac
+done
+state_file="$DESIGN_TMPDIR/.voter-round-count"
+round=1
+if [[ -f "$state_file" ]]; then
+    round=$(( $(cat "$state_file") + 1 ))
+fi
+printf '%s\n' "$round" >"$state_file"
+v1="$DESIGN_TMPDIR/v1.txt"
+v2="$DESIGN_TMPDIR/v2.txt"
+if [[ "$round" == "1" ]]; then
+    _vote=$'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: YES\nFINDING_6: YES\n'
+else
+    _vote=$'FINDING_1: YES\n'
+fi
+printf '%s' "$_vote" >"$v1"
+printf '%s' "$_vote" >"$v2"
+printf 'DISPATCH_OK=true\nVOTER_PATHS_FILE=%s\nVOTER_1_PARSE_RATE_STATUS=ok\n' "$DESIGN_TMPDIR/voter-paths.list"
+printf '%s\n' "$v1" "$v2" >"$DESIGN_TMPDIR/voter-paths.list"
+printf 'VOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n' "$v1"
+printf 'VOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v2"
+EOS
+chmod +x "$STUB/dispatch-plan-voters.sh"
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_ddr2=$(run_loop "$DDR2" 1 --round-cap 3)
+printf '%s\n' "$out_ddr2" | grep -q '^LOOP_STATUS=converged$' || fail "degraded-then-clean path should converge"
+printf '%s\n' "$out_ddr2" | grep -q '^REASON=converged$' || fail "degraded-then-clean path should use converged reason"
+grep -q '^DEGRADED_PANEL=1$' "$DDR2/plan-review/round-1/round-summary.env" || fail "round 1 should record degraded panel"
+grep -q '^LOOP_STATUS=converged$' "$DDR2/plan-review/round-2/round-summary.env" || fail "round 2 should converge after degraded round 1"
+printf '%s\n' "$out_ddr2" | grep -q '^ROUNDS_COMPLETED=2$' || fail "degraded-then-clean path should converge on round 2"
 
 echo "=== post-apply: section-aware duplicate-line dedup ==="
 DDED="$TMP/section-aware-dedup"

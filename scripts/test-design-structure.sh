@@ -58,8 +58,7 @@ contains "$SKILL_MD" 'This is a HARD-tier design. Bias the plan toward **thoroug
 contains "$SKILL_MD" 'review-round-count.txt' 'SKILL missing review-round counter'
 # shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
 contains "$SKILL_MD" '--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"' 'SKILL must pass explicit round-cap to plan-review-loop'
-# shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
-contains "$SKILL_MD" '--convergence-threshold "${LARCH_DESIGN_CONVERGENCE_THRESHOLD:-3}"' 'SKILL must pass convergence-threshold to plan-review-loop'
+absent "$SKILL_MD" '--convergence-threshold' 'SKILL must not pass removed convergence-threshold to plan-review-loop'
 contains "$SKILL_MD" '.step3-plan-review-result.env' 'SKILL must source step3 plan-review result env'
 contains "$SKILL_MD" 'result env is a symlink; ignoring it and using stdout fallback only' 'SKILL missing symlink-safe step3 result env warning'
 contains "$SKILL_MD" 'invoke-plan-validator.sh' 'SKILL missing renamed validator helper'

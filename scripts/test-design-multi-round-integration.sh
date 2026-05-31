@@ -151,11 +151,26 @@ paths=""
 while [[ $# -gt 0 ]]; do
     case "$1" in --paths-file) paths="${2:?}"; shift 2 ;; *) shift 1 ;; esac
 done
+state_file="$(dirname "$paths")/.collect-round-count"
+round=1
+if [[ -f "$state_file" ]]; then
+    round=$(( $(cat "$state_file") + 1 ))
+fi
+printf '%s\n' "$round" >"$state_file"
 while IFS= read -r p; do
     [[ -z "$p" ]] && continue
     tsv="${p}.tsv"
     printf '%s\n' "scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix" >"$tsv"
-    printf '%s\n' "in_scope	nit	correctness	src/a	concern text here	scenario	fix" >>"$tsv"
+    if [[ "$round" == "1" ]]; then
+        printf '%s\n' "in_scope	latent	correctness	src/s1	Six latent one	scenario	fix" >>"$tsv"
+        printf '%s\n' "in_scope	latent	correctness	src/s2	Six latent two	scenario	fix" >>"$tsv"
+        printf '%s\n' "in_scope	latent	correctness	src/s3	Six latent three	scenario	fix" >>"$tsv"
+        printf '%s\n' "in_scope	latent	correctness	src/s4	Six latent four	scenario	fix" >>"$tsv"
+        printf '%s\n' "in_scope	latent	correctness	src/s5	Six latent five	scenario	fix" >>"$tsv"
+        printf '%s\n' "in_scope	latent	correctness	src/s6	Six latent six	scenario	fix" >>"$tsv"
+    else
+        printf '%s\n' "in_scope	nit	correctness	src/a	concern text here	scenario	fix" >>"$tsv"
+    fi
     printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n' "$p"
 done <"$paths"
 EOS
@@ -169,8 +184,9 @@ while [[ $# -gt 0 ]]; do
 done
 v1="$DESIGN_TMPDIR/v1.txt"
 v2="$DESIGN_TMPDIR/v2.txt"
-printf 'FINDING_1: YES\n' >"$v1"
-printf 'FINDING_1: YES\n' >"$v2"
+_vote=$'FINDING_1: YES\nFINDING_2: YES\nFINDING_3: YES\nFINDING_4: YES\nFINDING_5: YES\nFINDING_6: YES\n'
+printf '%s' "$_vote" >"$v1"
+printf '%s' "$_vote" >"$v2"
 printf 'DISPATCH_OK=true\nVOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\nVOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v1" "$v2"
 EOS
 chmod +x "$STUB/dispatch-plan-voters.sh"
@@ -198,18 +214,18 @@ export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 export LARCH_AGGREGATOR_DISABLED=1
 
-out=$(run_loop_fixture "$TMP/design" --round-cap 3 --convergence-threshold 3)
+out=$(run_loop_fixture "$TMP/design" --round-cap 3)
 printf '%s\n' "$out" | grep -q '^LOOP_STATUS=converged$' || fail "expected converged from integration loop"
 
 [[ -d "$TMP/design/plan-review/round-1" ]] || fail "round-1 missing"
 [[ -d "$TMP/design/plan-review/round-2" ]] || fail "round-2 missing"
-[[ -d "$TMP/design/plan-review/round-3" ]] || fail "round-3 missing"
 [[ -f "$TMP/design/plan-review/round-1/round-summary.env" ]] || fail "round-summary missing"
 grep -q '^DEGRADED_PANEL=1$' "$TMP/design/plan-review/round-1/round-summary.env" || fail "round-1 summary should record degraded panel"
-grep -q '^LOOP_STATUS=converged$' "$TMP/design/plan-review/round-3/round-summary.env" || fail "round-3 summary should record converged"
-cmp -s "$TMP/design/plan.txt" "$TMP/design/plan-review/round-3/plan.txt" || fail "round-3 snapshot plan must match final plan"
-[[ -f "$TMP/design/plan-review/round-3/findings-classification.tsv" ]] || fail "round-3 classification TSV missing"
-assert_env_has_keys "$TMP/design/.step3-plan-review-result.env" LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED REASON REVISE_STATUS CONVERGENCE_STREAK AGGREGATOR_STATUS TALLY_PLAN_REVIEW_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS COLLECT_OK_COUNT COLLECT_FAILURE_COUNT
+grep -q '^LOOP_STATUS=converged$' "$TMP/design/plan-review/round-2/round-summary.env" || fail "round-2 summary should record converged"
+cmp -s "$TMP/design/plan.txt" "$TMP/design/plan-review/round-2/plan.txt" || fail "round-2 snapshot plan must match final plan"
+[[ -f "$TMP/design/plan-review/round-2/findings-classification.tsv" ]] || fail "round-2 classification TSV missing"
+printf '%s\n' "$out" | grep -q '^ROUNDS_COMPLETED=2$' || fail "integration loop should converge on round 2"
+assert_env_has_keys "$TMP/design/.step3-plan-review-result.env" LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED REASON REVISE_STATUS NIT_ACCEPTED_COUNT NON_NIT_ACCEPTED_COUNT AGGREGATOR_STATUS TALLY_PLAN_REVIEW_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS COLLECT_OK_COUNT COLLECT_FAILURE_COUNT
 printf 'original snapshot\n' >"$TMP/design/plan.txt-original"
 printf 'round 1 snapshot\n' >"$TMP/design/plan-after-round-1.txt"
 printf 'round 2 snapshot\n' >"$TMP/design/plan-after-round-2.txt"
@@ -319,7 +335,7 @@ while IFS= read -r p; do
 done <"$paths"
 EOS
 chmod +x "$STUB/collect-agent-results.sh"
-out_conv=$(run_loop_fixture "$DCONV" --round-cap 3 --convergence-threshold 3)
+out_conv=$(run_loop_fixture "$DCONV" --round-cap 3)
 printf '%s\n' "$out_conv" | grep -q '^LOOP_STATUS=converged$' || fail "zero-findings collector-ok path should converge"
 grep -q '^LOOP_STATUS=converged$' "$DCONV/plan-review/round-1/round-summary.env" || fail "converged summary missing"
 
@@ -352,7 +368,7 @@ echo "manual Gate B should not auto-revise" >&2
 exit 99
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
-out_man=$(run_loop_fixture "$DMAN" --round-cap 2 --convergence-threshold 3)
+out_man=$(run_loop_fixture "$DMAN" --round-cap 2)
 printf '%s\n' "$out_man" | grep -q '^REASON=manual-gate-b$' || fail "manual Gate B should short-circuit with manual-gate-b"
 [[ -d "$DMAN/plan-review/round-1" ]] || fail "manual Gate B should still snapshot round-1"
 [[ ! -d "$DMAN/plan-review/round-2" ]] || fail "manual Gate B should stop after one round"
@@ -384,7 +400,7 @@ cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
 printf 'REVISE_STATUS=failed-no-patch\nREVISE_WINNING_TIER=\n'
 EOS
 chmod +x "$STUB/revise-plan-with-waterfall.sh"
-out_rv=$(run_loop_fixture "$DRV" --round-cap 2 --convergence-threshold 3)
+out_rv=$(run_loop_fixture "$DRV" --round-cap 2)
 printf '%s\n' "$out_rv" | grep -q '^LOOP_STATUS=revision-failed$' || fail "revision-failed integration path missing"
 grep -q '^LOOP_STATUS=revision-failed$' "$DRV/.step3-plan-review-result.env" || fail "revision-failed env missing"
 

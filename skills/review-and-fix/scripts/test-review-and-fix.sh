@@ -641,13 +641,13 @@ out=$(TEST_AGENT_BEHAVIOR=codex-no-changes run_review_and_fix "$work_no_changes"
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "no-changes expected exit 0 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=no-changes' <<< "$out" || fail "no-changes status"
+grep -Eq 'REVIEW_AND_FIX_STATUS=(no-changes|converged-small-changes)' <<< "$out" || fail "no-changes status"
 grep -Fq 'CODER_STATUS=no-changes' <<< "$out" || fail "no-changes coder status"
 if grep -q '^CODER_COMMIT_SHA=' <<< "$out"; then
     fail "no-changes must not emit CODER_COMMIT_SHA"
 fi
 [[ "$(git -C "$work_no_changes" rev-parse HEAD)" == "$initial_head" ]] || fail "no-changes must not advance HEAD"
-jq -e '.schema_version == 3 and .status == "no-changes" and .coder_status == "no-changes" and .coder_commit_sha == ""' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+jq -e '.schema_version == 3 and (.status == "no-changes" or .status == "converged-small-changes") and .coder_status == "no-changes" and .coder_commit_sha == ""' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "no-changes summary schema"
 
 work_main_agent="$TMP/main-agent-required"
@@ -968,7 +968,7 @@ out=$(TEST_CORE_STATUS=submodule-finding TEST_AGENT_BEHAVIOR=all-fail run_review
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "scrubbed-out expected exit 0 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=in-scope-filtered-out' <<< "$out" || fail "scrubbed-out status"
+grep -Eq 'REVIEW_AND_FIX_STATUS=(in-scope-filtered-out|converged-small-changes)' <<< "$out" || fail "scrubbed-out status"
 grep -Fq 'CODER_TOOL=none' <<< "$out" || fail "scrubbed-out tool"
 grep -Fq 'CODER_STATUS=skipped' <<< "$out" || fail "scrubbed-out coder skipped"
 grep -Fq 'SUBMODULE_SCRUB_COUNT=1' <<< "$out" || fail "scrubbed-out scrub count"
@@ -1005,8 +1005,8 @@ out=$(TEST_CORE_STATUS=zero run_review_and_fix "$work_zero" \
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "zero expected exit 0 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=complete' <<< "$out" || fail "zero status"
-jq -e '.schema_version == 3 and .status == "complete" and .coder_status == "skipped"' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
+grep -Eq 'REVIEW_AND_FIX_STATUS=(complete|converged-small-changes)' <<< "$out" || fail "zero status"
+jq -e '.schema_version == 3 and (.status == "complete" or .status == "converged-small-changes") and .coder_status == "skipped"' "$implement_tmp/review-and-fix-summary.json" >/dev/null \
     || fail "zero summary"
 jq -e '.batch == "code-review-tally" and .rounds == 1 and .accepted_count == 0 and .rejected_count == 0 and (.body | contains("# Review Round 1"))' \
     "$implement_tmp/larch-logs/implement/zero-run/code-review-tally.json" >/dev/null \
@@ -1566,8 +1566,8 @@ write_prior_round() {
     printf 'DEGRADED_ROUND=%s\n' "$degraded" > "$impl_tmpdir/round-${round}/review-and-fix.env"
 }
 
-# Test 1: Convergence — two small rounds terminate loop.
-# Round 2 is small (accepted=2) and round 3 is small (accepted=1) → converged after round 3.
+# Test 1: Convergence — one small non-degraded round terminates loop.
+# Round 3 is small (accepted=1) → converged after round 3 (prior round sizes ignored).
 cat > "$TMP/review-core-small-stub.sh" <<'EOF_CORE_SMALL'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -1611,7 +1611,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-two-small expected exit 0 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
-    || fail "converge-two-small should emit converged-small-changes (round 3=1 and round 2=2, both ≤3)"
+    || fail "converge-two-small should emit converged-small-changes (round 3=1 non-nit ≤5)"
 grep -Fq 'DEGRADED_ROUND=false' <<< "$out" || fail "converge-two-small degraded should be false"
 
 # Test 2: Convergence — Important finding blocks early-termination.
@@ -1689,7 +1689,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-degraded-gap-ignored expected exit 0 got $rc"; }
 grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
-    || fail "converge-degraded-gap-ignored should converge using rounds 1 and 3 only"
+    || fail "converge-degraded-gap-ignored should converge on round 3 alone"
 
 # Test 2a: Convergence — structured [important] concern blocks early-termination.
 work_structured_important="$TMP/converge-structured-important-blocks"
@@ -1709,9 +1709,8 @@ EOF_STRUCTURED_IMPORTANT
 set +e
 out=$(
     cd "$work_structured_important" && \
-    STUB_ACCEPTED=1 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-important-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
     "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 3 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id converge-structured-important-run
@@ -1720,7 +1719,7 @@ rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-structured-important expected exit 0 got $rc"; }
 if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
-    fail "converge-structured-important must NOT converge when prior round has [important] concern formatting"
+    fail "converge-structured-important must NOT converge when current round has Important findings"
 fi
 
 # Test 2b: Convergence — prior degraded small round is excluded from the comparison.
@@ -1744,9 +1743,8 @@ out=$(
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "converge-prior-degraded-excluded expected exit 0 got $rc"; }
-if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
-    fail "converge-prior-degraded-excluded must ignore degraded round 2 when evaluating convergence"
-fi
+grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
+    || fail "converge-prior-degraded-excluded should converge on round 3 when accepted count is small"
 
 # Test 3: Degraded round detection — banner excluded from convergence.
 # Round 3 has degraded panel; convergence must not fire even though accepts=1.
@@ -2080,99 +2078,131 @@ if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
     fail "churn-warning must not trigger early-termination"
 fi
 
-# Test 7: Single small round does NOT terminate (need two consecutive small rounds).
-work_single_small="$TMP/single-small-no-terminate"
-make_work_repo "$work_single_small"
-implement_tmp="$work_single_small/implement"
-mkdir -p "$implement_tmp"
-printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
-write_prior_round "$implement_tmp" 1 10   # round 1: 10 accepts (not small)
-set +e
-out=$(
-    cd "$work_single_small" && \
-    STUB_ACCEPTED=1 \
-    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
-    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 \
-        --session-env-path "$implement_tmp/session-env.sh" --run-id single-small-run
-)
-rc=$?
-set -e
-[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "single-small-no-terminate expected exit 0 got $rc"; }
-if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
-    fail "single-small: must NOT converge when only one small round (prev=10 is not small)"
-fi
-
-# Test 8: Non-default convergence threshold is honored.
-work_threshold="$TMP/convergence-threshold-one"
-make_work_repo "$work_threshold"
-implement_tmp="$work_threshold/implement"
-mkdir -p "$implement_tmp"
-printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
-write_prior_round "$implement_tmp" 1 2 false
-set +e
-out=$(
-    cd "$work_threshold" && \
-    STUB_ACCEPTED=1 \
-    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
-    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 \
-        --convergence-threshold 1 \
-        --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-one-run
-)
-rc=$?
-set -e
-[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "convergence-threshold-one expected exit 0 got $rc"; }
-if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
-    fail "convergence-threshold-one must not converge when prior round accepted count exceeds threshold 1"
-fi
-
-# Test 8a: Non-default convergence threshold positive path converges when both rounds meet the threshold.
-work_threshold_positive="$TMP/convergence-threshold-one-positive"
-make_work_repo "$work_threshold_positive"
-implement_tmp="$work_threshold_positive/implement"
-mkdir -p "$implement_tmp"
-printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
-write_prior_round "$implement_tmp" 1 1 false
-set +e
-out=$(
-    cd "$work_threshold_positive" && \
-    STUB_ACCEPTED=1 \
-    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
-    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 \
-        --convergence-threshold 1 \
-        --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-one-positive-run
-)
-rc=$?
-set -e
-[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "convergence-threshold-one-positive expected exit 0 got $rc"; }
-grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
-    || fail "convergence-threshold-one-positive should converge when both rounds are <= threshold 1"
-
-# Test 9: Invalid convergence threshold fails validation.
-work_threshold_invalid="$TMP/convergence-threshold-invalid"
-make_work_repo "$work_threshold_invalid"
-implement_tmp="$work_threshold_invalid/implement"
+# Test 7: Six non-nit accepted does NOT terminate (hardcoded bound is 5).
+work_six_non_nit="$TMP/six-non-nit-no-terminate"
+make_work_repo "$work_six_non_nit"
+implement_tmp="$work_six_non_nit/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 set +e
 out=$(
-    cd "$work_threshold_invalid" && \
+    cd "$work_six_non_nit" && \
+    STUB_ACCEPTED=6 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
     REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
     "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
-        --convergence-threshold nope \
-        --session-env-path "$implement_tmp/session-env.sh" --run-id threshold-invalid-run 2>&1
+        --session-env-path "$implement_tmp/session-env.sh" --run-id six-non-nit-run
 )
 rc=$?
 set -e
-[[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "convergence-threshold-invalid expected exit 2 got $rc"; }
-grep -Fq -- '--convergence-threshold must be a non-negative integer' <<< "$out" || fail "convergence-threshold-invalid should name validation error"
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "six-non-nit-no-terminate expected exit 0 got $rc"; }
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "six-non-nit: must NOT converge when non-nit accepted count is 6"
+fi
+
+# Test 8: Nit-heavy round still converges when non-nit accepted is within bound.
+cat > "$TMP/review-core-nit-heavy-stub.sh" <<'EOF_CORE_NIT'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/rejected-findings.md"
+: > "$out/findings.md"
+{
+  printf '### FINDING_1:\n- **Severity**: nit\n\n'
+  printf '### FINDING_2:\n- **Severity**: nit\n\n'
+  printf '### FINDING_3:\n- **Severity**: latent\n\n'
+} > "$out/accepted-findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":3,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=3\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_NIT
+chmod +x "$TMP/review-core-nit-heavy-stub.sh"
+
+work_nit_heavy="$TMP/nit-heavy-converge"
+make_work_repo "$work_nit_heavy"
+implement_tmp="$work_nit_heavy/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(
+    cd "$work_nit_heavy" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-nit-heavy-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id nit-heavy-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "nit-heavy-converge expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
+    || fail "nit-heavy round should converge when only one non-nit accepted remains"
+
+# Test 9: Rejected nits in findings.md must not shrink non-nit count (accepted population only).
+cat > "$TMP/review-core-rejected-nits-stub.sh" <<'EOF_CORE_REJ_NIT'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+{
+  i=1
+  while (( i <= 6 )); do
+    printf '### FINDING_%s:\n- **Severity**: latent\n\n' "$i"
+    i=$((i + 1))
+  done
+} > "$out/accepted-findings.md"
+{
+  j=1
+  while (( j <= 20 )); do
+    printf '### FINDING_%s:\n- **Severity**: nit\n\n' "$j"
+    j=$((j + 1))
+  done
+} > "$out/findings.md"
+: > "$out/rejected-findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":6,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=6\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_REJ_NIT
+chmod +x "$TMP/review-core-rejected-nits-stub.sh"
+
+work_rej_nits="$TMP/rejected-nits-six-latent"
+make_work_repo "$work_rej_nits"
+implement_tmp="$work_rej_nits/implement"
+mkdir -p "$implement_tmp"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
+set +e
+out=$(
+    cd "$work_rej_nits" && \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-rejected-nits-stub.sh" \
+    REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
+        --session-env-path "$implement_tmp/session-env.sh" --run-id rejected-nits-run
+)
+rc=$?
+set -e
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "rejected-nits-six-latent expected exit 0 got $rc"; }
+if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
+    fail "rejected-nits-six-latent must not converge when six latent findings are accepted"
+fi
 
 # Test 9a: review-and-fix.env writes literal values without shell expansion.
 cat > "$TMP/review-core-shell-literal.sh" <<EOF_CORE_SHELL_LITERAL
@@ -2220,21 +2250,40 @@ grep -Fq "$expected_review_core_status" "$implement_tmp/round-1/review-and-fix.e
     || fail "review-env-literal should persist the literal core status"
 
 # Test 10: Missing findings files fail closed during Important detection.
+cat > "$TMP/review-core-no-findings.sh" <<'EOF_CORE_NO_FINDINGS'
+#!/usr/bin/env bash
+set -euo pipefail
+out=""
+round="1"
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output-dir) out="$2"; shift 2 ;;
+    --round-num) round="$2"; shift 2 ;;
+    *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
+  esac
+done
+mkdir -p "$out"
+: > "$out/accepted-findings.md"
+: > "$out/rejected-findings.md"
+printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":1,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
+printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
+printf 'REVIEW_CORE_STATUS=ok\nROUND_NUM=%s\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+EOF_CORE_NO_FINDINGS
+chmod +x "$TMP/review-core-no-findings.sh"
+
 work_missing_findings="$TMP/converge-missing-findings-fails"
 make_work_repo "$work_missing_findings"
 implement_tmp="$work_missing_findings/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
-write_prior_round "$implement_tmp" 1 1 false
-rm -f "$implement_tmp/round-1/findings.md"
 set +e
 out=$(
     cd "$work_missing_findings" && \
     STUB_ACCEPTED=1 \
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
-    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-small-stub.sh" \
+    REVIEW_AND_FIX_REVIEW_CORE_SH="$TMP/review-core-no-findings.sh" \
     REVIEW_AND_FIX_RUN_EXTERNAL_AGENT_SH="$TMP/run-external-agent-stub.sh" \
-    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 2 \
+    "$SCRIPT" --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 \
         --session-env-path "$implement_tmp/session-env.sh" --run-id missing-findings-run 2>&1
 )
 rc=$?
@@ -2242,8 +2291,8 @@ set -e
 [[ "$rc" -eq 2 ]] || { echo "$out" >&2; fail "converge-missing-findings-fails expected exit 2 got $rc"; }
 grep -Fq 'findings file not readable for Important check' <<< "$out" || fail "converge-missing-findings-fails should fail closed on unreadable findings"
 
-# Test 11: Round 1 alone is small — no convergence fires (need prior round).
-work_round1_small="$TMP/round1-small-no-converge"
+# Test 11: Round 1 alone with small accepted count converges (single-round rule).
+work_round1_small="$TMP/round1-small-converge"
 make_work_repo "$work_round1_small"
 implement_tmp="$work_round1_small/implement"
 mkdir -p "$implement_tmp"
@@ -2260,10 +2309,9 @@ out=$(
 )
 rc=$?
 set -e
-[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "round1-small-no-converge expected exit 0 got $rc"; }
-if grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out"; then
-    fail "round1-small-no-converge: must NOT converge on round 1 (no prior round to compare)"
-fi
+[[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "round1-small-converge expected exit 0 got $rc"; }
+grep -Fq 'REVIEW_AND_FIX_STATUS=converged-small-changes' <<< "$out" \
+    || fail "round1-small-converge: should converge on round 1 when accepted count is small"
 fi  # end section: convergence
 
 if section_runs parsers; then
