@@ -1,0 +1,12 @@
+Reviewing the branch diff and tracing pre-coder snapshot readers/writers for correctness.
+**Branch (vs `main`):** `43b3801ed` Relocate pre-coder snapshots outside coder write grant; `6508b6b8f` larch-logs chore (not in the feature diff).
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **risk-integration** `skills/review-and-fix/scripts/review-and-fix.sh:273` — Relocation assumes Codex `exec --full-auto` cannot write under `$(dirname "$round_dir")/.pre-coder-snapshots/`; if `$IMPLEMENT_TMPDIR` (or its parent) lies under `$PWD` and `--full-auto` grants repo-wide write, a sibling snapshot dir may still be tamperable. That sandbox/layout assumption predates this branch; relocation is necessary but not sufficient in that configuration.
+- **correctness** `skills/review-and-fix/scripts/test-review-and-fix.sh` — No harness asserts Step 5 `structural_loc` still reads `pre-coder-head.txt` from `pre_coder_snapshot_dir` after relocation (`review-implement-step5-loop.sh:339-342`); a telemetry miswire would skew bulk-skip/substantial-round gates without failing the carryover unit tests. Low risk given the symmetric read/write change, but acceptance criterion #4 has no automated guard.
+- **correctness** (documented edge case) Cross-version resume with snapshots still under `round_dir` fails closed: readers only consult `.pre-coder-snapshots/`, so carryover may be denied and rounds may fail commits until re-snapshotted — intentional safe direction per plan.
+
+**Trace summary (carryover correctness):** All pre-dispatch writers (`snapshot_pre_coder_tracked_state`, main round ~1321-1325, MAV head-only ~400-402) and readers (`pre_coder_path_diff_file` / `pre_coder_path_cached_diff_file`, `round_coder_delta_paths`, `collect_round_stage_paths`, `path_is_pre_coder_carryover`, `round_tracked_dirty_outside_manifest`, `round_has_non_carryover_tracked_residue`, Step 5 telemetry) route through `pre_coder_snapshot_dir`. No stale `$round_dir/pre-coder-*` literals remain in production shell. `path_matches_pre_coder_snapshot` logic is unchanged; worktree/index carryover tests stage under `snap_dir`, repoint the negative control to `pre_coder_path_diff_file`, and assert the location invariant. MAV correctly omits `snapshot_pre_coder_tracked_state`, preserving head-only carryover tolerance.

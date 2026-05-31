@@ -349,27 +349,34 @@ capture_round_tracked_paths() {
     } | awk 'NF && !seen[$0]++ { print }'
 }
 
+pre_coder_snapshot_dir() {
+    local round_dir="$1"
+    printf '%s/.pre-coder-snapshots/%s\n' "$(dirname "$round_dir")" "$(basename "$round_dir")"
+}
+
 pre_coder_path_diff_file() {
     local round_dir="$1" path="$2"
-    local safe
+    local safe snap_dir
     safe=$(printf '%s' "$path" | tr "/\\" "__")
-    printf '%s/pre-coder-path-diffs/%s.patch\n' "$round_dir" "$safe"
+    snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+    printf '%s/pre-coder-path-diffs/%s.patch\n' "$snap_dir" "$safe"
 }
 
 pre_coder_path_cached_diff_file() {
     local round_dir="$1" path="$2"
-    local safe
+    local safe snap_dir
     safe=$(printf '%s' "$path" | tr "/\\" "__")
-    printf '%s/pre-coder-path-diffs/%s.cached.patch\n' "$round_dir" "$safe"
+    snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+    printf '%s/pre-coder-path-diffs/%s.cached.patch\n' "$snap_dir" "$safe"
 }
 
 snapshot_pre_coder_tracked_state() {
     local round_dir="$1" pre_head="$2"
-    local paths_file="$round_dir/pre-coder-tracked-paths.txt"
-    local snap_dir="$round_dir/pre-coder-path-diffs" path
-
+    local snap_dir paths_file path
+    snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+    paths_file="$snap_dir/pre-coder-tracked-paths.txt"
+    mkdir -p "$snap_dir/pre-coder-path-diffs"
     capture_round_tracked_paths > "$paths_file"
-    mkdir -p "$snap_dir"
     while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
         git diff "$pre_head" -- "$path" > "$(pre_coder_path_diff_file "$round_dir" "$path")" 2>/dev/null || true
@@ -406,7 +413,9 @@ path_matches_pre_coder_snapshot() {
 
 round_coder_delta_paths() {
     local round_dir="$1" pre_head="$2" paths_file="$3"
-    local pre_tracked="$round_dir/pre-coder-tracked-paths.txt" path
+    local pre_tracked snap_dir path
+    snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+    pre_tracked="$snap_dir/pre-coder-tracked-paths.txt"
 
     {
         git diff --name-only "$pre_head" 2>/dev/null || true
@@ -424,7 +433,8 @@ round_coder_delta_paths() {
 collect_round_stage_paths() {
     local round_dir="$1"
     local paths_file="$round_dir/coder-stage-paths.txt"
-    local pre_head_file="$round_dir/pre-coder-head.txt"
+    local pre_head_file
+    pre_head_file="$(pre_coder_snapshot_dir "$round_dir")/pre-coder-head.txt"
 
     if [[ -s "$pre_head_file" ]]; then
         round_coder_delta_paths "$round_dir" "$(cat "$pre_head_file")" "$paths_file"
@@ -448,16 +458,22 @@ stage_round_dirty_paths() {
 
 path_is_pre_coder_carryover() {
     local round_dir="$1" pre_head="$2" path="$3"
-    local pre_tracked="$round_dir/pre-coder-tracked-paths.txt"
+    local pre_tracked snap_dir
+    snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+    pre_tracked="$snap_dir/pre-coder-tracked-paths.txt"
     [[ -n "$pre_head" ]] || return 1
     [[ -s "$pre_tracked" ]] && grep -Fxq "$path" "$pre_tracked" || return 1
     path_matches_pre_coder_snapshot "$round_dir" "$pre_head" "$path"
 }
 
 round_tracked_dirty_outside_manifest() {
-    local manifest="$1" round_dir="${2:-}" path pre_head=""
-    if [[ -n "$round_dir" && -s "$round_dir/pre-coder-head.txt" ]]; then
-        pre_head="$(cat "$round_dir/pre-coder-head.txt")"
+    local manifest="$1" round_dir="${2:-}" path pre_head="" snap_dir pre_head_file=""
+    if [[ -n "$round_dir" ]]; then
+        snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+        pre_head_file="$snap_dir/pre-coder-head.txt"
+    fi
+    if [[ -n "$round_dir" && -s "$pre_head_file" ]]; then
+        pre_head="$(cat "$pre_head_file")"
     fi
     while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
@@ -474,9 +490,13 @@ round_tracked_dirty_outside_manifest() {
 }
 
 round_has_non_carryover_tracked_residue() {
-    local round_dir="$1" pre_head="" path
-    if [[ -n "$round_dir" && -s "$round_dir/pre-coder-head.txt" ]]; then
-        pre_head="$(cat "$round_dir/pre-coder-head.txt")"
+    local round_dir="$1" pre_head="" path snap_dir pre_head_file=""
+    if [[ -n "$round_dir" ]]; then
+        snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+        pre_head_file="$snap_dir/pre-coder-head.txt"
+    fi
+    if [[ -n "$round_dir" && -s "$pre_head_file" ]]; then
+        pre_head="$(cat "$pre_head_file")"
     fi
     while IFS= read -r path || [[ -n "$path" ]]; do
         [[ -n "$path" ]] || continue
@@ -1298,9 +1318,11 @@ _implement_round_body() {
         in_scope_count=$(count_findings "$in_scope_file")
         if (( in_scope_count > 0 )); then
             coder_env="$round_dir/coder.env"
-            git rev-parse HEAD > "$round_dir/pre-coder-head.txt" 2>/dev/null || rm -f "$round_dir/pre-coder-head.txt"
-            if [[ -s "$round_dir/pre-coder-head.txt" ]]; then
-                snapshot_pre_coder_tracked_state "$round_dir" "$(cat "$round_dir/pre-coder-head.txt")"
+            snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+            mkdir -p "$snap_dir"
+            git rev-parse HEAD > "$snap_dir/pre-coder-head.txt" 2>/dev/null || rm -f "$snap_dir/pre-coder-head.txt"
+            if [[ -s "$snap_dir/pre-coder-head.txt" ]]; then
+                snapshot_pre_coder_tracked_state "$round_dir" "$(cat "$snap_dir/pre-coder-head.txt")"
             fi
             set +e
             apply_findings_with_coder "$in_scope_file" "$round_dir" "$coder_env" "$round_num_dec"

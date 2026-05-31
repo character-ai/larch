@@ -500,20 +500,29 @@ carryover_pre_head=$(git -C "$work_carryover_guard" rev-parse HEAD)
 printf 'outside manifest\n' >> "$work_carryover_guard/other.txt"
 printf 'modified by coder\n' >> "$work_carryover_guard/src/main.py"
 carryover_round_dir="$work_carryover_guard/implement/round-1"
-mkdir -p "$carryover_round_dir/pre-coder-path-diffs"
-printf '%s\n' "$carryover_pre_head" > "$carryover_round_dir/pre-coder-head.txt"
-printf 'other.txt\n' > "$carryover_round_dir/pre-coder-tracked-paths.txt"
-git -C "$work_carryover_guard" diff "$carryover_pre_head" -- other.txt > "$carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
-: > "$carryover_round_dir/pre-coder-path-diffs/other.txt.cached.patch"
-printf 'src/main.py\n' > "$carryover_round_dir/coder-stage-paths.txt"
 # shellcheck disable=SC2317  # stub for eval'd carryover helpers from review-and-fix.sh
 larch_err() { printf '%s\n' "$*" >&2; }
+eval "$(sed -n '/^pre_coder_snapshot_dir/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^pre_coder_path_diff_file/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^pre_coder_path_cached_diff_file/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_matches_pre_coder_snapshot/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
+snap_dir="$(pre_coder_snapshot_dir "$carryover_round_dir")"
+_repo_root_cg=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
+case "$snap_dir" in
+    "$carryover_round_dir"/*) fail "pre_coder_snapshot_dir must not be under round_dir" ;;
+esac
+case "$snap_dir" in
+    "$_repo_root_cg"/*|"$_repo_root_cg") fail "pre_coder_snapshot_dir must not be under the repo root (coder grant root)" ;;
+esac
+mkdir -p "$snap_dir/pre-coder-path-diffs" "$carryover_round_dir"
+printf '%s\n' "$carryover_pre_head" > "$snap_dir/pre-coder-head.txt"
+printf 'other.txt\n' > "$snap_dir/pre-coder-tracked-paths.txt"
+git -C "$work_carryover_guard" diff "$carryover_pre_head" -- other.txt > "$snap_dir/pre-coder-path-diffs/other.txt.patch"
+: > "$snap_dir/pre-coder-path-diffs/other.txt.cached.patch"
+printf 'src/main.py\n' > "$carryover_round_dir/coder-stage-paths.txt"
 (
     cd "$work_carryover_guard"
     if round_tracked_dirty_outside_manifest "$carryover_round_dir/coder-stage-paths.txt" "$carryover_round_dir"; then
@@ -521,7 +530,7 @@ eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
     fi
     exit 1
 ) && fail "manifest-carryover-guard should skip unchanged carryover path"
-rm -f "$carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
+rm -f "$(pre_coder_path_diff_file "$carryover_round_dir" other.txt)"
 (
     cd "$work_carryover_guard"
     if round_tracked_dirty_outside_manifest "$carryover_round_dir/coder-stage-paths.txt" "$carryover_round_dir"; then
@@ -538,22 +547,31 @@ git -C "$work_index_carryover_guard" restore --worktree other.txt
 printf 'modified by coder\n' >> "$work_index_carryover_guard/src/main.py"
 index_carryover_pre_head=$(git -C "$work_index_carryover_guard" rev-parse HEAD)
 index_carryover_round_dir="$work_index_carryover_guard/implement/round-1"
-mkdir -p "$index_carryover_round_dir/pre-coder-path-diffs"
-printf '%s\n' "$index_carryover_pre_head" > "$index_carryover_round_dir/pre-coder-head.txt"
-printf 'other.txt\n' > "$index_carryover_round_dir/pre-coder-tracked-paths.txt"
-: > "$index_carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
-git -C "$work_index_carryover_guard" diff --cached "$index_carryover_pre_head" -- other.txt \
-    > "$index_carryover_round_dir/pre-coder-path-diffs/other.txt.cached.patch"
-printf 'src/main.py\n' > "$index_carryover_round_dir/coder-stage-paths.txt"
-index_only_blob=$(printf 'coder index-only mutation\n' | git -C "$work_index_carryover_guard" hash-object -w --stdin)
-git -C "$work_index_carryover_guard" update-index --cacheinfo 100644,"$index_only_blob",other.txt
 larch_err() { printf '%s\n' "$*" >&2; }
+eval "$(sed -n '/^pre_coder_snapshot_dir/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^pre_coder_path_diff_file/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^pre_coder_path_cached_diff_file/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_matches_pre_coder_snapshot/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
+index_snap_dir="$(pre_coder_snapshot_dir "$index_carryover_round_dir")"
+_repo_root_icg=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
+case "$index_snap_dir" in
+    "$index_carryover_round_dir"/*) fail "pre_coder_snapshot_dir must not be under round_dir" ;;
+esac
+case "$index_snap_dir" in
+    "$_repo_root_icg"/*|"$_repo_root_icg") fail "pre_coder_snapshot_dir must not be under the repo root (coder grant root)" ;;
+esac
+mkdir -p "$index_snap_dir/pre-coder-path-diffs" "$index_carryover_round_dir"
+printf '%s\n' "$index_carryover_pre_head" > "$index_snap_dir/pre-coder-head.txt"
+printf 'other.txt\n' > "$index_snap_dir/pre-coder-tracked-paths.txt"
+: > "$index_snap_dir/pre-coder-path-diffs/other.txt.patch"
+git -C "$work_index_carryover_guard" diff --cached "$index_carryover_pre_head" -- other.txt \
+    > "$index_snap_dir/pre-coder-path-diffs/other.txt.cached.patch"
+printf 'src/main.py\n' > "$index_carryover_round_dir/coder-stage-paths.txt"
+index_only_blob=$(printf 'coder index-only mutation\n' | git -C "$work_index_carryover_guard" hash-object -w --stdin)
+git -C "$work_index_carryover_guard" update-index --cacheinfo 100644,"$index_only_blob",other.txt
 (
     cd "$work_index_carryover_guard"
     if round_tracked_dirty_outside_manifest "$index_carryover_round_dir/coder-stage-paths.txt" "$index_carryover_round_dir"; then
@@ -2637,10 +2655,13 @@ fi  # end section: parsers
 if section_runs step5-starting-round; then
     step5_tmp="$TMP/step5-starting-round"
     mkdir -p "$step5_tmp"
+    PLUGIN_ROOT="$REPO_ROOT"
+    export PLUGIN_ROOT
     # shellcheck source=scripts/lib-implement-round-cap.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/scripts/lib-implement-round-cap.sh"
     eval "$(declare -f count_prior_degraded_rounds | sed '1s/count_prior_degraded_rounds/step5_original_count_prior_degraded_rounds/')"
+    eval "$(sed -n '/^pre_coder_snapshot_dir()/,/^}/p' "$SCRIPT")"
     # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
@@ -2966,6 +2987,106 @@ STUB
         || fail "step5 lint-fix terminal arm must surface stderr-tail before envelope"
     step5_assert_envelope "$out_file" stall true lint-fix-main-agent-required 1
     pass "step5-loop lint-fix-terminal-tail"
+
+    # Case: structural_loc uses the relocated pre-coder snapshot, not round_dir.
+    step5_reset_case relocated-structural-loc
+    case_dir="$STEP5_LAST_CASE_DIR"
+    make_work_repo "$case_dir/work"
+    pre_head=$(git -C "$case_dir/work" rev-parse HEAD)
+    for n in $(seq 1 120); do
+        printf 'line %s\n' "$n" >> "$case_dir/work/src/main.py"
+    done
+    git -C "$case_dir/work" add src/main.py
+    git -C "$case_dir/work" commit -qm 'large structural change'
+    post_head=$(git -C "$case_dir/work" rev-parse HEAD)
+    cat > "$case_dir/stub-checks.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'RELEVANT_CHECKS_OK=true\n'
+STUB
+    chmod +x "$case_dir/stub-checks.sh"
+    out_file="$case_dir/out.env"
+    err_file="$case_dir/err.log"
+    set +e
+    (
+        set -euo pipefail
+        cd "$case_dir/work"
+        IMPLEMENT_TMPDIR="$case_dir/impl"
+        STARTING_ROUND=1
+        ROUND_CAP=1
+        RUN_ID="step5-relocated-structural-loc"
+        PLUGIN_ROOT="$REPO_ROOT"
+        REVIEW_AND_FIX_RUN_RELEVANT_CHECKS_SH="$case_dir/stub-checks.sh"
+        emit_kv() { printf '%s=%s\n' "$1" "$2"; }
+        larch_err() { printf '%s\n' "$*" >&2; }
+        flush_review_batches() { :; }
+        kv_get() {
+            local file="$1" key="$2"
+            awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$file" 2>/dev/null || true
+        }
+        count_high_severity_accepted() { printf '0\n'; }
+        _implement_round_body() {
+            IRF_LAST_ROUND_STATUS=fix-applied
+            IRF_LAST_CODER_STATUS=applied
+            IRF_LAST_SKIPPED=0
+            IRF_LAST_FIX_COUNT=1
+            IRF_LAST_ROUND_DIR="$IMPLEMENT_TMPDIR/round-1"
+            IRF_LAST_ACCEPTED_FILE=""
+            IRF_LAST_FILES_HINT=""
+            mkdir -p "$(pre_coder_snapshot_dir "$IRF_LAST_ROUND_DIR")" "$IRF_LAST_ROUND_DIR"
+            printf '%s\n' "$pre_head" > "$(pre_coder_snapshot_dir "$IRF_LAST_ROUND_DIR")/pre-coder-head.txt"
+            printf '%s\n' "$post_head" > "$IRF_LAST_ROUND_DIR/post-coder-head.txt"
+            printf '%s\n' "$post_head" > "$IRF_LAST_ROUND_DIR/pre-coder-head.txt"
+            printf 'DEGRADED_ROUND=false\n' > "$IRF_LAST_ROUND_DIR/review-and-fix.env"
+            return 0
+        }
+        run_implement_loop
+    ) >"$out_file" 2>"$err_file"
+    relocated_structural_rc=$?
+    set -e
+    [[ "$relocated_structural_rc" -eq 0 ]] \
+        || fail "step5 relocated structural_loc expected exit 0 got $relocated_structural_rc"
+    step5_assert_envelope "$out_file" cap-hit false "" 1
+    pass "step5-loop relocated-structural-loc"
+
+    # Case: mav-apply writes pre-coder head into the relocated snapshot dir.
+    step5_reset_case mav-apply-relocated-pre-head
+    case_dir="$STEP5_LAST_CASE_DIR"
+    make_work_repo "$case_dir/work"
+    mav_head=$(git -C "$case_dir/work" rev-parse HEAD)
+    printf '### FINDING_1:\n' > "$case_dir/findings.md"
+    out_file="$case_dir/out.env"
+    err_file="$case_dir/err.log"
+    set +e
+    (
+        set -euo pipefail
+        cd "$case_dir/work"
+        IMPLEMENT_TMPDIR="$case_dir/impl"
+        ROUND_NUM=1
+        FINDINGS_FILE="$case_dir/findings.md"
+        PLUGIN_ROOT="$REPO_ROOT"
+        emit_kv() { printf '%s=%s\n' "$1" "$2"; }
+        larch_err() { printf '%s\n' "$*" >&2; }
+        kv_get() {
+            local file="$1" key="$2"
+            awk -F= -v key="$key" '$1 == key { sub(/^[^=]*=/, ""); print; exit }' "$file" 2>/dev/null || true
+        }
+        apply_findings_with_coder() {
+            local findings_file="$1" round_dir="$2" coder_env="$3" round_num_dec="$4"
+            [[ -f "$findings_file" && "$round_num_dec" == "1" ]] || return 2
+            mkdir -p "$round_dir"
+            printf 'CODER_STATUS=no-changes\n' > "$coder_env"
+            return 0
+        }
+        run_implement_mav_apply
+    ) >"$out_file" 2>"$err_file"
+    mav_apply_rc=$?
+    set -e
+    [[ "$mav_apply_rc" -eq 0 ]] || { cat "$err_file" >&2; fail "mav-apply relocated pre-head expected exit 0 got $mav_apply_rc"; }
+    mav_snap="$case_dir/impl/.pre-coder-snapshots/round-1/pre-coder-head.txt"
+    [[ "$(cat "$mav_snap")" == "$mav_head" ]] || fail "mav-apply should write relocated pre-coder-head.txt"
+    [[ ! -e "$case_dir/impl/round-1/pre-coder-head.txt" ]] || fail "mav-apply must not write pre-coder-head.txt under round_dir"
+    grep -Fq 'REVIEW_AND_FIX_STATUS=mav-apply-done' "$out_file" || fail "mav-apply should emit completion status"
+    pass "step5-loop mav-apply-relocated-pre-head"
 fi  # end section: step5-starting-round
 
 # Breadcrumb pin: round entry and coder dispatch breadcrumbs surface via stderr capture.

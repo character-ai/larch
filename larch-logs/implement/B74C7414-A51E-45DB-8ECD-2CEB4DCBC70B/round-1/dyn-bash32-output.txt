@@ -1,0 +1,14 @@
+Reviewing the branch diff and commit history for bash32/code-quality issues.
+**Branch commits** (since `main`):
+- `43b3801ed` — Relocate pre-coder snapshots outside coder write grant
+- `6508b6b8f` — chore(larch-logs): flush implement run (not part of the functional review)
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+The relocation is internally consistent for Bash 3.2: `pre_coder_snapshot_dir` uses only `local`, `printf`, `dirname`, and `basename`; path helpers quote `snap_dir`; `mkdir -p` ordering is correct (snapshot root before `pre-coder-head.txt`, patch subdir before `pre-coder-tracked-paths.txt`); all pre-coder readers/writers in `review-and-fix.sh` were repointed; step5 telemetry and MAV head-only writes match the plan; carryover tests `eval` helpers in dependency order and fix the negative-control `rm` via `pre_coder_path_diff_file`. Production loads `pre_coder_snapshot_dir` before `review-implement-step5-loop.sh` is sourced (helpers at ~352, source at ~1673).
+
+### Out-of-Scope Observations
+- **Sourcing coupling (pre-existing, now exercised):** `run_implement_loop` at `review-implement-step5-loop.sh:339` calls `pre_coder_snapshot_dir`, which exists only when `review-and-fix.sh` was sourced first. Step5 harness tests that dot-source step5-loop alone (`test-review-and-fix.sh:2477`, `2656`) do not hit that path today because they exit on `complete` or on lint-fail before the structural-diff block; production always loads both files in order.
+- **Security assumption (documented in plan, not enforced in code):** snapshot safety still depends on `$IMPLEMENT_TMPDIR` (and thus `dirname "$round_dir"`) lying outside Codex `--add-dir "$PWD"`; tmpdirs under the repo would leave `.pre-coder-snapshots` writable via the PWD grant.
+- **Test gap:** no harness asserts `structural_loc` with heads under `.pre-coder-snapshots/`; carryover tests cover the security-relevant predicate paths instead.
