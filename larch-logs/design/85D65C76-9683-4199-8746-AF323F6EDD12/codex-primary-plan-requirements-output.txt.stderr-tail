@@ -1,0 +1,5 @@
+Reading additional input from stdin...
+2026-05-30T23:04:58.950805Z ERROR rmcp::transport::worker: worker quit with fatal: Client error: HTTP request failed: http/request failed: error sending request for url (https://chatgpt.com/backend-api/wham/apps), when send initialized notification
+2026-05-30T23:05:01.984883Z ERROR codex_core::session: failed to record rollout items: thread 019e7b20-20a4-7263-ac3f-67c3215c4637 not found
+⏳ codex agent: still running (2m elapsed)
+❌ codex agent: FAILED (exit code 1, 149s elapsed, output 0 bytes)

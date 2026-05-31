@@ -1,0 +1,23 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-edge-output.txt|TOOL=codex|STATUS=FAILED|EXIT_CODE=1|FAILURE_REASON=Failed with exit code 1 after 20s. Output size: 0 bytes.
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-edge-output.txt)
+
+{"no_issues_found": true}
+
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-edge-output.txt.diag)
+
+Failed with exit code 1 after 20s. Output size: 0 bytes.
+
+## Failed-agent stderr tail (<TMPDIR>/codex-primary-plan-edge-output.txt.stderr-tail)
+
+Reading additional input from stdin...
+2026-05-30T22:20:52.520310Z ERROR codex_core::session: failed to record rollout items: thread 019e7af9-bbc7-7d03-8a0b-7d8ca7132ee0 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+
+## Launcher stderr (<TMPDIR>/codex-primary-plan-edge-output.txt.launch-stderr)
+
+(empty: <TMPDIR>/codex-primary-plan-edge-output.txt.launch-stderr)
+

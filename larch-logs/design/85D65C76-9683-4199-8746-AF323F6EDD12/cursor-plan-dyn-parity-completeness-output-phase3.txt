@@ -1,0 +1,14 @@
+Now I have the full data. Let me synthesize the findings.
+
+Key data points:
+- **NS retry loop (lines 1280-1348)**: calls `launch_outer_retry_or_mark` at line 1329 and `launch_cmd_json_retry_or_mark` at line 1337 — not named in the plan's four sites, but these call the helper functions whose bodies the plan modifies. The gap is whether `META_STDERR_SINK` is set before those calls.
+- **Extra callers**: `launch-cursor-implement.sh:328` and `launch-cursor-ci.sh:227` — pass 4 args, so after 6-arg extension they get `stderr_sink=""` → no STDERR_SINK written → correct behavior, no arg-count mismatch.
+- **Risk default**: `local risk="${5:-${RISK:-high}}"` — `:-` treats empty string same as unset, falls back to `${RISK:-high}`. Plan's claim is confirmed correct.
+- **launch-review.sh symmetry**: plan correctly accounts for codex's dual SIDECAR/`/dev/null` $RUN_EXTERNAL calls; intentional asymmetries are structural and don't affect STDERR_SINK forwarding.
+
+---
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/collect-agent-results.sh:1280-1348	NS (NOT_SUBSTANTIVE) retry pass calls launch_outer_retry_or_mark (line 1329) and launch_cmd_json_retry_or_mark (line 1337) but the plan covers only two meta parse sites: parse_retry_meta() (~504-532) and the inline parse at ~883-908 (transient/empty-output loop)	If the NS retry pass uses its own inline meta parse block rather than calling parse_retry_meta(), META_STDERR_SINK is not populated before lines 1329/1337; --stderr-sink is silently omitted on NOT_SUBSTANTIVE retries even when a sink was recorded in the .meta file	Confirm whether the NS retry loop calls parse_retry_meta() or has its own inline meta parse; if the latter, add a STDERR_SINK) arm to it as a third parse site
+
+[OUT_OF_SCOPE] `scripts/launch-cursor-implement.sh:328` and `scripts/launch-cursor-ci.sh:227` — both call `cursor_launcher_append_outer_meta` with 4 positional args. After the 6-arg extension, `$6` is unset so `stderr_sink=""` and no `STDERR_SINK=` line is written, which is correct (no arg-count mismatch). However, these launchers have no path to learn `--stderr-sink` (they are not in scope for this plan), so their own outer-launcher meta blocks will never carry `STDERR_SINK=`, meaning any future collector retry of those launchers would not forward the sink. Out of scope for this plan but worth tracking if those launchers gain sink support.

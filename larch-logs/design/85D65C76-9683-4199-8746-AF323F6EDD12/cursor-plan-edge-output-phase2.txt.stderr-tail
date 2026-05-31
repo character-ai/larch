@@ -1,0 +1,5 @@
+Reading additional input from stdin...
+2026-05-31T01:13:52.383381Z ERROR codex_models_manager::manager: failed to refresh available models: timeout waiting for child process to exit
+2026-05-31T01:14:39.543974Z ERROR codex_core::session: failed to record rollout items: thread 019e7b98-3201-7d42-bca8-e14189f71406 not found
+⏳ codex agent: still running (1m elapsed)
+❌ codex agent: FAILED (exit code 1, 70s elapsed, output 0 bytes)

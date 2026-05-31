@@ -1,0 +1,16 @@
+Step 3 plan-review panel aborted by operator at user request.
+Root cause: codex agents failed repeatedly with 'ERROR codex_core::session: failed to record rollout items: thread <id> not found' (exit 1, 0 bytes), and the panel waterfall kept retrying — the 'runs for many hours' bug.
+Outcome: no usable findings (voting-tally.md / accepted-plan-findings.md / rejected-findings.md / oos.md all empty); plan.txt proceeds unchanged.
+--- task output tail (codex failures) ---
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-30T22:20:55.409560Z ERROR codex_core::session: failed to record rollout items: thread 019e7af9-b798-7af3-a575-ec2aac860bed not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---
+--- failed agent stderr tail ---
+Reading additional input from stdin...
+2026-05-30T22:20:58.403720Z ERROR codex_core::session: failed to record rollout items: thread 019e7af9-c566-75f0-903c-347ebff370d0 not found
+❌ codex agent: FAILED (exit code 1, 20s elapsed, output 0 bytes)
+--- end failed agent stderr tail ---

@@ -1,0 +1,30 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -24,7 +24,7 @@
+ - Both the codex branch and the cursor branch have their own var-init region, argv-parse loop, inner `run-external-agent.sh` call, and `*_launcher_append_outer_meta` call. Apply the change symmetrically to both branches (parity per `.claude/rules/external-tool-launcher-parity.md`).
+ - Init: add `STDERR_SINK=""` to each branch's init block (codex ~line 100-110; cursor ~line 630-644).
+ - Parse: add `--stderr-sink) STDERR_SINK="${2:?--stderr-sink requires a value}"; shift 2 ;;` to both argv-parse loops (codex ~line 131; cursor ~line 661), before the `*) unknown flag` arm. This stops the retry forward from hitting `exit 2`.
+-- Validate the value symmetric to `run-external-agent.sh`: reject `..` traversal and embedded newline/CR before use. Reuse `validate_meta_scalar_path` if the script already sources the lib that defines it; otherwise add a minimal inline guard. Fail with `exit 2` and a `launch-review.sh:`-prefixed message on bad input.
++- Validate the value using `validate_meta_scalar_path` (charset-only allowlist, matching how `--output` is validated in `launch-review.sh`): reject embedded newline/CR before use. Do NOT add a `..` traversal check here — `..` is caught fail-closed by `validate_retry_stderr_sink_or_mark` in `collect-agent-results.sh` (symmetric to `OUTER_LAUNCHER`). Fail with `exit 2` and a `launch-review.sh:`-prefixed message on bad input.
+ - Thread to the inner launches: after each branch's parse, build `_RUN_EXTERNAL_SINK_ARGS=()` then `[[ -n "$STDERR_SINK" ]] && _RUN_EXTERNAL_SINK_ARGS+=(--stderr-sink "$STDERR_SINK")`. Insert `"${_RUN_EXTERNAL_SINK_ARGS[@]+"${_RUN_EXTERNAL_SINK_ARGS[@]}"}"` into each `"$RUN_EXTERNAL"` invocation after `--timeout "$TIMEOUT"` and before `--` (codex: both the SIDECAR and the `/dev/null` branches, ~lines 529 and 546; cursor: ~line 957, after `--capture-stdout-only`).
+ - Record in outer-meta: change both append call sites (codex ~line 594, cursor ~line 1010) to pass the sink as the 6th arg with an empty 5th risk arg to preserve the current `${RISK:-high}` default: `…_launcher_append_outer_meta "${OUTPUT}.meta" "$SCRIPT_DIR/launch-review.sh" "$PROMPT_FILE_SIDECAR" "$PWD" "" "$STDERR_SINK"`.
+ - Note: for `launch-review.sh`'s current capture modes the threaded sink is inert (codex routes stderr to `${OUTPUT}.sidecar`; cursor uses `--capture-stdout-only`, where the tail selector ignores `explicit_sink`). The change is correct/safe defensive plumbing — accept-and-honor rather than accept-and-ignore — and future-proofs the lane. The functional stderr-preservation win lands in the CMD_JSON path below.
+@@ -58,7 +58,7 @@
+ - Assert `external_launcher_append_outer_meta` writes `STDERR_SINK=` when the 6th arg is non-empty and omits it when empty/absent; assert the empty 5th risk arg still records `OUTER_LAUNCHER_RISK=high`.
+ 
+ ### UPDATED: `scripts/test-launch-review.sh`
+-- Per `.claude/rules/launcher-argv-test-coverage.md`: assert `--stderr-sink` is accepted (no `exit 2`) on both lanes, that a bad value (`..`/newline) is rejected with the exact message + exit code, that the value is threaded to the inner `run-external-agent.sh` argv, and that it lands in the outer `.meta`.
++- Per `.claude/rules/launcher-argv-test-coverage.md`: assert `--stderr-sink` is accepted (no `exit 2`) on both lanes, that a newline-bearing value is rejected with the exact `launch-review.sh:`-prefixed message + exit code 2 (`..`-only paths are NOT rejected at this layer — `..` is caught only by the collector's `validate_retry_stderr_sink_or_mark`), that the value is threaded to the inner `run-external-agent.sh` argv, and that it lands in the outer `.meta`.
+ 
+ ### UPDATED: `scripts/test-collect-agent-retry.sh`
+ - Assert `--stderr-sink` is forwarded on outer-launcher retry (both the `launch_outer_retry_or_mark()` helper and the inline empty-output path) and on CMD_JSON retry (both `launch_cmd_json_retry_or_mark()` and the inline path); assert a `..` value fails closed via `mark_retry_metadata_invalid`; assert no `--stderr-sink` is forwarded when the field is absent.
+@@ -91,7 +91,7 @@
+ ## Diff size estimate
+ Four shell scripts edited surgically (~10-25 changed lines each), four `.md` siblings, four
+ harness extensions. No new files.
+ 
+-diff_added: 220
++diff_added: 218
+ diff_deleted: 30
+-diff_lines: 250
++diff_lines: 248

@@ -1,0 +1,15 @@
+Reviewing the plan and validating proposed bash snippets against BASH_AUTHORING.md and the referenced scripts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lib-external-launcher-common.sh:25-30	Proposed `[[ -n "$stderr_sink" ]] && printf` as the final command in the `{ … } >> "$meta_path"` group returns exit status 1 when the 6th arg is empty/absent	Every no-sink caller (`launch-review.sh` codex/cursor at `594`/`1010`, `launch-cursor-ci.sh`, `launch-cursor-implement.sh`) runs under `set -euo pipefail`; `external_launcher_append_outer_meta` propagates the failed `&&` as the function’s return code, aborting the launcher on the common path even though the plan notes only that the sourced lib itself has no `set -e`	Use the same `if [[ -n "$stderr_sink" ]]; then printf 'STDERR_SINK=%s\n' "$stderr_sink"; fi` form already specified for `run-external-agent.sh`, or ensure the redirect group’s last command always succeeds (e.g. keep `OUTER_LAUNCHER_RISK=` unconditional and last)
+
+### 1. [correctness] `scripts/lib-external-launcher-common.sh:25-30`
+
+The plan adds `[[ -n "$stderr_sink" ]] && printf 'STDERR_SINK=%s\n' "$stderr_sink"` after the `OUTER_LAUNCHER_RISK=` line inside the existing `{ … } >> "$meta_path"` block, and justifies `&&` because the sourced lib has no `set -e`. That misses caller semantics: `external_launcher_append_outer_meta` ends with that compound command, so when `stderr_sink` is empty (the default for all current four-arg call sites and for any run without `--stderr-sink`) the `{ … }` group’s exit status is 1.
+
+Callers are all `set -e` scripts — `launch-review.sh:4`, `launch-cursor-ci.sh:10`, `launch-cursor-implement.sh:44` — and invoke append without guarding the return code (`launch-review.sh:594`, `1010`). The no-sink path would terminate before exit, breaking every normal review launch. The plan’s `if`-form choice for `run-external-agent.sh:193-200` is correct for the same reason; the lib helper needs the same pattern (or an unconditional final command in the group).
+
+**Suggested revision:** Replace the proposed `&& printf` with `if [[ -n "$stderr_sink" ]]; then printf 'STDERR_SINK=%s\n' "$stderr_sink"; fi`, matching the `run-external-agent.sh` writer.
+
+---
+
+**Exonerated (bash 3.2 / portability pass):** Proposed `local arr=(); [[ -n "$VAR" ]] && arr+=(…)` patterns in `launch-review.sh` and `collect-agent-results.sh` match existing repo idioms; empty-array `"${arr[@]+"${arr[@]}"}"` expansion is Bash 3.2-safe; no Bash 4+ constructs (`declare -A`, `mapfile`, `${var^^}`) appear in the plan; `run-external-agent.sh` correctly specifies `if`-form under `set -euo pipefail` (`scripts/run-external-agent.sh:64`); collector `&&` appends are fine under `set -uo pipefail` without `-e` (`scripts/collect-agent-results.sh:92`); standalone `[[ -n … ]] && arr+=()` lines in `set -e` callers are errexit-exempt per the `&&`-list rule and are already used throughout `launch-review.sh` (e.g. `65-67`).
