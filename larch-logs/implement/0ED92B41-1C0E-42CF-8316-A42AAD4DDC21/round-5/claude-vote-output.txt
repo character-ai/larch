@@ -1,0 +1,40 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- monolithic structure is faithful parity of lint-fix-loop.sh single dispatch; extracting helpers adds complexity to a 1:1 port
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- module size is inherent to parity scope; concern is forward-looking
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan says "no bash executed"; test_checks.py covers no-changes-stale and main-agent-required; untracked bash parity file is extra work beyond plan scope
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly requires only Python stub tests; bash-sourced RCC loop parity was never in acceptance criteria
+FINDING_5: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- plan says no-changes-stale applies only to dispatch-first mode; check-first exhausted after max_iter is correct per spec
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate stubs maintain test isolation; shared fixture coupling isn't clearly better
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- direct Path checks in _run_cursor are necessary for error handling; inherent stub limitation
+FINDING_14: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- if bash also accumulates run dirs, this is parity behavior; fix not clearly warranted
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dev/CI-only module not yet in production; Phase 7 wiring should add git-toplevel verification
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- _resolve_checks_log_path uses strict=True resolve with symlink check, providing meaningful TOCTOU protection
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- structural fix failures map to TRANSIENT in bash too; this is parity behavior
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- trivial wrapper provides explicit null→"" conversion boundary; complexity cost is negligible
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- redundant collection ensures correctness; minor inefficiency not worth restructuring a parity port
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- LoopResult is intentionally mutable; it is mutated in-place in _handle_fix_outcome; frozen would require architectural change
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- string API vs args file difference is intentional for Phase 4; Phase 7 wiring will bridge
+FINDING_27: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_28: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- production callers always pass allowed_tmpdir via run_checks_phase; fallback is benign
+FINDING_29: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false

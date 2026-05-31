@@ -1,0 +1,40 @@
+warning: `--full-auto` is deprecated; use `--sandbox workspace-write` instead.
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+2026-05-31T20:30:41.343904Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/python/checks.py:
+) -> tuple[tuple[str, ...], tuple[str, ...]] | None:
+    lib = scripts_dir / "lib-cursor-launcher-common.sh"
+    script = f"""
+set -euo pipefail
+source "{lib}"
+cursor_launcher_load_model_args 2>>"{preflight_log}"
+cursor_launcher_setup_auth_argv 2>>"{preflight_log}"
+printf '%s\\0' "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
+printf '\\0__DELIM__\\0'
+printf '%s\\0' "${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}"
+"""
+    result = runner.run(["bash", "-c", script])
+⏳ codex agent: still running (2m elapsed)
+2026-05-31T20:30:56.778878Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/python/checks.py:
+    script = f"""
+set -euo pipefail
+source "{lib}"
+cursor_launcher_load_model_args 2>>"{preflight_log}"
+cursor_launcher_setup_auth_argv 2>>"{preflight_log}"
+printf '%s\\0' "${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}"
+printf '\\0__DELIM__\\0'
+printf '%s\\0' "${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}"
+"""
+    result = runner.run(["bash", "-c", script])
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+⏳ codex agent: still running (5m elapsed)
+⏳ codex agent: still running (6m elapsed)
+⏳ codex agent: still running (7m elapsed)
+⏳ codex agent: still running (8m elapsed)
+⏳ codex agent: still running (9m elapsed)
+⏳ codex agent: still running (10m elapsed)
+⏳ codex agent: still running (11m elapsed)
+⏳ codex agent: still running (12m elapsed)
+⏳ codex agent: still running (13m elapsed)
+✓ codex agent: completed (exit code 0, 802s elapsed, output 451 bytes)
