@@ -320,7 +320,7 @@ else
 fi
 rm -f "$stderr_file"
 
-# --- Case t: larch-logs markdown stays in git-mode scope ------------------
+# --- Case t: larch-logs markdown excluded from git-mode scope ---------------
 reset_tree
 git -C "$TMPROOT" init >/dev/null 2>&1
 write_md "$TMPROOT/larch-logs/implement/run/final-summary.md" <<'EOF'
@@ -329,8 +329,13 @@ EOF
 git -C "$TMPROOT" add larch-logs/implement/run/final-summary.md >/dev/null 2>&1
 stderr_file=$(mktemp)
 rc=$(run_lint "$stderr_file")
-assert_case "t (git worktree scans larch-logs markdown)" 1 "$stderr_file" "$rc" \
-    "larch-logs/implement/run/final-summary.md:1:"
+assert_case "t (git worktree skips larch-logs markdown)" 0 "$stderr_file" "$rc" ""
+if grep -Fq "larch-logs/implement/run/final-summary.md" "$stderr_file"; then
+    echo "FAIL [t (git worktree skips larch-logs markdown)]: scanned excluded larch-logs path" >&2
+    FAIL=$((FAIL + 1))
+else
+    PASS=$((PASS + 1))
+fi
 rm -f "$stderr_file"
 
 # --- Case r: positional arguments rejected --------------------------------

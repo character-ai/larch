@@ -161,6 +161,52 @@ def _parse_checks_log(text: str) -> tuple[bool, bool, bool]:
     return has_precommit, has_agent_lint, has_agent_lint_warning
 
 
+def _scan_checks_log_markers(path: Path) -> tuple[bool, bool, bool]:
+    """Stream-scan the full log for phase/coverage markers (bash grep parity)."""
+    has_precommit = False
+    has_agent_lint = False
+    has_agent_lint_warning = False
+    try:
+        with path.open(encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                if "=== Running pre-commit" in line:
+                    has_precommit = True
+                if "=== Running agent-lint ===" in line:
+                    has_agent_lint = True
+                if "WARNING: agent-lint not found on PATH" in line:
+                    has_agent_lint_warning = True
+    except OSError:
+        return False, False, False
+    return has_precommit, has_agent_lint, has_agent_lint_warning
+
+
+def _read_log_file_text(path: Path) -> str | None:
+    try:
+        if not path.is_file() or path.is_symlink():
+            return None
+        return path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+
+
+def _mark_step_ledger(runner: Runner, canonical_tmp: Path, site: str) -> None:
+    if site == "step3":
+        label = "Step 3 — checks first pass"
+    elif site == "step6":
+        label = "Step 6 — checks second pass"
+    else:
+        return
+    scripts = _plugin_scripts_dir()
+    env = {**os.environ, "IMPLEMENT_TMPDIR": str(canonical_tmp)}
+    for script_name in ("token-ledger.sh", "timing-ledger.sh"):
+        script = scripts / script_name
+        if script.is_file() and os.access(script, os.X_OK):
+            _ = runner.run(
+                [str(script), "mark", label],
+                env=env,
+            )
+
+
 def _coverage_from_markers(
     *,
     ok: bool,
@@ -236,6 +282,7 @@ def run_relevant_checks(
             skipped=False,
             warn=None,
         )
+    _mark_step_ledger(runner, canonical_tmp, site)
     repo = Path(repo_root)
     check_script = repo / "scripts" / "relevant-checks.sh"
     if check_script.is_symlink() and not check_script.exists():
@@ -310,13 +357,25 @@ def run_relevant_checks(
             warn=None,
         )
     log_fd, log_file = allocated
-    result = runner.run(
-        [str(check_script)],
-        cwd=str(repo),
-    )
     try:
-        with os.fdopen(log_fd, "w", encoding="utf-8") as handle:
-            _ = handle.write(result.stdout + result.stderr)
+        try:
+            result = runner.run(
+                [str(check_script)],
+                cwd=str(repo),
+                stdout=log_fd,
+                stderr=log_fd,
+            )
+        except Exception:
+            return ChecksResult(
+                ok=False,
+                exit_code=1,
+                site=site,
+                redacted_log_path=None,
+                phase="unknown",
+                coverage="changed-file-only",
+                skipped=False,
+                warn=None,
+            )
         if not log_file.is_file() or log_file.is_symlink() or log_file.parent.resolve() != log_dir.resolve():
             return ChecksResult(
                 ok=False,
@@ -328,32 +387,10 @@ def run_relevant_checks(
                 skipped=False,
                 warn=None,
             )
-        log_text = _read_log_text_bounded(log_file, _PROMPT_TAIL_BYTES)
-        if log_text is None:
-            return ChecksResult(
-                ok=False,
-                exit_code=1,
-                site=site,
-                redacted_log_path=None,
-                phase="unknown",
-                coverage="changed-file-only",
-                skipped=False,
-                warn=None,
-            )
-    except OSError:
+    finally:
         with contextlib.suppress(OSError):
             os.close(log_fd)
-        return ChecksResult(
-            ok=False,
-            exit_code=1,
-            site=site,
-            redacted_log_path=None,
-            phase="unknown",
-            coverage="changed-file-only",
-            skipped=False,
-            warn=None,
-        )
-    has_precommit, has_agent_lint, has_warn = _parse_checks_log(log_text)
+    has_precommit, has_agent_lint, has_warn = _scan_checks_log_markers(log_file)
     ok = result.returncode == 0
     coverage = _coverage_from_markers(
         ok=ok,
@@ -378,12 +415,27 @@ def run_relevant_checks(
             warn=warn,
             raw_log_path=str(log_file),
         )
+    log_text = _read_log_file_text(log_file)
+    if log_text is None:
+        return ChecksResult(
+            ok=False,
+            exit_code=1,
+            site=site,
+            redacted_log_path=None,
+            phase="unknown",
+            coverage="changed-file-only",
+            skipped=False,
+            warn=warn,
+            raw_log_path=str(log_file),
+        )
     attempt = log_file.name.rsplit("-", 1)[-1].removesuffix(".log")
     redacted_file = log_dir / f"{site}-{attempt}.redacted.log"
     try:
         _ = redacted_file.write_text(redact.redact(log_text), encoding="utf-8")
         redacted_file.chmod(0o600)
     except OSError:
+        with contextlib.suppress(OSError):
+            redacted_file.unlink(missing_ok=True)
         return ChecksResult(
             ok=False,
             exit_code=1,
@@ -432,13 +484,18 @@ def _read_log_text_bounded(path: Path, max_bytes: int) -> str | None:
     try:
         if not path.is_file() or path.is_symlink():
             return None
-        data = path.read_bytes()
+        size = path.stat().st_size
+        with path.open("rb") as handle:
+            if size <= max_bytes:
+                data = handle.read()
+            else:
+                handle.seek(size - max_bytes)
+                data = handle.read()
     except OSError:
         return None
-    if len(data) <= max_bytes:
+    if size <= max_bytes:
         return data.decode("utf-8", errors="replace")
-    chunk = data[-max_bytes:]
-    return f"[truncated to last {max_bytes} bytes]\n" + chunk.decode("utf-8", errors="replace")
+    return f"[truncated to last {max_bytes} bytes]\n" + data.decode("utf-8", errors="replace")
 
 
 def _read_log_tail(path: Path, max_bytes: int) -> str:
@@ -960,10 +1017,7 @@ def _post_dispatch_forbidden_revert(
     *,
     cwd: str,
     forbidden: tuple[str, ...],
-    baseline_tracked: tuple[str, ...],
-    baseline_untracked: tuple[str, ...],
 ) -> int:
-    _ = baseline_tracked, baseline_untracked
     current_tracked = _capture_tracked_paths(runner, cwd=cwd)
     current_untracked = _capture_untracked_paths(runner, cwd=cwd)
     revert_count = 0
@@ -991,6 +1045,7 @@ def run_lint_fix(
     codex_present: bool,
     cursor_present: bool,
     run_parent: str,
+    allowed_tmpdir: str | None = None,
     target_cmd_display: str | None = None,
 ) -> FixOutcome:
     """Port of lint-fix-loop.sh single dispatch."""
@@ -1012,9 +1067,21 @@ def run_lint_fix(
             head_changed=False,
             coder_tool=None,
         )
-    parent = Path(run_parent)
-    canonical_tmp = parent.parent
-    log_path = _resolve_checks_log_path(checks_log, canonical_tmp)
+    if allowed_tmpdir is not None:
+        allowed_root = Path(allowed_tmpdir)
+        expected_loop = allowed_root / "lint-fix-loop"
+        if Path(run_parent).resolve() != expected_loop.resolve():
+            return FixOutcome(
+                status="failed",
+                delta_paths=(),
+                failure_reason="checks-log-invalid",
+                commit_sha=None,
+                head_changed=False,
+                coder_tool=None,
+            )
+    else:
+        allowed_root = Path(run_parent).resolve().parent
+    log_path = _resolve_checks_log_path(checks_log, allowed_root)
     if log_path is None:
         return FixOutcome(
             status="failed",
@@ -1055,8 +1122,9 @@ def run_lint_fix(
         )
     cwd = repo_root
     site_label = _site_label(site)
-    parent.mkdir(parents=True, exist_ok=True)
-    run_dir = Path(tempfile.mkdtemp(prefix=f"{site}.", dir=str(parent)))
+    run_parent_path = Path(run_parent)
+    run_parent_path.mkdir(parents=True, exist_ok=True)
+    run_dir = Path(tempfile.mkdtemp(prefix=f"{site}.", dir=str(run_parent_path)))
     baseline_tracked = _capture_tracked_paths(runner, cwd=cwd)
     baseline_untracked = _capture_untracked_paths(runner, cwd=cwd)
     try:
@@ -1181,8 +1249,6 @@ def run_lint_fix(
             runner,
             cwd=cwd,
             forbidden=forbidden,
-            baseline_tracked=baseline_tracked,
-            baseline_untracked=baseline_untracked,
         ) > 0:
             return FixOutcome(
                 status="failed",
@@ -1199,8 +1265,6 @@ def run_lint_fix(
             runner,
             cwd=cwd,
             forbidden=forbidden,
-            baseline_tracked=baseline_tracked,
-            baseline_untracked=baseline_untracked,
         ) > 0:
             return FixOutcome(
                 status="failed",
@@ -1365,7 +1429,7 @@ def _redacted_log_for_dispatch(
             return None
     except OSError:
         return None
-    log_text = _read_log_text_bounded(raw, _PROMPT_TAIL_BYTES)
+    log_text = _read_log_file_text(raw)
     if log_text is None:
         return None
     redacted = raw.with_suffix(raw.suffix + ".redacted")
@@ -1373,6 +1437,8 @@ def _redacted_log_for_dispatch(
         _ = redacted.write_text(redact.redact(log_text), encoding="utf-8")
         redacted.chmod(0o600)
     except OSError:
+        with contextlib.suppress(OSError):
+            redacted.unlink(missing_ok=True)
         return None
     if allowed_tmpdir is not None and _resolve_checks_log_path(str(redacted), allowed_tmpdir) is None:
         return None
@@ -1530,6 +1596,7 @@ def run_checks_phase(
             codex_present=codex_present,
             cursor_present=cursor_present,
             run_parent=run_parent,
+            allowed_tmpdir=str(canonical_tmp),
             target_cmd_display=target_cmd_display,
         )
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -39,17 +40,24 @@ class StubRunner:
         cwd: str | None = None,
         env: Mapping[str, str] | None = None,
         check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
     ) -> CommandResult:
         _ = timeout, env, check
         argv_tuple = tuple(argv)
         self.calls.append((argv_tuple, {"cwd": cwd}))
         if self.responses:
             result = self.responses.pop(0)
+            payload = (result.stdout + result.stderr).encode()
+            if stdout is not None:
+                _ = os.write(stdout, payload)
+            elif stderr is not None:
+                _ = os.write(stderr, payload)
             return CommandResult(
                 argv=argv_tuple,
                 returncode=result.returncode,
-                stdout=result.stdout,
-                stderr=result.stderr,
+                stdout=result.stdout if stdout is None else "",
+                stderr=result.stderr if stderr is None else "",
                 duration=result.duration,
             )
         return CommandResult(
@@ -63,6 +71,28 @@ class StubRunner:
 
 def _ok(stdout: str = "", *, rc: int = 0) -> CommandResult:
     return CommandResult(argv=(), returncode=rc, stdout=stdout, stderr="", duration=0.0)
+
+
+def _lint_fix_dirs(tmp_path: Path) -> tuple[str, str]:
+    allowed = str(tmp_path)
+    run_parent = str(tmp_path / "lint-fix-loop")
+    return allowed, run_parent
+
+
+def _with_ledger_stubs(
+    responses: list[CommandResult],
+    *,
+    site: str = "step6",
+) -> list[CommandResult]:
+    if site not in {"step3", "step6"}:
+        return list(responses)
+    scripts = Path(__file__).resolve().parents[1] / "scripts"
+    leading: list[CommandResult] = []
+    for name in ("token-ledger.sh", "timing-ledger.sh"):
+        script = scripts / name
+        if script.is_file() and os.access(script, os.X_OK):
+            leading.append(_ok(""))
+    return [*leading, *responses]
 
 
 @pytest.mark.parametrize(
@@ -656,7 +686,7 @@ def test_run_relevant_checks_parses_markers(
         "=== Running pre-commit\n"
         "=== Running agent-lint ===\n"
     )
-    runner = StubRunner([_ok(log_body)])
+    runner = StubRunner(_with_ledger_stubs([_ok(log_body)]))
     result = checks.run_relevant_checks(
         runner,
         site="step6",
@@ -682,7 +712,7 @@ def test_run_relevant_checks_agent_lint_missing_warn(
     check_script = scripts / "relevant-checks.sh"
     _ = check_script.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
     _ = check_script.chmod(0o755)
-    runner = StubRunner([_ok("WARNING: agent-lint not found on PATH\n")])
+    runner = StubRunner(_with_ledger_stubs([_ok("WARNING: agent-lint not found on PATH\n")]))
     result = checks.run_relevant_checks(
         runner,
         site="step6",
@@ -707,7 +737,7 @@ def test_run_relevant_checks_post_check_only_coverage(
     check_script = scripts / "relevant-checks.sh"
     _ = check_script.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
     _ = check_script.chmod(0o755)
-    runner = StubRunner([_ok("=== Running agent-lint ===\n")])
+    runner = StubRunner(_with_ledger_stubs([_ok("=== Running agent-lint ===\n")]))
     result = checks.run_relevant_checks(
         runner,
         site="step6",
@@ -733,7 +763,7 @@ def test_run_relevant_checks_fail_produces_redacted_log(
     _ = check_script.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
     _ = check_script.chmod(0o755)
     secret = "sk-ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD"
-    runner = StubRunner([_ok(f"=== Running pre-commit\n{secret}\n", rc=1)])
+    runner = StubRunner(_with_ledger_stubs([_ok(f"=== Running pre-commit\n{secret}\n", rc=1)]))
     result = checks.run_relevant_checks(
         runner,
         site="step6",
@@ -835,7 +865,8 @@ def test_run_lint_fix_no_tools(tmp_path: Path) -> None:
         repo_root=str(repo),
         codex_present=False,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "main-agent-required"
 
@@ -857,7 +888,8 @@ def test_run_lint_fix_empty_log(tmp_path: Path) -> None:
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "no-changes"
 
@@ -883,7 +915,8 @@ def test_run_lint_fix_missing_run_external_agent(
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "failed"
     assert outcome.failure_reason == "missing-run-external-agent"
@@ -913,7 +946,8 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "main-agent-required"
     assert outcome.failure_reason == "dispatch-failed"
@@ -935,6 +969,8 @@ def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     assert "-C" in leaf
     assert str(repo) in leaf
     assert leaf[-1]
+    assert "lib-external-launcher-common.sh" in flat
+    assert "--tool" in flat and "codex" in flat
 
 
 def test_run_lint_fix_dispatch_failure_ignores_health_classification(
@@ -970,7 +1006,8 @@ def test_run_lint_fix_dispatch_failure_ignores_health_classification(
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "main-agent-required"
     assert outcome.failure_reason == "dispatch-failed"
@@ -1009,7 +1046,8 @@ def test_run_lint_fix_git_commit_applied_path(tmp_path: Path) -> None:
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "applied"
     assert outcome.delta_paths == ("fixed.py",)
@@ -1049,7 +1087,8 @@ def test_run_lint_fix_forbidden_reset_failure_is_structural(tmp_path: Path) -> N
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "failed"
     assert outcome.failure_reason == "forbidden-path-reset-failed"
@@ -1088,7 +1127,8 @@ def test_run_lint_fix_committed_forbidden_delta_reset_success_is_violation(
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "failed"
     assert outcome.failure_reason == "forbidden-path-violation"
@@ -1121,7 +1161,8 @@ def test_run_lint_fix_forbidden_worktree_delta_is_reverted(tmp_path: Path) -> No
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "failed"
     assert outcome.failure_reason == "forbidden-path-violation"
@@ -1153,10 +1194,16 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
         repo_root=str(repo),
         codex_present=False,
         cursor_present=True,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "main-agent-required"
-    wrap_call, wrap_kwargs = runner.calls[7]
+    flat = " ".join(arg for call, _kw in runner.calls for arg in call)
+    assert "lib-external-launcher-common.sh" in flat
+    assert "--tool" in flat and "cursor" in flat
+    wrap_call, wrap_kwargs = next(
+        (call, kw) for call, kw in runner.calls if "cursor-wrap-prompt.sh" in " ".join(call)
+    )
     assert "cursor-wrap-prompt.sh" in " ".join(wrap_call)
     assert wrap_kwargs["cwd"] == str(repo)
     cursor_call = next(
@@ -1188,7 +1235,8 @@ def test_run_lint_fix_rejects_unknown_site(tmp_path: Path) -> None:
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "failed"
     assert outcome.failure_reason == "unknown-site"
@@ -1363,6 +1411,8 @@ def test_run_lint_fix_rejects_checks_log_outside_run_parent_root(tmp_path: Path)
     outside.mkdir()
     log = outside / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
+    session = tmp_path / "session"
+    session.mkdir()
     outcome = checks.run_lint_fix(
         StubRunner(),
         site="step6",
@@ -1370,7 +1420,8 @@ def test_run_lint_fix_rejects_checks_log_outside_run_parent_root(tmp_path: Path)
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "session" / "lint-fix-loop"),
+        allowed_tmpdir=str(session),
+        run_parent=str(session / "lint-fix-loop"),
     )
     assert outcome.status == "failed"
     assert outcome.failure_reason == "checks-log-invalid"
@@ -1443,7 +1494,8 @@ def test_run_lint_fix_codex_fail_cursor_success(tmp_path: Path, monkeypatch: pyt
         repo_root=str(repo),
         codex_present=True,
         cursor_present=True,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert dispatch_calls == ["codex", "cursor"]
     assert outcome.status == "applied"
@@ -1558,7 +1610,8 @@ def test_run_lint_fix_non_executable_run_external_agent(
         repo_root=str(repo),
         codex_present=True,
         cursor_present=False,
-        run_parent=str(tmp_path / "runs"),
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
     )
     assert outcome.status == "failed"
     assert outcome.failure_reason == "missing-run-external-agent"
@@ -1642,3 +1695,155 @@ def test_read_log_tail_truncation_uses_constant(tmp_path: Path) -> None:
     _ = log.write_bytes(b"a" * (checks._PROMPT_TAIL_BYTES + 1))  # pyright: ignore[reportPrivateUsage]
     text = checks._read_log_tail(log, checks._PROMPT_TAIL_BYTES)  # pyright: ignore[reportPrivateUsage]
     assert text.startswith(f"[truncated to last {checks._PROMPT_TAIL_BYTES} bytes]\n")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_read_log_text_bounded_uses_seek_not_full_read(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    log = tmp_path / "large.log"
+    _ = log.write_bytes(b"x" * (checks._PROMPT_TAIL_BYTES + 5000))  # pyright: ignore[reportPrivateUsage]
+
+    def fail_read_bytes(self: object, *_args: object, **_kwargs: object) -> bytes:
+        raise AssertionError("read_bytes must not load entire log for tail reads")
+
+    monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
+    text = checks._read_log_text_bounded(log, 100)  # pyright: ignore[reportPrivateUsage]
+    assert text is not None
+    assert text.startswith("[truncated to last 100 bytes]\n")
+
+
+def test_run_relevant_checks_rejects_invalid_tmpdir() -> None:
+    result = checks.run_relevant_checks(
+        StubRunner(),
+        site="step6",
+        tmpdir="/not-a-session",
+        repo_root="/tmp",
+    )
+    assert result.ok is False
+    assert result.exit_code == 2
+
+
+@pytest.mark.parametrize(
+    "session_path",
+    [
+        pytest.param(lambda name: Path("/tmp") / f"claude-implement-{name}", id="tmp"),
+        pytest.param(
+            lambda name: Path("/private/tmp") / f"claude-implement-{name}",
+            id="private_tmp",
+            marks=pytest.mark.skipif(
+                not Path("/private/tmp").is_dir(),
+                reason="/private/tmp not present",
+            ),
+        ),
+    ],
+)
+def test_validate_tmpdir_accepts_tmp_roots(
+    tmp_path: Path,
+    session_path: object,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    assert callable(session_path)
+    session = session_path(tmp_path.name)  # type: ignore[operator]
+    session.mkdir(parents=True, exist_ok=True)
+    monkeypatch.delenv("XDG_CACHE_HOME", raising=False)
+    assert checks.validate_tmpdir(str(session)) == session.resolve()
+
+
+def test_run_relevant_checks_parses_header_markers_in_large_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    session = cache / "larch" / "sessions" / "claude-implement-test"
+    session.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    scripts.mkdir(parents=True)
+    check_script = scripts / "relevant-checks.sh"
+    _ = check_script.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    _ = check_script.chmod(0o755)
+    log_body = (
+        "=== Running pre-commit\n"
+        "=== Running agent-lint ===\n"
+        + ("padding\n" * 50000)
+    )
+    runner = StubRunner(_with_ledger_stubs([_ok(log_body, rc=1)]))
+    result = checks.run_relevant_checks(
+        runner,
+        site="step6",
+        tmpdir=str(session),
+        repo_root=str(repo),
+    )
+    assert result.ok is False
+    assert result.phase == "agent-lint"
+    assert result.coverage == "changed-file-only"
+
+
+def test_run_relevant_checks_redaction_failure_removes_partial_file(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    session = cache / "larch" / "sessions" / "claude-implement-test"
+    session.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    scripts.mkdir(parents=True)
+    check_script = scripts / "relevant-checks.sh"
+    _ = check_script.write_text("#!/bin/sh\nexit 1\n", encoding="utf-8")
+    _ = check_script.chmod(0o755)
+    runner = StubRunner(_with_ledger_stubs([_ok("=== Running pre-commit\nfail\n", rc=1)]))
+
+    original_chmod = Path.chmod
+
+    def chmod_fail(self: Path, mode: int, *args: object, **kwargs: object) -> None:
+        if self.name.endswith(".redacted.log"):
+            raise OSError("chmod failed")
+        original_chmod(self, mode, *args, **kwargs)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(Path, "chmod", chmod_fail)
+    result = checks.run_relevant_checks(
+        runner,
+        site="step6",
+        tmpdir=str(session),
+        repo_root=str(repo),
+    )
+    assert result.redacted_log_path is None
+    redacted = session / "relevant-checks" / "step6-1.redacted.log"
+    assert not redacted.exists()
+
+
+@pytest.mark.skipif(
+    not (Path(__file__).resolve().parents[1] / "scripts" / "token-ledger.sh").is_file(),
+    reason="token-ledger.sh missing",
+)
+def test_run_relevant_checks_marks_step6_ledger(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cache = tmp_path / "cache"
+    session = cache / "larch" / "sessions" / "claude-implement-test"
+    session.mkdir(parents=True)
+    monkeypatch.setenv("XDG_CACHE_HOME", str(cache))
+    repo = tmp_path / "repo"
+    scripts = repo / "scripts"
+    scripts.mkdir(parents=True)
+    check_script = scripts / "relevant-checks.sh"
+    _ = check_script.write_text("#!/bin/sh\necho ok\n", encoding="utf-8")
+    _ = check_script.chmod(0o755)
+    runner = StubRunner(_with_ledger_stubs([_ok("")]))
+    _ = checks.run_relevant_checks(
+        runner,
+        site="step6",
+        tmpdir=str(session),
+        repo_root=str(repo),
+    )
+    ledger_calls = [
+        call for call, _kw in runner.calls
+        if any(name.endswith("token-ledger.sh") or name.endswith("timing-ledger.sh") for name in call)
+    ]
+    assert len(ledger_calls) == 2
+    assert all("Step 6 — checks second pass" in " ".join(call) for call in ledger_calls)
