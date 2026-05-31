@@ -2,6 +2,11 @@
 # Offline integration tests for plan-review-loop.sh (PATH-style stubs via LARCH_PLAN_REVIEW_*_SH).
 
 set -euo pipefail
+# Fast poll intervals so stub-backed slots don't pay the 10s (run-external-agent)
+# or 5s (wait-for-reviewers) sleep cycles — including revise-plan-with-waterfall
+# invocations triggered by multi-round scenarios before the per-section overrides.
+export RUN_EXTERNAL_AGENT_POLL_INTERVAL="${RUN_EXTERNAL_AGENT_POLL_INTERVAL:-0.05}"
+export WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-0.05}"
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 PLR="$ROOT/skills/design/scripts/plan-review-loop.sh"
