@@ -1,0 +1,22 @@
+Reviewing the plan against `cleanup.sh` and the documentation files it proposes to update.
+Verifying fail-safe behavior and whether the plan's SECURITY replacement omits `/tmp` file handling.
+The proposed doc fixes match `cleanup.sh` (cache: no top-level age filter + `should_remove_by_age`; `/tmp`: `-mtime +N` prefilter, dirs gated by nested scan, files removed on top-level age). A few plan gaps would leave stale or dropped operator text.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/cleanup/scripts/cleanup.md:21	Plan keeps the Edit-in-sync bullet verbatim while rewriting retention invariants above it	The bullet still says "top-level mtime age checks" after the body documents bounded nested-activity scans — the plan's own doc-drift mitigation recurs on the next retention edit	In the cleanup.md UPDATED step, reword Edit-in-sync to "bounded nested-activity scans (maxdepth 5), fail-safe skip-on-error, or symlink reaping" instead of "Keep" the existing Edit-in-sync text unchanged
+2	in_scope	important	correctness	skills/cleanup/scripts/test-cleanup.md:26	Same stale Edit-in-sync wording is not updated in the parallel harness doc	test-cleanup.md Edit-in-sync will still instruct contributors to sync "top-level mtime age pruning" after cleanup.md is corrected	Align test-cleanup.md Edit-in-sync with the same nested-scan phrasing when adding find-failure-skips-deletion (plan already touches this file)
+3	in_scope	important	security	SECURITY.md:234	SECURITY.md rewrite preserves "never-delete-through-symlink" and "unredacted-secrets" but not the keepalive / in-run-protection operator sentence	Implementers following the plan bullet list may drop "Operators should not run /cleanup expecting keepalive or in-run protection…" even though keepalive does not block deletion under nested-scan retention	Add an explicit preserve line for the keepalive / active-session-tree operator warning; rephrase "top-level mtime bound deletion" to nested-scan language
+
+**Numbered findings**
+
+1. **[correctness]** `skills/cleanup/scripts/cleanup.md:21` — The plan tells implementers to **keep** the Edit-in-sync bullet unchanged while replacing retention bullets with cache no pre-filter, `/tmp` `-mtime +N` prefilter, `find -maxdepth 5 -mtime -N` gating, depth-5 tradeoff, and find-failure fail-safe (all match ```18:107:skills/cleanup/scripts/cleanup.sh```). The retained Edit-in-sync still says "top-level mtime age checks," which contradicts the new invariants and undercuts "Doc-drift recurrence" in the plan. **Suggested revision:** Update Edit-in-sync in the same pass; do not "keep" the old wording.
+
+2. **[correctness]** `skills/cleanup/scripts/test-cleanup.md:26` — Same defect on the harness doc Edit-in-sync line ("top-level mtime age pruning"). The plan only adds `find-failure-skips-deletion` to the case list. **Suggested revision:** Reword line 26 when editing test-cleanup.md.
+
+3. **[security]** `SECURITY.md:234` — Proposed replacement content accurately fixes the backwards claims (cache is **not** enumerated with `-mtime +N`; deep fresh activity **retains** dirs; see ```52:58:skills/cleanup/scripts/cleanup.sh``` vs ```96:107:skills/cleanup/scripts/cleanup.sh```). The plan's preserve list omits the existing keepalive / in-run-protection operator guidance at the end of the paragraph. **Suggested revision:** Explicitly preserve and rephrase that sentence under nested-scan semantics.
+
+4. **[OUT_OF_SCOPE] [correctness]** `docs/skills.md:47` — Consumer catalog still says "Age is measured by each entry's top-level mtime." Not in the plan file list; would stay wrong after the five-file doc pass. Track for a follow-up doc sync if operator-facing catalog accuracy matters.
+
+5. **[OUT_OF_SCOPE] [correctness]** `docs/linting.md:285` — `make test-cleanup` blurb still says "top-level mtime age pruning." Not in plan scope; minor drift vs post-PR behavior.
+
+**Exonerated (SIMPLE tier):** Proposed replacements for `SECURITY.md`, `docs/configuration-and-permissions.md:284`, and `skills/cleanup/SKILL.md:9` match `should_remove_by_age` and the two-pass model. The new `find-failure-skips-deletion` test (stub on adjacent `-maxdepth` `5`, assert substring `failed to scan session activity`, `CACHE_REMOVED=0`) matches ```23:25:skills/cleanup/scripts/cleanup.sh```. Leaving legacy case blurbs in test-cleanup.md (e.g. "stale top-level mtime") is imprecise but not false for those fixtures. No code-logic changes proposed beyond comment + test.

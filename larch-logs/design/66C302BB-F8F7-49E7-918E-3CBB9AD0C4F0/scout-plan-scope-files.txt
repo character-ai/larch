@@ -1,0 +1,9 @@
+skills/cleanup/scripts/test-cleanup.sh
+skills/cleanup/scripts/cleanup.sh
+skills/cleanup/scripts/cleanup.md
+skills/cleanup/scripts/test-cleanup.md
+SECURITY.md
+docs/configuration-and-permissions.md
+skills/cleanup/SKILL.md
+docs/skills.md
+docs/linting.md

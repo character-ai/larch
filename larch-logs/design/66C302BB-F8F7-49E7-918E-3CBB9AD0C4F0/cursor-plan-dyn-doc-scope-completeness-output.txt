@@ -1,0 +1,20 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:24-25 / skills/cleanup/scripts/cleanup.md:12-13	`cleanup.md` update adds fail-safe and fail-open bullets but does not retire the existing swallowed-enumeration invariant	Implementer can leave bullet 12 ("Age-pass `find` enumeration errors are swallowed…") while adding nested-scan fail-safe (warn + skip delete) and enumeration fail-open bullets; contract doc then claims all age-pass `find` failures are silent, contradicting `should_remove_by_age` stderr warning on nested-scan failure (`skills/cleanup/scripts/cleanup.sh:23-25`)	In the `cleanup.md` ### UPDATED block, explicitly remove or replace invariant bullet 12 so only top-level enumeration failures are fail-open (no warning) and nested-scan failures are fail-safe (warn + keep)
+
+### 1. correctness: `plan.txt:24-25` / `skills/cleanup/scripts/cleanup.md:12-13`
+
+The `cleanup.md` section tells the implementer to add depth-5, nested-scan fail-safe, and enumeration fail-open bullets, and to keep symlink-reaping and bash-3.2 bullets, but it never tells them to drop the current invariant at ```12:13:skills/cleanup/scripts/cleanup.md```:
+
+```12:13:skills/cleanup/scripts/cleanup.md
+- Age-pass `find` enumeration errors are swallowed (`2>/dev/null` on `find`, `|| true` on the read loop); cleanup exits 0 and deletions may no-op with counts 0 rather than aborting.
+```
+
+That line reads as covering **all** age-pass `find` failures. After the PR, nested-scan failures in `should_remove_by_age` emit a warning and skip deletion (`skills/cleanup/scripts/cleanup.sh:23-25`), which contradicts a blanket “swallowed / no warning” invariant.
+
+**Suggested revision:** In the `cleanup.md` ### UPDATED instructions, explicitly **remove or replace** bullet 12 so enumeration fail-open and nested-scan fail-safe are not both present in conflicting form.
+
+---
+
+**Exhaustiveness (stale retention prose):** Grep across committed `*.md` / `*.sh` (excluding `larch-logs/`) shows the outdated “top-level mtime” / combined `-mindepth 1 -maxdepth 1 … -mtime` retention text only in the six sites the plan names plus `skills/cleanup/scripts/test-cleanup.md` (case-list lines 10–12 and Edit-in-sync line 26; the plan already updates line 26 and adds the new case). `README.md` and `docs/workflow-lifecycle.md` describe cleanup only as “by age” without the stale mtime model — no change required for correctness.
+
+**Cross-file wording consistency (proposed text):** The full model in the plan’s `SECURITY.md` and `cleanup.md` blocks aligns on cache vs `/tmp` enumeration, `find -maxdepth 5 -mtime -N` gating for dirs, depth-5 tradeoff, nested-scan fail-safe (warn + keep), and enumeration fail-open (exit 0, counts 0, no warning). Shorter entries (`SKILL.md`, `docs/configuration-and-permissions.md`, `docs/skills.md`, `docs/linting.md`) are abbreviated subsets, not contradictory, under the SIMPLE minimum-change bar.

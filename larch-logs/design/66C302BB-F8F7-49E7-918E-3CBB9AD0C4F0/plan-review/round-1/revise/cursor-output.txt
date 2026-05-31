@@ -1,0 +1,23 @@
+Checking `cleanup.md` for the Edit-in-sync bullet so the plan revision matches the repo.
+Producing the plan revision diff to address FINDING_2 (Edit-in-sync wording in `cleanup.md`).
+--- a/plan.txt
++++ b/plan.txt
+@@ -24,7 +24,7 @@
+ ### UPDATED: `skills/cleanup/scripts/cleanup.md`
+-Correct the stale invariants. Replace the "entry's own (top-level) mtime" retention description and the "cache and `/tmp` passes use `find -mindepth 1 -maxdepth 1 ... -mtime +N`" enumeration claim with the accurate model: the cache pass enumerates all non-symlink top-level entries with no age pre-filter and deletes a dir only when the bounded `find -maxdepth 5 -mtime -N` nested scan finds no file modified within the window; the `/tmp` pass pre-filters top-level entries by `-mtime +N` plus larch name patterns, then applies the same nested confirm for dirs. Add a bullet for the depth-5 tradeoff and a bullet for the find-failure fail-safe. Keep the symlink-reaping, bash-3.2, and Edit-in-sync bullets.
++Correct the stale invariants. Replace the "entry's own (top-level) mtime" retention description and the "cache and `/tmp` passes use `find -mindepth 1 -maxdepth 1 ... -mtime +N`" enumeration claim with the accurate model: the cache pass enumerates all non-symlink top-level entries with no age pre-filter and deletes a dir only when the bounded `find -maxdepth 5 -mtime -N` nested scan finds no file modified within the window; the `/tmp` pass pre-filters top-level entries by `-mtime +N` plus larch name patterns, then applies the same nested confirm for dirs. Add a bullet for the depth-5 tradeoff and a bullet for the find-failure fail-safe. Keep the symlink-reaping and bash-3.2 bullets. Reword the Edit-in-sync bullet trigger from "top-level mtime age checks" to bounded nested-activity / `maxdepth 5` retention (and find-failure fail-safe when that path changes) so it matches the updated Invariants.
+ 
+ ### UPDATED: `skills/cleanup/scripts/test-cleanup.md`
+ Add the new `find-failure-skips-deletion` case to the documented case list (Edit-in-sync with the harness).
+@@ -58,6 +58,6 @@
+ - Stub brittleness if the depth bound changes from 5: the stub keys on `-maxdepth 5`. Earliest signal — the new case fails right after a maxdepth edit. Mitigation: a comment in the case ties it to the documented bound, and the bound, test, and docs move together under Edit-in-sync.
+-- Doc-drift recurrence: mitigated by correcting all four sites against one accurate model in the same change.
++- Doc-drift recurrence: mitigated by correcting all four committed docs and the `cleanup.md` Edit-in-sync trigger against one accurate nested-activity model in the same change.
+ 
+ ## Testing strategy
+ - `make test-cleanup` (wired into `test-harnesses-12`) passes with the new case and all existing cases.
+@@ -65,4 +65,4 @@
+ - `make lint` passes for the edited `.sh` and `.md` files (bash32, shellcheck, markdownlint, agent-lint, drift-prone-prose, no-space-in-code-span).
+ 
+-diff_lines: 65
++diff_lines: 68

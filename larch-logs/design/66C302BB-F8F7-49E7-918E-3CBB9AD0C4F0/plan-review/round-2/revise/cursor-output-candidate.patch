@@ -1,0 +1,59 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -6,7 +6,7 @@ Close OOS #3229. Gap 1's bounded nested-scan already exists: `cleanup.sh` `shou
+ 
+ - **Gap 2** — no test covers the find-failure fail-safe (the `larch_err` warning + skip-deletion when the scan `find` itself errors).
+-- **Gap 1 "document the tradeoff"** — four committed docs still describe retention as "top-level mtime only," which is inaccurate. The `SECURITY.md` wording is backwards.
++- **Gap 1 "document the tradeoff"** — six consumer-facing docs still describe retention as "top-level mtime only" (or omit enumeration vs nested `find` failure semantics), which is inaccurate. The `SECURITY.md` wording is backwards on nested activity and must keep enumeration fail-open distinct from per-entry nested-scan fail-safe.
+ 
+ Fix both. No change to `cleanup.sh` runtime behavior (the only code edit is a comment).
+ 
+@@ -30,19 +30,25 @@ Comment-only edit at `should_remove_by_age`. State two facts: (1) the `maxdepth
+ - `unset PATH_PREFIX` after the case (same pattern as `multiple-claude-no-abort`).
+ 
+ ### UPDATED: `skills/cleanup/scripts/cleanup.md`
+-Correct the stale invariants. Replace the "entry's own (top-level) mtime" retention description and the "cache and `/tmp` passes use `find -mindepth 1 -maxdepth 1 ... -mtime +N`" enumeration claim with the accurate model: the cache pass enumerates all non-symlink top-level entries with no age pre-filter and deletes a dir only when the bounded `find -maxdepth 5 -mtime -N` nested scan finds no file modified within the window; the `/tmp` pass pre-filters top-level entries by `-mtime +N` plus larch name patterns, then applies the same nested confirm for dirs. Add a bullet for the depth-5 tradeoff and a bullet for the find-failure fail-safe. Keep the symlink-reaping and bash-3.2 bullets. Reword the Edit-in-sync bullet trigger from "top-level mtime age checks" to bounded nested-activity / `maxdepth 5` retention (and find-failure fail-safe when that path changes) so it matches the updated Invariants.
++Correct the stale invariants. Replace the "entry's own (top-level) mtime" retention description and the "cache and `/tmp` passes use `find -mindepth 1 -maxdepth 1 ... -mtime +N`" enumeration claim with the accurate model: the cache pass enumerates all non-symlink top-level entries with no age pre-filter and deletes a dir only when the bounded `find -maxdepth 5 -mtime -N` nested scan finds no file modified within the window; the `/tmp` pass pre-filters top-level entries by `-mtime +N` plus larch name patterns, then applies the same nested confirm for dirs. Add a bullet for the depth-5 tradeoff and a bullet for the nested-scan find-failure fail-safe (`larch_err` + skip that entry). **Keep** the existing line-12 enumeration-error bullet verbatim (top-level `find` enumeration errors swallowed — exit 0, counts may be 0, no warning — distinct from per-entry nested-scan failure). Keep the symlink-reaping and bash-3.2 bullets. Reword the Edit-in-sync bullet trigger from "top-level mtime age checks" to "bounded nested-activity / `maxdepth 5` retention (and nested-scan find-failure fail-safe when that path changes)" and extend the sync list to include `docs/skills.md` and `docs/linting.md`.
+ 
+ ### UPDATED: `skills/cleanup/scripts/test-cleanup.md`
+-Add the new `find-failure-skips-deletion` case to the documented case list (Edit-in-sync with the harness).
++Add the new `find-failure-skips-deletion` case to the documented case list (Edit-in-sync with the harness). Reword line 26 Edit-in-sync trigger: replace "top-level mtime age pruning" with "bounded nested-activity / maxdepth 5 retention (and nested-scan find-failure fail-safe)" to match the corrected `cleanup.md` trigger.
+ 
+ ### UPDATED: `SECURITY.md`
+-Fix the `/cleanup` session-tmpdir retention paragraph. It currently claims both passes enumerate with `find -mindepth 1 -maxdepth 1 ! -type l -mtime +N` and that "a directory touched only deep-down may retain an old top-level mtime and be removed at the window" — both wrong. Replace with: the cache pass enumerates all non-symlink top-level entries (no age pre-filter); the `/tmp` pass uses top-level `-mtime +N` plus larch name patterns; deletion is gated by a bounded `find -maxdepth 5 -mtime -N` nested-activity scan, so a directory with fresh deep activity (≤ 5 levels) is retained even when its top-level mtime is old; activity deeper than 5 levels does not protect it (depth-bound tradeoff); a failed scan `find` warns and skips deletion (fail-safe). Preserve the never-delete-through-symlink trust boundary and the unredacted-secrets sentences.
++Fix the `/cleanup` session-tmpdir retention paragraph. It currently claims both passes enumerate with `find -mindepth 1 -maxdepth 1 ! -type l -mtime +N` and that "a directory touched only deep-down may retain an old top-level mtime and be removed at the window" — both wrong. Replace with: the cache pass enumerates all non-symlink top-level entries (no age pre-filter); the `/tmp` pass uses top-level `-mtime +N` plus larch name patterns; deletion is gated by a bounded `find -maxdepth 5 -mtime -N` nested-activity scan, so a directory with fresh deep activity (≤ 5 levels) is retained even when its top-level mtime is old; activity deeper than 5 levels does not protect it (depth-bound tradeoff); a failed nested-scan `find` warns and skips that entry (fail-safe). **Preserve** the existing enumeration fail-open sentence: age-pass top-level `find` errors are swallowed (`2>/dev/null`, `|| true`) — cleanup exits 0, deletions may no-op with counts 0, no warning — distinct from nested-scan per-entry failure. Preserve the never-delete-through-symlink trust boundary and the unredacted-secrets sentences.
+ 
+ ### UPDATED: `docs/configuration-and-permissions.md`
+ In the `LARCH_CLEANUP_RETENTION_DAYS` entry, replace "when the entry's top-level mtime is older than the cutoff" with a phrasing keyed on the bounded nested scan: removed only when no file within a bounded scan (`find -maxdepth 5`) was modified inside the retention window, so a directory with fresh deep activity is retained. Keep the default/fallback sentence and the pointer to `cleanup.md`.
+ 
++### UPDATED: `docs/skills.md`
++In the `/cleanup` catalog blurb (line 47), replace "Age is measured by each entry's top-level mtime" with the same bounded nested-activity phrasing as `skills/cleanup/SKILL.md` (removed only when no file within `find -maxdepth 5` was modified inside the retention window; fresh deep activity retains the directory; depth-5 tradeoff; nested-scan failure warns and skips that entry).
++
++### UPDATED: `docs/linting.md`
++In the `make test-cleanup` table row (line 285), replace "top-level mtime age pruning" with nested-activity retention (`find -maxdepth 5`), depth-5 tradeoff, and the `find-failure-skips-deletion` case so the harness description matches what `test-cleanup.sh` exercises.
++
+ ### UPDATED: `skills/cleanup/SKILL.md`
+ Replace "an entry is removed only when its top-level mtime is older than the cutoff" with the accurate nested-activity phrasing (removed only when no file within the bounded `maxdepth 5` scan is newer than the cutoff; a directory with fresh deep activity is retained). Keep the surrounding sentences.
+ 
+ ## Approach
+-- The only code change is a comment. Behavior is already correct and tested, so the work is one new test plus four aligned doc corrections.
++- The only code change is a comment. Behavior is already correct and tested, so the work is one new test plus six aligned doc corrections (enumeration fail-open vs nested-scan fail-safe documented explicitly everywhere relevant).
+ - The test isolates the failure to the nested scan by keying the stub on `-maxdepth 5`. The other three `find` call sites (cache enumeration, `/tmp` pass, symlink reap) keep using the real binary, so the case stays focused on the `should_remove_by_age` fail-safe.
+ 
+ ## Edge cases
++- Do not conflate enumeration `find` failure (swallowed — exit 0, counts may be 0, no warning) with nested-scan failure (`larch_err` + skip that entry); both must stay documented in `cleanup.md` and `SECURITY.md`.
+ - The stub must delegate non-nested `find` calls. Otherwise cache enumeration fails, the stale dir is never enumerated, and the case would pass for the wrong reason. Keying on the `-maxdepth` `5` adjacent pair handles this.
+ - `larch_err` writes to stderr; the harness captures `2>&1` (the existing `invalid-retention-fallback` case proves this), so the warning assertion is reliable.
+ - Create no `/tmp` fixture in the new case, so only the cache nested scan triggers the stub failure.
+@@ -58,7 +64,7 @@ Replace "an entry is removed only when its top-level mtime is older than the cut
+ ## Failure modes
+ - Stub brittleness if the depth bound changes from 5: the stub keys on `-maxdepth 5`. Earliest signal — the new case fails right after a maxdepth edit. Mitigation: a comment in the case ties it to the documented bound, and the bound, test, and docs move together under Edit-in-sync.
+-- Doc-drift recurrence: mitigated by correcting all four committed docs and the `cleanup.md` Edit-in-sync trigger against one accurate nested-activity model in the same change.
++- Doc-drift recurrence: mitigated by correcting all six consumer-facing docs and the `cleanup.md` / `test-cleanup.md` Edit-in-sync triggers against one accurate nested-activity model and explicit enumeration fail-open vs nested fail-safe in the same change.
+ 
+ ## Testing strategy
+ - `make test-cleanup` (wired into `test-harnesses-12`) passes with the new case and all existing cases.
+ - `make lint` passes for the edited `.sh` and `.md` files (bash32, shellcheck, markdownlint, agent-lint, drift-prone-prose, no-space-in-code-span).
+ 
+-diff_lines: 68
++diff_lines: 86

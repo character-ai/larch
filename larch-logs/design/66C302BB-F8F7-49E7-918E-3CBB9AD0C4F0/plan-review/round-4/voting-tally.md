@@ -1,0 +1,13 @@
+# Plan Review Voting Tally
+
+## Findings
+
+| Item | YES | NO | Exon | JERR | Result |
+|---|---:|---:|---:|---:|---|
+| FINDING_1 | 1 | 0 | 2 | 0 | exonerated |
+
+## Reviewer Competition Scoreboard
+
+| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed | OOS-Accepted | OOS-Exonerated | OOS-Rejected | Score |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Cursor-Requirements | 1 | 0 | 1 | 0 | 0 | 0 | 0 | 0 | 0 |

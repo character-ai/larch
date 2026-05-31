@@ -1,0 +1,29 @@
+## Structured collector record
+
+REVIEWER_FILE=<TMPDIR>/codex-primary-plan-innovation-output.txt|TOOL=codex|STATUS=SENTINEL_TIMEOUT|EXIT_CODE=124|FAILURE_REASON=Process did not complete (sentinel file missing — possible crash or system kill)
+
+## Reviewer output (<TMPDIR>/codex-primary-plan-innovation-output.txt)
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/skills.md:47	Plan replaces the `/cleanup` retention blurb but does not require dropping the second sentence "Age is measured by each entry's top-level mtime."	Implementer adds the nested-activity sentence and leaves the top-level-mtime sentence; the catalog still states the wrong deletion model after a doc-sync PR.	In the `docs/skills.md` block, explicitly DELETE or reword that standalone "Age is measured…" sentence (merge into one nested-activity paragraph; keep only the reap / always-runnable sentences after).
+1	in_scope	latent	architecture	skills/cleanup/scripts/cleanup.md:21	Edit-in-sync trigger is reworded but still omits `docs/skills.md`, `docs/linting.md`, and `skills/cleanup/scripts/test-cleanup.md` even though this PR edits all three.	Future retention or maxdepth edits sync only the listed files; the six-file doc fix drifts again.	Extend the `cleanup.md` (and matching `test-cleanup.md:26`) Edit-in-sync lists to include every doc the plan touches, or drop the "six docs stop drift" claim.
+1	in_scope	nit	code-quality	skills/cleanup/scripts/test-cleanup.md:10-12	Case list still describes deletion as driven by "stale top-level mtime" while the PR corrects the model elsewhere in the same file.	Readers of the harness doc infer top-level mtime still gates deletion, contradicting line 14 and the updated invariants.	Reword those two case bullets to "no nested file within maxdepth 5 newer than cutoff" (same PR, no new tests).
+
+1. **[correctness]** `docs/skills.md:47` — The plan’s `docs/skills.md` edit replaces “the retention description” with nested-activity wording but does not tell implementers to remove the standalone sentence *“Age is measured by each entry's top-level mtime.”* That line can survive a literal apply and leave the skills catalog wrong. **Revision:** In the plan block, require deleting or merging that sentence so only the nested-scan model remains.
+
+2. **[architecture]** `skills/cleanup/scripts/cleanup.md:21` — The plan claims six-way doc alignment plus an updated Edit-in-sync trigger stops drift, yet the proposed `cleanup.md` / `test-cleanup.md` sync lists still omit `docs/skills.md`, `docs/linting.md`, and `test-cleanup.md` themselves. **Revision:** Add those paths to both Edit-in-sync bullets (minimal list edit).
+
+3. **[code-quality]** `skills/cleanup/scripts/test-cleanup.md:10-12` — The plan adds `find-failure-skips-deletion` and fixes line 26 but leaves older case bullets that still cite top-level mtime as the deletion gate. **Revision:** Reword `stale-dir-removed` and `stale-dir-with-keepalive-removed` to the bounded nested-activity model (no new harness scope).
+
+## Reviewer stderr (<TMPDIR>/codex-primary-plan-innovation-output.txt.diag)
+
+(file missing: <TMPDIR>/codex-primary-plan-innovation-output.txt.diag)
+
+## Failed-agent stderr tail (<TMPDIR>/codex-primary-plan-innovation-output.txt.stderr-tail)
+
+(file missing: <TMPDIR>/codex-primary-plan-innovation-output.txt.stderr-tail)
+
+## Launcher stderr (<TMPDIR>/codex-primary-plan-innovation-output.txt.launch-stderr)
+
+(file missing: <TMPDIR>/codex-primary-plan-innovation-output.txt.launch-stderr)
+

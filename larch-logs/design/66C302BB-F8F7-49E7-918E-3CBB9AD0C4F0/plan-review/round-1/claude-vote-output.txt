@@ -1,0 +1,3 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true -- plan text not read directly; concern is real if plan instructs keeping Edit-in-sync verbatim while invariants change to nested-activity semantics
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

@@ -1,0 +1,1 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan's comprehensive "Replace with:" description and explicit citation of the parenthetical as wrong gives a careful implementer enough signal to rewrite the whole retention model in the operator sentence; the gap is real but low-risk given the Replace-with scope
