@@ -1001,7 +1001,7 @@ resolve_oos_accepted_design_path() {
 # false (mirrors skills/implement/SKILL.md Step 8+ gate argv shape).
 run_oos_disposition_gate_if_required_before_oos_pending_false() {
     local gate_script="$PLUGIN_ROOT/skills/implement/scripts/oos-disposition-gate.sh"
-    local forked repo_un repo_root oos_mb oos_range run_id oos_ndjson oos_list oos_n gate_log gate_rc oos_design_path
+    local forked repo_un repo_root oos_mb oos_range run_id oos_ndjson oos_list oos_n gate_log gate_rc oos_design_path _had_errexit=0
     forked=$(read_state FORKED_TARGET)
     repo_un=$(read_state REPO_UNAVAILABLE)
     if [ "$forked" = "true" ] || [ "$repo_un" = "true" ]; then
@@ -1042,6 +1042,7 @@ run_oos_disposition_gate_if_required_before_oos_pending_false() {
     fi
     gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
     oos_design_path=$(resolve_oos_accepted_design_path "$IMPLEMENT_TMPDIR")
+    case $- in *e*) _had_errexit=1 ;; esac
     set +e
     bash "$gate_script" \
         "${gate_extra[@]+"${gate_extra[@]}"}" \
@@ -1049,7 +1050,7 @@ run_oos_disposition_gate_if_required_before_oos_pending_false() {
         --filed-urls-file "$IMPLEMENT_TMPDIR/oos-issues-created.md" \
         --commit-range "$oos_range" 2>"$gate_log"
     gate_rc=$?
-    set -e
+    (( _had_errexit )) && set -e
     return "$gate_rc"
 }
 
@@ -1515,7 +1516,7 @@ sanitize_diagram_or_placeholder() {
 }
 
 run_pr_prep_phase() {
-    local summary tests closes code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path
+    local summary tests closes code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path _had_errexit=0
     larch_err "→ ship-pr: PR prep"
     summary=$(manifest_summary)
     if [ -z "$summary" ]; then
@@ -1551,20 +1552,24 @@ run_pr_prep_phase() {
         exit 0
     fi
     fail_file=$(failure_capture_path pr-prep)
+    _had_errexit=0
+    case $- in *e*) _had_errexit=1 ;; esac
     set +e
     run_oos_disposition_gate_if_required_before_oos_pending_false
     gate_rc=$?
-    set -e
+    (( _had_errexit )) && set -e
     if [ "$gate_rc" -ne 0 ]; then
         if [ -f "$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log" ]; then
             cp "$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log" "$fail_file" 2>/dev/null || true
         fi
         record_failure pr-prep "oos-disposition-gate.sh" "$gate_rc" "$fail_file" Warnings
         if run_recovery_waterfall pr-prep fix "$fail_file" pr-prep-oos; then
+            _had_errexit=0
+            case $- in *e*) _had_errexit=1 ;; esac
             set +e
             run_oos_disposition_gate_if_required_before_oos_pending_false
             gate_rc=$?
-            set -e
+            (( _had_errexit )) && set -e
             if [ "$gate_rc" -eq 0 ]; then
                 state_set OOS_PENDING false
                 advance_phase pr-create
@@ -2262,8 +2267,8 @@ _write_per_job_args_file() {
 _run_per_job_command_capture() {
     larch_err "⚠ ship-pr: running local CI job ${_PJL_JOB_TOKEN:-unknown}"
     _RCC_RAW_LOG_PATH="$_PJL_LOG_PATH"
-    "${_PJA_ARGV[@]}" > "$_RCC_RAW_LOG_PATH" 2>&1
-    _RCC_CMD_RC=$?
+    _RCC_CMD_RC=0
+    "${_PJA_ARGV[@]}" > "$_RCC_RAW_LOG_PATH" 2>&1 || _RCC_CMD_RC=$?
 }
 
 _run_per_job_command_once() {

@@ -62,6 +62,10 @@ Checkpoint phases:
 
 The script also writes `$IMPLEMENT_TMPDIR/postbump-state.sh` before `implement-finalize.sh postbump` and `$IMPLEMENT_TMPDIR/finalize-state.sh` before `postmerge`. The finalize-state key order is shared with `scripts/restore-finalize-state.sh` through `scripts/lib-finalize-state-keys.sh`.
 
+## Errexit invariant
+
+`ship-pr.sh` runs with `set +uo pipefail` (no errexit) by design: helper outcomes are read from stdout envelopes and explicit `rc` captures. Any `set +e` … gate/helper block must **restore the prior errexit state** via the save/restore idiom (`case $- in *e*) had_errexit=1 ;; esac` before `set +e`, then `(( had_errexit )) && set -e` after `rc=$?`) — never an unconditional trailing `set -e`. Unconditional restore leaks errexit into later CI phases and can abort the script with a raw helper exit code outside the documented orchestrator table below.
+
 ## Exit Codes
 
 - `0` means complete or a prompt-side checkpoint (`OOS_PENDING=true`). `CI_PASSED=true` is internal state recorded when green CI is observed; it is not an exit-0 checkpoint because `ci-initial` now continues into `ci-merge` in the same invocation.
