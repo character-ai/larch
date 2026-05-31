@@ -138,6 +138,27 @@ def test_rev_count_raises_ship_error_on_non_integer_stdout() -> None:
         _ = git.rev_count(runner, "main", "HEAD")
 
 
+def test_commit_and_add_build_argv() -> None:
+    runner = StubRunner(
+        {
+            ("git", "add", "CHANGELOG.md"): CommandResult(
+                ("git", "add", "CHANGELOG.md"), 0, "", "", 0.01
+            ),
+            ("git", "commit", "-m", "Update CHANGELOG for 1.0.0", "--only", "CHANGELOG.md"): CommandResult(
+                ("git", "commit", "-m", "Update CHANGELOG for 1.0.0", "--only", "CHANGELOG.md"),
+                0,
+                "",
+                "",
+                0.01,
+            ),
+        },
+    )
+    assert git.add(runner, "CHANGELOG.md").returncode == 0
+    assert (
+        git.commit(runner, "Update CHANGELOG for 1.0.0", only="CHANGELOG.md").returncode == 0
+    )
+
+
 def test_fetch_and_show_file_argv() -> None:
     runner = StubRunner(
         {

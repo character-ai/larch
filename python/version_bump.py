@@ -69,13 +69,7 @@ class BumpVerify:
     status: CountStatus
 
 
-def _redact_outbound(text: str) -> str:
-    if not text:
-        return text
-    out = redact.redact(text)
-    if text.endswith("\n"):
-        return out
-    return out.rstrip("\n")
+_redact_outbound = redact.redact_outbound
 
 
 def _plugin_path(cwd: Path | None) -> Path:
@@ -288,9 +282,9 @@ def classify_bump(runner: Runner, *, cwd: str | None = None) -> BumpClassificati
         cwd=cwd,
     )
     if diff.returncode != 0:
-        name_status_lines: list[str] = []
-    else:
-        name_status_lines = diff.stdout.splitlines()
+        msg = "git diff --name-status failed during classify"
+        raise ShipError(msg)
+    name_status_lines = diff.stdout.splitlines()
 
     for line in name_status_lines:
         if not line.strip():
@@ -365,8 +359,8 @@ def classify_bump(runner: Runner, *, cwd: str | None = None) -> BumpClassificati
         current_version=current_version,
         new_version=new_version,
         bump_type=bump_type,
-        major_reasons=tuple(major),
-        minor_reasons=tuple(minor),
+        major_reasons=tuple(_redact_outbound(reason) for reason in major),
+        minor_reasons=tuple(_redact_outbound(reason) for reason in minor),
         reasoning=_redact_outbound(reasoning),
     )
 
@@ -575,7 +569,7 @@ def apply_bump(
 
         origin_show = git.show_file(
             runner,
-            "origin/main:.claude-plugin/plugin.json",
+            f"origin/main:{config.PLUGIN_JSON_PATH}",
             cwd=cwd,
         )
         origin_version = ""
@@ -628,7 +622,7 @@ def apply_bump(
 
     if backup_path.is_file():
         backup_path.unlink()
-    sha = git.rev_parse(runner, "HEAD", cwd=cwd)
+    sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
     return ApplyResult(applied=True, new_version=new_version, commit_sha=sha)
 
 
@@ -674,7 +668,7 @@ def drop_bump_commit(
     if tracked is None:
         return DropResult(dropped=False, error=_redact_outbound("git status failed"))
     if tracked:
-        return DropResult(dropped=False, error="uncommitted tracked changes")
+        return DropResult(dropped=False, error=_redact_outbound("uncommitted tracked changes"))
 
     found_at = find_commit_depth(
         runner,
@@ -684,11 +678,11 @@ def drop_bump_commit(
     )
 
     if found_at < 0:
-        return DropResult(dropped=False, error="no bump commit found")
+        return DropResult(dropped=False, error=_redact_outbound("no bump commit found"))
 
     parent_ref = f"HEAD~{found_at + 1}"
     if git.try_rev_parse(runner, parent_ref, cwd=cwd) is None:
-        return DropResult(dropped=False, error="parent does not exist")
+        return DropResult(dropped=False, error=_redact_outbound("parent does not exist"))
 
     changed = sorted_changed_files(
         runner,
@@ -716,7 +710,7 @@ def drop_bump_commit(
     ):
         return DropResult(dropped=False, error=_redact_outbound("unexpected changed files"))
 
-    old_sha = git.rev_parse(runner, f"HEAD~{found_at}", cwd=cwd)
+    old_sha = git.try_rev_parse(runner, f"HEAD~{found_at}", cwd=cwd) or ""
     replay_err = drop_replay_commit(
         runner,
         found_at=found_at,
@@ -725,6 +719,6 @@ def drop_bump_commit(
         rebase_error="git rebase --onto failed",
     )
     if replay_err is not None:
-        return DropResult(dropped=False, error=replay_err)
+        return DropResult(dropped=False, error=_redact_outbound(replay_err))
 
     return DropResult(dropped=True, old_sha=old_sha)

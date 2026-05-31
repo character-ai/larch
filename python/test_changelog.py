@@ -218,18 +218,24 @@ def test_parity_first_version_heading(tmp_path: Path) -> None:
     reason="commit-changelog.sh or bash unavailable",
 )
 def test_parity_commit_changelog_idempotent(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    _ = repo.mkdir()
-    changelog_md = repo / "CHANGELOG.md"
-    _ = changelog_md.write_text(MD_SAMPLE, encoding="utf-8")
+    repo_bash = tmp_path / "bash"
+    repo_py = tmp_path / "py"
+    for repo in (repo_bash, repo_py):
+        _ = repo.mkdir()
+        _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "config", "user.email", "t@e.com"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+        _ = (repo / "CHANGELOG.md").write_text(MD_SAMPLE, encoding="utf-8")
+        _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
     bash = subprocess.run(
         ["bash", str(COMMIT_CHANGELOG), "--version", "9.9.9"],
-        cwd=repo,
+        cwd=repo_bash,
         capture_output=True,
         text=True,
         check=False,
     )
-    py = changelog.commit_changelog(ProcRunner(), "9.9.9", cwd=str(repo))
+    py = changelog.commit_changelog(ProcRunner(), "9.9.9", cwd=str(repo_py))
     bash_kv: dict[str, str] = {}
     for line in bash.stdout.splitlines():
         if "=" in line:
@@ -726,6 +732,45 @@ def test_detect_conflict_format_extensionless_match() -> None:
     reason="drop-changelog-commit.sh or bash unavailable",
 )
 def test_parity_drop_changelog_success(tmp_path: Path) -> None:
+    def _seed_changelog_commit(repo: Path) -> None:
+        changelog_md = repo / "CHANGELOG.md"
+        updated = changelog._insert_version_heading_md(  # pyright: ignore[reportPrivateUsage]
+            changelog_md.read_text(encoding="utf-8"),
+            "9.9.9",
+        )
+        _ = changelog_md.write_text(updated, encoding="utf-8")
+        _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+        _ = subprocess.run(
+            ["git", "commit", "-q", "-m", "Update CHANGELOG for 9.9.9"],
+            cwd=repo,
+            check=True,
+        )
+
+    repo_bash = tmp_path / "bash"
+    repo_py = tmp_path / "py"
+    for repo in (repo_bash, repo_py):
+        _ = repo.mkdir()
+        _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "config", "user.email", "t@e.com"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "config", "user.name", "T"], cwd=repo, check=True)
+        _ = (repo / "CHANGELOG.md").write_text(MD_SAMPLE, encoding="utf-8")
+        _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+        _ = subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
+        _seed_changelog_commit(repo)
+    bash = subprocess.run(
+        ["bash", str(DROP_CHANGELOG), "--version", "9.9.9"],
+        cwd=repo_bash,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    py = changelog.drop_changelog_commit(ProcRunner(), "9.9.9", cwd=str(repo_py))
+    bash_kv = {k: v for line in bash.stdout.splitlines() if "=" in line for k, v in [line.split("=", 1)]}
+    assert bash_kv.get("DROPPED", "").lower() == "true"
+    assert str(py.dropped).lower() == bash_kv.get("DROPPED", "").lower()
+
+
+def test_drop_changelog_rebase_onto_when_below_head(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     _ = repo.mkdir()
     _ = subprocess.run(["git", "init", "-q"], cwd=repo, check=True)
@@ -734,24 +779,95 @@ def test_parity_drop_changelog_success(tmp_path: Path) -> None:
     _ = (repo / "CHANGELOG.md").write_text(MD_SAMPLE, encoding="utf-8")
     _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
     _ = subprocess.run(["git", "commit", "-q", "-m", "init"], cwd=repo, check=True)
-    _ = subprocess.run(
-        ["bash", str(COMMIT_CHANGELOG), "--version", "9.9.9"],
-        cwd=repo,
-        capture_output=True,
-        check=False,
+    _ = (repo / "README.md").write_text("feature\n", encoding="utf-8")
+    _ = subprocess.run(["git", "add", "README.md"], cwd=repo, check=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "feature"], cwd=repo, check=True)
+    changelog_md = repo / "CHANGELOG.md"
+    updated = changelog._insert_version_heading_md(  # pyright: ignore[reportPrivateUsage]
+        changelog_md.read_text(encoding="utf-8"),
+        "9.9.9",
     )
-    bash = subprocess.run(
-        ["bash", str(DROP_CHANGELOG), "--version", "9.9.9"],
+    _ = changelog_md.write_text(updated, encoding="utf-8")
+    _ = subprocess.run(["git", "add", "CHANGELOG.md"], cwd=repo, check=True)
+    _ = subprocess.run(
+        ["git", "commit", "-q", "-m", "Update CHANGELOG for 9.9.9"],
+        cwd=repo,
+        check=True,
+    )
+    result = changelog.drop_changelog_commit(ProcRunner(), "9.9.9", cwd=str(repo))
+    assert result.dropped is True
+    log = subprocess.run(
+        ["git", "log", "--oneline", "-5"],
         cwd=repo,
         capture_output=True,
         text=True,
-        check=False,
+        check=True,
     )
-    repo2 = tmp_path / "repo2"
-    shutil.copytree(repo, repo2)
-    py = changelog.drop_changelog_commit(ProcRunner(), "9.9.9", cwd=str(repo2))
-    bash_kv = {k: v for line in bash.stdout.splitlines() if "=" in line for k, v in [line.split("=", 1)]}
-    assert str(py.dropped).lower() == bash_kv.get("DROPPED", "").lower()
+    assert "Update CHANGELOG for 9.9.9" not in log.stdout
+
+
+def test_auto_resolve_markdown_heading_mismatch_returns_false(tmp_path: Path) -> None:
+    ours = "## [Unreleased]\n\n### Changed\n\n- Base\n"
+    theirs = "## [Different]\n\n### Changed\n\n- Base\n"
+    path = tmp_path / "CHANGELOG.md"
+    _ = path.write_text("placeholder\n", encoding="utf-8")
+    runner = StubRunner(
+        {
+            ("git", "show", ":2:CHANGELOG.md"): CommandResult(
+                ("git", "show", ":2:CHANGELOG.md"), 0, ours, "", 0.01
+            ),
+            ("git", "show", ":3:CHANGELOG.md"): CommandResult(
+                ("git", "show", ":3:CHANGELOG.md"), 0, theirs, "", 0.01
+            ),
+        },
+    )
+    assert changelog.auto_resolve(runner, "CHANGELOG.md", cwd=str(tmp_path)) is False
+    assert path.read_text(encoding="utf-8") == "placeholder\n"
+
+
+def test_auto_resolve_markdown_tail_mismatch_returns_false(tmp_path: Path) -> None:
+    ours = """# Changelog
+
+## Unreleased
+
+### Changed
+
+- Base
+
+## [1.0.0]
+
+### Fixed
+
+- Tail A
+"""
+    theirs = """# Changelog
+
+## Unreleased
+
+### Changed
+
+- Base
+
+## [1.0.0]
+
+### Fixed
+
+- Tail B
+"""
+    path = tmp_path / "CHANGELOG.md"
+    _ = path.write_text("placeholder\n", encoding="utf-8")
+    runner = StubRunner(
+        {
+            ("git", "show", ":2:CHANGELOG.md"): CommandResult(
+                ("git", "show", ":2:CHANGELOG.md"), 0, ours, "", 0.01
+            ),
+            ("git", "show", ":3:CHANGELOG.md"): CommandResult(
+                ("git", "show", ":3:CHANGELOG.md"), 0, theirs, "", 0.01
+            ),
+        },
+    )
+    assert changelog.auto_resolve(runner, "CHANGELOG.md", cwd=str(tmp_path)) is False
+    assert path.read_text(encoding="utf-8") == "placeholder\n"
 
 
 @pytest.mark.skipif(

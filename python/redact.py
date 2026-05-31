@@ -269,3 +269,13 @@ def redact(text: str) -> str:
     if paths_out and not paths_out.endswith("\n"):
         paths_out += "\n"
     return paths_out
+
+
+def redact_outbound(text: str) -> str:
+    """Redact outbound diagnostics; preserve caller newline intent."""
+    if not text:
+        return text
+    out = redact(text)
+    if text.endswith("\n"):
+        return out
+    return out.rstrip("\n")

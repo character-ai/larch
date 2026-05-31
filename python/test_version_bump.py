@@ -14,7 +14,7 @@ import pytest
 import config
 import proc
 import version_bump
-from errors import Stalled
+from errors import ShipError, Stalled
 from proc import CommandResult
 
 
@@ -75,6 +75,23 @@ def _parse_kv(stdout: str) -> dict[str, str]:
             key, value = line.split("=", 1)
             out[key] = value
     return out
+
+
+def test_apply_bump_error_redaction() -> None:
+    home_path = "/Users/secret/larch6/skills/foo/SKILL.md"
+    runner = StubRunner(
+        {
+            ("git", "status", "--porcelain"): CommandResult(
+                ("git", "status", "--porcelain"),
+                0,
+                f"UU {home_path}\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+    result = version_bump.apply_bump(runner, "1.0.1")
+    assert "/Users/secret" not in result.error
 
 
 def test_bump_branch_guard_matrix() -> None:
@@ -829,6 +846,28 @@ def test_classify_added_skill_minor(tmp_path: Path) -> None:
     assert result.bump_type == "MINOR"
 
 
+def test_classify_diff_failure_raises_ship_error(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    _ = (plugin / "plugin.json").write_text('{"version":"1.0.0"}\n', encoding="utf-8")
+    runner = _classify_stub()
+    diff_key = (
+        "git",
+        "diff",
+        "-M",
+        "--name-status",
+        "base1234567890",
+        "HEAD",
+        "--",
+        "skills",
+        "agents",
+    )
+    runner.responses[diff_key] = CommandResult(diff_key, 1, "", "fatal", 0.01)
+    with pytest.raises(ShipError, match="git diff"):
+        _ = version_bump.classify_bump(runner, cwd=str(repo))
+
+
 def test_classify_renamed_skill_major(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     plugin = repo / ".claude-plugin"
@@ -1119,3 +1158,55 @@ def test_parity_drop_bump_allow_changelog_only(tmp_path: Path) -> None:
     )
     bash_kv = _parse_kv(bash.stdout)
     assert str(py.dropped).lower() == bash_kv.get("DROPPED", "").lower()
+
+
+@pytest.mark.skipif(
+    not DROP_SH.is_file() or shutil.which("bash") is None,
+    reason="drop-bump-commit.sh or bash unavailable",
+)
+def test_parity_drop_bump_success_plugin_only(tmp_path: Path) -> None:
+    def _seed_bump(repo: Path) -> None:
+        plugin = repo / ".claude-plugin/plugin.json"
+        _ = plugin.write_text('{"version":"2.0.0"}\n', encoding="utf-8")
+        _ = subprocess.run(["git", "add", plugin], cwd=repo, check=True)
+        _ = subprocess.run(
+            ["git", "commit", "-q", "-m", "Bump version to 2.0.0"],
+            cwd=repo,
+            check=True,
+        )
+
+    repo_bash = _init_bump_repo(tmp_path / "bash")
+    repo_py = _init_bump_repo(tmp_path / "py")
+    _seed_bump(repo_bash)
+    _seed_bump(repo_py)
+    bash = subprocess.run(
+        ["bash", str(DROP_SH)],
+        cwd=repo_bash,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    py = version_bump.drop_bump_commit(ProcRunner(), cwd=str(repo_py))
+    bash_kv = _parse_kv(bash.stdout)
+    assert bash_kv.get("DROPPED", "").lower() == "true"
+    assert str(py.dropped).lower() == bash_kv.get("DROPPED", "").lower()
+    assert json.loads((repo_py / ".claude-plugin/plugin.json").read_text())["version"] == "1.2.2"
+    assert json.loads((repo_bash / ".claude-plugin/plugin.json").read_text())["version"] == "1.2.2"
+
+
+def test_drop_replay_abort_failure_reports_stuck_rebase() -> None:
+    from bump_worktree import drop_replay_commit
+
+    runner = StubRunner(
+        {
+            ("git", "rebase", "--onto", "HEAD~2", "HEAD~1"): CommandResult(
+                ("git", "rebase", "--onto", "HEAD~2", "HEAD~1"), 1, "", "conflict", 0.01
+            ),
+            ("git", "rebase", "--abort"): CommandResult(
+                ("git", "rebase", "--abort"), 1, "", "fatal", 0.01
+            ),
+        },
+    )
+    err = drop_replay_commit(runner, found_at=1)
+    assert err is not None
+    assert "stuck mid-rebase" in err

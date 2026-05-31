@@ -36,13 +36,7 @@ class ChangelogFormat(Enum):
     RST = "rst"
 
 
-def _redact_outbound(text: str) -> str:
-    if not text:
-        return text
-    out = redact.redact(text)
-    if text.endswith("\n"):
-        return out
-    return out.rstrip("\n")
+_redact_outbound = redact.redact_outbound
 
 
 def _rst_version_from_title(title: str) -> str | None:
@@ -160,7 +154,13 @@ def _rst_merge_first_index(lines: list[str]) -> int:
 
 def _rst_section_end_index(lines: list[str], anchor: int) -> int:
     """Index of the next section after the anchor title (exclusive end of anchor block)."""
-    for idx in _rst_release_section_indices(lines):
+    release_indices = _rst_release_section_indices(lines)
+    if anchor in release_indices:
+        for idx in release_indices:
+            if idx > anchor:
+                return idx
+        return len(lines)
+    for idx in release_indices:
         if idx > anchor:
             return idx
     for idx in _rst_title_indices(lines):
@@ -463,33 +463,65 @@ def _write_rst_entry(
     if categories.strip():
         entry_lines.extend(categories.rstrip("\n").splitlines())
 
-    anchor = _rst_merge_first_index(lines)
-    if anchor < 0:
-        raise ChangelogError("no anchor found for changelog entry", code=3)
-
-    if (
-        duplicate_version_heading_count(text, version, fmt=ChangelogFormat.RST) > 0
-        and (not replaces_version or replaces_version == version)
-    ):
-        raise ChangelogError("duplicate version heading", code=4)
-
     ends_with_newline = text.endswith("\n")
-    if replaces_version and replaces_version != version:
-        return _drop_rst_section(
-            _insert_rst_after(
-                lines,
-                anchor,
-                entry_lines,
-                ends_with_newline=ends_with_newline,
-            ),
-            replaces_version,
+    release_indices = _rst_release_section_indices(lines)
+    release_set = set(release_indices)
+    out: list[str] = []
+    inserted = False
+    match_count = 0
+    i = 0
+    while i < len(lines):
+        line = lines[i]
+        at_release = i in release_set
+        version_match = at_release and _rst_matches_version_title(line, version)
+        replace_match = (
+            at_release
+            and replaces_version
+            and replaces_version != version
+            and _rst_matches_version_title(line, replaces_version)
         )
-    return _insert_rst_after(
-        lines,
-        anchor,
-        entry_lines,
-        ends_with_newline=ends_with_newline,
-    )
+        if version_match or replace_match:
+            match_count += 1
+            if match_count > 1:
+                raise ChangelogError("duplicate version heading", code=4)
+            if not inserted:
+                out.extend(entry_lines)
+                inserted = True
+            end = len(lines)
+            for j in release_indices:
+                if j > i:
+                    end = j
+                    break
+            if end < len(lines):
+                out.append("")
+            i = end
+            continue
+        out.append(line)
+        i += 1
+
+    if not inserted:
+        anchor = _rst_merge_first_index(lines)
+        if anchor < 0:
+            raise ChangelogError("no anchor found for changelog entry", code=3)
+        if replaces_version and replaces_version != version:
+            return _drop_rst_section(
+                _insert_rst_after(
+                    lines,
+                    anchor,
+                    entry_lines,
+                    ends_with_newline=ends_with_newline,
+                ),
+                replaces_version,
+            )
+        return _insert_rst_after(
+            lines,
+            anchor,
+            entry_lines,
+            ends_with_newline=ends_with_newline,
+        )
+
+    result = "\n".join(out)
+    return result + ("\n" if ends_with_newline else "")
 
 
 def _insert_rst_after(
@@ -706,7 +738,7 @@ def commit_changelog(
     path: str = config.CHANGELOG_DEFAULT_PATH,
     cwd: str | None = None,
 ) -> CommitResult:
-    """Insert/retitle changelog heading and commit."""
+    """Insert/retitle changelog heading and commit (Markdown only; RST deferred to Phase 7)."""
     if not _SEMVER.fullmatch(version):
         return CommitResult(
             committed=False,
@@ -722,6 +754,7 @@ def commit_changelog(
         return CommitResult(committed=False, error=_redact_outbound(f"{path} not found"))
 
     text = changelog_path.read_text(encoding="utf-8")
+    original_text = text
     fmt = detect_format(text, path=path)
     if fmt != ChangelogFormat.MARKDOWN:
         return CommitResult(
@@ -777,11 +810,13 @@ def commit_changelog(
     msg = config.CHANGELOG_COMMIT_SUBJECT_TEMPLATE.format(version=version)
     add_result = git.add(runner, path, cwd=cwd)
     if add_result.returncode != 0:
+        _ = changelog_path.write_text(original_text, encoding="utf-8")
         return CommitResult(committed=False, error=_redact_outbound("git add failed"))
     commit_result = git.commit(runner, msg, only=path, cwd=cwd)
     if commit_result.returncode != 0:
+        _ = changelog_path.write_text(original_text, encoding="utf-8")
         return CommitResult(committed=False, error=_redact_outbound("git commit failed"))
-    sha = git.rev_parse(runner, "HEAD", cwd=cwd)
+    sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
     return CommitResult(committed=True, commit_sha=sha)
 
 
@@ -800,7 +835,7 @@ def drop_changelog_commit(
     if tracked is None:
         return DropResult(dropped=False, error=_redact_outbound("git status failed"))
     if tracked:
-        return DropResult(dropped=False, error="dirty worktree")
+        return DropResult(dropped=False, error=_redact_outbound("dirty worktree"))
 
     expected = config.CHANGELOG_COMMIT_SUBJECT_TEMPLATE.format(version=version)
     found_at = find_subject_commit_depth(
@@ -811,11 +846,11 @@ def drop_changelog_commit(
     )
 
     if found_at < 0:
-        return DropResult(dropped=False, error="no changelog commit found")
+        return DropResult(dropped=False, error=_redact_outbound("no changelog commit found"))
 
     parent_ref = f"HEAD~{found_at + 1}"
     if git.try_rev_parse(runner, parent_ref, cwd=cwd) is None:
-        return DropResult(dropped=False, error="parent missing")
+        return DropResult(dropped=False, error=_redact_outbound("parent missing"))
 
     changed = sorted_changed_files(
         runner,
@@ -826,7 +861,7 @@ def drop_changelog_commit(
     if changed != config.CHANGELOG_DEFAULT_PATH:
         return DropResult(dropped=False, error=_redact_outbound("unexpected files"))
 
-    old_sha = git.rev_parse(runner, f"HEAD~{found_at}", cwd=cwd)
+    old_sha = git.try_rev_parse(runner, f"HEAD~{found_at}", cwd=cwd) or ""
     replay_err = drop_replay_commit(
         runner,
         found_at=found_at,
@@ -835,6 +870,6 @@ def drop_changelog_commit(
         rebase_error="rebase failed",
     )
     if replay_err is not None:
-        return DropResult(dropped=False, error=replay_err)
+        return DropResult(dropped=False, error=_redact_outbound(replay_err))
 
     return DropResult(dropped=True, old_sha=old_sha)
