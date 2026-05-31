@@ -1,0 +1,1 @@
+{"phase":"implement","step":"9a.1","category":"OOS","body":"Filed #3305: Codex sandbox isolation hardening — in-repo tmpdir, grant widths, and post-coder artifact protection. Combined FINDING_6, FINDING_9 (confinement), FINDING_11, FINDING_13, FINDING_17 per Rule 3. URL: https://github.com/character-ai/larch/issues/3305"}
