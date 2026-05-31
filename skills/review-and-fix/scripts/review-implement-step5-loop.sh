@@ -336,9 +336,10 @@ run_implement_loop() {
         fi
 
         structural_loc=0
-        if [[ -s "${post_round_dir}/pre-coder-head.txt" && -s "${post_round_dir}/post-coder-head.txt" ]]; then
+        post_pre_head_file="$(pre_coder_snapshot_dir "$post_round_dir")/pre-coder-head.txt"
+        if [[ -s "$post_pre_head_file" && -s "${post_round_dir}/post-coder-head.txt" ]]; then
             set +e
-            structural_loc=$(git diff --numstat "$(cat "${post_round_dir}/pre-coder-head.txt")" "$(cat "${post_round_dir}/post-coder-head.txt")" 2>/dev/null | awk '{a+=$1; b+=$2} END {print a+b+0}')
+            structural_loc=$(git diff --numstat "$(cat "$post_pre_head_file")" "$(cat "${post_round_dir}/post-coder-head.txt")" 2>/dev/null | awk '{a+=$1; b+=$2} END {print a+b+0}')
             set -e
             [[ "$structural_loc" =~ ^[0-9]+$ ]] || structural_loc=0
         fi
@@ -394,8 +395,11 @@ run_implement_mav_apply() {
     [[ -n "$IMPLEMENT_TMPDIR" && -d "$IMPLEMENT_TMPDIR" ]] || { larch_err "review-and-fix.sh: mav-apply requires --implement-tmpdir"; exit 2; }
 
     local round_num_dec=$((10#$ROUND_NUM)) round_dir="$IMPLEMENT_TMPDIR/round-$((10#$ROUND_NUM))"
+    local snap_dir
     mkdir -p "$round_dir"
-    git rev-parse HEAD > "$round_dir/pre-coder-head.txt" 2>/dev/null || rm -f "$round_dir/pre-coder-head.txt"
+    snap_dir=$(pre_coder_snapshot_dir "$round_dir")
+    mkdir -p "$snap_dir"
+    git rev-parse HEAD > "$snap_dir/pre-coder-head.txt" 2>/dev/null || rm -f "$snap_dir/pre-coder-head.txt"
     local coder_env="$round_dir/coder.env" coder_rc=0
     set +e
     apply_findings_with_coder "$FINDINGS_FILE" "$round_dir" "$coder_env" "$round_num_dec"

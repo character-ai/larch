@@ -500,20 +500,25 @@ carryover_pre_head=$(git -C "$work_carryover_guard" rev-parse HEAD)
 printf 'outside manifest\n' >> "$work_carryover_guard/other.txt"
 printf 'modified by coder\n' >> "$work_carryover_guard/src/main.py"
 carryover_round_dir="$work_carryover_guard/implement/round-1"
-mkdir -p "$carryover_round_dir/pre-coder-path-diffs"
-printf '%s\n' "$carryover_pre_head" > "$carryover_round_dir/pre-coder-head.txt"
-printf 'other.txt\n' > "$carryover_round_dir/pre-coder-tracked-paths.txt"
-git -C "$work_carryover_guard" diff "$carryover_pre_head" -- other.txt > "$carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
-: > "$carryover_round_dir/pre-coder-path-diffs/other.txt.cached.patch"
-printf 'src/main.py\n' > "$carryover_round_dir/coder-stage-paths.txt"
 # shellcheck disable=SC2317  # stub for eval'd carryover helpers from review-and-fix.sh
 larch_err() { printf '%s\n' "$*" >&2; }
+eval "$(sed -n '/^pre_coder_snapshot_dir/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^pre_coder_path_diff_file/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^pre_coder_path_cached_diff_file/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_matches_pre_coder_snapshot/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
+snap_dir="$(pre_coder_snapshot_dir "$carryover_round_dir")"
+case "$snap_dir" in
+    "$carryover_round_dir"/*) fail "pre_coder_snapshot_dir must not be under round_dir" ;;
+esac
+mkdir -p "$snap_dir/pre-coder-path-diffs" "$carryover_round_dir"
+printf '%s\n' "$carryover_pre_head" > "$snap_dir/pre-coder-head.txt"
+printf 'other.txt\n' > "$snap_dir/pre-coder-tracked-paths.txt"
+git -C "$work_carryover_guard" diff "$carryover_pre_head" -- other.txt > "$snap_dir/pre-coder-path-diffs/other.txt.patch"
+: > "$snap_dir/pre-coder-path-diffs/other.txt.cached.patch"
+printf 'src/main.py\n' > "$carryover_round_dir/coder-stage-paths.txt"
 (
     cd "$work_carryover_guard"
     if round_tracked_dirty_outside_manifest "$carryover_round_dir/coder-stage-paths.txt" "$carryover_round_dir"; then
@@ -521,7 +526,7 @@ eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
     fi
     exit 1
 ) && fail "manifest-carryover-guard should skip unchanged carryover path"
-rm -f "$carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
+rm -f "$(pre_coder_path_diff_file "$carryover_round_dir" other.txt)"
 (
     cd "$work_carryover_guard"
     if round_tracked_dirty_outside_manifest "$carryover_round_dir/coder-stage-paths.txt" "$carryover_round_dir"; then
@@ -538,22 +543,27 @@ git -C "$work_index_carryover_guard" restore --worktree other.txt
 printf 'modified by coder\n' >> "$work_index_carryover_guard/src/main.py"
 index_carryover_pre_head=$(git -C "$work_index_carryover_guard" rev-parse HEAD)
 index_carryover_round_dir="$work_index_carryover_guard/implement/round-1"
-mkdir -p "$index_carryover_round_dir/pre-coder-path-diffs"
-printf '%s\n' "$index_carryover_pre_head" > "$index_carryover_round_dir/pre-coder-head.txt"
-printf 'other.txt\n' > "$index_carryover_round_dir/pre-coder-tracked-paths.txt"
-: > "$index_carryover_round_dir/pre-coder-path-diffs/other.txt.patch"
-git -C "$work_index_carryover_guard" diff --cached "$index_carryover_pre_head" -- other.txt \
-    > "$index_carryover_round_dir/pre-coder-path-diffs/other.txt.cached.patch"
-printf 'src/main.py\n' > "$index_carryover_round_dir/coder-stage-paths.txt"
-index_only_blob=$(printf 'coder index-only mutation\n' | git -C "$work_index_carryover_guard" hash-object -w --stdin)
-git -C "$work_index_carryover_guard" update-index --cacheinfo 100644,"$index_only_blob",other.txt
 larch_err() { printf '%s\n' "$*" >&2; }
+eval "$(sed -n '/^pre_coder_snapshot_dir/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^pre_coder_path_diff_file/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^pre_coder_path_cached_diff_file/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_matches_pre_coder_snapshot/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
+index_snap_dir="$(pre_coder_snapshot_dir "$index_carryover_round_dir")"
+case "$index_snap_dir" in
+    "$index_carryover_round_dir"/*) fail "pre_coder_snapshot_dir must not be under round_dir" ;;
+esac
+mkdir -p "$index_snap_dir/pre-coder-path-diffs" "$index_carryover_round_dir"
+printf '%s\n' "$index_carryover_pre_head" > "$index_snap_dir/pre-coder-head.txt"
+printf 'other.txt\n' > "$index_snap_dir/pre-coder-tracked-paths.txt"
+: > "$index_snap_dir/pre-coder-path-diffs/other.txt.patch"
+git -C "$work_index_carryover_guard" diff --cached "$index_carryover_pre_head" -- other.txt \
+    > "$index_snap_dir/pre-coder-path-diffs/other.txt.cached.patch"
+printf 'src/main.py\n' > "$index_carryover_round_dir/coder-stage-paths.txt"
+index_only_blob=$(printf 'coder index-only mutation\n' | git -C "$work_index_carryover_guard" hash-object -w --stdin)
+git -C "$work_index_carryover_guard" update-index --cacheinfo 100644,"$index_only_blob",other.txt
 (
     cd "$work_index_carryover_guard"
     if round_tracked_dirty_outside_manifest "$index_carryover_round_dir/coder-stage-paths.txt" "$index_carryover_round_dir"; then

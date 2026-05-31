@@ -15,3 +15,7 @@ At loop entry, `run_implement_loop` computes the effective cap from `ROUND_CAP +
 When the previous artifact is required but not visible, `step5_probe_prior_round_env` checks once, runs `sync >/dev/null 2>&1 || true`, then checks once more. This is a bounded best-effort retry for just-written files; `sync` is not a guaranteed cache-invalidation barrier.
 
 If both probes miss, the loop emits one diagnostic line with `IMPLEMENT_TMPDIR`, `STARTING_ROUND`, `expected_env_path`, `base_cap`, `entry_prior_deg`, and `entry_effective_cap`, then returns a `stall` envelope with `STALL_REASON=starting-round-invalid` and `STALL_TRACKING=false`. The orchestrator must not rename the tracking issue to `[STALLED]` for that stall reason, but it still needs to persist that `STALL_TRACKING=false` decision into Step 18's durable state: rewrite the existing `ship-pr-state.sh` when present, or seed the minimal Step-8-shape `ship-pr-state.sh` described in `skills/implement/SKILL.md` Step 5 before jumping to cleanup.
+
+## Pre-coder head and structural-diff telemetry
+
+Bulk-skip and substantial-round gates read `pre-coder-head.txt` from `pre_coder_snapshot_dir "$post_round_dir"` (defined in `review-and-fix.sh`) and `post-coder-head.txt` from `$post_round_dir`. `run_implement_mav_apply` writes only `pre-coder-head.txt` into that snapshot dir before coder dispatch; it does **not** call `snapshot_pre_coder_tracked_state`, so MAV rounds keep the same head-only carryover behavior as before relocation.
