@@ -27,6 +27,9 @@ Output is `KEY=value` through `scripts/lib-quiet.sh`:
   dispatch
 - `LINT_FIX_RUN_DIR=<path>` for dispatch artifacts
 - `FAILURE_REASON=<reason>` on internal helper failures
+- `STDERR_TAIL_PATH=<stem>` when both externals were present but dispatch failed
+  (stem path without `.stderr-tail` suffix; callers surface via
+  `emit_failed_agent_stderr_tail_larch_err`)
 
 Behavior:
 
@@ -52,12 +55,26 @@ Behavior:
    redirects JSONL stdout to the local-only `$run_dir/codex.events.jsonl`, and
    leaves wrapper diagnostics in `$run_dir/codex.wrapper.log` without JSONL
    bleed; `run_codex()` forwards `--stderr-sink "$codex_wrapper_log"` so
-   `${run_dir}/codex.log.stderr-tail` reads agent stderr on failure. Telemetry parse diagnostics land in the dedicated local-only
+   `${run_dir}/codex.log.stderr-tail` reads agent stderr on failure; on non-zero
+   exit the helper also calls `write_failed_agent_stderr_tail` from
+   `$codex_wrapper_log` when the wrapper did not produce a tail. Telemetry parse diagnostics land in the dedicated local-only
    `$run_dir/codex.sidecar` so publishable wrapper logs stay free of
    parser spill. It parses that event stream best-effort into the sanitized
    token ledger raw bucket `codex_lint_fix`; telemetry failures never
    overwrite the Codex exit code, and the raw `.events.jsonl` artifact is not
    a committed run-log artifact.
+   `run_cursor()` uses `--capture-stdout`; `run-external-agent.sh` writes
+   `${run_dir}/cursor.log.stderr-tail` on failure. Model-args, auth, and
+   wrap-prompt failures before spawn are captured in
+   `$run_dir/cursor.preflight.log` and may be written to
+   `${run_dir}/cursor.log.stderr-tail` via `_run_cursor_record_early_fail`.
+   The helper does not read `cursor.wrapper.log` as a stderr source; it only
+   backfills from `${run_dir}/cursor.log` / `.diag` when the tail file is
+   missing. Neither
+   `run_cursor()` nor `run_codex()` emit tails to chat in-loop — parent
+   redirects (for example `run_lint_fix_loop_capture` with `2>"$fail_file"`)
+   capture FD 2; `ship-pr.sh` and Step 5 parse `STDERR_TAIL_PATH` and surface
+   in caller scope.
    Both `run_cursor()` and `run_codex()` acquire the
    per-tool KeyChain serial lock (`external_serial_lock_acquire` from
    `scripts/lib-cursor-launcher-common.sh` → `lib-external-launcher-common.sh`)

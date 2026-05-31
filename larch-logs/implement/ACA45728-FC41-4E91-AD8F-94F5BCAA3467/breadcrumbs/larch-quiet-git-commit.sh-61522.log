@@ -1,0 +1,2 @@
+[sergey-zhupanov/implementing-extend-stderr-tail-surfacin-3227 d94ead9d7] Fix CI: simplify FAIL_TAIL/CLOBBER assertions to check tail content only
+ 1 file changed, 8 insertions(+), 10 deletions(-)

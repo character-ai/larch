@@ -17,6 +17,19 @@ source "$SCRIPT_DIR/lib-codex-launcher-common.sh"
 # shellcheck source=scripts/lib-submodule-prohibition.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-submodule-prohibition.sh"
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
+
+_LINT_FIX_STDERR_TAIL_STEM=""
+
+_lint_fix_set_stderr_tail_stem() {
+    local stem="$1"
+    [[ -n "$stem" ]] || return 0
+    if [[ -s "${stem}.stderr-tail" ]]; then
+        _LINT_FIX_STDERR_TAIL_STEM="$stem"
+    fi
+}
 
 IMPLEMENT_TMPDIR=""
 SITE=""
@@ -237,19 +250,42 @@ run_codex() {
         -- \
         "$prompt_body" \
         >"$codex_events" 2>"$codex_wrapper_log" || codex_rc=$?
+    if (( codex_rc != 0 )); then
+        write_failed_agent_stderr_tail "$codex_wrapper_log" "$run_dir/codex.log" || true
+        _lint_fix_set_stderr_tail_stem "$run_dir/codex.log"
+    fi
     codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_telemetry_sidecar" "codex_lint_fix" || true
     return "$codex_rc"
 }
 
+_run_cursor_record_early_fail() {
+    local run_dir="$1" log_file="$2"
+    _lint_fix_set_stderr_tail_stem "$run_dir/cursor.log"
+    if [[ -n "$log_file" && -s "$log_file" ]]; then
+        write_failed_agent_stderr_tail "$log_file" "$run_dir/cursor.log" || true
+    fi
+}
+
 run_cursor() {
     local run_dir="$1" prompt_body="$2"
-    cursor_launcher_load_model_args || return 1
-    cursor_launcher_setup_auth_argv || return 1
+    local cursor_rc=0 preflight_log="$run_dir/cursor.preflight.log"
+    : >"$preflight_log"
+    cursor_launcher_load_model_args 2>>"$preflight_log" || {
+        _run_cursor_record_early_fail "$run_dir" "$preflight_log"
+        return 1
+    }
+    cursor_launcher_setup_auth_argv 2>>"$preflight_log" || {
+        _run_cursor_record_early_fail "$run_dir" "$preflight_log"
+        return 1
+    }
     local _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor"
     external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
     local _wrapped_prompt
-    _wrapped_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; }) || return 1
+    _wrapped_prompt=$({ "$SCRIPT_DIR/cursor-wrap-prompt.sh" "$prompt_body"; _wrap_status=$?; printf X; exit "$_wrap_status"; } 2>>"$preflight_log") || {
+        _run_cursor_record_early_fail "$run_dir" "$preflight_log"
+        return 1
+    }
     _wrapped_prompt=${_wrapped_prompt%X}
     "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$run_dir/cursor.log" --timeout 1800 --capture-stdout -- \
         cursor agent -p --trust \
@@ -257,7 +293,20 @@ run_cursor() {
         ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
         --workspace "$REPO_ROOT" \
         "$_wrapped_prompt" \
-        > "$run_dir/cursor.wrapper.log" 2>&1
+        > "$run_dir/cursor.wrapper.log" 2>&1 || cursor_rc=$?
+    if (( cursor_rc != 0 )); then
+        if [[ ! -s "${run_dir}/cursor.log.stderr-tail" ]]; then
+            if [[ -s "${run_dir}/cursor.log.diag" ]]; then
+                write_failed_agent_stderr_tail "${run_dir}/cursor.log.diag" "$run_dir/cursor.log" || true
+            elif [[ -s "$preflight_log" ]]; then
+                write_failed_agent_stderr_tail "$preflight_log" "$run_dir/cursor.log" || true
+            elif [[ -s "${run_dir}/cursor.wrapper.log" ]]; then
+                write_failed_agent_stderr_tail "${run_dir}/cursor.wrapper.log" "$run_dir/cursor.log" || true
+            fi
+        fi
+        _lint_fix_set_stderr_tail_stem "$run_dir/cursor.log"
+    fi
+    return "$cursor_rc"
 }
 
 while [[ $# -gt 0 ]]; do
@@ -374,6 +423,9 @@ else
     emit_kv FAILURE_REASON dispatch-failed
     emit_kv LINT_FIX_SITE "$SITE"
     emit_kv LINT_FIX_RUN_DIR "$run_dir"
+    if [[ -n "$_LINT_FIX_STDERR_TAIL_STEM" ]]; then
+        emit_kv STDERR_TAIL_PATH "$_LINT_FIX_STDERR_TAIL_STEM"
+    fi
     exit 0
 fi
 

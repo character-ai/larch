@@ -1,0 +1,204 @@
+Normalizing the supplied reviewer findings into a merged structured list. Verifying a few merge candidates against the cited locations for accuracy.
+Structured aggregator output from the supplied reviewer slots. Security slot items that are commit titles or positive architecture notes (FINDING_16–26) are omitted as non-actionable. `plan-review-loop.sh` on the current tree already has `_collect_rc` + parseable-output gating at lines 757–783; FINDING_30/36 remain in-scope as a regression risk until that shape is what ships on `HEAD`.
+
+---
+
+### FINDING_1: Manifest `status=bailed` path omits stderr-tail emit
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: `emit_failed_agent_stderr_tail_larch_err` is wired in `emit_bailed()` but not in the final manifest `status=bailed` envelope (`step2-implement.sh` ~1064–1080). When the agent returns `LAUNCHER_EXIT=0` with a manifest whose status is `bailed`, the orchestrator gets `SIDECAR_LOG` KV lines but no fenced stderr tail in chat.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Add `emit_failed_agent_stderr_tail_larch_err "$TRANSCRIPT_PATH" || true` to the `bailed)` case arm or share a helper with `emit_bailed()`.
+
+---
+
+### FINDING_2: Duplicated stderr-tail stem resolution in ship-pr and Step 5
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `STDERR_TAIL_PATH` / `CODER_LOG_FILE` stem resolution and emit logic is duplicated between `scripts/ship-pr.sh` and `skills/review-and-fix/scripts/review-implement-step5-loop.sh`, so parity fixes can drift.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Extract a shared helper in `lib-failed-agent-stderr-tail.sh`.
+
+---
+
+### FINDING_3: Overlapping Cursor failure tail-write paths in lint-fix-loop
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/lint-fix-loop.sh` has overlapping cursor failure tail-write paths in `_run_cursor_record_early_fail` and the post-agent block, making it harder to verify no clobber/wrong-source regression between cursor preflight vs agent failure.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Consolidate into one record-failure helper.
+
+---
+
+### FINDING_4: `step5_surface_lint_stderr_tail` on lint-fix attempt cap after `applied`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt
+- **Severity**: nit
+- **Concern**: `step5_surface_lint_stderr_tail` is called on the lint-fix-attempt-cap path after `STEP5_LINT_STATUS=applied` (`review-implement-step5-loop.sh` ~276), which is misleading control flow and usually surfaces no tail; on attempt-cap stall, chat may miss tails from earlier failed attempts because stems are not retained.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Remove call or guard on non-empty stem variables.
+  - From cursor-specialist-correctness-output.txt: Call `step5_surface` only on failure terminal arms or retain last failure stem across attempts.
+
+---
+
+### FINDING_5: Redundant `write_failed_agent_stderr_tail` after `--stderr-sink`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/lint-fix-loop.sh` may call `write_failed_agent_stderr_tail` after `run-external-agent --stderr-sink`, causing extra disk I/O and possible overwrite if sources differ.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Skip write when tail file already exists or document intentional redundancy.
+
+---
+
+### FINDING_6: `run_lint_fix_loop_capture` skips surfacing on empty/malformed `LINT_FIX_STATUS` with `rc=0`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: `run_lint_fix_loop_capture` (`scripts/ship-pr.sh` ~150–155) only surfaces when `rc != 0` or `LINT_FIX_STATUS` is `failed` / `main-agent-required`. Broken or truncated lint-fix stdout can yield `rc=0` with empty/missing `LINT_FIX_STATUS` while a `.stderr-tail` artifact exists on disk, so `_surface_lint_fix_stderr_tail` never runs and chat stays silent despite the plan’s empty-with-failure gate.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Surface when `rc!=0` and `lint_status` is empty or parse fails.
+  - From cursor-specialist-correctness-output.txt: Also surface on empty `lint_status` when a known stderr-tail file exists, or treat empty status as failure.
+  - From cursor-specialist-testing-output.txt: Implement empty-status surfacing or prove lint-fix-loop cannot emit it; add a harness case if realistic.
+  - From cursor-specialist-plan-fidelity-output.txt: Also surface when `lint_status` is empty after a failed capture (e.g. `rc!=0`, non-empty `fail_file`, or parseable `STDERR_TAIL_PATH`/`CODER_LOG_FILE` fallback).
+
+---
+
+### FINDING_7: `_LINT_FIX_STDERR_TAIL_STEM` overwritten by last failure (Codex tail lost)
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: `_LINT_FIX_STDERR_TAIL_STEM` always tracks the last external failure (`scripts/lint-fix-loop.sh`). Codex can fail with a rich `codex.log.stderr-tail`, then a later Cursor preflight/agent failure with empty/minimal `cursor.log.stderr-tail` overwrites the stem while `STDERR_TAIL_PATH` still points at `cursor.log`; callers emit on `cursor.log` and chat stays silent despite `codex.log.stderr-tail` on disk.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Prefer stem with non-empty `.stderr-tail` when updating `_LINT_FIX_STDERR_TAIL_STEM`, or set `STDERR_TAIL_PATH` to the first non-empty codex/cursor tail at dispatch-failed.
+  - From cursor-specialist-edge-cases-output.txt: Prefer first non-empty tail stem, or set stem only when unset / new tail is richer.
+
+---
+
+### FINDING_8: `#3227` ship-pr tests omit `LINT_FIX_STATUS=failed` surfacing case
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: important
+- **Concern**: `scripts/test-ship-pr.sh` (~6316–6362) exercises `run_lint_fix_loop_capture` tail surfacing but not `LINT_FIX_STATUS=failed`, even though `ship-pr.sh` surfaces on `failed`. A regression in failed-status tail parsing/emission would not fail `make test-ship-pr` while Step 5 parser tests could still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add a failed-status stub with `CODER_LOG_FILE` and seeded `.stderr-tail`; assert caller stderr receives the probe.
+
+---
+
+### FINDING_9: Cursor implementer failure test lacks redaction/bounds assertions
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: important
+- **Concern**: `skills/implement/scripts/test-cursor-implementer.sh` (~899–904) does not assert redaction/bounds on the Cursor agent-failure path unlike the Codex harness; raw secrets in `cursor.log.stderr-tail` could reach chat without CI catching it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Mirror codex redaction/secret assertions on the cursor failure path.
+
+---
+
+### FINDING_10: Plan-review FD-2 tail test does not pin `LOOP_STATUS`
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: `skills/design/scripts/test-plan-review-loop.sh` FD-2 tail test (~2137–2152) does not assert `LOOP_STATUS` when the collector exits 1 with parseable output; collector handling could change voting/degraded semantics while the tail marker test still passes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Pin expected `LOOP_STATUS` (or stable KVs) for `write_collect_failing_tail` in addition to stderr markers.
+
+---
+
+### FINDING_11: Plan-review collector `|| true` drops hard-failure semantics
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt, dyn-plan-review-collect-or-true-output.txt
+- **Severity**: important
+- **Concern**: Round 1 replaced explicit `_collect_rc` handling with `|| true` on the collector assignment (`skills/design/scripts/plan-review-loop.sh` ~757–765 on reviewed `HEAD`). Without `_collect_rc`, the driver cannot distinguish hard collector failure (empty/unparseable stdout) from partial success and may continue into manifest/slot/voter/tally work, ending in `degraded-empty-collector` instead of early `panel-failed`. `|| true` is also redundant where `_run_plan_review_round` already runs under `set +e`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Commit staged `set +e` + `_collect_rc` + parseable-output check; remove bare `|| true`.
+  - From dyn-plan-review-collect-or-true-output.txt: Drop `|| true` and restore explicit status handling—the uncommitted working-tree pattern is the right shape: `set +e` around the collect assignment, `_collect_rc=$?` immediately after (not `|| _collect_rc=$?` on the same line), then if `_collect_rc -ne 0` and `_parse_collect_records "$_collect_out"` yields no records, set `LOOP_STATUS=panel-failed` and `return 1` before voter dispatch; otherwise continue so stderr-tail + partial KV output still flow through the tee.
+
+---
+
+### FINDING_12: Auth-retry loops truncate surfaced stderr tail to last attempt
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Auth-retry loops in `scripts/launch-codex-implement.sh` and `scripts/launch-cursor-implement.sh` clear sidecar/diag before the final tail write; multi-attempt auth exhaustion surfaces only the last truncated attempt, not the first actionable error.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Preserve cumulative stderr across retries or snapshot tail before `: > "$SIDECAR_LOG"`.
+
+---
+
+### OOS_1: [OUT_OF_SCOPE] Recovery `launcher_stdout` files not cleaned up
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: Recovery waterfall in `scripts/ship-pr.sh` (~2752+) leaves `recovery-*-launcher-*.out` capture files behind, growing `$IMPLEMENT_TMPDIR` over long runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Align with existing `IMPLEMENT_TMPDIR` cleanup policy or `rm` after parse.
+  - From cursor-specialist-edge-cases-output.txt: `rm -f` each `launcher_stdout` after parsing, or reuse one temp path per waterfall.
+
+---
+
+### OOS_2: [OUT_OF_SCOPE] `test-ship-pr` harness size / shard runtime
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: `#3227` adds many cases to an already large `scripts/test-ship-pr.sh`; CI shard runtime or ordering flakes may worsen without functional bugs in the feature.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Monitor test-ship-pr duration; split cases if the shard becomes a bottleneck.
+
+---
+
+### OOS_3: [OUT_OF_SCOPE] Partial redaction limits amplified by more chat surfacing
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/redact-secrets.sh` redaction remains explicitly partial (no opaque bearer tokens, DB strings, PII, etc.). This branch increases how often failure diagnostics reach orchestrator chat, amplifying impact of any redaction gap without weakening the pipeline itself.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Treat as accepted operational risk per `SECURITY.md`; extend patterns only via deliberate redactor changes, not per-lane emit sites.
+
+---
+
+### OOS_4: [OUT_OF_SCOPE] Collector stderr tee predates full tail redaction pipe
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: nit
+- **Concern**: `skills/design/scripts/plan-review-loop.sh` (~757–783) still tees collector stderr live to FD 2/4 before parseable-output handling; §3.8 tails use `render_failed_agent_stderr_tail` while other collector stderr uses `sanitize_diagnostic_line`. Behavior predates `#3227`; new harness only locks it in.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: None required for #3227 unless you want collector stderr to pass through the full redaction pipe at tee time (separate hardening).
+
+---
+
+### OOS_5: [OUT_OF_SCOPE] Cleanup `#3229` retains stale session dirs on `find` failure
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `skills/cleanup/scripts/cleanup.sh` (~1969–1977, `#3229` on same branch): nested `find` failure skips deletion and retains stale session dirs longer under `~/.cache/larch/sessions/`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Out of #3227 scope; already documented as fail-safe retention tradeoff in cleanup harness/docs.
+
+---
+
+### OOS_6: [OUT_OF_SCOPE] `fail_status` exits omit `STDERR_TAIL_PATH`
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/lint-fix-loop.sh` `fail_status` exits (~36–39) do not emit `STDERR_TAIL_PATH` when agent succeeds then head/forbidden-path validation fails.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Emit `STDERR_TAIL_PATH` on post-dispatch `fail_status` when a stem tail exists (follow-up).
+
+---
+
+### OOS_7: [OUT_OF_SCOPE] Working tree already has `_collect_rc` gate
+- **Reviewer(s)**: dyn-plan-review-collect-or-true-output.txt
+- **Severity**: nit
+- **Concern**: Uncommitted work at `plan-review-loop.sh` ~766–783 already implements `_collect_rc` + parseable-output gate; committing it closes the regression from `eaab9c8f1` swapping `|| _collect_rc=$?` for `|| true`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (no slot-specific fix bullet; status note only)
+
+---
+
+### OOS_8: [OUT_OF_SCOPE] Panel-failed harness case not on `HEAD` until gate lands
+- **Reviewer(s)**: dyn-plan-review-collect-or-true-output.txt
+- **Severity**: nit
+- **Concern**: `skills/design/scripts/test-plan-review-loop.sh` (~2115–2135) adds “collector hard fail with empty stdout → panel-failed” but is not on `HEAD` and would fail against `|| true`-only code until the gate is committed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (no slot-specific fix bullet; status note only)
+
+---
+
+### OOS_9: [OUT_OF_SCOPE] Broader `#3227` wiring matches plan (no extra defects in focus area)
+- **Reviewer(s)**: dyn-plan-review-collect-or-true-output.txt
+- **Severity**: nit
+- **Concern**: Broader `#3227` producer/consumer wiring (`launch-*-implement.sh`, `ship-pr.sh` `_surface_*`, `lint-fix-loop.sh` `STDERR_TAIL_PATH`, `step2-implement.sh` / Step 5 surfacing) matches the plan’s caller-scope emit pattern for this focus area.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (no slot-specific fix bullet; attestation note only)
+
+---
+
+**Dropped as non-findings**: `cursor-specialist-security-output.txt` FINDING_16–21 (commit titles), FINDING_22–26 (positive security attestations, not defects).
+
+**Merge summary**: 39 raw inputs → 12 in-scope `FINDING_*` blocks + 9 `OOS_*` blocks; 7 security noise items omitted; 10 duplicate clusters merged (empty `LINT_FIX_STATUS`, stem overwrite, step5 attempt-cap, launcher_stdout cleanup, plan-review collector regression, etc.).

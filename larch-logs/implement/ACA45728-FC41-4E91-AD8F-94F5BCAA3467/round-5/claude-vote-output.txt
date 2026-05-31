@@ -1,0 +1,42 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- step5 file not in diff; two-location parallel is common in this codebase and a shared helper adds a layer for only two call sites.
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the empty-status branch adds a file-size pre-check before calling _surface_lint_fix_stderr_tail, which differs from just calling it twice; not purely duplicate logic.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=true
+FINDING_5: EXONERATE CORRECTNESS=false SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- run-external-agent removes .stderr-tail on LAUNCHER_EXIT=0 success, so the bailed block creates a fresh tail rather than clobbering an existing one; premise is incorrect.
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_7: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_11: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_12: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- existing redaction path, 30-line/5120-byte cap, and LARCH_FAILED_AGENT_STDERR_TAIL_LINES=0 knob already address this; documenting the knob is low-cost but the concern is adequately mitigated.
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- threat requires write access to the session tmpdir which is already a trusted boundary; re-rendering at emit duplicates work without a realistic attack scenario.
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_18: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_19: NO CORRECTNESS=false SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- first-fixer-non-health only fires after winning_tier is set (wrapper_rc=0 and launcher_exit=0); LAUNCHER_EXIT!=0 paths are handled earlier with tail surfacing already applied.
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_23: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_24: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_5: NO CORRECTNESS=false SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- LINT_FIX_STATUS values are enum-like without spaces; print $2 does not truncate in practice.
+OOS_6: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- purely informational positive note; no defect to file.
+OOS_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation with no actionable defect.
+OOS_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_14: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional asymmetry that is documented and tested; no defect.
+OOS_15: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms correct behavior; no defect.
+OOS_16: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms intentional test design; no defect.
+OOS_17: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_18: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational; pre-existing patterns not introduced by this branch.

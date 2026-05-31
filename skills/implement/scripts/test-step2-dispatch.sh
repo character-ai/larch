@@ -1672,6 +1672,208 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 22: emit_bailed surfaces stub agent stderr on dispatcher stderr (cursor).
+# ---------------------------------------------------------------------------
+TMP22="$SCRATCH/test22"; mkdir -p "$TMP22"
+printf 'fresh-step2-22\n' > "$TMP22/session-id"
+SCRATCH_REPO22="$SCRATCH/scratch-repo-22"
+mkdir -p "$SCRATCH_REPO22"
+git -C "$SCRATCH_REPO22" init -q -b feature/step2-stderr-tail
+git -C "$SCRATCH_REPO22" config user.email "test@example.com"
+git -C "$SCRATCH_REPO22" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO22/README.md"
+git -C "$SCRATCH_REPO22" add README.md
+git -C "$SCRATCH_REPO22" commit -q -m "init"
+cat > "$TMP22/session-env.sh" <<'ENV'
+ISSUE_NUMBER=3227
+FORKED_TARGET=false
+ENV
+STUB_BIN_22="$SCRATCH/stub-bin-22"; mkdir -p "$STUB_BIN_22"
+cat > "$STUB_BIN_22/cursor" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'LARCH_STEP2_EMIT_BAILED_STDERR_PROBE\n' >&2
+exit 1
+EOF
+chmod +x "$STUB_BIN_22/cursor"
+STDERR_22="$TMP22/dispatcher.stderr"
+set +e
+(
+    cd "$SCRATCH_REPO22" && \
+    PATH="$STUB_BIN_22:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP22" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>"$STDERR_22"
+) >"$TMP22/stdout.txt"
+_rc22=$?
+set -e
+OUT_22=$(cat "$TMP22/stdout.txt")
+if [[ "$_rc22" -ne 0 ]]; then
+    fail 22 "dispatcher exited non-zero rc=$_rc22 out=$OUT_22 err=$(cat "$STDERR_22" 2>/dev/null || true)"
+elif [[ "$OUT_22" != *"STATUS=bailed"* ]] || [[ "$OUT_22" != *"REASON=cursor-runtime-failure"* ]]; then
+    fail 22 "expected cursor-runtime-failure bail; got: $OUT_22"
+elif grep -Fq 'LARCH_STEP2_EMIT_BAILED_STDERR_PROBE' "$STDERR_22"; then
+    pass
+else
+    fail 22 "emit_bailed must surface transcript stderr-tail on dispatcher stderr"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 23: manifest status=bailed surfaces stderr-tail on dispatcher stderr (cursor).
+# ---------------------------------------------------------------------------
+TMP23="$SCRATCH/test23"; mkdir -p "$TMP23"
+printf 'fresh-step2-23\n' > "$TMP23/session-id"
+STUB_BIN_23="$SCRATCH/stub-bin-23"; mkdir -p "$STUB_BIN_23"
+cat > "$STUB_BIN_23/cursor" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+cat > "$STUB_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "bailed",
+  "bail_reason": "stub-manifest-bailed"
+}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+printf 'LARCH_STEP2_MANIFEST_BAILED_STDERR_PROBE\n' >&2
+printf 'stub cursor stdout\n'
+EOF
+chmod +x "$STUB_BIN_23/cursor"
+STDERR_23="$TMP23/dispatcher.stderr"
+set +e
+(
+    cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN_23:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STUB_MANIFEST_PATH="$TMP23/manifest.json" \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CURSOR_MODEL="stub-model" \
+    CURSOR_API_KEY="" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
+    LIB_CURSOR_AUTH_TEST_UNAME="Linux" \
+    "$DISPATCHER" --tmpdir "$TMP23" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder cursor --cursor-present true 2>"$STDERR_23"
+) >"$TMP23/stdout.txt"
+_rc23=$?
+set -e
+OUT_23=$(cat "$TMP23/stdout.txt")
+if [[ "$_rc23" -ne 0 ]]; then
+    fail 23 "dispatcher exited non-zero rc=$_rc23 out=$OUT_23"
+elif [[ "$OUT_23" != *"STATUS=bailed"* ]] || [[ "$OUT_23" != *"REASON=stub-manifest-bailed"* ]]; then
+    fail 23 "expected manifest-driven bail; got: $OUT_23"
+elif grep -Fq 'LARCH_STEP2_MANIFEST_BAILED_STDERR_PROBE' "$STDERR_23"; then
+    pass
+else
+    fail 23 "manifest status=bailed must surface stderr-tail on dispatcher stderr"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 24: emit_bailed surfaces stub agent stderr on dispatcher stderr (codex).
+# ---------------------------------------------------------------------------
+TMP24="$SCRATCH/test24"; mkdir -p "$TMP24"
+printf 'fresh-step2-24\n' > "$TMP24/session-id"
+SCRATCH_REPO24="$SCRATCH/scratch-repo-24"
+mkdir -p "$SCRATCH_REPO24"
+git -C "$SCRATCH_REPO24" init -q -b feature/step2-codex-stderr-tail
+git -C "$SCRATCH_REPO24" config user.email "test@example.com"
+git -C "$SCRATCH_REPO24" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO24/README.md"
+git -C "$SCRATCH_REPO24" add README.md
+git -C "$SCRATCH_REPO24" commit -q -m "init"
+STUB_BIN_24="$SCRATCH/stub-bin-24"; mkdir -p "$STUB_BIN_24"
+cat > "$STUB_BIN_24/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'LARCH_STEP2_CODEX_EMIT_BAILED_STDERR_PROBE\n' >&2
+exit 1
+EOF
+chmod +x "$STUB_BIN_24/codex"
+STDERR_24="$TMP24/dispatcher.stderr"
+set +e
+(
+    cd "$SCRATCH_REPO24" && \
+    PATH="$STUB_BIN_24:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$DISPATCHER" --tmpdir "$TMP24" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>"$STDERR_24"
+) >"$TMP24/stdout.txt"
+_rc24=$?
+set -e
+OUT_24=$(cat "$TMP24/stdout.txt")
+if [[ "$_rc24" -ne 0 ]]; then
+    fail 24 "dispatcher exited non-zero rc=$_rc24 out=$OUT_24"
+elif [[ "$OUT_24" != *"STATUS=bailed"* ]] || [[ "$OUT_24" != *"REASON=codex-runtime-failure"* ]]; then
+    fail 24 "expected codex-runtime-failure bail; got: $OUT_24"
+elif grep -Fq 'LARCH_STEP2_CODEX_EMIT_BAILED_STDERR_PROBE' "$STDERR_24"; then
+    pass
+else
+    fail 24 "emit_bailed must surface codex transcript stderr-tail on dispatcher stderr"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 25: manifest status=bailed surfaces stderr-tail on dispatcher stderr (codex).
+# ---------------------------------------------------------------------------
+TMP25="$SCRATCH/test25"; mkdir -p "$TMP25"
+printf 'fresh-step2-25\n' > "$TMP25/session-id"
+STUB_BIN_25="$SCRATCH/stub-bin-25"; mkdir -p "$STUB_BIN_25"
+cat > "$STUB_BIN_25/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] && printf 'stub codex stdout\n' > "$output_path"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "bailed",
+  "bail_reason": "stub-codex-manifest-bailed"
+}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'LARCH_STEP2_CODEX_MANIFEST_BAILED_STDERR_PROBE\n' >&2
+EOF
+chmod +x "$STUB_BIN_25/codex"
+STDERR_25="$TMP25/dispatcher.stderr"
+set +e
+(
+    cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN_25:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP25/manifest.json" \
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$DISPATCHER" --tmpdir "$TMP25" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>"$STDERR_25"
+) >"$TMP25/stdout.txt"
+_rc25=$?
+set -e
+OUT_25=$(cat "$TMP25/stdout.txt")
+if [[ "$_rc25" -ne 0 ]]; then
+    fail 25 "dispatcher exited non-zero rc=$_rc25 out=$OUT_25"
+elif [[ "$OUT_25" != *"STATUS=bailed"* ]] || [[ "$OUT_25" != *"REASON=stub-codex-manifest-bailed"* ]]; then
+    fail 25 "expected codex manifest-driven bail; got: $OUT_25"
+elif grep -Fq 'LARCH_STEP2_CODEX_MANIFEST_BAILED_STDERR_PROBE' "$STDERR_25"; then
+    pass
+else
+    fail 25 "codex manifest status=bailed must surface stderr-tail on dispatcher stderr"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary.
 # ---------------------------------------------------------------------------
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

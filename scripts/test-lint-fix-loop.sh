@@ -70,7 +70,16 @@ make_fixture_scripts() {
     cp "$SOURCE_SCRIPTS/token-ledger.sh" "$dir/token-ledger.sh"
     cp "$SOURCE_SCRIPTS/read-session-env-key.sh" "$dir/read-session-env-key.sh"
     cp "$SOURCE_SCRIPTS/git-commit.sh" "$dir/git-commit.sh"
+    cp "$SOURCE_SCRIPTS/lib-failed-agent-stderr-tail.sh" "$dir/lib-failed-agent-stderr-tail.sh"
+    cp "$SOURCE_SCRIPTS/redact-tmpdir-paths.sh" "$dir/redact-tmpdir-paths.sh"
+    cp "$SOURCE_SCRIPTS/redact-secrets.sh" "$dir/redact-secrets.sh"
+    cp "$SOURCE_SCRIPTS/agent-model-args.sh" "$dir/agent-model-args.sh"
+    cp "$SOURCE_SCRIPTS/external-tool-registry.sh" "$dir/external-tool-registry.sh"
+    cp "$SOURCE_SCRIPTS/lib-cursor-auth.sh" "$dir/lib-cursor-auth.sh"
+    cp "$SOURCE_SCRIPTS/cursor-wrap-prompt.sh" "$dir/cursor-wrap-prompt.sh"
     chmod +x \
+        "$dir/agent-model-args.sh" \
+        "$dir/cursor-wrap-prompt.sh" \
         "$dir/lint-fix-loop.sh" \
         "$dir/lib-cursor-launcher-common.sh" \
         "$dir/parse-codex-usage.sh" \
@@ -188,6 +197,113 @@ printf 'CODEX FINAL MESSAGE\n' > "$last_message"
 printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
 printf 'wrapper diagnostic\n' >&2
 exit "${TEST_CODEX_RC:-0}"
+EOF
+    chmod +x "$path"
+}
+
+write_wrapper_codex_fail_stderr() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+json=false
+last_message=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --tool) shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --json) json=true; shift ;;
+        --output-last-message) last_message="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+[[ "$json" == "true" ]] || { printf 'missing --json\n' >&2; exit 64; }
+[[ -n "$last_message" ]] || { printf 'missing --output-last-message\n' >&2; exit 65; }
+printf 'LARCH_LINT_FIX_CODEX_STDERR_PROBE\n' >&2
+exit 1
+EOF
+    chmod +x "$path"
+}
+
+write_wrapper_cursor_fail_diag_only() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+tool=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --tool) tool="$2"; shift 2 ;;
+        --capture-stdout) shift ;;
+        --stderr-sink) shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+
+[[ -n "$output" ]] || exit 9
+if [[ "$tool" == "cursor" ]]; then
+    printf 'LARCH_LINT_FIX_CURSOR_DIAG_PROBE\n' > "${output}.diag"
+    exit 1
+fi
+exit 1
+EOF
+    chmod +x "$path"
+}
+
+write_wrapper_cursor_fail_preserve_tail() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+output=""
+tool=""
+json=false
+last_message=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --tool) tool="$2"; shift 2 ;;
+        --capture-stdout) shift ;;
+        --stderr-sink) shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --json) json=true; shift ;;
+        --output-last-message) last_message="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+
+[[ -n "$output" ]] || exit 9
+if [[ "$tool" == "cursor" ]]; then
+    printf 'agent stderr from cursor agent\n' > "${output}.stderr-tail"
+    printf 'wrapper progress noise\n' >&2
+    exit 1
+fi
+[[ "$json" == "true" ]] || { printf 'missing --json\n' >&2; exit 64; }
+[[ -n "$last_message" ]] || { printf 'missing --output-last-message\n' >&2; exit 65; }
+printf 'LARCH_LINT_FIX_CODEX_STDERR_PROBE\n' >&2
+exit 1
 EOF
     chmod +x "$path"
 }
@@ -840,5 +956,93 @@ case8_result=$(run_case "$SCRIPTS8" "$REPO8" "$SESSION8" "$CHECKS8" "$WRAPPER8" 
 case8_rc=$(printf '%s\n' "$case8_result" | sed -n '1p')
 [[ "$case8_rc" == "2" ]] || fail "case8 expected rc 2, got $case8_rc"
 assert_contains "$case8_result" '--target-cmd-args-file must not contain control characters' "case8 rejection message"
+
+# Case 9: codex failure writes stderr-tail and STDERR_TAIL_PATH on dispatch-failed.
+CASE9="$TMPROOT/case9"
+REPO9="$CASE9/repo"
+SCRIPTS9="$CASE9/scripts"
+SESSION9="$CASE9/session"
+CHECKS9="$CASE9/checks.log"
+WRAPPER9="$CASE9/wrapper.sh"
+make_repo "$REPO9"
+make_fixture_scripts "$SCRIPTS9"
+make_session "$SESSION9"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=false\n' > "$SESSION9/session-env.sh"
+printf 'synthetic checks failure\n' > "$CHECKS9"
+write_wrapper_codex_fail_stderr "$WRAPPER9"
+
+case9_result=$(run_case "$SCRIPTS9" "$REPO9" "$SESSION9" "$CHECKS9" "$WRAPPER9")
+case9_rc=$(printf '%s\n' "$case9_result" | sed -n '1p')
+case9_out=$(printf '%s\n' "$case9_result" | sed -n '2,$p')
+[[ "$case9_rc" == "0" ]] || fail "case9 expected rc 0, got $case9_rc"
+assert_contains "$case9_out" 'LINT_FIX_STATUS=main-agent-required' "case9 status"
+assert_contains "$case9_out" 'STDERR_TAIL_PATH=' "case9 stderr tail path kv"
+case9_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case9_out")
+[[ -s "$case9_run_dir/codex.log.stderr-tail" ]] \
+    || fail "case9 expected codex.log.stderr-tail"
+grep -Fq 'LARCH_LINT_FIX_CODEX_STDERR_PROBE' "$case9_run_dir/codex.log.stderr-tail" \
+    || fail "case9 stderr-tail must contain codex stderr probe"
+
+# shellcheck disable=SC2016 # Intentional literal source-code assertion.
+grep -Fq 'return "$cursor_rc"' "$SOURCE_SCRIPTS/lint-fix-loop.sh" \
+    || fail "lint-fix-loop.sh run_cursor must return cursor_rc on failure"
+
+# Case 10: cursor failure preserves agent stderr-tail (no wrapper clobber).
+CASE10="$TMPROOT/case10"
+REPO10="$CASE10/repo"
+SCRIPTS10="$CASE10/scripts"
+SESSION10="$CASE10/session"
+CHECKS10="$CASE10/checks.log"
+WRAPPER10="$CASE10/wrapper.sh"
+make_repo "$REPO10"
+make_fixture_scripts "$SCRIPTS10"
+make_session "$SESSION10"
+printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$SESSION10/session-env.sh"
+printf 'synthetic checks failure\n' > "$CHECKS10"
+write_wrapper_cursor_fail_preserve_tail "$WRAPPER10"
+
+case10_result=$(LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux CURSOR_API_KEY='' \
+    LARCH_CURSOR_MODEL=stub-cursor-model \
+    run_case "$SCRIPTS10" "$REPO10" "$SESSION10" "$CHECKS10" "$WRAPPER10")
+case10_rc=$(printf '%s\n' "$case10_result" | sed -n '1p')
+case10_out=$(printf '%s\n' "$case10_result" | sed -n '2,$p')
+[[ "$case10_rc" == "0" ]] || fail "case10 expected rc 0, got $case10_rc"
+assert_contains "$case10_out" 'LINT_FIX_STATUS=main-agent-required' "case10 status"
+case10_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case10_out")
+case10_tail_stem=$(kv_value STDERR_TAIL_PATH "$case10_out")
+[[ "$case10_tail_stem" == "$case10_run_dir/cursor.log" ]] \
+    || fail "case10 expected STDERR_TAIL_PATH cursor.log stem, got $case10_tail_stem"
+grep -Fq 'agent stderr from cursor agent' "$case10_run_dir/cursor.log.stderr-tail" \
+    || fail "case10 stderr-tail must retain agent stderr"
+grep -Fq 'wrapper progress noise' "$case10_run_dir/cursor.log.stderr-tail" \
+    && fail "case10 stderr-tail must not contain wrapper progress text"
+
+# Case 11: cursor failure with .diag only writes stderr-tail via fallback.
+CASE11="$TMPROOT/case11"
+REPO11="$CASE11/repo"
+SCRIPTS11="$CASE11/scripts"
+SESSION11="$CASE11/session"
+CHECKS11="$CASE11/checks.log"
+WRAPPER11="$CASE11/wrapper.sh"
+make_repo "$REPO11"
+make_fixture_scripts "$SCRIPTS11"
+make_session "$SESSION11"
+printf 'CODEX_PRESENT=false\nCURSOR_PRESENT=true\n' > "$SESSION11/session-env.sh"
+printf 'synthetic checks failure\n' > "$CHECKS11"
+write_wrapper_cursor_fail_diag_only "$WRAPPER11"
+
+case11_result=$(LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux CURSOR_API_KEY='' \
+    LARCH_CURSOR_MODEL=stub-cursor-model \
+    run_case "$SCRIPTS11" "$REPO11" "$SESSION11" "$CHECKS11" "$WRAPPER11")
+unset LARCH_CURSOR_MODEL
+case11_rc=$(printf '%s\n' "$case11_result" | sed -n '1p')
+case11_out=$(printf '%s\n' "$case11_result" | sed -n '2,$p')
+[[ "$case11_rc" == "0" ]] || fail "case11 expected rc 0, got $case11_rc"
+assert_contains "$case11_out" 'LINT_FIX_STATUS=main-agent-required' "case11 status"
+case11_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case11_out")
+[[ -s "$case11_run_dir/cursor.log.stderr-tail" ]] \
+    || fail "case11 expected cursor.log.stderr-tail from diag fallback"
+grep -Fq 'LARCH_LINT_FIX_CURSOR_DIAG_PROBE' "$case11_run_dir/cursor.log.stderr-tail" \
+    || fail "case11 stderr-tail must contain diag probe"
 
 echo "test-lint-fix-loop: ok"

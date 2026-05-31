@@ -1,0 +1,2 @@
+[sergey-zhupanov/implementing-extend-stderr-tail-surfacin-3227 8ba72a23b] Fix CI: guard new cursor-impl launcher calls with set+e around command substitutions
+ 1 file changed, 11 insertions(+), 3 deletions(-)

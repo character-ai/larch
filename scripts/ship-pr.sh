@@ -21,6 +21,8 @@ source "$SCRIPT_DIR/lib-finalize-state-keys.sh" || { larch_err "ship-pr.sh: fail
 # shellcheck source=scripts/lib-changelog.sh
 source "$SCRIPT_DIR/lib-changelog.sh" || { larch_err "ship-pr.sh: failed to source lib-changelog.sh"; exit 1; }
 [[ "${LARCH_LIB_CHANGELOG_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-changelog.sh sourced but sentinel missing"; exit 1; }
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
+source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh" || { larch_err "ship-pr.sh: failed to source lib-failed-agent-stderr-tail.sh"; exit 1; }
 
 STATE_FILE=""
 IMPLEMENT_TMPDIR=""
@@ -111,6 +113,22 @@ is_relevant_checks_clean() {
     printf '%s\n' "$1" | grep -qE '^RELEVANT_CHECKS_(OK|SKIPPED)=true '
 }
 
+_surface_ci_stderr_tail() {
+    local stem="$1"
+    [[ -n "$stem" ]] || return 0
+    emit_failed_agent_stderr_tail_larch_err "$stem" || true
+}
+
+_surface_lint_fix_stderr_tail() {
+    local fix_out="$1" stem=""
+    stem=$(printf '%s\n' "$fix_out" | awk -F= '/^STDERR_TAIL_PATH=/ { print substr($0, index($0,"=")+1); exit }')
+    if [[ -z "$stem" ]]; then
+        stem=$(printf '%s\n' "$fix_out" | awk -F= '/^CODER_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+    fi
+    [[ -n "$stem" ]] || return 0
+    _surface_ci_stderr_tail "$stem"
+}
+
 run_lint_fix_loop_capture() {
     local fail_file=$1 site=$2 redacted_log=$3 out_var=$4 rc_var=$5 target_cmd_args_file=${6:-}
     local output rc had_errexit=0
@@ -129,6 +147,20 @@ run_lint_fix_loop_capture() {
     (( had_errexit )) && set -e
     printf -v "$out_var" '%s' "$output"
     printf -v "$rc_var" '%s' "$rc"
+    local lint_status=""
+    lint_status=$(printf '%s\n' "$output" | awk -F= '/^LINT_FIX_STATUS=/ { print $2; exit }')
+    if [[ "$rc" -ne 0 ]] \
+        || [[ "$lint_status" == "failed" || "$lint_status" == "main-agent-required" ]]; then
+        _surface_lint_fix_stderr_tail "$output"
+    elif [[ -z "$lint_status" ]]; then
+        local _tail_stem="" _tail_coder=""
+        _tail_stem=$(printf '%s\n' "$output" | awk -F= '/^STDERR_TAIL_PATH=/ { print substr($0, index($0,"=")+1); exit }')
+        _tail_coder=$(printf '%s\n' "$output" | awk -F= '/^CODER_LOG_FILE=/ { print substr($0, index($0,"=")+1); exit }')
+        if [[ -n "$_tail_stem" && -s "${_tail_stem}.stderr-tail" ]] \
+            || [[ -n "$_tail_coder" && -s "${_tail_coder}.stderr-tail" ]]; then
+            _surface_lint_fix_stderr_tail "$output"
+        fi
+    fi
 }
 
 _RCC_STATUS=""
@@ -2061,6 +2093,7 @@ run_ci_fix_vendor() {
         launcher_exit="${launcher_exit:-0}"
 
         if [ "$wrapper_rc" -eq 2 ]; then
+            _surface_ci_stderr_tail "$tier_out"
             record_failure "$phase" "$(basename "$launcher") fix (validation)" "$wrapper_rc" "$fail_file" "CI Issues"
             _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
             waterfall_iter=$(( waterfall_iter + 1 ))
@@ -2071,6 +2104,7 @@ run_ci_fix_vendor() {
             winning_tier=$tier
             break
         fi
+        _surface_ci_stderr_tail "$tier_out"
         record_failure "$phase" "$(basename "$launcher") fix (wrapper_rc=$wrapper_rc, launcher_exit=${launcher_exit:-0})" "${launcher_exit:-$wrapper_rc}" "$fail_file" "CI Issues"
         _ci_fix_rollback "$phase" "$baseline_tracked_file" "$baseline_untracked_file" "$baseline_staged_file"
         if [ "$waterfall_iter" -eq 0 ] && [ "$wrapper_rc" -eq 0 ] && [ "$tier" = "$first_tier" ]; then
@@ -2116,6 +2150,13 @@ run_ci_fix_vendor() {
                 } > "$detail_log"
                 larch_err "⚠ ship-pr: vendor exit 0 with no commits; escalating to first-fixer-non-health"
                 state_set_many BAIL_REASON first-fixer-non-health BAIL_FAILURE_DETAIL_LOG "$detail_log"
+                _ffnh_tier_stem="${ci_fix_out_base}.${winning_tier}"
+                if [[ ! -s "${_ffnh_tier_stem}.stderr-tail" ]]; then
+                    if [[ -s "${_ffnh_tier_stem}.diag" ]]; then
+                        write_failed_agent_stderr_tail "${_ffnh_tier_stem}.diag" "$_ffnh_tier_stem" || true
+                    fi
+                fi
+                _surface_ci_stderr_tail "$_ffnh_tier_stem"
                 record_failure "$phase" "vendor exit 0 with no commits ($winning_tier)" 1 "$detail_log" "CI Issues"
                 return 1
             fi
@@ -2764,28 +2805,40 @@ run_recovery_waterfall() {
             return 1
         fi
         tier_rc=1
+        launcher_exit=0
         output="$IMPLEMENT_TMPDIR/recovery-${wf_phase}-${tier}-$(date +%s).out"
+        launcher_stdout="$IMPLEMENT_TMPDIR/recovery-${wf_phase}-${tier}-launcher-$$.out"
         case "$tier" in
             cursor)
                 if command -v cursor >/dev/null 2>&1; then
                     "$SCRIPT_DIR/launch-cursor-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
-                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
+                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
             codex)
                 if command -v codex >/dev/null 2>&1; then
                     "$SCRIPT_DIR/launch-codex-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
-                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
+                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
             claude)
                 if command -v claude >/dev/null 2>&1; then
                     "$SCRIPT_DIR/launch-claude-ci.sh" --role "$wf_role" --output "$output" --run-id "$run_id" \
-                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >/dev/null 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
+                        --repo "$repo_r" ${plan_args[@]+"${plan_args[@]}"} ${_wf_extra[@]+"${_wf_extra[@]}"} ${fl_arg[@]+"${fl_arg[@]}"} --timeout 1800 >"$launcher_stdout" 2>>"$wf_log" && tier_rc=0 || tier_rc=$?
                 fi
                 ;;
         esac
+        launcher_exit=$(awk -F= '/^LAUNCHER_EXIT=/ { print $2; exit }' "$launcher_stdout" 2>/dev/null || true)
+        launcher_exit="${launcher_exit:-0}"
+        rm -f "$launcher_stdout"
+        if [ "$tier_rc" -ne 0 ] || [ "$launcher_exit" -ne 0 ] || [ -s "${output}.stderr-tail" ]; then
+            _surface_ci_stderr_tail "$output"
+        fi
         if [ "$tier_rc" -ne 0 ]; then
+            recovery_waterfall_paths_delta_revert "$baseline_dir/tracked" "$baseline_dir/untracked" "$wf_log"
+            continue
+        fi
+        if [ "$launcher_exit" -ne 0 ] || [ -s "${output}.stderr-tail" ]; then
             recovery_waterfall_paths_delta_revert "$baseline_dir/tracked" "$baseline_dir/untracked" "$wf_log"
             continue
         fi
@@ -3340,6 +3393,12 @@ run_rebase_rebump() {
                     --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
                     ${_launch_extra[@]+"${_launch_extra[@]}"} --timeout 600 > "$fail_file" 2>&1
                 rc=$?
+            fi
+            local _conflict_launcher_exit
+            _conflict_launcher_exit=$(awk -F= '/^LAUNCHER_EXIT=/ {print $2; exit}' "$fail_file" 2>/dev/null || true)
+            _conflict_launcher_exit="${_conflict_launcher_exit:-0}"
+            if [ "$rc" -ne 0 ] || [ "$_conflict_launcher_exit" -ne 0 ] || [ -s "${conflict_out}.stderr-tail" ]; then
+                _surface_ci_stderr_tail "$conflict_out"
             fi
             [ "$rc" -eq 0 ] || record_failure conflict-resolution "$tool_label" "$rc" "$fail_file" "External Reviewer Issues"
             fail_file=$(failure_capture_path conflict-resolution)

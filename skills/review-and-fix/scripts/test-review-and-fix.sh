@@ -2317,6 +2317,8 @@ fi  # end section: convergence
 if section_runs parsers; then
     parsers_tmp="$TMP/parsers-harness"
     mkdir -p "$parsers_tmp"
+    PLUGIN_ROOT="$REPO_ROOT"
+    export PLUGIN_ROOT
     # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
@@ -2397,6 +2399,89 @@ if section_runs parsers; then
     ) || fail "parsers lint-malformed: set -e or LINT_STATUS should stay empty"
     grep -Fq 'required field missing' "$err" || fail "parsers lint-malformed: missing stderr"
     pass "parsers lint-malformed-stderr-only"
+
+    cap="$parsers_tmp/lint-stderr-tail-path.txt"
+    err="$parsers_tmp/lint-stderr-tail-path.stderr"
+    stem="$parsers_tmp/lint-run/codex.log"
+    mkdir -p "$(dirname "$stem")"
+    printf 'LARCH_STEP5_STDERR_TAIL_PROBE\n' >"${stem}.stderr-tail"
+    {
+        printf '%s\n' 'LINT_FIX_STATUS=main-agent-required'
+        printf 'STDERR_TAIL_PATH=%s\n' "$stem"
+    } >"$cap"
+    : >"$err"
+    step5_parse_lint_capture_file "$cap" 2>>"$err"
+    [[ "${STEP5_LINT_STDERR_TAIL_STEM:-}" == "$stem" ]] \
+        || fail "parsers lint-stderr-tail-path: STDERR_TAIL_PATH stem"
+    step5_surface_err="$parsers_tmp/step5-surface.stderr"
+    : >"$step5_surface_err"
+    (
+        set -euo pipefail
+        step5_surface_lint_stderr_tail
+    ) 2>>"$step5_surface_err" || true
+    grep -Fq 'LARCH_STEP5_STDERR_TAIL_PROBE' "$step5_surface_err" \
+        || fail "parsers step5_surface_lint_stderr_tail must emit seeded tail under set -e"
+    pass "parsers step5-surface-lint-stderr-tail"
+
+    cap="$parsers_tmp/lint-coder-log-fallback.txt"
+    err="$parsers_tmp/lint-coder-log-fallback.stderr"
+    stem="$parsers_tmp/lint-run/legacy-coder.log"
+    mkdir -p "$(dirname "$stem")"
+    printf 'LARCH_STEP5_CODER_LOG_FALLBACK_PROBE\n' >"${stem}.stderr-tail"
+    printf '%s\n' 'LINT_FIX_STATUS=failed' >"$cap"
+    printf 'CODER_LOG_FILE=%s\n' "$stem" >>"$cap"
+    : >"$err"
+    step5_parse_lint_capture_file "$cap" 2>>"$err"
+    [[ "${STEP5_LINT_CODER_LOG_STEM:-}" == "$stem" ]] \
+        || fail "parsers lint-coder-log-fallback: CODER_LOG_FILE stem"
+    step5_surface_err="$parsers_tmp/step5-coder-log-surface.stderr"
+    : >"$step5_surface_err"
+    (
+        set -euo pipefail
+        step5_surface_lint_stderr_tail
+    ) 2>>"$step5_surface_err" || true
+    grep -Fq 'LARCH_STEP5_CODER_LOG_FALLBACK_PROBE' "$step5_surface_err" \
+        || fail "parsers step5_surface_lint_stderr_tail must emit CODER_LOG_FILE fallback tail"
+    pass "parsers step5-surface-coder-log-fallback"
+
+    cap="$parsers_tmp/lint-stderr-tail-path-spaces.txt"
+    err="$parsers_tmp/lint-stderr-tail-path-spaces.stderr"
+    stem="$parsers_tmp/lint run/with spaces/codex.log"
+    mkdir -p "$(dirname "$stem")"
+    printf 'LARCH_STEP5_STDERR_TAIL_SPACES_PROBE\n' >"${stem}.stderr-tail"
+    {
+        printf '%s\n' 'LINT_FIX_STATUS=main-agent-required'
+        printf 'STDERR_TAIL_PATH=%s\n' "$stem"
+    } >"$cap"
+    : >"$err"
+    step5_parse_lint_capture_file "$cap" 2>>"$err"
+    [[ "${STEP5_LINT_STDERR_TAIL_STEM:-}" == "$stem" ]] \
+        || fail "parsers lint-stderr-tail-path-spaces: STDERR_TAIL_PATH with spaces"
+    step5_surface_err="$parsers_tmp/step5-surface-spaces.stderr"
+    : >"$step5_surface_err"
+    (
+        set -euo pipefail
+        step5_surface_lint_stderr_tail
+    ) 2>>"$step5_surface_err" || true
+    grep -Fq 'LARCH_STEP5_STDERR_TAIL_SPACES_PROBE' "$step5_surface_err" \
+        || fail "parsers step5_surface_lint_stderr_tail must emit spaces-in-path tail"
+    pass "parsers lint-stderr-tail-path-spaces"
+
+    cap="$parsers_tmp/lint-empty-stem.txt"
+    err="$parsers_tmp/lint-empty-stem.stderr"
+    printf '%s\n' 'LINT_FIX_STATUS=failed' >"$cap"
+    STEP5_LINT_STDERR_TAIL_STEM=""
+    STEP5_LINT_CODER_LOG_STEM=""
+    : >"$err"
+    (
+        set -euo pipefail
+        step5_parse_lint_capture_file "$cap" 2>>"$err"
+        step5_surface_lint_stderr_tail
+        printf 'survived-empty-stem\n'
+    ) >"$parsers_tmp/lint-empty-stem.stdout" 2>>"$err" || fail "parsers lint-empty-stem: set -e abort"
+    grep -Fq 'survived-empty-stem' "$parsers_tmp/lint-empty-stem.stdout" \
+        || fail "parsers lint-empty-stem: expected no-op surface"
+    pass "parsers step5-surface-empty-stem-noop"
 
     STEP5_CHK_STATUS=""
     STEP5_CHK_FAILURE_REASON=""
@@ -2682,6 +2767,62 @@ if section_runs step5-starting-round; then
     grep -Fq 'count_prior_degraded_rounds returned non-numeric entry_prior_deg=bogus' "$STEP5_LAST_ERR" \
         || fail "step5 entry-prior-deg-nonnumeric missing stderr"
     pass "step5-starting-round entry-prior-deg-nonnumeric"
+
+    # Case: terminal lint-fix arm surfaces STDERR_TAIL_PATH before stall envelope.
+    step5_reset_case lint-fix-terminal-tail
+    case_dir="$STEP5_LAST_CASE_DIR"
+    redacted="$case_dir/checks.redacted.log"
+    printf 'synthetic checks failure\n' > "$redacted"
+    stem="$case_dir/lint-run/codex.log"
+    mkdir -p "$(dirname "$stem")"
+    printf 'LARCH_STEP5_LOOP_TERMINAL_STDERR_PROBE\n' > "${stem}.stderr-tail"
+    cat > "$case_dir/stub-checks.sh" <<STUB
+#!/usr/bin/env bash
+printf 'STATUS=fail\n'
+printf 'REDACTED_LOG_FILE=$redacted\n'
+STUB
+    cat > "$case_dir/stub-lint.sh" <<STUB
+#!/usr/bin/env bash
+printf 'LINT_FIX_STATUS=main-agent-required\n'
+printf 'STDERR_TAIL_PATH=$stem\n'
+STUB
+    chmod +x "$case_dir/stub-checks.sh" "$case_dir/stub-lint.sh"
+    out_file="$case_dir/out.env"
+    err_file="$case_dir/err.log"
+    set +e
+    (
+        set -euo pipefail
+        IMPLEMENT_TMPDIR="$case_dir/impl"
+        STARTING_ROUND=1
+        ROUND_CAP=1
+        RUN_ID="step5-lint-fix-terminal"
+        PLUGIN_ROOT="$REPO_ROOT"
+        REVIEW_AND_FIX_RUN_RELEVANT_CHECKS_SH="$case_dir/stub-checks.sh"
+        REVIEW_AND_FIX_LINT_FIX_LOOP_SH="$case_dir/stub-lint.sh"
+        emit_kv() { printf '%s=%s\n' "$1" "$2"; }
+        larch_err() { printf '%s\n' "$*" >&2; }
+        flush_review_batches() { :; }
+        _implement_round_body() {
+            IRF_LAST_ROUND_STATUS=fix-applied
+            IRF_LAST_CODER_STATUS=""
+            IRF_LAST_SKIPPED=0
+            IRF_LAST_FIX_COUNT=1
+            IRF_LAST_ROUND_DIR="$IMPLEMENT_TMPDIR/round-1"
+            IRF_LAST_ACCEPTED_FILE=""
+            IRF_LAST_FILES_HINT=""
+            mkdir -p "$IRF_LAST_ROUND_DIR"
+            return 0
+        }
+        run_implement_loop
+    ) >"$out_file" 2>"$err_file"
+    lint_fix_loop_rc=$?
+    set -e
+    [[ "$lint_fix_loop_rc" -eq 2 ]] \
+        || fail "step5 lint-fix-terminal-tail expected exit 2 got $lint_fix_loop_rc"
+    grep -Fq 'LARCH_STEP5_LOOP_TERMINAL_STDERR_PROBE' "$err_file" \
+        || fail "step5 lint-fix terminal arm must surface stderr-tail before envelope"
+    step5_assert_envelope "$out_file" stall true lint-fix-main-agent-required 1
+    pass "step5-loop lint-fix-terminal-tail"
 fi  # end section: step5-starting-round
 
 # Breadcrumb pin: round entry and coder dispatch breadcrumbs surface via stderr capture.

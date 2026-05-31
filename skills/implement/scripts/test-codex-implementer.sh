@@ -1028,6 +1028,113 @@ else
     fail "cap-hit-no-invoke" "cap_hit path must not invoke the underlying Codex binary"
 fi
 
+# Test: agent failure writes bounded, redacted ${TRANSCRIPT}.stderr-tail from SIDECAR_LOG.
+FAIL_STDERR_BIN="$SCRATCH/fail-stderr-bin"
+mkdir -p "$FAIL_STDERR_BIN"
+cat > "$FAIL_STDERR_BIN/codex" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STUB_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] || exit 9
+printf 'failed codex transcript\n' > "$output_path"
+printf 'LARCH_CODEX_IMPLEMENT_STDERR_TAIL_PROBE\n' >&2
+printf 'before sk-ant-api03-abcdefghijklmnopqrstuvwxyz after\n' >&2
+cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
+{"schema_version":"1","status":"bailed","bail_reason":"stub-bailed"}
+JSON
+mv "$STUB_MANIFEST_PATH.tmp" "$STUB_MANIFEST_PATH"
+exit 1
+EOF
+chmod +x "$FAIL_STDERR_BIN/codex"
+FAIL_STDERR_TRANSCRIPT="$SCRATCH/fail-stderr-transcript.txt"
+FAIL_STDERR_SIDECAR="$SCRATCH/fail-stderr-sidecar.log"
+FAIL_STDERR_MANIFEST="$SCRATCH/fail-stderr-manifest.json"
+FAIL_STDERR_TAIL="${FAIL_STDERR_TRANSCRIPT}.stderr-tail"
+FAIL_STDERR_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$FAIL_STDERR_BIN:$PATH" \
+    STUB_MANIFEST_PATH="$FAIL_STDERR_MANIFEST" \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$LAUNCHER" \
+        --transcript-path "$FAIL_STDERR_TRANSCRIPT" \
+        --sidecar-log "$FAIL_STDERR_SIDECAR" \
+        --manifest-path "$FAIL_STDERR_MANIFEST" \
+        --qa-pending-path "$SCRATCH/fail-stderr-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$FAIL_STDERR_OUT" == *"LAUNCHER_EXIT=1"* ]] \
+    && [[ -s "$FAIL_STDERR_TAIL" ]] \
+    && grep -Fq 'LARCH_CODEX_IMPLEMENT_STDERR_TAIL_PROBE' "$FAIL_STDERR_TAIL" \
+    && grep -Fq '<REDACTED-TOKEN>' "$FAIL_STDERR_TAIL" \
+    && ! grep -Fq 'sk-ant-api03' "$FAIL_STDERR_TAIL"; then
+    pass
+else
+    fail "stderr-tail-agent" "expected LAUNCHER_EXIT=1 and redacted stderr-tail; out=$FAIL_STDERR_OUT tail=$(cat "$FAIL_STDERR_TAIL" 2>/dev/null)"
+fi
+
+# Bounded line/byte caps on oversized sidecar (test-lib-failed-agent-stderr-tail contract).
+# shellcheck source=scripts/lib-failed-agent-stderr-tail.sh disable=SC1091
+source "$REPO_ROOT/scripts/lib-failed-agent-stderr-tail.sh"
+_cap_src="$SCRATCH/stderr-cap-src.log"
+_cap_out="$SCRATCH/stderr-cap-out"
+for i in $(seq 1 40); do
+    printf 'cap-line-%s\n' "$i"
+done >"$_cap_src"
+printf 'before sk-ant-api03-abcdefghijklmnopqrstuvwxyz after\n' >>"$_cap_src"
+export LARCH_FAILED_AGENT_STDERR_TAIL_LINES=5
+write_failed_agent_stderr_tail "$_cap_src" "$_cap_out" || true
+unset LARCH_FAILED_AGENT_STDERR_TAIL_LINES
+_cap_tail="${_cap_out}.stderr-tail"
+_cap_line_count=0
+if [[ -s "$_cap_tail" ]]; then
+    _cap_line_count=$(grep -c '^cap-line-' "$_cap_tail" || true)
+fi
+if [[ -s "$_cap_tail" ]] \
+    && [[ "$_cap_line_count" -le 5 ]] \
+    && [[ "$(wc -c <"$_cap_tail" | tr -d ' ')" -le 5120 ]] \
+    && grep -Fq 'cap-line-40' "$_cap_tail" \
+    && ! grep -Fq 'cap-line-1' "$_cap_tail" \
+    && grep -Fq '<REDACTED-TOKEN>' "$_cap_tail" \
+    && ! grep -Fq 'sk-ant-api03' "$_cap_tail"; then
+    pass
+else
+    fail "stderr-tail-bounds" "expected capped redacted sidecar tail; lines=$_cap_line_count tail=$(cat "$_cap_tail" 2>/dev/null)"
+fi
+
+# Test: model-args failure writes stderr-tail before agent run.
+MODEL_ARGS_TRANSCRIPT="$SCRATCH/model-args-transcript.txt"
+MODEL_ARGS_SIDECAR="$SCRATCH/model-args-sidecar.log"
+MODEL_ARGS_OUT=$(cd "$REPO_ROOT" && \
+    IMPLEMENT_TMPDIR='' \
+    LARCH_CODEX_MODEL=$'bad\x01model' \
+    "$LAUNCHER" \
+        --transcript-path "$MODEL_ARGS_TRANSCRIPT" \
+        --sidecar-log "$MODEL_ARGS_SIDECAR" \
+        --manifest-path "$SCRATCH/model-args-manifest.json" \
+        --qa-pending-path "$SCRATCH/model-args-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$MODEL_ARGS_OUT" == *"LAUNCHER_EXIT=1"* ]] \
+    && [[ -s "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" ]] \
+    && grep -Fq 'agent-model-args.sh' "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" \
+    && grep -Fq 'cntrl' "${MODEL_ARGS_TRANSCRIPT}.stderr-tail"; then
+    pass
+else
+    fail "stderr-tail-model-args" "model-args path must write redacted stderr-tail with model error; out=$MODEL_ARGS_OUT tail=$(cat "${MODEL_ARGS_TRANSCRIPT}.stderr-tail" 2>/dev/null)"
+fi
+
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then
     echo "PASS: test-codex-implementer.sh — $PASS_COUNT/$TOTAL assertions"

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Extend #3202 failed-agent stderr-tail surfacing to implement/CI/lint-fix lanes (producer writes in launchers and `lint-fix-loop.sh`; consumer surfacing in `step2-implement.sh`, `ship-pr.sh`, and Step 5 lint-fix) and add a plan-review-loop FD-2 tail regression test (#3227).
 - `lint-awk-multibyte-regex` catches non-ASCII characters inside `awk -v VAR=...` values and inside awk-body regex callsites (`match`, `gsub`, `sub`, `split`, `~`, `!~`); wired into `make lint`, the pre-commit hook chain, `docs/linting.md`, and `agent-lint.toml`. Add ship-pr `run_ci_fix_vendor` HEAD-non-advance detection so a vendor that exits 0 without producing any commit is classified as `first-fixer-non-health`, routing the run to Exit 3 → autonomous main-agent CI-fix; existing tier-order happy-path tests updated to produce real commits so they remain rc 0. Fixes #3134.
 
 ### Fixed
@@ -53,6 +54,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Remove grouped reuse-by-copy from the waterfall dispatcher and add --no-fallback drop-on-failure mode for design panels
 - Emit only Codex/Cursor slots that are actually available, with a single generic Claude reviewer when both externals are absent
 - Fix degraded-tools-gate env-var inputs and add a guard harness so fallback_group cannot return
+- Surface failed-agent stderr tails end-to-end for implement, CI, and lint-fix lanes using the shared #3202 library
+- Write stderr-tail artifacts on codex-implement model-args and agent-failure paths; consume them in step2, ship-pr, and Step 5
+- Add plan-review-loop collector FD-2 tail regression coverage (#3227)
 
 ## [47.0.18] - 2026-05-30
 

@@ -1,0 +1,43 @@
+finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
+FINDING_1	cursor-specialist-structure-output.txt|cursor-specialist-correctness-output.txt|cursor-specialist-security-output.txt|cursor-specialist-plan-fidelity-output.txt|dyn-bash-flow-output.txt|dyn-fd-routing-output.txt|dyn-tail-redaction-output.txt|dyn-cleanup-retention-output.txt	accepted	YES	true	major	excellent	false	YES	true	major	excellent	false	YES	true	major	good	false
+FINDING_10	cursor-specialist-testing-output.txt	accepted	YES	uncertain	minor	adequate	true	YES	true	minor	good	false	YES	true	minor	good	false
+FINDING_11	cursor-specialist-testing-output.txt	accepted	YES	uncertain	nit	adequate	true	YES	true	nit	adequate	false	EXONERATE	true	nit	weak	false
+FINDING_12	cursor-specialist-testing-output.txt	accepted	YES	uncertain	nit	adequate	true	YES	true	nit	excellent	false	EXONERATE	true	nit	adequate	false
+FINDING_13	cursor-specialist-security-output.txt	exonerated	EXONERATE	partially-true	minor	adequate	false	EXONERATE	partially-true	minor	adequate	false	EXONERATE	partially-true	minor	adequate	false
+FINDING_14	cursor-specialist-security-output.txt	exonerated	EXONERATE	partially-true	minor	weak	false	EXONERATE	partially-true	minor	weak	false	EXONERATE	partially-true	minor	weak	false
+FINDING_15	cursor-specialist-edge-cases-output.txt|cursor-specialist-plan-fidelity-output.txt	accepted	YES	true	minor	good	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_16	cursor-specialist-edge-cases-output.txt	accepted	YES	true	major	good	false	YES	true	major	excellent	false	YES	true	major	good	false
+FINDING_17	cursor-specialist-edge-cases-output.txt	accepted	YES	true	minor	adequate	true	YES	partially-true	minor	adequate	false	EXONERATE	partially-true	minor	adequate	false
+FINDING_18	cursor-specialist-edge-cases-output.txt	accepted	YES	partially-true	nit	adequate	false	YES	true	nit	excellent	false	YES	true	nit	excellent	false
+FINDING_19	cursor-specialist-plan-fidelity-output.txt	accepted	NO			adequate	true	YES	true	minor	good	false	YES	true	minor	good	false
+FINDING_2	cursor-specialist-structure-output.txt	exonerated	EXONERATE	partially-true	nit	adequate	true	EXONERATE	true	nit	adequate	false	EXONERATE	true	nit	adequate	false
+FINDING_20	dyn-tail-redaction-output.txt	accepted	YES	true	minor	good	false	YES	true	minor	excellent	false	YES	true	major	good	false
+FINDING_21	dyn-fixture-isolation-output.txt	accepted	YES	true	minor	adequate	false	YES	true	minor	adequate	false	EXONERATE	true	minor	adequate	false
+FINDING_22	dyn-fixture-isolation-output.txt	accepted	YES	uncertain	minor	adequate	true	YES	true	minor	adequate	false	EXONERATE	true	minor	adequate	false
+FINDING_23	dyn-fixture-isolation-output.txt	exonerated	YES	uncertain	nit	adequate	true	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	weak	false
+FINDING_24	dyn-fixture-isolation-output.txt	accepted	YES	true	nit	good	false	YES	true	nit	excellent	false	EXONERATE	true	nit	adequate	false
+FINDING_3	cursor-specialist-structure-output.txt	exonerated	EXONERATE	partially-true	nit	adequate	false	EXONERATE	true	nit	adequate	false	EXONERATE	true	nit	adequate	false
+FINDING_4	cursor-specialist-structure-output.txt|cursor-specialist-correctness-output.txt|cursor-specialist-testing-output.txt|cursor-specialist-edge-cases-output.txt|dyn-bash-flow-output.txt	accepted	YES	true	major	good	true	YES	true	major	good	false	YES	true	major	good	false
+FINDING_5	cursor-specialist-structure-output.txt	accepted	EXONERATE		nit	adequate	true	YES	true	minor	excellent	false	YES	true	minor	good	false
+FINDING_6	cursor-specialist-correctness-output.txt	accepted	YES	true	minor	adequate	true	YES	true	nit	good	false	YES	true	minor	good	false
+FINDING_7	cursor-specialist-testing-output.txt	accepted	YES	uncertain	minor	adequate	true	YES	true	minor	good	false	YES	true	minor	adequate	false
+FINDING_8	cursor-specialist-testing-output.txt|dyn-fixture-isolation-output.txt	accepted	YES	true	minor	adequate	true	YES	true	minor	good	false	YES	true	minor	good	false
+FINDING_9	cursor-specialist-testing-output.txt	accepted	YES	true	minor	adequate	false	EXONERATE	partially-true	minor	adequate	false	YES	partially-true	minor	adequate	false
+OOS_1	cursor-specialist-structure-output.txt	accepted	YES	true	nit	adequate	false	YES	true	nit	adequate	false	YES	true	nit	adequate	false
+OOS_10	dyn-tail-redaction-output.txt	neutral	YES	true	nit	adequate	false	EXONERATE	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+OOS_11	dyn-tail-redaction-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	true	minor	weak	false	EXONERATE	true	minor	weak	false
+OOS_12	dyn-tail-redaction-output.txt	rejected	NO	true	nit	no-fix	false	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+OOS_13	dyn-cleanup-retention-output.txt	neutral	YES	true	minor	adequate	false	NO	true	minor	adequate	false	EXONERATE	true	minor	adequate	false
+OOS_14	dyn-cleanup-retention-output.txt	rejected	NO		nit	no-fix	true	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+OOS_15	dyn-cleanup-retention-output.txt	rejected	NO		nit	no-fix	true	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+OOS_16	dyn-fixture-isolation-output.txt	rejected	NO		nit	no-fix	true	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+OOS_17	dyn-fixture-isolation-output.txt	exonerated	YES	partially-true	nit	adequate	false	EXONERATE	partially-true	nit	no-fix	false	EXONERATE	partially-true	nit	weak	false
+OOS_18	dyn-fixture-isolation-output.txt	rejected	NO		nit	no-fix	true	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+OOS_2	cursor-specialist-testing-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	true	nit	no-fix	false	EXONERATE	true	nit	weak	false
+OOS_3	cursor-specialist-testing-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	partially-true	nit	weak	false	EXONERATE	true	minor	weak	false
+OOS_4	cursor-specialist-security-output.txt	accepted	YES	true	minor	adequate	false	YES	true	minor	adequate	false	YES	true	minor	adequate	false
+OOS_5	dyn-bash-flow-output.txt	accepted	NO		nit	adequate	true	YES	true	nit	adequate	false	YES	true	nit	good	false
+OOS_6	dyn-bash-flow-output.txt	rejected	NO		nit	no-fix	true	NO	partially-true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+OOS_7	dyn-bash-flow-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	true	nit	no-fix	false	EXONERATE	true	nit	weak	false
+OOS_8	dyn-fd-routing-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	partially-true	minor	weak	false	EXONERATE	partially-true	minor	weak	false
+OOS_9	dyn-fd-routing-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	partially-true	nit	weak	false	EXONERATE	partially-true	nit	weak	false

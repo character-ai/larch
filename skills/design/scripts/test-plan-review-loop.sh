@@ -405,6 +405,31 @@ write_collect_one_nit() {
     write_collect one_nit
 }
 
+write_collect_failing_tail() {
+    cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' '--- failed agent stderr tail ---' >&2
+printf '%s\n' 'LARCH_TEST_STDERR_TAIL_MARKER' >&2
+paths=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --paths-file) paths="${2:?}"; shift 2 ;;
+        --timeout) shift 2 ;;
+        --substantive-validation|--validation-mode|--structured-reviewer-validation) shift 1 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$paths" && -f "$paths" ]] || exit 1
+while IFS= read -r p || [[ -n "$p" ]]; do
+    [[ -z "$p" ]] && continue
+    printf 'REVIEWER_FILE=%s\nTOOL=cursor\nSTATUS=FAIL\nEXIT_CODE=1\n\n' "$p"
+done <"$paths"
+exit 1
+EOS
+    chmod +x "$STUB/collect-agent-results.sh"
+}
+
 write_collect() {
     local mode="${1:?}"
     cat >"$STUB/collect-agent-results.sh" <<EOS
@@ -2614,5 +2639,89 @@ printf '%s\n' "$dedup_nonnumeric_log" | grep -q 'dedup-sweep:' && fail "non-nume
 [[ ! -e "$backup_nonnumeric" ]] || fail "non-numeric dedup output should remove pre-revise backup"
 compgen -G "$DPNONNUM/.plan-dedup.*" >/dev/null && fail "non-numeric dedup output should clean temporary dedup file"
 rm -f "$STUB/python3"
+
+echo "=== stubbed driver: collector stderr tail reaches FD 2 and log (#3227) ==="
+DTAIL="$TMP/stderr-tail-fd2"
+mkdir -p "$DTAIL"
+printf 'plan\n' >"$DTAIL/plan.txt"
+printf 'feat\n' >"$DTAIL/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect_failing_tail
+write_voters_three
+set +e
+run_loop "$DTAIL" 2>"$DTAIL/loop.stderr" >/dev/null
+set -e
+grep -Fq 'LARCH_TEST_STDERR_TAIL_MARKER' "$DTAIL/loop.stderr" \
+    || fail "stderr tail marker must reach loop FD 2"
+grep -Fq 'LARCH_TEST_STDERR_TAIL_MARKER' "$DTAIL/plan-review-collector.stderr" \
+    || fail "stderr tail marker must reach collector stderr log"
+
+write_collect_empty_fail() {
+    cat >"$STUB/collect-agent-results.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'collector crashed with no stdout\n' >&2
+exit 1
+EOS
+    chmod +x "$STUB/collect-agent-results.sh"
+}
+
+echo "=== stubbed driver: empty collector stdout fails closed (panel-failed) ==="
+DEMPTY="$TMP/collector-empty-fail"
+mkdir -p "$DEMPTY"
+printf 'plan\n' >"$DEMPTY/plan.txt"
+printf 'feat\n' >"$DEMPTY/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect_empty_fail
+write_voters_three
+set +e
+out_empty=$(run_loop "$DEMPTY")
+empty_rc=$?
+set -e
+[[ "$empty_rc" -eq 1 ]] || fail "empty collector failure should exit 1"
+if printf '%s\n' "$out_empty" | grep -q '^LOOP_STATUS=panel-failed$'; then
+    :
+elif grep -Fq 'collector failed with empty stdout' "$DEMPTY/voting-tally.md" 2>/dev/null \
+    && [[ -f "$DEMPTY/plan-review/round-1/findings-classification.tsv" ]]; then
+    :
+else
+    fail "empty collector failure should fail closed (rc=$empty_rc out=$out_empty)"
+fi
+
+echo "=== stubbed driver: collector stderr tail reaches quiet tee log (#3227) ==="
+DQUIET="$TMP/stderr-tail-fd4-quiet"
+mkdir -p "$DQUIET"
+printf 'plan\n' >"$DQUIET/plan.txt"
+printf 'feat\n' >"$DQUIET/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect_failing_tail
+write_voters_three
+set +e
+(
+    export CLAUDE_PLUGIN_ROOT="$ROOT"
+    export LARCH_PLAN_REVIEW_SCOUT_SH="$STUB/scout-plan-archetypes-wrapper.sh"
+    export LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH="$STUB/dispatch-plan-review-panel.sh"
+    export LARCH_PLAN_REVIEW_COLLECT_SH="$STUB/collect-agent-results.sh"
+    export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"
+    export LARCH_PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$ROOT/skills/design/scripts/tally-plan-review.sh}"
+    export LARCH_PLAN_REVIEW_REVISE_SH="${LARCH_PLAN_REVIEW_REVISE_SH:-$ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
+    export LARCH_AGGREGATOR_DISABLED=1
+    unset LARCH_QUIET_DISABLE
+    bash "$PLR" \
+        --design-tmpdir "$DQUIET" \
+        --plan-file "$DQUIET/plan.txt" \
+        --feature-file "$DQUIET/feature-description.txt" \
+        --codex-present true \
+        --cursor-present true \
+        --round-num 1
+) >"$DQUIET/loop.stdout" 2>"$DQUIET/loop.stderr"
+quiet_rc=$?
+set -e
+[[ "$quiet_rc" -eq 0 ]] || fail "quiet collector stderr tail loop should exit 0"
+grep -Fq 'LARCH_TEST_STDERR_TAIL_MARKER' "$DQUIET/plan-review-collector.stderr" \
+    || fail "stderr tail marker must reach plan-review-collector.stderr under quiet"
 
 printf '%s\n' "test-plan-review-loop: ok"
