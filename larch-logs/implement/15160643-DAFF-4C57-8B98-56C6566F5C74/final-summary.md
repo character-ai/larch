@@ -1,6 +1,6 @@
-## /implement run 15160643-DAFF-4C57-8B98-56C6566F5C74 — bailed
+## /implement run 15160643-DAFF-4C57-8B98-56C6566F5C74 — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Path**: HARD
 - **Duration**: 00:54:56
