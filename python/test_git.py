@@ -259,8 +259,10 @@ def test_rebase_onto_strips_git_dir_override(monkeypatch: pytest.MonkeyPatch) ->
             cwd: str | None = None,
             env: Mapping[str, str] | None = None,
             check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
         ) -> CommandResult:
-            _ = timeout, cwd, check
+            _ = timeout, cwd, check, stdout, stderr
             captured["env"] = dict(env) if env else {}
             return CommandResult(tuple(argv), 0, "", "", 0.01)
 
