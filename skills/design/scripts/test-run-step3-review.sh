@@ -379,13 +379,25 @@ out="$("${launcher_env[@]}" "$LAUNCHER" \
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'invalid round-cap panel-failed'
 grep -Fq 'LOOP_STATUS=panel-failed' "$D11/.step3-review-result.env" || fail 'invalid round-cap result env panel-failed'
 
-echo "=== invalid convergence-threshold normalizes to panel-failed ==="
-D11C="$TMP/invalid-convergence"
+echo "=== loop is not forwarded --convergence-threshold ==="
+D11C="$TMP/no-ct-forward"
 write_common_inputs "$D11C" SIMPLE
-out="$("${launcher_env[@]}" "$LAUNCHER" \
-    --design-tmpdir "$D11C" --round-cap 5 --convergence-threshold abc 2>&1)"
-assert_contains "$out" 'LOOP_STATUS=panel-failed' 'invalid convergence-threshold panel-failed'
-grep -Fq 'LOOP_STATUS=panel-failed' "$D11C/.step3-review-result.env" || fail 'invalid convergence-threshold result env panel-failed'
+ct_stub="$D11C/ct-stub.sh"
+cat >"$ct_stub" <<'STUBEOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$@" >"${CT_ARGV_FILE:-/dev/null}"
+printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'
+STUBEOF
+chmod +x "$ct_stub"
+CT_ARGV_FILE="$D11C/loop-argv.txt"
+"${launcher_env[@]}" CT_ARGV_FILE="$CT_ARGV_FILE" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$ct_stub" "$LAUNCHER" \
+    --design-tmpdir "$D11C" --round-cap 5 --convergence-threshold 3 >/dev/null
+if grep -Fq -- '--convergence-threshold' "$CT_ARGV_FILE" 2>/dev/null; then
+    fail 'loop should not receive --convergence-threshold'
+else
+    pass 'loop is not forwarded --convergence-threshold'
+fi
 
 echo "=== terminal stdout breadcrumbs include round identifiers ==="
 D11B="$TMP/breadcrumb-rounds"

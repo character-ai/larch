@@ -60,7 +60,7 @@ contains "$RUN_STEP3_SH" 'review-round-count.txt' 'run-step3-review.sh missing r
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" '--round-cap "$ROUND_CAP"' 'run-step3-review.sh must pass round-cap to plan-review-loop'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-contains "$RUN_STEP3_SH" '--convergence-threshold "$CONVERGENCE_THRESHOLD"' 'run-step3-review.sh must pass convergence-threshold to plan-review-loop'
+absent "$RUN_STEP3_SH" '--convergence-threshold "$CONVERGENCE_THRESHOLD"' 'run-step3-review.sh must NOT forward convergence-threshold to plan-review-loop'
 # shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
 contains "$SKILL_MD" '--round-cap "${LARCH_DESIGN_ROUND_CAP:-5}"' 'SKILL must pass explicit round-cap to run-step3-review.sh'
 # shellcheck disable=SC2016 # Markdown literal intentionally checks unexpanded parameter syntax.
