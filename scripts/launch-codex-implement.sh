@@ -325,13 +325,13 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     LAUNCHER_EXIT=0
     rm -f "$CODEX_EVENTS"
     # shellcheck disable=SC2094 # --stderr-sink intentionally names the same fd2 sink used by this invocation.
+    # --add-dir "$SESSION_TMPDIR" grant must stay wide: Step 2 coder writes manifest.json / qa-pending.json there.
     CODEX_HOME="$CODEX_HOME_DIR" "$SCRIPT_DIR/run-external-agent.sh" \
         --tool codex \
         --output "$TRANSCRIPT_PATH" \
         --timeout "$TIMEOUT" \
         --stderr-sink "$SIDECAR_LOG" \
         -- \
-        # Step 2 coder must write manifest.json / qa-pending.json under $SESSION_TMPDIR; keep this grant wide.
         codex exec --full-auto -C "$PWD" \
         --add-dir "$SESSION_TMPDIR" \
         --add-dir "$PWD" \
