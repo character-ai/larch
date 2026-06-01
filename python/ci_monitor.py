@@ -1021,21 +1021,21 @@ def evaluate_failure(
     upfront_logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
     upfront_ready_stash: LogCollectResult | None = None
     blind_rerun_attempted = False
-    if transient_retries < config.CI_MONITOR_TRANSIENT_RERUN_MAX:
-        if (
-            upfront_logs.state == "ready"
-            and retry.is_transient_net_signature(upfront_logs.text)
-        ):
-            blind_rerun_attempted = True
-            rerun = rerun_failed(runner, run_id=run_id, repo=repo, cwd=cwd)
-            if rerun.submitted and not rerun.already_running:
-                return FixResult(status="no-changes")
-            if rerun.submitted and rerun.already_running:
-                return FixResult(status="no-changes", rerun_already_running=True)
-            if rerun.error:
-                _warn_stderr(
-                    f"evaluate_failure: transient rerun failed: {rerun.error}; continuing to fix loop",
-                )
+    if (
+        transient_retries < config.CI_MONITOR_TRANSIENT_RERUN_MAX
+        and upfront_logs.state == "ready"
+        and retry.is_transient_net_signature(upfront_logs.text)
+    ):
+        blind_rerun_attempted = True
+        rerun = rerun_failed(runner, run_id=run_id, repo=repo, cwd=cwd)
+        if rerun.submitted and not rerun.already_running:
+            return FixResult(status="no-changes")
+        if rerun.submitted and rerun.already_running:
+            return FixResult(status="no-changes", rerun_already_running=True)
+        if rerun.error:
+            _warn_stderr(
+                f"evaluate_failure: transient rerun failed: {rerun.error}; continuing to fix loop",
+            )
     if upfront_logs.state == "ready" and not blind_rerun_attempted:
         upfront_ready_stash = upfront_logs
 
