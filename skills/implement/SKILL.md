@@ -1232,6 +1232,7 @@ IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
 _step18b_out=$("${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18b-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR")
+printf '%s\n' "$_step18b_out"
 EMIT_BODY=$(printf '%s\n' "$_step18b_out" | awk -F= '$1=="EMIT_BODY"{print $2; exit}')
 WFR_RC=$(printf '%s\n' "$_step18b_out" | awk -F= '$1=="WFR_RC"{print $2; exit}')
 STEP17_EMITTED_PRESENT=$(printf '%s\n' "$_step18b_out" | awk -F= '$1=="STEP17_EMITTED_PRESENT"{print $2; exit}')

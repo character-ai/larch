@@ -58,15 +58,17 @@ main() {
         export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
     fi
 
-    local emit_body=false step17_present=false wfr_rc=0 token_rc=0
+    local emit_body=false step17_present=false wfr_rc=0
+    local token_fail_log="$tmpdir/step18-token-report.failure.log"
+    local wfr_fail_log="$tmpdir/step18-write-final-report.failure.log"
     [ -f "$tmpdir/.step17-emitted" ] && step17_present=true
     if [ ! -f "$tmpdir/.step17-emitted" ]; then
         emit_body=true
     fi
 
-    if ! "$PLUGIN_ROOT/scripts/token-report.sh" --full --format json --output "$tmpdir/token-report-rendered.json"; then
-        token_rc=$?
-        append_failure_best_effort "Step 18 — cleanup" "token-report.sh" "$token_rc" "$tmpdir/step18-token-report.failure.log"
+    : >"$token_fail_log" 2>/dev/null || true
+    if ! "$PLUGIN_ROOT/scripts/token-report.sh" --full --format json --output "$tmpdir/token-report-rendered.json" >>"$token_fail_log" 2>&1; then
+        append_failure_best_effort "Step 18 — cleanup" "token-report.sh" "$?" "$token_fail_log"
     fi
 
     if [ -f "$tmpdir/summary-final.md" ]; then
@@ -75,11 +77,12 @@ main() {
         rm -f "$tmpdir/.step18-prebody"
     fi
 
-    if "$SCRIPT_DIR/write-final-report.sh" --implement-tmpdir "$tmpdir"; then
+    : >"$wfr_fail_log" 2>/dev/null || true
+    if "$SCRIPT_DIR/write-final-report.sh" --implement-tmpdir "$tmpdir" >>"$wfr_fail_log" 2>&1; then
         wfr_rc=0
     else
         wfr_rc=$?
-        append_failure_best_effort "Step 18 — cleanup" "write-final-report.sh" "$wfr_rc" "$tmpdir/step18-write-final-report.failure.log"
+        append_failure_best_effort "Step 18 — cleanup" "write-final-report.sh" "$wfr_rc" "$wfr_fail_log"
     fi
 
     if [ "$wfr_rc" -eq 0 ] && [ -s "$tmpdir/summary-final.md" ]; then

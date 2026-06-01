@@ -41,7 +41,8 @@ setup_stub_plugin() {
   mkdir -p "$plugin/scripts"
   cp "$REPO_ROOT/scripts/lib-quiet.sh" "$plugin/scripts/lib-quiet.sh"
   cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$plugin/scripts/append-tool-failure.sh"
-  chmod +x "$plugin/scripts/append-tool-failure.sh"
+  cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$plugin/scripts/read-session-env-key.sh"
+  chmod +x "$plugin/scripts/append-tool-failure.sh" "$plugin/scripts/read-session-env-key.sh"
   cat >"$plugin/scripts/token-report.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -141,10 +142,10 @@ mkdir -p "$tmpdir"
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" fail ok "$TMP_ROOT/case-wfr-fail.out"
 assert_eq false "$(kv EMIT_BODY "$TMP_ROOT/case-wfr-fail.out")" "EMIT_BODY=false when write-final-report fails"
 assert_eq 1 "$(kv WFR_RC "$TMP_ROOT/case-wfr-fail.out")" "WFR_RC non-zero on write failure"
-if [ -f "$tmpdir/step18-write-final-report.failure.log" ]; then
-    pass "write-final-report failure log captured"
+if [ -s "$tmpdir/step18-write-final-report.failure.log" ]; then
+    pass "write-final-report failure log captured with helper output"
 else
-    fail "write-final-report failure log missing"
+    fail "write-final-report failure log missing or empty"
 fi
 
 tmpdir="$TMP_ROOT/case-empty-body"
@@ -156,11 +157,27 @@ tmpdir="$TMP_ROOT/case-token-fail"
 mkdir -p "$tmpdir"
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" ok fail "$TMP_ROOT/case-token-fail.out"
 assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-token-fail.out")" "EMIT_BODY follows gate when token-report fails but write succeeds"
-if [ -f "$tmpdir/step18-token-report.failure.log" ]; then
-    pass "token-report failure log captured"
+if [ -s "$tmpdir/step18-token-report.failure.log" ]; then
+    pass "token-report failure log captured with helper output"
 else
-    fail "token-report failure log missing"
+    fail "token-report failure log missing or empty"
 fi
+
+tmpdir="$TMP_ROOT/case-session-env"
+mkdir -p "$tmpdir"
+printf 'LARCH_TOKEN_SESSION_ID=sess-18b\nLARCH_CLAUDE_SOURCE_FILE=/tmp/claude.jsonl\nLARCH_TIMING_LEDGER=/tmp/ledger.json\n' >"$tmpdir/session-env.sh"
+run_wrapper "$tmpdir" "$impl_dir" "$plugin" ok ok "$TMP_ROOT/case-session-env.out"
+assert_eq 0 "$RC" "session-env rehydration runs helper successfully"
+assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-session-env.out")" "session-env rehydration preserves emit gate"
+
+tmpdir="$TMP_ROOT/case-plugin-root-fallback"
+mkdir -p "$tmpdir"
+printf 'CLAUDE_PLUGIN_ROOT=%s\n' "$plugin" >"$tmpdir/plugin-root.env"
+run_capture "$TMP_ROOT/case-plugin-root-fallback.out" env -u CLAUDE_PLUGIN_ROOT WFR_MODE=ok TOKEN_MODE=ok bash -c \
+  'set -a; . "$1/plugin-root.env"; set +a; "$2/step-18b-final-report.sh" --implement-tmpdir "$1"' \
+  bash "$tmpdir" "$impl_dir"
+assert_eq 0 "$RC" "plugin-root.env orchestrator pre-source loads stub plugin"
+assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-plugin-root-fallback.out")" "plugin-root.env orchestrator pre-source emits EMIT_BODY=true"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

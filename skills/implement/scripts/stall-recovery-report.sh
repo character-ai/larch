@@ -76,25 +76,21 @@ first_nonempty() {
     printf '\n'
 }
 
-validate_ship_pr_state() {
-    local file=$1 line saw_key=false
+check_ship_pr_state_syntax() {
+    local file=$1 line
+    [ -f "$file" ] || return 1
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             ""|\#*) continue ;;
         esac
         if ! printf '%s\n' "$line" | LC_ALL=C grep -Eq '^[A-Z][A-Z0-9_]*=.*$'; then
-            larch_err "stall-recovery-report.sh: malformed ship-pr-state.sh"
-            exit 3
+            return 1
         fi
-        saw_key=true
     done <"$file"
-    if [ "$saw_key" != true ]; then
-        larch_err "stall-recovery-report.sh: malformed ship-pr-state.sh"
-        exit 3
-    fi
+    return 0
 }
 
-check_ship_pr_state_format() {
+ship_pr_state_has_keys() {
     local file=$1 line saw_key=false
     [ -f "$file" ] || return 1
     while IFS= read -r line || [ -n "$line" ]; do
@@ -106,8 +102,18 @@ check_ship_pr_state_format() {
         fi
         saw_key=true
     done <"$file"
-    [ "$saw_key" = true ] || return 1
-    return 0
+    [ "$saw_key" = true ]
+}
+
+validate_ship_pr_state() {
+    if ! check_ship_pr_state_syntax "$1"; then
+        larch_err "stall-recovery-report.sh: malformed ship-pr-state.sh"
+        exit 3
+    fi
+}
+
+check_ship_pr_state_format() {
+    check_ship_pr_state_syntax "$1" && ship_pr_state_has_keys "$1"
 }
 
 ship_pr_state_present() {
@@ -192,9 +198,13 @@ cmd_clear_stall() {
         emit_kv CLEARED false
         exit 3
     fi
-    if ! check_ship_pr_state_format "$state"; then
+    if ! check_ship_pr_state_syntax "$state"; then
         emit_kv CLEARED false
         exit 3
+    fi
+    if ! ship_pr_state_has_keys "$state"; then
+        emit_kv CLEARED false
+        exit 0
     fi
 
     local dir base tmp tracking
@@ -242,23 +252,28 @@ cmd_seed_terminal_state() {
             emit_kv SEEDED false
             exit 3
         fi
-        if ! check_ship_pr_state_format "$state"; then
+        if ! check_ship_pr_state_syntax "$state"; then
             emit_kv SEEDED false
             exit 3
         fi
-        step=$(kv_get "$state" STALL_STEP "8")
-        phase=$(kv_get "$state" PHASE "ci-initial")
-        [ -n "$stall_step_arg" ] && step=$(safe_step_value "$stall_step_arg")
-        [ -n "$phase_arg" ] && phase=$(safe_phase_value "$phase_arg")
-        seed_mode=rewrite
-        dir=$(dirname "$state")
-        base=$(basename "$state")
-        tmp=$(mktemp "$dir/${base}.tmp.XXXXXX") || emit_seeded_false_exit 1
-        if ! rewrite_ship_pr_state_keys "$state" STALL_TRACKING true STALL_STEP "$step" PHASE "$phase" >"$tmp"; then
-            rm -f "$tmp"
-            emit_seeded_false_exit 1
+        if ship_pr_state_has_keys "$state"; then
+            step=$(kv_get "$state" STALL_STEP "8")
+            phase=$(kv_get "$state" PHASE "ci-initial")
+            [ -n "$stall_step_arg" ] && step=$(safe_step_value "$stall_step_arg")
+            [ -n "$phase_arg" ] && phase=$(safe_phase_value "$phase_arg")
+            seed_mode=rewrite
+            dir=$(dirname "$state")
+            base=$(basename "$state")
+            tmp=$(mktemp "$dir/${base}.tmp.XXXXXX") || emit_seeded_false_exit 1
+            if ! rewrite_ship_pr_state_keys "$state" STALL_TRACKING true STALL_STEP "$step" PHASE "$phase" >"$tmp"; then
+                rm -f "$tmp"
+                emit_seeded_false_exit 1
+            fi
+        else
+            :
         fi
-    else
+    fi
+    if [ -z "${seed_mode:-}" ]; then
         step=8
         phase=ci-initial
         [ -n "$stall_step_arg" ] && step=$(safe_step_value "$stall_step_arg")
@@ -273,6 +288,10 @@ cmd_seed_terminal_state() {
             rm -f "$tmp"
             emit_seeded_false_exit 1
         }
+    fi
+
+    if [ -z "${tmp:-}" ]; then
+        emit_seeded_false_exit 1
     fi
 
     tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$tmp" --key STALL_TRACKING --default "") || {
@@ -516,11 +535,13 @@ cmd_classify() {
     session_env="$tmpdir/session-env.sh"
     if [ -f "$state_file" ]; then
         validate_ship_pr_state "$state_file"
-        state_stall_step=$(kv_get "$state_file" STALL_STEP "")
-        state_phase=$(kv_get "$state_file" PHASE "")
-        state_stall_tracking=$(kv_get "$state_file" STALL_TRACKING "false")
-        state_bail_reason=$(kv_get "$state_file" BAIL_REASON "")
-        state_exit_code=$(kv_get "$state_file" EXIT_CODE "")
+        if check_ship_pr_state_format "$state_file"; then
+            state_stall_step=$(kv_get "$state_file" STALL_STEP "")
+            state_phase=$(kv_get "$state_file" PHASE "")
+            state_stall_tracking=$(kv_get "$state_file" STALL_TRACKING "false")
+            state_bail_reason=$(kv_get "$state_file" BAIL_REASON "")
+            state_exit_code=$(kv_get "$state_file" EXIT_CODE "")
+        fi
     fi
 
     if [ -r "$session_env" ]; then
