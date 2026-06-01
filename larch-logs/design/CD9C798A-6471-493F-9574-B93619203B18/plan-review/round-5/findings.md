@@ -1,0 +1,15 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/review-and-fix/scripts/test-review-and-fix.sh:513-518
+- **Concern**: skills/review-and-fix/scripts/test-review-and-fix.sh:559-564. Scenario: Carryover-guard plan cd's into the work repo before snap_dir but leaves _repo_root_cg from harness cwd
+- **Proposed resolution**: If pre_coder_snapshot_dir regresses to implement/.pre-coder-snapshots while cd'd in the fixture repo, snap_dir stays inside the worktree but still passes not-under-round_dir and not-under-_repo_root_cg when _repo_root_cg is the larch harness toplevel After cd "$work_*_carryover_guard" (and the index twin), recompute _repo_root_cg via git rev-parse --show-toplevel or add case "$snap_dir" in "$PWD"/*|"PWD") fail before seeding fixtures
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/review-and-fix/scripts/test-review-and-fix.sh:512-519
+- **Concern**: Grant-root assertion still uses harness checkout after in-repo cwd fix. Scenario: Carryover-guard plan moves snap_dir setup into the work repo but leaves _repo_root_cg from the harness CWD; relocated snap_dir under $TMPDIR still passes "not under repo root" while snapshots under $PWD/implement/.pre-coder-snapshots would not
+- **Proposed resolution**: After cd into each work repo recompute the grant root (e.g. _repo_root_cg=$(git rev-parse --show-toplevel) or _repo_root_cg=$PWD) before the case blocks, or assert snap_dir is outside $PWD/* explicitly

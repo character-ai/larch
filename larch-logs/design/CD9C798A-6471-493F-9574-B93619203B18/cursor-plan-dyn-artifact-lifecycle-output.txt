@@ -1,0 +1,29 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/review-and-fix.sh:1323-1326	skills/review-and-fix/scripts/review-implement-step5-loop.sh:403	0444 hardening without pre-write cleanup interacts with existing redirect-failure rm -f on pre-coder-head.txt	When the $PWD relocation branch leaves a prior round's snapshots under ${TMPDIR}/larch-pre-coder-snapshots/<hash>/ (not removed by cleanup-tmpdir.sh), a later run reuses the same snap_dir. Redirect to an existing 0444 pre-coder-head.txt fails; the existing || rm -f drops the head and skips snapshot_pre_coder_tracked_state while stale 0444 tracked-paths and patch files remain — carryover classification can silently diverge from current git state.	Unconditionally remove pre-coder snapshot files (or the whole snap_dir) immediately before the pre-coder-head write in both the main round path (~1321) and run_implement_mav_apply (~401), then write, snapshot, and chmod; do not rely on redirect failure to clear a prior 0444 head.
+
+**1. [correctness]** `skills/review-and-fix/scripts/review-and-fix.sh:1323-1326`, `skills/review-and-fix/scripts/review-implement-step5-loop.sh:403`
+
+The plan adds `chmod 0444` after snapshot writes but does not clear a reused relocated `snap_dir`. Production cache-backed `IMPLEMENT_TMPDIR` (sibling `.pre-coder-snapshots`, reaped with `cleanup-tmpdir.sh`) avoids this; it bites when the planned `$PWD` branch persists snapshots under `${TMPDIR}/larch-pre-coder-snapshots/` across runs (failure mode #2, documented).
+
+Both call sites already use:
+
+```1323:1326:skills/review-and-fix/scripts/review-and-fix.sh
+            git rev-parse HEAD > "$snap_dir/pre-coder-head.txt" 2>/dev/null || rm -f "$snap_dir/pre-coder-head.txt"
+            if [[ -s "$snap_dir/pre-coder-head.txt" ]]; then
+                snapshot_pre_coder_tracked_state "$round_dir" "$(cat "$snap_dir/pre-coder-head.txt")"
+            fi
+```
+
+After hardening, a redirect to a leftover `0444` head fails and triggers `rm -f` on the head only, skipping a fresh snapshot while older `0444` patches/paths remain. **Suggested revision:** `rm -f`/`rm -rf` the snap artifacts (or entire `snap_dir`) before the head write, then write → snapshot → `harden_pre_coder_snapshot_perms` / MAV head `chmod`.
+
+---
+
+**Exonerated (no additional findings):**
+
+- **Relocated-dir leak without explicit teardown cleanup** — plan documents OS `$TMPDIR` reaping and defers best-effort cleanup as scope creep; consistent with SIMPLE tier.
+- **`post-coder-head.txt` stays in `round_dir`** — intentional; telemetry and MAV already split pre (snapshot dir) vs post (`round_dir`); `chmod` on post-coder is defense-in-depth only.
+- **`cleanup-tmpdir.sh:70` + file-only `chmod`** — `rm -rf` on a writable parent removes `0444` files; plan correctly avoids directory `chmod`.
+- **Doc ahead of code** (`review-and-fix.md:56`, `SECURITY.md:64`) — motivation for the code change, not a post-land gap.
+- **Step5 harness paths** (`test-review-and-fix.sh:3012-3087`) — `IMPLEMENT_TMPDIR` outside `$PWD/work` exercises the default sibling branch; consistent with production cache layout.
+- **Wrong `cksum` citation** (`generate-pre-rendered-reviewer-prompts.sh:37,50`) — inline plan logic matches `hook-anti-read-poll.sh:37`; citation nit only.
+- **Plan test typo** `${TMPDIR:-/tmp%/}` — prose typo; implementer path is clear from the relocation helper text.
