@@ -9,6 +9,7 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 REAL_WRAPPER="$REPO_ROOT/scripts/implement-bootstrap-invoke.sh"
 REAL_REDACT_SECRETS="$REPO_ROOT/scripts/redact-secrets.sh"
 REAL_REDACT_TMPDIR="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
+REAL_LIB_QUIET="$REPO_ROOT/scripts/lib-quiet.sh"
 
 [ -x "$REAL_WRAPPER" ] || { echo "FAIL: $REAL_WRAPPER not executable"; exit 1; }
 
@@ -51,12 +52,25 @@ assert_rc() {
   fi
 }
 
+assert_empty() {
+  local value=$1 label=$2
+  if [ -z "$value" ]; then
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  else
+    FAIL=$((FAIL + 1))
+    echo "FAIL: $label"
+    printf '%s\n' "$value" | sed 's/^/    /'
+  fi
+}
+
 build_sandbox() {
   SANDBOX=$(mktemp -d /tmp/larch-ibi-test.XXXXXX)
   mkdir -p "$SANDBOX/scripts"
   cp "$REAL_WRAPPER" "$SANDBOX/scripts/implement-bootstrap-invoke.sh"
   cp "$REAL_REDACT_SECRETS" "$SANDBOX/scripts/redact-secrets.sh"
   cp "$REAL_REDACT_TMPDIR" "$SANDBOX/scripts/redact-tmpdir-paths.sh"
+  cp "$REAL_LIB_QUIET" "$SANDBOX/scripts/lib-quiet.sh"
   chmod +x "$SANDBOX/scripts/"*.sh
 
   cat >"$SANDBOX/scripts/implement-bootstrap.sh" <<'STUB'
@@ -88,6 +102,8 @@ case "${STUB_MODE:-success}" in
   exit2)
     printf 'IMPLEMENT_TMPDIR=%s\n' "${STUB_TMPDIR:-/tmp/larch-stub-tmpdir}"
     printf 'STEP_FAILED=%s\n' "${STUB_STEP_FAILED:-session-setup}"
+    [ -n "${STUB_GATE_ERROR:-}" ] && printf 'GATE_ERROR=%s\n' "$STUB_GATE_ERROR"
+    [ -n "${STUB_PREFLIGHT_ERROR:-}" ] && printf 'PREFLIGHT_ERROR=%s\n' "$STUB_PREFLIGHT_ERROR"
     exit 2
     ;;
   *)
@@ -105,6 +121,29 @@ run_wrapper() {
     export STUB_LOG="$SANDBOX/stub-invoke.log"
     "$@"
   )
+}
+
+run_exit2_case() {
+  local step=$1 label=$2 expected=$3
+  build_sandbox
+  STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-exit2.XXXXXX)
+  export STUB_TMPDIR
+  export STUB_MODE=exit2
+  export STUB_STEP_FAILED="$step"
+  stderr_file=$(mktemp /tmp/larch-ibi-stderr.XXXXXX)
+  stdout_file=$(mktemp /tmp/larch-ibi-stdout.XXXXXX)
+  set +e
+  run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial >"$stdout_file" 2>"$stderr_file"
+  rc=$?
+  set -e
+  assert_rc "$rc" 2 "$label rc"
+  stderr=$(cat "$stderr_file")
+  stdout=$(cat "$stdout_file")
+  assert_contains "$expected" "$stderr" "$label message on stderr"
+  assert_empty "$stdout" "$label stdout empty"
+  rm -f "$stderr_file" "$stdout_file"
+  rm -rf "$SANDBOX" "$STUB_TMPDIR"
+  unset STUB_TMPDIR STUB_MODE STUB_STEP_FAILED STUB_GATE_ERROR STUB_PREFLIGHT_ERROR
 }
 
 # --- initial mode argv ---
@@ -137,6 +176,18 @@ assert_contains 'CODEX_PRESENT=true' "$out" 'initial stdout envelope has presenc
 [ -f "$STUB_TMPDIR/bootstrap-routing.env" ] && assert_contains 'BRANCH_NAME=feature/stub' "$(cat "$STUB_TMPDIR/bootstrap-routing.env")" 'routing env file has BRANCH_NAME'
 rm -rf "$SANDBOX" "$STUB_TMPDIR"
 
+# --- initial mode omits unset coder ---
+build_sandbox
+unset coder
+STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-tmp.XXXXXX)
+export STUB_TMPDIR
+out=$(run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial 2>/dev/null) || true
+stub_log=$(cat "$SANDBOX/stub-invoke.log" 2>/dev/null || true)
+assert_contains '--up-to-phase coder' "$stub_log" 'initial mode still uses coder phase when coder unset'
+assert_not_contains '--coder' "$stub_log" 'initial mode omits --coder when unset'
+assert_contains 'IMPLEMENT_TMPDIR=' "$out" 'initial unset coder stdout envelope has IMPLEMENT_TMPDIR'
+rm -rf "$SANDBOX" "$STUB_TMPDIR"
+
 # --- resume mode argv + IMPLEMENT_TMPDIR pass-through ---
 build_sandbox
 RESUME_TMP=$(mktemp -d /tmp/larch-ibi-resume.XXXXXX)
@@ -154,47 +205,95 @@ assert_contains "stub-env IMPLEMENT_TMPDIR=$RESUME_TMP" "$stub_log" 'resume pass
 assert_contains "IMPLEMENT_TMPDIR=$RESUME_TMP" "$out" 'resume envelope includes IMPLEMENT_TMPDIR'
 rm -rf "$SANDBOX" "$RESUME_TMP"
 
-# --- exit 2 stderr / empty stdout ---
+# --- handled exit 2 cases: stderr / empty stdout ---
+export STUB_GATE_ERROR=contract-breach
+run_exit2_case session-entry-gate 'session-entry-gate exit 2' 'internal Step 0 contract violation'
+export STUB_PREFLIGHT_ERROR=dirty-main
+run_exit2_case session-setup 'session-setup exit 2' '/implement requires clean main to start'
+run_exit2_case get-issue-state 'get-issue-state exit 2' 'could not verify the adopted issue state'
+run_exit2_case issue-number-required-for-resume 'issue-number-required-for-resume exit 2' '--issue-number is required to resume an adopted tracking sentinel'
+run_exit2_case resume-plan-tail-sentinel 'resume-plan-tail-sentinel exit 2' 'resume tail could not validate tracking state'
+
+# --- copy-plan exit 2 redaction pipe ---
 build_sandbox
-STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-exit2.XXXXXX)
-export STUB_TMPDIR
-export STUB_MODE=exit2
-export STUB_STEP_FAILED=session-setup
+STUB_TMPDIR=$(mktemp -d /tmp/larch-implement-copy.XXXXXX)
+printf 'copy failed with sk-abcdefghijklmnopqrstuvwxyz123456 at %s/private\n' "$STUB_TMPDIR" >"$STUB_TMPDIR/copy-plan.stderr.log"
+export STUB_TMPDIR STUB_MODE=exit2 STUB_STEP_FAILED=copy-plan
 stderr_file=$(mktemp /tmp/larch-ibi-stderr.XXXXXX)
 stdout_file=$(mktemp /tmp/larch-ibi-stdout.XXXXXX)
 set +e
 run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial >"$stdout_file" 2>"$stderr_file"
 rc=$?
 set -e
-assert_rc "$rc" 2 'exit 2 rc'
 stderr=$(cat "$stderr_file")
 stdout=$(cat "$stdout_file")
-assert_contains '/implement requires clean main to start' "$stderr" 'session-setup message on stderr'
-assert_not_contains 'IMPLEMENT_TMPDIR=' "$stdout" 'exit 2 stdout empty'
+assert_rc "$rc" 2 'copy-plan exit 2 rc'
+assert_contains 'could not copy the preflight plan' "$stderr" 'copy-plan operator message'
+assert_contains '<REDACTED-TOKEN>' "$stderr" 'copy-plan redacts token'
+assert_contains '<TMPDIR>' "$stderr" 'copy-plan redacts tmpdir path'
+assert_not_contains 'sk-abcdefghijklmnopqrstuvwxyz123456' "$stderr" 'copy-plan suppresses raw token'
+assert_not_contains "$STUB_TMPDIR" "$stderr" 'copy-plan suppresses raw tmpdir path'
+assert_empty "$stdout" 'copy-plan stdout empty'
 rm -f "$stderr_file" "$stdout_file"
 rm -rf "$SANDBOX" "$STUB_TMPDIR"
+unset STUB_TMPDIR STUB_MODE STUB_STEP_FAILED
 
-# --- copy-plan exit 2 redaction pipe ---
+# --- gh-issue-view exit 2 redaction pipe ---
 build_sandbox
-STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-copy.XXXXXX)
-printf 'secret-token-here\n' >"$STUB_TMPDIR/copy-plan.stderr.log"
-export STUB_TMPDIR STUB_MODE=exit2 STUB_STEP_FAILED=copy-plan
+STUB_TMPDIR=$(mktemp -d /tmp/larch-implement-gh.XXXXXX)
+printf 'gh failed with ghp_abcdefghijklmnopqrstuvwxyz123456 at %s/issue\n' "$STUB_TMPDIR" >"$STUB_TMPDIR/gh-issue-view.stderr.log"
+export STUB_TMPDIR STUB_MODE=exit2 STUB_STEP_FAILED=gh-issue-view
 stderr_file=$(mktemp /tmp/larch-ibi-stderr.XXXXXX)
+stdout_file=$(mktemp /tmp/larch-ibi-stdout.XXXXXX)
 set +e
-run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial 2>"$stderr_file"
+run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial >"$stdout_file" 2>"$stderr_file"
+rc=$?
 set -e
 stderr=$(cat "$stderr_file")
-assert_contains 'could not copy the preflight plan' "$stderr" 'copy-plan operator message'
-rm -f "$stderr_file"
+stdout=$(cat "$stdout_file")
+assert_rc "$rc" 2 'gh-issue-view exit 2 rc'
+assert_contains 'could not read the issue title/body' "$stderr" 'gh-issue-view operator message'
+assert_contains '<REDACTED-TOKEN>' "$stderr" 'gh-issue-view redacts token'
+assert_contains '<TMPDIR>' "$stderr" 'gh-issue-view redacts tmpdir path'
+assert_not_contains 'ghp_abcdefghijklmnopqrstuvwxyz123456' "$stderr" 'gh-issue-view suppresses raw token'
+assert_not_contains "$STUB_TMPDIR" "$stderr" 'gh-issue-view suppresses raw tmpdir path'
+assert_empty "$stdout" 'gh-issue-view stdout empty'
+rm -f "$stderr_file" "$stdout_file"
 rm -rf "$SANDBOX" "$STUB_TMPDIR"
+unset STUB_TMPDIR STUB_MODE STUB_STEP_FAILED
 
-# --- invalid mode ---
+# --- usage errors ---
 build_sandbox
 set +e
 run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode bogus >/dev/null 2>&1
 rc=$?
 set -e
 assert_rc "$rc" 1 'invalid mode usage exit'
+rm -rf "$SANDBOX"
+
+build_sandbox
+set +e
+run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "$rc" 1 'absent mode usage exit'
+rm -rf "$SANDBOX"
+
+build_sandbox
+set +e
+run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "$rc" 1 'missing mode value usage exit'
+rm -rf "$SANDBOX"
+
+build_sandbox
+unset IMPLEMENT_TMPDIR
+set +e
+run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode resume >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "$rc" 1 'resume without IMPLEMENT_TMPDIR usage exit'
 rm -rf "$SANDBOX"
 
 # --- NEVER #14 ---

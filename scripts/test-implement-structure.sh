@@ -488,6 +488,42 @@ fi
 if [ "$(grep -cF '_inv_rc=$?' "$SKILL_MD" || true)" -lt 2 ]; then
   fail "SKILL.md must capture _inv_rc after each wrapper call"
 fi
+step0_wrapper_fence_status=0
+awk '
+  /<!-- step:0/ { in_step = 1; next }
+  in_step && /<!-- step:/ { in_step = 0; in_bash = 0 }
+  in_step && /^```(bash|sh|shell)[[:space:]]*$/ { in_bash = 1; next }
+  in_step && in_bash && /^```[[:space:]]*$/ { in_bash = 0; next }
+  in_step && in_bash && /implement-bootstrap-invoke\.sh" --mode (initial|resume)/ {
+    mode = ($0 ~ /--mode initial/) ? "initial" : "resume"
+    if (prev1 != "set +e") exit 20
+    getline rc_line
+    if (rc_line != "_inv_rc=$?") exit 21
+    getline sete_line
+    if (sete_line != "set -e") exit 22
+    seen[mode]++
+    prev2 = prev1
+    prev1 = sete_line
+    next
+  }
+  in_step && in_bash {
+    prev2 = prev1
+    prev1 = $0
+  }
+  END {
+    if (seen["initial"] < 1) exit 23
+    if (seen["resume"] < 1) exit 24
+  }
+' "$SKILL_MD" || step0_wrapper_fence_status=$?
+case "$step0_wrapper_fence_status" in
+  0) ;;
+  20) fail "each implement-bootstrap-invoke.sh call must be immediately preceded by set +e" ;;
+  21) fail "each implement-bootstrap-invoke.sh call must be immediately followed by _inv_rc=\$?" ;;
+  22) fail "each implement-bootstrap-invoke.sh _inv_rc capture must be immediately followed by set -e" ;;
+  23) fail "Step 0 wrapper fence check did not see initial invocation" ;;
+  24) fail "Step 0 wrapper fence check did not see resume invocation" ;;
+  *) fail "unexpected Step 0 wrapper fence check failure: $step0_wrapper_fence_status" ;;
+esac
 grep -Fq 'bootstrap-routing.env' "$SKILL_MD" \
   || fail "SKILL.md must parse bootstrap-routing.env with stdout fallback"
 grep -Fq "BRANCH_NAME=*) BRANCH_NAME=\${_ib_tok#BRANCH_NAME=} ;;" "$SKILL_MD" \
