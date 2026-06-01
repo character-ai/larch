@@ -31,7 +31,7 @@ assert_not_contains() {
 }
 
 assert_contains "$IMPLEMENT_SKILL" 'phase_coder_select' "script-side coder selection pointer"
-assert_contains "$BOOTSTRAP_MD" 'Cursor → Codex → Claude' "implement waterfall"
+assert_contains "$BOOTSTRAP_MD" 'Codex → Cursor → Claude' "implement waterfall"
 assert_contains "$IMPLEMENT_SKILL" '--up-to-phase coder' "Step 0 bootstrap coder phase"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
 assert_contains "$BOOTSTRAP_SH" '--coder=${requested} requested but ${requested_caps} runtime probe failed' "explicit runtime unavailable waterfall (#3207)"
@@ -44,10 +44,10 @@ assert_contains "$BOOTSTRAP_SH" 'Waterfalling to ${alt_caps} → Claude' "explic
 # shellcheck disable=SC2016 # literal source text, not shell.
 assert_contains "$BOOTSTRAP_SH" '${alt_caps} also unavailable — falling back to Claude implementer' "explicit-coder claude terminal tier (#3207)"
 assert_not_contains "$IMPLEMENT_SKILL" '### Implementer waterfall' "deleted prompt-side waterfall heading"
-assert_not_contains "$IMPLEMENT_SKILL" 'Codex → Cursor → Claude' "old waterfall order"
+assert_not_contains "$IMPLEMENT_SKILL" 'Codex → Cursor → Claude' "script-side waterfall order not duplicated in SKILL.md"
 assert_contains "$IMPLEMENT_SKILL" 'coder_fallback=true' "coder fallback manifest flag"
-assert_contains "$BOOTSTRAP_SH" 'Cursor unavailable — falling back to Codex implementer' "cursor-to-codex warning"
-assert_contains "$BOOTSTRAP_SH" 'Codex unavailable — falling back to Claude implementer' "codex-to-claude warning"
+assert_contains "$BOOTSTRAP_SH" 'Codex unavailable — falling back to Cursor implementer' "codex-to-cursor warning"
+assert_contains "$BOOTSTRAP_SH" 'Cursor unavailable — falling back to Claude implementer' "cursor-to-claude warning"
 # shellcheck disable=SC2016 # literal source text, not shell.
 assert_contains "$BOOTSTRAP_SH" '[ -z "${PLAN_FILE:-}" ]' "missing-plan empty PLAN_FILE guard"
 # shellcheck disable=SC2016 # literal source text, not shell.

@@ -6,7 +6,7 @@ import config
 
 
 def test_fixer_tier_order() -> None:
-    assert config.FIXER_TIER_ORDER == ("cursor", "codex", "claude")
+    assert config.FIXER_TIER_ORDER == ("codex", "cursor", "claude")
 
 
 def test_retry_backoff_immutable() -> None:

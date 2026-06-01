@@ -1995,6 +1995,10 @@ call_dir=$(mktemp -d /tmp/ship-pr-plan-ci-fix.XXXXXX)
 plan_file="$tmp/design-plan.txt"
 printf 'preserve this implementation plan\n' > "$plan_file"
 printf 'PLAN_FILE=%s\n' "$plan_file" > "$tmp/session-env.sh"
+cat > "$root/scripts/codex" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
 cat > "$root/scripts/cursor" <<'STUB'
 #!/usr/bin/env bash
 exit 0
@@ -2011,7 +2015,7 @@ else
     printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
 fi
 STUB
-chmod +x "$root/scripts/cursor" "$root/scripts/ci-wait.sh"
+chmod +x "$root/scripts/codex" "$root/scripts/cursor" "$root/scripts/ci-wait.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
@@ -2020,78 +2024,66 @@ awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "CI fix plan-file forwarding exits 0"
 if [ -f "$call_dir/launcher-calls.txt" ] && \
-   grep -Fq 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" && \
+   grep -Fq 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" && \
    grep -Fq -- '--role fix' "$call_dir/launcher-calls.txt" && \
    grep -Fq -- '--plan-file' "$call_dir/launcher-calls.txt" && \
    grep -Fq "$plan_file" "$call_dir/launcher-calls.txt"; then
-    ok "CI fix forwards --plan-file to cursor launcher"
+    ok "CI fix forwards --plan-file to codex launcher (first tier)"
 else
-    fail "CI fix should forward --plan-file to cursor launcher"
+    fail "CI fix should forward --plan-file to codex launcher (first tier)"
     sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
 fi
 rm -rf "$call_dir"
 
 # Regression: rebase conflict resolver vendors receive the design plan path.
-root=$(make_repo conflict_plan_file)
+root=$(make_repo_rebase_dual_conflict_prep conflict_plan_file)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d /tmp/ship-pr-plan-conflict.XXXXXX)
 plan_file="$tmp/design-plan.txt"
 printf 'preserve this implementation plan through conflict resolution\n' > "$plan_file"
 printf 'PLAN_FILE=%s\n' "$plan_file" > "$tmp/session-env.sh"
-cat > "$root/scripts/cursor" <<'STUB'
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+    mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+    printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
+fi
+if git rev-parse --git-dir >/dev/null 2>&1; then
+    if [ -d "$(git rev-parse --git-dir)/rebase-merge" ] || [ -d "$(git rev-parse --git-dir)/rebase-apply" ]; then
+        git checkout --theirs -- other.txt
+        git add other.txt
+    fi
+fi
+printf 'LAUNCHER_EXIT=0\n'
+exit 0
+STUB
+chmod +x "$root/scripts/launch-codex-ci.sh"
+cp "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/launch-claude-ci.sh"
+cat > "$root/scripts/codex" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
-cat > "$root/scripts/ci-wait.sh" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-count_file="$call_dir/ci-wait-count"
-count=\$(cat "\$count_file" 2>/dev/null || echo 0)
-printf '%s\n' "\$((count + 1))" > "\$count_file"
-if [ "\$count" -eq 0 ]; then
-    printf 'ACTION=rebase\nCI_STATUS=fail\nBEHIND_COUNT=1\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
-else
-    printf 'ACTION=merge\nCI_STATUS=pass\nBEHIND_COUNT=0\nFAILED_RUN_ID=\nBAIL_REASON=\nITERATION=1\nELAPSED=1\n'
-fi
-STUB
-cat > "$root/scripts/rebase-push.sh" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-count_file="$call_dir/rebase-push-count"
-count=\$(cat "\$count_file" 2>/dev/null || echo 0)
-printf '%s\n' "\$((count + 1))" > "\$count_file"
-if [ "\$count" -eq 0 ]; then
-    echo "CONFLICT_FILES=CHANGELOG.md"
-    exit 1
-fi
-exit 0
-STUB
-for extra in drop-bump-commit.sh git-sync-local-main.sh git-force-push.sh; do
-    printf '#!/usr/bin/env bash\nexit 0\n' > "$root/scripts/$extra"
-done
-chmod +x "$root/scripts/cursor" \
-         "$root/scripts/ci-wait.sh" \
-         "$root/scripts/rebase-push.sh" \
-         "$root/scripts/drop-bump-commit.sh" \
-         "$root/scripts/git-sync-local-main.sh" \
-         "$root/scripts/git-force-push.sh"
+chmod +x "$root/scripts/codex"
+_make_rebase_stubs "$root" "$call_dir"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" run_subject "$root" "$tmp" "$tmp/rc"
 assert_rc "$tmp/rc" 0 "conflict resolver plan-file forwarding exits 0"
 if [ -f "$call_dir/launcher-calls.txt" ] && \
-   grep -Fq 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" && \
+   grep -Fq 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" && \
    grep -Fq -- '--role resolve-conflict' "$call_dir/launcher-calls.txt" && \
    grep -Fq -- '--plan-file' "$call_dir/launcher-calls.txt" && \
    grep -Fq "$plan_file" "$call_dir/launcher-calls.txt"; then
-    ok "conflict resolver forwards --plan-file to cursor launcher"
+    ok "conflict resolver forwards --plan-file to codex launcher (first tier)"
 else
-    fail "conflict resolver should forward --plan-file to cursor launcher"
+    fail "conflict resolver should forward --plan-file to codex launcher (first tier)"
     sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
 fi
-if [ -f "$call_dir/launcher-calls.txt" ] && grep -qF -- "--timeout 600" "$call_dir/launcher-calls.txt"; then
-    ok "conflict resolver uses 600s vendor timeout"
+if [ -f "$call_dir/launcher-calls.txt" ] && grep -qF -- "--timeout 1800" "$call_dir/launcher-calls.txt"; then
+    ok "conflict resolver uses 1800s recovery-waterfall vendor timeout"
 else
-    fail "conflict resolver should pass --timeout 600"
+    fail "conflict resolver should pass --timeout 1800"
     sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
 fi
 rm -rf "$call_dir"
@@ -2160,11 +2152,11 @@ else
 fi
 rm -rf "$count_dir"
 
-# Regression: mixed CHANGELOG + non-trivial conflict → vendor sees remaining path + 600s timeout.
+# Regression: mixed CHANGELOG + non-trivial conflict → recovery waterfall resolve-conflict (1800s vendor timeout).
 root=$(make_repo_rebase_dual_conflict_prep rebump_changelog_mixed)
 tmp=$(make_tmpdir)
 count_dir=$(mktemp -d /tmp/ship-pr-changelog-mix.XXXXXX)
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
@@ -2186,9 +2178,14 @@ if git rev-parse --git-dir >/dev/null 2>&1; then
 fi
 exit 0
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh"
-cp "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/launch-codex-ci.sh"
+cp "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
 chmod +x "$root/scripts/launch-claude-ci.sh"
+cat > "$root/scripts/codex" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$root/scripts/codex"
 _make_rebase_stubs "$root" "$count_dir"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 PATH="$root/scripts:$PATH" SHIP_PR_LAUNCH_SENTINEL_DIR="$count_dir" run_subject "$root" "$tmp" "$tmp/rc"
@@ -2212,7 +2209,7 @@ else
 fi
 rm -rf "$count_dir"
 
-# Regression: non-changelog-only conflict → vendor with --conflict-files + 600s timeout.
+# Regression: non-changelog-only conflict → recovery waterfall with --conflict-files (1800s vendor timeout).
 root=$(make_repo vendor_only_paths)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d /tmp/ship-pr-vendor-only.XXXXXX)
@@ -2229,11 +2226,15 @@ fi
 exit 0
 STUB
 chmod +x "$root/scripts/rebase-push.sh"
+cat > "$root/scripts/codex" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
 cat > "$root/scripts/cursor" <<'STUB'
 #!/usr/bin/env bash
 exit 0
 STUB
-chmod +x "$root/scripts/cursor"
+chmod +x "$root/scripts/codex" "$root/scripts/cursor"
 cat > "$root/scripts/ci-wait.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
@@ -2259,11 +2260,11 @@ if grep -qF 'CALLER_KIND=ship_pr_pre_push' "$tmp/ship-pr-state.sh" 2>/dev/null; 
 else
     fail "non-changelog conflict should set CALLER_KIND=ship_pr_pre_push in state"
 fi
-if [ -f "$call_dir/launcher-calls.txt" ] && grep -Fq "launch-cursor-ci.sh" "$call_dir/launcher-calls.txt" 2>/dev/null \
+if [ -f "$call_dir/launcher-calls.txt" ] && grep -Fq "launch-codex-ci.sh" "$call_dir/launcher-calls.txt" 2>/dev/null \
     && grep -Fq -- '--role resolve-conflict' "$call_dir/launcher-calls.txt" 2>/dev/null; then
-    ok "non-changelog conflict recovery waterfall invokes launch-cursor-ci resolve-conflict"
+    ok "non-changelog conflict recovery waterfall invokes launch-codex-ci resolve-conflict (first tier)"
 else
-    fail "non-changelog conflict should record cursor resolve-conflict tier attempt"
+    fail "non-changelog conflict should record codex resolve-conflict tier attempt (first tier)"
     sed 's/^/    launcher: /' "$call_dir/launcher-calls.txt" 2>/dev/null | head -20 || true
 fi
 rm -rf "$call_dir"
@@ -3665,13 +3666,15 @@ set -euo pipefail
 printf '%s\n' "make \$*" >> "$call_dir/make-calls.txt"
 exit 0
 STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' launcher >> "$call_dir/order.txt"
-printf '%s\n' cursor >> "$call_dir/launcher-calls.txt"
+printf '%s\n' codex >> "$call_dir/launcher-calls.txt"
 printf 'fixed\n' > "$call_dir/vendor-fixed"
-    printf 'X\n' >> sentinel-fix.txt
+printf 'X\n' >> sentinel-fix.txt
+git add sentinel-fix.txt
+git commit -q -m "Fix CI failure (codex)"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 cat > "$root/scripts/git-push.sh" <<STUB
@@ -3680,7 +3683,7 @@ set -euo pipefail
 printf '%s\n' push >> "$call_dir/order.txt"
 printf 'push\n' >> "$call_dir/push-calls.txt"
 STUB
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/make" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/git-push.sh"
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/make" "$root/scripts/launch-codex-ci.sh" "$root/scripts/git-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
@@ -3699,7 +3702,7 @@ else
     fail "per-job main-agent-required should avoid ci-local-unfixable bail reason"
     sed 's/^/    state: /' "$tmp/ship-pr-state.sh"
 fi
-if grep -Fxq 'cursor' "$call_dir/launcher-calls.txt" 2>/dev/null; then
+if grep -Fxq 'codex' "$call_dir/launcher-calls.txt" 2>/dev/null; then
     ok "per-job main-agent-required triggers broad vendor launcher"
 else
     fail "per-job main-agent-required should trigger broad vendor launcher"
@@ -3772,12 +3775,14 @@ fi
 printf 'mock make failure\n'
 exit 1
 STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' launcher >> "$call_dir/order.txt"
 printf 'fixed\n' > "$call_dir/vendor-fixed"
 printf 'tracked vendor change\n' > README.md
+git add README.md
+git commit -q -m "Fix CI failure (codex)"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 cat > "$root/scripts/git-push.sh" <<STUB
@@ -3785,7 +3790,7 @@ cat > "$root/scripts/git-push.sh" <<STUB
 set -euo pipefail
 printf '%s\n' push >> "$call_dir/order.txt"
 STUB
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/make" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/git-push.sh"
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/make" "$root/scripts/launch-codex-ci.sh" "$root/scripts/git-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
@@ -3934,11 +3939,13 @@ printf '%s\n' "env \$*" >> "$call_dir/make-calls.txt"
 printf 'mock lint failure\n'
 exit 1
 STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+cat > "$root/scripts/launch-codex-ci.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
 printf '%s\n' launcher >> "$call_dir/order.txt"
 printf 'vendor change\n' >> README.md
+git add README.md
+git commit -q -m "Fix CI failure (codex)"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 cat > "$root/scripts/git-push.sh" <<STUB
@@ -3946,7 +3953,7 @@ cat > "$root/scripts/git-push.sh" <<STUB
 set -euo pipefail
 printf 'push\n' >> "$call_dir/push-calls.txt"
 STUB
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/git-push.sh"
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh" "$root/scripts/env" "$root/scripts/launch-codex-ci.sh" "$root/scripts/git-push.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
@@ -4505,9 +4512,9 @@ else
 fi
 rm -rf "$call_dir"
 
-# 1) Cursor wins on first tier — Codex/Claude not invoked.
+# 1) Codex wins on first tier — Cursor/Claude not invoked.
 # Keep a tracked launcher edit here: issue #3134 now bails when the vendor path leaves pre-refresh HEAD unchanged.
-root=$(make_repo ci_fix_vendor_tier_order_cursor_first)
+root=$(make_repo ci_fix_vendor_tier_order_codex_first)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d "$tmp/call.XXXXXX")
 cat > "$root/scripts/ci-wait.sh" <<STUB
@@ -4529,20 +4536,6 @@ echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
 exit 0
 STUB
 chmod +x "$root/scripts/run-relevant-checks-captured.sh"
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-output=""
-if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
-  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
-  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
-fi
-while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-    printf 'X\n' >> sentinel-fix.txt
-printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
-printf 'LAUNCHER_EXIT=0\n'
-STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh"
 cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -4552,7 +4545,21 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
   printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
 fi
 while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-printf 'TOOL=codex\nTOTAL=1\nRAW=x\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+    printf 'X\n' >> sentinel-fix.txt
+printf 'TOOL=codex\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+chmod +x "$root/scripts/launch-codex-ci.sh"
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
+fi
+while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
+printf 'TOOL=cursor\nTOTAL=1\nRAW=x\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
@@ -4567,7 +4574,7 @@ while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift
 printf 'TOOL=cursor\nTOTAL=1\nRAW=x\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
-chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
 cat > "$root/scripts/git-commit.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -4584,18 +4591,18 @@ set +e
     --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
 printf '%s' "$?" >"$tmp/rc"
 set -e
-assert_rc "$tmp/rc" 0 "ci_fix_vendor_tier_order_cursor_first: ship-pr exits 0"
+assert_rc "$tmp/rc" 0 "ci_fix_vendor_tier_order_codex_first: ship-pr exits 0"
 lc=$(wc -l <"$call_dir/launcher-calls.txt" 2>/dev/null || echo 0)
-if [[ "$lc" -eq 1 ]] && grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" && ! grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" && ! grep -q 'launch-claude-ci.sh' "$call_dir/launcher-calls.txt"; then
-  ok "ci_fix_vendor_tier_order_cursor_first: only Cursor tier invoked"
+if [[ "$lc" -eq 1 ]] && grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" && ! grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" && ! grep -q 'launch-claude-ci.sh' "$call_dir/launcher-calls.txt"; then
+  ok "ci_fix_vendor_tier_order_codex_first: only Codex tier invoked"
 else
-  fail "ci_fix_vendor_tier_order_cursor_first: expected single Cursor launch, got: $(cat "$call_dir/launcher-calls.txt" 2>/dev/null || true)"
+  fail "ci_fix_vendor_tier_order_codex_first: expected single Codex launch, got: $(cat "$call_dir/launcher-calls.txt" 2>/dev/null || true)"
 fi
 rm -rf "$call_dir"
 
-# 2) Cursor LAUNCHER_EXIT=1 → Codex succeeds; Claude not invoked.
+# 2) Codex LAUNCHER_EXIT=1 → Cursor succeeds; Claude not invoked.
 # Keep a tracked launcher edit here: issue #3134 now bails when the vendor path leaves pre-refresh HEAD unchanged.
-root=$(make_repo ci_fix_vendor_tier_order_falls_through_to_codex)
+root=$(make_repo ci_fix_vendor_tier_order_falls_through_to_cursor)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d "$tmp/call.XXXXXX")
 cat > "$root/scripts/ci-wait.sh" <<STUB
@@ -4617,18 +4624,6 @@ echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
 exit 0
 STUB
 chmod +x "$root/scripts/run-relevant-checks-captured.sh"
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-output=""
-if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
-  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
-  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
-fi
-while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
-printf 'LAUNCHER_EXIT=1\n'
-STUB
 cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -4638,8 +4633,20 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
   printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
 fi
 while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-printf 'X\n' >> README.md
 printf 'TOOL=codex\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+printf 'LAUNCHER_EXIT=1\n'
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
+fi
+while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
+printf 'X\n' >> README.md
+printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
 cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
@@ -4653,7 +4660,7 @@ fi
 while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
 printf 'LAUNCHER_EXIT=0\n'
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
 cat > "$root/scripts/git-commit.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -4670,15 +4677,21 @@ set +e
     --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
 printf '%s' "$?" >"$tmp/rc"
 set -e
-assert_rc "$tmp/rc" 0 "ci_fix_vendor_tier_order_falls_through_to_codex"
-if grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" && grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" && ! grep -q 'launch-claude-ci.sh' "$call_dir/launcher-calls.txt"; then
-  ok "ci_fix_vendor_tier_order_falls_through_to_codex: Cursor then Codex only"
+assert_rc "$tmp/rc" 0 "ci_fix_vendor_tier_order_falls_through_to_cursor"
+if grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" && grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" && ! grep -q 'launch-claude-ci.sh' "$call_dir/launcher-calls.txt"; then
+  codex_ln=$(grep -n 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" | head -1 | cut -d: -f1)
+  cursor_ln=$(grep -n 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" | head -1 | cut -d: -f1)
+  if [[ -n "$codex_ln" && -n "$cursor_ln" && "$codex_ln" -lt "$cursor_ln" ]] && [[ "$(wc -l <"$call_dir/launcher-calls.txt")" -eq 2 ]]; then
+    ok "ci_fix_vendor_tier_order_falls_through_to_cursor: Codex then Cursor only"
+  else
+    fail "ci_fix_vendor_tier_order_falls_through_to_cursor: expected codex before cursor in launcher-calls: $(cat "$call_dir/launcher-calls.txt" 2>/dev/null || true)"
+  fi
 else
-  fail "ci_fix_vendor_tier_order_falls_through_to_codex: unexpected launcher order: $(cat "$call_dir/launcher-calls.txt" 2>/dev/null || true)"
+  fail "ci_fix_vendor_tier_order_falls_through_to_cursor: unexpected launcher order: $(cat "$call_dir/launcher-calls.txt" 2>/dev/null || true)"
 fi
 rm -rf "$call_dir"
 
-# 3) Cursor and Codex LAUNCHER_EXIT=1 → Claude succeeds.
+# 3) Codex and Cursor LAUNCHER_EXIT=1 → Claude succeeds.
 # Keep a tracked launcher edit here: issue #3134 now bails when the vendor path leaves pre-refresh HEAD unchanged.
 root=$(make_repo ci_fix_vendor_tier_order_falls_through_to_claude)
 tmp=$(make_tmpdir)
@@ -4702,18 +4715,6 @@ echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
 exit 0
 STUB
 chmod +x "$root/scripts/run-relevant-checks-captured.sh"
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-output=""
-if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
-  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
-  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
-fi
-while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
-printf 'LAUNCHER_EXIT=1\n'
-STUB
 cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -4724,6 +4725,18 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
 fi
 while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
 printf 'TOOL=codex\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+printf 'LAUNCHER_EXIT=1\n'
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
+fi
+while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
+printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
 printf 'LAUNCHER_EXIT=1\n'
 STUB
 cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
@@ -4739,7 +4752,7 @@ printf 'X\n' >> README.md
 printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
 cat > "$root/scripts/git-commit.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -4757,8 +4770,15 @@ set +e
 printf '%s' "$?" >"$tmp/rc"
 set -e
 assert_rc "$tmp/rc" 0 "ci_fix_vendor_tier_order_falls_through_to_claude"
-if grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" && grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" && grep -q 'launch-claude-ci.sh' "$call_dir/launcher-calls.txt"; then
-  ok "ci_fix_vendor_tier_order_falls_through_to_claude: all three tiers invoked in order"
+if grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" && grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" && grep -q 'launch-claude-ci.sh' "$call_dir/launcher-calls.txt"; then
+  codex_ln=$(grep -n 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" | head -1 | cut -d: -f1)
+  cursor_ln=$(grep -n 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" | head -1 | cut -d: -f1)
+  claude_ln=$(grep -n 'launch-claude-ci.sh' "$call_dir/launcher-calls.txt" | head -1 | cut -d: -f1)
+  if [[ -n "$codex_ln" && -n "$cursor_ln" && -n "$claude_ln" && "$codex_ln" -lt "$cursor_ln" && "$cursor_ln" -lt "$claude_ln" ]] && [[ "$(wc -l <"$call_dir/launcher-calls.txt")" -eq 3 ]]; then
+    ok "ci_fix_vendor_tier_order_falls_through_to_claude: all three tiers invoked in order (codex-first)"
+  else
+    fail "ci_fix_vendor_tier_order_falls_through_to_claude: expected codex→cursor→claude order: $(cat "$call_dir/launcher-calls.txt" 2>/dev/null || true)"
+  fi
 else
   fail "ci_fix_vendor_tier_order_falls_through_to_claude: expected three launchers"
   sed 's/^/    launch: /' "$call_dir/launcher-calls.txt" 2>/dev/null || true
@@ -4788,7 +4808,12 @@ echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
 exit 0
 STUB
 chmod +x "$root/scripts/run-relevant-checks-captured.sh"
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/codex" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$root/scripts/codex"
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -4797,10 +4822,10 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
   printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
 fi
 while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+printf 'TOOL=codex\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh"
+chmod +x "$root/scripts/launch-codex-ci.sh"
 cat > "$root/scripts/refresh-run-logs.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -4825,7 +4850,7 @@ awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3134"; next}
      {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
 set +e
-(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" LARCH_QUIET_BREADCRUMBS=1 CLAUDE_PLUGIN_ROOT="$root" \
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" LARCH_QUIET_BREADCRUMBS=1 CLAUDE_PLUGIN_ROOT="$root" \
     "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
     --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
 printf '%s' "$?" >"$tmp/rc"
@@ -4870,15 +4895,20 @@ echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
 exit 0
 STUB
 chmod +x "$root/scripts/run-relevant-checks-captured.sh"
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/codex" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$root/scripts/codex"
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
 while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+printf 'TOOL=codex\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
 printf 'LAUNCHER_EXIT=0\n'
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh"
+chmod +x "$root/scripts/launch-codex-ci.sh"
 cat > "$root/scripts/refresh-run-logs.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -4905,7 +4935,7 @@ awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run3134e"; next}
      {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
 set +e
-(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
     "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
     --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
 printf '%s' "$?" >"$tmp/rc"
@@ -6156,7 +6186,7 @@ git -C "$root" config user.name Test
 printf 'base\n' >"$root/README.md"
 git -C "$root" add README.md
 git -C "$root" commit -q -m base
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -6170,7 +6200,7 @@ printf 'LARCH_RECOVERY_WF_STDERR_PROBE\n' > "${output}.stderr-tail"
 printf 'LAUNCHER_EXIT=1\n'
 exit 0
 STUB
-cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -6196,7 +6226,7 @@ fi
 echo "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=full"
 exit 0
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" \
+chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" \
     "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
 printf 'RUN_ID=test-run\nREPO=owner/repo\nREPO_UNAVAILABLE=false\n' >"$impl/ship-pr-state.sh"
 wf_state_file="$impl/ship-pr-state.sh"
@@ -6225,7 +6255,7 @@ if [[ "$wf_rc" -eq 0 ]] \
     && [[ -f "$impl/recovery-wf-verify-sentinel.txt" ]]; then
     ok "recovery waterfall surfaces stderr-tail and runs verifier only after launcher success"
 else
-    fail "recovery waterfall must surface tail on launcher_exit failure and advance to codex verify"
+    fail "recovery waterfall must surface tail on launcher_exit failure and advance to cursor verify"
     printf '    wf_rc: %s\n' "$wf_rc"
     sed 's/^/    stderr: /' "$wf_caller_err" 2>/dev/null || true
 fi
@@ -6241,7 +6271,7 @@ git -C "$root" config user.name Test
 printf 'base\n' >"$root/README.md"
 git -C "$root" add README.md
 git -C "$root" commit -q -m base
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -6255,7 +6285,7 @@ printf 'LARCH_RECOVERY_WF_STDERR_EXIT0_PROBE\n' > "${output}.stderr-tail"
 printf 'LAUNCHER_EXIT=0\n'
 exit 0
 STUB
-cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -6281,7 +6311,7 @@ fi
 echo "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=full"
 exit 0
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" \
+chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" \
     "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
 printf 'RUN_ID=test-run\nREPO=owner/repo\nREPO_UNAVAILABLE=false\n' >"$impl/ship-pr-state.sh"
 wf_exit0_state_file="$impl/ship-pr-state.sh"
@@ -6346,7 +6376,7 @@ git -C "$root" config user.name Test
 printf 'base\n' >"$root/README.md"
 git -C "$root" add README.md
 git -C "$root" commit -q -m base
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -6360,7 +6390,7 @@ printf 'LARCH_CI_FIX_VENDOR_STDERR_PROBE\n' > "${output}.stderr-tail"
 printf 'LAUNCHER_EXIT=1\n'
 exit 0
 STUB
-cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -6378,7 +6408,7 @@ cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 exit 1
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
 printf 'RUN_ID=test-run\nREPO=owner/repo\n' >"$tmp/ship-pr-state.sh"
 STATE_FILE="$tmp/ship-pr-state.sh"
 ci_fix_err="$tmp/ci-fix-caller.stderr"
@@ -6402,7 +6432,7 @@ else
     sed 's/^/    stderr: /' "$ci_fix_err" 2>/dev/null || true
 fi
 
-# #3227: run_ci_fix_vendor wrapper_rc=2 surfaces pre-seeded tier stderr-tail before codex tier.
+# #3227: run_ci_fix_vendor wrapper_rc=2 surfaces pre-seeded tier stderr-tail before cursor tier.
 root=$(mktemp -d "$TMP_BASE/ci-fix-wrapper-rc2-stderr.XXXXXX")
 write_subject "$root"
 write_stubs "$root"
@@ -6413,7 +6443,7 @@ git -C "$root" config user.name Test
 printf 'base\n' >"$root/README.md"
 git -C "$root" add README.md
 git -C "$root" commit -q -m base
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -6426,7 +6456,7 @@ done
 printf 'LARCH_CI_FIX_WRAPPER_RC2_STDERR_PROBE\n' > "${output}.stderr-tail"
 exit 2
 STUB
-cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -6444,7 +6474,7 @@ cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 exit 1
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
 printf 'RUN_ID=test-run\nREPO=owner/repo\n' >"$tmp/ship-pr-state.sh"
 STATE_FILE="$tmp/ship-pr-state.sh"
 rc2_err="$tmp/wrapper-rc2-caller.stderr"
@@ -6463,7 +6493,7 @@ set -e
 if grep -Fq 'LARCH_CI_FIX_WRAPPER_RC2_STDERR_PROBE' "$rc2_err"; then
     ok "run_ci_fix_vendor wrapper_rc=2 surfaces pre-seeded tier stderr-tail on caller stderr"
 else
-    fail "run_ci_fix_vendor wrapper_rc=2 must surface stderr-tail before advancing to codex tier"
+    fail "run_ci_fix_vendor wrapper_rc=2 must surface stderr-tail before advancing to cursor tier"
     printf '    rc2_fix_rc: %s\n' "$rc2_fix_rc"
     sed 's/^/    stderr: /' "$rc2_err" 2>/dev/null || true
 fi
@@ -6479,11 +6509,11 @@ git -C "$root" config user.name Test
 printf 'base\n' >"$root/README.md"
 git -C "$root" add README.md
 git -C "$root" commit -q -m base
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 exit 1
 STUB
-cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -6509,7 +6539,7 @@ fi
 echo "RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=full"
 exit 0
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" \
+chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" \
     "$root/scripts/launch-claude-ci.sh" "$root/scripts/run-relevant-checks-captured.sh"
 printf 'RUN_ID=test-run\nREPO=owner/repo\nREPO_UNAVAILABLE=false\n' >"$impl/ship-pr-state.sh"
 tier_rc_state_file="$impl/ship-pr-state.sh"
@@ -6535,7 +6565,7 @@ set -e
 if [[ "$tier_rc_wf_rc" -eq 0 ]] && [[ -f "$impl/recovery-wf-tier-rc-verify.txt" ]]; then
     ok "recovery waterfall tier_rc-only failure advances without LAUNCHER_EXIT or tail file"
 else
-    fail "recovery waterfall must advance after tier_rc-only cursor failure"
+    fail "recovery waterfall must advance after tier_rc-only codex failure"
     printf '    tier_rc_wf_rc: %s\n' "$tier_rc_wf_rc"
     sed 's/^/    stderr: /' "$tier_rc_err" 2>/dev/null || true
 fi
@@ -6551,7 +6581,7 @@ git -C "$root" config user.name Test
 printf 'base\n' >"$root/README.md"
 git -C "$root" add README.md
 git -C "$root" commit -q -m base
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -6566,7 +6596,7 @@ printf 'LAUNCHER_EXIT=1\n'
 printf 'LAUNCHER_FAILURE_CLASS=other\n'
 exit 0
 STUB
-cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 exit 1
 STUB
@@ -6574,7 +6604,7 @@ cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 exit 1
 STUB
-chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
 printf 'RUN_ID=test-run\nREPO=owner/repo\n' >"$tmp/ship-pr-state.sh"
 STATE_FILE="$tmp/ship-pr-state.sh"
 ff_err="$tmp/first-fixer-caller.stderr"

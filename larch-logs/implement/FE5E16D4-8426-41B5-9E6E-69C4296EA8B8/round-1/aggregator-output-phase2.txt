@@ -1,0 +1,196 @@
+Structured aggregator output from the supplied reviewer slots (read-only merge; no votes or fixes applied).
+
+### FINDING_1: CHANGELOG missing shipped #3337 release note (47.0.42)
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, dyn-doc-topology-output.txt
+- **Severity**: important
+- **Concern**: Codex-first omitted-`--coder` / CI / merge-fixer behavior from #3337 is not documented under the released `[47.0.42]` section (only #3338 appears at CHANGELOG.md:55–63). Operators reading shipped 47.0.42 notes will not see that defaults now prefer Codex over Cursor.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Add a Changed bullet for #3337 under the appropriate version section (47.0.42 or next bump).
+  - From dyn-doc-topology-output.txt: Update or remove the stale `[Unreleased]` bullet to Codex-first wording, and add a versioned `### Changed` entry for #3337 (apiKeyHelper install guidance + Codex-first coder/CI/merge-fixer defaults) when the plugin version is next bumped.
+
+### FINDING_2: CHANGELOG Unreleased bullet still documents Cursor-first routing
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, dyn-waterfall-routing-output.txt, dyn-rotation-policy-output.txt, dyn-doc-topology-output.txt
+- **Severity**: important
+- **Concern**: `CHANGELOG.md:46` (Unreleased) still says omitted `--coder` uses **Cursor → Codex → Claude** and claims cross-doc parity, while runtime, `SECURITY.md`, `implement-bootstrap.md`, `ship-pr.sh`, and `skills/implement/SKILL.md` were flipped to **Codex → Cursor → Claude**. Release prep and debugging (CI-fix rotation, `first-fixer-non-health`) follow stale operator expectations; no harness greps CHANGELOG routing prose.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Update the Unreleased bullet to Codex → Cursor → Claude or add a versioned #3337 entry when bumping plugin version.
+  - From cursor-specialist-edge-cases-output.txt: Update Unreleased #3337 entry; fix line 46 to Codex-first wording.
+  - From dyn-waterfall-routing-output.txt: (no separate fix bullet beyond concern; update Unreleased/released note for #3337 when cutting release)
+  - From dyn-rotation-policy-output.txt: Update the Unreleased bullet (and add a `#3337` entry when you cut the release) so implementer and CI-fixer default order match runtime and `scripts/ship-pr.md:152-154`.
+  - From dyn-doc-topology-output.txt: Rewrite line 46 to Codex-first (or remove/supersede it) and add a `### Changed` entry for #3337
+
+### FINDING_3: Stale settings.json API-key placeholder in install doc
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `docs/installation-and-setup.md:124` still tells readers to replace `<your-API-key>` in `settings.json`, conflicting with apiKeyHelper-free JSON and env/alias guidance; new readers may embed API keys in settings despite the removal section.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Reword the bullet to reference ANTHROPIC_API_KEY in the shell env only, or remove the placeholder from the settings.json step.
+
+### FINDING_4: Legacy inline conflict launcher undocumented / untested
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/ship-pr.sh:3390-3401` legacy `run_rebase_rebump` conflict path prefers Codex then Cursor (single shot, not full waterfall). `scripts/ship-pr.md` documents the three-tier recovery waterfall but not this inline path; no dedicated regression test—cursor-first regression on conflicts that skip `run_recovery_waterfall` could pass silently.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Document the legacy codex-then-cursor launcher in `scripts/ship-pr.md` next to the recovery waterfall section.
+  - From cursor-specialist-edge-cases-output.txt: Add launcher-order regression or document inline vs waterfall paths in ship-pr.md.
+
+### FINDING_5: CI fix vendor order ignores Step 0 codex availability
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: `run_ci_fix_vendor` (`scripts/ship-pr.sh:2039-2125`) always tries Codex first even when `/implement` already probed Codex unavailable and fell back to Cursor. After probe-failed Codex + healthy Cursor, CI fix wastes the first attempt on Codex before Cursor.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Thread session availability into `run_ci_fix_vendor` tier selection or align base tuple with resolved coder.
+
+### FINDING_6: Harness tests do not assert Codex-first launcher order
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, dyn-waterfall-routing-output.txt
+- **Severity**: latent
+- **Concern**: Multi-tier CI-fix cases in `scripts/test-ship-pr.sh:4681-4684` assert both launchers appear but not invocation order; Cursor-first regression in `run_ci_fix_vendor` could still pass. `python/test_ci_monitor.py:943-944` (`test_evaluate_failure_verify_failed_then_pushed`) checks `len(launch_calls) == 2` only—wrong rotation (e.g. Codex twice) would still pass, so Python parity with Bash `start_attempt` 0 → codex, 1 → cursor is not pinned.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Assert launcher-calls line count and first line `launch-codex-ci.sh` before `launch-cursor-ci.sh`.
+  - From cursor-specialist-testing-output.txt: Assert `launch_calls == ["codex", "cursor"]`.
+  - From dyn-waterfall-routing-output.txt: Add `assert launch_calls == ["codex", "cursor"]` (or the exact sequence your scenario intends) so outer-attempt rotation stays locked to `FIXER_TIER_ORDER` after the #3337 flip.
+
+### FINDING_7: No offline test for implicit phase coder PATH probing
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/implement-bootstrap.sh:681-710` / `_phase_coder_implicit` PATH availability probing has no offline harness; swapped codex/cursor branches could regress while static string pins stay green.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add PATH-stubbed implement-bootstrap `--up-to-phase coder` cases asserting `coder=` and `coder_fallback=` KV output.
+
+### FINDING_8: Harness markdown still documents Cursor-first waterfall
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, dyn-doc-topology-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/test-implement-step2-routing.md:6-7` still pins **Cursor → Codex → Claude** though `.sh`, `implement-bootstrap.md`, and `docs/linting.md` were updated to Codex-first; `implement-bootstrap.md:169` lists this file under **Edit-in-sync**; CI does not assert the `.md`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Change line 7 to Codex → Cursor → Claude to match `test-implement-step2-routing.sh`.
+  - From dyn-doc-topology-output.txt: Reword line 7 to `Codex → Cursor → Claude` (matching `docs/linting.md:272`) and optionally add a harness assertion on `scripts/test-implement-step2-routing.md` to prevent recurrence.
+
+### FINDING_9: launch-cursor-ci.md still hard-codes Cursor-first waterfall prose
+- **Reviewer(s)**: dyn-doc-topology-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/launch-cursor-ci.md:30` failure-class text still describes **Cursor→Codex→Claude** short-circuit on first-tier non-health, while `run_ci_fix_vendor` uses `(codex cursor claude)` and `ship-pr.md` uses rotated-first-tier / Codex on `start_attempt=0` language—operators debugging Exit 3 / `first-fixer-non-health` from the Cursor launcher doc will misidentify the bail tier.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-doc-topology-output.txt: Replace the hard-coded tier order with rotated-first-tier wording aligned with `scripts/ship-pr.md` (e.g., “short-circuit the codex→cursor→claude waterfall when the rotated first tier reports `LAUNCHER_FAILURE_CLASS=other`”).
+
+### FINDING_10: apiKeyHelper echo may execute shell metacharacters in API key
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: Documented `apiKeyHelper` uses `echo $ANTHROPIC_API_KEY` without quoting; a malicious or malformed key (e.g. `$(cmd)` or unescaped quotes) executed when Claude runs `apiKeyHelper` from `*_api` aliases could run arbitrary commands on the operator machine.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Use `printf '%s\n' "$ANTHROPIC_API_KEY"` in a tiny wrapper script referenced by apiKeyHelper, or document that keys must be shell-safe single-line tokens.
+
+### FINDING_11: Branch diff conflates #3337 with unrelated work
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: Branch includes #3338 test-plan-review-loop fix, version 47.0.42 bump, CHANGELOG, and implement `larch-logs` not in the #3337 plan; reviewers and merge history may mis-attribute failures or version changes to #3337.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Isolate #3337 to commit `3a76166c9` (or rebase) so the PR diff matches the implementation plan scope.
+
+### FINDING_12: No harness for `run_ci_fix_vendor` with `start_attempt=1` (Cursor-first tier)
+- **Reviewer(s)**: dyn-rotation-policy-output.txt
+- **Severity**: latent
+- **Concern**: Order-sensitive regressions cover `start_attempt=0` but not `start_attempt=1` where `first_tier=cursor`; `run_evaluate_failure` passes `_fix_attempt` at `2638`/`2659`, so retry-1 autonomous bail semantics (`first-fixer-non-health`, `waterfall_iter=0`) are unguarded after the base-order flip.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-rotation-policy-output.txt: Add a harness case (stub Codex health-fail or success-skip, Cursor `LAUNCHER_FAILURE_CLASS=other`, assert exit 3, `BAIL_REASON=first-fixer-non-health`, and a single Cursor launch) mirroring `run_ship_pr_2632_t4` but with `_fix_attempt=1` / `start_attempt=1`.
+
+### OOS_1: [OUT_OF_SCOPE] CHANGELOG Unreleased line 44 still Cursor-first
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, dyn-waterfall-routing-output.txt
+- **Severity**: important
+- **Concern**: `CHANGELOG.md:44` (Unreleased) still documents omitted `--coder` as **Cursor → Codex → Claude** while runtime and `SECURITY.md` say Codex-first; #3337 commit did not update that bullet (only #3338 entry added elsewhere).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: When cutting the #3337 release note, rewrite line 44 to Codex → Cursor → Claude (or fold into the versioned entry for 47.0.42+).
+
+### OOS_2: [OUT_OF_SCOPE] Legacy rebase conflict path is single-vendor, not full waterfall
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/ship-pr.sh:3390-3401` legacy `run_rebase_rebump` conflict block picks at most one vendor (codex if on PATH, else cursor) with no tier waterfall on failure; full Codex→Cursor→Claude path is `run_recovery_waterfall` only. Pre-existing; not introduced by this branch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (none — reviewer noted pre-existing scope only)
+
+### OOS_3: [OUT_OF_SCOPE] SECURITY.md explicit --coder fail-closed wording stale
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: `SECURITY.md:105` still says explicit `--coder=cursor` / `--coder=codex` “fail closed” when unavailable; #3207 explicit waterfalls were not part of this diff. Pre-existing doc inaccuracy vs waterfall semantics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Sync SECURITY.md with #3207 waterfall semantics in a dedicated doc fix.
+
+### OOS_4: [OUT_OF_SCOPE] #3338 PATH stub backstop bundled on branch
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: `skills/design/scripts/test-plan-review-loop.sh` #3338 `STUB_BIN` backport improves `make lint` hermeticity when externals are installed; unrelated to #3337 codex-first defaults. No action required for #3337.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: keep as separate fix
+
+### OOS_5: [OUT_OF_SCOPE] Released 47.0.42 changelog omits #3337 (testing slot)
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: Released `CHANGELOG.md:55-63` covers #3338 only; consumers may not see #3337 in shipped notes until a later bump commit.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add #3337 bullets when version is bumped for this feature
+
+### OOS_6: [OUT_OF_SCOPE] first-fixer bail vs skipped Claude launcher / waterfall_iter
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt, dyn-rotation-policy-output.txt
+- **Severity**: latent
+- **Concern**: In `scripts/ship-pr.sh:2073-2078`, unavailable `launch-claude-ci.sh` increments `waterfall_iter` before any launcher runs. When outer rotation starts at `claude` (`start_attempt=2`), a later tier’s `other` failure may not satisfy `waterfall_iter -eq 0` at `2115-2121`, so `first-fixer-non-health` may not fire despite rotated-first-tier policy in `ship-pr.md`. Pre-existing; not introduced by tuple flip.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Fix waterfall_iter/first_tier coupling separately from #3337.
+
+### OOS_7: [OUT_OF_SCOPE] #3134 “no commit” bail uses winning tier, not rotated first_tier
+- **Reviewer(s)**: dyn-rotation-policy-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/ship-pr.sh:2144-2166` classifies `first-fixer-non-health` from the winning tier after staging, not from `first_tier` of the rotated list—separate from `LAUNCHER_FAILURE_CLASS=other` short-circuit; unchanged by this branch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (none — pre-existing, unchanged)
+
+### OOS_8: [OUT_OF_SCOPE] Python Phase 7 tier rotation modulo differs from Bash
+- **Reviewer(s)**: dyn-rotation-policy-output.txt
+- **Severity**: latent
+- **Concern**: `python/ci_monitor.py:912` rotates with `start_attempt % len(tiers)` while Bash uses `% 3` on a fixed triple; only `FIXER_TIER_ORDER` changed here. Live path remains Bash until Phase 7.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (none — informational Phase 7 parity note)
+
+### OOS_9: [OUT_OF_SCOPE] Historical CHANGELOG still names Cursor as first-tier fixer
+- **Reviewer(s)**: dyn-rotation-policy-output.txt
+- **Severity**: nit
+- **Concern**: `CHANGELOG.md:1149` still names “first-tier fixer (Cursor)”; not updated in #3337 commit; predates flip.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (none — historical note)
+
+### OOS_10: [OUT_OF_SCOPE] Branch tip includes unrelated commits (dyn / doc slots)
+- **Reviewer(s)**: dyn-waterfall-routing-output.txt, dyn-doc-topology-output.txt
+- **Severity**: latent
+- **Concern**: Branch tip includes #3338 plan-review-loop hang fix and several `larch-logs` flushes; waterfall/doc review targets #3337 routing surfaces in the precomputed diff / feature commit `3a76166c9`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (none — scope isolation recommendation covered in FINDING_11)
+
+### OOS_11: [OUT_OF_SCOPE] test-implement-step2-routing.md drift (dyn-waterfall slot)
+- **Reviewer(s)**: dyn-waterfall-routing-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/test-implement-step2-routing.md:7` still says **Cursor → Codex → Claude**; `.sh` and `implement-bootstrap.md` updated; sibling contract doc not CI-gated.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (same substantive fix as FINDING_8; flagged out-of-scope by source)
+
+### OOS_12: [OUT_OF_SCOPE] installation doc broken Cursor OAuth fences
+- **Reviewer(s)**: dyn-doc-topology-output.txt
+- **Severity**: latent
+- **Concern**: `docs/installation-and-setup.md:189-212` has pre-existing broken/empty fenced-code blocks in Cursor OAuth section; Part 1 Claude auth (`134-147`) is otherwise consistent.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (none — pre-existing)
+
+### OOS_13: [OUT_OF_SCOPE] Plan-intentional Cursor-first review/design docs unchanged
+- **Reviewer(s)**: dyn-doc-topology-output.txt
+- **Severity**: nit
+- **Concern**: `docs/review-agents.md`, `docs/collaborative-sketches.md`, `skills/design/references/brainstorm.md` remain cursor-first by design per plan.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (none — intentional)
+
+### OOS_14: [OUT_OF_SCOPE] Plan fidelity: add CHANGELOG bullet on version bump if Step 8 omits
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: CHANGELOG may still document Cursor-first omitted `--coder` until next version entry; plan did not require updating in this issue—operator confusion until bump-version Step 8.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Add a CHANGELOG bullet when the version bump lands for #3337 (if not handled by bump-version Step 8).
+
+---
+
+**Notes (not emitted as findings):** `dyn-waterfall-routing-output.txt` FINDING_23 is a positive consistency attestation (no fix direction). `cursor-specialist-correctness-output.txt` FINDING_6 embeds a merge-safe verdict in the concern text; actionable doc items are split above as OOS_1/OOS_3 and in-scope FINDING_2. Duplicate CHANGELOG/version themes appear in both in-scope FINDING_1–2 and OOS_1/OOS_5/OOS_14 because sources mixed `[OUT_OF_SCOPE]` tags—per merge rules, OOS-tagged items were not folded into in-scope headings.

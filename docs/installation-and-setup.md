@@ -116,12 +116,12 @@ on the commit (or on `make lint-only` / `pre-commit run`). CI installs
 the toolchain itself, so the hook still runs there even when locally
 skipped.
 
-- The subsections below document one concrete setup recipe per agent (API-key path). If you prefer the subscription-plan path, install the binary and follow its own web-login flow instead — the rest of larch's configuration (settings, model overrides) still applies.
+- The subsections below document per-agent setup, including both API-key and subscription billing for Claude (see dual-auth aliases and `apiKeyHelper`-free guidance). For Codex and Cursor, the steps focus on the API-key path; use each tool's web-login flow for subscription billing where applicable. Larch settings and model overrides apply regardless of billing mode.
 
 ### Claude
 - Via web UI of your Claude org, create your own API key
 - Add it to your env (e.g., in `.bashrc`: `export ANTHROPIC_API_KEY="<your-key>"` (replace `<your-key>`, of course))
-- Add/edit the following in `~/.claude/settings.json` (remember to replace `<your-API-key>` with actual value):
+- Add/edit the following in `~/.claude/settings.json` (set `ANTHROPIC_API_KEY` in your shell env, not in this file — see the `apiKeyHelper`-free guidance below):
 ```JSON
   "env": {
     "CLAUDE_CODE_EFFORT_LEVEL": "high"
@@ -131,6 +131,20 @@ skipped.
 - Install claude code: `curl -fsSL https://claude.ai/install.sh | bash`
 - Run `claude` and verify the above settings
 - **Minimum `claude` CLI version**: a build that supports `--permission-mode bypassPermissions` is required. Loop drivers that spawn `claude -p` children carry this flag so an in-child tool-permission prompt cannot stall a non-interactive subprocess until the watchdog fires. Older `claude` binaries that do not recognize the flag fail-fast (subprocess returns non-zero). Verify with `claude --permission-mode bypassPermissions --version` if uncertain.
+- **Remove `apiKeyHelper` from `~/.claude/settings.json`**: larch's Claude subprocesses (voters, reviewers, fixers that skills spawn) run `claude --print`, read `~/.claude/settings.json` directly, and do **not** inherit a top-level `--settings` override. A file-level `apiKeyHelper` (for example `"apiKeyHelper": "echo $ANTHROPIC_API_KEY"`) breaks that path: in subscription/OAuth mode (no `ANTHROPIC_API_KEY` in the shell env) the helper returns empty → `apiKeyHelper failed` → `401 Invalid bearer token`. A non-zero helper exit does **not** fall back to OAuth either. Keep the settings file free of `apiKeyHelper`; inject it only where you want API-key billing (the `*_api` aliases below).
+- **Dual-auth aliases** (illustrative; personal git-fetch/stash wrappers are out of scope):
+
+```bash
+# Per-token / API-key billing — inject apiKeyHelper via --settings (forces the key in interactive)
+alias claude_api='claude --settings='\''{"apiKeyHelper": "echo $ANTHROPIC_API_KEY"}'\'''
+alias opus_api='claude --model "claude-opus-4-8[1m]" --effort high --settings='\''{"apiKeyHelper": "echo $ANTHROPIC_API_KEY"}'\'''
+
+# Subscription / browser-login billing — unset the key so auth falls through to stored OAuth
+alias claude_login='env -u ANTHROPIC_API_KEY claude'
+alias opus_login='env -u ANTHROPIC_API_KEY claude --model "claude-opus-4-8[1m]" --effort high'
+```
+
+Subprocesses inherit the top-level session's environment, so billing tracks the top-level account: `*_api` → API token (`ANTHROPIC_API_KEY`, which `claude --print` uses directly); `*_login` → subscription OAuth (macOS Keychain). Credential precedence is `ANTHROPIC_API_KEY` (env) > `apiKeyHelper` > stored OAuth, and a configured `apiKeyHelper` never falls back to OAuth — which is why the settings file stays clean and `apiKeyHelper` lives only in the `*_api` aliases.
 
 ### Codex
 - Via web UI of your Codex org, create your own API key
