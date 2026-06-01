@@ -1,0 +1,27 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "scripts/step-telemetry-mark.sh", "lines_added": 44, "lines_removed": 0},
+    {"path": "scripts/step-telemetry-mark.md", "lines_added": 50, "lines_removed": 0},
+    {"path": "scripts/test-step-telemetry-mark.sh", "lines_added": 63, "lines_removed": 0},
+    {"path": "scripts/test-step-telemetry-mark.md", "lines_added": 10, "lines_removed": 0},
+    {"path": "skills/implement/SKILL.md", "lines_added": 4, "lines_removed": 32},
+    {"path": "scripts/test-implement-timing-rehydration.sh", "lines_added": 8, "lines_removed": 5},
+    {"path": "scripts/test-implement-timing-rehydration.md", "lines_added": 1, "lines_removed": 1},
+    {"path": "Makefile", "lines_added": 5, "lines_removed": 2},
+    {"path": "agent-lint.toml", "lines_added": 5, "lines_removed": 0}
+  ],
+  "tests_added_or_modified": [
+    "scripts/test-step-telemetry-mark.sh",
+    "scripts/test-implement-timing-rehydration.sh"
+  ],
+  "summary_bullets": [
+    "Extract per-step ledger telemetry into scripts/step-telemetry-mark.sh for /implement step entries",
+    "Collapse Steps 5, 16, 17, and 18-cleanup preambles in skills/implement/SKILL.md to one helper call each",
+    "Add Makefile-wired unit harness and helper-aware timing-rehydration regression counts"
+  ],
+  "commit_message": "Extract /implement step-ENTRY ledger telemetry into step-telemetry-mark.sh\n\nAdd a never-fatal helper that rehydrates the three ledger keys and emits token/timing marks, convert Steps 5/16/17/18-cleanup in skills/implement/SKILL.md, and wire test-step-telemetry-mark plus helper-aware counts in test-implement-timing-rehydration.",
+  "todos_left": [],
+  "oos_observations": []
+}

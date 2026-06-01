@@ -1,0 +1,139 @@
+
+Reviewing key source lines to normalize concerns and attribute reviewer slots accurately.
+Normalized aggregator output from the supplied reviewer slots. Security inputs **FINDING_14–FINDING_19** are positive attestations (no defect, no fix direction); they are omitted and do not appear below.
+
+### FINDING_1: Structural harness gap for `step-telemetry-mark.sh` delegation
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Invariant B in `scripts/test-implement-timing-rehydration.sh` only guards fenced blocks that call `timing-ledger.sh` / `timing-report.sh` directly in `SKILL.md`. Converted step-ENTRY sites delegate to `step-telemetry-mark.sh`, so a helper regression (dropped `LARCH_TIMING_LEDGER` rehydration or removed `timing-ledger.sh mark`) can leave structural timing-fence checks green while Step 5/16/17/18 timing marks disappear. The harness also does not pin exactly four helper calls or the four step-ENTRY mark labels, so cardinality/tmpdir coupling alone may not catch a removed block or relabeled mark.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Teach the awk to treat step-telemetry-mark.sh fences as timing-rehydrated or add an explicit structural check plus cross-reference to test-step-telemetry-mark
+  - From cursor-specialist-testing-output.txt: Add step_telemetry_mark_count == 4 and per-label grep -Fxc assertions (or a SKILL structural pin harness).
+  - From cursor-specialist-testing-output.txt: Extend structural tests or add integration coverage that validates helper rehydration matches inline semantics.
+  - From cursor-specialist-edge-cases-output.txt: Add helper-specific structural pins (awk/grep) and/or a unit assertion that timing-ledger.sh mark is invoked on the happy path.
+
+### FINDING_2: `step_telemetry_mark_count` uses substring `grep -Fc`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: At `scripts/test-implement-timing-rehydration.sh:123`, `step_telemetry_mark_count` uses `grep -Fc` substring matching unlike exact-line `grep -Fxc` peers. Prose or a partial line mentioning the helper prefix could skew tmpdir-coupling counts or fail CI confusingly.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Use grep -Fxc on the full pinned helper invocation line
+  - From cursor-specialist-edge-cases-output.txt: Use grep -Fxc with the full canonical line template.
+
+### FINDING_3: Helper suppresses `read-session-env-key` stderr
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: At `scripts/step-telemetry-mark.sh:35-37`, `read-session-env-key.sh` stderr is redirected with `2>/dev/null`. Unreadable or missing `session-env.sh` fails more quietly than the old inline fences, making live-run diagnosis harder.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Drop 2>/dev/null unless stderr noise was a proven problem
+  - From cursor-specialist-edge-cases-output.txt: Remove blanket 2>/dev/null or limit suppression to expected unreadable-file cases.
+
+### FINDING_4: `|| true` masks non-executable helper (exit 126), not logic errors
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: At `skills/implement/SKILL.md:894,1308,1343,1413`, `|| true` only masks non-executable helper (126), not helper logic errors. A lost executable bit after clone can drop four step marks with no structural harness failure beyond `test-step-telemetry-mark` when CI runs it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Rely on make test-step-telemetry-mark in CI; optional note in step-telemetry-mark.md
+
+### FINDING_5: Never-fatal harness paths assert exit 0 only
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: In `scripts/test-step-telemetry-mark.sh:53-61`, negative/never-fatal paths only assert exit 0, not ledger side effects. A regression could skip ledger writes (or write to pwd-hash fallback on bad tmpdir) while remaining exit 0 and passing CI.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Assert both ledger files receive mark rows after bad tmpdir, omitted tmpdir, and missing --label cases.
+  - From cursor-specialist-edge-cases-output.txt: Assert ledger files unchanged on never-fatal paths.
+
+### FINDING_6: Happy-path harness requires `jq` without prerequisite check
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: At `scripts/test-step-telemetry-mark.sh:45`, the happy path requires `jq` without an explicit prerequisite check; environments without `jq` fail with an unclear error.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add command -v jq guard at harness start.
+
+### FINDING_7: Step 17 orchestrator env vs helper subprocess exports
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Helper subprocess exports do not persist `LARCH_*` to the orchestrator shell across Bash tool calls. Step 17 `write-final-report` token-report fallback may see empty `LARCH_TOKEN_SESSION_ID` and resolve via `session-id`; if `session-env` and `session-id` diverge, token ledgers could differ from pre-refactor behavior (`scripts/step-telemetry-mark.sh:39-42`, `skills/implement/SKILL.md:1343-1348`, `skills/implement/scripts/write-final-report.sh:187-188`).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Re-read LARCH_TOKEN_SESSION_ID in the Step 17 write-final-report fence or harness the session-id-only fallback explicitly.
+
+### FINDING_8: Arg parser silently ignores unknown flags / empty label
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: At `scripts/step-telemetry-mark.sh:14-29`, the arg parser silently ignores unknown flags and leaves `LABEL` empty when `--label` is trailing or misspelled. An orchestrator typo like `--lable` drops both marks with exit 0 and no stderr signal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Warn on unknown flags and empty LABEL after parse while preserving exit 0.
+
+### FINDING_9: Plan fidelity — harness header comment not updated
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: The plan required updating the harness header comment as well as the `PASS:` line in `scripts/test-implement-timing-rehydration.sh:1-20`; only `PASS` was updated. Contributors reading the `.sh` header miss helper-aware tmpdir coupling documented in the `.md` sibling.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Extend the top-of-file or cardinality comment block to document step_telemetry_mark_count and tmpdir == token_read + step_telemetry_mark_count.
+
+### OOS_1: [OUT_OF_SCOPE] Remaining trio-only inline rehydration sites
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: Nine trio-only inline rehydration sites remain outside this extraction in `skills/implement/SKILL.md`. Future editors may still copy long boilerplate for most steps.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Follow-on sweep when safe per plan backlog
+
+### OOS_2: [OUT_OF_SCOPE] Invariant 2 docs omit helper delegation
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/test-implement-timing-rehydration.md:7-12` — Invariant 2 docs omit helper delegation; readers may assume B still covers converted step-ENTRY fences.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Update docs when invariant B is extended
+
+### OOS_3: [OUT_OF_SCOPE] Invariant B limitation pre-dates refactor
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: `scripts/test-implement-timing-rehydration.sh:39-76` — Invariant B only checks fences that directly invoke `timing-ledger.sh` / `timing-report.sh`; converted step-ENTRY sites delegate to `step-telemetry-mark.sh`, so a future helper regression dropping `LARCH_TIMING_LEDGER` rehydration would not be caught by invariant B (only by the unit harness happy path, which always sets `LARCH_TIMING_LEDGER` in session-env). **Why out of scope:** pre-existing structural-test limitation amplified, not introduced, by this refactor; current helper code correctly reads and exports all three keys.
+
+### OOS_4: [OUT_OF_SCOPE] Header comment drift vs plan (documentation only)
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/test-implement-timing-rehydration.sh:1-20` — The plan called for updating the header comment as well as the `PASS:` line; only the latter was changed. **Why out of scope:** documentation drift vs plan, not a runtime defect.
+
+### OOS_5: [OUT_OF_SCOPE] Optional stderr parity for helper reads
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/step-telemetry-mark.sh:35-37` — Helper suppresses `read-session-env-key` stderr; inline fences did not. Harder to diagnose read failures during live runs; marks likely unchanged.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Align stderr handling with inline fences if diagnostic parity matters (optional).
+
+### OOS_6: [OUT_OF_SCOPE] Trust model for `session-env.sh` unchanged
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/step-telemetry-mark.sh:32-42` — The helper trusts `session-env.sh` under `--implement-tmpdir` for ledger/session keys without extra validation; a hostile or corrupted `session-env.sh` could steer ledger paths within existing validators. **Why out of scope:** identical trust model to removed inline trio; not introduced or amplified by this refactor.
+
+### OOS_7: [OUT_OF_SCOPE] Deliberate never-fatal telemetry policy
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `skills/implement/SKILL.md:894,1308,1343,1413` — `|| true` plus non-executable helper (exit 126) fails open for telemetry (marks dropped, step continues). New harness `[ -x ]` mitigates exec-bit regression in CI, not at runtime. **Why out of scope:** deliberate never-fatal telemetry policy from the plan; integrity/availability, not a new exploit path.
+
+### OOS_8: [OUT_OF_SCOPE] Step 17 re-export pattern predates refactor
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `skills/implement/SKILL.md:1343-1350` — Step 17 no longer re-exports ledger keys into the orchestrator shell before `write-final-report.sh`; optional `token-report.sh` fallback uses parent `${LARCH_TOKEN_SESSION_ID:-}`. **Why out of scope:** pre-existing env-scope pattern; session ID stable on normal runs; fallback substance unchanged.
+
+### OOS_9: [OUT_OF_SCOPE] Prose vs Step 17 fence rehydration mismatch
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: `skills/implement/SKILL.md:513` — Prose mandates trio rehydration in later fences but Step 17 `write-final-report` fence omits it (pre-existing). Maintainers may assume rehydration happens where it does not.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Update prose or add inline read (predates this branch).
+
+### OOS_10: [OUT_OF_SCOPE] Step 2 conditional token vs unconditional timing asymmetry
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: `skills/implement/SKILL.md:659-677` — Step 2 conditional token mark vs unconditional timing mark asymmetry remains. Future blanket helper conversion could break token-budget ordering on external coder paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Keep Step 2 out of helper scope (already documented).
+
+---
+
+**Merge notes (diagnostic summary, not voter instructions):**
+- **Subsumed:** Input FINDING_9, 12, 23 → **FINDING_1**; FINDING_28 → **FINDING_2**; FINDING_26 → **FINDING_3**; FINDING_27 → **FINDING_5**; input FINDING_7 overlaps **FINDING_1** but kept as **OOS_3** (explicit OOS rationale).
+- **Omitted:** FINDING_14–19 (security pass observations, not actionable findings).
+- **Not merged across scope:** **FINDING_9** (in-scope plan fidelity) vs **OOS_4** (same doc drift, OOS correctness framing).

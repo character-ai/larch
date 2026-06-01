@@ -1,0 +1,4 @@
+warning: `--full-auto` is deprecated; use `--sandbox workspace-write` instead.
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+✓ codex agent: completed (exit code 0, 70s elapsed, output 19 bytes)
