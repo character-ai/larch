@@ -1,0 +1,26 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Valid DRY nit; shared-helper refactor not worth the churn for this touch.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Three walks are real; consolidating enumerators is a larger refactor than this fix warrants.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Latent footgun only; both prune call sites run after INSTALLED_VERSION is set today.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Double read at 199-201 is real but too minor to file as a follow-up issue.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Source-unsafe script is real; plan explicitly deferred harness/source-safe refactor.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Log wording can mislead but is cosmetic; not worth a standalone issue.
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Accurate pre-existing behavior; backfill already skips mt=0 as intended.
+FINDING_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Plan scope expansion was intentional; behavior matches the approved plan, not a defect.
+FINDING_9: NO CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Missing harness is an accepted plan tradeoff, not a logic bug.
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- nullglob toggle matches pre-existing helpers; not introduced by this diff.
+FINDING_11: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- Regression risk is real but plan Decision 1 explicitly rejects a committed offline harness.
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- Manual checks cannot appear in the diff; process reminder only.
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- SECURITY.md "in addition to the eight-cap ranked set" misstates the eight-dir total cap in code.
+FINDING_14: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Missing backfill tests mirror the plan-accepted no-harness decision.
+FINDING_15: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- CI/lint status is outside the diff; reminder only.
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Minor catalog drift; install/security docs were updated per plan.
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Same source-safety barrier as FINDING_5; pre-existing and plan-deferred.
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- No upgrade-larch CI is pre-existing; not a regression from this change.
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Symlink write path is plausible but same-UID user-cache threat is narrow vs /cleanup model.
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Same SECURITY.md cap wording bug as FINDING_13; protected dirs count inside eight.
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- write_install_stamp symlink gap predates backfill; reasonable follow-up hardening issue.
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Prune delete loop lacks symlink skip like /cleanup; pre-existing asymmetry worth tracking later.
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- date +%s stamp on failed verification is Defect B by design; prune stays skipped until verified.
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Protected seeds inside the eight-slot cap are explicit plan behavior, not a bug.
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- mtime backfill mis-rank for copied dirs is a documented plan failure-mode tradeoff.
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- ERR-trap nullglob restore is rare and matches existing nullglob style in the file.
