@@ -307,6 +307,7 @@ LARCH_CACHE_DIR="$(dirname "$PLUGIN_ROOT")"
 # Version string of the currently running larch installation (basename of PLUGIN_ROOT).
 INSTALLED_VERSION="$(basename "$PLUGIN_ROOT")"
 
+# shellcheck disable=SC2317 # file may be sourced; exit fallback is for direct execution.
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     return 0 2>/dev/null || exit 0
 fi

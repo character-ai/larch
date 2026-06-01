@@ -1046,6 +1046,7 @@ grep -Fq 'design-publish.sh configuration error (exit 2)' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing design-publish.sh exit 2 abort prose"
 grep -Fq '.completed/step-5c' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must write .completed/step-5c sentinel"
+# shellcheck disable=SC2016 # Markdown literal contains $DESIGN_TMPDIR and backticks intentionally.
 grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true`' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must gate step-5c sentinel on PLAN_WRITE_OK=true"
 grep -Fq 'result-env write failed (exit 3)' "$SKILL_MD" \
