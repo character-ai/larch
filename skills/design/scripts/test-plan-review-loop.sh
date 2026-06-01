@@ -67,7 +67,7 @@ STUB_CODEX
 cat >"$STUB_BIN/cursor" <<'STUB_CURSOR'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'stub cursor stdout\n'
+printf '{"result":"stub cursor output","usage":{"inputTokens":0,"outputTokens":0,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
 STUB_CURSOR
 cat >"$STUB_BIN/claude" <<'STUB_CLAUDE'
 #!/usr/bin/env bash
