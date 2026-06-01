@@ -40,7 +40,6 @@ ln -sf "$REPO_ROOT/scripts/lib-net.sh" "$STUB/lib-net.sh" 2>/dev/null || true
 ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$STUB/append-tool-failure.sh"
 ln -sf "$REPO_ROOT/scripts/lib-design-reentry-guard.sh" "$STUB/lib-design-reentry-guard.sh"
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_PLUGIN/skills/design/scripts/lib-phase-driver.sh"
-ln -sf "$SCRIPT_DIR/render-final-summary.sh" "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
 
 setup_design_tmp() {
     local d="$1"
@@ -207,11 +206,17 @@ bash "$SUBJECT" --design-tmpdir "$D_EMPTY" --issue 1 --session-id '' --claude-pi
 rc=$?
 set -e
 assert_rc "empty session id" 0 "$rc"
-! grep -q 'design-log-publish' "$PUBLISH_LOG" 2>/dev/null && pass "publish skipped when SESSION_ID empty" \
-  || fail "publish should be skipped"
+if ! grep -q 'design-log-publish' "$PUBLISH_LOG" 2>/dev/null; then
+    pass "publish skipped when SESSION_ID empty"
+else
+    fail "publish should be skipped"
+fi
 grep -q 'SESSION_ID missing' "$D_EMPTY/.design-publish-result.env" || fail "WARN missing for empty SESSION_ID"
-! grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null && pass "rename skipped when SESSION_ID empty" \
-  || fail "rename should be skipped"
+if ! grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
+    pass "rename skipped when SESSION_ID empty"
+else
+    fail "rename should be skipped"
+fi
 
 # --- PUBLISH_OK=false ---
 D_PFAIL="$TMP/pub-fail"
@@ -234,8 +239,11 @@ bash "$SUBJECT" --design-tmpdir "$D_PFAIL" --issue 1 --session-id sid --claude-p
 rc=$?
 set -e
 assert_rc "PUBLISH_OK=false" 0 "$rc"
-! grep -q 'tracking-issue-write' "$RENAME_LOG" && pass "rename skipped on PUBLISH_OK=false" \
-  || fail "rename should be skipped"
+if ! grep -q 'tracking-issue-write' "$RENAME_LOG"; then
+    pass "rename skipped on PUBLISH_OK=false"
+else
+    fail "rename should be skipped"
+fi
 
 # --- unexpected publish (nonzero, no PUBLISH_OK line) ---
 D_UNEXP="$TMP/pub-unexp"
@@ -261,6 +269,7 @@ assert_rc "unexpected publish rc" 0 "$rc"
 grep -q 'PUBLISH_OK=false' "$D_UNEXP/.design-publish-result.env" || fail "unexpected publish must set PUBLISH_OK=false"
 
 # --- if ! plan-block-write guard ---
+# shellcheck disable=SC2016 # Literal pattern checks unexpanded shell syntax in source.
 grep -Fq 'if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh"' "$SUBJECT" \
   || fail "design-publish.sh must use if ! around plan-block-write.sh"
 

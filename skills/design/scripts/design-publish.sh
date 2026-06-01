@@ -175,7 +175,7 @@ fi
 
 if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh" --issue "$ISSUE" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"; then
     PLAN_WRITE_OK=false
-    "${SCRIPT_DIR}/render-final-summary.sh" \
+    "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome failed-plan-write \
         --mode "$MODE" \
         ${REPO:+--repo "$REPO"} \
@@ -236,7 +236,7 @@ if [[ "$_run_upsert" == true ]]; then
 fi
 
 if [[ -n "$SESSION_ID" ]]; then
-    "${SCRIPT_DIR}/render-final-summary.sh" \
+    "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome approved \
         --mode "$MODE" \
         ${REPO:+--repo "$REPO"} \
@@ -278,7 +278,7 @@ else
     add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'
 fi
 
-"${SCRIPT_DIR}/render-final-summary.sh" \
+"${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
     --outcome approved \
     --mode "$MODE" \
     ${REPO:+--repo "$REPO"} \
