@@ -16,6 +16,8 @@ grep -Fq 'FORKED_TARGET' "$SKILL_MD" || fail "SKILL must gate on FORKED_TARGET"
 grep -Fq 'REPO_UNAVAILABLE' "$SKILL_MD" || fail "SKILL must gate on REPO_UNAVAILABLE"
 grep -Fq 'BAIL_FAILURE_DETAIL_LOG' "$SKILL_MD" || fail "SKILL must reference BAIL_FAILURE_DETAIL_LOG redaction gate"
 grep -Fq 'FAILED_RUN_ID' "$SKILL_MD" || fail "SKILL must reference FAILED_RUN_ID for autonomous path"
+grep -Fq 'ci-fix-exhausted' "$SKILL_MD" || fail "SKILL must document ci-fix-exhausted autonomous path"
+grep -Fq 'first-fixer-non-health' "$SKILL_MD" || fail "SKILL must document first-fixer-non-health autonomous path"
 
 awk '
   /## Step 8\+/ { in8 = 1; next }
