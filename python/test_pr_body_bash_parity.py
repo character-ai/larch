@@ -55,7 +55,7 @@ def test_compose_summary_semantic_parity(tmp_path: Path) -> None:
     assert completed.returncode == 0
     class _NoopRunner:
         def run(self, *args: object, **kwargs: object) -> CommandResult:  # pylint: disable=unused-argument
-            return CommandResult(tuple(), 1, "", "", 0.0)
+            return CommandResult((), 1, "", "", 0.0)
 
     py_summary = pr_body.compose_summary_bullets(
         _NoopRunner(),  # type: ignore[arg-type]

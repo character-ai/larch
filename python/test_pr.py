@@ -89,8 +89,8 @@ def test_ensure_pr_reuses_existing_open(monkeypatch: pytest.MonkeyPatch) -> None
         _runner: object,
         _branch: str,
         *,
-        repo: str,  # noqa: ARG001
-        cwd: str | None = None,  # noqa: ARG001
+        repo: str,  # noqa: ARG001  # pylint: disable=unused-argument
+        cwd: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
     ) -> gh.PullRequest:
         return existing
 
