@@ -1,0 +1,3 @@
+Reading the implementation plan and tracing cited paths in the codebase.
+{"no_issues_found": true}
+

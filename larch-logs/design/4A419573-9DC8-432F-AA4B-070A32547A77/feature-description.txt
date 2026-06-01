@@ -1,0 +1,37 @@
+[OOS] python/rebase.py: port bash run_rebase_rebump parity gaps (pre-drop fixup, defer_push/HAS_BUMP, version-guard base)
+
+Combines three out-of-scope review findings that all target parity between the
+Python `python/rebase.py` port and the bash `run_rebase_rebump` / ship-pr
+re-bump flow. All three are `latent` severity, surfaced during the `design`
+phase, and touch `python/rebase.py` (two also touch `python/version_bump.py`).
+Tracking them as one unit avoids three separate /design + /implement cycles over
+the same module.
+
+Source issues: #3309, #3310, #3311.
+
+**Blocked by #3236** (`ship-pr -> Python Phase 3: Rebase component`) — `python/rebase.py` does not exist yet; all three parity gaps land on top of that component. Each source issue carried this same native blocked-by edge.
+
+## 1. Port driver-owned `refresh-run-logs` + `larch-logs/` pre-drop fixup (was #3309)
+- **Description**: `refresh-run-logs` and pre-drop `larch-logs/` fixup omitted (driver-owned). Scenario: Dirty tracked `larch-logs/` can make `drop_bump_commit` return `DROPPED=false` and `Stalled` before rebase — bash runs `refresh-run-logs.sh` and scoped fixup first.
+- **Reviewer**: Cursor-Edge
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: future ship.py driver / rebase.py pre-drop guard
+- **Phase**: design
+
+## 2. Add `defer_push` / `HAS_BUMP` inputs for `run_rebase_rebump` parity (was #3310)
+- **Description**: No `defer_push` / `HAS_BUMP` inputs on the rebase entry point. Scenario: Bash `run_rebase_rebump` skips push when `defer_push` and skips classify/apply when `HAS_BUMP=false`; the Python port currently has no equivalent inputs.
+- **Reviewer**: Cursor-Edge
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: python/rebase.py `rebase_and_rebump` signature
+- **Phase**: design
+
+## 3. Reconcile version-regression guard base with `apply_bump` origin/main hardcode (was #3311)
+- **Description**: Version-regression guard uses `base_remote`/`base_ref` but `apply_bump` still hardcodes `origin/main`. Scenario: Fork/upstream bases can disagree with apply_bump's origin/main fetch and guards (python/version_bump.py ~566-578).
+- **Reviewer**: Cursor-Innovation
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: python/rebase.py re-bump path + python/version_bump.py apply_bump
+- **Phase**: design
+

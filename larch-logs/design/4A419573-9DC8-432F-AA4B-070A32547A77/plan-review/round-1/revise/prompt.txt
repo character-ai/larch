@@ -1,0 +1,182 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Implementation Plan — #3317 python/rebase.py parity gaps (#2 + #3)
+
+SIMPLE tier. Minimum-change parity port. Two new keyword params per function, each
+defaulting to today's behavior so existing callers and tests stay untouched.
+
+**Scope**: gap #2 (`defer_push` / `has_bump` inputs) and gap #3 (`apply_bump` base
+reconciliation). Gap #1 (pre-drop `refresh-run-logs` + `larch-logs/` fixup) is
+deferred to the Phase 7 `ship.py` driver (#3240 amended) and is NOT in this plan.
+
+## Files to modify/create
+
+### UPDATED: `python/rebase.py`
+`rebase_and_rebump` (def at line 478):
+- Add two keyword-only params after `max_attempts`: `has_bump: bool = True`,
+  `defer_push: bool = False`.
+- Gate the re-bump block on `has_bump`. Wrap the existing
+  classify → version-regression guard → `apply_bump` → `_commit_changelog_after_rebump`
+  block (current lines ~568-608) in `if has_bump:`. Keep `new_version: str | None = None`
+  initialized before the block so `has_bump=False` returns `new_version=None`.
+- Gate the force-push on `defer_push`. Replace the unconditional
+  `_ = _force_push_branch(runner, cwd=cwd)` (line 610) + hardcoded `pushed=True`
+  (line 615) with:
+  `pushed = False` then `if not defer_push: _ = _force_push_branch(runner, cwd=cwd); pushed = True`,
+  and return `RebaseResult(..., pushed=pushed, ...)`.
+- Gap #3 caller wiring: change the `apply_bump` call (line 598) to pass base:
+  `version_bump.apply_bump(runner, target_version, base_remote=base_remote, base_ref=base_ref, cwd=cwd)`.
+- The rebase-side regression guard (lines 573-596) already uses `base_remote`/`base_ref`;
+  leave it unchanged.
+
+### UPDATED: `python/version_bump.py`
+`apply_bump` (def at line 467):
+- Add two keyword-only params after `cwd`: `base_remote: str = "origin"`,
+  `base_ref: str = "main"`.
+- Replace the hardcoded guard fetch `git.fetch(runner, "origin", "main", cwd=cwd)`
+  (line 566) with `git.fetch(runner, base_remote, base_ref, cwd=cwd)`.
+- Replace the hardcoded guard read
+  `git.show_file(runner, f"origin/main:{config.PLUGIN_JSON_PATH}", cwd=cwd)` (lines 576-580)
+  with `f"{base_remote}/{base_ref}:{config.PLUGIN_JSON_PATH}"`.
+- Generalize the three error strings that name `origin/main` (lines ~572, ~595, ~604-606)
+  to interpolate `{base_remote}/{base_ref}`; keep them inside `_redact_outbound`.
+- `classify_bump`'s own `origin/main` fetch is a separate concern (#3311 names only
+  `apply_bump`); leave it unchanged.
+
+### UPDATED: `python/test_rebase.py`
+- `test_defer_push_skips_force_push`: call with `defer_push=True`; assert no
+  `("git", "push", "--force-with-lease", ...)` entry in `runner.calls`; assert
+  `result.pushed is False`; classify/apply still run (re-bump unchanged).
+- `test_has_bump_false_skips_rebump`: call with `has_bump=False`; assert no
+  apply-bump / classify side-effect calls; assert `result.new_version is None`;
+  assert it still force-pushes and `result.pushed is True`.
+- `test_apply_bump_receives_base`: drive a re-bump with `base_remote="upstream"`,
+  `base_ref="main"`; register `upstream/main` handlers; assert the guard fetch/read
+  hit `("git", "fetch", "upstream", "main", "--quiet")` and
+  `("git", "show", "upstream/main:...")`, not origin/main.
+
+### UPDATED: `python/test_version_bump.py`
+- `test_apply_bump_threads_base`: call `apply_bump(runner, "1.2.3", base_remote="upstream",
+  base_ref="main", cwd=...)`; assert it issues `git fetch upstream main --quiet` and reads
+  `upstream/main:.claude-plugin/plugin.json` for the guard. Keep an existing/default-base
+  case asserting origin/main is still used when params are omitted.
+
+## Approach
+- Parity port mirroring bash `_run_rebase_rebump_from_step3`: `HAS_BUMP` gates the
+  classify/apply/changelog block; `defer_push` gates the push. Defaults
+  (`has_bump=True`, `defer_push=False`) reproduce current behavior.
+- Gap #3 removes the Python port's internal base inconsistency: the rebase guard and
+  `apply_bump`'s race-retry guard now share `base_remote`/`base_ref`. Default
+  `origin`/`main` keeps behavior byte-identical for today's single caller and all
+  direct-call tests. This is an improvement beyond bash `apply-bump.sh`, which still
+  hardcodes origin/main — accepted per Round 1.
+
+## Edge cases
+- `has_bump=False` while a bump commit exists on-branch: the earlier drop + bullets
+  staging still run; the re-bump is skipped and `new_version=None`. Matches bash
+  (HAS_BUMP gates only the re-bump block, not the drop).
+- `defer_push=True` with a re-bump: bump is applied + committed locally but not pushed;
+  `pushed=False`. The driver owns the later push.
+- Both flags set (`has_bump=False`, `defer_push=True`): rebase-only; no re-bump, no push.
+- Default base (`origin`/`main`): unchanged behavior; existing tests pass without edits.
+- Fork base (e.g. `upstream/main`): `apply_bump`'s race-retry loop re-fetches the fork
+  base, consistent with the rebase-side guard.
+
+## Failure modes
+1. `pushed` left hardcoded `True` while `defer_push` skips the push → callers misread
+   push state. Earliest signal: `test_defer_push_skips_force_push` asserting
+   `pushed is False` fails. Mitigation: derive `pushed` from the push branch.
+2. A hardcoded `origin/main` site in `apply_bump` missed by the edit (error string or the
+   retry re-fetch) → a fork guards against the wrong base. Signal: the fork test sees a
+   `git fetch origin main` call. Mitigation: grep `apply_bump` for `origin/main` after
+   the edit; assert fetch/show targets in the base test.
+3. `has_bump` gate scoped too narrowly (wrapping only `apply_bump`, not `classify_bump`)
+   → classify side-effects (fetch origin main) run when `has_bump=False`. Signal: parity
+   test sees classify calls under `has_bump=False`. Mitigation: wrap the whole
+   classify→commit block.
+
+## Testing strategy
+- Four new tests via the `ScriptRunner` prefix-matching seam (no real git).
+- `make py-test` and `make py-lint` green; existing `test_rebase.py` /
+  `test_version_bump.py` unchanged and passing (defaults preserve behavior).
+- These satisfy the #3132 quality bar (unit/parity test per ported branch).
+
+diff_lines: 115
+
+</plan>
+
+<findings>
+### FINDING_1: Existing `apply_bump` monkeypatch stubs reject new `base_remote`/`base_ref` kwargs
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Codex-Edge, Codex-Pragmatic, Codex-Innovation, Codex-Requirements, Codex-dyn-port-parity, Cursor-dyn-base-plumbing, Codex-dyn-base-plumbing, Cursor-dyn-scope-boundary, Codex-dyn-scope-boundary
+- **Severity**: important
+- **Concern**: The plan wires `rebase_and_rebump` to call `version_bump.apply_bump(..., base_remote=base_remote, base_ref=base_ref, cwd=cwd)` (e.g. `python/rebase.py` ~598), but two existing tests monkeypatch `apply_bump` with local `_apply` stubs that only accept `runner`, `new_version`, and `cwd` (`python/test_rebase.py:552-557` in `test_rebase_result_uses_apply_result_new_version`, `822-827` in `test_version_regression_guard_recomputes_target`). After that production change, those tests will raise `TypeError: unexpected keyword argument 'base_remote'` (and/or `base_ref`) before any new assertions run, so `make py-test` fails and contradicts any plan claim that existing `test_rebase.py` cases pass unchanged without edits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extend the UPDATED python/test_rebase.py section to widen both _apply stubs (defaults or **kwargs) or document the signature change explicitly
+  - From Codex-Arch: Update both existing stubs to accept base_remote and base_ref or **kwargs, and assert defaults where useful
+  - From Codex-Edge: Update those stubs to accept base_remote/base_ref or **kwargs; optionally assert default origin/main where useful
+  - From Codex-Pragmatic: Update those stubs to accept base_remote/base_ref or **kwargs; optionally assert default origin/main where useful
+  - From Codex-Innovation: Extend the two local _apply doubles to accept base_remote and base_ref keywords, or add **_unused, as part of the planned python/test_rebase.py update
+  - From Codex-Requirements: Update the existing stubs to accept base_remote/base_ref or **kwargs, and remove the “existing tests unchanged” claim
+  - From Codex-dyn-port-parity: Include the two existing test stubs in python/test_rebase.py in the test update scope and let them accept base_remote/base_ref or **kwargs.
+  - From Cursor-dyn-base-plumbing: Add base_remote/base_ref (or **kwargs) to both _apply stubs in the UPDATED test_rebase.py section, or document that signature change explicitly
+  - From Codex-dyn-base-plumbing: Update the existing _apply stubs to accept base_remote: str = "origin" and base_ref: str = "main" or **kwargs, and optionally assert the default values where useful
+  - From Cursor-dyn-scope-boundary: Add stub updates (accept base_remote/base_ref or **kwargs) to the ### UPDATED: python/test_rebase.py section and drop the unchanged-and-passing claim for those cases
+  - From Codex-dyn-scope-boundary: Update the plan to include adjusting these existing stubs to accept base_remote and base_ref or **kwargs, in addition to the new base-threading tests
+
+
+### FINDING_2: Planned `test_apply_bump_receives_base` can fail or expand scope via real `classify_bump`
+- **Reviewer(s)**: Cursor-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned `test_apply_bump_receives_base` (plan.txt ~41-54) may assert git traffic (no `origin`/`main` fetch/show) while leaving `classify_bump` unmocked. Real `classify_bump` always calls `git.fetch(runner, "origin", "main", ...)` (`python/version_bump.py:251`) before `apply_bump` wiring is exercised, so the test can fail on `origin/main` traffic even when `rebase_and_rebump` correctly passes `base_remote`/`base_ref` into `apply_bump`. That conflicts with the explicit non-goal to leave `classify_bump` on `origin/main` and risks pressuring implementers to change `classify_bump` in this gap.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Specify monkeypatch classify_bump (return PATCH + target_version like other test_rebase rebump cases) before asserting git traffic; or assert only apply_bump kwargs via a spy and keep fetch/show checks in test_apply_bump_threads_base
+  - From Codex-Requirements: Constrain the assertion to apply_bump’s guard calls, or monkeypatch classify_bump so the test only verifies rebase passes base_remote/base_ref into apply_bump
+
+
+</findings>
+
+<feature>
+[OOS] python/rebase.py: port bash run_rebase_rebump parity gaps (pre-drop fixup, defer_push/HAS_BUMP, version-guard base)
+
+Combines three out-of-scope review findings that all target parity between the
+Python `python/rebase.py` port and the bash `run_rebase_rebump` / ship-pr
+re-bump flow. All three are `latent` severity, surfaced during the `design`
+phase, and touch `python/rebase.py` (two also touch `python/version_bump.py`).
+Tracking them as one unit avoids three separate /design + /implement cycles over
+the same module.
+
+Source issues: #3309, #3310, #3311.
+
+**Blocked by #3236** (`ship-pr -> Python Phase 3: Rebase component`) — `python/rebase.py` does not exist yet; all three parity gaps land on top of that component. Each source issue carried this same native blocked-by edge.
+
+## 1. Port driver-owned `refresh-run-logs` + `larch-logs/` pre-drop fixup (was #3309)
+- **Description**: `refresh-run-logs` and pre-drop `larch-logs/` fixup omitted (driver-owned). Scenario: Dirty tracked `larch-logs/` can make `drop_bump_commit` return `DROPPED=false` and `Stalled` before rebase — bash runs `refresh-run-logs.sh` and scoped fixup first.
+- **Reviewer**: Cursor-Edge
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: future ship.py driver / rebase.py pre-drop guard
+- **Phase**: design
+
+## 2. Add `defer_push` / `HAS_BUMP` inputs for `run_rebase_rebump` parity (was #3310)
+- **Description**: No `defer_push` / `HAS_BUMP` inputs on the rebase entry point. Scenario: Bash `run_rebase_rebump` skips push when `defer_push` and skips classify/apply when `HAS_BUMP=false`; the Python port currently has no equivalent inputs.
+- **Reviewer**: Cursor-Edge
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: python/rebase.py `rebase_and_rebump` signature
+- **Phase**: design
+
+## 3. Reconcile version-regression guard base with `apply_bump` origin/main hardcode (was #3311)
+- **Description**: Version-regression guard uses `base_remote`/`base_ref` but `apply_bump` still hardcodes `origin/main`. Scenario: Fork/upstream bases can disagree with apply_bump's origin/main fetch and guards (python/version_bump.py ~566-578).
+- **Reviewer**: Cursor-Innovation
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: python/rebase.py re-bump path + python/version_bump.py apply_bump
+- **Phase**: design
+
+
+</feature>

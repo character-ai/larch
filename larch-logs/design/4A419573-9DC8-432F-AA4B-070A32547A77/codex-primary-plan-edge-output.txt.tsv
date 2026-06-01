@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	python/rebase.py:598; python/test_rebase.py:552-557,822-827	Planned rebase call adds base_remote/base_ref kwargs to apply_bump, but existing monkeypatched apply_bump stubs accept only cwd	make py-test will fail with TypeError unexpected keyword argument base_remote in existing rebase tests	Update those stubs to accept base_remote/base_ref or **kwargs; optionally assert default origin/main where useful
