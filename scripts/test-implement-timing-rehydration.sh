@@ -18,6 +18,9 @@
 #      the plugin-root.env source guard (canonical) or, on pre-bootstrap sites
 #      only, the session-env.sh awk fallback, so nested Bash calls can recover
 #      the plugin root without depending on the root variable to find helpers.
+#   D) Cardinality guards stay in sync: every timing-ledger rehydration template
+#      has the token-session-id sibling/export, and IMPLEMENT_TMPDIR assignment
+#      plus export counts equal token_read_count + step_telemetry_mark_count.
 
 set -euo pipefail
 
