@@ -1,0 +1,34 @@
+finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
+FINDING_1	cursor-specialist-structure-output.txt|cursor-specialist-plan-fidelity-output.txt	accepted	YES	true	major	adequate	false										
+FINDING_10	cursor-specialist-structure-output.txt	accepted	YES	true	nit	adequate	false										
+FINDING_11	cursor-specialist-correctness-output.txt	accepted	YES	true	major	excellent	false										
+FINDING_12	cursor-specialist-correctness-output.txt	accepted	YES	true	major	good	false										
+FINDING_13	cursor-specialist-correctness-output.txt	rejected	NO	false-positive		adequate	true										
+FINDING_14	cursor-specialist-correctness-output.txt	accepted	YES	true	nit	good	false										
+FINDING_15	cursor-specialist-correctness-output.txt	accepted	YES	true	minor	adequate	false										
+FINDING_16	cursor-specialist-correctness-output.txt|cursor-specialist-testing-output.txt	accepted	YES	true	major	good	false										
+FINDING_17	cursor-specialist-testing-output.txt	exonerated	EXONERATE	partially-true	minor	adequate	false										
+FINDING_18	cursor-specialist-testing-output.txt	accepted	YES	true	minor	good	false										
+FINDING_19	cursor-specialist-testing-output.txt	exonerated	EXONERATE	true	minor	weak	false										
+FINDING_2	cursor-specialist-structure-output.txt	exonerated	EXONERATE	partially-true	nit	adequate	false										
+FINDING_20	cursor-specialist-testing-output.txt	accepted	YES	true	minor	good	false										
+FINDING_21	cursor-specialist-testing-output.txt	exonerated	EXONERATE	true	nit	adequate	false										
+FINDING_22	cursor-specialist-testing-output.txt	accepted	YES	true	nit	good	false										
+FINDING_23	cursor-specialist-testing-output.txt	exonerated	EXONERATE	partially-true	nit	weak	true										
+FINDING_24	cursor-specialist-testing-output.txt	accepted	YES	true	nit	adequate	false										
+FINDING_25	cursor-specialist-security-output.txt	accepted	YES	true	major	good	false										
+FINDING_26	cursor-specialist-security-output.txt	accepted	YES	true	minor	good	false										
+FINDING_27	cursor-specialist-security-output.txt	exonerated	EXONERATE	partially-true	nit	adequate	true										
+FINDING_28	cursor-specialist-edge-cases-output.txt	accepted	YES	true	major	excellent	false										
+FINDING_29	cursor-specialist-edge-cases-output.txt	accepted	YES	true	minor	good	false										
+FINDING_3	cursor-specialist-structure-output.txt|cursor-specialist-testing-output.txt|cursor-specialist-edge-cases-output.txt	accepted	YES	true	major	good	false										
+FINDING_30	cursor-specialist-edge-cases-output.txt	accepted	YES	true	minor	good	false										
+FINDING_31	cursor-specialist-edge-cases-output.txt	accepted	YES	true	major	good	false										
+FINDING_32	cursor-specialist-edge-cases-output.txt	exonerated	EXONERATE	partially-true	nit	adequate	false										
+FINDING_33	cursor-specialist-edge-cases-output.txt	exonerated	EXONERATE	partially-true	minor	adequate	false										
+FINDING_4	cursor-specialist-structure-output.txt	exonerated	EXONERATE	true	nit	adequate	false										
+FINDING_5	cursor-specialist-structure-output.txt	exonerated	EXONERATE	true	nit	adequate	false										
+FINDING_6	cursor-specialist-structure-output.txt|cursor-specialist-testing-output.txt	accepted	YES	true	minor	good	false										
+FINDING_7	cursor-specialist-structure-output.txt	exonerated	EXONERATE	true	nit	weak	false										
+FINDING_8	cursor-specialist-structure-output.txt	exonerated	EXONERATE	true	nit	adequate	false										
+FINDING_9	cursor-specialist-structure-output.txt	accepted	YES	true	nit	adequate	false										
