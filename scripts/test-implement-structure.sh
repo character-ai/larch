@@ -531,6 +531,7 @@ fi
   || fail "scripts/parse-bootstrap-routing-envelope.md must exist"
 grep -Fq 'parse-bootstrap-routing-envelope.sh' "$SKILL_MD" \
   || fail "SKILL.md must source parse-bootstrap-routing-envelope.sh"
+# shellcheck disable=SC2016 # literal source text, not shell.
 if [ "$(grep -cF '. "${CLAUDE_PLUGIN_ROOT}/scripts/parse-bootstrap-routing-envelope.sh"' "$SKILL_MD" || true)" -ne 2 ]; then
   fail "SKILL.md must source parse-bootstrap-routing-envelope.sh exactly twice (initial + resume)"
 fi
@@ -542,6 +543,7 @@ grep -Fq '_inv_apply_routing_line()' "$SKILL_MD" \
   && fail "SKILL.md must not define _inv_apply_routing_line (owned by parse-bootstrap-routing-envelope.sh)"
 grep -Fq '_inv_apply_routing_line_if_empty()' "$SKILL_MD" \
   && fail "SKILL.md must not define _inv_apply_routing_line_if_empty (owned by parse-bootstrap-routing-envelope.sh)"
+# shellcheck disable=SC2016 # literal source text, not shell.
 if [ "$(grep -cF 'if [ "$_inv_rc" -ne 0 ]; then' "$SKILL_MD" || true)" -lt 2 ]; then
   fail "SKILL.md must exit on non-zero wrapper rc before routing parse (both call sites)"
 fi
