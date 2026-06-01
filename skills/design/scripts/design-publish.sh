@@ -285,14 +285,20 @@ fi
     --post-publish-only
 
 if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
+    _rename_seen=false
     if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designed ${REPO:+--repo "$REPO"}); then
         RENAMED=false
         while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
             case "$_rename_line" in
-                RENAMED=true) RENAMED=true ;;
-                RENAMED=false) RENAMED=false ;;
+                RENAMED=true) RENAMED=true; _rename_seen=true ;;
+                RENAMED=false) RENAMED=false; _rename_seen=true ;;
             esac
         done <<<"${_rename_out:-}"
+        if [[ "$_rename_seen" != true ]]; then
+            add_warn "**⚠ 5c: tracking-issue-write.sh rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
+        fi
+    else
+        add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan and logs may have published but the issue title was not updated. Re-invoke /design or rename manually if the title is still wrong.**"
     fi
 fi
 

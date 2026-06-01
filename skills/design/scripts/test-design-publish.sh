@@ -54,11 +54,13 @@ write_stubs() {
     cat >"$STUB/plan-block-write.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "plan-block-write $*" >>"${PLAN_BLOCK_LOG:?}"
+[[ -n "${CALL_LOG:-}" ]] && echo "plan-block-write $*" >>"$CALL_LOG"
 exit "${PLAN_BLOCK_RC:-0}"
 STUB
     cat >"$STUB/design-log-publish.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "design-log-publish $*" >>"${PUBLISH_LOG:?}"
+[[ -n "${CALL_LOG:-}" ]] && echo "design-log-publish $*" >>"$CALL_LOG"
 if [[ "${PUBLISH_STUB_RC:-0}" -ne 0 ]]; then
   exit "${PUBLISH_STUB_RC}"
 fi
@@ -66,19 +68,27 @@ if [[ "${PUBLISH_EMIT_OK:-true}" == true ]]; then
   echo "PUBLISH_OK=${PUBLISH_OK_VALUE:-true}"
 fi
 STUB
-    cat >"$STUB/tracking-issue-write.sh" <<'STUB'
-#!/usr/bin/env bash
-echo "tracking-issue-write $*" >>"${RENAME_LOG:?}"
-echo "RENAMED=${RENAMED_VALUE:-true}"
-STUB
     cat >"$STUB/upsert-diagrams-comment.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "upsert-diagrams $*" >>"${UPSERT_LOG:?}"
+[[ -n "${CALL_LOG:-}" ]] && echo "upsert-diagrams $*" >>"$CALL_LOG"
 if [[ "${UPSERT_STUB_RC:-0}" -ne 0 ]]; then
   exit "${UPSERT_STUB_RC}"
 fi
 echo "UPSERT_STATUS=${UPSERT_STATUS_VALUE:-ok}"
 echo "ARCHITECTURE_SOURCE=${ARCH_SOURCE_VALUE:-file}"
+STUB
+    cat >"$STUB/tracking-issue-write.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "tracking-issue-write $*" >>"${RENAME_LOG:?}"
+[[ -n "${CALL_LOG:-}" ]] && echo "tracking-issue-write $*" >>"$CALL_LOG"
+if [[ "${RENAME_STUB_RC:-0}" -ne 0 ]]; then
+  exit "${RENAME_STUB_RC}"
+fi
+if [[ "${RENAMED_OMIT_LINE:-false}" == true ]]; then
+  exit 0
+fi
+echo "RENAMED=${RENAMED_VALUE:-true}"
 STUB
     cat >"$STUB/resolve-repo.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -106,11 +116,13 @@ run_publish() {
     export RENAME_LOG="$TMP/rename.log"
     export UPSERT_LOG="$TMP/upsert.log"
     export RENDER_LOG="$TMP/render.log"
+    export CALL_LOG="$TMP/call.log"
     : >"$PLAN_BLOCK_LOG"
     : >"$PUBLISH_LOG"
     : >"$RENAME_LOG"
     : >"$UPSERT_LOG"
     : >"$RENDER_LOG"
+    : >"$CALL_LOG"
     export PLAN_BLOCK_RC="${PLAN_BLOCK_RC:-0}"
     export PUBLISH_STUB_RC="${PUBLISH_STUB_RC:-0}"
     export PUBLISH_EMIT_OK="${PUBLISH_EMIT_OK:-true}"
@@ -161,6 +173,15 @@ set -e
 assert_rc "plan-block-write failure" 1 "$rc"
 grep -q 'PLAN_WRITE_OK=false' "$D_FAIL/.design-publish-result.env" \
   || fail "failure result env missing PLAN_WRITE_OK=false"
+grep -q 'failed-plan-write' "$RENDER_LOG" \
+  || fail "failed-plan-write render not logged"
+grep -q 'ISSUE_NUMBER=42' "$RENDER_LOG" \
+  || fail "failed-plan-write render missing ISSUE_NUMBER=42"
+grep -q 'SESSION_ID=sid-1' "$RENDER_LOG" \
+  || fail "failed-plan-write render missing SESSION_ID=sid-1"
+D_FAIL_CANON=$(cd "$D_FAIL" && pwd -P)
+grep -q "DESIGN_TMPDIR=${D_FAIL_CANON}" "$RENDER_LOG" \
+  || fail "failed-plan-write render missing DESIGN_TMPDIR"
 unset PLAN_BLOCK_RC
 
 # --- happy path ---
@@ -176,14 +197,22 @@ assert_rc "happy path" 0 "$rc"
 grep -q 'PLAN_WRITE_OK=true' "$D_OK/.design-publish-result.env" || fail "happy PLAN_WRITE_OK"
 grep -q 'PUBLISH_OK=true' "$D_OK/.design-publish-result.env" || fail "happy PUBLISH_OK"
 grep -q 'RENAMED=true' "$D_OK/.design-publish-result.env" || fail "happy RENAMED"
-plan_ln=$(grep -n 'plan-block-write' "$SUBJECT" | head -1 | cut -d: -f1)
-marker_ln=$(grep -n 'design_reentry_marker_write' "$SUBJECT" | head -1 | cut -d: -f1)
-publish_ln=$(grep -n 'design-log-publish.sh' "$SUBJECT" | head -1 | cut -d: -f1)
-if [[ "$plan_ln" -ge "$marker_ln" || "$marker_ln" -ge "$publish_ln" ]]; then
-    fail "ordering: marker before publish in subject"
+plan_pos=$(grep -n 'plan-block-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+upsert_pos=$(grep -n 'upsert-diagrams' "$CALL_LOG" | head -1 | cut -d: -f1)
+publish_pos=$(grep -n 'design-log-publish' "$CALL_LOG" | head -1 | cut -d: -f1)
+if [[ -z "$plan_pos" || -z "$upsert_pos" || -z "$publish_pos" ]]; then
+    fail "happy path call log missing plan/upsert/publish entries"
+elif [[ "$plan_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$publish_pos" ]]; then
+    fail "happy path call-log ordering plan→upsert→publish"
 else
-    pass "subject ordering marker before publish"
+    pass "happy path call-log ordering plan→upsert→publish"
 fi
+grep -q 'pre-publish-only' "$RENDER_LOG" || fail "happy path missing pre-publish render"
+grep -q 'post-publish-only' "$RENDER_LOG" || fail "happy path missing post-publish render"
+grep -q 'ISSUE_NUMBER=42' "$RENDER_LOG" || fail "happy render missing ISSUE_NUMBER=42"
+grep -q 'SESSION_ID=sid-1' "$RENDER_LOG" || fail "happy render missing SESSION_ID=sid-1"
+D_OK_CANON=$(cd "$D_OK" && pwd -P)
+grep -q "DESIGN_TMPDIR=${D_OK_CANON}" "$RENDER_LOG" || fail "happy render missing DESIGN_TMPDIR"
 grep -q 'upsert-diagrams' "$UPSERT_LOG" || fail "upsert not called on happy path"
 test -s "$D_OK/diagrams-architecture-upsert.stdout" || fail "upsert stdout not captured"
 
@@ -212,6 +241,15 @@ else
     fail "publish should be skipped"
 fi
 grep -q 'SESSION_ID missing' "$D_EMPTY/.design-publish-result.env" || fail "WARN missing for empty SESSION_ID"
+render_count=$(grep -c 'render ISSUE_NUMBER=' "$RENDER_LOG" || true)
+if [[ "$render_count" -ne 1 ]]; then
+    fail "empty SESSION_ID must invoke exactly one render (post-publish-only), got $render_count"
+else
+    pass "empty SESSION_ID single post-publish render"
+fi
+grep -q 'post-publish-only' "$RENDER_LOG" || fail "empty SESSION_ID missing post-publish render"
+grep -q 'ISSUE_NUMBER=1' "$RENDER_LOG" || fail "empty SESSION_ID render missing ISSUE_NUMBER"
+grep -q 'DESIGN_TMPDIR=' "$RENDER_LOG" || fail "empty SESSION_ID render missing DESIGN_TMPDIR"
 if ! grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
     pass "rename skipped when SESSION_ID empty"
 else
@@ -291,6 +329,58 @@ export RENDER_LOG="$TMP/rend-cl.log"
 : >"$RENDER_LOG"
 bash "$SUBJECT" --design-tmpdir "$D_CLR" --issue 1 --session-id s --claude-pid 1 2>/dev/null
 grep -Fq -- '--clear-architecture' "$UPSERT_LOG" || fail "skipped sentinel must invoke --clear-architecture"
+
+# --- upsert failure non-blocking ---
+D_UPSERT_FAIL="$TMP/upsert-fail"
+setup_design_tmp "$D_UPSERT_FAIL"
+export PLAN_BLOCK_RC=0
+export UPSERT_STUB_RC=1
+export UPSERT_STATUS_VALUE=failed
+export PLAN_BLOCK_LOG="$TMP/plan-uf.log"
+export PUBLISH_LOG="$TMP/pub-uf.log"
+export RENAME_LOG="$TMP/ren-uf.log"
+export UPSERT_LOG="$TMP/ups-uf.log"
+export RENDER_LOG="$TMP/rend-uf.log"
+: >"$PLAN_BLOCK_LOG"
+: >"$PUBLISH_LOG"
+: >"$RENAME_LOG"
+: >"$UPSERT_LOG"
+: >"$RENDER_LOG"
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_UPSERT_FAIL" --issue 42 --session-id sid-1 --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "upsert failure non-blocking" 0 "$rc"
+grep -q 'PLAN_WRITE_OK=true' "$D_UPSERT_FAIL/.design-publish-result.env" \
+  || fail "upsert failure must still complete publish tail"
+unset UPSERT_STUB_RC UPSERT_STATUS_VALUE
+
+# --- rename failure warns ---
+D_REN_FAIL="$TMP/rename-fail"
+setup_design_tmp "$D_REN_FAIL"
+export PLAN_BLOCK_RC=0
+export PUBLISH_STUB_RC=0
+export PUBLISH_EMIT_OK=true
+export PUBLISH_OK_VALUE=true
+export RENAME_STUB_RC=1
+export PLAN_BLOCK_LOG="$TMP/plan-rf.log"
+export PUBLISH_LOG="$TMP/pub-rf.log"
+export RENAME_LOG="$TMP/ren-rf.log"
+export UPSERT_LOG="$TMP/ups-rf.log"
+export RENDER_LOG="$TMP/rend-rf.log"
+: >"$PLAN_BLOCK_LOG"
+: >"$PUBLISH_LOG"
+: >"$RENAME_LOG"
+: >"$UPSERT_LOG"
+: >"$RENDER_LOG"
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_REN_FAIL" --issue 42 --session-id sid-1 --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "rename failure non-blocking" 0 "$rc"
+grep -q 'WARN=.*\[DESIGNED\].*rename failed' "$D_REN_FAIL/.design-publish-result.env" \
+  || fail "rename failure must emit [DESIGNED] WARN in result env"
+unset RENAME_STUB_RC
 
 if [[ "$FAIL" -gt 0 ]]; then
     echo "FAIL: $FAIL test(s) failed ($PASS passed)" >&2

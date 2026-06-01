@@ -69,6 +69,9 @@ grep -Fq 'Regardless of `PLAN_WRITE_OK`' "$REPO/skills/design/SKILL.md" || fail 
 # shellcheck disable=SC2016
 grep -Fq 'when `$DESIGN_TMPDIR/final-summary.md` or parsed `FINAL_SUMMARY_PATH` is non-empty after driver handoff' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin Step 5d post-driver final-summary gate'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin anti-recap prose'
+if grep -Fq 'gated on helper exit 0' "$REPO/skills/design/SKILL.md"; then
+    fail 'design SKILL must not gate final-summary emit on helper exit 0'
+fi
 pass 'SKILL.md full-body summary callsite contracts pinned'
 
 # shellcheck disable=SC2016

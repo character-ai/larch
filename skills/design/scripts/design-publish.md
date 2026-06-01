@@ -42,7 +42,9 @@ Allowlist: `PLAN_WRITE_OK`, `PUBLISH_OK`, `RENAMED`, `UPSERT_STATUS`, `ARCHITECT
 
 ## Ordering invariants
 
-`plan-block-write.sh` → `design_reentry_marker_write` → `upsert-diagrams-comment.sh` → `design-log-publish.sh` → `tracking-issue-write.sh rename --state designed`.
+On plan-block-write failure: `plan-block-write.sh` → `render-final-summary.sh` (`--outcome failed-plan-write`, `--post-publish-only`) → result env → `exit 1`.
+
+On success: `plan-block-write.sh` → `design_reentry_marker_write` → `upsert-diagrams-comment.sh` (when architecture file or skipped sentinel) → `render-final-summary.sh` (`--pre-publish-only`, when `SESSION_ID` non-empty) → `design-log-publish.sh` (when `SESSION_ID` non-empty) → `render-final-summary.sh` (`--post-publish-only`) → `tracking-issue-write.sh rename --state designed` (when `SESSION_ID` non-empty and `PUBLISH_OK=true`).
 
 ## Edit in sync
 

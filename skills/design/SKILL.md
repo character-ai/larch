@@ -26,7 +26,7 @@ Design an implementation plan for a feature and review it with the **full** pane
 
 **Positional tail**: after flags, the first non-flag token is either **`issue-N`** (all digits, `^[0-9]+$`) or a **verbal feature description** (any other text). Verbal text triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
-**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6). Step 1e Gate A is reachable only via re-entry from Gate B(c) → Step 1e (Shape 2) or Gate C(b) → Step 1e (Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c's `render-final-summary.sh` prints the structured block to chat, or after any cancellation outcome's Final summary block prints it, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46` or `SIMPLE tier, ~27m`, and no replacement for the structured `## /design run ...` block. The only orchestrator-text addition permitted after that helper returns is the shared verbatim full-body emission of `$DESIGN_TMPDIR/final-summary.md`, gated on helper exit 0 and that file being non-empty. **Narrow exception — Step 1d.5 and Step 1d.7 only**: after printing the brainstorm synthesis digest, the free-form discussion loop may yield the turn between operator messages per `references/brainstorm.md`; after printing the proposed design outline at Step 1d.7, the Refine free-form discussion loop may yield the turn between operator messages per `references/design-outline.md`; do **not** use `ScheduleWakeup`, scripted sleep polling loops, or Monitor-driven polling waits on either lane. The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
+**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6). Step 1e Gate A is reachable only via re-entry from Gate B(c) → Step 1e (Shape 2) or Gate C(b) → Step 1e (Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c `design-publish.sh` returns (`_publish_rc` 0 or 1), or after any cancellation outcome's Final summary block has written a non-empty summary file, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46` or `SIMPLE tier, ~27m`, and no replacement for the structured `## /design run ...` block. The only orchestrator-text addition permitted after that driver handoff is the shared verbatim full-body emission of `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]` (including when `_publish_rc`=1 after plan-block-write failure). **Not** gated on `render-final-summary.sh` exit 0. **Narrow exception — Step 1d.5 and Step 1d.7 only**: after printing the brainstorm synthesis digest, the free-form discussion loop may yield the turn between operator messages per `references/brainstorm.md`; after printing the proposed design outline at Step 1d.7, the Refine free-form discussion loop may yield the turn between operator messages per `references/design-outline.md`; do **not** use `ScheduleWakeup`, scripted sleep polling loops, or Monitor-driven polling waits on either lane. The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
 
 ## Progress Reporting
 
@@ -1255,7 +1255,7 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
      - On **non-zero** `_oos_ann_rc` when `ISSUES_FAILED>0` in the captured stdout (partial `/issue` failure): append under `Tool Failures` via `append-tool-failure.sh` (site `design Step 5b`, include stderr), print `**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**`, and **continue to Step 5c** (per-block `Filed URL` lines are written only for successful items).
      - On **non-zero** `_oos_ann_rc` without a partial-failure contract: treat as annotate/parse failure — append `Tool Failures` and continue to Step 5c.
 
-> **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output — NOT the `/design` machine footer. Step 5b annotate (when /issue was invoked) and Step 5c (compose → redact → `plan-block-write.sh` → `upsert-diagrams-comment.sh` → `design-log-publish.sh` → `tracking-issue-write.sh` rename to `[DESIGNED]`) still must run.
+> **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output — NOT the `/design` machine footer. Step 5b annotate (when /issue was invoked) and Step 5c (compose → validate → redact → `design-publish.sh` publish tail) still must run.
 At the Step 5b success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5b"` before entering Step 5c.
 
 ### 5c — Write `larch:plan` to GitHub + publish
@@ -1322,15 +1322,18 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
    UPSERT_STATUS=""
    ARCHITECTURE_SOURCE=""
    FINAL_SUMMARY_PATH=""
+   _publish_warn_lines=()
+   _publish_parse_ok=false
    if [[ -f "$DESIGN_TMPDIR/.design-publish-result.env" ]]; then
      if [[ -L "$DESIGN_TMPDIR/.design-publish-result.env" ]]; then
        printf '%s\n' "**⚠ Step 5c: design-publish result env is a symlink; refusing to source**"
      else
+       _publish_parse_ok=true
        while IFS= read -r _line || [[ -n "$_line" ]]; do
          _key="${_line%%=*}"; _value="${_line#*=}"
          case "$_key" in
            PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH) printf -v "$_key" '%s' "$_value" ;;
-           WARN) printf '%s\n' "WARN=$_value" ;;
+           WARN) _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done; if [[ "$_publish_warn_dup" != true ]]; then _publish_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
          esac
        done <"$DESIGN_TMPDIR/.design-publish-result.env"
      fi
@@ -1339,20 +1342,28 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
      _key="${_line%%=*}"; _value="${_line#*=}"
      case "$_key" in
        PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
-       WARN) printf '%s\n' "WARN=$_value" ;;
+       WARN)
+         if [[ "$_publish_parse_ok" != true ]]; then
+           _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done
+           if [[ "$_publish_warn_dup" != true ]]; then _publish_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi
+         fi
+         ;;
      esac
    done <<<"${_publish_out:-}"
+   [[ "$_publish_parse_ok" == true || -n "${PLAN_WRITE_OK:-}${PUBLISH_OK:-}${FINAL_SUMMARY_PATH:-}" ]] && _publish_parse_ok=true
    ```
 
-**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1}` abort above. When `_publish_rc` ∈ {0, 1}, always parse `.design-publish-result.env` (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
+**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1}` abort above — **stop `/design` immediately; do not run Step 5c items 5–7, Step 5d, or Step 6.** When `_publish_rc` ∈ {0, 1}, always parse `.design-publish-result.env` (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
+
+**Driver WARN replay (top chat):** After the Bash block above, when `_publish_rc` ∈ {0, 1} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
 
 5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0 or 1):** when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that path and emit its full body verbatim as plain chat markdown (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text). Do NOT paraphrase, summarize, reorder, or add prose between bullets. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `render-final-summary.sh` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary).
-6. On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **before** Step 5d.
-7. On `PLAN_WRITE_OK=false`: print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
+6. **Only when `_publish_rc` is 0 or 1 and `.design-publish-result.env` was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **before** Step 5d.
+7. **Only when `_publish_rc` is 0 or 1 and `.design-publish-result.env` was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
 
 ### 5d — Final warning replay + footer
 
-**Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) so they are visible at the end of the workflow. For example:
+**Repeat any external reviewer warnings** from earlier steps (Step 0 reviewer-availability checks via `session-setup.sh`, Step 2a sketch-phase failures/timeouts, Step 3 runtime failures, or Step 3b diagram generation failure) and any **driver WARN bodies** replayed from Step 5c (e.g. empty `SESSION_ID`, rename failures) so they are visible at the end of the workflow. For example:
 - `**⚠ Codex not available: <reason>**`
 - `**⚠ Cursor review failed: <reason>**`
 - `**⚠ Cursor sketch timed out / produced empty output**`
@@ -1384,7 +1395,7 @@ Print: `> **🔶 /design 6: cleanup**`
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 6 — cleanup" || true
 ```
 
-Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 5). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout.
+Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 7). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout.
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
