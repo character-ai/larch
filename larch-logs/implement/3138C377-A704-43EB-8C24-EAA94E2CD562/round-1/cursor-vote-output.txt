@@ -1,0 +1,28 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated three-line post-coder-head block is small; helper extraction is optional DRY
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- comment placement is stylistic; GNU Bash and test-codex-implementer show argv still intact
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real trust-boundary limit but explicitly documented in SECURITY.md and review-and-fix.md this PR
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional documented TMPDIR lifecycle; not a regression worth a follow-up issue
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent harness cwd coupling only if future tests assume REPO_ROOT without cd
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- inline comment does not split run-external-agent from codex exec under GNU Bash; argv harness passes
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- cksum-to-0 collision is rare and mitigated by per-round clear_stale
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- pre-existing post-coder-head boundary; this PR documents it rather than regressing
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=weak UNCERTAIN=false -- codex exec remains on run-external-agent argv; stub argv capture proves wrapper monitoring unchanged
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dedicated unit blocks already assert 0444; orchestrator-level snap assert is optional redundancy
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- MAV only writes pre-coder-head.txt; inline chmod matches that narrower surface
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=weak UNCERTAIN=false -- same as FINDING_10; comment line does not orphan codex from the wrapper
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- documented sandbox-confinement trust boundary, not an undisclosed gap
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- TMPDIR-under-PWD is exotic; SECURITY.md already states standard TMPDIR assumption
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- wide SESSION_TMPDIR grant is pre-existing Step 2 requirement, now documented
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- predictable paths mitigated by clear_stale_pre_coder_snapshot_artifacts each round
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- missing CI sandbox probe is an accepted documented limitation, not a concrete new defect
+FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- subdirectory Step 5 cwd is atypical; production IMPLEMENT_TMPDIR is outside repo root
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of FINDING_16; runtime assert adds complexity for rare misconfiguration
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- rev-parse failure during snap write is unlikely in normal git repos
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- relocated tree retention is documented ops policy in SECURITY.md
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate style nit; behavior verified by harness
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- same as FINDING_17; narrowing grant is separate policy work
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_4; already covered by in-PR documentation
+FINDING_27: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_28: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan intent is met; comment one line off is optional alignment only
