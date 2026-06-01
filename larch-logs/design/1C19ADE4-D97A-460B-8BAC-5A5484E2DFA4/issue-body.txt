@@ -1,0 +1,29 @@
+## Context
+
+Almost every step entry in `skills/implement/SKILL.md` (Steps 2, 3, 4, 5, 6, 7, 16, 17, 18a, 18b) opens with the same telemetry preamble:
+
+1. rehydrate `CLAUDE_PLUGIN_ROOT` (the awk fence — tracked separately in #3292),
+2. read three ledger keys from `session-env.sh` via `read-session-env-key.sh` — `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`,
+3. `export` them,
+4. emit `token-ledger.sh mark "<label>"` and `timing-ledger.sh mark "<label>"`.
+
+Grounded counts in the current file: **13** three-key ledger-rehydration sites, **8** `token-ledger.sh mark` + **8** `timing-ledger.sh mark` sites. At ~10–12 lines per site this is ~120 lines of near-identical boilerplate that differs only by the step `<label>`.
+
+## Analysis
+
+The three ledger keys are read **only** so the two `*-ledger.sh mark` calls inherit them in-env. A helper can read them from `session-env.sh` itself and emit both marks, so the orchestrator never needs the read+export+mark trio inline. The label is the only per-site variable. This is a context-cost win (and a small determinism win), not a turn-count win.
+
+## Proposal
+
+Add `scripts/step-telemetry-mark.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step N — name"` that:
+- reads the three ledger keys from `$IMPLEMENT_TMPDIR/session-env.sh`, exports them,
+- runs `token-ledger.sh mark "$label"` and `timing-ledger.sh mark "$label"` best-effort (`|| true`, never fatal).
+
+Each step-entry preamble then collapses to the `CLAUDE_PLUGIN_ROOT` rehydration (or, once #3292 lands, the sourced one-liner) plus one script call.
+
+## Risk / caveats
+
+- **Pure telemetry — never fatal.** Preserve the `|| true` best-effort semantics.
+- **Not all marks can move.** SKILL.md's Step 18 closing `Step 18 — done` mark must stay **orchestrator-emitted** — `token-report.sh`'s vendor table slices the last mark with `$end == null`, and the closing cap must land *after* the `--since-last-mark` calls. Scope this helper to step-**entry** marks; leave the Step 18 closing cap inline. Audit each of the 8 mark sites against this constraint.
+- **Conflict surface:** rewrites preambles across the whole file → must land after #3292 (both sweep the per-step preamble).
+- Keep `scripts/test-implement-timing-rehydration.sh` (and the run-step1 / run-step5 rehydration tests) green; update any assertion that pins the inline mark form.

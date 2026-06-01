@@ -1,0 +1,9 @@
+**⚠ Degraded plan-review panel: 1/3 effective judges produced substantive vote output.**
+launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
+--- failed agent stderr tail ---
+apiKeyHelper failed: did not return a value
+--- end failed agent stderr tail ---
+launch-claude-review.sh: --timeout 1860s exceeds subprocess cap; clamping to 1800
+--- failed agent stderr tail ---
+apiKeyHelper failed: did not return a value
+--- end failed agent stderr tail ---

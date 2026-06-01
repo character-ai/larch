@@ -1,0 +1,157 @@
+Reviewing `agent-lint.toml` and related patterns to incorporate the accepted findings into the revised plan.
+## Plan: extract per-step ledger telemetry preamble to `scripts/step-telemetry-mark.sh`
+
+## Goal
+
+Add one helper that reads the three ledger keys from `session-env.sh` and emits both
+`token-ledger.sh mark` + `timing-ledger.sh mark`, then collapse the repeated
+read+export+mark trio at the eligible `/implement` step-ENTRY sites in
+`skills/implement/SKILL.md`. Telemetry behavior stays identical; this is a context-cost win.
+
+`#3292` (plugin-root awk fence → `plugin-root.env`) already landed (commit `d452399af`), so the
+per-step preamble sweep is unblocked. Converted fences keep the sourced `plugin-root.env`
+one-liner from `#3292`.
+
+## Files to modify/create
+
+### NEW: `scripts/step-telemetry-mark.sh`
+New helper. Interface: `step-telemetry-mark.sh --implement-tmpdir DIR --label "Step N — name"`.
+- `set -uo pipefail` (intentionally **omit** `-e`; documented in a comment — pure telemetry, never fatal).
+- **Commit with the executable bit** (`chmod +x` before commit) so SKILL.md direct-path invocation does not return 126.
+- Resolve `SCRIPT_DIR` from `${BASH_SOURCE[0]}` so it calls its siblings without `CLAUDE_PLUGIN_ROOT`.
+- **Initialize `IMPLEMENT_TMPDIR=""` and `LABEL=""` before the arg loop** so omitted flags never trip `set -u` on first expansion.
+- Parse `--implement-tmpdir` and `--label`. Unknown flags are ignored (never fatal).
+- Read `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER` from
+  `"${IMPLEMENT_TMPDIR:-}/session-env.sh"` via `"$SCRIPT_DIR/read-session-env-key.sh" --file ... --key ... --default ""`
+  (empty tmpdir → unreadable path → reads return `""`, same as a bad tmpdir).
+- `export IMPLEMENT_TMPDIR LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER`
+  (export `IMPLEMENT_TMPDIR` too so the ledger scripts' fallback chain matches the old inline fence).
+- Run `"$SCRIPT_DIR/token-ledger.sh" mark "$LABEL" || true` then `"$SCRIPT_DIR/timing-ledger.sh" mark "$LABEL" || true`.
+- End with explicit `exit 0` so the helper is never fatal even if a sibling script is missing.
+
+### NEW: `scripts/step-telemetry-mark.md`
+Sibling contract per `.claude/rules/script-md-siblings.md`: purpose, the `--implement-tmpdir`/`--label`
+interface, the never-fatal / always-`exit 0` invariant, pre-loop `IMPLEMENT_TMPDIR`/`LABEL` initialization
+and `"${IMPLEMENT_TMPDIR:-}"` path use (omitted-flag safety under `set -u`), the three env keys it reads/exports,
+the **git-executable** requirement for SKILL.md direct invocation, the `/implement` SKILL.md callers, the
+out-of-scope sites (Step 2 branchy marks, Step 18 closing cap), Makefile wiring, and harness pointer.
+
+### NEW: `scripts/test-step-telemetry-mark.sh`
+Focused offline unit harness (`set -euo pipefail`). Stub `read-session-env-key.sh` is not needed —
+use a real temp `session-env.sh` and a fake `IMPLEMENT_TMPDIR`.
+- **Startup gate**: `HELPER="$REPO_ROOT/scripts/step-telemetry-mark.sh"`; `[[ -x "$HELPER" ]] || fail` (matches
+  `scripts/test-validate-research-output.sh` / `scripts/test-design-structure.sh` executable-bit pins).
+- **Happy path**: invoke `"$HELPER" --implement-tmpdir ... --label ...` **by direct path** (not `bash "$HELPER"`).
+  With a temp `session-env.sh` carrying the three keys and a temp ledger dir, assert exit 0 and both ledger files
+  receive a mark row for the supplied label.
+- Missing `session-env.sh` (bad `--implement-tmpdir`): exits 0, never fatal.
+- **Omitted `--implement-tmpdir`**: invoke `"$HELPER" --label "probe"` only; assert exit 0, never fatal.
+- Missing/empty `--label`: exits 0, never fatal.
+- Optionally PATH-shim a failing `token-ledger.sh` to prove `|| true` keeps exit 0.
+
+### NEW: `scripts/test-step-telemetry-mark.md`
+Harness stub per the siblings rule, pointing at `scripts/step-telemetry-mark.md` for the full contract;
+note the `[[ -x "$HELPER" ]]` gate and direct-path happy-path invocation (production parity with SKILL.md).
+
+### UPDATED: `skills/implement/SKILL.md`
+Convert exactly the 4 clean step-ENTRY sites — Step 5, Step 16, Step 17, Step 18-cleanup. At each, the
+trio (3 `read-session-env-key.sh` reads + the three-key `export`) + the two `mark` lines + the two
+trailing `# token-mark` / `# timing-mark` comment anchors collapse to one helper call. Keep the
+`IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"` / `export IMPLEMENT_TMPDIR` / `plugin-root.env` source lines.
+Converted fence shape:
+
+```sh
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
+[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+"${CLAUDE_PLUGIN_ROOT}/scripts/step-telemetry-mark.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
+```
+
+Keep `|| true` at the call site (defends against a missing/non-executable helper → 127/126). Drop the two
+`# token-mark` / `# timing-mark` comment anchors at converted sites — the `--label` is self-documenting
+and no test/lint greps those comments (confirmed: they appear only in this file).
+**Do NOT convert**: Step 2 (the token-ledger mark is conditional inside the coder `case`; the helper
+emits both marks unconditionally, which would change token-ledger behavior on the codex/cursor paths)
+and the Step 18 closing `Step 18 — done` cap (must stay orchestrator-emitted and land AFTER the
+`--since-last-mark --terse` report calls per the existing vendor-table-slicing rationale). The 7
+trio-only rehydrate-for-children sites emit no marks and are out of scope.
+
+### UPDATED: `scripts/test-implement-timing-rehydration.sh`
+The count-coupling assertions break after conversion: removing a trio drops `token_read_count` but the
+converted fence keeps `IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"`, so `tmpdir_assign_count` /
+`tmpdir_export_count` no longer equal `token_read_count`. Fix:
+- Add `step_telemetry_mark_count` = count of the helper-call line (stable prefix
+  `"${CLAUDE_PLUGIN_ROOT}/scripts/step-telemetry-mark.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --label `).
+- Change the two assertions to `tmpdir_assign_count == token_read_count + step_telemetry_mark_count`
+  and `tmpdir_export_count == token_read_count + step_telemetry_mark_count`.
+- Leave Invariant A, B, C unchanged: converted fences no longer call `timing-ledger.sh` directly
+  (Invariant B's awk keys on the literal `scripts/timing-ledger.sh` / `scripts/timing-report.sh`
+  substring, which the helper call does not contain), and they keep the `plugin-root.env` source guard
+  so `plugin_root_source_count` stays `41`.
+- Update the header comment block and the `PASS:` line to describe the new helper-aware relationship.
+
+### UPDATED: `scripts/test-implement-timing-rehydration.md`
+Document the new `step_telemetry_mark_count` invariant and the helper-aware `tmpdir == token + helper`
+relationship.
+
+### UPDATED: `Makefile`
+Register `test-step-telemetry-mark`: add to the `.PHONY` master list, add to one `test-harnesses-N`
+shard, and add the target stanza (`bash scripts/harness-timer.sh $@ bash scripts/test-step-telemetry-mark.sh`),
+matching the existing `test-implement-timing-rehydration` stanza style.
+
+### UPDATED: `agent-lint.toml`
+Add **Makefile-only** dead-script exclusions for the new harness pair only (G004 does not follow Makefile
+target edges). Place adjacent to `scripts/test-implement-timing-rehydration.sh` / `.md`:
+- In the `exclude =` script list: comment block mirroring `test-implement-timing-rehydration` (“referenced
+  only from Makefile (`test-step-telemetry-mark` target) and the sibling contract”), then
+  `"scripts/test-step-telemetry-mark.sh"`.
+- In the sibling `.md` exclude list (near `scripts/test-implement-timing-rehydration.md`):
+  `"scripts/test-step-telemetry-mark.md"`.
+- **Do not exclude** `scripts/step-telemetry-mark.sh` or `scripts/step-telemetry-mark.md` — runtime helper
+  is referenced from `skills/implement/SKILL.md` fences and must remain agent-lint-reachable.
+
+## Approach
+
+1. Write `scripts/step-telemetry-mark.sh` (pre-loop init, `"${IMPLEMENT_TMPDIR:-}"` paths, executable in git)
+   + its `.md`, self-contained via `SCRIPT_DIR` (reuses `read-session-env-key.sh`, `token-ledger.sh`,
+   `timing-ledger.sh` siblings).
+2. Write the unit harness + `.md` (`[[ -x "$HELPER" ]]`, direct-path happy path, omitted-tmpdir case);
+   register in `Makefile`; add harness-only `agent-lint.toml` exclusions.
+3. Audit all 8 token-mark / 6 timing-mark sites; convert only the 4 clean adjacent step-ENTRY pairs.
+4. Update `test-implement-timing-rehydration.sh` + `.md` for the helper-aware counts.
+5. Run `make test-step-telemetry-mark`, `make test-implement-timing-rehydration`,
+   `make test-implement-structure`, and `bash scripts/relevant-checks.sh`.
+
+## Edge cases
+- **Omitted `--implement-tmpdir`** → `IMPLEMENT_TMPDIR` stays `""` → `"${IMPLEMENT_TMPDIR:-}/session-env.sh"`
+  is unreadable → reads return `""` → marks still run → `exit 0` (harness-covered).
+- Missing/empty `--implement-tmpdir` value → same as above → `exit 0`.
+- Missing label → `exit 0`, no fatal.
+- Missing/non-executable helper at a call site → 126/127, absorbed by `|| true`; the step continues
+  (harness `[[ -x ]]` catches 0644-at-commit; unit test uses direct path).
+- `LARCH_TIMING_LEDGER` empty → `timing-ledger.sh` uses its `IMPLEMENT_TMPDIR` fallback (exported by the
+  helper), identical to the old inline fence.
+
+## Failure modes
+- **Silent telemetry loss**: a converted site stops emitting marks, or helper lands non-executable → 126
+  swallowed at call site. Earliest signal: missing Step-N rows in ledgers; harness `[[ -x ]]` + happy-path
+  direct invocation; `step_telemetry_mark_count` arithmetic fails if a helper call is dropped.
+- **`make lint` false dead-script on harness**: missing `agent-lint.toml` exclusions for
+  `test-step-telemetry-mark.*`. Mitigation: Makefile-only exclude pair adjacent to
+  `test-implement-timing-rehydration`.
+- **Test-count drift**: equality assertions silently mis-tuned. Mitigation: derive
+  `step_telemetry_mark_count` from the file, never hardcode; keep `plugin_root_source_count` pinned.
+- **`set -u` abort on omitted flag**: avoided by pre-loop initialization (harness omitted-tmpdir case).
+- **Behavior change on Step 2 / Step 18-done**: avoided by explicitly excluding both from conversion.
+
+## Testing strategy
+- New `scripts/test-step-telemetry-mark.sh`: executable-bit gate, direct-path happy path, bad tmpdir,
+  **omitted `--implement-tmpdir`**, empty label, optional failing-ledger shim; wired into Makefile +
+  `agent-lint.toml` harness exclusions.
+- Updated `scripts/test-implement-timing-rehydration.sh` stays green with helper-aware counts.
+- `test-implement-structure.sh` is unaffected (it pins marks in child scripts, not SKILL.md preambles).
+- Run `bash scripts/relevant-checks.sh` (shellcheck, markdownlint, agent-lint, bash32, siblings).
+
+diff_added: 285
+diff_deleted: 40
+diff_lines: 325

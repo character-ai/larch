@@ -1,0 +1,23 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	agent-lint.toml:729-733	Plan omits agent-lint dead-script exclusions for new step-telemetry-mark and test-step-telemetry-mark siblings	agent-lint G004 does not follow SKILL.md `${CLAUDE_PLUGIN_ROOT}/scripts/...` invocations (see the rebase-checkpoint-probe comment at agent-lint.toml:729-731); without exclusions, `make lint` / `agent-lint --pedantic` can false-flag the new primary and Makefile-only harness as dead scripts	Add `scripts/step-telemetry-mark.sh`, `scripts/step-telemetry-mark.md`, `scripts/test-step-telemetry-mark.sh`, and `scripts/test-step-telemetry-mark.md` to the dead-script exclude list with the same Makefile-only / G004 comment pattern as `scripts/rebase-checkpoint-probe.sh` and `scripts/test-implement-timing-rehydration.sh`
+
+## Findings
+
+### 1. [risk-integration] Missing `agent-lint.toml` registrations for new scripts
+
+**Location:** `agent-lint.toml:729-733` (precedent), plan `### NEW:` / `### UPDATED: Makefile` sections
+
+**Concern:** The plan wires `test-step-telemetry-mark` into the Makefile and documents G004 reachability only indirectly via `skills/implement/SKILL.md` call sites. In this repo, scripts invoked as `${CLAUDE_PLUGIN_ROOT}/scripts/...` from SKILL.md fences are **not** traced by agent-lint G004; they must be listed explicitly (see `scripts/rebase-checkpoint-probe.sh` at ```729:733:agent-lint.toml```). The same applies to Makefile-only harnesses like `scripts/test-implement-timing-rehydration.sh` (```1058:1063:agent-lint.toml```).
+
+**Scenario:** After landing, `bash scripts/relevant-checks.sh` / `agent-lint --pedantic` reports the new `scripts/step-telemetry-mark.sh` and `scripts/test-step-telemetry-mark.sh` as unreachable dead scripts even though the Makefile target and SKILL fences are correct.
+
+**Suggested revision:** Add all four new siblings (`step-telemetry-mark.sh`/`.md`, `test-step-telemetry-mark.sh`/`.md`) to `agent-lint.toml` with comments matching nearby harness entries.
+
+---
+
+**Exonerated (reviewed, no plan change requested):**
+
+- **Timing-rehydration arithmetic** (`tmpdir_assign_count == token_read_count + step_telemetry_mark_count`): With 13 current token-read sites and 4 conversions, counts reconcile (13 == 9 + 4); `plugin_root_source_count` stays 41 because converted fences retain the guard line (```125:133:scripts/test-implement-timing-rehydration.sh```).
+- **Invariant B after conversion:** Converted step-ENTRY fences no longer call `timing-ledger.sh` directly; remaining fences (Step 2, Step 18 done cap, etc.) still carry rehydration (```677:677:skills/implement/SKILL.md```, ```1508:1516:skills/implement/SKILL.md```).
+- **Unit harness ledger assertions:** Happy path can observe both marks using explicit `LARCH_TIMING_LEDGER` in `session-env.sh` plus the default `IMPLEMENT_TMPDIR/larch-tokens-<slug>.jsonl` path (same resolution as ```82:104:scripts/token-ledger.sh```); plan requires mark-row checks, not exit-code-only.
+- **Executable / bash32 / quiet / optional timing-ledger PATH-shim tests:** Covered by repo conventions (`relevant-checks.sh`, optional token-ledger PATH shim); not materially missing for this minimum-change PR.
