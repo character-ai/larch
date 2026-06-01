@@ -9,7 +9,6 @@ from pathlib import Path
 
 import pytest
 
-import agents
 import config
 import rebase
 import version_bump
@@ -66,6 +65,17 @@ def _ok(argv: Sequence[str], stdout: str = "") -> CommandResult:
 
 def _fail(argv: Sequence[str], stderr: str = "error", code: int = 1) -> CommandResult:
     return CommandResult(tuple(argv), code, "", stderr, 0.01)
+
+
+def _noop_commit_changelog_after_rebump(
+    runner: ScriptRunner,
+    new_version: str,
+    old_version: str,
+    bullets_path: Path,
+    *,
+    cwd: str | None,
+) -> None:
+    _ = runner, new_version, old_version, bullets_path, cwd
 
 
 def test_rebump_bullets_path_resolution(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -498,7 +508,7 @@ def test_rebase_result_uses_apply_result_new_version(
     monkeypatch.setattr(
         rebase,
         "_commit_changelog_after_rebump",
-        lambda *_a, **_k: None,
+        _noop_commit_changelog_after_rebump,
     )
     _write_classify_repo(tmp_path)
     bullets = tmp_path / ".rrr-rebump-bullets.md"
@@ -520,7 +530,7 @@ def test_rebase_result_uses_apply_result_new_version(
         *,
         cwd: str | None = None,
     ) -> ApplyResult:
-        _ = runner, cwd
+        _ = runner, new_version, cwd
         return ApplyResult(applied=True, new_version="2.0.0", commit_sha="abc")
 
     monkeypatch.setattr(version_bump, "classify_bump", _patch)
@@ -595,12 +605,11 @@ def test_deterministic_prepass_plugin_json_checkout_ours() -> None:
         [path],
         cwd=None,
     )
-    assert remaining == []
+    assert not remaining
     assert ("git", "checkout", "--ours", "--", path) in runner.calls
 
 
 def test_waterfall_win_then_rebase_continue(tmp_path: Path) -> None:
-    bullets = tmp_path / ".rrr-rebump-bullets.md"
     diff_calls = {"n": 0}
 
     def unmerged_handler(_argv: tuple[str, ...]) -> CommandResult:
@@ -768,7 +777,7 @@ def test_version_regression_guard_recomputes_target(
     monkeypatch.setattr(
         rebase,
         "_commit_changelog_after_rebump",
-        lambda *_a, **_k: None,
+        _noop_commit_changelog_after_rebump,
     )
     _write_classify_repo(tmp_path)
     bullets = tmp_path / ".rrr-rebump-bullets.md"
