@@ -2036,7 +2036,7 @@ run_ci_fix_vendor() {
     local ci_fix_out_base tier_out wrapper_rc launcher_exit winning_tier launcher
     local baseline_tracked_file baseline_untracked_file baseline_staged_file baseline_head
     local detail_log pre_refresh_head
-    local tiers=(cursor codex claude) tier tier_idx offset waterfall_iter=0 first_tier
+    local tiers=(codex cursor claude) tier tier_idx offset waterfall_iter=0 first_tier
 
     larch_err "⚠ ship-pr: CI failed; dispatching fix"
 
@@ -2514,7 +2514,7 @@ run_evaluate_failure() {
     fi
     # Retry loop with cap, detached-HEAD check, and jittered backoff. This caps
     # each run_evaluate_failure invocation at 3 outer attempts (each attempt runs
-    # a 3-tier inner waterfall: Cursor → Codex → Claude = up to 9 launcher calls
+    # a 3-tier inner waterfall: Codex → Cursor → Claude = up to 9 launcher calls
     # per phase, down from 15 today); the persisted FIX_ATTEMPTS counter still
     # tracks successful fix pushes across the wider phase for reporting/state purposes.
     local _max_fix=3 _fix_attempt gh_logs_capture gh_logs_rc ci_failed_out ci_failed_rc ci_failed_count ci_failed_capture ci_failed_tsv checks_site per_job_rc per_job_verification_retry vendor_rc stage_rc
@@ -2803,7 +2803,7 @@ run_recovery_waterfall() {
     _wf_conflict_csv="${LARCH_WF_CONFLICT_CSV:-}"
     _wf_extra=()
     [ -n "$_wf_conflict_csv" ] && [ "$wf_role" = "resolve-conflict" ] && _wf_extra=(--conflict-files "$_wf_conflict_csv")
-    for tier in cursor codex claude; do
+    for tier in codex cursor claude; do
         cur_head=$(git rev-parse HEAD 2>/dev/null || true)
         if [ "$cur_head" != "$baseline_head" ]; then
             larch_err "ship-pr recovery-waterfall: head changed after dispatch (abort rollback tier=$tier)"
@@ -3387,15 +3387,15 @@ run_rebase_rebump() {
             fail_file=$(failure_capture_path conflict-resolution)
             _launch_extra=()
             [ -n "$vendor_conflict_csv" ] && _launch_extra+=(--conflict-files "$vendor_conflict_csv")
-            if command -v cursor >/dev/null 2>&1; then
-                tool_label="launch-cursor-ci.sh resolve-conflict"
-                "$SCRIPT_DIR/launch-cursor-ci.sh" --role resolve-conflict --output "$conflict_out" \
+            if command -v codex >/dev/null 2>&1; then
+                tool_label="launch-codex-ci.sh resolve-conflict"
+                "$SCRIPT_DIR/launch-codex-ci.sh" --role resolve-conflict --output "$conflict_out" \
                     --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
                     ${_launch_extra[@]+"${_launch_extra[@]}"} --timeout 600 > "$fail_file" 2>&1
                 rc=$?
             else
-                tool_label="launch-codex-ci.sh resolve-conflict"
-                "$SCRIPT_DIR/launch-codex-ci.sh" --role resolve-conflict --output "$conflict_out" \
+                tool_label="launch-cursor-ci.sh resolve-conflict"
+                "$SCRIPT_DIR/launch-cursor-ci.sh" --role resolve-conflict --output "$conflict_out" \
                     --run-id "$run_id" --repo "$(read_state REPO)" ${plan_args[@]+"${plan_args[@]}"} \
                     ${_launch_extra[@]+"${_launch_extra[@]}"} --timeout 600 > "$fail_file" 2>&1
                 rc=$?

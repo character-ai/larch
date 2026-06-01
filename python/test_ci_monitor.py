@@ -508,7 +508,7 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
     del responses[("git", "rev-parse", "HEAD")]
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)")] = _cr(
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
         (commit_script,),
         0,
     )
@@ -548,7 +548,7 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
         launch_fn=launch_fn,
     )
     assert fix.status == "pushed"
-    assert launch_calls == ["cursor"]
+    assert launch_calls == ["codex"]
 
 
 def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
@@ -556,7 +556,7 @@ def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
 
     def launch_fn(_tier: str) -> TierAttempt:
         return TierAttempt(
-            tier="cursor",
+            tier="codex",
             wrapper_rc=0,
             launcher_exit=0,
             failure=LaunchFailure("none", ""),
@@ -566,7 +566,7 @@ def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)")] = _cr(
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
         (commit_script,),
         0,
     )
@@ -866,6 +866,7 @@ def test_run_ci_fix_short_circuit_first_fixer_non_health() -> None:
         launch_fn=launch_fn,
     )
     assert fix.status == "first-fixer-non-health"
+    assert call_log == ["codex"]
     assert not any(c[0] == "git" and c[1] == "add" for c in runner.calls)
     assert not any(c[0] == "git" and c[1] == "push" for c in runner.calls)
 
@@ -897,9 +898,9 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
         ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
         ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feat\n"),
         ("git", "push", "origin", "feat"): _cr(("git", "push"), 0),
-        # attempt 1 uses cursor (start_attempt=0), attempt 2 uses codex (start_attempt=1)
-        (commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)"): _cr((commit_script,), 0),
+        # attempt 1 uses codex (start_attempt=0), attempt 2 uses cursor (start_attempt=1)
         (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): _cr((commit_script,), 0),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)"): _cr((commit_script,), 0),
     }
     responses.update(_python_toolchain_stubs())
 
@@ -973,7 +974,7 @@ def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
     responses[("env", "SKIP=agnix,lint-mermaid-fences,shellcheck", "make", "lint-only")] = _cr(("env",), 0)
     responses[("git", "add", "--", "fixed.sh")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)")] = _cr((commit_script,), 0)
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr((commit_script,), 0)
     responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(("git", "symbolic-ref"), stdout="feat\n")
     responses[("git", "push", "origin", "feat")] = _cr(("git", "push"), 0)
 

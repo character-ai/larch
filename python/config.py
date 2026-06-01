@@ -27,7 +27,7 @@ CI_LOCAL_FIX_ITER_DEFAULT: Final = 6
 WATERFALL_MAX_TIERS: Final = 3
 
 # Fixer tier order (parity with ship-pr run_ci_fix_vendor)
-FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("cursor", "codex", "claude")
+FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("codex", "cursor", "claude")
 FIXER_ROLE: Final = "resolve-conflict"
 REBASE_MAX_ATTEMPTS: Final = 20
 

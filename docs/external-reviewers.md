@@ -100,7 +100,7 @@ The **fallback taxonomy** (issue #3207 audit): **full waterfall** = the assigned
 | Plan revision | Apply accepted plan findings | `/design` | **Full waterfall** (Codex→Cursor→Claude) |
 | Implementer (Step 2) | Write the implementation | `/implement` | **Selection waterfall** keyed on `--coder` (chosen → other external → Claude main-agent), #3207 |
 | review-and-fix / lint-fix coders | Apply review/lint fixes | `/implement`, `/review` | **Waterfall** Codex→Cursor→Claude main-agent (#3207) |
-| CI / checks recovery | Fix failing CI/checks | `/implement` (`ship-pr.sh`) | **Full waterfall** (Cursor→Codex→Claude) |
+| CI / checks recovery | Fix failing CI/checks | `/implement` (`ship-pr.sh`) | **Full waterfall** (Codex→Cursor→Claude) |
 | Negotiation | Multi-round dispute resolution | `/research` | Replacement-first |
 | Research lanes | Read-only investigation | `/research` | Replacement-first (Codex→Claude; Cursor deliberately excluded for diversity banner) |
 | **Dialectic debate** (`/design` Step 2a.5) | Defend / attack contested decisions | `/design` | **Bucket skipped — no Claude substitution** (per-side Cursor↔Codex→Claude-final retry) |

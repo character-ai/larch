@@ -1255,22 +1255,22 @@ _phase_coder_explicit_waterfall() {
 }
 
 _phase_coder_implicit() {
-    # Phase 4 issue #2738 moves /implement's omitted-coder default to
-    # Cursor -> Codex -> Claude. Review/fix dispatchers remain Codex-first.
-    if [ "${cursor_available:-false}" = "true" ]; then
-        coder=cursor
-        return 0
-    fi
-
-    larch_err "**⚠ Cursor unavailable — falling back to Codex implementer.**"
-    _phase_coder_append_warning "Step 0 — Cursor unavailable: waterfall fallback to codex"
+    # Issue #3337 moves /implement's omitted-coder default to
+    # Codex -> Cursor -> Claude. Review/fix dispatchers remain Codex-first.
     if [ "${codex_available:-false}" = "true" ]; then
         coder=codex
         return 0
     fi
 
-    larch_err "**⚠ Codex unavailable — falling back to Claude implementer.**"
-    _phase_coder_append_warning "Step 0 — Cursor and Codex unavailable: waterfall fallback to claude"
+    larch_err "**⚠ Codex unavailable — falling back to Cursor implementer.**"
+    _phase_coder_append_warning "Step 0 — Codex unavailable: waterfall fallback to cursor"
+    if [ "${cursor_available:-false}" = "true" ]; then
+        coder=cursor
+        return 0
+    fi
+
+    larch_err "**⚠ Cursor unavailable — falling back to Claude implementer.**"
+    _phase_coder_append_warning "Step 0 — Codex and Cursor unavailable: waterfall fallback to claude"
     coder=claude
     coder_fallback=true
     _phase_coder_manifest_fallback || true
