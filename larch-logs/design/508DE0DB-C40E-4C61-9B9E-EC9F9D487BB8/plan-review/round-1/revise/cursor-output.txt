@@ -1,0 +1,63 @@
+Reviewing canonical docs to align the revised plan with reviewer findings.
+Computing the unified diff for the revised plan.
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,9 +1,9 @@
+ ## Implementation Plan
+ 
+-Fix the `/upgrade-larch` cache-prune bug in three behavior changes plus a doc update, all in `skills/upgrade-larch/scripts/upgrade-larch.sh` and its sibling `.md`. Defects A and B are the issue's required fixes. Defect C hardening (additive, mtime-backfill) is an operator-approved scope expansion (Round 1 Decisions 2 and 3). Shell stays Bash 3.2-compatible; no new external deps. `keep_versions=8`, the #3231 marketplace logic, and the `has_stamp`-first sort tiering (#3174) stay untouched.
++Fix the `/upgrade-larch` cache-prune bug in three behavior changes plus doc updates in `skills/upgrade-larch/scripts/upgrade-larch.sh`, its sibling `.md`, and the canonical install/security docs named by the sibling's edit-in-sync list (`docs/installation-and-setup.md`, `SECURITY.md`). Defects A and B are the issue's required fixes. Defect C hardening (additive, mtime-backfill) is an operator-approved scope expansion (Round 1 Decisions 2 and 3). Shell stays Bash 3.2-compatible; no new external deps. `keep_versions=8`, the #3231 marketplace logic, and the `has_stamp`-first sort tiering (#3174) stay untouched.
+ 
+ ## Files to modify/create
+ 
+ ### UPDATED: `skills/upgrade-larch/scripts/upgrade-larch.sh`
+@@ -108,12 +108,40 @@
+ Per `.claude/rules/script-md-siblings.md`, update the sibling doc in the same change. Revise the retention/stamp contract (currently 36 lines) to state:
+ - The install stamp is now written for **any** successfully-installed version (verified or not); **pruning** stays gated on a verified stable install.
+ - Prune always retains **both** the just-installed target **and** the currently-running version dir (basename of `PLUGIN_ROOT`), and why (avoid deleting sibling helpers the live process sources).
+-- Prune now backfills a persistent stamp (from mtime) for any unstamped cached dir before ranking. Keep the existing "ranked by install stamp; stamped sort before unstamped" wording, and add that unstamped dirs are now transient — only present until the next prune backfills them.
++- Prune backfills a persistent stamp (from mtime) for unstamped numeric cached dirs at prune entry before ranking (best-effort). Keep the existing "ranked by install stamp; stamped sort before unstamped" wording, and qualify that unstamped dirs are normally backfilled before ranking on prune runs, but can persist until a prune runs (e.g. verification skipped, `gh` unavailable) or remain unstamped when `stat_mtime` or stamp write fails.
++- Update step 6/7 bullets to match: stamp-on-any-successful-install; verified-only prune; retain target plus running version; backfill wording above.
++
++### UPDATED: `SECURITY.md`
++
++Minimal rewrite of the `/upgrade-larch` install-stamp prune trust paragraph (~line 240) so canonical security docs match implementation:
++- **Stamp writes** run for any successfully-installed version when the resolved version is version-shaped, not only on verified/already-latest paths; prune remains gated on verified stable or the already-latest idempotent path.
++- **At prune entry**, best-effort mtime backfill writes persistent `.larch-installed-at` for unstamped numeric cache dirs; failed mtime reads or stamp writes leave dirs unstamped and bottom-ranked as before (#3174 `has_stamp`-first ordering unchanged).
++- **Retention** always includes both the prune target and the running version dir (`INSTALLED_VERSION`) when present and version-shaped, in addition to the eight-cap ranked set.
++- Preserve existing limits: user-owned cache parent only, no session pins, version-shaped basenames only, eight-dir cap.
++
++### UPDATED: `docs/installation-and-setup.md`
++
++Minimal matching edits in the Upgrade section (~lines 38–40), aligned with the sibling contract:
++- Any successful install writes `.larch-installed-at` when the installed version resolves safely; **pruning** still runs only after verified stable install or on the already-latest path (`gh` unavailable still skips prune).
++- On prune, retain both the verified/just-installed target and the currently-running cached version dir (basename of `PLUGIN_ROOT`).
++- At prune entry, unstamped numeric dirs are normally backfilled from directory mtime before ranking; dirs may stay unstamped until a prune run or if backfill cannot run.
++- Keep restart/idempotency paragraphs unchanged except where they mention stamp/prune behavior.
+ 
+ ## Approach
+ - Three layers protect the running dir: Defect A retains it explicitly; Defect B makes future installs always stamped, so it ranks high naturally; Defect C backfill retroactively stamps pre-existing unstamped dirs.
+-- Keep changes minimal and local to one script plus its doc. Reuse existing helpers; add only one new function.
++- Keep script changes minimal; reuse existing helpers; add only one new function. Sync canonical docs (`SECURITY.md`, `docs/installation-and-setup.md`) in the same PR so operators and reviewers do not see a stale stamp/prune contract.
+ - Preserve all stated invariants: `keep_versions=8`, the #3231 marketplace logic, the #3174 `has_stamp`-first ranking, Bash 3.2 compatibility, no new deps.
+ 
+ ## Edge cases
+@@ -121,6 +149,8 @@
+ - `stat_mtime` failure (returns 0): backfill skips the dir; it stays unstamped and bottom-ranked as today; no `0` stamp persisted.
+ - Backfill write failure (read-only cache): `warn_install_stamp_failure` warns; the loop continues; ranking falls back to current behavior for that dir.
+ - All dirs already stamped (post-Defect-B steady state): backfill is a no-op.
++- Prune skipped (`VERIFIED_TARGET=false`, `gh` unavailable): backfill does not run; unstamped dirs persist and stay bottom-ranked until a later verified prune.
++- Backfill skipped per dir (`stat_mtime` 0 or write failure): dir can remain unstamped across multiple runs.
+ - `target_version` empty or unsafe: the Change 1 loop skips it (guarded) and retains only the running version.
+ 
+ ## Failure modes
+@@ -133,6 +163,7 @@
+ - Static (required): `bash scripts/relevant-checks.sh` (or `make lint`); confirm `make lint-bash32` and `shellcheck` are clean for the edited script.
+ - Manual retention check (required, by hand): build a throwaway `LARCH_CACHE_DIR` with 10 fake version dirs, stamp 9 with increasing values, leave the "running" one unstamped; drive `prune_cached_versions "<target>"` with `INSTALLED_VERSION="<unstamped running>"`; assert (a) the running dir survives, (b) exactly 8 are retained, (c) the oldest stamped dir is evicted, (d) backfill wrote a stamp to previously-unstamped survivors.
+ - Stamp-on-unverified check (required): confirm a resolved version `!= LATEST_STABLE` now writes `.larch-installed-at` while prune stays skipped (read the diff plus the manual setup; no live release needed).
++- Doc contract (required): grep/read `SECURITY.md` and `docs/installation-and-setup.md` Upgrade paragraphs for stamp-on-any-install, verified-only prune, target+running retention, and best-effort backfill-at-prune-entry wording consistent with `upgrade-larch.md`.
+ - No committed offline harness and no source-safe refactor (Round 1 Decision 1).
+ - Live sanity (optional, post-merge): the next real `/upgrade-larch` emits no `WARN larch_err-redaction-unavailable` and keeps the prior version cached.
+ 
+-diff_lines: 90
++diff_lines: 115
