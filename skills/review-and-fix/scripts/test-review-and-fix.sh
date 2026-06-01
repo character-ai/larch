@@ -17,6 +17,10 @@ fail() {
     exit 1
 }
 
+mode_of() {
+    stat -c %a "$1" 2>/dev/null || stat -f %Lp "$1"
+}
+
 grep -F -- "--stderr-sink \"\$codex_wrapper_log\"" "$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh" \
     || fail "review-and-fix.sh codex coder must forward --stderr-sink \"\$codex_wrapper_log\""
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-review-and-fix.XXXXXX")
@@ -380,6 +384,10 @@ run_orchestrator_case() {
     [[ -f "$implement_tmp/larch-logs/implement/$label-run/review-findings-full.jsonl" ]] || fail "$label review-findings-full batch"
     [[ -s "$implement_tmp/accumulated-oos.jsonl" ]] || fail "$label oos jsonl"
     [[ -s "$implement_tmp/oos-accepted-review.md" ]] || fail "$label oos markdown"
+    [[ -f "$implement_tmp/round-1/post-coder-head.txt" ]] || fail "$label post-coder-head.txt missing"
+    [[ "$(mode_of "$implement_tmp/round-1/post-coder-head.txt")" == "444" ]] \
+        || fail "$label post-coder-head.txt must be mode 444"
+    rm -rf "$implement_tmp/round-1" || fail "$label round dir rm -rf after 0444 post-coder-head"
 }
 
 run_orchestrator_case codex-case codex-success codex
@@ -491,6 +499,90 @@ eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
     exit 1
 ) || fail "manifest-outside-guard should detect dirty tracked path outside manifest"
 
+work_in_repo_reloc="$TMP/in-repo-snapshot-reloc"
+make_work_repo "$work_in_repo_reloc"
+eval "$(sed -n '/^pre_coder_snapshot_dir/,/^}/p' "$SCRIPT")"
+(
+    set -euo pipefail
+    cd "$work_in_repo_reloc"
+    round_dir="$PWD/implement/round-1"
+    mkdir -p "$(dirname "$round_dir")"
+    snap_dir="$(pre_coder_snapshot_dir "$round_dir")"
+    case "$snap_dir" in
+        "$PWD"|"$PWD"/*) fail "in-repo relocation: snap_dir must not be under fixture PWD" ;;
+    esac
+    case "$snap_dir" in
+        "$round_dir"|"$round_dir"/*) fail "in-repo relocation: snap_dir must not be under round_dir" ;;
+    esac
+    expected_tmp="${TMPDIR:-/tmp}"
+    expected_tmp="${expected_tmp%/}"
+    case "$snap_dir" in
+        "$expected_tmp/larch-pre-coder-snapshots/"*) ;;
+        *) fail "in-repo relocation: snap_dir must be under ${expected_tmp}/larch-pre-coder-snapshots/" ;;
+    esac
+)
+pass "in-repo snapshot relocation outside PWD grant"
+
+work_pre_coder_perms="$TMP/pre-coder-snapshot-perms"
+make_work_repo "$work_pre_coder_perms"
+eval "$(sed -n '/^pre_coder_snapshot_dir/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^clear_stale_pre_coder_snapshot_artifacts/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^harden_pre_coder_snapshot_perms/,/^}/p' "$SCRIPT")"
+(
+    set -euo pipefail
+    cd "$work_pre_coder_perms"
+    round_dir="$PWD/implement/round-1"
+    mkdir -p "$(dirname "$round_dir")"
+    snap_dir="$(pre_coder_snapshot_dir "$round_dir")"
+    mkdir -p "$snap_dir/pre-coder-path-diffs"
+    clear_stale_pre_coder_snapshot_artifacts "$snap_dir"
+    printf 'head-sha\n' > "$snap_dir/pre-coder-head.txt"
+    printf 'tracked.txt\n' > "$snap_dir/pre-coder-tracked-paths.txt"
+    printf 'diff\n' > "$snap_dir/pre-coder-path-diffs/sample.patch"
+    harden_pre_coder_snapshot_perms "$snap_dir"
+    for f in "$snap_dir/pre-coder-head.txt" "$snap_dir/pre-coder-tracked-paths.txt" \
+        "$snap_dir/pre-coder-path-diffs/sample.patch"; do
+        [[ "$(mode_of "$f")" == "444" ]] || fail "pre-coder snapshot perms: expected 444 on $f"
+    done
+    rm -rf "$snap_dir" || fail "pre-coder snapshot perms: rm -rf snap_dir should succeed"
+)
+pass "pre-coder snapshot file chmod 0444"
+
+work_stale_0444="$TMP/stale-0444-snapshot-rewrite"
+make_work_repo "$work_stale_0444"
+eval "$(sed -n '/^pre_coder_snapshot_dir/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^clear_stale_pre_coder_snapshot_artifacts/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^harden_pre_coder_snapshot_perms/,/^}/p' "$SCRIPT")"
+(
+    set -euo pipefail
+    cd "$work_stale_0444"
+    round_dir="$PWD/implement/round-1"
+    mkdir -p "$(dirname "$round_dir")"
+    snap_dir="$(pre_coder_snapshot_dir "$round_dir")"
+    mkdir -p "$snap_dir/pre-coder-path-diffs"
+    printf 'stale-head\n' > "$snap_dir/pre-coder-head.txt"
+    printf 'stale-paths\n' > "$snap_dir/pre-coder-tracked-paths.txt"
+    printf 'stale-patch\n' > "$snap_dir/pre-coder-path-diffs/stale.patch"
+    chmod 0444 "$snap_dir/pre-coder-head.txt" "$snap_dir/pre-coder-tracked-paths.txt" \
+        "$snap_dir/pre-coder-path-diffs/stale.patch"
+    clear_stale_pre_coder_snapshot_artifacts "$snap_dir"
+    printf 'fresh-head\n' > "$snap_dir/pre-coder-head.txt"
+    printf 'fresh-paths\n' > "$snap_dir/pre-coder-tracked-paths.txt"
+    printf 'fresh-patch\n' > "$snap_dir/pre-coder-path-diffs/fresh.patch"
+    harden_pre_coder_snapshot_perms "$snap_dir"
+    [[ "$(cat "$snap_dir/pre-coder-head.txt")" == "fresh-head" ]] \
+        || fail "stale-0444 rewrite: head content"
+    [[ "$(cat "$snap_dir/pre-coder-tracked-paths.txt")" == "fresh-paths" ]] \
+        || fail "stale-0444 rewrite: tracked-paths content"
+    [[ "$(cat "$snap_dir/pre-coder-path-diffs/fresh.patch")" == "fresh-patch" ]] \
+        || fail "stale-0444 rewrite: patch content"
+    for f in "$snap_dir/pre-coder-head.txt" "$snap_dir/pre-coder-tracked-paths.txt" \
+        "$snap_dir/pre-coder-path-diffs/fresh.patch"; do
+        [[ "$(mode_of "$f")" == "444" ]] || fail "stale-0444 rewrite: expected 444 on $f"
+    done
+)
+pass "stale 0444 snapshot clear-before-write on relocated path"
+
 work_carryover_guard="$TMP/manifest-carryover-guard"
 make_work_repo "$work_carryover_guard"
 printf 'outside manifest\n' >> "$work_carryover_guard/other.txt"
@@ -499,7 +591,6 @@ git -C "$work_carryover_guard" commit -qm 'add other.txt'
 carryover_pre_head=$(git -C "$work_carryover_guard" rev-parse HEAD)
 printf 'outside manifest\n' >> "$work_carryover_guard/other.txt"
 printf 'modified by coder\n' >> "$work_carryover_guard/src/main.py"
-carryover_round_dir="$work_carryover_guard/implement/round-1"
 # shellcheck disable=SC2317  # stub for eval'd carryover helpers from review-and-fix.sh
 larch_err() { printf '%s\n' "$*" >&2; }
 eval "$(sed -n '/^pre_coder_snapshot_dir/,/^}/p' "$SCRIPT")"
@@ -509,8 +600,14 @@ eval "$(sed -n '/^path_matches_pre_coder_snapshot/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
+cd "$work_carryover_guard"
+carryover_round_dir="$PWD/implement/round-1"
+mkdir -p "$(dirname "$carryover_round_dir")"
 snap_dir="$(pre_coder_snapshot_dir "$carryover_round_dir")"
 _repo_root_cg=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
+case "$snap_dir" in
+    "$PWD"|"$PWD"/*) fail "pre_coder_snapshot_dir must not be under fixture PWD" ;;
+esac
 case "$snap_dir" in
     "$carryover_round_dir"/*) fail "pre_coder_snapshot_dir must not be under round_dir" ;;
 esac
@@ -520,24 +617,18 @@ esac
 mkdir -p "$snap_dir/pre-coder-path-diffs" "$carryover_round_dir"
 printf '%s\n' "$carryover_pre_head" > "$snap_dir/pre-coder-head.txt"
 printf 'other.txt\n' > "$snap_dir/pre-coder-tracked-paths.txt"
-git -C "$work_carryover_guard" diff "$carryover_pre_head" -- other.txt > "$snap_dir/pre-coder-path-diffs/other.txt.patch"
+git diff "$carryover_pre_head" -- other.txt > "$snap_dir/pre-coder-path-diffs/other.txt.patch"
 : > "$snap_dir/pre-coder-path-diffs/other.txt.cached.patch"
 printf 'src/main.py\n' > "$carryover_round_dir/coder-stage-paths.txt"
-(
-    cd "$work_carryover_guard"
-    if round_tracked_dirty_outside_manifest "$carryover_round_dir/coder-stage-paths.txt" "$carryover_round_dir"; then
-        exit 0
-    fi
-    exit 1
-) && fail "manifest-carryover-guard should skip unchanged carryover path"
+if round_tracked_dirty_outside_manifest "$carryover_round_dir/coder-stage-paths.txt" "$carryover_round_dir"; then
+    fail "manifest-carryover-guard should skip unchanged carryover path"
+fi
 rm -f "$(pre_coder_path_diff_file "$carryover_round_dir" other.txt)"
-(
-    cd "$work_carryover_guard"
-    if round_tracked_dirty_outside_manifest "$carryover_round_dir/coder-stage-paths.txt" "$carryover_round_dir"; then
-        exit 0
-    fi
-    exit 1
-) || fail "manifest-carryover-guard negative control should fire without snapshot"
+if round_tracked_dirty_outside_manifest "$carryover_round_dir/coder-stage-paths.txt" "$carryover_round_dir"; then
+    pass "manifest-carryover-guard negative control"
+else
+    fail "manifest-carryover-guard negative control should fire without snapshot"
+fi
 
 work_index_carryover_guard="$TMP/manifest-index-carryover-guard"
 make_work_repo "$work_index_carryover_guard"
@@ -546,7 +637,6 @@ git -C "$work_index_carryover_guard" add other.txt
 git -C "$work_index_carryover_guard" restore --worktree other.txt
 printf 'modified by coder\n' >> "$work_index_carryover_guard/src/main.py"
 index_carryover_pre_head=$(git -C "$work_index_carryover_guard" rev-parse HEAD)
-index_carryover_round_dir="$work_index_carryover_guard/implement/round-1"
 larch_err() { printf '%s\n' "$*" >&2; }
 eval "$(sed -n '/^pre_coder_snapshot_dir/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^pre_coder_path_diff_file/,/^}/p' "$SCRIPT")"
@@ -555,8 +645,14 @@ eval "$(sed -n '/^path_matches_pre_coder_snapshot/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^capture_round_tracked_paths/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^path_is_pre_coder_carryover/,/^}/p' "$SCRIPT")"
 eval "$(sed -n '/^round_tracked_dirty_outside_manifest/,/^}/p' "$SCRIPT")"
+cd "$work_index_carryover_guard"
+index_carryover_round_dir="$PWD/implement/round-1"
+mkdir -p "$(dirname "$index_carryover_round_dir")"
 index_snap_dir="$(pre_coder_snapshot_dir "$index_carryover_round_dir")"
 _repo_root_icg=$(git rev-parse --show-toplevel 2>/dev/null || printf '%s' "$PWD")
+case "$index_snap_dir" in
+    "$PWD"|"$PWD"/*) fail "pre_coder_snapshot_dir must not be under fixture PWD" ;;
+esac
 case "$index_snap_dir" in
     "$index_carryover_round_dir"/*) fail "pre_coder_snapshot_dir must not be under round_dir" ;;
 esac
@@ -567,18 +663,16 @@ mkdir -p "$index_snap_dir/pre-coder-path-diffs" "$index_carryover_round_dir"
 printf '%s\n' "$index_carryover_pre_head" > "$index_snap_dir/pre-coder-head.txt"
 printf 'other.txt\n' > "$index_snap_dir/pre-coder-tracked-paths.txt"
 : > "$index_snap_dir/pre-coder-path-diffs/other.txt.patch"
-git -C "$work_index_carryover_guard" diff --cached "$index_carryover_pre_head" -- other.txt \
+git diff --cached "$index_carryover_pre_head" -- other.txt \
     > "$index_snap_dir/pre-coder-path-diffs/other.txt.cached.patch"
 printf 'src/main.py\n' > "$index_carryover_round_dir/coder-stage-paths.txt"
-index_only_blob=$(printf 'coder index-only mutation\n' | git -C "$work_index_carryover_guard" hash-object -w --stdin)
-git -C "$work_index_carryover_guard" update-index --cacheinfo 100644,"$index_only_blob",other.txt
-(
-    cd "$work_index_carryover_guard"
-    if round_tracked_dirty_outside_manifest "$index_carryover_round_dir/coder-stage-paths.txt" "$index_carryover_round_dir"; then
-        exit 0
-    fi
-    exit 1
-) || fail "manifest-index-carryover-guard should detect index-only coder mutation"
+index_only_blob=$(printf 'coder index-only mutation\n' | git hash-object -w --stdin)
+git update-index --cacheinfo 100644,"$index_only_blob",other.txt
+if round_tracked_dirty_outside_manifest "$index_carryover_round_dir/coder-stage-paths.txt" "$index_carryover_round_dir"; then
+    :
+else
+    fail "manifest-index-carryover-guard should detect index-only coder mutation"
+fi
 
 work_carryover_orchestrator="$TMP/carryover-orchestrator"
 make_work_repo "$work_carryover_orchestrator"
@@ -610,6 +704,12 @@ git -C "$work_carryover_orchestrator" status --porcelain --untracked-files=no | 
     || fail "carryover-orchestrator other.txt should remain dirty"
 grep -Fq 'pre-existing dirty path carried over (not committed): other.txt' <<< "$out_carryover" \
     || fail "carryover-orchestrator carryover warning breadcrumb"
+[[ -f "$implement_carryover/round-1/post-coder-head.txt" ]] \
+    || fail "carryover-orchestrator post-coder-head.txt missing"
+[[ "$(mode_of "$implement_carryover/round-1/post-coder-head.txt")" == "444" ]] \
+    || fail "carryover-orchestrator post-coder-head.txt must be mode 444"
+rm -rf "$implement_carryover/round-1" \
+    || fail "carryover-orchestrator round dir rm -rf after 0444 post-coder-head"
 
 work_staged_carryover_orchestrator="$TMP/staged-carryover-orchestrator"
 make_work_repo "$work_staged_carryover_orchestrator"
@@ -2662,6 +2762,7 @@ if section_runs step5-starting-round; then
     . "$REPO_ROOT/scripts/lib-implement-round-cap.sh"
     eval "$(declare -f count_prior_degraded_rounds | sed '1s/count_prior_degraded_rounds/step5_original_count_prior_degraded_rounds/')"
     eval "$(sed -n '/^pre_coder_snapshot_dir()/,/^}/p' "$SCRIPT")"
+    eval "$(sed -n '/^clear_stale_pre_coder_snapshot_artifacts/,/^}/p' "$SCRIPT")"
     # shellcheck source=skills/review-and-fix/scripts/review-implement-step5-loop.sh
     # shellcheck disable=SC1091
     . "$REPO_ROOT/skills/review-and-fix/scripts/review-implement-step5-loop.sh"
@@ -3060,7 +3161,8 @@ STUB
     (
         set -euo pipefail
         cd "$case_dir/work"
-        IMPLEMENT_TMPDIR="$case_dir/impl"
+        IMPLEMENT_TMPDIR="$PWD/implement"
+        mkdir -p "$IMPLEMENT_TMPDIR"
         ROUND_NUM=1
         FINDINGS_FILE="$case_dir/findings.md"
         PLUGIN_ROOT="$REPO_ROOT"
@@ -3082,9 +3184,24 @@ STUB
     mav_apply_rc=$?
     set -e
     [[ "$mav_apply_rc" -eq 0 ]] || { cat "$err_file" >&2; fail "mav-apply relocated pre-head expected exit 0 got $mav_apply_rc"; }
-    mav_snap="$case_dir/impl/.pre-coder-snapshots/round-1/pre-coder-head.txt"
+    mav_round_dir="$case_dir/work/implement/round-1"
+    mav_snap_dir="$(cd "$case_dir/work" && pre_coder_snapshot_dir "$mav_round_dir")"
+    expected_tmp="${TMPDIR:-/tmp}"
+    expected_tmp="${expected_tmp%/}"
+    case "$mav_snap_dir" in
+        "$expected_tmp/larch-pre-coder-snapshots/"*) ;;
+        *) fail "mav-apply snap_dir must be under ${expected_tmp}/larch-pre-coder-snapshots/" ;;
+    esac
+    case "$mav_snap_dir" in
+        "$case_dir/work"|"$case_dir/work"/*) fail "mav-apply snap_dir must not be under work repo" ;;
+    esac
+    case "$mav_snap_dir" in
+        "$mav_round_dir"|"$mav_round_dir"/*) fail "mav-apply snap_dir must not be under round_dir" ;;
+    esac
+    mav_snap="$mav_snap_dir/pre-coder-head.txt"
     [[ "$(cat "$mav_snap")" == "$mav_head" ]] || fail "mav-apply should write relocated pre-coder-head.txt"
-    [[ ! -e "$case_dir/impl/round-1/pre-coder-head.txt" ]] || fail "mav-apply must not write pre-coder-head.txt under round_dir"
+    [[ "$(mode_of "$mav_snap")" == "444" ]] || fail "mav-apply pre-coder-head.txt must be mode 444"
+    [[ ! -e "$mav_round_dir/pre-coder-head.txt" ]] || fail "mav-apply must not write pre-coder-head.txt under round_dir"
     grep -Fq 'REVIEW_AND_FIX_STATUS=mav-apply-done' "$out_file" || fail "mav-apply should emit completion status"
     pass "step5-loop mav-apply-relocated-pre-head"
 fi  # end section: step5-starting-round

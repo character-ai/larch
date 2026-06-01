@@ -67,6 +67,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Extract per-step ledger telemetry into scripts/step-telemetry-mark.sh for /implement step entries
 - Collapse Steps 5, 16, 17, and 18-cleanup preambles in skills/implement/SKILL.md to one helper call each
 - Add Makefile-wired unit harness and helper-aware timing-rehydration regression counts
+- Relocate in-repo pre-coder snapshots outside Codex --add-dir grants and harden snapshot artifacts with chmod 0444
+- Clear stale read-only snapshot files before each regeneration so relocated paths stay writable for redirects
+- Document sandbox-confinement trust boundary and the wide Step 2 SESSION_TMPDIR Codex grant
 
 ## [47.0.38] - 2026-05-31
 

@@ -1,0 +1,104 @@
+### FINDING_17: [OUT_OF_SCOPE] security: scripts/launch-codex-implement.sh:336-337
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] Entire `$SESSION_TMPDIR` remains Codex-writable beyond manifest/qa files. Any artifact in the session tmpdir is tamperable by Step 2 Codex (pre-existing; only documented here). Evaluate narrowing `--add-dir` to canonical manifest parent plus required subpaths.
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_18: [OUT_OF_SCOPE] architecture: skills/review-and-fix/scripts/review-and-fix.sh:352-368
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] Relocated snapshot trees persist outside `cleanup-tmpdir.sh`. Same-UID races on predictable `${TMPDIR}/larch-pre-coder-snapshots/<hash>/` paths between runs. Accept with per-round clear, or add optional tmpdir subtree cleanup policy.
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_19: [OUT_OF_SCOPE] risk-integration: skills/review-and-fix/scripts/review-and-fix.md
+- **Reviewer**: cursor-specialist-security-output.txt
+- **Concern**: [latent] Documented Codex sandbox-confinement trust boundary without CI probe. If `--full-auto` is more permissive than grants, relocation and `0444` are bypassable. Add confinement tests or operator verification steps if threat model requires it.
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_25: [OUT_OF_SCOPE] risk-integration: scripts/launch-codex-implement.sh:335-337
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] SESSION_TMPDIR grant still full session tmpdir Codex can still write any file placed in session tmpdir beyond manifest paths Narrow grant in a follow-up if policy allows
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_26: [OUT_OF_SCOPE] security: skills/review-and-fix/scripts/review-and-fix.sh:1559-1562
+- **Reviewer**: cursor-specialist-edge-cases-output.txt
+- **Concern**: [latent] post-coder-head remains in coder-writable round_dir permissive sandbox or same-UID tampering can skew structural_loc telemetry Relocate post-coder-head or rely on documented sandbox trust boundary only
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_27: [OUT_OF_SCOPE] **Latent** `skills/review-and-fix/scripts/test-review-and-fix.sh:551-580` — The `stale-0444-snapshot-rewrite` subshell calls `pre_coder_snapshot_dir`, `clear_stale_pre_coder_snapshot_artifacts`, and `harden_pre_coder_snapshot_perms` without a local `eval` in that block; it relies on helpers already `eval`'d by the preceding `pre-coder-snapshot-perms` block (lines 528–530). Reordering tests or splitting the dispatch shard could cause `command not found` under `set -euo pipefail`. **Suggested fix:** Add the same three `eval "$(sed -n ...)"` lines immediately before the `work_stale_0444` subshell so the case is self-contained, matching the perms case.
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: 1. **Latent** `skills/review-and-fix/scripts/test-review-and-fix.sh:551-580` — The `stale-0444-snapshot-rewrite` subshell calls `pre_coder_snapshot_dir`, `clear_stale_pre_coder_snapshot_artifacts`, and `harden_pre_coder_snapshot_perms` without a local `eval` in that block; it relies on helpers already `eval`'d by the preceding `pre-coder-snapshot-perms` block (lines 528–530). Reordering tests or splitting the dispatch shard could cause `command not found` under `set -euo pipefail`. **Suggested fix:** Add the same three `eval "$(sed -n ...)"` lines immediately before the `work_stale_0444` subshell so the case is self-contained, matching the perms case.
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=1 NO=0 EXON=1 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_28: [OUT_OF_SCOPE] **Nit** `scripts/launch-codex-implement.sh:334-336` — The plan asked for a comment directly above `--add-dir "$SESSION_TMPDIR"`; the comment sits above `codex exec` (one line earlier in the argv list). Intent is documented; placement differs slightly from the plan literal. **Suggested fix:** Optional: move or duplicate the comment immediately above the `--add-dir "$SESSION_TMPDIR"` line if line-local alignment matters for future readers.
+- **Reviewer**: cursor-specialist-plan-fidelity-output.txt
+- **Concern**: 2. **Nit** `scripts/launch-codex-implement.sh:334-336` — The plan asked for a comment directly above `--add-dir "$SESSION_TMPDIR"`; the comment sits above `codex exec` (one line earlier in the argv list). Intent is documented; placement differs slightly from the plan literal. **Suggested fix:** Optional: move or duplicate the comment immediately above the `--add-dir "$SESSION_TMPDIR"` line if line-local alignment matters for future readers.
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_4: [OUT_OF_SCOPE] security: skills/review-and-fix/scripts/review-and-fix.sh:1559-1562
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [latent] post-coder-head.txt remains in coder-writable round_dir grant A hostile Codex fixer with a permissive sandbox could still tamper with telemetry head before orchestrator write/chmod Out of scope for this PR; relocation would be a separate hardening pass
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_5: [OUT_OF_SCOPE] architecture: skills/review-and-fix/scripts/review-and-fix.sh:352-368
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [latent] Relocated snapshot dirs outside IMPLEMENT_TMPDIR are not session-cleaned In-repo harness or non-standard layouts can leave larch-pre-coder-snapshots under system TMPDIR until OS reaping Documented by design; broad tree wipe was explicitly out of scope
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_6: [OUT_OF_SCOPE] code-quality: skills/review-and-fix/scripts/test-review-and-fix.sh:600-645
+- **Reviewer**: cursor-specialist-structure-output.txt
+- **Concern**: [nit] Carryover-guard cd into fixture repos without cwd restore Later dispatch tests that assume harness cwd equals REPO_ROOT could behave differently after these cases Wrap in subshell cd or cd back to REPO_ROOT after each carryover-guard block
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_7: [OUT_OF_SCOPE] risk-integration
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: - **risk-integration** `scripts/launch-codex-implement.sh:333-335` — The new comment sits on its own line between a `\`-continued `--` separator and `codex exec`. That pattern is a known Bash footgun on some parsers; GNU Bash usually strips full-line comments before joining continued lines, so `test-codex-implementer.sh` argv checks may still pass, but this is the only such pattern in `scripts/`. **Suggested fix:** Put the comment on the line above the `run-external-agent.sh` invocation (as in `launch-codex-implement.md`) to avoid any continuation/comment interaction.
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=1 EXON=1 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_8: [OUT_OF_SCOPE] correctness
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: - **correctness** `skills/review-and-fix/scripts/review-and-fix.sh:361-362` — If `cksum` fails, `hash` falls back to `0`, so all in-`$PWD` layouts share `${TMPDIR}/larch-pre-coder-snapshots/0/<round-basename>/`. Concurrent or sequential runs with different round parents could reuse snapshot files until `clear_stale_pre_coder_snapshot_artifacts` runs. **Suggested fix:** On `cksum` failure, use a safer disambiguator (e.g. `hash="$(printf '%s' "$parent_abs" | shasum | awk '{print $1}')"` or URL-safe encoding of `parent_abs`) instead of a constant `0`.
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=1 NO=0 EXON=1 JUDGE_ERROR=0 Result=exonerated
+
+### FINDING_9: [OUT_OF_SCOPE] correctness
+- **Reviewer**: cursor-specialist-correctness-output.txt
+- **Concern**: - **correctness** (pre-existing, amplified by this work) `round_dir/post-coder-head.txt` remains under the Codex `--add-dir "$round_dir"` grant; `chmod 0444` only helps when the sandbox honors read-only bits. The new docs state that trust boundary explicitly — not a regression, but not full isolation either. --- ### Plan / acceptance check | Criterion | Status | |-----------|--------| | In-`$PWD` relocation outside grants + in-repo test | Met (`pre_coder_snapshot_dir` + `in-repo-snapshot-reloc`) | | `0444` on snapshot artifacts + clear-before-write + `post-coder-head` | Met (production + harness) | | Wide Step 2 `--add-dir "$SESSION_TMPDIR"` documented, argv unchanged | Met (`.md` + comment in `.sh`) | | Sandbox trust boundary in `review-and-fix.md` / `SECURITY.md` | Met | | Harness: `mode_of`, carryover `cd`/grant-root, MAV eval, post-coder on orchestrator paths only | Met per diff | ```352:381:skills/review-and-fix/scripts/review-and-fix.sh pre_coder_snapshot_dir() {     local round_dir="$1"     local parent_abs pwd_abs t hash     parent_abs="$(cd "$(dirname "$round_dir")" 2>/dev/null && pwd -P || printf '%s' "$(dirname "$round_dir")")"     pwd_abs="$(pwd -P)"     case "$parent_abs" in         "$pwd_abs"|"$pwd_abs"/*)             t="${TMPDIR:-/tmp}"             t="${t%/}"             hash="$(printf '%s' "$parent_abs" | cksum 2>/dev/null | awk '{print $1}')" || hash=0             [[ -n "$hash" ]] || hash=0             printf '%s/larch-pre-coder-snapshots/%s/%s\n' "$t" "$hash" "$(basename "$round_dir")"             ;;         *)             printf '%s/.pre-coder-snapshots/%s\n' "$(dirname "$round_dir")" "$(basename "$round_dir")"             ;;     esac } clear_stale_pre_coder_snapshot_artifacts() {     ... } harden_pre_coder_snapshot_perms() {     ... } ``` Production sessions with `IMPLEMENT_TMPDIR` under `~/.cache/larch/sessions/` still use the `else` branch (outside `$PWD`); relocation mainly closes the in-repo / harness gap from FINDING_6/11, which matches the plan.
+- **Suggested revision**: Address the concern above.
+
+
+Vote tally: YES=0 NO=0 EXON=2 JUDGE_ERROR=0 Result=exonerated
+
