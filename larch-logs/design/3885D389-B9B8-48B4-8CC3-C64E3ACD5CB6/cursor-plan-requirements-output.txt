@@ -1,0 +1,5 @@
+Reading the plan and validating it against the codebase.
+Validating the plan against current code and integration points.
+The plan matches the #3298 goals (dedupe three bootstrap-invoke surfaces, remove dead `_ib_parse_bootstrap_out`, fix routing/preamble drift, codex-manifest rider), aligns with `implement-bootstrap.sh` resume semantics (`IMPLEMENT_TMPDIR` + `session-env.sh` for `resume_existing_tmpdir`), and covers testing, NEVER #14, exit-2 stderr single-owner behavior, and edit-in-sync surfaces including `subskill-invocation.md` and structural pins.
+
+{"no_issues_found": true}

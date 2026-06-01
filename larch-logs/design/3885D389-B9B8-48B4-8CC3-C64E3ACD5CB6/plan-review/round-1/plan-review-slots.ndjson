@@ -1,0 +1,16 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt"}
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/codex-primary-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-arch.prompt"}
+{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt"}
+{"slot":"codex-plan-edge","tool":"codex","output":"<TMPDIR>/codex-primary-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-edge.prompt"}
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/codex-primary-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-innovation.prompt"}
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"<TMPDIR>/codex-primary-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-pragmatic.prompt"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/codex-primary-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-requirements.prompt"}
+{"slot":"dyn-cursor-plan-env-boundary","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-env-boundary-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-env-boundary.prompt"}
+{"slot":"dyn-codex-plan-env-boundary","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-env-boundary-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-env-boundary.prompt"}
+{"slot":"dyn-cursor-plan-operator-redaction","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-operator-redaction-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-operator-redaction.prompt"}
+{"slot":"dyn-codex-plan-operator-redaction","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-operator-redaction-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-operator-redaction.prompt"}
+{"slot":"dyn-cursor-plan-sync-surface","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-sync-surface-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-sync-surface.prompt"}
+{"slot":"dyn-codex-plan-sync-surface","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-sync-surface-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-sync-surface.prompt"}

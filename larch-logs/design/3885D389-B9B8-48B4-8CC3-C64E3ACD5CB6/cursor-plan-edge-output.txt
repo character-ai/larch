@@ -1,0 +1,4 @@
+Reading the implementation plan and tracing the files it references.
+Tracing current Step 0 bootstrap code and the integration points the plan references.
+Checking which keys Step 0 consumers read before session-env rehydration, and whether the plan's trimmed envelope drops any.
+{"no_issues_found": true}

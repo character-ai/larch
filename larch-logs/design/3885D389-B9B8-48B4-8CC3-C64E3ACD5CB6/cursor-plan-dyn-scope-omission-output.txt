@@ -1,0 +1,40 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/shared/subskill-invocation.md:77,199	Stale Step 0 entrypoints still name prompt-side `scripts/implement-bootstrap.sh --up-to-phase coder` (line 77 omits phase flag but still points at bootstrap, not the invoke wrapper)	After the PR, shared orchestration docs contradict `skills/implement/SKILL.md` and re-teach the removed inline harness; agents following subskill-invocation.md bypass `implement-bootstrap-invoke.sh`	Add `skills/shared/subskill-invocation.md` to the plan file list (not verify-only); retarget both sentences to `scripts/implement-bootstrap-invoke.sh` (`--mode initial` / envelope parse) per the SKILL.md rewrite
+1	in_scope	important	correctness	scripts/test-implement-structure.md:9-11	Harness contract sibling still documents one foreground `implement-bootstrap.sh --up-to-phase coder` call in SKILL.md	Plan rewrites `scripts/test-implement-structure.sh` pins but omits the `.md` sibling; script-md-siblings drift leaves a false contract for reviewers and future harness edits	Add `scripts/test-implement-structure.md` to scope (or an explicit bullet under the `test-implement-structure.sh` update) retargeting Step 0 prose to `implement-bootstrap-invoke.sh --mode initial|resume` and absent `_ib_*` helpers
+
+### 1. [correctness] `skills/shared/subskill-invocation.md:77,199` — missing from explicit scope despite stale pins
+
+Grep confirms the only runtime-surface stale references outside `skills/implement/SKILL.md`:
+
+```77:77:skills/shared/subskill-invocation.md
+- **Sentinel file** — on the issue-anchored path, `/implement` Step 0 (`skills/implement/SKILL.md § Step 0 — Session Setup`, via `scripts/implement-bootstrap.sh`) copies the parsed plan into `$IMPLEMENT_TMPDIR/plan.txt` — no separate design manifest file is read.
+```
+
+```199:199:skills/shared/subskill-invocation.md
+`/design` authors the `larch:plan` GitHub issue block; `/implement <issue-N>` runs Preflight + plan-adequacy audit, then Step 0's foreground `scripts/implement-bootstrap.sh --up-to-phase coder` copies the parsed plan into `$IMPLEMENT_TMPDIR/plan.txt` and resolves `coder=` — the anti-halt banner pins treating the `AUDIT=pass` envelope as **non-terminal** (`do NOT end the turn on the audit-pass envelope`). `/implement` does not dispatch `/design` on this happy path.
+```
+
+The plan classifies this file as verify-only-touch (Approach line 59), but `scripts/implement-bootstrap.md:169` already lists `skills/shared/subskill-invocation.md` in Edit-in-sync for Step 0 wording — and grep shows edits are required, not optional verification.
+
+**Suggested revision:** Promote `skills/shared/subskill-invocation.md` to an explicit `### UPDATED:` scope entry aligned with the SKILL.md retarget.
+
+### 2. [correctness] `scripts/test-implement-structure.md:9-11` — harness sibling omitted from the 10-file list
+
+```9:12:scripts/test-implement-structure.md
+For Step 0, it pins the collapsed Session Setup subsection: one foreground
+`implement-bootstrap.sh --up-to-phase coder` call, script-side
+`phase_coder_select`, parser arms for `coder` / `PLAN_FILE`, and absence of the
+deleted prompt-side tracking, plan-materialization, and implementer-waterfall
+```
+
+The plan’s `### UPDATED: scripts/test-implement-structure.sh` block is detailed; the contract `.md` is not named in `## Files to modify/create` even though `implement-bootstrap.md:169` pairs the harness with `(+ .md)`.
+
+**Suggested revision:** Add an explicit `scripts/test-implement-structure.md` update (wrapper call sites, no `_ib_*`, envelope parse) in the same change.
+
+---
+
+**Exonerated (verify-only / in-scope elsewhere):**
+
+- **Protocol Execution Directive / Anti-halt Critical boundary** — hosted at `skills/implement/SKILL.md:12-14`; the plan’s `### UPDATED: skills/implement/SKILL.md` covers retargeting item (3) and the preflight→Step 0 boundary. Not a separate missing file.
+- **`scripts/lint-foreground-markers.sh` DENYLIST** — removed in breadcrumbs Stage 3–4 (`CHANGELOG.md`); no file to edit. Any stale mention at `scripts/implement-bootstrap.md:167` is inside the in-scope `### UPDATED: scripts/implement-bootstrap.md` edit-in-sync refresh.
+- **`docs/linting.md`** — documents `make test-implement-bootstrap` / `test-implement-step2-routing` without pinning direct `implement-bootstrap.sh --up-to-phase coder` in SKILL.md; no mandatory edit for correctness (new Makefile target doc row is optional doc hygiene).
