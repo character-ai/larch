@@ -44,7 +44,10 @@ main() {
     IMPLEMENT_TMPDIR=$tmpdir
     export IMPLEMENT_TMPDIR
 
-    [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$tmpdir/plugin-root.env" ] && . "$tmpdir/plugin-root.env"
+    if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$tmpdir/plugin-root.env" ]; then
+        # shellcheck source=/dev/null
+        . "$tmpdir/plugin-root.env"
+    fi
 
     local session_env="$tmpdir/session-env.sh"
     if [ -f "$session_env" ]; then

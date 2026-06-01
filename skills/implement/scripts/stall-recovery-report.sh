@@ -104,13 +104,15 @@ check_ship_pr_state_format() {
 }
 
 ship_pr_state_present() {
-    local tmpdir=$1 state="$tmpdir/ship-pr-state.sh"
+    local tmpdir=$1
+    local state="$tmpdir/ship-pr-state.sh"
     [ -e "$state" ] || return 1
     return 0
 }
 
 ship_pr_state_is_regular_file() {
-    local tmpdir=$1 state="$tmpdir/ship-pr-state.sh"
+    local tmpdir=$1
+    local state="$tmpdir/ship-pr-state.sh"
     ship_pr_state_present "$tmpdir" || return 1
     [ -L "$state" ] && return 1
     [ -f "$state" ] || return 1
@@ -130,6 +132,7 @@ rewrite_ship_pr_state_keys() {
     for ((i = 0; i < n; i++)); do
         awk_script+="u[\"${keys[$i]}\"]=\"${vals[$i]}\"; order[++oc]=\"${keys[$i]}\"; "
     done
+    # shellcheck disable=SC2016
     awk_script+='}
     {
         if ($0 ~ /^[A-Z][A-Z0-9_]*=/) {

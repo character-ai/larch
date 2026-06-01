@@ -115,7 +115,11 @@ assert_eq 0 "$RC" "emit true when .step17-emitted absent and write succeeds"
 assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-emit-absent.out")" "EMIT_BODY=true absent sentinel"
 assert_eq 0 "$(kv WFR_RC "$TMP_ROOT/case-emit-absent.out")" "WFR_RC=0 on success"
 assert_eq false "$(kv STEP17_EMITTED_PRESENT "$TMP_ROOT/case-emit-absent.out")" "STEP17_EMITTED_PRESENT=false when absent"
-[ ! -f "$tmpdir/.step17-emitted" ] && pass "wrapper never writes .step17-emitted" || fail "wrapper must not write .step17-emitted"
+if [ ! -f "$tmpdir/.step17-emitted" ]; then
+    pass "wrapper never writes .step17-emitted"
+else
+    fail "wrapper must not write .step17-emitted"
+fi
 
 tmpdir="$TMP_ROOT/case-emit-unchanged"
 mkdir -p "$tmpdir"
@@ -147,7 +151,11 @@ tmpdir="$TMP_ROOT/case-token-fail"
 mkdir -p "$tmpdir"
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" ok fail "$TMP_ROOT/case-token-fail.out"
 assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-token-fail.out")" "EMIT_BODY follows gate when token-report fails but write succeeds"
-[ -f "$tmpdir/step18-token-report.failure.log" ] && pass "token-report failure log captured" || fail "token-report failure log missing"
+if [ -f "$tmpdir/step18-token-report.failure.log" ]; then
+    pass "token-report failure log captured"
+else
+    fail "token-report failure log missing"
+fi
 
 echo
 echo "Results: $PASS passed, $FAIL failed"
