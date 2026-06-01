@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `3a2bcb351` (Fixes #3320: Fix /upgrade-larch pruning the currently-running version (#3330))
-- **Current version**: `47.0.37`
+- **Base commit**: `ab58b6fcc` (Bump version to 47.0.38 (#3331))
+- **Current version**: `47.0.38`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `47.0.38`
+- **New version**: `47.0.39`
 
 ### PATCH rationale
 
