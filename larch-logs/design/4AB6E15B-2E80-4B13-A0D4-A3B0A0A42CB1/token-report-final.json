@@ -1,0 +1,82 @@
+{
+  "vendors": [
+    "claude",
+    "cursor"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 4620,
+          "cache_read": 10810068,
+          "cache_create": 1174117,
+          "cache_create_5m": 1174117,
+          "cache_create_1h": 0,
+          "output": 112014,
+          "total": 12100819
+        },
+        "skills": [
+          {
+            "skill": "larch:design",
+            "totals": {
+              "input": 4620,
+              "cache_read": 10810068,
+              "cache_create": 1174117,
+              "cache_create_5m": 1174117,
+              "cache_create_1h": 0,
+              "output": 112014,
+              "total": 12100819
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 4620,
+      "cache_read": 10810068,
+      "cache_create": 1174117,
+      "cache_create_5m": 1174117,
+      "cache_create_1h": 0,
+      "output": 112014,
+      "total": 12100819
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 244236,
+          "output": 34376,
+          "total": 1836431
+        }
+      }
+    ],
+    "totals": {
+      "input": 244236,
+      "output": 34376,
+      "total": 1836431
+    }
+  },
+  "BUCKETS_claude": {
+    "input": 4620,
+    "cache_read": 10810068,
+    "cache_create_5m": 1174117,
+    "cache_create_1h": 0,
+    "output": 112014,
+    "total": 12100819
+  },
+  "BUCKETS_codex": {
+    "input": 0,
+    "cached_input": 0,
+    "output": 0,
+    "total": 0
+  },
+  "BUCKETS_cursor": {
+    "input": 244236,
+    "cache_read": 1557819,
+    "output": 34376,
+    "total": 1836431
+  }
+}

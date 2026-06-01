@@ -1,0 +1,21 @@
+v1	mark	1780339897	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1780341236	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1780341268	design	design Step 1d.5 — brainstorm	-	-	-	-	-	-	-	-
+v1	mark	1780341290	design	design Step 1d.7 — outline	-	-	-	-	-	-	-	-
+v1	mark	1780344485	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	mark	1780344508	design	design Step 2a.5 — dialectic	-	-	-	-	-	-	-	-
+v1	mark	1780344509	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1780344686	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1780344878	implement	-	cursor	cursor-phase1-dyn-cursor-plan-layout-delta	1780344795	1780344878	83	cursor-plan-dyn-layout-delta-output.txt	0	complete
+v1	vendor	1780344889	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780344794	1780344889	95	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780344890	implement	-	cursor	cursor-phase1-dyn-cursor-plan-import-graph	1780344794	1780344890	96	cursor-plan-dyn-import-graph-output.txt	0	complete
+v1	vendor	1780344891	implement	-	cursor	cursor-phase1-dyn-cursor-plan-dead-surface	1780344795	1780344891	96	cursor-plan-dyn-dead-surface-output.txt	0	complete
+v1	vendor	1780344899	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780344794	1780344898	104	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780344910	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780344794	1780344910	116	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780344912	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780344794	1780344911	117	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780344927	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780344794	1780344927	133	cursor-plan-edge-output.txt	0	complete
+v1	mark	1780345059	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1780346712	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1780346773	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1780346794	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1780347198	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
