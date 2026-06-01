@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/test-review-and-fix.sh:512-519	Grant-root assertion still uses harness checkout after in-repo cwd fix	Carryover-guard plan moves snap_dir setup into the work repo but leaves _repo_root_cg from the harness CWD; relocated snap_dir under $TMPDIR still passes "not under repo root" while snapshots under $PWD/implement/.pre-coder-snapshots would not	After cd into each work repo recompute the grant root (e.g. _repo_root_cg=$(git rev-parse --show-toplevel) or _repo_root_cg=$PWD) before the case blocks, or assert snap_dir is outside $PWD/* explicitly
+2	out_of_scope	latent	risk-integration	skills/review-and-fix/scripts/test-review-and-fix.sh:3012-3049	step5 relocated-structural-loc still uses out-of-repo IMPLEMENT_TMPDIR	Case name implies $PWD relocation but $case_dir/impl keeps the default .pre-coder-snapshots branch so the loop never exercises relocated telemetry paths; only mav-apply and new unit cases do	Align IMPLEMENT_TMPDIR with in-repo layout or rename/narrow the case so it does not imply relocation coverage the stub does not hit
+
+### 1. [correctness] `skills/review-and-fix/scripts/test-review-and-fix.sh:512-519` — carryover grant-root assertion
+
+The plan correctly requires `cd` into each work repo before `pre_coder_snapshot_dir` and fixture seeding (lines 51–52), so the `$PWD` relocation branch will run for `…/implement/round-1` layouts. It does not say to refresh `_repo_root_cg`, which is still taken from the harness CWD before that `cd` (lines 513, 559).
+
+After relocation, `snap_dir` lives under `${TMPDIR}/larch-pre-coder-snapshots/…`, so the existing `case "$snap_dir" in "$_repo_root_cg"/*` check still passes even when it no longer means “outside the work repo Codex `--add-dir "$PWD"` root.” A regression that leaves snapshots at `$work/implement/.pre-coder-snapshots/` (inside the grant) would not trip this assertion; the new in-repo relocation unit case would catch it, but the carryover guards would give a false sense of coverage.
+
+**Suggested revision:** After `cd "$work_carryover_guard"` / `cd "$work_index_carryover_guard"`, recompute `_repo_root_cg` from that repo (or assert `snap_dir` is outside `"$PWD"` / `"$PWD"/*` directly), matching the plan’s stated “outside `$PWD`” intent.
+
+### 2. [OUT_OF_SCOPE] [risk-integration] `skills/review-and-fix/scripts/test-review-and-fix.sh:3012-3049` — `relocated-structural-loc` layout
+
+The plan updates `mav-apply-relocated-pre-head` to in-repo `IMPLEMENT_TMPDIR="$PWD/implement"` but does not touch `relocated-structural-loc`, which still sets `IMPLEMENT_TMPDIR="$case_dir/impl"` while `cd "$case_dir/work"`. That keeps the default snapshot path and does not exercise relocated `pre_coder_snapshot_dir` inside `run_implement_loop` telemetry. Not a production gap given the dedicated in-repo relocation tests; worth tracking so the case name and coverage stay aligned.

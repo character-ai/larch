@@ -1,0 +1,50 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -11,7 +11,7 @@
+ - Post-coder-head write (~lines 1531-1532): only when `status == fix-applied` (unchanged guard). `rm -f "$round_dir/post-coder-head.txt" 2>/dev/null || true` immediately before `git rev-parse HEAD > "$round_dir/post-coder-head.txt"` (covers reused `round_dir` with a stale `0444` head); then `chmod 0444 "$round_dir/post-coder-head.txt" 2>/dev/null || true`. Keep the existing `|| rm -f` failure branch on the head write.
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/review-and-fix.md`
+-- Keep line 56 accurate (the two-branch behavior now matches code). Add: (1) the relocated dir lifecycle — when the `$PWD` branch fires, snapshots live under `${TMPDIR}/larch-pre-coder-snapshots/<hash>/`, **outside** `IMPLEMENT_TMPDIR`, so `cleanup-tmpdir.sh` does not reap them; the OS `$TMPDIR` policy does; writers clear known prior artifacts in that per-round `snap_dir` before each regeneration so stale `0444` files cannot block redirects. (2) the `chmod 0444` integrity hardening and that round cleanup (`rm -rf`) still removes read-only files. (3) the `<hash>` is `cksum` of the resolved round-parent path (disambiguates same-basename round dirs).
++- Keep line 56 accurate (the two-branch behavior now matches code). Add: (1) the relocated dir lifecycle — when the `$PWD` branch fires, snapshots live under `${TMPDIR}/larch-pre-coder-snapshots/<hash>/`, **outside** `IMPLEMENT_TMPDIR`, so `cleanup-tmpdir.sh` does not reap them; the OS `$TMPDIR` policy does; writers clear known prior artifacts in that per-round `snap_dir` before each regeneration so stale `0444` files cannot block redirects. (2) the `chmod 0444` integrity hardening and that round cleanup (`rm -rf`) still removes read-only files. (3) the `<hash>` is `cksum` of the resolved round-parent path (disambiguates same-basename round dirs). (4) sandbox-confinement trust boundary — snapshot integrity assumes `codex exec --full-auto` confines writes to declared `--add-dir`/workspace roots; relocation and `chmod 0444` are defense-in-depth if the sandbox is more permissive; no CI sandbox-confinement probe (session decision 4; closes acceptance criterion 4).
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/review-implement-step5-loop.sh`
+ - MAV apply `run_implement_mav_apply` (~lines 401-403): call `clear_stale_pre_coder_snapshot_artifacts "$snap_dir"` before the `pre-coder-head.txt` write; then write; then `chmod 0444 "$snap_dir/pre-coder-head.txt" 2>/dev/null || true`. Do **not** call `snapshot_pre_coder_tracked_state` — MAV stays head-only (preserves #3272 carryover scope).
+@@ -29,7 +29,7 @@
+ - Document why `--add-dir "$SESSION_TMPDIR"` is intentionally wider than the Step 5 `--add-dir "$round_dir"` grant. Note (verified) that `launch-cursor-implement.sh` has no equivalent `--add-dir` grant, so this is Codex-only — no launcher-parity change.
+ 
+ ### UPDATED: `SECURITY.md`
+-- Keep the line 64 claim (now true). Add the precondition/lifecycle: when `IMPLEMENT_TMPDIR` (round parent) is under `$PWD`, snapshots relocate to `${TMPDIR}/larch-pre-coder-snapshots/<hash>/`; this assumes `$TMPDIR` itself is outside `$PWD` (true on standard macOS/Linux). Note the relocated dir is not reaped by `cleanup-tmpdir.sh`; production writers clear per-round snapshot files before regeneration.
++- Keep the line 64 claim (now true). Add the precondition/lifecycle: when `IMPLEMENT_TMPDIR` (round parent) is under `$PWD`, snapshots relocate to `${TMPDIR}/larch-pre-coder-snapshots/<hash>/`; this assumes `$TMPDIR` itself is outside `$PWD` (true on standard macOS/Linux). Note the relocated dir is not reaped by `cleanup-tmpdir.sh`; production writers clear per-round snapshot files before regeneration. State the sandbox-confinement trust boundary: integrity assumes Codex `--full-auto` confines writes to declared `--add-dir`/workspace roots; `chmod 0444` is defense-in-depth if not; no CI sandbox-confinement probe.
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.sh`
+ - Add an **in-repo** relocation case: build a work repo, `cd` into it so `$PWD` is that repo, set `round_dir="$PWD/implement/round-1"`, `eval` `pre_coder_snapshot_dir`, and assert `snap_dir` is **not** under `$PWD` and **not** under `round_dir` (the production trust boundary today's outside-repo fixtures never exercise — FINDING_11). Compute `expected_tmp="${TMPDIR:-/tmp}"; expected_tmp="${expected_tmp%/}"` (same normalization as production) and assert `snap_dir` matches `"$expected_tmp/larch-pre-coder-snapshots/"*`.
+@@ -44,7 +44,7 @@
+ - Keep the existing outside-repo carryover-guard behavioral assertions intact.
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.md`
+-- Document the in-repo relocation case (normalized `$TMPDIR` prefix), `0444` perms case, stale-0444 rewrite case, post-coder-head mode assertions on `run_orchestrator_case` / `carryover-orchestrator` only (not MAV), `step5-starting-round` `clear_stale_pre_coder_snapshot_artifacts` eval at line 2664, and carryover-fixture cwd alignment.
++- Document the in-repo relocation case (normalized `$TMPDIR` prefix), `0444` perms case, stale-0444 rewrite case, post-coder-head mode assertions on `run_orchestrator_case` / `carryover-orchestrator` only (not MAV), `step5-starting-round` `clear_stale_pre_coder_snapshot_artifacts` eval at line 2664, carryover-fixture cwd alignment, and the sandbox-confinement trust-boundary sentences in `review-and-fix.md` / `SECURITY.md` (acceptance criterion 4).
+ 
+ ### Approach
+ - One-helper change: every snapshot reader and writer already derives its path through `pre_coder_snapshot_dir "$round_dir"` (review-and-fix.sh:361,369,376,417,437,462,472,495,1321; review-implement-step5-loop.sh:340,401), so adding the `$PWD` branch relocates reads and writes together with no call-site edits.
+@@ -52,6 +52,7 @@
+ - Containment keys on the round **parent** (where the `.pre-coder-snapshots` sibling would land) versus `$PWD` (the repo-root grant). Relocating to `$TMPDIR` puts snapshots outside the Step 5 coder grants `-C "$PWD" --add-dir "$round_dir" --add-dir "$PWD"` (verified at review-and-fix.sh:273).
+ - `chmod 0444` is defense-in-depth on top of relocation (integrity, not confidentiality), applied to files after all writes complete, never to directories. Relocated paths persist across runs — **clear known artifacts before each write**, then harden; never depend on redirect failure to drop a stale `0444` head.
++- Document the Codex `--full-auto` sandbox-confinement precondition in `review-and-fix.md` and `SECURITY.md`: relocation + `chmod 0444` assume writes stay within declared `--add-dir`/workspace grants; closes acceptance criterion 4 without a CI sandbox probe.
+ - Step5 harness loads snapshot helpers by `sed` range, not full `review-and-fix.sh`; any new helper called from `review-implement-step5-loop.sh` must be `eval`'d in the `step5-starting-round` section alongside `pre_coder_snapshot_dir`.
+ - Post-coder-head `0444` acceptance must follow production guards (`CODER_STATUS=applied` / `status==fix-applied`), not MAV no-changes stubs.
+ 
+@@ -60,6 +61,7 @@
+ - Trailing slash on macOS `$TMPDIR` (`/var/folders/.../T/`): strip it before composing the path to avoid `//` (production helper and relocation test both use `${var%/}`).
+ - Round parent does not resolve (round_dir not yet created): `pwd -P` fallback returns the literal parent; real call sites always pass an existing absolute `IMPLEMENT_TMPDIR`, so the result stays stable within a round.
+ - Pathological `$TMPDIR` under `$PWD`: the relocation target would still sit inside `--add-dir "$PWD"`. Out of scope to fully defend; documented as a precondition. The in-repo test asserts the standard case (snap_dir outside `$PWD`).
++- Codex sandbox more permissive than declared grants: documented trust boundary — integrity assumes `--full-auto` write confinement to `--add-dir`/workspace roots; `chmod 0444` is defense-in-depth; no CI probe (acceptance criterion 4).
+ - Stale `0444` on deterministic relocated `snap_dir`: a later same-repo/same-round run reuses the path; targeted `rm -f` before redirects prevents silent carryover skew (head redirect fails → `|| rm -f` drops head while tracked-path/patch `0444` files remain).
+ - `chmod 0444` then re-write within a round: never happens (each artifact written once per round after clear); cross-run reuse is handled by `clear_stale_pre_coder_snapshot_artifacts` / `rm -f` on `post-coder-head.txt` before write.
+ - MAV subshell without `clear_stale` eval: fails at first production call; mitigated by line-2664 eval (FINDING_1).
+@@ -80,4 +82,4 @@
+ - Carryover-guard fixtures: compute `snap_dir` and seed artifacts from the same work-repo `cd` as the guard under test.
+ - `make lint` (shellcheck, bash32, script-md-siblings) and `bash skills/review-and-fix/scripts/test-review-and-fix.sh` must pass.
+ 
+-diff_lines: 220
++diff_lines: 226

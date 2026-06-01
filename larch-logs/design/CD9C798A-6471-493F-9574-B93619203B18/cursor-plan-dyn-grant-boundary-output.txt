@@ -1,0 +1,3 @@
+Reviewing the plan and grant-boundary-related code paths.
+Checking whether the plan's `$PWD` vs git-root comparison gap is material for production grants:
+{"no_issues_found": true}

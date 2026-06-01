@@ -1,0 +1,6 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Codex-Arch, Codex-Edge, Cursor-Innovation, Codex-Innovation, Codex-Pragmatic, Cursor-dyn-artifact-lifecycle, Codex-dyn-artifact-lifecycle	accepted													YES	true	major	excellent	false	Cursor
+FINDING_2	Cursor-Innovation	rejected													NO	false-positive	nit	weak	false	Cursor
+FINDING_3	Cursor-Requirements, Codex-dyn-harness-coupling	accepted													YES	true	major	excellent	false	Cursor
+FINDING_4	Codex-Requirements	accepted													YES	true	major	good	false	Cursor
+FINDING_5	Codex-dyn-harness-coupling	accepted													YES	true	major	excellent	false	Cursor
