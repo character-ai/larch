@@ -43,6 +43,40 @@ trap 'rm -rf "$TMP"' EXIT
 STUB="$TMP/stub-bin"
 mkdir -p "$STUB"
 
+# Hermetic backstop (#3338): run_loop defaults LARCH_PLAN_REVIEW_REVISE_SH to the real
+# revise-plan-with-waterfall.sh, which can reach real codex/cursor binaries. Prepend
+# minimal stubs so make lint never blocks on external availability.
+STUB_BIN="$TMP/bin"
+mkdir -p "$STUB_BIN"
+cat >"$STUB_BIN/codex" <<'STUB_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+if [[ -n "$output_path" ]]; then
+    printf 'stub codex output\n' >"$output_path"
+fi
+printf 'stub codex stdout\n'
+STUB_CODEX
+cat >"$STUB_BIN/cursor" <<'STUB_CURSOR'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'stub cursor stdout\n'
+STUB_CURSOR
+cat >"$STUB_BIN/claude" <<'STUB_CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'stub claude stdout\n'
+STUB_CLAUDE
+chmod +x "$STUB_BIN/codex" "$STUB_BIN/cursor" "$STUB_BIN/claude"
+export PATH="$STUB_BIN:$PATH"
+
 set +e
 "$PLR" \
     --design-tmpdir "$TMP" \
