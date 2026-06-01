@@ -1,0 +1,14 @@
+Reviewing the branch diff and auditing `cmd_clear_stall` / `cmd_seed_terminal_state` for set -e KV emission guarantees.
+### In-Scope Findings
+
+- **correctness** `skills/implement/scripts/stall-recovery-report.sh:263-266` — In the `seed-terminal-state` rewrite branch, `step` and `phase` are loaded via unguarded command substitutions (`step=$(safe_step_value "$(kv_get "$state" STALL_STEP "8")")` and the same for `PHASE`). Under `set -euo pipefail`, a non-zero exit from `kv_get` / `read-session-env-key.sh` (e.g. file becomes unreadable after `check_ship_pr_state_syntax`, `awk` failure, or a race) aborts the script before `emit_seeded_false_exit` runs, so stdout can lack `SEEDED=false` even though `stall-recovery-report.md` promises that operational failures always emit that KV first. The post-`mktemp` chain is guarded; this gap is immediately before it. **Suggested fix:** Split reads out of nested substitutions and guard each call, e.g. `step_raw=$(kv_get "$state" STALL_STEP "8") || emit_seeded_false_exit 1` then `step=$(safe_step_value "$step_raw")` (same for `phase`), or wrap both in a small helper that calls `emit_seeded_false_exit` on any `kv_get` failure; add a harness case that makes `kv_get` fail after format checks.
+
+- **correctness** `skills/implement/scripts/stall-recovery-report.sh:288` — On the `SEED_MODE=seed` path, `mkdir -p "$dir"` has no `|| emit_seeded_false_exit` handler. A permissions or filesystem failure trips `set -e` and exits without `SEEDED=false`, which breaks the orchestrator contract (“`SEEDED=false`, the KV is missing, or non-zero → terminal-route failure”). **Suggested fix:** Use `mkdir -p "$dir" || emit_seeded_false_exit 1` (and optionally assert the directory is writable before `mktemp`); extend `test-stall-recovery-report.sh` with a forced `mkdir` failure if you want regression coverage.
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/implement/scripts/stall-recovery-report.sh:216-234` — For `clear-stall`, the temp-write → temp re-read → `mv -f` → destination re-read chain after `mktemp` uses explicit `|| emit_cleared_false_exit` / `if ! rewrite_ship_pr_state_keys` guards; this matches the plan and existing mv/temp-assert harness cases. No comparable pre-`mktemp` unguarded `kv_get` on that path.
+
+- **correctness** `skills/implement/scripts/stall-recovery-report.sh:225-227,304-306` — `rm -f "$tmp"` inside plain `if` bodies (not tied to `||`) could theoretically abort under `set -e` before the emit helper if `rm` failed; risk is negligible with `rm -f` and was not introduced as a new pattern by this branch’s core design.
+
+- **correctness** `skills/implement/scripts/test-stall-recovery-report.sh` — Harness covers mv/temp/dest assert failures for both subcommands but not `kv_get`/`mkdir` failures before `SEEDED=false` emission on the rewrite/seed paths above.

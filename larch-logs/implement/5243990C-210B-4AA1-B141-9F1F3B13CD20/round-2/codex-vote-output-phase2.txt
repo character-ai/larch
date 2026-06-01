@@ -1,0 +1,34 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- parsed KV is diagnostic-only; not worth a follow-up issue
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- guarded helper calls cover the common paths; ERR-trap tail emission is disproportionate
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- intentional split between exiting validator and boolean format check
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- maintenance-size concern, not actionable for this extraction
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- absent-file CLEARED=false matches documented contract and plan
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- theoretical awk-embedding risk on bounded internal key values
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- pre-existing parser limitation; current boolean KVs are safe
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- deeper integration tests are optional hardening, not a merge blocker
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- KV assertions already cover the failure contract
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- extra failure-mode harnesses are nice-to-have
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- unused KV should not be structurally pinned
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- first-case NEVER #20 guard is sufficient for this harness scope
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- stubbed E2 scope is intentional; renderer authority stays elsewhere
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- same implement-tmpdir trust boundary as sibling subcommands
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- pre-existing Step 18 trust model, not introduced here
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- out of diff scope
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- missing prebody edge case predates this wrapper
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documented intentional trade-off, not a defect
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- rare tmp orphans in session tmpdir are low impact
+FINDING_24: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=no-fix UNCERTAIN=true -- pre-existing orchestration ambiguity
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- explicit exit 0 is stylistic only
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- non-empty summary guard is already pinned in test-render-cost-line-callsites.sh
+FINDING_27: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation, not a problem to file
+FINDING_28: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation, not a problem to file
+FINDING_29: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_30: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation, not a problem to file
+FINDING_31: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dead token_rc assignment is harmless noise
+FINDING_32: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation, not a problem to file
+FINDING_33: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation, not a problem to file
+FINDING_34: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

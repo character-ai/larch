@@ -1,0 +1,7 @@
+warning: unexpected line in Suggested revisions sub-list before first 'From:' bullet in FINDING_2 ('- (no slot-specific revision beyond generic “address concern” in source)')
+warning: unexpected line in Suggested revisions sub-list before first 'From:' bullet in FINDING_3 ('- (no slot-specific revision beyond generic “address concern” in source)')
+warning: unexpected line in Suggested revisions sub-list before first 'From:' bullet in FINDING_7 ('- (no slot-specific revision beyond generic “address concern” in source)')
+warning: unexpected line in Suggested revisions sub-list before first 'From:' bullet in FINDING_8 ('- (no slot-specific revision beyond generic “address concern” in source)')
+warning: unexpected line in Suggested revisions sub-list before first 'From:' bullet in FINDING_16 ('- (no slot-specific revision beyond generic “address concern” in source)')
+warning: unexpected line in Suggested revisions sub-list before first 'From:' bullet in FINDING_16 ('### OOS_1: [OUT_OF_SCOPE] Pre-existing monolithic stall-recovery-report surface')
+warning: field-like line in Suggested revisions before first 'From:' bullet in FINDING_16 ('- **Reviewer(s)**: cursor-specialist-structure-output.txt')

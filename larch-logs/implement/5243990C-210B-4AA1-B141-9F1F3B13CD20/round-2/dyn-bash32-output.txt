@@ -1,0 +1,16 @@
+Reviewing the branch diff and shell changes for bash 3.2 compatibility and related code-quality issues.
+### In-Scope Findings
+
+- **code-quality** `skills/implement/scripts/stall-recovery-report.sh:129-162` — `rewrite_ship_pr_state_keys` builds an inline awk program by interpolating `${vals[$i]}` into double-quoted bash strings (`u["KEY"]="VALUE"`). On the `seed-terminal-state` rewrite path (`skills/implement/scripts/stall-recovery-report.sh:249-257`), `STALL_STEP` and `PHASE` are taken from `kv_get` and passed through unchanged when `--stall-step` / `--phase` are omitted, so any value that satisfies `check_ship_pr_state_format` (only `KEY=…` shape, not value charset) can reach awk unescaped. Values containing `"`, `\`, or newlines can break the generated awk program or yield a corrupt `ship-pr-state.sh` while `set -euo pipefail` is active. `clear-stall` is less exposed (literals `false` and `""`), but the helper is shared. **Suggested fix:** Before every rewrite, normalize disk-sourced `step` / `phase` with `safe_step_value` / `safe_phase_value` (or map unknowns to the same defaults used on the seed-fresh path), and escape awk string literals in the builder (e.g., `gsub`/`awk -v` per key instead of bash string concatenation into the program text).
+
+- **code-quality** `skills/implement/scripts/step-18b-final-report.sh:61-70` — `token_rc` is assigned in the token-report failure branch but never read or emitted; the contract documents only `EMIT_BODY`, `WFR_RC`, and `STEP17_EMITTED_PRESENT`. That is harmless on bash 3.2 but adds noise for reviewers and future edits (someone may assume a KV exists). **Suggested fix:** Drop `token_rc` and the assignment, or emit a documented KV (e.g. `TOKEN_REPORT_RC`) if orchestration should distinguish token-report failure from write-final-report failure.
+
+### Out-of-Scope Observations
+
+- **`local -a keys=() vals=()`**, **`mktemp "$dir/${base}.tmp.XXXXXX"`**, **`cmp -s`**, **`[[ … ]]`**, and **C-style `for ((…))`** match patterns already used across this repo (`skills/implement/scripts/stall-recovery-report.sh:36-44` `atomic_write_text`, `scripts/ship-pr.sh`, `skills/review-and-fix/scripts/review-and-fix.sh`) and are not forbidden by `scripts/lint-bash32.sh` / `BASH_AUTHORING.md` §3; no new bash 4+ constructs (`declare -A`, `mapfile`, `&>>`, namerefs, `${var,,}`) appear in the branch diff.
+
+- Round 1 already tightened empty/comment-only `ship-pr-state.sh` handling (`check_ship_pr_state_format` / `validate_ship_pr_state` `saw_key` guard) and fixed `PLUGIN_ROOT` rebind after sourcing `plugin-root.env` in `step-18b-final-report.sh`.
+
+- `step-18b-final-report.sh:85-88` preserves the prior Step 18 `cmp` semantics (missing `.step18-prebody` makes `! cmp -s` true); that is an intentional behavioral carry-over per the plan, not a new bash-3.2 portability defect.
+
+**Commits reviewed (since merge-base with `main`):** `4d3623378` (extract), `828ae39de` (run log), `26814f1c8` (relevant-checks), `3356ca408` (round-1 review fixes).
