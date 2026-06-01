@@ -67,7 +67,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 17. **NEVER silently drop a voted-in OOS finding.** **Why**: accepted OOS blocks are the durable contract between reviewers, the implementer manifest, and Step 9a.1 filing — losing them between acceptance and GitHub/inline disposition breaks auditability and leaves follow-up work untracked. **How to apply**: honor the Terminal disposition invariant in the OOS triage section; run `oos-disposition-gate.sh` before clearing `OOS_PENDING`; if the gate fails, log with `append-tool-failure.sh` and do not clear `OOS_PENDING` or write the `run-statistics` batch until the gap is resolved.
 
-18. **NEVER set `OOS_PENDING=false` without a passing `oos-disposition-gate.sh` invocation** (fork-mode and `repo_unavailable=true` carve-outs skip the gate entirely — those modes intentionally bypass GitHub filing surfaces). **Why**: clearing `OOS_PENDING` without the mechanical cross-check allows the ship-pr state machine to proceed after Step 9a.1 while non-security accepted OOS blocks still have neither filed GitHub issue URLs nor `Inline-triage rule N:` breadcrumbs nor explicit rejection markers in the `oos-issues` NDJSON batch. **How to apply**: invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.sh` per the Step 8+ OOS checkpoint Bash block immediately after the `/issue` pipeline concludes and before rewriting `ship-pr-state.sh` to `OOS_PENDING=false`, including `--oos-issues-ndjson` so filed URLs and rejected-sub-block evidence match the staged `oos-issues.ndjson` path.
+18. **NEVER set `OOS_PENDING=false` without a passing `oos-disposition-gate.sh` invocation** (fork-mode and `repo_unavailable=true` carve-outs skip the gate entirely — those modes intentionally bypass GitHub filing surfaces). **Why**: clearing `OOS_PENDING` without the mechanical cross-check allows the ship-pr state machine to proceed after Step 9a.1 while non-security accepted OOS blocks still have neither filed GitHub issue URLs nor `Inline-triage rule N:` breadcrumbs nor explicit rejection markers in the `oos-issues` NDJSON batch. **How to apply**: invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh` per the Step 8+ disposition-checkpoint Bash block immediately after the `/issue` pipeline concludes and before rewriting `ship-pr-state.sh` to `OOS_PENDING=false`; the checkpoint resolves ndjson discovery and passes `--oos-issues-ndjson` to `oos-disposition-gate.sh` when required.
 
 19. **NEVER make any git commit after the PR has merged**, regardless of branch, regardless of file paths (including under `larch-logs/`), regardless of "the diff is small and clean". **Why**: #2182 set this contract — after the business PR has merged, `/implement` MUST NOT make any git commit that advances repo history (especially on `main`): log content produced after the merge MAY be lost; that is the explicit, deliberate trade-off. Any such commit produced after `$IMPLEMENT_TMPDIR/post-merge-sentinel` exists strands on local main (policy: never push to main directly) and accumulates orphan commits across sessions, eventually breaking `local-cleanup.sh` and `git pull origin main` for downstream runs. Past regressions: #2120, #2128, #2140, #2182, and #2552 (PR #2530 reintroduced the pattern via a `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` bypass in `larch-log.sh`). **How to apply**: orchestrator discipline covers *all* post-merge git commits; the **mechanical** block for `larch-log.sh commit` after the sentinel is the post-merge-sentinel check in `scripts/larch-log.sh` — it is unconditional and no bypass env var is honored. Other post-merge git writes are not mechanically gated here and remain policy violations if attempted. Do NOT add new bypass env vars to the `larch-log.sh` guard. Do NOT add new callers that set bypass env vars to commit after the sentinel. Do NOT "re-render the final-summary and commit it" — re-render in-tmpdir only. The post-merge tracking-issue comment refresh in `write-final-report.sh --comment-only` is API-only and must remain so. If a future need arises to land merged-outcome data in the run-log tree, do it BEFORE the squash-merge (write speculative `OUTCOME=merged` into `final-summary.md` and include it in the final pre-merge log flush commit so it rides into the squash-merge tree, rollback on merge failure) — never after. See also `scripts/larch-log.md` and `scripts/ship-pr.md`.
 20. **NEVER write a free-form natural-language recap summary at end of turn after Step 17** — including but not limited to a "Run complete." / "Implementation merged." prose line, a bullet list summarizing PR / Version / Changes / Code review / CI / Tracking issue, a parenthetical cost paraphrase (for example `~$10.46`, `~$X total`, `SIMPLE tier, ~27m`), or any natural-language replacement for the structured `## /implement run ... — <outcome>` block emitted by `write-final-report.sh --print-stdout`. **Why**: free-form summaries either omit the canonical `- **Cost**:` line or paraphrase it as a TOTAL-only figure, dropping the per-agent breakdown (`Claude $X, Codex $X, Cursor $X`) users depend on. **How to apply**: after Step 17's `write-final-report.sh` invocation succeeds, if `summary-final.md` is non-empty then write `$IMPLEMENT_TMPDIR/.step17-printed` as the Bash-render sentinel only. After the orchestrator actually emits the full body of summary-final.md verbatim as plain chat markdown, write `$IMPLEMENT_TMPDIR/.step17-emitted` as the top-chat-emission sentinel, then immediately continue to Step 18. Emit only warning repeats and the machine footer required by Step 18 prose. Do NOT add a closing recap, do NOT echo the structured block in your own words, and do NOT mention costs in your own prose. The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission of $IMPLEMENT_TMPDIR/summary-final.md defined in Step 17; Step 18 may do the same only under its dual-condition guard.
@@ -1184,105 +1184,25 @@ For Step 10/12 rebase + re-bump retries, `ship-pr.sh` owns one extra freshness c
 - **Exit 5**: read `RESUME_PHASE` and `CALLER_KIND`. If `CALLER_KIND` is `ship_pr_pre_push`, **do not** invoke the Rebase + Re-bump Sub-procedure from this exit — **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` and run the Conflict Resolution Procedure with `caller_kind=ship_pr_pre_push` (Phase 1–4; parse `CONFLICT_FILES=...` from the exit-5 contract stream (`ship-pr.sh` emits `emit_kv CONFLICT_FILES` with the post–deterministic-pre-pass remainder immediately before exit 5; same comma-separated shape as `early_rebase`'s M1 capture — if that line is missing, defensively fall back to `git diff --name-only --diff-filter=U` before Phase 1; Phase 4 exit 0 re-invokes `ship-pr.sh --resume-phase ship-pr-rrr-phase14` with the same foreground `Invoke:` flags as Step 8+ otherwise). On Phase 1–4 bail, set `STALL_TRACKING=true` and continue to Step 16. If `CALLER_KIND` is `step8b_rebase` or `step8_apply_bump_same_version`, **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-rebump-subprocedure.md` before invoking the Rebase + Re-bump Sub-procedure with that exact `CALLER_KIND`. On success, re-invoke `ship-pr.sh --resume-phase "$RESUME_PHASE"`. On hard failure, set `STALL_TRACKING=true` and continue to Step 16.
 - **Exit 6**: transient network failure. Read `BAIL_REASON` for telemetry. Read `PHASE` from `ship-pr-state.sh`. Maintain a per-phase retry counter at `$IMPLEMENT_TMPDIR/ship-pr-net-retries-$PHASE.count` (initialize to 0 if missing; increment on each Exit 6 for this `PHASE`). If the count is ≤ 3: foreground `${CLAUDE_PLUGIN_ROOT}/scripts/sleep-seconds.sh 30` (NOT `ScheduleWakeup` — see NEVER #9), then re-invoke `ship-pr.sh` with the same foreground arguments as the Step 8+ `Invoke:` block without `--resume-phase` (persisted `PHASE` resumes the main loop; do not pass `--resume-phase $PHASE` for values such as `checks` or `pr-prep`). On the 4th transient failure for the same phase, treat as Exit 4: set `STALL_TRACKING=true` in the state file via a key-based rewrite, and continue to Step 16. Do NOT end the turn on Exit 6; the retry is part of the same orchestrator turn.
 
-**OOS checkpoint**: when `OOS_PENDING=true`, execute the Step 9a.1 OOS GitHub issue pipeline using the canonical OOS policy from the earlier "Out-of-Scope Handling" section. For Step 5 review OOS, prefer the `accumulated_oos_markdown_file` / `accumulated_oos_file` paths in `$IMPLEMENT_TMPDIR/review-and-fix-summary.json`; `$IMPLEMENT_TMPDIR/oos-accepted-review.md` is a compatibility mirror written from the same accumulated markdown. The script owns PR-body creation and PR creation; the prompt owns `/issue` Skill calls because they are interactive skill invocations. After the OOS pipeline concludes (whether or not any items were accepted or filed), **before** writing `run-statistics` or clearing `OOS_PENDING`, run the disposition gate below (skipped when `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true` in `$IMPLEMENT_TMPDIR/ship-pr-state.sh`). On gate **exit 1** (disposition gap), append a `Tool Failures` entry with `append-tool-failure.sh` capturing stderr, **do not** write the `run-statistics` batch, **do not** set `OOS_PENDING=false`, and stop the Step 8+ progression until the operator resolves the missing disposition (re-run `/issue`, add missing `Inline-triage rule` commit bodies on the branch, append explicit rejected-OOS markers to the `oos-issues` NDJSON batch per the Out-of-Scope Handling section, or correct accepted-OOS markdown). On gate **exit 2** (invalid `--commit-range`, missing git work tree, or other gate validation failure), append `Tool Failures` the same way, but treat remediation as **range/setup**: fix `origin/main` fetch/availability, ensure the orchestrator runs inside the target git work tree, and correct the gate inputs — not as a missing OOS URL/rejection case. On gate exit 0, **unconditionally write the `run-statistics` batch**: compose a brief markdown summary — e.g. `Run $RUN_ID: $ACCEPTED accepted OOS item(s) filed as issues, $REJECTED rejected.` where `$ACCEPTED` is the count of accepted-OOS items filed and `$REJECTED` is the count rejected — write it to a temp file under `$IMPLEMENT_TMPDIR`, then call `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch run-statistics --input-file <file>`. This write is unconditional once the gate passes — it runs even when no OOS items were present (write `Run $RUN_ID: 0 OOS issues filed.` in that case). Then set `OOS_PENDING=false` in the state file and re-enter with `--resume-phase pr-create`.
+**OOS checkpoint**: when `OOS_PENDING=true`, execute the Step 9a.1 OOS GitHub issue pipeline using the canonical OOS policy from the earlier "Out-of-Scope Handling" section. For Step 5 review OOS, prefer the `accumulated_oos_markdown_file` / `accumulated_oos_file` paths in `$IMPLEMENT_TMPDIR/review-and-fix-summary.json`; `$IMPLEMENT_TMPDIR/oos-accepted-review.md` is a compatibility mirror written from the same accumulated markdown. The script owns PR-body creation and PR creation; the prompt owns `/issue` Skill calls because they are interactive skill invocations. After the OOS pipeline concludes (whether or not any items were accepted or filed), **before** writing `run-statistics` or clearing `OOS_PENDING`, run the disposition checkpoint below (the helper skips the gate when `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true` in `$IMPLEMENT_TMPDIR/ship-pr-state.sh`). Branch on `oos-disposition-checkpoint.sh` exit status: **exit 0** → **unconditionally write the `run-statistics` batch**: compose a brief markdown summary — e.g. `Run $RUN_ID: $ACCEPTED accepted OOS item(s) filed as issues, $REJECTED rejected.` where `$ACCEPTED` is the count of accepted-OOS items filed and `$REJECTED` is the count rejected — write it to a temp file under `$IMPLEMENT_TMPDIR`, then call `larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch run-statistics --input-file <file>`. This write is unconditional once the checkpoint passes — it runs even when no OOS items were present (write `Run $RUN_ID: 0 OOS issues filed.` in that case). Then set `OOS_PENDING=false` in the state file and re-enter with `--resume-phase pr-create`. **Exit 1** (disposition gap): the helper already logged `Tool Failures` with `--site step-8-oos-checkpoint`; **do not** write the `run-statistics` batch, **do not** set `OOS_PENDING=false`, and stop Step 8+ until the operator resolves the missing disposition (re-run `/issue`, add missing `Inline-triage rule` commit bodies on the branch, append explicit rejected-OOS markers to the `oos-issues` NDJSON batch per the Out-of-Scope Handling section, or correct accepted-OOS markdown). **Exit 2** (validation/setup): the helper logged with `--site step-8-oos-checkpoint-validation`; treat remediation as **range/setup** (fix `origin/main` fetch/availability, ensure the orchestrator runs inside the target git work tree, correct ndjson discovery / session-id ambiguity) — **not** as a missing OOS URL/rejection case.
 
 **Bail-time `steps_ran` invariant (run log `manifest.json`)**: If the run ends before Step 9a.1 (no `run-statistics.md` write and no pre-gate `oos-issues.ndjson` on disk), the committed manifest MUST NOT leave `steps_ran` as an ambiguous empty object for downstream audit tooling. `write-final-report.sh` records explicit `steps_ran.step9a1=false` (and `step8` / `step7a` when their on-disk artifacts are absent) for terminal non-merge outcomes (`bailed`, `stalled`, `design-only`, fork dry-run, PR-created-without-merge, etc.); a non-zero exit from that `larch-log.sh manifest` call fails finalization (no silent swallow). `scripts/verify-run-log-completeness.sh` treats missing/null `steps_ran` like `jq '.steps_ran // {}'` for the empty-object bail path, matching `audit-scan-run.sh`. Historical runs that still have `{}` remain readable via the bail-signal fallback: the first non-empty `final-summary.md` line ending with the same terminal outcome tokens (`bailed`, `bailed-needs-user-input`, `stalled`, `design-only`, `forked-dry-run`, `pr-created`, `pr-created-draft`) in both scripts.
 
-Disposition gate (orchestrator Bash tool call — exit status is load-bearing):
+Disposition checkpoint (orchestrator Bash tool call — exit status is load-bearing):
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-_forked=false
-_repo_unavail=false
-if [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
-  _forked=$(grep '^FORKED_TARGET=' "$IMPLEMENT_TMPDIR/ship-pr-state.sh" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r')
-  _repo_unavail=$(grep '^REPO_UNAVAILABLE=' "$IMPLEMENT_TMPDIR/ship-pr-state.sh" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r')
-fi
-_repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
-_oos_mb=""
-_oos_range="HEAD"
-if [ -n "$_repo_root" ] && git -C "$_repo_root" rev-parse -q --verify origin/main >/dev/null 2>&1; then
-  _oos_mb=$(git -C "$_repo_root" merge-base HEAD origin/main 2>/dev/null || true)
-  if [ -n "$_oos_mb" ]; then
-    _oos_range="${_oos_mb}..HEAD"
-  else
-    _oos_range="origin/main..HEAD"
-  fi
-fi
-_RUN_ID=$(tr -d '\r\n' < "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
-_oos_ndjson=""
-if [ -n "$_RUN_ID" ]; then
-  _oos_ndjson="$IMPLEMENT_TMPDIR/larch-logs/implement/$_RUN_ID/oos-issues.ndjson"
-fi
-if [ -z "$_oos_ndjson" ] || [ ! -f "$_oos_ndjson" ]; then
-  _oos_list=$(find "$IMPLEMENT_TMPDIR/larch-logs/implement" -mindepth 2 -maxdepth 2 -name oos-issues.ndjson -type f 2>/dev/null | LC_ALL=C sort || true)
-  _oos_n=$(printf '%s\n' "$_oos_list" | sed '/^$/d' | wc -l | tr -d '[:space:]')
-  if [ "${_oos_n:-0}" -eq 1 ]; then
-    _oos_ndjson=$(printf '%s\n' "$_oos_list" | sed '/^$/d' | head -n 1)
-  elif [ "${_oos_n:-0}" -gt 1 ] && [ -z "$_RUN_ID" ]; then
-    printf '%s\n' 'implement: ambiguous oos-issues.ndjson without session-id; cannot pass --oos-issues-ndjson' >&2
-    exit 2
-  fi
-fi
-_oos_design_path="$IMPLEMENT_TMPDIR/oos-accepted-design.md"
-if [ -n "${DESIGN_TMPDIR:-}" ]; then
-  _oos_design_path="$DESIGN_TMPDIR/oos-accepted-design.md"
-elif [ -f "$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md" ]; then
-  _oos_design_path="$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md"
-fi
-_oos_accepted_csv="$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$_oos_design_path,$IMPLEMENT_TMPDIR/oos-accepted-review.md"
-_non_sec_oos=0
-_oos_blk_awk="${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-non-security-block-count.awk"
-while IFS= read -r _acc; do
-  [ -z "$_acc" ] && continue
-  [ -f "$_acc" ] || continue
-  _n=$(awk -f "$_oos_blk_awk" "$_acc" 2>/dev/null | tr -d '[:space:]' || printf '0')
-  _non_sec_oos=$((_non_sec_oos + _n))
-done <<EOF
-$(printf '%s' "$_oos_accepted_csv" | tr ',' '\n')
-EOF
-if [ "${_forked:-false}" != "true" ] && [ "${_repo_unavail:-false}" != "true" ]; then
-  if [ "${_non_sec_oos:-0}" -gt 0 ]; then
-    if [ -z "$_oos_ndjson" ] || [ ! -f "$_oos_ndjson" ]; then
-      printf '%s\n' 'implement: non-security accepted OOS requires a resolved oos-issues.ndjson path for disposition gate (--oos-issues-ndjson); batch missing or undiscoverable' >&2
-      exit 2
-    fi
-  fi
-fi
-_gate_extra=()
-[ "${_forked:-false}" = "true" ] && _gate_extra+=(--fork-mode)
-[ "${_repo_unavail:-false}" = "true" ] && _gate_extra+=(--repo-unavailable)
-if [ -n "$_oos_ndjson" ] && [ -f "$_oos_ndjson" ]; then
-  _gate_extra+=(--oos-issues-ndjson "$_oos_ndjson")
-fi
-_oos_gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
 set +e
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.sh" \
-  "${_gate_extra[@]+"${_gate_extra[@]}"}" \
-  --accepted-files "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$_oos_design_path,$IMPLEMENT_TMPDIR/oos-accepted-review.md" \
-  --filed-urls-file "$IMPLEMENT_TMPDIR/oos-issues-created.md" \
-  --filed-urls-strict-file "$_oos_design_path" \
-  --commit-range "$_oos_range" 2>"$_oos_gate_log"
-_oos_gate_rc=$?
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh" \
+  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+  ${DESIGN_TMPDIR:+--design-tmpdir "$DESIGN_TMPDIR"}
+_oos_chk_rc=$?
 set -e
-if [ "$_oos_gate_rc" -ne 0 ]; then
-  _oos_fail_site=step-8-oos-checkpoint
-  if [ "$_oos_gate_rc" -eq 2 ]; then
-    _oos_fail_site=step-8-oos-checkpoint-validation
-  fi
-  "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
-    --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-    --site "$_oos_fail_site" \
-    --tool oos-disposition-gate.sh \
-    --exit-code "$_oos_gate_rc" \
-    --category "Tool Failures" \
-    --output-file "$_oos_gate_log" \
-    --redact || true
-  exit 1
-fi
+printf 'OOS_CHECKPOINT_RC=%s\n' "$_oos_chk_rc"
+[ "$_oos_chk_rc" -ne 0 ] && exit "$_oos_chk_rc"
 ```
 
-The OOS cap helper contract remains `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.md`; apply it before any `/issue --input-file` batch emission so per-run issue count limits and excerpt behavior stay unchanged. The disposition gate contract is `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.md`; shared URL/rejection counting helpers live in `${CLAUDE_PLUGIN_ROOT}/scripts/oos-disposition-shared.inc.bash` (sourced by the gate and by `audit-scan-run.sh`); `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-non-security-block-count.awk` remains alongside the gate; offline harness `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh` (sibling `test-oos-disposition-gate.md`; Makefile target `test-oos-disposition-gate`).
+The OOS cap helper contract remains `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-issue-cap.md`; apply it before any `/issue --input-file` batch emission so per-run issue count limits and excerpt behavior stay unchanged. The Step 8+ checkpoint contract is `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.md` (invokes `oos-disposition-gate.sh` per `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-gate.md`); shared URL/rejection counting helpers live in `${CLAUDE_PLUGIN_ROOT}/scripts/oos-disposition-shared.inc.bash` (sourced by the gate and by `audit-scan-run.sh`); `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-non-security-block-count.awk` remains alongside the gate; offline harness `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-oos-disposition-gate.sh` (sibling `test-oos-disposition-gate.md`; Makefile target `test-oos-disposition-gate`) covers both the gate and the checkpoint.
 
 **Execution-issues checkpoint**: `CI_PASSED=true` does not append execution-issues after green CI. The primary flush happens before the bump in Step 7a so the NDJSON record is part of the same PR tree that CI validates; appending after CI would either validate a different tree or create a post-CI audit-log delta. Later steps may still add new entries to `$IMPLEMENT_TMPDIR/execution-issues.md`; Step 7a writes a checkpoint marker even when the pre-bump flush is a skip, and the shared external-implementer / pre-push paths (`scripts/larch-log-flush.sh`, `scripts/refresh-run-logs.sh`) flush any later non-empty tail before the next log commit once that checkpoint exists. Step 18's teardown safety net remains the fallback if the normal path is missed. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/flush-execution-issues.sh` per its contract (see `skills/implement/scripts/flush-execution-issues.md`; regression harness: `skills/implement/scripts/test-flush-execution-issues.sh` with sibling `skills/implement/scripts/test-flush-execution-issues.md`). The Step 8a changelog fallback (no manifest + tracking-issue context) and loud-failure (no manifest + no tracking issue) paths are covered by `skills/implement/scripts/test-step-8a-changelog.sh` (sibling contract: `skills/implement/scripts/test-step-8a-changelog.md`).
 

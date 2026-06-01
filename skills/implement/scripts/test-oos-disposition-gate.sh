@@ -4,6 +4,12 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 GATE="$SCRIPT_DIR/oos-disposition-gate.sh"
+CHECKPOINT="$SCRIPT_DIR/oos-disposition-checkpoint.sh"
+
+[ -x "$CHECKPOINT" ] || {
+  echo "checkpoint not executable: $CHECKPOINT" >&2
+  exit 1
+}
 
 PASS=0
 FAIL=0
@@ -25,6 +31,19 @@ assert_rc() {
     return 1
   fi
   pass "$name"
+}
+
+mkitmp() {
+  local dir
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/oos-chk-impl.XXXXXX")
+  : >"$dir/execution-issues.md"
+  : >"$dir/oos-accepted-main-agent.md"
+  : >"$dir/oos-accepted-review.md"
+  : >"$dir/oos-issues-created.md"
+  printf '%s\n' 'FORKED_TARGET=false' >"$dir/ship-pr-state.sh"
+  printf '%s\n' 'REPO_UNAVAILABLE=false' >>"$dir/ship-pr-state.sh"
+  mkdir -p "$dir/larch-logs/implement"
+  printf '%s' "$dir"
 }
 
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-oos-disposition-gate.XXXXXX")
@@ -460,6 +479,270 @@ set +e
 rc=$?
 set -e
 assert_rc "S3 strict plus loose union passes for two OOS blocks" 0 "$rc"
+
+# --- Checkpoint harness (oos-disposition-checkpoint.sh) ---
+
+# --- Case: checkpoint proceed with zero non-security OOS ---
+_impl_zero=$(mkitmp)
+set +e
+(
+  cd "$GIT_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_zero" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint proceed with empty accepted OOS" 0 "$rc"
+
+# --- Case: checkpoint proceed with filed URL ---
+_impl_filed=$(mkitmp)
+cat >"$_impl_filed/oos-accepted-main-agent.md" <<'EOF'
+### OOS_1: Widget
+- **Description**: bug
+- **Phase**: implement
+EOF
+cat >"$_impl_filed/oos-issues-created.md" <<'EOF'
+Created https://github.com/example/larch/issues/99
+EOF
+printf 'run-filed\n' >"$_impl_filed/session-id"
+mkdir -p "$_impl_filed/larch-logs/implement/run-filed"
+: >"$_impl_filed/larch-logs/implement/run-filed/oos-issues.ndjson"
+set +e
+(
+  cd "$GIT_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_filed" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint proceed with filed URL" 0 "$rc"
+
+# --- Case: checkpoint disposition gap logs Tool Failures ---
+_impl_gap=$(mkitmp)
+cat >"$_impl_gap/oos-accepted-main-agent.md" <<'EOF'
+### OOS_1: Orphan
+- **Description**: no disposition
+- **Phase**: implement
+EOF
+printf 'run-gap\n' >"$_impl_gap/session-id"
+mkdir -p "$_impl_gap/larch-logs/implement/run-gap"
+: >"$_impl_gap/larch-logs/implement/run-gap/oos-issues.ndjson"
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_gap" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint disposition gap exit 1" 1 "$rc"
+if grep -Fq 'step-8-oos-checkpoint' "$_impl_gap/execution-issues.md" \
+  && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_gap/execution-issues.md" \
+  && grep -Fq 'Tool Failures' "$_impl_gap/execution-issues.md"; then
+  pass "checkpoint disposition gap logs Tool Failures"
+else
+  fail "checkpoint disposition gap missing Tool Failures log entry"
+fi
+
+# --- Case: checkpoint fork-mode skip ---
+_impl_fork=$(mkitmp)
+printf 'FORKED_TARGET=true\n' >"$_impl_fork/ship-pr-state.sh"
+printf 'REPO_UNAVAILABLE=false\n' >>"$_impl_fork/ship-pr-state.sh"
+cat >"$_impl_fork/oos-accepted-main-agent.md" <<'EOF'
+### OOS_1: Orphan
+- **Description**: no disposition
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_fork" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint fork-mode skip" 0 "$rc"
+
+# --- Case: checkpoint repo-unavailable skip ---
+_impl_unavail=$(mkitmp)
+printf 'FORKED_TARGET=false\n' >"$_impl_unavail/ship-pr-state.sh"
+printf 'REPO_UNAVAILABLE=true\n' >>"$_impl_unavail/ship-pr-state.sh"
+cat >"$_impl_unavail/oos-accepted-main-agent.md" <<'EOF'
+### OOS_1: Orphan
+- **Description**: no disposition
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_unavail" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint repo-unavailable skip" 0 "$rc"
+
+# --- Case: checkpoint ndjson RUN_ID-keyed path ---
+_impl_runid=$(mkitmp)
+printf 'run-keyed\n' >"$_impl_runid/session-id"
+mkdir -p "$_impl_runid/larch-logs/implement/run-keyed"
+cat >"$_impl_runid/larch-logs/implement/run-keyed/oos-issues.ndjson" <<'EOF'
+{"phase":"code-review","step":"9a.1","category":"OOS","body":"## Rejected / Out-of-Scope Observations (not filed)\n\n### OOS_1: Orphan\nRejected.\n"}
+EOF
+cat >"$_impl_runid/oos-accepted-main-agent.md" <<'EOF'
+### OOS_1: Orphan
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_runid" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint ndjson RUN_ID-keyed rejection satisfies" 0 "$rc"
+
+# --- Case: checkpoint find-fallback when session-id absent ---
+_impl_find=$(mkitmp)
+mkdir -p "$_impl_find/larch-logs/implement/solo-run"
+cat >"$_impl_find/larch-logs/implement/solo-run/oos-issues.ndjson" <<'EOF'
+{"phase":"code-review","step":"9a.1","category":"OOS","body":"## Rejected / Out-of-Scope Observations (not filed)\n\n### OOS_1: Solo\nRejected.\n"}
+EOF
+cat >"$_impl_find/oos-accepted-main-agent.md" <<'EOF'
+### OOS_1: Solo
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_find" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint single ndjson find-fallback" 0 "$rc"
+
+# --- Case: checkpoint ambiguity exit 2 ---
+_impl_amb=$(mkitmp)
+mkdir -p "$_impl_amb/larch-logs/implement/run-a" "$_impl_amb/larch-logs/implement/run-b"
+: >"$_impl_amb/larch-logs/implement/run-a/oos-issues.ndjson"
+: >"$_impl_amb/larch-logs/implement/run-b/oos-issues.ndjson"
+set +e
+"$CHECKPOINT" --implement-tmpdir "$_impl_amb" >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "checkpoint ambiguous ndjson exit 2" 2 "$rc"
+if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_amb/execution-issues.md" \
+  && [ -s "$_impl_amb/oos-disposition-checkpoint.stderr.log" ]; then
+  pass "checkpoint ambiguity logs validation failure"
+else
+  fail "checkpoint ambiguity missing validation log or checkpoint stderr"
+fi
+
+# --- Case: checkpoint precondition exit 2 (non-sec OOS, no ndjson) ---
+_impl_pre=$(mkitmp)
+cat >"$_impl_pre/oos-accepted-main-agent.md" <<'EOF'
+### OOS_1: Needs ndjson
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$GIT_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_pre" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint precondition missing ndjson exit 2" 2 "$rc"
+if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_pre/execution-issues.md"; then
+  pass "checkpoint precondition logs validation failure"
+else
+  fail "checkpoint precondition missing validation log"
+fi
+
+# --- Case: checkpoint gate-exit-2 passthrough (gate validation, not disposition gap) ---
+_impl_g2=$(mktemp -d "${TMPDIR:-/tmp}/oos-chk-g2.XXXXXX")
+: >"$_impl_g2/execution-issues.md"
+printf '%s\n' 'FORKED_TARGET=false' >"$_impl_g2/ship-pr-state.sh"
+printf '%s\n' 'REPO_UNAVAILABLE=false' >>"$_impl_g2/ship-pr-state.sh"
+mkdir -p "$_impl_g2/larch-logs/implement/run-g2val"
+cat >"$_impl_g2/larch-logs/implement/run-g2val/oos-issues.ndjson" <<'EOF'
+{"body":"Created https://github.com/example/larch/issues/404\n"}
+EOF
+printf 'run-g2val\n' >"$_impl_g2/session-id"
+# Accepted CSV paths absent on disk; ndjson lists filed URLs — gate exit 2
+set +e
+(
+  cd "$GIT_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_g2" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint gate validation exit 2" 2 "$rc"
+if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_g2/execution-issues.md" \
+  && [ -s "$_impl_g2/oos-disposition-gate.stderr.log" ]; then
+  pass "checkpoint gate-exit-2 uses gate stderr log"
+else
+  fail "checkpoint gate-exit-2 missing validation log or gate stderr"
+fi
+
+# --- Case: merge-base absent uses origin/main..HEAD and proceeds ---
+MB_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-oos-gate-mb.XXXXXX")
+_impl_mb=$(mkitmp)
+(
+  cd "$MB_TMP"
+  git init -q
+  git config user.email test@test
+  git config user.name test
+  git commit --allow-empty -q -m "unrelated root for origin/main"
+  _origin_main=$(git rev-parse HEAD)
+  git checkout --orphan feature -q
+  git commit --allow-empty -q -m "feature head"
+  git update-ref refs/remotes/origin/main "$_origin_main"
+)
+set +e
+(
+  cd "$MB_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_mb" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint merge-base absent proceeds" 0 "$rc"
+rm -rf "$MB_TMP"
+
+# --- Case: design-path via --design-tmpdir ---
+DESIGN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/oos-design-tmp.XXXXXX")
+_impl_des=$(mkitmp)
+cat >"$DESIGN_TMP/oos-accepted-design.md" <<'EOF'
+### OOS_1: Design strict
+- **Phase**: implement
+- **Filed URL**: https://github.com/example/larch/issues/3100
+EOF
+printf 'run-design\n' >"$_impl_des/session-id"
+mkdir -p "$_impl_des/larch-logs/implement/run-design"
+: >"$_impl_des/larch-logs/implement/run-design/oos-issues.ndjson"
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_des" --design-tmpdir "$DESIGN_TMP" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint design-tmpdir strict URL passes" 0 "$rc"
+
+# --- Case: design-export fallback ---
+_impl_export=$(mkitmp)
+mkdir -p "$_impl_export/design-export"
+cat >"$_impl_export/design-export/oos-accepted-design.md" <<'EOF'
+### OOS_1: Export strict
+- **Phase**: implement
+- **Filed URL**: https://github.com/example/larch/issues/3200
+EOF
+printf 'run-export\n' >"$_impl_export/session-id"
+mkdir -p "$_impl_export/larch-logs/implement/run-export"
+: >"$_impl_export/larch-logs/implement/run-export/oos-issues.ndjson"
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_export" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint design-export fallback passes" 0 "$rc"
+rm -rf "$DESIGN_TMP"
 
 if [ "$FAIL" -ne 0 ]; then
   echo "$FAIL case(s) failed, $PASS passed" >&2
