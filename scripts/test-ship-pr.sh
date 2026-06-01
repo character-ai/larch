@@ -40,7 +40,8 @@ write_subject() {
     cp "$REPO_ROOT/scripts/redact-secrets.sh" "$root/scripts/redact-secrets.sh"
     cp "$REPO_ROOT/scripts/redact-tmpdir-paths.sh" "$root/scripts/redact-tmpdir-paths.sh"
     cp "$REPO_ROOT/scripts/lib-failed-agent-stderr-tail.sh" "$root/scripts/lib-failed-agent-stderr-tail.sh"
-    chmod +x "$root/scripts/redact-secrets.sh" "$root/scripts/redact-tmpdir-paths.sh"
+    cp "$REPO_ROOT/scripts/ci-failed-jobs.sh" "$root/scripts/ci-failed-jobs.sh"
+    chmod +x "$root/scripts/redact-secrets.sh" "$root/scripts/redact-tmpdir-paths.sh" "$root/scripts/ci-failed-jobs.sh"
     cp "$REPO_ROOT/skills/implement/scripts/oos-disposition-gate.sh" "$root/skills/implement/scripts/oos-disposition-gate.sh"
     cp "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$root/skills/implement/scripts/oos-non-security-block-count.awk"
     chmod +x "$root/scripts/ship-pr.sh" "$root/scripts/auto-resolve-changelog.sh" "$root/skills/implement/scripts/oos-disposition-gate.sh"
@@ -323,20 +324,6 @@ SH
     cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
 #!/usr/bin/env bash
 printf 'FAIL test failure (harness stub)\n'
-exit 0
-STUB
-    cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-out_tsv=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --output-tsv) out_tsv=$2; shift 2 ;;
-    *) shift ;;
-  esac
-done
-[[ -n "$out_tsv" ]] && : >"$out_tsv"
-printf 'FAILED_JOBS_COUNT=0\n'
 exit 0
 STUB
     chmod +x "$root"/scripts/*.sh "$root"/scripts/gh "$root"/scripts/sleep "$root"/.claude/skills/bump-version/scripts/*.sh "$root"/skills/implement/scripts/*.sh
@@ -3487,11 +3474,82 @@ grep -Fq 'BAIL_NEEDS_USER_INPUT=false' "$tmp/ship-pr-state.sh" \
 ok "ci_fix_exhausted: substantive ready-log/job exhaustion routes to ci-fix-exhausted"
 rm -rf "$call_dir"
 
+# Verification-retry substantive exhaustion (vendor_rc==4) -> ci-fix-exhausted.
+root=$(make_repo ci_fix_verify_retry_exhausted)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/verify-retry-exhausted.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'FAIL AssertionError: expected True\n'
+exit 0
+STUB
+cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out_tsv=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output-tsv) out_tsv=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$out_tsv" ]] && printf 'python-lint\t\tfixable\n' >"$out_tsv"
+printf 'FAILED_JOBS_COUNT=1\n'
+exit 0
+STUB
+cat > "$root/scripts/make" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "make \$*" >> "$call_dir/make-calls.txt"
+exit 1
+STUB
+cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'LINT_FIX_STATUS=failed\n'
+exit 0
+STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'vendor fix\n' >> "$call_dir/vendor-fix.txt"
+touch "$call_dir/vendor-fixed"
+printf 'LAUNCHER_EXIT=0\n'
+STUB
+cp "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh"
+cp "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" \
+    "$root/scripts/ci-failed-jobs.sh" "$root/scripts/make" \
+    "$root/scripts/lint-fix-loop.sh" "$root/scripts/launch-cursor-ci.sh" \
+    "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" \
+    SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo > "$tmp/stdout" 2>&1)
+printf '%s' "$?" > "$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 3 "ci_fix_verify_retry_exhausted: verification-retry exhaustion exits 3"
+grep -Fq 'BAIL_REASON=ci-fix-exhausted' "$tmp/ship-pr-state.sh" \
+    || fail "ci_fix_verify_retry_exhausted: expected BAIL_REASON=ci-fix-exhausted"
+ok "ci_fix_verify_retry_exhausted: vendor verify-retry substantive exhaustion routes to ci-fix-exhausted"
+rm -rf "$call_dir"
+
 # #3334: blind-rerun gate regressions (sourced helpers).
 # shellcheck source=scripts/test-ship-pr-fix-loop-3334.inc.sh
 source "$REPO_ROOT/scripts/test-ship-pr-fix-loop-3334.inc.sh"
 run_ship_pr_3334_deterministic_no_blind_rerun
 run_ship_pr_3334_transient_gated_rerun
+run_ship_pr_3334_upfront_ready_log_reuse
 
 # ── #2632: run_ci_fix_vendor 3-tier waterfall + gh-run-logs threading ───────
 

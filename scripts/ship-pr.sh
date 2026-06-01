@@ -81,6 +81,13 @@ _ci_fix_pending_clear() {
     state_set CI_FIX_REBASE_PENDING false
 }
 
+LAST_CI_FIX_SUBSTANTIVE_ATTEMPT=false
+
+_transient_net_signature_from_log_file() {
+    local path=$1
+    is_transient_net_signature "$(tail -100 "$path" 2>/dev/null)"
+}
+
 capture_dirty_paths() {
     {
         git diff --name-only HEAD 2>/dev/null || true
@@ -204,6 +211,10 @@ _rcc_handle_fix_status() {
             else
                 _RCC_STATUS=dispatch-failed
             fi
+            return 1
+            ;;
+        exhausted)
+            _RCC_STATUS=exhausted
             return 1
             ;;
         *)
@@ -2041,6 +2052,7 @@ run_ci_fix_vendor() {
     local detail_log pre_refresh_head
     local tiers=(codex cursor claude) tier tier_idx offset waterfall_iter=0 first_tier
 
+    LAST_CI_FIX_SUBSTANTIVE_ATTEMPT=false
     larch_err "⚠ ship-pr: CI failed; dispatching fix"
 
     baseline_tracked_file="$IMPLEMENT_TMPDIR/ci-fix-baseline-${phase}-$$-tracked.txt"
@@ -2128,9 +2140,11 @@ run_ci_fix_vendor() {
     done
 
     if [ -z "$winning_tier" ] || [ "$wrapper_rc" -ne 0 ] || [ "${launcher_exit:-0}" -ne 0 ]; then
+        LAST_CI_FIX_SUBSTANTIVE_ATTEMPT=false
         return 1
     fi
 
+    LAST_CI_FIX_SUBSTANTIVE_ATTEMPT=true
     checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
     _verify_failed_jobs_locally "$phase" "$failed_jobs_tsv"
     verify_rc=$?
@@ -2498,7 +2512,6 @@ run_per_job_local_fix_loop() {
 run_evaluate_failure() {
     local phase=$1 failed_run rerun_out retries rc fail_file
     local upfront_logs_path upfront_gh_logs_rc rerun_fail_path _stash_upfront=false
-    _ci_fix_pending_clear
     failed_run=$(read_state FAILED_RUN_ID)
     [ -n "$failed_run" ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
     retries=$(read_state TRANSIENT_RETRIES)
@@ -2507,7 +2520,7 @@ run_evaluate_failure() {
         "$SCRIPT_DIR/gh-run-logs.sh" --run-id "$failed_run" --repo "$(read_state REPO)" > "$upfront_logs_path" 2>&1
         upfront_gh_logs_rc=$?
         if [ "$upfront_gh_logs_rc" -eq 0 ] \
-            && is_transient_net_signature "$(cat "$upfront_logs_path" 2>/dev/null)"; then
+            && _transient_net_signature_from_log_file "$upfront_logs_path"; then
             rerun_fail_path=$(failure_capture_path "${phase}-rerun")
             rerun_out=$("$SCRIPT_DIR/ci-rerun-failed.sh" --run-id "$failed_run" --repo "$(read_state REPO)" 2>"$rerun_fail_path")
             rc=$?
@@ -2559,34 +2572,6 @@ run_evaluate_failure() {
         fi
         ci_failed_tsv="$IMPLEMENT_TMPDIR/ci-failed-jobs-${phase}.tsv"
         checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
-        if [ "$CI_FIX_REBASE_PENDING" = true ]; then
-            _stage_and_push_ci_fixes "$phase" "" "$checks_site" "$ci_failed_tsv"
-            stage_rc=$?
-            case "$stage_rc" in
-                0)
-                    state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
-                    return 0
-                    ;;
-                2)
-                    exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-head-changed || echo 12-head-changed)"
-                    ;;
-                4)
-                    per_job_verification_retry=true
-                    _code_fix_attempted_on_ready_log=true
-                    ;;
-            esac
-            _fix_attempt=$(( _fix_attempt + 1 ))
-            if [ "$_fix_attempt" -lt "$_max_fix" ]; then
-                local _base _jitter _sleep
-                _base=$(( 2 * 2 ** (_fix_attempt - 1) ))
-                _jitter=$(( RANDOM % (_base / 2 + 1) ))
-                _sleep=$(( _base + _jitter - _base / 4 ))
-                [ "$_sleep" -lt 1 ] && _sleep=1
-                sleep "$_sleep"
-                continue
-            fi
-            break
-        fi
         if [ "$gh_logs_rc" -eq 3 ]; then
             printf 'ship-pr %s: CI still in progress (gh-run-logs rc=3); deferring vendor dispatch this attempt.\n' "$phase"
         elif [ "$gh_logs_rc" -ne 0 ]; then
@@ -2601,13 +2586,52 @@ run_evaluate_failure() {
             if [ "$ci_failed_rc" -eq 3 ]; then
                 printf 'ship-pr %s: CI jobs still in progress (ci-failed-jobs rc=3); deferring vendor dispatch this attempt.\n' "$phase"
             elif [ "$ci_failed_rc" -eq 0 ]; then
+                if [ "$CI_FIX_REBASE_PENDING" = true ]; then
+                    _stage_and_push_ci_fixes "$phase" "" "$checks_site" "$ci_failed_tsv"
+                    stage_rc=$?
+                    case "$stage_rc" in
+                        0)
+                            state_set_many TRANSIENT_RETRIES 0 FIX_ATTEMPTS "$(( $(read_state FIX_ATTEMPTS) + 1 ))"
+                            return 0
+                            ;;
+                        2)
+                            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-head-changed || echo 12-head-changed)"
+                            ;;
+                        4)
+                            per_job_verification_retry=true
+                            _code_fix_attempted_on_ready_log=true
+                            ;;
+                    esac
+                    _fix_attempt=$(( _fix_attempt + 1 ))
+                    if [ "$_fix_attempt" -lt "$_max_fix" ]; then
+                        local _base _jitter _sleep
+                        _base=$(( 2 * 2 ** (_fix_attempt - 1) ))
+                        _jitter=$(( RANDOM % (_base / 2 + 1) ))
+                        _sleep=$(( _base + _jitter - _base / 4 ))
+                        [ "$_sleep" -lt 1 ] && _sleep=1
+                        sleep "$_sleep"
+                        continue
+                    fi
+                    break
+                fi
                 ci_failed_count=$(kv_value FAILED_JOBS_COUNT "$ci_failed_out")
                 case "$ci_failed_count" in ''|*[!0-9]*) ci_failed_count=0 ;; esac
                 if [ "$ci_failed_count" -gt 0 ] && [ -s "$ci_failed_tsv" ]; then
                     checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
-                    _code_fix_attempted_on_ready_log=true
                     run_per_job_local_fix_loop "$phase" "$ci_failed_tsv"
                     per_job_rc=$?
+                    case "$per_job_rc" in
+                        0|4)
+                            _code_fix_attempted_on_ready_log=true
+                            ;;
+                        1)
+                            case "$_RCC_STATUS" in
+                                exhausted|main-agent-required)
+                                    _code_fix_attempted_on_ready_log=true
+                                    ;;
+                            esac
+                            ;;
+                    esac
                     if [ "$per_job_rc" -eq 0 ]; then
                         _stage_and_push_ci_fixes "$phase" "" "$checks_site" "$ci_failed_tsv"
                         per_job_rc=$?
@@ -2621,6 +2645,7 @@ run_evaluate_failure() {
                                 ;;
                             4)
                                 per_job_verification_retry=true
+                                _code_fix_attempted_on_ready_log=true
                                 ;;
                         esac
                         _fix_attempt=$(( _fix_attempt + 1 ))
@@ -2641,6 +2666,7 @@ run_evaluate_failure() {
                             ;;
                         4)
                             per_job_verification_retry=true
+                            _code_fix_attempted_on_ready_log=true
                             ;;
                     esac
                 fi
@@ -2662,9 +2688,11 @@ run_evaluate_failure() {
                             ;;
                         4)
                             per_job_verification_retry=true
+                            _code_fix_attempted_on_ready_log=true
                             ;;
                     esac
                 else
+                    LAST_CI_FIX_SUBSTANTIVE_ATTEMPT=false
                     if run_ci_fix_vendor "$phase" "$failed_run" "$gh_logs_capture" "$gh_logs_rc" "$ci_failed_tsv" "$_fix_attempt"; then
                         vendor_rc=0
                     else
@@ -2683,6 +2711,9 @@ run_evaluate_failure() {
                             _code_fix_attempted_on_ready_log=true
                             ;;
                         *)
+                            if [ "${LAST_CI_FIX_SUBSTANTIVE_ATTEMPT:-false}" = true ]; then
+                                _code_fix_attempted_on_ready_log=true
+                            fi
                             ;;
                     esac
                 fi

@@ -806,6 +806,76 @@ def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
     assert fix.detail == "ci-fix-exhausted"
 
 
+def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
+    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    responses = _baseline_responses()
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="FAIL test\n",
+    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    responses[("make", "py-lint")] = _cr(("make", "py-lint"), rc=1)
+    launch_calls: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        launch_calls.append(tier)
+        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
+
+    runner = RecordingRunner(responses)
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=launch_fn,
+        sleep_fn=lambda _s: None,
+    )
+    assert launch_calls
+    assert ("make", "py-lint") in runner.calls
+    assert fix.status == "fix-exhausted"
+    assert fix.detail == "ci-fix-exhausted"
+
+
+def test_evaluate_failure_upfront_ready_stash_when_transient_cap_exhausted() -> None:
+    jobs_json = json.dumps({"jobs": []})
+    log_responses = [
+        _cr(("gh", "run", "view"), stdout="FAIL test\n"),
+        _cr(("gh", "run", "view"), stdout="FAIL test\n"),
+        _cr(("gh", "run", "view"), stdout="FAIL test\n"),
+    ]
+    responses = _baseline_responses()
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    runner = RecordingRunner(responses)
+    runner.sequential[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = log_responses
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=config.CI_MONITOR_TRANSIENT_RERUN_MAX,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=lambda _t: TierAttempt("cursor", 0, 1, LaunchFailure("none", "")),
+        sleep_fn=lambda _s: None,
+    )
+    log_calls = [
+        c
+        for c in runner.calls
+        if c[:3] == ("gh", "run", "view") and "--log-failed" in c
+    ]
+    assert len(log_calls) == 3
+    assert fix.status == "waterfall-failed"
+
+
 def test_evaluate_failure_fixable_jobs_launcher_exhausted_stalls() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _baseline_responses()
@@ -1306,7 +1376,7 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
         c for c in runner.calls
         if c == ("gh", "run", "view", "77", "--repo", "o/r", "--log-failed")
     ]
-    assert len(log_calls) == 3
+    assert len(log_calls) == 2
     assert sleeps
 
 

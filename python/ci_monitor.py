@@ -940,12 +940,19 @@ def run_ci_fix(
                 unfixable.append(_job_token(job.name, job.shard))
         if unfixable:
             _rollback()
-            return FixResult(status="local-unfixable", unfixable=tuple(unfixable))
+            return FixResult(
+                status="local-unfixable",
+                unfixable=tuple(unfixable),
+                code_fix_attempted_on_ready_log=code_fix_attempted,
+            )
 
         current_head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
         if current_head != baseline_head:
             _rollback()
-            return FixResult(status="head-changed")
+            return FixResult(
+                status="head-changed",
+                code_fix_attempted_on_ready_log=code_fix_attempted,
+            )
 
         failed_verify = [
             _job_token(job.name, job.shard)
@@ -1013,11 +1020,13 @@ def evaluate_failure(
 
     upfront_logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
     upfront_ready_stash: LogCollectResult | None = None
+    blind_rerun_attempted = False
     if transient_retries < config.CI_MONITOR_TRANSIENT_RERUN_MAX:
         if (
             upfront_logs.state == "ready"
             and retry.is_transient_net_signature(upfront_logs.text)
         ):
+            blind_rerun_attempted = True
             rerun = rerun_failed(runner, run_id=run_id, repo=repo, cwd=cwd)
             if rerun.submitted and not rerun.already_running:
                 return FixResult(status="no-changes")
@@ -1027,8 +1036,8 @@ def evaluate_failure(
                 _warn_stderr(
                     f"evaluate_failure: transient rerun failed: {rerun.error}; continuing to fix loop",
                 )
-        elif upfront_logs.state == "ready":
-            upfront_ready_stash = upfront_logs
+    if upfront_logs.state == "ready" and not blind_rerun_attempted:
+        upfront_ready_stash = upfront_logs
 
     last_verify: tuple[str, ...] = ()
     code_fix_attempted_on_ready_log = False
@@ -1072,8 +1081,12 @@ def evaluate_failure(
         if fix.code_fix_attempted_on_ready_log:
             code_fix_attempted_on_ready_log = True
         if fix.status == "local-unfixable":
+            if code_fix_attempted_on_ready_log:
+                return FixResult(status="fix-exhausted", detail="ci-fix-exhausted")
             return fix
         if fix.status == "head-changed":
+            if code_fix_attempted_on_ready_log:
+                return FixResult(status="fix-exhausted", detail="ci-fix-exhausted")
             return fix
         if fix.status == "pushed":
             return fix
