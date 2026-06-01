@@ -16,7 +16,7 @@ source "$SCRIPTS_DIR/lib-larch-dev-clone.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "stall-recovery-report.sh: usage: $0 <classify|init-attempts|record-attempt|retry-policy|is-larch-dev-clone|bug-body|bug-comment|issue-input-file|lint> ..."
+    larch_err "stall-recovery-report.sh: usage: $0 <classify|init-attempts|record-attempt|retry-policy|is-larch-dev-clone|bug-body|bug-comment|issue-input-file|clear-stall|seed-terminal-state|lint> ..."
 }
 
 die_argv() {
@@ -76,17 +76,263 @@ first_nonempty() {
     printf '\n'
 }
 
-validate_ship_pr_state() {
+check_ship_pr_state_syntax() {
     local file=$1 line
+    [ -f "$file" ] || return 1
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             ""|\#*) continue ;;
         esac
         if ! printf '%s\n' "$line" | LC_ALL=C grep -Eq '^[A-Z][A-Z0-9_]*=.*$'; then
-            larch_err "stall-recovery-report.sh: malformed ship-pr-state.sh"
-            exit 3
+            return 1
         fi
     done <"$file"
+    return 0
+}
+
+ship_pr_state_has_keys() {
+    local file=$1 line saw_key=false
+    [ -f "$file" ] || return 1
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ""|\#*) continue ;;
+        esac
+        if ! printf '%s\n' "$line" | LC_ALL=C grep -Eq '^[A-Z][A-Z0-9_]*=.*$'; then
+            return 1
+        fi
+        saw_key=true
+    done <"$file"
+    [ "$saw_key" = true ]
+}
+
+validate_ship_pr_state() {
+    if ! check_ship_pr_state_syntax "$1"; then
+        larch_err "stall-recovery-report.sh: malformed ship-pr-state.sh"
+        exit 3
+    fi
+}
+
+check_ship_pr_state_format() {
+    check_ship_pr_state_syntax "$1" && ship_pr_state_has_keys "$1"
+}
+
+ship_pr_state_present() {
+    local tmpdir=$1
+    local state="$tmpdir/ship-pr-state.sh"
+    [ -e "$state" ] || return 1
+    return 0
+}
+
+ship_pr_state_is_dangling_symlink() {
+    local state="$1/ship-pr-state.sh"
+    [ -L "$state" ] && [ ! -e "$state" ]
+}
+
+ship_pr_state_is_regular_file() {
+    local tmpdir=$1
+    local state="$tmpdir/ship-pr-state.sh"
+    ship_pr_state_present "$tmpdir" || return 1
+    [ -L "$state" ] && return 1
+    [ -f "$state" ] || return 1
+    return 0
+}
+
+rewrite_ship_pr_state_keys() {
+    local src=$1
+    shift
+    local -a keys=()
+    local -a vals=()
+    local -a awk_v=()
+    local i n=0
+    while [ $# -ge 2 ]; do
+        keys+=("$1")
+        vals+=("$2")
+        shift 2
+    done
+    n=${#keys[@]}
+    local awk_begin='BEGIN{'
+    for ((i = 0; i < n; i++)); do
+        local safe_val
+        # awk -v interprets escape sequences; sanitize backslashes in values
+        safe_val=$(printf '%s' "${vals[$i]}" | sed 's/\\/\\\\/g')
+        awk_v+=(-v "v$i=$safe_val")
+        awk_begin+="u[\"${keys[$i]}\"]=v$i; order[++oc]=\"${keys[$i]}\"; "
+    done
+    # shellcheck disable=SC2016
+    awk_begin+='}
+    {
+        if ($0 ~ /^[A-Z][A-Z0-9_]*=/) {
+            key = $0
+            sub(/=.*/, "", key)
+            if (key in u) {
+                print key "=" u[key]
+                seen[key] = 1
+                next
+            }
+        }
+        print
+    }
+    END {
+        for (i = 1; i <= oc; i++) {
+            k = order[i]
+            if (!(k in seen)) print k "=" u[k]
+        }
+    }'
+    awk "${awk_v[@]+"${awk_v[@]}"}" "$awk_begin" "$src"
+}
+
+emit_cleared_false_exit() {
+    emit_kv CLEARED false
+    exit "${1:-1}"
+}
+
+emit_seeded_false_exit() {
+    emit_kv SEEDED false
+    exit "${1:-1}"
+}
+
+cmd_clear_stall() {
+    local tmpdir=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            *) die_argv "unknown clear-stall option: $1" ;;
+        esac
+    done
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+
+    local state="$tmpdir/ship-pr-state.sh"
+    if ship_pr_state_is_dangling_symlink "$tmpdir"; then
+        emit_kv CLEARED false
+        exit 3
+    fi
+    if ! ship_pr_state_present "$tmpdir"; then
+        emit_kv CLEARED false
+        exit 0
+    fi
+    if ! ship_pr_state_is_regular_file "$tmpdir"; then
+        emit_kv CLEARED false
+        exit 3
+    fi
+    if ! check_ship_pr_state_syntax "$state"; then
+        emit_kv CLEARED false
+        exit 3
+    fi
+    if ! ship_pr_state_has_keys "$state"; then
+        emit_kv CLEARED false
+        exit 0
+    fi
+
+    local dir base tmp tracking
+    dir=$(dirname "$state")
+    base=$(basename "$state")
+    tmp=$(mktemp "$dir/${base}.tmp.XXXXXX") || emit_cleared_false_exit 1
+    if ! rewrite_ship_pr_state_keys "$state" STALL_TRACKING false STALL_STEP "" >"$tmp"; then
+        rm -f "$tmp"
+        emit_cleared_false_exit 1
+    fi
+    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$tmp" --key STALL_TRACKING --default "") || {
+        rm -f "$tmp"
+        emit_cleared_false_exit 1
+    }
+    if [ "$tracking" != false ]; then
+        rm -f "$tmp"
+        emit_cleared_false_exit 1
+    fi
+    mv -f "$tmp" "$state" || emit_cleared_false_exit 1
+    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default "") || emit_cleared_false_exit 1
+    if [ "$tracking" != false ]; then
+        emit_cleared_false_exit 1
+    fi
+    emit_kv CLEARED true
+}
+
+cmd_seed_terminal_state() {
+    local tmpdir="" stall_step_arg="" phase_arg=""
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --implement-tmpdir) [ $# -ge 2 ] || die_argv "--implement-tmpdir requires a value"; tmpdir=$2; shift 2 ;;
+            --stall-step) [ $# -ge 2 ] || die_argv "--stall-step requires a value"; stall_step_arg=$2; shift 2 ;;
+            --phase) [ $# -ge 2 ] || die_argv "--phase requires a value"; phase_arg=$2; shift 2 ;;
+            *) die_argv "unknown seed-terminal-state option: $1" ;;
+        esac
+    done
+    [ -n "$tmpdir" ] || die_missing "--implement-tmpdir is required"
+    [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
+
+    local state="$tmpdir/ship-pr-state.sh" seed_mode="" content step phase tracking
+    local dir base tmp
+
+    if ship_pr_state_is_dangling_symlink "$tmpdir"; then
+        emit_kv SEEDED false
+        exit 3
+    fi
+    if ship_pr_state_present "$tmpdir"; then
+        if ! ship_pr_state_is_regular_file "$tmpdir"; then
+            emit_kv SEEDED false
+            exit 3
+        fi
+        if ! check_ship_pr_state_syntax "$state"; then
+            emit_kv SEEDED false
+            exit 3
+        fi
+        if ship_pr_state_has_keys "$state"; then
+            local step_raw phase_raw
+            step_raw=$(kv_get "$state" STALL_STEP "8") || emit_seeded_false_exit 1
+            step=$(safe_step_value "$step_raw")
+            phase_raw=$(kv_get "$state" PHASE "ci-initial") || emit_seeded_false_exit 1
+            phase=$(safe_phase_value "$phase_raw")
+            [ -n "$stall_step_arg" ] && step=$(safe_step_value "$stall_step_arg")
+            [ -n "$phase_arg" ] && phase=$(safe_phase_value "$phase_arg")
+            seed_mode=rewrite
+            dir=$(dirname "$state")
+            base=$(basename "$state")
+            tmp=$(mktemp "$dir/${base}.tmp.XXXXXX") || emit_seeded_false_exit 1
+            if ! rewrite_ship_pr_state_keys "$state" STALL_TRACKING true STALL_STEP "$step" PHASE "$phase" >"$tmp"; then
+                rm -f "$tmp"
+                emit_seeded_false_exit 1
+            fi
+        else
+            :
+        fi
+    fi
+    if [ -z "${seed_mode:-}" ]; then
+        step=8
+        phase=ci-initial
+        [ -n "$stall_step_arg" ] && step=$(safe_step_value "$stall_step_arg")
+        [ -n "$phase_arg" ] && phase=$(safe_phase_value "$phase_arg")
+        seed_mode=seed
+        content=$(printf 'PHASE=%s\nSTALL_TRACKING=true\nSTALL_STEP=%s\nBAIL_REASON=\nBAIL_FAILURE_DETAIL_LOG=\nEXIT_CODE=4\n' "$phase" "$step")
+        dir=$(dirname "$state")
+        base=$(basename "$state")
+        mkdir -p "$dir" || emit_seeded_false_exit 1
+        tmp=$(mktemp "$dir/${base}.tmp.XXXXXX") || emit_seeded_false_exit 1
+        printf '%s' "$content" >"$tmp" || {
+            rm -f "$tmp"
+            emit_seeded_false_exit 1
+        }
+    fi
+
+    if [ -z "${tmp:-}" ]; then
+        emit_seeded_false_exit 1
+    fi
+
+    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$tmp" --key STALL_TRACKING --default "") || {
+        rm -f "$tmp"
+        emit_seeded_false_exit 1
+    }
+    if [ "$tracking" != true ]; then
+        rm -f "$tmp"
+        emit_seeded_false_exit 1
+    fi
+    mv -f "$tmp" "$state" || emit_seeded_false_exit 1
+    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default "") || emit_seeded_false_exit 1
+    if [ "$tracking" != true ]; then
+        emit_seeded_false_exit 1
+    fi
+    emit_kv SEEDED true
+    emit_kv SEED_MODE "$seed_mode"
 }
 
 canonical_dir() {
@@ -313,11 +559,13 @@ cmd_classify() {
     session_env="$tmpdir/session-env.sh"
     if [ -f "$state_file" ]; then
         validate_ship_pr_state "$state_file"
-        state_stall_step=$(kv_get "$state_file" STALL_STEP "")
-        state_phase=$(kv_get "$state_file" PHASE "")
-        state_stall_tracking=$(kv_get "$state_file" STALL_TRACKING "false")
-        state_bail_reason=$(kv_get "$state_file" BAIL_REASON "")
-        state_exit_code=$(kv_get "$state_file" EXIT_CODE "")
+        if check_ship_pr_state_format "$state_file"; then
+            state_stall_step=$(kv_get "$state_file" STALL_STEP "")
+            state_phase=$(kv_get "$state_file" PHASE "")
+            state_stall_tracking=$(kv_get "$state_file" STALL_TRACKING "false")
+            state_bail_reason=$(kv_get "$state_file" BAIL_REASON "")
+            state_exit_code=$(kv_get "$state_file" EXIT_CODE "")
+        fi
     fi
 
     if [ -r "$session_env" ]; then
@@ -818,6 +1066,8 @@ main() {
         bug-body) cmd_bug_body_like bug-body "$@" ;;
         bug-comment) cmd_bug_body_like bug-comment "$@" ;;
         issue-input-file) cmd_issue_input_file "$@" ;;
+        clear-stall) cmd_clear_stall "$@" ;;
+        seed-terminal-state) cmd_seed_terminal_state "$@" ;;
         lint) cmd_lint "$@" ;;
         *) usage; exit 1 ;;
     esac

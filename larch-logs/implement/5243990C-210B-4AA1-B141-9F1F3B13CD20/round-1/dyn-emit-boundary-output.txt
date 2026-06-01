@@ -1,0 +1,21 @@
+Reviewing the Step 18 emit boundary: reading the diff and key implementation files.
+Comparing emit-boundary logic with prior behavior and checking `emit_kv` output routing.
+### In-Scope Findings
+
+- **risk-integration** `skills/implement/SKILL.md:1363` — Step 18b now delegates the emit decision to `step-18b-final-report.sh` and gates orchestrator emission on `EMIT_BODY=true` with `WFR_RC=0` (lines 1424–1430), but the Step 17→18 bridge paragraph still tells the orchestrator to emit “only under the dual-condition guard … (either Step 17 did not print, or the post-render body differs from the pre-Step-18 snapshot).” That wording still ties visibility to Step 17 `--print-stdout`, which Step 18 no longer uses. An orchestrator following line 1363 instead of the wrapper KVs can skip a required Step 18 verbatim emit when `.step17-emitted` exists but the refreshed body changed, or treat collapsible Bash output as sufficient when `EMIT_BODY=false`. **Suggested fix:** Rewrite line 1363 to name the machine contract explicitly (parse `EMIT_BODY` / `WFR_RC` from `step-18b-final-report.sh`; emit only when `EMIT_BODY=true`, `WFR_RC=0`, and `summary-final.md` is non-empty), and drop “Step 17 did not print” / snapshot wording in favor of a pointer to Step 18b prose.
+
+- **risk-integration** `skills/implement/SKILL.md:73` — NEVER #20 still closes with “Step 18 may do the same only under its dual-condition guard” without referencing `EMIT_BODY`. That leaves the highest-priority anti-recap rule misaligned with the new boundary: Step 18’s authoritative signal is no longer an inline `_wfr_*` / `cmp` fence but wrapper stdout KVs captured in the Step 18 Bash block. **Suggested fix:** Update the NEVER #20 “How to apply” tail to say Step 18 verbatim emission is allowed only when `EMIT_BODY=true` from `step-18b-final-report.sh` (plus the existing `WFR_RC=0` and non-empty `summary-final.md` checks in Step 18b), and retain the prompt-side `.step17-emitted` write-after-emit rule.
+
+### Out-of-Scope Observations
+
+- **Core emit logic looks sound.** `step-18b-final-report.sh` (lines 60–97) faithfully encodes the prior inline decision tree: absent `.step17-emitted` → candidate emit; snapshot under `$tmpdir/.step18-prebody`; post-write `cmp` only when `WFR_RC=0` and body non-empty; final `EMIT_BODY` gated on success and `-s summary-final.md`. Token-report failure is tolerated and does not block emit when write succeeds (`test-step-18b-final-report.sh` case-token-fail). The wrapper never writes `.step17-emitted` (harness-checked).
+
+- **Intentional behavior delta (documented):** dropping Step 18 `--print-stdout` means the report body appears only via orchestrator verbatim emit, not in the collapsible Bash fence. `step-18b-final-report.md` records this; it is not a silent regression.
+
+- **`emit_kv` + command substitution:** KVs route to FD 3 under `larch_quiet_init` and are captured by `_step18b_out=$(…)` the same way as other larch helpers (`scripts/test-lib-quiet.sh` case 3–4). `test-step-18b-final-report.sh` sets `LARCH_QUIET_DISABLE=1`, so it does not exercise this script under quiet mode end-to-end; general FD-3 capture is covered elsewhere.
+
+- **Harness gap (pre-existing pattern):** Step 18 Bash still does not mechanically enforce emit (no `if [ "$EMIT_BODY" = true ] && …` in the fence); compliance remains prompt-side, as before extraction. `STEP17_EMITTED_PRESENT` is parsed but unused—harmless, could support future defensive checks.
+
+- **E1 (`clear-stall` / `seed-terminal-state`):** out of scope for this emit-boundary review; no issues assessed here.
+
+**Commits on branch (since `main`):** `4d3623378` Extract Step 18 stall-clear and final-report emit plumbing; `828ae39de` chore(larch-logs) flush; `26814f1c8` Apply relevant-checks fixes.

@@ -1,0 +1,29 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated validation loops are real but a shared helper is optional refactor overhead
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- split guards match contract; optional unify-at-call-sites is clarity-only
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- post-write temp STALL_TRACKING re-read failure is untested but mktemp/mv/dest paths are covered
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- first-case sentinel check is enough for current harness scope
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-existing plugin-root.env trust model; repo-wide hardening is a separate effort
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- tmpdir validation gap predates this branch across implement helpers
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- post-mv dest read failure can report CLEARED=false after disk was already cleared
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_15: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- stall-recovery.md already requires parsing CLEARED and documents exit-0 keyless asymmetry
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- intentional syntax+has_keys split is documented; one-helper-at-entry is optional
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- unused STEP17_EMITTED_PRESENT parse is low-cost telemetry surface
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_22: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- observation confirms clear-stall path is guarded; not an actionable defect
+FINDING_23: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- rm -f abort before emit is theoretical with negligible practical risk
+FINDING_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_25: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_26: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_27: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative note that wfr_rc capture is correct, not a defect
+FINDING_28: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative NEVER #20 boundary check, not a defect
+FINDING_29: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documented intentional --print-stdout removal, not a regression finding
