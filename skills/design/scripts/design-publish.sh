@@ -143,7 +143,6 @@ write_result_env_and_emit() {
     for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
         _kvs+=("WARN=$_warn")
     done
-    phase_driver_write_result_env "$RESULT_ENV" "${_kvs[@]}" || exit 1
     emit_kv PLAN_WRITE_OK "$PLAN_WRITE_OK"
     [[ -n "${PUBLISH_OK:-}" ]] && emit_kv PUBLISH_OK "$PUBLISH_OK"
     [[ -n "${RENAMED:-}" ]] && emit_kv RENAMED "$RENAMED"
@@ -153,6 +152,7 @@ write_result_env_and_emit() {
     for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
         emit_kv WARN "$_warn"
     done
+    phase_driver_write_result_env "$RESULT_ENV" "${_kvs[@]}" || exit 1
 }
 
 [[ -f "$DESIGN_TMPDIR/.completed/step-5b" ]] \

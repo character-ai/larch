@@ -38,7 +38,20 @@ mkdir -p "$STUB" "$FAKE_PLUGIN/skills/design/scripts"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$STUB/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-net.sh" "$STUB/lib-net.sh" 2>/dev/null || true
 ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$STUB/append-tool-failure.sh"
-ln -sf "$REPO_ROOT/scripts/lib-design-reentry-guard.sh" "$STUB/lib-design-reentry-guard.sh"
+write_reentry_guard_wrapper() {
+    cat >"$STUB/lib-design-reentry-guard.sh" <<WRAP
+# shellcheck shell=bash
+# shellcheck source=scripts/lib-design-reentry-guard.sh
+source "$REPO_ROOT/scripts/lib-design-reentry-guard.sh"
+__larch_orig_design_reentry_marker_write=\$(declare -f design_reentry_marker_write)
+eval "\${__larch_orig_design_reentry_marker_write/design_reentry_marker_write/__larch_design_reentry_marker_write}"
+design_reentry_marker_write() {
+    [[ -n "\${CALL_LOG:-}" ]] && echo "design-reentry-marker-write \$*" >>"\$CALL_LOG"
+    __larch_design_reentry_marker_write "\$@"
+}
+WRAP
+}
+write_reentry_guard_wrapper
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_PLUGIN/skills/design/scripts/lib-phase-driver.sh"
 
 setup_design_tmp() {
@@ -108,9 +121,13 @@ write_stubs
 
 export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
 
-run_publish() {
-    local d="$1"
-    shift
+reset_publish_stub_env() {
+    unset PLAN_BLOCK_RC PUBLISH_STUB_RC PUBLISH_EMIT_OK PUBLISH_OK_VALUE \
+        UPSERT_STUB_RC UPSERT_STATUS_VALUE ARCH_SOURCE_VALUE \
+        RENAME_STUB_RC RENAMED_OMIT_LINE RENAMED_VALUE RESOLVE_REPO_VALUE || true
+}
+
+init_publish_logs() {
     export PLAN_BLOCK_LOG="$TMP/plan-block.log"
     export PUBLISH_LOG="$TMP/publish.log"
     export RENAME_LOG="$TMP/rename.log"
@@ -123,15 +140,26 @@ run_publish() {
     : >"$UPSERT_LOG"
     : >"$RENDER_LOG"
     : >"$CALL_LOG"
-    export PLAN_BLOCK_RC="${PLAN_BLOCK_RC:-0}"
-    export PUBLISH_STUB_RC="${PUBLISH_STUB_RC:-0}"
-    export PUBLISH_EMIT_OK="${PUBLISH_EMIT_OK:-true}"
-    export PUBLISH_OK_VALUE="${PUBLISH_OK_VALUE:-true}"
-    export UPSERT_STUB_RC="${UPSERT_STUB_RC:-0}"
-    export UPSERT_STATUS_VALUE="${UPSERT_STATUS_VALUE:-ok}"
-    export ARCH_SOURCE_VALUE="${ARCH_SOURCE_VALUE:-file}"
-    export RENAMED_VALUE="${RENAMED_VALUE:-true}"
-    export RESOLVE_REPO_VALUE="${RESOLVE_REPO_VALUE:-owner/repo}"
+}
+
+apply_publish_stub_defaults() {
+    export PLAN_BLOCK_RC=0
+    export PUBLISH_STUB_RC=0
+    export PUBLISH_EMIT_OK=true
+    export PUBLISH_OK_VALUE=true
+    export UPSERT_STUB_RC=0
+    export UPSERT_STATUS_VALUE=ok
+    export ARCH_SOURCE_VALUE=file
+    export RENAMED_VALUE=true
+    export RESOLVE_REPO_VALUE=owner/repo
+}
+
+run_publish() {
+    local d="$1"
+    shift
+    reset_publish_stub_env
+    init_publish_logs
+    apply_publish_stub_defaults
     bash "$SUBJECT" --design-tmpdir "$d" --issue 42 --session-id sid-1 --claude-pid 9999 "$@"
 }
 
@@ -165,9 +193,11 @@ assert_rc "empty redacted plan" 2 "$rc"
 # --- plan-block-write failure ---
 D_FAIL="$TMP/fail-plan"
 setup_design_tmp "$D_FAIL"
+reset_publish_stub_env
+init_publish_logs
 export PLAN_BLOCK_RC=1
 set +e
-run_publish "$D_FAIL" >/dev/null 2>&1
+bash "$SUBJECT" --design-tmpdir "$D_FAIL" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>&1
 rc=$?
 set -e
 assert_rc "plan-block-write failure" 1 "$rc"
@@ -182,13 +212,11 @@ grep -q 'SESSION_ID=sid-1' "$RENDER_LOG" \
 D_FAIL_CANON=$(cd "$D_FAIL" && pwd -P)
 grep -q "DESIGN_TMPDIR=${D_FAIL_CANON}" "$RENDER_LOG" \
   || fail "failed-plan-write render missing DESIGN_TMPDIR"
-unset PLAN_BLOCK_RC
 
 # --- happy path ---
 D_OK="$TMP/happy"
 setup_design_tmp "$D_OK"
 printf 'graph TD\n' >"$D_OK/architecture-diagram.md"
-export PLAN_BLOCK_RC=0
 set +e
 run_publish "$D_OK" >/dev/null 2>&1
 rc=$?
@@ -198,15 +226,18 @@ grep -q 'PLAN_WRITE_OK=true' "$D_OK/.design-publish-result.env" || fail "happy P
 grep -q 'PUBLISH_OK=true' "$D_OK/.design-publish-result.env" || fail "happy PUBLISH_OK"
 grep -q 'RENAMED=true' "$D_OK/.design-publish-result.env" || fail "happy RENAMED"
 plan_pos=$(grep -n 'plan-block-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+marker_pos=$(grep -n 'design-reentry-marker-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 upsert_pos=$(grep -n 'upsert-diagrams' "$CALL_LOG" | head -1 | cut -d: -f1)
 publish_pos=$(grep -n 'design-log-publish' "$CALL_LOG" | head -1 | cut -d: -f1)
-if [[ -z "$plan_pos" || -z "$upsert_pos" || -z "$publish_pos" ]]; then
-    fail "happy path call log missing plan/upsert/publish entries"
-elif [[ "$plan_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$publish_pos" ]]; then
-    fail "happy path call-log ordering plan→upsert→publish"
+if [[ -z "$plan_pos" || -z "$marker_pos" || -z "$upsert_pos" || -z "$publish_pos" ]]; then
+    fail "happy path call log missing plan/marker/upsert/publish entries"
+elif [[ "$plan_pos" -ge "$marker_pos" || "$marker_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$publish_pos" ]]; then
+    fail "happy path call-log ordering plan→marker→upsert→publish"
 else
-    pass "happy path call-log ordering plan→upsert→publish"
+    pass "happy path call-log ordering plan→marker→upsert→publish"
 fi
+marker_file="$HOME/.cache/larch/sessions/design-completed-42-9999"
+[[ -f "$marker_file" ]] || fail "happy path reentry marker file missing at $marker_file"
 grep -q 'pre-publish-only' "$RENDER_LOG" || fail "happy path missing pre-publish render"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "happy path missing post-publish render"
 grep -q 'ISSUE_NUMBER=42' "$RENDER_LOG" || fail "happy render missing ISSUE_NUMBER=42"
@@ -219,17 +250,9 @@ test -s "$D_OK/diagrams-architecture-upsert.stdout" || fail "upsert stdout not c
 # --- SESSION_ID empty ---
 D_EMPTY="$TMP/empty-sid"
 setup_design_tmp "$D_EMPTY"
-export PLAN_BLOCK_RC=0
-export PLAN_BLOCK_LOG="$TMP/plan-empty.log"
-export PUBLISH_LOG="$TMP/pub-empty.log"
-export RENAME_LOG="$TMP/ren-empty.log"
-export UPSERT_LOG="$TMP/ups-empty.log"
-export RENDER_LOG="$TMP/rend-empty.log"
-: >"$PLAN_BLOCK_LOG"
-: >"$PUBLISH_LOG"
-: >"$RENAME_LOG"
-: >"$UPSERT_LOG"
-: >"$RENDER_LOG"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_EMPTY" --issue 1 --session-id '' --claude-pid 1 2>/dev/null
 rc=$?
@@ -259,19 +282,10 @@ fi
 # --- PUBLISH_OK=false ---
 D_PFAIL="$TMP/pub-fail"
 setup_design_tmp "$D_PFAIL"
-export PLAN_BLOCK_RC=0
-export PUBLISH_STUB_RC=0
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
 export PUBLISH_OK_VALUE=false
-export PLAN_BLOCK_LOG="$TMP/plan-pf.log"
-export PUBLISH_LOG="$TMP/pub-pf.log"
-export RENAME_LOG="$TMP/ren-pf.log"
-export UPSERT_LOG="$TMP/ups-pf.log"
-export RENDER_LOG="$TMP/rend-pf.log"
-: >"$PLAN_BLOCK_LOG"
-: >"$PUBLISH_LOG"
-: >"$RENAME_LOG"
-: >"$UPSERT_LOG"
-: >"$RENDER_LOG"
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_PFAIL" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
 rc=$?
@@ -286,19 +300,11 @@ fi
 # --- unexpected publish (nonzero, no PUBLISH_OK line) ---
 D_UNEXP="$TMP/pub-unexp"
 setup_design_tmp "$D_UNEXP"
-export PLAN_BLOCK_RC=0
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
 export PUBLISH_STUB_RC=2
 export PUBLISH_EMIT_OK=false
-export PLAN_BLOCK_LOG="$TMP/plan-ux.log"
-export PUBLISH_LOG="$TMP/pub-ux.log"
-export RENAME_LOG="$TMP/ren-ux.log"
-export UPSERT_LOG="$TMP/ups-ux.log"
-export RENDER_LOG="$TMP/rend-ux.log"
-: >"$PLAN_BLOCK_LOG"
-: >"$PUBLISH_LOG"
-: >"$RENAME_LOG"
-: >"$UPSERT_LOG"
-: >"$RENDER_LOG"
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_UNEXP" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
 rc=$?
@@ -316,36 +322,20 @@ D_CLR="$TMP/clear-arch"
 setup_design_tmp "$D_CLR"
 rm -f "$D_CLR/architecture-diagram.md"
 : >"$D_CLR/architecture-diagram.skipped"
-export PLAN_BLOCK_RC=0
-export PLAN_BLOCK_LOG="$TMP/plan-cl.log"
-export PUBLISH_LOG="$TMP/pub-cl.log"
-export RENAME_LOG="$TMP/ren-cl.log"
-export UPSERT_LOG="$TMP/ups-cl.log"
-export RENDER_LOG="$TMP/rend-cl.log"
-: >"$PLAN_BLOCK_LOG"
-: >"$PUBLISH_LOG"
-: >"$RENAME_LOG"
-: >"$UPSERT_LOG"
-: >"$RENDER_LOG"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
 bash "$SUBJECT" --design-tmpdir "$D_CLR" --issue 1 --session-id s --claude-pid 1 2>/dev/null
 grep -Fq -- '--clear-architecture' "$UPSERT_LOG" || fail "skipped sentinel must invoke --clear-architecture"
 
 # --- upsert failure non-blocking ---
 D_UPSERT_FAIL="$TMP/upsert-fail"
 setup_design_tmp "$D_UPSERT_FAIL"
-export PLAN_BLOCK_RC=0
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
 export UPSERT_STUB_RC=1
 export UPSERT_STATUS_VALUE=failed
-export PLAN_BLOCK_LOG="$TMP/plan-uf.log"
-export PUBLISH_LOG="$TMP/pub-uf.log"
-export RENAME_LOG="$TMP/ren-uf.log"
-export UPSERT_LOG="$TMP/ups-uf.log"
-export RENDER_LOG="$TMP/rend-uf.log"
-: >"$PLAN_BLOCK_LOG"
-: >"$PUBLISH_LOG"
-: >"$RENAME_LOG"
-: >"$UPSERT_LOG"
-: >"$RENDER_LOG"
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_UPSERT_FAIL" --issue 42 --session-id sid-1 --claude-pid 1 2>/dev/null
 rc=$?
@@ -353,26 +343,14 @@ set -e
 assert_rc "upsert failure non-blocking" 0 "$rc"
 grep -q 'PLAN_WRITE_OK=true' "$D_UPSERT_FAIL/.design-publish-result.env" \
   || fail "upsert failure must still complete publish tail"
-unset UPSERT_STUB_RC UPSERT_STATUS_VALUE
 
 # --- rename failure warns ---
 D_REN_FAIL="$TMP/rename-fail"
 setup_design_tmp "$D_REN_FAIL"
-export PLAN_BLOCK_RC=0
-export PUBLISH_STUB_RC=0
-export PUBLISH_EMIT_OK=true
-export PUBLISH_OK_VALUE=true
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
 export RENAME_STUB_RC=1
-export PLAN_BLOCK_LOG="$TMP/plan-rf.log"
-export PUBLISH_LOG="$TMP/pub-rf.log"
-export RENAME_LOG="$TMP/ren-rf.log"
-export UPSERT_LOG="$TMP/ups-rf.log"
-export RENDER_LOG="$TMP/rend-rf.log"
-: >"$PLAN_BLOCK_LOG"
-: >"$PUBLISH_LOG"
-: >"$RENAME_LOG"
-: >"$UPSERT_LOG"
-: >"$RENDER_LOG"
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_REN_FAIL" --issue 42 --session-id sid-1 --claude-pid 1 2>/dev/null
 rc=$?
@@ -380,7 +358,6 @@ set -e
 assert_rc "rename failure non-blocking" 0 "$rc"
 grep -q 'WARN=.*\[DESIGNED\].*rename failed' "$D_REN_FAIL/.design-publish-result.env" \
   || fail "rename failure must emit [DESIGNED] WARN in result env"
-unset RENAME_STUB_RC
 
 if [[ "$FAIL" -gt 0 ]]; then
     echo "FAIL: $FAIL test(s) failed ($PASS passed)" >&2
