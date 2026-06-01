@@ -1,0 +1,8 @@
+Reviewing the branch diff and commit history for bash32 correctness.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- The `real panel dispatch` case at `skills/design/scripts/test-plan-review-loop.sh:1057` still relies on section-local `EXTSTUB` ahead of the global `STUB_BIN` for cursor JSON/`*.done` semantics; the new global `cursor` stub only prints a single stdout line and would not satisfy `collect-agent-results.sh` wait logic if that test ever ran with real collect but without `EXTSTUB`.
+- Pre-flight `plan-review-loop.sh` invocations at `skills/design/scripts/test-plan-review-loop.sh:35-38` run before `STUB_BIN` is on `PATH`; they only exercise argv validation and do not reach external launchers.
+- Production launcher timeout/health behavior in `run-external-agent.sh` / `plan-review-loop.sh` is unchanged by this branch, as intended by the plan.
