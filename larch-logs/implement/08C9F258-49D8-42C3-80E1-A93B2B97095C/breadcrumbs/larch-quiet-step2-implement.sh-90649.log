@@ -1,0 +1,7 @@
+APPENDED=true
+LOG=<TMPDIR>/execution-issues.md
+--- failed agent stderr tail ---
+Connection lost, reconnecting (attempt 1)...
+Retry attempt 1...
+Timed out after 7208s (limit: 7200s). Process was killed after exceeding the timeout. Output size: 0 bytes.
+--- end failed agent stderr tail ---
