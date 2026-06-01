@@ -1,0 +1,116 @@
+## Plan
+
+Extract the `/design` Step 5c deterministic publish tail (current `SKILL.md` items 4–11) into one foreground phase driver `design-publish.sh`, mirroring the established `design-route.sh` / `design-init-runparams.sh` siblings. This is a pure prose→code extraction: every existing branch, skip condition, ordering invariant, stdout capture, env binding, and machine output is preserved. Compose (item 1), the validator gate (item 2), and redaction (item 3) stay prompt-side.
+
+### Tier
+SIMPLE — smallest change that achieves the goal. The new script + harness + SKILL rewrite + test-pin updates are inherent to the task; nothing beyond them is added.
+
+## Files to modify/create
+
+### NEW: `skills/design/scripts/design-publish.sh`
+The Step 5c publish-tail driver. Structure mirrors `design-init-runparams.sh` for bootstrap ordering and `lib-phase-driver.sh` usage, with publish-specific argv and tail logic:
+- Preamble: `set -euo pipefail`; `SCRIPT_DIR=...`; `source "$SCRIPT_DIR/lib-phase-driver.sh"`; `larch_quiet_init`; `fail()` → `larch_err` + `exit 2`; `usage()`.
+- **Argv validation (do not copy init-runparams session-id rules verbatim)**:
+  - `--design-tmpdir PATH` (required)
+  - `--issue N` (required; positive integer)
+  - `--session-id STR` (required flag; **value may be empty** — see `validate_session_id` below)
+  - `--claude-pid N` (required; positive integer — passed to `design_reentry_marker_write`)
+  - `--repo OWNER/REPO` (optional; `validate_repo` copied from init sibling)
+  - `-h|--help`
+  - `validate_repo` — same as `design-init-runparams.sh`.
+  - **`validate_session_id`** (publish-specific; **not** `validate_plain_scalar`): reject only embedded newline/CR; **allow empty string** (drives items 8/9/11 skip branches and `WARN=` contract). Do **not** add `[[ -n "$SESSION_ID" ]]` as a required-arg gate after parse.
+  - Issue/claude-pid positive-integer checks — same pattern as init sibling.
+- **Bootstrap order (FINDING_2 — match `design-init-runparams.sh:134-139`; never reference unbound `SESSION_ENV_PATH`)**:
+  1. Finish argv parse + scalar validation.
+  2. `DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"`; `export DESIGN_TMPDIR`.
+  3. `SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"`.
+  4. `PLUGIN_ROOT="$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH")"`; `[[ -d "$PLUGIN_ROOT" ]]` or `fail`; `export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"`.
+  5. `export ISSUE_NUMBER="$ISSUE"`; `export SESSION_ID="$SESSION_ID"` (may be empty). **Every** `render-final-summary.sh` invocation must see these three env vars (not inherited stale orchestrator state).
+- `RESULT_ENV="$DESIGN_TMPDIR/.design-publish-result.env"`; `WARN_LINES=()`; `add_warn` (records for `phase_driver_write_result_env` `WARN=` lines and `emit_kv WARN` on stdout).
+- Preconditions (fail-closed, `exit 2`):
+  1. **5b→5c ordering**: `[[ -f "$DESIGN_TMPDIR/.completed/step-5b" ]]` or `fail` with `Step 5b sentinel missing — refusing to publish before OOS filing`.
+  2. Redacted plan present: `[[ -s "$DESIGN_TMPDIR/composed-plan.redacted.md" ]]` or `fail` (orchestrator-contract violation — item 3 must run first).
+- Resolve `REPO` at the top so the failure summary can use it: if `--repo` empty, `resolve-repo.sh` → `gh repo view --json nameWithOwner --jq .nameWithOwner` → empty (item 6 semantics; safe before `plan-block-write.sh`).
+- Read `MODE` = `design_classification` from `run-params.json` (`jq` → `N/A` fallback) for `render-final-summary.sh --mode`.
+- **item 4 — plan-block-write** (`if !` pattern — mirror init driver): `if ! plan-block-write.sh --issue "$ISSUE" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"; then` (no `--repo`).
+  - **failure branch**: `PLAN_WRITE_OK=false`; `render-final-summary.sh --outcome failed-plan-write --mode "$MODE" ${REPO:+--repo "$REPO"} --post-publish-only` (with `DESIGN_TMPDIR` / `ISSUE_NUMBER` / `SESSION_ID` exported); `emit_kv PLAN_WRITE_OK false`; `phase_driver_write_result_env` with `PLAN_WRITE_OK=false`, `FINAL_SUMMARY_PATH=$DESIGN_TMPDIR/final-summary.md`, plus `WARN=` lines; `exit 1`.
+- **`else` success branch**: `PLAN_WRITE_OK=true`, then in order:
+  - **item 5.5** — `source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"`; `design_reentry_marker_write "$ISSUE" "$CLAUDE_PID"`. On non-zero: capture stderr, `append-tool-failure.sh` under `Warnings` (site `design Step 5c marker write`, `--redact`), continue.
+  - **item 7 / 5c.5** — diagrams upsert: if `architecture-diagram.md` non-empty → helper with `--architecture-file …`; elif `architecture-diagram.skipped` present → same helper `--clear-architecture`; else skip. Subshell capture: `set +e; _upsert_out=$(…upsert-diagrams-comment.sh… 2> "$DESIGN_TMPDIR/diagrams-architecture-upsert.stderr"); _upsert_rc=$?; set -e`; stdout to `diagrams-architecture-upsert.stdout`; parse `UPSERT_STATUS` + `ARCHITECTURE_SOURCE` regardless of rc; non-blocking failures via `append-tool-failure.sh` site `design Step 5c.5`.
+  - **item 8** — if `SESSION_ID` non-empty (`[[ -n "$SESSION_ID" ]]`): `render-final-summary.sh --outcome approved … --pre-publish-only`.
+  - **item 9** — if `SESSION_ID` non-empty: subshell capture for `design-log-publish.sh`; parse `PUBLISH_OK` regardless of rc; unexpected shell failure (nonzero rc, no `PUBLISH_OK=` line) → `PUBLISH_OK=false` + `append-tool-failure.sh` referencing `design-log-publish.failure.log`; explicit `PUBLISH_OK=false` same path; continue. If `SESSION_ID` empty: `add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'`; `PUBLISH_OK` stays empty.
+  - **item 10** — `render-final-summary.sh --outcome approved … --post-publish-only`.
+  - **item 11** — if `SESSION_ID` non-empty **and** `PUBLISH_OK=true`: `tracking-issue-write.sh rename … --state designed`; parse `RENAMED` (`RENAMED=false` idempotent success). Else skip.
+  - `emit_kv` + `phase_driver_write_result_env`: `PLAN_WRITE_OK=true`, `PUBLISH_OK`, `RENAMED`, `UPSERT_STATUS`, `ARCHITECTURE_SOURCE`, `FINAL_SUMMARY_PATH`, plus `WARN=` lines; `exit 0`.
+- Bash 3.2-safe; `set -euo pipefail`.
+
+### NEW: `skills/design/scripts/design-publish.md`
+Sibling contract. Sections: Consumer, Caller, Argv table (**`--session-id`**: required flag, value may be empty; only newline/CR rejected via `validate_session_id` — explicitly **not** init-runparams `validate_plain_scalar`), Responsibilities (items 4–11 + bootstrap order + preconditions + stdout capture + env binding + unexpected-publish branch + SESSION_ID-empty `WARN=` contract), Result env keys, exit codes, ordering invariants, edit-in-sync note.
+
+### NEW: `skills/design/scripts/test-design-publish.sh`
+Offline harness mirroring `test-design-driver.sh`. Stub `PATH` for all downstream helpers. Cases include: argv/usage `exit 2`; preconditions; plan-block-write failure under `set -e` via `if !`; happy path ordering; **`--session-id ''` accepted (exit 0, not exit 2)** → publish + rename skipped, `WARN=` in result env; `PUBLISH_OK=false` → rename skipped; unexpected publish; render env assertions (including empty `SESSION_ID` export); upsert non-blocking. Assert bootstrap: no `phase_driver_resolve_plugin_root` before `DESIGN_TMPDIR` canonicalization (grep pin or harness observes successful run with relative tmpdir arg).
+
+### NEW: `skills/design/scripts/test-design-publish.md`
+Harness contract stub pointing at `design-publish.md`.
+
+### UPDATED: `skills/design/SKILL.md`
+Step 5c: keep items 1–3 verbatim. Replace items 4–11 with `design-publish.sh` foreground call + result-env-first parse + post-driver branching (exit-code contract unchanged from original plan).
+
+**FINDING_1 — Anti-halt line ~29 (`**Anti-halt continuation reminder.**`)**: Replace the helper-exit-0 gate on verbatim `final-summary.md` emit with the post-driver contract aligned to Step 5c / Final summary block:
+- After Step 5c `design-publish.sh` returns with `_publish_rc` ∈ {0, 1}, when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, the orchestrator MUST apply the shared verbatim full-body emit (including on `PLAN_WRITE_OK=false` / driver `exit 1` after failed-plan-write render).
+- Drop “gated on helper exit 0” from this global clause; retain the prohibition on free-form recap prose and the Step 1d.5/1d.7 narrow exceptions unchanged.
+- Wording must remain grep-pin-compatible for `test-render-cost-line-callsites.sh` (see below).
+
+- **`### Final summary block`** (~line 446): replace “if the helper exited 0” with the same non-empty-file gate after `design-publish.sh` handoff (`_publish_rc` 0 or 1).
+- **Step 5d**: align recap prose — drop “runs only when the helper exited 0”; keep “do not re-invoke `render-final-summary.sh` here” when `PLAN_WRITE_OK=false`.
+- Add `design-publish.sh` (+ `.md`) and harness siblings to Plan-helper-contracts list.
+
+### UPDATED: `scripts/test-design-structure.sh`
+All original pins plus:
+- `design-publish.sh` must set `SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"` **after** `DESIGN_TMPDIR="$(cd … && pwd -P)"` and before `phase_driver_resolve_plugin_root`.
+- `design-publish.sh` must define/use `validate_session_id` (or equivalent) and must **not** call `validate_plain_scalar session-id` or `[[ -n "$SESSION_ID" ]]` as a post-parse required gate.
+- `test-design-publish.sh` must exercise empty `--session-id ''` without `exit 2` (grep pin on harness case label or `SESSION_ID missing` warn path).
+- Original Step 5c / driver pins, Check 25 relocation, deleted SKILL awk lines 348–352 / 359–363, driver ordering greps, exit-code contract pins — unchanged from original plan.
+
+### UPDATED: `scripts/test-render-cost-line-callsites.sh`
+Re-pin Step 5c final-summary emit at post-`design-publish.sh` return (drop stale helper-exit-0 pins at lines 64–68):
+- **Drop** greps requiring `gated on helper exit 0`, `If the helper exits 0`, or `runs only when the helper exited 0`.
+- **Replace** line-64 anti-halt grep (`design SKILL must pin anti-halt helper-exit gate`) with prose equivalent to: after `design-publish.sh` returns (`_publish_rc` 0 or 1), when `$DESIGN_TMPDIR/final-summary.md` or parsed `FINAL_SUMMARY_PATH` is non-empty, the shared verbatim full-body emit applies — **not** gated on `render-final-summary.sh` exit 0 (anti-halt clause + Step 5c + Final summary block).
+- **Add** grep that anti-halt reminder no longer contains `gated on helper exit 0` (negative pin).
+- Update Step 5c item-10 / final-recap greps (lines 66–68) to post-driver non-empty-file gates.
+- Keep `--post-publish-only` presence pin.
+
+### UPDATED: `agent-lint.toml`
+Add `test-design-publish.sh` and `test-design-publish.md` beside existing `test-design-driver` exclusions.
+
+### UPDATED: `Makefile`
+Register `test-design-publish` and add to aggregate design-test targets.
+
+### UPDATED: `docs/` (conditional)
+Grep for stale inline Step 5c items 4–11 prose; update only if found.
+
+## Approach
+Follow sibling drivers as the byte-level template, with **publish-specific session-id validation** and **init-matching bootstrap order**. Orchestrator keeps compose + validator + redaction; driver owns items 4–11. Driver renders summaries and returns `FINAL_SUMMARY_PATH`; orchestrator emits `final-summary.md` verbatim once for both success and plan-write failure (non-empty file, not helper exit 0). Global anti-halt reminder must agree so agents do not skip emit on driver `exit 1`.
+
+## Edge cases
+(Unchanged, with explicit empty-`SESSION_ID` now enforced by `validate_session_id` + harness, not blocked at `exit 2`.)
+
+## Failure modes
+Original set plus:
+- **Unbound `SESSION_ENV_PATH` / wrong resolve order**: driver aborts under `set -u` before result-env → orchestrator mis-classifies as unexpected rc. Mitigation: bootstrap pins + mirror init order.
+- **Empty `SESSION_ID` rejected at argv**: skip branches never run. Mitigation: dedicated validator + harness + structure negative pins (no `validate_plain_scalar session-id`, no init-style `[[ -n "$SESSION_ID" ]]` required gate).
+- **Anti-halt vs Step 5c desync**: agents skip verbatim emit on plan-write failure. Mitigation: line-29 SKILL rewrite + `test-render-cost-line-callsites.sh` positive/negative greps.
+
+## Testing strategy
+- `test-design-publish.sh` — includes empty `--session-id ''` acceptance case.
+- `test-design-structure.sh` — bootstrap order, session-id validator pins, all relocated greps.
+- `test-render-cost-line-callsites.sh` — post-driver emit + anti-halt negative pin for helper-exit-0.
+- `bash scripts/relevant-checks.sh`; smoke `design-publish.sh --help`.
+
+## Diff size estimate
+Net new script + harness + siblings; SKILL items 4–11 replaced; additional line-29 anti-halt rewrite and session-id/bootstrap pins beyond original scope.
+
+diff_added: 710
+diff_deleted: 125
+mechanical_churn: 45
+diff_lines: 835

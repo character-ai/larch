@@ -1,0 +1,253 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+## Implementation Plan
+
+Extract the `/design` Step 5c deterministic publish tail (current SKILL.md items 4–11) into one foreground phase driver `design-publish.sh`, mirroring the established `design-route.sh` / `design-init-runparams.sh` siblings. This is a pure prose→code extraction: every existing branch, skip condition, ordering invariant, and machine output is preserved. Compose (item 1), the validator gate (item 2), and redaction (item 3) stay prompt-side.
+
+### Tier
+SIMPLE — smallest change that achieves the goal. The new script + harness + SKILL rewrite + test-pin updates are inherent to the task; nothing beyond them is added.
+
+## Files to modify/create
+
+### NEW: `skills/design/scripts/design-publish.sh`
+The Step 5c publish-tail driver. Structure mirrors `design-init-runparams.sh` exactly:
+- Preamble: `set -euo pipefail`; `SCRIPT_DIR=...`; `source "$SCRIPT_DIR/lib-phase-driver.sh"`; `larch_quiet_init`; `fail()` → `larch_err` + `exit 2`; `usage()`.
+- Argv (validation helpers copied from the sibling):
+  - `--design-tmpdir PATH` (required; `cd … && pwd -P`)
+  - `--issue N` (required; positive integer)
+  - `--session-id STR` (required flag, **may be empty**; reject only embedded newline/CR — empty drives the SESSION_ID-empty branches in items 8/9/11)
+  - `--claude-pid N` (required; positive integer — passed to `design_reentry_marker_write`)
+  - `--repo OWNER/REPO` (optional; `validate_repo`)
+  - `-h|--help`
+- `phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH"`; export `CLAUDE_PLUGIN_ROOT`.
+- `RESULT_ENV="$DESIGN_TMPDIR/.design-publish-result.env"`; `WARN_LINES=()`; `add_warn`.
+- Preconditions (fail-closed, `exit 2`):
+  1. **5b→5c ordering**: `[[ -f "$DESIGN_TMPDIR/.completed/step-5b" ]]` or `fail` with `Step 5b sentinel missing — refusing to publish before OOS filing`. (Decision 3.)
+  2. Redacted plan present: `[[ -s "$DESIGN_TMPDIR/composed-plan.redacted.md" ]]` or `fail` (orchestrator-contract violation — item 3 must run first).
+- Resolve `REPO` at the top so the failure summary can use it: if `--repo` empty, `resolve-repo.sh` → `gh repo view --json nameWithOwner --jq .nameWithOwner` → empty (item 6 semantics; reordering before plan-block-write is safe — plan-block-write does not use REPO).
+- Read `MODE` = `design_classification` from `run-params.json` (`jq` → `N/A` fallback) for `render-final-summary.sh --mode`.
+- **item 4 — plan-block-write**: `plan-block-write.sh --issue "$ISSUE" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"` (no `--repo`, preserving current behavior).
+- **On plan-block-write failure** (Decision 2): set `PLAN_WRITE_OK=false`; run `render-final-summary.sh --outcome failed-plan-write --mode "$MODE" ${REPO:+--repo "$REPO"} --post-publish-only` (produces `final-summary.md`); `emit_kv PLAN_WRITE_OK false`; `phase_driver_write_result_env` with `PLAN_WRITE_OK=false`, `FINAL_SUMMARY_PATH=$DESIGN_TMPDIR/final-summary.md`; `exit 1`. (Orchestrator preserves tmpdir, emits `final-summary.md`, skips cleanup.)
+- **On plan-block-write success**: `PLAN_WRITE_OK=true`, then in order:
+  - **item 5.5** — `source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"`; `design_reentry_marker_write "$ISSUE" "$CLAUDE_PID"`. On non-zero: capture stderr, `append-tool-failure.sh` under `Warnings` (site `design Step 5c marker write`, `--redact`), continue (no rollback). Marker write stays before publish/rename.
+  - **item 7 / 5c.5** — diagrams upsert: if `architecture-diagram.md` non-empty → `upsert-diagrams-comment.sh --issue "$ISSUE" ${REPO:+--repo "$REPO"} --architecture-file …`; elif `architecture-diagram.skipped` present → same helper `--clear-architecture`; else skip. Parse `UPSERT_STATUS` + `ARCHITECTURE_SOURCE`. On `failed`/non-zero → `append-tool-failure.sh` `Warnings` (site `design Step 5c.5`, `--redact`); never block. `emit_kv UPSERT_STATUS` / `ARCHITECTURE_SOURCE`.
+  - **item 8** — if `SESSION_ID` non-empty: `render-final-summary.sh --outcome approved --mode "$MODE" ${REPO:+--repo "$REPO"} --pre-publish-only`.
+  - **item 9** — if `SESSION_ID` non-empty: `set +e; design-log-publish.sh --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE" ${REPO:+--repo "$REPO"} 2> "$DESIGN_TMPDIR/design-log-publish.failure.log"; set -e`; parse `PUBLISH_OK` regardless of rc. On `PUBLISH_OK=false` → `append-tool-failure.sh` `Warnings`, continue. If `SESSION_ID` empty: print the `SESSION_ID missing; skipping design log publish` warning; `PUBLISH_OK` stays empty.
+  - **item 10** — `render-final-summary.sh --outcome approved --mode "$MODE" ${REPO:+--repo "$REPO"} --post-publish-only` (refreshes `final-summary.md`; helper does the `larch:final-summary` upsert internally). The orchestrator emits `final-summary.md` verbatim after the driver returns.
+  - **item 11** — if `SESSION_ID` non-empty **and** `PUBLISH_OK=true`: `tracking-issue-write.sh rename --issue "$ISSUE" --state designed ${REPO:+--repo "$REPO"}`; parse `RENAMED` (treat `RENAMED=false` as idempotent success). Else skip rename.
+  - `emit_kv` + `phase_driver_write_result_env`: `PLAN_WRITE_OK=true`, `PUBLISH_OK`, `RENAMED`, `UPSERT_STATUS`, `ARCHITECTURE_SOURCE`, `FINAL_SUMMARY_PATH`, plus `WARN=` lines; `exit 0`.
+- Bash 3.2-safe (no `declare -A`, `mapfile`, `${var^^}`, `&>>`); `set -euo pipefail`.
+
+### NEW: `skills/design/scripts/design-publish.md`
+Sibling contract (script-md-siblings rule). Sections: Consumer (`/design` Step 5c), Caller (`SKILL.md` Step 5c after compose/validate/redact on Gate-C-approved runs), Argv table, Responsibilities (items 4–11 + preconditions), Result env (`.design-publish-result.env` keys), exit codes (2 config/precondition, 1 plan-block-write failure, 0 success), ordering invariants, edit-in-sync note pointing at `SKILL.md` Step 5c + `test-design-publish.sh` + `test-design-structure.sh`.
+
+### NEW: `skills/design/scripts/test-design-publish.sh`
+Offline, hermetic harness mirroring `test-design-driver.sh`. Stub `PATH` shims for `plan-block-write.sh`, `design-log-publish.sh`, `tracking-issue-write.sh`, `upsert-diagrams-comment.sh`, `render-final-summary.sh`, `resolve-repo.sh`, and `lib-design-reentry-guard.sh` (function stub). Cases: argv/usage `exit 2`; missing `step-5b` sentinel → `exit 2`; missing redacted plan → `exit 2`; plan-block-write failure → `PLAN_WRITE_OK=false`, failure summary rendered, `exit 1`; happy path → `PLAN_WRITE_OK=true`/`PUBLISH_OK=true`/`RENAMED=true`, ordering (marker before publish/rename; upsert after plan-write before publish); `SESSION_ID` empty → publish + rename skipped; `PUBLISH_OK=false` → rename skipped; upsert failure non-blocking; result-env keys present. No network; assert via stub call-logs.
+
+### NEW: `skills/design/scripts/test-design-publish.md`
+Harness contract stub pointing at the primary `design-publish.md` (script-md-siblings stub pattern).
+
+### UPDATED: `skills/design/SKILL.md`
+Step 5c (`### 5c — Write larch:plan to GitHub + publish`): keep items 1–3 (compose, validator gate + shared Fix/Override/Cancel, `redact-secrets.sh`) verbatim. Replace items 4–11 with: a single foreground `design-publish.sh` call (threading `--design-tmpdir --issue "$ISSUE_NUMBER" --session-id "$SESSION_ID" --claude-pid "$PPID" ${REPO:+--repo "$REPO"}`, `set +e` capture), a result-env-first parse of `PLAN_WRITE_OK`/`PUBLISH_OK`/`RENAMED`/`UPSERT_STATUS`/`ARCHITECTURE_SOURCE`/`FINAL_SUMMARY_PATH` (mirror the Step 0b `.design-*-result.env` file-first + stdout-fallback loop), and post-driver branching: on `PLAN_WRITE_OK=false` print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup; on success print the `⏩ 5c.5: status=… arch=…` line from the parsed KVs and apply the shared post-publish verbatim full-body emit of `final-summary.md`. Keep the `**⚠ Foreground required**` note. Preserve the anti-halt chain tokens (`5→5a→5b→5c.1→5c.5→5c.7→5c.8→6`) unchanged — they still name the logical phases the driver runs internally; no renumbering (minimal-change, avoids pin churn). Step 5d: unchanged semantics (the driver renders the failure summary, so item-5's prior inline Final-summary-block reference is replaced by the driver path; the "do not re-invoke render-final-summary here" note stays). Add `design-publish.sh` (+ `.md`) and `test-design-publish.sh` (+ `.md`) to the Plan-helper-contracts list.
+
+### UPDATED: `scripts/test-design-structure.sh`
+Add `design-publish.sh` structural pins mirroring the `design-init-runparams.sh` (FINDING_13/FINDING_2) pattern, and re-point the existing Step-5c-window assertions that now live in the driver:
+- `SKILL.md` Step 5c must invoke `design-publish.sh`; must keep validator-before-redact on `composed-plan.md`; Step 5b header before Step 5c header (existing check unchanged).
+- `design-publish.sh` must call `plan-block-write.sh`, `design_reentry_marker_write`, `upsert-diagrams-comment.sh`, `design-log-publish.sh`, `render-final-summary.sh`, and `tracking-issue-write.sh … rename … --state designed`; must thread `${REPO:+--repo}` on the REPO-aware calls.
+- Ordering inside `design-publish.sh`: `design_reentry_marker_write` before `design-log-publish.sh`/rename; `upsert-diagrams-comment.sh` after `plan-block-write.sh` and before `design-log-publish.sh`; `.completed/step-5b` precondition present.
+- Move the `architecture-diagram.skipped` + `--clear-architecture` token checks from the SKILL Step-5c window into a `design-publish.sh` grep (they relocated into the driver).
+- `SKILL.md` Step 5c must read `.design-publish-result.env` file-first and emit a `design-publish.sh configuration error (exit 2)` abort banner (mirror the Step 0b driver-exit-2 prose pins).
+- Keep the anti-halt chain greps (`5c.5→5c.7→5c.8→6`, `5→5a→5b→5c.1→5c.5→5c.7→5c.8→6`) — they remain satisfied by the unchanged chain tokens.
+
+### UPDATED: `Makefile`
+Register `test-design-publish` mirroring the existing `test-design-driver` / `test-file-design-oos` targets, and add it to any aggregate design-test target that lists those.
+
+### UPDATED: `docs/` (drift grep, conditional)
+Per the drift-prone-prose rule, grep `docs/`, `README.md`, `SECURITY.md`, `.github/workflows/` for prose naming the old "Step 5c items 4–11" inline sequence; update only stale references that now point at the driver. Likely small or no-op (`docs/run-logs.md`, `docs/workflow-lifecycle.md` are candidates).
+
+## Approach
+Follow the sibling drivers as the byte-level template. The orchestrator keeps the LLM-authored compose + validator gate + redaction (items 1–3); the driver owns the deterministic tail (items 4–11) as one foreground call. REPO is resolved once at the driver top (so the failure summary can thread it). The driver renders the `failed-plan-write` summary itself and returns `PLAN_WRITE_OK=false`, giving the orchestrator a single uniform post-driver behavior: emit `final-summary.md` verbatim once, then footer/cleanup keyed on `PLAN_WRITE_OK`/`PUBLISH_OK`. No `gh … --body` inline is introduced (helpers stay file-backed; `design-log-publish.sh` keeps its documented `gh pr create --head` exception).
+
+## Edge cases
+- `SESSION_ID` empty → skip pre-publish render, skip `design-log-publish.sh` (print the missing-SESSION_ID warning), skip rename; still write the plan block + render post-publish summary.
+- `PUBLISH_OK=false` after a successful plan write → skip rename (title must not read `[DESIGNED]` without published logs); preserve tmpdir; surface the publish failure log.
+- `step-5b` sentinel absent → `exit 2` before any GitHub mutation.
+- `composed-plan.redacted.md` missing/empty → `exit 2` (orchestrator contract violation).
+- Reentry-marker write failure / upsert failure → `Warnings`, non-blocking, no rollback of the landed plan block.
+- `run-params.json` unreadable → `MODE=N/A` (render-final-summary still runs).
+
+## Failure modes
+- **Behavior drift during extraction** (most likely): a branch (SESSION_ID-empty, PUBLISH_OK gating, upsert non-blocking) is dropped or reordered. Earliest signal: `test-design-publish.sh` / `test-design-structure.sh` failures. Mitigation: port each item 4–11 branch 1:1; assert ordering + skip conditions in the harness.
+- **Harness/SKILL pin desync**: `test-design-structure.sh` still greps relocated tokens in the SKILL window. Signal: CI `test-design-structure.sh` failure. Mitigation: re-point the moved assertions to `design-publish.sh` in the same change.
+- **final-summary double-emit or omission**: orchestrator emit + driver render diverge. Signal: manual QA / no top-chat summary block. Mitigation: driver is the sole `render-final-summary.sh` caller for Step 5c; orchestrator only reads+emits `final-summary.md` once.
+
+## Testing strategy
+- New `test-design-publish.sh` (hermetic, stubbed helpers) — argv, preconditions, failure + happy paths, ordering, skip branches, result-env keys.
+- `bash scripts/test-design-structure.sh` — new + re-pointed Step 5c pins pass; anti-halt chains intact.
+- `make py-lint`/`make lint` equivalents via `bash scripts/relevant-checks.sh` (shellcheck, bash32, agent-lint, script-md-siblings) after edits.
+- Smoke: `design-publish.sh --help` exits 0 (verify-external-tool-invocations rule for the new argv surface).
+
+## Diff size estimate
+Net new script + harness + siblings dominate additions; SKILL.md items 4–11 prose is removed and replaced by a compact driver call + parse block.
+
+diff_added: 560
+diff_deleted: 90
+diff_lines: 650
+
+</plan>
+
+<findings>
+### FINDING_1: design-log-publish stdout not captured for PUBLISH_OK parsing
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The planned Step 5c / `design-publish.sh` driver invokes `design-log-publish.sh` with stderr redirected but does not capture stdout. `PUBLISH_OK` (and related publish status) is emitted on stdout, so the driver never parses publish outcome. Rename gating (`PUBLISH_OK=true`), warning append on failure, and status-line behavior drift from current `SKILL.md` Step 5c.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Mirror `design-route.sh` / current Step 5c item 9: `set +e; _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" … 2> "$DESIGN_TMPDIR/design-log-publish.failure.log"); _publish_rc=$?; set -e` then parse `_publish_out`; for upsert `set +e; _upsert_out=$("$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" …); _upsert_rc=$?; set -e` then parse `_upsert_out` (optionally keep `diagrams-architecture-upsert.{stdout,stderr}` captures); preserve the `_publish_rc` non-zero && no `PUBLISH_OK=` unexpected-failure branch from `skills/design/SKILL.md:1305`
+  - From Cursor-Edge: Use the existing subshell capture: set +e; _publish_out=$(design-log-publish.sh ... 2> ...); _publish_rc=$?; set -e; parse PUBLISH_OK from _publish_out
+  - From Cursor-Innovation: Port the existing capture: _publish_out=$(design-log-publish.sh ... 2>design-log-publish.failure.log); parse PUBLISH_OK from _publish_out; preserve the non-zero-rc without PUBLISH_OK= branch
+  - From Cursor-Pragmatic: Mirror current SKILL item 9: `_publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" … 2> "$DESIGN_TMPDIR/design-log-publish.failure.log")`; parse `PUBLISH_OK` from `_publish_out`; assert in `test-design-publish.sh`
+
+
+### FINDING_2: upsert-diagrams-comment stdout not captured for UPSERT_STATUS parsing
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: Plan driver pseudocode omits stdout capture for the `upsert-diagrams-comment.sh` emit_kv helper. `UPSERT_STATUS` / `ARCHITECTURE_SOURCE` are emitted on stdout; planned item 7 has no `_upsert_out=$(…)` capture, so parsing never runs and the `⏩ 5c.5` status line drifts from current Step 5c behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Mirror `design-route.sh` / current Step 5c item 9: `set +e; _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" … 2> "$DESIGN_TMPDIR/design-log-publish.failure.log"); _publish_rc=$?; set -e` then parse `_publish_out`; for upsert `set +e; _upsert_out=$("$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" …); _upsert_rc=$?; set -e` then parse `_upsert_out` (optionally keep `diagrams-architecture-upsert.{stdout,stderr}` captures); preserve the `_publish_rc` non-zero && no `PUBLISH_OK=` unexpected-failure branch from `skills/design/SKILL.md:1305`
+
+
+### FINDING_3: render-final-summary.sh env not bound from driver argv
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements, Codex-dyn-publish-ordering
+- **Severity**: important
+- **Concern**: Planned `design-publish.sh` calls `render-final-summary.sh` without exporting `SESSION_ID` and `ISSUE_NUMBER` (and in some paths `DESIGN_TMPDIR`) from validated argv into the child environment. `render-final-summary.sh` reads those values from env, not argv; missing, stale, or intentionally empty inherited env can render `run unknown` / issue N/A, skip or mis-target the `larch:final-summary` upsert, or inherit stale session state despite the plan assuming the helper upserts internally.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Invoke render-final-summary.sh with DESIGN_TMPDIR="$DESIGN_TMPDIR" SESSION_ID="$SESSION_ID" ISSUE_NUMBER="$ISSUE" and add test-design-publish.sh assertions that pre, post, and failed-plan-write render calls receive those env values
+  - From Codex-Edge: After argv validation, export DESIGN_TMPDIR, ISSUE_NUMBER="$ISSUE", SESSION_ID="$SESSION_ID", and CLAUDE_PLUGIN_ROOT before any render-final-summary.sh call. Add harness assertions that the render stub sees those env values, including empty SESSION_ID.
+  - From Codex-Innovation: Inside design-publish.sh, set and export SESSION_ID from --session-id and ISSUE_NUMBER from --issue before every render-final-summary.sh call; add a harness assertion that the stub sees those env values
+  - From Codex-Pragmatic: Export ISSUE_NUMBER="$ISSUE" and SESSION_ID="$SESSION_ID" after argv validation, or pass them as inline env on each render-final-summary.sh call
+  - From Codex-Requirements: In design-publish.sh setup, export DESIGN_TMPDIR and SESSION_ID and set/export ISSUE_NUMBER="$ISSUE" (or prefix each render-final-summary.sh call); add a harness assertion that the render stub sees those env vars
+  - From Codex-dyn-publish-ordering: In design-publish.sh export SESSION_ID and ISSUE_NUMBER="$ISSUE" after argv validation and before every render-final-summary.sh call; add a harness assertion that the render stub sees both env vars.
+
+
+### FINDING_4: unexpected publish failure branch (nonzero rc, no PUBLISH_OK line) dropped
+- **Reviewer(s)**: Codex-Edge, Codex-Innovation, Codex-dyn-publish-ordering
+- **Severity**: important
+- **Concern**: Current Step 5c treats a nonzero `design-log-publish.sh` exit with no parsed `PUBLISH_OK` line as an unexpected shell failure (warn, skip rename). The proposed item 9 / driver plan only handles explicit `PUBLISH_OK=false`; an early helper crash can leave `PUBLISH_OK` empty, skip rename and cleanup, and record no warning—reducing recovery visibility vs today's contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Preserve the existing branch: if publish rc is nonzero and no PUBLISH_OK line was parsed, set PUBLISH_OK=false and append design-log-publish.failure.log under Warnings or fail explicitly. Add a test where the publish stub exits nonzero without PUBLISH_OK.
+  - From Codex-Innovation: Preserve the existing branch: when publish rc is nonzero and no PUBLISH_OK line was parsed, treat it as PUBLISH_OK=false, append design-log-publish.failure.log under Warnings with the rc, and keep rename skipped
+  - From Codex-dyn-publish-ordering: Port the exact current capture semantics: parse stdout regardless of rc, and when rc is nonzero with no PUBLISH_OK line, handle it as an unexpected publish failure, append design-log-publish.failure.log under Warnings, keep cleanup skipped, and cover this case in test-design-publish.sh.
+
+
+### FINDING_6: Step 5c `.completed/step-5c` sentinel not re-homed after driver extraction
+- **Reviewer(s)**: Cursor-dyn-phase-contract
+- **Severity**: important
+- **Concern**: Plan moves Step 5c items 4–11 into `design-publish.sh` but does not carry the success-boundary `.completed/step-5c` sentinel into the orchestrator SKILL window. Pause/resume and completion tracking can skip recording 5c success; `assert_step_completion_sentinels` in `scripts/test-design-structure.sh` still requires `.completed/step-5c` in the Step 5c SKILL window.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-phase-contract: Pause/resume and completion tracking can skip recording 5c success; CI structure test fails Add one orchestrator line after successful driver handoff when parsed `PLAN_WRITE_OK=true`: write `.completed/step-5c` before Step 5d (mirror current SKILL.md:1308); pin in test-design-structure if needed
+
+
+### FINDING_7: SESSION_ID-empty warning lost inside quiet-phase driver
+- **Reviewer(s)**: Codex-dyn-phase-contract
+- **Severity**: important
+- **Concern**: The proposed `SESSION_ID`-empty warning is printed inside a quiet-phase driver, so ordinary `printf` output is redirected to the quiet log instead of reaching the orchestrator. When `SESSION_ID` is empty, `design-publish.sh` skips publish/rename but the user-visible warning promised by current Step 5c can disappear.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-phase-contract: Use emit or larch_err for that warning, or carry it as WARN= in .design-publish-result.env and have SKILL.md print it after parsing.
+
+
+### FINDING_8: SKILL rewrite omits failed-plan-write final-summary emit contract
+- **Reviewer(s)**: Codex-dyn-publish-ordering
+- **Severity**: important
+- **Concern**: The planned `SKILL.md` rewrite is internally inconsistent about emitting `final-summary.md` on `PLAN_WRITE_OK=false`. Current Step 5c renders and emits the failed-plan-write summary before the warning; proposed rewrite text only describes the shared full-body emit on success, so an implementer could print only the warning and skip the failure summary.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-publish-ordering: Make the Step 5c post-driver branch explicitly emit FINAL_SUMMARY_PATH for both PLAN_WRITE_OK=false and PLAN_WRITE_OK=true before the warning/footer decision; keep the success-only 5c.5 status line separate.
+
+
+### FINDING_9: test-design-structure Check 25 still awk-scans moved inline prose
+- **Reviewer(s)**: Cursor-dyn-drift-harness
+- **Severity**: important
+- **Concern**: Plan re-points Step 5c helper/order greps at lines 348–363 but omits Check 25, which still awk-scans `SKILL.md` Step 5c for `design_reentry_marker_write` before `tracking-issue-write` rename. After items 4–11 move into `design-publish.sh`, Check 25 finds no tokens in the SKILL 5c window and `test-design-structure` fails despite new driver pins.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-drift-harness: Add an explicit UPDATED step: replace the Check 25 SKILL.md awk block with a design-publish.sh line-order pin (or drop Check 25 only if the planned marker-before-rename grep fully subsumes it)
+
+
+### FINDING_10: test-render-cost-line-callsites still pins old inline Step 5c item 10
+- **Reviewer(s)**: Codex-dyn-drift-harness
+- **Severity**: important
+- **Concern**: Plan re-points Step 5c pins only in `test-design-structure.sh`, but `scripts/test-render-cost-line-callsites.sh` still pins old inline Step 5c item 10 prose. After `SKILL.md` replaces items 4–11 with the driver, `make test-render-cost-line-callsites` will fail or stale inline item-10 prose may be kept just to satisfy the pin.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-drift-harness: Update this harness to pin the new post-driver final-summary full-body emit contract, or keep the exact helper-exit sentence at the new driver-return callsite.
+
+
+### FINDING_11: agent-lint exclusions missing for new design-publish harness
+- **Reviewer(s)**: Codex-dyn-drift-harness
+- **Severity**: important
+- **Concern**: Plan adds Makefile-only `test-design-publish.sh` and `test-design-publish.md` but omits the existing `agent-lint.toml` exclusion pattern for skill-local harnesses. `agent-lint --pedantic` from `relevant-checks` or `make lint` can flag the new harness and sibling doc as dead because agent-lint does not follow Makefile-only references.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-drift-harness: Add skills/design/scripts/test-design-publish.sh and skills/design/scripts/test-design-publish.md beside the existing test-design-driver exclusions.
+
+---
+
+**Merge summary**: 20 source findings consolidated into 11 distinct behavioral risks. Input `FINDING_3`, `6`, `9` merged into **FINDING_1**; input `FINDING_4`, `7`, `10`, `11`, `15` merged into **FINDING_3**; input `FINDING_5`, `8`, `16` merged into **FINDING_4**; input `FINDING_12` merged into **FINDING_5**; upsert capture split from Cursor-Arch input `FINDING_1` as **FINDING_2** (distinct code path/fix).
+
+
+</findings>
+
+<feature>
+/design refactor: extract Step 5c publish tail driver (design-publish)
+
+Part of umbrella #3133 (extract `/design` deterministic logic into phase-driver scripts).
+
+**Impact rank: 3 of 6.** Runs on every successful design; the current prose sequencing invites one-command-per-turn execution.
+
+## Region owned
+
+The Step 5c **deterministic publish tail**, after the LLM authors `composed-plan.md` and the validator gate + redaction run:
+
+- `plan-block-write.sh` (write `larch:plan` into the issue body)
+- reentry-marker write (`design_reentry_marker_write`)
+- `REPO` resolution (`resolve-repo.sh` → `gh repo view` fallback)
+- `upsert-diagrams-comment.sh` (Architecture section / `--clear-architecture`)
+- `render-final-summary.sh --pre-publish-only`
+- `design-log-publish.sh`
+- `render-final-summary.sh --post-publish-only`
+- `tracking-issue-write.sh` `[DESIGNED]` rename
+
+## Current inline cost
+
+~8 prose-described sub-steps (Step 5c items 3–11) → up to ~8 orchestrator turns. No internal gate — the whole tail is deterministic and runs to the Step 5 footer.
+
+## Responsibility
+
+Collapse the tail into **one foreground call** and **encode the ordering invariants in code** rather than prose:
+
+- Step 5b (OOS filing) before Step 5c.
+- reentry-marker before publish/rename.
+- `[DESIGNED]` rename only when `SESSION_ID` non-empty **and** `PUBLISH_OK=true`.
+- skip cleanup / preserve `$DESIGN_TMPDIR` on `plan-block-write` failure.
+
+## Stops before (LLM boundary)
+
+Nothing internal — the orchestrator wakes once **after** to emit the verbatim `final-summary.md` body (the only permitted top-chat summary).
+
+## Machine output
+
+`PLAN_WRITE_OK`, `PUBLISH_OK`, `RENAMED`, `final-summary` path, `UPSERT_STATUS`. Warnings appended to `execution-issues.md` via `append-tool-failure.sh` as today.
+
+## Dependency
+
+Blocked by the Step 0b router (#3133 rank 2) — serialized on the shared `skills/design/SKILL.md` + `scripts/test-design-structure.sh` surface, executed in impact order.
+
+## Cross-cutting
+
+See umbrella #3133. Note the `gh ... --body-file` file-backed rule applies to `plan-block-write.sh` content (already redaction-guarded).
+
+
+</feature>
