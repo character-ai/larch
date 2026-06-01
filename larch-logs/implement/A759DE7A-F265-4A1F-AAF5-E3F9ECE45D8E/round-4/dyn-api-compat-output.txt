@@ -1,0 +1,8 @@
+Auditing `pr_create` return-type changes and related API callsites across `python/`.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- **`gh.pr_create` return-type migration is complete in `python/`.** On `main`, the only callers were `python/gh.py` (definition) and `python/test_gh.py`; there were no production callers before Phase 5. On this branch, the sole production callsite is `python/pr.py:68-76`, which correctly unpacks `created, was_created = gh.pr_create(...)` and maps `was_created` to `PrResult.status` (`"created"` vs `"existing"`). Tests were updated: `python/test_gh.py:80,119,154` use `pr, _ = gh.pr_create(...)`; `python/test_gh.py:180,463,493` use `_ = gh.pr_create(...)` (binds the full tuple, not a bare `PullRequest`). `python/test_pr.py:198-211` mocks `pr_create` with return type `tuple[gh.PullRequest, bool]`.
+- **New `gh` issue-comment helpers have no stale external callers.** `issue_comments_list_read` is internal to `python/gh.py:763`. `find_issue_comment_id_by_marker` and `issue_comment_patch` are only called from `python/tracking_issue.py:109-130` (plus tests in `python/test_gh.py:669+`). `pr_for_branch` is used from `python/pr.py:46`, internally in `python/gh.py:321,350`, and test mocks; `python/ci_monitor.py` uses `gh.pr_view` only, not `pr_create` or the new comment APIs.
+- **`pr_merge(admin=...)` and other `gh.py` additions are backward-compatible** (new parameters default safely; no existing callers required updates beyond the `pr_create` tuple change).
