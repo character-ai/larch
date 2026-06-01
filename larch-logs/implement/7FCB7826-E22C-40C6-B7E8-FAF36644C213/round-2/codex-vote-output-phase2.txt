@@ -1,0 +1,21 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Two-site duplication is real but a shared helper is premature for this extraction PR.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Local KV parser mirrors an emerging pattern; centralizing before a third caller adds needless scope.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Legitimate coverage gaps but latent; additional stub scenarios are nice-to-have, not merge-blocking.
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Abort prose exists in SKILL.md; only the structural grep pin for unexpected-exit is missing.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Missing execution-issues assertion is a minor harness gap with low regression risk.
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Same-UID tmpdir trust model makes symlink/path-prefix hardening disproportionate here.
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- WARN replay trusts driver-written result env under the same operator-owned session model.
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Theoretical rc/stdout mismatch; publish helper contract makes PUBLISH_OK=true on failure unlikely.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Doc table omits rare result-env write failure sharing exit 1; low operator impact.
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Pre-existing triplication; filing is optional tech debt, not introduced by this extraction.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Observation confirms intended subshell/set -e behavior; not a defect worth filing.
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Verified Bash 3.2-safe; no actionable problem.
+OOS_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Stricter than inline Step 5c in theory, but render helper is built to exit 0 on these phases.
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Grep pattern behaves correctly; nothing to file.
+OOS_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Unused stub knob overlaps FINDING_6 coverage gap; not worth a separate issue.
+OOS_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Remaining ordering gap is already captured by FINDING_4; duplicate filing unnecessary.

@@ -1,0 +1,21 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- follows established sibling-driver pattern deliberately; extracting to lib-phase-driver now adds complexity beyond this extraction task
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- premature; "when a third caller appears" makes this a future concern, not a current defect
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent minor-path gaps; prefer EXONERATE on close calls; RENAMED_OMIT_LINE gap overlaps with FINDING_6/OOS_7
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- core behavior tested; execution-issues assertion is a nit-level gap
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same-UID trust model weakens practical risk; symlink check on result env provides baseline protection
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- WARN values originate from trusted driver under same-UID model; not meaningfully different from any other orchestrator output
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- design explicitly specifies "parse PUBLISH_OK from _publish_out regardless of _publish_rc"; matches plan intent
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- minor doc gap; exit 1 dual-use is edge-case enough not to warrant table expansion
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- branch bundling is a review-time hygiene concern, not actionable as a post-merge GitHub issue
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_3: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- verification note confirming correct behavior; no defect present
+OOS_4: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- verification note; no defect present
+OOS_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_6: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- verification note; behavior correct
+OOS_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- redundant with FINDING_6 which already covers adding the RENAMED_OMIT_LINE test case
+OOS_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- redundant with FINDING_4 which covers the marker ordering test gap

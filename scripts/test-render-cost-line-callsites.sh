@@ -59,14 +59,19 @@ grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn 
 grep -Fq 'SUMMARY_MODE_STRING=N/A' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must default SUMMARY_MODE_STRING to N/A'
 grep -Fq -- '--post-publish-only' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must call render-final-summary.sh with --post-publish-only'
 # shellcheck disable=SC2016
-grep -Fq 'the orchestrator MUST read $DESIGN_TMPDIR/final-summary.md and emit its full body verbatim as plain chat markdown' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-publish full-body emit prose'
+grep -Fq 'emit its full body verbatim as plain chat markdown' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-publish full-body emit prose'
 # shellcheck disable=SC2016
-grep -Fq 'The only orchestrator-text addition permitted after that helper returns is the shared verbatim full-body emission of `$DESIGN_TMPDIR/final-summary.md`, gated on helper exit 0 and that file being non-empty.' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin anti-halt helper-exit gate'
+grep -Fq 'Step 5c `design-publish.sh` returns (`_publish_rc` 0, 1, or 3)' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-driver full-body emit gate'
 # shellcheck disable=SC2016
-grep -Fq 'If the helper exits 0 and $DESIGN_TMPDIR/final-summary.md is non-empty, apply the shared post-publish full-body emit rule immediately after this callsite' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin Step 5c item 10 shared full-body emit prose'
+grep -Fq 'when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin non-empty FINAL_SUMMARY_PATH emit gate'
 # shellcheck disable=SC2016
-grep -Fq 'The shared post-publish/full-body emit rule runs only when the helper exited 0 and `$DESIGN_TMPDIR/final-summary.md` is non-empty' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin final recap helper-exit gate'
+grep -Fq 'Regardless of `PLAN_WRITE_OK`' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin full-body emit regardless of PLAN_WRITE_OK'
+# shellcheck disable=SC2016
+grep -Fq 'when `$DESIGN_TMPDIR/final-summary.md` or parsed `FINAL_SUMMARY_PATH` is non-empty after driver handoff' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin Step 5d post-driver final-summary gate'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin anti-recap prose'
+if grep -Fq 'gated on helper exit 0' "$REPO/skills/design/SKILL.md"; then
+    fail 'design SKILL must not gate final-summary emit on helper exit 0'
+fi
 pass 'SKILL.md full-body summary callsite contracts pinned'
 
 # shellcheck disable=SC2016

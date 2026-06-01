@@ -307,6 +307,11 @@ LARCH_CACHE_DIR="$(dirname "$PLUGIN_ROOT")"
 # Version string of the currently running larch installation (basename of PLUGIN_ROOT).
 INSTALLED_VERSION="$(basename "$PLUGIN_ROOT")"
 
+# shellcheck disable=SC2317 # file may be sourced; exit fallback is for direct execution.
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 # Resolve the latest stable (non-pre-release, non-draft) release from GitHub.
 larch_err "Checking latest stable larch release..."
 LATEST_STABLE=""
@@ -381,9 +386,6 @@ claude plugin install larch@larch-local 2>&1
 # gated on a verified stable install below (rollback safety).
 VERIFIED_TARGET=false
 ACTUAL_VERSION=$(get_installed_larch_version || true)
-if is_safe_version "${ACTUAL_VERSION:-}"; then
-    write_install_stamp "$ACTUAL_VERSION"
-fi
 if [ -n "$LATEST_STABLE" ]; then
     if [ "$ACTUAL_VERSION" = "$LATEST_STABLE" ]; then
         VERIFIED_TARGET=true
@@ -400,9 +402,10 @@ if [ -n "$LATEST_STABLE" ]; then
     fi
 fi
 
-# Prune old versions only after a verified stable install (rollback safety).
-# The install stamp was already written above, regardless of verification.
 if [ "$VERIFIED_TARGET" = true ]; then
+    if is_safe_version "${ACTUAL_VERSION:-}"; then
+        write_install_stamp "$ACTUAL_VERSION"
+    fi
     prune_cached_versions "$ACTUAL_VERSION"
 else
     larch_err "Skipping prune because the expected stable version was not verified."

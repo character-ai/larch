@@ -974,6 +974,8 @@ exclude = [
   "scripts/test-design-reentry-guard.sh",
   "scripts/test-design-reentry-guard.md",
   "skills/design/scripts/test-design-driver.sh",
+  "skills/design/scripts/test-design-publish.sh",
+  "skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh",
   "skills/design/scripts/test-design-pause-resume.sh",
   # skills/design/scripts/test-write-design-current-env.sh — offline harness
   # for scripts/write-design-current-env.sh (Makefile test-write-design-
@@ -1387,6 +1389,7 @@ exclude = [
   # refactor. The primary scripts are cited from /design runtime prose; the
   # harnesses are referenced only from Makefile and their sibling contracts.
   "skills/design/scripts/test-design-driver.md",
+  "skills/design/scripts/test-design-publish.md",
   "skills/design/scripts/test-design-pause-resume.md",
   "skills/design/scripts/test-write-design-current-env.md",
   "skills/design/scripts/test-emit-plan.md",
