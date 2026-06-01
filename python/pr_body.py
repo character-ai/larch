@@ -56,19 +56,29 @@ def compose_summary_bullets(
     """Port compose-pr-summary.sh goal + test/cross-dir bullets."""
     _ = runner
     goals_path = Path(plan_goals_file)
-    if cwd:
+    if goals_path.is_absolute() and cwd is None:
+        msg = f"plan-goals path escapes repo root: {plan_goals_file}"
+        raise ShipError(msg)
+    goals_file = goals_path
+    if cwd is not None:
+        repo_root = Path(cwd)
+        goals_file = (
+            goals_path.resolve()
+            if goals_path.is_absolute()
+            else (repo_root / goals_path).resolve()
+        )
         try:
-            rel = goals_path.resolve().relative_to(Path(cwd).resolve())
+            rel = goals_file.relative_to(repo_root.resolve())
         except ValueError as exc:
             msg = f"plan-goals path escapes repo root: {plan_goals_file}"
             raise ShipError(msg) from exc
-        if not run_logs.path_under_repo(Path(cwd), str(rel)):
+        if not run_logs.path_under_repo(repo_root, str(rel)):
             msg = f"plan-goals path escapes repo root: {plan_goals_file}"
             raise ShipError(msg)
-    if not goals_path.is_file() or goals_path.stat().st_size == 0:
+    if not goals_file.is_file() or goals_file.stat().st_size == 0:
         msg = f"plan-goals file missing or empty: {plan_goals_file}"
         raise ShipError(msg)
-    text = goals_path.read_text(encoding="utf-8")
+    text = goals_file.read_text(encoding="utf-8")
     goal_line = ""
     in_goal = False
     for line in text.splitlines():

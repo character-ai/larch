@@ -13,6 +13,16 @@ class _NoopRunner:
         return CommandResult((), 0, "", "", 0.0)
 
 
+def test_disposition_skips_repo_unavailable() -> None:
+    result = oos.disposition_ok(
+        _NoopRunner(),  # type: ignore[arg-type]
+        accepted_files=(),
+        repo_unavailable=True,
+    )
+    assert result.ok
+    assert result.skipped
+
+
 def test_disposition_skips_fork() -> None:
     result = oos.disposition_ok(
         _NoopRunner(),  # type: ignore[arg-type]

@@ -13,6 +13,7 @@ import gh
 import git
 import redact
 import run_logs
+from errors import ShipError
 from proc import Runner
 from retry import with_transient_retry
 from run_context import RunContext
@@ -68,14 +69,17 @@ def merge_pr(
     if ctx.pr_number is None:
         return MergeResult(result=config.MERGE_RESULT_ERROR, error="pr_number required")
 
+    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd)
+    if terminal is not None:
+        return terminal
+
     pre = run_logs.flush_logs_pre(runner, ctx, cwd=cwd)
     if pre.skipped and pre.reason == "commit-failed":
         return MergeResult(result=config.MERGE_RESULT_ERROR, error="flush_logs_pre commit failed")
-    if pre.skipped and pre.reason not in config.REFRESH_SKIP_MERGE_OK:
-        return MergeResult(
-            result=config.MERGE_RESULT_ERROR,
-            error=f"flush_logs_pre skipped: {pre.reason}",
-        )
+
+    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd)
+    if terminal is not None:
+        return terminal
 
     pr_num = ctx.pr_number
     state = _refresh_pr_info(runner, pr_num, ctx.repo, cwd=cwd)
@@ -141,6 +145,28 @@ def merge_pr(
 
 def _post_flush(ctx: RunContext) -> None:
     _ = run_logs.flush_logs_post(ctx)
+
+
+def _merge_noop_if_pr_closed(
+    runner: Runner,
+    ctx: RunContext,
+    *,
+    cwd: str | None,
+) -> MergeResult | None:
+    """Idempotent re-entry when the PR is already merged or closed."""
+    pr_num = ctx.pr_number
+    if pr_num is None:
+        return None
+    try:
+        pr = gh.pr_view(runner, pr_num, repo=ctx.repo, cwd=cwd)
+    except ShipError:
+        return None
+    if pr.state not in ("MERGED", "CLOSED"):
+        return None
+    merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
+    if merge_result == config.MERGE_RESULT_ADMIN_MERGED:
+        return MergeResult(result=config.MERGE_RESULT_ADMIN_MERGED, error="")
+    return MergeResult(result=config.MERGE_RESULT_MERGED, error="")
 
 
 def _refresh_pr_info(

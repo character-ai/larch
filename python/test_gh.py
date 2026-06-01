@@ -633,6 +633,11 @@ def test_pr_edit_body_uses_body_file() -> None:
     assert "--body-file" in runner.calls[0]
 
 
+def test_pr_checks_text_fallback_word_boundaries() -> None:
+    assert gh._pr_checks_text_all_pass("ci\tpass\t0\t0\n")  # pyright: ignore[reportPrivateUsage]
+    assert not gh._pr_checks_text_all_pass("ci\tfail\t0\t0\n")  # pyright: ignore[reportPrivateUsage]
+
+
 def test_pr_checks_text_fallback_when_json_unparseable() -> None:
     runner = RecordingRunner(
         responses=[

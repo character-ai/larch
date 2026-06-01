@@ -11,6 +11,7 @@ import pytest
 
 import config
 import run_logs
+from errors import ShipError
 from proc import CommandResult
 from run_context import RunContext
 
@@ -103,7 +104,7 @@ def test_flush_logs_post_no_git_commit(tmp_path: Path) -> None:
 def test_load_or_recover_manifest_from_log_dir(tmp_path: Path) -> None:
     log_dir = tmp_path / "larch-logs" / "implement" / "recovered-run"
     log_dir.mkdir(parents=True)
-    ctx = _ctx(tmp_path)
+    ctx = _ctx(tmp_path).with_(run_id="../invalid")
     manifest = run_logs.load_or_recover_manifest(ctx)
     assert manifest.run_id == "recovered-run"
 
@@ -113,6 +114,67 @@ def test_effective_run_id_prefers_state_file(tmp_path: Path) -> None:
     _ = state.write_text("RUN_ID=state-run\n", encoding="utf-8")
     ctx = _ctx(tmp_path, str(state))
     assert run_logs.effective_run_id(ctx) == "state-run"
+
+
+def test_effective_run_id_rejects_unvalidated_ctx_run_id(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path).with_(run_id="../../../outside")
+    assert run_logs.effective_run_id(ctx) == ""
+
+
+def test_execution_issues_batch_from_markdown(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    _ = (tmp_path / "execution-issues.md").write_text(
+        "### Tool Failures\nline one\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    batch_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    batch_dir.mkdir(parents=True)
+    run_logs._render_execution_issues_batch(  # pyright: ignore[reportPrivateUsage]
+        ctx,
+        batch_dir,
+        step_label="pre-push",
+        source_label="test",
+    )
+    batch = batch_dir / "execution-issues.ndjson"
+    assert batch.is_file()
+    assert "Tool Failures" in batch.read_text(encoding="utf-8")
+
+
+def test_token_batch_redaction_truncation_fails_closed(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIB\n"
+    _ = (tmp_path / "token-report-refresh.json").write_text(pem, encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    with pytest.raises(ShipError, match="redaction failed"):
+        run_logs._render_token_timing_batches(  # pyright: ignore[reportPrivateUsage]
+            ctx,
+            tmp_path / "larch-logs",
+        )
+
+
+def test_copytree_preserves_symlinks(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    secret = tmp_path / "secret.txt"
+    _ = secret.write_text("secret", encoding="utf-8")
+    link = run_dir / "link.txt"
+    link.symlink_to(secret)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    ctx = _ctx(tmp_path, str(state))
+    rel = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
+        ctx,
+        tmp_path / "larch-logs",
+        cwd=str(repo),
+    )
+    published = repo / rel / "link.txt"
+    assert published.is_symlink()
 
 
 def test_path_under_repo_rejects_traversal(tmp_path: Path) -> None:
@@ -166,4 +228,4 @@ def test_flush_logs_pre_happy_path_commits(tmp_path: Path) -> None:
             encoding="utf-8",
         ),
     )
-    assert manifest["steps_ran"].get("step9a1") == "default"
+    assert "step9a1" not in manifest["steps_ran"]

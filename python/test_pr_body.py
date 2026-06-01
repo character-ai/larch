@@ -34,12 +34,22 @@ def test_sanitize_rejects_unclosed_frontmatter() -> None:
     assert config.MERMAID_REASON_UNCLOSED_FRONTMATTER in result.reason_tokens
 
 
+def test_compose_summary_rejects_absolute_path_without_cwd() -> None:
+    with pytest.raises(ShipError, match="escapes repo root"):
+        _ = pr_body.compose_summary_bullets(
+            _NoopRunner(),  # type: ignore[arg-type]
+            plan_goals_file="/etc/passwd",
+            cwd=None,
+        )
+
+
 def test_compose_summary_from_plan(tmp_path: Path) -> None:
     goals = tmp_path / "goals.md"
     _ = goals.write_text("## Goal\n\nShip Phase 5 modules.\n", encoding="utf-8")
     summary = pr_body.compose_summary_bullets(
         _NoopRunner(),  # type: ignore[arg-type]
         plan_goals_file=str(goals),
+        cwd=str(tmp_path),
     )
     assert "Ship Phase 5" in summary
 

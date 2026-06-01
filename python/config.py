@@ -167,9 +167,13 @@ REFRESH_SKIP_POST_MERGE: Final = "post-merge"
 REFRESH_SKIP_NO_RUN_ID: Final = "no-run-id"
 REFRESH_SKIP_INVALID_RUN_ID: Final = "invalid-run-id"
 REFRESH_SKIP_NO_LOGS_COMMIT: Final = "no-logs-commit"
-# Pre-merge flush skips that merge_pr may continue past (post-merge only).
+# Pre-merge flush skips merge_pr may continue past (bash refresh-run-logs || true).
 REFRESH_SKIP_MERGE_OK: Final[frozenset[str]] = frozenset({
     REFRESH_SKIP_POST_MERGE,
+    REFRESH_SKIP_STATE_FILE_MISSING,
+    REFRESH_SKIP_NO_RUN_ID,
+    REFRESH_SKIP_INVALID_RUN_ID,
+    REFRESH_SKIP_NO_LOGS_COMMIT,
 })
 
 MERGE_SKIP_NOT_REQUESTED: Final = "merge skipped: merge=false"

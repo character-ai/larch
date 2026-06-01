@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -14,6 +15,8 @@ from typing import Any, cast
 import config
 import git
 import redact
+import tokens
+from errors import ShipError
 from proc import CommandResult, Runner
 from run_context import RunContext
 
@@ -56,6 +59,11 @@ def validate_run_id_slug(run_id: str) -> bool:
     return _SLUG_RE.match(run_id) is not None
 
 
+def read_state_kv(state_file: str | None, key: str) -> str:
+    """Read a single KEY=value from an implement state file."""
+    return _read_state_kv(state_file, key)
+
+
 def _read_state_kv(state_file: str | None, key: str) -> str:
     if not state_file or not Path(state_file).is_file():
         return ""
@@ -73,7 +81,9 @@ def effective_run_id(ctx: RunContext) -> str:
     state_run_id = _read_state_kv(ctx.state_file, "RUN_ID")
     if state_run_id and validate_run_id_slug(state_run_id):
         return state_run_id
-    return ctx.run_id
+    if validate_run_id_slug(ctx.run_id):
+        return ctx.run_id
+    return ""
 
 
 def _manifest_path(ctx: RunContext) -> Path:
@@ -128,27 +138,31 @@ def _dict_to_manifest(data: dict[str, Any]) -> Manifest:
 def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
     current = load_or_recover_manifest(ctx)
     steps = dict(current.steps_ran)
+    status = current.status
+    version = current.version
+    run_id = current.run_id
+    created_at = current.created_at
+    updated_at = current.updated_at
     for key, value in changes.items():
         if key == "steps_ran" and isinstance(value, dict):
             steps.update(cast("dict[str, Any]", value))
         elif key == "status":
-            current = Manifest(
-                status=str(value),
-                version=current.version,
-                run_id=current.run_id,
-                steps_ran=steps,
-                created_at=current.created_at,
-                updated_at=current.updated_at,
-            )
-        else:
-            steps[str(key)] = value
+            status = str(value)
+        elif key == "version":
+            version = str(value)
+        elif key == "run_id":
+            run_id = str(value)
+        elif key == "created_at":
+            created_at = str(value)
+        elif key == "updated_at":
+            updated_at = str(value)
     updated = Manifest(
-        status=current.status,
-        version=current.version,
-        run_id=current.run_id,
+        status=status,
+        version=version,
+        run_id=run_id,
         steps_ran=steps,
-        created_at=current.created_at,
-        updated_at=current.updated_at,
+        created_at=created_at,
+        updated_at=updated_at,
     )
     _write_manifest(ctx, updated)
     return updated
@@ -162,31 +176,30 @@ def _newest_run_child(log_root: Path) -> Path | None:
 
 
 def load_or_recover_manifest(ctx: RunContext) -> Manifest:
-    candidates: list[Path] = []
-    primary = _manifest_path(ctx)
-    candidates.append(primary)
-    if validate_run_id_slug(ctx.run_id):
-        alt = Path(ctx.tmpdir) / "larch-logs" / "implement" / ctx.run_id / "manifest.json"
-        if alt not in candidates:
-            candidates.append(alt)
-    state_run_id = _read_state_kv(ctx.state_file, "RUN_ID")
-    if state_run_id and validate_run_id_slug(state_run_id):
-        state_path = (
-            Path(ctx.tmpdir) / "larch-logs" / "implement" / state_run_id / "manifest.json"
-        )
-        if state_path not in candidates:
-            candidates.append(state_path)
-    for path in candidates:
-        if path.is_file():
+    rid = effective_run_id(ctx)
+    if rid:
+        primary = Path(ctx.tmpdir) / "larch-logs" / "implement" / rid / "manifest.json"
+        if primary.is_file():
             try:
-                data = json.loads(path.read_text(encoding="utf-8"))
+                data = json.loads(primary.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     return _dict_to_manifest(cast("dict[str, Any]", data))
             except json.JSONDecodeError:
                 pass
+        return init_run(ctx, run_id=rid)
     log_root = Path(ctx.tmpdir) / "larch-logs" / "implement"
     newest = _newest_run_child(log_root) if log_root.is_dir() else None
-    if newest is not None:
+    if newest is not None and validate_run_id_slug(newest.name):
+        recovered_path = newest / "manifest.json"
+        if recovered_path.is_file():
+            try:
+                data = json.loads(recovered_path.read_text(encoding="utf-8"))
+                if isinstance(data, dict):
+                    manifest = _dict_to_manifest(cast("dict[str, Any]", data))
+                    if manifest.run_id == newest.name:
+                        return manifest
+            except json.JSONDecodeError:
+                pass
         return Manifest(
             status=config.MANIFEST_STATUS_PARTIAL,
             version="1",
@@ -219,14 +232,117 @@ def _pre_push_probe(ctx: RunContext) -> RefreshSkip:
     return RefreshSkip(skipped=False, reason="")
 
 
-def _render_execution_issues_batch(ctx: RunContext, batch_dir: Path) -> None:
+def _redact_batch_payload(text: str) -> str:
+    redacted = redact.redact(text)
+    if "[content truncated" in redacted:
+        msg = "redaction failed for run-log batch payload"
+        raise ShipError(msg)
+    return redacted
+
+
+def _normalize_body_for_hash(body: str) -> str:
+    lines = body.splitlines()
+    if lines and lines[0].startswith("### "):
+        lines = lines[1:]
+    while lines and not lines[0].strip():
+        _ = lines.pop(0)
+    while lines and not lines[-1].strip():
+        _ = lines.pop()
+    return "\n".join(lines)
+
+
+def _should_flush_execution_issues(
+    ctx: RunContext,
+    issue_log: Path,
+    batch_path: Path,
+) -> bool:
+    if not issue_log.is_file() or issue_log.stat().st_size == 0:
+        return False
+    tmp = Path(ctx.tmpdir)
+    if (tmp / ".execution-issues-step7a-reached").is_file():
+        return True
+    if (tmp / ".execution-issues-flushed.sha").is_file():
+        return True
+    return batch_path.is_file()
+
+
+def _render_execution_issues_batch(
+    ctx: RunContext,
+    batch_dir: Path,
+    *,
+    step_label: str,
+    source_label: str,
+) -> None:
     issue_log = Path(ctx.tmpdir) / "execution-issues.md"
     batch_path = batch_dir / "execution-issues.ndjson"
-    if not issue_log.is_file():
+    if not _should_flush_execution_issues(ctx, issue_log, batch_path):
         return
-    if batch_path.is_file():
+    file_sha = hashlib.sha256(issue_log.read_bytes()).hexdigest()
+    existing = batch_path.read_text(encoding="utf-8") if batch_path.is_file() else ""
+    records: list[str] = []
+    current_cat = "Tool Failures"
+    body_lines: list[str] = []
+    for line in issue_log.read_text(encoding="utf-8").splitlines():
+        if line.startswith("### "):
+            if body_lines:
+                record = _execution_issue_record(
+                    body_lines,
+                    current_cat,
+                    step_label,
+                    source_label,
+                    file_sha,
+                    existing,
+                )
+                if record is not None:
+                    records.append(record)
+                body_lines = []
+            current_cat = line.removeprefix("### ")
+            continue
+        body_lines.append(line)
+    if body_lines:
+        record = _execution_issue_record(
+            body_lines,
+            current_cat,
+            step_label,
+            source_label,
+            file_sha,
+            existing,
+        )
+        if record is not None:
+            records.append(record)
+    if not records:
         return
-    _ = batch_path.write_text("", encoding="utf-8")
+    batch_path.parent.mkdir(parents=True, exist_ok=True)
+    with batch_path.open("a", encoding="utf-8") as handle:
+        for record in records:
+            _ = handle.write(record + "\n")
+    sentinel = Path(ctx.tmpdir) / ".execution-issues-flushed.sha"
+    _ = sentinel.write_text(file_sha, encoding="utf-8")
+
+
+def _execution_issue_record(
+    body_lines: list[str],
+    category: str,
+    step_label: str,
+    source_label: str,
+    file_sha: str,
+    existing_batch: str,
+) -> str | None:
+    body = "\n".join(body_lines)
+    norm_sha = hashlib.sha256(
+        _normalize_body_for_hash(body).encode("utf-8"),
+    ).hexdigest()
+    if f'"source_sha256":"{norm_sha}"' in existing_batch:
+        return None
+    payload = {
+        "phase": "implement",
+        "step": step_label,
+        "category": category,
+        "source": source_label,
+        "source_sha256": norm_sha or file_sha,
+        "body": body,
+    }
+    return json.dumps(payload, sort_keys=True)
 
 
 def flush_logs_pre(
@@ -243,14 +359,25 @@ def flush_logs_pre(
     log_root = Path(ctx.tmpdir) / "larch-logs"
     run_dir = _run_log_dir(ctx)
     run_dir.mkdir(parents=True, exist_ok=True)
-    _render_execution_issues_batch(ctx, run_dir)
+    _render_execution_issues_batch(
+        ctx,
+        run_dir,
+        step_label="pre-push",
+        source_label="execution-issues.md pre-push refresh",
+    )
     _render_token_timing_batches(ctx, log_root)
     _ = capture_session_transcript(ctx, defer_commit=True)
-    step9a1 = _step9a1_heuristic(ctx)
-    _ = update_manifest(
+    _render_execution_issues_batch(
         ctx,
-        steps_ran={**manifest.steps_ran, "step9a1": step9a1},
+        run_dir,
+        step_label="pre-push-post-transcript",
+        source_label="execution-issues.md post-transcript refresh",
     )
+    step9a1 = _step9a1_heuristic(ctx)
+    steps_update = dict(manifest.steps_ran)
+    if step9a1 is not None:
+        steps_update["step9a1"] = step9a1
+    _ = update_manifest(ctx, steps_ran=steps_update)
     commit_result = _larch_log_commit(runner, ctx, log_root, cwd=cwd)
     if commit_result.returncode != 0:
         return RefreshSkip(skipped=True, reason="commit-failed")
@@ -274,18 +401,52 @@ def flush_logs_post(ctx: RunContext) -> RefreshSkip:
     return RefreshSkip(skipped=False, reason="")
 
 
+def _token_sidecar_paths(tmpdir: Path) -> tuple[tuple[str, Path], ...]:
+    pairs: list[tuple[str, Path]] = []
+    for tool in ("codex", "cursor", "claude"):
+        path = tmpdir / f"{tool}-tokens.json"
+        if path.is_file():
+            pairs.append((tool, path))
+    return tuple(pairs)
+
+
+def _timing_sidecar_paths(tmpdir: Path) -> tuple[tuple[str, Path], ...]:
+    pairs: list[tuple[str, Path]] = []
+    for tool in ("codex", "cursor", "claude"):
+        path = tmpdir / f"{tool}-timing.json"
+        if path.is_file():
+            pairs.append((tool, path))
+    return tuple(pairs)
+
+
 def _render_token_timing_batches(ctx: RunContext, log_root: Path) -> None:
     run_id = effective_run_id(ctx)
-    token_path = Path(ctx.tmpdir) / "token-report-refresh.json"
-    timing_path = Path(ctx.tmpdir) / "timing-report-refresh.json"
+    if not run_id:
+        return
+    tmpdir = Path(ctx.tmpdir)
+    token_path = tmpdir / "token-report-refresh.json"
+    timing_path = tmpdir / "timing-report-refresh.json"
     for path in (token_path, timing_path):
         if not path.is_file():
             _ = path.write_text("{}", encoding="utf-8")
-        batch_dir = log_root / "implement" / run_id
-        batch_dir.mkdir(parents=True, exist_ok=True)
+    batch_dir = log_root / "implement" / run_id
+    batch_dir.mkdir(parents=True, exist_ok=True)
+    sidecars: list[tuple[str, Path]] = list(_token_sidecar_paths(tmpdir))
+    if token_path.is_file():
+        sidecars.append(("refresh", token_path))
+    timing_sidecars: list[tuple[str, Path]] = list(_timing_sidecar_paths(tmpdir))
+    if timing_path.is_file():
+        timing_sidecars.append(("refresh", timing_path))
+    _ = tokens.scrape_run(
+        sidecar_paths=tuple(sidecars),
+        timing_sidecar_paths=tuple(timing_sidecars),
+        output_path=batch_dir / f"{config.RUN_LOG_BATCH_TOKEN_REPORT}.ndjson",
+        timing_output_path=batch_dir / f"{config.RUN_LOG_BATCH_TIMING_REPORT}.ndjson",
+    )
+    for path in (token_path, timing_path):
         dest = batch_dir / path.name
         _ = dest.write_text(
-            redact.redact(path.read_text(encoding="utf-8")),
+            _redact_batch_payload(path.read_text(encoding="utf-8")),
             encoding="utf-8",
         )
 
@@ -295,25 +456,68 @@ def capture_session_transcript(
     *,
     defer_commit: bool = False,
 ) -> Path | None:
-    """Write session transcript stub into tmpdir (refresh-mode parity)."""
+    """Copy refresh transcript into run tree with redaction (defer-commit parity)."""
     _ = defer_commit
     out = Path(ctx.tmpdir) / "session-transcript-refresh.txt"
     if not out.is_file():
         _ = out.write_text("", encoding="utf-8")
+    run_id = effective_run_id(ctx)
+    if not run_id:
+        return out
     run_dir = _run_log_dir(ctx)
     run_dir.mkdir(parents=True, exist_ok=True)
     dest = run_dir / "session-transcript-refresh.txt"
-    if not dest.is_file():
-        _ = dest.write_text(out.read_text(encoding="utf-8"), encoding="utf-8")
+    raw = out.read_text(encoding="utf-8")
+    if raw.strip():
+        _ = dest.write_text(_redact_batch_payload(raw), encoding="utf-8")
+    elif not dest.is_file():
+        _ = dest.write_text("", encoding="utf-8")
     return out
 
 
-def _step9a1_heuristic(ctx: RunContext) -> str:
-    if ctx.forked:
-        return "fork-skip"
-    if _read_state_kv(ctx.state_file, "FORKED_TARGET"):
-        return "fork-target"
-    return "default"
+def _read_finalize_kv(tmpdir: Path, key: str) -> str:
+    path = tmpdir / "finalize-state.sh"
+    if not path.is_file():
+        return ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if "=" not in line:
+            continue
+        name, _, value = line.partition("=")
+        if name == key:
+            return value
+    return ""
+
+
+def _read_run_flags_kv(tmpdir: Path, key: str) -> str:
+    path = tmpdir / "run-flags.sh"
+    if not path.is_file():
+        return ""
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if "=" not in line:
+            continue
+        name, _, value = line.partition("=")
+        if name == key:
+            return value
+    return ""
+
+
+def _step9a1_heuristic(ctx: RunContext) -> bool | None:
+    tmpdir = Path(ctx.tmpdir)
+    log_root = tmpdir / "larch-logs"
+    run_id = effective_run_id(ctx)
+    if not run_id:
+        return None
+    forked_target = _read_state_kv(ctx.state_file, "FORKED_TARGET") == "true"
+    if ctx.forked or forked_target:
+        return False
+    design_done = _read_finalize_kv(tmpdir, "DESIGN_ONLY_DONE") == "true"
+    no_issues = _read_run_flags_kv(tmpdir, "NO_ISSUES") == "true"
+    if design_done and no_issues:
+        return False
+    run_dir = log_root / "implement" / run_id
+    if (run_dir / "oos-issues.ndjson").is_file() or (run_dir / "run-statistics.md").is_file():
+        return True
+    return None
 
 
 def _publish_run_tree_to_repo(
@@ -337,7 +541,7 @@ def _publish_run_tree_to_repo(
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists():
             shutil.rmtree(dest)
-        _ = shutil.copytree(src, dest)
+        _ = shutil.copytree(src, dest, symlinks=True)
     return f"larch-logs/implement/{run_id}"
 
 

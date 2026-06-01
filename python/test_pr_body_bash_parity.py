@@ -59,7 +59,8 @@ def test_compose_summary_semantic_parity(tmp_path: Path) -> None:
 
     py_summary = pr_body.compose_summary_bullets(
         _NoopRunner(),  # type: ignore[arg-type]
-        plan_goals_file=str(goals),
+        plan_goals_file="goals.md",
+        cwd=str(tmp_path),
     )
     assert "Parity goal line" in completed.stdout
     assert "Parity goal line" in py_summary

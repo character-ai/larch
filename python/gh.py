@@ -490,19 +490,16 @@ def pr_checks_text_read(
     )
 
 
+_CHECKS_TEXT_BAD_RE = re.compile(
+    r"\b(fail|pending|in_progress|queued|cancelled|skipping)\b",
+    re.IGNORECASE,
+)
+
+
 def _pr_checks_text_all_pass(text: str) -> bool:
     if not text.strip():
         return False
-    lowered = text.lower()
-    bad = (
-        "fail",
-        "pending",
-        "in_progress",
-        "queued",
-        "cancelled",
-        "skipping",
-    )
-    return not any(token in lowered for token in bad)
+    return _CHECKS_TEXT_BAD_RE.search(text) is None
 
 
 def pr_checks_all_pass(
