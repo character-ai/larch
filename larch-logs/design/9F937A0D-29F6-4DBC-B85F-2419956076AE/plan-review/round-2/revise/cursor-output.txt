@@ -1,0 +1,69 @@
+Reviewing the append-tool-failure contract and inline references to integrate FINDING_2 into the plan diff.
+Generating the unified plan diff with FINDING_2 integrated.
+--- a/plan.txt
++++ b/plan.txt
+@@ -14,6 +14,7 @@ Five accepted reviewer refinements (integrated below):
+ 3. **Stable `--output-file` for all failure paths** — dedicated checkpoint stderr log for pre-gate/CLI; gate stderr log only after gate runs.
+ 4. **Harness asserts exit-1 logging** — disposition-gap case must produce a `Tool Failures` entry, not only rc.
+ 5. **Best-effort logging** — `append-tool-failure.sh` with `|| true`; always `exit` the captured checkpoint rc.
++6. **Complete append flags (FINDING_2)** — every `log_checkpoint_failure` invocation passes required `--log "$IMPLEMENT_TMPDIR/execution-issues.md"` and caller `--site` (plus `--tool`, `--exit-code`, `--category`, `--output-file`, `--redact`); matches `scripts/append-tool-failure.sh:68-73`, `step-7a.sh:44-50`, and inline `SKILL.md:1273-1280`.
+ 
+ ## Files to modify/create
+ 
+@@ -32,10 +33,19 @@ CLI: `--implement-tmpdir <dir>` (required) and `--design-tmpdir <dir>` (optiona
+ **Stderr / logging contract (FINDING_3, FINDING_5):**
+ - `_chk_log="$IMPLEMENT_TMPDIR/oos-disposition-checkpoint.stderr.log"` — pre-gate diagnostics, CLI usage, ambiguity/precondition messages. `touch` or `: >` before first write when the file may not exist (mirror `step-7a.sh:43`).
+ - `_gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"` — populated only when the gate runs (`2>"$_gate_log"`).
+-- Internal `log_checkpoint_failure <saved_rc> <site> <output_file>`:
++- Internal `log_checkpoint_failure <saved_rc> <site> <output_file>` (caller supplies `<site>`; function must not omit required append flags):
+   - `[ -f "$output_file" ] || : > "$output_file" 2>/dev/null || true`
+-  - `"$PLUGIN_ROOT/scripts/append-tool-failure.sh" … --tool oos-disposition-checkpoint.sh --exit-code "$saved_rc" --category "Tool Failures" --output-file "$output_file" --redact || true`
++  - Full `append-tool-failure.sh` invocation (required `--log` / `--site` per `scripts/append-tool-failure.sh:68-73`; mirror `step-7a.sh:44-50` and inline `SKILL.md:1273-1280`):
++    ```bash
++    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
++      --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
++      --site "$site" \
++      --tool oos-disposition-checkpoint.sh \
++      --exit-code "$saved_rc" \
++      --category "Tool Failures" \
++      --output-file "$output_file" \
++      --redact || true
++    ```
+   - `exit "$saved_rc"` (never let append override the saved rc).
+ - `--site step-8-oos-checkpoint` for gate rc 1 (disposition gap); `--site step-8-oos-checkpoint-validation` for gate rc 2 and all pre-gate exit-2 paths.
+ - On gate rc 1/2, pass `--output-file "$_gate_log"`; on pre-gate/CLI exit 2, pass `--output-file "$_chk_log"`.
+@@ -55,7 +65,7 @@ Ported logic, 1:1 with SKILL.md disposition-gate fence:
+ - Exit mapping: gate rc 0 → exit 0; gate rc 1 → log (`_gate_log`, site checkpoint) + exit 1; gate rc 2 → log (`_gate_log`, site validation) + exit 2.
+ 
+ ### NEW: `skills/implement/scripts/oos-disposition-checkpoint.md`
+-Contract sibling (`.claude/rules/script-md-siblings.md`). Documents purpose, invocation (`--implement-tmpdir` / `--design-tmpdir`), tolerant input-resolution semantics (explicitly: no global `set -e` over probes; `set +e` only around gate), git mode `100755`, the 0/1/2 exit contract, both stderr log paths (`oos-disposition-checkpoint.stderr.log` vs `oos-disposition-gate.stderr.log`), `append-tool-failure` sites and best-effort `|| true`, fork / repo-unavailable carve-outs, orchestrator-owned surfaces (`OOS_PENDING`, `run-statistics`, `--resume-phase pr-create`), and cites `test-oos-disposition-gate.sh`.
++Contract sibling (`.claude/rules/script-md-siblings.md`). Documents purpose, invocation (`--implement-tmpdir` / `--design-tmpdir`), tolerant input-resolution semantics (explicitly: no global `set -e` over probes; `set +e` only around gate), git mode `100755`, the 0/1/2 exit contract, both stderr log paths (`oos-disposition-checkpoint.stderr.log` vs `oos-disposition-gate.stderr.log`), `log_checkpoint_failure` / `append-tool-failure.sh` contract (every call includes required `--log "$IMPLEMENT_TMPDIR/execution-issues.md"` and caller `--site`; plus `--tool oos-disposition-checkpoint.sh`, `--exit-code`, `--category "Tool Failures"`, `--output-file`, `--redact`; best-effort `|| true`; site tokens `step-8-oos-checkpoint` vs `step-8-oos-checkpoint-validation`), fork / repo-unavailable carve-outs, orchestrator-owned surfaces (`OOS_PENDING`, `run-statistics`, `--resume-phase pr-create`), and cites `test-oos-disposition-gate.sh`.
+ 
+ ### UPDATED: `skills/implement/SKILL.md`
+ Replace the inline disposition-gate Bash block with a thin helper call (direct path; requires executable bit):
+@@ -95,7 +105,7 @@ Add `mkitmp` helper seeding a fake implement-tmpdir (`ship-pr-state.sh`, `sessio
+ New `assert_rc` checkpoint cases inside `$GIT_TMP` / `$ORPHAN_TMP`:
+ - proceed (exit 0): zero non-sec OOS, or filed-URL satisfied.
+-- **disposition gap (exit 1):** non-sec OOS, no disposition (orphan range) — **plus** assert `execution-issues.md` contains `Tool Failures` with `--site step-8-oos-checkpoint` semantics (grep for `step-8-oos-checkpoint` and `oos-disposition-checkpoint.sh`) (FINDING_4).
++- **disposition gap (exit 1):** non-sec OOS, no disposition (orphan range) — **plus** assert `execution-issues.md` contains `Tool Failures` with `--site step-8-oos-checkpoint` semantics (grep for `step-8-oos-checkpoint` and `oos-disposition-checkpoint.sh`; depends on append receiving `--log` + `--site`, FINDING_2) (FINDING_4).
+ - fork-mode skip (exit 0): `FORKED_TARGET=true`.
+ - repo-unavailable skip (exit 0): `REPO_UNAVAILABLE=true`.
+ - ndjson discovery: RUN_ID-keyed path; single-find fallback when `session-id` absent.
+@@ -127,6 +137,7 @@ New `assert_rc` checkpoint cases inside `$GIT_TMP` / `$ORPHAN_TMP`:
+ - **Permission denied (126)** on non-executable helper → bypasses 0/1/2 contract. Mitigation: `100755` + harness `[ -x "$CHECKPOINT" ]`.
+ - **Missing/stale `--output-file`** on pre-gate paths → append exits 2 under `set -e`, wrong rc. Mitigation: dedicated `_chk_log` + touch-before-append.
+ - **Missing exit-1 log** → audit trail regression with passing rc-only tests. Mitigation: disposition-gap log assertion (FINDING_4).
++- **Append missing `--log` / `--site`** → `append-tool-failure.sh` fails required-flag validation; `|| true` swallows; no `execution-issues.md` row. Mitigation: spell full invocation in helper + checkpoint.md (FINDING_2).
+ - **Append failure overrides saved rc** → wrong orchestrator branch. Mitigation: `|| true` + exit saved rc only (FINDING_5).
+ 
+ ## Testing strategy
+@@ -139,6 +150,6 @@ New `assert_rc` checkpoint cases inside `$GIT_TMP` / `$ORPHAN_TMP`:
+ ## Optional hardening (reviewer discretion, not in baseline scope)
+ - Pin in `scripts/test-implement-structure.sh` asserting SKILL.md Step 8+ references `oos-disposition-checkpoint.sh`. Left out of SIMPLE baseline.
+ 
+-diff_added: 395
+-diff_deleted: 95
+-diff_lines: 490
++diff_added: 412
++diff_deleted: 100
++diff_lines: 512

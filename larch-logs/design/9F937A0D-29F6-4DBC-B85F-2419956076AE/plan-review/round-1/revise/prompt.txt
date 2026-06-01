@@ -1,0 +1,251 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+## Implementation Plan
+
+Extract the `/implement` Step 8+ OOS disposition-gate **input plumbing** (~90 inline
+bash lines in `skills/implement/SKILL.md`, the block at the disposition-gate fence)
+into a new `skills/implement/scripts/oos-disposition-checkpoint.sh`. The helper
+computes the gate inputs, invokes `oos-disposition-gate.sh`, logs failures via
+`append-tool-failure.sh`, and exits `0` / `1` / `2`. The orchestrator branches on the
+return code and still owns clearing `OOS_PENDING`, the unconditional `run-statistics`
+write on pass, and the `--resume-phase pr-create` re-entry (NEVER #17 / #18).
+
+Two contract decisions from Step 1c:
+- **Exit codes mirror the gate (0/1/2).** Gate exit 2 propagates as helper exit 2;
+  the pre-gate input-resolution failures that already exit 2 today stay exit 2. This
+  refines today's Bash-block collapse (gate exit 2 -> block exit 1).
+- **Log all non-zero exits.** The helper calls `append-tool-failure.sh` for gate
+  failures AND pre-gate setup/validation failures, with distinct `--site` tokens.
+
+## Files to modify/create
+
+### NEW: `skills/implement/scripts/oos-disposition-checkpoint.sh`
+Self-contained port of the current inline block. `set -euo pipefail`. Bash 3.2-safe
+(plain arrays only; no associative arrays / namerefs / mapfile). Derives its own paths
+so it does not depend on `CLAUDE_PLUGIN_ROOT` in the environment:
+`SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`,
+`PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"`.
+
+CLI: `--implement-tmpdir <dir>` (required) and `--design-tmpdir <dir>` (optional).
+Unknown args / missing required value -> `usage` + exit 2 (logged). The helper does
+NOT take `--issue-number` (gate inputs derive from tmpdirs + git).
+
+Ported logic, 1:1 with SKILL.md lines in the disposition-gate fence:
+- Read `FORKED_TARGET` / `REPO_UNAVAILABLE` from `<implement-tmpdir>/ship-pr-state.sh`
+  (`grep '^KEY=' | tail -n 1 | cut -d= -f2- | tr -d '\r'`); default both `false`.
+- Commit range: `repo_root=$(git rev-parse --show-toplevel)`; if `origin/main` resolves,
+  `mb=$(git -C "$repo_root" merge-base HEAD origin/main)` -> `"$mb..HEAD"`, else
+  `origin/main..HEAD`; when `origin/main` does not resolve -> `HEAD`.
+- `RUN_ID` from `<implement-tmpdir>/session-id` (`tr -d '\r\n'`); ndjson candidate
+  `<implement-tmpdir>/larch-logs/implement/<RUN_ID>/oos-issues.ndjson`. When that is
+  missing, `find <implement-tmpdir>/larch-logs/implement -mindepth 2 -maxdepth 2 -name
+  oos-issues.ndjson -type f | LC_ALL=C sort`: exactly one -> use it; more than one with
+  empty `RUN_ID` -> exit 2 (ambiguous).
+- Design-OOS path 3-way: `--design-tmpdir`/`DESIGN_TMPDIR` -> `<dt>/oos-accepted-design.md`;
+  elif `<implement-tmpdir>/design-export/oos-accepted-design.md` exists -> that; else
+  `<implement-tmpdir>/oos-accepted-design.md`.
+- Accepted CSV: `<it>/oos-accepted-main-agent.md,<design-path>,<it>/oos-accepted-review.md`.
+- Non-security block count via `"$SCRIPT_DIR/oos-non-security-block-count.awk"` over each
+  CSV entry (skip blank / non-existent), summed.
+- Precondition (only when not fork / not repo-unavailable): non-sec > 0 AND no resolved
+  ndjson -> exit 2.
+- Gate args: `--fork-mode` / `--repo-unavailable` when set; `--oos-issues-ndjson <path>`
+  when resolved+present; `--accepted-files <CSV>`; `--filed-urls-file
+  <it>/oos-issues-created.md`; `--filed-urls-strict-file <design-path>`; `--commit-range
+  <range>`. Invoke `"$SCRIPT_DIR/oos-disposition-gate.sh"`, capturing stderr to
+  `<it>/oos-disposition-gate.stderr.log`, capture rc.
+- Exit mapping: gate rc 0 -> exit 0; gate rc 1 -> log + exit 1; gate rc 2 -> log + exit 2.
+- Logging on every non-zero exit via `"$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+  --log "<it>/execution-issues.md" --tool oos-disposition-checkpoint.sh --exit-code <rc>
+  --category "Tool Failures" --output-file <captured-stderr/diag> --redact`, with
+  `--site step-8-oos-checkpoint` for the disposition gap (rc 1) and
+  `--site step-8-oos-checkpoint-validation` for gate rc 2 AND the pre-gate exit-2 paths.
+
+### NEW: `skills/implement/scripts/oos-disposition-checkpoint.md`
+Contract sibling (required by `.claude/rules/script-md-siblings.md`). Documents purpose,
+invocation (`--implement-tmpdir` / `--design-tmpdir`), the input-resolution steps, the
+0/1/2 exit contract (mirrors the gate; pre-gate validation = 2), the `append-tool-failure`
+sites, the fork / repo-unavailable carve-outs, what the helper does NOT own (clearing
+`OOS_PENDING`, `run-statistics`, `--resume-phase pr-create`), and cites the shared harness
+`test-oos-disposition-gate.sh`.
+
+### UPDATED: `skills/implement/SKILL.md`
+Replace the inline disposition-gate Bash block with a thin helper call:
+```bash
+[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+set +e
+"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh" \
+  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+  ${DESIGN_TMPDIR:+--design-tmpdir "$DESIGN_TMPDIR"}
+_oos_chk_rc=$?
+set -e
+printf 'OOS_CHECKPOINT_RC=%s\n' "$_oos_chk_rc"
+[ "$_oos_chk_rc" -ne 0 ] && exit "$_oos_chk_rc"
+```
+Update the surrounding prose so the orchestrator branches on the helper rc: `0` proceed
+(write `run-statistics`, set `OOS_PENDING=false`, re-enter `--resume-phase pr-create`);
+`1` disposition gap (helper already logged `--site step-8-oos-checkpoint`; do NOT clear
+`OOS_PENDING`/`run-statistics`; stop until resolved); `2` validation/setup (helper logged
+`--site step-8-oos-checkpoint-validation`; range/git/setup remediation). Keep the NEVER
+#17 / #18 prose and the helper-inventory paragraph; add `oos-disposition-checkpoint.sh`
+(+ `.md`) to that inventory and note the shared harness. Do NOT move the `run-statistics`
+write, the `OOS_PENDING` clear, or the re-entry into the helper.
+
+### UPDATED: `skills/implement/scripts/test-oos-disposition-gate.sh`
+Add `CHECKPOINT="$SCRIPT_DIR/oos-disposition-checkpoint.sh"` and a `mkitmp` helper that
+seeds a fake implement-tmpdir (`ship-pr-state.sh`, `session-id`, `oos-accepted-*.md`,
+`design-export/`, `larch-logs/implement/<RUN_ID>/oos-issues.ndjson`). New `assert_rc`
+cases run inside `$GIT_TMP` / `$ORPHAN_TMP`:
+- proceed (exit 0): zero non-sec OOS, or filed-URL satisfied.
+- disposition gap (exit 1): non-sec OOS, no disposition (orphan range).
+- fork-mode skip (exit 0): `ship-pr-state.sh` `FORKED_TARGET=true`.
+- repo-unavailable skip (exit 0): `REPO_UNAVAILABLE=true`.
+- ndjson discovery: RUN_ID-keyed path used; single-find fallback used when `session-id` absent.
+- ambiguity (exit 2): two `larch-logs/implement/<id>/oos-issues.ndjson` dirs + empty `session-id`.
+- precondition (exit 2): non-sec OOS with no resolvable ndjson.
+- gate-exit-2 -> checkpoint exit 2 (invalid range via a tmpdir whose repo lacks the range).
+- design-path resolution: `--design-tmpdir` vs `design-export/` fallback both feed the gate.
+- (assert exit 2 paths also append a `Tool Failures` entry to the fake `execution-issues.md`.)
+
+### UPDATED: `skills/implement/scripts/test-oos-disposition-gate.md`
+Note the harness now also covers `oos-disposition-checkpoint.sh`; enumerate the checkpoint
+cases and keep the `Makefile target test-oos-disposition-gate` reference (one target covers
+both scripts).
+
+## Approach
+- Faithful 1:1 port. No behavior change to input resolution; the only deliberate refinement
+  is propagating gate exit 2 as helper exit 2 (Decision 1) and logging all non-zero exits
+  (Decision 2). Keep the gate's arg wiring (`--accepted-files` / `--filed-urls-file` /
+  `--filed-urls-strict-file` / `--oos-issues-ndjson` / `--commit-range`) byte-identical.
+- Helper is the single owner of input computation + gate call + failure logging; the
+  orchestrator shrinks to a call + rc branch. The `OOS_PENDING` clear, `run-statistics`
+  write, and re-entry stay in the orchestrator (NEVER #17 / #18).
+- Self-path derivation (no `CLAUDE_PLUGIN_ROOT` env dependency) matches the sibling gate.
+
+## Edge cases
+- `origin/main` absent -> range `HEAD` (preserve the existing fallback chain exactly).
+- `session-id` missing -> empty `RUN_ID` -> find-fallback; single ndjson used; multiple -> exit 2.
+- Design-OOS path 3-way fallback (`--design-tmpdir` / `design-export/` / implement-tmpdir).
+- fork-mode / repo-unavailable: skip both the precondition and the ndjson requirement; gate exits 0.
+- Empty accepted files / zero non-sec OOS -> gate exit 0.
+- CR / whitespace in `ship-pr-state.sh` values -> `tr -d '\r'` as today.
+
+## Failure modes
+- **Behavior drift from the inline block** (range fallback, CSV order, find globbing) ->
+  silent mis-gate of a real disposition gap. Earliest signal: checkpoint tests asserting the
+  same rc as the pre-extraction inline paths diverge. Mitigation: 1:1 port + per-path tests.
+- **Exit-2 collapse regression** (accidentally mapping gate-2 back to 1) -> orchestrator
+  applies disposition-gap remediation to a range/setup error. Signal: gate-exit-2 test returns
+  1. Mitigation: explicit rc passthrough + dedicated gate-exit-2 -> checkpoint-2 test.
+- **Missing log on pre-gate validation** -> lost audit trail on exit 2. Signal: the exit-2
+  cases find no new `execution-issues.md` entry. Mitigation: log-all-non-zero + assert the entry.
+
+## Testing strategy
+- Extend and run `bash skills/implement/scripts/test-oos-disposition-gate.sh` and
+  `make test-oos-disposition-gate`.
+- Run `bash scripts/test-implement-structure.sh` to confirm no structural-pin regression
+  (the NEVER #18 prose pin must still pass; the inline block is not otherwise pinned).
+- Run `bash scripts/relevant-checks.sh` (script-md-siblings, `make lint-bash32`, agent-lint
+  S030 siblings, structure tests).
+
+## Optional hardening (reviewer discretion, not in baseline scope)
+- A new pin in `scripts/test-implement-structure.sh` asserting SKILL.md Step 8+ references
+  `oos-disposition-checkpoint.sh` (drift guard for the extracted call). Left out of the
+  SIMPLE baseline; easy to add if the review panel wants explicit drift protection.
+
+diff_added: 320
+diff_deleted: 95
+diff_lines: 415
+
+</plan>
+
+<findings>
+### FINDING_1: Unguarded `set -euo pipefail` breaks the checkpoint 0/1/2 contract
+- **Reviewer(s)**: Cursor-Arch, Codex-Innovation, Codex-Pragmatic, Codex-dyn-extraction-parity, Codex-dyn-harness-matrix
+- **Severity**: important
+- **Concern**: A planned `oos-disposition-checkpoint.sh` with global `set -euo pipefail` conflicts with the inline Step 8+ fence in `skills/implement/SKILL.md` (lines 1193–1282), which tolerates fallible state/git/session-id/ndjson probes (`2>/dev/null || true`, `set +e` only around the gate). Unguarded `git rev-parse`, `git merge-base`, `grep`, `find`, or missing optional artifacts can abort the helper with shell rc 1/127 before the gate runs and before deliberate validation paths can log exit 2 via `append-tool-failure.sh`, breaking the intended 0/1/2 branch contract and Step 8+ remediation semantics (including HEAD / `origin/main..HEAD` fallback when merge-base is absent or git context is partial).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Mirror the fence: keep input resolution under set +e (or explicit || true/-f guards on every fallible step), then set +e only around the gate call; drop global pipefail unless every pipeline is audited like the inline block
+  - From Codex-Innovation: Preserve the current tolerant wrappers from skills/implement/SKILL.md:1201-1218: use 2>/dev/null || true for git rev-parse, merge-base, session-id reads, and find pipeline probes, then convert intended validation failures to logged exit 2
+  - From Codex-Pragmatic: Add explicit || true guards around every optional probe/pipeline, especially the grep state reads, session-id read, merge-base, and find fallback, while keeping validation failures on the deliberate logged exit-2 paths
+  - From Codex-dyn-extraction-parity: Require the helper to keep the current guarded semantics: initialize defaults, use 2>/dev/null || true on git/session/find probes, tolerate absent state keys as false, then apply the existing ndjson precondition and gate call
+  - From Codex-dyn-harness-matrix: Specify the current 2>/dev/null || true guards for git rev-parse and git merge-base in the helper, and add one checkpoint harness case for origin/main present with no merge-base
+
+
+### FINDING_2: Direct-path invocation without pinned executable mode
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan invokes the new checkpoint by direct path, but does not require mode `100755` or a `bash` wrapper. If `oos-disposition-checkpoint.sh` lands as `0644`, Step 8+ gets permission denied (shell rc 126) before the helper runs or logs via `append-tool-failure.sh`, bypassing the promised 0/1/2 contract and audit trail.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Commit oos-disposition-checkpoint.sh as executable 100755 or invoke it through bash; keep the harness aligned with the runtime invocation
+  - From Codex-Edge: Specify the mode/call contract: either add the executable bit and have the harness invoke CHECKPOINT directly, or invoke it with bash consistently from SKILL.md and tests
+  - From Codex-Pragmatic: Specify git mode 100755 and add a minimal [ -x "$CHECKPOINT" ] assertion/direct-path invocation in the existing harness, or invoke it via bash in SKILL.md and tests
+
+
+### FINDING_3: Pre-gate failures lack a stable `--output-file` for `append-tool-failure.sh`
+- **Reviewer(s)**: Cursor-Edge, Cursor-Pragmatic, Cursor-dyn-harness-matrix
+- **Severity**: important
+- **Concern**: Decision 2 routes all non-zero checkpoint exits through `append-tool-failure.sh`, which requires an existing `--output-file` (`scripts/append-tool-failure.sh:100-104`). Pre-gate paths (ambiguous ndjson, missing ndjson precondition, CLI usage) never invoke the gate, so `oos-disposition-gate.stderr.log` may be missing or stale; `append-tool-failure.sh` then exits 2 on a missing file, which under `set -e` can prevent returning the intended checkpoint rc 2 and makes harness assertions on `execution-issues.md` flaky.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Tee pre-gate/CLI errors to a dedicated <implement-tmpdir>/oos-disposition-checkpoint.stderr.log (touch if needed, per step-7a.sh:43) and pass that path to append-tool-failure; only use the gate stderr log after gate invocation
+  - From Cursor-Pragmatic: Mirror gate failures: tee pre-gate/usage diagnostics into <implement-tmpdir>/oos-disposition-gate.stderr.log (or a checkpoint diag file) before append; document the path in oos-disposition-checkpoint.md
+  - From Cursor-dyn-harness-matrix: Specify a single implement-tmpdir diag path (e.g. oos-disposition-checkpoint.stderr.log): tee pre-gate stderr there before append-tool-failure; document it in oos-disposition-checkpoint.md
+
+
+### FINDING_4: Harness does not assert exit-1 logging to `execution-issues.md`
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned checkpoint tests validate disposition-gap rc behavior but not that exit 1 (real OOS disposition gap) produces a `Tool Failures` entry. A helper could return 1 without logging `site step-8-oos-checkpoint` / `tool oos-disposition-checkpoint.sh`, regressing the audit trail while still passing rc-only tests.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add a minimal assertion to the existing disposition-gap checkpoint case that fake execution-issues.md contains a Tool Failures entry with site step-8-oos-checkpoint and tool oos-disposition-checkpoint.sh; keep the existing exit-2 log assertions.
+
+
+### FINDING_5: `append-tool-failure.sh` must stay best-effort so the captured checkpoint rc is preserved
+- **Reviewer(s)**: Codex-dyn-extraction-parity, Codex-dyn-harness-matrix
+- **Severity**: important
+- **Concern**: The inline fence ends logging with `|| true` before `exit` (`skills/implement/SKILL.md:1273-1281`). If the extracted helper calls `append-tool-failure.sh` under `set -e` without that guard, logging failures (missing output file, redaction/write errors per `scripts/append-tool-failure.sh:100-130`) can override the saved gate or validation rc 1/2, breaking the helper’s 0/1/2 contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-extraction-parity: After capturing the original failure rc, call append-tool-failure.sh with || true and always exit the captured rc; keep the proposed site tokens unchanged
+  - From Codex-dyn-harness-matrix: Add the current || true pattern inside the helper after saving the original rc, then always exit the saved rc
+
+
+
+</findings>
+
+<feature>
+Further factoring out /implement into bash Phase 3: extract Step 8+ OOS disposition-gate input plumbing to a script
+
+## Context
+
+At the Step 8+ OOS checkpoint (before clearing `OOS_PENDING`), `skills/implement/SKILL.md` inlines ~95 lines of bash to compute the inputs for `oos-disposition-gate.sh`:
+- read `FORKED_TARGET` / `REPO_UNAVAILABLE` from `ship-pr-state.sh`,
+- compute the commit range (`merge-base origin/main..HEAD`, with `origin/main..HEAD` fallback),
+- resolve `RUN_ID` and discover `oos-issues.ndjson` (`find` + `sort` + ambiguity handling),
+- resolve the design-OOS path (`DESIGN_TMPDIR` vs `design-export/`),
+- count non-security accepted-OOS blocks via `oos-non-security-block-count.awk` over a CSV of accepted-OOS files,
+- validate the "non-security OOS requires a resolved ndjson" precondition,
+- assemble gate args and invoke `oos-disposition-gate.sh`, then on non-zero `append-tool-failure.sh` + `exit 1`.
+
+## Analysis
+
+The disposition **gate** is already a script; only its **input computation** is inline — deterministic `find` / `merge-base` / `awk` / CSV plumbing the orchestrator hosts by hand. This is the single largest fiddly inline block left in the Step 8+ surface and a prime determinism risk (a mis-typed `merge-base` or `find` here is an LLM-hand-coded hazard).
+
+## Proposal
+
+Add `skills/implement/scripts/oos-disposition-checkpoint.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" [--design-tmpdir ...]` that performs all the input resolution above, invokes `oos-disposition-gate.sh`, handles the `append-tool-failure.sh` logging on failure, and exits with the **same** contract the orchestrator branches on today: `0` proceed, `1` disposition gap, `2` validation/setup error.
+
+## Risk / caveats
+
+- Preserve the fork-mode / `repo_unavailable` carve-outs (gate skipped) and NEVER #17 / #18 — the orchestrator still owns clearing `OOS_PENDING`, the unconditional `run-statistics` write on pass, and the `--resume-phase pr-create` re-entry. The helper **computes-and-gates**; it does **not** clear `OOS_PENDING`.
+- Keep the gate's existing exit-code semantics and `--oos-issues-ndjson` / `--filed-urls-file` / `--filed-urls-strict-file` / `--commit-range` wiring intact.
+- Extend `skills/implement/scripts/test-oos-disposition-gate.sh` with checkpoint-level coverage (ndjson discovery, ambiguity, fork / repo-unavailable skips).
+- Region: Step 8+ (shares the mega-section with the step8→ship-pr issue — different block; no `ship-pr.sh` edits here).
+
+</feature>

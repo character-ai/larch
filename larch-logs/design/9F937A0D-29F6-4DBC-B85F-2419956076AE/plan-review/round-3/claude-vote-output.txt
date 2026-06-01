@@ -1,0 +1,2 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan does not require every test case to use mkitmp; precondition case can use direct tmpdir setup without ndjson; adding a mkitmp variant adds complexity beyond what the plan needs to prescribe
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
