@@ -38,6 +38,8 @@ mkdir -p "$STUB" "$FAKE_PLUGIN/skills/design/scripts"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$STUB/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-net.sh" "$STUB/lib-net.sh" 2>/dev/null || true
 ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$STUB/append-tool-failure.sh"
+ln -sf "$REPO_ROOT/scripts/append-execution-issue.sh" "$STUB/append-execution-issue.sh"
+ln -sf "$REPO_ROOT/scripts/redact-secrets.sh" "$STUB/redact-secrets.sh"
 write_reentry_guard_wrapper() {
     cat >"$STUB/lib-design-reentry-guard.sh" <<WRAP
 # shellcheck shell=bash
@@ -322,6 +324,40 @@ rc=$?
 set -e
 assert_rc "unexpected publish rc" 0 "$rc"
 grep -q 'PUBLISH_OK=false' "$D_UNEXP/.design-publish-result.env" || fail "unexpected publish must set PUBLISH_OK=false"
+grep -q 'design-log-publish.sh' "$D_UNEXP/execution-issues.md" 2>/dev/null \
+  || fail "unexpected publish must append to execution-issues.md"
+
+# --- exit 0 without PUBLISH_OK= line ---
+D_NO_PUB_KV="$TMP/no-publish-kv"
+setup_design_tmp "$D_NO_PUB_KV"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_STUB_RC=0
+export PUBLISH_EMIT_OK=false
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_NO_PUB_KV" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "missing PUBLISH_OK on exit 0" 0 "$rc"
+grep -q 'PUBLISH_OK=false' "$D_NO_PUB_KV/.design-publish-result.env" \
+  || fail "exit 0 without PUBLISH_OK= must set PUBLISH_OK=false"
+grep -q 'design-log-publish.sh' "$D_NO_PUB_KV/execution-issues.md" 2>/dev/null \
+  || fail "exit 0 without PUBLISH_OK= must append to execution-issues.md"
+
+# --- result-env write failure (exit 3) ---
+D_EXIT3="$TMP/exit3-result-env"
+setup_design_tmp "$D_EXIT3"
+ln -sf /dev/null "$D_EXIT3/.design-publish-result.env"
+set +e
+run_publish "$D_EXIT3" 2>/dev/null
+rc=$?
+set -e
+assert_rc "result-env symlink refusal" 3 "$rc"
+[[ -L "$D_EXIT3/.design-publish-result.env" ]] \
+  || fail "exit 3 must not replace symlink result env"
+grep -q 'design-log-publish' "$PUBLISH_LOG" \
+  || fail "exit 3 should still complete publish tail before result-env write"
 
 # --- if ! plan-block-write guard ---
 # shellcheck disable=SC2016 # Literal pattern checks unexpanded shell syntax in source.
@@ -342,6 +378,7 @@ grep -Fq -- '--clear-architecture' "$UPSERT_LOG" || fail "skipped sentinel must 
 # --- upsert failure non-blocking ---
 D_UPSERT_FAIL="$TMP/upsert-fail"
 setup_design_tmp "$D_UPSERT_FAIL"
+printf 'graph TD\n' >"$D_UPSERT_FAIL/architecture-diagram.md"
 reset_publish_stub_env
 init_publish_logs
 apply_publish_stub_defaults
@@ -354,6 +391,38 @@ set -e
 assert_rc "upsert failure non-blocking" 0 "$rc"
 grep -q 'PLAN_WRITE_OK=true' "$D_UPSERT_FAIL/.design-publish-result.env" \
   || fail "upsert failure must still complete publish tail"
+grep -q 'upsert-diagrams-comment.sh' "$D_UPSERT_FAIL/execution-issues.md" 2>/dev/null \
+  || fail "upsert failure must append to execution-issues.md"
+
+# --- empty architecture-diagram.md (no upsert) ---
+D_EMPTY_ARCH="$TMP/empty-arch-file"
+setup_design_tmp "$D_EMPTY_ARCH"
+: >"$D_EMPTY_ARCH/architecture-diagram.md"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_EMPTY_ARCH" --issue 1 --session-id s --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "empty architecture file" 0 "$rc"
+if grep -q 'upsert-diagrams' "$UPSERT_LOG" 2>/dev/null; then
+    fail "zero-byte architecture-diagram.md must not invoke upsert"
+else
+    pass "zero-byte architecture-diagram.md skips upsert"
+fi
+
+# --- empty architecture-diagram.md with skipped sentinel (clear) ---
+D_EMPTY_ARCH_CLR="$TMP/empty-arch-clear"
+setup_design_tmp "$D_EMPTY_ARCH_CLR"
+: >"$D_EMPTY_ARCH_CLR/architecture-diagram.md"
+: >"$D_EMPTY_ARCH_CLR/architecture-diagram.skipped"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+bash "$SUBJECT" --design-tmpdir "$D_EMPTY_ARCH_CLR" --issue 1 --session-id s --claude-pid 1 2>/dev/null
+grep -Fq -- '--clear-architecture' "$UPSERT_LOG" \
+  || fail "empty architecture with skipped sentinel must invoke --clear-architecture"
 
 # --- rename failure warns ---
 D_REN_FAIL="$TMP/rename-fail"

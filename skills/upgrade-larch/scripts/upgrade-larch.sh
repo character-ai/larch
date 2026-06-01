@@ -401,9 +401,11 @@ if [ -n "$LATEST_STABLE" ]; then
     fi
 fi
 
-# Stamp and prune only after a verified stable install (rollback safety).
-if [ "$VERIFIED_TARGET" = true ]; then
+# Stamp any version-shaped install for retention ranking; prune only after verified stable (rollback safety).
+if is_safe_version "${ACTUAL_VERSION:-}"; then
     write_install_stamp "$ACTUAL_VERSION"
+fi
+if [ "$VERIFIED_TARGET" = true ]; then
     prune_cached_versions "$ACTUAL_VERSION"
 else
     larch_err "Skipping prune because the expected stable version was not verified."

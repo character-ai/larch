@@ -1046,8 +1046,14 @@ grep -Fq 'design-publish.sh configuration error (exit 2)' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing design-publish.sh exit 2 abort prose"
 grep -Fq '.completed/step-5c' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must write .completed/step-5c sentinel"
-grep -Fq 'PUBLISH_OK=true' "$SKILL_MD" \
-  || fail "(15b) SKILL.md Step 5c must gate step-5c on PUBLISH_OK=true when SESSION_ID is set"
+grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true`' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c must gate step-5c sentinel on PLAN_WRITE_OK=true"
+grep -Fq 'result-env write failed (exit 3)' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c missing design-publish.sh exit 3 result-env WARN prose"
+grep -Fq '_publish_rc` is 0, 1, or 3' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c missing exit 3 parse-and-continue contract"
+grep -Fq '_publish_rc`=3' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c missing _publish_rc=3 contract"
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 grep -Fq 'if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh"' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must use if ! around plan-block-write.sh"
@@ -1070,8 +1076,8 @@ grep -Fq '.completed/step-5b' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must require .completed/step-5b precondition"
 grep -Fq 'exit 1 is the normal plan-block-write failure path' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing exit 1 parse-then-branch contract"
-grep -Fq '_publish_rc` ∈ {0, 1}' "$SKILL_MD" \
-  || fail "(15b) SKILL.md Step 5c missing driver exit-code contract for rc 0 or 1"
+grep -Fq '_publish_rc` ∈ {0, 1, 3}' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c missing driver exit-code contract for rc 0, 1, or 3"
 # shellcheck disable=SC2016
 grep -Fq 'do not abort solely because `_publish_rc`=1' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must not abort solely on driver exit 1"

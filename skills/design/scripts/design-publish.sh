@@ -188,14 +188,12 @@ if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh" --issue "$ISSUE" --content-file 
 fi
 
 PLAN_WRITE_OK=true
-set +e
 
 # shellcheck source=scripts/lib-design-reentry-guard.sh
 source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"
 set +e
 design_reentry_marker_write "$ISSUE" "$CLAUDE_PID" 2>"$DESIGN_TMPDIR/design-reentry-marker-write.failure.log"
 _marker_rc=$?
-set -e
 if [[ "$_marker_rc" -ne 0 ]]; then
     "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
@@ -215,16 +213,17 @@ _upsert_args=(--issue "$ISSUE")
 if [[ -f "$_arch_file" ]] && [[ -s "$_arch_file" ]]; then
     _run_upsert=true
     _upsert_args+=(--architecture-file "$_arch_file")
+elif [[ -f "$_arch_file" ]] && [[ ! -s "$_arch_file" ]] && [[ -f "$_arch_skipped" ]]; then
+    _run_upsert=true
+    _upsert_args+=(--clear-architecture)
 elif [[ ! -f "$_arch_file" ]] && [[ -f "$_arch_skipped" ]]; then
     _run_upsert=true
     _upsert_args+=(--clear-architecture)
 fi
 
 if [[ "$_run_upsert" == true ]]; then
-    set +e
     _upsert_out=$("$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" "${_upsert_args[@]}" 2>"$DESIGN_TMPDIR/diagrams-architecture-upsert.stderr")
     _upsert_rc=$?
-    set -e
     printf '%s\n' "$_upsert_out" >"$DESIGN_TMPDIR/diagrams-architecture-upsert.stdout"
     parse_kv_from_output "$_upsert_out"
     if [[ "${UPSERT_STATUS:-}" == failed ]] || [[ "$_upsert_rc" -ne 0 ]]; then
@@ -244,18 +243,16 @@ if [[ -n "$SESSION_ID" ]]; then
         --outcome approved \
         --mode "$MODE" \
         ${REPO:+--repo "$REPO"} \
-        --pre-publish-only
+        --pre-publish-only || true
 fi
 
 if [[ -n "$SESSION_ID" ]]; then
-    set +e
     _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \
         --design-tmpdir "$DESIGN_TMPDIR" \
         --run-id "$SESSION_ID" \
         --issue "$ISSUE" \
         ${REPO:+--repo "$REPO"} 2>"$DESIGN_TMPDIR/design-log-publish.failure.log")
     _publish_rc=$?
-    set -e
     PUBLISH_OK=""
     parse_kv_from_output "$_publish_out"
     if [[ "$_publish_rc" -ne 0 ]] && [[ "$_publish_out" != *$'PUBLISH_OK='* ]]; then
@@ -277,6 +274,17 @@ if [[ -n "$SESSION_ID" ]]; then
             --category Warnings \
             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
             --redact >/dev/null 2>&1 || true
+    elif [[ -z "${PUBLISH_OK:-}" ]]; then
+        PUBLISH_OK=false
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 5c" \
+            --tool "design-log-publish.sh" \
+            --exit-code "${_publish_rc:-0}" \
+            --category Warnings \
+            --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
+            --redact >/dev/null 2>&1 || true
+        add_warn '**⚠ 5c: design-log-publish.sh returned without PUBLISH_OK=; treating publish as failed**'
     fi
 else
     add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'
@@ -286,7 +294,7 @@ fi
     --outcome approved \
     --mode "$MODE" \
     ${REPO:+--repo "$REPO"} \
-    --post-publish-only
+    --post-publish-only || true
 
 if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
     _rename_seen=false
@@ -307,8 +315,6 @@ if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
 fi
 
 if ! write_result_env_and_emit; then
-    set -e
     exit 3
 fi
-set -e
 exit 0

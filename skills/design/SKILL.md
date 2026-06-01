@@ -1313,8 +1313,7 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
      exit 1
    fi
    if [[ "${_publish_rc:-0}" -eq 3 ]]; then
-     printf '%s\n' "**⚠ Step 5c: design-publish.sh publish tail incomplete (exit 3); aborting /design**" >&2
-     exit 1
+     printf '%s\n' "**⚠ Step 5c: design-publish.sh result-env write failed (exit 3); continuing with stdout parse**" >&2
    fi
    if [[ "${_publish_rc:-0}" -ne 0 && "${_publish_rc:-0}" -ne 1 ]]; then
      printf '%s\n' "**⚠ Step 5c: design-publish.sh failed (exit ${_publish_rc}); aborting /design**" >&2
@@ -1354,19 +1353,19 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
          ;;
      esac
    done <<<"${_publish_out:-}"
-   if [[ "$_publish_parse_ok" != true ]]; then
+   if [[ "$_publish_parse_ok" != true ]] && [[ "${_publish_rc:-0}" -ne 3 ]]; then
      printf '%s\n' "**⚠ Step 5c: design-publish result env missing or unreadable; aborting /design**" >&2
      exit 1
    fi
    ```
 
-**Driver exit-code contract:** `_publish_rc`=2, `_publish_rc`=3 (publish tail incomplete after plan write), and unexpected non-zero values outside `{0,1,3}` abort above — **stop `/design` immediately; do not run Step 5c items 5–7, Step 5d, or Step 6.** When `_publish_rc` ∈ {0, 1}, always parse `.design-publish-result.env` (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
+**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1,3}` abort above — **stop `/design` immediately; do not run Step 5c items 5–7, Step 5d, or Step 6.** `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written — parse stdout (`_publish_out`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete. When `_publish_rc` ∈ {0, 1, 3}, always parse `.design-publish-result.env` when present (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
 
-**Driver WARN replay (top chat):** After the Bash block above, when `_publish_rc` ∈ {0, 1} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
+**Driver WARN replay (top chat):** After the Bash block above, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
 
-5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0 or 1):** when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that path and emit its full body verbatim as plain chat markdown (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text). Do NOT paraphrase, summarize, reorder, or add prose between bullets. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `render-final-summary.sh` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary).
-6. **Only when `_publish_rc` is 0 or 1 and `.design-publish-result.env` was parsed:** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `SESSION_ID` is empty **or** `PUBLISH_OK=true` **before** Step 5d.
-7. **Only when `_publish_rc` is 0 or 1 and `.design-publish-result.env` was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
+5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0, 1, or 3):** when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that path and emit its full body verbatim as plain chat markdown (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text). Do NOT paraphrase, summarize, reorder, or add prose between bullets. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `render-final-summary.sh` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary).
+6. **Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (file and/or stdout):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true` **before** Step 5d. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately (see Step 6).
+7. **Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
 
 ### 5d — Final warning replay + footer
 
