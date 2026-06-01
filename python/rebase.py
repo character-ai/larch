@@ -164,10 +164,13 @@ def _commit_changelog_after_rebump(
 
     used_bullets = False
     if bullets_path.is_file() and bullets_path.stat().st_size > 0:
+        cl_path = root / config.CHANGELOG_DEFAULT_PATH
+        cl_text = cl_path.read_text(encoding="utf-8")
+        fmt = changelog.detect_format(cl_text, path=config.CHANGELOG_DEFAULT_PATH)
         dup = changelog.duplicate_version_heading_count(
-            (root / config.CHANGELOG_DEFAULT_PATH).read_text(encoding="utf-8"),
+            cl_text,
             new_version,
-            fmt=changelog.ChangelogFormat.MARKDOWN,
+            fmt=fmt,
         )
         if dup > 0:
             if bullets_path.exists():
@@ -177,15 +180,17 @@ def _commit_changelog_after_rebump(
             )
             raise Stalled(msg)
         body = bullets_path.read_text(encoding="utf-8")
-        cl_path = root / config.CHANGELOG_DEFAULT_PATH
-        cl_text = cl_path.read_text(encoding="utf-8")
-        fmt = changelog.detect_format(cl_text, path=config.CHANGELOG_DEFAULT_PATH)
-        new_text = changelog.write_changelog_entry(
-            cl_text,
-            new_version,
-            body,
-            fmt=fmt,
-        )
+        try:
+            new_text = changelog.write_changelog_entry(
+                cl_text,
+                new_version,
+                body,
+                fmt=fmt,
+            )
+        except changelog.ChangelogError as exc:
+            if bullets_path.exists():
+                bullets_path.unlink()
+            raise Stalled(_redact_outbound(str(exc))) from None
         _ = cl_path.write_text(new_text, encoding="utf-8")
         used_bullets = True
 
@@ -242,7 +247,12 @@ def _sync_local_main(
 ) -> None:
     branch = git.try_current_branch(runner, cwd=cwd)
     if branch == "main":
-        return
+        raise Stalled(
+            _redact_outbound(
+                "git-sync-local-main.sh: refusing to update local 'main' "
+                "while checked out on main",
+            ),
+        )
     if git.try_rev_parse(runner, "main", cwd=cwd) is None:
         return
     base_target = f"{base_remote}/{base_ref}"
@@ -339,7 +349,7 @@ def make_conflict_launch_fn(
             conflict_files=conflict_csv,
             cwd=cwd,
         )
-        launcher_exit = agents.read_launcher_exit(output)
+        launcher_exit = agents.parse_launcher_exit_text(result.stdout)
         failure = agents.classify_launch_failure(
             launcher_exit,
             failure_log if failure_log.is_file() else None,
@@ -380,6 +390,8 @@ def _resolve_conflicts(
                 waterfall = agents.run_waterfall(
                     config.FIXER_TIER_ORDER,
                     _tier_launch,
+                    runner=runner,
+                    cwd=cwd,
                 )
                 if waterfall.winning_tier is None:
                     raise NeedsUserInput(

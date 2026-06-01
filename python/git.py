@@ -464,3 +464,56 @@ def diff_quiet(
         argv = ["git", "diff", "--cached", "--quiet", "--", path]
     result = _run(runner, argv, cwd=cwd)
     return result.returncode == 0
+
+
+def tracked_dirty_paths(runner: Runner, *, cwd: str | None = None) -> frozenset[str]:
+    """Paths with tracked worktree/index changes vs HEAD (``git diff --name-only HEAD``)."""
+    result = _run(runner, ["git", "diff", "--name-only", "HEAD"], cwd=cwd)
+    return frozenset(line for line in result.stdout.splitlines() if line)
+
+
+def untracked_dirty_paths(runner: Runner, *, cwd: str | None = None) -> frozenset[str]:
+    """Untracked paths not ignored (``git ls-files --others --exclude-standard``)."""
+    result = _run(
+        runner,
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=cwd,
+    )
+    return frozenset(line for line in result.stdout.splitlines() if line)
+
+
+def restore_staged(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:
+    return _run(runner, ["git", "restore", "--staged", "--", path], cwd=cwd)
+
+
+def checkout_paths(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:
+    return _run(runner, ["git", "checkout", "--", path], cwd=cwd)
+
+
+def paths_delta_revert(
+    runner: Runner,
+    baseline_tracked: frozenset[str],
+    baseline_untracked: frozenset[str],
+    *,
+    cwd: str | None = None,
+) -> None:
+    """Revert tracked/untracked deltas since baseline (recovery waterfall parity)."""
+    cur_tracked = tracked_dirty_paths(runner, cwd=cwd)
+    cur_untracked = untracked_dirty_paths(runner, cwd=cwd)
+    root = Path(cwd) if cwd else Path.cwd()
+    for path in cur_tracked:
+        if path in baseline_tracked:
+            continue
+        if path in cur_untracked:
+            target = root / path
+            if target.exists() or target.is_symlink():
+                target.unlink(missing_ok=True)
+        else:
+            _ = restore_staged(runner, path, cwd=cwd)
+            _ = checkout_paths(runner, path, cwd=cwd)
+    for path in cur_untracked:
+        if path in baseline_untracked:
+            continue
+        target = root / path
+        if target.exists() or target.is_symlink():
+            target.unlink(missing_ok=True)

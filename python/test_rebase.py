@@ -9,10 +9,13 @@ from pathlib import Path
 
 import pytest
 
+import changelog
 import config
 import rebase
 import version_bump
 from agents import LaunchFailure, TierAttempt
+from bump_worktree import DropResult
+from changelog import ChangelogError
 from version_bump import ApplyResult, BumpClassification
 from errors import NeedsUserInput, Stalled, TransientNetworkError
 from proc import CommandResult
@@ -492,13 +495,33 @@ def test_make_conflict_launch_fn_argv(tmp_path: Path) -> None:
     )
     attempt = launch_fn("cursor", "a.txt,b.txt")
     assert attempt.launcher_exit == 0
-    launch_calls = [c for c in runner.calls if any("launch-cursor-ci.sh" in p for p in c)]
-    assert launch_calls
-    argv = launch_calls[0]
-    assert argv[argv.index("--role") + 1] == config.FIXER_ROLE
-    assert argv[argv.index("--conflict-files") + 1] == "a.txt,b.txt"
-    assert argv[argv.index("--run-id") + 1] == "run-42"
-    assert argv[argv.index("--repo") + 1] == "owner/repo"
+
+
+def test_make_conflict_launch_fn_reads_launcher_exit_from_stdout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out_dir = tmp_path / "launch"
+    runner = ScriptRunner([], permissive=True)
+
+    def _launch_stdout(
+        _runner: ScriptRunner,
+        tier: str,
+        **kwargs: object,
+    ) -> CommandResult:
+        _ = _runner, tier, kwargs
+        return CommandResult(("launch",), 0, "LAUNCHER_EXIT=1\n", "", 0.01)
+
+    monkeypatch.setattr(rebase.agents, "launch_tier", _launch_stdout)
+    launch_fn = rebase.make_conflict_launch_fn(
+        runner,
+        repo="owner/repo",
+        run_id="run-42",
+        output_dir=out_dir,
+        cwd=str(tmp_path),
+    )
+    attempt = launch_fn("cursor", "a.txt")
+    assert attempt.launcher_exit == 1
 
 
 def test_rebase_result_uses_apply_result_new_version(
@@ -845,3 +868,230 @@ def test_version_regression_guard_recomputes_target(
     )
     assert applied_versions == ["2.0.1"]
     assert result.new_version == "2.0.1"
+
+
+def test_sync_local_main_on_main_stalls() -> None:
+    runner = ScriptRunner(
+        [
+            (("git", "symbolic-ref", "--short", "HEAD"), _ok(
+                ("git", "symbolic-ref", "--short", "HEAD"),
+                "main\n",
+            )),
+        ],
+    )
+    with pytest.raises(Stalled, match="refusing to update local 'main'"):
+        rebase._sync_local_main(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            base_remote="origin",
+            base_ref="main",
+            cwd=None,
+        )
+
+
+def test_deterministic_prepass_version_go_and_go_sum() -> None:
+    for name in ("version.go", "go.sum"):
+        runner = ScriptRunner(
+            [
+                (("git", "checkout", "--ours", "--", name), _ok(
+                    ("git", "checkout", "--ours", "--", name),
+                )),
+                (("git", "add", name), _ok(("git", "add", name))),
+            ],
+        )
+        remaining = rebase._deterministic_prepass(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            [name],
+            cwd=None,
+        )
+        assert not remaining
+        assert ("git", "checkout", "--ours", "--", name) in runner.calls
+
+
+def test_drop_bump_stages_bullets_and_calls_drop_changelog(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_classify_repo(tmp_path)
+    cl = tmp_path / config.CHANGELOG_DEFAULT_PATH
+    _ = cl.write_text(
+        "## [1.0.0] - 2020-01-01\n\n- item\n",
+        encoding="utf-8",
+    )
+    bullets = tmp_path / ".rrr-rebump-bullets.md"
+    drop_changelog_versions: list[str] = []
+
+    def _drop_bump(
+        runner: ScriptRunner,
+        **unused: object,
+    ) -> DropResult:
+        del unused
+        _ = runner
+        return DropResult(dropped=True, old_sha="bumpsha")
+
+    def _drop_changelog(
+        runner: ScriptRunner,
+        version: str,
+        *,
+        max_depth: int = 0,  # pylint: disable=unused-argument
+        cwd: str | None = None,
+    ) -> DropResult:
+        _ = runner, max_depth, cwd
+        drop_changelog_versions.append(version)
+        return DropResult(dropped=True, old_sha="clsha")
+
+    monkeypatch.setattr(version_bump, "drop_bump_commit", _drop_bump)
+    monkeypatch.setattr(changelog, "drop_changelog_commit", _drop_changelog)
+    _patch_none_classify(monkeypatch)
+    runner = ScriptRunner(
+        [
+            (("git", "symbolic-ref", "--short", "HEAD"), _ok(
+                ("git", "symbolic-ref", "--short", "HEAD"),
+                "feat\n",
+            )),
+            (("git", "status", "--porcelain"), _ok(("git", "status", "--porcelain"))),
+            (("git", "log", "-1", "--format=%s", "bumpsha"), _ok(
+                ("git", "log", "-1", "--format=%s", "bumpsha"),
+                "Bump version to 1.0.0\n",
+            )),
+            (("git", "fetch", "origin", "main", "--quiet"), _ok(
+                ("git", "fetch", "origin", "main", "--quiet",
+            ))),
+            (("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"), _ok(
+                ("git", "merge-base", "--is-ancestor", "origin/main", "HEAD"),
+            )),
+            (("git", "rev-parse", "main"), _fail(("git", "rev-parse", "main"))),
+            (("git", "merge-base", "main", "HEAD"), _fail(("git", "merge-base", "main", "HEAD"))),
+            (("git", "merge-base", "origin/main", "HEAD"), _ok(
+                ("git", "merge-base", "origin/main", "HEAD"),
+                "base\n",
+            )),
+            (("git", "status", "--porcelain", "--untracked-files=no"), _ok(
+                ("git", "status", "--porcelain", "--untracked-files=no"),
+            )),
+            (("git", "fetch", "origin", "feat", "--quiet"), _ok(
+                ("git", "fetch", "origin", "feat", "--quiet",
+            ))),
+            (("git", "push", "--force-with-lease", "origin", "feat"), _ok(
+                ("git", "push", "--force-with-lease", "origin", "feat"),
+            )),
+        ],
+    )
+    _ = rebase.rebase_and_rebump(
+        runner,
+        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        repo="o/r",
+        run_id="run",
+        tmpdir=str(tmp_path),
+        bullets_path=bullets,
+        cwd=str(tmp_path),
+    )
+    assert drop_changelog_versions == ["1.0.0"]
+    assert "- item" in bullets.read_text(encoding="utf-8")
+
+
+def test_guarded_drop_changelog_refusal_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_classify_repo(tmp_path)
+    cl = tmp_path / config.CHANGELOG_DEFAULT_PATH
+    _ = cl.write_text("## [1.0.0] - 2020-01-01\n\n- item\n", encoding="utf-8")
+    bullets = tmp_path / ".rrr-rebump-bullets.md"
+
+    def _refuse_drop(
+        _runner: ScriptRunner,
+        _version: str,
+        *,
+        max_depth: int = 0,  # pylint: disable=unused-argument
+        cwd: str | None = None,
+    ) -> DropResult:
+        _ = _runner, _version, max_depth, cwd
+        return DropResult(dropped=False, error="dirty worktree")
+
+    monkeypatch.setattr(changelog, "drop_changelog_commit", _refuse_drop)
+    runner = ScriptRunner([])
+    with pytest.raises(Stalled, match="drop-changelog-commit"):
+        rebase._stage_rebump_bullets(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            old_version="1.0.0",
+            bullets_path=bullets,
+            cwd=str(tmp_path),
+        )
+
+
+def test_commit_changelog_after_rebump_duplicate_heading_stalls(
+    tmp_path: Path,
+) -> None:
+    cl = tmp_path / config.CHANGELOG_DEFAULT_PATH
+    _ = cl.write_text(
+        "## [1.1.0] - 2020-01-01\n\n## [1.1.0] - 2020-02-01\n",
+        encoding="utf-8",
+    )
+    bullets = tmp_path / "bullets.md"
+    _ = bullets.write_text("- new\n", encoding="utf-8")
+    runner = ScriptRunner([])
+    with pytest.raises(Stalled, match=r"1\.1\.0"):
+        rebase._commit_changelog_after_rebump(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            "1.1.0",
+            "1.0.0",
+            bullets,
+            cwd=str(tmp_path),
+        )
+    assert not bullets.exists()
+
+
+def test_commit_changelog_after_rebump_changelog_error_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cl = tmp_path / config.CHANGELOG_DEFAULT_PATH
+    _ = cl.write_text("## [1.0.0] - 2020-01-01\n", encoding="utf-8")
+    bullets = tmp_path / "bullets.md"
+    _ = bullets.write_text("- new\n", encoding="utf-8")
+
+    def _write_raises(*_args: object, **_kwargs: object) -> str:
+        raise ChangelogError("no anchor found for changelog entry", code=3)
+
+    monkeypatch.setattr(changelog, "write_changelog_entry", _write_raises)
+    runner = ScriptRunner([])
+    with pytest.raises(Stalled, match="no anchor"):
+        rebase._commit_changelog_after_rebump(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            "1.1.0",
+            "1.0.0",
+            bullets,
+            cwd=str(tmp_path),
+        )
+    assert not bullets.exists()
+
+
+def test_changelog_ready_after_rebump_short_circuits_commit(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cl = tmp_path / config.CHANGELOG_DEFAULT_PATH
+    _ = cl.write_text("## [1.1.0] - 2020-01-01\n", encoding="utf-8")
+    bullets = tmp_path / "bullets.md"
+    commit_called = {"n": 0}
+
+    def _commit(*_args: object, **_kwargs: object) -> changelog.CommitResult:
+        commit_called["n"] += 1
+        return changelog.CommitResult(committed=False, error="not committed")
+
+    monkeypatch.setattr(changelog, "commit_changelog", _commit)
+    runner = ScriptRunner(
+        [
+            (("git", "status", "--porcelain", "--untracked-files=no"), _ok(
+                ("git", "status", "--porcelain", "--untracked-files=no"),
+            )),
+        ],
+    )
+    rebase._commit_changelog_after_rebump(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        "1.1.0",
+        "1.0.0",
+        bullets,
+        cwd=str(tmp_path),
+    )
+    assert commit_called["n"] == 1

@@ -8,6 +8,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import config
+import git
 from proc import CommandResult, Runner
 
 _PARSE_RE = re.compile(
@@ -65,12 +66,9 @@ def is_transient_infra_failure(
     return path.stat().st_size == 0
 
 
-def read_launcher_exit(output_file: str | Path) -> int:
-    """Read LAUNCHER_EXIT= from a launcher capture file; missing → 0."""
-    path = Path(output_file)
-    if not path.is_file():
-        return 0
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+def parse_launcher_exit_text(text: str) -> int:
+    """Read LAUNCHER_EXIT= from launcher stdout capture; missing → 0."""
+    for line in text.splitlines():
         if line.startswith("LAUNCHER_EXIT="):
             raw = line.split("=", 1)[1].strip().strip("\r")
             try:
@@ -78,6 +76,16 @@ def read_launcher_exit(output_file: str | Path) -> int:
             except ValueError:
                 return 0
     return 0
+
+
+def read_launcher_exit(output_file: str | Path) -> int:
+    """Read LAUNCHER_EXIT= from a launcher capture file; missing → 0."""
+    path = Path(output_file)
+    if not path.is_file():
+        return 0
+    return parse_launcher_exit_text(
+        path.read_text(encoding="utf-8", errors="replace"),
+    )
 
 
 def parse_launcher_failure_class(log_file: str | Path | None) -> str:
@@ -223,15 +231,24 @@ def run_waterfall(
     launch_fn: LaunchFn,
     *,
     first_tier: str | None = None,
+    runner: Runner | None = None,
+    cwd: str | None = None,
 ) -> WaterfallResult:
     """Iterate tiers; short-circuit when the first tier fails with class 'other'.
 
-    Health-class failures fall through to the next tier.
+    Health-class failures fall through to the next tier. When ``runner`` is set,
+    snapshot tracked/untracked paths before the loop and revert deltas after each
+    failed tier (``recovery_waterfall_paths_delta_revert`` parity).
     """
     tier_list = list(tiers)
     if first_tier and first_tier in tier_list:
         start = tier_list.index(first_tier)
         tier_list = [*tier_list[start:], *tier_list[:start]]
+    baseline_tracked: frozenset[str] | None = None
+    baseline_untracked: frozenset[str] | None = None
+    if runner is not None:
+        baseline_tracked = git.tracked_dirty_paths(runner, cwd=cwd)
+        baseline_untracked = git.untracked_dirty_paths(runner, cwd=cwd)
     attempts: list[TierAttempt] = []
     first = tier_list[0] if tier_list else ""
     for idx, tier in enumerate(tier_list):
@@ -241,6 +258,13 @@ def run_waterfall(
             return WaterfallResult(
                 winning_tier=tier,
                 attempts=tuple(attempts),
+            )
+        if runner is not None and baseline_tracked is not None and baseline_untracked is not None:
+            git.paths_delta_revert(
+                runner,
+                baseline_tracked,
+                baseline_untracked,
+                cwd=cwd,
             )
         failure_class = effective_failure_class(attempt)
         if (
