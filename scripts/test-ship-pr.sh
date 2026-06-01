@@ -3439,8 +3439,22 @@ while [ $# -gt 0 ]; do
     *) shift ;;
   esac
 done
-[[ -n "$out_tsv" ]] && printf 'python-lint\t\n' >"$out_tsv"
+[[ -n "$out_tsv" ]] && printf 'python-lint\t\tfixable\n' >"$out_tsv"
 printf 'FAILED_JOBS_COUNT=1\n'
+exit 0
+STUB
+cat > "$root/scripts/make" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+case "${1:-}:${2:-}" in
+  py-lint|py-test) exit 1 ;;
+esac
+exit 0
+STUB
+cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'LINT_FIX_STATUS=exhausted\n'
 exit 0
 STUB
 for launcher in launch-cursor-ci.sh launch-codex-ci.sh launch-claude-ci.sh; do
@@ -3451,7 +3465,8 @@ exit 0
 STUB
     chmod +x "$root/scripts/$launcher"
 done
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" "$root/scripts/ci-failed-jobs.sh"
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" "$root/scripts/ci-failed-jobs.sh" \
+    "$root/scripts/make" "$root/scripts/lint-fix-loop.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}

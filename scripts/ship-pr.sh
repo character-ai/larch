@@ -2559,6 +2559,7 @@ run_evaluate_failure() {
         ci_failed_tsv="$IMPLEMENT_TMPDIR/ci-failed-jobs-${phase}.tsv"
         checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
         if [ "$CI_FIX_REBASE_PENDING" = true ]; then
+            _code_fix_attempted_on_ready_log=true
             _stage_and_push_ci_fixes "$phase" "" "$checks_site" "$ci_failed_tsv"
             stage_rc=$?
             case "$stage_rc" in
@@ -2571,6 +2572,7 @@ run_evaluate_failure() {
                     ;;
                 4)
                     per_job_verification_retry=true
+                    _code_fix_attempted_on_ready_log=true
                     ;;
             esac
             _fix_attempt=$(( _fix_attempt + 1 ))

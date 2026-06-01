@@ -908,6 +908,8 @@ def run_ci_fix(
         if not classified.fixable and unfixable:
             return FixResult(status="local-unfixable", unfixable=tuple(unfixable))
 
+        code_fix_attempted = bool(classified.fixable)
+
         tiers = _available_tiers()
         if not tiers:
             return FixResult(status="waterfall-failed", detail="no launcher tiers available")
@@ -925,9 +927,13 @@ def run_ci_fix(
             )
         if waterfall.winning_tier is None:
             _rollback()
-            return FixResult(status="waterfall-failed", detail="all tiers failed")
+            return FixResult(
+                status="waterfall-failed",
+                detail="all tiers failed",
+                code_fix_attempted_on_ready_log=code_fix_attempted,
+            )
 
-        code_fix_attempted = bool(classified.fixable)
+        code_fix_attempted = code_fix_attempted or bool(waterfall.winning_tier)
         for job in classified.fixable:
             argv = per_job_command(job.name, job.shard)
             if argv is None or not prepare_python_toolchain(runner, job.name, cwd=cwd):
@@ -967,7 +973,11 @@ def run_ci_fix(
             delta_paths=delta,
         )
         if not pushed:
-            return FixResult(status="waterfall-failed", detail="push failed")
+            return FixResult(
+                status="waterfall-failed",
+                detail="push failed",
+                code_fix_attempted_on_ready_log=code_fix_attempted,
+            )
         if post_head == baseline_head:
             return FixResult(
                 status="first-fixer-non-health",
