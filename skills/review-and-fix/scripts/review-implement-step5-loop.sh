@@ -400,7 +400,9 @@ run_implement_mav_apply() {
     mkdir -p "$round_dir"
     snap_dir=$(pre_coder_snapshot_dir "$round_dir")
     mkdir -p "$snap_dir"
+    clear_stale_pre_coder_snapshot_artifacts "$snap_dir"
     git rev-parse HEAD > "$snap_dir/pre-coder-head.txt" 2>/dev/null || rm -f "$snap_dir/pre-coder-head.txt"
+    chmod 0444 "$snap_dir/pre-coder-head.txt" 2>/dev/null || true
     local coder_env="$round_dir/coder.env" coder_rc=0
     set +e
     apply_findings_with_coder "$FINDINGS_FILE" "$round_dir" "$coder_env" "$round_num_dec"
@@ -410,7 +412,9 @@ run_implement_mav_apply() {
         local st
         st=$(kv_get "$coder_env" CODER_STATUS)
         if [[ "$st" == "applied" ]]; then
+            rm -f "$round_dir/post-coder-head.txt" 2>/dev/null || true
             git rev-parse HEAD > "$round_dir/post-coder-head.txt" 2>/dev/null || rm -f "$round_dir/post-coder-head.txt"
+            chmod 0444 "$round_dir/post-coder-head.txt" 2>/dev/null || true
         fi
     fi
     emit_kv REVIEW_AND_FIX_STATUS mav-apply-done

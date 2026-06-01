@@ -351,7 +351,33 @@ capture_round_tracked_paths() {
 
 pre_coder_snapshot_dir() {
     local round_dir="$1"
-    printf '%s/.pre-coder-snapshots/%s\n' "$(dirname "$round_dir")" "$(basename "$round_dir")"
+    local parent_abs pwd_abs t hash
+    parent_abs="$(cd "$(dirname "$round_dir")" 2>/dev/null && pwd -P || printf '%s' "$(dirname "$round_dir")")"
+    pwd_abs="$(pwd -P)"
+    case "$parent_abs" in
+        "$pwd_abs"|"$pwd_abs"/*)
+            t="${TMPDIR:-/tmp}"
+            t="${t%/}"
+            hash="$(printf '%s' "$parent_abs" | cksum 2>/dev/null | awk '{print $1}')" || hash=0
+            [[ -n "$hash" ]] || hash=0
+            printf '%s/larch-pre-coder-snapshots/%s/%s\n' "$t" "$hash" "$(basename "$round_dir")"
+            ;;
+        *)
+            printf '%s/.pre-coder-snapshots/%s\n' "$(dirname "$round_dir")" "$(basename "$round_dir")"
+            ;;
+    esac
+}
+
+clear_stale_pre_coder_snapshot_artifacts() {
+    local snap_dir="$1"
+    rm -f "$snap_dir/pre-coder-head.txt" "$snap_dir/pre-coder-tracked-paths.txt" \
+        "$snap_dir"/pre-coder-path-diffs/*.patch 2>/dev/null || true
+}
+
+harden_pre_coder_snapshot_perms() {
+    local snap_dir="$1"
+    chmod 0444 "$snap_dir/pre-coder-head.txt" "$snap_dir/pre-coder-tracked-paths.txt" \
+        "$snap_dir"/pre-coder-path-diffs/*.patch 2>/dev/null || true
 }
 
 pre_coder_path_diff_file() {
@@ -1320,10 +1346,12 @@ _implement_round_body() {
             coder_env="$round_dir/coder.env"
             snap_dir=$(pre_coder_snapshot_dir "$round_dir")
             mkdir -p "$snap_dir"
+            clear_stale_pre_coder_snapshot_artifacts "$snap_dir"
             git rev-parse HEAD > "$snap_dir/pre-coder-head.txt" 2>/dev/null || rm -f "$snap_dir/pre-coder-head.txt"
             if [[ -s "$snap_dir/pre-coder-head.txt" ]]; then
                 snapshot_pre_coder_tracked_state "$round_dir" "$(cat "$snap_dir/pre-coder-head.txt")"
             fi
+            harden_pre_coder_snapshot_perms "$snap_dir"
             set +e
             apply_findings_with_coder "$in_scope_file" "$round_dir" "$coder_env" "$round_num_dec"
             coder_rc=$?
@@ -1529,7 +1557,9 @@ _implement_round_body() {
     fi
 
     if [[ "$status" == "fix-applied" ]]; then
+        rm -f "$round_dir/post-coder-head.txt" 2>/dev/null || true
         git rev-parse HEAD > "$round_dir/post-coder-head.txt" 2>/dev/null || rm -f "$round_dir/post-coder-head.txt"
+        chmod 0444 "$round_dir/post-coder-head.txt" 2>/dev/null || true
     fi
 
     local round_cap_val="${ROUND_CAP:-0}"

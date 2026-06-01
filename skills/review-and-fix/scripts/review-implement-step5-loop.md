@@ -18,4 +18,4 @@ If both probes miss, the loop emits one diagnostic line with `IMPLEMENT_TMPDIR`,
 
 ## Pre-coder head and structural-diff telemetry
 
-Bulk-skip and substantial-round gates read `pre-coder-head.txt` from `pre_coder_snapshot_dir "$post_round_dir"` (defined in `review-and-fix.sh`) and `post-coder-head.txt` from `$post_round_dir`. `run_implement_mav_apply` writes only `pre-coder-head.txt` into that snapshot dir before coder dispatch; it does **not** call `snapshot_pre_coder_tracked_state`, so MAV rounds keep the same head-only carryover behavior as before relocation.
+Bulk-skip and substantial-round gates read `pre-coder-head.txt` from `pre_coder_snapshot_dir "$post_round_dir"` (defined in `review-and-fix.sh`) and `post-coder-head.txt` from `$post_round_dir`. `run_implement_mav_apply` clears stale snapshot artifacts, writes only `pre-coder-head.txt` into that snapshot dir before coder dispatch, then `chmod 0444` the head file; it does **not** call `snapshot_pre_coder_tracked_state`, so MAV rounds keep the same head-only carryover behavior as before relocation. `post-coder-head.txt` is written and chmod'd only when `CODER_STATUS=applied`.

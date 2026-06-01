@@ -331,6 +331,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         --timeout "$TIMEOUT" \
         --stderr-sink "$SIDECAR_LOG" \
         -- \
+        # Step 2 coder must write manifest.json / qa-pending.json under $SESSION_TMPDIR; keep this grant wide.
         codex exec --full-auto -C "$PWD" \
         --add-dir "$SESSION_TMPDIR" \
         --add-dir "$PWD" \
