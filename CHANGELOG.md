@@ -43,7 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 
 - `/design`: remove Step 2b.5 optional plan-size prompts and retire the file-count metric; only hard `PLAN_LINES` / `DIFF_LINES` thresholds remain, while `--partition` routes directly to the decomposition panel (#2805).
-- `/implement` now resolves omitted `--coder` in Step 0 via the Cursor → Codex → Claude waterfall inside `scripts/implement-bootstrap.sh phase_coder_select`, and Step 2 consumes that resolved coder without re-deciding from `diff_lines`. Review/fix and other fixer lanes remain Codex-first. Cross-doc and harness surfaces follow the same split routing contract (`SECURITY.md`, `docs/linting.md`, sibling `.md` contracts).
+- `/implement` now resolves omitted `--coder` in Step 0 via the Codex → Cursor → Claude waterfall inside `scripts/implement-bootstrap.sh phase_coder_select` (#3337), and Step 2 consumes that resolved coder without re-deciding from `diff_lines`. CI fixer (`run_ci_fix_vendor`) and merge-resolve fixer (`run_recovery_waterfall`) in `scripts/ship-pr.sh` also prefer Codex first. Python `python/config.py FIXER_TIER_ORDER` updated for parity. Review/fix and other fixer lanes remain Codex-first. Cross-doc and harness surfaces follow the same split routing contract (`SECURITY.md`, `docs/linting.md`, sibling `.md` contracts). The `apiKeyHelper`-free dual-auth alias pattern is now documented in `docs/installation-and-setup.md` (Part 1 of #3337).
 - `/design`: re-print the plan candidate at Step 3 entry (first-time only) and Gate C entry, with a large-plan summary mode controlled by `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` (default 120).
 - **`/design` finalize split + upstream OOS filing** — Step 5 is now **finalize** (5a reviewer status, **5b** `/larch:issue` batch for accepted non-security OOS with `[OOS]` prefix + `file-design-oos.sh`, **5c** `larch:plan` write / publish / `[DESIGNED]` rename); Step **6** is tmpdir **cleanup** only (`cleanup-tmpdir.sh`). `/implement` Step 9a.1 skips design OOS blocks that already carry `- **Filed URL**:`; disposition counting for design-side GitHub URLs follows the structured Filed URL list lines from `[42.0.10]` (not incidental prose), while `oos-disposition-gate.sh` still accepts repeated `--filed-urls-file` arguments to **union** those extracted lists with implement tmp artifacts such as `oos-issues-created.md` (not a Description-URL bypass).
 - **`/implement` admission precondition**: issues without a `[DESIGNED]` prefix are rejected with `ADMISSION_RESULT=missing-designed-prefix` at exit 5, requiring a completed `/design` run before `/implement` may proceed.
@@ -74,6 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Codex-first omitted `--coder` routing for `/implement` Step 0, CI fixer (`run_ci_fix_vendor`), and merge/conflict fixers; document apiKeyHelper-free dual-auth install guidance (#3337)
 - Stop make lint from hanging when Codex or Cursor is installed but unavailable (#3338)
 - Prepend PATH stubs so default revise-plan-with-waterfall cannot launch real external binaries
 - Document the STUB_BIN hermetic backstop in the harness markdown

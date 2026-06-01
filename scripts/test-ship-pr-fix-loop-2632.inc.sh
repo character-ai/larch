@@ -2,10 +2,10 @@
 # Offline regressions for #2632 (run_ci_fix_vendor 3-tier + gh-run-logs).
 # Sourced from scripts/test-ship-pr.sh inside `if section_runs fix-loop; then`.
 
-# 4) Cursor LAUNCHER_FAILURE_CLASS=other (timeout) → ship-pr exit 3; Codex not invoked.
+# 4) Codex LAUNCHER_FAILURE_CLASS=other (timeout) → ship-pr exit 3; Cursor not invoked.
 run_ship_pr_2632_t4() {
     local root tmp call_dir
-    root=$(make_repo ci_fix_vendor_launcher_exit_nonzero)
+    root=$(make_repo ci_fix_vendor_codex_other_non_health)
     tmp=$(make_tmpdir)
     call_dir=$(mktemp -d "$tmp/call.XXXXXX")
     cat > "$root/scripts/ci-wait.sh" <<STUB
@@ -27,63 +27,6 @@ echo "RELEVANT_CHECKS_OK=true SITE=step10 COVERAGE=full"
 exit 0
 STUB
     chmod +x "$root/scripts/run-relevant-checks-captured.sh"
-    cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-output=""
-if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
-  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
-  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
-fi
-while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
-printf 'LAUNCHER_FAILURE_CLASS=other\nLAUNCHER_FAILURE_REASON=timeout\nLAUNCHER_EXIT=124\n'
-STUB
-    cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
-#!/usr/bin/env bash
-exit 99
-STUB
-    write_min_launch_claude "$root"
-    chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
-    write_state "$tmp/ship-pr-state.sh" ci-initial
-    awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
-         /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
-         {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-    set +e
-    (cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
-        "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-        --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
-    printf '%s' "$?" >"$tmp/rc"
-    set -e
-    assert_rc "$tmp/rc" 3 "ci_fix_vendor_cursor_other_non_health: ship-pr exits 3"
-    lc=$(wc -l <"$call_dir/launcher-calls.txt" 2>/dev/null || echo 0)
-    [[ "$lc" -eq 1 ]] || { fail "t4: expected single Cursor launch, got $lc"; return; }
-    grep -Fq 'first-fixer-non-health' "$tmp/ship-pr-state.sh" || { fail "t4: expected BAIL_REASON in state"; return; }
-    grep -Fq 'BAIL_FAILURE_DETAIL_LOG=' "$tmp/ship-pr-state.sh" || { fail "t4: expected BAIL_FAILURE_DETAIL_LOG"; return; }
-    grep -Fq 'BAIL_NEEDS_USER_INPUT=false' "$tmp/ship-pr-state.sh" || { fail "t4: autonomous exit-3 must not flip BAIL_NEEDS_USER_INPUT"; return; }
-    ok "ci_fix_vendor_cursor_other_non_health: exit 3, cursor-only, first-fixer state"
-    rm -rf "$call_dir"
-}
-
-# 4b) Cursor health/binary-missing → waterfall to Codex (policy does not fire).
-run_ship_pr_2632_t4b() {
-    local root tmp call_dir
-    root=$(make_repo ci_fix_vendor_cursor_health_binary_missing)
-    tmp=$(make_tmpdir)
-    call_dir=$(mktemp -d "$tmp/call.XXXXXX")
-    write_ci_wait_merge "$call_dir" "$root"
-    cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-output=""
-if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
-  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
-  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
-fi
-while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
-printf 'LAUNCHER_FAILURE_CLASS=health\nLAUNCHER_FAILURE_REASON=binary-missing\nLAUNCHER_EXIT=1\n'
-STUB
     cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -94,10 +37,67 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
 fi
 while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
 printf 'TOOL=codex\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+printf 'LAUNCHER_FAILURE_CLASS=other\nLAUNCHER_FAILURE_REASON=timeout\nLAUNCHER_EXIT=124\n'
+STUB
+    cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 99
+STUB
+    write_min_launch_claude "$root"
+    chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
+    write_state "$tmp/ship-pr-state.sh" ci-initial
+    awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+         /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+         {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+    set +e
+    (cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+        "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+        --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+    printf '%s' "$?" >"$tmp/rc"
+    set -e
+    assert_rc "$tmp/rc" 3 "ci_fix_vendor_codex_other_non_health: ship-pr exits 3"
+    lc=$(wc -l <"$call_dir/launcher-calls.txt" 2>/dev/null || echo 0)
+    [[ "$lc" -eq 1 ]] || { fail "t4: expected single Codex launch, got $lc"; return; }
+    grep -Fq 'first-fixer-non-health' "$tmp/ship-pr-state.sh" || { fail "t4: expected BAIL_REASON in state"; return; }
+    grep -Fq 'BAIL_FAILURE_DETAIL_LOG=' "$tmp/ship-pr-state.sh" || { fail "t4: expected BAIL_FAILURE_DETAIL_LOG"; return; }
+    grep -Fq 'BAIL_NEEDS_USER_INPUT=false' "$tmp/ship-pr-state.sh" || { fail "t4: autonomous exit-3 must not flip BAIL_NEEDS_USER_INPUT"; return; }
+    ok "ci_fix_vendor_codex_other_non_health: exit 3, codex-only, first-fixer state"
+    rm -rf "$call_dir"
+}
+
+# 4b) Codex health/binary-missing → waterfall to Cursor (policy does not fire).
+run_ship_pr_2632_t4b() {
+    local root tmp call_dir
+    root=$(make_repo ci_fix_vendor_codex_health_binary_missing)
+    tmp=$(make_tmpdir)
+    call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+    write_ci_wait_merge "$call_dir" "$root"
+    cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
+fi
+while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
+printf 'TOOL=codex\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+printf 'LAUNCHER_FAILURE_CLASS=health\nLAUNCHER_FAILURE_REASON=binary-missing\nLAUNCHER_EXIT=1\n'
+STUB
+    cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
+fi
+while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
+printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
 printf 'LAUNCHER_FAILURE_CLASS=none\nLAUNCHER_FAILURE_REASON=\nLAUNCHER_EXIT=0\n'
 STUB
     write_min_launch_claude "$root"
-    chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+    chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
     write_state_eval_fail "$tmp"
     set +e
     (cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
@@ -105,23 +105,23 @@ STUB
         --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
     printf '%s' "$?" >"$tmp/rc"
     set -e
-    assert_rc "$tmp/rc" 0 "ci_fix_vendor_cursor_health_binary_missing"
-    if ! grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" || ! grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt"; then
-        fail "t4b: expected cursor then codex"
+    assert_rc "$tmp/rc" 0 "ci_fix_vendor_codex_health_binary_missing"
+    if ! grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" || ! grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt"; then
+        fail "t4b: expected codex then cursor"
         return
     fi
-    ok "ci_fix_vendor_cursor_health_binary_missing: waterfall after health failure"
+    ok "ci_fix_vendor_codex_health_binary_missing: waterfall after health failure"
     rm -rf "$call_dir"
 }
 
-# 4c) Cursor wrapper_rc=2 (argv validation) → rollback, Codex runs; policy does not fire.
+# 4c) Codex wrapper_rc=2 (argv validation) → rollback, Cursor runs; policy does not fire.
 run_ship_pr_2632_t4c() {
     local root tmp call_dir
-    root=$(make_repo ci_fix_vendor_cursor_wrapper_rc2)
+    root=$(make_repo ci_fix_vendor_codex_wrapper_rc2)
     tmp=$(make_tmpdir)
     call_dir=$(mktemp -d "$tmp/call.XXXXXX")
     write_ci_wait_merge "$call_dir" "$root"
-    cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+    cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
@@ -130,7 +130,7 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
 fi
 exit 2
 STUB
-    cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+    cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 output=""
@@ -143,7 +143,7 @@ printf 'LAUNCHER_FAILURE_CLASS=none\nLAUNCHER_FAILURE_REASON=\nLAUNCHER_EXIT=0\n
 printf 'LAUNCHER_FAILURE_CLASS=none\nLAUNCHER_FAILURE_REASON=\nLAUNCHER_EXIT=0\n'
 STUB
     write_min_launch_claude "$root"
-    chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+    chmod +x "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
     write_state_eval_fail "$tmp"
     set +e
     (cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
@@ -151,34 +151,22 @@ STUB
         --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
     printf '%s' "$?" >"$tmp/rc"
     set -e
-    assert_rc "$tmp/rc" 0 "ci_fix_vendor_cursor_wrapper_rc2"
-    if ! grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" || ! grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt"; then
-        fail "t4c: expected cursor then codex after wrapper_rc=2"
+    assert_rc "$tmp/rc" 0 "ci_fix_vendor_codex_wrapper_rc2"
+    if ! grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" || ! grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt"; then
+        fail "t4c: expected codex then cursor after wrapper_rc=2"
         return
     fi
-    ok "ci_fix_vendor_cursor_wrapper_rc2: codex runs after validation failure"
+    ok "ci_fix_vendor_codex_wrapper_rc2: cursor runs after validation failure"
     rm -rf "$call_dir"
 }
 
-# 4d) Codex tier emits other failure → Claude still runs (policy cursor-only).
+# 4d) Cursor tier emits other failure → Claude still runs (policy first-tier-only).
 run_ship_pr_2632_t4d() {
     local root tmp call_dir
-    root=$(make_repo ci_fix_vendor_codex_other_waterfall)
+    root=$(make_repo ci_fix_vendor_cursor_other_waterfall)
     tmp=$(make_tmpdir)
     call_dir=$(mktemp -d "$tmp/call.XXXXXX")
     write_ci_wait_merge "$call_dir" "$root"
-    cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-output=""
-if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
-  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
-  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
-fi
-while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
-printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
-printf 'LAUNCHER_FAILURE_CLASS=health\nLAUNCHER_FAILURE_REASON=binary-missing\nLAUNCHER_EXIT=1\n'
-STUB
     cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -189,6 +177,18 @@ if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
 fi
 while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
 printf 'TOOL=codex\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+printf 'LAUNCHER_FAILURE_CLASS=health\nLAUNCHER_FAILURE_REASON=binary-missing\nLAUNCHER_EXIT=1\n'
+STUB
+    cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
+fi
+while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
+printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
 printf 'LAUNCHER_FAILURE_CLASS=other\nLAUNCHER_FAILURE_REASON=unknown\nLAUNCHER_EXIT=1\n'
 STUB
     cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
@@ -211,14 +211,58 @@ STUB
         --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
     printf '%s' "$?" >"$tmp/rc"
     set -e
-    assert_rc "$tmp/rc" 0 "ci_fix_vendor_codex_other_waterfall"
-    if ! grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" \
-        || ! grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" \
+    assert_rc "$tmp/rc" 0 "ci_fix_vendor_cursor_other_waterfall"
+    if ! grep -q 'launch-codex-ci.sh' "$call_dir/launcher-calls.txt" \
+        || ! grep -q 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" \
         || ! grep -q 'launch-claude-ci.sh' "$call_dir/launcher-calls.txt"; then
         fail "t4d: expected all three tiers"
         return
     fi
-    ok "ci_fix_vendor_codex_other_waterfall: non-cursor other still waterfalls"
+    ok "ci_fix_vendor_cursor_other_waterfall: non-first-tier other still waterfalls"
+    rm -rf "$call_dir"
+}
+
+# 4e) start_attempt=1 → rotated first tier is cursor; cursor other → first-fixer-non-health, single cursor launch.
+run_ship_pr_2632_t4e() {
+    local root tmp call_dir vendor_rc
+    root=$(make_repo ci_fix_vendor_cursor_other_non_health_start1)
+    tmp=$(make_tmpdir)
+    call_dir=$(mktemp -d "$tmp/call.XXXXXX")
+    cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+if [[ -n "${SHIP_PR_LAUNCH_SENTINEL_DIR:-}" ]]; then
+  mkdir -p "$SHIP_PR_LAUNCH_SENTINEL_DIR"
+  printf '%s %s\n' "$(basename "$0")" "$*" >> "$SHIP_PR_LAUNCH_SENTINEL_DIR/launcher-calls.txt"
+fi
+while [[ $# -gt 0 ]]; do case "$1" in --output) output="$2"; shift 2 ;; *) shift ;; esac; done
+printf 'TOOL=cursor\nTOTAL=1\nRAW=c\nINPUT=0\nOUTPUT=0\nCACHE_READ=0\nCACHE_CREATE=0\n' > "${output}.token-record"
+printf 'LAUNCHER_FAILURE_CLASS=other\nLAUNCHER_FAILURE_REASON=timeout\nLAUNCHER_EXIT=124\n'
+STUB
+    cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 99
+STUB
+    cat > "$root/scripts/launch-claude-ci.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 99
+STUB
+    chmod +x "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+    printf 'RUN_ID=test-run\nREPO=owner/repo\nFAILED_RUN_ID=run123\n' >"$tmp/ship-pr-state.sh"
+    set +e
+    (
+        cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
+            bash -c 'source scripts/ship-pr.sh; IMPLEMENT_TMPDIR='"$tmp"'; STATE_FILE='"$tmp"'/ship-pr-state.sh; run_ci_fix_vendor ci-initial run123 0 0 "" 1'
+    ) >"$tmp/out" 2>&1
+    vendor_rc=$?
+    set -e
+    [[ "$vendor_rc" -eq 1 ]] || { fail "t4e: expected run_ci_fix_vendor rc 1, got $vendor_rc"; return; }
+    lc=$(wc -l <"$call_dir/launcher-calls.txt" 2>/dev/null || echo 0)
+    [[ "$lc" -eq 1 ]] || { fail "t4e: expected single Cursor launch, got $lc"; return; }
+    grep -Fq 'launch-cursor-ci.sh' "$call_dir/launcher-calls.txt" || { fail "t4e: expected cursor launcher"; return; }
+    grep -Fq 'first-fixer-non-health' "$tmp/ship-pr-state.sh" || { fail "t4e: expected BAIL_REASON in state"; return; }
+    ok "ci_fix_vendor_cursor_other_non_health_start1: start_attempt=1 cursor-first bail"
     rm -rf "$call_dir"
 }
 
@@ -673,6 +717,7 @@ run_ship_pr_2632_t4
 run_ship_pr_2632_t4b
 run_ship_pr_2632_t4c
 run_ship_pr_2632_t4d
+run_ship_pr_2632_t4e
 run_ship_pr_2632_t5
 run_ship_pr_2632_t6
 run_ship_pr_2632_t7

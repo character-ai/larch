@@ -27,7 +27,7 @@ When the auth-retry loop finishes with a non-zero `LAUNCHER_EXIT` and `IMPLEMENT
 
 ## Machine-readable failure classification
 
-After every run (including success), the launcher prints `emit_kv LAUNCHER_EXIT`, then runs `external_classify_launch_failure` from `lib-external-launcher-common.sh` (same source chain as the Cursor review launcher) and prints the resulting `LAUNCHER_FAILURE_CLASS` / `LAUNCHER_FAILURE_REASON` lines to stdout. `ship-pr.sh` captures stdout/stderr into its phase fail file and consults `LAUNCHER_FAILURE_CLASS` when deciding whether to short-circuit the Cursor→Codex→Claude waterfall on first-tier non-health failures. When `command -v cursor` fails before launch, the script emits `LAUNCHER_EXIT=127`, classification `health`/`binary-missing`, and the usual `emit_kv OUTPUT` / `TOKEN_RECORD` lines, then exits **1** (not **2** — argv validation failures still use `die`’s exit **2**).
+After every run (including success), the launcher prints `emit_kv LAUNCHER_EXIT`, then runs `external_classify_launch_failure` from `lib-external-launcher-common.sh` (same source chain as the Cursor review launcher) and prints the resulting `LAUNCHER_FAILURE_CLASS` / `LAUNCHER_FAILURE_REASON` lines to stdout. `ship-pr.sh` captures stdout/stderr into its phase fail file and consults `LAUNCHER_FAILURE_CLASS` when deciding whether to short-circuit the codex→cursor→claude waterfall when the rotated first tier reports `LAUNCHER_FAILURE_CLASS=other` (non-health). When `command -v cursor` fails before launch, the script emits `LAUNCHER_EXIT=127`, classification `health`/`binary-missing`, and the usual `emit_kv OUTPUT` / `TOKEN_RECORD` lines, then exits **1** (not **2** — argv validation failures still use `die`’s exit **2**).
 
 ## Harness
 
