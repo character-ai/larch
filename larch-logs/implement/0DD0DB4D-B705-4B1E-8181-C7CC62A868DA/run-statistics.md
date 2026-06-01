@@ -1,0 +1,1 @@
+Run 0DD0DB4D-B705-4B1E-8181-C7CC62A868DA: 0 OOS issues filed. (Review surfaced 1 out-of-scope observation, FINDING_10, which the voter panel exonerated — not filed; captured in the code-review-tally batch.)

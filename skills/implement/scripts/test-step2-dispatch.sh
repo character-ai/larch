@@ -537,7 +537,7 @@ OUT_12A=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
     STEP2_TOKEN_SESSION_FILE="$TOKEN12A" \
-    STEP2_MANIFEST_PATH="$TMP12A/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP12A/codex-step2-out/manifest.json" \
     LARCH_TOKEN_SESSION_ID=stale-step2 \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP12A" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -557,7 +557,7 @@ OUT_12B=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
     STEP2_TOKEN_SESSION_FILE="$TOKEN12B" \
-    STEP2_MANIFEST_PATH="$TMP12B/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP12B/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP12B" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -626,7 +626,7 @@ chmod +x "$STUB13/codex"
 OUT_13=$(cd "$SCRATCH_REPO" && \
     PATH="$STUB13:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP13/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP13/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP13" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -750,10 +750,11 @@ cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
 JSON
 mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
 # Write qa-pending.json with non-standard items[] format.
-cat > "$IMPLEMENT_TMPDIR/qa-pending.json.tmp" <<'JSON'
+STEP2_QA_PENDING="$(dirname "$STEP2_MANIFEST_PATH")/qa-pending.json"
+cat > "${STEP2_QA_PENDING}.tmp" <<'JSON'
 {"status":"needs_qa","items":[{"area":"area1","risk":"risk1","suggested_check":"check1"}]}
 JSON
-mv "$IMPLEMENT_TMPDIR/qa-pending.json.tmp" "$IMPLEMENT_TMPDIR/qa-pending.json"
+mv "${STEP2_QA_PENDING}.tmp" "$STEP2_QA_PENDING"
 printf 'stub codex stdout\n'
 STUB16_CODEX
 chmod +x "$STUB16/codex"
@@ -761,7 +762,7 @@ chmod +x "$STUB16/codex"
 OUT_16=$(cd "$SCRATCH_REPO16" && \
     PATH="$STUB16:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP16/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP16/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP16" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -776,7 +777,7 @@ else
 fi
 
 # Verify the repaired qa-pending.json contains questions[] not items[].
-QA_PENDING_16="$TMP16/qa-pending.json"
+QA_PENDING_16="$TMP16/codex-step2-out/qa-pending.json"
 if [[ -s "$QA_PENDING_16" ]] \
    && jq -e '(.questions | type == "array" and length > 0)' "$QA_PENDING_16" >/dev/null 2>&1 \
    && ! jq -e '.items' "$QA_PENDING_16" >/dev/null 2>&1; then
@@ -823,11 +824,11 @@ printf 'fresh-step2-17a\n' > "$TMP17A/session-id"
 OUT_17A=$(cd "$REPO_ROOT" && \
     PATH="$STUB17:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP17A/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP17A/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP17A" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex --workflow SIMPLE 2>&1)
-META17A="$TMP17A/codex-impl-transcript.txt.meta"
+META17A="$TMP17A/codex-step2-out/codex-impl-transcript.txt.meta"
 TIMEOUT17A=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17A" 2>/dev/null || true)
 if [[ "$TIMEOUT17A" == "3600" ]]; then
     pass
@@ -841,11 +842,11 @@ printf 'fresh-step2-17b\n' > "$TMP17B/session-id"
 OUT_17B=$(cd "$REPO_ROOT" && \
     PATH="$STUB17:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP17B/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP17B/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP17B" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex --workflow HARD 2>&1)
-META17B="$TMP17B/codex-impl-transcript.txt.meta"
+META17B="$TMP17B/codex-step2-out/codex-impl-transcript.txt.meta"
 TIMEOUT17B=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17B" 2>/dev/null || true)
 if [[ "$TIMEOUT17B" == "7200" ]]; then
     pass
@@ -859,11 +860,11 @@ printf 'fresh-step2-17c\n' > "$TMP17C/session-id"
 OUT_17C=$(cd "$REPO_ROOT" && \
     PATH="$STUB17:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP17C/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP17C/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP17C" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
-META17C="$TMP17C/codex-impl-transcript.txt.meta"
+META17C="$TMP17C/codex-step2-out/codex-impl-transcript.txt.meta"
 TIMEOUT17C=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17C" 2>/dev/null || true)
 if [[ "$TIMEOUT17C" == "3600" ]]; then
     pass
@@ -923,7 +924,7 @@ chmod +x "$STUB18/codex"
 OUT_18=$(cd "$SCRATCH_REPO18" && \
     PATH="$STUB18:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP18/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP18/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP18" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1315,7 +1316,7 @@ chmod +x "$STUBM1/codex"
 OUT_M1=$(cd "$SCRATCH_REPOM1" && \
     PATH="$STUBM1:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM1/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM1/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM1" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1420,7 +1421,7 @@ chmod +x "$STUBM2/codex"
 OUT_M2=$(cd "$SCRATCH_REPOM2" && \
     PATH="$STUBM2:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM2/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM2/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM2" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1459,7 +1460,7 @@ chmod +x "$STUBM12/codex"
 OUT_M12=$(cd "$SCRATCH_REPOM12" && \
     PATH="$STUBM12:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM12/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM12/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM12" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1490,7 +1491,7 @@ git -C "$SCRATCH_REPOM16" add staged.txt
 OUT_M16=$(cd "$SCRATCH_REPOM16" && \
     PATH="$STUBM1:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM16/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM16/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM16" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1534,7 +1535,7 @@ chmod +x "$STUBM17/codex"
 OUT_M17=$(cd "$SCRATCH_REPOM17" && \
     PATH="$STUBM17:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM17/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM17/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM17" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1599,7 +1600,7 @@ chmod +x "$STUBM18/codex"
 OUT_M18_QA=$(cd "$SCRATCH_REPOM18" && \
     PATH="$STUBM18:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM18/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM18/codex-step2-out/manifest.json" \
     STEP2_STATE_FILE="$TMPM18/state" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM18" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -1608,7 +1609,7 @@ printf '{"answers":[{"id":"q1","text":"yes"}]}\n' > "$TMPM18/answers.json"
 OUT_M18_RECOVERY=$(cd "$SCRATCH_REPOM18" && \
     PATH="$STUBM18:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM18/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM18/codex-step2-out/manifest.json" \
     STEP2_STATE_FILE="$TMPM18/state" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM18" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -1659,7 +1660,7 @@ chmod +x "$STUBM19/codex"
 OUT_M19=$(cd "$SCRATCH_REPOM19" && \
     PATH="$STUBM19:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM19/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM19/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM19" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1854,7 +1855,7 @@ set +e
     cd "$REPO_ROOT" && \
     PATH="$STUB_BIN_25:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP25/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP25/codex-step2-out/manifest.json" \
     LARCH_QUIET_DISABLE=1 \
     LARCH_CODEX_MODEL="stub-codex-model" \
     "$DISPATCHER" --tmpdir "$TMP25" --plan-file "$PLAN" --feature-file "$FEATURE" \

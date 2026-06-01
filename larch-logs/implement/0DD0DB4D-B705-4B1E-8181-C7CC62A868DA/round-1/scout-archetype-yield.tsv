@@ -1,0 +1,9 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+structure	code-quality	1	2	0	0	0.000000
+correctness	correctness	1	0	0	0	n/a
+testing	risk-integration	1	2	2	0	1.000000
+security	security	1	0	0	0	n/a
+edge-cases	correctness	1	0	0	0	n/a
+plan-fidelity	architecture	1	0	0	0	n/a
+dyn-grant-path-comparison	correctness	1	0	0	0	n/a
+dyn-cursor-claude-path-isolation	architecture	1	1	0	0	0.000000

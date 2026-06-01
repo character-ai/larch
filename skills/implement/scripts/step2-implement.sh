@@ -257,6 +257,13 @@ MANIFEST_PATH="$TMPDIR_ARG/manifest.json"
 MANIFEST_RAW_PATH="$TMPDIR_ARG/manifest-raw.json"
 QA_PENDING_PATH="$TMPDIR_ARG/qa-pending.json"
 TRANSCRIPT_PATH="$TMPDIR_ARG/${TOOL_TAG}-impl-transcript.txt"
+if [[ "$CODER" == "codex" ]]; then
+    STEP2_OUT_DIR="$TMPDIR_ARG/codex-step2-out"
+    mkdir -p "$STEP2_OUT_DIR"
+    MANIFEST_PATH="$STEP2_OUT_DIR/manifest.json"
+    QA_PENDING_PATH="$STEP2_OUT_DIR/qa-pending.json"
+    TRANSCRIPT_PATH="$STEP2_OUT_DIR/${TOOL_TAG}-impl-transcript.txt"
+fi
 SIDECAR_LOG="$TMPDIR_ARG/${TOOL_TAG}-impl.log"
 
 [[ -f "$AGENT_PROMPT" ]] || { larch_err "step2-implement.sh: agent prompt missing: $AGENT_PROMPT"; exit 2; }

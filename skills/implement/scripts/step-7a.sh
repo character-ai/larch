@@ -155,15 +155,15 @@ run_log_flush() {
     [ -f "$IMPLEMENT_TMPDIR/parent-issue.md" ] && run_larch_log_write parent-issue "$IMPLEMENT_TMPDIR/parent-issue.md"
     [ -f "$IMPLEMENT_TMPDIR/pre-review-head.txt" ] && run_larch_log_write pre-review-head "$IMPLEMENT_TMPDIR/pre-review-head.txt"
     [ -f "$IMPLEMENT_TMPDIR/pre-review-untracked.txt" ] && run_larch_log_write pre-review-untracked "$IMPLEMENT_TMPDIR/pre-review-untracked.txt"
-    [ -f "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt" ] && run_larch_log_write codex-impl-transcript "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt"
-    if [ -f "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.meta" ]; then
+    [ -f "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt" ] && run_larch_log_write codex-impl-transcript "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt"
+    if [ -f "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt.meta" ]; then
         set +e
-        bash -lc 'set -euo pipefail; source "$1/scripts/lib-redact.sh"; larch_redact_strip_meta_cmd_json "$2/codex-impl-transcript.txt.meta" "$2/codex-impl-transcript.txt.meta.trimmed"' _ "$PLUGIN_ROOT" "$IMPLEMENT_TMPDIR"
+        bash -lc 'set -euo pipefail; source "$1/scripts/lib-redact.sh"; larch_redact_strip_meta_cmd_json "$2/codex-impl-transcript.txt.meta" "$2/codex-impl-transcript.txt.meta.trimmed"' _ "$PLUGIN_ROOT" "$IMPLEMENT_TMPDIR/codex-step2-out"
         rc=$?
         set +e
-        [ "$rc" -eq 0 ] && run_larch_log_write codex-impl-transcript-meta "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.meta.trimmed"
+        [ "$rc" -eq 0 ] && run_larch_log_write codex-impl-transcript-meta "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt.meta.trimmed"
     fi
-    [ -f "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.prompt" ] && run_larch_log_write codex-impl-transcript-prompt "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.prompt"
+    [ -f "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt.prompt" ] && run_larch_log_write codex-impl-transcript-prompt "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt.prompt"
     [ -f "$IMPLEMENT_TMPDIR/codex-commit-message.txt" ] && run_larch_log_write codex-commit-message "$IMPLEMENT_TMPDIR/codex-commit-message.txt"
     [ -f "$IMPLEMENT_TMPDIR/manifest-raw.json" ] && run_larch_log_write codex-impl-manifest-raw "$IMPLEMENT_TMPDIR/manifest-raw.json"
 

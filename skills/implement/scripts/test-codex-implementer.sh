@@ -286,10 +286,17 @@ printf 'stub codex stdout\n'
 EOF
 chmod +x "$STUB_CODEX"
 
-TRANSCRIPT="$SCRATCH/transcript.txt"
+IMPLEMENT_TMPDIR_FIXTURE="$SCRATCH/implement-tmpdir"
+mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
+printf 'mock-codex-session\n' > "$IMPLEMENT_TMPDIR_FIXTURE/session-id"
+printf 'SOURCE_FILE=/tmp/mock.jsonl\n' > "$IMPLEMENT_TMPDIR_FIXTURE/claude-source.env"
+STEP2_OUT_DIR="$SCRATCH/codex-step2-out"
+mkdir -p "$STEP2_OUT_DIR"
+
+TRANSCRIPT="$STEP2_OUT_DIR/transcript.txt"
 SIDECAR="$SCRATCH/sidecar.log"
-MANIFEST="$SCRATCH/manifest.json"
-QA_PENDING="$SCRATCH/qa-pending.json"
+MANIFEST="$STEP2_OUT_DIR/manifest.json"
+QA_PENDING="$STEP2_OUT_DIR/qa-pending.json"
 ARGV_FILE="$SCRATCH/codex-argv.txt"
 PROMPT_FILE="$SCRATCH/codex-prompt.txt"
 LAST_ARG_FILE="$SCRATCH/codex-last-arg.txt"
@@ -297,10 +304,6 @@ SEPARATOR_INDEX_FILE="$SCRATCH/codex-separator-index.txt"
 TOKEN_SESSION_FILE="$SCRATCH/codex-token-session.txt"
 CODEX_HOME_FILE="$SCRATCH/codex-home.txt"
 CODEX_CONFIG_FILE="$SCRATCH/codex-config.toml"
-IMPLEMENT_TMPDIR_FIXTURE="$SCRATCH/implement-tmpdir"
-mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
-printf 'mock-codex-session\n' > "$IMPLEMENT_TMPDIR_FIXTURE/session-id"
-printf 'SOURCE_FILE=/tmp/mock.jsonl\n' > "$IMPLEMENT_TMPDIR_FIXTURE/claude-source.env"
 
 OUT=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
@@ -753,7 +756,7 @@ if [[ "$STEP2_OUT" == *"STATUS=bailed"* ]] \
    && [[ "$STEP2_OUT" == *"TOOL=codex"* ]] \
    && [[ "$STEP2_OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
    && [[ "$STEP2_ROWS" == "2" ]] \
-   && [[ ! -e "$STEP2_TMP/manifest.json" ]]; then
+   && [[ ! -e "$STEP2_TMP/codex-step2-out/manifest.json" ]]; then
     pass
 else
     fail "step2-codex-retry" "dispatcher should retry codex preflight failure once then bail codex-runtime-failure with two non-zero timing rows; rows=$STEP2_ROWS out=$STEP2_OUT ledger=$(cat "$STEP2_LEDGER" 2>/dev/null)"
@@ -944,6 +947,57 @@ else
     fail 11 "mismatched manifest/qa-pending parents should exit 2 with the parent-mismatch message, got $EXIT: $(cat "$T11_OUT")"
 fi
 
+# Test 11c: transcript parent != manifest/qa parent → exit 2
+EXIT=0
+T11C_OUT="$SCRATCH/t11c-output.txt"
+"$LAUNCHER" \
+    --manifest-path "$STEP2_OUT_DIR/manifest.json" \
+    --qa-pending-path "$STEP2_OUT_DIR/qa-pending.json" \
+    --transcript-path "$SCRATCH/wrong-dir-transcript.txt" \
+    --sidecar-log "$SCRATCH/t11c-sidecar.log" \
+    --plan-file "$PLAN" --feature-file "$FEATURE" --agent-prompt "$AGENT_PROMPT" --timeout 30 \
+    >"$T11C_OUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq "must share the parent directory" "$T11C_OUT"; then
+    pass
+else
+    fail 11c "transcript in different parent than manifest/qa should exit 2 with diagnostic; got EXIT=$EXIT: $(cat "$T11C_OUT")"
+fi
+
+# Test 11d: symlink output parent widens grant → exit 2
+T11D_OUT="$SCRATCH/t11d-output.txt"
+ln -sf "$IMPLEMENT_TMPDIR_FIXTURE" "$SCRATCH/codex-step2-out-symlink"
+EXIT=0
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+"$LAUNCHER" \
+    --manifest-path "$SCRATCH/codex-step2-out-symlink/manifest.json" \
+    --qa-pending-path "$SCRATCH/codex-step2-out-symlink/qa-pending.json" \
+    --transcript-path "$SCRATCH/codex-step2-out-symlink/transcript.txt" \
+    --sidecar-log "$SCRATCH/t11d-sidecar.log" \
+    --plan-file "$PLAN" --feature-file "$FEATURE" --agent-prompt "$AGENT_PROMPT" --timeout 30 \
+    >"$T11D_OUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq "is not a directory" "$T11D_OUT"; then
+    pass
+else
+    fail 11d "symlink manifest parent should exit 2; got EXIT=$EXIT: $(cat "$T11D_OUT")"
+fi
+
+# Test 11e: manifest parent == IMPLEMENT_TMPDIR root → exit 2
+T11E_OUT="$SCRATCH/t11e-output.txt"
+EXIT=0
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+"$LAUNCHER" \
+    --manifest-path "$IMPLEMENT_TMPDIR_FIXTURE/manifest.json" \
+    --qa-pending-path "$IMPLEMENT_TMPDIR_FIXTURE/qa-pending.json" \
+    --transcript-path "$IMPLEMENT_TMPDIR_FIXTURE/transcript.txt" \
+    --sidecar-log "$SCRATCH/t11e-sidecar.log" \
+    --plan-file "$PLAN" --feature-file "$FEATURE" --agent-prompt "$AGENT_PROMPT" --timeout 30 \
+    >"$T11E_OUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq "must not be the implement session tmpdir root" "$T11E_OUT"; then
+    pass
+else
+    fail 11e "tmpdir-root grant should exit 2 when IMPLEMENT_TMPDIR set; got EXIT=$EXIT: $(cat "$T11E_OUT")"
+fi
+
 # Test 12: --manifest-path under a non-existent parent directory -> exit 2.
 EXIT=0
 T12_OUT="$SCRATCH/t12-output.txt"
@@ -960,6 +1014,24 @@ if [[ "$EXIT" == "2" ]] && grep -Fq "session tmpdir does not exist" "$T12_OUT"; 
     pass
 else
     fail 12 "missing session tmpdir should exit 2 with the does-not-exist message, got $EXIT: $(cat "$T12_OUT")"
+fi
+
+# Test 12b: existing manifest/qa parents but missing transcript parent -> exit 2.
+EXIT=0
+T12B_OUT="$SCRATCH/t12b-output.txt"
+"$LAUNCHER" \
+    --manifest-path "$STEP2_OUT_DIR/manifest.json" \
+    --qa-pending-path "$STEP2_OUT_DIR/qa-pending.json" \
+    --transcript-path "$SCRATCH/t12b-missing-transcript-subdir/transcript.txt" \
+    --sidecar-log "$SCRATCH/t12b-sidecar.log" \
+    --plan-file "$PLAN" \
+    --feature-file "$FEATURE" \
+    --agent-prompt "$AGENT_PROMPT" \
+    --timeout 30 >"$T12B_OUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq "transcript parent does not exist" "$T12B_OUT"; then
+    pass
+else
+    fail 12b "missing transcript parent should exit 2 with transcript-parent message, got $EXIT: $(cat "$T12B_OUT")"
 fi
 
 # Test 13 (issue #1480 Bug #2): defensive `--timing-task-kind` validation.
