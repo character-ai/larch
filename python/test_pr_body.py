@@ -83,6 +83,11 @@ def test_compose_pr_body_rejects_bad_mermaid_in_summary() -> None:
         _ = pr_body.compose_pr_body(summary=bad_summary)
 
 
+def test_compose_pr_body_appends_closes() -> None:
+    body = pr_body.compose_pr_body(summary="- x", issue_number=42)
+    assert body.count("Closes #42") == 1
+
+
 def test_compose_pr_body_fail_closed_on_truncation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

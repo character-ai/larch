@@ -52,6 +52,19 @@ def test_link_pr_closes_appends() -> None:
     assert "Closes #42" in linked
 
 
+def test_link_pr_closes_idempotent() -> None:
+    body = "Summary\n\nCloses #42\n"
+    linked = tracking_issue.link_pr_closes(body, 42)
+    assert linked == body
+
+
+def test_link_pr_closes_no_prefix_collision() -> None:
+    body = "Summary\n\nCloses #421\n"
+    linked = tracking_issue.link_pr_closes(body, 42)
+    assert "Closes #421" in linked
+    assert "Closes #42\n" in linked
+
+
 def test_rename_strips_legacy_prefix() -> None:
     runner = RecordingRunner()
     title = "[IN PROGRESS] [DONE] My feature"
