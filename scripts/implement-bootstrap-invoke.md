@@ -46,7 +46,7 @@ Keys with consumers before the first `read-session-env-key.sh` / session-env reh
 
 `IMPLEMENT_TMPDIR`, `IMPLEMENT_BAIL_REASON`, `STALL_TRACKING`, `PLAN_FILE`, `coder`, `coder_fallback`, `REPO_UNAVAILABLE`, `DEFERRED`, `ISSUE_NUMBER`, `REPO`, `CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `codex_available`, `cursor_available`, `RUN_ID`, `BRANCH_NAME`, `BRANCH_ACTION`.
 
-Dual transport: stdout envelope (for command substitution) and `$IMPLEMENT_TMPDIR/bootstrap-routing.env` (file-first re-parse in SKILL.md). On success the wrapper refuses to overwrite a symlinked or non-regular `bootstrap-routing.env`, writes through a same-directory temporary file, then renames it into place.
+Dual transport: stdout envelope (for command substitution) and `$IMPLEMENT_TMPDIR/bootstrap-routing.env` (file-first re-parse via `scripts/parse-bootstrap-routing-envelope.sh`). On success the wrapper writes through a same-directory temporary file when `bootstrap-routing.env` is absent or a regular file. When the path is a symlink or other non-regular file, the wrapper emits the filtered envelope on **stdout**, warns on **stderr**, and exits `0` without overwriting the path.
 
 The file envelope is authoritative when present and regular; stdout is a fallback only for keys still empty after file parsing. Before each parse, the orchestrator clears stale volatile routing keys so a skipped or unreadable file cannot retain old bail/branch state. Dirty-tree resume preserves the caller's existing `coder` / `coder_fallback` selection, and the wrapper omits empty `coder` / `coder_fallback` values in resume mode so a plan-tail envelope cannot erase that preserved implementer state.
 
@@ -65,6 +65,7 @@ This script must **never** write or append `$IMPLEMENT_TMPDIR/session-env.sh`. O
 ## Edit-in-sync
 
 - `skills/implement/SKILL.md` Step 0 + preamble Protocol Execution Directive
+- `scripts/parse-bootstrap-routing-envelope.sh` + `scripts/parse-bootstrap-routing-envelope.md`
 - `scripts/test-implement-structure.sh` + `scripts/test-implement-structure.md`
 - `scripts/test-implement-step2-routing.sh`
 - `skills/shared/subskill-invocation.md`

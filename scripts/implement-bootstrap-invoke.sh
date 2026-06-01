@@ -128,6 +128,18 @@ if [ "$_ib_rc" -eq 2 ]; then
     resume-plan-tail-sentinel)
       { printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' '**⚠ /implement Step 0 dirty-tree recovery: the resume tail could not validate tracking state from the existing session artifacts. Restore or inspect `$IMPLEMENT_TMPDIR`, then restart `/implement`.**'; } >&2
       ;;
+    create-branch)
+      { printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' '**⚠ /implement Step 0: could not verify branch state before bootstrap. Aborting.**'; } >&2
+      ;;
+    write-session-env)
+      { printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' '**⚠ /implement Step 0: could not write session environment. Aborting.**'; } >&2
+      ;;
+    emergency-bypass-log)
+      { printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' '**⚠ /implement Step 0: emergency bypass log handling failed. Aborting.**'; } >&2
+      ;;
+    *)
+      { printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' "**⚠ /implement Step 0 bootstrap failed at step=${_ib_sf:-unknown}. Aborting.**"; } >&2
+      ;;
   esac
   exit 2
 fi
@@ -143,6 +155,11 @@ _inv_emit_routing_kv() {
   [ -z "$_inv_line" ] && return 0
   _inv_key="${_inv_line%%=*}"
   _inv_value="${_inv_line#*=}"
+  case "$_inv_key" in
+    ''|*[!a-zA-Z0-9_]*)
+      return 0
+      ;;
+  esac
   if [ "$MODE" = resume ]; then
     case "$_inv_key" in
       coder|coder_fallback)
@@ -170,14 +187,16 @@ EOF
 
 _inv_routing_file="$_inv_tmpdir/bootstrap-routing.env"
 if [ -L "$_inv_routing_file" ]; then
+  printf '%s\n' 'implement-bootstrap-invoke.sh: refusing to overwrite symlinked bootstrap-routing.env (stdout envelope emitted)' >&2
+  cat "$_inv_routing_buf"
   rm -f "$_inv_routing_buf"
-  printf '%s\n' 'implement-bootstrap-invoke.sh: refusing to overwrite symlinked bootstrap-routing.env' >&2
-  exit 1
+  exit 0
 fi
 if [ -e "$_inv_routing_file" ] && [ ! -f "$_inv_routing_file" ]; then
+  printf '%s\n' 'implement-bootstrap-invoke.sh: refusing to overwrite non-regular bootstrap-routing.env (stdout envelope emitted)' >&2
+  cat "$_inv_routing_buf"
   rm -f "$_inv_routing_buf"
-  printf '%s\n' 'implement-bootstrap-invoke.sh: refusing to overwrite non-regular bootstrap-routing.env' >&2
-  exit 1
+  exit 0
 fi
 _inv_routing_tmp=$(mktemp "$_inv_tmpdir/bootstrap-routing.env.XXXXXX")
 cat "$_inv_routing_buf" >"$_inv_routing_tmp"

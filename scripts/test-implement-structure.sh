@@ -482,9 +482,6 @@ fi
 if [ "$(grep -oF '_inv_rc' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; then
   fail "SKILL.md must use _inv_rc at initial Step 0 and dirty-tree recovery"
 fi
-if [ "$(grep -cF 'set +e' "$SKILL_MD" || true)" -lt 2 ]; then
-  fail "SKILL.md must set +e before each implement-bootstrap-invoke.sh call"
-fi
 if [ "$(grep -cF '_inv_rc=$?' "$SKILL_MD" || true)" -lt 2 ]; then
   fail "SKILL.md must capture _inv_rc after each wrapper call"
 fi
@@ -524,8 +521,43 @@ case "$step0_wrapper_fence_status" in
   24) fail "Step 0 wrapper fence check did not see resume invocation" ;;
   *) fail "unexpected Step 0 wrapper fence check failure: $step0_wrapper_fence_status" ;;
 esac
-grep -Fq 'bootstrap-routing.env' "$SKILL_MD" \
-  || fail "SKILL.md must parse bootstrap-routing.env with stdout fallback"
+[ -f "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh" ] \
+  || fail "scripts/parse-bootstrap-routing-envelope.sh must exist"
+[ -f "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.md" ] \
+  || fail "scripts/parse-bootstrap-routing-envelope.md must exist"
+grep -Fq 'parse-bootstrap-routing-envelope.sh' "$SKILL_MD" \
+  || fail "SKILL.md must source parse-bootstrap-routing-envelope.sh"
+if [ "$(grep -cF '. "${CLAUDE_PLUGIN_ROOT}/scripts/parse-bootstrap-routing-envelope.sh"' "$SKILL_MD" || true)" -ne 2 ]; then
+  fail "SKILL.md must source parse-bootstrap-routing-envelope.sh exactly twice (initial + resume)"
+fi
+grep -Fq 'parse-bootstrap-routing-envelope.sh" --preserve-coder' "$SKILL_MD" \
+  || fail "SKILL.md dirty-tree resume must source parse-bootstrap-routing-envelope.sh --preserve-coder"
+grep -Fq '_inv_routing_keys=' "$SKILL_MD" \
+  && fail "SKILL.md must not duplicate _inv_routing_keys (owned by parse-bootstrap-routing-envelope.sh)"
+grep -Fq '_inv_apply_routing_line()' "$SKILL_MD" \
+  && fail "SKILL.md must not define _inv_apply_routing_line (owned by parse-bootstrap-routing-envelope.sh)"
+grep -Fq '_inv_apply_routing_line_if_empty()' "$SKILL_MD" \
+  && fail "SKILL.md must not define _inv_apply_routing_line_if_empty (owned by parse-bootstrap-routing-envelope.sh)"
+if [ "$(grep -cF 'if [ "$_inv_rc" -ne 0 ]; then' "$SKILL_MD" || true)" -lt 2 ]; then
+  fail "SKILL.md must exit on non-zero wrapper rc before routing parse (both call sites)"
+fi
+grep -Fq 'unset IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback' "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh" \
+  || fail "parse-bootstrap-routing-envelope.sh initial unset must include coder coder_fallback"
+grep -Fq 'unset IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE REPO_UNAVAILABLE' "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh" \
+  || fail "parse-bootstrap-routing-envelope.sh resume unset must omit coder coder_fallback"
+grep -Fq '_ib_kv_scan()' "$SKILL_MD" \
+  && fail "SKILL.md must not retain _ib_kv_scan helper"
+grep -Fq '_ib_handle_bootstrap_exit2()' "$SKILL_MD" \
+  && fail "SKILL.md must not retain _ib_handle_bootstrap_exit2 helper"
+expected_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION'
+parse_keys=$(awk -F"'" '/^_inv_routing_keys=/ {print $2; exit}' "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh")
+invoke_keys=$(awk -F"'" '/^_inv_routing_keys=/ {print $2; exit}' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh")
+if [ "$parse_keys" != "$expected_routing_keys" ] || [ "$invoke_keys" != "$expected_routing_keys" ]; then
+  fail "parse-bootstrap-routing-envelope.sh and implement-bootstrap-invoke.sh _inv_routing_keys must match canonical list"
+fi
+if [ "$parse_keys" != "$invoke_keys" ]; then
+  fail "parse-bootstrap-routing-envelope.sh and implement-bootstrap-invoke.sh _inv_routing_keys literals must be identical"
+fi
 grep -Fq "BRANCH_NAME=*) BRANCH_NAME=\${_ib_tok#BRANCH_NAME=} ;;" "$SKILL_MD" \
   && fail "SKILL.md must not retain BRANCH_NAME _ib_kv_scan case arm"
 grep -Fq "BRANCH_ACTION=*) BRANCH_ACTION=\${_ib_tok#BRANCH_ACTION=} ;;" "$SKILL_MD" \
@@ -544,6 +576,14 @@ grep -Fq 'copy-plan)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
   || fail "implement-bootstrap-invoke.sh must retain copy-plan exit-2 handler"
 grep -Fq 'gh-issue-view)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
   || fail "implement-bootstrap-invoke.sh must retain gh-issue-view exit-2 handler"
+grep -Fq 'create-branch)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must retain create-branch exit-2 handler"
+grep -Fq 'write-session-env)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must retain write-session-env exit-2 handler"
+grep -Fq 'emergency-bypass-log)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must retain emergency-bypass-log exit-2 handler"
+grep -Fq '*)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must retain default exit-2 handler"
 # shellcheck disable=SC2016
 grep -Fq 'run-step2-dispatch.sh` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"`' "$SKILL_MD" \
   || fail "SKILL.md must retain Step 2 conventional plan-file wording"

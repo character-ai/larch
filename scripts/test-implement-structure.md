@@ -9,7 +9,7 @@ infrastructure.
 For Step 0, it pins the collapsed Session Setup subsection: foreground
 `implement-bootstrap-invoke.sh --mode initial|resume` call sites (no direct
 `implement-bootstrap.sh` in SKILL bash blocks), script-side `phase_coder_select`,
-shared `bootstrap-routing.env` parse with stdout fallback, `set +e` / `set -e`
+`scripts/parse-bootstrap-routing-envelope.sh` (file-first `bootstrap-routing.env` + stdout fallback), `set +e` / `set -e` wrapper fences, non-zero `_inv_rc` exit before parse
 fences around wrapper substitution, absence of inline `_ib_*` helpers, and
 absence of the deleted prompt-side tracking, plan-materialization, and
 implementer-waterfall headings.

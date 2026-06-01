@@ -204,6 +204,21 @@ else
 fi
 rm -rf "$SANDBOX" "$STUB_TMPDIR"
 
+# --- emergency_requested=false forwarding ---
+build_sandbox
+export emergency_requested=false
+STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-tmp.XXXXXX)
+export STUB_TMPDIR
+set +e
+run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial >/dev/null 2>/dev/null
+rc=$?
+set -e
+stub_log=$(cat "$SANDBOX/stub-invoke.log" 2>/dev/null || true)
+assert_rc "$rc" 0 'emergency_requested=false success rc'
+assert_contains '--emergency-requested false' "$stub_log" 'initial forwards emergency_requested=false'
+rm -rf "$SANDBOX" "$STUB_TMPDIR"
+unset emergency_requested
+
 # --- caller-env and issue-number fallbacks ---
 build_sandbox
 unset CALLER_ENV_PATH TARGET_ISSUE_NUMBER
@@ -283,18 +298,25 @@ assert_not_contains 'coder_fallback=' "$routing_env" 'resume routing env omits e
 rm -rf "$SANDBOX" "$RESUME_TMP"
 unset STUB_CODER STUB_CODER_FALLBACK
 
-# --- bootstrap-routing.env symlink refusal ---
+# --- bootstrap-routing.env symlink: stdout envelope still emitted ---
 build_sandbox
 STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-symlink.XXXXXX)
 symlink_target=$(mktemp /tmp/larch-ibi-target.XXXXXX)
 ln -s "$symlink_target" "$STUB_TMPDIR/bootstrap-routing.env"
 export STUB_TMPDIR
+stderr_file=$(mktemp /tmp/larch-ibi-stderr.XXXXXX)
+stdout_file=$(mktemp /tmp/larch-ibi-stdout.XXXXXX)
 set +e
-run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial >/dev/null 2>/dev/null
+run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial >"$stdout_file" 2>"$stderr_file"
 rc=$?
 set -e
-assert_rc "$rc" 1 'routing env symlink refusal rc'
-rm -f "$symlink_target"
+stdout=$(cat "$stdout_file")
+stderr=$(cat "$stderr_file")
+assert_rc "$rc" 0 'routing env symlink still succeeds with stdout envelope'
+assert_contains 'IMPLEMENT_TMPDIR=' "$stdout" 'symlink path stdout has IMPLEMENT_TMPDIR'
+assert_contains 'refusing to overwrite symlinked bootstrap-routing.env' "$stderr" 'symlink path warns on stderr'
+assert_contains 'coder=codex' "$stdout" 'symlink path stdout envelope has routing keys'
+rm -f "$stderr_file" "$stdout_file" "$symlink_target"
 rm -rf "$SANDBOX" "$STUB_TMPDIR"
 
 # --- non-2 exit propagation ---
@@ -430,29 +452,20 @@ else
   echo "  expected: $expected_routing_keys"
   echo "  actual:   $actual_routing_keys"
 fi
-skill_mismatch_count=$(awk -F"'" -v expected="$expected_routing_keys" '
-  /_inv_routing_keys=/ {
-    count += 1
-    if ($2 != expected) {
-      bad += 1
-    }
-  }
-  END {
-    if (count == 0) {
-      print "missing"
-    } else if (bad > 0) {
-      print "mismatch"
-    } else {
-      print "ok"
-    }
-  }
-' "$REAL_SKILL")
-if [ "$skill_mismatch_count" = ok ]; then
+parse_keys=$(awk -F"'" '/^_inv_routing_keys=/ {print $2; exit}' "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh")
+if [ "$parse_keys" = "$expected_routing_keys" ]; then
   PASS=$((PASS + 1))
-  echo "PASS: SKILL routing key sets match canonical list"
+  echo "PASS: parse-bootstrap-routing-envelope.sh routing key set matches canonical list"
 else
   FAIL=$((FAIL + 1))
-  echo "FAIL: SKILL routing key sets match canonical list ($skill_mismatch_count)"
+  echo "FAIL: parse-bootstrap-routing-envelope.sh routing key set matches canonical list"
+fi
+if grep -Fq '_inv_routing_keys=' "$REAL_SKILL"; then
+  FAIL=$((FAIL + 1))
+  echo "FAIL: SKILL.md must not duplicate _inv_routing_keys literal"
+else
+  PASS=$((PASS + 1))
+  echo "PASS: SKILL.md has no duplicate _inv_routing_keys literal"
 fi
 
 echo "---"
