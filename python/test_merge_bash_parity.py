@@ -21,6 +21,18 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 MERGE_SH = REPO_ROOT / "scripts" / "merge-pr.sh"
 
 
+def _mock_checks_pass(*_a: object, **_k: object) -> bool:
+    return True
+
+
+def _mock_rev_cccc(*_a: object, **_k: object) -> str:
+    return "cccc3333"
+
+
+def _mock_refresh_skip_ok(*_a: object, **_k: object) -> run_logs.RefreshSkip:
+    return run_logs.RefreshSkip(skipped=False, reason="")
+
+
 def _empty_str_lists() -> list[list[str]]:
     return []
 
@@ -177,17 +189,16 @@ def test_flush_recovery_mixed_emits_error(
             ),
         ],
     )
-    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
-    monkeypatch.setattr(git, "try_rev_parse", lambda *_a, **_k: "cccc3333")
-    monkeypatch.setattr(
-        git,
-        "try_log_subjects",
-        lambda *_a, **_k: git.LogSubjects(
+    def fake_log_subjects(*_a: object, **_k: object) -> git.LogSubjects:
+        return git.LogSubjects(
             (f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}run", "Fix bug"),
-        ),
-    )
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+        )
+
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git, "try_rev_parse", _mock_rev_cccc)
+    monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = RunContext(
         branch="feat",
         issue="1",
@@ -245,15 +256,14 @@ def test_flush_recovery_cap_emits_error(
             ),
         ],
     )
-    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
-    monkeypatch.setattr(git, "try_rev_parse", lambda *_a, **_k: "cccc3333")
-    monkeypatch.setattr(
-        git,
-        "try_log_subjects",
-        lambda *_a, **_k: git.LogSubjects(subjects),
-    )
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    def fake_log_subjects_cap(*_a: object, **_k: object) -> git.LogSubjects:
+        return git.LogSubjects(subjects)
+
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git, "try_rev_parse", _mock_rev_cccc)
+    monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects_cap)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = RunContext(
         branch="feat",
         issue="1",
@@ -306,22 +316,18 @@ def test_flush_recovery_non_log_paths_emits_error(
             ),
         ],
     )
-    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
-    monkeypatch.setattr(git, "try_rev_parse", lambda *_a, **_k: "cccc3333")
-    monkeypatch.setattr(
-        git,
-        "try_log_subjects",
-        lambda *_a, **_k: git.LogSubjects(
-            (f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}run",),
-        ),
-    )
-    monkeypatch.setattr(
-        git,
-        "diff_name_only",
-        lambda *_a, **_k: CommandResult(("git", "diff"), 0, "README.md\n", "", 0.01),
-    )
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    def fake_log_subjects_paths(*_a: object, **_k: object) -> git.LogSubjects:
+        return git.LogSubjects((f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}run",))
+
+    def fake_diff_name_only(*_a: object, **_k: object) -> CommandResult:
+        return CommandResult(("git", "diff"), 0, "README.md\n", "", 0.01)
+
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git, "try_rev_parse", _mock_rev_cccc)
+    monkeypatch.setattr(git, "try_log_subjects", fake_log_subjects_paths)
+    monkeypatch.setattr(git, "diff_name_only", fake_diff_name_only)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = RunContext(
         branch="feat",
         issue="1",

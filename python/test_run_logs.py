@@ -333,10 +333,13 @@ def test_flush_logs_pre_skips_commit_without_repo_cwd(
         msg = "commit should not run without repo cwd"
         raise AssertionError(msg)
 
+    def noop(*_a: object, **_k: object) -> None:
+        return None
+
     monkeypatch.setattr(run_logs, "_larch_log_commit", fail_commit)
-    monkeypatch.setattr(run_logs, "_write_final_report", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_logs, "capture_session_transcript", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_logs, "_render_ledger_reports", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "_write_final_report", noop)
+    monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
+    monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
     runner = RecordingRunner()
     skip = run_logs.flush_logs_pre(runner, ctx, cwd=None)
     assert skip.skipped

@@ -70,6 +70,30 @@ def _ctx(**kwargs: object) -> RunContext:
     return base.with_(**kwargs)
 
 
+def _mock_checks_pass(*_a: object, **_k: object) -> bool:
+    return True
+
+
+def _mock_checks_fail(*_a: object, **_k: object) -> bool:
+    return False
+
+
+def _mock_rev_abc(*_a: object, **_k: object) -> str:
+    return "abc"
+
+
+def _mock_version_gate_none(*_a: object, **_k: object) -> None:
+    return None
+
+
+def _mock_refresh_skip_ok(*_a: object, **_k: object) -> run_logs.RefreshSkip:
+    return run_logs.RefreshSkip(skipped=False, reason="")
+
+
+def _mock_true(*_a: object, **_k: object) -> bool:
+    return True
+
+
 def test_redact_merge_diagnostic_truncates() -> None:
     text = "x" * 1000
     out = merge_module.redact_merge_diagnostic(text)
@@ -301,11 +325,11 @@ def test_merge_pr_emits_admin_merged(
             CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
         ],
     )
-    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
-    monkeypatch.setattr(git_module, "try_rev_parse", lambda *_a, **_k: "abc")
-    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
@@ -324,11 +348,11 @@ def test_merge_pr_emits_merged_via_plain_fallback(
             CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
         ],
     )
-    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
-    monkeypatch.setattr(git_module, "try_rev_parse", lambda *_a, **_k: "abc")
-    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_MERGED
@@ -346,11 +370,11 @@ def test_merge_pr_emits_policy_denied(
             CommandResult(("gh", "pr", "merge"), 1, "", "denied", 0.01),
         ],
     )
-    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
-    monkeypatch.setattr(git_module, "try_rev_parse", lambda *_a, **_k: "abc")
-    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(
         tmpdir=str(tmp_path),
         state_file=str(state),
@@ -373,11 +397,11 @@ def test_merge_pr_emits_admin_failed(
             CommandResult(("gh", "pr", "merge"), 1, "", "plain fail", 0.01),
         ],
     )
-    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
-    monkeypatch.setattr(git_module, "try_rev_parse", lambda *_a, **_k: "abc")
-    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_FAILED
@@ -390,9 +414,9 @@ def test_merge_pr_emits_ci_not_ready(
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     runner = RecordingRunner(responses=_open_pr_responses())
-    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: False)
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_fail)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_CI_NOT_READY
@@ -405,18 +429,17 @@ def test_merge_pr_emits_version_already_published(
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     runner = RecordingRunner(responses=_open_pr_responses())
-    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
-    monkeypatch.setattr(git_module, "try_rev_parse", lambda *_a, **_k: "abc")
-    monkeypatch.setattr(
-        merge_module,
-        "_version_race_gate",
-        lambda *_a, **_k: merge_module.MergeResult(
+    def fake_version_race(*_a: object, **_k: object) -> merge_module.MergeResult:
+        return merge_module.MergeResult(
             result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
             error="race",
-        ),
-    )
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+        )
+
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", fake_version_race)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED
@@ -533,12 +556,11 @@ def test_merge_continues_when_pre_flush_commit_fails(
             ),
         ],
     )
-    monkeypatch.setattr(
-        run_logs,
-        "flush_logs_pre",
-        lambda *_a, **_k: run_logs.RefreshSkip(skipped=True, reason="commit-failed"),
-    )
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    def fake_pre_skipped(*_a: object, **_k: object) -> run_logs.RefreshSkip:
+        return run_logs.RefreshSkip(skipped=True, reason="commit-failed")
+
+    monkeypatch.setattr(run_logs, "flush_logs_pre", fake_pre_skipped)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_MAIN_ADVANCED
@@ -555,12 +577,11 @@ def test_version_race_gate_version_already_published(
             CommandResult(("git", "show"), 0, '{"version": "1.2.3"}', "", 0.01),
         ],
     )
-    monkeypatch.setattr(
-        git_module,
-        "try_log_subjects",
-        lambda *_a, **_k: git_module.LogSubjects(("Bump version to 1.2.3",)),
-    )
-    monkeypatch.setattr(git_module, "is_ancestor", lambda *_a, **_k: True)
+    def fake_log_bump(*_a: object, **_k: object) -> git_module.LogSubjects:
+        return git_module.LogSubjects(("Bump version to 1.2.3",))
+
+    monkeypatch.setattr(git_module, "try_log_subjects", fake_log_bump)
+    monkeypatch.setattr(git_module, "is_ancestor", _mock_true)
     out = merge_module._version_race_gate(runner, cwd=None)  # pyright: ignore[reportPrivateUsage]
     assert out is not None
     assert out.result == config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED
@@ -572,11 +593,10 @@ def test_version_race_gate_no_bump_commits_returns_none(
     runner = RecordingRunner(
         responses=[CommandResult(("git", "fetch"), 0, "", "", 0.01)],
     )
-    monkeypatch.setattr(
-        git_module,
-        "try_log_subjects",
-        lambda *_a, **_k: git_module.LogSubjects(("feat: add widget",)),
-    )
+    def fake_log_feat(*_a: object, **_k: object) -> git_module.LogSubjects:
+        return git_module.LogSubjects(("feat: add widget",))
+
+    monkeypatch.setattr(git_module, "try_log_subjects", fake_log_feat)
     out = merge_module._version_race_gate(runner, cwd=None)  # pyright: ignore[reportPrivateUsage]
     assert out is None
 
@@ -615,17 +635,19 @@ def test_merge_flush_recovery_success_emits_admin_merged(
     def fake_recoverable(*_a: object, **_k: object) -> bool:
         return True
 
+    def fake_rev_parse(*_a: object, **_k: object) -> str:
+        return next(head_oids, "aaaa1111")
+
+    def fake_force_push(*_a: object, **_k: object) -> git_module.ForcePushResult:
+        return recovery
+
     monkeypatch.setattr(merge_module, "_flush_recoverable", fake_recoverable)
-    monkeypatch.setattr(
-        git_module,
-        "try_rev_parse",
-        lambda *_a, **_k: next(head_oids, "aaaa1111"),
-    )
-    monkeypatch.setattr(git_module, "force_push_recovery", lambda *_a, **_k: recovery)
-    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
-    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(git_module, "try_rev_parse", fake_rev_parse)
+    monkeypatch.setattr(git_module, "force_push_recovery", fake_force_push)
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
@@ -666,16 +688,18 @@ def test_merge_post_recovery_ci_pending(
         checks_calls["count"] += 1
         return checks_calls["count"] == 1
 
-    monkeypatch.setattr(merge_module, "_flush_recoverable", lambda *_a, **_k: True)
-    monkeypatch.setattr(
-        git_module,
-        "try_rev_parse",
-        lambda *_a, **_k: next(head_oids, "aaaa1111"),
-    )
-    monkeypatch.setattr(git_module, "force_push_recovery", lambda *_a, **_k: recovery)
+    def fake_rev_parse_ci(*_a: object, **_k: object) -> str:
+        return next(head_oids, "aaaa1111")
+
+    def fake_force_push_ci(*_a: object, **_k: object) -> git_module.ForcePushResult:
+        return recovery
+
+    monkeypatch.setattr(merge_module, "_flush_recoverable", _mock_true)
+    monkeypatch.setattr(git_module, "try_rev_parse", fake_rev_parse_ci)
+    monkeypatch.setattr(git_module, "force_push_recovery", fake_force_push_ci)
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", fake_checks)
-    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
-    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_CI_NOT_READY
