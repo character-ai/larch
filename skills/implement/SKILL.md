@@ -297,7 +297,7 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
 
 Print: `> **🔶 /implement 0: setup**`
 
-Step 0 is owned by `scripts/implement-bootstrap.sh`, invoked via `scripts/implement-bootstrap-invoke.sh` (`--mode initial` / `--mode resume`). The foreground bootstrap performs infrastructure setup, tracking adoption, plan materialization, dirty-tree checkpointing, branch capture, plan logging, and implementer selection (`phase_coder_select`). Do not duplicate absorbed helper calls prompt-side.
+Step 0 is owned by `scripts/implement-bootstrap.sh`, invoked via `scripts/implement-bootstrap-invoke.sh` (`--mode initial` / `--mode resume`). The foreground bootstrap performs infrastructure setup, tracking adoption, plan materialization, dirty-tree checkpointing, branch capture, plan logging, and implementer selection (`phase_coder_select`). The wrapper conditionally forwards `/implement --emergency` state with `case "${emergency_requested:-}" in` so omitted emergency state stays omitted from bootstrap argv. Do not duplicate absorbed helper calls prompt-side.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
