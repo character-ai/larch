@@ -1081,6 +1081,9 @@ grep -Fq '_publish_rc` ∈ {0, 1, 3}' "$SKILL_MD" \
 # shellcheck disable=SC2016
 grep -Fq 'do not abort solely because `_publish_rc`=1' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must not abort solely on driver exit 1"
+# shellcheck disable=SC2016
+grep -Fq '"${_publish_rc:-0}" -ne 3' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c unexpected-rc guard must exclude exit 3"
 
 grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$SKILL_MD" \
   || fail "(26) SKILL.md missing literal session-cache banner"

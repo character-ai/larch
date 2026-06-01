@@ -468,6 +468,8 @@ set -e
 assert_rc "marker failure non-blocking" 0 "$rc"
 grep -q 'PLAN_WRITE_OK=true' "$D_MARKER_FAIL/.design-publish-result.env" \
   || fail "marker failure must still complete publish tail"
+grep -q 'design Step 5c marker write' "$D_MARKER_FAIL/execution-issues.md" \
+  || fail "marker failure must append to execution-issues.md"
 
 # --- no diagram and no skipped sentinel ---
 D_NO_ARCH="$TMP/no-arch"

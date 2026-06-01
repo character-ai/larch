@@ -975,6 +975,7 @@ exclude = [
   "scripts/test-design-reentry-guard.md",
   "skills/design/scripts/test-design-driver.sh",
   "skills/design/scripts/test-design-publish.sh",
+  "skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh",
   "skills/design/scripts/test-design-pause-resume.sh",
   # skills/design/scripts/test-write-design-current-env.sh — offline harness
   # for scripts/write-design-current-env.sh (Makefile test-write-design-

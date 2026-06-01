@@ -204,6 +204,7 @@ if [[ "$_marker_rc" -ne 0 ]]; then
         --output-file "$DESIGN_TMPDIR/design-reentry-marker-write.failure.log" \
         --redact >/dev/null 2>&1 || true
 fi
+set -e
 
 _arch_file="$DESIGN_TMPDIR/architecture-diagram.md"
 _arch_skipped="$DESIGN_TMPDIR/architecture-diagram.skipped"
@@ -222,8 +223,10 @@ elif [[ ! -f "$_arch_file" ]] && [[ -f "$_arch_skipped" ]]; then
 fi
 
 if [[ "$_run_upsert" == true ]]; then
+    set +e
     _upsert_out=$("$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" "${_upsert_args[@]}" 2>"$DESIGN_TMPDIR/diagrams-architecture-upsert.stderr")
     _upsert_rc=$?
+    set -e
     printf '%s\n' "$_upsert_out" >"$DESIGN_TMPDIR/diagrams-architecture-upsert.stdout"
     parse_kv_from_output "$_upsert_out"
     if [[ "${UPSERT_STATUS:-}" == failed ]] || [[ "$_upsert_rc" -ne 0 ]]; then
@@ -247,12 +250,14 @@ if [[ -n "$SESSION_ID" ]]; then
 fi
 
 if [[ -n "$SESSION_ID" ]]; then
+    set +e
     _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \
         --design-tmpdir "$DESIGN_TMPDIR" \
         --run-id "$SESSION_ID" \
         --issue "$ISSUE" \
         ${REPO:+--repo "$REPO"} 2>"$DESIGN_TMPDIR/design-log-publish.failure.log")
     _publish_rc=$?
+    set -e
     PUBLISH_OK=""
     parse_kv_from_output "$_publish_out"
     if [[ "$_publish_rc" -ne 0 ]] && [[ "$_publish_out" != *$'PUBLISH_OK='* ]]; then

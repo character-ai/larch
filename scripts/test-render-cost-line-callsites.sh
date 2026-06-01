@@ -61,7 +61,7 @@ grep -Fq -- '--post-publish-only' "$REPO/skills/design/SKILL.md" || fail 'design
 # shellcheck disable=SC2016
 grep -Fq 'emit its full body verbatim as plain chat markdown' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-publish full-body emit prose'
 # shellcheck disable=SC2016
-grep -Fq 'Step 5c `design-publish.sh` returns (`_publish_rc` 0 or 1)' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-driver full-body emit gate'
+grep -Fq 'Step 5c `design-publish.sh` returns (`_publish_rc` 0, 1, or 3)' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin post-driver full-body emit gate'
 # shellcheck disable=SC2016
 grep -Fq 'when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`' "$REPO/skills/design/SKILL.md" || fail 'design SKILL must pin non-empty FINAL_SUMMARY_PATH emit gate'
 # shellcheck disable=SC2016
