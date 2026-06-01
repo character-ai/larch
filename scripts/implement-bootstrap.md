@@ -1,6 +1,6 @@
 # implement-bootstrap.sh
 
-Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setup, session-env write, token/timing marks, rehydrate keys, tracking issue adoption, reviewer warnings, and the umbrella KV tail. **Primary caller:** `skills/implement/SKILL.md` Step 0 (foreground). **Offline harness:** `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `.md`).
+Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setup, session-env write, token/timing marks, rehydrate keys, tracking issue adoption, reviewer warnings, and the umbrella KV tail. **Primary caller:** `skills/implement/SKILL.md` Step 0 via `scripts/implement-bootstrap-invoke.sh` (`--mode initial` / `--mode resume`). **Offline harness:** `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `.md`); wrapper harness: `skills/implement/scripts/test-implement-bootstrap-invoke.sh`.
 
 ## argv
 
@@ -163,8 +163,9 @@ Audit of the `phase_plan_materialize` checkpoint-and-tail region around lines ~7
 
 ## Edit-in-sync
 
-- `skills/implement/SKILL.md` Step 0 call site and KV parsing.
+- `skills/implement/SKILL.md` Step 0 call site and routing-envelope parsing.
+- `scripts/implement-bootstrap-invoke.sh` (+ `.md`) and `skills/implement/scripts/test-implement-bootstrap-invoke.sh` (+ `.md`).
 - `scripts/lint-foreground-markers.sh` DENYLIST (Family B foreground).
 - `skills/implement/scripts/test-implement-bootstrap.sh` (+ `.md`).
-- `SECURITY.md`, `scripts/test-implement-step2-routing.sh` (+ `.md`), `scripts/test-implement-structure.sh` (+ `.md`), `docs/linting.md`, and `skills/shared/subskill-invocation.md` for Step 0 implementer-selection wording.
+- `SECURITY.md`, `scripts/test-implement-step2-routing.sh`, `scripts/test-implement-structure.sh` (+ `.md`), `docs/linting.md`, and `skills/shared/subskill-invocation.md` for Step 0 implementer-selection wording (explicit co-updates, not verify-only).
 - This file.

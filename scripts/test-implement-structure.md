@@ -6,11 +6,13 @@ It pins the core top-level headings, required reference files, larch-log and
 tracking summary surfaces, and rejects references to removed anchor
 infrastructure.
 
-For Step 0, it pins the collapsed Session Setup subsection: one foreground
-`implement-bootstrap.sh --up-to-phase coder` call, script-side
-`phase_coder_select`, parser arms for `coder` / `PLAN_FILE`, and absence of the
-deleted prompt-side tracking, plan-materialization, and implementer-waterfall
-headings.
+For Step 0, it pins the collapsed Session Setup subsection: foreground
+`implement-bootstrap-invoke.sh --mode initial|resume` call sites (no direct
+`implement-bootstrap.sh` in SKILL bash blocks), script-side `phase_coder_select`,
+shared `bootstrap-routing.env` parse with stdout fallback, `set +e` / `set -e`
+fences around wrapper substitution, absence of inline `_ib_*` helpers, and
+absence of the deleted prompt-side tracking, plan-materialization, and
+implementer-waterfall headings.
 
 It also pins the finalize-state teardown contract: the SKILL.md NEVER bullet
 for prompt-side writes, Step 18's restore-before-teardown invocation order, the
