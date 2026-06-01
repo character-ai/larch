@@ -473,6 +473,10 @@ def apply_bump(
     base_ref: str = "main",
 ) -> ApplyResult:
     """Apply version bump to plugin.json and commit."""
+    base_err = git.validate_base_remote_ref(base_remote, base_ref)
+    if base_err is not None:
+        return ApplyResult(applied=False, error=_redact_outbound(base_err))
+
     if not re.fullmatch(config.SEMVER_RE, new_version):
         return ApplyResult(
             applied=False,

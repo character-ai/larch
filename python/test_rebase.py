@@ -1014,6 +1014,51 @@ def test_has_bump_false_skips_rebump(
     assert ("git", "push", "--force-with-lease", "origin", "feat") in runner.calls
 
 
+def test_has_bump_false_and_defer_push_skips_rebump_and_push(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_classify_repo(tmp_path)
+    bullets = tmp_path / ".rrr-rebump-bullets.md"
+
+    def _forbidden_classify(runner: ScriptRunner, *, cwd: str | None = None) -> BumpClassification:
+        _ = runner, cwd
+        msg = "classify_bump must not run when has_bump=False"
+        raise AssertionError(msg)
+
+    def _forbidden_apply(
+        runner: ScriptRunner,
+        new_version: str,
+        *,
+        cwd: str | None = None,
+        base_remote: str = "origin",
+        base_ref: str = "main",
+    ) -> ApplyResult:
+        _ = runner, new_version, cwd, base_remote, base_ref
+        msg = "apply_bump must not run when has_bump=False"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(version_bump, "classify_bump", _forbidden_classify)
+    monkeypatch.setattr(version_bump, "apply_bump", _forbidden_apply)
+    runner = ScriptRunner(_rebump_happy_path_handlers())
+    result = rebase.rebase_and_rebump(
+        runner,
+        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        repo="o/r",
+        run_id="run",
+        tmpdir=str(tmp_path),
+        bullets_path=bullets,
+        cwd=str(tmp_path),
+        has_bump=False,
+        defer_push=True,
+    )
+    assert result.new_version is None
+    assert result.pushed is False
+    assert not any(
+        c[:3] == ("git", "push", "--force-with-lease") for c in runner.calls
+    )
+
+
 def test_apply_bump_receives_base(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

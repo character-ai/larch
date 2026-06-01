@@ -491,7 +491,13 @@ def rebase_and_rebump(
     has_bump: bool = True,
     defer_push: bool = False,
 ) -> RebaseResult:
-    """Rebase onto base, resolve conflicts, re-bump when needed, force-push."""
+    """Rebase onto base, resolve conflicts, optionally re-bump, optionally force-push.
+
+    When ``has_bump`` is False, classification and ``apply_bump`` are skipped and
+    ``RebaseResult.new_version`` stays None. When ``defer_push`` is True, rebase and
+    rebump may still run locally but force-push is skipped and ``RebaseResult.pushed``
+    is False.
+    """
     resolved_bullets_early = _rebump_bullets_path(tmpdir, bullets_path)
     if launch_fn is None:
         if resolved_bullets_early is None:
