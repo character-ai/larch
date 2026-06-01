@@ -512,6 +512,10 @@ def rebase_and_rebump(
     if rebase_attempt >= max_attempts:
         raise Stalled(_redact_outbound("rebase attempt cap exceeded"))
 
+    base_err = git.validate_base_remote_ref(base_remote, base_ref)
+    if base_err is not None:
+        raise Stalled(_redact_outbound(base_err))
+
     branch = git.try_current_branch(runner, cwd=cwd)
     if not branch:
         raise Stalled(_redact_outbound("detached HEAD or no current branch"))

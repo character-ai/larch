@@ -24,6 +24,7 @@ ALLOW=(
   scripts/test-tracking-issue-write.sh
   scripts/tracking-issue-write.md
   scripts/tracking-issue-write.sh
+  python/test_tracking_issue.py
 )
 
 fail() {

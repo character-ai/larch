@@ -101,3 +101,105 @@ CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
     "python-lint",
     "python-tests",
 })
+
+# Phase 5 — PR / merge / logging (dev/CI until Phase 7)
+TRACKING_ISSUE_STATES: Final[tuple[str, ...]] = (
+    "designing",
+    "designed",
+    "implementing",
+    "done",
+    "stalled",
+)
+TRACKING_ISSUE_PREFIX_BY_STATE: Final[dict[str, str]] = {
+    "designing": "[DESIGNING] ",
+    "designed": "[DESIGNED] ",
+    "implementing": "[IMPLEMENTING] ",
+    "done": "[DONE] ",
+    "stalled": "[STALLED] ",
+}
+TRACKING_TITLE_MAX_LEN: Final = 256
+REFRESH_SKIP_NO_REPO_CWD: Final = "no-repo-cwd"
+
+MERGE_RESULT_MERGED: Final = "merged"
+MERGE_RESULT_ADMIN_MERGED: Final = "admin_merged"
+MERGE_RESULT_MAIN_ADVANCED: Final = "main_advanced"
+MERGE_RESULT_CI_NOT_READY: Final = "ci_not_ready"
+MERGE_RESULT_VERSION_ALREADY_PUBLISHED: Final = "version_already_published"
+MERGE_RESULT_POLICY_DENIED: Final = "policy_denied"
+MERGE_RESULT_ADMIN_FAILED: Final = "admin_failed"
+MERGE_RESULT_ERROR: Final = "error"
+MERGE_RESULTS: Final[frozenset[str]] = frozenset({
+    MERGE_RESULT_MERGED,
+    MERGE_RESULT_ADMIN_MERGED,
+    MERGE_RESULT_MAIN_ADVANCED,
+    MERGE_RESULT_CI_NOT_READY,
+    MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
+    MERGE_RESULT_POLICY_DENIED,
+    MERGE_RESULT_ADMIN_FAILED,
+    MERGE_RESULT_ERROR,
+})
+MERGE_RESULT_DRIVER_ALREADY_MERGED: Final = "already_merged"
+POST_MERGE_MERGE_RESULTS: Final[frozenset[str]] = frozenset({
+    MERGE_RESULT_MERGED,
+    MERGE_RESULT_ADMIN_MERGED,
+    MERGE_RESULT_DRIVER_ALREADY_MERGED,
+})
+
+FLUSH_COMMIT_SUBJECT_PREFIX: Final = "chore(larch-logs): flush "
+FLUSH_RECOVERY_MAX_COMMITS: Final = 5
+MERGE_PR_INITIAL_UNKNOWN_RETRIES: Final = 4
+MERGE_PR_POST_PUSH_UNKNOWN_RETRIES: Final = 3
+MERGE_DIAGNOSTIC_MAX_LEN: Final = 500
+
+MANIFEST_STATUS_PARTIAL: Final = "partial"
+MANIFEST_STATUS_DONE: Final = "done"
+
+REFRESH_SKIP_STATE_FILE_MISSING: Final = "state-file-missing-fail-closed"
+REFRESH_SKIP_POST_MERGE: Final = "post-merge"
+REFRESH_SKIP_NO_RUN_ID: Final = "no-run-id"
+REFRESH_SKIP_INVALID_RUN_ID: Final = "invalid-run-id"
+REFRESH_SKIP_NO_LOGS_COMMIT: Final = "no-logs-commit"
+REFRESH_SKIP_COMMIT_FAILED: Final = "commit-failed"
+# Pre-merge flush skips merge_pr may continue past (bash refresh-run-logs || true).
+REFRESH_SKIP_MERGE_OK: Final[frozenset[str]] = frozenset({
+    REFRESH_SKIP_NO_REPO_CWD,
+    REFRESH_SKIP_POST_MERGE,
+    REFRESH_SKIP_STATE_FILE_MISSING,
+    REFRESH_SKIP_NO_RUN_ID,
+    REFRESH_SKIP_INVALID_RUN_ID,
+    REFRESH_SKIP_NO_LOGS_COMMIT,
+    REFRESH_SKIP_COMMIT_FAILED,
+})
+
+MERGE_SKIP_NOT_REQUESTED: Final = "merge skipped: merge=false"
+MERGE_SKIP_DRAFT: Final = "merge skipped: draft PR"
+MERGE_SKIP_FORKED: Final = "merge skipped: forked implement"
+MERGE_SKIP_REPO_UNAVAILABLE: Final = "merge skipped: repo unavailable"
+
+MERMAID_REASON_PIPE_IN_NODE: Final = "pipe-in-node-label"
+MERMAID_REASON_BR_IN_ALIAS: Final = "br-in-participant-alias"
+MERMAID_REASON_DOLLAR_IN_ALIAS: Final = "dollar-in-participant-alias"
+MERMAID_REASON_UNCLOSED_FRONTMATTER: Final = "unclosed-frontmatter"
+
+RUN_LOG_BATCH_TOKEN_REPORT: Final = "token-report"
+RUN_LOG_BATCH_TIMING_REPORT: Final = "timing-report"
+RUN_LOG_BATCH_SESSION_TRANSCRIPT: Final = "session-transcript"
+
+TOKEN_SIDECAR_KEYS: Final[frozenset[str]] = frozenset({
+    "input_tokens",
+    "output_tokens",
+    "cache_read_tokens",
+    "cache_create_tokens",
+    "total_tokens",
+})
+
+PUSH_MAX_ATTEMPTS: Final = 3
+ADMIN_ELIGIBLE_MERGE_STATES: Final[frozenset[str]] = frozenset({
+    "CLEAN",
+    "UNSTABLE",
+    "HAS_HOOKS",
+    "BLOCKED",
+})
+
+INLINE_TRIAGE_MARKER: Final = "Inline-triage rule"
+OOS_FILED_URL_FIELD: Final = "**Filed URL**"

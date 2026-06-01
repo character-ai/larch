@@ -22,6 +22,13 @@ imported by runtime code.
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)
 - `ci_monitor.py` — Phase 6 CI poll + classify + collect + fixer-waterfall + GOTO-Rebase signal
   (not wired into the live `/implement` path until Phase 7)
+- **Phase 5** (dev/CI-only until Phase 7): `run_logs.py`, `tokens.py`, `tracking_issue.py`,
+  `pr_body.py`, `push.py`, `pr.py`, `oos.py`, `merge.py` — PR/merge/logging ports with split
+  `flush_logs_pre` (may commit log batches) vs `flush_logs_post` (tmpdir-only). `merge.py`
+  classifies the eight `merge-pr.sh` `MERGE_RESULT` literals; driver-only `already_merged` is
+  documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `flush_logs_pre` skip parity.
+  Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
+  `append-tool-failure.sh` calls on the live path.
 - `test_<module>.py` — colocated unit tests; `test_checks_bash_parity.py` bash-sourced parity harness; `test_stdlib_only.py` enforces stdlib-only imports
 
 ## Dependencies

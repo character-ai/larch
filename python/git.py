@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 import re
 import tempfile
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -174,6 +175,29 @@ def log_subjects(
     ))
     lines = tuple(line for line in result.stdout.splitlines() if line)
     return LogSubjects(subjects=lines)
+
+
+def try_log_subjects(
+    runner: Runner,
+    rev_range: str,
+    *,
+    cwd: str | None = None,
+) -> LogSubjects:
+    """Non-throwing log subjects (merge flush recovery parity with merge-pr.sh)."""
+    result = _run(runner, ["git", "log", "--format=%s", rev_range], cwd=cwd)
+    if result.returncode != 0:
+        return LogSubjects(subjects=())
+    lines = tuple(line for line in result.stdout.splitlines() if line)
+    return LogSubjects(subjects=lines)
+
+
+def status_porcelain_paths(
+    runner: Runner,
+    path: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(runner, ["git", "status", "--porcelain", "--", path], cwd=cwd)
 
 
 def ls_files(
@@ -529,3 +553,92 @@ def paths_delta_revert(
         target = root / path
         if target.exists() or target.is_symlink():
             target.unlink(missing_ok=True)
+
+
+@dataclass(frozen=True)
+class ForcePushResult:
+    pushed: bool
+    status: str
+    branch: str = ""
+
+
+def push_set_upstream(
+    runner: Runner,
+    remote: str,
+    refspec: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(runner, ["git", "push", "-u", remote, refspec], cwd=cwd)
+
+
+def force_push_recovery(
+    runner: Runner,
+    *,
+    branch: str | None = None,
+    remote: str = "origin",
+    expected_remote_oid: str | None = None,
+    cwd: str | None = None,
+    sleeper: Callable[[float], None] | None = None,
+) -> ForcePushResult:
+    """Port git-force-push.sh: clean-tree guard, fetch, lease push, race noop, one retry."""
+    if sleeper is None:
+        sleeper = time.sleep
+
+    head_branch = try_current_branch(runner, cwd=cwd)
+    if not head_branch:
+        return ForcePushResult(pushed=False, status="detached_head", branch="")
+    if branch is not None and branch != head_branch:
+        return ForcePushResult(
+            pushed=False,
+            status="branch_mismatch",
+            branch=head_branch,
+        )
+    resolved_branch = head_branch
+
+    status_result = status_porcelain(runner, cwd=cwd)
+    if status_result.returncode != 0:
+        return ForcePushResult(
+            pushed=False,
+            status="status_failed",
+            branch=resolved_branch,
+        )
+    if status_result.stdout.strip():
+        return ForcePushResult(
+            pushed=False,
+            status="dirty_worktree",
+            branch=resolved_branch,
+        )
+
+    refspec = f"HEAD:refs/heads/{resolved_branch}"
+
+    def _lease_push() -> CommandResult:
+        if expected_remote_oid:
+            lease = f"refs/heads/{resolved_branch}:{expected_remote_oid}"
+            return _run(
+                runner,
+                ["git", "push", f"--force-with-lease={lease}", remote],
+                cwd=cwd,
+            )
+        return force_push_with_lease(runner, remote, refspec, cwd=cwd)
+
+    _ = fetch(runner, remote, resolved_branch, cwd=cwd)
+    first = _lease_push()
+    if first.returncode == 0:
+        return ForcePushResult(pushed=True, status="pushed", branch=resolved_branch)
+
+    _ = fetch(runner, remote, resolved_branch, cwd=cwd)
+    local_head = try_rev_parse(runner, "HEAD", cwd=cwd)
+    remote_ref = try_rev_parse(runner, f"{remote}/{resolved_branch}", cwd=cwd)
+    if local_head and remote_ref and local_head == remote_ref:
+        return ForcePushResult(pushed=True, status="noop_same_ref", branch=resolved_branch)
+
+    sleeper(5.0)
+    second = _lease_push()
+    if second.returncode == 0:
+        return ForcePushResult(pushed=True, status="pushed", branch=resolved_branch)
+    return ForcePushResult(
+        pushed=False,
+        status="diverged_retry_failed",
+        branch=resolved_branch,
+    )

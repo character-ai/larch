@@ -423,3 +423,207 @@ def test_rebase_onto_strips_git_dir_override(monkeypatch: pytest.MonkeyPatch) ->
     assert "GIT_DIR" not in env
     assert "GIT_WORK_TREE" not in env
     assert env.get("GIT_SEQUENCE_EDITOR") == "true"
+
+
+def test_try_log_subjects_empty_on_failure() -> None:
+    runner = StubRunner(
+        {
+            ("git", "log", "--format=%s", "bad..HEAD"): CommandResult(
+                ("git", "log", "--format=%s", "bad..HEAD"),
+                1,
+                "",
+                "fatal",
+                0.01,
+            ),
+        },
+    )
+    subjects = git.try_log_subjects(runner, "bad..HEAD")
+    assert not subjects.subjects
+
+
+def test_force_push_recovery_status_failed_on_git_status_error() -> None:
+    runner = StubRunner(
+        {
+            (
+                "git",
+                "symbolic-ref",
+                "--short",
+                "HEAD",
+            ): CommandResult(
+                ("git", "symbolic-ref", "--short", "HEAD"),
+                0,
+                "feat\n",
+                "",
+                0.01,
+            ),
+            (
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ): CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=all"),
+                1,
+                "",
+                "fatal",
+                0.01,
+            ),
+        },
+    )
+    result = git.force_push_recovery(runner, branch="feat", remote="origin")
+    assert not result.pushed
+    assert result.status == "status_failed"
+
+
+def test_force_push_recovery_noop_same_ref() -> None:
+    runner = StubRunner(
+        {
+            ("git", "symbolic-ref", "--short", "HEAD"): CommandResult(
+                ("git", "symbolic-ref", "--short", "HEAD"), 0, "feat\n", "", 0.01
+            ),
+            (
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ): CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=all"),
+                0,
+                "",
+                "",
+                0.01,
+            ),
+            ("git", "fetch", "origin", "feat", "--quiet"): CommandResult(
+                ("git", "fetch", "origin", "feat", "--quiet"), 0, "", "", 0.01
+            ),
+            (
+                "git",
+                "push",
+                "--force-with-lease",
+                "origin",
+                "HEAD:refs/heads/feat",
+            ): CommandResult(
+                (
+                    "git",
+                    "push",
+                    "--force-with-lease",
+                    "origin",
+                    "HEAD:refs/heads/feat",
+                ),
+                1,
+                "",
+                "rejected",
+                0.01,
+            ),
+            ("git", "rev-parse", "HEAD"): CommandResult(
+                ("git", "rev-parse", "HEAD"), 0, "abc\n", "", 0.01
+            ),
+            ("git", "rev-parse", "origin/feat"): CommandResult(
+                ("git", "rev-parse", "origin/feat"), 0, "abc\n", "", 0.01
+            ),
+        },
+    )
+    result = git.force_push_recovery(
+        runner,
+        branch=None,
+        remote="origin",
+        sleeper=lambda _s: None,
+    )
+    assert result.pushed
+    assert result.status == "noop_same_ref"
+
+
+def test_force_push_recovery_diverged_retry_failed() -> None:
+    runner = StubRunner(
+        {
+            ("git", "symbolic-ref", "--short", "HEAD"): CommandResult(
+                ("git", "symbolic-ref", "--short", "HEAD"), 0, "feat\n", "", 0.01
+            ),
+            (
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ): CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=all"),
+                0,
+                "",
+                "",
+                0.01,
+            ),
+            ("git", "fetch", "origin", "feat", "--quiet"): CommandResult(
+                ("git", "fetch", "origin", "feat", "--quiet"), 0, "", "", 0.01
+            ),
+            (
+                "git",
+                "push",
+                "--force-with-lease",
+                "origin",
+                "HEAD:refs/heads/feat",
+            ): CommandResult(
+                (
+                    "git",
+                    "push",
+                    "--force-with-lease",
+                    "origin",
+                    "HEAD:refs/heads/feat",
+                ),
+                1,
+                "",
+                "rejected",
+                0.01,
+            ),
+            ("git", "rev-parse", "HEAD"): CommandResult(
+                ("git", "rev-parse", "HEAD"), 0, "local\n", "", 0.01
+            ),
+            ("git", "rev-parse", "origin/feat"): CommandResult(
+                ("git", "rev-parse", "origin/feat"), 0, "remote\n", "", 0.01
+            ),
+        },
+    )
+    result = git.force_push_recovery(
+        runner,
+        branch=None,
+        remote="origin",
+        sleeper=lambda _s: None,
+    )
+    assert not result.pushed
+    assert result.status == "diverged_retry_failed"
+
+
+def test_force_push_recovery_branch_mismatch() -> None:
+    runner = StubRunner(
+        {
+            ("git", "symbolic-ref", "--short", "HEAD"): CommandResult(
+                ("git", "symbolic-ref", "--short", "HEAD"), 0, "feat\n", "", 0.01
+            ),
+        },
+    )
+    result = git.force_push_recovery(runner, branch="other", remote="origin")
+    assert not result.pushed
+    assert result.status == "branch_mismatch"
+
+
+def test_force_push_recovery_dirty_worktree() -> None:
+    runner = StubRunner(
+        {
+            ("git", "symbolic-ref", "--short", "HEAD"): CommandResult(
+                ("git", "symbolic-ref", "--short", "HEAD"), 0, "feat\n", "", 0.01
+            ),
+            (
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ): CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=all"),
+                0,
+                " M dirty\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+    result = git.force_push_recovery(runner, branch="feat", remote="origin")
+    assert not result.pushed
+    assert result.status == "dirty_worktree"

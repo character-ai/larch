@@ -1,0 +1,34 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- valid maintainability concern but splitting an ~830-line module is optional Phase 5 refactor
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- import coupling exists but is stable and a shared helper move is low urgency
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- rename() returns unredacted new_title while gh.issue_edit publishes redacted/truncated title
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- missing MERGE_RESULT defaults to admin_merged when no_admin_fallback is false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- identical stderr on consecutive push failures skips backoff via continue
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- flush_logs_pre helper subprocess return codes are discarded
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- git.remotes() is defined but never called
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicated BEHIND/_post_flush blocks are real but refactor-only
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- four similar KEY=value parsers exist; dedup is cleanup not a defect
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- origin-only push matches create-pr.sh parity and is documented in select_push_remote
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- mixing CHANGELOG version bumps with Phase 5 scope is a real review/process issue worth tracking
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Python _MARKER_RE rejects colons that bash validate_lifecycle_marker allows
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- find_issue_comment_id_by_marker lacks bash normalize_first_line BOM/CR handling
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- REFRESH_SKIP_MERGE_OK is defined in config.py but never referenced
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- flush_logs_pre with cwd=None skips commit; worth a Phase 7 driver precondition issue
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- no pytest coverage for UNKNOWN/empty mergeStateStatus retry and terminal paths
+FINDING_17: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- only BEHIND has merge-pr.sh subprocess parity; K1/P1/N1/N2a are Python-mocked only
+FINDING_18: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- no test asserts _flush_recoverable is False when is_ancestor is False
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- admin_merged recovery test patches _flush_recoverable to always True
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- step9a1 heuristic lacks positive/branch table tests beyond one negative assertion
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- tool-failure logging from bash refresh-run-logs is not ported in python/
+FINDING_22: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- test_tokens covers codex normalize and cursor timing but not cursor normalize_sidecar path
+FINDING_23: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- NO_RUN_ID/INVALID_RUN_ID/NO_LOGS_COMMIT refresh skip reasons lack flush_logs_pre matrix tests
+FINDING_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- bundling non-Phase-5 changes raises regression risk beyond py-test scope
+FINDING_25: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- unclosed-frontmatter is tested in Python only, not in bash parity parametrize matrix
+FINDING_26: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan/docs upstream wording mismatch; code intentionally uses origin-only parity
+FINDING_27: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- compose_pr_body redacts but does not sanitize_fragment the assembled body unlike update_pr_body
+FINDING_28: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- compose_summary_bullets with cwd=None skips repo-root containment for relative plan_goals_file
+FINDING_29: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- flush_logs_post returns RefreshSkip on redaction failure and _post_flush does not fail merge
+FINDING_30: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- _publish_run_tree_to_repo rmtree(dest) before copy can destroy existing run tree on copy failure
+FINDING_31: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- load_or_recover_manifest falls back to newest mtime run dir when run_id is empty
+FINDING_32: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- merge_pr discards flush_logs_pre return value and proceeds (bash parity) but Phase 7 may need stricter gating
+FINDING_33: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- _render_token_timing_batches writes empty {} refresh JSON when sidecars absent
+FINDING_34: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- merge skip modes emit MERGE_RESULT_ERROR with string literals; Phase 7 driver may need distinct handling

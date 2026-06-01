@@ -30,6 +30,7 @@ class PullRequest:
     url: str
     state: str
     head_ref: str
+    merged_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,19 @@ class WorkflowRun:
 class FailedJob:
     name: str
     conclusion: str
+
+
+@dataclass(frozen=True)
+class MergeState:
+    merge_state_status: str
+    head_ref_oid: str
+
+
+@dataclass(frozen=True)
+class PrCheck:
+    name: str
+    state: str
+    bucket: str
 
 
 def _gh(runner: Runner, argv: Sequence[str], *, cwd: str | None = None) -> CommandResult:
@@ -123,9 +137,17 @@ def _as_int(value: object, *, context: str, field: str) -> int:
         raise ShipError(msg) from exc
 
 
+def _fail_closed_redacted(text: str, *, context: str) -> str:
+    redacted = redact.redact(text)
+    if "[content truncated" in redacted:
+        msg = f"redaction failed for {context}"
+        raise ShipError(msg)
+    return redacted
+
+
 @contextmanager
 def _body_file_args(body: str) -> Generator[tuple[str, str], None, None]:
-    redacted = redact.redact(body)
+    redacted = _fail_closed_redacted(body, context="gh body file")
     with tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
@@ -171,7 +193,7 @@ def pr_view_read(
             "--repo",
             repo,
             "--json",
-            "number,url,state,headRefName",
+            "number,url,state,headRefName,mergedAt",
         ],
         cwd=cwd,
     )
@@ -193,11 +215,14 @@ def pr_view(
         ("number", "url", "state", "headRefName"),
         context="pr view",
     )
+    merged_raw = data.get("mergedAt")
+    merged_at = str(merged_raw) if merged_raw else None
     return PullRequest(
         number=_as_int(data["number"], context="pr view", field="number"),
         url=str(data["url"]),
         state=str(data["state"]),
         head_ref=str(data["headRefName"]),
+        merged_at=merged_at,
     )
 
 
@@ -292,10 +317,10 @@ def pr_create(
     assignee: str | None = "@me",
     draft: bool = False,
     cwd: str | None = None,
-) -> PullRequest:
+) -> tuple[PullRequest, bool]:
     existing = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
     if existing is not None:
-        return existing
+        return existing, False
     with _body_file_args(body) as (body_flag, body_path):
         argv = [
             "pr",
@@ -326,13 +351,13 @@ def pr_create(
             except (ShipError, TransientNetworkError):
                 recovered = None
             if recovered is not None:
-                return recovered
+                return recovered, False
             recovered = _recover_pr_from_conflict_text(
                 conflict_text,
                 branch=branch,
             )
             if recovered is not None:
-                return recovered
+                return recovered, False
         _ = _ensure_success(result)
     data = _as_json_object(
         _loads_json(result.stdout, context="pr create"),
@@ -343,11 +368,14 @@ def pr_create(
         ("number", "url", "state", "headRefName"),
         context="pr create",
     )
-    return PullRequest(
-        number=_as_int(data["number"], context="pr create", field="number"),
-        url=str(data["url"]),
-        state=str(data["state"]),
-        head_ref=str(data["headRefName"]),
+    return (
+        PullRequest(
+            number=_as_int(data["number"], context="pr create", field="number"),
+            url=str(data["url"]),
+            state=str(data["state"]),
+            head_ref=str(data["headRefName"]),
+        ),
+        True,
     )
 
 
@@ -357,6 +385,7 @@ def pr_merge(
     *,
     repo: str,
     merge_method: str = "squash",
+    admin: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
     flag_map = {
@@ -368,18 +397,170 @@ def pr_merge(
     if flag is None:
         msg = f"unknown merge_method: {merge_method!r}"
         raise ShipError(msg)
-    return _gh(
+    argv = [
+        "pr",
+        "merge",
+        str(number),
+        "--repo",
+        repo,
+        flag,
+    ]
+    if admin:
+        argv.append("--admin")
+    return _gh(runner, argv, cwd=cwd)
+
+
+def pr_merge_state_read(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
         runner,
         [
             "pr",
-            "merge",
+            "view",
             str(number),
             "--repo",
             repo,
-            flag,
+            "--json",
+            "mergeStateStatus,headRefOid",
         ],
         cwd=cwd,
     )
+
+
+def pr_merge_state(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> MergeState:
+    result = pr_merge_state_read(runner, number, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        _raise_read_failure(result)
+    data = _as_json_object(
+        _loads_json(result.stdout, context="pr merge state"),
+        context="pr merge state",
+    )
+    status = str(data.get("mergeStateStatus") or "")
+    head_oid = str(data.get("headRefOid") or "")
+    return MergeState(merge_state_status=status, head_ref_oid=head_oid)
+
+
+def pr_checks_read(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        [
+            "pr",
+            "checks",
+            str(number),
+            "--repo",
+            repo,
+            "--json",
+            "name,state,bucket,link",
+        ],
+        cwd=cwd,
+    )
+
+
+def _pr_checks_json_all_pass(stdout: str) -> bool | None:
+    """Return True/False when JSON is parseable; None when JSON path unusable."""
+    try:
+        rows_obj = _as_json_list(
+            _loads_json(stdout or "[]", context="pr checks"),
+            context="pr checks",
+        )
+    except ShipError:
+        return None
+    if not rows_obj:
+        return False
+    for row_obj in rows_obj:
+        row = _as_json_object(row_obj, context="pr checks row")
+        if row.get("bucket") != "pass":
+            return False
+    return True
+
+
+def pr_checks_text_read(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        ["pr", "checks", str(number), "--repo", repo],
+        cwd=cwd,
+    )
+
+
+_CHECKS_TEXT_BAD_RE = re.compile(
+    r"\b(fail|pending|in_progress|queued|cancelled|skipping)\b",
+    re.IGNORECASE,
+)
+
+
+def _pr_checks_text_all_pass(text: str) -> bool:
+    if not text.strip():
+        return False
+    return _CHECKS_TEXT_BAD_RE.search(text) is None
+
+
+def pr_checks_all_pass(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> bool:
+    result = pr_checks_read(runner, number, repo=repo, cwd=cwd)
+    if result.returncode == 0:
+        json_pass = _pr_checks_json_all_pass(result.stdout)
+        if json_pass is not None:
+            return json_pass
+    elif is_transient_net_signature(_combined(result)):
+        return False
+    text_result = pr_checks_text_read(runner, number, repo=repo, cwd=cwd)
+    if text_result.returncode != 0:
+        if is_transient_net_signature(_combined(text_result)):
+            return False
+        return _pr_checks_text_all_pass(text_result.stdout)
+    return _pr_checks_text_all_pass(text_result.stdout)
+
+
+def pr_edit_body(
+    runner: Runner,
+    number: int,
+    body: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    with _body_file_args(body) as (body_flag, body_path):
+        return _gh(
+            runner,
+            [
+                "pr",
+                "edit",
+                str(number),
+                "--repo",
+                repo,
+                body_flag,
+                body_path,
+            ],
+            cwd=cwd,
+        )
 
 
 def run_list_read(
@@ -554,6 +735,90 @@ def run_rerun(
     if failed_only:
         argv.append("--failed")
     return _gh(runner, argv, cwd=cwd)
+
+
+def issue_comments_list_read(
+    runner: Runner,
+    issue: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        ["api", f"/repos/{repo}/issues/{issue}/comments", "--paginate"],
+        cwd=cwd,
+    )
+
+
+def find_issue_comment_id_by_marker(
+    runner: Runner,
+    issue: str,
+    marker: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> int | None:
+    """Return comment id, None when absent, -1 when multiple match (bash parity)."""
+    result = issue_comments_list_read(runner, issue, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        msg = f"gh api comments fetch failed ({result.returncode})"
+        raise ShipError(msg)
+    rows_obj = _as_json_list(
+        _loads_json(result.stdout or "[]", context="issue comments"),
+        context="issue comments",
+    )
+    ids: list[int] = []
+    for row_obj in rows_obj:
+        row = _as_json_object(row_obj, context="issue comment row")
+        body_obj = row.get("body")
+        body = body_obj if isinstance(body_obj, str) else str(body_obj or "")
+        first_line = (
+            body.split("\n", 1)[0].removeprefix("\ufeff").rstrip("\r")
+            if body
+            else ""
+        )
+        if first_line == marker:
+            ids.append(_as_int(row["id"], context="issue comments", field="id"))
+    if not ids:
+        return None
+    if len(ids) == 1:
+        return ids[0]
+    return -1
+
+
+def issue_comment_patch(
+    runner: Runner,
+    comment_id: int,
+    body: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    redacted = _fail_closed_redacted(body, context="gh issue comment patch")
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".json",
+        delete=False,
+    ) as handle:
+        _ = handle.write(json.dumps({"body": redacted}))
+        path = handle.name
+    try:
+        return _gh(
+            runner,
+            [
+                "api",
+                f"/repos/{repo}/issues/comments/{comment_id}",
+                "-X",
+                "PATCH",
+                "--input",
+                path,
+            ],
+            cwd=cwd,
+        )
+    finally:
+        Path(path).unlink(missing_ok=True)
 
 
 def issue_comment(
