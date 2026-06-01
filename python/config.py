@@ -28,6 +28,8 @@ WATERFALL_MAX_TIERS: Final = 3
 
 # Fixer tier order (parity with ship-pr run_ci_fix_vendor)
 FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("cursor", "codex", "claude")
+FIXER_ROLE: Final = "resolve-conflict"
+REBASE_MAX_ATTEMPTS: Final = 20
 
 # Environment variable names
 ENV_LARCH_SHIP_PR_IMPL: Final = "LARCH_SHIP_PR_IMPL"

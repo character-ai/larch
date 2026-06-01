@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Phase 3 Python `rebase.py`: auto-resolve trivial/bump/CHANGELOG conflicts, drop stale bump commit before replay, in-process fixer-agent waterfall for non-trivial conflicts, re-classify/re-bump after rebase, force-push-with-lease, attempt cap (dev/CI-only until Phase 7 cutover) (#3236).
 - Extend #3202 failed-agent stderr-tail surfacing to implement/CI/lint-fix lanes (producer writes in launchers and `lint-fix-loop.sh`; consumer surfacing in `step2-implement.sh`, `ship-pr.sh`, and Step 5 lint-fix) and add a plan-review-loop FD-2 tail regression test (#3227).
 - `lint-awk-multibyte-regex` catches non-ASCII characters inside `awk -v VAR=...` values and inside awk-body regex callsites (`match`, `gsub`, `sub`, `split`, `~`, `!~`); wired into `make lint`, the pre-commit hook chain, `docs/linting.md`, and `agent-lint.toml`. Add ship-pr `run_ci_fix_vendor` HEAD-non-advance detection so a vendor that exits 0 without producing any commit is classified as `first-fixer-non-health`, routing the run to Exit 3 → autonomous main-agent CI-fix; existing tier-order happy-path tests updated to produce real commits so they remain rc 0. Fixes #3134.
 

@@ -34,6 +34,23 @@ def _bash_classify(*args: str) -> tuple[str, str]:
     return cls, reason
 
 
+def test_parse_launcher_exit_text() -> None:
+    assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=1\n") == 1
+    assert agents.parse_launcher_exit_text("noise\nLAUNCHER_EXIT=2\n") == 2
+    assert agents.parse_launcher_exit_text("LAUNCHER_EXIT=bad\n") == 0
+    assert agents.parse_launcher_exit_text("") == 0
+
+
+def test_read_launcher_exit_missing_file_defaults_zero(tmp_path: Path) -> None:
+    assert agents.read_launcher_exit(tmp_path / "missing.out") == 0
+
+
+def test_read_launcher_exit_reads_file(tmp_path: Path) -> None:
+    path = tmp_path / "capture.out"
+    _ = path.write_text("LAUNCHER_EXIT=3\n", encoding="utf-8")
+    assert agents.read_launcher_exit(path) == 3
+
+
 def test_classify_success() -> None:
     failure = agents.classify_launch_failure(0)
     assert failure == LaunchFailure("none", "")
@@ -125,6 +142,19 @@ def test_parity_classify_launch_failures(
     assert py.reason == bash_reason
 
 
+def test_build_launch_argv_conflict_files() -> None:
+    argv = agents.build_launch_argv(
+        "cursor",
+        role=config.FIXER_ROLE,
+        output="/tmp/out",
+        run_id="run",
+        repo="o/r",
+        conflict_files="a,b",
+    )
+    idx = argv.index("--conflict-files")
+    assert argv[idx + 1] == "a,b"
+
+
 @pytest.mark.parametrize("tier", list(config.FIXER_TIER_ORDER))
 def test_build_launch_argv_per_tier(tier: str) -> None:
     argv = agents.build_launch_argv(
@@ -157,6 +187,56 @@ def test_waterfall_short_circuits_on_first_other(tmp_path: Path) -> None:
     assert result.winning_tier is None
     assert result.short_circuited is True
     assert len(result.attempts) == 1
+
+
+def test_waterfall_reverts_paths_between_failed_tiers() -> None:
+    tiers = ["cursor", "codex"]
+    calls: list[str] = []
+    revert_calls: list[tuple[str, ...]] = []
+    diff_calls = {"n": 0}
+
+    class RevertRunner:
+        def run(
+            self,
+            argv: list[str],
+            *,
+            timeout: float | None = None,  # pylint: disable=unused-argument
+            cwd: str | None = None,  # pylint: disable=unused-argument
+            env: object | None = None,  # pylint: disable=unused-argument
+            check: bool = False,  # pylint: disable=unused-argument
+        ) -> object:
+            _ = timeout, env, check
+            key = tuple(argv)
+            revert_calls.append(key)
+            if key == ("git", "diff", "--name-only", "HEAD"):
+                diff_calls["n"] += 1
+                stdout = "" if diff_calls["n"] == 1 else "dirty.txt\n"
+                return type("R", (), {"stdout": stdout, "returncode": 0})()
+            if key == ("git", "ls-files", "--others", "--exclude-standard"):
+                return type("R", (), {"stdout": "", "returncode": 0})()
+            if key[:3] == ("git", "restore", "--staged"):
+                return type("R", (), {"stdout": "", "returncode": 0})()
+            if key[:3] == ("git", "checkout", "--"):
+                return type("R", (), {"stdout": "", "returncode": 0})()
+            return type("R", (), {"stdout": "", "returncode": 0})()
+
+    def launch_fn(tier: str) -> TierAttempt:
+        calls.append(tier)
+        return TierAttempt(
+            tier=tier,
+            wrapper_rc=0,
+            launcher_exit=1,
+            failure=LaunchFailure("health", "auth"),
+        )
+
+    result = agents.run_waterfall(
+        tiers,
+        launch_fn,
+        runner=RevertRunner(),  # type: ignore[arg-type]
+    )
+    assert result.winning_tier is None
+    assert calls == ["cursor", "codex"]
+    assert ("git", "restore", "--staged", "--", "dirty.txt") in revert_calls
 
 
 def test_waterfall_falls_through_health() -> None:

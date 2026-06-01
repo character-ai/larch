@@ -16,6 +16,8 @@ imported by runtime code.
 - `version_bump.py`, `changelog.py` — Phase 2 ports of bump-version / CHANGELOG scripts
   (not wired into the live `/implement` path until Phase 7). `commit_changelog` is Markdown-only
   today; RST changelog commit is deferred until Phase 7 (no bash `commit-changelog` counterpart for RST).
+- `rebase.py` — Phase 3 port (auto-resolve, drop-bump, in-process fixer waterfall,
+  `git-force-push.sh` rebump-tail push); dev/CI-only until Phase 7.
 - `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)
 - `ci_monitor.py` — Phase 6 CI poll + classify + collect + fixer-waterfall + GOTO-Rebase signal

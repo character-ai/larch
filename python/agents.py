@@ -8,6 +8,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import config
+import git
 from proc import CommandResult, Runner
 
 _PARSE_RE = re.compile(
@@ -63,6 +64,28 @@ def is_transient_infra_failure(
     if not path.is_file():
         return True
     return path.stat().st_size == 0
+
+
+def parse_launcher_exit_text(text: str) -> int:
+    """Read LAUNCHER_EXIT= from launcher stdout capture; missing → 0."""
+    for line in text.splitlines():
+        if line.startswith("LAUNCHER_EXIT="):
+            raw = line.split("=", 1)[1].strip().strip("\r")
+            try:
+                return int(raw)
+            except ValueError:
+                return 0
+    return 0
+
+
+def read_launcher_exit(output_file: str | Path) -> int:
+    """Read LAUNCHER_EXIT= from a launcher capture file; missing → 0."""
+    path = Path(output_file)
+    if not path.is_file():
+        return 0
+    return parse_launcher_exit_text(
+        path.read_text(encoding="utf-8", errors="replace"),
+    )
 
 
 def parse_launcher_failure_class(log_file: str | Path | None) -> str:
@@ -135,6 +158,7 @@ def build_launch_argv(
     repo: str,
     plan_file: str | None = None,
     failure_log: str | None = None,
+    conflict_files: str | None = None,
     timeout_sec: int = config.SUBPROCESS_DEFAULT_TIMEOUT_SEC,
     scripts_dir: str | Path | None = None,
 ) -> list[str]:
@@ -166,6 +190,8 @@ def build_launch_argv(
         argv.extend(["--plan-file", plan_file])
     if failure_log:
         argv.extend(["--failure-log", failure_log])
+    if conflict_files:
+        argv.extend(["--conflict-files", conflict_files])
     return argv
 
 
@@ -179,6 +205,7 @@ def launch_tier(
     repo: str,
     plan_file: str | None = None,
     failure_log: str | None = None,
+    conflict_files: str | None = None,
     timeout_sec: int = config.SUBPROCESS_DEFAULT_TIMEOUT_SEC,
     cwd: str | None = None,
 ) -> CommandResult:
@@ -190,6 +217,7 @@ def launch_tier(
         repo=repo,
         plan_file=plan_file,
         failure_log=failure_log,
+        conflict_files=conflict_files,
         timeout_sec=timeout_sec,
     )
     return runner.run(argv, timeout=float(timeout_sec), cwd=cwd)
@@ -203,15 +231,24 @@ def run_waterfall(
     launch_fn: LaunchFn,
     *,
     first_tier: str | None = None,
+    runner: Runner | None = None,
+    cwd: str | None = None,
 ) -> WaterfallResult:
     """Iterate tiers; short-circuit when the first tier fails with class 'other'.
 
-    Health-class failures fall through to the next tier.
+    Health-class failures fall through to the next tier. When ``runner`` is set,
+    snapshot tracked/untracked paths before the loop and revert deltas after each
+    failed tier (``recovery_waterfall_paths_delta_revert`` parity).
     """
     tier_list = list(tiers)
     if first_tier and first_tier in tier_list:
         start = tier_list.index(first_tier)
         tier_list = [*tier_list[start:], *tier_list[:start]]
+    baseline_tracked: frozenset[str] | None = None
+    baseline_untracked: frozenset[str] | None = None
+    if runner is not None:
+        baseline_tracked = git.tracked_dirty_paths(runner, cwd=cwd)
+        baseline_untracked = git.untracked_dirty_paths(runner, cwd=cwd)
     attempts: list[TierAttempt] = []
     first = tier_list[0] if tier_list else ""
     for idx, tier in enumerate(tier_list):
@@ -221,6 +258,13 @@ def run_waterfall(
             return WaterfallResult(
                 winning_tier=tier,
                 attempts=tuple(attempts),
+            )
+        if runner is not None and baseline_tracked is not None and baseline_untracked is not None:
+            git.paths_delta_revert(
+                runner,
+                baseline_tracked,
+                baseline_untracked,
+                cwd=cwd,
             )
         failure_class = effective_failure_class(attempt)
         if (

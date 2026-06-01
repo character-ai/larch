@@ -1,0 +1,5 @@
+FAILED=true
+ERROR=gh api comments fetch failed: error connecting to api.github.com check your internet connection or https://githubstatus.com 
+COMMENT_URL=
+STATUS=failed
+ERROR=FAILED=true ERROR=gh api comments fetch failed: error connecting to api.github.com check your internet connection or https://githubstatus.com  

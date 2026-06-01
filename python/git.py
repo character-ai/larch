@@ -60,6 +60,16 @@ def branch(runner: Runner, name: str, *, cwd: str | None = None) -> CommandResul
     return _run(runner, ["git", "branch", name], cwd=cwd)
 
 
+def branch_force(
+    runner: Runner,
+    name: str,
+    start_point: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(runner, ["git", "branch", "-f", name, start_point], cwd=cwd)
+
+
 def rev_count(
     runner: Runner,
     left: str,
@@ -295,7 +305,77 @@ def _git_subprocess_env() -> dict[str, str]:
         if key not in ("GIT_DIR", "GIT_WORK_TREE")
     }
     env["GIT_SEQUENCE_EDITOR"] = "true"
+    env["GIT_EDITOR"] = "true"
     return env
+
+
+def try_current_branch(runner: Runner, *, cwd: str | None = None) -> str | None:
+    result = _run(
+        runner,
+        ["git", "symbolic-ref", "--short", "HEAD"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        return None
+    text = result.stdout.strip()
+    return text or None
+
+
+def unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
+    result = _ensure_success(_run(
+        runner,
+        ["git", "diff", "--name-only", "--diff-filter=U"],
+        cwd=cwd,
+    ))
+    return [line for line in result.stdout.splitlines() if line]
+
+
+def checkout_ours(
+    runner: Runner,
+    *paths: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    argv = ["git", "checkout", "--ours", "--", *paths]
+    return _run(runner, argv, cwd=cwd)
+
+
+def is_ancestor(
+    runner: Runner,
+    ancestor: str,
+    descendant: str,
+    *,
+    cwd: str | None = None,
+) -> bool:
+    result = _run(
+        runner,
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        cwd=cwd,
+    )
+    return result.returncode == 0
+
+
+def rebase_continue(runner: Runner, *, cwd: str | None = None) -> CommandResult:
+    return _run(runner, ["git", "rebase", "--continue"], cwd=cwd)
+
+
+def rebase_skip(runner: Runner, *, cwd: str | None = None) -> CommandResult:
+    return _run(runner, ["git", "rebase", "--skip"], cwd=cwd)
+
+
+def force_push_with_lease_expecting(
+    runner: Runner,
+    remote: str,
+    refspec: str,
+    expected_oid: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    lease = f"{refspec}:{expected_oid}"
+    return _run(
+        runner,
+        ["git", "push", f"--force-with-lease={lease}", remote],
+        cwd=cwd,
+    )
 
 
 def rebase_onto(
@@ -384,3 +464,56 @@ def diff_quiet(
         argv = ["git", "diff", "--cached", "--quiet", "--", path]
     result = _run(runner, argv, cwd=cwd)
     return result.returncode == 0
+
+
+def tracked_dirty_paths(runner: Runner, *, cwd: str | None = None) -> frozenset[str]:
+    """Paths with tracked worktree/index changes vs HEAD (``git diff --name-only HEAD``)."""
+    result = _run(runner, ["git", "diff", "--name-only", "HEAD"], cwd=cwd)
+    return frozenset(line for line in result.stdout.splitlines() if line)
+
+
+def untracked_dirty_paths(runner: Runner, *, cwd: str | None = None) -> frozenset[str]:
+    """Untracked paths not ignored (``git ls-files --others --exclude-standard``)."""
+    result = _run(
+        runner,
+        ["git", "ls-files", "--others", "--exclude-standard"],
+        cwd=cwd,
+    )
+    return frozenset(line for line in result.stdout.splitlines() if line)
+
+
+def restore_staged(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:
+    return _run(runner, ["git", "restore", "--staged", "--", path], cwd=cwd)
+
+
+def checkout_paths(runner: Runner, path: str, *, cwd: str | None = None) -> CommandResult:
+    return _run(runner, ["git", "checkout", "--", path], cwd=cwd)
+
+
+def paths_delta_revert(
+    runner: Runner,
+    baseline_tracked: frozenset[str],
+    baseline_untracked: frozenset[str],
+    *,
+    cwd: str | None = None,
+) -> None:
+    """Revert tracked/untracked deltas since baseline (recovery waterfall parity)."""
+    cur_tracked = tracked_dirty_paths(runner, cwd=cwd)
+    cur_untracked = untracked_dirty_paths(runner, cwd=cwd)
+    root = Path(cwd) if cwd else Path.cwd()
+    for path in cur_tracked:
+        if path in baseline_tracked:
+            continue
+        if path in cur_untracked:
+            target = root / path
+            if target.exists() or target.is_symlink():
+                target.unlink(missing_ok=True)
+        else:
+            _ = restore_staged(runner, path, cwd=cwd)
+            _ = checkout_paths(runner, path, cwd=cwd)
+    for path in cur_untracked:
+        if path in baseline_untracked:
+            continue
+        target = root / path
+        if target.exists() or target.is_symlink():
+            target.unlink(missing_ok=True)
