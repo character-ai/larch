@@ -756,7 +756,7 @@ if [[ "$STEP2_OUT" == *"STATUS=bailed"* ]] \
    && [[ "$STEP2_OUT" == *"TOOL=codex"* ]] \
    && [[ "$STEP2_OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
    && [[ "$STEP2_ROWS" == "2" ]] \
-   && [[ ! -e "$STEP2_TMP/manifest.json" ]]; then
+   && [[ ! -e "$STEP2_TMP/codex-step2-out/manifest.json" ]]; then
     pass
 else
     fail "step2-codex-retry" "dispatcher should retry codex preflight failure once then bail codex-runtime-failure with two non-zero timing rows; rows=$STEP2_ROWS out=$STEP2_OUT ledger=$(cat "$STEP2_LEDGER" 2>/dev/null)"
@@ -1014,6 +1014,24 @@ if [[ "$EXIT" == "2" ]] && grep -Fq "session tmpdir does not exist" "$T12_OUT"; 
     pass
 else
     fail 12 "missing session tmpdir should exit 2 with the does-not-exist message, got $EXIT: $(cat "$T12_OUT")"
+fi
+
+# Test 12b: existing manifest/qa parents but missing transcript parent -> exit 2.
+EXIT=0
+T12B_OUT="$SCRATCH/t12b-output.txt"
+"$LAUNCHER" \
+    --manifest-path "$STEP2_OUT_DIR/manifest.json" \
+    --qa-pending-path "$STEP2_OUT_DIR/qa-pending.json" \
+    --transcript-path "$SCRATCH/t12b-missing-transcript-subdir/transcript.txt" \
+    --sidecar-log "$SCRATCH/t12b-sidecar.log" \
+    --plan-file "$PLAN" \
+    --feature-file "$FEATURE" \
+    --agent-prompt "$AGENT_PROMPT" \
+    --timeout 30 >"$T12B_OUT" 2>&1 || EXIT=$?
+if [[ "$EXIT" == "2" ]] && grep -Fq "transcript parent does not exist" "$T12B_OUT"; then
+    pass
+else
+    fail 12b "missing transcript parent should exit 2 with transcript-parent message, got $EXIT: $(cat "$T12B_OUT")"
 fi
 
 # Test 13 (issue #1480 Bug #2): defensive `--timing-task-kind` validation.
