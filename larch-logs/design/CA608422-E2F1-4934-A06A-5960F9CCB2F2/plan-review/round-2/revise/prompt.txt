@@ -1,0 +1,214 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+# Implementation Plan — Issue #3337
+
+Two independent changes batched in one issue.
+- **Part 1 (docs only):** document `apiKeyHelper` removal + dual-auth Claude aliases.
+- **Part 2 (behavior):** flip the default external tool to Codex-first for the coder, CI fixer, and merge-resolve fixer roles, in Bash and the Python port, with order-asserting tests and affected prose docs synced.
+
+New order everywhere is `codex → cursor → claude` (Claude stays the terminal fallback). Explicit `--coder cursor`/`--coder codex` behavior is unchanged.
+
+## Files to modify/create
+
+### UPDATED: `docs/installation-and-setup.md`
+Part 1, docs only. Extend the `### Claude` subsection (the block ending right before `### Codex`) with three additions:
+- A note to remove any file-level `apiKeyHelper` from `~/.claude/settings.json`, and why: larch's Claude subprocesses run `claude --print`, read `~/.claude/settings.json` directly, and do not inherit a top-level `--settings` override. In subscription/OAuth mode (no `ANTHROPIC_API_KEY` in env) the helper returns empty → `apiKeyHelper failed` → `401 Invalid bearer token`; a non-zero helper exit does not fall back to OAuth.
+- The four example aliases verbatim from the issue, in one `bash` fence: `claude_api`, `opus_api`, `claude_login`, `opus_login`.
+- The mechanism: subprocesses inherit the top-level session env, so billing tracks the top-level account; `*_api` → API token, `*_login` → subscription OAuth. State the credential precedence `ANTHROPIC_API_KEY` (env) > `apiKeyHelper` > stored OAuth, that a configured `apiKeyHelper` never falls back to OAuth, and that the aliases are illustrative (personal git wrappers out of scope).
+
+No runtime/script/behavior change in this file.
+
+### UPDATED: `scripts/implement-bootstrap.sh`
+Part 2, coder role. In `_phase_coder_implicit`, flip the implicit waterfall from cursor-first to codex-first:
+- Probe `codex_available` first (`coder=codex`), then `cursor_available` (`coder=cursor`), then `claude` terminal (`coder_fallback=true`).
+- Update the leading comment (currently cites #2738 / `Cursor -> Codex -> Claude`) to cite #3337 / `Codex -> Cursor -> Claude`. Keep the "Review/fix dispatchers remain Codex-first" sentence.
+- Update the two `larch_err` warnings and their `_phase_coder_append_warning` strings to the new order: "Codex unavailable — falling back to Cursor implementer" and "Cursor unavailable — falling back to Claude implementer".
+
+Do NOT touch `_phase_coder_explicit` or `_phase_coder_explicit_waterfall`: explicit `--coder` resolution is independent of the implicit default and must keep working (`--coder cursor` → cursor→codex→claude; `--coder codex` → codex→cursor→claude).
+
+### UPDATED: `scripts/implement-bootstrap.md`
+Part 2, doc sync (also test-pinned). In the `--coder` table row, change the omitted-default clause "`phase_coder_select` runs the Cursor → Codex → Claude waterfall" to `Codex → Cursor → Claude`. Leave the explicit-coder clauses (`--coder codex` → Cursor → Claude; `--coder cursor` → Codex → Claude) unchanged — those describe explicit overrides, which do not change.
+
+### UPDATED: `scripts/ship-pr.sh`
+Part 2, CI fixer + merge-resolve roles.
+- `run_ci_fix_vendor`: change the base tuple `local tiers=(cursor codex claude) ...` to `local tiers=(codex cursor claude) ...`. Leave the `offset=$(( start_attempt % 3 ))` rotation and the `first-fixer-non-health` bail unchanged; both correctly follow the new base order (attempt 0 now starts at Codex).
+- `run_recovery_waterfall`: change `for tier in cursor codex claude; do` to `for tier in codex cursor claude; do`. The per-tier `command -v` guards are unchanged.
+
+### UPDATED: `scripts/ship-pr.md`
+Part 2, doc sync. Update the order prose to codex-first: the three-tier recovery description ("`launch-cursor-ci.sh`, then `launch-codex-ci.sh`, then `launch-claude-ci.sh`"), the "3-tier inner waterfall (Cursor → Codex → Claude, one launch per tier)" line, and the "rotates the cursor→codex→claude waterfall start tier" line. Grep `ship-pr.md` for `cursor`/`codex` ordering prose to catch any other references.
+
+### UPDATED: `skills/implement/SKILL.md`
+Part 2, doc sync. The `phase_coder_select` paragraph states the implicit order as "Cursor → Codex → Claude", which becomes wrong after the flip. Reword to reflect codex-first **without** introducing the literal arrow substring `Codex → Cursor → Claude` (use commas, e.g. "the implicit implementer waterfall — Codex, then Cursor, then Claude — arrives at Claude"). Reason: `scripts/test-implement-step2-routing.sh` asserts that SKILL.md does NOT contain `Codex → Cursor → Claude` (it keeps the waterfall order script-side, not duplicated as prompt-side prose).
+
+### UPDATED: `SECURITY.md`
+Part 2, security-doc sync (AGENTS.md convention). Two targeted edits in the **External tool delegation** / omitted-`--coder` surface:
+- **Line ~105 (`/implement` Step 0 paragraph):** replace the Cursor-first narrative with Codex-first (#3337): the omitted-`--coder` default is now Codex → Cursor → Claude by external availability; cite #3337 as the current product direction (supersedes the #2738 Cursor-first reversal). Keep the narrow-scope framing ("applies only when the operator omits `--coder`"), the explicit-pin guidance (`--coder=codex` / `--coder=cursor` fail closed when unavailable), review/fix lanes remain Codex-first, and all sandbox/delegation posture for review vs implementer launchers unchanged.
+- **Line ~127 (standalone omitted-`--coder` routing note):** sync to Codex-first — "follows Codex → Cursor → Claude by external availability"; drop or rewrite the stale Phase 4 (#2738) paragraph that describes undoing #2756 back to Cursor-first and tells operators to re-pin `--coder=codex` until the next review (that guidance is inverted after this flip). Retain the informational `diff_lines` / `coder_fallback=true` sentences.
+No runtime change in this file.
+
+### UPDATED: `docs/external-reviewers.md`
+Part 2, doc sync. In the routing table, update the **CI / checks recovery** row (~line 103): change `(Cursor→Codex→Claude)` to `(Codex→Cursor→Claude)` so the canonical routing table matches codex-first `ship-pr.sh` behavior. Leave other rows unchanged (review-and-fix row already Codex-first; implementer row stays generic "Selection waterfall keyed on `--coder`").
+
+### UPDATED: `python/config.py`
+Part 2, Python parity. Change `FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("cursor", "codex", "claude")` to `("codex", "cursor", "claude")`. No other Python code change: `ci_monitor._available_tiers()` and `rebase.py` derive their order from this tuple. Update the adjacent `# parity with ship-pr run_ci_fix_vendor` comment if it names the old order.
+
+### UPDATED: `python/test_config.py`
+Part 2, test. Update the equality assertion to `assert config.FIXER_TIER_ORDER == ("codex", "cursor", "claude")`.
+
+### UPDATED: `scripts/test-implement-step2-routing.sh`
+Part 2, test. Three string updates:
+- The `BOOTSTRAP_MD` assertion `'Cursor → Codex → Claude'` → `'Codex → Cursor → Claude'`.
+- The two `BOOTSTRAP_SH` fallback-warning assertions → "Codex unavailable — falling back to Cursor implementer" and "Cursor unavailable — falling back to Claude implementer" (update the trailing labels to match, e.g. codex-to-cursor / cursor-to-claude).
+- Leave the `assert_not_contains "$IMPLEMENT_SKILL" 'Codex → Cursor → Claude'` line intact — it guards SKILL.md cleanliness. Its label may be clarified but the assertion must stay.
+
+### UPDATED: `scripts/test-ship-pr.sh`
+Part 2, test. Re-point the order-sensitive cases so the first tier is Codex:
+- `ci_fix_vendor_tier_order_cursor_first` → rename to `..._codex_first`: make the Codex stub the one that succeeds; assert a single Codex launch; update repo name + `ok`/`fail` messages.
+- `ci_fix_vendor_tier_order_falls_through_to_codex` → rename to `..._falls_through_to_cursor`: Codex stub returns `LAUNCHER_EXIT=1`, Cursor stub succeeds; assert Codex then Cursor (no Claude); update messages.
+- `ci_fix_vendor_tier_order_falls_through_to_claude`: outcome unchanged (both externals fail → Claude); the grep assertions are order-agnostic. Update the leading comment to the codex-first order.
+- The four `#3227` stderr-tail / first-fixer cases that assume cursor-is-first: swap the Cursor and Codex stub bodies so the FIRST tier (Codex) is the failing/probe-emitting one — "surfaces pre-seeded tier stderr-tail", "wrapper_rc=2 surfaces ... before codex tier" (update wording to "cursor tier"), the recovery-waterfall "tier_rc-only failure advances", and "first-fixer-non-health surfaces tier stderr-tail" (put `LAUNCHER_FAILURE_CLASS=other` on the Codex/first tier). Keep each assertion's intent; update messages.
+
+### UPDATED: `scripts/test-ship-pr-fix-loop-2632.inc.sh`
+Part 2, test. Invert the four order-sensitive cases so Codex is the first tier:
+- `t4` (first-fixer `class=other` → exit 3, single launch): move the `LAUNCHER_FAILURE_CLASS=other` first-tier stub to Codex; rename the case/repo (e.g. `ci_fix_vendor_codex_other_non_health`) and messages.
+- `t4b` (health failure → waterfall to next): Codex (first) health-fails, Cursor (second) succeeds; assert both invoked; rename.
+- `t4c` (`wrapper_rc=2` → next): Codex (first) `exit 2`, Cursor (second) succeeds; assert both invoked; rename.
+- `t4d` (non-first `class=other` does NOT bail → all three run): Codex (first) health-fails, Cursor (second) emits `class=other`, Claude succeeds; assert all three; rename (e.g. `ci_fix_vendor_cursor_other_waterfall`) and reword "policy cursor-only" → "policy first-tier-only".
+- `t5`–`t21` are order-agnostic (launch counts / all-fail / plan-file / failure-log / rc3-defer / missing-claude); leave unchanged.
+
+## Approach
+Single base-order flip per role, plus parity in Python and synced tests/docs.
+- Coder: the only logic is the probe order in `_phase_coder_implicit`; flipping the two `if` branches + warnings is sufficient.
+- CI fixer: flip only the base `tiers=(...)` tuple; the existing per-attempt rotation and first-fixer bail follow it.
+- Merge-resolve: flip the literal `for tier in ...` list.
+- Python: one tuple in `config.py`; all consumers derive from it, so no consumer edits.
+- Tests assert observed launcher order or warning strings; update stubs/assertions to the codex-first order. Most ship-pr cases are order-agnostic and stay.
+- Docs: sync the prose that states the old order (including `SECURITY.md` and `docs/external-reviewers.md`), respecting the SKILL.md arrow-substring guard.
+
+## Edge cases
+- **Explicit `--coder` unchanged:** the implicit flip must not alter `_phase_coder_explicit*`; covered by the existing `#3207` explicit-waterfall assertions (kept green).
+- **Start-tier rotation:** `run_ci_fix_vendor` rotates start tier per outer attempt; attempt 0 now starts at Codex. The `first-fixer-non-health` bail keys on `first_tier`, so it now bails when Codex (first) fails non-health — this is the intended new behavior and is what the rewritten `t4`/first-fixer tests assert.
+- **Both externals unavailable:** all three roles still fall through to Claude (terminal tier preserved).
+- **SKILL.md guard:** the synced wording must avoid the literal `Codex → Cursor → Claude` arrow string (commas instead) or `test-implement-step2-routing.sh` fails.
+- **Python is parity-only:** `python/` is not wired into the live path until Phase 7; the flip is for parity and has no live runtime effect yet.
+
+## Failure modes
+- **Missed order assertion** in a test file → CI red. Mitigation: grep each touched test for `cursor`/`codex` ordering and run the three named harnesses locally before finalizing.
+- **Stale prose left behind** (a doc still says "Cursor → Codex") → drift. Mitigation: grep `scripts/ship-pr.md`, `scripts/implement-bootstrap.md`, `skills/implement/SKILL.md`, `SECURITY.md`, and `docs/external-reviewers.md` for the old order after editing.
+- **Accidentally flipping an out-of-scope cursor-first surface** (plan-review / brainstorm) → scope creep against Decision 1. Mitigation: those surfaces are listed in the report section below and are explicitly NOT edited.
+
+## Testing strategy
+- `bash scripts/relevant-checks.sh` (repo-wide pre-commit hooks).
+- `bash scripts/test-implement-step2-routing.sh`
+- `bash scripts/test-ship-pr.sh`
+- `make py-test` (or `python -m pytest python/test_config.py python/test_agents.py python/test_rebase.py`) — confirms the tuple flip and that the order-independent Python tests still pass.
+- `make lint-bash32` after shell edits.
+
+## Acceptance
+- Part 1: the Claude section of `docs/installation-and-setup.md` documents removing `apiKeyHelper` (and why), the four aliases, and the API-key-vs-subscription mechanism; no runtime change.
+- Part 2: default coder, CI fixer, and merge-resolve fixer prefer Codex over Cursor (`codex → cursor → claude`); Bash and Python parity (`FIXER_TIER_ORDER` + its test) updated; Claude remains terminal; explicit `--coder cursor` still works; order-asserting tests and affected prose docs synced (including `SECURITY.md` and `docs/external-reviewers.md`).
+
+## Surfaced cursor-first defaults — report (decision pending, per Round 1 Decision 1)
+These are cursor-first defaults OUTSIDE the three named roles. They are NOT flipped in this plan; listed for your decision:
+- **R1 — `/design` plan-review per-archetype Cursor-slot fallback** (`Cursor → Codex → Claude`): `docs/review-agents.md`, `docs/collaborative-sketches.md`. Codex-archetype slots already fall back Codex-first; only the Cursor-archetype slots are cursor-first.
+- **R2 — `/design` brainstorm framing lane** (`Cursor → Codex → Claude`): `skills/design/references/brainstorm.md`.
+- **Excluded (not a preference):** `/design` sketch + plan-review static spawn order launches Cursor slots first — that is parallel spawn ordering (slowest-first), not a fallback preference, so it is out of scope. The `/review` voter panel already has both a Codex-first and a Cursor-first slot (balanced).
+
+diff_added: 148
+diff_deleted: 112
+diff_lines: 260
+
+</plan>
+
+<findings>
+### FINDING_2: `python/test_ci_monitor.py` not in plan; full `make py-test` will fail after codex-first flip
+- **Reviewer(s)**: Cursor-Edge, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan limits Python test updates to `test_config.py` (and optionally `test_agents.py` / `test_rebase.py`), but `FIXER_TIER_ORDER` drives `ci_monitor.run_ci_fix` / `evaluate_failure` / `monitor`. After `config.py` flips to codex-first, tests that assert `launch_calls == ["cursor"]`, mock only Apply CI fixes (cursor), or assume `start_attempt=0` hits Cursor will fail under full `make py-test` even if a narrowed pytest list in the plan passes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Add python/test_ci_monitor.py to the plan: retarget tier-order assertions and commit-script mocks to codex-first (and rotation attempt 0/1 comments); run make py-test in Testing strategy
+  - From Cursor-Requirements: Add ### UPDATED: python/test_ci_monitor.py: retarget cursor-first assertions/stubs/comments (e.g. launch_calls == ["codex"], codex commit-msg keys, line 900 rotation comment) and list the file in Testing strategy alongside test_config.py
+
+
+### FINDING_3: `docs/linting.md` omitted from implement-bootstrap doc sync
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: latent
+- **Concern**: `implement-bootstrap.md` requires `docs/linting.md` to stay in sync for Step 0 wording, but the plan updates bootstrap without `linting.md`. The Makefile harness table can still document omitted-`--coder` as Cursor → Codex → Claude after Part 2 lands, giving operators and contributors the wrong routing contract without CI catching it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Extend Part 2 doc sync to docs/linting.md (line ~272) per bootstrap.md:169; add docs/linting.md to the post-edit grep list in Failure modes
+
+
+### FINDING_5: `skills/implement/SKILL.md` Exit 3 still names Cursor-only CI-fix launcher
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan rewrites the Step 0 `phase_coder_select` paragraph (~511) but Exit 3 (~1169) still says `first-fixer-non-health` fires when the Cursor CI-fix launcher reports `LAUNCHER_FAILURE_CLASS=other`. After codex-first `run_ci_fix_vendor`, bail keys on the rotated first tier (`first_tier` from `start_attempt % 3`), which is Codex on attempt 0 — not Cursor-only. Operators can mis-debug Exit 3 / autonomous CI-fix as a Cursor-only path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add a `skills/implement/SKILL.md` doc-sync step for ~1169: describe first-tier / rotated-first-tier CI-fix launcher (match `scripts/ship-pr.md:154`), not Cursor by name
+
+---
+
+**Merge notes (for voters, not machine output):** Seven source slots collapsed to five findings. `test_ci_monitor.py` (Cursor-Edge + Cursor-Requirements) and `ship-pr.md` first-fixer / tier-order drift (Cursor-Innovation + Cursor-Pragmatic) were merged as one behavioral risk each. `SECURITY.md`, `docs/linting.md`, and `skills/implement/SKILL.md` remain separate because they need distinct edits. No `[OUT_OF_SCOPE]` tags in input; no `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` (non-empty merge).
+
+
+</findings>
+
+<feature>
+apiKeyHelper-free Claude aliases (doc) + default coder/CI/merge fixers → Codex
+
+Two independent setup changes, batched into one issue.
+
+---
+
+## Part 1 — Documentation only: Claude dual-auth aliases
+
+Update the **Claude** section of `docs/installation-and-setup.md`.
+
+### 1. Remove `apiKeyHelper` from `~/.claude/settings.json`
+Document that a file-level `apiKeyHelper` (e.g. `"apiKeyHelper": "echo $ANTHROPIC_API_KEY"`) breaks larch's Claude subprocesses (voters / reviewers / fixers that skills spawn, same as Cursor/Codex agents). Those subprocesses run `claude --print`, read `~/.claude/settings.json` directly, and do **not** inherit a top-level `--settings` override. In subscription/OAuth mode (no `ANTHROPIC_API_KEY` in env), the helper returns empty → `apiKeyHelper failed` → `401 Invalid bearer token`. A non-zero helper exit does **not** fall back to OAuth either. So the settings file must contain **no** `apiKeyHelper`; inject it only where the API key is wanted (the `*_api` aliases below).
+
+### 2. Document the dual-auth alias pattern (four example aliases)
+```bash
+# Per-token / API-key billing — inject apiKeyHelper via --settings (forces the key in interactive)
+alias claude_api='claude --settings='\''{"apiKeyHelper": "echo $ANTHROPIC_API_KEY"}'\'''
+alias opus_api='claude --model "claude-opus-4-8[1m]" --effort high --settings='\''{"apiKeyHelper": "echo $ANTHROPIC_API_KEY"}'\'''
+
+# Subscription / browser-login billing — unset the key so auth falls through to stored OAuth
+alias claude_login='env -u ANTHROPIC_API_KEY claude'
+alias opus_login='env -u ANTHROPIC_API_KEY claude --model "claude-opus-4-8[1m]" --effort high'
+```
+Explain the mechanism: subprocesses inherit the top-level session's environment, so billing tracks the top-level account. `*_api` → API token (env `ANTHROPIC_API_KEY`, which `claude --print` uses directly); `*_login` → subscription OAuth (macOS Keychain). Credential precedence is `ANTHROPIC_API_KEY` (env) > `apiKeyHelper` > stored OAuth, and a configured `apiKeyHelper` never falls back to OAuth — which is why the file stays clean and `apiKeyHelper` lives only in the `*_api` aliases. (Example aliases are illustrative; any personal git-fetch/stash wrapper is out of scope for the docs.)
+
+### Acceptance — Part 1
+- [ ] Claude section of `docs/installation-and-setup.md` explains removing `apiKeyHelper` from `~/.claude/settings.json` and why (subprocess `claude --print` auth → 401 in subscription mode).
+- [ ] The four example aliases (`claude_api`, `claude_login`, `opus_api`, `opus_login`) are documented with the API-key-vs-subscription mechanism.
+- [ ] Docs-only: no runtime/script/behavior change in this part.
+
+---
+
+## Part 2 — Default external tool → Codex for coder, CI fixer, and merge-resolve fixer
+
+Flip the default tool preference from **Cursor-first** to **Codex-first** for three roles. Keep Claude as the terminal fallback tier. Apply to BOTH the live Bash path and the in-progress Python port (parity), and update the order-asserting tests.
+
+Surfaces (currently cursor-first):
+- **Coder (implementer) omitted-default**: `scripts/implement-bootstrap.sh` `_phase_coder_implicit()` — currently Cursor → Codex → Claude (set by #2738) → make Codex → Cursor → Claude.
+- **CI fixer waterfall**: `scripts/ship-pr.sh` `run_ci_fix_vendor` `local tiers=(cursor codex claude)` → `(codex cursor claude)`; Python `python/ci_monitor.py` (consumes `config.FIXER_TIER_ORDER`).
+- **Merge-resolve / conflict fixer waterfall**: `scripts/ship-pr.sh` recovery-waterfall `for tier in cursor codex claude` (wf_role=resolve-conflict) → `codex cursor claude`; Python `python/rebase.py` (consumes `config.FIXER_TIER_ORDER`).
+- **Shared Python config**: `python/config.py` `FIXER_TIER_ORDER: Final = ("cursor", "codex", "claude")` → `("codex", "cursor", "claude")`.
+- Tests to update: `python/test_config.py` (asserts the tuple), `scripts/test-ship-pr.sh`, `scripts/test-implement-step2-routing.sh`, plus any other order assertions surfaced during design.
+
+### Acceptance — Part 2
+- [ ] Default coder (no `--coder`) prefers Codex over Cursor (Codex → Cursor → Claude).
+- [ ] CI fixer waterfall prefers Codex over Cursor.
+- [ ] Merge-resolve / conflict fixer waterfall prefers Codex over Cursor.
+- [ ] Both Bash (`scripts/`) and Python (`python/`) paths updated for parity; `FIXER_TIER_ORDER` and its test updated.
+- [ ] Claude remains the terminal fallback tier in all three roles.
+- [ ] Explicit `--coder cursor` still works; only the omitted default changes.
+
+</feature>

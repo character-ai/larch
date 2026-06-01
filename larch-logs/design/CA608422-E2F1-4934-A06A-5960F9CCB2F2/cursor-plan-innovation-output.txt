@@ -1,0 +1,7 @@
+Reading the plan and tracing the cited codebase paths.
+
+
+1. **correctness** — `scripts/test-implement-structure.sh:504-505` pins the exact SECURITY.md sentence `Operators who want Codex on \`/implement\` can pin it explicitly with \`--coder=codex\`.` The plan updates SECURITY.md to Codex-first (#3337) but lists no harness change. Inverting that operator example (the natural post-flip edit) breaks `make test-implement-structure` / `make lint`; keeping the Codex pin sentence passes lint but leaves misleading guidance once Codex is the default.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-implement-structure.sh:504-505	SECURITY.md pin harness not in plan	Implementer inverts the Codex pin example in SECURITY.md to match Codex-first default; grep pin fails in test-implement-structure (make lint). Keeping the old sentence passes lint but documents the wrong override	Add scripts/test-implement-structure.sh to Files to modify: retarget the grep at 504-505 to the inverted Cursor-pin sentence (or neutral dual-pin wording), and state explicitly in the SECURITY.md edit that the Operators who want … example must flip from Codex to Cursor

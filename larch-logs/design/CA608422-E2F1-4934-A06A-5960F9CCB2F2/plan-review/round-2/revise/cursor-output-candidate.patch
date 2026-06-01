@@ -1,0 +1,77 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -79,7 +79,14 @@
+ ### UPDATED: `scripts/ship-pr.md`
+ Part 2, doc sync. Update the order prose to codex-first: the three-tier recovery description ("`launch-cursor-ci.sh`, then `launch-codex-ci.sh`, then `launch-claude-ci.sh`"), the "3-tier inner waterfall (Cursor → Codex → Claude, one launch per tier)" line, and the "rotates the cursor→codex→claude waterfall start tier" line. Grep `ship-pr.md` for `cursor`/`codex` ordering prose to catch any other references.
++- Also sync **first-fixer / Exit 3** prose that still names Cursor as the CI-fix tier: line ~72 (`first-fixer-non-health` bail description) and line ~118 (`run_ci_fix_vendor` special-case — "first tier (`cursor`)"). Reword to **rotated first tier** (Codex on `start_attempt=0` after the base-order flip; health failures still fall through to remaining tiers). Align with the invariant at ~154 ("keys off the first tier of the rotated list, not the literal `cursor` tier").
+ 
+ ### UPDATED: `skills/implement/SKILL.md`
+-Part 2, doc sync. The `phase_coder_select` paragraph states the implicit order as "Cursor → Codex → Claude", which becomes wrong after the flip. Reword to reflect codex-first **without** introducing the literal arrow substring `Codex → Cursor → Claude` (use commas, e.g. "the implicit implementer waterfall — Codex, then Cursor, then Claude — arrives at Claude"). Reason: `scripts/test-implement-step2-routing.sh` asserts that SKILL.md does NOT contain `Codex → Cursor → Claude` (it keeps the waterfall order script-side, not duplicated as prompt-side prose).
++Part 2, doc sync. Two targets:
++- **`phase_coder_select` (~511):** states the implicit order as "Cursor → Codex → Claude", which becomes wrong after the flip. Reword to reflect codex-first **without** introducing the literal arrow substring `Codex → Cursor → Claude` (use commas, e.g. "the implicit implementer waterfall — Codex, then Cursor, then Claude — arrives at Claude"). Reason: `scripts/test-implement-step2-routing.sh` asserts that SKILL.md does NOT contain `Codex → Cursor → Claude` (it keeps the waterfall order script-side, not duplicated as prompt-side prose).
++- **Exit 3 / `first-fixer-non-health` (~1169):** replace Cursor-only wording ("Cursor CI-fix launcher reported `LAUNCHER_FAILURE_CLASS=other`") with **rotated-first-tier** language — the bail fires when the **first tier of the rotated CI-fix list** (Codex on `start_attempt=0`) reports `LAUNCHER_FAILURE_CLASS=other`; match `scripts/ship-pr.md` ~154. Keep autonomous sub-procedure caps and `BAIL_NEEDS_USER_INPUT` semantics unchanged.
+ 
+ ### UPDATED: `SECURITY.md`
+ Part 2, security-doc sync (AGENTS.md convention). Two targeted edits in the **External tool delegation** / omitted-`--coder` surface:
+@@ -92,6 +99,10 @@
+ ### UPDATED: `docs/external-reviewers.md`
+ Part 2, doc sync. In the routing table, update the **CI / checks recovery** row (~line 103): change `(Cursor→Codex→Claude)` to `(Codex→Cursor→Claude)` so the canonical routing table matches codex-first `ship-pr.sh` behavior. Leave other rows unchanged (review-and-fix row already Codex-first; implementer row stays generic "Selection waterfall keyed on `--coder`").
+ 
++### UPDATED: `docs/linting.md`
++Part 2, doc sync (required by `scripts/implement-bootstrap.md` Step 0 cross-refs). In the `make test-implement-step2-routing` harness table row (~272), change omitted-`--coder` wording from `Cursor → Codex → Claude waterfall` to `Codex → Cursor → Claude waterfall`. No Makefile change.
++
+ ### UPDATED: `python/config.py`
+ Part 2, Python parity. Change `FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("cursor", "codex", "claude")` to `("codex", "cursor", "claude")`. No other Python code change: `ci_monitor._available_tiers()` and `rebase.py` derive their order from this tuple. Update the adjacent `# parity with ship-pr run_ci_fix_vendor` comment if it names the old order.
+ 
+@@ -99,6 +110,15 @@
+ ### UPDATED: `python/test_config.py`
+ Part 2, test. Update the equality assertion to `assert config.FIXER_TIER_ORDER == ("codex", "cursor", "claude")`.
+ 
++### UPDATED: `python/test_ci_monitor.py`
++Part 2, test (Python parity). `FIXER_TIER_ORDER` drives `run_ci_fix` / `evaluate_failure` / `monitor`; retarget cursor-first assertions, commit-script mock keys, `TierAttempt(tier=...)` stubs, and rotation comments to codex-first:
++- `test_run_ci_fix_pushed_after_winning_tier`: `launch_calls == ["codex"]`; commit-msg mock `Apply CI fixes (codex)`.
++- `test_run_ci_fix_first_fixer_non_health_after_stage` (and any tier-tagged stubs in that path): first-tier `tier="codex"` + matching commit mock.
++- `test_evaluate_failure_verify_failed_then_pushed`: rotation comment — attempt 0 → codex (`start_attempt=0`), attempt 1 → cursor (`start_attempt=1`); swap commit mock keys to match.
++- `test_run_ci_fix_short_circuit_first_fixer_non_health` (FINDING_16): assert first launch is `codex` (dynamic `launch_fn` already records tier; verify `call_log == ["codex"]` or equivalent).
++- Grep the file for remaining `Apply CI fixes (cursor)` / `tier="cursor"` order assumptions after editing.
++
+ ### UPDATED: `scripts/test-implement-step2-routing.sh`
+ Part 2, test. Three string updates:
+ - The `BOOTSTRAP_MD` assertion `'Cursor → Codex → Claude'` → `'Codex → Cursor → Claude'`.
+@@ -128,6 +150,7 @@
+ - CI fixer: flip only the base `tiers=(...)` tuple; the existing per-attempt rotation and first-fixer bail follow it.
+ - Merge-resolve: flip the literal `for tier in ...` list.
+ - Python: one tuple in `config.py`; all consumers derive from it, so no consumer edits.
++- Python tests: `test_config.py` plus `test_ci_monitor.py` tier-order mocks/assertions; grep after tuple flip.
+ - Tests assert observed launcher order or warning strings; update stubs/assertions to the codex-first order. Most ship-pr cases are order-agnostic and stay.
+ - Docs: sync the prose that states the old order (including `SECURITY.md` and `docs/external-reviewers.md`), respecting the SKILL.md arrow-substring guard.
+ 
+@@ -145,12 +168,12 @@
+ ## Failure modes
+ - **Missed order assertion** in a test file → CI red. Mitigation: grep each touched test for `cursor`/`codex` ordering and run the three named harnesses locally before finalizing.
+-- **Stale prose left behind** (a doc still says "Cursor → Codex") → drift. Mitigation: grep `scripts/ship-pr.md`, `scripts/implement-bootstrap.md`, `skills/implement/SKILL.md`, `SECURITY.md`, and `docs/external-reviewers.md` for the old order after editing.
++- **Stale prose left behind** (a doc still says "Cursor → Codex") → drift. Mitigation: grep `scripts/ship-pr.md`, `scripts/implement-bootstrap.md`, `skills/implement/SKILL.md`, `SECURITY.md`, `docs/external-reviewers.md`, and `docs/linting.md` for the old order after editing.
+ - **Accidentally flipping an out-of-scope cursor-first surface** (plan-review / brainstorm) → scope creep against Decision 1. Mitigation: those surfaces are listed in the report section below and are explicitly NOT edited.
+ 
+ ## Testing strategy
+ - `bash scripts/relevant-checks.sh` (repo-wide pre-commit hooks).
+ - `bash scripts/test-implement-step2-routing.sh`
+ - `bash scripts/test-ship-pr.sh`
+-- `make py-test` (or `python -m pytest python/test_config.py python/test_agents.py python/test_rebase.py`) — confirms the tuple flip and that the order-independent Python tests still pass.
++- `make py-test` (full suite; do not narrow to `test_config.py` only) — confirms `FIXER_TIER_ORDER`, `python/test_ci_monitor.py` codex-first mocks/assertions, and order-independent Python tests still pass.
+ - `make lint-bash32` after shell edits.
+ 
+ ## Acceptance
+@@ -158,7 +181,7 @@
+ - Part 2: default coder, CI fixer, and merge-resolve fixer prefer Codex over Cursor (`codex → cursor → claude`); Bash and Python parity (`FIXER_TIER_ORDER` + its test) updated; Claude remains terminal; explicit `--coder cursor` still works; order-asserting tests and affected prose docs synced (including `SECURITY.md` and `docs/external-reviewers.md`).
+ 
+ ## Surfaced cursor-first defaults — report (decision pending, per Round 1 Decision 1)
+@@ -169,5 +192,5 @@
+ - **Excluded (not a preference):** `/design` sketch + plan-review static spawn order launches Cursor slots first — that is parallel spawn ordering (slowest-first), not a fallback preference, so it is out of scope. The `/review` voter panel already has both a Codex-first and a Cursor-first slot (balanced).
+ 
+-diff_added: 148
+-diff_deleted: 112
+-diff_lines: 260
++diff_added: 178
++diff_deleted: 135
++diff_lines: 313

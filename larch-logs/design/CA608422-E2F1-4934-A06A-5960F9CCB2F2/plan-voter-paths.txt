@@ -1,0 +1,2 @@
+<TMPDIR>/claude-vote-output.txt
+<TMPDIR>/cursor-vote-output.txt

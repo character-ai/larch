@@ -1,0 +1,63 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,6 +1,6 @@
+ # Implementation Plan — Issue #3337
+ 
+ Two independent changes batched in one issue.
+ - **Part 1 (docs only):** document `apiKeyHelper` removal + dual-auth Claude aliases.
+ - **Part 2 (behavior):** flip the default external tool to Codex-first for the coder, CI fixer, and merge-resolve fixer roles, in Bash and the Python port, with order-asserting tests and affected prose docs synced.
+ 
+ New order everywhere is `codex → cursor → claude` (Claude stays the terminal fallback). Explicit `--coder cursor`/`--coder codex` behavior is unchanged.
+ 
+@@ -44,6 +44,18 @@
+ ### UPDATED: `skills/implement/SKILL.md`
+ Part 2, doc sync. The `phase_coder_select` paragraph states the implicit order as "Cursor → Codex → Claude", which becomes wrong after the flip. Reword to reflect codex-first **without** introducing the literal arrow substring `Codex → Cursor → Claude` (use commas, e.g. "the implicit implementer waterfall — Codex, then Cursor, then Claude — arrives at Claude"). Reason: `scripts/test-implement-step2-routing.sh` asserts that SKILL.md does NOT contain `Codex → Cursor → Claude` (it keeps the waterfall order script-side, not duplicated as prompt-side prose).
+ 
++### UPDATED: `SECURITY.md`
++Part 2, security-doc sync (AGENTS.md convention). Two targeted edits in the **External tool delegation** / omitted-`--coder` surface:
++- **Line ~105 (`/implement` Step 0 paragraph):** replace the Cursor-first narrative with Codex-first (#3337): the omitted-`--coder` default is now Codex → Cursor → Claude by external availability; cite #3337 as the current product direction (supersedes the #2738 Cursor-first reversal). Keep the narrow-scope framing ("applies only when the operator omits `--coder`"), the explicit-pin guidance (`--coder=codex` / `--coder=cursor` fail closed when unavailable), review/fix lanes remain Codex-first, and all sandbox/delegation posture for review vs implementer launchers unchanged.
++- **Line ~127 (standalone omitted-`--coder` routing note):** sync to Codex-first — "follows Codex → Cursor → Claude by external availability"; drop or rewrite the stale Phase 4 (#2738) paragraph that describes undoing #2756 back to Cursor-first and tells operators to re-pin `--coder=codex` until the next review (that guidance is inverted after this flip). Retain the informational `diff_lines` / `coder_fallback=true` sentences.
++No runtime change in this file.
++
++### UPDATED: `docs/external-reviewers.md`
++Part 2, doc sync. In the routing table, update the **CI / checks recovery** row (~line 103): change `(Cursor→Codex→Claude)` to `(Codex→Cursor→Claude)` so the canonical routing table matches codex-first `ship-pr.sh` behavior. Leave other rows unchanged (review-and-fix row already Codex-first; implementer row stays generic "Selection waterfall keyed on `--coder`").
++
+ ### UPDATED: `python/config.py`
+ Part 2, Python parity. Change `FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("cursor", "codex", "claude")` to `("codex", "cursor", "claude")`. No other Python code change: `ci_monitor._available_tiers()` and `rebase.py` derive their order from this tuple. Update the adjacent `# parity with ship-pr run_ci_fix_vendor` comment if it names the old order.
+ 
+@@ -88,7 +100,7 @@
+ - CI fixer: flip only the base `tiers=(...)` tuple; the existing per-attempt rotation and first-fixer bail follow it.
+ - Merge-resolve: flip the literal `for tier in ...` list.
+ - Python: one tuple in `config.py`; all consumers derive from it, so no consumer edits.
+ - Tests assert observed launcher order or warning strings; update stubs/assertions to the codex-first order. Most ship-pr cases are order-agnostic and stay.
+-- Docs: sync the prose that states the old order, respecting the SKILL.md arrow-substring guard.
++- Docs: sync the prose that states the old order (including `SECURITY.md` and `docs/external-reviewers.md`), respecting the SKILL.md arrow-substring guard.
+ 
+ ## Edge cases
+ - **Explicit `--coder` unchanged:** the implicit flip must not alter `_phase_coder_explicit*`; covered by the existing `#3207` explicit-waterfall assertions (kept green).
+@@ -100,7 +112,7 @@
+ ## Failure modes
+ - **Missed order assertion** in a test file → CI red. Mitigation: grep each touched test for `cursor`/`codex` ordering and run the three named harnesses locally before finalizing.
+-- **Stale prose left behind** (a doc still says "Cursor → Codex") → drift. Mitigation: grep `scripts/ship-pr.md`, `scripts/implement-bootstrap.md`, `skills/implement/SKILL.md` for the old order after editing.
++- **Stale prose left behind** (a doc still says "Cursor → Codex") → drift. Mitigation: grep `scripts/ship-pr.md`, `scripts/implement-bootstrap.md`, `skills/implement/SKILL.md`, `SECURITY.md`, and `docs/external-reviewers.md` for the old order after editing.
+ - **Accidentally flipping an out-of-scope cursor-first surface** (plan-review / brainstorm) → scope creep against Decision 1. Mitigation: those surfaces are listed in the report section below and are explicitly NOT edited.
+ 
+ ## Testing strategy
+@@ -113,7 +125,7 @@
+ ## Acceptance
+ - Part 1: the Claude section of `docs/installation-and-setup.md` documents removing `apiKeyHelper` (and why), the four aliases, and the API-key-vs-subscription mechanism; no runtime change.
+-- Part 2: default coder, CI fixer, and merge-resolve fixer prefer Codex over Cursor (`codex → cursor → claude`); Bash and Python parity (`FIXER_TIER_ORDER` + its test) updated; Claude remains terminal; explicit `--coder cursor` still works; order-asserting tests and affected prose docs synced.
++- Part 2: default coder, CI fixer, and merge-resolve fixer prefer Codex over Cursor (`codex → cursor → claude`); Bash and Python parity (`FIXER_TIER_ORDER` + its test) updated; Claude remains terminal; explicit `--coder cursor` still works; order-asserting tests and affected prose docs synced (including `SECURITY.md` and `docs/external-reviewers.md`).
+ 
+ ## Surfaced cursor-first defaults — report (decision pending, per Round 1 Decision 1)
+ These are cursor-first defaults OUTSIDE the three named roles. They are NOT flipped in this plan; listed for your decision:
+@@ -121,5 +133,5 @@
+ - **R2 — `/design` brainstorm framing lane** (`Cursor → Codex → Claude`): `skills/design/references/brainstorm.md`.
+ - **Excluded (not a preference):** `/design` sketch + plan-review static spawn order launches Cursor slots first — that is parallel spawn ordering (slowest-first), not a fallback preference, so it is out of scope. The `/review` voter panel already has both a Codex-first and a Cursor-first slot (balanced).
+ 
+-diff_added: 130
+-diff_deleted: 100
+-diff_lines: 230
++diff_added: 148
++diff_deleted: 112
++diff_lines: 260
