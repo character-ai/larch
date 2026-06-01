@@ -20,7 +20,7 @@
 2. Resolve `REPO` once (`resolve-repo.sh` → `gh repo view` → empty).
 3. `plan-block-write.sh` with `if !` guard; failure → `failed-plan-write` render, `PLAN_WRITE_OK=false`, `exit 1`.
 4. `design_reentry_marker_write` before publish/rename; non-zero → Warnings via `append-tool-failure.sh`, continue.
-5. `upsert-diagrams-comment.sh` when architecture file non-empty or `architecture-diagram.skipped` present (`--clear-architecture`); subshell stdout capture to `diagrams-architecture-upsert.stdout`; non-blocking failures.
+5. `upsert-diagrams-comment.sh` when architecture file is **non-empty** or, when `architecture-diagram.md` is **absent**, `architecture-diagram.skipped` is present (`--clear-architecture`). An empty `architecture-diagram.md` does not trigger upsert or clear. Subshell stdout capture to `diagrams-architecture-upsert.stdout`; non-blocking failures.
 6. When `SESSION_ID` non-empty: `render-final-summary.sh --pre-publish-only`, then `design-log-publish.sh` with subshell capture; parse `PUBLISH_OK`; unexpected non-zero without `PUBLISH_OK=` → `PUBLISH_OK=false` + Warnings.
 7. When `SESSION_ID` empty: `WARN=` via quiet driver (`add_warn`); skip pre-publish render, publish, and rename.
 8. `render-final-summary.sh --post-publish-only` (always on success path).
@@ -39,6 +39,11 @@ Allowlist: `PLAN_WRITE_OK`, `PUBLISH_OK`, `RENAMED`, `UPSERT_STATUS`, `ARCHITECT
 | `0` | Publish tail completed (`PLAN_WRITE_OK=true`) |
 | `1` | `plan-block-write.sh` failed (`PLAN_WRITE_OK=false` in result env) |
 | `2` | Argv / precondition error |
+| `3` | `PLAN_WRITE_OK=true` but result-env write failed after publish tail |
+
+## Migration limit
+
+`--clear-architecture` updates only the stable `<!-- larch:diagrams v1 -->` tracking-issue comment. Legacy `<!-- larch:diagrams v1 runid=… -->` orphan comments from older runs are not matched; operators may still see a stale Architecture block on those orphans after a non-architectural re-design.
 
 ## Ordering invariants
 

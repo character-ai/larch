@@ -47,6 +47,9 @@ __larch_orig_design_reentry_marker_write=\$(declare -f design_reentry_marker_wri
 eval "\${__larch_orig_design_reentry_marker_write/design_reentry_marker_write/__larch_design_reentry_marker_write}"
 design_reentry_marker_write() {
     [[ -n "\${CALL_LOG:-}" ]] && echo "design-reentry-marker-write \$*" >>"\$CALL_LOG"
+    if [[ "\${MARKER_STUB_RC:-0}" -ne 0 ]]; then
+        return "\${MARKER_STUB_RC}"
+    fi
     __larch_design_reentry_marker_write "\$@"
 }
 WRAP
@@ -124,7 +127,8 @@ export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
 reset_publish_stub_env() {
     unset PLAN_BLOCK_RC PUBLISH_STUB_RC PUBLISH_EMIT_OK PUBLISH_OK_VALUE \
         UPSERT_STUB_RC UPSERT_STATUS_VALUE ARCH_SOURCE_VALUE \
-        RENAME_STUB_RC RENAMED_OMIT_LINE RENAMED_VALUE RESOLVE_REPO_VALUE || true
+        RENAME_STUB_RC RENAMED_OMIT_LINE RENAMED_VALUE RESOLVE_REPO_VALUE \
+        MARKER_STUB_RC || true
 }
 
 init_publish_logs() {
@@ -169,6 +173,12 @@ bash "$SUBJECT" 2>/dev/null
 rc=$?
 set -e
 assert_rc "missing argv" 2 "$rc"
+
+set +e
+bash "$SUBJECT" --help 2>/dev/null
+rc=$?
+set -e
+assert_rc "--help" 0 "$rc"
 
 # --- missing step-5b ---
 D_PRE="$TMP/pre-5b"
@@ -215,10 +225,11 @@ grep -q "DESIGN_TMPDIR=${D_FAIL_CANON}" "$RENDER_LOG" \
 
 # --- happy path ---
 D_OK="$TMP/happy"
+D_OK_HOME="$TMP/happy-home"
 setup_design_tmp "$D_OK"
 printf 'graph TD\n' >"$D_OK/architecture-diagram.md"
 set +e
-run_publish "$D_OK" >/dev/null 2>&1
+HOME="$D_OK_HOME" run_publish "$D_OK" >/dev/null 2>&1
 rc=$?
 set -e
 assert_rc "happy path" 0 "$rc"
@@ -236,7 +247,7 @@ elif [[ "$plan_pos" -ge "$marker_pos" || "$marker_pos" -ge "$upsert_pos" || "$up
 else
     pass "happy path call-log ordering plan→marker→upsert→publish"
 fi
-marker_file="$HOME/.cache/larch/sessions/design-completed-42-9999"
+marker_file="$D_OK_HOME/.cache/larch/sessions/design-completed-42-9999"
 [[ -f "$marker_file" ]] || fail "happy path reentry marker file missing at $marker_file"
 grep -q 'pre-publish-only' "$RENDER_LOG" || fail "happy path missing pre-publish render"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "happy path missing post-publish render"
@@ -358,6 +369,54 @@ set -e
 assert_rc "rename failure non-blocking" 0 "$rc"
 grep -q 'WARN=.*\[DESIGNED\].*rename failed' "$D_REN_FAIL/.design-publish-result.env" \
   || fail "rename failure must emit [DESIGNED] WARN in result env"
+
+# --- rename success without RENAMED= line ---
+D_REN_OMIT="$TMP/rename-omit"
+setup_design_tmp "$D_REN_OMIT"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export RENAMED_OMIT_LINE=true
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_REN_OMIT" --issue 42 --session-id sid-1 --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "rename omit RENAMED line" 0 "$rc"
+grep -q 'WARN=.*omitted RENAMED=' "$D_REN_OMIT/.design-publish-result.env" \
+  || fail "success without RENAMED= must emit WARN in result env"
+
+# --- marker write failure non-blocking ---
+D_MARKER_FAIL="$TMP/marker-fail"
+setup_design_tmp "$D_MARKER_FAIL"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export MARKER_STUB_RC=1
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_MARKER_FAIL" --issue 42 --session-id sid-1 --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "marker failure non-blocking" 0 "$rc"
+grep -q 'PLAN_WRITE_OK=true' "$D_MARKER_FAIL/.design-publish-result.env" \
+  || fail "marker failure must still complete publish tail"
+
+# --- no diagram and no skipped sentinel ---
+D_NO_ARCH="$TMP/no-arch"
+setup_design_tmp "$D_NO_ARCH"
+rm -f "$D_NO_ARCH/architecture-diagram.md" "$D_NO_ARCH/architecture-diagram.skipped"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_NO_ARCH" --issue 1 --session-id s --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "no arch file or sentinel" 0 "$rc"
+if grep -q 'upsert-diagrams' "$UPSERT_LOG" 2>/dev/null; then
+    fail "upsert must be skipped when neither diagram nor sentinel exists"
+else
+    pass "upsert skipped when neither diagram nor sentinel"
+fi
 
 if [[ "$FAIL" -gt 0 ]]; then
     echo "FAIL: $FAIL test(s) failed ($PASS passed)" >&2

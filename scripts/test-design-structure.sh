@@ -1045,7 +1045,9 @@ grep -Fq '.design-publish-result.env' "$SKILL_MD" \
 grep -Fq 'design-publish.sh configuration error (exit 2)' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing design-publish.sh exit 2 abort prose"
 grep -Fq '.completed/step-5c' "$SKILL_MD" \
-  || fail "(15b) SKILL.md Step 5c must write .completed/step-5c on PLAN_WRITE_OK=true"
+  || fail "(15b) SKILL.md Step 5c must write .completed/step-5c sentinel"
+grep -Fq 'PUBLISH_OK=true' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c must gate step-5c on PUBLISH_OK=true when SESSION_ID is set"
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 grep -Fq 'if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh"' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must use if ! around plan-block-write.sh"
@@ -1053,6 +1055,11 @@ grep -Fq 'export ISSUE_NUMBER' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must export ISSUE_NUMBER before render-final-summary.sh"
 grep -Fq 'export SESSION_ID' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must export SESSION_ID before render-final-summary.sh"
+grep -Fq 'render-final-summary.sh' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must invoke render-final-summary.sh"
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+grep -Fq 'phase_driver_write_result_env "$RESULT_ENV"' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must write result env via phase_driver_write_result_env"
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 grep -Fq '_publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh"' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must subshell-capture design-log-publish.sh stdout"

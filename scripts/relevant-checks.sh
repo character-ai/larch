@@ -101,7 +101,11 @@ run_direct_relevant_targets() {
         case "$f" in
             skills/design/SKILL.md|skills/design/references/*.md)
                 append_target_once test-design-structure
+                append_target_once test-design-publish
                 append_target_once test-render-cost-line-callsites
+                ;;
+            skills/upgrade-larch/scripts/upgrade-larch.sh|skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh)
+                append_target_once test-upgrade-larch-retention
                 ;;
         esac
         case "$f" in

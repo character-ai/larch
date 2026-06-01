@@ -22,6 +22,9 @@ validate_session_id_flag() {
     case "$value" in
         *$'\n'* | *$'\r'*) fail 'invalid --session-id' ;;
     esac
+    if [[ -n "$value" && "$value" =~ ^[[:space:]]+$ ]]; then
+        fail 'invalid --session-id'
+    fi
 }
 
 validate_repo() {
@@ -152,7 +155,7 @@ write_result_env_and_emit() {
     for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
         emit_kv WARN "$_warn"
     done
-    phase_driver_write_result_env "$RESULT_ENV" "${_kvs[@]}" || exit 1
+    phase_driver_write_result_env "$RESULT_ENV" "${_kvs[@]}"
 }
 
 [[ -f "$DESIGN_TMPDIR/.completed/step-5b" ]] \
@@ -180,11 +183,12 @@ if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh" --issue "$ISSUE" --content-file 
         --mode "$MODE" \
         ${REPO:+--repo "$REPO"} \
         --post-publish-only || true
-    write_result_env_and_emit
+    write_result_env_and_emit || exit 1
     exit 1
 fi
 
 PLAN_WRITE_OK=true
+set +e
 
 # shellcheck source=scripts/lib-design-reentry-guard.sh
 source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"
@@ -302,5 +306,9 @@ if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
     fi
 fi
 
-write_result_env_and_emit
+if ! write_result_env_and_emit; then
+    set -e
+    exit 3
+fi
+set -e
 exit 0

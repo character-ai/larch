@@ -426,7 +426,7 @@ Content: a slim pointer to `larch-logs/implement/<RUN_ID>/plan-goals-test.md` pl
 
 ### `larch:diagrams`
 
-Architecture is written by `/design` Step 5c.5 after the `larch:plan` block is successfully written. Code Flow is written by `/implement` Step 7a only when code-flow generation succeeds.
+Architecture is written by `/design` Step 5c via `skills/design/scripts/design-publish.sh` (diagrams upsert) after the `larch:plan` block is successfully written. Code Flow is written by `/implement` Step 7a only when code-flow generation succeeds.
 
 Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (generated at Step 7a from the committed implementation diff), both embedded as Mermaid fences. The stable marker is `<!-- larch:diagrams v1 -->` with no `runid=` segment. Diagrams are embedded directly in this comment rather than written as a larch-log batch.
 
