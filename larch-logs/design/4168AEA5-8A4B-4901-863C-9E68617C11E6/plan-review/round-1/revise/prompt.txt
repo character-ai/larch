@@ -1,0 +1,270 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Implementation Plan — ship-pr → Python Phase 5: PR, merge & logging
+
+## Goal
+Port the PR / merge / logging segment of `scripts/ship-pr.sh` to 8 stdlib-only Python modules under `python/`, with colocated tests and focused bash-parity coverage. Dev/CI-only (strangler-fig): no live `/implement` wiring until Phase 7.
+
+## Approach
+Reuse existing Phase 1–6 seams; do not re-implement what already exists. `proc.run` (Runner seam), `gh.py` (idempotent `pr_create`, `pr_merge`, `issue_comment`, `issue_edit`, file-backed redacted `_body_file_args`), `git.py` (`push`, `force_push_with_lease`, `force_push_with_lease_expecting`, `fetch`, `log_subject`), `redact.py`, `logging_util.py` (`BreadcrumbWriter`, `JsonlJournal`), `run_context.py` (`RunContext`), `outcomes.py`, `config.py`, `retry.py`.
+
+Each module exposes functions over an injected `proc.Runner` and returns immutable frozen dataclasses, mirroring `ci_monitor.py` (`CiStatus`/`Decision`/`MonitorResult`). All gh/git side effects flow through the Runner — no module mutates the network or git tree outside the seam, so tests inject a fake Runner with no live calls.
+
+Per Round 1 Decision 3, modules emit a new typed format (frozen dataclasses + stdlib `json`/NDJSON), not byte-compatible with the `.sh` artifacts; reconcile with committed-log / `/report-tokens` consumers at Phase 7. Per Decision 2, parity tests assert semantic equivalence, not byte-identical stdout.
+
+Implementation sequence (the issue invites sub-step sequencing within one phase): seam extensions first, then logging (run_logs, tokens), then the PR path (push, pr_body, pr), then issue/oos (tracking_issue, oos), then merge.
+
+`python/` modules are NOT under `scripts/` or `skills/<name>/scripts/`, so the script-md-sibling rule does not apply; documentation lives in `python/README.md`.
+
+## Files to modify/create
+
+### NEW: `python/run_logs.py`
+larch-log init plus a typed manifest lifecycle. `Manifest` frozen dataclass (`status` "partial"/"done", timestamps, version, `steps_ran`); `init_run()`, `update_manifest()`, and `load_or_recover_manifest()` that reconstructs state from run-dir contents when manifest.json is lost or corrupt mid-run. The reusable `flush_logs(ctx, *, phase)` entrypoint is called before every push/merge and post-merge: it flushes execution-issues, writes final-report inputs, renders token/timing batches, and updates the manifest. Atomic write helper (mktemp→rename), slug validation (`[A-Za-z0-9._-]+`, no `..`, no slashes), path-traversal guard. Ports `larch-log.sh`, `lib-larch-log.sh`, `refresh-run-logs.sh` (including its merge-state probe → skip-when-already-merged). Reuses `redact.redact` and `logging_util`.
+
+### NEW: `python/tokens.py`
+Token/timing scraping from agent runs into typed records. `TokenRecord` frozen dataclass (tool, totals, input/output/cache_read/cache_create); `normalize_sidecar()` (codex/cursor sidecar → record), `append_token_record()` (typed NDJSON append), `scrape_run()` (token + timing aggregation). Ports `append-token-record.sh` and the token/timing report scraping. Typed format per Decision 3.
+
+### NEW: `python/tracking_issue.py`
+Tracking-issue lifecycle over `gh.issue_edit` / `gh.issue_comment`. `rename(state)` strips exactly one `[STATE]` prefix (including legacy `[IN PROGRESS]`/`[PLANNED]`), prepends the new prefix, and truncates to 256 chars preserving the prefix; states designing|designed|implementing|done|stalled. `append_comment(marker)` supports an optional lifecycle marker (validated charset, no `--` substring). `upsert_summary` / `upsert_token_report` are idempotent via an HTML marker comment. `link_pr_closes(n)` ensures `Closes #N` is in the PR body so the issue auto-closes on merge. Redaction choke point: compose → redact → truncate, never reversed; fail-closed when redaction fails. Ports `tracking-issue-write.sh` subcommands and the final-summary/token-report upsert behavior of the final-report writer.
+
+### NEW: `python/pr_body.py`
+Compose the PR body: summary bullets (port `compose-pr-summary.sh` — goal line, test-file count, cross-dir count), an embedded sanitized Mermaid diagram, a test plan, and `Closes #N`. Mermaid sanitizer (port `sanitize-mermaid-fragment.sh`): `sanitize_fragment()` → `MermaidResult(status, reason_tokens, fence_count)` rejecting `pipe-in-node-label`, `br-in-participant-alias`, `dollar-in-participant-alias`, `unclosed-frontmatter`. Updates an existing PR body through the new `gh.pr_edit_body` (file-backed, redacted). Ports `compose-pr-summary.sh`, `sanitize-mermaid-fragment.sh`, `gh-pr-body-update.sh`.
+
+### NEW: `python/push.py`
+`push_branch(ctx)` pushes the current branch with retries (3 attempts, jittered backoff) and fork-aware remote selection (origin vs upstream). Thin orchestration over `git.push` / `git.push_set_upstream` + `retry`, with stderr de-duplication on repeated failures. Ports `git-push.sh`.
+
+### NEW: `python/pr.py`
+`ensure_pr(ctx, body)` is idempotent: push first via `push.py`, then detect an existing open PR for the branch and reuse `gh.pr_for_branch` / `gh.pr_create` (already recovers from create-conflict), then link the tracking issue. Returns `PrResult(number, url, status="created"|"existing")`. Honors `--draft`; under `repo_unavailable` stays local-only (no PR). Thin port of `create-pr.sh` over existing `gh.pr_create`.
+
+### NEW: `python/oos.py`
+Out-of-scope disposition gate. `disposition_ok(...)` counts non-security accepted OOS entries against filed-URLs / inline-triage / rejected markers and passes when any one covers them; fork-mode / repo-unavailable skip. `stage_accepted_oos()` files accepted items as follow-up issues via `gh` + `tracking_issue` (caller supplies the accepted set). Ports `skills/implement/scripts/oos-disposition-gate.sh` and `scripts/oos-disposition-shared.inc.bash`.
+
+### NEW: `python/merge.py`
+`merge_pr(ctx)` → `MergeResult(result, error)` classifying all 9 variants: `merged`, `admin_merged`, `already_merged`, `main_advanced`, `ci_not_ready`, `version_already_published`, `policy_denied`, `admin_failed`, `error`. Ports `merge-pr.sh`: mergeStateStatus probe (UNKNOWN retries 4 initial / 3 post-push), BEHIND → `main_advanced`, flush-commit recovery (HEAD ahead of PR OID only by `chore(larch-logs):`-prefixed flush commits → force-with-lease via `git.force_push_with_lease_expecting`, then re-probe; abort recovery if any non-flush commit is present), version-race gate (`Bump version to X.Y.Z` commit plus matching origin/main plugin.json → `version_already_published`), admin-eligible states (CLEAN/UNSTABLE/HAS_HOOKS/BLOCKED), admin-first fallback to plain squash (`--no-admin-fallback` → plain only; failure → `policy_denied`), head-divergence → re-rebase signal. Honors skip modes: `--merge=false` (no merge), `--draft`, `--forked` (CI dry-run; no merge or auto-close), `repo_unavailable` (local-only). Calls `run_logs.flush_logs(phase="pre-merge")` before the merge and `flush_logs(phase="post-merge")` after. Needs `gh.pr_merge(admin=True)` and `gh.pr_merge_state`.
+
+### UPDATED: `python/gh.py`
+Add `admin: bool = False` to `pr_merge` (append `--admin`). Add `pr_merge_state_read` / `pr_merge_state` (`gh pr view --json mergeStateStatus,headRefOid` → `MergeState` frozen dataclass). Add `pr_edit_body(number, body)` (file-backed redacted PR-body update, parity with `gh-pr-body-update.sh`).
+
+### UPDATED: `python/git.py`
+Add `push_set_upstream(remote, refspec)` (`git push -u`) and a `remotes()` listing helper for fork-aware remote selection in `push.py`. (push / force-push / fetch / log_subject already exist.)
+
+### UPDATED: `python/config.py`
+Add Phase 5 constants: lifecycle title prefixes and the states tuple, merge-result string literals, manifest status values, OOS disposition thresholds, mermaid reason tokens, run-log batch names, token sidecar keys. `TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX` already exists for flush-commit detection.
+
+### UPDATED: `python/README.md`
+Add a Phase 5 layout entry naming the 8 modules and the dev/CI-only-until-Phase-7 note.
+
+### NEW: `python/test_run_logs.py`
+Unit tests: manifest lifecycle, recovery from lost/corrupt manifest, `flush_logs` per-phase behavior and merge-state skip, atomic write, slug/path-traversal guards.
+
+### NEW: `python/test_tokens.py`
+Unit tests: sidecar normalization (codex/cursor), typed NDJSON append, token/timing aggregation, empty-input no-op.
+
+### NEW: `python/test_tracking_issue.py`
+Unit tests: rename prefix stripping/truncation across states, lifecycle-marker validation, idempotent upserts, `Closes #N` linking, redaction-failure fail-closed.
+
+### NEW: `python/test_pr_body.py`
+Unit tests: summary bullets, Mermaid `MermaidResult` reason tokens, file-backed redacted body update.
+
+### NEW: `python/test_push.py`
+Unit tests: retry/backoff, fork-aware remote selection, stderr de-dup, detached-HEAD failure.
+
+### NEW: `python/test_pr.py`
+Unit tests: idempotent existing-PR reuse, create-conflict recovery, draft, repo-unavailable local-only.
+
+### NEW: `python/test_oos.py`
+Unit tests: disposition pass/fail counting paths, fork/repo-unavailable skip, accepted-item staging.
+
+### NEW: `python/test_merge.py`
+Unit tests: the exhaustive result-variant table, flush-commit recovery, version-race gate, admin-first fallback, all skip modes, pre/post flush calls.
+
+### NEW: `python/test_merge_bash_parity.py`
+Focused bash-parity: drive scripted gh/git fixtures through `merge.merge_pr` and the matching `merge-pr.sh` paths; assert identical result-variant classification across the table.
+
+### NEW: `python/test_pr_body_bash_parity.py`
+Focused bash-parity: mermaid `REASON_TOKEN` set vs `sanitize-mermaid-fragment.sh`; compose-summary bullets vs `compose-pr-summary.sh` (semantic equivalence per Decision 2).
+
+### UPDATED: `python/test_stdlib_only.py`
+If its import scan is an explicit module list (not a glob), add the 8 new modules so stdlib-only enforcement covers them; no change if glob-based.
+
+## Edge cases
+- Manifest lost/corrupt mid-run → `load_or_recover_manifest()` rebuilds from run-dir contents; a flush never crashes.
+- Merge `mergeStateStatus` UNKNOWN/empty → bounded retries (4 initial / 3 post-push) before classifying `error`.
+- Flush commits push HEAD ahead of the PR OID → recover only when the extra commits are exclusively `chore(larch-logs):` flushes; force-with-lease on the expected OID, then re-probe; abort recovery if any non-flush commit is present.
+- Version race → re-check origin/main plugin.json both before and after the OID precondition to narrow the TOCTOU window → `version_already_published`.
+- `--forked` → never merge, never auto-close; OOS items are reported, not filed.
+- `repo_unavailable` → local-only: skip PR create, push, merge, and remote upserts.
+- Mermaid with unclosed frontmatter → fail-closed `rejected`; do not embed.
+- Tracking-issue title over 256 chars after the prefix → truncate the user tail, preserve the prefix.
+- Outbound redaction helper failure → fail-closed; never write an unredacted gh body.
+
+## Failure modes
+1. Silent double-merge or double-PR if idempotency regresses. Earliest signal: idempotency tests for `ensure_pr` and `already_merged`. Mitigation: ground-truth probes (`gh.pr_for_branch`, mergeStateStatus) before any mutation; assert no-op on re-run.
+2. Unredacted secret or path reaches a public gh body. Earliest signal: redaction unit tests plus reuse of the `_body_file_args` choke point. Mitigation: all outbound bodies file-backed through `redact.redact`; fail-closed.
+3. `flush_logs` skipped at a push/merge boundary → lost token/timing/exec-issue logs. Earliest signal: unit test asserting `merge_pr` flushes pre and post. Mitigation: a single `flush_logs()` entrypoint at every boundary; manifest `steps_ran` records coverage.
+
+## Testing strategy
+Colocated `test_<module>.py` per module with a fake `proc.Runner` (scripted argv → CommandResult): typed-result assertions, idempotency (re-run with an existing PR / already-merged branch → no-op), skip modes, redaction, and the exhaustive merge result-variant table (acceptance criterion). Focused bash-parity harnesses for the highest-risk ports (merge variants; mermaid-sanitize + compose-summary), sourcing the `.sh` like `test_checks_bash_parity.py`; redaction parity is inherited from existing `test_redact.py`. Must pass `make py-lint` (ruff + pylint + pyright) and `make py-test` (pytest). New `test_*.py` are auto-discovered and new modules are covered by the lint scan, so no Makefile / CI / workflow changes are needed (python-lint / python-tests jobs already exist). No live gh/git: every side effect runs through the injected fake Runner.
+
+## Diff size estimate
+Eight new modules plus colocated unit tests and two focused parity harnesses; small additive edits to gh.py / git.py / config.py / README.md. This is a large, additive bundle (the issue calls it a "large bundle"), with heavy seam reuse keeping each module lean.
+
+diff_lines: 3400
+
+</plan>
+
+<findings>
+### FINDING_1: `already_merged` in `MergeResult` vs eight `merge-pr.sh` literals
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: `MergeResult` / `merge.py` lists `already_merged` as a ninth merge-pr variant while `test_merge_bash_parity` claims identical classification to `merge-pr.sh`, which documents and emits only eight `MERGE_RESULT` values (no `already_merged`). `already_merged` is set by ship-pr / ci-wait (`ACTION=already_merged`, remapping `version_already_published` when the PR is already `MERGED` in `scripts/ship-pr.sh`), not by `merge-pr.sh`. Parity harness or unit tables will fail, encode a non-bash outcome, or force extra `merge.py` behavior with no bash anchor.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Limit merge.merge_pr to the eight merge-pr.sh literals; treat already_merged as Phase 7 driver/orchestrator state, or exclude it from test_merge_bash_parity and document the split.
+  - From Cursor-Edge: Limit merge.py port to merge-pr.sh MERGE_RESULT literals (eight variants). Treat already_merged as Phase 7 driver/state mapping; exclude it from test_merge_bash_parity equivalence
+  - From Cursor-Innovation: Limit merge.merge_pr to merge-pr.sh outcomes; drop already_merged from merge.py and the parity table or test it only via a separate ship-pr driver helper
+
+
+### FINDING_2: Flush-commit recovery predicates vs `merge-pr.sh`
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Concern**: The plan’s flush-commit recovery spec only requires `chore(larch-logs):`-prefixed commits, but `scripts/merge-pr.sh:272-285` requires subject prefix `chore(larch-logs): flush `, at most five commits, `larch-logs/`-only paths in the range, and `PR_HEAD_OID` ancestor. A broader prefix allows wrong force-with-lease recovery after rebase or mixed commits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Spell out the four merge-pr.sh predicates in merge.py/config and add parity cases K1/P1/N1/N2a from scripts/test-merge-pr.sh
+
+
+### FINDING_3: `ensure_pr` push path missing create-pr force-with-lease escalation
+- **Reviewer(s)**: Cursor-Edge, Cursor-Innovation
+- **Severity**: important
+- **Concern**: The `pr.py` push path ports `git-push.sh` only. `create-pr.sh:150-176` escalates to `git-force-push.sh` when push fails on the existing-OPEN-PR fast path. An `ensure_pr` that only retries plain push can leave the remote stale while returning `PR_STATUS=existing`, or fail where bash escalates to force-with-lease.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Mirror create-pr push: on existing PR reuse, retry then force-with-lease via git.force_push_with_lease_expecting; cover in test_pr.py
+  - From Cursor-Innovation: Port create-pr push semantics inside pr.py (upstream -u push plus existing-PR NFF recovery); keep push.py for plain git-push.sh call sites only
+
+
+### FINDING_4: `MergeResult.error` lacks merge diagnostic redaction
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Concern**: `merge.py` `MergeResult.error` has no merge diagnostic redaction step. `scripts/merge-pr.sh:54-74` `redact_merge_diagnostic` scrubs `gh` stderr before `ERROR=`; unredacted tokens in `MergeResult.error` can reach logs/state in Phase 7.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Redact and cap merge error text like merge-pr.sh before populating MergeResult.error
+
+
+### FINDING_5: `RunContext` / APIs omit PR number, state file, and merge result for merge and flush
+- **Reviewer(s)**: Cursor-Edge, Cursor-Innovation
+- **Severity**: important
+- **Concern**: `merge_pr(ctx)` and `flush_logs(ctx)` omit how `PR_NUMBER` and `MERGE_RESULT` are supplied. `RunContext` has no `pr_number` or `state_file` / `merge_result`; `refresh-run-logs.sh` needs `--state-file` for `MERGE_RESULT` and fail-closed skip when the file is missing (`scripts/refresh-run-logs.sh:25-32`). `flush_logs` cannot fail-closed skip after merge without ad hoc state-file parsing unspecified in the plan.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Extend RunContext or explicit parameters with state_file and pr_number; document flush_logs merge probe including missing-state-file REASON=state-file-missing-fail-closed
+  - From Cursor-Innovation: Add merge_result (or state-file reader) to RunContext/flush_logs signature and unit-test merged|admin_merged|already_merged skip paths
+
+
+### FINDING_7: Flush recovery force-push semantics vs `git-force-push.sh`
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Flush-commit recovery plans `git.force_push_with_lease_expecting` but `merge-pr.sh` calls `git-force-push.sh` with fetch race-retry and `PUSHED=` status (`scripts/merge-pr.sh:290-305`, `scripts/git-force-push.sh:1-14`). Python may report `error` while bash recovers or push with weaker lease semantics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Port or wrap git-force-push.sh recovery in merge.py; add parity tests for flush-only ahead paths
+
+
+### FINDING_8: `flush_logs` omits transcript capture and step9a1 manifest steps
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: `flush_logs` omits `refresh-run-logs.sh` steps: `capture-session-transcript` (`scripts/refresh-run-logs.sh:86-95`) and `steps_ran.step9a1` manifest update (`scripts/refresh-run-logs.sh:106-130`). Pre-push refresh drops transcript batch and step9a1 audit flag versus live implement runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Extend flush_logs contract to list and test those sub-steps or document an explicit Phase 7 deferral with parity gap called out
+
+
+### FINDING_9: `oos.py` `stage_accepted_oos` beyond gate-only bash contract
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: `stage_accepted_oos` files follow-up issues via `gh`; bash Phase 5 only ports `oos-disposition-gate.sh` counting (`skills/implement/scripts/oos-disposition-gate.sh`). Filing stays in `/issue` Step 9a.1; the Python module invents out-of-scope filing logic and drifts from gate-only contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Limit oos.py to disposition_ok parity; defer stage_accepted_oos to Phase 7 or drop it from this bundle
+
+
+### FINDING_10: Flush recovery five-commit cap omitted from plan edge cases
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: latent
+- **Concern**: `merge-pr.sh` caps flush recovery at five commits (`scripts/merge-pr.sh:282`) but plan edge cases omit the cap. Six flush-only commits abort recovery in bash but may pass in Python.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Document and test FLUSH_COUNT le 5 in merge flush-recovery
+
+
+### FINDING_11: Pre-push clean-tree guard missing from proposed PR push path
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The proposed PR push path omits the pre-push clean-tree guard from `create-pr.sh` (`scripts/create-pr.sh:122-132`). Uncommitted working-tree fixes can be silently excluded from the pushed PR branch, breaking the documented data-loss guard.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add a minimal git status --porcelain guard before push_branch or ensure_pr pushes, and cover dirty-tree refusal in test_push.py or test_pr.py
+
+
+### FINDING_12: Single `flush_logs` entrypoint conflates commit-capable pre-merge vs tmpdir-only post-merge
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: `flush_logs` is planned as one entrypoint for pre-push/pre-merge and post-merge, but `refresh-run-logs` includes a git commit while post-merge must be tmpdir-only (`scripts/ship-pr.sh:3587-3592`, `scripts/larch-log.sh:501-508`). Calling a commit-capable flush after merge can trip the post-merge sentinel/default-branch guard or try to create a forbidden post-merge log commit.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Split the contract: pre-push/pre-merge may commit logs; post-merge only recovers/updates the tmpdir manifest and final report, with a test proving no git add/commit runs post-merge
+
+---
+
+**Merge notes (for voters, not machine fields):** Sixteen input slots collapsed to twelve findings. `already_merged` (slots 1, 2, 8), create-pr push escalation (4, 9), and RunContext/state-file wiring (6, 12) were merged on shared risk. Flush predicate breadth (3) vs five-commit cap (14), force-with-lease escalation (3/4/9) vs dirty-tree guard (15), and flush predicate spec (2) vs `git-force-push.sh` recovery port (7) stayed separate because fixes or test surfaces differ. No `[OUT_OF_SCOPE]` tags in the supplied input.
+
+
+</findings>
+
+<feature>
+ship-pr -> Python Phase 5: PR, merge & logging
+
+> Part of the **ship-pr.sh → Python** rework. **Full plan, research findings, and cross-phase context: #3132.**
+
+## Shared context (applies to every phase)
+
+**Why this exists.** `scripts/ship-pr.sh` (~3,400 lines) is the `/implement` post-review state machine (rebase → checks → bump → PR → CI → merge → post-merge). Its high failure rate is the motivation for a typed, unit-tested Python rewrite under a new flat `python/` directory shared by all larch skills.
+
+**Locked architecture decisions:**
+1. **Single idempotent process** — recovery via gh/git **ground truth**, NOT a persisted state file. No `ship-pr-state.sh`, no `--resume-phase`. (Idempotency matters most here: re-runs must detect an already-created PR / already-merged state.)
+2. **Strangler-fig cutover** — zero change to the live `/implement` path until Phase 7.
+3. **Reimplement logic in Python** — shell out only to `git`, `gh`, agent CLIs, and the consumer test runner.
+
+**Runtime vs. dev dependencies.** Runtime imports **stdlib only** (Python ≥ 3.12). `ruff`/`pylint`/`pyright`/`pytest` are **dev/CI-only**.
+
+**Conventions:** flat `python/` (no subdirs); tests colocated `python/test_<module>.py`; constants in `config.py`; immutable frozen dataclasses; injectable `proc.run` seam; **all outbound gh bodies file-backed and through `redact.py`**.
+
+**Quality bars:** pass **Python Lint** + **Python Tests**; **bash-parity test** per ported component; do not delete a shared `.sh` until a caller grep is zero.
+
+**This phase is worked by `/design`**, then `/implement`.
+
+---
+
+## Phase 5 — PR, merge & logging
+
+The middle of the pipeline: flush logs, push, open/locate the PR, link the tracking issue, and merge. Mostly mechanical wrappers, but several historically-omitted behaviors must be folded in. (Large bundle — `/design` may sequence it as sub-steps, but it ships as one phase.)
+
+### Modules to create
+- **`run_logs.py`** (+ **`tokens.py`**) — larch-log init; **manifest lifecycle** (`status=partial`/`done` + recovery if the manifest is lost mid-run); batch flush (`token-report`, `timing-report`, `session-transcript`); execution-issue / tool-failure logging; **a reusable `flush_logs()` called before *every* push/merge and post-merge — not once**; token/timing **scraping from agent runs**.
+- **`tracking_issue.py`** — rename the tracking issue to `[DONE]`/`[STALLED]`; `final-summary` + `token-report` comment upserts; **link the PR (`Closes #N`) so the issue auto-closes on merge**.
+- **`pr_body.py`** — compose the PR body: summary (from the manifest / `compose-pr-summary`), embedded **sanitized code-flow Mermaid diagram**, test plan, `Closes #N`.
+- **`push.py`** — push the branch (retries; fork-aware: `origin` vs `upstream`).
+- **`pr.py`** — **idempotent** "does a PR already exist for this branch?"; create it if not; link the tracking issue; file-backed redacted body.
+- **`oos.py`** — out-of-scope **disposition gate**; file accepted OOS items as follow-up issues.
+- **`merge.py`** — `gh pr merge` with **admin-merge fallback**; classify the result variants (`merged` / `admin_merged` / `already_merged` / `main_advanced` / `ci_not_ready` / `version_already_published` / `policy_denied` / `admin_failed` / `error`); **head-divergence → signal "re-rebase"**; honor **skip modes** (`--merge=false` → PR only, `--draft`, `--forked` → CI dry-run with no merge/auto-close, `repo_unavailable` → local-only, no PR).
+
+### `.sh` to port / read
+`larch-log.sh`, `refresh-run-logs.sh`, `write-final-report.sh`, `append-token-record.sh`, `append-execution-issue.sh`, `append-tool-failure.sh`, `compose-pr-summary.sh`, `sanitize-mermaid-fragment.sh`, `tracking-issue-write.sh`, `create-pr.sh`, `gh-pr-body-update.sh`, `git-push.sh`, `oos-disposition-gate.sh`, `merge-pr.sh`.
+
+### Acceptance criteria
+- Idempotency tests: re-running with an existing PR / already-merged branch is a no-op.
+- The merge result-variant routing table is exhaustively unit-tested.
+- Skip modes (`--merge=false`, draft, forked, repo-unavailable) each tested.
+- gh bodies are file-backed and redacted; parity tests vs the ported `.sh`.
+
+### Dependencies
+**Blocked by:** Phase 1.
+
+
+</feature>
