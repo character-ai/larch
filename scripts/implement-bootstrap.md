@@ -111,6 +111,7 @@ Phase 3 uses permissive `should_run_phase_plan_materialize`: it runs when there 
 | `session-setup.sh` | `phase_infra` |
 | Inline `write-session-id` + `token-claude-source` + `write-session-env` + ledgers | `phase_infra` |
 | Resume-tail tmpdir/session-env reuse after dirty-tree recovery | `phase_infra` (`--resume-plan-tail`) |
+| Resume-tail `plugin-root.env` sync on legacy tmpdirs | `phase_infra` (`--resume-plan-tail`): when `$IMPLEMENT_TMPDIR/plugin-root.env` is absent and `LARCH_CLAUDE_PLUGIN_ROOT` is non-empty, sources `write-session-env.sh` (guard-scoped; no errexit leak) and calls `emit_plugin_root_env` idempotently; skip/invalid values return `0` inside the helper |
 | Three-key `read-session-env-key.sh` rehydrate | `phase_infra` (re-read for parity) |
 | Sentinel read / resume (`tracking-issue-read.sh --sentinel`) | `phase_tracking` Branch 1 |
 | Issue state probe (`get-issue-state.sh`) | `phase_tracking` Branch 2 |
@@ -155,6 +156,8 @@ Audit of the `phase_plan_materialize` checkpoint-and-tail region around lines ~7
 | `emit_plan_materialize_breadcrumbs` (~915) | Breadcrumb emitter at function tail; reads env state and emits the applicable Step 0 progress lines. Safe to re-run. |
 
 **`phase_tracking` cross-reference (lines ~545–587):** On `RESUME_PLAN_TAIL=true`, `phase_tracking` short-circuits before `rename_to_implementing`, `run_larch_log_init`, or `post-tracking-issue.sh` can re-run, so the duplicate tracking-metadata concern in issue #2977 is already mitigated there.
+
+**Resume-tail `plugin-root.env` sync (`phase_infra`, lines ~587–596):** On `--resume-plan-tail`, when `$IMPLEMENT_TMPDIR/plugin-root.env` is absent and `LARCH_CLAUDE_PLUGIN_ROOT` is non-empty in the persisted `session-env.sh`, bootstrap sources `write-session-env.sh` (guard-scoped; no errexit leak) and calls `emit_plugin_root_env` idempotently. Skip when the sibling already exists or the key is empty; invalid values are ignored inside the helper (`return 0`). Legacy session-env-only tmpdirs therefore gain the sibling before post-Step-0 SKILL blocks that source-only rehydrate.
 
 **Scope:** This audit covers the canonical “dirty-tree bail → single resume” sequence (exercised by `test-implement-bootstrap.sh` case B7-plan-dirty-tree resume tail). Multi-resume sequences (resume → dirty-tree → resume again) are out of scope.
 

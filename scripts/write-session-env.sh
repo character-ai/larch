@@ -25,10 +25,45 @@
 #
 # Output: Writes a KEY=VALUE file to --output path (atomic via temp+mv).
 #         This file is not safe to source; parse with read-session-env-key.sh.
+#         Also writes a sourceable sibling plugin-root.env in dirname(--output)
+#         when CLAUDE_PLUGIN_ROOT is set and --output is not /dev/null:
+#           CLAUDE_PLUGIN_ROOT=<value>
+#           export CLAUDE_PLUGIN_ROOT
 #         Values are not shell-quoted; callers MUST validate inputs before writing.
-#         When --output is /dev/null, the output is silently discarded.
+#         When --output is /dev/null, the main output is silently discarded and
+#         plugin-root.env is not written.
 # Exit codes: 0 success, 1 invalid args
 
+# Source-safe: emit_plugin_root_env is callable from implement-bootstrap.sh resume-tail
+# without enabling errexit or running argv parsing in the parent shell.
+emit_plugin_root_env() {
+  local plugin_root_env_path="$1"
+  local value="$2"
+
+  if [[ -z "$value" ]]; then
+    return 0
+  fi
+  if [[ ${#value} -gt 512 || ! "$value" =~ ^[A-Za-z0-9_./~+-]+$ ]]; then
+    return 0
+  fi
+  if [[ "$value" != /* ]]; then
+    return 0
+  fi
+
+  local tmpfile
+  tmpfile=$(mktemp "${plugin_root_env_path}.tmp.XXXXXX") || return 1
+  {
+    echo "CLAUDE_PLUGIN_ROOT=$value"
+    echo "export CLAUDE_PLUGIN_ROOT"
+  } >"$tmpfile" || {
+    rm -f "$tmpfile"
+    return 1
+  }
+  mv "$tmpfile" "$plugin_root_env_path" || return 1
+  return 0
+}
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -188,4 +223,10 @@ else
   TMPFILE=$(mktemp "${OUTPUT}.tmp.XXXXXX")
   echo "$CONTENT" > "$TMPFILE"
   mv "$TMPFILE" "$OUTPUT"
+  if [[ -n "$CLAUDE_PLUGIN_ROOT_VALUE" ]]; then
+    PLUGIN_ROOT_ENV="$(dirname "$OUTPUT")/plugin-root.env"
+    emit_plugin_root_env "$PLUGIN_ROOT_ENV" "$CLAUDE_PLUGIN_ROOT_VALUE"
+  fi
+fi
+
 fi

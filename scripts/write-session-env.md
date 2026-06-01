@@ -21,9 +21,29 @@ session setup copy the previous session's `larch-logs` subtree into the fresh
 tmpdir before additional batches are written.
 
 It may also write `LARCH_CLAUDE_PLUGIN_ROOT` when `CLAUDE_PLUGIN_ROOT` is set in
-the writer's environment. `/implement` uses this durable key so later Bash
-blocks can recover `${CLAUDE_PLUGIN_ROOT}` from `$IMPLEMENT_TMPDIR/session-env.sh`
-without sourcing the file.
+the writer's environment. `/implement` persists this key in `session-env.sh` for
+resume/bootstrap and pre-bootstrap awk fallback; post-Step-0 Bash blocks recover
+`${CLAUDE_PLUGIN_ROOT}` by sourcing the sibling `plugin-root.env` (below), not
+by parsing or sourcing `session-env.sh`.
+
+When `CLAUDE_PLUGIN_ROOT` is set and `--output` is not `/dev/null`, the writer
+also emits a sourceable sibling `plugin-root.env` in `dirname(--output)`:
+
+```bash
+CLAUDE_PLUGIN_ROOT=<value>
+export CLAUDE_PLUGIN_ROOT
+```
+
+Written atomically via temp+mv. Skipped when `CLAUDE_PLUGIN_ROOT` is empty or
+`--output` is `/dev/null`. Unlike `session-env.sh`, `plugin-root.env` is safe
+to source (only the one export). This output is additive for every
+`write-session-env.sh` caller; only `/implement`'s `SKILL.md` consumes it today.
+
+`emit_plugin_root_env <path> <value>` is defined before the `BASH_SOURCE` argv0
+guard so `implement-bootstrap.sh` can source this script for resume-tail sync
+without enabling errexit or running argv parsing in the parent (`set -uo pipefail`
+in bootstrap). Skip or invalid values use `return 0` inside the helper; `exit` is
+argv0-only.
 
 It may also write `LARCH_DYNAMIC_ARCHETYPES_MAX` when the caller passes
 `--dynamic-archetypes <N>` (integer 0–8). `/implement` uses this to propagate

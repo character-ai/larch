@@ -276,6 +276,115 @@ else
 fi
 
 # ------------------------------------------------------------
+# G. write-session-env.sh — plugin-root.env sibling
+# ------------------------------------------------------------
+
+plugin_root_value="$TMPDIR_TEST/plugin-root"
+plugin_out="$TMPDIR_TEST/plugin-root-session-env.sh"
+plugin_root_env="$TMPDIR_TEST/plugin-root.env"
+
+if CLAUDE_PLUGIN_ROOT="$plugin_root_value" "$WRITE_SCRIPT" \
+    --output "$plugin_out" --repo a/b --repo-unavailable false 2>/dev/null; then
+    pass
+else
+    fail "G.1 plugin-root.env emit rejected"
+fi
+
+if [[ ! -f "$plugin_root_env" ]]; then
+    fail "G.1 plugin-root.env missing"
+else
+    pass
+fi
+
+if ! grep -Fxq "CLAUDE_PLUGIN_ROOT=$plugin_root_value" "$plugin_root_env"; then
+    fail "G.1 plugin-root.env missing CLAUDE_PLUGIN_ROOT line"
+else
+    pass
+fi
+
+if ! grep -Fxq 'export CLAUDE_PLUGIN_ROOT' "$plugin_root_env"; then
+    fail "G.1 plugin-root.env missing export line"
+else
+    pass
+fi
+
+if ! ( unset CLAUDE_PLUGIN_ROOT
+       # shellcheck disable=SC1090
+       . "$plugin_root_env"
+       [[ "$CLAUDE_PLUGIN_ROOT" == "$plugin_root_value" ]] ); then
+    fail "G.1 plugin-root.env does not source cleanly"
+else
+    pass
+fi
+
+devnull_env="$TMPDIR_TEST/devnull-plugin-root.env"
+if CLAUDE_PLUGIN_ROOT="$plugin_root_value" "$WRITE_SCRIPT" \
+    --output /dev/null --repo a/b --repo-unavailable false 2>/dev/null; then
+    pass
+else
+    fail "G.2 /dev/null output rejected"
+fi
+if [[ -f "$devnull_env" || -f /dev/plugin-root.env ]]; then
+    fail "G.2 plugin-root.env written for /dev/null output"
+else
+    pass
+fi
+
+unset_dir="$TMPDIR_TEST/unset-plugin-root"
+mkdir -p "$unset_dir"
+rm -f "$TMPDIR_TEST/plugin-root.env"
+unset_out="$unset_dir/session-env.sh"
+if env -u CLAUDE_PLUGIN_ROOT "$WRITE_SCRIPT" \
+    --output "$unset_out" --repo a/b --repo-unavailable false 2>/dev/null; then
+    pass
+else
+    fail "G.3 empty CLAUDE_PLUGIN_ROOT rejected"
+fi
+if [[ -f "$unset_dir/plugin-root.env" ]]; then
+    fail "G.3 plugin-root.env written when CLAUDE_PLUGIN_ROOT unset"
+else
+    pass
+fi
+
+# G.4 — resume-tail sibling sync via emit_plugin_root_env (legacy tmpdir).
+resume_tmp="$TMPDIR_TEST/resume-tail"
+mkdir -p "$resume_tmp"
+cat > "$resume_tmp/session-env.sh" <<EOF
+REPO=a/b
+REPO_UNAVAILABLE=false
+FORKED_TARGET=false
+LARCH_CLAUDE_PLUGIN_ROOT=$plugin_root_value
+EOF
+
+# shellcheck source=scripts/write-session-env.sh
+. "$WRITE_SCRIPT"
+emit_plugin_root_env "$resume_tmp/plugin-root.env" "$plugin_root_value"
+if [[ ! -f "$resume_tmp/plugin-root.env" ]]; then
+    fail "G.4 resume-tail plugin-root.env missing"
+else
+    pass
+fi
+if ! ( unset CLAUDE_PLUGIN_ROOT
+       # shellcheck disable=SC1090,SC1091
+       . "$resume_tmp/plugin-root.env"
+       [[ "$CLAUDE_PLUGIN_ROOT" == "$plugin_root_value" ]] ); then
+    fail "G.4 resume-tail plugin-root.env does not source cleanly"
+else
+    pass
+fi
+
+# G.5 — emit_plugin_root_env returns 0 on invalid value under set -uo pipefail.
+if ( set -uo pipefail
+     # shellcheck source=scripts/write-session-env.sh
+     . "$WRITE_SCRIPT"
+     emit_plugin_root_env "$TMPDIR_TEST/invalid-plugin-root.env" '/tmp/bad plugin-root'
+     [[ ! -f "$TMPDIR_TEST/invalid-plugin-root.env" ]] ); then
+    pass
+else
+    fail "G.5 emit_plugin_root_env invalid value should return 0 without aborting parent"
+fi
+
+# ------------------------------------------------------------
 # Summary
 # ------------------------------------------------------------
 

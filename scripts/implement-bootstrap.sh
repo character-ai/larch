@@ -583,6 +583,23 @@ phase_infra() {
         else
             CLAUDE_SOURCE_OK=false
         fi
+
+        if [ ! -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
+            _root=$("$SCRIPT_DIR/read-session-env-key.sh" \
+                --file "$IMPLEMENT_TMPDIR/session-env.sh" \
+                --key LARCH_CLAUDE_PLUGIN_ROOT --default "")
+            if [ -n "$_root" ]; then
+                # shellcheck source=scripts/write-session-env.sh
+                . "$SCRIPT_DIR/write-session-env.sh"
+                emit_plugin_root_env "$IMPLEMENT_TMPDIR/plugin-root.env" "$_root" || true
+                if [ ! -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
+                    emit_plugin_root_env "$IMPLEMENT_TMPDIR/plugin-root.env" "$_root" || true
+                fi
+                if [ ! -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
+                    larch_err "resume-tail: plugin-root.env missing after sync (LARCH_CLAUDE_PLUGIN_ROOT set)"
+                fi
+            fi
+        fi
     else
 
         local setup_cmd
