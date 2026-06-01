@@ -1,0 +1,33 @@
+Reviewing the plan against the repository's test fixtures and stub contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:76-77	`run_ship_pr_3334_transient_gated_rerun` names behavior but not `gh-run-logs.sh` stub log body	After the gate, blind rerun classifies the upfront capture via `is_transient_net_signature` (`scripts/ship-pr.sh:2501+`, `scripts/lib-net.sh:7-17`). Default `write_stubs` `gh-run-logs.sh` exits 0 with empty stdout (`scripts/test-ship-pr.sh:194-266`), which is deterministic — transient rerun never runs and the helper fails or tests the wrong branch	Specify `gh-run-logs.sh` exit 0 with a ready log body containing a known transient substring (e.g. `Connection refused`), plus `ci-rerun-failed.sh` sentinel + `TRANSIENT_RETRIES=0` / `FAILED_RUN_ID=run123` state (mirror `scripts/test-ship-pr.sh:2332-2353`)
+2	in_scope	important	correctness	plan.txt:84-85	NEW launcher-only regression lacks ready-job shape for FINDING_1 carve-out	Predicate sets `_code_fix_attempted_on_ready_log` when `run_per_job_local_fix_loop` runs with `ci_failed_count > 0` (plan.txt:28-30). A ready `ci-failed-jobs.sh` stub with fixable jobs + `FAILED_JOBS_COUNT>0` sets the flag before launcher exhaustion, so exit 3 (`ci-fix-exhausted`) can be asserted instead of exit 4	Require ready logs (`gh-run-logs.sh` exit 0) and ready jobs with `FAILED_JOBS_COUNT=0` (empty/non-fixable TSV), or document an explicit stub that skips per-job entry; then all-tier launcher failure → exit 4
+3	in_scope	important	correctness	plan.txt:67	`test_evaluate_failure_exhausted_routes_needs_user_input` mixes layer-specific assertions	`evaluate_failure` will return `FixResult(status="fix-exhausted")` (plan.txt:61); `Outcome.NEEDS_USER_INPUT` is produced in `monitor()` (plan.txt:61, current `python/ci_monitor.py:1188-1191` maps other fix statuses to `STALLED`)	Split: unit-test `evaluate_failure` asserts `fix.status == "fix-exhausted"`; add/extend `test_monitor_*` asserts `Outcome.NEEDS_USER_INPUT` and `detail == "ci-fix-exhausted"` after the proposed `monitor` mapping
+
+**1. [correctness] `plan.txt:76-77` — #3334 transient helper missing log-body contract**
+
+`run_ship_pr_3334_transient_gated_rerun` only states that a network signature should allow a gated rerun. It does not require stubbing `gh-run-logs.sh` with a body that matches `is_transient_net_signature`. The default harness `gh-run-logs.sh` exits 0 with no content (`scripts/test-ship-pr.sh:194-266`), which classifies as deterministic, so the blind rerun will not run and the test will not exercise #3334’s transient path.
+
+**Suggested revision:** In the `### NEW: scripts/test-ship-pr-fix-loop-3334.inc.sh` bullet, require `gh-run-logs.sh` exit 0 with a transient substring (e.g. `Connection refused`), `TRANSIENT_RETRIES=0`, `FAILED_RUN_ID=run123`, and a `ci-rerun-failed.sh` sentinel (same pattern as `scripts/test-ship-pr.sh:2332-2353`). `ci-failed-jobs.sh` is not needed for the blind-rerun assertion itself.
+
+**2. [correctness] `plan.txt:84-85` — launcher regression missing job-count constraint**
+
+The NEW launcher/push/no-tier regression must prove carve-out exit 4 after ready logs. The substantive flag is set when per-job machinery runs with `ci_failed_count > 0` (plan.txt:28-30). Stubs that return ready logs plus `FAILED_JOBS_COUNT>0` with a fixable TSV will enter `run_per_job_local_fix_loop` (`scripts/ship-pr.sh:2579-2581`) and can set the flag before launcher exhaustion, producing exit 3 instead of the intended exit 4.
+
+**Suggested revision:** Specify ready `gh-run-logs.sh` (exit 0) and ready `ci-failed-jobs.sh` with `FAILED_JOBS_COUNT=0` (or zero fixable rows), then all-tier launcher failure → rc 4 / no `ci-fix-exhausted`.
+
+**3. [correctness] `plan.txt:67` — Python exhausted test conflates `evaluate_failure` and `monitor` outcomes**
+
+The proposed test name targets `evaluate_failure`, but the listed assertions include `NEEDS_USER_INPUT`, which today is only returned from `monitor()` (e.g. `python/test_ci_monitor.py:1009-1042` for `first-fixer-non-health`). Until `monitor` maps `fix-exhausted` → `NEEDS_USER_INPUT` with detail `ci-fix-exhausted` (plan.txt:61), a single `evaluate_failure` unit test cannot assert both.
+
+**Suggested revision:** Assert `fix.status == "fix-exhausted"` in `evaluate_failure` tests; add a separate `monitor` regression for `Outcome.NEEDS_USER_INPUT` / `ci-fix-exhausted`.
+
+---
+
+**Exonerated (stub-wiring review):**
+
+- **`ci_fix_exhausted` rewrite (`plan.txt:82-83`):** Correctly requires both `gh-run-logs.sh` (exit 0, deterministic body) and `ci-failed-jobs.sh` (exit 0, fixable TSV / `FAILED_JOBS_COUNT>0`); warns against flipping assertions without stubs; matches the predicate at plan.txt:26-40.
+- **Independent overrides:** `make_repo` copies real `ci-failed-jobs.sh` (`scripts/test-ship-pr.sh:43-44`); tests already override `gh-run-logs.sh` and `ci-failed-jobs.sh` independently (`scripts/test-ship-pr-fix-loop-2632.inc.sh:330-338`, `408-432`, `592-611`; `scripts/test-ship-pr.sh:3495-3502`).
+- **Exit-code contracts:** Plan aligns with `scripts/gh-run-logs.sh:16-19` (0/1/3) and `scripts/ci-failed-jobs.sh:75-82` (0/1/3); deferral regressions can follow `scripts/test-ship-pr-fix-loop-2632.inc.sh:592-611` (logs rc=3) and `scripts/test-ship-pr.sh:4103-4106` (logs rc=1).
+- **`run_ship_pr_3334_deterministic_no_blind_rerun`:** Empty ready log is a valid deterministic body; no `ci-failed-jobs` stub required for the blind-rerun-only check.
+- **Other Python tests:** Names and behaviors match existing `RecordingRunner` patterns (`python/test_ci_monitor.py:682-728`, `874-949`); no extra mock interface beyond established `responses` / `sequential` maps.

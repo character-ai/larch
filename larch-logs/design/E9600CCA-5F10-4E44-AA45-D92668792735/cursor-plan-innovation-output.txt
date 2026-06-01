@@ -1,0 +1,2 @@
+Inspecting the plan's target code paths and integration points.
+{"no_issues_found": true}

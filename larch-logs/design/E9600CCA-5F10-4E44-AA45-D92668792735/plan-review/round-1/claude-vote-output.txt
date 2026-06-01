@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- BAIL_FAILURE_DETAIL_LOG is supplemental; Step 8 autonomous path has primary CI logs from gh-run-logs.sh; missing detail log does not interrupt execution
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Decision 3 was explicitly resolved in Round 1 design; scope tradeoff is already baked into the plan; concern is real but not a correctness defect
+FINDING_7: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- confirmed by code: push-failed (stage_rc=4) sets per_job_verification_retry and falls through to line 2693 after loop exhaustion; Python explicitly keeps push-failed STALLED via mid-loop returns; this is a real Bash/Python parity gap
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

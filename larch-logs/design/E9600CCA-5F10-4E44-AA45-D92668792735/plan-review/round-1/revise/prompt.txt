@@ -1,0 +1,197 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+## Implementation Plan
+
+Fix #3334: `ship-pr` retries CI on deterministic failures without attempting a fix.
+
+The CI monitor blind-reruns a failed run (no code change) before the fix loop, gated only on a retry counter — never on whether the failure is transient. With `rebase_then_evaluate`'s rebase + re-bump, a deterministic test/lint/compile failure churns until `10/12-max-retries`, never invoking the fixer. Same shape in the Bash live path and the Python migration tree.
+
+## Approach
+
+Add ONE transient-vs-deterministic gate in the CI-failure caller, in both implementations:
+
+1. **Classify before retry-vs-fix.** Before the blind rerun, fetch the failure log and classify it with the existing `is_transient_net_signature` (network/infra). Treat every CI **check** failure as **deterministic** unless the log shows a network/infra signature (Round 1 Decision 1: "assume CI issues are never transient; a network issue is another matter").
+   - Transient (network signature) AND under the rerun cap → rerun without a fix (today's behavior, now gated).
+   - Deterministic, or rerun cap reached, or log unreadable → skip the blind rerun and go straight to the fix loop.
+2. **Keep one rebase-to-main, then fix (Round 1 Decision 2).** `rebase_then_evaluate` still rebases once when behind, then evaluates. The gate above breaks the rebase→re-bump→blind-rerun churn: a persisting deterministic failure now reaches the fixer instead of re-running. No separate mechanism is needed — gating the blind rerun is what stops the churn.
+3. **Wire the max-retries exhaustion into the autonomous CI-fix path (Round 1 Decision 3).** When the in-script vendor fix waterfall exhausts its attempts on a deterministic failure, route to the orchestrator's autonomous main-agent CI-fix (exit 3) instead of a plain stall (exit 4). The autonomous sub-procedure is already capped at 3 attempts, so this adds no unbounded loop. The rebase-storm exhaustion (`REBASE_COUNT >= 20`) stays a plain stall — it is "main too active", not a code-fix case.
+
+**Resolved design decision (outline open question):** the gate lives in the CALLER (`run_evaluate_failure` / `evaluate_failure`), NOT in `ci-decide.sh` / the `decide` port. The decision matrix only sees `pass|fail|pending|merged` + counters; classification needs the failure-log text, which only the caller holds. `ci-decide.sh` and `decide` are unchanged.
+
+## Files to modify/create
+
+### UPDATED: `scripts/ship-pr.sh`
+- In `run_evaluate_failure` (the `if [ "$retries" -lt 1 ]` blind-rerun block, ~line 2499): before the rerun, fetch the failure log via `gh-run-logs.sh --run-id "$failed_run"` and classify with `is_transient_net_signature` (already in scope via `lib-net.sh`). Run the `ci-rerun-failed.sh` blind rerun ONLY when the log is transient AND `TRANSIENT_RETRIES < 1`. Otherwise fall through to the existing fix loop without a rerun. Reuse the captured log for the loop's first iteration to avoid a double `gh-run-logs.sh` fetch (optional refinement).
+- At the terminal `exit_stall ...-max-retries` in `run_evaluate_failure` (~line 2693): when the vendor fix waterfall exhausts on a deterministic failure, set `BAIL_REASON` to a new autonomous exit-3 token `ci-fix-exhausted` and `exit 3` instead of `exit_stall` (exit 4). Leave the rebase-storm `exit_stall ...-max-retries` in `run_rebase_rebump` (~line 3178) unchanged.
+- Extend `needs_user_bail_reason` (~line 1720) and `is_autonomous_exit3_bail_reason` (~line 1728) to recognize `ci-fix-exhausted` (autonomous: skips `BAIL_NEEDS_USER_INPUT`, like `first-fixer-non-health`).
+
+### UPDATED: `scripts/ship-pr.md`
+- Document the new `ci-fix-exhausted` exit-3 bail token, the deterministic-default classification gate in `run_evaluate_failure`, and that the rerun-without-fix is reserved for network/infra-classified failures. Keep the script/.md contract in sync per `.claude/rules/script-md-siblings.md`.
+
+### UPDATED: `python/ci_monitor.py`
+- `import retry` and, in `evaluate_failure` (the `if transient_retries < config.CI_MONITOR_TRANSIENT_RERUN_MAX:` block, ~lines 996-1006): collect the failure log once up front and gate the `rerun_failed` blind rerun on `retry.is_transient_net_signature(logs.text)` (only when `logs.state == "ready"`). Deterministic / unreadable / cap-reached → fall through to the fix loop (reuse the collected log for the first loop iteration).
+- Change the outer-loop exhaustion returns (~lines 1057-1064) from `status="waterfall-failed"` to a new terminal status (e.g. `fix-exhausted`); in `monitor` map that status to `Outcome.NEEDS_USER_INPUT` with detail `ci-fix-exhausted` (parity with the Bash exit-3 routing). Leave the mid-loop `waterfall-failed` returns (no tiers / push failed / missing run_id) mapping to `STALLED`.
+
+### UPDATED: `python/test_ci_monitor.py`
+- Update `test_evaluate_failure_transient_rerun_only`: supply a transient-signature log so the rerun still fires; assert `no-changes`.
+- Add `test_evaluate_failure_deterministic_no_rerun`: deterministic log (no network signature) → NO `gh run rerun`; proceeds to the fix loop.
+- Add `test_evaluate_failure_exhausted_routes_needs_user_input` (and/or a `monitor`-level test): outer fix exhaustion → `Outcome.NEEDS_USER_INPUT`, detail `ci-fix-exhausted`.
+- Adjust `test_monitor_rebase_then_evaluate_no_fix` if the deterministic-default change alters its expected path.
+
+### UPDATED: `skills/implement/SKILL.md`
+- In the Step 8+ exit-3 handling (~line 1169, where `BAIL_REASON=first-fixer-non-health` triggers the autonomous main-agent CI-fix sub-procedure): extend the trigger to ALSO fire on `BAIL_REASON=ci-fix-exhausted`. Same 3-attempt sentinel/counter cap; same fall-through to the `AskUserQuestion` / Step 12d user-input path after exhaustion.
+
+### UPDATED: `scripts/test-ship-pr-fix-loop-2632.inc.sh`
+- Add a Bash regression: a deterministic failure log → `run_evaluate_failure` does NOT call `ci-rerun-failed.sh` and reaches the fix loop; a transient (network) failure log → the gated rerun still fires.
+
+### UPDATED: `scripts/test-implement-step8-exit3-first-fixer.sh`
+- Extend to assert the autonomous main-agent CI-fix sub-procedure also triggers on `BAIL_REASON=ci-fix-exhausted` (not only `first-fixer-non-health`).
+
+## Edge cases
+- **Log not yet available** (`gh-run-logs` rc=3 / Python `logs.state == "in_progress"` or `"error"`): cannot classify → treat as deterministic (no blind rerun); the existing in-progress backoff in the fix loop handles waiting.
+- **Network failure inside a job** (e.g. a test hitting the network): the failure log carries a `is_transient_net_signature` match → still allowed one gated rerun (honors "a network issue is another matter").
+- **Tail window**: `gh-run-logs` shows the last `CI_MONITOR_LOG_TAIL_LINES` (100). A network signature buried above the tail is missed and treated as deterministic — acceptable; deterministic-default is the safe bias.
+- **Budget interaction**: `TRANSIENT_RETRIES` now caps only transient reruns; `FIX_ATTEMPTS` (cap 10) and the per-invocation waterfall cap (3) are unchanged, so fix-first cannot loop unbounded.
+- **Rebase storm**: `REBASE_COUNT >= 20` still stalls (exit 4); not routed to autonomous fix.
+
+## Failure modes
+- **Mis-routing a genuine infra/transient failure to a code fix.** Signal: fixer makes no-op or wrong edits on a flaky/network failure. Mitigation: classify the failure log with the existing network signature set before fix-first; reserve rerun for that set.
+- **Autonomous fix loop pressure at exhaustion.** Routing `ci-fix-exhausted` to exit 3 hands more failures to the main-agent fixer. Signal: repeated main-agent CI-fix attempts. Mitigation: the orchestrator's existing 3-attempt sentinel/counter cap bounds it, then falls through to user-bail.
+- **Bash/Python drift.** The bug reappears when `LARCH_SHIP_PR_IMPL=python` goes live if only one side changes. Mitigation: mirror the gate + exhaustion routing in both; add parity tests in `test_ci_monitor.py`.
+
+## Testing strategy
+- Python (`make py-test`): updated + new `evaluate_failure`/`monitor` tests above; `make py-lint` for ruff/pylint/pyright.
+- Bash (`make test-ship-pr-fix-loop`, `make test-ship-pr-transient`, `make test-implement-step8-exit3-first-fixer`): deterministic-no-rerun, transient-still-reruns, and the `ci-fix-exhausted` exit-3 routing.
+- `bash scripts/relevant-checks.sh` after edits (shellcheck, agent-lint, script-md sibling sync).
+
+diff_added: 240
+diff_lines: 320
+
+</plan>
+
+<findings>
+### FINDING_1: Fix-loop harness still asserts exit-4 stall for vendor outer-loop CI-fix exhaustion
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Requirements, Codex-Requirements, Cursor-dyn-exit-contracts, Codex-dyn-exit-contracts, Codex-dyn-regression-harness
+- **Severity**: important
+- **Concern**: Plan Decision 3 replaces terminal `exit_stall` at `scripts/ship-pr.sh:2693` with `BAIL_REASON=ci-fix-exhausted` and exit 3, but `scripts/test-ship-pr.sh` is omitted from Files to modify. The fix-loop case `vendor_loop_ci_fix_exhausted` (`scripts/test-ship-pr.sh:2356-2382`, exercised by `make test-ship-pr-fix-loop` / shard 14) still asserts `rc 4` and `STALL_STEP=10-max-retries`. After implementation, the harness fails or implementers may preserve exit 4 and miss the new acceptance criterion.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add scripts/test-ship-pr.sh to the plan and update that case to expect exit 3, BAIL_REASON=ci-fix-exhausted, and BAIL_NEEDS_USER_INPUT=false (no STALL_STEP=10-max-retries); list make test-ship-pr-fix-loop alongside the other Bash targets in Testing strategy
+  - From Cursor-Innovation: Add scripts/test-ship-pr.sh to Files to modify; change that case to assert rc 3, BAIL_REASON=ci-fix-exhausted, and BAIL_NEEDS_USER_INPUT=false (not STALL_STEP max-retries)
+  - From Cursor-Requirements: Update `vendor_loop_ci_fix_exhausted` to expect exit 3, `BAIL_REASON=ci-fix-exhausted`, and autonomous exit-3 state (`BAIL_NEEDS_USER_INPUT=false`, mirroring `scripts/test-ship-pr-fix-loop-2632.inc.sh:63-64`).
+  - From Codex-Requirements: Update this existing vendor_loop_ci_fix_exhausted case to expect exit 3, BAIL_REASON=ci-fix-exhausted, and BAIL_NEEDS_USER_INPUT=false/autonomous routing as appropriate.
+  - From Cursor-dyn-exit-contracts: Add an explicit plan step to rewrite this case: assert_rc 3, BAIL_REASON=ci-fix-exhausted, no STALL_STEP=10-max-retries (and keep rebase-storm cases on exit 4 unchanged)
+  - From Codex-dyn-exit-contracts: Update this existing assertion to expect rc 3, BAIL_REASON=ci-fix-exhausted, BAIL_NEEDS_USER_INPUT=false, and keep rebase-storm coverage on exit 4
+  - From Codex-dyn-regression-harness: Update the existing exhaustion cases to expect rc 3, BAIL_REASON=ci-fix-exhausted, and BAIL_NEEDS_USER_INPUT=false; keep rebase-storm max-retries tests on rc 4
+
+
+### FINDING_2: Shared max-retries tail can emit `ci-fix-exhausted` without a real fixer exhaustion
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Codex-Pragmatic, Codex-dyn-exit-contracts, Codex-dyn-ci-log-surface, Codex-dyn-regression-harness
+- **Severity**: important
+- **Concern**: Replacing the shared outer-loop exhaustion terminal at `scripts/ship-pr.sh:2567-2693` / `python/ci_monitor.py:1021-1064` with a broad `ci-fix-exhausted` exit-3 path can fire when logs or jobs stayed in progress, no ready failure log existed, and no per-job/vendor fix attempt actually ran. That would route pending or weakly classified CI to autonomous main-agent CI fix without usable failure evidence, instead of preserving stall/wait behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Track whether a vendor/per-job fix was actually attempted against ready failure data; only emit ci-fix-exhausted for that case. Preserve the existing stall/wait behavior for still-in-progress or unclassifiable-no-fix attempts.
+  - From Codex-Edge: Track whether a ready-log fix attempt actually ran; emit ci-fix-exhausted only for true fixer exhaustion, and keep the existing stall/wait behavior for still-in-progress cases.
+  - From Codex-Pragmatic: Keep the existing stall/waterfall-failed behavior, or gate ci-fix-exhausted on a ready deterministic log plus an actual exhausted fixer dispatch
+  - From Codex-dyn-exit-contracts: Track whether a real per-job/vendor fix path ran and exhausted; emit BAIL_REASON=ci-fix-exhausted with BAIL_NEEDS_USER_INPUT=false only for that case, and keep no-log/in-progress exhaustion on the existing stall path
+  - From Codex-dyn-ci-log-surface: Gate ci-fix-exhausted on a ready-log fix attempt actually exhausting; keep in-progress/no-dispatch exhaustion on the existing stalled/waterfall-failed path and retain or update the in-progress regression
+  - From Codex-dyn-regression-harness: Pin the no-ready-logs path as STALLED/exit 4 or track that at least one ready-log fix attempt ran before returning ci-fix-exhausted; keep/update the existing Python in-progress test and add the matching Bash all-rc3 case only if needed to guard that branch
+
+
+### FINDING_4: Second fix-loop case `ci_fix_exhausted` still pins exit-4 stall
+- **Reviewer(s)**: Cursor-Innovation, Codex-dyn-regression-harness
+- **Severity**: important
+- **Concern**: Beyond the vendor outer-loop case, `scripts/test-ship-pr.sh:3398-3432` (`ci_fix_exhausted` local fix-loop exhaustion) still asserts exit 4 / stall semantics. The same routing change breaks a second regression under `make test-ship-pr-fix-loop` while the plan only names new coverage in `scripts/test-ship-pr-fix-loop-2632.inc.sh`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Update that case to exit 3 + ci-fix-exhausted; extend Testing strategy to name scripts/test-ship-pr.sh explicitly (not only the 2632 inc)
+  - From Codex-dyn-regression-harness: Update the existing exhaustion cases to expect rc 3, BAIL_REASON=ci-fix-exhausted, and BAIL_NEEDS_USER_INPUT=false; keep rebase-storm max-retries tests on rc 4
+
+
+### FINDING_5: New #3334 regressions in 2632 inc may not run under fix-loop make target
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Plan adds deterministic-no-rerun / transient-still-reruns cases only in `scripts/test-ship-pr-fix-loop-2632.inc.sh`, which is not sourced from `scripts/test-ship-pr.sh`. Those cases never execute under `make test-ship-pr-fix-loop` (shard 14).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Source the inc from the fix-loop section (restore one source line) or add equivalent cases inline in scripts/test-ship-pr.sh; do not rely on the inc alone
+
+
+### FINDING_7: Bash/Python parity on log readiness before transient rerun classification
+- **Reviewer(s)**: Codex-dyn-bash-python-parity
+- **Severity**: important
+- **Concern**: The Bash retry gate at `scripts/ship-pr.sh:2499-2514` / `scripts/gh-run-logs.sh:50-56` does not require `gh-run-logs` success before `is_transient_net_signature`, while Python at `python/ci_monitor.py:496-500,996-1006` gates rerun on `logs.state == ready`. If `gh-run-logs` fails with transient-looking text, Bash may rerun but Python enters the fix loop.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-bash-python-parity: Require gh_logs_rc == 0 before Bash calls is_transient_net_signature for rerun; any non-zero log fetch goes to the fix loop
+
+
+### FINDING_8: Non-code-fix exhaustion (push/launcher) may collapse into `ci-fix-exhausted`
+- **Reviewer(s)**: Codex-dyn-bash-python-parity
+- **Severity**: important
+- **Concern**: Exhaustion mapping at `scripts/ship-pr.sh:2127-2172,2679-2693` and `python/ci_monitor.py:910-963,1051-1064,1183-1192` can route push failed or no-launcher-tier situations to autonomous main-agent CI fix despite the plan saying those remain STALLED; Bash lacks a reason on return 1 to preserve parity.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-bash-python-parity: Keep non-code-fix failures as immediate STALLED in both paths; only map actual deterministic fixer exhaustion to ci-fix-exhausted
+
+
+### FINDING_9: `scripts/ci-decide.md` still documents vendor exhaustion as exit 4
+- **Reviewer(s)**: Codex-dyn-exit-contracts
+- **Severity**: latent
+- **Concern**: After the change, `scripts/ci-decide.md:5-7` would still describe `run_evaluate_failure` vendor exhaustion as `exit_stall` with `STALL_STEP=10-max-retries`, contradicting the new autonomous exit-3 token.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-exit-contracts: Update this contract sentence to distinguish fix-attempts-exhausted as user-input exit 3, ci-fix-exhausted as autonomous exit 3, and rebase-count exhaustion as exit 4
+
+---
+
+**Merge notes (for voters, not part of machine schema):**
+- Raw slots 1, 5, 10, 11, 14, 17, and the vendor portion of 19 → **FINDING_1**.
+- Raw slots 2, 3, 9, 15, 18, and the routing portion of 20 → **FINDING_2** (distinct from **FINDING_6**, which argues to drop the feature rather than gate it).
+- Raw slot 4 → **FINDING_3**; slot 6 (+ local portion of 19) → **FINDING_4**; slot 7 → **FINDING_5**; slot 8 → **FINDING_6**; slot 12 → **FINDING_7**; slot 13 → **FINDING_8**; slot 16 → **FINDING_9**.
+
+
+</findings>
+
+<feature>
+[BUG] (Urgent) ship-pr retries CI on deterministic failures without attempting a fix
+
+## Problem
+
+When CI fails on a deterministic test failure (e.g. a broken assertion, a new test that the implementation broke), `ship-pr.sh` enters a `rebase + re-bump` loop and retries CI without ever attempting to fix the underlying code. This exhausts the retry budget and eventually produces a `10-max-retries` stall — without the failure ever being addressed.
+
+The `first-fixer-non-health` path (Exit 3) does invoke an autonomous code fixer, but it is only reachable when the Cursor CI-fix *launcher* reports `LAUNCHER_FAILURE_CLASS=other`. A plain deterministic test failure surfaces as a CI status check failure, not a launcher health event, so it never reaches that fixer path.
+
+## Root Cause
+
+The CI monitor loop conflates two fundamentally different failure kinds:
+- **Transient** (flaky test, runner OOM, network blip): retry-without-fix is reasonable.
+- **Deterministic** (broken test, compile error, lint failure): retry-without-fix is always wrong — it just burns budget.
+
+The loop currently does not distinguish between these before deciding what to do. Every CI failure triggers a rebase + re-bump and another CI wait, regardless of whether the failure is fixable by a rebase or requires a code change.
+
+## Expected Behavior
+
+CI failure → always attempt a code fix first → only retry after a fix has been applied. Pure retry (no code change) should be reserved exclusively for infrastructure-class transient errors, not for test/lint/compile failures.
+
+## Affected Code
+
+- `scripts/ship-pr.sh` — CI monitor loop (`run_ci_wait`, step 10 / step 12 retry logic)
+- `scripts/ci-wait.sh` — failure classification surface
+- The autonomous CI-fix sub-procedure in the `/implement` orchestrator (Step 8+ Exit 3 `first-fixer-non-health` path) needs to be wired into the `max-retries` exhaustion path as well
+
+## Python Migration Note
+
+`ship-pr.sh` is currently being migrated to Python (see `python/` tree; controlled by `LARCH_SHIP_PR_IMPL=python`, not yet live). **The fix must be applied to both**:
+1. `scripts/ship-pr.sh` (and related `scripts/ci-wait.sh`) — the Bash code in production today.
+2. The Python replacement under `python/` — specifically the CI monitor loop and failure-classification logic — so the bug does not reappear when the Python path is activated.
+
+## Acceptance
+
+- [ ] CI failure on a deterministic test failure triggers a code fix attempt before any retry.
+- [ ] The loop distinguishes transient vs. deterministic failure before deciding retry vs. fix.
+- [ ] Pure retry (rebase + re-bump without a code change) is not performed on test/lint/compile failures.
+- [ ] Both the Bash and Python implementations are updated.
+
+</feature>

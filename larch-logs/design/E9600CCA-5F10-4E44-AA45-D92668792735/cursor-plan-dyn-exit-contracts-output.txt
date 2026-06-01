@@ -1,0 +1,10 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-ship-pr.sh:2356-2382	Vendor outer-loop exhaustion test still expects exit 4 and STALL_STEP=10-max-retries	After run_evaluate_failure switches exhaustion to BAIL_REASON=ci-fix-exhausted and exit 3, make test-ship-pr-fix-loop (and full test-ship-pr) fails on assert_rc 4 / STALL_STEP=10-max-retries even though the plan only adds scripts/test-ship-pr-fix-loop-2632.inc.sh	Add an explicit plan step to rewrite this case: assert_rc 3, BAIL_REASON=ci-fix-exhausted, no STALL_STEP=10-max-retries (and keep rebase-storm cases on exit 4 unchanged)
+
+1. **correctness** (`scripts/test-ship-pr.sh:2356-2382`): The plan routes vendor fix-loop exhaustion to `ci-fix-exhausted` / exit 3, but the existing `vendor_loop_ci_fix_exhausted` regression in the **fix-loop** section still asserts exit 4 and `STALL_STEP=10-max-retries`. That test is not listed under Files to modify; `make test-ship-pr-fix-loop` will fail after the behavioral change.
+
+**Exonerated (SIMPLE tier):**
+- Extending both `needs_user_bail_reason` and `is_autonomous_exit3_bail_reason` matches the existing `first-fixer-non-health` pattern (`scripts/ship-pr.sh:3567-3571`).
+- Leaving `run_rebase_rebump` `REBASE_COUNT >= 20` as `exit_stall` preserves rebase-storm vs code-fix distinction.
+- Python `fix-exhausted` → `NEEDS_USER_INPUT` with detail `ci-fix-exhausted` while mid-loop `waterfall-failed` stays `STALLED` is consistent with the Bash split.
+- Optional log reuse and shared autonomous sentinel/counter are minimum-change choices, not contract gaps.

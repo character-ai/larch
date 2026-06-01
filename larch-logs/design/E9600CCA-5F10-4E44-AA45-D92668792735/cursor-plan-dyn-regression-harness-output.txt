@@ -1,0 +1,21 @@
+Reviewing the plan against the test harness; reading the plan and referenced paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-ship-pr-fix-loop-2632.inc.sh:1-4	Plan adds Bash regressions only in the #2632 include, but `scripts/test-ship-pr.sh` no longer sources it (no `source` of `test-ship-pr-fix-loop-2632.inc.sh`; fix-loop runs inline cases only). `make test-ship-pr-fix-loop` → `test-ship-pr.sh --section fix-loop` will not execute new cases in the include.	Deterministic-no-rerun and transient-rerun coverage never runs in CI/local `make test-ship-pr-fix-loop` despite the testing strategy claiming that target.	Add gate regressions in `scripts/test-ship-pr.sh` inside `if section_runs fix-loop` (pattern at `scripts/test-ship-pr.sh:2311-2353`), or restore `source` of the include from fix-loop; do not rely on the include alone.
+2	in_scope	important	correctness	scripts/test-ship-pr.sh:2356-2382	`vendor_loop_ci_fix_exhausted` asserts exit 4 and `STALL_STEP=10-max-retries`, but the plan changes vendor outer exhaustion to exit 3 with `BAIL_REASON=ci-fix-exhausted`. This case is not listed under plan file updates.	`make test-ship-pr-fix-loop` / shard 14 fails after the production change even if new tests are added elsewhere.	Update that block to expect exit 3, `BAIL_REASON=ci-fix-exhausted`, and autonomous exit-3 state (`BAIL_NEEDS_USER_INPUT=false` per `scripts/test-ship-pr-fix-loop-2632.inc.sh:63-64`).
+3	in_scope	important	correctness	scripts/test-ship-pr-fix-loop-2632.inc.sh:284-290	Proposed Bash gate tests are likely to copy `write_state_eval_fail`, which forces `TRANSIENT_RETRIES=1`. The new gate lives in `run_evaluate_failure` only when `retries < 1` (`scripts/ship-pr.sh:2499-2500`).	With `TRANSIENT_RETRIES=1`, blind rerun is already skipped; tests would not exercise log classification or transient preservation.	Use default/`TRANSIENT_RETRIES=0` state, stub `gh-run-logs.sh` with deterministic vs transient signatures, and use the `ci-rerun-failed.sh` sentinel pattern at `scripts/test-ship-pr.sh:2332-2353`.
+
+**1. correctness** — `scripts/test-ship-pr-fix-loop-2632.inc.sh:1-4`, `scripts/test-ship-pr.sh` (no source line)
+
+The include header still says it is sourced from `test-ship-pr.sh`, but there is no `source` call; `agent-lint.toml:1591-1594` repeats the stale claim. The plan’s only Bash harness addition is in that include (`plan.txt` lines 42-44). Active fix-loop CI runs `scripts/test-ship-pr.sh` from line 1990, not the include’s self-invocation at lines 672-684.
+
+**2. correctness** — `scripts/test-ship-pr.sh:2356-2382`
+
+This block is inside the live fix-loop section and will break when `run_evaluate_failure` stops calling `exit_stall` on vendor exhaustion (`scripts/ship-pr.sh:2693`). The plan updates `ship-pr.sh` and the include but omits this inline regression.
+
+**3. correctness** — `scripts/test-ship-pr-fix-loop-2632.inc.sh:284-290`, `scripts/ship-pr.sh:2499-2500`
+
+Nearly all fix-loop scenarios awk `TRANSIENT_RETRIES=1` to skip the blind-rerun path. New gate tests must start from `TRANSIENT_RETRIES=0` (default in `write_state` at `scripts/test-ship-pr.sh:380`) or they will not hit the code under change.
+
+**[OUT_OF_SCOPE] architecture** — `scripts/test-ship-pr-fix-loop-2632.inc.sh:317-321`
+
+If the include is re-sourced later, `run_ship_pr_2632_t5` and similar cases still assert exit 4 for the same exhaustion path; align with finding 2 when wiring the include back in.

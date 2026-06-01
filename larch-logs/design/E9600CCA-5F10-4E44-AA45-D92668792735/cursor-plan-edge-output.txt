@@ -1,0 +1,11 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-ship-pr.sh:4087-4175	Two fix-loop regressions still require vendor dispatch on gh-run-logs failure	FINDING_3 stops calling run_ci_fix_vendor when gh_logs_rc is not 0/3; vendor_verify_empty_tsv (4087-4142) expects exit 0 after gh-run-logs exit 1 and vendor_verify_rc2_on_gh_logs_failed_branch (4145-4175) expects STALL_STEP=10-head-changed via mocked run_ci_fix_vendor return 2 — both will fail under the proposed defer path (defer-only outer exhaustion → STALL_STEP=10-max-retries)	Add these cases to the Testing strategy: rewrite vendor_verify_empty_tsv to assert no vendor dispatch and exit 4 on error-only exhaustion; replace vendor_verify_rc2_on_gh_logs_failed_branch with the planned error-log defer regression (or drop it if redundant with the NEW case at plan line 87)
+
+**1. [correctness] `scripts/test-ship-pr.sh:4087-4175` — Stale gh-run-logs-failure regressions**
+
+The plan correctly replaces the `run_evaluate_failure` `else` branch (~2658–2677) so unreadable logs defer instead of dispatching `run_ci_fix_vendor`, and it adds a NEW error-log regression (plan line 87). It does not account for two existing fix-loop cases that still encode the old contract:
+
+- **`vendor_verify_empty_tsv`** (4087–4142): `gh-run-logs.sh` exits 1; expects exit 0 with vendor push through the relevant-checks gate.
+- **`vendor_verify_rc2_on_gh_logs_failed_branch`** (4145–4175): `gh-run-logs.sh` exits 1; mocks `run_ci_fix_vendor` returning 2 and asserts `STALL_STEP=10-head-changed`.
+
+After FINDING_3, both paths defer without vendor dispatch and stall with `10-max-retries`, so `make test-ship-pr-fix-loop` will fail unless these tests are rewritten or folded into the new error-log defer case.
