@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -87,6 +88,7 @@ class FixResult:
     unfixable: tuple[str, ...] = ()
     failed_verify: tuple[str, ...] = ()
     detail: str | None = None
+    rerun_already_running: bool = False
 
 
 @dataclass(frozen=True)
@@ -99,6 +101,7 @@ class MonitorResult:
     goto_rebase: bool
     iterations: int
     result: StepResult
+    rerun_already_running: bool = False
 
 
 def decide(
@@ -169,18 +172,36 @@ def _gh_pr_checks(
     )
 
 
+def _warn_stderr(message: str) -> None:
+    _ = sys.stderr.write(message.rstrip("\n") + "\n")
+    _ = sys.stderr.flush()
+
+
 def _behind_count(
     runner: Runner,
     *,
     base_remote: str,
     base_ref: str,
     cwd: str | None,
-) -> int:
+) -> int | None:
     base = f"{base_remote}/{base_ref}"
+    result = runner.run(
+        ["git", "rev-list", "--count", f"HEAD..{base}"],
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        _warn_stderr(
+            "gather_status: git rev-list --count failed; treating branch as pending",
+        )
+        return None
+    text = result.stdout.strip() or "0"
     try:
-        return git.rev_count(runner, "HEAD", base, cwd=cwd)
-    except Exception:  # pylint: disable=broad-except
-        return 0
+        return int(text)
+    except ValueError:
+        _warn_stderr(
+            "gather_status: git rev-list --count returned non-integer; treating as pending",
+        )
+        return None
 
 
 def _squash_merge_race(
@@ -286,12 +307,15 @@ def gather_status(
     else:
         status = "pending"
 
-    behind = _behind_count(
+    behind_raw = _behind_count(
         runner,
         base_remote=base_remote,
         base_ref=base_ref,
         cwd=cwd,
     )
+    if behind_raw is None:
+        return CiStatus(status="pending", behind_count=0, failed_run_id=failed_run_id)
+    behind = behind_raw
     if behind > 0 and _squash_merge_race(
         runner,
         pr=pr,
@@ -440,11 +464,15 @@ def read_failed_jobs(
     combined = result.stdout + result.stderr
     if result.returncode == 0:
         try:
-            return gh.failed_jobs(runner, int(run_id), repo=repo, cwd=cwd), "ready"
+            return gh.parse_failed_jobs_json(result.stdout), "ready"
         except Exception:  # pylint: disable=broad-except
             return (), "error"
     if _IN_PROGRESS_MSG in combined:
         return (), "in_progress"
+    _warn_stderr(
+        f"read_failed_jobs: gh run view jobs failed (exit {result.returncode}): "
+        f"{combined.strip()}",
+    )
     return (), "error"
 
 
@@ -615,25 +643,73 @@ def _capture_baseline(
     return tracked, untracked, staged, head
 
 
+def _implement_tmpdir() -> str | None:
+    raw = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "").strip()
+    return raw or None
+
+
+def _resolve_plan_file(plan_file: str | None) -> str | None:
+    if not plan_file:
+        return None
+    tmpdir = _implement_tmpdir()
+    if tmpdir is None:
+        return None
+    try:
+        impl_abs = Path(tmpdir).resolve()
+        path_abs = Path(plan_file).resolve()
+        _ = path_abs.relative_to(impl_abs)
+    except (OSError, ValueError):
+        return None
+    if not path_abs.is_file():
+        return None
+    return str(path_abs)
+
+
+def _path_unsafe_for_rollback(path: str) -> bool:
+    return any(part == ".." for part in path.split("/"))
+
+
+def _is_submodule_gitlink(runner: Runner, path: str, *, cwd: str | None) -> bool:
+    result = runner.run(["git", "ls-files", "--stage", "--", path], cwd=cwd)
+    if result.returncode != 0:
+        return False
+    return any(line.startswith("160000 ") for line in result.stdout.splitlines())
+
+
 def _rollback_to_baseline(
     runner: Runner,
     *,
     baseline_tracked: tuple[str, ...],
     baseline_untracked: tuple[str, ...],
+    baseline_staged: tuple[str, ...],
     cwd: str | None,
 ) -> None:
     tracked_now = _diff_name_only(runner, cwd=cwd)
     untracked_now = _ls_untracked(runner, cwd=cwd)
+    staged_now = _diff_name_only(runner, cached=True, cwd=cwd)
     baseline_tracked_set = set(baseline_tracked)
     baseline_untracked_set = set(baseline_untracked)
+    baseline_staged_set = set(baseline_staged)
     for path in tracked_now:
         if path in baseline_tracked_set:
+            continue
+        if _path_unsafe_for_rollback(path) or _is_submodule_gitlink(runner, path, cwd=cwd):
             continue
         _ = runner.run(["git", "checkout", "--", path], cwd=cwd)
     for path in untracked_now:
         if path in baseline_untracked_set:
             continue
+        if _path_unsafe_for_rollback(path):
+            continue
         _ = runner.run(["rm", "-f", "--", path], cwd=cwd)
+    for path in staged_now:
+        if path in baseline_staged_set:
+            continue
+        if _path_unsafe_for_rollback(path) or _is_submodule_gitlink(runner, path, cwd=cwd):
+            continue
+        _ = runner.run(["git", "restore", "--staged", "--", path], cwd=cwd)
+        if path not in baseline_tracked_set and path not in baseline_untracked_set:
+            _ = runner.run(["rm", "-f", "--", path], cwd=cwd)
 
 
 def _delta_paths(
@@ -675,17 +751,20 @@ def _available_tiers() -> tuple[str, ...]:
     return tuple(tiers) if tiers else config.FIXER_TIER_ORDER
 
 
-def _write_failure_log(text: str) -> str | None:
+def _write_failure_log(text: str, *, tmpdir: str | None = None) -> str | None:
     if not text.strip():
         return None
-    with tempfile.NamedTemporaryFile(
-        mode="w",
-        encoding="utf-8",
-        suffix=".redacted.log",
-        delete=False,
-    ) as handle:
-        _ = handle.write(text)
-        return handle.name
+    root = Path(tmpdir) if tmpdir else Path(tempfile.gettempdir())
+    root.mkdir(parents=True, exist_ok=True)
+    fd, path = tempfile.mkstemp(suffix=".redacted.log", dir=str(root))
+    os.close(fd)
+    _ = Path(path).write_text(text, encoding="utf-8")
+    return path
+
+
+def _on_named_branch(runner: Runner, *, cwd: str | None) -> bool:
+    result = runner.run(["git", "symbolic-ref", "--quiet", "HEAD"], cwd=cwd)
+    return result.returncode == 0
 
 
 def _outer_backoff_seconds(attempt_index: int) -> float:
@@ -702,11 +781,16 @@ def _make_default_launch_fn(
     logs: LogCollectResult,
     output_dir: str | None,
     cwd: str | None,
+    failure_log_paths: list[str],
 ) -> LaunchFn:
+    implement_tmpdir = _implement_tmpdir()
     failure_log_path: str | None = None
     if logs.state == "ready" and logs.text.strip():
-        failure_log_path = _write_failure_log(logs.text)
-    prefix = output_dir or tempfile.gettempdir()
+        failure_log_path = _write_failure_log(logs.text, tmpdir=implement_tmpdir)
+        if failure_log_path is not None:
+            failure_log_paths.append(failure_log_path)
+    prefix = output_dir or implement_tmpdir or tempfile.gettempdir()
+    safe_plan = _resolve_plan_file(plan_file)
 
     def launch_fn(tier: str) -> TierAttempt:
         tier_out = str(Path(prefix) / f"ci-fix-{tier}.out")
@@ -716,7 +800,7 @@ def _make_default_launch_fn(
             output=tier_out,
             run_id=run_id,
             repo=repo,
-            plan_file=plan_file,
+            plan_file=safe_plan,
             failure_log=failure_log_path,
             timeout_sec=config.SUBPROCESS_DEFAULT_TIMEOUT_SEC,
         )
@@ -752,16 +836,17 @@ def stage_and_push(
     delta_paths: tuple[str, ...],
 ) -> tuple[bool, str | None, tuple[str, ...]]:
     """Stage delta paths, commit, and normal push."""
-    if delta_paths:
-        for path in delta_paths:
-            _ = runner.run(["git", "add", "--", path], cwd=cwd)
+    if not delta_paths:
+        return False, None, ()
+    for path in delta_paths:
+        _ = runner.run(["git", "add", "--", path], cwd=cwd)
     commit_msg = f"Apply CI fixes ({commit_label})"
     commit_script = str(_SCRIPTS_DIR / "git-commit.sh")
     commit = runner.run(
         [commit_script, "--no-trailer", "-m", commit_msg],
         cwd=cwd,
     )
-    if commit.returncode != 0 and delta_paths:
+    if commit.returncode != 0:
         return False, None, delta_paths
     head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
     branch = git.current_branch(runner, cwd=cwd) if head else "HEAD"
@@ -785,11 +870,12 @@ def run_ci_fix(
     output_dir: str | None = None,
 ) -> FixResult:
     """Drive the CI vendor waterfall once."""
-    baseline_tracked, baseline_untracked, _baseline_staged, baseline_head = _capture_baseline(
+    baseline_tracked, baseline_untracked, baseline_staged, baseline_head = _capture_baseline(
         runner,
         cwd=cwd,
     )
-    effective_launch = launch_fn or _make_default_launch_fn(
+    failure_log_paths: list[str] = []
+    base_launch = launch_fn or _make_default_launch_fn(
         runner,
         run_id=run_id,
         repo=repo,
@@ -797,87 +883,98 @@ def run_ci_fix(
         logs=logs,
         output_dir=output_dir,
         cwd=cwd,
+        failure_log_paths=failure_log_paths,
     )
-    tiers = _available_tiers()
-    if not tiers:
-        return FixResult(status="waterfall-failed", detail="no launcher tiers available")
-    first_tier = tiers[start_attempt % len(tiers)]
-    waterfall = agents.run_waterfall(
-        tiers,
-        effective_launch,
-        first_tier=first_tier,
-    )
-    if waterfall.short_circuited:
+
+    def _rollback() -> None:
+        _rollback_to_baseline(
+            runner,
+            baseline_tracked=baseline_tracked,
+            baseline_untracked=baseline_untracked,
+            baseline_staged=baseline_staged,
+            cwd=cwd,
+        )
+
+    def _tier_launch(tier: str) -> TierAttempt:
+        attempt = base_launch(tier)
+        if attempt.launcher_exit != 0 or attempt.wrapper_rc != 0:
+            _rollback()
+        return attempt
+
+    try:
+        unfixable = [_job_token(job.name, job.shard) for job in classified.unfixable]
+        if not classified.fixable and unfixable:
+            return FixResult(status="local-unfixable", unfixable=tuple(unfixable))
+
+        tiers = _available_tiers()
+        if not tiers:
+            return FixResult(status="waterfall-failed", detail="no launcher tiers available")
+        first_tier = tiers[start_attempt % len(tiers)]
+        waterfall = agents.run_waterfall(
+            tiers,
+            _tier_launch,
+            first_tier=first_tier,
+        )
+        if waterfall.short_circuited:
+            _rollback()
+            return FixResult(
+                status="first-fixer-non-health",
+                detail="first-fixer-non-health",
+            )
+        if waterfall.winning_tier is None:
+            _rollback()
+            return FixResult(status="waterfall-failed", detail="all tiers failed")
+
+        for job in classified.fixable:
+            argv = per_job_command(job.name, job.shard)
+            if argv is None or not prepare_python_toolchain(runner, job.name, cwd=cwd):
+                unfixable.append(_job_token(job.name, job.shard))
+        if unfixable:
+            _rollback()
+            return FixResult(status="local-unfixable", unfixable=tuple(unfixable))
+
+        current_head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
+        if current_head != baseline_head:
+            _rollback()
+            return FixResult(status="head-changed")
+
+        failed_verify = [
+            _job_token(job.name, job.shard)
+            for job in classified.fixable
+            if not verify_job_locally(runner, job.name, job.shard, cwd=cwd)
+        ]
+        if failed_verify:
+            _rollback()
+            return FixResult(status="verify-failed", failed_verify=tuple(failed_verify))
+
+        delta = _delta_paths(
+            runner,
+            baseline_tracked=baseline_tracked,
+            baseline_untracked=baseline_untracked,
+            cwd=cwd,
+        )
+        pushed, post_head, delta_paths = stage_and_push(
+            runner,
+            cwd=cwd,
+            commit_label=waterfall.winning_tier or "vendor",
+            delta_paths=delta,
+        )
+        if not pushed:
+            return FixResult(status="waterfall-failed", detail="push failed")
+        if post_head == baseline_head:
+            return FixResult(
+                status="first-fixer-non-health",
+                winning_tier=waterfall.winning_tier,
+                detail="first-fixer-non-health",
+            )
         return FixResult(
-            status="first-fixer-non-health",
-            detail="first-fixer-non-health",
-        )
-    if waterfall.winning_tier is None:
-        _rollback_to_baseline(
-            runner,
-            baseline_tracked=baseline_tracked,
-            baseline_untracked=baseline_untracked,
-            cwd=cwd,
-        )
-        return FixResult(status="waterfall-failed", detail="all tiers failed")
-
-    unfixable = [_job_token(job.name, job.shard) for job in classified.unfixable]
-    for job in classified.fixable:
-        argv = per_job_command(job.name, job.shard)
-        if argv is None or not prepare_python_toolchain(runner, job.name, cwd=cwd):
-            unfixable.append(_job_token(job.name, job.shard))
-    if unfixable:
-        _rollback_to_baseline(
-            runner,
-            baseline_tracked=baseline_tracked,
-            baseline_untracked=baseline_untracked,
-            cwd=cwd,
-        )
-        return FixResult(status="local-unfixable", unfixable=tuple(unfixable))
-
-    current_head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
-    if current_head != baseline_head:
-        return FixResult(status="head-changed")
-
-    failed_verify = [
-        _job_token(job.name, job.shard)
-        for job in classified.fixable
-        if not verify_job_locally(runner, job.name, job.shard, cwd=cwd)
-    ]
-    if failed_verify:
-        _rollback_to_baseline(
-            runner,
-            baseline_tracked=baseline_tracked,
-            baseline_untracked=baseline_untracked,
-            cwd=cwd,
-        )
-        return FixResult(status="verify-failed", failed_verify=tuple(failed_verify))
-
-    delta = _delta_paths(
-        runner,
-        baseline_tracked=baseline_tracked,
-        baseline_untracked=baseline_untracked,
-        cwd=cwd,
-    )
-    pushed, post_head, delta_paths = stage_and_push(
-        runner,
-        cwd=cwd,
-        commit_label=waterfall.winning_tier or "vendor",
-        delta_paths=delta,
-    )
-    if not pushed:
-        return FixResult(status="waterfall-failed", detail="push failed")
-    if post_head == baseline_head:
-        return FixResult(
-            status="first-fixer-non-health",
+            status="pushed",
             winning_tier=waterfall.winning_tier,
-            detail="first-fixer-non-health",
+            delta_paths=delta_paths,
         )
-    return FixResult(
-        status="pushed",
-        winning_tier=waterfall.winning_tier,
-        delta_paths=delta_paths,
-    )
+    finally:
+        for path in failure_log_paths:
+            Path(path).unlink(missing_ok=True)
 
 
 def evaluate_failure(
@@ -893,14 +990,27 @@ def evaluate_failure(
     sleep_fn: SleepFn = time.sleep,
 ) -> FixResult:
     """Port of run_evaluate_failure outer loop."""
+    if not run_id or not str(run_id).strip():
+        return FixResult(status="waterfall-failed", detail="missing run_id")
+
     if transient_retries < config.CI_MONITOR_TRANSIENT_RERUN_MAX:
         rerun = rerun_failed(runner, run_id=run_id, repo=repo, cwd=cwd)
-        if rerun.submitted:
+        if rerun.submitted and not rerun.already_running:
             return FixResult(status="no-changes")
-        return FixResult(status="waterfall-failed", detail=rerun.error)
+        if rerun.submitted and rerun.already_running:
+            return FixResult(status="no-changes", rerun_already_running=True)
+        if rerun.error:
+            _warn_stderr(
+                f"evaluate_failure: transient rerun failed: {rerun.error}; continuing to fix loop",
+            )
 
     last_verify: tuple[str, ...] = ()
     for attempt in range(1, config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS + 1):
+        if not _on_named_branch(runner, cwd=cwd):
+            return FixResult(
+                status="waterfall-failed",
+                detail="evaluate_failure: detached HEAD",
+            )
         logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
         jobs_raw, jobs_state = read_failed_jobs(
             runner,
@@ -988,7 +1098,13 @@ def monitor(
         cwd=cwd,
     )
 
-    def _base_result(*, did_fixing: bool, goto: bool, step: StepResult) -> MonitorResult:
+    def _base_result(
+        *,
+        did_fixing: bool,
+        goto: bool,
+        step: StepResult,
+        rerun_already_running: bool = False,
+    ) -> MonitorResult:
         return MonitorResult(
             action=decision.action,
             ci_status=status.status,
@@ -998,6 +1114,7 @@ def monitor(
             goto_rebase=goto,
             iterations=iteration,
             result=step,
+            rerun_already_running=rerun_already_running,
         )
 
     if decision.action in ("merge", "already_merged"):
@@ -1015,10 +1132,18 @@ def monitor(
         )
 
     if decision.action == "evaluate_failure":
-        run_id = status.failed_run_id or ""
+        if not status.failed_run_id:
+            return _base_result(
+                did_fixing=False,
+                goto=False,
+                step=StepResult(
+                    outcome=Outcome.STALLED,
+                    detail="missing failed_run_id",
+                ),
+            )
         fix = evaluate_failure(
             runner,
-            run_id=run_id,
+            run_id=status.failed_run_id,
             repo=repo,
             plan_file=plan_file,
             transient_retries=transient_retries,
@@ -1032,6 +1157,7 @@ def monitor(
                 did_fixing=False,
                 goto=False,
                 step=StepResult(outcome=Outcome.OK),
+                rerun_already_running=fix.rerun_already_running,
             )
         if fix.status == "pushed":
             return _base_result(

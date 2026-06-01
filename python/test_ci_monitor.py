@@ -482,6 +482,7 @@ def _baseline_responses(head: str = "abc123") -> dict[tuple[str, ...], CommandRe
         ("git", "ls-files", "--others", "--exclude-standard"): _cr(("git", "ls-files"), stdout=""),
         ("git", "diff", "--name-only", "--cached"): _cr(("git", "diff"), stdout=""),
         ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout=f"{head}\n"),
+        ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
     }
     out.update(_python_toolchain_stubs())
     return out
@@ -503,10 +504,6 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
     new_head = "cafebabe" * 5
     responses = _baseline_responses(baseline_head)
     del responses[("git", "rev-parse", "HEAD")]
-    responses[("git", "diff", "--name-only")] = _cr(
-        ("git", "diff"),
-        stdout="fixed.py\n",
-    )
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)")] = _cr(
@@ -521,8 +518,12 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
     responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
 
     runner = RecordingRunner(responses)
+    # baseline captured before vendor runs (empty); vendor adds fixed.py; delta sees it
+    runner.sequential[("git", "diff", "--name-only")] = [
+        _cr(("git", "diff"), stdout=""),           # _capture_baseline tracked
+        _cr(("git", "diff"), stdout="fixed.py\n"), # _delta_paths tracked_now
+    ]
     runner.sequential[("git", "rev-parse", "HEAD")] = [
-        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
         _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
         _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
         _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
@@ -560,6 +561,7 @@ def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
         )
 
     responses = _baseline_responses(head)
+    responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
     responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)")] = _cr(
@@ -573,6 +575,17 @@ def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
     responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), 0)
 
     runner = RecordingRunner(responses)
+    # empty baseline, vendor adds fixed.py; HEAD stays same after push → first-fixer-non-health
+    runner.sequential[("git", "diff", "--name-only")] = [
+        _cr(("git", "diff"), stdout=""),           # _capture_baseline tracked
+        _cr(("git", "diff"), stdout="fixed.py\n"), # _delta_paths tracked_now
+    ]
+    runner.sequential[("git", "rev-parse", "HEAD")] = [
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{head}\n"),
+    ]
     classified = ci_monitor.classify_failed_jobs(
         (FailedJob(name="python-lint", conclusion="failure"),),
     )
@@ -674,6 +687,7 @@ def test_evaluate_failure_in_progress_defers_launch() -> None:
 
     runner = RecordingRunner(
         {
+            ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
             ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
                 ("gh", "run", "view"),
                 rc=3,
@@ -764,3 +778,277 @@ def test_redact_in_collect_failed_logs_unit() -> None:
     sample = "token ghp_" + "x" * 40
     redacted = redact.redact(sample)
     assert config.REDACTED_TOKEN in redacted
+
+
+# FINDING_14: poll_ci NO_CHECKS bail
+def test_poll_ci_no_checks_bail() -> None:
+    """Empty checks with grace → NO_CHECKS bail from poll_ci."""
+    responses = _status(status="empty")
+    runner = RecordingRunner(responses)
+    status, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=5,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        sleep_fn=lambda _s: None,
+    )
+    assert decision.action == "bail"
+    assert status.status == "NO_CHECKS"
+    assert "No CI checks" in (decision.bail_reason or "")
+
+
+# FINDING_15: run_ci_fix head-changed
+def test_run_ci_fix_head_changed_no_push() -> None:
+    """HEAD moves after vendor fix → head-changed, no push."""
+    baseline_head = "aaaa" * 10
+    new_head = "bbbb" * 10
+
+    def launch_fn(tier: str) -> TierAttempt:
+        return TierAttempt(tier=tier, wrapper_rc=0, launcher_exit=0, failure=LaunchFailure("none", ""))
+
+    responses = _baseline_responses()
+    responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
+    runner = RecordingRunner(responses)
+    runner.sequential[("git", "rev-parse", "HEAD")] = [
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
+    ]
+    classified = ci_monitor.classify_failed_jobs(
+        (FailedJob(name="python-lint", conclusion="failure"),),
+    )
+    fix = ci_monitor.run_ci_fix(
+        runner,
+        run_id="99",
+        repo="o/r",
+        classified=classified,
+        logs=ci_monitor.LogCollectResult(text="", state="ready"),
+        plan_file=None,
+        start_attempt=0,
+        cwd=None,
+        launch_fn=launch_fn,
+    )
+    assert fix.status == "head-changed"
+    assert not any(c[0] == "git" and c[1] == "push" for c in runner.calls)
+
+
+# FINDING_16: waterfall short-circuit (pre-verify) → first-fixer-non-health, no stage
+def test_run_ci_fix_short_circuit_first_fixer_non_health() -> None:
+    """First-tier other-class failure → short_circuited, first-fixer-non-health, no stage/push."""
+    call_log: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        call_log.append(tier)
+        return TierAttempt(
+            tier=tier, wrapper_rc=0, launcher_exit=1, failure=LaunchFailure("other", "unknown")
+        )
+
+    responses = _baseline_responses()
+    runner = RecordingRunner(responses)
+    classified = ci_monitor.classify_failed_jobs(
+        (FailedJob(name="python-lint", conclusion="failure"),),
+    )
+    fix = ci_monitor.run_ci_fix(
+        runner,
+        run_id="99",
+        repo="o/r",
+        classified=classified,
+        logs=ci_monitor.LogCollectResult(text="", state="ready"),
+        plan_file=None,
+        start_attempt=0,
+        cwd=None,
+        launch_fn=launch_fn,
+    )
+    assert fix.status == "first-fixer-non-health"
+    assert not any(c[0] == "git" and c[1] == "add" for c in runner.calls)
+    assert not any(c[0] == "git" and c[1] == "push" for c in runner.calls)
+
+
+# FINDING_11: evaluate_failure verify-failed retry
+def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
+    """verify-failed on outer 1, pushed on outer 2; assert launch count and fresh log fetches."""
+    launch_calls: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        launch_calls.append(tier)
+        return TierAttempt(tier=tier, wrapper_rc=0, launcher_exit=0, failure=LaunchFailure("none", ""))
+
+    baseline_head = "abcd" * 10
+    new_head = "efgh" * 10
+    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+
+    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    responses: dict[tuple[str, ...], CommandResult] = {
+        ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
+        ("gh", "run", "view", "77", "--repo", "o/r", "--log-failed"): _cr(
+            ("gh", "run", "view"), stdout="log"
+        ),
+        ("gh", "run", "view", "77", "--repo", "o/r", "--json", "jobs"): _cr(
+            ("gh", "run", "view"), stdout=jobs_json
+        ),
+        ("git", "ls-files", "--others", "--exclude-standard"): _cr(("git", "ls-files"), stdout=""),
+        ("git", "diff", "--name-only", "--cached"): _cr(("git", "diff"), stdout=""),
+        ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feat\n"),
+        ("git", "push", "origin", "feat"): _cr(("git", "push"), 0),
+        # attempt 1 uses cursor (start_attempt=0), attempt 2 uses codex (start_attempt=1)
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)"): _cr((commit_script,), 0),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): _cr((commit_script,), 0),
+    }
+    responses.update(_python_toolchain_stubs())
+
+    runner = RecordingRunner(responses)
+    # git diff --name-only: a1 baseline, a1 rollback-tracked, a2 baseline, a2 delta
+    runner.sequential[("git", "diff", "--name-only")] = [
+        _cr(("git", "diff"), stdout=""),
+        _cr(("git", "diff"), stdout=""),
+        _cr(("git", "diff"), stdout=""),
+        _cr(("git", "diff"), stdout="fixed.py\n"),
+    ]
+    # git rev-parse HEAD: a1 baseline, a1 head-check, a2 baseline, a2 head-check, a2 post-commit, a2 post-push
+    runner.sequential[("git", "rev-parse", "HEAD")] = [
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
+    ]
+    # make py-lint: fail on attempt 1, pass on attempt 2
+    runner.sequential[("make", "py-lint")] = [
+        _cr(("make", "py-lint"), rc=1),
+        _cr(("make", "py-lint"), rc=0),
+    ]
+
+    sleeps: list[float] = []
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="77",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=str(tmp_path),
+        launch_fn=launch_fn,
+        sleep_fn=sleeps.append,
+    )
+
+    assert fix.status == "pushed"
+    assert len(launch_calls) == 2
+    log_calls = [
+        c for c in runner.calls
+        if c == ("gh", "run", "view", "77", "--repo", "o/r", "--log-failed")
+    ]
+    assert len(log_calls) == 2
+    assert sleeps
+
+
+# FINDING_12: monitor driver mapping tests
+def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
+    """Pushed fix → OK + goto_rebase + did_fixing."""
+    baseline_head = "1111" * 10
+    new_head = "2222" * 10
+
+    responses: dict[tuple[str, ...], CommandResult] = {}
+    pr_json = json.dumps({"number": 1, "url": "https://github.com/o/r/pull/1", "state": "OPEN", "headRefName": "feat"})
+    checks = json.dumps([{"name": "lint", "state": "FAIL", "bucket": "fail", "link": "https://github.com/o/r/actions/runs/42/job/1"}])
+    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName")] = _cr(("gh", "pr", "view"), stdout=pr_json)
+    responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(("git", "fetch"), 0)
+    responses[("gh", "pr", "checks", "1", "--repo", "o/r", "--json", "name,state,bucket,link")] = _cr(("gh", "pr", "checks"), stdout=checks)
+    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(("git", "rev-list"), stdout="0\n")
+    responses[("git", "log", "--format=%s", "HEAD..origin/main")] = _cr(("git", "log"), stdout="")
+
+    responses[("git", "symbolic-ref", "--quiet", "HEAD")] = _cr(("git", "symbolic-ref"), 0)
+    jobs_json = json.dumps({"jobs": [{"name": "lint", "conclusion": "failure"}]})
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(("gh", "run", "view"), stdout="log")
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(("gh", "run", "view"), stdout=jobs_json)
+    responses[("git", "ls-files", "--others", "--exclude-standard")] = _cr(("git", "ls-files"), stdout="")
+    responses[("git", "diff", "--name-only", "--cached")] = _cr(("git", "diff"), stdout="")
+    responses[("env", "SKIP=agnix,lint-mermaid-fences,shellcheck", "make", "lint-only")] = _cr(("env",), 0)
+    responses[("git", "add", "--", "fixed.sh")] = _cr(("git", "add"), 0)
+    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)")] = _cr((commit_script,), 0)
+    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(("git", "symbolic-ref"), stdout="feat\n")
+    responses[("git", "push", "origin", "feat")] = _cr(("git", "push"), 0)
+
+    runner = RecordingRunner(responses)
+    runner.sequential[("git", "diff", "--name-only")] = [
+        _cr(("git", "diff"), stdout=""),
+        _cr(("git", "diff"), stdout="fixed.sh\n"),
+    ]
+    runner.sequential[("git", "rev-parse", "HEAD")] = [
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{new_head}\n"),
+    ]
+
+    def launch_fn(tier: str) -> TierAttempt:
+        return TierAttempt(tier=tier, wrapper_rc=0, launcher_exit=0, failure=LaunchFailure("none", ""))
+
+    result = ci_monitor.monitor(
+        runner,
+        pr=1,
+        repo="o/r",
+        transient_retries=1,
+        sleep_fn=lambda _s: None,
+        launch_fn=launch_fn,
+        cwd=str(tmp_path),
+    )
+    assert result.result.outcome == Outcome.OK
+    assert result.goto_rebase is True
+    assert result.did_fixing is True
+
+
+def test_monitor_first_fixer_non_health_needs_user_input(tmp_path: Any) -> None:
+    """first-fixer-non-health from fix loop → NEEDS_USER_INPUT."""
+    baseline_head = "cccc" * 10
+    responses: dict[tuple[str, ...], CommandResult] = {}
+    pr_json = json.dumps({"number": 1, "url": "https://github.com/o/r/pull/1", "state": "OPEN", "headRefName": "feat"})
+    checks = json.dumps([{"name": "lint", "state": "FAIL", "bucket": "fail", "link": "https://github.com/o/r/actions/runs/55/job/1"}])
+    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName")] = _cr(("gh", "pr", "view"), stdout=pr_json)
+    responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(("git", "fetch"), 0)
+    responses[("gh", "pr", "checks", "1", "--repo", "o/r", "--json", "name,state,bucket,link")] = _cr(("gh", "pr", "checks"), stdout=checks)
+    responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(("git", "rev-list"), stdout="0\n")
+    responses[("git", "log", "--format=%s", "HEAD..origin/main")] = _cr(("git", "log"), stdout="")
+    responses[("git", "symbolic-ref", "--quiet", "HEAD")] = _cr(("git", "symbolic-ref"), 0)
+    jobs_json = json.dumps({"jobs": [{"name": "lint", "conclusion": "failure"}]})
+    responses[("gh", "run", "view", "55", "--repo", "o/r", "--log-failed")] = _cr(("gh", "run", "view"), stdout="")
+    responses[("gh", "run", "view", "55", "--repo", "o/r", "--json", "jobs")] = _cr(("gh", "run", "view"), stdout=jobs_json)
+    responses[("git", "ls-files", "--others", "--exclude-standard")] = _cr(("git", "ls-files"), stdout="")
+    responses[("git", "diff", "--name-only", "--cached")] = _cr(("git", "diff"), stdout="")
+    responses[("git", "diff", "--name-only")] = _cr(("git", "diff"), stdout="")
+    responses[("git", "rev-parse", "HEAD")] = _cr(("git", "rev-parse"), stdout=f"{baseline_head}\n")
+
+    def launch_fn(tier: str) -> TierAttempt:
+        return TierAttempt(tier=tier, wrapper_rc=0, launcher_exit=1, failure=LaunchFailure("other", "unknown"))
+
+    result = ci_monitor.monitor(
+        runner=RecordingRunner(responses),
+        pr=1,
+        repo="o/r",
+        transient_retries=1,
+        sleep_fn=lambda _s: None,
+        launch_fn=launch_fn,
+        cwd=str(tmp_path),
+    )
+    assert result.result.outcome == Outcome.NEEDS_USER_INPUT
+    assert result.result.detail == "first-fixer-non-health"
+
+
+def test_monitor_timeout_bail_stalled() -> None:
+    """Iteration cap reached → bail → STALLED."""
+    runner = RecordingRunner(_status(status="pending"))
+    result = ci_monitor.monitor(
+        runner,
+        pr=1,
+        repo="o/r",
+        iteration=config.CI_MONITOR_MAX_ITERATIONS,
+        sleep_fn=lambda _s: None,
+    )
+    assert result.result.outcome == Outcome.STALLED
+    assert "Timeout" in (result.result.detail or "")

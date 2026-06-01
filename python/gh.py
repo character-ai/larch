@@ -504,18 +504,10 @@ def failed_jobs_read(
     )
 
 
-def failed_jobs(
-    runner: Runner,
-    run_id: int,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> tuple[FailedJob, ...]:
-    result = failed_jobs_read(runner, run_id, repo=repo, cwd=cwd)
-    if result.returncode != 0:
-        _raise_read_failure(result)
+def parse_failed_jobs_json(stdout: str) -> tuple[FailedJob, ...]:
+    """Parse failed jobs from a single ``gh run view --json jobs`` payload."""
     payload = _as_json_object(
-        _loads_json(result.stdout, context="failed jobs"),
+        _loads_json(stdout, context="failed jobs"),
         context="failed jobs",
     )
     jobs_raw = payload.get("jobs", [])
@@ -535,6 +527,19 @@ def failed_jobs(
             FailedJob(name=str(job["name"]), conclusion=str(job.get("conclusion", ""))),
         )
     return tuple(failed)
+
+
+def failed_jobs(
+    runner: Runner,
+    run_id: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> tuple[FailedJob, ...]:
+    result = failed_jobs_read(runner, run_id, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        _raise_read_failure(result)
+    return parse_failed_jobs_json(result.stdout)
 
 
 def run_rerun(
