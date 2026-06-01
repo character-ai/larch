@@ -1,0 +1,16 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt"}
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/codex-primary-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-arch.prompt"}
+{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt"}
+{"slot":"codex-plan-edge","tool":"codex","output":"<TMPDIR>/codex-primary-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-edge.prompt"}
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/codex-primary-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-innovation.prompt"}
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"<TMPDIR>/codex-primary-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-pragmatic.prompt"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/codex-primary-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-requirements.prompt"}
+{"slot":"dyn-cursor-plan-bash-python-parity","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-bash-python-parity-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-bash-python-parity.prompt"}
+{"slot":"dyn-codex-plan-bash-python-parity","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-bash-python-parity-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-bash-python-parity.prompt"}
+{"slot":"dyn-cursor-plan-predicate-completeness","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-predicate-completeness-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-predicate-completeness.prompt"}
+{"slot":"dyn-codex-plan-predicate-completeness","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-predicate-completeness-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-predicate-completeness.prompt"}
+{"slot":"dyn-cursor-plan-exit-contract-sync","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-exit-contract-sync-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-exit-contract-sync.prompt"}
+{"slot":"dyn-codex-plan-exit-contract-sync","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-exit-contract-sync-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-exit-contract-sync.prompt"}

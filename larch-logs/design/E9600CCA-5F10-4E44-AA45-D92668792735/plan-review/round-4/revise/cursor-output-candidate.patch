@@ -1,0 +1,91 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -24,6 +24,10 @@
+ - **FINDING_2 — upfront log reuse:** Reuse the upfront `gh-run-logs` / `collect_failed_logs` capture **only when** logs are ready (`gh_logs_rc == 0` / `logs.state == "ready"`). Otherwise the fix loop's first iteration performs a normal per-attempt fetch (parity `ship-pr.sh:2532-2534`).
+ - **FINDING_3 — test harness:** Add #3334 regressions inline in `scripts/test-ship-pr.sh` or in a **new** tiny sourced helper with **no** top-level auto-run block. Do **not** re-source `scripts/test-ship-pr-fix-loop-2632.inc.sh` (its trailing `run_ship_pr_2632_t*` invocations would pull stale cases into `make test-ship-pr-fix-loop`).
+ - **FINDING_4 — jobs in progress:** Bash must treat `ci-failed-jobs.sh` rc=3 like Python `jobs_state == "in_progress"`: defer, no vendor/per-job dispatch, no exhaustion flag, backoff/continue`.
++- **FINDING_5 — fix-attempt flag lifetime (design review):** Initialize `_code_fix_attempted_on_ready_log` / `code_fix_attempted_on_ready_log` **once** before the outer fix-loop (`while` / `for attempt`); never reassign `false` inside the loop. A substantive attempt on an earlier outer iteration must still be visible at terminal exhaustion.
++- **FINDING_6 — separate failure captures (design review):** Blind-rerun `gh-run-logs` and `ci-rerun-failed.sh` stderr must use **distinct** `failure_capture_path` files. Stash the ready upfront log path for iteration-1 reuse **only** when blind rerun is skipped (deterministic/non-ready/cap) or not attempted — **never** after a transient rerun (rerun stderr must not truncate or replace the log capture).
+ 
+ ### Substantive code-fix attempt predicate (single contract, Bash + Python)
+ 
+@@ -38,6 +42,7 @@ Set `code_fix_attempted_on_ready_log` (Bash: `_code_fix_attempted_on_ready_log`)
+ - `run_ci_fix_vendor` / `run_ci_fix` ending with immediate launcher/tier failure only (`all tiers failed`, `no launcher tiers available`, push failed before substantive fix) with no per-job entry and no `verify-failed` / verification-retry consumption.
+ 
+ Terminal exhaustion: if `_code_fix_attempted_on_ready_log` → `BAIL_REASON=ci-fix-exhausted`, exit 3; else → existing `exit_stall` (exit 4).
++**Flag lifetime:** set the flag to `true` only per the predicate above; initialize `false` once per `run_evaluate_failure` / `evaluate_failure` invocation and do not clear it between outer attempts.
+ 
+ ## Files to modify/create
+ 
+ ### UPDATED: `scripts/ship-pr.sh`
+-- In `run_evaluate_failure` (blind-rerun block, ~line 2499): before `ci-rerun-failed.sh`, fetch failure log via `gh-run-logs.sh --run-id "$failed_run"`. Classify with `is_transient_net_signature` **only when `gh_logs_rc == 0`**. Non-zero log fetch (rc=3 in-progress, other errors) → deterministic, skip blind rerun. Run `ci-rerun-failed.sh` ONLY when ready log is transient AND `TRANSIENT_RETRIES < 1`. If ready, optionally stash capture path for iteration 1 of the fix loop (ready-only reuse per FINDING_2).
+-- In the fix loop (~2532+): initialize `_code_fix_attempted_on_ready_log=false`. **Defer (no dispatch, no substantive flag, bump `_fix_attempt`, backoff, `continue` outer `while`) when logs or jobs are not ready:**
++- In `run_evaluate_failure` (blind-rerun block, ~line 2499): allocate **two** capture paths before any rerun: `upfront_logs=$(failure_capture_path "$phase")` for `gh-run-logs.sh`, `rerun_fail=$(failure_capture_path "$phase")` for `ci-rerun-failed.sh` stderr/output (do **not** reuse one path — today's single `fail_file` is redirected by `2>` and rerun output can poison iteration-1 reuse). Fetch failure log to `upfront_logs`. Classify with `is_transient_net_signature` **only when `gh_logs_rc == 0`**. Non-zero log fetch (rc=3 in-progress, other errors) → deterministic, skip blind rerun. Run `ci-rerun-failed.sh` with capture to `rerun_fail` ONLY when ready log is transient AND `TRANSIENT_RETRIES < 1`. **Stash `upfront_logs` for iteration-1 reuse only when** ready (`gh_logs_rc == 0`) **and** blind rerun is skipped (deterministic signature, non-ready upfront fetch, or cap) **or** rerun is not attempted; **do not stash** after a transient rerun is submitted (FINDING_6).
++- Before the fix-loop `while` (~2520), with other `run_evaluate_failure` locals: `_code_fix_attempted_on_ready_log=false` **once**; never reinitialize inside the loop body (FINDING_5).
++- In the fix loop (~2532+): **Defer (no dispatch, no substantive flag, bump `_fix_attempt`, backoff, `continue` outer `while`) when logs or jobs are not ready:**
+   - `gh_logs_rc == 3` (logs in progress; existing).
+   - `gh_logs_rc != 0 && gh_logs_rc != 3` (error/unreadable logs; **replace** today's `else` branch that still calls `run_ci_fix_vendor` ~2658–2677) (FINDING_3).
+   - `gh_logs_rc == 0 && ci_failed_rc == 3`: **`elif` immediately under the `gh_logs_rc==0` block, after the `ci-failed-jobs.sh` call and before the vendor/per-job tail (~2622)** — log deferral, bump `_fix_attempt`, backoff, **`continue`** — do **not** fall through to `run_per_job_local_fix_loop`, verification-retry staging, or `run_ci_fix_vendor` (FINDING_2 / FINDING_4).
+ - When `gh_logs_rc == 0 && ci_failed_rc == 0`, run per-job/vendor paths; set `_code_fix_attempted_on_ready_log=true` per predicate above (not on mere `run_ci_fix_vendor` entry).
+-- First fix-loop iteration: if upfront capture was ready, pass stashed path into first `gh-run-logs` slot and skip re-fetch; if upfront was not ready, call `gh-run-logs.sh` as today.
++- First fix-loop iteration: if stashed `upfront_logs` exists (ready upfront, blind rerun skipped/not attempted), use it for the first `gh-run-logs` slot and skip re-fetch; otherwise call `gh-run-logs.sh` as today (including after transient rerun).
+ - Terminal exhaustion (~2693): if `_code_fix_attempted_on_ready_log` → `BAIL_REASON=ci-fix-exhausted`, exit 3; else `exit_stall`. Rebase-storm `exit_stall` in `run_rebase_rebump` (~3178) unchanged.
+ - Extend `needs_user_bail_reason` (~1720) and `is_autonomous_exit3_bail_reason` (~1728) for `ci-fix-exhausted` (autonomous: skips `BAIL_NEEDS_USER_INPUT`, like `first-fixer-non-health`).
+ 
+ ### UPDATED: `scripts/ship-pr.md`
+-- Document `ci-fix-exhausted` exit-3 bail, deterministic-default blind-rerun gate, ready-only upfront log reuse, fix-loop deferral for logs-in-progress, logs-error/unreadable, and `ci-failed-jobs` rc=3, and substantive-attempt exhaustion predicate. Keep script/.md sync per `.claude/rules/script-md-siblings.md`.
++- Document `ci-fix-exhausted` exit-3 bail, deterministic-default blind-rerun gate, distinct `upfront_logs`/`rerun_fail` captures and ready-only upfront stash (never post-transient-rerun), fix-loop deferral for logs-in-progress, logs-error/unreadable, and `ci-failed-jobs` rc=3, substantive-attempt exhaustion predicate, and sticky `_code_fix_attempted_on_ready_log` (init once before outer loop). Keep script/.md sync per `.claude/rules/script-md-siblings.md`.
+ 
+ ### UPDATED: `python/ci_monitor.py`
+ - `import retry`. In `evaluate_failure` (~996-1006): collect failure log once; gate blind `rerun_failed` on `retry.is_transient_net_signature(logs.text)` only when `logs.state == "ready"`; on rerun failure, log and fall through to fix loop (existing parity note).
+-- Fix loop: **defer (sleep/`continue`, no `run_ci_fix`, no substantive flag) when `logs.state != "ready"` (`in_progress` or `error`) or `jobs_state == "in_progress"`** — replace today's in-progress-only guard (~1021–1024) so error/unreadable logs do not dispatch fixes (FINDING_3). Track `code_fix_attempted_on_ready_log` per predicate (set when `run_ci_fix` runs after ready logs **and** ready jobs, and result is `verify-failed` / verification-retry path or per-job equivalent — **not** on `waterfall-failed` with `no launcher tiers available`, `push failed`, or `all tiers failed` alone). Reuse upfront `logs` on iteration 1 **only if** `logs.state == "ready"`; else call `collect_failed_logs` at loop start (FINDING_2).
++- Fix loop: initialize `code_fix_attempted_on_ready_log = False` **before** the `for attempt` loop; only set `True` per predicate — never reset per iteration (FINDING_5). **Defer (sleep/`continue`, no `run_ci_fix`, no substantive flag) when `logs.state != "ready"` (`in_progress` or `error`) or `jobs_state == "in_progress"`** — replace today's in-progress-only guard (~1021–1024) so error/unreadable logs do not dispatch fixes (FINDING_3). Track `code_fix_attempted_on_ready_log` per predicate (set when `run_ci_fix` runs after ready logs **and** ready jobs, and result is `verify-failed` / verification-retry path or per-job equivalent — **not** on `waterfall-failed` with `no launcher tiers available`, `push failed`, or `all tiers failed` alone). Reuse upfront `logs` on iteration 1 **only if** `logs.state == "ready"` **and** blind rerun was skipped/not attempted; if a transient rerun was submitted, call `collect_failed_logs` at loop start (FINDING_2 / FINDING_6).
+ - Outer exhaustion (~1057-1064): return `status="fix-exhausted"` only when `code_fix_attempted_on_ready_log`; else `waterfall-failed`. In `monitor`, map `fix-exhausted` → `Outcome.NEEDS_USER_INPUT`, detail `ci-fix-exhausted`; other `waterfall-failed` → `STALLED`.
+ 
+ ### UPDATED: `python/test_ci_monitor.py`
+@@ -68,6 +78,8 @@
+ - **NEW:** `test_evaluate_failure_jobs_in_progress_defers_vendor`: logs ready, jobs `in_progress` → no `run_ci_fix` / launch; parity Bash `ci_failed_rc == 3`.
+ - **NEW:** `test_evaluate_failure_error_logs_defers_fix`: `logs.state == "error"` (or non-ready non-in-progress) → no `run_ci_fix`; error-only outer exhaustion → `waterfall-failed` / `STALLED` (FINDING_3).
++- **NEW:** `test_evaluate_failure_transient_rerun_refetches_logs`: transient rerun submitted → iteration 1 calls `collect_failed_logs` again (no reuse of pre-rerun capture).
++- **NEW:** `test_evaluate_failure_substantive_flag_survives_outer_attempts`: substantive fix on attempt 1, defer on attempt 2, exhaustion on attempt 3 → `fix-exhausted` (flag not cleared mid-loop).
+ - Adjust `test_monitor_rebase_then_evaluate_no_fix` if deterministic-default changes path.
+ 
+ ### UPDATED: `skills/implement/SKILL.md`
+@@ -78,6 +90,7 @@
+ - **NEW:** regression for `ci-failed-jobs` rc=3 deferral (no vendor dispatch, exit 4 on in-progress-only exhaustion) — FINDING_4.
+ - **NEW:** regression for `gh-run-logs` error/unreadable (`gh_logs_rc` not 0/3): no vendor dispatch, exit 4 on error-only outer exhaustion — FINDING_3.
++- **NEW:** regression that transient gated rerun does **not** pass rerun stderr capture as iteration-1 logs (distinct paths / no stash after rerun) — FINDING_6.
+ - Keep rebase-storm max-retries on exit 4 unchanged.
+ 
+ ### UPDATED: `scripts/test-implement-step8-exit3-first-fixer.sh`
+@@ -88,10 +101,14 @@
+ ## Edge cases
+ - **Log not yet available** (`gh-run-logs` rc=3 / `logs.state == "in_progress"`): no blind rerun; no upfront reuse; fix loop defers (no vendor dispatch). In-progress-only outer exhaustion → exit 4 stall.
+ - **Log error/unreadable** (`gh-run-logs` rc not 0 and not 3 / `logs.state == "error"`): no blind rerun; no upfront reuse; fix loop defers (no vendor dispatch, no substantive flag). Error-only outer exhaustion → exit 4 stall (FINDING_3).
+ - **Logs ready, jobs in progress** (`ci-failed-jobs` rc=3 / `jobs_state == "in_progress"`): defer like logs-in-progress; no dispatch; no `code_fix_attempted_on_ready_log`.
++- **Upfront capture vs rerun stderr** (FINDING_6): Bash `upfront_logs` and `rerun_fail` are separate; stash ready `upfront_logs` only when blind rerun skipped/not attempted. Python re-collects after transient rerun instead of reusing pre-rerun `logs`.
++- **Substantive-flag lifetime** (FINDING_5): `_code_fix_attempted_on_ready_log` / `code_fix_attempted_on_ready_log` sticky for the whole `run_evaluate_failure` / `evaluate_failure` invocation; never cleared between outer attempts.
+ - **Bash/Python log-readiness parity:** blind-rerun classification and upfront reuse require ready logs; fix-loop dispatch and substantive exhaustion flag require ready logs **and** ready jobs; error/unreadable logs defer in both trees.
+ - **Network failure inside a job:** `is_transient_net_signature` in tail → one gated rerun allowed.
+ - **Tail window:** signature above `CI_MONITOR_LOG_TAIL_LINES` missed → deterministic-default (safe bias).
+@@ -101,6 +117,8 @@
+ - **Routing launcher/push/no-tier exhaustion to autonomous fix.** Mitigation: substantive-attempt predicate; keep `vendor_loop_ci_fix_exhausted` on exit 4; add launcher-failure regression.
+ - **Reusing non-ready upfront capture on iteration 1.** Mitigation: ready-only reuse (FINDING_2).
++- **Rerun stderr masquerading as CI logs / capture truncation.** Mitigation: separate `upfront_logs` and `rerun_fail`; stash only when blind rerun skipped or not attempted (FINDING_6).
++- **Substantive flag cleared mid-loop → false stall.** Mitigation: init once before outer loop; set true only per predicate (FINDING_5).
+ - **Bash dispatch on `ci_failed_rc==3` while Python defers.** Mitigation: explicit Bash defer branch + parity test (FINDING_4).
+ - **Bash/Python dispatch on unreadable logs.** Mitigation: error/unreadable defer branches replace vendor `else` ~2658–2677 (Bash) and extend Python guard beyond `in_progress` only; parity test (FINDING_3).
+ - **Autonomous fix loop pressure.** Mitigation: orchestrator 3-attempt cap, then user-bail.
+@@ -108,7 +126,7 @@
+ ## Testing strategy
+ - Python (`make py-test`): new/updated `evaluate_failure`/`monitor` tests above; `make py-lint`.
+-- Bash (`make test-ship-pr-fix-loop`, `make test-ship-pr-transient`, `make test-implement-step8-exit3-first-fixer`): #3334 inc helpers, `ci_fix_exhausted` exit-3 rewrite with ready-log/ready-job stubs, `vendor_loop_ci_fix_exhausted` stays exit 4, launcher/in-progress/error-log regressions.
++- Bash (`make test-ship-pr-fix-loop`, `make test-ship-pr-transient`, `make test-implement-step8-exit3-first-fixer`): #3334 inc helpers, `ci_fix_exhausted` exit-3 rewrite with ready-log/ready-job stubs, `vendor_loop_ci_fix_exhausted` stays exit 4, launcher/in-progress/error-log/post-rerun-stash regressions.
+ - `bash scripts/relevant-checks.sh` after edits.
+ 
+-diff_added: 365
+-diff_deleted: 45
+-diff_lines: 475
++diff_added: 398
++diff_deleted: 48
++diff_lines: 502

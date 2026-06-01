@@ -1,0 +1,35 @@
+Reviewing the plan against the codebase contracts you listed.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-implement-step8-exit3-first-fixer.sh:1-38	Step 8 Exit 3 harness update only says both bail reasons are documented, not that both trigger the same autonomous sub-procedure	Implementer may grep sentinel paths only (current harness never checks first-fixer-non-health or ci-fix-exhausted strings); SKILL could mention ci-fix-exhausted elsewhere without sharing the When … run sub-procedure below trigger with first-fixer-non-health, so ci-fix-exhausted still routes to AskUserQuestion	In scripts/test-implement-step8-exit3-first-fixer.sh require grep -Fq for first-fixer-non-health and ci-fix-exhausted inside the Step 8+ Exit 3 block and awk proving a single sub-steps 1–12 block is gated by both tokens (extend skills/implement/SKILL.md:1169–1182 in the same edit)
+2	in_scope	latent	correctness	plan.txt:104-107	Rebase-storm exit-4 carve-out appears in Files to modify (ship-pr.sh unchanged, test-ship-pr.sh keep) and edge cases but not in Testing strategy	Reviewer checklist asked for every exit-4 carve-out in file-change and test plan; rebase-storm is only implied by no code change, so regression coverage is unstated	Add a Testing strategy bullet: no new test; confirm existing REBASE_COUNT>=20 path in scripts/ship-pr.sh:3173-3178 still exit_stall with STALL_STEP=10-max-retries
+
+## Findings
+
+### 1. [correctness] `scripts/test-implement-step8-exit3-first-fixer.sh` — dual-trigger assertion underspecified
+
+The plan (lines 81–82) says only “Assert SKILL documents autonomous path for both `first-fixer-non-health` and `ci-fix-exhausted`.” The current harness (`scripts/test-implement-step8-exit3-first-fixer.sh:13–36`) never greps either bail token; it only checks sentinel/counter and sub-step tooling inside the Exit 3 window. That does not prove both reasons invoke the **same** 12-step sub-procedure, which was an explicit review ask.
+
+**Suggested revision:** In the plan’s `test-implement-step8-exit3-first-fixer.sh` bullet, require `grep -Fq` for both tokens within the Step 8+ Exit 3 section and an `awk` guard that both appear on the autonomous trigger line(s) before sub-step `1.`, without duplicating the sub-procedure block. Pair with a `skills/implement/SKILL.md:1169–1182` edit that extends the existing `When BAIL_REASON=…` conditional (and fall-through at `:1182`) rather than adding a second copy of steps 1–12.
+
+### 2. [correctness] Testing strategy omits rebase-storm exit-4 carve-out
+
+Exit-4 carve-outs are covered in the file-change list (`vendor_loop_ci_fix_exhausted` keep, NEW launcher and in-progress regressions; `plan.txt:73–79`) and in edge cases (`plan.txt:94`). **Rebase-storm** (`REBASE_COUNT >= 20` → `exit_stall`, `scripts/ship-pr.sh:3173–3178`) is only called out under `UPDATED: scripts/test-ship-pr.sh` as “Keep … unchanged” (`plan.txt:79`), not in **Testing strategy** (`plan.txt:104–107`). Low risk because code is unchanged, but the test plan does not record how that invariant is guarded.
+
+**Suggested revision:** Add one Testing strategy line: no new test; rely on unchanged `run_rebase_rebump` stall path (optional pointer to any existing rebase-cap harness if present).
+
+---
+
+## Contract surfaces (verified against repo + plan)
+
+| Surface | Plan coverage | Notes |
+|--------|----------------|-------|
+| `needs_user_bail_reason` (`scripts/ship-pr.sh:1720–1724`) | Yes (`plan.txt:48`) | Add `ci-fix-exhausted` to the `case` list like `first-fixer-non-health`. |
+| `is_autonomous_exit3_bail_reason` (`scripts/ship-pr.sh:1728–1729`) | Yes (`plan.txt:48`) | Extend pattern; used with `needs_user_bail_reason` at `:3567–3571`. |
+| `skills/implement/SKILL.md` Exit 3 (`:1169+`) | Yes (`plan.txt:67–68`) | Extend trigger; also update `:1182` fall-through prose for parity (not listed in plan — minor doc gap, exonerated at SIMPLE tier). |
+| `scripts/ci-decide.md` | Yes (`plan.txt:84–85`) | Disambiguate from `fix-attempts-exhausted` and rebase stall. |
+| `scripts/ship-pr.md` | Yes (`plan.txt:50–51`) | Must revise exit-3/`:96` vendor-exhaustion prose (today still says outer exhaustion → exit 4). |
+| Orchestrator `BAIL_REASON` parsing | SKILL-only (sufficient) | `/implement` routes via `skills/implement/SKILL.md`; no separate shell router for autonomous CI-fix. `ship-pr.sh` sets reason and exits 3; terminal path at `:2693` is separate from mid-loop `first-fixer-non-health` check at `:2679–2680`. SKILL wording change plus bail helpers is enough — no extra orchestrator parser required. |
+
+Exit-4 carve-outs in **file-change + tests:** `vendor_loop_ci_fix_exhausted` (keep rc 4), launcher NEW regression, in-progress NEW regression — all present. Rebase-storm: file-change only (finding 2).
+
+Python `monitor()` must add a `fix-exhausted` branch parallel to `first-fixer-non-health` (`python/ci_monitor.py:1174–1181`); plan states this (`plan.txt:56`). Bash `ci_fix_exhausted` rewrite (`plan.txt:76`) aligns with substantive per-job exhaustion if ready-log/jobs predicates are met (today’s harness already drives per-job checks).

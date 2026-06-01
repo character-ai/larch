@@ -1,0 +1,13 @@
+Reading the plan and auditing bail-reason consumers in the codebase.
+1. **[correctness]** `skills/implement/scripts/stall-recovery-report.sh:246-257` — `safe_bail_reason_value` allowlists `first-fixer-non-health` but the plan does not add `ci-fix-exhausted`. After autonomous fall-through, Step 8+ sets `STALL_TRACKING=true` with `BAIL_REASON=ci-fix-exhausted` in state; Step 18 `classify` will emit `BAIL_REASON=redacted`, undermining the plan’s operator-facing distinction from `fix-attempts-exhausted` (which is also redacted here, but `first-fixer-non-health` was explicitly preserved for the autonomous path).
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	skills/implement/scripts/stall-recovery-report.sh:246-257	Missing ci-fix-exhausted in safe_bail_reason_value allowlist	After ci-fix-exhausted autonomous fall-through to user bail, stall-recovery classify redacts the token while first-fixer-non-health is preserved	Add ci-fix-exhausted to the allowlist case at line 251 and extend skills/implement/scripts/test-stall-recovery-report.sh with the same parity case used for first-fixer-non-health (~335-341); sync stall-recovery-report.md if the closed-enum prose is updated
+
+**Exonerated (audit notes):**
+
+- **`needs_user_bail_reason` / `is_autonomous_exit3_bail_reason` / `bail` handler (`scripts/ship-pr.sh:1720-1729`, `3567-3571`)** — Plan extends both helpers for `ci-fix-exhausted`; `ci-decide.sh` stays unchanged, so no stray `bail` emission of that token.
+- **Mid-loop exit (`scripts/ship-pr.sh:2679-2680`)** — Only `first-fixer-non-health` is set inside the loop; `ci-fix-exhausted` is terminal-only (~2693). No second mid-loop branch required.
+- **SKILL.md double-trigger** — `BAIL_REASON` is a single state key per `ship-pr` return; autonomous sub-procedure shares one sentinel/counter, so sequential `first-fixer-non-health` then `ci-fix-exhausted` in one orchestrator turn is capped, not duplicated in one Exit 3 read.
+- **`ci-decide.md` / `ship-pr.md`** — Plan updates both to separate `ci-fix-exhausted` (autonomous exit 3) from `fix-attempts-exhausted` (operator exit 3, `BAIL_NEEDS_USER_INPUT=true`) and from exit-4 `10-max-retries` stall.
+- **Python** — Plan mirrors gating, `fix-exhausted` status, and `monitor()` → `NEEDS_USER_INPUT` mapping with tests.
