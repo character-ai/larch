@@ -1,0 +1,15 @@
+Reviewing exit-2 stream ownership in the wrapper and SKILL.md call sites.
+Checking whether bootstrap emits to stderr on exit 2 and whether any wrapper path could write stdout before `exit 2`.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **correctness** `scripts/implement-bootstrap-invoke.sh:86-144` — Exit-2 stream ownership matches the contract: bootstrap stdout is captured only in `_ib_out` inside the wrapper; every operator-facing `printf`/`cat` in the `case "$_ib_sf" in` block is redirected to `>&2` (including grouped `{ … } >&2` arms and standalone `printf … >&2` on `copy-plan` / `gh-issue-view`); the path ends with `exit 2` and no stdout write. `grep … || true` on lines 87–89 and inside case arms only affects assignment or stderr diagnostics, not wrapper stdout, so it cannot produce unexpected stdout on exit 2.
+
+- **correctness** `skills/implement/SKILL.md:313-322,358-367` — Both Step 0 call sites use `set +e` / `_inv_out=$(…implement-bootstrap-invoke.sh …)` / `_inv_rc=$?` / `set -e`, branch on `_inv_rc -eq 2` with bare `exit 2` (no `printf`/`echo` of `$_inv_out`), and only source `parse-bootstrap-routing-envelope.sh` after `_inv_rc -ne 0` is ruled out for non-2 failures. Grep shows `_inv_out` appears only on the two assignment lines.
+
+- **risk-integration** `skills/implement/scripts/test-implement-bootstrap-invoke.sh:333-340` — `run_exit2_case` covers seven `STEP_FAILED` values but not the three handlers added in round 3 (`create-branch`, `write-session-env`, `emergency-bypass-log` at `scripts/implement-bootstrap-invoke.sh:131-138`). Those arms use the same `>&2` pattern, but stderr/empty-stdout behavior is not regression-tested for them.
+
+- **correctness** `scripts/implement-bootstrap-invoke.sh:89` — `|| true` on the `STEP_FAILED` extraction pipeline can mask a real `grep` failure and route to the `*)` default arm with `step=unknown` while still emitting only to stderr; that is a diagnostic-precision edge case, not a stdout leak, and matches the pre-extraction inline pattern.

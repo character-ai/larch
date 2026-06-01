@@ -1,0 +1,21 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- partial sync checks exist; centralizing the list adds more moving parts than the drift risk warrants
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- maintainability smell only; allowlist-guarded printf refactor is optional
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- structure/invoke harnesses already pin contracts; a dedicated parse harness is disproportionate for now
+FINDING_6: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- file-first apply ignores --preserve-coder; empty coder= can still clear via if_empty
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- set -e mid-write temp leak is rare; trap scope adds complexity
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- mktemp failure under set -e is theoretical on normal systems
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- symlink path is covered; fifo/non-regular fallback is an extreme edge case
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- GATE/PREFLIGHT KV lines are unlikely to carry secrets; redaction parity is optional
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional wrapper-local _ib_ prefix after SKILL refactor; naming-only confusion
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- three-layer split is documented; extra contract doc is optional polish
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- no known producer emits a lone EOF delimiter line
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+OOS_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- clearer awk failure messages only; no behavioral gap
+OOS_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- harness-only /tmp mktemp matches repo convention; not a production defect

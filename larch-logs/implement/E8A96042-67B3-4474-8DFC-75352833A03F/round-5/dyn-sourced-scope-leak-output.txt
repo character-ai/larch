@@ -1,0 +1,14 @@
+Reviewing the branch diff and auditing `parse-bootstrap-routing-envelope.sh` for scope leakage when sourced from SKILL.md.
+### In-Scope Findings
+
+- **correctness** `scripts/parse-bootstrap-routing-envelope.sh:72-104` — `_inv_apply_routing_line_if_empty` omits `coder` and `coder_fallback` from its `case` arms, so the stdout fallback pass never assigns those keys. The file pass (`_inv_apply_routing_line` + `printf -v`) does handle them, which covers the happy path when `implement-bootstrap-invoke.sh` writes a regular `bootstrap-routing.env`. When that file is skipped (symlink/non-regular per `implement-bootstrap-invoke.sh:188-199`) or missing, only `_inv_out` remains; `coder`/`coder_fallback` stay unset after the initial `unset`, so Step 0 routing can miss the continue row (`coder` non-empty) even though the wrapper stdout envelope includes `coder=…` (harness asserts wrapper stdout at `skills/implement/scripts/test-implement-bootstrap-invoke.sh:301-318` but does not source the parse script on that path). This regresses pre-refactor behavior where `_ib_kv_scan` parsed every stdout line including `coder=*)`. **Suggested fix:** Add `coder` and `coder_fallback` arms to `_inv_apply_routing_line_if_empty` (e.g. `[ -z "${coder:-}" ] && coder="$_inv_value"` with the same empty-value skip and `--preserve-coder` early-return as the file path), or call `_inv_apply_routing_line` for the stdout loop when the file pass was skipped; add a harness case that sources the parse script against a symlinked `bootstrap-routing.env` and asserts `coder` is exported.
+
+### Out-of-Scope Observations
+
+- **`_inv_routing_key_allowed` / `_inv_key=$1`:** The assignment at `scripts/parse-bootstrap-routing-envelope.sh:35` is not `local`, so it mutates the caller’s `_inv_key`, but callers always pass `"$_inv_key"` immediately after parsing `_inv_line`, so per-iteration behavior is correct; after a rejected key, the next iteration overwrites `_inv_key` at `scripts/parse-bootstrap-routing-envelope.sh:58-59` / `74-75`. No collision with `skills/implement/SKILL.md` Step 0 fences, which only use `_inv_out` and `_inv_rc` before sourcing (`skills/implement/SKILL.md:314-324`, `359-370`).
+
+- **Post-source leakage:** Sourcing leaves `_inv_line`, `_inv_key`, `_inv_value`, `_preserve_coder`, `_inv_routing_keys`, and functions `_inv_routing_key_allowed`, `_inv_apply_routing_line`, `_inv_apply_routing_line_if_empty` in the orchestrator shell. Current SKILL.md blocks do not reference those names after the `.` line, so this is hygiene-only unless multiple `/implement` bash fences run in one persistent shell.
+
+- **Bash 3.2:** `printf -v` at `scripts/parse-bootstrap-routing-envelope.sh:69` is fine for Bash 3.1+; no Bash 4-only constructs observed in this script.
+
+- **Branch commits (since `main`):** `16a4d9c20` (extract wrapper #3298) plus five review-fix rounds and one larch-logs flush (`d7b8dbd34` … `66f2a8ec0`).

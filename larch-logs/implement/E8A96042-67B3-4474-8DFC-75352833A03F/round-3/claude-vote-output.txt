@@ -1,0 +1,23 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- internal wrapper naming is self-contained; inconsistency with SKILL `_inv_*` names has zero operator impact
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- pre-existing behavior moved verbatim; FINDING_16 covers the newly-introduced wrapper-specific non-2 path
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- silent exit-2 on unknown STEP_FAILED is a real usability gap worth tracking as a follow-up issue
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- wrapper exits 1 before `cat "$_inv_routing_buf"` on symlink guard, so no stdout envelope reaches SKILL on that code path
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SKILL exit-1 only fires when IMPLEMENT_TMPDIR is non-empty yet routing.env is a symlink; unreachable on the FINDING_5 path (IMPLEMENT_TMPDIR is empty)
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- handler moved verbatim from old SKILL; same gap existed before this PR
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- bash variable assignment `VAR=$other` never word-splits; all downstream uses of IMPLEMENT_TMPDIR are properly quoted
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- `emergency_requested=false` forwarding path is untested; trivial to add
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- redaction-failure fallback path has marginal risk; common exit paths already covered
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- symlink case already exercises the guard pattern; directory variant adds minimal regression signal
+FINDING_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- global `set +e` count can stay ≥2 even when one wrapper call site loses its fence if other SKILL fences exist
+FINDING_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- line `=value` passes empty-check, `_inv_key=""` hits pattern `*" "*`, `printf -v ""` errors to stderr mid-parse
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- local tmpdir is mktemp-created; hardening adds complexity for a very low practical threat
+FINDING_15: NO CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- pre-existing pattern shared across many larch scripts; not actionable as a specific issue from this PR
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- non-2 `_inv_rc` falls through to parse with empty `_inv_out`; in dirty-tree recovery this overwrites the valid IMPLEMENT_TMPDIR with empty
+FINDING_17: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- intentional `coder coder_fallback` asymmetry between initial and resume unset is undocumented and unpinned; maintainers can silently break dirty-tree continuation
+FINDING_18: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- structural pin only greps for `bootstrap-routing.env` string; does not verify routing-key literal parity across the two blocks
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly marks docs/linting.md verify-only; not touching it follows the plan
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- `_ib_run_bootstrap` and `_ib_parse_bootstrap_out` (the primary entrypoints) are pinned; secondary helpers unlikely to be reintroduced without them
+OOS_1: NO CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- already documented as known behavior; no actionable follow-up needed
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- worth a follow-up harness pin verifying SKILL routes to cleanup on non-2 wrapper rc
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- prose says "same block shown above" but re-embeds full parse in recovery fence; documentation inconsistency worth tracking
