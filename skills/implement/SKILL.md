@@ -1194,19 +1194,32 @@ Disposition checkpoint (orchestrator Bash tool call — exit status is load-bear
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
 _oos_chk_err="$IMPLEMENT_TMPDIR/oos-disposition-checkpoint.stderr.log"
 : >"$_oos_chk_err" 2>/dev/null || true
+_oos_chk_args=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
+[ -n "${DESIGN_TMPDIR:-}" ] && _oos_chk_args+=(--design-tmpdir "$DESIGN_TMPDIR")
 set +e
 bash "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh" \
-  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
-  ${DESIGN_TMPDIR:+--design-tmpdir "$DESIGN_TMPDIR"} \
+  "${_oos_chk_args[@]}" \
   2>"$_oos_chk_err"
 _oos_chk_rc=$?
 set -e
-if [ "$_oos_chk_rc" -ne 0 ] \
-  && ! grep -Fq 'step-8-oos-checkpoint' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null \
-  && ! grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null; then
+_oos_already_logged=false
+if [ "$_oos_chk_rc" -eq 1 ]; then
+  if command grep -Fq 'Step step-8-oos-checkpoint —' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null \
+    || { command grep -Fq 'step-8-oos-checkpoint' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null \
+      && ! command grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null; }; then
+    _oos_already_logged=true
+  fi
+elif [ "$_oos_chk_rc" -eq 2 ]; then
+  command grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null && _oos_already_logged=true
+else
+  command grep -Fq 'step-8-oos-checkpoint-validation' "$IMPLEMENT_TMPDIR/execution-issues.md" 2>/dev/null && _oos_already_logged=true
+fi
+if [ "$_oos_chk_rc" -ne 0 ] && [ "$_oos_already_logged" = false ]; then
+  _oos_fail_site=step-8-oos-checkpoint-validation
+  [ "$_oos_chk_rc" -eq 1 ] && _oos_fail_site=step-8-oos-checkpoint
   "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
     --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
-    --site step-8-oos-checkpoint-validation \
+    --site "$_oos_fail_site" \
     --tool oos-disposition-checkpoint.sh \
     --exit-code "$_oos_chk_rc" \
     --category "Tool Failures" \

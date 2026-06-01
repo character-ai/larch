@@ -11,6 +11,11 @@ CHECKPOINT="$SCRIPT_DIR/oos-disposition-checkpoint.sh"
   exit 1
 }
 
+[ -x "$GATE" ] || {
+  echo "gate not executable: $GATE" >&2
+  exit 1
+}
+
 PASS=0
 FAIL=0
 TMPDIRS=()
