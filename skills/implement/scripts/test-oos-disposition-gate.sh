@@ -538,10 +538,11 @@ assert_rc "checkpoint disposition gap exit 1" 1 "$rc"
 if grep -Fq 'step-8-oos-checkpoint' "$_impl_gap/execution-issues.md" \
   && ! grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_gap/execution-issues.md" \
   && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_gap/execution-issues.md" \
-  && grep -Fq 'Tool Failures' "$_impl_gap/execution-issues.md"; then
+  && grep -Fq 'Tool Failures' "$_impl_gap/execution-issues.md" \
+  && [ -s "$_impl_gap/oos-disposition-gate.stderr.log" ]; then
   pass "checkpoint disposition gap logs Tool Failures"
 else
-  fail "checkpoint disposition gap missing Tool Failures log entry"
+  fail "checkpoint disposition gap missing Tool Failures log entry or gate stderr"
 fi
 
 # --- Case: checkpoint fork-mode skip ---
@@ -600,6 +601,32 @@ rc=$?
 set -e
 assert_rc "checkpoint ndjson RUN_ID-keyed rejection satisfies" 0 "$rc"
 
+# --- Case: checkpoint stale RUN_ID does not bind a sole foreign ndjson ---
+_impl_stale=$(mkitmp)
+printf 'run-missing\n' >"$_impl_stale/session-id"
+mkdir -p "$_impl_stale/larch-logs/implement/foreign-run"
+cat >"$_impl_stale/larch-logs/implement/foreign-run/oos-issues.ndjson" <<'EOF'
+{"phase":"code-review","step":"9a.1","category":"OOS","body":"## Rejected / Out-of-Scope Observations (not filed)\n\n### OOS_1: Foreign\nRejected.\n"}
+EOF
+cat >"$_impl_stale/oos-accepted-main-agent.md" <<'EOF'
+### OOS_1: Foreign
+- **Phase**: implement
+EOF
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_stale" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint stale RUN_ID rejects foreign ndjson fallback" 2 "$rc"
+if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_stale/execution-issues.md" \
+  && [ -s "$_impl_stale/oos-disposition-checkpoint.stderr.log" ]; then
+  pass "checkpoint stale RUN_ID logs validation failure"
+else
+  fail "checkpoint stale RUN_ID missing validation log or checkpoint stderr"
+fi
+
 # --- Case: checkpoint find-fallback when session-id absent ---
 _impl_find=$(mkitmp)
 mkdir -p "$_impl_find/larch-logs/implement/solo-run"
@@ -652,10 +679,11 @@ set +e
 rc=$?
 set -e
 assert_rc "checkpoint precondition missing ndjson exit 2" 2 "$rc"
-if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_pre/execution-issues.md"; then
+if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_pre/execution-issues.md" \
+  && [ -s "$_impl_pre/oos-disposition-checkpoint.stderr.log" ]; then
   pass "checkpoint precondition logs validation failure"
 else
-  fail "checkpoint precondition missing validation log"
+  fail "checkpoint precondition missing validation log or checkpoint stderr"
 fi
 
 # --- Case: checkpoint gate-exit-2 passthrough (gate validation, not disposition gap) ---
@@ -719,6 +747,29 @@ if grep -Fq 'commit-range origin/main..HEAD' "$_impl_mb/oos-disposition-gate.std
   pass "checkpoint merge-base absent logs origin/main..HEAD range"
 else
   fail "checkpoint merge-base absent did not exercise origin/main..HEAD range"
+fi
+
+# --- Case: origin/main absent uses HEAD range ---
+_impl_head=$(mkitmp)
+cat >"$_impl_head/oos-accepted-main-agent.md" <<'EOF'
+### OOS_1: HEAD range proof
+- **Phase**: implement
+EOF
+printf 'run-head\n' >"$_impl_head/session-id"
+mkdir -p "$_impl_head/larch-logs/implement/run-head"
+: >"$_impl_head/larch-logs/implement/run-head/oos-issues.ndjson"
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_head" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint origin/main absent uses HEAD disposition range" 1 "$rc"
+if grep -Fq 'commit-range HEAD' "$_impl_head/oos-disposition-gate.stderr.log"; then
+  pass "checkpoint origin/main absent logs HEAD range"
+else
+  fail "checkpoint origin/main absent did not exercise HEAD range"
 fi
 
 # --- Case: design-path via --design-tmpdir ---

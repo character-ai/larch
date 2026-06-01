@@ -375,8 +375,11 @@ grep -Fq 'NEVER silently drop a voted-in OOS finding' "$SKILL_MD" \
   || fail "SKILL.md must retain NEVER rule prohibiting silent OOS drops"
 
 # shellcheck disable=SC2016
-grep -Fq 'NEVER set `OOS_PENDING=false` without a passing `oos-disposition-gate.sh` invocation' "$SKILL_MD" \
-  || fail "SKILL.md must retain NEVER #18 gate-before-clear pin (OOS_PENDING vs oos-disposition-gate.sh)"
+grep -Fq 'NEVER set `OOS_PENDING=false` without a passing `oos-disposition-checkpoint.sh` invocation' "$SKILL_MD" \
+  || fail "SKILL.md must retain NEVER #18 checkpoint-before-clear pin (OOS_PENDING vs oos-disposition-checkpoint.sh)"
+# shellcheck disable=SC2016
+grep -Fq '${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh' "$SKILL_MD" \
+  || fail "SKILL.md Step 8+ must reference oos-disposition-checkpoint.sh"
 
 # Folded Step 0 / admission structural pins (fix-issue removal; Step 0 + Preflight admission)
 grep -Fq 'scripts/implement-admission.sh' "$SKILL_MD" \

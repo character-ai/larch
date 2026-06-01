@@ -9,13 +9,15 @@ oos-disposition-checkpoint.sh --implement-tmpdir DIR [--design-tmpdir DIR]
 ```
 
 - `--implement-tmpdir` — Required. Session tmpdir (`$IMPLEMENT_TMPDIR`) containing `ship-pr-state.sh`, `session-id`, accepted-OOS markdown, `oos-issues-created.md`, and `larch-logs/implement/`.
-- `--design-tmpdir` — Optional. Overrides `DESIGN_TMPDIR` for resolving `oos-accepted-design.md` (`<dir>/oos-accepted-design.md`). When omitted, falls back to `design-export/oos-accepted-design.md` under the implement tmpdir, then `<implement-tmpdir>/oos-accepted-design.md`.
+- `--design-tmpdir` — Optional. Overrides `DESIGN_TMPDIR` for resolving `oos-accepted-design.md` (`<dir>/oos-accepted-design.md`). When omitted, exported `DESIGN_TMPDIR` is used before falling back to `design-export/oos-accepted-design.md` under the implement tmpdir, then `<implement-tmpdir>/oos-accepted-design.md`.
 
 Git mode: `100755` (direct path invocation from `SKILL.md` and the harness).
 
 ## Input resolution
 
 No unguarded global `set -e` over fallible probes. Defaults (`_forked=false`, `_repo_unavail=false`, `_oos_range=HEAD`) are set before git/`find`/`grep` probes. Deliberate validation failures (ambiguous ndjson, missing ndjson precondition, bad CLI) tee to `oos-disposition-checkpoint.stderr.log`, log, and exit `2`. Only the gate subprocess runs under `set +e` with stderr redirected to `oos-disposition-gate.stderr.log`.
+
+Design OOS path: `--design-tmpdir` wins, then exported `DESIGN_TMPDIR`, then `$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md` when present, then `$IMPLEMENT_TMPDIR/oos-accepted-design.md`.
 
 Commit range: `merge-base HEAD origin/main..HEAD` when merge-base is non-empty; `origin/main..HEAD` when `origin/main` resolves but merge-base is empty; `HEAD` when `origin/main` is absent.
 
