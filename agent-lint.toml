@@ -1061,6 +1061,10 @@ exclude = [
   # shared ledger. Referenced only from Makefile
   # (test-implement-timing-rehydration target) and the sibling contract.
   "scripts/test-implement-timing-rehydration.sh",
+  # scripts/test-step-telemetry-mark.sh — offline unit harness for
+  # scripts/step-telemetry-mark.sh. Referenced only from Makefile
+  # (test-step-telemetry-mark target) and the sibling contract.
+  "scripts/test-step-telemetry-mark.sh",
   "scripts/test-implement-step2-routing.sh",
   "scripts/test-implement-step2-routing.md",
   # scripts/test-implement-cleanup-roundtrip.sh is the round-trip integration
@@ -1408,6 +1412,7 @@ exclude = [
   "scripts/test-rebase-push-fork-mode.md",
   "scripts/test-rebase-push-no-push-fetch-retry.md",
   "scripts/test-implement-timing-rehydration.md",
+  "scripts/test-step-telemetry-mark.md",
   "scripts/test-git-push.md",
   # scripts/promote-release.sh is a standalone operator utility for promoting
   # a GitHub Release to "Latest". It is not invoked by any SKILL.md — operators

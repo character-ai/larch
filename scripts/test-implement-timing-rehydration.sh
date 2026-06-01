@@ -18,6 +18,9 @@
 #      the plugin-root.env source guard (canonical) or, on pre-bootstrap sites
 #      only, the session-env.sh awk fallback, so nested Bash calls can recover
 #      the plugin root without depending on the root variable to find helpers.
+#   D) Cardinality guards stay in sync: every timing-ledger rehydration template
+#      has the token-session-id sibling/export, and IMPLEMENT_TMPDIR assignment
+#      plus export counts equal token_read_count + step_telemetry_mark_count.
 
 set -euo pipefail
 
@@ -120,12 +123,15 @@ new_export_count=$(grep -Fxc 'export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_
   || fail "three-key export count ($new_export_count) does not match LARCH_TOKEN_SESSION_ID read count ($token_read_count)"
 
 # shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
+step_telemetry_mark_count=$(grep -Fc '"${CLAUDE_PLUGIN_ROOT}/scripts/step-telemetry-mark.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --label ' "$SKILL_MD" || true)
+# shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
 tmpdir_assign_count=$(grep -Fxc 'IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"' "$SKILL_MD" || true)
 tmpdir_export_count=$(grep -Fxc 'export IMPLEMENT_TMPDIR' "$SKILL_MD" || true)
-[[ "$tmpdir_assign_count" == "$token_read_count" ]] \
-  || fail "IMPLEMENT_TMPDIR assignment count ($tmpdir_assign_count) does not match token rehydration count ($token_read_count)"
-[[ "$tmpdir_export_count" == "$token_read_count" ]] \
-  || fail "IMPLEMENT_TMPDIR export count ($tmpdir_export_count) does not match token rehydration count ($token_read_count)"
+expected_tmpdir_coupling=$(( token_read_count + step_telemetry_mark_count ))
+[[ "$tmpdir_assign_count" == "$expected_tmpdir_coupling" ]] \
+  || fail "IMPLEMENT_TMPDIR assignment count ($tmpdir_assign_count) does not match token rehydration + step-telemetry-mark count ($expected_tmpdir_coupling = $token_read_count + $step_telemetry_mark_count)"
+[[ "$tmpdir_export_count" == "$expected_tmpdir_coupling" ]] \
+  || fail "IMPLEMENT_TMPDIR export count ($tmpdir_export_count) does not match token rehydration + step-telemetry-mark count ($expected_tmpdir_coupling = $token_read_count + $step_telemetry_mark_count)"
 
 # shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
 plugin_root_source_count=$(grep -Fxc '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"' "$SKILL_MD" || true)
@@ -142,4 +148,4 @@ legacy_fence_count=$(grep -Fxc 'if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${I
 [[ "$legacy_fence_count" == "0" ]] \
   || fail "legacy 4-line awk fence opener count ($legacy_fence_count) expected 0"
 
-echo "PASS: test-implement-timing-rehydration.sh ($token_read_count timing sites; $plugin_root_source_count plugin-root source guards; $plugin_root_awk_count awk fallbacks)"
+echo "PASS: test-implement-timing-rehydration.sh ($token_read_count token reads; $step_telemetry_mark_count step-telemetry-mark calls; $plugin_root_source_count plugin-root source guards; $plugin_root_awk_count awk fallbacks)"
