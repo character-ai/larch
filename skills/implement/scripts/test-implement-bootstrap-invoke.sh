@@ -338,6 +338,9 @@ run_exit2_case session-setup 'session-setup exit 2' '/implement requires clean m
 run_exit2_case get-issue-state 'get-issue-state exit 2' 'could not verify the adopted issue state'
 run_exit2_case issue-number-required-for-resume 'issue-number-required-for-resume exit 2' '--issue-number is required to resume an adopted tracking sentinel'
 run_exit2_case resume-plan-tail-sentinel 'resume-plan-tail-sentinel exit 2' 'resume tail could not validate tracking state'
+run_exit2_case create-branch 'create-branch exit 2' 'could not verify branch state before bootstrap'
+run_exit2_case write-session-env 'write-session-env exit 2' 'could not write session environment'
+run_exit2_case emergency-bypass-log 'emergency-bypass-log exit 2' 'emergency bypass log handling failed'
 
 # --- copy-plan exit 2 redaction pipe ---
 build_sandbox
@@ -438,6 +441,27 @@ else
   PASS=$((PASS + 1))
   echo "PASS: NEVER14 no session-env heredoc"
 fi
+
+# --- parse-bootstrap-routing-envelope --preserve-coder ---
+PARSE_TMP=$(mktemp -d /tmp/larch-parse-routing.XXXXXX)
+export IMPLEMENT_TMPDIR="$PARSE_TMP"
+printf 'coder=claude\ncoder_fallback=true\n' >"$PARSE_TMP/bootstrap-routing.env"
+coder=codex
+_inv_out=$(printf 'IMPLEMENT_TMPDIR=%s\ncoder=\nREPO=owner/repo\n' "$PARSE_TMP")
+set +eu
+# shellcheck disable=SC1091
+. "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh" --preserve-coder
+set -eu
+if [ "${coder:-}" = codex ]; then
+  PASS=$((PASS + 1))
+  echo "PASS: --preserve-coder keeps operator coder across file and empty stdout coder="
+else
+  FAIL=$((FAIL + 1))
+  echo "FAIL: --preserve-coder keeps operator coder across file and empty stdout coder="
+  echo "  coder=${coder:-<unset>}"
+fi
+rm -rf "$PARSE_TMP"
+unset IMPLEMENT_TMPDIR coder coder_fallback REPO
 
 # --- wrapper routing key set in source ---
 _wrapper_src=$(cat "$REAL_WRAPPER")

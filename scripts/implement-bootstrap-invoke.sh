@@ -85,7 +85,7 @@ set -e
 
 if [ "$_ib_rc" -eq 2 ]; then
   _ib_tmpdir=$(printf '%s\n' "$_ib_out" | grep '^IMPLEMENT_TMPDIR=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
-  [ -n "$_ib_tmpdir" ] && IMPLEMENT_TMPDIR=$_ib_tmpdir
+  [ -n "$_ib_tmpdir" ] && IMPLEMENT_TMPDIR="$_ib_tmpdir"
   _ib_sf=$(printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
   # shellcheck disable=SC2016 # operator-facing literals; backticks are markdown, not shell.
   case "$_ib_sf" in

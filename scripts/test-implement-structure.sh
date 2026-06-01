@@ -491,7 +491,8 @@ awk '
   in_step && /<!-- step:/ { in_step = 0; in_bash = 0 }
   in_step && /^```(bash|sh|shell)[[:space:]]*$/ { in_bash = 1; next }
   in_step && in_bash && /^```[[:space:]]*$/ { in_bash = 0; next }
-  in_step && in_bash && /implement-bootstrap-invoke\.sh" --mode (initial|resume)/ {
+  in_step && in_bash && /^[[:space:]]*#/ { prev2 = prev1; prev1 = $0; next }
+  in_step && in_bash && /^[[:space:]]*_inv_out=\$\(.+implement-bootstrap-invoke\.sh" --mode (initial|resume)/ {
     mode = ($0 ~ /--mode initial/) ? "initial" : "resume"
     if (prev1 != "set +e") exit 20
     getline rc_line
@@ -521,6 +522,9 @@ case "$step0_wrapper_fence_status" in
   24) fail "Step 0 wrapper fence check did not see resume invocation" ;;
   *) fail "unexpected Step 0 wrapper fence check failure: $step0_wrapper_fence_status" ;;
 esac
+if [ "$(grep -cE '^[[:space:]]*_inv_out=\$\("\$\{CLAUDE_PLUGIN_ROOT\}/scripts/implement-bootstrap-invoke\.sh"' "$SKILL_MD" || true)" -lt 2 ]; then
+  fail "SKILL.md must contain at least two uncommented _inv_out= implement-bootstrap-invoke.sh call sites"
+fi
 [ -f "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh" ] \
   || fail "scripts/parse-bootstrap-routing-envelope.sh must exist"
 [ -f "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.md" ] \
@@ -601,8 +605,9 @@ awk '
     if ($0 ~ /implement-bootstrap\.sh/) direct_bootstrap++
     if ($0 ~ /--up-to-phase coder/) coder_literal++
     if ($0 ~ /--resume-plan-tail/) resume_literal++
-    if ($0 ~ /implement-bootstrap-invoke\.sh" --mode initial/) mode_initial++
-    if ($0 ~ /implement-bootstrap-invoke\.sh" --mode resume/) mode_resume++
+    if ($0 ~ /^[[:space:]]*#/) next
+    if ($0 ~ /^[[:space:]]*_inv_out=\$\(.+implement-bootstrap-invoke\.sh" --mode initial/) mode_initial++
+    if ($0 ~ /^[[:space:]]*_inv_out=\$\(.+implement-bootstrap-invoke\.sh" --mode resume/) mode_resume++
     if ($0 ~ /snapshot-untracked\.sh" --output|\$SCRIPT_DIR\/persist-implement-run-flags\.sh|check-mid-run-dirty-tree\.sh" --mode checkpoint|create-branch\.sh" --branch|git-current-branch\.sh"|run-step1-plan-log\.sh"|write-tally\.sh"|tracking-issue-summary\.sh" .*upsert-summary|gh issue view "\$gh_issue_arg"|gh issue view "\$ISSUE_NUMBER"/) banned++
   }
   END {
