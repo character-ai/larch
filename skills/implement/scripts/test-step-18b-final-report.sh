@@ -88,6 +88,7 @@ case "${WFR_MODE:-ok}" in
     printf '## /implement run stub — ok\n\nbody\n' >"$tmpdir/summary-final.md"
     exit 0
     ;;
+  no-body) exit 0 ;;
 esac
 STUB
   chmod +x "$plugin/skills/implement/scripts/write-final-report.sh"
@@ -276,6 +277,14 @@ else
   fail "integration real write-final-report writes summary-final.md"
 fi
 assert_wrapper_did_not_create_step17_sentinel "$int_tmpdir" false "wrapper never writes .step17-emitted in integration case"
+
+tmpdir="$TMP_ROOT/case-wfr-no-body"
+mkdir -p "$tmpdir"
+run_wrapper "$tmpdir" "$impl_dir" "$plugin" no-body ok "$TMP_ROOT/case-wfr-no-body.out"
+assert_eq 0 "$RC" "wfr succeeds but no summary-final.md: wrapper exits 0"
+assert_eq false "$(kv EMIT_BODY "$TMP_ROOT/case-wfr-no-body.out")" "EMIT_BODY=false when WFR succeeds but no summary-final.md created"
+assert_eq 0 "$(kv WFR_RC "$TMP_ROOT/case-wfr-no-body.out")" "WFR_RC=0 when wfr exits 0 with no body"
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" false "wrapper never writes .step17-emitted when no body created"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

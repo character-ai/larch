@@ -123,6 +123,11 @@ ship_pr_state_present() {
     return 0
 }
 
+ship_pr_state_is_dangling_symlink() {
+    local state="$1/ship-pr-state.sh"
+    [ -L "$state" ] && [ ! -e "$state" ]
+}
+
 ship_pr_state_is_regular_file() {
     local tmpdir=$1
     local state="$tmpdir/ship-pr-state.sh"
@@ -147,7 +152,10 @@ rewrite_ship_pr_state_keys() {
     n=${#keys[@]}
     local awk_begin='BEGIN{'
     for ((i = 0; i < n; i++)); do
-        awk_v+=(-v "v$i=${vals[$i]}")
+        local safe_val
+        # awk -v interprets escape sequences; sanitize backslashes in values
+        safe_val=$(printf '%s' "${vals[$i]}" | sed 's/\\/\\\\/g')
+        awk_v+=(-v "v$i=$safe_val")
         awk_begin+="u[\"${keys[$i]}\"]=v$i; order[++oc]=\"${keys[$i]}\"; "
     done
     # shellcheck disable=SC2016
@@ -195,6 +203,10 @@ cmd_clear_stall() {
     [ -d "$tmpdir" ] || die_missing "--implement-tmpdir must exist"
 
     local state="$tmpdir/ship-pr-state.sh"
+    if ship_pr_state_is_dangling_symlink "$tmpdir"; then
+        emit_kv CLEARED false
+        exit 3
+    fi
     if ! ship_pr_state_present "$tmpdir"; then
         emit_kv CLEARED false
         exit 0
@@ -252,6 +264,10 @@ cmd_seed_terminal_state() {
     local state="$tmpdir/ship-pr-state.sh" seed_mode="" content step phase tracking
     local dir base tmp
 
+    if ship_pr_state_is_dangling_symlink "$tmpdir"; then
+        emit_kv SEEDED false
+        exit 3
+    fi
     if ship_pr_state_present "$tmpdir"; then
         if ! ship_pr_state_is_regular_file "$tmpdir"; then
             emit_kv SEEDED false

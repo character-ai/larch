@@ -100,7 +100,7 @@ main() {
             case "$snapshot_ok" in
                 absent) emit_body=true ;;
                 true)
-                    if ! cmp -s "$tmpdir/.step18-prebody" "$tmpdir/summary-final.md" 2>/dev/null; then
+                    if [ -f "$tmpdir/.step18-prebody" ] && ! cmp -s "$tmpdir/.step18-prebody" "$tmpdir/summary-final.md" 2>/dev/null; then
                         emit_body=true
                     fi
                     ;;
