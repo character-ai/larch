@@ -10,6 +10,7 @@ import config
 import gh
 import git
 import redact
+import run_logs
 from errors import ShipError
 from proc import Runner
 
@@ -34,6 +35,18 @@ _FLOWCHART_START = re.compile(r"^(flowchart|graph)(\s|$)")
 _PIPE_IN_BRACKETS = re.compile(r"[\[\{\(][^\]\}\)]*\|")
 
 
+def _first_non_blank_mermaid_fence(text: str) -> bool:
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("%%"):
+            continue
+        match = _FENCE_RE.match(line)
+        return bool(
+            match and re.match(r"^\s*mermaid\s*$", match.group(3) or ""),
+        )
+    return False
+
+
 def compose_summary_bullets(
     runner: Runner,
     *,
@@ -43,6 +56,15 @@ def compose_summary_bullets(
     """Port compose-pr-summary.sh goal + test/cross-dir bullets."""
     _ = runner
     goals_path = Path(plan_goals_file)
+    if cwd:
+        try:
+            rel = goals_path.resolve().relative_to(Path(cwd).resolve())
+        except ValueError as exc:
+            msg = f"plan-goals path escapes repo root: {plan_goals_file}"
+            raise ShipError(msg) from exc
+        if not run_logs.path_under_repo(Path(cwd), str(rel)):
+            msg = f"plan-goals path escapes repo root: {plan_goals_file}"
+            raise ShipError(msg)
     if not goals_path.is_file() or goals_path.stat().st_size == 0:
         msg = f"plan-goals file missing or empty: {plan_goals_file}"
         raise ShipError(msg)
@@ -139,6 +161,8 @@ def _validate_fence_body(body: str, _fence_num: int) -> list[str]:
 
 def sanitize_fragment(text: str, *, from_md: bool = False) -> MermaidResult:
     """Port sanitize-mermaid-fragment.sh; returns ok or rejected with reason tokens."""
+    if not from_md and _first_non_blank_mermaid_fence(text):
+        from_md = True
     if from_md:
         fences: list[str] = []
         in_outer = False
@@ -185,6 +209,13 @@ def sanitize_fragment(text: str, *, from_md: bool = False) -> MermaidResult:
     return MermaidResult(status="ok", reason_tokens=(), fence_count=len(fences))
 
 
+def _fail_closed_body(redacted: str) -> str:
+    if "[content truncated" in redacted:
+        msg = "redaction failed for PR body"
+        raise ShipError(msg)
+    return redacted
+
+
 def compose_pr_body(
     *,
     summary: str,
@@ -192,6 +223,11 @@ def compose_pr_body(
     test_plan: str = "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
     issue_number: int | None = None,
 ) -> str:
+    if mermaid.strip():
+        mermaid_result = sanitize_fragment(mermaid)
+        if mermaid_result.status != "ok":
+            msg = f"mermaid fragment rejected: {','.join(mermaid_result.reason_tokens)}"
+            raise ShipError(msg)
     parts = [summary.rstrip(), ""]
     if mermaid.strip():
         parts.extend(["## Code Flow Diagram", "", "```mermaid", mermaid.strip(), "```", ""])
@@ -199,7 +235,8 @@ def compose_pr_body(
     if issue_number is not None:
         parts.extend(["", f"Closes #{issue_number}"])
     body = "\n".join(parts) + "\n"
-    return redact.redact(body).rstrip("\n") + "\n"
+    redacted = _fail_closed_body(redact.redact(body))
+    return redacted.rstrip("\n") + "\n"
 
 
 def update_pr_body(

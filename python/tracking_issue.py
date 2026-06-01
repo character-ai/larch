@@ -77,7 +77,7 @@ def append_comment(
         if "--" in lifecycle_marker or not _MARKER_RE.match(lifecycle_marker):
             msg = "invalid lifecycle marker"
             raise ShipError(msg)
-        body = f"<!-- larch:lifecycle:{lifecycle_marker} -->\n{body}"
+        body = f"<!-- larch:lifecycle-marker:{lifecycle_marker} -->\n{body}"
     redacted = redact.redact(body)
     if "[content truncated" in redacted:
         msg = "redaction failed for tracking-issue comment"
@@ -92,6 +92,48 @@ def _upsert_marker(marker: str) -> str:
     return f"<!-- larch:{marker} -->"
 
 
+def _upsert_marker_comment(
+    runner: Runner,
+    issue: str,
+    marker: str,
+    body: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> None:
+    full_body = f"{marker}\n{body}"
+    redacted = redact.redact(full_body)
+    if "[content truncated" in redacted:
+        msg = "redaction failed for tracking-issue comment"
+        raise ShipError(msg)
+    comment_id = gh.find_issue_comment_id_by_marker(
+        runner,
+        issue,
+        marker,
+        repo=repo,
+        cwd=cwd,
+    )
+    if comment_id is None:
+        result = gh.issue_comment(runner, issue, redacted, repo=repo, cwd=cwd)
+        if result.returncode != 0:
+            msg = f"gh issue comment failed ({result.returncode})"
+            raise ShipError(msg)
+        return
+    if comment_id < 0:
+        msg = f"multiple tracking comments found for marker {marker!r}"
+        raise ShipError(msg)
+    result = gh.issue_comment_patch(
+        runner,
+        comment_id,
+        redacted,
+        repo=repo,
+        cwd=cwd,
+    )
+    if result.returncode != 0:
+        msg = f"gh issue comment patch failed ({result.returncode})"
+        raise ShipError(msg)
+
+
 def upsert_summary(
     runner: Runner,
     issue: str,
@@ -100,11 +142,11 @@ def upsert_summary(
     repo: str,
     cwd: str | None = None,
 ) -> None:
-    marker = _upsert_marker("final-summary")
-    append_comment(
+    _upsert_marker_comment(
         runner,
         issue,
-        f"{marker}\n{body}",
+        _upsert_marker("final-summary"),
+        body,
         repo=repo,
         cwd=cwd,
     )
@@ -118,11 +160,11 @@ def upsert_token_report(
     repo: str,
     cwd: str | None = None,
 ) -> None:
-    marker = _upsert_marker("token-report")
-    append_comment(
+    _upsert_marker_comment(
         runner,
         issue,
-        f"{marker}\n{body}",
+        _upsert_marker("token-report"),
+        body,
         repo=repo,
         cwd=cwd,
     )

@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 
 import pytest
 
+import config
 import push
 from errors import ShipError
 from proc import CommandResult
@@ -79,7 +80,6 @@ def test_push_branch_retries_then_succeeds() -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "remote"), 0, "origin\n", "", 0.01),
             CommandResult(("git", "push"), 1, "", "fail", 0.01),
             CommandResult(("git", "push"), 0, "", "", 0.01),
         ],
@@ -93,13 +93,30 @@ def test_push_branch_retries_then_succeeds() -> None:
     assert result.attempts == 2
 
 
-def test_push_branch_fork_uses_upstream() -> None:
+def test_push_branch_fork_uses_origin() -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "remote"), 0, "origin\nupstream\n", "", 0.01),
             CommandResult(("git", "push"), 0, "", "", 0.01),
         ],
     )
     result = push.push_branch(runner, _ctx(forked=True), sleeper=lambda _s: None)
-    assert result.remote == "upstream"
+    assert result.remote == "origin"
+
+
+def test_push_skips_retry_when_stderr_unchanged() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "status"), 0, "", "", 0.01),
+            CommandResult(("git", "push"), 1, "", "same error", 0.01),
+            CommandResult(("git", "push"), 1, "", "same error", 0.01),
+            CommandResult(("git", "push"), 1, "", "same error", 0.01),
+        ],
+    )
+    result = push.push_branch(
+        runner,
+        _ctx(),
+        sleeper=lambda _s: None,
+    )
+    assert result.status == "failed"
+    assert result.attempts == config.PUSH_MAX_ATTEMPTS

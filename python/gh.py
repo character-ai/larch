@@ -458,6 +458,53 @@ def pr_checks_read(
     )
 
 
+def _pr_checks_json_all_pass(stdout: str) -> bool | None:
+    """Return True/False when JSON is parseable; None when JSON path unusable."""
+    try:
+        rows_obj = _as_json_list(
+            _loads_json(stdout or "[]", context="pr checks"),
+            context="pr checks",
+        )
+    except ShipError:
+        return None
+    if not rows_obj:
+        return False
+    for row_obj in rows_obj:
+        row = _as_json_object(row_obj, context="pr checks row")
+        if row.get("bucket") != "pass":
+            return False
+    return True
+
+
+def pr_checks_text_read(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        ["pr", "checks", str(number), "--repo", repo],
+        cwd=cwd,
+    )
+
+
+def _pr_checks_text_all_pass(text: str) -> bool:
+    if not text.strip():
+        return False
+    lowered = text.lower()
+    bad = (
+        "fail",
+        "pending",
+        "in_progress",
+        "queued",
+        "cancelled",
+        "skipping",
+    )
+    return not any(token in lowered for token in bad)
+
+
 def pr_checks_all_pass(
     runner: Runner,
     number: int,
@@ -466,22 +513,18 @@ def pr_checks_all_pass(
     cwd: str | None = None,
 ) -> bool:
     result = pr_checks_read(runner, number, repo=repo, cwd=cwd)
-    if result.returncode != 0:
+    if result.returncode == 0:
+        json_pass = _pr_checks_json_all_pass(result.stdout)
+        if json_pass is not None:
+            return json_pass
+    elif is_transient_net_signature(_combined(result)):
         return False
-    try:
-        rows_obj = _as_json_list(
-            _loads_json(result.stdout or "[]", context="pr checks"),
-            context="pr checks",
-        )
-    except ShipError:
-        return False
-    if not rows_obj:
-        return False
-    for row_obj in rows_obj:
-        row = _as_json_object(row_obj, context="pr checks row")
-        if row.get("bucket") != "pass":
+    text_result = pr_checks_text_read(runner, number, repo=repo, cwd=cwd)
+    if text_result.returncode != 0:
+        if is_transient_net_signature(_combined(text_result)):
             return False
-    return True
+        return _pr_checks_text_all_pass(text_result.stdout)
+    return _pr_checks_text_all_pass(text_result.stdout)
 
 
 def pr_edit_body(
@@ -680,6 +723,86 @@ def run_rerun(
     if failed_only:
         argv.append("--failed")
     return _gh(runner, argv, cwd=cwd)
+
+
+def issue_comments_list_read(
+    runner: Runner,
+    issue: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        ["api", f"/repos/{repo}/issues/{issue}/comments", "--paginate"],
+        cwd=cwd,
+    )
+
+
+def find_issue_comment_id_by_marker(
+    runner: Runner,
+    issue: str,
+    marker: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> int | None:
+    """Return comment id, None when absent, -1 when multiple match (bash parity)."""
+    result = issue_comments_list_read(runner, issue, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        msg = f"gh api comments fetch failed ({result.returncode})"
+        raise ShipError(msg)
+    rows_obj = _as_json_list(
+        _loads_json(result.stdout or "[]", context="issue comments"),
+        context="issue comments",
+    )
+    ids: list[int] = []
+    for row_obj in rows_obj:
+        row = _as_json_object(row_obj, context="issue comment row")
+        body_obj = row.get("body")
+        body = body_obj if isinstance(body_obj, str) else str(body_obj or "")
+        first_line = body.split("\n", 1)[0] if body else ""
+        if first_line == marker:
+            ids.append(_as_int(row["id"], context="issue comments", field="id"))
+    if not ids:
+        return None
+    if len(ids) == 1:
+        return ids[0]
+    return -1
+
+
+def issue_comment_patch(
+    runner: Runner,
+    comment_id: int,
+    body: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    redacted = redact.redact(body)
+    with tempfile.NamedTemporaryFile(
+        mode="w",
+        encoding="utf-8",
+        suffix=".json",
+        delete=False,
+    ) as handle:
+        _ = handle.write(json.dumps({"body": redacted}))
+        path = handle.name
+    try:
+        return _gh(
+            runner,
+            [
+                "api",
+                f"/repos/{repo}/issues/comments/{comment_id}",
+                "-X",
+                "PATCH",
+                "--input",
+                path,
+            ],
+            cwd=cwd,
+        )
+    finally:
+        Path(path).unlink(missing_ok=True)
 
 
 def issue_comment(

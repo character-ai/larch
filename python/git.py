@@ -177,6 +177,29 @@ def log_subjects(
     return LogSubjects(subjects=lines)
 
 
+def try_log_subjects(
+    runner: Runner,
+    rev_range: str,
+    *,
+    cwd: str | None = None,
+) -> LogSubjects:
+    """Non-throwing log subjects (merge flush recovery parity with merge-pr.sh)."""
+    result = _run(runner, ["git", "log", "--format=%s", rev_range], cwd=cwd)
+    if result.returncode != 0:
+        return LogSubjects(subjects=())
+    lines = tuple(line for line in result.stdout.splitlines() if line)
+    return LogSubjects(subjects=lines)
+
+
+def status_porcelain_paths(
+    runner: Runner,
+    path: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(runner, ["git", "status", "--porcelain", "--", path], cwd=cwd)
+
+
 def ls_files(
     runner: Runner,
     *paths: str,

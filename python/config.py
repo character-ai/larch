@@ -167,6 +167,15 @@ REFRESH_SKIP_POST_MERGE: Final = "post-merge"
 REFRESH_SKIP_NO_RUN_ID: Final = "no-run-id"
 REFRESH_SKIP_INVALID_RUN_ID: Final = "invalid-run-id"
 REFRESH_SKIP_NO_LOGS_COMMIT: Final = "no-logs-commit"
+# Pre-merge flush skips that merge_pr may continue past (post-merge only).
+REFRESH_SKIP_MERGE_OK: Final[frozenset[str]] = frozenset({
+    REFRESH_SKIP_POST_MERGE,
+})
+
+MERGE_SKIP_NOT_REQUESTED: Final = "merge skipped: merge=false"
+MERGE_SKIP_DRAFT: Final = "merge skipped: draft PR"
+MERGE_SKIP_FORKED: Final = "merge skipped: forked implement"
+MERGE_SKIP_REPO_UNAVAILABLE: Final = "merge skipped: repo unavailable"
 
 MERMAID_REASON_PIPE_IN_NODE: Final = "pipe-in-node-label"
 MERMAID_REASON_BR_IN_ALIAS: Final = "br-in-participant-alias"

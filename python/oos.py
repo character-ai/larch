@@ -31,12 +31,47 @@ _FILED_URL_LINE = re.compile(
     r"^\s*-\s+\*\*Filed URL\*\*:\s+https://",
     re.MULTILINE,
 )
+_OOS_HEADER_RE = re.compile(r"^###\s+OOS_", re.MULTILINE)
+_SECURITY_FOCUS_RE = re.compile(
+    r"^\s*-\s*\*\*focus-area\*\*\s*:\s*"
+    r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_REJECTED_SECTION_RE = re.compile(
+    r"(?:Rejected / Out-of-Scope|## Rejected)",
+    re.IGNORECASE,
+)
+
+
+def _count_non_security_markdown(text: str) -> int:
+    """Port oos-non-security-block-count.awk block counting."""
+    count = 0
+    in_block = False
+    security = False
+    for line in text.splitlines():
+        if _OOS_HEADER_RE.match(line):
+            if in_block and not security:
+                count += 1
+            in_block = True
+            security = False
+            continue
+        if in_block and _SECURITY_FOCUS_RE.match(line):
+            security = True
+    if in_block and not security:
+        count += 1
+    return count
 
 
 def _count_non_security(accepted_paths: tuple[str, ...]) -> int:
     total = 0
     for path in accepted_paths:
-        text = Path(path).read_text(encoding="utf-8") if Path(path).is_file() else ""
+        file_path = Path(path)
+        if not file_path.is_file():
+            continue
+        text = file_path.read_text(encoding="utf-8")
+        if _OOS_HEADER_RE.search(text):
+            total += _count_non_security_markdown(text)
+            continue
         if '"security": true' in text or '"security":true' in text:
             continue
         if '"phase": "implement"' in text or '"accepted"' in text:
@@ -66,6 +101,13 @@ def _count_filed_url_field_lines(paths: tuple[str, ...]) -> int:
     return len(urls)
 
 
+def _rejected_section(body: str) -> str:
+    match = _REJECTED_SECTION_RE.search(body)
+    if not match:
+        return ""
+    return body[match.start() :]
+
+
 def _count_rejected_markers(ndjson_path: str | None) -> int:
     if not ndjson_path or not Path(ndjson_path).is_file():
         return 0
@@ -82,9 +124,10 @@ def _count_rejected_markers(ndjson_path: str | None) -> int:
         row_map = cast("dict[str, object]", row)
         body_obj = row_map.get("body")
         body = body_obj if isinstance(body_obj, str) else str(body_obj or "")
-        if "Rejected / Out-of-Scope" not in body and "## Rejected" not in body:
+        section = _rejected_section(body)
+        if not section:
             continue
-        tags.update(_OOS_TAG_RE.findall(body))
+        tags.update(_OOS_TAG_RE.findall(section))
     return len(tags)
 
 

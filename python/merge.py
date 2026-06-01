@@ -48,14 +48,34 @@ def merge_pr(
     """Classify merge into one of eight merge-pr.sh MERGE_RESULT literals."""
     if sleeper is None:
         sleeper = time.sleep
-    if not ctx.merge or ctx.draft or ctx.forked or ctx.repo_unavailable:
-        return MergeResult(result=config.MERGE_RESULT_ERROR, error="merge skipped by mode")
+    if not ctx.merge:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=config.MERGE_SKIP_NOT_REQUESTED,
+        )
+    if ctx.draft:
+        return MergeResult(result=config.MERGE_RESULT_ERROR, error=config.MERGE_SKIP_DRAFT)
+    if ctx.forked:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=config.MERGE_SKIP_FORKED,
+        )
+    if ctx.repo_unavailable:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=config.MERGE_SKIP_REPO_UNAVAILABLE,
+        )
     if ctx.pr_number is None:
         return MergeResult(result=config.MERGE_RESULT_ERROR, error="pr_number required")
 
     pre = run_logs.flush_logs_pre(runner, ctx, cwd=cwd)
     if pre.skipped and pre.reason == "commit-failed":
         return MergeResult(result=config.MERGE_RESULT_ERROR, error="flush_logs_pre commit failed")
+    if pre.skipped and pre.reason not in config.REFRESH_SKIP_MERGE_OK:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=f"flush_logs_pre skipped: {pre.reason}",
+        )
 
     pr_num = ctx.pr_number
     state = _refresh_pr_info(runner, pr_num, ctx.repo, cwd=cwd)
@@ -253,7 +273,7 @@ def _flush_recoverable(
     *,
     cwd: str | None,
 ) -> bool:
-    subjects = git.log_subjects(runner, f"{pr_head_oid}..HEAD", cwd=cwd)
+    subjects = git.try_log_subjects(runner, f"{pr_head_oid}..HEAD", cwd=cwd)
     if not subjects.subjects:
         return False
     if len(subjects.subjects) > config.FLUSH_RECOVERY_MAX_COMMITS:

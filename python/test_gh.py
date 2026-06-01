@@ -596,3 +596,75 @@ def test_pr_view_raises_ship_error_on_missing_json_keys() -> None:
     )
     with pytest.raises(ShipError, match="missing required keys"):
         _ = gh.pr_view(runner, 1, repo="o/r")
+
+
+def test_pr_merge_builds_admin_argv() -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "pr", "merge", "3"), 0, "", "", 0.01)],
+    )
+    result = gh.pr_merge(runner, 3, repo="o/r", admin=True)
+    assert result.returncode == 0
+    assert "--admin" in runner.calls[0]
+
+
+def test_pr_merge_state_read() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "2"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"abc"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    state = gh.pr_merge_state(runner, 2, repo="o/r")
+    assert state.merge_state_status == "CLEAN"
+    assert state.head_ref_oid == "abc"
+
+
+def test_pr_edit_body_uses_body_file() -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "pr", "edit", "4"), 0, "", "", 0.01)],
+    )
+    result = gh.pr_edit_body(runner, 4, "hello", repo="o/r")
+    assert result.returncode == 0
+    assert "--body-file" in runner.calls[0]
+
+
+def test_pr_checks_text_fallback_when_json_unparseable() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "checks", "1"), 0, "not-json", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "checks", "1"),
+                0,
+                "ci\tpass\t0\t0\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+    assert gh.pr_checks_all_pass(runner, 1, repo="o/r")
+
+
+def test_find_issue_comment_id_by_marker() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "api"),
+                0,
+                '[{"id":99,"body":"<!-- larch:final-summary -->\\nbody"}]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    comment_id = gh.find_issue_comment_id_by_marker(
+        runner,
+        "7",
+        "<!-- larch:final-summary -->",
+        repo="o/r",
+    )
+    assert comment_id == 99

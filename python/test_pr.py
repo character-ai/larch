@@ -100,6 +100,66 @@ def test_ensure_pr_reuses_existing_open(monkeypatch: pytest.MonkeyPatch) -> None
     assert result.number == 7
 
 
+def test_ensure_pr_updates_body_without_ctx_pr_number(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "status"), 0, "", "", 0.01),
+            CommandResult(("git", "push"), 0, "", "", 0.01),
+            CommandResult(("gh", "pr", "edit", "7"), 0, "", "", 0.01),
+        ],
+    )
+    existing = gh.PullRequest(7, "http://u", "OPEN", "feat")
+    edits: list[int] = []
+
+    def fake_pr_for_branch(
+        _runner: object,
+        _branch: str,
+        *,
+        repo: str,  # noqa: ARG001
+        cwd: str | None = None,  # noqa: ARG001
+    ) -> gh.PullRequest:
+        return existing
+
+    def fake_update(
+        _runner: object,
+        number: int,
+        _body: str,
+        *,
+        repo: str,  # noqa: ARG001
+        cwd: str | None = None,  # noqa: ARG001
+    ) -> None:
+        edits.append(number)
+
+    monkeypatch.setattr(gh, "pr_for_branch", fake_pr_for_branch)
+    monkeypatch.setattr(pr_module.pr_body, "update_pr_body", fake_update)
+    result = pr_module.ensure_pr(
+        runner,
+        _ctx(pr_number=None),
+        "Summary only\n",
+        title="t",
+    )
+    assert result.number == 7
+    assert edits == [7]
+
+
+def test_ensure_pr_raises_when_push_fails() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "status"), 0, "", "", 0.01),
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("git", "status"), 0, "", "", 0.01),
+            CommandResult(("git", "push"), 1, "", "rejected", 0.01),
+            CommandResult(("git", "push"), 1, "", "rejected", 0.01),
+            CommandResult(("git", "push"), 1, "", "rejected", 0.01),
+        ],
+    )
+
+    with pytest.raises(ShipError, match="branch push failed"):
+        _ = pr_module.ensure_pr(runner, _ctx(), "body", title="t")
+
+
 def test_ensure_pr_refuses_dirty_tree() -> None:
     runner = RecordingRunner(
         responses=[

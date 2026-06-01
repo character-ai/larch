@@ -20,6 +20,12 @@ class TokenRecord:
     cache_create_tokens: int
 
 
+@dataclass(frozen=True)
+class TimingRecord:
+    tool: str
+    duration_ms: int
+
+
 def _int_field(data: dict[str, Any], key: str) -> int:
     value = data.get(key, 0)
     try:
@@ -67,12 +73,25 @@ def append_token_record(path: Path, record: TokenRecord) -> None:
         _ = handle.write(json.dumps(payload, sort_keys=True) + "\n")
 
 
+def normalize_timing_sidecar(data: dict[str, Any], *, tool: str) -> TimingRecord | None:
+    duration = data.get("duration_ms", data.get("elapsed_ms", 0))
+    try:
+        duration_ms = int(duration)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
+    if duration_ms <= 0:
+        return None
+    return TimingRecord(tool=tool, duration_ms=duration_ms)
+
+
 def scrape_run(
     *,
     sidecar_paths: tuple[tuple[str, Path], ...] = (),
+    timing_sidecar_paths: tuple[tuple[str, Path], ...] = (),
     output_path: Path | None = None,
+    timing_output_path: Path | None = None,
 ) -> tuple[TokenRecord, ...]:
-    """Aggregate token records from sidecar JSON files."""
+    """Aggregate token (and optional timing) records from sidecar JSON files."""
     records: list[TokenRecord] = []
     for tool, path in sidecar_paths:
         if not path.is_file():
@@ -89,4 +108,30 @@ def scrape_run(
         records.append(record)
         if output_path is not None:
             append_token_record(output_path, record)
+    if timing_output_path is not None:
+        timing_output_path.parent.mkdir(parents=True, exist_ok=True)
+        timing_lines: list[str] = []
+        for tool, path in timing_sidecar_paths:
+            if not path.is_file():
+                continue
+            try:
+                data = json.loads(path.read_text(encoding="utf-8"))
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(data, dict):
+                continue
+            timing = normalize_timing_sidecar(cast("dict[str, Any]", data), tool=tool)
+            if timing is None:
+                continue
+            timing_lines.append(
+                json.dumps(
+                    {"tool": timing.tool, "duration_ms": timing.duration_ms},
+                    sort_keys=True,
+                ),
+            )
+        if timing_lines:
+            _ = timing_output_path.write_text(
+                "\n".join(timing_lines) + "\n",
+                encoding="utf-8",
+            )
     return tuple(records)

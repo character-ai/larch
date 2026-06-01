@@ -423,3 +423,41 @@ def test_rebase_onto_strips_git_dir_override(monkeypatch: pytest.MonkeyPatch) ->
     assert "GIT_DIR" not in env
     assert "GIT_WORK_TREE" not in env
     assert env.get("GIT_SEQUENCE_EDITOR") == "true"
+
+
+def test_try_log_subjects_empty_on_failure() -> None:
+    runner = StubRunner(
+        {
+            ("git", "log", "--format=%s", "bad..HEAD"): CommandResult(
+                ("git", "log", "--format=%s", "bad..HEAD"),
+                1,
+                "",
+                "fatal",
+                0.01,
+            ),
+        },
+    )
+    subjects = git.try_log_subjects(runner, "bad..HEAD")
+    assert subjects.subjects == ()
+
+
+def test_force_push_recovery_dirty_worktree() -> None:
+    runner = StubRunner(
+        {
+            (
+                "git",
+                "status",
+                "--porcelain",
+                "--untracked-files=all",
+            ): CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=all"),
+                0,
+                " M dirty\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+    result = git.force_push_recovery(runner, branch="feat", remote="origin")
+    assert not result.pushed
+    assert result.status == "dirty_worktree"

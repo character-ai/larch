@@ -7,6 +7,8 @@ from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import pytest
+
 import config
 import run_logs
 from proc import CommandResult
@@ -93,7 +95,8 @@ def test_flush_logs_post_no_git_commit(tmp_path: Path) -> None:
     _ = run_logs.init_run(ctx)
     _ = run_logs.flush_logs_post(ctx)
     assert runner.git_commits == 0
-    manifest = json.loads((tmp_path / "manifest.json").read_text(encoding="utf-8"))
+    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["status"] == config.MANIFEST_STATUS_DONE
 
 
@@ -103,3 +106,64 @@ def test_load_or_recover_manifest_from_log_dir(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     manifest = run_logs.load_or_recover_manifest(ctx)
     assert manifest.run_id == "recovered-run"
+
+
+def test_effective_run_id_prefers_state_file(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=state-run\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    assert run_logs.effective_run_id(ctx) == "state-run"
+
+
+def test_path_under_repo_rejects_traversal(tmp_path: Path) -> None:
+    assert not run_logs.path_under_repo(tmp_path, "../outside")
+    assert run_logs.path_under_repo(tmp_path, "docs/plan.md")
+
+
+@pytest.mark.parametrize(
+    "merge_result",
+    ["merged", "admin_merged", "already_merged"],
+)
+def test_flush_logs_pre_skips_post_merge_matrix(
+    tmp_path: Path,
+    merge_result: str,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text(f"MERGE_RESULT={merge_result}\nRUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner()
+    skip = run_logs.flush_logs_pre(runner, _ctx(tmp_path, str(state)))
+    assert skip.reason == config.REFRESH_SKIP_POST_MERGE
+
+
+def test_publish_run_tree_copies_run_id_pathspec(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "token-report-refresh.json").write_text("{}", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    ctx = _ctx(tmp_path, str(state))
+    rel = run_logs._publish_run_tree_to_repo(
+        ctx,
+        tmp_path / "larch-logs",
+        cwd=str(repo),
+    )
+    assert rel == "larch-logs/implement/run-abc"
+    assert (repo / rel / "token-report-refresh.json").is_file()
+
+
+def test_flush_logs_pre_happy_path_commits(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    _ = run_logs.init_run(ctx)
+    runner = RecordingRunner()
+    skip = run_logs.flush_logs_pre(runner, ctx, cwd=None)
+    assert not skip.skipped
+    manifest = json.loads(
+        (tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json").read_text(
+            encoding="utf-8",
+        ),
+    )
+    assert manifest["steps_ran"].get("step9a1") == "default"

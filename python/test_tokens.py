@@ -36,3 +36,15 @@ def test_append_token_record(tmp_path: Path) -> None:
     tokens.append_token_record(path, record)
     row = json.loads(path.read_text(encoding="utf-8").strip())
     assert row["tool"] == "cursor"
+
+
+def test_scrape_run_timing_sidecar(tmp_path: Path) -> None:
+    timing = tmp_path / "cursor-timing.json"
+    _ = timing.write_text('{"duration_ms": 1200}', encoding="utf-8")
+    out = tmp_path / "timing.ndjson"
+    _ = tokens.scrape_run(
+        timing_sidecar_paths=(("cursor", timing),),
+        timing_output_path=out,
+    )
+    row = json.loads(out.read_text(encoding="utf-8").strip())
+    assert row["duration_ms"] == 1200

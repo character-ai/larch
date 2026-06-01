@@ -7,6 +7,7 @@ from dataclasses import dataclass
 
 import gh
 import git
+import pr_body
 import push
 import tracking_issue
 from errors import ShipError
@@ -38,8 +39,8 @@ def ensure_pr(
     if existing is not None and existing.state == "OPEN":
         _push_existing_pr(runner, ctx, cwd=cwd)
         linked = tracking_issue.link_pr_closes(body, int(ctx.issue))
-        if ctx.pr_number and linked != body:
-            _ = gh.pr_edit_body(
+        if linked != body:
+            pr_body.update_pr_body(
                 runner,
                 existing.number,
                 linked,
@@ -74,7 +75,7 @@ def _push_existing_pr(
     *,
     cwd: str | None = None,
 ) -> None:
-    remote = "origin"
+    remote = push.select_push_remote(runner, ctx, cwd=cwd)
     def attempt() -> tuple[object, int, str]:
         result = git.push_set_upstream(runner, remote, "HEAD", cwd=cwd)
         combined = result.stdout + result.stderr

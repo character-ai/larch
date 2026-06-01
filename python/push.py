@@ -32,10 +32,9 @@ def assert_clean_worktree(runner: Runner, *, cwd: str | None = None) -> None:
         raise ShipError(msg)
 
 
-def _select_remote(runner: Runner, ctx: RunContext, *, cwd: str | None) -> str:
-    remotes = git.remotes(runner, cwd=cwd)
-    if ctx.forked and "upstream" in remotes:
-        return "upstream"
+def select_push_remote(_runner: Runner, _ctx: RunContext, *, cwd: str | None = None) -> str:
+    """Fork-aware push always targets origin (parity with create-pr.sh / git-push.sh)."""
+    _ = cwd
     return "origin"
 
 
@@ -50,7 +49,7 @@ def push_branch(
     if sleeper is None:
         sleeper = time.sleep
     assert_clean_worktree(runner, cwd=cwd)
-    remote = _select_remote(runner, ctx, cwd=cwd)
+    remote = select_push_remote(runner, ctx, cwd=cwd)
     refspec = f"HEAD:refs/heads/{ctx.branch}"
     last_stderr = ""
     for attempt in range(1, config.PUSH_MAX_ATTEMPTS + 1):
@@ -58,8 +57,12 @@ def push_branch(
         if result.returncode == 0:
             return PushResult(remote=remote, attempts=attempt, status="pushed")
         stderr = result.stderr.strip()
-        if stderr and stderr == last_stderr:
-            pass
+        if (
+            stderr
+            and stderr == last_stderr
+            and attempt < config.PUSH_MAX_ATTEMPTS
+        ):
+            continue
         last_stderr = stderr
         if attempt < config.PUSH_MAX_ATTEMPTS:
             backoff = config.TRANSIENT_RETRY_BACKOFF_SEC[

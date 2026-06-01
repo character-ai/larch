@@ -4,8 +4,14 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
+
 import config
 import pr_body
+from errors import ShipError
 from proc import CommandResult
 
 
@@ -36,3 +42,53 @@ def test_compose_summary_from_plan(tmp_path: Path) -> None:
         plan_goals_file=str(goals),
     )
     assert "Ship Phase 5" in summary
+
+
+def test_sanitize_fenced_mermaid_auto_extracts() -> None:
+    fenced = "```mermaid\nflowchart LR\n  A --> B\n```\n"
+    result = pr_body.sanitize_fragment(fenced)
+    assert result.status == "ok"
+
+
+def test_compose_pr_body_rejects_bad_mermaid() -> None:
+    with pytest.raises(ShipError, match="mermaid fragment rejected"):
+        _ = pr_body.compose_pr_body(
+            summary="- x",
+            mermaid="flowchart LR\n  A[bad|pipe] --> B\n",
+        )
+
+
+def test_compose_pr_body_fail_closed_on_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_redact(_text: str) -> str:
+        return "body [content truncated — safety]"
+
+    monkeypatch.setattr(pr_body.redact, "redact", fake_redact)
+    with pytest.raises(ShipError, match="redaction failed"):
+        _ = pr_body.compose_pr_body(summary="- x")
+
+
+def test_update_pr_body_invokes_gh() -> None:
+    @dataclass
+    class Runner:
+        calls: list[list[str]] = field(default_factory=list)
+
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,  # pylint: disable=unused-argument
+            cwd: str | None = None,  # pylint: disable=unused-argument
+            env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
+            check: bool = False,  # pylint: disable=unused-argument
+            stdout: int | None = None,  # pylint: disable=unused-argument
+            stderr: int | None = None,  # pylint: disable=unused-argument
+        ) -> CommandResult:
+            self.calls.append(list(argv))
+            return CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    runner = Runner()
+    pr_body.update_pr_body(runner, 3, "body", repo="o/r")  # type: ignore[arg-type]
+    assert runner.calls
+    assert runner.calls[0][1] == "pr"

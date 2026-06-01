@@ -63,3 +63,25 @@ def test_compose_summary_semantic_parity(tmp_path: Path) -> None:
     )
     assert "Parity goal line" in completed.stdout
     assert "Parity goal line" in py_summary
+
+
+@pytest.mark.skipif(not SANITIZE.is_file(), reason="sanitize script missing")
+@pytest.mark.parametrize(
+    ("fragment", "reason"),
+    [
+        (
+            "sequenceDiagram\n  participant A as alias<br/>note\n",
+            config.MERMAID_REASON_BR_IN_ALIAS,
+        ),
+        (
+            "sequenceDiagram\n  participant A as $alias\n",
+            config.MERMAID_REASON_DOLLAR_IN_ALIAS,
+        ),
+    ],
+)
+def test_mermaid_rejection_tokens_match_bash(fragment: str, reason: str) -> None:
+    py = pr_body.sanitize_fragment(fragment)
+    bash_tokens = _bash_sanitize(fragment)
+    if py.status == "rejected":
+        assert reason in py.reason_tokens
+        assert reason in bash_tokens
