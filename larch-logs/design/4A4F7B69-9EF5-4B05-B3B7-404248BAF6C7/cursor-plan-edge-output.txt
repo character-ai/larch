@@ -1,0 +1,28 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/design-publish.sh:20-21	`SESSION_ENV_PATH` is used but never assigned; plugin-root resolve is listed before `DESIGN_TMPDIR` canonicalization	Under `set -u`, the driver aborts on first `phase_driver_resolve_plugin_root` (unbound var) or resolves plugin root before `cd … && pwd -P`, so orchestrator may see exit ≠2 and abort before result-env parse	Add `DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"` then `SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"` then `PLUGIN_ROOT="$(phase_driver_resolve_plugin_root …)"` matching `design-init-runparams.sh:134-139`
+2	in_scope	important	correctness	skills/design/scripts/design-publish.sh:31-32	Item 5.5 omits the full marker-write failure capture/append contract from current Step 5c item 5.5	Non-zero `design_reentry_marker_write` may skip `design-reentry-marker-write.failure.log`, omit `--log`/`--tool`/`--exit-code`/`--output-file`, and lose verbatim stderr required by SKILL execution-issues logging	Specify `… 2> "$DESIGN_TMPDIR/design-reentry-marker-write.failure.log"` and the full `append-tool-failure.sh --log … --site "design Step 5c marker write" --tool "design_reentry_marker_write" --exit-code <rc> --category Warnings --output-file … --redact || true` verbatim from `skills/design/SKILL.md:1297`
+3	in_scope	important	risk-integration	skills/design/SKILL.md:55-63	Step 5c orchestrator update does not mirror Step 0b symlink refusal for `.design-publish-result.env`	A symlinked result env could be sourced/parsed like route/init envs are guarded against in Step 0b	Reuse the Step 0b pattern: if `[[ -L "$DESIGN_TMPDIR/.design-publish-result.env" ]]`, print refusal and abort before sourcing (optional pin in `test-design-structure.sh`)
+
+**1. `SESSION_ENV_PATH` / init ordering (`correctness`, `risk-integration`)**  
+The plan says the driver mirrors `design-init-runparams.sh` but lists `phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH"` before the canonicalization bullet and never sets `SESSION_ENV_PATH`. Siblings set it explicitly:
+
+```134:139:skills/design/scripts/design-init-runparams.sh
+DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
+export DESIGN_TMPDIR
+SESSION_ENV_PATH="$DESIGN_TMPDIR/session-env.sh"
+PLUGIN_ROOT="$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH")"
+```
+
+With `set -euo pipefail`, an unset `SESSION_ENV_PATH` is a hard failure; wrong ordering can also point `session-env.sh` at a non-canonical tmpdir path.
+
+**2. Reentry-marker failure tail (`correctness`)**  
+The plan’s item 5.5 compresses the marker branch to “capture stderr, append-tool-failure … `--redact`”. Current SKILL requires a failure log file and a full append invocation (`skills/design/SKILL.md:1297`), consistent with the global “capture to `*-failure.log` first” rule at line 198. Without pinning that in the plan/driver, implementers can drop verbatim diagnostics while still continuing publish—silent degradation of failure visibility, not a publish blocker.
+
+**3. Result-env symlink guard (`risk-integration`)**  
+Step 0b refuses symlinked `.design-route-result.env` / `.design-init-runparams-result.env`. The proposed Step 5c handoff adds `.design-publish-result.env` file-first parsing but does not carry the same guard. Low likelihood in normal runs; worth aligning if you touch Step 5c parse prose anyway.
+
+---
+
+**[OUT_OF_SCOPE]** `skills/design/SKILL.md:1299` — `> **🔶 /design 5c.5: larch:diagrams (architecture)**` is not assigned to the driver or orchestrator in the plan; only `⏩ 5c.5:` moves to orchestrator on success. UX breadcrumb loss only.
+
+**Exonerated (SIMPLE):** step-5b precondition hardening vs rare orchestrator skips; `⏩ 5c.5` when upsert is skipped (pre-existing ambiguity); harness coverage for `if ! plan-block-write`, exit-1 parse-not-abort, empty `SESSION_ID`, and unexpected publish; REPO-at-top for failed-plan-write summary is an improvement over current item-5 behavior.

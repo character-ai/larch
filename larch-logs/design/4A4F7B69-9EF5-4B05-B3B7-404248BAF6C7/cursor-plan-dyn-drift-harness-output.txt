@@ -1,0 +1,26 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:1032-1046	Plan re-points Step 5c helper/order greps at 348-363 but omits Check 25, which still awk-scans SKILL.md Step 5c for design_reentry_marker_write before tracking-issue-write rename	After items 4-11 move into design-publish.sh, Check 25 finds no tokens in the SKILL 5c window and test-design-structure fails despite the new driver pins	Add an explicit UPDATED step: replace the Check 25 SKILL.md awk block with a design-publish.sh line-order pin (or drop Check 25 only if the planned marker-before-rename grep fully subsumes it)
+
+## 1. correctness — `scripts/test-design-structure.sh:1032-1046`
+
+The plan’s `UPDATED: scripts/test-design-structure.sh` section re-points the (15b) upsert ordering window (348–352), the `architecture-diagram.skipped` / `--clear-architecture` window (359–363), and adds new `design-publish.sh` call/order greps. It does not mention **Check 25** (lines 1032–1046), which still requires `design_reentry_marker_write` and `tracking-issue-write.sh … --state designed` to appear **inside the SKILL.md Step 5c section**, in that order:
+
+```1032:1046:scripts/test-design-structure.sh
+step5c_reentry_order=$(awk '
+  /^### 5c — Write `larch:plan` to GitHub \+ publish$/ { in5c=1; next }
+  /^<!-- step:6 / && in5c { in5c=0 }
+  in5c && /design_reentry_marker_write/ && !write { write=NR }
+  in5c && /tracking-issue-write\.sh" rename --issue "\$ISSUE_NUMBER" --state designed/ && !rename { rename=NR }
+  END {
+    if (!write || !rename) exit 2
+    if (!(write < rename)) exit 1
+  }
+' "$SKILL_MD" || echo "$?")
+case "${step5c_reentry_order:-0}" in
+  0) ;;
+  1|2) fail "(25) SKILL.md design_reentry_marker_write must precede the [DESIGNED] rename" ;;
+```
+
+After the extraction, those tokens live in `design-publish.sh`, not in SKILL Step 5c prose. The plan’s own failure-mode section (lines 79–80) calls out exactly this class of desync; the mitigation list names upsert and architecture pins but not Check 25.
+
+**Suggested revision:** Add one bullet under `UPDATED: scripts/test-design-structure.sh`: replace Check 25’s SKILL-scoped awk with a `design-publish.sh` line-order assertion (marker write before rename), mirroring the existing init-before-rename pin at 736–742. Drop the SKILL-scoped Check 25 block so it cannot conflict with the new driver grep pins.

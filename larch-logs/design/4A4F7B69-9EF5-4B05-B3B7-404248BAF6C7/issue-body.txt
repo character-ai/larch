@@ -1,0 +1,46 @@
+Part of umbrella #3133 (extract `/design` deterministic logic into phase-driver scripts).
+
+**Impact rank: 3 of 6.** Runs on every successful design; the current prose sequencing invites one-command-per-turn execution.
+
+## Region owned
+
+The Step 5c **deterministic publish tail**, after the LLM authors `composed-plan.md` and the validator gate + redaction run:
+
+- `plan-block-write.sh` (write `larch:plan` into the issue body)
+- reentry-marker write (`design_reentry_marker_write`)
+- `REPO` resolution (`resolve-repo.sh` → `gh repo view` fallback)
+- `upsert-diagrams-comment.sh` (Architecture section / `--clear-architecture`)
+- `render-final-summary.sh --pre-publish-only`
+- `design-log-publish.sh`
+- `render-final-summary.sh --post-publish-only`
+- `tracking-issue-write.sh` `[DESIGNED]` rename
+
+## Current inline cost
+
+~8 prose-described sub-steps (Step 5c items 3–11) → up to ~8 orchestrator turns. No internal gate — the whole tail is deterministic and runs to the Step 5 footer.
+
+## Responsibility
+
+Collapse the tail into **one foreground call** and **encode the ordering invariants in code** rather than prose:
+
+- Step 5b (OOS filing) before Step 5c.
+- reentry-marker before publish/rename.
+- `[DESIGNED]` rename only when `SESSION_ID` non-empty **and** `PUBLISH_OK=true`.
+- skip cleanup / preserve `$DESIGN_TMPDIR` on `plan-block-write` failure.
+
+## Stops before (LLM boundary)
+
+Nothing internal — the orchestrator wakes once **after** to emit the verbatim `final-summary.md` body (the only permitted top-chat summary).
+
+## Machine output
+
+`PLAN_WRITE_OK`, `PUBLISH_OK`, `RENAMED`, `final-summary` path, `UPSERT_STATUS`. Warnings appended to `execution-issues.md` via `append-tool-failure.sh` as today.
+
+## Dependency
+
+Blocked by the Step 0b router (#3133 rank 2) — serialized on the shared `skills/design/SKILL.md` + `scripts/test-design-structure.sh` surface, executed in impact order.
+
+## Cross-cutting
+
+See umbrella #3133. Note the `gh ... --body-file` file-backed rule applies to `plan-block-write.sh` content (already redaction-guarded).
+
