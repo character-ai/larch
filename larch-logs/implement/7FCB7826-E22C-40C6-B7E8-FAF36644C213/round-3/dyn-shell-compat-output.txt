@@ -1,0 +1,14 @@
+Reviewing branch changes for shell-compat and correctness. Reading the diff and key shell scripts.
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/design-publish.sh:187-305` — After `PLAN_WRITE_OK=true`, the success tail still runs under `set -euo pipefail` without a blanket `set +e` or ERR trap. Any hard failure after a successful `plan-block-write.sh` (e.g. `source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"`, `printf` to `diagrams-architecture-upsert.stdout`, or `phase_driver_write_result_env` failing after emit) aborts the driver with exit status **1** and usually **no** `.design-publish-result.env`. The contract reserves exit `1` for plan-block-write failure (`PLAN_WRITE_OK=false` in the result env); the SKILL Step 5c block treats `_publish_rc=1` as that path. The orchestrator will not print the plan-write failure warning unless `PLAN_WRITE_OK=false` is parsed (item 7), but the run can stop with the plan already on GitHub, publish/rename/summary steps incomplete, and no machine keys for operators. **Suggested fix:** After plan-block-write succeeds, either (a) disable `set -e` for the remainder and handle each helper’s rc explicitly (matching publish/upsert/marker), or (b) add an ERR trap that writes `.design-publish-result.env` with `PLAN_WRITE_OK=true` plus a `WARN=` and exits with a dedicated code outside `{0,1}` (e.g. `3`), and teach the SKILL exit-code contract to abort on that code.
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/design/scripts/design-publish.sh:238-285` — Success-path `render-final-summary.sh` calls lack `|| true`, while the failed-plan-write path uses `|| true` (line 182). Today `render-final-summary.sh` always ends with `exit 0` after `render_or_fallback`, so this is unlikely to trip `set -e`; it is still an asymmetry worth aligning if the render helper ever propagates non-zero statuses.
+
+- **correctness** `skills/upgrade-larch/scripts/upgrade-larch.sh:221-243` — `backfill_install_stamps` correctly pairs `shopt -s nullglob` / `shopt -u nullglob`; the same file’s `list_cached_versions_by_install_stamp` and `prune_cached_versions` already used that pattern before this branch.
+
+- **correctness** `skills/design/SKILL.md:1325-1352` — Orchestrator WARN dedup uses `"${_publish_warn_lines[@]}"` without the `${array[@]+...}` guard; that is appropriate because the fenced block does not enable `set -u`, unlike the driver under `set -euo pipefail`.
+
+- Bash 3.2 portability checks on the branch diff: no `declare -A`, `mapfile`, `${var^^}`, or `&>>` in `design-publish.sh`; `parse_kv_from_output`’s `<<<"$text"` and `printf -v` in the SKILL block are Bash 3.2–safe; `${WARN_LINES[@]+"${WARN_LINES[@]}"}` is applied consistently in the driver’s `write_result_env_and_emit`.

@@ -1,0 +1,21 @@
+Reviewing the branch diff and auditing `design-publish.sh` against the scout checklist.
+Checking whether `write_result_env` omits keys on the failure path and verifying structure-test pins.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+Audit of the scout checklist against current `skills/design/scripts/design-publish.sh` and `skills/design/SKILL.md` (including round-1 rename-failure `WARN=` handling at `design-publish.sh:300-301`):
+
+- **Empty `RENAMED` vs `RENAMED=false`:** On `tracking-issue-write.sh` non-zero exit, `RENAMED` stays unset and is omitted from `.design-publish-result.env` (`write_result_env_and_emit` only emits non-empty keys at `134-155`). The orchestrator initializes `RENAMED=""` before parse (`SKILL.md:1321`) and never branches on `RENAMED` for Step 5c items 5–7 or Step 6; rename failure visibility is via `WARN=` replay (`SKILL.md:1358`, `1366`). Success-with-`RENAMED=false` (idempotent) is distinct and is emitted when the helper exits 0 (`design-publish.sh:289-294`).
+
+- **Step 6 cleanup:** Gated only on `PLAN_WRITE_OK=true` and `(SESSION_ID empty OR PUBLISH_OK=true)` (`SKILL.md:1398`). Rename failure does not clear or falsify `PUBLISH_OK`, so cleanup behavior is unchanged from the pre-extraction contract (publish succeeded → tmpdir may be removed even if `[DESIGNED]` rename failed).
+
+- **Ordering with skipped upsert:** When neither a non-empty `architecture-diagram.md` nor `architecture-diagram.skipped` triggers `_run_upsert`, flow is still `design_reentry_marker_write` → (optional pre-publish render) → `design-log-publish.sh` → post-publish render → rename (`206-303`), preserving marker-before-publish and publish-before-rename.
+
+- **Plan-block-write `exit 1` path:** Uses `if ! plan-block-write.sh` (`176`), `render-final-summary.sh … || true` (`178-182`), then `write_result_env_and_emit` before `exit 1` (`183-184`). `FINAL_SUMMARY_PATH` is always written to the result env (`141`, `151`).
+
+- **`render-final-summary.sh` abort risk:** The helper’s `render_or_fallback` contains failures internally and always ends with `exit 0` (`render-final-summary.sh:476-523`), so bare calls in the success path do not trip `set -e` and block rename.
+
+**Commits on branch (since merge-base with main):** `770c49c82` (extract), `0dd0e668b` (relevant-checks), `a93c3a2c4` / `1833c328c` (review rounds), plus unrelated log/version commits in the same range.

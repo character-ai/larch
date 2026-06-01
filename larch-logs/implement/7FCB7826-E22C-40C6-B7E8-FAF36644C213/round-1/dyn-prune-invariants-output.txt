@@ -1,0 +1,10 @@
+Reviewing the branch diff and commits against the plan and scout focus areas.
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/design-publish.sh:287-296` — When `SESSION_ID` is set and `PUBLISH_OK=true`, `[DESIGNED]` rename is wrapped in `if _rename_out=$(tracking-issue-write.sh …); then` with no `else`. `tracking-issue-write.sh` uses exit 1/2 on real failures (`scripts/tracking-issue-write.sh:51-55`), so a failed rename is dropped: no `RENAMED=` in `.design-publish-result.env`, no `WARN=` replay, and no `append-tool-failure.sh` entry. The driver still exits 0, so Step 5c writes `step-5c` and Step 6 can run cleanup while the issue title was never renamed — plan on GitHub and logs published, but `[DESIGNED]` missing. Sibling `design-init-runparams.sh:187-201` already handles this with an `else` + `add_warn`. **Suggested fix:** Mirror that pattern: on non-zero rename rc, `add_warn` with a `[DESIGNED]`-specific message (and optionally append via `append-tool-failure.sh`); on success with no `RENAMED=` line, warn like 0b. Add a harness case where the rename stub exits non-zero with `PUBLISH_OK=true` and assert `WARN=` in the result env.
+
+### Out-of-Scope Observations
+
+- **upgrade-larch / scout checklist:** On this branch, `INSTALLED_VERSION` is set at `skills/upgrade-larch/scripts/upgrade-larch.sh:308` before both `prune_cached_versions` call sites (`:355`, `:406`); retention caps at eight via protected pre-fill plus `wc -w` after each ranked add (`:259-275`); duplicate protection when `target_version` equals `INSTALLED_VERSION` is handled by `version_is_retained`. No correctness defect found in that path.
+- **UX (known/accepted):** Dropping the `> **🔶 /design 5c.5: larch:diagrams (architecture)**` banner while keeping orchestrator `⏩ 5c.5:` was flagged as acceptable in the design run logs; not a functional regression.
+- **Harness gap:** `test-design-publish.sh` covers `PUBLISH_OK=false` and unexpected publish but not rename failure after successful publish; worth adding when fixing the rename handling above.

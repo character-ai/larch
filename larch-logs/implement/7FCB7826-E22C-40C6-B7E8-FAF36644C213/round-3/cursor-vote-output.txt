@@ -1,0 +1,32 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Doc regression is real but a short Migration limit note in design-publish.md is sufficient without SKILL churn.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplication is real; extracting a shared parser now costs more than the drift risk.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Post-driver 5c.5 status line remains; pre-driver breadcrumb is optional UX polish.
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Third parse loop is maintainability debt; consolidating orchestrator parsing is a larger refactor than this extraction warrants.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Gap is real but marker-write failure is already non-blocking with append-tool-failure; harness is nice-to-have.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Skip-upsert branch is covered implicitly by happy/sentinel paths; dedicated case is low ROI.
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Structure pins already enforce publish/upsert/rename ordering; one more grep pin is marginal.
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- Threat model requires same-UID tmpdir tampering during the run; trust boundary is already the session tmpdir.
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Sentinel semantics are ambiguous but /implement admission still blocks; document plan-write-only vs full publish success.
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Symlinked result env is an exotic edge; stdout fallback and abort-on-unparsed paths already exist for common cases.
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Misleading approved summary is possible but WARN/recovery prose usually surfaces publish failure.
+FINDING_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Whitespace-only session-id is invalid input but fails downstream with a weaker message, not a silent bug.
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- --help exists; one-line smoke test is trivial but not blocking acceptance.
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Sibling write_result_env pins exist; design-publish already has extensive structure pins.
+FINDING_23: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Pre-existing helper underuse; not introduced solely by this driver extraction.
+OOS_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real gap but predates this branch; track with upgrade-larch work rather than blocking design-publish.
+OOS_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+OOS_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- render-final-summary.sh currently always exits 0 on success path; asymmetry is hypothetical only.
+OOS_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Scout found no defect; not actionable as an issue.
+OOS_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Positive verification, not a problem worth filing.
+OOS_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Portability scout report is informational with no concrete defect.
