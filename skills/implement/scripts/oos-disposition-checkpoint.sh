@@ -127,7 +127,7 @@ _oos_ndjson=""
 if [ -n "$_RUN_ID" ]; then
   _oos_ndjson="$IMPLEMENT_TMPDIR/larch-logs/implement/$_RUN_ID/oos-issues.ndjson"
 fi
-if [ -z "$_RUN_ID" ] && { [ -z "$_oos_ndjson" ] || [ ! -f "$_oos_ndjson" ]; }; then
+if [ -z "$_RUN_ID" ]; then
   _oos_list=$(find "$IMPLEMENT_TMPDIR/larch-logs/implement" -mindepth 2 -maxdepth 2 -name oos-issues.ndjson -type f 2>/dev/null | LC_ALL=C sort || true)
   _oos_n=$(printf '%s\n' "$_oos_list" | sed '/^$/d' | wc -l | tr -d '[:space:]')
   if [ "${_oos_n:-0}" -eq 1 ]; then

@@ -21,6 +21,17 @@ Design OOS path: `--design-tmpdir` wins, then exported `DESIGN_TMPDIR`, then `$I
 
 Commit range: `merge-base HEAD origin/main..HEAD` when merge-base is non-empty; `origin/main..HEAD` when `origin/main` resolves but merge-base is empty; `HEAD` when `origin/main` is absent.
 
+## Ndjson discovery
+
+Reads `$IMPLEMENT_TMPDIR/session-id` as `RUN_ID` (trimmed; empty when absent).
+
+| `session-id` | Resolution |
+|--------------|------------|
+| Non-empty | Use only `$IMPLEMENT_TMPDIR/larch-logs/implement/<RUN_ID>/oos-issues.ndjson`. **No** `find` fallback when that path is missing — avoids binding a foreign run’s batch after a stale `RUN_ID`. |
+| Empty | `find` under `$IMPLEMENT_TMPDIR/larch-logs/implement` (`-mindepth 2 -maxdepth 2`, name `oos-issues.ndjson`). Exactly one match → adopt; more than one → pre-gate exit **2** (`ambiguous oos-issues.ndjson without session-id`). |
+
+When `non_security_oos > 0` and git mode is active (not fork / repo-unavailable), a resolved on-disk ndjson path is required before the gate runs; otherwise pre-gate exit **2** (`batch missing or undiscoverable`). **Stale `RUN_ID`:** keyed path missing with non-zero non-security OOS and a sole foreign `oos-issues.ndjson` still fails here (exit **2**), unlike the removed inline orchestrator block that could `find`-bind the foreign file and exit **0**.
+
 ## Exit codes
 
 | Code | Meaning |
@@ -47,7 +58,7 @@ Stderr logs:
 
 ## Gate contract
 
-Argument wiring matches the former inline `SKILL.md` block: `--fork-mode`, `--repo-unavailable`, `--oos-issues-ndjson`, `--accepted-files`, `--filed-urls-file`, `--filed-urls-strict-file`, `--commit-range`. See `oos-disposition-gate.md` for gate semantics.
+Gate argv wiring (`--fork-mode`, `--repo-unavailable`, `--oos-issues-ndjson`, `--accepted-files`, `--filed-urls-file`, `--filed-urls-strict-file`, `--commit-range`) matches the former inline `SKILL.md` block; **ndjson discovery** intentionally differs — see [Ndjson discovery](#ndjson-discovery). See `oos-disposition-gate.md` for gate semantics.
 
 ## Harness
 
