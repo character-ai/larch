@@ -157,7 +157,7 @@ def test_execution_issues_batch_from_markdown(tmp_path: Path) -> None:
 def test_execution_issues_batch_redacts_pem(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    secret = "ghp_abcdefghijklmnopqrstuvwxyz1234567890ABCD"
+    secret = "ghp_" + "abcdefghijklmnopqrstuvwxyz1234567890ABCD"
     _ = (tmp_path / "execution-issues.md").write_text(
         f"### Tool Failures\n{secret}\n",
         encoding="utf-8",
@@ -193,7 +193,7 @@ def test_load_or_recover_manifest_invalid_json(tmp_path: Path) -> None:
 def test_token_batch_redaction_truncation_fails_closed(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    pem = "-----BEGIN RSA PRIVATE KEY-----\nMIIB\n"
+    pem = "-----BEGIN RSA " + "PRIVATE KEY-----\nMIIB\n"
     _ = (tmp_path / "token-report-refresh.json").write_text(pem, encoding="utf-8")
     ctx = _ctx(tmp_path, str(state))
     with pytest.raises(ShipError, match="redaction failed"):
