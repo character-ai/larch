@@ -1,0 +1,37 @@
+Reviewing the plan and grepping test harnesses for order-assertion coverage.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/test_ci_monitor.py:493-551,554-606,953-1006	Plan updates FIXER_TIER_ORDER in python/config.py and python/test_config.py only; python/test_ci_monitor.py is omitted but several cases hardcode cursor-first launch/commit expectations.	After the tuple flip, make py-test runs full pytest (Makefile py-test target). test_run_ci_fix_pushed_after_winning_tier asserts launch_calls == ["cursor"] (line 551); first-fixer and monitor integration tests stub only Apply CI fixes (cursor) (lines 511, 569, 976) while start_attempt=0 will invoke codex first.	Extend the plan Files section and testing strategy: add UPDATED python/test_ci_monitor.py — flip launch_calls/commit-message stubs and any order-tied comments (e.g. line 900) to codex-first for start_attempt=0 paths; keep test_evaluate_failure_verify_failed_then_pushed if both tier commit stubs already exist.
+2	in_scope	important	correctness	scripts/test-ship-pr.sh:6148-6231,6233-6315	Plan lists four #3227 cursor-first stub swaps in test-ship-pr.sh (lines 6338+) but omits two run_recovery_waterfall regressions that also encode cursor-as-first-tier failure.	Both blocks stub launch-cursor-ci.sh as the stderr/probe tier and launch-codex-ci.sh as the succeeding tier (lines 6159-6184, 6244-6269). run_recovery_waterfall will iterate codex cursor claude after ship-pr.sh changes; codex succeeds first without emitting the cursor-only probes, breaking grep assertions for LARCH_RECOVERY_WF_STDERR_PROBE / LARCH_RECOVERY_WF_STDERR_EXIT0_PROBE.	Add these two #3227 recovery-waterfall cases to the scripts/test-ship-pr.sh plan bullet (swap Codex/Cursor stub bodies and update fail messages that say advance to codex verify / cursor failure).
+
+**1. [correctness]** `python/test_ci_monitor.py` — The plan’s Python surface stops at `python/config.py` and `python/test_config.py`, but `make py-test` runs the full `python/` suite. At least three cases bind the old first tier to Cursor:
+
+```551:551:python/test_ci_monitor.py
+    assert launch_calls == ["cursor"]
+```
+
+```511:513:python/test_ci_monitor.py
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)")] = _cr(
+        (commit_script,),
+        0,
+```
+
+Similar cursor-only commit stubs appear in the first-fixer and monitor tests (lines 569, 976). After `FIXER_TIER_ORDER` becomes codex-first, `start_attempt=0` will call codex first and these tests will fail unless stubs/assertions are updated. `test_evaluate_failure_verify_failed_then_pushed` (lines 901–902) already stubs both tiers and is likely fine; still worth a comment/stub hygiene pass.
+
+**2. [correctness]** `scripts/test-ship-pr.sh` — The plan’s `#3227` swap list covers `run_ci_fix_vendor` cases starting at line 6338 but not the two `run_recovery_waterfall` harnesses immediately above:
+
+```6159:6184:scripts/test-ship-pr.sh
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+...
+printf 'LARCH_RECOVERY_WF_STDERR_PROBE\n' > "${output}.stderr-tail"
+printf 'LAUNCHER_EXIT=1\n'
+...
+cat > "$root/scripts/launch-codex-ci.sh" <<'STUB'
+...
+printf 'LAUNCHER_EXIT=0\n'
+```
+
+The parallel block at lines 6244–6269 mirrors this pattern for `LARCH_RECOVERY_WF_STDERR_EXIT0_PROBE`. After `for tier in codex cursor claude`, codex runs first and succeeds without those probes, so the stderr grep assertions will fail. Include both in the same stub-swap pass as the four cases the plan already names.
+
+---
+
+**Exonerated (no TSV rows):** `scripts/test-implement-step2-routing.md` still says “Cursor → Codex → Claude” but is not harness-asserted (only `test-implement-step2-routing.sh` pins `implement-bootstrap.md`). `scripts/test-ship-pr.sh:3239` ok text mentions “Cursor wins each tier-1” while the assertion is launch-count-only. Other `cursor`/`codex` mentions in unrelated harnesses (voters, design revise-plan, cost lines) are out of scope per Decision 1.

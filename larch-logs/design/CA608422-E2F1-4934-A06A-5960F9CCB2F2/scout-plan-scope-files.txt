@@ -1,0 +1,15 @@
+docs/installation-and-setup.md
+scripts/implement-bootstrap.sh
+scripts/implement-bootstrap.md
+scripts/ship-pr.sh
+scripts/ship-pr.md
+skills/implement/SKILL.md
+SECURITY.md
+docs/external-reviewers.md
+docs/linting.md
+python/config.py
+python/test_config.py
+python/test_ci_monitor.py
+scripts/test-implement-step2-routing.sh
+scripts/test-ship-pr.sh
+scripts/test-ship-pr-fix-loop-2632.inc.sh

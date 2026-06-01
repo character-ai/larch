@@ -1,0 +1,50 @@
+apiKeyHelper-free Claude aliases (doc) + default coder/CI/merge fixers → Codex
+
+Two independent setup changes, batched into one issue.
+
+---
+
+## Part 1 — Documentation only: Claude dual-auth aliases
+
+Update the **Claude** section of `docs/installation-and-setup.md`.
+
+### 1. Remove `apiKeyHelper` from `~/.claude/settings.json`
+Document that a file-level `apiKeyHelper` (e.g. `"apiKeyHelper": "echo $ANTHROPIC_API_KEY"`) breaks larch's Claude subprocesses (voters / reviewers / fixers that skills spawn, same as Cursor/Codex agents). Those subprocesses run `claude --print`, read `~/.claude/settings.json` directly, and do **not** inherit a top-level `--settings` override. In subscription/OAuth mode (no `ANTHROPIC_API_KEY` in env), the helper returns empty → `apiKeyHelper failed` → `401 Invalid bearer token`. A non-zero helper exit does **not** fall back to OAuth either. So the settings file must contain **no** `apiKeyHelper`; inject it only where the API key is wanted (the `*_api` aliases below).
+
+### 2. Document the dual-auth alias pattern (four example aliases)
+```bash
+# Per-token / API-key billing — inject apiKeyHelper via --settings (forces the key in interactive)
+alias claude_api='claude --settings='\''{"apiKeyHelper": "echo $ANTHROPIC_API_KEY"}'\'''
+alias opus_api='claude --model "claude-opus-4-8[1m]" --effort high --settings='\''{"apiKeyHelper": "echo $ANTHROPIC_API_KEY"}'\'''
+
+# Subscription / browser-login billing — unset the key so auth falls through to stored OAuth
+alias claude_login='env -u ANTHROPIC_API_KEY claude'
+alias opus_login='env -u ANTHROPIC_API_KEY claude --model "claude-opus-4-8[1m]" --effort high'
+```
+Explain the mechanism: subprocesses inherit the top-level session's environment, so billing tracks the top-level account. `*_api` → API token (env `ANTHROPIC_API_KEY`, which `claude --print` uses directly); `*_login` → subscription OAuth (macOS Keychain). Credential precedence is `ANTHROPIC_API_KEY` (env) > `apiKeyHelper` > stored OAuth, and a configured `apiKeyHelper` never falls back to OAuth — which is why the file stays clean and `apiKeyHelper` lives only in the `*_api` aliases. (Example aliases are illustrative; any personal git-fetch/stash wrapper is out of scope for the docs.)
+
+### Acceptance — Part 1
+- [ ] Claude section of `docs/installation-and-setup.md` explains removing `apiKeyHelper` from `~/.claude/settings.json` and why (subprocess `claude --print` auth → 401 in subscription mode).
+- [ ] The four example aliases (`claude_api`, `claude_login`, `opus_api`, `opus_login`) are documented with the API-key-vs-subscription mechanism.
+- [ ] Docs-only: no runtime/script/behavior change in this part.
+
+---
+
+## Part 2 — Default external tool → Codex for coder, CI fixer, and merge-resolve fixer
+
+Flip the default tool preference from **Cursor-first** to **Codex-first** for three roles. Keep Claude as the terminal fallback tier. Apply to BOTH the live Bash path and the in-progress Python port (parity), and update the order-asserting tests.
+
+Surfaces (currently cursor-first):
+- **Coder (implementer) omitted-default**: `scripts/implement-bootstrap.sh` `_phase_coder_implicit()` — currently Cursor → Codex → Claude (set by #2738) → make Codex → Cursor → Claude.
+- **CI fixer waterfall**: `scripts/ship-pr.sh` `run_ci_fix_vendor` `local tiers=(cursor codex claude)` → `(codex cursor claude)`; Python `python/ci_monitor.py` (consumes `config.FIXER_TIER_ORDER`).
+- **Merge-resolve / conflict fixer waterfall**: `scripts/ship-pr.sh` recovery-waterfall `for tier in cursor codex claude` (wf_role=resolve-conflict) → `codex cursor claude`; Python `python/rebase.py` (consumes `config.FIXER_TIER_ORDER`).
+- **Shared Python config**: `python/config.py` `FIXER_TIER_ORDER: Final = ("cursor", "codex", "claude")` → `("codex", "cursor", "claude")`.
+- Tests to update: `python/test_config.py` (asserts the tuple), `scripts/test-ship-pr.sh`, `scripts/test-implement-step2-routing.sh`, plus any other order assertions surfaced during design.
+
+### Acceptance — Part 2
+- [ ] Default coder (no `--coder`) prefers Codex over Cursor (Codex → Cursor → Claude).
+- [ ] CI fixer waterfall prefers Codex over Cursor.
+- [ ] Merge-resolve / conflict fixer waterfall prefers Codex over Cursor.
+- [ ] Both Bash (`scripts/`) and Python (`python/`) paths updated for parity; `FIXER_TIER_ORDER` and its test updated.
+- [ ] Claude remains the terminal fallback tier in all three roles.
+- [ ] Explicit `--coder cursor` still works; only the omitted default changes.

@@ -1,0 +1,15 @@
+Reviewing the implementation plan and validating it against the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/test-implement-step2-routing.md:6-7	Plan updates test-implement-step2-routing.sh but omits its sibling contract doc	After the harness retargets BOOTSTRAP_MD and BOOTSTRAP_SH pins to Codex-first, scripts/test-implement-step2-routing.md still documents omitted--coder order as Cursor → Codex → Claude, violating .claude/rules/script-md-siblings.md and agent-lint’s listed harness contract	Add ### UPDATED: scripts/test-implement-step2-routing.md — sync the omitted--coder waterfall line to Codex → Cursor → Claude and the two fallback-warning strings to match the updated .sh assertions
+
+**1. [architecture]** `scripts/test-implement-step2-routing.md:6-7` — The plan retargets `scripts/test-implement-step2-routing.sh` (BOOTSTRAP_MD order pin and fallback-warning strings) but does not list the harness sibling `.md`. That file still states the omitted-`--coder` waterfall as `Cursor → Codex → Claude`. Repo rule `.claude/rules/script-md-siblings.md` requires sibling contract docs to update in the same PR as harness behavior changes; `agent-lint.toml` also registers this path. **Suggested revision:** add `### UPDATED: scripts/test-implement-step2-routing.md` and align lines 6–10 with the new Codex-first pins (and renamed warning labels if the `.sh` test names change).
+
+---
+
+**[OUT_OF_SCOPE]** `docs/run-logs.md:249` — Manifest prose says `coder_fallback=true` when routing “fell past Codex”; after the flip that flag still means both externals were exhausted (Codex then Cursor). Optional doc tweak; not in the plan’s grep list and not CI-gated.
+
+**[OUT_OF_SCOPE]** `CHANGELOG.md:46` — Historical entry still documents Cursor-first omitted-`--coder`; no plan item. Typical release-note follow-up, not required for correctness of the behavior flip.
+
+---
+
+**Exonerated (reviewed, no plan gap):** Core behavior targets (`_phase_coder_implicit`, `run_ci_fix_vendor` / `run_recovery_waterfall`, `FIXER_TIER_ORDER`, listed tests/docs including `SECURITY.md` ~105 and ~127, `skills/implement/SKILL.md` comma wording + `assert_not_contains` guard), explicit `--coder` waterfalls left untouched, Python `test_agents.py` (order-relative to the tuple), and scoped-out R1/R2 surfaces. `ship-pr.sh` first-fixer logic already keys off rotated `first_tier`, so the tuple flip is sufficient.

@@ -1,0 +1,24 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/external-reviewers.md:103	CI / checks recovery row still documents Cursor→Codex→Claude	Canonical routing table contradicts codex-first ship-pr.sh after Part 2	Add docs/external-reviewers.md to Part 2 doc-sync (Codex→Cursor→Claude) or defer with R-style note
+2	in_scope	important	correctness	docs/linting.md:272	make test-implement-step2-routing blurb still says omitted --coder uses Cursor → Codex → Claude	Operators and lint doc readers see wrong default implementer order	Update the table cell to Codex → Cursor → Claude when the harness assertion flips
+3	in_scope	important	security	SECURITY.md:127	Omitted --coder paragraph still states Cursor → Codex → Claude and Phase 4 reverses codex-first back to cursor-first	Security policy documents the pre-flip default and an obsolete Phase 4 narrative after #3337 lands	Sync line 127 to codex-first implicit routing; trim or rewrite the Phase 4 sentence so it matches post-#3337 behavior
+4	in_scope	important	correctness	scripts/launch-cursor-ci.md:30	Launcher contract cites Cursor→Codex→Claude waterfall for first-tier non-health bail	CI launcher doc still names Cursor as the ordered chain after codex becomes first tier	Update prose to codex→cursor→claude and first-tier (codex) semantics; add to plan grep list
+5	in_scope	latent	architecture	plan.txt:86-87	Failure-mode grep lists only ship-pr.md, implement-bootstrap.md, implement SKILL.md	Mitigation step will not catch the stale files above	Expand the post-edit grep list to include docs/external-reviewers.md, docs/linting.md, SECURITY.md, and scripts/launch-cursor-ci.md (and scripts/test-implement-step2-routing.md if desired)
+
+1. **[correctness]** `docs/external-reviewers.md:103` — The routing table’s CI / checks recovery cell still says **Full waterfall** `(Cursor→Codex→Claude)`. That lane is one of the three Part 2 roles (`ship-pr.sh` `run_ci_fix_vendor`). The plan updates `scripts/ship-pr.md` but not this canonical doc. **Suggested revision:** Add `docs/external-reviewers.md` to Part 2 doc-sync (same codex-first wording as `ship-pr.md`) or explicitly defer with reasoning like R1/R2.
+
+2. **[correctness]** `docs/linting.md:272` — The `make test-implement-step2-routing` description still documents an omitted-`--coder` **Cursor → Codex → Claude** waterfall. The plan updates `scripts/test-implement-step2-routing.sh` and `scripts/implement-bootstrap.md` but not this lint catalog row. **Suggested revision:** Change the cell to **Codex → Cursor → Claude** when the harness flips.
+
+3. **[security]** `SECURITY.md:127` — States omitted-`--coder` routing “follows Cursor → Codex → Claude” and that Phase 4 (#2738) will reverse the Codex-first default from #2756 back to Cursor-first. After #3337, implicit routing becomes codex-first again, so both clauses are wrong or misleading for operators reading security policy. **Suggested revision:** Sync to codex-first; reconcile or remove the Phase 4 forward-reference so it matches landed behavior.
+
+4. **[correctness]** `scripts/launch-cursor-ci.md:30` — Documents `ship-pr.sh` short-circuiting the **Cursor→Codex→Claude** waterfall on first-tier non-health failures. After the tuple flip, base order is codex-first and the first tier is Codex, not Cursor. Not in the plan’s edit list or deferred surfaces. **Suggested revision:** Add this file to Part 2 doc-sync (codex→cursor→claude; first-tier = codex).
+
+5. **[architecture]** `plan.txt:86-87` (Failure modes) — Mitigation greps only `scripts/ship-pr.md`, `scripts/implement-bootstrap.md`, and `skills/implement/SKILL.md`, which explains why findings 1–4 are missing from the enumerated file list. **Suggested revision:** Widen the grep checklist to the paths above (minimal doc touch, no scope creep beyond order prose).
+
+**SKILL.md arrow guard (no finding):** Proposed comma wording (“Codex, then Cursor, then Claude”) avoids the literal substring `Codex → Cursor → Claude` that `scripts/test-implement-step2-routing.sh:47` forbids while still stating codex-first order. EXONERATE.
+
+**R1/R2 deferrals (no finding):** `docs/review-agents.md:95`, `docs/collaborative-sketches.md:43`, and `skills/design/references/brainstorm.md:50-51` retain cursor-first / mixed orders by explicit Decision 1 deferral — consistent with the plan report section.
+
+**[OUT_OF_SCOPE]** `CHANGELOG.md` (e.g. `:46`, `:4517`) — Historical release notes; updating them is not required for Part 2 correctness.
+
+**[OUT_OF_SCOPE]** `scripts/test-implement-step2-routing.md:7` — Harness companion doc; the `.sh` harness is the enforced contract and is in the plan. Optional doc sync only; EXONERATE under minimum-change bias.

@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	docs/external-reviewers.md:103	CI / checks recovery row still documents Cursor→Codex→Claude	Canonical routing table contradicts codex-first ship-pr.sh after Part 2	Add docs/external-reviewers.md to Part 2 doc-sync (Codex→Cursor→Claude) or defer with R-style note
