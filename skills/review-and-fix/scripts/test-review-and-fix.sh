@@ -550,6 +550,9 @@ pass "pre-coder snapshot file chmod 0444"
 
 work_stale_0444="$TMP/stale-0444-snapshot-rewrite"
 make_work_repo "$work_stale_0444"
+eval "$(sed -n '/^pre_coder_snapshot_dir/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^clear_stale_pre_coder_snapshot_artifacts/,/^}/p' "$SCRIPT")"
+eval "$(sed -n '/^harden_pre_coder_snapshot_perms/,/^}/p' "$SCRIPT")"
 (
     set -euo pipefail
     cd "$work_stale_0444"
