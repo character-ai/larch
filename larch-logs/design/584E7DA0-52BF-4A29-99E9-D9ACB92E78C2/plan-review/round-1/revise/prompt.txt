@@ -1,0 +1,134 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Implementation Plan — #3299: absorb step8b rebase+re-bump into ship-pr.sh + fold CLONE_TAG_FULL
+
+## Summary
+
+Two changes, both in `scripts/ship-pr.sh`:
+
+1. **Absorb the `step8b_rebase` handoff.** Today `run_bump_phase` (ship-pr.sh line ~1464) sees postbump `STATUS=conflict` / `RESUME_PHASE=force-push-gate` and `exit 5`s with `CALLER_KIND=step8b_rebase` to the prompt-side `rebase-rebump-subprocedure.md`. Replace that `exit 5` with an **internal** drop/rebase/re-bump that reuses the existing `run_rebase_rebump` deterministic helpers, applies step8-family failure semantics, and continues to the postbump force-push-gate. Keep `conflict-resolution.md` Phase 1–4 prompt-side via the existing `exit 5` + `CALLER_KIND=ship_pr_pre_push` escape, with a resume route back to force-push-gate.
+2. **Fold `CLONE_TAG_FULL`.** Move the ~9-line inline computation out of `skills/implement/SKILL.md` and derive `--expected-tmpdir-basename-prefix` inside ship-pr.sh argv-init. Keep the flag accepted as an optional override.
+
+**Scope correction (verified):** `step8_apply_bump_same_version` is ALREADY internal — `_run_step8_same_version_mechanically()` (ship-pr.sh line ~2913, landed in #2649 before #3299 was filed). The only remaining prompt-side rebase/re-bump handoff is `step8b_rebase`. This plan also retires the now-dead `step8_apply_bump_same_version` `exit 5` references (no live producer remains).
+
+## Files to modify/create
+
+### UPDATED: `scripts/ship-pr.sh`
+- **Add `run_step8b_rebase_rebump_internal()`** (place next to `run_rebase_rebump`). It reproduces the sub-procedure step 1–7 deterministic body for the step8 family by reusing existing helpers — `drop-bump-commit.sh`, `_run_rebase_rebump_verify_plain_no_push` (or the `--no-push --keep-on-conflict` vendor/waterfall variant already inside `run_rebase_rebump`), and `_run_rebase_rebump_from_step3` with `defer_push=true` so push stays owned by the force-push-gate. Failure routing is step8-family: hard failures call `exit_stall 8b` (which already sets stall semantics → Step 18) rather than `exit_stall 10|12`; the same-version/`HAS_BUMP=false`/degraded-STATUS branches mirror Block β step8b handling. On a non-bump-only conflict, reuse the existing `run_recovery_waterfall` → `exit 5` `CALLER_KIND=ship_pr_pre_push` escape, but set a resume target that returns to the force-push-gate (see resume change below). Prefer factoring shared body out of `run_rebase_rebump` over copy-paste (user approved safe consolidation); a `phase`/`caller_family` parameter selecting the `exit_stall` target and push-deferral keeps one code path.
+- **Rewrite the `conflict` arm of `run_bump_phase`** (lines ~1464–1473): replace `state_set_many RESUME_PHASE force-push-gate CALLER_KIND step8b_rebase` + `exit 5` with a call to `run_step8b_rebase_rebump_internal`; on its success fall through to re-run the force-push-gate (re-invoke postbump with the `.postbump-phase=force-push-gate` checkpoint, i.e. `advance_phase bump` then loop, matching today's `--resume-phase force-push-gate` resume). Preserve `step8b_rebase` as a contract token in a comment (do not delete the name).
+- **Extend the Exit-5 resume dispatch** (lines ~3764–3786): the `ship-pr-rrr-phase14` branch currently `die_usage`es unless `PHASE` is `ci-initial|ci-merge`. Add a postbump/force-push-gate variant so a Phase 1–4 conflict raised from `run_step8b_rebase_rebump_internal` resumes by re-running the internal re-bump tail and then the force-push-gate — gated on a distinct handoff flag/PHASE so the CI-phase guard is unchanged. Use a dedicated resume token (e.g. `ship-pr-rrr-phase14-postbump`) OR widen the PHASE guard to accept the `bump` phase with the postbump checkpoint present; pick whichever keeps the existing CI guard untouched.
+- **Fold `CLONE_TAG_FULL` into argv-init**: when `--expected-tmpdir-basename-prefix` is absent, derive the prefix internally as `claude-implement-<CLONE_TAG_FULL>-`, where `CLONE_TAG_FULL` = `${CLONE_TAG:-$(basename "$PWD")}` sanitized via `tr -c 'A-Za-z0-9_-' '_'` and truncated to 32 chars (byte-identical to the current SKILL.md formula, incl. the `_` empty-fallback). Keep `--expected-tmpdir-basename-prefix` accepted as an explicit override (back-compat for tests and explicit callers). Preserve the existing CR/LF rejection (line ~3715).
+
+### UPDATED: `scripts/ship-pr.md`
+- Document `run_step8b_rebase_rebump_internal`, the new resume token/route, and the internal `CLONE_TAG_FULL` derivation under the existing argv-init / exit-code / resume-phase sections. Note `step8b_rebase` is now produced only as an internal marker (no `exit 5`), and `step8_apply_bump_same_version` `exit 5` is retired. Keep the `--expected-tmpdir-basename-prefix` override documented.
+
+### UPDATED: `skills/implement/SKILL.md`
+- Remove the inline `CLONE_TAG_FULL` block (lines ~1135–1143) and the `--expected-tmpdir-basename-prefix` argv line (line ~1152) from the Step 8+ `Invoke:` block; ship-pr.sh now derives it. If `CLONE_TAG` must reach ship-pr.sh, `export CLONE_TAG` in the Invoke block (see Edge cases) — otherwise rely on `basename "$PWD"`.
+- Trim the Exit-5 handler (line ~1184): drop the `step8b_rebase`/`step8_apply_bump_same_version` → `rebase-rebump-subprocedure.md` branch (now internal). Keep the `ship_pr_pre_push` → `conflict-resolution.md` branch, and add the new postbump resume token to the "re-invoke `ship-pr.sh --resume-phase`" line.
+- Update NEVER #8 and NEVER #15 prose that references the prompt-side step8b/step8_apply sub-procedure Skill path: note the step8 family is now script-internal (parallel to the existing 10/12 note). Do NOT delete the NEVER entries; reword to reflect internal ownership.
+
+### UPDATED: `skills/implement/references/rebase-rebump-subprocedure.md`
+- Retain (per Round 1). Update the **Consumer** header and the `step8b_rebase` / `step8_apply_bump_same_version` references to read "now handled internally by `ship-pr.sh`; retained for historical/contract reference," mirroring the existing 10/12 note. Do not delete sections.
+
+### UPDATED: `skills/implement/references/bump-verification.md`
+- Retain. Add a one-line note that Block β's step8b-family handling is now executed inside ship-pr.sh; Blocks α/γ remain live for Step 8's direct bump. No semantic edits to the matrices.
+
+### UPDATED: `scripts/test-ship-pr.sh`
+- Assert the postbump-conflict path no longer `exit 5`s with `step8b_rebase`; it runs the internal rebase+re-bump and reaches the force-push-gate.
+- Assert non-bump-only conflict still `exit 5`s with `CALLER_KIND=ship_pr_pre_push` and resumes to the force-push-gate.
+- Assert step8-family hard failures route to `exit_stall 8b` (stall → Step 18), not 10/12.
+- Add argv-init coverage: internal `--expected-tmpdir-basename-prefix` derivation equals the legacy formula; explicit flag overrides; `CLONE_TAG` precedence; basename fallback; 32-char truncation; CR/LF rejection unchanged.
+
+### UPDATED: `scripts/test-ship-pr-rebase-phase14.sh`
+- Cover the new postbump force-push-gate resume route after a Phase 1–4 (`ship_pr_pre_push`) escape raised from the step8b path; assert the CI-phase `ship-pr-rrr-phase14` guard is unchanged.
+
+### UPDATED: `scripts/test-implement-rebase-macro.sh`
+- Update `step8b_rebase` token expectations to the internal-ownership shape; keep the contract-token presence assertions.
+
+## Approach
+
+- **Reuse, don't duplicate.** The deterministic drop/rebase/re-bump already lives in `run_rebase_rebump` + `_run_rebase_rebump_from_step3` + `_run_rebase_rebump_verify_plain_no_push`. Factor the shared body so the step8b path differs only in (a) `exit_stall` target (8b vs 10/12), (b) push deferral (force-push-gate owns the push), and (c) post-success continuation (force-push-gate vs `ci-wait`). This is the "safe consolidation" the operator approved and mirrors the existing 10/12 internalization.
+- **Phase 1–4 stays prompt-side.** Non-bump conflicts keep the `exit 5` + `CALLER_KIND=ship_pr_pre_push` escape and the `conflict-resolution.md` handoff. Only the resume target changes for the step8b origin (back to force-push-gate instead of a CI phase).
+- **Idempotent resume.** The force-push-gate resume re-enters `run_bump_phase`; classify-bump returns `NONE` on an already-bumped HEAD (no double bump), then postbump reads `.postbump-phase=force-push-gate` and force-pushes. This is the existing resume contract — preserve it.
+- **CLONE_TAG_FULL** is a pure function of `${CLONE_TAG:-$(basename "$PWD")}`; ship-pr.sh runs in the clone cwd, so the derivation is local. Keep the explicit flag for override.
+
+## Edge cases
+- `--forked` target: `run_step8b_rebase` rebases onto `upstream/main` and returns 2 (bail) on conflict, NOT 1 — so the internal path is entered only for the non-forked `return 1` conflict. Preserve the forked bail.
+- `repo_unavailable=true`: postbump returns 2 (bail); the internal path is not entered. Preserve.
+- `SKIPPED_ALREADY_FRESH=true`: re-bump no-ops; force-push-gate still runs.
+- `HAS_BUMP=false` (forked or no bump skill): classify yields `NONE`; the path rebases/force-pushes with no new bump commit (step8-family `HAS_BUMP=false` semantics). Preserve.
+- Bump-only conflict (`plugin.json`/`CHANGELOG`): the deterministic pre-pass + `drop-bump-commit` removes the bump first, so these resolve without Phase 1–4. Preserve.
+- `CLONE_TAG` visibility: if `/implement` sets `CLONE_TAG` as a non-exported shell var, ship-pr.sh (a subprocess) will not see it and would fall back to `basename "$PWD"`. Verify whether `CLONE_TAG` is exported at the call site; if it is meaningful and unexported, `export CLONE_TAG` in the SKILL.md Invoke block or keep passing the explicit flag when `CLONE_TAG` is set. Default `basename "$PWD"` matches the historical else-branch.
+
+## Failure modes
+- **Resume routes to a CI phase with no PR (highest risk).** If the Phase 1–4 resume for the step8b origin reuses the CI-only `ship-pr-rrr-phase14` route, resume hits `die_usage "... requires PHASE ci-initial or ci-merge"` or re-enters CI logic with no PR. Earliest signal: that `die_usage`, or a crash in `run_ci_phase` pre-PR. Mitigation: a dedicated postbump resume token/PHASE guard plus a `test-ship-pr-rebase-phase14.sh` case.
+- **Stale/double bump (Invariant #1).** If push deferral or the classify-NONE idempotency is mis-wired, the branch could force-push without a fresh bump or with a stale version. Earliest signal: `check-bump-version --mode post` `VERIFIED=false`/`BUMP_TYPE=NONE`, or a merged version behind `origin/main`. Mitigation: keep `_run_rebase_rebump_from_step3`'s STATUS-first Block β gating and version-regression correction inside the shared body; `defer_push=true` so force-push-gate owns the single push.
+- **Failure-routing drift (Invariant #3).** If a degraded-git failure in the internal step8b path calls `exit_stall 10|12` instead of `8b`, it bails to a nonexistent CI loop / 12d pre-PR. Earliest signal: wrong stall step label or a crash. Mitigation: parameterize the `exit_stall` target by caller family; assert the 8b target in tests.
+
+## Testing strategy
+- Extend `test-ship-pr.sh`, `test-ship-pr-rebase-phase14.sh`, `test-implement-rebase-macro.sh` per the Files section (internal step8b path, Phase 1–4 resume-to-force-push-gate, step8-family stall routing, CLONE_TAG_FULL argv-init).
+- Re-run the bump-verification regression coverage and `scripts/test-step2-dispatch.sh` to confirm no stale `step8b_rebase` exit-5 dispatch expectation remains.
+- Run `bash scripts/relevant-checks.sh` (or `make lint`), `make lint-bash32`, and the script's own harness via the Makefile targets.
+- Keep edits disjoint from the parallel "Step 18" `ship-pr.sh` issue (single-writer to `ship-pr.sh`).
+
+diff_lines: 330
+
+</plan>
+
+<findings>
+### FINDING_1: Postbump resume token and Phase 4 dispatch not specified in plan
+- **Reviewer(s)**: Cursor-Arch, Cursor-Requirements, Cursor-dyn-resume-route
+- **Severity**: important
+- **Concern**: The plan does not update `conflict-resolution.md` or commit resume-token semantics for postbump step8b internal handoff. Today `ship_pr_pre_push` Phase 4 exit 0 always re-invokes `--resume-phase ship-pr-rrr-phase14` (see lines 16 and 112), while postbump handoff can set `RESUME_PHASE` to `force-push-gate` or a deferred postbump token. Resuming the wrong phase hits `die_usage` when `PHASE=bump`, or re-enters CI `run_rebase_rebump` instead of the force-push gate. The plan also defers choosing between a dedicated `ship-pr-rrr-phase14-postbump` token and widening the `ship-pr-rrr-phase14` guard at `scripts/ship-pr.sh:3772-3786`, leaving load-bearing dispatch to the implementer without design authority.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add skills/implement/references/conflict-resolution.md to Files: for ship_pr_pre_push when state RESUME_PHASE is force-push-gate or ship-pr-rrr-phase14-postbump, Phase 4 exit 0 must re-invoke that token (or read RESUME_PHASE from ship-pr-state.sh), not ship-pr-rrr-phase14
+  - From Cursor-Requirements: Add conflict-resolution.md to Files to modify: branch ship_pr_pre_push Phase 4 exit 0 on RESUME_PHASE from ship-pr-state.sh (postbump token or force-push-gate) vs default ship-pr-rrr-phase14 for ci-initial|ci-merge; pair with SKILL.md Exit 5 bullet
+  - From Cursor-dyn-resume-route: Commit in plan: prefer a dedicated resume token that resumes force-push-gate (maps to scripts/ship-pr.sh:3766) and leaves the ci-initial|ci-merge guard at 3774-3776 untouched; document why widening ship-pr-rrr-phase14 is rejected
+
+
+### FINDING_2: step8b non-bump handoff uses exit_stall (4), not exit 5 — orchestrator skips Phase 1–4
+- **Reviewer(s)**: Cursor-Edge, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan assumes postbump step8b non-bump conflicts hand off via exit 5 with `CALLER_KIND=ship_pr_pre_push` so the orchestrator loads `conflict-resolution.md` and runs Phase 1–4. Live code at `scripts/ship-pr.sh:3377-3381` (and the `run_rebase_rebump` / `run_step8b_rebase_rebump_internal` path reviewers cite) emits `RESUME_PHASE` / `CALLER_KIND` / `CONFLICT_FILES` then calls `exit_stall` (exit 4, `STALL_TRACKING=true`). The orchestrator’s Exit 5 handler runs conflict-resolution; Exit 4 routes to Step 16, so Phase 1–4 is never loaded despite keys on stdout. Tests currently assert rc 4 for phase14 on this path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Align the plan with the live stall contract: either (a) step8b-family ship_pr_pre_push emits exit 5 with STALL_TRACKING=false and emit_kv CONFLICT_FILES, or (b) add an Exit 4 branch for CALLER_KIND=ship_pr_pre_push that runs Phase 1–4 before Step 16; update test-ship-pr expectations accordingly (they currently assert rc 4 for phase14)
+  - From Cursor-Pragmatic: From run_step8b_rebase_rebump_internal emit_kv CONFLICT_FILES set RESUME_PHASE to postbump resume token and CALLER_KIND ship_pr_pre_push with STALL_TRACKING false then exit 5; do not call exit_stall for that branch
+  - From Cursor-Requirements: Specify run_step8b_rebase_rebump_internal non-bump handoff: emit_kv CONFLICT_FILES then exit 5 with CALLER_KIND=ship_pr_pre_push RESUME_PHASE set to postbump resume token and STALL_TRACKING=false (mirror current step8b_rebase exit 5 at 1467-1469, not exit_stall)
+
+
+</findings>
+
+<feature>
+Further factoring out /implement into bash Phase 5: absorb step8/8b rebase+re-bump into ship-pr.sh
+
+## Context
+
+`skills/implement/references/rebase-rebump-subprocedure.md` (198 lines) is mostly already retired from the prompt: Steps 10/12 `ACTION=rebase` / `rebase_then_evaluate` are handled **internally** by `scripts/ship-pr.sh` `run_rebase_rebump()` / `_run_rebase_rebump_from_step3` and no longer reach the Markdown procedure. Only two `caller_kind`s still drive it prompt-side — `step8b_rebase` (post-bump force-push auto-recovery) and `step8_apply_bump_same_version` (same-version recovery) — interleaved with the `/bump-version` Skill call and the `bump-verification.md` Block β decision matrix.
+
+Separately, SKILL.md computes `CLONE_TAG_FULL` inline (~9 lines of `basename` / `tr` / truncate) right before the `ship-pr.sh` invoke, only to pass `--expected-tmpdir-basename-prefix`.
+
+## Analysis
+
+`ship-pr.sh` already performs the version bump via `classify-bump.sh` / `apply-bump.sh` **directly** (NEVER #11) and already owns the 10/12 rebase+re-bump internally — including the post-rebase classify-bump regression correction. Extending that internal path to the two step8 `caller_kind`s would retire the remaining prompt-side execution of `rebase-rebump-subprocedure.md` **and** `bump-verification.md` Block β (step8 family), mirroring the 10/12 absorption. `CLONE_TAG_FULL` is a pure function of `$PWD` and can be computed inside `ship-pr.sh` argv-init.
+
+## Proposal
+
+1. Extend `ship-pr.sh`'s internal rebase+re-bump to cover `step8b_rebase` and `step8_apply_bump_same_version` (post-bump force-push gate + same-version recovery) without the prompt-side `/bump-version` Skill round-trip, keeping the existing `conflict-resolution.md` Phase 1–4 handoff (inherently LLM) via the established exit-5 / `CALLER_KIND` mechanism.
+2. Fold the `CLONE_TAG_FULL` computation into `ship-pr.sh` argv-init (compute `--expected-tmpdir-basename-prefix` internally).
+
+Net: most of `rebase-rebump-subprocedure.md` and `bump-verification.md` become script-internal; the SKILL.md Step 8+ surface shrinks substantially.
+
+## Risk / caveats
+
+- **Highest-risk of the set.** Touches Load-Bearing Invariant #1 (version-bump freshness) and #3 (degraded-git fail-closed), and NEVER #1 / #8 / #11 / #15. Recommend an **investigation pass first** (confirm the step8 same-version-recovery semantics translate cleanly to the internal path) before editing.
+- `/bump-version` is project-local under `.claude/skills/` and not shipped; `ship-pr.sh` already sidesteps it via `classify-bump.sh` / `apply-bump.sh`, so the absorption is feasible — but the step8b force-push gate (`implement-finalize.sh postbump`) and `step8_apply_bump_same_version`'s one-retry semantics must be preserved.
+- Conflict resolution (Phase 1–4) stays prompt-side — do not try to script it.
+- Heavy test surface: `ship-pr.sh` harnesses, `test-step2-dispatch.sh`, and the bump-verification regression coverage. Keep `rebase-rebump-subprocedure.md` / `bump-verification.md` as the historical/step8 contract until fully absorbed.
+- Touches `ship-pr.sh` — kept disjoint from the Step 18 issue so no two issues edit `ship-pr.sh`.
+
+</feature>

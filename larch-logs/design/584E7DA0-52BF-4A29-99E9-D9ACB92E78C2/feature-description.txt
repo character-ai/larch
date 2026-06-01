@@ -1,0 +1,26 @@
+Further factoring out /implement into bash Phase 5: absorb step8/8b rebase+re-bump into ship-pr.sh
+
+## Context
+
+`skills/implement/references/rebase-rebump-subprocedure.md` (198 lines) is mostly already retired from the prompt: Steps 10/12 `ACTION=rebase` / `rebase_then_evaluate` are handled **internally** by `scripts/ship-pr.sh` `run_rebase_rebump()` / `_run_rebase_rebump_from_step3` and no longer reach the Markdown procedure. Only two `caller_kind`s still drive it prompt-side — `step8b_rebase` (post-bump force-push auto-recovery) and `step8_apply_bump_same_version` (same-version recovery) — interleaved with the `/bump-version` Skill call and the `bump-verification.md` Block β decision matrix.
+
+Separately, SKILL.md computes `CLONE_TAG_FULL` inline (~9 lines of `basename` / `tr` / truncate) right before the `ship-pr.sh` invoke, only to pass `--expected-tmpdir-basename-prefix`.
+
+## Analysis
+
+`ship-pr.sh` already performs the version bump via `classify-bump.sh` / `apply-bump.sh` **directly** (NEVER #11) and already owns the 10/12 rebase+re-bump internally — including the post-rebase classify-bump regression correction. Extending that internal path to the two step8 `caller_kind`s would retire the remaining prompt-side execution of `rebase-rebump-subprocedure.md` **and** `bump-verification.md` Block β (step8 family), mirroring the 10/12 absorption. `CLONE_TAG_FULL` is a pure function of `$PWD` and can be computed inside `ship-pr.sh` argv-init.
+
+## Proposal
+
+1. Extend `ship-pr.sh`'s internal rebase+re-bump to cover `step8b_rebase` and `step8_apply_bump_same_version` (post-bump force-push gate + same-version recovery) without the prompt-side `/bump-version` Skill round-trip, keeping the existing `conflict-resolution.md` Phase 1–4 handoff (inherently LLM) via the established exit-5 / `CALLER_KIND` mechanism.
+2. Fold the `CLONE_TAG_FULL` computation into `ship-pr.sh` argv-init (compute `--expected-tmpdir-basename-prefix` internally).
+
+Net: most of `rebase-rebump-subprocedure.md` and `bump-verification.md` become script-internal; the SKILL.md Step 8+ surface shrinks substantially.
+
+## Risk / caveats
+
+- **Highest-risk of the set.** Touches Load-Bearing Invariant #1 (version-bump freshness) and #3 (degraded-git fail-closed), and NEVER #1 / #8 / #11 / #15. Recommend an **investigation pass first** (confirm the step8 same-version-recovery semantics translate cleanly to the internal path) before editing.
+- `/bump-version` is project-local under `.claude/skills/` and not shipped; `ship-pr.sh` already sidesteps it via `classify-bump.sh` / `apply-bump.sh`, so the absorption is feasible — but the step8b force-push gate (`implement-finalize.sh postbump`) and `step8_apply_bump_same_version`'s one-retry semantics must be preserved.
+- Conflict resolution (Phase 1–4) stays prompt-side — do not try to script it.
+- Heavy test surface: `ship-pr.sh` harnesses, `test-step2-dispatch.sh`, and the bump-verification regression coverage. Keep `rebase-rebump-subprocedure.md` / `bump-verification.md` as the historical/step8 contract until fully absorbed.
+- Touches `ship-pr.sh` — kept disjoint from the Step 18 issue so no two issues edit `ship-pr.sh`.
