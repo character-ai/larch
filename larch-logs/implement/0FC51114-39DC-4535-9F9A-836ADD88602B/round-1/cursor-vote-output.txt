@@ -1,0 +1,8 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- real naming overlap but too minor to track as an issue
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- production launcher hang gap is real and intentionally deferred from #3338
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- EXTSTUB expects --output on cursor argv but launch-review uses capture-stdout-only
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan approach notes already document the harness re-audit scope
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- scope identification only, no behavioral defect stated
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- out-of-scope commit labeling, not an actionable defect
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- theoretical PATH regression gap not worth a separate issue for this harness
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- D1C reuse is pre-existing and outside this diff’s scope

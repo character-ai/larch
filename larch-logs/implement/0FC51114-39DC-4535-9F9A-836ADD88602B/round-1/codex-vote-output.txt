@@ -1,0 +1,8 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- real clarity nit, but not worth a separate follow-up issue.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=weak UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- lack of diff evidence for an audit is not a concrete code defect worth filing.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- commit scope identification is not a review finding.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- marking chore commits out of scope is not a problem to fix.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- targeted stub-execution counters would add more harness complexity than this theoretical regression warrants.
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
