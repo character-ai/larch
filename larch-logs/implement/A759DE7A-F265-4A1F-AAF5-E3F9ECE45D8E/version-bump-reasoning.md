@@ -1,6 +1,6 @@
 # Version Bump Reasoning
 
-- **Base commit**: `823d7d50c` (chore(larch-logs): flush design run 4168AEA5-8A4B-4901-863C-9E68617C11E6 [skip ci] (#3329))
+- **Base commit**: `e426421d5` (Bump version to 47.0.39 (#3332))
 - **Current version**: `47.0.40`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
