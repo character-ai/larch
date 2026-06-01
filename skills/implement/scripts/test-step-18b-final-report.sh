@@ -174,7 +174,7 @@ tmpdir="$TMP_ROOT/case-plugin-root-fallback"
 mkdir -p "$tmpdir"
 printf 'CLAUDE_PLUGIN_ROOT=%s\n' "$plugin" >"$tmpdir/plugin-root.env"
 run_capture "$TMP_ROOT/case-plugin-root-fallback.out" env -u CLAUDE_PLUGIN_ROOT WFR_MODE=ok TOKEN_MODE=ok bash -c \
-  'set -a; . "$1/plugin-root.env"; set +a; "$2/step-18b-final-report.sh" --implement-tmpdir "$1"' \
+  "set -a; . \"\$1/plugin-root.env\"; set +a; \"\$2/step-18b-final-report.sh\" --implement-tmpdir \"\$1\"" \
   bash "$tmpdir" "$impl_dir"
 assert_eq 0 "$RC" "plugin-root.env orchestrator pre-source loads stub plugin"
 assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-plugin-root-fallback.out")" "plugin-root.env orchestrator pre-source emits EMIT_BODY=true"
