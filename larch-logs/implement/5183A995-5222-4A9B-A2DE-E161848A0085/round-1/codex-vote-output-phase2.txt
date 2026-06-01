@@ -1,0 +1,14 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- localized BaseRunner works; StubRunner refactor is optional style
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- handler-list drift is minor while old rebump tests still pass
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- repeated monkeypatch boilerplate is maintainability nit, not parity risk
+OOS_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- default origin/main guard already exercised by other apply_bump tests in file
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- misleading origin_* locals are cosmetic given base_label in guard paths
+OOS_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- classify_bump still hardcodes origin/main while apply_bump threads base; real fork-base inconsistency
+OOS_8: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- bash pre-drop refresh-run-logs fixup not ported; plan-tracked Phase 7 gap
+OOS_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- homonymous has_bump fields pre-exist; rename/doc-only not worth an issue here
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- drop_bump_commit still runs; missing dropped=true assertion is minor vs has_bump gating
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- bash origin/main hardcoding is intentional out-of-scope per plan Round 1

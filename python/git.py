@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from collections.abc import Mapping, Sequence
 from pathlib import Path
@@ -11,6 +12,17 @@ from dataclasses import dataclass
 import config
 from errors import ShipError
 from proc import CommandResult, Runner
+
+_GIT_REF_LABEL_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+
+
+def validate_base_remote_ref(base_remote: str, base_ref: str) -> str | None:
+    """Return an error message when base labels are unsafe for git argv."""
+    if not _GIT_REF_LABEL_RE.fullmatch(base_remote):
+        return "base_remote contains unsupported characters"
+    if not _GIT_REF_LABEL_RE.fullmatch(base_ref):
+        return "base_ref contains unsupported characters"
+    return None
 
 
 @dataclass(frozen=True)

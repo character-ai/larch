@@ -488,8 +488,16 @@ def rebase_and_rebump(
     bullets_path: Path | str | None = None,
     rebase_attempt: int = 0,
     max_attempts: int = config.REBASE_MAX_ATTEMPTS,
+    has_bump: bool = True,
+    defer_push: bool = False,
 ) -> RebaseResult:
-    """Rebase onto base, resolve conflicts, re-bump when needed, force-push."""
+    """Rebase onto base, resolve conflicts, optionally re-bump, optionally force-push.
+
+    When ``has_bump`` is False, classification and ``apply_bump`` are skipped and
+    ``RebaseResult.new_version`` stays None. When ``defer_push`` is True, rebase and
+    rebump may still run locally but force-push is skipped and ``RebaseResult.pushed``
+    is False.
+    """
     resolved_bullets_early = _rebump_bullets_path(tmpdir, bullets_path)
     if launch_fn is None:
         if resolved_bullets_early is None:
@@ -566,53 +574,63 @@ def rebase_and_rebump(
     _sync_local_main(runner, base_remote=base_remote, base_ref=base_ref, cwd=cwd)
 
     new_version: str | None = None
-    classification = version_bump.classify_bump(runner, cwd=cwd)
-    bump_type = classification.bump_type
-    target_version = classification.new_version
+    if has_bump:
+        classification = version_bump.classify_bump(runner, cwd=cwd)
+        bump_type = classification.bump_type
+        target_version = classification.new_version
 
-    if bump_type != "NONE" and target_version:
-        show = git.show_file(
-            runner,
-            f"{base_remote}/{base_ref}:{config.PLUGIN_JSON_PATH}",
-            cwd=cwd,
-        )
-        origin_version = ""
-        if show.returncode == 0:
-            try:
-                origin_version = json.loads(show.stdout).get("version", "")
-            except json.JSONDecodeError:
-                origin_version = ""
-        if (
-            isinstance(origin_version, str)
-            and _SEMVER_RE.fullmatch(origin_version)
-            and version_bump._semver_lt(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        if bump_type != "NONE" and target_version:
+            show = git.show_file(
+                runner,
+                f"{base_remote}/{base_ref}:{config.PLUGIN_JSON_PATH}",
+                cwd=cwd,
+            )
+            origin_version = ""
+            if show.returncode == 0:
+                try:
+                    origin_version = json.loads(show.stdout).get("version", "")
+                except json.JSONDecodeError:
+                    origin_version = ""
+            if (
+                isinstance(origin_version, str)
+                and _SEMVER_RE.fullmatch(origin_version)
+                and version_bump._semver_lt(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+                    target_version,
+                    origin_version,
+                )
+            ):
+                target_version = version_bump._apply_bump_type(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+                    origin_version,
+                    bump_type,
+                )
+
+            apply_result = version_bump.apply_bump(
+                runner,
                 target_version,
-                origin_version,
+                base_remote=base_remote,
+                base_ref=base_ref,
+                cwd=cwd,
             )
-        ):
-            target_version = version_bump._apply_bump_type(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-                origin_version,
-                bump_type,
+            if not apply_result.applied:
+                raise Stalled(_redact_outbound(apply_result.error or "apply bump failed"))
+            new_version = apply_result.new_version
+            _commit_changelog_after_rebump(
+                runner,
+                new_version,
+                old_version,
+                resolved_bullets,
+                cwd=cwd,
             )
 
-        apply_result = version_bump.apply_bump(runner, target_version, cwd=cwd)
-        if not apply_result.applied:
-            raise Stalled(_redact_outbound(apply_result.error or "apply bump failed"))
-        new_version = apply_result.new_version
-        _commit_changelog_after_rebump(
-            runner,
-            new_version,
-            old_version,
-            resolved_bullets,
-            cwd=cwd,
-        )
-
-    _ = _force_push_branch(runner, cwd=cwd)
+    pushed = False
+    if not defer_push:
+        _ = _force_push_branch(runner, cwd=cwd)
+        pushed = True
 
     return RebaseResult(
         outcome=Outcome.OK,
         rebased=rebased,
-        pushed=True,
+        pushed=pushed,
         new_version=new_version,
         attempts=rebase_attempt + 1,
         detail="",

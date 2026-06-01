@@ -1,0 +1,85 @@
+Normalized aggregator output from the supplied reviewer slots. Plan-fidelity items **FINDING_22** and **FINDING_23** are commit/traceability attestations, not behavioral risks, so they are not emitted as findings. Generic “Address the concern above.” lines are omitted from suggested revisions (no verbatim fix text).
+
+### FINDING_1: code-quality: test_apply_bump_threads_base ad-hoc runner
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `test_apply_bump_threads_base` introduces ad-hoc `BaseRunner` instead of reusing existing `StubRunner`/`RaceRunner` patterns in the same file. Future `apply_bump` guard changes require updating multiple bespoke runner classes. Build the test with `StubRunner` response dict entries for upstream fetch/show (and status/add/commit stubs).
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_2: code-quality: duplicate rebump happy-path handler lists
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `_rebump_happy_path_handlers` is used only by new tests; older rebump tests duplicate the same handler list. Drift between happy-path handler sets can make one rebump test pass while another breaks silently. Migrate `test_rebase_result_uses_apply_result_new_version` and `test_version_regression_guard_recomputes_target` to the shared helper.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_3: code-quality: repeated classify/apply monkeypatch boilerplate
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: Three new tests repeat identical classify/apply monkeypatch boilerplate. Higher cost to change stub signatures or classification fixtures across rebump tests. Extract shared `_patch`/`_apply` helpers or pytest fixtures used by defer_push/has_bump/base tests.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_4: [OUT_OF_SCOPE] code-quality: default origin/main not asserted in new base test
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Plan asked the new test to also assert default `origin/main` when base kwargs are omitted; only the upstream path is asserted in `test_apply_bump_threads_base` (`python/test_version_bump.py:540-601`). A regression that breaks default `base_remote`/`base_ref` might not be tied to the test name reviewers expect. Edge-cases notes defaults may be covered elsewhere in the file; still a minor coverage gap vs plan wording. Add a small default-base subcase, parametrize, or sibling case asserting `origin/main` fetch/show when kwargs are omitted.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_5: code-quality: rebase_and_rebump docstring omits flag semantics
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `rebase_and_rebump` docstring (`python/rebase.py:494`) omits `has_bump` and `defer_push` semantics. Driver authors may assume force-push always runs or rebump always classifies. Document flags and that `RebaseResult.pushed` reflects `defer_push`.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_6: code-quality: apply_bump base guard local naming
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `apply_bump` guard uses `base_label` in git specs but keeps `origin_*` local variable names (`python/version_bump.py:580-616`). Readers debugging fork/upstream flows may mis-trace which ref version guards use. Rename locals to `base_show`/`base_version` (or `published_version`).
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_7: [OUT_OF_SCOPE] risk-integration: classify_bump still uses origin/main
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: `classify_bump` still fetches/resolves against hardcoded `origin/main` (`python/version_bump.py:246-251` and classify path) while `rebase_and_rebump` / `apply_bump` can use another `base_remote`/`base_ref`. On fork/upstream rebump with e.g. `base_remote=upstream`, classification/merge-base can disagree with `apply_bump` guards and regression handling—wrong or inconsistent `bump_type`/`target_version` before guards correct some cases. Pre-existing gap; plan explicitly defers threading base into `classify_bump` (#3311 / separate follow-up). Track follow-up to thread `base_remote`/`base_ref` through `classify_bump` from `rebase_and_rebump` when fork-base end-to-end parity is required, or document partial base reconciliation until then.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_8: [OUT_OF_SCOPE] risk-integration: pre-drop refresh-run-logs / larch-logs fixup
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Bash refresh-run-logs pre-push/pre-drop fixup (`scripts/ship-pr.sh:3109-3112` and related rebump path) is not ported—gap #1. Dirty tracked `larch-logs/` can stall drop before rebase in bash; Python port lacks driver-owned fixup (`python/rebase.py:520-535`). Same class of failure: `drop_bump_commit` may return `dropped=false` and stall before rebase. Python path also omits refresh between rebump and push when logs are dirty around push time. Address in Phase 7 `ship.py` driver (#3240) before/alongside `rebase_and_rebump`; out of this PR scope.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_9: [OUT_OF_SCOPE] code-quality: has_bump naming collision
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `BumpPreCheck.has_bump` vs rebase `has_bump` param share a name with different semantics (`python/version_bump.py:58-60`). Code search or quick read can conflate skill presence with rebump gating. Consider renaming the rebase kwarg only if bash parity naming is not required; else document in module docstring.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_10: risk-integration: no test for has_bump=False and defer_push=True together
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: No test covers `has_bump=False` and `defer_push=True` together (`python/test_rebase.py:975-1020`). A future `ship.py` driver passing both flags could regress push/rebump gating without CI signal; only single-flag paths are covered. Combined-flag regression (rebase-only, no rebump, no push) could break silently. Add a test asserting `new_version` is `None`, `pushed` is `False`, no force-push in `runner.calls`, and no classify/apply/push calls with both flags set.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_11: risk-integration: has_bump=False test skips drop_bump_commit path
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: `has_bump=False` test does not cover `drop_bump_commit` dropping a bump (`python/test_rebase.py:975-1014`). If drop staging breaks while `has_bump=False`, CI may still pass because the test never exercises the drop path. Add handlers so `drop_bump_commit` succeeds, assert drop/staging calls occur, and classify/apply stubs still never run.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_12: security: apply_bump base_remote/base_ref not validated at API boundary
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `apply_bump` accepts `base_remote`/`base_ref` without the bash `^[A-Za-z0-9._/-]+$` guard before `git fetch`/`show` (`python/version_bump.py:472-583`). A future driver forwarding unvalidated base strings: argv lists avoid shell RCE but git may mis-parse flags or revspecs and the publish race guard may check the wrong ref. Validate `base_remote` and `base_ref` at the Python API boundary (shared helper) before any fetch/show, matching `rebase-push.sh`.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_13: risk-integration: defer_push / RebaseResult.pushed contract undocumented for drivers
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: `defer_push=True` returns `Outcome.OK` with `pushed=False` while local bump commits may exist (`python/rebase.py:619-627`); contract is undocumented on `RebaseResult`. Phase 7 driver may treat OK as remote-updated and skip deferred push; CI can see stale remote branch while local HEAD has rebump commits. Document `pushed` semantics on `rebase_and_rebump`/`RebaseResult`; `ship.py` must check `pushed` or mirror bash defer-push then stage-and-push. (Overlaps docstring gap in FINDING_5 but targets driver/contract risk.)
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_14: [OUT_OF_SCOPE] architecture: bash apply-bump still hardcodes origin/main
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: Bash `apply-bump.sh` still hardcodes `origin/main` while the Python port threads base through `apply_bump`. Intentional Python-side improvement beyond bash parity per plan Round 1; not required for this PR’s gap #2/#3 scope.
+- **Suggested revisions (informational for voters; coder decides)**:

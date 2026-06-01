@@ -554,8 +554,10 @@ def test_rebase_result_uses_apply_result_new_version(
         new_version: str,
         *,
         cwd: str | None = None,
+        base_remote: str = "origin",
+        base_ref: str = "main",
     ) -> ApplyResult:
-        _ = runner, new_version, cwd
+        _ = runner, new_version, cwd, base_remote, base_ref
         return ApplyResult(applied=True, new_version="2.0.0", commit_sha="abc")
 
     monkeypatch.setattr(version_bump, "classify_bump", _patch)
@@ -824,8 +826,10 @@ def test_version_regression_guard_recomputes_target(
         new_version: str,
         *,
         cwd: str | None = None,
+        base_remote: str = "origin",
+        base_ref: str = "main",
     ) -> ApplyResult:
-        _ = runner, cwd
+        _ = runner, cwd, base_remote, base_ref
         applied_versions.append(new_version)
         return ApplyResult(applied=True, new_version=new_version, commit_sha="sha")
 
@@ -870,6 +874,261 @@ def test_version_regression_guard_recomputes_target(
     )
     assert applied_versions == ["2.0.1"]
     assert result.new_version == "2.0.1"
+
+
+def _rebump_happy_path_handlers(
+    *,
+    base_remote: str = "origin",
+    base_ref: str = "main",
+    base_version: str = "1.0.0",
+) -> list[
+    tuple[
+        tuple[str, ...],
+        CommandResult | Exception | Callable[[tuple[str, ...]], CommandResult],
+    ]
+]:
+    base_target = f"{base_remote}/{base_ref}"
+    return [
+        (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
+        (("git", "status", "--porcelain"), _ok(("git", "status", "--porcelain"))),
+        (("git", "log", "-1", "--format=%s"), _ok(("git", "log", "-1", "--format=%s"), "work\n")),
+        (("git", "fetch", base_remote, base_ref, "--quiet"), _ok(
+            ("git", "fetch", base_remote, base_ref, "--quiet"),
+        )),
+        (("git", "merge-base", "--is-ancestor", base_target, "HEAD"), _ok(
+            ("git", "merge-base", "--is-ancestor", base_target, "HEAD"),
+        )),
+        (("git", "rev-parse", "main"), _fail(("git", "rev-parse", "main"))),
+        (("git", "merge-base", "main", "HEAD"), _fail(("git", "merge-base", "main", "HEAD"))),
+        (("git", "merge-base", base_target, "HEAD"), _ok(
+            ("git", "merge-base", base_target, "HEAD"),
+            "base\n",
+        )),
+        (("git", "show", f"{base_target}:{config.PLUGIN_JSON_PATH}"), _ok(
+            ("git", "show", f"{base_target}:{config.PLUGIN_JSON_PATH}"),
+            json.dumps({"version": base_version}),
+        )),
+        (("git", "status", "--porcelain", "--untracked-files=no"), _ok(
+            ("git", "status", "--porcelain", "--untracked-files=no"),
+        )),
+        (("git", "fetch", "origin", "feat", "--quiet"), _ok(("git", "fetch", "origin", "feat", "--quiet"))),
+        (("git", "push", "--force-with-lease", "origin", "feat"), _ok(
+            ("git", "push", "--force-with-lease", "origin", "feat"),
+        )),
+    ]
+
+
+def test_defer_push_skips_force_push(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        rebase,
+        "_commit_changelog_after_rebump",
+        _noop_commit_changelog_after_rebump,
+    )
+    _write_classify_repo(tmp_path)
+    bullets = tmp_path / ".rrr-rebump-bullets.md"
+
+    def _patch(runner: ScriptRunner, *, cwd: str | None = None) -> BumpClassification:
+        _ = runner, cwd
+        return BumpClassification(
+            current_version="1.0.0",
+            new_version="1.0.1",
+            bump_type="PATCH",
+            major_reasons=(),
+            minor_reasons=(),
+            reasoning="",
+        )
+
+    def _apply(
+        runner: ScriptRunner,
+        new_version: str,
+        *,
+        cwd: str | None = None,
+        base_remote: str = "origin",
+        base_ref: str = "main",
+    ) -> ApplyResult:
+        _ = runner, new_version, cwd, base_remote, base_ref
+        return ApplyResult(applied=True, new_version="1.0.1", commit_sha="abc")
+
+    monkeypatch.setattr(version_bump, "classify_bump", _patch)
+    monkeypatch.setattr(version_bump, "apply_bump", _apply)
+    runner = ScriptRunner(_rebump_happy_path_handlers())
+    result = rebase.rebase_and_rebump(
+        runner,
+        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        repo="o/r",
+        run_id="run",
+        tmpdir=str(tmp_path),
+        bullets_path=bullets,
+        cwd=str(tmp_path),
+        defer_push=True,
+    )
+    assert result.pushed is False
+    assert result.new_version == "1.0.1"
+    assert not any(
+        c[:3] == ("git", "push", "--force-with-lease") for c in runner.calls
+    )
+
+
+def test_has_bump_false_skips_rebump(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_classify_repo(tmp_path)
+    bullets = tmp_path / ".rrr-rebump-bullets.md"
+
+    def _forbidden_classify(runner: ScriptRunner, *, cwd: str | None = None) -> BumpClassification:
+        _ = runner, cwd
+        msg = "classify_bump must not run when has_bump=False"
+        raise AssertionError(msg)
+
+    def _forbidden_apply(
+        runner: ScriptRunner,
+        new_version: str,
+        *,
+        cwd: str | None = None,
+        base_remote: str = "origin",
+        base_ref: str = "main",
+    ) -> ApplyResult:
+        _ = runner, new_version, cwd, base_remote, base_ref
+        msg = "apply_bump must not run when has_bump=False"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(version_bump, "classify_bump", _forbidden_classify)
+    monkeypatch.setattr(version_bump, "apply_bump", _forbidden_apply)
+    runner = ScriptRunner(_rebump_happy_path_handlers())
+    result = rebase.rebase_and_rebump(
+        runner,
+        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        repo="o/r",
+        run_id="run",
+        tmpdir=str(tmp_path),
+        bullets_path=bullets,
+        cwd=str(tmp_path),
+        has_bump=False,
+    )
+    assert result.new_version is None
+    assert result.pushed is True
+    assert ("git", "push", "--force-with-lease", "origin", "feat") in runner.calls
+
+
+def test_has_bump_false_and_defer_push_skips_rebump_and_push(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_classify_repo(tmp_path)
+    bullets = tmp_path / ".rrr-rebump-bullets.md"
+
+    def _forbidden_classify(runner: ScriptRunner, *, cwd: str | None = None) -> BumpClassification:
+        _ = runner, cwd
+        msg = "classify_bump must not run when has_bump=False"
+        raise AssertionError(msg)
+
+    def _forbidden_apply(
+        runner: ScriptRunner,
+        new_version: str,
+        *,
+        cwd: str | None = None,
+        base_remote: str = "origin",
+        base_ref: str = "main",
+    ) -> ApplyResult:
+        _ = runner, new_version, cwd, base_remote, base_ref
+        msg = "apply_bump must not run when has_bump=False"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(version_bump, "classify_bump", _forbidden_classify)
+    monkeypatch.setattr(version_bump, "apply_bump", _forbidden_apply)
+    runner = ScriptRunner(_rebump_happy_path_handlers())
+    result = rebase.rebase_and_rebump(
+        runner,
+        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        repo="o/r",
+        run_id="run",
+        tmpdir=str(tmp_path),
+        bullets_path=bullets,
+        cwd=str(tmp_path),
+        has_bump=False,
+        defer_push=True,
+    )
+    assert result.new_version is None
+    assert result.pushed is False
+    assert not any(
+        c[:3] == ("git", "push", "--force-with-lease") for c in runner.calls
+    )
+
+
+def test_apply_bump_receives_base(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """apply_bump guard uses rebase base_remote/base_ref; classify_bump is mocked."""
+    monkeypatch.setattr(
+        rebase,
+        "_commit_changelog_after_rebump",
+        _noop_commit_changelog_after_rebump,
+    )
+    _write_classify_repo(tmp_path)
+    bullets = tmp_path / ".rrr-rebump-bullets.md"
+
+    def _patch(runner: ScriptRunner, *, cwd: str | None = None) -> BumpClassification:
+        _ = runner, cwd
+        return BumpClassification(
+            current_version="1.0.0",
+            new_version="1.0.1",
+            bump_type="PATCH",
+            major_reasons=(),
+            minor_reasons=(),
+            reasoning="",
+        )
+
+    monkeypatch.setattr(version_bump, "classify_bump", _patch)
+    runner = ScriptRunner(
+        [
+            *_rebump_happy_path_handlers(
+                base_remote="upstream",
+                base_ref="main",
+                base_version="1.0.0",
+            ),
+            (("git", "add", config.PLUGIN_JSON_PATH), _ok(("git", "add", config.PLUGIN_JSON_PATH))),
+            (("git", "commit", "-m", "Bump version to 1.0.1"), _ok(
+                ("git", "commit", "-m", "Bump version to 1.0.1"),
+            )),
+            (("git", "rev-parse", "HEAD"), _ok(("git", "rev-parse", "HEAD"), "deadbeef\n")),
+            (("git", "reset", "HEAD", config.PLUGIN_JSON_PATH), _ok(
+                ("git", "reset", "HEAD", config.PLUGIN_JSON_PATH),
+            )),
+        ],
+    )
+    result = rebase.rebase_and_rebump(
+        runner,
+        lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        repo="o/r",
+        run_id="run",
+        tmpdir=str(tmp_path),
+        bullets_path=bullets,
+        cwd=str(tmp_path),
+        base_remote="upstream",
+        base_ref="main",
+    )
+    assert result.new_version == "1.0.1"
+    assert ("git", "fetch", "upstream", "main", "--quiet") in runner.calls
+    assert (
+        "git",
+        "show",
+        f"upstream/main:{config.PLUGIN_JSON_PATH}",
+    ) in runner.calls
+    assert not any(
+        c[:4] == ("git", "fetch", "origin", "main") for c in runner.calls
+    )
+    assert not any(
+        len(c) >= 3
+        and c[0] == "git"
+        and c[1] == "show"
+        and c[2] == f"origin/main:{config.PLUGIN_JSON_PATH}"
+        for c in runner.calls
+    )
 
 
 def test_sync_local_main_on_main_stalls() -> None:

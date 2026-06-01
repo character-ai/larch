@@ -126,6 +126,70 @@ def test_parity_apply_bump_warns_on_tolerated_untracked(tmp_path: Path) -> None:
     assert bash_kv.get("APPLIED", "").lower() == str(py.applied).lower()
 
 
+def test_apply_bump_threads_base(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    _ = repo.mkdir()
+    plugin = repo / ".claude-plugin"
+    _ = plugin.mkdir(parents=True)
+    plugin_json = plugin / "plugin.json"
+    _ = plugin_json.write_text('{"version": "1.0.0"}\n', encoding="utf-8")
+
+    calls: list[tuple[str, ...]] = []
+
+    class BaseRunner:
+        def run(
+            self,
+            argv: Sequence[str],
+            *,
+            timeout: float | None = None,
+            cwd: str | None = None,  # pylint: disable=unused-argument
+            env: Mapping[str, str] | None = None,
+            check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
+        ) -> CommandResult:
+            _ = timeout, cwd, env, check, stdout, stderr
+            key = tuple(argv)
+            calls.append(key)
+            if len(key) >= 3 and key[0] == "git" and key[1] == "status":
+                return CommandResult(key, 0, "", "", 0.01)
+            if len(key) >= 4 and key[:4] == ("git", "fetch", "upstream", "main"):
+                return CommandResult(key, 0, "", "", 0.01)
+            if (
+                len(key) >= 3
+                and key[0] == "git"
+                and key[1] == "show"
+                and key[2] == f"upstream/main:{config.PLUGIN_JSON_PATH}"
+            ):
+                return CommandResult(key, 0, '{"version":"1.0.0"}\n', "", 0.01)
+            if len(key) >= 3 and key[0] == "git" and key[1] == "add":
+                return CommandResult(key, 0, "", "", 0.01)
+            if len(key) >= 3 and key[0] == "git" and key[1] == "commit":
+                return CommandResult(key, 0, "", "", 0.01)
+            if len(key) >= 3 and key[0] == "git" and key[1] == "rev-parse":
+                return CommandResult(key, 0, "deadbeef\n", "", 0.01)
+            if len(key) >= 4 and key[:4] == ("git", "reset", "HEAD", config.PLUGIN_JSON_PATH):
+                return CommandResult(key, 0, "", "", 0.01)
+            msg = f"unexpected: {argv}"
+            raise AssertionError(msg)
+
+    result = version_bump.apply_bump(
+        BaseRunner(),
+        "1.0.1",
+        base_remote="upstream",
+        base_ref="main",
+        cwd=str(repo),
+    )
+    assert result.applied is True
+    assert ("git", "fetch", "upstream", "main", "--quiet") in calls
+    assert (
+        "git",
+        "show",
+        f"upstream/main:{config.PLUGIN_JSON_PATH}",
+    ) in calls
+    assert not any(c[:4] == ("git", "fetch", "origin", "main") for c in calls)
+
+
 def test_apply_bump_error_redaction() -> None:
     home_path = "/Users/secret/larch6/skills/foo/SKILL.md"
     runner = StubRunner(
