@@ -47,6 +47,7 @@ main() {
     if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "$tmpdir/plugin-root.env" ]; then
         # shellcheck source=/dev/null
         . "$tmpdir/plugin-root.env"
+        PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
     fi
 
     local session_env="$tmpdir/session-env.sh"

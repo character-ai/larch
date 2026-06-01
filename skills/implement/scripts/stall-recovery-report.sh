@@ -77,7 +77,7 @@ first_nonempty() {
 }
 
 validate_ship_pr_state() {
-    local file=$1 line
+    local file=$1 line saw_key=false
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
             ""|\#*) continue ;;
@@ -86,11 +86,16 @@ validate_ship_pr_state() {
             larch_err "stall-recovery-report.sh: malformed ship-pr-state.sh"
             exit 3
         fi
+        saw_key=true
     done <"$file"
+    if [ "$saw_key" != true ]; then
+        larch_err "stall-recovery-report.sh: malformed ship-pr-state.sh"
+        exit 3
+    fi
 }
 
 check_ship_pr_state_format() {
-    local file=$1 line
+    local file=$1 line saw_key=false
     [ -f "$file" ] || return 1
     while IFS= read -r line || [ -n "$line" ]; do
         case "$line" in
@@ -99,7 +104,9 @@ check_ship_pr_state_format() {
         if ! printf '%s\n' "$line" | LC_ALL=C grep -Eq '^[A-Z][A-Z0-9_]*=.*$'; then
             return 1
         fi
+        saw_key=true
     done <"$file"
+    [ "$saw_key" = true ] || return 1
     return 0
 }
 

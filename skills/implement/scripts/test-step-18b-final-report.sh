@@ -141,6 +141,11 @@ mkdir -p "$tmpdir"
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" fail ok "$TMP_ROOT/case-wfr-fail.out"
 assert_eq false "$(kv EMIT_BODY "$TMP_ROOT/case-wfr-fail.out")" "EMIT_BODY=false when write-final-report fails"
 assert_eq 1 "$(kv WFR_RC "$TMP_ROOT/case-wfr-fail.out")" "WFR_RC non-zero on write failure"
+if [ -f "$tmpdir/step18-write-final-report.failure.log" ]; then
+    pass "write-final-report failure log captured"
+else
+    fail "write-final-report failure log missing"
+fi
 
 tmpdir="$TMP_ROOT/case-empty-body"
 mkdir -p "$tmpdir"

@@ -677,6 +677,13 @@ run_capture "$SANDBOX/case22-clear-malformed.out" "$SCRIPT" clear-stall --implem
 assert_eq 3 "$RC" "22: clear-stall malformed state exits 3"
 assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-malformed.out")" "22: clear-stall malformed state emits CLEARED=false"
 
+dir=$(make_tmp case22-clear-symlink)
+printf 'PHASE=ci-initial\nSTALL_TRACKING=true\nSTALL_STEP=8\nBAIL_REASON=\nEXIT_CODE=4\n' >"$dir/ship-pr-state.real"
+ln -s "$dir/ship-pr-state.real" "$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case22-clear-symlink.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
+assert_eq 3 "$RC" "22: clear-stall symlinked state exits 3"
+assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-symlink.out")" "22: clear-stall symlinked state emits CLEARED=false"
+
 dir=$(make_tmp case22-clear-append)
 cat >"$dir/ship-pr-state.sh" <<'EOF'
 PHASE=ci-initial
@@ -706,13 +713,15 @@ assert_eq 1 "$RC" "22: clear-stall mv failure exits 1"
 assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-mv-fail.out")" "22: clear-stall mv failure emits CLEARED=false"
 
 dir=$(make_tmp case22-seed-rewrite)
-write_state "$dir" 8 ci-initial "" "BAIL_FAILURE_DETAIL_LOG=$dir/failure.log"
+write_state "$dir" 8 ci-initial "first-fixer-non-health" "BAIL_FAILURE_DETAIL_LOG=$dir/failure.log"
 run_capture "$SANDBOX/case22-seed-rewrite.out" "$SCRIPT" seed-terminal-state --implement-tmpdir "$dir" --stall-step 5 --phase review
 assert_eq true "$(kv SEEDED "$SANDBOX/case22-seed-rewrite.out")" "22: seed-terminal-state rewrite emits SEEDED=true"
 assert_eq rewrite "$(kv SEED_MODE "$SANDBOX/case22-seed-rewrite.out")" "22: seed-terminal-state rewrite emits SEED_MODE=rewrite"
 assert_eq true "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: seed-terminal-state rewrite keeps STALL_TRACKING=true"
 assert_eq 5 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state rewrite refreshes STALL_STEP"
 assert_eq review "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state rewrite refreshes PHASE"
+assert_eq 4 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key EXIT_CODE --default "")" "22: seed-terminal-state rewrite preserves EXIT_CODE"
+assert_eq first-fixer-non-health "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key BAIL_REASON --default "")" "22: seed-terminal-state rewrite preserves BAIL_REASON"
 assert_eq "$dir/failure.log" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key BAIL_FAILURE_DETAIL_LOG --default "")" "22: seed-terminal-state rewrite preserves BAIL_FAILURE_DETAIL_LOG"
 
 dir=$(make_tmp case22-seed-fresh)
@@ -722,6 +731,12 @@ assert_eq seed "$(kv SEED_MODE "$SANDBOX/case22-seed-fresh.out")" "22: seed-term
 assert_eq true "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: seed-terminal-state fresh sets STALL_TRACKING=true"
 assert_eq ci-initial "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state fresh seeds PHASE=ci-initial"
 assert_eq 8 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state fresh seeds STALL_STEP=8"
+assert_eq 4 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key EXIT_CODE --default "")" "22: seed-terminal-state fresh seeds EXIT_CODE=4"
+if grep -q '^BAIL_REASON=$' "$dir/ship-pr-state.sh"; then
+    pass "22: seed-terminal-state fresh seeds empty BAIL_REASON"
+else
+    fail "22: seed-terminal-state fresh seeds empty BAIL_REASON"
+fi
 if grep -q '^BAIL_FAILURE_DETAIL_LOG=$' "$dir/ship-pr-state.sh"; then
     pass "22: seed-terminal-state fresh seeds empty BAIL_FAILURE_DETAIL_LOG"
 else

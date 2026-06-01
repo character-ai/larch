@@ -74,6 +74,10 @@ grep -Fq 'PHASE=ci-initial' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md terminal-failure path must seed canonical Step-8-shaped state"
 grep -Fq 'BAIL_FAILURE_DETAIL_LOG=' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md terminal-failure path must preserve or seed BAIL_FAILURE_DETAIL_LOG"
+grep -Fq 'stall-recovery-report.sh clear-stall' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must delegate stall clearing through stall-recovery-report.sh clear-stall"
+grep -Fq 'stall-recovery-report.sh seed-terminal-state' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must delegate terminal seeding through stall-recovery-report.sh seed-terminal-state"
 grep -Fq '### Step 18a — Stall recovery gate' "$SKILL_MD" \
   || fail "SKILL.md must retain Step 18a heading"
 grep -Fq '### Step 18b — Teardown' "$SKILL_MD" \
@@ -307,10 +311,11 @@ awk '
   in_step && in_bash && /^```[[:space:]]*$/ { in_bash = 0; next }
   in_step && /step-18b-final-report\.sh/ && /--implement-tmpdir "\$IMPLEMENT_TMPDIR"/ { wrapper = 1 }
   in_step && /EMIT_BODY=\$\(printf/ { emit_parse = 1 }
+  in_step && /WFR_RC=\$\(printf/ { wfr_parse = 1 }
   in_step && in_bash && /write-final-report\.sh/ && /--print-stdout/ { bad_print = 1 }
   in_step && /EMIT_BODY=true/ && /WFR_RC=0/ { emit_guard = 1 }
   END {
-    if (!wrapper || !emit_parse || bad_print || !emit_guard) exit 1
+    if (!wrapper || !emit_parse || !wfr_parse || bad_print || !emit_guard) exit 1
     exit 0
   }
 ' "$SKILL_MD" || step18_status=$?
