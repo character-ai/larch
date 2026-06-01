@@ -69,4 +69,4 @@
 | Edge-breadcrumb-count-plan-green | green plan materialization stderr capture emits one branch/log progress line and one `larch:plan` breadcrumb. |
 | Edge-breadcrumb-count-plan-summary-fail | summary failure stderr capture emits the branch/log progress line but suppresses the `larch:plan` breadcrumb. |
 | B4-all-breadcrumb | widened `DEFERRED=true` `--up-to-phase all` path still emits the coder progress line once on stderr. |
-| Edge-breadcrumb-count-coder-green | green coder phase stderr capture emits exactly five `→ step0:` progress lines, including one `coder=cursor` line. |
+| Edge-breadcrumb-count-coder-green | green coder phase stderr capture emits exactly five `→ step0:` progress lines, including one `coder=codex` line. |

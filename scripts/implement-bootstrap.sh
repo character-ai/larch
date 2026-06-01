@@ -1115,8 +1115,8 @@ phase_plan_materialize() {
         {
             printf "Plan materialized for run \`%s\`.\n" "${RUN_ID:-}"
             printf '\n'
-            printf "- Branch: \`%s\`\n" "${BRANCH_NAME:-}"
-            printf "- Plan file: \`%s\`\n" "${PLAN_FILE:-}"
+            printf -- "- Branch: \`%s\`\n" "${BRANCH_NAME:-}"
+            printf -- "- Plan file: \`%s\`\n" "${PLAN_FILE:-}"
         } >"$summary_body_raw"
         summary_body="$IMPLEMENT_TMPDIR/larch-plan-summary.md"
         summary_err="$IMPLEMENT_TMPDIR/tracking-issue-summary.stderr.log"
