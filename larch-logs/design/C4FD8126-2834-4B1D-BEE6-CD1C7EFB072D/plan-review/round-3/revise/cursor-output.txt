@@ -1,0 +1,39 @@
+Verifying source files so the plan revisions match the codebase.
+Checking the plan's exact wording for an accurate diff.
+--- a/plan.txt
++++ b/plan.txt
+@@ -10,9 +10,9 @@
+ 
+ ### UPDATED: `skills/implement/scripts/step2-implement.sh`
+ 
+-Keep the shared path defaults at lines 256–259 (`$TMPDIR_ARG/manifest.json`, `$TMPDIR_ARG/qa-pending.json`, `$TMPDIR_ARG/${TOOL_TAG}-impl-transcript.txt`) for all coders. **Gate the subdir layout to `CODER=codex` only** — do not retarget Cursor paths or create `codex-step2-out/` on `claude_fallback` / cursor-unhealthy exits.
++Keep lines 256–259 as shared path defaults for all coders (`MANIFEST_PATH="$TMPDIR_ARG/manifest.json"`, `MANIFEST_RAW_PATH="$TMPDIR_ARG/manifest-raw.json"`, `QA_PENDING_PATH="$TMPDIR_ARG/qa-pending.json"`, `TRANSCRIPT_PATH="$TMPDIR_ARG/${TOOL_TAG}-impl-transcript.txt"`). **Gate the subdir retarget to `CODER=codex` only** — do not retarget Cursor paths or create `codex-step2-out/` on `claude_fallback` / cursor-unhealthy exits.
+ 
+-After the `case "$CODER"` block that sets `TOOL_TAG` and `LAUNCHER` (external-implementer section, already past the `claude` early-return at line 176 and the cursor-presence fallback at lines 197–201), add:
++Immediately **after line 259** (after the shared defaults, before `SIDECAR_LOG` at line 260 and the agent-prompt / launcher executable checks), add:
+ 
+ ```bash
+ if [[ "$CODER" == "codex" ]]; then
+@@ -207,6 +207,8 @@ Update line 12 (per-tool file list): for **`CODER=codex` only**, `${TOOL_TAG}-i
+ 
+ Update line 13 (canonicalization contract) to add: "On the codex path only, Codex-written outputs (manifest, qa-pending, transcript) are placed in `$TMPDIR_ARG/codex-step2-out/` and the Codex `--add-dir` grant is narrowed to that subdir via `dirname("$MANIFEST_PATH")`."
+ 
++Update line 69 (`complete` outcome bullet): qualify the canonical manifest path — on **`CODER=codex`**, the sanitized manifest is emitted at `$TMPDIR/codex-step2-out/manifest.json` (i.e. `$MANIFEST_PATH` after the codex subdir retarget); on **`CODER=cursor`**, it remains at `$TMPDIR/manifest.json` under the tmpdir root.
++
+ ---
+ 
+ ### Approach
+@@ -234,6 +236,7 @@ The launcher computes `SESSION_TMPDIR = dirname("$MANIFEST_PATH")`. On the cod
+ 3. **Test META / STEP2_MANIFEST_PATH / qa-pending mismatch**: empty `TIMEOUT`, manifest-missing, or test 16 `STATUS=bailed` (`qa-pending-missing`) — all codex dispatch stubs in the table updated; test 16 stub + `QA_PENDING_16` retargeted to `codex-step2-out/`.
+ 4. **Codex subdir applied to Cursor**: would break test 3e and Cursor layout — prevented by `CODER=codex` gate.
+ 5. **SECURITY.md stale full-tmpdir grant**: operators mis-scope tamperable artifacts — paragraph updated alongside launcher doc.
++6. **step2-implement.md line 69 stale root manifest path**: operators assume codex manifest stays at tmpdir root after the change — outcomes bullet qualified alongside lines 12–13.
+ 
+ ---
+ 
+@@ -243,4 +246,4 @@ The launcher computes `SESSION_TMPDIR = dirname("$MANIFEST_PATH")`. On the cod
+ - `SECURITY.md`: Codex implementer `--add-dir` scope aligned with narrowed `SESSION_TMPDIR`.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) after changes.
+ 
+-diff_lines: 99
++diff_lines: 101

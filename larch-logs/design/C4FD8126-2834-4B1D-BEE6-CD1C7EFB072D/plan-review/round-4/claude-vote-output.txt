@@ -1,0 +1,1 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- symlink-to-IMPLEMENT_TMPDIR expansion via pwd -P is real; proposed symlink rejection mirrors launch-review.sh _codex_canonical_existing_dir pattern and the equality check closes the residual gap the plan's mkdir-p alone does not prevent
