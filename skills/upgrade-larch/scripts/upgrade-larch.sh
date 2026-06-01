@@ -218,16 +218,51 @@ version_is_retained() {
     return 1
 }
 
+backfill_install_stamps() {
+    # Defect C hardening: persistently stamp any unstamped cached version dir
+    # from its filesystem mtime (its best "installed-at" proxy), so a recent
+    # but unstamped dir no longer sorts below every stamped one. Derives from
+    # mtime, not `date +%s`, so a genuinely-old legacy dir keeps an old rank
+    # instead of looking freshly installed. Already-stamped dirs are skipped;
+    # #3174's has_stamp-first ordering is preserved.
+    local version_dir version mt
+    shopt -s nullglob
+    for version_dir in "$LARCH_CACHE_DIR"/[0-9]*/; do
+        version_dir="${version_dir%/}"
+        [ -d "$version_dir" ] || continue
+        version=$(basename "$version_dir")
+        is_safe_version "$version" || continue
+        read_install_stamp "$version_dir" >/dev/null 2>&1 && continue
+        mt=$(stat_mtime "$version_dir")
+        [[ "$mt" =~ ^[0-9]+$ ]] || continue
+        [ "$mt" -gt 0 ] || continue
+        if ! printf '%s\n' "$mt" > "$version_dir/.larch-installed-at"; then
+            warn_install_stamp_failure "$version"
+        fi
+    done
+    shopt -u nullglob
+}
+
 prune_cached_versions() {
     local target_version="$1"
     local keep_versions=8
-    local retained="" version version_dir removed=0
+    local retained="" version version_dir removed=0 _protected
 
     larch_err "Pruning old larch versions (keeping up to ${keep_versions} most-recently-installed)..."
 
-    if [ -n "$target_version" ] && is_safe_version "$target_version" && [ -d "$LARCH_CACHE_DIR/$target_version" ]; then
-        retained="$target_version"
-    fi
+    backfill_install_stamps
+
+    # Always retain (a) the just-installed target and (b) the version this
+    # script runs from (INSTALLED_VERSION). Deleting the running dir mid-run
+    # removes sibling helpers it sources (scripts/lib-quiet.sh,
+    # scripts/redact-secrets.sh), breaking log redaction for the rest of the run.
+    for _protected in "$target_version" "$INSTALLED_VERSION"; do
+        [ -n "$_protected" ] || continue
+        is_safe_version "$_protected" || continue
+        [ -d "$LARCH_CACHE_DIR/$_protected" ] || continue
+        version_is_retained "$_protected" "$retained" && continue
+        retained="${retained:+$retained }$_protected"
+    done
 
     while IFS= read -r version; do
         [ -n "$version" ] || continue
@@ -340,11 +375,16 @@ refresh_larch_marketplace
 larch_err "Installing larch plugin..."
 claude plugin install larch@larch-local 2>&1
 
-# Verify the installed version matches the expected stable release.
+# Resolve the installed version up front so we can stamp it regardless of stable
+# verification. The stamp records install time and drives cache-retention
+# ranking; an unstamped dir sorts below every stamped version. Pruning stays
+# gated on a verified stable install below (rollback safety).
 VERIFIED_TARGET=false
-ACTUAL_VERSION=""
+ACTUAL_VERSION=$(get_installed_larch_version || true)
+if is_safe_version "${ACTUAL_VERSION:-}"; then
+    write_install_stamp "$ACTUAL_VERSION"
+fi
 if [ -n "$LATEST_STABLE" ]; then
-    ACTUAL_VERSION=$(get_installed_larch_version || true)
     if [ "$ACTUAL_VERSION" = "$LATEST_STABLE" ]; then
         VERIFIED_TARGET=true
         larch_err "Verified: larch ${LATEST_STABLE} installed successfully."
@@ -360,9 +400,9 @@ if [ -n "$LATEST_STABLE" ]; then
     fi
 fi
 
-# Prune old versions only after a verified stable install.
+# Prune old versions only after a verified stable install (rollback safety).
+# The install stamp was already written above, regardless of verification.
 if [ "$VERIFIED_TARGET" = true ]; then
-    write_install_stamp "$ACTUAL_VERSION"
     prune_cached_versions "$ACTUAL_VERSION"
 else
     larch_err "Skipping prune because the expected stable version was not verified."

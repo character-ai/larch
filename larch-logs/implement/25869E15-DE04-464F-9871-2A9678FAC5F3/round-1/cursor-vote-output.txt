@@ -1,0 +1,26 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Valid DRY nit but deduplicating stamp writers adds refactor cost beyond this bugfix.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Third cache walk is real but consolidating enumerators is deferred refactor, not warranted here.
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Latent global-order footgun only; both prune call sites run after INSTALLED_VERSION assignment today.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Double stamp read is real pre-existing redundancy too minor to file.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Reviewer documents correct pre-existing behavior, not a defect worth filing.
+FINDING_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Operator-approved scope expansion aligned with plan, not a logic error.
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Plan Decision 1 explicitly chose manual verification over a committed harness.
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Pre-existing nullglob pattern shared across helpers; low-value follow-up issue.
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Missing automated prune tests is real risk but plan explicitly deferred any committed harness.
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Backfill test gap mirrors plan-accepted no-harness decision.
+FINDING_15: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Lint status belongs to CI, not a code defect in this diff.
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Minor catalog drift; installation and security docs already updated.
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Pre-existing lack of E2E upgrade CI; finding itself says none required for this PR.
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Symlink write class predates this branch; holistic hardening belongs in follow-up, not this fix.
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- date+%s stamp on unverified install is intentional Defect B behavior per plan.
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Protected seeds consuming ranked slots is documented and accepted design.
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Mtime-backfill mis-rank risk is plan-documented caveat for re-downloadable dirs only.
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Rare nullglob-on-ERR edge matches existing helpers; trap restore not warranted here.
