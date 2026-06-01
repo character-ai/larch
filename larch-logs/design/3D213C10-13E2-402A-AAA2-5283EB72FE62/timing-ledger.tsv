@@ -1,0 +1,24 @@
+v1	mark	1780345985	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1780346704	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1780346904	design	design Step 1d.5 — brainstorm	-	-	-	-	-	-	-	-
+v1	mark	1780346920	design	design Step 1d.7 — outline	-	-	-	-	-	-	-	-
+v1	mark	1780347220	design	design Step 2a — sketches (SIMPLE no-sketch)	-	-	-	-	-	-	-	-
+v1	mark	1780347220	design	design Step 2a.5 — dialectic (SIMPLE skip)	-	-	-	-	-	-	-	-
+v1	mark	1780347317	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1780347864	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1780348175	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780347991	1780348175	184	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780348193	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780347991	1780348193	202	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780348212	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780347990	1780348212	222	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780348214	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780347991	1780348214	223	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780348224	implement	-	cursor	cursor-phase1-dyn-cursor-plan-env-wiring-completeness	1780347991	1780348223	232	cursor-plan-dyn-env-wiring-completeness-output.txt	0	complete
+v1	vendor	1780348236	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780347991	1780348236	245	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780348326	implement	-	cursor	cursor-phase1-dyn-cursor-plan-script-contract-verifier	1780347991	1780348326	335	cursor-plan-dyn-script-contract-verifier-output.txt	0	complete
+v1	vendor	1780348394	implement	-	cursor	cursor-phase2-aggregator	1780348332	1780348394	62	aggregator-output-phase2.txt	0	complete
+v1	vendor	1780348648	implement	-	cursor	cursor-phase1-voter-3	1780348566	1780348648	82	cursor-vote-output.txt	0	complete
+v1	vendor	1780348876	implement	-	cursor	cursor-review	1780348654	1780348876	222	cursor-output.txt	0	complete
+v1	vendor	1780351131	implement	-	cursor	cursor-review	1780350949	1780351131	182	cursor-output.txt	0	complete
+v1	mark	1780351481	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1780353182	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1780353241	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1780353259	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1780353518	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

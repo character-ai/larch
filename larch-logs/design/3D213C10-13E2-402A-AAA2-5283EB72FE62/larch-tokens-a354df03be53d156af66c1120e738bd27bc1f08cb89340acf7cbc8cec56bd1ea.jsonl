@@ -1,0 +1,12 @@
+{"type":"mark","step":"design Step 0 — session setup","ts":"2026-06-01T20:29:29Z"}
+{"type":"vendor","vendor":"cursor","input":90854,"output":12479,"cache_read":1292608,"cache_create":0,"total":1395941,"raw":"cursor_review","ts":"2026-06-01T21:09:34Z"}
+{"type":"vendor","vendor":"cursor","input":77269,"output":12029,"cache_read":1111136,"cache_create":0,"total":1200434,"raw":"cursor_review","ts":"2026-06-01T21:09:52Z"}
+{"type":"vendor","vendor":"cursor","input":72485,"output":10833,"cache_read":1027254,"cache_create":0,"total":1110572,"raw":"cursor_review","ts":"2026-06-01T21:10:12Z"}
+{"type":"vendor","vendor":"cursor","input":79429,"output":9559,"cache_read":1205723,"cache_create":0,"total":1294711,"raw":"cursor_review","ts":"2026-06-01T21:10:13Z"}
+{"type":"vendor","vendor":"cursor","input":99452,"output":8223,"cache_read":1149401,"cache_create":0,"total":1257076,"raw":"cursor_review","ts":"2026-06-01T21:10:23Z"}
+{"type":"vendor","vendor":"cursor","input":90196,"output":11255,"cache_read":1112105,"cache_create":0,"total":1213556,"raw":"cursor_review","ts":"2026-06-01T21:10:35Z"}
+{"type":"vendor","vendor":"cursor","input":247935,"output":12570,"cache_read":1008600,"cache_create":0,"total":1269105,"raw":"cursor_review","ts":"2026-06-01T21:12:05Z"}
+{"type":"vendor","vendor":"cursor","input":10146,"output":3055,"cache_read":6252,"cache_create":0,"total":19453,"raw":"cursor_review","ts":"2026-06-01T21:13:13Z"}
+{"type":"vendor","vendor":"cursor","input":105221,"output":2336,"cache_read":145687,"cache_create":0,"total":253244,"raw":"cursor_review","ts":"2026-06-01T21:17:27Z"}
+{"type":"vendor","vendor":"cursor","input":45534,"output":10723,"cache_read":557723,"cache_create":0,"total":613980,"raw":"cursor_review","ts":"2026-06-01T21:21:15Z"}
+{"type":"vendor","vendor":"cursor","input":37391,"output":2884,"cache_read":166718,"cache_create":0,"total":206993,"raw":"cursor_review","ts":"2026-06-01T21:58:50Z"}
