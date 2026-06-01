@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `627433f94` (chore(larch-logs): flush design run 508DE0DB-C40E-4C61-9B9E-EC9F9D487BB8 [skip ci] (#3323))
-- **Current version**: `47.0.36`
+- **Base commit**: `3a2bcb351` (Fixes #3320: Fix /upgrade-larch pruning the currently-running version (#3330))
+- **Current version**: `47.0.37`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `47.0.37`
+- **New version**: `47.0.38`
 
 ### PATCH rationale
 
