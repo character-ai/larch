@@ -12,7 +12,7 @@
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
 .PHONY: test-step-7a
-.PHONY: test-stall-recovery-report
+.PHONY: test-stall-recovery-report test-step-18b-final-report
 .PHONY: test-design-pause-resume
 .PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
@@ -80,7 +80,7 @@ test-harnesses-4: test-check-reviewers test-implement-admission test-token-ledge
 
 test-harnesses-5: test-harness-shards-coverage test-review-and-fix-dispatch test-gh-pr-body-update test-merge-pr test-apply-bump test-plan-review-prompt test-launch-claude-subprocess test-oos-disposition-gate test-session-env-roundtrip test-gate-b-dedup-plan test-lib-quiet test-check-clean-tree test-lint-renderer-substitution-safety test-commit-review-fixes test-refresh-execution-issues test-blocked-by-issue test-implement-step8-exit3-first-fixer
 
-test-harnesses-6: test-run-external-agent test-findings-classification test-stall-recovery-report test-render-final-summary test-review-findings-classification test-session-setup-presence-defaults test-check-topology-rule-paths test-preflight-args test-decompose-file-issues test-flush-execution-issues test-run-research-planner test-render-reviewer-prompt test-references-headers test-alias-target-resolution test-write-rejected-findings test-extract-plan-scope-paths test-keepalive-sentinel test-token-report-dedup test-body-file-title test-effort-prose
+test-harnesses-6: test-run-external-agent test-findings-classification test-stall-recovery-report test-step-18b-final-report test-render-final-summary test-review-findings-classification test-session-setup-presence-defaults test-check-topology-rule-paths test-preflight-args test-decompose-file-issues test-flush-execution-issues test-run-research-planner test-render-reviewer-prompt test-references-headers test-alias-target-resolution test-write-rejected-findings test-extract-plan-scope-paths test-keepalive-sentinel test-token-report-dedup test-body-file-title test-effort-prose
 
 test-harnesses-7: test-step2-dispatch test-ship-pr-transient test-aggregate-findings test-refresh-run-logs test-check-contains-pins test-oos-issue-cap test-file-design-oos test-ci-wait test-ci-wait-exit-trap test-plan-block test-redact-tmpdir-paths test-relevant-checks-validation test-snapshot-plan-round test-implement-fork-env test-research-structure test-rebase-push-force-lease test-research-banner test-review-relevant-checks-helper test-step3-orchestrator-fence
 
@@ -620,6 +620,9 @@ test-step2-dispatch:
 
 test-stall-recovery-report:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-stall-recovery-report.sh
+
+test-step-18b-final-report:
+	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step-18b-final-report.sh
 
 test-cursor-implementer:
 	bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-cursor-implementer.sh

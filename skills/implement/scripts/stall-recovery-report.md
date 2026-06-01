@@ -32,10 +32,22 @@
   - Writes a batch-mode `/larch:issue` input file. The first line is `### [Bug] /implement stall: <class> at <step>`.
   - `--classification-file` and `--body-file` must be absolute paths that resolve to regular, non-symlink, readable files under `$IMPLEMENT_TMPDIR`.
   - `--output-file` must stay under `$IMPLEMENT_TMPDIR`.
+- `clear-stall --implement-tmpdir <path>`
+  - Owns the Step 18a success-path atomic clear of `$IMPLEMENT_TMPDIR/ship-pr-state.sh` (disk before memory). Emits `CLEARED=true|false` on every path.
+  - When `ship-pr-state.sh` is absent: `CLEARED=false`, exit 0. When present but symlinked or malformed: `CLEARED=false`, exit 3 — never call `validate_ship_pr_state` (it exits 3 without emitting `CLEARED`). Malformed detection uses `check_ship_pr_state_format`, which returns 1 without exiting.
+  - On success: key-rewrite sets `STALL_TRACKING=false` and `STALL_STEP=` (appending both when absent), preserves every other key and line order, temp-write → re-read-assert `false` via `read-session-env-key.sh` → `mv -f` → destination re-read-assert `false`. Operational failures on temp-write, re-read, `mv`, or destination re-read emit `CLEARED=false` before exit (explicit handlers; no bare `set -e` abort without the KV).
+  - Never clears in-memory orchestrator state.
+- `seed-terminal-state --implement-tmpdir <path> [--stall-step <N>] [--phase <token>]`
+  - Owns the Step 18a terminal-failure durable write (steps 8.1–8.3). Emits `SEEDED=true|false` and, on success, `SEED_MODE=rewrite|seed`.
+  - When `ship-pr-state.sh` exists: same regular-file / `check_ship_pr_state_format` guards as `clear-stall`; malformed present state → `SEEDED=false`, exit 3. Rewrite keeps `STALL_TRACKING=true`, refreshes `STALL_STEP` / `PHASE` from sanitized args when provided else keeps existing values, and preserves `BAIL_FAILURE_DETAIL_LOG` and all other keys by construction (key-rewrite updates only the named keys).
+  - When absent: seeds the canonical minimal Step-8 shape (`PHASE=ci-initial`, `STALL_TRACKING=true`, `STALL_STEP=8`, `BAIL_REASON=`, `BAIL_FAILURE_DETAIL_LOG=`, `EXIT_CODE=4`) with `--stall-step` / `--phase` overriding defaults when supplied.
+  - Re-read-assert `STALL_TRACKING=true` after `mv -f`. Operational failures emit `SEEDED=false` before exit.
 - `lint`
   - Asserts allowlist parity: TSV surface keys == helper code surface keys == this document's surface keys.
 
 ## Surface Allowlists
+
+`clear-stall` and `seed-terminal-state` compose no public report text. The `## Surface Allowlists` table, TSV, and `lint` parity checks are unchanged — only classification/report subcommands participate in allowlisted surfaces.
 
 The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint` subcommand, and this table must remain byte-equivalent at the `surface + field_key` level.
 

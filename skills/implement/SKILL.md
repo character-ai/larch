@@ -1207,7 +1207,7 @@ If in-memory `STALL_TRACKING=false`, `STALL_TRACKING_DISK` is false or empty, an
 
 If any layer is true: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md`, then execute its 9-sub-step procedure. That procedure owns attempt initialization, classification, canonical `BAIL_FAILURE_DETAIL_LOG` handoff from `ship-pr-state.sh`, first-detection issue filing or consumer print, dispatch/retry, atomic success clearing, terminal-failure comment/print, and the final continuation into Step 18b.
 
-Step 18a helper and contract surface: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report.md`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report-allowlists.tsv`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-stall-recovery-report.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-stall-recovery-report.md`, and `${CLAUDE_PLUGIN_ROOT}/scripts/lib-larch-dev-clone.sh`. Terminal title-prefix handling happens in **Step 18b — Teardown** below.
+Step 18a helper and contract surface: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report.md`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/stall-recovery-report-allowlists.tsv`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-stall-recovery-report.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-stall-recovery-report.md`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18b-final-report.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18b-final-report.md`, `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-18b-final-report.sh`, and `${CLAUDE_PLUGIN_ROOT}/scripts/lib-larch-dev-clone.sh`. Terminal title-prefix handling happens in **Step 18b — Teardown** below.
 
 Anti-halt continuation: after `init-attempts`, continue to classify; after classify, continue to first-detection issue filing; after issue filing or dry-run print, continue to dispatch; after every dispatch attempt, continue to retry accounting; after success or terminal failure, continue to Step 18b. Do not recurse into Step 18 from inside recovery, do not call `ScheduleWakeup`, do not write `$IMPLEMENT_TMPDIR/session-env.sh`, do not mutate `$IMPLEMENT_TMPDIR/finalize-state.sh`, and do not spawn Agent-tool subagents for code-writing recovery work.
 
@@ -1225,40 +1225,19 @@ export IMPLEMENT_TMPDIR
 
 Repeat any external reviewer warnings from earlier (from Step 5 review or runtime-fallback flips). Examples: `**⚠ Codex not available: <reason>**`, `**⚠ Cursor review failed: <reason>**`. Mode-specific reminders (`--draft`, `--merge`, fork CI dry-run notes, upstream design issue, fork-mode OOS appendix) are emitted by `write-final-report.sh` into the same markdown block as the run summary when applicable — do not duplicate them as free-form Step 18 prose.
 
-Before teardown, refresh the token report artifact (the log batches and flush commit were already written at the pre-bump log flush step):
+Before teardown, refresh the token report artifact and decide whether the orchestrator must emit `summary-final.md` (the log batches and flush commit were already written at the pre-bump log flush step). `step-18b-final-report.sh` owns token-report refresh, `write-final-report.sh` invocation (without `--print-stdout`), snapshot comparison, and best-effort failure capture:
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
-_wfr_args=(--implement-tmpdir "$IMPLEMENT_TMPDIR")
-_wfr_printed=false
-_wfr_emit_body=false
-if [ ! -f "$IMPLEMENT_TMPDIR/.step17-emitted" ]; then
-  _wfr_args+=(--print-stdout)
-  _wfr_printed=true
-  _wfr_emit_body=true
-fi
-if [ -f "$IMPLEMENT_TMPDIR/summary-final.md" ]; then
-  cp "$IMPLEMENT_TMPDIR/summary-final.md" "$IMPLEMENT_TMPDIR/.step18-prebody" 2>/dev/null || rm -f "$IMPLEMENT_TMPDIR/.step18-prebody"
-else
-  rm -f "$IMPLEMENT_TMPDIR/.step18-prebody"
-fi
-if "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" "${_wfr_args[@]}"; then
-  if [ "$_wfr_printed" = false ] && ! cmp -s "$IMPLEMENT_TMPDIR/.step18-prebody" "$IMPLEMENT_TMPDIR/summary-final.md"; then
-    _wfr_emit_body=true
-  fi
-fi
+_step18b_out=$("${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18b-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR")
+EMIT_BODY=$(printf '%s\n' "$_step18b_out" | awk -F= '$1=="EMIT_BODY"{print $2; exit}')
+WFR_RC=$(printf '%s\n' "$_step18b_out" | awk -F= '$1=="WFR_RC"{print $2; exit}')
+STEP17_EMITTED_PRESENT=$(printf '%s\n' "$_step18b_out" | awk -F= '$1=="STEP17_EMITTED_PRESENT"{print $2; exit}')
 ```
 
-When Step 18 `write-final-report.sh` succeeds and `$IMPLEMENT_TMPDIR/summary-final.md` is non-empty, the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown when either condition holds: Step 18 passed `--print-stdout` because `$IMPLEMENT_TMPDIR/.step17-emitted` was absent, or the body of summary-final.md changed from the pre-Step-18 snapshot (compared via `cmp -s` against `$IMPLEMENT_TMPDIR/.step18-prebody`). Use the same collapse-resistant rule as Step 17, and write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that Step 18 body emit completes. Do not emit that body when the Step 18 render failed or when the body is unchanged after a prior Step 17 emit.
-
-For Step 18's `token-report.sh` and `write-final-report.sh`, preserve the best-effort behavior but capture any non-zero stdout/stderr to `$IMPLEMENT_TMPDIR/step18-<tool>.failure.log` and append with `append-tool-failure.sh` before continuing.
+When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`, the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown. Use the same collapse-resistant rule as Step 17, and write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that Step 18 body emit completes. Do not emit that body when `EMIT_BODY=false`, when `WFR_RC` is non-zero, or when `summary-final.md` is empty. The wrapper never emits the body and never writes `.step17-emitted` (NEVER #20).
 
 ### Title-prefix lifecycle
 

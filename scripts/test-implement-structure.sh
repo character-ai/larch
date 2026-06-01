@@ -302,12 +302,19 @@ awk '
 step18_status=0
 awk '
   /<!-- step:18/ { in_step = 1; next }
-  in_step && /<!-- step:/ { in_step = 0 }
-  in_step && /_wfr_args\+=\(--print-stdout\)/ { print_guard = 1 }
-  in_step && /cmp -s "\$IMPLEMENT_TMPDIR\/\.step18-prebody" "\$IMPLEMENT_TMPDIR\/summary-final\.md"/ { cmp_guard = 1 }
-  END { if (!print_guard || !cmp_guard) exit 1; exit 0 }
+  in_step && /<!-- step:/ { in_step = 0; in_bash = 0 }
+  in_step && /^```(bash|sh|shell)[[:space:]]*$/ { in_bash = 1; next }
+  in_step && in_bash && /^```[[:space:]]*$/ { in_bash = 0; next }
+  in_step && /step-18b-final-report\.sh/ && /--implement-tmpdir "\$IMPLEMENT_TMPDIR"/ { wrapper = 1 }
+  in_step && /EMIT_BODY=\$\(printf/ { emit_parse = 1 }
+  in_step && in_bash && /write-final-report\.sh/ && /--print-stdout/ { bad_print = 1 }
+  in_step && /EMIT_BODY=true/ && /WFR_RC=0/ { emit_guard = 1 }
+  END {
+    if (!wrapper || !emit_parse || bad_print || !emit_guard) exit 1
+    exit 0
+  }
 ' "$SKILL_MD" || step18_status=$?
-[[ "$step18_status" == "0" ]] || fail "SKILL.md Step 18 write-final-report.sh must request --print-stdout only through the guarded body-diff path"
+[[ "$step18_status" == "0" ]] || fail "SKILL.md Step 18 must delegate to step-18b-final-report.sh and gate orchestrator emit on EMIT_BODY=true with WFR_RC=0"
 
 COMMIT_IMPL_SH="$REPO_ROOT/skills/implement/scripts/commit-implementation.sh"
 COMMIT_REVIEW_SH="$REPO_ROOT/skills/implement/scripts/commit-review-fixes.sh"
