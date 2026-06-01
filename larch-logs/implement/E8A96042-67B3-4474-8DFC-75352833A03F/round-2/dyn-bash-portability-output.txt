@@ -1,0 +1,8 @@
+Reviewing the branch diff for Bash 3.2 portability and failure-control behavior.
+### In-Scope Findings
+- **correctness** `scripts/implement-bootstrap-invoke.sh:88` — On bootstrap exit 2, the wrapper sets `IMPLEMENT_TMPDIR` with an unquoted expansion (`IMPLEMENT_TMPDIR=$_ib_tmpdir`). If the captured `IMPLEMENT_TMPDIR=` value contains whitespace (e.g. a macOS home path under `/Users/First Last/...`), word-splitting truncates the path, so the `copy-plan` / `gh-issue-view` branches’ `[ -f "$IMPLEMENT_TMPDIR/....stderr.log" ]` checks miss the real log files and stderr redaction is skipped even though the operator message still prints. The Step 0 SKILL parse path uses quoted assignments (`IMPLEMENT_TMPDIR="$_inv_value"` / command-substitution extraction), so this is a wrapper-only regression in the moved exit-2 handler. **Suggested fix:** Quote the assignment (`IMPLEMENT_TMPDIR="$_ib_tmpdir"`) and add a harness case with a space-containing `STUB_TMPDIR` for `copy-plan` / `gh-issue-view` exit-2 to assert redaction still runs.
+
+### Out-of-Scope Observations
+- Pre-existing pattern (unchanged by this refactor): when bootstrap returns a non-2, non-zero exit, both the old inline harness and the new wrapper still allow the orchestrator to parse partial stdout and continue; neither path checks `_inv_rc` before routing parse except for exit 2.
+- `scripts/implement-bootstrap.sh:566` still uses an unquoted `IMPLEMENT_TMPDIR=$SESSION_TMPDIR` assignment; that predates this branch.
+- Protocol Execution Directive / anti-halt prose point at `implement-bootstrap-invoke.sh --mode initial` but do not duplicate the `set +e` / `_inv_rc=$?` / `set -e` fence; correctness depends on agents running the numbered Step 0 bash block (which the structural harness pins).

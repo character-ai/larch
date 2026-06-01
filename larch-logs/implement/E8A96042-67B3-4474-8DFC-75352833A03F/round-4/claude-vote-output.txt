@@ -1,0 +1,21 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- cannot verify without untracked parse script; printf -v fix violates bash 3.2 constraint from BASH_AUTHORING.md
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- FINDING_1 (untracked files) is the blocking gap; once committed, the invoke harness implicitly exercises the parser; dedicated harness is worth tracking but not a separate actionable finding
+FINDING_6: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- cat/mv failure on a just-created file in an already-opened tmpdir is near-impossible; temp files live in session tmpdir cleaned at Step 18
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- fifo/special-file test adds significant harness complexity for negligible practical coverage; symlink covers the documented contract shape
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- bash variable assignment does not word-split; IMPLEMENT_TMPDIR=$_ib_tmpdir and IMPLEMENT_TMPDIR="$_ib_tmpdir" are semantically identical here
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- GATE_ERROR/PREFLIGHT_ERROR carry error-code strings not credentials; adding redaction pipes adds disproportionate complexity for hypothetical risk
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- _ib_ prefix is appropriate for wrapper-internal implementation locals; the wrapper IS the bootstrap-invoke layer
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- three-layer design is explicitly documented in md siblings; the parse script split is a reasonable factoring captured in implement-bootstrap-invoke.md edit-in-sync
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+OOS_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- improved awk failure diagnostics is too minor to justify a standalone issue when the comparison itself is already a clear fail signal
+OOS_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- hardcoded /tmp in offline test harnesses is the established codebase pattern; not worth a separate issue

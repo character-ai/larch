@@ -1,0 +1,27 @@
+warning: `--full-auto` is deprecated; use `--sandbox workspace-write` instead.
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+2026-06-01T18:35:01.432177Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/skills/implement/scripts/test-implement-bootstrap-invoke.sh:
+assert_contains 'RUN_ID=stub-run' "$out" 'initial stdout envelope has RUN_ID'
+assert_contains 'BRANCH_NAME=feature/stub' "$out" 'initial stdout envelope has branch name'
+[ -f "$STUB_TMPDIR/bootstrap-routing.env" ] && assert_contains 'BRANCH_NAME=feature/stub' "$(cat "$STUB_TMPDIR/bootstrap-routing.env")" 'routing env file has BRANCH_NAME'
+rm -rf "$SANDBOX" "$STUB_TMPDIR"
+
+# --- initial mode omits unset coder ---
+build_sandbox
+unset coder
+STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-tmp.XXXXXX)
+export STUB_TMPDIR
+out=$(run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial 2>/dev/null) || true
+stub_log=$(cat "$SANDBOX/stub-invoke.log" 2>/dev/null || true)
+assert_contains '--up-to-phase coder' "$stub_log" 'initial mode still uses coder phase when coder unset'
+assert_not_contains '--coder' "$stub_log" 'initial mode omits --coder when unset'
+assert_contains 'IMPLEMENT_TMPDIR=' "$out" 'initial unset coder stdout envelope has IMPLEMENT_TMPDIR'
+rm -rf "$SANDBOX" "$STUB_TMPDIR"
+
+# --- resume mode argv + IMPLEMENT_TMPDIR pass-through ---
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+⏳ codex agent: still running (5m elapsed)
+✓ codex agent: completed (exit code 0, 321s elapsed, output 215 bytes)

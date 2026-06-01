@@ -9,9 +9,9 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 End-to-end: preflight-gated plan from the GitHub issue body (`larch:plan`), materialize artifacts, implement, validate, commit, code review, validate, commit, code flow diagram, version bump, PR, CI monitor, cleanup. With `--merge`: also CI+rebase+merge loop, local branch delete, main verification, and (inside `ship-pr.sh` before exit) a post-merge `larch-log.sh manifest` flush to `status=done` plus `write-final-report.sh` so tmpdir `$IMPLEMENT_TMPDIR/summary-final.md` / tracking-issue `larch:final-summary` can match `MERGE_RESULT` — distinct from the committed `larch-logs/implement/<RUN_ID>/final-summary.md` run-log artifact — **without** any post-merge `git commit` (see NEVER #19). Step 18 still performs teardown, token/timing refresh, and the remaining terminal safety-net.
 
-**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for mutually exclusive options, your FIRST external actions MUST be: (1) When `forked_target=true`, run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` once and parse `UPSTREAM_REPO` (and sibling fork KV lines) from stdout — **before** Preflight `gh` / helper calls so every upstream issue read uses explicit `--repo "$UPSTREAM_REPO"` (fork clones default `gh` to `origin`, which is wrong for the positional upstream design issue). (2) **Preflight — issue-anchored plan** (admission gate + GitHub issue state + `larch:plan` block + plan-adequacy audit + semantic materiality) on the positional `<issue-N>`; when `forked_target=true`, pass `--repo "$UPSTREAM_REPO"` to `implement-admission.sh`, `gh issue view`, `plan-block-read.sh`, `clarify-state.sh`, `clarify-comment-post.sh`, and `clarify-label.sh` as each supports it. (3) **Step 0 bootstrap** — run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase coder` (foreground) as the Step 0 entrypoint that performs infrastructure, tracking issue adoption, plan materialization, and implementer selection in one subprocess (see the numbered Step 0 section for KV parsing and continuation). When `forked_target=true`, **do not** re-run `implement-fork-env.sh` if `UPSTREAM_REPO` is already set from (1) — reuse the same fork metadata (avoids a second bootstrap tmpdir).
+**Protocol Execution Directive.** You are now the `/implement` orchestrator. After parsing flags and checking for mutually exclusive options, your FIRST external actions MUST be: (1) When `forked_target=true`, run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh` once and parse `UPSTREAM_REPO` (and sibling fork KV lines) from stdout — **before** Preflight `gh` / helper calls so every upstream issue read uses explicit `--repo "$UPSTREAM_REPO"` (fork clones default `gh` to `origin`, which is wrong for the positional upstream design issue). (2) **Preflight — issue-anchored plan** (admission gate + GitHub issue state + `larch:plan` block + plan-adequacy audit + semantic materiality) on the positional `<issue-N>`; when `forked_target=true`, pass `--repo "$UPSTREAM_REPO"` to `implement-admission.sh`, `gh issue view`, `plan-block-read.sh`, `clarify-state.sh`, `clarify-comment-post.sh`, and `clarify-label.sh` as each supports it. (3) **Step 0 bootstrap** — run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap-invoke.sh --mode initial` (foreground) as the Step 0 entrypoint that performs infrastructure, tracking issue adoption, plan materialization, and implementer selection in one subprocess (see the numbered Step 0 section for routing-envelope parsing and continuation). When `forked_target=true`, **do not** re-run `implement-fork-env.sh` if `UPSTREAM_REPO` is already set from (1) — reuse the same fork metadata (avoids a second bootstrap tmpdir).
 
-**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Preflight through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** **Critical boundary: after `ship-pr.sh` exits (any exit code), do NOT print `✅ 8: version bump`, `⏩ 8: version bump`, or any other Step 8 breadcrumb as orchestrator text output — `ship-pr.sh` emits these lines to its own stdout (issue #1944). Parse `ship-pr-state.sh` silently and re-invoke per the Step 8+ exit-code table. See NEVER #11.** **Critical boundary: after preflight audit passes (`AUDIT=pass` envelope written), IMMEDIATELY continue through Preflight items 6–7 (semantic materiality when applicable, then pass gate), then run Step 0 `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase coder` and continue to Step 1.r per the numbered Step 0 section — do NOT end the turn on the audit-pass envelope.** **Terminal boundary: after Step 17, follow NEVER #20; emit the full body of summary-final.md verbatim per NEVER #20 after Step 17, then continue to Step 18.** → shared/subskill-invocation.md#anti-halt
+**Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/review`, `/bump-version`, `/issue`, `/implement`) returns AND after every `Bash` tool call that completes a numbered step or sub-step, including `run-relevant-checks-captured.sh`, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, on a Bash result, or on a status message, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Preflight through Step 18. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. Every relevant-checks helper call anywhere in this file is covered by this rule. **Critical boundary: after Step 9b (PR creation) completes, IMMEDIATELY proceed to Step 10 (CI monitor) — PR creation is NOT the end of the run.** **Critical boundary: after `ship-pr.sh` exits (any exit code), do NOT print `✅ 8: version bump`, `⏩ 8: version bump`, or any other Step 8 breadcrumb as orchestrator text output — `ship-pr.sh` emits these lines to its own stdout (issue #1944). Parse `ship-pr-state.sh` silently and re-invoke per the Step 8+ exit-code table. See NEVER #11.** **Critical boundary: after preflight audit passes (`AUDIT=pass` envelope written), IMMEDIATELY continue through Preflight items 6–7 (semantic materiality when applicable, then pass gate), then run Step 0 `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap-invoke.sh --mode initial` and continue to Step 1.r per the numbered Step 0 section — do NOT end the turn on the audit-pass envelope.** **Terminal boundary: after Step 17, follow NEVER #20; emit the full body of summary-final.md verbatim per NEVER #20 after Step 17, then continue to Step 18.** → shared/subskill-invocation.md#anti-halt
 
 **Skill-name fallback reminder.** When invoking a child skill via the Skill tool from this file, ALWAYS try the bare name first (`"bump-version"`, `"design"`, `"review"`, `"issue"`, `"implement"`). Only fall back to the fully-qualified `larch:` form (`"larch:design"`, etc.) when the bare-name lookup returns `Unknown skill` — and conversely, in a consumer repo that installs the plugin under a non-`larch` namespace the bare name may miss and the fully-qualified form (with that repo's actual namespace) becomes the working fallback. `/implement` does not invoke the relevant-checks flow through the Skill tool on the green path; it uses the captured Bash helper so success returns one bounded machine line (or `RELEVANT_CHECKS_SKIPPED=true` when the consumer repo omits `scripts/relevant-checks.sh`). **`/bump-version` is intentionally project-local under `.claude/skills/` and is NOT shipped with the plugin** — `larch:bump-version` does not resolve, so a `larch:`-first attempt fails outright. Do NOT mirror this skill's own namespaced invocation (`larch:implement`) onto child Skill calls. → shared/subskill-invocation.md#bare-name-fallback
 
@@ -297,7 +297,7 @@ Run **before Step 0** once `TARGET_ISSUE_NUMBER` is known and flag mutual-exclus
 
 Print: `> **🔶 /implement 0: setup**`
 
-Step 0 is owned by `scripts/implement-bootstrap.sh`. The foreground bootstrap performs infrastructure setup, tracking adoption, plan materialization, dirty-tree checkpointing, branch capture, plan logging, and implementer selection (`phase_coder_select`). Do not duplicate absorbed helper calls prompt-side.
+Step 0 is owned by `scripts/implement-bootstrap.sh`, invoked via `scripts/implement-bootstrap-invoke.sh` (`--mode initial` / `--mode resume`). The foreground bootstrap performs infrastructure setup, tracking adoption, plan materialization, dirty-tree checkpointing, branch capture, plan logging, and implementer selection (`phase_coder_select`). The wrapper conditionally forwards `/implement --emergency` state with `case "${emergency_requested:-}" in` so omitted emergency state stays omitted from bootstrap argv. Do not duplicate absorbed helper calls prompt-side.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
@@ -306,144 +306,30 @@ Step 0 is owned by `scripts/implement-bootstrap.sh`. The foreground bootstrap pe
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
 [ "${forked_target:-false}" = "true" ] && [ -z "${UPSTREAM_REPO:-}" ] && ${CLAUDE_PLUGIN_ROOT}/scripts/implement-fork-env.sh
-_ib_caller_env=()
-if [ -n "${CALLER_ENV_PATH:-}" ]; then
-  _ib_caller_env+=(--caller-env "$CALLER_ENV_PATH")
-elif [ -n "${SESSION_ENV_PATH:-}" ]; then
-  _ib_caller_env+=(--caller-env "$SESSION_ENV_PATH")
-fi
-_ib_issue=()
-_ib_target_issue="${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"
-[ -n "$_ib_target_issue" ] && _ib_issue+=(--issue-number "$_ib_target_issue")
-_ib_fork=()
-if [ "${forked_target:-false}" = "true" ]; then
-  _ib_fork+=(--forked-target true)
-  [ -n "${UPSTREAM_REPO:-}" ] && _ib_fork+=(--upstream-repo "$UPSTREAM_REPO")
-fi
-_ib_run_id=()
-[ -n "${RUN_ID:-}" ] && _ib_run_id+=(--run-id "$RUN_ID")
-_ib_preflight=()
-[ -n "${PREFLIGHT_TMPDIR:-}" ] && _ib_preflight+=(--preflight-tmpdir "$PREFLIGHT_TMPDIR")
-_ib_emergency=()
-case "${emergency_requested:-}" in
-  true|false) _ib_emergency+=(--emergency-requested "$emergency_requested") ;;
-esac
-_ib_coder=()
-[ -n "${coder:-}" ] && _ib_coder+=(--coder "$coder")
-_ib_run_bootstrap() {
-  set +e
-  _ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase coder "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}" "${_ib_coder[@]+"${_ib_coder[@]}"}" "${_ib_emergency[@]+"${_ib_emergency[@]}"}" "$@")
-  _ib_rc=$?
-  set -e
-  if [ "$_ib_rc" -eq 2 ]; then
-    _ib_handle_bootstrap_exit2
-  fi
-}
-_ib_handle_bootstrap_exit2() {
-  _ib_tmpdir=$(printf '%s\n' "$_ib_out" | grep '^IMPLEMENT_TMPDIR=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
-  [ -n "$_ib_tmpdir" ] && IMPLEMENT_TMPDIR=$_ib_tmpdir
-  _ib_sf=$(printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
-  case "$_ib_sf" in
-    session-entry-gate) printf '%s\n' "$_ib_out" | grep '^GATE_ERROR=' || true; printf '%s\n' '**⚠ /implement: internal Step 0 contract violation in session-entry-gate.sh. Aborting.**' ;;
-    session-setup) printf '%s\n' "$_ib_out" | grep '^PREFLIGHT_ERROR=' || true; printf '%s\n' '**⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run; (c) commit or stash uncommitted changes on `main` first.**' ;;
-    get-issue-state) printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' '**⚠ /implement Step 0 tracking: could not verify the adopted issue state. Aborting.**' ;;
-    issue-number-required-for-resume) printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' '**⚠ /implement Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel. Re-run `/implement <issue-N>` for the sentinel'\''s issue.**' ;;
-    copy-plan)
-      if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/copy-plan.stderr.log" ]; then
-        _ib_redacted_err=$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-copy-plan.XXXXXX")
-        if "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/copy-plan.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh" >"$_ib_redacted_err"; then
-          cat "$_ib_redacted_err"
-        else
-          printf '%s\n' '**⚠ /implement Step 0 plan materialization: copy-plan stderr redaction failed; raw stderr suppressed. See execution issues / local logs.**'
-        fi
-        rm -f "$_ib_redacted_err"
-      fi
-      printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not copy the preflight plan into the implement session. Aborting.**'
-      ;;
-    gh-issue-view)
-      if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" ]; then
-        _ib_redacted_err=$(mktemp "${TMPDIR:-/tmp}/implement-bootstrap-gh-issue-view.XXXXXX")
-        if "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"$IMPLEMENT_TMPDIR/gh-issue-view.stderr.log" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-tmpdir-paths.sh" >"$_ib_redacted_err"; then
-          cat "$_ib_redacted_err"
-        else
-          printf '%s\n' '**⚠ /implement Step 0 plan materialization: gh-issue-view stderr redaction failed; raw stderr suppressed. See execution issues / local logs.**'
-        fi
-        rm -f "$_ib_redacted_err"
-      fi
-      printf '%s\n' '**⚠ /implement Step 0 plan materialization: could not read the issue title/body. Aborting.**'
-      ;;
-    resume-plan-tail-sentinel) printf '%s\n' "$_ib_out" | grep '^STEP_FAILED=' || true; printf '%s\n' '**⚠ /implement Step 0 dirty-tree recovery: the resume tail could not validate tracking state from the existing session artifacts. Restore or inspect `$IMPLEMENT_TMPDIR`, then restart `/implement`.**' ;;
-  esac
-  exit 2
-}
-_ib_parse_bootstrap_out() {
-  while IFS= read -r _ib_line || [ -n "$_ib_line" ]; do _ib_kv_scan "$_ib_line"; done <<EOF
-$(printf '%s\n' "$_ib_out")
-EOF
-  export IMPLEMENT_TMPDIR CURRENT_BRANCH IS_MAIN IS_USER_BRANCH USER_PREFIX ENTRY_GATE SKIP_BRANCH_CHECK SESSION_ID
-  export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-  export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING BRANCH_NAME BRANCH_ACTION PLAN_FILE IMPLEMENT_BAIL_REASON coder coder_fallback codex_available cursor_available
-}
+export forked_target emergency_requested coder RUN_ID PREFLIGHT_TMPDIR
+export CALLER_ENV_PATH SESSION_ENV_PATH TARGET_ISSUE_NUMBER ISSUE_NUMBER UPSTREAM_REPO
 # Foreground required
 # phase-anchor: implement-bootstrap Step 0 through coder select
-_ib_run_bootstrap
-_ib_kv_scan() {
-  _ib_line=$1; [ -z "$_ib_line" ] && return 0
-  _ib_rest="$_ib_line"
-  while [ -n "$_ib_rest" ]; do
-    case "$_ib_rest" in *' '*=*) _ib_tok="${_ib_rest%% *}"; _ib_rest="${_ib_rest#* }" ;; *) _ib_tok="$_ib_rest"; _ib_rest="" ;; esac
-    case "$_ib_tok" in
-      CURRENT_BRANCH=*) CURRENT_BRANCH=${_ib_tok#CURRENT_BRANCH=} ;;
-      IS_MAIN=*) IS_MAIN=${_ib_tok#IS_MAIN=} ;;
-      IS_USER_BRANCH=*) IS_USER_BRANCH=${_ib_tok#IS_USER_BRANCH=} ;;
-      USER_PREFIX=*) USER_PREFIX=${_ib_tok#USER_PREFIX=} ;;
-      ENTRY_GATE=*) ENTRY_GATE=${_ib_tok#ENTRY_GATE=} ;;
-      SKIP_BRANCH_CHECK=*) SKIP_BRANCH_CHECK=${_ib_tok#SKIP_BRANCH_CHECK=} ;;
-      IMPLEMENT_TMPDIR=*) IMPLEMENT_TMPDIR=${_ib_tok#IMPLEMENT_TMPDIR=} ;;
-      SESSION_ID=*) SESSION_ID=${_ib_tok#SESSION_ID=} ;;
-      CODEX_PRESENT=*) CODEX_PRESENT=${_ib_tok#CODEX_PRESENT=} ;;
-      CURSOR_PRESENT=*) CURSOR_PRESENT=${_ib_tok#CURSOR_PRESENT=} ;;
-      CODEX_BINARY_FOUND=*) CODEX_BINARY_FOUND=${_ib_tok#CODEX_BINARY_FOUND=} ;;
-      CURSOR_BINARY_FOUND=*) CURSOR_BINARY_FOUND=${_ib_tok#CURSOR_BINARY_FOUND=} ;;
-      REPO=*) REPO=${_ib_tok#REPO=} ;;
-      REPO_UNAVAILABLE=*) REPO_UNAVAILABLE=${_ib_tok#REPO_UNAVAILABLE=} ;;
-      CLAUDE_SOURCE_OK=*) CLAUDE_SOURCE_OK=${_ib_tok#CLAUDE_SOURCE_OK=} ;;
-      LARCH_TOKEN_SESSION_ID=*) LARCH_TOKEN_SESSION_ID=${_ib_tok#LARCH_TOKEN_SESSION_ID=} ;;
-      LARCH_CLAUDE_SOURCE_FILE=*) LARCH_CLAUDE_SOURCE_FILE=${_ib_tok#LARCH_CLAUDE_SOURCE_FILE=} ;;
-      LARCH_TIMING_LEDGER=*) LARCH_TIMING_LEDGER=${_ib_tok#LARCH_TIMING_LEDGER=} ;;
-      ISSUE_NUMBER=*) ISSUE_NUMBER=${_ib_tok#ISSUE_NUMBER=} ;;
-      RUN_ID=*) RUN_ID=${_ib_tok#RUN_ID=} ;;
-      BRANCH_SELECTED=*) BRANCH_SELECTED=${_ib_tok#BRANCH_SELECTED=} ;;
-      DEFERRED=*) DEFERRED=${_ib_tok#DEFERRED=} ;;
-      STALL_TRACKING=*) STALL_TRACKING=${_ib_tok#STALL_TRACKING=} ;;
-      BRANCH_NAME=*) BRANCH_NAME=${_ib_tok#BRANCH_NAME=} ;;
-      BRANCH_ACTION=*) BRANCH_ACTION=${_ib_tok#BRANCH_ACTION=} ;;
-      PLAN_FILE=*) PLAN_FILE=${_ib_tok#PLAN_FILE=} ;;
-      EMERGENCY_REQUESTED=*) EMERGENCY_REQUESTED=${_ib_tok#EMERGENCY_REQUESTED=} ;;
-      coder=*) coder=${_ib_tok#coder=} ;; coder_fallback=*) coder_fallback=${_ib_tok#coder_fallback=} ;; IMPLEMENT_BAIL_REASON=*) IMPLEMENT_BAIL_REASON=${_ib_tok#IMPLEMENT_BAIL_REASON=} ;;
-      codex_available=*) codex_available=${_ib_tok#codex_available=} ;;
-      cursor_available=*) cursor_available=${_ib_tok#cursor_available=} ;;
-    esac
-  done
-}
-while IFS= read -r _ib_line || [ -n "$_ib_line" ]; do
-  _ib_kv_scan "$_ib_line"
-done <<EOF
-$(printf '%s\n' "$_ib_out")
-EOF
-export IMPLEMENT_TMPDIR CURRENT_BRANCH IS_MAIN IS_USER_BRANCH USER_PREFIX ENTRY_GATE SKIP_BRANCH_CHECK SESSION_ID
-export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND
-export CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING BRANCH_NAME BRANCH_ACTION PLAN_FILE EMERGENCY_REQUESTED IMPLEMENT_BAIL_REASON
-export codex_available cursor_available
+set +e
+_inv_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap-invoke.sh" --mode initial)
+_inv_rc=$?
+set -e
+if [ "$_inv_rc" -eq 2 ]; then
+  exit 2
+fi
+if [ "$_inv_rc" -ne 0 ]; then
+  exit "$_inv_rc"
+fi
+# shellcheck source=scripts/parse-bootstrap-routing-envelope.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/parse-bootstrap-routing-envelope.sh"
 ```
 
-Bootstrap stdout is KV-only. Parse the exported keys above. `scripts/implement-bootstrap.md` is the behavior contract; `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `skills/implement/scripts/test-implement-bootstrap.md`) is the offline regression harness. Routing after parsing:
+Parse the routing envelope from wrapper stdout and `$IMPLEMENT_TMPDIR/bootstrap-routing.env` (see bash block above). `scripts/implement-bootstrap.md` is the bootstrap behavior contract; `scripts/implement-bootstrap-invoke.md` is the wrapper contract. Offline harnesses: `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `skills/implement/scripts/test-implement-bootstrap.md`) and `skills/implement/scripts/test-implement-bootstrap-invoke.sh` (+ sibling `skills/implement/scripts/test-implement-bootstrap-invoke.md`). Routing after parsing:
 
 | Condition | Routing |
 |---|---|
 | `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty | Continue to Rebase Macro 1.r, then Step 2 with `--coder "$coder"`. |
-| `IMPLEMENT_BAIL_REASON=dirty-tree` | Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`; after operator cleanup, rehydrate `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` (pre-bootstrap: source guard plus one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk from `session-env.sh` when the sibling is absent), then re-run `_ib_run_bootstrap --resume-plan-tail` inside the existing tmpdir and re-run `_ib_parse_bootstrap_out` before re-evaluating the routing table. Resume-tail reuses the persisted Step 0 availability keys from `session-env.sh`; it does not run fresh reviewer probes. |
+| `IMPLEMENT_BAIL_REASON=dirty-tree` | Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`; after operator cleanup, rehydrate `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` (pre-bootstrap: source guard plus one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk from `session-env.sh` when the sibling is absent), then re-run `implement-bootstrap-invoke.sh --mode resume` inside the existing tmpdir and re-parse the shared routing envelope (`bootstrap-routing.env` with stdout fallback) before re-evaluating the routing table. Resume-tail reuses the persisted Step 0 availability keys from `session-env.sh`; it does not run fresh reviewer probes. |
 | `IMPLEMENT_BAIL_REASON=adopted-issue-closed` or `adopted-issue-is-pr` | Skip to Step 18 cleanup. |
 | `IMPLEMENT_BAIL_REASON=tracking-init-failed`, `run-flags-persist-failed`, or `branch-create-failed` | `STALL_TRACKING=true`; skip to Step 18 cleanup. |
 | `STALL_TRACKING=true` with any other bail value | Skip to Step 18 cleanup. |
@@ -455,7 +341,7 @@ Step 0 dirty-tree recovery gate:
 
 1. Write `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` with `STATUS=dirty-or-unknown`, `STAGE=step0-plan-materialize`, and `RECOVERY_REQUIRED=true`.
 2. If `$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize` is absent, create it and fire `AskUserQuestion` with exactly two operator paths: **Restore a clean tree and continue** / **Cancel this implement run**.
-3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs the dirty-tree checkpoint and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds; once clean, rewrite the env file with `RECOVERY_REQUIRED=false`, unset `IMPLEMENT_BAIL_REASON`, export the existing `IMPLEMENT_TMPDIR`, and immediately re-run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase plan --resume-plan-tail` with the same Step 0 args (`--caller-env`, `--issue-number`, `--forked-target`, `--upstream-repo`, `--run-id`, `--preflight-tmpdir`, `--emergency-requested`). The resumed bootstrap tail re-runs `check-mid-run-dirty-tree.sh --mode checkpoint` internally before any Phase 3 tail helper; if that internal re-probe returns `STATUS=dirty` or `STATUS=unknown`, stay in recovery mode and do not branch/log. Re-parse the resumed bootstrap stdout with the same `_ib_kv_scan` + `export` block shown above before continuing so `IMPLEMENT_BAIL_REASON`, `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE` come from the resumed tail rather than the pre-recovery pass. Use this shape:
+3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs the dirty-tree checkpoint and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds; once clean, rewrite the env file with `RECOVERY_REQUIRED=false`, unset `IMPLEMENT_BAIL_REASON`, export the existing `IMPLEMENT_TMPDIR`, and immediately re-run `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap-invoke.sh --mode resume` (the wrapper assembles bootstrap argv from the same exported Step 0 inputs). The resumed bootstrap tail re-runs `check-mid-run-dirty-tree.sh --mode checkpoint` internally before any Phase 3 tail helper; if that internal re-probe returns `STATUS=dirty` or `STATUS=unknown`, stay in recovery mode and do not branch/log. Re-parse the resumed routing envelope with the same `bootstrap-routing.env` file-first + stdout-fallback block shown above before continuing so `IMPLEMENT_BAIL_REASON`, `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE` come from the resumed tail rather than the pre-recovery pass. Use this shape:
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -467,45 +353,21 @@ LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh"
 LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-_ib_caller_env=()
-if [ -n "${CALLER_ENV_PATH:-}" ]; then
-  _ib_caller_env+=(--caller-env "$CALLER_ENV_PATH")
-elif [ -n "${SESSION_ENV_PATH:-}" ]; then
-  _ib_caller_env+=(--caller-env "$SESSION_ENV_PATH")
-fi
-_ib_target_issue="${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"
-_ib_issue=()
-[ -n "$_ib_target_issue" ] && _ib_issue+=(--issue-number "$_ib_target_issue")
-_ib_fork=()
-if [ "${forked_target:-false}" = "true" ]; then
-  _ib_fork+=(--forked-target true)
-  [ -n "${UPSTREAM_REPO:-}" ] && _ib_fork+=(--upstream-repo "$UPSTREAM_REPO")
-fi
-_ib_run_id=()
-[ -n "${RUN_ID:-}" ] && _ib_run_id+=(--run-id "$RUN_ID")
-_ib_preflight=()
-[ -n "${PREFLIGHT_TMPDIR:-}" ] && _ib_preflight+=(--preflight-tmpdir "$PREFLIGHT_TMPDIR")
-_ib_emergency=()
-case "${emergency_requested:-}" in
-  true|false) _ib_emergency+=(--emergency-requested "$emergency_requested") ;;
-esac
+export forked_target emergency_requested coder RUN_ID PREFLIGHT_TMPDIR
+export CALLER_ENV_PATH SESSION_ENV_PATH TARGET_ISSUE_NUMBER ISSUE_NUMBER UPSTREAM_REPO
 set +e
-_ib_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh" --up-to-phase plan --resume-plan-tail "${_ib_caller_env[@]+"${_ib_caller_env[@]}"}" "${_ib_issue[@]+"${_ib_issue[@]}"}" "${_ib_fork[@]+"${_ib_fork[@]}"}" "${_ib_run_id[@]+"${_ib_run_id[@]}"}" "${_ib_preflight[@]+"${_ib_preflight[@]}"}" "${_ib_emergency[@]+"${_ib_emergency[@]}"}")
-_ib_rc=$?
+_inv_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap-invoke.sh" --mode resume)
+_inv_rc=$?
 set -e
-if [ "$_ib_rc" -eq 2 ]; then
-  _ib_handle_bootstrap_exit2
+if [ "$_inv_rc" -eq 2 ]; then
+  exit 2
 fi
-while IFS= read -r _ib_line || [ -n "$_ib_line" ]; do
-  _ib_kv_scan "$_ib_line"
-done <<EOF
-$(printf '%s\n' "$_ib_out")
-EOF
-export IMPLEMENT_TMPDIR CURRENT_BRANCH IS_MAIN IS_USER_BRANCH USER_PREFIX ENTRY_GATE SKIP_BRANCH_CHECK SESSION_ID
-export REPO REPO_UNAVAILABLE CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND
-export CLAUDE_SOURCE_OK LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-export ISSUE_NUMBER RUN_ID BRANCH_SELECTED DEFERRED STALL_TRACKING BRANCH_NAME BRANCH_ACTION PLAN_FILE EMERGENCY_REQUESTED IMPLEMENT_BAIL_REASON
-export codex_available cursor_available
+if [ "$_inv_rc" -ne 0 ]; then
+  exit "$_inv_rc"
+fi
+# Dirty-tree resume preserves implementer selection — see scripts/parse-bootstrap-routing-envelope.md (--preserve-coder).
+# shellcheck source=scripts/parse-bootstrap-routing-envelope.sh
+. "${CLAUDE_PLUGIN_ROOT}/scripts/parse-bootstrap-routing-envelope.sh" --preserve-coder
 ```
 
 `phase_coder_select` is the only omitted-`--coder` authority for `/implement` Step 0. Explicit `--coder=claude` does not set `coder_fallback=true`; that flag is emitted only when the implicit implementer waterfall — Codex, then Cursor, then Claude — arrives at Claude. `diff_lines: <N>` in `plan.txt` is informational sizing context and does not route the implementer.

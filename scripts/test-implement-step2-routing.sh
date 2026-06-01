@@ -32,7 +32,7 @@ assert_not_contains() {
 
 assert_contains "$IMPLEMENT_SKILL" 'phase_coder_select' "script-side coder selection pointer"
 assert_contains "$BOOTSTRAP_MD" 'Codex → Cursor → Claude' "implement waterfall"
-assert_contains "$IMPLEMENT_SKILL" '--up-to-phase coder' "Step 0 bootstrap coder phase"
+assert_contains "$IMPLEMENT_SKILL" 'implement-bootstrap-invoke.sh --mode initial' "Step 0 bootstrap invoke wrapper"
 # shellcheck disable=SC2016 # literal markdown/code-span text, not shell.
 assert_contains "$BOOTSTRAP_SH" '--coder=${requested} requested but ${requested_caps} runtime probe failed' "explicit runtime unavailable waterfall (#3207)"
 # shellcheck disable=SC2016 # literal source text, not shell.
