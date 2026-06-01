@@ -1,0 +1,18 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Documented intentional stale-RUN_ID hardening with harness coverage; not a regression defect.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SKILL documents bash wrapper for 126/127; functionally sound vs direct-path plan preference.
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan-mandated append || true; latent only when combined with FINDING_2.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Real test gap but secondary once helper logging and FINDING_2 are fixed.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Minor harness gap; gate cases already invoke via bash.
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Real word-split footgun but session tmpdir paths are conventionally space-free.
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Nice-to-have env-only coverage; CLI path already tested.
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Standard --help exit 0; orchestrator does not pass -h to checkpoint.
+OOS_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Pre-existing CI vs local relevant-checks split; operational note not a product defect.
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Pre-existing session-tmpdir trust model; repo-wide guard out of scope.
+OOS_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Intentional single-runner tmpdir trust; documenting suffices.
+OOS_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Pre-existing exact-true string match; low-impact edge.
+OOS_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
