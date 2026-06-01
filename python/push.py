@@ -49,8 +49,18 @@ def push_branch(
     if sleeper is None:
         sleeper = time.sleep
     assert_clean_worktree(runner, cwd=cwd)
+    branch = git.try_current_branch(runner, cwd=cwd)
+    if not branch:
+        msg = "refusing push on detached HEAD"
+        raise ShipError(msg)
+    if branch != ctx.branch:
+        msg = (
+            f"checked-out branch {branch!r} does not match "
+            f"RunContext.branch {ctx.branch!r}"
+        )
+        raise ShipError(msg)
     remote = select_push_remote(runner, ctx, cwd=cwd)
-    refspec = f"HEAD:refs/heads/{ctx.branch}"
+    refspec = f"HEAD:refs/heads/{branch}"
     last_stderr = ""
     for attempt in range(1, config.PUSH_MAX_ATTEMPTS + 1):
         result = git.push(runner, remote, refspec, cwd=cwd)

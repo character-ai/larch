@@ -590,17 +590,22 @@ def force_push_recovery(
     if sleeper is None:
         sleeper = time.sleep
 
-    resolved_branch = branch
-    if resolved_branch is None:
-        resolved_branch = try_current_branch(runner, cwd=cwd)
-    if not resolved_branch:
+    head_branch = try_current_branch(runner, cwd=cwd)
+    if not head_branch:
         return ForcePushResult(pushed=False, status="detached_head", branch="")
+    if branch is not None and branch != head_branch:
+        return ForcePushResult(
+            pushed=False,
+            status="branch_mismatch",
+            branch=head_branch,
+        )
+    resolved_branch = head_branch
 
     status_result = status_porcelain(runner, cwd=cwd)
     if status_result.returncode != 0:
         return ForcePushResult(
             pushed=False,
-            status="dirty_worktree",
+            status="status_failed",
             branch=resolved_branch,
         )
     if status_result.stdout.strip():

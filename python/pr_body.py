@@ -32,7 +32,36 @@ class PrBodyParts:
 
 _FENCE_RE = re.compile(r"^(\s{0,3})(`{3,})([^`]*)$")
 _FLOWCHART_START = re.compile(r"^(flowchart|graph)(\s|$)")
-_PIPE_IN_BRACKETS = re.compile(r"[\[\{\(][^\]\}\)]*\|")
+_OPEN_BRACKET = frozenset("[{(")
+_CLOSE_BRACKET = frozenset("]})")
+
+
+def _flowchart_rejects_pipe(line: str) -> bool:
+    """Port sanitize-mermaid-fragment.sh flowchart_reject (depth + quote aware)."""
+    depth = 0
+    quote = False
+    esc = False
+    for char in line:
+        if depth > 0 and quote:
+            if esc:
+                esc = False
+            elif char == "\\":
+                esc = True
+            elif char == '"':
+                quote = False
+            continue
+        if depth > 0 and char == '"':
+            quote = True
+            continue
+        if char in _OPEN_BRACKET:
+            depth += 1
+            continue
+        if depth > 0 and char in _CLOSE_BRACKET:
+            depth -= 1
+            continue
+        if depth > 0 and char == "|":
+            return True
+    return False
 
 
 def _first_non_blank_mermaid_fence(text: str) -> bool:
@@ -145,7 +174,7 @@ def _validate_fence_body(body: str, _fence_num: int) -> list[str]:
     reasons: list[str] = []
     if _FLOWCHART_START.match(first):
         for line in lines[start - 1 :]:
-            if _PIPE_IN_BRACKETS.search(line):
+            if _flowchart_rejects_pipe(line):
                 reasons.append(config.MERMAID_REASON_PIPE_IN_NODE)
                 break
     elif first == "sequenceDiagram":

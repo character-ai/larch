@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest  # noqa: TC002
+
 import oos
 from proc import CommandResult
 
@@ -78,6 +80,49 @@ def test_disposition_fails_without_coverage(tmp_path: Path) -> None:
         _NoopRunner(),  # type: ignore[arg-type]
         accepted_files=(str(accepted),),
     )
+    assert not result.ok
+
+
+def test_rejected_section_stops_at_next_heading(tmp_path: Path) -> None:
+    ndjson = tmp_path / "oos.ndjson"
+    _ = ndjson.write_text(
+        '{"body":"## Rejected\\n### OOS_1: x\\n## Later\\nOOS_99\\n"}\n',
+        encoding="utf-8",
+    )
+    accepted = tmp_path / "acc.md"
+    _ = accepted.write_text(
+        "### OOS_1: Widget\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    result = oos.disposition_ok(
+        _NoopRunner(),  # type: ignore[arg-type]
+        accepted_files=(str(accepted),),
+        oos_issues_ndjson=str(ndjson),
+    )
+    assert result.rejected_markers == 1
+
+
+def test_filed_urls_ignore_off_host(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("GH_HOST", raising=False)
+    accepted = tmp_path / "acc.md"
+    _ = accepted.write_text(
+        "### OOS_1: Widget\n- **Phase**: implement\n",
+        encoding="utf-8",
+    )
+    filed = tmp_path / "filed.md"
+    _ = filed.write_text(
+        "Created https://evil.example/o/r/issues/99\n",
+        encoding="utf-8",
+    )
+    result = oos.disposition_ok(
+        _NoopRunner(),  # type: ignore[arg-type]
+        accepted_files=(str(accepted),),
+        filed_urls_files=(str(filed),),
+    )
+    assert result.filed_urls == 0
     assert not result.ok
 
 

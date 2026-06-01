@@ -23,6 +23,13 @@ class PrResult:
     status: str
 
 
+def _issue_number(issue: str) -> int:
+    if not issue.strip().isdigit():
+        msg = "invalid issue number for PR ensure"
+        raise ShipError(msg)
+    return int(issue)
+
+
 def ensure_pr(
     runner: Runner,
     ctx: RunContext,
@@ -34,11 +41,12 @@ def ensure_pr(
     """Create or reuse an open PR for the current branch."""
     if ctx.repo_unavailable:
         return PrResult(number=0, url="", status="local-only")
+    issue_num = _issue_number(ctx.issue)
     push.assert_clean_worktree(runner, cwd=cwd)
     existing = gh.pr_for_branch(runner, ctx.branch, repo=ctx.repo, cwd=cwd)
     if existing is not None and existing.state == "OPEN":
         _push_existing_pr(runner, ctx, cwd=cwd)
-        linked = tracking_issue.link_pr_closes(body, int(ctx.issue))
+        linked = tracking_issue.link_pr_closes(body, issue_num)
         if linked != body:
             pr_body.update_pr_body(
                 runner,
@@ -56,8 +64,8 @@ def ensure_pr(
     if push_result.status != "pushed":
         msg = "branch push failed before PR create"
         raise ShipError(msg)
-    linked_body = tracking_issue.link_pr_closes(body, int(ctx.issue))
-    created = gh.pr_create(
+    linked_body = tracking_issue.link_pr_closes(body, issue_num)
+    created, was_created = gh.pr_create(
         runner,
         repo=ctx.repo,
         branch=ctx.branch,
@@ -66,7 +74,8 @@ def ensure_pr(
         draft=ctx.draft,
         cwd=cwd,
     )
-    return PrResult(number=created.number, url=created.url, status="created")
+    status = "created" if was_created else "existing"
+    return PrResult(number=created.number, url=created.url, status=status)
 
 
 def _push_existing_pr(
@@ -84,7 +93,7 @@ def _push_existing_pr(
     retried = with_transient_retry(attempt)
     if retried.value.returncode == 0:  # type: ignore[union-attr]
         return
-    recovery = git.force_push_recovery(runner, branch=ctx.branch, remote=remote, cwd=cwd)
+    recovery = git.force_push_recovery(runner, branch=None, remote=remote, cwd=cwd)
     if not recovery.pushed:
         msg = f"force-push recovery failed: {recovery.status}"
         raise ShipError(msg)

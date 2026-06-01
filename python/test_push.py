@@ -48,6 +48,26 @@ class RecordingRunner:
         return result
 
 
+def _push_git_responses(*extra: CommandResult) -> list[CommandResult]:
+    return [
+        CommandResult(
+            ("git", "status", "--porcelain", "--untracked-files=all"),
+            0,
+            "",
+            "",
+            0.01,
+        ),
+        CommandResult(
+            ("git", "symbolic-ref", "--short", "HEAD"),
+            0,
+            "feat/x\n",
+            "",
+            0.01,
+        ),
+        *extra,
+    ]
+
+
 def _ctx(**kwargs: object) -> RunContext:
     base = RunContext(
         branch="feat/x",
@@ -69,7 +89,13 @@ def _ctx(**kwargs: object) -> RunContext:
 def test_assert_clean_worktree_refuses_dirty() -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("git", "status"), 0, " M file\n", "", 0.01),
+            CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=all"),
+                0,
+                " M file\n",
+                "",
+                0.01,
+            ),
         ],
     )
     with pytest.raises(ShipError, match="uncommitted"):
@@ -78,11 +104,10 @@ def test_assert_clean_worktree_refuses_dirty() -> None:
 
 def test_push_branch_retries_then_succeeds() -> None:
     runner = RecordingRunner(
-        responses=[
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "push"), 1, "", "fail", 0.01),
-            CommandResult(("git", "push"), 0, "", "", 0.01),
-        ],
+        responses=_push_git_responses(
+            CommandResult(("git", "push", "origin"), 1, "", "fail", 0.01),
+            CommandResult(("git", "push", "origin"), 0, "", "", 0.01),
+        ),
     )
     result = push.push_branch(
         runner,
@@ -95,23 +120,38 @@ def test_push_branch_retries_then_succeeds() -> None:
 
 def test_push_branch_fork_uses_origin() -> None:
     runner = RecordingRunner(
-        responses=[
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "push"), 0, "", "", 0.01),
-        ],
+        responses=_push_git_responses(
+            CommandResult(("git", "push", "origin"), 0, "", "", 0.01),
+        ),
     )
     result = push.push_branch(runner, _ctx(forked=True), sleeper=lambda _s: None)
     assert result.remote == "origin"
 
 
-def test_push_skips_retry_when_stderr_unchanged() -> None:
+def test_push_branch_refuses_detached_head() -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "push"), 1, "", "same error", 0.01),
-            CommandResult(("git", "push"), 1, "", "same error", 0.01),
-            CommandResult(("git", "push"), 1, "", "same error", 0.01),
+            CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=all"),
+                0,
+                "",
+                "",
+                0.01,
+            ),
+            CommandResult(("git", "symbolic-ref", "--short", "HEAD"), 1, "", "", 0.01),
         ],
+    )
+    with pytest.raises(ShipError, match="detached HEAD"):
+        _ = push.push_branch(runner, _ctx(), sleeper=lambda _s: None)
+
+
+def test_push_skips_retry_when_stderr_unchanged() -> None:
+    runner = RecordingRunner(
+        responses=_push_git_responses(
+            CommandResult(("git", "push", "origin"), 1, "", "same error", 0.01),
+            CommandResult(("git", "push", "origin"), 1, "", "same error", 0.01),
+            CommandResult(("git", "push", "origin"), 1, "", "same error", 0.01),
+        ),
     )
     result = push.push_branch(
         runner,

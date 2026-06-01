@@ -33,6 +33,15 @@ def _bash_sanitize(fragment: str) -> set[str]:
 
 
 @pytest.mark.skipif(not SANITIZE.is_file(), reason="sanitize script missing")
+def test_quoted_pipe_in_node_label_ok() -> None:
+    fragment = 'flowchart TD\n  A["foo|bar"]\n'
+    py = pr_body.sanitize_fragment(fragment)
+    bash_tokens = _bash_sanitize(fragment)
+    assert py.status == "ok"
+    assert not bash_tokens
+
+
+@pytest.mark.skipif(not SANITIZE.is_file(), reason="sanitize script missing")
 def test_mermaid_reason_tokens_match_bash() -> None:
     fragment = "flowchart LR\n  N[bad|pipe] --> M\n"
     py = pr_body.sanitize_fragment(fragment)

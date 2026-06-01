@@ -30,6 +30,7 @@ class PullRequest:
     url: str
     state: str
     head_ref: str
+    merged_at: str | None = None
 
 
 @dataclass(frozen=True)
@@ -136,9 +137,17 @@ def _as_int(value: object, *, context: str, field: str) -> int:
         raise ShipError(msg) from exc
 
 
+def _fail_closed_redacted(text: str, *, context: str) -> str:
+    redacted = redact.redact(text)
+    if "[content truncated" in redacted:
+        msg = f"redaction failed for {context}"
+        raise ShipError(msg)
+    return redacted
+
+
 @contextmanager
 def _body_file_args(body: str) -> Generator[tuple[str, str], None, None]:
-    redacted = redact.redact(body)
+    redacted = _fail_closed_redacted(body, context="gh body file")
     with tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
@@ -184,7 +193,7 @@ def pr_view_read(
             "--repo",
             repo,
             "--json",
-            "number,url,state,headRefName",
+            "number,url,state,headRefName,mergedAt",
         ],
         cwd=cwd,
     )
@@ -206,11 +215,14 @@ def pr_view(
         ("number", "url", "state", "headRefName"),
         context="pr view",
     )
+    merged_raw = data.get("mergedAt")
+    merged_at = str(merged_raw) if merged_raw else None
     return PullRequest(
         number=_as_int(data["number"], context="pr view", field="number"),
         url=str(data["url"]),
         state=str(data["state"]),
         head_ref=str(data["headRefName"]),
+        merged_at=merged_at,
     )
 
 
@@ -305,10 +317,10 @@ def pr_create(
     assignee: str | None = "@me",
     draft: bool = False,
     cwd: str | None = None,
-) -> PullRequest:
+) -> tuple[PullRequest, bool]:
     existing = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
     if existing is not None:
-        return existing
+        return existing, False
     with _body_file_args(body) as (body_flag, body_path):
         argv = [
             "pr",
@@ -339,13 +351,13 @@ def pr_create(
             except (ShipError, TransientNetworkError):
                 recovered = None
             if recovered is not None:
-                return recovered
+                return recovered, False
             recovered = _recover_pr_from_conflict_text(
                 conflict_text,
                 branch=branch,
             )
             if recovered is not None:
-                return recovered
+                return recovered, False
         _ = _ensure_success(result)
     data = _as_json_object(
         _loads_json(result.stdout, context="pr create"),
@@ -356,11 +368,14 @@ def pr_create(
         ("number", "url", "state", "headRefName"),
         context="pr create",
     )
-    return PullRequest(
-        number=_as_int(data["number"], context="pr create", field="number"),
-        url=str(data["url"]),
-        state=str(data["state"]),
-        head_ref=str(data["headRefName"]),
+    return (
+        PullRequest(
+            number=_as_int(data["number"], context="pr create", field="number"),
+            url=str(data["url"]),
+            state=str(data["state"]),
+            head_ref=str(data["headRefName"]),
+        ),
+        True,
     )
 
 
@@ -776,7 +791,7 @@ def issue_comment_patch(
     repo: str,
     cwd: str | None = None,
 ) -> CommandResult:
-    redacted = redact.redact(body)
+    redacted = _fail_closed_redacted(body, context="gh issue comment patch")
     with tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",

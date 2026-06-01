@@ -77,7 +77,7 @@ def test_pr_create_deduplicates_existing() -> None:
             ),
         ],
     )
-    pr = gh.pr_create(
+    pr, _ = gh.pr_create(
         runner,
         repo="o/r",
         branch="feat",
@@ -116,7 +116,7 @@ def test_pr_create_recovers_after_create_conflict() -> None:
             ),
         ],
     )
-    pr = gh.pr_create(
+    pr, _ = gh.pr_create(
         runner,
         repo="o/r",
         branch="feat",
@@ -151,7 +151,7 @@ def test_pr_create_recovers_from_conflict_stderr_url_when_list_empty() -> None:
             ),
         ],
     )
-    pr = gh.pr_create(
+    pr, _ = gh.pr_create(
         runner,
         repo="o/r",
         branch="feat",
@@ -631,6 +631,18 @@ def test_pr_edit_body_uses_body_file() -> None:
     result = gh.pr_edit_body(runner, 4, "hello", repo="o/r")
     assert result.returncode == 0
     assert "--body-file" in runner.calls[0]
+
+
+def test_body_file_args_fail_closed_on_truncation(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fake_redact(_text: str) -> str:
+        return "x [content truncated — safety]"
+
+    monkeypatch.setattr(gh.redact, "redact", fake_redact)
+    runner = RecordingRunner()
+    with pytest.raises(ShipError, match="redaction failed"):
+        _ = gh.pr_edit_body(runner, 1, "secret", repo="o/r")
 
 
 def test_pr_checks_text_fallback_word_boundaries() -> None:

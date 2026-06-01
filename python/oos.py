@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -22,9 +23,6 @@ class DispositionResult:
     rejected_markers: int = 0
 
 
-_GITHUB_ISSUE_URL = re.compile(
-    r"https://(?:github\.com|[^/\s]+)/[^/\s]+/[^/\s]+/issues/\d+",
-)
 _INLINE_TRIAGE_RE = re.compile(re.escape(config.INLINE_TRIAGE_MARKER))
 _OOS_TAG_RE = re.compile(r"OOS_\d+")
 _FILED_URL_LINE = re.compile(
@@ -41,6 +39,19 @@ _REJECTED_SECTION_RE = re.compile(
     r"(?:Rejected / Out-of-Scope|## Rejected)",
     re.IGNORECASE,
 )
+_SECTION_HEADING_RE = re.compile(r"^##\s+")
+
+
+def _github_issue_url_pattern() -> re.Pattern[str]:
+    gh_host = os.environ.get("GH_HOST", "github.com")
+    if gh_host and gh_host != "github.com":
+        esc = re.escape(gh_host)
+        host = f"(?:{esc}|github\\.com)"
+    else:
+        host = r"github\.com"
+    return re.compile(
+        rf"https://{host}/[^/\s]+/[^/\s]+/issues/\d+",
+    )
 
 
 def _count_non_security_markdown(text: str) -> int:
@@ -71,25 +82,22 @@ def _count_non_security(accepted_paths: tuple[str, ...]) -> int:
         text = file_path.read_text(encoding="utf-8")
         if _OOS_HEADER_RE.search(text):
             total += _count_non_security_markdown(text)
-            continue
-        if '"security": true' in text or '"security":true' in text:
-            continue
-        if '"phase": "implement"' in text or '"accepted"' in text:
-            total += text.count('"title"')
     return total
 
 
 def _count_filed_urls_loose(paths: tuple[str, ...]) -> int:
+    url_re = _github_issue_url_pattern()
     urls: set[str] = set()
     for path in paths:
         if not Path(path).is_file():
             continue
         text = Path(path).read_text(encoding="utf-8")
-        urls.update(_GITHUB_ISSUE_URL.findall(text))
+        urls.update(url_re.findall(text))
     return len(urls)
 
 
 def _count_filed_url_field_lines(paths: tuple[str, ...]) -> int:
+    url_re = _github_issue_url_pattern()
     urls: set[str] = set()
     for path in paths:
         if not Path(path).is_file():
@@ -97,15 +105,33 @@ def _count_filed_url_field_lines(paths: tuple[str, ...]) -> int:
         text = Path(path).read_text(encoding="utf-8")
         for line in text.splitlines():
             if _FILED_URL_LINE.match(line):
-                urls.update(_GITHUB_ISSUE_URL.findall(line))
+                urls.update(url_re.findall(line))
     return len(urls)
 
 
+def _is_rejected_heading(line: str) -> bool:
+    lowered = line.lower()
+    return bool(
+        re.match(r"^##\s*rejected", lowered)
+        or re.search(r"rejected\s*/\s*out-of-scope", lowered)
+    )
+
+
 def _rejected_section(body: str) -> str:
-    match = _REJECTED_SECTION_RE.search(body)
-    if not match:
+    """Slice rejected markers like count_rejected_oos_markers_from_ndjson awk."""
+    if not _REJECTED_SECTION_RE.search(body):
         return ""
-    return body[match.start() :]
+    tail_lines: list[str] = []
+    injecting = False
+    for line in body.splitlines():
+        if _is_rejected_heading(line):
+            injecting = True
+            continue
+        if injecting and _SECTION_HEADING_RE.match(line) and not _is_rejected_heading(line):
+            break
+        if injecting:
+            tail_lines.append(line)
+    return "\n".join(tail_lines)
 
 
 def _count_rejected_markers(ndjson_path: str | None) -> int:

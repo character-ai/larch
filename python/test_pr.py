@@ -48,6 +48,22 @@ class RecordingRunner:
         return result
 
 
+_PORCELAIN_CLEAN = CommandResult(
+    ("git", "status", "--porcelain", "--untracked-files=all"),
+    0,
+    "",
+    "",
+    0.01,
+)
+_HEAD_FEAT = CommandResult(
+    ("git", "symbolic-ref", "--short", "HEAD"),
+    0,
+    "feat\n",
+    "",
+    0.01,
+)
+
+
 def _ctx(**kwargs: object) -> RunContext:
     base = RunContext(
         branch="feat",
@@ -66,6 +82,12 @@ def _ctx(**kwargs: object) -> RunContext:
     return base.with_(**kwargs)
 
 
+def test_ensure_pr_invalid_issue_raises() -> None:
+    runner = RecordingRunner()
+    with pytest.raises(ShipError, match="invalid issue"):
+        _ = pr_module.ensure_pr(runner, _ctx(issue=""), "body", title="t")
+
+
 def test_ensure_pr_repo_unavailable() -> None:
     runner = RecordingRunner()
     result = pr_module.ensure_pr(
@@ -80,8 +102,8 @@ def test_ensure_pr_repo_unavailable() -> None:
 def test_ensure_pr_reuses_existing_open(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "push"), 0, "", "", 0.01),
+            _PORCELAIN_CLEAN,
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 0, "", "", 0.01),
         ],
     )
     existing = gh.PullRequest(7, "http://u", "OPEN", "feat")
@@ -106,8 +128,8 @@ def test_ensure_pr_updates_body_without_ctx_pr_number(
 ) -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "push"), 0, "", "", 0.01),
+            _PORCELAIN_CLEAN,
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 0, "", "", 0.01),
             CommandResult(("gh", "pr", "edit", "7"), 0, "", "", 0.01),
         ],
     )
@@ -148,12 +170,13 @@ def test_ensure_pr_updates_body_without_ctx_pr_number(
 def test_ensure_pr_raises_when_push_fails() -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("git", "status"), 0, "", "", 0.01),
+            _PORCELAIN_CLEAN,
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "push"), 1, "", "rejected", 0.01),
-            CommandResult(("git", "push"), 1, "", "rejected", 0.01),
-            CommandResult(("git", "push"), 1, "", "rejected", 0.01),
+            _PORCELAIN_CLEAN,
+            _HEAD_FEAT,
+            CommandResult(("git", "push", "origin"), 1, "", "rejected", 0.01),
+            CommandResult(("git", "push", "origin"), 1, "", "rejected", 0.01),
+            CommandResult(("git", "push", "origin"), 1, "", "rejected", 0.01),
         ],
     )
 
@@ -164,10 +187,10 @@ def test_ensure_pr_raises_when_push_fails() -> None:
 def test_ensure_pr_passes_draft_flag(monkeypatch: pytest.MonkeyPatch) -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "push"), 0, "", "", 0.01),
-            CommandResult(("gh", "pr", "create"), 0, '{"number":3,"url":"u","state":"OPEN","headRefName":"feat"}', "", 0.01),
+            _PORCELAIN_CLEAN,
+            _PORCELAIN_CLEAN,
+            _HEAD_FEAT,
+            CommandResult(("git", "push", "origin"), 0, "", "", 0.01),
         ],
     )
     drafts: list[bool] = []
@@ -182,10 +205,10 @@ def test_ensure_pr_passes_draft_flag(monkeypatch: pytest.MonkeyPatch) -> None:
         draft: bool = False,
         cwd: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
         **kwargs: object,  # pylint: disable=unused-argument
-    ) -> gh.PullRequest:
+    ) -> tuple[gh.PullRequest, bool]:
         _ = kwargs
         drafts.append(draft)
-        return gh.PullRequest(3, "http://u", "OPEN", "feat")
+        return gh.PullRequest(3, "http://u", "OPEN", "feat"), True
 
     def fake_pr_none(
         _runner: object,
@@ -205,10 +228,11 @@ def test_ensure_pr_passes_draft_flag(monkeypatch: pytest.MonkeyPatch) -> None:
 def test_ensure_pr_recovers_create_conflict() -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("git", "status"), 0, "", "", 0.01),
+            _PORCELAIN_CLEAN,
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "push"), 0, "", "", 0.01),
+            _PORCELAIN_CLEAN,
+            _HEAD_FEAT,
+            CommandResult(("git", "push", "origin"), 0, "", "", 0.01),
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
             CommandResult(
                 ("gh", "pr", "create"),
@@ -228,6 +252,7 @@ def test_ensure_pr_recovers_create_conflict() -> None:
     )
     result = pr_module.ensure_pr(runner, _ctx(), "body", title="t")
     assert result.number == 11
+    assert result.status == "existing"
 
 
 def test_ensure_pr_force_push_recovery_on_existing_open(
@@ -235,9 +260,8 @@ def test_ensure_pr_force_push_recovery_on_existing_open(
 ) -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("git", "status"), 0, "", "", 0.01),
-            CommandResult(("git", "push"), 1, "", "rejected", 0.01),
-            CommandResult(("git", "push"), 0, "", "", 0.01),
+            _PORCELAIN_CLEAN,
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 1, "", "rejected", 0.01),
         ],
     )
     existing = gh.PullRequest(7, "http://u", "OPEN", "feat")
@@ -266,7 +290,13 @@ def test_ensure_pr_force_push_recovery_on_existing_open(
 def test_ensure_pr_refuses_dirty_tree() -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("git", "status"), 0, " M x\n", "", 0.01),
+            CommandResult(
+                ("git", "status", "--porcelain", "--untracked-files=all"),
+                0,
+                " M x\n",
+                "",
+                0.01,
+            ),
         ],
     )
     with pytest.raises(ShipError):

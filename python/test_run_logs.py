@@ -94,11 +94,20 @@ def test_flush_logs_post_no_git_commit(tmp_path: Path) -> None:
     runner = RecordingRunner()
     ctx = _ctx(tmp_path)
     _ = run_logs.init_run(ctx)
-    _ = run_logs.flush_logs_post(ctx)
+    _ = run_logs.flush_logs_post(ctx, merge_result=config.MERGE_RESULT_MERGED)
     assert runner.git_commits == 0
     manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["status"] == config.MANIFEST_STATUS_DONE
+
+
+def test_flush_logs_post_leaves_partial_on_failed_merge(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    _ = run_logs.init_run(ctx)
+    _ = run_logs.flush_logs_post(ctx, merge_result=config.MERGE_RESULT_ERROR)
+    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["status"] == config.MANIFEST_STATUS_PARTIAL
 
 
 def test_load_or_recover_manifest_from_log_dir(tmp_path: Path) -> None:
@@ -140,7 +149,45 @@ def test_execution_issues_batch_from_markdown(tmp_path: Path) -> None:
     )
     batch = batch_dir / "execution-issues.ndjson"
     assert batch.is_file()
-    assert "Tool Failures" in batch.read_text(encoding="utf-8")
+    text = batch.read_text(encoding="utf-8")
+    assert "Tool Failures" in text
+    assert "-----BEGIN" not in text
+
+
+def test_execution_issues_batch_redacts_pem(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    secret = "ghp_abcdefghijklmnopqrstuvwxyz1234567890ABCD"
+    _ = (tmp_path / "execution-issues.md").write_text(
+        f"### Tool Failures\n{secret}\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    batch_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    batch_dir.mkdir(parents=True)
+    run_logs._render_execution_issues_batch(  # pyright: ignore[reportPrivateUsage]
+        ctx,
+        batch_dir,
+        step_label="pre-push",
+        source_label="test",
+    )
+    batch = batch_dir / "execution-issues.ndjson"
+    assert batch.is_file()
+    assert secret not in batch.read_text(encoding="utf-8")
+
+
+def test_load_or_recover_manifest_invalid_json(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "execution-issues.ndjson").write_text("{}\n", encoding="utf-8")
+    _ = (run_dir / "manifest.json").write_text("{not-json", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    manifest = run_logs.load_or_recover_manifest(ctx)
+    assert manifest.run_id == "run-abc"
+    assert manifest.steps_ran.get("recovered") is True
 
 
 def test_token_batch_redaction_truncation_fails_closed(tmp_path: Path) -> None:
@@ -156,7 +203,7 @@ def test_token_batch_redaction_truncation_fails_closed(tmp_path: Path) -> None:
         )
 
 
-def test_copytree_preserves_symlinks(tmp_path: Path) -> None:
+def test_copytree_rejects_symlinks_escaping_run_dir(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
@@ -168,13 +215,12 @@ def test_copytree_preserves_symlinks(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     ctx = _ctx(tmp_path, str(state))
-    rel = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
-        ctx,
-        tmp_path / "larch-logs",
-        cwd=str(repo),
-    )
-    published = repo / rel / "link.txt"
-    assert published.is_symlink()
+    with pytest.raises(ShipError, match="refusing symlink"):
+        _ = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
+            ctx,
+            tmp_path / "larch-logs",
+            cwd=str(repo),
+        )
 
 
 def test_path_under_repo_rejects_traversal(tmp_path: Path) -> None:
@@ -215,14 +261,42 @@ def test_publish_run_tree_copies_run_id_pathspec(tmp_path: Path) -> None:
     assert (repo / rel / "token-report-refresh.json").is_file()
 
 
-def test_flush_logs_pre_happy_path_commits(tmp_path: Path) -> None:
+def test_flush_logs_pre_happy_path_commits(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
     ctx = _ctx(tmp_path, str(state))
     _ = run_logs.init_run(ctx)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    _ = (run_dir / "token-report-refresh.json").write_text("{}", encoding="utf-8")
+    commits: list[bool] = []
+
+    def fake_commit(
+        _runner: object,
+        _ctx: object,
+        _log_root: object,
+        *,
+        cwd: str | None = None,
+    ) -> CommandResult:
+        _ = cwd
+        commits.append(True)
+        return CommandResult(("true",), 0, "", "", 0.0)
+
+    def noop_write_final_report(_runner: object, _ctx: object) -> None:
+        _ = _runner, _ctx
+
+    def noop_capture(_ctx: object, _runner: object, **kwargs: object) -> None:
+        _ = _ctx, _runner, kwargs
+
+    monkeypatch.setattr(run_logs, "_write_final_report", noop_write_final_report)
+    monkeypatch.setattr(run_logs, "capture_session_transcript", noop_capture)
+    monkeypatch.setattr(run_logs, "_larch_log_commit", fake_commit)
     runner = RecordingRunner()
-    skip = run_logs.flush_logs_pre(runner, ctx, cwd=None)
+    skip = run_logs.flush_logs_pre(runner, ctx, cwd=str(tmp_path / "repo"))
     assert not skip.skipped
+    assert commits == [True]
     manifest = json.loads(
         (tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json").read_text(
             encoding="utf-8",

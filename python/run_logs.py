@@ -20,6 +20,12 @@ from errors import ShipError
 from proc import CommandResult, Runner
 from run_context import RunContext
 
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_WRITE_FINAL_REPORT = (
+    _REPO_ROOT / "skills" / "implement" / "scripts" / "write-final-report.sh"
+)
+_CAPTURE_SESSION_TRANSCRIPT = _REPO_ROOT / "scripts" / "capture-session-transcript.sh"
+
 _SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
@@ -175,17 +181,42 @@ def _newest_run_child(log_root: Path) -> Path | None:
     return max(candidates, key=lambda path: path.stat().st_mtime)
 
 
+def _recover_manifest_from_run_dir(run_id: str, run_dir: Path) -> Manifest | None:
+    if not run_dir.is_dir():
+        return None
+    steps: dict[str, Any] = {"recovered": True}
+    if (run_dir / "execution-issues.ndjson").is_file():
+        steps["execution_issues"] = True
+    if (run_dir / f"{config.RUN_LOG_BATCH_TOKEN_REPORT}.ndjson").is_file():
+        steps["token_report"] = True
+    return Manifest(
+        status=config.MANIFEST_STATUS_PARTIAL,
+        version="1",
+        run_id=run_id,
+        steps_ran=steps,
+    )
+
+
 def load_or_recover_manifest(ctx: RunContext) -> Manifest:
     rid = effective_run_id(ctx)
     if rid:
         primary = Path(ctx.tmpdir) / "larch-logs" / "implement" / rid / "manifest.json"
+        run_dir = primary.parent
         if primary.is_file():
             try:
                 data = json.loads(primary.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
                     return _dict_to_manifest(cast("dict[str, Any]", data))
             except json.JSONDecodeError:
-                pass
+                recovered = _recover_manifest_from_run_dir(rid, run_dir)
+                if recovered is not None:
+                    _write_manifest(ctx, recovered)
+                    return recovered
+        elif run_dir.is_dir():
+            recovered = _recover_manifest_from_run_dir(rid, run_dir)
+            if recovered is not None:
+                _write_manifest(ctx, recovered)
+                return recovered
         return init_run(ctx, run_id=rid)
     log_root = Path(ctx.tmpdir) / "larch-logs" / "implement"
     newest = _newest_run_child(log_root) if log_root.is_dir() else None
@@ -329,8 +360,9 @@ def _execution_issue_record(
     existing_batch: str,
 ) -> str | None:
     body = "\n".join(body_lines)
+    redacted_body = _redact_batch_payload(body)
     norm_sha = hashlib.sha256(
-        _normalize_body_for_hash(body).encode("utf-8"),
+        _normalize_body_for_hash(redacted_body).encode("utf-8"),
     ).hexdigest()
     if f'"source_sha256":"{norm_sha}"' in existing_batch:
         return None
@@ -340,9 +372,18 @@ def _execution_issue_record(
         "category": category,
         "source": source_label,
         "source_sha256": norm_sha or file_sha,
-        "body": body,
+        "body": redacted_body,
     }
     return json.dumps(payload, sort_keys=True)
+
+
+def _write_final_report(runner: Runner, ctx: RunContext) -> None:
+    if not _WRITE_FINAL_REPORT.is_file():
+        return
+    _ = runner.run(
+        ["bash", str(_WRITE_FINAL_REPORT), "--implement-tmpdir", ctx.tmpdir],
+        cwd=str(_REPO_ROOT),
+    )
 
 
 def flush_logs_pre(
@@ -365,8 +406,9 @@ def flush_logs_pre(
         step_label="pre-push",
         source_label="execution-issues.md pre-push refresh",
     )
+    _write_final_report(runner, ctx)
     _render_token_timing_batches(ctx, log_root)
-    _ = capture_session_transcript(ctx, defer_commit=True)
+    _ = capture_session_transcript(ctx, runner, defer_commit=True)
     _render_execution_issues_batch(
         ctx,
         run_dir,
@@ -384,20 +426,29 @@ def flush_logs_pre(
     return RefreshSkip(skipped=False, reason="")
 
 
-def flush_logs_post(ctx: RunContext) -> RefreshSkip:
+def flush_logs_post(
+    ctx: RunContext,
+    *,
+    merge_result: str | None = None,
+    runner: Runner | None = None,
+) -> RefreshSkip:
     """Post-merge tmpdir-only flush; never git-commits."""
     manifest = load_or_recover_manifest(ctx)
     log_root = Path(ctx.tmpdir) / "larch-logs"
+    if runner is not None:
+        _write_final_report(runner, ctx)
     _render_token_timing_batches(ctx, log_root)
-    done = Manifest(
-        status=config.MANIFEST_STATUS_DONE,
+    resolved = merge_result or _read_state_kv(ctx.state_file, "MERGE_RESULT")
+    finalize = resolved in config.POST_MERGE_MERGE_RESULTS
+    updated = Manifest(
+        status=config.MANIFEST_STATUS_DONE if finalize else manifest.status,
         version=manifest.version,
         run_id=manifest.run_id,
         steps_ran=manifest.steps_ran,
         created_at=manifest.created_at,
         updated_at=manifest.updated_at,
     )
-    _write_manifest(ctx, done)
+    _write_manifest(ctx, updated)
     return RefreshSkip(skipped=False, reason="")
 
 
@@ -453,26 +504,57 @@ def _render_token_timing_batches(ctx: RunContext, log_root: Path) -> None:
 
 def capture_session_transcript(
     ctx: RunContext,
+    runner: Runner,
     *,
     defer_commit: bool = False,
 ) -> Path | None:
     """Copy refresh transcript into run tree with redaction (defer-commit parity)."""
-    _ = defer_commit
-    out = Path(ctx.tmpdir) / "session-transcript-refresh.txt"
-    if not out.is_file():
-        _ = out.write_text("", encoding="utf-8")
     run_id = effective_run_id(ctx)
     if not run_id:
-        return out
+        return None
+    log_root = Path(ctx.tmpdir) / "larch-logs"
+    issue_log = Path(ctx.tmpdir) / "execution-issues.md"
+    source = os.environ.get("LARCH_CLAUDE_SOURCE_FILE", "")
+    no_logs = _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") or "false"
+    if _CAPTURE_SESSION_TRANSCRIPT.is_file():
+        _ = runner.run(
+            [
+                "bash",
+                str(_CAPTURE_SESSION_TRANSCRIPT),
+                "--source-file",
+                source,
+                "--log-root",
+                str(log_root),
+                "--skill",
+                "implement",
+                "--run-id",
+                run_id,
+                "--no-logs-commit",
+                no_logs,
+                "--execution-issues-log",
+                str(issue_log),
+                "--warning-step-label",
+                "pre-push-refresh",
+                "--refresh-mode",
+                "true",
+                "--defer-commit",
+                "true" if defer_commit else "false",
+            ],
+            cwd=str(_REPO_ROOT),
+        )
+    out = Path(ctx.tmpdir) / "session-transcript-refresh.txt"
     run_dir = _run_log_dir(ctx)
     run_dir.mkdir(parents=True, exist_ok=True)
     dest = run_dir / "session-transcript-refresh.txt"
-    raw = out.read_text(encoding="utf-8")
-    if raw.strip():
-        _ = dest.write_text(_redact_batch_payload(raw), encoding="utf-8")
+    if out.is_file() and out.stat().st_size > 0:
+        raw = out.read_text(encoding="utf-8")
+        if raw.strip():
+            _ = dest.write_text(_redact_batch_payload(raw), encoding="utf-8")
+    elif dest.is_file() and dest.stat().st_size > 0:
+        pass
     elif not dest.is_file():
         _ = dest.write_text("", encoding="utf-8")
-    return out
+    return out if out.is_file() else dest
 
 
 def _read_finalize_kv(tmpdir: Path, key: str) -> str:
@@ -541,8 +623,36 @@ def _publish_run_tree_to_repo(
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists():
             shutil.rmtree(dest)
-        _ = shutil.copytree(src, dest, symlinks=True)
+        _safe_copy_run_tree(src, dest)
     return f"larch-logs/implement/{run_id}"
+
+
+def _safe_copy_run_tree(src: Path, dest: Path) -> None:
+    """Copy run tree without preserving symlinks that escape the source root."""
+    src_root = src.resolve()
+    dest.mkdir(parents=True, exist_ok=True)
+    for item in sorted(src.rglob("*")):
+        rel = item.relative_to(src)
+        target = dest / rel
+        if item.is_symlink():
+            resolved = item.resolve()
+            try:
+                _ = resolved.relative_to(src_root)
+            except ValueError as exc:
+                msg = "refusing symlink escaping run log tree"
+                raise ShipError(msg) from exc
+            if item.is_dir():
+                target.mkdir(parents=True, exist_ok=True)
+            else:
+                target.parent.mkdir(parents=True, exist_ok=True)
+                if resolved.is_file():
+                    _ = shutil.copy2(resolved, target)
+            continue
+        if item.is_dir():
+            target.mkdir(parents=True, exist_ok=True)
+        elif item.is_file():
+            target.parent.mkdir(parents=True, exist_ok=True)
+            _ = shutil.copy2(item, target)
 
 
 def _larch_log_commit(

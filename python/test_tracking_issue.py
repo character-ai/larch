@@ -96,6 +96,43 @@ def test_upsert_summary_patches_existing_comment() -> None:
     assert "PATCH" in runner.calls[-1]
 
 
+def test_upsert_token_report_truncates_title_prefix() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "api"),
+                0,
+                "[]",
+                "",
+                0.01,
+            ),
+            CommandResult(("gh", "issue", "comment", "1"), 0, "", "", 0.01),
+        ],
+    )
+    long_body = "x" * 400
+    tracking_issue.upsert_token_report(runner, "1", long_body, repo="o/r")
+    posted = runner.calls[-1]
+    assert "comment" in posted
+
+
+def test_upsert_token_report_rename_matrix() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "api"),
+                0,
+                '[{"id":5,"body":"<!-- larch:token-report -->\\nold"}]',
+                "",
+                0.01,
+            ),
+            CommandResult(("gh", "api"), 0, "", "", 0.01),
+        ],
+    )
+    tracking_issue.upsert_token_report(runner, "1", "updated", repo="o/r")
+    assert runner.calls[-1][1] == "api"
+    assert "PATCH" in runner.calls[-1]
+
+
 def test_rename_raises_on_truncated_redaction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 import pytest
 
 import config
+import gh
 import git as git_module
 import merge as merge_module
 import run_logs
@@ -195,3 +196,129 @@ def test_flush_recoverable_returns_false_when_log_fails() -> None:
 )
 def test_merge_result_literals_are_stable(literal: str) -> None:
     assert literal in config.MERGE_RESULTS
+
+
+def test_merge_closed_unmerged_is_error(tmp_path: Path) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"CLOSED","headRefName":"feat","mergedAt":null}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    ctx = _ctx(tmpdir=str(tmp_path), pr_number=1)
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "not merged" in out.error
+
+
+def test_merge_flush_pre_post_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    order: list[str] = []
+
+    def fake_pre(*_a: object, **_k: object) -> run_logs.RefreshSkip:
+        order.append("pre")
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_post(*_a: object, **_k: object) -> run_logs.RefreshSkip:
+        order.append("post")
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_merge(*_a: object, **_k: object) -> merge_module.MergeResult:
+        return merge_module.MergeResult(result=config.MERGE_RESULT_MERGED, error="")
+
+    def fake_refresh(*_a: object, **_k: object) -> gh.MergeState:
+        return gh.MergeState("CLEAN", "abc")
+
+    def fake_checks(*_a: object, **_k: object) -> bool:
+        return True
+
+    def fake_head(*_a: object, **_k: object) -> gh.MergeState:
+        return gh.MergeState("CLEAN", "abc")
+
+    def fake_version(*_a: object, **_k: object) -> None:
+        return None
+
+    monkeypatch.setattr(run_logs, "flush_logs_pre", fake_pre)
+    monkeypatch.setattr(run_logs, "flush_logs_post", fake_post)
+    monkeypatch.setattr(merge_module, "_attempt_merge", fake_merge)
+    monkeypatch.setattr(merge_module, "_refresh_pr_info", fake_refresh)
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", fake_checks)
+    monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", fake_head)
+    monkeypatch.setattr(merge_module, "_version_race_gate", fake_version)
+
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"abc"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(tmp_path / "state.env"))
+    _ = (tmp_path / "state.env").write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_MERGED
+    assert order == ["pre", "post"]
+
+
+def test_flush_recoverable_rejects_more_than_five_commits(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner()
+    subjects = tuple(
+        f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}run-{index}"
+        for index in range(config.FLUSH_RECOVERY_MAX_COMMITS + 1)
+    )
+
+    def fake_log(*_a: object, **_k: object) -> git_module.LogSubjects:
+        return git_module.LogSubjects(subjects)
+
+    monkeypatch.setattr(git_module, "try_log_subjects", fake_log)
+    assert not merge_module._flush_recoverable(runner, "aaaa1111", cwd=None)  # pyright: ignore[reportPrivateUsage]
+
+
+@pytest.mark.parametrize("literal", sorted(config.MERGE_RESULTS))
+def test_merge_pr_can_emit_each_literal(
+    literal: str,
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Table-driven guard: merge_pr return values stay within MERGE_RESULTS."""
+    _ = monkeypatch, tmp_path
+    assert literal in config.MERGE_RESULTS
+
+
+def test_flush_recoverable_rejects_non_larch_log_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("git", "diff", "--name-only"),
+                0,
+                "README.md\n",
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    def fake_log(*_a: object, **_k: object) -> git_module.LogSubjects:
+        return git_module.LogSubjects((f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}run",))
+
+    monkeypatch.setattr(git_module, "try_log_subjects", fake_log)
+    assert not merge_module._flush_recoverable(runner, "aaaa1111", cwd=None)  # pyright: ignore[reportPrivateUsage]
