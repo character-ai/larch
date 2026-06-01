@@ -699,6 +699,7 @@ if grep -q '^STALL_STEP=$' "$dir/ship-pr-state.sh"; then
 else
     fail "22: clear-stall append-when-absent writes empty STALL_STEP"
 fi
+assert_eq https://example.test/pr/1 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PR_URL --default "")" "22: clear-stall append-when-absent preserves PR_URL"
 
 dir=$(make_tmp case22-clear-empty)
 : >"$dir/ship-pr-state.sh"
@@ -835,6 +836,86 @@ run_capture "$SANDBOX/case22-clear-dest-assert-fail.out" env PATH="$noop_mv_bin:
 assert_eq 1 "$RC" "22: clear-stall destination assert failure exits 1"
 assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-dest-assert-fail.out")" "22: clear-stall destination assert failure emits CLEARED=false"
 assert_eq "$before_clear" "$(cat "$dir/ship-pr-state.sh")" "22: clear-stall destination assert failure leaves disk unchanged"
+
+read_stub_root="$SANDBOX/read-stub-plugin"
+mkdir -p "$read_stub_root/skills/implement/scripts" "$read_stub_root/scripts"
+cp "$SCRIPT" "$read_stub_root/skills/implement/scripts/stall-recovery-report.sh"
+cp "$SCRIPT_DIR/stall-recovery-report-allowlists.tsv" "$read_stub_root/skills/implement/scripts/"
+cp "$SCRIPT_DIR/stall-recovery-report.md" "$read_stub_root/skills/implement/scripts/"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$read_stub_root/scripts/"
+cp "$REPO_ROOT/scripts/lib-larch-dev-clone.sh" "$read_stub_root/scripts/"
+cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$read_stub_root/scripts/read-session-env-key.real.sh"
+chmod +x "$read_stub_root/skills/implement/scripts/stall-recovery-report.sh" \
+  "$read_stub_root/scripts/read-session-env-key.real.sh"
+cat >"$read_stub_root/scripts/read-session-env-key.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+stub_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
+real="$stub_dir/read-session-env-key.real.sh"
+file="" key=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --file) file=$2; shift 2 ;;
+    --key) key=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+case "${STALL_READ_STUB:-}" in
+  temp-wrong)
+    case "$file" in
+      *.tmp.*)
+        if [ "$key" = STALL_TRACKING ]; then
+          printf '%s\n' true
+          exit 0
+        fi
+        ;;
+    esac
+    ;;
+  dest-fail)
+    case "$file" in
+      *.tmp.*) ;;
+      *)
+        if [ "$key" = STALL_TRACKING ]; then
+          exit 1
+        fi
+        ;;
+    esac
+    ;;
+esac
+exec "$real" "$@"
+STUB
+chmod +x "$read_stub_root/scripts/read-session-env-key.sh"
+read_stub_script="$read_stub_root/skills/implement/scripts/stall-recovery-report.sh"
+
+dir=$(make_tmp case22-clear-temp-read-wrong)
+write_state "$dir" 8 ci-initial
+before_clear=$(cat "$dir/ship-pr-state.sh")
+run_capture "$SANDBOX/case22-clear-temp-read-wrong.out" env \
+  CLAUDE_PLUGIN_ROOT="$read_stub_root" STALL_READ_STUB=temp-wrong \
+  "$read_stub_script" clear-stall --implement-tmpdir "$dir"
+assert_eq 1 "$RC" "22: clear-stall temp read wrong value exits 1"
+assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-temp-read-wrong.out")" "22: clear-stall temp read wrong value emits CLEARED=false"
+assert_eq "$before_clear" "$(cat "$dir/ship-pr-state.sh")" "22: clear-stall temp read wrong value leaves disk unchanged"
+
+dir=$(make_tmp case22-clear-dest-read-fail)
+write_state "$dir" 8 ci-initial
+before_clear=$(cat "$dir/ship-pr-state.sh")
+run_capture "$SANDBOX/case22-clear-dest-read-fail.out" env \
+  CLAUDE_PLUGIN_ROOT="$read_stub_root" STALL_READ_STUB=dest-fail \
+  "$read_stub_script" clear-stall --implement-tmpdir "$dir"
+assert_eq 1 "$RC" "22: clear-stall destination read failure exits 1"
+assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-dest-read-fail.out")" "22: clear-stall destination read failure emits CLEARED=false"
+assert_eq "$before_clear" "$(cat "$dir/ship-pr-state.sh")" "22: clear-stall destination read failure leaves disk unchanged"
+
+dir=$(make_tmp case22-seed-dest-read-fail)
+write_state "$dir" 8 ci-initial
+before_seed=$(cat "$dir/ship-pr-state.sh")
+run_capture "$SANDBOX/case22-seed-dest-read-fail.out" env \
+  CLAUDE_PLUGIN_ROOT="$read_stub_root" STALL_READ_STUB=dest-fail \
+  "$read_stub_script" seed-terminal-state --implement-tmpdir "$dir"
+assert_eq 1 "$RC" "22: seed-terminal-state destination read failure exits 1"
+assert_eq false "$(kv SEEDED "$SANDBOX/case22-seed-dest-read-fail.out")" "22: seed-terminal-state destination read failure emits SEEDED=false"
+assert_eq "$before_seed" "$(cat "$dir/ship-pr-state.sh")" "22: seed-terminal-state destination read failure leaves disk unchanged"
 
 dir=$(make_tmp case22-seed-temp-assert-fail)
 write_state "$dir" 8 ci-initial

@@ -1238,6 +1238,8 @@ WFR_RC=$(printf '%s\n' "$_step18b_out" | awk -F= '$1=="WFR_RC"{print $2; exit}')
 STEP17_EMITTED_PRESENT=$(printf '%s\n' "$_step18b_out" | awk -F= '$1=="STEP17_EMITTED_PRESENT"{print $2; exit}')
 ```
 
+`STEP17_EMITTED_PRESENT` is informational-only (diagnostic parity with the wrapper contract); the orchestrator emit gate is `EMIT_BODY`, not this KV.
+
 When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`, the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown. Use the same collapse-resistant rule as Step 17, and write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that Step 18 body emit completes. Do not emit that body when `EMIT_BODY=false`, when `WFR_RC` is non-zero, or when `summary-final.md` is empty. The wrapper never emits the body and never writes `.step17-emitted` (NEVER #20).
 
 ### Title-prefix lifecycle

@@ -38,9 +38,9 @@ Non-zero helper exits are captured to the failure logs above and appended with `
 ## Emit decision
 
 1. Candidate `emit_body=true` when `$IMPLEMENT_TMPDIR/.step17-emitted` is absent.
-2. Snapshot `summary-final.md` to `.step18-prebody` when it exists before `write-final-report.sh` (`snapshot_ok` records whether the copy succeeded; a failed copy leaves `.step18-prebody` absent).
+2. Snapshot `summary-final.md` to `.step18-prebody` when it exists before `write-final-report.sh`; emit `SNAPSHOT_OK` as `true` (copy succeeded), `false` (copy failed), or `absent` (no pre-write body).
 3. Record `WFR_RC` from `write-final-report.sh`.
-4. When `WFR_RC=0` and `summary-final.md` is non-empty: if the prior candidate was false, promote to true when `.step18-prebody` is absent (missing pre-write body or failed snapshot) or when `cmp -s "$IMPLEMENT_TMPDIR/.step18-prebody" "$IMPLEMENT_TMPDIR/summary-final.md"` reports a difference.
+4. When `WFR_RC=0` and `summary-final.md` is non-empty and the prior candidate was false: promote to true when `SNAPSHOT_OK=absent` (no pre-write body) or when `SNAPSHOT_OK=true` and `cmp` reports a difference; when `SNAPSHOT_OK=false` (failed snapshot with `.step17-emitted` present), do not promote.
 5. **Final gate:** emit `EMIT_BODY=true` only when candidate is true **and** `WFR_RC=0` **and** `summary-final.md` is non-empty; otherwise `EMIT_BODY=false`.
 
 Intentional delta vs the retired inline block: the wrapper does not pass `--print-stdout` to `write-final-report.sh`, so the report body appears once at top chat (orchestrator verbatim emit) instead of also in the collapsible Bash stdout. Body file content is unchanged (`write-final-report.sh` writes `summary-final.md` regardless of `--print-stdout`).
@@ -51,7 +51,8 @@ Intentional delta vs the retired inline block: the wrapper does not pass `--prin
 |---|---|
 | `EMIT_BODY` | `true` or `false` — orchestrator verbatim emit gate |
 | `WFR_RC` | Exit code from `write-final-report.sh` |
-| `STEP17_EMITTED_PRESENT` | `true` when `.step17-emitted` existed at entry |
+| `STEP17_EMITTED_PRESENT` | Informational only: `true` when `.step17-emitted` existed at entry (not an emit gate; `EMIT_BODY` encodes the sentinel decision) |
+| `SNAPSHOT_OK` | `true`, `false`, or `absent` — pre-write snapshot outcome (see emit decision step 4) |
 
 ## Caller
 

@@ -36,6 +36,15 @@ assert_eq() {
     if [ "$expected" = "$actual" ]; then pass "$label"; else fail "$label" "expected=$expected actual=$actual"; fi
 }
 
+assert_wrapper_did_not_create_step17_sentinel() {
+    local tmpdir=$1 had_before=$2 label=$3
+    if [ "$had_before" = false ] && [ -f "$tmpdir/.step17-emitted" ]; then
+        fail "$label: wrapper wrote .step17-emitted"
+    else
+        pass "$label"
+    fi
+}
+
 setup_stub_plugin() {
   local plugin=$1
   mkdir -p "$plugin/scripts"
@@ -116,11 +125,7 @@ assert_eq 0 "$RC" "emit true when .step17-emitted absent and write succeeds"
 assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-emit-absent.out")" "EMIT_BODY=true absent sentinel"
 assert_eq 0 "$(kv WFR_RC "$TMP_ROOT/case-emit-absent.out")" "WFR_RC=0 on success"
 assert_eq false "$(kv STEP17_EMITTED_PRESENT "$TMP_ROOT/case-emit-absent.out")" "STEP17_EMITTED_PRESENT=false when absent"
-if [ ! -f "$tmpdir/.step17-emitted" ]; then
-    pass "wrapper never writes .step17-emitted"
-else
-    fail "wrapper must not write .step17-emitted"
-fi
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" false "wrapper never writes .step17-emitted"
 
 tmpdir="$TMP_ROOT/case-emit-unchanged"
 mkdir -p "$tmpdir"
@@ -129,6 +134,7 @@ touch "$tmpdir/.step17-emitted"
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" ok ok "$TMP_ROOT/case-emit-unchanged.out"
 assert_eq false "$(kv EMIT_BODY "$TMP_ROOT/case-emit-unchanged.out")" "EMIT_BODY=false when sentinel present and body unchanged"
 assert_eq true "$(kv STEP17_EMITTED_PRESENT "$TMP_ROOT/case-emit-unchanged.out")" "STEP17_EMITTED_PRESENT=true when present"
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" true "wrapper never writes .step17-emitted when sentinel pre-seeded"
 
 tmpdir="$TMP_ROOT/case-emit-changed"
 mkdir -p "$tmpdir"
@@ -136,6 +142,7 @@ printf 'old body\n' >"$tmpdir/summary-final.md"
 touch "$tmpdir/.step17-emitted"
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" changed ok "$TMP_ROOT/case-emit-changed.out"
 assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-emit-changed.out")" "EMIT_BODY=true when body changed vs snapshot"
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" true "wrapper never writes .step17-emitted when sentinel pre-seeded (changed body)"
 
 tmpdir="$TMP_ROOT/case-emit-sentinel-no-prior-body"
 mkdir -p "$tmpdir"
@@ -143,14 +150,18 @@ touch "$tmpdir/.step17-emitted"
 rm -f "$tmpdir/summary-final.md" "$tmpdir/.step18-prebody"
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" ok ok "$TMP_ROOT/case-emit-sentinel-no-prior-body.out"
 assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-emit-sentinel-no-prior-body.out")" "EMIT_BODY=true when sentinel present and no pre-write summary-final.md"
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" true "wrapper never writes .step17-emitted when sentinel pre-seeded (no prior body)"
 
 tmpdir="$TMP_ROOT/case-emit-cp-fail"
 mkdir -p "$tmpdir"
 touch "$tmpdir/.step17-emitted"
 printf 'old body\n' >"$tmpdir/summary-final.md"
-mkdir "$tmpdir/.step18-prebody"
+printf 'old body\n' >"$tmpdir/.step18-prebody"
+chmod 444 "$tmpdir/.step18-prebody"
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" changed ok "$TMP_ROOT/case-emit-cp-fail.out"
-assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-emit-cp-fail.out")" "EMIT_BODY=true when snapshot cp fails and body changed post-write"
+assert_eq false "$(kv EMIT_BODY "$TMP_ROOT/case-emit-cp-fail.out")" "EMIT_BODY=false when snapshot cp fails even if body changed post-write"
+assert_eq false "$(kv SNAPSHOT_OK "$TMP_ROOT/case-emit-cp-fail.out")" "SNAPSHOT_OK=false when snapshot cp fails"
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" true "wrapper never writes .step17-emitted when sentinel pre-seeded (cp fail)"
 
 tmpdir="$TMP_ROOT/case-wfr-fail"
 mkdir -p "$tmpdir"
@@ -162,11 +173,13 @@ if [ -s "$tmpdir/step18-write-final-report.failure.log" ]; then
 else
     fail "write-final-report failure log missing or empty"
 fi
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" false "wrapper never writes .step17-emitted on write failure"
 
 tmpdir="$TMP_ROOT/case-empty-body"
 mkdir -p "$tmpdir"
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" empty ok "$TMP_ROOT/case-empty-body.out"
 assert_eq false "$(kv EMIT_BODY "$TMP_ROOT/case-empty-body.out")" "EMIT_BODY=false when summary-final.md empty"
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" false "wrapper never writes .step17-emitted on empty body"
 
 tmpdir="$TMP_ROOT/case-token-fail"
 mkdir -p "$tmpdir"
@@ -177,6 +190,7 @@ if [ -s "$tmpdir/step18-token-report.failure.log" ]; then
 else
     fail "token-report failure log missing or empty"
 fi
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" false "wrapper never writes .step17-emitted on token failure"
 
 tmpdir="$TMP_ROOT/case-session-env"
 mkdir -p "$tmpdir"
@@ -184,6 +198,7 @@ printf 'LARCH_TOKEN_SESSION_ID=sess-18b\nLARCH_CLAUDE_SOURCE_FILE=/tmp/claude.js
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" ok ok "$TMP_ROOT/case-session-env.out"
 assert_eq 0 "$RC" "session-env rehydration runs helper successfully"
 assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-session-env.out")" "session-env rehydration preserves emit gate"
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" false "wrapper never writes .step17-emitted with session-env"
 
 tmpdir="$TMP_ROOT/case-plugin-root-fallback"
 mkdir -p "$tmpdir"
@@ -193,6 +208,7 @@ run_capture "$TMP_ROOT/case-plugin-root-fallback.out" env -u CLAUDE_PLUGIN_ROOT 
   bash "$tmpdir" "$impl_dir"
 assert_eq 0 "$RC" "plugin-root.env orchestrator pre-source loads stub plugin"
 assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-plugin-root-fallback.out")" "plugin-root.env orchestrator pre-source emits EMIT_BODY=true"
+assert_wrapper_did_not_create_step17_sentinel "$tmpdir" false "wrapper never writes .step17-emitted with plugin-root fallback"
 
 # Integration: real write-final-report.sh with minimal plugin fixture
 int_plugin="$TMP_ROOT/int-plugin"
@@ -259,6 +275,7 @@ if [ -s "$int_tmpdir/summary-final.md" ]; then
 else
   fail "integration real write-final-report writes summary-final.md"
 fi
+assert_wrapper_did_not_create_step17_sentinel "$int_tmpdir" false "wrapper never writes .step17-emitted in integration case"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

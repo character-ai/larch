@@ -58,7 +58,7 @@ main() {
         export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
     fi
 
-    local emit_body=false step17_present=false wfr_rc=0
+    local emit_body=false step17_present=false snapshot_ok="" wfr_rc=0
     local token_fail_log="$tmpdir/step18-token-report.failure.log"
     local wfr_fail_log="$tmpdir/step18-write-final-report.failure.log"
     [ -f "$tmpdir/.step17-emitted" ] && step17_present=true
@@ -76,11 +76,15 @@ main() {
     fi
 
     if [ -f "$tmpdir/summary-final.md" ]; then
-        if ! cp "$tmpdir/summary-final.md" "$tmpdir/.step18-prebody" 2>/dev/null; then
+        if cp "$tmpdir/summary-final.md" "$tmpdir/.step18-prebody" 2>/dev/null; then
+            snapshot_ok=true
+        else
             rm -f "$tmpdir/.step18-prebody"
+            snapshot_ok=false
         fi
     else
         rm -f "$tmpdir/.step18-prebody"
+        snapshot_ok=absent
     fi
 
     : >"$wfr_fail_log" 2>/dev/null || true
@@ -92,8 +96,16 @@ main() {
     fi
 
     if [ "$wfr_rc" -eq 0 ] && [ -s "$tmpdir/summary-final.md" ]; then
-        if [ "$emit_body" = false ] && { [ ! -f "$tmpdir/.step18-prebody" ] || ! cmp -s "$tmpdir/.step18-prebody" "$tmpdir/summary-final.md" 2>/dev/null; }; then
-            emit_body=true
+        if [ "$emit_body" = false ]; then
+            case "$snapshot_ok" in
+                absent) emit_body=true ;;
+                true)
+                    if ! cmp -s "$tmpdir/.step18-prebody" "$tmpdir/summary-final.md" 2>/dev/null; then
+                        emit_body=true
+                    fi
+                    ;;
+                false) : ;; # failed snapshot with sentinel: do not promote on stale or absent prebody
+            esac
         fi
     fi
 
@@ -105,6 +117,7 @@ main() {
     emit_kv EMIT_BODY "$emit_body_kv"
     emit_kv WFR_RC "$wfr_rc"
     emit_kv STEP17_EMITTED_PRESENT "$step17_present"
+    emit_kv SNAPSHOT_OK "$snapshot_ok"
 }
 
 main "$@"

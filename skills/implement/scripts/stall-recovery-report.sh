@@ -135,7 +135,9 @@ ship_pr_state_is_regular_file() {
 rewrite_ship_pr_state_keys() {
     local src=$1
     shift
-    local -a keys=() vals=() awk_v=()
+    local -a keys=()
+    local -a vals=()
+    local -a awk_v=()
     local i n=0
     while [ $# -ge 2 ]; do
         keys+=("$1")
@@ -168,7 +170,7 @@ rewrite_ship_pr_state_keys() {
             if (!(k in seen)) print k "=" u[k]
         }
     }'
-    awk "${awk_v[@]}" "$awk_begin" "$src"
+    awk "${awk_v[@]+"${awk_v[@]}"}" "$awk_begin" "$src"
 }
 
 emit_cleared_false_exit() {
@@ -227,10 +229,9 @@ cmd_clear_stall() {
         emit_cleared_false_exit 1
     fi
     mv -f "$tmp" "$state" || emit_cleared_false_exit 1
-    if tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default ""); then
-        if [ "$tracking" != false ]; then
-            emit_cleared_false_exit 1
-        fi
+    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default "") || emit_cleared_false_exit 1
+    if [ "$tracking" != false ]; then
+        emit_cleared_false_exit 1
     fi
     emit_kv CLEARED true
 }
@@ -310,10 +311,9 @@ cmd_seed_terminal_state() {
         emit_seeded_false_exit 1
     fi
     mv -f "$tmp" "$state" || emit_seeded_false_exit 1
-    if tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default ""); then
-        if [ "$tracking" != true ]; then
-            emit_seeded_false_exit 1
-        fi
+    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default "") || emit_seeded_false_exit 1
+    if [ "$tracking" != true ]; then
+        emit_seeded_false_exit 1
     fi
     emit_kv SEEDED true
     emit_kv SEED_MODE "$seed_mode"
