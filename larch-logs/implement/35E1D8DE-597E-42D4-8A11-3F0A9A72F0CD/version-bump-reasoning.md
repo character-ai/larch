@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `4d42e9285` (chore(larch-logs): flush design run 2314E6DF-550B-4853-9FB8-15BFE72C320C [skip ci] (#3312))
-- **Current version**: `47.0.33`
+- **Base commit**: `d452399af` (Fixes #3292: Collapse /implement plugin-root awk fences into plugin-root.env (#3316))
+- **Current version**: `47.0.34`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `47.0.34`
+- **New version**: `47.0.35`
 
 ### PATCH rationale
 
