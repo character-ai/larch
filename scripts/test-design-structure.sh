@@ -345,23 +345,23 @@ grep -Fq "$needle" "$SKILL_MD" \
 grep -Fq '5c.5→5c.7→5c.8→6' "$SKILL_MD" \
   || fail "(15b) anti-halt reminder must mention 5c.5→5c.7→5c.8→6 step boundary (intra-Step-5 through rename)"
 
-upsert_line=$(awk -v s="$step5c_line" 'NR>s && /scripts\/upsert-diagrams-comment\.sh/ {print NR; exit}' "$SKILL_MD" || true)
-plan_write_line=$(awk -v s="$step5c_line" 'NR>s && /plan-block-write\.sh/ {print NR; exit}' "$SKILL_MD" || true)
-publish_line=$(awk -v s="${upsert_line:-0}" 'NR>s && /design-log-publish\.sh/ {print NR; exit}' "$SKILL_MD" || true)
-[[ -n "$plan_write_line" && -n "$upsert_line" && -n "$publish_line" && "$plan_write_line" -lt "$upsert_line" && "$upsert_line" -lt "$publish_line" ]] \
-  || fail "(15b) Step 5c.5 upsert-diagrams-comment.sh must appear after plan-block-write.sh and before design-log-publish.sh"
+DESIGN_PUBLISH_SH="$REPO_ROOT/skills/design/scripts/design-publish.sh"
+[[ -x "$DESIGN_PUBLISH_SH" ]] || fail "design-publish.sh must be executable"
+publish_plan_line=$(grep -nF 'plan-block-write.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
+publish_upsert_line=$(grep -nF 'upsert-diagrams-comment.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
+publish_log_line=$(grep -nF 'design-log-publish.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
+[[ -n "$publish_plan_line" && -n "$publish_upsert_line" && -n "$publish_log_line" && "$publish_plan_line" -lt "$publish_upsert_line" && "$publish_upsert_line" -lt "$publish_log_line" ]] \
+  || fail "(15b) design-publish.sh must call plan-block-write.sh before upsert-diagrams-comment.sh before design-log-publish.sh"
+grep -Fq 'architecture-diagram.skipped' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must handle architecture-diagram.skipped sentinel"
+grep -Fq -- '--clear-architecture' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must invoke --clear-architecture when skipped sentinel present"
 step3b_line=$(grep -nF '<!-- step:3b' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 step4_line=$(grep -nF '<!-- step:4 ' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 [[ -n "$step3b_line" && -n "$step4_line" ]] || fail "(15b) missing Step 3b or Step 4 marker"
 step3b_between=$(sed -n "$((step3b_line + 1)),$((step4_line - 1))p" "$SKILL_MD")
 grep -Fq 'architecture-diagram.skipped' <<<"$step3b_between" \
   || fail "(15b) Step 3b must document architecture-diagram.skipped sentinel creation"
-step5c_between=$(sed -n "$((step5c_line + 1)),$((step5c_line + 90))p" "$SKILL_MD")
-grep -Fq 'architecture-diagram.skipped' <<<"$step5c_between" \
-  || fail "(15b) Step 5c.5 must document architecture-diagram.skipped sentinel handling"
-grep -Fq -- '--clear-architecture' <<<"$step5c_between" \
-  || fail "(15b) Step 5c.5 must invoke --clear-architecture when the skipped sentinel is present"
-
 # Check 17: Step 5b /larch:issue summary-halt guardrails (#2681).
 ORCHESTRATOR_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"
 [[ -f "$ORCHESTRATOR_NEVER_MD" ]] || fail "(17) orchestrator-never.md missing: $ORCHESTRATOR_NEVER_MD"
@@ -1029,21 +1029,37 @@ case "${step0b_reentry_order:-0}" in
   *) fail "(24) unexpected Step 0b re-entry guard ordering check exit: ${step0b_reentry_order:-?}" ;;
 esac
 
-step5c_reentry_order=$(awk '
-  /^### 5c — Write `larch:plan` to GitHub \+ publish$/ { in5c=1; next }
-  /^<!-- step:6 / && in5c { in5c=0 }
-  in5c && /design_reentry_marker_write/ && !write { write=NR }
-  in5c && /tracking-issue-write\.sh" rename --issue "\$ISSUE_NUMBER" --state designed/ && !rename { rename=NR }
-  END {
-    if (!write || !rename) exit 2
-    if (!(write < rename)) exit 1
-  }
-' "$SKILL_MD" || echo "$?")
-case "${step5c_reentry_order:-0}" in
-  0) ;;
-  1|2) fail "(25) SKILL.md design_reentry_marker_write must precede the [DESIGNED] rename" ;;
-  *) fail "(25) unexpected Step 5c re-entry marker ordering check exit: ${step5c_reentry_order:-?}" ;;
-esac
+publish_marker_line=$(grep -nF 'design_reentry_marker_write' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
+publish_rename_line=$(grep -n 'tracking-issue-write.sh' "$DESIGN_PUBLISH_SH" | grep 'state designed' | head -1 | cut -d: -f1 || true)
+[[ -n "$publish_marker_line" && -n "$publish_rename_line" && "$publish_marker_line" -lt "$publish_rename_line" ]] \
+  || fail "(25) design-publish.sh design_reentry_marker_write must precede tracking-issue-write.sh rename --state designed"
+grep -Fq 'design-publish.sh' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c must invoke design-publish.sh"
+grep -Fq '.design-publish-result.env' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c must read .design-publish-result.env file-first"
+grep -Fq 'design-publish.sh configuration error (exit 2)' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c missing design-publish.sh exit 2 abort prose"
+grep -Fq '.completed/step-5c' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c must write .completed/step-5c on PLAN_WRITE_OK=true"
+grep -Fq 'if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh"' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must use if ! around plan-block-write.sh"
+grep -Fq 'export ISSUE_NUMBER' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must export ISSUE_NUMBER before render-final-summary.sh"
+grep -Fq 'export SESSION_ID' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must export SESSION_ID before render-final-summary.sh"
+grep -Fq '_publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh"' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must subshell-capture design-log-publish.sh stdout"
+grep -Fq '_upsert_out=$("$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh"' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must subshell-capture upsert-diagrams-comment.sh stdout"
+grep -Fq '.completed/step-5b' "$DESIGN_PUBLISH_SH" \
+  || fail "(15b) design-publish.sh must require .completed/step-5b precondition"
+grep -Fq 'exit 1 is the normal plan-block-write failure path' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c missing exit 1 parse-then-branch contract"
+grep -Fq '_publish_rc` ∈ {0, 1}' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c missing driver exit-code contract for rc 0 or 1"
+# shellcheck disable=SC2016
+grep -Fq 'do not abort solely because `_publish_rc`=1' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c must not abort solely on driver exit 1"
 
 grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$SKILL_MD" \
   || fail "(26) SKILL.md missing literal session-cache banner"

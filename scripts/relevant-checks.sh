@@ -93,6 +93,10 @@ run_direct_relevant_targets() {
             skills/design/scripts/design-route.sh|skills/design/scripts/design-route.md)
                 append_target_once test-design-structure
                 ;;
+            skills/design/scripts/design-publish.sh|skills/design/scripts/design-publish.md|skills/design/scripts/test-design-publish.sh|skills/design/scripts/test-design-publish.md)
+                append_target_once test-design-publish
+                append_target_once test-design-structure
+                ;;
         esac
         case "$f" in
             skills/design/SKILL.md|skills/design/references/*.md)

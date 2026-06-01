@@ -443,7 +443,7 @@ DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SE
   --post-publish-only
 ```
 
-After every `render-final-summary.sh --post-publish-only` invocation in `/design` (this cancellation fence and Step 5c item 10), if the helper exited 0 and `[ -s "$DESIGN_TMPDIR/final-summary.md" ]`, the orchestrator MUST read $DESIGN_TMPDIR/final-summary.md and emit its full body verbatim as plain chat markdown. Mechanism: read `final-summary.md` (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text), emit the entire file body verbatim as plain markdown chat text. Do NOT paraphrase, summarize, reorder, or add prose between bullets. The full structured block — including title, mode, duration, cost line with per-agent breakdown, tokens, and all bullets — must appear at top chat. Do NOT add free-form prose around the block. The verbatim file body is the only permitted summary content at top chat.
+After Step 5c `design-publish.sh` returns (`_publish_rc` 0 or 1), when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, the orchestrator MUST read that path and emit its full body verbatim as plain chat markdown (same mechanism as Step 5c item 5). This applies on plan-block-write failure (`PLAN_WRITE_OK=false`) and success. After this cancellation fence's `render-final-summary.sh --post-publish-only` invocation, use the same non-empty-file gate (not helper exit 0). Mechanism: read `final-summary.md` (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text), emit the entire file body verbatim as plain markdown chat text. Do NOT paraphrase, summarize, reorder, or add prose between bullets. The full structured block — including title, mode, duration, cost line with per-agent breakdown, tokens, and all bullets — must appear at top chat. Do NOT add free-form prose around the block. The verbatim file body is the only permitted summary content at top chat.
 
 See sibling contract `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.md` (path: `skills/design/scripts/render-final-summary.md`).
 
@@ -1292,20 +1292,63 @@ done <<< "$_validate_out"
 When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and **do not** run the remaining Step 5c items (redaction, `plan-block-write.sh`, publish, rename) on this exit branch.
 
 3. Run `cat "$DESIGN_TMPDIR/composed-plan.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
-4. Run `"${CLAUDE_PLUGIN_ROOT}/scripts/plan-block-write.sh" --issue "$ISSUE_NUMBER" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
-5. If step 4 fails, export `SUMMARY_OUTCOME=failed-plan-write` and run the **Final summary block** from Step 0b (`### Final summary block`), then print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**`, set `PLAN_WRITE_OK=false`, and skip Step **5c** items **6–10** (do not resolve `REPO`, run `upsert-diagrams-comment.sh`, run `design-log-publish.sh`, the two-phase summary refresh, or `tracking-issue-write.sh` rename) **and skip Step 6 cleanup** so `$DESIGN_TMPDIR` is preserved.
-5.5. If step 4 succeeds, source `${CLAUDE_PLUGIN_ROOT}/scripts/lib-design-reentry-guard.sh` and call `design_reentry_marker_write "$ISSUE_NUMBER" "$PPID"` before publish or rename. On non-zero exit, capture stderr to `$DESIGN_TMPDIR/design-reentry-marker-write.failure.log` and append it under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 5c marker write" --tool "design_reentry_marker_write" --exit-code <rc> --category Warnings --output-file "$DESIGN_TMPDIR/design-reentry-marker-write.failure.log" --redact || true`. Do **not** roll back the successful plan write; continue to publish/rename. This marker write intentionally runs before `design-log-publish.sh` and before `tracking-issue-write.sh rename --issue "$ISSUE_NUMBER" --state designed` so it covers publish/rename failures after the plan block has landed.
-6. If step 4 succeeds, set `PLAN_WRITE_OK=true`, then resolve `REPO` for explicit `gh --repo` threading when the hub default might not match the consumer checkout (for example nested `/implement` shells without a fresh `session-setup.sh` repo probe): prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so helpers use the hub default.
-7. **5c.5 — `larch:diagrams` Architecture upsert.** Print `> **🔶 /design 5c.5: larch:diagrams (architecture)**`. After `plan-block-write.sh` succeeds and after `REPO` is resolved, publish the Architecture section to the shared issue-scoped diagrams comment:
-   - If `$DESIGN_TMPDIR/architecture-diagram.md` exists and is non-empty, run `"${CLAUDE_PLUGIN_ROOT}/scripts/upsert-diagrams-comment.sh" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"} --architecture-file "$DESIGN_TMPDIR/architecture-diagram.md"`.
-   - Else if `$DESIGN_TMPDIR/architecture-diagram.md` is absent and `$DESIGN_TMPDIR/architecture-diagram.skipped` exists, run the same helper with `--clear-architecture`.
-   - Else skip this helper call entirely. Known migration limit: `--clear-architecture` only targets the stable `<!-- larch:diagrams v1 -->` comment; legacy `runid=` diagram comments remain orphaned until a manual cleanup or later migration step removes them.
-   Capture stdout/stderr to `$DESIGN_TMPDIR/diagrams-architecture-upsert.stdout` and `$DESIGN_TMPDIR/diagrams-architecture-upsert.stderr`; parse `UPSERT_STATUS` and `ARCHITECTURE_SOURCE`. On `UPSERT_STATUS=failed` or non-zero exit, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with site `design Step 5c.5`, tool `upsert-diagrams-comment.sh architecture`, and `--redact`; do not roll back the successful `plan-block-write` and do not block publish or rename. Print `⏩ 5c.5: status=<UPSERT_STATUS> arch=<ARCHITECTURE_SOURCE>`.
-8. If step 4 succeeds, when `SESSION_ID` is non-empty, export `SUMMARY_OUTCOME=approved` and run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh --outcome approved --mode "$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)" ${REPO:+--repo "$REPO"} --pre-publish-only` so `final-summary.md` exists before the log commit. When `SESSION_ID` is empty, skip this pre-publish render.
-9. If step 4 succeeds, when `SESSION_ID` is non-empty, run publish under `set +e` so post-push `exit 1` does not abort before stdout is parsed: `set +e; _publish_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"} 2> "$DESIGN_TMPDIR/design-log-publish.failure.log"); _publish_rc=$?; set -e`; parse `PUBLISH_OK` from `_publish_out` regardless of `_publish_rc`. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). If `_publish_rc` is non-zero and `_publish_out` lacks a `PUBLISH_OK=` line, treat as unexpected shell failure. On `PUBLISH_OK=false`, append `$DESIGN_TMPDIR/design-log-publish.failure.log` under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh"` with `--log "$DESIGN_TMPDIR/execution-issues.md"`; continue (do not roll back the GitHub plan write).
-10. If step 4 succeeds, run `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh --outcome approved --mode "$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)" ${REPO:+--repo "$REPO"} --post-publish-only` (`final-summary.md` refresh + `larch:final-summary` upsert when issue-bound — rerenders after publish so warnings/exec-issue counts match committed logs). When `SESSION_ID` was empty in item 8, this single post-publish call still runs (no Phase-1 file was written for the design log bundle). If the helper exits 0 and $DESIGN_TMPDIR/final-summary.md is non-empty, apply the shared post-publish full-body emit rule immediately after this callsite, and no other summary prose.
-11. If step 4 succeeds **and** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after the Step 5c item 9 publish attempt, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designed ${REPO:+--repo "$REPO"}` (treat `RENAMED=false` as idempotent success). When `SESSION_ID` is empty, **skip** this rename so `[DESIGNED]` does not imply `larch-logs/design/<RUN_ID>/` materialization without a run id. When `SESSION_ID` was non-empty and `PUBLISH_OK=false`, **skip** this rename so the issue title does not read `[DESIGNED]` while the default branch lacks `larch-logs/design/<RUN_ID>/`; operator retries publish from the preserved `$DESIGN_TMPDIR` or reconciles manually.
-At the Step 5c success boundary on any path where `PLAN_WRITE_OK=true`, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` after the Step 5c work succeeds and before entering Step 5d.
+
+**⚠ Foreground required — do NOT set `run_in_background: true`.**
+
+4. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`) for the deterministic publish tail (plan block write, reentry marker, diagrams upsert, log publish, summary render, `[DESIGNED]` rename).
+
+   ```bash
+   [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+   set +e
+   _publish_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh" \
+     --design-tmpdir "$DESIGN_TMPDIR" \
+     --issue "$ISSUE_NUMBER" \
+     --session-id "$SESSION_ID" \
+     --claude-pid "$PPID" \
+     ${REPO:+--repo "$REPO"})
+   _publish_rc=$?
+   set -e
+   if [[ "${_publish_rc:-0}" -eq 2 ]]; then
+     printf '%s\n' "**⚠ Step 5c: design-publish.sh configuration error (exit 2); aborting /design**" >&2
+     exit 1
+   fi
+   if [[ "${_publish_rc:-0}" -ne 0 && "${_publish_rc:-0}" -ne 1 ]]; then
+     printf '%s\n' "**⚠ Step 5c: design-publish.sh failed (exit ${_publish_rc}); aborting /design**" >&2
+     exit 1
+   fi
+   PLAN_WRITE_OK=""
+   PUBLISH_OK=""
+   RENAMED=""
+   UPSERT_STATUS=""
+   ARCHITECTURE_SOURCE=""
+   FINAL_SUMMARY_PATH=""
+   if [[ -f "$DESIGN_TMPDIR/.design-publish-result.env" ]]; then
+     if [[ -L "$DESIGN_TMPDIR/.design-publish-result.env" ]]; then
+       printf '%s\n' "**⚠ Step 5c: design-publish result env is a symlink; refusing to source**"
+     else
+       while IFS= read -r _line || [[ -n "$_line" ]]; do
+         _key="${_line%%=*}"; _value="${_line#*=}"
+         case "$_key" in
+           PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH) printf -v "$_key" '%s' "$_value" ;;
+           WARN) printf '%s\n' "WARN=$_value" ;;
+         esac
+       done <"$DESIGN_TMPDIR/.design-publish-result.env"
+     fi
+   fi
+   while IFS= read -r _line || [[ -n "$_line" ]]; do
+     _key="${_line%%=*}"; _value="${_line#*=}"
+     case "$_key" in
+       PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
+       WARN) printf '%s\n' "WARN=$_value" ;;
+     esac
+   done <<<"${_publish_out:-}"
+   ```
+
+**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1}` abort above. When `_publish_rc` ∈ {0, 1}, always parse `.design-publish-result.env` (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
+
+5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0 or 1):** when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that path and emit its full body verbatim as plain chat markdown (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text). Do NOT paraphrase, summarize, reorder, or add prose between bullets. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `render-final-summary.sh` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary).
+6. On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **before** Step 5d.
+7. On `PLAN_WRITE_OK=false`: print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
 
 ### 5d — Final warning replay + footer
 
@@ -1318,9 +1361,9 @@ At the Step 5c success boundary on any path where `PLAN_WRITE_OK=true`, immediat
 
 Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise.
 
-Additionally, after Step 5c's `render-final-summary.sh` refreshes the persisted summary artifacts (or after any cancellation outcome's `### Final summary block` fence does the same) AND after the mandatory shared verbatim full-body emit, NEVER write a free-form natural-language recap summary at end of turn. This includes a "Design complete." prose line, a bullet list of artifacts (Run / Discovery / Plan / Plan review / Design log PR / Summary comment), a parenthetical cost paraphrase (for example `~$10.46` or `SIMPLE tier, ~27m`), or any natural-language replacement for the structured `## /design run ...` block. The shared post-publish/full-body emit rule runs only when the helper exited 0 and `$DESIGN_TMPDIR/final-summary.md` is non-empty, followed by any required repeated external-reviewer warnings, and then the machine footer. No free-form recap may appear between or after those pieces. Reason: a verbatim full-block emission ensures the per-agent breakdown (`Claude $X, Codex $X, Cursor $X`) and all other bullets are visible at top chat without depending on Bash-tool UI expansion. Free-form summaries are forbidden because they would either omit or paraphrase that breakdown.
+Additionally, after Step 5c's `design-publish.sh` driver refreshes the persisted summary artifacts (or after any cancellation outcome's `### Final summary block` fence does the same) AND after the mandatory shared verbatim full-body emit from Step 5c item 5, NEVER write a free-form natural-language recap summary at end of turn. This includes a "Design complete." prose line, a bullet list of artifacts (Run / Discovery / Plan / Plan review / Design log PR / Summary comment), a parenthetical cost paraphrase (for example `~$10.46` or `SIMPLE tier, ~27m`), or any natural-language replacement for the structured `## /design run ...` block. The shared post-publish/full-body emit rule runs when `$DESIGN_TMPDIR/final-summary.md` or parsed `FINAL_SUMMARY_PATH` is non-empty after driver handoff (`_publish_rc` 0 or 1), followed by any required repeated external-reviewer warnings, and then the machine footer. No free-form recap may appear between or after those pieces. Reason: a verbatim full-block emission ensures the per-agent breakdown (`Claude $X, Codex $X, Cursor $X`) and all other bullets are visible at top chat without depending on Bash-tool UI expansion. Free-form summaries are forbidden because they would either omit or paraphrase that breakdown.
 
-The rigid `larch:final-summary` body is produced and printed to chat by `skills/design/scripts/render-final-summary.sh` during Step 5c (two-phase on the happy path; single `--post-publish-only` call on plan-block-write failure in Step 5c item 5). Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer below.
+The rigid `larch:final-summary` body is produced by `skills/design/scripts/render-final-summary.sh` inside `design-publish.sh` (two-phase on the happy path; single `--post-publish-only` on plan-block-write failure). The orchestrator emits the rendered `final-summary.md` body verbatim once per Step 5c handoff. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer below.
 
 When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings above, then emit exactly **one** terminal machine footer as the **last human-visible output line** of Step 5. When `PLAN_WRITE_OK=false`, Step 5c item 5 already ran the summary before the `**⚠ 5: plan-block-write failed**` line — do not invoke `render-final-summary.sh` again here.
 
@@ -1376,4 +1419,5 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` — Step 0b pre-gate route driver. Sibling: `design-route.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` — Step 0b post-gate init driver. Sibling: `design-init-runparams.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` — Step 5c publish-tail driver. Sibling: `design-publish.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-publish.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-publish.md`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh` — resolves `design_classification` (`SIMPLE`|`HARD`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks and defaults to HARD with a warning on read failure. Sibling: `read-design-classification.md`.

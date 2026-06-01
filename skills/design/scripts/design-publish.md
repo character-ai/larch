@@ -1,0 +1,55 @@
+# design-publish.sh
+
+**Consumer**: `/design` Step 5c — deterministic publish tail after compose, validator gate, and redaction.
+
+**Caller**: `skills/design/SKILL.md` Step 5c after items 1–3 on Gate-C-approved runs (orchestrator invokes this driver once in the foreground).
+
+## Argv
+
+| Flag | Required | Notes |
+|------|----------|-------|
+| `--design-tmpdir PATH` | yes | `cd … && pwd -P` |
+| `--issue N` | yes | Positive integer |
+| `--session-id STR` | yes | Flag required; value may be empty (newline/CR rejected only) |
+| `--claude-pid N` | yes | Positive integer; passed to `design_reentry_marker_write` |
+| `--repo OWNER/REPO` | no | Forwarded on REPO-aware helpers |
+
+## Responsibilities
+
+1. Preconditions: `.completed/step-5b` present; `composed-plan.redacted.md` non-empty (`exit 2` otherwise).
+2. Resolve `REPO` once (`resolve-repo.sh` → `gh repo view` → empty).
+3. `plan-block-write.sh` with `if !` guard; failure → `failed-plan-write` render, `PLAN_WRITE_OK=false`, `exit 1`.
+4. `design_reentry_marker_write` before publish/rename; non-zero → Warnings via `append-tool-failure.sh`, continue.
+5. `upsert-diagrams-comment.sh` when architecture file non-empty or `architecture-diagram.skipped` present (`--clear-architecture`); subshell stdout capture to `diagrams-architecture-upsert.stdout`; non-blocking failures.
+6. When `SESSION_ID` non-empty: `render-final-summary.sh --pre-publish-only`, then `design-log-publish.sh` with subshell capture; parse `PUBLISH_OK`; unexpected non-zero without `PUBLISH_OK=` → `PUBLISH_OK=false` + Warnings.
+7. When `SESSION_ID` empty: `WARN=` via quiet driver (`add_warn`); skip pre-publish render, publish, and rename.
+8. `render-final-summary.sh --post-publish-only` (always on success path).
+9. `[DESIGNED]` rename only when `SESSION_ID` non-empty **and** `PUBLISH_OK=true`.
+
+Exports `DESIGN_TMPDIR`, `ISSUE_NUMBER`, and `SESSION_ID` before every `render-final-summary.sh` call.
+
+## Result env (`.design-publish-result.env`)
+
+Allowlist: `PLAN_WRITE_OK`, `PUBLISH_OK`, `RENAMED`, `UPSERT_STATUS`, `ARCHITECTURE_SOURCE`, `FINAL_SUMMARY_PATH`, `WARN`.
+
+## Exit codes
+
+| Code | When |
+|------|------|
+| `0` | Publish tail completed (`PLAN_WRITE_OK=true`) |
+| `1` | `plan-block-write.sh` failed (`PLAN_WRITE_OK=false` in result env) |
+| `2` | Argv / precondition error |
+
+## Ordering invariants
+
+`plan-block-write.sh` → `design_reentry_marker_write` → `upsert-diagrams-comment.sh` → `design-log-publish.sh` → `tracking-issue-write.sh rename --state designed`.
+
+## Edit in sync
+
+Update together: `skills/design/SKILL.md` Step 5c, `skills/design/scripts/test-design-publish.sh`, `scripts/test-design-structure.sh`, `scripts/test-render-cost-line-callsites.sh`.
+
+## Harness
+
+`skills/design/scripts/test-design-publish.sh` (contract: `test-design-publish.md`).
+
+Orchestrator handoff: `_publish_out` capture + file-first `.design-publish-result.env` read + stdout merge; exit `2` / unexpected non-zero abort; `_publish_rc=1` is the normal plan-write failure path (parse, do not abort).
