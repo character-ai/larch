@@ -1,0 +1,200 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+# Implementation Plan — #3300: extract Step 18 atomic stall-clear + final-report emit plumbing
+
+SIMPLE tier. Two disjoint mechanical extractions in `/implement` Step 18, with full cutover of the orchestrator prose:
+
+- **E1 (Step 18a)**: add `clear-stall` + `seed-terminal-state` subcommands to `stall-recovery-report.sh`, owning the atomic success-clear (`stall-recovery.md` steps 7.1-7.7) and the terminal durable-write (steps 8.1-8.3).
+- **E2 (Step 18b)**: add a new standalone wrapper that renders the token report, runs `write-final-report.sh`, snapshot-compares `summary-final.md`, and emits `EMIT_BODY=true|false`.
+
+The verbatim `summary-final.md` emit and the `.step17-printed` / `.step17-emitted` sentinels stay prompt-side (NEVER #20). The in-memory `STALL_TRACKING` clear (step 7.6) stays prompt-side.
+
+## Files to modify/create
+
+### UPDATED: `skills/implement/scripts/stall-recovery-report.sh`
+- Add a shared awk key-rewrite helper (mirrors the `cmd_record_attempt` awk idiom): update named keys in place, preserve every other line and order, append a key when absent. This preserves the canonical Step-8 shape by construction instead of recomposing it.
+- `cmd_clear_stall --implement-tmpdir <path>` (steps 7.1-7.5, 7.7):
+  - Require `$tmpdir/ship-pr-state.sh` to exist as a regular non-symlink file (reuse `validate_ship_pr_state` plus a regular/symlink guard). Absent → `CLEARED=false`; malformed → exit 3.
+  - Key-rewrite setting `STALL_TRACKING=false` and clearing `STALL_STEP=` (preserve `PHASE` / `BAIL_REASON` / `BAIL_FAILURE_DETAIL_LOG` / `EXIT_CODE` / `PR_*`).
+  - Write to `ship-pr-state.sh.tmp.<rand>` in the same dir; re-read the temp via `read-session-env-key.sh --key STALL_TRACKING`, assert `false`; `mv -f` over `ship-pr-state.sh`; re-read the destination, assert `false`.
+  - Emit `CLEARED=true` only when every disk step succeeds; on any temp-read / `mv` / dest-read failure emit `CLEARED=false` (orchestrator routes to terminal, step 7.7). Never clear in-memory state.
+- `cmd_seed_terminal_state --implement-tmpdir <path> [--stall-step <N>] [--phase <token>]` (steps 8.1-8.3):
+  - When `ship-pr-state.sh` exists: key-rewrite keeping `STALL_TRACKING=true`, refreshing `STALL_STEP` / `PHASE` from sanitized args (`safe_step_value` / `safe_phase_value`) when provided else keeping existing, and preserving `BAIL_FAILURE_DETAIL_LOG` when present.
+  - Else seed the canonical minimal Step-8 shape: `PHASE=ci-initial`, `STALL_TRACKING=true`, `STALL_STEP=8`, `BAIL_REASON=`, `BAIL_FAILURE_DETAIL_LOG=`, `EXIT_CODE=4` (args override `STALL_STEP` / `PHASE` when supplied).
+  - Re-read; assert `STALL_TRACKING=true`. Emit `SEEDED=true` + `SEED_MODE=rewrite|seed` on success, else `SEEDED=false`.
+- Add both subcommands to the `main()` `case` dispatch and the `usage()` list. Reuse existing `atomic_write_text` / `kv_get` / sanitizers; no new external deps.
+
+### UPDATED: `skills/implement/scripts/stall-recovery-report.md`
+- Document `clear-stall` and `seed-terminal-state` under `## Subcommands` (argv, emitted `CLEARED` / `SEEDED` / `SEED_MODE`, exit codes, the disk-before-memory and canonical-shape invariants). These compose no public report text, so the `## Surface Allowlists` table and `lint` parity are unchanged — state this explicitly.
+
+### UPDATED: `skills/implement/scripts/test-stall-recovery-report.sh`
+- `clear-stall`: success clear asserts on-disk `STALL_TRACKING=false` + `STALL_STEP=` cleared + other keys (`PHASE` / `EXIT_CODE` / `PR_URL`) preserved + `CLEARED=true`; absent state → `CLEARED=false`; malformed state → exit 3.
+- `seed-terminal-state`: rewrite-existing keeps `STALL_TRACKING=true`, refreshes `STALL_STEP` / `PHASE`, preserves a canonical `BAIL_FAILURE_DETAIL_LOG`; seed-fresh (no state file) writes the canonical Step-8 shape and re-confirms `STALL_TRACKING=true` + `SEEDED=true` + `SEED_MODE=seed`.
+- Reuse `write_state` / `make_tmp` / `run_capture` / `kv` / `assert_eq`.
+
+### NEW: `skills/implement/scripts/step-18b-final-report.sh`
+- E2 wrapper. argv: `--implement-tmpdir <path>` (required). Source `lib-quiet.sh`; emit machine KVs via `emit_kv`.
+- Faithful extraction of the SKILL.md Step 18b `_wfr_*` block:
+  1. Render token report: `token-report.sh --full --format json --output "$tmpdir/token-report-rendered.json"`; on non-zero capture to `$tmpdir/step18-token-report.failure.log` and `append-tool-failure.sh` (best-effort), continue.
+  2. `emit_body=false`; if `$tmpdir/.step17-emitted` is absent → `emit_body=true`.
+  3. Snapshot: if `summary-final.md` exists `cp` it to `.step18-prebody`; else `rm -f .step18-prebody`.
+  4. Run `write-final-report.sh --implement-tmpdir "$tmpdir"` (no `--print-stdout` — see Approach). On non-zero, capture to `$tmpdir/step18-write-final-report.failure.log` + `append-tool-failure.sh`; record `WFR_RC`.
+  5. When `write-final-report.sh` succeeded AND `emit_body=false` AND `! cmp -s .step18-prebody summary-final.md` → `emit_body=true`.
+  6. `emit_kv EMIT_BODY "$emit_body"`; `emit_kv WFR_RC "$rc"`; `emit_kv STEP17_EMITTED_PRESENT <bool>`.
+- The wrapper NEVER emits the body and NEVER writes `.step17-emitted` (NEVER #20 boundary).
+
+### NEW: `skills/implement/scripts/step-18b-final-report.md`
+- Sibling contract: purpose, argv, emitted KVs, the NEVER #20 boundary, caller (SKILL.md Step 18b), harness, edit-in-sync rules.
+
+### NEW: `skills/implement/scripts/test-step-18b-final-report.sh`
+- Offline harness with PATH-stubbed `token-report.sh` / `write-final-report.sh`: `EMIT_BODY=true` when `.step17-emitted` absent; `EMIT_BODY=true` when the body changed vs snapshot; `EMIT_BODY=false` when `.step17-emitted` present AND body unchanged; token-report failure tolerated (EMIT_BODY still decided); assert the wrapper never writes `.step17-emitted`.
+
+### NEW: `skills/implement/scripts/test-step-18b-final-report.md`
+- Harness contract stub naming its primary `step-18b-final-report.sh`.
+
+### REWRITTEN: `skills/implement/references/stall-recovery.md`
+- Step 7 (success path): replace the 7-item hand sequence with one `stall-recovery-report.sh clear-stall --implement-tmpdir "$IMPLEMENT_TMPDIR"` call; branch on `CLEARED` (true → clear the in-memory var then Step 18b; false → terminal). Keep the "clear disk before memory" wording and the step-7.6 in-memory clear as prompt-side.
+- Step 8 (terminal path): replace 8.1-8.3 with `stall-recovery-report.sh seed-terminal-state --implement-tmpdir "$IMPLEMENT_TMPDIR" [--stall-step <N>] [--phase <token>]`; branch on `SEEDED`. PRESERVE the structural-pin literals `PHASE=ci-initial` and `BAIL_FAILURE_DETAIL_LOG=` in the prose (`test-implement-structure.sh` greps them), and leave the `retry-policy --class "$FAILURE_CLASS"` and `attempt_count >= MAX_ATTEMPTS` lines (steps 5-6) untouched. Comment generation, dry-run eval, and issue-number load stay prompt-side.
+
+### UPDATED: `skills/implement/SKILL.md`
+- Step 18b: replace the `_wfr_*` Bash block (token-report + conditional `--print-stdout` + snapshot + `cmp`) with one call to `step-18b-final-report.sh`, then parse `EMIT_BODY`. Keep the dual-condition verbatim-emit prose but key it on `EMIT_BODY=true`; keep `.step17-emitted` written prompt-side ONLY after the body emit. Preserve the `### Step 18a — Stall recovery gate` / `### Step 18b — Teardown` headings and the no-stall fast-path + three-layer-gate sentences (structural pins).
+- Step 18a helper-surface list: add the `step-18b-final-report.sh` / `.md` / `test-step-18b-final-report.sh` paths.
+
+### UPDATED: `Makefile`
+- Register `test-step-18b-final-report`: add it to the top aggregate `.PHONY` line, add a dedicated `.PHONY: test-step-18b-final-report` line, add a target block (`bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-step-18b-final-report.sh`), and add it to one `test-harnesses-N` shard so `test-harness-shards-coverage` stays green.
+
+## Approach
+- E1 reuses the script's atomic-write + KV idioms; the only new primitive is the awk key-rewrite, which preserves the canonical state shape by construction (vs. recomposing from scratch). Disk-before-memory ordering and the `CLEARED` / `SEEDED` contracts keep the determinism-critical sequencing inside bash while the in-memory clear (7.6) stays with the orchestrator.
+- E2 is a standalone wrapper; `write-final-report.sh` stays the pure renderer. One intentional behavior delta: the wrapper drops `--print-stdout`, so the report body appears once at top chat (the orchestrator's authoritative verbatim emit) instead of also in the collapsible Bash stdout. `write-final-report.sh` writes `summary-final.md` regardless of `--print-stdout` (verified), so both the EMIT_BODY decision and the body content are unaffected. Flag this delta for the review panel.
+
+## Edge cases
+- `clear-stall` with absent/malformed `ship-pr-state.sh` → `CLEARED=false` / exit 3; orchestrator routes to terminal.
+- `clear-stall` where `STALL_TRACKING` / `STALL_STEP` keys are missing → key-rewrite appends them.
+- `seed-terminal-state` rewrite preserves `BAIL_FAILURE_DETAIL_LOG` only when present; seed-fresh writes it empty.
+- E2 wrapper: `summary-final.md` absent → no snapshot, EMIT_BODY from the `.step17-emitted`-absent condition only. `write-final-report.sh` non-zero → cmp branch skipped, EMIT_BODY reflects only the `.step17-emitted` condition.
+
+## Failure modes
+1. Partial `clear-stall` write leaving `STALL_TRACKING` ambiguous → mitigated by temp-write + reread-assert + `mv -f` + dest-reread-assert and the `CLEARED=false`→terminal contract (in-memory cleared only on `CLEARED=true`). Earliest signal: harness assertion on on-disk `STALL_TRACKING`.
+2. `seed-terminal-state` dropping a canonical Step-8 key (`EXIT_CODE` / `BAIL_FAILURE_DETAIL_LOG`) → breaks the Step 18b `[STALLED]` rename gate / downstream `classify`. Mitigated by key-based rewrite + harness shape assertions + the `PHASE=ci-initial` / `BAIL_FAILURE_DETAIL_LOG=` structural pins. Earliest signal: `test-implement-structure.sh`.
+3. E2 EMIT_BODY regressing NEVER #20 (double-emit or missing-emit of the summary) → mitigated by the emitted×changed harness matrix and keeping the verbatim emit + sentinel prompt-side. Earliest signal: the wrapper harness cases.
+
+## Testing strategy
+- Extend `test-stall-recovery-report.sh` (E1) and add `test-step-18b-final-report.sh` (E2).
+- Keep `test-write-final-report.sh` green (the `write-final-report.sh` interface is unchanged).
+- Run `bash scripts/test-implement-structure.sh`, `bash skills/implement/scripts/stall-recovery-report.sh lint`, and `make lint` (shellcheck / markdownlint / agent-lint / bash32) after edits.
+
+diff_added: 500
+diff_deleted: 40
+diff_lines: 540
+
+</plan>
+
+<findings>
+### FINDING_1: Structural harness still pins removed inline Step 18b block
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan extracts Step 18b into `step-18b-final-report.sh` and drops the inline `_wfr_*` / `--print-stdout` / in-fence `cmp` block from `SKILL.md`, but `scripts/test-implement-structure.sh` (and related structural pins) still require those removed literals. After the extraction, `make lint` fails on assertion 18 / `test-harnesses-16` even when the runtime change is correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `scripts/test-implement-structure.sh` and `scripts/test-render-cost-line-callsites.sh` to **Files to modify**; repin Step 18 to the wrapper call, `EMIT_BODY` parsing, and the no-`--print-stdout` contract (per `test-implement-structure.md:21-22`)
+  - From Codex-Arch: Update this harness in the same PR to assert the new wrapper call and EMIT_BODY/WFR_RC parsing, and move the cmp/body-change behavior assertion to test-step-18b-final-report.sh.
+  - From Cursor-Innovation: Add explicit plan steps to retarget those pins to `step-18b-final-report.sh` / `EMIT_BODY` (and run the harness in Testing strategy)
+  - From Codex-Innovation: Update this harness to pin the new wrapper call plus EMIT_BODY/success-guard prose, or remove the obsolete inline _wfr_args and cmp shape checks
+  - From Codex-Pragmatic: Update test-implement-structure.sh in the plan to pin the new step-18b-final-report.sh invocation and wrapper-level cmp/EMIT_BODY contract instead of the removed inline Bash block
+
+
+### FINDING_2: EMIT_BODY can stay true when final report write fails or body is empty
+- **Reviewer(s)**: Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-dyn-emit-boundary, Codex-Requirements, Cursor-dyn-state-contract
+- **Severity**: important
+- **Concern**: The planned wrapper can set `EMIT_BODY=true` from `.step17-emitted` / cmp logic even when `write-final-report.sh` returns non-zero or leaves `summary-final.md` missing or empty. `SKILL.md` keys verbatim emission on `EMIT_BODY=true`, violating the existing Step 18 success gate: the orchestrator may emit stale pre-refresh content, write `.step17-emitted` incorrectly, or attempt a NEVER #20 verbatim emit on an empty body.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Make the wrapper emit EMIT_BODY=true only when WFR_RC=0 and summary-final.md is non-empty, or make SKILL.md require both EMIT_BODY=true and WFR_RC=0 before reading/emitting the body and writing .step17-emitted.
+  - From Codex-Innovation: (same slot as Codex-Arch in source FINDING_2 — covered by Codex-Arch bullet above; no separate verbatim in FINDING_2)
+  - From Codex-Pragmatic: (same theme as Codex-Arch in source FINDING_2)
+  - From Codex-dyn-emit-boundary: (grouped with Codex-Arch in source FINDING_2)
+  - From Codex-Requirements: Gate EMIT_BODY on WFR_RC=0 and non-empty summary-final.md, or require SKILL.md to emit only when EMIT_BODY=true and WFR_RC=0; add a write-final-report failure case to test-step-18b-final-report.sh
+  - From Cursor-dyn-state-contract: Gate EMIT_BODY in step-18b-final-report.sh on post-write `[ -s "$tmpdir/summary-final.md" ]` and keep the SKILL.md orchestrator `-s` guard alongside `EMIT_BODY=true`
+
+
+### FINDING_3: Wrapper must use rooted helper paths and rehydrate token/session env
+- **Reviewer(s)**: Codex-Edge, Codex-Innovation, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The planned `step-18b-final-report.sh` drops rooted helper invocation and token/session rehydration that the current Step 18 block performs. Bare `token-report.sh` / `write-final-report.sh` PATH lookup can fail when plugin scripts are not on PATH, bind token reporting to the wrong transcript, or allow PATH hijack in consumer repos; PATH-stubbed tests may hide the integration break.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Inside the wrapper, compute SCRIPT_DIR and PLUGIN_ROOT, rehydrate LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE, and LARCH_TIMING_LEDGER from session-env.sh, and invoke $PLUGIN_ROOT/scripts/token-report.sh plus $SCRIPT_DIR/write-final-report.sh by rooted path
+  - From Codex-Innovation: Have step-18b-final-report.sh resolve PLUGIN_ROOT/SCRIPT_DIR and invoke token-report.sh, write-final-report.sh, and append-tool-failure.sh by absolute repo paths; stub tests via a temp plugin root rather than PATH
+  - From Codex-Pragmatic: Resolve SCRIPT_DIR/PLUGIN_ROOT in the wrapper and invoke "$PLUGIN_ROOT/scripts/token-report.sh" plus "$SCRIPT_DIR/write-final-report.sh"; adapt tests with a stub plugin root or explicit override vars
+
+
+### FINDING_4: Duplicate Step 18b failure capture in SKILL orchestrator prose
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: After E2 moves token-report / write-final-report work into `step-18b-final-report.sh`, `SKILL.md` still instructs the orchestrator to capture those failures, risking duplicate `step18-*.failure.log` files and duplicate `append-tool-failure` Tool Failures rows when the wrapper already logs best-effort.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: When replacing the _wfr_* block, state that step-18b-final-report.sh owns capture/append; delete or narrow the orchestrator-only capture sentence
+
+
+### FINDING_6: seed-terminal-state lacks symlink/malformed-state guards on existing file
+- **Reviewer(s)**: Codex-dyn-state-contract
+- **Severity**: important
+- **Concern**: `clear-stall` gets regular-file / non-symlink / malformed-state validation, but `seed-terminal-state` only documents key-rewrite when `ship-pr-state.sh` exists, leaving the mutating terminal path without the same checks. A symlinked or malformed existing state file can be read/rewritten, violating the plain `KEY=value` non-symlink contract and making seed behavior inconsistent with classify/clear-stall.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-state-contract: Apply the same regular non-symlink guard and validate_ship_pr_state check before seed-terminal-state rewrites an existing file; reject malformed present state with the documented exit-3 path.
+
+
+### FINDING_7: Malformed stall state may omit promised CLEARED/SEEDED machine keys
+- **Reviewer(s)**: Codex-dyn-state-contract
+- **Severity**: latent
+- **Concern**: Proposed stall-recovery prose branches on `CLEARED` and `SEEDED`, but malformed-state handling may exit 3 without emitting those machine keys, leaving the orchestrator without the promised KV output for terminal-route decisions during `clear-stall` or `seed-terminal-state`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-state-contract: Either emit CLEARED=false or SEEDED=false before expected validation exits, or make the Step 7/8 prose explicitly treat non-zero or missing KV output as the terminal branch.
+
+
+### FINDING_9: clear-stall tests omit append-when-absent STALL_* key contract
+- **Reviewer(s)**: Codex-dyn-harness-integration
+- **Severity**: latent
+- **Concern**: Planned clear-stall happy-path tests may not cover the case where an existing `ship-pr-state.sh` lacks `STALL_TRACKING` / `STALL_STEP`. If the awk rewrite only updates existing keys, a partial state file can pass tests but still fail later teardown validation that requires those keys to exist after Step 7 success clear.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-harness-integration: Add one minimal clear-stall fixture with an existing state file missing STALL_TRACKING and STALL_STEP, asserting CLEARED=true plus appended STALL_TRACKING=false and STALL_STEP= while preserving unrelated keys
+
+---
+
+**Merge notes (diagnostic):** 17 source rows → 9 merged findings. Harness/structure pins (source 1,3,5,6,10); EMIT_BODY gating (2,11,12); rooted paths/env (4,7,9) were consolidated. Source FINDING_2 listed Codex-Innovation, Codex-Pragmatic, and Codex-dyn-emit-boundary without distinct verbatim resolutions beyond Codex-Arch’s text — those slots are attributed on the finding but only slots with distinct verbatim bullets appear above.
+
+
+</findings>
+
+<feature>
+Further factoring out /implement into bash Phase 6: extract Step 18 atomic stall-clear + final-report emit plumbing
+
+## Context
+
+Two Step 18-area mechanical sequences are currently executed by the orchestrator by hand:
+
+**E1 — stall-recovery atomic file ops** (`skills/implement/references/stall-recovery.md`): the success-path clear (steps 7.1–7.7: compose temp → write → re-read+assert `STALL_TRACKING=false` → `mv -f` → re-read+assert) and the terminal-failure durable write (steps 8.1–8.3: rewrite/seed `ship-pr-state.sh` with `STALL_TRACKING=true` preserving the canonical Step-8 key shape, then re-read+confirm).
+
+**E2 — Step 18 final-report render/emit decision** (`skills/implement/SKILL.md` Step 18b): the `_wfr_*` block that renders the token report, runs `write-final-report.sh`, snapshots `summary-final.md` to `.step18-prebody`, and `cmp`-compares to decide whether the orchestrator must emit the body.
+
+## Analysis
+
+Atomic temp-write / rename / re-read-and-assert sequences are exactly what should **not** be hand-executed by an LLM — they're determinism-critical and the disk-before-memory ordering is load-bearing. The `cmp` / snapshot emit-decision is likewise mechanical; only the verbatim chat emission of `summary-final.md` must stay prompt-side (NEVER #20).
+
+## Proposal
+
+- **E1:** add `clear-stall` and `seed-terminal-state` subcommands to `skills/implement/scripts/stall-recovery-report.sh` that implement the atomic success-clear and terminal durable-write (preserving the disk-before-memory ordering and the canonical Step-8 key shape).
+- **E2:** add a thin wrapper around the Step 18 token-report + `write-final-report.sh` + snapshot-compare that emits `EMIT_BODY=true|false`; the orchestrator performs the verbatim `summary-final.md` emit (and writes the `.step17-emitted` sentinel) only when `EMIT_BODY=true`.
+
+## Risk / caveats
+
+- NEVER #13 (never mutate `finalize-state.sh` prompt-side — unaffected, but keep the boundary) and NEVER #20 (the verbatim body emission + `.step17-printed` / `.step17-emitted` sentinels stay prompt-side).
+- Preserve the three-layer `STALL_TRACKING` resolution and the success-path "clear disk before memory" ordering exactly.
+- Extend `skills/implement/scripts/test-stall-recovery-report.sh`; keep `write-final-report` coverage green.
+- Region: Step 18 (E1 = 18a, E2 = 18b) — disjoint from `ship-pr.sh`.
+
+</feature>

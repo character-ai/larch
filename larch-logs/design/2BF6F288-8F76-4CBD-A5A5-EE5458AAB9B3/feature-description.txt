@@ -1,0 +1,25 @@
+Further factoring out /implement into bash Phase 6: extract Step 18 atomic stall-clear + final-report emit plumbing
+
+## Context
+
+Two Step 18-area mechanical sequences are currently executed by the orchestrator by hand:
+
+**E1 — stall-recovery atomic file ops** (`skills/implement/references/stall-recovery.md`): the success-path clear (steps 7.1–7.7: compose temp → write → re-read+assert `STALL_TRACKING=false` → `mv -f` → re-read+assert) and the terminal-failure durable write (steps 8.1–8.3: rewrite/seed `ship-pr-state.sh` with `STALL_TRACKING=true` preserving the canonical Step-8 key shape, then re-read+confirm).
+
+**E2 — Step 18 final-report render/emit decision** (`skills/implement/SKILL.md` Step 18b): the `_wfr_*` block that renders the token report, runs `write-final-report.sh`, snapshots `summary-final.md` to `.step18-prebody`, and `cmp`-compares to decide whether the orchestrator must emit the body.
+
+## Analysis
+
+Atomic temp-write / rename / re-read-and-assert sequences are exactly what should **not** be hand-executed by an LLM — they're determinism-critical and the disk-before-memory ordering is load-bearing. The `cmp` / snapshot emit-decision is likewise mechanical; only the verbatim chat emission of `summary-final.md` must stay prompt-side (NEVER #20).
+
+## Proposal
+
+- **E1:** add `clear-stall` and `seed-terminal-state` subcommands to `skills/implement/scripts/stall-recovery-report.sh` that implement the atomic success-clear and terminal durable-write (preserving the disk-before-memory ordering and the canonical Step-8 key shape).
+- **E2:** add a thin wrapper around the Step 18 token-report + `write-final-report.sh` + snapshot-compare that emits `EMIT_BODY=true|false`; the orchestrator performs the verbatim `summary-final.md` emit (and writes the `.step17-emitted` sentinel) only when `EMIT_BODY=true`.
+
+## Risk / caveats
+
+- NEVER #13 (never mutate `finalize-state.sh` prompt-side — unaffected, but keep the boundary) and NEVER #20 (the verbatim body emission + `.step17-printed` / `.step17-emitted` sentinels stay prompt-side).
+- Preserve the three-layer `STALL_TRACKING` resolution and the success-path "clear disk before memory" ordering exactly.
+- Extend `skills/implement/scripts/test-stall-recovery-report.sh`; keep `write-final-report` coverage green.
+- Region: Step 18 (E1 = 18a, E2 = 18b) — disjoint from `ship-pr.sh`.
