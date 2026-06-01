@@ -51,6 +51,11 @@ def rename(
     if new_title == current_title:
         return new_title
     redacted = _redact_title(new_title)
+    prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE[state]
+    stripped = _LIFECYCLE_PREFIX_RE.sub("", redacted, count=1)
+    tail_budget = config.TRACKING_TITLE_MAX_LEN - len(prefix)
+    if len(stripped) > tail_budget:
+        redacted = prefix + stripped[:tail_budget]
     result = gh.issue_edit(
         runner,
         issue,

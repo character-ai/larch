@@ -152,15 +152,6 @@ def test_merge_noop_when_pr_already_merged(tmp_path: Path) -> None:
     assert not any(call[1:3] == ("pr", "merge") for call in runner.calls)
 
 
-def test_update_manifest_ignores_unknown_keys(tmp_path: Path) -> None:
-    ctx = _ctx(tmpdir=str(tmp_path), run_id="run-abc")
-    _ = run_logs.init_run(ctx)
-    manifest = run_logs.update_manifest(ctx, version="9", updated_at="now")
-    assert manifest.version == "9"
-    assert manifest.updated_at == "now"
-    assert "version" not in manifest.steps_ran
-
-
 def test_flush_recoverable_rejects_mixed_commit_subjects(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -250,22 +241,12 @@ def test_merge_flush_pre_post_order(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", fake_head)
     monkeypatch.setattr(merge_module, "_version_race_gate", fake_version)
 
+    open_pr = '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}'
     runner = RecordingRunner(
         responses=[
-            CommandResult(
-                ("gh", "pr", "view", "1"),
-                0,
-                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
-                "",
-                0.01,
-            ),
-            CommandResult(
-                ("gh", "pr", "view", "1"),
-                0,
-                '{"mergeStateStatus":"CLEAN","headRefOid":"abc"}',
-                "",
-                0.01,
-            ),
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
         ],
     )
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(tmp_path / "state.env"))
@@ -291,15 +272,414 @@ def test_flush_recoverable_rejects_more_than_five_commits(
     assert not merge_module._flush_recoverable(runner, "aaaa1111", cwd=None)  # pyright: ignore[reportPrivateUsage]
 
 
-@pytest.mark.parametrize("literal", sorted(config.MERGE_RESULTS))
-def test_merge_pr_can_emit_each_literal(
-    literal: str,
+def _open_pr_responses(
+    merge_state: str = "CLEAN",
+    head_oid: str = "abc",
+) -> list[CommandResult]:
+    open_pr = (
+        '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}'
+    )
+    merge_json = (
+        f'{{"mergeStateStatus":"{merge_state}","headRefOid":"{head_oid}"}}'
+    )
+    return [
+        CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+        CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+        CommandResult(("gh", "pr", "view", "1"), 0, merge_json, "", 0.01),
+    ]
+
+
+def test_merge_pr_emits_admin_merged(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    """Table-driven guard: merge_pr return values stay within MERGE_RESULTS."""
-    _ = monkeypatch, tmp_path
-    assert literal in config.MERGE_RESULTS
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
+    monkeypatch.setattr(git_module, "try_rev_parse", lambda *_a, **_k: "abc")
+    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+
+
+def test_merge_pr_emits_merged_via_plain_fallback(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 1, "", "admin denied", 0.01),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
+    monkeypatch.setattr(git_module, "try_rev_parse", lambda *_a, **_k: "abc")
+    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_MERGED
+
+
+def test_merge_pr_emits_policy_denied(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 1, "", "denied", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
+    monkeypatch.setattr(git_module, "try_rev_parse", lambda *_a, **_k: "abc")
+    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = _ctx(
+        tmpdir=str(tmp_path),
+        state_file=str(state),
+        no_admin_fallback=True,
+    )
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_POLICY_DENIED
+
+
+def test_merge_pr_emits_admin_failed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 1, "", "admin fail", 0.01),
+            CommandResult(("gh", "pr", "merge"), 1, "", "plain fail", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
+    monkeypatch.setattr(git_module, "try_rev_parse", lambda *_a, **_k: "abc")
+    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_ADMIN_FAILED
+
+
+def test_merge_pr_emits_ci_not_ready(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(responses=_open_pr_responses())
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: False)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_CI_NOT_READY
+
+
+def test_merge_pr_emits_version_already_published(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(responses=_open_pr_responses())
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
+    monkeypatch.setattr(git_module, "try_rev_parse", lambda *_a, **_k: "abc")
+    monkeypatch.setattr(
+        merge_module,
+        "_version_race_gate",
+        lambda *_a, **_k: merge_module.MergeResult(
+            result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
+            error="race",
+        ),
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED
+
+
+def test_merge_noop_preserves_admin_merged_from_state(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text(
+        "MERGE_RESULT=admin_merged\nRUN_ID=run-abc\n",
+        encoding="utf-8",
+    )
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"MERGED","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+
+
+def test_merge_noop_runs_post_flush_on_first_probe(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    flushed: list[str] = []
+
+    def fake_post(*_a: object, **kwargs: object) -> run_logs.RefreshSkip:
+        flushed.append(str(kwargs.get("merge_result", "")))
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    monkeypatch.setattr(run_logs, "flush_logs_post", fake_post)
+    state = tmp_path / "state.env"
+    _ = state.write_text("MERGE_RESULT=merged\nRUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"MERGED","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_MERGED
+    assert flushed == [config.MERGE_RESULT_MERGED]
+
+
+def test_merge_pr_view_failure_is_error(tmp_path: Path) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), 1, "", "network down", 0.01),
+        ],
+    )
+    ctx = _ctx(tmpdir=str(tmp_path), pr_number=1)
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "pr view failed" in out.error
+
+
+def test_ensure_head_empty_local_head_is_error() -> None:
+    runner = RecordingRunner()
+    state = gh.MergeState("CLEAN", "abc")
+    ctx = _ctx()
+    out = merge_module._ensure_head_matches_pr(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        ctx,
+        state,
+        sleeper=lambda _s: None,
+        cwd=None,
+    )
+    assert isinstance(out, merge_module.MergeResult)
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "local HEAD" in out.error
+
+
+def test_merge_continues_when_pre_flush_commit_fails(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"BEHIND","headRefOid":"abc"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(
+        run_logs,
+        "flush_logs_pre",
+        lambda *_a, **_k: run_logs.RefreshSkip(skipped=True, reason="commit-failed"),
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_MAIN_ADVANCED
+
+
+def test_version_race_gate_version_already_published(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "fetch"), 0, "", "", 0.01),
+            CommandResult(("git", "show"), 0, '{"version": "1.2.3"}', "", 0.01),
+            CommandResult(("git", "fetch"), 0, "", "", 0.01),
+            CommandResult(("git", "show"), 0, '{"version": "1.2.3"}', "", 0.01),
+        ],
+    )
+    monkeypatch.setattr(
+        git_module,
+        "try_log_subjects",
+        lambda *_a, **_k: git_module.LogSubjects(("Bump version to 1.2.3",)),
+    )
+    monkeypatch.setattr(git_module, "is_ancestor", lambda *_a, **_k: True)
+    out = merge_module._version_race_gate(runner, cwd=None)  # pyright: ignore[reportPrivateUsage]
+    assert out is not None
+    assert out.result == config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED
+
+
+def test_version_race_gate_no_bump_commits_returns_none(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("git", "fetch"), 0, "", "", 0.01)],
+    )
+    monkeypatch.setattr(
+        git_module,
+        "try_log_subjects",
+        lambda *_a, **_k: git_module.LogSubjects(("feat: add widget",)),
+    )
+    out = merge_module._version_race_gate(runner, cwd=None)  # pyright: ignore[reportPrivateUsage]
+    assert out is None
+
+
+def test_merge_flush_recovery_success_emits_admin_merged(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    open_pr = '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}'
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"aaaa1111"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"aaaa1111"}',
+                "",
+                0.01,
+            ),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
+        ],
+    )
+    recovery = git_module.ForcePushResult(pushed=True, status="ok", branch="feat")
+    head_oids = iter(("cccc3333", "aaaa1111"))
+
+    def fake_recoverable(*_a: object, **_k: object) -> bool:
+        return True
+
+    monkeypatch.setattr(merge_module, "_flush_recoverable", fake_recoverable)
+    monkeypatch.setattr(
+        git_module,
+        "try_rev_parse",
+        lambda *_a, **_k: next(head_oids, "aaaa1111"),
+    )
+    monkeypatch.setattr(git_module, "force_push_recovery", lambda *_a, **_k: recovery)
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
+    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+
+
+def test_merge_post_recovery_ci_pending(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    open_pr = '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}'
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"aaaa1111"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"aaaa1111"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    recovery = git_module.ForcePushResult(pushed=True, status="ok", branch="feat")
+    checks_calls = {"count": 0}
+    head_oids = iter(("cccc3333", "aaaa1111"))
+
+    def fake_checks(*_a: object, **_k: object) -> bool:
+        checks_calls["count"] += 1
+        return checks_calls["count"] == 1
+
+    monkeypatch.setattr(merge_module, "_flush_recoverable", lambda *_a, **_k: True)
+    monkeypatch.setattr(
+        git_module,
+        "try_rev_parse",
+        lambda *_a, **_k: next(head_oids, "aaaa1111"),
+    )
+    monkeypatch.setattr(git_module, "force_push_recovery", lambda *_a, **_k: recovery)
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", fake_checks)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_CI_NOT_READY
+    assert "after force-push recovery" in out.error
 
 
 def test_flush_recoverable_rejects_non_larch_log_paths(

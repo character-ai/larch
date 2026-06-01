@@ -69,26 +69,22 @@ def merge_pr(
     if ctx.pr_number is None:
         return MergeResult(result=config.MERGE_RESULT_ERROR, error="pr_number required")
 
-    terminal = _merge_noop_if_pr_closed(
-        runner, ctx, cwd=cwd, post_flush=False,
-    )
+    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd)
     if terminal is not None:
         return terminal
 
-    pre = run_logs.flush_logs_pre(runner, ctx, cwd=cwd)
-    if pre.skipped and pre.reason == "commit-failed":
-        return MergeResult(result=config.MERGE_RESULT_ERROR, error="flush_logs_pre commit failed")
+    _ = run_logs.flush_logs_pre(runner, ctx, cwd=cwd)
 
-    terminal = _merge_noop_if_pr_closed(
-        runner, ctx, cwd=cwd, post_flush=True,
-    )
+    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd)
     if terminal is not None:
         return terminal
 
     pr_num = ctx.pr_number
     state = _refresh_pr_info(runner, pr_num, ctx.repo, cwd=cwd)
     if state.merge_state_status == "BEHIND":
-        _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED)
+        if post_err is not None:
+            return post_err
         return MergeResult(result=config.MERGE_RESULT_MAIN_ADVANCED, error="")
     if not state.merge_state_status or state.merge_state_status == "UNKNOWN":
         state = _retry_unknown(
@@ -100,10 +96,14 @@ def merge_pr(
             cwd=cwd,
         )
     if state.merge_state_status == "BEHIND":
-        _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED)
+        if post_err is not None:
+            return post_err
         return MergeResult(result=config.MERGE_RESULT_MAIN_ADVANCED, error="")
     if not state.merge_state_status or state.merge_state_status == "UNKNOWN":
-        _post_flush(runner, ctx, config.MERGE_RESULT_ERROR)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_ERROR)
+        if post_err is not None:
+            return post_err
         return MergeResult(
             result=config.MERGE_RESULT_ERROR,
             error=(
@@ -113,14 +113,18 @@ def merge_pr(
         )
 
     if not gh.pr_checks_all_pass(runner, pr_num, repo=ctx.repo, cwd=cwd):
-        _post_flush(runner, ctx, config.MERGE_RESULT_CI_NOT_READY)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_CI_NOT_READY)
+        if post_err is not None:
+            return post_err
         return MergeResult(
             result=config.MERGE_RESULT_CI_NOT_READY,
             error="CI checks are not all passing",
         )
 
     if state.merge_state_status not in config.ADMIN_ELIGIBLE_MERGE_STATES:
-        _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED)
+        if post_err is not None:
+            return post_err
         return MergeResult(
             result=config.MERGE_RESULT_MAIN_ADVANCED,
             error=f"Branch mergeStateStatus is {state.merge_state_status}",
@@ -134,25 +138,42 @@ def merge_pr(
         cwd=cwd,
     )
     if isinstance(head_match, MergeResult):
-        _post_flush(runner, ctx, head_match.result)
+        post_err = _post_flush(runner, ctx, head_match.result)
+        if post_err is not None:
+            return post_err
         return head_match
 
     version_outcome = _version_race_gate(runner, cwd=cwd)
     if version_outcome is not None:
-        _post_flush(runner, ctx, version_outcome.result)
+        post_err = _post_flush(runner, ctx, version_outcome.result)
+        if post_err is not None:
+            return post_err
         return version_outcome
 
     merge_outcome = _attempt_merge(runner, ctx, pr_num, cwd=cwd)
-    _post_flush(runner, ctx, merge_outcome.result)
+    post_err = _post_flush(runner, ctx, merge_outcome.result)
+    if post_err is not None:
+        return post_err
     return merge_outcome
 
 
-def _post_flush(runner: Runner, ctx: RunContext, merge_result: str) -> None:
-    _ = run_logs.flush_logs_post(
-        ctx,
-        merge_result=merge_result,
-        runner=runner,
-    )
+def _post_flush(
+    runner: Runner,
+    ctx: RunContext,
+    merge_result: str,
+) -> MergeResult | None:
+    try:
+        _ = run_logs.flush_logs_post(
+            ctx,
+            merge_result=merge_result,
+            runner=runner,
+        )
+    except ShipError as exc:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=redact_merge_diagnostic(str(exc)),
+        )
+    return None
 
 
 def _merge_noop_if_pr_closed(
@@ -160,7 +181,6 @@ def _merge_noop_if_pr_closed(
     ctx: RunContext,
     *,
     cwd: str | None,
-    post_flush: bool,
 ) -> MergeResult | None:
     """Idempotent re-entry when the PR is already merged."""
     pr_num = ctx.pr_number
@@ -168,16 +188,26 @@ def _merge_noop_if_pr_closed(
         return None
     try:
         pr = gh.pr_view(runner, pr_num, repo=ctx.repo, cwd=cwd)
-    except ShipError:
-        return None
+    except ShipError as exc:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=redact_merge_diagnostic(
+                f"gh pr view failed during merge-state probe: {exc}",
+            ),
+        )
     if pr.state == "MERGED" or pr.merged_at:
         merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
         if merge_result == config.MERGE_RESULT_ADMIN_MERGED:
             outcome = MergeResult(result=config.MERGE_RESULT_ADMIN_MERGED, error="")
+        elif merge_result == config.MERGE_RESULT_MERGED:
+            outcome = MergeResult(result=config.MERGE_RESULT_MERGED, error="")
+        elif not ctx.no_admin_fallback:
+            outcome = MergeResult(result=config.MERGE_RESULT_ADMIN_MERGED, error="")
         else:
             outcome = MergeResult(result=config.MERGE_RESULT_MERGED, error="")
-        if post_flush:
-            _post_flush(runner, ctx, outcome.result)
+        post_err = _post_flush(runner, ctx, outcome.result)
+        if post_err is not None:
+            return post_err
         return outcome
     if pr.state == "CLOSED":
         return MergeResult(
@@ -238,7 +268,12 @@ def _ensure_head_matches_pr(
     cwd: str | None,
 ) -> MergeResult | gh.MergeState | None:
     local_head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
-    if not local_head or local_head == state.head_ref_oid:
+    if not local_head:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error="could not resolve local HEAD via git rev-parse",
+        )
+    if local_head == state.head_ref_oid:
         return state
     if not state.head_ref_oid:
         return MergeResult(

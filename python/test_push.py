@@ -105,8 +105,8 @@ def test_assert_clean_worktree_refuses_dirty() -> None:
 def test_push_branch_retries_then_succeeds() -> None:
     runner = RecordingRunner(
         responses=_push_git_responses(
-            CommandResult(("git", "push", "origin"), 1, "", "fail", 0.01),
-            CommandResult(("git", "push", "origin"), 0, "", "", 0.01),
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 1, "", "fail", 0.01),
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 0, "", "", 0.01),
         ),
     )
     result = push.push_branch(
@@ -121,7 +121,7 @@ def test_push_branch_retries_then_succeeds() -> None:
 def test_push_branch_fork_uses_origin() -> None:
     runner = RecordingRunner(
         responses=_push_git_responses(
-            CommandResult(("git", "push", "origin"), 0, "", "", 0.01),
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 0, "", "", 0.01),
         ),
     )
     result = push.push_branch(runner, _ctx(forked=True), sleeper=lambda _s: None)
@@ -148,9 +148,9 @@ def test_push_branch_refuses_detached_head() -> None:
 def test_push_skips_retry_when_stderr_unchanged() -> None:
     runner = RecordingRunner(
         responses=_push_git_responses(
-            CommandResult(("git", "push", "origin"), 1, "", "same error", 0.01),
-            CommandResult(("git", "push", "origin"), 1, "", "same error", 0.01),
-            CommandResult(("git", "push", "origin"), 1, "", "same error", 0.01),
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 1, "", "same error", 0.01),
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 1, "", "same error", 0.01),
+            CommandResult(("git", "push", "-u", "origin", "HEAD"), 1, "", "same error", 0.01),
         ),
     )
     result = push.push_branch(

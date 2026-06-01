@@ -286,6 +286,10 @@ def update_pr_body(
     repo: str,
     cwd: str | None = None,
 ) -> None:
+    mermaid_result = sanitize_fragment(body, from_md=True)
+    if mermaid_result.status != "ok":
+        msg = f"mermaid in PR body rejected: {','.join(mermaid_result.reason_tokens)}"
+        raise ShipError(msg)
     redacted = redact.redact(body)
     if "[content truncated" in redacted:
         msg = "redaction failed for PR body"

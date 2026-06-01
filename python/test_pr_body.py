@@ -79,6 +79,12 @@ def test_compose_pr_body_fail_closed_on_truncation(
         _ = pr_body.compose_pr_body(summary="- x")
 
 
+def test_update_pr_body_rejects_unsafe_mermaid() -> None:
+    bad = "```mermaid\nflowchart LR\n  A[x|y] --> B\n```\n"
+    with pytest.raises(ShipError, match="mermaid in PR body rejected"):
+        pr_body.update_pr_body(_NoopRunner(), 3, bad, repo="o/r")
+
+
 def test_update_pr_body_invokes_gh() -> None:
     def new_calls() -> list[list[str]]:
         return []

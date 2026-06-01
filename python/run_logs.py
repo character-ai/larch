@@ -25,6 +25,9 @@ _WRITE_FINAL_REPORT = (
     _REPO_ROOT / "skills" / "implement" / "scripts" / "write-final-report.sh"
 )
 _CAPTURE_SESSION_TRANSCRIPT = _REPO_ROOT / "scripts" / "capture-session-transcript.sh"
+_TOKEN_REPORT = _REPO_ROOT / "scripts" / "token-report.sh"
+_TIMING_REPORT = _REPO_ROOT / "scripts" / "timing-report.sh"
+_LARCH_LOG = _REPO_ROOT / "scripts" / "larch-log.sh"
 
 _SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+$")
 
@@ -73,13 +76,127 @@ def read_state_kv(state_file: str | None, key: str) -> str:
 def _read_state_kv(state_file: str | None, key: str) -> str:
     if not state_file or not Path(state_file).is_file():
         return ""
-    for line in Path(state_file).read_text(encoding="utf-8").splitlines():
+    try:
+        text = Path(state_file).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    for line in text.splitlines():
         if "=" not in line:
             continue
         name, _, value = line.partition("=")
         if name == key:
             return value
     return ""
+
+
+def _read_session_env_key(ctx: RunContext, key: str) -> str:
+    path = Path(ctx.tmpdir) / "session-env.sh"
+    if not path.is_file():
+        return ""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    for line in text.splitlines():
+        if "=" not in line:
+            continue
+        name, _, value = line.partition("=")
+        if name == key:
+            return value
+    return ""
+
+
+def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
+    env = dict(os.environ)
+    env["IMPLEMENT_TMPDIR"] = ctx.tmpdir
+    for export_key, file_key in (
+        ("LARCH_TOKEN_SESSION_ID", "LARCH_TOKEN_SESSION_ID"),
+        ("LARCH_CLAUDE_SOURCE_FILE", "LARCH_CLAUDE_SOURCE_FILE"),
+        ("LARCH_TIMING_LEDGER", "LARCH_TIMING_LEDGER"),
+    ):
+        value = _read_session_env_key(ctx, file_key)
+        if value:
+            env[export_key] = value
+    return env
+
+
+def _render_ledger_reports(runner: Runner, ctx: RunContext, log_root: Path) -> None:
+    """Re-render token/timing JSON from ledgers (refresh-run-logs.sh parity)."""
+    run_id = effective_run_id(ctx)
+    if not run_id:
+        return
+    tmpdir = Path(ctx.tmpdir)
+    token_path = tmpdir / "token-report-refresh.json"
+    timing_path = tmpdir / "timing-report-refresh.json"
+    env = _report_subprocess_env(ctx)
+    if _TOKEN_REPORT.is_file():
+        _ = runner.run(
+            [
+                "bash",
+                str(_TOKEN_REPORT),
+                "--full",
+                "--format",
+                "json",
+                "--output",
+                str(token_path),
+            ],
+            cwd=str(_REPO_ROOT),
+            env=env,
+        )
+    if _LARCH_LOG.is_file() and token_path.is_file():
+        _ = runner.run(
+            [
+                "bash",
+                str(_LARCH_LOG),
+                "write",
+                "--log-root",
+                str(log_root),
+                "--skill",
+                "implement",
+                "--run-id",
+                run_id,
+                "--batch",
+                "token-report",
+                "--input-file",
+                str(token_path),
+            ],
+            cwd=str(_REPO_ROOT),
+            env=env,
+        )
+    if _TIMING_REPORT.is_file():
+        _ = runner.run(
+            [
+                "bash",
+                str(_TIMING_REPORT),
+                "--full",
+                "--format",
+                "json",
+                "--output",
+                str(timing_path),
+            ],
+            cwd=str(_REPO_ROOT),
+            env=env,
+        )
+    if _LARCH_LOG.is_file() and timing_path.is_file():
+        _ = runner.run(
+            [
+                "bash",
+                str(_LARCH_LOG),
+                "write",
+                "--log-root",
+                str(log_root),
+                "--skill",
+                "implement",
+                "--run-id",
+                run_id,
+                "--batch",
+                "timing-report",
+                "--input-file",
+                str(timing_path),
+            ],
+            cwd=str(_REPO_ROOT),
+            env=env,
+        )
 
 
 def effective_run_id(ctx: RunContext) -> str:
@@ -219,8 +336,22 @@ def load_or_recover_manifest(ctx: RunContext) -> Manifest:
                 return recovered
         return init_run(ctx, run_id=rid)
     log_root = Path(ctx.tmpdir) / "larch-logs" / "implement"
+    if validate_run_id_slug(ctx.run_id):
+        preferred = log_root / ctx.run_id
+        if preferred.is_dir():
+            recovered = _recover_manifest_from_run_dir(ctx.run_id, preferred)
+            if recovered is not None:
+                _write_manifest(ctx, recovered)
+                return recovered
     newest = _newest_run_child(log_root) if log_root.is_dir() else None
-    if newest is not None and validate_run_id_slug(newest.name):
+    if (
+        newest is not None
+        and validate_run_id_slug(newest.name)
+        and (
+            not validate_run_id_slug(ctx.run_id)
+            or newest.name == ctx.run_id
+        )
+    ):
         recovered_path = newest / "manifest.json"
         if recovered_path.is_file():
             try:
@@ -407,6 +538,7 @@ def flush_logs_pre(
         source_label="execution-issues.md pre-push refresh",
     )
     _write_final_report(runner, ctx)
+    _render_ledger_reports(runner, ctx, log_root)
     _render_token_timing_batches(ctx, log_root)
     _ = capture_session_transcript(ctx, runner, defer_commit=True)
     _render_execution_issues_batch(
@@ -420,6 +552,8 @@ def flush_logs_pre(
     if step9a1 is not None:
         steps_update["step9a1"] = step9a1
     _ = update_manifest(ctx, steps_ran=steps_update)
+    if cwd is None:
+        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_REPO_CWD)
     commit_result = _larch_log_commit(runner, ctx, log_root, cwd=cwd)
     if commit_result.returncode != 0:
         return RefreshSkip(skipped=True, reason="commit-failed")
@@ -437,7 +571,12 @@ def flush_logs_post(
     log_root = Path(ctx.tmpdir) / "larch-logs"
     if runner is not None:
         _write_final_report(runner, ctx)
-    _render_token_timing_batches(ctx, log_root)
+    try:
+        if runner is not None:
+            _render_ledger_reports(runner, ctx, log_root)
+        _render_token_timing_batches(ctx, log_root)
+    except ShipError:
+        return RefreshSkip(skipped=True, reason="redaction-failed")
     resolved = merge_result or _read_state_kv(ctx.state_file, "MERGE_RESULT")
     finalize = resolved in config.POST_MERGE_MERGE_RESULTS
     updated = Manifest(

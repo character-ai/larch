@@ -133,6 +133,25 @@ def test_upsert_token_report_rename_matrix() -> None:
     assert "PATCH" in runner.calls[-1]
 
 
+def test_rename_truncates_after_redaction() -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "issue", "edit", "1"), 0, "", "", 0.01)],
+    )
+    long_tail = "x" * 300
+    title = f"[IMPLEMENTING] {long_tail}"
+    new = tracking_issue.rename(
+        runner,
+        "1",
+        "implementing",
+        repo="o/r",
+        current_title=title,
+    )
+    assert len(new) <= config.TRACKING_TITLE_MAX_LEN
+    edit_argv = runner.calls[-1]
+    title_arg_index = edit_argv.index("--title") + 1
+    assert len(edit_argv[title_arg_index]) <= config.TRACKING_TITLE_MAX_LEN
+
+
 def test_rename_raises_on_truncated_redaction(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

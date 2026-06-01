@@ -303,3 +303,60 @@ def test_flush_logs_pre_happy_path_commits(
         ),
     )
     assert "step9a1" not in manifest["steps_ran"]
+
+
+def test_update_manifest_ignores_unknown_keys(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    _ = run_logs.init_run(ctx)
+    manifest = run_logs.update_manifest(ctx, version="9", updated_at="now")
+    assert manifest.version == "9"
+    assert manifest.updated_at == "now"
+    assert "version" not in manifest.steps_ran
+
+
+def test_read_state_kv_unreadable_file_returns_empty(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_bytes(b"\xff\xfe")
+    assert run_logs.read_state_kv(str(state), "RUN_ID") == ""
+
+
+def test_flush_logs_pre_skips_commit_without_repo_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    _ = run_logs.init_run(ctx)
+
+    def fail_commit(*_a: object, **_k: object) -> CommandResult:
+        msg = "commit should not run without repo cwd"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(run_logs, "_larch_log_commit", fail_commit)
+    monkeypatch.setattr(run_logs, "_write_final_report", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "capture_session_transcript", lambda *_a, **_k: None)
+    monkeypatch.setattr(run_logs, "_render_ledger_reports", lambda *_a, **_k: None)
+    runner = RecordingRunner()
+    skip = run_logs.flush_logs_pre(runner, ctx, cwd=None)
+    assert skip.skipped
+    assert skip.reason == config.REFRESH_SKIP_NO_REPO_CWD
+
+
+def test_load_or_recover_manifest_prefers_ctx_run_id(tmp_path: Path) -> None:
+    log_root = tmp_path / "larch-logs" / "implement"
+    old = log_root / "run-old"
+    new = log_root / "run-abc"
+    old.mkdir(parents=True)
+    new.mkdir(parents=True)
+    _ = (old / "manifest.json").write_text(
+        json.dumps({"status": "partial", "version": "1", "run_id": "run-old", "steps_ran": {}}),
+        encoding="utf-8",
+    )
+    _ = (new / "manifest.json").write_text(
+        json.dumps({"status": "partial", "version": "1", "run_id": "run-abc", "steps_ran": {}}),
+        encoding="utf-8",
+    )
+    ctx = _ctx(tmp_path, state_file=None)
+    manifest = run_logs.load_or_recover_manifest(ctx)
+    assert manifest.run_id == "run-abc"

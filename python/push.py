@@ -60,10 +60,9 @@ def push_branch(
         )
         raise ShipError(msg)
     remote = select_push_remote(runner, ctx, cwd=cwd)
-    refspec = f"HEAD:refs/heads/{branch}"
     last_stderr = ""
     for attempt in range(1, config.PUSH_MAX_ATTEMPTS + 1):
-        result = git.push(runner, remote, refspec, cwd=cwd)
+        result = git.push_set_upstream(runner, remote, "HEAD", cwd=cwd)
         if result.returncode == 0:
             return PushResult(remote=remote, attempts=attempt, status="pushed")
         stderr = result.stderr.strip()

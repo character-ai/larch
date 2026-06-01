@@ -11,7 +11,9 @@ from pathlib import Path
 import pytest
 
 import config
+import git
 import merge as merge_module
+import run_logs
 from proc import CommandResult
 from run_context import RunContext
 
@@ -141,3 +143,201 @@ def test_behind_emits_main_advanced(tmp_path: Path) -> None:
     )
     assert completed.returncode == 0
     assert "MERGE_RESULT=main_advanced" in completed.stdout
+
+
+def test_flush_recovery_mixed_emits_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """N1: mixed flush + non-flush commits refuse merge."""
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"aaaa1111"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
+    monkeypatch.setattr(git, "try_rev_parse", lambda *_a, **_k: "cccc3333")
+    monkeypatch.setattr(
+        git,
+        "try_log_subjects",
+        lambda *_a, **_k: git.LogSubjects(
+            (f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}run", "Fix bug"),
+        ),
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = RunContext(
+        branch="feat",
+        issue="1",
+        repo="o/r",
+        run_id="run-1",
+        tmpdir=str(tmp_path),
+        merge=True,
+        draft=False,
+        forked=False,
+        manifest_path=str(tmp_path / "manifest.json"),
+        tool_label="cursor",
+        no_admin_fallback=False,
+        repo_unavailable=False,
+        pr_number=1,
+        state_file=str(state),
+    )
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "aaaa1111" in out.error
+
+
+def test_flush_recovery_cap_emits_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """P1: more than five flush commits refuse merge."""
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    subjects = tuple(
+        f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}{index}"
+        for index in range(config.FLUSH_RECOVERY_MAX_COMMITS + 1)
+    )
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"aaaa1111"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
+    monkeypatch.setattr(git, "try_rev_parse", lambda *_a, **_k: "cccc3333")
+    monkeypatch.setattr(
+        git,
+        "try_log_subjects",
+        lambda *_a, **_k: git.LogSubjects(subjects),
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = RunContext(
+        branch="feat",
+        issue="1",
+        repo="o/r",
+        run_id="run-1",
+        tmpdir=str(tmp_path),
+        merge=True,
+        draft=False,
+        forked=False,
+        manifest_path=str(tmp_path / "manifest.json"),
+        tool_label="cursor",
+        no_admin_fallback=False,
+        repo_unavailable=False,
+        pr_number=1,
+        state_file=str(state),
+    )
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_ERROR
+
+
+def test_flush_recovery_non_log_paths_emits_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """N2a: flush-subject range touching non-log paths refuses merge."""
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"aaaa1111"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", lambda *_a, **_k: True)
+    monkeypatch.setattr(git, "try_rev_parse", lambda *_a, **_k: "cccc3333")
+    monkeypatch.setattr(
+        git,
+        "try_log_subjects",
+        lambda *_a, **_k: git.LogSubjects(
+            (f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}run",),
+        ),
+    )
+    monkeypatch.setattr(
+        git,
+        "diff_name_only",
+        lambda *_a, **_k: CommandResult(("git", "diff"), 0, "README.md\n", "", 0.01),
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    ctx = RunContext(
+        branch="feat",
+        issue="1",
+        repo="o/r",
+        run_id="run-1",
+        tmpdir=str(tmp_path),
+        merge=True,
+        draft=False,
+        forked=False,
+        manifest_path=str(tmp_path / "manifest.json"),
+        tool_label="cursor",
+        no_admin_fallback=False,
+        repo_unavailable=False,
+        pr_number=1,
+        state_file=str(state),
+    )
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "aaaa1111" in out.error

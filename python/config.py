@@ -117,16 +117,8 @@ TRACKING_ISSUE_PREFIX_BY_STATE: Final[dict[str, str]] = {
     "done": "[DONE] ",
     "stalled": "[STALLED] ",
 }
-LEGACY_TRACKING_PREFIXES: Final[tuple[str, ...]] = (
-    "[IN PROGRESS] ",
-    "[PLANNED] ",
-    "[DESIGNING] ",
-    "[DESIGNED] ",
-    "[IMPLEMENTING] ",
-    "[DONE] ",
-    "[STALLED] ",
-)
 TRACKING_TITLE_MAX_LEN: Final = 256
+REFRESH_SKIP_NO_REPO_CWD: Final = "no-repo-cwd"
 
 MERGE_RESULT_MERGED: Final = "merged"
 MERGE_RESULT_ADMIN_MERGED: Final = "admin_merged"
@@ -169,6 +161,7 @@ REFRESH_SKIP_INVALID_RUN_ID: Final = "invalid-run-id"
 REFRESH_SKIP_NO_LOGS_COMMIT: Final = "no-logs-commit"
 # Pre-merge flush skips merge_pr may continue past (bash refresh-run-logs || true).
 REFRESH_SKIP_MERGE_OK: Final[frozenset[str]] = frozenset({
+    REFRESH_SKIP_NO_REPO_CWD,
     REFRESH_SKIP_POST_MERGE,
     REFRESH_SKIP_STATE_FILE_MISSING,
     REFRESH_SKIP_NO_RUN_ID,

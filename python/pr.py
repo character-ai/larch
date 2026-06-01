@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass
 
 import gh
@@ -97,4 +96,3 @@ def _push_existing_pr(
     if not recovery.pushed:
         msg = f"force-push recovery failed: {recovery.status}"
         raise ShipError(msg)
-    time.sleep(0)  # parity: recovery already slept
