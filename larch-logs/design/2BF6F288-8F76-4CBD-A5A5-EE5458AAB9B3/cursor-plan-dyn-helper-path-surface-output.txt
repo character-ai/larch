@@ -1,0 +1,15 @@
+Reviewing the plan against the codebase: reading the plan and verifying cited contracts and paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/step-18b-final-report.sh (plan §NEW lines 43-44)	`append-tool-failure.sh` invoked with no argv contract	`scripts/append-tool-failure.sh` requires `--log`, `--site`, `--tool`, `--exit-code`, `--category`, and `--output-file` (see scripts/append-tool-failure.sh:68-73); a bare call always hits `fail_usage` and never appends Step 18 failures to `execution-issues.md` despite the plan/SKILL capture intent	Specify the same best-effort helper block as `step-7a.sh` (`append_failure` / lines 41-51): redacted capture to `$tmpdir/step18-*.failure.log`, `--log "$tmpdir/execution-issues.md"`, distinct `--site` values (e.g. `step-18-token-report`, `step-18-write-final-report`), matching `--category`, and `|| true`
+2	in_scope	important	correctness	skills/implement/scripts/test-step-18b-final-report.sh (plan §NEW line 55)	Harness stub path groups `append-tool-failure.sh` with implement-dir stubs	Production wrapper calls `$PLUGIN_ROOT/scripts/append-tool-failure.sh` (plan line 43); `append-tool-failure.sh` lives at `scripts/append-tool-failure.sh`, not under `skills/implement/scripts/` (contrast `test-step-7a.sh:253` which stubs `$root/scripts/append-tool-failure.sh`)	Stub `scripts/append-tool-failure.sh` under the temp `CLAUDE_PLUGIN_ROOT` tree alongside `scripts/token-report.sh`; keep implement-dir stubs only for `write-final-report.sh`
+
+1. **correctness** — E2 moves Step 18 failure capture into the new wrapper, but the plan only names `append-tool-failure.sh` without the six required flags defined in ```68:73:scripts/append-tool-failure.sh```. A bare invocation always fails usage; mirror ```41:51:skills/implement/scripts/step-7a.sh```.
+
+2. **correctness** — The proposed harness bundles `append-tool-failure.sh` with implement-dir stubs, but runtime resolves it at `$PLUGIN_ROOT/scripts/append-tool-failure.sh` (```1:1:scripts/append-tool-failure.sh```). Wrong stub placement can let tests pass while production calls the real script unstubbed; follow ```253:275:skills/implement/scripts/test-step-7a.sh```.
+
+**Verified (no findings):**
+- `atomic_write_text`, `kv_get`, `safe_step_value`, `safe_phase_value` exist in ```36:59:skills/implement/scripts/stall-recovery-report.sh``` and ```494:511:skills/implement/scripts/stall-recovery-report.sh``` with compatible usage.
+- `read-session-env-key.sh` and `append-tool-failure.sh` are at `scripts/`; `$PLUGIN_ROOT/scripts/…` paths in the plan match.
+- `write-final-report.sh` is in `skills/implement/scripts/`; `$SCRIPT_DIR/write-final-report.sh` resolves correctly.
+- `token-report.sh` accepts `--full`, `--format`, `--output` at ```598:601:scripts/token-report.sh```.
+- `$PLUGIN_ROOT/scripts/lib-quiet.sh` exposes `emit` / `emit_kv` at ```158:178:scripts/lib-quiet.sh```.

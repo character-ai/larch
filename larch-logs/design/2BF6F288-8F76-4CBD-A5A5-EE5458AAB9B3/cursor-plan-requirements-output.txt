@@ -1,0 +1,21 @@
+Reading the implementation plan and tracing cited paths in the codebase.
+Checking whether the plan’s SKILL.md section scope matches the feature description’s E2 boundary.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/implement/SKILL.md:1418-1448	E2 wrapper and orchestrator both run token-report	Plan puts token-report inside step-18b-final-report.sh but only repins removal of the _wfr_* fence. Today token-report runs in the prior bash fence with || true while the wrapper also renders and captures failures. Step 18 can refresh twice and swallow a failed first render.	In the Step 18b SKILL.md edit, remove the standalone token-report/rehydrate bash fence (~1420-1428) and replace it plus the _wfr_* block with one step-18b-final-report.sh call. Optionally pin in test-implement-structure.sh that the step:18 region must not call token-report.sh outside the wrapper.
+
+**1. [risk-integration] `skills/implement/SKILL.md:1418-1448` — Duplicate `token-report` after extraction**
+
+The feature description treats E2 as one mechanical unit: token report, `write-final-report.sh`, snapshot/`cmp`, and `EMIT_BODY` (`feature-description.txt` lines 9–18). The plan’s E2 wrapper correctly owns `token-report.sh` (plan lines 41–48), and the SKILL.md bullet *describes* replacing “plugin-root rehydrate + token-report + …” (plan line 66).
+
+In the current tree, though, `token-report.sh` lives in a **separate** bash fence immediately before `_wfr_*` (```1418:1447:skills/implement/SKILL.md```), while the repin work only names the `_wfr_*` block and harness pins. An implementer can leave ```1420:1428:skills/implement/SKILL.md``` in place and still satisfy updated `test-implement-structure.sh` / `test-render-cost-line-callsites.sh`, yielding double refresh and mixed failure semantics (`|| true` in the orchestrator vs captured failures in the wrapper).
+
+**Suggested revision:** State explicitly in the SKILL.md / plan Steps that the prelude fence must be deleted and replaced by a single `step-18b-final-report.sh` invocation (one rehydrate path total).
+
+---
+
+**Coverage checked (no additional in-scope gaps):**
+
+- E1 `clear-stall` / `seed-terminal-state` contracts, `check_ship_pr_state_format` vs `validate_ship_pr_state`, disk-before-memory, and harness cases match `stall-recovery.md` steps 7–8 and `feature-description.txt` E1.
+- NEVER #20 boundaries (verbatim emit, `.step17-emitted`, no wrapper body emit) are preserved.
+- Structural pins (`PHASE=ci-initial`, `BAIL_FAILURE_DETAIL_LOG=`, Step 18a headings) and same-PR harness/Makefile updates are specified.
+- Intentional `--print-stdout` removal at Step 18 is documented as an approach delta, consistent with SIMPLE scope.

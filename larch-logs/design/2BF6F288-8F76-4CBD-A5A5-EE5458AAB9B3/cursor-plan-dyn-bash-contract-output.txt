@@ -1,0 +1,30 @@
+Reviewing the plan against repository contracts. Reading the plan and referenced scripts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/stall-recovery-report.sh:79-89	Plan reuses validate_ship_pr_state before emitting CLEARED/SEEDED but that helper calls exit 3 directly	Malformed ship-pr-state.sh hits exit 3 with no CLEARED=false or SEEDED=false on stdout; orchestrator cannot branch on the promised KV under set -euo pipefail	Refactor validation to return non-zero (or duplicate the read loop) so cmd_clear_stall/cmd_seed_terminal_state emit_kv false then exit 3; do not call the current exit-3 helper as-is
+2	in_scope	important	risk-integration	skills/implement/SKILL.md:1423-1427	Proposed step-18b-final-report.sh sets PLUGIN_ROOT before sourcing plugin-root.env	E2 wrapper may resolve PLUGIN_ROOT via SCRIPT_DIR fallback while session-env plugin-root.env points elsewhere; token-report/write-final-report run against the wrong tree	Source $tmpdir/plugin-root.env when CLAUDE_PLUGIN_ROOT is unset before computing PLUGIN_ROOT (match SKILL.md ordering)
+3	in_scope	important	correctness	plan.txt (E2 steps 3-5; proposed skills/implement/scripts/step-18b-final-report.sh)	Snapshot/cmp use bare .step18-prebody and summary-final.md without $tmpdir	Wrapper invoked outside $IMPLEMENT_TMPDIR compares wrong files or misses snapshot; EMIT_BODY true/false drifts from SKILL.md	Anchor paths as $tmpdir/.step18-prebody and $tmpdir/summary-final.md (same as skills/implement/SKILL.md:1437-1444)
+
+1. **[correctness]** `skills/implement/scripts/stall-recovery-report.sh:79-89` — The plan requires malformed `ship-pr-state.sh` to emit `CLEARED=false` / `SEEDED=false` then exit 3, and to reuse `validate_ship_pr_state`. That function calls `exit 3` on the first bad line with no prior `emit_kv`:
+
+```79:89:skills/implement/scripts/stall-recovery-report.sh
+validate_ship_pr_state() {
+    local file=$1 line
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            ""|\#*) continue ;;
+        esac
+        if ! printf '%s\n' "$line" | LC_ALL=C grep -Eq '^[A-Z][A-Z0-9_]*=.*$'; then
+            larch_err "stall-recovery-report.sh: malformed ship-pr-state.sh"
+            exit 3
+        fi
+    done <"$file"
+}
+```
+
+Under `set -euo pipefail` (line 4), a direct call cannot emit first. **Suggested revision:** return-based validation or an inline loop in the new subcommands; emit the machine key, then `exit 3` (same pattern as `post-tracking-issue.sh:21-26`).
+
+2. **[risk-integration]** `skills/implement/SKILL.md:1423-1427` — Current Step 18b sources `plugin-root.env` before token rehydration when `CLAUDE_PLUGIN_ROOT` is unset. The E2 spec sets `PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"` first and only later says to “honor” `plugin-root.env`, so the wrapper can miss the canonical plugin root when the env var is empty but the sibling file is present. **Suggested revision:** dot-source `$tmpdir/plugin-root.env` before `PLUGIN_ROOT=` assignment, mirroring the SKILL fence.
+
+3. **[correctness]** Plan E2 steps 3–5 — Snapshot/`cmp` use relative `.step18-prebody` and `summary-final.md`; the live orchestrator uses `$IMPLEMENT_TMPDIR/.step18-prebody` and `$IMPLEMENT_TMPDIR/summary-final.md` (`skills/implement/SKILL.md:1437-1444`). **Suggested revision:** require `$tmpdir`-qualified paths in the wrapper spec so behavior does not depend on cwd.
+
+**Exonerated (SIMPLE lane):** `kv_get` / `read-session-env-key.sh --file … --key …` usage matches `stall-recovery-report.sh:56-58`; session-env keys align with `scripts/write-session-env.sh:206-210`; a single-pass awk rewrite with append-on-absent is achievable for normal ship-pr-state files (same first-match semantics as `read-session-env-key.sh:96-99`); `atomic_write_text` two-arg contract is fine for seed-fresh while temp+assert+`mv` matches stall-recovery.md steps 7.1–7.5; token-report failure tolerance is compatible with `write-final-report.sh` fallbacks (`skills/implement/scripts/write-final-report.sh:181-188`).
