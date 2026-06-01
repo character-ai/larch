@@ -1,0 +1,187 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+## Plan
+
+# Implementation Plan — Extract /implement Step 0 bootstrap-invoke harness; drop dead parse helper (#3298)
+
+SIMPLE-tier refactor. Goal: collapse all three duplicated Step 0 bootstrap-invoke bash sites (initial Step 0, dirty-tree recovery, and the preamble/anti-halt directive copies) into one `scripts/implement-bootstrap-invoke.sh` wrapper, remove the dead `_ib_parse_bootstrap_out`, fix routing-table and preamble prose drift, and (rider) fix the `codex-manifest-schema.md` "When to load" line. No change to `implement-bootstrap.sh` behavior or `/implement` routing semantics.
+
+## Files to modify/create
+
+### NEW: `scripts/implement-bootstrap-invoke.sh`
+The wrapper. `set -euo pipefail`. One required flag `--mode initial|resume`; reject any other value with usage exit.
+- Assemble the common bootstrap argv from exported env, mirroring today's inline arrays: `--caller-env` (`CALLER_ENV_PATH` else `SESSION_ENV_PATH`), `--issue-number` (`TARGET_ISSUE_NUMBER` else `ISSUE_NUMBER`), `--forked-target` + `--upstream-repo` (when `forked_target=true`), `--run-id` (`RUN_ID`), `--preflight-tmpdir` (`PREFLIGHT_TMPDIR`), `--emergency-requested` (only when value is exactly `true`/`false`).
+- Mode-specific argv: `initial` → `--up-to-phase coder` plus `--coder "$coder"` when `coder` is non-empty, no resume flag. `resume` → `--up-to-phase plan --resume-plan-tail`, no `--coder`.
+- Run `"${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh"` once with the assembled argv, capturing stdout and exit code (`set +e` around the call, as today).
+- **Exit 2 (single owner)**: move `_ib_handle_bootstrap_exit2` verbatim — extract `IMPLEMENT_TMPDIR` from the captured stdout, then the full per-`STEP_FAILED` `case` (`session-entry-gate`, `session-setup`, `get-issue-state`, `issue-number-required-for-resume`, `copy-plan`, `gh-issue-view`, `resume-plan-tail-sentinel`) including the `copy-plan` / `gh-issue-view` stderr redaction pipe (`redact-secrets.sh` | `redact-tmpdir-paths.sh`) reading `$IMPLEMENT_TMPDIR/*.stderr.log`. Print the exact operator strings to **stderr** (direct to operator terminal, bypasses command-substitution capture — SKILL call sites must NOT print `$_inv_out`), then `exit 2`. Emit nothing to stdout on exit 2. The wrapper is the **sole owner** of exit-2 message formatting; SKILL call sites only propagate `exit 2` without re-printing.
+- **Success**: parse the bootstrap stdout once; emit the routing envelope on **stdout** (always includes `IMPLEMENT_TMPDIR`), and also write `$IMPLEMENT_TMPDIR/bootstrap-routing.env` as a redundant sibling for file-first re-parse / inspection. The wrapper must **never** write `session-env.sh` (NEVER #14); only `bootstrap-routing.env`.
+- Envelope key set = the keys with a real consumer between the Step 0 boundary and the first `read-session-env-key.sh`/session-env rehydration: the 8 routing keys (`IMPLEMENT_BAIL_REASON`, `STALL_TRACKING`, `PLAN_FILE`, `coder`, `coder_fallback`, `REPO_UNAVAILABLE`, `DEFERRED`, `ISSUE_NUMBER`) + `IMPLEMENT_TMPDIR` + the four Degraded-tools-gate presence keys (`CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`) + `codex_available` / `cursor_available` + `RUN_ID` + `BRANCH_NAME` / `BRANCH_ACTION` (dirty-tree resume re-parse). During implementation, grep every post-Step-0 consumer before the first session-env rehydration and KEEP any other key read there; drop a key only when a rehydration provably re-reads it. Bash 3.2-safe; quote all values.
+
+### NEW: `scripts/implement-bootstrap-invoke.md`
+Primary contract sibling (script-md-siblings: primary owns the full contract). Cover: purpose, `--mode initial|resume` argv, the env inputs read, the per-mode bootstrap argv, exit codes (0 success, 2 propagated bootstrap failure with operator message emitted to **stderr** and stdout empty, other = usage), the exit-2 single-owner invariant (wrapper prints formatted message to stderr; callers only propagate `exit 2` without printing or inspecting `$_inv_out`), the envelope key set + dual transport (stdout + `bootstrap-routing.env`), the NEVER #14 invariant, primary caller (`skills/implement/SKILL.md` Step 0), harness (`skills/implement/scripts/test-implement-bootstrap-invoke.sh`), and an edit-in-sync list (SKILL.md Step 0, `test-implement-structure.sh` Step 0 pins, `implement-bootstrap.md`).
+
+### NEW: `skills/implement/scripts/test-implement-bootstrap-invoke.sh`
+Dedicated offline harness, modeled on `test-implement-bootstrap.sh` (same `assert_contains` / `assert_not_contains` / `assert_occurrences` helpers, `PASS`/`FAIL` counters, exit non-zero on any FAIL). Drive the wrapper with a **stub** `implement-bootstrap.sh` placed under a temp `CLAUDE_PLUGIN_ROOT/scripts/` that echoes its received argv and a canned KV stdout and exits with a chosen code. Cases:
+- `--mode initial` assembles `--up-to-phase coder` + `--coder` (when `coder` set) and omits `--resume-plan-tail`.
+- `--mode resume` assembles `--up-to-phase plan --resume-plan-tail` and omits `--coder`.
+- common args wired from env (`--caller-env`, `--issue-number` via `TARGET_ISSUE_NUMBER`/`ISSUE_NUMBER`, `--forked-target`/`--upstream-repo`, `--run-id`, `--preflight-tmpdir`, `--emergency-requested true|false`).
+- success writes `bootstrap-routing.env` AND emits the stdout envelope; both carry `IMPLEMENT_TMPDIR` + presence keys + routing keys.
+- exit 2 for each `STEP_FAILED`: assert the exact operator string appears on **stderr** (not stdout), assert stdout is empty, assert exit code is exactly 2; `copy-plan` / `gh-issue-view` cases exercise the redaction pipe.
+- invalid `--mode` / missing flag → usage exit.
+- NEVER #14: grep the wrapper source for forbidden `session-env.sh` redirection (mirror `test-implement-bootstrap.sh`'s grep).
+
+### NEW: `skills/implement/scripts/test-implement-bootstrap-invoke.md`
+Harness stub sibling pointing at the primary `scripts/implement-bootstrap-invoke.md` (cross-tree harness pattern), naming the Makefile target.
+
+### UPDATED: `skills/implement/SKILL.md`
+Rewrite Step 0 **and** every other prompt-side bootstrap-invoke copy in the same edit. Keep: the `## Step 0 — Session Setup` heading, the `**⚠ Foreground required**` warning + `# Foreground required` marker, the plugin-root rehydration guard, the `implement-fork-env.sh` line, the `<!-- step:0` marker, and dirty-tree recovery gate semantics (operator paths, checkpoint re-probe, `RECOVERY_REQUIRED` lifecycle). **Preamble / anti-halt:** retarget **Protocol Execution Directive** item (3) and the Anti-halt **Critical boundary** after preflight audit pass from direct `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap.sh --up-to-phase coder` to `${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap-invoke.sh --mode initial` (foreground), pointing at the numbered Step 0 section for envelope parse and continuation; dirty-tree continuation prose references `--mode resume`. **Step 0 initial/resume call sites:** replace the two inline harness copies with two thin call sites:
+- Before each call, `export` the bootstrap inputs the wrapper reads (`forked_target`, `emergency_requested`, `coder`, `RUN_ID`, `PREFLIGHT_TMPDIR`, `CALLER_ENV_PATH`/`SESSION_ENV_PATH`, `TARGET_ISSUE_NUMBER`/`ISSUE_NUMBER`, `UPSTREAM_REPO`).
+- Initial: `_inv_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/implement-bootstrap-invoke.sh" --mode initial); _inv_rc=$?`; on `_inv_rc -eq 2` `exit 2` (no print — wrapper already emitted the operator message to stderr).
+- Resume: same with `--mode resume`.
+- One shared routing-env parse block both sites use: read `IMPLEMENT_TMPDIR` from the stdout envelope first, then prefer `$IMPLEMENT_TMPDIR/bootstrap-routing.env` (symlink-guarded, line-by-line parse, no `source`) with the stdout envelope as fallback; export the routing keys.
+- Delete `_ib_parse_bootstrap_out`, `_ib_run_bootstrap`, `_ib_handle_bootstrap_exit2`, `_ib_kv_scan`, `_ib_target_issue`, `_ib_rc`, and all inline argv arrays (`_ib_caller_env`, `_ib_issue`, `_ib_fork`, `_ib_run_id`, `_ib_preflight`, `_ib_emergency`, `_ib_coder`) from SKILL.md entirely. Use `_inv_rc` at every call site (initial, resume, dirty-tree). Fix the routing-table dirty-tree row (currently "re-run `_ib_run_bootstrap --resume-plan-tail` ... re-run `_ib_parse_bootstrap_out`") to describe `implement-bootstrap-invoke.sh --mode resume` + the shared routing-env parse. **Dirty-tree recovery gate:** in item 3 prose and the recovery bash fence (~454–509), after plugin-root rehydration and `IMPLEMENT_TMPDIR` export, call `implement-bootstrap-invoke.sh --mode resume` with the same pre-call `export` list as Step 0 resume — drop the fenced `_ib_caller_env`/`_ib_issue`/`_ib_fork`/`_ib_run_id`/`_ib_preflight`/`_ib_emergency` reassembly, the direct `implement-bootstrap.sh --up-to-phase plan --resume-plan-tail` invocation, the inline `_ib_handle_bootstrap_exit2` call, `_ib_rc`, and the second `_ib_kv_scan` + broad `export` loop; reuse the single shared routing-env parse block (on `_inv_rc -eq 2` `exit 2` without printing — wrapper already emitted to stderr; routing keys come from the resumed envelope, not the pre-recovery pass).
+Keep the routing table, Degraded-tools gate, and dirty-tree recovery gate semantics unchanged (they consume the exported routing/presence keys).
+
+### UPDATED: `scripts/test-implement-structure.sh`
+Rewrite the Step 0 structural pins (the block from the `_ib_preflight=()` assertions through the Step 0 awk `bootstrap_calls`/`coder_literal`/`resume_mentions`/`banned` checks). Specifically: **invert** the `_ib_parse_bootstrap_out() {`, `_ib_run_bootstrap() {`, `_ib_run_bootstrap --resume-plan-tail`, and `_ib_parse_bootstrap_out`-reference pins to assert those helpers are **absent** from `$SKILL_MD`; **invert** the `_ib_caller_env`/`_ib_issue`/`_ib_fork`/`_ib_run_id`/`_ib_preflight`/`_ib_emergency` dual-invocation expand pins — assert `$SKILL_MD` has **no** inline argv arrays and instead calls `implement-bootstrap-invoke.sh --mode initial` and `--mode resume` (including inside the dirty-tree recovery fence); drop/retarget the `_ib_kv_scan` case-arm and `copy-plan)`/`gh-issue-view)` pins from `$SKILL_MD` to `scripts/implement-bootstrap-invoke.sh`; retarget the Step 0 awk so `$SKILL_MD` bash blocks contain **zero** direct `implement-bootstrap.sh` calls and **zero** `--up-to-phase coder`/`--resume-plan-tail` literals (those live in the wrapper), while asserting at least one `--mode initial` and one `--mode resume` wrapper call site; keep the `## Step 0 — Session Setup` heading, foreground-warning, dirty-tree gate heading, and `--resume-plan-tail` routing prose pins (point resume-tail mentions at the wrapper contract or routing table, not inline SKILL arrays). Add pins that the wrapper + its `.md` exist and that the Protocol Execution Directive item (3) names `implement-bootstrap-invoke.sh --mode initial`. **Also cover the remaining `_ib_*` symbols (approximately lines 507–526 in the current harness file)**: assert `_ib_target_issue` absent from `$SKILL_MD`; assert `_ib_rc` absent from `$SKILL_MD`; assert `_inv_rc` present at ≥2 locations in `$SKILL_MD` (initial + resume call sites at minimum, dirty-tree recovery gate is a third); retarget BRANCH_NAME/BRANCH_ACTION/PLAN_FILE/coder routing-key parse coverage — assert the `_ib_kv_scan` case arms for those keys absent from `$SKILL_MD` and assert `scripts/implement-bootstrap-invoke.sh` emits them in its routing envelope (pin against the wrapper source); retarget the bootstrap-stdout parse loop pin (517–518) to the shared routing-env parse block present in `$SKILL_MD` (the `bootstrap-routing.env` line-by-line read with stdout fallback).
+
+### UPDATED: `scripts/test-implement-step2-routing.sh`
+Retarget the Step 0 bootstrap pin at line 35: replace `assert_contains "$IMPLEMENT_SKILL" '--up-to-phase coder'` with an assertion that `$SKILL_MD` references `implement-bootstrap-invoke.sh --mode initial` (Step 0 orchestrator entry) while retaining the existing `phase_coder_select` pointer and bootstrap-side waterfall pins unchanged.
+
+### UPDATED: `Makefile`
+Add a `test-implement-bootstrap-invoke` target mirroring `test-implement-bootstrap` (`bash scripts/harness-timer.sh $@ bash skills/implement/scripts/test-implement-bootstrap-invoke.sh`), add it to `.PHONY`, and add it to one `test-harnesses-N` shard (e.g. alongside `test-implement-bootstrap` in `test-harnesses-15`).
+
+### UPDATED: `skills/implement/references/codex-manifest-schema.md`
+Rider. Rewrite the "When to load" line: drop the phantom "at Step 2 entry (via the MANDATORY directive at the top of Step 2 in SKILL.md)" claim and retarget to the real consumers — `skills/implement/scripts/step2-implement.sh` (validation), `agents/codex-implementer.md` / `agents/cursor-implementer.md` (production), and `scripts/ship-pr.sh` Steps 8a/9a/9a.1 (consumption); note the orchestrator handles only the manifest path, never the JSON.
+
+### UPDATED: `scripts/implement-bootstrap.md`
+Edit-in-sync: note that `skills/implement/SKILL.md` Step 0 (initial + dirty-tree resume) and the preamble Protocol Execution Directive now invoke the bootstrap via `scripts/implement-bootstrap-invoke.sh` (`--mode initial` / `--mode resume`), and add the wrapper + its harness to the "Edit-in-sync" list; mark `scripts/test-implement-step2-routing.sh` as an explicit co-update (not verify-only).
+
+## Approach
+Pure extraction — move every existing inline arg-assembly, run, exit-2 handler, and KV parse site (Step 0 initial, Step 0 resume/dirty-tree fence, and the preamble directive strings) into one wrapper invoked via `--mode initial|resume`, then thin SKILL.md to call sites + one shared parse block. **Exit-2 single-owner contract:** the wrapper is the sole owner of exit-2 message formatting; it prints formatted operator strings to **stderr** so they reach the operator directly without going through command-substitution capture. SKILL call sites use command substitution (`_inv_out=$(...)`) to capture the routing envelope on success and on `_inv_rc -eq 2` simply `exit 2` without printing — no relay of `$_inv_out` is needed or correct. The wrapper emits nothing to stdout on exit 2, so `$_inv_out` is empty in that branch, eliminating any possibility of duplication. The only behavior nuance: on the initial path the orchestrator does not know `IMPLEMENT_TMPDIR` until the envelope, so the stdout envelope must always carry `IMPLEMENT_TMPDIR`; the orchestrator reads that key from stdout, then does file-first parsing of `bootstrap-routing.env` for the remaining keys with stdout as fallback. The wrapper writes only `bootstrap-routing.env`; `implement-bootstrap.sh` retains sole ownership of `session-env.sh` (NEVER #14). During implementation, update every edit-in-sync consumer that pins the old inline Step 0 shape — explicitly including `scripts/test-implement-step2-routing.sh` — and verify-only-touch (`lint-foreground-markers.sh` DENYLIST, `docs/linting.md`, `skills/shared/subskill-invocation.md`) when a grep shows a stale direct-bootstrap or `--up-to-phase coder`-in-SKILL pin. Coder-selection wording is unchanged because `phase_coder_select` stays in the bootstrap.
+
+## Edge cases
+- Initial path: `IMPLEMENT_TMPDIR` unknown pre-envelope → must come from stdout before any `bootstrap-routing.env` read.
+- Resume path: `IMPLEMENT_TMPDIR` is caller-exported and reused; the wrapper must not re-derive or clobber it, and must still emit it in the envelope for a uniform parse.
+- Exit 2 before tmpdir creation (e.g. `session-setup`): redaction-log reads must tolerate a missing/empty `IMPLEMENT_TMPDIR` exactly as the current handler does; operator message still goes to stderr and stdout is still empty.
+- Symlinked / unreadable `bootstrap-routing.env` → orchestrator refuses to source it and falls back to the stdout envelope (mirror the design-driver result-env guard).
+- `--coder` empty on initial mode → omit `--coder` (let `phase_coder_select` run the implicit waterfall), never pass an empty value.
+- Bash 3.2: no `declare -A`, no `mapfile`; quote envelope values that may contain spaces (e.g. `BRANCH_ACTION`).
+
+## Failure modes
+1. **Dropped envelope key** — trimming below a key some pre-rehydration consumer reads (e.g. a presence key, `BRANCH_NAME`) silently breaks the Degraded-tools gate or dirty-tree resume re-parse. Earliest signal: `test-implement-bootstrap-invoke.sh` envelope-key assertions or a degraded-gate test failure. Mitigation: derive the key set from a consumer grep and default-keep on doubt.
+2. **Stale structural pins** — leaving `test-implement-structure.sh` asserting the removed `_ib_parse_bootstrap_out` / `_ib_target_issue` / `_ib_rc` / inline-array shape, or failing to cover the full 507–526 range, fails CI immediately. Earliest signal: `make test-implement-structure`. Mitigation: rewrite ALL `_ib_*` pins (not just the pre-507 block) in the same change and run the harness locally.
+3. **Operator-message drift / lost redaction or misdirected stream** — paraphrasing a `STEP_FAILED` string, dropping the `redact-secrets.sh | redact-tmpdir-paths.sh` pipe, or printing to stdout (captured by command substitution) instead of stderr (direct to operator) silently suppresses operator visibility. Earliest signal: exit-2 harness cases asserting exact strings on **stderr** and empty stdout. Mitigation: move the `case` body byte-for-byte and emit to stderr; verify the test harness asserts stderr, not stdout.
+4. **Preamble / dirty-tree bypass** — retargeting only the numbered Step 0 block while leaving Protocol Execution Directive item (3), the anti-halt Preflight→Step 0 boundary, or the dirty-tree fence on direct `implement-bootstrap.sh` reintroduces a third harness copy and bypasses envelope filtering. Earliest signal: `make test-implement-step2-routing` or grep for `implement-bootstrap.sh --up-to-phase` still in `$SKILL_MD`. Mitigation: land preamble/dirty-tree scope in the same SKILL.md edit.
+
+## Testing strategy
+- New `test-implement-bootstrap-invoke.sh` covers both modes' argv assembly, envelope (file + stdout) keys, all exit-2 `STEP_FAILED` messages + redaction (messages asserted on **stderr**, stdout asserted empty on exit 2), invalid `--mode`, and the NEVER #14 source grep.
+- Update `test-implement-structure.sh` Step 0 + dirty-tree + preamble pins **and** the full `_ib_*` pin block including the 507–526 range (`_ib_target_issue`, `_ib_rc`, BRANCH_NAME/PLAN_FILE/coder case arms, stdout-parse loop). Run `make test-implement-structure`.
+- Update `test-implement-step2-routing.sh` Step 0 entry pin and run `make test-implement-step2-routing`.
+- Run `make test-implement-bootstrap` (unchanged behavior) and the new `make test-implement-bootstrap-invoke`.
+- Run `bash scripts/relevant-checks.sh` (shellcheck, markdownlint, agent-lint, bash32, foreground-markers, script-md-siblings) on all touched files.
+
+## Diff size estimate
+diff_added: 630
+diff_deleted: 330
+diff_lines: 960
+
+</plan>
+
+<findings>
+### FINDING_1: Thin wrapper call sites need set +e / set -e fence around substitution
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Concern**: Thin wrapper call sites omit `set +e` / `set -e` around command substitution. Under `set -e`, `_inv_out=$(implement-bootstrap-invoke.sh …)` can exit before `_inv_rc=$?`, so exit-2 stderr handling and routing parse never run; dirty-tree recovery and Step 0 abort paths regress.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Preserve the current set +e / _inv_out=… / _inv_rc=$? / set -e fence at every wrapper call site (initial, resume, dirty-tree) and pin it in test-implement-structure.sh
+
+
+### FINDING_2: Resume-mode wrapper must pass through IMPLEMENT_TMPDIR
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Concern**: Resume-mode env contract omits `IMPLEMENT_TMPDIR` pass-through. `implement-bootstrap.sh --resume-plan-tail` selects `resume_existing_tmpdir` only when `IMPLEMENT_TMPDIR` is already exported with `session-env.sh` present; a wrapper that does not inherit/export it before the bootstrap child runs takes the fresh `session-setup` path and breaks dirty-tree resume.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Document IMPLEMENT_TMPDIR as a resume-mode caller export in implement-bootstrap-invoke.md; in resume mode export inherited IMPLEMENT_TMPDIR unchanged before calling implement-bootstrap.sh; add a harness case that pre-exports IMPLEMENT_TMPDIR and asserts the stub/bootstrap child sees the same value
+
+
+### FINDING_3: Stale Step 0 entrypoints in subskill-invocation.md bypass invoke wrapper
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-dyn-scope-omission
+- **Severity**: important
+- **Concern**: Shared orchestration docs at `skills/shared/subskill-invocation.md` (lines 77 and 199) still direct agents to run `scripts/implement-bootstrap.sh` (including `--up-to-phase coder`) instead of `implement-bootstrap-invoke.sh`. After the PR retargets `skills/implement/SKILL.md`, grep on `$SKILL_MD` may be clean while `subskill-invocation.md` remains stale—either because verify-only co-update is gated on stale pins in SKILL.md only, or because those bullets were never added to plan scope. Agents following the shared doc bypass the wrapper and the exit-2 stderr contract, contradicting the SKILL.md rewrite.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add an explicit UPDATED entry (or broaden the Approach grep) to retarget those two bullets to implement-bootstrap-invoke.sh --mode initial (bootstrap behavior unchanged underneath)
+  - From Cursor-dyn-scope-omission: Add `skills/shared/subskill-invocation.md` to the plan file list (not verify-only); retarget both sentences to `scripts/implement-bootstrap-invoke.sh` (`--mode initial` / envelope parse) per the SKILL.md rewrite
+
+
+### FINDING_4: test-implement-structure.md sibling documents obsolete Step 0 contract
+- **Reviewer(s)**: Cursor-dyn-scope-omission
+- **Severity**: important
+- **Concern**: Harness contract sibling `scripts/test-implement-structure.md` still documents a single foreground `implement-bootstrap.sh --up-to-phase coder` call in SKILL.md. If the plan updates `scripts/test-implement-structure.sh` pins but omits the `.md` sibling, script-md-siblings drift leaves a false contract for reviewers and future harness edits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-scope-omission: Add `scripts/test-implement-structure.md` to scope (or an explicit bullet under the `test-implement-structure.sh` update) retargeting Step 0 prose to `implement-bootstrap-invoke.sh --mode initial|resume` and absent `_ib_*` helpers
+
+
+</findings>
+
+<feature>
+Further factoring out /implement into bash Phase 4: extract Step 0 bootstrap-invoke harness; drop dead parse helper
+
+## Context
+
+Step 0 in `skills/implement/SKILL.md` inlines ~200 lines of orchestrator bash that wrap `scripts/implement-bootstrap.sh`:
+- argument assembly (`_ib_caller_env`, `_ib_issue`, `_ib_fork`, `_ib_run_id`, `_ib_preflight`, `_ib_emergency`, `_ib_coder`),
+- `_ib_run_bootstrap` + `_ib_handle_bootstrap_exit2` (the full `STEP_FAILED` `case` with copy-plan / gh-issue-view stderr redaction and per-failure operator messages),
+- `_ib_kv_scan` (a ~30-key token scanner) plus parse/export loops.
+
+This whole harness is **duplicated** for the `--resume-plan-tail` dirty-tree recovery path. Separately, `_ib_parse_bootstrap_out` is **defined but never called** (the executable paths use their own inline parse loops), and the routing-table prose still references it as the resume mechanism — a prose/code mismatch.
+
+## Analysis
+
+Arg-assembly, exit-2 operator messaging, and KV parsing are mechanical. The orchestrator needs only ~8 of the parsed keys for routing (`IMPLEMENT_BAIL_REASON`, `STALL_TRACKING`, `PLAN_FILE`, `coder`, `coder_fallback`, `REPO_UNAVAILABLE`, `DEFERRED`, `ISSUE_NUMBER`); the rest are already persisted to `session-env.sh` by the bootstrap and re-read later by each step.
+
+## Proposal
+
+Add `scripts/implement-bootstrap-invoke.sh` that:
+- assembles the bootstrap args from exported env,
+- runs `implement-bootstrap.sh` (both the initial `--up-to-phase coder` and the `--resume-plan-tail` invocations through **one** code path),
+- on exit 2, prints the same redacted per-`STEP_FAILED` operator message and propagates exit 2,
+- on success, emits a **compact routing envelope** (just the ~8 routing keys, or writes `$IMPLEMENT_TMPDIR/bootstrap-routing.env`) for the orchestrator to parse.
+
+De-duplicates the initial/resume copies, removes the dead `_ib_parse_bootstrap_out`, and fixes the routing-table prose reference.
+
+## Risk / caveats
+
+- **#2326-adjacent.** NEVER #14: the wrapper must use the sanctioned writers (`write-session-env.sh` / `session-setup.sh` / `persist-implement-run-flags.sh`) — it must not write/append `session-env.sh` itself.
+- Preserve the exact exit-2 operator strings and the copy-plan / gh-issue-view stderr **redaction** (`redact-secrets.sh` | `redact-tmpdir-paths.sh`).
+- Preserve the dirty-tree resume routing-table semantics (the resume tail reuses persisted availability keys; no fresh reviewer probes).
+- Extend `skills/implement/scripts/test-implement-bootstrap.sh` to cover the wrapper envelope and both invocation modes.
+- Region: Step 0.
+
+
+---
+
+## Rider: doc-hygiene fix in `codex-manifest-schema.md` (same drift class)
+
+While this issue is correcting stale prose/code drift (the dead `_ib_parse_bootstrap_out` and the routing-table prose that points at it), fix one more instance of the **same defect class** surfaced during the sweep:
+
+`skills/implement/references/codex-manifest-schema.md`'s **"When to load"** line claims the file is read *"at Step 2 entry (via the MANDATORY directive at the top of Step 2 in SKILL.md)."* **No such `MANDATORY — READ ENTIRE FILE` directive exists in `SKILL.md`** — verified: the only `codex-manifest-schema` mention in `SKILL.md` is a passing cross-reference about the dispatcher's REASON enumeration, not a load directive.
+
+The orchestrator never loads this schema. Its real consumers are:
+- `skills/implement/scripts/step2-implement.sh` — manifest validation (`jq -e`),
+- `scripts/ship-pr.sh` — Steps 8a / 9a / 9a.1 consumption,
+- `agents/codex-implementer.md` / `agents/cursor-implementer.md` — production.
+
+The orchestrator only handles the manifest **path** (sets `MANIFEST_PATH`, passes `--manifest-path` to `ship-pr.sh`); it never parses the JSON in-prompt.
+
+**Fix:** retarget the "When to load" line to those script/agent consumers and drop the phantom "SKILL.md MANDATORY directive at Step 2 entry" claim. Same `drift-prone-prose.md` class as this issue's main cleanup. ~1–2 lines; no behavioral change.
+
+
+</feature>

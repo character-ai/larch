@@ -1,0 +1,2 @@
+Reviewing the plan against the codebase for bootstrap call-site completeness.
+{"no_issues_found": true}

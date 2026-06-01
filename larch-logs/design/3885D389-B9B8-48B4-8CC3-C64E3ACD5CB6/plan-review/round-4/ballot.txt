@@ -1,0 +1,42 @@
+Verifying cited locations so merged findings accurately reflect the behavioral risks.
+Normalized aggregator output from the four reviewer slots. **FINDING_1** and **FINDING_3** share one behavioral risk (Step 0 `awk` still enforcing legacy `implement-bootstrap.sh` / `--resume-plan-tail` literals after a wrapper migration). **FINDING_2** and **FINDING_4** share another (structural pins demanding ≥3 `set +e` / `_inv_rc` wrapper fences when the planned SKILL surface only has two executable wrapper call sites).
+
+---
+
+### FINDING_1: Step 0 structure `awk` still enforces legacy bootstrap / `--resume-plan-tail` literals
+- **Reviewer(s)**: Cursor-Edge, Cursor-Innovation
+- **Severity**: important
+- **Concern**: After migrating bootstrap/resume to `implement-bootstrap-invoke.sh --mode initial` and `--mode resume`, Step 0 `awk` in `scripts/test-implement-structure.sh` (roughly lines 550–575) still fails on exit codes **10** and **13** by counting direct `implement-bootstrap.sh --up-to-phase coder` calls and exactly one `--resume-plan-tail` mention inside Step 0 bash blocks. A faithful SKILL.md refactor can have zero such literals while still being correct, so `make test-implement-structure` fails even when the wrapper migration matches the plan.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Replace exit 10/13 with counts for `implement-bootstrap-invoke.sh --mode initial` and `--mode resume` as the plan’s awk retarget prose describes
+  - From Cursor-Innovation: Replace exit 13 logic with pins for zero --resume-plan-tail / zero direct implement-bootstrap.sh in step:0 bash plus at least one --mode resume wrapper call
+
+---
+
+### FINDING_2: Structural pins require ≥3 wrapper fences but plan only defines two invoke sites
+- **Reviewer(s)**: Cursor-Innovation, Cursor-dyn-stdio-routing
+- **Severity**: important
+- **Concern**: Proposed structure-test pins (plan / `scripts/test-implement-structure.sh` around the wrapper-fence checks; plan also references `skills/implement/SKILL.md` Step 0 / dirty-tree prose) require **≥3** `set +e` / `_inv_rc` wrapper fences, while the planned SKILL edit only has **two** executable wrapper call sites: Step 0 `--mode initial` and dirty-tree recovery `--mode resume` (no separate Step 0 resume bash block). Scenario: `make test-implement-structure` fails after a correct implementation, or the implementer adds a phantom third fence/call site only to satisfy CI.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Retarget pins to ≥2 sites matching implement-bootstrap-invoke.sh --mode initial and --mode resume only; drop the ≥3 requirement
+  - From Cursor-dyn-stdio-routing: Align pins and prose to two sites: initial Step 0 + dirty-tree `--mode resume`; change `≥3` to `≥2` (or drop the third-site requirement) and replace “all three call sites” with “both wrapper call sites”
+
+---
+
+**Merge notes (for voters, not machine fields):** No `[OUT_OF_SCOPE]` inputs; no `### OOS_N:` blocks. Severity on FINDING_1 uses **important** (Cursor-Innovation) over **latent** (Cursor-Edge). Do not emit `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` because two merged finding blocks are present.
+### OOS_1:
+- **Description**: Redundant bootstrap-routing.env plus file-first parse duplicates the stdout routing envelope (~720 added lines per plan estimate). Scenario: Extra write/parse surface and harness cases without fixing a failure the current _ib_out KV parse already handles
+- **Reviewer**: Cursor-Innovation
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: scripts/implement-bootstrap-invoke.sh:1-1
+- **Phase**: design
+
+### OOS_2:
+- **Description**: codex-manifest-schema When to load rider is unrelated to Step 0 bootstrap extraction (#3298). Scenario: Unnecessary review surface and doc churn on a SIMPLE refactor
+- **Reviewer**: Cursor-Innovation
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: skills/implement/references/codex-manifest-schema.md:7-7
+- **Phase**: design
+

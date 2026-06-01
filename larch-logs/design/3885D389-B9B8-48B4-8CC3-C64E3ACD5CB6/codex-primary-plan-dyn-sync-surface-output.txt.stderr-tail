@@ -1,0 +1,5 @@
+Reading additional input from stdin...
+2026-06-01T07:35:26.242984Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: no native root CA certificates found (errors: [Error { context: "failed to load system trust settings", kind: Os(Error { code: -36, message: "I/O error." }) }]), url: wss://chatgpt.com/backend-api/codex/responses
+2026-06-01T07:35:35.368908Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: no native root CA certificates found (errors: [Error { context: "failed to load system trust settings", kind: Os(Error { code: -36, message: "I/O error." }) }]), url: wss://chatgpt.com/backend-api/codex/responses
+2026-06-01T07:35:41.594611Z ERROR codex_api::endpoint::responses_websocket: failed to connect to websocket: IO error: no native root CA certificates found (errors: [Error { context: "failed to load system trust settings", kind: Os(Error { code: -36, message: "I/O error." }) }]), url: wss://chatgpt.com/backend-api/codex/responses
+❌ codex agent: FAILED (exit code 1, 40s elapsed, output 0 bytes)
