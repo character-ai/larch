@@ -144,7 +144,7 @@ def test_publish_run_tree_copies_run_id_pathspec(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
     ctx = _ctx(tmp_path, str(state))
-    rel = run_logs._publish_run_tree_to_repo(
+    rel = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
         ctx,
         tmp_path / "larch-logs",
         cwd=str(repo),

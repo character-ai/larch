@@ -70,9 +70,12 @@ def test_compose_pr_body_fail_closed_on_truncation(
 
 
 def test_update_pr_body_invokes_gh() -> None:
+    def new_calls() -> list[list[str]]:
+        return []
+
     @dataclass
     class Runner:
-        calls: list[list[str]] = field(default_factory=list)
+        calls: list[list[str]] = field(default_factory=new_calls)
 
         def run(
             self,

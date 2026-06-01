@@ -438,7 +438,7 @@ def test_try_log_subjects_empty_on_failure() -> None:
         },
     )
     subjects = git.try_log_subjects(runner, "bad..HEAD")
-    assert subjects.subjects == ()
+    assert not subjects.subjects
 
 
 def test_force_push_recovery_dirty_worktree() -> None:

@@ -112,7 +112,7 @@ def test_flush_recoverable_returns_false_when_log_fails() -> None:
             CommandResult(("git", "log"), 1, "", "bad oid", 0.01),
         ],
     )
-    assert not merge_module._flush_recoverable(runner, "deadbeef", cwd=None)
+    assert not merge_module._flush_recoverable(runner, "deadbeef", cwd=None)  # pyright: ignore[reportPrivateUsage]
 
 
 @pytest.mark.parametrize(

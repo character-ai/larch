@@ -117,8 +117,8 @@ def test_ensure_pr_updates_body_without_ctx_pr_number(
         _runner: object,
         _branch: str,
         *,
-        repo: str,  # noqa: ARG001
-        cwd: str | None = None,  # noqa: ARG001
+        repo: str,  # noqa: ARG001  # pylint: disable=unused-argument
+        cwd: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
     ) -> gh.PullRequest:
         return existing
 
@@ -127,8 +127,8 @@ def test_ensure_pr_updates_body_without_ctx_pr_number(
         number: int,
         _body: str,
         *,
-        repo: str,  # noqa: ARG001
-        cwd: str | None = None,  # noqa: ARG001
+        repo: str,  # noqa: ARG001  # pylint: disable=unused-argument
+        cwd: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
     ) -> None:
         edits.append(number)
 

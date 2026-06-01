@@ -337,7 +337,7 @@ def _publish_run_tree_to_repo(
         dest.parent.mkdir(parents=True, exist_ok=True)
         if dest.exists():
             shutil.rmtree(dest)
-        shutil.copytree(src, dest)
+        _ = shutil.copytree(src, dest)
     return f"larch-logs/implement/{run_id}"
 
 
