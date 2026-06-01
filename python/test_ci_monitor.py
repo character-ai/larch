@@ -117,7 +117,7 @@ def _status(
             [{"name": "lint", "state": "SUCCESS", "bucket": "pass", "link": ""}],
         )
     return {
-        ("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName"): _cr(
+        ("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt"): _cr(
             ("gh", "pr", "view"),
             stdout=pr_json,
         ),
@@ -274,7 +274,7 @@ def test_poll_ci_budget_exhaustion_bails() -> None:
 
 def test_poll_ci_three_consecutive_errors_bail() -> None:
     responses = _status(status="pass")
-    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName")] = _cr(
+    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt")] = _cr(
         ("gh", "pr", "view"),
         rc=1,
     )
@@ -958,7 +958,7 @@ def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
     responses: dict[tuple[str, ...], CommandResult] = {}
     pr_json = json.dumps({"number": 1, "url": "https://github.com/o/r/pull/1", "state": "OPEN", "headRefName": "feat"})
     checks = json.dumps([{"name": "lint", "state": "FAIL", "bucket": "fail", "link": "https://github.com/o/r/actions/runs/42/job/1"}])
-    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName")] = _cr(("gh", "pr", "view"), stdout=pr_json)
+    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt")] = _cr(("gh", "pr", "view"), stdout=pr_json)
     responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(("git", "fetch"), 0)
     responses[("gh", "pr", "checks", "1", "--repo", "o/r", "--json", "name,state,bucket,link")] = _cr(("gh", "pr", "checks"), stdout=checks)
     responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(("git", "rev-list"), stdout="0\n")
@@ -1012,7 +1012,7 @@ def test_monitor_first_fixer_non_health_needs_user_input(tmp_path: Any) -> None:
     responses: dict[tuple[str, ...], CommandResult] = {}
     pr_json = json.dumps({"number": 1, "url": "https://github.com/o/r/pull/1", "state": "OPEN", "headRefName": "feat"})
     checks = json.dumps([{"name": "lint", "state": "FAIL", "bucket": "fail", "link": "https://github.com/o/r/actions/runs/55/job/1"}])
-    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName")] = _cr(("gh", "pr", "view"), stdout=pr_json)
+    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt")] = _cr(("gh", "pr", "view"), stdout=pr_json)
     responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(("git", "fetch"), 0)
     responses[("gh", "pr", "checks", "1", "--repo", "o/r", "--json", "name,state,bucket,link")] = _cr(("gh", "pr", "checks"), stdout=checks)
     responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(("git", "rev-list"), stdout="0\n")
