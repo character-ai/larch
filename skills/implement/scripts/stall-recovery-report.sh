@@ -227,9 +227,10 @@ cmd_clear_stall() {
         emit_cleared_false_exit 1
     fi
     mv -f "$tmp" "$state" || emit_cleared_false_exit 1
-    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default "") || emit_cleared_false_exit 1
-    if [ "$tracking" != false ]; then
-        emit_cleared_false_exit 1
+    if tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default ""); then
+        if [ "$tracking" != false ]; then
+            emit_cleared_false_exit 1
+        fi
     fi
     emit_kv CLEARED true
 }
@@ -260,8 +261,11 @@ cmd_seed_terminal_state() {
             exit 3
         fi
         if ship_pr_state_has_keys "$state"; then
-            step=$(safe_step_value "$(kv_get "$state" STALL_STEP "8")")
-            phase=$(safe_phase_value "$(kv_get "$state" PHASE "ci-initial")")
+            local step_raw phase_raw
+            step_raw=$(kv_get "$state" STALL_STEP "8") || emit_seeded_false_exit 1
+            step=$(safe_step_value "$step_raw")
+            phase_raw=$(kv_get "$state" PHASE "ci-initial") || emit_seeded_false_exit 1
+            phase=$(safe_phase_value "$phase_raw")
             [ -n "$stall_step_arg" ] && step=$(safe_step_value "$stall_step_arg")
             [ -n "$phase_arg" ] && phase=$(safe_phase_value "$phase_arg")
             seed_mode=rewrite
@@ -285,7 +289,7 @@ cmd_seed_terminal_state() {
         content=$(printf 'PHASE=%s\nSTALL_TRACKING=true\nSTALL_STEP=%s\nBAIL_REASON=\nBAIL_FAILURE_DETAIL_LOG=\nEXIT_CODE=4\n' "$phase" "$step")
         dir=$(dirname "$state")
         base=$(basename "$state")
-        mkdir -p "$dir"
+        mkdir -p "$dir" || emit_seeded_false_exit 1
         tmp=$(mktemp "$dir/${base}.tmp.XXXXXX") || emit_seeded_false_exit 1
         printf '%s' "$content" >"$tmp" || {
             rm -f "$tmp"
@@ -306,9 +310,10 @@ cmd_seed_terminal_state() {
         emit_seeded_false_exit 1
     fi
     mv -f "$tmp" "$state" || emit_seeded_false_exit 1
-    tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default "") || emit_seeded_false_exit 1
-    if [ "$tracking" != true ]; then
-        emit_seeded_false_exit 1
+    if tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default ""); then
+        if [ "$tracking" != true ]; then
+            emit_seeded_false_exit 1
+        fi
     fi
     emit_kv SEEDED true
     emit_kv SEED_MODE "$seed_mode"
