@@ -7,6 +7,7 @@ export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"
 REAL_WRAPPER="$REPO_ROOT/scripts/implement-bootstrap-invoke.sh"
+REAL_SKILL="$REPO_ROOT/skills/implement/SKILL.md"
 REAL_REDACT_SECRETS="$REPO_ROOT/scripts/redact-secrets.sh"
 REAL_REDACT_TMPDIR="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 REAL_LIB_QUIET="$REPO_ROOT/scripts/lib-quiet.sh"
@@ -35,6 +36,18 @@ assert_not_contains() {
     FAIL=$((FAIL + 1))
     echo "FAIL: $label"
     echo "  did not expect: $needle"
+  else
+    PASS=$((PASS + 1))
+    echo "PASS: $label"
+  fi
+}
+
+assert_not_argv_flag() {
+  local flag=$1 haystack=$2 label=$3
+  if printf '%s\n' "$haystack" | grep -Eq "(^|[[:space:]])${flag}($|[[:space:]])"; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: $label"
+    echo "  did not expect argv flag: $flag"
   else
     PASS=$((PASS + 1))
     echo "PASS: $label"
@@ -83,8 +96,8 @@ case "${STUB_MODE:-success}" in
     printf 'IMPLEMENT_BAIL_REASON=\n'
     printf 'STALL_TRACKING=false\n'
     printf 'PLAN_FILE=%s/plan.txt\n' "${STUB_TMPDIR:-/tmp/larch-stub-tmpdir}"
-    printf 'coder=codex\n'
-    printf 'coder_fallback=false\n'
+    printf 'coder=%s\n' "${STUB_CODER-codex}"
+    printf 'coder_fallback=%s\n' "${STUB_CODER_FALLBACK-false}"
     printf 'REPO_UNAVAILABLE=false\n'
     printf 'DEFERRED=false\n'
     printf 'ISSUE_NUMBER=42\n'
@@ -105,6 +118,9 @@ case "${STUB_MODE:-success}" in
     [ -n "${STUB_GATE_ERROR:-}" ] && printf 'GATE_ERROR=%s\n' "$STUB_GATE_ERROR"
     [ -n "${STUB_PREFLIGHT_ERROR:-}" ] && printf 'PREFLIGHT_ERROR=%s\n' "$STUB_PREFLIGHT_ERROR"
     exit 2
+    ;;
+  exitn)
+    exit "${STUB_RC:-7}"
     ;;
   *)
     exit 1
@@ -158,8 +174,12 @@ export forked_target=true
 export UPSTREAM_REPO=up/repo
 STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-tmp.XXXXXX)
 export STUB_TMPDIR
-out=$(run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial 2>/dev/null) || true
+set +e
+out=$(run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial 2>/dev/null)
+rc=$?
+set -e
 stub_log=$(cat "$SANDBOX/stub-invoke.log" 2>/dev/null || true)
+assert_rc "$rc" 0 'initial mode success rc'
 assert_contains '--up-to-phase coder' "$stub_log" 'initial mode uses coder phase'
 assert_contains '--coder codex' "$stub_log" 'initial mode passes --coder when set'
 assert_not_contains '--resume-plan-tail' "$stub_log" 'initial mode omits resume tail'
@@ -173,19 +193,51 @@ assert_contains '--emergency-requested true' "$stub_log" 'initial wires emergenc
 assert_contains 'IMPLEMENT_TMPDIR=' "$out" 'initial stdout envelope has IMPLEMENT_TMPDIR'
 assert_contains 'REPO=owner/repo' "$out" 'initial stdout envelope has REPO'
 assert_contains 'CODEX_PRESENT=true' "$out" 'initial stdout envelope has presence keys'
-[ -f "$STUB_TMPDIR/bootstrap-routing.env" ] && assert_contains 'BRANCH_NAME=feature/stub' "$(cat "$STUB_TMPDIR/bootstrap-routing.env")" 'routing env file has BRANCH_NAME'
+if [ -f "$STUB_TMPDIR/bootstrap-routing.env" ]; then
+  routing_env=$(cat "$STUB_TMPDIR/bootstrap-routing.env")
+  assert_contains 'IMPLEMENT_TMPDIR=' "$routing_env" 'initial routing env file has IMPLEMENT_TMPDIR'
+  assert_contains 'coder=codex' "$routing_env" 'initial routing env file has coder'
+  assert_contains 'BRANCH_NAME=feature/stub' "$routing_env" 'initial routing env file has BRANCH_NAME'
+else
+  FAIL=$((FAIL + 1))
+  echo "FAIL: initial routing env file exists"
+fi
 rm -rf "$SANDBOX" "$STUB_TMPDIR"
+
+# --- caller-env and issue-number fallbacks ---
+build_sandbox
+unset CALLER_ENV_PATH TARGET_ISSUE_NUMBER
+export SESSION_ENV_PATH=/tmp/session-env-test
+export ISSUE_NUMBER=123
+STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-tmp.XXXXXX)
+export STUB_TMPDIR
+set +e
+out=$(run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial 2>/dev/null)
+rc=$?
+set -e
+stub_log=$(cat "$SANDBOX/stub-invoke.log" 2>/dev/null || true)
+assert_rc "$rc" 0 'initial fallback success rc'
+assert_contains '--caller-env /tmp/session-env-test' "$stub_log" 'initial falls back to SESSION_ENV_PATH caller env'
+assert_contains '--issue-number 123' "$stub_log" 'initial falls back to ISSUE_NUMBER'
+[ -f "$STUB_TMPDIR/bootstrap-routing.env" ] && assert_contains 'RUN_ID=stub-run' "$(cat "$STUB_TMPDIR/bootstrap-routing.env")" 'fallback routing env file exists'
+rm -rf "$SANDBOX" "$STUB_TMPDIR"
+unset SESSION_ENV_PATH ISSUE_NUMBER
 
 # --- initial mode omits unset coder ---
 build_sandbox
 unset coder
 STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-tmp.XXXXXX)
 export STUB_TMPDIR
-out=$(run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial 2>/dev/null) || true
+set +e
+out=$(run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial 2>/dev/null)
+rc=$?
+set -e
 stub_log=$(cat "$SANDBOX/stub-invoke.log" 2>/dev/null || true)
+assert_rc "$rc" 0 'initial unset coder success rc'
 assert_contains '--up-to-phase coder' "$stub_log" 'initial mode still uses coder phase when coder unset'
-assert_not_contains '--coder' "$stub_log" 'initial mode omits --coder when unset'
+assert_not_argv_flag '--coder' "$stub_log" 'initial mode omits --coder when unset'
 assert_contains 'IMPLEMENT_TMPDIR=' "$out" 'initial unset coder stdout envelope has IMPLEMENT_TMPDIR'
+[ -f "$STUB_TMPDIR/bootstrap-routing.env" ] && assert_contains 'coder=codex' "$(cat "$STUB_TMPDIR/bootstrap-routing.env")" 'initial unset coder routing env file has selected coder'
 rm -rf "$SANDBOX" "$STUB_TMPDIR"
 
 # --- resume mode argv + IMPLEMENT_TMPDIR pass-through ---
@@ -196,14 +248,65 @@ touch "$RESUME_TMP/session-env.sh"
 export IMPLEMENT_TMPDIR="$RESUME_TMP"
 export STUB_TMPDIR="$RESUME_TMP"
 unset coder
-out=$(run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode resume 2>/dev/null) || true
+set +e
+out=$(run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode resume 2>/dev/null)
+rc=$?
+set -e
 stub_log=$(cat "$SANDBOX/stub-invoke.log" 2>/dev/null || true)
+assert_rc "$rc" 0 'resume mode success rc'
 assert_contains '--up-to-phase plan' "$stub_log" 'resume mode uses plan phase'
 assert_contains '--resume-plan-tail' "$stub_log" 'resume mode passes resume tail'
-assert_not_contains '--coder' "$stub_log" 'resume mode omits --coder'
+assert_not_argv_flag '--coder' "$stub_log" 'resume mode omits --coder'
 assert_contains "stub-env IMPLEMENT_TMPDIR=$RESUME_TMP" "$stub_log" 'resume passes IMPLEMENT_TMPDIR to stub env'
 assert_contains "IMPLEMENT_TMPDIR=$RESUME_TMP" "$out" 'resume envelope includes IMPLEMENT_TMPDIR'
+if [ -f "$RESUME_TMP/bootstrap-routing.env" ]; then
+  routing_env=$(cat "$RESUME_TMP/bootstrap-routing.env")
+  assert_contains "IMPLEMENT_TMPDIR=$RESUME_TMP" "$routing_env" 'resume routing env file has IMPLEMENT_TMPDIR'
+  assert_contains 'PLAN_FILE=' "$routing_env" 'resume routing env file has PLAN_FILE'
+  assert_contains 'BRANCH_ACTION=created' "$routing_env" 'resume routing env file has BRANCH_ACTION'
+else
+  FAIL=$((FAIL + 1))
+  echo "FAIL: resume routing env file exists"
+fi
 rm -rf "$SANDBOX" "$RESUME_TMP"
+
+# --- resume mode omits empty coder state from routing envelope ---
+build_sandbox
+RESUME_TMP=$(mktemp -d /tmp/larch-ibi-resume.XXXXXX)
+export IMPLEMENT_TMPDIR="$RESUME_TMP"
+export STUB_TMPDIR="$RESUME_TMP"
+export STUB_CODER="" STUB_CODER_FALLBACK=""
+out=$(run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode resume 2>/dev/null)
+routing_env=$(cat "$RESUME_TMP/bootstrap-routing.env")
+assert_not_contains 'coder=' "$out" 'resume stdout omits empty coder'
+assert_not_contains 'coder_fallback=' "$routing_env" 'resume routing env omits empty coder_fallback'
+rm -rf "$SANDBOX" "$RESUME_TMP"
+unset STUB_CODER STUB_CODER_FALLBACK
+
+# --- bootstrap-routing.env symlink refusal ---
+build_sandbox
+STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-symlink.XXXXXX)
+symlink_target=$(mktemp /tmp/larch-ibi-target.XXXXXX)
+ln -s "$symlink_target" "$STUB_TMPDIR/bootstrap-routing.env"
+export STUB_TMPDIR
+set +e
+run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "$rc" 1 'routing env symlink refusal rc'
+rm -f "$symlink_target"
+rm -rf "$SANDBOX" "$STUB_TMPDIR"
+
+# --- non-2 exit propagation ---
+build_sandbox
+export STUB_MODE=exitn STUB_RC=7
+set +e
+run_wrapper "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "$rc" 7 'non-2 bootstrap rc propagates'
+rm -rf "$SANDBOX"
+unset STUB_MODE STUB_RC
 
 # --- handled exit 2 cases: stderr / empty stdout ---
 export STUB_GATE_ERROR=contract-breach
@@ -316,9 +419,41 @@ fi
 
 # --- wrapper routing key set in source ---
 _wrapper_src=$(cat "$REAL_WRAPPER")
-assert_contains 'BRANCH_NAME' "$_wrapper_src" 'wrapper source includes BRANCH_NAME routing key'
-assert_contains 'PLAN_FILE' "$_wrapper_src" 'wrapper source includes PLAN_FILE routing key'
-assert_contains 'coder_fallback' "$_wrapper_src" 'wrapper source includes coder_fallback routing key'
+expected_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION'
+actual_routing_keys=$(printf '%s\n' "$_wrapper_src" | awk -F"'" '/^_inv_routing_keys=/ {print $2; exit}')
+if [ "$actual_routing_keys" = "$expected_routing_keys" ]; then
+  PASS=$((PASS + 1))
+  echo "PASS: wrapper routing key set matches canonical list"
+else
+  FAIL=$((FAIL + 1))
+  echo "FAIL: wrapper routing key set matches canonical list"
+  echo "  expected: $expected_routing_keys"
+  echo "  actual:   $actual_routing_keys"
+fi
+skill_mismatch_count=$(awk -F"'" -v expected="$expected_routing_keys" '
+  /_inv_routing_keys=/ {
+    count += 1
+    if ($2 != expected) {
+      bad += 1
+    }
+  }
+  END {
+    if (count == 0) {
+      print "missing"
+    } else if (bad > 0) {
+      print "mismatch"
+    } else {
+      print "ok"
+    }
+  }
+' "$REAL_SKILL")
+if [ "$skill_mismatch_count" = ok ]; then
+  PASS=$((PASS + 1))
+  echo "PASS: SKILL routing key sets match canonical list"
+else
+  FAIL=$((FAIL + 1))
+  echo "FAIL: SKILL routing key sets match canonical list ($skill_mismatch_count)"
+fi
 
 echo "---"
 echo "PASS=$PASS FAIL=$FAIL"

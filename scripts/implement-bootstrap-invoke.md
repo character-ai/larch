@@ -34,7 +34,7 @@ On `--mode resume`, the wrapper re-exports caller `IMPLEMENT_TMPDIR` unchanged b
 |------|---------|
 | `0` | Success — routing envelope on stdout and `$IMPLEMENT_TMPDIR/bootstrap-routing.env`. |
 | `2` | Bootstrap exit 2 — per-`STEP_FAILED` operator message on **stderr**, **empty stdout**. Callers propagate with `exit 2` only (do not print `$_inv_out`). |
-| other | Bootstrap failure or usage. |
+| other | Bootstrap failure or usage; non-2 bootstrap exit codes are propagated unchanged. |
 
 ## Exit-2 single-owner invariant
 
@@ -46,7 +46,9 @@ Keys with consumers before the first `read-session-env-key.sh` / session-env reh
 
 `IMPLEMENT_TMPDIR`, `IMPLEMENT_BAIL_REASON`, `STALL_TRACKING`, `PLAN_FILE`, `coder`, `coder_fallback`, `REPO_UNAVAILABLE`, `DEFERRED`, `ISSUE_NUMBER`, `REPO`, `CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `codex_available`, `cursor_available`, `RUN_ID`, `BRANCH_NAME`, `BRANCH_ACTION`.
 
-Dual transport: stdout envelope (for command substitution) and `$IMPLEMENT_TMPDIR/bootstrap-routing.env` (file-first re-parse in SKILL.md).
+Dual transport: stdout envelope (for command substitution) and `$IMPLEMENT_TMPDIR/bootstrap-routing.env` (file-first re-parse in SKILL.md). On success the wrapper refuses to overwrite a symlinked or non-regular `bootstrap-routing.env`, writes through a same-directory temporary file, then renames it into place.
+
+The file envelope is authoritative when present and regular; stdout is a fallback only for keys still empty after file parsing. Before each parse, the orchestrator clears stale volatile routing keys so a skipped or unreadable file cannot retain old bail/branch state. Dirty-tree resume preserves the caller's existing `coder` / `coder_fallback` selection, and the wrapper omits empty `coder` / `coder_fallback` values in resume mode so a plan-tail envelope cannot erase that preserved implementer state.
 
 ## NEVER #14
 

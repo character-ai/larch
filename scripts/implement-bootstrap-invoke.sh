@@ -143,6 +143,13 @@ _inv_emit_routing_kv() {
   [ -z "$_inv_line" ] && return 0
   _inv_key="${_inv_line%%=*}"
   _inv_value="${_inv_line#*=}"
+  if [ "$MODE" = resume ]; then
+    case "$_inv_key" in
+      coder|coder_fallback)
+        [ -n "$_inv_value" ] || return 0
+        ;;
+    esac
+  fi
   case " $_inv_routing_keys " in
     *" $_inv_key "*) printf '%s=%s\n' "$_inv_key" "$_inv_value" ;;
   esac
@@ -161,6 +168,19 @@ done <<EOF
 $(printf '%s\n' "$_ib_out")
 EOF
 
-cat "$_inv_routing_buf" >"$_inv_tmpdir/bootstrap-routing.env"
+_inv_routing_file="$_inv_tmpdir/bootstrap-routing.env"
+if [ -L "$_inv_routing_file" ]; then
+  rm -f "$_inv_routing_buf"
+  printf '%s\n' 'implement-bootstrap-invoke.sh: refusing to overwrite symlinked bootstrap-routing.env' >&2
+  exit 1
+fi
+if [ -e "$_inv_routing_file" ] && [ ! -f "$_inv_routing_file" ]; then
+  rm -f "$_inv_routing_buf"
+  printf '%s\n' 'implement-bootstrap-invoke.sh: refusing to overwrite non-regular bootstrap-routing.env' >&2
+  exit 1
+fi
+_inv_routing_tmp=$(mktemp "$_inv_tmpdir/bootstrap-routing.env.XXXXXX")
+cat "$_inv_routing_buf" >"$_inv_routing_tmp"
+mv -f "$_inv_routing_tmp" "$_inv_routing_file"
 cat "$_inv_routing_buf"
 rm -f "$_inv_routing_buf"

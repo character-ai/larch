@@ -317,16 +317,24 @@ set -e
 if [ "$_inv_rc" -eq 2 ]; then
   exit 2
 fi
+unset IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION
 IMPLEMENT_TMPDIR=$(printf '%s\n' "$_inv_out" | grep '^IMPLEMENT_TMPDIR=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
 _inv_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION'
 _inv_apply_routing_line() {
   [ -z "$_inv_line" ] && return 0
   _inv_key="${_inv_line%%=*}"
   _inv_value="${_inv_line#*=}"
+  case "$_inv_key" in
+    coder|coder_fallback) [ -n "$_inv_value" ] || return 0 ;;
+  esac
   case " $_inv_routing_keys " in
     *" $_inv_key "*) printf -v "$_inv_key" '%s' "$_inv_value" ;;
   esac
 }
+if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -L "$IMPLEMENT_TMPDIR/bootstrap-routing.env" ]; then
+  printf '%s\n' 'implement-bootstrap routing envelope is a symlink; refusing to parse' >&2
+  exit 1
+fi
 if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/bootstrap-routing.env" ] && [ ! -L "$IMPLEMENT_TMPDIR/bootstrap-routing.env" ]; then
   while IFS= read -r _inv_line || [ -n "$_inv_line" ]; do
     _inv_apply_routing_line
@@ -403,16 +411,24 @@ set -e
 if [ "$_inv_rc" -eq 2 ]; then
   exit 2
 fi
+unset IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE REPO_UNAVAILABLE DEFERRED REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION
 IMPLEMENT_TMPDIR=$(printf '%s\n' "$_inv_out" | grep '^IMPLEMENT_TMPDIR=' | tail -n 1 | cut -d= -f2- | tr -d '\r' || true)
 _inv_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION'
 _inv_apply_routing_line() {
   [ -z "$_inv_line" ] && return 0
   _inv_key="${_inv_line%%=*}"
   _inv_value="${_inv_line#*=}"
+  case "$_inv_key" in
+    coder|coder_fallback) [ -n "$_inv_value" ] || return 0 ;;
+  esac
   case " $_inv_routing_keys " in
     *" $_inv_key "*) printf -v "$_inv_key" '%s' "$_inv_value" ;;
   esac
 }
+if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -L "$IMPLEMENT_TMPDIR/bootstrap-routing.env" ]; then
+  printf '%s\n' 'implement-bootstrap routing envelope is a symlink; refusing to parse' >&2
+  exit 1
+fi
 if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/bootstrap-routing.env" ] && [ ! -L "$IMPLEMENT_TMPDIR/bootstrap-routing.env" ]; then
   while IFS= read -r _inv_line || [ -n "$_inv_line" ]; do
     _inv_apply_routing_line
