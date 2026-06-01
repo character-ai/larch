@@ -1,0 +1,7 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/step-telemetry-mark.sh:1	New runtime helper is called directly but the plan does not require executable mode	If the new file lands as 0644, each converted SKILL.md call returns 126 and is swallowed by || true, silently losing Step 5/16/17/18-cleanup telemetry	Make the helper executable in git and have test-step-telemetry-mark invoke it directly by path, not only via bash
+1	in_scope	important	risk-integration	agent-lint.toml:1058-1063	New Makefile-only harness is not added to agent-lint dead-script excludes	agent-lint does not model Makefile-only test targets, so relevant-checks can fail on scripts/test-step-telemetry-mark.sh and its sibling md despite Makefile wiring	Add scripts/test-step-telemetry-mark.sh and scripts/test-step-telemetry-mark.md to the same Makefile-only allowlist near test-implement-timing-rehydration
+
+1. [risk-integration] `scripts/step-telemetry-mark.sh:1` — Require executable mode for the new helper, since runtime calls execute it directly.
+
+2. [risk-integration] `agent-lint.toml:1058-1063` — Add the new Makefile-only harness and sibling doc to the existing agent-lint allowlist pattern.

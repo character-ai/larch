@@ -1,0 +1,21 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	agent-lint.toml:1058-1063	Makefile-only harness lacks dead-script exclusion entry	`scripts/test-step-telemetry-mark.sh` is only invoked from the new Makefile target; without an `agent-lint.toml` dead-script exclusion (same pattern as `scripts/test-implement-timing-rehydration.sh`), `make lint` / agent-lint G004 can fail on a newly dead script	Add `scripts/test-step-telemetry-mark.sh` and `scripts/test-step-telemetry-mark.md` to the `agent-lint.toml` dead-script exclude list with a Makefile-only comment, mirroring `test-implement-timing-rehydration`
+2	in_scope	important	correctness	scripts/step-telemetry-mark.sh:18-26	`set -u` plus omitted `--implement-tmpdir` can abort before `exit 0`	The plan promises missing/empty `--implement-tmpdir` is never fatal and the harness tests that path; with `set -uo pipefail` and no upfront default, an omitted flag and unset env makes `"$IMPLEMENT_TMPDIR/session-env.sh"` an unbound-variable fatal, violating the never-fatal contract	Specify in the helper: initialize `IMPLEMENT_TMPDIR=""` before parsing and use `${IMPLEMENT_TMPDIR:-}` on path expansions (or drop `-u`), so the missing-tmpdir harness case and orchestrator empty `"$IMPLEMENT_TMPDIR"` both reach `exit 0`
+
+**1. [risk-integration] `agent-lint.toml` — Makefile-only harness not wired for agent-lint**
+
+The plan registers `test-step-telemetry-mark` in the `Makefile` but does not mention `agent-lint.toml`. Peer harnesses such as `scripts/test-implement-timing-rehydration.sh` are explicitly excluded from G004 dead-script detection because only the Makefile invokes them (see `agent-lint.toml` around the existing timing-rehydration comment block). Without the same exclusion, `bash scripts/relevant-checks.sh` can fail after the new harness lands.
+
+**Suggested revision:** Add `scripts/test-step-telemetry-mark.sh` and `scripts/test-step-telemetry-mark.md` to the dead-script exclude list with a short Makefile-only comment, matching `test-implement-timing-rehydration`.
+
+---
+
+**2. [correctness] Proposed `scripts/step-telemetry-mark.sh` — `set -u` vs never-fatal edge case**
+
+The plan requires `set -uo pipefail` (no `-e`), always `exit 0`, and a harness case for missing/empty `--implement-tmpdir`. If the implementer parses `--implement-tmpdir` into `IMPLEMENT_TMPDIR` only when the flag is present, then omits the flag with no inherited env, `"$IMPLEMENT_TMPDIR/session-env.sh"` trips unbound-variable under `-u` before the script reaches the planned `exit 0`. That conflicts with the stated edge case and unit test.
+
+**Suggested revision:** Document and implement an upfront `IMPLEMENT_TMPDIR=""` (or `${IMPLEMENT_TMPDIR:-}` on all path uses) before argument parsing, so empty and omitted tmpdir both degrade to unreadable `session-env.sh` and still finish with `exit 0`.
+
+---
+
+**Exonerated (SIMPLE lane):** Dropping `# token-mark` / `# timing-mark` anchors (grep shows they exist only in `skills/implement/SKILL.md`; `scripts/test-implement-structure.sh` does not pin them). Keeping Step 2 and Step 18 `— done` unconverted preserves conditional token marks and vendor-table slicing. The `tmpdir_assign_count == token_read_count + step_telemetry_mark_count` adjustment matches current counts (13/13/13 today; 4 conversions → 9 reads + 4 helper calls = 13 tmpdir assigns). Invariant B still applies to remaining direct `timing-ledger.sh` / `timing-report.sh` fences (Step 2, Step 18 done). Unknown-flag tolerance and the four-file harness surface are proportional to repo sibling/Makefile conventions, not scope creep for this refactor.
