@@ -1,0 +1,2 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan lists precondition as no ndjson separately; implementer can use bespoke tmpdir setup without prescribing an mkitmp variant
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

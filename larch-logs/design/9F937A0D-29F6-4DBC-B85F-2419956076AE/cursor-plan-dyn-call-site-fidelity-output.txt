@@ -1,0 +1,19 @@
+Reviewing the plan against the repository state, focusing on the disposition-gate block in `skills/implement/SKILL.md`.
+Verifying fence boundaries and whether the plan's tolerant-wrapper line cite matches the block end.
+**Call-site fidelity summary (verified against current tree):**
+- The inline block is one contiguous fenced Bash segment at `skills/implement/SKILL.md:1193-1283` (opening fence, body `1194-1282`, closing fence `1283`).
+- `merge-base` / `find` / accepted-file `awk` input resolution appears only in that fence within `SKILL.md` (not duplicated elsewhere in the skill).
+- The plan’s cited replacement span `1193-1282` omits the closing fence line and would leave a stray ` ``` ` or a broken fence if applied literally.
+
+1. **[correctness]** `plan.txt` (line-range claim) / `skills/implement/SKILL.md:1193-1283` — Plan says replace lines `1193–1282`, but the disposition-gate fence closes on line `1283` (` ``` `). Deleting through `1282` removes the opening fence and body but leaves an orphan closing delimiter (or a mismatched fence if the thin snippet is pasted without re-wrapping). **Suggested revision:** Specify replacement as the full fenced block `1193-1283`, or inner body `1194-1282` with explicit instruction to preserve both fence lines.
+
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/SKILL.md:1193-1283	Plan cites replacement range 1193-1282 but closing fence is line 1283	Literal line-range edit leaves orphan ``` or broken markdown fence; partial inline gate logic could remain	Specify 1193-1283 (full fence) or 1194-1282 (inner body) with explicit fence preservation in UPDATED: skills/implement/SKILL.md
+
+**Exonerated (plan already covers or SIMPLE-tier):**
+- Contiguity and sole occurrence of input-resolution logic in `SKILL.md` — matches plan motivation.
+- Thin-call site at the disposition-gate fence — correct anchor; snippet belongs inside the existing fence.
+- `skills/implement/SKILL.md:1187` orchestrator append-on-failure prose — plan UPDATED section requires rc-branching and checkpoint-owned logging.
+- NEVER #17/#18 and `scripts/test-implement-structure.sh:378-379` pin — plan explicitly retains `oos-disposition-gate.sh` wording for the structure test.
+- Helper inventory at `skills/implement/SKILL.md:1285` — plan requires adding checkpoint helper + harness note.
+- Pre-existing inline collapse of gate rc 2 to `exit 1` at `1281` — plan’s helper rc passthrough + thin `exit "$_oos_chk_rc"` is intentional contract refinement, not a gap.

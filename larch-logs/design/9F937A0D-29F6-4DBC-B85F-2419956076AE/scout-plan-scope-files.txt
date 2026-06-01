@@ -1,0 +1,5 @@
+skills/implement/scripts/oos-disposition-checkpoint.sh
+skills/implement/scripts/oos-disposition-checkpoint.md
+skills/implement/SKILL.md
+skills/implement/scripts/test-oos-disposition-gate.sh
+skills/implement/scripts/test-oos-disposition-gate.md

@@ -1,0 +1,27 @@
+Further factoring out /implement into bash Phase 3: extract Step 8+ OOS disposition-gate input plumbing to a script
+
+## Context
+
+At the Step 8+ OOS checkpoint (before clearing `OOS_PENDING`), `skills/implement/SKILL.md` inlines ~95 lines of bash to compute the inputs for `oos-disposition-gate.sh`:
+- read `FORKED_TARGET` / `REPO_UNAVAILABLE` from `ship-pr-state.sh`,
+- compute the commit range (`merge-base origin/main..HEAD`, with `origin/main..HEAD` fallback),
+- resolve `RUN_ID` and discover `oos-issues.ndjson` (`find` + `sort` + ambiguity handling),
+- resolve the design-OOS path (`DESIGN_TMPDIR` vs `design-export/`),
+- count non-security accepted-OOS blocks via `oos-non-security-block-count.awk` over a CSV of accepted-OOS files,
+- validate the "non-security OOS requires a resolved ndjson" precondition,
+- assemble gate args and invoke `oos-disposition-gate.sh`, then on non-zero `append-tool-failure.sh` + `exit 1`.
+
+## Analysis
+
+The disposition **gate** is already a script; only its **input computation** is inline — deterministic `find` / `merge-base` / `awk` / CSV plumbing the orchestrator hosts by hand. This is the single largest fiddly inline block left in the Step 8+ surface and a prime determinism risk (a mis-typed `merge-base` or `find` here is an LLM-hand-coded hazard).
+
+## Proposal
+
+Add `skills/implement/scripts/oos-disposition-checkpoint.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" [--design-tmpdir ...]` that performs all the input resolution above, invokes `oos-disposition-gate.sh`, handles the `append-tool-failure.sh` logging on failure, and exits with the **same** contract the orchestrator branches on today: `0` proceed, `1` disposition gap, `2` validation/setup error.
+
+## Risk / caveats
+
+- Preserve the fork-mode / `repo_unavailable` carve-outs (gate skipped) and NEVER #17 / #18 — the orchestrator still owns clearing `OOS_PENDING`, the unconditional `run-statistics` write on pass, and the `--resume-phase pr-create` re-entry. The helper **computes-and-gates**; it does **not** clear `OOS_PENDING`.
+- Keep the gate's existing exit-code semantics and `--oos-issues-ndjson` / `--filed-urls-file` / `--filed-urls-strict-file` / `--commit-range` wiring intact.
+- Extend `skills/implement/scripts/test-oos-disposition-gate.sh` with checkpoint-level coverage (ndjson discovery, ambiguity, fork / repo-unavailable skips).
+- Region: Step 8+ (shares the mega-section with the step8→ship-pr issue — different block; no `ship-pr.sh` edits here).

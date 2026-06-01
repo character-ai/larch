@@ -1,0 +1,21 @@
+Reviewing the implementation plan and tracing cited codebase paths.
+Checking append header format and whether the plan’s harness grep would false-positive:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/oos-disposition-checkpoint.sh (proposed)	Pre-gate/CLI failures may touch `_chk_log` without copying diagnostic bytes into it	Plan requires `touch`/`tee` and passes `_chk_log` to `append-tool-failure.sh`, but pre-gate paths today only `printf` to stderr (SKILL.md:1223-1224,1247-1248). `append-tool-failure.sh:100-104` requires a readable `--output-file`; an empty `_chk_log` yields Tool Failures rows with empty fenced bodies while exit 2/rc logging looks successful	Require every pre-gate/CLI failure to write the same message to `_chk_log` (e.g. `printf … | tee -a "$_chk_log" >&2` or `>>"$_chk_log"`) before `log_checkpoint_failure`; spell this in checkpoint.md
+2	in_scope	important	correctness	skills/implement/scripts/test-oos-disposition-gate.sh (proposed ~97)	Exit-1 log assertion uses substring `step-8-oos-checkpoint`	That substring matches `step-8-oos-checkpoint-validation` in append headers (`append-tool-failure.sh:150`), so a disposition-gap test can pass after only a validation/precondition case (or mixed-case `execution-issues.md`)	Grep an exact site token (e.g. `Step step-8-oos-checkpoint —`) or assert checkpoint site and deny validation substring; document in test-oos-disposition-gate.md
+3	in_scope	latent	risk-integration	skills/implement/scripts/test-oos-disposition-gate.sh (proposed ~93-105)	Harness may reuse one seeded implement-tmpdir/`execution-issues.md` across checkpoint cases	Plan lists many cases but does not require fresh `mkitmp` or log truncation per case; earlier validation/precondition rows can satisfy FINDING_4 grep without exercising exit-1 logging	Seed an isolated implement-tmpdir per `assert_rc` (or truncate `execution-issues.md` before each case); keep exit-1 assertion on a clean log
+4	out_of_scope	latent	architecture	skills/implement/scripts/oos-disposition-gate.md:35-37	Consumer section still says the orchestrator appends gate failures	After the helper owns logging, readers of gate.md may still expect SKILL-side `append-tool-failure.sh` on rc 1/2 and miss that only checkpoint writes execution-issues for the Step 8+ fence	[OUT_OF_SCOPE] In a follow-up, point Consumer at `oos-disposition-checkpoint.md` or note checkpoint logging; optional hardening already defers structure-pin
+
+**1. Pre-gate diagnostics must populate `_chk_log` (correctness)**  
+The plan’s stable `--output-file` contract (`touch` + dedicated `_chk_log`) fixes append aborting on a missing file, but `append-tool-failure.sh` still embeds file *contents* in the entry. Pre-gate failures in the current inline block only emit to stderr; porting that literally while only touching `_chk_log` recreates silent audit gaps (rc 2 with an empty failure body).
+
+**2. Harness grep false-positive (correctness)**  
+FINDING_4’s proposed grep for `step-8-oos-checkpoint` matches the validation site name because it is a prefix of `step-8-oos-checkpoint-validation`.
+
+**3. Shared harness tmpdir (risk-integration)**  
+If multiple checkpoint cases share one `execution-issues.md`, logging assertions can pass without the case under test having logged.
+
+**4. [OUT_OF_SCOPE] Stale gate.md Consumer**  
+Not in the plan’s file list; worth a small doc follow-up so gate vs checkpoint responsibilities stay clear.
+
+**Exonerated (SIMPLE / pre-existing / plan-covered):** exit-2 collapse fix vs inline `exit 1` at SKILL.md:1281; logging all non-zero exits; full append flags; `set +e` only around gate; ship-pr.sh’s separate gate path (pre-existing duplication, out of scope); optional `OOS_CHECKPOINT_RC` printf with no consumers; `set -uo` ordering if CLI is parsed first like `step-7a.sh`.

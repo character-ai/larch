@@ -1,0 +1,16 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt"}
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/codex-primary-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-arch.prompt"}
+{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt"}
+{"slot":"codex-plan-edge","tool":"codex","output":"<TMPDIR>/codex-primary-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-edge.prompt"}
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/codex-primary-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-innovation.prompt"}
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"<TMPDIR>/codex-primary-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-pragmatic.prompt"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/codex-primary-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-requirements.prompt"}
+{"slot":"dyn-cursor-plan-extraction-parity","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-extraction-parity-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-extraction-parity.prompt"}
+{"slot":"dyn-codex-plan-extraction-parity","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-extraction-parity-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-extraction-parity.prompt"}
+{"slot":"dyn-cursor-plan-state-boundary","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-state-boundary-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-state-boundary.prompt"}
+{"slot":"dyn-codex-plan-state-boundary","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-state-boundary-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-state-boundary.prompt"}
+{"slot":"dyn-cursor-plan-harness-matrix","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-harness-matrix-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-harness-matrix.prompt"}
+{"slot":"dyn-codex-plan-harness-matrix","tool":"codex","output":"<TMPDIR>/codex-primary-plan-dyn-harness-matrix-output.txt","prompt_file":"<TMPDIR>/render-plan-codex-dyn-harness-matrix.prompt"}
