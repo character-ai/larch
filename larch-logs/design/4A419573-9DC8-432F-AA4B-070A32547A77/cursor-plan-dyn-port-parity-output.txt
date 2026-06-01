@@ -1,0 +1,11 @@
+Reviewing the plan against the codebase for `has_bump`, `defer_push`, and `rebase_and_rebump` parity.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/test_rebase.py:552-559,822-830; python/rebase.py:598	Plan adds base_remote/base_ref to the apply_bump call but omits updating two monkeypatched apply_bump stubs that only accept cwd	After implementation, test_rebase_result_uses_apply_result_new_version and test_version_regression_guard_recomputes_target raise TypeError on unexpected keyword arguments; Testing strategy claim that existing test_rebase.py passes unchanged is false	Extend the test_rebase.py update scope: change both _apply stubs to accept base_remote/base_ref or **kwargs, or list these two tests explicitly in the plan
+
+### 1. `correctness` — `python/test_rebase.py:552-559`, `822-830`; planned `python/rebase.py:598`
+
+The plan correctly mirrors bash `_run_rebase_rebump_from_step3` (`scripts/ship-pr.sh:3020-3122`): `HAS_BUMP` gates classify → regression guard → `apply_bump` → changelog; `defer_push` gates force-push; `new_version=None` when the re-bump block is skipped; default `pushed=True` becomes branch-derived. Gap #3 wiring of `base_remote`/`base_ref` into `apply_bump` matches the rebase-side guard at `python/rebase.py:573-596` and is consistent with the stated “improvement beyond bash” for `apply-bump.sh`’s hardcoded `origin/main`.
+
+The gap is test maintenance: two existing tests monkeypatch `apply_bump` with stubs that only take `(runner, new_version, *, cwd=...)`. The planned call `version_bump.apply_bump(runner, target_version, base_remote=base_remote, base_ref=base_ref, cwd=cwd)` will pass keyword arguments those stubs do not accept. The plan’s `### UPDATED: python/test_rebase.py` section lists only three new tests and states existing tests pass “unchanged” (`plan.txt` Testing strategy, lines 97-99), which will not hold for `test_rebase_result_uses_apply_result_new_version` and `test_version_regression_guard_recomputes_target`.
+
+**Suggested revision:** Add to the `python/test_rebase.py` update bullet that the two existing `_apply` monkeypatch stubs must accept `base_remote`/`base_ref` (or `**kwargs`), or minimally document those tests in the change set so `make py-test` stays green.
