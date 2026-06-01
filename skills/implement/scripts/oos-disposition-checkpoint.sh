@@ -10,6 +10,7 @@ PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
 IMPLEMENT_TMPDIR=""
 DESIGN_TMPDIR_ARG=""
+_chk_log=""
 
 usage() {
   printf 'usage: oos-disposition-checkpoint.sh --implement-tmpdir DIR [--design-tmpdir DIR]\n' >&2
@@ -29,6 +30,26 @@ log_checkpoint_failure() {
   exit "$saved_rc"
 }
 
+prescan_implement_tmpdir() {
+  local arg
+  while [ $# -gt 0 ]; do
+    arg=$1
+    shift
+    case "$arg" in
+      --implement-tmpdir)
+        if [ $# -gt 0 ]; then
+          case "$1" in
+            --*) ;;
+            *) IMPLEMENT_TMPDIR=$1 ;;
+          esac
+        fi
+        return 0
+        ;;
+    esac
+  done
+  return 0
+}
+
 fail_validation() {
   local msg=$1
   [ -f "$_chk_log" ] || : >"$_chk_log" 2>/dev/null || true
@@ -40,7 +61,7 @@ fail_validation() {
 while [ $# -gt 0 ]; do
   case "$1" in
     --implement-tmpdir)
-      if [ $# -lt 2 ]; then
+      if [ $# -lt 2 ] || [ "${2#--}" != "$2" ]; then
         IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-/nonexistent}"
         _chk_log="$IMPLEMENT_TMPDIR/oos-disposition-checkpoint.stderr.log"
         fail_validation 'oos-disposition-checkpoint: --implement-tmpdir requires a value'
@@ -49,7 +70,8 @@ while [ $# -gt 0 ]; do
       shift 2
       ;;
     --design-tmpdir)
-      if [ $# -lt 2 ]; then
+      if [ $# -lt 2 ] || [ "${2#--}" != "$2" ]; then
+        [ -n "$IMPLEMENT_TMPDIR" ] || prescan_implement_tmpdir "$@"
         _chk_log="${IMPLEMENT_TMPDIR:-/tmp}/oos-disposition-checkpoint.stderr.log"
         fail_validation 'oos-disposition-checkpoint: --design-tmpdir requires a value'
       fi

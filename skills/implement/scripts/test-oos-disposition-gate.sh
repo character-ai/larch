@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Regression harness for oos-disposition-gate.sh
+# Regression harness for oos-disposition-gate.sh and oos-disposition-checkpoint.sh.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -13,6 +13,7 @@ CHECKPOINT="$SCRIPT_DIR/oos-disposition-checkpoint.sh"
 
 PASS=0
 FAIL=0
+TMPDIRS=()
 
 fail() {
   FAIL=$((FAIL + 1))
@@ -36,6 +37,7 @@ assert_rc() {
 mkitmp() {
   local dir
   dir=$(mktemp -d "${TMPDIR:-/tmp}/oos-chk-impl.XXXXXX")
+  TMPDIRS+=("$dir")
   : >"$dir/execution-issues.md"
   : >"$dir/oos-accepted-main-agent.md"
   : >"$dir/oos-accepted-review.md"
@@ -49,7 +51,7 @@ mkitmp() {
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-oos-disposition-gate.XXXXXX")
 GIT_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-oos-gate-git.XXXXXX")
 ORPHAN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-oos-gate-orphan.XXXXXX")
-trap 'rm -rf "$TMP" "$GIT_TMP" "$ORPHAN_TMP"' EXIT
+trap 'rm -rf "$TMP" "$GIT_TMP" "$ORPHAN_TMP" "${TMPDIRS[@]}"' EXIT
 
 # --- Isolated repo: one commit, no Inline-triage (for fail + controlled ranges) ---
 (
@@ -534,6 +536,7 @@ rc=$?
 set -e
 assert_rc "checkpoint disposition gap exit 1" 1 "$rc"
 if grep -Fq 'step-8-oos-checkpoint' "$_impl_gap/execution-issues.md" \
+  && ! grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_gap/execution-issues.md" \
   && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_gap/execution-issues.md" \
   && grep -Fq 'Tool Failures' "$_impl_gap/execution-issues.md"; then
   pass "checkpoint disposition gap logs Tool Failures"
@@ -627,6 +630,8 @@ rc=$?
 set -e
 assert_rc "checkpoint ambiguous ndjson exit 2" 2 "$rc"
 if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_amb/execution-issues.md" \
+  && grep -Fq 'Tool Failures' "$_impl_amb/execution-issues.md" \
+  && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_amb/execution-issues.md" \
   && [ -s "$_impl_amb/oos-disposition-checkpoint.stderr.log" ]; then
   pass "checkpoint ambiguity logs validation failure"
 else
@@ -655,6 +660,7 @@ fi
 
 # --- Case: checkpoint gate-exit-2 passthrough (gate validation, not disposition gap) ---
 _impl_g2=$(mktemp -d "${TMPDIR:-/tmp}/oos-chk-g2.XXXXXX")
+TMPDIRS+=("$_impl_g2")
 : >"$_impl_g2/execution-issues.md"
 printf '%s\n' 'FORKED_TARGET=false' >"$_impl_g2/ship-pr-state.sh"
 printf '%s\n' 'REPO_UNAVAILABLE=false' >>"$_impl_g2/ship-pr-state.sh"
@@ -681,6 +687,7 @@ fi
 
 # --- Case: merge-base absent uses origin/main..HEAD and proceeds ---
 MB_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-oos-gate-mb.XXXXXX")
+TMPDIRS+=("$MB_TMP")
 _impl_mb=$(mkitmp)
 (
   cd "$MB_TMP"
@@ -690,9 +697,16 @@ _impl_mb=$(mkitmp)
   git commit --allow-empty -q -m "unrelated root for origin/main"
   _origin_main=$(git rev-parse HEAD)
   git checkout --orphan feature -q
-  git commit --allow-empty -q -m "feature head"
+  git commit --allow-empty -q -m "feature head without inline triage"
   git update-ref refs/remotes/origin/main "$_origin_main"
 )
+cat >"$_impl_mb/oos-accepted-main-agent.md" <<'EOF'
+### OOS_1: Range proof
+- **Phase**: implement
+EOF
+printf 'run-mb\n' >"$_impl_mb/session-id"
+mkdir -p "$_impl_mb/larch-logs/implement/run-mb"
+: >"$_impl_mb/larch-logs/implement/run-mb/oos-issues.ndjson"
 set +e
 (
   cd "$MB_TMP"
@@ -700,11 +714,16 @@ set +e
 )
 rc=$?
 set -e
-assert_rc "checkpoint merge-base absent proceeds" 0 "$rc"
-rm -rf "$MB_TMP"
+assert_rc "checkpoint merge-base absent uses origin/main..HEAD disposition range" 1 "$rc"
+if grep -Fq 'commit-range origin/main..HEAD' "$_impl_mb/oos-disposition-gate.stderr.log"; then
+  pass "checkpoint merge-base absent logs origin/main..HEAD range"
+else
+  fail "checkpoint merge-base absent did not exercise origin/main..HEAD range"
+fi
 
 # --- Case: design-path via --design-tmpdir ---
 DESIGN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/oos-design-tmp.XXXXXX")
+TMPDIRS+=("$DESIGN_TMP")
 _impl_des=$(mkitmp)
 cat >"$DESIGN_TMP/oos-accepted-design.md" <<'EOF'
 ### OOS_1: Design strict
@@ -722,6 +741,25 @@ set +e
 rc=$?
 set -e
 assert_rc "checkpoint design-tmpdir strict URL passes" 0 "$rc"
+
+DESIGN_TMP_FAIL=$(mktemp -d "${TMPDIR:-/tmp}/oos-design-tmp-fail.XXXXXX")
+TMPDIRS+=("$DESIGN_TMP_FAIL")
+_impl_des_fail=$(mkitmp)
+cat >"$DESIGN_TMP_FAIL/oos-accepted-design.md" <<'EOF'
+### OOS_1: Design unresolved
+- **Phase**: implement
+EOF
+printf 'run-design-fail\n' >"$_impl_des_fail/session-id"
+mkdir -p "$_impl_des_fail/larch-logs/implement/run-design-fail"
+: >"$_impl_des_fail/larch-logs/implement/run-design-fail/oos-issues.ndjson"
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_des_fail" --design-tmpdir "$DESIGN_TMP_FAIL" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint design-tmpdir unresolved OOS fails via design path" 1 "$rc"
 
 # --- Case: design-export fallback ---
 _impl_export=$(mkitmp)
@@ -742,7 +780,39 @@ set +e
 rc=$?
 set -e
 assert_rc "checkpoint design-export fallback passes" 0 "$rc"
-rm -rf "$DESIGN_TMP"
+
+_impl_export_fail=$(mkitmp)
+mkdir -p "$_impl_export_fail/design-export"
+cat >"$_impl_export_fail/design-export/oos-accepted-design.md" <<'EOF'
+### OOS_1: Export unresolved
+- **Phase**: implement
+EOF
+printf 'run-export-fail\n' >"$_impl_export_fail/session-id"
+mkdir -p "$_impl_export_fail/larch-logs/implement/run-export-fail"
+: >"$_impl_export_fail/larch-logs/implement/run-export-fail/oos-issues.ndjson"
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_export_fail" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint design-export unresolved OOS fails via export path" 1 "$rc"
+
+# --- Case: missing --design-tmpdir value logs under implement tmpdir even before normal parse reaches it ---
+_impl_missing_design=$(mkitmp)
+set +e
+"$CHECKPOINT" --design-tmpdir --implement-tmpdir "$_impl_missing_design" >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "checkpoint missing design-tmpdir value exit 2" 2 "$rc"
+if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_missing_design/execution-issues.md" \
+  && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_missing_design/execution-issues.md" \
+  && grep -Fq 'Tool Failures' "$_impl_missing_design/execution-issues.md"; then
+  pass "checkpoint missing design-tmpdir value logs under implement tmpdir"
+else
+  fail "checkpoint missing design-tmpdir value did not log under implement tmpdir"
+fi
 
 if [ "$FAIL" -ne 0 ]; then
   echo "$FAIL case(s) failed, $PASS passed" >&2
