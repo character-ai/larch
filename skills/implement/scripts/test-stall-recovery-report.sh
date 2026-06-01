@@ -652,7 +652,7 @@ assert_contains "--output-file outside implement tmpdir" "$(cat "$SANDBOX/case21
 rm -f "$outside_out"
 
 dir=$(make_tmp case22-clear-success)
-write_state "$dir" 8 ci-initial "" "PR_URL=https://example.test/pr/1"
+write_state "$dir" 8 ci-initial "adopted-issue-closed" "BAIL_FAILURE_DETAIL_LOG=$dir/failure.log"
 run_capture "$SANDBOX/case22-clear-success.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "22: clear-stall success exits 0"
 assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-success.out")" "22: clear-stall success emits CLEARED=true"
@@ -664,7 +664,8 @@ else
 fi
 assert_eq ci-initial "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: clear-stall preserves PHASE"
 assert_eq 4 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key EXIT_CODE --default "")" "22: clear-stall preserves EXIT_CODE"
-assert_eq "https://example.test/pr/1" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PR_URL --default "")" "22: clear-stall preserves PR_URL"
+assert_eq adopted-issue-closed "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key BAIL_REASON --default "")" "22: clear-stall preserves BAIL_REASON"
+assert_eq "$dir/failure.log" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key BAIL_FAILURE_DETAIL_LOG --default "")" "22: clear-stall preserves BAIL_FAILURE_DETAIL_LOG"
 
 dir=$(make_tmp case22-clear-absent)
 run_capture "$SANDBOX/case22-clear-absent.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
@@ -865,6 +866,35 @@ printf 'STALL_TRACKING=true\nSTALL_STEP=8\n' >"$dir/session-env.sh"
 run_capture "$SANDBOX/case22-classify-empty-state.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "22: classify empty ship-pr-state.sh exits 0"
 assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case22-classify-empty-state.out")" "22: classify empty ship-pr-state.sh falls back to session-env"
+
+dir=$(make_tmp case22-classify-comments-state)
+printf 'STALL_TRACKING=true\nSTALL_STEP=5\nPHASE=review\n' >"$dir/session-env.sh"
+printf '# comment only\n\n' >"$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case22-classify-comments-state.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq 0 "$RC" "22: classify comment-only ship-pr-state.sh exits 0"
+assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case22-classify-comments-state.out")" "22: classify comment-only ship-pr-state.sh falls back to session-env"
+assert_eq 5 "$(kv STALL_STEP "$SANDBOX/case22-classify-comments-state.out")" "22: classify comment-only ship-pr-state.sh uses session STALL_STEP"
+assert_eq review "$(kv PHASE "$SANDBOX/case22-classify-comments-state.out")" "22: classify comment-only ship-pr-state.sh uses session PHASE"
+
+dir=$(make_tmp case22-classify-empty-session-false)
+printf 'STALL_TRACKING=false\nSTALL_STEP=99\n' >"$dir/session-env.sh"
+: >"$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case22-classify-empty-session-false.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case22-classify-empty-session-false.out")" "22: classify keyless ship-pr-state with session STALL_TRACKING=false is unrecoverable"
+assert_eq false "$(kv STALL_TRACKING "$SANDBOX/case22-classify-empty-session-false.out")" "22: classify keyless ship-pr-state with session STALL_TRACKING=false emits false"
+
+dir=$(make_tmp case22-seed-awk-metachar)
+cat >"$dir/ship-pr-state.sh" <<'EOF'
+PHASE=ci-initial; print "pwned"
+STALL_TRACKING=true
+STALL_STEP=8
+BAIL_REASON=
+EXIT_CODE=4
+EOF
+run_capture "$SANDBOX/case22-seed-awk-metachar.out" "$SCRIPT" seed-terminal-state --implement-tmpdir "$dir" --stall-step 5 --phase review
+assert_eq true "$(kv SEEDED "$SANDBOX/case22-seed-awk-metachar.out")" "22: seed-terminal-state rewrite sanitizes metacharacter PHASE from disk"
+assert_eq review "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key PHASE --default "")" "22: seed-terminal-state rewrite applies sanitized phase override"
+assert_eq 5 "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_STEP --default "")" "22: seed-terminal-state rewrite applies stall-step override on metachar disk"
 
 echo
 echo "Results: $PASS passed, $FAIL failed"

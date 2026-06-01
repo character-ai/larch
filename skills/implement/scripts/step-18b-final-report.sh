@@ -58,7 +58,7 @@ main() {
         export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
     fi
 
-    local emit_body=false step17_present=false wfr_rc=0
+    local emit_body=false step17_present=false snapshot_ok=false wfr_rc=0
     local token_fail_log="$tmpdir/step18-token-report.failure.log"
     local wfr_fail_log="$tmpdir/step18-write-final-report.failure.log"
     [ -f "$tmpdir/.step17-emitted" ] && step17_present=true
@@ -72,7 +72,11 @@ main() {
     fi
 
     if [ -f "$tmpdir/summary-final.md" ]; then
-        cp "$tmpdir/summary-final.md" "$tmpdir/.step18-prebody" 2>/dev/null || rm -f "$tmpdir/.step18-prebody"
+        if cp "$tmpdir/summary-final.md" "$tmpdir/.step18-prebody" 2>/dev/null; then
+            snapshot_ok=true
+        else
+            rm -f "$tmpdir/.step18-prebody"
+        fi
     else
         rm -f "$tmpdir/.step18-prebody"
     fi
@@ -86,7 +90,7 @@ main() {
     fi
 
     if [ "$wfr_rc" -eq 0 ] && [ -s "$tmpdir/summary-final.md" ]; then
-        if [ "$emit_body" = false ] && ! cmp -s "$tmpdir/.step18-prebody" "$tmpdir/summary-final.md" 2>/dev/null; then
+        if [ "$emit_body" = false ] && [ "$snapshot_ok" = true ] && ! cmp -s "$tmpdir/.step18-prebody" "$tmpdir/summary-final.md" 2>/dev/null; then
             emit_body=true
         fi
     fi

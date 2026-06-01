@@ -179,6 +179,72 @@ run_capture "$TMP_ROOT/case-plugin-root-fallback.out" env -u CLAUDE_PLUGIN_ROOT 
 assert_eq 0 "$RC" "plugin-root.env orchestrator pre-source loads stub plugin"
 assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-plugin-root-fallback.out")" "plugin-root.env orchestrator pre-source emits EMIT_BODY=true"
 
+# Integration: real write-final-report.sh with minimal plugin fixture
+int_plugin="$TMP_ROOT/int-plugin"
+int_impl="$TMP_ROOT/int-implement-scripts"
+int_tmpdir="$TMP_ROOT/case-integration-real-wfr"
+mkdir -p "$int_plugin/scripts" "$int_impl" "$int_tmpdir/larch-logs/implement/run-int"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$int_plugin/scripts/lib-quiet.sh"
+cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$int_plugin/scripts/read-session-env-key.sh"
+cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$int_plugin/scripts/append-tool-failure.sh"
+cp "$REPO_ROOT/scripts/render-run-summary.sh" "$int_plugin/scripts/render-run-summary.sh"
+cp "$REPO_ROOT/scripts/token-cost.sh" "$int_plugin/scripts/token-cost.sh"
+cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$int_plugin/scripts/lib-cost-line-format.sh"
+cp "$REPO_ROOT/scripts/redact-secrets.sh" "$int_plugin/scripts/redact-secrets.sh"
+cp "$REPO_ROOT/scripts/run-log-terminal-outcomes.inc.bash" "$int_plugin/scripts/run-log-terminal-outcomes.inc.bash"
+chmod +x "$int_plugin/scripts/read-session-env-key.sh" "$int_plugin/scripts/append-tool-failure.sh" \
+  "$int_plugin/scripts/render-run-summary.sh" "$int_plugin/scripts/token-cost.sh" \
+  "$int_plugin/scripts/redact-secrets.sh"
+cat >"$int_plugin/scripts/token-report.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) printf '{}\n' >"$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+exit 0
+STUB
+cat >"$int_plugin/scripts/tracking-issue-summary.sh" <<'STUB'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do case "$1" in --content-file) cp "$2" "${TRACKING_CONTENT_LOG:?}"; shift 2 ;; *) shift ;; esac; done
+printf 'COMMENT_URL=https://example.test/comment/int\n'
+STUB
+cat >"$int_plugin/scripts/larch-log.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$int_plugin/scripts/token-report.sh" "$int_plugin/scripts/tracking-issue-summary.sh" "$int_plugin/scripts/larch-log.sh"
+cp "$SOURCE_HELPER" "$int_impl/step-18b-final-report.sh"
+cp "$REPO_ROOT/skills/implement/scripts/write-final-report.sh" "$int_impl/write-final-report.sh"
+chmod +x "$int_impl/step-18b-final-report.sh" "$int_impl/write-final-report.sh"
+printf 'ISSUE_NUMBER=42\nRUN_ID=run-int\nADOPTED=true\n' >"$int_tmpdir/parent-issue.md"
+printf 'REPO=owner/repo\n' >"$int_tmpdir/session-env.sh"
+{
+  printf 'PR_URL=N/A\n'
+  printf 'PR_NUMBER=\n'
+  printf 'STALL_TRACKING=false\n'
+  printf 'MERGE_RESULT=\n'
+  printf 'MERGE=false\n'
+  printf 'DRAFT=false\n'
+  printf 'FORKED_TARGET=false\n'
+} >"$int_tmpdir/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\n' >"$int_tmpdir/finalize-state.sh"
+printf 'NO_ISSUES=false\n' >"$int_tmpdir/run-flags.sh"
+run_capture "$TMP_ROOT/case-integration-real-wfr.out" env \
+  CLAUDE_PLUGIN_ROOT="$int_plugin" \
+  TRACKING_CONTENT_LOG="$TMP_ROOT/content-integration-real-wfr.md" \
+  "$int_impl/step-18b-final-report.sh" --implement-tmpdir "$int_tmpdir"
+assert_eq 0 "$RC" "integration real write-final-report exits 0"
+assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-integration-real-wfr.out")" "integration real write-final-report EMIT_BODY=true without sentinel"
+assert_eq 0 "$(kv WFR_RC "$TMP_ROOT/case-integration-real-wfr.out")" "integration real write-final-report WFR_RC=0"
+if [ -s "$int_tmpdir/summary-final.md" ]; then
+  pass "integration real write-final-report writes summary-final.md"
+else
+  fail "integration real write-final-report writes summary-final.md"
+fi
+
 echo
 echo "Results: $PASS passed, $FAIL failed"
 [ "$FAIL" -eq 0 ]

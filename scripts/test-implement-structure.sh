@@ -312,10 +312,11 @@ awk '
   in_step && /step-18b-final-report\.sh/ && /--implement-tmpdir "\$IMPLEMENT_TMPDIR"/ { wrapper = 1 }
   in_step && /EMIT_BODY=\$\(printf/ { emit_parse = 1 }
   in_step && /WFR_RC=\$\(printf/ { wfr_parse = 1 }
+  in_step && /STEP17_EMITTED_PRESENT=\$\(printf/ { step17_parse = 1 }
   in_step && in_bash && /write-final-report\.sh/ && /--print-stdout/ { bad_print = 1 }
-  in_step && /EMIT_BODY=true/ && /WFR_RC=0/ { emit_guard = 1 }
+  in_step && /EMIT_BODY=true/ && /WFR_RC=0/ && /summary-final\.md/ { emit_guard = 1 }
   END {
-    if (!wrapper || !emit_parse || !wfr_parse || bad_print || !emit_guard) exit 1
+    if (!wrapper || !emit_parse || !wfr_parse || !step17_parse || bad_print || !emit_guard) exit 1
     exit 0
   }
 ' "$SKILL_MD" || step18_status=$?

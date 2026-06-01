@@ -135,18 +135,21 @@ ship_pr_state_is_regular_file() {
 rewrite_ship_pr_state_keys() {
     local src=$1
     shift
-    local -a keys=() vals=()
+    local -a keys=() vals=() awk_v=()
+    local i n=0
     while [ $# -ge 2 ]; do
         keys+=("$1")
         vals+=("$2")
         shift 2
     done
-    local i n=${#keys[@]} awk_script='BEGIN{'
+    n=${#keys[@]}
+    local awk_begin='BEGIN{'
     for ((i = 0; i < n; i++)); do
-        awk_script+="u[\"${keys[$i]}\"]=\"${vals[$i]}\"; order[++oc]=\"${keys[$i]}\"; "
+        awk_v+=(-v "v$i=${vals[$i]}")
+        awk_begin+="u[\"${keys[$i]}\"]=v$i; order[++oc]=\"${keys[$i]}\"; "
     done
     # shellcheck disable=SC2016
-    awk_script+='}
+    awk_begin+='}
     {
         if ($0 ~ /^[A-Z][A-Z0-9_]*=/) {
             key = $0
@@ -165,7 +168,7 @@ rewrite_ship_pr_state_keys() {
             if (!(k in seen)) print k "=" u[k]
         }
     }'
-    awk "$awk_script" "$src"
+    awk "${awk_v[@]}" "$awk_begin" "$src"
 }
 
 emit_cleared_false_exit() {
@@ -257,8 +260,8 @@ cmd_seed_terminal_state() {
             exit 3
         fi
         if ship_pr_state_has_keys "$state"; then
-            step=$(kv_get "$state" STALL_STEP "8")
-            phase=$(kv_get "$state" PHASE "ci-initial")
+            step=$(safe_step_value "$(kv_get "$state" STALL_STEP "8")")
+            phase=$(safe_phase_value "$(kv_get "$state" PHASE "ci-initial")")
             [ -n "$stall_step_arg" ] && step=$(safe_step_value "$stall_step_arg")
             [ -n "$phase_arg" ] && phase=$(safe_phase_value "$phase_arg")
             seed_mode=rewrite
