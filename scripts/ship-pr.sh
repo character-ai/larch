@@ -2498,6 +2498,7 @@ run_per_job_local_fix_loop() {
 run_evaluate_failure() {
     local phase=$1 failed_run rerun_out retries rc fail_file
     local upfront_logs_path upfront_gh_logs_rc rerun_fail_path _stash_upfront=false
+    _ci_fix_pending_clear
     failed_run=$(read_state FAILED_RUN_ID)
     [ -n "$failed_run" ] || exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12c)"
     retries=$(read_state TRANSIENT_RETRIES)
@@ -2559,7 +2560,6 @@ run_evaluate_failure() {
         ci_failed_tsv="$IMPLEMENT_TMPDIR/ci-failed-jobs-${phase}.tsv"
         checks_site="$([ "$phase" = "ci-initial" ] && echo step10 || echo step12c)"
         if [ "$CI_FIX_REBASE_PENDING" = true ]; then
-            _code_fix_attempted_on_ready_log=true
             _stage_and_push_ci_fixes "$phase" "" "$checks_site" "$ci_failed_tsv"
             stage_rc=$?
             case "$stage_rc" in
@@ -2703,9 +2703,11 @@ run_evaluate_failure() {
         fi
     done
     if [ "$_code_fix_attempted_on_ready_log" = true ]; then
+        _ci_fix_pending_clear
         state_set_many BAIL_REASON ci-fix-exhausted BAIL_NEEDS_USER_INPUT false
         exit 3
     fi
+    _ci_fix_pending_clear
     exit_stall "$([ "$phase" = "ci-initial" ] && echo 10-max-retries || echo 12-max-retries)"
 }
 

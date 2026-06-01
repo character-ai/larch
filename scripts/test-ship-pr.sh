@@ -4237,6 +4237,60 @@ assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-max-retries" "launcher-
 ok "launcher-only exhaustion after ready logs stays stall (exit 4)"
 rm -rf "$call_dir"
 
+# Fixable jobs with all-fail launchers stall (exit 4), not ci-fix-exhausted.
+root=$(make_repo ci_fix_fixable_launcher_only_exhausted)
+tmp=$(make_tmpdir)
+call_dir=$(mktemp -d "$tmp/fixable-launcher-only.XXXXXX")
+cat > "$root/scripts/ci-wait.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+STUB
+cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'FAIL test\n'
+exit 0
+STUB
+cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+out_tsv=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output-tsv) out_tsv=$2; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$out_tsv" ]] && printf 'python-lint\t\tfixable\n' >"$out_tsv"
+printf 'FAILED_JOBS_COUNT=1\n'
+exit 0
+STUB
+for launcher in launch-cursor-ci.sh launch-codex-ci.sh launch-claude-ci.sh; do
+    cat > "$root/scripts/$launcher" <<'STUB'
+#!/usr/bin/env bash
+printf 'LAUNCHER_EXIT=1\n'
+exit 0
+STUB
+    chmod +x "$root/scripts/$launcher"
+done
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" "$root/scripts/ci-failed-jobs.sh"
+write_state "$tmp/ship-pr-state.sh" ci-initial
+awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
+     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
+    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+set +e
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
+    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
+    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+printf '%s' "$?" >"$tmp/rc"
+set -e
+assert_rc "$tmp/rc" 4 "fixable-job launcher-only exhaustion stays exit 4"
+grep -Fq 'BAIL_REASON=ci-fix-exhausted' "$tmp/ship-pr-state.sh" \
+    && fail "fixable-job launcher-only exhaustion must not set ci-fix-exhausted"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-max-retries" "fixable-job launcher-only exhaustion stalls"
+ok "fixable-job launcher-only exhaustion stays stall (exit 4)"
+rm -rf "$call_dir"
+
 # ci-failed-jobs rc=3 defers vendor dispatch; in-progress-only exhaustion stalls.
 root=$(make_repo ci_fix_jobs_in_progress_defer)
 tmp=$(make_tmpdir)
@@ -4255,7 +4309,7 @@ cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
 printf 'jobs still running\n' >&2
 exit 3
 STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
 #!/usr/bin/env bash
 printf 'X\n' >> "$call_dir/sentinel-fix.txt"
 printf 'LAUNCHER_EXIT=0\n'
@@ -4294,7 +4348,7 @@ cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
 printf 'logs unavailable\n' >&2
 exit 1
 STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
+cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
 #!/usr/bin/env bash
 printf 'X\n' >> "$call_dir/sentinel-fix.txt"
 printf 'LAUNCHER_EXIT=0\n'

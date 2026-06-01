@@ -908,7 +908,7 @@ def run_ci_fix(
         if not classified.fixable and unfixable:
             return FixResult(status="local-unfixable", unfixable=tuple(unfixable))
 
-        code_fix_attempted = bool(classified.fixable)
+        code_fix_attempted = False
 
         tiers = _available_tiers()
         if not tiers:
@@ -930,10 +930,10 @@ def run_ci_fix(
             return FixResult(
                 status="waterfall-failed",
                 detail="all tiers failed",
-                code_fix_attempted_on_ready_log=code_fix_attempted,
             )
 
-        code_fix_attempted = code_fix_attempted or bool(waterfall.winning_tier)
+        if classified.fixable:
+            code_fix_attempted = True
         for job in classified.fixable:
             argv = per_job_command(job.name, job.shard)
             if argv is None or not prepare_python_toolchain(runner, job.name, cwd=cwd):

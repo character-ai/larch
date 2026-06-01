@@ -806,7 +806,7 @@ def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
     assert fix.detail == "ci-fix-exhausted"
 
 
-def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
+def test_evaluate_failure_fixable_jobs_launcher_exhausted_stalls() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _baseline_responses()
     responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
@@ -817,12 +817,11 @@ def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
         ("gh", "run", "view"),
         stdout=jobs_json,
     )
-    responses[("make", "py-lint")] = _cr(("make", "py-lint"), rc=1)
     launch_calls: list[str] = []
 
     def launch_fn(tier: str) -> TierAttempt:
         launch_calls.append(tier)
-        return TierAttempt(tier, 1, 0, LaunchFailure("none", ""))
+        return TierAttempt(tier, 0, 1, LaunchFailure("none", ""))
 
     runner = RecordingRunner(responses)
     fix = ci_monitor.evaluate_failure(
@@ -837,8 +836,65 @@ def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
         sleep_fn=lambda _s: None,
     )
     assert launch_calls
-    assert fix.status == "fix-exhausted"
-    assert fix.detail == "ci-fix-exhausted"
+    assert fix.status == "waterfall-failed"
+    assert fix.detail != "ci-fix-exhausted"
+
+
+def test_evaluate_failure_vendor_only_push_failed_stalls(tmp_path: Any) -> None:
+    launch_calls: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        launch_calls.append(tier)
+        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
+
+    baseline_head = "deadbeef" * 5
+    jobs_json = json.dumps({"jobs": []})
+    responses = _baseline_responses(baseline_head)
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="FAIL test\n",
+    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
+    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)")] = _cr(
+        (commit_script,),
+        0,
+    )
+    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(
+        ("git", "symbolic-ref"),
+        stdout="feature\n",
+    )
+    responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), rc=1)
+
+    runner = RecordingRunner(responses)
+    runner.sequential[("git", "diff", "--name-only")] = [
+        _cr(("git", "diff"), stdout=""),
+        _cr(("git", "diff"), stdout="fixed.py\n"),
+    ]
+    runner.sequential[("git", "rev-parse", "HEAD")] = [
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+    ]
+
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=str(tmp_path),
+        launch_fn=launch_fn,
+        sleep_fn=lambda _s: None,
+    )
+    assert launch_calls
+    assert fix.status == "waterfall-failed"
+    assert fix.detail != "ci-fix-exhausted"
 
 
 def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> None:
