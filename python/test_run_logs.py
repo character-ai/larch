@@ -115,7 +115,7 @@ def test_load_or_recover_manifest_from_log_dir(tmp_path: Path) -> None:
     log_dir.mkdir(parents=True)
     ctx = _ctx(tmp_path).with_(run_id="../invalid")
     manifest = run_logs.load_or_recover_manifest(ctx)
-    assert manifest.run_id == "recovered-run"
+    assert manifest.run_id == ""
 
 
 def test_effective_run_id_prefers_state_file(tmp_path: Path) -> None:
@@ -243,6 +243,27 @@ def test_flush_logs_pre_skips_post_merge_matrix(
     assert skip.reason == config.REFRESH_SKIP_POST_MERGE
 
 
+@pytest.mark.parametrize(
+    ("line", "reason"),
+    [
+        ("RUN_ID=run-abc\nNO_LOGS_COMMIT=true\n", config.REFRESH_SKIP_NO_LOGS_COMMIT),
+        ("", config.REFRESH_SKIP_NO_RUN_ID),
+        ("RUN_ID=../bad\n", config.REFRESH_SKIP_INVALID_RUN_ID),
+    ],
+)
+def test_flush_logs_pre_skip_reason_tokens(
+    tmp_path: Path,
+    line: str,
+    reason: str,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text(line, encoding="utf-8")
+    runner = RecordingRunner()
+    skip = run_logs.flush_logs_pre(runner, _ctx(tmp_path, str(state)))
+    assert skip.skipped
+    assert skip.reason == reason
+
+
 def test_publish_run_tree_copies_run_id_pathspec(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -305,6 +326,60 @@ def test_flush_logs_pre_happy_path_commits(
     assert "step9a1" not in manifest["steps_ran"]
 
 
+@pytest.mark.parametrize(
+    ("forked", "state_text", "finalize_text", "flags_text", "files", "expected"),
+    [
+        (True, "RUN_ID=run-abc\n", "", "", (), False),
+        (False, "RUN_ID=run-abc\nFORKED_TARGET=true\n", "", "", (), False),
+        (
+            False,
+            "RUN_ID=run-abc\n",
+            "DESIGN_ONLY_DONE=true\n",
+            "NO_ISSUES=true\n",
+            (),
+            False,
+        ),
+        (False, "RUN_ID=run-abc\n", "", "", ("oos-issues.ndjson",), True),
+        (False, "RUN_ID=run-abc\n", "", "", ("run-statistics.md",), True),
+        (False, "RUN_ID=run-abc\n", "", "", (), None),
+    ],
+)
+def test_step9a1_heuristic_matrix(
+    tmp_path: Path,
+    forked: bool,
+    state_text: str,
+    finalize_text: str,
+    flags_text: str,
+    files: tuple[str, ...],
+    expected: bool | None,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text(state_text, encoding="utf-8")
+    if finalize_text:
+        _ = (tmp_path / "finalize-state.sh").write_text(finalize_text, encoding="utf-8")
+    if flags_text:
+        _ = (tmp_path / "run-flags.sh").write_text(flags_text, encoding="utf-8")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    for filename in files:
+        _ = (run_dir / filename).write_text("x\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state)).with_(forked=forked)
+    assert run_logs._step9a1_heuristic(ctx) is expected  # pyright: ignore[reportPrivateUsage]
+
+
+def test_render_token_timing_batches_skips_missing_refresh_json(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    run_logs._render_token_timing_batches(  # pyright: ignore[reportPrivateUsage]
+        ctx,
+        tmp_path / "larch-logs",
+    )
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    assert not (tmp_path / "token-report-refresh.json").exists()
+    assert not (run_dir / "token-report-refresh.json").exists()
+
+
 def test_update_manifest_ignores_unknown_keys(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     _ = run_logs.init_run(ctx)
@@ -363,3 +438,48 @@ def test_load_or_recover_manifest_prefers_ctx_run_id(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path, state_file=None)
     manifest = run_logs.load_or_recover_manifest(ctx)
     assert manifest.run_id == "run-abc"
+
+
+def test_load_or_recover_manifest_fails_closed_without_valid_run_id(
+    tmp_path: Path,
+) -> None:
+    newest = tmp_path / "larch-logs" / "implement" / "run-new"
+    newest.mkdir(parents=True)
+    _ = (newest / "manifest.json").write_text(
+        json.dumps(
+            {"status": "partial", "version": "1", "run_id": "run-new", "steps_ran": {}},
+        ),
+        encoding="utf-8",
+    )
+    ctx = _ctx(tmp_path).with_(run_id="../bad")
+    manifest = run_logs.load_or_recover_manifest(ctx)
+    assert manifest.run_id == ""
+    assert not manifest.steps_ran
+
+
+def test_publish_run_tree_preserves_existing_dest_when_copy_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "new.txt").write_text("new\n", encoding="utf-8")
+    repo = tmp_path / "repo"
+    dest = repo / "larch-logs" / "implement" / "run-abc"
+    dest.mkdir(parents=True)
+    _ = (dest / "old.txt").write_text("old\n", encoding="utf-8")
+
+    def fail_copy(*_a: object, **_k: object) -> None:
+        raise ShipError("copy failed")
+
+    monkeypatch.setattr(run_logs, "_safe_copy_run_tree", fail_copy)
+    ctx = _ctx(tmp_path, str(state))
+    with pytest.raises(ShipError, match="copy failed"):
+        _ = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
+            ctx,
+            tmp_path / "larch-logs",
+            cwd=str(repo),
+        )
+    assert (dest / "old.txt").read_text(encoding="utf-8") == "old\n"

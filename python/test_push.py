@@ -145,7 +145,7 @@ def test_push_branch_refuses_detached_head() -> None:
         _ = push.push_branch(runner, _ctx(), sleeper=lambda _s: None)
 
 
-def test_push_skips_retry_when_stderr_unchanged() -> None:
+def test_push_backs_off_when_stderr_unchanged() -> None:
     runner = RecordingRunner(
         responses=_push_git_responses(
             CommandResult(("git", "push", "-u", "origin", "HEAD"), 1, "", "same error", 0.01),
@@ -153,10 +153,8 @@ def test_push_skips_retry_when_stderr_unchanged() -> None:
             CommandResult(("git", "push", "-u", "origin", "HEAD"), 1, "", "same error", 0.01),
         ),
     )
-    result = push.push_branch(
-        runner,
-        _ctx(),
-        sleeper=lambda _s: None,
-    )
+    sleeps: list[float] = []
+    result = push.push_branch(runner, _ctx(), sleeper=sleeps.append)
     assert result.status == "failed"
     assert result.attempts == config.PUSH_MAX_ATTEMPTS
+    assert len(sleeps) == config.PUSH_MAX_ATTEMPTS - 1

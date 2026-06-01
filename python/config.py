@@ -159,6 +159,7 @@ REFRESH_SKIP_POST_MERGE: Final = "post-merge"
 REFRESH_SKIP_NO_RUN_ID: Final = "no-run-id"
 REFRESH_SKIP_INVALID_RUN_ID: Final = "invalid-run-id"
 REFRESH_SKIP_NO_LOGS_COMMIT: Final = "no-logs-commit"
+REFRESH_SKIP_COMMIT_FAILED: Final = "commit-failed"
 # Pre-merge flush skips merge_pr may continue past (bash refresh-run-logs || true).
 REFRESH_SKIP_MERGE_OK: Final[frozenset[str]] = frozenset({
     REFRESH_SKIP_NO_REPO_CWD,
@@ -167,6 +168,7 @@ REFRESH_SKIP_MERGE_OK: Final[frozenset[str]] = frozenset({
     REFRESH_SKIP_NO_RUN_ID,
     REFRESH_SKIP_INVALID_RUN_ID,
     REFRESH_SKIP_NO_LOGS_COMMIT,
+    REFRESH_SKIP_COMMIT_FAILED,
 })
 
 MERGE_SKIP_NOT_REQUESTED: Final = "merge skipped: merge=false"

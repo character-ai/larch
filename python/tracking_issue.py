@@ -10,7 +10,7 @@ import redact
 from errors import ShipError
 from proc import Runner
 
-_MARKER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
+_MARKER_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:-]*$")
 _LIFECYCLE_PREFIX_RE = re.compile(
     r"^\[(?:DESIGNING|DESIGNED|IMPLEMENTING|DONE|STALLED|IN PROGRESS|PLANNED)\] ",
 )
@@ -49,7 +49,7 @@ def rename(
     """Strip one lifecycle prefix and prepend the new state prefix."""
     new_title = _compose_title(current_title, state)
     if new_title == current_title:
-        return new_title
+        return current_title
     redacted = _redact_title(new_title)
     prefix = config.TRACKING_ISSUE_PREFIX_BY_STATE[state]
     stripped = _LIFECYCLE_PREFIX_RE.sub("", redacted, count=1)
@@ -66,7 +66,7 @@ def rename(
     if result.returncode != 0:
         msg = f"gh issue edit rename failed ({result.returncode})"
         raise ShipError(msg)
-    return new_title
+    return redacted
 
 
 def append_comment(

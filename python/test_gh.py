@@ -685,3 +685,24 @@ def test_find_issue_comment_id_by_marker() -> None:
         repo="o/r",
     )
     assert comment_id == 99
+
+
+def test_find_issue_comment_id_by_marker_normalizes_bom_crlf() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "api"),
+                0,
+                '[{"id":100,"body":"\\ufeff<!-- larch:final-summary -->\\r\\nbody"}]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    comment_id = gh.find_issue_comment_id_by_marker(
+        runner,
+        "7",
+        "<!-- larch:final-summary -->",
+        repo="o/r",
+    )
+    assert comment_id == 100

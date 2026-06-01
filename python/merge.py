@@ -73,7 +73,12 @@ def merge_pr(
     if terminal is not None:
         return terminal
 
-    _ = run_logs.flush_logs_pre(runner, ctx, cwd=cwd)
+    pre_skip = run_logs.flush_logs_pre(runner, ctx, cwd=cwd)
+    if pre_skip.skipped and pre_skip.reason not in config.REFRESH_SKIP_MERGE_OK:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=redact_merge_diagnostic(f"flush_logs_pre skipped: {pre_skip.reason}"),
+        )
 
     terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd)
     if terminal is not None:
@@ -163,7 +168,7 @@ def _post_flush(
     merge_result: str,
 ) -> MergeResult | None:
     try:
-        _ = run_logs.flush_logs_post(
+        skip = run_logs.flush_logs_post(
             ctx,
             merge_result=merge_result,
             runner=runner,
@@ -172,6 +177,11 @@ def _post_flush(
         return MergeResult(
             result=config.MERGE_RESULT_ERROR,
             error=redact_merge_diagnostic(str(exc)),
+        )
+    if skip.skipped and skip.reason == "redaction-failed":
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error="redaction failed during post-merge run-log flush",
         )
     return None
 
@@ -201,8 +211,6 @@ def _merge_noop_if_pr_closed(
             outcome = MergeResult(result=config.MERGE_RESULT_ADMIN_MERGED, error="")
         elif merge_result == config.MERGE_RESULT_MERGED:
             outcome = MergeResult(result=config.MERGE_RESULT_MERGED, error="")
-        elif not ctx.no_admin_fallback:
-            outcome = MergeResult(result=config.MERGE_RESULT_ADMIN_MERGED, error="")
         else:
             outcome = MergeResult(result=config.MERGE_RESULT_MERGED, error="")
         post_err = _post_flush(runner, ctx, outcome.result)

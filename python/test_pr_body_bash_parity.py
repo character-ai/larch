@@ -87,6 +87,10 @@ def test_compose_summary_semantic_parity(tmp_path: Path) -> None:
             "sequenceDiagram\n  participant A as $alias\n",
             config.MERMAID_REASON_DOLLAR_IN_ALIAS,
         ),
+        (
+            "---\ntitle: x\nflowchart LR\n  A --> B\n",
+            config.MERMAID_REASON_UNCLOSED_FRONTMATTER,
+        ),
     ],
 )
 def test_mermaid_rejection_tokens_match_bash(fragment: str, reason: str) -> None:

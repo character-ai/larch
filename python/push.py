@@ -60,19 +60,10 @@ def push_branch(
         )
         raise ShipError(msg)
     remote = select_push_remote(runner, ctx, cwd=cwd)
-    last_stderr = ""
     for attempt in range(1, config.PUSH_MAX_ATTEMPTS + 1):
         result = git.push_set_upstream(runner, remote, "HEAD", cwd=cwd)
         if result.returncode == 0:
             return PushResult(remote=remote, attempts=attempt, status="pushed")
-        stderr = result.stderr.strip()
-        if (
-            stderr
-            and stderr == last_stderr
-            and attempt < config.PUSH_MAX_ATTEMPTS
-        ):
-            continue
-        last_stderr = stderr
         if attempt < config.PUSH_MAX_ATTEMPTS:
             backoff = config.TRANSIENT_RETRY_BACKOFF_SEC[
                 min(attempt - 1, len(config.TRANSIENT_RETRY_BACKOFF_SEC) - 1)

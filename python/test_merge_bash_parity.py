@@ -157,6 +157,87 @@ def test_behind_emits_main_advanced(tmp_path: Path) -> None:
     assert "MERGE_RESULT=main_advanced" in completed.stdout
 
 
+@pytest.mark.skipif(not MERGE_SH.is_file(), reason="merge-pr.sh missing")
+def test_bash_flush_recovery_k1_emits_admin_merged(tmp_path: Path) -> None:
+    script_dir = tmp_path / "scripts"
+    script_dir.mkdir()
+    merge_copy = script_dir / "merge-pr.sh"
+    _ = merge_copy.write_text(MERGE_SH.read_text(encoding="utf-8"), encoding="utf-8")
+    _ = merge_copy.chmod(0o755)
+    for helper in ("lib-quiet.sh", "lib-net.sh"):
+        source = REPO_ROOT / "scripts" / helper
+        _ = (script_dir / helper).write_text(source.read_text(encoding="utf-8"), encoding="utf-8")
+    force_push = script_dir / "git-force-push.sh"
+    _ = force_push.write_text(
+        "#!/usr/bin/env bash\nprintf 'PUSHED=true\\nSTATUS=ok\\n'\n",
+        encoding="utf-8",
+    )
+    _ = force_push.chmod(0o755)
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    count_file = tmp_path / "view-count"
+    gh_stub = bin_dir / "gh"
+    _ = gh_stub.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'if [[ "$1 $2" == "pr view" ]]; then\n'
+        f'  count_file="{count_file}"\n'
+        '  count="$(cat "$count_file" 2>/dev/null || printf 0)"\n'
+        '  count=$((count + 1))\n'
+        '  printf "%s" "$count" > "$count_file"\n'
+        '  if [[ "$count" -le 1 ]]; then\n'
+        '    printf \'{"mergeStateStatus":"CLEAN","headRefOid":"aaaa1111"}\\n\'\n'
+        "  else\n"
+        '    printf \'{"mergeStateStatus":"CLEAN","headRefOid":"cccc3333"}\\n\'\n'
+        "  fi\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [[ "$1 $2" == "pr checks" ]]; then\n'
+        '  printf \'[{"name":"ci","bucket":"pass"}]\\n\'\n'
+        "  exit 0\n"
+        "fi\n"
+        'if [[ "$1 $2" == "pr merge" ]]; then\n'
+        "  exit 0\n"
+        "fi\n"
+        "exit 1\n",
+        encoding="utf-8",
+    )
+    _ = gh_stub.chmod(0o755)
+    git_stub = bin_dir / "git"
+    _ = git_stub.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'case "$1" in\n'
+        "  rev-parse) printf 'cccc3333\\n' ;;\n"
+        "  diff) printf 'larch-logs/implement/run-1/manifest.json\\n' ;;\n"
+        "  merge-base) exit 0 ;;\n"
+        "  fetch) exit 0 ;;\n"
+        "  show) exit 1 ;;\n"
+        "  log)\n"
+        '    if [[ "$*" == *"aaaa1111..HEAD"* ]]; then\n'
+        "      printf 'chore(larch-logs): flush run-1\\n'\n"
+        "    fi\n"
+        "    ;;\n"
+        "esac\n",
+        encoding="utf-8",
+    )
+    _ = git_stub.chmod(0o755)
+    env = os.environ.copy()
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    env["LARCH_QUIET_DISABLE"] = "1"
+    completed = subprocess.run(
+        ["bash", str(merge_copy), "--pr", "1", "--repo", "o/r"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        cwd=REPO_ROOT,
+    )
+    assert completed.returncode == 0
+    assert "MERGE_RESULT=admin_merged" in completed.stdout
+
+
 def test_flush_recovery_mixed_emits_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

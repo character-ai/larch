@@ -43,6 +43,15 @@ def test_compose_summary_rejects_absolute_path_without_cwd() -> None:
         )
 
 
+def test_compose_summary_rejects_relative_path_without_cwd() -> None:
+    with pytest.raises(ShipError, match="escapes repo root"):
+        _ = pr_body.compose_summary_bullets(
+            _NoopRunner(),  # type: ignore[arg-type]
+            plan_goals_file="docs/plan.md",
+            cwd=None,
+        )
+
+
 def test_compose_summary_from_plan(tmp_path: Path) -> None:
     goals = tmp_path / "goals.md"
     _ = goals.write_text("## Goal\n\nShip Phase 5 modules.\n", encoding="utf-8")
@@ -66,6 +75,12 @@ def test_compose_pr_body_rejects_bad_mermaid() -> None:
             summary="- x",
             mermaid="flowchart LR\n  A[bad|pipe] --> B\n",
         )
+
+
+def test_compose_pr_body_rejects_bad_mermaid_in_summary() -> None:
+    bad_summary = "- x\n\n```mermaid\nflowchart LR\n  A[bad|pipe] --> B\n```\n"
+    with pytest.raises(ShipError, match="mermaid in PR body rejected"):
+        _ = pr_body.compose_pr_body(summary=bad_summary)
 
 
 def test_compose_pr_body_fail_closed_on_truncation(

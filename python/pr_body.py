@@ -84,26 +84,24 @@ def compose_summary_bullets(
 ) -> str:
     """Port compose-pr-summary.sh goal + test/cross-dir bullets."""
     _ = runner
-    goals_path = Path(plan_goals_file)
-    if goals_path.is_absolute() and cwd is None:
+    if cwd is None:
         msg = f"plan-goals path escapes repo root: {plan_goals_file}"
         raise ShipError(msg)
-    goals_file = goals_path
-    if cwd is not None:
-        repo_root = Path(cwd)
-        goals_file = (
-            goals_path.resolve()
-            if goals_path.is_absolute()
-            else (repo_root / goals_path).resolve()
-        )
-        try:
-            rel = goals_file.relative_to(repo_root.resolve())
-        except ValueError as exc:
-            msg = f"plan-goals path escapes repo root: {plan_goals_file}"
-            raise ShipError(msg) from exc
-        if not run_logs.path_under_repo(repo_root, str(rel)):
-            msg = f"plan-goals path escapes repo root: {plan_goals_file}"
-            raise ShipError(msg)
+    goals_path = Path(plan_goals_file)
+    repo_root = Path(cwd)
+    goals_file = (
+        goals_path.resolve()
+        if goals_path.is_absolute()
+        else (repo_root / goals_path).resolve()
+    )
+    try:
+        rel = goals_file.relative_to(repo_root.resolve())
+    except ValueError as exc:
+        msg = f"plan-goals path escapes repo root: {plan_goals_file}"
+        raise ShipError(msg) from exc
+    if not run_logs.path_under_repo(repo_root, str(rel)):
+        msg = f"plan-goals path escapes repo root: {plan_goals_file}"
+        raise ShipError(msg)
     if not goals_file.is_file() or goals_file.stat().st_size == 0:
         msg = f"plan-goals file missing or empty: {plan_goals_file}"
         raise ShipError(msg)
@@ -274,6 +272,10 @@ def compose_pr_body(
     if issue_number is not None:
         parts.extend(["", f"Closes #{issue_number}"])
     body = "\n".join(parts) + "\n"
+    mermaid_body = sanitize_fragment(body, from_md=True)
+    if mermaid_body.status != "ok":
+        msg = f"mermaid in PR body rejected: {','.join(mermaid_body.reason_tokens)}"
+        raise ShipError(msg)
     redacted = _fail_closed_body(redact.redact(body))
     return redacted.rstrip("\n") + "\n"
 

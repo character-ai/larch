@@ -572,11 +572,6 @@ def push_set_upstream(
     return _run(runner, ["git", "push", "-u", remote, refspec], cwd=cwd)
 
 
-def remotes(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...]:
-    result = _ensure_success(_run(runner, ["git", "remote"], cwd=cwd))
-    return tuple(line for line in result.stdout.splitlines() if line)
-
-
 def force_push_recovery(
     runner: Runner,
     *,

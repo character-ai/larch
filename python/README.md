@@ -27,6 +27,8 @@ imported by runtime code.
   `flush_logs_pre` (may commit log batches) vs `flush_logs_post` (tmpdir-only). `merge.py`
   classifies the eight `merge-pr.sh` `MERGE_RESULT` literals; driver-only `already_merged` is
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `flush_logs_pre` skip parity.
+  Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
+  `append-tool-failure.sh` calls on the live path.
 - `test_<module>.py` — colocated unit tests; `test_checks_bash_parity.py` bash-sourced parity harness; `test_stdlib_only.py` enforces stdlib-only imports
 
 ## Dependencies

@@ -73,24 +73,7 @@ def read_state_kv(state_file: str | None, key: str) -> str:
     return _read_state_kv(state_file, key)
 
 
-def _read_state_kv(state_file: str | None, key: str) -> str:
-    if not state_file or not Path(state_file).is_file():
-        return ""
-    try:
-        text = Path(state_file).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError):
-        return ""
-    for line in text.splitlines():
-        if "=" not in line:
-            continue
-        name, _, value = line.partition("=")
-        if name == key:
-            return value
-    return ""
-
-
-def _read_session_env_key(ctx: RunContext, key: str) -> str:
-    path = Path(ctx.tmpdir) / "session-env.sh"
+def _read_kv_file(path: Path, key: str) -> str:
     if not path.is_file():
         return ""
     try:
@@ -104,6 +87,16 @@ def _read_session_env_key(ctx: RunContext, key: str) -> str:
         if name == key:
             return value
     return ""
+
+
+def _read_state_kv(state_file: str | None, key: str) -> str:
+    if not state_file:
+        return ""
+    return _read_kv_file(Path(state_file), key)
+
+
+def _read_session_env_key(ctx: RunContext, key: str) -> str:
+    return _read_kv_file(Path(ctx.tmpdir) / "session-env.sh", key)
 
 
 def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
@@ -291,13 +284,6 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
     return updated
 
 
-def _newest_run_child(log_root: Path) -> Path | None:
-    candidates = [child for child in log_root.iterdir() if child.is_dir()]
-    if not candidates:
-        return None
-    return max(candidates, key=lambda path: path.stat().st_mtime)
-
-
 def _recover_manifest_from_run_dir(run_id: str, run_dir: Path) -> Manifest | None:
     if not run_dir.is_dir():
         return None
@@ -335,39 +321,6 @@ def load_or_recover_manifest(ctx: RunContext) -> Manifest:
                 _write_manifest(ctx, recovered)
                 return recovered
         return init_run(ctx, run_id=rid)
-    log_root = Path(ctx.tmpdir) / "larch-logs" / "implement"
-    if validate_run_id_slug(ctx.run_id):
-        preferred = log_root / ctx.run_id
-        if preferred.is_dir():
-            recovered = _recover_manifest_from_run_dir(ctx.run_id, preferred)
-            if recovered is not None:
-                _write_manifest(ctx, recovered)
-                return recovered
-    newest = _newest_run_child(log_root) if log_root.is_dir() else None
-    if (
-        newest is not None
-        and validate_run_id_slug(newest.name)
-        and (
-            not validate_run_id_slug(ctx.run_id)
-            or newest.name == ctx.run_id
-        )
-    ):
-        recovered_path = newest / "manifest.json"
-        if recovered_path.is_file():
-            try:
-                data = json.loads(recovered_path.read_text(encoding="utf-8"))
-                if isinstance(data, dict):
-                    manifest = _dict_to_manifest(cast("dict[str, Any]", data))
-                    if manifest.run_id == newest.name:
-                        return manifest
-            except json.JSONDecodeError:
-                pass
-        return Manifest(
-            status=config.MANIFEST_STATUS_PARTIAL,
-            version="1",
-            run_id=newest.name,
-            steps_ran={"recovered": True},
-        )
     return init_run(ctx)
 
 
@@ -556,7 +509,7 @@ def flush_logs_pre(
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_REPO_CWD)
     commit_result = _larch_log_commit(runner, ctx, log_root, cwd=cwd)
     if commit_result.returncode != 0:
-        return RefreshSkip(skipped=True, reason="commit-failed")
+        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
     return RefreshSkip(skipped=False, reason="")
 
 
@@ -616,9 +569,6 @@ def _render_token_timing_batches(ctx: RunContext, log_root: Path) -> None:
     tmpdir = Path(ctx.tmpdir)
     token_path = tmpdir / "token-report-refresh.json"
     timing_path = tmpdir / "timing-report-refresh.json"
-    for path in (token_path, timing_path):
-        if not path.is_file():
-            _ = path.write_text("{}", encoding="utf-8")
     batch_dir = log_root / "implement" / run_id
     batch_dir.mkdir(parents=True, exist_ok=True)
     sidecars: list[tuple[str, Path]] = list(_token_sidecar_paths(tmpdir))
@@ -634,6 +584,8 @@ def _render_token_timing_batches(ctx: RunContext, log_root: Path) -> None:
         timing_output_path=batch_dir / f"{config.RUN_LOG_BATCH_TIMING_REPORT}.ndjson",
     )
     for path in (token_path, timing_path):
+        if not path.is_file():
+            continue
         dest = batch_dir / path.name
         _ = dest.write_text(
             _redact_batch_payload(path.read_text(encoding="utf-8")),
@@ -697,29 +649,11 @@ def capture_session_transcript(
 
 
 def _read_finalize_kv(tmpdir: Path, key: str) -> str:
-    path = tmpdir / "finalize-state.sh"
-    if not path.is_file():
-        return ""
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if "=" not in line:
-            continue
-        name, _, value = line.partition("=")
-        if name == key:
-            return value
-    return ""
+    return _read_kv_file(tmpdir / "finalize-state.sh", key)
 
 
 def _read_run_flags_kv(tmpdir: Path, key: str) -> str:
-    path = tmpdir / "run-flags.sh"
-    if not path.is_file():
-        return ""
-    for line in path.read_text(encoding="utf-8").splitlines():
-        if "=" not in line:
-            continue
-        name, _, value = line.partition("=")
-        if name == key:
-            return value
-    return ""
+    return _read_kv_file(tmpdir / "run-flags.sh", key)
 
 
 def _step9a1_heuristic(ctx: RunContext) -> bool | None:
@@ -760,9 +694,17 @@ def _publish_run_tree_to_repo(
     dest = repo_root / "larch-logs" / "implement" / run_id
     if src.resolve() != dest.resolve():
         dest.parent.mkdir(parents=True, exist_ok=True)
-        if dest.exists():
-            shutil.rmtree(dest)
-        _safe_copy_run_tree(src, dest)
+        with tempfile.TemporaryDirectory(dir=dest.parent, prefix=f".{run_id}.") as tmp:
+            tmp_dest = Path(tmp) / run_id
+            _safe_copy_run_tree(src, tmp_dest)
+            backup = dest.parent / f".{run_id}.old"
+            if backup.exists():
+                shutil.rmtree(backup)
+            if dest.exists():
+                _ = dest.replace(backup)
+            _ = tmp_dest.replace(dest)
+            if backup.exists():
+                shutil.rmtree(backup)
     return f"larch-logs/implement/{run_id}"
 
 

@@ -773,7 +773,11 @@ def find_issue_comment_id_by_marker(
         row = _as_json_object(row_obj, context="issue comment row")
         body_obj = row.get("body")
         body = body_obj if isinstance(body_obj, str) else str(body_obj or "")
-        first_line = body.split("\n", 1)[0] if body else ""
+        first_line = (
+            body.split("\n", 1)[0].removeprefix("\ufeff").rstrip("\r")
+            if body
+            else ""
+        )
         if first_line == marker:
             ids.append(_as_int(row["id"], context="issue comments", field="id"))
     if not ids:

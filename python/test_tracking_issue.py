@@ -78,6 +78,22 @@ def test_append_comment_rejects_invalid_lifecycle_marker() -> None:
         )
 
 
+def test_append_comment_accepts_colon_lifecycle_marker() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "issue", "comment", "1"), 0, "", "", 0.01),
+        ],
+    )
+    tracking_issue.append_comment(
+        runner,
+        "1",
+        "body",
+        repo="o/r",
+        lifecycle_marker="pr:opened",
+    )
+    assert runner.calls[-1][1:3] == ["issue", "comment"]
+
+
 def test_upsert_summary_patches_existing_comment() -> None:
     runner = RecordingRunner(
         responses=[

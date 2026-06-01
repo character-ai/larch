@@ -726,3 +726,146 @@ def test_flush_recoverable_rejects_non_larch_log_paths(
 
     monkeypatch.setattr(git_module, "try_log_subjects", fake_log)
     assert not merge_module._flush_recoverable(runner, "aaaa1111", cwd=None)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_flush_recoverable_requires_pr_head_ancestor(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner()
+
+    def fake_log(*_a: object, **_k: object) -> git_module.LogSubjects:
+        return git_module.LogSubjects((f"{config.FLUSH_COMMIT_SUBJECT_PREFIX}run",))
+
+    def fake_diff(*_a: object, **_k: object) -> CommandResult:
+        return CommandResult(("git", "diff"), 0, "larch-logs/implement/run/a\n", "", 0.01)
+
+    def fake_is_ancestor(*_a: object, **_k: object) -> bool:
+        return False
+
+    monkeypatch.setattr(git_module, "try_log_subjects", fake_log)
+    monkeypatch.setattr(git_module, "diff_name_only", fake_diff)
+    monkeypatch.setattr(git_module, "is_ancestor", fake_is_ancestor)
+    assert not merge_module._flush_recoverable(runner, "aaaa1111", cwd=None)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_merge_retries_unknown_then_succeeds(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    open_pr = '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}'
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"UNKNOWN","headRefOid":"abc"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"UNKNOWN","headRefOid":"abc"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"abc"}',
+                "",
+                0.01,
+            ),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
+        ],
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx, sleeper=sleeps.append)
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+    assert sleeps == [5.0, 5.0]
+
+
+def test_merge_unknown_exhaustion_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    open_pr = '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}'
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            *[
+                CommandResult(
+                    ("gh", "pr", "view", "1"),
+                    0,
+                    '{"mergeStateStatus":"UNKNOWN","headRefOid":"abc"}',
+                    "",
+                    0.01,
+                )
+                for _ in range(config.MERGE_PR_INITIAL_UNKNOWN_RETRIES + 1)
+            ],
+        ],
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx, sleeper=sleeps.append)
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert len(sleeps) == config.MERGE_PR_INITIAL_UNKNOWN_RETRIES
+
+
+def test_post_flush_redaction_skip_is_merge_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+
+    def fake_post(*_a: object, **_k: object) -> run_logs.RefreshSkip:
+        return run_logs.RefreshSkip(skipped=True, reason="redaction-failed")
+
+    monkeypatch.setattr(run_logs, "flush_logs_post", fake_post)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module._post_flush(  # pyright: ignore[reportPrivateUsage]
+        RecordingRunner(),
+        ctx,
+        config.MERGE_RESULT_MERGED,
+    )
+    assert out is not None
+    assert out.result == config.MERGE_RESULT_ERROR
+
+
+def test_merge_noop_defaults_to_merged_when_state_unknown(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"MERGED","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
+    out = merge_module.merge_pr(runner, ctx)
+    assert out.result == config.MERGE_RESULT_MERGED
