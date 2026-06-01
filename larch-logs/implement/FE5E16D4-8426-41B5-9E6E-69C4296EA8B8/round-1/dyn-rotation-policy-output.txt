@@ -1,0 +1,16 @@
+Reviewing the branch diff and CI-fixer rotation / first-fixer-non-health semantics.
+### In-Scope Findings
+
+- **risk-integration** `CHANGELOG.md:46` — The Unreleased “Changed” bullet still documents omitted `--coder` as **Cursor → Codex → Claude**, while commit `3a76166c9` flips live routing and synced docs (`SECURITY.md`, `implement-bootstrap.md`, `ship-pr.sh`, `skills/implement/SKILL.md`) to **Codex → Cursor → Claude**. That mismatch is easy to hit when debugging CI-fix rotation or `first-fixer-non-health`, because the changelog still implies Cursor is the default first CI-fixer tier on `_fix_attempt=0`. **Suggested fix:** Update the Unreleased bullet (and add a `#3337` entry when you cut the release) so implementer and CI-fixer default order match runtime and `scripts/ship-pr.md:152-154`.
+
+- **risk-integration** `scripts/test-ship-pr.sh`, `scripts/test-ship-pr-fix-loop-2632.inc.sh` — Order-sensitive regressions cover `start_attempt=0` (direct `run_ci_fix_vendor … 0` and full-ship `t4`–`t4d`), but nothing drives `run_ci_fix_vendor` with `start_attempt=1` where `first_tier=${tiers[1]}` is **cursor** after the base-order flip. The live gate at `scripts/ship-pr.sh:2069-2121` keys off `tier="$first_tier"` and `waterfall_iter=0`; outer `run_evaluate_failure` passes `_fix_attempt` through at `2638`/`2659`, so retry-1 autonomous bail semantics are unguarded. **Suggested fix:** Add a harness case (stub Codex health-fail or success-skip, Cursor `LAUNCHER_FAILURE_CLASS=other`, assert exit 3, `BAIL_REASON=first-fixer-non-health`, and a single Cursor launch) mirroring `run_ship_pr_2632_t4` but with `_fix_attempt=1` / `start_attempt=1`.
+
+### Out-of-Scope Observations
+
+- **Pre-existing `waterfall_iter` vs skipped Claude launcher:** In `scripts/ship-pr.sh:2073-2078`, an unavailable `launch-claude-ci.sh` increments `waterfall_iter` before any launcher runs. When outer rotation starts at `claude` (`start_attempt=2`), a later tier’s `other` failure may not satisfy `waterfall_iter -eq 0` at `2115-2121`, so `first-fixer-non-health` may not fire even though docs describe “rotated first tier” policy (`scripts/ship-pr.md:152-154`). Not introduced by the tuple flip; same structure existed cursor-first.
+
+- **Pre-existing #3134 “no commit” bail:** `scripts/ship-pr.sh:2144-2166` classifies `first-fixer-non-health` from the **winning** tier after staging, not from `first_tier` of the rotated list. That is separate from the `LAUNCHER_FAILURE_CLASS=other` short-circuit and unchanged by this branch.
+
+- **Python parity (Phase 7):** `python/ci_monitor.py:912` rotates with `start_attempt % len(tiers)` while Bash always uses `% 3` on a fixed triple; only `FIXER_TIER_ORDER` changed here. Live path remains Bash until Phase 7.
+
+- **Historical changelog:** `CHANGELOG.md:1149` still names “first-tier fixer (Cursor)”; not updated in the `#3337` commit and predates this flip.
