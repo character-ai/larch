@@ -1228,8 +1228,6 @@ Repeat any external reviewer warnings from earlier (from Step 5 review or runtim
 Before teardown, refresh the token report artifact and decide whether the orchestrator must emit `summary-final.md` (the log batches and flush commit were already written at the pre-bump log flush step). `step-18b-final-report.sh` owns token-report refresh, `write-final-report.sh` invocation (without `--print-stdout`), snapshot comparison, and best-effort failure capture:
 
 ```bash
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
-export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
 _step18b_out=$("${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-18b-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR")
 printf '%s\n' "$_step18b_out"
