@@ -19,6 +19,8 @@ class RunContext:
     tool_label: str
     no_admin_fallback: bool
     repo_unavailable: bool
+    pr_number: int | None = None
+    state_file: str | None = None
 
     def with_(self, **changes: object) -> RunContext:
         known = {f.name for f in fields(self)}

@@ -5,7 +5,8 @@ from __future__ import annotations
 import os
 import re
 import tempfile
-from collections.abc import Mapping, Sequence
+import time
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from dataclasses import dataclass
 
@@ -529,3 +530,92 @@ def paths_delta_revert(
         target = root / path
         if target.exists() or target.is_symlink():
             target.unlink(missing_ok=True)
+
+
+@dataclass(frozen=True)
+class ForcePushResult:
+    pushed: bool
+    status: str
+    branch: str = ""
+
+
+def push_set_upstream(
+    runner: Runner,
+    remote: str,
+    refspec: str,
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _run(runner, ["git", "push", "-u", remote, refspec], cwd=cwd)
+
+
+def remotes(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...]:
+    result = _ensure_success(_run(runner, ["git", "remote"], cwd=cwd))
+    return tuple(line for line in result.stdout.splitlines() if line)
+
+
+def force_push_recovery(
+    runner: Runner,
+    *,
+    branch: str | None = None,
+    remote: str = "origin",
+    expected_remote_oid: str | None = None,
+    cwd: str | None = None,
+    sleeper: Callable[[float], None] | None = None,
+) -> ForcePushResult:
+    """Port git-force-push.sh: clean-tree guard, fetch, lease push, race noop, one retry."""
+    if sleeper is None:
+        sleeper = time.sleep
+
+    resolved_branch = branch
+    if resolved_branch is None:
+        resolved_branch = try_current_branch(runner, cwd=cwd)
+    if not resolved_branch:
+        return ForcePushResult(pushed=False, status="detached_head", branch="")
+
+    status_result = status_porcelain(runner, cwd=cwd)
+    if status_result.returncode != 0:
+        return ForcePushResult(
+            pushed=False,
+            status="dirty_worktree",
+            branch=resolved_branch,
+        )
+    if status_result.stdout.strip():
+        return ForcePushResult(
+            pushed=False,
+            status="dirty_worktree",
+            branch=resolved_branch,
+        )
+
+    refspec = f"HEAD:refs/heads/{resolved_branch}"
+
+    def _lease_push() -> CommandResult:
+        if expected_remote_oid:
+            lease = f"refs/heads/{resolved_branch}:{expected_remote_oid}"
+            return _run(
+                runner,
+                ["git", "push", f"--force-with-lease={lease}", remote],
+                cwd=cwd,
+            )
+        return force_push_with_lease(runner, remote, refspec, cwd=cwd)
+
+    _ = fetch(runner, remote, resolved_branch, cwd=cwd)
+    first = _lease_push()
+    if first.returncode == 0:
+        return ForcePushResult(pushed=True, status="pushed", branch=resolved_branch)
+
+    _ = fetch(runner, remote, resolved_branch, cwd=cwd)
+    local_head = try_rev_parse(runner, "HEAD", cwd=cwd)
+    remote_ref = try_rev_parse(runner, f"{remote}/{resolved_branch}", cwd=cwd)
+    if local_head and remote_ref and local_head == remote_ref:
+        return ForcePushResult(pushed=True, status="noop_same_ref", branch=resolved_branch)
+
+    sleeper(5.0)
+    second = _lease_push()
+    if second.returncode == 0:
+        return ForcePushResult(pushed=True, status="pushed", branch=resolved_branch)
+    return ForcePushResult(
+        pushed=False,
+        status="diverged_retry_failed",
+        branch=resolved_branch,
+    )

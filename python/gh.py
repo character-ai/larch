@@ -45,6 +45,19 @@ class FailedJob:
     conclusion: str
 
 
+@dataclass(frozen=True)
+class MergeState:
+    merge_state_status: str
+    head_ref_oid: str
+
+
+@dataclass(frozen=True)
+class PrCheck:
+    name: str
+    state: str
+    bucket: str
+
+
 def _gh(runner: Runner, argv: Sequence[str], *, cwd: str | None = None) -> CommandResult:
     return runner.run(["gh", *argv], cwd=cwd)
 
@@ -357,6 +370,7 @@ def pr_merge(
     *,
     repo: str,
     merge_method: str = "squash",
+    admin: bool = False,
     cwd: str | None = None,
 ) -> CommandResult:
     flag_map = {
@@ -368,18 +382,130 @@ def pr_merge(
     if flag is None:
         msg = f"unknown merge_method: {merge_method!r}"
         raise ShipError(msg)
-    return _gh(
+    argv = [
+        "pr",
+        "merge",
+        str(number),
+        "--repo",
+        repo,
+        flag,
+    ]
+    if admin:
+        argv.append("--admin")
+    return _gh(runner, argv, cwd=cwd)
+
+
+def pr_merge_state_read(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
         runner,
         [
             "pr",
-            "merge",
+            "view",
             str(number),
             "--repo",
             repo,
-            flag,
+            "--json",
+            "mergeStateStatus,headRefOid",
         ],
         cwd=cwd,
     )
+
+
+def pr_merge_state(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> MergeState:
+    result = pr_merge_state_read(runner, number, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        _raise_read_failure(result)
+    data = _as_json_object(
+        _loads_json(result.stdout, context="pr merge state"),
+        context="pr merge state",
+    )
+    status = str(data.get("mergeStateStatus") or "")
+    head_oid = str(data.get("headRefOid") or "")
+    return MergeState(merge_state_status=status, head_ref_oid=head_oid)
+
+
+def pr_checks_read(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        [
+            "pr",
+            "checks",
+            str(number),
+            "--repo",
+            repo,
+            "--json",
+            "name,state,bucket,link",
+        ],
+        cwd=cwd,
+    )
+
+
+def pr_checks_all_pass(
+    runner: Runner,
+    number: int,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> bool:
+    result = pr_checks_read(runner, number, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        return False
+    try:
+        rows_obj = _as_json_list(
+            _loads_json(result.stdout or "[]", context="pr checks"),
+            context="pr checks",
+        )
+    except ShipError:
+        return False
+    if not rows_obj:
+        return False
+    for row_obj in rows_obj:
+        row = _as_json_object(row_obj, context="pr checks row")
+        if row.get("bucket") != "pass":
+            return False
+    return True
+
+
+def pr_edit_body(
+    runner: Runner,
+    number: int,
+    body: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    with _body_file_args(body) as (body_flag, body_path):
+        return _gh(
+            runner,
+            [
+                "pr",
+                "edit",
+                str(number),
+                "--repo",
+                repo,
+                body_flag,
+                body_path,
+            ],
+            cwd=cwd,
+        )
 
 
 def run_list_read(
