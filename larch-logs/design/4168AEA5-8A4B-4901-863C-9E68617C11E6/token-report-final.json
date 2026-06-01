@@ -1,0 +1,112 @@
+{
+  "vendors": [
+    "claude",
+    "codex",
+    "cursor"
+  ],
+  "claude": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 34896,
+          "cache_read": 12452061,
+          "cache_create": 654004,
+          "cache_create_5m": 89032,
+          "cache_create_1h": 564972,
+          "output": 159037,
+          "total": 13299998
+        },
+        "skills": [
+          {
+            "skill": "larch:design",
+            "totals": {
+              "input": 34623,
+              "cache_read": 9240926,
+              "cache_create": 592164,
+              "cache_create_5m": 89032,
+              "cache_create_1h": 503132,
+              "output": 130427,
+              "total": 9998140
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 273,
+              "cache_read": 3211135,
+              "cache_create": 61840,
+              "cache_create_5m": 0,
+              "cache_create_1h": 61840,
+              "output": 28610,
+              "total": 3301858
+            }
+          }
+        ]
+      }
+    ],
+    "totals": {
+      "input": 34896,
+      "cache_read": 12452061,
+      "cache_create": 654004,
+      "cache_create_5m": 89032,
+      "cache_create_1h": 564972,
+      "output": 159037,
+      "total": 13299998
+    }
+  },
+  "codex": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 129733,
+          "output": 6817,
+          "total": 1560934
+        }
+      }
+    ],
+    "totals": {
+      "input": 129733,
+      "output": 6817,
+      "total": 1560934
+    }
+  },
+  "cursor": {
+    "per_step": [
+      {
+        "step": "design Step 0 — session setup",
+        "totals": {
+          "input": 504606,
+          "output": 63937,
+          "total": 7474837
+        }
+      }
+    ],
+    "totals": {
+      "input": 504606,
+      "output": 63937,
+      "total": 7474837
+    }
+  },
+  "BUCKETS_claude": {
+    "input": 34896,
+    "cache_read": 12452061,
+    "cache_create_5m": 89032,
+    "cache_create_1h": 564972,
+    "output": 159037,
+    "total": 13299998
+  },
+  "BUCKETS_codex": {
+    "input": 129733,
+    "cached_input": 1424384,
+    "output": 6817,
+    "total": 1560934
+  },
+  "BUCKETS_cursor": {
+    "input": 504606,
+    "cache_read": 6906294,
+    "output": 63937,
+    "total": 7474837
+  }
+}

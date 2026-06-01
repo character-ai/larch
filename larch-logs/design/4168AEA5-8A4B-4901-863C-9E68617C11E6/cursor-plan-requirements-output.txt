@@ -1,0 +1,19 @@
+Exploring the codebase to validate the plan against existing seams and ported scripts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/pr.py (plan)	`ensure_pr(ctx, body)` omits a PR title while the plan claims a thin port of `create-pr.sh`	`create-pr.sh` requires `--title`; `RunContext` has no title field, so Phase 7 cannot call a drop-in replacement without ad-hoc title wiring and PR creation fails or diverges	Add an explicit `title` argument (or document title derivation in `pr.py`) and cover it in `test_pr.py`
+2	in_scope	important	correctness	python/run_logs.py (plan)	`Manifest` lists only `status`, timestamps, `version`, and `steps_ran`; no `pr_number`	`ship-pr.sh` post-merge sets `status=done` and `pr_number` on the run manifest (`scripts/larch-log.md` documents `pr_number` as a lifecycle field); a port without it cannot finalize merge-time manifests	Extend `Manifest` / `update_manifest()` for `pr_number` and test post-merge finalization
+3	in_scope	important	security	python/run_logs.py (plan)	Plan ports `larch-log.sh` / `flush_logs` but never names commit refusal guards	Without `post-merge-sentinel` and default-branch checks (`scripts/larch-log.sh` ~501-507), Phase 7 could commit/push larch-log artifacts to `main` after merge (NEVER #19)	Port commit guards into the `commit` path and add unit tests that refuse commit when the sentinel exists or HEAD is the default branch
+4	in_scope	important	correctness	python/run_logs.py (plan)	`flush_logs` is said to port `refresh-run-logs.sh` but omits `capture-session-transcript.sh`	Refresh re-stages `session-transcript.jsonl` before push; skipping it loses transcript updates on pre-push/pre-merge flushes even when token/timing batches run	Name the transcript capture step in `flush_logs` (defer-commit parity) and test it alongside other refresh phases
+5	in_scope	nit	architecture	python/push.py (plan)	Fork-aware `origin` vs `upstream` remote selection is not in `git-push.sh`	`git-push.sh` only runs plain `git push`; fork remote choice lives in other ship-pr paths—extra logic in `push.py` is scope beyond the stated port and adds Phase 5 surface	Limit `push.py` to `git-push.sh` behavior unless an existing bash helper is identified; defer fork remote selection to Phase 7 driver code
+
+1. **correctness** — `python/pr.py` (plan): `ensure_pr(ctx, body)` has no PR title while the plan ports `create-pr.sh`, which requires `--title` (`scripts/create-pr.sh:7-12`). Add a `title` parameter (or document derivation) and test it.
+
+2. **correctness** — `python/run_logs.py` (plan): `Manifest` omits `pr_number`, but ship-pr post-merge writes `status=done` and `pr_number` (`scripts/ship-pr.sh:3637-3641`, `scripts/larch-log.md:14-16`). Extend the dataclass and `update_manifest()` coverage.
+
+3. **security** — `python/run_logs.py` (plan): No mention of `larch-log.sh commit` refusal when `post-merge-sentinel` exists or on the default branch (`scripts/larch-log.sh:501-507`). Port those guards and unit-test them.
+
+4. **correctness** — `python/run_logs.py` (plan): `flush_logs` claims a `refresh-run-logs.sh` port but not `capture-session-transcript.sh` (`scripts/refresh-run-logs.sh:86-95`). Add transcript capture to the flush sequence and test it.
+
+5. **architecture** — `python/push.py` (plan): Fork-aware remote selection exceeds `git-push.sh` (`scripts/git-push.sh:44`). Keep `push.py` aligned with the bash helper or defer fork remotes to the Phase 7 driver.
+
+[OUT_OF_SCOPE] PR title derivation (`merge-base..HEAD`, `Fixes #N:`, flush-subject skip) in `scripts/ship-pr.sh:1586-1594` — not in the eight-module plan; belongs in the Phase 7 `ship.py` driver unless explicitly added later.

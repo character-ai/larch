@@ -1,0 +1,23 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:40-41; scripts/merge-pr.sh:29	merge.py lists nine MergeResult variants including already_merged but merge-pr.sh emits only eight	Merge parity harness and test_merge_bash_parity.py compare against merge-pr.sh; already_merged is produced by ship-pr.sh from ci-wait ACTION or version_already_published plus merged PR probe, not by merge-pr.sh	Limit merge.py variants to merge-pr.sh outputs (merged, admin_merged, main_advanced, ci_not_ready, version_already_published, policy_denied, admin_failed, error); drop already_merged from merge.py or document it as a ship-pr-layer wrapper only and exclude it from merge-pr parity tables
+2	in_scope	important	architecture	plan.txt:37-38; skills/implement/scripts/oos-disposition-gate.sh:1-9; python/gh.py	stage_accepted_oos() files follow-up issues via gh but bash only ships oos-disposition-gate.sh and /issue owns filing; gh.py has no issue_create	Phase 5 invents a non-mechanical OOS filing path without a bash port or gh seam; disposition gate parity is under-specified while staging duplicates interactive /issue behavior	Scope oos.py to disposition_ok() plus shared.inc.bash counting helpers only; defer stage_accepted_oos to Phase 7 or add gh.issue_create and an explicit bash script source of truth before filing
+3	in_scope	latent	architecture	plan.txt:31-32; scripts/git-push.sh:44-45	push.py adds fork-aware origin vs upstream remote selection not present in git-push.sh	Thin port drifts from git-push.sh (always default git push); fork push paths today use rebase-push.sh upstream flow in ship-pr.sh, not git-push.sh	Port git-push.sh literally in push.py; pass remote/refspec from caller RunContext or ship-pr orchestration when fork mode needs upstream
+4	in_scope	latent	architecture	plan.txt:26; skills/implement/scripts/write-final-report.sh:607-610; scripts/tracking-issue-summary.sh:18	tracking_issue.py upsert_token_report has no active bash writer; write-final-report only calls tracking-issue-summary.sh upsert-summary for larch:final-summary	Implementers build dead upsert_token_report surface while token data stays in larch-log batches per current implement path	Drop upsert_token_report from Phase 5 or cite the exact bash caller and marker if token-report issue comments are still required; port upsert_summary via scripts/tracking-issue-summary.sh not only write-final-report.sh
+
+**1. `already_merged` belongs outside `merge.py` parity (correctness)**  
+`merge-pr.sh` documents eight `MERGE_RESULT` values and never emits `already_merged`:
+
+```29:29:scripts/merge-pr.sh
+#   MERGE_RESULT=merged|admin_merged|main_advanced|ci_not_ready|version_already_published|admin_failed|policy_denied|error
+```
+
+`already_merged` is set in `ship-pr.sh` when `ci-wait` returns `ACTION=already_merged`, or when `version_already_published` pairs with a merged PR (`scripts/ship-pr.sh` ~3504–3505, ~3551–3552). The plan’s nine-variant table and `test_merge_bash_parity.py` “identical classification” goal conflict with that split.
+
+**2. `stage_accepted_oos` is scope creep without a bash port (architecture)**  
+The gate script only validates disposition (`oos-disposition-gate.sh`); accepted OOS filing is owned by `/issue` in `skills/implement/SKILL.md`. `python/gh.py` has `issue_comment` / `issue_edit` but no `issue_create`, so the proposed staging API has no seam or parity target.
+
+**3. Fork-aware push is not in `git-push.sh` (architecture / minimum change)**  
+`git-push.sh` always runs plain `git push` with retries. Fork/base-remote selection lives in `ship-pr.sh` (`FORKED_TARGET` → `upstream` for CI, `rebase-push.sh` for rebase), not in the script the plan names as the port source.
+
+**4. `upsert_token_report` lacks a live bash counterpart (architecture)**  
+`write-final-report.sh` upserts only `larch:final-summary` via `tracking-issue-summary.sh`. `larch:token-report` appears in `tracking-issue-read.sh` for parsing, not as an active upsert in the implement path—adding `upsert_token_report` in Phase 5 risks unused code unless the plan names a real caller.
