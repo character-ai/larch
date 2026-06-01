@@ -234,7 +234,8 @@ backfill_install_stamps() {
         is_safe_version "$version" || continue
         read_install_stamp "$version_dir" >/dev/null 2>&1 && continue
         mt=$(stat_mtime "$version_dir")
-        [[ "$mt" =~ ^[0-9]+$ ]] && [ "$mt" -gt 0 ] || continue
+        [[ "$mt" =~ ^[0-9]+$ ]] || continue
+        [ "$mt" -gt 0 ] || continue
         if ! printf '%s\n' "$mt" > "$version_dir/.larch-installed-at"; then
             warn_install_stamp_failure "$version"
         fi
