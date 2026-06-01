@@ -1,0 +1,17 @@
+⏳ cursor agent: still running (1m elapsed)
+⏳ cursor agent: still running (2m elapsed)
+⏳ cursor agent: still running (3m elapsed)
+⏳ cursor agent: still running (4m elapsed)
+⏳ cursor agent: still running (5m elapsed)
+⏳ cursor agent: still running (6m elapsed)
+⏳ cursor agent: still running (24m elapsed)
+⏳ cursor agent: still running (44m elapsed)
+⚠ cursor agent: TIMED OUT after 30 minutes, killing
+❌ cursor agent: TIMED OUT (exit code 124, 2702s elapsed, output 173 bytes)
+--- failed agent stderr tail ---
+Connection lost, reconnecting (attempt 1)...
+Retry attempt 1...
+Connection lost, reconnecting (attempt 2)...
+Retry attempt 2...
+Connection lost, reconnecting (attempt 3)...
+--- end failed agent stderr tail ---

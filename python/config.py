@@ -77,3 +77,25 @@ ENV_LARCH_BUMP_FILES: Final = "LARCH_BUMP_FILES"
 BUMP_VERSION_SKILL_PATH: Final = ".claude/skills/bump-version/SKILL.md"
 APPLY_BUMP_ALLOWED_UNTRACKED_SUFFIXES: Final = (".launcher-stderr", ".redacted.log")
 GIT_COMMIT_CO_AUTHORED_BY_TRAILER: Final = "Co-Authored-By: Claude Code <noreply@anthropic.com>"
+
+# CI monitor loop (Phase 6)
+CI_MONITOR_MAX_ITERATIONS: Final = 50
+CI_MONITOR_MAX_REBASES: Final = 20
+CI_MONITOR_MAX_FIX_ATTEMPTS: Final = 10
+CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS: Final = 3
+CI_MONITOR_TRANSIENT_RERUN_MAX: Final = 1
+CI_MONITOR_STATUS_FAILURE_BAIL: Final = 3
+CI_MONITOR_LOG_TAIL_LINES: Final = 100
+CI_FIX_ROLE: Final = "fix"
+CI_FIXABLE_JOBS: Final[frozenset[str]] = frozenset({
+    "lint",
+    "lint-mermaid",
+    "shellcheck",
+    "test-harnesses",
+    "agent-lint",
+    "agnix",
+    "smoke-dialectic",
+    "agent-sync",
+    "python-lint",
+    "python-tests",
+})
