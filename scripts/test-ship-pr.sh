@@ -2152,7 +2152,7 @@ else
 fi
 rm -rf "$count_dir"
 
-# Regression: mixed CHANGELOG + non-trivial conflict → vendor sees remaining path + 600s timeout.
+# Regression: mixed CHANGELOG + non-trivial conflict → recovery waterfall resolve-conflict (1800s vendor timeout).
 root=$(make_repo_rebase_dual_conflict_prep rebump_changelog_mixed)
 tmp=$(make_tmpdir)
 count_dir=$(mktemp -d /tmp/ship-pr-changelog-mix.XXXXXX)
@@ -2209,7 +2209,7 @@ else
 fi
 rm -rf "$count_dir"
 
-# Regression: non-changelog-only conflict → vendor with --conflict-files + 600s timeout.
+# Regression: non-changelog-only conflict → recovery waterfall with --conflict-files (1800s vendor timeout).
 root=$(make_repo vendor_only_paths)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d /tmp/ship-pr-vendor-only.XXXXXX)

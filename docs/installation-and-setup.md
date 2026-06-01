@@ -116,7 +116,7 @@ on the commit (or on `make lint-only` / `pre-commit run`). CI installs
 the toolchain itself, so the hook still runs there even when locally
 skipped.
 
-- The subsections below document one concrete setup recipe per agent (API-key path). If you prefer the subscription-plan path, install the binary and follow its own web-login flow instead — the rest of larch's configuration (settings, model overrides) still applies.
+- The subsections below document per-agent setup, including both API-key and subscription billing for Claude (see dual-auth aliases and `apiKeyHelper`-free guidance). For Codex and Cursor, the steps focus on the API-key path; use each tool's web-login flow for subscription billing where applicable. Larch settings and model overrides apply regardless of billing mode.
 
 ### Claude
 - Via web UI of your Claude org, create your own API key

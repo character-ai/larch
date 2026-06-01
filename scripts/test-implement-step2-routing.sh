@@ -44,7 +44,7 @@ assert_contains "$BOOTSTRAP_SH" 'Waterfalling to ${alt_caps} → Claude' "explic
 # shellcheck disable=SC2016 # literal source text, not shell.
 assert_contains "$BOOTSTRAP_SH" '${alt_caps} also unavailable — falling back to Claude implementer' "explicit-coder claude terminal tier (#3207)"
 assert_not_contains "$IMPLEMENT_SKILL" '### Implementer waterfall' "deleted prompt-side waterfall heading"
-assert_not_contains "$IMPLEMENT_SKILL" 'Codex → Cursor → Claude' "old waterfall order"
+assert_not_contains "$IMPLEMENT_SKILL" 'Codex → Cursor → Claude' "script-side waterfall order not duplicated in SKILL.md"
 assert_contains "$IMPLEMENT_SKILL" 'coder_fallback=true' "coder fallback manifest flag"
 assert_contains "$BOOTSTRAP_SH" 'Codex unavailable — falling back to Cursor implementer' "codex-to-cursor warning"
 assert_contains "$BOOTSTRAP_SH" 'Cursor unavailable — falling back to Claude implementer' "cursor-to-claude warning"
