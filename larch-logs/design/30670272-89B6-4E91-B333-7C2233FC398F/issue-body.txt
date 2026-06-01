@@ -1,0 +1,40 @@
+`make lint` hangs indefinitely on developer machines when Codex is unavailable (unhealthy, quota exhausted, or not authenticated).
+
+## Context
+
+`make lint` runs all test harnesses including `test-plan-review-loop`, wired to:
+
+```
+bash scripts/harness-timer.sh test-plan-review-loop \
+    bash skills/design/scripts/test-plan-review-loop.sh
+```
+
+`test-plan-review-loop.sh` invokes `plan-review-loop.sh` with `--codex-present true --cursor-present true`. This causes the loop to attempt real Codex and Cursor launches. On a developer machine where Codex is unavailable (probe fails, auth error, or quota hit), `run-external-agent.sh` blocks waiting for a response that never comes — no timeout fires, no error is surfaced — and `make lint` hangs until killed manually.
+
+## Root Cause
+
+`test-plan-review-loop.sh` sets `--codex-present true` and `--cursor-present true` unconditionally, then calls the real `plan-review-loop.sh` without stubbing the external launcher binaries. The test has no mock for `codex` or `cursor`, so when those tools are actually invoked, the test depends on live external availability.
+
+On CI, the tools are stubbed or the health check short-circuits quickly. Locally, a Codex health probe failure leaves the loop waiting on a subprocess that never exits.
+
+Observed: `make lint` hung for 10+ minutes with `plan-review-loop.sh --codex-present true --cursor-present true` visible in `ps aux` output.
+
+## Suggestion
+
+The fix pattern already exists in `test-codex-implementer.sh` and `test-cursor-implementer.sh`: create a `STUB_BIN` directory, put a minimal stub `codex` (and `cursor`) script there, and prepend it to `PATH` before invoking the harness. The stub exits immediately with a controlled response so the test does not depend on live external availability.
+
+Concrete options (pick one or combine):
+
+1. **Stub the launcher binaries** — same pattern as `test-codex-implementer.sh`: create `$SCRATCH/bin/codex` that writes a minimal manifest and exits 0, prepend `$SCRATCH/bin` to `PATH` before calling `plan-review-loop.sh`.
+
+2. **Guard `plan-review-loop.sh` on a health probe before the launch** — `plan-review-loop.sh` already calls `check-codex-health.sh`; if that probe exits non-zero (tool unavailable), the loop should degrade to Claude-only rather than blocking. The test then sets `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=1` (or similar) so the probe times out fast and falls back gracefully.
+
+3. **Inject a `LARCH_PLAN_REVIEW_STUB=true` env var** in the test, with `plan-review-loop.sh` checking it to short-circuit the external launch path — least invasive but adds conditional prod code for test-only purposes.
+
+Option 1 is preferred: it matches the existing test harness pattern and does not add branching to production code.
+
+## Acceptance
+
+- [ ] `make lint` completes without hanging on a machine where Codex is unavailable.
+- [ ] `test-plan-review-loop` does not invoke real Codex or Cursor binaries.
+- [ ] The stub exercises the loop's control flow faithfully (complete/bailed/needs-qa paths).

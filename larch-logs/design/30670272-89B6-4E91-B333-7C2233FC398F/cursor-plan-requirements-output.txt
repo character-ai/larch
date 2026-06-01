@@ -1,0 +1,2 @@
+Reading the plan and verifying it against the codebase and stated requirements.
+{"no_issues_found": true}
