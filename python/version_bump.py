@@ -469,6 +469,8 @@ def apply_bump(
     new_version: str,
     *,
     cwd: str | None = None,
+    base_remote: str = "origin",
+    base_ref: str = "main",
 ) -> ApplyResult:
     """Apply version bump to plugin.json and commit."""
     if not re.fullmatch(config.SEMVER_RE, new_version):
@@ -561,21 +563,23 @@ def apply_bump(
     if stage_err is not None:
         return stage_err
 
+    base_label = f"{base_remote}/{base_ref}"
     retry_count = 0
     while True:
-        fetch_result = git.fetch(runner, "origin", "main", cwd=cwd)
+        fetch_result = git.fetch(runner, base_remote, base_ref, cwd=cwd)
         if fetch_result.returncode != 0:
             rollback_before_commit()
             return ApplyResult(
                 applied=False,
                 error=_redact_outbound(
-                    "git fetch origin main failed; cannot verify origin/main version guards",
+                    f"git fetch {base_remote} {base_ref} failed; cannot verify "
+                    f"{base_label} version guards",
                 ),
             )
 
         origin_show = git.show_file(
             runner,
-            f"origin/main:{config.PLUGIN_JSON_PATH}",
+            f"{base_label}:{config.PLUGIN_JSON_PATH}",
             cwd=cwd,
         )
         origin_version = ""
@@ -592,7 +596,9 @@ def apply_bump(
             rollback_before_commit()
             return ApplyResult(
                 applied=False,
-                error=_redact_outbound("could not parse origin/main published version"),
+                error=_redact_outbound(
+                    f"could not parse {base_label} published version",
+                ),
             )
 
         if origin_version == new_version or _semver_lt(new_version, origin_version):
@@ -601,9 +607,9 @@ def apply_bump(
                 return ApplyResult(
                     applied=False,
                     error=_redact_outbound(
-                        "origin/main bump race: could not land version after "
+                        f"{base_label} bump race: could not land version after "
                         f"{config.APPLY_BUMP_MAX_RETRIES} retries "
-                        f"(last origin/main={origin_version})",
+                        f"(last {base_label}={origin_version})",
                     ),
                 )
             bump_type = _infer_bump_type(original_current, initial_target)
