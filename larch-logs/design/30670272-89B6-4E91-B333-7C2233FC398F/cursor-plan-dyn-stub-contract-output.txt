@@ -1,0 +1,2 @@
+Reviewing the plan against the revise-path contracts in the named scripts.
+{"no_issues_found": true}

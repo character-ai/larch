@@ -1,0 +1,53 @@
+# Implementation Plan — #3338: `make lint` hangs on `test-plan-review-loop` when Codex is unavailable
+
+## Summary
+
+`make lint` hangs when Codex (or Cursor) is installed but unavailable (auth/quota/network). `test-plan-review-loop.sh` stubs the loop's orchestration scripts via `LARCH_PLAN_REVIEW_*_SH`, but `run_loop` defaults `LARCH_PLAN_REVIEW_REVISE_SH` to the **real** `revise-plan-with-waterfall.sh` (lines 818 and 2715). That real script calls the real `launch-review.sh` → real `codex`/`cursor`. The launcher libs have no `command -v codex` availability guard, so an installed-but-unhealthy binary launches and blocks on the production reviewer timeout (~30 min), which reads as a hang.
+
+Fix is test-only (Round 1 decision): prepend a `STUB_BIN` of minimal `codex`/`cursor`/`claude` stubs to `PATH` in the at-risk harness. This neutralizes every real-binary launch at the process boundary, regardless of which internal path reaches it (the issue's preferred Option 1).
+
+## Files to modify/create
+
+### UPDATED: `skills/design/scripts/test-plan-review-loop.sh`
+- After the existing `TMP`/`STUB` setup (around line 44, before the first launch-capable section), add a dedicated `STUB_BIN="$TMP/bin"` directory containing executable `codex`, `cursor`, and `claude` stubs, then `export PATH="$STUB_BIN:$PATH"`.
+- Each stub is `#!/usr/bin/env bash` with `set -euo pipefail`, parse-tolerant, and exits `0` immediately:
+  - `codex`: scan argv for `--output-last-message <path>`; when present, write one minimal line to that path. Print one minimal line to stdout. Never read stdin. Exit 0.
+  - `cursor`: print one minimal line to stdout. Exit 0.
+  - `claude`: print one minimal line to stdout. Exit 0.
+- Mirror the PATH-prepended `STUB_BIN` pattern at `skills/implement/scripts/test-codex-implementer.sh:218-287`, dropping the manifest fields this harness does not need.
+- Do not remove or alter the existing `LARCH_PLAN_REVIEW_*_SH` script-level stubs. The binary stub is a hermetic backstop layered beneath them; script-stubbed paths call their stub scripts by absolute path and never reach a binary.
+- Keep the existing `trap 'rm -rf "$TMP"' EXIT` as the stub cleanup (the stub dir lives under `$TMP`).
+
+### UPDATED: `skills/design/scripts/test-plan-review-loop.md`
+- Document the new PATH `STUB_BIN` backstop: why it exists (#3338), which binaries it stubs, and that it guarantees the harness never launches a real external binary even when a script-level stub is missing on some path.
+
+## Approach
+
+- Hermetic process boundary: a PATH stub neutralizes every real-binary launch site (the revise-tier waterfall today, plus any path added later) without enumerating each one. This is the issue's preferred Option 1 and the user-approved direction.
+- The binary stub only intercepts paths that currently reach a real binary — paths that hang today and therefore have no passing assertion to break. Deterministic script-stubbed paths (`LARCH_PLAN_REVIEW_*_SH`) are unaffected because they invoke their stub scripts directly.
+- Sweep scope (Round 1 decision 2): audit every make-lint harness that passes `--codex-present`/`--cursor-present true` or reaches a real launcher. Current audit finds only `test-plan-review-loop.sh` at-risk; the rest already isolate externals via `*_WATERFALL_SH` / `LARCH_DISPATCH_*` / stub manifests, or pass harmless `bash -c` commands. The implementation step re-runs the audit grep; if a second at-risk harness surfaces, apply the same inline `STUB_BIN` pattern there, and extract a shared helper only if 2+ harnesses need identical stubs (otherwise keep it inline per KISS).
+- No production-code change. The launcher timeout/health gap (`run-external-agent.sh`, `plan-review-loop.sh`) is left as-is per Round 1.
+
+## Edge cases
+
+- The early `"$PLR"` calls that expect exit 2 (missing `--design-tmpdir`, `--round-num` > `--round-cap`, removed `--convergence-threshold`) run before `TMP` exists; they validate-and-exit without launching, so they need no stub.
+- `cursor` is launched via `cursor-wrap-prompt.sh` then `cursor agent -p ...`; the stub ignores all flags and exits 0, so wrapper details do not matter.
+- `run-external-agent.sh` redirects codex stdin to `/dev/null`; the stub must not block on stdin (it does not read it).
+- If a stub's output is not a parseable patch, the real `revise-plan-with-waterfall.sh` degrades to `REVISE_STATUS=failed`, so the loop reaches a valid terminal state (`revision-failed`) instead of hanging.
+
+## Failure modes
+
+1. **Stub output breaks a previously-green assertion.** Earliest signal: a `fail "..."` in a section that passed before. Likely only in a section whose real-codex revise output was tolerated non-deterministically. Mitigation: run the harness; for any such section, add the minimal `LARCH_PLAN_REVIEW_REVISE_SH` script-stub (the existing per-section pattern) so its revise stays deterministic.
+2. **Stub still blocks.** Signal: harness still hangs. Mitigation: stubs `exit 0` immediately and never read stdin; verify with a `timeout`-wrapped local run.
+3. **PATH stub shadows a tool the harness genuinely needs.** Signal: an unrelated assertion fails. Mitigation: the stub dir is scoped to `$TMP/bin` for this harness only (cleaned by the existing `trap`), and shadows only `codex`/`cursor`/`claude` — none of which this offline harness needs for real.
+
+## Testing strategy
+
+- Run `bash skills/design/scripts/test-plan-review-loop.sh`; confirm all assertions pass and it completes in seconds (well under the production timeout).
+- Confirm no real binary launches: with the stub as the only `codex`/`cursor`/`claude` on `PATH`, the harness must finish fast; during local verification, a transient invocation log in the stub can prove the stubs (not real binaries) were hit.
+- Run `make test-plan-review-loop` (shard `test-harnesses-1`); time permitting, run full `make lint` to confirm suite completion.
+- Run `bash scripts/relevant-checks.sh` (covers `make lint-bash32`, shellcheck, and `test-design-structure`).
+
+diff_added: 70
+diff_deleted: 2
+diff_lines: 72
