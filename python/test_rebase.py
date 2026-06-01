@@ -46,6 +46,8 @@ class ScriptRunner:
         cwd: str | None = None,  # pylint: disable=unused-argument
         env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
         check: bool = False,  # pylint: disable=unused-argument
+        stdout: int | None = None,  # pylint: disable=unused-argument
+        stderr: int | None = None,  # pylint: disable=unused-argument
     ) -> CommandResult:
         key = tuple(argv)
         self.calls.append(key)

@@ -342,8 +342,10 @@ def test_rebase_continue_sets_editors(monkeypatch: pytest.MonkeyPatch) -> None:
             cwd: str | None = None,
             env: Mapping[str, str] | None = None,
             check: bool = False,
+            stdout: int | None = None,
+            stderr: int | None = None,
         ) -> CommandResult:
-            _ = timeout, cwd, check
+            _ = timeout, cwd, check, stdout, stderr
             captured["env"] = dict(env) if env else {}
             return CommandResult(tuple(argv), 0, "", "", 0.01)
 
