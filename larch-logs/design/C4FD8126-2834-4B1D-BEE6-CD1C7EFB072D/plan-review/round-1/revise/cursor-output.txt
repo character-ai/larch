@@ -1,0 +1,161 @@
+Reviewing the codebase to incorporate reviewer findings into the plan revision.
+Generating the unified plan diff with a readonly diff command.
+--- a/plan.txt
++++ b/plan.txt
+@@ -10,32 +10,27 @@
+ 
+ ### UPDATED: `skills/implement/scripts/step2-implement.sh`
+ 
+-After the existing canonicalization line (`TMPDIR_ARG="$(cd "$TMPDIR_ARG" && pwd -P)"`), insert:
++Keep the shared path defaults at lines 256–259 (`$TMPDIR_ARG/manifest.json`, `$TMPDIR_ARG/qa-pending.json`, `$TMPDIR_ARG/${TOOL_TAG}-impl-transcript.txt`) for all coders. **Gate the subdir layout to `CODER=codex` only** — do not retarget Cursor paths or create `codex-step2-out/` on `claude_fallback` / cursor-unhealthy exits.
+ 
+-```bash
+-STEP2_OUT_DIR="$TMPDIR_ARG/codex-step2-out"
+-mkdir -p "$STEP2_OUT_DIR"
+-```
++After the `case "$CODER"` block that sets `TOOL_TAG` and `LAUNCHER` (external-implementer section, already past the `claude` early-return at line 176 and the cursor-presence fallback at lines 197–201), add:
+ 
+-Then update the three Codex-written output paths (lines 256–259):
+-
+ ```bash
+-# OLD:
+-MANIFEST_PATH="$TMPDIR_ARG/manifest.json"
+-QA_PENDING_PATH="$TMPDIR_ARG/qa-pending.json"
+-TRANSCRIPT_PATH="$TMPDIR_ARG/${TOOL_TAG}-impl-transcript.txt"
+-
+-# NEW:
+-MANIFEST_PATH="$STEP2_OUT_DIR/manifest.json"
+-QA_PENDING_PATH="$STEP2_OUT_DIR/qa-pending.json"
+-TRANSCRIPT_PATH="$STEP2_OUT_DIR/${TOOL_TAG}-impl-transcript.txt"
++if [[ "$CODER" == "codex" ]]; then
++    STEP2_OUT_DIR="$TMPDIR_ARG/codex-step2-out"
++    mkdir -p "$STEP2_OUT_DIR"
++    MANIFEST_PATH="$STEP2_OUT_DIR/manifest.json"
++    QA_PENDING_PATH="$STEP2_OUT_DIR/qa-pending.json"
++    TRANSCRIPT_PATH="$STEP2_OUT_DIR/${TOOL_TAG}-impl-transcript.txt"
++fi
+ ```
+ 
++`CODER=cursor` keeps `MANIFEST_PATH` / `QA_PENDING_PATH` / `TRANSCRIPT_PATH` directly under `$TMPDIR_ARG` (e.g. test 3e `STUB_MANIFEST_PATH="$TMP3E/manifest.json"`).
++
+ `MANIFEST_RAW_PATH` stays at `$TMPDIR_ARG/manifest-raw.json` (created by the dispatcher, not by Codex; `step-7a.sh` reads it there hardcoded).
+ 
+ `SIDECAR_LOG` stays at `$TMPDIR_ARG/${TOOL_TAG}-impl.log` (written by the wrapper, not by Codex).
+ 
+-No changes to `run_launcher` or the launcher invocation — it passes these path variables unchanged to `launch-codex-implement.sh`.
++No changes to `run_launcher` or the launcher invocation — it passes these path variables unchanged to `launch-codex-implement.sh` / `launch-cursor-implement.sh`.
+ 
+ ### UPDATED: `scripts/launch-codex-implement.sh`
+ 
+@@ -138,25 +133,40 @@
+ 
+ ### UPDATED: `skills/implement/scripts/test-step2-dispatch.sh`
+ 
+-Tests 17a/17b/17c read the launcher `.meta` file (which records `TIMEOUT`) from `$TMP17X/codex-impl-transcript.txt.meta`. After the subdir change, the transcript is at `$TMP17X/codex-step2-out/codex-impl-transcript.txt`, so the `.meta` file moves too.
++Every codex stub invocation that sets `STEP2_MANIFEST_PATH` must point at `$TMP/codex-step2-out/manifest.json` so the stub writes where `step2-implement.sh` (codex path) expects the manifest. Update **all** of the following (not only 17a–17c):
+ 
+-Update in each of the three tests:
++| Test | Env var line |
++|------|----------------|
++| 12a | `STEP2_MANIFEST_PATH="$TMP12A/codex-step2-out/manifest.json"` |
++| 12b | `STEP2_MANIFEST_PATH="$TMP12B/codex-step2-out/manifest.json"` |
++| 13 | `STEP2_MANIFEST_PATH="$TMP13/codex-step2-out/manifest.json"` |
++| 16 | `STEP2_MANIFEST_PATH="$TMP16/codex-step2-out/manifest.json"` |
++| 17a | `STEP2_MANIFEST_PATH="$TMP17A/codex-step2-out/manifest.json"` |
++| 17b | `STEP2_MANIFEST_PATH="$TMP17B/codex-step2-out/manifest.json"` |
++| 17c | `STEP2_MANIFEST_PATH="$TMP17C/codex-step2-out/manifest.json"` |
++| 18 | `STEP2_MANIFEST_PATH="$TMP18/codex-step2-out/manifest.json"` |
++| M1 | `STEP2_MANIFEST_PATH="$TMPM1/codex-step2-out/manifest.json"` |
++| M2 | `STEP2_MANIFEST_PATH="$TMPM2/codex-step2-out/manifest.json"` |
++| M12 | `STEP2_MANIFEST_PATH="$TMPM12/codex-step2-out/manifest.json"` |
++| M16 | `STEP2_MANIFEST_PATH="$TMPM16/codex-step2-out/manifest.json"` |
++| M17 | `STEP2_MANIFEST_PATH="$TMPM17/codex-step2-out/manifest.json"` |
++| M18 (both invocations) | `STEP2_MANIFEST_PATH="$TMPM18/codex-step2-out/manifest.json"` |
++| M19 | `STEP2_MANIFEST_PATH="$TMPM19/codex-step2-out/manifest.json"` |
++| 25 | `STEP2_MANIFEST_PATH="$TMP25/codex-step2-out/manifest.json"` |
+ 
+-```bash
+-# OLD:
+-STEP2_MANIFEST_PATH="$TMP17A/manifest.json"
+-...
+-META17A="$TMP17A/codex-impl-transcript.txt.meta"
++**Do not change** cursor-only harness paths: test 3e (`STUB_MANIFEST_PATH="$TMP3E/manifest.json"`), M1b, test 23. Test 24 (codex runtime failure, no manifest stub) is unchanged.
+ 
+-# NEW:
+-STEP2_MANIFEST_PATH="$TMP17A/codex-step2-out/manifest.json"
+-...
++Tests 17a/17b/17c also read launcher `.meta` for `TIMEOUT`. Update META paths:
++
++```bash
+ META17A="$TMP17A/codex-step2-out/codex-impl-transcript.txt.meta"
++META17B="$TMP17B/codex-step2-out/codex-impl-transcript.txt.meta"
++META17C="$TMP17C/codex-step2-out/codex-impl-transcript.txt.meta"
+ ```
+ 
+-Note: `$TMP17A/codex-step2-out/` is created by `step2-implement.sh` (the `mkdir -p` added above). No manual mkdir needed in the tests.
++`$TMP/codex-step2-out/` is created by `step2-implement.sh` on the codex path (`mkdir -p` in the gated block). No manual `mkdir` in tests.
+ 
+-The stub codex for tests 17a/17b/17c reads `STEP2_MANIFEST_PATH` for its manifest destination and reads `--output-last-message` for the transcript destination. Updating `STEP2_MANIFEST_PATH` aligns the stub's manifest write with the launcher's expected manifest location.
++Stubs read `STEP2_MANIFEST_PATH` for the manifest destination and parse `--output-last-message` for the transcript; aligning `STEP2_MANIFEST_PATH` with the dispatcher's `MANIFEST_PATH` keeps stub writes consistent with post-launch reads.
+ 
+ ### UPDATED: `scripts/launch-codex-implement.md`
+ 
+@@ -166,41 +176,44 @@
+ 
+ ### UPDATED: `skills/implement/scripts/step2-implement.md`
+ 
+-Update line 12 (per-tool file list) to note that `${TOOL_TAG}-impl-transcript.txt` is in `codex-step2-out/`, not `$TMPDIR_ARG/` directly.
++Update line 12 (per-tool file list): for **`CODER=codex` only**, `${TOOL_TAG}-impl-transcript.txt`, `manifest.json`, and `qa-pending.json` live under `$TMPDIR_ARG/codex-step2-out/`; Cursor keeps those files directly under `$TMPDIR_ARG/`.
+ 
+-Update line 13 (canonicalization contract) to add: "Codex-written outputs (manifest, qa-pending, transcript) are placed in `$TMPDIR_ARG/codex-step2-out/` and the `--add-dir` grant is narrowed to that subdir."
++Update line 13 (canonicalization contract) to add: "On the codex path only, Codex-written outputs (manifest, qa-pending, transcript) are placed in `$TMPDIR_ARG/codex-step2-out/` and the Codex `--add-dir` grant is narrowed to that subdir via `dirname("$MANIFEST_PATH")`."
+ 
+ ---
+ 
+ ### Approach
+ 
+-The launcher computes `SESSION_TMPDIR = dirname("$MANIFEST_PATH")`. Moving `MANIFEST_PATH` to a subdir auto-narrows `SESSION_TMPDIR` without any changes to the `--add-dir "$SESSION_TMPDIR"` line itself. The new transcript-directory assertion in the launcher enforces that all three Codex-written files share a parent — preventing accidental mismatched configurations from future callers.
++The launcher computes `SESSION_TMPDIR = dirname("$MANIFEST_PATH")`. On the codex path only, moving `MANIFEST_PATH` into `codex-step2-out/` auto-narrows `SESSION_TMPDIR` without changing the `--add-dir "$SESSION_TMPDIR"` line. The new transcript-directory assertion enforces that all three Codex-written files share a parent.
+ 
+-`step2-implement.sh` is the only caller of `launch-codex-implement.sh` in the main implement path; the direct-call harness (`test-codex-implementer.sh`) tests the launcher in isolation with arbitrary caller-controlled paths.
++`step2-implement.sh` is the only production caller of `launch-codex-implement.sh`; `test-codex-implementer.sh` exercises the launcher in isolation with caller-controlled paths.
+ 
+ ---
+ 
+ ### Edge cases
+ 
+-- **Resume invocations**: `step2-implement.sh` always runs `rm -f "$MANIFEST_PATH" "$MANIFEST_RAW_PATH" "$QA_PENDING_PATH" "$TRANSCRIPT_PATH" "$SIDECAR_LOG"` before launch to clean stale outputs. After our change, this `rm -f` targets the subdir paths — correct.
+-- **Manifest-schema-invalid recovery**: `mv "$MANIFEST_RAW_PATH" "$TMPDIR_ARG/manifest-raw.invalid.json"` stays unchanged (MANIFEST_RAW lives in `$TMPDIR_ARG`).
+-- **Launcher's MANIFEST_DIR existence check**: `mkdir -p "$STEP2_OUT_DIR"` in step2-implement.sh runs before `run_launcher`, so the subdir always exists when the launcher validates it.
+-- **Old run logs**: step-7a.sh uses `[ -f ... ] &&` guards — if the file isn't at the new path (e.g., from a run before this change), the log-write silently skips, same as today.
++- **Resume invocations**: `rm -f` before launch targets codex subdir paths on the codex path — correct.
++- **Manifest-schema-invalid recovery**: `manifest-raw.invalid.json` quarantine under `$TMPDIR_ARG` unchanged.
++- **Launcher's MANIFEST_DIR existence check**: codex-only `mkdir -p "$STEP2_OUT_DIR"` runs before `run_launcher`.
++- **Old run logs**: step-7a `[ -f ... ] &&` guards skip missing legacy paths.
++- **`claude_fallback` / cursor-unhealthy**: early exits before the codex subdir block — no `codex-step2-out/` created.
++- **Cursor Step 2**: manifest/qa/transcript remain at `$TMPDIR_ARG/` root; test 3e unchanged.
+ 
+ ---
+ 
+ ### Failure modes
+ 
+-1. **Subdir not created before launcher fires**: Fixed by placing `mkdir -p "$STEP2_OUT_DIR"` before `run_launcher`. The launcher exits 2 with "session tmpdir does not exist" if the dir is missing.
+-2. **step-7a.sh paths not updated**: Transcript wouldn't be flushed to the run log (silent data loss). Addressed by updating all five hardcoded references.
+-3. **Test 17a/17b/17c META path mismatch**: Tests would silently read `TIMEOUT=` from an empty/nonexistent file, producing an empty string and failing the equality check. Addressed by updating META paths.
++1. **Subdir not created before launcher fires**: codex-only `mkdir -p` before `run_launcher`.
++2. **step-7a.sh paths not updated**: silent transcript log loss — five references updated.
++3. **Test META / STEP2_MANIFEST_PATH mismatch**: empty `TIMEOUT` or manifest-missing — all codex dispatch stubs listed above updated.
++4. **Codex subdir applied to Cursor**: would break test 3e and Cursor layout — prevented by `CODER=codex` gate.
+ 
+ ---
+ 
+ ### Testing strategy
+ 
+-- `skills/implement/scripts/test-codex-implementer.sh`: existing test 6 already asserts `--add-dir` arg matches `dirname("$MANIFEST_PATH")`; with MANIFEST in the subdir, this assertion auto-verifies the narrowed grant. New assertion for transcript-dir mismatch exit-2 behavior.
+-- `skills/implement/scripts/test-step2-dispatch.sh`: tests 17a/17b/17c updated to read META from the subdir. Existing timeout assertions still validate timeout forwarding.
++- `test-codex-implementer.sh`: test 6 auto-verifies narrowed `--add-dir`; new transcript-dir mismatch assertion.
++- `test-step2-dispatch.sh`: all codex `STEP2_MANIFEST_PATH` rows in the table above + META17A/B/C; cursor tests 3e/M1b/23 untouched.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) after changes.
+ 
+-diff_lines: 55
++diff_lines: 72

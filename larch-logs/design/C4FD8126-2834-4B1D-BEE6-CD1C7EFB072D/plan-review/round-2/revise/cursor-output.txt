@@ -1,0 +1,100 @@
+Verifying codebase details for accurate plan revisions.
+Producing the unified plan diff incorporating all accepted findings.
+--- a/plan.txt
++++ b/plan.txt
+@@ -99,7 +99,7 @@
+ - **Write-sandbox grant (`--add-dir` vs `--workspace`)** — Codex uses `--add-dir "$SESSION_TMPDIR"` to grant write access to `codex-step2-out/` only (the dedicated output subdir). Cursor uses `--workspace "$PWD"` and has no equivalent `--add-dir` grant; this is intentional (different sandbox models). Do not add a symmetric `--add-dir` grant to the Cursor launcher.
+ ```
+ 
++### UPDATED: `SECURITY.md`
++
++In the **External tool delegation** paragraph (~line 105), replace the Codex implementer sentence that treats the full dispatcher session tmpdir as Codex-writable. State that `launch-codex-implement.sh` passes `--add-dir "$SESSION_TMPDIR"` where `SESSION_TMPDIR` is `dirname("$MANIFEST_PATH")` — on the codex Step 2 path, `$IMPLEMENT_TMPDIR/codex-step2-out/` only, not all of `$IMPLEMENT_TMPDIR`. Codex may atomic-write `manifest.json`, `qa-pending.json`, and the `--output-last-message` transcript there; orchestrator-owned files at the session tmpdir root (`session-env.sh`, plan copies, `manifest-raw.json`, sidecar log, baseline/recovery sentinels, etc.) remain outside the Codex write grant. Keep the separate `--add-dir "$PWD"` repo grant and the note that the dispatcher still commits on Codex's behalf.
++
+ ### UPDATED: `skills/implement/scripts/test-codex-implementer.sh`
+ 
+ In the main test block (tests 4–7+), create a `codex-step2-out/` subdir and update the three canonical path variables:
+@@ -116,18 +116,20 @@
+ 
+ Also update `STUB_MANIFEST_PATH="$MANIFEST"` (already references the variable; no change needed there).
+ 
+-Add a new assertion (test 4b or 6b) that verifies the transcript-directory assertion: when `--transcript-path` is in a different dir from `--manifest-path`, the launcher exits 2 with a diagnostic:
++Add **test 11c** immediately after test 11 (do not reuse **fail 4b** — that id is reserved for the per-invocation `CODEX_HOME` check at line 344). When `--transcript-path` is in a different parent than `--manifest-path` / `--qa-pending-path`, the launcher exits 2 with a diagnostic:
+ 
+ ```bash
+-# Test: transcript-not-in-same-dir-as-manifest → exit 2
+-_out=$(... --manifest-path "$STEP2_OUT_DIR/manifest.json" \
++# Test 11c: transcript parent != manifest/qa parent → exit 2
++EXIT=0
++T11C_OUT="$SCRATCH/t11c-output.txt"
++"$LAUNCHER" \
++    --manifest-path "$STEP2_OUT_DIR/manifest.json" \
+             --qa-pending-path "$STEP2_OUT_DIR/qa-pending.json" \
+-            --transcript-path "$SCRATCH/wrong-dir-transcript.txt" \
+-            ... 2>&1) || true
+-if [[ "$_out" == *"must share the parent directory"* ]]; then
++    --transcript-path "$SCRATCH/wrong-dir-transcript.txt" \
++    --sidecar-log "$SCRATCH/t11c-sidecar.log" \
++    --plan-file "$PLAN" --feature-file "$FEATURE" --agent-prompt "$AGENT_PROMPT" --timeout 30 \
++    >"$T11C_OUT" 2>&1 || EXIT=$?
++if [[ "$EXIT" == "2" ]] && grep -Fq "must share the parent directory" "$T11C_OUT"; then
+     pass
+ else
+-    fail NNN "transcript in different dir should exit 2 with diagnostic; got: $_out"
++    fail 11c "transcript in different parent than manifest/qa should exit 2 with diagnostic; got EXIT=$EXIT: $(cat "$T11C_OUT")"
+ fi
+ ```
+ 
+@@ -166,6 +168,18 @@
+ 
+ Stubs read `STEP2_MANIFEST_PATH` for the manifest destination and parse `--output-last-message` for the transcript; aligning `STEP2_MANIFEST_PATH` with the dispatcher's `MANIFEST_PATH` keeps stub writes consistent with post-launch reads.
+ 
++**Test 16** (items[] → questions[] repair): besides `STEP2_MANIFEST_PATH="$TMP16/codex-step2-out/manifest.json"` in the table, retarget the stub's qa-pending write and the post-run assertion — the stub currently writes `$IMPLEMENT_TMPDIR/qa-pending.json` and the harness reads `QA_PENDING_16="$TMP16/qa-pending.json"`, which miss the codex subdir after the dispatcher moves `QA_PENDING_PATH`.
++
++```bash
++# STUB16: replace tmpdir-root qa-pending writes with dirname(STEP2_MANIFEST_PATH):
++STEP2_QA_PENDING="$(dirname "$STEP2_MANIFEST_PATH")/qa-pending.json"
++cat > "${STEP2_QA_PENDING}.tmp" <<'JSON'
++{"status":"needs_qa","items":[{"area":"area1","risk":"risk1","suggested_check":"check1"}]}
++JSON
++mv "${STEP2_QA_PENDING}.tmp" "$STEP2_QA_PENDING"
++
++# Post-run assertion:
++QA_PENDING_16="$TMP16/codex-step2-out/qa-pending.json"
++```
++
+ ### UPDATED: `scripts/launch-codex-implement.md`
+ 
+-Update line 14 (the comment about grant width) to reflect the narrowed grant:
+-- Remove the statement "operators should treat any other artifact placed in that tmpdir … as Codex-writable"
+-- Add: Codex-written outputs (manifest.json, qa-pending.json, transcript) go in `codex-step2-out/`; all other session-tmpdir artifacts (sidecar log, baseline files, recovery paths, etc.) are outside the grant and Codex-inaccessible.
++Rewrite the entire `--add-dir` invariant bullet (line 14) so it matches narrowed `SESSION_TMPDIR` — do not leave partial edits that still say the grant covers the **ENTIRE** session tmpdir or that unrelated tmpdir artifacts are Codex-writable:
++- `SESSION_TMPDIR` is `dirname("$MANIFEST_PATH")` after canonicalization; on the codex dispatcher path that resolves to `$IMPLEMENT_TMPDIR/codex-step2-out/`, not `$IMPLEMENT_TMPDIR` root.
++- Only `manifest.json`, `qa-pending.json`, and the `--output-last-message` transcript live under that directory and are Codex-writable via `--add-dir "$SESSION_TMPDIR"`.
++- Drop "The granted directory is the ENTIRE session tmpdir" and "operators should treat any other artifact placed in that tmpdir … as Codex-writable".
++- State explicitly that sidecar log, `manifest-raw.json`, dispatcher baseline/spawn/resume sentinels, and other `$IMPLEMENT_TMPDIR` root artifacts are launcher/orchestrator-owned and outside the Codex write grant (Codex may still read plan/feature inputs and repo paths via `--add-dir "$PWD"` / workspace-write).
++- Retain the manifest/qa canonical-parent equality check and the intentional asymmetry vs Cursor (no `--add-dir` on `launch-cursor-implement.sh`).
+ 
+ ### UPDATED: `skills/implement/scripts/step2-implement.md`
+ 
+@@ -205,7 +219,8 @@
+ 
+ 1. **Subdir not created before launcher fires**: codex-only `mkdir -p` before `run_launcher`.
+ 2. **step-7a.sh paths not updated**: silent transcript log loss — five references updated.
+-3. **Test META / STEP2_MANIFEST_PATH mismatch**: empty `TIMEOUT` or manifest-missing — all codex dispatch stubs listed above updated.
++3. **Test META / STEP2_MANIFEST_PATH / qa-pending mismatch**: empty `TIMEOUT`, manifest-missing, or test 16 `STATUS=bailed` (`qa-pending-missing`) — all codex dispatch stubs in the table updated; test 16 stub + `QA_PENDING_16` retargeted to `codex-step2-out/`.
+ 4. **Codex subdir applied to Cursor**: would break test 3e and Cursor layout — prevented by `CODER=codex` gate.
++5. **SECURITY.md stale full-tmpdir grant**: operators mis-scope tamperable artifacts — paragraph updated alongside launcher doc.
+ 
+ ---
+ 
+ ### Testing strategy
+ 
+-- `test-codex-implementer.sh`: test 6 auto-verifies narrowed `--add-dir`; new transcript-dir mismatch assertion.
+-- `test-step2-dispatch.sh`: all codex `STEP2_MANIFEST_PATH` rows in the table above + META17A/B/C; cursor tests 3e/M1b/23 untouched.
++- `test-codex-implementer.sh`: test 6 auto-verifies narrowed `--add-dir`; **test 11c** (after test 11) for transcript-parent mismatch; **fail 4b** unchanged (`CODEX_HOME`).
++- `test-step2-dispatch.sh`: all codex `STEP2_MANIFEST_PATH` rows in the table above + META17A/B/C; test 16 stub qa-pending + `QA_PENDING_16` under `codex-step2-out/`; cursor tests 3e/M1b/23 untouched.
++- `SECURITY.md`: Codex implementer `--add-dir` scope aligned with narrowed `SESSION_TMPDIR`.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) after changes.
+ 
+-diff_lines: 72
++diff_lines: 99

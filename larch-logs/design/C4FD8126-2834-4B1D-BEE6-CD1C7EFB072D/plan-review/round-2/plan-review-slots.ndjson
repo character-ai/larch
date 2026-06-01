@@ -1,0 +1,8 @@
+{"slot":"cursor-plan-arch","tool":"cursor","output":"<TMPDIR>/cursor-plan-arch-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-arch.prompt"}
+{"slot":"cursor-plan-edge","tool":"cursor","output":"<TMPDIR>/cursor-plan-edge-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-edge.prompt"}
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/cursor-plan-innovation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-innovation.prompt"}
+{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"<TMPDIR>/cursor-plan-pragmatic-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-pragmatic.prompt"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/cursor-plan-requirements-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-requirements.prompt"}
+{"slot":"dyn-cursor-plan-path-derivation-audit","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-path-derivation-audit-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-path-derivation-audit.prompt"}
+{"slot":"dyn-cursor-plan-harness-table-completeness","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-harness-table-completeness-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-harness-table-completeness.prompt"}
+{"slot":"dyn-cursor-plan-split-dependency-isolation","tool":"cursor","output":"<TMPDIR>/cursor-plan-dyn-split-dependency-isolation-output.txt","prompt_file":"<TMPDIR>/render-plan-cursor-dyn-split-dependency-isolation.prompt"}

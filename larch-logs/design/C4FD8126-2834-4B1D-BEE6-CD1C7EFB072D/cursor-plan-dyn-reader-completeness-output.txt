@@ -1,0 +1,2 @@
+Reading the plan and searching the codebase for tmpdir-root references to those artifacts.
+{"no_issues_found": true}
