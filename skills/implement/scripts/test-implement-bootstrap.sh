@@ -1783,7 +1783,7 @@ else
     echo "FAIL: B7-resume-tail-plugin-root-env correct value"
 fi
 if ( unset CLAUDE_PLUGIN_ROOT
-     # shellcheck disable=SC1090
+     # shellcheck disable=SC1090,SC1091
      . "$SANDBOX_TMP/plugin-root.env"
      [ "$CLAUDE_PLUGIN_ROOT" = "$plugin_root_value" ] ); then
     PASS=$((PASS + 1))
