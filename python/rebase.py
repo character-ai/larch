@@ -17,7 +17,7 @@ import git
 import redact
 import retry
 import version_bump
-from errors import NeedsUserInput, Stalled, TransientNetworkError
+from errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
 from outcomes import Outcome
 from proc import CommandResult, Runner
 
@@ -307,6 +307,57 @@ def _deterministic_prepass(
     return remaining
 
 
+def _unmerged_paths(runner: Runner, *, cwd: str | None) -> list[str]:
+    try:
+        return git.unmerged_paths(runner, cwd=cwd)
+    except ShipError:
+        raise Stalled(_redact_outbound("git diff --diff-filter=U failed")) from None
+
+
+def make_conflict_launch_fn(
+    runner: Runner,
+    *,
+    repo: str,
+    run_id: str,
+    output_dir: str | Path,
+    cwd: str | None = None,
+) -> ConflictLaunchFn:
+    """Build a fixer launch_fn using ``build_launch_argv`` / ``launch_tier`` parity."""
+    out_root = Path(output_dir)
+    out_root.mkdir(parents=True, exist_ok=True)
+
+    def launch(tier: str, conflict_csv: str) -> agents.TierAttempt:
+        output = out_root / f"conflict-{tier}.out"
+        failure_log = out_root / f"conflict-{tier}.fail.log"
+        result = agents.launch_tier(
+            runner,
+            tier,
+            role=config.FIXER_ROLE,
+            output=str(output),
+            run_id=run_id,
+            repo=repo,
+            conflict_files=conflict_csv,
+            cwd=cwd,
+        )
+        launcher_exit = agents.read_launcher_exit(output)
+        failure = agents.classify_launch_failure(
+            launcher_exit,
+            failure_log if failure_log.is_file() else None,
+            tool=tier,
+            output_file=output,
+        )
+        flog: str | Path | None = failure_log if failure_log.is_file() else None
+        return agents.TierAttempt(
+            tier=tier,
+            wrapper_rc=result.returncode,
+            launcher_exit=launcher_exit,
+            failure=failure,
+            failure_log=flog,
+        )
+
+    return launch
+
+
 def _resolve_conflicts(
     runner: Runner,
     launch_fn: ConflictLaunchFn,
@@ -317,7 +368,7 @@ def _resolve_conflicts(
 ) -> None:
     _ = repo, run_id
     while True:
-        unmerged = git.unmerged_paths(runner, cwd=cwd)
+        unmerged = _unmerged_paths(runner, cwd=cwd)
         if unmerged:
             remaining = _deterministic_prepass(runner, unmerged, cwd=cwd)
             if remaining:
@@ -336,7 +387,7 @@ def _resolve_conflicts(
                             "fixer waterfall could not resolve conflicts",
                         ),
                     )
-                if git.unmerged_paths(runner, cwd=cwd):
+                if _unmerged_paths(runner, cwd=cwd):
                     raise NeedsUserInput(
                         _redact_outbound(
                             "conflicts remain after fixer waterfall",
@@ -345,11 +396,11 @@ def _resolve_conflicts(
 
         continue_result = git.rebase_continue(runner, cwd=cwd)
         if continue_result.returncode == 0:
-            if git.unmerged_paths(runner, cwd=cwd):
+            if _unmerged_paths(runner, cwd=cwd):
                 continue
             return
 
-        unmerged_after = git.unmerged_paths(runner, cwd=cwd)
+        unmerged_after = _unmerged_paths(runner, cwd=cwd)
         combined = f"{continue_result.stdout}\n{continue_result.stderr}"
         if unmerged_after:
             continue
@@ -414,7 +465,7 @@ def _force_push_branch(
 
 def rebase_and_rebump(
     runner: Runner,
-    launch_fn: ConflictLaunchFn,
+    launch_fn: ConflictLaunchFn | None = None,
     *,
     base_remote: str = "origin",
     base_ref: str = "main",
@@ -427,6 +478,17 @@ def rebase_and_rebump(
     max_attempts: int = config.REBASE_MAX_ATTEMPTS,
 ) -> RebaseResult:
     """Rebase onto base, resolve conflicts, re-bump when needed, force-push."""
+    resolved_bullets_early = _rebump_bullets_path(tmpdir, bullets_path)
+    if launch_fn is None:
+        if resolved_bullets_early is None:
+            raise Stalled(_redact_outbound("rebump bullets path not configured"))
+        launch_fn = make_conflict_launch_fn(
+            runner,
+            repo=repo,
+            run_id=run_id,
+            output_dir=resolved_bullets_early.parent / ".conflict-launch",
+            cwd=cwd,
+        )
     if rebase_attempt >= max_attempts:
         raise Stalled(_redact_outbound("rebase attempt cap exceeded"))
 
@@ -476,7 +538,7 @@ def rebase_and_rebump(
         rebase_result = git.rebase(runner, base_target, cwd=cwd)
         if rebase_result.returncode == 0:
             rebased = True
-        elif git.unmerged_paths(runner, cwd=cwd):
+        elif _unmerged_paths(runner, cwd=cwd):
             rebased = True
             _resolve_conflicts(
                 runner,
@@ -524,7 +586,7 @@ def rebase_and_rebump(
         apply_result = version_bump.apply_bump(runner, target_version, cwd=cwd)
         if not apply_result.applied:
             raise Stalled(_redact_outbound(apply_result.error or "apply bump failed"))
-        new_version = target_version
+        new_version = apply_result.new_version
         _commit_changelog_after_rebump(
             runner,
             new_version,

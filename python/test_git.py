@@ -275,6 +275,22 @@ def test_unmerged_paths_argv() -> None:
     assert git.unmerged_paths(runner) == ["a.txt", "b.txt"]
 
 
+def test_unmerged_paths_nonzero_diff_raises() -> None:
+    runner = StubRunner(
+        {
+            ("git", "diff", "--name-only", "--diff-filter=U"): CommandResult(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                1,
+                "",
+                "fatal: bad diff",
+                0.01,
+            ),
+        },
+    )
+    with pytest.raises(ShipError, match="git command failed"):
+        _ = git.unmerged_paths(runner)
+
+
 def test_checkout_ours_argv() -> None:
     runner = StubRunner(
         {

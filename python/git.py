@@ -322,13 +322,11 @@ def try_current_branch(runner: Runner, *, cwd: str | None = None) -> str | None:
 
 
 def unmerged_paths(runner: Runner, *, cwd: str | None = None) -> list[str]:
-    result = _run(
+    result = _ensure_success(_run(
         runner,
         ["git", "diff", "--name-only", "--diff-filter=U"],
         cwd=cwd,
-    )
-    if result.returncode != 0:
-        return []
+    ))
     return [line for line in result.stdout.splitlines() if line]
 
 

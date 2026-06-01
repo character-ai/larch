@@ -65,6 +65,21 @@ def is_transient_infra_failure(
     return path.stat().st_size == 0
 
 
+def read_launcher_exit(output_file: str | Path) -> int:
+    """Read LAUNCHER_EXIT= from a launcher capture file; missing → 0."""
+    path = Path(output_file)
+    if not path.is_file():
+        return 0
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("LAUNCHER_EXIT="):
+            raw = line.split("=", 1)[1].strip().strip("\r")
+            try:
+                return int(raw)
+            except ValueError:
+                return 0
+    return 0
+
+
 def parse_launcher_failure_class(log_file: str | Path | None) -> str:
     """Last LAUNCHER_FAILURE_CLASS= from launcher capture; unknown/missing → health."""
     if log_file is None:
