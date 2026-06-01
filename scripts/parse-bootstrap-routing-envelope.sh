@@ -87,6 +87,8 @@ _inv_apply_routing_line_if_empty() {
     IMPLEMENT_BAIL_REASON) [ -z "${IMPLEMENT_BAIL_REASON:-}" ] && IMPLEMENT_BAIL_REASON="$_inv_value" ;;
     STALL_TRACKING) [ -z "${STALL_TRACKING:-}" ] && STALL_TRACKING="$_inv_value" ;;
     PLAN_FILE) [ -z "${PLAN_FILE:-}" ] && PLAN_FILE="$_inv_value" ;;
+    coder) [ -z "${coder:-}" ] && coder="$_inv_value" ;;
+    coder_fallback) [ -z "${coder_fallback:-}" ] && coder_fallback="$_inv_value" ;;
     REPO_UNAVAILABLE) [ -z "${REPO_UNAVAILABLE:-}" ] && REPO_UNAVAILABLE="$_inv_value" ;;
     DEFERRED) [ -z "${DEFERRED:-}" ] && DEFERRED="$_inv_value" ;;
     ISSUE_NUMBER) [ -z "${ISSUE_NUMBER:-}" ] && ISSUE_NUMBER="$_inv_value" ;;

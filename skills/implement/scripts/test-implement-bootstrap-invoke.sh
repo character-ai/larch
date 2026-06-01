@@ -316,8 +316,23 @@ assert_rc "$rc" 0 'routing env symlink still succeeds with stdout envelope'
 assert_contains 'IMPLEMENT_TMPDIR=' "$stdout" 'symlink path stdout has IMPLEMENT_TMPDIR'
 assert_contains 'refusing to overwrite symlinked bootstrap-routing.env' "$stderr" 'symlink path warns on stderr'
 assert_contains 'coder=codex' "$stdout" 'symlink path stdout envelope has routing keys'
+_inv_out=$stdout
+unset coder coder_fallback REPO IMPLEMENT_TMPDIR
+set +eu
+# shellcheck disable=SC1091
+. "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh"
+set -eu
+if [ "${coder:-}" = codex ] && [ "${REPO:-}" = owner/repo ]; then
+  PASS=$((PASS + 1))
+  echo "PASS: symlink stdout path exports coder and REPO via parse script"
+else
+  FAIL=$((FAIL + 1))
+  echo "FAIL: symlink stdout path exports coder and REPO via parse script"
+  echo "  coder=${coder:-<unset>} REPO=${REPO:-<unset>}"
+fi
 rm -f "$stderr_file" "$stdout_file" "$symlink_target"
 rm -rf "$SANDBOX" "$STUB_TMPDIR"
+unset _inv_out
 
 # --- non-2 exit propagation ---
 build_sandbox
