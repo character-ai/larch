@@ -1,0 +1,84 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -168,7 +168,8 @@
+ Keep `ACTION=EMIT_PLAN` and `ACTION=VALIDATE_PLAN_COMMANDS` literals in the shared
+ validator-failure section only.
+ 
+-**Cross-ref refresh (FINDING_4):** Grep-update stale normative pointers that still name inline
++**Cross-ref refresh (FINDING_4):** Grep-update stale normative pointers that still name inline
+ `ACTION=EMIT_PLAN` / `invoke-plan-validator.sh` at re-emit boundaries:
+ - **Step 2b.5 Callable from** — name `design-postplan-emit.sh` (initial Step 2b; Gate B settled path;
+   post-plan discussion sub-round) instead of bare `ACTION=EMIT_PLAN` re-emit.
+@@ -176,6 +177,11 @@
+ - **Step 1e optional-trailer guard** — replace inline EMIT + `when review_budget is full` validator
+   with prelude + driver call + file-first/stdout parse prose (driver owns quick skip; Gate A does not pass `--force-validate`).
+ 
++**Step 2b lead-in (FINDING_1):** Rewrite the "Immediately after saving `plan.txt`" paragraph
++(~762-771 today) so it mandates **only** `design-postplan-emit.sh --design-tmpdir "$DESIGN_TMPDIR"
++--snapshot-original` inside the single post-plan fence — **do not** retain bare `ACTION=EMIT_PLAN` /
++`printf … design-driver.sh` prose or the orphan repair sentence keyed on inline
++`EMIT_PLAN_STATUS=missing-diff-lines` (merged `POSTPLAN_EMIT_STATUS` supersedes). Remove the
++standalone **Plan-command validator (Tier 2 + opt-in Tier 3)** subsection and inline
++`invoke-plan-validator.sh` fence (~789-817); quick-skip and `defects-found` route via driver parse +
++**### Plan command validator failure (shared)** only.
++
+ ### UPDATED: `skills/design/references/approval-gates.md`
+ "Shared post-apply pipeline" steps 7–8: replace inline `ACTION=EMIT_PLAN` +
+ `invoke-plan-validator.sh` with one `design-postplan-emit.sh` call (snapshot suppressed; no
+@@ -218,6 +224,12 @@
+ **flags.md pin (FINDING_2):** migrate line ~124 pin from
+ `Plan-command validator runs unconditionally on both SIMPLE and HARD` to driver-accurate anchors, e.g.
+ `review_budget` + `skipped-quick` + `design-postplan-emit.sh` + `--force-validate` (must FAIL if
+ flags.md reverts to unconditional-only wording).
+ 
++**Step 2b bounded emit pin (FINDING_1 / FINDING_4):** On `step2b_block` (`/^<!-- step:2b /` …
++`^<!-- step:3 /`), **FAIL** when `ACTION=EMIT_PLAN` appears anywhere in the block (guards against
++stale lead-in / double-emit after fence consolidation). Retarget `(14b1)` from unconditional
++file-level `grep ACTION=EMIT_PLAN` to require the literal inside `### Plan command validator failure
++(shared)` only (Fix-and-retry / `emit-plan.sh` anchor); a file-level hit outside that section must not
++satisfy the pin alone.
++
+ **Coupled pin migration (lockstep with prose — includes 14c14d–h):**
+ - **14b10** → grep Step 2b block for `design-postplan-emit.sh` before `check-plan-size.sh` / Step 2b.5
+   (drop inline EMIT-before-validator awk).
+@@ -248,6 +260,8 @@
+   bounded pin, FINDING_1 driver pins (`set +e`, flush helper), FINDING_1 stdout-fallback pin, and
+   FINDING_2 `flags.md` validator pin.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) for shellcheck, markdownlint, bash32, the
++
++Temporarily break the Step 2b-block `ACTION=EMIT_PLAN` pin by reintroducing the old lead-in to confirm it fails.
+ - Grep-verify `skills/design/references/flags.md` Plan-command validator section matches driver
+   `skipped-quick` / `--force-validate` semantics (FINDING_2).
+ 
+@@ -283,6 +297,9 @@
+   resolution must use prelude-sourced or `export ISSUE_NUMBER=` `source-env.sh`, not bare
+   `phase_driver_session_get` alone.
+ - Partial failure: snapshot/validator keys must read `not-run` / `skipped-*`, never empty, when an
+   earlier step aborts.
++- **Double emit (FINDING_1):** Stale Step 2b lead-in still mandating bare `ACTION=EMIT_PLAN` after the
++  driver fence causes EMIT_PLAN twice (divergent snapshot/validator). Mitigation: lead-in rewrite;
++  `step2b_block` anti-`ACTION=EMIT_PLAN` pin; shared section keeps Fix-and-retry `ACTION=EMIT_PLAN` only.
+ - **Child non-zero under `set -e` (FINDING_1):** EMIT/snapshot/validator rc != 0 must still flush
+   result-env + stdout KVs before exit 1; never rely on the shell aborting out of the driver.
+ - **Result-env write failure / missing file (FINDING_1):** orchestrator MUST still populate routing
+@@ -318,6 +335,9 @@
+ 9. **flags.md drift (FINDING_2).** Consumer doc still claims unconditional validator after driver
+   lands. Mitigation: explicit `flags.md` update + structural pin migration; docs grep includes
+   `flags.md`.
++10. **Stale Step 2b lead-in (FINDING_1).** "Immediately after saving `plan.txt`" still pipes
++   `ACTION=EMIT_PLAN` after `design-postplan-emit.sh` lands. Mitigation: lead-in rewrite; drop inline
++   validator subsection; `step2b_block` pin; temporarily break to confirm pin fails.
+ 
+ ## Testing strategy
+ 
+@@ -330,6 +350,6 @@
+ - Grep-verify `skills/design/references/flags.md` Plan-command validator section matches driver
+   `skipped-quick` / `--force-validate` semantics (FINDING_2).
+ 
+-diff_added: 780
++diff_added: 815
+ diff_deleted: 95
+-mechanical_churn:
++mechanical_churn: false
+-diff_lines: 875
++diff_lines: 910

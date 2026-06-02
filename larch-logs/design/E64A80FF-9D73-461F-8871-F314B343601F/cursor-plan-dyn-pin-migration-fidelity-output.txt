@@ -1,0 +1,52 @@
+Reviewing the plan against the test file and referenced pin locations.
+Searching for all related pins and verifying anchor strings in target files.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:274-276 (14c14e); plan.txt:305-306	Proposed 14c14e orders first design-postplan-emit.sh against first bare Step 2b.5 in shared post-apply	In approval-gates.md:156 step 6 already mentions Step 2b.5 before steps 7-9 where the driver will live; a correct migration fails CI or forces a wrong anchor	Bound the awk to ### Shared post-apply pipeline and compare against step 9 anchor Step 2b.5 — Plan-size threshold check (or driver line vs that step), not the first bare Step 2b.5 token
+1	in_scope	important	correctness	scripts/test-design-structure.sh:281-283 (14c14h); plan.txt:311-312	Proposed 14c14h uses the same bare Step 2b.5 ordering rule in discussion-rounds plan-revision authority	In discussion-rounds.md:126 the dedup-guard clause before ACTION=EMIT_PLAN / Step 2b.5 precedes the driver call; the pin fails on correct prose or never guards the emit→2b.5 sequence	Retarget 14c14h to driver-before **Step 2b.5 — Plan-size threshold check** (or EMIT-before-validator inside design-postplan-emit.sh), not first bare Step 2b.5 in the paragraph
+1	in_scope	important	correctness	scripts/test-design-structure.sh:412-413 (FINDING_21); plan.txt:319-322	FINDING_21 approval-gates migration says Step 2b.5 after design-postplan-emit.sh in shared post-apply but does not disambiguate Step 2b.5 mentions	File-wide or section-wide first Step 2b.5 still hits approval-gates.md:156 (step 6) before the driver at steps 7-8; ordering check is vacuous or false-fails	Same as 14c14e: scope to shared post-apply and anchor on step 9 Step 2b.5 — Plan-size threshold check after design-postplan-emit.sh
+1	in_scope	important	correctness	skills/design/references/flags.md:15-68; scripts/test-design-structure.sh:124; plan.txt:293-296	FINDING_2 flags.md pin examples include review_budget without requiring Plan-command validator section scope	review_budget already appears at flags.md:15 outside the validator section; a file-level review_budget grep passes today and after a partial edit that only drops the unconditional sentence at :68	Bound the migrated pin(s) to ## Plan-command validator (replace the :124 unconditional anchor or awk that subsection) and require skipped-quick + design-postplan-emit.sh + --force-validate there together
+
+## Findings
+
+### 1. [correctness] `14c14e` / `14c14h` / FINDING_21 approval-gates — bare `Step 2b.5` anchor is wrong
+
+Current anchors exist and match the plan’s starting points:
+
+- **14b10** at `scripts/test-design-structure.sh:260-264` — `mark "design Step 2b — plan"`, `ACTION=EMIT_PLAN`, `invoke-plan-validator.sh` + `plan.txt`.
+- **14c14c–14c14h** at `scripts/test-design-structure.sh:270-283` — `ACTION=EMIT_PLAN` / `invoke-plan-validator.sh` greps and EMIT-before-validator awk in `approval-gates.md` and `discussion-rounds.md`.
+- **FINDING_21** at `scripts/test-design-structure.sh:393-398` and `:412-413` — Step 2b block EMIT vs `check-plan-size.sh`; approval-gates `Step 2b.5` presence grep.
+- **flags.md pin** at `scripts/test-design-structure.sh:124` — `Plan-command validator runs unconditionally on both SIMPLE and HARD` (present at `skills/design/references/flags.md:68`).
+- **discussion-rounds validator pin** at `scripts/test-design-structure.sh:163` — `invoke-plan-validator.sh` (present at `discussion-rounds.md:126`).
+- **1124–1125** at `scripts/test-design-structure.sh:1124-1125` — `snapshot-plan-round.sh` / `write-original --design-tmpdir` in SKILL (present at `SKILL.md:781-782`; note the current grep is file-wide, so `SKILL.md:1090` already satisfies it — migration to the driver strengthens this).
+
+**14c14i** is a new pin (not a migration of an existing line); that is consistent.
+
+The proposed replacements for **14c14e**, **14c14h**, and **FINDING_21 approval-gates** would silently change guard semantics and/or false-fail:
+
+- In `approval-gates.md` shared post-apply, step 6 (`:156`) says “before `ACTION=EMIT_PLAN` / **Step 2b.5**” before steps 7–9 where `design-postplan-emit.sh` will sit.
+- In `discussion-rounds.md:126`, the dedup-guard clause “before `ACTION=EMIT_PLAN` / **Step 2b.5**” likewise precedes the future driver call.
+
+An awk rule “first `design-postplan-emit.sh` at or before first `Step 2b.5`” therefore fails on correct post-migration prose unless the anchor is the procedure heading (**Step 2b.5 — Plan-size threshold check** at `approval-gates.md:159` / `discussion-rounds.md:126`), not the first bare token.
+
+### 2. [correctness] FINDING_2 `flags.md` pin — `review_budget` alone is vacuous
+
+Current pin `:124` is section-specific (the unconditional sentence at `flags.md:68`). The plan’s example replacement tokens include `review_budget`, but `review_budget` already appears at `flags.md:15` and `:23`. A file-level `review_budget` grep passes **before** this PR and does not fail if line `:68` reverts to unconditional-only wording while the Tier section stays unchanged. Scope the migrated pin to the **Plan-command validator** subsection and require the new driver semantics (`skipped-quick`, `design-postplan-emit.sh`, `--force-validate`) together.
+
+### 3. [correctness] No missing migrations for active inline pins (verified)
+
+Active pins on inline post-plan mechanics in SKILL / approval-gates / discussion-rounds are covered by the plan’s migration list, except intentionally retained pins:
+
+- `scripts/test-design-structure.sh:201-202` (**14b1**) — `ACTION=EMIT_PLAN` kept in shared validator-failure / Step 5c paths per plan.
+- `scripts/test-design-structure.sh:83` — file-level `invoke-plan-validator.sh` in SKILL (Step 5c / docs remain).
+- `scripts/test-design-structure.sh:338-339` (**14b11**) — Step 5c `composed-plan.md` validator ordering (out of Step 2b extraction scope).
+- `scripts/test-design-structure.sh:456-459` — explicitly unchanged `before \`ACTION=EMIT_PLAN\`` dedup-ordering pins.
+
+Driver-internal EMIT-before-validator ordering is a **new** pin (not a listed migration); relocating that invariant from **14b10** into the driver script matches the plan’s intent.
+
+### 4. [architecture] EXONERATED — duplicate `design-postplan-emit.sh` greps
+
+After migration, **14c14c/14c14d**, **14c14f/14c14g**, and line **163** may all grep the same string in the same file. Redundant under SIMPLE tier, but each still fails if the driver reference is removed; not a silent pass.
+
+### 5. [architecture] EXONERATED — **14b10** vs FINDING_21 Step 2b overlap
+
+Both will assert `design-postplan-emit.sh` before `check-plan-size.sh` in the Step 2b window. Duplicate coverage, not incorrect.

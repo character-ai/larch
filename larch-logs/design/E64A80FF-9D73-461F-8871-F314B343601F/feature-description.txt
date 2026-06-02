@@ -1,0 +1,39 @@
+/design refactor: extract Step 2b post-plan emit driver (design-postplan-emit)
+
+Part of umbrella #3133 (extract `/design` deterministic logic into phase-driver scripts).
+
+**Impact rank: 4 of 6.** Runs on every plan emit **and** on re-emits after revision (Gate B / discussion sub-rounds), on both SIMPLE and HARD.
+
+## Region owned
+
+The Step 2b deterministic actions **after** the LLM authors `plan.txt`:
+
+- `ACTION=EMIT_PLAN` (via `design-driver.sh`; writes `diff-lines.txt`, fails closed on missing/malformed `diff_lines:`)
+- HARD `plan.txt-original` snapshot (`snapshot-plan-round.sh write-original`)
+- plan-command validator (`invoke-plan-validator.sh` → `ACTION=VALIDATE_PLAN_COMMANDS`), skipped when `review_budget=quick`
+- the validator-result KV parse (`VALIDATE_STATUS`, defect/skip/unsafe-token counts, log file)
+
+## Current inline cost
+
+3 separate fences → 1; ~40 inline lines in `skills/design/SKILL.md` Step 2b (the EMIT_PLAN fence, the HARD-snapshot fence, the validator KV-parse fence).
+
+## Responsibility
+
+Fuse the three into one call that runs EMIT_PLAN, conditionally snapshots for HARD, conditionally runs the validator, and emits the combined status — calling `design-driver.sh` ACTIONs internally (no duplication).
+
+## Stops before (LLM boundary)
+
+The **plan-command-validator-defects** `AskUserQuestion` (shared Fix-and-retry / Override / Cancel body), then Step 2b.5 (plan-size gate, which has its own hard/partition prompt).
+
+## Machine output
+
+`EMIT_PLAN_STATUS`, `VALIDATE_STATUS` (+ `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, `VALIDATE_LOG_FILE`), snapshot status. `defects-found` is **not** a script failure — surface it as a status the orchestrator gates on.
+
+## Dependency
+
+Blocked by the Step 5c publish driver (#3133 rank 3) — serialized on the shared SKILL.md + structural-test surface, executed in impact order. The same Step 5c-style validate dispatch could later be shared between this driver and the publish path.
+
+## Cross-cutting
+
+See umbrella #3133.
+

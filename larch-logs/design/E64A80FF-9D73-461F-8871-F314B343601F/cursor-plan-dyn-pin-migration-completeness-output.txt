@@ -1,0 +1,83 @@
+Searching the harness and referenced files for pin patterns and gaps.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:240-241	Structural pin requires set +e around only one child call	FINDING_1 requires set +e capture around EMIT snapshot and validator; a driver with one wrapped child and bare calls elsewhere can pass structure but abort before flush (harness case 10 intent)	Pin three set +e regions in design-postplan-emit.sh (EMIT snapshot validator) or count set +e blocks and require at least three
+2	in_scope	important	correctness	plan.txt:255-256 scripts/test-design-structure.sh:274-276	skills/design/references/approval-gates.md:92-122	14c14e retarget must not reuse file-wide first Step 2b.5 awk	File-wide first Step 2b.5 is at lines 92/122 before ### Shared post-apply pipeline; driver lands near 157-159. Copying lines 274-276 with swapped needles always fails or forces vacuous edits outside the pipeline	Bound awk to the ### Shared post-apply pipeline section (through step 10) for 14c14e and FINDING_21 approval-gates ordering; do not use unscoped first Step 2b.5 in the whole file
+
+**Pin-migration completeness (`pin-migration-completeness`)**
+
+### 1. [correctness] `plan.txt:240-241` — `set +e` pin too weak for FINDING_1
+
+The proposed structural block pins `set +e` around **at least one** child call:
+
+```240:241:<TMPDIR>/plan.txt
+`_postplan_write_result_and_emit` (or equivalent), and per-step `set +e` around at least one child
+call (FINDING_1); EMIT at-or-before validator (order check on the **driver script**, not SKILL.md
+```
+
+The same plan requires **each** wrapped helper to use local `set +e` … `rc=$?` … `set -e` (lines 47–51, 90–104, 337–339). A stub driver with a single `set +e` block plus bare `design-driver.sh` / `snapshot-plan-round.sh` / `invoke-plan-validator.sh` invocations could satisfy the structural grep but still hit the FINDING_1 failure mode (exit before `.design-postplan-emit-result.env`).
+
+**Suggested revision:** Require three `set +e` capture sites on `design-postplan-emit.sh` (mirror the three children), or count `set +e` in the driver and require ≥3.
+
+---
+
+### 2. [correctness] `plan.txt:255-256`, `scripts/test-design-structure.sh:274-276`, `skills/design/references/approval-gates.md:92-122` — 14c14e must be section-scoped
+
+The migration table correctly says first `design-postplan-emit.sh` at or before first `Step 2b.5` **in shared post-apply section** (plan line 255–256). The harness it replaces is file-wide:
+
+```274:276:<OPERATOR_REPO_PATH>/scripts/test-design-structure.sh
+emit_before_val_ag=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$AG_MD")
+[[ "$emit_before_val_ag" == "1" ]] \
+  || fail "(14c14e) approval-gates.md must mention EMIT_PLAN at or before invoke-plan-validator.sh"
+```
+
+In `approval-gates.md`, `Step 2b.5` appears at lines 92, 94, 122, 123, 156, 159, 160, 162, and 164 — all **before** the `### Shared post-apply pipeline` block (line 147). A naïve “first `Step 2b.5` in file” ordering check fires on line 92 while the driver call will live near steps 7–9 (~157–159), so the retarget either **always fails CI** or invites spurious edits outside the pipeline.
+
+**Suggested revision:** In `test-design-structure.sh`, extract the shared-pipeline slice (e.g. from `### Shared post-apply pipeline` through step 10 / next `###`) and run the driver-vs-`Step 2b.5` awk only inside that slice; apply the same pattern for FINDING_21 approval-gates ordering (plan lines 271–272).
+
+---
+
+### Coupled pins vs harness (table walk)
+
+| Plan pin | Current harness | Retarget consistency |
+|----------|-----------------|----------------------|
+| **14b10** (`scripts/test-design-structure.sh:260-264`) | Step 2b: `ACTION=EMIT_PLAN` before `invoke-plan-validator.sh` + `plan.txt` | Consistent: Step 2b block, `design-postplan-emit.sh` before `check-plan-size.sh` |
+| **14c14c–d** (`270-273`) | `ACTION=EMIT_PLAN` + `invoke-plan-validator.sh` in `approval-gates.md` | Consistent: `design-postplan-emit.sh` (14c14c/d fold to driver invoke) |
+| **14c14e** (`274-276`) | File-wide EMIT-before-validator | Consistent **if** section-scoped (see finding 2) |
+| **14c14f–g** (`277-280`) | Bare EMIT + validator in `discussion-rounds.md` | Consistent: driver grep |
+| **14c14h** (`281-283`) | File-wide EMIT-before-validator in `discussion-rounds.md` | Consistent: only one `Step 2b.5` in file (line 126), same paragraph as driver |
+| **line ~163** (`163`) | `contains DISCUSSION_MD invoke-plan-validator.sh` | Consistent: retarget to `design-postplan-emit.sh` (overlaps 14c14g) |
+| **14c14i** (new) | No pin today | Consistent: bounded Gate A block (`skills/design/SKILL.md:522` → `528`) + shared validator-failure routing |
+| **FINDING_21 Step 2b** (`393-398`) | `ACTION=EMIT_PLAN` before `check-plan-size.sh` in step 2b awk window | Consistent: scoped step 2b block already |
+| **FINDING_21 approval** (plan 271–272) | Only `Step 2b.5` presence (`412-413`) | Adds ordering; must be pipeline-scoped (finding 2) |
+| **1124–1125** (`1124-1125`) | File-wide `snapshot-plan-round.sh` / `write-original` in SKILL (messages say Step 2b) | Consistent: move to `design-postplan-emit.sh` |
+| **456/459** (`456-459`) | `before \`ACTION=EMIT_PLAN\`` in approval + discussion | Unchanged: dedup prose keeps phrase (plan line 275) |
+
+---
+
+### Unlisted harness pins (same three needles in SKILL / reference docs)
+
+After the migration table is applied, **no** remaining pin in `scripts/test-design-structure.sh` that greps `ACTION=EMIT_PLAN`, `invoke-plan-validator.sh`, or `snapshot-plan-round.sh` in those prose files should go vacuous:
+
+- **`scripts/test-design-structure.sh:83`** — file-level `invoke-plan-validator.sh` in SKILL: still satisfied by Step 5c / footer (`skills/design/SKILL.md:1268`, `1426`).
+- **`scripts/test-design-structure.sh:201`** — `ACTION=EMIT_PLAN` anywhere in SKILL: still satisfied by shared validator / Callable-from prose (plan keeps literals there).
+- **`scripts/test-design-structure.sh:338`** — Step 5c `invoke-plan-validator.sh` on `composed-plan.md`: out of scope for this driver.
+- **`scripts/test-design-structure.sh:412-413`** — approval `Step 2b.5` presence: remains valid; ordering is additive.
+
+[OUT_OF_SCOPE] `skills/design/scripts/test-design-driver.sh:107` — SKILL-level `invoke-plan-validator.sh` pin; not in the migration table but not vacuous after Step 2b inline removal.
+
+---
+
+### New driver pins vs vacuous stubs
+
+| Proposed pin | Specificity |
+|--------------|-------------|
+| Executable + `ACTION=EMIT_PLAN` / `snapshot-plan-round.sh` / `invoke-plan-validator.sh` strings in driver | Substantive if combined with **offline harness case #10** (stub child `rc=1`, assert result-env + mandatory KVs) |
+| `_postplan_write_result_and_emit` / `_postplan_resolve_issue` / `_postplan_pause_checkpoint` name grep | Weaker alone; case **#11** (pause + `export ISSUE_NUMBER=`) and case **#10** carry behavior |
+| EMIT at-or-before validator on driver | Does not enforce snapshot between EMIT and validator; acceptable given harness #2/#3 |
+| **14c14i** Gate A bounded block | Strong if awk uses `Optional trailer guard (Gate A re-entry rewrites)` … `<!-- step:` / `## Step` and requires both `design-postplan-emit.sh` and shared validator-failure routing |
+
+---
+
+### Architecture / security
+
+No additional material gaps beyond the two correctness items above (minimum-change scope). Gate A `--site` `design discussion-round2` in the approach table (`plan.txt:147`) is odd labeling but does not affect pin migration completeness; exonerated under SIMPLE tier.
