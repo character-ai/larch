@@ -47,7 +47,7 @@ prepare_out=$("$PWD/.claude/skills/release/scripts/release-prepare.sh" \
 
 Parse `prepare_out` for `BASELINE_TAG`, `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, `PR_LIST_FILE`. On exit **1**, parse `ERROR=` from stdout (e.g. `no-unique-latest-release`, `stale-local-main`, `baseline-tag-unresolvable`, `pr-metadata-incomplete`) and stop.
 
-When `PR_COUNT=0`, warn that no PRs merged since the last Latest release.
+When `PR_COUNT=0`, warn that no PRs merged since the last Latest release. At Step 4 confirm, **default to Cancel** unless the operator explicitly chooses Confirm to proceed with an empty release window.
 
 ## Step 3 — Compose release notes (orchestrator)
 
@@ -65,7 +65,7 @@ Unless `--dry-run`: `AskUserQuestion` with `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT
 
 - **Confirm**
 - **Change bump (major/minor/patch)** — re-run prepare with the chosen override, then re-confirm
-- **Cancel** — stop
+- **Cancel** — stop (default when `PR_COUNT=0` unless the operator explicitly overrides)
 
 On **`--dry-run`**: print the preview and **exit** (no writes, no `/upgrade-larch`).
 
@@ -85,6 +85,8 @@ Record `PR_NUMBER` from `create-pr.sh` stdout. Then:
 scripts/ci-wait.sh --pr "$PR_NUMBER" --repo "$REPO"
 scripts/merge-pr.sh --pr "$PR_NUMBER" --repo "$REPO"
 ```
+
+Invoke `ci-wait.sh` synchronously (no background polling). Set Bash `timeout: 1860000` (31 minutes) on that call so long release CI is not cut off by the orchestrator default.
 
 On CI or merge failure, surface the helper status and stop (no tag/Release/promote).
 

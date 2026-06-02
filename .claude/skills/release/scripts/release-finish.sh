@@ -134,39 +134,98 @@ fi
 
 TAG="v${VERSION}"
 
+MERGE_POLL_ATTEMPTS=5
+MERGE_POLL_SLEEP=2
+
+fetch_origin_main() {
+  local fetch_err
+  fetch_err="$(mktemp)"
+  if ! git fetch origin main 2>"$fetch_err"; then
+    echo "ERROR=fetch-failed: $(tr '\n' ' ' < "$fetch_err")" >&2
+    rm -f "$fetch_err"
+    return 1
+  fi
+  rm -f "$fetch_err"
+  return 0
+}
+
+plugin_version_at_oid() {
+  local oid=$1
+  local plugin_blob at_version
+  plugin_blob="$(git show "${oid}:.claude-plugin/plugin.json" 2>/dev/null)" || return 1
+  at_version="$(printf '%s\n' "$plugin_blob" | jq -r '.version // empty' 2>/dev/null)" || return 1
+  [[ -n "$at_version" ]] || return 1
+  printf '%s' "$at_version"
+}
+
 merge_oid=""
-for _attempt in 1 2 3 4 5; do
+for _attempt in $(seq 1 "$MERGE_POLL_ATTEMPTS"); do
   merge_oid="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)"
   merge_oid="${merge_oid//$'\n'/}"
   merge_oid="${merge_oid%% *}"
   if [[ -n "$merge_oid" && "$merge_oid" != "null" ]]; then
     break
   fi
-  sleep 2
+  sleep "$MERGE_POLL_SLEEP"
 done
 
-if [[ -z "$merge_oid" || "$merge_oid" == "null" ]]; then
-  echo "ERROR=merge-commit-missing" >&2
+if ! fetch_origin_main; then
   exit 1
 fi
 
-if ! git rev-parse --verify "${merge_oid}^{commit}" >/dev/null 2>&1; then
-  echo "ERROR=invalid mergeCommit.oid: $merge_oid" >&2
-  exit 1
+TARGET_OID=""
+if [[ -n "$merge_oid" && "$merge_oid" != "null" ]]; then
+  TARGET_OID="$merge_oid"
+else
+  origin_main_oid="$(git rev-parse "origin/main^{commit}" 2>/dev/null || true)"
+  if [[ -n "$origin_main_oid" ]]; then
+    at_version="$(plugin_version_at_oid "$origin_main_oid" 2>/dev/null || true)"
+    if [[ "$at_version" == "$VERSION" ]]; then
+      TARGET_OID="$origin_main_oid"
+    fi
+  fi
+  if [[ -z "$TARGET_OID" ]]; then
+    echo "ERROR=merge-commit-missing" >&2
+    exit 1
+  fi
 fi
 
-TARGET_OID="$merge_oid"
+target_oid_resolved=false
+for _attempt in $(seq 1 "$MERGE_POLL_ATTEMPTS"); do
+  if git rev-parse --verify "${TARGET_OID}^{commit}" >/dev/null 2>&1; then
+    if git merge-base --is-ancestor "$TARGET_OID" origin/main 2>/dev/null \
+      || [[ "$(git rev-parse "${TARGET_OID}^{commit}")" == "$(git rev-parse "origin/main^{commit}" 2>/dev/null || true)" ]]; then
+      target_oid_resolved=true
+      break
+    fi
+  fi
+  fetch_origin_main || exit 1
+  sleep "$MERGE_POLL_SLEEP"
+done
 
-if ! git fetch origin main 2>/dev/null; then
-  echo "ERROR=fetch-failed before TARGET_OID verify" >&2
-  exit 1
-fi
-
-origin_main_oid="$(git rev-parse "origin/main^{commit}" 2>/dev/null || true)"
-if [[ -z "$origin_main_oid" || "$origin_main_oid" != "$TARGET_OID" ]]; then
-  if ! git fetch origin "$TARGET_OID" 2>/dev/null \
-    || ! git rev-parse --verify "${TARGET_OID}^{commit}" >/dev/null 2>&1; then
-    echo "ERROR=could not resolve TARGET_OID after fetch" >&2
+if [[ "$target_oid_resolved" != "true" ]]; then
+  origin_main_oid="$(git rev-parse "origin/main^{commit}" 2>/dev/null || true)"
+  if [[ -n "$origin_main_oid" && "$origin_main_oid" != "$(git rev-parse "${TARGET_OID}^{commit}" 2>/dev/null || true)" ]]; then
+    fetch_err="$(mktemp)"
+    if ! git fetch origin "$TARGET_OID" 2>"$fetch_err"; then
+      if git merge-base --is-ancestor "$TARGET_OID" origin/main 2>/dev/null; then
+        rm -f "$fetch_err"
+      else
+        echo "ERROR=target-oid-not-on-origin-main: $(tr '\n' ' ' < "$fetch_err")" >&2
+        rm -f "$fetch_err"
+        exit 1
+      fi
+    else
+      rm -f "$fetch_err"
+    fi
+  fi
+  if ! git rev-parse --verify "${TARGET_OID}^{commit}" >/dev/null 2>&1; then
+    echo "ERROR=fetch-failed: could not resolve TARGET_OID after fetch" >&2
+    exit 1
+  fi
+  if ! git merge-base --is-ancestor "$TARGET_OID" origin/main 2>/dev/null \
+    && [[ "$(git rev-parse "${TARGET_OID}^{commit}")" != "$(git rev-parse "origin/main^{commit}" 2>/dev/null || true)" ]]; then
+    echo "ERROR=target-oid-not-on-origin-main" >&2
     exit 1
   fi
 fi

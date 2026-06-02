@@ -159,6 +159,31 @@ else
     fail "--base over trailing bump should be MINOR: $out"
 fi
 
+# Test 7: --head origin/main excludes commits not on origin/main.
+repo="$TMPDIR_BASE/test7"
+bare="$TMPDIR_BASE/test7-bare.git"
+git init -q --bare "$bare"
+setup_repo "$repo"
+git -C "$repo" remote add origin "$bare"
+git -C "$repo" push -q -u origin main
+git -C "$repo" tag -a v1.0.0 -m "baseline" "$(git -C "$repo" rev-parse HEAD)"
+git -C "$repo" push -q origin v1.0.0
+mkdir -p "$repo/skills/local-only"
+cat > "$repo/skills/local-only/SKILL.md" <<'SKILL'
+---
+name: local-only
+description: local only
+---
+SKILL
+git -C "$repo" add skills/local-only/SKILL.md
+git -C "$repo" commit -q -m "Local-only skill (#42)"
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$TMPDIR_BASE/t7impl" bash "$SUBJECT" --base v1.0.0 --head origin/main 2>/dev/null)
+if printf '%s\n' "$out" | grep -q '^BUMP_TYPE=PATCH$'; then
+    ok
+else
+    fail "--head origin/main should ignore local-only commit (expect PATCH): $out"
+fi
+
 total=$((PASS + FAIL))
 echo "test-classify-bump: $PASS/$total passed"
 if [ "$FAIL" -gt 0 ]; then

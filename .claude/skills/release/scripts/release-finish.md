@@ -15,7 +15,9 @@ Publish tail for `/release`: resolve the squash-merge commit, verify `plugin.jso
 ## `TARGET_OID` resolution
 
 1. Poll `gh pr view <pr> --json mergeCommit -q .mergeCommit.oid` with bounded backoff (up to ~10s).
-2. Missing `mergeCommit.oid` after merge → exit **1** with `ERROR=merge-commit-missing` (no `origin/main` fallback).
+2. `git fetch origin main` immediately after the poll loop (surface `ERROR=fetch-failed` with stderr on failure).
+3. Missing `mergeCommit.oid` after poll → use `origin/main^{commit}` as `TARGET_OID` when `plugin.json` `.version` equals `--version`; otherwise exit **1** with `ERROR=merge-commit-missing`.
+4. Resolve `TARGET_OID` with repeated `git fetch origin main` (same backoff) until the OID is local and on `origin/main`; SHA-only `git fetch origin <oid>` is a last resort with distinct `ERROR=target-oid-not-on-origin-main` vs `ERROR=fetch-failed`.
 
 ## Origin coupling
 

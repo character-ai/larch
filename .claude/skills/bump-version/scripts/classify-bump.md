@@ -7,11 +7,12 @@
 When `--base` is set (consumer: dev-only `/release` via `release-prepare.sh`):
 
 - Resolves `<ref>` with `git rev-parse --verify` and uses that commit as `BASE` directly (skips merge-base resolution and the best-effort `git fetch origin main`).
-- Skips the per-PR idempotency short-circuit (`BUMP_TYPE=NONE` for trailing `Bump version to X.Y.Z` commits), so aggregate classification over `BASE..HEAD` is not suppressed by per-PR bump commits on `main`.
+- Skips the per-PR idempotency short-circuit (`BUMP_TYPE=NONE` for trailing `Bump version to X.Y.Z` commits), so aggregate classification over `BASE..HEAD` is not suppressed by per-PR bump commits on `main`. **`BUMP_TYPE=NONE` is only emitted on the default `/bump-version` / `/implement` path** (no `--base`); `/release` consumers never see `NONE` from this script.
 
 When `--head <ref>` is set (consumer: dev-only `/release` via `release-prepare.sh`):
 
 - Resolves `<ref>` with `git rev-parse --verify` and uses that commit as the diff head instead of `HEAD`, so aggregate classification is anchored to `origin/main` (or another explicit ref) when the caller is not checked out at the release tip.
+- Reads `CURRENT_VERSION` from `git show <ref>:.claude-plugin/plugin.json` and fails closed when the worktree `plugin.json` version disagrees.
 
 When `--base` / `--head` are omitted, behavior is unchanged from the default `/bump-version` / `/implement` path.
 

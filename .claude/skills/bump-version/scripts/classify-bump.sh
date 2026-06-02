@@ -65,11 +65,6 @@ done
 [[ -f "$PLUGIN_JSON" ]] || err "$PLUGIN_JSON not found"
 jq empty "$PLUGIN_JSON" 2>/dev/null || err "$PLUGIN_JSON is not valid JSON"
 
-# Read current version.
-CURRENT_VERSION=$(jq -r '.version // empty' "$PLUGIN_JSON")
-[[ -n "$CURRENT_VERSION" ]] || err "$PLUGIN_JSON missing .version field"
-[[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || err "version '$CURRENT_VERSION' is not semver (expected X.Y.Z)"
-
 # Resolve BASE: explicit --base ref (e.g. /release baseline tag) or merge-base path.
 BASE=""
 if [[ -n "$BASE_REF" ]]; then
@@ -97,6 +92,22 @@ if [[ -n "$HEAD_REF" ]]; then
     || err "could not resolve --head ref: $HEAD_REF"
   HEAD_COMPARE="$(git rev-parse "$HEAD_REF^{commit}")"
 fi
+
+# Read current version (worktree by default; --head ref when set for /release).
+CURRENT_VERSION=$(jq -r '.version // empty' "$PLUGIN_JSON")
+if [[ -n "$HEAD_REF" ]]; then
+  head_plugin_json="$(git show "${HEAD_COMPARE}:.claude-plugin/plugin.json" 2>/dev/null)" \
+    || err "could not read plugin.json at --head ref: $HEAD_REF"
+  head_version="$(printf '%s\n' "$head_plugin_json" | jq -r '.version // empty' 2>/dev/null)" \
+    || err "could not parse plugin.json at --head ref: $HEAD_REF"
+  [[ -n "$head_version" ]] || err "plugin.json at --head ref missing .version field"
+  if [[ -n "$CURRENT_VERSION" && "$CURRENT_VERSION" != "$head_version" ]]; then
+    err "worktree plugin.json version ($CURRENT_VERSION) != --head ref ($head_version)"
+  fi
+  CURRENT_VERSION="$head_version"
+fi
+[[ -n "$CURRENT_VERSION" ]] || err "$PLUGIN_JSON missing .version field"
+[[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || err "version '$CURRENT_VERSION' is not semver (expected X.Y.Z)"
 
 # Reasoning log path. When IMPLEMENT_TMPDIR is set (the /implement caller),
 # the file lands in that skill-owned tmpdir. When unset (standalone /bump-version
@@ -301,12 +312,12 @@ else
   BUMP_TYPE="PATCH"
 fi
 
-# Compute new version (ver_* names avoid clashing with the PATCH case arm / $PAT env).
-IFS='.' read -r ver_maj ver_min ver_pat <<< "$CURRENT_VERSION"
+# Compute new version.
+IFS='.' read -r MAJ MIN PAT <<< "$CURRENT_VERSION"
 case "$BUMP_TYPE" in
-  MAJOR) NEW_VERSION="$((10#${ver_maj} + 1)).0.0" ;;
-  MINOR) NEW_VERSION="${ver_maj}.$((10#${ver_min} + 1)).0" ;;
-  PATCH) NEW_VERSION="${ver_maj}.${ver_min}.$((10#${ver_pat} + 1))" ;;
+  MAJOR) NEW_VERSION="$((MAJ + 1)).0.0" ;;
+  MINOR) NEW_VERSION="${MAJ}.$((MIN + 1)).0" ;;
+  PATCH) NEW_VERSION="${MAJ}.${MIN}.$((PAT + 1))" ;;
 esac
 
 # Log reasoning.

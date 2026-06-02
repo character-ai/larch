@@ -135,8 +135,12 @@ fi
 
 main_oid="$(git rev-parse "main^{commit}")"
 origin_main_oid="$(git rev-parse "origin/main^{commit}")"
+head_oid="$(git rev-parse "HEAD^{commit}")"
 if [[ "$main_oid" != "$origin_main_oid" ]]; then
   emit_error stale-local-main "main ($main_oid) != origin/main ($origin_main_oid)"
+fi
+if [[ "$head_oid" != "$origin_main_oid" ]]; then
+  emit_error stale-local-main "HEAD ($head_oid) != origin/main ($origin_main_oid)"
 fi
 
 open_release_pr_json="$(gh pr list --repo "$REPO" --state open --json headRefName 2>/dev/null)" || {
@@ -160,7 +164,8 @@ if [[ -n "$origin_plugin_json" ]]; then
     if (( 10#${ob_maj} > 10#${bl_maj} )) \
       || { (( 10#${ob_maj} == 10#${bl_maj} )) && (( 10#${ob_min} > 10#${bl_min} )); } \
       || { (( 10#${ob_maj} == 10#${bl_maj} )) && (( 10#${ob_min} == 10#${bl_min} )) && (( 10#${ob_pat} > 10#${bl_pat} )); }; then
-      if git log "${BASELINE_TAG}..origin/main" --format=%s 2>/dev/null | grep -qE '^Release v[0-9]+\.[0-9]+\.[0-9]+$'; then
+      if git log "${BASELINE_TAG}..origin/main" --format=%s 2>/dev/null \
+        | grep -qE '^Release v[0-9]+\.[0-9]+\.[0-9]+( \(#[0-9]+\))?$'; then
         emit_error release-already-cut "origin/main version $origin_ver is ahead of baseline $baseline_ver with Release commit"
       fi
     fi

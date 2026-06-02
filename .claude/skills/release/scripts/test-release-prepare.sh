@@ -314,7 +314,7 @@ printf '{"version":"1.1.0"}\n' > "$case_dir/origin-plugin.json"
 set +e
 out=$(cd "$REPO_ROOT" && \
   GIT_ORIGIN_PLUGIN_JSON_FILE="$case_dir/origin-plugin.json" \
-  GIT_LOG_SUBJECTS=$'Release v1.1.0\n' \
+  GIT_LOG_SUBJECTS=$'Release v1.1.0 (#1)\n' \
   run_prepare "$case_dir")
 rc=$?
 set -e

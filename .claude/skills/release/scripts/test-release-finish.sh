@@ -253,7 +253,7 @@ else
   fail "edit path: rc=$rc out=$out"
 fi
 
-# Case 5: merge-commit-missing → exit 1
+# Case 5: merge-commit-missing with no origin/main version match → exit 1
 case_dir="$TMPDIR_BASE/c5"
 mkdir -p "$case_dir/bin"
 write_fake_gh "$case_dir/bin"
@@ -262,8 +262,9 @@ write_fake_redact "$case_dir/bin"
 fake_promote="$case_dir/fake-promote.sh"
 write_fake_promote "$fake_promote"
 printf 'notes\n' > "$case_dir/notes.md"
+printf '{"version":"9.9.9"}\n' > "$case_dir/plugin.json"
 set +e
-out=$(GH_FIXTURE_MERGE_EMPTY=1 run_finish "$case_dir" "$fake_promote" 2>"$case_dir/stderr.log")
+out=$(GH_FIXTURE_MERGE_EMPTY=1 GIT_PLUGIN_JSON_FILE="$case_dir/plugin.json" run_finish "$case_dir" "$fake_promote" 2>"$case_dir/stderr.log")
 rc=$?
 stderr=$(cat "$case_dir/stderr.log" 2>/dev/null || true)
 set -e
@@ -296,6 +297,26 @@ if [[ $rc -eq 1 ]] && printf '%s\n' "$stderr" | grep -q 'ERROR=local tag'; then
   ok
 else
   fail "local tag wrong OID: rc=$rc stderr=$stderr"
+fi
+
+# Case 7: merge-commit-missing but origin/main version matches → success via fallback
+case_dir="$TMPDIR_BASE/c7"
+mkdir -p "$case_dir/bin"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+write_fake_redact "$case_dir/bin"
+fake_promote="$case_dir/fake-promote.sh"
+write_fake_promote "$fake_promote"
+printf 'notes\n' > "$case_dir/notes.md"
+printf '{"version":"1.1.0"}\n' > "$case_dir/plugin.json"
+set +e
+out=$(GH_FIXTURE_MERGE_EMPTY=1 GIT_PLUGIN_JSON_FILE="$case_dir/plugin.json" run_finish "$case_dir" "$fake_promote")
+rc=$?
+set -e
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^TARGET_OID='; then
+  ok
+else
+  fail "origin/main fallback: rc=$rc out=$out"
 fi
 
 total=$((PASS + FAIL))

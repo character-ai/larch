@@ -118,15 +118,17 @@ if ! "$REDACT_TMPDIR_HELPER" < "$BODY_FILE" > "$REDACTED_BODY_FILE"; then
     larch_err "ERROR: Failed to redact PR body tmpdir paths"
     exit 2
 fi
-if [[ -x "$REDACT_SECRETS_HELPER" ]]; then
-    secrets_redacted=$(mktemp)
-    if ! "$REDACT_SECRETS_HELPER" < "$REDACTED_BODY_FILE" > "$secrets_redacted"; then
-        larch_err "ERROR: Failed to redact secrets from PR body"
-        rm -f "$secrets_redacted"
-        exit 2
-    fi
-    mv "$secrets_redacted" "$REDACTED_BODY_FILE"
+if [[ ! -x "$REDACT_SECRETS_HELPER" ]]; then
+    larch_err "ERROR: Redaction helper missing or not executable: redact-secrets.sh"
+    exit 2
 fi
+secrets_redacted=$(mktemp)
+if ! "$REDACT_SECRETS_HELPER" < "$REDACTED_BODY_FILE" > "$secrets_redacted"; then
+    larch_err "ERROR: Failed to redact secrets from PR body"
+    rm -f "$secrets_redacted"
+    exit 2
+fi
+mv "$secrets_redacted" "$REDACTED_BODY_FILE"
 
 # Pre-push clean-tree guard: uncommitted working-tree changes are silently
 # excluded from a push, causing data loss (issue #2434).
