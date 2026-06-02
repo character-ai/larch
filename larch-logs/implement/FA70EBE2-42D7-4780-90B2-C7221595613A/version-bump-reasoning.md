@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `11a281c06` (Fixes #3335: surface ship-pr CI-fix exhaustion diagnostics; retire test-ship-pr harness (#3374))
-- **Current version**: `47.0.53`
+- **Base commit**: `b6fdf5c44` (Fixes #3383: salvage complete manifest on non-zero Codex exit (#3387))
+- **Current version**: `47.0.54`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `47.0.54`
+- **New version**: `47.0.55`
 
 ### PATCH rationale
 
