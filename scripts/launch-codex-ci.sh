@@ -214,6 +214,11 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
 done
 
 if (( LAUNCHER_EXIT != 0 )); then
+    # codex exec --json reports usage-limit/quota on its stdout events stream
+    # (${OUTPUT}.events.jsonl), not the stderr sidecar; mirror that signal into
+    # the sidecar so the verdict below and external_classify_launch_failure
+    # report `quota` rather than a generic non-auth failure (#3390).
+    external_launcher_mirror_quota_from_events "$CODEX_EVENTS" "$SIDECAR_LOG"
     _VERDICT=$(external_failure_verdict "codex" "$SIDECAR_LOG")
     append_launch_failure "CI $ROLE" "codex-ci" "$LAUNCHER_EXIT" "$SIDECAR_LOG" "$_VERDICT" "$AUTH_ATTEMPT"
 fi

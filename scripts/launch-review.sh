@@ -581,8 +581,17 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             >/dev/null 2>&1 || EXIT_CODE=$?
     fi
     _ELAPSED=$((SECONDS - _ATTEMPT_START))
+    # codex exec --json reports usage-limit/quota on its stdout events stream
+    # (${OUTPUT}.events.jsonl), not the stderr sidecar; mirror that signal into
+    # the sidecar before classification so the sidecar-based quota guard below
+    # short-circuits the transient-retry loop instead of re-hitting the limit
+    # twice more (#3390). No-op on a genuine 0-output transient blip.
+    if (( EXIT_CODE != 0 )); then
+        external_launcher_mirror_quota_from_events "$CODEX_EVENTS" "$SIDECAR"
+    fi
     if (( EXIT_CODE != 0 && TRANSIENT_ATTEMPT <= MAX_TRANSIENT_RETRIES )) \
         && ! external_is_auth_failure "codex" "$SIDECAR" \
+        && ! external_is_quota_failure "codex" "$SIDECAR" \
         && external_is_transient_infra_failure "codex" "$EXIT_CODE" "$_ELAPSED" "$OUTPUT"; then
         TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
         if [[ -n "${LARCH_TRANSIENT_RETRY_DELAY:-}" ]]; then
@@ -1000,6 +1009,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     _ELAPSED=$((SECONDS - _ATTEMPT_START))
     if (( EXIT_CODE != 0 && TRANSIENT_ATTEMPT <= MAX_TRANSIENT_RETRIES )) \
         && ! { external_is_auth_failure "cursor" "$SIDECAR" || external_is_auth_failure "cursor" "${OUTPUT}.diag"; } \
+        && ! { external_is_quota_failure "cursor" "$SIDECAR" || external_is_quota_failure "cursor" "${OUTPUT}.diag"; } \
         && external_is_transient_infra_failure "cursor" "$EXIT_CODE" "$_ELAPSED" "$OUTPUT"; then
         TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
         if [[ -n "${LARCH_TRANSIENT_RETRY_DELAY:-}" ]]; then

@@ -1172,6 +1172,48 @@ EI_QUOTA="$IMPL_TMPDIR_QUOTA/execution-issues.md"
 assert_regex "SL-quota-codex exact quota header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 1 — quota — auth-retries=1, transient-retries=1\)\*\*:$' "$EI_QUOTA"
 rm -f "$SL_QUOTA_COUNT"
 
+# Case SL-quota-events-codex-7 (#3390): codex exec --json reports the usage limit
+# ONLY on its stdout events stream (→ ${OUTPUT}.events.jsonl) and exits 7 (in the
+# transient set {5,7}) with an empty --output-last-message file. Before the fix
+# this looked like a 0-output transient infra blip and burned all 3 attempts, each
+# re-hitting the limit; now the launcher mirrors the events-stream quota signal
+# into the sidecar, so it does NOT transient-retry (exactly 1 attempt) and records
+# a `quota` verdict instead of `non-auth`.
+SL_QUOTA_EVENTS_COUNT="$TMPDIR/sl-quota-events-count.txt"
+printf '0' > "$SL_QUOTA_EVENTS_COUNT"
+cat > "$STUB_BIN/codex-quota-events" <<STUB_QUOTA_EVENTS
+#!/usr/bin/env bash
+count=\$(cat "${SL_QUOTA_EVENTS_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_QUOTA_EVENTS_COUNT}"
+# Usage-limit events on STDOUT (the --json events stream); no stderr write and no
+# --output-last-message write (empty output file) → transient-set exit 7.
+printf '{"type":"error","message":"hit your usage limit; try again at Jun 7th, 2026 8:22 AM"}\n'
+printf '{"type":"turn.failed","error":{"message":"hit your usage limit"}}\n'
+exit 7
+STUB_QUOTA_EVENTS
+chmod +x "$STUB_BIN/codex-quota-events"
+ln -sf "$STUB_BIN/codex-quota-events" "$STUB_BIN/codex"
+IMPL_TMPDIR_QUOTA_EVENTS="$TMPDIR/quota-events-impl"
+mkdir -p "$IMPL_TMPDIR_QUOTA_EVENTS"
+OUT_QUOTA_EVENTS="$TMPDIR/quota-events.txt"
+set +e
+LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    IMPLEMENT_TMPDIR="$IMPL_TMPDIR_QUOTA_EVENTS" \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_QUOTA_EVENTS" --timeout 10 --prompt "sl-quota-events-codex-7" >/dev/null 2>&1
+RC_QUOTA_EVENTS=$?
+set -e
+assert_eq "SL-quota-events-codex-7 exits 7 (events-stream usage limit)" "7" "$RC_QUOTA_EVENTS"
+assert_eq "SL-quota-events-codex-7 stub invoked exactly 1 time (no transient retry on quota)" "1" "$(cat "$SL_QUOTA_EVENTS_COUNT" 2>/dev/null || echo 0)"
+assert_grep "SL-quota-events-codex-7 events stream carries the usage-limit signal" "usage limit" "${OUT_QUOTA_EVENTS}.events.jsonl"
+assert_grep "SL-quota-events-codex-7 sidecar receives the mirrored quota marker" "codex exec --json events stream" "${OUT_QUOTA_EVENTS}.sidecar"
+EI_QUOTA_EVENTS="$IMPL_TMPDIR_QUOTA_EVENTS/execution-issues.md"
+assert_regex "SL-quota-events-codex-7 exact quota header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 7 — quota — auth-retries=1, transient-retries=1\)\*\*:$' "$EI_QUOTA_EVENTS"
+rm -f "$SL_QUOTA_EVENTS_COUNT"
+
 # Case SL-quota-design-fallback (#3378): with IMPLEMENT_TMPDIR unset, a /design
 # voter failure is recorded to DESIGN_TMPDIR/execution-issues.md instead of being
 # silently dropped.
@@ -2817,6 +2859,46 @@ assert_equals "SL-transient-retry-cursor-8 exits 0 after transient retry" "0" "$
 SL_TRANSIENT_CURSOR8_ATTEMPTS=$(cat "$SL_TRANSIENT_CURSOR8_COUNT" 2>/dev/null || echo "0")
 assert_equals "SL-transient-retry-cursor-8 stub invoked exactly 2 times" "2" "$SL_TRANSIENT_CURSOR8_ATTEMPTS"
 rm -f "$SL_TRANSIENT_CURSOR8_COUNT"
+
+# Case SL-quota-no-retry-cursor-8 (#3390 parity): a cursor usage-limit failure
+# (exit 8, in the transient set {4,8}) must NOT burn the transient-retry budget.
+# The usage-limit text lands on stderr → ${OUTPUT}.diag (the file the verdict
+# already scans); the transient guard's new quota exclusion short-circuits the
+# loop, so the stub runs exactly once and the failure is recorded as `quota`.
+# CURSOR_API_KEY is set so the Darwin auth preflight passes deterministically on
+# any platform (a non-empty key bypasses the keychain probe).
+SL_QUOTA_CURSOR_COUNT="$TMPDIR/sl-quota-cursor-count.txt"
+printf '0' > "$SL_QUOTA_CURSOR_COUNT"
+cat > "$STUB_BIN/cursor-quota" <<STUB_QUOTA_CURSOR
+#!/usr/bin/env bash
+count=\$(cat "${SL_QUOTA_CURSOR_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_QUOTA_CURSOR_COUNT}"
+printf 'Error: you have hit your usage limit; try again later\n' >&2
+exit 8
+STUB_QUOTA_CURSOR
+chmod +x "$STUB_BIN/cursor-quota"
+ln -sf "$STUB_BIN/cursor-quota" "$STUB_BIN/cursor"
+IMPL_TMPDIR_QUOTA_CURSOR="$TMPDIR/quota-cursor-impl"
+mkdir -p "$IMPL_TMPDIR_QUOTA_CURSOR"
+OUT_QUOTA_CURSOR="$TMPDIR/quota-cursor.txt"
+set +e
+USER="${SERIAL_LOCK_USER}-quota-cursor" \
+    CURSOR_API_KEY="sl-quota-cursor-key" \
+    LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    IMPLEMENT_TMPDIR="$IMPL_TMPDIR_QUOTA_CURSOR" \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_QUOTA_CURSOR" --timeout 10 --prompt "sl-quota-no-retry-cursor-8" >/dev/null 2>&1
+RC_QUOTA_CURSOR=$?
+set -e
+assert_equals "SL-quota-no-retry-cursor-8 exits 8 (usage-limit)" "8" "$RC_QUOTA_CURSOR"
+SL_QUOTA_CURSOR_ATTEMPTS=$(cat "$SL_QUOTA_CURSOR_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-quota-no-retry-cursor-8 stub invoked exactly 1 time (no transient retry on quota)" "1" "$SL_QUOTA_CURSOR_ATTEMPTS"
+EI_QUOTA_CURSOR="$IMPL_TMPDIR_QUOTA_CURSOR/execution-issues.md"
+assert_regex "SL-quota-no-retry-cursor-8 exact quota header" '^-\s\*\*Step review Step 2 — cursor-review failed \(exit 8 — quota — auth-retries=1, transient-retries=1\)\*\*:$' "$EI_QUOTA_CURSOR"
+rm -f "$SL_QUOTA_CURSOR_COUNT"
 
 # Case SL-transient-obs-exhausted-cursor: verify that cursor failure logging
 # preserves both auth and transient counters when the transient-retry loop
