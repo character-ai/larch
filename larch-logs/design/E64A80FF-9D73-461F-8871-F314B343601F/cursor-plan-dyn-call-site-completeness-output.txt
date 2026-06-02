@@ -1,0 +1,14 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/discussion-rounds.md:126	Unified driver applies review_budget=quick skip at discussion-round2 but current prose always runs invoke-plan-validator.sh with no quick guard	Scope locks no behavior change yet Edge cases require validator skipped at every call site; today only Step 2b/Gate A/Gate B gate on full/quick while discussion-round2 re-emit always validates — quick runs lose that validation after the swap	Revise Scope to document intentional quick alignment at discussion-round2 or add an explicit driver/prose exception if parity with current unconditional validation is required
+
+1. **correctness** — `skills/design/references/discussion-rounds.md:126`, plan Scope lines 15–16 vs Edge cases line 200
+
+   **Call-site inventory (complete vs plan):** In-scope orchestrator paths match the plan’s four sites: Step 2b (`skills/design/SKILL.md` ~762–815), Gate A optional-trailer guard (`SKILL.md` ~522), Gate B shared post-apply (`references/approval-gates.md` ~157–158), discussion-round2 plan revision (`references/discussion-rounds.md` ~126). Production `skills/design/scripts/` EMIT/validator callers outside the driver are only `plan-review-loop.sh` (~565–586) and `revise-plan-with-waterfall.sh` (~549–555); the plan correctly excludes both.
+
+   **Excluded sites:** `plan-review-loop.sh` restores `plan_backup` on dedup/emit failures, maps `defects-found` to `LOOP_STATUS=plan-validator-defects` (not shared AskUserQuestion / exit 0), and runs `check-plan-size.sh` inline — not delegable without semantic change. `revise-plan-with-waterfall.sh` only runs `run_emit_plan_gate` (EMIT only, patch-level `restore_plan`) — also not delegable. Exclusion rationale is sound.
+
+   **`--site` labels:** Gate A `design discussion-round2`, Gate B `design Step 3.5 / Gate B`, initial `design Step 2b`, and discussion-round2 `design discussion-round2` all match the Override `<SITE>` list at `skills/design/SKILL.md:1417`; no label-specific branching beyond Cancel/Override routing is documented in the shared failure body.
+
+   **Concern:** The proposed driver centralizes `review_budget == quick` → `VALIDATE_STATUS=skipped-quick` at all four call sites. Current `discussion-rounds.md` always invokes `invoke-plan-validator.sh` after re-emit with no `review_budget` guard, unlike Step 2b, Gate A, and Gate B (`when review_budget is full`). That is a real behavior change on the discussion-round2 path under `review_budget=quick`, which conflicts with the plan’s “No behavior change” lock but is implied by Edge cases (“validator skipped at every call site”).
+
+   **Suggested revision:** Either narrow Scope to call out this one-site alignment explicitly, or preserve today’s unconditional validator at discussion-round2 if minimum-change parity matters.
