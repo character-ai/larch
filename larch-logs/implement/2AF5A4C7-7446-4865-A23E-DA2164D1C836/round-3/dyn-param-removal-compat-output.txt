@@ -1,0 +1,24 @@
+Reviewing the branch diff and searching Python call sites for `rebase_and_rebump` parameter compatibility.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+**Param-removal / caller audit (scout checklist):**
+
+- **`has_bump` / `bullets_path` call sites:** Grep across `python/*.py` shows `rebase_and_rebump` is defined only in `python/rebase.py` and called only from `python/test_rebase.py`. No `python/merge.py` or other production module imports `rebase` or passes the removed kwargs, so there is no in-repo `TypeError` risk from stale keyword arguments today.
+
+- **`RebaseResult.new_version` consumers:** Nothing outside tests branches on a non-`None` `new_version`. `rebase_and_rebump` always returns `new_version=None` (see `python/rebase.py:364-368`). Tests assert `None` at `python/test_rebase.py:184,198,622,642`. `python/merge.py` uses its own bump-subject gate (`python/merge.py:400-439`), not `RebaseResult`.
+
+- **`defer_push` negative assertion:** `test_defer_push_skips_force_push` at `python/test_rebase.py:610-625` still asserts `result.pushed is False` and explicitly checks that no `("git", "push", "--force-with-lease")` call appears in `runner.calls`.
+
+**Branch commits (since merge-base with `main`):** `ffaab99da`, `bf25470bb`, `0a84a858c`, `c0862d623`, `d37ec4e86` (Phase 1 core), `d45f89d90`.
+
+---
+
+### Out-of-Scope Observations
+
+- **architecture** `python/README.md:19-20` — The layout blurb still describes `rebase.py` as handling “drop-bump” and “rebump-tail push,” but Phase 1 removed those limbs; only CI-fix rebase + optional force-push remain. **Suggested fix:** Update the README bullet to match the slimmed `rebase_and_rebump` contract (and note `new_version` is always `None` until Phase 7 wiring).
+
+- **architecture** `python/merge.py:418,437` — Merge-time error strings still say “rebase and re-bump” even though `/implement` no longer re-bumps; behavior is harmless when no bump commits exist (gate self-disables), but operator-facing messages are stale relative to Phase 1.
+
+- **risk-integration** (latent, Phase 7) — `python/rebase.py` is dev/CI-only until `LARCH_SHIP_PR_IMPL=python` (`python/README.md:61`). A future ship driver must use the new signature (no `has_bump`/`bullets_path`) and must not treat `RebaseResult.new_version` as authoritative; there is no static enforcement beyond tests today.

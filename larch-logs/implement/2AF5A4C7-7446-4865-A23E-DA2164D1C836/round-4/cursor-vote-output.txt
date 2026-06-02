@@ -1,0 +1,32 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Phase 1 accepted degradation already documented in SKILL.md:85
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- legacy CALLER_KIND misroute needs a rare pre-Phase-1 resume artifact
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- structural grep harness matches Phase 1 scope; deeper sandbox tests are follow-up
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- expected migration cost after dropping legacy bump-drop rebase
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- legacy reader is intentional compatibility surface
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- naming-only drift with no runtime bug
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- field documented and tests assert always None in python/rebase.py
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- SKILL.md:85 already documents internal postbump 8b rebase
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- missing contract sibling is minor doc drift
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- manual plan acceptance is explicit for Phase 1 concurrency
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- header drift only; hook-stop-fail-close.md already records Phase 1 retirement
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+OOS_5: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+OOS_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- stub hook is intentional until Phase 5 removal
+OOS_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- optional regression; not blocking Phase 1 ship path
+OOS_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_11: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- duplicate traceability note; actionable concern is already FINDING_8

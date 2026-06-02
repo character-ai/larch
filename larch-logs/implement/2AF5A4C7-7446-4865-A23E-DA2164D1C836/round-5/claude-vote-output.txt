@@ -1,0 +1,32 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- PR composition already established; revert-risk is manageable for internal tooling and splitting now requires cherry-picking
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- inherited convention name; rename introduces churn with no behavior change
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- reader still serves valid/corrupt distinction; POSTBUMP_CHECKPOINT_PHASE being unread post-call is a dead variable but behavior is correct
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- intentional hard-stall design explicitly documented in implement-finalize.md postbump contract
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ACTION=rebase is intentionally preserved per plan; "rebase/re-bump" in acceptance criterion refers to the Rebase+Re-bump Sub-procedure compound operation, not any rebase
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- harness exists but depth is debatable; test-ship-pr-rebase.sh has structural coverage
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- intentional degradation documented in implement-finalize.md; no automated Phase 1-4 handoff by design
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_20: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly accepted postbump conflict → hard stall; CI-fix rebase parity not required
+FINDING_21: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_22: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- finding itself says "already likely fine"; no confirmed defect
+FINDING_23: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_24: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_25: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- changelog import serves conflict auto_resolve, not re-bump; plan intent was to remove version-bump writes, not conflict-resolution helpers
+FINDING_26: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_27: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_28: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_29: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- _clear_phase1_postbump_residue normalizes stale RESUME_PHASE/CALLER_KIND before any material action; normalization-on-load is extra defense without a concrete failure scenario
+FINDING_30: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirms correctness of existing code; no problem described
+FINDING_31: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_32: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
