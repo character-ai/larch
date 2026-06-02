@@ -36,9 +36,9 @@ Required keys:
 
 `BRANCH_NAME`, `ISSUE_NUMBER`, `PR_TITLE`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`, `BUMP_TYPE`, `NEW_VERSION`, `BUMP_REASONING_FILE`, `MANIFEST_PATH`, `TOOL_LABEL`.
 
-`FORKED_TARGET` and `REPO_UNAVAILABLE` must be literal `true` or `false`. `BUMP_TYPE` must be `MAJOR`, `MINOR`, `PATCH`, or `NONE`. `BRANCH_NAME` must be non-empty and must not be `main` or `master`; phases that rebase or push also verify the current git branch still matches `BRANCH_NAME`. `PR_TITLE` must be present in the state file but may be empty. When `BUMP_TYPE` is not `NONE`, `NEW_VERSION` must match `X.Y.Z`. Stub bump keys (`BUMP_TYPE=NONE`, empty `NEW_VERSION`, empty `BUMP_REASONING_FILE`) are written by `scripts/ship-pr.sh` in Phase 1; `HAS_BUMP` is no longer required or validated.
+`FORKED_TARGET` and `REPO_UNAVAILABLE` must be literal `true` or `false`. `BUMP_TYPE` must be `MAJOR`, `MINOR`, `PATCH`, or `NONE`. `BRANCH_NAME` must be non-empty and must not be `main` or `master` unless `FORKED_TARGET=true` (forked upstream-target flows). Phases that rebase or push also verify the current git branch still matches `BRANCH_NAME`. `PR_TITLE` must be present in the state file but may be empty. When `BUMP_TYPE` is not `NONE`, `NEW_VERSION` must match `X.Y.Z`. Stub bump keys (`BUMP_TYPE=NONE`, empty `NEW_VERSION`, empty `BUMP_REASONING_FILE`) are written by `scripts/ship-pr.sh` in Phase 1; `HAS_BUMP` is no longer required or validated.
 
-Conflict resume uses the implicit checkpoint file `$IMPLEMENT_TMPDIR/.postbump-phase`, not a CLI flag. `force-push-gate` is the only recognized phase identifier. Legacy checkpoints from pre–Phase 1 runs may still resume directly to the force-push gate. Corrupt, symlinked, oversized, or unknown checkpoint contents fail closed with `STATUS=postbump-state-corrupt`. Step 8b rebase conflicts no longer write a checkpoint or emit `STATUS=conflict`; they emit `STATUS=rebase-failed` and require stall/bail.
+Phase 1 (#3364) does not resume legacy `$IMPLEMENT_TMPDIR/.postbump-phase` checkpoints (including `force-push-gate`). `ship-pr.sh` clears stale checkpoint files before postbump entry; `implement-finalize.sh postbump` clears any remaining checkpoint and always runs the full Step 8b rebase + force-push path. Corrupt, symlinked, or oversized checkpoint files still fail closed with `STATUS=postbump-state-corrupt`. Step 8b rebase conflicts do not write a checkpoint; they emit `STATUS=rebase-failed` and require stall/bail (no Rebase + Re-bump Sub-procedure handoff).
 
 ## Output Contract
 
@@ -89,8 +89,8 @@ FINALIZE_WARNINGS=<N>
 
 ## Behavior Mapping
 
-- `postbump` loads and validates state, then either resumes at the force-push gate when `$IMPLEMENT_TMPDIR/.postbump-phase` contains `force-push-gate`, or runs `rebase-push.sh --no-push` (with `--base-remote upstream --base-ref main` in fork mode) followed by the force-push gate. `CHANGELOG_STATUS` defaults to `skipped-phase1`; `LOG_WRITE_STATUS` stays `skipped`.
-- `postbump` rebase exit 1 (conflict) and other non-zero rebase failures emit `STATUS=rebase-failed` with a stall/bail warning; no Rebase + Re-bump Sub-procedure handoff.
+- `postbump` loads and validates state, clears any legacy `.postbump-phase` checkpoint, then runs `rebase-push.sh --no-push` (with `--base-remote upstream --base-ref main` in fork mode when `FORKED_TARGET=true`) followed by the force-push gate. `CHANGELOG_STATUS` defaults to `skipped-phase1`; `LOG_WRITE_STATUS` stays `skipped`.
+- `postbump` rebase exit 1 (conflict) and other non-zero rebase failures emit `STATUS=rebase-failed` with a stall/bail warning; operators resolve conflicts manually and resume shipping (no automated conflict-resolution handoff on this path).
 - Force-push gate: validates branch, skips when `REPO_UNAVAILABLE=true`, otherwise `check-remote-branch.sh` trichotomy (`present` → force-push, `absent` → initial push deferred, `error` → `STATUS=remote-check-failed`).
 - Step 14 skips on `DRAFT=true`, then `MERGE!=true`, then a non-empty final-bail-reason file. These skips also force `VERIFY_MAIN_STATUS=skipped`.
 - Step 14 cleanup success/partial state comes from `local-cleanup.sh`'s `CLEANUP_SUCCESS`, `CURRENT_BRANCH`, and `BRANCH_DELETED` keys.
@@ -111,7 +111,7 @@ FINALIZE_WARNINGS=<N>
 - All leaf-script failures are best-effort except invocation/state validation. They surface through warning breadcrumbs and tail records, not non-zero exits.
 - `--implement-tmpdir` and `--state-file` must be under `/tmp/`, `/private/tmp/`, or the larch cache sessions root.
 - post-Step-7a subcommands (`postbump`, `postmerge`, `teardown`) SHOULD prefer direct `append-tool-failure.sh`/`larch-log.sh append` safety-net paths over adding prompt prose. `teardown` is allowed to append cleanup-sanity failures to `$IMPLEMENT_TMPDIR/execution-issues.md` because it immediately follows with the safety-net flush before tmpdir deletion. `postbump` MAY append warnings to `$IMPLEMENT_TMPDIR/execution-issues.md`; shared external-implementer / pre-push flush paths append that unflushed tail before the next log commit when available, and teardown remains the fallback.
-- The literal phase identifier `force-push-gate`, the contents of `$IMPLEMENT_TMPDIR/.postbump-phase`, is reproduced byte-identically in `skills/implement/SKILL.md` Step 8 conflict-resume prose where legacy resume is still documented. Changes to the recognized-phase enum here require a paired SKILL.md update.
+- Phase 1 postbump conflicts stall at Step 8b (`STATUS=rebase-failed`); `skills/implement/SKILL.md` documents stall-only postbump 8b semantics (no legacy checkpoint resume). Changes to postbump stall or branch-guard behavior require a paired SKILL.md update.
 - The orchestrator MUST parse the last `STATUS=` line in `postbump` stdout. The script emits exactly one `STATUS=...` line as part of the trailing tail records; future debug output is not permitted to emit `STATUS=...` lines.
 
 ## Primary Callers

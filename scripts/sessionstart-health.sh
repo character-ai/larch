@@ -140,10 +140,6 @@ if [[ -n "$HOOK_CWD" ]]; then
                   ! -f "$IMPLEMENT_TMPDIR/.review-boundary-passed" ]]; then
                 append_msg "larch hook preflight: pending post-/review boundary in active /implement tmpdir (${TMPDIR_BASENAME}); NEXT REQUIRED: execute Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order per skills/implement/SKILL.md Step 5, then touch .review-boundary-passed."
             fi
-            if [[ -f "$IMPLEMENT_TMPDIR/.bump-version-armed" && \
-                  ! -f "$IMPLEMENT_TMPDIR/postbump-state.sh" ]]; then
-                append_msg "larch hook preflight: pending post-/bump-version boundary in active /implement tmpdir (${TMPDIR_BASENAME}); NEXT REQUIRED: complete Step 8 post-bump continuation, write postbump-state.sh, then invoke implement-finalize.sh postbump."
-            fi
         fi
     fi
 fi

@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hook-stop-fail-close.sh — Stop hook for post-review and post-bump-version halt protection.
+# hook-stop-fail-close.sh — Stop hook for post-/review halt protection (Phase 1 retired post-bump gate).
 #
 # set -e omitted: every probe must fail open; the hook must always exit 0.
 # Intentional per .claude/rules/shell-strict-mode.md.

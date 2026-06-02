@@ -958,9 +958,9 @@ fi
 write_postbump_state "$POSTBUMP_STATE"
 printf 'force-push-gate\n' > "$SANDBOX/tmp/.postbump-phase"
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "CHANGELOG_STATUS=skipped-phase1" "$OUT" "postbump: checkpoint keeps Phase 1 changelog skip"
-assert_contains "REBASE_STATUS=skipped-resume" "$OUT" "postbump: checkpoint skips rebase"
-assert_contains "FORCE_PUSH_STATUS=pushed" "$OUT" "postbump: checkpoint runs force-push"
+assert_contains "CHANGELOG_STATUS=skipped-phase1" "$OUT" "postbump: legacy checkpoint keeps Phase 1 changelog skip"
+assert_not_contains "REBASE_STATUS=skipped-resume" "$OUT" "postbump: legacy force-push-gate must not skip rebase"
+assert_contains "FORCE_PUSH_STATUS=pushed" "$OUT" "postbump: legacy checkpoint cleared then rebase+force-push"
 if [ ! -e "$SANDBOX/tmp/.postbump-phase" ]; then
     PASS=$((PASS + 1))
     echo "PASS: postbump: successful force-push clears checkpoint"
@@ -972,7 +972,8 @@ fi
 write_postbump_state "$POSTBUMP_STATE"
 printf 'bogus-phase\n' > "$SANDBOX/tmp/.postbump-phase"
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "STATUS=postbump-state-corrupt" "$OUT" "postbump: corrupt checkpoint fails closed"
+assert_contains "STATUS=ok" "$OUT" "postbump: unknown legacy checkpoint cleared then full rebase runs"
+assert_not_contains "STATUS=postbump-state-corrupt" "$OUT" "postbump: unknown legacy checkpoint is not corrupt"
 
 write_postbump_state "$POSTBUMP_STATE"
 rm -f "$SANDBOX/tmp/.postbump-phase"
@@ -993,6 +994,10 @@ assert_contains "FORCE_PUSH_STATUS=failed" "$OUT" "postbump: force-push failure 
 write_postbump_state "$POSTBUMP_STATE" BRANCH_NAME=main
 run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp"
 assert_rc "$RC" 2 "postbump: main branch rejected"
+
+write_postbump_state "$POSTBUMP_STATE" BRANCH_NAME=main FORKED_TARGET=true
+OUT=$(STUB_CURRENT_BRANCH=main run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=ok" "$OUT" "postbump: forked main branch allowed"
 
 write_postbump_state "$POSTBUMP_STATE" BUMP_TYPE=PATCHX
 run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp"

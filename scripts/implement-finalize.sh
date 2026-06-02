@@ -308,11 +308,16 @@ require_postbump_enum_state() {
 }
 
 validate_postbump_state_branch() {
-    local check_current=${1:-false} branch current rc
+    local check_current=${1:-false} branch current rc forked
     branch=$(read_state BRANCH_NAME)
     [ -n "$branch" ] || die_usage "state-file key BRANCH_NAME must be non-empty for postbump"
+    forked=$(read_state FORKED_TARGET)
     case "$branch" in
-        main|master) die_usage "state-file key BRANCH_NAME must not be main or master" ;;
+        main|master)
+            if [ "$forked" != "true" ]; then
+                die_usage "state-file key BRANCH_NAME must not be main or master"
+            fi
+            ;;
     esac
     if [ "$check_current" = "true" ]; then
         set +e
@@ -547,28 +552,22 @@ run_postbump() {
         return 0
     }
     load_and_validate_postbump_state
-    if ! read_postbump_checkpoint; then
-        append_execution_issue "Step 8 postbump checkpoint file was corrupt."
-        warn_line '**⚠ Step 8: postbump checkpoint file corrupt. Bailing to cleanup.**'
-        postbump_tail postbump-state-corrupt skipped skipped-phase1 skipped-resume absent
-        return 0
-    fi
-    if [ "$POSTBUMP_CHECKPOINT_PHASE" = "force-push-gate" ]; then
-        LOG_WRITE_STATUS=skipped
-        CHANGELOG_STATUS='skipped-phase1'
-        REBASE_STATUS='skipped-resume'
-        set +e
-        run_force_push_gate
-        rc=$?
-        set +e
-        case "$rc" in
-            0) postbump_tail ok "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-            3) postbump_tail push-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-            4) postbump_tail branch-mismatch "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-            5) postbump_tail remote-check-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-            *) postbump_tail push-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-        esac
-        return 0
+    if [ -e "$(postbump_checkpoint_path)" ]; then
+        if read_postbump_checkpoint; then
+            # Phase 1 (#3364): never resume legacy force-push-gate or other checkpoints.
+            clear_postbump_checkpoint
+        else
+            phase=$(tr -d '\r' < "$(postbump_checkpoint_path)" 2>/dev/null \
+                | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+            if printf '%s\n' "$phase" | grep -Eq '^[a-z][a-z0-9-]*$'; then
+                clear_postbump_checkpoint
+            else
+                append_execution_issue "Step 8 postbump checkpoint file was corrupt."
+                warn_line '**⚠ Step 8: postbump checkpoint file corrupt. Bailing to cleanup.**'
+                postbump_tail postbump-state-corrupt skipped skipped-phase1 skipped-resume absent
+                return 0
+            fi
+        fi
     fi
 
     set +e

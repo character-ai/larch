@@ -1047,27 +1047,27 @@ run_checks_with_lint_fix_loop() {
     esac
 }
 
-run_bump_phase() {
-    local forked finalize_out status rc fail_file \
-        _ship_guard_branch _ship_guard_state_branch _ship_guard_fail
+run_ship_branch_guard() {
+    local failure_phase=$1 stall_token=${2:-bump-branch-guard}
+    local forked _ship_guard_state_branch _ship_guard_branch _ship_guard_fail
     forked=$(read_state FORKED_TARGET)
     _ship_guard_state_branch=$(read_state BRANCH_NAME)
     # Match scripts/git-current-branch.sh: symbolic-ref works on older Git than
     # `git branch --show-current` (2.22+); empty here means detached / no branch.
     _ship_guard_branch=$(git symbolic-ref -q --short HEAD 2>/dev/null || echo "")
     if [[ -z "$_ship_guard_state_branch" || -z "$_ship_guard_branch" ]]; then
-        _ship_guard_fail=$(failure_capture_path bump)
+        _ship_guard_fail=$(failure_capture_path "$failure_phase")
         printf 'ship-branch-guard: BRANCH_NAME=%s current=%s\n' \
             "$_ship_guard_state_branch" "$_ship_guard_branch" > "$_ship_guard_fail"
-        record_failure bump "ship-branch-guard" 1 "$_ship_guard_fail"
-        exit_stall bump-branch-guard
+        record_failure "$failure_phase" "ship-branch-guard" 1 "$_ship_guard_fail"
+        exit_stall "$stall_token"
     fi
     if [[ "$_ship_guard_branch" != "$_ship_guard_state_branch" ]]; then
-        _ship_guard_fail=$(failure_capture_path bump)
+        _ship_guard_fail=$(failure_capture_path "$failure_phase")
         printf 'ship-branch-guard: BRANCH_NAME=%s current=%s\n' \
             "$_ship_guard_state_branch" "$_ship_guard_branch" > "$_ship_guard_fail"
-        record_failure bump "ship-branch-guard" 1 "$_ship_guard_fail"
-        exit_stall bump-branch-guard
+        record_failure "$failure_phase" "ship-branch-guard" 1 "$_ship_guard_fail"
+        exit_stall "$stall_token"
     fi
     # FORKED_TARGET=true is an intentional operator/runbook trust signal
     # documented in scripts/ship-pr.md: when BRANCH_NAME matches checkout, ship may
@@ -1075,12 +1075,30 @@ run_bump_phase() {
     # always stall here on those branch names even when checkout matches.
     # There is no extra fork-evidence probe beyond state + branch-name alignment.
     if [[ "$forked" != "true" ]] && { [[ "$_ship_guard_state_branch" == "main" ]] || [[ "$_ship_guard_state_branch" == "master" ]]; }; then
-        _ship_guard_fail=$(failure_capture_path bump)
+        _ship_guard_fail=$(failure_capture_path "$failure_phase")
         printf 'ship-branch-guard: BRANCH_NAME=%s current=%s\n' \
             "$_ship_guard_state_branch" "$_ship_guard_branch" > "$_ship_guard_fail"
-        record_failure bump "ship-branch-guard" 1 "$_ship_guard_fail"
-        exit_stall bump-branch-guard
+        record_failure "$failure_phase" "ship-branch-guard" 1 "$_ship_guard_fail"
+        exit_stall "$stall_token"
     fi
+}
+
+_clear_phase1_postbump_residue() {
+    local resume
+    rm -f "${IMPLEMENT_TMPDIR}/.postbump-phase" 2>/dev/null || true
+    state_set CALLER_KIND ""
+    resume=$(read_state RESUME_PHASE)
+    case "$resume" in
+        force-push-gate|step8b_rebase|step8_apply_bump_same_version|bump)
+            state_set RESUME_PHASE ""
+            ;;
+    esac
+}
+
+run_bump_phase() {
+    local finalize_out status rc fail_file
+    _clear_phase1_postbump_residue
+    run_ship_branch_guard bump bump-branch-guard
     larch_err "→ ship-pr: ship (no per-PR version bump)"
 
     # Refresh larch-log token/timing artifacts before push via postbump (Trigger C).
@@ -2667,9 +2685,7 @@ run_rebase_rebump() {
         return 0
     fi
 
-    # Operator invariant: unlike `run_bump_phase`, this path does not re-run the
-    # ship-branch-guard (empty branch / name mismatch / non-forked main|master);
-    # rely on correct checkout + state alignment.
+    run_ship_branch_guard rebase "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
 
     # Cap rebase retries to prevent indefinite storms (e.g. concurrent merges
     # to main that keep triggering ACTION=rebase from ci-wait.sh).
