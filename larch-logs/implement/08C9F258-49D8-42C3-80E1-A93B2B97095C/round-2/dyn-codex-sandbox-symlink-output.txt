@@ -1,0 +1,18 @@
+Reviewing the branch diff and `launch-codex-implement.sh` security validation.
+### In-Scope Findings
+
+- **security** `scripts/launch-codex-implement.sh:110-116` — `_codex_canonical_existing_dir` only rejects the parent path when it is itself a symlink (`[[ ! -L "$p" ]]`) and does not mirror `launch-review.sh`’s `_codex_canonical_existing_dir` (`scripts/launch-review.sh:382-389`), which also rejects control characters and any `..` substring before `(cd "$p" && pwd -P)`. A caller can pass `--manifest-path "$TMP/codex-step2-out/../manifest.json"` (and matching qa/transcript parents); `pwd -P` then canonicalizes `--add-dir` to `$TMP` (implement tmpdir root), not `codex-step2-out/`. The new `SESSION_TMPDIR == IMPLEMENT_TMPDIR` guard runs only when `IMPLEMENT_TMPDIR` is non-empty (`153-161`), so invocations with `IMPLEMENT_TMPDIR` cleared (several cases in `skills/implement/scripts/test-codex-implementer.sh` use `IMPLEMENT_TMPDIR=''`) skip that guard and can still grant Codex write access over orchestrator-owned root artifacts (`session-id`, sidecar paths, baselines). Production `step2-implement.sh` always exports `IMPLEMENT_TMPDIR` (`152-153`), so the `..` spelling is caught there, but the launcher’s documented “mirror `launch-review`” posture is incomplete for direct or test callers. **Suggested fix:** Port the `..` and control-char predicates from `launch-review.sh` into `_codex_canonical_existing_dir`, and either require a non-empty `IMPLEMENT_TMPDIR` on the Codex implement path (exit 2 if unset) or always reject when canonical `SESSION_TMPDIR` equals canonical `dirname` of `--sidecar-log` / other trusted tmpdir anchor, not only when the env var is set.
+
+- **security** `scripts/launch-codex-implement.sh:110-116` — Symlink rejection applies only to the immediate parent directory argument, not to entries inside `codex-step2-out/`. If an attacker can create a symlink under that directory before Codex runs (writable session cache), `--add-dir "$SESSION_TMPDIR"` may still follow it depending on Codex sandbox semantics, potentially allowing writes outside the intended subdir while the parent passes `-L`. This is a narrower residual surface than a symlinked parent (which test 11d blocks) but is not closed by the new checks. **Suggested fix:** After `mkdir -p` in `step2-implement.sh`, optionally scan `codex-step2-out` for symlinks before launch, or document and enforce that only the dispatcher creates that tree and session tmpdirs are user-private with restrictive permissions.
+
+### Out-of-Scope Observations
+
+- **(b) Invalid `IMPLEMENT_TMPDIR`:** When set but not a directory or when it is a symlink, `_codex_canonical_existing_dir` returns 1 and the block at `153-157` exits 2 with the intended error path — behavior is correct.
+
+- **(c) `TRANSCRIPT_PARENT` vs `SESSION_TMPDIR`:** The new check at `149-151` is warranted: without it, manifest/qa could share one canonical `--add-dir` while `--output-last-message` targets a different parent, splitting write targets and weakening the narrowed-grant invariant.
+
+- **(d) TOCTOU between `-L` and `pwd -P`:** Theoretically a racing symlink swap on a world-writable parent could invalidate the check; typical larch session tmpdirs live under user-owned cache paths, so practical exploitability is low and not introduced as a new class beyond existing `pwd -P` canonicalization patterns.
+
+- **(e) `unset -f _codex_canonical_existing_dir`:** All validation failures `exit 2` before the helper is needed again; leaking the function on those paths is harmless because the process terminates.
+
+- **#3334 `ship-pr` / `ci_monitor` changes:** No additional sandbox or path-grant surface identified in the CI retry/fix-loop work relative to this Codex `--add-dir` review focus.

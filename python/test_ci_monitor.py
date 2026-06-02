@@ -660,6 +660,10 @@ def test_run_ci_fix_local_unfixable() -> None:
 def test_evaluate_failure_transient_rerun_only() -> None:
     runner = RecordingRunner(
         {
+            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
+                ("gh", "run", "view"),
+                stdout="fatal: unable to access https://github.com/o/r/\n",
+            ),
             ("gh", "run", "rerun", "42", "--repo", "o/r", "--failed"): _cr(
                 ("gh", "run", "rerun"),
                 0,
@@ -676,7 +680,7 @@ def test_evaluate_failure_transient_rerun_only() -> None:
         cwd=None,
     )
     assert fix.status == "no-changes"
-    assert len(runner.calls) == 1
+    assert ("gh", "run", "rerun", "42", "--repo", "o/r", "--failed") in runner.calls
 
 
 def test_evaluate_failure_in_progress_defers_launch() -> None:
@@ -726,6 +730,432 @@ def test_evaluate_failure_in_progress_defers_launch() -> None:
     assert launch_count == 0
     assert sleeps
     assert fix.status == "waterfall-failed"
+
+
+def test_evaluate_failure_deterministic_no_rerun() -> None:
+    runner = RecordingRunner(
+        {
+            ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
+            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
+                ("gh", "run", "view"),
+                stdout="FAIL AssertionError: expected True\n",
+            ),
+            (
+                "gh",
+                "run",
+                "view",
+                "42",
+                "--repo",
+                "o/r",
+                "--json",
+                "jobs",
+            ): _cr(
+                ("gh", "run", "view"),
+                rc=1,
+                stderr="failed",
+            ),
+        },
+    )
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=0,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=lambda _t: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        sleep_fn=lambda _s: None,
+    )
+    assert not any(c[:3] == ("gh", "run", "rerun") for c in runner.calls)
+    assert fix.status == "waterfall-failed"
+
+
+def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
+    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    responses = _baseline_responses()
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="FAIL test\n",
+    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    responses[("make", "py-lint")] = _cr(("make", "py-lint"), rc=1)
+    launch_calls: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        launch_calls.append(tier)
+        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
+
+    runner = RecordingRunner(responses)
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=launch_fn,
+        sleep_fn=lambda _s: None,
+    )
+    assert launch_calls
+    assert fix.status == "fix-exhausted"
+    assert fix.detail == "ci-fix-exhausted"
+
+
+def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
+    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    responses = _baseline_responses()
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="FAIL test\n",
+    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    responses[("make", "py-lint")] = _cr(("make", "py-lint"), rc=1)
+    launch_calls: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        launch_calls.append(tier)
+        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
+
+    runner = RecordingRunner(responses)
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=launch_fn,
+        sleep_fn=lambda _s: None,
+    )
+    assert launch_calls
+    assert ("make", "py-lint") in runner.calls
+    assert fix.status == "fix-exhausted"
+    assert fix.detail == "ci-fix-exhausted"
+
+
+def test_evaluate_failure_upfront_ready_stash_when_transient_cap_exhausted() -> None:
+    jobs_json = json.dumps({"jobs": []})
+    log_responses = [
+        _cr(("gh", "run", "view"), stdout="FAIL test\n"),
+        _cr(("gh", "run", "view"), stdout="FAIL test\n"),
+        _cr(("gh", "run", "view"), stdout="FAIL test\n"),
+    ]
+    responses = _baseline_responses()
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    runner = RecordingRunner(responses)
+    runner.sequential[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = log_responses
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=config.CI_MONITOR_TRANSIENT_RERUN_MAX,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=lambda _t: TierAttempt("cursor", 0, 1, LaunchFailure("none", "")),
+        sleep_fn=lambda _s: None,
+    )
+    log_calls = [
+        c
+        for c in runner.calls
+        if c[:3] == ("gh", "run", "view") and "--log-failed" in c
+    ]
+    assert len(log_calls) == 3
+    assert fix.status == "waterfall-failed"
+
+
+def test_evaluate_failure_fixable_jobs_launcher_exhausted_stalls() -> None:
+    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    responses = _baseline_responses()
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="FAIL test\n",
+    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    launch_calls: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        launch_calls.append(tier)
+        return TierAttempt(tier, 0, 1, LaunchFailure("none", ""))
+
+    runner = RecordingRunner(responses)
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=launch_fn,
+        sleep_fn=lambda _s: None,
+    )
+    assert launch_calls
+    assert fix.status == "waterfall-failed"
+    assert fix.detail != "ci-fix-exhausted"
+
+
+def test_evaluate_failure_vendor_only_push_failed_stalls(tmp_path: Any) -> None:
+    launch_calls: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        launch_calls.append(tier)
+        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
+
+    baseline_head = "deadbeef" * 5
+    jobs_json = json.dumps({"jobs": []})
+    responses = _baseline_responses(baseline_head)
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="FAIL test\n",
+    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
+    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
+        (commit_script,),
+        0,
+    )
+    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(
+        ("git", "symbolic-ref"),
+        stdout="feature\n",
+    )
+    responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), rc=1)
+
+    runner = RecordingRunner(responses)
+    runner.sequential[("git", "diff", "--name-only")] = [
+        _cr(("git", "diff"), stdout=""),
+        _cr(("git", "diff"), stdout="fixed.py\n"),
+    ]
+    runner.sequential[("git", "rev-parse", "HEAD")] = [
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+    ]
+
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=str(tmp_path),
+        launch_fn=launch_fn,
+        sleep_fn=lambda _s: None,
+    )
+    assert launch_calls
+    assert fix.status == "waterfall-failed"
+    assert fix.detail != "ci-fix-exhausted"
+
+
+def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> None:
+    launch_calls: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        launch_calls.append(tier)
+        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
+
+    baseline_head = "deadbeef" * 5
+    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    responses = _baseline_responses(baseline_head)
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="FAIL test\n",
+    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
+    responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
+    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
+        (commit_script,),
+        0,
+    )
+    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(
+        ("git", "symbolic-ref"),
+        stdout="feature\n",
+    )
+    responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), rc=1)
+
+    runner = RecordingRunner(responses)
+    runner.sequential[("git", "diff", "--name-only")] = [
+        _cr(("git", "diff"), stdout=""),
+        _cr(("git", "diff"), stdout="fixed.py\n"),
+    ]
+    runner.sequential[("git", "rev-parse", "HEAD")] = [
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+    ]
+
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=str(tmp_path),
+        launch_fn=launch_fn,
+        sleep_fn=lambda _s: None,
+    )
+    assert launch_calls
+    assert fix.status == "fix-exhausted"
+    assert fix.detail == "ci-fix-exhausted"
+
+
+def test_evaluate_failure_launcher_exhausted_stalls() -> None:
+    jobs_json = json.dumps({"jobs": []})
+    responses = _baseline_responses()
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="FAIL test\n",
+    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    runner = RecordingRunner(responses)
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=lambda _t: TierAttempt("cursor", 0, 1, LaunchFailure("none", "")),
+        sleep_fn=lambda _s: None,
+    )
+    assert fix.status == "waterfall-failed"
+    assert fix.detail != "ci-fix-exhausted"
+
+
+def test_evaluate_failure_jobs_in_progress_defers_vendor() -> None:
+    launch_count = 0
+
+    def launch_fn(_tier: str) -> TierAttempt:
+        nonlocal launch_count
+        launch_count += 1
+        return TierAttempt("cursor", 0, 0, LaunchFailure("none", ""))
+
+    runner = RecordingRunner(
+        {
+            ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
+            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
+                ("gh", "run", "view"),
+                stdout="FAIL test\n",
+            ),
+            (
+                "gh",
+                "run",
+                "view",
+                "42",
+                "--repo",
+                "o/r",
+                "--json",
+                "jobs",
+            ): _cr(
+                ("gh", "run", "view"),
+                rc=3,
+                stderr="is still in progress; logs will be available",
+            ),
+        },
+    )
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=launch_fn,
+        sleep_fn=lambda _s: None,
+    )
+    assert launch_count == 0
+    assert fix.status == "waterfall-failed"
+
+
+def test_evaluate_failure_error_logs_defers_fix() -> None:
+    launch_count = 0
+
+    def launch_fn(_tier: str) -> TierAttempt:
+        nonlocal launch_count
+        launch_count += 1
+        return TierAttempt("cursor", 0, 0, LaunchFailure("none", ""))
+
+    runner = RecordingRunner(
+        {
+            ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
+            ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
+                ("gh", "run", "view"),
+                rc=1,
+                stderr="logs unavailable",
+            ),
+        },
+    )
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=launch_fn,
+        sleep_fn=lambda _s: None,
+    )
+    assert launch_count == 0
+    assert fix.status == "waterfall-failed"
+    assert not any(c[:4] == ("gh", "run", "view", "42") and "--json" in c for c in runner.calls)
+
+
+def test_monitor_fix_exhausted_needs_user_input() -> None:
+    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    responses = _status(status="fail")
+    responses[("gh", "run", "view", "999", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="FAIL test\n",
+    )
+    responses[("gh", "run", "view", "999", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    responses.update(_baseline_responses())
+    responses[("make", "py-lint")] = _cr(("make", "py-lint"), rc=1)
+    runner = RecordingRunner(responses)
+    result = ci_monitor.monitor(
+        runner,
+        pr=1,
+        repo="o/r",
+        sleep_fn=lambda _s: None,
+        launch_fn=lambda _t: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        transient_retries=1,
+    )
+    assert result.result.outcome == Outcome.NEEDS_USER_INPUT
+    assert result.result.detail == "ci-fix-exhausted"
 
 
 def test_monitor_merge_ok_no_goto() -> None:
