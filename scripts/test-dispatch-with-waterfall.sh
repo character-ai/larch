@@ -511,6 +511,67 @@ assert_line "ALL_OUTPUT_FILES=" "$out"
 [[ ! -s "${manifest}.output-files" ]] || { echo "FAIL: no-fallback drop should emit empty paths-file" >&2; cat "${manifest}.output-files" >&2; exit 1; }
 [[ ! -f "$TMPROOT/no-fallback-drop-phase2.txt" ]] || { echo "FAIL: no-fallback drop must not create phase2 output" >&2; exit 1; }
 [[ ! -f "$TMPROOT/no-fallback-drop-phase3.txt" ]] || { echo "FAIL: no-fallback drop must not create phase3 output" >&2; exit 1; }
+# #3392: a collector/launch failure under --no-fallback must surface a per-slot
+# drop diagnostic (DROPPED_SLOTS_FILE), not just the aggregate ALL_SLOTS_DROPPED.
+drop_kv=$(printf '%s\n' "$out" | grep '^DROPPED_SLOTS_FILE=' || true)
+[[ -n "$drop_kv" ]] || { echo "FAIL: no-fallback collector-failure must emit DROPPED_SLOTS_FILE" >&2; printf '%s\n' "$out" >&2; exit 1; }
+drop_file="${drop_kv#DROPPED_SLOTS_FILE=}"
+[[ -f "$drop_file" ]] || { echo "FAIL: DROPPED_SLOTS_FILE path missing on disk" >&2; exit 1; }
+IFS=$'\t' read -r d_slot d_tool d_reason _ < "$drop_file"
+[[ "$d_slot" == "drop-me" && "$d_tool" == "codex" ]] || { echo "FAIL: drop record slot/tool mismatch" >&2; cat "$drop_file" >&2; exit 1; }
+[[ "$d_reason" == "collector-failure" ]] || { echo "FAIL: expected reason=collector-failure, got '$d_reason'" >&2; cat "$drop_file" >&2; exit 1; }
+
+# #3392 core scenario: a healthy, non-empty reviewer response that merely leads
+# with a conversational preamble fails the first-line gate. Under --no-fallback
+# it is dropped, but the drop must be observable as reason=format-gate-miss with
+# a snippet of the offending output — not a silent omission.
+manifest="$TMPROOT/slots-nf-format-miss.ndjson"
+printf '{"slot":"cursor-plan-arch","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/nf-format-miss.txt" "$prompt" >"$manifest"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT='Reviewing the plan against the repo: it looks solid overall.' \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present false \
+    --cursor-present true \
+    --no-fallback \
+    --mode description \
+    --require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)' \
+    --timeout 5)
+assert_line "ALL_SLOTS_DROPPED=true" "$out"
+assert_line "ALL_OUTPUT_FILES=" "$out"
+fm_kv=$(printf '%s\n' "$out" | grep '^DROPPED_SLOTS_FILE=' || true)
+[[ -n "$fm_kv" ]] || { echo "FAIL: format-gate-miss must emit DROPPED_SLOTS_FILE" >&2; printf '%s\n' "$out" >&2; exit 1; }
+fm_file="${fm_kv#DROPPED_SLOTS_FILE=}"
+[[ -f "$fm_file" ]] || { echo "FAIL: format-gate-miss DROPPED_SLOTS_FILE missing on disk" >&2; exit 1; }
+[[ "$(wc -l < "$fm_file" | tr -d ' ')" -eq 1 ]] || { echo "FAIL: expected exactly one drop record" >&2; cat "$fm_file" >&2; exit 1; }
+IFS=$'\t' read -r fm_slot fm_tool fm_reason fm_snip < "$fm_file"
+[[ "$fm_slot" == "cursor-plan-arch" && "$fm_tool" == "cursor" ]] || { echo "FAIL: format-gate-miss record slot/tool" >&2; cat "$fm_file" >&2; exit 1; }
+[[ "$fm_reason" == "format-gate-miss" ]] || { echo "FAIL: expected reason=format-gate-miss, got '$fm_reason'" >&2; cat "$fm_file" >&2; exit 1; }
+case "$fm_snip" in *"Reviewing the plan against the repo"*) ;; *) echo "FAIL: format-gate-miss snippet must contain the offending preamble" >&2; cat "$fm_file" >&2; exit 1 ;; esac
+
+# #3392 robustness: a slot name carrying a literal TAB must not corrupt the
+# line-oriented drops TSV — the slot field is flattened so the record keeps
+# exactly four tab-separated columns and downstream IFS=$'\t' parsing stays aligned.
+manifest="$TMPROOT/slots-nf-tab-slot.ndjson"
+jq -cn --arg out "$TMPROOT/nf-tab-slot.txt" --arg pf "$prompt" \
+    '{slot:"dyn-cursor-plan-a\tb", tool:"cursor", output:$out, prompt_file:$pf}' >"$manifest"
+out=$(PATH="$STUB_BIN:$PATH" CURSOR_STUB_FAIL=true \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present false \
+    --cursor-present true \
+    --no-fallback \
+    --mode description \
+    --timeout 5)
+tab_drop_kv=$(printf '%s\n' "$out" | grep '^DROPPED_SLOTS_FILE=' || true)
+[[ -n "$tab_drop_kv" ]] || { echo "FAIL: tab-slot drop must emit DROPPED_SLOTS_FILE" >&2; printf '%s\n' "$out" >&2; exit 1; }
+tab_drop_file="${tab_drop_kv#DROPPED_SLOTS_FILE=}"
+[[ "$(wc -l < "$tab_drop_file" | tr -d ' ')" -eq 1 ]] || { echo "FAIL: tab-slot drops file must hold exactly one record" >&2; cat "$tab_drop_file" >&2; exit 1; }
+tab_nf=$(awk -F'\t' '{print NF; exit}' "$tab_drop_file")
+[[ "$tab_nf" -eq 4 ]] || { echo "FAIL: tab-slot record must keep exactly 4 TSV columns, got $tab_nf" >&2; cat "$tab_drop_file" >&2; exit 1; }
+IFS=$'\t' read -r _ _ ts_reason _ < "$tab_drop_file"
+[[ "$ts_reason" == "collector-failure" ]] || { echo "FAIL: tab-slot reason must stay aligned, got '$ts_reason'" >&2; cat "$tab_drop_file" >&2; exit 1; }
 
 manifest="$TMPROOT/slots-no-fallback-keep.ndjson"
 printf '{"slot":"keep-me","tool":"codex","output":"%s","prompt_file":"%s"}\n' \
@@ -528,6 +589,14 @@ assert_line "ALL_OUTPUT_TOOLS=codex" "$out"
 grep -Fxq "$TMPROOT/no-fallback-keep.txt" "${manifest}.output-files" \
     || { echo "FAIL: no-fallback keep should list succeeded path" >&2; exit 1; }
 [[ -f "$TMPROOT/no-fallback-keep.txt.done" ]] || { echo "FAIL: no-fallback keep missing .done sentinel" >&2; exit 1; }
+# #3392: no drops → no DROPPED_SLOTS_FILE (the sidecar must not be emitted when
+# every slot settles).
+if grep -Fq 'DROPPED_SLOTS_FILE=' <<<"$out"; then
+    echo "FAIL: no-fallback keep must not emit DROPPED_SLOTS_FILE when nothing dropped" >&2
+    printf '%s\n' "$out" >&2
+    exit 1
+fi
+[[ ! -f "${manifest}.output-files.dropped-slots" ]] || { echo "FAIL: no-fallback keep must not write a drops sidecar" >&2; exit 1; }
 
 _collect_paths="${manifest}.output-files"
 _collect_out=$(LARCH_QUIET_DISABLE=1 bash "$REPO_ROOT/scripts/collect-agent-results.sh" \
@@ -560,6 +629,15 @@ partial_paths="${manifest}.output-files"
 [[ "$(wc -l < "$partial_paths" | tr -d ' ')" == "1" ]] || { echo "FAIL: no-fallback partial paths-file should contain exactly one path" >&2; cat "$partial_paths" >&2; exit 1; }
 grep -Fxq "$TMPROOT/no-fallback-partial-keep.txt" "$partial_paths" \
     || { echo "FAIL: no-fallback partial paths-file should keep only successful slot" >&2; cat "$partial_paths" >&2; exit 1; }
+# #3392: the dropped half of a partial run must appear in DROPPED_SLOTS_FILE
+# (exactly the dropped slot, not the kept one).
+partial_drop_kv=$(printf '%s\n' "$out" | grep '^DROPPED_SLOTS_FILE=' || true)
+[[ -n "$partial_drop_kv" ]] || { echo "FAIL: partial drop must emit DROPPED_SLOTS_FILE" >&2; printf '%s\n' "$out" >&2; exit 1; }
+partial_drop_file="${partial_drop_kv#DROPPED_SLOTS_FILE=}"
+[[ "$(wc -l < "$partial_drop_file" | tr -d ' ')" -eq 1 ]] || { echo "FAIL: partial drop sidecar should have exactly one record" >&2; cat "$partial_drop_file" >&2; exit 1; }
+IFS=$'\t' read -r pd_slot _ pd_reason _ < "$partial_drop_file"
+[[ "$pd_slot" == "partial-drop" ]] || { echo "FAIL: partial drop record should name the dropped slot, got '$pd_slot'" >&2; cat "$partial_drop_file" >&2; exit 1; }
+[[ "$pd_reason" == "collector-failure" ]] || { echo "FAIL: partial drop reason, got '$pd_reason'" >&2; cat "$partial_drop_file" >&2; exit 1; }
 _collect_partial_out=$(LARCH_QUIET_DISABLE=1 bash "$REPO_ROOT/scripts/collect-agent-results.sh" \
     --timeout 5 \
     --paths-file "$partial_paths" 2>&1) || true
@@ -583,6 +661,13 @@ out=$(PATH="$STUB_BIN:$PATH" \
 assert_line "DISPATCH_OK=true" "$out"
 assert_line "STATIC_DISPATCH_OK=false" "$out"
 assert_line "ALL_SLOTS_DROPPED=true" "$out"
+# #3392: an absent-tool drop must be distinguishable from a format/collector
+# failure via reason=tool-absent.
+absent_drop_kv=$(printf '%s\n' "$out" | grep '^DROPPED_SLOTS_FILE=' || true)
+[[ -n "$absent_drop_kv" ]] || { echo "FAIL: tool-absent drop must emit DROPPED_SLOTS_FILE" >&2; printf '%s\n' "$out" >&2; exit 1; }
+absent_drop_file="${absent_drop_kv#DROPPED_SLOTS_FILE=}"
+IFS=$'\t' read -r _ _ ab_reason _ < "$absent_drop_file"
+[[ "$ab_reason" == "tool-absent" ]] || { echo "FAIL: expected reason=tool-absent, got '$ab_reason'" >&2; cat "$absent_drop_file" >&2; exit 1; }
 if grep -Fq 'SENTINEL_TIMEOUT' <<<"$out"; then
     echo "FAIL: no-fallback absent must not emit SENTINEL_TIMEOUT" >&2
     exit 1
