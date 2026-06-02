@@ -81,7 +81,28 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   literal `CURSOR_EMPTY_RESPONSE` in the reviewer output file after JSON
   post-processing. Missing `.result`, malformed JSON, or non-JSON prose keep the
   existing fallback behavior; only the explicit empty-result backend response
-  gets the distinct marker.
+  gets the distinct marker. When the terminal state is still empty after the
+  auth/transient loop, the launcher also writes `${OUTPUT}.diag` in the
+  established `TOOL=cursor` / `FAILURE_REASON=…` KV grammar (envelope `type`,
+  `subtype`, `is_error`, `error`, `usage`, optional `duration` / request-id
+  fields, transient-retry count, pointer to `${OUTPUT}.json`). The full envelope
+  is always copied to `${OUTPUT}.json` before `.result` extraction.
+- **Exit-0 empty `.result` transient retry (cursor-only).** Inside the cursor
+  auth loop, after the exit-code transient branch and before auth retry: when
+  `EXIT_CODE==0`, `jq` is available, `$OUTPUT` is non-empty JSON, and
+  `(.result // "") == ""`, the launcher treats the response as transient
+  (bounded by `MAX_TRANSIENT_RETRIES=2`, shared with exit-code transients) and
+  re-runs the same `cursor agent` invocation after backoff. This does **not**
+  apply when `.result` is the legitimate no-findings sentinel
+  `{"no_issues_found": true}` (non-empty string) or any other non-empty
+  `.result`. Malformed/non-JSON `$OUTPUT` skips this branch (`jq` probe false).
+  `LARCH_CURSOR_RETRY_EMPTY_RESULT` defaults on; set to `0` to disable retry only
+  (diagnostics still written). Codex has no `.result` envelope — do not mirror
+  this branch into the codex launcher.
+- **Per-process launch jitter (cursor-only).** Before the cursor auth loop, a
+  one-time random sleep in `0..LARCH_CURSOR_LAUNCH_JITTER_MS` (default `250`,
+  non-numeric → default, `0` disables) de-synchronizes parallel slot launches.
+  See `docs/configuration-and-permissions.md`.
 - Cursor JSON envelopes with high `usage.outputTokens` but a very short
   extracted `.result` are promoted to `CURSOR_DEGRADED_RESPONSE` before the
   result is installed. The heuristic is skipped for legitimate terse sentinels

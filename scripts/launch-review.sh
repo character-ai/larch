@@ -984,6 +984,34 @@ MAX_TRANSIENT_RETRIES=2
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
 AUTH_ATTEMPT=1
 TRANSIENT_ATTEMPT=1
+
+# Per-process launch jitter: parallel cursor slots from dispatch-with-waterfall.sh
+# fan out near-simultaneously; a random 0..JITTER_MS delay de-synchronizes backend
+# hits without a coordinator (primarily non-Darwin/CI; Darwin serial lock already
+# spaces launches ~0.5s apart).
+_CURSOR_JITTER_MS=250
+case "${LARCH_CURSOR_LAUNCH_JITTER_MS:-250}" in
+    ''|*[!0-9]*) ;;
+    0) _CURSOR_JITTER_MS=0 ;;
+    *) _CURSOR_JITTER_MS=$LARCH_CURSOR_LAUNCH_JITTER_MS ;;
+esac
+if (( _CURSOR_JITTER_MS > 0 )); then
+    _launch_jitter_ms=$(( RANDOM % (_CURSOR_JITTER_MS + 1) ))
+    _launch_jitter_sec=$(( _launch_jitter_ms / 1000 ))
+    _launch_jitter_rem=$(( _launch_jitter_ms % 1000 ))
+    sleep "$(printf '%d.%03d' "$_launch_jitter_sec" "$_launch_jitter_rem")" 2>/dev/null || true
+fi
+
+_cursor_transient_backoff() {
+    if [[ -n "${LARCH_TRANSIENT_RETRY_DELAY:-}" ]]; then
+        if (( LARCH_TRANSIENT_RETRY_DELAY > 0 )); then sleep "$LARCH_TRANSIENT_RETRY_DELAY"; fi
+    else
+        _backoff=$(( 1 << TRANSIENT_ATTEMPT ))
+        _jitter=$(( RANDOM % 2 ))
+        sleep $(( _backoff + _jitter )) || true
+    fi
+}
+
 while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor"
@@ -1012,13 +1040,17 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         && ! { external_is_quota_failure "cursor" "$SIDECAR" || external_is_quota_failure "cursor" "${OUTPUT}.diag"; } \
         && external_is_transient_infra_failure "cursor" "$EXIT_CODE" "$_ELAPSED" "$OUTPUT"; then
         TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
-        if [[ -n "${LARCH_TRANSIENT_RETRY_DELAY:-}" ]]; then
-            if (( LARCH_TRANSIENT_RETRY_DELAY > 0 )); then sleep "$LARCH_TRANSIENT_RETRY_DELAY"; fi
-        else
-            _backoff=$(( 1 << TRANSIENT_ATTEMPT ))
-            _jitter=$(( RANDOM % 2 ))
-            sleep $(( _backoff + _jitter )) || true
-        fi
+        _cursor_transient_backoff
+        : > "$SIDECAR" 2>/dev/null || true
+        continue
+    fi
+    if (( EXIT_CODE == 0 && TRANSIENT_ATTEMPT <= MAX_TRANSIENT_RETRIES )) \
+        && [[ "${LARCH_CURSOR_RETRY_EMPTY_RESULT:-1}" != "0" ]] \
+        && command -v jq >/dev/null 2>&1 \
+        && [[ -s "$OUTPUT" ]] \
+        && jq -e '(.result // "") == ""' "$OUTPUT" >/dev/null 2>&1; then
+        TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
+        _cursor_transient_backoff
         : > "$SIDECAR" 2>/dev/null || true
         continue
     fi
@@ -1133,6 +1165,32 @@ if [[ -s "$OUTPUT" ]]; then
         # .result are treated identically to an explicit empty string.
         if jq -e '(.result // "") == ""' "${OUTPUT}.json" >/dev/null 2>&1; then
             printf 'CURSOR_EMPTY_RESPONSE\n' > "$OUTPUT"
+            _diag_type=$(jq -r '.type // empty' "${OUTPUT}.json" 2>/dev/null || true)
+            _diag_subtype=$(jq -r '.subtype // empty' "${OUTPUT}.json" 2>/dev/null || true)
+            _diag_is_error=$(jq -r '.is_error // empty' "${OUTPUT}.json" 2>/dev/null || true)
+            _diag_error=$(jq -r 'if (.error | type) == "string" then .error elif (.error | type) == "object" then (.error.message // .error.code // .error) else empty end' "${OUTPUT}.json" 2>/dev/null || true)
+            _diag_usage_in=$(jq -r '.usage.inputTokens // empty' "${OUTPUT}.json" 2>/dev/null || true)
+            _diag_usage_out=$(jq -r '.usage.outputTokens // empty' "${OUTPUT}.json" 2>/dev/null || true)
+            _diag_duration=$(jq -r '.duration // empty' "${OUTPUT}.json" 2>/dev/null || true)
+            _diag_request_id=$(jq -r '.request_id // .requestId // empty' "${OUTPUT}.json" 2>/dev/null || true)
+            if (( TRANSIENT_ATTEMPT > 0 )); then
+                _diag_retries=$(( TRANSIENT_ATTEMPT - 1 ))
+            else
+                _diag_retries=0
+            fi
+            {
+                printf 'TOOL=cursor\n'
+                printf 'FAILURE_REASON=cursor-empty-result: exit 0, .result empty/null after %s transient retries' "$_diag_retries"
+                [[ -n "$_diag_type" ]] && printf '; type=%s' "$_diag_type"
+                [[ -n "$_diag_subtype" ]] && printf ' subtype=%s' "$_diag_subtype"
+                [[ -n "$_diag_is_error" ]] && printf ' is_error=%s' "$_diag_is_error"
+                [[ -n "$_diag_error" ]] && printf ' error=%s' "$_diag_error"
+                [[ -n "$_diag_usage_in" ]] && printf ' usage.inputTokens=%s' "$_diag_usage_in"
+                [[ -n "$_diag_usage_out" ]] && printf ' usage.outputTokens=%s' "$_diag_usage_out"
+                [[ -n "$_diag_duration" ]] && printf ' duration=%s' "$_diag_duration"
+                [[ -n "$_diag_request_id" ]] && printf ' request_id=%s' "$_diag_request_id"
+                printf ' (full envelope: %s.json)\n' "$OUTPUT"
+            } > "${OUTPUT}.diag" 2>/dev/null || true
         fi
     fi
 fi
