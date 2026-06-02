@@ -930,7 +930,7 @@ def test_evaluate_failure_vendor_only_push_failed_stalls(tmp_path: Any) -> None:
     )
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)")] = _cr(
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
         (commit_script,),
         0,
     )
@@ -988,7 +988,7 @@ def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> Non
     responses[("make", "py-lint")] = _cr(("make", "py-lint"), 0)
     responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
     commit_script = str(SCRIPTS_DIR / "git-commit.sh")
-    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (cursor)")] = _cr(
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
         (commit_script,),
         0,
     )
