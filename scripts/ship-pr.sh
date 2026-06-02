@@ -1103,10 +1103,7 @@ run_bump_phase() {
             emit '⏩ 8: version bump status=skip reason=phase1-no-per-pr-bump'
             advance_phase pr-prep
             ;;
-        conflict)
-            exit_stall 8b
-            ;;
-        changelog-failed|rebase-failed|push-failed|remote-check-failed|branch-mismatch|postbump-state-corrupt)
+        rebase-failed|push-failed|remote-check-failed|branch-mismatch|postbump-state-corrupt)
             exit_stall 8b
             ;;
         *)

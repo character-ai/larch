@@ -557,7 +557,7 @@ run_postbump() {
     if ! read_postbump_checkpoint; then
         append_execution_issue "Step 8 postbump checkpoint file was corrupt."
         warn_line '**⚠ Step 8: postbump checkpoint file corrupt. Bailing to cleanup.**'
-        postbump_tail postbump-state-corrupt skipped skipped-resume skipped-resume absent
+        postbump_tail postbump-state-corrupt skipped skipped-phase1 skipped-resume absent
         return 0
     fi
     if [ "$POSTBUMP_CHECKPOINT_PHASE" = "force-push-gate" ]; then

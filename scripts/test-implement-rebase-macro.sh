@@ -189,9 +189,8 @@ grep -Fq 'RESUME_PHASE ship-pr-rrr-phase14' "$SHIP_PR_SH" \
 grep -Fq 'CALLER_KIND ship_pr_pre_push' "$SHIP_PR_SH" \
   || fail "(I) scripts/ship-pr.sh missing CALLER_KIND ship_pr_pre_push handoff"
 
-pin_dispatch='rebase_already_done=true, caller_kind=step8b_rebase'
-grep -Fq "$pin_dispatch" "$CONFLICT_MD" \
-  || fail "(I) conflict-resolution.md missing normative Phase 4 dispatch token: $pin_dispatch"
+grep -Fq 'caller_kind=ship_pr_pre_push' "$CONFLICT_MD" \
+  || fail "(I) conflict-resolution.md missing ship_pr_pre_push caller family"
 
 grep -Fq 'rebase-push.sh --continue --no-push --keep-on-conflict' "$CONFLICT_MD" \
   || fail "(I) conflict-resolution.md must retain early_rebase/ship_pr_pre_push Phase 4 --continue --no-push --keep-on-conflict invocation"
