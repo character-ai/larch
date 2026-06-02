@@ -1,10 +1,12 @@
 #!/usr/bin/env bash
 # test-lib-cursor-auth.sh — Hermetic regression harness for scripts/lib-cursor-auth.sh.
 #
-# Verifies cursor_auth_argv (whitespace trim variants) and cursor_auth_preflight
-# (Darwin-gated decision tree, test-mode gating). All test-mode overrides are
-# gated by LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 — overrides set without that
-# sentinel are silently ignored (FINDING_6 regression).
+# Verifies cursor_auth_export_env (whitespace-trim + env normalization; issue
+# #3375 env-based auth — the key is exported in CURSOR_API_KEY, never placed on
+# a --api-key argv) and cursor_auth_preflight (Darwin-gated decision tree,
+# test-mode gating). All test-mode overrides are gated by
+# LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 — overrides set without that sentinel are
+# silently ignored (FINDING_6 regression).
 
 set -euo pipefail
 
@@ -19,44 +21,40 @@ fail() { echo "FAIL [$1]: $2" >&2; FAIL_COUNT=$((FAIL_COUNT + 1)); }
 pass() { PASS_COUNT=$((PASS_COUNT + 1)); }
 
 # Run a one-shot bash subshell that sources the lib, sets the requested
-# environment, runs cursor_auth_argv, and prints the resulting array elements
-# one per line on stdout. Returns lib's exit (0 here since it just sources).
-_argv_run() {
+# CURSOR_API_KEY, runs cursor_auth_export_env, and prints the resulting
+# CURSOR_API_KEY env value (or the literal __unset__ when the helper unset it).
+# Env-based auth (issue #3375): the helper normalizes/exports CURSOR_API_KEY
+# rather than building a --api-key argv array.
+_export_run() {
     local key="$1"
     CURSOR_API_KEY="$key" bash -c '
-        set -euo pipefail
+        set -uo pipefail
         # shellcheck source=/dev/null
         . "'"$LIB"'"
-        CURSOR_AUTH_ARGS=()
-        cursor_auth_argv
-        for arg in ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}; do
-            printf "%s\n" "$arg"
-        done
+        cursor_auth_export_env
+        printf "%s\n" "${CURSOR_API_KEY-__unset__}"
     '
 }
 
-# Test 1: empty key → no argv elements.
-OUT=$(_argv_run "")
-if [[ -z "$OUT" ]]; then pass; else fail 1 "empty key should produce no argv; got: $OUT"; fi
+# Test 1: empty key → CURSOR_API_KEY unset (cursor falls back to keychain).
+OUT=$(_export_run "")
+if [[ "$OUT" == "__unset__" ]]; then pass; else fail 1 "empty key should unset CURSOR_API_KEY; got: $OUT"; fi
 
-# Test 2: whitespace-only key → no argv elements.
-OUT=$(_argv_run $'  \t\n  ')
-if [[ -z "$OUT" ]]; then pass; else fail 2 "whitespace-only key should produce no argv; got: $OUT"; fi
+# Test 2: whitespace-only key → CURSOR_API_KEY unset.
+OUT=$(_export_run $'  \t\n  ')
+if [[ "$OUT" == "__unset__" ]]; then pass; else fail 2 "whitespace-only key should unset CURSOR_API_KEY; got: $OUT"; fi
 
-# Test 3: simple key → exactly two lines: --api-key, then key.
-OUT=$(_argv_run "test-key-XYZ")
-EXPECTED=$'--api-key\ntest-key-XYZ'
-if [[ "$OUT" == "$EXPECTED" ]]; then pass; else fail 3 "simple key: expected '$EXPECTED', got: $OUT"; fi
+# Test 3: simple key → exported verbatim in the environment.
+OUT=$(_export_run "test-key-XYZ")
+if [[ "$OUT" == "test-key-XYZ" ]]; then pass; else fail 3 "simple key: expected 'test-key-XYZ', got: $OUT"; fi
 
-# Test 4: leading/trailing whitespace is trimmed.
-OUT=$(_argv_run "   trimmed-key   ")
-EXPECTED=$'--api-key\ntrimmed-key'
-if [[ "$OUT" == "$EXPECTED" ]]; then pass; else fail 4 "trim: expected '$EXPECTED', got: $OUT"; fi
+# Test 4: leading/trailing whitespace is trimmed before export.
+OUT=$(_export_run "   trimmed-key   ")
+if [[ "$OUT" == "trimmed-key" ]]; then pass; else fail 4 "trim: expected 'trimmed-key', got: $OUT"; fi
 
-# Test 5: tab/newline-bounded whitespace is trimmed.
-OUT=$(_argv_run $'\tkey-with-tabs\t')
-EXPECTED=$'--api-key\nkey-with-tabs'
-if [[ "$OUT" == "$EXPECTED" ]]; then pass; else fail 5 "tab-trim: expected '$EXPECTED', got: $OUT"; fi
+# Test 5: tab-bounded whitespace is trimmed before export.
+OUT=$(_export_run $'\tkey-with-tabs\t')
+if [[ "$OUT" == "key-with-tabs" ]]; then pass; else fail 5 "tab-trim: expected 'key-with-tabs', got: $OUT"; fi
 
 # cursor_auth_preflight tests — return code only, don't care about stderr text.
 _preflight_run() {
@@ -120,22 +118,24 @@ FLAGS_OUT=$(CURSOR_API_KEY="" \
     "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
 if [[ "$FLAGS_OUT" == "rc=0" ]]; then pass; else fail 12 "cursor-auth-flags.sh empty key on Linux: expected exactly rc=0 with no stdout; got: $FLAGS_OUT"; fi
 
-# Test 13 (cursor-auth-flags.sh): when CURSOR_API_KEY set, prints two lines.
+# Test 13 (cursor-auth-flags.sh): env-based auth (issue #3375) — even with
+# CURSOR_API_KEY set, the script is a preflight gate only and emits NO argv
+# flags (the cursor child reads CURSOR_API_KEY from the inherited environment).
 FLAGS_OUT=$(CURSOR_API_KEY="abc" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
     LIB_CURSOR_AUTH_TEST_UNAME=Linux \
-    "$REPO_ROOT/scripts/cursor-auth-flags.sh")
-EXPECTED=$'--api-key\nabc'
-if [[ "$FLAGS_OUT" == "$EXPECTED" ]]; then pass; else fail 13 "cursor-auth-flags.sh: expected '$EXPECTED', got: $FLAGS_OUT"; fi
+    "$REPO_ROOT/scripts/cursor-auth-flags.sh"; echo "rc=$?")
+if [[ "$FLAGS_OUT" == "rc=0" ]]; then pass; else fail 13 "cursor-auth-flags.sh with key set should emit no flags (env-auth); expected exactly rc=0, got: $FLAGS_OUT"; fi
 
-# Test 14 (review FINDING_3): embedded newline / CR / NUL in CURSOR_API_KEY
-# MUST NOT produce broken argv. cursor_auth_argv leaves CURSOR_AUTH_ARGS empty
-# (fail-closed) so cursor agent falls back to its default auth resolution
-# rather than receiving extra argv tokens that would split the --api-key pair.
-OUT=$(_argv_run $'sk-test\nleak')
-if [[ -z "$OUT" ]]; then pass; else fail 14 "embedded newline in key should leave CURSOR_AUTH_ARGS empty; got: $OUT"; fi
-OUT=$(_argv_run $'sk-test\rleak')
-if [[ -z "$OUT" ]]; then pass; else fail 14b "embedded CR in key should leave CURSOR_AUTH_ARGS empty; got: $OUT"; fi
+# Test 14 (review FINDING_3, issue #3375): an embedded newline / CR in
+# CURSOR_API_KEY is treated as paste corruption — cursor_auth_export_env unsets
+# CURSOR_API_KEY (fail-closed) so cursor agent falls back to its default auth
+# resolution rather than authenticating with a corrupt key. (NUL cannot occur
+# in a bash string, so it is not checked — see lib-cursor-auth.sh.)
+OUT=$(_export_run $'sk-test\nleak')
+if [[ "$OUT" == "__unset__" ]]; then pass; else fail 14 "embedded newline in key should unset CURSOR_API_KEY; got: $OUT"; fi
+OUT=$(_export_run $'sk-test\rleak')
+if [[ "$OUT" == "__unset__" ]]; then pass; else fail 14b "embedded CR in key should unset CURSOR_API_KEY; got: $OUT"; fi
 
 # Test 15 (review FINDING_4): cursor-auth-flags.sh now runs cursor_auth_preflight.
 # On Darwin (test-mode injected) with empty key + missing keychain, the script
@@ -194,10 +194,10 @@ OUT=$(_preread_run LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=
 if [[ "$OUT" == "__unset__" ]]; then pass; else fail 20 "pre-read with empty token should leave CURSOR_API_KEY unset; got: $OUT"; fi
 
 # Test 21: the shared Cursor launcher auth setup calls the pre-read before
-# cursor_auth_argv, so a readable Darwin service becomes adjacent --api-key argv
-# elements.
+# cursor_auth_export_env, so a readable Darwin service is exported into
+# CURSOR_API_KEY (env-based auth, issue #3375 — no --api-key argv element).
 _launcher_preread_run() {
-    # shellcheck disable=SC2016 # Child shell expands REPO_ROOT_PATH and CURSOR_AUTH_ARGS.
+    # shellcheck disable=SC2016 # Child shell expands REPO_ROOT_PATH and CURSOR_API_KEY.
     env -u CURSOR_API_KEY \
         LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
         LIB_CURSOR_AUTH_TEST_UNAME=Darwin \
@@ -210,14 +210,11 @@ _launcher_preread_run() {
         # shellcheck source=/dev/null
         . "$SCRIPT_DIR/lib-cursor-launcher-common.sh"
         cursor_launcher_setup_auth_argv
-        for arg in ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"}; do
-            printf "%s\n" "$arg"
-        done
+        printf "%s\n" "${CURSOR_API_KEY-__unset__}"
     '
 }
 OUT=$(_launcher_preread_run)
-EXPECTED=$'--api-key\nmocked-token'
-if [[ "$OUT" == "$EXPECTED" ]]; then pass; else fail 21 "launcher setup should emit --api-key from pre-read token; expected '$EXPECTED', got: $OUT"; fi
+if [[ "$OUT" == "mocked-token" ]]; then pass; else fail 21 "launcher setup should export the pre-read token into CURSOR_API_KEY (env-auth, no --api-key argv); expected 'mocked-token', got: $OUT"; fi
 
 TOTAL=$((PASS_COUNT + FAIL_COUNT))
 if (( FAIL_COUNT == 0 )); then

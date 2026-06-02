@@ -290,7 +290,6 @@ run_cursor() {
     "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$run_dir/cursor.log" --timeout 1800 --capture-stdout -- \
         cursor agent -p --trust \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-        ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
         --workspace "$REPO_ROOT" \
         "$_wrapped_prompt" \
         > "$run_dir/cursor.wrapper.log" 2>&1 || cursor_rc=$?

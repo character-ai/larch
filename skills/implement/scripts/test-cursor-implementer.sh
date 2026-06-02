@@ -269,6 +269,9 @@ for arg in "$@"; do
     last="$arg"
 done
 printf '%s' "$last" > "$STUB_PROMPT_FILE"
+if [[ -n "${STUB_ENV_FILE:-}" ]]; then
+    printf 'CURSOR_API_KEY=%s\n' "${CURSOR_API_KEY-__UNSET__}" >> "$STUB_ENV_FILE"
+fi
 cat > "$STUB_MANIFEST_PATH.tmp" <<JSON
 {
   "schema_version": "1",
@@ -693,20 +696,23 @@ else
     pass  # jq absent — skip per launcher runtime guard parallel
 fi
 
-# Test K1 (issue #1358): with CURSOR_API_KEY set, --api-key and the literal
-# key value MUST appear as adjacent tokens in recorded argv. Pins the
-# lib-cursor-auth.sh argv-injection contract.
+# Test K1 (issue #3375): with CURSOR_API_KEY set, the key is delivered to the
+# cursor child via the ENVIRONMENT, not a --api-key argv element. Pins that no
+# --api-key token appears in recorded argv and the stub inherits CURSOR_API_KEY
+# in its environment — keeping the secret off argv, `.meta` CMD_JSON, and `ps`.
 K1_TRANSCRIPT="$SCRATCH/k1-transcript.txt"
 K1_SIDECAR="$SCRATCH/k1-sidecar.log"
 K1_MANIFEST="$SCRATCH/k1-manifest.json"
 K1_QA="$SCRATCH/k1-qa.json"
 K1_ARGV="$SCRATCH/k1-argv.txt"
 K1_PROMPT="$SCRATCH/k1-prompt.txt"
+K1_ENV="$SCRATCH/k1-env.txt"
 cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
     STUB_ARGV_FILE="$K1_ARGV" \
     STUB_PROMPT_FILE="$K1_PROMPT" \
     STUB_MANIFEST_PATH="$K1_MANIFEST" \
+    STUB_ENV_FILE="$K1_ENV" \
     LARCH_CURSOR_MODEL="stub-model" \
     CURSOR_API_KEY="test-key-12345" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 \
@@ -721,12 +727,15 @@ cd "$REPO_ROOT" && \
         --agent-prompt "$AGENT_PROMPT" \
         --timeout 30 >/dev/null
 
-K1_API_KEY_LINE=$(grep -Fxn -- '--api-key' "$K1_ARGV" | awk -F: 'NR==1 {print $1; exit}')
-K1_API_VAL_LINE=$(grep -Fxn -- 'test-key-12345' "$K1_ARGV" | awk -F: 'NR==1 {print $1; exit}')
-if [[ -n "$K1_API_KEY_LINE" && -n "$K1_API_VAL_LINE" ]] && (( K1_API_VAL_LINE == K1_API_KEY_LINE + 1 )); then
+if grep -Fxq -- '--api-key' "$K1_ARGV"; then
+    fail K1 "Cursor argv must NOT include --api-key when CURSOR_API_KEY is set (issue #3375 env-based auth)"
+else
+    pass
+fi
+if grep -Fxq -- 'CURSOR_API_KEY=test-key-12345' "$K1_ENV"; then
     pass
 else
-    fail K1 "--api-key and value must be adjacent tokens in argv when CURSOR_API_KEY is set; key_line=$K1_API_KEY_LINE val_line=$K1_API_VAL_LINE"
+    fail K1env "cursor child must inherit CURSOR_API_KEY in its environment (issue #3375); env log: $(cat "$K1_ENV" 2>/dev/null)"
 fi
 
 # Test K2 (issue #1358): with CURSOR_API_KEY whitespace-only, --api-key MUST NOT

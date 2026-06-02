@@ -292,7 +292,6 @@ run_coder_dispatch() {
         if "$RUN_EXTERNAL_AGENT_SH" --tool cursor --output "$round_dir/coder-cursor.log" --timeout 1800 --capture-stdout -- \
             cursor agent -p --trust \
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-            ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
             --workspace "$PWD" \
             "$_wrapped_prompt" > "$round_dir/coder-cursor.wrapper.log" 2>&1; then
             cp "$round_dir/coder-cursor.log" "$tool_log" 2>/dev/null || : > "$tool_log"
