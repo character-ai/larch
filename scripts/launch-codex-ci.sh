@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # launch-codex-ci.sh — Launch Codex for /implement CI-fix subwork.
 #
-# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth binary-missing health-probe timeout parse refusal unknown
+# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth quota binary-missing health-probe timeout parse refusal unknown
 
 set -euo pipefail
 
@@ -214,8 +214,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
 done
 
 if (( LAUNCHER_EXIT != 0 )); then
-    _AUTH_VERDICT=$(external_auth_verdict "codex" "$SIDECAR_LOG")
-    [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
+    _VERDICT=$(external_failure_verdict "codex" "$SIDECAR_LOG")
     append_launch_failure "CI $ROLE" "codex-ci" "$LAUNCHER_EXIT" "$SIDECAR_LOG" "$_VERDICT" "$AUTH_ATTEMPT"
 fi
 

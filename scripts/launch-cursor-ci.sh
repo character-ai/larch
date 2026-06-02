@@ -5,7 +5,7 @@
 # scripts/lib-cursor-launcher-common.sh (cursor_launcher_run_stall_monitor,
 # cursor_launcher_emit_cursor_ci_stall_json_sidecar); triage stall behavior there.
 
-# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth binary-missing health-probe timeout parse refusal unknown
+# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth quota binary-missing health-probe timeout parse refusal unknown
 
 set -euo pipefail
 

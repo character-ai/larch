@@ -52,12 +52,17 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   `LARCH_EXTERNAL_SERIAL_LOCK_TRIES`, and
   `LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME`.
 - When Codex or Cursor review launches finish their auth-retry loops with a
-  non-zero exit and `IMPLEMENT_TMPDIR` is set, the launcher best-effort appends
-  captured sidecar diagnostics to `$IMPLEMENT_TMPDIR/execution-issues.md`
-  through `scripts/append-tool-failure.sh --redact` under
-  `External Reviewer Issues`, including an auth verdict and the final auth-loop
-  attempt count. Cursor verdicts inspect both `${OUTPUT}.sidecar` and
-  `${OUTPUT}.diag` because stderr can land in either place.
+  non-zero exit, the launcher best-effort appends captured sidecar diagnostics
+  to an `execution-issues.md` through `scripts/append-tool-failure.sh --redact`
+  under `External Reviewer Issues`, including a failure verdict and the final
+  auth-loop attempt count. The log path resolves to
+  `$IMPLEMENT_TMPDIR/execution-issues.md` when `IMPLEMENT_TMPDIR` is set, else
+  `$DESIGN_TMPDIR/execution-issues.md` so `/design` voter failures are recorded
+  rather than silently dropped (#3378). The verdict is computed by
+  `external_failure_verdict`: `auth-retries-exhausted`, `quota`
+  (usage-limit/quota, distinct from auth), `non-auth`, or `unclassified`.
+  Cursor verdicts inspect both `${OUTPUT}.sidecar` and `${OUTPUT}.diag` because
+  stderr can land in either place.
 - The Cursor path calls `cursor_launcher_setup_private_config_dir` (from
   `lib-cursor-launcher-common.sh`) immediately before the auth-retry loop to
   give each invocation a fresh private `CURSOR_CONFIG_DIR` directory (seeded

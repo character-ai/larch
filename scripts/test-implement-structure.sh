@@ -251,11 +251,11 @@ awk '
 [[ "$step8_exit3_status" == "0" ]] || fail "SKILL.md Step 8+ Exit 3 must document first-fixer-non-health and autonomous sub-steps 1 through 12"
 
 # Pin LAUNCHER_FAILURE_* canonical tokens across classifier, launchers, and ship-pr guard.
-for _pin in none health other auth binary-missing health-probe timeout parse refusal unknown; do
+for _pin in none health other auth quota binary-missing health-probe timeout parse refusal unknown; do
   grep -Fq "$_pin" "$REPO_ROOT/scripts/lib-external-launcher-common.sh" \
     || fail "lib-external-launcher-common.sh must contain canonical token: $_pin"
 done
-for _pin in none health other auth binary-missing health-probe timeout parse refusal unknown; do
+for _pin in none health other auth quota binary-missing health-probe timeout parse refusal unknown; do
   grep -Fq "$_pin" "$REPO_ROOT/scripts/launch-cursor-ci.sh" \
     || fail "launch-cursor-ci.sh must contain canonical token: $_pin"
   grep -Fq "$_pin" "$REPO_ROOT/scripts/launch-codex-ci.sh" \
