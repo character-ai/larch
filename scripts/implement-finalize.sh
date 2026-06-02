@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# implement-finalize.sh — Mechanical finalizer for /implement Step 8 post-bump work and Steps 14, 15, and 18.
+# implement-finalize.sh — Mechanical finalizer for /implement Step 8 post-ship (8b rebase + force-push) and Steps 14, 15, and 18.
 
 set -uo pipefail
 # Intentional: best-effort failure model. Errexit is OFF file-wide. Every

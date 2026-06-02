@@ -1,6 +1,6 @@
 # scripts/implement-finalize.sh — contract
 
-`scripts/implement-finalize.sh` is the mechanical SSOT for `/implement` Step 8 post-bump rebase + force-push gate, Steps 14, 15, and the mechanical part of Step 18. Prompt-only Steps 16 and 17, plus Step 18's external-reviewer warning replay and `--design-only` / `--draft` / `--merge=false` notes, stay in `skills/implement/SKILL.md` so the operator-facing final report remains chat-side.
+`scripts/implement-finalize.sh` is the mechanical SSOT for `/implement` Step 8 post-ship (8b rebase + force-push gate only in Phase 1 #3364), Steps 14, 15, and the mechanical part of Step 18. Prompt-only Steps 16 and 17, plus Step 18's external-reviewer warning replay and `--design-only` / `--draft` / `--merge=false` notes, stay in `skills/implement/SKILL.md` so the operator-facing final report remains chat-side.
 
 ## Subcommands
 

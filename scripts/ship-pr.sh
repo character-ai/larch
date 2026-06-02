@@ -2642,17 +2642,10 @@ _run_rebase_rebump_from_step3() {
         fi
     fi
 
-    if [ "$defer_push" = true ]; then
-        state_set_many \
-            REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
-            ITERATION "$(( $(read_state ITERATION) + 1 ))" \
-            TRANSIENT_RETRIES 0
-    else
-        state_set_many \
-            REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
-            ITERATION "$(( $(read_state ITERATION) + 1 ))" \
-            TRANSIENT_RETRIES 0
-    fi
+    state_set_many \
+        REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
+        ITERATION "$(( $(read_state ITERATION) + 1 ))" \
+        TRANSIENT_RETRIES 0
 }
 
 run_rebase_rebump() {
@@ -3244,7 +3237,15 @@ main() {
 
     if [ -n "$RESUME_PHASE" ]; then
         case "$RESUME_PHASE" in
-            force-push-gate|bump) advance_phase bump ;;
+            force-push-gate|bump|step8b_rebase|step8_apply_bump_same_version)
+                case "$RESUME_PHASE" in
+                    step8b_rebase|step8_apply_bump_same_version)
+                        larch_err "⚠ ship-pr: tolerating legacy --resume-phase $RESUME_PHASE (Phase 1 #3364)"
+                        ;;
+                esac
+                advance_phase bump
+                state_set_many RESUME_PHASE "" CALLER_KIND ""
+                ;;
             pr-create) advance_phase pr-create ;;
             ci-initial) advance_phase ci-initial ;;
             ci-merge) state_set CI_PASSED false; advance_phase ci-merge ;;

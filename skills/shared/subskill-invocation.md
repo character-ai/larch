@@ -20,7 +20,7 @@ Keep the block together. The bare-name-first rule is important — see `## Bare-
 
 ### Pattern B — Stateful orchestrator (inline)
 
-Used when the parent runs setup, exports `SESSION_ENV_PATH` for the child session merge, invokes the child, and then parses structured output to continue. Appears in `skills/implement/SKILL.md` (nested `/review` / `/bump-version` / `/issue` calls; `/design` runs separately before `/implement` on the issue-anchored happy path). Canonical form:
+Used when the parent runs setup, exports `SESSION_ENV_PATH` for the child session merge, invokes the child, and then parses structured output to continue. Appears in `skills/implement/SKILL.md` (nested `/review` and `/issue` calls only after Phase 1 #3364 — `/implement` no longer nests `/bump-version`; `/design` runs separately before `/implement` on the issue-anchored happy path). Canonical form:
 
 ```
 Invoke `/implement` via the Skill tool:
