@@ -27,4 +27,4 @@ rm -f "$fail_file"
 
 Under `set -e`, use the `if with_transient_retry ...; then` shape above or a `set +e` capture block so errexit does not fire before `_WTR_RC` / `_WTR_OUT` are read.
 
-**Edit-in-sync**: `scripts/collect-agent-results.sh`, `scripts/collect-agent-results.md`, `scripts/ship-pr.sh`, `scripts/ship-pr.md`, `scripts/test-collect-agent-results.sh`, `scripts/test-lib-net.sh`, `scripts/test-ship-pr.sh`, and every script that sources `lib-net.sh` for gap callsite wraps.
+**Edit-in-sync**: `scripts/collect-agent-results.sh`, `scripts/collect-agent-results.md`, `scripts/ship-pr.sh`, `scripts/ship-pr.md`, `scripts/test-collect-agent-results.sh`, `scripts/test-lib-net.sh`, and every script that sources `lib-net.sh` for gap callsite wraps.

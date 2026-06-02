@@ -803,7 +803,10 @@ def test_evaluate_failure_exhausted_routes_needs_user_input() -> None:
     )
     assert launch_calls
     assert fix.status == "fix-exhausted"
-    assert fix.detail == "ci-fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
+    assert "python-lint" in fix.detail
+    assert "FAIL test" in fix.detail
 
 
 def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
@@ -839,7 +842,10 @@ def test_evaluate_failure_per_job_exhausted_routes_needs_user_input() -> None:
     assert launch_calls
     assert ("make", "py-lint") in runner.calls
     assert fix.status == "fix-exhausted"
-    assert fix.detail == "ci-fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
+    assert "python-lint" in fix.detail
+    assert "FAIL test" in fix.detail
 
 
 def test_evaluate_failure_upfront_ready_stash_when_transient_cap_exhausted() -> None:
@@ -1022,7 +1028,50 @@ def test_evaluate_failure_push_failed_routes_fix_exhausted(tmp_path: Any) -> Non
     )
     assert launch_calls
     assert fix.status == "fix-exhausted"
-    assert fix.detail == "ci-fix-exhausted"
+    assert fix.detail is not None
+    assert fix.detail.startswith("ci-fix-exhausted")
+    assert "python-lint" in fix.detail
+    assert "FAIL test" in fix.detail
+
+
+def test_evaluate_failure_exhausted_surfaces_job_and_log_tail() -> None:
+    """fix-exhausted detail carries the failing job name and redacted log tail."""
+    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    log_tail = "ruff check failed on foo.py:42\nE501 line too long in bar.py\n"
+    responses = _baseline_responses()
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout=log_tail,
+    )
+    responses[("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    responses[("make", "py-lint")] = _cr(("make", "py-lint"), rc=1)
+
+    runner = RecordingRunner(responses)
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=None,
+        launch_fn=lambda _t: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
+        sleep_fn=lambda _s: None,
+    )
+    assert fix.status == "fix-exhausted"
+    assert fix.detail is not None
+    # Stable reason token stays the prefix so a BAIL_REASON bridge survives.
+    assert fix.detail.startswith("ci-fix-exhausted")
+    # Failing job name is surfaced so the main agent knows what broke.
+    assert "python-lint" in fix.detail
+    # Redacted CI log tail (with its run pointer) is surfaced, not just the token.
+    assert "ruff check failed on foo.py:42" in fix.detail
+    assert "E501 line too long in bar.py" in fix.detail
+    assert "CI log (run 42" in fix.detail
+    assert "\n" in fix.detail
 
 
 def test_evaluate_failure_launcher_exhausted_stalls() -> None:
@@ -1155,7 +1204,10 @@ def test_monitor_fix_exhausted_needs_user_input() -> None:
         transient_retries=1,
     )
     assert result.result.outcome == Outcome.NEEDS_USER_INPUT
-    assert result.result.detail == "ci-fix-exhausted"
+    assert result.result.detail is not None
+    assert result.result.detail.startswith("ci-fix-exhausted")
+    assert "python-lint" in result.result.detail
+    assert "FAIL test" in result.result.detail
 
 
 def test_monitor_merge_ok_no_goto() -> None:

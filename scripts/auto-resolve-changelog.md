@@ -48,4 +48,4 @@ Writes the merged result to the working-tree path given as the sole argument (re
 
 ## Edit-in-sync
 
-`scripts/ship-pr.sh` (rebase conflict pre-pass), `scripts/test-ship-pr.sh` (fixtures that rely on the merge contract).
+`scripts/ship-pr.sh` (rebase conflict pre-pass).
