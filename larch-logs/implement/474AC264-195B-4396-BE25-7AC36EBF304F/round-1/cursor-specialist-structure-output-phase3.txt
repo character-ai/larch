@@ -1,0 +1,15 @@
+### In-Scope Findings
+
+1. **code-quality** `scripts/test-design-structure.sh:300-303` — Structural pins 14c14c and 14c14d are now byte-identical: both run `grep -Fq 'design-postplan-emit.sh' "$AG_MD"`. Pin 14c14d can only fail if 14c14c already failed, so it adds zero independent enforcement. The pre-change 14c14d was `grep -Fq 'invoke-plan-validator.sh' "$AG_MD"` — a genuinely distinct guard ensuring the old inline validator call was present. After the migration, neither pin checks that `approval-gates.md` dropped the old standalone `invoke-plan-validator.sh` invocation, and the structural test doesn't catch a regression on that surface. **Suggested fix:** replace the second identical check with `absent "$AG_MD" 'invoke-plan-validator.sh' '(14c14d) approval-gates.md must not retain standalone invoke-plan-validator.sh reference'`, or at minimum collapse the two into one, so the pin count stays meaningful.
+
+2. **code-quality** `skills/design/scripts/test-design-postplan-emit.sh` — The `SNAPSHOT_STATUS=preserved` branch (driver lines 205-208: pre-call `_snapshot_existed=true` → status `preserved`) is the only status variant with no harness coverage. The plan's edge-cases section explicitly names "Idempotent snapshot: `snapshot-plan-round.sh write-original` preserves an existing `plan.txt-original` (emit `SNAPSHOT_STATUS=preserved`); never overwrite." Cases #2 and #7 only cover `taken` and the failure path. A regression in `_snapshot_existed` detection (e.g. checking `$_snapshot_dest` after rather than before the call) would go undetected. **Suggested fix:** add a case that seeds `plan.txt-original` in the temp dir before calling with `--snapshot-original` and asserts `SNAPSHOT_STATUS=preserved`.
+
+### Out-of-Scope Observations
+
+No pre-existing issues worth surfacing.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	scripts/test-design-structure.sh:300-303	Pins 14c14c and 14c14d are now byte-identical (both grep 'design-postplan-emit.sh' in AG_MD)	If someone re-introduces a standalone invoke-plan-validator.sh call in approval-gates.md the structural test will not catch it; 14c14d vacuously passes whenever 14c14c passes	Replace 14c14d with absent "$AG_MD" 'invoke-plan-validator.sh' ... or another distinct guard for the migrated surface
+1	in_scope	nit	code-quality	skills/design/scripts/test-design-postplan-emit.sh	No harness case tests SNAPSHOT_STATUS=preserved (idempotent snapshot when plan.txt-original already exists)	A regression in the _snapshot_existed pre-call check (lines 192-193 of design-postplan-emit.sh) would go undetected; plan edge-cases section explicitly calls out this invariant	Add a case that seeds plan.txt-original before calling --snapshot-original and asserts SNAPSHOT_STATUS=preserved
+```
