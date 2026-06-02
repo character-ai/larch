@@ -1001,7 +1001,7 @@ if (( _CURSOR_JITTER_MS > 0 )); then
 fi
 
 _cursor_transient_backoff() {
-    local _attempt="${1:-$TRANSIENT_ATTEMPT}"
+    local _attempt="$TRANSIENT_ATTEMPT"
     if [[ -n "${LARCH_TRANSIENT_RETRY_DELAY:-}" ]]; then
         if (( LARCH_TRANSIENT_RETRY_DELAY > 0 )); then sleep "$LARCH_TRANSIENT_RETRY_DELAY"; fi
     else
