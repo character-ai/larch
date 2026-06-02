@@ -319,13 +319,6 @@ SH
 #!/usr/bin/env bash
 exit 0
 SH
-    # #3334: evaluate_failure upfront log classify + fix-loop defer paths need
-    # ready deterministic logs and empty failed-jobs by default (override per test).
-    cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'FAIL test failure (harness stub)\n'
-exit 0
-STUB
     chmod +x "$root"/scripts/*.sh "$root"/scripts/gh "$root"/scripts/sleep "$root"/.claude/skills/bump-version/scripts/*.sh "$root"/skills/implement/scripts/*.sh
 }
 
@@ -3403,7 +3396,7 @@ else
 fi
 rm -rf "$call_dir"
 
-# Substantive fix exhaustion on ready logs+jobs -> autonomous exit 3 (ci-fix-exhausted).
+# Inner loop exhausted: all 5 vendor attempts fail -> stall (exits 4).
 root=$(make_repo ci_fix_exhausted)
 tmp=$(make_tmpdir)
 call_dir=$(mktemp -d "$tmp/ship-pr-exhausted.XXXXXX")
@@ -3411,145 +3404,41 @@ cat > "$root/scripts/ci-wait.sh" <<'STUB'
 #!/usr/bin/env bash
 printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
 STUB
-cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'FAIL AssertionError: expected True\n'
-exit 0
-STUB
-cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
+chmod +x "$root/scripts/ci-wait.sh"
+cat > "$root/scripts/run-relevant-checks-captured.sh" <<STUB
 #!/usr/bin/env bash
 set -euo pipefail
-out_tsv=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --output-tsv) out_tsv=$2; shift 2 ;;
-    *) shift ;;
-  esac
-done
-[[ -n "$out_tsv" ]] && printf 'python-lint\t\tfixable\n' >"$out_tsv"
-printf 'FAILED_JOBS_COUNT=1\n'
-exit 0
-STUB
-cat > "$root/scripts/make" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-case "${1:-}:${2:-}" in
-  py-lint|py-test) exit 1 ;;
-esac
-exit 0
-STUB
-cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'LINT_FIX_STATUS=exhausted\n'
-exit 0
-STUB
-for launcher in launch-cursor-ci.sh launch-codex-ci.sh launch-claude-ci.sh; do
-    cat > "$root/scripts/$launcher" <<'STUB'
-#!/usr/bin/env bash
-printf 'LAUNCHER_EXIT=1\n'
-exit 0
-STUB
-    chmod +x "$root/scripts/$launcher"
-done
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" "$root/scripts/ci-failed-jobs.sh" \
-    "$root/scripts/make" "$root/scripts/lint-fix-loop.sh"
-write_state "$tmp/ship-pr-state.sh" ci-initial
-awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
-     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
-     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
-    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-set +e
-(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" \
-    SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
-    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-    --merge true --draft false --forked false --repo owner/repo > "$tmp/stdout" 2>&1)
-printf '%s' "$?" > "$tmp/rc"
-set -e
-assert_rc "$tmp/rc" 3 "ci_fix_exhausted: substantive exhaustion exits 3"
-grep -Fq 'BAIL_REASON=ci-fix-exhausted' "$tmp/ship-pr-state.sh" \
-    || fail "ci_fix_exhausted: expected BAIL_REASON=ci-fix-exhausted"
-grep -Fq 'BAIL_NEEDS_USER_INPUT=false' "$tmp/ship-pr-state.sh" \
-    || fail "ci_fix_exhausted: autonomous exit-3 must not flip BAIL_NEEDS_USER_INPUT"
-ok "ci_fix_exhausted: substantive ready-log/job exhaustion routes to ci-fix-exhausted"
-rm -rf "$call_dir"
-
-# Verification-retry substantive exhaustion (vendor_rc==4) -> ci-fix-exhausted.
-root=$(make_repo ci_fix_verify_retry_exhausted)
-tmp=$(make_tmpdir)
-call_dir=$(mktemp -d "$tmp/verify-retry-exhausted.XXXXXX")
-cat > "$root/scripts/ci-wait.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
-STUB
-cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'FAIL AssertionError: expected True\n'
-exit 0
-STUB
-cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-out_tsv=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --output-tsv) out_tsv=$2; shift 2 ;;
-    *) shift ;;
-  esac
-done
-[[ -n "$out_tsv" ]] && printf 'python-lint\t\tfixable\n' >"$out_tsv"
-printf 'FAILED_JOBS_COUNT=1\n'
-exit 0
-STUB
-cat > "$root/scripts/make" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-printf '%s\n' "make \$*" >> "$call_dir/make-calls.txt"
+count_file="$call_dir/checks-count"
+count=\$(cat "\$count_file" 2>/dev/null || echo 0)
+printf '%s\n' "\$((count + 1))" > "\$count_file"
+log_file="$call_dir/redacted-\$count.log"
+: > "\$log_file"
+echo "STATUS=fail FAILURE_REASON=stubbed"
+echo "REDACTED_LOG_FILE=\$log_file"
 exit 1
 STUB
-cat > "$root/scripts/lint-fix-loop.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'LINT_FIX_STATUS=failed\n'
-exit 0
-STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
-#!/usr/bin/env bash
-set -euo pipefail
-printf 'vendor fix\n' >> "$call_dir/vendor-fix.txt"
-touch "$call_dir/vendor-fixed"
-printf 'LAUNCHER_EXIT=0\n'
-STUB
-cp "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-codex-ci.sh"
-cp "$root/scripts/launch-cursor-ci.sh" "$root/scripts/launch-claude-ci.sh"
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" \
-    "$root/scripts/ci-failed-jobs.sh" "$root/scripts/make" \
-    "$root/scripts/lint-fix-loop.sh" "$root/scripts/launch-cursor-ci.sh" \
-    "$root/scripts/launch-codex-ci.sh" "$root/scripts/launch-claude-ci.sh"
+chmod +x "$root/scripts/run-relevant-checks-captured.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
      {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
     && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
 set +e
-(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" \
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" STUB_LINT_FIX_STATUS=applied \
     SHIP_PR_LAUNCH_SENTINEL_DIR="$call_dir" CLAUDE_PLUGIN_ROOT="$root" \
     "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
     --merge true --draft false --forked false --repo owner/repo > "$tmp/stdout" 2>&1)
 printf '%s' "$?" > "$tmp/rc"
 set -e
-assert_rc "$tmp/rc" 3 "ci_fix_verify_retry_exhausted: verification-retry exhaustion exits 3"
-grep -Fq 'BAIL_REASON=ci-fix-exhausted' "$tmp/ship-pr-state.sh" \
-    || fail "ci_fix_verify_retry_exhausted: expected BAIL_REASON=ci-fix-exhausted"
-ok "ci_fix_verify_retry_exhausted: vendor verify-retry substantive exhaustion routes to ci-fix-exhausted"
+assert_rc "$tmp/rc" 4 "local fix loop: all 3 outer attempts (3 tiers each) exhausted stalls (exits 4)"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_TRACKING=true" "local fix loop exhausted marks stall"
+check_count=$(cat "$call_dir/checks-count" 2>/dev/null || echo 0)
+if [ "$check_count" -eq 12 ]; then
+    ok "local fix loop exhausted: repeated the 4-check inner loop across 3 outer attempts"
+else
+    fail "local fix loop exhausted: expected 12 check attempts across 3 outer attempts, got $check_count"
+fi
 rm -rf "$call_dir"
-
-# #3334: blind-rerun gate regressions (sourced helpers).
-# shellcheck source=scripts/test-ship-pr-fix-loop-3334.inc.sh
-source "$REPO_ROOT/scripts/test-ship-pr-fix-loop-3334.inc.sh"
-run_ship_pr_3334_deterministic_no_blind_rerun
-run_ship_pr_3334_transient_gated_rerun
-run_ship_pr_3334_upfront_ready_log_reuse
 
 # ── #2632: run_ci_fix_vendor 3-tier waterfall + gh-run-logs threading ───────
 
@@ -4223,13 +4112,23 @@ cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
 printf 'logs unavailable\n' >&2
 exit 1
 STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
+cat > "$root/scripts/launch-cursor-ci.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
-printf 'X\n' >> "$call_dir/sentinel-fix.txt"
+    printf 'X\n' >> sentinel-fix.txt
 printf 'LAUNCHER_EXIT=0\n'
 STUB
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" "$root/scripts/launch-cursor-ci.sh"
+cat > "$root/scripts/git-push.sh" <<STUB
+#!/usr/bin/env bash
+set -euo pipefail
+printf 'push\n' >> "$call_dir/push-calls.txt"
+STUB
+cat > "$root/scripts/git-commit.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+git commit -m "Fix CI failure" -a
+STUB
+chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" "$root/scripts/launch-cursor-ci.sh" "$root/scripts/git-push.sh" "$root/scripts/git-commit.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
@@ -4241,195 +4140,46 @@ set +e
   --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
 printf '%s' "$?" >"$tmp/rc"
 set -e
-assert_rc "$tmp/rc" 4 "vendor_verify_empty_tsv stalls on gh-run-logs error defer"
-assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-max-retries" "vendor_verify_empty_tsv records max-retries stall"
-if [ -f "$call_dir/sentinel-fix.txt" ]; then
-    fail "vendor_verify_empty_tsv must not dispatch vendor on gh-run-logs error"
+assert_rc "$tmp/rc" 0 "vendor_verify_empty_tsv exits 0"
+if grep -Fq 'no failed-jobs TSV; skipping per-job verification' "$tmp/out" && [ -s "$call_dir/push-calls.txt" ]; then
+    ok "vendor_verify_empty_tsv warns and pushes through relevant-checks gate"
 else
-    ok "vendor_verify_empty_tsv defers vendor dispatch when gh-run-logs fails"
+    fail "vendor_verify_empty_tsv should warn and push"
+    sed 's/^/    out: /' "$tmp/out"
 fi
 rm -rf "$call_dir"
 
-# Launcher-only exhaustion after ready logs stays exit 4 (not ci-fix-exhausted).
-root=$(make_repo ci_fix_launcher_only_exhausted)
+# gh-run-logs-failed vendor call site preserves rc=2 routing.
+root=$(make_repo vendor_verify_rc2_on_gh_logs_failed_branch)
 tmp=$(make_tmpdir)
-call_dir=$(mktemp -d "$tmp/launcher-only.XXXXXX")
-cat > "$root/scripts/ci-wait.sh" <<'STUB'
+cat > "$tmp/vendor-rc2-branch.sh" <<'STUB'
 #!/usr/bin/env bash
-printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
+set -uo pipefail
+root=$1
+tmp=$2
+source "$root/scripts/ship-pr.sh"
+STATE_FILE="$tmp/ship-pr-state.sh"
+IMPLEMENT_TMPDIR="$tmp"
+run_ci_fix_vendor() { return 2; }
+record_failure() { :; }
+"$root/scripts/gh-run-logs.sh" --noop >/dev/null 2>&1 || true
+run_evaluate_failure ci-initial
 STUB
 cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
 #!/usr/bin/env bash
-printf 'FAIL test\n'
-exit 0
-STUB
-cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'FAILED_JOBS_COUNT=0\n'
-exit 0
-STUB
-for launcher in launch-cursor-ci.sh launch-codex-ci.sh launch-claude-ci.sh; do
-    cat > "$root/scripts/$launcher" <<'STUB'
-#!/usr/bin/env bash
-printf 'LAUNCHER_EXIT=1\n'
-exit 0
-STUB
-    chmod +x "$root/scripts/$launcher"
-done
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" "$root/scripts/ci-failed-jobs.sh"
-write_state "$tmp/ship-pr-state.sh" ci-initial
-awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
-     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
-     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
-    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-set +e
-(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
-    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
-printf '%s' "$?" >"$tmp/rc"
-set -e
-assert_rc "$tmp/rc" 4 "launcher-only exhaustion stays exit 4"
-grep -Fq 'BAIL_REASON=ci-fix-exhausted' "$tmp/ship-pr-state.sh" \
-    && fail "launcher-only exhaustion must not set ci-fix-exhausted"
-assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-max-retries" "launcher-only exhaustion stalls"
-ok "launcher-only exhaustion after ready logs stays stall (exit 4)"
-rm -rf "$call_dir"
-
-# Fixable jobs with all-fail launchers stall (exit 4), not ci-fix-exhausted.
-root=$(make_repo ci_fix_fixable_launcher_only_exhausted)
-tmp=$(make_tmpdir)
-call_dir=$(mktemp -d "$tmp/fixable-launcher-only.XXXXXX")
-cat > "$root/scripts/ci-wait.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
-STUB
-cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'FAIL test\n'
-exit 0
-STUB
-cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-out_tsv=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --output-tsv) out_tsv=$2; shift 2 ;;
-    *) shift ;;
-  esac
-done
-[[ -n "$out_tsv" ]] && printf 'python-lint\t\tfixable\n' >"$out_tsv"
-printf 'FAILED_JOBS_COUNT=1\n'
-exit 0
-STUB
-for launcher in launch-cursor-ci.sh launch-codex-ci.sh launch-claude-ci.sh; do
-    cat > "$root/scripts/$launcher" <<'STUB'
-#!/usr/bin/env bash
-printf 'LAUNCHER_EXIT=1\n'
-exit 0
-STUB
-    chmod +x "$root/scripts/$launcher"
-done
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" "$root/scripts/ci-failed-jobs.sh"
-write_state "$tmp/ship-pr-state.sh" ci-initial
-awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
-     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
-     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
-    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-set +e
-(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
-    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
-printf '%s' "$?" >"$tmp/rc"
-set -e
-assert_rc "$tmp/rc" 4 "fixable-job launcher-only exhaustion stays exit 4"
-grep -Fq 'BAIL_REASON=ci-fix-exhausted' "$tmp/ship-pr-state.sh" \
-    && fail "fixable-job launcher-only exhaustion must not set ci-fix-exhausted"
-assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-max-retries" "fixable-job launcher-only exhaustion stalls"
-ok "fixable-job launcher-only exhaustion stays stall (exit 4)"
-rm -rf "$call_dir"
-
-# ci-failed-jobs rc=3 defers vendor dispatch; in-progress-only exhaustion stalls.
-root=$(make_repo ci_fix_jobs_in_progress_defer)
-tmp=$(make_tmpdir)
-call_dir=$(mktemp -d "$tmp/jobs-progress.XXXXXX")
-cat > "$root/scripts/ci-wait.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
-STUB
-cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'FAIL test\n'
-exit 0
-STUB
-cat > "$root/scripts/ci-failed-jobs.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'jobs still running\n' >&2
-exit 3
-STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
-#!/usr/bin/env bash
-printf 'X\n' >> "$call_dir/sentinel-fix.txt"
-printf 'LAUNCHER_EXIT=0\n'
-STUB
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" \
-    "$root/scripts/ci-failed-jobs.sh" "$root/scripts/launch-cursor-ci.sh"
-write_state "$tmp/ship-pr-state.sh" ci-initial
-awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
-     /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
-     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
-    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
-set +e
-(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
-    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
-printf '%s' "$?" >"$tmp/rc"
-set -e
-assert_rc "$tmp/rc" 4 "jobs-in-progress deferral stalls after outer cap"
-if [ -f "$call_dir/sentinel-fix.txt" ]; then
-    fail "ci-failed-jobs rc=3 must not dispatch vendor"
-else
-    ok "ci-failed-jobs rc=3 defers vendor dispatch"
-fi
-rm -rf "$call_dir"
-
-# gh-run-logs error/unreadable defers vendor; error-only exhaustion stalls.
-root=$(make_repo ci_fix_gh_logs_error_defer)
-tmp=$(make_tmpdir)
-call_dir=$(mktemp -d "$tmp/gh-logs-err.XXXXXX")
-cat > "$root/scripts/ci-wait.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'ACTION=evaluate_failure\nCI_STATUS=fail\nBEHIND_COUNT=0\nFAILED_RUN_ID=run123\nBAIL_REASON=\nITERATION=0\nELAPSED=1\n'
-STUB
-cat > "$root/scripts/gh-run-logs.sh" <<'STUB'
-#!/usr/bin/env bash
-printf 'logs unavailable\n' >&2
 exit 1
 STUB
-cat > "$root/scripts/launch-cursor-ci.sh" <<STUB
-#!/usr/bin/env bash
-printf 'X\n' >> "$call_dir/sentinel-fix.txt"
-printf 'LAUNCHER_EXIT=0\n'
-STUB
-chmod +x "$root/scripts/ci-wait.sh" "$root/scripts/gh-run-logs.sh" "$root/scripts/launch-cursor-ci.sh"
+chmod +x "$tmp/vendor-rc2-branch.sh" "$root/scripts/gh-run-logs.sh"
 write_state "$tmp/ship-pr-state.sh" ci-initial
 awk '/^TRANSIENT_RETRIES=/ {print "TRANSIENT_RETRIES=1"; next}
      /^FAILED_RUN_ID=/ {print "FAILED_RUN_ID=run123"; next}
-     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" \
-    && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
+     {print}' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.sh.new" && mv "$tmp/ship-pr-state.sh.new" "$tmp/ship-pr-state.sh"
 set +e
-(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" \
-    "$root/scripts/ship-pr.sh" --state-file "$tmp/ship-pr-state.sh" --implement-tmpdir "$tmp" \
-    --merge true --draft false --forked false --repo owner/repo >"$tmp/out" 2>&1)
+(cd "$root" && PATH="$root/scripts:$PATH" IMPLEMENT_TMPDIR="$tmp" CLAUDE_PLUGIN_ROOT="$root" bash "$tmp/vendor-rc2-branch.sh" "$root" "$tmp" >"$tmp/out" 2>&1)
 printf '%s' "$?" >"$tmp/rc"
 set -e
-assert_rc "$tmp/rc" 4 "gh-run-logs error deferral stalls after outer cap"
-if [ -f "$call_dir/sentinel-fix.txt" ]; then
-    fail "gh-run-logs error must not dispatch vendor"
-else
-    ok "gh-run-logs error defers vendor dispatch"
-fi
-rm -rf "$call_dir"
+assert_rc "$tmp/rc" 4 "vendor_verify_rc2_on_gh_logs_failed_branch stalls with rc 4"
+assert_state_line "$tmp/ship-pr-state.sh" "STALL_STEP=10-head-changed" "vendor_verify_rc2_on_gh_logs_failed_branch records 10-head-changed"
 
 # _RCC_MAX_ITER honors the configured local CI fix iteration budget.
 root=$(make_repo rcc_max_iter_honored)

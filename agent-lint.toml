@@ -1592,9 +1592,6 @@ exclude = [
   # (fix-loop section; issue #2632). It is not a standalone entrypoint — same
   # sourced-harness shape as scripts/render-lane-status-lib.sh.
   "scripts/test-ship-pr-fix-loop-2632.inc.sh",
-  # scripts/test-ship-pr-fix-loop-3334.inc.sh is sourced from scripts/test-ship-pr.sh
-  # (fix-loop section; issue #3334). Same sourced-harness shape.
-  "scripts/test-ship-pr-fix-loop-3334.inc.sh",
   # scripts/test-ship-pr-rebase-phase14.sh delegates to test-ship-pr.sh
   # --section phase14 (Makefile test-ship-pr-rebase-phase14 target).
   "scripts/test-ship-pr-rebase-phase14.sh",
