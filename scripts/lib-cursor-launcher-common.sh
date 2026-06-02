@@ -3,6 +3,7 @@
 if [[ -n "${LARCH_LIB_CURSOR_LAUNCHER_COMMON_LOADED:-}" ]]; then
     return 0
 fi
+SCRIPT_DIR="${SCRIPT_DIR:-$(cd "${BASH_SOURCE[0]%/*}" && pwd)}"
 
 # Shared launcher mechanics common to Cursor and Codex live in
 # lib-external-launcher-common.sh; the cursor_launcher_* wrappers below
