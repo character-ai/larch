@@ -1236,4 +1236,27 @@ assert_contains "$case16b_text" 'Fix only the failures shown in the checks log' 
 assert_not_contains "$case16b_text" '## In-scope files' "case16b prefix path absent from tail"
 assert_not_contains "$case16b_text" '## Optional local verification (non-authoritative)' "case16b no pre-commit hint without tail path"
 
+# Case 17: agent-lint phase — in-scope list without optional pre-commit hint.
+CASE17="$TMPROOT/case17"
+REPO17="$CASE17/repo"
+SCRIPTS17="$CASE17/scripts"
+SESSION17="$CASE17/session"
+CHECKS17="$CASE17/checks.log"
+WRAPPER17="$CASE17/wrapper.sh"
+make_repo "$REPO17"
+make_fixture_scripts "$SCRIPTS17"
+make_session "$SESSION17"
+cat > "$CHECKS17" <<'EOF'
+=== Running agent-lint ===
+In tracked.txt line 1:
+SC2086: Double quote to prevent globbing
+EOF
+write_wrapper_noop "$WRAPPER17"
+case17_result=$(run_case "$SCRIPTS17" "$REPO17" "$SESSION17" "$CHECKS17" "$WRAPPER17" step3)
+assert_contains "$case17_result" 'LINT_FIX_STATUS=no-changes' "case17 status"
+case17_text=$(cat "$(find_prompt_for_session "$SESSION17")")
+assert_non_per_job_prompt_scoped "$case17_text" "case17"
+assert_not_contains "$case17_text" '## Optional local verification (non-authoritative)' "case17 no optional pre-commit"
+assert_not_contains "$case17_text" 'pre-commit run --files --' "case17 no pre-commit hint"
+
 echo "test-lint-fix-loop: ok"

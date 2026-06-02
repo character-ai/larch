@@ -107,8 +107,6 @@ affected_files_from_log() {
     # shellcheck disable=SC2016
     grep -oE '[A-Za-z0-9_./-]+\.(sh|md|py|json|yaml|yml|toml|ts|tsx|js|jsx|bash):[0-9]+' "$excerpt_file" 2>/dev/null \
         | sed 's/:[0-9]*$//' >>"$candidates_file" || true
-    # shellcheck disable=SC2016
-    grep -oE '[A-Za-z0-9_.-]+/[A-Za-z0-9_./-]+' "$excerpt_file" 2>/dev/null >>"$candidates_file" || true
     filtered_file=$(mktemp "${TMPDIR:-/tmp}/lint-fix-filtered.XXXXXX") || {
         rm -f "$candidates_file"
         return 1
@@ -147,10 +145,17 @@ compose_prompt() {
     if [[ -n "$target_cmd_display" ]]; then
         fix_sentence="Fix the repository so the local command \`$target_cmd_display\` passes for $site_label."
     else
+        local affected_paths_file
+        affected_paths_file=$(mktemp "${TMPDIR:-/tmp}/lint-fix-affected.XXXXXX") || return 1
+        if ! affected_files_from_log "$excerpt_file" >"$affected_paths_file"; then
+            rm -f "$affected_paths_file"
+            return 1
+        fi
         while IFS= read -r path || [[ -n "$path" ]]; do
             [[ -n "$path" ]] || continue
             affected_list+=("$path")
-        done < <(affected_files_from_log "$excerpt_file")
+        done <"$affected_paths_file"
+        rm -f "$affected_paths_file"
         if ((${#affected_list[@]} > 0)); then
             fix_sentence="Fix only the failures shown in the checks log for $site_label."
         else
@@ -523,7 +528,8 @@ target_cmd_display=""
 if [[ "$SITE" == "ship-pr-ci-per-job" ]]; then
     target_cmd_display=$(target_cmd_display_from_file "$TARGET_CMD_ARGS_FILE")
 fi
-compose_prompt "$prompt_file" "$CHECKS_LOG" "$SITE_LABEL" "$submodule_paths_file" "$target_cmd_display"
+compose_prompt "$prompt_file" "$CHECKS_LOG" "$SITE_LABEL" "$submodule_paths_file" "$target_cmd_display" \
+    || fail_status "prompt-compose-failed" 1
 prompt_body="$(cat "$prompt_file")"
 
 coder_tool=""
