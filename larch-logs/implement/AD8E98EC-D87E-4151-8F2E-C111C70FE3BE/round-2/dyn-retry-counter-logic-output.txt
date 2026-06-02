@@ -1,0 +1,8 @@
+Reviewing retry-counter logic in `_launch_cursor` against the plan and diff.
+### In-Scope Findings
+
+- **correctness** `scripts/launch-review.sh:986-1057` — The binding plan requires a **single** `TRANSIENT_ATTEMPT` budget (`MAX_TRANSIENT_RETRIES=2` → at most **3** `cursor agent` invocations per slot), but `_launch_cursor` adds a separate `EMPTY_RESULT_ATTEMPT` with the same `<= MAX_TRANSIENT_RETRIES` gate. Each counter can consume two retries independently, so mixed failure sequences can exceed the planned cap: e.g. two exit-8 transients (`TRANSIENT_ATTEMPT` 1→2→3) plus two exit-0 empty retries (`EMPTY_RESULT_ATTEMPT` 1→2→3) yields **5** backend calls (1 initial + 2 exit-code + 2 empty), not 3. `scripts/test-launch-review.sh:3005-3038` (`SL-cursor-transient8-then-empty`) asserts **4** invocations and comments that empty retries use a “separate budget,” which contradicts `scripts/launch-review.md:88-92` and `docs/configuration-and-permissions.md:206-208` (“shared with exit-code transient retries”) and the plan’s “Total cursor backend calls stay bounded at 3.” **Suggested fix:** Drop `EMPTY_RESULT_ATTEMPT`; gate empty-`.result` retries on `TRANSIENT_ATTEMPT <= MAX_TRANSIENT_RETRIES`, increment `TRANSIENT_ATTEMPT` (and call `_cursor_transient_backoff` without a separate counter) on that branch; fold empty-retry count into the existing `.diag` fields; update `SL-cursor-transient8-then-empty` and docs to match the unified 3-call bound (or, if product intent is truly separate budgets, change the plan/acceptance/docs explicitly and add a hard combined cap).
+
+### Out-of-Scope Observations
+
+NO_ISSUES_FOUND

@@ -1,0 +1,7 @@
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add a redacted `(full envelope: ${OUTPUT}.json)` suffix to FAILURE_REASON.')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_6 not traceable to scoped input (first 80 chars: 'Trim or treat whitespace-only `.result` like empty for retry/diagnostic if obser')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Optional local helper `_cursor_write_empty_result_diag` to keep the auth loop re')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Add external_is_quota_failure on $OUTPUT to the exit-code transient branch.  ---')
+warning: fix text for slot 'cursor-specialist-security-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Align collector with .diag KV grammar when #3392 lands (not introduced by this d')
+warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: 'Consider a future global cursor concurrency cap in the dispatcher (separate chan')
+warning: fix text for slot 'dyn-retry-budget-integrity-output.txt' in FINDING_15 not traceable to scoped input (first 80 chars: '(Concern documents arithmetic only; no explicit fix bullet in source.)  ---  ###')
