@@ -3024,7 +3024,7 @@ chmod +x "$STUB_BIN/cursor-t8-then-empty"
 ln -sf "$STUB_BIN/cursor-t8-then-empty" "$STUB_BIN/cursor"
 OUT_CURSOR_T8_EMPTY="$TMPDIR/cursor-t8-then-empty.txt"
 set +e
-CURSOR_API_KEY="sl-cursor-t8-empty-key" \
+CURSOR_API_KEY="test-key" \
     USER="${SERIAL_LOCK_USER}-t8-empty" \
     LARCH_TRANSIENT_RETRY_DELAY=0 \
     LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
