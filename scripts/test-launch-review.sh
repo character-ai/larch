@@ -1569,6 +1569,7 @@ export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR/execution-issues.md"
 # shellcheck disable=SC2030,SC2031
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 export LARCH_CURSOR_MODEL=test-cursor-model
+export LARCH_CURSOR_LAUNCH_JITTER_MS=0
 
 PASS=0
 FAIL=0
@@ -1756,6 +1757,8 @@ assert_grep "case B dirty-tree sidecar mode" "^MODE=baseline$" "${OUT_B}.dirty-t
 # distinct marker instead of a generic blank reviewer output.
 OUT_B2="$TMPDIR/cursor-b2.txt"
 PATH="$STUB_BIN:$PATH" CURSOR_STUB_RESULT="" \
+    LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_CURSOR_LAUNCH_JITTER_MS=0 \
     "$LAUNCHER" --output "$OUT_B2" --timeout 5 --prompt "empty result" >/dev/null 2>"$TMPDIR/case-b2.stderr"
 assert_equals "case B2 empty Cursor result marker" "CURSOR_EMPTY_RESPONSE" "$(cat "$OUT_B2")"
 
@@ -2927,6 +2930,14 @@ assert_equals "SL-cursor-empty-retry-exhausted output marker" "CURSOR_EMPTY_RESP
 assert_grep "SL-cursor-empty-retry-exhausted diag cursor-empty-result" "cursor-empty-result" "${OUT_CURSOR_EMPTY_EXH}.diag"
 assert_grep "SL-cursor-empty-retry-exhausted diag is_error" "is_error=true" "${OUT_CURSOR_EMPTY_EXH}.diag"
 assert_grep "SL-cursor-empty-retry-exhausted diag type" "type=rate_limit" "${OUT_CURSOR_EMPTY_EXH}.diag"
+if [[ -f "${OUT_CURSOR_EMPTY_EXH}.json" ]]; then
+    pass
+else
+    fail "SL-cursor-empty-retry-exhausted json sidecar exists"
+fi
+assert_equals "SL-cursor-empty-retry-exhausted json type" "rate_limit" "$(jq -r '.type // empty' "${OUT_CURSOR_EMPTY_EXH}.json" 2>/dev/null || echo "")"
+assert_equals "SL-cursor-empty-retry-exhausted json is_error" "true" "$(jq -r '.is_error // empty' "${OUT_CURSOR_EMPTY_EXH}.json" 2>/dev/null || echo "")"
+assert_equals "SL-cursor-empty-retry-exhausted json empty result" "" "$(jq -r '.result // ""' "${OUT_CURSOR_EMPTY_EXH}.json" 2>/dev/null || echo "MISSING")"
 rm -f "$SL_CURSOR_EMPTY_EXH_COUNT"
 
 # Case SL-cursor-empty-no-retry-sentinel: no_issues_found is non-empty .result.
@@ -2990,6 +3001,112 @@ assert_equals "SL-cursor-empty-retry-disabled stub invoked exactly 1 time" "1" "
 assert_equals "SL-cursor-empty-retry-disabled output marker" "CURSOR_EMPTY_RESPONSE" "$(cat "$OUT_CURSOR_EMPTY_OFF")"
 assert_grep "SL-cursor-empty-retry-disabled diag still written" "cursor-empty-result" "${OUT_CURSOR_EMPTY_OFF}.diag"
 rm -f "$SL_CURSOR_EMPTY_OFF_COUNT"
+
+# Case SL-cursor-transient8-then-empty: two exit-8 transients then exit-0 empty
+# .result — empty-result retries use a separate budget from exit-code transients.
+SL_CURSOR_T8_EMPTY_COUNT="$TMPDIR/sl-cursor-t8-empty-count.txt"
+printf '0' > "$SL_CURSOR_T8_EMPTY_COUNT"
+cat > "$STUB_BIN/cursor-t8-then-empty" <<STUB_CURSOR_T8_EMPTY
+#!/usr/bin/env bash
+count=\$(cat "${SL_CURSOR_T8_EMPTY_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_CURSOR_T8_EMPTY_COUNT}"
+if (( count <= 2 )); then
+    exit 8
+fi
+if (( count == 3 )); then
+    jq -nc '{result:"",type:"assistant",is_error:false,usage:{inputTokens:1,outputTokens:0}}'
+    exit 0
+fi
+jq -nc --arg r 't8-then-empty ok' '{result:\$r,usage:{inputTokens:1,outputTokens:2,cacheReadTokens:0,cacheWriteTokens:0}}'
+STUB_CURSOR_T8_EMPTY
+chmod +x "$STUB_BIN/cursor-t8-then-empty"
+ln -sf "$STUB_BIN/cursor-t8-then-empty" "$STUB_BIN/cursor"
+OUT_CURSOR_T8_EMPTY="$TMPDIR/cursor-t8-then-empty.txt"
+set +e
+CURSOR_API_KEY="sl-cursor-t8-empty-key" \
+    USER="${SERIAL_LOCK_USER}-t8-empty" \
+    LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_CURSOR_T8_EMPTY" --timeout 10 --prompt "sl-cursor-transient8-then-empty" >/dev/null 2>&1
+RC_CURSOR_T8_EMPTY=$?
+set -e
+assert_equals "SL-cursor-transient8-then-empty exits 0 after mixed retries" "0" "$RC_CURSOR_T8_EMPTY"
+SL_CURSOR_T8_EMPTY_ATTEMPTS=$(cat "$SL_CURSOR_T8_EMPTY_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-cursor-transient8-then-empty stub invoked exactly 4 times" "4" "$SL_CURSOR_T8_EMPTY_ATTEMPTS"
+assert_equals "SL-cursor-transient8-then-empty final output" "t8-then-empty ok" "$(cat "$OUT_CURSOR_T8_EMPTY")"
+rm -f "$SL_CURSOR_T8_EMPTY_COUNT"
+
+# Case SL-cursor-empty-then-auth: empty .result retry then auth failure retry.
+SL_CURSOR_EMPTY_AUTH_COUNT="$TMPDIR/sl-cursor-empty-auth-count.txt"
+printf '0' > "$SL_CURSOR_EMPTY_AUTH_COUNT"
+cat > "$STUB_BIN/cursor-empty-then-auth" <<STUB_CURSOR_EMPTY_AUTH
+#!/usr/bin/env bash
+count=\$(cat "${SL_CURSOR_EMPTY_AUTH_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_CURSOR_EMPTY_AUTH_COUNT}"
+if (( count == 1 )); then
+    jq -nc '{result:"",type:"assistant",is_error:false,usage:{inputTokens:1,outputTokens:0}}'
+    exit 0
+fi
+if (( count == 2 )); then
+    printf "Error: Password not found for account 'cursor-user' and service 'cursor-access-token'\n" >&2
+    exit 1
+fi
+printf '{"result":"empty-then-auth ok","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":0,"cacheWriteTokens":0}}\n'
+STUB_CURSOR_EMPTY_AUTH
+chmod +x "$STUB_BIN/cursor-empty-then-auth"
+ln -sf "$STUB_BIN/cursor-empty-then-auth" "$STUB_BIN/cursor"
+OUT_CURSOR_EMPTY_AUTH="$TMPDIR/cursor-empty-then-auth.txt"
+set +e
+USER="${SERIAL_LOCK_USER}-empty-auth" \
+    LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=2 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_CURSOR_EMPTY_AUTH" --timeout 10 --prompt "sl-cursor-empty-then-auth" >/dev/null 2>&1
+RC_CURSOR_EMPTY_AUTH=$?
+set -e
+assert_equals "SL-cursor-empty-then-auth exits 0 after empty then auth retries" "0" "$RC_CURSOR_EMPTY_AUTH"
+SL_CURSOR_EMPTY_AUTH_ATTEMPTS=$(cat "$SL_CURSOR_EMPTY_AUTH_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-cursor-empty-then-auth stub invoked exactly 3 times" "3" "$SL_CURSOR_EMPTY_AUTH_ATTEMPTS"
+assert_equals "SL-cursor-empty-then-auth final output" "empty-then-auth ok" "$(cat "$OUT_CURSOR_EMPTY_AUTH")"
+rm -f "$SL_CURSOR_EMPTY_AUTH_COUNT"
+
+# Case SL-quota-no-retry-cursor-empty: exit 0 with empty .result and usage-limit
+# stderr must not burn empty-result retries (parity with exit-8 quota guard).
+SL_QUOTA_CURSOR_EMPTY_COUNT="$TMPDIR/sl-quota-cursor-empty-count.txt"
+printf '0' > "$SL_QUOTA_CURSOR_EMPTY_COUNT"
+cat > "$STUB_BIN/cursor-quota-empty" <<STUB_QUOTA_CURSOR_EMPTY
+#!/usr/bin/env bash
+count=\$(cat "${SL_QUOTA_CURSOR_EMPTY_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_QUOTA_CURSOR_EMPTY_COUNT}"
+printf 'Error: you have hit your usage limit; try again later\n' >&2
+jq -nc '{result:"",type:"rate_limit",is_error:true,usage:{inputTokens:1,outputTokens:0}}'
+exit 0
+STUB_QUOTA_CURSOR_EMPTY
+chmod +x "$STUB_BIN/cursor-quota-empty"
+ln -sf "$STUB_BIN/cursor-quota-empty" "$STUB_BIN/cursor"
+OUT_QUOTA_CURSOR_EMPTY="$TMPDIR/quota-cursor-empty.txt"
+set +e
+CURSOR_API_KEY="sl-quota-cursor-empty-key" \
+    USER="${SERIAL_LOCK_USER}-quota-empty" \
+    LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_QUOTA_CURSOR_EMPTY" --timeout 10 --prompt "sl-quota-no-retry-cursor-empty" >/dev/null 2>&1
+RC_QUOTA_CURSOR_EMPTY=$?
+set -e
+assert_equals "SL-quota-no-retry-cursor-empty exits 0 with empty marker" "0" "$RC_QUOTA_CURSOR_EMPTY"
+SL_QUOTA_CURSOR_EMPTY_ATTEMPTS=$(cat "$SL_QUOTA_CURSOR_EMPTY_COUNT" 2>/dev/null || echo "0")
+assert_equals "SL-quota-no-retry-cursor-empty stub invoked exactly 1 time" "1" "$SL_QUOTA_CURSOR_EMPTY_ATTEMPTS"
+assert_equals "SL-quota-no-retry-cursor-empty output marker" "CURSOR_EMPTY_RESPONSE" "$(cat "$OUT_QUOTA_CURSOR_EMPTY")"
+rm -f "$SL_QUOTA_CURSOR_EMPTY_COUNT"
 
 # Case SL-quota-no-retry-cursor-8 (#3390 parity): a cursor usage-limit failure
 # (exit 8, in the transient set {4,8}) must NOT burn the transient-retry budget.
