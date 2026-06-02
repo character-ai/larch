@@ -51,9 +51,12 @@ Stdout is `KEY=value` only:
 - `VOTER_2_STATUS`, `VOTER_3_STATUS`
 - `VOTER_2_PARSE_RATE_STATUS`, `VOTER_3_PARSE_RATE_STATUS`
 - optional `DEGRADED_PANEL_WARNING`
+- optional `WARN=plan-voter slot N (<tool>) failed on usage-limit/quota` (#3378)
 - `DISPATCH_OK`
 
 Under `--no-fallback`, external voter slots emit `launched` when `ALL_OUTPUT_FILES` / `ALL_OUTPUT_TOOLS` from the waterfall name a non-empty final path (including collector retry paths such as `<manifest>-retry.txt` while the manifest path stays empty). `failed` means the final output file is missing, empty, or still narrative-only after the parse-rate retry path. `fallback` is reserved for legacy multi-phase waterfall runs where the final tool is Claude; plan-review voters do not promote `launched` to `fallback` when the tool remains codex or cursor. When fewer than three effective judges produce substantive vote output, the script may emit a degraded-panel warning.
+
+When the panel is degraded, the dispatcher checks whether a failed external voter (codex/cursor) left a usage-limit/quota signature in its `${path}.sidecar` or `${path}.diag` (via `external_is_quota_failure` from `lib-external-launcher-common.sh`). If so it appends the cause to the `DEGRADED_PANEL_WARNING` banner and emits a per-slot quota `WARN` line, so a quota-driven judge-count degradation is not silently attributed to a generic failure (#3378). The matching per-tool failure is also recorded to `execution-issues.md` by `launch-review.sh`.
 
 ## Primary callers
 

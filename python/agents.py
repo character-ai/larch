@@ -20,6 +20,10 @@ _REFUSAL_RE = re.compile(
     r"refused to|refusal|denied by policy|policy violation",
     re.IGNORECASE,
 )
+_QUOTA_RE = re.compile(
+    r"usage limit|rate[ _-]?limit|too many requests|quota|429 too many|over your usage",
+    re.IGNORECASE,
+)
 
 
 @dataclass(frozen=True)
@@ -64,6 +68,22 @@ def is_transient_infra_failure(
     if not path.is_file():
         return True
     return path.stat().st_size == 0
+
+
+def is_quota_failure(tool: str, sidecar: str | Path | None) -> bool:
+    """Port of external_is_quota_failure in lib-external-launcher-common.sh.
+
+    Detects a usage-limit / quota / rate-limit failure (an environmental
+    account condition, distinct from auth) for codex/cursor only (#3378).
+    """
+    if tool not in ("codex", "cursor"):
+        return False
+    if not sidecar:
+        return False
+    path = Path(sidecar)
+    if not path.is_file():
+        return False
+    return bool(_QUOTA_RE.search(path.read_text(encoding="utf-8", errors="replace")))
 
 
 def parse_launcher_exit_text(text: str) -> int:
@@ -127,6 +147,13 @@ def classify_launch_failure(
         return LaunchFailure(failure_class="health", reason="binary-missing")
     if auth_verdict == "auth":
         return LaunchFailure(failure_class="health", reason="auth")
+    # Usage-limit / quota: environmental account condition; class health so the
+    # CI-fix waterfall escalates to the next vendor instead of bailing (#3378).
+    # The explicit quota message takes precedence over the transient heuristic.
+    if (sidecar and is_quota_failure(tool, sidecar)) or (
+        output_file and is_quota_failure(tool, output_file)
+    ):
+        return LaunchFailure(failure_class="health", reason="quota")
     if output_file and is_transient_infra_failure(tool, launcher_exit, output_file):
         return LaunchFailure(failure_class="health", reason="health-probe")
     if launcher_exit == config.EXIT_TIMEOUT:

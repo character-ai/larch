@@ -32,8 +32,9 @@ condition can supply labels such as `warning` to avoid contradictory
 
 `--verdict` is an optional single-line classifier supplied by external
 launcher callers. Current launchers use `auth-retries-exhausted`,
-`non-auth`, or `unclassified` after their auth-retry loops finish. When
-omitted, no verdict suffix is written.
+`quota` (usage-limit/quota, distinct from auth — see
+`external_failure_verdict`), `non-auth`, or `unclassified` after their
+auth-retry loops finish. When omitted, no verdict suffix is written.
 
 `--retry-count` is an optional non-negative integer. External launchers
 pass the final auth-loop attempt count so terminal failure entries can

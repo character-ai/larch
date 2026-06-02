@@ -1140,6 +1140,71 @@ else
 fi
 rm -f "$SL_AUTH_STDERR_ONLY_COUNT"
 
+# Case SL-quota-codex (#3378): a codex usage-limit failure is recorded with a
+# distinct `quota` verdict (not `non-auth`) and does not trigger auth retries.
+SL_QUOTA_COUNT="$TMPDIR/sl-quota-count.txt"
+printf '0' > "$SL_QUOTA_COUNT"
+cat > "$STUB_BIN/codex-quota" <<STUB_QUOTA
+#!/usr/bin/env bash
+count=\$(cat "${SL_QUOTA_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_QUOTA_COUNT}"
+printf "You've hit your usage limit. Try again at 3:00 PM.\n" >&2
+exit 1
+STUB_QUOTA
+chmod +x "$STUB_BIN/codex-quota"
+ln -sf "$STUB_BIN/codex-quota" "$STUB_BIN/codex"
+IMPL_TMPDIR_QUOTA="$TMPDIR/quota-impl"
+mkdir -p "$IMPL_TMPDIR_QUOTA"
+OUT_QUOTA="$TMPDIR/quota.txt"
+set +e
+LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    IMPLEMENT_TMPDIR="$IMPL_TMPDIR_QUOTA" \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_QUOTA" --timeout 10 --prompt "sl-quota-codex" >/dev/null 2>&1
+RC_QUOTA=$?
+set -e
+assert_eq "SL-quota-codex exits 1 (usage-limit, no auth retry)" "1" "$RC_QUOTA"
+assert_eq "SL-quota-codex stub invoked exactly 1 time (no auth retry on quota)" "1" "$(cat "$SL_QUOTA_COUNT" 2>/dev/null || echo 0)"
+EI_QUOTA="$IMPL_TMPDIR_QUOTA/execution-issues.md"
+assert_regex "SL-quota-codex exact quota header" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 1 — quota — auth-retries=1, transient-retries=1\)\*\*:$' "$EI_QUOTA"
+rm -f "$SL_QUOTA_COUNT"
+
+# Case SL-quota-design-fallback (#3378): with IMPLEMENT_TMPDIR unset, a /design
+# voter failure is recorded to DESIGN_TMPDIR/execution-issues.md instead of being
+# silently dropped.
+SL_QUOTA_DESIGN_COUNT="$TMPDIR/sl-quota-design-count.txt"
+printf '0' > "$SL_QUOTA_DESIGN_COUNT"
+cat > "$STUB_BIN/codex-quota-design" <<STUB_QUOTA_DESIGN
+#!/usr/bin/env bash
+count=\$(cat "${SL_QUOTA_DESIGN_COUNT}" 2>/dev/null || echo 0)
+count=\$((count + 1))
+printf '%s' "\$count" > "${SL_QUOTA_DESIGN_COUNT}"
+printf "You've hit your usage limit. Try again at 3:00 PM.\n" >&2
+exit 1
+STUB_QUOTA_DESIGN
+chmod +x "$STUB_BIN/codex-quota-design"
+ln -sf "$STUB_BIN/codex-quota-design" "$STUB_BIN/codex"
+DESIGN_TMPDIR_QUOTA="$TMPDIR/quota-design"
+mkdir -p "$DESIGN_TMPDIR_QUOTA"
+OUT_QUOTA_DESIGN="$TMPDIR/quota-design.txt"
+set +e
+env -u IMPLEMENT_TMPDIR -u LARCH_EXECUTION_ISSUES_LOG \
+    LARCH_TRANSIENT_RETRY_DELAY=0 \
+    LARCH_EXTERNAL_AUTH_RETRIES=5 \
+    LARCH_EXTERNAL_SERIAL_LOCK_DELAY=0 \
+    DESIGN_TMPDIR="$DESIGN_TMPDIR_QUOTA" \
+    PATH="$STUB_BIN:$PATH" \
+    "$LAUNCHER" --output "$OUT_QUOTA_DESIGN" --timeout 10 --prompt "sl-quota-design" >/dev/null 2>&1
+RC_QUOTA_DESIGN=$?
+set -e
+assert_eq "SL-quota-design-fallback exits 1" "1" "$RC_QUOTA_DESIGN"
+EI_QUOTA_DESIGN="$DESIGN_TMPDIR_QUOTA/execution-issues.md"
+assert_regex "SL-quota-design-fallback records to DESIGN_TMPDIR execution-issues.md" '^-\s\*\*Step review Step 2 — codex-review failed \(exit 1 — quota — auth-retries=1, transient-retries=1\)\*\*:$' "$EI_QUOTA_DESIGN"
+rm -f "$SL_QUOTA_DESIGN_COUNT"
+
 # Case SL-transient-not-applied: stub exits 1 with non-empty sidecar content.
 # Exit code 1 is not in the transient allowlist → no transient retry, exactly
 # 1 invocation.

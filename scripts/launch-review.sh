@@ -60,13 +60,24 @@ fi
 append_launch_failure() {
     local site="$1" tool_label="$2" rc="$3" diag_file="$4" verdict="${5:-}" retry_count="${6:-}" transient_retry_count="${7:-}"
     [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
-    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] || return 0
+    # Resolve the execution-issues log. IMPLEMENT_TMPDIR (Step 5 code review)
+    # keeps its existing first precedence; DESIGN_TMPDIR is the /design voter
+    # fallback so usage-limit/quota voter failures are no longer silently
+    # dropped when only DESIGN_TMPDIR is set (#3378).
+    local _log=""
+    if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        _log="${IMPLEMENT_TMPDIR}/execution-issues.md"
+    elif [[ -n "${DESIGN_TMPDIR:-}" ]]; then
+        _log="${DESIGN_TMPDIR}/execution-issues.md"
+    else
+        return 0
+    fi
     local _args=()
     [[ -n "$verdict" ]] && _args+=(--verdict "$verdict")
     [[ -n "$retry_count" ]] && _args+=(--retry-count "$retry_count")
     [[ -n "$transient_retry_count" ]] && _args+=(--transient-retry-count "$transient_retry_count")
     "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-        --log "${IMPLEMENT_TMPDIR}/execution-issues.md" \
+        --log "$_log" \
         --site "$site" --tool "$tool_label" --exit-code "$rc" \
         --category "External Reviewer Issues" --output-file "$diag_file" \
         "${_args[@]}" --redact >/dev/null 2>&1 || true
@@ -593,8 +604,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
 done
 
 if (( EXIT_CODE != 0 )); then
-    _AUTH_VERDICT=$(external_auth_verdict "codex" "$SIDECAR")
-    [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
+    _VERDICT=$(external_failure_verdict "codex" "$SIDECAR")
     append_launch_failure "review Step 2" "codex-review" "$EXIT_CODE" "$SIDECAR" "$_VERDICT" "$AUTH_ATTEMPT" "$TRANSIENT_ATTEMPT"
 fi
 
@@ -1013,8 +1023,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
 done
 
 if (( EXIT_CODE != 0 )); then
-    _AUTH_VERDICT=$(external_auth_verdict "cursor" "$SIDECAR" "${OUTPUT}.diag")
-    [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
+    _VERDICT=$(external_failure_verdict "cursor" "$SIDECAR" "${OUTPUT}.diag")
     _FAILURE_OUTPUT="$SIDECAR"
     if [[ ! -s "$_FAILURE_OUTPUT" && -s "${OUTPUT}.diag" ]]; then
         _FAILURE_OUTPUT="${OUTPUT}.diag"

@@ -130,6 +130,62 @@ assert_classify_kv "parse sidecar" "other" "parse" \
 assert_classify_kv "generic non-zero" "other" "unknown" \
     external_classify_launch_failure 99 "/dev/null" "non-auth" 1 "cursor" "$NONEMPTY_OUTPUT"
 
+# --- external_is_quota_failure (#3378) ---
+_sidecar_quota="$TMPDIR_ROOT/sidecar-quota.txt"
+printf "You've hit your usage limit. Try again at 3:00 PM.\n" > "$_sidecar_quota"
+_sidecar_ratelimit="$TMPDIR_ROOT/sidecar-ratelimit.txt"
+printf 'Error: 429 Too Many Requests (rate-limit)\n' > "$_sidecar_ratelimit"
+_sidecar_nonquota="$TMPDIR_ROOT/sidecar-nonquota.txt"
+printf 'ordinary failure, no limit text\n' > "$_sidecar_nonquota"
+
+assert_returns "quota: codex usage-limit matches" 0 \
+    external_is_quota_failure "codex" "$_sidecar_quota"
+assert_returns "quota: cursor usage-limit matches" 0 \
+    external_is_quota_failure "cursor" "$_sidecar_quota"
+assert_returns "quota: 429 rate-limit matches" 0 \
+    external_is_quota_failure "codex" "$_sidecar_ratelimit"
+assert_returns "quota: non-quota text returns 1" 1 \
+    external_is_quota_failure "codex" "$_sidecar_nonquota"
+assert_returns "quota: unsupported tool returns 1" 1 \
+    external_is_quota_failure "claude" "$_sidecar_quota"
+assert_returns "quota: unreadable sidecar returns 1" 1 \
+    external_is_quota_failure "codex" "$TMPDIR_ROOT/does-not-exist.txt"
+# Auth and quota signatures are disjoint: an auth sidecar is not a quota match.
+assert_returns "quota: auth sidecar is not a quota match" 1 \
+    external_is_quota_failure "codex" "$_sidecar_auth"
+
+# --- external_classify_launch_failure quota branch (#3378) ---
+assert_classify_kv "quota sidecar → health/quota" "health" "quota" \
+    external_classify_launch_failure 1 "$_sidecar_quota" "non-auth" 1 "codex" "$EMPTY_OUTPUT"
+assert_classify_kv "quota in output file → health/quota" "health" "quota" \
+    external_classify_launch_failure 1 "$TMPDIR_ROOT/empty.sidecar" "non-auth" 1 "cursor" "$_sidecar_quota"
+
+# --- external_failure_verdict (#3378) ---
+assert_verdict() {
+    local label="$1" expected="$2"
+    shift 2
+    local got
+    got=$("$@" 2>/dev/null || true)
+    if [[ "$got" == "$expected" ]]; then
+        pass
+    else
+        fail "$label: expected '$expected', got '$got'"
+    fi
+}
+_sidecar_codex_auth="$TMPDIR_ROOT/sidecar-codex-auth.txt"
+printf 'Error: not logged in\n' > "$_sidecar_codex_auth"
+assert_verdict "verdict: auth precedence → auth-retries-exhausted" "auth-retries-exhausted" \
+    external_failure_verdict "codex" "$_sidecar_codex_auth"
+assert_verdict "verdict: quota → quota" "quota" \
+    external_failure_verdict "codex" "$_sidecar_quota"
+assert_verdict "verdict: generic readable → non-auth" "non-auth" \
+    external_failure_verdict "codex" "$_sidecar_nonquota"
+assert_verdict "verdict: no readable sidecar → unclassified" "unclassified" \
+    external_failure_verdict "codex" "$TMPDIR_ROOT/does-not-exist.txt"
+# Cursor passes two sidecars; quota detected in the second (.diag) sidecar.
+assert_verdict "verdict: quota in second sidecar → quota" "quota" \
+    external_failure_verdict "cursor" "$_sidecar_nonquota" "$_sidecar_quota"
+
 PLUGIN_ROOT="$TMPDIR_ROOT/plugin-root"
 mkdir -p "$PLUGIN_ROOT/scripts"
 cat > "$PLUGIN_ROOT/scripts/parse-codex-usage.sh" <<'EOF'

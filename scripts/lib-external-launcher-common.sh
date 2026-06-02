@@ -258,6 +258,35 @@ external_is_auth_failure() {
     esac
 }
 
+# Detect a usage-limit / quota / rate-limit failure from a launcher sidecar.
+# Distinct from external_is_auth_failure: a ChatGPT/Codex usage limit
+# ("You've hit your usage limit … try again at …") or an API rate-limit/quota
+# response is an environmental account condition, not an auth misconfiguration
+# and not a code-logic failure. Callers surface it as a separate `quota`
+# verdict/reason so a degraded judge/reviewer panel is not silently attributed
+# to a generic launch error (#3378). The signatures are disjoint from the auth
+# classifier above, so a sidecar never classifies as both auth and quota.
+# The pattern is intentionally recall-biased (bare `quota` with no word boundary):
+# this fix exists to STOP silent degradation, so a missed quota (false negative)
+# reintroduces the bug, while a false positive is low-harm (treated as a health
+# condition that waterfalls to the next vendor). Word boundaries (`\b`) are a GNU
+# grep extension and unreliable on BSD/macOS grep, and must stay byte-identical to
+# python/agents.py `_QUOTA_RE` for the bash↔python classifier parity test.
+external_is_quota_failure() {
+    local tool="$1"
+    local sidecar="$2"
+    [[ -r "$sidecar" ]] || return 1
+
+    case "$tool" in
+        codex|cursor)
+            grep -Eiq 'usage limit|rate[ _-]?limit|too many requests|quota|429 too many|over your usage' "$sidecar"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 external_is_transient_infra_failure() {
     local tool="$1" exit_code="$2" output_file="$4"
     # Check the output file (where the tool would write its actual response),
@@ -305,6 +334,32 @@ external_auth_verdict() {
     fi
 }
 
+# Map an external-launcher failure to the single-line operator-facing verdict
+# passed to append-tool-failure.sh --verdict. Encapsulates the auth→quota→raw
+# precedence so every launcher (codex/cursor review + codex CI) stays in parity
+# (#3378). Precedence:
+#   auth (after the in-launcher auth-retry loop exhausts) → `auth-retries-exhausted`
+#   usage-limit/quota                                     → `quota`
+#   otherwise                                             → the raw external_auth_verdict (`non-auth` | `unclassified`)
+# Accepts the same variadic sidecar list as external_auth_verdict so cursor
+# callers can pass both the wrapper sidecar and the `.diag` file.
+external_failure_verdict() {
+    local tool="$1"; shift
+    local verdict sidecar
+    verdict=$(external_auth_verdict "$tool" "$@")
+    if [[ "$verdict" == "auth" ]]; then
+        printf 'auth-retries-exhausted\n'
+        return 0
+    fi
+    for sidecar in "$@"; do
+        if external_is_quota_failure "$tool" "$sidecar"; then
+            printf 'quota\n'
+            return 0
+        fi
+    done
+    printf '%s\n' "$verdict"
+}
+
 # Print LAUNCHER_FAILURE_CLASS / LAUNCHER_FAILURE_REASON lines to stdout (KV
 # grammar, one line each). Single source of truth for CI launcher contracts;
 # enums pinned in tests — see skills/implement plan / test-lib-external-launcher-common.sh.
@@ -339,6 +394,19 @@ external_classify_launch_failure() {
     if [[ "$auth_verdict" == "auth" ]]; then
         printf 'LAUNCHER_FAILURE_CLASS=%s\n' "health"
         printf 'LAUNCHER_FAILURE_REASON=%s\n' "auth"
+        return 0
+    fi
+
+    # Usage-limit / quota is an environmental account condition (like auth),
+    # not a code-logic failure. Class `health` so CI-fix callers waterfall to
+    # the next vendor instead of bailing first-fixer-non-health (#3378). The
+    # explicit quota message takes precedence over the exit-code-based transient
+    # heuristic below. Check the sidecar first, then the tool output file
+    # (codex emits the limit text on stderr → sidecar in normal failures).
+    if { [[ -n "$sidecar" ]] && external_is_quota_failure "$tool" "$sidecar"; } \
+        || { [[ -n "$output_file" ]] && external_is_quota_failure "$tool" "$output_file"; }; then
+        printf 'LAUNCHER_FAILURE_CLASS=%s\n' "health"
+        printf 'LAUNCHER_FAILURE_REASON=%s\n' "quota"
         return 0
     fi
 

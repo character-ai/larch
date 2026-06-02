@@ -1744,7 +1744,7 @@ ship_pr_read_launcher_failure_class() {
 }
 
 # Canonical LAUNCHER_FAILURE_* token pin (tests grep): none health other auth
-# binary-missing health-probe timeout parse refusal unknown
+# quota binary-missing health-probe timeout parse refusal unknown
 
 # Revert tier-introduced working-tree deltas against a single snapshot captured at
 # run_ci_fix_vendor entry (not per-tier). Preserves paths dirty/untracked/staged

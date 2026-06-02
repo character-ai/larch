@@ -241,13 +241,22 @@ grep -q 'RENAMED=true' "$D_OK/.design-publish-result.env" || fail "happy RENAMED
 plan_pos=$(grep -n 'plan-block-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 marker_pos=$(grep -n 'design-reentry-marker-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 upsert_pos=$(grep -n 'upsert-diagrams' "$CALL_LOG" | head -1 | cut -d: -f1)
-publish_pos=$(grep -n 'design-log-publish' "$CALL_LOG" | head -1 | cut -d: -f1)
-if [[ -z "$plan_pos" || -z "$marker_pos" || -z "$upsert_pos" || -z "$publish_pos" ]]; then
-    fail "happy path call log missing plan/marker/upsert/publish entries"
-elif [[ "$plan_pos" -ge "$marker_pos" || "$marker_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$publish_pos" ]]; then
-    fail "happy path call-log ordering plan→marker→upsert→publish"
+# design-log-publish.sh is disabled pending the S3/R2 run-log migration (#3378);
+# restore the publish ordering position when the flush block in design-publish.sh
+# is re-enabled.
+if [[ -z "$plan_pos" || -z "$marker_pos" || -z "$upsert_pos" ]]; then
+    fail "happy path call log missing plan/marker/upsert entries"
+elif [[ "$plan_pos" -ge "$marker_pos" || "$marker_pos" -ge "$upsert_pos" ]]; then
+    fail "happy path call-log ordering plan→marker→upsert"
 else
-    pass "happy path call-log ordering plan→marker→upsert→publish"
+    pass "happy path call-log ordering plan→marker→upsert"
+fi
+# Flush disabled (#3378): design-log-publish.sh must NOT be invoked, and
+# PUBLISH_OK=true must still be forced so the rename tail proceeds.
+if grep -q 'design-log-publish' "$CALL_LOG" 2>/dev/null; then
+    fail "design-log-publish.sh should be skipped while GitHub flush disabled (#3378)"
+else
+    pass "design-log-publish.sh skipped while GitHub flush disabled (#3378)"
 fi
 marker_file="$D_OK_HOME/.cache/larch/sessions/design-completed-42-9999"
 [[ -f "$marker_file" ]] || fail "happy path reentry marker file missing at $marker_file"
@@ -292,6 +301,13 @@ else
     fail "rename should be skipped"
 fi
 
+# --- DISABLED pending S3/R2 run-log migration (#3378) ---
+# The three cases below exercise design-publish.sh's handling of
+# design-log-publish.sh failure envelopes (PUBLISH_OK=false / nonzero-no-KV /
+# exit-0-no-KV). That invocation is commented out in design-publish.sh while the
+# GitHub run-log flush is disabled, so the handling is unreachable. Re-enable
+# these together with the flush block in design-publish.sh.
+if false; then
 # --- PUBLISH_OK=false ---
 D_PFAIL="$TMP/pub-fail"
 setup_design_tmp "$D_PFAIL"
@@ -344,6 +360,7 @@ grep -q 'PUBLISH_OK=false' "$D_NO_PUB_KV/.design-publish-result.env" \
   || fail "exit 0 without PUBLISH_OK= must set PUBLISH_OK=false"
 grep -q 'design-log-publish.sh' "$D_NO_PUB_KV/execution-issues.md" 2>/dev/null \
   || fail "exit 0 without PUBLISH_OK= must append to execution-issues.md"
+fi  # end DISABLED block (#3378)
 
 # --- result-env write failure (exit 3) ---
 D_EXIT3="$TMP/exit3-result-env"
@@ -356,8 +373,12 @@ set -e
 assert_rc "result-env symlink refusal" 3 "$rc"
 [[ -L "$D_EXIT3/.design-publish-result.env" ]] \
   || fail "exit 3 must not replace symlink result env"
-grep -q 'design-log-publish' "$PUBLISH_LOG" \
-  || fail "exit 3 should still complete publish tail before result-env write"
+# Flush disabled (#3378): the publish tail still completes (rename runs under the
+# forced PUBLISH_OK=true) before the result-env write; assert via the rename log
+# rather than the now-skipped design-log-publish call. Restore the
+# design-log-publish PUBLISH_LOG assertion when the flush is re-enabled.
+grep -q 'tracking-issue-write' "$RENAME_LOG" \
+  || fail "exit 3 should still complete publish tail (rename) before result-env write"
 
 # --- if ! plan-block-write guard ---
 # shellcheck disable=SC2016 # Literal pattern checks unexpanded shell syntax in source.
