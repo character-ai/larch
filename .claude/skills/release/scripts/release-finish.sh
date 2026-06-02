@@ -98,7 +98,7 @@ else
     echo "ERROR=could not fetch origin main" >&2
     exit 1
   }
-  TARGET_OID="$(git rev-parse origin/main^{commit})"
+  TARGET_OID="$(git rev-parse "origin/main^{commit}")"
 fi
 
 at_version="$(git show "${TARGET_OID}:.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // empty')" || {

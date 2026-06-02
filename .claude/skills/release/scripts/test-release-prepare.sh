@@ -4,7 +4,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUBJECT="$SCRIPT_DIR/release-prepare.sh"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
 REAL_GIT="$(command -v git)"
 
 PASS=0

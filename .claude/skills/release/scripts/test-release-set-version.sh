@@ -4,7 +4,6 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SUBJECT="$SCRIPT_DIR/release-set-version.sh"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
 
 PASS=0
 FAIL=0

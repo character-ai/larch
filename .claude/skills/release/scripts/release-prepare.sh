@@ -106,14 +106,14 @@ if ! git rev-parse --verify "${BASELINE_TAG}^{commit}" >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! git rev-parse --verify main^{commit} >/dev/null 2>&1 \
-  || ! git rev-parse --verify origin/main^{commit} >/dev/null 2>&1; then
+if ! git rev-parse --verify "main^{commit}" >/dev/null 2>&1 \
+  || ! git rev-parse --verify "origin/main^{commit}" >/dev/null 2>&1; then
   echo "ERROR=stale-local-main"
   exit 1
 fi
 
-main_oid="$(git rev-parse main^{commit})"
-origin_main_oid="$(git rev-parse origin/main^{commit})"
+main_oid="$(git rev-parse "main^{commit}")"
+origin_main_oid="$(git rev-parse "origin/main^{commit}")"
 if [[ "$main_oid" != "$origin_main_oid" ]]; then
   echo "ERROR=stale-local-main"
   exit 1
