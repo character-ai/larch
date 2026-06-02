@@ -1,0 +1,10 @@
+## This invocation's parameters
+
+- Plan to implement: <TMPDIR>/plan.txt
+- Original feature description: <TMPDIR>/feature-description.txt
+- Write manifest.json (atomically) at: <TMPDIR>/codex-step2-out/manifest.json
+- Write qa-pending.json (atomically, only if status=needs_qa) at: <TMPDIR>/codex-step2-out/qa-pending.json
+- Working directory: /Users/zhupanov/larch4 (this is the repo root for git operations)
+
+
+Begin by inspecting the current branch state, then proceed per the system prompt above.
