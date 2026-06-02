@@ -49,11 +49,11 @@ grep -Fq 'Retired in Phase 1 (#3364)' "$REFS_DIR/rebase-rebump-subprocedure.md" 
   || fail "rebase-rebump-subprocedure.md must be a Phase 1 retirement stub"
 grep -Fq '### Step 8a' "$SKILL_MD" \
   && fail "SKILL.md must not retain a Step 8a changelog section after Phase 1 (#3364)"
-grep -Fq 'NEVER end the turn after `/bump-version`' "$SKILL_MD" \
+grep -Fq "NEVER end the turn after \`/bump-version\`" "$SKILL_MD" \
   && fail "SKILL.md must not retain retired NEVER #15 (post-/bump-version sub-procedure halt)"
 grep -Fq 'caller_kind=step8b_rebase' "$SKILL_MD" \
   && fail "SKILL.md must not retain retired NEVER #8 (step8b_rebase caller_kind pin)"
-grep -Fq 'NEVER call `/bump-version` as a direct Skill invocation' "$SKILL_MD" \
+grep -Fq "NEVER call \`/bump-version\` as a direct Skill invocation" "$SKILL_MD" \
   && fail "SKILL.md must not retain retired NEVER #11 (orchestrator /bump-version Skill pin)"
 grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-ship' "$SKILL_MD" \
   || fail "SKILL.md must retain 8-pre-ship phantom-probe invocation"
