@@ -31,6 +31,7 @@ set -euo pipefail
 
 PLUGIN_JSON="$PWD/.claude-plugin/plugin.json"
 BASE_REF=""
+HEAD_REF=""
 SKIP_IDEMPOTENCY=false
 
 err() {
@@ -43,6 +44,11 @@ while [[ $# -gt 0 ]]; do
     --base)
       [[ $# -ge 2 ]] || err "--base requires a ref"
       BASE_REF="$2"
+      shift 2
+      ;;
+    --head)
+      [[ $# -ge 2 ]] || err "--head requires a ref"
+      HEAD_REF="$2"
       shift 2
       ;;
     -h|--help)
@@ -83,6 +89,13 @@ else
     BASE=$(git merge-base origin/main HEAD 2>/dev/null || true)
   fi
   [[ -n "$BASE" ]] || err "could not resolve merge-base against main or origin/main"
+fi
+
+HEAD_COMPARE="HEAD"
+if [[ -n "$HEAD_REF" ]]; then
+  git rev-parse --verify "$HEAD_REF^{commit}" >/dev/null 2>&1 \
+    || err "could not resolve --head ref: $HEAD_REF"
+  HEAD_COMPARE="$(git rev-parse "$HEAD_REF^{commit}")"
 fi
 
 # Reasoning log path. When IMPLEMENT_TMPDIR is set (the /implement caller),
@@ -173,7 +186,7 @@ fi
 
 # Collect file-level changes in public surface.
 # Use -M for rename detection.
-NAME_STATUS=$(git diff -M --name-status "$BASE" HEAD -- skills agents 2>/dev/null || true)
+NAME_STATUS=$(git diff -M --name-status "$BASE" "$HEAD_COMPARE" -- skills agents 2>/dev/null || true)
 
 # Track evidence.
 MAJOR_REASONS=()
@@ -211,7 +224,7 @@ while IFS=$'\t' read -r status old new_or_blank; do
       # so wording-only edits to a flag bullet do not trigger MAJOR.
       if [[ "$old" == skills/*/SKILL.md || "$old" == agents/*.md ]]; then
         OLD_FILE=$(git show "$BASE:$old" 2>/dev/null || true)
-        NEW_FILE=$(git show "HEAD:$old" 2>/dev/null || true)
+        NEW_FILE=$(git show "${HEAD_COMPARE}:${old}" 2>/dev/null || true)
 
         # Extract the first YAML frontmatter block (between two `---` lines at
         # column 0). Returns empty if no frontmatter, or if the opening `---`
@@ -288,12 +301,12 @@ else
   BUMP_TYPE="PATCH"
 fi
 
-# Compute new version.
-IFS='.' read -r MAJ MIN PAT <<< "$CURRENT_VERSION"
+# Compute new version (ver_* names avoid clashing with the PATCH case arm / $PAT env).
+IFS='.' read -r ver_maj ver_min ver_pat <<< "$CURRENT_VERSION"
 case "$BUMP_TYPE" in
-  MAJOR) NEW_VERSION="$((MAJ + 1)).0.0" ;;
-  MINOR) NEW_VERSION="${MAJ}.$((MIN + 1)).0" ;;
-  PATCH) NEW_VERSION="${MAJ}.${MIN}.$((PAT + 1))" ;;
+  MAJOR) NEW_VERSION="$((10#${ver_maj} + 1)).0.0" ;;
+  MINOR) NEW_VERSION="${ver_maj}.$((10#${ver_min} + 1)).0" ;;
+  PATCH) NEW_VERSION="${ver_maj}.${ver_min}.$((10#${ver_pat} + 1))" ;;
 esac
 
 # Log reasoning.

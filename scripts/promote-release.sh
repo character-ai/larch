@@ -29,6 +29,11 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --repo)
             [[ $# -ge 2 ]] || { larch_err "ERROR: --repo requires a value"; exit 2; }
+            if [[ ! "$2" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+                larch_err "ERROR: invalid --repo value: $2"
+                usage
+                exit 2
+            fi
             REPO_ARGS=(--repo "$2")
             shift 2
             ;;
@@ -66,17 +71,17 @@ fi
 
 TAG="v${VERSION}"
 
-if ! gh release view "$TAG" "${REPO_ARGS[@]}" >/dev/null; then
+if ! gh release view "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} >/dev/null; then
     larch_err "ERROR: release $TAG not found."
     exit 1
 fi
 
-CURRENT_LATEST=$(gh release list "${REPO_ARGS[@]}" --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName') || exit 1
+CURRENT_LATEST=$(gh release list ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName') || exit 1
 
 if [[ "$CURRENT_LATEST" == "$TAG" ]]; then
-    IS_PRERELEASE=$(gh release view "$TAG" "${REPO_ARGS[@]}" --json isPrerelease --jq '.isPrerelease')
+    IS_PRERELEASE=$(gh release view "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --json isPrerelease --jq '.isPrerelease')
     if [[ "$IS_PRERELEASE" == "true" ]]; then
-        gh release edit "$TAG" "${REPO_ARGS[@]}" --prerelease=false || exit 1
+        gh release edit "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --prerelease=false || exit 1
         emit "$TAG is already the latest release; cleared pre-release flag."
     else
         emit "$TAG is already the latest release."
@@ -84,5 +89,5 @@ if [[ "$CURRENT_LATEST" == "$TAG" ]]; then
     exit 0
 fi
 
-gh release edit "$TAG" "${REPO_ARGS[@]}" --latest --prerelease=false || exit 1
+gh release edit "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --latest --prerelease=false || exit 1
 emit "Promoted $TAG to latest release."

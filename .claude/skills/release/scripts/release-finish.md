@@ -14,10 +14,16 @@ Publish tail for `/release`: resolve the squash-merge commit, verify `plugin.jso
 
 ## `TARGET_OID` resolution
 
-1. Prefer `gh pr view <pr> --json mergeCommit -q .mergeCommit.oid` when non-empty.
-2. Else `git fetch origin main` and `git rev-parse origin/main^{commit}`.
+1. Poll `gh pr view <pr> --json mergeCommit -q .mergeCommit.oid` with bounded backoff (up to ~10s).
+2. Missing `mergeCommit.oid` after merge → exit **1** with `ERROR=merge-commit-missing` (no `origin/main` fallback).
 
-Do not use a stale local `refs/heads/main` after the release branch merge.
+## Origin coupling
+
+`origin` remote owner/repo must match `--repo` before any git or `gh` write.
+
+## Notes redaction
+
+`--notes-file` is piped through `scripts/redact-secrets.sh` before `gh release create` / `edit`.
 
 ## Fail-closed version check
 
@@ -27,7 +33,8 @@ Do not use a stale local `refs/heads/main` after the release branch merge.
 
 - Remote tag on a **different** OID → exit **1** (fail closed).
 - Local/remote tag already on `TARGET_OID` → skip create; push only when remote lacks the tag.
-- Otherwise create annotated/lightweight tag at `TARGET_OID` and `git push origin`.
+- On push failure, re-check remote tag at `TARGET_OID` and continue when it matches (TOCTOU vs `release-tag.yaml`).
+- Otherwise create tag at `TARGET_OID` and `git push origin`.
 
 ## GitHub Release
 
@@ -40,7 +47,15 @@ Calls `scripts/promote-release.sh <version> --repo <repo>` so Latest matches the
 
 ## Outputs (stdout KV)
 
-`TARGET_OID`, `TAG`, `VERSION`, and `RELEASE_ACTION=create|edit`.
+On exit **0** only (after `promote-release.sh` succeeds): `RELEASE_ACTION=create|edit`, then `TARGET_OID`, `TAG`, `VERSION`. Promote failure exits **1** before any success KV lines.
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Tag/release/promote succeeded; full KV set on stdout |
+| 1 | Operational/`gh`/git/promote failure |
+| 2 | Usage or validation error |
 
 ## Edit-in-sync
 

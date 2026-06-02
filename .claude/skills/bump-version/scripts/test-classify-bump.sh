@@ -153,10 +153,10 @@ echo tweak >> "$repo/skills/extra/SKILL.md"
 git -C "$repo" add skills/extra/SKILL.md
 git -C "$repo" commit -q -m "Tweak extra (#100)"
 out=$(cd "$repo" && IMPLEMENT_TMPDIR="$TMPDIR_BASE/t6impl" bash "$SUBJECT" --base v1.0.0 2>/dev/null)
-if printf '%s\n' "$out" | grep -q '^BUMP_TYPE=NONE$'; then
-    fail "--base must not return NONE over trailing bump: $out"
-else
+if printf '%s\n' "$out" | grep -q '^BUMP_TYPE=MINOR$'; then
     ok
+else
+    fail "--base over trailing bump should be MINOR: $out"
 fi
 
 total=$((PASS + FAIL))

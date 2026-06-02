@@ -28,23 +28,24 @@ Resolve `REPO` when `--repo` is omitted:
 REPO=$(scripts/resolve-repo.sh 2>/dev/null || echo "character-ai/larch")
 ```
 
-Guard (abort before prepare when not `--dry-run`):
+Guard (abort before prepare):
 
-- Current branch MUST be `main`.
-- Working tree MUST be clean (`git status --porcelain` empty).
+- Current branch MUST be `main` (including when `--dry-run`).
+- Working tree MUST be clean (`git status --porcelain` empty), except `--dry-run` may run with a dirty tree only when the operator accepts inconsistent preview output.
 
 On failure, print a clear operator-visible error and stop.
 
 ## Step 2 — Prepare (read-only)
 
 ```bash
-PREPARE_OUT="$PWD/.claude/skills/release/scripts/release-prepare.sh" \
+PREPARE_DIR="$(mktemp -d)"
+prepare_out=$("$PWD/.claude/skills/release/scripts/release-prepare.sh" \
   --repo "$REPO" \
-  ${BUMP_FLAG:+--bump "$BUMP_OVERRIDE"} \
-  --out-dir "$(mktemp -d)"
+  ${BUMP_OVERRIDE:+--bump "$BUMP_OVERRIDE"} \
+  --out-dir "$PREPARE_DIR")
 ```
 
-Parse stdout for `BASELINE_TAG`, `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, `PR_LIST_FILE`. On exit **1**, parse `ERROR=` (e.g. `no-unique-latest-release`, `stale-local-main`, `baseline-tag-unresolvable`) and stop.
+Parse `prepare_out` for `BASELINE_TAG`, `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, `PR_LIST_FILE`. On exit **1**, parse `ERROR=` from stdout (e.g. `no-unique-latest-release`, `stale-local-main`, `baseline-tag-unresolvable`, `pr-metadata-incomplete`) and stop.
 
 When `PR_COUNT=0`, warn that no PRs merged since the last Latest release.
 
@@ -116,7 +117,9 @@ Repo-root helpers referenced from steps above:
 
 - `scripts/resolve-repo.sh`, `scripts/redact-secrets.sh`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `scripts/promote-release.sh` (contract: `scripts/promote-release.md`)
 
-Offline harnesses (Makefile: `test-release-prepare`, `test-release-set-version`):
+Offline harnesses (Makefile: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`):
 
 - `test-release-prepare.sh` (contract: `test-release-prepare.md`)
 - `test-release-set-version.sh` (contract: `test-release-set-version.md`)
+- `test-release-finish.sh` (contract: `test-release-finish.md`)
+- `scripts/test-promote-release.sh` (contract: `scripts/test-promote-release.md`)

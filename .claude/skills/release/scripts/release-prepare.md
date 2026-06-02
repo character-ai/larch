@@ -30,11 +30,24 @@ Tab-separated columns: `number`, `title`, `labels` (comma-separated), `author`, 
 
 ## Semantics
 
-1. **Latest baseline** — `gh release list --json tagName,isLatest`. Exactly one `isLatest=true` required; otherwise `ERROR=no-unique-latest-release` and `LATEST_COUNT=<n>` on exit **1**.
-2. **Fetch + verify tag** — `git fetch origin main --tags` (or fetch the tag ref); `git rev-parse --verify "$BASELINE_TAG^{commit}"` or `ERROR=baseline-tag-unresolvable`.
-3. **Stale local main** — after fetch, `main^{commit}` must equal `origin/main^{commit}` or `ERROR=stale-local-main`.
-4. **PR window** — `git log "$BASELINE_TAG"..origin/main` subjects; PR numbers from trailing `(#N)`.
-5. **Bump** — `classify-bump.sh --base "$BASELINE_TAG"` on repo root; optional `--bump` overrides type and recomputes `NEW_VERSION`.
+1. **Latest baseline** — paginated `gh api /repos/{owner}/{repo}/releases`; exactly one `is_latest=true` required; otherwise `ERROR=no-unique-latest-release` and `LATEST_COUNT=<n>` on exit **1**.
+2. **Origin coupling** — `origin` remote owner/repo must match `--repo` or `ERROR=origin-repo-mismatch`.
+3. **Fetch + verify tag** — `git fetch origin main --tags` must succeed; `git rev-parse --verify "$BASELINE_TAG^{commit}"` or `ERROR=baseline-tag-unresolvable`.
+4. **Stale local main** — after fetch, `main^{commit}` must equal `origin/main^{commit}` or `ERROR=stale-local-main`.
+5. **PR window** — `git log "$BASELINE_TAG"..origin/main` subjects; PR numbers from trailing `(#N)`. Any `gh pr view` failure → `ERROR=pr-metadata-incomplete` (no silent drops).
+6. **Bump** — `classify-bump.sh --base "$BASELINE_TAG" --head origin/main` from repo root; optional `--bump` overrides type and recomputes `NEW_VERSION` (decimal-forced `10#` arithmetic).
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| 0 | Success KV lines on stdout |
+| 1 | Operational failure; `ERROR=<token>` on stdout, human detail on stderr |
+
+## In-flight / duplicate cut guards
+
+- Open `release/v*` PR on `--repo` → `ERROR=release-cut-in-progress`.
+- `origin/main` version ahead of baseline with a `Release v*` commit → `ERROR=release-already-cut`.
 
 ## Zero PRs
 

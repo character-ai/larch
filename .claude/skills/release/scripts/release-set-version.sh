@@ -13,11 +13,11 @@ semver_lt() {
   local a_maj a_min a_pat b_maj b_min b_pat
   IFS='.' read -r a_maj a_min a_pat <<< "$1"
   IFS='.' read -r b_maj b_min b_pat <<< "$2"
-  if [[ $a_maj -lt $b_maj ]]; then return 0; fi
-  if [[ $a_maj -gt $b_maj ]]; then return 1; fi
-  if [[ $a_min -lt $b_min ]]; then return 0; fi
-  if [[ $a_min -gt $b_min ]]; then return 1; fi
-  if [[ $a_pat -lt $b_pat ]]; then return 0; fi
+  if (( 10#${a_maj} < 10#${b_maj} )); then return 0; fi
+  if (( 10#${a_maj} > 10#${b_maj} )); then return 1; fi
+  if (( 10#${a_min} < 10#${b_min} )); then return 0; fi
+  if (( 10#${a_min} > 10#${b_min} )); then return 1; fi
+  if (( 10#${a_pat} < 10#${b_pat} )); then return 0; fi
   return 1
 }
 

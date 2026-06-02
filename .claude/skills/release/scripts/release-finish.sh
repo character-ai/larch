@@ -5,18 +5,26 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
-PROMOTE_RELEASE="$REPO_ROOT/scripts/promote-release.sh"
+PROMOTE_RELEASE="${LARCH_RELEASE_FINISH_PROMOTE_SCRIPT:-$REPO_ROOT/scripts/promote-release.sh}"
+GITHUB_REMOTE_REPO="$REPO_ROOT/scripts/github-remote-repo.sh"
+REDACT_SECRETS="$REPO_ROOT/scripts/redact-secrets.sh"
 
 VERSION=""
 NOTES_FILE=""
 REPO=""
 PR_NUMBER=""
+REDACTED_NOTES_FILE=""
 
 usage() {
   cat <<'USAGE' >&2
 Usage: release-finish.sh --version <X.Y.Z> --notes-file <path> --repo OWNER/REPO --pr <N>
 USAGE
 }
+
+cleanup() {
+  [[ -n "$REDACTED_NOTES_FILE" && -f "$REDACTED_NOTES_FILE" ]] && rm -f "$REDACTED_NOTES_FILE"
+}
+trap cleanup EXIT
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -88,23 +96,69 @@ if ! command -v git >/dev/null 2>&1; then
   exit 1
 fi
 
-TAG="v${VERSION}"
-
-merge_oid="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)"
-if [[ -n "$merge_oid" && "$merge_oid" != "null" ]]; then
-  TARGET_OID="$merge_oid"
-else
-  git fetch origin main 2>/dev/null || {
-    echo "ERROR=could not fetch origin main" >&2
-    exit 1
-  }
-  TARGET_OID="$(git rev-parse "origin/main^{commit}")"
+if [[ ! -x "$REDACT_SECRETS" ]]; then
+  echo "ERROR=redact-secrets.sh not found" >&2
+  exit 1
 fi
 
-at_version="$(git show "${TARGET_OID}:.claude-plugin/plugin.json" 2>/dev/null | jq -r '.version // empty')" || {
-  echo "ERROR=could not read plugin.json at TARGET_OID" >&2
+cd "$REPO_ROOT"
+
+if [[ ! -x "$GITHUB_REMOTE_REPO" ]]; then
+  echo "ERROR=github-remote-repo.sh not found" >&2
   exit 1
-}
+fi
+
+if [[ -n "${LARCH_RELEASE_FINISH_ORIGIN_REPO:-}" ]]; then
+  origin_repo="$LARCH_RELEASE_FINISH_ORIGIN_REPO"
+else
+  origin_repo="$(bash "$GITHUB_REMOTE_REPO" origin 2>/dev/null)" || {
+    echo "ERROR=origin-remote-unresolvable" >&2
+    exit 1
+  }
+fi
+if [[ "$origin_repo" != "$REPO" ]]; then
+  echo "ERROR=origin-repo-mismatch: origin ($origin_repo) != --repo ($REPO)" >&2
+  exit 1
+fi
+
+REDACTED_NOTES_FILE="$(mktemp)"
+if ! "$REDACT_SECRETS" < "$NOTES_FILE" > "$REDACTED_NOTES_FILE"; then
+  echo "ERROR=notes redaction failed" >&2
+  exit 1
+fi
+
+TAG="v${VERSION}"
+
+merge_oid=""
+for _attempt in 1 2 3 4 5; do
+  merge_oid="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)"
+  merge_oid="${merge_oid//$'\n'/}"
+  merge_oid="${merge_oid%% *}"
+  if [[ -n "$merge_oid" && "$merge_oid" != "null" ]]; then
+    break
+  fi
+  sleep 2
+done
+
+if [[ -z "$merge_oid" || "$merge_oid" == "null" ]]; then
+  echo "ERROR=merge-commit-missing" >&2
+  exit 1
+fi
+
+TARGET_OID="$merge_oid"
+
+if [[ -n "${LARCH_RELEASE_FINISH_AT_VERSION:-}" ]]; then
+  at_version="$LARCH_RELEASE_FINISH_AT_VERSION"
+else
+  plugin_blob="$(git show "${TARGET_OID}:.claude-plugin/plugin.json" 2>/dev/null)" || {
+    echo "ERROR=could not read plugin.json at TARGET_OID" >&2
+    exit 1
+  }
+  at_version="$(printf '%s\n' "$plugin_blob" | jq -r '.version // empty' 2>/dev/null)" || {
+    echo "ERROR=could not parse plugin.json at TARGET_OID" >&2
+    exit 1
+  }
+fi
 
 if [[ "$at_version" != "$VERSION" ]]; then
   echo "ERROR=version mismatch at TARGET_OID: expected $VERSION got ${at_version:-<empty>}" >&2
@@ -130,15 +184,28 @@ else
 fi
 
 if [[ -z "$remote_oid" ]]; then
-  git push origin "$TAG"
+  remote_oid="$(git ls-remote origin "refs/tags/${TAG}" 2>/dev/null | awk '{print $1; exit}')"
+  remote_oid="${remote_oid:-}"
 fi
 
+if [[ -z "$remote_oid" ]]; then
+  if ! git push origin "$TAG" 2>/dev/null; then
+    remote_oid="$(git ls-remote origin "refs/tags/${TAG}" 2>/dev/null | awk '{print $1; exit}')"
+    remote_oid="${remote_oid:-}"
+    if [[ "$remote_oid" != "$TARGET_OID" ]]; then
+      echo "ERROR=tag push failed and remote tag missing or on wrong OID" >&2
+      exit 1
+    fi
+  fi
+fi
+
+RELEASE_ACTION=""
 if gh release view "$TAG" --repo "$REPO" >/dev/null 2>&1; then
-  gh release edit "$TAG" --repo "$REPO" --title "$TAG" --notes-file "$NOTES_FILE" || exit 1
-  echo "RELEASE_ACTION=edit"
+  gh release edit "$TAG" --repo "$REPO" --title "$TAG" --notes-file "$REDACTED_NOTES_FILE" || exit 1
+  RELEASE_ACTION=edit
 else
-  gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes-file "$NOTES_FILE" || exit 1
-  echo "RELEASE_ACTION=create"
+  gh release create "$TAG" --repo "$REPO" --title "$TAG" --notes-file "$REDACTED_NOTES_FILE" || exit 1
+  RELEASE_ACTION=create
 fi
 
 if [[ ! -x "$PROMOTE_RELEASE" ]]; then
@@ -146,8 +213,12 @@ if [[ ! -x "$PROMOTE_RELEASE" ]]; then
   exit 1
 fi
 
-"$PROMOTE_RELEASE" "$VERSION" --repo "$REPO"
+if ! "$PROMOTE_RELEASE" "$VERSION" --repo "$REPO"; then
+  echo "ERROR=promote-release-failed" >&2
+  exit 1
+fi
 
+echo "RELEASE_ACTION=$RELEASE_ACTION"
 echo "TARGET_OID=$TARGET_OID"
 echo "TAG=$TAG"
 echo "VERSION=$VERSION"
