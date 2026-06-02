@@ -45,12 +45,24 @@ branch by:
    copy through without that JSON trim; then `redact-tmpdir-paths.sh` and
    `redact-secrets.sh` (in-process pipeline, same redactors as
    `larch_log_redact_file` without the larch-log stdout contract).
-6. Committing `larch-logs/design/<RUN_ID>/` with message containing `[skip ci]`.
-   `--reason pause` uses `pause design run` in the subject; the default
-   `--reason final` uses `flush design run`.
+6. Committing `larch-logs/design/<RUN_ID>/`. The commit subject carries no
+   `[skip ci]` marker, so CI runs on the publish PR. `--reason pause` uses
+   `pause design run` in the subject; the default `--reason final` uses
+   `flush design run`.
 7. Pushing the disposable branch, creating a PR with `gh pr create --head`
-   (not `create-pr.sh`), squash-merging with `gh pr merge --squash --admin
-   --delete-branch`, then `git worktree remove --force`.
+   (not `create-pr.sh`), waiting for the PR's required status checks via
+   `gh pr checks --required --watch --fail-fast`, squash-merging with
+   `gh pr merge --squash --admin --delete-branch` once they pass (the publish
+   refuses to merge when a required check fails), then
+   `git worktree remove --force`. `--admin` is retained because the repo's
+   review ruleset has no bot reviewer, so a server-side `--auto` merge would be
+   enabled but never complete; CI now gates the merge via the required-check
+   wait rather than via `[skip ci]` being absent alone. The publish fails closed
+   on any non-zero wait result — a failed required check, or a repo with no
+   required checks at all, yields `PUBLISH_OK=false` rather than an unchecked
+   merge. The wait is intentionally unbounded (no local timeout machinery yet —
+   deferred to the `ship-pr.sh` Python migration); GitHub's per-job timeouts
+   bound the realistic wait.
 
 ## Pause Reason
 
@@ -59,7 +71,7 @@ branch by:
 
 Pause publishes differ in four ways:
 
-- Commit subject: `chore(larch-logs): pause design run <RUN_ID> [skip ci]`.
+- Commit subject: `chore(larch-logs): pause design run <RUN_ID>`.
 - Manifest: when there is a non-empty commit to publish, `manifest.json` is
   updated with `.paused = true`. The empty-porcelain early-exit path does not
   force a manifest rewrite; the issue-body `larch:design-pause` marker remains
@@ -91,8 +103,10 @@ On stdout (parseable `KEY=value` lines):
 **Exit code**: `PUBLISH_OK=true|false` remains the stdout contract. Exit `0` on
 all expected failures before a successful `git push`, and on post-push paths
 that still parse cleanly via stdout alone. Exit `1` on `git push` failure,
-`gh pr create` failure after push (when list recovery also fails), and
-`gh pr merge` failure after a successful create — while still emitting
+`gh pr create` failure after push (when list recovery also fails), a required
+status check that does not pass during the `gh pr checks --required --watch`
+gate (the publish refuses to merge), and `gh pr merge` failure after a
+successful create — while still emitting
 `PUBLISH_OK=false` (and `RECOVERY_BRANCH=…` when applicable). Callers that
 already parse `PUBLISH_OK` need no change; callers that want fail-closed
 signaling can additionally check the exit code.
@@ -103,7 +117,7 @@ exclusively under `breadcrumbs/` via `larch_log_publish_breadcrumbs_shared`.
 
 | Key | Meaning |
 |-----|---------|
-| `PUBLISH_OK` | `true` when the publish + merge tail succeeded; `false` on validation failure, init/copy/redact failure, git/gh errors, or merge refusal (`policy_denied`, etc.). |
+| `PUBLISH_OK` | `true` when the publish succeeded and the squash `--admin` merge completed after the required CI checks passed; `false` on validation failure, init/copy/redact failure, git/gh errors, a required check that did not pass during the CI-wait gate, or merge refusal. |
 | `PR_NUMBER` | GitHub PR number when known (may be set when `PUBLISH_OK=false` if create succeeded but merge failed). |
 | `PR_URL` | PR URL when known. |
 | `RECOVERY_BRANCH` | Recovery ref name when `PUBLISH_OK=false`: `larch-log-design-<RUN_ID>` after a successful push that still needs cleanup, or `larch-log-design-recovery-<RUN_ID>` when push failed and the local commit was preserved only in the consumer clone. |
@@ -119,14 +133,20 @@ empty `PR_NUMBER` / `PR_URL`.
 Validates `$DESIGN_TMPDIR` is under the allowlist via `larch_design_tmpdir_validate` immediately after the required-arg check and before any worktree or log-root mkdir; failure routes through `emit_publish_result false; exit 0` to preserve `PUBLISH_OK=false`.
 
 Design log bytes follow the same tmpdir + secrets redaction pipeline as
-implement round artifacts. `gh pr merge --admin` bypasses branch-protection
-rules that require reviews or status checks; it requires a `gh` OAuth token
-with `repo` (or equivalent) including admin-merge privileges. Consumer orgs that
-forbid admin merges will see merge failures (`PUBLISH_OK=false`) while the
-commit may still exist on the pushed disposable branch — operators reconcile
-manually. When `git push` succeeds but PR create/merge fails, stderr notes the
-remote branch and stdout may include `RECOVERY_BRANCH=…` for automation. See
-`SECURITY.md` for the consolidated note.
+implement round artifacts. Dropping the `[skip ci]` marker means CI runs on the
+publish PR; the script then waits for the PR's required status checks
+(`gh pr checks --required --watch --fail-fast`) and refuses to merge if any do
+not pass, so CI gates the merge. The merge itself is `gh pr merge --squash
+--admin --delete-branch`: `--admin` bypasses the review-required branch
+protection (this repo's review ruleset has no bot reviewer, so a server-side
+`--auto` merge would enable but never complete), and requires a `gh` OAuth token
+with `repo` (or equivalent) including admin-merge privileges. It bypasses only
+review — not CI, which the wait above has already enforced. Orgs that forbid
+admin merges see `PUBLISH_OK=false` while the disposable branch may still exist
+remotely — operators reconcile manually. When `git push` succeeds but the
+CI-wait, PR create, or merge fails, stderr notes the remote branch and stdout
+may include `RECOVERY_BRANCH=…` for automation. See `SECURITY.md` for the
+consolidated note.
 
 ## plan-review allowlist
 

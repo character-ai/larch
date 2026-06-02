@@ -11,9 +11,9 @@
 # Why this exists (incident): a Cursor API key (`crsr_…`, captured from a
 # `cursor agent --api-key crsr_… --workspace …` command line) reached committed
 # larch-logs because the per-file redaction filter `redact-secrets.sh` has no
-# Cursor pattern, the `/design` flush commits with `[skip ci]` (so CI's
-# gitleaks/trufflehog never run on it), and `.gitleaks.toml` historically
-# allowlisted `larch-logs/`. This gate is larch's own scrubber/linter, invoked
+# Cursor pattern, the `/design` flush historically committed with `[skip ci]`
+# (so CI's gitleaks/trufflehog did not run on it), and `.gitleaks.toml`
+# historically allowlisted `larch-logs/`. This gate is larch's own scrubber/linter, invoked
 # right before every log flush, so it does not depend on any third-party
 # scanner being installed in consumer repos.
 #
