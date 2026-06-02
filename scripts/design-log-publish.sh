@@ -589,6 +589,32 @@ if ! mv -f "$mf_tmp" "$MF"; then
     exit 0
 fi
 
+# Pre-flush secret gate: scrub secret-shaped values (Cursor keys et al.) from
+# the staged run tree before commit. Fail-closed on scrub failure. On a real
+# redaction, propagate the count via emit_kv SECRET_SCRUB_VIOLATIONS so the
+# /design report can warn the operator to rotate the exposed credential.
+scrub_gate="$SCRIPT_DIR/scrub-log-secrets.sh"
+if [[ ! -x "$scrub_gate" ]]; then
+    larch_err "design-log-publish: secret scrub gate missing: $scrub_gate"
+    emit_publish_result false
+    exit 0
+fi
+set +e
+scrub_out="$("$scrub_gate" "$RUN_DEST")"
+scrub_rc=$?
+set -e
+if [[ "$scrub_rc" -ne 0 ]]; then
+    larch_err "design-log-publish: secret scrub gate failed (rc=$scrub_rc) for $RUN_DEST; refusing to flush"
+    emit_publish_result false
+    exit 0
+fi
+scrub_n="$(printf '%s\n' "$scrub_out" | sed -n 's/^LARCH_SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
+case "${scrub_n:-}" in ''|*[!0-9]*) scrub_n=0 ;; esac
+if [[ "$scrub_n" -gt 0 ]]; then
+    larch_err "design-log-publish: WARNING — redacted $scrub_n secret-shaped value(s) from design run $RUN_ID logs before flush; ROTATE the affected credential(s)"
+    emit_kv SECRET_SCRUB_VIOLATIONS "$scrub_n"
+fi
+
 rel="larch-logs/design/$RUN_ID"
 _porcelain=""
 if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -- "$rel" 2>&1); then

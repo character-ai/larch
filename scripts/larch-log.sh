@@ -528,6 +528,25 @@ case "$cmd" in
             larch_log_copy_run_tree_without_breadcrumbs "$src_path" "$repo_path"
         fi
         larch_log_publish_breadcrumbs "$breadcrumbs_source" "$repo_path"
+        # Pre-flush secret gate: scrub secret-shaped values (Cursor keys et al.)
+        # from the staged run tree before commit. Fail-closed — refuse to commit
+        # if the tree cannot be made clean (missing gate, scrub failure, or a
+        # secret that survived scrubbing). On a real redaction, surface the count
+        # on both the stdout contract (SECRET_SCRUB_VIOLATIONS) and stderr so
+        # callers can warn the operator to rotate the exposed credential.
+        scrub_gate="$SCRIPT_DIR/scrub-log-secrets.sh"
+        [ -x "$scrub_gate" ] || larch_log_fail 3 "secret scrub gate missing: $scrub_gate"
+        set +e
+        scrub_out="$("$scrub_gate" "$repo_path")"
+        scrub_rc=$?
+        set -e
+        [ "$scrub_rc" -eq 0 ] || larch_log_fail 3 "secret scrub gate failed (rc=$scrub_rc) for $repo_path; refusing to commit"
+        scrub_n="$(printf '%s\n' "$scrub_out" | sed -n 's/^LARCH_SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
+        case "${scrub_n:-}" in ''|*[!0-9]*) scrub_n=0 ;; esac
+        if [ "$scrub_n" -gt 0 ]; then
+            printf 'SECRET_SCRUB_VIOLATIONS=%s\n' "$scrub_n"
+            printf 'larch-log.sh: WARNING — scrub-log-secrets.sh redacted %s secret-shaped value(s) from %s run %s logs before flush; ROTATE the affected credential(s)\n' "$scrub_n" "$SKILL" "$RUN_ID" >&2
+        fi
         # Scope all git operations to exactly this run's directory, not the broader
         # skill parent. Building the pathspec explicitly hardens add/status/diff
         # against prefix math mistakes and untracked-file omissions.

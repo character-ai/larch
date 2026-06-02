@@ -260,6 +260,11 @@ if [[ -n "$SESSION_ID" ]]; then
     set -e
     PUBLISH_OK=""
     parse_kv_from_output "$_publish_out"
+    _scrub_n="$(printf '%s\n' "$_publish_out" | sed -n 's/^SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
+    case "${_scrub_n:-}" in ''|*[!0-9]*) _scrub_n=0 ;; esac
+    if [[ "$_scrub_n" -gt 0 ]]; then
+        add_warn "**⚠ SECURITY: scrub-log-secrets.sh redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
+    fi
     if [[ "$_publish_rc" -ne 0 ]] && [[ "$_publish_out" != *$'PUBLISH_OK='* ]]; then
         PUBLISH_OK=false
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \

@@ -220,6 +220,12 @@ run_log_flush() {
             LOG_FLUSH_STATUS=degraded
             append_best_effort_failure "step-7a" "larch-log.sh commit" "$rc" "$out_file"
         fi
+        # Surface a pre-flush secret-scrub on the success path too: the gate
+        # emits SECRET_SCRUB_VIOLATIONS=<n> and a banner into the captured
+        # commit output even when the commit itself succeeds.
+        if grep -qE '^SECRET_SCRUB_VIOLATIONS=[1-9]' "$out_file" 2>/dev/null; then
+            append_failure "Warnings" "step-7a" "scrub-log-secrets.sh redacted secret-shaped value(s) from run logs before flush — ROTATE the affected credential(s)" "0" "$out_file"
+        fi
     elif [ "$LOG_FLUSH_STATUS" = "ok" ]; then
         LOG_FLUSH_STATUS=skipped-no-logs-commit
     fi

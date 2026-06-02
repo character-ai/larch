@@ -328,6 +328,14 @@ exclude = [
   "scripts/test-larch-logs-batches.md",
   "scripts/test-larch-log-write-round.sh",
   "scripts/test-larch-log-write-round.md",
+  # scripts/test-scrub-log-secrets.sh is the Makefile-only regression harness for
+  # scripts/scrub-log-secrets.sh (the pre-flush secret gate). The gate itself is
+  # reached via "$SCRIPT_DIR/scrub-log-secrets.sh" from larch-log.sh /
+  # design-log-publish.sh and is not flagged; the harness is referenced only from
+  # Makefile (test-scrub-log-secrets target) and its sibling contract, matching
+  # the same Makefile-only pattern as the other run-log test-* harnesses above.
+  "scripts/test-scrub-log-secrets.sh",
+  "scripts/test-scrub-log-secrets.md",
   # Step 1 launcher split: compose-plan-goals-test.sh is now invoked by
   # scripts/run-step1-plan-log.sh rather than directly from SKILL.md, and
   # agent-lint does not follow Bash-to-Bash launcher edges. The launcher
