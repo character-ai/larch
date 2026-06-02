@@ -88,6 +88,16 @@ def test_compose_pr_body_appends_closes() -> None:
     assert body.count("Closes #42") == 1
 
 
+def test_compose_pr_body_appends_closes_when_mermaid_mentions_closes() -> None:
+    body = pr_body.compose_pr_body(
+        summary="- x",
+        mermaid="flowchart LR\n  A[Closes #42] --> B\n",
+        issue_number=42,
+    )
+    assert body.count("Closes #42") == 2
+    assert body.rstrip().endswith("Closes #42")
+
+
 def test_compose_pr_body_fail_closed_on_truncation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
