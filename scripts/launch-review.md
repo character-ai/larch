@@ -85,20 +85,24 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   auth/transient loop, the launcher also writes `${OUTPUT}.diag` in the
   established `TOOL=cursor` / `FAILURE_REASON=…` KV grammar (envelope `type`,
   `subtype`, `is_error`, `error`, `usage`, optional `duration` / request-id
-  fields, transient-retry count, pointer to `${OUTPUT}.json`). The full envelope
-  is always copied to `${OUTPUT}.json` before `.result` extraction.
+  fields, empty-result retry count). All extracted fields are sanitized
+  (newlines/pipes stripped, length capped) before interpolation. The full
+  envelope is always copied to `${OUTPUT}.json` before `.result` extraction.
 - **Exit-0 empty `.result` transient retry (cursor-only).** Inside the cursor
   auth loop, after the exit-code transient branch and before auth retry: when
-  `EXIT_CODE==0`, `jq` is available, `$OUTPUT` is non-empty JSON, and
-  `(.result // "") == ""`, the launcher treats the response as transient
-  (bounded by `MAX_TRANSIENT_RETRIES=2`, shared with exit-code transients) and
-  re-runs the same `cursor agent` invocation after backoff. This does **not**
-  apply when `.result` is the legitimate no-findings sentinel
-  `{"no_issues_found": true}` (non-empty string) or any other non-empty
-  `.result`. Malformed/non-JSON `$OUTPUT` skips this branch (`jq` probe false).
-  `LARCH_CURSOR_RETRY_EMPTY_RESULT` defaults on; set to `0` to disable retry only
-  (diagnostics still written). Codex has no `.result` envelope — do not mirror
-  this branch into the codex launcher.
+  `EXIT_CODE==0`, `jq` is available, `$OUTPUT` is non-empty JSON,
+  `(.result // "") == ""`, and no quota/auth signal is detected in `$SIDECAR`,
+  `${OUTPUT}.diag`, or the raw `$OUTPUT` envelope, the launcher treats the
+  response as transient and re-runs the same `cursor agent` invocation after
+  backoff. Empty-result retries share the same `TRANSIENT_ATTEMPT` counter as
+  exit-code transients (bounded by `MAX_TRANSIENT_RETRIES=2`, so at most three
+  total `cursor agent` backend calls per auth pass across both failure modes).
+  This does **not** apply when `.result` is the legitimate no-findings
+  sentinel `{"no_issues_found": true}` (non-empty string) or any other
+  non-empty `.result`. Malformed/non-JSON `$OUTPUT` skips this branch (`jq`
+  probe false). `LARCH_CURSOR_RETRY_EMPTY_RESULT` defaults on; set to `0` to
+  disable retry only (diagnostics still written). Codex has no `.result`
+  envelope — do not mirror this branch into the codex launcher.
 - **Per-process launch jitter (cursor-only).** Before the cursor auth loop, a
   one-time random sleep in `0..LARCH_CURSOR_LAUNCH_JITTER_MS` (default `250`,
   non-numeric → default, `0` disables) de-synchronizes parallel slot launches.

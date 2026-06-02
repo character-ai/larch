@@ -1691,6 +1691,11 @@ fi
 if [[ -n "${CURSOR_STUB_DELAY:-}" ]]; then
     sleep "$CURSOR_STUB_DELAY"
 fi
+if [[ -n "${CURSOR_STUB_COUNT_FILE:-}" ]]; then
+    count=$(cat "$CURSOR_STUB_COUNT_FILE" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    printf '%s' "$count" > "$CURSOR_STUB_COUNT_FILE"
+fi
 if [[ "${CURSOR_STUB_RESULT+x}" == "x" ]]; then
     result="$CURSOR_STUB_RESULT"
 else
@@ -1756,11 +1761,19 @@ assert_grep "case B dirty-tree sidecar mode" "^MODE=baseline$" "${OUT_B}.dirty-t
 # Case B2: Cursor JSON envelopes with explicit empty .result are promoted to a
 # distinct marker instead of a generic blank reviewer output.
 OUT_B2="$TMPDIR/cursor-b2.txt"
+B2_COUNT="$TMPDIR/case-b2-count.txt"
+printf '0' > "$B2_COUNT"
+# LARCH_CURSOR_RETRY_EMPTY_RESULT=0: single-shot; retry behavior covered by SL-cursor-empty-* cases.
 PATH="$STUB_BIN:$PATH" CURSOR_STUB_RESULT="" \
+    CURSOR_STUB_COUNT_FILE="$B2_COUNT" \
     LARCH_TRANSIENT_RETRY_DELAY=0 \
     LARCH_CURSOR_LAUNCH_JITTER_MS=0 \
+    LARCH_CURSOR_RETRY_EMPTY_RESULT=0 \
     "$LAUNCHER" --output "$OUT_B2" --timeout 5 --prompt "empty result" >/dev/null 2>"$TMPDIR/case-b2.stderr"
 assert_equals "case B2 empty Cursor result marker" "CURSOR_EMPTY_RESPONSE" "$(cat "$OUT_B2")"
+B2_ATTEMPTS=$(cat "$B2_COUNT" 2>/dev/null || echo "0")
+assert_equals "case B2 stub invoked exactly 1 time" "1" "$B2_ATTEMPTS"
+assert_grep "case B2 diag still written" "cursor-empty-result" "${OUT_B2}.diag"
 
 # Case B3: Cursor JSON envelopes with high outputTokens but tiny prose .result
 # are treated as degraded unless they match legitimate short sentinels.
@@ -2907,7 +2920,7 @@ cat > "$STUB_BIN/cursor-empty-retry-exh" <<STUB_CURSOR_EMPTY_EXH
 count=\$(cat "${SL_CURSOR_EMPTY_EXH_COUNT}" 2>/dev/null || echo 0)
 count=\$((count + 1))
 printf '%s' "\$count" > "${SL_CURSOR_EMPTY_EXH_COUNT}"
-jq -nc '{result:"",type:"rate_limit",subtype:"empty",is_error:true,error:"backend empty",usage:{inputTokens:5,outputTokens:0}}'
+jq -nc '{result:"",type:"assistant",subtype:"empty",is_error:true,error:"backend empty",usage:{inputTokens:5,outputTokens:0}}'
 STUB_CURSOR_EMPTY_EXH
 chmod +x "$STUB_BIN/cursor-empty-retry-exh"
 ln -sf "$STUB_BIN/cursor-empty-retry-exh" "$STUB_BIN/cursor"
@@ -2929,13 +2942,13 @@ assert_equals "SL-cursor-empty-retry-exhausted stub invoked exactly 3 times" "3"
 assert_equals "SL-cursor-empty-retry-exhausted output marker" "CURSOR_EMPTY_RESPONSE" "$(cat "$OUT_CURSOR_EMPTY_EXH")"
 assert_grep "SL-cursor-empty-retry-exhausted diag cursor-empty-result" "cursor-empty-result" "${OUT_CURSOR_EMPTY_EXH}.diag"
 assert_grep "SL-cursor-empty-retry-exhausted diag is_error" "is_error=true" "${OUT_CURSOR_EMPTY_EXH}.diag"
-assert_grep "SL-cursor-empty-retry-exhausted diag type" "type=rate_limit" "${OUT_CURSOR_EMPTY_EXH}.diag"
+assert_grep "SL-cursor-empty-retry-exhausted diag type" "type=assistant" "${OUT_CURSOR_EMPTY_EXH}.diag"
 if [[ -f "${OUT_CURSOR_EMPTY_EXH}.json" ]]; then
     pass
 else
     fail "SL-cursor-empty-retry-exhausted json sidecar exists"
 fi
-assert_equals "SL-cursor-empty-retry-exhausted json type" "rate_limit" "$(jq -r '.type // empty' "${OUT_CURSOR_EMPTY_EXH}.json" 2>/dev/null || echo "")"
+assert_equals "SL-cursor-empty-retry-exhausted json type" "assistant" "$(jq -r '.type // empty' "${OUT_CURSOR_EMPTY_EXH}.json" 2>/dev/null || echo "")"
 assert_equals "SL-cursor-empty-retry-exhausted json is_error" "true" "$(jq -r '.is_error // empty' "${OUT_CURSOR_EMPTY_EXH}.json" 2>/dev/null || echo "")"
 assert_equals "SL-cursor-empty-retry-exhausted json empty result" "" "$(jq -r '.result // ""' "${OUT_CURSOR_EMPTY_EXH}.json" 2>/dev/null || echo "MISSING")"
 rm -f "$SL_CURSOR_EMPTY_EXH_COUNT"
@@ -3003,7 +3016,7 @@ assert_grep "SL-cursor-empty-retry-disabled diag still written" "cursor-empty-re
 rm -f "$SL_CURSOR_EMPTY_OFF_COUNT"
 
 # Case SL-cursor-transient8-then-empty: two exit-8 transients then exit-0 empty
-# .result — empty-result retries use a separate budget from exit-code transients.
+# .result — shared TRANSIENT_ATTEMPT budget exhausts before a fourth call.
 SL_CURSOR_T8_EMPTY_COUNT="$TMPDIR/sl-cursor-t8-empty-count.txt"
 printf '0' > "$SL_CURSOR_T8_EMPTY_COUNT"
 cat > "$STUB_BIN/cursor-t8-then-empty" <<STUB_CURSOR_T8_EMPTY
@@ -3035,8 +3048,8 @@ RC_CURSOR_T8_EMPTY=$?
 set -e
 assert_equals "SL-cursor-transient8-then-empty exits 0 after mixed retries" "0" "$RC_CURSOR_T8_EMPTY"
 SL_CURSOR_T8_EMPTY_ATTEMPTS=$(cat "$SL_CURSOR_T8_EMPTY_COUNT" 2>/dev/null || echo "0")
-assert_equals "SL-cursor-transient8-then-empty stub invoked exactly 4 times" "4" "$SL_CURSOR_T8_EMPTY_ATTEMPTS"
-assert_equals "SL-cursor-transient8-then-empty final output" "t8-then-empty ok" "$(cat "$OUT_CURSOR_T8_EMPTY")"
+assert_equals "SL-cursor-transient8-then-empty stub invoked exactly 3 times" "3" "$SL_CURSOR_T8_EMPTY_ATTEMPTS"
+assert_equals "SL-cursor-transient8-then-empty output marker" "CURSOR_EMPTY_RESPONSE" "$(cat "$OUT_CURSOR_T8_EMPTY")"
 rm -f "$SL_CURSOR_T8_EMPTY_COUNT"
 
 # Case SL-cursor-empty-then-auth: empty .result retry then auth failure retry.

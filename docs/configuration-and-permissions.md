@@ -205,7 +205,7 @@ Darwin-only mutex delay remains **`LARCH_EXTERNAL_SERIAL_LOCK_DELAY`** (default 
 
 ### `LARCH_CURSOR_RETRY_EMPTY_RESULT`
 
-When set to `0`, disables the cursor launcher's exit-0 empty-`.result` transient retry inside `scripts/launch-review.sh` (the branch that re-invokes `cursor agent` when the JSON envelope has an empty, null, or absent `.result` while still exiting 0). Any other value (including unset) leaves retry enabled (up to `MAX_TRANSIENT_RETRIES=2`, shared with exit-code transient retries).
+When set to `0`, disables the cursor launcher's exit-0 empty-`.result` transient retry inside `scripts/launch-review.sh` (the branch that re-invokes `cursor agent` when the JSON envelope has an empty, null, or absent `.result` while still exiting 0). Any other value (including unset) leaves retry enabled. Empty-result retries share the exit-code `TRANSIENT_ATTEMPT` counter (bounded by `MAX_TRANSIENT_RETRIES=2`), so per auth pass the worst case is at most three total `cursor agent` backend calls across mixed exit-code transients and empty-`.result` responses.
 
 **Diagnostic capture is independent:** even with retry disabled, a terminal empty `.result` still writes `${OUTPUT}.diag` and promotes `CURSOR_EMPTY_RESPONSE`.
 
