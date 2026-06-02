@@ -186,6 +186,72 @@ assert_verdict "verdict: no readable sidecar → unclassified" "unclassified" \
 assert_verdict "verdict: quota in second sidecar → quota" "quota" \
     external_failure_verdict "cursor" "$_sidecar_nonquota" "$_sidecar_quota"
 
+# --- external_launcher_mirror_quota_from_events (#3390) ---
+# codex exec --json reports usage-limit/quota on its stdout events stream, not the
+# stderr sidecar; the launcher mirrors that signal into the sidecar so the
+# sidecar-scanning classifiers catch it and skip the {5,7} transient-retry loop.
+_events_quota="$TMPDIR_ROOT/events-quota.jsonl"
+printf '%s\n' "{\"type\":\"error\",\"message\":\"You've hit your usage limit. Try again at Jun 7th, 2026 8:22 AM.\"}" > "$_events_quota"
+printf '%s\n' "{\"type\":\"turn.failed\",\"error\":{\"message\":\"You've hit your usage limit.\"}}" >> "$_events_quota"
+_events_clean="$TMPDIR_ROOT/events-clean.jsonl"
+printf '%s\n' "{\"type\":\"item.completed\",\"item\":{\"text\":\"ordinary review output\"}}" > "$_events_clean"
+
+# Empty sidecar + quota on the events stream → marker mirrored; sidecar now
+# classifies as quota and the verdict resolves to quota end-to-end.
+_mirror_sidecar="$TMPDIR_ROOT/mirror.sidecar"
+: > "$_mirror_sidecar"
+assert_returns "mirror: returns 0 on quota events" 0 \
+    external_launcher_mirror_quota_from_events "$_events_quota" "$_mirror_sidecar"
+assert_returns "mirror: empty sidecar classifies as quota after mirror" 0 \
+    external_is_quota_failure "codex" "$_mirror_sidecar"
+assert_verdict "mirror: verdict resolves to quota after mirror" "quota" \
+    external_failure_verdict "codex" "$_mirror_sidecar"
+# The mirrored marker must not collide with the auth classifier.
+assert_returns "mirror: mirrored marker is not an auth match" 1 \
+    external_is_auth_failure "codex" "$_mirror_sidecar"
+
+# Idempotent: a sidecar already carrying the signature gets no second marker line.
+_mirror_idem="$TMPDIR_ROOT/mirror-idem.sidecar"
+printf "You've hit your usage limit already.\n" > "$_mirror_idem"
+external_launcher_mirror_quota_from_events "$_events_quota" "$_mirror_idem"
+if grep -Fq 'codex exec --json events stream' "$_mirror_idem" 2>/dev/null; then
+    fail "mirror: must not append a marker when the sidecar already carries the signature"
+else
+    pass
+fi
+
+# Non-quota events → sidecar untouched and still not a quota match.
+_mirror_clean="$TMPDIR_ROOT/mirror-clean.sidecar"
+: > "$_mirror_clean"
+external_launcher_mirror_quota_from_events "$_events_clean" "$_mirror_clean"
+assert_returns "mirror: non-quota events leave sidecar non-quota" 1 \
+    external_is_quota_failure "codex" "$_mirror_clean"
+if [[ -s "$_mirror_clean" ]]; then
+    fail "mirror: non-quota events must not write to the sidecar"
+else
+    pass
+fi
+
+# Missing or empty events file → no-op (returns 0), sidecar untouched. A genuine
+# 0-output transient blip must stay transient-retryable.
+_mirror_noevents="$TMPDIR_ROOT/mirror-noevents.sidecar"
+: > "$_mirror_noevents"
+assert_returns "mirror: missing events file is a no-op (returns 0)" 0 \
+    external_launcher_mirror_quota_from_events "$TMPDIR_ROOT/does-not-exist.jsonl" "$_mirror_noevents"
+_events_empty="$TMPDIR_ROOT/events-empty.jsonl"
+: > "$_events_empty"
+assert_returns "mirror: empty events file is a no-op (returns 0)" 0 \
+    external_launcher_mirror_quota_from_events "$_events_empty" "$_mirror_noevents"
+if [[ -s "$_mirror_noevents" ]]; then
+    fail "mirror: missing/empty events must not write to the sidecar"
+else
+    pass
+fi
+
+# /dev/null sidecar → no-op (returns 0); the not-writable path must not error.
+assert_returns "mirror: /dev/null sidecar is a no-op (returns 0)" 0 \
+    external_launcher_mirror_quota_from_events "$_events_quota" "/dev/null"
+
 PLUGIN_ROOT="$TMPDIR_ROOT/plugin-root"
 mkdir -p "$PLUGIN_ROOT/scripts"
 cat > "$PLUGIN_ROOT/scripts/parse-codex-usage.sh" <<'EOF'

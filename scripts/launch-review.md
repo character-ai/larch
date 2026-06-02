@@ -97,8 +97,15 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   running the scan — `--sandbox read-only` blocks writes at the syscall level,
   making the after-the-fact scan redundant. Cursor still runs the full scan.
 - Codex runs with `--json`: stdout JSONL events land in `${OUTPUT}.events.jsonl`,
-  while stderr remains in `${OUTPUT}.sidecar`. Auth and transient
-  classification intentionally inspect stderr only. Token capture is
+  while stderr remains in `${OUTPUT}.sidecar`. Auth and transient-infra
+  classification inspect stderr only, but usage-limit/quota classification also
+  consults the events stream: because `codex exec --json` reports a usage limit
+  as a `{"type":"error",…}` / `turn.failed` event on stdout (with an empty stderr
+  sidecar and `--output-last-message` file), the launcher mirrors that signal
+  into the sidecar via `external_launcher_mirror_quota_from_events` before
+  classifying, so the sidecar-based quota guard short-circuits the `{5,7}`
+  transient-retry loop instead of re-hitting the limit and reports a `quota`
+  verdict rather than a generic non-auth exit 7 (#3390). Token capture is
   fail-closed through `scripts/parse-codex-usage.sh`: exit 0 records
   per-bucket `token-ledger.sh record-vendor codex` fields; non-zero appends
   the parser diagnostic to `${OUTPUT}.sidecar` and writes no Codex token row.

@@ -287,6 +287,40 @@ external_is_quota_failure() {
     esac
 }
 
+# Mirror a Codex usage-limit / quota signal from the JSON events stream into the
+# launcher sidecar so the sidecar-scanning classifiers (external_is_quota_failure,
+# external_failure_verdict, external_classify_launch_failure) catch it.
+#
+# `codex exec --json` reports a usage/quota limit as a {"type":"error",…} /
+# turn.failed event on its STDOUT events stream — which the launcher redirects to
+# ${OUTPUT}.events.jsonl — while the stderr sidecar and the --output-last-message
+# file stay empty. On that path the sidecar classifier never sees the signal, so
+# the failure mis-classifies as a generic non-auth exit 7 and then also burns the
+# {5,7} transient-retry budget, each retry re-hitting the limit (#3390).
+#
+# Detection reuses external_is_quota_failure against the events file so the quota
+# regex stays single-sourced (do NOT inline a second copy here — it must remain
+# byte-identical to python/agents.py _QUOTA_RE). On a match, one marker line is
+# appended to the sidecar; the marker text itself carries the `usage limit` /
+# `quota` tokens so the downstream sidecar scan classifies it. Idempotent: no-op
+# when the sidecar already carries the signature. No-op when the events file is
+# unreadable/empty (e.g. a genuine 0-output transient blip, which must stay
+# transient-retryable) or the sidecar is not writable (e.g. /dev/null).
+external_launcher_mirror_quota_from_events() {
+    local events_file="$1"
+    local sidecar="$2"
+    [[ -n "$sidecar" && "$sidecar" != "/dev/null" ]] || return 0
+    [[ -r "$events_file" && -s "$events_file" ]] || return 0
+    if external_is_quota_failure "codex" "$sidecar"; then
+        return 0
+    fi
+    if external_is_quota_failure "codex" "$events_file"; then
+        printf 'codex-quota: usage limit / quota reported on the codex exec --json events stream (%s); see that file for the reset time\n' \
+            "$events_file" >> "$sidecar" 2>/dev/null || true
+    fi
+    return 0
+}
+
 external_is_transient_infra_failure() {
     local tool="$1" exit_code="$2" output_file="$4"
     # Check the output file (where the tool would write its actual response),

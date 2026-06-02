@@ -269,6 +269,37 @@ else
     fail "stderr-routed auth failure classification unexpected rc=$auth_rc out=$auth_out sidecar=$(cat "${OUT_AUTH}.sidecar" 2>/dev/null)"
 fi
 
+# #3390: codex exec --json reports a usage limit on its stdout events stream
+# (→ ${OUTPUT}.events.jsonl), not the stderr sidecar or the --output-last-message
+# file. The launcher mirrors that signal into the sidecar before classifying, so
+# external_classify_launch_failure reports `health`/`quota` (which takes
+# precedence over the {5,7} health-probe heuristic) instead of a generic
+# non-auth/health-probe failure.
+cat > "$runtime_bin/codex" <<'EOF'
+#!/usr/bin/env bash
+# Usage-limit events on STDOUT only; empty stderr; no --output-last-message write.
+printf '{"type":"error","message":"hit your usage limit; try again at Jun 7th, 2026 8:22 AM"}\n'
+printf '{"type":"turn.failed","error":{"message":"hit your usage limit"}}\n'
+exit 7
+EOF
+chmod +x "$runtime_bin/codex"
+OUT_QUOTA="$TMPDIR_BASE/ci-runtime-quota"
+set +e
+quota_out=$(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    LARCH_EXTERNAL_AUTH_RETRIES=1 LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_QUOTA" --run-id r1 --repo owner/repo --timeout 60 2>/dev/null)
+quota_rc=$?
+set -e
+if [[ "$quota_rc" == "0" ]] \
+    && [[ "$quota_out" == *"LAUNCHER_FAILURE_CLASS=health"* ]] \
+    && [[ "$quota_out" == *"LAUNCHER_FAILURE_REASON=quota"* ]] \
+    && grep -q 'usage limit' "${OUT_QUOTA}.events.jsonl" \
+    && grep -q 'codex exec --json events stream' "${OUT_QUOTA}.sidecar"; then
+    ok "events-stream usage limit mirrors into the sidecar and classifies as quota"
+else
+    fail "events-stream quota classification unexpected rc=$quota_rc out=$quota_out events=$(cat "${OUT_QUOTA}.events.jsonl" 2>/dev/null) sidecar=$(cat "${OUT_QUOTA}.sidecar" 2>/dev/null)"
+fi
+
 if [[ "$FAIL" -ne 0 ]]; then
     echo "test-launch-codex-ci: $FAIL failure(s), $PASS pass(es)" >&2
     exit 1
