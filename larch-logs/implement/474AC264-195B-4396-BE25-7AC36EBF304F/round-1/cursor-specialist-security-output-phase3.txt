@@ -1,0 +1,15 @@
+### In-Scope Findings
+
+1. **security** `skills/design/scripts/design-postplan-emit.sh:158-163` — `_postplan_resolve_issue()` sources `$DESIGN_TMPDIR/source-env.sh` unconditionally before falling through to the awk extraction. Sourcing executes arbitrary shell code: any process with write access to `~/.cache/larch/sessions/<session>/` can plant content in `source-env.sh` that runs inside the driver on the very next plan emit, re-emit, or pause checkpoint. This is new code introduced by this diff (the function is entirely new); the pre-existing SKILL.md orchestrator fences also source session files, but this driver runs on every plan-emit path in a single subshell that already has `ISSUE_NUMBER` set via its prelude in most callers. **Suggested fix:** Try `${ISSUE_NUMBER:-}` from the environment first (line 157), then go directly to the awk extraction at lines 163–165 — which safely matches only `^export[[:space:]]+ISSUE_NUMBER=` lines without executing the file. Skip the `source` branch entirely; the awk path already covers the export-format contract required by harness case #11.
+
+2. **security** `skills/design/scripts/design-postplan-emit.sh:43-53` — `json_scalar_or_sed` embeds `$key` directly in a sed substitution expression via shell string concatenation (`'s/.*"'"$key"'"…/\1/p'`). A `$key` value containing `/`, `\`, or `&` would break the sed expression or inject into the replacement. Current callers pass only hardcoded alphanumeric strings (`review_budget`, `workflow_path`), so this is not immediately exploitable, but the function signature accepts any string and provides no escaping. **Suggested fix:** Validate the key is alphanumeric with underscores before interpolating, or prefer jq-only parsing and omit the sed fallback for this controlled use case.
+
+---
+
+No out-of-scope observations to add beyond what is in-scope above.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	security	skills/design/scripts/design-postplan-emit.sh:158-163	_postplan_resolve_issue() sources $DESIGN_TMPDIR/source-env.sh, executing arbitrary shell code from the session cache directory	A local process writing to ~/.cache/larch/sessions/<session>/source-env.sh executes code on the next plan emit, re-emit, or pause checkpoint without any user action — every plan emit calls this driver	Skip the source branch; use the awk extraction already in lines 163-165 which matches only export ISSUE_NUMBER= lines without executing the file
+1	in_scope	nit	security	skills/design/scripts/design-postplan-emit.sh:43-53	json_scalar_or_sed embeds $key via shell string concatenation directly into a sed pattern with no escaping	A key containing /, \, or & would break the sed expression or inject into the replacement; currently safe only because callers hardcode alphanumeric keys	Validate key is alphanumeric+underscore before interpolating, or drop the sed fallback and use jq-only for this controlled use case
+```
