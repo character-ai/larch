@@ -483,3 +483,40 @@ def test_publish_run_tree_preserves_existing_dest_when_copy_fails(
             cwd=str(repo),
         )
     assert (dest / "old.txt").read_text(encoding="utf-8") == "old\n"
+
+
+def test_scrub_run_tree_redacts_cursor_key(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    sub = run_dir / "round-1"
+    sub.mkdir(parents=True)
+    secret = (
+        "cursor --api-key crsr_1620abcdefghijklmnopqrstuvwxyz0123456789 --workspace /x\n"
+    )
+    _ = (sub / "findings.md").write_text(secret, encoding="utf-8")
+    _ = (run_dir / "clean.md").write_text("clean prose\n", encoding="utf-8")
+    violations, files_scrubbed = run_logs._scrub_run_tree(  # pyright: ignore[reportPrivateUsage]
+        run_dir,
+    )
+    assert violations == 1
+    assert files_scrubbed == 1
+    assert "crsr_1620" not in (sub / "findings.md").read_text(encoding="utf-8")
+    assert (run_dir / "clean.md").read_text(encoding="utf-8") == "clean prose\n"
+
+
+def test_scrub_run_tree_fail_closed_on_residual(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _ = (run_dir / "f.md").write_text(
+        "crsr_1620abcdefghijklmnopqrstuvwxyz0123456789\n",
+        encoding="utf-8",
+    )
+
+    def _never_scrubs(text: str) -> tuple[str, dict[str, int]]:
+        return text, {"cursor-api-key": 1}
+
+    monkeypatch.setattr(run_logs.redact, "scrub_log_secrets", _never_scrubs)
+    with pytest.raises(ShipError, match="secret survived scrubbing"):
+        _ = run_logs._scrub_run_tree(run_dir)  # pyright: ignore[reportPrivateUsage]
