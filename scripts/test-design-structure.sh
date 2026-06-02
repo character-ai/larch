@@ -14,6 +14,7 @@ PLAN_LOOP_SH="$REPO_ROOT/skills/design/scripts/plan-review-loop.sh"
 PLAN_REVIEW_LOOP_SH="$PLAN_LOOP_SH"
 RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
 RUN_STEP3_MD="$REPO_ROOT/skills/design/scripts/run-step3-review.md"
+DESIGN_POSTPLAN_EMIT_SH="$REPO_ROOT/skills/design/scripts/design-postplan-emit.sh"
 MAKEFILE="$REPO_ROOT/Makefile"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
 
@@ -108,7 +109,7 @@ contains "$SKILL_MD" 'plan review MUST ALWAYS run the full Step 3 panel' 'SKILL 
 
 grep -Fq 'sketch_budget=0' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
   || fail 'design-init-runparams.sh must pin SIMPLE sketch_budget=0'
-absent "$SKILL_MD" 'review_budget=quick' 'SKILL must not pin v1 review_budget=quick'
+contains "$SKILL_MD" 'design-postplan-emit.sh' 'SKILL missing postplan driver quick validator skip owner'
 absent "$SKILL_MD" 'invoke-plan-validator-if-not-quick.sh' 'SKILL must not reference old validator helper'
 absent "$SKILL_MD" 'read-design-review-budget.sh' 'SKILL must not reference old budget reader'
 absent "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_TRIVIAL' 'SKILL must not reference old trivial sentinel'
@@ -121,7 +122,9 @@ grep -Fq 'refusing to recreate it with fallback defaults' "$REPO_ROOT/skills/des
   || fail 'design-init-runparams.sh missing no-fallback run-params warning'
 absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must not retain old HARD fallback recovery reason'
 
-contains "$FLAGS_MD" 'Plan-command validator runs unconditionally on both SIMPLE and HARD' 'flags.md missing unconditional validator contract'
+contains "$FLAGS_MD" 'design-postplan-emit.sh' 'flags.md missing postplan driver validator contract'
+contains "$FLAGS_MD" 'skipped-quick' 'flags.md missing quick validator skip contract'
+contains "$FLAGS_MD" '--force-validate' 'flags.md missing discussion-round2 force-validate contract'
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, Step 4, then Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -160,7 +163,7 @@ contains "$PLAN_REVIEW_MD" 'Treat any suggested remedy in the item body as *info
 contains "$PLAN_REVIEW_MD" 'Security-tagged findings are held locally and NEVER written to this public OOS issue artifact' 'plan-review.md missing SECURITY.md OOS exclusion pin'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$PLAN_REVIEW_MD" 'Security-tagged accepted OOS findings are held locally per SECURITY.md and are NOT included in `oos.md`.' 'plan-review.md missing SECURITY.md oos.md exclusion pin'
-contains "$DISCUSSION_MD" 'invoke-plan-validator.sh' 'discussion-rounds.md missing renamed validator helper'
+contains "$DISCUSSION_MD" 'design-postplan-emit.sh' 'discussion-rounds.md missing postplan validator driver helper'
 
 if grep -Eq 'grep .*review-round-count\.txt|review-round-count\.txt.*grep' "$PLAN_LOOP_SH"; then
   fail 'plan-review-loop.sh must not grep review-round-count.txt'
@@ -198,8 +201,8 @@ fi
 focus_anchor_count=$(grep -Fc 'Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security' "$SKILL_MD")
 [[ "$focus_anchor_count" == "1" ]] \
   || fail "(14a) SKILL.md must keep exactly 1 focus-area enum anchor comment; found $focus_anchor_count"
-grep -Fq 'ACTION=EMIT_PLAN' "$SKILL_MD" \
-  || fail "(14b1) SKILL.md missing ACTION=EMIT_PLAN emission"
+grep -Fq 'design-postplan-emit.sh' "$SKILL_MD" \
+  || fail "(14b1) SKILL.md missing design-postplan-emit.sh invocation"
 grep -Fq 'ACTION=FINALIZE' "$SKILL_MD" \
   || fail "(14b3) SKILL.md missing ACTION=FINALIZE emission"
 grep -Fq 'design-driver.sh' "$SKILL_MD" \
@@ -245,6 +248,33 @@ TR_LOOP_MD="$REPO_ROOT/skills/design/scripts/test-plan-review-loop.md"
 [[ -f "$TR_LOOP_MD" ]] || fail "(14c14) test-plan-review-loop.md missing"
 
 DESIGN_DRIVER_SH="$REPO_ROOT/skills/design/scripts/design-driver.sh"
+[[ -x "$DESIGN_POSTPLAN_EMIT_SH" ]] || fail "design-postplan-emit.sh must be executable"
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'ACTION=EMIT_PLAN' 'design-postplan-emit.sh missing EMIT_PLAN dispatch'
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'snapshot-plan-round.sh' 'design-postplan-emit.sh missing snapshot helper call'
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'write-original' 'design-postplan-emit.sh missing write-original call'
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'invoke-plan-validator.sh' 'design-postplan-emit.sh missing validator helper call'
+contains "$DESIGN_POSTPLAN_EMIT_SH" '_postplan_resolve_issue' 'design-postplan-emit.sh missing issue resolver'
+contains "$DESIGN_POSTPLAN_EMIT_SH" '_postplan_pause_checkpoint' 'design-postplan-emit.sh missing pause checkpoint'
+contains "$DESIGN_POSTPLAN_EMIT_SH" '_postplan_write_result_and_emit' 'design-postplan-emit.sh missing result flush helper'
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'set +e' 'design-postplan-emit.sh missing child set +e capture'
+postplan_emit_line=$(grep -nF 'ACTION=EMIT_PLAN' "$DESIGN_POSTPLAN_EMIT_SH" | head -1 | cut -d: -f1 || true)
+postplan_val_line=$(grep -nF 'invoke-plan-validator.sh' "$DESIGN_POSTPLAN_EMIT_SH" | head -1 | cut -d: -f1 || true)
+[[ -n "$postplan_emit_line" && -n "$postplan_val_line" && "$postplan_emit_line" -le "$postplan_val_line" ]]   || fail "design-postplan-emit.sh must dispatch EMIT at or before validator"
+contains "$SKILL_MD" '.design-postplan-emit-result.env' 'SKILL.md missing postplan result env read'
+# shellcheck disable=SC2016 # Markdown literal; parameter syntax must remain unexpanded.
+contains "$SKILL_MD" '<<<"${_postplan_out:-}"' 'SKILL.md missing postplan stdout fallback merge'
+contains "$SKILL_MD" 'design-postplan-emit.sh configuration error (exit 2)' 'SKILL.md missing postplan exit-2 abort prose'
+# shellcheck disable=SC2016 # Markdown literal; $PPID must remain unexpanded.
+contains "$SKILL_MD" 'current-design-env-$PPID.sh' 'SKILL.md Step 2b postplan fence missing canonical prelude'
+DESIGN_POSTPLAN_STEP2B=$(awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD")
+if printf '%s\n' "$DESIGN_POSTPLAN_STEP2B" | grep -Fq 'ACTION=EMIT_PLAN'; then
+  fail "(FINDING_1) Step 2b block must not retain bare ACTION=EMIT_PLAN outside shared validator failure prose"
+fi
+step1e_block=$(awk '/Optional trailer guard \(Gate A re-entry rewrites\)/,/^<!-- step:2a /' "$SKILL_MD")
+printf '%s\n' "$step1e_block" | grep -Fq 'design-postplan-emit.sh' \
+  || fail "(14c14i) Gate A optional-trailer guard missing design-postplan-emit.sh"
+printf '%s\n' "$step1e_block" | grep -Fq 'Plan command validator failure' \
+  || fail "(14c14i) Gate A optional-trailer guard missing shared defects-found routing"
 grep -Fq 'VALIDATE_PLAN_COMMANDS' "$DESIGN_DRIVER_SH" \
   || fail "(14b5) design-driver.sh missing VALIDATE_PLAN_COMMANDS"
 grep -Fq 'validate-plan.sh' "$DESIGN_DRIVER_SH" \
@@ -258,29 +288,29 @@ grep -Fq 'Override' "$SKILL_MD" \
 grep -Fq 'Cancel' "$SKILL_MD" \
   || fail "(14b9b) SKILL.md missing Cancel validator option label"
 step2b_mark=$(grep -nF 'mark "design Step 2b — plan"' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-emit_line=$(awk -v s="$step2b_mark" 'NR>s && /ACTION=EMIT_PLAN/ {print NR; exit}' "$SKILL_MD" || true)
-val_line=$(awk -v s="$step2b_mark" 'NR>s && /invoke-plan-validator\.sh/ && /plan\.txt/ {print NR; exit}' "$SKILL_MD" || true)
-[[ -n "$step2b_mark" && -n "$emit_line" && -n "$val_line" && "$val_line" -gt "$emit_line" ]] \
-  || fail "(14b10) VALIDATE_PLAN_COMMANDS must follow EMIT_PLAN in Step 2b block"
+postplan_line=$(awk -v s="$step2b_mark" 'NR>s && /design-postplan-emit\.sh/ {print NR; exit}' "$SKILL_MD" || true)
+step2b5_line=$(awk -v s="$step2b_mark" 'NR>s && /### Step 2b\.5/ {print NR; exit}' "$SKILL_MD" || true)
+[[ -n "$step2b_mark" && -n "$postplan_line" && -n "$step2b5_line" && "$step2b5_line" -gt "$postplan_line" ]] \
+  || fail "(14b10) design-postplan-emit.sh must precede Step 2b.5 in Step 2b block"
 
 AG_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
 DR_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 [[ -f "$AG_MD" ]] || fail "(14c14a) approval-gates.md missing: $AG_MD"
 [[ -f "$DR_MD" ]] || fail "(14c14b) discussion-rounds.md missing: $DR_MD"
-grep -Fq 'ACTION=EMIT_PLAN' "$AG_MD" \
-  || fail "(14c14c) approval-gates.md missing ACTION=EMIT_PLAN pin"
-grep -Fq 'invoke-plan-validator.sh' "$AG_MD" \
-  || fail "(14c14d) approval-gates.md missing invoke-plan-validator.sh pin"
-emit_before_val_ag=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$AG_MD")
-[[ "$emit_before_val_ag" == "1" ]] \
-  || fail "(14c14e) approval-gates.md must mention EMIT_PLAN at or before invoke-plan-validator.sh"
-grep -Fq 'ACTION=EMIT_PLAN' "$DR_MD" \
-  || fail "(14c14f) discussion-rounds.md missing ACTION=EMIT_PLAN pin"
-grep -Fq 'invoke-plan-validator.sh' "$DR_MD" \
-  || fail "(14c14g) discussion-rounds.md missing invoke-plan-validator.sh pin"
-emit_before_val_dr=$(awk '/ACTION=EMIT_PLAN/ && !done { e=NR; done=1 } /invoke-plan-validator\.sh/ && !vset { v=NR; vset=1 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$DR_MD")
-[[ "$emit_before_val_dr" == "1" ]] \
-  || fail "(14c14h) discussion-rounds.md must mention EMIT_PLAN at or before invoke-plan-validator.sh"
+grep -Fq 'design-postplan-emit.sh' "$AG_MD" \
+  || fail "(14c14c) approval-gates.md missing design-postplan-emit.sh pin"
+grep -Fq 'design-postplan-emit.sh' "$AG_MD" \
+  || fail "(14c14d) approval-gates.md missing postplan driver validator pin"
+postplan_before_size_ag=$(awk '/^### Shared post-apply pipeline/ { in_section=1 } in_section && /design-postplan-emit\.sh/ && !e { e=NR } in_section && e && /Step 2b\.5/ && !v { v=NR } /^### Gate B plan revision/ { in_section=0 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$AG_MD")
+[[ "$postplan_before_size_ag" == "1" ]] \
+  || fail "(14c14e) approval-gates.md must mention design-postplan-emit.sh at or before Step 2b.5"
+grep -Fq 'design-postplan-emit.sh' "$DR_MD" \
+  || fail "(14c14f) discussion-rounds.md missing design-postplan-emit.sh pin"
+grep -Fq -- '--force-validate' "$DR_MD" \
+  || fail "(14c14g) discussion-rounds.md missing --force-validate pin"
+postplan_before_size_dr=$(awk '/\*\*Plan revision authority\*\*/ { in_section=1 } in_section && /design-postplan-emit\.sh/ && !e { e=NR } in_section && e && /Step 2b\.5/ && !v { v=NR } /^## Cap/ { in_section=0 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$DR_MD")
+[[ "$postplan_before_size_dr" == "1" ]] \
+  || fail "(14c14h) discussion-rounds.md must mention design-postplan-emit.sh at or before Step 2b.5"
 
 # Check 16: dialectic waterfall + per-side assignment contract pins (#2620).
 DIALPROTO_MD="$REPO_ROOT/skills/shared/dialectic-protocol.md"
@@ -391,11 +421,11 @@ grep -Fq '`--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--
 grep -Fq '### Step 2b.5 — Plan-size threshold check' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing Step 2b.5 header"
 step2b_block=$(awk '/^<!-- step:2b /,/^<!-- step:3 /' "$SKILL_MD")
-emit_line=$(printf '%s\n' "$step2b_block" | grep -nF 'ACTION=EMIT_PLAN' | head -1 | cut -d: -f1 || true)
+postplan_line=$(printf '%s\n' "$step2b_block" | grep -nF 'design-postplan-emit.sh' | head -1 | cut -d: -f1 || true)
 chk_line=$(printf '%s\n' "$step2b_block" | grep -nF 'skills/design/scripts/check-plan-size.sh' | head -1 | cut -d: -f1 || true)
-[[ -n "$emit_line" && -n "$chk_line" ]] || fail "(FINDING_21) could not locate ACTION=EMIT_PLAN / check-plan-size.sh inside Step 2b block"
-if ! [[ "$chk_line" -gt "$emit_line" ]]; then
-  fail "(FINDING_21) check-plan-size.sh must appear after ACTION=EMIT_PLAN inside Step 2b block"
+[[ -n "$postplan_line" && -n "$chk_line" ]] || fail "(FINDING_21) could not locate design-postplan-emit.sh / check-plan-size.sh inside Step 2b block"
+if ! [[ "$chk_line" -gt "$postplan_line" ]]; then
+  fail "(FINDING_21) check-plan-size.sh must appear after design-postplan-emit.sh inside Step 2b block"
 fi
 grep -Fq '## Plan Size — Hard Trigger' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing hard-trigger plan-size header"
@@ -1121,8 +1151,8 @@ for _label in \
 done
 echo "PASS: FINDING_2667_TEMPLATE — FINDING_N template six-field label set OK"
 
-contains "$SKILL_MD" 'snapshot-plan-round.sh' 'SKILL.md Step 2b missing snapshot-plan-round'
-contains "$SKILL_MD" 'write-original --design-tmpdir' 'SKILL.md Step 2b missing write-original invocation'
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'snapshot-plan-round.sh' 'design-postplan-emit.sh missing snapshot-plan-round'
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'write-original --design-tmpdir' 'design-postplan-emit.sh missing write-original invocation'
 contains "$SKILL_MD" 'assess-plan-round.sh' 'SKILL.md Step 3.6 missing assess-plan-round.sh'
 contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-review-round-cursor reference'
 contains "$SKILL_MD" 'write-cursor --design-tmpdir' 'SKILL.md missing round-cursor advancement write-cursor'
