@@ -1431,6 +1431,12 @@ exclude = [
   # scripts/promote-release.md is excluded for the same reason.
   "scripts/promote-release.sh",
   "scripts/promote-release.md",
+  # scripts/test-promote-release.sh is the offline harness for promote-release.sh.
+  # Referenced from Makefile (test-promote-release target in test-harnesses-20)
+  # and scripts/test-promote-release.md (sibling contract). G004 cannot discover
+  # the Makefile edge.
+  "scripts/test-promote-release.sh",
+  "scripts/test-promote-release.md",
   # scripts/render-cost-line.sh is a deprecated standalone operator helper (PR
   # #2714); dollar-primary summaries flow through render-run-summary.sh. G004
   # would flag it without an explicit SKILL.md literal path.
