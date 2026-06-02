@@ -27,14 +27,20 @@ Publish tail for `/release`: resolve the squash-merge commit, verify `plugin.jso
 
 ## Fail-closed version check
 
-`git show "$TARGET_OID:.claude-plugin/plugin.json" | jq -r .version` must equal `--version` before any tag push.
+After `git fetch origin main` (or a direct fetch of `TARGET_OID` when `origin/main` is not yet at the merge commit), `git show "$TARGET_OID:.claude-plugin/plugin.json" | jq -r .version` must equal `--version` before any tag push. `LARCH_RELEASE_FINISH_AT_VERSION` (test harness only) must match the tree version when set; it does not bypass the plugin.json read.
 
 ## Tag idempotency
 
-- Remote tag on a **different** OID → exit **1** (fail closed).
+- Remote tag checks use peeled commit OIDs (`refs/tags/${TAG}^{}`) so annotated tags compare commit SHAs, not tag object SHAs.
+- Remote tag on a **different** OID → exit **1** (fail closed) before release/promote steps.
+- After every `ls-remote` probe that finds a remote tag, re-verify the peeled commit OID equals `TARGET_OID`.
 - Local/remote tag already on `TARGET_OID` → skip create; push only when remote lacks the tag.
 - On push failure, re-check remote tag at `TARGET_OID` and continue when it matches (TOCTOU vs `release-tag.yaml`).
 - Otherwise create tag at `TARGET_OID` and `git push origin`.
+
+## Partial-failure recovery
+
+If tag push and `gh release create`/`edit` succeed but `promote-release.sh` fails, the tag and GitHub Release exist but are not Latest. Re-run `release-finish.sh` with the same `--version`, `--notes-file`, `--repo`, and `--pr`: tag/release steps are idempotent when the remote tag and release already point at `TARGET_OID`, and only promote is retried. Alternatively invoke `scripts/promote-release.sh <version> --repo <repo>` directly for a promote-only retry.
 
 ## GitHub Release
 

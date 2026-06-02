@@ -116,6 +116,10 @@ fi
 
 BASELINE_TAG="$(printf '%s\n' "$latest_tags" | jq -r '.[0]')"
 
+if [[ ! "$BASELINE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  emit_error invalid-baseline-tag "baseline tag has invalid format: $BASELINE_TAG"
+fi
+
 if ! git fetch origin main --tags 2>/dev/null; then
   emit_error baseline-tag-unresolvable "git fetch origin main --tags failed"
 fi
@@ -135,9 +139,14 @@ if [[ "$main_oid" != "$origin_main_oid" ]]; then
   emit_error stale-local-main "main ($main_oid) != origin/main ($origin_main_oid)"
 fi
 
-open_release_pr="$(gh pr list --repo "$REPO" --state open --json headRefName 2>/dev/null \
-  | jq '[.[] | select(.headRefName | startswith("release/v"))] | length' 2>/dev/null || echo 0)"
-if [[ "${open_release_pr:-0}" -ne 0 ]] 2>/dev/null; then
+open_release_pr_json="$(gh pr list --repo "$REPO" --state open --json headRefName 2>/dev/null)" || {
+  emit_error release-pr-list-failed "gh pr list failed"
+}
+open_release_pr="$(printf '%s\n' "$open_release_pr_json" \
+  | jq '[.[] | select(.headRefName | startswith("release/v"))] | length' 2>/dev/null)" || {
+  emit_error release-pr-list-failed "jq parse of open PR list failed"
+}
+if [[ "${open_release_pr:-0}" -ne 0 ]]; then
   emit_error release-cut-in-progress "open release/v* PR exists on $REPO"
 fi
 

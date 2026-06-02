@@ -44,6 +44,9 @@ case "$1" in
       exit 1
     fi
     if [[ "${2:-}" == "list" ]]; then
+      if [[ "${GH_FIXTURE_PR_LIST_FAIL:-}" == "1" ]]; then
+        exit 1
+      fi
       printf '%s\n' "${GH_FIXTURE_OPEN_PRS:-[]}"
       exit 0
     fi
@@ -97,7 +100,13 @@ case "$1" in
     ;;
   show)
     if [[ "${2:-}" == "origin/main:.claude-plugin/plugin.json" ]]; then
-      printf '%s\n' "${GIT_ORIGIN_PLUGIN_JSON:-{\"version\":\"1.0.0\"}}"
+      if [[ -f "${GIT_ORIGIN_PLUGIN_JSON_FILE:-}" ]]; then
+        cat "${GIT_ORIGIN_PLUGIN_JSON_FILE}"
+      elif [[ -n "${GIT_ORIGIN_PLUGIN_JSON:-}" ]]; then
+        printf '%s\n' "$GIT_ORIGIN_PLUGIN_JSON"
+      else
+        printf '%s\n' '{"version":"1.0.0"}'
+      fi
       exit 0
     fi
     exec "$REAL_GIT" "$@"
@@ -129,6 +138,7 @@ run_prepare() {
   GIT_LOG_SUBJECTS="${GIT_LOG_SUBJECTS:-}" \
   GIT_FETCH_FAIL="${GIT_FETCH_FAIL:-}" \
   GIT_ORIGIN_PLUGIN_JSON="${GIT_ORIGIN_PLUGIN_JSON:-}" \
+  GIT_ORIGIN_PLUGIN_JSON_FILE="${GIT_ORIGIN_PLUGIN_JSON_FILE:-}" \
   PATH="$case_dir/bin:$PATH" \
   bash "$SUBJECT" --repo "$REAL_REPO" --out-dir "$case_dir/out" "$@" 2>"$case_dir/stderr.log"
 }
@@ -216,11 +226,15 @@ set +e
 out=$(cd "$REPO_ROOT" && GIT_LOG_SUBJECTS="" run_prepare "$case_dir" --bump major)
 rc=$?
 set -e
+current_ver="$(printf '%s\n' "$out" | awk -F= '$1=="CURRENT_VERSION"{print substr($0,index($0,"=")+1); exit}')"
+new_ver="$(printf '%s\n' "$out" | awk -F= '$1=="NEW_VERSION"{print substr($0,index($0,"=")+1); exit}')"
+IFS='.' read -r c_maj _c_min _c_pat <<< "$current_ver"
+expected_new="$((10#${c_maj} + 1)).0.0"
 if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^BUMP_TYPE=MAJOR$' \
-  && printf '%s\n' "$out" | grep -q '^NEW_VERSION='; then
+  && [[ -n "$current_ver" && "$new_ver" == "$expected_new" ]]; then
   ok
 else
-  fail "--bump major: $out"
+  fail "--bump major: rc=$rc expected NEW_VERSION=$expected_new got ${new_ver:-<empty>} out=$out"
 fi
 
 # Case 6: zero PR path
@@ -270,6 +284,60 @@ if [[ $rc -eq 1 ]] && printf '%s\n' "$out" | grep -q 'ERROR=pr-metadata-incomple
   ok
 else
   fail "missing pr: rc=$rc out=$out"
+fi
+
+# Case 9: open release/v* PR → release-cut-in-progress
+case_dir="$TMPDIR_BASE/c9"
+mkdir -p "$case_dir/bin" "$case_dir/out"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+set +e
+out=$(cd "$REPO_ROOT" && \
+  GH_FIXTURE_OPEN_PRS='[{"headRefName":"release/v2.0.0"}]' \
+  run_prepare "$case_dir")
+rc=$?
+set -e
+if [[ $rc -eq 1 ]] && printf '%s\n' "$out" | grep -q 'ERROR=release-cut-in-progress'; then
+  ok
+else
+  fail "open release PR: rc=$rc out=$out"
+fi
+
+# Case 10: release-already-cut (origin version ahead + Release commit in log)
+case_dir="$TMPDIR_BASE/c10"
+mkdir -p "$case_dir/bin" "$case_dir/out"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+printf '{"version":"1.1.0"}\n' > "$case_dir/origin-plugin.json"
+set +e
+out=$(cd "$REPO_ROOT" && \
+  GIT_ORIGIN_PLUGIN_JSON_FILE="$case_dir/origin-plugin.json" \
+  GIT_LOG_SUBJECTS=$'Release v1.1.0\n' \
+  run_prepare "$case_dir")
+rc=$?
+set -e
+if [[ $rc -eq 1 ]] && printf '%s\n' "$out" | grep -q 'ERROR=release-already-cut'; then
+  ok
+else
+  fail "release already cut: rc=$rc out=$out"
+fi
+
+# Case 11: gh pr list failure → release-pr-list-failed
+case_dir="$TMPDIR_BASE/c11"
+mkdir -p "$case_dir/bin" "$case_dir/out"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+set +e
+out=$(cd "$REPO_ROOT" && GH_FIXTURE_PR_LIST_FAIL=1 run_prepare "$case_dir")
+rc=$?
+set -e
+if [[ $rc -eq 1 ]] && printf '%s\n' "$out" | grep -q 'ERROR=release-pr-list-failed'; then
+  ok
+else
+  fail "pr list fail: rc=$rc out=$out"
 fi
 
 total=$((PASS + FAIL))

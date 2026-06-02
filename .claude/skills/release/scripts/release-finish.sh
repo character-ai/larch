@@ -81,6 +81,11 @@ if [[ ! "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
   exit 2
 fi
 
+if [[ ! "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+  echo "ERROR=invalid --pr value: $PR_NUMBER" >&2
+  exit 2
+fi
+
 if ! command -v gh >/dev/null 2>&1; then
   echo "ERROR=gh not found on PATH" >&2
   exit 1
@@ -145,19 +150,39 @@ if [[ -z "$merge_oid" || "$merge_oid" == "null" ]]; then
   exit 1
 fi
 
+if ! git rev-parse --verify "${merge_oid}^{commit}" >/dev/null 2>&1; then
+  echo "ERROR=invalid mergeCommit.oid: $merge_oid" >&2
+  exit 1
+fi
+
 TARGET_OID="$merge_oid"
 
-if [[ -n "${LARCH_RELEASE_FINISH_AT_VERSION:-}" ]]; then
-  at_version="$LARCH_RELEASE_FINISH_AT_VERSION"
-else
-  plugin_blob="$(git show "${TARGET_OID}:.claude-plugin/plugin.json" 2>/dev/null)" || {
-    echo "ERROR=could not read plugin.json at TARGET_OID" >&2
+if ! git fetch origin main 2>/dev/null; then
+  echo "ERROR=fetch-failed before TARGET_OID verify" >&2
+  exit 1
+fi
+
+origin_main_oid="$(git rev-parse "origin/main^{commit}" 2>/dev/null || true)"
+if [[ -z "$origin_main_oid" || "$origin_main_oid" != "$TARGET_OID" ]]; then
+  if ! git fetch origin "$TARGET_OID" 2>/dev/null \
+    || ! git rev-parse --verify "${TARGET_OID}^{commit}" >/dev/null 2>&1; then
+    echo "ERROR=could not resolve TARGET_OID after fetch" >&2
     exit 1
-  }
-  at_version="$(printf '%s\n' "$plugin_blob" | jq -r '.version // empty' 2>/dev/null)" || {
-    echo "ERROR=could not parse plugin.json at TARGET_OID" >&2
-    exit 1
-  }
+  fi
+fi
+
+plugin_blob="$(git show "${TARGET_OID}:.claude-plugin/plugin.json" 2>/dev/null)" || {
+  echo "ERROR=could not read plugin.json at TARGET_OID" >&2
+  exit 1
+}
+at_version="$(printf '%s\n' "$plugin_blob" | jq -r '.version // empty' 2>/dev/null)" || {
+  echo "ERROR=could not parse plugin.json at TARGET_OID" >&2
+  exit 1
+}
+
+if [[ -n "${LARCH_RELEASE_FINISH_AT_VERSION:-}" && "$LARCH_RELEASE_FINISH_AT_VERSION" != "$at_version" ]]; then
+  echo "ERROR=LARCH_RELEASE_FINISH_AT_VERSION ($LARCH_RELEASE_FINISH_AT_VERSION) != plugin.json at TARGET_OID ($at_version)" >&2
+  exit 1
 fi
 
 if [[ "$at_version" != "$VERSION" ]]; then
@@ -165,7 +190,11 @@ if [[ "$at_version" != "$VERSION" ]]; then
   exit 1
 fi
 
-remote_oid="$(git ls-remote origin "refs/tags/${TAG}" 2>/dev/null | awk '{print $1; exit}')"
+remote_tag_commit_oid() {
+  git ls-remote origin "refs/tags/${TAG}^{}" 2>/dev/null | awk '{print $1; exit}'
+}
+
+remote_oid="$(remote_tag_commit_oid)"
 remote_oid="${remote_oid:-}"
 
 if [[ -n "$remote_oid" && "$remote_oid" != "$TARGET_OID" ]]; then
@@ -184,15 +213,19 @@ else
 fi
 
 if [[ -z "$remote_oid" ]]; then
-  remote_oid="$(git ls-remote origin "refs/tags/${TAG}" 2>/dev/null | awk '{print $1; exit}')"
+  remote_oid="$(remote_tag_commit_oid)"
   remote_oid="${remote_oid:-}"
+  if [[ -n "$remote_oid" && "$remote_oid" != "$TARGET_OID" ]]; then
+    echo "ERROR=remote tag $TAG exists on different commit ($remote_oid != $TARGET_OID)" >&2
+    exit 1
+  fi
 fi
 
 if [[ -z "$remote_oid" ]]; then
   if ! git push origin "$TAG" 2>/dev/null; then
-    remote_oid="$(git ls-remote origin "refs/tags/${TAG}" 2>/dev/null | awk '{print $1; exit}')"
+    remote_oid="$(remote_tag_commit_oid)"
     remote_oid="${remote_oid:-}"
-    if [[ "$remote_oid" != "$TARGET_OID" ]]; then
+    if [[ -z "$remote_oid" || "$remote_oid" != "$TARGET_OID" ]]; then
       echo "ERROR=tag push failed and remote tag missing or on wrong OID" >&2
       exit 1
     fi

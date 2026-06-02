@@ -2,14 +2,18 @@
 
 `classify-bump.sh` is the deterministic classifier for the dev-only `/bump-version` skill. It inspects the public plugin surface (`skills/**`, `agents/**`), writes the reasoning file, and emits `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, and `REASONING_FILE`.
 
-## Optional `--base <ref>`
+## Optional `--base <ref>` and `--head <ref>`
 
 When `--base` is set (consumer: dev-only `/release` via `release-prepare.sh`):
 
 - Resolves `<ref>` with `git rev-parse --verify` and uses that commit as `BASE` directly (skips merge-base resolution and the best-effort `git fetch origin main`).
 - Skips the per-PR idempotency short-circuit (`BUMP_TYPE=NONE` for trailing `Bump version to X.Y.Z` commits), so aggregate classification over `BASE..HEAD` is not suppressed by per-PR bump commits on `main`.
 
-When `--base` is omitted, behavior is unchanged from the default `/bump-version` / `/implement` path.
+When `--head <ref>` is set (consumer: dev-only `/release` via `release-prepare.sh`):
+
+- Resolves `<ref>` with `git rev-parse --verify` and uses that commit as the diff head instead of `HEAD`, so aggregate classification is anchored to `origin/main` (or another explicit ref) when the caller is not checked out at the release tip.
+
+When `--base` / `--head` are omitted, behavior is unchanged from the default `/bump-version` / `/implement` path.
 
 ## Idempotency
 

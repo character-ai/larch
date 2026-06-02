@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     -h|--help)
-      echo "Usage: classify-bump.sh [--base <git-ref>]" >&2
+      echo "Usage: classify-bump.sh [--base <git-ref>] [--head <git-ref>]" >&2
       exit 0
       ;;
     *)

@@ -3,7 +3,11 @@
 
 set -euo pipefail
 
-PLUGIN_JSON=".claude-plugin/plugin.json"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
+PLUGIN_JSON="$REPO_ROOT/.claude-plugin/plugin.json"
+
+cd "$REPO_ROOT"
 
 usage() {
   echo "Usage: release-set-version.sh <X.Y.Z>" >&2
