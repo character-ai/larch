@@ -481,7 +481,7 @@ resume_hint_for() {
 }
 
 classify_from_evidence() {
-    local step=$1 phase=$2 bail=$3 evidence=$4 lowered
+    local step=$1 phase=$2 bail=$3 evidence=$4 detail_log_valid=${5:-false} lowered
     lowered=$(printf '%s\n%s\n%s\n' "$phase" "$bail" "$evidence" | LC_ALL=C tr '[:upper:]' '[:lower:]')
 
     case "$step" in
@@ -506,6 +506,17 @@ classify_from_evidence() {
         printf 'transient-infra\n'
         return 0
     fi
+    # CI-fix exhaustion with an actionable failure-detail log is recoverable:
+    # the main agent can read the surfaced failing job + redacted log tail,
+    # apply an inline fix, and re-ship (RESUME_HINT=step8-shippr). The
+    # evidence-specific classes above still win when the log matches a more
+    # precise signature. Without a readable detail log there is nothing to act
+    # on, so fall through to unrecoverable.
+    if [ "$detail_log_valid" = true ]; then
+        case "$bail" in
+            ci-fix-exhausted) printf 'ci-fix-exhausted\n'; return 0 ;;
+        esac
+    fi
     printf 'unrecoverable\n'
 }
 
@@ -526,7 +537,7 @@ safe_bail_reason_value() {
 retry_cap_for() {
     case "${1:-}" in
         transient-infra) printf '4\n' ;;
-        test-failure|lint-failure) printf '8\n' ;;
+        test-failure|lint-failure|ci-fix-exhausted) printf '8\n' ;;
         dispatch-failure) printf '3\n' ;;
         same-cause-repeat) printf '2\n' ;;
         contract-failure|unrecoverable) printf '0\n' ;;
@@ -630,7 +641,7 @@ $(cat "$session_env")"
     if ! truthy "$stall_tracking"; then
         failure_class="unrecoverable"
     else
-        failure_class=$(classify_from_evidence "$stall_step" "$phase" "$bail_reason" "$evidence")
+        failure_class=$(classify_from_evidence "$stall_step" "$phase" "$bail_reason" "$evidence" "$detail_log_valid")
     fi
     resume_hint=$(resume_hint_for "$failure_class" "$stall_step" "$phase")
     signature=$(printf '%s\n' "class=$failure_class" "hint=$resume_hint" "step=$stall_step" "phase=$phase" "bail=$bail_reason" | hash_text)
@@ -757,6 +768,7 @@ root_cause_template() {
         test-failure) printf 'The stall matched failing test output after implementation or review changes.' ;;
         lint-failure) printf 'The stall matched lint or relevant-checks repair exhaustion.' ;;
         dispatch-failure) printf 'The stall matched an implementer dispatch contract or envelope failure.' ;;
+        ci-fix-exhausted) printf 'The CI fix loop exhausted its retry budget; the surfaced failing job and redacted log tail identify the failing check for an inline fix.' ;;
         same-cause-repeat) printf 'The same sanitized failure signature repeated after a recovery attempt.' ;;
         contract-failure) printf 'The stall occurred at a step whose contract forbids prompt-side recovery edits.' ;;
         *) printf 'The stall did not match a recoverable classifier branch.' ;;
@@ -785,7 +797,7 @@ safe_phase_value() {
 
 safe_class_value() {
     case "${1:-}" in
-        transient-infra|test-failure|lint-failure|dispatch-failure|contract-failure|same-cause-repeat|unrecoverable)
+        transient-infra|test-failure|lint-failure|dispatch-failure|ci-fix-exhausted|contract-failure|same-cause-repeat|unrecoverable)
             printf '%s\n' "$1"
             ;;
         *)
@@ -828,6 +840,7 @@ mitigation_template() {
         test-failure) printf 'Restart the recoverable step, repair the failing tests, then continue through review and shipping.' ;;
         lint-failure) printf 'Restart the recoverable step, repair lint failures, then rerun relevant checks before shipping.' ;;
         dispatch-failure) printf 'Restart Step 2 implementation from the plan and continue through commit, review, and shipping.' ;;
+        ci-fix-exhausted) printf 'Read the surfaced CI failure detail, apply an inline fix, commit, then re-ship through the ship-pr restart path.' ;;
         same-cause-repeat) printf 'Use the alternate same-cause strategy: reread the plan and restart the failed step from scratch once.' ;;
         contract-failure) printf 'Do not recover inline; keep stall tracking set and surface the terminal failure.' ;;
         *) printf 'Do not recover inline; keep stall tracking set and surface the terminal failure.' ;;
@@ -1035,7 +1048,7 @@ doc_retry_policy_lines() {
 
 code_retry_policy_lines() {
     local class
-    for class in transient-infra test-failure lint-failure dispatch-failure same-cause-repeat contract-failure unrecoverable; do
+    for class in transient-infra test-failure lint-failure dispatch-failure ci-fix-exhausted same-cause-repeat contract-failure unrecoverable; do
         printf '%s\t%s\t%s\n' "$class" "$(retry_cap_for "$class")" "$(retry_delay_for "$class")"
     done
 }

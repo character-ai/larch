@@ -1002,6 +1002,28 @@ def run_ci_fix(
             Path(path).unlink(missing_ok=True)
 
 
+def _fix_exhausted_detail(
+    classified: ClassifiedJobs | None,
+    logs: LogCollectResult | None,
+) -> str:
+    """Compose the diagnostic detail surfaced when the CI-fix loop exhausts.
+
+    Carries the stable ``ci-fix-exhausted`` reason token, the failing job
+    name(s), and the already-redacted CI log tail so Step 18a stall recovery
+    can route the stall to an inline fix (``RESUME_HINT=step8-shippr``) instead
+    of terminal ``unrecoverable`` handling. The job names come from the closed
+    CI-job enum and the log tail is redacted upstream in ``collect_failed_logs``.
+    """
+    jobs = ""
+    if classified is not None:
+        jobs = ", ".join(_job_token(job.name, job.shard) for job in classified.jobs)
+    header = f"ci-fix-exhausted: {jobs}" if jobs else "ci-fix-exhausted"
+    tail = logs.text if logs is not None and logs.state == "ready" else ""
+    if tail.strip():
+        return f"{header}\n{tail.rstrip()}\n"
+    return header
+
+
 def evaluate_failure(
     runner: Runner,
     *,
@@ -1040,6 +1062,8 @@ def evaluate_failure(
         upfront_ready_stash = upfront_logs
 
     last_verify: tuple[str, ...] = ()
+    last_classified: ClassifiedJobs | None = None
+    last_logs: LogCollectResult | None = None
     code_fix_attempted_on_ready_log = False
     for attempt in range(1, config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS + 1):
         if not _on_named_branch(runner, cwd=cwd):
@@ -1067,6 +1091,8 @@ def evaluate_failure(
             continue
 
         classified = classify_failed_jobs(jobs_raw)
+        last_classified = classified
+        last_logs = logs
         fix = run_ci_fix(
             runner,
             run_id=run_id,
@@ -1082,11 +1108,17 @@ def evaluate_failure(
             code_fix_attempted_on_ready_log = True
         if fix.status == "local-unfixable":
             if code_fix_attempted_on_ready_log:
-                return FixResult(status="fix-exhausted", detail="ci-fix-exhausted")
+                return FixResult(
+                    status="fix-exhausted",
+                    detail=_fix_exhausted_detail(classified, logs),
+                )
             return fix
         if fix.status == "head-changed":
             if code_fix_attempted_on_ready_log:
-                return FixResult(status="fix-exhausted", detail="ci-fix-exhausted")
+                return FixResult(
+                    status="fix-exhausted",
+                    detail=_fix_exhausted_detail(classified, logs),
+                )
             return fix
         if fix.status == "pushed":
             return fix
@@ -1104,7 +1136,10 @@ def evaluate_failure(
         return fix
 
     if code_fix_attempted_on_ready_log:
-        return FixResult(status="fix-exhausted", detail="ci-fix-exhausted")
+        return FixResult(
+            status="fix-exhausted",
+            detail=_fix_exhausted_detail(last_classified, last_logs),
+        )
     if last_verify:
         jobs = ", ".join(last_verify)
         return FixResult(

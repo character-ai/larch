@@ -10,7 +10,7 @@
   - Truthy values are exactly `1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, and `On`; every other value is false.
   - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.
   - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only. `BAIL_REASON` is a closed enum (`adopted-issue-closed`, `tracking-init-failed`) plus empty; every other value is emitted as `redacted`.
-  - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
+  - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `ci-fix-exhausted`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
   - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; mapped ship-pr restart tokens are the `8`-through-`15` family except the explicit no-resume terminals `12d` and `bump-branch-guard`.
   - `--attempts-file`, when provided, must be an absolute path that resolves to a regular, non-symlink, readable file under `$IMPLEMENT_TMPDIR`.
 - `init-attempts --implement-tmpdir <path> --attempts-file <path>`
@@ -89,9 +89,10 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 - `test-failure`: pytest, jest, vitest, rspec, go test, or generic failing-test evidence.
 - `lint-failure`: lint-fix, shellcheck, markdownlint, pre-commit, relevant-checks, or generic lint-failed evidence.
 - `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, or orchestrator-envelope-invalid evidence.
+- `ci-fix-exhausted`: `BAIL_REASON=ci-fix-exhausted` together with a readable validated failure-detail log. The CI fix loop exhausted its retry budget, but the surfaced failing job and redacted log tail are actionable, so the main agent applies an inline fix and re-ships (`RESUME_HINT=step8-shippr`). The evidence-specific classes above (test/lint/dispatch/transient) still win when the log matches a more precise signature; without a readable detail log the stall stays `unrecoverable`.
 - `contract-failure`: `STALL_STEP=3` or `STALL_STEP=6`; these are checks contracts where prompt-side recovery edits are intentionally forbidden.
 - `same-cause-repeat`: the current sanitized signature matches the latest durable attempt signature; `RESUME_HINT` is forced to `none` so the orchestrator takes the alternate strategy instead of redispatching the same step. Terminal classes (`contract-failure`, `unrecoverable`) never reclassify to `same-cause-repeat`, including repeated Step 3 / Step 6 checks failures.
-- `unrecoverable`: no recoverable classifier matched, `STALL_TRACKING` is not true, or the bail reason is terminal (`adopted-issue-closed`, `tracking-init-failed`).
+- `unrecoverable`: no recoverable classifier matched, `STALL_TRACKING` is not true, or the bail reason is terminal (`adopted-issue-closed`, `tracking-init-failed`). Reserved for cases where no code fix is possible (merge conflict, repo access failure, or a CI-fix exhaustion with no readable failure-detail log to act on).
 
 ## Retry Caps
 
@@ -103,11 +104,13 @@ This table is the single normative retry-cap source. `skills/implement/reference
 | test-failure | 8 | none |
 | lint-failure | 8 | none |
 | dispatch-failure | 3 | none |
+| ci-fix-exhausted | 8 | none |
 | same-cause-repeat | 2 | none |
 | contract-failure | 0 | none |
 | unrecoverable | 0 | none |
 
 For `same-cause-repeat`, the absence of a delay is intentional: the orchestrator uses the one-time alternate strategy immediately instead of sleeping before redispatch.
+`ci-fix-exhausted` shares the fixable-code cap (`8`) with `test-failure` / `lint-failure`: all three resolve to the same `step8-shippr` re-dispatch, so a CI failure gets the same recovery budget whether or not its log matched a more precise signature. The `same-cause-repeat` guard (cap `2`) still bounds an inline fix that keeps reproducing the same sanitized signature.
 For `transient-infra`, the emitted retry delay means "sleep this command between attempts."
 
 ## Exit Codes

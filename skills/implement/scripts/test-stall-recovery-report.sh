@@ -593,6 +593,28 @@ run_capture "$dir/classify.out" "$SCRIPT" classify --implement-tmpdir "$dir" --f
 "$SCRIPT" bug-comment --implement-tmpdir "$dir" --classification-file "$dir/classify.out" --attempts-file "$dir/attempts.env" >"$dir/comment.out"
 assert_not_contains "SENTINEL_SECRET_20I" "$(cat "$(kv BODY_FILE "$dir/body.out")" "$(kv BODY_FILE "$dir/comment.out")")" "20: public outputs omit bail-reason-only and NOTE sentinels"
 
+# CI-fix exhaustion with a readable failure-detail log is recoverable: route to
+# step8-shippr for an inline fix instead of terminal unrecoverable (#3335).
+dir=$(make_tmp case20j)
+write_state "$dir" 8 ci-initial ci-fix-exhausted
+printf 'ci-fix-exhausted: python-lint\n--- CI log (run 42) ---\nE501 line too long in bar.py\n' >"$dir/detail.log"
+run_capture "$SANDBOX/case20j.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/detail.log"
+assert_eq ci-fix-exhausted "$(kv FAILURE_CLASS "$SANDBOX/case20j.out")" "20: ci-fix-exhausted with detail log is recoverable"
+assert_eq step8-shippr "$(kv RESUME_HINT "$SANDBOX/case20j.out")" "20: ci-fix-exhausted routes to ship-pr resume"
+# Without a readable detail log there is nothing to act on -> stays unrecoverable.
+dir=$(make_tmp case20k)
+write_state "$dir" 8 ci-initial ci-fix-exhausted
+run_capture "$SANDBOX/case20k.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case20k.out")" "20: ci-fix-exhausted without detail log stays unrecoverable"
+assert_eq none "$(kv RESUME_HINT "$SANDBOX/case20k.out")" "20: ci-fix-exhausted without detail log does not resume"
+# A more precise evidence signature still outranks the generic ci-fix-exhausted class.
+dir=$(make_tmp case20l)
+write_state "$dir" 8 ci-initial ci-fix-exhausted
+printf 'pytest reports 2 failing tests\n' >"$dir/detail.log"
+run_capture "$SANDBOX/case20l.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/detail.log"
+assert_eq test-failure "$(kv FAILURE_CLASS "$SANDBOX/case20l.out")" "20: precise test evidence outranks ci-fix-exhausted"
+assert_eq step8-shippr "$(kv RESUME_HINT "$SANDBOX/case20l.out")" "20: test evidence at step8 still resumes ship-pr"
+
 run_capture "$SANDBOX/case21-badargv.out" "$SCRIPT" unknown-subcommand
 assert_eq 1 "$RC" "21: bad argv exits 1"
 run_capture "$SANDBOX/case21-missing.out" "$SCRIPT" classify
