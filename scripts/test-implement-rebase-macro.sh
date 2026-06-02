@@ -167,27 +167,44 @@ wrapper_push_refs=$(grep -cF 'rebase-push.sh' "$WRAPPER" || true)
 
 SUBPROC_MD="$REPO_ROOT/skills/implement/references/rebase-rebump-subprocedure.md"
 [[ -f "$SUBPROC_MD" ]] || fail "(H) references/rebase-rebump-subprocedure.md missing: $SUBPROC_MD"
-no_push_only_count=$(grep -chE 'rebase-push\.sh --no-push$' "$SKILL_MD" "$SUBPROC_MD" | awk '{s+=$1} END {print s+0}')
-[[ "$no_push_only_count" == "1" ]] \
-  || fail "(H) expected exactly 1 'rebase-push.sh --no-push' (without --skip-if-pushed) call site across SKILL.md + references/rebase-rebump-subprocedure.md, found $no_push_only_count"
+grep -Fq 'Retired in Phase 1' "$SUBPROC_MD" \
+  || fail "(H) rebase-rebump-subprocedure.md must be the Phase 1 retirement stub"
+
+SHIP_PR_SH="$REPO_ROOT/scripts/ship-pr.sh"
+[[ -f "$SHIP_PR_SH" ]] || fail "(H) scripts/ship-pr.sh missing: $SHIP_PR_SH"
+grep -Fq 'rebase-push.sh" --no-push --keep-on-conflict' "$SHIP_PR_SH" \
+  || fail "(H) scripts/ship-pr.sh run_rebase_rebump must invoke rebase-push.sh --no-push --keep-on-conflict"
 
 # ---------------------------------------------------------------------------
-# (I) Cross-doc pins: step8b_rebase keep-on-conflict shapes + shared dispatch token.
+# (I) Cross-doc pins: conflict-resolution.md + ship-pr Phase 1–4 handoff tokens.
 # ---------------------------------------------------------------------------
 CONFLICT_MD="$REPO_ROOT/skills/implement/references/conflict-resolution.md"
 [[ -f "$CONFLICT_MD" ]] || fail "(I) skills/implement/references/conflict-resolution.md missing: $CONFLICT_MD"
 
-grep -Fq 'rebase-push.sh --no-push --keep-on-conflict' "$SUBPROC_MD" \
-  || fail "(I) sub-procedure must retain step8b_rebase step2 'rebase-push.sh --no-push --keep-on-conflict' prose"
+grep -Fq 'rebase-push.sh" --no-push --keep-on-conflict' "$SHIP_PR_SH" \
+  || fail "(I) scripts/ship-pr.sh must retain run_rebase_rebump rebase-push.sh --no-push --keep-on-conflict invocation"
+
+grep -Fq 'RESUME_PHASE ship-pr-rrr-phase14' "$SHIP_PR_SH" \
+  || fail "(I) scripts/ship-pr.sh missing RESUME_PHASE ship-pr-rrr-phase14 handoff"
+grep -Fq 'CALLER_KIND ship_pr_pre_push' "$SHIP_PR_SH" \
+  || fail "(I) scripts/ship-pr.sh missing CALLER_KIND ship_pr_pre_push handoff"
 
 pin_dispatch='rebase_already_done=true, caller_kind=step8b_rebase'
-grep -Fq "$pin_dispatch" "$SUBPROC_MD" \
-  || fail "(I) sub-procedure missing normative Phase 4 dispatch token: $pin_dispatch"
 grep -Fq "$pin_dispatch" "$CONFLICT_MD" \
   || fail "(I) conflict-resolution.md missing normative Phase 4 dispatch token: $pin_dispatch"
 
 grep -Fq 'rebase-push.sh --continue --no-push --keep-on-conflict' "$CONFLICT_MD" \
-  || fail "(I) conflict-resolution.md must retain step8b_rebase/early_rebase Phase 4 --continue --no-push --keep-on-conflict invocation"
+  || fail "(I) conflict-resolution.md must retain early_rebase/ship_pr_pre_push Phase 4 --continue --no-push --keep-on-conflict invocation"
+
+ship_pr_exit5_count=$(grep -cE '(^|[^0-9])exit 5([^0-9]|$)' "$SHIP_PR_SH" || true)
+[[ "$ship_pr_exit5_count" == "0" ]] \
+  || fail "(I) scripts/ship-pr.sh must not emit exit 5 after Phase 1, found $ship_pr_exit5_count"
+grep -Fq '**Exit 5**:' "$SKILL_MD" \
+  && fail "(I) skills/implement/SKILL.md must route ship_pr_pre_push conflict handoff under Exit 4, not Exit 5"
+grep -Fq 'RESUME_PHASE=ship-pr-rrr-phase14' "$SKILL_MD" \
+  || fail "(I) SKILL.md Exit 4 must document RESUME_PHASE=ship-pr-rrr-phase14 orchestrator handoff"
+grep -Fq 'caller_kind=ship_pr_pre_push' "$SKILL_MD" \
+  || fail "(I) SKILL.md must document caller_kind=ship_pr_pre_push conflict-resolution handoff"
 
 # ---------------------------------------------------------------------------
 # (J) Exactly two standalone phantom-probe-with-warn.sh invocations in SKILL.md.

@@ -27,7 +27,7 @@ Any of the following in `skills/**` or `agents/**` (only if not MAJOR):
 - A `--<flag>` token added to a SKILL.md's `argument-hint:` frontmatter field
 
 ### PATCH — everything else
-Default for all other changes. Every PR must bump at least PATCH per policy.
+Default for all other changes when this skill runs (manual operator or `/release`). `/implement` post-Phase 1 (#3364) does not require a per-PR bump on the ship path.
 
 ## Caveat — escalation-only clause
 
