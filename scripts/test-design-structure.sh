@@ -299,8 +299,8 @@ DR_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
 [[ -f "$DR_MD" ]] || fail "(14c14b) discussion-rounds.md missing: $DR_MD"
 grep -Fq 'design-postplan-emit.sh' "$AG_MD" \
   || fail "(14c14c) approval-gates.md missing design-postplan-emit.sh pin"
-grep -Fq 'design-postplan-emit.sh' "$AG_MD" \
-  || fail "(14c14d) approval-gates.md missing postplan driver validator pin"
+grep -Fq 'VALIDATE_STATUS' "$AG_MD" \
+  || fail "(14c14d) approval-gates.md must reference VALIDATE_STATUS (validator routing through driver)"
 postplan_before_size_ag=$(awk '/^### Shared post-apply pipeline/ { in_section=1 } in_section && /design-postplan-emit\.sh/ && !e { e=NR } in_section && e && /Step 2b\.5/ && !v { v=NR } /^### Gate B plan revision/ { in_section=0 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$AG_MD")
 [[ "$postplan_before_size_ag" == "1" ]] \
   || fail "(14c14e) approval-gates.md must mention design-postplan-emit.sh at or before Step 2b.5"

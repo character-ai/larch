@@ -178,6 +178,17 @@ else
     fail "HARD original exists"
 fi
 
+# 2b idempotent snapshot: plan.txt-original already exists → preserved
+D2b="$TMP/hard-preserved"
+setup_design_tmp "$D2b" full HARD
+: >"$D2b/plan.txt-original"
+set +e
+run_subject "$D2b" --snapshot-original
+rc=$?
+set -e
+assert_rc "HARD snapshot preserved" 0 "$rc"
+assert_file_kv "$D2b/.design-postplan-emit-result.env" SNAPSHOT_STATUS preserved "HARD snapshot preserved"
+
 # 3 re-emit snapshot suppressed, even HARD
 D3="$TMP/hard-suppressed"
 setup_design_tmp "$D3" full HARD
@@ -250,6 +261,41 @@ set -e
 assert_rc "validator infra failure rc" 1 "$rc"
 assert_file_kv "$D8/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS validate-driver-failed "validator infra status"
 
+# 8b validator exits 0 but emits no VALIDATE_STATUS → validate-driver-failed
+D8b="$TMP/validator-silent"
+setup_design_tmp "$D8b" full SIMPLE
+reset_env
+export VALIDATOR_STUB_RC=0 VALIDATE_STATUS_VALUE=""
+# Suppress VALIDATE_STATUS emission from stub
+cat >"$FAKE_DESIGN/invoke-plan-validator.sh" <<'STUB2'
+#!/usr/bin/env bash
+echo "validator $*" >>"${CALL_LOG:?}"
+# intentionally emits no VALIDATE_STATUS
+exit 0
+STUB2
+chmod +x "$FAKE_DESIGN/invoke-plan-validator.sh"
+set +e
+bash "$SUBJECT" --design-tmpdir "$D8b" >"$D8b/stdout.txt" 2>"$D8b/stderr.txt"
+rc=$?
+set -e
+assert_rc "validator silent rc" 1 "$rc"
+assert_file_kv "$D8b/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS validate-driver-failed "validator silent status"
+# Restore stub
+cat >"$FAKE_DESIGN/invoke-plan-validator.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "validator $*" >>"${CALL_LOG:?}"
+if [[ "${VALIDATOR_STUB_RC:-0}" -ne 0 ]]; then
+  [[ "${VALIDATOR_EMIT_STATUS_ON_FAIL:-false}" == true ]] && printf 'VALIDATE_STATUS=%s\n' "${VALIDATE_STATUS_VALUE:-defects-found}"
+  exit "${VALIDATOR_STUB_RC}"
+fi
+printf 'VALIDATE_STATUS=%s\n' "${VALIDATE_STATUS_VALUE:-ok}"
+printf 'VALIDATE_DEFECT_COUNT=%s\n' "${VALIDATE_DEFECT_COUNT_VALUE:-0}"
+printf 'VALIDATE_SKIPPED_COUNT=%s\n' "${VALIDATE_SKIPPED_COUNT_VALUE:-0}"
+printf 'VALIDATE_UNSAFE_TOKEN_COUNT=%s\n' "${VALIDATE_UNSAFE_TOKEN_COUNT_VALUE:-0}"
+printf 'VALIDATE_LOG_FILE=%s\n' "${DESIGN_TMPDIR:?}/validate-plan-commands.log"
+STUB
+chmod +x "$FAKE_DESIGN/invoke-plan-validator.sh"
+
 # 9 usage/config error
 set +e
 bash "$SUBJECT" >"$TMP/usage.out" 2>"$TMP/usage.err"
@@ -278,7 +324,7 @@ assert_rc "pause checkpoint rc" 0 "$rc"
 assert_contains "$CALL_LOG" 'pause-save --design-tmpdir' "pause-save invoked"
 assert_contains "$CALL_LOG" '--issue 77' "pause-save issue resolved"
 if grep -Fq 'design-driver EMIT' "$CALL_LOG"; then fail "pause should happen before EMIT"; else pass "pause happened before EMIT"; fi
-assert_not_exists_or_empty "$D11/.design-postplan-emit-result.env" "pause exec does not write postplan result env"
+assert_file_kv "$D11/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS paused "pause writes paused status to result env"
 
 # 12 quick + force validate runs
 D12="$TMP/quick-force"
