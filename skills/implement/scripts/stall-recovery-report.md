@@ -34,8 +34,8 @@
   - `--output-file` must stay under `$IMPLEMENT_TMPDIR`.
 - `clear-stall --implement-tmpdir <path>`
   - Owns the Step 18a success-path atomic clear of `$IMPLEMENT_TMPDIR/ship-pr-state.sh` (disk before memory). Emits `CLEARED=true|false` on every path.
-  - Present-file guards are two-tier: (1) symlink or non-regular file → `CLEARED=false`, exit 3; (2) syntax-invalid lines (`check_ship_pr_state_syntax`) → `CLEARED=false`, exit 3. Absent file → `CLEARED=false`, exit 0. Never call `validate_ship_pr_state` (it exits 3 without emitting `CLEARED`).
-  - On success (syntax-valid file, including keyless empty or comment-only files): key-rewrite sets `STALL_TRACKING=false` and `STALL_STEP=` (appending both when absent), preserves every other key and line order for keyed files, temp-write → re-read-assert `false` via `read-session-env-key.sh` → `mv -f` → destination re-read-assert `false`. Operational failures on temp-write, re-read, `mv`, or destination re-read emit `CLEARED=false` before exit (explicit handlers; no bare `set -e` abort without the KV).
+  - Present-file guards are two-tier: (1) symlink or non-regular file → `CLEARED=false`, exit 3; (2) syntax-invalid lines (`check_ship_pr_state_syntax`) → `CLEARED=false`, exit 3. Never call `validate_ship_pr_state` (it exits 3 without emitting `CLEARED`).
+  - On success (including absent state and syntax-valid keyless empty or comment-only files): key-rewrite or minimal seeding sets `STALL_TRACKING=false` and `STALL_STEP=` (appending both when absent), preserves every other key and line order for keyed files, temp-write → re-read-assert `false` via `read-session-env-key.sh` → `mv -f` → destination re-read-assert `false`. Operational failures on temp-write, re-read, `mv`, or destination re-read emit `CLEARED=false` before exit (explicit handlers; no bare `set -e` abort without the KV).
   - Never clears in-memory orchestrator state.
 - `seed-terminal-state --implement-tmpdir <path> [--stall-step <N>] [--phase <token>]`
   - Owns the Step 18a terminal-failure durable write (steps 8.1–8.3). Emits `SEEDED=true|false` and, on success, `SEED_MODE=rewrite|seed`.

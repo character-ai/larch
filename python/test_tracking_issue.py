@@ -72,6 +72,20 @@ def test_link_pr_closes_ignores_mermaid_mentions() -> None:
     assert linked.rstrip().endswith("Closes #42")
 
 
+def test_link_pr_closes_ignores_fenced_exact_line() -> None:
+    body = "```text\nCloses #42\n```\n"
+    linked = tracking_issue.link_pr_closes(body, 42)
+    assert linked.count("Closes #42") == 2
+    assert linked.rstrip().endswith("Closes #42")
+
+
+def test_link_pr_closes_ignores_non_footer_exact_line() -> None:
+    body = "Closes #42\n\n## Test plan\n\n- [x] passed\n"
+    linked = tracking_issue.link_pr_closes(body, 42)
+    assert linked.count("Closes #42") == 2
+    assert linked.rstrip().endswith("Closes #42")
+
+
 def test_link_pr_closes_no_prefix_collision() -> None:
     body = "Summary\n\nCloses #421\n"
     linked = tracking_issue.link_pr_closes(body, 42)

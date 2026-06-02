@@ -675,7 +675,8 @@ assert_eq "$dir/failure.log" "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$
 dir=$(make_tmp case22-clear-absent)
 run_capture "$SANDBOX/case22-clear-absent.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "22: clear-stall absent state exits 0"
-assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-absent.out")" "22: clear-stall absent state emits CLEARED=false"
+assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-absent.out")" "22: clear-stall absent state emits CLEARED=true"
+assert_eq false "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall absent state writes STALL_TRACKING=false"
 
 dir=$(make_tmp case22-clear-malformed)
 printf 'not valid\n' >"$dir/ship-pr-state.sh"

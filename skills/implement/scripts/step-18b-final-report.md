@@ -40,7 +40,7 @@ Non-zero helper exits are captured to the failure logs above and appended with `
 1. Candidate `emit_body=true` when `$IMPLEMENT_TMPDIR/.step17-emitted` is absent.
 2. Snapshot `summary-final.md` to `.step18-prebody` when it exists before `write-final-report.sh`; emit `SNAPSHOT_OK` as `true` (copy succeeded), `false` (copy failed), or `absent` (no pre-write body).
 3. Record `WFR_RC` from `write-final-report.sh`.
-4. When `WFR_RC=0` and `summary-final.md` is non-empty and the prior candidate was false: promote to true when `SNAPSHOT_OK=absent` (no pre-write body) or when `SNAPSHOT_OK=true` and `cmp` reports a difference; when `SNAPSHOT_OK=false` (failed snapshot with `.step17-emitted` present), do not promote.
+4. When `WFR_RC=0` and `summary-final.md` is non-empty and the prior candidate was false: promote to true when `SNAPSHOT_OK=absent` (no pre-write body), when `SNAPSHOT_OK=true` and `cmp` reports a difference, or when `SNAPSHOT_OK=false` (failed snapshot with `.step17-emitted` present). The snapshot-failure path fails open so a successful refreshed report body is still visible.
 5. **Final gate:** emit `EMIT_BODY=true` only when candidate is true **and** `WFR_RC=0` **and** `summary-final.md` is non-empty; otherwise `EMIT_BODY=false`.
 
 Intentional delta vs the retired inline block: the wrapper does not pass `--print-stdout` to `write-final-report.sh`, so the report body appears once at top chat (orchestrator verbatim emit) instead of also in the collapsible Bash stdout. Body file content is unchanged (`write-final-report.sh` writes `summary-final.md` regardless of `--print-stdout`).
