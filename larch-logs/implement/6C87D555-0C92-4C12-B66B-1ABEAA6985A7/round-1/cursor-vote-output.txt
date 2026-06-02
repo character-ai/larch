@@ -1,0 +1,17 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan treats spaced-path under-match as an acceptable edge case
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- absolute shellcheck paths are uncommon; prefix normalization adds more complexity than the rare miss warrants
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- symlink-listed paths require an attacker-controlled repo layout; risk is latent and out of plan scope
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- documented 50-path cap is intentional per plan, not a silent defect
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly specifies last matching phase banner wins
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicated constants are maintainability-only; refactor not required for this change
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- unused stdout branches are dead weight but harmless with a single dest-file caller
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- byte tail can split lines but typical checks logs are ASCII and Case 16 covers the important truncation case
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same rare mktemp class as FINDING_1; defer separate issue if in-scope fix is accepted
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing capture-layer concern, not introduced by this branch
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- committed run-log tree is review-policy noise, not a product defect worth an issue
+FINDING_16: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- harness still exercises filters; weaker fixture wording does not change runtime behavior
+FINDING_17: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- spaced paths are planned under-match; unread acceptance runs are review-process notes, not code bugs
