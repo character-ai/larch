@@ -22,6 +22,34 @@ assert_contains() {
     [[ "$haystack" == *"$needle"* ]] || fail "$label missing '$needle' in: $haystack"
 }
 
+assert_not_contains() {
+    local haystack="$1" needle="$2" label="$3"
+    [[ "$haystack" != *"$needle"* ]] || fail "$label must not contain '$needle'"
+}
+
+write_wrapper_noop() {
+    local path="$1"
+    cat > "$path" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+output=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --output) output="$2"; shift 2 ;;
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+printf 'stub no-op\n' > "$output"
+EOF
+    chmod +x "$path"
+}
+
+find_prompt_for_session() {
+    local session="$1"
+    find "$session/lint-fix-loop" -name prompt.md -print -quit
+}
+
 kv_value() {
     local key="$1" text="$2"
     printf '%s\n' "$text" | awk -F= -v key="$key" '$1 == key { print substr($0, index($0,"=")+1); exit }'
@@ -916,9 +944,12 @@ write_wrapper_modify_only "$WRAPPER6"
 case6_result=$(run_case "$SCRIPTS6" "$REPO6" "$SESSION6" "$CHECKS6" "$WRAPPER6" ship-pr-ci-per-job "$ARGS6")
 assert_contains "$case6_result" 'LINT_FIX_STATUS=applied' "case6 status"
 assert_contains "$case6_result" 'LINT_FIX_SITE=ship-pr-ci-per-job' "case6 site"
-case6_prompt=$(find "$SESSION6/lint-fix-loop" -name prompt.md -print -quit)
+case6_prompt=$(find_prompt_for_session "$SESSION6")
 [[ -n "$case6_prompt" ]] || fail "case6 prompt was not written"
-assert_contains "$(cat "$case6_prompt")" "local command \`env SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only\` passes" "case6 prompt local command"
+case6_prompt_text=$(cat "$case6_prompt")
+assert_contains "$case6_prompt_text" "local command \`env SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only\` passes" "case6 prompt local command"
+assert_contains "$case6_prompt_text" 'Do NOT run `scripts/relevant-checks.sh` as your verification loop' "case6 per-job anti-cascade"
+assert_not_contains "$case6_prompt_text" 'full-branch `pre-commit`' "case6 must omit non-per-job anti-cascade"
 
 # Case 7: existing sites reject --target-cmd-args-file.
 CASE7="$TMPROOT/case7"
@@ -1044,5 +1075,165 @@ case11_run_dir=$(kv_value LINT_FIX_RUN_DIR "$case11_out")
     || fail "case11 expected cursor.log.stderr-tail from diag fallback"
 grep -Fq 'LARCH_LINT_FIX_CURSOR_DIAG_PROBE' "$case11_run_dir/cursor.log.stderr-tail" \
     || fail "case11 stderr-tail must contain diag probe"
+
+assert_non_per_job_prompt_scoped() {
+    local prompt_text="$1" label="$2"
+    assert_contains "$prompt_text" 'Fix only the failures shown in the checks log' "$label log-scoped fix_sentence"
+    assert_contains "$prompt_text" '## In-scope files' "$label in-scope section"
+    assert_contains "$prompt_text" $'- tracked.txt\n' "$label tracked.txt in-scope"
+    assert_contains "$prompt_text" 'Do NOT run `scripts/relevant-checks.sh`, full-branch `pre-commit`, or `agent-lint`' "$label non-per-job anti-cascade"
+    assert_not_contains "$prompt_text" 'Fix the repository so `scripts/relevant-checks.sh` passes' "$label no global relevant-checks pass"
+}
+
+# Case 12: shellcheck In <path> line N (positive).
+CASE12="$TMPROOT/case12"
+REPO12="$CASE12/repo"
+SCRIPTS12="$CASE12/scripts"
+SESSION12="$CASE12/session"
+CHECKS12="$CASE12/checks.log"
+WRAPPER12="$CASE12/wrapper.sh"
+make_repo "$REPO12"
+make_fixture_scripts "$SCRIPTS12"
+make_session "$SESSION12"
+cat > "$CHECKS12" <<'EOF'
+=== Running pre-commit on 1 changed file(s) ===
+In tracked.txt line 1:
+SC2086: Double quote to prevent globbing
+EOF
+write_wrapper_noop "$WRAPPER12"
+case12_result=$(run_case "$SCRIPTS12" "$REPO12" "$SESSION12" "$CHECKS12" "$WRAPPER12" step3)
+assert_contains "$case12_result" 'LINT_FIX_STATUS=no-changes' "case12 status"
+case12_prompt=$(find_prompt_for_session "$SESSION12")
+[[ -n "$case12_prompt" ]] || fail "case12 prompt missing"
+case12_text=$(cat "$case12_prompt")
+assert_non_per_job_prompt_scoped "$case12_text" "case12"
+assert_contains "$case12_text" '## Optional local verification (non-authoritative)' "case12 optional pre-commit"
+assert_contains "$case12_text" 'pre-commit run --files --' "case12 pre-commit hint"
+assert_contains "$case12_text" 'tracked.txt' "case12 tracked in hint"
+
+# Case 13: leading path:line.
+CASE13="$TMPROOT/case13"
+REPO13="$CASE13/repo"
+SCRIPTS13="$CASE13/scripts"
+SESSION13="$CASE13/session"
+CHECKS13="$CASE13/checks.log"
+WRAPPER13="$CASE13/wrapper.sh"
+make_repo "$REPO13"
+make_fixture_scripts "$SCRIPTS13"
+make_session "$SESSION13"
+printf 'tracked.txt:1: MD041/first-line-heading/first-line-h1 First line in a file should be a top-level heading\n' > "$CHECKS13"
+write_wrapper_noop "$WRAPPER13"
+case13_result=$(run_case "$SCRIPTS13" "$REPO13" "$SESSION13" "$CHECKS13" "$WRAPPER13" step3)
+assert_contains "$case13_result" 'LINT_FIX_STATUS=no-changes' "case13 status"
+case13_prompt=$(find_prompt_for_session "$SESSION13")
+[[ -n "$case13_prompt" ]] || fail "case13 prompt missing"
+assert_non_per_job_prompt_scoped "$(cat "$case13_prompt")" "case13"
+
+# Case 14: empty affected list fallback.
+CASE14="$TMPROOT/case14"
+REPO14="$CASE14/repo"
+SCRIPTS14="$CASE14/scripts"
+SESSION14="$CASE14/session"
+CHECKS14="$CASE14/checks.log"
+WRAPPER14="$CASE14/wrapper.sh"
+make_repo "$REPO14"
+make_fixture_scripts "$SCRIPTS14"
+make_session "$SESSION14"
+printf 'generic failure with no parseable file paths\n' > "$CHECKS14"
+write_wrapper_noop "$WRAPPER14"
+case14_result=$(run_case "$SCRIPTS14" "$REPO14" "$SESSION14" "$CHECKS14" "$WRAPPER14" step3)
+assert_contains "$case14_result" 'LINT_FIX_STATUS=no-changes' "case14 status"
+case14_text=$(cat "$(find_prompt_for_session "$SESSION14")")
+assert_contains "$case14_text" 'no scoped file list could be derived from the log' "case14 empty-list fix_sentence"
+assert_contains "$case14_text" 'Do NOT run `scripts/relevant-checks.sh`, full-branch `pre-commit`, or `agent-lint`' "case14 anti-cascade"
+assert_not_contains "$case14_text" '## In-scope files' "case14 no in-scope section"
+assert_not_contains "$case14_text" 'Fix the repository so `scripts/relevant-checks.sh` passes' "case14 no global pass goal"
+
+# Case 15: unsafe path rejection (backtick and leading dash).
+CASE15="$TMPROOT/case15"
+REPO15="$CASE15/repo"
+SCRIPTS15="$CASE15/scripts"
+SESSION15="$CASE15/session"
+CHECKS15="$CASE15/checks.log"
+WRAPPER15="$CASE15/wrapper.sh"
+make_repo "$REPO15"
+make_fixture_scripts "$SCRIPTS15"
+make_session "$SESSION15"
+cat > "$CHECKS15" <<'EOF'
+In bad`tick.txt line 1:
+SC2086: example
+--leading.txt:1: example
+In tracked.txt line 1:
+SC2086: real issue
+=== Running pre-commit on 1 changed file(s) ===
+EOF
+write_wrapper_noop "$WRAPPER15"
+case15_result=$(run_case "$SCRIPTS15" "$REPO15" "$SESSION15" "$CHECKS15" "$WRAPPER15" step3)
+assert_contains "$case15_result" 'LINT_FIX_STATUS=no-changes' "case15 status"
+case15_text=$(cat "$(find_prompt_for_session "$SESSION15")")
+case15_in_scope=${case15_text#*## In-scope files}
+case15_in_scope=${case15_in_scope%%## Optional*}
+[[ -n "$case15_in_scope" ]] || fail "case15 missing in-scope section"
+assert_contains "$case15_in_scope" $'- tracked.txt\n' "case15 safe path only"
+assert_not_contains "$case15_in_scope" 'bad`tick.txt' "case15 reject backtick path in-scope"
+assert_not_contains "$case15_in_scope" '--leading.txt' "case15 reject leading-dash path in-scope"
+if [[ "$case15_text" == *'## Optional local verification'* ]]; then
+    case15_optional=${case15_text#*## Optional local verification}
+    case15_optional=${case15_optional%%Do NOT run*}
+    assert_not_contains "$case15_optional" 'bad`tick.txt' "case15 reject backtick in optional cmd"
+    assert_not_contains "$case15_optional" '--leading.txt' "case15 reject leading-dash in optional cmd"
+fi
+
+# Case 16: excerpt/parser coupling (truncated log).
+CASE16="$TMPROOT/case16"
+REPO16="$CASE16/repo"
+SCRIPTS16="$CASE16/scripts"
+SESSION16="$CASE16/session"
+CHECKS16="$CASE16/checks.log"
+WRAPPER16="$CASE16/wrapper.sh"
+make_repo "$REPO16"
+make_fixture_scripts "$SCRIPTS16"
+make_session "$SESSION16"
+# Tail-visible path (inside last 60000 bytes).
+CHECKS16_PATH="$CHECKS16" python3 - <<'PY'
+import os
+path = os.environ["CHECKS16_PATH"]
+padding = "P" * 61000
+tail = (
+    "=== Running pre-commit on 1 changed file(s) ===\n"
+    "In tracked.txt line 1:\n"
+    "SC2086: example\n"
+)
+with open(path, "w") as f:
+    f.write(padding + tail)
+PY
+write_wrapper_noop "$WRAPPER16"
+case16a_result=$(run_case "$SCRIPTS16" "$REPO16" "$SESSION16" "$CHECKS16" "$WRAPPER16" step3)
+assert_contains "$case16a_result" 'LINT_FIX_STATUS=no-changes' "case16a status"
+case16a_text=$(cat "$(find_prompt_for_session "$SESSION16")")
+assert_contains "$case16a_text" '[truncated to last 60000 bytes]' "case16a truncation banner"
+assert_contains "$case16a_text" $'- tracked.txt\n' "case16a tail-visible path"
+assert_contains "$case16a_text" '## Optional local verification (non-authoritative)' "case16a optional pre-commit"
+
+# Prefix-only path (outside tail window): new session dir to avoid prompt reuse.
+SESSION16B="$CASE16/session-b"
+mkdir -p "$SESSION16B"
+cp "$SESSION16/session-env.sh" "$SESSION16B/session-env.sh"
+CHECKS16B="$CASE16/checks-b.log"
+CHECKS16B_PATH="$CHECKS16B" python3 - <<'PY'
+import os
+path = os.environ["CHECKS16B_PATH"]
+padding = "P" * 61000
+prefix = "In tracked.txt line 1:\nSC2086: example\n"
+tail = "=== Running pre-commit on 1 changed file(s) ===\nunrelated tail noise\n"
+with open(path, "w") as f:
+    f.write(prefix + padding + tail)
+PY
+case16b_result=$(run_case "$SCRIPTS16" "$REPO16" "$SESSION16B" "$CHECKS16B" "$WRAPPER16" step3)
+assert_contains "$case16b_result" 'LINT_FIX_STATUS=no-changes' "case16b status"
+case16b_text=$(cat "$(find_prompt_for_session "$SESSION16B")")
+assert_contains "$case16b_text" 'Fix only the failures shown in the checks log' "case16b log-scoped goal"
+assert_not_contains "$case16b_text" '## In-scope files' "case16b prefix path absent from tail"
+assert_not_contains "$case16b_text" '## Optional local verification (non-authoritative)' "case16b no pre-commit hint without tail path"
 
 echo "test-lint-fix-loop: ok"

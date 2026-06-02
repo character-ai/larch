@@ -39,16 +39,37 @@ Behavior:
    exit 0.
 3. If neither external coder is present, emit
    `LINT_FIX_STATUS=main-agent-required` and exit 0.
-4. Compose a prompt that treats the checks log as untrusted command output and
-   asks the external coder to make the minimum repository edits required for
-   `scripts/relevant-checks.sh` to pass. The prompt forbids commits; the helper owns any
+4. Compose a prompt that treats the checks log as untrusted command output. For
+   non-per-job sites (`target_cmd_display` empty), the authoritative goal is
+   log-scoped: repair only failures shown in the embedded checks log — never
+   `Fix the repository so scripts/relevant-checks.sh passes` or
+   `pre-commit run --files …` as the pass/fail condition. When path extraction
+   finds no qualifying in-scope files, the empty-list variant states that no
+   scoped file list could be derived and that the parent loop re-runs the
+   verifier (without contradicting that guidance). For `--site
+   ship-pr-ci-per-job`, the goal remains `Fix the repository so the local
+   command … passes` using `--target-cmd-args-file` (one argv token per line,
+   leading/trailing whitespace stripped, control characters rejected); the
+   joined display string is informational only — `ship-pr.sh` executes
+   commands from its fixed case-statement dispatcher, not from this file.
+   Non-per-job prompts may include `## In-scope files` (plain `- path` bullets,
+   no backticks) when `affected_files_from_log` returns paths, and
+   `## Optional local verification (non-authoritative)` only when the list is
+   non-empty and `infer_failure_phase_from_log` is `pre-commit` (display-only
+   `pre-commit run --files -- <quoted paths>` with a whole-repo-hook caveat).
+   Anti-cascade text is split: non-per-job forbids `scripts/relevant-checks.sh`,
+   full-branch `pre-commit`, and `agent-lint` as the coder verification loop;
+   per-job forbids only `scripts/relevant-checks.sh` (the parent re-runs the
+   job command from `fix_sentence`). Path extraction reads the same checks-log
+   excerpt embedded under `## Checks Log` (`checks_log_excerpt`: full file when
+   `<= 60000` bytes, else `tail -c 60000` with a truncation banner). Filters:
+   existing regular repo-relative file, no leading `/` or `..` segments, no
+   control characters, no backticks, no leading `-`; deduped and capped (50).
+   `scripts/relevant-checks.sh` is unchanged; the parent still owns global
+   re-verification via `run-relevant-checks-captured.sh` after
+   `LINT_FIX_STATUS=applied`. The prompt forbids commits; the helper owns any
    allowed commit. Literal ````` fence lines in the log are sanitized before
    embedding.
-   For `--site ship-pr-ci-per-job`, the target command is displayed from
-   `--target-cmd-args-file`: one argv token per line, leading/trailing
-   whitespace stripped, control characters rejected. The joined display string
-   is informational only; `ship-pr.sh` executes commands from its fixed
-   case-statement dispatcher, not from this file.
 5. Dispatch Codex first via `scripts/run-external-agent.sh` when Codex is
    present; if Codex is absent or fails and Cursor is present, dispatch Cursor.
    `run_codex()` runs `codex exec --json --output-last-message "$run_dir/codex.log" -- ...`,
