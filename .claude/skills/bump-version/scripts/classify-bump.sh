@@ -14,6 +14,9 @@
 # Idempotent no-op: if HEAD..BASE already contains a commit matching
 # `^Bump version to X\.Y\.Z$`, emits BUMP_TYPE=NONE and exits 0.
 #
+# Optional: --base <ref> — use <ref> as BASE directly (skip merge-base + idempotency).
+#   Consumer: /release via release-prepare.sh. Default path unchanged.
+#
 # Output (stdout, KEY=VALUE):
 #   CURRENT_VERSION=<x.y.z>
 #   NEW_VERSION=<x.y.z>                (same as current if BUMP_TYPE=NONE)
@@ -27,11 +30,30 @@
 set -euo pipefail
 
 PLUGIN_JSON="$PWD/.claude-plugin/plugin.json"
+BASE_REF=""
+SKIP_IDEMPOTENCY=false
 
 err() {
   echo "ERROR: $*" >&2
   exit 1
 }
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base)
+      [[ $# -ge 2 ]] || err "--base requires a ref"
+      BASE_REF="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: classify-bump.sh [--base <git-ref>]" >&2
+      exit 0
+      ;;
+    *)
+      err "unknown argument: $1"
+      ;;
+  esac
+done
 
 # Validate plugin.json exists and parses.
 [[ -f "$PLUGIN_JSON" ]] || err "$PLUGIN_JSON not found"
@@ -42,18 +64,26 @@ CURRENT_VERSION=$(jq -r '.version // empty' "$PLUGIN_JSON")
 [[ -n "$CURRENT_VERSION" ]] || err "$PLUGIN_JSON missing .version field"
 [[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || err "version '$CURRENT_VERSION' is not semver (expected X.Y.Z)"
 
-# Best-effort fetch so origin/main is fresh. Non-fatal.
-git fetch origin main --quiet 2>/dev/null || true
-
-# Resolve BASE: prefer local main, fall back to origin/main.
+# Resolve BASE: explicit --base ref (e.g. /release baseline tag) or merge-base path.
 BASE=""
-if git rev-parse --verify main >/dev/null 2>&1; then
-  BASE=$(git merge-base main HEAD 2>/dev/null || true)
+if [[ -n "$BASE_REF" ]]; then
+  git rev-parse --verify "$BASE_REF^{commit}" >/dev/null 2>&1 \
+    || err "could not resolve --base ref: $BASE_REF"
+  BASE=$(git rev-parse "$BASE_REF^{commit}")
+  SKIP_IDEMPOTENCY=true
+else
+  # Best-effort fetch so origin/main is fresh. Non-fatal.
+  git fetch origin main --quiet 2>/dev/null || true
+
+  # Resolve BASE: prefer local main, fall back to origin/main.
+  if git rev-parse --verify main >/dev/null 2>&1; then
+    BASE=$(git merge-base main HEAD 2>/dev/null || true)
+  fi
+  if [[ -z "$BASE" ]] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+    BASE=$(git merge-base origin/main HEAD 2>/dev/null || true)
+  fi
+  [[ -n "$BASE" ]] || err "could not resolve merge-base against main or origin/main"
 fi
-if [[ -z "$BASE" ]] && git rev-parse --verify origin/main >/dev/null 2>&1; then
-  BASE=$(git merge-base origin/main HEAD 2>/dev/null || true)
-fi
-[[ -n "$BASE" ]] || err "could not resolve merge-base against main or origin/main"
 
 # Reasoning log path. When IMPLEMENT_TMPDIR is set (the /implement caller),
 # the file lands in that skill-owned tmpdir. When unset (standalone /bump-version
@@ -124,19 +154,21 @@ while [[ "$IDEMPOTENCY_DEPTH" -lt 3 ]]; do
   fi
   break
 done
-HEAD_SUBJECT=$(git log -1 --format=%s "$IDEMPOTENCY_REF" 2>/dev/null || true)
-if [[ "$HEAD_SUBJECT" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  log "## Result: NONE (already bumped)"
-  log ""
-  log "The idempotency HEAD after transparent CHANGELOG commits is a version bump commit: \`$(git rev-parse --short "$IDEMPOTENCY_REF")\` — \"$HEAD_SUBJECT\""
-  log ""
-  log "No additional bump will be applied."
+if [[ "$SKIP_IDEMPOTENCY" != "true" ]]; then
+  HEAD_SUBJECT=$(git log -1 --format=%s "$IDEMPOTENCY_REF" 2>/dev/null || true)
+  if [[ "$HEAD_SUBJECT" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    log "## Result: NONE (already bumped)"
+    log ""
+    log "The idempotency HEAD after transparent CHANGELOG commits is a version bump commit: \`$(git rev-parse --short "$IDEMPOTENCY_REF")\` — \"$HEAD_SUBJECT\""
+    log ""
+    log "No additional bump will be applied."
 
-  echo "CURRENT_VERSION=$CURRENT_VERSION"
-  echo "NEW_VERSION=$CURRENT_VERSION"
-  echo "BUMP_TYPE=NONE"
-  echo "REASONING_FILE=$REASONING_FILE"
-  exit 0
+    echo "CURRENT_VERSION=$CURRENT_VERSION"
+    echo "NEW_VERSION=$CURRENT_VERSION"
+    echo "BUMP_TYPE=NONE"
+    echo "REASONING_FILE=$REASONING_FILE"
+    exit 0
+  fi
 fi
 
 # Collect file-level changes in public surface.

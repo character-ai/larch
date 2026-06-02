@@ -20,14 +20,43 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 
-usage() { larch_err "Usage: promote-release.sh X.Y.Z"; }
+usage() { larch_err "Usage: promote-release.sh X.Y.Z [--repo OWNER/REPO]"; }
 
-if [[ $# -ne 1 ]]; then
+VERSION=""
+REPO_ARGS=()
+
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --repo)
+            [[ $# -ge 2 ]] || { larch_err "ERROR: --repo requires a value"; exit 2; }
+            REPO_ARGS=(--repo "$2")
+            shift 2
+            ;;
+        -h|--help)
+            usage
+            exit 0
+            ;;
+        -*)
+            larch_err "ERROR: unknown option: $1"
+            usage
+            exit 2
+            ;;
+        *)
+            if [[ -n "$VERSION" ]]; then
+                larch_err "ERROR: unexpected extra argument: $1"
+                usage
+                exit 2
+            fi
+            VERSION="$1"
+            shift
+            ;;
+    esac
+done
+
+if [[ -z "$VERSION" ]]; then
     usage
     exit 2
 fi
-
-VERSION="$1"
 
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     larch_err "ERROR: invalid semver format: $VERSION (expected X.Y.Z)"
@@ -37,17 +66,17 @@ fi
 
 TAG="v${VERSION}"
 
-if ! gh release view "$TAG" >/dev/null; then
+if ! gh release view "$TAG" "${REPO_ARGS[@]}" >/dev/null; then
     larch_err "ERROR: release $TAG not found."
     exit 1
 fi
 
-CURRENT_LATEST=$(gh release list --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName') || exit 1
+CURRENT_LATEST=$(gh release list "${REPO_ARGS[@]}" --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName') || exit 1
 
 if [[ "$CURRENT_LATEST" == "$TAG" ]]; then
-    IS_PRERELEASE=$(gh release view "$TAG" --json isPrerelease --jq '.isPrerelease')
+    IS_PRERELEASE=$(gh release view "$TAG" "${REPO_ARGS[@]}" --json isPrerelease --jq '.isPrerelease')
     if [[ "$IS_PRERELEASE" == "true" ]]; then
-        gh release edit "$TAG" --prerelease=false || exit 1
+        gh release edit "$TAG" "${REPO_ARGS[@]}" --prerelease=false || exit 1
         emit "$TAG is already the latest release; cleared pre-release flag."
     else
         emit "$TAG is already the latest release."
@@ -55,5 +84,5 @@ if [[ "$CURRENT_LATEST" == "$TAG" ]]; then
     exit 0
 fi
 
-gh release edit "$TAG" --latest --prerelease=false || exit 1
+gh release edit "$TAG" "${REPO_ARGS[@]}" --latest --prerelease=false || exit 1
 emit "Promoted $TAG to latest release."

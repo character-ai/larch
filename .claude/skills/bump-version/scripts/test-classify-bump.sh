@@ -132,6 +132,33 @@ else
     fail "forged CHANGELOG subject touching skills should be MINOR: $out"
 fi
 
+# Test 6: --base skips per-PR idempotency over a trailing bump commit.
+repo="$TMPDIR_BASE/test6"
+setup_repo "$repo"
+git -C "$repo" checkout -q main 2>/dev/null || git -C "$repo" checkout -q -b main
+git -C "$repo" tag -a v1.0.0 -m "baseline" "$(git -C "$repo" rev-parse HEAD)"
+mkdir -p "$repo/skills/extra"
+cat > "$repo/skills/extra/SKILL.md" <<'SKILL'
+---
+name: extra
+description: extra skill
+---
+SKILL
+git -C "$repo" add skills/extra/SKILL.md
+git -C "$repo" commit -q -m "Add extra skill (#99)"
+printf '{"version":"1.0.1"}\n' > "$repo/.claude-plugin/plugin.json"
+git -C "$repo" add .claude-plugin/plugin.json
+git -C "$repo" commit -q -m "Bump version to 1.0.1"
+echo tweak >> "$repo/skills/extra/SKILL.md"
+git -C "$repo" add skills/extra/SKILL.md
+git -C "$repo" commit -q -m "Tweak extra (#100)"
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$TMPDIR_BASE/t6impl" bash "$SUBJECT" --base v1.0.0 2>/dev/null)
+if printf '%s\n' "$out" | grep -q '^BUMP_TYPE=NONE$'; then
+    fail "--base must not return NONE over trailing bump: $out"
+else
+    ok
+fi
+
 total=$((PASS + FAIL))
 echo "test-classify-bump: $PASS/$total passed"
 if [ "$FAIL" -gt 0 ]; then
