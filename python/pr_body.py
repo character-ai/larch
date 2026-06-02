@@ -11,6 +11,7 @@ import gh
 import git
 import redact
 import run_logs
+import tracking_issue
 from errors import ShipError
 from proc import Runner
 
@@ -263,7 +264,7 @@ def compose_pr_body(
     parts.extend(["## Test plan", "", test_plan.rstrip(), ""])
     body = "\n".join(parts) + "\n"
     if issue_number is not None:
-        body = body.rstrip() + f"\n\nCloses #{issue_number}\n"
+        body = tracking_issue.link_pr_closes(body, issue_number)
     mermaid_body = sanitize_fragment(body, from_md=True)
     if mermaid_body.status != "ok":
         msg = f"mermaid in PR body rejected: {','.join(mermaid_body.reason_tokens)}"

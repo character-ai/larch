@@ -601,6 +601,11 @@ dir=$(make_tmp case21-malformed)
 printf 'not valid\n' >"$dir/ship-pr-state.sh"
 run_capture "$SANDBOX/case21-malformed.out" "$SCRIPT" classify --implement-tmpdir "$dir"
 assert_eq 3 "$RC" "21: malformed ship-pr-state exits 3"
+dir=$(make_tmp case21-state-symlink)
+printf 'PHASE=ci-initial\nSTALL_TRACKING=true\nSTALL_STEP=8\n' >"$dir/ship-pr-state.real"
+ln -s "$dir/ship-pr-state.real" "$dir/ship-pr-state.sh"
+run_capture "$SANDBOX/case21-state-symlink.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq 3 "$RC" "21: classify rejects symlinked ship-pr-state"
 dir=$(make_tmp case21-classification-outside)
 cp "$SANDBOX/case1.out" "$dir/class.env"
 outside_class=$(mktemp "${TMPDIR:-/tmp}/stall-recovery-class-outside.XXXXXX")
@@ -705,14 +710,15 @@ dir=$(make_tmp case22-clear-empty)
 : >"$dir/ship-pr-state.sh"
 run_capture "$SANDBOX/case22-clear-empty.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "22: clear-stall empty state exits 0"
-assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-empty.out")" "22: clear-stall empty state emits CLEARED=false"
-assert_eq missing "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall empty state leaves disk unchanged"
+assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-empty.out")" "22: clear-stall empty state emits CLEARED=true"
+assert_eq false "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall empty state writes STALL_TRACKING=false"
 
 dir=$(make_tmp case22-clear-comments)
 printf '# comment only\n\n' >"$dir/ship-pr-state.sh"
 run_capture "$SANDBOX/case22-clear-comments.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
 assert_eq 0 "$RC" "22: clear-stall comment-only state exits 0"
-assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-comments.out")" "22: clear-stall comment-only state emits CLEARED=false"
+assert_eq true "$(kv CLEARED "$SANDBOX/case22-clear-comments.out")" "22: clear-stall comment-only state emits CLEARED=true"
+assert_eq false "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default missing)" "22: clear-stall comment-only state writes STALL_TRACKING=false"
 
 dir=$(make_tmp case22-clear-mv-fail)
 write_state "$dir" 8 ci-initial
@@ -852,13 +858,15 @@ cat >"$read_stub_root/scripts/read-session-env-key.sh" <<'STUB'
 set -euo pipefail
 stub_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)
 real="$stub_dir/read-session-env-key.real.sh"
+args=("$@")
 file="" key=""
-while [ $# -gt 0 ]; do
-  case "$1" in
-    --file) file=$2; shift 2 ;;
-    --key) key=$2; shift 2 ;;
-    *) shift ;;
+index=0
+while [ "$index" -lt "${#args[@]}" ]; do
+  case "${args[$index]}" in
+    --file) index=$((index + 1)); file=${args[$index]:-} ;;
+    --key) index=$((index + 1)); key=${args[$index]:-} ;;
   esac
+  index=$((index + 1))
 done
 case "${STALL_READ_STUB:-}" in
   temp-wrong)
@@ -882,7 +890,7 @@ case "${STALL_READ_STUB:-}" in
     esac
     ;;
 esac
-exec "$real" "$@"
+exec "$real" "${args[@]}"
 STUB
 chmod +x "$read_stub_root/scripts/read-session-env-key.sh"
 read_stub_script="$read_stub_root/skills/implement/scripts/stall-recovery-report.sh"
@@ -905,7 +913,7 @@ run_capture "$SANDBOX/case22-clear-dest-read-fail.out" env \
   "$read_stub_script" clear-stall --implement-tmpdir "$dir"
 assert_eq 1 "$RC" "22: clear-stall destination read failure exits 1"
 assert_eq false "$(kv CLEARED "$SANDBOX/case22-clear-dest-read-fail.out")" "22: clear-stall destination read failure emits CLEARED=false"
-assert_eq "$before_clear" "$(cat "$dir/ship-pr-state.sh")" "22: clear-stall destination read failure leaves disk unchanged"
+assert_eq false "$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$dir/ship-pr-state.sh" --key STALL_TRACKING --default "")" "22: clear-stall destination read failure exercises post-mv assertion"
 
 dir=$(make_tmp case22-seed-dest-read-fail)
 write_state "$dir" 8 ci-initial

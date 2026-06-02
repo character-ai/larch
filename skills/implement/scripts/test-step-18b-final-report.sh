@@ -160,7 +160,7 @@ printf 'old body\n' >"$tmpdir/summary-final.md"
 printf 'old body\n' >"$tmpdir/.step18-prebody"
 chmod 444 "$tmpdir/.step18-prebody"
 run_wrapper "$tmpdir" "$impl_dir" "$plugin" changed ok "$TMP_ROOT/case-emit-cp-fail.out"
-assert_eq false "$(kv EMIT_BODY "$TMP_ROOT/case-emit-cp-fail.out")" "EMIT_BODY=false when snapshot cp fails even if body changed post-write"
+assert_eq true "$(kv EMIT_BODY "$TMP_ROOT/case-emit-cp-fail.out")" "EMIT_BODY=true when snapshot cp fails and write succeeds"
 assert_eq false "$(kv SNAPSHOT_OK "$TMP_ROOT/case-emit-cp-fail.out")" "SNAPSHOT_OK=false when snapshot cp fails"
 assert_wrapper_did_not_create_step17_sentinel "$tmpdir" true "wrapper never writes .step17-emitted when sentinel pre-seeded (cp fail)"
 

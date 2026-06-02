@@ -176,8 +176,8 @@ def upsert_token_report(
 
 
 def link_pr_closes(body: str, issue_number: int) -> str:
-    """Ensure Closes #N appears in the PR body."""
+    """Ensure the PR body has a footer-style Closes #N line."""
     needle = f"Closes #{issue_number}"
-    if re.search(rf"Closes #{issue_number}(?!\d)", body):
+    if re.search(rf"(?m)^Closes #{issue_number}[ \t]*$", body):
         return body
     return body.rstrip() + f"\n\n{needle}\n"

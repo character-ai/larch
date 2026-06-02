@@ -1669,6 +1669,10 @@ exclude = [
   "skills/implement/scripts/test-slack-issue-announce.md",
   "skills/implement/scripts/test-write-final-report.sh",
   "skills/implement/scripts/test-write-final-report.md",
+  "skills/implement/scripts/test-stall-recovery-report.sh",
+  "skills/implement/scripts/test-stall-recovery-report.md",
+  "skills/implement/scripts/test-step-18b-final-report.sh",
+  "skills/implement/scripts/test-step-18b-final-report.md",
   "skills/implement/scripts/test-cleanup.sh",
   "skills/implement/scripts/test-cleanup.md",
   # scripts/lib-submodule-prohibition.sh is a sourced-only shell library (no

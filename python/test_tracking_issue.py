@@ -58,6 +58,20 @@ def test_link_pr_closes_idempotent() -> None:
     assert linked == body
 
 
+def test_link_pr_closes_ignores_prose_mentions() -> None:
+    body = "Summary says Closes #42 should be added as a footer.\n"
+    linked = tracking_issue.link_pr_closes(body, 42)
+    assert linked.count("Closes #42") == 2
+    assert linked.rstrip().endswith("Closes #42")
+
+
+def test_link_pr_closes_ignores_mermaid_mentions() -> None:
+    body = "```mermaid\nflowchart LR\n  A[Closes #42] --> B\n```\n"
+    linked = tracking_issue.link_pr_closes(body, 42)
+    assert linked.count("Closes #42") == 2
+    assert linked.rstrip().endswith("Closes #42")
+
+
 def test_link_pr_closes_no_prefix_collision() -> None:
     body = "Summary\n\nCloses #421\n"
     linked = tracking_issue.link_pr_closes(body, 42)

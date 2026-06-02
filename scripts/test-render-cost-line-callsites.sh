@@ -32,7 +32,7 @@ test "$b" -ge 1 || fail 'render-final-summary.sh must pass --claude-input-tokens
 pass 'render-final-summary per-bucket argv shape'
 
 # shellcheck disable=SC2016
-grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on write-final-report success'
+grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on write-final-report success'
 # shellcheck disable=SC2016
 grep -Fq 'if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on non-empty summary body'
 # shellcheck disable=SC2016
