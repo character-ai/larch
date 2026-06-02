@@ -1,10 +1,8 @@
-"""Rebase component: fetch/rebase, conflict resolution, re-bump, force-push (Phase 3)."""
+"""Rebase component: fetch/rebase, conflict resolution, force-push (Phase 3)."""
 
 from __future__ import annotations
 
-import json
 import os
-import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -16,16 +14,13 @@ import config
 import git
 import redact
 import retry
-import version_bump
 from errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
 from outcomes import Outcome
 from proc import CommandResult, Runner
 
-_BUMP_SUBJECT_RE = re.compile(r"^Bump version to ([0-9]+\.[0-9]+\.[0-9]+)$")
-_CHANGELOG_BASENAMES = frozenset({"CHANGELOG.md", "CHANGELOG.rst", "CHANGELOG"})
-_SEMVER_RE = re.compile(config.SEMVER_RE)
-
 _redact_outbound = redact.redact_outbound
+
+_CHANGELOG_BASENAMES = frozenset({"CHANGELOG.md", "CHANGELOG.rst", "CHANGELOG"})
 
 ConflictLaunchFn = Callable[[str, str], agents.TierAttempt]
 
@@ -40,201 +35,13 @@ class RebaseResult:
     detail: str
 
 
-def _rebump_bullets_path(
-    tmpdir: str | None,
-    bullets_path: Path | str | None,
-) -> Path | None:
-    if bullets_path is not None:
-        return Path(bullets_path)
+def _conflict_launch_output_dir(tmpdir: str | None) -> Path:
     if tmpdir:
-        return Path(tmpdir) / ".rrr-rebump-bullets.md"
+        return Path(tmpdir) / ".conflict-launch"
     env_tmp = os.environ.get(config.ENV_IMPLEMENT_TMPDIR)
     if env_tmp:
-        return Path(env_tmp) / ".rrr-rebump-bullets.md"
-    return None
-
-
-def _is_no_match_drop_error(error: str) -> bool:
-    lowered = error.lower()
-    return "no bump commit found" in lowered or "no changelog commit found" in lowered
-
-
-def _parse_bump_version_from_sha(runner: Runner, sha: str, *, cwd: str | None) -> str:
-    subject = git.log_subject(runner, sha, cwd=cwd)
-    match = _BUMP_SUBJECT_RE.fullmatch(subject)
-    if match:
-        return match.group(1)
-    return ""
-
-
-def _stage_rebump_bullets(
-    runner: Runner,
-    *,
-    old_version: str,
-    bullets_path: Path,
-    cwd: str | None,
-) -> None:
-    if not _SEMVER_RE.fullmatch(old_version):
-        return
-    changelog_path = config.CHANGELOG_DEFAULT_PATH
-    root = Path(cwd) if cwd else Path.cwd()
-    if not (root / changelog_path).is_file():
-        return
-    if bullets_path.exists():
-        bullets_path.unlink()
-    changelog_text = (root / changelog_path).read_text(encoding="utf-8")
-    fmt = changelog.detect_format(changelog_text, path=changelog_path)
-    extracted = changelog.extract_version_body(
-        changelog_text,
-        old_version,
-        fmt=fmt,
-    )
-    if extracted:
-        _ = bullets_path.write_text(extracted, encoding="utf-8")
-    elif bullets_path.exists():
-        bullets_path.unlink()
-
-    drop = changelog.drop_changelog_commit(
-        runner,
-        old_version,
-        max_depth=config.DROP_CHANGELOG_MAX_DEPTH,
-        cwd=cwd,
-    )
-    if drop.dropped:
-        return
-    if _is_no_match_drop_error(drop.error):
-        if bullets_path.exists():
-            bullets_path.unlink()
-        return
-    if bullets_path.exists():
-        bullets_path.unlink()
-    msg = _redact_outbound(
-        "drop-changelog-commit returned DROPPED=false without no-match reason",
-    )
-    raise Stalled(msg)
-
-
-def _changelog_ready_after_rebump(
-    runner: Runner,
-    new_version: str,
-    old_version: str,
-    *,
-    cwd: str | None,
-) -> bool:
-    root = Path(cwd) if cwd else Path.cwd()
-    changelog_path = root / config.CHANGELOG_DEFAULT_PATH
-    if not changelog_path.is_file():
-        return False
-    text = changelog_path.read_text(encoding="utf-8")
-    if not re.search(rf"^## \[{re.escape(new_version)}\] - ", text, re.MULTILINE):
-        return False
-    if (
-        _SEMVER_RE.fullmatch(old_version)
-        and old_version != new_version
-        and re.search(rf"^## \[{re.escape(old_version)}\] - ", text, re.MULTILINE)
-    ):
-        return False
-    status = git.status_porcelain(runner, untracked_files="no", cwd=cwd)
-    if status.returncode != 0:
-        return False
-    for line in status.stdout.splitlines():
-        if not line:
-            continue
-        path = line[3:].strip()
-        if line.startswith(("R", "C")) and " -> " in path:
-            path = path.split(" -> ", 1)[1]
-        if path == config.CHANGELOG_DEFAULT_PATH:
-            return False
-    return True
-
-
-def _commit_changelog_after_rebump(
-    runner: Runner,
-    new_version: str,
-    old_version: str,
-    bullets_path: Path,
-    *,
-    cwd: str | None,
-) -> None:
-    root = Path(cwd) if cwd else Path.cwd()
-    if not (root / config.CHANGELOG_DEFAULT_PATH).is_file():
-        return
-    if not _SEMVER_RE.fullmatch(new_version):
-        return
-
-    used_bullets = False
-    if bullets_path.is_file() and bullets_path.stat().st_size > 0:
-        cl_path = root / config.CHANGELOG_DEFAULT_PATH
-        cl_text = cl_path.read_text(encoding="utf-8")
-        fmt = changelog.detect_format(cl_text, path=config.CHANGELOG_DEFAULT_PATH)
-        dup = changelog.duplicate_version_heading_count(
-            cl_text,
-            new_version,
-            fmt=fmt,
-        )
-        if dup > 0:
-            if bullets_path.exists():
-                bullets_path.unlink()
-            msg = _redact_outbound(
-                f"origin/main already has ## [{new_version}] with staged bullets",
-            )
-            raise Stalled(msg)
-        body = bullets_path.read_text(encoding="utf-8")
-        try:
-            new_text = changelog.write_changelog_entry(
-                cl_text,
-                new_version,
-                body,
-                fmt=fmt,
-            )
-        except changelog.ChangelogError as exc:
-            if bullets_path.exists():
-                bullets_path.unlink()
-            raise Stalled(_redact_outbound(str(exc))) from None
-        _ = cl_path.write_text(new_text, encoding="utf-8")
-        used_bullets = True
-
-    if bullets_path.exists():
-        bullets_path.unlink()
-
-    replaces: str | None = None
-    if not used_bullets:
-        if (
-            _SEMVER_RE.fullmatch(old_version)
-            and old_version != new_version
-        ):
-            replaces = old_version
-        else:
-            show = git.show_file(
-                runner,
-                f"origin/main:{config.PLUGIN_JSON_PATH}",
-                cwd=cwd,
-            )
-            if show.returncode == 0:
-                try:
-                    origin_ver = json.loads(show.stdout).get("version", "")
-                except json.JSONDecodeError:
-                    origin_ver = ""
-                if (
-                    isinstance(origin_ver, str)
-                    and _SEMVER_RE.fullmatch(origin_ver)
-                    and origin_ver != new_version
-                ):
-                    replaces = origin_ver
-
-    result = changelog.commit_changelog(
-        runner,
-        new_version,
-        replaces_version=replaces,
-        cwd=cwd,
-    )
-    if result.committed:
-        return
-    if _changelog_ready_after_rebump(runner, new_version, old_version, cwd=cwd):
-        return
-    msg = _redact_outbound(
-        f"commit-changelog failed before CHANGELOG verified at {new_version}",
-    )
+        return Path(env_tmp) / ".conflict-launch"
+    msg = _redact_outbound("conflict launch output dir not configured")
     raise Stalled(msg)
 
 
@@ -485,28 +292,22 @@ def rebase_and_rebump(
     run_id: str,
     cwd: str | None = None,
     tmpdir: str | None = None,
-    bullets_path: Path | str | None = None,
     rebase_attempt: int = 0,
     max_attempts: int = config.REBASE_MAX_ATTEMPTS,
-    has_bump: bool = True,
     defer_push: bool = False,
 ) -> RebaseResult:
-    """Rebase onto base, resolve conflicts, optionally re-bump, optionally force-push.
+    """Rebase onto base, resolve conflicts, optionally force-push.
 
-    When ``has_bump`` is False, classification and ``apply_bump`` are skipped and
-    ``RebaseResult.new_version`` stays None. When ``defer_push`` is True, rebase and
-    rebump may still run locally but force-push is skipped and ``RebaseResult.pushed``
-    is False.
+    When ``defer_push`` is True, rebase runs locally but force-push is skipped and
+    ``RebaseResult.pushed`` is False. ``RebaseResult.new_version`` is always None
+    (version bump is handled outside rebase in Phase 1).
     """
-    resolved_bullets_early = _rebump_bullets_path(tmpdir, bullets_path)
     if launch_fn is None:
-        if resolved_bullets_early is None:
-            raise Stalled(_redact_outbound("rebump bullets path not configured"))
         launch_fn = make_conflict_launch_fn(
             runner,
             repo=repo,
             run_id=run_id,
-            output_dir=resolved_bullets_early.parent / ".conflict-launch",
+            output_dir=_conflict_launch_output_dir(tmpdir),
             cwd=cwd,
         )
     if rebase_attempt >= max_attempts:
@@ -520,29 +321,7 @@ def rebase_and_rebump(
     if not branch:
         raise Stalled(_redact_outbound("detached HEAD or no current branch"))
 
-    resolved_bullets = _rebump_bullets_path(tmpdir, bullets_path)
-    if resolved_bullets is None:
-        raise Stalled(_redact_outbound("rebump bullets path not configured"))
-
-    old_version = ""
     rebased = False
-
-    drop_bump = version_bump.drop_bump_commit(
-        runner,
-        allow_changelog_only=True,
-        max_depth=config.DROP_CHANGELOG_MAX_DEPTH,
-        cwd=cwd,
-    )
-    if not drop_bump.dropped and not _is_no_match_drop_error(drop_bump.error):
-        raise Stalled(_redact_outbound(drop_bump.error or "drop bump failed"))
-    if drop_bump.dropped:
-        old_version = _parse_bump_version_from_sha(runner, drop_bump.old_sha, cwd=cwd)
-        _stage_rebump_bullets(
-            runner,
-            old_version=old_version,
-            bullets_path=resolved_bullets,
-            cwd=cwd,
-        )
 
     base_target = f"{base_remote}/{base_ref}"
     fetch_result = git.fetch(runner, base_remote, base_ref, cwd=cwd)
@@ -577,55 +356,6 @@ def rebase_and_rebump(
 
     _sync_local_main(runner, base_remote=base_remote, base_ref=base_ref, cwd=cwd)
 
-    new_version: str | None = None
-    if has_bump:
-        classification = version_bump.classify_bump(runner, cwd=cwd)
-        bump_type = classification.bump_type
-        target_version = classification.new_version
-
-        if bump_type != "NONE" and target_version:
-            show = git.show_file(
-                runner,
-                f"{base_remote}/{base_ref}:{config.PLUGIN_JSON_PATH}",
-                cwd=cwd,
-            )
-            origin_version = ""
-            if show.returncode == 0:
-                try:
-                    origin_version = json.loads(show.stdout).get("version", "")
-                except json.JSONDecodeError:
-                    origin_version = ""
-            if (
-                isinstance(origin_version, str)
-                and _SEMVER_RE.fullmatch(origin_version)
-                and version_bump._semver_lt(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-                    target_version,
-                    origin_version,
-                )
-            ):
-                target_version = version_bump._apply_bump_type(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-                    origin_version,
-                    bump_type,
-                )
-
-            apply_result = version_bump.apply_bump(
-                runner,
-                target_version,
-                base_remote=base_remote,
-                base_ref=base_ref,
-                cwd=cwd,
-            )
-            if not apply_result.applied:
-                raise Stalled(_redact_outbound(apply_result.error or "apply bump failed"))
-            new_version = apply_result.new_version
-            _commit_changelog_after_rebump(
-                runner,
-                new_version,
-                old_version,
-                resolved_bullets,
-                cwd=cwd,
-            )
-
     pushed = False
     if not defer_push:
         _ = _force_push_branch(runner, cwd=cwd)
@@ -635,7 +365,7 @@ def rebase_and_rebump(
         outcome=Outcome.OK,
         rebased=rebased,
         pushed=pushed,
-        new_version=new_version,
+        new_version=None,
         attempts=rebase_attempt + 1,
         detail="",
     )

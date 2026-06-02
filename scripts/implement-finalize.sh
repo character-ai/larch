@@ -17,8 +17,6 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-execution-issues.sh
 source "$SCRIPT_DIR/lib-execution-issues.sh"
-# shellcheck source=scripts/lib-changelog.sh
-source "$SCRIPT_DIR/lib-changelog.sh"
 
 STATE_FILE=""
 FINAL_BAIL_REASON_FILE=""
@@ -282,7 +280,7 @@ append_execution_issue() {
 require_postbump_state_keys() {
     local key
     for key in \
-        BRANCH_NAME ISSUE_NUMBER PR_TITLE REPO REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP \
+        BRANCH_NAME ISSUE_NUMBER PR_TITLE REPO REPO_UNAVAILABLE FORKED_TARGET \
         BUMP_TYPE NEW_VERSION BUMP_REASONING_FILE MANIFEST_PATH TOOL_LABEL
     do
         state_has_key "$key" || die_usage "state-file missing required key: $key"
@@ -291,7 +289,7 @@ require_postbump_state_keys() {
 
 require_postbump_bool_state() {
     local key value
-    for key in HAS_BUMP FORKED_TARGET REPO_UNAVAILABLE; do
+    for key in FORKED_TARGET REPO_UNAVAILABLE; do
         value=$(read_state "$key")
         case "$value" in
             true|false) ;;
@@ -383,15 +381,11 @@ clear_postbump_checkpoint() {
 }
 
 postbump_tail() {
-    local status=$1 anchor_status=$2 changelog_status=$3 rebase_status=$4 force_push_status=$5 resume_phase=${6:-}
+    local status=$1 anchor_status=$2 changelog_status=$3 rebase_status=$4 force_push_status=$5
     emit_kv LOG_WRITE_STATUS "$anchor_status"
     emit_kv CHANGELOG_STATUS "$changelog_status"
     emit_kv REBASE_STATUS "$rebase_status"
     emit_kv FORCE_PUSH_STATUS "$force_push_status"
-    if [ -n "$resume_phase" ]; then
-        emit_kv RESUME_PHASE "$resume_phase"
-        emit_kv CALLER_KIND "step8b_rebase"
-    fi
     emit_kv STATUS "$status"
     emit_kv FINALIZE_SUBCOMMAND postbump
     emit_kv FINALIZE_WARNINGS "$WARNINGS"
@@ -412,297 +406,8 @@ postbump_report_since_mark() {
     "$SCRIPT_DIR/timing-report.sh" --since-last-mark --terse 2>/dev/null || true
 }
 
-validate_bump_reasoning_file() {
-    local path=$1 basename size
-    [ -n "$path" ] || return 1
-    is_tmp_path "$path" || return 1
-    [ -f "$path" ] || return 1
-    [ ! -L "$path" ] || return 1
-    basename=$(basename "$path")
-    case "$basename" in
-        bump-version-reasoning*.md|version-bump-reasoning-sanitized.md) ;;
-        *) return 1 ;;
-    esac
-    size=$(wc -c < "$path" 2>/dev/null | tr -d '[:space:]' || echo 999999)
-    case "$size" in
-        ''|*[!0-9]*) return 1 ;;
-    esac
-    [ "$size" -le 65536 ] || return 1
-}
-
-validate_small_tmp_file() {
-    local path=$1 size
-    [ -n "$path" ] || return 1
-    is_tmp_path "$path" || return 1
-    [ -f "$path" ] || return 1
-    [ ! -L "$path" ] || return 1
-    size=$(wc -c < "$path" 2>/dev/null | tr -d '[:space:]' || echo 999999)
-    case "$size" in
-        ''|*[!0-9]*) return 1 ;;
-    esac
-    [ "$size" -le 65536 ] || return 1
-}
-
-write_version_reasoning_fragment() {
-    local start issue_number repo_unavailable reasoning_file content out rc failed run_id input_file
-    start=$(date +%s)
-    issue_number=$(read_state ISSUE_NUMBER)
-    repo_unavailable=$(read_state REPO_UNAVAILABLE)
-    reasoning_file=$(read_state BUMP_REASONING_FILE)
-    mkdir -p "$IMPLEMENT_TMPDIR/larch-log-batches"
-    if validate_bump_reasoning_file "$reasoning_file"; then
-        content=$(cat "$reasoning_file" 2>/dev/null || true)
-    else
-        content="No version bump reasoning available (skill may have skipped via BUMP_TYPE=NONE, or /bump-version was not invoked)."
-        append_execution_issue "Step 8 postbump larch-log used fallback version-bump reasoning because BUMP_REASONING_FILE failed validation."
-        warn_line '**⚠ 8: larch-log — version-bump-reasoning input failed validation; fallback text used. Continuing.**'
-    fi
-    input_file="$IMPLEMENT_TMPDIR/larch-log-batches/version-bump-reasoning.md"
-    printf '%s\n' "$content" \
-        | awk '/^[[:space:]]*$/{blank=1; next} {if(blank){print ""; blank=0}; print}' \
-        > "$input_file"
-    [ -s "$input_file" ] || printf '\n' > "$input_file"
-
-    LOG_WRITE_STATUS=skipped
-    if [ -n "$issue_number" ] && [ "$repo_unavailable" = "false" ]; then
-        run_id="${LARCH_RUN_ID:-${RUN_ID:-$(read_state RUN_ID)}}"
-        if [ -z "$run_id" ]; then
-            run_id="$(basename "$IMPLEMENT_TMPDIR")"
-            run_id="${run_id##*-}"
-        fi
-        set +e
-        out=$("$SCRIPT_DIR/larch-log.sh" write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id" --batch version-bump-reasoning --input-file "$input_file")
-        rc=$?
-        written=$(kv_value LOG_WRITTEN "$out")
-        unchanged=$(kv_value UNCHANGED "$out")
-        if [ "$rc" -eq 0 ] && { [ "$written" = "true" ] || [ "$unchanged" = "true" ]; }; then
-            LOG_WRITE_STATUS=ok
-        else
-            LOG_WRITE_STATUS=failed
-            append_execution_issue "Step 8 postbump version-bump-reasoning log write failed."
-            warn_line '**⚠ 8: larch-log — version-bump-reasoning write failed. Continuing.**'
-        fi
-        if [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ] && [ "$LOG_WRITE_STATUS" = "ok" ]; then
-            set +e
-            # commit also stages per-script quiet logs into breadcrumbs/ for forensics.
-            out=$("$SCRIPT_DIR/larch-log.sh" commit --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$run_id")
-            rc=$?
-            set +e
-            if [ "$rc" -ne 0 ]; then
-                append_execution_issue "Step 8 postbump larch-log commit failed."
-                warn_line '**⚠ 8: larch-log — postbump commit failed. Continuing.**'
-            fi
-        elif [ "${LARCH_NO_LOGS_COMMIT:-false}" != "true" ] && [ "$LOG_WRITE_STATUS" != "ok" ]; then
-            append_execution_issue "Step 8 postbump skipped larch-log commit because version-bump-reasoning write failed."
-            warn_line '**⚠ 8: larch-log — postbump commit skipped because version-bump-reasoning write failed. Continuing.**'
-        fi
-    fi
-    larch_err "$(printf '✅ 8: larch-log status=complete elapsed=%s' "$(elapsed "$start")")"
-}
-
-changelog_categories_to_markdown() {
-    local dir=$1 out=$2 category file title had_any
-    : > "$out"
-    had_any=false
-    for category in Added Changed Fixed Removed Security; do
-        file="$dir/$category"
-        [ -s "$file" ] || continue
-        [ "$had_any" = "true" ] && printf '\n' >> "$out"
-        had_any=true
-        printf '### %s\n\n' "$category" >> "$out"
-        while IFS= read -r title || [ -n "$title" ]; do
-            [ -n "$title" ] || continue
-            printf -- '- %s\n' "$title" >> "$out"
-        done < "$file"
-    done
-    [ "$had_any" = "true" ]
-}
-
-collect_changelog_bullets() {
-    local dir=$1 manifest_path=$2 line category bullet categorized
-    mkdir -p "$dir"
-    : > "$dir/Added"; : > "$dir/Changed"; : > "$dir/Fixed"; : > "$dir/Removed"; : > "$dir/Security"
-    if [ -n "$manifest_path" ]; then
-        if ! validate_small_tmp_file "$manifest_path"; then
-            return 1
-        fi
-        categorized=$(jq -c '(.summary_bullets_categorized // {}) | if type == "object" then . else {} end' "$manifest_path" 2>/dev/null || echo '{}')
-        if [ "$categorized" != "{}" ]; then
-            for category in Added Changed Fixed Removed Security; do
-                jq -r --arg c "$category" '(.summary_bullets_categorized // {})[$c] // [] | if type == "array" then .[] else empty end' "$manifest_path" 2>/dev/null >> "$dir/$category" || return 1
-            done
-        else
-            # Mirror the categorized fallback above: a non-JSON manifest (e.g.
-            # design-side manifest.env mistakenly routed here) must yield "no
-            # bullets" silently rather than fail the whole phase. See issue #2233.
-            jq -r '(.summary_bullets // []) | if type == "array" then .[] else empty end' "$manifest_path" 2>/dev/null >> "$dir/Changed" || true
-        fi
-    else
-        # No manifest and no bullets file leaves empty categories; the caller
-        # decides whether to synthesize a fallback bullet or fail loudly.
-        [ -n "${CHANGELOG_BULLETS_FILE:-}" ] || return 0
-        validate_small_tmp_file "$CHANGELOG_BULLETS_FILE" || return 1
-        while IFS= read -r line || [ -n "$line" ]; do
-            [ -n "$line" ] || continue
-            case "$line" in
-                *"	"*)
-                    category=${line%%	*}
-                    bullet=${line#*	}
-                    ;;
-                *)
-                    category=Changed
-                    bullet=$line
-                    ;;
-            esac
-            case "$category" in
-                Added|Changed|Fixed|Removed|Security) ;;
-                *) category=Changed ;;
-            esac
-            printf '%s\n' "$bullet" >> "$dir/$category"
-        done < "$CHANGELOG_BULLETS_FILE"
-    fi
-}
-
-maybe_update_changelog() {
-    local start out rc present forked_target has_bump bump_type new_version manifest_path tmpdir categories_md tmp_changelog status_out tool_label manifest_exists fallback_issue_num fallback_pr_title fallback_allowed
-    start=$(date +%s)
-    CHANGELOG_STATUS="skipped-no-bump"
-    set +e
-    out=$("$SCRIPT_DIR/check-changelog-present.sh")
-    rc=$?
-    set +e
-    present=$(kv_value CHANGELOG_PRESENT "$out")
-    if [ "$rc" -ne 0 ] || [ "$present" != "true" ]; then
-        CHANGELOG_STATUS="skipped-absent"
-        larch_err "$(printf '⏩ 8a: changelog status=skip reason=changelog-absent elapsed=%s' "$(elapsed "$start")")"
-        return 0
-    fi
-    forked_target=$(read_state FORKED_TARGET)
-    if [ "$forked_target" = "true" ]; then
-        CHANGELOG_STATUS="skipped-fork"
-        larch_err "$(printf '⏩ 8a: changelog status=skip reason=forked-dry-run elapsed=%s' "$(elapsed "$start")")"
-        return 0
-    fi
-    has_bump=$(read_state HAS_BUMP)
-    bump_type=$(read_state BUMP_TYPE)
-    if [ "$has_bump" != "true" ] || [ "$bump_type" = "NONE" ]; then
-        CHANGELOG_STATUS="skipped-no-bump"
-        larch_err "$(printf '⏩ 8a: changelog status=skip reason=no-bump-commit elapsed=%s' "$(elapsed "$start")")"
-        return 0
-    fi
-
-    new_version=$(read_state NEW_VERSION)
-    manifest_path=$(read_state MANIFEST_PATH)
-    tmpdir="$IMPLEMENT_TMPDIR/postbump-changelog.$$"
-    mkdir -p "$tmpdir"
-    if ! collect_changelog_bullets "$tmpdir/categories" "$manifest_path"; then
-        CHANGELOG_STATUS=failed
-        append_execution_issue "Step 8a changelog failed while reading changelog bullets."
-        warn_line '**⚠ Step 8a: changelog update failed while reading bullets. Bailing to cleanup.**'
-        rm -rf "$tmpdir"
-        return 1
-    fi
-    categories_md="$tmpdir/categories.md"
-    if ! changelog_categories_to_markdown "$tmpdir/categories" "$categories_md"; then
-        # No bullets from manifest. Only synthesize a tracking-issue fallback when
-        # there was no manifest at all, or when the manifest is valid JSON but empty.
-        fallback_issue_num=$(read_state ISSUE_NUMBER 2>/dev/null || true)
-        fallback_pr_title=$(read_state PR_TITLE 2>/dev/null || true)
-        fallback_allowed=false
-        if [ -z "$manifest_path" ]; then
-            fallback_allowed=true
-        elif jq -e . "$manifest_path" >/dev/null 2>&1; then
-            fallback_allowed=true
-        fi
-        if [ "$fallback_allowed" = "true" ] && [ -n "$fallback_issue_num" ] && [ "$fallback_issue_num" != "0" ]; then
-            # Write a synthetic categories_md so write_changelog_entry can proceed.
-            local fallback_line="Closed: #${fallback_issue_num}"
-            [ -n "$fallback_pr_title" ] && fallback_line="${fallback_line} — ${fallback_pr_title}"
-            printf '### Changed\n\n- %s\n' "$fallback_line" > "$categories_md"
-            # categories_md is now non-empty; fall through to write_changelog_entry.
-        elif [ "$fallback_allowed" != "true" ]; then
-            CHANGELOG_STATUS="skipped-no-bullets"
-            larch_err "$(printf '⏩ 8a: changelog status=skip reason=no-json-bullets elapsed=%s' "$(elapsed "$start")")"
-            rm -rf "$tmpdir"
-            return 0
-        else
-            CHANGELOG_STATUS="fail-no-manifest-no-issue"
-            tool_label=$(read_state TOOL_LABEL 2>/dev/null || true)
-            manifest_exists=false
-            [ -n "$manifest_path" ] && [ -f "$manifest_path" ] && manifest_exists=true
-            append_execution_issue "Step 8a changelog failed: no summary bullets AND no tracking-issue context. manifest_path='${manifest_path}' manifest_exists=$manifest_exists coder='${tool_label}'. CHANGELOG_STATUS=fail-no-manifest-no-issue ERROR=Cannot generate changelog bullet: no manifest AND no tracking-issue context."
-            warn_line '**⚠ 8a: changelog — summary bullets absent and no tracking-issue context; cannot generate fallback bullet. CHANGELOG_STATUS=fail-no-manifest-no-issue.**'
-            rm -rf "$tmpdir"
-            return 1
-        fi
-    fi
-
-    # Only mark now that we have confirmed there are bullets to write
-    postbump_mark "Step 8a — changelog"
-    tmp_changelog="$tmpdir/CHANGELOG.md"
-    set +e
-    write_changelog_entry "$new_version" "$categories_md" "$tmp_changelog"
-    rc=$?
-    set +e
-    if [ "$rc" -eq 4 ]; then
-        CHANGELOG_STATUS=failed
-        append_execution_issue "Step 8a changelog failed because CHANGELOG.md has multiple existing ## [$new_version] - headings."
-        warn_line "**⚠ Step 8a: changelog update failed (multiple existing ## [$new_version] headings — fix CHANGELOG.md by hand and rerun). Bailing to cleanup.**"
-        rm -rf "$tmpdir"
-        postbump_report_since_mark
-        return 1
-    fi
-    if [ "$rc" -ne 0 ]; then
-        CHANGELOG_STATUS=failed
-        append_execution_issue "Step 8a changelog failed because CHANGELOG.md had no insertion anchor."
-        warn_line '**⚠ Step 8a: changelog update failed (no insertion anchor). Bailing to cleanup.**'
-        rm -rf "$tmpdir"
-        postbump_report_since_mark
-        return 1
-    fi
-    if ! mv "$tmp_changelog" CHANGELOG.md 2>/dev/null; then
-        CHANGELOG_STATUS=failed
-        append_execution_issue "Step 8a changelog failed while writing CHANGELOG.md."
-        warn_line '**⚠ Step 8a: changelog write failed. Bailing to cleanup.**'
-        rm -rf "$tmpdir"
-        postbump_report_since_mark
-        return 1
-    fi
-    set +e
-    out=$("$SCRIPT_DIR/commit-changelog.sh" --version "$new_version" 2>&1)
-    rc=$?
-    set +e
-    if [ "$rc" -ne 0 ] || [ "$(kv_value COMMITTED "$out")" != "true" ]; then
-        git checkout -- CHANGELOG.md 2>/dev/null || true
-        CHANGELOG_STATUS=failed
-        append_execution_issue "Step 8a changelog commit failed."
-        warn_line '**⚠ Step 8a: changelog commit failed. Bailing to cleanup.**'
-        rm -rf "$tmpdir"
-        postbump_report_since_mark
-        return 1
-    fi
-    set +e
-    status_out=$(git status --porcelain CHANGELOG.md 2>/dev/null)
-    rc=$?
-    set +e
-    if [ "$rc" -ne 0 ] || [ -n "$status_out" ]; then
-        git checkout -- CHANGELOG.md 2>/dev/null || true
-        CHANGELOG_STATUS=failed
-        append_execution_issue "Step 8a changelog remained dirty after commit."
-        warn_line '**⚠ Step 8a: changelog remained dirty after commit. Bailing to cleanup.**'
-        rm -rf "$tmpdir"
-        postbump_report_since_mark
-        return 1
-    fi
-    CHANGELOG_STATUS=updated
-    larch_err "$(printf '✅ 8a: changelog status=complete to=v%s elapsed=%s' "$new_version" "$(elapsed "$start")")"
-    rm -rf "$tmpdir"
-    postbump_report_since_mark
-    return 0
-}
-
 run_step8b_rebase() {
-    local start forked_target repo_unavailable out rc skipped error_text
+    local start forked_target out rc skipped error_text
     start=$(date +%s)
     postbump_mark "Step 8b — rebase"
     REBASE_STATUS=failed
@@ -715,7 +420,6 @@ run_step8b_rebase() {
     fi
     larch_err '🔃 8b: rebase'
     forked_target=$(read_state FORKED_TARGET)
-    repo_unavailable=$(read_state REPO_UNAVAILABLE)
     set +e
     if [ "$forked_target" = "true" ]; then
         out=$("$SCRIPT_DIR/rebase-push.sh" --no-push --base-remote upstream --base-ref main 2>&1)
@@ -737,26 +441,15 @@ run_step8b_rebase() {
             return 0
             ;;
         1)
+            REBASE_STATUS=failed
             if [ "$forked_target" = "true" ]; then
-                REBASE_STATUS=failed
-                warn_line '**⚠ Step 8b: rebase onto upstream/main failed (conflict under --forked). Resolve manually and rerun.**'
-                set +e
-                postbump_report_since_mark
-                return 2
-            elif [ "$repo_unavailable" = "true" ]; then
-                REBASE_STATUS=failed
-                warn_line '**⚠ Step 8b: rebase onto main failed (conflict, repo_unavailable=true so sub-procedure auto-recovery is skipped). Bailing to cleanup.**'
-                set +e
-                postbump_report_since_mark
-                return 2
+                warn_line '**⚠ Step 8b: rebase onto upstream/main failed (conflict under --forked). Exit stall/bail to cleanup.**'
             else
-                REBASE_STATUS=conflict
-                write_postbump_checkpoint
-                larch_err '🔃 8b: rebase — conflict detected; handing off to Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase)'
-                set +e
-                postbump_report_since_mark
-                return 1
+                warn_line '**⚠ Step 8b: rebase onto main failed (conflict). Exit stall/bail to cleanup.**'
             fi
+            set +e
+            postbump_report_since_mark
+            return 2
             ;;
         3)
             error_text=$(kv_value REBASE_ERROR "$out")
@@ -843,8 +536,8 @@ run_force_push_gate() {
 run_postbump() {
     local rc repo_root
     LOG_WRITE_STATUS=skipped
-    CHANGELOG_STATUS="skipped-resume"
-    REBASE_STATUS="skipped-resume"
+    CHANGELOG_STATUS='skipped-phase1'
+    REBASE_STATUS='skipped-resume'
     FORCE_PUSH_STATUS=absent
     set +e
     repo_root=$(git rev-parse --show-toplevel 2>/dev/null)
@@ -852,12 +545,12 @@ run_postbump() {
     set +e
     if [ "$rc" -ne 0 ] || [ -z "$repo_root" ]; then
         warn_line '**⚠ Step 8: postbump must run inside a git working tree (cwd is not in a repo). Bailing to cleanup.**'
-        postbump_tail postbump-cwd-not-repo skipped skipped-no-bump skipped-resume absent
+        postbump_tail postbump-cwd-not-repo skipped skipped-phase1 skipped-resume absent
         return 0
     fi
     cd "$repo_root" || {
         warn_line "**⚠ Step 8: postbump could not cd to repo root '$repo_root'. Bailing to cleanup.**"
-        postbump_tail postbump-cwd-not-repo skipped skipped-no-bump skipped-resume absent
+        postbump_tail postbump-cwd-not-repo skipped skipped-phase1 skipped-resume absent
         return 0
     }
     load_and_validate_postbump_state
@@ -869,8 +562,8 @@ run_postbump() {
     fi
     if [ "$POSTBUMP_CHECKPOINT_PHASE" = "force-push-gate" ]; then
         LOG_WRITE_STATUS=skipped
-        CHANGELOG_STATUS="skipped-resume"
-        REBASE_STATUS="skipped-resume"
+        CHANGELOG_STATUS='skipped-phase1'
+        REBASE_STATUS='skipped-resume'
         set +e
         run_force_push_gate
         rc=$?
@@ -885,18 +578,12 @@ run_postbump() {
         return 0
     fi
 
-    write_version_reasoning_fragment
-    if ! maybe_update_changelog; then
-        postbump_tail changelog-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" skipped-resume absent
-        return 0
-    fi
     set +e
     run_step8b_rebase
     rc=$?
     set +e
     case "$rc" in
         0) ;;
-        1) postbump_tail conflict "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent force-push-gate; return 0 ;;
         4) postbump_tail branch-mismatch "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent; return 0 ;;
         *) postbump_tail rebase-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent; return 0 ;;
     esac
@@ -1299,7 +986,7 @@ run_teardown() {
     # Flush any pending larch-log writes for the current run (best-effort).
     # This handles stalled/failed runs where the ci-merge flush in ship-pr.sh
     # never ran. Root-cause prevention lives in ship-pr.sh (ci-merge flush) and
-    # write_version_reasoning_fragment (correct run-id from state file).
+    # ship-pr.sh postmerge flush (correct run-id from state file).
     local larch_flush_run_id manifest_path_teardown larch_recovery_ok post_merge_sentinel
     larch_flush_run_id=$(read_state RUN_ID)
     post_merge_sentinel="$IMPLEMENT_TMPDIR/post-merge-sentinel"

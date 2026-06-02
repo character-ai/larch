@@ -198,8 +198,8 @@ phantom_fence=$(grep -cF '"${CLAUDE_PLUGIN_ROOT}/scripts/phantom-probe-with-warn
 
 grep -Fq 'phantom-probe-with-warn.sh" --step 2-post-dispatch' "$SKILL_MD" \
   || fail "(J) missing --step 2-post-dispatch standalone invocation"
-grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-bump' "$SKILL_MD" \
-  || fail "(J) missing --step 8-pre-bump standalone invocation"
+grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-ship' "$SKILL_MD" \
+  || fail "(J) missing --step 8-pre-ship standalone invocation"
 
 echo "PASS: test-implement-rebase-macro.sh — all structural invariants hold (A-C, C', E, G-J, I)"
 exit 0

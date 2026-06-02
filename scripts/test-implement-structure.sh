@@ -37,6 +37,29 @@ for ref in summary-comment-template.md bump-verification.md codex-manifest-schem
   [[ -f "$REFS_DIR/$ref" ]] || fail "missing reference: $ref"
 done
 
+grep -Fq 'Two invariants enforced across multiple steps' "$SKILL_MD" \
+  || fail "SKILL.md must document two Load-Bearing Invariants after Phase 1 (#3364)"
+grep -Fq 'Version Bump Freshness' "$SKILL_MD" \
+  && fail "SKILL.md must not retain retired Invariant #1 (Version Bump Freshness)"
+grep -Fq 'Degraded-Git Fail-Closed' "$SKILL_MD" \
+  && fail "SKILL.md must not retain retired Invariant #3 (Degraded-Git Fail-Closed)"
+grep -Fq 'Retired in Phase 1 (#3364)' "$REFS_DIR/bump-verification.md" \
+  || fail "bump-verification.md must be a Phase 1 retirement stub"
+grep -Fq 'Retired in Phase 1 (#3364)' "$REFS_DIR/rebase-rebump-subprocedure.md" \
+  || fail "rebase-rebump-subprocedure.md must be a Phase 1 retirement stub"
+grep -Fq '### Step 8a' "$SKILL_MD" \
+  && fail "SKILL.md must not retain a Step 8a changelog section after Phase 1 (#3364)"
+grep -Fq 'NEVER end the turn after `/bump-version`' "$SKILL_MD" \
+  && fail "SKILL.md must not retain retired NEVER #15 (post-/bump-version sub-procedure halt)"
+grep -Fq 'caller_kind=step8b_rebase' "$SKILL_MD" \
+  && fail "SKILL.md must not retain retired NEVER #8 (step8b_rebase caller_kind pin)"
+grep -Fq 'NEVER call `/bump-version` as a direct Skill invocation' "$SKILL_MD" \
+  && fail "SKILL.md must not retain retired NEVER #11 (orchestrator /bump-version Skill pin)"
+grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-ship' "$SKILL_MD" \
+  || fail "SKILL.md must retain 8-pre-ship phantom-probe invocation"
+grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-bump' "$SKILL_MD" \
+  && fail "SKILL.md must not use retired 8-pre-bump phantom-probe token"
+
 grep -Fq 'scripts/larch-log.sh' "$SKILL_MD" \
   || fail "SKILL.md must reference scripts/larch-log.sh"
 grep -Fq 'tracking-issue-summary.sh' "$SKILL_MD" \
@@ -389,7 +412,7 @@ grep -Fq 'NEVER silently drop a voted-in OOS finding' "$SKILL_MD" \
 
 # shellcheck disable=SC2016
 grep -Fq 'NEVER set `OOS_PENDING=false` without a passing `oos-disposition-checkpoint.sh` invocation' "$SKILL_MD" \
-  || fail "SKILL.md must retain NEVER #18 checkpoint-before-clear pin (OOS_PENDING vs oos-disposition-checkpoint.sh)"
+  || fail "SKILL.md must retain NEVER #15 checkpoint-before-clear pin (OOS_PENDING vs oos-disposition-checkpoint.sh)"
 # shellcheck disable=SC2016
 grep -Fq '${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh' "$SKILL_MD" \
   || fail "SKILL.md Step 8+ must reference oos-disposition-checkpoint.sh"
@@ -704,7 +727,9 @@ grep -Fq 'copy the full canonical key set' "$SKILL_MD" \
 # Stage 4 (#3119): Family-B fence shape must stay absent from implement orchestrator docs.
 assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md" ship-pr-invocation
 assert_p3119_family_b_fence_absent "$STALL_RECOVERY_MD" "stall-recovery.md"
-assert_p3119_family_b_fence_absent "$REFS_DIR/rebase-rebump-subprocedure.md" "rebase-rebump-subprocedure.md"
+# Retirement stub: no Family-B fence prose expected; absence is enforced on live orchestrator docs only.
+wc -c < "$REFS_DIR/rebase-rebump-subprocedure.md" | awk '{ if ($1 > 800) exit 1 }' \
+  || fail "rebase-rebump-subprocedure.md retirement stub should stay short"
 grep -Fq "treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD" \
   || fail "(3119) SKILL.md Step 8+ must pin foreground writer_rc routing (post ship-pr return)"
 grep -Fq "Treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD" \

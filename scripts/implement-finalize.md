@@ -1,10 +1,10 @@
 # scripts/implement-finalize.sh — contract
 
-`scripts/implement-finalize.sh` is the mechanical SSOT for `/implement` Step 8 version-bump-reasoning log write, Step 8a CHANGELOG commit, Step 8b rebase + force-push gate, Steps 14, 15, and the mechanical part of Step 18. Prompt-only Steps 16 and 17, plus Step 18's external-reviewer warning replay and `--design-only` / `--draft` / `--merge=false` notes, stay in `skills/implement/SKILL.md` so the operator-facing final report remains chat-side.
+`scripts/implement-finalize.sh` is the mechanical SSOT for `/implement` Step 8 post-bump rebase + force-push gate, Steps 14, 15, and the mechanical part of Step 18. Prompt-only Steps 16 and 17, plus Step 18's external-reviewer warning replay and `--design-only` / `--draft` / `--merge=false` notes, stay in `skills/implement/SKILL.md` so the operator-facing final report remains chat-side.
 
 ## Subcommands
 
-- `postbump --state-file PATH --implement-tmpdir PATH [--changelog-bullets-file PATH]` covers Step 8's version-bump-reasoning version-bump-reasoning log write, Step 8a's CHANGELOG commit, and Step 8b's rebase + force-push gate. It invokes `scripts/larch-log.sh`, `scripts/check-changelog-present.sh`, `scripts/commit-changelog.sh`, `scripts/rebase-push.sh`, `scripts/check-remote-branch.sh`, and `scripts/git-force-push.sh`, and emits postbump-specific tail records ending with exactly one `STATUS=...` line.
+- `postbump --state-file PATH --implement-tmpdir PATH [--changelog-bullets-file PATH]` covers Step 8b rebase + force-push gate only in Phase 1 (#3364): version-bump-reasoning log write and Step 8a CHANGELOG commit are removed from this script. It invokes `scripts/rebase-push.sh`, `scripts/check-remote-branch.sh`, and `scripts/git-force-push.sh`, and emits postbump-specific tail records ending with exactly one `STATUS=...` line. The `--changelog-bullets-file` flag is accepted for CLI compatibility but is unused.
 - `postmerge --state-file PATH --final-bail-reason-file PATH` covers Step 14 local cleanup and Step 15 verify-main. It invokes `scripts/local-cleanup.sh` and `scripts/verify-main.sh`, captures their stdout envelopes, forwards their stderr, and emits only Step 14/15 breadcrumbs plus tail records.
 - `teardown --state-file PATH --implement-tmpdir PATH` covers the Step 18 title-prefix terminal transition, manifest finalization, tmpdir cleanup, tracking-issue URL print, and final `✅ 18` compact breadcrumb. It invokes `scripts/larch-log.sh manifest --log-root "$IMPLEMENT_TMPDIR/larch-logs"` best-effort to set `stalled_at_step` on stall paths (and `status=partial` plus `recovery_reason` only on manifest-loss recovery), `scripts/get-issue-info.sh`, `scripts/tracking-issue-write.sh rename`, and, after a basename + session-id sanity check, `scripts/cleanup-tmpdir.sh`. It does not create a dedicated larch-log flush commit; log commits are produced by explicit lifecycle flush points before teardown.
 
@@ -34,15 +34,11 @@ Optional keys:
 
 Required keys:
 
-`BRANCH_NAME`, `ISSUE_NUMBER`, `PR_TITLE`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`, `HAS_BUMP`, `BUMP_TYPE`, `NEW_VERSION`, `BUMP_REASONING_FILE`, `MANIFEST_PATH`, `TOOL_LABEL`.
+`BRANCH_NAME`, `ISSUE_NUMBER`, `PR_TITLE`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`, `BUMP_TYPE`, `NEW_VERSION`, `BUMP_REASONING_FILE`, `MANIFEST_PATH`, `TOOL_LABEL`.
 
-`HAS_BUMP`, `FORKED_TARGET`, and `REPO_UNAVAILABLE` must be literal `true` or `false`. `BUMP_TYPE` must be `MAJOR`, `MINOR`, `PATCH`, or `NONE`. `BRANCH_NAME` must be non-empty and must not be `main` or `master`; phases that rebase or push also verify the current git branch still matches `BRANCH_NAME`. `PR_TITLE` must be present in the state file but may be empty. When `BUMP_TYPE` is not `NONE`, `NEW_VERSION` must match `X.Y.Z`.
+`FORKED_TARGET` and `REPO_UNAVAILABLE` must be literal `true` or `false`. `BUMP_TYPE` must be `MAJOR`, `MINOR`, `PATCH`, or `NONE`. `BRANCH_NAME` must be non-empty and must not be `main` or `master`; phases that rebase or push also verify the current git branch still matches `BRANCH_NAME`. `PR_TITLE` must be present in the state file but may be empty. When `BUMP_TYPE` is not `NONE`, `NEW_VERSION` must match `X.Y.Z`. Stub bump keys (`BUMP_TYPE=NONE`, empty `NEW_VERSION`, empty `BUMP_REASONING_FILE`) are written by `scripts/ship-pr.sh` in Phase 1; `HAS_BUMP` is no longer required or validated.
 
-`BUMP_REASONING_FILE` is the orchestrator-sanitized version-bump reasoning input, usually `$IMPLEMENT_TMPDIR/larch-log-batches-input/version-bump-reasoning-sanitized.md`. `postbump` treats it as session-local trusted input with defense-in-depth guards: it must be a regular non-symlink tmp-path file, its basename must be `version-bump-reasoning-sanitized.md` or match `bump-version-reasoning*.md`, and it must be no larger than 65536 bytes. Invalid reasoning input writes the fallback log fallback text and appends a warning to `execution-issues.md` when present. Before calling `larch-log.sh write`, `postbump` pipes the content through `awk` to collapse any multiple consecutive blank lines into one and strip trailing blank lines, preventing MD012 violations in the committed batch file.
-
-If `MANIFEST_PATH` is non-empty, `postbump` reads `summary_bullets_categorized` first and falls back to flat `summary_bullets` when the manifest parses as JSON but lacks categorized bullets. If `MANIFEST_PATH` is empty, the caller may pass `--changelog-bullets-file PATH`; that file must live under an accepted tmp root, must be regular and non-symlink, and must be no larger than 65536 bytes. Each line may be `Category<TAB>bullet`; bare lines default to `Changed`. When Step 8a finds no bullets, it either synthesizes `Closed: #<issue>` with an optional `PR_TITLE` suffix when fallback context is available, skips with `CHANGELOG_STATUS=skipped-no-bullets` for non-JSON manifest input, or fails with `CHANGELOG_STATUS=fail-no-manifest-no-issue`; only that last branch appends an `execution-issues.md` note containing `manifest_path='<value>'`, `manifest_exists=<true|false>`, and `coder='<TOOL_LABEL>'`.
-
-Conflict resume uses the implicit checkpoint file `$IMPLEMENT_TMPDIR/.postbump-phase`, not a CLI flag. `force-push-gate` is the only recognized phase identifier in this release. On a Step 8b rebase conflict that can use the Rebase + Re-bump Sub-procedure, `postbump` writes `force-push-gate` to that file before emitting `STATUS=conflict`. After the sub-procedure returns, the orchestrator re-invokes `postbump` with the same `--state-file` and `--implement-tmpdir`; the script validates the checkpoint and skips directly to the force-push gate. Corrupt, symlinked, oversized, or unknown checkpoint contents fail closed with `STATUS=postbump-state-corrupt`.
+Conflict resume uses the implicit checkpoint file `$IMPLEMENT_TMPDIR/.postbump-phase`, not a CLI flag. `force-push-gate` is the only recognized phase identifier. Legacy checkpoints from pre–Phase 1 runs may still resume directly to the force-push gate. Corrupt, symlinked, oversized, or unknown checkpoint contents fail closed with `STATUS=postbump-state-corrupt`. Step 8b rebase conflicts no longer write a checkpoint or emit `STATUS=conflict`; they emit `STATUS=rebase-failed` and require stall/bail.
 
 ## Output Contract
 
@@ -54,21 +50,19 @@ Step-boundary completion and skip breadcrumbs emitted by this script use `/imple
 
 Warnings remain prose-format `**⚠ ...**` lines. Tail records remain `KEY=value` lines and are not breadcrumbs.
 
-During `postbump`, the script first refreshes `version-bump-reasoning.md`, then best-effort calls `larch-log.sh commit` (gated on `LARCH_NO_LOGS_COMMIT != true`) to commit that batch and any other updated log files onto the PR branch, and only then emits the compact Step 8 `larch-log` breadcrumb. This preserves the batch even when the Step 7a pre-bump flush was the last commit before bump:
+During `postbump` (Phase 1), changelog and version-bump-reasoning phases are skipped; tail records include:
 
 ```
-LOG_WRITE_STATUS=ok|skipped|failed
-CHANGELOG_STATUS=updated|skipped-absent|skipped-fork|skipped-no-bump|skipped-no-bullets|skipped-resume|fail-no-manifest-no-issue|failed
-REBASE_STATUS=rebased|already-fresh|conflict|failed|skipped-resume
+LOG_WRITE_STATUS=skipped
+CHANGELOG_STATUS=skipped-phase1|skipped-resume
+REBASE_STATUS=rebased|already-fresh|failed|skipped-resume
 FORCE_PUSH_STATUS=pushed|noop_same_ref|absent|skipped-repo-unavailable|failed
-RESUME_PHASE=force-push-gate
-CALLER_KIND=step8b_rebase
-STATUS=ok|skipped|conflict|rebase-failed|push-failed|remote-check-failed|changelog-failed|branch-mismatch|postbump-state-corrupt
+STATUS=ok|rebase-failed|push-failed|remote-check-failed|branch-mismatch|postbump-state-corrupt|postbump-cwd-not-repo
 FINALIZE_SUBCOMMAND=postbump
 FINALIZE_WARNINGS=<N>
 ```
 
-`RESUME_PHASE=force-push-gate` and `CALLER_KIND=step8b_rebase` are present only on `STATUS=conflict`. The resume phase line is informational; the checkpoint file is authoritative. Consumers MUST parse the last `STATUS=` line. The script emits exactly one `STATUS=...` tail record; future debug output must not emit `STATUS=...` lines.
+Consumers MUST parse the last `STATUS=` line. The script emits exactly one `STATUS=...` tail record; future debug output must not emit `STATUS=...` lines.
 
 `postmerge` prints one compact Step 14 breadcrumb, optionally one compact Step 15 breadcrumb, then:
 
@@ -95,11 +89,9 @@ FINALIZE_WARNINGS=<N>
 
 ## Behavior Mapping
 
-- `postbump` phase 1 always writes `$IMPLEMENT_TMPDIR/larch-log-batches/version-bump-reasoning.md`. It refreshes the larch-log batch when `ISSUE_NUMBER` is non-empty and `REPO_UNAVAILABLE=false`; `REPO` are forwarded when present. The run ID is resolved from the postbump state file (`read_state RUN_ID`) before falling back to env vars or the tmpdir-basename suffix; this prevents the write going to a wrong-run-ID directory when neither `LARCH_RUN_ID` nor `RUN_ID` is set in the environment. Refresh failures are non-fatal and append to `execution-issues.md`.
-- `postbump` phase 2 always runs `check-changelog-present.sh`, then skips when CHANGELOG is absent, fork mode is active, no bump skill is available, `BUMP_TYPE=NONE`, or a non-JSON manifest yields no usable bullets (`CHANGELOG_STATUS=skipped-no-bullets`). When bullets are absent but fallback context is available, it synthesizes `Closed: #<issue>` with an optional `PR_TITLE` suffix and continues. When neither bullets nor tracking-issue fallback context exists, it appends to `execution-issues.md`, emits `CHANGELOG_STATUS=fail-no-manifest-no-issue`, and stops before rebase. Otherwise it inserts or replaces `## [NEW_VERSION] - YYYY-MM-DD` in `CHANGELOG.md`, grouping bullets in Keep-a-Changelog order, then creates a separate `Update CHANGELOG for NEW_VERSION` commit via `commit-changelog.sh`. Changelog read/write/commit failures emit `STATUS=changelog-failed` and stop before rebase.
-- `postbump` phase 3 validates the branch and runs `rebase-push.sh --no-push`, adding `--base-remote upstream --base-ref main` in fork mode. Exit 1 writes `$IMPLEMENT_TMPDIR/.postbump-phase` and emits `STATUS=conflict` only for non-fork, repo-available runs; fork and repo-unavailable conflict paths emit `STATUS=rebase-failed`.
-- `postbump` phase 4 validates the branch again, skips when `REPO_UNAVAILABLE=true`, otherwise preserves the `check-remote-branch.sh` trichotomy: `present` force-pushes, `absent` leaves initial push to PR creation, and `error` emits `STATUS=remote-check-failed`.
-- With `$IMPLEMENT_TMPDIR/.postbump-phase` containing `force-push-gate`, `postbump` skips phases 1-3, runs phase 4 only, and deletes the checkpoint after a successful push/absent/repo-unavailable result.
+- `postbump` loads and validates state, then either resumes at the force-push gate when `$IMPLEMENT_TMPDIR/.postbump-phase` contains `force-push-gate`, or runs `rebase-push.sh --no-push` (with `--base-remote upstream --base-ref main` in fork mode) followed by the force-push gate. `CHANGELOG_STATUS` defaults to `skipped-phase1`; `LOG_WRITE_STATUS` stays `skipped`.
+- `postbump` rebase exit 1 (conflict) and other non-zero rebase failures emit `STATUS=rebase-failed` with a stall/bail warning; no Rebase + Re-bump Sub-procedure handoff.
+- Force-push gate: validates branch, skips when `REPO_UNAVAILABLE=true`, otherwise `check-remote-branch.sh` trichotomy (`present` → force-push, `absent` → initial push deferred, `error` → `STATUS=remote-check-failed`).
 - Step 14 skips on `DRAFT=true`, then `MERGE!=true`, then a non-empty final-bail-reason file. These skips also force `VERIFY_MAIN_STATUS=skipped`.
 - Step 14 cleanup success/partial state comes from `local-cleanup.sh`'s `CLEANUP_SUCCESS`, `CURRENT_BRANCH`, and `BRANCH_DELETED` keys.
 - Step 15 runs only after Step 14 actually attempted cleanup. It calls `verify-main.sh --expected-title "$PR_TITLE (#$PR_NUMBER)"`.
@@ -119,7 +111,7 @@ FINALIZE_WARNINGS=<N>
 - All leaf-script failures are best-effort except invocation/state validation. They surface through warning breadcrumbs and tail records, not non-zero exits.
 - `--implement-tmpdir` and `--state-file` must be under `/tmp/`, `/private/tmp/`, or the larch cache sessions root.
 - post-Step-7a subcommands (`postbump`, `postmerge`, `teardown`) SHOULD prefer direct `append-tool-failure.sh`/`larch-log.sh append` safety-net paths over adding prompt prose. `teardown` is allowed to append cleanup-sanity failures to `$IMPLEMENT_TMPDIR/execution-issues.md` because it immediately follows with the safety-net flush before tmpdir deletion. `postbump` MAY append warnings to `$IMPLEMENT_TMPDIR/execution-issues.md`; shared external-implementer / pre-push flush paths append that unflushed tail before the next log commit when available, and teardown remains the fallback.
-- The literal phase identifier `force-push-gate`, the contents of `$IMPLEMENT_TMPDIR/.postbump-phase`, is reproduced byte-identically in `skills/implement/SKILL.md` Step 8 conflict-resume prose. Changes to the recognized-phase enum here require a paired SKILL.md update.
+- The literal phase identifier `force-push-gate`, the contents of `$IMPLEMENT_TMPDIR/.postbump-phase`, is reproduced byte-identically in `skills/implement/SKILL.md` Step 8 conflict-resume prose where legacy resume is still documented. Changes to the recognized-phase enum here require a paired SKILL.md update.
 - The orchestrator MUST parse the last `STATUS=` line in `postbump` stdout. The script emits exactly one `STATUS=...` line as part of the trailing tail records; future debug output is not permitted to emit `STATUS=...` lines.
 
 ## Primary Callers
@@ -130,8 +122,8 @@ FINALIZE_WARNINGS=<N>
 
 ## Test Harness
 
-`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and git/gh shims, exercises the subcommands, postbump changelog/category/checkpoint/error paths, stalled-run stash/sentinel handling, `.run-cleaned-up` Stop-hook release behavior before cleanup validation, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`. `scripts/test-restore-finalize-state.sh` covers the pre-teardown state restoration helper. `scripts/test-finalize-sanity-check.sh` covers the Step 18 cleanup target sanity check specifically.
+`scripts/test-implement-finalize.sh` is the offline regression harness. It copies this script into a `/tmp` sandbox with stub sibling helpers and git/gh shims, exercises the subcommands, postbump checkpoint/error paths, stalled-run stash/sentinel handling, `.run-cleaned-up` Stop-hook release behavior before cleanup validation, and state-file parsing, normalizes elapsed-time parentheticals, and is wired through `make test-implement-finalize`. `scripts/test-restore-finalize-state.sh` covers the pre-teardown state restoration helper. `scripts/test-finalize-sanity-check.sh` covers the Step 18 cleanup target sanity check specifically.
 
 ## Edit In Sync
 
-When changing this script or its state-file inputs, update this contract, `scripts/commit-changelog.md`, `scripts/lib-execution-issues.sh`, `skills/implement/scripts/flush-execution-issues.sh`, `skills/implement/SKILL.md` Steps 8, 8a, 8b, and 14-18, `scripts/test-implement-finalize.sh`, `scripts/test-implement-finalize.md`, `scripts/restore-finalize-state.md`, `.claude/skills/bump-version/SKILL.md`, `skills/implement/references/rebase-rebump-subprocedure.md`, `SECURITY.md`, `Makefile`, and the harness table in `docs/linting.md` if the public target or coverage changes.
+When changing this script or its state-file inputs, update this contract, `skills/implement/SKILL.md` Steps 8, 8a, 8b, and 14-18, `scripts/test-implement-finalize.sh`, `scripts/test-implement-finalize.md`, `scripts/restore-finalize-state.md`, `SECURITY.md`, `Makefile`, and the harness table in `docs/linting.md` if the public target or coverage changes.
