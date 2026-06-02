@@ -300,7 +300,7 @@ Retention window for `/cleanup` age-based session directory pruning. Default: `7
 
 Colon-separated list of bump files that `scripts/drop-bump-commit.sh` Guard 4 accepts as the allowed non-changelog file set. Uses **replacement semantics**: when set, this list replaces the built-in default (`.claude-plugin/plugin.json`) — it is NOT additive. `CHANGELOG.md` is allowed alongside bump files regardless of this setting (never required, always optional). The `--allow-changelog-only` flag is independent: it gates the special case where a bump-subject commit touches exactly `CHANGELOG.md`.
 
-This variable controls which commit shapes the Rebase + Re-bump Sub-procedure's step 1 (`drop-bump-commit.sh`) considers safe for destructive `git reset --hard HEAD~1`. Consumer repos whose `/bump-version` touches additional version files (e.g., `version.go`, `package.json`, `Cargo.toml`) should set this so the bump commit can be cleanly dropped before rebasing.
+**Phase 1 (#3364):** `/implement` no longer runs `drop-bump-commit.sh` on the ship path (the Rebase + Re-bump Sub-procedure is retired). This variable remains active for `/release`, manual `.claude/skills/bump-version` runs, and legacy conflict-resolution trivial-file rules when bump-shaped commits still appear on a branch. Consumer repos whose bump skill touches additional version files (e.g., `version.go`, `package.json`, `Cargo.toml`) should set `LARCH_BUMP_FILES` so `drop-bump-commit.sh` and conflict auto-resolve recognize those paths outside `/implement`.
 
 Paths must match `git diff --name-only` output format (repo-root-relative, no `./` prefix). Paths must not contain `:` (the delimiter).
 

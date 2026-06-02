@@ -347,13 +347,6 @@ postbump_checkpoint_path() {
     printf '%s/.postbump-phase' "$IMPLEMENT_TMPDIR"
 }
 
-write_postbump_checkpoint() {
-    local tmp checkpoint
-    checkpoint=$(postbump_checkpoint_path)
-    tmp="$checkpoint.tmp.$$"
-    printf 'force-push-gate\n' > "$tmp" && mv "$tmp" "$checkpoint"
-}
-
 read_postbump_checkpoint() {
     local checkpoint size phase
     POSTBUMP_CHECKPOINT_PHASE=""
