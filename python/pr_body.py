@@ -11,6 +11,7 @@ import gh
 import git
 import redact
 import run_logs
+import tracking_issue
 from errors import ShipError
 from proc import Runner
 
@@ -20,14 +21,6 @@ class MermaidResult:
     status: str
     reason_tokens: tuple[str, ...]
     fence_count: int
-
-
-@dataclass(frozen=True)
-class PrBodyParts:
-    summary: str
-    mermaid_block: str
-    test_plan: str
-    closes_line: str
 
 
 _FENCE_RE = re.compile(r"^(\s{0,3})(`{3,})([^`]*)$")
@@ -269,9 +262,9 @@ def compose_pr_body(
     if mermaid.strip():
         parts.extend(["## Code Flow Diagram", "", "```mermaid", mermaid.strip(), "```", ""])
     parts.extend(["## Test plan", "", test_plan.rstrip(), ""])
-    if issue_number is not None:
-        parts.extend(["", f"Closes #{issue_number}"])
     body = "\n".join(parts) + "\n"
+    if issue_number is not None:
+        body = tracking_issue.link_pr_closes(body, issue_number)
     mermaid_body = sanitize_fragment(body, from_md=True)
     if mermaid_body.status != "ok":
         msg = f"mermaid in PR body rejected: {','.join(mermaid_body.reason_tokens)}"

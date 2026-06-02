@@ -1157,10 +1157,23 @@ Write/post the terminal `larch:final-summary` projection. Do not branch around t
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-if "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout; then
+_step17_wfr_log="$IMPLEMENT_TMPDIR/step17-write-final-report.failure.log"
+: >"$_step17_wfr_log" 2>/dev/null || true
+if "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then
+  cat "$_step17_wfr_log"
   if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then
     touch "$IMPLEMENT_TMPDIR/.step17-printed"
   fi
+else
+  _step17_wfr_rc=$?
+  "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
+    --log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+    --site "Step 17 — final report" \
+    --tool "write-final-report.sh" \
+    --exit-code "$_step17_wfr_rc" \
+    --category "Tool Failures" \
+    --output-file "$_step17_wfr_log" \
+    --redact >/dev/null 2>&1 || true
 fi
 ```
 

@@ -1,0 +1,11 @@
+Reviewing the branch diff and related source files for correctness.
+Checking whether `sanitize_fragment` could interact with the `Closes` line and comparing pre-change `compose_pr_body` behavior.
+### In-Scope Findings
+
+- **correctness** `python/pr_body.py:265-267` — `compose_pr_body` now delegates to `tracking_issue.link_pr_closes`, which treats a `Closes #N` match anywhere in the assembled body as idempotent. Before this branch, `compose_pr_body` always appended a footer `Closes #N` after the test-plan section regardless of earlier content. If the same token appears only inside a fenced ` ```mermaid ` block (or elsewhere GitHub does not treat as a closing keyword), `link_pr_closes` skips the footer line while `ensure_pr` in `python/pr.py:48-66` applies the same helper on the same body, so auto-close can be lost end-to-end. Bash `scripts/ship-pr.sh:1535-1545` always emits a dedicated footer `closes` line and does not whole-body-scan for idempotency. **Suggested fix:** Keep `link_pr_closes` for `ensure_pr` updates, but in `compose_pr_body` either always append the footer when `issue_number is not None` (old behavior), or narrow idempotency to non-fenced / trailing-footer text (e.g. ignore matches inside mermaid fences, or only inspect the last non-empty lines) so a decorative in-diagram `Closes #N` cannot suppress the real footer.
+
+### Out-of-Scope Observations
+
+- The Phase 5 reconcile commit (`c4b8b5a10`) is `python/`-only and matches the plan; the full branch diff vs `main` also includes unrelated implement stall-recovery work (`57c30c487`), run-log flush (`a4c6aa527`), and `.claude-plugin/plugin.json` churn — outside this feature’s stated acceptance scope but not introduced by the reconcile hunks.
+- `link_pr_closes` remains case-sensitive (`Closes` only); a body with `closes #42` still gets a canonical `Closes #42` footer. That behavior predates this branch and is consistent with `scripts/extract-closes-issue-from-pr.sh`’s `Closes #[0-9]+` grep.
+- New tests cover append, idempotency, and `#42` vs `#421` for `link_pr_closes` and a happy-path `compose_pr_body` closes line; they do not exercise the fenced-mermaid false-idempotency case above.

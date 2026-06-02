@@ -104,7 +104,7 @@ main() {
                         emit_body=true
                     fi
                     ;;
-                false) : ;; # failed snapshot with sentinel: do not promote on stale or absent prebody
+                false) emit_body=true ;;
             esac
         fi
     fi

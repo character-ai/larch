@@ -207,9 +207,30 @@ cmd_clear_stall() {
         emit_kv CLEARED false
         exit 3
     fi
+    local dir base tmp tracking
+    dir=$(dirname "$state")
+    base=$(basename "$state")
     if ! ship_pr_state_present "$tmpdir"; then
-        emit_kv CLEARED false
-        exit 0
+        tmp=$(mktemp "$dir/${base}.tmp.XXXXXX") || emit_cleared_false_exit 1
+        if ! printf 'STALL_TRACKING=false\nSTALL_STEP=\n' >"$tmp"; then
+            rm -f "$tmp"
+            emit_cleared_false_exit 1
+        fi
+        tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$tmp" --key STALL_TRACKING --default "") || {
+            rm -f "$tmp"
+            emit_cleared_false_exit 1
+        }
+        if [ "$tracking" != false ]; then
+            rm -f "$tmp"
+            emit_cleared_false_exit 1
+        fi
+        mv -f "$tmp" "$state" || emit_cleared_false_exit 1
+        tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$state" --key STALL_TRACKING --default "") || emit_cleared_false_exit 1
+        if [ "$tracking" != false ]; then
+            emit_cleared_false_exit 1
+        fi
+        emit_kv CLEARED true
+        return 0
     fi
     if ! ship_pr_state_is_regular_file "$tmpdir"; then
         emit_kv CLEARED false
@@ -219,18 +240,17 @@ cmd_clear_stall() {
         emit_kv CLEARED false
         exit 3
     fi
-    if ! ship_pr_state_has_keys "$state"; then
-        emit_kv CLEARED false
-        exit 0
-    fi
-
-    local dir base tmp tracking
-    dir=$(dirname "$state")
-    base=$(basename "$state")
     tmp=$(mktemp "$dir/${base}.tmp.XXXXXX") || emit_cleared_false_exit 1
-    if ! rewrite_ship_pr_state_keys "$state" STALL_TRACKING false STALL_STEP "" >"$tmp"; then
-        rm -f "$tmp"
-        emit_cleared_false_exit 1
+    if ship_pr_state_has_keys "$state"; then
+        if ! rewrite_ship_pr_state_keys "$state" STALL_TRACKING false STALL_STEP "" >"$tmp"; then
+            rm -f "$tmp"
+            emit_cleared_false_exit 1
+        fi
+    else
+        if ! printf 'STALL_TRACKING=false\nSTALL_STEP=\n' >"$tmp"; then
+            rm -f "$tmp"
+            emit_cleared_false_exit 1
+        fi
     fi
     tracking=$("$SCRIPTS_DIR/read-session-env-key.sh" --file "$tmp" --key STALL_TRACKING --default "") || {
         rm -f "$tmp"
@@ -557,6 +577,10 @@ cmd_classify() {
 
     state_file="$tmpdir/ship-pr-state.sh"
     session_env="$tmpdir/session-env.sh"
+    if [ -L "$state_file" ]; then
+        larch_err "stall-recovery-report.sh: symlinked ship-pr-state.sh"
+        exit 3
+    fi
     if [ -f "$state_file" ]; then
         validate_ship_pr_state "$state_file"
         if check_ship_pr_state_format "$state_file"; then

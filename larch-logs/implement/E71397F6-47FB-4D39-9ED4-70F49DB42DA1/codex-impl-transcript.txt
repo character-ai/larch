@@ -1,0 +1,6 @@
+Implemented plan and wrote manifest with `status=complete`.
+
+Validation:
+- `make py-lint` passed.
+- Targeted tests passed: `cd python && pytest test_pr_body.py test_tracking_issue.py`.
+- Full `make py-test` / `relevant-checks` failed in unrelated `test_version_bump` parity cases; recorded as OOS observation in manifest.
