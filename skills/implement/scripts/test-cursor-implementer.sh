@@ -20,7 +20,7 @@ if [[ "${1-}" == "--real-smoke" ]]; then
         echo "SKIP: real Cursor smoke requires CURSOR_PRESENT=true"
         exit 0
     fi
-    SCRATCH=$(mktemp -d -t cursor-implementer-smoke.XXXXXX)
+    SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/cursor-implementer-smoke.XXXXXX")
     trap 'rm -rf "$SCRATCH"' EXIT
     unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
     export LARCH_EXECUTION_ISSUES_LOG="$SCRATCH/execution-issues.md"
@@ -88,7 +88,7 @@ assert_subprocess_guard_absent() {
     fi
 }
 
-SCRATCH=$(mktemp -d -t cursor-implementer-test.XXXXXX)
+SCRATCH=$(mktemp -d "${TMPDIR:-/tmp}/cursor-implementer-test.XXXXXX")
 trap 'rm -rf "$SCRATCH"' EXIT
 trap 'printf "test-cursor-implementer.sh: unexpected exit at line %s (set -e)\n" "$LINENO" >&2' ERR
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
