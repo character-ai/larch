@@ -124,12 +124,11 @@ case "$TOOL" in
             emit_kv RESPONSE_FILE "$OUTPUT_FILE"
             exit 3
         fi
-        CURSOR_AUTH_ARGS=()
-        cursor_auth_argv
+        cursor_auth_export_env
         _SERIAL_LOCK=""
         external_serial_lock_acquire _SERIAL_LOCK "cursor"
         external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
-        cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} --workspace "$WORKSPACE" \
+        cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} --workspace "$WORKSPACE" \
             "$("$SCRIPT_DIR/cursor-wrap-prompt.sh" "Read the negotiation prompt from $PROMPT_FILE and respond to it.")" \
             > "$OUTPUT_FILE" 2>&1
         ;;

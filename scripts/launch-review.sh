@@ -980,7 +980,6 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             cursor agent -p --trust --mode ask \
             --output-format json \
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-            ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
             --workspace "$PWD" \
             "$WRAPPED_PROMPT" \
             2>>"$_STDERR_TARGET" &

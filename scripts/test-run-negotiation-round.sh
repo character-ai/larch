@@ -80,6 +80,9 @@ set -euo pipefail
 for arg in "$@"; do
     printf '%s\n' "$arg" >> "$CURSOR_STUB_ARGV_LOG"
 done
+if [[ -n "${CURSOR_STUB_ENV_LOG:-}" ]]; then
+    printf 'CURSOR_API_KEY=%s\n' "${CURSOR_API_KEY-__UNSET__}" >> "$CURSOR_STUB_ENV_LOG"
+fi
 if [[ -d "$CURSOR_STUB_LOCK_PATH" ]]; then
     printf 'present' > "$CURSOR_STUB_LOCK_SEEN_FILE"
 fi
@@ -229,11 +232,13 @@ CURSOR_LOCK_PATH="/tmp/larch-cursor-serial-${CURSOR_LOCK_USER}.lock"
 CURSOR_OUTPUT="$TMPROOT/cursor.out"
 CURSOR_STDOUT="$TMPROOT/cursor.stdout"
 CURSOR_ARGV="$TMPROOT/cursor.argv"
+CURSOR_ENV="$TMPROOT/cursor.env"
 CURSOR_LOCK_SEEN="$TMPROOT/cursor.lock-seen"
 rm -rf "$CURSOR_LOCK_PATH"
 PATH="$STUB_BIN:$PATH" \
     USER="$CURSOR_LOCK_USER" \
     CURSOR_STUB_ARGV_LOG="$CURSOR_ARGV" \
+    CURSOR_STUB_ENV_LOG="$CURSOR_ENV" \
     CURSOR_STUB_LOCK_PATH="$CURSOR_LOCK_PATH" \
     CURSOR_STUB_LOCK_SEEN_FILE="$CURSOR_LOCK_SEEN" \
     CURSOR_API_KEY="stub-key" \
@@ -249,9 +254,14 @@ assert_file_equals "cursor stdout envelope" "RESPONSE_FILE=$CURSOR_OUTPUT" "$CUR
 assert_file_equals "cursor response body" "cursor negotiation ok" "$CURSOR_OUTPUT"
 assert_file_equals "cursor lock held at spawn" "present" "$CURSOR_LOCK_SEEN"
 if grep -Fxq -- '--api-key' "$CURSOR_ARGV"; then
+    fail "cursor argv must NOT include --api-key (issue #3375 env-based auth)"
+else
+    pass
+fi
+if grep -Fxq -- 'CURSOR_API_KEY=stub-key' "$CURSOR_ENV"; then
     pass
 else
-    fail "cursor argv should include --api-key when CURSOR_API_KEY is set"
+    fail "cursor child must inherit CURSOR_API_KEY in its environment (issue #3375); env log: $(cat "$CURSOR_ENV" 2>/dev/null)"
 fi
 if grep -Fxq -- '--workspace' "$CURSOR_ARGV"; then
     pass

@@ -321,8 +321,8 @@ through the redaction and publication path described here.
      non-regular files, and quiet-log candidates outside `larch-quiet-*-*.log`
      basenames.
 5. **Residual sensitive-content risk**: redaction is pattern-based (recognized
-   PEM blocks, common token shapes like `sk-*`, `ghp_`, JWTs, session-tmpdir
-   paths). Reviewer-supplied non-pattern secrets, partial token fragments that
+   PEM blocks, common token shapes like `sk-*`, `crsr_` (Cursor API keys),
+   `ghp_`, JWTs, session-tmpdir paths). Reviewer-supplied non-pattern secrets, partial token fragments that
    fall outside recognized patterns, internal hostnames, PII, and domain-specific
    sensitive strings can still survive into committed logs. Operational
    `wait-ci` / `warn` breadcrumb text may still be committed after secrets-family

@@ -2041,17 +2041,22 @@ else
     pass
 fi
 
-# Case AK1 (issue #1358): with CURSOR_API_KEY set, --api-key + value appear as
-# adjacent tokens in stub argv, AND the persisted CMD_JSON in ${OUTPUT}.meta
-# DOES contain the literal key (no redaction — pins FINDING_1's no-redact
-# disposition so retry argv reconstruction stays correct).
+# Case AK1 (issue #3375): with CURSOR_API_KEY set, the key is delivered to the
+# cursor child via the ENVIRONMENT, NOT a --api-key argv element. Pins that
+# (a) no --api-key token appears in stub argv, (b) the stub sees the key in its
+# inherited CURSOR_API_KEY env, and (c) the persisted CMD_JSON in ${OUTPUT}.meta
+# does NOT contain the key — closing the leak (#3375): because the key never
+# reaches argv, it never reaches the .meta command-line serialization, `ps`, or
+# any diagnostic command-line capture.
 OUT_AK1="$TMPDIR/cursor-ak1.txt"
 ARGV_LOG_AK1="$TMPDIR/cursor-ak1-argv.log"
+ENV_LOG_AK1="$TMPDIR/cursor-ak1-env.log"
 cat > "$STUB_BIN/cursor-argv-stub" <<'AKSTUB'
 #!/usr/bin/env bash
 set -euo pipefail
 : "${CURSOR_STUB_ARGV_LOG:?}"
 for arg in "$@"; do printf '%s\n' "$arg" >> "$CURSOR_STUB_ARGV_LOG"; done
+if [[ -n "${CURSOR_STUB_ENV_LOG:-}" ]]; then printf 'CURSOR_API_KEY=%s\n' "${CURSOR_API_KEY-__UNSET__}" >> "$CURSOR_STUB_ENV_LOG"; fi
 printf '{"result":"AK1 OK","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTokens":3,"cacheWriteTokens":4}}\n'
 AKSTUB
 chmod +x "$STUB_BIN/cursor-argv-stub"
@@ -2060,22 +2065,29 @@ ln -sf "$STUB_BIN/cursor-argv-stub" "$STUB_BIN/cursor"
 PATH="$STUB_BIN:$PATH" \
     CURSOR_API_KEY="ak1-test-key-789" \
     CURSOR_STUB_ARGV_LOG="$ARGV_LOG_AK1" \
+    CURSOR_STUB_ENV_LOG="$ENV_LOG_AK1" \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux \
     "$LAUNCHER" --output "$OUT_AK1" --timeout 5 --prompt "case ak1" >/dev/null 2>"$TMPDIR/case-ak1.stderr"
 
-AK1_KEY_LINE=$(grep -Fxn -- '--api-key' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
-AK1_VAL_LINE=$(grep -Fxn -- 'ak1-test-key-789' "$ARGV_LOG_AK1" | awk -F: 'NR==1 {print $1; exit}')
-if [[ -n "$AK1_KEY_LINE" && -n "$AK1_VAL_LINE" ]] && (( AK1_VAL_LINE == AK1_KEY_LINE + 1 )); then
-    pass
+# (a) No --api-key token on argv — the secret never reaches the command line.
+if grep -Fxq -- '--api-key' "$ARGV_LOG_AK1"; then
+    fail "case AK1 (issue #3375) Cursor argv must NOT include --api-key when CURSOR_API_KEY is set (env-based auth)"
 else
-    fail "case AK1 --api-key and value must be adjacent in argv when CURSOR_API_KEY set; key_line=$AK1_KEY_LINE val_line=$AK1_VAL_LINE"
+    pass
 fi
 
-# CMD_JSON in .meta MUST contain the literal key (no redaction).
-if grep -F 'CMD_JSON=' "${OUT_AK1}.meta" 2>/dev/null | grep -Fq 'ak1-test-key-789'; then
+# (b) The cursor child inherits CURSOR_API_KEY from the launcher environment.
+if grep -Fxq -- 'CURSOR_API_KEY=ak1-test-key-789' "$ENV_LOG_AK1"; then
     pass
 else
-    fail "case AK1 CMD_JSON in .meta must contain the literal key (no redaction)"
+    fail "case AK1 (issue #3375) cursor child must inherit CURSOR_API_KEY in its environment; env log: $(cat "$ENV_LOG_AK1" 2>/dev/null)"
+fi
+
+# (c) CMD_JSON in .meta MUST NOT contain the key — this is the leak #3375 closes.
+if grep -F 'CMD_JSON=' "${OUT_AK1}.meta" 2>/dev/null | grep -Fq 'ak1-test-key-789'; then
+    fail "case AK1 (issue #3375) CMD_JSON in .meta MUST NOT contain the key (env-based auth keeps it off argv)"
+else
+    pass
 fi
 
 # Issue #1529: Cursor review argv carries the read-only flag set --mode ask,

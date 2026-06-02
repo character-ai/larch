@@ -77,16 +77,21 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/render-reviewer-prompt.sh \
 **On success**, launch in background:
 
 ```bash
-# Build the conditional --api-key argv segment via the shared helper. Empty
-# when CURSOR_API_KEY is unset/whitespace-only (preserves cursor login
-# fallback); two elements (--api-key "$KEY") when set.
+# Cursor authenticates via the CURSOR_API_KEY environment variable (issue
+# #3375) — no `--api-key` argv element, so the key never reaches the cursor
+# command line, run-external-agent.sh `.meta` CMD_JSON, or `ps`. The call below
+# is a Darwin preflight gate: it prints an actionable stderr message when
+# neither CURSOR_API_KEY nor a cursor keychain entry is available (cursor would
+# otherwise emit a cryptic keychain error) and prints no argv flags; its exit
+# is advisory here (the cursor launch / sentinel handling below detects an
+# unusable auth state). The `cursor agent` child inherits CURSOR_API_KEY from
+# this shell.
+"${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh" || true
 # Use a temp file (NOT process substitution) so a non-zero exit from
 # agent-model-args.sh — e.g., LARCH_CURSOR_MODEL contains [[:cntrl:]] or is
 # blank — propagates and aborts the launch, instead of being swallowed and
 # producing an empty MODEL_ARGS array. The defensive `${ARR[@]+"${ARR[@]}"}`
 # expansion is required for Bash 3.2 compatibility under `set -u`.
-CURSOR_AUTH_FLAGS=()
-while IFS= read -r line; do CURSOR_AUTH_FLAGS+=("$line"); done < <("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-auth-flags.sh")
 CURSOR_MODEL_ARGS_TMP=$(mktemp)
 trap 'rm -f "$CURSOR_MODEL_ARGS_TMP"' EXIT
 "${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool cursor > "$CURSOR_MODEL_ARGS_TMP" || exit $?
@@ -94,7 +99,7 @@ CURSOR_MODEL_ARGS=()
 while IFS= read -r arg; do CURSOR_MODEL_ARGS+=("$arg"); done < "$CURSOR_MODEL_ARGS_TMP"
 
 ${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool cursor --output "$RESEARCH_TMPDIR/cursor-validation-output.txt" --timeout 1800 --capture-stdout -- \
-  cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} ${CURSOR_AUTH_FLAGS[@]+"${CURSOR_AUTH_FLAGS[@]}"} --workspace "$PWD" \
+  cursor agent -p --force --trust ${CURSOR_MODEL_ARGS[@]+"${CURSOR_MODEL_ARGS[@]}"} --workspace "$PWD" \
     "$("${CLAUDE_PLUGIN_ROOT}/scripts/cursor-wrap-prompt.sh" "$(cat "$RESEARCH_TMPDIR/cursor-prompt.txt")")"
 ```
 

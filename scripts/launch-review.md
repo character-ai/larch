@@ -38,9 +38,11 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   directory under the session root that owns `--output` (scout passes staged-context only).
   Rejects symlinks, control characters, `..`, and paths outside the session root.
 - Cursor auth setup runs the Darwin preflight, then best-effort pre-reads the
-  `cursor-user` / `cursor-access-token` keychain service into `CURSOR_API_KEY`
-  before composing argv. A successful pre-read becomes an explicit `--api-key`
-  argument.
+  `cursor-user` / `cursor-access-token` keychain service into `CURSOR_API_KEY`,
+  then normalizes/exports `CURSOR_API_KEY` via `cursor_auth_export_env`. Auth is
+  delivered to the Cursor child via that environment variable (issue #3375) —
+  **no** `--api-key` argv element, so the key never reaches argv, `.meta`
+  `CMD_JSON`, or `ps`.
 - Every external spawn site is wrapped by the shared helpers in
   `scripts/lib-external-launcher-common.sh`: Darwin-only per-tool startup locks
   CLI initialization, delayed release starts at process spawn, stale locks are

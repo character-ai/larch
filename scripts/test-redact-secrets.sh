@@ -34,6 +34,9 @@ CREATE_ONE="$REPO_ROOT/skills/issue/scripts/create-one.sh"
 # the values are obviously synthetic (safe to appear in logs).
 # Split prefix in source to defuse GitHub's sk-* secret-scanner heuristic.
 SK_TOKEN='sk-''ant-abcdefghijklmnopqrstuvwxyz0123456789ABCD'
+# Cursor CLI API key (crsr_ family, issue #3375). Prefix split in source so the
+# synthetic token is not a single literal; runtime value is the full crsr_… key.
+CRSR_TOKEN='crsr_''0123456789abcdefghijklmnopqrstuvwxyzABCDEF'
 GHP_TOKEN='ghp_abcdefghijklmnopqrstuvwxyz0123456789ABCDEFGH'
 AKIA_TOKEN='AKIAIOSFODNN7EXAMPLE'
 JWT_TOKEN='eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c'
@@ -78,6 +81,10 @@ out=$(printf '%s' "$SK_TOKEN" | "$HELPER")
 assert_contains "$out" '<REDACTED-TOKEN>' 'sk-ant key → placeholder'
 assert_not_contains "$out" "$SK_TOKEN" 'sk-ant key → raw absent'
 
+out=$(printf '%s' "$CRSR_TOKEN" | "$HELPER")
+assert_contains "$out" '<REDACTED-TOKEN>' 'crsr_ key → placeholder'
+assert_not_contains "$out" "$CRSR_TOKEN" 'crsr_ key → raw absent'
+
 out=$(printf '%s' "$GHP_TOKEN" | "$HELPER")
 assert_contains "$out" '<REDACTED-TOKEN>' 'ghp_ PAT → placeholder'
 assert_not_contains "$out" "$GHP_TOKEN" 'ghp_ PAT → raw absent'
@@ -112,12 +119,19 @@ assert_not_contains "$out" '6Ppy1tPf9' 'streaming split PEM → second body abse
 printf 'in_pem=0\n' >"$stream_state"
 out=$(printf '%s\n' '-----END RSA PRIVATE KEY-----' | "$HELPER" --streaming --state-file "$stream_state")
 assert_contains "$out" '-----END RSA PRIVATE KEY-----' 'streaming fresh mid-PEM tail passes through'
+
+# crsr_ family must also be redacted on the line-oriented --streaming path
+# (issue #3375 added the rule to both sed passes).
+printf 'in_pem=0\n' >"$stream_state"
+out=$(printf '%s\n' "$CRSR_TOKEN" | "$HELPER" --streaming --state-file "$stream_state")
+assert_contains "$out" '<REDACTED-TOKEN>' 'streaming crsr_ key → placeholder'
+assert_not_contains "$out" "$CRSR_TOKEN" 'streaming crsr_ key → raw absent'
 rm -f "$stream_state"
 
 echo ""
 echo "=== Section 2: Idempotency ==="
 
-multi_body="prefix $SK_TOKEN middle $GHP_TOKEN suffix"
+multi_body="prefix $SK_TOKEN middle $GHP_TOKEN suffix $CRSR_TOKEN end"
 pass1=$(printf '%s' "$multi_body" | "$HELPER")
 pass2=$(printf '%s' "$pass1" | "$HELPER")
 if [[ "$pass1" == "$pass2" ]]; then
@@ -141,6 +155,7 @@ trap 'rm -rf "$TMPROOT"' EXIT
 BODY_FILE="$TMPROOT/body.txt"
 cat > "$BODY_FILE" <<BODY_EOF
 Line with $SK_TOKEN in prose.
+Cursor command line: cursor agent --api-key $CRSR_TOKEN --workspace x
 Another line with $GHP_TOKEN PAT.
 AWS key line: $AKIA_TOKEN here.
 JWT: $JWT_TOKEN here.
@@ -216,6 +231,7 @@ if [[ -f "$BODY_CAPTURE" ]]; then
     assert_contains "$captured" '<REDACTED-TOKEN>' '[success] captured body has placeholder'
     assert_contains "$captured" '<REDACTED-PRIVATE-KEY>' '[success] captured body has PEM placeholder'
     assert_not_contains "$captured" "$SK_TOKEN" '[success] captured body does not leak sk-ant'
+    assert_not_contains "$captured" "$CRSR_TOKEN" '[success] captured body does not leak crsr_'
     assert_not_contains "$captured" "$GHP_TOKEN" '[success] captured body does not leak ghp'
     assert_not_contains "$captured" "$JWT_TOKEN" '[success] captured body does not leak JWT'
     assert_not_contains "$captured" 'MIIBOgIBAAJB' '[success] captured body does not leak PEM material'

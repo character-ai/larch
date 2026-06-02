@@ -164,8 +164,7 @@ larch_run_one_cursor_probe() {
     external_serial_lock_acquire _SERIAL_LOCK "cursor" || { rm -f "$probe_out"; return 1; }
     # shellcheck disable=SC2068
     cursor agent -p "$_probe_prompt" --trust --workspace "$PWD" \
-        ${_probe_model_args[@]+"${_probe_model_args[@]}"} \
-        ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} >"$probe_out" 2>&1 &
+        ${_probe_model_args[@]+"${_probe_model_args[@]}"} >"$probe_out" 2>&1 &
     probe_pid=$!
     PROBE_PIDS[${#PROBE_PIDS[@]}]="$probe_pid"
     external_serial_lock_release_after "$_SERIAL_LOCK" "$HOLD"
@@ -234,10 +233,9 @@ else
             CURSOR_PRESENT=false
             larch_write_bool_stamp "$(larch_stamp_path cursor)" "$CURSOR_PRESENT" || true
         else
-            CURSOR_AUTH_ARGS=()
             if ! {
                 cursor_preread_service_token &&
-                cursor_auth_argv &&
+                cursor_auth_export_env &&
                 cursor_launcher_setup_private_config_dir
             }; then
                 CURSOR_PRESENT=false
