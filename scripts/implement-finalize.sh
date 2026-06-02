@@ -23,7 +23,6 @@ FINAL_BAIL_REASON_FILE=""
 IMPLEMENT_TMPDIR=""
 WARNINGS=0
 CHANGELOG_BULLETS_FILE=""
-POSTBUMP_CHECKPOINT_PHASE=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
@@ -354,7 +353,6 @@ postbump_checkpoint_path() {
 
 read_postbump_checkpoint() {
     local checkpoint size phase
-    POSTBUMP_CHECKPOINT_PHASE=""
     checkpoint=$(postbump_checkpoint_path)
     [ -e "$checkpoint" ] || return 0
     if [ ! -f "$checkpoint" ] || [ -L "$checkpoint" ]; then
@@ -368,7 +366,7 @@ read_postbump_checkpoint() {
     phase=$(tr -d '\r' < "$checkpoint" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
     printf '%s\n' "$phase" | grep -Eq '^[a-z][a-z0-9-]*$' || return 1
     case "$phase" in
-        force-push-gate) POSTBUMP_CHECKPOINT_PHASE=$phase ;;
+        force-push-gate) ;;
         *) return 1 ;;
     esac
     return 0
