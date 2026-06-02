@@ -4,7 +4,7 @@ title = "larch gitleaks config"
 useDefault = true
 
 [allowlist]
-description = "Test fixtures (scripts/test-redact-secrets.sh, scripts/test-create-pr.sh, scripts/test-merge-pr.sh, scripts/test-tracking-issue-write.md, scripts/test-relevant-checks-helper-failure.sh, skills/issue/scripts/test-add-blocked-by.sh, skills/review-and-fix/scripts/test-review-and-fix.sh, skills/review/scripts/test-review-core.sh, python/test_redact.py, python/test_checks.py, python/test_run_logs.py), redaction/scrubber source (scripts/redact-secrets.sh, scripts/scrub-log-secrets.sh, scripts/test-scrub-log-secrets.sh), tracking-issue-write lifecycle helper and its contract doc (scripts/tracking-issue-write.sh, scripts/tracking-issue-write.md), ignored Python development artifacts (python/.venv/**, python/.pytest_cache/**, python/__pycache__/**), and the .gitleaks.toml self-allowlist — these paths legitimately contain token-shaped strings throughout. Committed run-logs (larch-logs/**) are intentionally NOT allowlisted: gitleaks scans them in pre-commit/CI, and scripts/scrub-log-secrets.sh redacts secret-shaped values (including Cursor keys, which gitleaks does not cover) from every skill's run logs before each flush. Documentation files (README.md, CHANGELOG.md, SECURITY.md, skills/issue/SKILL.md, skills/issue/scripts/create-one.sh) are also intentionally NOT allowlisted — see SECURITY.md 'Layered secret scanning' (#375)."
+description = "Test fixtures (scripts/test-redact-secrets.sh, scripts/test-create-pr.sh, scripts/test-merge-pr.sh, scripts/test-tracking-issue-write.md, scripts/test-relevant-checks-helper-failure.sh, scripts/test-launch-review.sh, skills/issue/scripts/test-add-blocked-by.sh, skills/review-and-fix/scripts/test-review-and-fix.sh, skills/review/scripts/test-review-core.sh, python/test_redact.py, python/test_checks.py, python/test_run_logs.py), redaction/scrubber source (scripts/redact-secrets.sh, scripts/scrub-log-secrets.sh, scripts/test-scrub-log-secrets.sh), tracking-issue-write lifecycle helper and its contract doc (scripts/tracking-issue-write.sh, scripts/tracking-issue-write.md), ignored Python development artifacts (python/.venv/**, python/.pytest_cache/**, python/__pycache__/**), and the .gitleaks.toml self-allowlist — these paths legitimately contain token-shaped strings throughout. Committed run-logs (larch-logs/**) are intentionally NOT allowlisted: gitleaks scans them in pre-commit/CI, and scripts/scrub-log-secrets.sh redacts secret-shaped values (including Cursor keys, which gitleaks does not cover) from every skill's run logs before each flush. Documentation files (README.md, CHANGELOG.md, SECURITY.md, skills/issue/SKILL.md, skills/issue/scripts/create-one.sh) are also intentionally NOT allowlisted — see SECURITY.md 'Layered secret scanning' (#375)."
 paths = [
     '''^\.gitleaks\.toml$''',
     '''^scripts/redact-secrets\.sh$''',
@@ -12,6 +12,7 @@ paths = [
     '''^scripts/test-redact-secrets\.sh$''',
     '''^scripts/test-scrub-log-secrets\.sh$''',
     '''^scripts/test-relevant-checks-helper-failure\.sh$''',
+    '''^scripts/test-launch-review\.sh$''',
     '''^scripts/test-create-pr\.sh$''',
     '''^scripts/test-merge-pr\.sh$''',
     '''^scripts/tracking-issue-write\.sh$''',
