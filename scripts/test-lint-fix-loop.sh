@@ -948,8 +948,8 @@ case6_prompt=$(find_prompt_for_session "$SESSION6")
 [[ -n "$case6_prompt" ]] || fail "case6 prompt was not written"
 case6_prompt_text=$(cat "$case6_prompt")
 assert_contains "$case6_prompt_text" "local command \`env SKIP=agnix,lint-mermaid-fences,shellcheck make lint-only\` passes" "case6 prompt local command"
-assert_contains "$case6_prompt_text" 'Do NOT run `scripts/relevant-checks.sh` as your verification loop' "case6 per-job anti-cascade"
-assert_not_contains "$case6_prompt_text" 'full-branch `pre-commit`' "case6 must omit non-per-job anti-cascade"
+assert_contains "$case6_prompt_text" "Do NOT run \`scripts/relevant-checks.sh\` as your verification loop" "case6 per-job anti-cascade"
+assert_not_contains "$case6_prompt_text" "full-branch \`pre-commit\`" "case6 must omit non-per-job anti-cascade"
 
 # Case 7: existing sites reject --target-cmd-args-file.
 CASE7="$TMPROOT/case7"
@@ -1081,8 +1081,8 @@ assert_non_per_job_prompt_scoped() {
     assert_contains "$prompt_text" 'Fix only the failures shown in the checks log' "$label log-scoped fix_sentence"
     assert_contains "$prompt_text" '## In-scope files' "$label in-scope section"
     assert_contains "$prompt_text" $'- tracked.txt\n' "$label tracked.txt in-scope"
-    assert_contains "$prompt_text" 'Do NOT run `scripts/relevant-checks.sh`, full-branch `pre-commit`, or `agent-lint`' "$label non-per-job anti-cascade"
-    assert_not_contains "$prompt_text" 'Fix the repository so `scripts/relevant-checks.sh` passes' "$label no global relevant-checks pass"
+    assert_contains "$prompt_text" "Do NOT run \`scripts/relevant-checks.sh\`, full-branch \`pre-commit\`, or \`agent-lint\`" "$label non-per-job anti-cascade"
+    assert_not_contains "$prompt_text" "Fix the repository so \`scripts/relevant-checks.sh\` passes" "$label no global relevant-checks pass"
 }
 
 # Case 12: shellcheck In <path> line N (positive).
@@ -1145,9 +1145,9 @@ case14_result=$(run_case "$SCRIPTS14" "$REPO14" "$SESSION14" "$CHECKS14" "$WRAPP
 assert_contains "$case14_result" 'LINT_FIX_STATUS=no-changes' "case14 status"
 case14_text=$(cat "$(find_prompt_for_session "$SESSION14")")
 assert_contains "$case14_text" 'no scoped file list could be derived from the log' "case14 empty-list fix_sentence"
-assert_contains "$case14_text" 'Do NOT run `scripts/relevant-checks.sh`, full-branch `pre-commit`, or `agent-lint`' "case14 anti-cascade"
+assert_contains "$case14_text" "Do NOT run \`scripts/relevant-checks.sh\`, full-branch \`pre-commit\`, or \`agent-lint\`" "case14 anti-cascade"
 assert_not_contains "$case14_text" '## In-scope files' "case14 no in-scope section"
-assert_not_contains "$case14_text" 'Fix the repository so `scripts/relevant-checks.sh` passes' "case14 no global pass goal"
+assert_not_contains "$case14_text" "Fix the repository so \`scripts/relevant-checks.sh\` passes" "case14 no global pass goal"
 
 # Case 15: unsafe path rejection (backtick and leading dash).
 CASE15="$TMPROOT/case15"
