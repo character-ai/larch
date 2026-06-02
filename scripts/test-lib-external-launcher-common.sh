@@ -224,6 +224,115 @@ else
     pass
 fi
 
+run_health_gate_case() {
+    local label="$1" tool="$2" env_timeout="$3" session_timeout="$4" implement_timeout="$5" present_line="$6" checker_rc="$7" timeout_rc="$8"
+    local case_dir="$TMPDIR_ROOT/health-$label"
+    local rc_file="$case_dir/rc"
+    local call_file="$case_dir/checker-call"
+    mkdir -p "$case_dir/scripts" "$case_dir/bin"
+    cp "$REPO_ROOT/scripts/lib-external-launcher-common.sh" "$case_dir/scripts/lib-external-launcher-common.sh"
+    cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$case_dir/scripts/read-session-env-key.sh"
+    cp "$REPO_ROOT/scripts/lib-quiet.sh" "$case_dir/scripts/lib-quiet.sh"
+    chmod +x "$case_dir/scripts/read-session-env-key.sh"
+    cat > "$case_dir/scripts/check-reviewers.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+{
+    printf 'ARGS=%s\n' "$*"
+    printf 'AUTH_RETRIES=%s\n' "${LARCH_EXTERNAL_AUTH_RETRIES:-}"
+} >> "${LARCH_TEST_CHECKER_CALL:?}"
+if [[ -n "${LARCH_TEST_PRESENT_LINE:-}" ]]; then
+    printf '%s\n' "$LARCH_TEST_PRESENT_LINE"
+fi
+exit "${LARCH_TEST_CHECKER_RC:-0}"
+EOF
+    chmod +x "$case_dir/scripts/check-reviewers.sh"
+    cat > "$case_dir/bin/timeout" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${LARCH_TEST_TIMEOUT_RC:-}" ]]; then
+    exit "$LARCH_TEST_TIMEOUT_RC"
+fi
+shift
+exec "$@"
+EOF
+    chmod +x "$case_dir/bin/timeout"
+
+    if [[ -n "$session_timeout" ]]; then
+        printf 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=%s\n' "$session_timeout" > "$case_dir/session-env-path.env"
+    fi
+    if [[ -n "$implement_timeout" ]]; then
+        mkdir -p "$case_dir/implement"
+        printf 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=%s\n' "$implement_timeout" > "$case_dir/implement/session-env.sh"
+    fi
+
+    set +e
+    LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="$env_timeout" \
+        LARCH_TEST_PRESENT_LINE="$present_line" \
+        LARCH_TEST_CHECKER_RC="$checker_rc" \
+        LARCH_TEST_TIMEOUT_RC="$timeout_rc" \
+        LARCH_TEST_CHECKER_CALL="$call_file" \
+        SESSION_ENV_PATH="$case_dir/session-env-path.env" \
+        IMPLEMENT_TMPDIR="$case_dir/implement" \
+        PATH="$case_dir/bin:$PATH" \
+        bash -c 'source "$1"; external_launch_health_gate "$2"' bash "$case_dir/scripts/lib-external-launcher-common.sh" "$tool" \
+        >"$case_dir/stdout" 2>"$case_dir/stderr"
+    printf '%s\n' "$?" > "$rc_file"
+    set -e
+    printf '%s' "$case_dir"
+}
+
+assert_health_gate_rc() {
+    local label="$1" want_rc="$2"
+    shift 2
+    local case_dir rc
+    case_dir=$(run_health_gate_case "$label" "$@")
+    rc=$(cat "$case_dir/rc")
+    if [[ "$rc" == "$want_rc" ]]; then
+        pass
+    else
+        fail "$label: expected health gate rc $want_rc, got $rc (stderr=$(cat "$case_dir/stderr"))"
+    fi
+    printf '%s' "$case_dir"
+}
+
+_hg_case=$(assert_health_gate_rc "health gate codex healthy" 0 codex 5 "" "" "CODEX_PRESENT=true" 0 "")
+if grep -Fq 'ARGS=--skip-cursor-probe' "$_hg_case/checker-call" && grep -Fq 'AUTH_RETRIES=1' "$_hg_case/checker-call"; then
+    pass
+else
+    fail "health gate codex healthy should call check-reviewers with skip-cursor and one auth retry"
+fi
+
+assert_health_gate_rc "health gate cursor unhealthy false" 1 cursor 5 "" "" "CURSOR_PRESENT=false" 0 "" >/dev/null
+assert_health_gate_rc "health gate timeout 124 unhealthy before fail-open" 1 codex 5 "" "" "" 0 124 >/dev/null
+assert_health_gate_rc "health gate timeout 143 unhealthy before fail-open" 1 cursor 5 "" "" "" 0 143 >/dev/null
+
+_hg_off=$(assert_health_gate_rc "health gate off without timeout" 0 codex "" "" "" "CODEX_PRESENT=false" 0 "")
+if [[ ! -e "$_hg_off/checker-call" ]]; then
+    pass
+else
+    fail "health gate off without timeout must not call check-reviewers"
+fi
+
+_hg_zero=$(assert_health_gate_rc "health gate zero opt-out beats session fallback" 0 codex 0 5 5 "CODEX_PRESENT=false" 0 "")
+if [[ ! -e "$_hg_zero/checker-call" ]]; then
+    pass
+else
+    fail "health gate zero opt-out must not call check-reviewers"
+fi
+
+assert_health_gate_rc "health gate reads SESSION_ENV_PATH" 1 cursor "" 5 "" "CURSOR_PRESENT=false" 0 "" >/dev/null
+assert_health_gate_rc "health gate reads IMPLEMENT_TMPDIR session env" 1 codex "" "" 5 "CODEX_PRESENT=false" 0 "" >/dev/null
+
+_hg_non_tool=$(assert_health_gate_rc "health gate ignores non external tool" 0 claude 5 "" "" "CODEX_PRESENT=false" 0 "")
+if [[ ! -e "$_hg_non_tool/checker-call" ]]; then
+    pass
+else
+    fail "health gate non-tool must not call check-reviewers"
+fi
+
+assert_health_gate_rc "health gate fail-open on unparsable non-timeout result" 0 codex 5 "" "" "" 2 "" >/dev/null
+
 if (( FAIL > 0 )); then
     printf 'FAIL: test-lib-external-launcher-common.sh — %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     for f in "${FAILURES[@]}"; do

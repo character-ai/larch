@@ -193,6 +193,13 @@ These knobs apply to the Step 0 runtime probes emitted into session-env via `ses
 - **`LARCH_PROBE_TTL_SECONDS`** — positive integer seconds for USER-scoped stamp freshness (default `60`). Non-numeric / empty falls back to `60`. `0` disables the stamp cache (always re-probe when the binary exists and the probe is not skipped).
 - **`LARCH_PROBE_TIMEOUT_SECONDS`** — per-attempt wall-clock timeout while waiting on the background probe PID (default `30`). Non-numeric, empty, or `0` falls back to `30`.
 - **`LARCH_EXTERNAL_AUTH_RETRIES`** — maximum auth-classified failures before treating the tool as absent for this session (default `5`; `0` or invalid → `5`). Shared with external launchers; the probe loops use the same counter semantics.
+- **`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT`** — launch-time health-gate timeout for `run-external-agent.sh` (default `30` when written by `/design` and `/implement` session-env writers; set `0` to opt out). When a positive value resolves from the process environment, `$SESSION_ENV_PATH`, or `$IMPLEMENT_TMPDIR/session-env.sh`, Codex/Cursor launches first reuse `check-reviewers.sh` with the other tool skipped and `LARCH_EXTERNAL_AUTH_RETRIES=1`; unhealthy probes fast-fail as `health-probe` instead of waiting for the full launch `--timeout`.
+
+`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is auto-on for `/design`, `/implement`, and
+nested `/review` launches because their session writers export or persist the
+default. Standalone `/review` and `/research` remain an L1 activation gap unless
+the operator sets the environment variable directly; `/research` coverage is
+tracked separately in OOS #3369.
 
 Darwin-only mutex delay remains **`LARCH_EXTERNAL_SERIAL_LOCK_DELAY`** (default `0.5` seconds) via `external_serial_lock_release_after`.
 

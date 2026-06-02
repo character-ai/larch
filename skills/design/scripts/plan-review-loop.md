@@ -4,6 +4,11 @@
 
 **Primary callers**: `skills/design/scripts/run-step3-review.sh` (invoked from `skills/design/SKILL.md` Step 3).
 
+External plan-review launches are transitively covered by the launch-time
+health gate in `scripts/run-external-agent.sh`: the Step 3 review launcher
+family funnels Codex/Cursor commands through that chokepoint, so this driver
+does not own a separate `check-reviewers.sh` probe or timeout knob.
+
 ## Invariants
 
 Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before resolving the path with `cd ... && pwd -P`.
