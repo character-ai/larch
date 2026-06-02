@@ -32,6 +32,106 @@ external_launcher_append_outer_meta() {
     } >> "$meta_path"
 }
 
+external_launch_health_gate_timeout() {
+    local _out_var="$1"
+    local candidate="" session_file="" script_dir=""
+    printf -v "$_out_var" '%s' ""
+
+    candidate="${LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT:-}"
+    case "$candidate" in
+        ''|*[!0-9]*) ;;
+        *)
+            if (( 10#$candidate > 0 )); then
+                printf -v "$_out_var" '%s' "$((10#$candidate))"
+                return 0
+            fi
+            return 0
+            ;;
+    esac
+
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    for session_file in "${SESSION_ENV_PATH:-}" "${IMPLEMENT_TMPDIR:+${IMPLEMENT_TMPDIR}/session-env.sh}"; do
+        [[ -n "$session_file" ]] || continue
+        candidate=""
+        if candidate=$("$script_dir/read-session-env-key.sh" \
+            --file "$session_file" \
+            --key LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT \
+            --default "" 2>/dev/null); then
+            :
+        else
+            candidate=""
+        fi
+        case "$candidate" in
+            ''|*[!0-9]*) ;;
+            *)
+                if (( 10#$candidate > 0 )); then
+                    printf -v "$_out_var" '%s' "$((10#$candidate))"
+                    return 0
+                fi
+                return 0
+                ;;
+        esac
+    done
+
+    return 0
+}
+
+external_launch_health_gate() {
+    local tool="$1"
+    local timeout_seconds="" script_dir="" skip_arg="" present_key=""
+    local probe_out="" probe_rc=0 timeout_bin=""
+
+    case "$tool" in
+        codex)
+            skip_arg="--skip-cursor-probe"
+            present_key="CODEX_PRESENT"
+            ;;
+        cursor)
+            skip_arg="--skip-codex-probe"
+            present_key="CURSOR_PRESENT"
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+
+    external_launch_health_gate_timeout timeout_seconds
+    [[ -n "$timeout_seconds" ]] || return 0
+
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if command -v timeout >/dev/null 2>&1; then
+        timeout_bin="timeout"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        timeout_bin="gtimeout"
+    fi
+
+    if [[ -n "$timeout_bin" ]]; then
+        if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 "$timeout_bin" "$timeout_seconds" \
+            "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+            probe_rc=0
+        else
+            probe_rc=$?
+        fi
+    else
+        if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 \
+            "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+            probe_rc=0
+        else
+            probe_rc=$?
+        fi
+    fi
+
+    case "$probe_rc" in
+        124|143) return 1 ;;
+    esac
+
+    case "$(printf '%s\n' "$probe_out" | awk -F= -v key="$present_key" '$1 == key {print $2; exit}')" in
+        false) return 1 ;;
+        true) return 0 ;;
+        *) return 0 ;;
+    esac
+}
+
 external_launcher_record_usage_from_events() {
     local plugin_root="$1"
     local events_file="$2"

@@ -13,6 +13,11 @@ Regression harness for `scripts/run-external-agent.sh`; the primary behavioral c
 - Verifies `RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX=.inner.done` writes `<output>.inner.done` without publishing `<output>.done`, default mode still publishes `<output>.done`, stale cleanup removes both sentinel flavors, and unsupported suffixes fail before side effects.
 - Verifies the Codex stdin contract from #2973: default, `--capture-stdout`, `--capture-stdout-only`, and the optional `stdbuf` capture-only branch all run with fd 0 attached to `/dev/null`; the Cursor control verifies the non-Codex tool path still launches and records `TOOL=cursor` metadata (background processes always receive stdin=/dev/null from the shell regardless of the tool-specific redirect gate, so no explicit fd0 path assertion is made for the cursor case).
 - Verifies the case-18 timeout path for `--capture-stdout-only`: wrapper timeout diagnostics stay on stderr while the output file remains parseable JSONL and the timeout detail lands in `<output>.diag`.
+- Verifies the launch-time health gate through a temp wrapper root with a
+  stubbed `check-reviewers.sh`: enabled unhealthy Codex/Cursor fast-fail with
+  exits `7` / `8`, command not run, empty output, `.diag` `health-probe
+  fast-fail`, and `.done` exit recording; disabled gate and non-tool labels
+  still run the command.
 
 ## Wiring
 

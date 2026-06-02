@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 import checks
+import config
 import proc
 from proc import CommandResult
 
@@ -44,6 +45,22 @@ _STUB_EXECUTABLES = (
     "ship-pr.sh",
     "auto-resolve-changelog.sh",
 )
+
+
+def test_external_health_check_timeout_config_matches_bash_sources() -> None:
+    assert config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT == "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"
+    assert config.EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC == 30
+
+    design_writer = (REPO_ROOT / "scripts" / "write-design-current-env.sh").read_text(
+        encoding="utf-8",
+    )
+    session_writer = (REPO_ROOT / "scripts" / "write-session-env.sh").read_text(
+        encoding="utf-8",
+    )
+    assert 'EXTERNAL_HEALTH_CHECK_TIMEOUT_VALUE="${LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT:-30}"' in design_writer
+    assert 'build_export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT "$EXTERNAL_HEALTH_CHECK_TIMEOUT_VALUE"' in design_writer
+    assert 'EXTERNAL_HEALTH_CHECK_TIMEOUT_VALUE="${LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT:-30}"' in session_writer
+    assert 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=$EXTERNAL_HEALTH_CHECK_TIMEOUT_VALUE"' in session_writer
 
 
 def _prepare_stub_repo(tmp_path: Path) -> Path:
