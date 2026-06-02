@@ -1,0 +1,41 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive verification, not a defect to raise
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive verification, not a defect to raise
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive verification, not a defect to raise
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive verification, not a defect to raise
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive verification, not a defect to raise
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- legitimate asymmetry, but bash parity was explicitly deferred and is not worth adding to this change
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the assertion is weak but the added coverage already protects the relevant regression
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the symmetric prefix-collision test would be nice, but the existing collision test already guards the prior substring bug
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the missing symmetric test is real, but the claim that reverting to substring search would pass current tests is not
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ensure_pr delegates directly to the unit-tested helper, so an extra integration test is more coverage than this warrants
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- exact footer-layout pinning is low-value for the intended behavior
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the omitted None-case test is a pre-existing low-impact coverage gap
+FINDING_15: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive security assessment, not a defect to raise
+FINDING_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive security assessment, not a defect to raise
+FINDING_18: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive security assessment, not a defect to raise
+FINDING_19: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive security assessment, not a defect to raise
+FINDING_20: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this describes a hardening improvement, not a defect to raise
+FINDING_21: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive security assessment, not a defect to raise
+FINDING_22: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_23: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the symmetric test would be nice, but existing collision coverage makes this too small to require
+FINDING_25: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the existing update_pr_body path does sanitize and redact before publishing
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate canonical casing is harmless and consistent with existing case-sensitive extraction
+FINDING_27: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_28: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_29: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the cp-failure edge is real but rare and the conservative no-emit behavior is simpler than special-casing it
+FINDING_30: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_31: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the closes line is still sanitized and redacted as part of the final composed body
+FINDING_32: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_33: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a coverage/status note, not a concrete defect
+FINDING_34: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive assessment, not a defect to raise
+FINDING_35: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_36: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_37: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the duplicate canonical footer is harmless and consistent with existing case-sensitive behavior
+FINDING_38: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_39: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_40: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_41: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

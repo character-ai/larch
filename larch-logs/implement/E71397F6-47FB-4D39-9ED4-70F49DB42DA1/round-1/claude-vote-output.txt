@@ -1,0 +1,41 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- no problem stated; reviewer confirms correct ordering is preserved
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- no problem stated; reviewer confirms regex fix correctness
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- no problem stated; reviewer confirms no circular import
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- no problem stated; reviewer confirms dead class removed
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- no problem stated; reviewer confirms single source of truth
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- pre-existing weakness; new tests add collision-path coverage
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- branch composition is a process concern, not a code defect
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- repeated branch scope process concern
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- pre-existing gap too minor to file separately
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- repeated branch scope concern
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security confirmation, no problem raised
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security confirmation, no problem raised
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security confirmation, no problem raised
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security confirmation, no problem raised
+FINDING_20: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security observation, no problem raised
+FINDING_21: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security confirmation, no problem raised
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- repeated branch scope process concern
+FINDING_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- intentional case-sensitive design consistent with bash surface
+FINDING_27: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- repeated branch scope concern
+FINDING_28: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- branch scope is a process concern; Python commit c4b8b5a10 alone is compliant
+FINDING_29: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- conservative SNAPSHOT_OK=false no-promote is intentional per harness case-emit-cp-fail
+FINDING_30: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- token refresh is best-effort by design; failure captured via append-tool-failure.sh
+FINDING_31: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- coupling intentional per plan; redaction ordering unchanged; documentation suggestion is informational
+FINDING_32: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- repeated branch bundling process concern
+FINDING_33: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive coverage confirmation, no problem stated
+FINDING_34: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive alignment confirmation, no problem stated
+FINDING_35: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_36: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- repeated branch scope process concern
+FINDING_37: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- intentional case-sensitivity consistent with extract-closes-issue-from-pr.sh
+FINDING_38: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_39: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- branch scope process concern same as FINDING_28
+FINDING_40: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- run-log hygiene claim unverifiable from provided diff context
+FINDING_41: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false

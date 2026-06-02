@@ -1,0 +1,18 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan explicitly accepted this placement; not a defect worth a GH issue
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- expected Phase 5 state; Phase 7 explicitly plans the bash cutover; filing a separate issue is redundant
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- pre-existing, not worsened; newer tests cover the harder cases
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- edge case too rare for API-generated bodies; fix complexity exceeds benefit
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- footer-line regex naturally prevents shorter-suffix masking; test for obvious regex behavior adds marginal value
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing gap in unchanged code; delegate function well-tested
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- footer placement IS tested by test_compose_pr_body_routes_closes_through_helper and the mermaid test
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- delegation test added in this diff directly addresses the regression risk
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_17: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pre-existing best-effort behavior, unchanged by this diff
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing, unchanged
