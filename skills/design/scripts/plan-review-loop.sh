@@ -713,6 +713,40 @@ if __name__ == "__main__":
 PY
 }
 
+_log_dropped_slots() {
+    # #3392: append a per-slot diagnostic to execution-issues.md for each reviewer
+    # slot the panel dropped under --no-fallback. The drops sidecar (TSV rows of
+    # slot<TAB>tool<TAB>reason<TAB>snippet) is produced by dispatch-with-waterfall.sh
+    # and forwarded through dispatch-plan-review-panel.sh as DROPPED_SLOTS_FILE.
+    # Without this, a format-gate-miss (a healthy reviewer that merely leads with a
+    # conversational preamble) is invisible beyond one terse aggregate WARN, which
+    # is indistinguishable from a tool outage.
+    local drops_file="$1"
+    [[ -n "$drops_file" && -f "$drops_file" && -s "$drops_file" ]] || return 0
+    local _slot _tool _reason _detail _tmp
+    while IFS=$'\t' read -r _slot _tool _reason _detail || [[ -n "$_slot" ]]; do
+        [[ -n "$_slot" ]] || continue
+        _tmp=$(mktemp "$DESIGN_TMPDIR/.plan-review-drop.XXXXXX")
+        {
+            printf 'Reviewer slot %s (%s) was dropped under --no-fallback: %s.\n' \
+                "$_slot" "${_tool:-unknown}" "${_reason:-unknown}"
+            if [[ -n "$_detail" ]]; then
+                printf 'First ~200 chars of the offending output:\n%s\n' "$_detail"
+            fi
+        } >"$_tmp"
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 3" \
+            --tool "${_tool:-unknown} plan-review slot ${_slot}" \
+            --exit-code 0 \
+            --status-label "dropped: ${_reason:-unknown}" \
+            --category "External Reviewer Issues" \
+            --output-file "$_tmp" \
+            --redact >/dev/null 2>&1 || true
+        rm -f "$_tmp"
+    done < "$drops_file"
+}
+
 _run_plan_review_round() {
     local round_num="$1"
     _dedup_failed=0
@@ -746,6 +780,7 @@ COMBINED_FALLBACK_COUNT=""
 DEGRADED_ROUND="false"
 DYNAMIC_SLOT_COUNT="0"
 ALL_SLOTS_DROPPED="false"
+DROPPED_SLOTS_FILE=""
 while IFS= read -r _line || [[ -n "$_line" ]]; do
     _key="${_line%%=*}"
     _value="${_line#*=}"
@@ -759,11 +794,22 @@ while IFS= read -r _line || [[ -n "$_line" ]]; do
         DEGRADED_ROUND) DEGRADED_ROUND="$_value" ;;
         DYNAMIC_SLOT_COUNT) DYNAMIC_SLOT_COUNT="$_value" ;;
         ALL_SLOTS_DROPPED) ALL_SLOTS_DROPPED="$_value" ;;
+        DROPPED_SLOTS_FILE) DROPPED_SLOTS_FILE="$_value" ;;
         WARN) emit_kv WARN "$_value" ;;
     esac
 done <<< "$_panel_raw"
 
 printf '%s\n' "$_panel_raw"
+
+# #3392: record per-slot drop reasons (format-gate-miss / collector-failure /
+# tool-absent / empty / result-*) before the paths-readability branch, so partial
+# drops (some slots kept) and total drops are both surfaced in execution-issues.md.
+_dropped_slot_count=0
+if [[ -n "$DROPPED_SLOTS_FILE" && -f "$DROPPED_SLOTS_FILE" ]]; then
+    _log_dropped_slots "$DROPPED_SLOTS_FILE"
+    _dropped_slot_count=$(grep -c . "$DROPPED_SLOTS_FILE" 2>/dev/null || true)
+    case "$_dropped_slot_count" in ''|*[!0-9]*) _dropped_slot_count=0 ;; esac
+fi
 
 [[ -n "$PANEL_PATHS_FILE" ]] || PANEL_PATHS_FILE="$ALL_OUTPUT_FILES_PATH"
 _paths_readable=0
@@ -802,6 +848,8 @@ if [[ "$_paths_readable" -eq 1 ]]; then
         --structured-reviewer-validation \
         --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd}))
     _collect_rc=$?
+elif (( _dropped_slot_count > 0 )); then
+    emit_kv WARN "plan-review-panel: dispatch produced no reviewer paths (--no-fallback dropped ${_dropped_slot_count} slot(s); per-slot reasons recorded in execution-issues.md → External Reviewer Issues)"
 else
     emit_kv WARN "plan-review-panel: dispatch produced no reviewer paths (--no-fallback drops)"
 fi

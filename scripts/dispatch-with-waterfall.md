@@ -30,6 +30,7 @@ When `--no-fallback` is set:
 - Only phase 1 runs. Slots whose tool is absent (not `--<tool>-present`) or whose phase-1 collection is not `OK`/`cap_hit` are **dropped** (`final_outputs[idx]` stays empty; `DISPATCH_OK` remains `true` for the run).
 - Phase 2 and phase 3 are skipped.
 - The paths-file and `ALL_OUTPUT_FILES` / `ALL_OUTPUT_TOOLS` stdout lists include **only** succeeded slots (empty dropped slots are omitted).
+- **Per-slot drop diagnostics (#3392).** Each dropped slot is classified with a reason and a single-line snippet (first ~200 chars) of the offending output, written to a sidecar TSV at `<paths-file>.dropped-slots` (one `slot<TAB>tool<TAB>reason<TAB>snippet` row per drop) whose path is emitted as `DROPPED_SLOTS_FILE`. Sidecar and KV are emitted only when at least one slot dropped. Reasons: `format-gate-miss` (non-empty `STATUS=OK` output whose first non-blank line fails `--require-first-line-pattern`, e.g. a leading conversational preamble), `result-gate-miss` (fails `--require-result-pattern`), `empty` (`STATUS=OK` but no non-blank content), `collector-failure` (collector status not `OK`/`cap_hit`; snippet tails the slot's `.launch-stderr`), `result-unreadable` (gate check could not read the result file), and `tool-absent` (the slot's primary tool was not present). This lets a format-miss be distinguished from a tool outage instead of surfacing only as an empty paths-file. Drops are a `--no-fallback` concept: in the default multi-phase mode every slot settles on some tool, so no sidecar is written.
 
 `/design` plan-review, decompose, assessor, and plan-voter panels use this mode with availability-gated slot emission so absent tools are not manifest rows at all.
 
@@ -42,6 +43,7 @@ When `--no-fallback` is set:
 - `FALLBACK_COUNT`
 - `COMBINED_FALLBACK_COUNT` (equals `FALLBACK_COUNT`; phase-2 relaunch accounting was removed with grouped reuse)
 - `WARN=cost-fallback-exceeded-threshold` when `COMBINED_FALLBACK_COUNT` exceeds `LARCH_FALLBACK_CLAUDE_WARN_THRESHOLD` (default 3)
+- `DROPPED_SLOTS_FILE` — path to the per-slot drop sidecar TSV (emitted only under `--no-fallback` when ≥1 slot dropped; see the `--no-fallback` section)
 - `DISPATCH_OK=true|false`
 
 ## Flags

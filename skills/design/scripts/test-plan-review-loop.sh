@@ -362,6 +362,32 @@ EOS
     chmod +x "$STUB/dispatch-plan-review-panel.sh"
 }
 
+write_dispatch_dropped_slots() {
+    # #3392: panel reports all slots dropped under --no-fallback and forwards a
+    # DROPPED_SLOTS_FILE sidecar with per-slot reasons + snippets.
+    cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
+#!/usr/bin/env bash
+set -euo pipefail
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        --plan-file|--feature-file|--codex-present|--cursor-present|--timeout) shift 2 ;;
+        *) shift 1 ;;
+    esac
+done
+[[ -n "$DESIGN_TMPDIR" ]] || exit 2
+PATHS="$DESIGN_TMPDIR/panel-paths.txt"
+: >"$PATHS"
+: >"$DESIGN_TMPDIR/plan-review-slots.ndjson"
+DROPS="$DESIGN_TMPDIR/plan-review-slots.ndjson.output-files.dropped-slots"
+printf 'cursor-plan-arch\tcursor\tformat-gate-miss\tReviewing the plan against the repo: it looks solid overall.\n' >"$DROPS"
+printf 'codex-plan-edge\tcodex\tcollector-failure\tSTATUS=CODEX_USAGE_LIMIT \n' >>"$DROPS"
+printf 'DISPATCH_OK=true\nFALLBACK_COUNT=0\nPHASE2_RELAUNCH_COUNT=0\nCOMBINED_FALLBACK_COUNT=0\nSTATIC_DISPATCH_OK=false\nDEGRADED_ROUND=true\nALL_SLOTS_DROPPED=true\nDROPPED_SLOTS_FILE=%s\nPANEL_PATHS_FILE=%s\nALL_OUTPUT_FILES_PATH=%s\n' "$DROPS" "$PATHS" "$PATHS"
+EOS
+    chmod +x "$STUB/dispatch-plan-review-panel.sh"
+}
+
 write_dispatch_both_absent_generic() {
     cat >"$STUB/dispatch-plan-review-panel.sh" <<'EOS'
 #!/usr/bin/env bash
@@ -989,6 +1015,29 @@ set -e
 [[ "$rc1e" -eq 0 ]] || fail "empty paths with DISPATCH_OK=true should exit 0"
 printf '%s\n' "$out1e" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings for empty paths dispatch"
 printf '%s\n' "$out1e" | grep -vq '^LOOP_STATUS=panel-failed$' || fail "empty paths must not surface panel-failed"
+
+echo "=== #3392: dropped slots are logged per-slot to execution-issues.md ==="
+DDS="$TMP/dropped-slots"
+mkdir -p "$DDS"
+printf 'plan\n' >"$DDS/plan.txt"
+printf 'feat\n' >"$DDS/feature-description.txt"
+write_scout
+write_dispatch_dropped_slots
+write_collect empty
+write_voters_three
+set +e
+outds=$(run_loop "$DDS")
+rcds=$?
+set -e
+[[ "$rcds" -eq 0 ]] || fail "dropped-slots round should exit 0 (DISPATCH_OK=true)"
+[[ -f "$DDS/execution-issues.md" ]] || fail "dropped slots must create execution-issues.md"
+grep -Fq 'External Reviewer Issues' "$DDS/execution-issues.md" || fail "dropped-slot entries must land under External Reviewer Issues"
+grep -Fq 'format-gate-miss' "$DDS/execution-issues.md" || fail "execution-issues.md must record the format-gate-miss reason"
+grep -Fq 'cursor-plan-arch' "$DDS/execution-issues.md" || fail "execution-issues.md must name the dropped cursor slot"
+grep -Fq 'collector-failure' "$DDS/execution-issues.md" || fail "execution-issues.md must record the collector-failure reason"
+grep -Fq 'Reviewing the plan against the repo' "$DDS/execution-issues.md" || fail "execution-issues.md must carry the offending snippet"
+printf '%s\n' "$outds" | grep -Fq 'per-slot reasons recorded in execution-issues.md' || fail "aggregate WARN must point at the per-slot records"
+printf '%s\n' "$outds" | grep -Fq 'dropped 2 slot(s)' || fail "aggregate WARN must report the dropped-slot count"
 
 echo "=== both-absent generic Claude path reaches zero-findings tally ==="
 D1G="$TMP/z1g"
