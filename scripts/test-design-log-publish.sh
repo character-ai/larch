@@ -457,6 +457,9 @@ grep -qE '"ok"[[:space:]]*:[[:space:]]*1' "$clone/larch-logs/design/RUNPUB1/vote
 grep -q 'pr create' "$GH_STUB_LOG" || fail "expected gh pr create in log"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected gh pr merge in log"
 grep -q 'pr checks' "$GH_STUB_LOG" || fail "expected gh pr checks (required CI wait) before merge"
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "1" ]] || fail "happy path should register checks on first JSON probe, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
+[[ "$(grep -c 'pr checks' "$GH_STUB_LOG")" == "2" ]] || fail "happy path should run one registration probe and one checks watch"
+[[ "$(grep 'pr checks' "$GH_STUB_LOG" | grep -c -- '--watch')" == "1" ]] || fail "happy path should invoke exactly one checks watch"
 grep -Fq -- '--admin' "$GH_STUB_LOG" || fail "expected gh pr merge --admin in log"
 ! grep -Fq -- '--auto' "$GH_STUB_LOG" || fail "gh pr merge must not use --auto (review gate would never complete it)"
 grep -Fq -- '--body-file' "$GH_STUB_LOG" || fail "expected gh pr create --body-file in log"
@@ -970,6 +973,7 @@ set -e
 [[ "$out_regobj" == *"PUBLISH_OK=false"* ]] || fail "non-array registration PUBLISH_OK: $out_regobj"
 [[ "$rc_regobj" -eq 1 ]] || fail "non-array registration should exit 1 after timeout (got $rc_regobj)"
 grep -q 'non-array JSON' "$regobj_stderr" || fail "non-array registration stderr missing diagnostic"
+[[ "$(grep -c 'non-array JSON' "$regobj_stderr")" == "1" ]] || fail "non-array registration should log diagnostic once"
 expected_probes=$(expected_registration_probes)
 [[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "$expected_probes" ]] || fail "non-array registration should exhaust $expected_probes probes, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
 ! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "non-array registration must not invoke --watch"
@@ -997,6 +1001,7 @@ out_regrc=$(cd "$clone_regrc" && bash "$PUBLISH" --design-tmpdir "$TMPREGRC/desi
 [[ "$out_regrc" == *"PUBLISH_OK=true"* ]] || fail "nonzero registration rc PUBLISH_OK: $out_regrc"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "nonzero registration rc should merge"
 grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "nonzero registration rc should still watch"
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "1" ]] || fail "nonzero registration rc should register on first JSON probe, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
 unset GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_JSON_OUT
 rm -rf "$TMPREGRC"
 

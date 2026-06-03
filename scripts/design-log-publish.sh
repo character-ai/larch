@@ -650,7 +650,12 @@ if [[ -z "$_porcelain" ]]; then
         emit_publish_result false
         exit 0
     fi
-    emit_publish_result true "" ""
+    if git -C "$REPO_ROOT" ls-tree -r --name-only "origin/$ORIGIN_DEFAULT" -- "$rel" | grep -q .; then
+        emit_publish_result true "" ""
+    else
+        larch_err "design-log-publish: final publish produced no new snapshot delta and origin/$ORIGIN_DEFAULT does not contain $rel"
+        emit_publish_result false
+    fi
     exit 0
 fi
 
@@ -807,6 +812,7 @@ last_checks_err=""
 last_view_out=""
 last_view_err=""
 reg_probe=1
+non_array_checks_json_logged=false
 
 if [[ -z "${PUSH_HEAD_SHA:-}" ]]; then
     larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (0/${REG_MAX_PROBES} probes; pushed head SHA unavailable) for PR $PR_NUM; refusing to merge"
@@ -835,8 +841,9 @@ else
             if printf '%s\n' "${reg_checks_out:-}" | jq -e 'length > 0' >/dev/null 2>&1; then
                 checks_json_nonempty=true
             fi
-        elif printf '%s\n' "${reg_checks_out:-}" | jq -e '.' >/dev/null 2>&1; then
+        elif printf '%s\n' "${reg_checks_out:-}" | jq -e '.' >/dev/null 2>&1 && [[ "$non_array_checks_json_logged" != true ]]; then
             larch_err "design-log-publish: gh pr checks returned non-array JSON during registration for PR $PR_NUM; treating as not registered yet: $(redact_diagnostic "${reg_checks_out:-unknown}")"
+            non_array_checks_json_logged=true
         fi
         if [[ "$checks_json_nonempty" == true ]]; then
             : >"$reg_view_fail_file"
@@ -876,7 +883,11 @@ else
     reg_view_fail_file=""
 
     if [[ "$checks_registered" != true ]]; then
-        larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (${REG_MAX_PROBES} probes; pushed head ${PUSH_HEAD_SHA}) for PR $PR_NUM; refusing to merge: checks=$(redact_diagnostic "${last_checks_out:-${last_checks_err:-unknown}}") head=$(redact_diagnostic "${last_view_out:-${last_view_err:-unknown}}")"
+        reg_stop_reason="deadline"
+        if [[ "$reg_probe" -ge "$REG_MAX_PROBES" ]]; then
+            reg_stop_reason="probe-budget"
+        fi
+        larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (probe ${reg_probe}/${REG_MAX_PROBES}; stop=${reg_stop_reason}; pushed head ${PUSH_HEAD_SHA}) for PR $PR_NUM; refusing to merge: checks=$(redact_diagnostic "${last_checks_out:-${last_checks_err:-unknown}}") head=$(redact_diagnostic "${last_view_out:-${last_view_err:-unknown}}")"
         merge_rc=1
     else
         set +e

@@ -293,7 +293,7 @@ if [ -f "$DESIGN_TMPDIR/oos-issues-created.md" ] && [ -s "$DESIGN_TMPDIR/oos-iss
 fi
 
 RUN_LOGS_PATH="N/A"
-if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ]; then
+if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ] && [ "$OUTCOME" != "failed-publish" ]; then
     RUN_LOGS_PATH="larch-logs/design/${RUN_ID}/"
 fi
 
