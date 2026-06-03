@@ -18,6 +18,7 @@ write_fake_gh() {
   cat > "$bin_dir/gh" <<'GH'
 #!/usr/bin/env bash
 set -euo pipefail
+printf '%s\n' "$*" >> "${GH_LOG:-/dev/null}"
 case "$1" in
   release)
     if [[ "${2:-}" == "view" ]]; then
@@ -63,13 +64,17 @@ write_fake_gh "$case_dir/bin"
 export GH_FIXTURE_VIEW_JSON='{"isPrerelease":true}'
 export GH_FIXTURE_LIST_JSON='[{"tagName":"v1.2.0","isLatest":true}]'
 set +e
-PATH="$case_dir/bin:$PATH" bash "$SUBJECT" 1.2.0 --repo test/hub 2>"$case_dir/stderr.log" >/dev/null
+GH_LOG="$case_dir/gh.log" PATH="$case_dir/bin:$PATH" bash "$SUBJECT" 1.2.0 --repo test/hub 2>"$case_dir/stderr.log" >/dev/null
 rc=$?
 set -e
-if [[ $rc -eq 0 ]]; then
+if [[ $rc -eq 0 ]] \
+  && grep -q -- '--repo test/hub' "$case_dir/gh.log" \
+  && grep -q 'release view' "$case_dir/gh.log" \
+  && grep -q 'release list' "$case_dir/gh.log" \
+  && grep -q 'release edit' "$case_dir/gh.log"; then
   ok
 else
-  fail "--repo path: rc=$rc"
+  fail "--repo path: rc=$rc log=$(cat "$case_dir/gh.log" 2>/dev/null || true)"
 fi
 
 # Case 3: invalid --repo rejected

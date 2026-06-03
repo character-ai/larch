@@ -175,6 +175,7 @@ plugin_version_at_oid() {
 
 merge_oid=""
 for _attempt in $(seq 1 "$MERGE_POLL_ATTEMPTS"); do
+  fetch_origin_main || exit 1
   merge_oid="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)"
   merge_oid="${merge_oid//$'\n'/}"
   merge_oid="${merge_oid%% *}"
@@ -182,19 +183,30 @@ for _attempt in $(seq 1 "$MERGE_POLL_ATTEMPTS"); do
     break
   fi
   merge_oid=""
-  sleep "$MERGE_POLL_SLEEP"
+  if [[ "$_attempt" -lt "$MERGE_POLL_ATTEMPTS" ]]; then
+    sleep "$MERGE_POLL_SLEEP"
+  fi
 done
 
 if ! fetch_origin_main; then
   exit 1
 fi
 
+if [[ -z "$merge_oid" ]]; then
+  merge_oid="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)"
+  merge_oid="${merge_oid//$'\n'/}"
+  merge_oid="${merge_oid%% *}"
+fi
+
 TARGET_OID=""
-if [[ -n "$merge_oid" && "$merge_oid" != "null" ]]; then
+if [[ -n "$merge_oid" && "$merge_oid" != "null" && "$merge_oid" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
   TARGET_OID="$merge_oid"
 else
+  pr_state="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state -q '.state // empty' 2>/dev/null || true)"
+  pr_state="${pr_state//$'\n'/}"
+  pr_state="${pr_state%% *}"
   origin_main_oid="$(git rev-parse "origin/main^{commit}" 2>/dev/null || true)"
-  if [[ -n "$origin_main_oid" ]]; then
+  if [[ "$pr_state" == "MERGED" && -n "$origin_main_oid" ]]; then
     at_version="$(plugin_version_at_oid "$origin_main_oid" 2>/dev/null || true)"
     if [[ "$at_version" == "$VERSION" ]]; then
       TARGET_OID="$origin_main_oid"
@@ -286,6 +298,15 @@ if [[ -n "$remote_oid" && "$remote_oid" != "$TARGET_OID" ]]; then
   exit 1
 fi
 
+if [[ -z "$remote_oid" ]]; then
+  remote_oid="$(remote_tag_commit_oid)"
+  remote_oid="${remote_oid:-}"
+  if [[ -n "$remote_oid" && "$remote_oid" != "$TARGET_OID" ]]; then
+    echo "ERROR=remote tag $TAG exists on different commit ($remote_oid != $TARGET_OID)" >&2
+    exit 1
+  fi
+fi
+
 if git rev-parse --verify "${TAG}^{commit}" >/dev/null 2>&1; then
   local_oid="$(git rev-parse "${TAG}^{commit}")"
   if [[ "$local_oid" != "$TARGET_OID" ]]; then
@@ -298,15 +319,6 @@ if git rev-parse --verify "${TAG}^{commit}" >/dev/null 2>&1; then
   fi
 else
   git tag "$TAG" "$TARGET_OID"
-fi
-
-if [[ -z "$remote_oid" ]]; then
-  remote_oid="$(remote_tag_commit_oid)"
-  remote_oid="${remote_oid:-}"
-  if [[ -n "$remote_oid" && "$remote_oid" != "$TARGET_OID" ]]; then
-    echo "ERROR=remote tag $TAG exists on different commit ($remote_oid != $TARGET_OID)" >&2
-    exit 1
-  fi
 fi
 
 if [[ -z "$remote_oid" ]]; then

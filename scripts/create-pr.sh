@@ -40,9 +40,10 @@ GIT_STATUS_STDERR=""
 PR_STDERR_FILE=""
 PR_STDOUT_FILE=""
 REDACTED_BODY_FILE=""
+SECRETS_REDACTED_FILE=""
 NET_FAIL_FILES=()
 cleanup() {
-    rm -f "${NET_FAIL_FILES[@]}" "$GIT_STATUS_STDERR" "$PR_STDERR_FILE" "$PR_STDOUT_FILE" "$REDACTED_BODY_FILE"
+    rm -f "${NET_FAIL_FILES[@]}" "$GIT_STATUS_STDERR" "$PR_STDERR_FILE" "$PR_STDOUT_FILE" "$REDACTED_BODY_FILE" "$SECRETS_REDACTED_FILE"
 }
 trap cleanup EXIT
 
@@ -123,12 +124,15 @@ if [[ ! -x "$REDACT_SECRETS_HELPER" ]]; then
     exit 2
 fi
 secrets_redacted=$(mktemp)
+SECRETS_REDACTED_FILE="$secrets_redacted"
 if ! "$REDACT_SECRETS_HELPER" < "$REDACTED_BODY_FILE" > "$secrets_redacted"; then
     larch_err "ERROR: Failed to redact secrets from PR body"
+    SECRETS_REDACTED_FILE=""
     rm -f "$secrets_redacted"
     exit 2
 fi
 mv "$secrets_redacted" "$REDACTED_BODY_FILE"
+SECRETS_REDACTED_FILE=""
 
 # Pre-push clean-tree guard: uncommitted working-tree changes are silently
 # excluded from a push, causing data loss (issue #2434).

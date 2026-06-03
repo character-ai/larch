@@ -315,9 +315,9 @@ fi
 # Compute new version.
 IFS='.' read -r MAJ MIN PAT <<< "$CURRENT_VERSION"
 case "$BUMP_TYPE" in
-  MAJOR) NEW_VERSION="$((MAJ + 1)).0.0" ;;
-  MINOR) NEW_VERSION="${MAJ}.$((MIN + 1)).0" ;;
-  PATCH) NEW_VERSION="${MAJ}.${MIN}.$((PAT + 1))" ;;
+  MAJOR) NEW_VERSION="$((10#${MAJ} + 1)).0.0" ;;
+  MINOR) NEW_VERSION="${MAJ}.$((10#${MIN} + 1)).0" ;;
+  PATCH) NEW_VERSION="${MAJ}.${MIN}.$((10#${PAT} + 1))" ;;
 esac
 
 # Log reasoning.

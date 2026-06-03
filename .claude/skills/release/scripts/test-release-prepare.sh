@@ -124,7 +124,16 @@ case "$1" in
     fi
     exec "$REAL_GIT" "$@"
     ;;
-  diff|diff-tree|merge-base)
+  merge-base)
+    if [[ "${2:-}" == "--is-ancestor" ]]; then
+      if [[ "${GIT_MERGE_BASE_BASELINE_ON_MAIN:-}" == "0" ]]; then
+        exit 1
+      fi
+      exit 0
+    fi
+    exec "$REAL_GIT" "$@"
+    ;;
+  diff|diff-tree)
     exec "$REAL_GIT" "$@"
     ;;
   remote)
@@ -137,9 +146,37 @@ GIT
   chmod +x "$bin_dir/git"
 }
 
+setup_classify_fixture_repo() {
+  local repo=$1
+  mkdir -p "$repo/.claude-plugin" "$repo/skills/fixture"
+  git -C "$repo" init -q -b main
+  git -C "$repo" config user.email test@example.com
+  git -C "$repo" config user.name "Release Test"
+  printf '{"version":"1.0.0"}\n' > "$repo/.claude-plugin/plugin.json"
+  cat > "$repo/skills/fixture/SKILL.md" <<'SKILL'
+---
+name: fixture
+description: fixture skill
+---
+SKILL
+  git -C "$repo" add -A
+  git -C "$repo" commit -q -m "Initial"
+  git -C "$repo" tag v1.0.0
+  git -C "$repo" init -q --bare "$repo/.bare"
+  git -C "$repo" remote add origin "$repo/.bare"
+  git -C "$repo" push -q -u origin main
+  git -C "$repo" push -q origin v1.0.0
+  printf '\n<!-- change -->\n' >> "$repo/skills/fixture/SKILL.md"
+  git -C "$repo" add skills/fixture/SKILL.md
+  git -C "$repo" commit -q -m "Fixture change (#42)"
+  git -C "$repo" push -q origin main
+}
+
 run_prepare() {
   local case_dir=$1
   shift
+  local prepare_root="${LARCH_RELEASE_PREPARE_REPO_ROOT:-$REPO_ROOT}"
+  local classify_bump="${LARCH_RELEASE_PREPARE_CLASSIFY_BUMP:-$case_dir/bin/classify-bump.sh}"
   REAL_GIT="$REAL_GIT" \
   GH_FIXTURE_RELEASES="$case_dir/releases.json" \
   GH_FIXTURE_PR_DIR="$case_dir/prs" \
@@ -157,7 +194,9 @@ run_prepare() {
   CLASSIFY_FIXTURE_CURRENT="${CLASSIFY_FIXTURE_CURRENT:-1.0.0}" \
   CLASSIFY_FIXTURE_NEW="${CLASSIFY_FIXTURE_NEW:-1.0.1}" \
   CLASSIFY_FIXTURE_BUMP="${CLASSIFY_FIXTURE_BUMP:-PATCH}" \
-  LARCH_RELEASE_PREPARE_CLASSIFY_BUMP="$case_dir/bin/classify-bump.sh" \
+  LARCH_RELEASE_PREPARE_ORIGIN_REPO="${LARCH_RELEASE_PREPARE_ORIGIN_REPO:-}" \
+  LARCH_RELEASE_PREPARE_REPO_ROOT="$prepare_root" \
+  LARCH_RELEASE_PREPARE_CLASSIFY_BUMP="$classify_bump" \
   PATH="$case_dir/bin:$PATH" \
   bash "$SUBJECT" --repo "$REAL_REPO" --out-dir "$case_dir/out" "$@" 2>"$case_dir/stderr.log"
 }
@@ -237,6 +276,28 @@ if [[ $rc -eq 1 ]] && printf '%s\n' "$out" | grep -q 'ERROR=stale-local-main'; t
   ok
 else
   fail "stale main: rc=$rc out=$out"
+fi
+
+# Case 4b: main == origin/main but HEAD != origin/main → stale-local-main
+case_dir="$TMPDIR_BASE/c4b"
+mkdir -p "$case_dir/bin" "$case_dir/out"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
+same_oid="2222222222222222222222222222222222222222"
+set +e
+out=$(cd "$REPO_ROOT" && \
+  GIT_MAIN_OID="$same_oid" \
+  GIT_ORIGIN_MAIN_OID="$same_oid" \
+  GIT_HEAD_OID="1111111111111111111111111111111111111111" \
+  run_prepare "$case_dir")
+rc=$?
+set -e
+if [[ $rc -eq 1 ]] && printf '%s\n' "$out" | grep -q 'ERROR=stale-local-main'; then
+  ok
+else
+  fail "stale HEAD: rc=$rc out=$out"
 fi
 
 # Case 5: --bump override
@@ -385,6 +446,53 @@ if [[ $rc -eq 1 ]] && printf '%s\n' "$out" | grep -q 'ERROR=baseline-tag-unresol
   ok
 else
   fail "baseline rev-parse fail: rc=$rc out=$out"
+fi
+
+# Case 13: log subjects exceed PR_COUNT → WARN on stderr
+case_dir="$TMPDIR_BASE/c13"
+mkdir -p "$case_dir/bin" "$case_dir/out" "$case_dir/prs"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
+GIT_LOG_SUBJECTS=$'Feature (#42)\nDocs without PR reference\n'
+printf '{"number":42,"title":"Feature","labels":[{"name":"enhancement"}],"author":{"login":"alice"},"url":"https://example.invalid/42"}\n' \
+  > "$case_dir/prs/pr-42.json"
+set +e
+out=$(cd "$REPO_ROOT" && run_prepare "$case_dir")
+rc=$?
+stderr=$(cat "$case_dir/stderr.log" 2>/dev/null || true)
+set -e
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^PR_COUNT=1$' \
+  && printf '%s\n' "$stderr" | grep -q 'WARN: git log has 2 commits but PR_COUNT=1'; then
+  ok
+else
+  fail "log vs PR_COUNT warn: rc=$rc stderr=$stderr out=$out"
+fi
+
+# Case 14: real classify-bump integration (--base/--head wiring)
+case_dir="$TMPDIR_BASE/c14"
+fixture_repo="$case_dir/fixture"
+setup_classify_fixture_repo "$fixture_repo"
+mkdir -p "$case_dir/bin" "$case_dir/out" "$case_dir/prs"
+write_fake_gh "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
+printf '{"number":42,"title":"Fixture change","labels":[],"author":{"login":"alice"},"url":"https://example.invalid/42"}\n' \
+  > "$case_dir/prs/pr-42.json"
+set +e
+out=$(cd "$REPO_ROOT" && \
+  LARCH_RELEASE_PREPARE_REPO_ROOT="$fixture_repo" \
+  LARCH_RELEASE_PREPARE_ORIGIN_REPO="$REAL_REPO" \
+  LARCH_RELEASE_PREPARE_CLASSIFY_BUMP="$REPO_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" \
+  GIT_LOG_SUBJECTS=$'Fixture change (#42)\n' \
+  run_prepare "$case_dir")
+rc=$?
+set -e
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^BUMP_TYPE=' \
+  && printf '%s\n' "$out" | grep -q '^NEW_VERSION='; then
+  ok
+else
+  fail "real classify integration: rc=$rc out=$out"
 fi
 
 total=$((PASS + FAIL))

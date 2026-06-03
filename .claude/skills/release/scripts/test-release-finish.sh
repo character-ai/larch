@@ -32,8 +32,20 @@ set -euo pipefail
 case "$1" in
   pr)
     if [[ "${2:-}" == "view" ]]; then
-      if [[ "${GH_FIXTURE_MERGE_EMPTY:-}" == "1" ]]; then
-        printf '\n'
+      if [[ "$*" == *"--json mergeCommit"* ]]; then
+        if [[ "${GH_FIXTURE_MERGE_EMPTY:-}" == "1" ]]; then
+          printf '\n'
+          exit 0
+        fi
+        if [[ -f "${GH_FIXTURE_PR_JSON:-}" ]]; then
+          jq -r '.mergeCommit.oid // empty' "${GH_FIXTURE_PR_JSON}" 2>/dev/null || true
+          exit 0
+        fi
+        printf '%s\n' "${GH_FIXTURE_MERGE_OID:-deadbeef00000000000000000000000000000001}"
+        exit 0
+      fi
+      if [[ "$*" == *"--json state"* ]]; then
+        printf '%s\n' "${GH_FIXTURE_PR_STATE:-MERGED}"
         exit 0
       fi
       printf '%s\n' "${GH_FIXTURE_MERGE_OID:-deadbeef00000000000000000000000000000001}"
@@ -169,6 +181,7 @@ run_finish() {
     PATH="$case_dir/bin:$sleep_stub_dir:$PATH" \
     GH_FIXTURE_PR_JSON="$case_dir/pr.json" \
     GH_FIXTURE_MERGE_OID="${GH_FIXTURE_MERGE_OID:-deadbeef00000000000000000000000000000001}" \
+    GH_FIXTURE_PR_STATE="${GH_FIXTURE_PR_STATE:-MERGED}" \
     GH_FIXTURE_RELEASE_EXISTS="${GH_FIXTURE_RELEASE_EXISTS:-}" \
     GIT_TARGET_OID="$_run_git_target" \
     GIT_ORIGIN_MAIN_OID="$_run_origin_main" \
@@ -416,6 +429,32 @@ if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q "^TARGET_OID=${target_oid}$
   ok
 else
   fail "merge-base ancestor path: rc=$rc out=$out"
+fi
+
+# Case 11: git push fails with no remote tag → tag push failed
+case_dir="$TMPDIR_BASE/c11"
+mkdir -p "$case_dir/bin"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+write_fake_redact "$case_dir/bin"
+fake_promote="$case_dir/fake-promote.sh"
+write_fake_promote "$fake_promote"
+printf '{"mergeCommit":{"oid":"deadbeef00000000000000000000000000000001"}}\n' > "$case_dir/pr.json"
+printf 'notes\n' > "$case_dir/notes.md"
+printf '{"version":"1.1.0"}\n' > "$case_dir/plugin.json"
+set +e
+out=$( \
+  GIT_PLUGIN_JSON_FILE="$case_dir/plugin.json" \
+  GIT_LS_REMOTE_OUT="" \
+  GIT_PUSH_RC=1 \
+  run_finish "$case_dir" "$fake_promote" 2>"$case_dir/stderr.log")
+rc=$?
+stderr=$(cat "$case_dir/stderr.log" 2>/dev/null || true)
+set -e
+if [[ $rc -eq 1 ]] && printf '%s\n' "$stderr" | grep -q 'ERROR=tag push failed'; then
+  ok
+else
+  fail "push fail no remote tag: rc=$rc stderr=$stderr"
 fi
 
 total=$((PASS + FAIL))

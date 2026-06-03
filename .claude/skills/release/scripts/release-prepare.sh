@@ -4,9 +4,10 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
-CLASSIFY_BUMP="${LARCH_RELEASE_PREPARE_CLASSIFY_BUMP:-$REPO_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh}"
-GITHUB_REMOTE_REPO="$REPO_ROOT/scripts/github-remote-repo.sh"
+LARCH_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
+REPO_ROOT="${LARCH_RELEASE_PREPARE_REPO_ROOT:-$LARCH_ROOT}"
+CLASSIFY_BUMP="${LARCH_RELEASE_PREPARE_CLASSIFY_BUMP:-$LARCH_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh}"
+GITHUB_REMOTE_REPO="$LARCH_ROOT/scripts/github-remote-repo.sh"
 
 REPO="character-ai/larch"
 BUMP_OVERRIDE=""
@@ -94,9 +95,13 @@ if [[ ! -x "$GITHUB_REMOTE_REPO" ]]; then
   emit_error dependency-missing "github-remote-repo.sh not found"
 fi
 
-origin_repo="$(bash "$GITHUB_REMOTE_REPO" origin 2>/dev/null)" || {
-  emit_error origin-repo-mismatch "could not resolve origin remote to owner/repo"
-}
+if [[ -n "${LARCH_RELEASE_PREPARE_ORIGIN_REPO:-}" ]]; then
+  origin_repo="$LARCH_RELEASE_PREPARE_ORIGIN_REPO"
+else
+  origin_repo="$(bash "$GITHUB_REMOTE_REPO" origin 2>/dev/null)" || {
+    emit_error origin-repo-mismatch "could not resolve origin remote to owner/repo"
+  }
+fi
 if [[ "$origin_repo" != "$REPO" ]]; then
   emit_error origin-repo-mismatch "origin ($origin_repo) does not match --repo ($REPO)"
 fi
@@ -128,6 +133,10 @@ if ! git rev-parse --verify "${BASELINE_TAG}^{commit}" >/dev/null 2>&1; then
   emit_error baseline-tag-unresolvable "baseline tag not resolvable: $BASELINE_TAG"
 fi
 
+if ! git merge-base --is-ancestor "$BASELINE_TAG" origin/main 2>/dev/null; then
+  emit_error baseline-not-on-main "baseline tag $BASELINE_TAG is not an ancestor of origin/main"
+fi
+
 if ! git rev-parse --verify "main^{commit}" >/dev/null 2>&1 \
   || ! git rev-parse --verify "origin/main^{commit}" >/dev/null 2>&1; then
   emit_error stale-local-main "main or origin/main not resolvable"
@@ -147,7 +156,7 @@ open_release_pr_json="$(gh pr list --repo "$REPO" --state open --json headRefNam
   emit_error release-pr-list-failed "gh pr list failed"
 }
 open_release_pr="$(printf '%s\n' "$open_release_pr_json" \
-  | jq '[.[] | select(.headRefName | startswith("release/v"))] | length' 2>/dev/null)" || {
+  | jq '[.[] | select(.headRefName | test("^release/v[0-9]+\\.[0-9]+\\.[0-9]+$"))] | length' 2>/dev/null)" || {
   emit_error release-pr-list-failed "jq parse of open PR list failed"
 }
 if [[ "${open_release_pr:-0}" -ne 0 ]]; then
