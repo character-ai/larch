@@ -871,6 +871,7 @@ if [[ "$_collect_rc" -ne 0 ]]; then
         VOTER_1_PARSE_RATE_STATUS=SKIPPED
         LOOP_STATUS=panel-failed
         set +e
+        rm -f "$_collect_err_tmp"
         return 1
     fi
 fi

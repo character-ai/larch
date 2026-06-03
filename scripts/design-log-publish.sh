@@ -182,11 +182,14 @@ ENUM_TOP_TMP=""
 ENUM_RC_TMP=""
 ENUM_PR_TMP=""
 PR_BODY_TMP=""
+reg_checks_err_file=""
+reg_view_fail_file=""
 # shellcheck disable=SC2317
 wt_cleanup() {
     rm -f "${ENUM_TOP_TMP:-}" "${ENUM_RC_TMP:-}" "${ENUM_PR_TMP:-}" \
         "${push_fail_file:-}" "${create_fail_file:-}" "${merge_fail_file:-}" \
-        "${list_fail_file:-}" "${view_fail_file:-}" 2>/dev/null || true
+        "${list_fail_file:-}" "${view_fail_file:-}" \
+        "${reg_checks_err_file:-}" "${reg_view_fail_file:-}" 2>/dev/null || true
     if [ -n "${PR_BODY_TMP:-}" ]; then
         rm -f "$PR_BODY_TMP" 2>/dev/null || true
     fi
@@ -862,6 +865,8 @@ else
         : "$reg_checks_rc"
     done
     rm -f "$reg_checks_err_file" "$reg_view_fail_file"
+    reg_checks_err_file=""
+    reg_view_fail_file=""
 
     if [[ "$checks_registration_fatal" == true ]]; then
         merge_rc=1

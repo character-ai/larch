@@ -134,11 +134,19 @@ if [[ "$1" == "pr" ]]; then
                     checks_probe=$(( $(cat "$count_file" 2>/dev/null || echo 0) + 1 ))
                     printf '%s\n' "$checks_probe" >"$count_file"
                 fi
+                checks_knob_probe=1
+                if [[ -n "${GH_STUB_CHECKS_JSON_EMPTY_FIRST:-}" ]]; then
+                    knob_count_file="${GH_STUB_CHECKS_JSON_COUNT_FILE:-${GH_STUB_LOG:-}.checks-json-knob-count}"
+                    if [[ -n "$knob_count_file" ]]; then
+                        checks_knob_probe=$(( $(cat "$knob_count_file" 2>/dev/null || echo 0) + 1 ))
+                        printf '%s\n' "$checks_knob_probe" >"$knob_count_file"
+                    fi
+                fi
                 if [[ "${GH_STUB_CHECKS_JSON_ALWAYS_EMPTY:-0}" == "1" ]]; then
                     printf '[]\n'
                     exit "${GH_STUB_CHECKS_JSON_RC:-0}"
                 fi
-                if [[ -n "${GH_STUB_CHECKS_JSON_EMPTY_FIRST:-}" && "$checks_probe" -le "$GH_STUB_CHECKS_JSON_EMPTY_FIRST" ]]; then
+                if [[ -n "${GH_STUB_CHECKS_JSON_EMPTY_FIRST:-}" && "$checks_knob_probe" -le "$GH_STUB_CHECKS_JSON_EMPTY_FIRST" ]]; then
                     printf '[]\n'
                     exit "${GH_STUB_CHECKS_JSON_RC:-0}"
                 fi
@@ -188,9 +196,17 @@ if [[ "$1" == "pr" ]]; then
                         head_probe=$(( $(cat "$head_count_file" 2>/dev/null || echo 0) + 1 ))
                         printf '%s\n' "$head_probe" >"$head_count_file"
                     fi
+                    head_knob_probe=1
+                    if [[ -n "${GH_STUB_PR_HEAD_OID_MISMATCH_FIRST:-}" ]]; then
+                        head_knob_count_file="${GH_STUB_PR_HEAD_OID_COUNT_FILE:-${GH_STUB_LOG:-}.head-knob-count}"
+                        if [[ -n "$head_knob_count_file" ]]; then
+                            head_knob_probe=$(( $(cat "$head_knob_count_file" 2>/dev/null || echo 0) + 1 ))
+                            printf '%s\n' "$head_knob_probe" >"$head_knob_count_file"
+                        fi
+                    fi
                     if [[ "${GH_STUB_PR_HEAD_OID_MISMATCH:-0}" == "1" ]]; then
                         oid="0000000000000000000000000000000000000000"
-                    elif [[ -n "${GH_STUB_PR_HEAD_OID_MISMATCH_FIRST:-}" && "$head_probe" -le "$GH_STUB_PR_HEAD_OID_MISMATCH_FIRST" ]]; then
+                    elif [[ -n "${GH_STUB_PR_HEAD_OID_MISMATCH_FIRST:-}" && "$head_knob_probe" -le "$GH_STUB_PR_HEAD_OID_MISMATCH_FIRST" ]]; then
                         oid="0000000000000000000000000000000000000000"
                     else
                         oid=$(resolve_pr_head_oid)
@@ -606,7 +622,7 @@ printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
     printf 'second\n' >"$TMPPAUSE_REUSE/design/plan.txt"
     reuse_out=$(GH_STUB_PR_HEAD_OID_MISMATCH_FIRST=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
     [[ "$reuse_out" == *"PUBLISH_OK=true"* ]] || fail "pause branch reuse publish should succeed: $reuse_out"
-    [[ "$(cat "$GH_STUB_LOG.head-count")" == "2" ]] || fail "pause branch reuse should cover stale-head retry probes, got $(cat "$GH_STUB_LOG.head-count" 2>/dev/null || echo missing)"
+    [[ "$(cat "$GH_STUB_LOG.head-knob-count")" == "2" ]] || fail "pause branch reuse should cover stale-head retry probes, got $(cat "$GH_STUB_LOG.head-knob-count" 2>/dev/null || echo missing)"
 )
 git -C "$clone_pause_reuse" pull -q origin main
 grep -Fxq 'second' "$clone_pause_reuse/larch-logs/design/RUNPAUSEREUSE1/plan.txt" || fail "pause branch reuse should publish updated snapshot"
@@ -981,6 +997,40 @@ grep -q 'pr merge' "$GH_STUB_LOG" || fail "nonzero registration rc should merge"
 grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "nonzero registration rc should still watch"
 unset GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_JSON_OUT
 rm -rf "$TMPREGRC"
+
+echo "=== registration pr view failure refuses merge ==="
+TMPREGVIEW=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-reg-view.XXXXXX")
+clone_regview=$(setup_clone_with_origin_head "$TMPREGVIEW")
+stub_regview="$TMPREGVIEW/stub"
+GH_STUB_LOG="$TMPREGVIEW/gh-reg-view.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_regview"
+make_sleep_stub "$TMPREGVIEW/sleep"
+export PATH="$stub_regview:$PATH"
+export SLEEP_SCRIPT_DIR="$TMPREGVIEW/sleep"
+export TEST_CLONE_ROOT="$clone_regview"
+export TEST_MERGE_BRANCH="larch-log-design-RUNREGVIEW1"
+export GH_STUB_PR_VIEW_RC=7
+unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_PR_HEAD_OID_MISMATCH_FIRST GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPREGVIEW/design"
+printf 'view fail\n' >"$TMPREGVIEW/design/view.txt"
+regview_stderr="$TMPREGVIEW/reg-view.stderr"
+set +e
+out_regview=$(
+    (cd "$clone_regview" && bash "$PUBLISH" --design-tmpdir "$TMPREGVIEW/design" --run-id "RUNREGVIEW1" --issue 27 --repo owner/repo) 2>"$regview_stderr"
+)
+rc_regview=$?
+set -e
+[[ "$out_regview" == *"PUBLISH_OK=false"* ]] || fail "registration view failure PUBLISH_OK: $out_regview"
+[[ "$rc_regview" -eq 1 ]] || fail "registration view failure should exit 1 (got $rc_regview)"
+grep -q 'did not register within' "$regview_stderr" || fail "registration view failure stderr missing registration-timeout"
+grep -q 'Could not resolve host' "$regview_stderr" || fail "registration view failure stderr missing pr view diagnostic"
+! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "registration view failure must not invoke --watch"
+! grep -q 'pr merge' "$GH_STUB_LOG" || fail "registration view failure must not merge"
+unset GH_STUB_PR_VIEW_RC
+export SLEEP_SCRIPT_DIR="$GLOBAL_SLEEP_STUB"
+rm -rf "$TMPREGVIEW"
 
 echo "=== stale head checks wait until PR head matches pushed head ==="
 TMPSTALE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-stale-head.XXXXXX")

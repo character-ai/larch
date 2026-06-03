@@ -16,9 +16,10 @@ Step 0b title-filter refuse (`cancelled-title-filter`), clarify exit, already-pl
 cancel; Step 1d.7 outline cancel (`cancelled-outline`); Step 2b.5 hard cancel; Step 2b.5 Split-path terminal cancels / successful
 partition filing (`cancelled-decompose`, `approved-partition`, `cancelled-assessor-worse`); Step 5c happy path (two-phase: `--pre-publish-only`
 before `design-log-publish.sh`, `--post-publish-only` after); Step 5c
-plan-block-write failure (`--outcome failed-plan-write`).
+plan-block-write failure (`--outcome failed-plan-write`), and log-publish failure
+after Gate-C approval (`--outcome failed-publish`).
 
-The shell enum keeps file-order with newest cancelled entries appended before `failed-plan-write`; `SKILL.md` Step 0b documents the same token set alphabetically within `cancelled-*`.
+The shell enum keeps file-order with newest cancelled entries appended before the `failed-*` outcomes; `SKILL.md` Step 0b documents the same token set alphabetically within `cancelled-*`.
 
 ## Split-path / pre–Step 0a
 

@@ -530,7 +530,8 @@ for summary_outcome in \
     cancelled-decompose \
     cancelled-outline \
     cancelled-assessor-worse \
-    failed-plan-write
+    failed-plan-write \
+    failed-publish
 do
     session="RUN-MATRIX-${summary_outcome}"
     matrix_stdout="$TMP/std-matrix-${summary_outcome}.log"
@@ -554,7 +555,7 @@ do
         grep -Fq -- "- **Outcome**: $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing Outcome bullet"
     fi
 done
-pass 'twelve-outcome post-publish matrix'
+pass 'thirteen-outcome post-publish matrix'
 
 grep -Fq -- '--redact' "$ROOT/skills/design/scripts/render-final-summary.sh" || fail 'render-final-summary append_render_warning must redact stderr'
 pass 'render-final-summary append warning redacts stderr'

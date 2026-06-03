@@ -140,6 +140,22 @@ add_warn() {
     WARN_LINES+=("$1")
 }
 
+publish_recovery_detail() {
+    local _details=()
+    [[ -n "${PR_NUMBER:-}" ]] && _details+=("PR #$PR_NUMBER")
+    [[ -n "${PR_URL:-}" ]] && _details+=("$PR_URL")
+    [[ -n "${RECOVERY_BRANCH:-}" ]] && _details+=("recovery branch $RECOVERY_BRANCH")
+    if [[ "${#_details[@]}" -eq 0 ]]; then
+        printf '%s\n' 'no PR or recovery branch metadata was returned'
+    else
+        local _joined="${_details[0]}" _detail
+        for _detail in "${_details[@]:1}"; do
+            _joined="${_joined}, ${_detail}"
+        done
+        printf '%s\n' "$_joined"
+    fi
+}
+
 write_result_env_and_emit() {
     local -a _kvs=()
     _kvs+=("PLAN_WRITE_OK=$PLAN_WRITE_OK")
@@ -292,6 +308,7 @@ if [[ -n "$SESSION_ID" ]]; then
             --category Warnings \
             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
             --redact >/dev/null 2>&1 || true
+        add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
     elif [[ "${PUBLISH_OK:-}" == false ]]; then
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
@@ -301,6 +318,7 @@ if [[ -n "$SESSION_ID" ]]; then
             --category Warnings \
             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
             --redact >/dev/null 2>&1 || true
+        add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
     elif [[ -z "${PUBLISH_OK:-}" ]]; then
         PUBLISH_OK=false
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
@@ -312,13 +330,21 @@ if [[ -n "$SESSION_ID" ]]; then
             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
             --redact >/dev/null 2>&1 || true
         add_warn '**⚠ 5c: design-log-publish.sh returned without PUBLISH_OK=; treating publish as failed**'
+        add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
     fi
 else
     add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'
 fi
 
+SUMMARY_OUTCOME=approved
+if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" != true ]]; then
+    SUMMARY_OUTCOME=failed-publish
+fi
+export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"
+export DESIGN_LOG_PR_URL="${PR_URL:-}"
+export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
 "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
-    --outcome approved \
+    --outcome "$SUMMARY_OUTCOME" \
     --mode "$MODE" \
     ${REPO:+--repo "$REPO"} \
     --post-publish-only || true
