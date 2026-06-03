@@ -1244,6 +1244,27 @@ STEP17_EMITTED_PRESENT=$(printf '%s\n' "$_step18b_out" | awk -F= '$1=="STEP17_EM
 
 When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`, the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown. Use the same collapse-resistant rule as Step 17, and write `$IMPLEMENT_TMPDIR/.step17-emitted` only after that Step 18 body emit completes. Do not emit that body when `EMIT_BODY=false`, when `WFR_RC` is non-zero, or when `summary-final.md` is empty. The wrapper never emits the body and never writes `.step17-emitted` (NEVER #17).
 
+### Closing token/timing marks — before teardown
+
+Cap the per-run token/timing ledgers **before** teardown removes them. The `larch-tokens-<slug>.jsonl` token ledger and `timing-ledger.tsv` timing ledger live **inside** `$IMPLEMENT_TMPDIR`, and `resolve_ledger_path()` in `scripts/token-ledger.sh` / `scripts/timing-ledger.sh` requires `$IMPLEMENT_TMPDIR` to be a live directory root — so the `--since-last-mark` reports and the closing `Step 18 — done` mark MUST run before `implement-finalize.sh teardown` deletes the tmpdir. Running them after teardown fails with `no per-run ledger root set` (the `pwd-hash` fallback in `resolve_session_id()` only affects the filename slug, never the directory root). See issue #3425.
+
+```bash
+IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
+export IMPLEMENT_TMPDIR
+[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse > /dev/null || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse > /dev/null || true
+# token-step-end Step 18
+"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 18 — done" || true
+"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 18 — done" || true
+```
+
+The closing `Step 18 — done` mark caps the `Step 18 — cleanup` window. `scripts/token-report.sh`'s `vendor_table` slices the LAST mark with `$end == null`; without the cap, vendor records logged later in the same JSONL ledger accrue to the prior `Step 18 — cleanup` bucket. The mark MUST be emitted from the orchestrator (not from `scripts/implement-finalize.sh teardown`) and only AFTER the `--since-last-mark --terse` calls above, so those calls slice the actual cleanup window rather than an empty post-`Step 18 — done` slice. The `--since-last-mark --terse` output is redirected to `/dev/null` (the full token and timing data was already written to larch-log batches at the Step 7a pre-ship flush); these calls run here only to cap the live ledger before teardown discards it.
+
 ### Title-prefix lifecycle
 
 Run the consolidated teardown subcommand after the prompt-side warnings/notes and token artifact refresh above. **See NEVER #11 — do NOT write or recreate `$IMPLEMENT_TMPDIR/finalize-state.sh` from prompt-side orchestrator code; on runs that reached `ship-pr.sh` the file is produced by `write_finalize_state()`, and the sanctioned `restore-finalize-state.sh` call below is the only blessed pre-teardown writer. If teardown fails with `state-file missing required key` and restore could not help (e.g. `ship-pr-state.sh` itself is absent), surface the error and stop.** Under `forked_target=true`, skip only the tracking-issue rename / summary-refresh portions by leaving `ISSUE_NUMBER` unset; still run `implement-finalize.sh teardown` so `$IMPLEMENT_TMPDIR` is cleaned up and final warnings are repeated. It performs the title-prefix terminal transition first: Branch A renames to `[STALLED]` only when Step 18a left `STALL_TRACKING=true` on disk and the issue state is exactly `OPEN`; Branch B renames to `[DONE]` when Step 18a cleared `STALL_TRACKING=false`, `DONE_RENAME_APPLIED!=true`, and `$PR_NUMBER` is set OR `DESIGN_ONLY_DONE=true`; Branch C is a no-op. On stalled paths, it then best-effort stashes leftover working-tree edits with a `larch-stalled-...` label and writes `.git/larch-stalled-run.txt` so the next SessionStart/preflight can surface or clear the leftover state. Before `cleanup-tmpdir.sh` runs (and before `verify_cleanup_target`, so even a refused cleanup releases the Stop hook), teardown writes `$IMPLEMENT_TMPDIR/.run-cleaned-up`. Teardown then best-effort kills stale background processes from this session whose argv references `$IMPLEMENT_TMPDIR` (fixed-string match via `awk index()` against lexical and physical tmpdir paths; current process and its direct parent are excluded; SIGTERM + 1s wait + SIGKILL backstop; emits a warning breadcrumb if any were killed). Before tmpdir removal, it verifies the tmpdir basename prefix and `session-id` against the Step 14 state file. When both match, cleanup proceeds. When only the session-id matches (prefix mismatch), it emits a warning and still invokes cleanup — this handles prefix bugs fixed in #1563/#1572. When the session-id doesn't match (or is absent), it logs a Tool Failures entry, emits the documented refusal warning, skips `rm -rf`, and continues. It then prints the tracking-issue URL when resolvable and prints the final Step 18 breadcrumb. Mechanical SSOT: `${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.md` § `teardown`.
@@ -1266,23 +1287,6 @@ fi
 ```
 
 Relay the script's tracking issue URL line and Step 18 breadcrumb verbatim. Tail records document the mechanical outcome: `RENAME_BRANCH=...`, `RENAME_STATUS=...`, `ISSUE_URL=...`, `STASH_REF=...`, `SENTINEL_WRITTEN=...`, `FINALIZE_SUBCOMMAND=teardown`, `FINALIZE_WARNINGS=...`.
-
-```bash
-IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
-export IMPLEMENT_TMPDIR
-[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
-LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
-LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
-LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
-export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-report.sh" --since-last-mark --terse > /dev/null || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-report.sh" --since-last-mark --terse > /dev/null || true
-# token-step-end Step 18
-"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 18 — done" || true
-"${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "Step 18 — done" || true
-```
-
-The closing `Step 18 — done` mark caps the `Step 18 — cleanup` window. `scripts/token-report.sh`'s `vendor_table` slices the LAST mark with `$end == null`; without the cap, vendor records logged after Step 18 in the same JSONL ledger (e.g., from a subsequent `/implement` run that falls back to the `pwd | sha256_hex` session id in `scripts/token-ledger.sh resolve_session_id()`) accrue to the prior run's `Step 18 — cleanup` bucket. The mark MUST be emitted from the orchestrator (not from `scripts/implement-finalize.sh teardown`) and only AFTER the `--since-last-mark --terse` calls above, so those calls slice the actual cleanup window rather than an empty post-`Step 18 — done` slice. The `--since-last-mark --terse` calls are redirected to `/dev/null` — their output no longer appears in chat; the full token and timing data was already written to larch-log batches earlier in Step 18. By the time this block runs, `cleanup-tmpdir.sh` (inside teardown) has already removed `$IMPLEMENT_TMPDIR/session-env.sh` and `$IMPLEMENT_TMPDIR/session-id`, so `LARCH_TOKEN_SESSION_ID` resolution falls through to the `pwd-hash` fallback and the closing mark lands in `larch-tokens-<pwd-hash>.jsonl`. That landing site is intentional and load-bearing: the cross-run leakage being capped also flows through the same `pwd-hash` fallback in subsequent runs, so the cap and the leakage land in the same physical ledger file.
 
 ## Issue-anchored plan helpers (machine reachability)
 
