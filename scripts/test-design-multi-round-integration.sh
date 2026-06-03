@@ -30,7 +30,23 @@ if [[ "$1" == "pr" ]]; then
             fi
             exit 0
             ;;
-        view) echo '{"url":"https://github.com/owner/repo/pull/101"}'; exit 0 ;;
+        view)
+            if printf '%s\n' "$*" | grep -q -- 'headRefOid'; then
+                if [[ -z "${TEST_CLONE_ROOT:-}" || -z "${TEST_MERGE_BRANCH:-}" ]]; then
+                    echo "stub pr view headRefOid missing TEST_CLONE_ROOT or TEST_MERGE_BRANCH" >&2
+                    exit 98
+                fi
+                oid=$(git -C "$TEST_CLONE_ROOT" ls-remote origin "$TEST_MERGE_BRANCH" | awk '{ print $1; exit }')
+                if [[ -z "$oid" ]]; then
+                    echo "stub pr view headRefOid could not resolve $TEST_MERGE_BRANCH" >&2
+                    exit 98
+                fi
+                printf '{"headRefOid":"%s"}\n' "$oid"
+                exit 0
+            fi
+            echo '{"url":"https://github.com/owner/repo/pull/101"}'
+            exit 0
+            ;;
         list) echo '101'; exit 0 ;;
     esac
 fi
