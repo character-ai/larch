@@ -15,19 +15,19 @@ Emits `MERGE_RESULT=...` and `ERROR=...` on stdout via an EXIT trap. Exits 0 unc
 | Value | Meaning |
 |-------|---------|
 | `merged` | Plain squash merge succeeded. In default mode this means the prior `--admin` attempt failed and the plain fallback succeeded; with `--no-admin-fallback`, this means the only merge attempt succeeded. |
-| `admin_merged` | CI re-verified green + branch fresh; `--admin` merge succeeded. **Only emitted when `--no-admin-fallback` is NOT set.** |
+| `admin_merged` | CI re-verified green + admin-eligible merge state; `--admin` merge succeeded. **Only emitted when `--no-admin-fallback` is NOT set.** |
 | `main_advanced` | Pre-merge gate found a non-admin-eligible merge state (e.g. `DIRTY`, `DRAFT`), or the origin-advanced version race (non-ancestor `origin/main` with a differing published version). Caller should rebase and retry. |
 | `ci_not_ready` | Pre-merge gate did not find all checks passing. Caller should poll CI. |
 | `version_already_published` | Same-version race gate found a literal bump commit in `origin/main..HEAD` and `origin/main` already publishes that same `.claude-plugin/plugin.json` version. Caller should bail so the branch can rebase and re-bump. |
 | `admin_failed` | Default-mode `--admin` attempt failed and the plain fallback also failed. Hard error. |
-| `policy_denied` | CI re-verified green + branch fresh (admin-eligible); `--no-admin-fallback` is set, so `--admin` was NOT invoked, and the plain merge attempt failed. Caller should bail to manual reviewer-approval flow. |
+| `policy_denied` | CI re-verified green + admin-eligible merge state; `--no-admin-fallback` is set, so `--admin` was NOT invoked, and the plain merge attempt failed. Caller should bail to manual reviewer-approval flow. |
 | `error` | Catch-all unexpected failure. Also covers the case where initial `gh pr view --json mergeStateStatus,headRefOid` returns empty (API/network/`gh` failure) or `UNKNOWN` mergeStateStatus after `MERGE_PR_INITIAL_UNKNOWN_RETRIES` retries with 5-second sleeps. If the transient state resolves during retry, normal routing resumes. |
 
 ## --no-admin-fallback
 
 `gh pr view` (`refresh_pr_info`) and `gh pr checks` (`refresh_ci_state`) retry transient failures via `with_transient_retry`, layered under the existing UNKNOWN-recovery loop. Exhausted transient `gh pr checks --json` failures leave `CI_GOOD=false` and skip the text fallback so misleading stdout cannot become `MERGE_RESULT=merged`.
 
-When set, the script reaches the same admin-eligible gate (CI good + branch fresh) but invokes only `gh pr merge --squash`; if that plain merge fails, it emits `MERGE_RESULT=policy_denied` instead of invoking `gh pr merge --squash --admin`. This is opt-out: the default behavior (no flag) is to try `--admin` first, then retry without `--admin` if the privileged attempt is rejected.
+When set, the script reaches the same admin-eligible gate (CI good + admin-eligible merge state) but invokes only `gh pr merge --squash`; if that plain merge fails, it emits `MERGE_RESULT=policy_denied` instead of invoking `gh pr merge --squash --admin`. This is opt-out: the default behavior (no flag) is to try `--admin` first, then retry without `--admin` if the privileged attempt is rejected.
 
 The flag applies to **all admin-eligible mergeStateStatus values** — `CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`, and `BEHIND`. Any state where default mode would have tried `--admin` first becomes a plain-only merge path when the flag is set; this is broader than just review-required denials. Document this in caller-side flag specs so operators understand the scope.
 

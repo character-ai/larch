@@ -348,6 +348,18 @@ assert_stdout_contains "$root" "CONFLICTED=false" "absent CONFLICTED: ci-wait de
 grep -Fq 'conflicted=false' "$root/.ci-decide-log" || fail "absent CONFLICTED: ci-decide receives false default"
 ok "absent CONFLICTED: default false threaded to ci-decide"
 
+# --- Case 11: CONFLICTED=true + pass + behind=0 -> merge (up-to-date ignores conflict flag) ---
+root=$(make_env conflicted_up_to_date_merge)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+STUB_STATUSES=pass STUB_BEHIND_COUNT=0 STUB_CONFLICTED=true run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "conflicted up-to-date: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "conflicted up-to-date: ACTION=merge"
+assert_stdout_contains "$root" "CONFLICTED=true" "conflicted up-to-date: CONFLICTED emitted"
+grep -Fq 'conflicted=true' "$root/.ci-decide-log" || fail "conflicted up-to-date: --conflicted true passed to ci-decide"
+grep -Fq 'behind=0' "$root/.ci-decide-log" || fail "conflicted up-to-date: --behind 0 passed to ci-decide"
+ok "conflicted up-to-date: ci-decide received conflicted=true with behind=0"
+
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ci-wait: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
     exit 1

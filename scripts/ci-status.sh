@@ -76,6 +76,11 @@ BASE_TARGET="${BASE_REMOTE}/${BASE_REF}"
 PR_JSON=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state,mergeStateStatus 2>/dev/null || echo "")
 PR_STATE=$(echo "$PR_JSON" | jq -r '.state // ""' 2>/dev/null || echo "")
 MERGE_STATE_STATUS=$(echo "$PR_JSON" | jq -r '.mergeStateStatus // ""' 2>/dev/null || echo "")
+case "$MERGE_STATE_STATUS" in
+    DIRTY) CONFLICTED="true" ;;
+    CLEAN|BEHIND|BLOCKED|UNSTABLE|HAS_HOOKS) CONFLICTED="false" ;;
+    *) CONFLICTED="true" ;;
+esac
 if [[ "$PR_STATE" == "MERGED" ]]; then
     CI_STATUS="merged"
     exit 0
@@ -197,10 +202,3 @@ if [[ "$BEHIND_COUNT" -gt 0 ]]; then
         FAILED_RUN_ID=""
     fi
 fi
-
-# --- Derive CONFLICTED from mergeStateStatus (conservative for UNKNOWN/empty) ---
-case "$MERGE_STATE_STATUS" in
-    DIRTY) CONFLICTED="true" ;;
-    CLEAN|BEHIND|BLOCKED|UNSTABLE|HAS_HOOKS) CONFLICTED="false" ;;
-    *) CONFLICTED="true" ;;
-esac

@@ -132,6 +132,23 @@ if [ -n "${BG_PID:-}" ] && kill -0 "$BG_PID" 2>/dev/null; then
         fail "A: <output-file> missing or malformed (no ACTION= line)"
     fi
 
+    # Assertion 2b: KV output file has full 8-key contract.
+    if [ -f "$OUT_PATH" ]; then
+        EXPECTED_KEYS=("ACTION=" "CI_STATUS=" "BEHIND_COUNT=" "CONFLICTED=" "FAILED_RUN_ID=" "BAIL_REASON=" "ITERATION=" "ELAPSED=")
+        ALL_KEYS_PRESENT=true
+        OUT_CONTENT="$(cat "$OUT_PATH")"
+        for key in "${EXPECTED_KEYS[@]}"; do
+            if ! grep -q "^${key}" <<< "$OUT_CONTENT"; then
+                ALL_KEYS_PRESENT=false
+                fail "A: <output-file> missing key '$key'"
+                break
+            fi
+        done
+        if $ALL_KEYS_PRESENT; then
+            ok "A: <output-file> contains full 8-key KV contract"
+        fi
+    fi
+
     # Assertion 3: .done sentinel exists.
     if [ -f "${OUT_PATH}.done" ]; then
         ok "A: <output-file>.done sentinel exists"

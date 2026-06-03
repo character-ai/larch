@@ -2,8 +2,9 @@
 # merge-pr.sh - Squash-merge a PR, trying --admin first after safety gates.
 #
 # Checks whether the branch is behind main and whether CI is ready before
-# any merge attempt. If CI is confirmed passing and the branch is
-# up-to-date, tries `gh pr merge --squash --admin` first, then falls back
+# any merge attempt. If CI is confirmed passing and mergeStateStatus is
+# admin-eligible (including conflict-free BEHIND), tries
+# `gh pr merge --squash --admin` first, then falls back
 # to a plain squash merge if the privileged attempt fails. When
 # --no-admin-fallback is set, skips the privileged attempt and tries only
 # the plain squash merge; if that fails, returns MERGE_RESULT=policy_denied.
@@ -11,7 +12,8 @@
 # CRITICAL: The --admin flag overrides ALL branch protection rules
 # including review requirements. It is ONLY used after confirming:
 #   1. All CI checks are passing (bucket == "pass" for every check)
-#   2. The branch is up-to-date with main and in an admin-eligible state
+#   2. mergeStateStatus is admin-eligible (CLEAN, UNSTABLE, BLOCKED,
+#      HAS_HOOKS, or conflict-free BEHIND — not DIRTY/DRAFT/UNKNOWN)
 # This is the canonical --admin implementation.
 # See skills/implement/SKILL.md Step 12b for usage documentation.
 #
@@ -19,8 +21,9 @@
 #   merge-pr.sh --pr NUMBER --repo OWNER/REPO [--no-admin-fallback]
 #
 # --no-admin-fallback: opts out of the --admin-first attempt. When set,
-#   the script reaches the same admin-eligible gate (CI good + branch
-#   fresh) but invokes only `gh pr merge --squash`; if that plain merge
+#   the script reaches the same admin-eligible gate (CI good +
+#   admin-eligible merge state) but invokes only `gh pr merge --squash`;
+#   if that plain merge
 #   fails, it emits MERGE_RESULT=policy_denied. This applies to ALL
 #   admin-eligible mergeStateStatus values (CLEAN, UNSTABLE, HAS_HOOKS,
 #   BLOCKED, BEHIND) — not just review-required denials.
@@ -413,7 +416,7 @@ if [[ "$NO_ADMIN_FALLBACK" == "true" ]]; then
     exit 0
 fi
 
-larch_err "ℹ CI is green and branch is fresh. Trying merge with --admin..."
+larch_err "ℹ CI is green and merge state is admin-eligible. Trying merge with --admin..."
 admin_fail_file=$(mktemp "${TMPDIR:-/tmp}/merge-pr-admin.XXXXXX")
 if with_transient_retry transient_envelope_predicate_none "$admin_fail_file" \
     gh pr merge "$PR_NUMBER" --repo "$REPO" --squash --admin; then

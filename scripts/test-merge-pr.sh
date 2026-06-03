@@ -410,6 +410,12 @@ assert_stdout_contains "ci_gate" "MERGE_RESULT=ci_not_ready" "E2: non-pass CI em
 assert_no_merge_commands "ci_gate" "E2: non-pass CI skips merge commands"
 assert_command_count "ci_gate" "git.log" "fetch origin main --quiet" "0" "E2: non-pass CI skips same-version gate"
 
+run_case "dirty_gate" \
+    env GH_MERGE_STATE=DIRTY GH_ADMIN_EXIT=0 GH_PLAIN_EXIT=0 \
+    bash "$REPO_ROOT/scripts/merge-pr.sh" --pr 123 --repo owner/repo
+assert_stdout_contains "dirty_gate" "MERGE_RESULT=main_advanced" "E3: DIRTY merge state emits main_advanced"
+assert_no_merge_commands "dirty_gate" "E3: DIRTY skips merge commands"
+
 echo
 echo "Sub-test F: default path emits admin_failed when both --admin and plain merges fail"
 run_case "admin_failed" \

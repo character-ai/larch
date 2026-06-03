@@ -14,7 +14,7 @@ The harness uses PATH-stubbed `gh` and `git` binaries and the real `scripts/merg
 6. Initial empty or `UNKNOWN` merge state retries before failing closed as `MERGE_RESULT=error`; transient `UNKNOWN` and empty states that resolve to `CLEAN` continue to `admin_merged`; transient `UNKNOWN` and empty states that resolve to `BEHIND` continue through the CI gate (pending CI → `ci_not_ready`; green CI → `admin_merged`). These are the G1-G6 cases in the harness.
 7. Post-force-push `UNKNOWN` retry coverage includes success to `CLEAN`, persistent `UNKNOWN` failure, Q2 `post_force_push_unknown_recovers_behind` (UNKNOWN→BEHIND with pending CI emits `ci_not_ready`), and Q2g `post_force_push_empty_recovers_behind` (EMPTY→BEHIND after force-push, symmetric to Q2 but starting from an empty post-push state).
 8. Staleness safety: `BEHIND` + bump commit + differing origin version + non-ancestor `origin/main` still emits `main_advanced` via the origin-advanced gate (case `behind_staleness_safety`).
-8. Transient-once `gh pr view` and `gh pr checks` retry via `with_transient_retry` (Sub-test S); non-transient pending `gh pr checks` does not retry; exhausted transient JSON checks with misleading stdout emit `ci_not_ready` without merge and do not fall back to text-format `gh pr checks`. Each Sub-test S case uses a no-op `sleep-seconds.sh` stub via `SLEEP_SCRIPT_DIR`.
+9. Transient-once `gh pr view` and `gh pr checks` retry via `with_transient_retry` (Sub-test S); non-transient pending `gh pr checks` does not retry; exhausted transient JSON checks with misleading stdout emit `ci_not_ready` without merge and do not fall back to text-format `gh pr checks`. Each Sub-test S case uses a no-op `sleep-seconds.sh` stub via `SLEEP_SCRIPT_DIR`.
 
 ### Same-version gate
 

@@ -4,8 +4,9 @@
 # Pure decision logic with no side effects. Takes the current CI state
 # and loop counters, returns the action the caller should take.
 #
-# Merge is always allowed when CI passes and branch is up-to-date,
-# regardless of safety limits. Safety limits only block non-merge actions:
+# Merge is allowed when CI passes and the branch is up-to-date, or
+# conflict-free while behind (--conflicted false), regardless of safety
+# limits. Safety limits only block non-merge actions:
 #   - iteration >= 50: bail (timeout)
 #   - rebase_count >= 20: bail (too many rebases)
 #   - fix_attempts >= 10: bail (too many fixes)
