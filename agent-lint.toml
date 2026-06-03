@@ -76,20 +76,13 @@ suppress = [
 # same Makefile-only pattern as the test-sessionstart-health.sh entry above.
 #
 # scripts/lib-count-commits.sh is a sourced-only shell library (no shebang,
-# not invokable directly). It is referenced from scripts/check-release.sh
-# and scripts/verify-skill-called.sh via `source` directives only — agent-lint
-# does not follow `source` directives in sibling scripts, so the library
-# would be false-flagged as dead. scripts/test-verify-skill-called.sh is the
-# regression harness for scripts/verify-skill-called.sh and is referenced
-# only from Makefile, matching the same Makefile-only pattern as the other
-# test-* harnesses above. Both are documented in scripts/verify-skill-called.md
-# (sibling contract).
-#
-# scripts/test-check-release.sh is the regression harness for
-# scripts/check-release.sh (#172). It is referenced only from Makefile
-# (test-check-release target) and scripts/check-release.md
-# (sibling contract), matching the same Makefile-only pattern as the other
-# test-* harnesses above.
+# not invokable directly). It is referenced from scripts/verify-skill-called.sh
+# via a `source` directive only — agent-lint does not follow `source`
+# directives in sibling scripts, so the library would be false-flagged as
+# dead. scripts/test-verify-skill-called.sh is the regression harness for
+# scripts/verify-skill-called.sh and is referenced only from Makefile,
+# matching the same Makefile-only pattern as the other test-* harnesses above.
+# Both are documented in scripts/verify-skill-called.md (sibling contract).
 #
 # scripts/test-lint-skill-invocations.sh is the regression harness for
 # scripts/lint-skill-invocations.py (the skill-invocation documentation lint).
@@ -435,10 +428,8 @@ exclude = [
   # runtime prose.
   "skills/implement/scripts/test-oos-issue-cap.sh",
   "skills/implement/scripts/test-oos-issue-cap.md",
-  # Post-/release and Stop-hook helpers are runtime-registered in
-  # hooks/hooks.json, not invoked from skills/implement/SKILL.md.
-  "skills/implement/scripts/hook-post-release.sh",
-  "skills/implement/scripts/hook-post-release.md",
+  # Stop-hook helpers are runtime-registered in hooks/hooks.json, not invoked
+  # from skills/implement/SKILL.md.
   "skills/implement/scripts/hook-stop-fail-close.sh",
   "skills/implement/scripts/hook-stop-fail-close.md",
   "skills/implement/scripts/lib-resolve-implement-tmpdir.sh",
@@ -689,7 +680,6 @@ exclude = [
   "scripts/lib-failed-agent-stderr-tail.sh",
   "scripts/test-lib-failed-agent-stderr-tail.sh",
   "scripts/test-verify-skill-called.sh",
-  "scripts/test-check-release.sh",
   # scripts/test-check-reviewers.sh is the regression harness for
   # scripts/check-reviewers.sh probe acceptance logic. Referenced only from
   # Makefile (test-check-reviewers target) and scripts/test-check-reviewers.md

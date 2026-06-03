@@ -12,10 +12,8 @@ imported by runtime code.
 - `logging_util.py` — breadcrumbs + JSONL journal (observability only)
 - `redact.py`, `retry.py` — ports of `redact-secrets.sh` / `lib-net.sh`
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
-- `bump_worktree.py` — shared drop/worktree helpers (`DropResult`, porcelain, sorted diff)
 - `version_bump.py` — shared semver classification helpers used by release preparation and Python parity tests.
-- `rebase.py` — Phase 3 port (auto-resolve, drop-bump, in-process fixer waterfall,
-  `git-force-push.sh` rebump-tail push); dev/CI-only until Phase 7.
+- `rebase.py` — Phase 3 port for CI-fix rebase decision and verification surfaces; dev/CI-only until Phase 7.
 - `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)
 - `ci_monitor.py` — Phase 6 CI poll + classify + collect + fixer-waterfall + GOTO-Rebase signal

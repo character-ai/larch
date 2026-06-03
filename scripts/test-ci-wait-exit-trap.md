@@ -61,4 +61,4 @@ Update this harness in lockstep with:
 
 - Issue #842 — surfacing failure-mode trace (the leaked-polling-loop scenario this harness regresses against).
 - `scripts/run-external-agent.sh:70` — positive precedent for the EXIT-trap-writes-`.done` idiom; the test mirrors its numeric-content sentinel format.
-- `scripts/test-check-release.sh`, `scripts/test-collect-agent-bash32.sh` — peer test harnesses with similar Makefile-wired regression-test patterns.
+- `scripts/test-collect-agent-bash32.sh` — peer test harness with a similar Makefile-wired regression-test pattern.

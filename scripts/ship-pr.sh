@@ -2560,15 +2560,20 @@ run_recovery_waterfall() {
 # True when every path in the comma-separated vendor conflict list is a
 # non-version file (exclude .claude-plugin/plugin.json, version-adjacent basenames
 # handled by the deterministic pre-pass, and any repo-relative path listed in
-# LARCH_VERSION_FILES when set — aligned with run_rebase_rebump's deterministic loop
-# and conflict-resolution.md).
+# LARCH_VERSION_FILES when set. LARCH_BUMP_FILES is accepted as a deprecated
+# compatibility alias when LARCH_VERSION_FILES is unset.
 ship_pr_vendor_conflict_csv_is_non_bump_only() {
-    local csv=$1 _ofs _p _bn _seg _trimmed _bf
+    local csv=$1 _ofs _p _bn _seg _trimmed _bf _version_files
     local -a _bump_set=()
     [ -n "$csv" ] || return 1
-    if [[ -n "${LARCH_VERSION_FILES+x}" && -n "${LARCH_VERSION_FILES}" ]]; then
+    _version_files="${LARCH_VERSION_FILES:-}"
+    if [[ -z "$_version_files" && -n "${LARCH_BUMP_FILES:-}" ]]; then
+        _version_files=$LARCH_BUMP_FILES
+        larch_err "⚠ ship-pr: LARCH_BUMP_FILES is deprecated; use LARCH_VERSION_FILES"
+    fi
+    if [[ -n "$_version_files" ]]; then
         local -a _segments=()
-        IFS=':' read -ra _segments <<< "$LARCH_VERSION_FILES" || true
+        IFS=':' read -ra _segments <<< "$_version_files" || true
         for _seg in "${_segments[@]+"${_segments[@]}"}"; do
             _trimmed="${_seg#"${_seg%%[![:space:]]*}"}"
             _trimmed="${_trimmed%"${_trimmed##*[![:space:]]}"}"
