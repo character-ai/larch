@@ -39,6 +39,10 @@ On `ASSESSOR_VERDICT=worse-majority` with `ASSESSOR_STATUS=ok` and `EFFECTIVE_AS
 
 On `EFFECTIVE_ASSESSORS=0`: proceed as NOT_WORSE; print `**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round <N>, see assessor-verdict-round-<N>.env).**` — no Continue/Stop prompt. Dispatch or tally failures must still leave a verdict `.env` behind via degraded-default-open synthesis so the warning points to a real artifact.
 
+On `ASSESSOR_STATUS=write-after-failed`: post-Gate-B snapshot failed; driver rolls back `review-round-count.txt`, attempts cursor rollback, skips assessor dispatch, and continues to Step 3b — no Continue/Stop prompt.
+
+On `ASSESSOR_STATUS=assess-failed`: `assess-plan-round.sh` exited non-zero; driver logs via `append-tool-failure.sh`, settles with `ASSESSOR_VERDICT=skipped`, and continues to Step 3b — no Continue/Stop prompt.
+
 ## External assessor dispatch (availability-gated, #3207)
 
 `dispatch-plan-assessors.sh` emits only Codex and/or Cursor manifest rows for tools present at Step 0, then calls `dispatch-with-waterfall.sh` with **`--no-fallback`**. Failed or absent assessor slots are dropped; `CODEX_PATH` / `CURSOR_PATH` stay at the stable manifest paths (`codex-assessor-output.txt` / `cursor-assessor-output.txt`) and status is derived from non-empty output on those paths (tool identity from `ALL_OUTPUT_TOOLS` when a slot succeeded). There is no cross-tool or Claude padding on assessor slots.

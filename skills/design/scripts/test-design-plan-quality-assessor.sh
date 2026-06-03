@@ -137,6 +137,19 @@ export CALL_LOG="$TMP/call.log"
 SNAPSHOT_FAIL_WARN='**⚠ 3.6: failed to snapshot post-Gate-B plan for round 2; rolling back pending review-round state and skipping assessor.**'
 ZERO_ASSESSORS_WARN='**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round 2, see /tmp/v.env).**'
 
+block_result_env_write() {
+    local f="$1"
+    chflags uchg "$f" 2>/dev/null && return 0
+    command -v chattr >/dev/null 2>&1 && chattr +i "$f" 2>/dev/null && return 0
+    return 1
+}
+
+unblock_result_env_write() {
+    local f="$1"
+    chflags nouchg "$f" 2>/dev/null || true
+    command -v chattr >/dev/null 2>&1 && chattr -i "$f" 2>/dev/null || true
+}
+
 reset_env() {
     : >"$CALL_LOG"
     unset WRITE_AFTER_FAIL READ_CURSOR_RC WRITE_CURSOR_RC ROUND_CURSOR_VALUE \
@@ -164,22 +177,23 @@ run_subject() {
 
 apply_step3_6_handoff() {
     local d="$1"
-    local wp rc=0
+    local wp dc rc=0
     wp=$(jq -r '.workflow_path // ""' "$d/run-params.json" 2>/dev/null || echo "")
     if [[ -z "$wp" ]]; then
         wp=$(sed -n 's/.*"workflow_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/run-params.json" 2>/dev/null | head -1)
     fi
+    dc=$(jq -r '.design_classification // ""' "$d/run-params.json" 2>/dev/null || echo "")
+    if [[ -z "$dc" ]]; then
+        dc=$(sed -n 's/.*"design_classification"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/run-params.json" 2>/dev/null | head -1)
+    fi
     if [[ -z "$wp" ]]; then
-        local dc
-        dc=$(jq -r '.design_classification // ""' "$d/run-params.json" 2>/dev/null || echo "")
-        if [[ -z "$dc" ]]; then
-            dc=$(sed -n 's/.*"design_classification"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/run-params.json" 2>/dev/null | head -1)
-        fi
         if [[ "$dc" == HARD ]]; then
             wp=HARD
         else
             wp=SIMPLE
         fi
+    elif [[ -n "$dc" && "$wp" != "$dc" ]]; then
+        wp="$dc"
     fi
     : >"$d/chat.out"
     : >"$d/handoff.stderr"
@@ -541,15 +555,15 @@ reset_env
 D13="$TMP/stale-env-write-fail"
 setup_design_tmp "$D13" HARD
 printf 'ASSESSOR_STATUS=ok\nASSESSOR_VERDICT=worse-majority\nEFFECTIVE_ASSESSORS=3\n' >"$D13/.step3.6-assessor.env"
-if ! chflags uchg "$D13/.step3.6-assessor.env" 2>/dev/null; then
-    pass "stale env write-fail (skip: chflags unavailable)"
+if ! block_result_env_write "$D13/.step3.6-assessor.env"; then
+    fail "stale env write-fail — could not make result env immutable (need chflags or chattr)"
 else
     export ASSESSOR_VERDICT_VALUE=not-worse EFFECTIVE_ASSESSORS_VALUE=2
     set +e
     run_subject "$D13"
     rc=$?
     set -e
-    chflags nouchg "$D13/.step3.6-assessor.env" 2>/dev/null || true
+    unblock_result_env_write "$D13/.step3.6-assessor.env"
     assert_rc "stale env write-fail rc" 0 "$rc"
     assert_contains "$(cat "$D13/stdout.txt")" 'ASSESSOR_VERDICT=not-worse' "stdout fallback verdict"
     assert_contains "$(cat "$D13/stdout.txt")" 'result env write failed' "write-failure WARN on stdout"
@@ -565,15 +579,15 @@ reset_env
 D13B="$TMP/handoff-stale-write-fail"
 setup_design_tmp "$D13B" HARD
 printf 'ASSESSOR_STATUS=ok\nASSESSOR_VERDICT=worse-majority\nEFFECTIVE_ASSESSORS=3\n' >"$D13B/.step3.6-assessor.env"
-if ! chflags uchg "$D13B/.step3.6-assessor.env" 2>/dev/null; then
-    pass "handoff stale write-fail (skip: chflags unavailable)"
+if ! block_result_env_write "$D13B/.step3.6-assessor.env"; then
+    fail "handoff stale write-fail — could not make result env immutable (need chflags or chattr)"
 else
     export ASSESSOR_VERDICT_VALUE=not-worse EFFECTIVE_ASSESSORS_VALUE=2
     set +e
     apply_step3_6_handoff "$D13B"
     handoff_rc=$?
     set -e
-    chflags nouchg "$D13B/.step3.6-assessor.env" 2>/dev/null || true
+    unblock_result_env_write "$D13B/.step3.6-assessor.env"
     assert_rc "handoff stale write-fail rc" 0 "$handoff_rc"
     assert_contains "$(cat "$D13B/chat.out")" 'result env write failed' "handoff stale write-failure WARN in chat"
     if grep -Fq 'ASSESSOR_VERDICT=not-worse' "$D13B/handoff-driver.stdout" 2>/dev/null; then
@@ -636,7 +650,7 @@ else
     fail 'handoff qualified runtime invoke'
 fi
 
-# 21 write-cursor rollback failure preserves count
+# 21 write-cursor rollback failure still decrements count
 reset_env
 D18="$TMP/write-cursor-rollback-fail"
 setup_design_tmp "$D18" HARD
@@ -648,7 +662,7 @@ rc=$?
 set -e
 assert_rc "write-cursor rollback fail rc" 0 "$rc"
 count=$(cat "$D18/review-round-count.txt" 2>/dev/null || echo "")
-if [[ "$count" == "2" ]]; then pass "rollback fail preserves count"; else fail "rollback fail preserves count — expected 2, got $count"; fi
+if [[ "$count" == "1" ]]; then pass "rollback fail still decrements count"; else fail "rollback fail still decrements count — expected 1, got $count"; fi
 assert_contains "$(cat "$D18/stdout.txt")" 'write-cursor rollback failed' "write-cursor rollback fail WARN"
 
 # 22 driver uses seam bindings (not hardcoded plugin paths in body)

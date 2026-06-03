@@ -249,13 +249,12 @@ if [[ "$_snap_rc" -ne 0 ]]; then
     set -e
     rm -f "$_cap"
     if [[ "${ROUND_NUM:-0}" -ge 1 ]]; then
+        printf '%s\n' "$((ROUND_NUM - 1))" >"$DESIGN_TMPDIR/review-round-count.txt"
         set +e
         "$SNAPSHOT_SH" write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$ROUND_NUM" >/dev/null 2>&1
         _rollback_rc=$?
         set -e
-        if [[ "$_rollback_rc" -eq 0 ]]; then
-            printf '%s\n' "$((ROUND_NUM - 1))" >"$DESIGN_TMPDIR/review-round-count.txt"
-        else
+        if [[ "$_rollback_rc" -ne 0 ]]; then
             WARN_LINES+=("**⚠ design-plan-quality-assessor: write-cursor rollback failed (exit ${_rollback_rc}); review-round count may be inconsistent.**")
         fi
     fi
