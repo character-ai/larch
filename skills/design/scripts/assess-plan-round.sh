@@ -15,45 +15,27 @@ DESIGN_TMPDIR=""
 CODEX_PRESENT=""
 CURSOR_PRESENT=""
 TIMEOUT="1860"
+DESIGN_CLASSIFICATION_OVERRIDE=""
 
 usage() {
-    larch_err "Usage: assess-plan-round.sh --design-tmpdir DIR --codex-present true|false --cursor-present true|false [--timeout SECS]"
+    larch_err "Usage: assess-plan-round.sh --design-tmpdir DIR --codex-present true|false --cursor-present true|false [--timeout SECS] [--design-classification HARD|SIMPLE]"
 }
 
-json_scalar_or_sed() {
-    local file="$1" key="$2" default_value="$3" value=""
-    if command -v jq >/dev/null 2>&1 && [[ -f "$file" ]]; then
-        value=$(jq -r --arg key "$key" '.[$key] // ""' "$file" 2>/dev/null || echo "")
+resolve_design_classification() {
+    if [[ -n "$DESIGN_CLASSIFICATION_OVERRIDE" ]]; then
+        case "$DESIGN_CLASSIFICATION_OVERRIDE" in
+            HARD|SIMPLE) printf '%s' "$DESIGN_CLASSIFICATION_OVERRIDE"; return 0 ;;
+            *) larch_err "assess-plan-round.sh: invalid --design-classification: $DESIGN_CLASSIFICATION_OVERRIDE"; exit 2 ;;
+        esac
     fi
-    if [[ -z "$value" && -f "$file" ]]; then
-        value=$(sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$file" 2>/dev/null | head -1)
+    local reader="$PLUGIN_ROOT/scripts/read-design-classification.sh" out
+    if [[ -x "$reader" ]]; then
+        out=$("$reader" "$DESIGN_TMPDIR/run-params.json" 2>&1 | tail -n 1 || true)
+        case "$out" in HARD|SIMPLE) printf '%s' "$out"; return 0 ;; esac
     fi
-    if [[ -z "$value" ]]; then
-        printf '%s\n' "$default_value"
-    else
-        printf '%s\n' "$value"
-    fi
+    printf '%s' HARD
 }
 
-resolve_workflow_path() {
-    local params="$DESIGN_TMPDIR/run-params.json"
-    local workflow_raw design_classification resolved
-    workflow_raw="$(json_scalar_or_sed "$params" workflow_path "")"
-    design_classification="$(json_scalar_or_sed "$params" design_classification "")"
-    if [[ -z "$workflow_raw" ]]; then
-        if [[ "$design_classification" == HARD ]]; then
-            resolved=HARD
-        else
-            resolved=SIMPLE
-        fi
-    else
-        resolved="$workflow_raw"
-    fi
-    if [[ -n "$workflow_raw" && -n "$design_classification" && "$workflow_raw" != "$design_classification" ]]; then
-        resolved="$design_classification"
-    fi
-    printf '%s' "$resolved"
-}
 
 read_round_cursor() {
     local snap_sh="${LARCH_SNAPSHOT_PLAN_ROUND_SH:-$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh}"
@@ -136,6 +118,7 @@ while [[ $# -gt 0 ]]; do
         --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
         --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
         --timeout) TIMEOUT="${2:?}"; shift 2 ;;
+        --design-classification) DESIGN_CLASSIFICATION_OVERRIDE="${2:?}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "assess-plan-round.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -147,9 +130,9 @@ mkdir -p "$DESIGN_TMPDIR"
 DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
 ROUND_NUM=1
 
-workflow_path="$(resolve_workflow_path)"
+workflow_path="$(resolve_design_classification)"
 if [[ "$workflow_path" != "HARD" ]]; then
-    emit "⏩ assessor: workflow_path=${workflow_path:-<unset>}; skipped"
+    emit "⏩ assessor: design_classification=${workflow_path:-<unset>}; skipped"
     emit_assessor_kv skipped skipped 0 "" ""
     exit 0
 fi

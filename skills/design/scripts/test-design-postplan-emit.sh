@@ -65,6 +65,7 @@ FAKE_DESIGN="$FAKE_PLUGIN/skills/design/scripts"
 FAKE_SCRIPTS="$FAKE_PLUGIN/scripts"
 mkdir -p "$FAKE_DESIGN" "$FAKE_SCRIPTS"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_SCRIPTS/lib-quiet.sh"
+ln -sf "$REPO_ROOT/scripts/read-design-classification.sh" "$FAKE_SCRIPTS/read-design-classification.sh"
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
 
 cat >"$FAKE_DESIGN/design-driver.sh" <<'STUB'
@@ -138,7 +139,7 @@ setup_design_tmp() {
     local d="$1" budget="${2:-full}" workflow="${3:-SIMPLE}"
     mkdir -p "$d"
     printf '# Plan\n\ndiff_lines: 12\n' >"$d/plan.txt"
-    printf '{"review_budget":"%s","workflow_path":"%s"}\n' "$budget" "$workflow" >"$d/run-params.json"
+    printf '{"review_budget":"%s","workflow_path":"%s","design_classification":"%s"}\n' "$budget" "$workflow" "$workflow" >"$d/run-params.json"
     printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$FAKE_PLUGIN" >"$d/session-env.sh"
 }
 
@@ -188,6 +189,41 @@ rc=$?
 set -e
 assert_rc "HARD snapshot preserved" 0 "$rc"
 assert_file_kv "$D2b/.design-postplan-emit-result.env" SNAPSHOT_STATUS preserved "HARD snapshot preserved"
+
+
+# 2c classification overrides legacy workflow_path for snapshots
+D2c="$TMP/classification-hard-legacy-simple"
+setup_design_tmp "$D2c" full SIMPLE
+printf '{"review_budget":"full","workflow_path":"SIMPLE","design_classification":"HARD"}
+' >"$D2c/run-params.json"
+set +e
+run_subject "$D2c" --snapshot-original
+rc=$?
+set -e
+assert_rc "classification HARD snapshot" 0 "$rc"
+assert_file_kv "$D2c/.design-postplan-emit-result.env" SNAPSHOT_STATUS taken "classification HARD snapshot taken"
+
+D2d="$TMP/classification-missing"
+setup_design_tmp "$D2d" full SIMPLE
+printf '{"review_budget":"full","workflow_path":"SIMPLE"}
+' >"$D2d/run-params.json"
+set +e
+run_subject "$D2d" --snapshot-original
+rc=$?
+set -e
+assert_rc "missing classification snapshot" 0 "$rc"
+assert_file_kv "$D2d/.design-postplan-emit-result.env" SNAPSHOT_STATUS taken "missing classification fails closed HARD snapshot"
+
+D2e="$TMP/classification-simple-legacy-hard"
+setup_design_tmp "$D2e" full HARD
+printf '{"review_budget":"full","workflow_path":"HARD","design_classification":"SIMPLE"}
+' >"$D2e/run-params.json"
+set +e
+run_subject "$D2e" --snapshot-original
+rc=$?
+set -e
+assert_rc "classification SIMPLE skip snapshot" 0 "$rc"
+assert_file_kv "$D2e/.design-postplan-emit-result.env" SNAPSHOT_STATUS skipped-not-hard "classification SIMPLE skips snapshot"
 
 # 3 re-emit snapshot suppressed, even HARD
 D3="$TMP/hard-suppressed"

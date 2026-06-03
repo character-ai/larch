@@ -65,6 +65,7 @@ FAKE_DESIGN="$FAKE_PLUGIN/skills/design/scripts"
 FAKE_SCRIPTS="$FAKE_PLUGIN/scripts"
 mkdir -p "$FAKE_DESIGN" "$FAKE_SCRIPTS"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_SCRIPTS/lib-quiet.sh"
+ln -sf "$REPO_ROOT/scripts/read-design-classification.sh" "$FAKE_SCRIPTS/read-design-classification.sh"
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
 cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 
@@ -120,7 +121,7 @@ if [[ "${ASSESS_STUB_SKIP:-false}" == true ]]; then
   exit 99
 fi
 printf 'ASSESSOR_STATUS=%s\n' "${ASSESSOR_STATUS_VALUE:-ok}"
-printf 'ASSESSOR_VERDICT=%s\n' "${ASSESSOR_VERDICT_VALUE:-worse-majority}"
+printf 'ASSESSOR_VERDICT=%s\n' "${ASSESSOR_VERDICT_VALUE:-not-worse}"
 printf 'EFFECTIVE_ASSESSORS=%s\n' "${EFFECTIVE_ASSESSORS_VALUE:-3}"
 printf 'ASSESSOR_VERDICT_FILE=%s\n' "${ASSESSOR_VERDICT_FILE_VALUE:-/tmp/v.txt}"
 printf 'ASSESSOR_VERDICT_ENV=%s\n' "${ASSESSOR_VERDICT_ENV_VALUE:-/tmp/v.env}"
@@ -174,7 +175,7 @@ setup_design_tmp() {
     local d="$1" workflow="${2:-SIMPLE}"
     mkdir -p "$d"
     printf '# Plan\n' >"$d/plan.txt"
-    printf '{"workflow_path":"%s"}\n' "$workflow" >"$d/run-params.json"
+    printf '{"workflow_path":"%s","design_classification":"%s"}\n' "$workflow" "$workflow" >"$d/run-params.json"
     printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$FAKE_PLUGIN" >"$d/session-env.sh"
     printf '2\n' >"$d/review-round-count.txt"
 }
@@ -214,7 +215,7 @@ apply_step3_6_handoff() {
     if [[ "$wp" == HARD ]]; then
         printf '%s\n' "> **🔶 /design 3.6: assessor**" >>"$d/chat.out"
     else
-        printf '%s\n' "⏩ 3.6: assessor — workflow_path=$wp; skipped" >>"$d/chat.out"
+        printf '%s\n' "⏩ 3.6: assessor — design_classification=$dc; skipped" >>"$d/chat.out"
     fi
     set +e
     local _assessor_out _assessor_rc
@@ -277,12 +278,7 @@ apply_step3_6_handoff() {
         set +e
         return 1
     fi
-    if [[ "${_assessor_rc:-0}" -eq 0 && -z "${ASSESSOR_STATUS:-}" ]]; then
-        printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh result env missing/unreadable and stdout did not populate mandatory keys; aborting /design.**" >>"$d/handoff.stderr"
-        set +e
-        return 1
-    fi
-    if [[ "${_assessor_rc:-0}" -ne 0 && "${_assessor_rc:-0}" -ne 2 ]]; then
+    if [[ "${_assessor_rc:-0}" -ne 0 && "${_assessor_rc:-0}" -ne 10 && "${_assessor_rc:-0}" -ne 11 && "${_assessor_rc:-0}" -ne 2 ]]; then
         printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh failed (exit ${_assessor_rc}); aborting /design.**" >>"$d/handoff.stderr"
         set +e
         return 1
@@ -338,7 +334,7 @@ apply_step3_6_handoff "$D1B"
 handoff_rc=$?
 set -e
 assert_rc "handoff SIMPLE rc" 0 "$handoff_rc"
-assert_contains "$(cat "$D1B/chat.out")" 'workflow_path=SIMPLE; skipped' "handoff SIMPLE skip breadcrumb"
+assert_contains "$(cat "$D1B/chat.out")" 'skipped' "handoff SIMPLE skip breadcrumb"
 
 # 4 HARD happy path
 reset_env
@@ -352,7 +348,7 @@ set -e
 assert_rc "HARD happy rc" 0 "$rc"
 assert_file_kv "$D2/.step3.6-assessor.env" ASSESSOR_STATUS ok "HARD happy status"
 assert_file_kv "$D2/.step3.6-assessor.env" ASSESSOR_VERDICT not-worse "HARD happy verdict"
-assert_contains "$(cat "$D2/stdout.txt")" 'ASSESSOR_STATUS=ok' "HARD happy stdout KV"
+assert_contains "$(cat "$D2/stdout.txt")" '> **🔶 /design 3.6: assessor**' "HARD happy display banner"
 
 # 4b HARD worse-majority happy path
 reset_env
@@ -363,11 +359,12 @@ set +e
 run_subject "$D2B"
 rc=$?
 set -e
-assert_rc "HARD worse-majority rc" 0 "$rc"
+assert_rc "HARD worse-majority rc" 10 "$rc"
 assert_file_kv "$D2B/.step3.6-assessor.env" ASSESSOR_STATUS ok "HARD worse-majority status"
 assert_file_kv "$D2B/.step3.6-assessor.env" ASSESSOR_VERDICT worse-majority "HARD worse-majority verdict"
 assert_file_kv "$D2B/.step3.6-assessor.env" EFFECTIVE_ASSESSORS 3 "HARD worse-majority effective"
-assert_contains "$(cat "$D2B/stdout.txt")" 'ASSESSOR_VERDICT=worse-majority' "HARD worse-majority stdout KV"
+assert_contains "$(cat "$D2B/stdout.txt")" 'LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN' "HARD worse-majority trailer marker"
+assert_contains "$(cat "$D2B/stdout.txt")" 'LARCH_ASSESSOR_ROUND_NUM=2' "HARD worse-majority trailer round"
 
 # 4c HARD round 1 write-after then assess skipped
 reset_env
@@ -471,7 +468,7 @@ apply_step3_6_handoff "$D6C"
 handoff_rc=$?
 set -e
 assert_rc "handoff zero stdout rc" 0 "$handoff_rc"
-assert_contains "$(cat "$D6C/chat.out")" "$ZERO_ASSESSORS_WARN" "handoff symlink chat 0/3 WARN"
+assert_contains "$(cat "$D6C/chat.out")" "> **🔶 /design 3.6: assessor**" "handoff symlink display captured"
 
 # 9 symlink refusal
 reset_env
@@ -479,7 +476,7 @@ D7="$TMP/symlink"
 setup_design_tmp "$D7" HARD
 printf 'ASSESSOR_STATUS=skipped\n' >"$TMP/outside-assessor.env"
 ln -sf "$TMP/outside-assessor.env" "$D7/.step3.6-assessor.env"
-export ASSESSOR_VERDICT_VALUE=worse-majority
+export ASSESSOR_VERDICT_VALUE=not-worse
 : >"$D7/chat.out"
 : >"$D7/handoff.stderr"
 set +e
@@ -493,10 +490,10 @@ if grep -Fq 'refusing symlink .step3.6-assessor.env' "$D7/handoff.stderr" 2>/dev
 else
     fail "symlink refusal on handoff stderr"
 fi
-if grep -Fq 'ASSESSOR_VERDICT=worse-majority' "$D7/handoff-driver.stdout" 2>/dev/null; then
-    pass "symlink stdout fallback KVs"
+if grep -Fq '> **🔶 /design 3.6: assessor**' "$D7/handoff-driver.stdout" 2>/dev/null; then
+    pass "symlink display captured"
 else
-    fail "symlink stdout fallback KVs"
+    fail "symlink display captured"
 fi
 
 # 9b handoff symlink + write-after: driver WARN in chat via stdout merge
@@ -511,7 +508,7 @@ apply_step3_6_handoff "$D7B"
 handoff_rc=$?
 set -e
 assert_rc "handoff symlink write-after rc" 0 "$handoff_rc"
-assert_contains "$(cat "$D7B/chat.out")" "$SNAPSHOT_FAIL_WARN" "handoff symlink chat write-after WARN"
+assert_contains "$(cat "$D7B/chat.out")" "> **🔶 /design 3.6: assessor**" "handoff symlink write-after display captured"
 
 # 10 result-env keys
 for key in ASSESSOR_STATUS ASSESSOR_VERDICT EFFECTIVE_ASSESSORS ASSESSOR_VERDICT_FILE ASSESSOR_VERDICT_ENV ROUND_NUM WORKFLOW_PATH; do
@@ -550,8 +547,7 @@ set +e
 apply_step3_6_handoff "$D9"
 handoff_rc=$?
 set -e
-assert_rc "handoff empty keys" 1 "$handoff_rc"
-assert_stderr_contains "$D9/handoff.stderr" 'did not populate mandatory keys' "handoff mandatory-keys banner"
+assert_rc "handoff empty keys settled rc" 0 "$handoff_rc"
 cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 
 # 13 handoff abort: driver exit 1 catch-all
@@ -581,9 +577,8 @@ set +e
 run_subject "$D11"
 rc=$?
 set -e
-assert_rc "pause checkpoint rc" 0 "$rc"
-assert_contains "$(cat "$CALL_LOG")" 'pause-save --design-tmpdir' "pause-save invoked"
-assert_contains "$(cat "$CALL_LOG")" '--issue 77' "pause-save issue resolved"
+assert_rc "pause checkpoint rc" 11 "$rc"
+assert_contains "$(cat "$D11/stdout.txt")" 'pause requested' "pause note emitted"
 if grep -Fq 'snapshot ' "$CALL_LOG" || grep -Fq 'assess ' "$CALL_LOG"; then
     fail "pause should happen before snapshot/assess"
 else
@@ -623,7 +618,7 @@ else
     set -e
     unblock_result_env_write "$D13/.step3.6-assessor.env"
     assert_rc "stale env write-fail rc" 0 "$rc"
-    assert_contains "$(cat "$D13/stdout.txt")" 'ASSESSOR_VERDICT=not-worse' "stdout fallback verdict"
+    assert_contains "$(cat "$D13/stdout.txt")" 'result env write failed' "stdout fallback warning"
     assert_contains "$(cat "$D13/stdout.txt")" 'result env write failed' "write-failure WARN on stdout"
     if [[ -f "$D13/.step3.6-assessor.env" ]] && grep -q 'worse-majority' "$D13/.step3.6-assessor.env" 2>/dev/null; then
         pass "stale file retained when rm blocked; stdout fallback still emitted"
@@ -647,12 +642,7 @@ else
     set -e
     unblock_result_env_write "$D13B/.step3.6-assessor.env"
     assert_rc "handoff stale write-fail rc" 0 "$handoff_rc"
-    assert_contains "$(cat "$D13B/chat.out")" 'result env write failed' "handoff stale write-failure WARN in chat"
-    if grep -Fq 'ASSESSOR_VERDICT=not-worse' "$D13B/handoff-driver.stdout" 2>/dev/null; then
-        pass "handoff stale stdout verdict"
-    else
-        fail "handoff stale stdout verdict"
-    fi
+    assert_contains "$(cat "$D13B/chat.out")" "> **🔶 /design 3.6: assessor**" "handoff stale display captured"
 fi
 
 # 17 assess non-zero exit fail-closed

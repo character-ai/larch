@@ -82,3 +82,7 @@ Update together: `skills/design/SKILL.md` Step 2b and Gate A re-entry prose, `sk
 ## Harness
 
 `skills/design/scripts/test-design-postplan-emit.sh` (Makefile target: `test-design-postplan-emit`).
+
+## Snapshot classification gate
+
+`--snapshot-original` resolves eligibility with `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh` against `run-params.json`. Missing, unreadable, or invalid `design_classification` resolves to HARD for snapshot purposes. Legacy `workflow_path` cannot suppress the original snapshot when classification resolves HARD; SIMPLE classification emits `SNAPSHOT_STATUS=skipped-not-hard`.

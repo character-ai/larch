@@ -28,3 +28,7 @@ Successful tally writes:
 - `assessor-verdict-round-<N>.txt.env`
 
 Fail-open synthesis writes the same artifacts with a `NOT_WORSE` verdict so Step 3.6 warnings always point at a real sidecar.
+
+## Classification override
+
+`--design-classification HARD|SIMPLE` is accepted for callers that already resolved tier with `scripts/read-design-classification.sh`. The explicit override takes precedence over `run-params.json`. When the override is absent, the helper delegates to `read-design-classification.sh`; missing, unreadable, or invalid `design_classification` resolves to HARD. Legacy `workflow_path` cannot suppress assessment when `design_classification` is absent or invalid.

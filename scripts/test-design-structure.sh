@@ -1189,14 +1189,17 @@ contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'assess-plan-round.sh' 'design-plan-
 contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'snapshot-plan-round.sh' 'design-plan-quality-assessor.sh missing snapshot-plan-round'
 # shellcheck disable=SC2016 # SKILL.md bash excerpt; qualified path must remain unexpanded.
 contains "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh"' 'SKILL.md missing qualified design-plan-quality-assessor invocation'
-contains "$SKILL_MD" 'Step 3.6: refusing symlink .step3.6-assessor.env; using stdout fallback.' 'SKILL.md missing Step 3.6 symlink refusal'
+contains "$SKILL_MD" 'LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN' 'SKILL.md missing trusted assessor trailer marker parser'
+contains "$SKILL_MD" 'ASSESSOR_RC=%s' 'SKILL.md missing orchestrator-owned assessor rc print'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+contains "$SKILL_MD" 'design_classification=${_design_classification}; skipped' 'SKILL.md missing design_classification cheap-skip breadcrumb'
 contains "$SKILL_MD" 'design-plan-quality-assessor.sh configuration error (exit 2)' 'SKILL.md missing assessor exit-2 abort prose'
-contains "$SKILL_MD" 'design-plan-quality-assessor.sh result env missing/unreadable and stdout did not populate mandatory keys; aborting /design.' 'SKILL.md missing assessor mandatory-keys abort prose'
+contains "$SKILL_MD" 'WORSE-majority rc missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer' 'SKILL.md missing rc=10 trusted trailer fail-closed abort prose'
 contains "$MAKEFILE" 'test-design-plan-quality-assessor' 'Makefile missing test-design-plan-quality-assessor target'
 [[ -x "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" ]] || fail "design-plan-quality-assessor.sh must be executable"
 contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'LARCH_SNAPSHOT_PLAN_ROUND_SH' 'design-plan-quality-assessor.sh missing SNAPSHOT_SH seam'
 contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'LARCH_ASSESS_PLAN_ROUND_SH' 'design-plan-quality-assessor.sh missing ASSESS_SH seam'
-contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" '_write_result_and_emit' 'design-plan-quality-assessor.sh missing result flush helper'
+contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" '_write_result_env' 'design-plan-quality-assessor.sh missing result flush helper'
 contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" '_assessor_pause_checkpoint' 'design-plan-quality-assessor.sh missing pause checkpoint'
 contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'set +e' 'design-plan-quality-assessor.sh missing child set +e capture'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.

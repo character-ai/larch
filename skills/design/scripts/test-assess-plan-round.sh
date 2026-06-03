@@ -72,6 +72,32 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present tr
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=skipped' || fail 'SIMPLE workflow_path with HARD classification must follow classification skip'
 pass 'workflow_path vs design_classification mismatch follows classification'
 
+
+setup_round2
+printf '{"workflow_path":"SIMPLE"}
+' >"$TMP/run-params.json"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s
+' "$out" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail 'missing design_classification must fail closed HARD despite workflow_path=SIMPLE'
+pass 'missing design_classification fails closed HARD'
+
+setup_round2
+printf '{"workflow_path":"SIMPLE","design_classification":"invalid"}
+' >"$TMP/run-params.json"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s
+' "$out" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail 'invalid design_classification must fail closed HARD despite workflow_path=SIMPLE'
+pass 'invalid design_classification fails closed HARD'
+
+setup_round2
+printf '{"workflow_path":"SIMPLE","design_classification":"SIMPLE"}
+' >"$TMP/run-params.json"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true --design-classification HARD)
+printf '%s
+' "$out" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail '--design-classification HARD must override SIMPLE run params'
+pass 'explicit HARD classification override runs assessor'
+rm -f "$TMP"/assessor-verdict-round-*.txt "$TMP"/assessor-verdict-round-*.txt.env
+
 write_params HARD
 printf '1\n' >"$TMP/plan-review-round-cursor.txt"
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)

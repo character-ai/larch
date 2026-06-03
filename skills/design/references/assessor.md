@@ -71,3 +71,7 @@ On `ASSESSOR_STATUS=paused`: driver pause checkpoint wrote `ASSESSOR_STATUS=paus
 ## #2871
 
 Future auto-loop may re-enter assessor each round; today's trigger is operator-driven Gate C(c) → Step 3 re-entry.
+
+## Thin-fence operator UX
+
+The Step 3.6 driver owns WORSE rendering. rc `10` triggers the Continue/Stop question, rc `11` triggers prompt-side pause-save, and settled statuses including `missing-snapshot` return rc `0`. The canonical verdict env sidecar is `assessor-verdict-round-<N>.txt.env`; the driver loads `QUALIFICATIONS_SUMMARY` from the `ASSESSOR_VERDICT_ENV` path emitted by `assess-plan-round.sh`. Write-after failure records `ASSESSOR_STATUS=write-after-failed`, rolls back pending round state, skips dispatch, and continues to Step 3b.

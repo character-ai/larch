@@ -88,3 +88,9 @@ Update together: `skills/design/SKILL.md` Step 3.6, `skills/design/references/as
 `skills/design/scripts/test-design-plan-quality-assessor.sh` (Makefile target: `test-design-plan-quality-assessor`).
 
 Cross-links: `assessor.md`, `assess-plan-round.md`, `snapshot-plan-round.md`, `lib-phase-driver.md`, `design-postplan-emit.md`.
+
+## Thin-fence exit contract
+
+Exit codes are now: `0` settled (including `missing-snapshot` fail-open/degraded statuses), `2` argv/configuration error, `10` WORSE-majority action branch, and `11` pause-save handoff. Exit `1` is reserved. The driver writes paused state and exits `11`; the prompt-side orchestrator executes `design-pause-save.sh`.
+
+The driver renders the HARD banner, warnings, paused note, and WORSE-majority display via `emit`. On rc=`10`, it appends a trusted trailer frame after display text; the orchestrator filters trailer lines from chat, parses only the last exact marker frame, and requires a numeric `LARCH_ASSESSOR_ROUND_NUM` before Continue/Stop. General machine KVs stay in `.step3.6-assessor.env` and are not emitted on FD 3.

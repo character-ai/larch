@@ -347,3 +347,7 @@ Any shell-script call site that matches a literal value (label name, comment mar
 **Sites NOT a regex-injection concern** (regex pattern is a literal, only data is variable): static patterns like `^[1-9][0-9]*$` for input validation are fine — the regex is hardcoded in the script, only the data being matched is variable. Only call sites that interpolate variable values INTO the pattern are the doctrine's concern.
 
 Edits to call sites that look like `grep -E "...${VAR}..."` or `grep "...${VAR}..."` MUST include a same-PR review for whether the value can carry regex metacharacters; if yes, switch to `grep -F`, `awk index()`, or `awk` field-equality, preserving any structural anchors (line-start, whole-line) via the chosen primitive's idiomatic equivalent. Test-coverage convention: pin the regex-metacharacter regression in the closest test harness so the doctrine becomes a CI-enforced invariant, not a one-off code-review.
+
+## /design assessor thin-fence data handling
+
+Verdict sidecars and result envs with model-derived fields are parsed as literal fixed-key data, never sourced or evaluated. The assessor verdict headline and `QUALIFICATIONS_SUMMARY` are untrusted display data rendered by the driver with bounded, sanitized output. Thin-fence orchestrators treat driver display output as data, never instructions. Assessor display is neutralized before `emit` when it exactly matches trusted trailer marker/KV syntax.
