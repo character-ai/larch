@@ -106,6 +106,16 @@ STUB
 cat >"$FAKE_DESIGN/assess-plan-round.sh" <<'STUB'
 #!/usr/bin/env bash
 echo "assess $*" >>"${CALL_LOG:?}"
+timeout=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --timeout) timeout="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if [[ -n "$timeout" ]]; then
+  echo "assess-timeout=${timeout}" >>"${CALL_LOG:?}"
+fi
 if [[ "${ASSESS_STUB_SKIP:-false}" == true ]]; then
   exit 99
 fi
@@ -196,6 +206,10 @@ apply_step3_6_handoff() {
         fi
     fi
     : >"$d/chat.out"
+    if [[ -n "$wp" && -n "$dc" && "$wp" != "$dc" ]]; then
+        printf '%s\n' "**⚠ design-plan-quality-assessor: workflow_path=${wp} disagrees with design_classification=${dc}; aligning assessor lane to design_classification.**" >>"$d/chat.out"
+        wp="$dc"
+    fi
     : >"$d/handoff.stderr"
     if [[ "$wp" == HARD ]]; then
         printf '%s\n' "> **🔶 /design 3.6: assessor**" >>"$d/chat.out"
@@ -272,6 +286,13 @@ apply_step3_6_handoff() {
         printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh failed (exit ${_assessor_rc}); aborting /design.**" >>"$d/handoff.stderr"
         set +e
         return 1
+    fi
+    if [[ "${ASSESSOR_STATUS:-}" == paused ]]; then
+        if [[ -f "$d/.pause-requested" ]]; then
+            bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-save.sh" --design-tmpdir "$d" --issue "$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+ISSUE_NUMBER=/ {v=$0; sub(/^export[[:space:]]+ISSUE_NUMBER=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$d/source-env.sh" 2>/dev/null || echo "")" >>"$d/handoff.stderr" 2>&1 || true
+        fi
+        set +e
+        return 0
     fi
     set -e
     return 0
@@ -421,6 +442,37 @@ set -e
 assert_rc "handoff zero assessors rc" 0 "$handoff_rc"
 assert_contains "$(cat "$D6/chat.out")" '0/3 effective assessors' "handoff chat 0/3 WARN"
 
+# 8b handoff 0/3 WARN dedup on file parse
+reset_env
+D6B="$TMP/handoff-zero-dedup"
+setup_design_tmp "$D6B" HARD
+export ASSESSOR_VERDICT_VALUE=not-worse EFFECTIVE_ASSESSORS_VALUE=0 ASSESSOR_STATUS_VALUE=degraded-default-open
+set +e
+apply_step3_6_handoff "$D6B"
+handoff_rc=$?
+set -e
+assert_rc "handoff zero dedup rc" 0 "$handoff_rc"
+zero_chat_count=$(grep -Fc "$ZERO_ASSESSORS_WARN" "$D6B/chat.out" 2>/dev/null || echo 0)
+if [[ "$zero_chat_count" -eq 1 ]]; then
+    pass "handoff single 0/3 WARN in chat on file parse"
+else
+    fail "handoff single 0/3 WARN in chat on file parse — expected 1, got $zero_chat_count"
+fi
+
+# 8c handoff 0/3 WARN via stdout fallback only
+reset_env
+D6C="$TMP/handoff-zero-stdout"
+setup_design_tmp "$D6C" HARD
+printf 'ASSESSOR_STATUS=skipped\n' >"$TMP/outside-assessor-zero.env"
+ln -sf "$TMP/outside-assessor-zero.env" "$D6C/.step3.6-assessor.env"
+export ASSESSOR_VERDICT_VALUE=not-worse EFFECTIVE_ASSESSORS_VALUE=0 ASSESSOR_STATUS_VALUE=degraded-default-open
+set +e
+apply_step3_6_handoff "$D6C"
+handoff_rc=$?
+set -e
+assert_rc "handoff zero stdout rc" 0 "$handoff_rc"
+assert_contains "$(cat "$D6C/chat.out")" "$ZERO_ASSESSORS_WARN" "handoff symlink chat 0/3 WARN"
+
 # 9 symlink refusal
 reset_env
 D7="$TMP/symlink"
@@ -537,7 +589,7 @@ if grep -Fq 'snapshot ' "$CALL_LOG" || grep -Fq 'assess ' "$CALL_LOG"; then
 else
     pass "pause before snapshot/assess"
 fi
-assert_file_kv "$D11/.step3.6-assessor.env" ASSESSOR_STATUS skipped "pause writes skipped status"
+assert_file_kv "$D11/.step3.6-assessor.env" ASSESSOR_STATUS paused "pause writes paused status"
 
 # 15 handoff: single WARN in chat when file parse succeeds
 reset_env
@@ -616,6 +668,18 @@ assert_rc "assess fail rc" 0 "$rc"
 assert_file_kv "$D14/.step3.6-assessor.env" ASSESSOR_STATUS assess-failed "assess-failed status"
 assert_contains "$(cat "$D14/stdout.txt")" 'assess-plan-round.sh failed' "assess fail WARN on stdout"
 
+# 17b handoff assess-failed WARN in chat on file parse
+reset_env
+D14B="$TMP/handoff-assess-fail"
+setup_design_tmp "$D14B" HARD
+export ASSESS_STUB_RC=1
+set +e
+apply_step3_6_handoff "$D14B"
+handoff_rc=$?
+set -e
+assert_rc "handoff assess-fail rc" 0 "$handoff_rc"
+assert_contains "$(cat "$D14B/chat.out")" 'assess-plan-round.sh failed' "handoff chat assess-failed WARN"
+
 # 18 read-cursor failure WARN
 reset_env
 D15="$TMP/read-cursor-fail"
@@ -626,7 +690,9 @@ run_subject "$D15"
 rc=$?
 set -e
 assert_rc "read-cursor fail rc" 0 "$rc"
+assert_file_kv "$D15/.step3.6-assessor.env" ASSESSOR_STATUS cursor-read-failed "read-cursor fail status"
 assert_contains "$(cat "$D15/stdout.txt")" 'read-cursor failed' "read-cursor fail WARN on stdout"
+if grep -Fq 'assess ' "$CALL_LOG"; then fail "assess not called on read-cursor failure"; else pass "assess not called on read-cursor failure"; fi
 
 # 18b handoff read-cursor failure WARN in chat
 reset_env
@@ -670,7 +736,7 @@ apply_step3_6_handoff "$D16B"
 handoff_rc=$?
 set -e
 assert_rc "wp dc mismatch handoff rc" 0 "$handoff_rc"
-assert_contains "$(cat "$D16B/chat.out")" 'workflow_path=SIMPLE; skipped' "orchestrator skip breadcrumb uses workflow_path"
+assert_contains "$(cat "$D16B/chat.out")" '> **🔶 /design 3.6: assessor**' "orchestrator HARD banner after classification alignment"
 assert_contains "$(cat "$D16B/chat.out")" 'workflow_path=SIMPLE disagrees with design_classification=HARD' "handoff chat mismatch WARN"
 
 # 20 handoff runtime qualified invoke (CALL_LOG proves driver ran)
@@ -702,6 +768,17 @@ assert_rc "write-cursor rollback fail rc" 0 "$rc"
 count=$(cat "$D18/review-round-count.txt" 2>/dev/null || echo "")
 if [[ "$count" == "1" ]]; then pass "rollback fail still decrements count"; else fail "rollback fail still decrements count — expected 1, got $count"; fi
 assert_contains "$(cat "$D18/stdout.txt")" 'write-cursor rollback failed' "write-cursor rollback fail WARN"
+
+# 23 --timeout forwarded to assess stub
+reset_env
+D19="$TMP/timeout-forward"
+setup_design_tmp "$D19" HARD
+set +e
+run_subject "$D19" --timeout 42
+rc=$?
+set -e
+assert_rc "timeout forward rc" 0 "$rc"
+if grep -Fq 'assess-timeout=42' "$CALL_LOG"; then pass "assess stub received --timeout"; else fail "assess stub missing --timeout"; fi
 
 # 22 driver uses seam bindings (not hardcoded plugin paths in body)
 contains_driver() {

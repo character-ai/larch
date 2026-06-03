@@ -37,11 +37,19 @@ On `ASSESSOR_VERDICT=worse-majority` with `ASSESSOR_STATUS=ok` and `EFFECTIVE_AS
 - **Continue** → Step 3b unchanged.
 - **Stop** → `SUMMARY_OUTCOME=cancelled-assessor-worse`, Final summary, preserve `$DESIGN_TMPDIR`, no `[DESIGNED]` rename, no design-log publish.
 
-On `EFFECTIVE_ASSESSORS=0`: proceed as NOT_WORSE; print `**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round <N>, see assessor-verdict-round-<N>.env).**` — no Continue/Stop prompt. Dispatch or tally failures must still leave a verdict `.env` behind via degraded-default-open synthesis so the warning points to a real artifact.
+On `EFFECTIVE_ASSESSORS=0`: proceed as NOT_WORSE; print `**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round <N>, see ${ASSESSOR_VERDICT_ENV:-assessor-verdict-round-<N>.env}).**` — no Continue/Stop prompt. Dispatch or tally failures must still leave a verdict `.env` behind via degraded-default-open synthesis so the warning points to a real artifact.
+
+### No Continue/Stop prompt
+
+Do not fire the WORSE **Continue** / **Stop** `AskUserQuestion` when `ASSESSOR_STATUS` is any of: `skipped`, `paused`, `missing-snapshot`, `write-after-failed`, `assess-failed`, `cursor-read-failed`, or `degraded-default-open` (aligned with `SKILL.md` Step 3.6 gate routing).
 
 On `ASSESSOR_STATUS=write-after-failed`: post-Gate-B snapshot failed; driver rolls back `review-round-count.txt`, attempts cursor rollback, skips assessor dispatch, and continues to Step 3b — no Continue/Stop prompt.
 
-On `ASSESSOR_STATUS=assess-failed`: `assess-plan-round.sh` exited non-zero; driver logs via `append-tool-failure.sh`, settles with `ASSESSOR_VERDICT=skipped`, and continues to Step 3b — no Continue/Stop prompt.
+On `ASSESSOR_STATUS=assess-failed`: `assess-plan-round.sh` exited non-zero or returned exit `0` without `ASSESSOR_STATUS`; driver logs via `append-tool-failure.sh`, settles with `ASSESSOR_VERDICT=skipped`, and continues to Step 3b — no Continue/Stop prompt.
+
+On `ASSESSOR_STATUS=cursor-read-failed`: `snapshot-plan-round.sh read-cursor` failed on the HARD lane; driver skips `write-after` and assessor dispatch and continues to Step 3b — no Continue/Stop prompt.
+
+On `ASSESSOR_STATUS=paused`: driver pause checkpoint wrote `ASSESSOR_STATUS=paused` before `exec design-pause-save.sh`; orchestrator must not treat the lane as skipped or proceed to Step 3b until pause is saved.
 
 ## External assessor dispatch (availability-gated, #3207)
 

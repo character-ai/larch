@@ -23,6 +23,9 @@ parse_kv_from_output() {
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         _key="${_line%%=*}"
         _value="${_line#*=}"
+        if [[ "$_value" == *$'\n'* || "$_value" == *$'\r'* ]]; then
+            continue
+        fi
         case "$_key" in
             ASSESSOR_STATUS) ASSESSOR_STATUS="$_value" ;;
             ASSESSOR_VERDICT) ASSESSOR_VERDICT="$_value" ;;
@@ -34,6 +37,8 @@ parse_kv_from_output() {
         esac
     done <<<"$text"
 }
+
+_ROUND_CURSOR_READ_FAILED=false
 
 json_scalar_or_sed() {
     local file="$1" key="$2" default_value="$3" value=""
@@ -175,7 +180,7 @@ _assessor_pause_checkpoint() {
         local _issue
         _issue="$(_assessor_resolve_issue)"
         [[ -n "$_issue" ]] || fail 'pause requested but ISSUE_NUMBER could not be resolved'
-        ASSESSOR_STATUS=skipped
+        ASSESSOR_STATUS=paused
         ASSESSOR_VERDICT=skipped
         EFFECTIVE_ASSESSORS=0
         _write_result_and_emit
@@ -185,18 +190,23 @@ _assessor_pause_checkpoint() {
 
 _read_round_cursor() {
     set +e
-    local _cursor_out
-    _cursor_out=$("$SNAPSHOT_SH" read-cursor --design-tmpdir "$DESIGN_TMPDIR" 2>&1)
+    local _cursor_stdout _cap
+    _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-read-cursor-stderr.XXXXXX")
+    _cursor_stdout=$("$SNAPSHOT_SH" read-cursor --design-tmpdir "$DESIGN_TMPDIR" 2>"$_cap")
     local _cursor_rc=$?
     set -e
     ROUND_NUM=1
+    _ROUND_CURSOR_READ_FAILED=false
     if [[ "$_cursor_rc" -eq 0 ]]; then
-        parse_kv_from_output "$_cursor_out"
+        parse_kv_from_output "$_cursor_stdout"
     else
-        WARN_LINES+=("**⚠ design-plan-quality-assessor: snapshot read-cursor failed (exit ${_cursor_rc}); using ROUND_NUM=1.**")
+        _ROUND_CURSOR_READ_FAILED=true
+        WARN_LINES+=("**⚠ design-plan-quality-assessor: snapshot read-cursor failed (exit ${_cursor_rc}); settling as cursor-read-failed.**")
         set +e
-        _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-read-cursor.XXXXXX")
-        printf '%s\n' "$_cursor_out" >"$_cap" 2>/dev/null || true
+        {
+            printf '%s\n' "$_cursor_stdout"
+            cat "$_cap" 2>/dev/null || true
+        } >"${_cap}.merged" 2>/dev/null || true
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 3.6" \
@@ -204,11 +214,12 @@ _read_round_cursor() {
             --exit-code "$_cursor_rc" \
             --category Warnings \
             --redact \
-            --output-file "$_cap" \
+            --output-file "${_cap}.merged" \
             >/dev/null 2>&1 || true
-        rm -f "$_cap" 2>/dev/null || true
+        rm -f "${_cap}.merged" 2>/dev/null || true
         set -e
     fi
+    rm -f "$_cap" 2>/dev/null || true
 }
 
 _assessor_pause_checkpoint
@@ -218,6 +229,7 @@ if [[ "$WORKFLOW_PATH" != HARD ]]; then
     ASSESSOR_STATUS=skipped
     ASSESSOR_VERDICT=skipped
     EFFECTIVE_ASSESSORS=0
+    _assessor_pause_checkpoint
     _write_result_and_emit
     exit 0
 fi
@@ -226,8 +238,18 @@ _read_round_cursor
 
 _assessor_pause_checkpoint
 
+if [[ "$_ROUND_CURSOR_READ_FAILED" == true ]]; then
+    ASSESSOR_STATUS=cursor-read-failed
+    ASSESSOR_VERDICT=skipped
+    EFFECTIVE_ASSESSORS=0
+    _assessor_pause_checkpoint
+    _write_result_and_emit
+    exit 0
+fi
+
 set +e
-_snap_out=$("$SNAPSHOT_SH" write-after --design-tmpdir "$DESIGN_TMPDIR" --round "$ROUND_NUM" 2>&1)
+_snap_cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-write-after-stderr.XXXXXX")
+_snap_out=$("$SNAPSHOT_SH" write-after --design-tmpdir "$DESIGN_TMPDIR" --round "$ROUND_NUM" 2>"$_snap_cap")
 _snap_rc=$?
 set -e
 
@@ -259,9 +281,13 @@ if [[ "$_snap_rc" -ne 0 ]]; then
     ASSESSOR_STATUS=write-after-failed
     ASSESSOR_VERDICT=skipped
     EFFECTIVE_ASSESSORS=0
+    _assessor_pause_checkpoint
     _write_result_and_emit
+    rm -f "$_snap_cap" 2>/dev/null || true
     exit 0
 fi
+
+rm -f "$_snap_cap" 2>/dev/null || true
 
 _assessor_pause_checkpoint
 
@@ -272,11 +298,12 @@ ASSESSOR_VERDICT_FILE=""
 ASSESSOR_VERDICT_ENV=""
 
 set +e
+_assess_cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-assess-stderr.XXXXXX")
 _assess_out=$("$ASSESS_SH" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --codex-present "$CODEX_PRESENT" \
     --cursor-present "$CURSOR_PRESENT" \
-    --timeout "$TIMEOUT" 2>&1)
+    --timeout "$TIMEOUT" 2>"$_assess_cap")
 _assess_rc=$?
 set -e
 
@@ -284,7 +311,10 @@ if [[ "$_assess_rc" -ne 0 ]]; then
     WARN_LINES+=("**⚠ design-plan-quality-assessor: assess-plan-round.sh failed (exit ${_assess_rc}); settling as assess-failed.**")
     set +e
     _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-assess.XXXXXX")
-    printf '%s\n' "$_assess_out" >"$_cap" 2>/dev/null || true
+    {
+        printf '%s\n' "$_assess_out"
+        cat "$_assess_cap" 2>/dev/null || true
+    } >"$_cap" 2>/dev/null || true
     "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site "design Step 3.6" \
@@ -301,11 +331,14 @@ if [[ "$_assess_rc" -ne 0 ]]; then
     EFFECTIVE_ASSESSORS=0
     ASSESSOR_VERDICT_FILE=""
     ASSESSOR_VERDICT_ENV=""
+    _assessor_pause_checkpoint
     _write_result_and_emit
+    rm -f "$_assess_cap" 2>/dev/null || true
     exit 0
 fi
 
 parse_kv_from_output "$_assess_out"
+rm -f "$_assess_cap" 2>/dev/null || true
 
 if [[ -z "$ASSESSOR_STATUS" ]]; then
     WARN_LINES+=("**⚠ design-plan-quality-assessor: assess-plan-round.sh exited 0 but ASSESSOR_STATUS missing; settling as assess-failed.**")
@@ -328,6 +361,7 @@ if [[ -z "$ASSESSOR_STATUS" ]]; then
     EFFECTIVE_ASSESSORS=0
     ASSESSOR_VERDICT_FILE=""
     ASSESSOR_VERDICT_ENV=""
+    _assessor_pause_checkpoint
     _write_result_and_emit
     exit 0
 fi
@@ -339,5 +373,6 @@ if [[ "$ASSESSOR_VERDICT" == not-worse && "${EFFECTIVE_ASSESSORS:-0}" == 0 ]]; t
     WARN_LINES+=("**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round ${ROUND_NUM}, see ${ASSESSOR_VERDICT_ENV:-?}).**")
 fi
 
+_assessor_pause_checkpoint
 _write_result_and_emit
 exit 0
