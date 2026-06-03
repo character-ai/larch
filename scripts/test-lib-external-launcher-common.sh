@@ -469,7 +469,9 @@ assert_resolver_timeout() {
         printf 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=%s\n' "$implement_val" > "$case_dir/implement/session-env.sh"
     fi
     local -a resolver_env=(env -u LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT)
-    if [[ -n "$env_val" ]]; then
+    if [[ "$env_val" == "__EMPTY__" ]]; then
+        resolver_env+=(LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="")
+    elif [[ -n "$env_val" ]]; then
         resolver_env+=(LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="$env_val")
     fi
     cat > "$case_dir/run-resolver.sh" <<'RESOLVER_EOF'
@@ -497,6 +499,8 @@ RESOLVER_EOF
 assert_resolver_timeout "resolver default without sources" "" "" "" "30"
 assert_resolver_timeout "resolver zero opt-out" "0" "" "" ""
 assert_resolver_timeout "resolver positive override" "45" "" "" "45"
+assert_resolver_timeout "resolver non-numeric env" "abc" "" "" "30"
+assert_resolver_timeout "resolver empty env" "__EMPTY__" "" "" "30"
 
 if (( FAIL > 0 )); then
     printf 'FAIL: test-lib-external-launcher-common.sh — %s failed, %s passed\n' "$FAIL" "$PASS" >&2

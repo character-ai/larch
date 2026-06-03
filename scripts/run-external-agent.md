@@ -121,6 +121,8 @@ Production entry points include `scripts/launch-review.sh` (per-tool review lane
 
 `scripts/test-run-external-agent.sh` exercises timeout behavior, sentinel contracts, `CMD_JSON` failure paths, and related edge cases. Stall-detection integration for Cursor CI lives in `scripts/test-launch-cursor-ci.sh`.
 
+New harnesses that stub `run-external-agent.sh` should `export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0` at suite entry unless they intentionally exercise the pre-launch health gate — default-on resolution otherwise runs `scripts/check-reviewers.sh` and can flake offline.
+
 ## Edit-in-sync
 
 Keep this file aligned with `scripts/run-external-agent.sh`, `scripts/collect-agent-results.sh` (`.meta` / retry reader), and any launcher that changes capture or sentinel semantics.
