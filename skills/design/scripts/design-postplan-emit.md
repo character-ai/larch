@@ -16,10 +16,10 @@ Only the initial Step 2b call passes `--snapshot-original`. Re-emit sites suppre
 
 ## Responsibilities
 
-1. Resolve `CLAUDE_PLUGIN_ROOT`, export `CLAUDE_PLUGIN_ROOT` and `DESIGN_TMPDIR`, and read `review_budget` / `workflow_path` from `run-params.json` with a `jq` primary path and `sed` fallback.
+1. Resolve `CLAUDE_PLUGIN_ROOT`, export `CLAUDE_PLUGIN_ROOT` and `DESIGN_TMPDIR`, and read `review_budget` from `run-params.json` with a `jq` primary path and `sed` fallback. Snapshot eligibility is resolved separately through `read-design-classification.sh`.
 2. Pause checkpoint before each internal step. If `.pause-requested` exists, `_postplan_resolve_issue` uses prelude-sourced `ISSUE_NUMBER` or `source-env.sh` (`export ISSUE_NUMBER=...`) and then `exec`s `design-pause-save.sh`.
 3. Pipe `ACTION=EMIT_PLAN` to `design-driver.sh` and parse `EMIT_PLAN_STATUS` / `DIFF_LINES`.
-4. When `--snapshot-original` and `workflow_path=HARD`, run `snapshot-plan-round.sh write-original --design-tmpdir DIR`; otherwise emit a skipped snapshot status.
+4. When `--snapshot-original` and `read-design-classification.sh` resolves `design_classification=HARD`, run `snapshot-plan-round.sh write-original --design-tmpdir DIR`; otherwise emit a skipped snapshot status.
 5. Run `invoke-plan-validator.sh DIR/plan.txt` unless `review_budget=quick` and `--force-validate` is absent.
 6. Stop before Step 2b.5 and before the prompt-side `AskUserQuestion` for plan-command validator defects.
 

@@ -237,10 +237,18 @@ out_36_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-36" --issue 9 --repo ow
 
 DESIGN_GATE_B="$TMP/design-gate-b-bypass"
 make_design_tmpdir "$DESIGN_GATE_B"
-complete_design_steps "$DESIGN_GATE_B" 3
+complete_design_steps "$DESIGN_GATE_B" 3 3.5 3.6
 printf 'issue body gate b\n' >"$BODY_FILE"
 out_gate_b=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B" --issue 9 --repo owner/repo)
-[[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3.5"* ]] || fail "gate B bypass should resume at 3.5: $out_gate_b"
+[[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass triple-sentinel layout should resume at 3b: $out_gate_b"
+[[ -f "$DESIGN_GATE_B/.completed/step-3" && -f "$DESIGN_GATE_B/.completed/step-3.5" && -f "$DESIGN_GATE_B/.completed/step-3.6" ]] || fail "gate B bypass missing triple sentinels"
+
+DESIGN_GATE_B_MISSING="$TMP/design-gate-b-missing-sentinels"
+make_design_tmpdir "$DESIGN_GATE_B_MISSING"
+complete_design_steps "$DESIGN_GATE_B_MISSING" 3
+printf 'issue body gate b missing\n' >"$BODY_FILE"
+out_gate_b_missing=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_MISSING" --issue 9 --repo owner/repo)
+[[ "$out_gate_b_missing" == *"PAUSE_OK=true"* && "$out_gate_b_missing" == *"STEP=3.5"* ]] || fail "missing gate B bypass sentinels should resume at 3.5: $out_gate_b_missing"
 
 DESIGN_GATE_B_DONE="$TMP/design-gate-b-done"
 make_design_tmpdir "$DESIGN_GATE_B_DONE"

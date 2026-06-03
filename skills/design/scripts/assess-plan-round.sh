@@ -28,9 +28,15 @@ resolve_design_classification() {
             *) larch_err "assess-plan-round.sh: invalid --design-classification: $DESIGN_CLASSIFICATION_OVERRIDE"; exit 2 ;;
         esac
     fi
-    local reader="$PLUGIN_ROOT/scripts/read-design-classification.sh" out
+    local reader="$PLUGIN_ROOT/scripts/read-design-classification.sh" out err rc
     if [[ -x "$reader" ]]; then
-        out=$("$reader" "$DESIGN_TMPDIR/run-params.json" 2>&1 | tail -n 1 || true)
+        err=$(mktemp "${TMPDIR:-/tmp}/assess-plan-round-classification-stderr.XXXXXX")
+        set +e
+        out=$("$reader" "$DESIGN_TMPDIR/run-params.json" 2>"$err")
+        rc=$?
+        set -e
+        rm -f "$err" 2>/dev/null || true
+        [[ "$rc" -eq 0 ]] || out=""
         case "$out" in HARD|SIMPLE) printf '%s' "$out"; return 0 ;; esac
     fi
     printf '%s' HARD

@@ -37,6 +37,19 @@ absent() {
   fi
 }
 
+assert_thin_fence() {
+  local file="$1" label="$2"
+  grep -Fq 'set +e' "$file" || fail "$label missing set +e child capture"
+  grep -Fq '$?' "$file" || fail "$label missing explicit rc capture"
+  # shellcheck disable=SC2016 # literal shell snippet should not expand in the harness.
+  if grep -Fq 'source "$DESIGN_TMPDIR/.step3.6-assessor.env"' "$file"; then
+    fail "$label must not source assessor result env"
+  fi
+  if grep -Fq '2>&1 | tail -n 1' "$file"; then
+    fail "$label must not merge stdout/stderr for scalar parsing"
+  fi
+}
+
 contains "$SKILL_MD" '[--hard]' 'SKILL argument hint must expose --hard as the sole tier flag'
 absent "$SKILL_MD" '[--simple|' 'SKILL argument hint must not restore [--simple|--hard] tier alternation'
 contains "$SKILL_MD" 'The default tier is SIMPLE' 'SKILL must document default SIMPLE tier resolution'
@@ -423,6 +436,18 @@ step4_line=$(grep -nF '<!-- step:4 ' "$SKILL_MD" | head -1 | cut -d: -f1 || true
 step3b_between=$(sed -n "$((step3b_line + 1)),$((step4_line - 1))p" "$SKILL_MD")
 grep -Fq 'architecture-diagram.skipped' <<<"$step3b_between" \
   || fail "(15b) Step 3b must document architecture-diagram.skipped sentinel creation"
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
+contains "$SKILL_MD" 'write the triple-sentinel bypass layout (`step-3`, `step-3.5`, and `step-3.6`)' 'SKILL missing Gate-B-bypass triple-sentinel prose'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+contains "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-3.5"' 'SKILL missing Gate-B-bypass step-3.5 sentinel write'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+contains "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-3.6"' 'SKILL missing Gate-B-bypass step-3.6 sentinel write'
+# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
+contains "$SKILL_MD" '${REPO:+--repo "$REPO"}' 'SKILL Step 3.6 rc=11 pause-save must thread REPO'
+contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'gate B bypass triple-sentinel layout should resume at 3b' 'pause/resume harness missing Gate-B-bypass 3b regression'
+contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'missing gate B bypass sentinels should resume at 3.5' 'pause/resume harness missing missing-sentinel regression'
+assert_thin_fence "$SKILL_MD" 'SKILL Step 3.6 thin-fence shape'
+assert_thin_fence "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'design-plan-quality-assessor.sh thin-fence shape'
 # Check 17: Step 5b /larch:issue summary-halt guardrails (#2681).
 ORCHESTRATOR_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"
 [[ -f "$ORCHESTRATOR_NEVER_MD" ]] || fail "(17) orchestrator-never.md missing: $ORCHESTRATOR_NEVER_MD"

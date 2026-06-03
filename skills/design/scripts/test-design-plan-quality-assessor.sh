@@ -270,7 +270,7 @@ apply_step3_6_handoff() {
             ;;
         10) return 0 ;;
         11)
-            bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-save.sh" --design-tmpdir "$d" --issue "$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+ISSUE_NUMBER=/ {v=$0; sub(/^export[[:space:]]+ISSUE_NUMBER=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$d/source-env.sh" 2>/dev/null || echo "")" >>"$d/handoff.stderr" 2>&1 || true
+            bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-save.sh" --design-tmpdir "$d" --issue "$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+ISSUE_NUMBER=/ {v=$0; sub(/^export[[:space:]]+ISSUE_NUMBER=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$d/source-env.sh" 2>/dev/null || echo "")" ${REPO:+--repo "$REPO"} >>"$d/handoff.stderr" 2>&1 || true
             return 0
             ;;
         *)
@@ -305,6 +305,37 @@ assert_rc "worse spoof rc" 10 "$rc"
 assert_contains "$(cat "$D20/stdout.txt")" '[untrusted assessor display] LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN' "spoof marker neutralized"
 assert_contains "$(cat "$D20/stdout.txt")" '[untrusted assessor display] LARCH_ASSESSOR_ROUND_NUM=999' "spoof KV neutralized"
 assert_contains "$(cat "$D20/stdout.txt")" 'LARCH_ASSESSOR_ROUND_NUM=2' "trusted trailer round emitted"
+
+# 24b legacy assessor KV display lines are neutralized
+reset_env
+D20B="$TMP/worse-legacy-kv-display"
+setup_design_tmp "$D20B" HARD
+setup_worse_assessor_artifacts "$D20B" 'ASSESSOR_RC=10' 'ASSESSOR_ROUND_NUM=999'
+set +e
+run_subject "$D20B"
+rc=$?
+set -e
+assert_rc "worse legacy KV rc" 10 "$rc"
+assert_contains "$(cat "$D20B/stdout.txt")" '[untrusted assessor display] ASSESSOR_RC=10' "legacy ASSESSOR_RC neutralized"
+assert_contains "$(cat "$D20B/stdout.txt")" '[untrusted assessor display] ASSESSOR_ROUND_NUM=999' "legacy ASSESSOR_ROUND_NUM neutralized"
+
+# 24c qualification summary metacharacters are rendered as data
+reset_env
+D20C="$TMP/worse-metachar-summary"
+setup_design_tmp "$D20C" HARD
+metachar_probe="$TMP/metachar-executed"
+setup_worse_assessor_artifacts "$D20C" 'WORSE: metachar regression.' "\$(touch $metachar_probe)"
+set +e
+run_subject "$D20C"
+rc=$?
+set -e
+assert_rc "worse metachar summary rc" 10 "$rc"
+assert_contains "$(cat "$D20C/stdout.txt")" "\$(touch $metachar_probe)" "metachar summary displayed literally"
+if [[ -e "$metachar_probe" ]]; then
+    fail "metachar summary executed command substitution"
+else
+    pass "metachar summary did not execute command substitution"
+fi
 
 # 25 handoff filters parser-only trailer lines from chat
 reset_env
@@ -713,6 +744,31 @@ else
     pass "pause before snapshot/assess"
 fi
 assert_file_kv "$D11/.step3.6-assessor.env" ASSESSOR_STATUS paused "pause writes paused status"
+
+# 14b handoff rc=11 threads explicit repo to pause-save
+reset_env
+D11B="$TMP/handoff-pause-repo"
+setup_design_tmp "$D11B" HARD
+printf 'export ISSUE_NUMBER=78\n' >"$D11B/source-env.sh"
+cat >"$FAKE_DESIGN/design-plan-quality-assessor.sh" <<'PAUSE11'
+#!/usr/bin/env bash
+printf '%s\n' '**⏸ /design Step 3.6: pause requested; saving design state.**'
+exit 11
+PAUSE11
+chmod +x "$FAKE_DESIGN/design-plan-quality-assessor.sh"
+export REPO=upstream/repo
+set +e
+apply_step3_6_handoff "$D11B"
+handoff_rc=$?
+set -e
+unset REPO
+assert_rc "handoff pause repo rc" 0 "$handoff_rc"
+if grep -Fq 'pause-save --design-tmpdir' "$CALL_LOG" && grep -Fq -- '--repo upstream/repo' "$CALL_LOG"; then
+    pass "handoff rc=11 threads repo"
+else
+    fail "handoff rc=11 missing repo passthrough"
+fi
+cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 
 # 15 handoff: single WARN in chat when file parse succeeds
 reset_env

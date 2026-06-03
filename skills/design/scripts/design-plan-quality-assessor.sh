@@ -177,7 +177,7 @@ _emit_warn_lines() {
 _neutralize_assessor_display_line() {
     local line="$1"
     line=$(printf '%s' "$line" | sanitize_diagnostic_line)
-    if [[ "$line" == "$TRAILER_MARKER" || "$line" =~ ^LARCH_ASSESSOR_[A-Z0-9_]*= ]]; then
+    if [[ "$line" == "$TRAILER_MARKER" || "$line" =~ ^LARCH_ASSESSOR_[A-Z0-9_]*= || "$line" =~ ^ASSESSOR_(RC|ROUND_NUM)= ]]; then
         printf '[untrusted assessor display] %s\n' "$line"
     else
         printf '%s\n' "$line"
