@@ -156,6 +156,7 @@ def test_merge_continues_when_flush_skips_missing_state(
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
     monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(
         tmpdir=str(tmp_path),
@@ -885,3 +886,48 @@ def test_merge_noop_defaults_to_merged_when_state_unknown(
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_MERGED
+
+
+def test_merge_post_flush_false_skips_internal_flush(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"BEHIND","headRefOid":"abc"}',
+                "",
+                0.01,
+            ),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
+        ],
+    )
+    calls = {"post": 0}
+
+    def fake_post(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        calls["post"] += 1
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_post", fake_post)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    out = merge_module.merge_pr(runner, _ctx(), post_flush=False)
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+    assert calls["post"] == 0

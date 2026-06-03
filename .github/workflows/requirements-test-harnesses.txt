@@ -1,4 +1,5 @@
-# PyYAML is the only dependency needed for test-harnesses.
+# PyYAML supports workflow/harness parsers; pytest runs Python parity harnesses.
 # pre-commit is not needed here; it is installed via requirements-lint.txt
 # for the lint/shellcheck/agent-sync jobs only.
 pyyaml==6.0.2
+pytest==8.3.5

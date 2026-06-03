@@ -45,6 +45,7 @@ def merge_pr(
     *,
     cwd: str | None = None,
     sleeper: Callable[[float], None] | None = None,
+    post_flush: bool = True,
 ) -> MergeResult:
     """Classify merge into one of eight merge-pr.sh MERGE_RESULT literals."""
     if sleeper is None:
@@ -69,7 +70,7 @@ def merge_pr(
     if ctx.pr_number is None:
         return MergeResult(result=config.MERGE_RESULT_ERROR, error="pr_number required")
 
-    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd)
+    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd, post_flush=post_flush)
     if terminal is not None:
         return terminal
 
@@ -80,7 +81,7 @@ def merge_pr(
             error=redact_merge_diagnostic(f"flush_logs_pre skipped: {pre_skip.reason}"),
         )
 
-    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd)
+    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd, post_flush=post_flush)
     if terminal is not None:
         return terminal
 
@@ -96,7 +97,7 @@ def merge_pr(
             cwd=cwd,
         )
     if not state.merge_state_status or state.merge_state_status == "UNKNOWN":
-        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_ERROR)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_ERROR) if post_flush else None
         if post_err is not None:
             return post_err
         return MergeResult(
@@ -108,7 +109,7 @@ def merge_pr(
         )
 
     if not gh.pr_checks_all_pass(runner, pr_num, repo=ctx.repo, cwd=cwd):
-        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_CI_NOT_READY)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_CI_NOT_READY) if post_flush else None
         if post_err is not None:
             return post_err
         return MergeResult(
@@ -117,7 +118,7 @@ def merge_pr(
         )
 
     if state.merge_state_status not in config.ADMIN_ELIGIBLE_MERGE_STATES:
-        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED) if post_flush else None
         if post_err is not None:
             return post_err
         return MergeResult(
@@ -133,22 +134,23 @@ def merge_pr(
         cwd=cwd,
     )
     if isinstance(head_match, MergeResult):
-        post_err = _post_flush(runner, ctx, head_match.result)
+        post_err = _post_flush(runner, ctx, head_match.result) if post_flush else None
         if post_err is not None:
             return post_err
         return head_match
 
     version_outcome = _version_race_gate(runner, cwd=cwd)
     if version_outcome is not None:
-        post_err = _post_flush(runner, ctx, version_outcome.result)
+        post_err = _post_flush(runner, ctx, version_outcome.result) if post_flush else None
         if post_err is not None:
             return post_err
         return version_outcome
 
     merge_outcome = _attempt_merge(runner, ctx, pr_num, cwd=cwd)
-    post_err = _post_flush(runner, ctx, merge_outcome.result)
-    if post_err is not None:
-        return post_err
+    if post_flush:
+        post_err = _post_flush(runner, ctx, merge_outcome.result)
+        if post_err is not None:
+            return post_err
     return merge_outcome
 
 
@@ -181,6 +183,7 @@ def _merge_noop_if_pr_closed(
     ctx: RunContext,
     *,
     cwd: str | None,
+    post_flush: bool = True,
 ) -> MergeResult | None:
     """Idempotent re-entry when the PR is already merged."""
     pr_num = ctx.pr_number
@@ -203,9 +206,10 @@ def _merge_noop_if_pr_closed(
             outcome = MergeResult(result=config.MERGE_RESULT_MERGED, error="")
         else:
             outcome = MergeResult(result=config.MERGE_RESULT_MERGED, error="")
-        post_err = _post_flush(runner, ctx, outcome.result)
-        if post_err is not None:
-            return post_err
+        if post_flush:
+            post_err = _post_flush(runner, ctx, outcome.result)
+            if post_err is not None:
+                return post_err
         return outcome
     if pr.state == "CLOSED":
         return MergeResult(

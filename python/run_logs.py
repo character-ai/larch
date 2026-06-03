@@ -333,17 +333,21 @@ def _write_manifest(ctx: RunContext, manifest: Manifest) -> None:
 
 
 def _pre_push_probe(ctx: RunContext) -> RefreshSkip:
-    if not ctx.state_file:
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_STATE_FILE_MISSING)
-    merge_result = _read_state_kv(ctx.state_file, "MERGE_RESULT")
+    if ctx.state_file:
+        merge_result = _read_state_kv(ctx.state_file, "MERGE_RESULT")
+        run_id = _read_state_kv(ctx.state_file, "RUN_ID")
+        no_logs_commit = _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") == "true"
+    else:
+        merge_result = ctx.merge_result
+        run_id = ctx.run_id
+        no_logs_commit = ctx.no_logs_commit
     if merge_result in config.POST_MERGE_MERGE_RESULTS:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
-    run_id = _read_state_kv(ctx.state_file, "RUN_ID")
     if not run_id:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_RUN_ID)
     if not validate_run_id_slug(run_id):
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_INVALID_RUN_ID)
-    if _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") == "true":
+    if no_logs_commit:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_LOGS_COMMIT)
     return RefreshSkip(skipped=False, reason="")
 
@@ -523,6 +527,23 @@ def flush_logs_post(
     """Post-merge tmpdir-only flush; never git-commits."""
     manifest = load_or_recover_manifest(ctx)
     log_root = Path(ctx.tmpdir) / "larch-logs"
+    resolved = merge_result or _read_state_kv(ctx.state_file, "MERGE_RESULT") or ctx.merge_result
+    finalize = resolved in config.POST_MERGE_MERGE_RESULTS
+    steps = dict(manifest.steps_ran)
+    pr_number = _read_state_kv(ctx.state_file, "PR_NUMBER") if ctx.state_file else ""
+    if not pr_number and ctx.pr_number is not None:
+        pr_number = str(ctx.pr_number)
+    if pr_number:
+        steps["pr_number"] = pr_number
+    updated = Manifest(
+        status=config.MANIFEST_STATUS_DONE if finalize else manifest.status,
+        version=manifest.version,
+        run_id=manifest.run_id,
+        steps_ran=steps,
+        created_at=manifest.created_at,
+        updated_at=manifest.updated_at,
+    )
+    _write_manifest(ctx, updated)
     if runner is not None:
         _write_final_report(runner, ctx)
     try:
@@ -531,17 +552,6 @@ def flush_logs_post(
         _render_token_timing_batches(ctx, log_root)
     except ShipError:
         return RefreshSkip(skipped=True, reason="redaction-failed")
-    resolved = merge_result or _read_state_kv(ctx.state_file, "MERGE_RESULT")
-    finalize = resolved in config.POST_MERGE_MERGE_RESULTS
-    updated = Manifest(
-        status=config.MANIFEST_STATUS_DONE if finalize else manifest.status,
-        version=manifest.version,
-        run_id=manifest.run_id,
-        steps_ran=manifest.steps_ran,
-        created_at=manifest.created_at,
-        updated_at=manifest.updated_at,
-    )
-    _write_manifest(ctx, updated)
     return RefreshSkip(skipped=False, reason="")
 
 
@@ -607,7 +617,7 @@ def capture_session_transcript(
     log_root = Path(ctx.tmpdir) / "larch-logs"
     issue_log = Path(ctx.tmpdir) / "execution-issues.md"
     source = os.environ.get("LARCH_CLAUDE_SOURCE_FILE", "")
-    no_logs = _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") or "false"
+    no_logs = _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") or ("true" if ctx.no_logs_commit else "false")
     if _CAPTURE_SESSION_TRANSCRIPT.is_file():
         _ = runner.run(
             [

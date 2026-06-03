@@ -108,6 +108,7 @@ def test_python_merge_behind_emits_admin_merged(
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
     monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
     ctx = RunContext(
         branch="feat",
         issue="1",

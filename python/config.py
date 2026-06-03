@@ -4,12 +4,31 @@ from __future__ import annotations
 
 from typing import Final, Literal
 
+from outcomes import Outcome
+
 # Exit codes (align with ship-pr / implement conventions)
 EXIT_OK: Final = 0
 EXIT_USAGE: Final = 2
+EXIT_NEEDS_USER_INPUT: Final = 3
+EXIT_STALLED: Final = 4
+EXIT_TRANSIENT: Final = 6
 EXIT_BAIL: Final = 4
 EXIT_STALL: Final = 6
 EXIT_TIMEOUT: Final = 124
+OUTCOME_EXIT_MAP: Final[dict[Outcome, int]] = {
+    Outcome.OK: EXIT_OK,
+    Outcome.NEEDS_USER_INPUT: EXIT_NEEDS_USER_INPUT,
+    Outcome.STALLED: EXIT_STALLED,
+    Outcome.TRANSIENT: EXIT_TRANSIENT,
+}
+
+
+# ship.py JSON/result literals
+JOURNAL_EVENT_SHIP_RESULT: Final = "ship-result"
+NEEDS_USER_OOS_FILING: Final = "oos-filing"
+NEEDS_USER_FIRST_FIXER_NON_HEALTH: Final = "first-fixer-non-health"
+NEEDS_USER_CI_FIX_EXHAUSTED: Final = "ci-fix-exhausted"
+NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED: Final = "fix-attempts-exhausted"
 
 # Subprocess / CI wait
 SUBPROCESS_DEFAULT_TIMEOUT_SEC: Final = 1800

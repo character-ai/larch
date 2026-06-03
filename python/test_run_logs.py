@@ -75,11 +75,34 @@ def test_validate_run_id_slug() -> None:
     assert not run_logs.validate_run_id_slug("../evil")
 
 
-def test_flush_logs_pre_skips_missing_state(tmp_path: Path) -> None:
+def test_flush_logs_pre_state_file_less_requires_repo_cwd(tmp_path: Path) -> None:
     runner = RecordingRunner()
-    skip = run_logs.flush_logs_pre(runner, _ctx(tmp_path))
+    skip = run_logs.flush_logs_pre(runner, _ctx(tmp_path), cwd=None)
     assert skip.skipped
-    assert skip.reason == config.REFRESH_SKIP_STATE_FILE_MISSING
+    assert skip.reason == config.REFRESH_SKIP_NO_REPO_CWD
+
+
+def test_flush_logs_pre_state_file_less_commits_with_repo_cwd(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    runner = RecordingRunner()
+
+    def fake_commit(
+        _runner: RecordingRunner,
+        _ctx_obj: RunContext,
+        _log_root: Path,
+        *,
+        cwd: str | None = None,
+    ) -> CommandResult:
+        assert cwd == str(tmp_path)
+        runner.git_commits += 1
+        return CommandResult(("git", "commit"), 0, "", "", 0.01)
+
+    monkeypatch.setattr(run_logs, "_larch_log_commit", fake_commit)
+    skip = run_logs.flush_logs_pre(runner, _ctx(tmp_path), cwd=str(tmp_path))
+    assert not skip.skipped
+    assert runner.git_commits == 1
 
 
 def test_flush_logs_pre_skips_post_merge(tmp_path: Path) -> None:
@@ -92,13 +115,14 @@ def test_flush_logs_pre_skips_post_merge(tmp_path: Path) -> None:
 
 def test_flush_logs_post_no_git_commit(tmp_path: Path) -> None:
     runner = RecordingRunner()
-    ctx = _ctx(tmp_path)
+    ctx = _ctx(tmp_path).with_(pr_number=17)
     _ = run_logs.init_run(ctx)
     _ = run_logs.flush_logs_post(ctx, merge_result=config.MERGE_RESULT_MERGED)
     assert runner.git_commits == 0
     manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["status"] == config.MANIFEST_STATUS_DONE
+    assert manifest["steps_ran"]["pr_number"] == "17"
 
 
 def test_flush_logs_post_leaves_partial_on_failed_merge(tmp_path: Path) -> None:
