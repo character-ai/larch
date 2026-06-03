@@ -51,6 +51,20 @@ assert_eq "$out" $'STATUS=ok\ndone' "basic visible output"
 grep -q '^noisy$' "$log" || fail "basic stdout not logged"
 grep -q '^err$' "$log" || fail "basic stderr not logged"
 
+# 1b. Production-style command substitution captures only FD3 contract output.
+helper="$SCRATCH/cmdsubst.sh"
+log="$SCRATCH/cmdsubst.log"
+write_helper "$helper" 'LARCH_QUIET_LOG_FILE=$1; export LARCH_QUIET_LOG_FILE; larch_quiet_init; printf "RAW_HELPER_KV=hidden\n"; emit "> banner"; emit "WORSE: display"; emit_kv TRUSTED trailer'
+out=$("$helper" "$log")
+assert_eq "$out" $'> banner\nWORSE: display\nTRUSTED=trailer' "command substitution visible output"
+grep -q '^RAW_HELPER_KV=hidden$' "$log" || fail "command substitution raw stdout not logged"
+if grep -Fq 'RAW_HELPER_KV=hidden' <<<"$out"; then
+    fail "command substitution leaked raw stdout"
+fi
+if grep -Fq '> banner' "$log" || grep -Fq 'WORSE: display' "$log" || grep -Fq 'TRUSTED=trailer' "$log"; then
+    fail "command substitution logged FD3 display output"
+fi
+
 # 2. LARCH_QUIET_DISABLE preserves legacy stdout/stderr.
 helper="$SCRATCH/disabled.sh"
 write_helper "$helper" 'LARCH_QUIET_DISABLE=1; export LARCH_QUIET_DISABLE; larch_quiet_init; echo legacy; emit_kv STATUS ok'

@@ -147,6 +147,16 @@ make_design_tmpdir() {
   printf '{"design_classification":"SIMPLE","brainstorm_requested":false}\n' >"$d/run-params.json"
 }
 
+complete_design_steps() {
+  local d="$1"
+  shift
+  mkdir -p "$d/.completed"
+  local step
+  for step in "$@"; do
+    : >"$d/.completed/step-$step"
+  done
+}
+
 echo "=== clean save/load round trip ==="
 DESIGN="$TMP/design1"
 make_design_tmpdir "$DESIGN"
@@ -214,6 +224,30 @@ out_registry=$(bash "$SAVE" --design-tmpdir "$DESIGN_REGISTRY" --issue 9 --repo 
 [[ "$out_registry" == *"STEP=1d"* ]] || fail "expected missing step-1d before sparse later sentinel: $out_registry"
 out_registry_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-registry" --issue 9 --repo owner/repo)
 [[ "$out_registry_load" == *"LOAD_OK=true"* && "$out_registry_load" == *"STEP=1d"* ]] || fail "registry-order load mismatch: $out_registry_load"
+
+echo "=== step 3.6 and gate B bypass pause resume ==="
+DESIGN_36="$TMP/design-36"
+make_design_tmpdir "$DESIGN_36"
+complete_design_steps "$DESIGN_36" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5
+printf 'issue body 36\n' >"$BODY_FILE"
+out_36=$(bash "$SAVE" --design-tmpdir "$DESIGN_36" --issue 9 --repo owner/repo)
+[[ "$out_36" == *"PAUSE_OK=true"* && "$out_36" == *"STEP=3.6"* ]] || fail "expected step 3.6 after step-3.5: $out_36"
+out_36_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-36" --issue 9 --repo owner/repo)
+[[ "$out_36_load" == *"LOAD_OK=true"* && "$out_36_load" == *"STEP=3.6"* ]] || fail "step 3.6 load mismatch: $out_36_load"
+
+DESIGN_GATE_B="$TMP/design-gate-b-bypass"
+make_design_tmpdir "$DESIGN_GATE_B"
+complete_design_steps "$DESIGN_GATE_B" 3
+printf 'issue body gate b\n' >"$BODY_FILE"
+out_gate_b=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B" --issue 9 --repo owner/repo)
+[[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3.5"* ]] || fail "gate B bypass should resume at 3.5: $out_gate_b"
+
+DESIGN_GATE_B_DONE="$TMP/design-gate-b-done"
+make_design_tmpdir "$DESIGN_GATE_B_DONE"
+complete_design_steps "$DESIGN_GATE_B_DONE" 3 3.5 3.6
+printf 'issue body gate b done\n' >"$BODY_FILE"
+out_gate_b_done=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_DONE" --issue 9 --repo owner/repo)
+[[ "$out_gate_b_done" == *"PAUSE_OK=true"* && "$out_gate_b_done" == *"STEP=3b"* ]] || fail "gate B triple touch should resume at 3b: $out_gate_b_done"
 
 echo "=== body drift warns and continues ==="
 make_design_tmpdir "$DESIGN"

@@ -141,6 +141,12 @@ echo "pause-save $*" >>"${CALL_LOG:?}"
 exit 0
 STUB
 
+cat >"$FAKE_SCRIPTS/timing-ledger.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "timing-ledger $*" >>"${CALL_LOG:?}"
+exit 0
+STUB
+
 chmod +x "$FAKE_DESIGN"/*.sh "$FAKE_SCRIPTS"/*.sh
 export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
 export CALL_LOG="$TMP/call.log"
@@ -191,15 +197,22 @@ run_subject() {
 apply_step3_6_handoff() {
     local d="$1"
     local dc rc=0
+    : >"$d/chat.out"
+    : >"$d/handoff.stderr"
+    if [[ -f "$d/.pause-requested" ]]; then
+        bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-save.sh" --design-tmpdir "$d" --issue "$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+ISSUE_NUMBER=/ {v=$0; sub(/^export[[:space:]]+ISSUE_NUMBER=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$d/source-env.sh" 2>/dev/null || echo "")" >>"$d/handoff.stderr" 2>&1 || true
+        return 0
+    fi
+    LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.6 — assessor" >>"$d/handoff.stderr" 2>&1 || true
     dc=$("$FAKE_SCRIPTS/read-design-classification.sh" "$d/run-params.json" 2>/dev/null || printf '%s\n' HARD)
     case "$dc" in
         HARD|SIMPLE) ;;
         *) dc=HARD ;;
     esac
-    : >"$d/chat.out"
-    : >"$d/handoff.stderr"
     if [[ "$dc" != HARD ]]; then
         printf '%s\n' "⏩ 3.6: assessor — design_classification=$dc; skipped" >>"$d/chat.out"
+        mkdir -p "$d/.completed"
+        : >"$d/.completed/step-3.6"
         return 0
     fi
     set +e
@@ -246,7 +259,11 @@ apply_step3_6_handoff() {
     [[ -z "${_assessor_round_num:-}" ]] || printf 'ASSESSOR_ROUND_NUM=%s\n' "$_assessor_round_num" >>"$d/chat.out"
 
     case "${_assessor_rc:-1}" in
-        0) return 0 ;;
+        0)
+            mkdir -p "$d/.completed"
+            : >"$d/.completed/step-3.6"
+            return 0
+            ;;
         2)
             printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh configuration error (exit 2); aborting /design.**" >>"$d/handoff.stderr"
             return 1
@@ -326,19 +343,35 @@ assert_rc "handoff invalid trailer rc" 1 "$handoff_rc"
 assert_stderr_contains "$D22/handoff.stderr" 'missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer' "invalid trailer fail-closed banner"
 cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 
-# 27 quiet-mode capture preserves emit output
+# 27 quiet-mode command substitution preserves emit output and keeps FD1 quiet
 reset_env
 D23="$TMP/quiet-capture"
 setup_design_tmp "$D23" HARD
-export ASSESSOR_VERDICT_VALUE=not-worse EFFECTIVE_ASSESSORS_VALUE=2
+setup_worse_assessor_artifacts "$D23" 'WORSE: quiet capture regression.'
 unset LARCH_QUIET_DISABLE
+export LARCH_QUIET_LOG_FILE="$D23/quiet.log"
 set +e
 run_subject "$D23"
 rc=$?
 set -e
+unset LARCH_QUIET_LOG_FILE
 export LARCH_QUIET_DISABLE=1
-assert_rc "quiet capture rc" 0 "$rc"
+assert_rc "quiet capture rc" 10 "$rc"
 assert_contains "$(cat "$D23/stdout.txt")" '> **🔶 /design 3.6: assessor**' "quiet capture display"
+assert_contains "$(cat "$D23/stdout.txt")" 'WORSE: quiet capture regression.' "quiet capture worse display"
+assert_contains "$(cat "$D23/stdout.txt")" 'LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN' "quiet capture trusted trailer"
+if grep -Fq 'ASSESSOR_STATUS=' "$D23/stdout.txt"; then
+    fail "quiet capture leaked assess KV stdout"
+else
+    pass "quiet capture suppresses assess KV stdout"
+fi
+if grep -Fq '> **🔶 /design 3.6: assessor**' "$D23/quiet.log" \
+    || grep -Fq 'WORSE: quiet capture regression.' "$D23/quiet.log" \
+    || grep -Fq 'LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN' "$D23/quiet.log"; then
+    fail "quiet FD1 log contains user-facing assessor output"
+else
+    pass "quiet FD1 log excludes user-facing assessor output"
+fi
 
 # 28 unsafe sidecar path is confined under DESIGN_TMPDIR
 reset_env
@@ -402,6 +435,35 @@ handoff_rc=$?
 set -e
 assert_rc "handoff SIMPLE rc" 0 "$handoff_rc"
 assert_contains "$(cat "$D1B/chat.out")" 'skipped' "handoff SIMPLE skip breadcrumb"
+if [[ -f "$D1B/.completed/step-3.6" ]]; then
+    pass "handoff SIMPLE writes step-3.6 sentinel"
+else
+    fail "handoff SIMPLE missing step-3.6 sentinel"
+fi
+if grep -Fq 'timing-ledger mark design Step 3.6' "$CALL_LOG" && ! grep -Fq 'assess ' "$CALL_LOG"; then
+    pass "handoff SIMPLE timing before assessor skip"
+else
+    fail "handoff SIMPLE timing/skip ordering"
+fi
+
+# 3c handoff pause happens before SIMPLE classification and assessor driver
+reset_env
+D1C="$TMP/handoff-pause-before-simple"
+setup_design_tmp "$D1C" SIMPLE
+printf 'export ISSUE_NUMBER=88\n' >"$D1C/source-env.sh"
+: >"$D1C/.pause-requested"
+set +e
+apply_step3_6_handoff "$D1C"
+handoff_rc=$?
+set -e
+assert_rc "handoff pause before SIMPLE rc" 0 "$handoff_rc"
+if grep -Fq 'pause-save --design-tmpdir' "$CALL_LOG" \
+    && ! grep -Fq 'timing-ledger' "$CALL_LOG" \
+    && ! grep -Fq 'assess ' "$CALL_LOG"; then
+    pass "handoff pause before SIMPLE classification"
+else
+    fail "handoff pause before SIMPLE classification"
+fi
 
 # 4 HARD happy path
 reset_env
