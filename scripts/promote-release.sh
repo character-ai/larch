@@ -76,7 +76,7 @@ if ! gh release view "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} >/dev/null; then
     exit 1
 fi
 
-CURRENT_LATEST=$(gh release list ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --json tagName,isLatest --jq '.[] | select(.isLatest) | .tagName') || exit 1
+CURRENT_LATEST=$(gh release list ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --json tagName,isLatest --jq 'map(select(.isLatest)) | .[0].tagName // ""') || exit 1
 
 if [[ "$CURRENT_LATEST" == "$TAG" ]]; then
     IS_PRERELEASE=$(gh release view "$TAG" ${REPO_ARGS[@]+"${REPO_ARGS[@]}"} --json isPrerelease --jq '.isPrerelease')
