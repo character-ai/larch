@@ -1,0 +1,11 @@
+finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
+FINDING_1	cursor-specialist-structure-output.txt|cursor-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt|cursor-specialist-plan-fidelity-output.txt|cursor-specialist-testing-output.txt	accepted	YES	partially-true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_10	cursor-specialist-security-output.txt	exonerated	EXONERATE	partially-true	nit	weak	true	EXONERATE	partially-true		weak	true	EXONERATE	partially-true	minor	adequate	false
+FINDING_2	cursor-specialist-correctness-output.txt|cursor-specialist-plan-fidelity-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_3	cursor-specialist-edge-cases-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	true	nit	adequate	false	EXONERATE	partially-true	nit	adequate	false
+FINDING_4	cursor-specialist-correctness-output.txt|cursor-specialist-testing-output.txt|cursor-specialist-security-output.txt|cursor-specialist-edge-cases-output.txt|cursor-specialist-plan-fidelity-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_5	cursor-specialist-testing-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_6	cursor-specialist-testing-output.txt	exonerated	YES	true	minor	adequate	false	EXONERATE	true	minor	adequate	false	EXONERATE	true	minor	adequate	false
+FINDING_7	cursor-specialist-testing-output.txt|cursor-specialist-edge-cases-output.txt	accepted	YES	true	nit	adequate	false	EXONERATE	true	nit	adequate	false	YES	true	nit	good	false
+FINDING_8	cursor-specialist-testing-output.txt|cursor-specialist-security-output.txt|cursor-specialist-edge-cases-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	partially-true	nit	weak	false	EXONERATE	true	nit	adequate	false
+FINDING_9	cursor-specialist-security-output.txt	exonerated	EXONERATE	true	minor	weak	false	EXONERATE	partially-true		weak	true	EXONERATE	partially-true	minor	weak	false

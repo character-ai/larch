@@ -1,0 +1,4 @@
+warning: fix text for slot 'dyn-warn-routing-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_1: [OUT_OF_SCOPE] assess-plan-round redundan')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Add caller-gated fast path in a separate change.  ### OOS_2: [OUT_OF_SCOPE] writ')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Audit snapshot round-state contract separately.  ### OOS_3: [OUT_OF_SCOPE] desig')
+warning: fix text for slot 'dyn-warn-routing-output.txt' in FINDING_19 not traceable to scoped input (first 80 chars: 'Address the concern above.  ---  **Merge notes (for voters, not part of machine ')

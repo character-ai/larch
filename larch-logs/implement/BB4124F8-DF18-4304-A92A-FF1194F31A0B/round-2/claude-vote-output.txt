@@ -1,0 +1,22 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly says clone design-postplan-emit.sh skeleton; shared-lib extraction is OOS for a SIMPLE tier change
+FINDING_3: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- driver SIMPLE default diverges from read-design-classification.sh HARD default; SKILL.md pre-read leaves _wp empty in skip breadcrumb when workflow_path absent
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SIMPLE path not exercised through apply_step3_6_handoff; drift risk real even if duplication is plan-required
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- structural test pins SKILL.md qualified path; harness grep on $0 covers the apply_step3_6_handoff mirror; combined coverage adequate
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- write-after-failure test missing CALL_LOG assert that assess stub was not called
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly says print skip breadcrumb then invoke driver on non-HARD; by design
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- when phase_driver_write_result_env fails and rm -f is blocked, stale file remains; _assessor_parse_ok=true suppresses stdout WARN replay; write-failure WARN lost in chat
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- WORSE gate is LLM prose, not bash arithmetic; driver comparison is string == 0 with :-0 default; no bash -ge 1 on EFFECTIVE_ASSESSORS
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- write-after failure test missing write-cursor CALL_LOG assertion and plan-review-round-cursor.txt content check
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- worse-majority happy path (the operator-facing gate path) not covered by any driver harness case
+FINDING_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- HARD round 1 (ROUND_CURSOR_VALUE=1) path plan-documented as edge case but unexercised in harness
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- --timeout forwarding to assess-plan-round.sh untested; regression possible without CI catch
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- LARCH_*_SH seam is established pattern already in assess-plan-round.sh; harness-only documentation is adequate mitigation
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- WARN lines are hardcoded driver strings, not passthrough from external input; parse_kv_from_output does not forward WARN from assess child
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- 2>&1 pattern acceptable; child scripts maintain stdout/stderr separation per lib-quiet.sh contract; contamination theoretical
+FINDING_17: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- read-cursor failure silently keeps ROUND_NUM=1 with no WARN; wrong round used for write-after and assess on cursor file corruption
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly says best-effort write-cursor for rollback; silent ignore is intentional design
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- symlink test missing assertion that driver WARN= lines appear in chat.out via stdout fallback when _assessor_parse_ok=false
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- assess-plan-round.sh redundant HARD/round checks are real pre-existing overhead now that driver gates HARD explicitly
+OOS_2: YES CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=true -- cursor set to ROUND_NUM while count goes to ROUND_NUM-1 on rollback; snapshot round-state contract needs separate audit to verify semantics
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- design-postplan-emit.sh sibling shares the stale-env WARN suppression pattern; new driver amplifies it with operationally important WARNs
