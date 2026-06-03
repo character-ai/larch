@@ -1,0 +1,9 @@
+I'll review the rc=10 trusted-trailer path end to end — starting from the precomputed diff and commit history, then tracing marker selection, round validation, and fail-closed behavior in the changed files.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- The rc=10 trailer path in `skills/design/SKILL.md` (1187–1214) and the mirrored `apply_step3_6_handoff()` in `skills/design/scripts/test-design-plan-quality-assessor.sh` (231–254) are aligned: last exact `LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN` selection, display prefix echo, trailer-only numeric parse, exactly-one-round requirement, and fail-closed abort before display echo / Continue/Stop all match the contract in `skills/design/scripts/lib-phase-driver.md`.
+- Driver-side neutralization in `design-plan-quality-assessor.sh` (`_neutralize_assessor_display_line`, 177–185) plus post-display `_emit_trailer_frame()` (255–264, invoked at 487–489) prevents prose spoofing of `LARCH_ASSESSOR_*` trailer syntax; Stop no longer reads `.step3.6-assessor.env` for round control.
+- Harness coverage is good but not exhaustive relative to the plan’s own test list: handoff tests cover invalid numeric trailers (#26) and filtered chat output (#25), but there is no handoff case for rc=10 with **no** marker (only the stderr string exists in code), nor a handoff case proving spoofed `LARCH_ASSESSOR_ROUND_NUM=999` in qualifications cannot change the parsed `ASSESSOR_ROUND_NUM` written to chat (driver test #24 covers neutralization, not the handoff parser).
+- Plan acceptance also called for `assert_thin_fence` in `scripts/test-design-structure.sh`; that helper is not present on the branch—structure pins were updated, but automated anti-regression for the thin fence shape is lighter than specified.

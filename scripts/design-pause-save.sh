@@ -79,13 +79,21 @@ STEP_REGISTRY="$REPO_ROOT/skills/design/scripts/step-name-registry.tsv"
 [[ -f "$STEP_REGISTRY" ]] || emit_fail "missing-step-registry"
 
 STEP=""
-while IFS=$'\t' read -r step_id _step_name || [[ -n "$step_id" ]]; do
-    [[ -z "$step_id" || "$step_id" == "step" || "$step_id" == "0" || "$step_id" == "5" ]] && continue
-    if [[ ! -f "$DESIGN_TMPDIR/.completed/step-$step_id" ]]; then
-        STEP="$step_id"
-        break
-    fi
-done < "$STEP_REGISTRY"
+if [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/step-3.5" && -f "$DESIGN_TMPDIR/.completed/step-3.6" && ! -f "$DESIGN_TMPDIR/.completed/step-3b" ]]; then
+    STEP="3b"
+elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/step-3.5" && ! -f "$DESIGN_TMPDIR/.completed/step-3.6" ]]; then
+    STEP="3.6"
+elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && ! -f "$DESIGN_TMPDIR/.completed/step-3.5" ]]; then
+    STEP="3.5"
+else
+    while IFS=$'\t' read -r step_id _step_name || [[ -n "$step_id" ]]; do
+        [[ -z "$step_id" || "$step_id" == "step" || "$step_id" == "0" || "$step_id" == "5" ]] && continue
+        if [[ ! -f "$DESIGN_TMPDIR/.completed/step-$step_id" ]]; then
+            STEP="$step_id"
+            break
+        fi
+    done < "$STEP_REGISTRY"
+fi
 [[ -n "$STEP" ]] || STEP="6"
 
 TIER="unknown"

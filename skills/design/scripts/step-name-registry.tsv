@@ -12,6 +12,7 @@ step	name
 2b.5	plan size
 3	plan review
 3.5	gate B
+3.6	assessor
 3b	arch diagram
 4	rejected findings
 4b	gate C

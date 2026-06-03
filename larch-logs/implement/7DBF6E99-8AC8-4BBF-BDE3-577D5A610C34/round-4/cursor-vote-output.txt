@@ -1,0 +1,22 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- duplicated bypass prose matches the plan’s explicit per-branch sentinel contract
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- mirrored SKILL/harness parsing is intentional; shared extraction adds more complexity than drift risk warrants now
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- ASSESSOR_RC/ROUND_NUM chat lines are specified orchestrator handoff diagnostics, not accidental leakage
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- missing Step 3.6 start banner is cosmetic; driver/skip lines already provide visibility
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- hardcoded 3→3.5→3.6 ladder is maintainability debt, not a present functional defect
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- fail-closed paths exist but lack dedicated rc=10 no-marker/display-only-spoof regression cases
+FINDING_10: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- resume treats step-3.6 alone as 3b without requiring step-3/3.5, allowing corrupt partial sentinels to skip Gate B
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- bounded WORSE display is documented residual semantic-injection risk, not a trailer-control bug
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- rc=10 no-op case is intentional; Continue/Stop lives in normative SKILL prose like other AskUserQuestion gates
+FINDING_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- suppressing untrusted WORSE display on trailer-validation abort is a reasonable fail-closed tradeoff
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_20: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- rerunning the assessor after mid-WORSE pause is acceptable versus persisting pending decision state
+FINDING_22: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false

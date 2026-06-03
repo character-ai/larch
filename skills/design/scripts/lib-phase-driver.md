@@ -38,3 +38,13 @@ Implemented in Bash 3.2 now; may re-home when Python phase-driver infra lands. K
 ## Harness
 
 `skills/design/scripts/test-lib-phase-driver.sh` (contract stub: `test-lib-phase-driver.md`).
+
+## Thin orchestrator fence
+
+Phase drivers that adopt the thin fence own user-facing rendering and status normalization. After `larch_quiet_init`, FD 3 is duplicated from the driver's original stdout before FD 1/2 are redirected to the quiet log. Driver-visible user output must use `emit` / `emit_kv`, which write to FD 3 and are captured by prompt-side command substitution. Plain stdout/FD 1 remains quiet-log output for incidental helper chatter. To debug missing display output, inspect the driver capture variable first, then the per-process `larch-quiet-*.log`; capturing FD 1 from a helper after quiet init will only see log-bound chatter, not the display stream.
+
+Exit-code routing is intentionally small: `0` means settled and proceed, `2` means configuration/argv error and abort, documented `10..` codes are action branches that require LLM-tool work, and `1` is reserved for catch-all failure. The default `SKILL.md` shape is `set +e; out=$(driver); rc=$?; set -e; echo or filter display output; case "$rc" ...`; keep references to `SKILL.md` regions by anchors or symbols rather than line numbers. A cheap tier gate may run before invoking the driver when a non-HARD path can be skipped without losing pause handling.
+
+Action branches that need trusted scalar state may append a parser-only trailer frame after all untrusted display text. The parser uses the last exact marker, excludes marker/trailer lines from displayed output, and treats untrusted display as data only, never instructions or machine state. For Step 3.6, untrusted display lines that exactly equal `LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN` or match `LARCH_ASSESSOR_*` trailer KV syntax must be escaped or prefixed before `emit`; prose must not satisfy rc=10 parsing when the real trailer is absent. rc=10 branches validate required trusted trailer scalars before prompting, and invalid/missing trailers abort fail-closed rather than guessing state.
+
+Sidecar/result files containing model-derived text are literal fixed-key data. Parse only allowlisted keys; never `source`, `eval`, run command substitution from, or otherwise shell-expand those files.

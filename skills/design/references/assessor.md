@@ -41,7 +41,7 @@ On `EFFECTIVE_ASSESSORS=0`: proceed as NOT_WORSE; print `**⚠ 3.6: 0/3 effectiv
 
 ### No Continue/Stop prompt
 
-Do not fire the WORSE **Continue** / **Stop** `AskUserQuestion` when `ASSESSOR_STATUS` is any of: `skipped`, `paused`, `missing-snapshot`, `write-after-failed`, `assess-failed`, `cursor-read-failed`, or `degraded-default-open` (aligned with `SKILL.md` Step 3.6 gate routing).
+Do not fire the WORSE **Continue** / **Stop** `AskUserQuestion` when `ASSESSOR_STATUS` is any of: `skipped`, `missing-snapshot`, `write-after-failed`, `assess-failed`, `cursor-read-failed`, or `degraded-default-open` (aligned with `SKILL.md` Step 3.6 gate routing). Pause handoff is not a settled `ASSESSOR_STATUS` path for prompt-side routing; driver rc `11` means the orchestrator immediately runs `design-pause-save.sh`.
 
 On `ASSESSOR_STATUS=write-after-failed`: post-Gate-B snapshot failed; driver rolls back `review-round-count.txt`, attempts cursor rollback, skips assessor dispatch, and continues to Step 3b — no Continue/Stop prompt.
 
@@ -49,7 +49,7 @@ On `ASSESSOR_STATUS=assess-failed`: `assess-plan-round.sh` exited non-zero or re
 
 On `ASSESSOR_STATUS=cursor-read-failed`: `snapshot-plan-round.sh read-cursor` failed on the HARD lane; driver skips `write-after` and assessor dispatch and continues to Step 3b — no Continue/Stop prompt.
 
-On `ASSESSOR_STATUS=paused`: driver pause checkpoint wrote `ASSESSOR_STATUS=paused` before `exec design-pause-save.sh`; orchestrator must not treat the lane as skipped or proceed to Step 3b until pause is saved.
+On pause: the driver writes the paused result env for auditability and exits rc `11`; the orchestrator, not the driver, executes `design-pause-save.sh` with the active `--issue` and optional `--repo` passthrough. The orchestrator must not treat rc `11` as skipped or proceed to Step 3b until pause is saved.
 
 ## External assessor dispatch (availability-gated, #3207)
 
@@ -71,3 +71,7 @@ On `ASSESSOR_STATUS=paused`: driver pause checkpoint wrote `ASSESSOR_STATUS=paus
 ## #2871
 
 Future auto-loop may re-enter assessor each round; today's trigger is operator-driven Gate C(c) → Step 3 re-entry.
+
+## Thin-fence operator UX
+
+The Step 3.6 driver owns WORSE rendering. rc `10` triggers the Continue/Stop question, rc `11` triggers prompt-side pause-save, and settled statuses including `missing-snapshot` return rc `0`. The canonical verdict env sidecar is `assessor-verdict-round-<N>.txt.env`; the driver loads `QUALIFICATIONS_SUMMARY` from the `ASSESSOR_VERDICT_ENV` path emitted by `assess-plan-round.sh`. Write-after failure records `ASSESSOR_STATUS=write-after-failed`, rolls back pending round state, skips dispatch, and continues to Step 3b.

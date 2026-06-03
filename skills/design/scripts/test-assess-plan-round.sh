@@ -72,6 +72,47 @@ out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present tr
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=skipped' || fail 'SIMPLE workflow_path with HARD classification must follow classification skip'
 pass 'workflow_path vs design_classification mismatch follows classification'
 
+
+setup_round2
+printf '{"workflow_path":"SIMPLE"}
+' >"$TMP/run-params.json"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s
+' "$out" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail 'missing design_classification must fail closed HARD despite workflow_path=SIMPLE'
+pass 'missing design_classification fails closed HARD'
+
+setup_round2
+printf '{"workflow_path":"SIMPLE","design_classification":"invalid"}
+' >"$TMP/run-params.json"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s
+' "$out" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail 'invalid design_classification must fail closed HARD despite workflow_path=SIMPLE'
+pass 'invalid design_classification fails closed HARD'
+
+setup_round2
+printf '{"workflow_path":"SIMPLE","design_classification":"SIMPLE"}
+' >"$TMP/run-params.json"
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true --design-classification HARD)
+printf '%s
+' "$out" | grep -Fq 'ASSESSOR_VERDICT=worse-majority' || fail '--design-classification HARD must override SIMPLE run params'
+pass 'explicit HARD classification override runs assessor'
+rm -f "$TMP"/assessor-verdict-round-*.txt "$TMP"/assessor-verdict-round-*.txt.env
+
+FAKE_ROOT="$TMP/fake-root"
+mkdir -p "$FAKE_ROOT/scripts"
+ln -sf "$ROOT/scripts/lib-quiet.sh" "$FAKE_ROOT/scripts/lib-quiet.sh"
+ln -sf "$ROOT/scripts/lib-design-tmpdir.sh" "$FAKE_ROOT/scripts/lib-design-tmpdir.sh"
+cat >"$FAKE_ROOT/scripts/read-design-classification.sh" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' SIMPLE
+printf '%s\n' 'warning after stdout must stay on stderr' >&2
+STUB
+chmod +x "$FAKE_ROOT/scripts/read-design-classification.sh"
+setup_round2
+out=$(CLAUDE_PLUGIN_ROOT="$FAKE_ROOT" LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=skipped' || fail 'classification stdout must not be displaced by stderr'
+pass 'classification capture keeps stdout and stderr separate'
+
 write_params HARD
 printf '1\n' >"$TMP/plan-review-round-cursor.txt"
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)

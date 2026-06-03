@@ -1,0 +1,15 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Shell syntax contained in a variable read from the sidecar is not recursively evaluated by the quoted assignment/here-string/emit path.
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The heredoc expands the trailer variable but does not recursively execute command substitutions or allow delimiter injection from its contents.
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The variable name is stale but too trivial to be worth filing as an out-of-scope issue.
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Some warning text is not neutralized, but the actual control parser uses the last trusted marker and the proposed broad emit wrapper is disproportionate.
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a positive observation, not a concrete problem worth filing.
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a positive observation, not a concrete problem worth filing.
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Some labels/comments retain fat-fence language, but the substantive assertions mostly no longer exercise the obsolete orchestrator parser.
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

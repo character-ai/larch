@@ -94,7 +94,13 @@ export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 RESULT_ENV="$DESIGN_TMPDIR/.design-postplan-emit-result.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
 REVIEW_BUDGET="$(json_scalar_or_sed "$RUN_PARAMS_PATH" review_budget full)"
-WORKFLOW_PATH="$(json_scalar_or_sed "$RUN_PARAMS_PATH" workflow_path SIMPLE)"
+READ_CLASSIFICATION_SH="$PLUGIN_ROOT/scripts/read-design-classification.sh"
+if [[ -x "$READ_CLASSIFICATION_SH" ]]; then
+    WORKFLOW_PATH=$("$READ_CLASSIFICATION_SH" "$RUN_PARAMS_PATH" 2>/dev/null || printf '%s\n' HARD)
+else
+    WORKFLOW_PATH=HARD
+fi
+case "$WORKFLOW_PATH" in SIMPLE|HARD) ;; *) WORKFLOW_PATH=HARD ;; esac
 
 POSTPLAN_EMIT_STATUS=pending
 EMIT_PLAN_STATUS=not-run

@@ -1,0 +1,22 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Harness mirroring is intentional and extracting shared trailer parsing would add more complexity than this drift risk warrants.
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The KVs are noisy, but they are also the prompt-side state handoff, so changing this is not worth the added machinery.
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- HARD runs still get a driver-rendered banner and SIMPLE gets a skip breadcrumb, so an orchestrator-owned extra breadcrumb is not worth raising.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The hardcoded ladder is not ideal, but this is a speculative future-maintenance issue.
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The markdown has been updated for the thin-fence contract and remaining symlink-result-env wording still corresponds to retained refusal behavior.
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- This is a stale test comment, but it is too trivial to merit filing as a separate issue.
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- The residual semantic-injection risk is inherent to showing assessor prose and is already documented as untrusted data.
+FINDING_15: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=false -- Command substitutions embedded in a variable value are not recursively executed by expanding that variable in the heredoc body.
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Hiding display on invalid trusted trailers is an acceptable fail-closed tradeoff.
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- This is only a narrow test-depth gap and the current registry path should advance once step-3b is completed.
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- Persisting a mid-prompt WORSE decision would add state complexity for an uncommon and ambiguous pause point.
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

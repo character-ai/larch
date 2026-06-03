@@ -1,0 +1,25 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- legitimate drift risk, but deduplicating prompt/test trailer parsing adds more machinery than this warrants.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- naming is mildly confusing but not worth raising as a code-review finding.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the duplication is real but replacing this small special-case logic with registry abstraction is not worth the added complexity.
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- this is defense-in-depth against a driver bug, but the proposed secondary guard is more complexity than the concrete risk warrants.
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the missing structural pin is a future-drift concern, not a current behavioral defect worth raising here.
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- real wording nit, but not worth a separate GitHub issue.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates the in-scope classification stream finding rather than needing a separate OOS issue.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- real doc naming drift, but too small for a separate GitHub issue.
+OOS_4: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates the in-scope stale assessor contract docs finding.
+OOS_5: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicates the in-scope structure harness coverage finding.
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stderr is suppressed, but fail-closed behavior remains and this is not worth a separate OOS issue.
+OOS_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive observation, not a problem to file.
+OOS_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a positive observation, not a problem to file.

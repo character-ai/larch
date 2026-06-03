@@ -147,6 +147,16 @@ make_design_tmpdir() {
   printf '{"design_classification":"SIMPLE","brainstorm_requested":false}\n' >"$d/run-params.json"
 }
 
+complete_design_steps() {
+  local d="$1"
+  shift
+  mkdir -p "$d/.completed"
+  local step
+  for step in "$@"; do
+    : >"$d/.completed/step-$step"
+  done
+}
+
 echo "=== clean save/load round trip ==="
 DESIGN="$TMP/design1"
 make_design_tmpdir "$DESIGN"
@@ -214,6 +224,45 @@ out_registry=$(bash "$SAVE" --design-tmpdir "$DESIGN_REGISTRY" --issue 9 --repo 
 [[ "$out_registry" == *"STEP=1d"* ]] || fail "expected missing step-1d before sparse later sentinel: $out_registry"
 out_registry_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-registry" --issue 9 --repo owner/repo)
 [[ "$out_registry_load" == *"LOAD_OK=true"* && "$out_registry_load" == *"STEP=1d"* ]] || fail "registry-order load mismatch: $out_registry_load"
+
+echo "=== step 3.6 and gate B bypass pause resume ==="
+DESIGN_36="$TMP/design-36"
+make_design_tmpdir "$DESIGN_36"
+complete_design_steps "$DESIGN_36" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5
+printf 'issue body 36\n' >"$BODY_FILE"
+out_36=$(bash "$SAVE" --design-tmpdir "$DESIGN_36" --issue 9 --repo owner/repo)
+[[ "$out_36" == *"PAUSE_OK=true"* && "$out_36" == *"STEP=3.6"* ]] || fail "expected step 3.6 after step-3.5: $out_36"
+out_36_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-36" --issue 9 --repo owner/repo)
+[[ "$out_36_load" == *"LOAD_OK=true"* && "$out_36_load" == *"STEP=3.6"* ]] || fail "step 3.6 load mismatch: $out_36_load"
+
+DESIGN_GATE_B="$TMP/design-gate-b-bypass"
+make_design_tmpdir "$DESIGN_GATE_B"
+complete_design_steps "$DESIGN_GATE_B" 3 3.5 3.6
+printf 'issue body gate b\n' >"$BODY_FILE"
+out_gate_b=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B" --issue 9 --repo owner/repo)
+[[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass triple-sentinel layout should resume at 3b: $out_gate_b"
+[[ -f "$DESIGN_GATE_B/.completed/step-3" && -f "$DESIGN_GATE_B/.completed/step-3.5" && -f "$DESIGN_GATE_B/.completed/step-3.6" ]] || fail "gate B bypass missing triple sentinels"
+
+DESIGN_GATE_B_MISSING="$TMP/design-gate-b-missing-sentinels"
+make_design_tmpdir "$DESIGN_GATE_B_MISSING"
+complete_design_steps "$DESIGN_GATE_B_MISSING" 3
+printf 'issue body gate b missing\n' >"$BODY_FILE"
+out_gate_b_missing=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_MISSING" --issue 9 --repo owner/repo)
+[[ "$out_gate_b_missing" == *"PAUSE_OK=true"* && "$out_gate_b_missing" == *"STEP=3.5"* ]] || fail "missing gate B bypass sentinels should resume at 3.5: $out_gate_b_missing"
+
+DESIGN_GATE_B_PARTIAL="$TMP/design-gate-b-partial-sentinel"
+make_design_tmpdir "$DESIGN_GATE_B_PARTIAL"
+complete_design_steps "$DESIGN_GATE_B_PARTIAL" 3.6
+printf 'issue body gate b partial\n' >"$BODY_FILE"
+out_gate_b_partial=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_PARTIAL" --issue 9 --repo owner/repo)
+[[ "$out_gate_b_partial" == *"PAUSE_OK=true"* && "$out_gate_b_partial" != *"STEP=3b"* ]] || fail "partial step-3.6 sentinel must not resume at 3b: $out_gate_b_partial"
+
+DESIGN_GATE_B_DONE="$TMP/design-gate-b-done"
+make_design_tmpdir "$DESIGN_GATE_B_DONE"
+complete_design_steps "$DESIGN_GATE_B_DONE" 3 3.5 3.6
+printf 'issue body gate b done\n' >"$BODY_FILE"
+out_gate_b_done=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_DONE" --issue 9 --repo owner/repo)
+[[ "$out_gate_b_done" == *"PAUSE_OK=true"* && "$out_gate_b_done" == *"STEP=3b"* ]] || fail "gate B triple touch should resume at 3b: $out_gate_b_done"
 
 echo "=== body drift warns and continues ==="
 make_design_tmpdir "$DESIGN"
@@ -399,6 +448,19 @@ out_missing=$(bash "$LOAD" --design-tmpdir "$TMP/missing" --issue 9 --repo owner
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=3\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_missing_plan_late=$(bash "$LOAD" --design-tmpdir "$TMP/missing-plan-late" --issue 9 --repo owner/repo)
 [[ "$out_missing_plan_late" == *"ERROR=missing-restored-artifact"* ]] || fail "late-step restore should require plan.txt: $out_missing_plan_late"
+
+LEGACY_HARD="$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+rm -rf "$LEGACY_HARD"
+mkdir -p "$LEGACY_HARD/.completed"
+printf 'plan\n' >"$LEGACY_HARD/plan.txt"
+printf '{"design_classification":"HARD"}\n' >"$LEGACY_HARD/run-params.json"
+printf '{"run_id":"RUNPAUSE1","issue_number":"9"}\n' >"$LEGACY_HARD/manifest.json"
+printf 'ISSUE_NUMBER=9\nRUN_ID=RUNPAUSE1\n' >"$LEGACY_HARD/pause-state.txt"
+: >"$LEGACY_HARD/.completed/step-3"
+: >"$LEGACY_HARD/.completed/step-3.5"
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=3b\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+out_legacy_3b=$(bash "$LOAD" --design-tmpdir "$TMP/legacy-3b" --issue 9 --repo owner/repo)
+[[ "$out_legacy_3b" == *"LOAD_OK=true"* && "$out_legacy_3b" == *"STEP=3.6"* ]] || fail "legacy HARD STEP=3b without step-3.6 should resume at assessor: $out_legacy_3b"
 
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSESSION_ID=RUNPAUSE1\nTIER=SIMPLE\nBRAINSTORM_DONE=true\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_valid_marker=$(bash "$LOAD" --design-tmpdir "$TMP/valid-marker-fields" --issue 9 --repo owner/repo)

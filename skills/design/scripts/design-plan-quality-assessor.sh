@@ -110,23 +110,31 @@ ASSESS_SH="${LARCH_ASSESS_PLAN_ROUND_SH:-$PLUGIN_ROOT/skills/design/scripts/asse
 
 RESULT_ENV="$DESIGN_TMPDIR/.step3.6-assessor.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
-_WORKFLOW_RAW="$(json_scalar_or_sed "$RUN_PARAMS_PATH" workflow_path "")"
-_DESIGN_CLASSIFICATION="$(json_scalar_or_sed "$RUN_PARAMS_PATH" design_classification "")"
+TRAILER_MARKER='LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN'
 WARN_LINES=()
 
-if [[ -z "$_WORKFLOW_RAW" ]]; then
-    if [[ "$_DESIGN_CLASSIFICATION" == HARD ]]; then
-        WORKFLOW_PATH=HARD
-    else
-        WORKFLOW_PATH=SIMPLE
+READ_CLASSIFICATION_SH="$PLUGIN_ROOT/scripts/read-design-classification.sh"
+if [[ -x "$READ_CLASSIFICATION_SH" ]]; then
+    _class_cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-classification-stderr.XXXXXX")
+    DESIGN_CLASSIFICATION=$("$READ_CLASSIFICATION_SH" "$RUN_PARAMS_PATH" 2>"$_class_cap" || printf '%s\n' HARD)
+    if [[ -s "$_class_cap" ]]; then
+        while IFS= read -r _class_warn || [[ -n "$_class_warn" ]]; do
+            [[ -n "$_class_warn" ]] && WARN_LINES+=("$_class_warn")
+        done <"$_class_cap"
     fi
+    rm -f "$_class_cap" 2>/dev/null || true
 else
-    WORKFLOW_PATH="$_WORKFLOW_RAW"
+    DESIGN_CLASSIFICATION=HARD
+    WARN_LINES+=("**⚠ design-plan-quality-assessor: read-design-classification.sh not executable; defaulting to HARD.**")
 fi
-
-if [[ -n "$_WORKFLOW_RAW" && -n "$_DESIGN_CLASSIFICATION" && "$_WORKFLOW_RAW" != "$_DESIGN_CLASSIFICATION" ]]; then
-    WARN_LINES+=("**⚠ design-plan-quality-assessor: workflow_path=${_WORKFLOW_RAW} disagrees with design_classification=${_DESIGN_CLASSIFICATION}; aligning assessor lane to design_classification.**")
-    WORKFLOW_PATH="$_DESIGN_CLASSIFICATION"
+case "$DESIGN_CLASSIFICATION" in
+    SIMPLE|HARD) ;;
+    *) DESIGN_CLASSIFICATION=HARD ;;
+esac
+WORKFLOW_PATH="$DESIGN_CLASSIFICATION"
+_WORKFLOW_RAW="$(json_scalar_or_sed "$RUN_PARAMS_PATH" workflow_path "")"
+if [[ -n "$_WORKFLOW_RAW" && "$_WORKFLOW_RAW" != "$DESIGN_CLASSIFICATION" ]]; then
+    WARN_LINES+=("**⚠ design-plan-quality-assessor: workflow_path=${_WORKFLOW_RAW} disagrees with design_classification=${DESIGN_CLASSIFICATION}; aligning assessor lane to design_classification.**")
 fi
 
 ASSESSOR_STATUS=skipped
@@ -136,7 +144,7 @@ ASSESSOR_VERDICT_FILE=""
 ASSESSOR_VERDICT_ENV=""
 ROUND_NUM=1
 
-_write_result_and_emit() {
+_write_result_env() {
     local -a _kvs=()
     _kvs+=("ASSESSOR_STATUS=$ASSESSOR_STATUS")
     _kvs+=("ASSESSOR_VERDICT=$ASSESSOR_VERDICT")
@@ -150,22 +158,114 @@ _write_result_and_emit() {
         _kvs+=("WARN=$_warn")
     done
     if ! phase_driver_write_result_env "$RESULT_ENV" "${_kvs[@]}"; then
-        WARN_LINES+=("**⚠ design-plan-quality-assessor: result env write failed; using stdout fallback.**")
+        WARN_LINES+=("**⚠ design-plan-quality-assessor: result env write failed; continuing with display-only output.**")
         if [[ ! -L "$RESULT_ENV" ]]; then
             rm -f "$RESULT_ENV" || true
         fi
+        return 1
     fi
-    emit_kv ASSESSOR_STATUS "$ASSESSOR_STATUS"
-    emit_kv ASSESSOR_VERDICT "$ASSESSOR_VERDICT"
-    emit_kv EFFECTIVE_ASSESSORS "$EFFECTIVE_ASSESSORS"
-    emit_kv ASSESSOR_VERDICT_FILE "$ASSESSOR_VERDICT_FILE"
-    emit_kv ASSESSOR_VERDICT_ENV "$ASSESSOR_VERDICT_ENV"
-    emit_kv ROUND_NUM "$ROUND_NUM"
-    emit_kv WORKFLOW_PATH "$WORKFLOW_PATH"
+    return 0
+}
+
+_emit_warn_lines() {
+    local _warn _line
     for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
-        emit_kv WARN "$_warn"
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            emit "$(printf '%s' "$_line" | sanitize_diagnostic_line)"
+        done <<<"$_warn"
     done
 }
+
+_neutralize_assessor_display_line() {
+    local line="$1"
+    line=$(printf '%s' "$line" | sanitize_diagnostic_line)
+    if [[ "$line" == "$TRAILER_MARKER" || "$line" =~ ^LARCH_ASSESSOR_[A-Z0-9_]*= || "$line" =~ ^ASSESSOR_(RC|ROUND_NUM)= ]]; then
+        printf '[untrusted assessor display] %s\n' "$line"
+    else
+        printf '%s\n' "$line"
+    fi
+}
+
+_read_fixed_env_value() {
+    local file="$1" key="$2"
+    [[ -f "$file" && ! -L "$file" ]] || return 0
+    awk -v k="$key" 'BEGIN{kl=length(k)} substr($0,1,kl)==k && substr($0,kl+1,1)=="=" {print substr($0,kl+2); exit}' "$file" 2>/dev/null || true
+}
+
+_confine_assessor_file_path() {
+    local label="$1" path="$2" parent base canon_parent canon_path
+    _CONFINED_ASSESSOR_PATH=""
+    [[ -n "$path" ]] || return 0
+    if [[ ! -f "$path" || -L "$path" ]]; then
+        WARN_LINES+=("**⚠ design-plan-quality-assessor: ignoring unsafe ${label} path outside DESIGN_TMPDIR.**")
+        return 1
+    fi
+    parent="${path%/*}"
+    base="${path##*/}"
+    [[ -n "$parent" && "$parent" != "$path" ]] || parent="."
+    canon_parent="$(cd "$parent" 2>/dev/null && pwd -P)" || {
+        WARN_LINES+=("**⚠ design-plan-quality-assessor: ignoring unsafe ${label} path outside DESIGN_TMPDIR.**")
+        return 1
+    }
+    canon_path="$canon_parent/$base"
+    case "$canon_path" in
+        "$DESIGN_TMPDIR"/*) _CONFINED_ASSESSOR_PATH="$canon_path" ;;
+        *)
+            WARN_LINES+=("**⚠ design-plan-quality-assessor: ignoring unsafe ${label} path outside DESIGN_TMPDIR.**")
+            return 1
+            ;;
+    esac
+}
+
+_confine_assessor_output_paths() {
+    _CONFINED_ASSESSOR_PATH=""
+    if [[ -n "${ASSESSOR_VERDICT_FILE:-}" ]]; then
+        _confine_assessor_file_path ASSESSOR_VERDICT_FILE "$ASSESSOR_VERDICT_FILE" || true
+        ASSESSOR_VERDICT_FILE="$_CONFINED_ASSESSOR_PATH"
+    fi
+    if [[ -n "${ASSESSOR_VERDICT_ENV:-}" ]]; then
+        _confine_assessor_file_path ASSESSOR_VERDICT_ENV "$ASSESSOR_VERDICT_ENV" || true
+        ASSESSOR_VERDICT_ENV="$_CONFINED_ASSESSOR_PATH"
+    fi
+}
+
+_emit_worse_display() {
+    emit "## Plan-Quality Assessor — WORSE majority (round ${ROUND_NUM})"
+    local _headline="" _summary="" _line _count=0
+    if [[ -n "${ASSESSOR_VERDICT_FILE:-}" && -f "$ASSESSOR_VERDICT_FILE" && ! -L "$ASSESSOR_VERDICT_FILE" ]]; then
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            [[ -n "$_line" ]] || continue
+            _headline="$(_neutralize_assessor_display_line "$_line")"
+            break
+        done <"$ASSESSOR_VERDICT_FILE"
+    fi
+    [[ -n "$_headline" ]] || _headline="WORSE: assessor majority found the revised plan worse than the prior round."
+    emit "$_headline"
+    _summary="$(_read_fixed_env_value "${ASSESSOR_VERDICT_ENV:-}" QUALIFICATIONS_SUMMARY)"
+    if [[ -n "$_summary" ]]; then
+        emit "Untrusted assessor notes:"
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            _count=$((_count + 1))
+            [[ "$_count" -le 20 ]] || break
+            _line="$(_neutralize_assessor_display_line "$_line")"
+            [[ ${#_line} -le 400 ]] || _line="${_line:0:400}…"
+            emit "$_line"
+        done <<<"$_summary"
+    fi
+}
+
+_emit_trailer_frame() {
+    emit "$TRAILER_MARKER"
+    emit "LARCH_ASSESSOR_ROUND_NUM=${ROUND_NUM}"
+    if [[ -n "${ASSESSOR_VERDICT_ENV:-}" ]]; then
+        local _token
+        _token="$(_read_fixed_env_value "$ASSESSOR_VERDICT_ENV" ASSESSOR_RESULT_TOKEN)"
+        if [[ "$_token" =~ ^[A-Za-z0-9_.:-]+$ ]]; then
+            emit "LARCH_ASSESSOR_RESULT_TOKEN=$_token"
+        fi
+    fi
+}
+
 
 _assessor_resolve_issue() {
     local _issue="${ISSUE_NUMBER:-}"
@@ -183,10 +283,12 @@ _assessor_pause_checkpoint() {
         ASSESSOR_STATUS=paused
         ASSESSOR_VERDICT=skipped
         EFFECTIVE_ASSESSORS=0
-        _write_result_and_emit
-        exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue"
+        _write_result_env || true
+        emit "**⏸ /design Step 3.6: pause requested; saving design state.**"
+        exit 11
     fi
 }
+
 
 _read_round_cursor() {
     set +e
@@ -230,10 +332,12 @@ if [[ "$WORKFLOW_PATH" != HARD ]]; then
     ASSESSOR_VERDICT=skipped
     EFFECTIVE_ASSESSORS=0
     _assessor_pause_checkpoint
-    _write_result_and_emit
+    _write_result_env || true
     exit 0
 fi
 
+emit "> **🔶 /design 3.6: assessor**"
+_emit_warn_lines
 _read_round_cursor
 
 _assessor_pause_checkpoint
@@ -243,7 +347,8 @@ if [[ "$_ROUND_CURSOR_READ_FAILED" == true ]]; then
     ASSESSOR_VERDICT=skipped
     EFFECTIVE_ASSESSORS=0
     _assessor_pause_checkpoint
-    _write_result_and_emit
+    _write_result_env || true
+    _emit_warn_lines
     exit 0
 fi
 
@@ -282,7 +387,8 @@ if [[ "$_snap_rc" -ne 0 ]]; then
     ASSESSOR_VERDICT=skipped
     EFFECTIVE_ASSESSORS=0
     _assessor_pause_checkpoint
-    _write_result_and_emit
+    _write_result_env || true
+    _emit_warn_lines
     rm -f "$_snap_cap" 2>/dev/null || true
     exit 0
 fi
@@ -303,7 +409,8 @@ _assess_out=$("$ASSESS_SH" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --codex-present "$CODEX_PRESENT" \
     --cursor-present "$CURSOR_PRESENT" \
-    --timeout "$TIMEOUT" 2>"$_assess_cap")
+    --timeout "$TIMEOUT" \
+    --design-classification "$WORKFLOW_PATH" 2>"$_assess_cap")
 _assess_rc=$?
 set -e
 
@@ -332,13 +439,15 @@ if [[ "$_assess_rc" -ne 0 ]]; then
     ASSESSOR_VERDICT_FILE=""
     ASSESSOR_VERDICT_ENV=""
     _assessor_pause_checkpoint
-    _write_result_and_emit
+    _write_result_env || true
+    _emit_warn_lines
     rm -f "$_assess_cap" 2>/dev/null || true
     exit 0
 fi
 
 parse_kv_from_output "$_assess_out"
 rm -f "$_assess_cap" 2>/dev/null || true
+_confine_assessor_output_paths
 
 if [[ -z "$ASSESSOR_STATUS" ]]; then
     WARN_LINES+=("**⚠ design-plan-quality-assessor: assess-plan-round.sh exited 0 but ASSESSOR_STATUS missing; settling as assess-failed.**")
@@ -362,7 +471,8 @@ if [[ -z "$ASSESSOR_STATUS" ]]; then
     ASSESSOR_VERDICT_FILE=""
     ASSESSOR_VERDICT_ENV=""
     _assessor_pause_checkpoint
-    _write_result_and_emit
+    _write_result_env || true
+    _emit_warn_lines
     exit 0
 fi
 
@@ -374,5 +484,12 @@ if [[ "$ASSESSOR_VERDICT" == not-worse && "${EFFECTIVE_ASSESSORS:-0}" == 0 ]]; t
 fi
 
 _assessor_pause_checkpoint
-_write_result_and_emit
+_write_result_env || true
+if [[ "$ASSESSOR_STATUS" == ok && "$ASSESSOR_VERDICT" == worse-majority && "${EFFECTIVE_ASSESSORS:-0}" =~ ^[0-9]+$ && "${EFFECTIVE_ASSESSORS:-0}" -ge 1 ]]; then
+    _emit_warn_lines
+    _emit_worse_display
+    _emit_trailer_frame
+    exit 10
+fi
+_emit_warn_lines
 exit 0
