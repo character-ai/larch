@@ -7,6 +7,7 @@ set -euo pipefail
 # invocations triggered by multi-round scenarios before the per-section overrides.
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL="${RUN_EXTERNAL_AGENT_POLL_INTERVAL:-0.05}"
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-0.05}"
+export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 ROOT="$(cd "$(dirname "$0")/../../.." && pwd -P)"
 PLR="$ROOT/skills/design/scripts/plan-review-loop.sh"

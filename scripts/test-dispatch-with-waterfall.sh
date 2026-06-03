@@ -12,6 +12,7 @@ export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
 # default jittered backoff). Tests not exercising retry timing set this to
 # 0 to skip the sleep and avoid gating the harness on backoff wall time.
 export LARCH_TRANSIENT_RETRY_DELAY=0
+export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 STUB_BIN="$TMPROOT/bin"
 mkdir -p "$STUB_BIN"

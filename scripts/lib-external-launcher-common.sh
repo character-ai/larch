@@ -73,6 +73,8 @@ external_launch_health_gate_timeout() {
         esac
     done
 
+    # Canonical default when no source resolves; keep in sync with write-session-env.sh / write-design-current-env.sh
+    printf -v "$_out_var" '%s' '30'
     return 0
 }
 
