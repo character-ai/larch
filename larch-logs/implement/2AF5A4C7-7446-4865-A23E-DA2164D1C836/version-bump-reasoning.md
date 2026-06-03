@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `8f811e29d` (Fixes #3378: surface Codex usage-limit/quota panel degradation (#3389))
-- **Current version**: `47.0.58`
+- **Base commit**: `645ad1371` (Fixes #3393: Handle exit-0 empty Cursor .result with retry, diagnostics, and launch jitter (#3399))
+- **Current version**: `47.0.59`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `47.0.59`
+- **New version**: `47.0.60`
 
 ### PATCH rationale
 
