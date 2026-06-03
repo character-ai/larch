@@ -1,0 +1,23 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- simple three-line arithmetic duplication; shared-helper extraction adds cross-file coupling that outweighs the drift risk for immutable semver math
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- defense-in-depth dual redaction is acceptable; both sites call the same idempotent script
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- SKILL already labels the entry "legacy helper; superseded by the cut-a-release flow but retained for one-off promotion"
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- /release always passes --base which sets SKIP_IDEMPOTENCY=true; downstream release-set-version.sh fails loudly on no-op
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SKILL Step 1 requires clean tree for live runs; dry-run inconsistency is explicitly acknowledged in the SKILL prose
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- latent for standalone --head-only usage; /release always passes both --base and --head together
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- NONE docs nit is minor; the math concern is already addressed more precisely in FINDING_17
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan and .md contract both explicitly specify "no silent drops"; fail-hard on any PR fetch failure is the documented invariant
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan anchors PR extraction on the "(#N) suffix larch uses" as an explicit design constraint
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- promote-release.sh's job is to promote one known version, not re-validate uniqueness; that invariant is already enforced at prepare time
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan places the main/clean-tree guard in SKILL Step 1 by design; release-prepare.sh is a SKILL-called helper, not a standalone tool
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- UX optimization; no silent data loss; release-finish.sh is idempotent when the existing tag is on TARGET_OID
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- 10# prefix fixes a latent octal-parse bug on leading-zero versions and doesn't change behavior for valid semver; the plan's "byte-for-byte unchanged" targeted observable behavior on valid inputs
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_19: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
