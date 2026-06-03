@@ -77,6 +77,21 @@ _ML = re.MULTILINE
 _TMPDIR_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
     (
         re.compile(
+            rf'(^|{_BOUNDARY})/(private/)?tmp/+({_NOT_PATH}+/)*larch-report-tokens[.-][^/\s"\\]+',
+            _ML,
+        ),
+        rf"\1{config.REDACTED_TMPDIR}",
+    ),
+    (
+        re.compile(
+            rf"(^|{_BOUNDARY})/(private/)?var/folders/[^/]+/[^/]+/T/"
+            rf'({_NOT_PATH}+/)*larch-report-tokens[.-][^/\s"\\]+',
+            _ML,
+        ),
+        rf"\1{config.REDACTED_TMPDIR}",
+    ),
+    (
+        re.compile(
             rf"(^|{_BOUNDARY})/(private/)?tmp/+({_NOT_PATH}+/)*{_SESSION_SUFFIX}",
             _ML,
         ),

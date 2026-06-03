@@ -825,6 +825,22 @@ def issue_comment_patch(
         Path(path).unlink(missing_ok=True)
 
 
+
+def issue_create(
+    runner: Runner,
+    *,
+    repo: str | None,
+    title: str,
+    body: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    argv = ["issue", "create", "--title", _redact_gh_scalar(title)]
+    if repo:
+        argv.extend(["--repo", repo])
+    with _body_file_args(body) as (body_flag, body_path):
+        argv.extend([body_flag, body_path])
+        return _gh(runner, argv, cwd=cwd)
+
 def issue_comment(
     runner: Runner,
     issue: str,

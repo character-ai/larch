@@ -92,7 +92,7 @@ Create one or more GitHub issues with LLM-based semantic duplicate detection. Su
 
 **Source**: [`skills/report-tokens/SKILL.md`](../skills/report-tokens/SKILL.md)
 
-Analyze structured token reports across closed GitHub issues in the current larch repository. The skill searches closed issues whose comments contain `token-report-begin`, fetches their bodies and comments via `gh`, writes a raw JSON cache under a temp directory, parses Claude/Codex/Cursor grand-total rows, estimates per-issue costs, classifies issues from `**Workflow path**`, generates SIMPLE and HARD cost-over-time PNGs, and prints a written analysis with top SIMPLE costs, HARD phase breakdown, cache-read dominance, and concrete cost-reduction suggestions. Dollar values are observability estimates, not billing truth; rates are printed and can be overridden with environment variables.
+Analyze structured token reports from committed `larch-logs/<skill>/*/` run directories in the current larch repository. The skill requires `--skill=design|implement`, prices runs through `scripts/token-cost.sh`, writes a durable `Cache JSON:` NDJSON snapshot under a temp directory, optionally plots cost-over-time PNGs, and optionally posts a skill-prefixed GitHub issue. `--skill=implement` uses one aggregate graph and one per-day table set; `--skill=design` keeps the SIMPLE/HARD split. Filed issues omit raw per-issue JSON and the removed reported-vs-estimated comparison. Dollar values are observability estimates, not billing truth; rates are printed and can be overridden with environment variables.
 
 ## Relevant checks script
 

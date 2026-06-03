@@ -6,7 +6,7 @@ This repository **is** the larch Claude Code plugin. Editing here modifies what 
 
 Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary (docs, CI config, `.claude/skills/`, `.claude/rules/`, dev settings).
 
-`python/` holds the `ship-pr.sh` → Python rework tree. Runtime modules are stdlib-only; the live `/implement` path is wired behind `LARCH_SHIP_PR_IMPL` (default `bash`, optional `python`) while `ship-pr.sh` removal is deferred. See `python/README.md` for layout and `make py-lint` / `make py-test`.
+`python/` holds stdlib-only runtime modules. Most of the `ship-pr.sh` → Python rework remains dev/CI-only until Phase 7 (`LARCH_SHIP_PR_IMPL=python` cutover), but `/report-tokens` is live now through `python/report_tokens_*` plus the thin `skills/report-tokens/scripts/run-analysis.sh` wrapper. See `python/README.md` for layout and `make py-lint` / `make py-test`.
 
 ## Load Semantics
 

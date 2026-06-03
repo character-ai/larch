@@ -1,0 +1,83 @@
+"""Subprocess-isolated plotting for /report-tokens."""
+
+from __future__ import annotations
+
+import json
+import os
+import sys
+import tempfile
+from pathlib import Path
+from collections import defaultdict
+from typing import cast
+
+import config
+from proc import Runner
+from report_tokens_models import RunRecord, Skill
+
+DATE_LEN = 10
+
+
+def _date(value: str) -> str | None:
+    return value[:DATE_LEN] if len(value) >= DATE_LEN else None
+
+
+def _series(skill: Skill, records: tuple[RunRecord, ...]) -> list[dict[str, object]]:
+    labels = ["All runs"] if skill == "implement" else ["SIMPLE", "HARD"]
+    output: list[dict[str, object]] = []
+    for label in labels:
+        by_day: dict[str, float] = defaultdict(float)
+        for record in records:
+            if skill == "design" and record.workflow != label:
+                continue
+            day = _date(record.closed_at)
+            if day is None:
+                continue
+            by_day[day] += record.total_cost
+        output.append({
+            "label": label,
+            "points": [{"date": day, "cost": round(by_day[day], 2)} for day in sorted(by_day)],
+        })
+    return output
+
+
+def plot(
+    runner: Runner,
+    *,
+    skill: Skill,
+    records: tuple[RunRecord, ...],
+    plot_parent_dir: Path,
+    no_plot: bool = False,
+    plugin_root: Path | None = None,
+) -> list[Path]:
+    if no_plot or os.environ.get(config.ENV_LARCH_REPORT_TOKENS_NO_PLOT):
+        print("No plots generated (--no-plot).", file=sys.stderr)
+        return []
+    root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
+    script = root / "skills" / "report-tokens" / "scripts" / "plot-cost-over-time.py"
+    plot_dir = Path(tempfile.mkdtemp(prefix="larch-report-tokens-plot.", dir=plot_parent_dir))
+    mpl_dir = plot_dir / "mpl"
+    mpl_dir.mkdir(parents=True, exist_ok=True)
+    input_path = plot_dir / "plot-input.json"
+    _ = input_path.write_text(json.dumps({"version": 1, "skill": skill, "series": _series(skill, records)}, sort_keys=True), encoding="utf-8")
+    env = dict(os.environ)
+    env["MPLCONFIGDIR"] = str(mpl_dir)
+    result = runner.run([sys.executable, str(script), str(input_path), str(plot_dir)], env=env)
+    if result.returncode != 0:
+        detail = (result.stderr or result.stdout).strip()
+        suffix = f": {detail}" if detail else ""
+        print(f"No plots generated (plot child failed{suffix}).", file=sys.stderr)
+        return []
+    try:
+        raw_paths = json.loads(result.stdout)
+    except json.JSONDecodeError:
+        print("No plots generated (plot child returned invalid JSON).", file=sys.stderr)
+        return []
+    if not isinstance(raw_paths, list):
+        print("No plots generated (plot child returned non-list JSON).", file=sys.stderr)
+        return []
+    path_items = cast("list[object]", raw_paths)
+    paths = [Path(str(item)) for item in path_items]
+    if sys.platform == "darwin" and not os.environ.get(config.ENV_LARCH_REPORT_TOKENS_NO_OPEN):
+        for path in paths:
+            _ = runner.run(["open", str(path)])
+    return paths

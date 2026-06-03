@@ -79,6 +79,21 @@ REDACTED_OPERATOR_REPO: Final = "<OPERATOR_REPO_PATH>"
 # proc.run timeout handling
 PROC_TIMEOUT_EXIT_CODE: Final = EXIT_TIMEOUT
 
+
+# /report-tokens live Python entrypoint
+GITHUB_ISSUE_BODY_MAX_BYTES: Final = 65536
+ENV_LARCH_REPORT_TOKENS_NO_ISSUE: Final = "LARCH_REPORT_TOKENS_NO_ISSUE"
+ENV_LARCH_REPORT_TOKENS_NO_PLOT: Final = "LARCH_REPORT_TOKENS_NO_PLOT"
+ENV_LARCH_REPORT_TOKENS_NO_OPEN: Final = "LARCH_REPORT_TOKENS_NO_OPEN"
+ENV_LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND: Final = "LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND"
+ENV_LARCH_REPORT_TOKENS_ACTUAL_SPEND: Final = "LARCH_REPORT_TOKENS_ACTUAL_SPEND"
+ENV_LARCH_REPORT_TOKENS_REPO: Final = "LARCH_REPORT_TOKENS_REPO"
+ENV_LARCH_REPORT_TOKENS_LIMIT: Final = "LARCH_REPORT_TOKENS_LIMIT"
+REPORT_TOKENS_TITLE_BY_SKILL: Final[dict[str, str]] = {
+    "design": "[Design Analysis Report] Token costs as of {timestamp}",
+    "implement": "[Implement Analysis Report] Token costs as of {timestamp}",
+}
+
 ToolName = Literal["cursor", "codex", "claude"]
 
 # Version bump classification helpers (dev/CI; release owns live versioning)

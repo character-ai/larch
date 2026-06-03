@@ -1,10 +1,10 @@
 # run-analysis.sh contract
 
-`skills/report-tokens/scripts/run-analysis.sh` is the coordinator for `/report-tokens`.
+`skills/report-tokens/scripts/run-analysis.sh` is the thin shell wrapper for the Python `/report-tokens` analyzer.
 
 ## Purpose
 
-Scan committed `larch-logs/<skill>/*/` run directories for the required `--skill` (`design` or `implement`), estimate per-run spend, and print markdown tables. Design reads `token-report-final.json` / `timing-report-final.json`; implement reads `token-report.json` / `timing-report.json`. Totals used for plots and headline aggregates prefer **`scripts/token-cost.sh`** when `CLAUDE_PLUGIN_ROOT` is set: JSON reports with `BUCKETS_*` invoke per-bucket pricing; otherwise blended aggregate counts are used. A **### Reported vs estimated (per issue)** table compares the frozen legacy in-Python estimator (pre-DE-2622 defaults) with the `token-cost.sh` estimate for the same run so operators can see drift after pricing/dedup fixes. Raw GitHub issue data (when `--no-issue` is off) now includes `cost_reported` and `cost_estimated` alongside `cost` for downstream tooling.
+Validate the required `--skill` value, initialize `lib-quiet`, restore caller-visible stdout/stderr, and `exec python3 ${CLAUDE_PLUGIN_ROOT}/python/report_tokens_cli.py`. The Python modules scan committed `larch-logs/<skill>/*/` run directories, price every parseable run through `scripts/token-cost.sh`, render markdown, optionally call the subprocess-isolated matplotlib helper, and optionally file a skill-prefixed GitHub issue.
 
 ## Primary caller
 
@@ -12,67 +12,65 @@ Scan committed `larch-logs/<skill>/*/` run directories for the required `--skill
 
 ## Inputs
 
-The script accepts:
+The wrapper accepts:
 
-- `--skill <name>` (**required**): `design` or `implement`. Selects log root and artifact filenames.
+- `--skill <name>` (**required**): `design` or `implement`.
 - `--no-issue`: skip posting the analysis-report GitHub issue after analysis.
 - `--no-plot`: skip plot generation; textual analysis is still printed.
-- `--plot-from <N>`: re-plot from a prior analysis-report issue (skips the scan). Fetches `title` and `body`; validates title prefix for `--skill` before parsing body. **Plot-only**: regenerates SIMPLE/HARD PNGs only.
 
-New issues use `[Implement Analysis Report]` or `[Design Analysis Report]` titles (not unprefixed `[Analysis Report]`). `--skill=implement` `--plot-from` accepts legacy `[Analysis Report]` or `[Implement Analysis Report]` titles.
+The prior replot-from-issue mode has been removed. The analyzer scans committed run-log JSON directly and does not parse previous report issue bodies.
 
 Optional environment variables:
 
 - `LARCH_REPORT_TOKENS_REPO=<owner/repo>` overrides repository resolution.
-- `LARCH_REPORT_TOKENS_LIMIT=<N>` limits the number of matching issues fetched after search.
-- `LARCH_REPORT_TOKENS_NO_OPEN=1` suppresses opening generated PNGs.
-- `LARCH_RATE_<VENDOR>_<FIELD>` overrides the printed default rates in USD per million tokens.
-- `LARCH_REPORT_TOKENS_ACTUAL_SPEND=<USD>` when set, prints a reconciliation line at the end of the report (`tracked=$X  actual=$Y  delta=Z%`). Contains billing data — use `--no-issue` when set to avoid posting actual spend figures to a public GitHub issue.
+- `LARCH_REPORT_TOKENS_LIMIT=<N>` limits the number of run directories scanned.
+- `LARCH_REPORT_TOKENS_NO_ISSUE=1` and `LARCH_REPORT_TOKENS_NO_PLOT=1` mirror the CLI flags.
+- `LARCH_REPORT_TOKENS_NO_OPEN=1` suppresses opening generated PNGs on macOS.
+- `LARCH_REPORT_TOKENS_ACTUAL_SPEND=<USD>` prints a stdout-only reconciliation line.
+- `LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND=1` allows that reconciliation section into the posted issue.
+- `LARCH_RATE_*` aliases and legacy `LARCH_*_RATE_PER_M` variables override display/fallback rates; effective values are forwarded to `scripts/token-cost.sh`.
 
 ## File access
 
 The scan uses:
 
-- `git -C "$(pwd)" rev-parse --show-toplevel` to locate the repository root.
-- `larch-logs/<skill>/*/manifest.json` — provides `issue_number`, `updated_at`, `started_at` per run.
-- `larch-logs/<skill>/*/token-report.json` or `token-report-final.json` (design) — structured token data; runs without the expected file are skipped.
-- `larch-logs/<skill>/*/timing-report.json` or `timing-report-final.json` (design) — preferred workflow path source via `scripts/read-workflow-path.sh`.
-- `larch-logs/<skill>/*/run-params.json` — fallback workflow path source; `design_classification` accepted when exactly `SIMPLE` or `HARD`.
+- `larch-logs/design/*/token-report-final.json` and `timing-report-final.json`.
+- `larch-logs/implement/*/token-report.json` and `timing-report.json`.
+- `manifest.json` for issue number and timestamps.
+- `run-params.json` as a fallback workflow source.
 
-`gh` is required for repository resolution (`gh repo view`, used for URL construction; bypass via `LARCH_REPORT_TOKENS_REPO`), for posting the skill-prefixed analysis-report issue (`[Implement Analysis Report]` or `[Design Analysis Report]`, active when `--no-issue` is absent), and for `--plot-from` (fetching a prior report issue body). `jq` and `python3` are always required. Missing commands are hard failures.
-
-## Parsing invariants
-
-- Token data is read directly from `token-report.json` files and converted to the existing cost totals without markdown parsing.
-- `--plot-from <N>` paths still parse legacy markdown out of tracking-issue bodies fetched from GitHub: the `latest_token_block` fallback (`if "### Claude" in text or "**Grand total**" in text: return text`) handles those, and `parse_report` accepts both the current six-cell Claude `**Grand total**` table shape (`Step`, `Skill`, input, cache read, cache create, output) and the legacy four-cell shape (`Step`, `Skill`, input, output).
-- `workflow_path` is stored directly in the cache for structured logs; when absent, `design_classification` is accepted as the tier label fallback.
-- Run-level JSON is cached under a fresh `${TMPDIR:-/tmp}/larch-report-tokens.*` directory. The cache file is written via a temporary file and `mv`.
+Invalid or incomplete per-run JSON emits a stderr warning and skips that run; it does not abort the whole scan. Valid token-report JSON without numeric vendor totals or `BUCKETS_*` data is skipped instead of being treated as zero cost.
 
 ## Outputs
 
-Stdout contains progress lines while fetching and then a markdown analysis with:
+Stdout contains markdown beginning with `## Report Tokens Analysis` and ending with `Cache JSON: <path>`, where the path points at a durable NDJSON snapshot under a `larch-report-tokens.*` temporary directory. The report includes aggregate workflow costs, vendor totals, top runs, per-day trend tables, display/fallback rates, and cost-reduction suggestions.
 
-- cache JSON path
-- generated plot paths, or a plot-skipped reason
-- rates used
-- aggregate cost by workflow (count, total, median, mean, max per SIMPLE/HARD/unknown)
-- top SIMPLE issues by estimated cost
-- HARD phase breakdown
-- cache-read dominance
-- cost-reduction suggestions
-- per-day cost trend tables, bucketed by `manifest.json` `started_at` date, for Total/Claude/Codex/Cursor cost across SIMPLE and HARD workflows
+For `--skill=implement`, plots and per-day tables use one aggregate `All runs` view. For `--skill=design`, SIMPLE/HARD split views are retained. The rendered report does not include a reported-vs-estimated comparison table or raw per-issue JSON block.
 
-After the textual analysis, the script posts a GitHub issue titled `[Implement Analysis Report] Token costs as of <YYYY-MM-DD HH:MM UTC>` or `[Design Analysis Report] Token costs as of <YYYY-MM-DD HH:MM UTC>` unless `--no-issue` is passed. The issue body contains the full analysis text plus a fenced JSON block with raw per-issue data (`number`, `workflow`, `started_at`, `closed_at`, `cost`, `cost_reported`, `cost_estimated`) for re-plotting via `--plot-from`. Before the temporary markdown file is written, the body is passed through `scripts/redact-secrets.sh` and `scripts/redact-tmpdir-paths.sh`, plus a report-specific tmpdir scrub for `larch-report-tokens.*` paths, then passed to `gh issue create --body-file` per `.claude/rules/gh-body-file.md`; do not pass the analysis text through inline `--body`.
+Generated plots are written by `plot-cost-over-time.py`, the only matplotlib-importing file. `python/report_tokens_plot.py` passes a JSON payload that follows `plot-cost-over-time.md`, sets `MPLCONFIGDIR` under the persistent plot directory, and treats child failures as visible plot skips.
 
-Generated plots are written to a temporary directory as `larch-report-tokens-simple.png` and `larch-report-tokens-hard.png`. On macOS, the script attempts to open them with `open` unless `LARCH_REPORT_TOKENS_NO_OPEN=1` is set. Plotting runs in a child Python process so missing or crashing `matplotlib` skips plot generation without losing the textual analysis. Pass `--no-plot` to skip plot generation entirely.
+Posted issues are trimmed on the final redacted UTF-8 bytes before `gh issue create`. Low-priority sections are removed first and a top-of-issue truncation notice names omitted sections. If the body still exceeds GitHub's limit, or if `gh issue create` returns non-zero, the wrapper surfaces the error on real stderr and exits non-zero. The issue body is passed through a file-backed `gh issue create --body-file` path.
 
 ## Cost model
 
-## Known limitations
+`scripts/token-cost.sh` is the sole pricing authority for headline/table totals. Python display-rate math is fallback-only and emits a warning when used because `token-cost.sh` is unavailable, fails, or returns incomplete KV output.
 
-- **Codex long-context surcharge (D7)**: GPT-5.5 prompts >272K input tokens incur 2× input and 1.5× output pricing for the full session. larch does not track prompt length per-run, so this surcharge is silently dropped. Impact is low in practice (most Codex reviewer calls are under 272K).
-- **Codex cached vs uncached input (D8)**: OpenAI charges $0.50/M for cached Codex input vs $5/M for uncached — a 10× difference. Codex CLI does not expose cache hit info on stderr today. Until it does, the analyzer uses only the aggregate rate and cannot distinguish cached vs uncached spend. When cache info is exposed, mirror the Claude `cache_read`/`cache_create` column shape in the Codex rate dict.
+Rate compatibility aliases:
+
+| Effective field | Preferred env | Legacy/env alias |
+| --- | --- | --- |
+| Claude input | `LARCH_CLAUDE_INPUT_RATE_PER_M` | `LARCH_RATE_CLAUDE_INPUT` |
+| Claude cache read | `LARCH_CLAUDE_CACHE_READ_RATE_PER_M` | `LARCH_RATE_CLAUDE_CACHE_READ` |
+| Claude cache create 5m | `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M` | `LARCH_RATE_CLAUDE_CACHE_CREATE`, `LARCH_RATE_CLAUDE_CACHE_CREATE_5M` |
+| Claude cache create 1h | `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M` | `LARCH_RATE_CLAUDE_CACHE_CREATE_1H` |
+| Claude output | `LARCH_CLAUDE_OUTPUT_RATE_PER_M` | `LARCH_RATE_CLAUDE_OUTPUT` |
+| Codex input | `LARCH_CODEX_INPUT_RATE_PER_M` | `LARCH_RATE_CODEX_INPUT` |
+| Codex cached input | `LARCH_CODEX_CACHED_INPUT_RATE_PER_M` | `LARCH_RATE_CODEX_CACHE_READ`, `LARCH_RATE_CODEX_CACHED_INPUT` |
+| Codex output | `LARCH_CODEX_OUTPUT_RATE_PER_M` | `LARCH_RATE_CODEX_OUTPUT` |
+| Cursor input | `LARCH_CURSOR_INPUT_RATE_PER_M` | `LARCH_RATE_CURSOR_INPUT` |
+| Cursor cache read | `LARCH_CURSOR_CACHE_READ_RATE_PER_M` | `LARCH_RATE_CURSOR_CACHE_READ` |
+| Cursor output | `LARCH_CURSOR_OUTPUT_RATE_PER_M` | `LARCH_RATE_CURSOR_OUTPUT` |
 
 ## Edit-in-sync
 
-When token-report table shapes change in `scripts/token-report.sh`, update this parser and contract in the same PR.
+When token-report JSON shapes change in `scripts/token-report.sh`, update `python/report_tokens_scan.py`, `python/report_tokens_cost.py`, the plot schema if needed, and the colocated Python tests in the same PR. Grep docs and skills for stale report-token flag names and removed section names after behavior changes.

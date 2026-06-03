@@ -1,0 +1,113 @@
+"""CLI entrypoint for /report-tokens."""
+
+from __future__ import annotations
+
+import argparse
+import os
+import sys
+import tempfile
+from datetime import UTC, datetime
+from pathlib import Path
+
+import config
+import proc
+from errors import ShipError
+from report_tokens_cost import price_run
+from report_tokens_issue import post_issue
+from report_tokens_models import Skill, display_rates
+from report_tokens_plot import plot
+from report_tokens_render import render, title_for_skill
+from report_tokens_scan import scan
+
+
+def env_flag_enabled(name: str) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    return value not in ("", "0", "false", "no")
+
+
+def _actual_spend() -> float | None:
+    raw = os.environ.get(config.ENV_LARCH_REPORT_TOKENS_ACTUAL_SPEND, "").strip()
+    if not raw:
+        return None
+    try:
+        return float(raw)
+    except ValueError:
+        print("Warning: LARCH_REPORT_TOKENS_ACTUAL_SPEND is not numeric; ignoring", file=sys.stderr)
+        return None
+
+
+def parse_args(argv: list[str]) -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Analyze token costs from larch run logs.")
+    _ = parser.add_argument("--skill", choices=("design", "implement"), required=True)
+    _ = parser.add_argument("--no-issue", action="store_true")
+    _ = parser.add_argument("--no-plot", action="store_true")
+    _ = parser.add_argument("--plot-from", help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    if args.plot_from is not None:
+        parser.error("--plot-from has been removed; scan committed larch-logs instead")
+    return args
+
+
+def main(argv: list[str] | None = None) -> int:
+    args = parse_args(sys.argv[1:] if argv is None else argv)
+    skill: Skill = args.skill
+    no_issue = bool(args.no_issue) or env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_NO_ISSUE)
+    no_plot = bool(args.no_plot) or env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_NO_PLOT)
+    temp_root = Path(tempfile.mkdtemp(prefix="larch-report-tokens."))
+    repo_override = os.environ.get(config.ENV_LARCH_REPORT_TOKENS_REPO)
+    if no_issue and repo_override is None:
+        repo_override = "unknown/unknown"
+    scanned = scan(proc, skill=skill, repo_override=repo_override)
+    if not scanned.records:
+        print("## Report Tokens Analysis")
+        print()
+        print("No parseable token reports found.")
+        cache_path = temp_root / "report-cache.ndjson"
+        _ = cache_path.write_text("", encoding="utf-8")
+        print(f"Cache JSON: {cache_path}")
+        return config.EXIT_OK
+    priced = tuple(price_run(proc, record=record) for record in scanned.records)
+    actual_spend = _actual_spend()
+    if actual_spend is not None:
+        print(
+            "Warning: actual spend was provided; it is printed to stdout but omitted from posted issues unless explicitly enabled.",
+            file=sys.stderr,
+        )
+    include_actual = env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND)
+    rates = display_rates()
+    analysis, sections, cache_path = render(
+        skill,
+        priced,
+        rates_display=rates,
+        actual_spend=actual_spend,
+        include_actual_spend_in_issue=include_actual,
+        temp_root=temp_root,
+    )
+    plot_paths = plot(proc, skill=skill, records=priced, plot_parent_dir=temp_root, no_plot=no_plot)
+    print(analysis)
+    if plot_paths:
+        print("\nPlots written to:")
+        for path in plot_paths:
+            print(f"- {path}")
+    else:
+        print("\nNo plots generated.")
+    print(f"Cache JSON: {cache_path}")
+    if not no_issue:
+        if not scanned.repo_slug:
+            print("ERROR: could not resolve GitHub repo owner/name; rerun with --no-issue or LARCH_REPORT_TOKENS_REPO", file=sys.stderr)
+            return config.EXIT_BAIL
+        timestamp = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
+        try:
+            post_issue(
+                proc,
+                repo=scanned.repo_slug,
+                title=title_for_skill(skill, timestamp=timestamp),
+                sections=sections,
+            )
+        except ShipError:
+            return config.EXIT_BAIL
+    return config.EXIT_OK
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
