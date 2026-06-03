@@ -47,6 +47,10 @@ If tag push and `gh release create`/`edit` succeed but `promote-release.sh` fail
 
 If Step 6 failed after the release PR merged, a full `/release` re-run hits `ERROR=release-already-cut` in prepare — resume with `release-finish.sh` (or promote-only) instead.
 
+## Remote tag OID mismatch
+
+When `ERROR=remote tag … exists on different commit`, the peeled remote tag OID does not match `TARGET_OID`. Verify `git show "$TARGET_OID:.claude-plugin/plugin.json"` reports `.version` equal to `--version`. If a legacy or manual tag points at the wrong commit, delete or move the incorrect remote tag only with maintainer intent, `git fetch origin main`, then re-run `release-finish.sh` with the same arguments.
+
 ## GitHub Release
 
 - `gh release create v<version> --title v<version> --notes-file <file> --repo <repo>` when absent.

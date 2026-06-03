@@ -114,6 +114,8 @@ $PWD/.claude/skills/release/scripts/release-finish.sh \
 
 Or promote-only: `scripts/promote-release.sh "$NEW_VERSION" --repo "$REPO"`.
 
+**Recovery when remote tag exists on a different commit:** `release-finish.sh` fails closed with `ERROR=remote tag … exists on different commit`. Verify `TARGET_OID` with `git show "$TARGET_OID:.claude-plugin/plugin.json"` (`.version` must equal `--version`). If a legacy or manual tag points at the wrong OID, delete or move the incorrect remote tag only with maintainer intent, `git fetch origin main`, then re-run `release-finish.sh` with the same `--version`, `--notes-file`, `--repo`, and `--pr` (see `release-finish.md`).
+
 ## Step 7 — Upgrade local install
 
 Invoke `/upgrade-larch` via the Skill tool (bare name `"upgrade-larch"` first; fall back to `"larch:upgrade-larch"` on `Unknown skill`). After success, tell the operator to restart Claude Code.

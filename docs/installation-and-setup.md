@@ -6,7 +6,7 @@ Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/p
 
 ### Latest stable release
 
-GitHub Releases are cut by the operator-run `/release` skill (tag, Release, and promote to "Latest" in one run), not auto-created on every merge to `main`.
+Maintainers publish GitHub Releases on a release cadence (not on every merge to `main`). `/upgrade-larch` tracks the Latest stable release.
 
 #### Install
 ```bash
