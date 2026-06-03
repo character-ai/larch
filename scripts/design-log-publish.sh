@@ -702,6 +702,7 @@ if [[ "$push_rc" -ne 0 ]]; then
     exit 1
 fi
 PUSH_DONE=true
+PUSH_HEAD_SHA=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null || true)
 
 create_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-create.XXXXXX") || {
     larch_err "design-log-publish: mktemp failed for pr-create capture"
@@ -775,32 +776,101 @@ if [[ -z "$PR_NUM" ]]; then
 fi
 
 # Trigger CI by committing without a [skip ci] marker, then wait for the PR's
-# required status checks and squash --admin merge once they pass. --admin (not
-# --auto) is deliberate: this repo's review ruleset has no bot reviewer, so a
-# server-side --auto merge would enable but never complete. --admin still
-# bypasses the review gate, but CI now gates the merge because we refuse to
-# merge below on any non-zero result — a failed required check, or a repo with
-# no required checks at all, fails closed (PUBLISH_OK=false). The watch is
-# intentionally unbounded (no local timeout machinery yet — deferred to the
-# ship-pr Python migration); GitHub's per-job timeouts bound the realistic wait.
-set +e
-ci_wait_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]}" --required --watch --fail-fast 2>&1)
-ci_rc=$?
-set -e
-if [[ "$ci_rc" -ne 0 ]]; then
-    larch_err "design-log-publish: required CI checks did not pass (rc=$ci_rc) for PR $PR_NUM; refusing to merge: $(redact_diagnostic "${ci_wait_out:-unknown}")"
-    merge_rc="$ci_rc"
+# required status checks to register for the just-pushed head before watching
+# them. --admin (not --auto) is deliberate: this repo's review ruleset has no
+# bot reviewer, so a server-side --auto merge would enable but never complete.
+# --admin still bypasses the review gate, but CI gates the merge because we
+# refuse to merge on registration timeout, head mismatch, or required-check
+# failure. The registration probe is bounded to avoid the #3413 check
+# registration race; the +1 covers the inclusive t=0 probe (Codex-Pragmatic
+# off-by-one). The completion watch remains unbounded and relies on GitHub's
+# per-job timeouts for the realistic wait.
+REG_TIMEOUT=300
+REG_INTERVAL=10
+REG_MAX_PROBES=$(( (REG_TIMEOUT + REG_INTERVAL - 1) / REG_INTERVAL + 1 ))
+checks_registered=false
+last_checks_out=""
+last_checks_err=""
+last_view_out=""
+last_view_err=""
+reg_probe=1
+
+if [[ -z "${PUSH_HEAD_SHA:-}" ]]; then
+    larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (0/${REG_MAX_PROBES} probes; pushed head SHA unavailable) for PR $PR_NUM; refusing to merge"
+    merge_rc=1
 else
-    merge_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-merge.XXXXXX") || {
-        larch_err "design-log-publish: mktemp failed for merge capture"
+    reg_checks_err_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-checks.XXXXXX") || {
+        larch_err "design-log-publish: mktemp failed for checks-registration capture"
         emit_publish_result false
         exit 0
     }
-    if with_transient_retry transient_envelope_predicate_none "$merge_fail_file" \
-        gh pr merge "${gh_repo_args[@]}" "$PR_NUM" --squash --admin --delete-branch; then
-        merge_rc=0
+    reg_view_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-head.XXXXXX") || {
+        larch_err "design-log-publish: mktemp failed for pr-head capture"
+        emit_publish_result false
+        exit 0
+    }
+    while [[ "$reg_probe" -le "$REG_MAX_PROBES" ]]; do
+        : >"$reg_checks_err_file"
+        set +e
+        reg_checks_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]}" --required --json bucket 2>"$reg_checks_err_file")
+        reg_checks_rc=$?
+        set -e
+        last_checks_out="$reg_checks_out"
+        last_checks_err=$(cat "$reg_checks_err_file" 2>/dev/null || true)
+        checks_json_nonempty=false
+        if printf '%s\n' "${reg_checks_out:-}" | jq -e 'type == "array" and length > 0' >/dev/null 2>&1; then
+            checks_json_nonempty=true
+        fi
+        if [[ "$checks_json_nonempty" == true ]]; then
+            if with_transient_retry transient_envelope_predicate_none "$reg_view_fail_file" \
+                gh pr view "$PR_NUM" "${gh_repo_args[@]}" --json headRefOid; then
+                view_rc=0
+            else
+                view_rc=$_WTR_RC
+            fi
+            last_view_out=$_WTR_OUT
+            last_view_err=$(cat "$reg_view_fail_file" 2>/dev/null || true)
+            pr_head_oid=""
+            if [[ "$view_rc" -eq 0 ]]; then
+                pr_head_oid=$(printf '%s\n' "${last_view_out:-}" | jq -r '.headRefOid // empty' 2>/dev/null || true)
+            fi
+            if [[ -n "$pr_head_oid" && "$pr_head_oid" == "$PUSH_HEAD_SHA" ]]; then
+                checks_registered=true
+                break
+            fi
+        fi
+        if [[ "$reg_probe" -lt "$REG_MAX_PROBES" ]]; then
+            "${SLEEP_SCRIPT_DIR:-$SCRIPT_DIR}/sleep-seconds.sh" "$REG_INTERVAL" >/dev/null 2>&1 || sleep "$REG_INTERVAL"
+        fi
+        reg_probe=$((reg_probe + 1))
+        : "$reg_checks_rc"
+    done
+    rm -f "$reg_checks_err_file" "$reg_view_fail_file"
+
+    if [[ "$checks_registered" != true ]]; then
+        larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (${REG_MAX_PROBES} probes; pushed head ${PUSH_HEAD_SHA}) for PR $PR_NUM; refusing to merge: checks=$(redact_diagnostic "${last_checks_out:-${last_checks_err:-unknown}}") head=$(redact_diagnostic "${last_view_out:-${last_view_err:-unknown}}")"
+        merge_rc=1
     else
-        merge_rc=$_WTR_RC
+        set +e
+        ci_wait_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]}" --required --watch --fail-fast 2>&1)
+        ci_rc=$?
+        set -e
+        if [[ "$ci_rc" -ne 0 ]]; then
+            larch_err "design-log-publish: required CI checks did not pass (rc=$ci_rc) for PR $PR_NUM; refusing to merge: $(redact_diagnostic "${ci_wait_out:-unknown}")"
+            merge_rc="$ci_rc"
+        else
+            merge_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-merge.XXXXXX") || {
+                larch_err "design-log-publish: mktemp failed for merge capture"
+                emit_publish_result false
+                exit 0
+            }
+            if with_transient_retry transient_envelope_predicate_none "$merge_fail_file" \
+                gh pr merge "${gh_repo_args[@]}" "$PR_NUM" --squash --admin --delete-branch; then
+                merge_rc=0
+            else
+                merge_rc=$_WTR_RC
+            fi
+        fi
     fi
 fi
 
