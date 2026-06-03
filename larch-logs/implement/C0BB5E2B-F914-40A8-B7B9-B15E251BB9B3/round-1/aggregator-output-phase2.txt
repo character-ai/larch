@@ -1,0 +1,99 @@
+Normalizing the supplied reviewer inputs into a merged finding list. Verifying a few source lines so merged titles and concerns stay accurate.
+Filtered commit-title lines (FINDING_4/5/19/20), security “no issue” narratives (FINDING_6–8), and the positive OOS test note (FINDING_26). Merged duplicates below; verbatim **Suggested revisions** only where reviewers gave concrete fix text (generic “Address the concern above.” omitted).
+
+### FINDING_1: Codex probe fail-open when `agent-model-args.sh` fails
+- **Reviewer(s)**: cursor-specialist-structure-output, cursor-specialist-correctness, cursor-specialist-edge-cases, dyn-probe-launch-parity
+- **Severity**: latent
+- **Concern**: When `agent-model-args.sh --tool codex --with-effort` fails during Step 0 (`scripts/check-reviewers.sh` ~196–209), stderr is discarded and the probe runs `codex exec` with no `-m`/effort args, while `launch-review.sh` fails closed on the same failure (~489–516). The probe can succeed on Codex’s default model and set `CODEX_PRESENT=true`, but every real review launch fails at model-args preflight (the #3402 / exit-7 class: “probe healthy, panel dead”), including transient or bad `LARCH_CODEX_MODEL` cases.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output: Treat `agent-model-args` failure as probe failure or log a visible warning; document fail-open behavior in `check-reviewers.md`
+  - From cursor-specialist-correctness: Fail probe or set `CODEX_PRESENT=false` when model-args preflight fails; or document fail-open and add a test
+  - From cursor-specialist-edge-cases: On `agent-model-args.sh` failure, either fail the Codex probe (align with launch) or log a loud `Warnings` breadcrumb and force `CODEX_PRESENT=false`; add a `test-check-reviewers.sh` case with an invalid `LARCH_CODEX_MODEL`.
+  - From dyn-probe-launch-parity: Treat `agent-model-args.sh` non-zero exit as probe failure (`return 1` / `CODEX_PRESENT=false`) or retry once, matching launch preflight semantics; add a harness case where the stub `agent-model-args.sh` exits non-zero and asserts `CODEX_PRESENT=false`.
+
+### FINDING_2: Codex probe model-arg argv order differs from `launch-review.sh`
+- **Reviewer(s)**: dyn-probe-launch-parity
+- **Severity**: latent
+- **Concern**: Production Codex reviewer launches place `agent-model-args.sh` tokens before `-c "$TRUST_CONFIG_ARG"`, `--output-last-message`, and `--json` (`launch-review.sh` ~555–560), but the probe inserts `${_probe_model_args[@]}` after `--output-last-message` (`check-reviewers.sh` ~207–209). If `codex exec` is order-sensitive for model/quota binding, the probe may not exercise the same invocation shape as failing #3248/`exit 7` reviews.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-probe-launch-parity: Reorder the probe to match the reviewer spine: `codex exec --sandbox read-only -C "$PWD" ${_probe_model_args[@]+"${_probe_model_args[@]}"} … --output-last-message "$probe_out" … -- "Respond with OK"` (add the minimal trust `-c` only if production requires it for parity), and extend `scripts/test-check-reviewers.sh` to assert token order (e.g. `-m` appears before `--output-last-message` in the argv log), not only that `sentinel-model` appears somewhere.
+
+### FINDING_3: Residual Codex probe vs production launch argv gap
+- **Reviewer(s)**: cursor-specialist-edge-cases, dyn-probe-launch-parity
+- **Severity**: latent
+- **Concern**: Even with aligned model args, the probe still omits production-only argv (`--add-dir`, trust `-c`, `--json`, full review prompt). Failures tied to sandbox dir, trust config, JSON event stream, or prompt load can still yield `CODEX_PRESENT=true` at Step 0 while real `--json` reviews fail later (silent panel degradation; plan-acknowledged residual risk for some gaps).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases: Accept as documented residual risk, or extend the probe with the smallest additional argv that reproduces #3248-class failures without a full review prompt.
+  - From dyn-probe-launch-parity: Either add a minimal `--json` + discarded events file to the probe (still with the trivial prompt), or document this as an accepted asymmetry in `scripts/check-reviewers.md` and add a follow-up for quota-shaped probes; do not claim full “mirrors production” parity without one of those.
+
+### FINDING_4: Plan-review sentinel suppression matches loose `no_issues_found` prefix
+- **Reviewer(s)**: cursor-specialist-edge-cases
+- **Severity**: latent
+- **Concern**: At `skills/design/scripts/plan-review-loop.sh:1045`, suppression uses line-anchored grep (`^[[:space:]]*\{"no_issues_found`) without requiring `"no_issues_found": true` or parsing JSON. Values like `false` or `null` can still suppress the empty-rows WARN while contributing zero TSV rows, so malformed or non-committal reviewer output can look like a healthy zero-findings slot.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases: Tighten the guard (e.g. `jq -e '.no_issues_found == true'` on the first JSON object line, or match the full literal `{"no_issues_found": true}`) and add a harness case for `false` / pretty-printed multi-line JSON so suppression tracks real zero-findings semantics.
+
+### FINDING_5: Pretty-printed JSON sentinel may not suppress empty-rows WARN
+- **Reviewer(s)**: cursor-specialist-edge-cases
+- **Severity**: latent
+- **Concern**: When the first line is only `{` and `"no_issues_found": true` appears later, the regex at `plan-review-loop.sh:1045` does not match, so operators can still see a false WARN on an otherwise valid no-findings response (prompts prefer single-line; other paths accept multi-line shapes).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases: Either document single-line-only suppression in `plan-review-loop.md`, or scan the file the way `validate-research-output.sh` does (first line, then full trimmed body) before suppressing.
+
+### FINDING_6: Legacy `NO_ISSUES_FOUND` does not suppress empty-rows WARN
+- **Reviewer(s)**: cursor-specialist-edge-cases
+- **Severity**: latent
+- **Concern**: Only the JSON sentinel is recognized at `plan-review-loop.sh:1045`; legacy `NO_ISSUES_FOUND` (still whitelisted in `launch-review.sh` and prompts) does not suppress the WARN. Reviewers emitting the legacy token with `STATUS=OK` and an empty TSV fragment keep the false empty-rows WARN.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases: If legacy output is still in the wild, extend the guard with the same `NO_ISSUES_FOUND` checks used upstream; otherwise document JSON-only suppression and steer prompts/tests to JSON only.
+
+### FINDING_7: `test-check-reviewers.md` not updated for new probe test
+- **Reviewer(s)**: cursor-specialist-testing, cursor-specialist-plan-fidelity
+- **Severity**: nit
+- **Concern**: A Codex model-args propagation test was added in `test-check-reviewers.sh`, but the harness sibling `scripts/test-check-reviewers.md` was not updated per script-md-siblings. Future harness edits may omit the `LARCH_CODEX_MODEL` / argv-log assertion; doc drift hides coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing: Add bullet documenting `LARCH_CODEX_MODEL` argv-log case under What it tests
+  - From cursor-specialist-plan-fidelity: Add a bullet describing the `LARCH_CODEX_MODEL` / `codex-probe-argv.log` assertion alongside the existing matrix cases.
+
+### FINDING_8: Codex probe test only substring-checks `sentinel-model`
+- **Reviewer(s)**: dyn-probe-launch-parity
+- **Severity**: nit
+- **Concern**: `scripts/test-check-reviewers.sh:161` uses `grep -Fq 'sentinel-model'` in the logged argv. That does not prove parity with `launch-review.sh` (no assertion on `-c model_reasoning_effort=…`, flag order, or `--json`). A regression that dropped `--with-effort` but left a coincidental `sentinel-model` substring could still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-probe-launch-parity: Assert the log contains a line exactly `sentinel-model` immediately after `-m`, and optionally that `--with-effort` produced a separate `-c` line—tightening the test into a structural parity check, not a substring check.
+
+### OOS_1: [OUT_OF_SCOPE] Stale `agent-model-args.sh` header vs Codex probe `--with-effort`
+- **Reviewer(s)**: cursor-specialist-edge-cases, cursor-specialist-plan-fidelity
+- **Severity**: latent
+- **Concern**: Header at `scripts/agent-model-args.sh:10–13` still says lightweight probe callers (including `check-reviewers.sh`) do not pass `--with-effort`, but the Codex probe now does. Stale sibling doc increases parity drift risk per `.claude/rules/external-tool-launcher-parity.md`; readers might remove `--with-effort` and reintroduce silent degradation when `gpt-5.5` is quota-limited.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases: (implied) Update header to reflect Codex presence probe uses `--with-effort`
+  - From cursor-specialist-plan-fidelity: Update the header to distinguish Codex presence probe (uses `--with-effort`) from other lightweight callers.
+
+### OOS_2: [OUT_OF_SCOPE] Probe argv parity beyond model args (plan-acknowledged)
+- **Reviewer(s)**: cursor-specialist-plan-fidelity
+- **Severity**: latent
+- **Concern**: Probe argv still omits production-only Codex flags on real reviews. Quota or internal errors tied to `--add-dir`, trust config, or JSON mode could still pass the probe while reviews fail; marked out of plan scope for this SIMPLE-tier fix.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity: Future work would need a representative probe or runtime circuit-breaker.
+
+### OOS_3: [OUT_OF_SCOPE] `test-plan-review-loop.sh` sentinel coverage gaps
+- **Reviewer(s)**: cursor-specialist-edge-cases
+- **Severity**: nit
+- **Concern**: New sentinel test covers the happy path and preserves the empty-TSV false-negative guard; it does not exercise narration-then-sentinel (`#3283` shape) or non-`true` sentinel values, so regressions on those edges would not be caught.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (No concrete fix text beyond the concern narrative in the source finding.)
+
+### OOS_4: [OUT_OF_SCOPE] Multi-line `no_issues_found` suppression limitation predates branch
+- **Reviewer(s)**: dyn-probe-launch-parity
+- **Severity**: nit
+- **Concern**: Sentinel guard at `plan-review-loop.sh:1045` reuses dispatch-style line-anchored regex (consistent with `dispatch-plan-review-panel.sh:246`). Pretty-printed multi-line `{"no_issues_found": true}` would not suppress the WARN; limitation predates this branch and matches other gates.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (No concrete fix text in source.)
+
+### OOS_5: [OUT_OF_SCOPE] `check-reviewers.md` “mirrors production” wording too strong
+- **Reviewer(s)**: dyn-probe-launch-parity
+- **Severity**: nit
+- **Concern**: Docs at `scripts/check-reviewers.md:28` state the Codex probe “mirrors production reviewer launches”; given intentional omissions (`--add-dir`, `--json`, trust `-c`, argv ordering), wording is stronger than implementation—docs-only follow-up, not a functional blocker for the model-args fix.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (No concrete fix text in source.)
