@@ -45,7 +45,14 @@ cat > "$stub_dir/gh" <<'GH'
 set -euo pipefail
 printf '%s\n' "$*" >> "${GH_LOG:?}"
 case "$1 $2" in
-    "pr view") echo "OPEN"; exit 0 ;;
+    "pr view")
+        if [[ "${MERGE_STATE_STUB:-CLEAN}" == "__EMPTY__" ]]; then
+            printf '{"state":"%s","mergeStateStatus":null}\n' "${PR_STATE_STUB:-OPEN}"
+        else
+            printf '{"state":"%s","mergeStateStatus":"%s"}\n' "${PR_STATE_STUB:-OPEN}" "${MERGE_STATE_STUB:-CLEAN}"
+        fi
+        exit 0
+        ;;
     "pr checks") printf '%s\n' "${CHECKS_JSON:-[]}"; exit 0 ;;
 esac
 echo "unexpected gh command: $*" >&2
@@ -60,10 +67,24 @@ chmod +x "$stub_dir/sleep"
 
 out=$(GH_LOG="$TMPROOT/gh1.log" GIT_LOG="$TMPROOT/git1.log" PATH="$stub_dir:$PATH" "$SCRIPT" --pr 7 --repo fork/repo)
 grep -Fxq 'CI_STATUS=pending' <<<"$out" || fail "empty checks without grace should be pending"
+grep -Fxq 'CONFLICTED=false' <<<"$out" || fail "CONFLICTED line must be emitted (default CLEAN)"
 
 out=$(GH_LOG="$TMPROOT/gh2.log" GIT_LOG="$TMPROOT/git2.log" BEHIND_LOG="$TMPROOT/behind2.log" PATH="$stub_dir:$PATH" "$SCRIPT" --pr 7 --repo fork/repo --base-remote upstream --base-ref main --empty-checks-grace 30)
 grep -Fxq 'CI_STATUS=NO_CHECKS' <<<"$out" || fail "empty checks after grace should be NO_CHECKS"
+grep -Fxq 'CONFLICTED=false' <<<"$out" || fail "CONFLICTED line must be emitted after grace"
 grep -Fq 'fetch upstream main --quiet' "$TMPROOT/git2.log" || fail "base remote/ref not used for fetch"
 grep -Fq -- '--base-remote upstream --base-ref main --no-fetch' "$TMPROOT/behind2.log" || fail "ci-behind-count.sh not delegated for behind count"
+
+out=$(GH_LOG="$TMPROOT/gh-dirty.log" GIT_LOG="$TMPROOT/git-dirty.log" MERGE_STATE_STUB=DIRTY PATH="$stub_dir:$PATH" "$SCRIPT" --pr 7 --repo fork/repo)
+grep -Fxq 'CONFLICTED=true' <<<"$out" || fail "DIRTY mergeStateStatus should emit CONFLICTED=true"
+
+out=$(GH_LOG="$TMPROOT/gh-behind.log" GIT_LOG="$TMPROOT/git-behind.log" MERGE_STATE_STUB=BEHIND PATH="$stub_dir:$PATH" "$SCRIPT" --pr 7 --repo fork/repo)
+grep -Fxq 'CONFLICTED=false' <<<"$out" || fail "BEHIND mergeStateStatus should emit CONFLICTED=false"
+
+out=$(GH_LOG="$TMPROOT/gh-unknown.log" GIT_LOG="$TMPROOT/git-unknown.log" MERGE_STATE_STUB=UNKNOWN PATH="$stub_dir:$PATH" "$SCRIPT" --pr 7 --repo fork/repo)
+grep -Fxq 'CONFLICTED=true' <<<"$out" || fail "UNKNOWN mergeStateStatus should emit CONFLICTED=true"
+
+out=$(GH_LOG="$TMPROOT/gh-empty.log" GIT_LOG="$TMPROOT/git-empty.log" MERGE_STATE_STUB=__EMPTY__ PATH="$stub_dir:$PATH" "$SCRIPT" --pr 7 --repo fork/repo)
+grep -Fxq 'CONFLICTED=true' <<<"$out" || fail "empty mergeStateStatus should emit CONFLICTED=true"
 
 echo "PASS: test-ci-status.sh"

@@ -23,7 +23,7 @@
 #   fresh) but invokes only `gh pr merge --squash`; if that plain merge
 #   fails, it emits MERGE_RESULT=policy_denied. This applies to ALL
 #   admin-eligible mergeStateStatus values (CLEAN, UNSTABLE, HAS_HOOKS,
-#   BLOCKED) — not just review-required denials.
+#   BLOCKED, BEHIND) — not just review-required denials.
 #
 # Outputs (key=value to stdout, always emitted via EXIT trap):
 #   MERGE_RESULT=merged|admin_merged|main_advanced|ci_not_ready|version_already_published|admin_failed|policy_denied|error
@@ -204,12 +204,6 @@ refresh_ci_state() {
 # --- Fetch PR metadata (mergeStateStatus + headRefOid) in one compound call ---
 refresh_pr_info
 
-if [[ "$MERGE_STATE" == "BEHIND" ]]; then
-    MERGE_RESULT="main_advanced"
-    ERROR=""
-    exit 0
-fi
-
 # Empty or UNKNOWN mergeStateStatus = could not determine merge state yet.
 # Retry with the initial UNKNOWN/empty-state budget before failing closed as
 # error; empty usually reflects gh API/network failure, UNKNOWN is GitHub uncertainty.
@@ -219,12 +213,6 @@ fi
 # so the orchestrator bails to its error-handling path.
 if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
     retry_pr_info_unknown_recovery "$MERGE_PR_INITIAL_UNKNOWN_RETRIES"
-fi
-
-if [[ "$MERGE_STATE" == "BEHIND" ]]; then
-    MERGE_RESULT="main_advanced"
-    ERROR=""
-    exit 0
 fi
 
 if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
@@ -243,11 +231,12 @@ if [[ "$CI_GOOD" != "true" ]]; then
 fi
 
 # CLEAN = mergeable normally; UNSTABLE = CI passed but review not approved;
-# BLOCKED = review/policy block (--admin handles this); HAS_HOOKS = has pre-receive hooks.
-# BEHIND and empty/UNKNOWN are already handled above; remaining non-admin-eligible
-# states (e.g. DIRTY, DRAFT, or any future GitHub-added value) → main_advanced
+# BLOCKED = review/policy block (--admin handles this); HAS_HOOKS = has pre-receive hooks;
+# BEHIND = branch behind base but conflict-free (admin-eligible after CI pass).
+# empty/UNKNOWN are handled above; remaining non-admin-eligible states
+# (e.g. DIRTY, DRAFT, or any future GitHub-added value) → main_advanced
 # to retry after updating the branch.
-if [[ "$MERGE_STATE" != "CLEAN" ]] && [[ "$MERGE_STATE" != "UNSTABLE" ]] && [[ "$MERGE_STATE" != "HAS_HOOKS" ]] && [[ "$MERGE_STATE" != "BLOCKED" ]]; then
+if [[ "$MERGE_STATE" != "CLEAN" ]] && [[ "$MERGE_STATE" != "UNSTABLE" ]] && [[ "$MERGE_STATE" != "HAS_HOOKS" ]] && [[ "$MERGE_STATE" != "BLOCKED" ]] && [[ "$MERGE_STATE" != "BEHIND" ]]; then
     MERGE_RESULT="main_advanced"
     ERROR="Branch mergeStateStatus is $MERGE_STATE"
     exit 0
@@ -304,21 +293,11 @@ if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
             ERROR="local HEAD ($LOCAL_HEAD) does not match PR head OID ($PR_HEAD_OID) after force-push recovery"
             exit 0
         fi
-        if [[ "$MERGE_STATE" == "BEHIND" ]]; then
-            MERGE_RESULT="main_advanced"
-            ERROR=""
-            exit 0
-        fi
         # GitHub's API often returns UNKNOWN immediately after a push due to
         # propagation delay (#2342). Retry briefly before treating as a hard
         # error so transient post-push UNKNOWN states don't stall the merge.
         if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
             retry_pr_info_unknown_recovery "$MERGE_PR_POST_PUSH_UNKNOWN_RETRIES"
-        fi
-        if [[ "$MERGE_STATE" == "BEHIND" ]]; then
-            MERGE_RESULT="main_advanced"
-            ERROR=""
-            exit 0
         fi
         if [[ -z "$MERGE_STATE" ]] || [[ "$MERGE_STATE" == "UNKNOWN" ]]; then
             MERGE_RESULT="error"
@@ -331,7 +310,7 @@ if [[ -z "$LOCAL_HEAD" ]] || [[ "$LOCAL_HEAD" != "$PR_HEAD_OID" ]]; then
             ERROR="CI checks are not all passing after force-push recovery"
             exit 0
         fi
-        if [[ "$MERGE_STATE" != "CLEAN" ]] && [[ "$MERGE_STATE" != "UNSTABLE" ]] && [[ "$MERGE_STATE" != "HAS_HOOKS" ]] && [[ "$MERGE_STATE" != "BLOCKED" ]]; then
+        if [[ "$MERGE_STATE" != "CLEAN" ]] && [[ "$MERGE_STATE" != "UNSTABLE" ]] && [[ "$MERGE_STATE" != "HAS_HOOKS" ]] && [[ "$MERGE_STATE" != "BLOCKED" ]] && [[ "$MERGE_STATE" != "BEHIND" ]]; then
             MERGE_RESULT="main_advanced"
             ERROR="Branch mergeStateStatus is $MERGE_STATE after force-push recovery"
             exit 0

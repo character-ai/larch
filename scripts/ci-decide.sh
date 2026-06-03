@@ -16,13 +16,14 @@
 #   merged    | *                | already_merged
 #   pending   | yes              | rebase
 #   pending   | no               | wait
-#   pass      | yes              | rebase
-#   pass      | no               | merge
+#   pass      | yes              | conflict-free  | merge
+#   pass      | yes              | conflicted     | rebase
+#   pass      | no               | *              | merge
 #   fail      | yes              | rebase_then_evaluate
 #   fail      | no               | evaluate_failure
 #
 # Usage:
-#   ci-decide.sh --status STATUS --behind N --iteration N --rebase-count N --fix-attempts N
+#   ci-decide.sh --status STATUS --behind N --iteration N --rebase-count N --fix-attempts N [--conflicted true|false]
 #
 # Arguments:
 #   --status       — "pass", "fail", "pending", or "merged"
@@ -30,6 +31,7 @@
 #   --iteration    — Current poll loop iteration (non-negative integer)
 #   --rebase-count — Number of rebases performed so far (non-negative integer)
 #   --fix-attempts — Number of CI fix attempts so far (non-negative integer)
+#   --conflicted   — Whether mergeStateStatus indicates conflicts (true|false; default false)
 #
 # Outputs (key=value to stdout):
 #   ACTION=wait|rebase|merge|already_merged|rebase_then_evaluate|evaluate_failure|bail
@@ -53,10 +55,12 @@ BEHIND_COUNT=""
 ITERATION=""
 REBASE_COUNT=""
 FIX_ATTEMPTS=""
+CONFLICTED="false"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --status) CI_STATUS="${2:?--status requires a value}"; shift 2 ;;
         --behind) BEHIND_COUNT="${2:?--behind requires a value}"; shift 2 ;;
+        --conflicted) CONFLICTED="${2:?--conflicted requires a value}"; shift 2 ;;
         --iteration) ITERATION="${2:?--iteration requires a value}"; shift 2 ;;
         --rebase-count) REBASE_COUNT="${2:?--rebase-count requires a value}"; shift 2 ;;
         --fix-attempts) FIX_ATTEMPTS="${2:?--fix-attempts requires a value}"; shift 2 ;;
@@ -91,6 +95,11 @@ for var_name in BEHIND_COUNT ITERATION REBASE_COUNT FIX_ATTEMPTS; do
     fi
 done
 
+if [[ "$CONFLICTED" != "true" ]] && [[ "$CONFLICTED" != "false" ]]; then
+    larch_err "ERROR: --conflicted must be true or false, got: $CONFLICTED"
+    exit 1
+fi
+
 # --- Decision matrix ---
 # PR already merged (force-merged by user) — stop waiting immediately
 if [[ "$CI_STATUS" == "merged" ]]; then
@@ -98,12 +107,13 @@ if [[ "$CI_STATUS" == "merged" ]]; then
     exit 0
 fi
 
-# Evaluate CI state first — if CI passes and branch is up-to-date, always merge
-# (even if safety limits have been reached). Safety limits only block non-merge actions.
+# Evaluate CI state first — if CI passes and branch is up-to-date or conflict-free
+# while behind, always merge (even if safety limits have been reached).
+# Safety limits only block non-merge actions.
 BEHIND=$( [[ "$BEHIND_COUNT" -gt 0 ]] && echo "true" || echo "false" )
 
 # Allow merge regardless of safety limits
-if [[ "$CI_STATUS" == "pass" ]] && [[ "$BEHIND" == "false" ]]; then
+if [[ "$CI_STATUS" == "pass" ]] && { [[ "$BEHIND" == "false" ]] || [[ "$CONFLICTED" != "true" ]]; }; then
     emit_kv ACTION "merge"
     exit 0
 fi
@@ -138,7 +148,7 @@ case "$CI_STATUS" in
         fi
         ;;
     pass)
-        # pass + behind=true (pass + behind=false handled above)
+        # pass + behind=true + conflicted (pass + behind=false or conflict-free handled above)
         emit_kv ACTION "rebase"
         ;;
     fail)

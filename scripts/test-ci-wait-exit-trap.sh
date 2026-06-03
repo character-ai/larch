@@ -12,7 +12,7 @@
 #
 # B) Default-mode (stdout) backward-compat: run ci-wait.sh WITHOUT
 #    --output-file, with a stub ci-decide.sh returning ACTION=merge so
-#    the script exits cleanly. Assert all 7 KV keys appear on stdout
+#    the script exits cleanly. Assert all 8 KV keys appear on stdout
 #    in order, and that NO file-mode side effects occurred (no
 #    output file, no .done sentinel created adjacent).
 #
@@ -69,6 +69,7 @@ cat > "$A_DIR/ci-status.sh" <<'SH'
 touch "$(dirname "$0")/loop-entered"
 echo "CI_STATUS=pending"
 echo "BEHIND_COUNT=0"
+echo "CONFLICTED=false"
 echo "FAILED_RUN_ID="
 SH
 chmod +x "$A_DIR/ci-status.sh"
@@ -174,6 +175,7 @@ cat > "$B_DIR/ci-status.sh" <<'SH'
 #!/usr/bin/env bash
 echo "CI_STATUS=pass"
 echo "BEHIND_COUNT=0"
+echo "CONFLICTED=false"
 echo "FAILED_RUN_ID="
 SH
 chmod +x "$B_DIR/ci-status.sh"
@@ -199,8 +201,8 @@ else
     fail "B: ci-wait.sh exited $B_EXIT (expected 0)"
 fi
 
-# Assertion 7: all 7 KV keys appear on stdout, in order.
-EXPECTED_KEYS=("ACTION=" "CI_STATUS=" "BEHIND_COUNT=" "FAILED_RUN_ID=" "BAIL_REASON=" "ITERATION=" "ELAPSED=")
+# Assertion 7: all 8 KV keys appear on stdout, in order.
+EXPECTED_KEYS=("ACTION=" "CI_STATUS=" "BEHIND_COUNT=" "CONFLICTED=" "FAILED_RUN_ID=" "BAIL_REASON=" "ITERATION=" "ELAPSED=")
 ALL_KEYS_PRESENT=true
 LAST_LINE_NUM=0
 for key in "${EXPECTED_KEYS[@]}"; do
@@ -218,7 +220,7 @@ for key in "${EXPECTED_KEYS[@]}"; do
     LAST_LINE_NUM="$LINE_NUM"
 done
 if $ALL_KEYS_PRESENT; then
-    ok "B: all 7 KV keys present on stdout in correct order"
+    ok "B: all 8 KV keys present on stdout in correct order"
 fi
 
 # Assertion 8: no file-mode side effects.
@@ -250,6 +252,7 @@ cat > "$C_DIR/ci-status.sh" <<'SH'
 #!/usr/bin/env bash
 echo "CI_STATUS=pass"
 echo "BEHIND_COUNT=0"
+echo "CONFLICTED=false"
 echo "FAILED_RUN_ID="
 SH
 chmod +x "$C_DIR/ci-status.sh"
@@ -319,6 +322,7 @@ cat > "$D_DIR/ci-status.sh" <<'SH'
 printf '%s\n' "$*" >> "$(dirname "$0")/argv.log"
 echo "CI_STATUS=NO_CHECKS"
 echo "BEHIND_COUNT=0"
+echo "CONFLICTED=false"
 echo "FAILED_RUN_ID="
 SH
 chmod +x "$D_DIR/ci-status.sh"
