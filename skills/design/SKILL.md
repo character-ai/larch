@@ -124,9 +124,61 @@ Print: `> **🔶 /design 0: setup**`
 
 **When**: immediately after reading `references/flags.md` and before invoking the Step 0a Bash block. No `session-setup.sh`, no `DESIGN_TMPDIR`, and no Final summary block on this path.
 
-1. Parse public flags (`--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`) from the start of `$ARGUMENTS`. For each leading `--` token, accept only that allowlist (`--run-id` consumes the next argv token as its value). Boolean flags must not repeat (duplicate `--hard` is a hard error).
-2. Any other leading `--` token (including retired tier flags) is unrecognized/disallowed. On duplicate `--hard` or any unrecognized/disallowed leading `--` flag: print `**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**` to stderr (substitute the offending token when helpful) and exit **1**. Do **not** invoke Step 0a.
-3. On success, bind mental booleans `hard_requested`, `partition_requested`, `brainstorm_requested`, `manual_requested`, `no_dedup_requested`, and optional `run_id` from argv for Step 0b (Step 0b sub-step 1 consumes these bindings; it does not re-validate allowlist membership).
+Run `parse-design-argv.sh` as the single authoritative Step 0-pre parser. Render the public `/design` argv as one shell-quoted word per original argv token at `<PUBLIC_ARGV_WORDS>`; keep verbal tails as positional argv, not as a re-tokenized string.
+
+```bash
+export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  printf '%s\n' '/design Step 0-pre: CLAUDE_PLUGIN_ROOT is empty after export — skill loader must expand ${CLAUDE_PLUGIN_ROOT} in the template line before Bash runs; abort' >&2
+  exit 1
+fi
+
+# Contract pin for CI (scripts/test-design-structure.sh): parse-design-argv.sh
+set +e
+_argv_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh" <PUBLIC_ARGV_WORDS>)
+_argv_rc=$?
+set -e
+
+hard_requested=false
+partition_requested=false
+brainstorm_requested=false
+manual_requested=false
+no_dedup_requested=false
+run_id=""
+POSITIONAL_KIND=none
+POSITIONAL_VALUE=""
+VALIDATION_ERROR=""
+while IFS= read -r _line || [ -n "$_line" ]; do
+  _key="${_line%%=*}"
+  _value="${_line#*=}"
+  case "$_key" in
+    HARD_REQUESTED) hard_requested="$_value" ;;
+    PARTITION_REQUESTED) partition_requested="$_value" ;;
+    BRAINSTORM_REQUESTED) brainstorm_requested="$_value" ;;
+    MANUAL_REQUESTED) manual_requested="$_value" ;;
+    NO_DEDUP_REQUESTED) no_dedup_requested="$_value" ;;
+    RUN_ID) run_id="$_value" ;;
+    POSITIONAL_KIND) POSITIONAL_KIND="$_value" ;;
+    POSITIONAL_VALUE) POSITIONAL_VALUE="$_value" ;;
+    VALIDATION_ERROR) VALIDATION_ERROR="$_value" ;;
+  esac
+done <<<"${_argv_out:-}"
+
+if [ "${_argv_rc:-0}" -eq 3 ] || [ -n "$VALIDATION_ERROR" ]; then
+  if [ -n "$VALIDATION_ERROR" ]; then
+    printf '%s %s\n' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" "$VALIDATION_ERROR" >&2
+  else
+    printf '%s\n' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" >&2
+  fi
+  exit 1
+fi
+if [ "${_argv_rc:-0}" -ne 0 ]; then
+  printf '%s\n' "**⚠ /design: parse-design-argv.sh failed (exit ${_argv_rc}); aborting before session setup.**" >&2
+  exit 1
+fi
+```
+
+On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSITIONAL_KIND`, and `POSITIONAL_VALUE`. Do not invoke Step 0a on any parser failure.
 
 ### 0a — Reviewer session (`DESIGN_TMPDIR`)
 
@@ -201,9 +253,10 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 ### 0b — Parse argv, issue binding, clarify / already-planned routers, tier → `run-params.json`
 
-1. Consume the mental argv bindings from Step **0-pre** (`hard_requested`, `partition_requested`, `brainstorm_requested`, `manual_requested`, `no_dedup_requested`, optional `run_id`). Remaining tokens after flags:
-   - If the first token matches `^[0-9]+$`, set `ISSUE_NUMBER` to that value.
-   - Else the remainder is **verbal feature text**: invoke **`/larch:issue`** via the Skill tool (forward `--no-dedup` when set). Parse the created issue number into `ISSUE_NUMBER`. The route driver at sub-step **2.5** still applies title-eligibility once the issue is fetched — if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
+1. Consume only the Step **0-pre** bindings (`hard_requested`, `partition_requested`, `brainstorm_requested`, `manual_requested`, `no_dedup_requested`, optional `run_id`, `POSITIONAL_KIND`, `POSITIONAL_VALUE`). Do not re-scan `$ARGUMENTS`, the public argv tail, or allowlist membership here:
+   - `POSITIONAL_KIND=issue` → set `ISSUE_NUMBER` to `POSITIONAL_VALUE` (digits only; do not re-match raw argv).
+   - `POSITIONAL_KIND=verbal` → invoke **`/larch:issue`** via the Skill tool with `POSITIONAL_VALUE` as the feature text (forward `--no-dedup` when `no_dedup_requested=true`). Parse the created issue number into `ISSUE_NUMBER`. The route driver at sub-step **2.5** still applies title-eligibility once the issue is fetched — if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
+   - `POSITIONAL_KIND=none` → preserve today's empty-invocation / no-positional behavior; this refactor does not add a new usage error.
 2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure. Bind `ISSUE_TITLE` from the JSON `title` field. Write the fetched `body` to `$DESIGN_TMPDIR/issue-body.txt`. Set `HAS_CLARIFY_LABEL=true` when the `needs-design-clarification` label is present, else `HAS_CLARIFY_LABEL=false`. **Resolve `REPO`** once for explicit `gh --repo` threading: prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so downstream helpers use the hub default.
 2.5. **Route driver** — `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` (contract: `design-route.md`). Resume detection (via `${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-load.sh` when the body carries a pause marker), title-eligibility, re-entry guard, and `ROUTE=` verdict run inside the driver; cancel banners and `AskUserQuestion` gates stay here.
 
@@ -351,7 +404,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
    6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
 4. **Already-planned branch** when `ROUTE=already-planned`: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` before the terminal already-planned hygiene / **Final summary block** / exit **0**. Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
-5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Set mental boolean `partition_requested` to `true` when `-p` or `--partition` was parsed on argv, else `false`. Set mental boolean `brainstorm_requested` to `true` when `--brainstorm` was parsed on argv **or** auto-enabled by the route driver's `BRAINSTORM_PREFIX`, else `false`. Set mental boolean `manual_requested` to `true` when `--manual` or `-m` was parsed on argv, else `false`. No `AskUserQuestion` on this sub-step.
+5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; keep `manual_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`. No `AskUserQuestion` on this sub-step.
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `write-run-params.sh`, and router-flag jq-merge.
 
    ```bash
@@ -1502,5 +1555,6 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh` — persists tier-derived `run-params.json` (Step 0). Sibling: `write-run-params.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` — Step 0b pre-gate route driver. Sibling: `design-route.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` — Step 0b post-gate init driver. Sibling: `design-init-runparams.md`.
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh` — Step 0-pre public argv parser. Sibling: `parse-design-argv.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-parse-design-argv.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-parse-design-argv.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` — Step 5c publish-tail driver. Sibling: `design-publish.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-publish.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-publish.md`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh` — resolves `design_classification` (`SIMPLE`|`HARD`) from `run-params.json` with `python3` → `jq` → grep literal fallbacks and defaults to HARD with a warning on read failure. Sibling: `read-design-classification.md`.
