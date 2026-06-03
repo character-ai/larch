@@ -157,7 +157,6 @@ def test_happy_path_stage_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         "postbump",
         "pr-body",
         "oos",
-        "flush-pre",
         "ensure-pr",
         "comment",
         "monitor",
@@ -166,7 +165,7 @@ def test_happy_path_stage_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         "state",
         "flush-post",
     ]
-    assert flush_args == [(None, str(tmp_path))]
+    assert not flush_args
 
 
 def test_oos_gate_before_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

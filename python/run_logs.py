@@ -9,6 +9,7 @@ import re
 import shutil
 import sys
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -351,6 +352,8 @@ def _write_manifest(ctx: RunContext, manifest: Manifest) -> None:
 
 
 def _pre_push_probe(ctx: RunContext) -> RefreshSkip:
+    tmpdir = Path(ctx.tmpdir)
+    finalize_state = tmpdir / "finalize-state.sh"
     if ctx.state_file:
         merge_result = _read_state_kv(ctx.state_file, "MERGE_RESULT")
         run_id = _read_state_kv(ctx.state_file, "RUN_ID")
@@ -359,6 +362,12 @@ def _pre_push_probe(ctx: RunContext) -> RefreshSkip:
         merge_result = ctx.merge_result
         run_id = ctx.run_id
         no_logs_commit = ctx.no_logs_commit
+    if not merge_result:
+        merge_result = _read_kv_file(finalize_state, "MERGE_RESULT")
+    if not run_id:
+        run_id = _read_kv_file(finalize_state, "RUN_ID")
+    if (tmpdir / "post-merge-sentinel").is_file() and not merge_result:
+        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
     if merge_result in config.POST_MERGE_MERGE_RESULTS:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
     if not run_id:
@@ -534,7 +543,8 @@ def flush_logs_pre(
         step_label="pre-push",
         source_label="execution-issues.md pre-push refresh",
     )
-    _write_final_report(runner, ctx)
+    with suppress(ShipError):
+        _write_final_report(runner, ctx)
     _render_ledger_reports(runner, ctx, log_root)
     _render_token_timing_batches(ctx, log_root)
     _ = capture_session_transcript(ctx, runner, defer_commit=True)
@@ -574,6 +584,14 @@ def flush_logs_post(
         pr_number = str(ctx.pr_number)
     if pr_number and str(pr_number).isdigit():
         steps["pr_number"] = int(pr_number)
+    try:
+        if runner is not None:
+            _write_final_report(runner, ctx)
+        if runner is not None:
+            _render_ledger_reports(runner, ctx, log_root)
+        _render_token_timing_batches(ctx, log_root)
+    except ShipError:
+        return RefreshSkip(skipped=True, reason="redaction-failed")
     status = config.MANIFEST_STATUS_DONE if finalize else manifest.status
     updated = Manifest(
         status=status,
@@ -585,14 +603,6 @@ def flush_logs_post(
         extra={**(manifest.extra or {}), **({"pr_number": int(pr_number)} if str(pr_number).isdigit() else {})},
     )
     _write_manifest(ctx, updated)
-    if runner is not None:
-        _write_final_report(runner, ctx)
-    try:
-        if runner is not None:
-            _render_ledger_reports(runner, ctx, log_root)
-        _render_token_timing_batches(ctx, log_root)
-    except ShipError:
-        return RefreshSkip(skipped=True, reason="redaction-failed")
     return RefreshSkip(skipped=False, reason="")
 
 

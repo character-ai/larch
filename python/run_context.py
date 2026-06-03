@@ -62,6 +62,8 @@ class RunContext:
     mermaid: str = ""
     test_plan: str = ""
     final_bail_reason: str = ""
+    codex_present: bool = False
+    cursor_present: bool = False
 
     @classmethod
     def from_env(cls, *, env: dict[str, str] | None = None) -> RunContext:
@@ -122,6 +124,8 @@ class RunContext:
             mermaid=source.get("PR_MERMAID", ""),
             test_plan=source.get("PR_TEST_PLAN", ""),
             final_bail_reason=source.get("FINAL_BAIL_REASON", ""),
+            codex_present=_env_bool(source, "CODEX_PRESENT"),
+            cursor_present=_env_bool(source, "CURSOR_PRESENT"),
         )
 
     def with_(self, **changes: object) -> RunContext:

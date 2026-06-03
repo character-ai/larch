@@ -1469,7 +1469,7 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
 
 # FINDING_12: monitor driver mapping tests
 def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
-    """Pushed fix → OK + goto_rebase + did_fixing."""
+    """Pushed fix with a current base → OK + no rebase + did_fixing."""
     baseline_head = "1111" * 10
     new_head = "2222" * 10
 
@@ -1520,7 +1520,7 @@ def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
         cwd=str(tmp_path),
     )
     assert result.result.outcome == Outcome.OK
-    assert result.goto_rebase is True
+    assert result.goto_rebase is False
     assert result.did_fixing is True
 
 

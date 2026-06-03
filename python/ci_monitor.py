@@ -1247,10 +1247,16 @@ def monitor(
         )
 
     if decision.action in ("evaluate_failure", "rebase_then_evaluate"):
+        if decision.action == "rebase_then_evaluate":
+            return _base_result(
+                did_fixing=False,
+                goto=True,
+                step=StepResult(outcome=Outcome.OK),
+            )
         if not status.failed_run_id:
             return _base_result(
                 did_fixing=False,
-                goto=decision.action == "rebase_then_evaluate",
+                goto=False,
                 step=StepResult(
                     outcome=Outcome.STALLED,
                     detail="missing failed_run_id",
@@ -1270,7 +1276,7 @@ def monitor(
         if fix.status == "no-changes":
             return _base_result(
                 did_fixing=False,
-                goto=decision.action == "rebase_then_evaluate",
+                goto=False,
                 step=StepResult(outcome=Outcome.OK),
                 rerun_already_running=fix.rerun_already_running,
                 transient_rerun_attempted=True,
@@ -1278,7 +1284,7 @@ def monitor(
         if fix.status == "pushed":
             return _base_result(
                 did_fixing=True,
-                goto=True,
+                goto=status.behind_count > 0,
                 step=StepResult(outcome=Outcome.OK),
             )
         if fix.status == "head-changed":

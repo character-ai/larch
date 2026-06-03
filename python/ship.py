@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -91,7 +92,7 @@ def _error_to_result(exc: Exception) -> ShipResult:
         return ShipResult(Outcome.NEEDS_USER_INPUT, needs_user_reason=str(exc), detail=str(exc))
     if isinstance(exc, Stalled):
         return ShipResult(Outcome.STALLED, detail=str(exc))
-    return ShipResult(Outcome.STALLED, detail=str(exc))
+    raise exc
 
 
 def _summary_from_manifest(ctx: RunContext) -> str:
@@ -214,10 +215,10 @@ def run_postmerge_phase(
         stall_step=post.status if post.outcome is Outcome.STALLED else ctx.stall_step,
     )
     finalize.write_finalize_state(state_ctx, Path(ctx.tmpdir) / "finalize-state.sh")
-    if _postmerge_should_flush(ctx):
-        _ = run_logs.load_or_recover_manifest(ctx)
-        skip = run_logs.flush_logs_post(ctx, merge_result=ctx.merge_result, runner=runner)
-        if post.outcome is Outcome.OK and skip.skipped:
+    if post.outcome is Outcome.OK and _postmerge_should_flush(state_ctx):
+        _ = run_logs.load_or_recover_manifest(state_ctx)
+        skip = run_logs.flush_logs_post(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
+        if skip.skipped:
             return ShipResult(Outcome.STALLED, detail=f"post-merge flush skipped: {skip.reason}")
     if post.outcome is not Outcome.OK:
         return ShipResult(post.outcome, detail=post.detail or post.status)
@@ -239,8 +240,8 @@ def run_ship(
         repo_root = cwd or str(Path.cwd())
         if not _tmpdir_under_allowed_root(ctx.tmpdir):
             return ShipResult(Outcome.STALLED, detail="invalid tmpdir")
-        codex_present = bool(os.environ.get("CODEX") or os.environ.get("CODEX_HOME") or ctx.tool_label == "codex")
-        cursor_present = bool(os.environ.get("CURSOR") or os.environ.get("CURSOR_AUTH_ARGS") or ctx.tool_label == "cursor")
+        codex_present = ctx.codex_present or bool(os.environ.get("CODEX") or os.environ.get("CODEX_HOME") or ctx.tool_label == "codex")
+        cursor_present = ctx.cursor_present or bool(os.environ.get("CURSOR") or os.environ.get("CURSOR_AUTH_ARGS") or ctx.tool_label == "cursor")
         base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
         base_ref = "main"
         checks_result = checks.run_checks_phase(
@@ -275,11 +276,6 @@ def run_ship(
         if oos_result is not None:
             return oos_result
 
-        pre = run_logs.flush_logs_pre(runner, ctx.with_(state_file=None), cwd=repo_root)
-        if pre.skipped and pre.reason not in config.REFRESH_SKIP_MERGE_OK:
-            _write_terminal_state(ctx, Outcome.STALLED, "pre-push")
-            return ShipResult(Outcome.STALLED, detail=f"pre-push flush skipped: {pre.reason}")
-
         title = _pr_title(ctx, runner, cwd=repo_root)
         ensured = pr.ensure_pr(runner, ctx, body, title=title, cwd=repo_root)
         working = ctx.with_(
@@ -291,8 +287,7 @@ def run_ship(
         try:
             run_logs.write_final_report_comment(runner, working)
         except ShipError as exc:
-            _write_terminal_state(working, Outcome.STALLED, "final-report-comment")
-            return ShipResult(Outcome.STALLED, pr_number=working.pr_number, pr_url=working.pr_url, detail=str(exc))
+            _ = sys.stderr.write(f"ship.py: warning: {exc}\n")
         if not working.merge or working.draft or working.forked or working.repo_unavailable:
             finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
             return ShipResult(
@@ -318,7 +313,7 @@ def run_ship(
                 base_remote=base_remote,
                 base_ref=base_ref,
                 plan_file=working.plan_file or None,
-                cwd=cwd,
+                cwd=repo_root,
             )
             if monitor.result.outcome is not Outcome.OK:
                 _write_terminal_state(
@@ -349,7 +344,7 @@ def run_ship(
                         tmpdir=working.tmpdir,
                         base_remote=base_remote,
                         base_ref=base_ref,
-                        allow_conflict_fix=False,
+                        allow_conflict_fix=True,
                     )
                     rebase_count += 1
                 if monitor.transient_rerun_attempted:
@@ -359,7 +354,7 @@ def run_ship(
                 iteration += 1
                 continue
 
-            merged = merge.merge_pr(runner, working, cwd=cwd, post_flush=False)
+            merged = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
             if merged.result in {config.MERGE_RESULT_CI_NOT_READY, config.MERGE_RESULT_MAIN_ADVANCED}:
                 iteration += 1
                 continue
@@ -392,7 +387,7 @@ def run_ship(
                     merge_result=merged.result,
                     detail=merged.error or f"merge did not complete: {merged.result}",
                 )
-            post = run_postmerge_phase(runner, working, cwd=cwd)
+            post = run_postmerge_phase(runner, working, cwd=repo_root)
             return ShipResult(
                 post.outcome,
                 pr_number=working.pr_number,
@@ -400,7 +395,7 @@ def run_ship(
                 merge_result=working.merge_result,
                 detail=post.detail,
             )
-    except (NeedsUserInput, ShipError, Stalled, TransientNetworkError, Exception) as exc:  # pylint: disable=broad-exception-caught
+    except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
         return _error_to_result(exc)
 
 
@@ -423,7 +418,7 @@ def emit_result(ctx: RunContext, result: ShipResult) -> None:
 
 def _redacted_result_payload(result: ShipResult) -> dict[str, Any]:
     payload = result.to_json_dict()
-    for key in ("needs_user_reason", "failed_run_id", "merge_result", "detail"):
+    for key in ("needs_user_reason", "failed_run_id", "pr_url", "merge_result", "detail"):
         value = payload.get(key)
         if isinstance(value, str) and value:
             redacted = redact.redact_outbound(value)
@@ -445,7 +440,7 @@ def build_parser() -> argparse.ArgumentParser:
     _ = parser.add_argument("--forked")
     _ = parser.add_argument("--repo-unavailable")
     _ = parser.add_argument("--no-admin-fallback")
-    _ = parser.add_argument("--no-logs-commit", action="store_true", default=None)
+    _ = parser.add_argument("--no-logs-commit", nargs="?", const="true", default=None)
     _ = parser.add_argument("--expected-session-id")
     _ = parser.add_argument("--expected-tmpdir-basename-prefix")
     return parser
@@ -481,8 +476,8 @@ def _ctx_from_args(args: argparse.Namespace) -> RunContext:
         value = getattr(args, arg_name)
         if value is not None:
             changes[field_name] = str(value).strip().lower() in {"1", "true", "yes", "on"}
-    if args.no_logs_commit is True:
-        changes["no_logs_commit"] = True
+    if args.no_logs_commit is not None:
+        changes["no_logs_commit"] = str(args.no_logs_commit).strip().lower() in {"1", "true", "yes", "on"}
     return env_ctx.with_(**changes)
 
 

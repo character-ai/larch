@@ -128,7 +128,16 @@ if [ -n "$_repo_root" ] && git -C "$_repo_root" rev-parse -q --verify origin/mai
   fi
 fi
 
-_RUN_ID=$(tr -d '\r\n' <"$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
+_RUN_ID=""
+if [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
+  _RUN_ID=$(grep '^RUN_ID=' "$IMPLEMENT_TMPDIR/ship-pr-state.sh" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r')
+fi
+if [ -z "$_RUN_ID" ] && [ -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then
+  _RUN_ID=$(grep '^RUN_ID=' "$IMPLEMENT_TMPDIR/finalize-state.sh" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r')
+fi
+if [ -z "$_RUN_ID" ]; then
+  _RUN_ID=$(tr -d '\r\n' <"$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)
+fi
 _oos_ndjson=""
 if [ -n "$_RUN_ID" ]; then
   _oos_ndjson="$IMPLEMENT_TMPDIR/larch-logs/implement/$_RUN_ID/oos-issues.ndjson"

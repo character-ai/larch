@@ -68,7 +68,7 @@ def postbump(
         if remote_missing:
             probe = runner.run(["git", "ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
             if probe.returncode not in {0, 2}:
-                raise TransientNetworkError("remote branch probe failed", result=probe)
+                return FinalizeResult(Outcome.STALLED, "remote-check-failed", "remote branch probe failed")
         result = rebase.rebase_and_push(
             runner,
             repo=ctx.repo,
@@ -78,7 +78,7 @@ def postbump(
             base_remote=base_remote,
             base_ref="main",
             defer_push=ctx.repo_unavailable or remote_missing,
-            allow_conflict_fix=False,
+            allow_conflict_fix=True,
         )
     except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
         return _result_from_error(exc)
