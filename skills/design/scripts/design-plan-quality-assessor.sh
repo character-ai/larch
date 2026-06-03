@@ -130,6 +130,9 @@ _write_result_and_emit() {
     done
     if ! phase_driver_write_result_env "$RESULT_ENV" "${_kvs[@]}"; then
         WARN_LINES+=("**⚠ design-plan-quality-assessor: result env write failed; using stdout fallback.**")
+        if [[ ! -L "$RESULT_ENV" ]]; then
+            rm -f "$RESULT_ENV" || true
+        fi
     fi
     emit_kv ASSESSOR_STATUS "$ASSESSOR_STATUS"
     emit_kv ASSESSOR_VERDICT "$ASSESSOR_VERDICT"

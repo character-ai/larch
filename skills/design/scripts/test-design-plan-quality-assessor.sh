@@ -66,6 +66,7 @@ FAKE_SCRIPTS="$FAKE_PLUGIN/scripts"
 mkdir -p "$FAKE_DESIGN" "$FAKE_SCRIPTS"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_SCRIPTS/lib-quiet.sh"
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
+cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 
 cat >"$FAKE_DESIGN/snapshot-plan-round.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -179,7 +180,8 @@ apply_step3_6_handoff() {
     local _assessor_out _assessor_rc
     export LARCH_SNAPSHOT_PLAN_ROUND_SH="${LARCH_SNAPSHOT_PLAN_ROUND_SH:-$FAKE_DESIGN/snapshot-plan-round.sh}"
     export LARCH_ASSESS_PLAN_ROUND_SH="${LARCH_ASSESS_PLAN_ROUND_SH:-$FAKE_DESIGN/assess-plan-round.sh}"
-    _assessor_out=$(bash "$SUBJECT" --design-tmpdir "$d" --codex-present true --cursor-present false 2>>"$d/handoff.stderr")
+    _assessor_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh" \
+        --design-tmpdir "$d" --codex-present true --cursor-present false 2>>"$d/handoff.stderr")
     _assessor_rc=$?
     printf '%s\n' "${_assessor_out:-}" >"$d/handoff-driver.stdout"
     # shellcheck disable=SC2034 # Populated via indirect assignment (printf -v / ${!name}).
@@ -368,42 +370,123 @@ pass "result-env key presence"
 reset_env
 D8="$TMP/handoff-exit2"
 setup_design_tmp "$D8" HARD
-cat >"$D8/bad-driver.sh" <<'BAD'
+cat >"$FAKE_DESIGN/design-plan-quality-assessor.sh" <<'BAD'
 #!/usr/bin/env bash
 exit 2
 BAD
-chmod +x "$D8/bad-driver.sh"
+chmod +x "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 set +e
-SUBJECT_SAVE=$SUBJECT
-SUBJECT="$D8/bad-driver.sh"
 apply_step3_6_handoff "$D8"
 handoff_rc=$?
-SUBJECT=$SUBJECT_SAVE
 set -e
 assert_rc "handoff exit 2" 1 "$handoff_rc"
 assert_stderr_contains "$D8/handoff.stderr" 'configuration error (exit 2)' "handoff config error banner"
+cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 
 # 12 handoff abort: empty mandatory keys
 reset_env
 D9="$TMP/handoff-empty"
 setup_design_tmp "$D9" HARD
-cat >"$D9/empty-driver.sh" <<'EMPTY'
+cat >"$FAKE_DESIGN/design-plan-quality-assessor.sh" <<'EMPTY'
 #!/usr/bin/env bash
 exit 0
 EMPTY
-chmod +x "$D9/empty-driver.sh"
+chmod +x "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 rm -f "$D9/.step3.6-assessor.env"
 set +e
-SUBJECT_SAVE=$SUBJECT
-SUBJECT="$D9/empty-driver.sh"
 apply_step3_6_handoff "$D9"
 handoff_rc=$?
-SUBJECT=$SUBJECT_SAVE
 set -e
 assert_rc "handoff empty keys" 1 "$handoff_rc"
 assert_stderr_contains "$D9/handoff.stderr" 'did not populate mandatory keys' "handoff mandatory-keys banner"
+cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 
-# 13 driver uses seam bindings (not hardcoded plugin paths in body)
+# 13 handoff abort: driver exit 1 catch-all
+reset_env
+D10="$TMP/handoff-exit1"
+setup_design_tmp "$D10" HARD
+cat >"$FAKE_DESIGN/design-plan-quality-assessor.sh" <<'BAD1'
+#!/usr/bin/env bash
+exit 1
+BAD1
+chmod +x "$FAKE_DESIGN/design-plan-quality-assessor.sh"
+set +e
+apply_step3_6_handoff "$D10"
+handoff_rc=$?
+set -e
+assert_rc "handoff exit 1" 1 "$handoff_rc"
+assert_stderr_contains "$D10/handoff.stderr" 'design-plan-quality-assessor.sh failed (exit' "handoff catch-all banner"
+cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
+
+# 14 pause checkpoint before snapshot/assess
+reset_env
+D11="$TMP/pause-checkpoint"
+setup_design_tmp "$D11" HARD
+printf 'export ISSUE_NUMBER=77\n' >"$D11/source-env.sh"
+: >"$D11/.pause-requested"
+set +e
+run_subject "$D11"
+rc=$?
+set -e
+assert_rc "pause checkpoint rc" 0 "$rc"
+assert_contains "$(cat "$CALL_LOG")" 'pause-save --design-tmpdir' "pause-save invoked"
+assert_contains "$(cat "$CALL_LOG")" '--issue 77' "pause-save issue resolved"
+if grep -Fq 'snapshot ' "$CALL_LOG" || grep -Fq 'assess ' "$CALL_LOG"; then
+    fail "pause should happen before snapshot/assess"
+else
+    pass "pause before snapshot/assess"
+fi
+assert_file_kv "$D11/.step3.6-assessor.env" ASSESSOR_STATUS skipped "pause writes skipped status"
+
+# 15 handoff: single WARN in chat when file parse succeeds
+reset_env
+D12="$TMP/handoff-warn-dedup"
+setup_design_tmp "$D12" HARD
+export WRITE_AFTER_FAIL=true ROUND_CURSOR_VALUE=2
+set +e
+apply_step3_6_handoff "$D12"
+handoff_rc=$?
+set -e
+assert_rc "handoff warn dedup rc" 0 "$handoff_rc"
+warn_chat_count=$(grep -Fc "$SNAPSHOT_FAIL_WARN" "$D12/chat.out" 2>/dev/null || echo 0)
+if [[ "$warn_chat_count" -eq 1 ]]; then
+    pass "handoff single WARN in chat on file parse"
+else
+    fail "handoff single WARN in chat on file parse — expected 1, got $warn_chat_count"
+fi
+
+# 16 result-env write failure: stale regular file removed, stdout fallback used
+reset_env
+D13="$TMP/stale-env-write-fail"
+setup_design_tmp "$D13" HARD
+printf 'ASSESSOR_STATUS=ok\nASSESSOR_VERDICT=worse-majority\nEFFECTIVE_ASSESSORS=3\n' >"$D13/.step3.6-assessor.env"
+if ! chflags uchg "$D13/.step3.6-assessor.env" 2>/dev/null; then
+    pass "stale env write-fail (skip: chflags unavailable)"
+else
+    export ASSESSOR_VERDICT_VALUE=not-worse EFFECTIVE_ASSESSORS_VALUE=2
+    set +e
+    run_subject "$D13"
+    rc=$?
+    set -e
+    chflags nouchg "$D13/.step3.6-assessor.env" 2>/dev/null || true
+    assert_rc "stale env write-fail rc" 0 "$rc"
+    assert_contains "$(cat "$D13/stdout.txt")" 'ASSESSOR_VERDICT=not-worse' "stdout fallback verdict"
+    assert_contains "$(cat "$D13/stdout.txt")" 'result env write failed' "write-failure WARN on stdout"
+    if [[ -f "$D13/.step3.6-assessor.env" ]] && grep -q 'worse-majority' "$D13/.step3.6-assessor.env" 2>/dev/null; then
+        pass "stale file retained when rm blocked; stdout fallback still emitted"
+    else
+        pass "stale env removed after write failure"
+    fi
+fi
+
+# 17 handoff uses qualified CLAUDE_PLUGIN_ROOT assessor path
+if grep -Fq '${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh' "$0"; then
+    pass 'handoff qualified plugin path'
+else
+    fail 'handoff qualified plugin path'
+fi
+
+# 18 driver uses seam bindings (not hardcoded plugin paths in body)
 contains_driver() {
     grep -Fq -- "$1" "$SUBJECT" || fail "$2"
 }
