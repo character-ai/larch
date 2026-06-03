@@ -80,4 +80,14 @@ resolved=$(resolve_for_cwd_with_session "$WORKTREE_A" "sid-a")
 resolved=$(resolve_for_cwd_with_session "$WORKTREE_A" "sid-c")
 [[ "$resolved" == "$DIR_C" ]] || fail "expected sid-c session dir, got [$resolved]"
 
+DIR_D="$SESSIONS/claude-implement-worktree-b-bump-armed"
+mkdir -p "$DIR_D"
+touch "$DIR_D/.bump-version-armed"
+touch -t "$FRESH_TS" -- "$DIR_D/.bump-version-armed"
+printf '# larch session identity (hook routing)\nCLONE_PATH=%s\nSESSION_ID=sid-d\n' \
+    "$WORKTREE_B" > "$DIR_D/.larch-keepalive"
+
+resolved=$(resolve_for_cwd_with_session "$WORKTREE_B" "sid-d")
+[[ "$resolved" == "$DIR_D" ]] || fail "expected bump-version armed session dir, got [$resolved]"
+
 printf 'PASS: test-resolve-implement-tmpdir.sh\n'

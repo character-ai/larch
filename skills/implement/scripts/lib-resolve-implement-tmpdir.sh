@@ -32,13 +32,15 @@ resolve_implement_tmpdir() {
             [[ -d "$dir" ]] || continue
             # Accept design manifest (normal path), review summary (both-externals-down
             # path that skips /design but still runs /review — issue #1862), or a
-            # legacy .release-armed sentinel so stale tmpdirs from pre-Phase-1 runs
-            # remain resolvable. No current SessionStart advisory is driven by it.
+            # legacy release/bump sentinels so stale tmpdirs from older runs
+            # remain resolvable. No current SessionStart advisory is driven by them.
             local manifest=""
             if [[ -f "$dir/design-export/manifest.env" ]]; then
                 manifest="$dir/design-export/manifest.env"
             elif [[ -f "$dir/review-round-summary.md" ]]; then
                 manifest="$dir/review-round-summary.md"
+            elif [[ -f "$dir/.bump-version-armed" ]]; then
+                manifest="$dir/.bump-version-armed"
             elif [[ -f "$dir/.release-armed" ]]; then
                 manifest="$dir/.release-armed"
             fi

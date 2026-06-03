@@ -1012,10 +1012,6 @@ exclude = [
   # target) and the sibling scripts/test-rebase-push-keep-on-conflict.md.
   # Same Makefile-only pattern as other test-* harnesses.
   "scripts/test-rebase-push-keep-on-conflict.sh",
-  # scripts/test-git-stage.sh — offline harness for
-  # scripts/git-stage.sh. Makefile test-auto-resolve-release notes
-  # target and sibling scripts/test-auto-resolve-release notes.md.
-  "scripts/test-git-stage.sh",
   # scripts/test-rebase-push-force-lease.sh is the offline regression harness
   # for scripts/rebase-push.sh's force-with-lease race-recovery path.
   # Referenced only from Makefile (test-rebase-push-force-lease target) and
@@ -1397,7 +1393,6 @@ exclude = [
   "skills/design/scripts/test-render-final-summary.md",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-rebase-push-keep-on-conflict.md",
-  "scripts/test-auto-resolve-release notes.md",
   "scripts/test-rebase-push-force-lease.md",
   "scripts/test-rebase-push-fork-mode.md",
   "scripts/test-rebase-push-no-push-fetch-retry.md",
