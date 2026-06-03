@@ -1,0 +1,20 @@
+Reviewing the implementation plan and tracing cited codebase paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/write-session-env.sh:189-216 / skills/implement/SKILL.md:466-469	Production gate wiring stops at persisted session-env; it is never exported to launcher subshells	Plan Decision 2 turns the gate on by writing LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=30 into session-env.sh, but /implement never sources that file (read-session-env-key only) and the canonical rehydration block exports LARCH_TOKEN_SESSION_ID, LARCH_CLAUDE_SOURCE_FILE, and LARCH_TIMING_LEDGER only. Each Bash tool call is a fresh subshell, so launch-review.sh / launch-codex-implement.sh / run-external-agent.sh see an unset gate var and skip the health check—the 20–30 minute hang the issue targets persists on the main /implement path despite the new writer.	Minimum-change: before calling external_launch_health_gate, have run-external-agent.sh (or the gate helper) read LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT from $IMPLEMENT_TMPDIR/session-env.sh via read-session-env-key.sh when the process env is unset/0/non-numeric and IMPLEMENT_TMPDIR is set; alternatively extend the canonical implement rehydration block to read+export the key alongside the existing timing exports. Do not rely on write-session-env.sh or implement-bootstrap export alone—they do not survive cross-block Bash invocations.
+
+**1. [risk-integration] `/implement` session-env write does not activate the gate**
+
+The plan’s production-on path writes `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` into `session-env.sh` via `write-session-env.sh`, but `/implement` deliberately avoids sourcing that file. The canonical rehydration fence only exports token/timing keys:
+
+```466:469:skills/implement/SKILL.md
+LARCH_TOKEN_SESSION_ID=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
+LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
+LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
+export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+```
+
+Because Claude Code Bash blocks do not preserve shell state, a value persisted at Step 0 never reaches Step 2/5 launcher subprocesses unless it is re-read and exported each block—or resolved at the `run-external-agent.sh` chokepoint. The `/design` path is fine (`write-design-current-env.sh` emits `export` lines consumed by the prelude), but the primary `/implement` path will keep the gate OFF.
+
+**[OUT_OF_SCOPE] [architecture] Standalone `/review` and `/research`**
+
+These skills call `session-setup.sh` without `--write-session-env` and have no cross-block sourceable env file analogous to design’s `current-design-env-$PPID.sh`. Plan line 78–80 assumes `write-session-env.sh` covers them; it does not. Enabling the gate there would need a separate persistence/rehydration mechanism—likely out of scope for this SIMPLE chokepoint change unless explicitly required.

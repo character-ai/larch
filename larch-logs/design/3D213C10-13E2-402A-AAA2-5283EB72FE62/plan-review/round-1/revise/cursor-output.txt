@@ -1,0 +1,96 @@
+Reviewing codebase patterns cited in the findings so the revised plan is accurate.
+## Plan
+
+# Implementation Plan — #3348: fast-fail health gate for external-agent launchers
+
+This is a SIMPLE-tier design. The core behavior change is small (one helper family + one call site + env wiring). The breadth (all three named surfaces + Python parity) is user-directed; each individual change stays minimal.
+
+**Reviewer round incorporated:** FINDING_1 (session-env persistence ≠ process-env activation on `/implement`), FINDING_2 (wrapper timeout exit before fail-open), FINDING_4 (standalone `/review` and `/research` never run `write-session-env`).
+
+## Problem restated
+
+`check-reviewers.sh` already provides a bounded (`LARCH_PROBE_TIMEOUT_SECONDS`=30s), cached (`LARCH_PROBE_TTL_SECONDS`=60s, per-USER stamp files) real health probe at session start. The residual gap: a tool healthy at session start can degrade mid-run (quota exhaustion, network blip, token expiry). Dispatchers still launch it via `run-external-agent.sh`, which then waits the full `--timeout` (20–30 min) before the waterfall falls to Claude.
+
+Fix (Round 1 Decision 1): add a launch-time health gate at the shared `run-external-agent.sh` chokepoint that reuses the existing `check-reviewers.sh` probe + stamp cache. On unhealthy, skip the real launch and emit a health-class failure so the existing per-tool waterfall degrades to Claude immediately.
+
+Fix (reviewer round): production activation must not rely on persisting the key in `session-env.sh` alone — that file is not sourced; `/implement` and nested launch paths only parse allowlisted keys into the process environment. Resolve `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` at the chokepoint from the process environment first, then from durable session-env files via `read-session-env-key.sh` when unset.
+
+## Production scope (FINDING_4)
+
+| Entry path | Gate ON in production? | Mechanism |
+|---|---|---|
+| `/design` | Yes | `write-design-current-env.sh` exports `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT`; Step 1c+ prelude sources `current-design-env-$PPID.sh` into the Bash subshell |
+| `/implement` (Step 2, Step 5, ship-pr CI tiers, plan-review under implement) | Yes | `write-session-env.sh` persists the key; `run-external-agent.sh` reads it from `$IMPLEMENT_TMPDIR/session-env.sh` (and `$SESSION_ENV_PATH` when set) at the chokepoint |
+| Nested `/review` under `/implement` | Yes | Same chokepoint read via `$IMPLEMENT_TMPDIR` / `--session-env-path` |
+| Standalone `/review` | **No (documented out of scope)** | Step 0 `session-setup.sh` has no `--write-session-env`; no `session-env.sh` exists on `$REVIEW_TMPDIR` |
+| Standalone `/research` | **No (documented out of scope)** | Same as standalone `/review` |
+
+Standalone `/review` and `/research` are explicitly deferred: enabling them requires adding `--write-session-env "$<SKILL>_TMPDIR/session-env.sh"` to their Step 0 `session-setup.sh` invocations plus the same chokepoint read (already tries `$REVIEW_TMPDIR/session-env.sh` when set). That expansion is not part of this SIMPLE-tier issue; document the boundary in `docs/configuration-and-permissions.md` and `scripts/lib-external-launcher-common.md`.
+
+## Files to modify/create
+
+### UPDATED: `scripts/lib-external-launcher-common.sh`
+- Add `external_launch_health_gate_effective_timeout` (sourced-only, Bash-3.2-safe, no `set -e`):
+  - If `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is already a positive integer in the process environment, print it on stdout and return `0`.
+  - Otherwise, for each readable candidate file in order — `"${IMPLEMENT_TMPDIR:-}/session-env.sh"`, `"${SESSION_ENV_PATH:-}"`, `"${REVIEW_TMPDIR:-}/session-env.sh"` (skip empty paths) — call `"$SCRIPT_DIR/read-session-env-key.sh" --file "$path" --key LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` **without** `--default`. Use the first non-empty value that passes the positive-integer check.
+  - If still unset/invalid, print nothing and return `0` (gate OFF at script level).
+  - Do not invent a `30` default during the session-env read path; the writer default applies only when the key is actually persisted (new runs) or when `/design` exports it.
+- Add `external_launch_health_gate <tool>` (sourced-only helper):
+  - Resolve timeout via `external_launch_health_gate_effective_timeout`; return `0` (proceed) immediately when resolution yields empty, `0`, or non-numeric (gate OFF).
+  - Return `0` (proceed) when `<tool>` is not `codex` or `cursor` (gate is external-tool only).
+  - Otherwise invoke `"$SCRIPT_DIR/check-reviewers.sh" --skip-<other>-probe` with `LARCH_EXTERNAL_AUTH_RETRIES=1`, wrapped in `timeout`/`gtimeout "$resolved_timeout"` when a wall-clock wrapper exists; when neither exists, run unwrapped and rely on `check-reviewers.sh`'s internal `LARCH_PROBE_TIMEOUT_SECONDS` bound. Capture wrapper exit status separately from probe output.
+  - **FINDING_2 ordering:** if the wrapper exit is `124` or `143`, return non-zero (unhealthy → skip launch) **before** any fail-open branch.
+  - Parse `<TOOL>_PRESENT` from probe output; return non-zero when `<TOOL>_PRESENT=false`.
+  - Fail OPEN (return `0`, proceed) only on gate-infrastructure errors: `check-reviewers.sh` missing/non-executable, or no parseable `<TOOL>_PRESENT` line **after** the wrapper-timeout check above. Only skip on positive unhealth / timeout evidence; never block a launch because the gate itself broke.
+- Tool-symmetric (Codex and Cursor share the path), satisfying `.claude/rules/external-tool-launcher-parity.md` by construction.
+
+### UPDATED: `scripts/lib-external-launcher-common.md`
+- Document `external_launch_health_gate_effective_timeout` and `external_launch_health_gate`: contract, env vars consumed (`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT`, reused `LARCH_PROBE_TTL_SECONDS`, `LARCH_EXTERNAL_AUTH_RETRIES`), session-env fallback file order (`IMPLEMENT_TMPDIR` → `SESSION_ENV_PATH` → `REVIEW_TMPDIR`), wrapper-exit `124`/`143` unhealthy precedence, fail-open-on-infra-error polarity, production scope table (standalone `/review`/`/research` out of scope), and reuse-of-`check-reviewers.sh` design.
+
+### UPDATED: `scripts/run-external-agent.sh`
+- Source `lib-external-launcher-common.sh` (idempotent via its load guard) alongside existing libs.
+- After argv validation and the stale-artifact `rm -f`, BEFORE launching the background command: when `--tool` is `codex`/`cursor`, call `external_launch_health_gate "$TOOL_NAME"` (helper resolves timeout internally — no SKILL.md export churn).
+- On unhealthy (non-zero): do NOT launch the `--` command. Append a clear diagnostic to `${OUTPUT_FILE}.diag` (e.g. `health-probe fast-fail: <tool> reported unhealthy before launch (LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT gate)`), leave `OUTPUT_FILE` empty, set `EXIT_CODE` to the tool's transient-infra code (codex→`7`, cursor→`8`), and `exit "$EXIT_CODE"`. The existing EXIT trap writes the `.done` sentinel.
+- Rationale unchanged: codex `7` / cursor `8` + empty output already classify as `health`/`health-probe` in `external_classify_launch_failure`; no classifier change required.
+
+### UPDATED: `scripts/run-external-agent.md`
+- Document the pre-launch health gate, chokepoint session-env fallback, `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` env var, codex-7/cursor-8 fast-fail exit semantics, wrapper-124/143 behavior, and that the gate is OFF unless the effective timeout (process env or persisted session-env key) is a positive integer.
+
+### UPDATED: `scripts/write-design-current-env.sh`
+- Add `build_export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT "${LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT:-30}"` to the generated `/design` session env (production on-by-default; Round 1 Decision 2). Operator-set value passes through; `/design` blocks that source the prelude inherit the export into the subshell process environment.
+
+### UPDATED: `scripts/write-design-current-env.md`
+- Document the new exported key.
+
+### UPDATED: `scripts/write-session-env.sh`
+- Append `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=30` to the `CONTENT` block (unconditional on every write, matching other always-on session keys like `FORKED_TARGET`). This is the durable default source for `/implement`; activation still requires the chokepoint read because the file is not sourced.
+
+### UPDATED: `scripts/write-session-env.md`
+- Document the new persisted key and that child launchers activate it via chokepoint `read-session-env-key.sh`, not by sourcing `session-env.sh`.
+
+### UPDATED: `skills/design/scripts/plan-review-loop.md`
+- Document that `plan-review-loop.sh` inherits the launch-time health gate transitively: panel launches funnel through `dispatch-plan-review-panel.sh` → `dispatch-with-waterfall.sh` → `launch-review.sh` → `run-external-agent.sh`. No code change to `plan-review-loop.sh` is needed (named in the issue, covered by the chokepoint). Stated explicitly so the "all three surfaces" scope is auditable under `/design` + `/implement` production paths.
+
+### UPDATED: `docs/configuration-and-permissions.md`
+- Add `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` beside existing `LARCH_PROBE_*` / `LARCH_EXTERNAL_AUTH_RETRIES` entries: positive-integer seconds bounding the pre-launch external health gate; unset/empty/`0`/non-numeric in process env **and** absent from session-env files disables the gate; `/design` writer and `/implement` `write-session-env.sh` default/persist `30`; chokepoint in `run-external-agent.sh` reads session-env when process env is unset; standalone `/review` and `/research` are out of scope until a follow-up adds `--write-session-env`.
+
+### UPDATED: `python/config.py`
+- Add `ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT: Final = "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"` and `EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC: Final = 30` (parity constant). `checks.py` / `agents.py` launch external agents via `run-external-agent.sh` / `launch-*-ci.sh` and inherit `os.environ` through `runner.run` (no `env=` override on those calls), so the shell gate fires transitively when the parent shell exports the var or implement session-env is read at the chokepoint — no functional change needed in `checks.py`/`agents.py`.
+
+### UPDATED: `python/test_checks_bash_parity.py`
+- Parity assertion: `config.EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC` equals the bash default extracted from `scripts/write-design-current-env.sh` and `scripts/write-session-env.sh` (`30`), and `config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` equals the literal env-var name. Skip when `bash` is unavailable.
+
+### UPDATED: `scripts/test-lib-external-launcher-common.sh`
+- Unit-test `external_launch_health_gate_effective_timeout`: process-env positive integer wins; session-env file supplies value when process env unset; missing key in session-env → gate off; invalid values → gate off.
+- Unit-test `external_launch_health_gate` with stubbed `check-reviewers.sh` on temp `SCRIPT_DIR`: healthy → `0`; `*_PRESENT=false` → non-zero; var unset/`0` → `0`; non-codex/cursor → `0`; missing/non-exec `check-reviewers.sh` → `0` (fail-open); wrapper exit `124` with no `*_PRESENT` line → non-zero (FINDING_2).
+
+### UPDATED: `scripts/test-run-external-agent.sh`
+- Gate integration: gate enabled via `IMPLEMENT_TMPDIR/session-env.sh` key (process env unset) + stub unhealthy → exit `7`/`8`, command not run.
+- Gate enabled via process env + stub unhealthy → same.
+- Gate disabled (env unset, no session-env key) → existing stub command runs.
+- Non-codex/cursor `--tool` never gates.
+- Confirm existing cases still pass with no effective timeout (gate off).
+
+## Approach
+
+- Reuse over rebuild: the gate consults `check-reviewers.sh`, which already owns the probe, stamp cache

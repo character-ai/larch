@@ -1,0 +1,186 @@
+# Implementation Plan — #3348: fast-fail health gate for external-agent launchers
+
+This is a SIMPLE-tier design. The core behavior change is small (one helper + one call
+site + production env wiring). The breadth (all three named surfaces + Python parity) is
+user-directed; each individual change stays minimal.
+
+## Problem restated
+
+`check-reviewers.sh` already provides a bounded (`LARCH_PROBE_TIMEOUT_SECONDS`=30s), cached
+(`LARCH_PROBE_TTL_SECONDS`=60s, per-USER stamp files) real health probe at session start.
+The residual gap: a tool healthy at session start can degrade mid-run (quota exhaustion,
+network blip, token expiry). Dispatchers still launch it via `run-external-agent.sh`, which
+then waits the full `--timeout` (20-30 min) before the waterfall falls to Claude.
+
+Fix (Round 1 Decision 1): add a launch-time health gate at the shared `run-external-agent.sh`
+chokepoint that reuses the existing `check-reviewers.sh` probe + stamp cache. On unhealthy,
+skip the real launch and emit a health-class failure so the existing per-tool waterfall
+degrades to Claude immediately.
+
+## Files to modify/create
+
+### UPDATED: `scripts/lib-external-launcher-common.sh`
+- Add `external_launch_health_gate <tool>` (sourced-only helper, Bash-3.2-safe, no `set -e`).
+- Behavior:
+  - Return `0` (healthy / proceed) immediately when `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is
+    empty, unset, `0`, or non-numeric (gate OFF — preserves current behavior).
+  - Return `0` (proceed) when `<tool>` is not `codex` or `cursor` (gate is external-tool only).
+  - Otherwise invoke `"$SCRIPT_DIR/check-reviewers.sh" --skip-<other>-probe` with
+    `LARCH_EXTERNAL_AUTH_RETRIES=1` (so a cache-miss probe does not loop), wrapped in
+    `timeout`/`gtimeout "$LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"` when a wall-clock wrapper exists;
+    when neither exists, run unwrapped and rely on `check-reviewers.sh`'s own internal
+    `LARCH_PROBE_TIMEOUT_SECONDS` bound. The fresh-stamp fast path returns in well under 1s.
+  - Parse `<TOOL>_PRESENT` from the probe output.
+  - Return non-zero (unhealthy → skip launch) when `<TOOL>_PRESENT=false`, OR when the wrapped
+    call hit the outer timeout (a hung real probe is positive evidence of unhealth).
+  - Fail OPEN (return `0`, proceed) on gate-infrastructure errors: `check-reviewers.sh` missing,
+    non-executable, or no parseable `<TOOL>_PRESENT` line. Only skip on positive unhealth /
+    timeout evidence; never block a launch because the gate itself broke.
+- The helper is tool-symmetric (Codex and Cursor go through the same path), satisfying
+  `.claude/rules/external-tool-launcher-parity.md` by construction.
+
+### UPDATED: `scripts/lib-external-launcher-common.md`
+- Document `external_launch_health_gate`: contract, env vars consumed
+  (`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT`, reused `LARCH_PROBE_TTL_SECONDS`,
+  `LARCH_EXTERNAL_AUTH_RETRIES`), fail-open-on-infra-error polarity, and the
+  reuse-of-`check-reviewers.sh` design.
+
+### UPDATED: `scripts/run-external-agent.sh`
+- Source `lib-external-launcher-common.sh` (idempotent via its load guard) alongside the
+  existing `lib-validate-meta-path.sh` / `lib-failed-agent-stderr-tail.sh` sources.
+- After argv validation and the stale-artifact `rm -f`, BEFORE launching the background
+  command: when `--tool` is `codex`/`cursor`, call `external_launch_health_gate "$TOOL_NAME"`.
+- On unhealthy (non-zero): do NOT launch the `--` command. Append a clear diagnostic to
+  `${OUTPUT_FILE}.diag` (e.g. `health-probe fast-fail: <tool> reported unhealthy before launch
+  (LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT gate)`), leave `OUTPUT_FILE` empty, set
+  `EXIT_CODE` to the tool's transient-infra code (codex→`7`, cursor→`8`), and `exit "$EXIT_CODE"`.
+  The existing EXIT trap writes the `.done` sentinel.
+- Rationale: codex `7` / cursor `8` with empty output already classify as `health`/`health-probe`
+  in `external_classify_launch_failure` (CI family) and as a transient failure that the
+  `launch-review.sh` retry loop exhausts before the dispatcher falls through (review family).
+  Both families end at the Claude tier. No classifier change required.
+
+### UPDATED: `scripts/run-external-agent.md`
+- Document the pre-launch health gate, the `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` env var, the
+  codex-7/cursor-8 fast-fail exit semantics, and that the gate is OFF unless the env var is a
+  positive integer.
+
+### UPDATED: `scripts/write-design-current-env.sh`
+- Add `build_export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT "${LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT:-30}"`
+  to the generated `/design` session env so design-session launches inherit the gate (production
+  on-by-default; Round 1 Decision 2). An operator-set value passes through; tests that never set
+  it and never source this file are unaffected.
+
+### UPDATED: `scripts/write-design-current-env.md`
+- Document the new exported key.
+
+### UPDATED: `scripts/write-session-env.sh`
+- Mirror the same default export for the `/implement` (and `/review`, `/research`) session env so
+  those production launches inherit the gate. Confirm the exact writer used by `/review` and
+  `/research` during implementation; wire each that does not already inherit it.
+
+### UPDATED: `scripts/write-session-env.md`
+- Document the new exported key.
+
+### UPDATED: `skills/design/scripts/plan-review-loop.md`
+- Document that `plan-review-loop.sh` inherits the launch-time health gate transitively: its
+  panel launches funnel through `dispatch-plan-review-panel.sh` → `dispatch-with-waterfall.sh` →
+  `launch-review.sh` → `run-external-agent.sh`. No code change to `plan-review-loop.sh` is needed
+  (named in the issue, covered by the chokepoint). Stated explicitly so the "all three surfaces"
+  scope is auditable.
+
+### UPDATED: `docs/configuration-and-permissions.md`
+- Add `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` to the Environment Variables section beside the
+  existing `LARCH_PROBE_*` / `LARCH_EXTERNAL_AUTH_RETRIES` entries: positive-integer seconds
+  bounding the pre-launch external health gate; unset/empty/`0`/non-numeric disables the gate;
+  production session-env writers default it to `30`.
+
+### UPDATED: `python/config.py`
+- Add `ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT: Final = "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"`
+  and `EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC: Final = 30` (parity constant). `checks.py` /
+  `agents.py` launch external agents via `run-external-agent.sh` / `launch-*-ci.sh` and inherit
+  `os.environ` through `runner.run` (no `env=` override on those calls), so the shell gate fires
+  transitively — no functional change needed in `checks.py`/`agents.py`. The constants give
+  Python a single source of truth and let the parity test pin the default.
+
+### UPDATED: `python/test_checks_bash_parity.py`
+- Add a parity assertion: `config.EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC` equals the bash
+  default extracted from `scripts/write-design-current-env.sh` (the `:-30` fallback), and
+  `config.ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` equals the literal env-var name used in the
+  shell sources. Skip when `bash` is unavailable, matching the file's existing skip pattern.
+
+### UPDATED: `scripts/test-lib-external-launcher-common.sh`
+- Unit-test `external_launch_health_gate` with a stubbed `check-reviewers.sh` on a temp
+  `SCRIPT_DIR`: healthy verdict → return 0; `*_PRESENT=false` → non-zero; var unset/`0` → return 0
+  (gate off); non-codex/cursor tool → return 0; missing/non-exec `check-reviewers.sh` → return 0
+  (fail-open).
+
+### UPDATED: `scripts/test-run-external-agent.sh`
+- Add gate integration cases: with the gate enabled and a stub `check-reviewers.sh` reporting
+  unhealthy, `run-external-agent.sh --tool codex` exits `7` (cursor → `8`) with empty output and
+  never runs the `--` command; with the gate disabled (env unset) the existing stub command runs
+  unchanged; a non-codex/cursor `--tool` never gates. Confirm existing cases still pass with the
+  env var unset (gate off by default at the script level).
+
+## Approach
+
+- Reuse over rebuild: the gate consults `check-reviewers.sh`, which already owns the probe,
+  stamp cache, serial lock, and auth-retry logic. The first launch against a degraded tool pays
+  one bounded probe; `check-reviewers.sh` writes a fresh `false` stamp, so all subsequent
+  launches and `launch-review.sh` retry cycles within the 60s TTL fast-fail instantly. Worst-case
+  added latency is ~one probe per 60s window instead of one 20-30 min hang.
+- Activation polarity (Decision 2): the gate is OFF at the script level unless
+  `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is a positive integer. Production turns it on through the
+  session-env writers (`30` default). This delivers "on in production, off in test/CI" with zero
+  test-harness churn — tests never set the var and never source the session-env writers.
+  - Considered alternative: default-on inside `run-external-agent.sh` with a `=0` opt-out. Rejected
+    for L1 because every stub harness that drives `run-external-agent.sh --tool codex|cursor`
+    (test-run-external-agent, test-launch-review, test-step2-dispatch, the implementer harnesses,
+    etc.) would fast-fail in CI where no real binary exists, forcing an opt-out edit in each.
+    Reviewers may revisit if broader always-on coverage is preferred over session-env coverage.
+- Waterfall integration without classifier changes: codex `7` / cursor `8` + empty output is the
+  existing `health`/`health-probe` path. CI family falls through (health is not `other`, so
+  `run_waterfall` does not short-circuit); review family retries (cheaply, cached) then falls
+  through. Both reach Claude.
+
+## Edge cases
+
+- Gate enabled but `timeout`/`gtimeout` absent (macOS Bash 3.2 without coreutils): run
+  `check-reviewers.sh` unwrapped; its internal `LARCH_PROBE_TIMEOUT_SECONDS` still bounds the
+  probe. Gate stays bounded.
+- Fresh `false` stamp from session start: gate fast-fails instantly with no new probe.
+- Fresh `true` stamp: gate proceeds with no new probe (the common healthy path adds ~0 latency).
+- `--tool` other than codex/cursor (e.g. claude): gate is a no-op.
+- Parallel panel launches: `check-reviewers.sh` already uses atomic stamp writes + a Darwin
+  serial lock, so concurrent gate calls are safe.
+- Gate-infra failure (missing/broken `check-reviewers.sh`): fail OPEN (proceed), never block a
+  launch because the gate broke.
+
+## Failure modes
+
+1. False-positive on a healthy-but-slow tool (transient network slows the probe past the bound) →
+   needless Claude fallback. Earliest signal: a rise in `health-probe fast-fail` diag lines /
+   Claude-tier usage. Mitigation: generous `30s` default; the `false` stamp expires in 60s so the
+   next window can recover; `=0` opt-out.
+2. Accidental gate activation in tests/CI → stub launches fast-fail. Earliest signal: harness
+   failures citing exit `7`/`8` or `health-probe fast-fail`. Mitigation: gate OFF unless the env
+   var is set; production-only via session-env writers; gate tests stub `check-reviewers.sh`.
+3. Probe cost/latency creep (a small `Respond with OK` call per 60s window) → marginal token
+   spend. Earliest signal: extra codex/cursor probe rows in the token ledger. Mitigation: stamp
+   cache (≤1 probe / 60s), `LARCH_EXTERNAL_AUTH_RETRIES=1` for the gate, internal probe-timeout
+   bound.
+
+## Testing strategy
+
+- `scripts/test-lib-external-launcher-common.sh`: unit tests for `external_launch_health_gate`
+  (stubbed `check-reviewers.sh`): healthy/unhealthy/off/non-tool/fail-open branches.
+- `scripts/test-run-external-agent.sh`: integration — gate-enabled unhealthy → exit 7/8, command
+  not run; gate-disabled → command runs; non-tool → command runs; existing cases unaffected.
+- `python/test_checks_bash_parity.py`: assert the Python default + env-var name match the bash
+  sources.
+- Run `bash scripts/relevant-checks.sh` (or `make lint`), the touched `test-*.sh` harnesses, and
+  `make py-lint` / `make py-test`.
+- No SECURITY.md change expected (timeout/health gate; no new auth, secret, or network surface
+  beyond the already-documented `check-reviewers.sh` probe).
+
+diff_lines: 320
