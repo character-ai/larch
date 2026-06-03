@@ -186,7 +186,6 @@ The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 - Codex defaults to `gpt-5.5` (hardcoded in `scripts/agent-model-args.sh`) for all work invocations (reviews, sketches, voting)
 - `scripts/check-reviewers.sh` runs a lightweight `codex exec --sandbox read-only …` health probe (no model argv); model selection is validated at real launch sites (`scripts/launch-review.sh`, `scripts/run-external-agent.sh`, etc.). If your Codex installation does not support `gpt-5.5`, set this variable to a supported model (e.g., `o3`, `o4-mini`)
 
-
 ### `LARCH_SHIP_PR_IMPL`
 
 Selects the `/implement` Step 8+ ship-pr driver. Default is `bash`, which preserves the existing `scripts/ship-pr.sh` path. Set `LARCH_SHIP_PR_IMPL=python` to run the Phase 7 Python driver (`python/ship.py`) behind the additive cutover branch; Step 18 teardown remains bash-backed during the soak.
