@@ -1,0 +1,3 @@
+Reviewing the plan and cited test/bash files for blank-line layout claims.
+Verifying the two-blank-line layout in current `compose_pr_body` and whether any test asserts newline structure.
+{"no_issues_found": true}
