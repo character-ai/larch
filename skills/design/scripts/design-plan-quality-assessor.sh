@@ -190,6 +190,43 @@ _read_fixed_env_value() {
     awk -v k="$key" 'BEGIN{kl=length(k)} substr($0,1,kl)==k && substr($0,kl+1,1)=="=" {print substr($0,kl+2); exit}' "$file" 2>/dev/null || true
 }
 
+_confine_assessor_file_path() {
+    local label="$1" path="$2" parent base canon_parent canon_path
+    _CONFINED_ASSESSOR_PATH=""
+    [[ -n "$path" ]] || return 0
+    if [[ ! -f "$path" || -L "$path" ]]; then
+        WARN_LINES+=("**⚠ design-plan-quality-assessor: ignoring unsafe ${label} path outside DESIGN_TMPDIR.**")
+        return 1
+    fi
+    parent="${path%/*}"
+    base="${path##*/}"
+    [[ -n "$parent" && "$parent" != "$path" ]] || parent="."
+    canon_parent="$(cd "$parent" 2>/dev/null && pwd -P)" || {
+        WARN_LINES+=("**⚠ design-plan-quality-assessor: ignoring unsafe ${label} path outside DESIGN_TMPDIR.**")
+        return 1
+    }
+    canon_path="$canon_parent/$base"
+    case "$canon_path" in
+        "$DESIGN_TMPDIR"/*) _CONFINED_ASSESSOR_PATH="$canon_path" ;;
+        *)
+            WARN_LINES+=("**⚠ design-plan-quality-assessor: ignoring unsafe ${label} path outside DESIGN_TMPDIR.**")
+            return 1
+            ;;
+    esac
+}
+
+_confine_assessor_output_paths() {
+    _CONFINED_ASSESSOR_PATH=""
+    if [[ -n "${ASSESSOR_VERDICT_FILE:-}" ]]; then
+        _confine_assessor_file_path ASSESSOR_VERDICT_FILE "$ASSESSOR_VERDICT_FILE" || true
+        ASSESSOR_VERDICT_FILE="$_CONFINED_ASSESSOR_PATH"
+    fi
+    if [[ -n "${ASSESSOR_VERDICT_ENV:-}" ]]; then
+        _confine_assessor_file_path ASSESSOR_VERDICT_ENV "$ASSESSOR_VERDICT_ENV" || true
+        ASSESSOR_VERDICT_ENV="$_CONFINED_ASSESSOR_PATH"
+    fi
+}
+
 _emit_worse_display() {
     emit "## Plan-Quality Assessor — WORSE majority (round ${ROUND_NUM})"
     local _headline="" _summary="" _line _count=0
@@ -408,6 +445,7 @@ fi
 
 parse_kv_from_output "$_assess_out"
 rm -f "$_assess_cap" 2>/dev/null || true
+_confine_assessor_output_paths
 
 if [[ -z "$ASSESSOR_STATUS" ]]; then
     WARN_LINES+=("**⚠ design-plan-quality-assessor: assess-plan-round.sh exited 0 but ASSESSOR_STATUS missing; settling as assess-failed.**")
@@ -446,6 +484,7 @@ fi
 _assessor_pause_checkpoint
 _write_result_env || true
 if [[ "$ASSESSOR_STATUS" == ok && "$ASSESSOR_VERDICT" == worse-majority && "${EFFECTIVE_ASSESSORS:-0}" =~ ^[0-9]+$ && "${EFFECTIVE_ASSESSORS:-0}" -ge 1 ]]; then
+    _emit_warn_lines
     _emit_worse_display
     _emit_trailer_frame
     exit 10

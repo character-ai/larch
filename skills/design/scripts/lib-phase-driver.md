@@ -41,7 +41,7 @@ Implemented in Bash 3.2 now; may re-home when Python phase-driver infra lands. K
 
 ## Thin orchestrator fence
 
-Phase drivers that adopt the thin fence own user-facing rendering and status normalization. After `larch_quiet_init`, driver-visible user output uses `emit` on FD 3 so the prompt-side fence can capture and display it; plain stdout/FD 1 remains quiet-log output for incidental helper chatter.
+Phase drivers that adopt the thin fence own user-facing rendering and status normalization. After `larch_quiet_init`, FD 3 is duplicated from the driver's original stdout before FD 1/2 are redirected to the quiet log. Driver-visible user output must use `emit` / `emit_kv`, which write to FD 3 and are captured by prompt-side command substitution. Plain stdout/FD 1 remains quiet-log output for incidental helper chatter. To debug missing display output, inspect the driver capture variable first, then the per-process `larch-quiet-*.log`; capturing FD 1 from a helper after quiet init will only see log-bound chatter, not the display stream.
 
 Exit-code routing is intentionally small: `0` means settled and proceed, `2` means configuration/argv error and abort, documented `10..` codes are action branches that require LLM-tool work, and `1` is reserved for catch-all failure. The default `SKILL.md` shape is `set +e; out=$(driver); rc=$?; set -e; echo or filter display output; case "$rc" ...`; keep references to `SKILL.md` regions by anchors or symbols rather than line numbers. A cheap tier gate may run before invoking the driver when a non-HARD path can be skipped without losing pause handling.
 

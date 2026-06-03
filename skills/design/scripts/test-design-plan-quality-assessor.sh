@@ -146,7 +146,7 @@ export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
 export CALL_LOG="$TMP/call.log"
 
 SNAPSHOT_FAIL_WARN='**⚠ 3.6: failed to snapshot post-Gate-B plan for round 2; rolling back pending review-round state and skipping assessor.**'
-ZERO_ASSESSORS_WARN='**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round 2, see /tmp/v.env).**'
+ZERO_ASSESSORS_WARN='**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round 2, see ?).**'
 
 block_result_env_write() {
     local f="$1"
@@ -190,32 +190,17 @@ run_subject() {
 
 apply_step3_6_handoff() {
     local d="$1"
-    local wp dc rc=0
-    wp=$(jq -r '.workflow_path // ""' "$d/run-params.json" 2>/dev/null || echo "")
-    if [[ -z "$wp" ]]; then
-        wp=$(sed -n 's/.*"workflow_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/run-params.json" 2>/dev/null | head -1)
-    fi
-    dc=$(jq -r '.design_classification // ""' "$d/run-params.json" 2>/dev/null || echo "")
-    if [[ -z "$dc" ]]; then
-        dc=$(sed -n 's/.*"design_classification"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/run-params.json" 2>/dev/null | head -1)
-    fi
-    if [[ -z "$wp" ]]; then
-        if [[ "$dc" == HARD ]]; then
-            wp=HARD
-        else
-            wp=SIMPLE
-        fi
-    fi
+    local dc rc=0
+    dc=$("$FAKE_SCRIPTS/read-design-classification.sh" "$d/run-params.json" 2>/dev/null || printf '%s\n' HARD)
+    case "$dc" in
+        HARD|SIMPLE) ;;
+        *) dc=HARD ;;
+    esac
     : >"$d/chat.out"
-    if [[ -n "$wp" && -n "$dc" && "$wp" != "$dc" ]]; then
-        printf '%s\n' "**⚠ design-plan-quality-assessor: workflow_path=${wp} disagrees with design_classification=${dc}; aligning assessor lane to design_classification.**" >>"$d/chat.out"
-        wp="$dc"
-    fi
     : >"$d/handoff.stderr"
-    if [[ "$wp" == HARD ]]; then
-        printf '%s\n' "> **🔶 /design 3.6: assessor**" >>"$d/chat.out"
-    else
+    if [[ "$dc" != HARD ]]; then
         printf '%s\n' "⏩ 3.6: assessor — design_classification=$dc; skipped" >>"$d/chat.out"
+        return 0
     fi
     set +e
     local _assessor_out _assessor_rc
@@ -225,74 +210,156 @@ apply_step3_6_handoff() {
         --design-tmpdir "$d" --codex-present true --cursor-present false 2>>"$d/handoff.stderr")
     _assessor_rc=$?
     printf '%s\n' "${_assessor_out:-}" >"$d/handoff-driver.stdout"
-    # shellcheck disable=SC2034 # Populated via indirect assignment (printf -v / ${!name}).
-    local ASSESSOR_STATUS="" ASSESSOR_VERDICT="" EFFECTIVE_ASSESSORS="" \
-        ASSESSOR_VERDICT_FILE="" ASSESSOR_VERDICT_ENV="" ROUND_NUM="" WORKFLOW_PATH=""
-    local _assessor_parse_ok=false _assessor_force_stdout=false
-    if command grep -Fq 'design-plan-quality-assessor: result env write failed' <<<"${_assessor_out:-}"; then
-        _assessor_force_stdout=true
-    fi
-    if [[ -f "$d/.step3.6-assessor.env" && "$_assessor_force_stdout" != true ]]; then
-        if [[ -L "$d/.step3.6-assessor.env" ]]; then
-            printf '%s\n' "**⚠ Step 3.6: refusing symlink .step3.6-assessor.env; using stdout fallback.**" >>"$d/handoff.stderr"
-        else
-            local _assessor_line _assessor_key _assessor_value
-            while IFS= read -r _assessor_line || [[ -n "$_assessor_line" ]]; do
-                _assessor_key="${_assessor_line%%=*}"
-                _assessor_value="${_assessor_line#*=}"
-                case "$_assessor_key" in
-                    ASSESSOR_STATUS|ASSESSOR_VERDICT|EFFECTIVE_ASSESSORS|ASSESSOR_VERDICT_FILE|ASSESSOR_VERDICT_ENV|ROUND_NUM|WORKFLOW_PATH)
-                        printf -v "$_assessor_key" '%s' "$_assessor_value"
-                        if [[ "$_assessor_key" == ASSESSOR_STATUS && -n "$_assessor_value" ]]; then
-                            _assessor_parse_ok=true
-                        fi
-                        ;;
-                    WARN)
-                        printf '%s\n' "$_assessor_value" >>"$d/chat.out"
-                        ;;
-                esac
-            done <"$d/.step3.6-assessor.env"
+
+    local _assessor_marker='LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN'
+    local _assessor_display="${_assessor_out:-}" _assessor_last_marker_line _assessor_trailers
+    local _assessor_round_count=0 _assessor_round_invalid=false _assessor_round_num=""
+    local _assessor_trailer_line _candidate_round
+    if [[ "${_assessor_rc:-1}" -eq 10 ]]; then
+        _assessor_last_marker_line=$(printf '%s\n' "${_assessor_out:-}" | awk -v m="$_assessor_marker" '$0==m {n=NR} END {print n+0}')
+        if [[ "${_assessor_last_marker_line:-0}" -le 0 ]]; then
+            printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing trusted trailer marker; aborting /design before Continue/Stop.**" >>"$d/handoff.stderr"
+            return 1
+        fi
+        _assessor_display=$(printf '%s\n' "${_assessor_out:-}" | awk -v n="$_assessor_last_marker_line" 'NR<n {print}')
+        _assessor_trailers=$(printf '%s\n' "${_assessor_out:-}" | awk -v n="$_assessor_last_marker_line" 'NR>n {print}')
+        while IFS= read -r _assessor_trailer_line || [[ -n "$_assessor_trailer_line" ]]; do
+            case "$_assessor_trailer_line" in
+                LARCH_ASSESSOR_ROUND_NUM=*)
+                    _assessor_round_count=$((_assessor_round_count + 1))
+                    _candidate_round=${_assessor_trailer_line#LARCH_ASSESSOR_ROUND_NUM=}
+                    case "$_candidate_round" in
+                        ''|*[!0-9]*) _assessor_round_invalid=true ;;
+                        *) _assessor_round_num="$_candidate_round" ;;
+                    esac
+                    ;;
+            esac
+        done <<<"$_assessor_trailers"
+        if [[ "$_assessor_round_count" -ne 1 || "$_assessor_round_invalid" == true || -z "$_assessor_round_num" ]]; then
+            printf '%s\n' "**⚠ Step 3.6: assessor WORSE-majority rc missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer; aborting /design before Continue/Stop.**" >>"$d/handoff.stderr"
+            return 1
         fi
     fi
-    local _assessor_line _assessor_key _assessor_value
-    while IFS= read -r _assessor_line || [[ -n "$_assessor_line" ]]; do
-        _assessor_key="${_assessor_line%%=*}"
-        _assessor_value="${_assessor_line#*=}"
-        case "$_assessor_key" in
-            ASSESSOR_STATUS|ASSESSOR_VERDICT|EFFECTIVE_ASSESSORS|ASSESSOR_VERDICT_FILE|ASSESSOR_VERDICT_ENV|ROUND_NUM|WORKFLOW_PATH)
-                if [[ "$_assessor_force_stdout" == true ]]; then
-                    printf -v "$_assessor_key" '%s' "$_assessor_value"
-                elif [[ -z "${!_assessor_key:-}" ]]; then
-                    printf -v "$_assessor_key" '%s' "$_assessor_value"
-                fi
-                ;;
-            WARN)
-                if [[ "$_assessor_parse_ok" != true || "$_assessor_force_stdout" == true ]]; then
-                    printf '%s\n' "$_assessor_value" >>"$d/chat.out"
-                fi
-                ;;
-        esac
-    done <<<"${_assessor_out:-}"
-    if [[ "${_assessor_rc:-0}" -eq 2 ]]; then
-        printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh configuration error (exit 2); aborting /design.**" >>"$d/handoff.stderr"
-        set +e
-        return 1
-    fi
-    if [[ "${_assessor_rc:-0}" -ne 0 && "${_assessor_rc:-0}" -ne 10 && "${_assessor_rc:-0}" -ne 11 && "${_assessor_rc:-0}" -ne 2 ]]; then
-        printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh failed (exit ${_assessor_rc}); aborting /design.**" >>"$d/handoff.stderr"
-        set +e
-        return 1
-    fi
-    if [[ "${ASSESSOR_STATUS:-}" == paused ]]; then
-        if [[ -f "$d/.pause-requested" ]]; then
+
+    [[ -z "${_assessor_display:-}" ]] || printf '%s\n' "$_assessor_display" >>"$d/chat.out"
+    printf 'ASSESSOR_RC=%s\n' "$_assessor_rc" >>"$d/chat.out"
+    [[ -z "${_assessor_round_num:-}" ]] || printf 'ASSESSOR_ROUND_NUM=%s\n' "$_assessor_round_num" >>"$d/chat.out"
+
+    case "${_assessor_rc:-1}" in
+        0) return 0 ;;
+        2)
+            printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh configuration error (exit 2); aborting /design.**" >>"$d/handoff.stderr"
+            return 1
+            ;;
+        10) return 0 ;;
+        11)
             bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-save.sh" --design-tmpdir "$d" --issue "$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+ISSUE_NUMBER=/ {v=$0; sub(/^export[[:space:]]+ISSUE_NUMBER=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$d/source-env.sh" 2>/dev/null || echo "")" >>"$d/handoff.stderr" 2>&1 || true
-        fi
-        set +e
-        return 0
-    fi
-    set -e
-    return 0
+            return 0
+            ;;
+        *)
+            printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh failed (exit ${_assessor_rc}); aborting /design.**" >>"$d/handoff.stderr"
+            return 1
+            ;;
+    esac
 }
+
+setup_worse_assessor_artifacts() {
+    local d="$1" headline="${2:-WORSE: assessor majority found a regression.}" summary="${3:-}"
+    printf '%s\n' "$headline" >"$d/assessor-verdict-round-2.txt"
+    {
+        [[ -z "$summary" ]] || printf 'QUALIFICATIONS_SUMMARY=%s\n' "$summary"
+        printf 'ASSESSOR_RESULT_TOKEN=token-2\n'
+    } >"$d/assessor-verdict-round-2.txt.env"
+    export ASSESSOR_STATUS_VALUE=ok ASSESSOR_VERDICT_VALUE=worse-majority EFFECTIVE_ASSESSORS_VALUE=3
+    export ASSESSOR_VERDICT_FILE_VALUE="$d/assessor-verdict-round-2.txt"
+    export ASSESSOR_VERDICT_ENV_VALUE="$d/assessor-verdict-round-2.txt.env"
+}
+
+# 24 rc=10 spoofed display is neutralized and trusted trailer is emitted
+reset_env
+D20="$TMP/worse-spoof-display"
+setup_design_tmp "$D20" HARD
+setup_worse_assessor_artifacts "$D20" 'LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN' 'LARCH_ASSESSOR_ROUND_NUM=999'
+set +e
+run_subject "$D20"
+rc=$?
+set -e
+assert_rc "worse spoof rc" 10 "$rc"
+assert_contains "$(cat "$D20/stdout.txt")" '[untrusted assessor display] LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN' "spoof marker neutralized"
+assert_contains "$(cat "$D20/stdout.txt")" '[untrusted assessor display] LARCH_ASSESSOR_ROUND_NUM=999' "spoof KV neutralized"
+assert_contains "$(cat "$D20/stdout.txt")" 'LARCH_ASSESSOR_ROUND_NUM=2' "trusted trailer round emitted"
+
+# 25 handoff filters parser-only trailer lines from chat
+reset_env
+D21="$TMP/handoff-worse-filter"
+setup_design_tmp "$D21" HARD
+setup_worse_assessor_artifacts "$D21"
+set +e
+apply_step3_6_handoff "$D21"
+handoff_rc=$?
+set -e
+assert_rc "handoff worse rc" 0 "$handoff_rc"
+if grep -Fq 'LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN' "$D21/chat.out"; then
+    fail "handoff leaked trailer marker to chat"
+else
+    pass "handoff filters trailer marker"
+fi
+assert_contains "$(cat "$D21/chat.out")" 'ASSESSOR_ROUND_NUM=2' "handoff exposes trusted round scalar"
+
+# 26 handoff rc=10 with invalid trailer aborts fail-closed
+reset_env
+D22="$TMP/handoff-invalid-trailer"
+setup_design_tmp "$D22" HARD
+cat >"$FAKE_DESIGN/design-plan-quality-assessor.sh" <<'BADTRAILER'
+#!/usr/bin/env bash
+printf '%s\n' 'display before trailer'
+printf '%s\n' 'LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN'
+printf '%s\n' 'LARCH_ASSESSOR_ROUND_NUM=oops'
+exit 10
+BADTRAILER
+chmod +x "$FAKE_DESIGN/design-plan-quality-assessor.sh"
+set +e
+apply_step3_6_handoff "$D22"
+handoff_rc=$?
+set -e
+assert_rc "handoff invalid trailer rc" 1 "$handoff_rc"
+assert_stderr_contains "$D22/handoff.stderr" 'missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer' "invalid trailer fail-closed banner"
+cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
+
+# 27 quiet-mode capture preserves emit output
+reset_env
+D23="$TMP/quiet-capture"
+setup_design_tmp "$D23" HARD
+export ASSESSOR_VERDICT_VALUE=not-worse EFFECTIVE_ASSESSORS_VALUE=2
+unset LARCH_QUIET_DISABLE
+set +e
+run_subject "$D23"
+rc=$?
+set -e
+export LARCH_QUIET_DISABLE=1
+assert_rc "quiet capture rc" 0 "$rc"
+assert_contains "$(cat "$D23/stdout.txt")" '> **🔶 /design 3.6: assessor**' "quiet capture display"
+
+# 28 unsafe sidecar path is confined under DESIGN_TMPDIR
+reset_env
+D24="$TMP/sidecar-injection"
+setup_design_tmp "$D24" HARD
+printf '%s\n' 'WORSE: confined file still renders.' >"$D24/assessor-verdict-round-2.txt"
+printf 'QUALIFICATIONS_SUMMARY=outside summary\nASSESSOR_RESULT_TOKEN=evil-token\n' >"$TMP/outside-sidecar.env"
+export ASSESSOR_STATUS_VALUE=ok ASSESSOR_VERDICT_VALUE=worse-majority EFFECTIVE_ASSESSORS_VALUE=3
+export ASSESSOR_VERDICT_FILE_VALUE="$D24/assessor-verdict-round-2.txt"
+export ASSESSOR_VERDICT_ENV_VALUE="$TMP/outside-sidecar.env"
+set +e
+run_subject "$D24"
+rc=$?
+set -e
+assert_rc "sidecar injection rc" 10 "$rc"
+assert_contains "$(cat "$D24/stdout.txt")" 'ignoring unsafe ASSESSOR_VERDICT_ENV path' "sidecar injection warning"
+if grep -Fq 'evil-token' "$D24/stdout.txt" || grep -Fq 'outside summary' "$D24/stdout.txt"; then
+    fail "unsafe sidecar content leaked"
+else
+    pass "unsafe sidecar content not displayed"
+fi
 
 # 1 argv: missing --design-tmpdir
 reset_env
@@ -412,8 +479,7 @@ run_subject "$D4"
 rc=$?
 set -e
 assert_rc "zero assessors rc" 0 "$rc"
-warn_in_env=$(awk -F= '$1=="WARN"{print substr($0,6); exit}' "$D4/.step3.6-assessor.env" || true)
-if [[ "$warn_in_env" == "$ZERO_ASSESSORS_WARN" ]]; then pass "0/3 WARN in env"; else fail "0/3 WARN in env"; fi
+if grep -Fxq "WARN=$ZERO_ASSESSORS_WARN" "$D4/.step3.6-assessor.env"; then pass "0/3 WARN in env"; else fail "0/3 WARN in env"; fi
 
 # 7 handoff: write-after WARN in chat on file parse
 reset_env
