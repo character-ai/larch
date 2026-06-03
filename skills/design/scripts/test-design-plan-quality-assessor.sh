@@ -480,6 +480,7 @@ else
 fi
 
 # 17 handoff uses qualified CLAUDE_PLUGIN_ROOT assessor path
+# shellcheck disable=SC2016 # Literal pattern checks unexpanded path token in handoff source.
 if grep -Fq '${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh' "$0"; then
     pass 'handoff qualified plugin path'
 else
