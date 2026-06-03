@@ -110,7 +110,7 @@ def test_missing_conflict_launch_dir_stalls(
         ],
     )
     with pytest.raises(Stalled, match="conflict launch"):
-        _ = rebase.rebase_and_rebump(
+        _ = rebase.rebase_and_push(
             runner,
             repo="o/r",
             run_id="run",
@@ -121,7 +121,7 @@ def test_missing_conflict_launch_dir_stalls(
 def test_attempt_cap_stalls() -> None:
     runner = ScriptRunner([])
     with pytest.raises(Stalled, match="attempt cap"):
-        _ = rebase.rebase_and_rebump(
+        _ = rebase.rebase_and_push(
             runner,
             lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
@@ -138,7 +138,7 @@ def test_detached_head_stalls() -> None:
         ],
     )
     with pytest.raises(Stalled, match="detached"):
-        _ = rebase.rebase_and_rebump(
+        _ = rebase.rebase_and_push(
             runner,
             lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
@@ -159,7 +159,7 @@ def test_fetch_transient_raises(tmp_path: Path) -> None:
         ],
     )
     with pytest.raises(TransientNetworkError):
-        _ = rebase.rebase_and_rebump(
+        _ = rebase.rebase_and_push(
             runner,
             lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
@@ -171,7 +171,7 @@ def test_fetch_transient_raises(tmp_path: Path) -> None:
 
 def test_already_fresh_skips_rebase(tmp_path: Path) -> None:
     runner = ScriptRunner(_rebase_happy_path_handlers())
-    result = rebase.rebase_and_rebump(
+    result = rebase.rebase_and_push(
         runner,
         lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
         repo="o/r",
@@ -187,7 +187,7 @@ def test_already_fresh_skips_rebase(tmp_path: Path) -> None:
 
 def test_fresh_branch_force_pushes(tmp_path: Path) -> None:
     runner = ScriptRunner(_rebase_happy_path_handlers())
-    result = rebase.rebase_and_rebump(
+    result = rebase.rebase_and_push(
         runner,
         lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
         repo="o/r",
@@ -227,7 +227,7 @@ def test_waterfall_exhaustion_needs_user_input(tmp_path: Path) -> None:
         )
 
     with pytest.raises(NeedsUserInput):
-        _ = rebase.rebase_and_rebump(
+        _ = rebase.rebase_and_push(
             runner,
             launch_fn,
             repo="o/r",
@@ -318,7 +318,7 @@ def test_non_conflict_rebase_aborts_and_stalls(tmp_path: Path) -> None:
         ],
     )
     with pytest.raises(Stalled, match="rebase failed"):
-        _ = rebase.rebase_and_rebump(
+        _ = rebase.rebase_and_push(
             runner,
             lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
@@ -341,7 +341,7 @@ def test_fetch_non_transient_aborts_and_stalls(tmp_path: Path) -> None:
         ],
     )
     with pytest.raises(Stalled, match="fetch failed"):
-        _ = rebase.rebase_and_rebump(
+        _ = rebase.rebase_and_push(
             runner,
             lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
             repo="o/r",
@@ -609,7 +609,7 @@ def test_force_push_plain_lease_single_retry(tmp_path: Path) -> None:
 
 def test_defer_push_skips_force_push(tmp_path: Path) -> None:
     runner = ScriptRunner(_rebase_happy_path_handlers())
-    result = rebase.rebase_and_rebump(
+    result = rebase.rebase_and_push(
         runner,
         lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
         repo="o/r",
@@ -629,7 +629,7 @@ def test_rebase_uses_custom_base_remote(tmp_path: Path) -> None:
     runner = ScriptRunner(
         _rebase_happy_path_handlers(base_remote="upstream", base_ref="main"),
     )
-    result = rebase.rebase_and_rebump(
+    result = rebase.rebase_and_push(
         runner,
         lambda _t, _c: TierAttempt("cursor", 0, 0, LaunchFailure("none", "")),
         repo="o/r",

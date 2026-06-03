@@ -53,7 +53,7 @@ trap 'rm -f "$TMP_FILES"' EXIT
 
 # Orchestrator-facing markdown surfaces only: SKILL.md, references/, shared/,
 # .claude/skills/, and .claude/rules/. Documentation under docs/ and top-level
-# *.md (README, CHANGELOG, BASH_AUTHORING) is excluded — those are not executed
+# *.md (README, release notes, BASH_AUTHORING) is excluded — those are not executed
 # as Bash tool blocks by the orchestrator.
 list_markdown_files() {
     if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then

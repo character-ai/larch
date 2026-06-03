@@ -3,7 +3,7 @@
 #
 # Wraps `git push --force-with-lease` with the full recovery logic from
 # /implement's Rebase + Re-bump Sub-procedure step 5
-# (skills/implement/references/rebase-rebump-subprocedure.md):
+# (skills/implement/references/conflict-resolution.md):
 #   - Refresh the local tracking ref (`git fetch origin <branch>`) best-effort,
 #     then try `git push --force-with-lease` once.
 #   - On failure: refresh the local tracking ref again,

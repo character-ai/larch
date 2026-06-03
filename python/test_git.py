@@ -143,11 +143,11 @@ def test_rev_count_raises_ship_error_on_non_integer_stdout() -> None:
 def test_commit_and_add_build_argv() -> None:
     runner = StubRunner(
         {
-            ("git", "add", "CHANGELOG.md"): CommandResult(
-                ("git", "add", "CHANGELOG.md"), 0, "", "", 0.01
+            ("git", "add", "README.md"): CommandResult(
+                ("git", "add", "README.md"), 0, "", "", 0.01
             ),
-            ("git", "commit", "-m", "Update CHANGELOG for 1.0.0", "--only", "CHANGELOG.md"): CommandResult(
-                ("git", "commit", "-m", "Update CHANGELOG for 1.0.0", "--only", "CHANGELOG.md"),
+            ("git", "commit", "-m", "Update docs for 1.0.0", "--only", "README.md"): CommandResult(
+                ("git", "commit", "-m", "Update docs for 1.0.0", "--only", "README.md"),
                 0,
                 "",
                 "",
@@ -155,9 +155,9 @@ def test_commit_and_add_build_argv() -> None:
             ),
         },
     )
-    assert git.add(runner, "CHANGELOG.md").returncode == 0
+    assert git.add(runner, "README.md").returncode == 0
     assert (
-        git.commit(runner, "Update CHANGELOG for 1.0.0", only="CHANGELOG.md").returncode == 0
+        git.commit(runner, "Update docs for 1.0.0", only="README.md").returncode == 0
     )
 
 
@@ -183,7 +183,7 @@ def test_diff_tree_name_only_invocation() -> None:
             ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD~1"): CommandResult(
                 ("git", "diff-tree", "--no-commit-id", "--name-only", "-r", "HEAD~1"),
                 0,
-                "CHANGELOG.md\n",
+                "README.md\n",
                 "",
                 0.01,
             ),
@@ -191,7 +191,7 @@ def test_diff_tree_name_only_invocation() -> None:
     )
     result = git.diff_tree_name_only(runner, "HEAD~1")
     assert result.returncode == 0
-    assert "CHANGELOG.md" in result.stdout
+    assert "README.md" in result.stdout
 
 
 def test_diff_and_rebase_helpers() -> None:

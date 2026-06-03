@@ -403,7 +403,7 @@ if grep -qF 'topology.tsv' "${OUT_FIX}.prompt" 2>/dev/null; then
 else
     fail "fix role prompt includes topology.tsv sentinel"
 fi
-for role in resolve-conflict bump-classify changelog-draft; do
+for role in resolve-conflict; do
     OUT_NF="$TMPDIR_BASE/ci-fix-prompt-$role"
     case "$role" in
         resolve-conflict)

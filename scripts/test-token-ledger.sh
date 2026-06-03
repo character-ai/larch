@@ -128,7 +128,7 @@ if jq -e --arg raw "$RAW" 'select(.type=="vendor" and .vendor=="cursor" and .raw
 # strips every `--ledger PATH` pair from anywhere in argv, last-wins. The
 # subcommand position is irrelevant.
 
-# Subcommand-then-flag form (mark): pre-pass before /bump-version replaced the
+# Subcommand-then-flag form (mark): pre-pass before /release replaced the
 # "unknown record-vendor key: --ledger" warnings on this exact shape.
 LEDGER_AFTER="$TMP/after.jsonl"
 "$SCRIPT" mark "Step after-subcmd" --ledger "$LEDGER_AFTER"

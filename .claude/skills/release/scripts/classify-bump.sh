@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# classify-bump.sh — Deterministic semver classifier for /bump-version skill.
+# classify-bump.sh — Deterministic semver classifier for the release skill.
 #
 # Scope: only inspects public plugin surface (skills/**, agents/**).
 # Changes under .claude/**, scripts/**, hooks/**, docs/**, .github/**, etc.
@@ -11,11 +11,11 @@
 #   MINOR — new SKILL.md or agents/*.md, new `--flag` bullet, new `--flag` in argument-hint
 #   PATCH — default (every PR bumps at least PATCH)
 #
-# Idempotent no-op: if HEAD..BASE already contains a commit matching
-# `^Bump version to X\.Y\.Z$`, emits BUMP_TYPE=NONE and exits 0.
+# Idempotent no-op: without --base, if HEAD is a version commit (possibly after
+# transparent larch-log commits), emits BUMP_TYPE=NONE and exits 0.
 #
 # Optional: --base <ref> — use <ref> as BASE directly (skip merge-base + idempotency).
-#   Consumer: /release via release-prepare.sh. Default path unchanged.
+#   Consumer: /release via release-prepare.sh.
 #
 # Output (stdout, KEY=VALUE):
 #   CURRENT_VERSION=<x.y.z>
@@ -23,7 +23,7 @@
 #   BUMP_TYPE=MAJOR|MINOR|PATCH|NONE
 #   REASONING_FILE=<path>
 #
-# Reasoning log: ${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasoning.md
+# Reasoning log: ${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/release-bump-reasoning.md
 #
 # Exit codes: 0 success, 1 validation failure
 
@@ -109,13 +109,17 @@ fi
 [[ -n "$CURRENT_VERSION" ]] || err "$PLUGIN_JSON missing .version field"
 [[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || err "version '$CURRENT_VERSION' is not semver (expected X.Y.Z)"
 
-# Reasoning log path. When IMPLEMENT_TMPDIR is set (the /implement caller),
-# the file lands in that skill-owned tmpdir. When unset (standalone /bump-version
-# invocation), fall back to the system tmp directory — never write to $PWD/.git,
+# Reasoning log path. When IMPLEMENT_TMPDIR is set, the file lands in that
+# session-owned tmpdir. When unset, fall back to the system tmp directory —
+# never write to $PWD/.git,
 # which triggers Claude Code permission prompts on the .git directory.
 REASONING_DIR="${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}"
 mkdir -p "$REASONING_DIR" 2>/dev/null || true
-REASONING_FILE="$REASONING_DIR/bump-version-reasoning.md"
+if [[ ! -w "$REASONING_DIR" ]]; then
+  REASONING_DIR="${TMPDIR:-/tmp}"
+  mkdir -p "$REASONING_DIR" 2>/dev/null || true
+fi
+REASONING_FILE="$REASONING_DIR/release-bump-reasoning.md"
 
 # Helper: append to reasoning log.
 log() {
@@ -135,7 +139,7 @@ log() {
 # Idempotency check: is HEAD itself a version-bump commit?
 # The only safe way to treat a branch as "already bumped" is when the bump
 # commit is HEAD, or when HEAD is followed only by transparent commits created
-# by the bump/logging pipeline. If a bump exists earlier in BASE..HEAD but
+# by the release/logging pipeline. If a bump exists earlier in BASE..HEAD but
 # additional non-transparent commits have landed on top, a fresh bump is
 # required to cover those. The subject match is anchored at ^ and $ so subjects
 # like "chore: Bump version to 1.2.3" or "Revert Bump version to 1.0.0" do not
@@ -145,23 +149,15 @@ idempotency_commit_is_transparent() {
   subject=$(git log -1 --format=%s "$ref" 2>/dev/null || true)
   changed=$(git diff-tree --no-commit-id --name-only -r "$ref" 2>/dev/null || true)
   case "$subject" in
-    "Update CHANGELOG for "*) ;;
     "chore(larch-logs): "*) ;;
     *) return 1 ;;
   esac
   [ -n "$changed" ] || return 1
   while IFS= read -r file; do
     [ -n "$file" ] || continue
-    case "$subject" in
-      "Update CHANGELOG for "*)
-        [ "$file" = "CHANGELOG.md" ] || return 1
-        ;;
-      "chore(larch-logs): "*)
-        case "$file" in
-          larch-logs/*) ;;
-          *) return 1 ;;
-        esac
-        ;;
+    case "$file" in
+      larch-logs/*) ;;
+      *) return 1 ;;
     esac
   done <<< "$changed"
   return 0
@@ -183,7 +179,7 @@ if [[ "$SKIP_IDEMPOTENCY" != "true" ]]; then
   if [[ "$HEAD_SUBJECT" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     log "## Result: NONE (already bumped)"
     log ""
-    log "The idempotency HEAD after transparent CHANGELOG commits is a version bump commit: \`$(git rev-parse --short "$IDEMPOTENCY_REF")\` — \"$HEAD_SUBJECT\""
+    log "The idempotency HEAD after transparent larch-log commits is a version commit: \`$(git rev-parse --short "$IDEMPOTENCY_REF")\` — \"$HEAD_SUBJECT\""
     log ""
     log "No additional bump will be applied."
 

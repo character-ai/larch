@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# hook-stop-fail-close.sh — Stop hook for post-/review halt protection (Phase 1 retired post-bump gate).
+# hook-stop-fail-close.sh — Stop hook for post-/review halt protection.
 #
 # set -e omitted: every probe must fail open; the hook must always exit 0.
 # Intentional per .claude/rules/shell-strict-mode.md.
@@ -28,7 +28,7 @@ fi
 
 # Surface the active Claude Code session_id from the Stop event payload
 # into LARCH_TOKEN_SESSION_ID so the resolver's session-id binding branch
-# is reachable in production (same pattern as hook-post-bump-version.sh). Empty /
+# is reachable in production. Empty /
 # missing / null falls through to TTL. See lib-resolve-implement-tmpdir.sh
 # session-id binding for the resolver-side slim session-identity record
 # (`.larch-keepalive` `SESSION_ID=` match) this export feeds.

@@ -28,7 +28,7 @@ assert_fails() {
 }
 
 assert_fails "missing_role_fails" --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo
-assert_fails "invalid_role_fails" --role bump-classify --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo
+assert_fails "invalid_role_fails" --role unsupported --output "$TMPDIR_BASE/out" --run-id 1 --repo owner/repo
 assert_fails "missing_output_fails" --role fix --run-id 1 --repo owner/repo
 assert_fails "non_absolute_output_fails" --role fix --output relative --run-id 1 --repo owner/repo
 assert_fails "output_with_unsafe_chars_fails" --role fix --output "$TMPDIR_BASE/out with space" --run-id 1 --repo owner/repo

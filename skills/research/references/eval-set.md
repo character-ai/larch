@@ -58,7 +58,7 @@
 - **question**: How does the rebase-rebump sub-procedure interact with `/implement` Step 12's CI+merge loop, and what is the difference between step12-family and step10-family failure semantics?
 - **category**: architecture
 - **expected_provenance_count**: 2
-- **expected_keywords**: rebase-rebump-subprocedure.md, step12, step10, hard-bail, 12d, Load-Bearing Invariant
+- **expected_keywords**: conflict-resolution.md, step12, step10, hard-bail, 12d, Load-Bearing Invariant
 - **notes**: Architecture; should explain why Step 12 is the strict last-chance enforcement point for Invariant #1 and why Step 10 is best-effort.
 
 ### eval-8: dialectic-tenure-weighting
@@ -114,7 +114,7 @@
 - **question**: What are the failure modes of `/implement`'s Step 12 rebase-rebump sub-procedure, and how does each map to step12-family hard-bail versus step10-family graceful-degrade behavior?
 - **category**: risk-assessment
 - **expected_provenance_count**: 2
-- **expected_keywords**: rebase-push.sh, check-bump-version.sh, VERIFIED, hard-bail, 12d, step10
+- **expected_keywords**: rebase-push.sh, check-release.sh, VERIFIED, hard-bail, 12d, step10
 - **notes**: Risk; should enumerate at least three failure modes (rebase conflict, push rejection, post-check `STATUS != ok`) and pair each with the correct caller-family disposition.
 
 ### eval-16: deny-edit-write-bypass-blast-radius

@@ -32,15 +32,15 @@ resolve_implement_tmpdir() {
             [[ -d "$dir" ]] || continue
             # Accept design manifest (normal path), review summary (both-externals-down
             # path that skips /design but still runs /review — issue #1862), or
-            # .bump-version-armed so post-/bump hooks and SessionStart can resolve a tmpdir
+            # .release-armed so post-/bump hooks and SessionStart can resolve a tmpdir
             # that no longer has manifest/review artifacts.
             local manifest=""
             if [[ -f "$dir/design-export/manifest.env" ]]; then
                 manifest="$dir/design-export/manifest.env"
             elif [[ -f "$dir/review-round-summary.md" ]]; then
                 manifest="$dir/review-round-summary.md"
-            elif [[ -f "$dir/.bump-version-armed" ]]; then
-                manifest="$dir/.bump-version-armed"
+            elif [[ -f "$dir/.release-armed" ]]; then
+                manifest="$dir/.release-armed"
             fi
             [[ -n "$manifest" ]] || continue
 

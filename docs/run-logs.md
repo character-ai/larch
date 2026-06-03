@@ -338,7 +338,7 @@ See `scripts/compose-review-findings.md` for the same mixed-stream contract.
 
 ### version-bump-reasoning.md
 
-**Mode**: replace. **Written**: **not** on the `/implement` ship path after Phase 1 (#3364). Legacy runs may still carry this batch from pre-Phase-1 implement bumps; new implement runs omit it. `/release` and manual `.claude/skills/bump-version` flows own version reasoning when operators need an auditable bump record.
+**Mode**: replace. **Written**: **not** on the `/implement` ship path after Phase 1 (#3364). Legacy runs may still carry this batch from pre-Phase-1 implement bumps; new implement runs omit it. `/release` and manual `.claude/skills/release` flows own version reasoning when operators need an auditable bump record.
 
 Markdown explanation of the version bump classification: which bump type was chosen (PATCH / MINOR / MAJOR), which changed files drove the decision, and the reasoning applied. Useful for auditing unexpected version jumps on release-driven paths.
 

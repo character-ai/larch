@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-compose-review-findings.sh — JSONL composer harness.
 # Plan-review category fixtures (strict canonical ## tags, empty category) ship with
-# the unified Step 5 / review-findings workstream; see CHANGELOG [29.8.64].
+# the unified Step 5 / review-findings workstream; see release notes [29.8.64].
 
 set -euo pipefail
 

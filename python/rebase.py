@@ -9,7 +9,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import agents
-import changelog
 import config
 import git
 import redact
@@ -19,8 +18,6 @@ from outcomes import Outcome
 from proc import CommandResult, Runner
 
 _redact_outbound = redact.redact_outbound
-
-_CHANGELOG_BASENAMES = frozenset({"CHANGELOG.md", "CHANGELOG.rst", "CHANGELOG"})
 
 ConflictLaunchFn = Callable[[str, str], agents.TierAttempt]
 
@@ -100,12 +97,6 @@ def _deterministic_prepass(
     remaining: list[str] = []
     for path in paths:
         base = Path(path).name
-        if base in _CHANGELOG_BASENAMES:
-            if changelog.auto_resolve(runner, path, cwd=cwd):
-                _ = git.add(runner, path, cwd=cwd)
-            else:
-                remaining.append(path)
-            continue
         if base == "plugin.json" and _is_plugin_json_path(path):
             result = git.checkout_ours(runner, path, cwd=cwd)
             if result.returncode == 0:
@@ -282,7 +273,7 @@ def _force_push_branch(
     raise Stalled(_redact_outbound("force-push failed after retry"))
 
 
-def rebase_and_rebump(
+def rebase_and_push(
     runner: Runner,
     launch_fn: ConflictLaunchFn | None = None,
     *,
@@ -300,7 +291,7 @@ def rebase_and_rebump(
 
     When ``defer_push`` is True, rebase runs locally but force-push is skipped and
     ``RebaseResult.pushed`` is False. ``RebaseResult.new_version`` is always None
-    (version bump is handled outside rebase in Phase 1).
+    (versioning is handled by the release flow).
     """
     if launch_fn is None:
         launch_fn = make_conflict_launch_fn(

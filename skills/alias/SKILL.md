@@ -109,7 +109,7 @@ if [[ -z "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
   echo "**ERROR: CLAUDE_PLUGIN_ROOT is unset — cannot probe larch skill tree for reserved-name collision.**"
   exit 1
 fi
-# probe BOTH roots: skills/ (public) and .claude/skills/ (dev-only: bump-version)
+# probe BOTH roots: skills/ (public) and .claude/skills/ (dev-only: release)
 if test -d "${CLAUDE_PLUGIN_ROOT}/skills/<alias-name>" \
   || test -d "${CLAUDE_PLUGIN_ROOT}/.claude/skills/<alias-name>"; then
   echo "**ERROR: alias name '<alias-name>' shadows an existing larch skill.**"

@@ -76,7 +76,7 @@ suppress = [
 # same Makefile-only pattern as the test-sessionstart-health.sh entry above.
 #
 # scripts/lib-count-commits.sh is a sourced-only shell library (no shebang,
-# not invokable directly). It is referenced from scripts/check-bump-version.sh
+# not invokable directly). It is referenced from scripts/check-release.sh
 # and scripts/verify-skill-called.sh via `source` directives only — agent-lint
 # does not follow `source` directives in sibling scripts, so the library
 # would be false-flagged as dead. scripts/test-verify-skill-called.sh is the
@@ -85,9 +85,9 @@ suppress = [
 # test-* harnesses above. Both are documented in scripts/verify-skill-called.md
 # (sibling contract).
 #
-# scripts/test-check-bump-version.sh is the regression harness for
-# scripts/check-bump-version.sh (#172). It is referenced only from Makefile
-# (test-check-bump-version target) and scripts/check-bump-version.md
+# scripts/test-check-release.sh is the regression harness for
+# scripts/check-release.sh (#172). It is referenced only from Makefile
+# (test-check-release target) and scripts/check-release.md
 # (sibling contract), matching the same Makefile-only pattern as the other
 # test-* harnesses above.
 #
@@ -435,10 +435,10 @@ exclude = [
   # runtime prose.
   "skills/implement/scripts/test-oos-issue-cap.sh",
   "skills/implement/scripts/test-oos-issue-cap.md",
-  # Post-/bump-version and Stop-hook helpers are runtime-registered in
+  # Post-/release and Stop-hook helpers are runtime-registered in
   # hooks/hooks.json, not invoked from skills/implement/SKILL.md.
-  "skills/implement/scripts/hook-post-bump-version.sh",
-  "skills/implement/scripts/hook-post-bump-version.md",
+  "skills/implement/scripts/hook-post-release.sh",
+  "skills/implement/scripts/hook-post-release.md",
   "skills/implement/scripts/hook-stop-fail-close.sh",
   "skills/implement/scripts/hook-stop-fail-close.md",
   "skills/implement/scripts/lib-resolve-implement-tmpdir.sh",
@@ -689,7 +689,7 @@ exclude = [
   "scripts/lib-failed-agent-stderr-tail.sh",
   "scripts/test-lib-failed-agent-stderr-tail.sh",
   "scripts/test-verify-skill-called.sh",
-  "scripts/test-check-bump-version.sh",
+  "scripts/test-check-release.sh",
   # scripts/test-check-reviewers.sh is the regression harness for
   # scripts/check-reviewers.sh probe acceptance logic. Referenced only from
   # Makefile (test-check-reviewers target) and scripts/test-check-reviewers.md
@@ -789,39 +789,29 @@ exclude = [
   # skills/shared/scripts/render-voter-prompt.sh (Makefile test-render-voter-prompt
   # target + scripts/test-render-voter-prompt.md sibling contract).
   "scripts/test-render-voter-prompt.sh",
-  # scripts/test-drop-bump-commit.sh is the regression harness for
-  # scripts/drop-bump-commit.sh (#856). It is referenced only from Makefile
-  # (test-drop-bump-commit target) and scripts/drop-bump-commit.md
+  # scripts/test-rebase-push.sh is the regression harness for
+  # scripts/rebase-push.sh (#856). It is referenced only from Makefile
   # (sibling contract), matching the same Makefile-only pattern as the other
   # test-* harnesses above.
-  "scripts/test-drop-bump-commit.sh",
-  "scripts/drop-bump-commit.md",
-  # scripts/test-drop-changelog-commit.sh is the regression harness for
-  # scripts/drop-changelog-commit.sh (#2952 Bug A). Referenced only from
-  # Makefile (test-drop-changelog-commit target) and the sibling .md stub,
+  "scripts/test-rebase-push.sh",
+  # scripts/test-release-finish.sh is the regression harness for
+  # scripts/release-finish.sh (#2952 Bug A). Referenced only from
+  # Makefile (test-drop-release notes-commit target) and the sibling .md stub,
   # matching the same Makefile-only pattern as the other test-* harnesses above.
-  "scripts/test-drop-changelog-commit.sh",
-  # scripts/git-amend-add.sh has no current primary callers after CHANGELOG
-  # commits moved to scripts/commit-changelog.sh. It is retained intentionally
+  "scripts/test-release-finish.sh",
+  # scripts/git-amend-add.sh has no current primary callers after release notes
+  # commits moved to scripts/release-finish.sh. It is retained intentionally
   # as a tiny future amend primitive with a sibling contract.
   "scripts/git-amend-add.sh",
   "scripts/git-amend-add.md",
-  # scripts/commit-changelog.sh is the separate CHANGELOG commit primitive used
+  # scripts/release-finish.sh is the separate release notes commit primitive used
   # by implement-finalize.sh and ship-pr.sh. Its harness is Makefile-only
-  # (test-commit-changelog target) and its sibling docs own the contract.
-  "scripts/commit-changelog.sh",
-  "scripts/commit-changelog.md",
-  "scripts/test-commit-changelog.sh",
-  "scripts/test-commit-changelog.md",
-  # scripts/test-classify-bump.sh is a thin wrapper that delegates to the
-  # actual harness at .claude/skills/bump-version/scripts/test-classify-bump.sh.
-  # Referenced from Makefile (test-classify-bump target in test-harnesses-10)
-  # and its sibling docs. Covers classify-bump.sh CHANGELOG idempotency walk
+  # (test-commit-release notes target) and its sibling docs own the contract.
+  "scripts/release-finish.sh",
+  "scripts/commit-release notes.md",
+  "scripts/test-release-finish.sh",
+  "scripts/test-commit-release notes.md",
   # (acceptance criterion #6, issue #2852).
-  "scripts/test-classify-bump.sh",
-  "scripts/test-classify-bump.md",
-  ".claude/skills/bump-version/scripts/test-classify-bump.sh",
-  ".claude/skills/bump-version/scripts/test-classify-bump.md",
   # scripts/test-ci-wait-exit-trap.sh is the regression harness for
   # scripts/ci-wait.sh's EXIT-trap-writes-.done behavior under SIGTERM and
   # the backward-compat default-mode (stdout) contract. Closes #842 (leaked
@@ -830,7 +820,7 @@ exclude = [
   # (test-ci-wait-exit-trap target) and scripts/test-ci-wait-exit-trap.md
   # (sibling contract). scripts/ci-wait.md is the sibling contract for
   # scripts/ci-wait.sh, referenced from skills/implement/SKILL.md (Steps 10
-  # and 12a) and skills/implement/references/rebase-rebump-subprocedure.md
+  # and 12a) and skills/implement/references/conflict-resolution.md
   # via prose pointers — agent-lint reachability follows the harness pattern.
   "scripts/test-ci-wait-exit-trap.sh",
   "scripts/test-ci-wait-exit-trap.md",
@@ -1032,10 +1022,10 @@ exclude = [
   # target) and the sibling scripts/test-rebase-push-keep-on-conflict.md.
   # Same Makefile-only pattern as other test-* harnesses.
   "scripts/test-rebase-push-keep-on-conflict.sh",
-  # scripts/test-auto-resolve-changelog.sh — offline harness for
-  # scripts/auto-resolve-changelog.sh. Makefile test-auto-resolve-changelog
-  # target and sibling scripts/test-auto-resolve-changelog.md.
-  "scripts/test-auto-resolve-changelog.sh",
+  # scripts/test-git-stage.sh — offline harness for
+  # scripts/git-stage.sh. Makefile test-auto-resolve-release notes
+  # target and sibling scripts/test-auto-resolve-release notes.md.
+  "scripts/test-git-stage.sh",
   # scripts/test-rebase-push-force-lease.sh is the offline regression harness
   # for scripts/rebase-push.sh's force-with-lease race-recovery path.
   # Referenced only from Makefile (test-rebase-push-force-lease target) and
@@ -1268,17 +1258,15 @@ exclude = [
   # scripts/test-merge-pr.md (sibling contract) — same Makefile-only shape as
   # the other test-* harnesses above.
   "scripts/test-merge-pr.sh",
-  # scripts/test-apply-bump.sh is the offline regression harness for the
-  # dev-only bump-version apply script's pre-commit same-version probe and
-  # rollback paths. It is referenced only from Makefile (test-apply-bump target)
-  # and scripts/test-apply-bump.md (sibling contract), matching the same
+  # scripts/test-release-set-version.sh is the offline regression harness for the
+  # dev-only release apply script's pre-commit same-version probe and
   # Makefile-only harness pattern as test-merge-pr.sh.
-  "scripts/test-apply-bump.sh",
+  "scripts/test-release-set-version.sh",
   # scripts/test-git-push.sh is the offline regression harness for
   # scripts/git-push.sh retry exit propagation. It is referenced only from
   # Makefile (test-git-push target) and scripts/test-git-push.md (sibling
   # contract), matching the same Makefile-only harness pattern as
-  # test-apply-bump.sh.
+  # test-release-set-version.sh.
   "scripts/test-git-push.sh",
   # scripts/test-token-tally.sh is the offline regression harness for
   # scripts/token-tally.sh (per-run token-cost telemetry helper for
@@ -1419,7 +1407,7 @@ exclude = [
   "skills/design/scripts/test-render-final-summary.md",
   "skills/pause/scripts/test-pause-skill.md",
   "scripts/test-rebase-push-keep-on-conflict.md",
-  "scripts/test-auto-resolve-changelog.md",
+  "scripts/test-auto-resolve-release notes.md",
   "scripts/test-rebase-push-force-lease.md",
   "scripts/test-rebase-push-fork-mode.md",
   "scripts/test-rebase-push-no-push-fetch-retry.md",

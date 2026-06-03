@@ -1,10 +1,9 @@
-"""Version bump classification and application (Phase 2 port of bump-version scripts)."""
+"""Version bump classification and application (Phase 2 port of release scripts)."""
 
 from __future__ import annotations
 
 import fnmatch
 import json
-import os
 import re
 import shutil
 import sys
@@ -15,18 +14,10 @@ from typing import Literal
 import config
 import git
 import redact
-from bump_worktree import (
-    DropResult,
-    drop_replay_commit,
-    find_commit_depth,
-    porcelain_tracked_only,
-    sorted_changed_files,
-)
 from errors import ShipError, Stalled
 from proc import Runner
 
 BumpType = Literal["MAJOR", "MINOR", "PATCH", "NONE"]
-CountStatus = Literal["ok", "missing_main_ref", "git_error"]
 
 _BUMP_SUBJECT_RE = re.compile(r"^Bump version to [0-9]+\.[0-9]+\.[0-9]+$")
 _FLAG_TOKEN_RE = re.compile(r"--[a-zA-Z0-9_-]+")
@@ -55,19 +46,6 @@ class ApplyResult:
     error: str = ""
 
 
-@dataclass(frozen=True)
-class BumpPreCheck:
-    has_bump: bool
-    commits_before: int
-    status: CountStatus
-
-
-@dataclass(frozen=True)
-class BumpVerify:
-    verified: bool
-    commits_after: int
-    expected: int
-    status: CountStatus
 
 
 _redact_outbound = redact.redact_outbound
@@ -166,11 +144,7 @@ def _resolve_classify_base(runner: Runner, *, cwd: str | None) -> str:
 
 def _idempotency_transparent(runner: Runner, ref: str, *, cwd: str | None) -> bool:
     subject = git.log_subject(runner, ref, cwd=cwd)
-    if subject.startswith(config.TRANSPARENT_CHANGELOG_SUBJECT_PREFIX):
-        expected_prefix = config.TRANSPARENT_CHANGELOG_SUBJECT_PREFIX
-    elif subject.startswith(config.TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX):
-        expected_prefix = config.TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX
-    else:
+    if not subject.startswith(config.TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX):
         return False
 
     result = git.diff_tree_name_only(runner, ref, cwd=cwd)
@@ -180,13 +154,7 @@ def _idempotency_transparent(runner: Runner, ref: str, *, cwd: str | None) -> bo
     if not changed:
         return False
 
-    for file in changed:
-        if expected_prefix == config.TRANSPARENT_CHANGELOG_SUBJECT_PREFIX:
-            if file != config.CHANGELOG_DEFAULT_PATH:
-                return False
-        elif not file.startswith("larch-logs/"):
-            return False
-    return True
+    return all(file.startswith("larch-logs/") for file in changed)
 
 
 def _idempotency_ref(runner: Runner, *, cwd: str | None) -> str:
@@ -384,61 +352,6 @@ def bump_branch_guard(
         raise Stalled(msg)
 
 
-def _count_commits_with_status(runner: Runner, *, cwd: str | None) -> tuple[int, CountStatus]:
-    if git.try_rev_parse(runner, "main", cwd=cwd) is not None:
-        base_ref = "main"
-    elif git.try_rev_parse(runner, "origin/main", cwd=cwd) is not None:
-        base_ref = "origin/main"
-    else:
-        return 0, "missing_main_ref"
-
-    result = git.rev_list_count(runner, f"{base_ref}..HEAD", cwd=cwd)
-    if result.returncode != 0:
-        return 0, "git_error"
-    try:
-        return int(result.stdout.strip() or "0"), "ok"
-    except ValueError:
-        return 0, "git_error"
-
-
-def check_bump_version_pre(
-    runner: Runner,
-    *,
-    cwd: str | None = None,
-    implement_tmpdir: str | None = None,
-) -> BumpPreCheck:
-    """Pre-check: bump skill presence and commit count before bump."""
-    root = Path(cwd) if cwd else Path.cwd()
-    has_bump = (root / config.BUMP_VERSION_SKILL_PATH).is_file()
-    if has_bump and implement_tmpdir:
-        armed = Path(implement_tmpdir) / config.BUMP_VERSION_ARMED_SENTINEL
-        try:
-            if Path(implement_tmpdir).is_dir():
-                armed.touch(exist_ok=True)
-        except OSError:
-            pass
-    count, status = _count_commits_with_status(runner, cwd=cwd)
-    return BumpPreCheck(has_bump=has_bump, commits_before=count, status=status)
-
-
-def verify_bump_commit_count(
-    runner: Runner,
-    before_count: int,
-    *,
-    cwd: str | None = None,
-) -> BumpVerify:
-    """Post-check: exactly one new commit since pre-check."""
-    count, status = _count_commits_with_status(runner, cwd=cwd)
-    expected = before_count + 1
-    verified = status == "ok" and count == expected
-    return BumpVerify(
-        verified=verified,
-        commits_after=count,
-        expected=expected,
-        status=status,
-    )
-
-
 def _porcelain_all(runner: Runner, *, cwd: str | None) -> list[str] | None:
     result = git.status_porcelain(runner, cwd=cwd)
     if result.returncode != 0:
@@ -469,14 +382,8 @@ def apply_bump(
     new_version: str,
     *,
     cwd: str | None = None,
-    base_remote: str = "origin",
-    base_ref: str = "main",
 ) -> ApplyResult:
     """Apply version bump to plugin.json and commit."""
-    base_err = git.validate_base_remote_ref(base_remote, base_ref)
-    if base_err is not None:
-        return ApplyResult(applied=False, error=_redact_outbound(base_err))
-
     if not re.fullmatch(config.SEMVER_RE, new_version):
         return ApplyResult(
             applied=False,
@@ -520,11 +427,10 @@ def apply_bump(
         _ = sys.stderr.write(_redact_outbound(warn))
 
     try:
-        original_current = _read_plugin_version(plugin_path)
+        _ = _read_plugin_version(plugin_path)
     except ShipError as exc:
         return ApplyResult(applied=False, error=_redact_outbound(str(exc)))
 
-    initial_target = new_version
     tmp_path = plugin_path.with_suffix(".tmp")
 
     def _cleanup_stage_artifacts() -> None:
@@ -567,63 +473,6 @@ def apply_bump(
     if stage_err is not None:
         return stage_err
 
-    base_label = f"{base_remote}/{base_ref}"
-    retry_count = 0
-    while True:
-        fetch_result = git.fetch(runner, base_remote, base_ref, cwd=cwd)
-        if fetch_result.returncode != 0:
-            rollback_before_commit()
-            return ApplyResult(
-                applied=False,
-                error=_redact_outbound(
-                    f"git fetch {base_remote} {base_ref} failed; cannot verify "
-                    f"{base_label} version guards",
-                ),
-            )
-
-        origin_show = git.show_file(
-            runner,
-            f"{base_label}:{config.PLUGIN_JSON_PATH}",
-            cwd=cwd,
-        )
-        origin_version = ""
-        if origin_show.returncode == 0:
-            try:
-                origin_data = json.loads(origin_show.stdout)
-                ov = origin_data.get("version", "")
-                if isinstance(ov, str):
-                    origin_version = ov
-            except json.JSONDecodeError:
-                origin_version = ""
-
-        if not re.fullmatch(config.SEMVER_RE, origin_version):
-            rollback_before_commit()
-            return ApplyResult(
-                applied=False,
-                error=_redact_outbound(
-                    f"could not parse {base_label} published version",
-                ),
-            )
-
-        if origin_version == new_version or _semver_lt(new_version, origin_version):
-            rollback_before_commit()
-            if retry_count >= config.APPLY_BUMP_MAX_RETRIES:
-                return ApplyResult(
-                    applied=False,
-                    error=_redact_outbound(
-                        f"{base_label} bump race: could not land version after "
-                        f"{config.APPLY_BUMP_MAX_RETRIES} retries "
-                        f"(last {base_label}={origin_version})",
-                    ),
-                )
-            bump_type = _infer_bump_type(original_current, initial_target)
-            new_version = _apply_bump_type(origin_version, bump_type)
-            retry_count += 1
-            stage_err = backup_rewrite_stage(new_version)
-            if stage_err is not None:
-                return stage_err
-            continue
-        break
 
     commit_msg = config.BUMP_COMMIT_SUBJECT_TEMPLATE.format(version=new_version)
     commit_result = git.commit(runner, commit_msg, cwd=cwd)
@@ -640,118 +489,3 @@ def apply_bump(
         backup_path.unlink()
     sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
     return ApplyResult(applied=True, new_version=new_version, commit_sha=sha)
-
-
-def _parse_larch_bump_files_env(env_bump: str) -> tuple[str, ...] | None:
-    """Parse colon-separated bump paths; None when empty or malformed (fail-closed)."""
-    segments: list[str] = []
-    for part in env_bump.split(":"):
-        if part == "":
-            return None
-        trimmed = part.strip()
-        if not trimmed:
-            return None
-        if ":" in trimmed:
-            return None
-        segments.append(trimmed)
-    if not segments:
-        return None
-    return tuple(segments)
-
-
-def _guard4_allows(
-  changed: str,
-  *,
-  allow_changelog_only: bool,
-  bump_files: tuple[str, ...] | None,
-) -> bool:
-    if bump_files is not None:
-        allowed = [*bump_files, config.CHANGELOG_DEFAULT_PATH]
-        if not allowed:
-            return False
-        changed_list = [f for f in changed.split("\n") if f]
-        bump_found = False
-        for file in changed_list:
-            if file not in allowed:
-                return False
-            if file != config.CHANGELOG_DEFAULT_PATH:
-                bump_found = True
-        if bump_found:
-            return True
-        return allow_changelog_only and changed == config.CHANGELOG_DEFAULT_PATH
-
-    default_files = config.DEFAULT_BUMP_FILES
-    allowed_one = "\n".join(default_files)
-    allowed_two = "\n".join((*default_files, config.CHANGELOG_DEFAULT_PATH))
-    if changed in (allowed_one, allowed_two):
-        return True
-    return allow_changelog_only and changed == config.CHANGELOG_DEFAULT_PATH
-
-
-def drop_bump_commit(
-    runner: Runner,
-    *,
-    max_depth: int = config.DROP_BUMP_MAX_DEPTH,
-    allow_changelog_only: bool = False,
-    bump_files: tuple[str, ...] | None = None,
-    cwd: str | None = None,
-) -> DropResult:
-    """Drop the most recent bump version commit within max_depth."""
-    tracked = porcelain_tracked_only(runner, cwd=cwd)
-    if tracked is None:
-        return DropResult(dropped=False, error=_redact_outbound("git status failed"))
-    if tracked:
-        return DropResult(dropped=False, error=_redact_outbound("uncommitted tracked changes"))
-
-    found_at = find_commit_depth(
-        runner,
-        max_depth=max_depth,
-        subject_matches=lambda subject: bool(_BUMP_SUBJECT_RE.fullmatch(subject or "")),
-        cwd=cwd,
-    )
-
-    if found_at < 0:
-        return DropResult(dropped=False, error=_redact_outbound("no bump commit found"))
-
-    parent_ref = f"HEAD~{found_at + 1}"
-    if git.try_rev_parse(runner, parent_ref, cwd=cwd) is None:
-        return DropResult(dropped=False, error=_redact_outbound("parent does not exist"))
-
-    changed = sorted_changed_files(
-        runner,
-        parent_ref,
-        f"HEAD~{found_at}",
-        cwd=cwd,
-    )
-    env_bump = os.environ.get(config.ENV_LARCH_BUMP_FILES)
-    effective_bump_files = bump_files
-    if env_bump is not None and bump_files is None:
-        parsed = _parse_larch_bump_files_env(env_bump)
-        if parsed is None:
-            return DropResult(
-                dropped=False,
-                error=_redact_outbound(
-                    "LARCH_BUMP_FILES is set but empty after parsing; refusing to drop",
-                ),
-            )
-        effective_bump_files = parsed
-
-    if not _guard4_allows(
-        changed,
-        allow_changelog_only=allow_changelog_only,
-        bump_files=effective_bump_files,
-    ):
-        return DropResult(dropped=False, error=_redact_outbound("unexpected changed files"))
-
-    old_sha = git.try_rev_parse(runner, f"HEAD~{found_at}", cwd=cwd) or ""
-    replay_err = drop_replay_commit(
-        runner,
-        found_at=found_at,
-        cwd=cwd,
-        reset_error="git reset --hard HEAD~1 failed",
-        rebase_error="git rebase --onto failed",
-    )
-    if replay_err is not None:
-        return DropResult(dropped=False, error=_redact_outbound(replay_err))
-
-    return DropResult(dropped=True, old_sha=old_sha)

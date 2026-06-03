@@ -13,7 +13,7 @@ step	name
 7a	diagrams
 7a.r	rebase
 8	version bump
-8a	changelog
+8a	release notes
 8b	rebase
 9a.1	OOS issues
 9	create PR

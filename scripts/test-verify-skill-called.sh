@@ -12,7 +12,7 @@
 #   - Argument-error paths (exit 1, no KEY=VALUE emitted).
 #   - Stdout contract (VERIFIED= and REASON= always emitted on exit-0 paths).
 #   - lib-count-commits.sh sourced from cwd-neutral context via
-#     check-bump-version.sh (validates the source chain).
+#     a direct count_commits call (validates the source chain).
 #
 # Invariants asserted:
 #   - Exit 0 for pass AND fail outcomes (VERIFIED=true|false on stdout).
@@ -35,9 +35,7 @@ export LARCH_QUIET_DISABLE=1
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)
 HELPER="$REPO_ROOT/scripts/verify-skill-called.sh"
 LIB="$REPO_ROOT/scripts/lib-count-commits.sh"
-CHECK_BUMP="$REPO_ROOT/scripts/check-bump-version.sh"
-
-for f in "$HELPER" "$LIB" "$CHECK_BUMP"; do
+for f in "$HELPER" "$LIB"; do
     if [[ ! -f "$f" ]]; then
         echo "ERROR: required script not found: $f" >&2
         exit 1
@@ -358,33 +356,23 @@ rc=$?
 set -e
 assert_exit_eq "4c: multiple modes exit 1" "$rc" 1
 
-# --- Section 5: lib-count-commits.sh via check-bump-version.sh ---------------
-# Exercises the source chain from a cwd-neutral directory to validate that
-# check-bump-version.sh correctly sources lib-count-commits.sh regardless of
-# the caller's current working directory.
+# --- Section 5: lib-count-commits.sh direct source chain ---------------------
+# Exercises direct sourcing of lib-count-commits.sh from repo and arbitrary
+# working directories after removal of the retired bump gate wrapper.
 
 echo "=== Section 5: cwd-neutral source chain ==="
 
-REPO_CHECK="$TMPROOT/repo-check-bump"
+REPO_CHECK="$TMPROOT/repo-count-commits"
 setup_git_repo "$REPO_CHECK" 1 0
-(
-    cd "$REPO_CHECK"
-    # Fake a .claude/skills/bump-version/SKILL.md so HAS_BUMP=true path is exercised.
-    mkdir -p .claude/skills/bump-version
-    printf -- '---\nname: bump-version\n---\ndummy\n' > .claude/skills/bump-version/SKILL.md
-)
 
-# 5a — invoke check-bump-version.sh from the repo root using an absolute
-# script path. PWD matters here because check-bump-version.sh uses
-# $PWD/.claude/skills/... to probe for the /bump-version skill, so we cd
-# INTO $REPO_CHECK first. What this test validates is the `source` chain:
-# check-bump-version.sh uses `$(dirname "${BASH_SOURCE[0]}")/lib-count-commits.sh`
-# which must resolve correctly when the script is invoked via an absolute
-# path from any cwd. Section 5b below exercises sourcing the lib directly
-# from a non-repo cwd (/tmp) as the truly cwd-neutral case.
-out=$(cd "$REPO_CHECK" && bash "$CHECK_BUMP" --mode pre 2>&1) || true
-assert_stdout_contains "5a: check-bump-version --mode pre emits HAS_BUMP=true" "$out" "HAS_BUMP=true"
-assert_stdout_contains "5a: check-bump-version --mode pre emits COMMITS_BEFORE=" "$out" "COMMITS_BEFORE="
+# 5a — source lib-count-commits.sh via absolute path from a real repo cwd and
+# exercise count_commits directly.
+out=$(cd "$REPO_CHECK" && bash -c "source '$LIB'; count_commits" 2>&1) || true
+if [[ "$out" =~ ^[0-9]+$ ]]; then
+    pass
+else
+    fail "5a: count_commits from repo cwd emitted count; got: $out"
+fi
 
 # 5b — source the lib directly via absolute path from arbitrary cwd
 (

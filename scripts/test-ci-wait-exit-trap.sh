@@ -19,7 +19,7 @@
 # SIGNAL CHOICE: The test sends SIGTERM, NOT SIGKILL. Bash CANNOT trap
 # SIGKILL; no shell-side mechanism can write the sentinel under SIGKILL.
 # The doc-layer fix (synchronous-only invocation contract in
-# skills/implement/SKILL.md and skills/implement/references/rebase-rebump-subprocedure.md)
+# skills/implement/SKILL.md and skills/implement/references/conflict-resolution.md)
 # is the operational defense for SIGKILL paths. This harness exercises
 # the trap-deliverable signal class only.
 #

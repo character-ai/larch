@@ -30,8 +30,6 @@ _STUB_SCRIPTS = (
     "lib-quiet.sh",
     "lib-net.sh",
     "lib-finalize-state-keys.sh",
-    "lib-changelog.sh",
-    "auto-resolve-changelog.sh",
     "oos-disposition-shared.inc.bash",
     "redact-secrets.sh",
     "redact-tmpdir-paths.sh",
@@ -43,7 +41,6 @@ _STUB_EXECUTABLES = (
     "redact-tmpdir-paths.sh",
     "ci-failed-jobs.sh",
     "ship-pr.sh",
-    "auto-resolve-changelog.sh",
 )
 
 

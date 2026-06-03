@@ -24,16 +24,6 @@
     ],
     "PostToolUse": [
       {
-        "matcher": "Skill",
-        "hooks": [
-          {
-            "type": "command",
-            "command": "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/hook-post-bump-version.sh",
-            "timeout": 10
-          }
-        ]
-      },
-      {
         "matcher": "Read|Bash",
         "hooks": [
           {

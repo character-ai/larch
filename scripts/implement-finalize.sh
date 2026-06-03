@@ -22,12 +22,11 @@ STATE_FILE=""
 FINAL_BAIL_REASON_FILE=""
 IMPLEMENT_TMPDIR=""
 WARNINGS=0
-CHANGELOG_BULLETS_FILE=""
 
 usage() {
     while IFS= read -r line; do larch_err "$line"; done <<'USAGE'
 Usage:
-  implement-finalize.sh postbump  --state-file PATH --implement-tmpdir PATH [--changelog-bullets-file PATH]
+  implement-finalize.sh postbump  --state-file PATH --implement-tmpdir PATH
   implement-finalize.sh postmerge --state-file PATH --final-bail-reason-file PATH
   implement-finalize.sh teardown  --state-file PATH --implement-tmpdir PATH
 USAGE
@@ -95,12 +94,6 @@ parse_postbump_args() {
             --implement-tmpdir)
                 [ $# -ge 2 ] || die_usage "--implement-tmpdir requires a value"
                 IMPLEMENT_TMPDIR=$2
-                shift 2
-                ;;
-            --changelog-bullets-file)
-                [ $# -ge 2 ] || die_usage "--changelog-bullets-file requires a value"
-                CHANGELOG_BULLETS_FILE=$2
-                is_tmp_path "$CHANGELOG_BULLETS_FILE" || die_usage "--changelog-bullets-file must be under /tmp/, /private/tmp/, /var/folders/, or the larch cache sessions root"
                 shift 2
                 ;;
             --help)
@@ -377,9 +370,8 @@ clear_postbump_checkpoint() {
 }
 
 postbump_tail() {
-    local status=$1 anchor_status=$2 changelog_status=$3 rebase_status=$4 force_push_status=$5
+    local status=$1 anchor_status=$2 rebase_status=$3 force_push_status=$4
     emit_kv LOG_WRITE_STATUS "$anchor_status"
-    emit_kv CHANGELOG_STATUS "$changelog_status"
     emit_kv REBASE_STATUS "$rebase_status"
     emit_kv FORCE_PUSH_STATUS "$force_push_status"
     emit_kv STATUS "$status"
@@ -532,7 +524,6 @@ run_force_push_gate() {
 run_postbump() {
     local rc repo_root
     LOG_WRITE_STATUS=skipped
-    CHANGELOG_STATUS='skipped-phase1'
     REBASE_STATUS='skipped-resume'
     FORCE_PUSH_STATUS=absent
     set +e
@@ -541,12 +532,12 @@ run_postbump() {
     set +e
     if [ "$rc" -ne 0 ] || [ -z "$repo_root" ]; then
         warn_line '**⚠ Step 8: postbump must run inside a git working tree (cwd is not in a repo). Bailing to cleanup.**'
-        postbump_tail postbump-cwd-not-repo skipped skipped-phase1 skipped-resume absent
+        postbump_tail postbump-cwd-not-repo skipped skipped-resume absent
         return 0
     fi
     cd "$repo_root" || {
         warn_line "**⚠ Step 8: postbump could not cd to repo root '$repo_root'. Bailing to cleanup.**"
-        postbump_tail postbump-cwd-not-repo skipped skipped-phase1 skipped-resume absent
+        postbump_tail postbump-cwd-not-repo skipped skipped-resume absent
         return 0
     }
     load_and_validate_postbump_state
@@ -562,7 +553,7 @@ run_postbump() {
             else
                 append_execution_issue "Step 8 postbump checkpoint file was corrupt."
                 warn_line '**⚠ Step 8: postbump checkpoint file corrupt. Bailing to cleanup.**'
-                postbump_tail postbump-state-corrupt skipped skipped-phase1 skipped-resume absent
+                postbump_tail postbump-state-corrupt skipped skipped-resume absent
                 return 0
             fi
         fi
@@ -574,19 +565,19 @@ run_postbump() {
     set +e
     case "$rc" in
         0) ;;
-        4) postbump_tail branch-mismatch "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent; return 0 ;;
-        *) postbump_tail rebase-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" absent; return 0 ;;
+        4) postbump_tail branch-mismatch "$LOG_WRITE_STATUS" "$REBASE_STATUS" absent; return 0 ;;
+        *) postbump_tail rebase-failed "$LOG_WRITE_STATUS" "$REBASE_STATUS" absent; return 0 ;;
     esac
     set +e
     run_force_push_gate
     rc=$?
     set +e
     case "$rc" in
-        0) postbump_tail ok "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-        3) postbump_tail push-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-        4) postbump_tail branch-mismatch "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-        5) postbump_tail remote-check-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
-        *) postbump_tail push-failed "$LOG_WRITE_STATUS" "$CHANGELOG_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        0) postbump_tail ok "$LOG_WRITE_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        3) postbump_tail push-failed "$LOG_WRITE_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        4) postbump_tail branch-mismatch "$LOG_WRITE_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        5) postbump_tail remote-check-failed "$LOG_WRITE_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
+        *) postbump_tail push-failed "$LOG_WRITE_STATUS" "$REBASE_STATUS" "$FORCE_PUSH_STATUS" ;;
     esac
 }
 

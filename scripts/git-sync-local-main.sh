@@ -3,7 +3,7 @@
 #
 # Silent no-op when the local `main` ref does not exist. Used by the
 # Rebase + Re-bump Sub-procedure step 3
-# (skills/implement/references/rebase-rebump-subprocedure.md) so that
+# (skills/implement/references/conflict-resolution.md) so that
 # `classify-bump.sh`'s merge-base computation resolves against the latest
 # remote base.
 #

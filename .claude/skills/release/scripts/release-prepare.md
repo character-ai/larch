@@ -61,4 +61,4 @@ Tab-separated columns: `number`, `title`, `labels` (comma-separated), `author`, 
 
 - `.claude/skills/release/scripts/release-prepare.sh`
 - `.claude/skills/release/SKILL.md` Step 2
-- `.claude/skills/bump-version/scripts/classify-bump.sh` (`--base` consumer)
+- `.claude/skills/release/scripts/classify-bump.sh` (`--base` consumer)

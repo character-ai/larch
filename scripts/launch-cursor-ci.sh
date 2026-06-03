@@ -29,7 +29,7 @@ TIMEOUT="1800"
 TIMING_TASK_KIND="cursor-ci-fix"
 
 usage() {
-    larch_err "Usage: launch-cursor-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--failure-log PATH] [--timeout SECONDS]"
+    larch_err "Usage: launch-cursor-ci.sh --role fix|resolve-conflict --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--failure-log PATH] [--timeout SECONDS]"
 }
 
 die() {
@@ -68,7 +68,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-case "$ROLE" in fix|resolve-conflict|bump-classify|changelog-draft) ;; *) die "--role must be fix, resolve-conflict, bump-classify, or changelog-draft" ;; esac
+case "$ROLE" in fix|resolve-conflict) ;; *) die "--role must be fix or resolve-conflict" ;; esac
 [ -n "$OUTPUT" ] || die "--output is required"
 [ -n "$RUN_ID" ] || die "--run-id is required"
 [ -n "$REPO" ] || die "--repo is required"
@@ -97,7 +97,7 @@ STALL_THRESHOLD=${LARCH_CURSOR_CI_STALL_THRESHOLD:-180}
 case "$STALL_THRESHOLD" in ''|*[!0-9]*|0) STALL_THRESHOLD=180 ;; esac
 STALL_CHANNEL=""
 case "$ROLE" in
-    fix|bump-classify|changelog-draft) STALL_CHANNEL=stdout ;;
+    fix) STALL_CHANNEL=stdout ;;
     resolve-conflict) STALL_CHANNEL="tree:${PWD}" ;;
 esac
 

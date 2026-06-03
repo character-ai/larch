@@ -165,10 +165,10 @@ wrapper_push_refs=$(grep -cF 'rebase-push.sh' "$WRAPPER" || true)
 [[ "$wrapper_push_refs" == "1" ]] \
   || fail "(H) expected exactly one rebase-push.sh invocation line in rebase-checkpoint-probe.sh, found $wrapper_push_refs"
 
-SUBPROC_MD="$REPO_ROOT/skills/implement/references/rebase-rebump-subprocedure.md"
-[[ -f "$SUBPROC_MD" ]] || fail "(H) references/rebase-rebump-subprocedure.md missing: $SUBPROC_MD"
+SUBPROC_MD="$REPO_ROOT/skills/implement/references/conflict-resolution.md"
+[[ -f "$SUBPROC_MD" ]] || fail "(H) references/conflict-resolution.md missing: $SUBPROC_MD"
 grep -Fq 'Retired in Phase 1' "$SUBPROC_MD" \
-  || fail "(H) rebase-rebump-subprocedure.md must be the Phase 1 retirement stub"
+  || fail "(H) conflict-resolution.md must be the Phase 1 retirement stub"
 
 SHIP_PR_SH="$REPO_ROOT/scripts/ship-pr.sh"
 [[ -f "$SHIP_PR_SH" ]] || fail "(H) scripts/ship-pr.sh missing: $SHIP_PR_SH"

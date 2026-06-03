@@ -7,7 +7,7 @@ reimplement baseline comparison.
 
 **Primary callers**: `skills/implement/SKILL.md` probe instructions at key
 step boundaries after external implementation dispatch, post-rebase
-checkpoints, and immediately before `/bump-version`.
+checkpoints, and immediately before `/release`.
 
 ## Interface
 

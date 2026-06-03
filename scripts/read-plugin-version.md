@@ -25,7 +25,7 @@ The helper always exits 0. Callers must treat the value as display metadata only
 ## Invariants
 
 - Do not fail callers because plugin-version metadata is unavailable.
-- Do not edit `.claude-plugin/plugin.json`; this script is read-only and `.claude-plugin/plugin.json` remains owned by `/bump-version`.
+- Do not edit `.claude-plugin/plugin.json`; this script is read-only and `.claude-plugin/plugin.json` remains owned by `/release`.
 - Emit exactly one stdout line so shell callers can parse it without `eval`.
 
 ## Edit-in-sync pointers

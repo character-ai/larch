@@ -5,7 +5,7 @@ post-/design and post-/review hook scripts. It exposes `resolve_implement_tmpdir
 enumerates `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions`, `/tmp`, and
 `/private/tmp` for `claude-implement-*` directories that have `design-export/manifest.env`
 (normal path), `review-round-summary.md` (both-externals-down path that skips
-`/design` — issue #1862), or `.bump-version-armed` (post-/bump resume when
+`/design` — issue #1862), or `.release-armed` (post-/bump resume when
 manifest/review artifacts are absent). Each candidate must provide `.larch-keepalive`,
 a slim session-identity record whose `CLONE_PATH` exactly matches the
 supplied hook cwd. The helper returns the freshest eligible manifest mtime with
@@ -27,7 +27,7 @@ Candidate eligibility additionally applies two layered checks on top of
    `SESSION_ID` is NOT treated as "missing signal — proceed"). When
    `LARCH_TOKEN_SESSION_ID` is unset, the session check is skipped entirely.
    In production, the env value is surfaced into hook subprocesses by
-   `hook-stop-fail-close.sh` and `hook-post-bump-version.sh`, which parse
+   `hook-stop-fail-close.sh` and `hook-post-release.sh`, which parse
    `.session_id` from the Claude Code hook stdin payload and `export
    LARCH_TOKEN_SESSION_ID="$SID"` before sourcing this lib. `/implement`
    Step 0's in-bash `export` does NOT propagate to hook subprocesses on its
@@ -48,7 +48,7 @@ long-running `/design` session is provably the active session and should still
 arm halt protection. The TTL-only path applies when no authoritative session
 signal is available.
 
-Edit in sync with `hook-stop-fail-close.sh`, `hook-post-bump-version.sh`,
+Edit in sync with `hook-stop-fail-close.sh`, `hook-post-release.sh`,
 `hooks/hooks.json`, `scripts/test-implement-anti-halt.sh`, and
 `skills/implement/scripts/test-resolve-implement-tmpdir.sh` (concurrent
 worktree `CLONE_PATH` routing).

@@ -86,7 +86,7 @@ if grep -qF 'persistent interactive subprocess' "${OUT_FIX}.prompt" 2>/dev/null;
 else
     fail "fix-role prompt prohibits persistent interactive subprocesses (issue #2991)"
 fi
-for role in resolve-conflict bump-classify changelog-draft; do
+for role in resolve-conflict; do
     OUT_NF="$TMPDIR_BASE/ci-fix-prompt-$role"
     case "$role" in
         resolve-conflict)

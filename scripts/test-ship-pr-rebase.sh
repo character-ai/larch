@@ -47,8 +47,6 @@ grep -Fq 'ship-pr-rrr-after-phase14.flag' "$SHIP_PR" \
 # ---------------------------------------------------------------------------
 # (D) Phase 1: no per-PR bump drop/rebump inside ship-pr.sh.
 # ---------------------------------------------------------------------------
-grep -Fq 'drop-bump-commit' "$SHIP_PR" \
-    && fail "(D) ship-pr.sh must not reference drop-bump-commit after Phase 1"
 grep -Fq 'classify-bump.sh' "$SHIP_PR" \
     && fail "(D) ship-pr.sh must not reference classify-bump.sh after Phase 1"
 

@@ -5,7 +5,7 @@ Launches Codex for `/implement` CI-related subwork from `scripts/ship-pr.sh`.
 ## Interface
 
 ```text
-launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--failure-log PATH] [--timeout SECONDS]
+launch-codex-ci.sh --role fix|resolve-conflict --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--failure-log PATH] [--timeout SECONDS]
 ```
 
 `--output` must be an absolute path using the same narrowed safe alphabet as `run-external-agent.sh`.

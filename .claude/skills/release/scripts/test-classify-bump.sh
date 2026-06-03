@@ -33,15 +33,6 @@ name: base
 description: base
 ---
 SKILL
-    cat > "$repo/CHANGELOG.md" <<'CHANGELOG'
-# Changelog
-
-## [1.2.2] - 2026-01-01
-
-### Fixed
-
-- Base entry.
-CHANGELOG
     echo "base" > "$repo/README.md"
     git -C "$repo" add -A
     git -C "$repo" commit -q -m "Initial commit"
@@ -61,60 +52,25 @@ else
     fail "HEAD bump commit should be NONE: $out"
 fi
 
-# Test 2: CHANGELOG-only commit above bump is transparent.
+# Test 2: larch-log flush above bump is transparent.
 repo="$TMPDIR_BASE/test2"
 setup_repo "$repo"
 printf '{"version":"1.2.3"}\n' > "$repo/.claude-plugin/plugin.json"
 git -C "$repo" add .claude-plugin/plugin.json
 git -C "$repo" commit -q -m "Bump version to 1.2.3"
-printf '\n- New fix.\n' >> "$repo/CHANGELOG.md"
-git -C "$repo" add CHANGELOG.md
-git -C "$repo" commit -q -m "Update CHANGELOG for 1.2.3"
-out=$(run_subject "$repo" "$TMPDIR_BASE/t2impl")
-if printf '%s\n' "$out" | grep -q '^BUMP_TYPE=NONE$'; then
-    ok
-else
-    fail "HEAD CHANGELOG over bump should be NONE: $out"
-fi
-
-# Test 3: larch-log flush above CHANGELOG above bump is also transparent.
-repo="$TMPDIR_BASE/test3"
-setup_repo "$repo"
-printf '{"version":"1.2.3"}\n' > "$repo/.claude-plugin/plugin.json"
-git -C "$repo" add .claude-plugin/plugin.json
-git -C "$repo" commit -q -m "Bump version to 1.2.3"
-printf '\n- New fix.\n' >> "$repo/CHANGELOG.md"
-git -C "$repo" add CHANGELOG.md
-git -C "$repo" commit -q -m "Update CHANGELOG for 1.2.3"
 mkdir -p "$repo/larch-logs/implement/run-1"
 printf '{}\n' > "$repo/larch-logs/implement/run-1/manifest.json"
 git -C "$repo" add larch-logs/implement/run-1/manifest.json
 git -C "$repo" commit -q -m "chore(larch-logs): flush implement run run-1"
-out=$(run_subject "$repo" "$TMPDIR_BASE/t3impl")
+out=$(run_subject "$repo" "$TMPDIR_BASE/t2impl")
 if printf '%s\n' "$out" | grep -q '^BUMP_TYPE=NONE$'; then
     ok
 else
-    fail "HEAD larch-log flush over CHANGELOG over bump should be NONE: $out"
+    fail "HEAD larch-log flush over bump should be NONE: $out"
 fi
 
-# Test 4: CHANGELOG-at-HEAD over ordinary feature work still needs a bump.
-repo="$TMPDIR_BASE/test4"
-setup_repo "$repo"
-echo "feature" >> "$repo/README.md"
-git -C "$repo" add README.md
-git -C "$repo" commit -q -m "Feature work"
-printf '\n- Feature note.\n' >> "$repo/CHANGELOG.md"
-git -C "$repo" add CHANGELOG.md
-git -C "$repo" commit -q -m "Update CHANGELOG for 1.2.3"
-out=$(run_subject "$repo" "$TMPDIR_BASE/t4impl")
-if printf '%s\n' "$out" | grep -q '^BUMP_TYPE=PATCH$'; then
-    ok
-else
-    fail "HEAD CHANGELOG over feature should be PATCH, got: $out"
-fi
-
-# Test 5: Subject-only spoofing cannot bypass a public-surface change.
-repo="$TMPDIR_BASE/test5"
+# Test 3: Subject-only spoofing cannot bypass a public-surface change.
+repo="$TMPDIR_BASE/test3"
 setup_repo "$repo"
 mkdir -p "$repo/skills/new-skill"
 cat > "$repo/skills/new-skill/SKILL.md" <<'SKILL'
@@ -124,16 +80,16 @@ description: new skill
 ---
 SKILL
 git -C "$repo" add skills/new-skill/SKILL.md
-git -C "$repo" commit -q -m "Update CHANGELOG for 1.2.3"
-out=$(run_subject "$repo" "$TMPDIR_BASE/t5impl")
+git -C "$repo" commit -q -m "chore(larch-logs): flush implement run run-1"
+out=$(run_subject "$repo" "$TMPDIR_BASE/t3impl")
 if printf '%s\n' "$out" | grep -q '^BUMP_TYPE=MINOR$'; then
     ok
 else
-    fail "forged CHANGELOG subject touching skills should be MINOR: $out"
+    fail "transparent-subject spoof touching skills should be MINOR: $out"
 fi
 
-# Test 6: --base skips per-PR idempotency over a trailing bump commit.
-repo="$TMPDIR_BASE/test6"
+# Test 4: --base skips idempotency over a trailing bump commit.
+repo="$TMPDIR_BASE/test4"
 setup_repo "$repo"
 git -C "$repo" checkout -q main 2>/dev/null || git -C "$repo" checkout -q -b main
 git -C "$repo" tag -a v1.0.0 -m "baseline" "$(git -C "$repo" rev-parse HEAD)"
@@ -152,16 +108,16 @@ git -C "$repo" commit -q -m "Bump version to 1.0.1"
 echo tweak >> "$repo/skills/extra/SKILL.md"
 git -C "$repo" add skills/extra/SKILL.md
 git -C "$repo" commit -q -m "Tweak extra (#100)"
-out=$(cd "$repo" && IMPLEMENT_TMPDIR="$TMPDIR_BASE/t6impl" bash "$SUBJECT" --base v1.0.0 2>/dev/null)
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$TMPDIR_BASE/t4impl" bash "$SUBJECT" --base v1.0.0 2>/dev/null)
 if printf '%s\n' "$out" | grep -q '^BUMP_TYPE=MINOR$'; then
     ok
 else
     fail "--base over trailing bump should be MINOR: $out"
 fi
 
-# Test 7: --head origin/main excludes commits not on origin/main.
-repo="$TMPDIR_BASE/test7"
-bare="$TMPDIR_BASE/test7-bare.git"
+# Test 5: --head origin/main excludes commits not on origin/main.
+repo="$TMPDIR_BASE/test5"
+bare="$TMPDIR_BASE/test5-bare.git"
 git init -q --bare "$bare"
 setup_repo "$repo"
 git -C "$repo" remote add origin "$bare"
@@ -177,17 +133,17 @@ description: local only
 SKILL
 git -C "$repo" add skills/local-only/SKILL.md
 git -C "$repo" commit -q -m "Local-only skill (#42)"
-out=$(cd "$repo" && IMPLEMENT_TMPDIR="$TMPDIR_BASE/t7impl" bash "$SUBJECT" --base v1.0.0 --head origin/main 2>/dev/null)
+out=$(cd "$repo" && IMPLEMENT_TMPDIR="$TMPDIR_BASE/t5impl" bash "$SUBJECT" --base v1.0.0 --head origin/main 2>/dev/null)
 if printf '%s\n' "$out" | grep -q '^BUMP_TYPE=PATCH$'; then
     ok
 else
     fail "--head origin/main should ignore local-only commit (expect PATCH): $out"
 fi
 
-# Test 8: default path (no flags) emits required KV lines; unknown args fail closed.
-repo="$TMPDIR_BASE/test8"
+# Test 6: default path emits required KV lines; unknown args fail closed.
+repo="$TMPDIR_BASE/test6"
 setup_repo "$repo"
-out=$(run_subject "$repo" "$TMPDIR_BASE/t8impl")
+out=$(run_subject "$repo" "$TMPDIR_BASE/t6impl")
 if printf '%s\n' "$out" | grep -q '^CURRENT_VERSION=' \
   && printf '%s\n' "$out" | grep -q '^NEW_VERSION=' \
   && printf '%s\n' "$out" | grep -qE '^BUMP_TYPE=(MAJOR|MINOR|PATCH|NONE)$' \
@@ -197,7 +153,7 @@ else
     fail "default path KV shape: $out"
 fi
 set +e
-(cd "$repo" && IMPLEMENT_TMPDIR="$TMPDIR_BASE/t8bad" bash "$SUBJECT" --bogus >/dev/null 2>&1)
+(cd "$repo" && IMPLEMENT_TMPDIR="$TMPDIR_BASE/t6bad" bash "$SUBJECT" --bogus >/dev/null 2>&1)
 bad_rc=$?
 set -e
 if [[ $bad_rc -ne 0 ]]; then

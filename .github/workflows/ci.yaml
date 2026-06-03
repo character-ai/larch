@@ -25,7 +25,7 @@ env:
   # actions/setup-python) to run under Node.js 24.  Suppresses the deprecation
   # warning that fires on every job:
   #   "Node.js 20 actions are deprecated."
-  # Per GitHub changelog 2025-09-19, Node 20 is removed from runners on
+  # Per GitHub release notes 2025-09-19, Node 20 is removed from runners on
   # 2026-09-16; this env var becomes the default on 2026-06-02.
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -439,8 +439,6 @@ jobs:
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
-      - name: Install gawk for lib-changelog parity tests
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq gawk
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"

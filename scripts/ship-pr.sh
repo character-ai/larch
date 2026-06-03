@@ -18,9 +18,6 @@ source "$SCRIPT_DIR/lib-net.sh" || { larch_err "ship-pr.sh: failed to source lib
 # shellcheck source=scripts/lib-finalize-state-keys.sh
 source "$SCRIPT_DIR/lib-finalize-state-keys.sh" || { larch_err "ship-pr.sh: failed to source lib-finalize-state-keys.sh"; exit 1; }
 [[ "${LARCH_LIB_FINALIZE_STATE_KEYS_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-finalize-state-keys.sh sourced but sentinel missing"; exit 1; }
-# shellcheck source=scripts/lib-changelog.sh
-source "$SCRIPT_DIR/lib-changelog.sh" || { larch_err "ship-pr.sh: failed to source lib-changelog.sh"; exit 1; }
-[[ "${LARCH_LIB_CHANGELOG_LOADED:-}" == "1" ]] || { larch_err "ship-pr.sh: lib-changelog.sh sourced but sentinel missing"; exit 1; }
 # shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
 source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh" || { larch_err "ship-pr.sh: failed to source lib-failed-agent-stderr-tail.sh"; exit 1; }
 
@@ -2561,17 +2558,17 @@ run_recovery_waterfall() {
 }
 
 # True when every path in the comma-separated vendor conflict list is a
-# non-bump file (exclude CHANGELOG.md, CHANGELOG.rst, bare CHANGELOG,
-# .claude-plugin/plugin.json, bump-adjacent basenames handled by the deterministic
-# pre-pass, and any repo-relative path listed in LARCH_BUMP_FILES when set —
-# aligned with run_rebase_rebump's deterministic loop and conflict-resolution.md).
+# non-version file (exclude .claude-plugin/plugin.json, version-adjacent basenames
+# handled by the deterministic pre-pass, and any repo-relative path listed in
+# LARCH_VERSION_FILES when set — aligned with run_rebase_rebump's deterministic loop
+# and conflict-resolution.md).
 ship_pr_vendor_conflict_csv_is_non_bump_only() {
     local csv=$1 _ofs _p _bn _seg _trimmed _bf
     local -a _bump_set=()
     [ -n "$csv" ] || return 1
-    if [[ -n "${LARCH_BUMP_FILES+x}" && -n "${LARCH_BUMP_FILES}" ]]; then
+    if [[ -n "${LARCH_VERSION_FILES+x}" && -n "${LARCH_VERSION_FILES}" ]]; then
         local -a _segments=()
-        IFS=':' read -ra _segments <<< "$LARCH_BUMP_FILES" || true
+        IFS=':' read -ra _segments <<< "$LARCH_VERSION_FILES" || true
         for _seg in "${_segments[@]+"${_segments[@]}"}"; do
             _trimmed="${_seg#"${_seg%%[![:space:]]*}"}"
             _trimmed="${_trimmed%"${_trimmed##*[![:space:]]}"}"
@@ -2585,9 +2582,6 @@ ship_pr_vendor_conflict_csv_is_non_bump_only() {
         IFS=$_ofs
         set +f
         _bn=${_p##*/}
-        case "$_bn" in
-            CHANGELOG.md|CHANGELOG.rst|CHANGELOG) return 1 ;;
-        esac
         if [[ "$_p" == .claude-plugin/plugin.json || "$_p" == */.claude-plugin/plugin.json ]]; then
             return 1
         fi
@@ -2771,12 +2765,6 @@ run_rebase_rebump() {
                 _base_cf=${_cf##*/}
                 _unresolved=false
                 case "$_base_cf" in
-                    CHANGELOG.md|CHANGELOG.rst|CHANGELOG)
-                        if ! "$SCRIPT_DIR/auto-resolve-changelog.sh" "$_cf" || ! git add -- "$_cf"; then
-                            needs_vendor=true
-                            _unresolved=true
-                        fi
-                        ;;
                     plugin.json)
                         if [[ "$_cf" == .claude-plugin/plugin.json || "$_cf" == */.claude-plugin/plugin.json ]]; then
                             if ! git checkout --ours -- "$_cf" || ! git add -- "$_cf"; then
