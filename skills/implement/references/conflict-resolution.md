@@ -35,7 +35,6 @@ For each file in `CONFLICT_FILES`:
 6. Auto-resolve trivial and high-confidence files. Stage resolved files with `${CLAUDE_PLUGIN_ROOT}/scripts/git-stage.sh <file>`.
 7. **IMPORTANT**: Always use "upstream (main)" and "feature branch commit" labels when describing the two sides of a conflict — never use "ours"/"theirs" which have inverted semantics during rebase and will cause confusion.
 
-
 ## Phase 2 — User Escalation (for uncertain conflicts)
 
 **If there are no uncertain conflicts**, skip to Phase 4 for `caller_kind=early_rebase` or `caller_kind=ship_pr_pre_push`.
