@@ -143,10 +143,9 @@ def postmerge(
         and (actual == expected_title or actual.startswith(expected_title) or (suffix and actual.endswith(suffix)))
     )
     verify_status = "verified" if title_ok else "unexpected"
-    outcome = Outcome.OK if cleanup_status == "success" and title_ok else Outcome.STALLED
     return FinalizeResult(
-        outcome,
-        "ok" if outcome is Outcome.OK else "postmerge-failed",
+        Outcome.OK,
+        "ok",
         local_cleanup_status=cleanup_status,
         verify_main_status=verify_status,
     )
@@ -171,7 +170,7 @@ def _rename_issue(
         return "failed"
     try:
         data = json.loads(result.stdout or "{}")
-        if str(data.get("state", "")).upper() not in {"", "OPEN"}:
+        if str(data.get("state", "")).upper() != "OPEN":
             return "skipped"
         current = str(data.get("title") or current)
     except json.JSONDecodeError:
@@ -201,11 +200,14 @@ def auto_stash_stalled_changes(
         return "git-status-failed"
     if not status.stdout.strip():
         return ""
-    label = f"larch-stalled-{ctx.issue_number or 'unknown'}-{ctx.stall_step or 'unknown'}"
+    timestamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ")
+    label = f"larch-stalled-{ctx.issue_number or 'unknown'}-{ctx.stall_step or 'unknown'}-{timestamp}"
     pushed = runner.run(["git", "stash", "push", "-u", "-m", label], cwd=cwd)
     if pushed.returncode != 0:
-        return ""
+        return "git-stash-failed"
     listed = runner.run(["git", "stash", "list", "--format=%gD %gs"], cwd=cwd)
+    if listed.returncode != 0:
+        return "git-stash-list-failed"
     for line in listed.stdout.splitlines():
         if label in line:
             return line.split()[0]
@@ -292,7 +294,7 @@ def teardown(
         )
 
     removed = False
-    if tmpdir.exists() and _cleanup_target_ok(ctx, tmpdir):
+    if tmpdir.exists() and _cleanup_target_ok(ctx, tmpdir, cwd=cwd):
         shutil.rmtree(tmpdir, ignore_errors=True)
         removed = not tmpdir.exists()
     status = "cleaned" if removed else "cleanup-skipped"
@@ -305,7 +307,7 @@ def teardown(
     )
 
 
-def _cleanup_target_ok(ctx: RunContext, tmpdir: Path) -> bool:
+def _cleanup_target_ok(ctx: RunContext, tmpdir: Path, *, cwd: str | None = None) -> bool:
     try:
         resolved = tmpdir.resolve(strict=False)
     except OSError:
@@ -324,7 +326,7 @@ def _cleanup_target_ok(ctx: RunContext, tmpdir: Path) -> bool:
         return False
     prefix = ctx.expected_tmpdir_basename_prefix
     if not prefix:
-        repo = Path.cwd().name or "_"
+        repo = Path(cwd or Path.cwd()).resolve().name or "_"
         prefix = f"claude-implement-{repo[:32]}-"
     if prefix and not tmpdir.name.startswith(prefix):
         session_file = resolved / "session-id"

@@ -1239,18 +1239,18 @@ def monitor(
             step=StepResult(outcome=Outcome.OK),
         )
 
-    if decision.action in ("rebase", "rebase_then_evaluate"):
+    if decision.action == "rebase":
         return _base_result(
             did_fixing=False,
             goto=True,
             step=StepResult(outcome=Outcome.OK),
         )
 
-    if decision.action == "evaluate_failure":
+    if decision.action in ("evaluate_failure", "rebase_then_evaluate"):
         if not status.failed_run_id:
             return _base_result(
                 did_fixing=False,
-                goto=False,
+                goto=decision.action == "rebase_then_evaluate",
                 step=StepResult(
                     outcome=Outcome.STALLED,
                     detail="missing failed_run_id",
@@ -1270,7 +1270,7 @@ def monitor(
         if fix.status == "no-changes":
             return _base_result(
                 did_fixing=False,
-                goto=False,
+                goto=decision.action == "rebase_then_evaluate",
                 step=StepResult(outcome=Outcome.OK),
                 rerun_already_running=fix.rerun_already_running,
                 transient_rerun_attempted=True,

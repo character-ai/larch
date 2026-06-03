@@ -63,8 +63,16 @@ def _step_result_to_ship(
     detail = step.detail
     if step.outcome is Outcome.NEEDS_USER_INPUT:
         reason = detail or "needs-user-input"
-        if reason.startswith(config.NEEDS_USER_CI_FIX_EXHAUSTED):
-            reason = config.NEEDS_USER_CI_FIX_EXHAUSTED
+        for token in (
+            config.NEEDS_USER_CI_FIX_EXHAUSTED,
+            config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
+            config.NEEDS_USER_OOS_FILING,
+            config.NEEDS_USER_FIX_ATTEMPTS_EXHAUSTED,
+            "local-unfixable",
+        ):
+            if reason == token or reason.startswith((f"{token}:", f"{token}\n")):
+                reason = token
+                break
     return ShipResult(
         step.outcome,
         needs_user_reason=reason,
@@ -201,7 +209,7 @@ def run_postmerge_phase(
     _ = sentinel.write_text(f"MERGE_RESULT={ctx.merge_result}\n", encoding="utf-8")
     post = finalize.postmerge(runner, ctx, cwd=cwd)
     state_ctx = ctx.with_(
-        pr_closed=post.outcome is Outcome.OK,
+        pr_closed=ctx.pr_closed or post.outcome is Outcome.OK,
         stall_tracking=post.outcome is Outcome.STALLED,
         stall_step=post.status if post.outcome is Outcome.STALLED else ctx.stall_step,
     )
@@ -341,6 +349,7 @@ def run_ship(
                         tmpdir=working.tmpdir,
                         base_remote=base_remote,
                         base_ref=base_ref,
+                        allow_conflict_fix=False,
                     )
                     rebase_count += 1
                 if monitor.transient_rerun_attempted:
@@ -391,7 +400,7 @@ def run_ship(
                 merge_result=working.merge_result,
                 detail=post.detail,
             )
-    except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
+    except (NeedsUserInput, ShipError, Stalled, TransientNetworkError, Exception) as exc:  # pylint: disable=broad-exception-caught
         return _error_to_result(exc)
 
 

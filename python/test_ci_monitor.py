@@ -1251,7 +1251,15 @@ def test_monitor_merge_ok_no_goto() -> None:
 
 
 def test_monitor_rebase_then_evaluate_no_fix() -> None:
-    runner = RecordingRunner(_status(status="fail", behind=1))
+    responses = _status(status="fail", behind=1)
+    responses[("gh", "run", "view", "999", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="connection reset by peer\n",
+    )
+    responses[("gh", "run", "rerun", "999", "--repo", "o/r", "--failed")] = _cr(
+        ("gh", "run", "rerun"),
+    )
+    runner = RecordingRunner(responses)
     launch_called = False
 
     def launch_fn(_tier: str) -> TierAttempt:
