@@ -574,7 +574,7 @@ def flush_logs_post(
     if pr_number:
         steps["pr_number"] = pr_number
     updated = Manifest(
-        status=config.MANIFEST_STATUS_DONE if finalize else manifest.status,
+        status=manifest.status,
         version=manifest.version,
         run_id=manifest.run_id,
         steps_ran=steps,
@@ -591,6 +591,19 @@ def flush_logs_post(
         _render_token_timing_batches(ctx, log_root)
     except ShipError:
         return RefreshSkip(skipped=True, reason="redaction-failed")
+    if finalize:
+        _write_manifest(
+            ctx,
+            Manifest(
+                status=config.MANIFEST_STATUS_DONE,
+                version=updated.version,
+                run_id=updated.run_id,
+                steps_ran=updated.steps_ran,
+                created_at=updated.created_at,
+                updated_at=updated.updated_at,
+                extra=updated.extra,
+            ),
+        )
     return RefreshSkip(skipped=False, reason="")
 
 

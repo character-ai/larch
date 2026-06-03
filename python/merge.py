@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -17,10 +16,6 @@ from errors import ShipError
 from proc import Runner
 from retry import with_transient_retry
 from run_context import RunContext
-
-_BUMP_SUBJECT_RE = re.compile(r"^Bump version to ([0-9]+\.[0-9]+\.[0-9]+)$")
-_SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
-
 
 @dataclass(frozen=True)
 class MergeResult:
@@ -138,13 +133,6 @@ def merge_pr(
         if post_err is not None:
             return post_err
         return head_match
-
-    version_outcome = _version_race_gate(runner, cwd=cwd)
-    if version_outcome is not None:
-        post_err = _post_flush(runner, ctx, version_outcome.result) if post_flush else None
-        if post_err is not None:
-            return post_err
-        return version_outcome
 
     merge_outcome = _attempt_merge(runner, ctx, pr_num, cwd=cwd)
     if post_flush:
@@ -371,74 +359,14 @@ def _flush_recoverable(
     return git.is_ancestor(runner, pr_head_oid, "HEAD", cwd=cwd)
 
 
-def _version_race_gate(
-    runner: Runner,
+def _version_race_gate(  # pylint: disable=useless-return  # pyright: ignore[reportUnusedFunction]
+    _runner: Runner,
     *,
     cwd: str | None,
 ) -> MergeResult | None:
-    fetch = git.fetch(runner, "origin", "main", cwd=cwd)
-    if fetch.returncode != 0:
-        return MergeResult(
-            result=config.MERGE_RESULT_ERROR,
-            error="git fetch origin main failed; cannot verify same-version race",
-        )
-    subjects = git.try_log_subjects(runner, "origin/main..HEAD", cwd=cwd)
-    if not subjects.subjects:
-        return None
-    bump_subject = ""
-    for subj in subjects.subjects:
-        if _BUMP_SUBJECT_RE.match(subj):
-            bump_subject = subj
-            break
-    if not bump_subject:
-        return None
-    match = _BUMP_SUBJECT_RE.match(bump_subject)
-    if not match:
-        return None
-    local_version = match.group(1)
-    origin_version = _origin_plugin_version(runner, cwd=cwd)
-    if not _SEMVER_RE.match(origin_version):
-        return MergeResult(
-            result=config.MERGE_RESULT_ERROR,
-            error=f"could not parse origin/main published version (got: {origin_version!r})",
-        )
-    if origin_version == local_version:
-        return MergeResult(
-            result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
-            error=f"origin/main HEAD already bumped to {local_version}; rebase and re-bump",
-        )
-    if not git.is_ancestor(runner, "origin/main", "HEAD", cwd=cwd):
-        return MergeResult(
-            result=config.MERGE_RESULT_MAIN_ADVANCED,
-            error="origin/main advanced to a different version; rebase needed",
-        )
-    fetch2 = git.fetch(runner, "origin", "main", cwd=cwd)
-    if fetch2.returncode != 0:
-        return MergeResult(
-            result=config.MERGE_RESULT_ERROR,
-            error="git fetch origin main failed (pre-merge re-fetch)",
-        )
-    premerge_version = _origin_plugin_version(runner, cwd=cwd)
-    if _SEMVER_RE.match(premerge_version) and premerge_version == local_version:
-        return MergeResult(
-            result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
-            error=(
-                f"origin/main HEAD already bumped to {local_version} "
-                "(pre-merge re-fetch); rebase and re-bump"
-            ),
-        )
+    """Deprecated compatibility hook; the ship merge path no longer runs it."""
+    _ = cwd
     return None
-
-
-def _origin_plugin_version(runner: Runner, *, cwd: str | None) -> str:
-    result = git.show_file(runner, "origin/main:.claude-plugin/plugin.json", cwd=cwd)
-    if result.returncode != 0:
-        return ""
-    try:
-        data = json.loads(result.stdout)
-        return str(data.get("version") or "")
-    except json.JSONDecodeError:
-        return ""
 
 
 def _attempt_merge(

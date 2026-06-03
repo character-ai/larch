@@ -7,6 +7,7 @@ smoke keeps the Phase 7 module aligned on the post-#3368 skip decisions.
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -16,7 +17,7 @@ from test_finalize import RecordingRunner
 
 
 pytestmark = pytest.mark.skipif(
-    not Path("scripts/implement-finalize.sh").is_file(),
+    not (Path(__file__).resolve().parents[1] / "scripts" / "implement-finalize.sh").is_file(),
     reason="bash finalize script unavailable",
 )
 
@@ -69,10 +70,19 @@ def test_postbump_uses_rebase_without_changelog(monkeypatch: pytest.MonkeyPatch,
 
     def fake_rebase(*_args: object, **_kwargs: object) -> object:
         calls.append("rebase")
-        return type("R", (), {"rebased": False})()
+        return type("R", (), {"rebased": False, "pushed": True})()
 
     monkeypatch.setattr(finalize.run_logs, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(finalize.rebase, "rebase_and_push", fake_rebase)
+
+    def fake_branch(*_args: Any, **_kwargs: Any) -> str:
+        return "feat"
+
+    def fake_rev(*_args: Any, **_kwargs: Any) -> str:
+        return "abc"
+
+    monkeypatch.setattr(finalize.git, "try_current_branch", fake_branch)
+    monkeypatch.setattr(finalize.git, "try_rev_parse", fake_rev)
     result = finalize.postbump(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))
     assert result.status == "already-fresh"
     assert calls == ["flush", "rebase"]

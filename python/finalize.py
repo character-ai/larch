@@ -59,9 +59,14 @@ def postbump(
             return FinalizeResult(Outcome.STALLED, "branch-invalid", "wrong branch")
         if branch in {"main", "master"} and not (ctx.forked or ctx.forked_target):
             return FinalizeResult(Outcome.STALLED, "branch-protected", "refusing postbump on protected branch")
-        _ = run_logs.flush_logs_pre(runner, ctx, cwd=cwd)
+        _ = run_logs.flush_logs_pre(runner, ctx.with_(state_file=None), cwd=cwd)
         base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
         remote_tip = git.try_rev_parse(runner, f"origin/{branch}", cwd=cwd)
+        remote_missing = remote_tip is None
+        if remote_missing:
+            probe = runner.run(["git", "ls-remote", "--exit-code", "origin", f"refs/heads/{branch}"], cwd=cwd)
+            if probe.returncode not in {0, 2}:
+                raise TransientNetworkError("remote branch probe failed", result=probe)
         result = rebase.rebase_and_push(
             runner,
             repo=ctx.repo,
@@ -70,7 +75,8 @@ def postbump(
             tmpdir=ctx.tmpdir,
             base_remote=base_remote,
             base_ref="main",
-            defer_push=ctx.repo_unavailable or remote_tip is None,
+            defer_push=ctx.repo_unavailable or remote_missing,
+            allow_conflict_fix=False,
         )
     except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
         return _result_from_error(exc)
@@ -120,7 +126,7 @@ def postmerge(
     pull = runner.run(["git", "pull", "--ff-only", "origin", "main"], cwd=cwd)
     if pull.returncode != 0:
         cleanup_status = "partial"
-    delete = runner.run(["git", "branch", "-D", branch], cwd=cwd)
+    delete = runner.run(["git", "branch", "-D", "--", branch], cwd=cwd)
     if delete.returncode != 0:
         cleanup_status = "partial"
 
@@ -134,9 +140,10 @@ def postmerge(
         and (actual == expected_title or actual.startswith(expected_title) or (suffix and actual.endswith(suffix)))
     )
     verify_status = "verified" if title_ok else "unexpected"
+    outcome = Outcome.OK if cleanup_status == "success" and title_ok else Outcome.STALLED
     return FinalizeResult(
-        Outcome.OK,
-        "ok" if title_ok else "verify-main-unexpected",
+        outcome,
+        "ok" if outcome is Outcome.OK else "postmerge-failed",
         local_cleanup_status=cleanup_status,
         verify_main_status=verify_status,
     )
@@ -157,14 +164,15 @@ def _rename_issue(
         ["gh", "issue", "view", str(issue), "--repo", ctx.repo, "--json", "title,state"],
         cwd=cwd,
     )
-    if result.returncode == 0:
-        try:
-            data = json.loads(result.stdout or "{}")
-            if str(data.get("state", "")).upper() not in {"", "OPEN"}:
-                return "skipped"
-            current = str(data.get("title") or current)
-        except json.JSONDecodeError:
-            pass
+    if result.returncode != 0:
+        return "failed"
+    try:
+        data = json.loads(result.stdout or "{}")
+        if str(data.get("state", "")).upper() not in {"", "OPEN"}:
+            return "skipped"
+        current = str(data.get("title") or current)
+    except json.JSONDecodeError:
+        return "failed"
     try:
         _ = tracking_issue.rename(
             runner,
@@ -186,7 +194,9 @@ def auto_stash_stalled_changes(
     cwd: str | None = None,
 ) -> str:
     status = git.status_porcelain(runner, cwd=cwd)
-    if status.returncode != 0 or not status.stdout.strip():
+    if status.returncode != 0:
+        return "git-status-failed"
+    if not status.stdout.strip():
         return ""
     label = f"larch-stalled-{ctx.issue_number or 'unknown'}-{ctx.stall_step or 'unknown'}"
     pushed = runner.run(["git", "stash", "push", "-u", "-m", label], cwd=cwd)
@@ -339,6 +349,8 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
         "EXPECTED_SESSION_ID": ctx.expected_session_id,
         "EXPECTED_TMPDIR_BASENAME_PREFIX": ctx.expected_tmpdir_basename_prefix,
         "NO_LOGS_COMMIT": _bool_text(ctx.no_logs_commit),
+        "FORKED_TARGET": _bool_text(ctx.forked_target or ctx.forked),
+        "MERGE_RESULT": ctx.merge_result,
     }
     for key, value in data.items():
         if "\n" in str(value) or "\r" in str(value):

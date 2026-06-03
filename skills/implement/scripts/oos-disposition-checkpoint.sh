@@ -109,6 +109,12 @@ if [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
   _forked=$(grep '^FORKED_TARGET=' "$IMPLEMENT_TMPDIR/ship-pr-state.sh" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r')
   _repo_unavail=$(grep '^REPO_UNAVAILABLE=' "$IMPLEMENT_TMPDIR/ship-pr-state.sh" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r')
 fi
+if [ -z "$_forked" ] && [ -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then
+  _forked=$(grep '^FORKED_TARGET=' "$IMPLEMENT_TMPDIR/finalize-state.sh" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r')
+fi
+if [ -z "$_repo_unavail" ] && [ -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then
+  _repo_unavail=$(grep '^REPO_UNAVAILABLE=' "$IMPLEMENT_TMPDIR/finalize-state.sh" 2>/dev/null | tail -n 1 | cut -d= -f2- | tr -d '\r')
+fi
 
 _repo_root=$(git rev-parse --show-toplevel 2>/dev/null || true)
 _oos_mb=""

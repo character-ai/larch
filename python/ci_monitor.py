@@ -105,6 +105,7 @@ class MonitorResult:
     iterations: int
     result: StepResult
     rerun_already_running: bool = False
+    transient_rerun_attempted: bool = False
 
 
 def _conflicted_from_merge_state(merge_state: str | None) -> bool:
@@ -1216,6 +1217,7 @@ def monitor(
         goto: bool,
         step: StepResult,
         rerun_already_running: bool = False,
+        transient_rerun_attempted: bool = False,
     ) -> MonitorResult:
         return MonitorResult(
             action=decision.action,
@@ -1227,6 +1229,7 @@ def monitor(
             iterations=iteration,
             result=step,
             rerun_already_running=rerun_already_running,
+            transient_rerun_attempted=transient_rerun_attempted,
         )
 
     if decision.action in ("merge", "already_merged"):
@@ -1270,6 +1273,7 @@ def monitor(
                 goto=False,
                 step=StepResult(outcome=Outcome.OK),
                 rerun_already_running=fix.rerun_already_running,
+                transient_rerun_attempted=True,
             )
         if fix.status == "pushed":
             return _base_result(
@@ -1313,6 +1317,15 @@ def monitor(
         )
 
     if decision.action == "bail":
+        if decision.bail_reason and retry.is_transient_net_signature(decision.bail_reason):
+            return _base_result(
+                did_fixing=False,
+                goto=False,
+                step=StepResult(
+                    outcome=Outcome.TRANSIENT,
+                    detail=decision.bail_reason,
+                ),
+            )
         if decision.bail_reason == "fix-attempts-exhausted":
             return _base_result(
                 did_fixing=False,

@@ -162,9 +162,9 @@ def test_happy_path_stage_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         "comment",
         "monitor",
         "merge",
+        "state",
         "postmerge",
         "flush-post",
-        "state",
     ]
     assert flush_args == [(None, str(tmp_path))]
 

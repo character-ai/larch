@@ -286,6 +286,7 @@ def rebase_and_push(
     rebase_attempt: int = 0,
     max_attempts: int = config.REBASE_MAX_ATTEMPTS,
     defer_push: bool = False,
+    allow_conflict_fix: bool = True,
 ) -> RebaseResult:
     """Rebase onto base, resolve conflicts, optionally force-push.
 
@@ -334,6 +335,8 @@ def rebase_and_push(
             rebased = True
         elif _unmerged_paths(runner, cwd=cwd):
             rebased = True
+            if not allow_conflict_fix:
+                raise Stalled(_redact_outbound("rebase conflicts require manual resolution"))
             _resolve_conflicts(
                 runner,
                 launch_fn,

@@ -83,13 +83,13 @@ case "$RUN_ID" in
                 exit 1 ;;
 esac
 
-PR_URL="$(read_kv PR_URL "$SHIP_PR_STATE")"; [ -n "$PR_URL" ] || PR_URL="N/A"
-PR_NUMBER="$(read_kv PR_NUMBER "$SHIP_PR_STATE")"; [ -n "$PR_NUMBER" ] || PR_NUMBER=""
-STALL_TRACKING="$(read_kv STALL_TRACKING "$SHIP_PR_STATE")"; [ -n "$STALL_TRACKING" ] || STALL_TRACKING="false"
-MERGE_RESULT="$(read_kv MERGE_RESULT "$SHIP_PR_STATE")"
-MERGE="$(read_kv MERGE "$SHIP_PR_STATE")"; [ -n "$MERGE" ] || MERGE=""
-DRAFT="$(read_kv DRAFT "$SHIP_PR_STATE")"; [ -n "$DRAFT" ] || DRAFT="false"
-FORKED_TARGET="$(read_kv FORKED_TARGET "$SHIP_PR_STATE")"; [ -n "$FORKED_TARGET" ] || FORKED_TARGET="false"
+PR_URL="$(read_kv PR_URL "$SHIP_PR_STATE")"; [ -n "$PR_URL" ] || PR_URL="$(read_kv PR_URL "$FINALIZE_STATE")"; [ -n "$PR_URL" ] || PR_URL="N/A"
+PR_NUMBER="$(read_kv PR_NUMBER "$SHIP_PR_STATE")"; [ -n "$PR_NUMBER" ] || PR_NUMBER="$(read_kv PR_NUMBER "$FINALIZE_STATE")"; [ -n "$PR_NUMBER" ] || PR_NUMBER=""
+STALL_TRACKING="$(read_kv STALL_TRACKING "$SHIP_PR_STATE")"; [ -n "$STALL_TRACKING" ] || STALL_TRACKING="$(read_kv STALL_TRACKING "$FINALIZE_STATE")"; [ -n "$STALL_TRACKING" ] || STALL_TRACKING="false"
+MERGE_RESULT="$(read_kv MERGE_RESULT "$SHIP_PR_STATE")"; [ -n "$MERGE_RESULT" ] || MERGE_RESULT="$(read_kv MERGE_RESULT "$FINALIZE_STATE")"
+MERGE="$(read_kv MERGE "$SHIP_PR_STATE")"; [ -n "$MERGE" ] || MERGE="$(read_kv MERGE "$FINALIZE_STATE")"; [ -n "$MERGE" ] || MERGE=""
+DRAFT="$(read_kv DRAFT "$SHIP_PR_STATE")"; [ -n "$DRAFT" ] || DRAFT="$(read_kv DRAFT "$FINALIZE_STATE")"; [ -n "$DRAFT" ] || DRAFT="false"
+FORKED_TARGET="$(read_kv FORKED_TARGET "$SHIP_PR_STATE")"; [ -n "$FORKED_TARGET" ] || FORKED_TARGET="$(read_kv FORKED_TARGET "$FINALIZE_STATE")"; [ -n "$FORKED_TARGET" ] || FORKED_TARGET="false"
 
 DESIGN_ONLY_DONE="$(read_kv DESIGN_ONLY_DONE "$FINALIZE_STATE")"; [ -n "$DESIGN_ONLY_DONE" ] || DESIGN_ONLY_DONE="false"
 BAIL_USER="$(read_kv BAIL_NEEDS_USER_INPUT "$FINALIZE_STATE")"; [ -n "$BAIL_USER" ] || BAIL_USER="false"
