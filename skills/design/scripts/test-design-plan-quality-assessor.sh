@@ -182,8 +182,9 @@ apply_step3_6_handoff() {
     _assessor_out=$(bash "$SUBJECT" --design-tmpdir "$d" --codex-present true --cursor-present false 2>>"$d/handoff.stderr")
     _assessor_rc=$?
     printf '%s\n' "${_assessor_out:-}" >"$d/handoff-driver.stdout"
-    local ASSESSOR_STATUS="" ASSESSOR_VERDICT="" EFFECTIVE_ASSESSORS=""
-    local ASSESSOR_VERDICT_FILE="" ASSESSOR_VERDICT_ENV="" ROUND_NUM="" WORKFLOW_PATH=""
+    # shellcheck disable=SC2034 # Populated via indirect assignment (printf -v / ${!name}).
+    local ASSESSOR_STATUS="" ASSESSOR_VERDICT="" EFFECTIVE_ASSESSORS="" \
+        ASSESSOR_VERDICT_FILE="" ASSESSOR_VERDICT_ENV="" ROUND_NUM="" WORKFLOW_PATH=""
     local _assessor_parse_ok=false
     if [[ -f "$d/.step3.6-assessor.env" ]]; then
         if [[ -L "$d/.step3.6-assessor.env" ]]; then
@@ -295,7 +296,7 @@ assert_rc "write-after fail rc" 0 "$rc"
 assert_file_kv "$D3/.step3.6-assessor.env" ASSESSOR_STATUS write-after-failed "write-after status"
 count=$(cat "$D3/review-round-count.txt" 2>/dev/null || echo "")
 if [[ "$count" == "1" ]]; then pass "rollback count"; else fail "rollback count — expected 1, got $count"; fi
-grep -Fq 'append-tool-failure' "$CALL_LOG" && pass "append-tool-failure called" || fail "append-tool-failure not called"
+if grep -Fq 'append-tool-failure' "$CALL_LOG"; then pass "append-tool-failure called"; else fail "append-tool-failure not called"; fi
 warn_in_env=$(awk -F= '$1=="WARN"{print substr($0,6); exit}' "$D3/.step3.6-assessor.env" || true)
 if [[ "$warn_in_env" == "$SNAPSHOT_FAIL_WARN" ]]; then pass "write-after WARN in env"; else fail "write-after WARN in env"; fi
 
@@ -309,7 +310,8 @@ run_subject "$D4"
 rc=$?
 set -e
 assert_rc "zero assessors rc" 0 "$rc"
-grep -Fq '0/3 effective assessors' "$D4/.step3.6-assessor.env" && pass "0/3 WARN in env" || fail "0/3 WARN in env"
+warn_in_env=$(awk -F= '$1=="WARN"{print substr($0,6); exit}' "$D4/.step3.6-assessor.env" || true)
+if [[ "$warn_in_env" == "$ZERO_ASSESSORS_WARN" ]]; then pass "0/3 WARN in env"; else fail "0/3 WARN in env"; fi
 
 # 7 handoff: write-after WARN in chat on file parse
 reset_env
@@ -407,8 +409,11 @@ contains_driver() {
 }
 contains_driver 'LARCH_SNAPSHOT_PLAN_ROUND_SH' 'driver missing SNAPSHOT_SH seam'
 contains_driver 'LARCH_ASSESS_PLAN_ROUND_SH' 'driver missing ASSESS_SH seam'
+# shellcheck disable=SC2016 # Literal pattern checks unexpanded shell syntax in driver source.
 contains_driver '"$SNAPSHOT_SH"' 'driver missing SNAPSHOT_SH usage'
+# shellcheck disable=SC2016 # Literal pattern checks unexpanded shell syntax in driver source.
 contains_driver '"$ASSESS_SH"' 'driver missing ASSESS_SH usage'
+# shellcheck disable=SC2016 # Literal pattern checks unexpanded path token in driver source.
 if grep -Fq '$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh' "$SUBJECT" \
     && ! grep -Fq 'LARCH_SNAPSHOT_PLAN_ROUND_SH' "$SUBJECT"; then
     fail 'driver hardcodes snapshot path without seam'

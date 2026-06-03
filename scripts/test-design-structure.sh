@@ -1159,6 +1159,7 @@ contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-revie
 contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'write-cursor --design-tmpdir' 'design-plan-quality-assessor.sh missing round-cursor advancement write-cursor'
 contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'assess-plan-round.sh' 'design-plan-quality-assessor.sh missing assess-plan-round'
 contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'snapshot-plan-round.sh' 'design-plan-quality-assessor.sh missing snapshot-plan-round'
+# shellcheck disable=SC2016 # SKILL.md bash excerpt; qualified path must remain unexpanded.
 contains "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh"' 'SKILL.md missing qualified design-plan-quality-assessor invocation'
 contains "$SKILL_MD" 'Step 3.6: refusing symlink .step3.6-assessor.env; using stdout fallback.' 'SKILL.md missing Step 3.6 symlink refusal'
 contains "$SKILL_MD" 'design-plan-quality-assessor.sh configuration error (exit 2)' 'SKILL.md missing assessor exit-2 abort prose'
