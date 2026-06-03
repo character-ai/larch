@@ -3,12 +3,6 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
-# shellcheck source=scripts/lib-quiet.sh
-source "$REPO_ROOT/scripts/lib-quiet.sh"
-LARCH_QUIET_DISABLE=1 larch_quiet_init
-
 validation_error() {
     local token="$1"
     case "$token" in

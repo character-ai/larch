@@ -60,6 +60,16 @@ assert_no_flag_kvs() {
     fi
 }
 
+assert_success_kv_count() {
+    local label="$1" want="$2" got
+    got=$(printf '%s\n' "$OUT" | awk -F= '/^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|MANUAL_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)=/ {count++} END {print count + 0}')
+    if [ "$got" = "$want" ]; then
+        pass "$label success KV count"
+    else
+        fail "$label success KV count — expected $want, got $got"
+    fi
+}
+
 assert_common_false() {
     local label="$1"
     assert_kv "$label" HARD_REQUESTED false
@@ -73,6 +83,7 @@ assert_common_false() {
 # bare numeric tail
 run_case 3249
 assert_rc 'numeric tail' 0
+assert_success_kv_count 'numeric tail' 8
 assert_common_false 'numeric tail'
 assert_kv 'numeric tail' POSITIONAL_KIND issue
 assert_kv 'numeric tail' POSITIONAL_VALUE 3249
@@ -137,6 +148,11 @@ assert_rc '--run-id missing' 3
 assert_kv '--run-id missing' VALIDATION_ERROR --run-id
 assert_no_flag_kvs '--run-id missing'
 
+run_case --run-id $'bad\nid' 3249
+assert_rc '--run-id newline smuggling' 3
+assert_kv '--run-id newline smuggling' VALIDATION_ERROR newline-in-value
+assert_no_flag_kvs '--run-id newline smuggling'
+
 # flags then positional
 run_case --hard 3249
 assert_rc 'flags then positional' 0
@@ -161,6 +177,11 @@ run_case --simple 3249
 assert_rc 'retired simple' 3
 assert_kv 'retired simple' VALIDATION_ERROR --simple
 assert_no_flag_kvs 'retired simple'
+
+run_case --medium 3249
+assert_rc 'retired medium' 3
+assert_kv 'retired medium' VALIDATION_ERROR --medium
+assert_no_flag_kvs 'retired medium'
 
 run_case --bogus
 assert_rc 'bogus long' 3

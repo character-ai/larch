@@ -48,7 +48,7 @@ Bare `--` terminates the flag scan. It is not a validation error and is excluded
 | `0` | Parsed OK; eight KVs on stdout |
 | `3` | Validation error; `VALIDATION_ERROR=<token>` on stdout |
 
-The script never exits `1` or `2`; the orchestrator owns user-facing aborts.
+The script never intentionally exits `1` or `2`; the orchestrator owns user-facing aborts.
 
 ## Bash 3.2
 
@@ -56,7 +56,7 @@ Keep this script compatible with macOS Bash 3.2: no associative arrays, namerefs
 
 ## Stdout-only rationale
 
-Step 0-pre runs before `session-setup.sh`, so no `DESIGN_TMPDIR` exists and there is no result-env file. The stdout KV stream is the complete machine contract. The script sources `scripts/lib-quiet.sh` for `larch_err`, but prints machine KVs with direct `printf` to stdout because the orchestrator captures command substitution stdout.
+Step 0-pre runs before `session-setup.sh`, so no `DESIGN_TMPDIR` exists and there is no result-env file. The stdout KV stream is the complete machine contract. The parser emits machine KVs with direct `printf` to stdout because the orchestrator captures command substitution stdout.
 
 ## Orchestrator handoff
 
@@ -64,7 +64,7 @@ The `SKILL.md` fence captures stdout with `set +e`, stores the return code expli
 
 Step 0b sub-step 1 must consume only `POSITIONAL_KIND` and `POSITIONAL_VALUE`; it must never re-parse `$ARGUMENTS`, the public argv tail, or flag allowlist membership. For verbal tails, render each original argv token as a separate shell-quoted word before invoking this script so `POSITIONAL_VALUE` is reconstructed with single spaces and shell metacharacters intact.
 
-Downstream flag-key consumer: `design-init-runparams.md`. Quiet helper reference: `../../../scripts/lib-quiet.md`.
+Downstream flag-key consumer: `design-init-runparams.md`.
 
 ## Harness
 

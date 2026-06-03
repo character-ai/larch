@@ -24,7 +24,7 @@ Design an implementation plan for a feature and review it with the **full** pane
 
 **MANDATORY — READ ENTIRE FILE before parsing argument flags**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely. This reference is the single normative source for tier mapping and validation rules. The table above is a non-normative index.
 
-**Positional tail**: after flags, the first non-flag token is either **`issue-N`** (all digits, `^[0-9]+$`) or a **verbal feature description** (any other text). Verbal text triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
+**Positional tail**: Step **0-pre** binds this as `POSITIONAL_KIND=issue|verbal|none` and `POSITIONAL_VALUE=<value>`; see `parse-design-argv.md` for classification details. `POSITIONAL_KIND=verbal` triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
 **Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6). Step 1e Gate A is reachable only via re-entry from Gate B(c) → Step 1e (Shape 2) or Gate C(b) → Step 1e (Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c `design-publish.sh` returns (`_publish_rc` 0, 1, or 3), or after any cancellation outcome's Final summary block has written a non-empty summary file, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46` or `SIMPLE tier, ~27m`, and no replacement for the structured `## /design run ...` block. The only orchestrator-text addition permitted after that driver handoff is the shared verbatim full-body emission of `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]` (including when `_publish_rc`=1 after plan-block-write failure). **Not** gated on `render-final-summary.sh` exit 0. **Narrow exception — Step 1d.5 and Step 1d.7 only**: after printing the brainstorm synthesis digest, the free-form discussion loop may yield the turn between operator messages per `references/brainstorm.md`; after printing the proposed design outline at Step 1d.7, the Refine free-form discussion loop may yield the turn between operator messages per `references/design-outline.md`; do **not** use `ScheduleWakeup`, scripted sleep polling loops, or Monitor-driven polling waits on either lane. The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
 
@@ -143,8 +143,14 @@ fi
 
 # Contract pin for CI (scripts/test-design-structure.sh): parse-design-argv.sh
 set +e
-_argv_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh" <PUBLIC_ARGV_WORDS>)
+_argv_err_file="$(mktemp "${TMPDIR:-/tmp}/larch-design-argv.XXXXXX")" || {
+  printf '%s\n' "**⚠ /design: could not allocate argv parser stderr capture; aborting before session setup.**" >&2
+  exit 1
+}
+_argv_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh" <PUBLIC_ARGV_WORDS> 2>"$_argv_err_file")
 _argv_rc=$?
+_argv_err="$(cat "$_argv_err_file" 2>/dev/null)"
+rm -f "$_argv_err_file"
 set -e
 
 hard_requested=false
@@ -156,19 +162,28 @@ run_id=""
 POSITIONAL_KIND=none
 POSITIONAL_VALUE=""
 VALIDATION_ERROR=""
+_seen_HARD_REQUESTED=false
+_seen_PARTITION_REQUESTED=false
+_seen_BRAINSTORM_REQUESTED=false
+_seen_MANUAL_REQUESTED=false
+_seen_NO_DEDUP_REQUESTED=false
+_seen_RUN_ID=false
+_seen_POSITIONAL_KIND=false
+_seen_POSITIONAL_VALUE=false
+_success_kv_count=0
 while IFS= read -r _line || [ -n "$_line" ]; do
   [ -z "$_line" ] && continue
   _key="${_line%%=*}"
   _value="${_line#*=}"
   case "$_key" in
-    HARD_REQUESTED) hard_requested="$_value" ;;
-    PARTITION_REQUESTED) partition_requested="$_value" ;;
-    BRAINSTORM_REQUESTED) brainstorm_requested="$_value" ;;
-    MANUAL_REQUESTED) manual_requested="$_value" ;;
-    NO_DEDUP_REQUESTED) no_dedup_requested="$_value" ;;
-    RUN_ID) run_id="$_value" ;;
-    POSITIONAL_KIND) POSITIONAL_KIND="$_value" ;;
-    POSITIONAL_VALUE) POSITIONAL_VALUE="$_value" ;;
+    HARD_REQUESTED) hard_requested="$_value"; _seen_HARD_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
+    PARTITION_REQUESTED) partition_requested="$_value"; _seen_PARTITION_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
+    BRAINSTORM_REQUESTED) brainstorm_requested="$_value"; _seen_BRAINSTORM_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
+    MANUAL_REQUESTED) manual_requested="$_value"; _seen_MANUAL_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
+    NO_DEDUP_REQUESTED) no_dedup_requested="$_value"; _seen_NO_DEDUP_REQUESTED=true; _success_kv_count=$((_success_kv_count + 1)) ;;
+    RUN_ID) run_id="$_value"; _seen_RUN_ID=true; _success_kv_count=$((_success_kv_count + 1)) ;;
+    POSITIONAL_KIND) POSITIONAL_KIND="$_value"; _seen_POSITIONAL_KIND=true; _success_kv_count=$((_success_kv_count + 1)) ;;
+    POSITIONAL_VALUE) POSITIONAL_VALUE="$_value"; _seen_POSITIONAL_VALUE=true; _success_kv_count=$((_success_kv_count + 1)) ;;
     VALIDATION_ERROR) VALIDATION_ERROR="$_value" ;;
     *)
       printf '%s\n' "**⚠ /design: parse-design-argv.sh emitted unexpected stdout line; aborting before session setup.**" >&2
@@ -176,6 +191,13 @@ while IFS= read -r _line || [ -n "$_line" ]; do
       ;;
   esac
 done <<<"${_argv_out:-}"
+
+case "${_argv_err:-}" in
+  *PUBLIC_ARGV_WORDS*)
+    printf '%s\n' "**⚠ /design: skill loader did not expand <PUBLIC_ARGV_WORDS>; aborting before session setup.**" >&2
+    exit 1
+    ;;
+esac
 
 if [ -n "$VALIDATION_ERROR" ] && [ "${_argv_rc:-0}" -ne 3 ]; then
   printf '%s\n' "**⚠ /design: parse-design-argv.sh reported VALIDATION_ERROR but exited ${_argv_rc}; aborting before session setup.**" >&2
@@ -193,6 +215,26 @@ if [ "${_argv_rc:-0}" -ne 0 ]; then
   printf '%s\n' "**⚠ /design: parse-design-argv.sh failed (exit ${_argv_rc}); aborting before session setup.**" >&2
   exit 1
 fi
+if [ "$_success_kv_count" -ne 8 ] \
+  || [ "$_seen_HARD_REQUESTED" != true ] \
+  || [ "$_seen_PARTITION_REQUESTED" != true ] \
+  || [ "$_seen_BRAINSTORM_REQUESTED" != true ] \
+  || [ "$_seen_MANUAL_REQUESTED" != true ] \
+  || [ "$_seen_NO_DEDUP_REQUESTED" != true ] \
+  || [ "$_seen_RUN_ID" != true ] \
+  || [ "$_seen_POSITIONAL_KIND" != true ] \
+  || [ "$_seen_POSITIONAL_VALUE" != true ]; then
+  printf '%s\n' "**⚠ /design: parse-design-argv.sh success output was incomplete; aborting before session setup.**" >&2
+  exit 1
+fi
+case "$POSITIONAL_KIND" in
+  issue | verbal | none) ;;
+  *)
+    printf '%s\n' "**⚠ /design: parse-design-argv.sh emitted invalid POSITIONAL_KIND; aborting before session setup.**" >&2
+    exit 1
+    ;;
+esac
+printf '%s\n' "$_argv_out"
 ```
 
 On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSITIONAL_KIND`, and `POSITIONAL_VALUE`. Do not invoke Step 0a on any parser failure.
