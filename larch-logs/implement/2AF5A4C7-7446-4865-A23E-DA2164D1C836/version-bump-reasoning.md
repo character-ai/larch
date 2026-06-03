@@ -1,12 +1,12 @@
 # Version Bump Reasoning
 
-- **Base commit**: `645ad1371` (Fixes #3393: Handle exit-0 empty Cursor .result with retry, diagnostics, and launch jitter (#3399))
-- **Current version**: `47.0.59`
+- **Base commit**: `6f723a457` (Fixes #3366: Add operator-run /release skill for aggregate version cuts (#3400))
+- **Current version**: `47.0.60`
 - **Classification scope**: `skills/**` and `agents/**` only (public plugin surface).
 
 ## Result: PATCH
 
-- **New version**: `47.0.60`
+- **New version**: `47.0.61`
 
 ### PATCH rationale
 
