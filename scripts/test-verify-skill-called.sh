@@ -331,6 +331,29 @@ rc=$?
 assert_exit_eq "3j: delta mismatch exits 0" "$rc" 0
 assert_stdout_contains "3j: delta mismatch VERIFIED=false" "$out" "VERIFIED=false"
 
+# 3k — git rev-list failure with a valid main ref → REASON=git_error.
+GITERR_BIN="$TMPROOT/git-error-bin"
+mkdir -p "$GITERR_BIN"
+cat > "$GITERR_BIN/git" <<'GITERR'
+#!/usr/bin/env bash
+case "$1 $2 $3" in
+    "rev-parse --verify main") exit 0 ;;
+    "rev-parse --verify origin/main") exit 1 ;;
+esac
+if [[ "$1" == "rev-list" ]]; then
+    exit 128
+fi
+exit 9
+GITERR
+chmod +x "$GITERR_BIN/git"
+set +e
+out=$(PATH="$GITERR_BIN:$PATH" "$HELPER" --commit-delta 0 --before-count 0 2>&1)
+rc=$?
+set -e
+assert_exit_eq "3k: git_error exits 0" "$rc" 0
+assert_stdout_contains "3k: git_error VERIFIED=false" "$out" "VERIFIED=false"
+assert_stdout_contains "3k: git_error REASON=git_error" "$out" "REASON=git_error"
+
 # --- Section 4: argument-error paths -----------------------------------------
 
 echo "=== Section 4: argument-error paths ==="

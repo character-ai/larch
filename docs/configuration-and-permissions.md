@@ -309,7 +309,10 @@ non-bump-only conflict recovery path.
 `LARCH_VERSION_FILES` is unset or empty and `LARCH_BUMP_FILES` is set,
 `ship-pr.sh` reads the old variable with the same colon-separated semantics and
 emits a deprecation warning on stderr. If both variables are set,
-`LARCH_VERSION_FILES` wins.
+`LARCH_VERSION_FILES` wins. This alias no longer controls any per-PR
+drop-bump behavior; per-PR version bumps have been retired, so existing
+`LARCH_BUMP_FILES` settings now only identify conflict paths that should be
+treated as version-file conflicts.
 
 ### `OOS_ISSUES_PER_RUN_CAP`
 

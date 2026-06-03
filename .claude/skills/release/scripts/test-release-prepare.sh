@@ -491,8 +491,9 @@ out=$(cd "$REPO_ROOT" && \
   run_prepare "$case_dir")
 rc=$?
 set -e
-if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^BUMP_TYPE=' \
-  && printf '%s\n' "$out" | grep -q '^NEW_VERSION='; then
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^BUMP_TYPE=PATCH$' \
+  && printf '%s\n' "$out" | grep -q '^NEW_VERSION=1.0.1$' \
+  && printf '%s\n' "$out" | grep -q '^CURRENT_VERSION=1.0.0$'; then
   ok
 else
   fail "real classify integration: rc=$rc out=$out"

@@ -2664,7 +2664,7 @@ run_rebase_rebump() {
     larch_err "⚠ ship-pr: rebase (CI-fix, no re-bump)"
 
     # Resume after prompt-side Conflict Resolution Procedure (Phase 1–4) for
-    # non-bump conflicts: skip drop/rebase replay; verify tree then continue.
+    # non-bump conflicts: verify tree, then continue the rebase/push path.
     if [ -f "${IMPLEMENT_TMPDIR}/ship-pr-rrr-after-phase14.flag" ]; then
         _run_rebase_rebump_verify_plain_no_push "$phase" "$base_remote" "$base_ref"
         _run_rebase_rebump_from_step3 "$phase" "$defer_push" "$base_remote" "$base_ref"
