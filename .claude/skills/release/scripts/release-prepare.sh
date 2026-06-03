@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
-CLASSIFY_BUMP="$REPO_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh"
+CLASSIFY_BUMP="${LARCH_RELEASE_PREPARE_CLASSIFY_BUMP:-$REPO_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh}"
 GITHUB_REMOTE_REPO="$REPO_ROOT/scripts/github-remote-repo.sh"
 
 REPO="character-ai/larch"
@@ -101,11 +101,11 @@ if [[ "$origin_repo" != "$REPO" ]]; then
   emit_error origin-repo-mismatch "origin ($origin_repo) does not match --repo ($REPO)"
 fi
 
-releases_json="$(gh api "/repos/${REPO}/releases" --paginate 2>/dev/null)" || {
-  emit_error gh-release-list-failed "gh api releases failed"
+releases_json="$(gh release list --repo "$REPO" --json tagName,isLatest --limit 100 2>/dev/null)" || {
+  emit_error gh-release-list-failed "gh release list failed"
 }
 
-latest_tags="$(printf '%s\n' "$releases_json" | jq -s 'add | [.[] | select(.is_latest == true) | .tag_name]')"
+latest_tags="$(printf '%s\n' "$releases_json" | jq '[.[] | select(.isLatest == true) | .tagName]')"
 latest_count="$(printf '%s\n' "$latest_tags" | jq 'length')"
 
 if [[ "$latest_count" -ne 1 ]]; then
@@ -203,10 +203,8 @@ if [[ -n "$pr_numbers" ]]; then
       missing_prs+=("$pr")
       continue
     }
-    author="$(printf '%s\n' "$pr_json" | jq -e -r '.author.login' 2>/dev/null)" || {
-      missing_prs+=("$pr")
-      continue
-    }
+    author="$(printf '%s\n' "$pr_json" | jq -r '.author.login // "unknown"' 2>/dev/null)"
+    author="${author:-unknown}"
     url="$(printf '%s\n' "$pr_json" | jq -e -r '.url' 2>/dev/null)" || {
       missing_prs+=("$pr")
       continue
@@ -222,6 +220,11 @@ fi
 
 if [[ ${#missing_prs[@]} -gt 0 ]]; then
   emit_error pr-metadata-incomplete "could not fetch PR metadata for: ${missing_prs[*]}"
+fi
+
+log_subject_count="$(git log "${BASELINE_TAG}..origin/main" --format=%s 2>/dev/null | grep -c . || true)"
+if [[ "${log_subject_count:-0}" -gt "$PR_COUNT" ]]; then
+  echo "WARN: git log has ${log_subject_count} commits but PR_COUNT=${PR_COUNT}; only subjects with trailing (#N) are included (maintainer-trusted commit messages)" >&2
 fi
 
 if [[ ! -x "$CLASSIFY_BUMP" ]]; then

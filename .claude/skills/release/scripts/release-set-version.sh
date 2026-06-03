@@ -5,7 +5,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
-PLUGIN_JSON="$REPO_ROOT/.claude-plugin/plugin.json"
+PLUGIN_JSON="${LARCH_RELEASE_SET_VERSION_PLUGIN_JSON:-$REPO_ROOT/.claude-plugin/plugin.json}"
 
 cd "$REPO_ROOT"
 

@@ -184,6 +184,28 @@ else
     fail "--head origin/main should ignore local-only commit (expect PATCH): $out"
 fi
 
+# Test 8: default path (no flags) emits required KV lines; unknown args fail closed.
+repo="$TMPDIR_BASE/test8"
+setup_repo "$repo"
+out=$(run_subject "$repo" "$TMPDIR_BASE/t8impl")
+if printf '%s\n' "$out" | grep -q '^CURRENT_VERSION=' \
+  && printf '%s\n' "$out" | grep -q '^NEW_VERSION=' \
+  && printf '%s\n' "$out" | grep -qE '^BUMP_TYPE=(MAJOR|MINOR|PATCH|NONE)$' \
+  && printf '%s\n' "$out" | grep -q '^REASONING_FILE='; then
+    ok
+else
+    fail "default path KV shape: $out"
+fi
+set +e
+(cd "$repo" && IMPLEMENT_TMPDIR="$TMPDIR_BASE/t8bad" bash "$SUBJECT" --bogus >/dev/null 2>&1)
+bad_rc=$?
+set -e
+if [[ $bad_rc -ne 0 ]]; then
+    ok
+else
+    fail "unknown argument should exit non-zero"
+fi
+
 total=$((PASS + FAIL))
 echo "test-classify-bump: $PASS/$total passed"
 if [ "$FAIL" -gt 0 ]; then

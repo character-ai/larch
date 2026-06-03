@@ -106,6 +106,20 @@ case "$1" in
       exit 0
     fi
     ;;
+  merge-base)
+    if [[ "${2:-}" == "--is-ancestor" ]]; then
+      if [[ "${GIT_MERGE_BASE_IS_ANCESTOR:-}" == "1" ]]; then
+        exit 0
+      fi
+      if [[ "${GIT_MERGE_BASE_IS_ANCESTOR:-}" == "0" ]]; then
+        exit 1
+      fi
+      if [[ "${3:-}" == "${GIT_TARGET_OID:?}" ]]; then
+        exit 0
+      fi
+      exit 1
+    fi
+    ;;
   tag) exit 0 ;;
   push) exit "${GIT_PUSH_RC:-0}" ;;
   remote) exec "$REAL_GIT" "$@" ;;
@@ -127,6 +141,11 @@ PROMO
 
 write_fake_redact() {
   local bin_dir=$1
+  cat > "$bin_dir/redact-tmpdir-paths.sh" <<'RTMP'
+#!/usr/bin/env bash
+cat
+RTMP
+  chmod +x "$bin_dir/redact-tmpdir-paths.sh"
   cat > "$bin_dir/redact-secrets.sh" <<'RED'
 #!/usr/bin/env bash
 cat
@@ -160,6 +179,7 @@ run_finish() {
     GIT_LOCAL_TAG_EXISTS="${GIT_LOCAL_TAG_EXISTS:-}" \
     GIT_LOCAL_TAG_OID="${GIT_LOCAL_TAG_OID:-}" \
     GIT_PUSH_RC="${GIT_PUSH_RC:-0}" \
+    GIT_MERGE_BASE_IS_ANCESTOR="${GIT_MERGE_BASE_IS_ANCESTOR:-}" \
     PROMOTE_RC="${PROMOTE_RC:-0}" \
     bash "$SUBJECT" --version 1.1.0 --notes-file "$case_dir/notes.md" --repo "$REAL_REPO" --pr 1 "$@")
 }
@@ -317,6 +337,85 @@ if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^TARGET_OID='; then
   ok
 else
   fail "origin/main fallback: rc=$rc out=$out"
+fi
+
+# Case 8: stale local tag but remote tag matches TARGET_OID → realign and succeed
+case_dir="$TMPDIR_BASE/c8"
+mkdir -p "$case_dir/bin"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+write_fake_redact "$case_dir/bin"
+fake_promote="$case_dir/fake-promote.sh"
+write_fake_promote "$fake_promote"
+printf 'notes\n' > "$case_dir/notes.md"
+printf '{"version":"1.1.0"}\n' > "$case_dir/plugin.json"
+target_oid="deadbeef00000000000000000000000000000001"
+set +e
+out=$( \
+  GIT_PLUGIN_JSON_FILE="$case_dir/plugin.json" \
+  GIT_TARGET_OID="$target_oid" \
+  GIT_LOCAL_TAG_EXISTS=1 \
+  GIT_LOCAL_TAG_OID="cafebabe00000000000000000000000000000001" \
+  GIT_LS_REMOTE_OUT="${target_oid}"$'\t'"refs/tags/v1.1.0^{}"$'\n' \
+  run_finish "$case_dir" "$fake_promote")
+rc=$?
+set -e
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^TAG=v1.1.0$'; then
+  ok
+else
+  fail "stale local tag with matching remote: rc=$rc out=$out"
+fi
+
+# Case 9: promote fails then idempotent retry edits release and promotes
+case_dir="$TMPDIR_BASE/c9"
+mkdir -p "$case_dir/bin"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+write_fake_redact "$case_dir/bin"
+fake_promote="$case_dir/fake-promote.sh"
+write_fake_promote "$fake_promote"
+printf 'notes\n' > "$case_dir/notes.md"
+printf '{"version":"1.1.0"}\n' > "$case_dir/plugin.json"
+set +e
+out=$(GIT_PLUGIN_JSON_FILE="$case_dir/plugin.json" PROMOTE_RC=1 run_finish "$case_dir" "$fake_promote" 2>"$case_dir/stderr1.log")
+rc=$?
+stderr1=$(cat "$case_dir/stderr1.log" 2>/dev/null || true)
+out2=$(GH_FIXTURE_RELEASE_EXISTS=1 GIT_PLUGIN_JSON_FILE="$case_dir/plugin.json" PROMOTE_RC=0 run_finish "$case_dir" "$fake_promote")
+rc2=$?
+set -e
+if [[ $rc -eq 1 ]] && printf '%s\n' "$stderr1" | grep -q 'ERROR=promote-release-failed' \
+  && ! printf '%s\n' "$out" | grep -q '^RELEASE_ACTION=' \
+  && [[ $rc2 -eq 0 ]] && printf '%s\n' "$out2" | grep -q '^RELEASE_ACTION=edit$'; then
+  ok
+else
+  fail "promote retry: rc=$rc rc2=$rc2 stderr=$stderr1 out=$out out2=$out2"
+fi
+
+# Case 10: TARGET_OID behind origin/main tip but on history via merge-base
+case_dir="$TMPDIR_BASE/c10"
+mkdir -p "$case_dir/bin"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+write_fake_redact "$case_dir/bin"
+fake_promote="$case_dir/fake-promote.sh"
+write_fake_promote "$fake_promote"
+printf 'notes\n' > "$case_dir/notes.md"
+printf '{"version":"1.1.0"}\n' > "$case_dir/plugin.json"
+target_oid="deadbeef00000000000000000000000000000001"
+origin_oid="cafebabe00000000000000000000000000000001"
+set +e
+out=$( \
+  GIT_PLUGIN_JSON_FILE="$case_dir/plugin.json" \
+  GIT_TARGET_OID="$target_oid" \
+  GIT_ORIGIN_MAIN_OID="$origin_oid" \
+  GIT_MERGE_BASE_IS_ANCESTOR=1 \
+  run_finish "$case_dir" "$fake_promote")
+rc=$?
+set -e
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q "^TARGET_OID=${target_oid}$"; then
+  ok
+else
+  fail "merge-base ancestor path: rc=$rc out=$out"
 fi
 
 total=$((PASS + FAIL))

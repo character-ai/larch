@@ -8,12 +8,14 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
 PROMOTE_RELEASE="${LARCH_RELEASE_FINISH_PROMOTE_SCRIPT:-$REPO_ROOT/scripts/promote-release.sh}"
 GITHUB_REMOTE_REPO="$REPO_ROOT/scripts/github-remote-repo.sh"
 REDACT_SECRETS="$REPO_ROOT/scripts/redact-secrets.sh"
+REDACT_TMPDIR="$REPO_ROOT/scripts/redact-tmpdir-paths.sh"
 
 VERSION=""
 NOTES_FILE=""
 REPO=""
 PR_NUMBER=""
 REDACTED_NOTES_FILE=""
+_tmp_notes=""
 
 usage() {
   cat <<'USAGE' >&2
@@ -22,6 +24,7 @@ USAGE
 }
 
 cleanup() {
+  [[ -n "${_tmp_notes:-}" && -f "$_tmp_notes" ]] && rm -f "$_tmp_notes"
   [[ -n "$REDACTED_NOTES_FILE" && -f "$REDACTED_NOTES_FILE" ]] && rm -f "$REDACTED_NOTES_FILE"
 }
 trap cleanup EXIT
@@ -106,6 +109,11 @@ if [[ ! -x "$REDACT_SECRETS" ]]; then
   exit 1
 fi
 
+if [[ ! -x "$REDACT_TMPDIR" ]]; then
+  echo "ERROR=redact-tmpdir-paths.sh not found" >&2
+  exit 1
+fi
+
 cd "$REPO_ROOT"
 
 if [[ ! -x "$GITHUB_REMOTE_REPO" ]]; then
@@ -127,10 +135,17 @@ if [[ "$origin_repo" != "$REPO" ]]; then
 fi
 
 REDACTED_NOTES_FILE="$(mktemp)"
-if ! "$REDACT_SECRETS" < "$NOTES_FILE" > "$REDACTED_NOTES_FILE"; then
+_tmp_notes="$(mktemp)"
+if ! "$REDACT_TMPDIR" < "$NOTES_FILE" > "$_tmp_notes"; then
+  echo "ERROR=notes tmpdir redaction failed" >&2
+  exit 1
+fi
+if ! "$REDACT_SECRETS" < "$_tmp_notes" > "$REDACTED_NOTES_FILE"; then
   echo "ERROR=notes redaction failed" >&2
   exit 1
 fi
+rm -f "$_tmp_notes"
+unset _tmp_notes
 
 TAG="v${VERSION}"
 
@@ -163,9 +178,10 @@ for _attempt in $(seq 1 "$MERGE_POLL_ATTEMPTS"); do
   merge_oid="$(gh pr view "$PR_NUMBER" --repo "$REPO" --json mergeCommit -q '.mergeCommit.oid // empty' 2>/dev/null || true)"
   merge_oid="${merge_oid//$'\n'/}"
   merge_oid="${merge_oid%% *}"
-  if [[ -n "$merge_oid" && "$merge_oid" != "null" ]]; then
+  if [[ -n "$merge_oid" && "$merge_oid" != "null" && "$merge_oid" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
     break
   fi
+  merge_oid=""
   sleep "$MERGE_POLL_SLEEP"
 done
 
@@ -205,7 +221,16 @@ done
 
 if [[ "$target_oid_resolved" != "true" ]]; then
   origin_main_oid="$(git rev-parse "origin/main^{commit}" 2>/dev/null || true)"
-  if [[ -n "$origin_main_oid" && "$origin_main_oid" != "$(git rev-parse "${TARGET_OID}^{commit}" 2>/dev/null || true)" ]]; then
+  target_rev="$(git rev-parse "${TARGET_OID}^{commit}" 2>/dev/null || true)"
+  target_verified=false
+  if git rev-parse --verify "${TARGET_OID}^{commit}" >/dev/null 2>&1; then
+    target_verified=true
+  fi
+  needs_target_fetch=true
+  if [[ "$target_verified" == "true" && -n "$origin_main_oid" && "$origin_main_oid" == "$target_rev" ]]; then
+    needs_target_fetch=false
+  fi
+  if [[ "$needs_target_fetch" == "true" ]]; then
     fetch_err="$(mktemp)"
     if ! git fetch origin "$TARGET_OID" 2>"$fetch_err"; then
       if git merge-base --is-ancestor "$TARGET_OID" origin/main 2>/dev/null; then
@@ -264,8 +289,12 @@ fi
 if git rev-parse --verify "${TAG}^{commit}" >/dev/null 2>&1; then
   local_oid="$(git rev-parse "${TAG}^{commit}")"
   if [[ "$local_oid" != "$TARGET_OID" ]]; then
-    echo "ERROR=local tag $TAG points at $local_oid not $TARGET_OID" >&2
-    exit 1
+    if [[ -n "$remote_oid" && "$remote_oid" == "$TARGET_OID" ]]; then
+      git tag -f "$TAG" "$TARGET_OID"
+    else
+      echo "ERROR=local tag $TAG points at $local_oid not $TARGET_OID" >&2
+      exit 1
+    fi
   fi
 else
   git tag "$TAG" "$TARGET_OID"

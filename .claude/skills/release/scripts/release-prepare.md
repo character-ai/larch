@@ -30,11 +30,11 @@ Tab-separated columns: `number`, `title`, `labels` (comma-separated), `author`, 
 
 ## Semantics
 
-1. **Latest baseline** — paginated `gh api /repos/{owner}/{repo}/releases`; exactly one `is_latest=true` required; otherwise `ERROR=no-unique-latest-release` and `LATEST_COUNT=<n>` on exit **1**.
+1. **Latest baseline** — `gh release list --repo <repo> --json tagName,isLatest` (limit 100); exactly one `isLatest=true` required; otherwise `ERROR=no-unique-latest-release` and `LATEST_COUNT=<n>` on exit **1**.
 2. **Origin coupling** — `origin` remote owner/repo must match `--repo` or `ERROR=origin-repo-mismatch`.
 3. **Fetch + verify tag** — `git fetch origin main --tags` must succeed; `git rev-parse --verify "$BASELINE_TAG^{commit}"` or `ERROR=baseline-tag-unresolvable`.
 4. **Stale local main** — after fetch, `main^{commit}`, `HEAD^{commit}`, and `origin/main^{commit}` must all match or `ERROR=stale-local-main`.
-5. **PR window** — `git log "$BASELINE_TAG"..origin/main` subjects; PR numbers from trailing `(#N)`. Any `gh pr view` failure → `ERROR=pr-metadata-incomplete` (no silent drops).
+5. **PR window** — `git log "$BASELINE_TAG"..origin/main` subjects; PR numbers from trailing `(#N)` only (squash merges without that suffix are omitted from notes but still affect `classify-bump` diff scope). Emits `WARN` on stderr when commit count exceeds `PR_COUNT`. Commit subjects are **maintainer-trusted** for PR attribution in public release notes. Any `gh pr view` failure → `ERROR=pr-metadata-incomplete` (no silent drops). Deleted/null PR authors are recorded as `unknown`.
 6. **Bump** — `classify-bump.sh --base "$BASELINE_TAG" --head origin/main` from repo root; optional `--bump` overrides type and recomputes `NEW_VERSION` (decimal-forced `10#` arithmetic).
 
 ## Exit codes

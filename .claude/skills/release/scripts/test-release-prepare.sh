@@ -22,12 +22,6 @@ write_fake_gh() {
 #!/usr/bin/env bash
 set -euo pipefail
 case "$1" in
-  api)
-    if [[ "${2:-}" == *"/releases" ]]; then
-      cat "${GH_FIXTURE_RELEASES:?}"
-      exit 0
-    fi
-    ;;
   release)
     if [[ "${2:-}" == "list" ]]; then
       cat "${GH_FIXTURE_RELEASES:?}"
@@ -58,6 +52,17 @@ GH
   chmod +x "$bin_dir/gh"
 }
 
+write_fake_classify_bump() {
+  local bin_dir=$1
+  cat > "$bin_dir/classify-bump.sh" <<'CLASSIFY'
+#!/usr/bin/env bash
+echo "CURRENT_VERSION=${CLASSIFY_FIXTURE_CURRENT:-1.0.0}"
+echo "NEW_VERSION=${CLASSIFY_FIXTURE_NEW:-1.0.1}"
+echo "BUMP_TYPE=${CLASSIFY_FIXTURE_BUMP:-PATCH}"
+CLASSIFY
+  chmod +x "$bin_dir/classify-bump.sh"
+}
+
 write_fake_git() {
   local bin_dir=$1
   cat > "$bin_dir/git" <<'GIT'
@@ -86,7 +91,14 @@ case "$1" in
       echo "${GIT_ORIGIN_MAIN_OID:?}"
       exit 0
     fi
+    if [[ "$ref" == "HEAD" ]]; then
+      echo "${GIT_HEAD_OID:-${GIT_ORIGIN_MAIN_OID:?}}"
+      exit 0
+    fi
     if [[ "$ref" == "${GIT_BASELINE_TAG:?}" ]]; then
+      if [[ "${GIT_BASELINE_REV_PARSE_FAIL:-}" == "1" ]]; then
+        exit 1
+      fi
       echo "${GIT_BASELINE_OID:?}"
       exit 0
     fi
@@ -96,7 +108,8 @@ case "$1" in
       printf '%s' "${GIT_LOG_SUBJECTS-}"
       exit 0
     fi
-    exec "$REAL_GIT" "$@"
+    echo "unexpected git log: $*" >&2
+    exit 1
     ;;
   show)
     if [[ "${2:-}" == "origin/main:.claude-plugin/plugin.json" ]]; then
@@ -139,6 +152,12 @@ run_prepare() {
   GIT_FETCH_FAIL="${GIT_FETCH_FAIL:-}" \
   GIT_ORIGIN_PLUGIN_JSON="${GIT_ORIGIN_PLUGIN_JSON:-}" \
   GIT_ORIGIN_PLUGIN_JSON_FILE="${GIT_ORIGIN_PLUGIN_JSON_FILE:-}" \
+  GIT_HEAD_OID="${GIT_HEAD_OID:-}" \
+  GIT_BASELINE_REV_PARSE_FAIL="${GIT_BASELINE_REV_PARSE_FAIL:-}" \
+  CLASSIFY_FIXTURE_CURRENT="${CLASSIFY_FIXTURE_CURRENT:-1.0.0}" \
+  CLASSIFY_FIXTURE_NEW="${CLASSIFY_FIXTURE_NEW:-1.0.1}" \
+  CLASSIFY_FIXTURE_BUMP="${CLASSIFY_FIXTURE_BUMP:-PATCH}" \
+  LARCH_RELEASE_PREPARE_CLASSIFY_BUMP="$case_dir/bin/classify-bump.sh" \
   PATH="$case_dir/bin:$PATH" \
   bash "$SUBJECT" --repo "$REAL_REPO" --out-dir "$case_dir/out" "$@" 2>"$case_dir/stderr.log"
 }
@@ -148,7 +167,8 @@ case_dir="$TMPDIR_BASE/c1"
 mkdir -p "$case_dir/bin" "$case_dir/out" "$case_dir/prs"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
-printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
 printf 'Feature (#42)\n' > "$case_dir/log-subjects.txt"
 GIT_LOG_SUBJECTS="$(cat "$case_dir/log-subjects.txt")"
 printf '{"number":42,"title":"Feature","labels":[{"name":"enhancement"}],"author":{"login":"alice"},"url":"https://example.invalid/42"}\n' \
@@ -170,6 +190,7 @@ case_dir="$TMPDIR_BASE/c2"
 mkdir -p "$case_dir/bin" "$case_dir/out"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
+write_fake_classify_bump "$case_dir/bin"
 printf '[]\n' > "$case_dir/releases.json"
 set +e
 out=$(cd "$REPO_ROOT" && run_prepare "$case_dir")
@@ -186,7 +207,8 @@ case_dir="$TMPDIR_BASE/c3"
 mkdir -p "$case_dir/bin" "$case_dir/out"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
-printf '[{"tag_name":"v1.0.0","is_latest":true},{"tag_name":"v1.0.1","is_latest":true}]\n' > "$case_dir/releases.json"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true},{"tagName":"v1.0.1","isLatest":true}]\n' > "$case_dir/releases.json"
 set +e
 out=$(cd "$REPO_ROOT" && run_prepare "$case_dir")
 rc=$?
@@ -202,7 +224,8 @@ case_dir="$TMPDIR_BASE/c4"
 mkdir -p "$case_dir/bin" "$case_dir/out"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
-printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
 set +e
 out=$(cd "$REPO_ROOT" && \
   GIT_MAIN_OID="1111111111111111111111111111111111111111" \
@@ -221,7 +244,8 @@ case_dir="$TMPDIR_BASE/c5"
 mkdir -p "$case_dir/bin" "$case_dir/out" "$case_dir/prs"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
-printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
 set +e
 out=$(cd "$REPO_ROOT" && GIT_LOG_SUBJECTS="" run_prepare "$case_dir" --bump major)
 rc=$?
@@ -242,7 +266,8 @@ case_dir="$TMPDIR_BASE/c6"
 mkdir -p "$case_dir/bin" "$case_dir/out"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
-printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
 set +e
 out=$(cd "$REPO_ROOT" && GIT_LOG_SUBJECTS="" run_prepare "$case_dir")
 rc=$?
@@ -258,7 +283,8 @@ case_dir="$TMPDIR_BASE/c7"
 mkdir -p "$case_dir/bin" "$case_dir/out"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
-printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
 set +e
 out=$(cd "$REPO_ROOT" && GIT_FETCH_FAIL=1 run_prepare "$case_dir")
 rc=$?
@@ -274,7 +300,8 @@ case_dir="$TMPDIR_BASE/c8"
 mkdir -p "$case_dir/bin" "$case_dir/out" "$case_dir/prs"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
-printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
 GIT_LOG_SUBJECTS=$'Missing (#99)\n'
 set +e
 out=$(cd "$REPO_ROOT" && run_prepare "$case_dir")
@@ -291,7 +318,8 @@ case_dir="$TMPDIR_BASE/c9"
 mkdir -p "$case_dir/bin" "$case_dir/out"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
-printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
 set +e
 out=$(cd "$REPO_ROOT" && \
   GH_FIXTURE_OPEN_PRS='[{"headRefName":"release/v2.0.0"}]' \
@@ -309,7 +337,8 @@ case_dir="$TMPDIR_BASE/c10"
 mkdir -p "$case_dir/bin" "$case_dir/out"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
-printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
 printf '{"version":"1.1.0"}\n' > "$case_dir/origin-plugin.json"
 set +e
 out=$(cd "$REPO_ROOT" && \
@@ -329,7 +358,8 @@ case_dir="$TMPDIR_BASE/c11"
 mkdir -p "$case_dir/bin" "$case_dir/out"
 write_fake_gh "$case_dir/bin"
 write_fake_git "$case_dir/bin"
-printf '[{"tag_name":"v1.0.0","is_latest":true}]\n' > "$case_dir/releases.json"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
 set +e
 out=$(cd "$REPO_ROOT" && GH_FIXTURE_PR_LIST_FAIL=1 run_prepare "$case_dir")
 rc=$?
@@ -338,6 +368,23 @@ if [[ $rc -eq 1 ]] && printf '%s\n' "$out" | grep -q 'ERROR=release-pr-list-fail
   ok
 else
   fail "pr list fail: rc=$rc out=$out"
+fi
+
+# Case 12: fetch ok but baseline tag rev-parse fails → baseline-tag-unresolvable
+case_dir="$TMPDIR_BASE/c12"
+mkdir -p "$case_dir/bin" "$case_dir/out"
+write_fake_gh "$case_dir/bin"
+write_fake_git "$case_dir/bin"
+write_fake_classify_bump "$case_dir/bin"
+printf '[{"tagName":"v1.0.0","isLatest":true}]\n' > "$case_dir/releases.json"
+set +e
+out=$(cd "$REPO_ROOT" && GIT_BASELINE_REV_PARSE_FAIL=1 run_prepare "$case_dir")
+rc=$?
+set -e
+if [[ $rc -eq 1 ]] && printf '%s\n' "$out" | grep -q 'ERROR=baseline-tag-unresolvable'; then
+  ok
+else
+  fail "baseline rev-parse fail: rc=$rc out=$out"
 fi
 
 total=$((PASS + FAIL))

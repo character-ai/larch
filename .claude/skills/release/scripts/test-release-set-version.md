@@ -9,6 +9,9 @@ Offline regression tests for `release-set-version.sh` without network access.
 3. Invalid semver exits non-zero; `plugin.json` unchanged.
 4. Downgrade refused; file unchanged.
 5. No-op refused.
+6. `jq` failure → non-zero exit; `plugin.json` byte-identical (atomic write).
+
+Harness sets `LARCH_RELEASE_SET_VERSION_PLUGIN_JSON` to the temp fixture file (not the live checkout).
 
 ## Invocation
 

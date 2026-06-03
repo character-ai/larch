@@ -56,7 +56,7 @@ Read `PR_LIST_FILE` (tab-separated: number, title, labels, author, url). Group e
 Write notes to a temp file, then:
 
 ```bash
-scripts/redact-secrets.sh < notes.md > notes.redacted.md
+scripts/redact-tmpdir-paths.sh < notes.md | scripts/redact-secrets.sh > notes.redacted.md
 ```
 
 ## Step 4 — Operator confirm
@@ -102,6 +102,20 @@ $PWD/.claude/skills/release/scripts/release-finish.sh \
 
 See `$PWD/.claude/skills/release/scripts/release-finish.md` for `TARGET_OID` resolution and idempotency vs `release-tag.yaml`.
 
+If Step 6 fails after Step 5 merged the release PR (tag/Release/promote partial failure), do **not** re-run full `/release` — `release-prepare.sh` will hit `ERROR=release-already-cut`. Re-run Step 6 only:
+
+```bash
+$PWD/.claude/skills/release/scripts/release-finish.sh \
+  --version "$NEW_VERSION" \
+  --notes-file notes.redacted.md \
+  --repo "$REPO" \
+  --pr "$PR_NUMBER"
+```
+
+Or promote-only: `scripts/promote-release.sh "$NEW_VERSION" --repo "$REPO"`.
+
+**Recovery when `release-tag.yaml` tags `origin/main` tip but finish targets `mergeCommit.oid`:** if remote `vX.Y.Z` already exists at a different commit than `TARGET_OID` but `plugin.json` at `origin/main` matches `--version`, delete the incorrect remote tag only with maintainer intent, or re-run `release-finish.sh` after aligning local `origin/main` (see `release-finish.md`).
+
 ## Step 7 — Upgrade local install
 
 Invoke `/upgrade-larch` via the Skill tool (bare name `"upgrade-larch"` first; fall back to `"larch:upgrade-larch"` on `Unknown skill`). After success, tell the operator to restart Claude Code.
@@ -117,7 +131,7 @@ Runtime helpers (invoke via `$PWD/.claude/skills/release/scripts/...` unless not
 
 Repo-root helpers referenced from steps above:
 
-- `scripts/resolve-repo.sh`, `scripts/redact-secrets.sh`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `scripts/promote-release.sh` (contract: `scripts/promote-release.md`)
+- `scripts/resolve-repo.sh`, `scripts/redact-tmpdir-paths.sh`, `scripts/redact-secrets.sh`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `scripts/promote-release.sh` (contract: `scripts/promote-release.md`)
 
 Offline harnesses (Makefile: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`):
 

@@ -15,6 +15,9 @@ Offline PATH-shimmed `gh` and `git` fixtures for `release-prepare.sh` (no networ
 9. Open `release/v*` PR (`GH_FIXTURE_OPEN_PRS`) → `ERROR=release-cut-in-progress`.
 10. Origin version ahead of baseline with `Release v*` log subject → `ERROR=release-already-cut`.
 11. `gh pr list` failure → `ERROR=release-pr-list-failed`.
+12. Fetch ok, baseline tag `rev-parse` fails → `ERROR=baseline-tag-unresolvable`.
+
+Fixtures use `gh release list` JSON (`tagName`, `isLatest`) and a shimmed `classify-bump.sh` for deterministic bump KVs.
 
 ## Invocation
 
