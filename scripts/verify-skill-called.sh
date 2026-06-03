@@ -10,7 +10,7 @@
 #   --sentinel-file <path>
 #       VERIFIED=true only if <path> exists, is a regular file, and is
 #       non-empty. Use when the child skill writes a known artifact whose
-#       presence proves it ran (e.g., /bump-version's reasoning file).
+#       presence proves it ran (e.g., a tool-produced reasoning file).
 #
 #   --stdout-line <regex> --stdout-file <path>
 #       VERIFIED=true only if <path> contains at least one line matching

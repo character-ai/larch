@@ -263,7 +263,7 @@ run_default() {
   # Cutover (#2485): /implement no longer accepts --design-only. The literal
   # is now BANNED from public docs to catch any prose that still advertises
   # the removed flag. SKILL.md is exempt because it may legitimately reference
-  # the flag in historical anti-patterns / changelog-style prose.
+  # the flag in historical anti-patterns / release notes-style prose.
   local design_only_target
   for design_only_target in README.md docs/skills.md docs/workflow-lifecycle.md; do
     if grep -Fq -- '--design-only' "$REPO_ROOT/$design_only_target"; then

@@ -1,0 +1,15 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- pre-existing duplicate arithmetic in release-prepare.sh; Phase 5 change is a single-line CLASSIFY_BUMP default update that does not touch or worsen the --bump override block
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan explicitly forbids rename ("avoid churn / contract drift in ship-pr.md"); stale name is a deliberate accepted scope decision
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- same plan-scope rationale as FINDING_2; rename out of scope to avoid contract drift
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- /release always supplies --base making SKIP_IDEMPOTENCY=true; no live caller can trigger the mismatch; functionally identical to pre-existing OOS FINDING_14
+FINDING_5: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=no-fix UNCERTAIN=true -- Python rework is dev/CI-only until Phase 7; dead field in WIP code is out of Phase 5 scope; not verifiable from available diff
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- verified: scripts/test-git-stage.sh absent from working tree; typo path "scripts/test-auto-resolve-release notes.md" confirmed at agent-lint.toml line 1400
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- CHANGELOG was public repo content so vendor exposure is not a security issue; only in-flight branches affected; plan acknowledges this migration edge under "Edge cases"
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=uncertain UNCERTAIN=false -- grep confirms .bump-version-armed absent from all source files; resolver has always used .release-armed as the legacy compat sentinel; finding premise is incorrect
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- /release always passes --base which sets SKIP_IDEMPOTENCY=true; the CHANGELOG-transparent walk is dead code for the only remaining consumer; removed tests correctly reflect that dead-code reality
+FINDING_13: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

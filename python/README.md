@@ -12,12 +12,8 @@ imported by runtime code.
 - `logging_util.py` — breadcrumbs + JSONL journal (observability only)
 - `redact.py`, `retry.py` — ports of `redact-secrets.sh` / `lib-net.sh`
 - `git.py`, `gh.py`, `agents.py` — typed `git` / `gh` / fixer launcher surfaces
-- `bump_worktree.py` — shared drop/worktree helpers (`DropResult`, porcelain, sorted diff)
-- `version_bump.py`, `changelog.py` — Phase 2 ports of bump-version / CHANGELOG scripts
-  (not wired into the live `/implement` path until Phase 7). `commit_changelog` is Markdown-only
-  today; RST changelog commit is deferred until Phase 7 (no bash `commit-changelog` counterpart for RST).
-- `rebase.py` — Phase 3 port (auto-resolve, drop-bump, in-process fixer waterfall,
-  `git-force-push.sh` rebump-tail push); dev/CI-only until Phase 7.
+- `version_bump.py` — shared semver classification helpers used by release preparation and Python parity tests.
+- `rebase.py` — Phase 3 port for CI-fix rebase decision and verification surfaces; dev/CI-only until Phase 7.
 - `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)
 - `ci_monitor.py` — Phase 6 CI poll + classify + collect + fixer-waterfall + GOTO-Rebase signal
@@ -54,8 +50,7 @@ ship-pr failed-job tables) needs the same toolchain as CI: `pip install -r pytho
 for lint (including **Node** on PATH for pyright) and `pip install -r python/requirements-test.txt`
 for tests.
 
-Twin-repo parity tests that source `scripts/lib-changelog.sh` require **bash** and **gawk** on
-PATH (the bash helpers use `gawk` for RST changelog transforms). CI `python-tests` installs `gawk`;
+Python parity tests require **bash** for shell helper comparisons. CI `python-tests` installs the required shell tooling;
 local runs without it skip those cases via `pytest.mark.skipif`.
 
 The live `/implement` path still uses bash until Phase 7 (`LARCH_SHIP_PR_IMPL=python`).

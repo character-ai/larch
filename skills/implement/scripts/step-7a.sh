@@ -68,7 +68,7 @@ is_non_runtime_path() {
     esac
     base=${path##*/}
     case "$base" in
-        CHANGELOG|CHANGELOG.md) return 0 ;;
+        README.md) return 0 ;;
     esac
     ext=${path##*.}
     case "$ext" in

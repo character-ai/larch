@@ -5,7 +5,6 @@
 # the repository's main branch.
 #
 # Sourced by:
-#   - scripts/check-bump-version.sh (Step 8/12 bump verification)
 #   - scripts/verify-skill-called.sh (generic post-invocation verifier, #160)
 #
 # Contract:
@@ -27,9 +26,8 @@
 #                           (corrupted pack, shallow-clone object boundary,
 #                           permission error, etc.). Count is forced to 0;
 #                           caller MUST treat the output as untrustworthy.
-#     Callers that don't care about status (e.g., check-bump-version.sh's
-#     existing callers) leave COUNT_COMMITS_STATUS_FILE unset; the function
-#     then only emits the count on stdout. This file-based side channel
+#     Callers that don't care about status leave COUNT_COMMITS_STATUS_FILE
+#     unset; the function then only emits the count on stdout. This file-based side channel
 #     survives the `$(count_commits)` subshell that bash's command
 #     substitution creates (a nameref or unexported global would not).
 #
@@ -38,22 +36,7 @@
 #
 # Stderr on the missing-main path:
 #   Emits the literal string
-#     WARN: check-bump-version.sh: neither local 'main' nor 'origin/main' exists; cannot determine bump base. Returning 0.
-#   The `check-bump-version.sh:` prefix is retained for log-parity with
-#   operators' existing grep patterns (see #160 FINDING_7). Consumers MAY
-#   grep `WARN: check-bump-version.sh:` for this condition. The prefix is
-#   intentionally a historical alias — do not rename to `lib-count-commits.sh`
-#   without coordinating consumer updates (e.g., skills/implement/references/
-#   rebase-rebump-subprocedure.md step 4 notes).
-#
-# Scope boundary (distinct from classify-bump.sh):
-#   `.claude/skills/bump-version/scripts/classify-bump.sh` also resolves a
-#   main-vs-origin/main base ref, but uses `git merge-base` to scope the diff
-#   for bump-type classification. That is a STRUCTURALLY DIFFERENT question
-#   from `git rev-list base..HEAD --count`, so classify-bump.sh is
-#   intentionally NOT migrated to this library. If a future issue wants to
-#   unify both paths, it must reconcile the merge-base-vs-rev-list semantics
-#   first.
+#     WARN: lib-count-commits.sh: neither local 'main' nor 'origin/main' exists; cannot determine commit base. Returning 0.
 #
 # shellcheck shell=bash
 
@@ -65,7 +48,7 @@ count_commits() {
         base_ref="origin/main"
     fi
     if [[ -z "$base_ref" ]]; then
-        echo "WARN: check-bump-version.sh: neither local 'main' nor 'origin/main' exists; cannot determine bump base. Returning 0." >&2
+        echo "WARN: lib-count-commits.sh: neither local 'main' nor 'origin/main' exists; cannot determine commit base. Returning 0." >&2
         status="missing_main_ref"
         count="0"
     elif count=$(git rev-list "${base_ref}..HEAD" --count 2>/dev/null); then

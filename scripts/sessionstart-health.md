@@ -22,4 +22,4 @@ Boundary advisories are emitted for:
 
 - post-/review: `review-round-summary.md` exists without `.review-boundary-passed`; recovery points to the Step 5 post-/review actions and Step 6 sentinel.
 
-The post-/bump-version SessionStart advisory was retired in Phase 1 (#3364); `/implement` no longer arms `.bump-version-armed` on the ship path.
+The post-/release SessionStart advisory was retired in Phase 1 (#3364); `/implement` no longer arms `.release-armed` on the ship path.

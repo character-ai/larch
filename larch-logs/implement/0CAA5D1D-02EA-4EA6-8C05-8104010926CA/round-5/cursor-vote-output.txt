@@ -1,0 +1,18 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- docstring already states new_version is always None; field removal is optional API cleanup
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- leading-zero semver is rare and regex-valid; 10# on increment operands only is a small consistency nit
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly defers run_rebase_rebump rename to avoid contract churn
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- sentinel naming is confusing but behavior is unchanged and not functionally broken
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- classify-bump absence pin covers the main regression vector; pinning every deleted basename adds harness noise
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- section 5a already asserts numeric count_commits; 5b only validates cwd-neutral sourcing
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=weak UNCERTAIN=false -- CI already runs extensive bash/git harnesses on ubuntu-latest before make py-test
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- LARCH_RELEASE_PREPARE_CLASSIFY_BUMP override predates this phase and is unchanged behavior
+FINDING_14: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- hook removal is intentional Phase 5 scope, not a new security boundary regression
+FINDING_15: NO CORRECTNESS=true SEVERITY=major QUALITY=no-fix UNCERTAIN=false -- plan explicitly removes auto-resolve-changelog from the rebase prepass as in-scope deletion
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- --head misuse needs mismatched ref and matching plugin.json version; release-prepare wires HEAD correctly
+FINDING_17: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- configuration-and-permissions.md already documents LARCH_BUMP_FILES as deprecated alias with new conflict-path semantics
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- line 68 in the same file already states ship-path /release gates were removed and /release remains external

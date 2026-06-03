@@ -31,9 +31,9 @@ resolve_implement_tmpdir() {
         for dir in "$root"/claude-implement-*; do
             [[ -d "$dir" ]] || continue
             # Accept design manifest (normal path), review summary (both-externals-down
-            # path that skips /design but still runs /review — issue #1862), or
-            # .bump-version-armed so post-/bump hooks and SessionStart can resolve a tmpdir
-            # that no longer has manifest/review artifacts.
+            # path that skips /design but still runs /review — issue #1862), or a
+            # legacy release/bump sentinels so stale tmpdirs from older runs
+            # remain resolvable. No current SessionStart advisory is driven by them.
             local manifest=""
             if [[ -f "$dir/design-export/manifest.env" ]]; then
                 manifest="$dir/design-export/manifest.env"
@@ -41,6 +41,8 @@ resolve_implement_tmpdir() {
                 manifest="$dir/review-round-summary.md"
             elif [[ -f "$dir/.bump-version-armed" ]]; then
                 manifest="$dir/.bump-version-armed"
+            elif [[ -f "$dir/.release-armed" ]]; then
+                manifest="$dir/.release-armed"
             fi
             [[ -n "$manifest" ]] || continue
 

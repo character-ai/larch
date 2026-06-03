@@ -6,7 +6,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LARCH_ROOT="$(cd "$SCRIPT_DIR/../../../.." && pwd -P)"
 REPO_ROOT="${LARCH_RELEASE_PREPARE_REPO_ROOT:-$LARCH_ROOT}"
-CLASSIFY_BUMP="${LARCH_RELEASE_PREPARE_CLASSIFY_BUMP:-$LARCH_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh}"
+CLASSIFY_BUMP="${LARCH_RELEASE_PREPARE_CLASSIFY_BUMP:-$LARCH_ROOT/.claude/skills/release/scripts/classify-bump.sh}"
 GITHUB_REMOTE_REPO="$LARCH_ROOT/scripts/github-remote-repo.sh"
 
 REPO="character-ai/larch"

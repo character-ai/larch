@@ -18,4 +18,4 @@ Exercises the aggregator's empty-merge attestation contract across rejection and
 
 ## Edit-in-sync rule
 
-When changing the aggregator's empty-merge contract (`EMPTY_MERGE_ATTESTATION` token, validator strip ordering, persistence-strip predicate, or attestation-line shapes), update this harness, its sibling `aggregate-findings.md`, `SECURITY.md`, and `CHANGELOG.md` in the same PR.
+When changing the aggregator's empty-merge contract (`EMPTY_MERGE_ATTESTATION` token, validator strip ordering, persistence-strip predicate, or attestation-line shapes), update this harness, its sibling `aggregate-findings.md`, `SECURITY.md`, and docs in the same PR.

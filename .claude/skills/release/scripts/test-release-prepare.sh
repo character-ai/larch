@@ -177,6 +177,11 @@ run_prepare() {
   shift
   local prepare_root="${LARCH_RELEASE_PREPARE_REPO_ROOT:-$REPO_ROOT}"
   local classify_bump="${LARCH_RELEASE_PREPARE_CLASSIFY_BUMP:-$case_dir/bin/classify-bump.sh}"
+  local classify_env=()
+  if [[ -n "${LARCH_RELEASE_PREPARE_CLASSIFY_BUMP:-}" || -x "$classify_bump" ]]; then
+    classify_env=(LARCH_RELEASE_PREPARE_CLASSIFY_BUMP="$classify_bump")
+  fi
+  env ${classify_env[@]+"${classify_env[@]}"} \
   REAL_GIT="$REAL_GIT" \
   GH_FIXTURE_RELEASES="$case_dir/releases.json" \
   GH_FIXTURE_PR_DIR="$case_dir/prs" \
@@ -196,7 +201,6 @@ run_prepare() {
   CLASSIFY_FIXTURE_BUMP="${CLASSIFY_FIXTURE_BUMP:-PATCH}" \
   LARCH_RELEASE_PREPARE_ORIGIN_REPO="${LARCH_RELEASE_PREPARE_ORIGIN_REPO:-}" \
   LARCH_RELEASE_PREPARE_REPO_ROOT="$prepare_root" \
-  LARCH_RELEASE_PREPARE_CLASSIFY_BUMP="$classify_bump" \
   PATH="$case_dir/bin:$PATH" \
   bash "$SUBJECT" --repo "$REAL_REPO" --out-dir "$case_dir/out" "$@" 2>"$case_dir/stderr.log"
 }
@@ -483,13 +487,13 @@ set +e
 out=$(cd "$REPO_ROOT" && \
   LARCH_RELEASE_PREPARE_REPO_ROOT="$fixture_repo" \
   LARCH_RELEASE_PREPARE_ORIGIN_REPO="$REAL_REPO" \
-  LARCH_RELEASE_PREPARE_CLASSIFY_BUMP="$REPO_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" \
   GIT_LOG_SUBJECTS=$'Fixture change (#42)\n' \
   run_prepare "$case_dir")
 rc=$?
 set -e
-if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^BUMP_TYPE=' \
-  && printf '%s\n' "$out" | grep -q '^NEW_VERSION='; then
+if [[ $rc -eq 0 ]] && printf '%s\n' "$out" | grep -q '^BUMP_TYPE=PATCH$' \
+  && printf '%s\n' "$out" | grep -q '^NEW_VERSION=1.0.1$' \
+  && printf '%s\n' "$out" | grep -q '^CURRENT_VERSION=1.0.0$'; then
   ok
 else
   fail "real classify integration: rc=$rc out=$out"

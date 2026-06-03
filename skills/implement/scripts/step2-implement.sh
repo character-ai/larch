@@ -1019,7 +1019,7 @@ fi
 REDACT="$PLUGIN_ROOT/scripts/redact-secrets.sh"
 # Fail closed if the redactor file exists but is not executable — a sparse
 # checkout or broken perms must NOT silently emit raw manifest text into
-# downstream public surfaces (CHANGELOG, PR body, GitHub issues).
+# downstream public surfaces (release notes, PR body, GitHub issues).
 if [[ -e "$REDACT" && ! -x "$REDACT" ]]; then
     emit_bailed "redactor-not-executable"
 fi

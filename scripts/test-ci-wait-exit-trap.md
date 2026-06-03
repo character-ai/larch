@@ -31,7 +31,7 @@ For each sub-test, a per-test tmpdir under `$TMPDIR_BASE` contains:
 
 ## Signal-choice rationale
 
-The harness sends **SIGTERM**, NOT SIGKILL. Bash CANNOT trap SIGKILL; no shell-side mechanism can write the sentinel under SIGKILL. The doc-layer fix in `skills/implement/SKILL.md` and `skills/implement/references/rebase-rebump-subprocedure.md` (synchronous-only invocation rule) is the operational defense for SIGKILL paths. This harness exercises the trap-deliverable signal class only.
+The harness sends **SIGTERM**, NOT SIGKILL. Bash CANNOT trap SIGKILL; no shell-side mechanism can write the sentinel under SIGKILL. The doc-layer fix in `skills/implement/SKILL.md` and `skills/implement/references/conflict-resolution.md` (synchronous-only invocation rule) is the operational defense for SIGKILL paths. This harness exercises the trap-deliverable signal class only.
 
 ## Deterministic readiness signal
 
@@ -61,4 +61,4 @@ Update this harness in lockstep with:
 
 - Issue #842 — surfacing failure-mode trace (the leaked-polling-loop scenario this harness regresses against).
 - `scripts/run-external-agent.sh:70` — positive precedent for the EXIT-trap-writes-`.done` idiom; the test mirrors its numeric-content sentinel format.
-- `scripts/test-check-bump-version.sh`, `scripts/test-collect-agent-bash32.sh` — peer test harnesses with similar Makefile-wired regression-test patterns.
+- `scripts/test-collect-agent-bash32.sh` — peer test harness with a similar Makefile-wired regression-test pattern.

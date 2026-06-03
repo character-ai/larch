@@ -62,7 +62,7 @@ The check is implemented by `check_xref` (a dedicated function kept separate fro
 
 ### SKILL.md negative-check exemption
 
-`skills/implement/SKILL.md` is **exempted from negative checks**. Rationale: SKILL.md is the canonical contract and may legitimately quote historical/comment references to these phrases in unrelated contexts (e.g. NEVER-list examples, changelog-style prose).
+`skills/implement/SKILL.md` is **exempted from negative checks**. Rationale: SKILL.md is the canonical contract and may legitimately quote historical/comment references to these phrases in unrelated contexts (e.g. NEVER-list examples, release notes-style prose).
 
 **Audit performed during #370 implementation**: `grep -F` against each stale phrase on the list returned no matches in `skills/implement/SKILL.md`. The exemption is currently factual (no stale phrases present) rather than merely defensive. If a future SKILL.md edit introduces one of these phrases in a historical context, the exemption still holds by design — SKILL.md's positive anchors alone assert that the current contract is stated somewhere in the file; the canonical source-of-truth assertion does not require the file to be free of historical references.
 

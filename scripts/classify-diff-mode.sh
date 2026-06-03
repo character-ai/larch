@@ -73,7 +73,7 @@ skills/*/scripts/test-*.sh|\
   # or unknown extensions under docs/ are conservative → generic.
   case "$path" in
     docs/*.md|docs/*.txt|docs/*.rst|docs/*.adoc|\
-scripts/*.md|README.md|CHANGELOG.md|SECURITY.md|AGENTS.md|CLAUDE.md|KARPATHY_CLAUDE.md)
+scripts/*.md|README.md|SECURITY.md|AGENTS.md|CLAUDE.md|KARPATHY_CLAUDE.md)
       printf 'docs-only\n'
       return
       ;;

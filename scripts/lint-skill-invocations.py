@@ -26,11 +26,10 @@ The per-invocation regex is intentionally narrow: it matches imperative
 **bold span**, with a backticked `/<name>` token immediately after. This
 shape catches direct slash-skill invocations like
 ``Invoke `/foo` via the Skill tool`` while exempting:
-  - sub-procedure references like "Invoke the **Rebase + Re-bump
-    Sub-procedure** ... `/bump-version`" where `/bump-version` is a later
+  - sub-procedure references where a later backticked slash skill is a
     citation, not the immediate object;
-  - helper/script references like "always invoke the helper script before
-    calling `/bump-version`" — same reason.
+  - helper/script references where the slash skill is mentioned as context —
+    same reason.
 
 Scans skills/*/SKILL.md and .claude/skills/*/SKILL.md under --root (defaults
 to the repo root derived from this script's path).

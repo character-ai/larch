@@ -403,25 +403,16 @@ if grep -qF 'topology.tsv' "${OUT_FIX}.prompt" 2>/dev/null; then
 else
     fail "fix role prompt includes topology.tsv sentinel"
 fi
-for role in resolve-conflict bump-classify changelog-draft; do
-    OUT_NF="$TMPDIR_BASE/ci-fix-prompt-$role"
-    case "$role" in
-        resolve-conflict)
-            (cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
-                bash "$REPO_ROOT/scripts/launch-cursor-ci.sh" --role "$role" --output "$OUT_NF" --run-id r1 --repo owner/repo \
-                --conflict-files README.md --timeout 60) >/dev/null 2>&1 || true
-            ;;
-        *)
-            (cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
-                bash "$REPO_ROOT/scripts/launch-cursor-ci.sh" --role "$role" --output "$OUT_NF" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1 || true
-            ;;
-    esac
-    if grep -qF 'topology.tsv' "${OUT_NF}.prompt" 2>/dev/null; then
-        fail "non-fix role $role must not include topology.tsv"
-    else
-        ok "non-fix role $role omits topology.tsv"
-    fi
-done
+role=resolve-conflict
+OUT_NF="$TMPDIR_BASE/ci-fix-prompt-$role"
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    bash "$REPO_ROOT/scripts/launch-cursor-ci.sh" --role "$role" --output "$OUT_NF" --run-id r1 --repo owner/repo \
+    --conflict-files README.md --timeout 60) >/dev/null 2>&1 || true
+if grep -qF 'topology.tsv' "${OUT_NF}.prompt" 2>/dev/null; then
+    fail "non-fix role $role must not include topology.tsv"
+else
+    ok "non-fix role $role omits topology.tsv"
+fi
 
 if [[ "$FAIL" -ne 0 ]]; then
     echo "test-launch-cursor-ci: $FAIL failure(s), $PASS pass(es)" >&2

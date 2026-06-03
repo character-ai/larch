@@ -21,7 +21,7 @@ harness and alternate-root scans. The scan covers Markdown files under:
 
 These are the surfaces whose fenced shell blocks the orchestrator copies into
 Bash tool calls. Documentation under `docs/`, top-level `*.md` (README,
-CHANGELOG, BASH_AUTHORING, AGENTS, KARPATHY_CLAUDE), and `larch-logs/` artifacts
+release notes, BASH_AUTHORING, AGENTS, KARPATHY_CLAUDE), and `larch-logs/` artifacts
 are intentionally out of scope — they are not executed as Bash tool blocks.
 
 When `PATH` is a git worktree, enumeration uses

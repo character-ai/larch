@@ -9,7 +9,7 @@ allowed-tools: Bash, Skill
 
 This skill follows the Process pattern: numbered steps, checkpointed delegation, fail-closed verification.
 
-Create an alias skill that forwards to an existing larch skill with preset flags. Delegates to `/implement` for the full pipeline (implementation, code review, version bump, PR), then verifies the artifact landed on disk.
+Create an alias skill that forwards to an existing larch skill with preset flags. Delegates to `/implement` for the full pipeline (implementation, code review, PR), then verifies the artifact landed on disk.
 
 **Target directory** is resolved automatically:
 
@@ -109,7 +109,7 @@ if [[ -z "${CLAUDE_PLUGIN_ROOT:-}" ]]; then
   echo "**ERROR: CLAUDE_PLUGIN_ROOT is unset — cannot probe larch skill tree for reserved-name collision.**"
   exit 1
 fi
-# probe BOTH roots: skills/ (public) and .claude/skills/ (dev-only: bump-version)
+# probe BOTH roots: skills/ (public) and .claude/skills/ (dev-only: release)
 if test -d "${CLAUDE_PLUGIN_ROOT}/skills/<alias-name>" \
   || test -d "${CLAUDE_PLUGIN_ROOT}/.claude/skills/<alias-name>"; then
   echo "**ERROR: alias name '<alias-name>' shadows an existing larch skill.**"

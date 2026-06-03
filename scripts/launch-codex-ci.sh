@@ -25,7 +25,7 @@ TIMEOUT="1800"
 TIMING_TASK_KIND="codex-ci-fix"
 
 usage() {
-    larch_err "Usage: launch-codex-ci.sh --role fix|resolve-conflict|bump-classify|changelog-draft --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--timeout SECONDS]"
+    larch_err "Usage: launch-codex-ci.sh --role fix|resolve-conflict --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--timeout SECONDS]"
 }
 
 die() {
@@ -64,7 +64,7 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-case "$ROLE" in fix|resolve-conflict|bump-classify|changelog-draft) ;; *) die "--role must be fix, resolve-conflict, bump-classify, or changelog-draft" ;; esac
+case "$ROLE" in fix|resolve-conflict) ;; *) die "--role must be fix or resolve-conflict" ;; esac
 [ -n "$OUTPUT" ] || die "--output is required"
 [ -n "$RUN_ID" ] || die "--run-id is required"
 [ -n "$REPO" ] || die "--repo is required"

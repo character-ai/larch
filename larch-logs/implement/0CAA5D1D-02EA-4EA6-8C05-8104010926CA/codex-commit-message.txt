@@ -1,0 +1,7 @@
+Delete dormant version and changelog machinery
+
+Relocate the live semver classifier under the release skill and update release preparation to use the new default.
+
+Remove the retired bump/changelog scripts, CHANGELOG file, Python changelog/drop helpers, Makefile targets, CI wiring, and stale documentation references.
+
+Trim ship/finalize and Python rebase paths so CI-fix rebase and force-push remain without version replay.

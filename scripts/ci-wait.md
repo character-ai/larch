@@ -29,7 +29,7 @@ ELAPSED=<seconds>
 
 When `ci-decide.sh` applies the `fix_attempts >= 10` cap, `BAIL_REASON` is the exact token `fix-attempts-exhausted` (terminal user-input bail via `ship-pr.sh` `needs_user_bail_reason`, not a stall).
 
-Default callers (`/implement` Step 10, Step 12a, and the four step-7 re-invocation branches in `skills/implement/references/rebase-rebump-subprocedure.md`) parse stdout. No `.done` sentinel is written in default mode.
+Default callers (`/implement` Step 10, Step 12a, and the four step-7 re-invocation branches in `skills/implement/references/conflict-resolution.md`) parse stdout. No `.done` sentinel is written in default mode.
 
 `--base-remote NAME`, `--base-ref BRANCH`, and `--empty-checks-grace SECONDS` are forwarded to `ci-status.sh` on every poll. `CONFLICTED` is parsed from the `ci-status.sh` output block (defaulting to `false` when absent) and forwarded to `ci-decide.sh` as `--conflicted`. When `ci-status.sh` returns `CI_STATUS=NO_CHECKS`, `ci-wait.sh` stops polling immediately and emits `ACTION=bail` with a no-checks bail reason; this is used by `/implement --forked` to avoid burning the full CI timeout on forks where Actions are disabled or every workflow is upstream-only.
 
@@ -76,9 +76,9 @@ A "**site**" is either a fenced Bash invocation block OR a prose re-invocation d
 - `skills/implement/SKILL.md` Step 12a — CI+merge poll loop.
 
 **Prose re-invocation directive sites (4)**:
-- `skills/implement/references/rebase-rebump-subprocedure.md` step 7 caller-kinds — `step12_rebase`, `step12_phase4`, `step12_rebase_then_evaluate`, `step10_rebase`, `step10_rebase_then_evaluate`. (Five caller-kind branches; four contain explicit re-invocation directives, the `*_then_evaluate` branches fall through without re-invocation but still inherit the synchronous-invocation rule from the parent step.) The synchronous-only paragraph following the caller-kind list serves the entire block.
+- `skills/implement/references/conflict-resolution.md` step 7 caller-kinds — `step12_rebase`, `step12_phase4`, `step12_rebase_then_evaluate`, `step10_rebase`, `step10_rebase_then_evaluate`. (Five caller-kind branches; four contain explicit re-invocation directives, the `*_then_evaluate` branches fall through without re-invocation but still inherit the synchronous-invocation rule from the parent step.) The synchronous-only paragraph following the caller-kind list serves the entire block.
 
-**Test asserter**: `scripts/test-implement-structure.sh` assertion 17 (negative-pin against `ci-wait.sh` adjacent to `run_in_background: true` in both `SKILL.md` and `rebase-rebump-subprocedure.md`; positive-pin asserting the literal `ci-wait.sh MUST be invoked synchronously` is present in each file).
+**Test asserter**: `scripts/test-implement-structure.sh` assertion 17 (negative-pin against `ci-wait.sh` adjacent to `run_in_background: true` in both `SKILL.md` and `conflict-resolution.md`; positive-pin asserting the literal `ci-wait.sh MUST be invoked synchronously` is present in each file).
 
 **Test asserter sibling**: `scripts/test-implement-structure.md` (assertion enumeration must list assertion 17 in lockstep with the in-script header comment).
 

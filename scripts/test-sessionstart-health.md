@@ -8,7 +8,7 @@ the always-exit-0 invariant, jq-based JSON encoding rule, and fixed-literal
 jq-missing fallback, is owned by `scripts/sessionstart-health.md`.
 
 Boundary coverage includes `.run-cleaned-up` suppression, post-/review
-summary detection plus `.review-boundary-passed` suppression, and
-post-/bump-version `.bump-version-armed` detection plus `postbump-state.sh`
-suppression. It also asserts the combined edge case where pending review and
-bump boundaries appear in one advisory payload.
+summary detection plus `.review-boundary-passed` suppression, and the Phase 1
+retirement of post-/release `.release-armed` advisories. It also asserts the
+combined edge case where pending review state remains visible while retired
+release sentinels stay silent.

@@ -1,0 +1,733 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {
+      "path": ".claude/skills/bump-version/SKILL.md",
+      "lines_added": 0,
+      "lines_removed": 94
+    },
+    {
+      "path": ".claude/skills/bump-version/scripts/apply-bump.md",
+      "lines_added": 0,
+      "lines_removed": 69
+    },
+    {
+      "path": ".claude/skills/bump-version/scripts/apply-bump.sh",
+      "lines_added": 0,
+      "lines_removed": 222
+    },
+    {
+      "path": ".claude/skills/bump-version/scripts/classify-bump.md",
+      "lines_added": 0,
+      "lines_removed": 25
+    },
+    {
+      "path": ".claude/skills/bump-version/scripts/classify-bump.sh",
+      "lines_added": 0,
+      "lines_removed": 349
+    },
+    {
+      "path": ".claude/skills/bump-version/scripts/test-classify-bump.md",
+      "lines_added": 0,
+      "lines_removed": 21
+    },
+    {
+      "path": ".claude/skills/bump-version/scripts/test-classify-bump.sh",
+      "lines_added": 0,
+      "lines_removed": 213
+    },
+    {
+      "path": ".claude/skills/release/scripts/classify-bump.md",
+      "lines_added": 25,
+      "lines_removed": 0
+    },
+    {
+      "path": ".claude/skills/release/scripts/classify-bump.sh",
+      "lines_added": 345,
+      "lines_removed": 0
+    },
+    {
+      "path": ".claude/skills/release/scripts/release-prepare.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": ".claude/skills/release/scripts/release-prepare.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": ".claude/skills/release/scripts/test-classify-bump.md",
+      "lines_added": 21,
+      "lines_removed": 0
+    },
+    {
+      "path": ".claude/skills/release/scripts/test-classify-bump.sh",
+      "lines_added": 169,
+      "lines_removed": 0
+    },
+    {
+      "path": ".claude/skills/release/scripts/test-release-prepare.sh",
+      "lines_added": 5,
+      "lines_removed": 2
+    },
+    {
+      "path": ".github/workflows/ci.yaml",
+      "lines_added": 1,
+      "lines_removed": 3
+    },
+    {
+      "path": "CHANGELOG.md",
+      "lines_added": 0,
+      "lines_removed": 7716
+    },
+    {
+      "path": "Makefile",
+      "lines_added": 10,
+      "lines_removed": 24
+    },
+    {
+      "path": "agent-lint.toml",
+      "lines_added": 33,
+      "lines_removed": 45
+    },
+    {
+      "path": "docs/configuration-and-permissions.md",
+      "lines_added": 1,
+      "lines_removed": 92
+    },
+    {
+      "path": "docs/installation-and-setup.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "docs/linting.md",
+      "lines_added": 3,
+      "lines_removed": 6
+    },
+    {
+      "path": "docs/run-logs.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "docs/skills.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "docs/workflow-lifecycle.md",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "hooks/hooks.json",
+      "lines_added": 0,
+      "lines_removed": 10
+    },
+    {
+      "path": "python/README.md",
+      "lines_added": 2,
+      "lines_removed": 5
+    },
+    {
+      "path": "python/bump_worktree.py",
+      "lines_added": 0,
+      "lines_removed": 106
+    },
+    {
+      "path": "python/changelog.py",
+      "lines_added": 0,
+      "lines_removed": 893
+    },
+    {
+      "path": "python/config.py",
+      "lines_added": 1,
+      "lines_removed": 11
+    },
+    {
+      "path": "python/rebase.py",
+      "lines_added": 2,
+      "lines_removed": 11
+    },
+    {
+      "path": "python/test_changelog.py",
+      "lines_added": 0,
+      "lines_removed": 1114
+    },
+    {
+      "path": "python/test_checks_bash_parity.py",
+      "lines_added": 0,
+      "lines_removed": 3
+    },
+    {
+      "path": "python/test_git.py",
+      "lines_added": 8,
+      "lines_removed": 8
+    },
+    {
+      "path": "python/test_rebase.py",
+      "lines_added": 11,
+      "lines_removed": 11
+    },
+    {
+      "path": "python/test_version_bump.py",
+      "lines_added": 17,
+      "lines_removed": 866
+    },
+    {
+      "path": "python/version_bump.py",
+      "lines_added": 4,
+      "lines_removed": 270
+    },
+    {
+      "path": "scripts/auto-resolve-changelog.md",
+      "lines_added": 0,
+      "lines_removed": 51
+    },
+    {
+      "path": "scripts/auto-resolve-changelog.sh",
+      "lines_added": 0,
+      "lines_removed": 289
+    },
+    {
+      "path": "scripts/check-bump-version.md",
+      "lines_added": 0,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/check-bump-version.sh",
+      "lines_added": 0,
+      "lines_removed": 168
+    },
+    {
+      "path": "scripts/check-changelog-present.md",
+      "lines_added": 0,
+      "lines_removed": 9
+    },
+    {
+      "path": "scripts/check-changelog-present.sh",
+      "lines_added": 0,
+      "lines_removed": 32
+    },
+    {
+      "path": "scripts/check-phantom-dirty.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/ci-wait.md",
+      "lines_added": 3,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/classify-diff-mode.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/commit-changelog.md",
+      "lines_added": 0,
+      "lines_removed": 37
+    },
+    {
+      "path": "scripts/commit-changelog.sh",
+      "lines_added": 0,
+      "lines_removed": 206
+    },
+    {
+      "path": "scripts/drop-bump-commit.md",
+      "lines_added": 0,
+      "lines_removed": 59
+    },
+    {
+      "path": "scripts/drop-bump-commit.sh",
+      "lines_added": 0,
+      "lines_removed": 232
+    },
+    {
+      "path": "scripts/drop-changelog-commit.md",
+      "lines_added": 0,
+      "lines_removed": 45
+    },
+    {
+      "path": "scripts/drop-changelog-commit.sh",
+      "lines_added": 0,
+      "lines_removed": 151
+    },
+    {
+      "path": "scripts/git-amend-add.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/git-commit.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/git-force-push.md",
+      "lines_added": 3,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/git-force-push.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/git-sync-local-main.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/git-sync-local-main.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/implement-finalize.md",
+      "lines_added": 7,
+      "lines_removed": 8
+    },
+    {
+      "path": "scripts/implement-finalize.sh",
+      "lines_added": 12,
+      "lines_removed": 21
+    },
+    {
+      "path": "scripts/launch-claude-ci.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/launch-codex-ci.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/launch-codex-ci.sh",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "scripts/launch-cursor-ci.md",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "scripts/launch-cursor-ci.sh",
+      "lines_added": 3,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/lib-changelog.md",
+      "lines_added": 0,
+      "lines_removed": 22
+    },
+    {
+      "path": "scripts/lib-changelog.sh",
+      "lines_added": 0,
+      "lines_removed": 176
+    },
+    {
+      "path": "scripts/lib-count-commits.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/lib-count-commits.sh",
+      "lines_added": 4,
+      "lines_removed": 21
+    },
+    {
+      "path": "scripts/lint-bare-grep-probe.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/lint-bare-grep-probe.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/lint-skill-invocations.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/lint-skill-invocations.py",
+      "lines_added": 3,
+      "lines_removed": 4
+    },
+    {
+      "path": "scripts/pre-commit-shellcheck.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/read-plugin-version.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/sessionstart-health.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/ship-pr.md",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "scripts/ship-pr.sh",
+      "lines_added": 6,
+      "lines_removed": 18
+    },
+    {
+      "path": "scripts/test-apply-bump.md",
+      "lines_added": 0,
+      "lines_removed": 51
+    },
+    {
+      "path": "scripts/test-apply-bump.sh",
+      "lines_added": 0,
+      "lines_removed": 598
+    },
+    {
+      "path": "scripts/test-auto-resolve-changelog.md",
+      "lines_added": 0,
+      "lines_removed": 5
+    },
+    {
+      "path": "scripts/test-auto-resolve-changelog.sh",
+      "lines_added": 0,
+      "lines_removed": 220
+    },
+    {
+      "path": "scripts/test-check-bump-version.md",
+      "lines_added": 0,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/test-check-bump-version.sh",
+      "lines_added": 0,
+      "lines_removed": 540
+    },
+    {
+      "path": "scripts/test-ci-wait-exit-trap.md",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "scripts/test-ci-wait-exit-trap.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-classify-bump.md",
+      "lines_added": 0,
+      "lines_removed": 13
+    },
+    {
+      "path": "scripts/test-classify-bump.sh",
+      "lines_added": 0,
+      "lines_removed": 6
+    },
+    {
+      "path": "scripts/test-commit-changelog.md",
+      "lines_added": 0,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/test-commit-changelog.sh",
+      "lines_added": 0,
+      "lines_removed": 190
+    },
+    {
+      "path": "scripts/test-compose-review-findings.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-drop-bump-commit.md",
+      "lines_added": 0,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/test-drop-bump-commit.sh",
+      "lines_added": 0,
+      "lines_removed": 423
+    },
+    {
+      "path": "scripts/test-drop-changelog-commit.md",
+      "lines_added": 0,
+      "lines_removed": 7
+    },
+    {
+      "path": "scripts/test-drop-changelog-commit.sh",
+      "lines_added": 0,
+      "lines_removed": 210
+    },
+    {
+      "path": "scripts/test-implement-anti-halt.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-implement-finalize.md",
+      "lines_added": 1,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/test-implement-finalize.sh",
+      "lines_added": 3,
+      "lines_removed": 76
+    },
+    {
+      "path": "scripts/test-implement-rebase-macro.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-implement-rebase-macro.sh",
+      "lines_added": 3,
+      "lines_removed": 3
+    },
+    {
+      "path": "scripts/test-implement-structure.sh",
+      "lines_added": 12,
+      "lines_removed": 12
+    },
+    {
+      "path": "scripts/test-launch-claude-ci.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-launch-codex-ci.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-launch-cursor-ci.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-legacy-title-prefix-literals-scope.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-lint-skill-invocations.sh",
+      "lines_added": 8,
+      "lines_removed": 8
+    },
+    {
+      "path": "scripts/test-quick-mode-docs-sync.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-quick-mode-docs-sync.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-sessionstart-health.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-sessionstart-health.sh",
+      "lines_added": 5,
+      "lines_removed": 5
+    },
+    {
+      "path": "scripts/test-ship-pr-rebase.sh",
+      "lines_added": 0,
+      "lines_removed": 2
+    },
+    {
+      "path": "scripts/test-token-ledger.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-verify-skill-called.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/test-verify-skill-called.sh",
+      "lines_added": 14,
+      "lines_removed": 26
+    },
+    {
+      "path": "scripts/verify-skill-called.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "scripts/verify-skill-called.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/alias/SKILL.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/design/SKILL.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/implement/SKILL.md",
+      "lines_added": 6,
+      "lines_removed": 20
+    },
+    {
+      "path": "skills/implement/references/bump-verification.md",
+      "lines_added": 0,
+      "lines_removed": 11
+    },
+    {
+      "path": "skills/implement/references/codex-manifest-schema.md",
+      "lines_added": 3,
+      "lines_removed": 3
+    },
+    {
+      "path": "skills/implement/references/conflict-resolution.md",
+      "lines_added": 5,
+      "lines_removed": 7
+    },
+    {
+      "path": "skills/implement/references/rebase-rebump-subprocedure.md",
+      "lines_added": 0,
+      "lines_removed": 11
+    },
+    {
+      "path": "skills/implement/scripts/hook-post-bump-version.md",
+      "lines_added": 0,
+      "lines_removed": 5
+    },
+    {
+      "path": "skills/implement/scripts/hook-post-bump-version.sh",
+      "lines_added": 0,
+      "lines_removed": 11
+    },
+    {
+      "path": "skills/implement/scripts/hook-stop-fail-close.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/implement/scripts/hook-stop-fail-close.sh",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "skills/implement/scripts/lib-resolve-implement-tmpdir.md",
+      "lines_added": 3,
+      "lines_removed": 3
+    },
+    {
+      "path": "skills/implement/scripts/lib-resolve-implement-tmpdir.sh",
+      "lines_added": 3,
+      "lines_removed": 3
+    },
+    {
+      "path": "skills/implement/scripts/step-7a.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/implement/scripts/step-name-registry.tsv",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/implement/scripts/step2-implement.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/implement/scripts/step2-implement.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/implement/scripts/test-step-8a-changelog.md",
+      "lines_added": 0,
+      "lines_removed": 5
+    },
+    {
+      "path": "skills/implement/scripts/test-step-8a-changelog.sh",
+      "lines_added": 0,
+      "lines_removed": 196
+    },
+    {
+      "path": "skills/issue/scripts/parse-input.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/research/references/eval-set.md",
+      "lines_added": 2,
+      "lines_removed": 2
+    },
+    {
+      "path": "skills/review/SKILL.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/review/scripts/test-aggregate-findings.md",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/review/scripts/test-gather-context.sh",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "skills/shared/subskill-invocation.md",
+      "lines_added": 4,
+      "lines_removed": 4
+    }
+  ],
+  "tests_added_or_modified": [
+    ".claude/skills/release/scripts/test-classify-bump.sh",
+    ".claude/skills/release/scripts/test-release-prepare.sh",
+    "python/test_checks_bash_parity.py",
+    "python/test_rebase.py",
+    "python/test_version_bump.py",
+    "scripts/test-implement-finalize.sh",
+    "scripts/test-launch-claude-ci.sh",
+    "scripts/test-launch-codex-ci.sh",
+    "scripts/test-launch-cursor-ci.sh",
+    "scripts/test-verify-skill-called.sh"
+  ],
+  "summary_bullets": [
+    "Remove dormant per-PR version and release-note machinery now owned by the release flow.",
+    "Relocate the live semver classifier under the release skill so release preparation keeps working.",
+    "Trim implement ship/finalize rebase paths to preserve CI-fix rebase and force-push without version replay.",
+    "Sweep docs, harnesses, and Python parity code for the deleted surfaces."
+  ],
+  "commit_message": "Delete dormant version and changelog machinery\n\nRelocate the live semver classifier under the release skill and update release preparation to use the new default.\n\nRemove the retired bump/changelog scripts, CHANGELOG file, Python changelog/drop helpers, Makefile targets, CI wiring, and stale documentation references.\n\nTrim ship/finalize and Python rebase paths so CI-fix rebase and force-push remain without version replay.",
+  "todos_left": [
+    "Run the full make lint / make py-lint / make py-test matrix if local time permits; focused release, verify-skill, and Python parity checks were run."
+  ],
+  "oos_observations": [],
+  "bail_reason": "",
+  "needs_qa": {
+    "questions": []
+  }
+}

@@ -24,8 +24,8 @@
 #   p  Skill + multiple per-invocation violations in one file → exit 1, both file:line refs in stderr
 #   q  Skill + bare "Invoke `/foo`" inside a fenced code block only → exit 0 (code-fence exempt)
 #   r  Skill + total omission AND per-invocation violations in same file → exit 1, both messages present
-#   s  Skill + "invoke the helper script ... `/bump-version`" prose → exit 0 (slash is citation, not object)
-#   t  Skill + "Invoke the **Sub-procedure** ... `/bump-version`" prose → exit 0 (bold-span sub-procedure exempt)
+#   s  Skill + "invoke the helper script ... `/release`" prose → exit 0 (slash is citation, not object)
+#   t  Skill + "Invoke the **Sub-procedure** ... `/release`" prose → exit 0 (bold-span sub-procedure exempt)
 #   u  Skill + bare re-invoke of `/issue` without "via the Skill tool" → exit 1 (re-invoke is in scope)
 #
 # Usage: bash scripts/test-lint-skill-invocations.sh
@@ -480,7 +480,7 @@ assert_case "r (Both total omission AND per-invocation violations)" 1 "$stderr_f
     "skills/case-r/SKILL.md:10:" "skills/case-r/SKILL.md:11:"
 rm -f "$stderr_file"
 
-# --- Case s: "invoke the helper script ... `/bump-version`" exempt --------
+# --- Case s: "invoke the helper script ... `/release`" exempt --------
 reset_tree
 write_skill "$TMPROOT/skills/case-s/SKILL.md" <<'EOF'
 ---
@@ -495,14 +495,14 @@ To pass total omission: Invoke `/setup` via the Skill tool.
 
 The bullet should not be flagged because the slash command is a citation,
 not the immediate object of "invoke":
-- Always invoke the helper script before calling `/bump-version`.
+- Always invoke the helper script before calling `/release`.
 EOF
 stderr_file=$(mktemp)
 rc=$(run_lint "$stderr_file")
-assert_case "s (invoke the helper ... /bump-version citation — exempt)" 0 "$stderr_file" "$rc"
+assert_case "s (invoke the helper ... /release citation — exempt)" 0 "$stderr_file" "$rc"
 rm -f "$stderr_file"
 
-# --- Case t: "Invoke the **Sub-procedure** ... `/bump-version`" exempt ----
+# --- Case t: "Invoke the **Sub-procedure** ... `/release`" exempt ----
 reset_tree
 write_skill "$TMPROOT/skills/case-t/SKILL.md" <<'EOF'
 ---
@@ -517,11 +517,11 @@ To pass total omission: Invoke `/setup` via the Skill tool.
 
 This bold-span sub-procedure invocation should not be flagged because the
 slash command is a later citation, not the immediate object:
-- Invoke the **Rebase + Re-bump Sub-procedure** which internally re-runs `/bump-version`.
+- Invoke the **Rebase + Re-bump Sub-procedure** which internally re-runs `/release`.
 EOF
 stderr_file=$(mktemp)
 rc=$(run_lint "$stderr_file")
-assert_case "t (Invoke the **Sub-procedure** ... /bump-version — exempt)" 0 "$stderr_file" "$rc"
+assert_case "t (Invoke the **Sub-procedure** ... /release — exempt)" 0 "$stderr_file" "$rc"
 rm -f "$stderr_file"
 
 # --- Case u: bare re-invoke of `/issue` is in scope -------------------

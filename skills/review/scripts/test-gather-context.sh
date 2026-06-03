@@ -24,7 +24,7 @@ mkdir -p "$FIXTURE/skills/review/scripts" "$FIXTURE/docs"
 touch "$FIXTURE/skills/review/SKILL.md"
 touch "$FIXTURE/skills/review/scripts/gather-context.sh"
 touch "$FIXTURE/docs/review-agents.md"
-touch "$FIXTURE/CHANGELOG.md"
+touch "$FIXTURE/README.md"
 touch "$FIXTURE/README.md"
 git -C "$FIXTURE" init --quiet
 git -C "$FIXTURE" -c user.name=test -c user.email=test@test.com add .

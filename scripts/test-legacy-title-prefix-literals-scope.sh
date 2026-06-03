@@ -45,7 +45,7 @@ while IFS= read -r file; do
     git grep -n -E '\[(IN PROGRESS|PLANNED)\]' -- "$file" >&2 || true
     fail "legacy prefix literal in unexpected path: $file (extend ALLOW= only when deliberate)"
   fi
-done < <(git grep -l -E '\[(IN PROGRESS|PLANNED)\]' -- ':!CHANGELOG.md' ':!larch-logs/' 2>/dev/null || true)
+done < <(git grep -l -E '\[(IN PROGRESS|PLANNED)\]' -- ':!larch-logs/' ':!larch-logs/' 2>/dev/null || true)
 
 echo "PASS: legacy title-prefix literal scope"
 exit 0

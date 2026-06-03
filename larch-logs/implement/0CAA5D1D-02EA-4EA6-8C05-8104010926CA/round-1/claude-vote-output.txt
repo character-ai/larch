@@ -1,0 +1,14 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The concern names `check-release.sh`; that script appears nowhere in the plan or diff. The plan deletes `check-bump-version.sh`, not `check-release.sh` — this is a misattributed false positive.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- `hook-post-release.sh` does not appear in the plan, diff, or deletion list for Phase 5; finding references an artifact outside this PR's scope.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The diff shows no changes to `lib-resolve-implement-tmpdir.sh`; the claim it "now looks for `.release-armed`" is unsupported by any change in this PR.
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- `docs/configuration-and-permissions.md` is not modified anywhere in the diff; if the file was not touched, no sections could have been lost in this PR.
+FINDING_6: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- Neither `LARCH_BUMP_FILES` nor `LARCH_VERSION_FILES` appears in the diff; the claimed rename is not visible in this PR's changes.
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Pre-existing arithmetic style carried over by relocation (not introduced here); leading-zero semver components are pathological and the diff is a rename not a rewrite.
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Dead state key is a minor cleanup but does not affect runtime behavior; fix complexity exceeds impact at nit severity.
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Nit-level stale comment; the remediation is trivially small but barely warrants a standalone GitHub issue.
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Intentional coverage reduction during transition; Phase 7 owns parity restoration and the plan explicitly accepts this gap.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Additional negative pins would add marginal guard value; nit-level addition that the plan did not require.
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Intentional behavioral change: CHANGELOG.md is deleted so auto-resolving CHANGELOG conflicts is no longer needed; legacy branches hitting this are an expected edge case.
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Intentional change: CHANGELOG commits are no longer generated so their transparency is correctly removed; test cases for the removed behavior were also properly deleted.

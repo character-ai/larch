@@ -478,7 +478,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         # that look like OOS bullets (`- **Reviewer**:`, etc.) fall through to
         # here and are preserved as ordinary body text (fix for bug b in #129).
         # This matches the behavior fix applied to the deleted
-        # scripts/create-oos-issues.sh (see CHANGELOG 3.3.10).
+        # scripts/create-oos-issues.sh (see release notes 3.3.10).
         #
         # Issue #138: while pending-active, route continuation lines to
         # PENDING_BODY so they resolve together with the stashed heading.

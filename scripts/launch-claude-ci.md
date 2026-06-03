@@ -8,7 +8,7 @@ Launches the Claude Code CLI for `/implement` **write-capable** CI subwork from 
 launch-claude-ci.sh --role fix|resolve-conflict --output PATH --run-id ID --repo OWNER/REPO [--plan-file PATH] [--conflict-files CSV] [--failure-log PATH] [--timeout SECONDS] [--timing-task-kind KIND] [--model MODEL]
 ```
 
-Only `fix` and `resolve-conflict` are supported (no bump-classify / changelog-draft).
+Only `fix` and `resolve-conflict` are supported.
 
 `--output` must be an absolute path using the same narrowed safe alphabet as other CI launchers.
 `--plan-file`, when present, must be an absolute path; if the file exists, its content is inserted as optional design-plan context.

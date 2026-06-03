@@ -86,25 +86,16 @@ if grep -qF 'persistent interactive subprocess' "${OUT_FIX}.prompt" 2>/dev/null;
 else
     fail "fix-role prompt prohibits persistent interactive subprocesses (issue #2991)"
 fi
-for role in resolve-conflict bump-classify changelog-draft; do
-    OUT_NF="$TMPDIR_BASE/ci-fix-prompt-$role"
-    case "$role" in
-        resolve-conflict)
-            (cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
-                bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role "$role" --output "$OUT_NF" --run-id r1 --repo owner/repo \
-                --conflict-files README.md --timeout 60) >/dev/null 2>&1 || true
-            ;;
-        *)
-            (cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
-                bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role "$role" --output "$OUT_NF" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1 || true
-            ;;
-    esac
-    if grep -qF 'topology.tsv' "${OUT_NF}.prompt" 2>/dev/null; then
-        fail "non-fix role $role must not include topology.tsv"
-    else
-        ok "non-fix role $role omits topology.tsv"
-    fi
-done
+role=resolve-conflict
+OUT_NF="$TMPDIR_BASE/ci-fix-prompt-$role"
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role "$role" --output "$OUT_NF" --run-id r1 --repo owner/repo \
+    --conflict-files README.md --timeout 60) >/dev/null 2>&1 || true
+if grep -qF 'topology.tsv' "${OUT_NF}.prompt" 2>/dev/null; then
+    fail "non-fix role $role must not include topology.tsv"
+else
+    ok "non-fix role $role omits topology.tsv"
+fi
 
 runtime_bin="$TMPDIR_BASE/ci-runtime-bin"
 mkdir -p "$runtime_bin"

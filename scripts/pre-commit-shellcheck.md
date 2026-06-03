@@ -7,7 +7,7 @@
 ## Invariants
 
 - Consumes only `"$@"` from pre-commit; file selection stays in `.pre-commit-config.yaml`.
-- Always passes `-x` to shellcheck, matching the prior `args: [-x]` follow-source semantics required for scoped `--files` runs per CHANGELOG #178.
+- Always passes `-x` to shellcheck, matching the prior `args: [-x]` follow-source semantics required for scoped `--files` runs per release notes #178.
 - Zero-args input exits 0 because BSD xargs has no `-r`.
 - Forwards filenames as NUL-delimited records via `printf '%s\0' | xargs -0`.
 - Uses portable CPU-count fallback order: `nproc`, `sysctl -n hw.ncpu`, `getconf _NPROCESSORS_ONLN`, then `1`, with a defensive clamp to `>= 1`.

@@ -409,28 +409,28 @@ stdout=$(cat "$tmp/c14b.out")
 assert_empty "$stdout" "case 14b: stdout empty after review boundary"
 assert_not_contains "$stdout" "post-/review boundary" "case 14b: no review boundary advisory"
 
-echo "=== Case 15: Phase 1 — .bump-version-armed does not emit post-/bump-version advisory ==="
+echo "=== Case 15: Phase 1 — .release-armed does not emit post-/release advisory ==="
 mkdir -p "$tmp/c15-cwd"
 impl=$(make_impl_tmpdir c15-bump "$tmp/c15-cwd")
-touch "$impl/.bump-version-armed"
+touch "$impl/.release-armed"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c15-cwd" '{"cwd":"'"$tmp/c15-cwd"'"}' "$XDG_TEST" "$tmp/c15.out" "$tmp/c15.err")
 assert_eq "$rc" "0" "case 15: exit code 0"
 stdout=$(cat "$tmp/c15.out")
 assert_empty "$stdout" "case 15: no SessionStart advisory for retired bump boundary"
-assert_not_contains "$stdout" "post-/bump-version boundary" "case 15: bump boundary advisory retired"
+assert_not_contains "$stdout" "post-/release boundary" "case 15: bump boundary advisory retired"
 
 echo "=== Case 16: pending review boundary only (bump advisory retired) ==="
 mkdir -p "$tmp/c16-cwd"
 impl=$(make_impl_tmpdir c16-review-boundary "$tmp/c16-cwd")
 printf 'review summary\n' > "$impl/review-round-summary.md"
-touch "$impl/.bump-version-armed"
+touch "$impl/.release-armed"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c16-cwd" '{"cwd":"'"$tmp/c16-cwd"'"}' "$XDG_TEST" "$tmp/c16.out" "$tmp/c16.err")
 assert_eq "$rc" "0" "case 16: exit code 0"
 stdout=$(cat "$tmp/c16.out")
 assert_valid_json "$stdout" "case 16"
 ctx=$(ctx_from_stdout "$stdout")
 assert_contains "$ctx" "post-/review boundary" "case 16: review boundary advisory"
-assert_not_contains "$ctx" "post-/bump-version boundary" "case 16: bump boundary advisory retired"
+assert_not_contains "$ctx" "post-/release boundary" "case 16: bump boundary advisory retired"
 
 echo
 echo "=== Summary ==="
