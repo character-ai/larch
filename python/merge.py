@@ -86,11 +86,6 @@ def merge_pr(
 
     pr_num = ctx.pr_number
     state = _refresh_pr_info(runner, pr_num, ctx.repo, cwd=cwd)
-    if state.merge_state_status == "BEHIND":
-        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED)
-        if post_err is not None:
-            return post_err
-        return MergeResult(result=config.MERGE_RESULT_MAIN_ADVANCED, error="")
     if not state.merge_state_status or state.merge_state_status == "UNKNOWN":
         state = _retry_unknown(
             runner,
@@ -100,11 +95,6 @@ def merge_pr(
             sleeper=sleeper,
             cwd=cwd,
         )
-    if state.merge_state_status == "BEHIND":
-        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED)
-        if post_err is not None:
-            return post_err
-        return MergeResult(result=config.MERGE_RESULT_MAIN_ADVANCED, error="")
     if not state.merge_state_status or state.merge_state_status == "UNKNOWN":
         post_err = _post_flush(runner, ctx, config.MERGE_RESULT_ERROR)
         if post_err is not None:
@@ -320,8 +310,6 @@ def _ensure_head_matches_pr(
             result=config.MERGE_RESULT_ERROR,
             error="local HEAD does not match PR head OID after force-push recovery",
         )
-    if state.merge_state_status == "BEHIND":
-        return MergeResult(result=config.MERGE_RESULT_MAIN_ADVANCED, error="")
     if not state.merge_state_status or state.merge_state_status == "UNKNOWN":
         state = _retry_unknown(
             runner,
@@ -339,8 +327,6 @@ def _ensure_head_matches_pr(
                 f"(state={state.merge_state_status!r})"
             ),
         )
-    if state.merge_state_status == "BEHIND":
-        return MergeResult(result=config.MERGE_RESULT_MAIN_ADVANCED, error="")
     if not gh.pr_checks_all_pass(runner, pr_num, repo=ctx.repo, cwd=cwd):
         return MergeResult(
             result=config.MERGE_RESULT_CI_NOT_READY,

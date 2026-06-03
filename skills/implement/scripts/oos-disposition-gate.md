@@ -34,6 +34,6 @@ oos-disposition-gate.sh [--fork-mode] [--repo-unavailable] \
 
 ## Consumer
 
-Orchestrator (`skills/implement/SKILL.md` Step 8+ OOS checkpoint): on exit **1**, log via `append-tool-failure.sh` with `--site step-8-oos-checkpoint` and **do not** clear `OOS_PENDING` or write the `run-statistics` batch until the disposition gap is resolved. On exit **2**, log with `--site step-8-oos-checkpoint-validation` — treat as invalid range / git context / arguments (not a disposition-count gap).
+`oos-disposition-checkpoint.sh` invokes this gate from `skills/implement/SKILL.md` Step 8+ and owns exit-code mapping plus `append-tool-failure.sh` logging. Orchestrator readers should use `oos-disposition-checkpoint.md` for the checkpoint exit contract and logging sites. After checkpoint exit **0**, `run-statistics`, `OOS_PENDING=false`, and `--resume-phase pr-create` remain orchestrator-owned per `skills/implement/SKILL.md`; on checkpoint non-zero, the orchestrator must not perform those post-pass steps.
 
 Harness: `skills/implement/scripts/test-oos-disposition-gate.sh`.

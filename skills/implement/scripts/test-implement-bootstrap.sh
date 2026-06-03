@@ -889,7 +889,7 @@ err=$(cat "$stderrf")
 rm -f "$stderrf"
 assert_rc "$rc" 0 "B4-all exit 0"
 assert_contains "DEFERRED=true" "$out" "B4-all deferred"
-assert_line "coder=cursor" "$out" "B4-all coder"
+assert_line "coder=codex" "$out" "B4-all coder"
 assert_line "coder_fallback=" "$out" "B4-all no fallback"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-3" "$out" "B4-all no phase-3 overwrite"
 assert_not_contains "IMPLEMENT_BAIL_REASON=not-yet-implemented-phase-4" "$out" "B4-all no phase-4 overwrite"
@@ -913,7 +913,7 @@ assert_order "tracking-issue-write rename --issue 123 --state implementing" "pos
 assert_contains "gh issue view 123" "$invoke" "B4-all gh invoked"
 assert_contains "persist-implement-run-flags" "$invoke" "B4-all persist invoked"
 assert_not_contains '→ step0: coder=' "$out" "B4-all coder breadcrumb stays off stdout"
-assert_contains '→ step0: coder=cursor' "$err" "B4-all coder breadcrumb surfaces on stderr"
+assert_contains '→ step0: coder=codex' "$err" "B4-all coder breadcrumb surfaces on stderr"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B4-all-breadcrumb POSTED=false deferred guard ---
@@ -924,7 +924,7 @@ write_preflight_plan
 out=$(LARCH_TEST_POSTED=false run_bootstrap --up-to-phase all --issue-number 123 --run-id runDeferredBreadcrumb --preflight-tmpdir "$SANDBOX/preflight" 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B4-all-breadcrumb exit 0"
 assert_contains "DEFERRED=true" "$out" "B4-all-breadcrumb deferred"
-n=$(printf '%s\n' "$out" | grep -cF '→ step0: coder=cursor' || true)
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: coder=codex' || true)
 if [ "$n" -eq 1 ]; then
     PASS=$((PASS + 1))
     echo "PASS: B4-all-breadcrumb coder breadcrumb once"
@@ -1123,7 +1123,7 @@ write_gp1_session_setup
 write_preflight_plan
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCursor --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-implicit-cursor exit 0"
-assert_line "coder=cursor" "$out" "B5-coder-implicit-cursor coder"
+assert_line "coder=codex" "$out" "B5-coder-implicit-cursor coder"
 assert_line "coder_fallback=" "$out" "B5-coder-implicit-cursor no fallback"
 assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-implicit-cursor no bail"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
@@ -1145,14 +1145,11 @@ exit 0
 STUB
 chmod +x "$SANDBOX/scripts/session-setup.sh"
 write_preflight_plan
-stderrf=$(mktemp "${TMPDIR:-/tmp}/larch-ib-coder.XXXXXX")
-out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCodex --preflight-tmpdir "$SANDBOX/preflight" 2>"$stderrf") && rc=$? || rc=$?
-err=$(cat "$stderrf")
-rm -f "$stderrf"
+out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runCoderCodex --preflight-tmpdir "$SANDBOX/preflight" 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B5-coder-implicit-codex exit 0"
 assert_line "coder=codex" "$out" "B5-coder-implicit-codex coder"
-assert_contains "Cursor unavailable — falling back to Codex implementer" "$err" "B5-coder-implicit-codex warning"
-assert_contains "Step 0 (implementer waterfall)" "$(cat "$SANDBOX_TMP/execution-issues.md")" "B5-coder-implicit-codex execution issue"
+assert_line "coder_fallback=" "$out" "B5-coder-implicit-codex no fallback"
+assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B5-coder-implicit-codex no bail"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
 
 # --- B5-coder-implicit-claude ---
@@ -1179,8 +1176,8 @@ rm -f "$stderrf"
 assert_rc "$rc" 0 "B5-coder-implicit-claude exit 0"
 assert_line "coder=claude" "$out" "B5-coder-implicit-claude coder"
 assert_line "coder_fallback=true" "$out" "B5-coder-implicit-claude fallback"
-assert_contains "Cursor unavailable — falling back to Codex implementer" "$err" "B5-coder-implicit-claude cursor warning"
-assert_contains "Codex unavailable — falling back to Claude implementer" "$err" "B5-coder-implicit-claude codex warning"
+assert_contains "Codex unavailable — falling back to Cursor implementer" "$err" "B5-coder-implicit-claude codex warning"
+assert_contains "Cursor unavailable — falling back to Claude implementer" "$err" "B5-coder-implicit-claude cursor warning"
 issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_occurrences "Step 0 (implementer waterfall)" "$issues" 2 "B5-coder-implicit-claude execution issues"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
@@ -2122,7 +2119,7 @@ assert_contains "IMPLEMENT_BAIL_REASON=dirty-tree" "$out" "B7-coder-dirty-tree r
 out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase coder --issue-number 123 --run-id runDirtyResumeCoder --preflight-tmpdir "$SANDBOX/preflight" --resume-plan-tail 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "B7-coder-dirty-tree resume tail exit 0"
 assert_line "IMPLEMENT_BAIL_REASON=" "$out" "B7-coder-dirty-tree resume tail clears bail"
-assert_line "coder=cursor" "$out" "B7-coder-dirty-tree resume tail reaches coder"
+assert_line "coder=codex" "$out" "B7-coder-dirty-tree resume tail reaches coder"
 assert_contains "PLAN_FILE=$SANDBOX_TMP/plan.txt" "$out" "B7-coder-dirty-tree resume tail keeps original tmpdir"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
 if [ "$(printf '%s\n' "$invoke" | grep -cF 'check-mid-run-dirty-tree --mode checkpoint' || true)" -eq 2 ]; then
@@ -2684,7 +2681,7 @@ else
     echo "FAIL: Edge-breadcrumb-count-coder-green expected 5 got $n"
     printf '%s\n' "$out" | sed 's/^/    /'
 fi
-n=$(printf '%s\n' "$out" | grep -cF '→ step0: coder=cursor' || true)
+n=$(printf '%s\n' "$out" | grep -cF '→ step0: coder=codex' || true)
 if [ "$n" -eq 1 ]; then
     PASS=$((PASS + 1))
     echo "PASS: Edge-breadcrumb-count-coder-green coder breadcrumb once"

@@ -3,7 +3,7 @@
 # Sibling to launch-cursor-ci.sh / launch-codex-ci.sh; unlike launch-claude-subprocess.sh,
 # this path does NOT inject the read-only reviewer preamble.
 #
-# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth binary-missing health-probe timeout parse refusal unknown
+# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth quota binary-missing health-probe timeout parse refusal unknown
 
 set -euo pipefail
 

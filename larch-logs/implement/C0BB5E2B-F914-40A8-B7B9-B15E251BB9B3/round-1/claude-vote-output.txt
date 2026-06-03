@@ -1,0 +1,27 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan explicitly chose fail-open to mirror Cursor probe pattern; net improvement over pre-fix state
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same as FINDING_1; plan-documented design decision
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- git commit message excerpt parsed as finding; no code concern
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- git commit message excerpt parsed as finding; no code concern
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security clearance statement (positive assessment), not a bug
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security clearance statement (positive assessment), not a bug
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- security clearance statement (positive assessment), not a bug
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- WARN-only blast radius; regex consistent with existing dispatch-plan-review-panel.sh pattern per plan
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- only causes false-positive WARN (safe direction); consistent with codebase sentinel pattern
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan explicitly chose to mirror Cursor probe fail-open behavior
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly acknowledged as residual risk deferred to circuit-breaker work
+FINDING_13: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- uncertain whether legacy NO_ISSUES_FOUND appears in plan-review (vs code-review) paths; blast radius is false-positive WARN only
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- git commit message excerpt parsed as finding
+FINDING_20: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- git commit message excerpt parsed as finding
+FINDING_21: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=good UNCERTAIN=true -- CLI option order before -- is not order-sensitive in standard parsers; claim depends on unverified codex arg-ordering semantics
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- acknowledged residual risk; SIMPLE-tier plan explicitly deferred --json parity
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same as FINDING_1; plan explicitly designed fail-open to mirror Cursor probe
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- sentinel-model check verifies model forwarding; --with-effort coverage belongs in agent-model-args.sh unit tests
+FINDING_25: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_26: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive code assessment, not a problem worth filing as issue
+FINDING_27: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

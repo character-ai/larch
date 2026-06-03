@@ -1,0 +1,22 @@
+I'll read the precomputed diff and compare the checkpoint script's gate invocation against the removed inline block in `SKILL.md`.
+Comparing gate invocation and input-resolution logic in the checkpoint script against the removed inline block.
+Checking whether the ndjson discovery change affects gate argument wiring in edge cases.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+The `oos-disposition-gate.sh` invocation in `skills/implement/scripts/oos-disposition-checkpoint.sh:177-182` is byte-equivalent to the removed inline block from `skills/implement/SKILL.md` (formerly ~lines 1257–1262 on `main`) for every gate argument the scout listed:
+
+| Argument | Checkpoint | Inline (removed) | Match |
+|---|---|---|---|
+| Optional flags | `"${_gate_extra[@]+"${_gate_extra[@]}"}"` (`--fork-mode`, `--repo-unavailable`, `--oos-issues-ndjson`) | same | yes |
+| `--accepted-files` | `"$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$_oos_design_path,$IMPLEMENT_TMPDIR/oos-accepted-review.md"` | same | yes |
+| `--filed-urls-file` | `"$IMPLEMENT_TMPDIR/oos-issues-created.md"` | same | yes |
+| `--filed-urls-strict-file` | `"$_oos_design_path"` (not ndjson) | same | yes |
+| `--commit-range` | `"$_oos_range"` | same | yes |
+
+Supporting input plumbing that feeds those args also matches on the happy path: fork/repo flags from `ship-pr-state.sh`, merge-base fallback chain for `_oos_range`, 3-way `_oos_design_path` resolution (`--design-tmpdir` / `DESIGN_TMPDIR` / `design-export/` / default), and the accepted-files CSV order (`oos-accepted-main-agent.md`, design path, `oos-accepted-review.md`).
+
+One deliberate contract refinement (round 2 commit `fa991f338`, not a gate-wiring bug): ndjson find-fallback at `oos-disposition-checkpoint.sh:130` now runs only when `_RUN_ID` is empty, whereas inline ran whenever the RUN_ID-keyed path was missing. When `session-id` is stale/non-empty but its keyed ndjson is absent, the checkpoint omits `--oos-issues-ndjson` and fails the precondition (exit 2) instead of binding a sole foreign ndjson via `find`. That can change gate disposition outcomes vs the old inline block, but it is intentional — covered by the harness case `checkpoint stale RUN_ID rejects foreign ndjson fallback` in `test-oos-disposition-gate.sh:604-628`.

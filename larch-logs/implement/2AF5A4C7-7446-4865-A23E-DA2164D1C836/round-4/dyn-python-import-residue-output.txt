@@ -1,0 +1,24 @@
+Reviewing `python/rebase.py` for import residue and dead constants per the scout notes.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+`import changelog` and `_CHANGELOG_BASENAMES` are still live after the Phase 1 refactor, not dead residue.
+
+- **`import changelog`** — Used in `_deterministic_prepass` at `python/rebase.py:103-104` via `changelog.auto_resolve(runner, path, cwd=cwd)`. That prepass runs inside `_resolve_conflicts` during CI-fix rebase conflict handling. It mirrors the bash ship path (`scripts/ship-pr.sh` still calls `auto-resolve-changelog.sh` on CHANGELOG conflicts per `skills/implement/references/conflict-resolution.md`).
+
+- **`_CHANGELOG_BASENAMES`** — Referenced at `python/rebase.py:103` to decide which conflict paths get the changelog auto-resolve branch. The diff only moved it (removed it with deleted re-bump helpers, then re-added it next to `_redact_outbound`); it was never re-bump-only.
+
+- **`import version_bump`** — Correctly removed. Re-bump helpers (`_stage_rebump_bullets`, `_commit_changelog_after_rebump`, `has_bump` classify/apply block, etc.) are gone from the diff; no remaining references in `python/rebase.py`.
+
+The plan line “Drop `import changelog` and `import version_bump`” is over-broad for `changelog`: only the re-bump/changelog-commit machinery should drop that import; conflict auto-resolve still needs it. The branch matches that narrower intent.
+
+No other unused imports or constants were introduced in `python/rebase.py` by this refactor (`json`, `re`, `_BUMP_SUBJECT_RE`, `_SEMVER_RE` removals align with deleted call sites).
+
+### Out-of-Scope Observations
+
+- **correctness** Issue/plan text (`larch:plan` / implementation plan) — The plan bundles `_CHANGELOG_BASENAMES` with constants “used only by” removed re-bump functions. In code it also gates `_deterministic_prepass`; keeping it is correct. Updating the plan wording would reduce future “import residue” false positives; not a runtime defect.
+
+- **code-quality** `python/rebase.py:285` — Function remains named `rebase_and_rebump` though rebump is gone; `RebaseResult.new_version` is always `None` (documented at `302-303`, asserted in `python/test_rebase.py`). Pre-existing naming debt, not introduced by the import refactor.
+
+**Branch commits (since merge-base with main):** `d37ec4e86` Phase 1 core, plus three review-feedback rounds and relevant-checks/larch-logs commits.

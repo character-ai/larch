@@ -1,0 +1,40 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- prescan is exercised by the test case; removing it worsens FINDING_36
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- set -e after gate applies to post-gate if-chain and log_checkpoint_failure, so it is functional
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- single-file design is plan-intentional; latent complexity is not concrete harm
+OOS_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+OOS_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- test already has a complementary negative grep that prevents the false-positive
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the stale-RUN_ID test already locks in exit 2 for the RUN_ID-set-keyed-missing-foreign-exists case
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- negative guard already present in test; same as FINDING_12
+FINDING_17: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_19: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security observation with no actionable problem stated
+FINDING_20: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation confirming path handling is safe
+FINDING_21: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation confirming authz bypass handling is correct
+FINDING_22: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation confirming redaction path is correct
+FINDING_23: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation confirming ndjson tightening is a hardening not a regression
+OOS_24: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
+OOS_25: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_26: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_27: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_28: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_29: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- negative guard already present; same as FINDING_12/16
+FINDING_30: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_31: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_32: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_33: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+OOS_34: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- observation that the test locks in the new contract but does not assert old behavior; no concrete problem worth filing
+OOS_35: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_36: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_37: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation confirming Bash 3.2 safety
+OOS_38: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation explaining set -e semantics correctly
+OOS_39: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation confirming ndjson hardening is intentional
+OOS_40: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational commit list with no problem to file

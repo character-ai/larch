@@ -23,6 +23,8 @@ audit:
 - **Common collectors** — `scripts/run-external-agent.sh` and `scripts/collect-agent-results.sh`; sanitization, retry, and `.meta` parser changes affect all lanes.
 - **Health probe** — `scripts/check-reviewers.sh`; healthy/unhealthy semantics must stay aligned.
 - **Cross-doc surface** — `docs/external-reviewers.md`, `docs/configuration-and-permissions.md`, and SKILL.md prose enumerating supported tools must list both identically.
+- **Write-sandbox grant (`--add-dir` vs `--workspace`)** — Codex uses `--add-dir "$SESSION_TMPDIR"` to grant write access to `codex-step2-out/` only (the dedicated output subdir). Cursor uses `--workspace "$PWD"` and has no equivalent `--add-dir` grant; this is intentional (different sandbox models). Do not add a symmetric `--add-dir` grant to the Cursor launcher.
+- **Codex Step 2 grant hardening** — `launch-codex-implement.sh` rejects symlink parents for manifest/qa/transcript paths and refuses `SESSION_TMPDIR` canonical-equal to `IMPLEMENT_TMPDIR` when the env var is set (defense against symlink widening and caller regressions). Mirror the symlink posture of `launch-review.sh` `--codex-add-dir` validation.
 
 Missing any surface is a common OOS-issue generator after an external-tool
 integration sweep.

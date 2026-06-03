@@ -1,0 +1,20 @@
+Reviewing the plan against `scripts/test-design-structure.sh` and related files.
+Checking how similar ordering pins anchor step headings and whether Gate A has structural coverage:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:163	Standalone `invoke-plan-validator.sh` pin on discussion-rounds.md is absent from the migration table	After prose swaps inline validator for `design-postplan-emit.sh`, line 163 still requires `invoke-plan-validator.sh` in discussion-rounds.md and `make test-design-structure` fails despite completing 14c14g	Add line 163 to the coupled migration (retarget to `design-postplan-emit.sh` or drop the pin if folded into 14c14f/g)
+2	in_scope	important	correctness	plan.txt:171-178 / skills/design/references/approval-gates.md:156-159	Proposed 14c14e awk uses first bare `Step 2b.5` before first `design-postplan-emit.sh`, but shared-pipeline step 6 already contains `/ Step 2b.5` ahead of the driver step	CI false-fails on correct prose, or implementers delete the guard substring and weaken pins 456/459	Anchor ordering on the normative procedure heading (`Step 2b.5 — Plan-size threshold check`, as in step 9) or awk only steps 7–9; reword step 6 to keep `before \`ACTION=EMIT_PLAN\`` without a bare `Step 2b.5` token
+3	in_scope	important	correctness	plan.txt:171-178 / skills/design/references/discussion-rounds.md:126	Same ordering-awk hazard for 14c14h in the plan-revision paragraph	Guard text `before \`ACTION=EMIT_PLAN\` / Step 2b.5` precedes the driver call, so the migrated pin fails vacuously or forces prose churn	Same heading-scoped awk as 14c14e, or split guard vs emit/validate sentences so the first `Step 2b.5` is the procedure reference after `design-postplan-emit.sh`
+4	in_scope	important	correctness	plan.txt:145-146 / plan.txt:183 / scripts/test-design-structure.sh:456-460	Plan claims pins 456/459 stay unchanged on literal `before \`ACTION=EMIT_PLAN\``, but Approach/UPDATED text paraphrases as “before the driver issues `ACTION=EMIT_PLAN`”	Implementers follow the paraphrase, grep pins at 456–460 break, or pins pass while ordering prose drifts	Require retaining the exact substring `before \`ACTION=EMIT_PLAN\`` on at least one line per file (e.g. shared-pipeline step 6), and align plan wording with that literal
+5	in_scope	latent	correctness	plan.txt:156-159 / scripts/test-design-structure.sh:155-159	New driver pins say “EMIT at-or-before validator (order check)” but only list substring greps, not line-order awk	Greps pass if `invoke-plan-validator.sh` is moved above EMIT dispatch in `design-postplan-emit.sh`	Mirror 14b10-style awk on `design-postplan-emit.sh` (first `ACTION=EMIT_PLAN` / `design-driver` before first `invoke-plan-validator.sh`)
+
+**1. [correctness]** `scripts/test-design-structure.sh:163` — The migration table retargets 14c14g but not the separate `contains "$DISCUSSION_MD" 'invoke-plan-validator.sh'` pin. Post-change `discussion-rounds.md` will not mention the helper directly.
+
+**2. [correctness]** `plan.txt:171-178` / `approval-gates.md:156-159` — 14c14e as written conflicts with step 6’s existing `before \`ACTION=EMIT_PLAN\` / Step 2b.5` text that appears before the driver step.
+
+**3. [correctness]** `plan.txt:171-178` / `discussion-rounds.md:126` — Same issue for 14c14h in the single plan-revision paragraph.
+
+**4. [correctness]** `plan.txt:183` vs `plan.txt:145-146` — “unchanged” 456/459 pins vs paraphrased ordering phrase.
+
+**5. [latent/correctness]** Driver substring greps without order awk (plan lines 156-159).
+
+Pins adequately covered when implemented as specified: 14b10, 14c14c/d/f, FINDING_21 retarget, 1124-1125 move to driver, new driver executable/KV pins, SKILL `invoke-plan-validator` at line 83 (Step 5c). Gate A `defects-found` pin is optional per plan. No other `ACTION=EMIT_PLAN` / `invoke-plan-validator` / inline snapshot pins in `test-design-structure.sh` fall outside the migration table except line 163.

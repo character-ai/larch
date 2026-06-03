@@ -119,7 +119,7 @@ When `manual_gate_b=true`, fire the `AskUserQuestion` block below verbatim.
 
 `AskUserQuestion` with exactly three options:
 
-- **Apply all** — Execute `### Apply-all body` verbatim. The dedup-sweep, shared post-apply pipeline, `ACTION=EMIT_PLAN`, validator invocation, and Step 2b.5 all run there.
+- **Apply all** — Execute `### Apply-all body` verbatim. The dedup-sweep, shared post-apply pipeline, `design-postplan-emit.sh`, and Step 2b.5 all run there.
 - **Go through each** — Iterate findings in `FINDING_N` order. For each, fire `AskUserQuestion` (batch up to 4 findings per call) with three options: apply / skip / switch to discussion mode. If at any per-finding prompt the user picks "switch to discussion mode", stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A (no plan revision occurs on this exit path). Otherwise, after the iteration completes, run the single post-iteration apply/update path documented below; the Step 2b.5 call fires **once** per Gate B settled path, not once per per-finding apply.
 - **Switch to discussion mode** — Skip plan revision entirely. Exit to Gate A. `plan.txt` remains as it was before Step 3.
 Question text depends on which rubric applies (see **Severity classification rubric**):
@@ -154,10 +154,9 @@ After the chosen findings have been applied to `plan.txt` (either the full accep
 4. Rewrite `plan.txt` via the Write tool with duplicates removed.
 5. Run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/gate-b-dedup-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" --dedup` only after step 1 (mechanical section-aware dedup plus trailer key/value preservation — same `dedup_plan_preserve_optional_trailers` helper as `plan-review-loop.sh`). Missing `.gate-b-optional-trailer-keys` is exit **3** (fail closed). It prints exactly one breadcrumb of the shape `dedup-sweep: removed <N> duplicate line(s) from plan.txt` (use `0` when none were found). On exit **1** (optional trailer keys/values lost or newly introduced), revise again rather than continuing with a legacy total-only estimate; on exit **2** (dedup failure), treat like `emit-plan-failed` manual handling.
 6. After step 5 succeeds and before `ACTION=EMIT_PLAN` / Step 2b.5, the snapshotted keys are already validated by `gate-b-dedup-plan.sh`; do not skip step 5.
-7. Only after the breadcrumb and optional trailer guard (when applicable) proceed to `ACTION=EMIT_PLAN` so `diff-lines.txt` reflects the final plan.
-8. When `review_budget` is `full`, immediately run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt"` (pipes `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh`; same mechanical dispatch as `SKILL.md` Step 2b).
-9. Then run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`.
-10. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
+7. Only after the breadcrumb and optional trailer guard (when applicable) run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh" --design-tmpdir "$DESIGN_TMPDIR"` (snapshot suppressed; no `--force-validate`) so the driver issues `ACTION=EMIT_PLAN`, refreshes `diff-lines.txt`, and applies the shared validator quick-skip contract. Use the canonical session-env / pause prelude, `set +e` capture, and the same file-first/stdout KV parse as `SKILL.md` Step 2b.
+8. On driver exit `0` with `VALIDATE_STATUS=defects-found`, execute **### Plan command validator failure (shared)** with `--site` context `design Step 3.5 / Gate B`; on exit `0` otherwise, run the **Step 2b.5 — Plan-size threshold check** procedure from `SKILL.md`. Driver exit `1` / `2` handling mirrors Step 2b (`missing-diff-lines`, `snapshot-failed`, `validate-driver-failed`, or config error).
+9. Only when Step 2b.5 returns to caller (no Split or Cancel selected) proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b (architecture diagram) — Step 4 (rejected-findings report) and Step 4b (Gate C) follow in normal sequence.
 
 ### Gate B plan revision and Step 2b.5
 

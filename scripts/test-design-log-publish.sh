@@ -78,6 +78,14 @@ if [[ "$1" == "pr" ]]; then
             echo "https://github.com/owner/repo/pull/101"
             exit 0
             ;;
+        checks)
+            if [[ -n "${GH_STUB_CHECKS_RC:-}" && "${GH_STUB_CHECKS_RC}" != "0" ]]; then
+                echo "${GH_STUB_CHECKS_OUT:-some required checks failed}"
+                exit "${GH_STUB_CHECKS_RC}"
+            fi
+            echo "all checks passing"
+            exit 0
+            ;;
         merge)
             if [[ -n "${GH_STUB_MERGE_RC:-}" && "${GH_STUB_MERGE_RC}" != "0" ]]; then
                 exit "${GH_STUB_MERGE_RC}"
@@ -264,7 +272,7 @@ export TEST_CLONE_ROOT="$clone"
 export TEST_MERGE_BRANCH="larch-log-design-RUNPUB1"
 unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
 GH_STUB_EXPECT_PR_BODY_FILE="$TMP/expected-pr-body.txt"
-printf 'Automated design log directory for run RUNPUB1. Commit uses [skip ci].' >"$GH_STUB_EXPECT_PR_BODY_FILE"
+printf 'Automated design log directory for run RUNPUB1. Merged once required CI checks pass.' >"$GH_STUB_EXPECT_PR_BODY_FILE"
 export GH_STUB_EXPECT_PR_BODY_FILE
 
 mkdir -p "$TMP/design/render-cache/nested" "$TMP/design/plan-review/round-1"
@@ -313,6 +321,9 @@ grep -q '"result"' "$clone/larch-logs/design/RUNPUB1/plain.json" || fail "plain.
 grep -qE '"ok"[[:space:]]*:[[:space:]]*1' "$clone/larch-logs/design/RUNPUB1/voter-output-1.json" || fail "json body missing"
 grep -q 'pr create' "$GH_STUB_LOG" || fail "expected gh pr create in log"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected gh pr merge in log"
+grep -q 'pr checks' "$GH_STUB_LOG" || fail "expected gh pr checks (required CI wait) before merge"
+grep -Fq -- '--admin' "$GH_STUB_LOG" || fail "expected gh pr merge --admin in log"
+! grep -Fq -- '--auto' "$GH_STUB_LOG" || fail "gh pr merge must not use --auto (review gate would never complete it)"
 grep -Fq -- '--body-file' "$GH_STUB_LOG" || fail "expected gh pr create --body-file in log"
 ! grep -Eq '(^| )--body( |$)' "$GH_STUB_LOG" || fail "gh pr create should not use inline --body" # lint-gh-body-inline: ok gh-stub assertion fixture
 unset GH_STUB_EXPECT_PR_BODY_FILE
@@ -362,7 +373,7 @@ git -C "$clone_pause" pull -q origin main
 jq -e '.paused == true' "$clone_pause/larch-logs/design/RUNPAUSE1/manifest.json" >/dev/null || fail "pause manifest missing paused=true"
 git -C "$clone_pause" fetch -q origin larch-log-design-RUNPAUSE1:larch-log-design-RUNPAUSE1
 pause_subject=$(git -C "$clone_pause" log -1 --format=%s larch-log-design-RUNPAUSE1)
-[[ "$pause_subject" == "chore(larch-logs): pause design run RUNPAUSE1 [skip ci]" ]] || fail "pause commit subject mismatch: $pause_subject"
+[[ "$pause_subject" == "chore(larch-logs): pause design run RUNPAUSE1" ]] || fail "pause commit subject mismatch: $pause_subject"
 
 echo "=== pause publish accepts no-op when default branch already has snapshot ==="
 TMPPAUSE_NOOP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-noop.XXXXXX")
@@ -698,6 +709,31 @@ set -e
 [[ "$out_m" == *"PR_NUMBER=101"* ]] || fail "merge fail PR_NUMBER: $out_m"
 [[ "$out_m" == *"RECOVERY_BRANCH=larch-log-design-RUNMERGE1"* ]] || fail "merge fail RECOVERY_BRANCH: $out_m"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected pr merge in stub log"
+
+echo "=== required CI check failure refuses merge; preserves RECOVERY_BRANCH; no gh pr merge ==="
+TMPCI=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-cifail.XXXXXX")
+clone_ci=$(setup_clone_with_origin_head "$TMPCI")
+stub_ci="$TMPCI/stub"
+GH_STUB_LOG="$TMPCI/gh-cifail.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_ci"
+export PATH="$stub_ci:$PATH"
+unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPCI/design"
+printf 'c\n' >"$TMPCI/design/cifail.txt"
+set +e
+out_ci=$(
+    (cd "$clone_ci" && GH_STUB_CHECKS_RC=8 bash "$PUBLISH" --design-tmpdir "$TMPCI/design" --run-id "RUNCIFAIL1" --issue 7 --repo owner/repo) 2>/dev/null
+)
+rc_ci=$?
+set -e
+[[ "$out_ci" == *"PUBLISH_OK=false"* ]] || fail "ci fail PUBLISH_OK: $out_ci"
+[[ "$rc_ci" -eq 1 ]] || fail "ci fail should exit 1 (got $rc_ci)"
+[[ "$out_ci" == *"RECOVERY_BRANCH=larch-log-design-RUNCIFAIL1"* ]] || fail "ci fail RECOVERY_BRANCH: $out_ci"
+grep -q 'pr checks' "$GH_STUB_LOG" || fail "expected pr checks (CI wait) in stub log"
+! grep -q 'pr merge' "$GH_STUB_LOG" || fail "gh pr merge must NOT run when required CI checks fail"
+rm -rf "$TMPCI"
 
 echo "=== git push failure after commit preserves recovery ref; no gh pr merge ==="
 _PRE_PUSH_PATH="$PATH"

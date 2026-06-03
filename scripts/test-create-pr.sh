@@ -319,4 +319,52 @@ if grep -q 'ghp_'"123456789012345678""901234567890123456" "$TMPROOT/push-redact.
     fail "push redaction stderr leaked raw token: $(cat "$TMPROOT/push-redact.err")"
 fi
 
+# Test: --body-file secrets are redacted before gh pr create.
+repo_body_redact=$(setup_repo body-redact)
+printf 'token ghp_123456789012345678901234567890123456 in body\n' > "$repo_body_redact/body.md"
+git -C "$repo_body_redact" add body.md
+git -C "$repo_body_redact" commit -m "body with secret" >/dev/null
+body_redact_stub_dir="$TMPROOT/bin-body-redact"
+mkdir -p "$body_redact_stub_dir"
+cat > "$body_redact_stub_dir/gh" <<'GH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${GH_LOG:?}"
+if [[ "$1 $2" == "pr view" ]]; then
+    exit 1
+fi
+if [[ "$1 $2" == "repo view" ]]; then
+    echo "main"
+    exit 0
+fi
+if [[ "$1 $2" == "pr create" ]]; then
+    body_file=""
+    while [[ $# -gt 0 ]]; do
+        if [[ "$1" == "--body-file" && $# -ge 2 ]]; then
+            body_file="$2"
+            break
+        fi
+        shift
+    done
+    if [[ -z "$body_file" || ! -f "$body_file" ]]; then
+        echo "missing body file" >&2
+        exit 2
+    fi
+    if grep -q 'ghp_123456789012345678901234567890123456' "$body_file"; then
+        echo "body file leaked raw token" >&2
+        exit 3
+    fi
+    if ! grep -q '<REDACTED-TOKEN>' "$body_file"; then
+        echo "body file missing redaction placeholder" >&2
+        exit 4
+    fi
+    echo "https://github.com/fork/repo/pull/999"
+    exit 0
+fi
+exit 2
+GH
+chmod +x "$body_redact_stub_dir/gh"
+out=$(cd "$repo_body_redact" && GH_LOG="$TMPROOT/body-redact-gh.log" PATH="$body_redact_stub_dir:$stub_dir:$PATH" "$SCRIPT" --title "Body redact" --body-file body.md --repo fork/repo)
+grep -Fxq 'PR_STATUS=created' <<<"$out" || fail "body redaction path did not report created"
+
 echo "PASS: test-create-pr.sh"

@@ -242,3 +242,59 @@ def test_parity_indented_pem_pipeline() -> None:
     assert "MIIBOgIBAAJB" not in py_out
     assert "prefix line" in py_out
     assert "suffix line" in py_out
+
+
+GATE_SH = REPO_ROOT / "scripts" / "scrub-log-secrets.sh"
+
+
+def test_scrub_log_secrets_redacts_cursor_key() -> None:
+    text = (
+        "cursor agent --api-key "
+        "crsr_1620abcdefghijklmnopqrstuvwxyz0123456789 --workspace /x\n"
+    )
+    scrubbed, findings = redact.scrub_log_secrets(text)
+    assert "crsr_1620" not in scrubbed
+    assert "<REDACTED-TOKEN>" in scrubbed
+    assert findings == {"cursor-api-key": 1}
+
+
+def test_scrub_log_secrets_leaves_clean_text_unchanged() -> None:
+    text = "prose line\nuuid AAAAAAAA-1111-2222-3333-444444444444\n"
+    scrubbed, findings = redact.scrub_log_secrets(text)
+    assert scrubbed == text
+    assert not findings
+
+
+def test_scrub_log_secrets_backstops_github_token() -> None:
+    # Split prefix so this fixture is not itself a scanner hit.
+    token = "ghp_" + "abcdefghijklmnopqrstuvwxyz0123456789AB"
+    scrubbed, findings = redact.scrub_log_secrets(f"token {token} end\n")
+    assert token not in scrubbed
+    assert findings == {"github-token": 1}
+
+
+@pytest.mark.skipif(
+    not GATE_SH.is_file() or shutil.which("bash") is None,
+    reason="scrub-log-secrets.sh unavailable",
+)
+def test_scrub_log_secrets_parity_with_shell_gate(tmp_path: Path) -> None:
+    text = (
+        "cursor --api-key crsr_1620abcdefghijklmnopqrstuvwxyz0123456789 --workspace /x\n"
+        # Split the Slack prefix across adjacent literals so this fixture is not
+        # itself a secret-scanner hit; Python concatenates to the same value.
+        "slack xox"
+        "b-1234567890-abcdefghijklmnop trailing\n"
+        "clean prose line\n"
+    )
+    py_scrubbed, _ = redact.scrub_log_secrets(text)
+    target = tmp_path / "findings.md"
+    _ = target.write_text(text, encoding="utf-8")
+    _ = subprocess.run(
+        [str(GATE_SH), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    sh_scrubbed = target.read_text(encoding="utf-8")
+    assert py_scrubbed == sh_scrubbed
+    assert "crsr_1620" not in sh_scrubbed

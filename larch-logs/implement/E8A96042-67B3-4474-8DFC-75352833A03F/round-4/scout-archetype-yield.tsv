@@ -1,0 +1,12 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+structure	code-quality	1	7	2	0	0.285714
+correctness	correctness	1	3	3	0	1.000000
+testing	risk-integration	1	1	1	0	1.000000
+security	security	1	4	3	0	0.750000
+edge-cases	correctness	1	2	1	0	0.500000
+plan-fidelity	architecture	1	2	1	0	0.500000
+dyn-shell-portability	correctness	1	2	0	0	0.000000
+dyn-exit2-stream-ownership	correctness	1	0	0	0	n/a
+dyn-envelope-key-completeness	architecture	1	2	1	0	0.500000
+dyn-awk-fence-correctness	correctness	1	1	1	0	1.000000
+dyn-missing-file-coverage	architecture	1	1	1	0	1.000000

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # design-log-publish.sh — flush $DESIGN_TMPDIR into committed larch-logs/design/<run-id>/
-# via a disposable git worktree, push, PR, squash-merge with --admin, and worktree cleanup.
+# via a disposable git worktree, push, PR, wait for required CI, squash --admin merge on green, and worktree cleanup.
 #
 # Output (stdout KEY=value lines; diagnostics on stderr):
 #   PUBLISH_OK=true|false
@@ -47,7 +47,7 @@ REASON="final"
 usage() {
     larch_err "Usage:"
     larch_err "  design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--reason final|pause] [--dry-run]"
-    larch_err "Writes trimmed + redacted design tmpdir artifacts into a disposable worktree, commits with [skip ci], pushes, opens/merges a PR."
+    larch_err "Writes trimmed + redacted design tmpdir artifacts into a disposable worktree, commits, pushes, opens a PR, waits for required CI checks, then squash-merges with --admin once they pass."
 }
 
 while [[ $# -gt 0 ]]; do
@@ -589,6 +589,32 @@ if ! mv -f "$mf_tmp" "$MF"; then
     exit 0
 fi
 
+# Pre-flush secret gate: scrub secret-shaped values (Cursor keys et al.) from
+# the staged run tree before commit. Fail-closed on scrub failure. On a real
+# redaction, propagate the count via emit_kv SECRET_SCRUB_VIOLATIONS so the
+# /design report can warn the operator to rotate the exposed credential.
+scrub_gate="$SCRIPT_DIR/scrub-log-secrets.sh"
+if [[ ! -x "$scrub_gate" ]]; then
+    larch_err "design-log-publish: secret scrub gate missing: $scrub_gate"
+    emit_publish_result false
+    exit 0
+fi
+set +e
+scrub_out="$("$scrub_gate" "$RUN_DEST")"
+scrub_rc=$?
+set -e
+if [[ "$scrub_rc" -ne 0 ]]; then
+    larch_err "design-log-publish: secret scrub gate failed (rc=$scrub_rc) for $RUN_DEST; refusing to flush"
+    emit_publish_result false
+    exit 0
+fi
+scrub_n="$(printf '%s\n' "$scrub_out" | sed -n 's/^LARCH_SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
+case "${scrub_n:-}" in ''|*[!0-9]*) scrub_n=0 ;; esac
+if [[ "$scrub_n" -gt 0 ]]; then
+    larch_err "design-log-publish: WARNING — redacted $scrub_n secret-shaped value(s) from design run $RUN_ID logs before flush; ROTATE the affected credential(s)"
+    emit_kv SECRET_SCRUB_VIOLATIONS "$scrub_n"
+fi
+
 rel="larch-logs/design/$RUN_ID"
 _porcelain=""
 if ! _porcelain=$(git -C "$WT_DIR" status --porcelain -- "$rel" 2>&1); then
@@ -624,9 +650,9 @@ if ! git -C "$WT_DIR" add -- "$rel"; then
     exit 0
 fi
 if [[ "$REASON" == "pause" ]]; then
-    commit_subject="chore(larch-logs): pause design run ${RUN_ID} [skip ci]"
+    commit_subject="chore(larch-logs): pause design run ${RUN_ID}"
 else
-    commit_subject="chore(larch-logs): flush design run ${RUN_ID} [skip ci]"
+    commit_subject="chore(larch-logs): flush design run ${RUN_ID}"
 fi
 if ! git -C "$WT_DIR" commit -m "$commit_subject" -- "$rel" >/dev/null; then
     larch_err "design-log-publish: git commit failed"
@@ -644,7 +670,7 @@ PR_BODY_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-log-pr-body.XXXXXX") || {
     emit_publish_result false
     exit 0
 }
-printf 'Automated design log directory for run %s. Commit uses [skip ci].' "$RUN_ID" >"$PR_BODY_TMP"
+printf 'Automated design log directory for run %s. Merged once required CI checks pass.' "$RUN_ID" >"$PR_BODY_TMP"
 
 push_args=(-u origin "$WT_BRANCH")
 if [[ "$REASON" == "pause" ]]; then
@@ -748,16 +774,34 @@ if [[ -z "$PR_NUM" ]]; then
     rm -f "$view_fail_file"
 fi
 
-merge_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-merge.XXXXXX") || {
-    larch_err "design-log-publish: mktemp failed for merge capture"
-    emit_publish_result false
-    exit 0
-}
-if with_transient_retry transient_envelope_predicate_none "$merge_fail_file" \
-    gh pr merge "${gh_repo_args[@]}" "$PR_NUM" --squash --admin --delete-branch; then
-    merge_rc=0
+# Trigger CI by committing without a [skip ci] marker, then wait for the PR's
+# required status checks and squash --admin merge once they pass. --admin (not
+# --auto) is deliberate: this repo's review ruleset has no bot reviewer, so a
+# server-side --auto merge would enable but never complete. --admin still
+# bypasses the review gate, but CI now gates the merge because we refuse to
+# merge below on any non-zero result — a failed required check, or a repo with
+# no required checks at all, fails closed (PUBLISH_OK=false). The watch is
+# intentionally unbounded (no local timeout machinery yet — deferred to the
+# ship-pr Python migration); GitHub's per-job timeouts bound the realistic wait.
+set +e
+ci_wait_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]}" --required --watch --fail-fast 2>&1)
+ci_rc=$?
+set -e
+if [[ "$ci_rc" -ne 0 ]]; then
+    larch_err "design-log-publish: required CI checks did not pass (rc=$ci_rc) for PR $PR_NUM; refusing to merge: $(redact_diagnostic "${ci_wait_out:-unknown}")"
+    merge_rc="$ci_rc"
 else
-    merge_rc=$_WTR_RC
+    merge_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-merge.XXXXXX") || {
+        larch_err "design-log-publish: mktemp failed for merge capture"
+        emit_publish_result false
+        exit 0
+    }
+    if with_transient_retry transient_envelope_predicate_none "$merge_fail_file" \
+        gh pr merge "${gh_repo_args[@]}" "$PR_NUM" --squash --admin --delete-branch; then
+        merge_rc=0
+    else
+        merge_rc=$_WTR_RC
+    fi
 fi
 
 git -C "$REPO_ROOT" worktree remove --force "$WT_DIR" 2>/dev/null || true

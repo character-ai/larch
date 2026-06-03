@@ -25,6 +25,15 @@
 #   - In a scratch git repo without .claude-plugin/plugin.json, a stub-Codex
 #     run that touches only non-protected files reaches STATUS=complete
 #     (no false-positive REASON=protected-path-modified — issue #1475).
+#   - Test 13b: a stub-Codex run that writes a complete manifest then exits
+#     non-zero (self-verification failure after the work is done) is salvaged
+#     to STATUS=complete + advisory WARN_CODEX_NONZERO_EXIT=true, is
+#     dispatcher-committed, and logs a Warnings entry — not discarded as
+#     codex-runtime-failure (issue #3383). Codex-only behavior.
+#   - Test 13c / 13d: the salvage carve-out is gated on status=complete — a
+#     non-zero exit with a needs_qa manifest (13c) or a status=bailed manifest
+#     (13d) still hard-bails codex-runtime-failure (13d also asserts the
+#     dispatcher token wins over the manifest's own bail_reason).
 #   - --workflow SIMPLE is accepted (STATUS=claude_fallback as normal).
 #   - --workflow HARD is accepted (STATUS=claude_fallback as normal).
 #   - --workflow bogus exits 2 with the exact error message.
@@ -537,7 +546,7 @@ OUT_12A=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
     STEP2_TOKEN_SESSION_FILE="$TOKEN12A" \
-    STEP2_MANIFEST_PATH="$TMP12A/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP12A/codex-step2-out/manifest.json" \
     LARCH_TOKEN_SESSION_ID=stale-step2 \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP12A" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -557,7 +566,7 @@ OUT_12B=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
     STEP2_TOKEN_SESSION_FILE="$TOKEN12B" \
-    STEP2_MANIFEST_PATH="$TMP12B/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP12B/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP12B" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -626,7 +635,7 @@ chmod +x "$STUB13/codex"
 OUT_13=$(cd "$SCRATCH_REPO" && \
     PATH="$STUB13:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP13/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP13/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP13" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -639,6 +648,233 @@ if [[ "$OUT_13" == *"STATUS=complete"* ]] \
     pass
 else
     fail 13 "absent plugin.json + benign edit should reach STATUS=complete with AUTH=forbidden + MANIFEST= (no protected-path-modified false positive); got: $OUT_13"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 13b: non-zero implementer exit AFTER a complete manifest write is
+# salvaged, not discarded (issue #3383). The stub Codex writes a benign edit
+# and a status=complete manifest, then exits 1 (simulating a self-verification
+# step failing once the work was already done). The dispatcher must reach
+# STATUS=complete (dispatcher-committed), emit the advisory
+# WARN_CODEX_NONZERO_EXIT=true marker, NOT bail codex-runtime-failure, and log
+# a Warnings entry to execution-issues.md.
+# ---------------------------------------------------------------------------
+TMP13B="$SCRATCH/test13b"; mkdir -p "$TMP13B"
+printf 'fresh-step2-13b\n' > "$TMP13B/session-id"
+
+SCRATCH_REPO_13B="$SCRATCH/scratch-repo-13b"
+mkdir -p "$SCRATCH_REPO_13B"
+git -C "$SCRATCH_REPO_13B" init -q -b main
+git -C "$SCRATCH_REPO_13B" config user.email "test@example.com"
+git -C "$SCRATCH_REPO_13B" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO_13B/README.md"
+git -C "$SCRATCH_REPO_13B" add README.md
+git -C "$SCRATCH_REPO_13B" commit -q -m "init"
+
+# Stub codex: write a complete manifest, then exit non-zero.
+STUB13B="$SCRATCH/stub-bin-13b"; mkdir -p "$STUB13B"
+cat > "$STUB13B/codex" <<'STUB13B_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+echo "edited by stub" >> "$PWD/README.md"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<JSON
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [{"path": "README.md"}],
+  "commit_message": "stub: edit README after self-verify failure",
+  "summary_bullets": ["edited README"],
+  "tests_added_or_modified": [],
+  "todos_left": [],
+  "oos_observations": []
+}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+# Self-verification step fails AFTER the manifest is already written.
+exit 1
+STUB13B_CODEX
+chmod +x "$STUB13B/codex"
+
+OUT_13B=$(cd "$SCRATCH_REPO_13B" && \
+    PATH="$STUB13B:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP13B/codex-step2-out/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP13B" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>&1)
+
+if [[ "$OUT_13B" == *"STATUS=complete"* ]] \
+   && [[ "$OUT_13B" == *"WARN_CODEX_NONZERO_EXIT=true"* ]] \
+   && [[ "$OUT_13B" != *"REASON=codex-runtime-failure"* ]] \
+   && [[ "$OUT_13B" == *"ORCHESTRATOR_EDIT_AUTHORITY=forbidden"* ]] \
+   && [[ "$OUT_13B" != *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]] \
+   && [[ "$OUT_13B" == *"MANIFEST="* ]]; then
+    pass
+else
+    fail 13b "non-zero exit after complete manifest must salvage to STATUS=complete + WARN_CODEX_NONZERO_EXIT (no codex-runtime-failure bail); got: $OUT_13B"
+fi
+
+# The dispatcher must have committed the salvaged work (clean tree, stub subject).
+_13b_dirty=$(git -C "$SCRATCH_REPO_13B" status --porcelain)
+_13b_subject=$(git -C "$SCRATCH_REPO_13B" log -1 --format=%s 2>/dev/null || true)
+if [[ -z "$_13b_dirty" && "$_13b_subject" == "stub: edit README after self-verify failure" ]]; then
+    pass
+else
+    fail 13b-commit "salvaged complete manifest must be dispatcher-committed; dirty=[$_13b_dirty] subject=[$_13b_subject]"
+fi
+
+# The salvage must be recorded in the run-log Warnings section for operators.
+if [[ -s "$TMP13B/execution-issues.md" ]] \
+   && grep -Fq 'WARN_CODEX_NONZERO_EXIT=true' "$TMP13B/execution-issues.md"; then
+    pass
+else
+    fail 13b-warn-log "salvage must append a Warnings entry naming WARN_CODEX_NONZERO_EXIT to execution-issues.md; got: $(cat "$TMP13B/execution-issues.md" 2>/dev/null || echo MISSING)"
+fi
+
+# Envelope invariant: the salvage complete path must still emit exactly one
+# ORCHESTRATOR_EDIT_AUTHORITY line (the advisory WARN_ marker must not perturb
+# the count Test 11 pins for claude_fallback/bailed).
+_13b_auth_lines=$(printf '%s\n' "$OUT_13B" | grep -c '^ORCHESTRATOR_EDIT_AUTHORITY=' || true)
+if [[ "$_13b_auth_lines" == "1" ]]; then
+    pass
+else
+    fail 13b-auth-count "salvage complete envelope must emit exactly one ORCHESTRATOR_EDIT_AUTHORITY line; got $_13b_auth_lines"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 13c: salvage is gated on status=complete (issue #3383 boundary). A
+# non-zero implementer exit with a manifest that is NOT a complete manifest
+# (here: status=needs_qa) must still hard-bail codex-runtime-failure — the
+# salvage carve-out must not rescue arbitrary non-zero-exit manifests.
+# ---------------------------------------------------------------------------
+TMP13C="$SCRATCH/test13c"; mkdir -p "$TMP13C"
+printf 'fresh-step2-13c\n' > "$TMP13C/session-id"
+
+SCRATCH_REPO_13C="$SCRATCH/scratch-repo-13c"
+mkdir -p "$SCRATCH_REPO_13C"
+git -C "$SCRATCH_REPO_13C" init -q -b main
+git -C "$SCRATCH_REPO_13C" config user.email "test@example.com"
+git -C "$SCRATCH_REPO_13C" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO_13C/README.md"
+git -C "$SCRATCH_REPO_13C" add README.md
+git -C "$SCRATCH_REPO_13C" commit -q -m "init"
+
+STUB13C="$SCRATCH/stub-bin-13c"; mkdir -p "$STUB13C"
+cat > "$STUB13C/codex" <<'STUB13C_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<JSON
+{
+  "schema_version": "1",
+  "status": "needs_qa",
+  "needs_qa": {"questions": [{"id": "q1", "text": "stub question?"}]}
+}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+exit 1
+STUB13C_CODEX
+chmod +x "$STUB13C/codex"
+
+OUT_13C=$(cd "$SCRATCH_REPO_13C" && \
+    PATH="$STUB13C:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP13C/codex-step2-out/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP13C" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>&1)
+
+if [[ "$OUT_13C" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT_13C" == *"REASON=codex-runtime-failure"* ]] \
+   && [[ "$OUT_13C" != *"WARN_CODEX_NONZERO_EXIT=true"* ]] \
+   && [[ "$OUT_13C" != *"STATUS=complete"* ]]; then
+    pass
+else
+    fail 13c "non-zero exit with a non-complete (needs_qa) manifest must hard-bail codex-runtime-failure, not salvage; got: $OUT_13C"
+fi
+
+# ---------------------------------------------------------------------------
+# Test 13d: second boundary case — a status=bailed manifest plus a non-zero
+# exit must report the dispatcher's codex-runtime-failure token (NOT the
+# manifest's own bail_reason). A non-zero exit means the implementer-authored
+# manifest is not trusted as the run's verdict; only status=complete is
+# salvaged (issue #3383). Guards the pre-#3383 hard-bail for the bailed status.
+# ---------------------------------------------------------------------------
+TMP13D="$SCRATCH/test13d"; mkdir -p "$TMP13D"
+printf 'fresh-step2-13d\n' > "$TMP13D/session-id"
+
+SCRATCH_REPO_13D="$SCRATCH/scratch-repo-13d"
+mkdir -p "$SCRATCH_REPO_13D"
+git -C "$SCRATCH_REPO_13D" init -q -b main
+git -C "$SCRATCH_REPO_13D" config user.email "test@example.com"
+git -C "$SCRATCH_REPO_13D" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO_13D/README.md"
+git -C "$SCRATCH_REPO_13D" add README.md
+git -C "$SCRATCH_REPO_13D" commit -q -m "init"
+
+STUB13D="$SCRATCH/stub-bin-13d"; mkdir -p "$STUB13D"
+cat > "$STUB13D/codex" <<'STUB13D_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<JSON
+{
+  "schema_version": "1",
+  "status": "bailed",
+  "bail_reason": "stub-self-bail"
+}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+exit 1
+STUB13D_CODEX
+chmod +x "$STUB13D/codex"
+
+OUT_13D=$(cd "$SCRATCH_REPO_13D" && \
+    PATH="$STUB13D:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP13D/codex-step2-out/manifest.json" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    "$DISPATCHER" --tmpdir "$TMP13D" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>&1)
+
+if [[ "$OUT_13D" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT_13D" == *"REASON=codex-runtime-failure"* ]] \
+   && [[ "$OUT_13D" != *"REASON=stub-self-bail"* ]] \
+   && [[ "$OUT_13D" != *"WARN_CODEX_NONZERO_EXIT=true"* ]]; then
+    pass
+else
+    fail 13d "non-zero exit with a status=bailed manifest must report codex-runtime-failure (not the manifest bail_reason), and must not salvage; got: $OUT_13D"
 fi
 
 # ---------------------------------------------------------------------------
@@ -750,10 +986,11 @@ cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
 JSON
 mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
 # Write qa-pending.json with non-standard items[] format.
-cat > "$IMPLEMENT_TMPDIR/qa-pending.json.tmp" <<'JSON'
+STEP2_QA_PENDING="$(dirname "$STEP2_MANIFEST_PATH")/qa-pending.json"
+cat > "${STEP2_QA_PENDING}.tmp" <<'JSON'
 {"status":"needs_qa","items":[{"area":"area1","risk":"risk1","suggested_check":"check1"}]}
 JSON
-mv "$IMPLEMENT_TMPDIR/qa-pending.json.tmp" "$IMPLEMENT_TMPDIR/qa-pending.json"
+mv "${STEP2_QA_PENDING}.tmp" "$STEP2_QA_PENDING"
 printf 'stub codex stdout\n'
 STUB16_CODEX
 chmod +x "$STUB16/codex"
@@ -761,7 +998,7 @@ chmod +x "$STUB16/codex"
 OUT_16=$(cd "$SCRATCH_REPO16" && \
     PATH="$STUB16:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP16/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP16/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP16" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -776,7 +1013,7 @@ else
 fi
 
 # Verify the repaired qa-pending.json contains questions[] not items[].
-QA_PENDING_16="$TMP16/qa-pending.json"
+QA_PENDING_16="$TMP16/codex-step2-out/qa-pending.json"
 if [[ -s "$QA_PENDING_16" ]] \
    && jq -e '(.questions | type == "array" and length > 0)' "$QA_PENDING_16" >/dev/null 2>&1 \
    && ! jq -e '.items' "$QA_PENDING_16" >/dev/null 2>&1; then
@@ -823,11 +1060,11 @@ printf 'fresh-step2-17a\n' > "$TMP17A/session-id"
 OUT_17A=$(cd "$REPO_ROOT" && \
     PATH="$STUB17:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP17A/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP17A/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP17A" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex --workflow SIMPLE 2>&1)
-META17A="$TMP17A/codex-impl-transcript.txt.meta"
+META17A="$TMP17A/codex-step2-out/codex-impl-transcript.txt.meta"
 TIMEOUT17A=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17A" 2>/dev/null || true)
 if [[ "$TIMEOUT17A" == "3600" ]]; then
     pass
@@ -841,11 +1078,11 @@ printf 'fresh-step2-17b\n' > "$TMP17B/session-id"
 OUT_17B=$(cd "$REPO_ROOT" && \
     PATH="$STUB17:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP17B/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP17B/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP17B" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex --workflow HARD 2>&1)
-META17B="$TMP17B/codex-impl-transcript.txt.meta"
+META17B="$TMP17B/codex-step2-out/codex-impl-transcript.txt.meta"
 TIMEOUT17B=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17B" 2>/dev/null || true)
 if [[ "$TIMEOUT17B" == "7200" ]]; then
     pass
@@ -859,11 +1096,11 @@ printf 'fresh-step2-17c\n' > "$TMP17C/session-id"
 OUT_17C=$(cd "$REPO_ROOT" && \
     PATH="$STUB17:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP17C/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP17C/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP17C" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
-META17C="$TMP17C/codex-impl-transcript.txt.meta"
+META17C="$TMP17C/codex-step2-out/codex-impl-transcript.txt.meta"
 TIMEOUT17C=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17C" 2>/dev/null || true)
 if [[ "$TIMEOUT17C" == "3600" ]]; then
     pass
@@ -923,7 +1160,7 @@ chmod +x "$STUB18/codex"
 OUT_18=$(cd "$SCRATCH_REPO18" && \
     PATH="$STUB18:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP18/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP18/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMP18" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1315,7 +1552,7 @@ chmod +x "$STUBM1/codex"
 OUT_M1=$(cd "$SCRATCH_REPOM1" && \
     PATH="$STUBM1:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM1/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM1/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM1" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1420,7 +1657,7 @@ chmod +x "$STUBM2/codex"
 OUT_M2=$(cd "$SCRATCH_REPOM2" && \
     PATH="$STUBM2:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM2/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM2/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM2" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1459,7 +1696,7 @@ chmod +x "$STUBM12/codex"
 OUT_M12=$(cd "$SCRATCH_REPOM12" && \
     PATH="$STUBM12:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM12/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM12/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM12" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1490,7 +1727,7 @@ git -C "$SCRATCH_REPOM16" add staged.txt
 OUT_M16=$(cd "$SCRATCH_REPOM16" && \
     PATH="$STUBM1:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM16/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM16/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM16" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1534,7 +1771,7 @@ chmod +x "$STUBM17/codex"
 OUT_M17=$(cd "$SCRATCH_REPOM17" && \
     PATH="$STUBM17:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM17/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM17/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM17" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1599,7 +1836,7 @@ chmod +x "$STUBM18/codex"
 OUT_M18_QA=$(cd "$SCRATCH_REPOM18" && \
     PATH="$STUBM18:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM18/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM18/codex-step2-out/manifest.json" \
     STEP2_STATE_FILE="$TMPM18/state" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM18" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -1608,7 +1845,7 @@ printf '{"answers":[{"id":"q1","text":"yes"}]}\n' > "$TMPM18/answers.json"
 OUT_M18_RECOVERY=$(cd "$SCRATCH_REPOM18" && \
     PATH="$STUBM18:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM18/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM18/codex-step2-out/manifest.json" \
     STEP2_STATE_FILE="$TMPM18/state" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM18" --plan-file "$PLAN" --feature-file "$FEATURE" \
@@ -1659,7 +1896,7 @@ chmod +x "$STUBM19/codex"
 OUT_M19=$(cd "$SCRATCH_REPOM19" && \
     PATH="$STUBM19:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMPM19/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMPM19/codex-step2-out/manifest.json" \
     LARCH_CODEX_MODEL=stub-codex-model \
     "$DISPATCHER" --tmpdir "$TMPM19" --plan-file "$PLAN" --feature-file "$FEATURE" \
         --coder codex 2>&1)
@@ -1854,7 +2091,7 @@ set +e
     cd "$REPO_ROOT" && \
     PATH="$STUB_BIN_25:$PATH" \
     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP25/manifest.json" \
+    STEP2_MANIFEST_PATH="$TMP25/codex-step2-out/manifest.json" \
     LARCH_QUIET_DISABLE=1 \
     LARCH_CODEX_MODEL="stub-codex-model" \
     "$DISPATCHER" --tmpdir "$TMP25" --plan-file "$PLAN" --feature-file "$FEATURE" \

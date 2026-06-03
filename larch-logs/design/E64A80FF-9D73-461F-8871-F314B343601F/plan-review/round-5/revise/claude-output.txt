@@ -1,0 +1,51 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -252,5 +252,11 @@
+ references intact. Keep `ACTION=EMIT_PLAN` and `ACTION=VALIDATE_PLAN_COMMANDS` literals in the shared
+ validator-failure section only.
+ 
++**Lead-in prose fix (FINDING_1):** Rewrite the "Immediately after saving plan.txt" paragraph
++(~SKILL.md lines 762-771 today) to name `design-postplan-emit.sh --snapshot-original` only; remove
++any bare `ACTION=EMIT_PLAN` instruction from that paragraph. Without this, an executor following
++the stale lead-in prose AND the consolidated fence would pipe `ACTION=EMIT_PLAN` a second time,
++producing divergent snapshot and validator paths (double-emit).
++
+ **Cross-ref refresh (FINDING_4):** Grep-update stale normative pointers that still name inline
+ `ACTION=EMIT_PLAN` / `invoke-plan-validator.sh` at re-emit boundaries:
+@@ -337,4 +343,9 @@
+ - **FINDING_21 approval-gates** → `Step 2b.5` after `design-postplan-emit.sh` in shared post-apply
+   section (not bare `ACTION=EMIT_PLAN`).
++- **FINDING_1 double-emit exclusion pin** — bounded-block pin: within the Step 2b block (from the
++  `<!-- step:2b` / `## Step 2b` marker to the next step header), assert `ACTION=EMIT_PLAN` does NOT
++  appear outside the `VALIDATE_PLAN_COMMANDS` / validator-failure subsection. Must FAIL if the
++  "Immediately after saving plan.txt" paragraph or any fence outside that subsection retains bare
++  `ACTION=EMIT_PLAN`.
+ - **1124–1125** → grep `design-postplan-emit.sh` for `snapshot-plan-round.sh` / `write-original`
+   (replaces SKILL.md inline snapshot pins).
+@@ -389,4 +401,10 @@
+    lands. Mitigation: explicit `flags.md` update + structural pin migration; docs grep includes
+    `flags.md`.
++10. **Double-emit from stale Step 2b lead-in prose (FINDING_1).** The "Immediately after saving
++    plan.txt" paragraph (~SKILL.md:762-771) names bare `ACTION=EMIT_PLAN`; without rewriting it,
++    an executor following that paragraph AND the consolidated fence pipes `ACTION=EMIT_PLAN` a
++    second time, diverging snapshot and validator state. Mitigation: lead-in prose rewrite in
++    SKILL.md (FINDING_1 note above); FINDING_1 double-emit exclusion pin in structural tests.
+ 
+ ## Testing strategy
+@@ -401,4 +419,5 @@
+ - `bash scripts/test-design-structure.sh` — all pins green, including 14c14d–i rewrites, Gate A
+-  bounded pin, FINDING_1 driver pins (`set +e`, flush helper), FINDING_1 stdout-fallback pin, and
+-  FINDING_2 `flags.md` validator pin.
++  bounded pin, FINDING_1 driver pins (`set +e`, flush helper), FINDING_1 stdout-fallback pin,
++  FINDING_1 double-emit exclusion pin (Step 2b block must not contain bare `ACTION=EMIT_PLAN`
++  outside the validator-failure section), and FINDING_2 `flags.md` validator pin.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) for shellcheck, markdownlint, bash32, the
+@@ -418,5 +437,5 @@
+   `skipped-quick` / `--force-validate` semantics (FINDING_2).
+ 
+-diff_added: 780
+-diff_deleted: 95
+-diff_lines: 875
++diff_added: 786
++diff_deleted: 98
++diff_lines: 884

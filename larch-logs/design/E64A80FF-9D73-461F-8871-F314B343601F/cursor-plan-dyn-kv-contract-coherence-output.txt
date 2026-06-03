@@ -1,0 +1,24 @@
+Reviewing the plan against the codebase for KV contract coherence.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:64-76	`POSTPLAN_EMIT_STATUS` has no success value on exit 0	Driver Approach lists only failure aggregates (`emit-failed`, `snapshot-failed`, `validate-driver-failed`); harness case (1) and sibling pattern (`INIT_STATUS=ok` in `design-init-runparams.sh:143`) expect a defined aggregate on clean exit 0	Define `POSTPLAN_EMIT_STATUS=ok` on all exit-0 paths (including `defects-found` and `skipped-quick`); document in `design-postplan-emit.md` allowlist and assert in harness case (1)
+1	in_scope	important	correctness	plan.txt:49-51,69-73	Orchestrator exit-1 gating mis-keys `missing-diff-lines` on `POSTPLAN_EMIT_STATUS`	Driver sets `POSTPLAN_EMIT_STATUS=emit-failed` on emit failure (line 51) while line 71 tells orchestrator to read `POSTPLAN_EMIT_STATUS` for `missing-diff-lines`; repair routing can never match	Branch on `POSTPLAN_EMIT_STATUS=emit-failed` plus `EMIT_PLAN_STATUS=missing-diff-lines` for `plan.txt` repair; keep `snapshot-failed` / `validate-driver-failed` on `POSTPLAN_EMIT_STATUS` only
+1	in_scope	important	correctness	plan.txt:141-153,161-162	`approval-gates.md` / `discussion-rounds.md` updates only say "+ KV parse"	Approach §1 cites Step 5c file-first handoff, but UPDATED subsections omit symlink-guarded read of `.design-postplan-emit-result.env` before stdout merge; structural pins only require file-first in `SKILL.md` (line 162)	Require the same parse block as `skills/design/SKILL.md:1330-1355` in both references (or a single normative pointer); add matching pins if prose stays in references only
+1	in_scope	important	correctness	plan.txt:133-137	Gate A optional-trailer guard update omits file-first result-env parse	Step 2b rewrite explicitly requires file-first parse (line 131); Gate A bullet only mandates `set +e` + driver without result-env/symlink language	Gate A fence must mirror Step 2b: capture rc, read `.design-postplan-emit-result.env` file-first with symlink refusal, then stdout fallback
+
+**1. [correctness] `POSTPLAN_EMIT_STATUS` undefined on exit 0** (`plan.txt:64-76`, proposed `design-postplan-emit.sh`)
+
+The driver section names failure aggregates only (`emit-failed`, `snapshot-failed`, `validate-driver-failed`). Siblings set a success aggregate (`INIT_STATUS=ok` at ```143:143:skills/design/scripts/design-init-runparams.sh```). The plan never states what `POSTPLAN_EMIT_STATUS` is on clean exit 0 (validator ok, `defects-found`, or `skipped-quick`). **Revision:** set `POSTPLAN_EMIT_STATUS=ok` on every exit-0 path; document in `design-postplan-emit.md` and assert in harness case (1).
+
+**2. [correctness] Exit-1 orchestrator gating contradicts driver emit failure** (`plan.txt:49-51` vs `69-73`)
+
+The driver sets `POSTPLAN_EMIT_STATUS=emit-failed` on emit failure; orchestrator text tells readers to use `POSTPLAN_EMIT_STATUS` for `missing-diff-lines`, which is an `EMIT_PLAN_STATUS` value from ```51:52:skills/design/scripts/emit-plan.sh```. **Revision:** repair when `POSTPLAN_EMIT_STATUS=emit-failed` and `EMIT_PLAN_STATUS=missing-diff-lines`.
+
+**3. [correctness] Re-emit references lack file-first result-env handoff** (`plan.txt:141-153`, `161-162`)
+
+Approach §1 points at Step 5c, but `approval-gates.md` / `discussion-rounds.md` UPDATED blocks only say "+ KV parse". Pins require file-first only in `SKILL.md`. Step 5c normative pattern is ```1330:1355:skills/design/SKILL.md```. **Revision:** embed or point to that parse block in both references.
+
+**4. [correctness] Gate A guard update omits file-first parse** (`plan.txt:133-137`)
+
+Step 2b gets explicit file-first language; Gate A gets driver + `VALIDATE_STATUS` branches only. **Revision:** same handoff as Step 2b.
+
+**Exonerated:** `.design-postplan-emit-result.env` matches `.design-publish-result.env` / `.design-init-runparams-result.env`. Exit 2 skipping result-env matches siblings. Exit 3 / write-failure handling is latent and out of minimum-change scope. Unspecified `VALIDATE_*` on `skipped-quick` is acceptable because orchestrator branches on `VALIDATE_STATUS` only.

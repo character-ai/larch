@@ -1,0 +1,12 @@
+Reviewing the branch diff and Bash portability constraints.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **risk-integration** `scripts/lint-fix-loop.sh:92-125` — The new Bash constructs (`local -a affected_list=()`, `affected_list+=("$path")`, `((${#affected_list[@]} > 0))`, process substitution `< <(affected_files_from_log …)`, `printf '%q'`, here-strings, and `(( log_bytes > 60000 ))`) are all supported on macOS system Bash 3.2 and match existing repo patterns (e.g. `scripts/launch-review.sh`, line 617 `delta_paths+=`). None use forbidden Bash 4+ surfaces from `BASH_AUTHORING.md` (`declare -A`, `mapfile`, namerefs, `${var^^}`, `&>>`, coprocs).
+
+- **risk-integration** `scripts/lint-fix-loop.sh:99-111` — The five `grep -oE` extraction patterns were spot-checked on macOS BSD grep 2.6.0 (same patterns the repo already uses in `scripts/ci-status.sh`, `scripts/design-log-publish.sh`, `scripts/eval-research.sh`, etc.); behavior matches GNU grep for the fixture shapes covered by Cases 12–16 (`In <path> line N:`, leading `path:line`, extension-qualified paths, slash paths). No `\b` or other known BSD/GNU ERE splits appear in these patterns.
+
+- **risk-integration** `scripts/test-lint-fix-loop.sh:562-595` — Case 16’s truncated-log fixtures are built with an inline `python3` heredoc; that is a test-harness dependency only (production `lint-fix-loop.sh` stays shell-only), consistent with other harnesses in this repo.

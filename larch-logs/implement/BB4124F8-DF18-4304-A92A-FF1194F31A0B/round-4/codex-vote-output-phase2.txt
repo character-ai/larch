@@ -1,0 +1,36 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- valid duplication but shared-lib extraction exceeds this extraction PR’s minimal scope
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-read banner is plan-required; deduping resolver is nice-to-have not blocking
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- harness mirror is intentional plan acceptance surface, not accidental drift
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- item 7 documents rollback order opposite to code and test 21
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- test-assess-plan-round still only sets workflow_path after resolve_workflow_path change
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- no harness case for workflow_path vs design_classification mismatch WARN/chat replay
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- timeout argv forwarding is low-risk; dedicated assertion is optional
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- tests 16/16b hard-fail when chflags/chattr unavailable (common on Linux CI)
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- harness already prints HARD banner before driver invoke in apply_step3_6_handoff
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes implemented security control, not a defect
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes implemented security control, not a defect
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes implemented security control, not a defect
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes implemented security control, not a defect
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes implemented security control, not a defect
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes implemented security control, not a defect
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes implemented security control, not a defect
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes implemented security control, not a defect
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- describes intentional test seam and unchanged trust boundary, not a defect
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- same doc/implementation rollback-order mismatch as FINDING_4
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- assess rc=0 with empty ASSESSOR_STATUS is coerced to skipped instead of assess-failed
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- _assessor_parse_ok flips on any routing key, not ASSESSOR_STATUS
+FINDING_22: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- prose grep fallback is brittle but unlikely in practice
+FINDING_23: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- --timeout documents assess-only scope; snapshot bounding is separate concern
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- driver stdout already asserts read-cursor WARN; handoff chat pin is marginal
+FINDING_25: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- orchestrator/driver alignment to design_classification matches intentional branch behavior and driver test 19
+FINDING_26: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- degrade-path housekeeping (mktemp/printf/rm/count write) can abort under set -e before _write_result_and_emit
+FINDING_27: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- emit_kv rc=2 on embedded newlines in WARN is theoretical for these fixed sentences
+FINDING_28: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- apply_step3_6_handoff leaves set +e active after return
+FINDING_29: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative no-defect note, not an issue to file
+FINDING_30: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- affirmative parity note, not an issue to file
+FINDING_31: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_5; assess-plan-round harness lacks design_classification coverage
+FINDING_32: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational grep observation only
+FINDING_33: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- confirms consistent resolution rules, not a problem
+FINDING_34: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- known duplication tracked by FINDING_1; not a separate actionable OOS issue
+FINDING_35: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- intentional behavior change with driver harness coverage; assess-plan-round gap is FINDING_5/31
+FINDING_36: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- assess-plan-round.md still documents workflow_path-only gating after design_classification fallback landed

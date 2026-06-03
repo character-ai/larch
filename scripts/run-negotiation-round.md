@@ -10,7 +10,7 @@ Sources `scripts/lib-external-launcher-common.sh` to access `external_serial_loc
 
 ## Cursor auth handling
 
-Sources `scripts/lib-cursor-auth.sh` in the Cursor branch and runs `cursor_auth_preflight || exit 3` before launching `cursor agent`. Model args from `scripts/agent-model-args.sh` are read as one argv token per line into Bash arrays and expanded with the Bash-3.2-safe `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` pattern. When `CURSOR_API_KEY` is non-empty, passes `--api-key "$CURSOR_API_KEY"` between the Cursor model-args array and `--workspace`. When empty, `cursor agent` runs without `--api-key` and falls back to its default auth resolution (e.g., the `cursor login` keychain entry on Darwin) — preserving backward compatibility with operators who haven't set the env var.
+Sources `scripts/lib-cursor-auth.sh` in the Cursor branch and runs `cursor_auth_preflight || exit 3` before launching `cursor agent`. Model args from `scripts/agent-model-args.sh` are read as one argv token per line into Bash arrays and expanded with the Bash-3.2-safe `${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"}` pattern. Auth is delivered via the `CURSOR_API_KEY` environment variable (issue #3375) — `cursor_auth_export_env` normalizes/exports it (whitespace-trim; `unset` on empty/whitespace/embedded-newline) and the `cursor agent` child inherits it. No `--api-key` argv element is passed; when the env var is unset/empty `cursor agent` falls back to its default auth resolution (e.g., the `cursor login` keychain entry on Darwin) — preserving backward compatibility with operators who haven't set the env var.
 
 ## Exit Codes
 

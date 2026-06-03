@@ -28,6 +28,38 @@ The current line parser in `scripts/collect-agent-results.sh` uses `${meta_line%
 
 The capture flags are mutually exclusive. Metadata includes both `CAPTURE_STDOUT` and `CAPTURE_STDOUT_ONLY`; retry callers must preserve the original mode.
 
+## Launch-time health gate
+
+For `--tool codex` and `--tool cursor`, the wrapper calls
+`external_launch_health_gate` after stale artifact cleanup and `.meta` emission
+but before spawning the child command. This is the shared chokepoint for
+production external-agent launches: `/design`, `/implement`, nested `/review`,
+CI-fix launchers, and review launchers all funnel through this wrapper rather
+than owning separate probes.
+
+The gate is on by default because the resolver falls back to `30` when no
+source resolves a value. Resolution order is the process environment,
+`$SESSION_ENV_PATH`, then `$IMPLEMENT_TMPDIR/session-env.sh`; session files are
+read through `scripts/read-session-env-key.sh` and are never sourced. An
+explicit numeric `0` at any source opts out; an explicit positive value
+overrides the default. Non-Codex/Cursor tool labels also no-op even when the
+variable is set.
+
+When enabled, the gate reuses `scripts/check-reviewers.sh` with the other tool's
+probe skipped and `LARCH_EXTERNAL_AUTH_RETRIES=1`. If `timeout` or `gtimeout` is
+available, the resolved value wraps that probe; otherwise `check-reviewers.sh`'s
+internal probe timeout is the bound. Wrapper exits `124` and `143` classify as
+unhealthy before the fail-open path. A parseable `*_PRESENT=false` is unhealthy;
+`*_PRESENT=true` proceeds; a non-timeout result with no parseable presence line
+fails open.
+
+On unhealthy `codex`, the command is not spawned, `<output>` is left as an empty
+file, `<output>.diag` receives a `health-probe fast-fail` line, the exit trap
+writes `<output>.done` with `7`, and the wrapper exits `7`. Cursor is symmetric
+but exits `8`. Those exit codes plus empty output are intentionally consumed by
+the existing health / `health-probe` classifier, so waterfall callers retry or
+fall through without a classifier change.
+
 ### Codex stdin contract
 
 When `--tool codex` is used, every background spawn redirects stdin from `/dev/null`. The implementation lives at the launch site in `scripts/run-external-agent.sh` for the default and `--capture-stdout` branches, and inside `_launch_capture_stdout_only` for both the `stdbuf` and non-`stdbuf` arms. Codex keeps stdin open for possible interactive input; if it inherits the parent shell's stdin during a background run, parent-shell EOF can surface as `write_stdin failed: stdin is closed for this session` (#2962 / #2973). Other tools, including Cursor, continue to inherit stdin because they have not shown this Codex-specific stdin-close failure mode.
@@ -88,6 +120,8 @@ Production entry points include `scripts/launch-review.sh` (per-tool review lane
 ## Test harness
 
 `scripts/test-run-external-agent.sh` exercises timeout behavior, sentinel contracts, `CMD_JSON` failure paths, and related edge cases. Stall-detection integration for Cursor CI lives in `scripts/test-launch-cursor-ci.sh`.
+
+New harnesses that stub `run-external-agent.sh` should `export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0` at suite entry unless they intentionally exercise the pre-launch health gate — default-on resolution otherwise runs `scripts/check-reviewers.sh` and can flake offline.
 
 ## Edit-in-sync
 

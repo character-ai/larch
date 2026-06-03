@@ -7,6 +7,7 @@ import json
 import os
 import re
 import shutil
+import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
@@ -736,6 +737,55 @@ def _safe_copy_run_tree(src: Path, dest: Path) -> None:
             _ = shutil.copy2(item, target)
 
 
+def _scrub_run_tree(directory: Path) -> tuple[int, int]:
+    """Scrub secret-shaped values from every file under ``directory`` in place
+    before commit (parity with scripts/scrub-log-secrets.sh).
+
+    Returns ``(total_violations, files_scrubbed)``. Files with no secret are
+    left byte-for-byte untouched. Fail-closed: raises :class:`ShipError` if a
+    detected secret survives scrubbing, so the caller aborts rather than commits.
+    """
+    total = 0
+    files_scrubbed = 0
+    for path in sorted(directory.rglob("*")):
+        if path.is_symlink() or not path.is_file():
+            continue
+        try:
+            original = path.read_text(encoding="utf-8")
+        except (UnicodeDecodeError, OSError):
+            continue
+        scrubbed, findings = redact.scrub_log_secrets(original)
+        if not findings:
+            continue
+        _, residual = redact.scrub_log_secrets(scrubbed)
+        if residual:
+            msg = f"secret survived scrubbing in {path}"
+            raise ShipError(msg)
+        _ = path.write_text(scrubbed, encoding="utf-8")
+        total += sum(findings.values())
+        files_scrubbed += 1
+    return total, files_scrubbed
+
+
+def _warn_secret_scrub(violations: int, files_scrubbed: int, directory: Path) -> None:
+    """Emit a loud stderr warning when the pre-flush gate redacted a secret."""
+    banner = (
+        "\n"
+        "#############################################################################\n"
+        "##  !!  SECRETS DETECTED AND SCRUBBED FROM RUN LOGS BEFORE FLUSH  !!\n"
+        "#############################################################################\n"
+        f"## scrubbed {violations} secret-shaped value(s) across "
+        f"{files_scrubbed} file(s) in:\n"
+        f"##   {directory}\n"
+        "## The flush proceeds with redacted content, but a credential was almost\n"
+        "## certainly exposed in this run -- ROTATE it now and check chat/PRs for\n"
+        "## the same value.\n"
+        "#############################################################################\n"
+    )
+    _ = sys.stderr.write(banner)
+    _ = sys.stderr.flush()
+
+
 def _larch_log_commit(
     runner: Runner,
     ctx: RunContext,
@@ -746,6 +796,15 @@ def _larch_log_commit(
     rel = _publish_run_tree_to_repo(ctx, log_root, cwd=cwd)
     if not rel:
         return CommandResult(("true",), 0, "", "", 0.0)
+    # Pre-flush secret gate: scrub Cursor keys et al. from the staged run tree
+    # before commit (parity with scripts/scrub-log-secrets.sh). Fail-closed via
+    # ShipError if a detected secret survives.
+    if cwd is not None:
+        scrub_dir = Path(cwd) / rel
+        if scrub_dir.is_dir():
+            violations, files_scrubbed = _scrub_run_tree(scrub_dir)
+            if violations > 0:
+                _warn_secret_scrub(violations, files_scrubbed, scrub_dir)
     status = git.status_porcelain_paths(runner, rel, cwd=cwd)
     if status.returncode != 0:
         return status

@@ -1,0 +1,27 @@
+Reviewing branch changes for Bash 3.2 portability. Reading the diff and relevant files.
+Checking whether `assert_bash_fences_have_pause_check` covers the new Step 0-pre fence (plan failure mode) and scanning for any subtle Bash 3.2 regex quirks.
+**Branch commits** (vs `main`):
+
+- `567db2d5c` — Fixes #3249: Extract /design Step 0-pre into parse-design-argv phase driver  
+- `880676f93` — Address code review feedback (round 1)  
+- `4d66f9ec3` — Apply relevant-checks fixes (Step 5)
+
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+**Review summary (bash-portability / correctness on this branch):**
+
+`parse-design-argv.sh` stays within the repo’s Bash 3.2 rules in `BASH_AUTHORING.md` §3: no associative arrays, namerefs, `mapfile`/`readarray`, `${var^^}`-style case conversion, `&>>`, or coprocs. Constructs the scout called out are already used elsewhere on macOS Bash 3.2:
+
+- **`[[ "$var" =~ ^[0-9]+$ ]]`** — same digit-classification pattern as `design-publish.sh`, `file-design-oos.sh`, `scout-plan-archetypes-wrapper.sh`, etc.; unquoted ERE on the right is correct for `=~`.
+- **`$'\n'` / `$'\r'` in `case` and `[[ == *$'\n'* ]]`** — same newline/CR guards as `ship-pr.sh` and `lib-external-launcher-common.sh`; ANSI-C quoting is supported in Bash 3.2.
+- **`set -euo pipefail` + `exit 3` inside `validation_error()`** — `exit` from a function terminates the script process (not merely the function); the Step 0-pre fence correctly uses `set +e` around `$(parse-design-argv.sh …)` so validation exit 3 does not trip the orchestrator’s `set -e` before the branch runs.
+- **`test-design-structure.sh` additions** — only `awk`/`grep`/`[[ -x ]]` pins; no new Bash 4+ syntax. Pause-check assertion still starts at `<!-- step:1c`, so the new Step 0-pre fence remains in the same exempt class as Step 0a.
+
+`make lint-bash32`’s static scanner would flag the forbidden constructs above; it does not (and need not) ban `[[ =~ ]]` or `$'…'`, which this change relies on consistently with the rest of the tree.
+
+### Out-of-Scope Observations
+
+- **Plan vs shipped exit 2:** The issue plan called for `usage()` → `larch_err` + exit **2**, but `parse-design-argv.sh` only exits **0** or **3**; `parse-design-argv.md` documents that intentionally. Not a Bash 3.2 problem — orchestrator maps other failures to exit 1.
+- **Duplicate boolean flags (except `--hard`):** Repeating `-p`, `--brainstorm`, etc. is idempotent (`true` again). Only duplicate `--hard` is rejected. That matches the written allowlist, not a portability regression.

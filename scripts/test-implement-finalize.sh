@@ -876,278 +876,91 @@ else
 fi
 
 POSTBUMP_STATE="$SANDBOX/tmp/postbump-state.sh"
+
+if grep -qE 'maybe_update_changelog|commit-changelog\.sh' "$REAL_SCRIPT"; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: implement-finalize.sh must not invoke changelog writers in Phase 1 (#3364)"
+else
+    PASS=$((PASS + 1))
+    echo "PASS: implement-finalize.sh has no changelog writer calls (Phase 1)"
+fi
+
+cat > "$SANDBOX/scripts/commit-changelog.sh" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >> "$SANDBOX/commit-changelog-argv.txt"
+echo "COMMITTED=true"
+echo "COMMIT_SHA=stub-changelog"
+exit 0
+STUB
+chmod +x "$SANDBOX/scripts/commit-changelog.sh"
+
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
 : > "$SANDBOX/tmp/execution-issues.md"
-rm -f "$SANDBOX/tmp/.postbump-phase" "$SANDBOX/ledger-calls.txt"
+rm -f "$SANDBOX/tmp/.postbump-phase" "$SANDBOX/ledger-calls.txt" "$SANDBOX/larch-log-argv.txt" "$SANDBOX/commit-changelog-argv.txt"
 write_postbump_state "$POSTBUMP_STATE"
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "✅ 8: larch-log status=complete elapsed=<elapsed>" "$OUT" "postbump: larch-log compact breadcrumb"
-assert_contains "✅ 8a: changelog status=complete to=v17.0.4 elapsed=<elapsed>" "$OUT" "postbump: changelog compact success breadcrumb"
 assert_contains "✅ 8b: rebase status=complete outcome=rebased elapsed=<elapsed>" "$OUT" "postbump: rebase compact success breadcrumb"
 assert_contains "✅ 8b: rebase status=complete outcome=force-pushed elapsed=<elapsed>" "$OUT" "postbump: force-push compact success breadcrumb"
-assert_not_contains " — " "$OUT" "postbump: happy path avoids prose breadcrumb separator"
-assert_contains "LOG_WRITE_STATUS=ok" "$OUT" "postbump: happy path writes larch-log batch"
-assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: happy path updates changelog"
+assert_not_contains "8a: changelog" "$OUT" "postbump: Phase 1 emits no Step 8a changelog breadcrumb"
+assert_not_contains "8: larch-log" "$OUT" "postbump: Phase 1 emits no Step 8 larch-log breadcrumb"
+assert_contains "LOG_WRITE_STATUS=skipped" "$OUT" "postbump: Phase 1 skips larch-log write"
+assert_contains "CHANGELOG_STATUS=skipped-phase1" "$OUT" "postbump: Phase 1 skips changelog"
 assert_contains "REBASE_STATUS=rebased" "$OUT" "postbump: happy path rebases"
 assert_contains "FORCE_PUSH_STATUS=pushed" "$OUT" "postbump: happy path force-pushes"
 assert_contains "STATUS=ok" "$OUT" "postbump: happy path status ok"
-assert_file_contains "Step 8a — changelog" "$SANDBOX/ledger-calls.txt" "postbump: emits Step 8a ledger mark"
 assert_file_contains "Step 8b — rebase" "$SANDBOX/ledger-calls.txt" "postbump: emits Step 8b ledger mark"
-assert_file_contains "write" "$SANDBOX/larch-log-argv.txt" "postbump: larch-log write verb"
-assert_file_contains "--skill" "$SANDBOX/larch-log-argv.txt" "postbump: larch-log passes skill"
-assert_file_contains "implement" "$SANDBOX/larch-log-argv.txt" "postbump: larch-log skill is implement"
-assert_file_contains "--batch" "$SANDBOX/larch-log-argv.txt" "postbump: larch-log passes batch"
-assert_file_contains "version-bump-reasoning" "$SANDBOX/larch-log-argv.txt" "postbump: larch-log writes version-bump-reasoning"
-assert_file_contains "## [17.0.4] -" "$SANDBOX/repo/CHANGELOG.md" "postbump: changelog contains new version"
-assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: flat bullets default to Changed"
-awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next } { prev_blank=0 }' \
-    "$SANDBOX/repo/CHANGELOG.md" > "$SANDBOX/blank-check.txt"
-assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check.txt" "postbump: changelog has no consecutive blank lines"
-
-real_repo="$SANDBOX/real-postbump-repo"
-mkdir -p "$real_repo/.claude-plugin"
-git -C "$real_repo" init -q -b main
-git -C "$real_repo" config user.email test@test.com
-git -C "$real_repo" config user.name Test
-cat > "$real_repo/.claude-plugin/plugin.json" <<'JSON'
-{"version":"17.0.3"}
-JSON
-cp "$SANDBOX/original-CHANGELOG.md" "$real_repo/CHANGELOG.md"
-git -C "$real_repo" add .claude-plugin/plugin.json CHANGELOG.md
-git -C "$real_repo" commit -q -m "Initial commit"
-cat > "$real_repo/.claude-plugin/plugin.json" <<'JSON'
-{"version":"17.0.4"}
-JSON
-git -C "$real_repo" add .claude-plugin/plugin.json
-git -C "$real_repo" commit -q -m "Bump version to 17.0.4"
-cp "$SANDBOX/scripts/commit-changelog.sh" "$SANDBOX/scripts/commit-changelog.sh.stub"
-cp "$SCRIPT_DIR/commit-changelog.sh" "$SANDBOX/scripts/commit-changelog.sh"
-cp "$SCRIPT_DIR/git-commit.sh" "$SANDBOX/scripts/git-commit.sh"
-chmod +x "$SANDBOX/scripts/commit-changelog.sh" "$SANDBOX/scripts/git-commit.sh"
-mkdir -p "$SANDBOX/tmp-real"
-POSTBUMP_STATE_REAL="$SANDBOX/tmp-real/postbump-state-real.sh"
-write_postbump_state "$POSTBUMP_STATE_REAL" \
-    "BUMP_REASONING_FILE=$SANDBOX/tmp-real/larch-log-batches-input/version-bump-reasoning-sanitized.md" \
-    "MANIFEST_PATH=$SANDBOX/tmp-real/manifest.json"
-OUT=$(run_subject_in_repo_real_git "$real_repo" postbump --state-file "$POSTBUMP_STATE_REAL" --implement-tmpdir "$SANDBOX/tmp-real")
-assert_contains "STATUS=ok" "$OUT" "postbump: real git happy path status ok"
-real_log_subject_1=$(git -C "$real_repo" log -1 --format=%s)
-real_log_subject_2=$(git -C "$real_repo" log -2 --format=%s | sed -n '2p')
-if [ "$real_log_subject_1" = "Update CHANGELOG for 17.0.4" ] &&
-   [ "$real_log_subject_2" = "Bump version to 17.0.4" ]; then
-    PASS=$((PASS + 1))
-    echo "PASS: postbump: real git leaves separate CHANGELOG-over-bump commits"
-else
+assert_file_not_contains "Step 8a — changelog" "$SANDBOX/ledger-calls.txt" "postbump: Phase 1 emits no Step 8a ledger mark"
+if [ -f "$SANDBOX/larch-log-argv.txt" ]; then
     FAIL=$((FAIL + 1))
-    echo "FAIL: postbump: expected separate CHANGELOG-over-bump commits"
-    git -C "$real_repo" log --oneline --max-count=5 | sed 's/^/    /'
+    echo "FAIL: postbump: Phase 1 must not call larch-log.sh"
+else
+    PASS=$((PASS + 1))
+    echo "PASS: postbump: Phase 1 does not call larch-log.sh"
 fi
-mv "$SANDBOX/scripts/commit-changelog.sh.stub" "$SANDBOX/scripts/commit-changelog.sh"
-rm -f "$SANDBOX/scripts/git-commit.sh"
-
-# Double-blank-line regression: a reasoning file with consecutive blank lines
-# must produce a batch input file with no consecutive blank lines (MD012 guard).
-db_reasoning="$SANDBOX/tmp/larch-log-batches-input/bump-version-reasoning-double-blank.md"
-printf '# Version Bump Reasoning\n\nPATCH\n\n\nExtra blank above.\n' > "$db_reasoning"
-rm -f "$SANDBOX/tmp/larch-log-batches/version-bump-reasoning.md"
-cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-: > "$SANDBOX/tmp/execution-issues.md"
-rm -f "$SANDBOX/tmp/.postbump-phase" "$SANDBOX/ledger-calls.txt"
-write_postbump_state "$POSTBUMP_STATE" "BUMP_REASONING_FILE=$db_reasoning"
-OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "LOG_WRITE_STATUS=ok" "$OUT" "postbump: double-blank reasoning writes larch-log batch"
-awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next } { prev_blank=0 }' \
-    "$SANDBOX/tmp/larch-log-batches/version-bump-reasoning.md" > "$SANDBOX/blank-check-reasoning.txt"
-assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check-reasoning.txt" \
-    "postbump: version-bump-reasoning.md batch input has no consecutive blank lines"
-
-# FINDING_1 regression: Unreleased section bullets must be preserved, not consumed.
-cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_UNRELEASED'
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [Unreleased]
-
-### Added
-
-- pending feature one
-- pending feature two
-
-## [17.0.3] - 2026-05-01
-
-### Changed
-
-- Prior change.
-CHANGELOG_UNRELEASED
-write_postbump_state "$POSTBUMP_STATE"
-OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: Unreleased preserved happy path"
-assert_file_contains "pending feature one" "$SANDBOX/repo/CHANGELOG.md" "postbump: Unreleased bullets preserved"
-assert_file_contains "pending feature two" "$SANDBOX/repo/CHANGELOG.md" "postbump: all Unreleased bullets preserved"
-# Ensure the new release entry comes AFTER the Unreleased body, not before.
-awk '
-    /^## \[Unreleased\]/ { in_unrel=1; next }
-    in_unrel && /^## \[17\.0\.4\] -/ { print "ORDER_OK"; exit }
-    in_unrel && /^## \[/ && !/^## \[17\.0\.4\] -/ { print "ORDER_BAD"; exit }
-' "$SANDBOX/repo/CHANGELOG.md" > "$SANDBOX/order-check.txt"
-assert_file_contains "ORDER_OK" "$SANDBOX/order-check.txt" "postbump: new entry inserted after Unreleased section body"
-
-# FINDING_5 regression: duplicate target-version headers must be rejected (fail closed).
-cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_DUP'
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [17.0.4] - 2026-05-01
-
-### Fixed
-
-- pre-existing duplicate.
-
-## [17.0.4] - 2026-04-30
-
-### Added
-
-- second pre-existing duplicate.
-
-## [17.0.3] - 2026-04-29
-
-### Changed
-
-- Prior change.
-CHANGELOG_DUP
-write_postbump_state "$POSTBUMP_STATE"
-OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "CHANGELOG_STATUS=failed" "$OUT" "postbump: duplicate target headers fail closed"
-assert_contains "STATUS=changelog-failed" "$OUT" "postbump: duplicate target headers route to changelog-failed"
-assert_file_contains "multiple existing" "$SANDBOX/tmp/execution-issues.md" "postbump: duplicate-header warning logged"
+if [ -e "$SANDBOX/commit-changelog-argv.txt" ]; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: postbump: Phase 1 must not call commit-changelog.sh"
+else
+    PASS=$((PASS + 1))
+    echo "PASS: postbump: Phase 1 does not call commit-changelog.sh"
+fi
+assert_file_not_contains "## [17.0.4] -" "$SANDBOX/repo/CHANGELOG.md" "postbump: Phase 1 does not mutate CHANGELOG.md"
 
 cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-printf '{"summary_bullets_categorized":{"Added":["new flow"],"Fixed":["resume bug"],"Security":["guard paths"]}}\n' > "$SANDBOX/tmp/manifest.json"
+printf '{"summary_bullets_categorized":{"Added":["ignored in phase 1"]}}\n' > "$SANDBOX/tmp/manifest.json"
 write_postbump_state "$POSTBUMP_STATE"
 OUT=$(STUB_REMOTE_STATE=absent run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
 assert_contains "FORCE_PUSH_STATUS=absent" "$OUT" "postbump: absent remote skips force-push"
-assert_file_contains "### Added" "$SANDBOX/repo/CHANGELOG.md" "postbump: categorized manifest writes Added"
-assert_file_contains "### Fixed" "$SANDBOX/repo/CHANGELOG.md" "postbump: categorized manifest writes Fixed"
-assert_file_contains "### Security" "$SANDBOX/repo/CHANGELOG.md" "postbump: categorized manifest writes Security"
-
-cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-printf 'Fixed\tone\nAdded\ttwo\nthree\n' > "$SANDBOX/tmp/changelog-bullets.txt"
-write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH=
-OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp" --changelog-bullets-file "$SANDBOX/tmp/changelog-bullets.txt")
-assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: Claude fallback bullets update changelog"
-assert_file_contains "### Fixed" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback categorized Fixed"
-assert_file_contains "### Added" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback categorized Added"
-assert_file_contains "### Changed" "$SANDBOX/repo/CHANGELOG.md" "postbump: fallback bare bullet defaults Changed"
-
-# Issue #2233: non-JSON MANIFEST_PATH (e.g. /design Step 5 manifest.env shell KV file
-# mistakenly routed here) must yield "no bullets" silently rather than fail the bump
-# phase. Combined with ship-pr.sh entry validation, the worst-case behavior stays safe
-# even if entry validation is bypassed.
-cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-cat > "$SANDBOX/tmp/manifest-non-json.env" <<'KV'
-PLAN_FILE=/tmp/x
-TIMESTAMP=2026-05-17
-SESSION_ID=abc
-KV
-write_postbump_state "$POSTBUMP_STATE" MANIFEST_PATH="$SANDBOX/tmp/manifest-non-json.env"
-OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "STATUS=ok" "$OUT" "postbump: non-JSON manifest does not fail the phase"
-assert_not_contains "STATUS=changelog-failed" "$OUT" "postbump: non-JSON manifest does not route to changelog-failed"
-assert_contains "CHANGELOG_STATUS=skipped-no-bullets" "$OUT" "postbump: non-JSON manifest skips synthetic fallback bullet"
-assert_file_not_contains "Closed: #456" "$SANDBOX/repo/CHANGELOG.md" "postbump: non-JSON manifest does not synthesize tracking-issue bullet"
-
-cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-: > "$SANDBOX/tmp/execution-issues.md"
-write_postbump_state "$POSTBUMP_STATE" ISSUE_NUMBER=0 MANIFEST_PATH= TOOL_LABEL=codex
-OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "STATUS=changelog-failed" "$OUT" "postbump: missing bullets without tracking issue fails loudly"
-assert_contains "CHANGELOG_STATUS=fail-no-manifest-no-issue" "$OUT" "postbump: missing bullets without tracking issue sets fail-no-manifest-no-issue"
-assert_file_contains "manifest_path=''" "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue resolves empty manifest path"
-assert_file_contains "manifest_exists=false" "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue resolves missing manifest presence"
-assert_file_contains "coder='codex'" "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue resolves coder"
-assert_file_contains "ERROR=Cannot generate changelog bullet: no manifest AND no tracking-issue context." "$SANDBOX/tmp/execution-issues.md" "postbump: fail-no-manifest-no-issue uses stable ERROR literal"
-
-cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-: > "$SANDBOX/tmp/execution-issues.md"
-printf '{}' > "$SANDBOX/tmp/manifest-empty.json"
-write_postbump_state "$POSTBUMP_STATE" ISSUE_NUMBER=0 MANIFEST_PATH="$SANDBOX/tmp/manifest-empty.json" TOOL_LABEL=codex
-OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "STATUS=changelog-failed" "$OUT" "postbump: existing manifest without bullets fails loudly without tracking issue"
-assert_contains "CHANGELOG_STATUS=fail-no-manifest-no-issue" "$OUT" "postbump: existing manifest without bullets sets fail-no-manifest-no-issue"
-assert_file_contains "manifest_path='$SANDBOX/tmp/manifest-empty.json'" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest fail-no-manifest-no-issue logs manifest path"
-assert_file_contains "manifest_exists=true" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest fail-no-manifest-no-issue logs manifest presence"
-assert_file_contains "coder='codex'" "$SANDBOX/tmp/execution-issues.md" "postbump: existing-manifest fail-no-manifest-no-issue resolves coder"
-
-# Regression: when target version header already exists (replacement path), no double blank before next header.
-cat > "$SANDBOX/repo/CHANGELOG.md" <<'CHANGELOG_REPLACE'
-# Changelog
-
-All notable changes to this project will be documented in this file.
-
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
-and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
-
-## [17.0.4] - 2026-05-01
-
-### Fixed
-
-- old content to be replaced.
-
-## [17.0.3] - 2026-04-30
-
-### Changed
-
-- Prior change.
-CHANGELOG_REPLACE
-write_postbump_state "$POSTBUMP_STATE"
-OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "CHANGELOG_STATUS=updated" "$OUT" "postbump: replacement path updates changelog"
-awk 'prev_blank && /^$/ { print "DOUBLE_BLANK"; exit } /^$/ { prev_blank=1; next } { prev_blank=0 }' \
-    "$SANDBOX/repo/CHANGELOG.md" > "$SANDBOX/blank-check-replace.txt"
-assert_file_not_contains "DOUBLE_BLANK" "$SANDBOX/blank-check-replace.txt" "postbump: replacement path has no consecutive blank lines"
-
-cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-write_postbump_state "$POSTBUMP_STATE"
-OUT=$(STUB_CHANGELOG_PRESENT=false run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "⏩ 8a: changelog status=skip reason=changelog-absent elapsed=<elapsed>" "$OUT" "postbump: absent changelog compact skip breadcrumb"
-assert_contains "CHANGELOG_STATUS=skipped-absent" "$OUT" "postbump: absent changelog status"
-
-cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-write_postbump_state "$POSTBUMP_STATE" BUMP_TYPE=NONE
-OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "⏩ 8a: changelog status=skip reason=no-bump-commit elapsed=<elapsed>" "$OUT" "postbump: no-bump compact skip breadcrumb"
-assert_contains "CHANGELOG_STATUS=skipped-no-bump" "$OUT" "postbump: BUMP_TYPE=NONE skips changelog"
-assert_contains "REBASE_STATUS=rebased" "$OUT" "postbump: BUMP_TYPE=NONE still rebases"
+assert_contains "CHANGELOG_STATUS=skipped-phase1" "$OUT" "postbump: manifest present still skips changelog in Phase 1"
+assert_file_not_contains "ignored in phase 1" "$SANDBOX/repo/CHANGELOG.md" "postbump: manifest bullets do not reach CHANGELOG in Phase 1"
 
 write_postbump_state "$POSTBUMP_STATE" FORKED_TARGET=true REPO_UNAVAILABLE=true
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "⏩ 8a: changelog status=skip reason=forked-dry-run elapsed=<elapsed>" "$OUT" "postbump: forked compact skip breadcrumb"
 assert_contains "⏭️ 8b: rebase status=bypass reason=repo-unavailable elapsed=<elapsed>" "$OUT" "postbump: repo-unavailable compact bypass breadcrumb"
-assert_contains "CHANGELOG_STATUS=skipped-fork" "$OUT" "postbump: forked target skips changelog"
+assert_contains "CHANGELOG_STATUS=skipped-phase1" "$OUT" "postbump: forked/repo-unavailable still reports skipped-phase1"
 assert_contains "FORCE_PUSH_STATUS=skipped-repo-unavailable" "$OUT" "postbump: repo-unavailable skips force-push"
 assert_file_contains "--base-remote" "$SANDBOX/rebase-argv.txt" "postbump: forked target rebases against upstream"
 
 write_postbump_state "$POSTBUMP_STATE"
 rm -f "$SANDBOX/tmp/.postbump-phase"
 OUT=$(STUB_REBASE_RC=1 run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "STATUS=conflict" "$OUT" "postbump: rebase conflict emits conflict status"
-assert_contains "RESUME_PHASE=force-push-gate" "$OUT" "postbump: conflict emits informational resume phase"
-assert_file_contains "force-push-gate" "$SANDBOX/tmp/.postbump-phase" "postbump: conflict writes checkpoint"
+assert_contains "STATUS=rebase-failed" "$OUT" "postbump: rebase conflict emits rebase-failed status"
+assert_contains "CHANGELOG_STATUS=skipped-phase1" "$OUT" "postbump: rebase conflict keeps Phase 1 changelog skip"
+assert_not_contains "RESUME_PHASE=force-push-gate" "$OUT" "postbump: Phase 1 does not emit conflict handoff resume phase"
+if [ -e "$SANDBOX/tmp/.postbump-phase" ]; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: postbump: rebase conflict must not write postbump checkpoint"
+else
+    PASS=$((PASS + 1))
+    echo "PASS: postbump: rebase conflict leaves no postbump checkpoint"
+fi
 
 write_postbump_state "$POSTBUMP_STATE"
 printf 'force-push-gate\n' > "$SANDBOX/tmp/.postbump-phase"
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "CHANGELOG_STATUS=skipped-resume" "$OUT" "postbump: checkpoint skips changelog"
-assert_contains "REBASE_STATUS=skipped-resume" "$OUT" "postbump: checkpoint skips rebase"
-assert_contains "FORCE_PUSH_STATUS=pushed" "$OUT" "postbump: checkpoint runs force-push"
+assert_contains "CHANGELOG_STATUS=skipped-phase1" "$OUT" "postbump: legacy checkpoint keeps Phase 1 changelog skip"
+assert_not_contains "REBASE_STATUS=skipped-resume" "$OUT" "postbump: legacy force-push-gate must not skip rebase"
+assert_contains "FORCE_PUSH_STATUS=pushed" "$OUT" "postbump: legacy checkpoint cleared then rebase+force-push"
 if [ ! -e "$SANDBOX/tmp/.postbump-phase" ]; then
     PASS=$((PASS + 1))
     echo "PASS: postbump: successful force-push clears checkpoint"
@@ -1159,7 +972,8 @@ fi
 write_postbump_state "$POSTBUMP_STATE"
 printf 'bogus-phase\n' > "$SANDBOX/tmp/.postbump-phase"
 OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "STATUS=postbump-state-corrupt" "$OUT" "postbump: corrupt checkpoint fails closed"
+assert_contains "STATUS=ok" "$OUT" "postbump: unknown legacy checkpoint cleared then full rebase runs"
+assert_not_contains "STATUS=postbump-state-corrupt" "$OUT" "postbump: unknown legacy checkpoint is not corrupt"
 
 write_postbump_state "$POSTBUMP_STATE"
 rm -f "$SANDBOX/tmp/.postbump-phase"
@@ -1177,50 +991,13 @@ OUT=$(STUB_FORCE_PUSH_STATUS=diverged_retry_failed run_subject postbump --state-
 assert_contains "STATUS=push-failed" "$OUT" "postbump: force-push lease failure bails"
 assert_contains "FORCE_PUSH_STATUS=failed" "$OUT" "postbump: force-push failure status"
 
-cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-write_postbump_state "$POSTBUMP_STATE"
-OUT=$(STUB_CHANGELOG_COMMIT_FAIL=true run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "STATUS=changelog-failed" "$OUT" "postbump: changelog commit failure is fatal"
-
-cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-: > "$SANDBOX/larch-log-argv.txt"
-write_postbump_state "$POSTBUMP_STATE"
-OUT=$(run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
-assert_contains "LOG_WRITE_STATUS=ok" "$OUT" "postbump: write success surfaces ok status"
-if awk '
-    $0 == "---" { section++; next }
-    section == 1 && $0 == "write" { saw_write=1 }
-    section == 2 && $0 == "commit" && saw_write { saw_commit_after_write=1 }
-    END { exit saw_commit_after_write ? 0 : 1 }
-' "$SANDBOX/larch-log-argv.txt"; then
-    PASS=$((PASS + 1))
-    echo "PASS: postbump: successful write is followed by larch-log commit"
-else
-    FAIL=$((FAIL + 1))
-    echo "FAIL: postbump: expected larch-log commit after successful write"
-fi
-
-cp "$SANDBOX/original-CHANGELOG.md" "$SANDBOX/repo/CHANGELOG.md"
-: > "$SANDBOX/larch-log-argv.txt"
-write_postbump_state "$POSTBUMP_STATE"
-OUT=$(STUB_LARCH_LOG_FAIL=true run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp" || true)
-assert_contains "LOG_WRITE_STATUS=failed" "$OUT" "postbump: write failure surfaces failed status"
-assert_contains "postbump commit skipped because version-bump-reasoning write failed" "$OUT" "postbump: write failure warns that commit was skipped"
-if grep -qFx "commit" "$SANDBOX/larch-log-argv.txt"; then
-    FAIL=$((FAIL + 1))
-    echo "FAIL: postbump: write failure should skip larch-log commit"
-else
-    PASS=$((PASS + 1))
-    echo "PASS: postbump: write failure skips larch-log commit"
-fi
-
 write_postbump_state "$POSTBUMP_STATE" BRANCH_NAME=main
 run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp"
 assert_rc "$RC" 2 "postbump: main branch rejected"
 
-write_postbump_state "$POSTBUMP_STATE" HAS_BUMP=yes
-run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp"
-assert_rc "$RC" 2 "postbump: invalid boolean rejected"
+write_postbump_state "$POSTBUMP_STATE" BRANCH_NAME=main FORKED_TARGET=true
+OUT=$(STUB_CURRENT_BRANCH=main run_subject postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp")
+assert_contains "STATUS=ok" "$OUT" "postbump: forked main branch allowed"
 
 write_postbump_state "$POSTBUMP_STATE" BUMP_TYPE=PATCHX
 run_subject_raw_rc postbump --state-file "$POSTBUMP_STATE" --implement-tmpdir "$SANDBOX/tmp"
@@ -1273,12 +1050,12 @@ fi
 
 _forensics_comment='commit also stages per-script quiet logs into breadcrumbs/ for forensics.'
 _forensics_count=$(grep -cF "$_forensics_comment" "$REAL_SCRIPT" 2>/dev/null || printf '0')
-if [ "$_forensics_count" -eq 2 ]; then
+if [ "$_forensics_count" -eq 1 ]; then
     PASS=$((PASS + 1))
-    echo "PASS: implement-finalize documents quiet-log forensics at both larch-log commit callsites"
+    echo "PASS: implement-finalize documents quiet-log forensics at teardown larch-log commit"
 else
     FAIL=$((FAIL + 1))
-    echo "FAIL: expected two quiet-log forensics comments in implement-finalize.sh (got $_forensics_count)"
+    echo "FAIL: expected one quiet-log forensics comment in implement-finalize.sh (got $_forensics_count)"
 fi
 
 echo

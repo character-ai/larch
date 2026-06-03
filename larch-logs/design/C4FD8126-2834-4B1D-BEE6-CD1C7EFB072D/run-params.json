@@ -1,0 +1,12 @@
+{
+  "schema_version": 3,
+  "design_classification": "SIMPLE",
+  "design_classification_reason": "default tier: SIMPLE (no --hard)",
+  "design_classification_source": "caller-forwarded",
+  "sketch_budget": 0,
+  "review_budget": "full",
+  "workflow_path": "SIMPLE",
+  "partition_requested": false,
+  "brainstorm_requested": false,
+  "manual_gate_b": false
+}

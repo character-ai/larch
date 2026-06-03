@@ -107,8 +107,22 @@ if (( 10#$TIMEOUT < 1 )); then
     exit 2
 fi
 
+_codex_add_dir_has_control_chars() {
+    printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'
+}
+_codex_canonical_existing_dir() {
+    local p="$1"
+    [[ -n "$p" ]] || return 1
+    _codex_add_dir_has_control_chars "$p" && return 1
+    [[ "$p" != *..* ]] || return 1
+    [[ -d "$p" ]] || return 1
+    [[ ! -L "$p" ]] || return 1
+    (cd "$p" && pwd -P) || return 1
+}
+
 MANIFEST_DIR=$(dirname "$MANIFEST_PATH")
 QA_PENDING_DIR=$(dirname "$QA_PENDING_PATH")
+TRANSCRIPT_DIR=$(dirname "$TRANSCRIPT_PATH")
 if [[ ! -d "$MANIFEST_DIR" ]]; then
     larch_err "launch-codex-implement.sh: session tmpdir does not exist: $MANIFEST_DIR"
     exit 2
@@ -117,12 +131,42 @@ if [[ ! -d "$QA_PENDING_DIR" ]]; then
     larch_err "launch-codex-implement.sh: session tmpdir does not exist: $QA_PENDING_DIR"
     exit 2
 fi
-SESSION_TMPDIR=$(cd "$MANIFEST_DIR" && pwd -P)
-QA_TMPDIR=$(cd "$QA_PENDING_DIR" && pwd -P)
+if [[ ! -d "$TRANSCRIPT_DIR" ]]; then
+    larch_err "launch-codex-implement.sh: transcript parent does not exist: $TRANSCRIPT_DIR"
+    exit 2
+fi
+SESSION_TMPDIR=$(_codex_canonical_existing_dir "$MANIFEST_DIR") || {
+    larch_err "launch-codex-implement.sh: --manifest-path parent is not a directory: $MANIFEST_DIR"
+    exit 2
+}
+QA_TMPDIR=$(_codex_canonical_existing_dir "$QA_PENDING_DIR") || {
+    larch_err "launch-codex-implement.sh: --qa-pending-path parent is not a directory: $QA_PENDING_DIR"
+    exit 2
+}
 if [[ "$SESSION_TMPDIR" != "$QA_TMPDIR" ]]; then
     larch_err "launch-codex-implement.sh: --manifest-path and --qa-pending-path must share the same parent directory (got: $SESSION_TMPDIR vs $QA_TMPDIR)"
     exit 2
 fi
+TRANSCRIPT_PARENT=$(_codex_canonical_existing_dir "$TRANSCRIPT_DIR") || {
+    larch_err "launch-codex-implement.sh: --transcript-path parent is not a directory: $TRANSCRIPT_DIR"
+    exit 2
+}
+if [[ "$SESSION_TMPDIR" != "$TRANSCRIPT_PARENT" ]]; then
+    larch_err "launch-codex-implement.sh: --transcript-path must share the parent directory with --manifest-path and --qa-pending-path (got: $TRANSCRIPT_PARENT vs $SESSION_TMPDIR)"
+    exit 2
+fi
+if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+    _canon_implement_tmpdir=$(_codex_canonical_existing_dir "$IMPLEMENT_TMPDIR") || {
+        larch_err "launch-codex-implement.sh: IMPLEMENT_TMPDIR is not a directory: $IMPLEMENT_TMPDIR"
+        exit 2
+    }
+    if [[ "$SESSION_TMPDIR" == "$_canon_implement_tmpdir" ]]; then
+        larch_err "launch-codex-implement.sh: --manifest-path parent must not be the implement session tmpdir root (Codex --add-dir grant would cover orchestrator-owned artifacts)"
+        exit 2
+    fi
+    unset _canon_implement_tmpdir
+fi
+unset -f _codex_add_dir_has_control_chars _codex_canonical_existing_dir
 
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/session-id" ]]; then
     file_id=$(tr -d '\r\n' < "${IMPLEMENT_TMPDIR}/session-id" 2>/dev/null || true)
@@ -325,7 +369,10 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     LAUNCHER_EXIT=0
     rm -f "$CODEX_EVENTS"
     # shellcheck disable=SC2094 # --stderr-sink intentionally names the same fd2 sink used by this invocation.
-    # --add-dir "$SESSION_TMPDIR" grant must stay wide: Step 2 coder writes manifest.json / qa-pending.json there.
+    # --add-dir "$SESSION_TMPDIR" grants write access only to the codex-step2-out/ subdir
+    # (SESSION_TMPDIR = dirname("$MANIFEST_PATH") = codex-step2-out/ after canonicalization).
+    # manifest.json, qa-pending.json, and the --output-last-message transcript all land there.
+    # Symlink parents and SESSION_TMPDIR == IMPLEMENT_TMPDIR are rejected above.
     CODEX_HOME="$CODEX_HOME_DIR" "$SCRIPT_DIR/run-external-agent.sh" \
         --tool codex \
         --output "$TRANSCRIPT_PATH" \

@@ -1,0 +1,22 @@
+Reviewing the branch diff and comparing the checkpoint script to the removed inline logic.
+Comparing the removed inline block on main with the checkpoint script and gate behavior.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+Compared `skills/implement/scripts/oos-disposition-checkpoint.sh` against the removed inline block from `main:skills/implement/SKILL.md` (disposition-gate fence). Aside from the two documented deliberate changes below, the port matches on the scout checklist:
+
+- **Commit range** (`oos-disposition-checkpoint.sh:113-122`): same fallback chain — `merge-base..HEAD` when non-empty, else `origin/main..HEAD` when `origin/main` resolves, else `HEAD`.
+- **CSV / gate argv** (`148-149`, `177-182`): same `--accepted-files` order (`main-agent`, design path, `review`), same `--filed-urls-file` / `--filed-urls-strict-file` wiring.
+- **Design path** (`140-146`): same precedence — CLI/exported `DESIGN_TMPDIR`, then `design-export/`, then implement-tmpdir default.
+- **`_non_sec_oos` loop** (`151-158`): same tolerant per-file awk accumulation.
+- **Precondition** (`160-166`): same test (`non_sec > 0` and missing/unreadable ndjson) when not fork/repo-unavailable; fires correctly when `_oos_ndjson` is a non-empty stale keyed path with no file (`! -f`).
+
+**Documented deliberate changes (not defects):**
+
+1. **Stale `RUN_ID` / no find-fallback** (`127-138` vs old `if [ -z "$_oos_ndjson" ] || [ ! -f "$_oos_ndjson" ]` find): with non-empty `session-id`, only the keyed path is used; sole foreign `oos-issues.ndjson` no longer binds. Precondition exits **2** instead of possibly proceeding — documented in `oos-disposition-checkpoint.md` and exercised by `test-oos-disposition-gate.sh` (`_impl_stale`, assert rc 2, validation site + checkpoint stderr at ~622-628).
+2. **Gate exit 2 passthrough** (`192-195` vs old orchestrator `exit 1`): checkpoint propagates gate **2** as exit **2**; `SKILL.md` branches remediation accordingly (~1187, ~1216-1217).
+
+Harness coverage for stale RUN_ID, merge-base absent, disposition-gap logging, and gate-exit-2 passthrough aligns with the above.
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND

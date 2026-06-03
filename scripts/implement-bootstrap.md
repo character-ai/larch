@@ -1,6 +1,6 @@
 # implement-bootstrap.sh
 
-Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setup, session-env write, token/timing marks, rehydrate keys, tracking issue adoption, reviewer warnings, and the umbrella KV tail. **Primary caller:** `skills/implement/SKILL.md` Step 0 (foreground). **Offline harness:** `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `.md`).
+Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setup, session-env write, token/timing marks, rehydrate keys, tracking issue adoption, reviewer warnings, and the umbrella KV tail. **Primary caller:** `skills/implement/SKILL.md` Step 0 via `scripts/implement-bootstrap-invoke.sh` (`--mode initial` / `--mode resume`). **Offline harness:** `skills/implement/scripts/test-implement-bootstrap.sh` (+ sibling `.md`); wrapper harness: `skills/implement/scripts/test-implement-bootstrap-invoke.sh`.
 
 ## argv
 
@@ -15,7 +15,7 @@ Mechanical `/implement` Step 0 bootstrap: branch facts, entry gate, session setu
 | `--emergency-requested` | no | `true` \| `false` | Default `false`. Forwarded to run-flag persistence and metadata summaries; also controls whether a Preflight `emergency-bypass.log` is surfaced as a warning for the current run. |
 | `--upstream-repo` | no | `OWNER/REPO` | Required by callers in fork mode when upstream issue context should be fetched. Validated as one owner/repo slash with GitHub-safe characters. |
 | `--run-id` | no | `^[A-Za-z0-9._-]+$` | Preferred Branch 2 run id; takes precedence over `$IMPLEMENT_TMPDIR/session-id` and `LARCH_TOKEN_SESSION_ID`. |
-| `--coder` | no | `claude` \| `codex` \| `cursor` | Pins the explicit implementer. When the pinned external tool is unavailable, `phase_coder_select` **waterfalls instead of bailing** (#3207): `--coder codex` → Cursor → Claude; `--coder cursor` → Codex → Claude (`claude` is the always-available main-agent path, so `--coder claude` resolves to claude). A warning names the unavailable tool and the waterfall target. When omitted, `phase_coder_select` runs the Cursor → Codex → Claude waterfall. |
+| `--coder` | no | `claude` \| `codex` \| `cursor` | Pins the explicit implementer. When the pinned external tool is unavailable, `phase_coder_select` **waterfalls instead of bailing** (#3207): `--coder codex` → Cursor → Claude; `--coder cursor` → Codex → Claude (`claude` is the always-available main-agent path, so `--coder claude` resolves to claude). A warning names the unavailable tool and the waterfall target. When omitted, `phase_coder_select` runs the Codex → Cursor → Claude waterfall. |
 | `--preflight-tmpdir` | with `--issue-number` when `--up-to-phase` is `plan`, `coder`, or `all` | path | Directory containing `plan-from-issue.txt` from Preflight. |
 | `--resume-plan-tail` | no | flag | Dirty-tree recovery continuation. Reuses the caller-exported `IMPLEMENT_TMPDIR` / `session-env.sh`, re-runs the dirty-tree checkpoint, and resumes only the Phase 3 tail after that checkpoint succeeds. Reviewer availability is reloaded from the persisted session-env keys; no fresh reviewer probes run on this path. |
 
@@ -163,8 +163,9 @@ Audit of the `phase_plan_materialize` checkpoint-and-tail region around lines ~7
 
 ## Edit-in-sync
 
-- `skills/implement/SKILL.md` Step 0 call site and KV parsing.
+- `skills/implement/SKILL.md` Step 0 call site and routing-envelope parsing.
+- `scripts/implement-bootstrap-invoke.sh` (+ `.md`) and `skills/implement/scripts/test-implement-bootstrap-invoke.sh` (+ `.md`).
 - `scripts/lint-foreground-markers.sh` DENYLIST (Family B foreground).
 - `skills/implement/scripts/test-implement-bootstrap.sh` (+ `.md`).
-- `SECURITY.md`, `scripts/test-implement-step2-routing.sh` (+ `.md`), `scripts/test-implement-structure.sh` (+ `.md`), `docs/linting.md`, and `skills/shared/subskill-invocation.md` for Step 0 implementer-selection wording.
+- `SECURITY.md`, `scripts/test-implement-step2-routing.sh`, `scripts/test-implement-structure.sh` (+ `.md`), `docs/linting.md`, and `skills/shared/subskill-invocation.md` for Step 0 implementer-selection wording (explicit co-updates, not verify-only).
 - This file.

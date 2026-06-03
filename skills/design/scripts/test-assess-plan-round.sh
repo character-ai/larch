@@ -14,8 +14,15 @@ trap 'rm -rf "$TMP"' EXIT
 export CLAUDE_PLUGIN_ROOT="$ROOT"
 
 write_params() {
-  local wp="$1"
-  printf '{"workflow_path":"%s"}\n' "$wp" >"$TMP/run-params.json"
+  local wp="${1:-}"
+  local dc="${2:-}"
+  if [[ -n "$dc" ]]; then
+    printf '{"workflow_path":"%s","design_classification":"%s"}\n' "$wp" "$dc" >"$TMP/run-params.json"
+  elif [[ -n "$wp" ]]; then
+    printf '{"workflow_path":"%s"}\n' "$wp" >"$TMP/run-params.json"
+  else
+    printf '{"design_classification":"HARD"}\n' >"$TMP/run-params.json"
+  fi
 }
 
 setup_round2() {
@@ -54,6 +61,16 @@ unset IMPLEMENT_TMPDIR || true
 write_params SIMPLE
 out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
 printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=skipped' || fail 'SIMPLE must skip'
+
+write_params "" HARD
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_STATUS=skipped' || fail 'empty workflow_path with HARD classification must skip at round 1'
+pass 'empty workflow_path aligns to HARD classification'
+
+write_params SIMPLE HARD
+out=$(LARCH_QUIET_DISABLE=1 "$SUBJECT" --design-tmpdir "$TMP" --codex-present true --cursor-present true)
+printf '%s\n' "$out" | grep -Fq 'ASSESSOR_VERDICT=skipped' || fail 'SIMPLE workflow_path with HARD classification must follow classification skip'
+pass 'workflow_path vs design_classification mismatch follows classification'
 
 write_params HARD
 printf '1\n' >"$TMP/plan-review-round-cursor.txt"

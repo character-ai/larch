@@ -1,0 +1,28 @@
+Reviewing the plan and codebase for pin-migration audit findings.
+Checking how similar bounded pins are implemented and whether the plan references `14c14i` implementation details.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:217-233	Retargeted 14c14d/14c14g (and line-163 discussion pin) only require `design-postplan-emit.sh` presence, not absence of superseded `invoke-plan-validator.sh` in re-emit bodies	Steps 7–8 in `approval-gates.md` or the Plan revision authority paragraph in `discussion-rounds.md` could keep a standalone `invoke-plan-validator.sh` line after adding the driver; file-level driver greps and 14c14e/14c14h ordering vs `Step 2b.5` would still pass	When rewriting those pins, add section-bounded `absent` checks (Shared post-apply pipeline block; Plan revision authority paragraph) for inline `invoke-plan-validator.sh`, or extend 14c14e/14c14h to fail when `invoke-plan-validator` appears between the first `design-postplan-emit.sh` and `Step 2b.5`
+1	in_scope	latent	correctness	plan.txt:240-241	`FINDING_21 approval-gates` row requires `Step 2b.5` after `design-postplan-emit.sh` but does not prescribe awk/section bounds; `scripts/test-design-structure.sh:412-413` is presence-only today	An implementer could update the fail message at 412-413 while leaving `grep -Fq 'Step 2b.5'` and skip 14c14e’s shared-section awk; ordering would stay unenforced despite the table row	Explicitly fold FINDING_21 approval-gates into the 14c14e awk bounded on `### Shared post-apply pipeline` (precedent at `scripts/test-design-structure.sh:695-698`), or replace 412-413 with the same awk and drop the redundant grep
+
+1. **[correctness]** `plan.txt:217-233` / post-change `scripts/test-design-structure.sh` — Migrated **14c14d**, **14c14g**, and the discussion-rounds validator pin (~163) swap `invoke-plan-validator.sh` greps for `design-postplan-emit.sh` presence only. They do not require removal of inline validator prose in the Shared post-apply pipeline (`skills/design/references/approval-gates.md:157-159`) or Plan revision authority block (`skills/design/references/discussion-rounds.md:126`). A partial migration (driver added, legacy `invoke-plan-validator.sh` retained before `Step 2b.5`) can still satisfy **14c14d**, **14c14e**, and **14c14h**. Add bounded `absent` pins or forbid `invoke-plan-validator` between driver and `Step 2b.5`.
+
+2. **[correctness]** `plan.txt:240-241` / `scripts/test-design-structure.sh:412-413` — The **FINDING_21 approval-gates** row claims `Step 2b.5` follows `design-postplan-emit.sh`, but the existing pin only checks that `Step 2b.5` exists anywhere in `approval-gates.md`. Ordering is delegated to **14c14e** in the same table; if **14c14e** is implemented and **412-413** is left as a presence grep, the row is redundant but acceptable. If **412-413** is updated in isolation without **14c14e**’s shared-section awk, ordering stays vacuous. Tie **FINDING_21 approval-gates** to the **14c14e** awk anchored on `### Shared post-apply pipeline`.
+
+**Audit summary (named pins):**
+
+| Pin | Plan targets `design-postplan-emit.sh`? | Non-vacuous / bounded? | Temp break stated? |
+|-----|----------------------------------------|-------------------------|-------------------|
+| **14b10** | Yes (Step 2b block before `check-plan-size.sh`) | Yes (`step2b_block`) | Yes (246-247) |
+| **14c14c–d** | Yes | Presence-only; no `absent` for legacy invoke (finding 1) | Yes |
+| **14c14e** | Yes (awk vs `Step 2b.5` in shared post-apply) | Yes if section-bounded | Yes |
+| **14c14f–g** | Yes | Same as 14c14d (finding 1) | Yes |
+| **14c14h** | Yes (awk in plan-revision authority) | Yes for single paragraph | Yes |
+| **~163** | Yes (retarget; drop file-level invoke pin) | Same remnant-invoke risk | Yes |
+| **14c14i** | Yes | Yes (Optional trailer guard → next `<!-- step:`/`## Step`; not file-level SKILL grep alone) | Yes |
+| **FINDING_21** | Yes (Step 2b block + approval-gates row) | Step 2b bounded; approval-gates relies on 14c14e (finding 2) | Yes |
+| **1124–1125** | Yes (driver `.sh`, not SKILL inline) | Yes on driver script | Yes |
+| **456/459** | N/A (unchanged `before \`ACTION=EMIT_PLAN\``) | Plan explicitly keeps (`plan.txt:244`, `approval-gates.md`/`discussion-rounds.md` ordering phrases) | N/A |
+
+**[OUT_OF_SCOPE]** `scripts/test-design-structure.sh:83` — File-level `invoke-plan-validator.sh` on `SKILL.md` remains after Step 2b inlines are removed; Step 5c/shared failure prose still satisfies it. Not in the coupled migration table; no change required for this PR’s pin contract.
+
+**Exonerated:** Duplicate **14c14c**/**14c14d** both grepping the same driver string (SIMPLE redundancy). Driver-absent false pass via comment-only mention (unlikely in normative prose). New driver executable/internal-order pins at `plan.txt:207-211` are appropriately on `design-postplan-emit.sh`, not superseded SKILL inline fences.

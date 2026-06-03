@@ -20,5 +20,6 @@ When `jq` is available, the hook reads the SessionStart JSON payload on stdin an
 
 Boundary advisories are emitted for:
 
-- post-/review: `review-round-summary.md` exists without `.review-boundary-passed`; recovery points to the Step 5 post-/review actions and Step 6 sentinel,
-- post-/bump-version: `.bump-version-armed` exists without `postbump-state.sh`; recovery points to Step 8 post-bump continuation and `implement-finalize.sh postbump`.
+- post-/review: `review-round-summary.md` exists without `.review-boundary-passed`; recovery points to the Step 5 post-/review actions and Step 6 sentinel.
+
+The post-/bump-version SessionStart advisory was retired in Phase 1 (#3364); `/implement` no longer arms `.bump-version-armed` on the ship path.

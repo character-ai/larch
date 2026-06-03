@@ -1,0 +1,98 @@
+### FINDING_1: [OUT_OF_SCOPE] Weak append-format assertion for `link_pr_closes`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: `test_link_pr_closes_appends` only checks for substring presence, so regressions in the required footer layout could pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Assert linked.endswith("\n\nCloses #42\n") or compare to a golden string.
+
+### FINDING_2: [OUT_OF_SCOPE] Branch stacks unrelated non-`python/` work despite python-only acceptance
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt, cursor-specialist-plan-fidelity-output.txt, dyn-report-gates-output.txt, dyn-pr-linkage-output.txt, dyn-surface-sync-output.txt
+- **Severity**: important
+- **Concern**: The branch diff includes unrelated Step 18/runtime/log/plugin changes in addition to the Phase 5 Python reconcile commit, violating the plan’s `python/`-only acceptance boundary and making review/rollback scope unclear.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Split or rebase so the Phase 5 PR contains only the reconcile commit if acceptance is evaluated at PR scope.
+  - From cursor-specialist-testing-output.txt: Split PRs or document stacked commits for reviewers.
+  - From cursor-specialist-edge-cases-output.txt: Split PR or rebase to land c4b8b5a10 alone on a clean branch
+  - From cursor-specialist-edge-cases-output.txt: Separate PR from Phase 5 work
+  - From cursor-specialist-plan-fidelity-output.txt: Ship c4b8b5a10 alone on a clean branch/PR, or split/rebase so the Phase 5 PR contains only the four python/ files from the reconcile commit.
+  - From dyn-surface-sync-output.txt: Split into separate PRs (or rebase onto `main` so this branch contains only `c4c8b5a10`’s four `python/` files plus its tests) before merge; keep runtime Step 18 work on its own branch/PR.
+
+### FINDING_3: [OUT_OF_SCOPE] Missing shorter-issue prefix-collision unit test
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: Tests cover `#42` vs `#421` but not the shorter issue case where `Closes #42` could falsely suppress appending `Closes #4` if substring idempotency regresses.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Add `test_link_pr_closes_no_leading_prefix_collision` with body `"Summary\n\nCloses #421\n"` and `issue_number=42` swapped to body containing `Closes #42` and `issue_number=4` if you want parity with the documented edge cases (not required by acceptance).
+  - From cursor-specialist-testing-output.txt: Add test_link_pr_closes_no_suffix_collision: body with Closes #42, link_pr_closes(body, 4) must append Closes #4.
+  - From cursor-specialist-edge-cases-output.txt: Add test_link_pr_closes_no_leading_prefix_collision for issue_number=4 with body containing Closes #42
+
+### FINDING_4: Missing `ensure_pr` integration coverage for digit-boundary guard
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: `ensure_pr` could fail to update a PR body when only a longer issue number is present, without current `test_pr.py` coverage detecting it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add/extend ensure_pr test: body with Closes #421, issue 42, assert linked body includes Closes #42 and update/create is invoked.
+
+### FINDING_5: [OUT_OF_SCOPE] Missing test that `issue_number=None` omits `Closes`
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: Existing `compose_pr_body` coverage does not assert that no closing footer is emitted when no issue number is supplied.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Add test_compose_pr_body_omits_closes_when_no_issue if desired later.
+
+### FINDING_6: `compose_pr_body` can skip required footer when `Closes #N` appears only in non-closing body text
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt, dyn-pr-linkage-output.txt
+- **Severity**: important
+- **Concern**: Delegating `compose_pr_body` to whole-body `link_pr_closes` means a literal `Closes #N` inside a fenced block or non-footer prose can be treated as already present, suppressing the dedicated footer GitHub needs for auto-close.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Restrict idempotency to footer/tail segment or document and test; add compose regression for fenced Closes #42 with required footer
+  - From dyn-pr-linkage-output.txt: Keep `link_pr_closes` for `ensure_pr` updates, but in `compose_pr_body` either always append the footer when `issue_number is not None` (old behavior), or narrow idempotency to non-fenced / trailing-footer text (e.g. ignore matches inside mermaid fences, or only inspect the last non-empty lines) so a decorative in-diagram `Closes #N` cannot suppress the real footer.
+
+### FINDING_7: [OUT_OF_SCOPE] `ensure_pr` update path bypasses `compose_pr_body` sanitization/redaction stack
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: latent
+- **Concern**: A future Phase 7 caller could publish through `update_pr_body` without the same validation/redaction path used by `compose_pr_body`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Address in Phase 7 wiring; not introduced here
+
+### FINDING_8: [OUT_OF_SCOPE] `link_pr_closes` detection remains case-sensitive
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt, dyn-pr-linkage-output.txt
+- **Severity**: latent
+- **Concern**: Bodies containing lowercase `closes #N` are not treated as already linked, so a canonical `Closes #N` line can be duplicated later.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Future: case-insensitive guard aligned with GitHub keywords
+
+### FINDING_9: Step 18b snapshot-copy failure can suppress refreshed final summary
+- **Reviewer(s)**: dyn-report-gates-output.txt
+- **Severity**: important
+- **Concern**: If the pre-write snapshot copy fails, the wrapper treats `SNAPSHOT_OK=false` as a no-op and may keep emitting the stale Step 17 chat summary even when disk artifacts were refreshed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-report-gates-output.txt: On `SNAPSHOT_OK=false`, either fall back to the old behavior when `.step18-prebody` is absent after the failed copy (promote when `wfr_rc=0`, body non-empty, and `cmp` differs or prebody missing), or re-run the emit decision using only post-write `cmp` without treating a failed snapshot as a hard veto; add a harness case where `cp` fails, `rm` succeeds, and WFR changes the body to lock the intended behavior.
+
+### FINDING_10: Step 18b token-report failure is not surfaced in the wrapper contract
+- **Reviewer(s)**: dyn-report-gates-output.txt
+- **Severity**: important
+- **Concern**: `token-report.sh` failures are only logged best-effort, so the orchestrator may emit a final body that appears refreshed while using stale token/cost data.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-report-gates-output.txt: Emit a `TOKEN_RC` (or `TOKEN_OK`) KV from the wrapper and extend the SKILL gate (or a mandatory warning block) so non-zero token refresh forces either a visible warning in the emitted body or `EMIT_BODY=false` when refreshed costs are required.
+
+### FINDING_11: Canonical PR-body composer/redaction coupling lacks integration guard
+- **Reviewer(s)**: dyn-report-gates-output.txt
+- **Severity**: latent
+- **Concern**: The new `compose_pr_body` delegation centralizes closing-link composition through `tracking_issue`, but future redaction/order assumptions and prefix-collision interactions are not documented or integration-tested.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-report-gates-output.txt: Document in `python/README.md` (or a one-line comment at the call site) that `link_pr_closes` is the single canonical composer for both `compose_pr_body` and `pr.ensure_pr`, and add an integration test that runs `compose_pr_body(…, issue_number=N)` through redact with a fixture summary containing secret-like tokens adjacent to a `Closes #421` / `Closes #42` pair to guard prefix-collision + redaction interaction.
+
+### FINDING_12: Unrelated committed run-log tree pollutes the branch surface
+- **Reviewer(s)**: dyn-surface-sync-output.txt
+- **Severity**: important
+- **Concern**: The branch includes a large unrelated `larch-logs/implement/5243990C-.../` payload that dwarfs the intended delta and is not tied to the current Phase 5 work.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-surface-sync-output.txt: Drop the `5243990C` tree from this branch (revert or interactive rebase of `57c30c487`’s log payload); if a run log is required, commit only the run tied to #3326 (`E71397F6` per `a4c6aa527`) or follow `docs/run-logs.md` publication rules without importing another run’s breadcrumb tree.
+
+### FINDING_13: Missing linting-doc row for new Step 18b harness
+- **Reviewer(s)**: dyn-surface-sync-output.txt
+- **Severity**: nit
+- **Concern**: `make test-step-18b-final-report` is registered in `Makefile` but absent from the `docs/linting.md` harness table, creating surface-sync drift.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-surface-sync-output.txt: Add a `docs/linting.md` row for `make test-step-18b-final-report` describing the offline harness, script path, and `test-harnesses-6` shard, mirroring the `test-stall-recovery-report` entry format.

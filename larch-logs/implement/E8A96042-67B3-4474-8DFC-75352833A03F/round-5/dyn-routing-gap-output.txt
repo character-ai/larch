@@ -1,0 +1,17 @@
+Tracing the routing envelope against pre-rehydration consumers in SKILL.md and related files.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+The branch intentionally shrinks bootstrap stdout handling from the old `_ib_kv_scan` export set (roughly 30 keys in `skills/implement/SKILL.md`, removed in the diff at lines 1283–1340 of `diff.txt`) to the 19-key `_inv_routing_keys` allowlist in `scripts/implement-bootstrap-invoke.sh:151` and `scripts/parse-bootstrap-routing-envelope.sh:32`. Dropped keys (`CURRENT_BRANCH`, `IS_MAIN`, `USER_PREFIX`, `ENTRY_GATE`, `SESSION_ID`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, `EMERGENCY_REQUESTED`, etc.) remain on bootstrap stdout and in `$IMPLEMENT_TMPDIR/session-env.sh` per `scripts/implement-bootstrap.md`; they are no longer mirrored into the orchestrator shell via the routing envelope.
+
+Tracing `skills/implement/SKILL.md` between the Step 0 wrapper call and the first `read-session-env-key.sh` usage shows no regression from that shrink:
+
+- **Initial path** (`304–325`): invoke → `parse-bootstrap-routing-envelope.sh` → routing table / degraded-tools gate (`338`) use only envelope keys (`CODEX_*`, `CURSOR_*`, `IMPLEMENT_BAIL_REASON`, `STALL_TRACKING`, `PLAN_FILE`, `coder`, etc.).
+- **Rebase Macro 1.r** (`495–503`): uses `IMPLEMENT_TMPDIR`, `CLAUDE_PLUGIN_ROOT`, and `forked_target` only — no dropped keys.
+- **First `read-session-env-key.sh`** in the Step 2 entry fence (`515–520`): rehydrates `LARCH_TOKEN_*` and presence keys from `session-env.sh`, which supersedes the old bootstrap-stdout export for those tokens.
+- **Dirty-tree resume** (`352–370`): reads `LARCH_TOKEN_*` from `session-env.sh` before `--mode resume`, then re-parses the envelope with `--preserve-coder`; routing prose explicitly sources `BRANCH_NAME` / `BRANCH_ACTION` / `PLAN_FILE` from the resumed envelope, all of which are in `_inv_routing_keys`.
+- **`$REPO` for Step 8+** (`1021`): included in the envelope; not referenced in SKILL bash between Step 0 and Step 2.
+- **`EMERGENCY_REQUESTED`**: SKILL uses the pre-exported `emergency_requested` env (`309`, `356`), not a bootstrap-parsed `EMERGENCY_REQUESTED` shell variable; `write-final-report.sh` reads emergency state from run-flags on disk.
+
+`skills/implement/SKILL.md` does not reference `$CURRENT_BRANCH`, `$SESSION_ID`, `$USER_PREFIX`, `$ENTRY_GATE`, or `$EMERGENCY_REQUESTED` as orchestrator shell variables anywhere. The architecture matches the documented contract in `scripts/implement-bootstrap-invoke.md:45–51` (routing envelope = pre-rehydration consumers only; everything else via `session-env.sh` + `read-session-env-key.sh`). Structural pins in `scripts/test-implement-structure.sh` keep `_inv_routing_keys` identical between the wrapper and parse scripts.

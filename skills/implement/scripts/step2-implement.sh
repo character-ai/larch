@@ -48,6 +48,16 @@
 #   TOOL=<codex|cursor>      # set on external implementer paths
 #   TRANSCRIPT=<path>        # set when launcher actually ran
 #   SIDECAR_LOG=<path>       # set when launcher actually ran
+#   WARN_CODEX_NONZERO_EXIT=true
+#                            # OPTIONAL, advisory. Emitted only on the Codex
+#                            # STATUS=complete path when the implementer exited
+#                            # non-zero AFTER atomically writing a complete
+#                            # manifest (e.g. a self-verification step failed
+#                            # once the work was done) and the dispatcher
+#                            # salvaged that manifest instead of discarding it.
+#                            # Trailing advisory KV, like the PHANTOM_* probe
+#                            # tail; SKILL.md Step 2 does not branch on it. See
+#                            # issue #3383.
 #   ORCHESTRATOR_EDIT_AUTHORITY=<allowed|forbidden>
 #                            # ALWAYS emitted on every exit-0 path. `allowed`
 #                            # only when STATUS=claude_fallback (the only
@@ -203,6 +213,12 @@ fi
 "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
 
 REQUIRES_HEAD_UNCHANGED=false
+# Set true at the Step 4 LAUNCHER_EXIT gate when a complete, well-formed
+# manifest is salvaged despite a non-zero implementer exit (issue #3383). The
+# token is the coder-specific KV key emitted in the Step 9 complete envelope;
+# it stays empty for coders that do not salvage (Cursor).
+WARN_NONZERO_EXIT_SALVAGE=false
+NONZERO_EXIT_WARN_TOKEN=""
 
 # ---------------------------------------------------------------------------
 # External implementer path. Set up paths inside $TMPDIR_ARG.
@@ -228,6 +244,7 @@ case "$CODER" in
         LAUNCHER="$PLUGIN_ROOT/scripts/launch-codex-implement.sh"
         RUNTIME_FAILURE_TOKEN="codex-runtime-failure"
         BAILED_NO_REASON_TOKEN="codex-bailed-no-reason"
+        NONZERO_EXIT_WARN_TOKEN="WARN_CODEX_NONZERO_EXIT"
         ;;
     cursor)
         TOOL_TAG="cursor"
@@ -257,6 +274,13 @@ MANIFEST_PATH="$TMPDIR_ARG/manifest.json"
 MANIFEST_RAW_PATH="$TMPDIR_ARG/manifest-raw.json"
 QA_PENDING_PATH="$TMPDIR_ARG/qa-pending.json"
 TRANSCRIPT_PATH="$TMPDIR_ARG/${TOOL_TAG}-impl-transcript.txt"
+if [[ "$CODER" == "codex" ]]; then
+    STEP2_OUT_DIR="$TMPDIR_ARG/codex-step2-out"
+    mkdir -p "$STEP2_OUT_DIR"
+    MANIFEST_PATH="$STEP2_OUT_DIR/manifest.json"
+    QA_PENDING_PATH="$STEP2_OUT_DIR/qa-pending.json"
+    TRANSCRIPT_PATH="$STEP2_OUT_DIR/${TOOL_TAG}-impl-transcript.txt"
+fi
 SIDECAR_LOG="$TMPDIR_ARG/${TOOL_TAG}-impl.log"
 
 [[ -f "$AGENT_PROMPT" ]] || { larch_err "step2-implement.sh: agent prompt missing: $AGENT_PROMPT"; exit 2; }
@@ -428,6 +452,26 @@ manifest_has_legacy_fingerprint() {
       ((has("schema_version") | not)) and
       ((keys_unsorted - ["status", "summary", "checks"]) | length == 0)
     ' "$MANIFEST_RAW_PATH" >/dev/null 2>&1
+}
+
+# A complete, well-formed manifest already on disk can be trusted even when the
+# implementer process exited non-zero AFTER writing it — e.g. a self-verification
+# step failed once the implementation work was already finished and atomically
+# committed to manifest.json (issue #3383). Step 3 removes stale manifests before
+# launch and the implementer writes manifest.json atomically (.tmp -> mv), so a
+# non-empty manifest.json that parses as schema_version "1" / status "complete"
+# reflects finished work, not a half-written or stale leftover. This predicate
+# only decides salvage-vs-hard-bail at the Step 4 non-zero-exit gate; the full
+# Step 5 structural validation (files_touched, commit_message, …) still runs
+# afterward and can still bail/recover. Reads $MANIFEST_PATH directly (the
+# canonical post-launch path), not the launcher's MANIFEST_WRITTEN KV.
+manifest_on_disk_is_salvageable_complete() {
+    [[ -s "$MANIFEST_PATH" ]] || return 1
+    jq -e '
+      type == "object"
+      and ((.schema_version | tostring) == "1")
+      and (.status == "complete")
+    ' "$MANIFEST_PATH" >/dev/null 2>&1
 }
 
 # Recovery preserves the pair invariant: STATUS=claude_fallback is the only
@@ -711,11 +755,32 @@ if [[ "$MANIFEST_WRITTEN" != "true" ]]; then
     emit_bailed "$RUNTIME_FAILURE_TOKEN"
 fi
 
-# Treat a non-zero launcher exit as failure even when a manifest was written —
-# the manifest may be a stale .tmp leftover, half-written, or otherwise
-# unreliable when the wrapper itself reports failure.
+# A non-zero launcher exit normally fails the run. The one carve-out (issue
+# #3383): the Codex implementer atomically wrote a complete, well-formed
+# manifest and only THEN exited non-zero — a self-verification step failing
+# after the implementation work was already finished. Hard-bailing there
+# discarded a finished manifest and stranded the branch with every edit
+# uncommitted. Salvage it instead: fall through to the Step 5 validation and
+# Step 7b dispatcher commit, annotating the run with WARN_CODEX_NONZERO_EXIT.
+# The earlier WRAPPER_EXIT!=0 (launcher script itself crashed) and
+# MANIFEST_WRITTEN!=true gates remain hard bails above — only a trustworthy
+# on-disk complete manifest is salvageable, and Step 5/6/7 still validate it
+# in full. Salvage is intentionally Codex-only: Cursor runs unsandboxed and has
+# no offline complete-path harness in test-step2-dispatch.sh, so it keeps the
+# conservative hard-bail (classified launcher-parity asymmetry; see
+# step2-implement.md and .claude/rules/external-tool-launcher-parity.md).
 if [[ "$LAUNCHER_EXIT" != "0" ]]; then
-    emit_bailed "$RUNTIME_FAILURE_TOKEN"
+    if [[ "$CODER" == "codex" ]] && manifest_on_disk_is_salvageable_complete; then
+        WARN_NONZERO_EXIT_SALVAGE=true
+        if [[ -x "$PLUGIN_ROOT/scripts/append-execution-issue.sh" && -d "$TMPDIR_ARG" ]]; then
+            "$PLUGIN_ROOT/scripts/append-execution-issue.sh" \
+                --log "$TMPDIR_ARG/execution-issues.md" \
+                --category Warnings \
+                --entry "Step 4 — $TOOL_TAG exited non-zero (LAUNCHER_EXIT=$LAUNCHER_EXIT) after atomically writing a complete manifest; not discarding it — continuing to validation/commit ($NONZERO_EXIT_WARN_TOKEN=true). A self-verification step likely failed after the implementation work completed." >/dev/null 2>&1 || true
+        fi
+    else
+        emit_bailed "$RUNTIME_FAILURE_TOKEN"
+    fi
 fi
 
 # Step 5: validate manifest schema with jq.
@@ -1050,6 +1115,11 @@ case "$STATUS" in
         emit_kv MANIFEST "$MANIFEST_PATH"
         emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
         emit_kv SIDECAR_LOG "$SIDECAR_LOG"
+        # Advisory salvage marker (issue #3383): the implementer exited non-zero
+        # after writing this complete manifest and the dispatcher salvaged it.
+        if [[ "$WARN_NONZERO_EXIT_SALVAGE" == "true" && -n "$NONZERO_EXIT_WARN_TOKEN" ]]; then
+            emit_kv "$NONZERO_EXIT_WARN_TOKEN" true
+        fi
         emit_kv ORCHESTRATOR_EDIT_AUTHORITY forbidden
         ;;
     needs_qa)

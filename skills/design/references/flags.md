@@ -12,6 +12,8 @@
 
 ## Public `/design` flags
 
+Step 0-pre validation and positional classification are implemented by `skills/design/scripts/parse-design-argv.sh`; this file remains the normative allowlist and tier-mapping source.
+
 **Tier**: SIMPLE is the default (no tier flag). `--hard` is the only public tier flag and maps to `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`. When `--hard` is absent, the orchestrator resolves `design_classification=SIMPLE`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE` (no sketches; full plan-review panel per `SKILL.md` Step 2a).
 
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
@@ -24,7 +26,7 @@
 
 **Mutual exclusion**: at most one `--hard` on argv; duplicate `--hard` → hard error before Step 0. Any unrecognized or disallowed leading public `--` flag → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` is independent of all other public flags.
 
-**Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first).
+**Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, only that token becomes `POSITIONAL_VALUE`; any later tokens are ignored (see `parse-design-argv.md`).
 
 ## Plan-size thresholds (Step 2b.5)
 
@@ -65,7 +67,7 @@ Between-review-round velocity (>20% plan growth **and** >10 accepted findings) i
 
 ## Plan-command validator
 
-Plan-command validator runs unconditionally on both SIMPLE and HARD after each successful `ACTION=EMIT_PLAN` on `plan.txt` and once on `composed-plan.md` in Step 5c.
+Post-plan validation for `plan.txt` is owned by `design-postplan-emit.sh` after each successful plan emit (initial Step 2b, Gate A re-entry, Gate B, and discussion-round2). When `review_budget` is `quick`, the driver emits `VALIDATE_STATUS=skipped-quick` at Step 2b, Gate A re-entry, and Gate B; `discussion-round2` passes `--force-validate` so validation still runs on quick. Step 5c still validates `composed-plan.md` before publish when its prompt-side guard allows it.
 
 **Defect handling**: when machine output reports `VALIDATE_STATUS=defects-found`, use the shared **Fix-and-retry / Override / Cancel** AskUserQuestion body in `SKILL.md` (**### Plan command validator failure (shared)**).
 

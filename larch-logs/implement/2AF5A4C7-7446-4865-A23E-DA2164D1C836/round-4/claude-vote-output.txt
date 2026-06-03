@@ -1,0 +1,32 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- finalize.md was updated with Phase 1 notes; remaining delta is minor wording around legacy-checkpoint framing
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan and SKILL.md explicitly accept stall-only semantics for Phase 1; this is by design not a defect
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly offered "explicitly accept its loss" as a valid resolution; code added an inline comment documenting the omission; concern is legitimate but fix complexity outweighs Phase 1 scope
+FINDING_9: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- low-probability transient edge case for in-flight pre-Phase-1 branches; complex fix not justified in Phase 1 scope
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- cosmetic naming; renaming introduces churn with no behavioral benefit in Phase 1
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- intentional Phase 1 design; Python module is dormant; field removal is Phase 5+
+FINDING_17: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- cannot verify SKILL.md wording without reading it; "prefer EXONERATE when uncertain" applies
+FINDING_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly designates concurrency acceptance as a manual reproduction; an automated integration harness is Phase 5+ scope
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_21: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_5: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- contract explicitly documents --changelog-bullets-file as accepted for CLI compat but unused; not worth a separate issue
+OOS_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Phase 5 deferred per plan; not worth a separate issue before Phase 5 deletion
+OOS_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_10: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+OOS_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- observation-only; FINDING_8 covers the actionable concern; no separate issue warranted

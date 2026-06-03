@@ -1,0 +1,53 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -48,7 +48,28 @@
+ if [[ "$SESSION_TMPDIR" != "$TRANSCRIPT_PARENT" ]]; then
+     larch_err "launch-codex-implement.sh: --transcript-path must share the parent directory with --manifest-path and --qa-pending-path (got: $TRANSCRIPT_PARENT vs $SESSION_TMPDIR)"
+     exit 2
+ fi
+ ```
+ 
+-2. Replace the stale comment at the `--add-dir "$SESSION_TMPDIR"` line (~line 328):
++2. After the parent-equality checks, reject symlink `MANIFEST_DIR` / `QA_PENDING_DIR` (mirrors `_codex_canonical_existing_dir` in `launch-review.sh`), then guard that `SESSION_TMPDIR` does not equal the full `IMPLEMENT_TMPDIR` root:
++
++```bash
++# Symlink guard: reject MANIFEST_DIR / QA_PENDING_DIR if either is a symlink
++for _dir in "$MANIFEST_DIR" "$QA_PENDING_DIR"; do
++    if [[ -L "$_dir" ]]; then
++        larch_err "launch-codex-implement.sh: --add-dir target must not be a symlink (got: $_dir)"
++        exit 2
++    fi
++done
++
++# Full-tmpdir guard: SESSION_TMPDIR must not resolve to IMPLEMENT_TMPDIR root
++if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
++    _impl_canonical=$(cd "$IMPLEMENT_TMPDIR" && pwd -P)
++    if [[ "$SESSION_TMPDIR" == "$_impl_canonical" ]]; then
++        larch_err "launch-codex-implement.sh: SESSION_TMPDIR must not equal IMPLEMENT_TMPDIR root (symlinked codex-step2-out/ would widen --add-dir grant)"
++        exit 2
++    fi
++fi
++```
++
++3. Replace the stale comment at the `--add-dir "$SESSION_TMPDIR"` line (~line 328):
+@@ -163,2 +184,4 @@
+ - State explicitly that sidecar log, `manifest-raw.json`, dispatcher baseline/spawn/resume sentinels, and other `$IMPLEMENT_TMPDIR` root artifacts are launcher/orchestrator-owned and outside the Codex write grant (Codex may still read plan/feature inputs and repo paths via `--add-dir "$PWD"` / workspace-write).
+ - Retain the manifest/qa canonical-parent equality check and the intentional asymmetry vs Cursor (no `--add-dir` on `launch-cursor-implement.sh`).
++- Document the symlink rejection guard on `MANIFEST_DIR`/`QA_PENDING_DIR` (mirrors `_codex_canonical_existing_dir` in `launch-review.sh`): if either path is a symlink, the launcher exits 2 before spawning Codex.
++- Document the full-tmpdir equality guard: if `IMPLEMENT_TMPDIR` is set and canonical `SESSION_TMPDIR` equals canonical `IMPLEMENT_TMPDIR`, the launcher exits 2 — closes the symlinked-subdir scenario where `--add-dir` widens back to the full tmpdir root.
+@@ -186,3 +209,4 @@
+ 5. **SECURITY.md stale full-tmpdir grant**: operators mis-scope tamperable artifacts — paragraph updated alongside launcher doc.
+ 6. **step2-implement.md line 69 stale root manifest path**: operators assume codex manifest stays at tmpdir root after the change — outcomes bullet qualified alongside lines 12–13.
++7. **Symlink smuggle widens grant**: `codex-step2-out/` pre-exists as a symlink to `$IMPLEMENT_TMPDIR`; canonical `SESSION_TMPDIR` resolves to full tmpdir root and `--add-dir` widens back — prevented by symlink rejection on `MANIFEST_DIR`/`QA_PENDING_DIR` plus the `SESSION_TMPDIR == IMPLEMENT_TMPDIR` guard.
+ 
+@@ -195,4 +219,4 @@
+ ### Testing strategy
+ 
+-- `test-codex-implementer.sh`: test 6 auto-verifies narrowed `--add-dir`; **test 11c** (after test 11) for transcript-parent mismatch; **fail 4b** unchanged (`CODEX_HOME`).
++- `test-codex-implementer.sh`: test 6 auto-verifies narrowed `--add-dir`; **test 11c** (after test 11) for transcript-parent mismatch; **test 11d** (symlink `MANIFEST_DIR` → exit 2 with "must not be a symlink"); **test 11e** (`SESSION_TMPDIR == IMPLEMENT_TMPDIR` when `IMPLEMENT_TMPDIR` is set → exit 2 with "must not equal IMPLEMENT_TMPDIR root"); **fail 4b** unchanged (`CODEX_HOME`).
+ - `test-step2-dispatch.sh`: all codex `STEP2_MANIFEST_PATH` rows in the table above + META17A/B/C; test 16 stub qa-pending + `QA_PENDING_16` under `codex-step2-out/`; cursor tests 3e/M1b/23 untouched.
+@@ -201,3 +225,3 @@
+ `bash scripts/relevant-checks.sh` (or `make lint`) after changes.
+ 
+-diff_lines: 101
++diff_lines: 138

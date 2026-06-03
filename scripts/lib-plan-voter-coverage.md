@@ -18,9 +18,9 @@ Source-only helpers for plan-voter coverage accounting and stdout status KV emis
 
 Accepts one tab-delimited triple per voter: `<status>\t<path>\t<parse_rate_status>`. Prints the integer count of voters whose status is not `failed`, whose parse-rate status is not `NOT_SUBSTANTIVE`, and whose output path is non-empty.
 
-### `plan_voter_coverage_emit_degraded_warning_if_needed <effective_judges> <expected_judges>`
+### `plan_voter_coverage_emit_degraded_warning_if_needed <effective_judges> <expected_judges> [reason_note]`
 
-Emits the degraded plan-review panel warning through `larch_err` and `emit_kv DEGRADED_PANEL_WARNING` only when `effective_judges < expected_judges`. Callers pass the expected judge count explicitly; the helper does not infer panel size.
+Emits the degraded plan-review panel warning through `larch_err` and `emit_kv DEGRADED_PANEL_WARNING` only when `effective_judges < expected_judges`. Callers pass the expected judge count explicitly; the helper does not infer panel size. The optional `reason_note` is a single-line cause appended to the banner — `dispatch-plan-voters.sh` passes a usage-limit/quota cause when a failed external voter left a quota signature, so the degradation is not silently attributed to a generic failure (#3378).
 
 ### `plan_voter_coverage_emit_status_block <v1 path> <v1 tool> <v1 status> <v1 parse-rate> <v2 path> <v2 tool> <v2 status> <v2 parse-rate> <v3 path> <v3 tool> <v3 status> <v3 parse-rate> <plan-voter-paths-file>`
 

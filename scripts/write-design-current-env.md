@@ -27,7 +27,11 @@ restores it on every block from Step 1c onward.
 
 Always writes `DESIGN_TMPDIR`, `SESSION_TMPDIR`, and `SESSION_ID`.
 Optionally writes `MANUAL_REQUESTED`, `ISSUE_NUMBER`, `CODEX_PRESENT`, `CURSOR_PRESENT`,
-`CODEX_AVAILABLE`, `CURSOR_AVAILABLE`. Writes `CLAUDE_PLUGIN_ROOT`
+`CODEX_AVAILABLE`, `CURSOR_AVAILABLE`. Always writes
+`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` (default `30`, inheriting a numeric
+process-env override such as `0` for opt-out) so later `/design` Bash blocks
+and external launchers inherit the launch-time health gate without parsing
+session files. Writes `CLAUDE_PLUGIN_ROOT`
 whenever it is set in the writer's environment, mirroring
 `scripts/write-session-env.sh`'s `LARCH_CLAUDE_PLUGIN_ROOT` shape but as
 the directly-usable variable name (sourceable, not parsed).

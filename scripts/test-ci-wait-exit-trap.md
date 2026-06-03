@@ -19,7 +19,7 @@ Asserts the file-mode contract holds when ci-wait.sh is signal-killed mid-pollin
 Asserts no behavioral drift for existing callers when `--output-file` is absent:
 
 6. Script exits 0 on `ACTION=merge` resolution.
-7. All 7 KV keys (`ACTION=`, `CI_STATUS=`, `BEHIND_COUNT=`, `FAILED_RUN_ID=`, `BAIL_REASON=`, `ITERATION=`, `ELAPSED=`) appear on stdout in order.
+7. All 8 KV keys (`ACTION=`, `CI_STATUS=`, `BEHIND_COUNT=`, `CONFLICTED=`, `FAILED_RUN_ID=`, `BAIL_REASON=`, `ITERATION=`, `ELAPSED=`) appear on stdout in order.
 8. No file-mode side effects: no `<dir>/out.txt`, `<dir>/out.txt.done`, or `<dir>/out.txt.tmp` files created adjacent to the test fixture.
 
 ## Fixture layout

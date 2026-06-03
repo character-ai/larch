@@ -7,10 +7,11 @@
 # Usage:
 #   ci-status.sh --pr NUMBER --repo OWNER/REPO [--base-remote NAME] [--base-ref BRANCH] [--empty-checks-grace SECONDS]
 #
-# Outputs (always all three lines, in order):
+# Outputs (always all four lines, in order):
 #   CI_STATUS=pass|fail|pending|merged|NO_CHECKS
 #   BEHIND_COUNT=<N>
 #   FAILED_RUN_ID=<id>    (empty string if no failure)
+#   CONFLICTED=<true|false>
 #
 # Exit codes:
 #   0 — always (status is communicated via output lines)
@@ -27,9 +28,11 @@ larch_quiet_init
 CI_STATUS="pending"
 BEHIND_COUNT="0"
 FAILED_RUN_ID=""
+CONFLICTED="false"
+MERGE_STATE_STATUS=""
 
 # Ensure output is always emitted, even on unexpected errors
-trap 'emit_kv CI_STATUS "$CI_STATUS"; emit_kv BEHIND_COUNT "$BEHIND_COUNT"; emit_kv FAILED_RUN_ID "$FAILED_RUN_ID"' EXIT
+trap 'emit_kv CI_STATUS "$CI_STATUS"; emit_kv BEHIND_COUNT "$BEHIND_COUNT"; emit_kv FAILED_RUN_ID "$FAILED_RUN_ID"; emit_kv CONFLICTED "$CONFLICTED"' EXIT
 
 usage() { larch_err "Usage: ci-status.sh --pr NUMBER --repo OWNER/REPO"; }
 
@@ -69,8 +72,15 @@ fi
 
 BASE_TARGET="${BASE_REMOTE}/${BASE_REF}"
 
-# --- Check if PR has been force-merged ---
-PR_STATE=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state -q '.state' 2>/dev/null || echo "")
+# --- Check if PR has been force-merged (mergeStateStatus on same gh pr view call) ---
+PR_JSON=$(gh pr view "$PR_NUMBER" --repo "$REPO" --json state,mergeStateStatus 2>/dev/null || echo "")
+PR_STATE=$(echo "$PR_JSON" | jq -r '.state // ""' 2>/dev/null || echo "")
+MERGE_STATE_STATUS=$(echo "$PR_JSON" | jq -r '.mergeStateStatus // ""' 2>/dev/null || echo "")
+case "$MERGE_STATE_STATUS" in
+    DIRTY) CONFLICTED="true" ;;
+    CLEAN|BEHIND|BLOCKED|UNSTABLE|HAS_HOOKS) CONFLICTED="false" ;;
+    *) CONFLICTED="true" ;;
+esac
 if [[ "$PR_STATE" == "MERGED" ]]; then
     CI_STATUS="merged"
     exit 0

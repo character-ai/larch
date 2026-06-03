@@ -20,7 +20,7 @@ tests.
 
 ## Harness
 
-Covered by the CI launcher harnesses and `scripts/test-ship-pr.sh`.
+Covered by the CI launcher harnesses.
 
 ## Edit In Sync
 

@@ -1,0 +1,16 @@
+Reviewing the plan against the Step 2b and phase-driver contracts in the repo.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:28-47;skills/design/scripts/design-postplan-emit.sh (proposed)	Approach mandates set -euo pipefail and always writing .design-postplan-emit-result.env before exit 0/1, but does not require set +e around design-driver.sh, snapshot-plan-round.sh, or invoke-plan-validator.sh calls	Any helper non-zero exit aborts the driver under errexit before write_result_env_and_emit runs; orchestrator loses POSTPLAN_EMIT_STATUS/EMIT_PLAN_STATUS/VALIDATE_* KVs and may treat infra/emit/snapshot failures like an unexplained Bash abort instead of the keyed exit-1 branches (missing-diff-lines repair, snapshot-failed abort, validate-driver-failed)	State explicitly in Approach and design-postplan-emit.md: wrap each helper in set +e subshell capture (match design-publish.sh:159-162,253-260), then classify rc/KVs, write result-env, emit stdout, and only then exit 1
+
+**1. [correctness]** `plan.txt:28-47` / proposed `skills/design/scripts/design-postplan-emit.sh` — The approach pairs `set -euo pipefail` with a guarantee that the driver always writes `.design-postplan-emit-result.env` before exiting on success or failure paths, but it never requires `set +e` around `design-driver.sh` (EMIT_PLAN), `snapshot-plan-round.sh`, or `invoke-plan-validator.sh`. Sibling `design-publish.sh` already uses that pattern so a failed helper does not abort before result-env emission:
+
+```159:162:skills/design/scripts/design-publish.sh
+    set +e
+    action_out=$(run_action "$action" "${action_args[@]+"${action_args[@]}"}")
+    rc=$?
+    set -e
+```
+
+Without the same guard, any non-zero helper rc exits the driver early and breaks the planned orchestration contract for `missing-diff-lines` (repair via `EMIT_PLAN_STATUS`), `snapshot-failed` (abort before Step 3), and `validate-driver-failed` (infra failure distinct from `defects-found` exit 0).
+
+**Suggested revision:** Add an explicit mechanical rule in the Approach and `design-postplan-emit.md`: capture each helper under `set +e`, parse stdout KVs, set `POSTPLAN_EMIT_STATUS`, call `phase_driver_write_result_env`, mirror KVs to stdout, then `exit` with the documented code.

@@ -31,6 +31,7 @@ class PullRequest:
     state: str
     head_ref: str
     merged_at: str | None = None
+    merge_state_status: str | None = None
 
 
 @dataclass(frozen=True)
@@ -193,7 +194,7 @@ def pr_view_read(
             "--repo",
             repo,
             "--json",
-            "number,url,state,headRefName,mergedAt",
+            "number,url,state,headRefName,mergedAt,mergeStateStatus",
         ],
         cwd=cwd,
     )
@@ -217,12 +218,15 @@ def pr_view(
     )
     merged_raw = data.get("mergedAt")
     merged_at = str(merged_raw) if merged_raw else None
+    merge_state_raw = data.get("mergeStateStatus")
+    merge_state_status = str(merge_state_raw) if merge_state_raw else None
     return PullRequest(
         number=_as_int(data["number"], context="pr view", field="number"),
         url=str(data["url"]),
         state=str(data["state"]),
         head_ref=str(data["headRefName"]),
         merged_at=merged_at,
+        merge_state_status=merge_state_status,
     )
 
 

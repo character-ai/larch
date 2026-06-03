@@ -1,0 +1,305 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+## Implementation Plan: Narrow Codex Step-2 implementer --add-dir grant
+
+### Context
+
+`scripts/launch-codex-implement.sh` currently grants `--add-dir "$SESSION_TMPDIR"` where `SESSION_TMPDIR` equals the entire `$IMPLEMENT_TMPDIR`. This lets the sandboxed Codex process write anywhere in the session tmpdir — including orchestrator-trusted control files (`session-env.sh`, plan file, etc.). The fix mirrors #3305's approach: create a dedicated `codex-step2-out/` subdir, relocate the three Codex-written outputs there, and grant `--add-dir` only to that subdir. The launcher auto-narrows because `SESSION_TMPDIR` is derived from `dirname("$MANIFEST_PATH")`.
+
+---
+
+### Files to modify/create
+
+### UPDATED: `skills/implement/scripts/step2-implement.sh`
+
+Keep the shared path defaults at lines 256–259 (`$TMPDIR_ARG/manifest.json`, `$TMPDIR_ARG/qa-pending.json`, `$TMPDIR_ARG/${TOOL_TAG}-impl-transcript.txt`) for all coders. **Gate the subdir layout to `CODER=codex` only** — do not retarget Cursor paths or create `codex-step2-out/` on `claude_fallback` / cursor-unhealthy exits.
+
+After the `case "$CODER"` block that sets `TOOL_TAG` and `LAUNCHER` (external-implementer section, already past the `claude` early-return at line 176 and the cursor-presence fallback at lines 197–201), add:
+
+```bash
+if [[ "$CODER" == "codex" ]]; then
+    STEP2_OUT_DIR="$TMPDIR_ARG/codex-step2-out"
+    mkdir -p "$STEP2_OUT_DIR"
+    MANIFEST_PATH="$STEP2_OUT_DIR/manifest.json"
+    QA_PENDING_PATH="$STEP2_OUT_DIR/qa-pending.json"
+    TRANSCRIPT_PATH="$STEP2_OUT_DIR/${TOOL_TAG}-impl-transcript.txt"
+fi
+```
+
+`CODER=cursor` keeps `MANIFEST_PATH` / `QA_PENDING_PATH` / `TRANSCRIPT_PATH` directly under `$TMPDIR_ARG` (e.g. test 3e `STUB_MANIFEST_PATH="$TMP3E/manifest.json"`).
+
+`MANIFEST_RAW_PATH` stays at `$TMPDIR_ARG/manifest-raw.json` (created by the dispatcher, not by Codex; `step-7a.sh` reads it there hardcoded).
+
+`SIDECAR_LOG` stays at `$TMPDIR_ARG/${TOOL_TAG}-impl.log` (written by the wrapper, not by Codex).
+
+No changes to `run_launcher` or the launcher invocation — it passes these path variables unchanged to `launch-codex-implement.sh` / `launch-cursor-implement.sh`.
+
+### UPDATED: `scripts/launch-codex-implement.sh`
+
+1. Add a TRANSCRIPT_DIR check alongside the existing MANIFEST_DIR / QA_PENDING_DIR checks (after `SESSION_TMPDIR` is established, before the Codex spawn):
+
+```bash
+TRANSCRIPT_PARENT=$(cd "$(dirname "$TRANSCRIPT_PATH")" && pwd -P)
+if [[ "$SESSION_TMPDIR" != "$TRANSCRIPT_PARENT" ]]; then
+    larch_err "launch-codex-implement.sh: --transcript-path must share the parent directory with --manifest-path and --qa-pending-path (got: $TRANSCRIPT_PARENT vs $SESSION_TMPDIR)"
+    exit 2
+fi
+```
+
+2. Replace the stale comment at the `--add-dir "$SESSION_TMPDIR"` line (~line 328):
+
+```bash
+# OLD comment:
+# --add-dir "$SESSION_TMPDIR" grant must stay wide: Step 2 coder writes manifest.json / qa-pending.json there.
+
+# NEW comment:
+# --add-dir "$SESSION_TMPDIR" grants write access only to the codex-step2-out/ subdir
+# (SESSION_TMPDIR = dirname("$MANIFEST_PATH") = codex-step2-out/).
+# manifest.json, qa-pending.json, and the --output-last-message transcript all land there.
+```
+
+No other changes to the launcher. `SESSION_TMPDIR` is computed from `dirname("$MANIFEST_PATH")` and auto-narrows to the subdir.
+
+### UPDATED: `skills/implement/scripts/step-7a.sh`
+
+Update five path references from `$IMPLEMENT_TMPDIR/codex-impl-transcript.txt*` to the subdir. All five are in the log-flush block:
+
+```bash
+# OLD (line 158):
+[ -f "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt" ] && run_larch_log_write codex-impl-transcript "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt"
+# NEW:
+[ -f "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt" ] && run_larch_log_write codex-impl-transcript "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt"
+
+# OLD (line 159):
+if [ -f "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.meta" ]; then
+# NEW:
+if [ -f "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt.meta" ]; then
+
+# OLD (line 161, bash -lc arg):
+... _ "$PLUGIN_ROOT" "$IMPLEMENT_TMPDIR"
+# NEW:
+... _ "$PLUGIN_ROOT" "$IMPLEMENT_TMPDIR/codex-step2-out"
+
+# OLD (line 164):
+[ "$rc" -eq 0 ] && run_larch_log_write codex-impl-transcript-meta "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.meta.trimmed"
+# NEW:
+[ "$rc" -eq 0 ] && run_larch_log_write codex-impl-transcript-meta "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt.meta.trimmed"
+
+# OLD (line 166):
+[ -f "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.prompt" ] && run_larch_log_write codex-impl-transcript-prompt "$IMPLEMENT_TMPDIR/codex-impl-transcript.txt.prompt"
+# NEW:
+[ -f "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt.prompt" ] && run_larch_log_write codex-impl-transcript-prompt "$IMPLEMENT_TMPDIR/codex-step2-out/codex-impl-transcript.txt.prompt"
+```
+
+`manifest-raw.json` reference (line 168) is unchanged — it stays at `$IMPLEMENT_TMPDIR/manifest-raw.json`.
+
+### UPDATED: `.claude/rules/external-tool-launcher-parity.md`
+
+Add a new bullet under the audit checklist documenting the intentional asymmetry:
+
+```
+- **Write-sandbox grant (`--add-dir` vs `--workspace`)** — Codex uses `--add-dir "$SESSION_TMPDIR"` to grant write access to `codex-step2-out/` only (the dedicated output subdir). Cursor uses `--workspace "$PWD"` and has no equivalent `--add-dir` grant; this is intentional (different sandbox models). Do not add a symmetric `--add-dir` grant to the Cursor launcher.
+```
+
+### UPDATED: `skills/implement/scripts/test-codex-implementer.sh`
+
+In the main test block (tests 4–7+), create a `codex-step2-out/` subdir and update the three canonical path variables:
+
+```bash
+# After: mkdir -p "$IMPLEMENT_TMPDIR_FIXTURE"
+STEP2_OUT_DIR="$SCRATCH/codex-step2-out"
+mkdir -p "$STEP2_OUT_DIR"
+
+# Update path variables:
+TRANSCRIPT="$STEP2_OUT_DIR/transcript.txt"
+MANIFEST="$STEP2_OUT_DIR/manifest.json"
+QA_PENDING="$STEP2_OUT_DIR/qa-pending.json"
+```
+
+Also update `STUB_MANIFEST_PATH="$MANIFEST"` (already references the variable; no change needed there).
+
+Add a new assertion (test 4b or 6b) that verifies the transcript-directory assertion: when `--transcript-path` is in a different dir from `--manifest-path`, the launcher exits 2 with a diagnostic:
+
+```bash
+# Test: transcript-not-in-same-dir-as-manifest → exit 2
+_out=$(... --manifest-path "$STEP2_OUT_DIR/manifest.json" \
+            --qa-pending-path "$STEP2_OUT_DIR/qa-pending.json" \
+            --transcript-path "$SCRATCH/wrong-dir-transcript.txt" \
+            ... 2>&1) || true
+if [[ "$_out" == *"must share the parent directory"* ]]; then
+    pass
+else
+    fail NNN "transcript in different dir should exit 2 with diagnostic; got: $_out"
+fi
+```
+
+### UPDATED: `skills/implement/scripts/test-step2-dispatch.sh`
+
+Every codex stub invocation that sets `STEP2_MANIFEST_PATH` must point at `$TMP/codex-step2-out/manifest.json` so the stub writes where `step2-implement.sh` (codex path) expects the manifest. Update **all** of the following (not only 17a–17c):
+
+| Test | Env var line |
+|------|----------------|
+| 12a | `STEP2_MANIFEST_PATH="$TMP12A/codex-step2-out/manifest.json"` |
+| 12b | `STEP2_MANIFEST_PATH="$TMP12B/codex-step2-out/manifest.json"` |
+| 13 | `STEP2_MANIFEST_PATH="$TMP13/codex-step2-out/manifest.json"` |
+| 16 | `STEP2_MANIFEST_PATH="$TMP16/codex-step2-out/manifest.json"` |
+| 17a | `STEP2_MANIFEST_PATH="$TMP17A/codex-step2-out/manifest.json"` |
+| 17b | `STEP2_MANIFEST_PATH="$TMP17B/codex-step2-out/manifest.json"` |
+| 17c | `STEP2_MANIFEST_PATH="$TMP17C/codex-step2-out/manifest.json"` |
+| 18 | `STEP2_MANIFEST_PATH="$TMP18/codex-step2-out/manifest.json"` |
+| M1 | `STEP2_MANIFEST_PATH="$TMPM1/codex-step2-out/manifest.json"` |
+| M2 | `STEP2_MANIFEST_PATH="$TMPM2/codex-step2-out/manifest.json"` |
+| M12 | `STEP2_MANIFEST_PATH="$TMPM12/codex-step2-out/manifest.json"` |
+| M16 | `STEP2_MANIFEST_PATH="$TMPM16/codex-step2-out/manifest.json"` |
+| M17 | `STEP2_MANIFEST_PATH="$TMPM17/codex-step2-out/manifest.json"` |
+| M18 (both invocations) | `STEP2_MANIFEST_PATH="$TMPM18/codex-step2-out/manifest.json"` |
+| M19 | `STEP2_MANIFEST_PATH="$TMPM19/codex-step2-out/manifest.json"` |
+| 25 | `STEP2_MANIFEST_PATH="$TMP25/codex-step2-out/manifest.json"` |
+
+**Do not change** cursor-only harness paths: test 3e (`STUB_MANIFEST_PATH="$TMP3E/manifest.json"`), M1b, test 23. Test 24 (codex runtime failure, no manifest stub) is unchanged.
+
+Tests 17a/17b/17c also read launcher `.meta` for `TIMEOUT`. Update META paths:
+
+```bash
+META17A="$TMP17A/codex-step2-out/codex-impl-transcript.txt.meta"
+META17B="$TMP17B/codex-step2-out/codex-impl-transcript.txt.meta"
+META17C="$TMP17C/codex-step2-out/codex-impl-transcript.txt.meta"
+```
+
+`$TMP/codex-step2-out/` is created by `step2-implement.sh` on the codex path (`mkdir -p` in the gated block). No manual `mkdir` in tests.
+
+Stubs read `STEP2_MANIFEST_PATH` for the manifest destination and parse `--output-last-message` for the transcript; aligning `STEP2_MANIFEST_PATH` with the dispatcher's `MANIFEST_PATH` keeps stub writes consistent with post-launch reads.
+
+### UPDATED: `scripts/launch-codex-implement.md`
+
+Update line 14 (the comment about grant width) to reflect the narrowed grant:
+- Remove the statement "operators should treat any other artifact placed in that tmpdir … as Codex-writable"
+- Add: Codex-written outputs (manifest.json, qa-pending.json, transcript) go in `codex-step2-out/`; all other session-tmpdir artifacts (sidecar log, baseline files, recovery paths, etc.) are outside the grant and Codex-inaccessible.
+
+### UPDATED: `skills/implement/scripts/step2-implement.md`
+
+Update line 12 (per-tool file list): for **`CODER=codex` only**, `${TOOL_TAG}-impl-transcript.txt`, `manifest.json`, and `qa-pending.json` live under `$TMPDIR_ARG/codex-step2-out/`; Cursor keeps those files directly under `$TMPDIR_ARG/`.
+
+Update line 13 (canonicalization contract) to add: "On the codex path only, Codex-written outputs (manifest, qa-pending, transcript) are placed in `$TMPDIR_ARG/codex-step2-out/` and the Codex `--add-dir` grant is narrowed to that subdir via `dirname("$MANIFEST_PATH")`."
+
+---
+
+### Approach
+
+The launcher computes `SESSION_TMPDIR = dirname("$MANIFEST_PATH")`. On the codex path only, moving `MANIFEST_PATH` into `codex-step2-out/` auto-narrows `SESSION_TMPDIR` without changing the `--add-dir "$SESSION_TMPDIR"` line. The new transcript-directory assertion enforces that all three Codex-written files share a parent.
+
+`step2-implement.sh` is the only production caller of `launch-codex-implement.sh`; `test-codex-implementer.sh` exercises the launcher in isolation with caller-controlled paths.
+
+---
+
+### Edge cases
+
+- **Resume invocations**: `rm -f` before launch targets codex subdir paths on the codex path — correct.
+- **Manifest-schema-invalid recovery**: `manifest-raw.invalid.json` quarantine under `$TMPDIR_ARG` unchanged.
+- **Launcher's MANIFEST_DIR existence check**: codex-only `mkdir -p "$STEP2_OUT_DIR"` runs before `run_launcher`.
+- **Old run logs**: step-7a `[ -f ... ] &&` guards skip missing legacy paths.
+- **`claude_fallback` / cursor-unhealthy**: early exits before the codex subdir block — no `codex-step2-out/` created.
+- **Cursor Step 2**: manifest/qa/transcript remain at `$TMPDIR_ARG/` root; test 3e unchanged.
+
+---
+
+### Failure modes
+
+1. **Subdir not created before launcher fires**: codex-only `mkdir -p` before `run_launcher`.
+2. **step-7a.sh paths not updated**: silent transcript log loss — five references updated.
+3. **Test META / STEP2_MANIFEST_PATH mismatch**: empty `TIMEOUT` or manifest-missing — all codex dispatch stubs listed above updated.
+4. **Codex subdir applied to Cursor**: would break test 3e and Cursor layout — prevented by `CODER=codex` gate.
+
+---
+
+### Testing strategy
+
+- `test-codex-implementer.sh`: test 6 auto-verifies narrowed `--add-dir`; new transcript-dir mismatch assertion.
+- `test-step2-dispatch.sh`: all codex `STEP2_MANIFEST_PATH` rows in the table above + META17A/B/C; cursor tests 3e/M1b/23 untouched.
+- `bash scripts/relevant-checks.sh` (or `make lint`) after changes.
+
+diff_lines: 72
+
+</plan>
+
+<findings>
+### FINDING_1: Test 16 harness still uses tmpdir-root qa-pending paths
+- **Reviewer(s)**: Cursor-Arch, Cursor-dyn-harness-table-completeness
+- **Severity**: important
+- **Concern**: In `test-step2-dispatch.sh`, test 16’s Codex stub and post-run assertion still write and read `qa-pending.json` at the session tmpdir root (`$IMPLEMENT_TMPDIR/qa-pending.json` and `QA_PENDING_16=$TMP16/qa-pending.json`). The planned Codex Step 2 path moves `QA_PENDING_PATH` to `$TMPDIR/codex-step2-out/qa-pending.json` while the plan only retargets `STEP2_MANIFEST_PATH` for test 16. The dispatcher repair then reads the subdir path, sees a missing or wrong file, and exits `STATUS=bailed` (`qa-pending-missing` / `manifest-schema-invalid`), so test 16 fails despite being listed in the harness table.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In test 16 stub: write qa-pending under $IMPDIR/codex-step2-out/ (or derive from STEP2_MANIFEST_PATH dirname); set QA_PENDING_16=$TMP16/codex-step2-out/qa-pending.json
+  - From Cursor-dyn-harness-table-completeness: Extend the test-step2-dispatch.sh plan for test 16: stub writes to $IMPLEMENT_TMPDIR/codex-step2-out/qa-pending.json (or dirname of STEP2_MANIFEST_PATH); set QA_PENDING_16=$TMP16/codex-step2-out/qa-pending.json
+
+
+### FINDING_2: SECURITY.md not updated for narrowed Codex --add-dir grant
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Concern**: The plan narrows Codex Step 2 `--add-dir` without updating `SECURITY.md` (~line 105). After landing, operators and security reviewers may still believe the full dispatcher session tmpdir is Codex-writable and mis-scope tamperable artifacts (e.g. `session-env.sh`, plan copies) relative to shipped behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Add a minimal SECURITY.md edit in the plan: Codex implementer --add-dir is limited to codex-step2-out/ (dirname of manifest/qa/transcript), not all of IMPLEMENT_TMPDIR; orchestrator-owned files outside that subdir are outside the Codex write grant
+
+
+### FINDING_3: Proposed harness case id collides with existing fail 4b
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: A proposed new harness case labeled `test 4b` would collide with the existing `fail 4b` in `test-codex-implementer.sh` (line 344), which already asserts `CODEX_HOME` is a per-invocation `/tmp` directory. Reusing `4b` for a transcript-parent test would break pass/fail numbering or overwrite the wrong assertion.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Name the new transcript-directory case 11c (after parent-mismatch test 11) or another unused id; keep fail 4b for the CODEX_HOME check only
+
+
+### FINDING_4: launch-codex-implement.md still documents full tmpdir grant
+- **Reviewer(s)**: Cursor-dyn-split-dependency-isolation
+- **Severity**: important
+- **Concern**: A planned sibling edit only removes the Codex-writable sentence and adds a subdir note, but leaves “The granted directory is the ENTIRE session tmpdir” and dispatcher-tmpdir-wide framing (e.g. `scripts/launch-codex-implement.md` line 14) that contradicts narrowed `SESSION_TMPDIR`. Operators reading only that doc may still believe baseline files, sidecars, and other `$IMPLEMENT_TMPDIR` artifacts are inside the `--add-dir` grant.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-split-dependency-isolation: Rewrite the whole `--add-dir` invariant bullet: `SESSION_TMPDIR` is `dirname("$MANIFEST_PATH")` (on the codex path, `$IMPLEMENT_TMPDIR/codex-step2-out/`); only manifest, qa-pending, and transcript live there; other tmpdir artifacts are launcher-written and outside the grant. Drop "ENTIRE session tmpdir" and the Codex-writable list
+
+---
+
+**Merge notes**: Input `FINDING_1` and `FINDING_4` describe the same test-16 path mismatch and were merged. `FINDING_2` (`SECURITY.md`) and `FINDING_4` here (launcher doc) are separate files and fixes and were kept apart. No `[OUT_OF_SCOPE]` inputs; no `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` line (non-empty merge).
+
+
+</findings>
+
+<feature>
+Narrow Codex Step-2 implementer --add-dir grant (FINDING_17, split from #3305)
+
+Narrow Codex Step-2 implementer --add-dir grant (FINDING_17, split from #3305)
+
+Split from #3305. The Round 1 scope decision on the #3305 design narrowed that issue to the review-and-fix pre-coder snapshot subsystem (FINDING_6/9/11/13); FINDING_17 is tracked separately here.
+
+## Design constraint: mirror #3305's documented approach
+
+**Blocked by #3305.** This issue and #3305 narrow the same species of Codex `--add-dir` grant (the Step 2 implementer launcher here; the Step 5 review-and-fix coder / pre-coder snapshot subsystem in #3305). The `/design` run for this issue MUST adopt the same grant-narrowing approach that #3305's design lands on — the `--add-dir` scoping pattern, the dedicated-output-subdir layout, any shared helper, and the launcher-parity / harness-coverage treatment — rather than inventing a parallel convention. Design (and ideally implement) #3305 first, then mirror its decided approach here so the two launch sites stay uniform.
+
+## Problem
+
+`scripts/launch-codex-implement.sh` (the /implement Step 2 implementer launcher) grants the entire session tmpdir to the sandboxed Codex process via `--add-dir "$SESSION_TMPDIR"` (~line 335), where `$SESSION_TMPDIR` equals `$IMPLEMENT_TMPDIR`. That is wider than the Step 5 coder grant (`--add-dir "$round_dir"` in `skills/review-and-fix/scripts/review-and-fix.sh`). The over-broad write grant lets the implementer write anywhere in `$IMPLEMENT_TMPDIR`, including orchestrator-trusted control files (`session-env.sh`, the plan file, the feature file).
+
+## Why split from #3305
+
+FINDING_17 is pre-existing and outside the #3288 diff. Narrowing it restructures the working /implement Step 2 output layout — the Codex-written `manifest.json`, `qa-pending.json`, and the `--output-last-message` transcript all currently sit directly in `$IMPLEMENT_TMPDIR` — which carries independent regression risk to the core implement path. It belongs in its own design/implement cycle, not bundled with the snapshot-subsystem hardening.
+
+## Suggested direction (for /design to refine)
+
+- Relocate the Codex-written Step 2 outputs (`manifest.json`, `qa-pending.json`, `--output-last-message` transcript) into a dedicated subdir, e.g. `$IMPLEMENT_TMPDIR/codex-step2-out/`, and grant `--add-dir` to only that subdir (keeping the existing `--add-dir "$PWD"` for repo writes). Codex `--full-auto` (workspace-write) still reads plan/feature inputs anywhere; only writes are confined.
+- Update `skills/implement/scripts/step2-implement.sh` (path computation ~lines 256-260) and all readers of those paths.
+- Keep the launcher's "manifest and qa-pending share a parent dir" assertion intact (now the new subdir) and extend it to cover the transcript.
+- Parity note: Cursor's launcher (`scripts/launch-cursor-implement.sh`) uses `--workspace "$PWD"`, not `--add-dir`, so there is no symmetric grant to narrow. Document this as an intentional asymmetry per `.claude/rules/external-tool-launcher-parity.md`, not a parallel change.
+- Same-PR harness coverage required per `.claude/rules/launcher-argv-test-coverage.md`: `skills/implement/scripts/test-codex-implementer.sh` and `test-step2-dispatch.sh`.
+
+## Affected files
+
+- `scripts/launch-codex-implement.sh`
+- `skills/implement/scripts/step2-implement.sh`
+- harnesses: `skills/implement/scripts/test-codex-implementer.sh`, `skills/implement/scripts/test-step2-dispatch.sh`
+- `.md` siblings per `.claude/rules/script-md-siblings.md`
+
+
+</feature>

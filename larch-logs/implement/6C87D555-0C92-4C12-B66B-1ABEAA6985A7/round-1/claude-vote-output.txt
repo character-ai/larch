@@ -1,0 +1,17 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- consequence is graceful degradation to empty-list fallback, not incorrect behavior; fix complexity for process-substitution error propagation unwarranted
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly acknowledges spaced-path as acceptable under-match; empty-list fallback handles it
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- pre-commit typically invokes shellcheck with relative paths so absolute-path output is uncertain; empty-list fallback handles any gap; plan doesn't require this fix
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- symlinks within a repo are trusted content; this is a pre-existing concern not introduced by this change
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- parent loop re-verifies remaining failures after each applied round; cap prevents prompt bloat with bounded cost
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- relevant-checks.sh halts on first phase failure so multi-phase logs are rare; consequence is a non-authoritative hint appearing once unnecessarily with explicit caveats
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- nit DRY violation with no correctness impact; excerpt function centralizes the actual truncation logic
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- dead stdout branches are harmless; removal is a separate cleanup
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- lint output is overwhelmingly ASCII; mid-byte split at a 60 kB boundary is extremely rare and would only cause a minor path miss
+OOS_13: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- describes the same root cause and code path as in-scope FINDING_1; a fix for FINDING_1 covers this; filing separately would be redundant
+OOS_14: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- conditional on unconfirmed capture-layer behavior; pre-existing concern not introduced by this branch; the reviewer's own note gates it on whether concatenation actually occurs
+OOS_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- per review policy, committed run-log trees are not plan drift; no actionable issue to file
+OOS_16: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- tests exercise the filter logic through log strings; the distinction from on-disk fixture naming is minor and the safety behavior is fully covered
+OOS_17: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- spaced-path under-match is plan-acknowledged; unexecuted acceptance runs are inherent to read-only review, not a code issue worth filing

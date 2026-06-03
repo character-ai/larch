@@ -10,7 +10,8 @@ Invariants:
 - `lint` must prove allowlist parity across TSV, code, and `stall-recovery-report.md`.
 - Dry-run mode must not call `gh` or invoke `/larch:issue`.
 - Missing `ship-pr-state.sh` must still honor `session-env.sh` stall tracking when present, and must not exit 3.
-- Malformed present `ship-pr-state.sh` is the only exit-3 path.
+- Malformed, symlinked, or non-regular present `ship-pr-state.sh` are the
+  exit-3 paths.
 
 Case map:
 
@@ -24,4 +25,5 @@ Case map:
 - Case 18 covers dry-run propagation across `bug-body`, `bug-comment`, and `issue-input-file`.
 - Case 19 covers the disk-clear ordering guard: in-memory stall remains authoritative until the false-on-disk rewrite is moved into place and re-read.
 - Case 20 includes repeated-step6 terminal handling, missing-log fallback, in-memory-only classification, lint-over-transient precedence, broader network wording, standalone-auth unrecoverable classification, and sentinel coverage for `NOTE=` / bail-reason-only public-surface inputs.
-- Case 21 covers exit-code boundaries, malformed state rejection, and rejection of out-of-tmpdir or symlinked classification/body/output files.
+- Case 21 covers exit-code boundaries, malformed and symlinked state rejection, and rejection of out-of-tmpdir or symlinked classification/body/output files.
+- Case 22 covers clear/seed durability: keyed and keyless clear paths, symlink and malformed guards, atomic temp-read / `mv` / destination-read failure simulations, seed rewrite/seed modes, destination assertions, and classification fallback for keyless state.

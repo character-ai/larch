@@ -37,6 +37,29 @@ for ref in summary-comment-template.md bump-verification.md codex-manifest-schem
   [[ -f "$REFS_DIR/$ref" ]] || fail "missing reference: $ref"
 done
 
+grep -Fq 'Two invariants enforced across multiple steps' "$SKILL_MD" \
+  || fail "SKILL.md must document two Load-Bearing Invariants after Phase 1 (#3364)"
+grep -Fq 'Version Bump Freshness' "$SKILL_MD" \
+  && fail "SKILL.md must not retain retired Invariant #1 (Version Bump Freshness)"
+grep -Fq 'Degraded-Git Fail-Closed' "$SKILL_MD" \
+  && fail "SKILL.md must not retain retired Invariant #3 (Degraded-Git Fail-Closed)"
+grep -Fq 'Retired in Phase 1 (#3364)' "$REFS_DIR/bump-verification.md" \
+  || fail "bump-verification.md must be a Phase 1 retirement stub"
+grep -Fq 'Retired in Phase 1 (#3364)' "$REFS_DIR/rebase-rebump-subprocedure.md" \
+  || fail "rebase-rebump-subprocedure.md must be a Phase 1 retirement stub"
+grep -Fq '### Step 8a' "$SKILL_MD" \
+  && fail "SKILL.md must not retain a Step 8a changelog section after Phase 1 (#3364)"
+grep -Fq "NEVER end the turn after \`/bump-version\`" "$SKILL_MD" \
+  && fail "SKILL.md must not retain retired NEVER #15 (post-/bump-version sub-procedure halt)"
+grep -Fq 'caller_kind=step8b_rebase' "$SKILL_MD" \
+  && fail "SKILL.md must not retain retired NEVER #8 (step8b_rebase caller_kind pin)"
+grep -Fq "NEVER call \`/bump-version\` as a direct Skill invocation" "$SKILL_MD" \
+  && fail "SKILL.md must not retain retired NEVER #11 (orchestrator /bump-version Skill pin)"
+grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-ship' "$SKILL_MD" \
+  || fail "SKILL.md must retain 8-pre-ship phantom-probe invocation"
+grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-bump' "$SKILL_MD" \
+  && fail "SKILL.md must not use retired 8-pre-bump phantom-probe token"
+
 grep -Fq 'scripts/larch-log.sh' "$SKILL_MD" \
   || fail "SKILL.md must reference scripts/larch-log.sh"
 grep -Fq 'tracking-issue-summary.sh' "$SKILL_MD" \
@@ -74,6 +97,10 @@ grep -Fq 'PHASE=ci-initial' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md terminal-failure path must seed canonical Step-8-shaped state"
 grep -Fq 'BAIL_FAILURE_DETAIL_LOG=' "$STALL_RECOVERY_MD" \
   || fail "stall-recovery.md terminal-failure path must preserve or seed BAIL_FAILURE_DETAIL_LOG"
+grep -Fq 'stall-recovery-report.sh clear-stall' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must delegate stall clearing through stall-recovery-report.sh clear-stall"
+grep -Fq 'stall-recovery-report.sh seed-terminal-state' "$STALL_RECOVERY_MD" \
+  || fail "stall-recovery.md must delegate terminal seeding through stall-recovery-report.sh seed-terminal-state"
 grep -Fq '### Step 18a — Stall recovery gate' "$SKILL_MD" \
   || fail "SKILL.md must retain Step 18a heading"
 grep -Fq '### Step 18b — Teardown' "$SKILL_MD" \
@@ -247,11 +274,11 @@ awk '
 [[ "$step8_exit3_status" == "0" ]] || fail "SKILL.md Step 8+ Exit 3 must document first-fixer-non-health and autonomous sub-steps 1 through 12"
 
 # Pin LAUNCHER_FAILURE_* canonical tokens across classifier, launchers, and ship-pr guard.
-for _pin in none health other auth binary-missing health-probe timeout parse refusal unknown; do
+for _pin in none health other auth quota binary-missing health-probe timeout parse refusal unknown; do
   grep -Fq "$_pin" "$REPO_ROOT/scripts/lib-external-launcher-common.sh" \
     || fail "lib-external-launcher-common.sh must contain canonical token: $_pin"
 done
-for _pin in none health other auth binary-missing health-probe timeout parse refusal unknown; do
+for _pin in none health other auth quota binary-missing health-probe timeout parse refusal unknown; do
   grep -Fq "$_pin" "$REPO_ROOT/scripts/launch-cursor-ci.sh" \
     || fail "launch-cursor-ci.sh must contain canonical token: $_pin"
   grep -Fq "$_pin" "$REPO_ROOT/scripts/launch-codex-ci.sh" \
@@ -302,12 +329,21 @@ awk '
 step18_status=0
 awk '
   /<!-- step:18/ { in_step = 1; next }
-  in_step && /<!-- step:/ { in_step = 0 }
-  in_step && /_wfr_args\+=\(--print-stdout\)/ { print_guard = 1 }
-  in_step && /cmp -s "\$IMPLEMENT_TMPDIR\/\.step18-prebody" "\$IMPLEMENT_TMPDIR\/summary-final\.md"/ { cmp_guard = 1 }
-  END { if (!print_guard || !cmp_guard) exit 1; exit 0 }
+  in_step && /<!-- step:/ { in_step = 0; in_bash = 0 }
+  in_step && /^```(bash|sh|shell)[[:space:]]*$/ { in_bash = 1; next }
+  in_step && in_bash && /^```[[:space:]]*$/ { in_bash = 0; next }
+  in_step && /step-18b-final-report\.sh/ && /--implement-tmpdir "\$IMPLEMENT_TMPDIR"/ { wrapper = 1 }
+  in_step && /EMIT_BODY=\$\(printf/ { emit_parse = 1 }
+  in_step && /WFR_RC=\$\(printf/ { wfr_parse = 1 }
+  in_step && /STEP17_EMITTED_PRESENT=\$\(printf/ { step17_parse = 1 }
+  in_step && in_bash && /write-final-report\.sh/ && /--print-stdout/ { bad_print = 1 }
+  in_step && /EMIT_BODY=true/ && /WFR_RC=0/ && /summary-final\.md/ { emit_guard = 1 }
+  END {
+    if (!wrapper || !emit_parse || !wfr_parse || !step17_parse || bad_print || !emit_guard) exit 1
+    exit 0
+  }
 ' "$SKILL_MD" || step18_status=$?
-[[ "$step18_status" == "0" ]] || fail "SKILL.md Step 18 write-final-report.sh must request --print-stdout only through the guarded body-diff path"
+[[ "$step18_status" == "0" ]] || fail "SKILL.md Step 18 must delegate to step-18b-final-report.sh and gate orchestrator emit on EMIT_BODY=true with WFR_RC=0"
 
 COMMIT_IMPL_SH="$REPO_ROOT/skills/implement/scripts/commit-implementation.sh"
 COMMIT_REVIEW_SH="$REPO_ROOT/skills/implement/scripts/commit-review-fixes.sh"
@@ -375,8 +411,11 @@ grep -Fq 'NEVER silently drop a voted-in OOS finding' "$SKILL_MD" \
   || fail "SKILL.md must retain NEVER rule prohibiting silent OOS drops"
 
 # shellcheck disable=SC2016
-grep -Fq 'NEVER set `OOS_PENDING=false` without a passing `oos-disposition-gate.sh` invocation' "$SKILL_MD" \
-  || fail "SKILL.md must retain NEVER #18 gate-before-clear pin (OOS_PENDING vs oos-disposition-gate.sh)"
+grep -Fq 'NEVER set `OOS_PENDING=false` without a passing `oos-disposition-checkpoint.sh` invocation' "$SKILL_MD" \
+  || fail "SKILL.md must retain NEVER #15 checkpoint-before-clear pin (OOS_PENDING vs oos-disposition-checkpoint.sh)"
+# shellcheck disable=SC2016
+grep -Fq '${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh' "$SKILL_MD" \
+  || fail "SKILL.md Step 8+ must reference oos-disposition-checkpoint.sh"
 
 # Folded Step 0 / admission structural pins (fix-issue removal; Step 0 + Preflight admission)
 grep -Fq 'scripts/implement-admission.sh' "$SKILL_MD" \
@@ -410,34 +449,25 @@ grep -Fq 'phase_coder_select' "$SKILL_MD" \
   || fail "SKILL.md must pin coder selection ownership to implement-bootstrap.sh"
 grep -Fq 'mark "implement Step 0 — coder select"' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
   || fail "implement-bootstrap.sh must contain coder-select token/timing mark"
+[ -f "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" ] \
+  || fail "scripts/implement-bootstrap-invoke.sh must exist"
+[ -f "$REPO_ROOT/scripts/implement-bootstrap-invoke.md" ] \
+  || fail "scripts/implement-bootstrap-invoke.md must exist"
+grep -Fq 'implement-bootstrap-invoke.sh --mode initial' "$SKILL_MD" \
+  || fail "SKILL.md must call implement-bootstrap-invoke.sh --mode initial"
+if [ "$(grep -oF 'implement-bootstrap-invoke.sh --mode initial' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 1 ]; then
+  fail "SKILL.md must reference implement-bootstrap-invoke.sh --mode initial"
+fi
+if [ "$(grep -oF 'implement-bootstrap-invoke.sh --mode resume' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 1 ]; then
+  fail "SKILL.md must call implement-bootstrap-invoke.sh --mode resume (dirty-tree)"
+fi
+grep -Fq 'implement-bootstrap-invoke.sh --mode initial' "$SKILL_MD" \
+  || fail "Protocol Execution Directive must name implement-bootstrap-invoke.sh --mode initial"
 grep -Fq '_ib_preflight=()' "$SKILL_MD" \
-  || fail "SKILL.md must retain the _ib_preflight argv array"
-read -r preflight_wire_line <<'EOF'
-[ -n "${PREFLIGHT_TMPDIR:-}" ] && _ib_preflight+=(--preflight-tmpdir "$PREFLIGHT_TMPDIR")
-EOF
-grep -Fq "$preflight_wire_line" "$SKILL_MD" \
-  || fail "SKILL.md must wire PREFLIGHT_TMPDIR through _ib_preflight"
+  && fail "SKILL.md must not retain inline _ib_preflight argv array"
 grep -Fq '_ib_emergency=()' "$SKILL_MD" \
-  || fail "SKILL.md must retain the _ib_emergency argv array"
-read -r emergency_wire_line <<'EOF'
-case "${emergency_requested:-}" in
-  true|false) _ib_emergency+=(--emergency-requested "$emergency_requested") ;;
-esac
-EOF
-grep -Fq "$emergency_wire_line" "$SKILL_MD" \
-  || fail "SKILL.md must conditionally wire emergency_requested through _ib_emergency"
-read -r preflight_expand_line <<'EOF'
-"${_ib_preflight[@]+"${_ib_preflight[@]}"}"
-EOF
-if [ "$(grep -cF "$preflight_expand_line" "$SKILL_MD" || true)" -lt 1 ]; then
-  fail "SKILL.md must expand _ib_preflight in the bootstrap invocation"
-fi
-read -r emergency_expand_line <<'EOF'
-"${_ib_emergency[@]+"${_ib_emergency[@]}"}"
-EOF
-if [ "$(grep -cF "$emergency_expand_line" "$SKILL_MD" || true)" -lt 2 ]; then
-  fail "SKILL.md must expand _ib_emergency in both bootstrap invocations"
-fi
+  && fail "SKILL.md must not retain inline _ib_emergency argv array"
+true
 grep -Fq -- '--resume-plan-tail' "$REPO_ROOT/scripts/implement-bootstrap.md" \
   || fail "implement-bootstrap.md must document --resume-plan-tail"
 grep -Fq -- '--resume-plan-tail' "$SKILL_MD" \
@@ -453,46 +483,22 @@ grep -Fq 'Resume-tail idempotency' "$REPO_ROOT/scripts/implement-bootstrap.md" \
   || fail "implement-bootstrap.md must document resume-tail idempotency invariant"
 grep -Fq 'the first pass bails at this checkpoint' "$REPO_ROOT/scripts/implement-bootstrap.md" \
   || fail "implement-bootstrap.md must pin the dirty-tree first-pass-bail-before-helpers invariant"
-read -r caller_env_expand_line <<'EOF'
-"${_ib_caller_env[@]+"${_ib_caller_env[@]}"}"
-EOF
-grep -Fq "$caller_env_expand_line" "$SKILL_MD" \
-  || fail "SKILL.md must expand _ib_caller_env in the bootstrap wrapper"
-if [ "$(grep -oF '_ib_caller_env[@]' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; then
-  fail "SKILL.md must expand _ib_caller_env in both bootstrap invocations"
-fi
-read -r issue_expand_line <<'EOF'
-"${_ib_issue[@]+"${_ib_issue[@]}"}"
-EOF
-grep -Fq "$issue_expand_line" "$SKILL_MD" \
-  || fail "SKILL.md must expand _ib_issue in the bootstrap wrapper"
-if [ "$(grep -oF '_ib_issue[@]' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; then
-  fail "SKILL.md must expand _ib_issue in both bootstrap invocations"
-fi
-read -r fork_expand_line <<'EOF'
-"${_ib_fork[@]+"${_ib_fork[@]}"}"
-EOF
-grep -Fq "$fork_expand_line" "$SKILL_MD" \
-  || fail "SKILL.md must expand _ib_fork in the bootstrap wrapper"
-if [ "$(grep -oF '_ib_fork[@]' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; then
-  fail "SKILL.md must expand _ib_fork in both bootstrap invocations"
-fi
-read -r run_id_expand_line <<'EOF'
-"${_ib_run_id[@]+"${_ib_run_id[@]}"}"
-EOF
-grep -Fq "$run_id_expand_line" "$SKILL_MD" \
-  || fail "SKILL.md must expand _ib_run_id in the bootstrap wrapper"
-if [ "$(grep -oF '_ib_run_id[@]' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; then
-  fail "SKILL.md must expand _ib_run_id in both bootstrap invocations"
-fi
+grep -Fq '_ib_caller_env=()' "$SKILL_MD" \
+  && fail "SKILL.md must not retain inline _ib_caller_env argv assembly"
+grep -Fq '_ib_issue=()' "$SKILL_MD" \
+  && fail "SKILL.md must not retain inline _ib_issue argv assembly"
+grep -Fq '_ib_fork=()' "$SKILL_MD" \
+  && fail "SKILL.md must not retain inline _ib_fork argv assembly"
+grep -Fq '_ib_run_id=()' "$SKILL_MD" \
+  && fail "SKILL.md must not retain inline _ib_run_id argv assembly"
 grep -Fq '_ib_run_bootstrap() {' "$SKILL_MD" \
-  || fail "SKILL.md must retain the Step 0 bootstrap wrapper"
+  && fail "SKILL.md must not retain _ib_run_bootstrap helper"
 grep -Fq '_ib_parse_bootstrap_out() {' "$SKILL_MD" \
-  || fail "SKILL.md must retain the Step 0 bootstrap KV parser wrapper"
+  && fail "SKILL.md must not retain dead _ib_parse_bootstrap_out helper"
 grep -Fq '_ib_run_bootstrap --resume-plan-tail' "$SKILL_MD" \
-  || fail "SKILL.md must reuse the bootstrap wrapper for dirty-tree resume"
+  && fail "SKILL.md must not call _ib_run_bootstrap --resume-plan-tail"
 grep -Fq '_ib_parse_bootstrap_out' "$SKILL_MD" \
-  || fail "SKILL.md must re-parse bootstrap KV after dirty-tree resume"
+  && fail "SKILL.md must not reference _ib_parse_bootstrap_out"
 if grep -Fq 'not-yet-implemented-phase-' "$SKILL_MD"; then
   fail "SKILL.md must not reintroduce not-yet-implemented phase bail placeholders"
 fi
@@ -503,43 +509,123 @@ grep -Fq 'Review/fix and other fixer lanes remain Codex-first' "$REPO_ROOT/SECUR
   || fail "SECURITY.md must document Codex-first fixer adjacency"
 grep -Fq "Operators who want Codex on \`/implement\` can pin it explicitly with \`--coder=codex\`." "$REPO_ROOT/SECURITY.md" \
   || fail "SECURITY.md must document explicit --coder=codex pinning"
-read -r target_issue_line <<'EOF'
-_ib_target_issue="${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"
-EOF
-grep -Fq "$target_issue_line" "$SKILL_MD" \
-  || fail "SKILL.md must reuse TARGET_ISSUE_NUMBER fallback"
-read -r bootstrap_rc_guard_line <<'EOF'
-if [ "$_ib_rc" -eq 2 ]; then
-EOF
-if [ "$(grep -cF "$bootstrap_rc_guard_line" "$SKILL_MD" || true)" -lt 1 ]; then
-  fail "SKILL.md must keep bootstrap exit-2 wrapper"
+# shellcheck disable=SC2016 # literal removed-helper pin.
+grep -Fq '_ib_target_issue="${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"' "$SKILL_MD" \
+  && fail "SKILL.md must not retain _ib_target_issue helper"
+if [ "$(grep -oF '_ib_rc' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -ge 1 ]; then
+  fail "SKILL.md must not retain _ib_rc (use _inv_rc)"
 fi
-grep -Fq "while IFS= read -r _ib_line || [ -n \"\$_ib_line\" ]; do" "$SKILL_MD" \
-  || fail "SKILL.md must parse bootstrap stdout"
+if [ "$(grep -oF '_inv_rc' "$SKILL_MD" 2>/dev/null | wc -l | tr -d ' ')" -lt 2 ]; then
+  fail "SKILL.md must use _inv_rc at initial Step 0 and dirty-tree recovery"
+fi
+if [ "$(grep -cF '_inv_rc=$?' "$SKILL_MD" || true)" -lt 2 ]; then
+  fail "SKILL.md must capture _inv_rc after each wrapper call"
+fi
+step0_wrapper_fence_status=0
+awk '
+  /<!-- step:0/ { in_step = 1; next }
+  in_step && /<!-- step:/ { in_step = 0; in_bash = 0 }
+  in_step && /^```(bash|sh|shell)[[:space:]]*$/ { in_bash = 1; next }
+  in_step && in_bash && /^```[[:space:]]*$/ { in_bash = 0; next }
+  in_step && in_bash && /^[[:space:]]*#/ { prev2 = prev1; prev1 = $0; next }
+  in_step && in_bash && /^[[:space:]]*_inv_out=\$\(.+implement-bootstrap-invoke\.sh" --mode (initial|resume)/ {
+    mode = ($0 ~ /--mode initial/) ? "initial" : "resume"
+    if (prev1 != "set +e") exit 20
+    getline rc_line
+    if (rc_line != "_inv_rc=$?") exit 21
+    getline sete_line
+    if (sete_line != "set -e") exit 22
+    seen[mode]++
+    prev2 = prev1
+    prev1 = sete_line
+    next
+  }
+  in_step && in_bash {
+    prev2 = prev1
+    prev1 = $0
+  }
+  END {
+    if (seen["initial"] < 1) exit 23
+    if (seen["resume"] < 1) exit 24
+  }
+' "$SKILL_MD" || step0_wrapper_fence_status=$?
+case "$step0_wrapper_fence_status" in
+  0) ;;
+  20) fail "each implement-bootstrap-invoke.sh call must be immediately preceded by set +e" ;;
+  21) fail "each implement-bootstrap-invoke.sh call must be immediately followed by _inv_rc=\$?" ;;
+  22) fail "each implement-bootstrap-invoke.sh _inv_rc capture must be immediately followed by set -e" ;;
+  23) fail "Step 0 wrapper fence check did not see initial invocation" ;;
+  24) fail "Step 0 wrapper fence check did not see resume invocation" ;;
+  *) fail "unexpected Step 0 wrapper fence check failure: $step0_wrapper_fence_status" ;;
+esac
+if [ "$(grep -cE '^[[:space:]]*_inv_out=\$\("\$\{CLAUDE_PLUGIN_ROOT\}/scripts/implement-bootstrap-invoke\.sh"' "$SKILL_MD" || true)" -lt 2 ]; then
+  fail "SKILL.md must contain at least two uncommented _inv_out= implement-bootstrap-invoke.sh call sites"
+fi
+[ -f "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh" ] \
+  || fail "scripts/parse-bootstrap-routing-envelope.sh must exist"
+[ -f "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.md" ] \
+  || fail "scripts/parse-bootstrap-routing-envelope.md must exist"
+grep -Fq 'parse-bootstrap-routing-envelope.sh' "$SKILL_MD" \
+  || fail "SKILL.md must source parse-bootstrap-routing-envelope.sh"
+# shellcheck disable=SC2016 # literal source text, not shell.
+if [ "$(grep -cF '. "${CLAUDE_PLUGIN_ROOT}/scripts/parse-bootstrap-routing-envelope.sh"' "$SKILL_MD" || true)" -ne 2 ]; then
+  fail "SKILL.md must source parse-bootstrap-routing-envelope.sh exactly twice (initial + resume)"
+fi
+grep -Fq 'parse-bootstrap-routing-envelope.sh" --preserve-coder' "$SKILL_MD" \
+  || fail "SKILL.md dirty-tree resume must source parse-bootstrap-routing-envelope.sh --preserve-coder"
+grep -Fq '_inv_routing_keys=' "$SKILL_MD" \
+  && fail "SKILL.md must not duplicate _inv_routing_keys (owned by parse-bootstrap-routing-envelope.sh)"
+grep -Fq '_inv_apply_routing_line()' "$SKILL_MD" \
+  && fail "SKILL.md must not define _inv_apply_routing_line (owned by parse-bootstrap-routing-envelope.sh)"
+grep -Fq '_inv_apply_routing_line_if_empty()' "$SKILL_MD" \
+  && fail "SKILL.md must not define _inv_apply_routing_line_if_empty (owned by parse-bootstrap-routing-envelope.sh)"
+# shellcheck disable=SC2016 # literal source text, not shell.
+if [ "$(grep -cF 'if [ "$_inv_rc" -ne 0 ]; then' "$SKILL_MD" || true)" -lt 2 ]; then
+  fail "SKILL.md must exit on non-zero wrapper rc before routing parse (both call sites)"
+fi
+grep -Fq 'unset IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback' "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh" \
+  || fail "parse-bootstrap-routing-envelope.sh initial unset must include coder coder_fallback"
+grep -Fq 'unset IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE REPO_UNAVAILABLE' "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh" \
+  || fail "parse-bootstrap-routing-envelope.sh resume unset must omit coder coder_fallback"
+grep -Fq '_ib_kv_scan()' "$SKILL_MD" \
+  && fail "SKILL.md must not retain _ib_kv_scan helper"
+grep -Fq '_ib_handle_bootstrap_exit2()' "$SKILL_MD" \
+  && fail "SKILL.md must not retain _ib_handle_bootstrap_exit2 helper"
+expected_routing_keys='IMPLEMENT_TMPDIR IMPLEMENT_BAIL_REASON STALL_TRACKING PLAN_FILE coder coder_fallback REPO_UNAVAILABLE DEFERRED ISSUE_NUMBER REPO CODEX_PRESENT CURSOR_PRESENT CODEX_BINARY_FOUND CURSOR_BINARY_FOUND codex_available cursor_available RUN_ID BRANCH_NAME BRANCH_ACTION'
+parse_keys=$(awk -F"'" '/^_inv_routing_keys=/ {print $2; exit}' "$REPO_ROOT/scripts/parse-bootstrap-routing-envelope.sh")
+invoke_keys=$(awk -F"'" '/^_inv_routing_keys=/ {print $2; exit}' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh")
+if [ "$parse_keys" != "$expected_routing_keys" ] || [ "$invoke_keys" != "$expected_routing_keys" ]; then
+  fail "parse-bootstrap-routing-envelope.sh and implement-bootstrap-invoke.sh _inv_routing_keys must match canonical list"
+fi
+if [ "$parse_keys" != "$invoke_keys" ]; then
+  fail "parse-bootstrap-routing-envelope.sh and implement-bootstrap-invoke.sh _inv_routing_keys literals must be identical"
+fi
 grep -Fq "BRANCH_NAME=*) BRANCH_NAME=\${_ib_tok#BRANCH_NAME=} ;;" "$SKILL_MD" \
-  || fail "SKILL.md must retain BRANCH_NAME _ib_kv_scan case arm"
+  && fail "SKILL.md must not retain BRANCH_NAME _ib_kv_scan case arm"
 grep -Fq "BRANCH_ACTION=*) BRANCH_ACTION=\${_ib_tok#BRANCH_ACTION=} ;;" "$SKILL_MD" \
-  || fail "SKILL.md must retain BRANCH_ACTION _ib_kv_scan case arm"
+  && fail "SKILL.md must not retain BRANCH_ACTION _ib_kv_scan case arm"
 grep -Fq "PLAN_FILE=*) PLAN_FILE=\${_ib_tok#PLAN_FILE=} ;;" "$SKILL_MD" \
-  || fail "SKILL.md must retain PLAN_FILE _ib_kv_scan case arm"
+  && fail "SKILL.md must not retain PLAN_FILE _ib_kv_scan case arm"
 grep -Fq "coder=*) coder=\${_ib_tok#coder=} ;;" "$SKILL_MD" \
-  || fail "SKILL.md must retain coder _ib_kv_scan case arm"
-grep -Fq '_ib_caller_env=()' "$SKILL_MD" \
-  || fail "SKILL.md must retain bootstrap caller-env argv assembly"
-grep -Fq '_ib_issue=()' "$SKILL_MD" \
-  || fail "SKILL.md must retain bootstrap issue argv assembly"
-grep -Fq '_ib_fork=()' "$SKILL_MD" \
-  || fail "SKILL.md must retain bootstrap fork argv assembly"
-grep -Fq '_ib_run_id=()' "$SKILL_MD" \
-  || fail "SKILL.md must retain bootstrap run-id argv assembly"
-grep -Fq '_ib_preflight=()' "$SKILL_MD" \
-  || fail "SKILL.md must retain bootstrap preflight argv assembly"
-grep -Fq '_ib_coder=()' "$SKILL_MD" \
-  || fail "SKILL.md must retain bootstrap coder argv assembly"
-grep -Fq 'copy-plan)' "$SKILL_MD" \
-  || fail "SKILL.md must retain copy-plan exit-2 handler"
-grep -Fq 'gh-issue-view)' "$SKILL_MD" \
-  || fail "SKILL.md must retain gh-issue-view exit-2 handler"
+  && fail "SKILL.md must not retain coder _ib_kv_scan case arm"
+grep -Fq 'BRANCH_NAME' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must include BRANCH_NAME in routing envelope key set"
+grep -Fq 'PLAN_FILE' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must include PLAN_FILE in routing envelope key set"
+grep -Fq 'coder_fallback' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must include coder_fallback in routing envelope key set"
+grep -Fq 'copy-plan)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must retain copy-plan exit-2 handler"
+grep -Fq 'gh-issue-view)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must retain gh-issue-view exit-2 handler"
+grep -Fq 'create-branch)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must retain create-branch exit-2 handler"
+grep -Fq 'write-session-env)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must retain write-session-env exit-2 handler"
+grep -Fq 'emergency-bypass-log)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must retain emergency-bypass-log exit-2 handler"
+grep -Fq '*)' "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" \
+  || fail "implement-bootstrap-invoke.sh must retain default exit-2 handler"
 # shellcheck disable=SC2016
 grep -Fq 'run-step2-dispatch.sh` always passes `--plan-file "$IMPLEMENT_TMPDIR/plan.txt"`' "$SKILL_MD" \
   || fail "SKILL.md must retain Step 2 conventional plan-file wording"
@@ -554,23 +640,30 @@ awk '
   in_step && /^```(bash|sh|shell)[[:space:]]*$/ { in_bash = 1; next }
   in_step && in_bash && /^```[[:space:]]*$/ { in_bash = 0; next }
   in_step && in_bash {
-    if ($0 ~ /_ib_out=\$\("\$\{CLAUDE_PLUGIN_ROOT\}\/scripts\/implement-bootstrap\.sh" --up-to-phase coder/) bootstrap_calls++
+    if ($0 ~ /implement-bootstrap\.sh/) direct_bootstrap++
     if ($0 ~ /--up-to-phase coder/) coder_literal++
-    if ($0 ~ /--resume-plan-tail/) resume_mentions++
+    if ($0 ~ /--resume-plan-tail/) resume_literal++
+    if ($0 ~ /^[[:space:]]*#/) next
+    if ($0 ~ /^[[:space:]]*_inv_out=\$\(.+implement-bootstrap-invoke\.sh" --mode initial/) mode_initial++
+    if ($0 ~ /^[[:space:]]*_inv_out=\$\(.+implement-bootstrap-invoke\.sh" --mode resume/) mode_resume++
     if ($0 ~ /snapshot-untracked\.sh" --output|\$SCRIPT_DIR\/persist-implement-run-flags\.sh|check-mid-run-dirty-tree\.sh" --mode checkpoint|create-branch\.sh" --branch|git-current-branch\.sh"|run-step1-plan-log\.sh"|write-tally\.sh"|tracking-issue-summary\.sh" .*upsert-summary|gh issue view "\$gh_issue_arg"|gh issue view "\$ISSUE_NUMBER"/) banned++
   }
   END {
-    if (bootstrap_calls != 1) exit 10
-    if (coder_literal < 1) exit 12
-    if (resume_mentions != 1) exit 13
+    if (direct_bootstrap != 0) exit 10
+    if (coder_literal != 0) exit 12
+    if (resume_literal != 0) exit 13
+    if (mode_initial < 1) exit 14
+    if (mode_resume < 1) exit 15
     if (banned != 0) exit 11
   }
 ' "$SKILL_MD" || step0_plan_structure_status=$?
 case "$step0_plan_structure_status" in
   0) ;;
-  10) fail "Step 0 bash blocks must contain exactly one implement-bootstrap.sh --up-to-phase coder call" ;;
-  12) fail "Step 0 bash blocks must contain --up-to-phase coder literal" ;;
-  13) fail "Step 0 bash blocks must contain exactly one --resume-plan-tail mention" ;;
+  10) fail "Step 0 bash blocks must not call implement-bootstrap.sh directly" ;;
+  12) fail "Step 0 bash blocks must not contain --up-to-phase coder literal (wrapper-owned)" ;;
+  13) fail "Step 0 bash blocks must not contain --resume-plan-tail literal (wrapper-owned)" ;;
+  14) fail "Step 0 bash blocks must call implement-bootstrap-invoke.sh --mode initial" ;;
+  15) fail "Step 0 bash blocks must call implement-bootstrap-invoke.sh --mode resume" ;;
   11) fail "Step 0 bash blocks must not reintroduce absorbed plan-materialization helper calls" ;;
   *) fail "unexpected Step 0 structure check failure: $step0_plan_structure_status" ;;
 esac
@@ -634,7 +727,9 @@ grep -Fq 'copy the full canonical key set' "$SKILL_MD" \
 # Stage 4 (#3119): Family-B fence shape must stay absent from implement orchestrator docs.
 assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md" ship-pr-invocation
 assert_p3119_family_b_fence_absent "$STALL_RECOVERY_MD" "stall-recovery.md"
-assert_p3119_family_b_fence_absent "$REFS_DIR/rebase-rebump-subprocedure.md" "rebase-rebump-subprocedure.md"
+# Retirement stub: no Family-B fence prose expected; absence is enforced on live orchestrator docs only.
+wc -c < "$REFS_DIR/rebase-rebump-subprocedure.md" | awk '{ if ($1 > 800) exit 1 }' \
+  || fail "rebase-rebump-subprocedure.md retirement stub should stay short"
 grep -Fq "treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD" \
   || fail "(3119) SKILL.md Step 8+ must pin foreground writer_rc routing (post ship-pr return)"
 grep -Fq "Treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD" \

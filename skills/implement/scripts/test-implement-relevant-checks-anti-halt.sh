@@ -9,7 +9,7 @@
 # helper or validate runtime behavior.
 #
 # Extraction detects the three helper invocation sites in SKILL.md today.
-# Steps 10 and 12c moved into scripts/ship-pr.sh (covered by test-ship-pr.sh).
+# Steps 10 and 12c moved into scripts/ship-pr.sh.
 #   (1) Step 3 first-pass checks.
 #   (2) Step 5 accepted-fix checks.
 #   (3) Step 6 FILES_CHANGED=true branch checks.

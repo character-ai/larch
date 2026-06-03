@@ -27,7 +27,7 @@ CI_LOCAL_FIX_ITER_DEFAULT: Final = 6
 WATERFALL_MAX_TIERS: Final = 3
 
 # Fixer tier order (parity with ship-pr run_ci_fix_vendor)
-FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("cursor", "codex", "claude")
+FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("codex", "cursor", "claude")
 FIXER_ROLE: Final = "resolve-conflict"
 REBASE_MAX_ATTEMPTS: Final = 20
 
@@ -38,6 +38,8 @@ ENV_LARCH_NO_LOGS_COMMIT: Final = "LARCH_NO_LOGS_COMMIT"
 ENV_LARCH_RUN_ID: Final = "LARCH_RUN_ID"
 ENV_IMPLEMENT_TMPDIR: Final = "IMPLEMENT_TMPDIR"
 ENV_LARCH_QUIET_DISABLE: Final = "LARCH_QUIET_DISABLE"
+ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT: Final = "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"
+EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC: Final = 30
 
 # Implementation selector values
 SHIP_PR_IMPL_BASH: Final = "bash"
@@ -199,6 +201,7 @@ ADMIN_ELIGIBLE_MERGE_STATES: Final[frozenset[str]] = frozenset({
     "UNSTABLE",
     "HAS_HOOKS",
     "BLOCKED",
+    "BEHIND",
 })
 
 INLINE_TRIAGE_MARKER: Final = "Inline-triage rule"

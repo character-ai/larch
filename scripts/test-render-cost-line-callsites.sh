@@ -32,19 +32,17 @@ test "$b" -ge 1 || fail 'render-final-summary.sh must pass --claude-input-tokens
 pass 'render-final-summary per-bucket argv shape'
 
 # shellcheck disable=SC2016
-grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on write-final-report success'
+grep -Fq 'write-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --print-stdout >"$_step17_wfr_log" 2>&1; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on write-final-report success'
 # shellcheck disable=SC2016
 grep -Fq 'if [ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 17 must gate touch on non-empty summary body'
 # shellcheck disable=SC2016
-grep -Fq 'if [ ! -f "$IMPLEMENT_TMPDIR/.step17-emitted" ]; then' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must only request --print-stdout when .step17-emitted is absent'
+grep -Fq 'step-18b-final-report.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke step-18b-final-report.sh'
 # shellcheck disable=SC2016
-grep -Fq '_wfr_emit_body=false' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must initialize body emit guard'
-# shellcheck disable=SC2016
-grep -Fq 'cmp -s "$IMPLEMENT_TMPDIR/.step18-prebody" "$IMPLEMENT_TMPDIR/summary-final.md"' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must compare refreshed body to pre-Step-18 snapshot'
+grep -Fq 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 orchestrator emit must key on EMIT_BODY=true with WFR_RC=0 and non-empty summary-final.md'
 # shellcheck disable=SC2016
 grep -Fq 'write `$IMPLEMENT_TMPDIR/.step17-emitted`' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
 # shellcheck disable=SC2016
-step18_block=$(sed -n '/"_wfr_args=(--implement-tmpdir "\\$IMPLEMENT_TMPDIR")"/,/^```$/p' "$REPO/skills/implement/SKILL.md")
+step18_block=$(sed -n '/step-18b-final-report\.sh.*--implement-tmpdir "\$IMPLEMENT_TMPDIR"/,/^```$/p' "$REPO/skills/implement/SKILL.md")
 # shellcheck disable=SC2016
 if printf '%s\n' "$step18_block" | grep -Fq 'touch "$IMPLEMENT_TMPDIR/.step17-emitted"'; then
     fail 'Step 18 Bash block must not touch .step17-emitted before orchestrator emit'
@@ -52,7 +50,7 @@ fi
 # shellcheck disable=SC2016
 grep -Fq 'the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 17 full-body emit prose'
 # shellcheck disable=SC2016
-grep -Fq 'the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown when either condition holds' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 18 full-body emit prose'
+grep -Fq 'When `EMIT_BODY=true` and `WFR_RC=0` and `[ -s "$IMPLEMENT_TMPDIR/summary-final.md" ]`, the orchestrator MUST emit the full body of summary-final.md verbatim as plain chat markdown' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin Step 18 full-body emit prose keyed on EMIT_BODY'
 # shellcheck disable=SC2016
 grep -Fq 'The only orchestrator-text addition permitted after the Bash summary is the verbatim full-body emission of $IMPLEMENT_TMPDIR/summary-final.md' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 full-body exception prose'
 grep -Fq 'NEVER write a free-form natural-language recap summary at end of turn after Step 17' "$REPO/skills/implement/SKILL.md" || fail 'implement SKILL must pin NEVER #20 literal'

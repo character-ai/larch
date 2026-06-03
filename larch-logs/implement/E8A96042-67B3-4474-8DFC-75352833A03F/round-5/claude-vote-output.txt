@@ -1,0 +1,18 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- naming is intentional (_ib_ for arg assembly, _inv_ for routing parse); fix adds churn with no behavior change
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- drift guard in test-implement-structure.sh already asserts parity; adding deduplication complexity outweighs benefit
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- literal string grep for *) is a nit and cannot produce a false negative for the handler's existence
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- symlink+parse-script test gap is real and directly related to FINDING_1 bug
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate logic between file-path and stdout-fallback helpers proved harmful; FINDING_1 is a direct consequence
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- default *) handler exercises a code path untested by any existing case
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- redaction-failure path requires brittle stub setup; happy-path coverage is sufficient for this nested edge case
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- missing-IMPLEMENT_TMPDIR success stub is a clear one-line-stub addition with deterministic behavior
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- mv within a freshly created session tmpdir will not fail under normal conditions; adding fallback adds complexity for an unreachable edge case
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- parse-bootstrap-routing-envelope.{sh,md} absent from plan file inventory; real plan-fidelity gap worth noting
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- GATE_ERROR/PREFLIGHT_ERROR lines printed without redaction; pre-existing but real security gap worth filing
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- bootstrap controls IMPLEMENT_TMPDIR; canonicalization adds complexity for a trusted internal path
+FINDING_14: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- implement-bootstrap.md edit-in-sync list omits parse-bootstrap-routing-envelope siblings; real documentation gap
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- non-local _inv_key is a hygiene nit; per-call pattern prevents observable mutation from mattering
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- leaked helper symbols are a hygiene concern but SKILL.md fences are session-scoped and no name collisions observed
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer confirms printf -v is Bash 3.1+ and no compat issue exists; positive attestation, not a finding
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- branch commit inventory is informational, not a defect or worth filing as a GitHub issue

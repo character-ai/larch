@@ -1,11 +1,6 @@
 #!/usr/bin/env bash
-# test-step-8a-changelog.sh — Offline regression harness for the Step 8a
-# changelog fallback logic added in Item J of ship-pr-helper-polish-batch-2.
-#
-# Exercises three fixtures:
-#   (a) Valid manifest with summary_bullets_categorized → CHANGELOG_STATUS=updated
-#   (b) Empty manifest + ISSUE_NUMBER set → fallback bullet in CHANGELOG.md
-#   (c) Empty manifest + ISSUE_NUMBER unset → CHANGELOG_STATUS=fail-no-manifest-no-issue
+# test-step-8a-changelog.sh — Phase 1 (#3364) regression: implement-finalize postbump
+# must not write CHANGELOG.md or invoke commit-changelog.sh (retired Step 8a path).
 set -euo pipefail
 
 export LARCH_QUIET_DISABLE=1
@@ -34,9 +29,15 @@ assert_contains() {
     fi
 }
 
-assert_file_contains() {
-    local needle=$1 path=$2 label=$3
-    assert_contains "$needle" "$(cat "$path" 2>/dev/null || true)" "$label"
+assert_not_contains() {
+    local needle=$1 haystack=$2 label=$3
+    if printf '%s' "$haystack" | grep -qF -- "$needle"; then
+        FAIL=$((FAIL + 1)); echo "FAIL: $label"
+        echo "  did not expect: $needle"
+        printf '%s\n' "$haystack" | sed 's/^/    /'
+    else
+        PASS=$((PASS + 1)); echo "PASS: $label"
+    fi
 }
 
 build_sandbox() {
@@ -44,7 +45,6 @@ build_sandbox() {
     local s="$SANDBOX/scripts" r="$SANDBOX/repo" t="$SANDBOX/tmp"
     mkdir -p "$s" "$r" "$t/larch-log-batches" "$t/larch-logs/implement/run-001"
 
-    # --- Real git repo on feature branch with a bump commit ---
     git -C "$r" init -q
     git -C "$r" config user.email "test@test.com"
     git -C "$r" config user.name "Test"
@@ -66,83 +66,53 @@ CL
     git -C "$r" add .claude-plugin/plugin.json
     git -C "$r" commit -q -m "Bump version to 1.0.1"
 
-    # --- Copy scripts that implement-finalize sources/uses ---
     cp "$REAL_FINALIZE" "$s/implement-finalize.sh"
     cp "$REAL_SCRIPTS_DIR/lib-quiet.sh" "$s/lib-quiet.sh"
     cp "$REAL_SCRIPTS_DIR/lib-execution-issues.sh" "$s/lib-execution-issues.sh"
     cp "$REAL_SCRIPTS_DIR/lib-changelog.sh" "$s/lib-changelog.sh"
     chmod +x "$s/implement-finalize.sh"
 
-    # --- Stub scripts (check-changelog-present.sh always reports present) ---
     printf '#!/usr/bin/env bash\nprintf '"'"'CHANGELOG_PRESENT=true\n'"'"'\n' > "$s/check-changelog-present.sh"
     chmod +x "$s/check-changelog-present.sh"
 
-    # larch-log.sh: succeed silently
-    cat > "$s/larch-log.sh" <<'SH'
+    cat > "$s/commit-changelog.sh" <<STUB
 #!/usr/bin/env bash
-printf 'LOG_WRITTEN=true\nUNCHANGED=false\nCOMMIT_SHA=abc\n'
-SH
-    chmod +x "$s/larch-log.sh"
-
-    # git-amend-add.sh: retained stub for legacy callers.
-    cat > "$s/git-amend-add.sh" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-git add -A 2>/dev/null || true
-git commit --amend --no-edit -q 2>/dev/null || true
-SH
-    chmod +x "$s/git-amend-add.sh"
-
-    # commit-changelog.sh: create the separate CHANGELOG commit.
-    cat > "$s/commit-changelog.sh" <<'SH'
-#!/usr/bin/env bash
-set -euo pipefail
-version=""
-while [ "$#" -gt 0 ]; do
-    case "$1" in
-        --version) version=$2; shift 2 ;;
-        *) shift ;;
-    esac
-done
-git add CHANGELOG.md
-git commit -q -m "Update CHANGELOG for $version"
-printf 'COMMITTED=true\nCOMMIT_SHA=%s\n' "$(git rev-parse HEAD)"
-SH
+printf '%s\n' "\$@" >> "$SANDBOX/commit-changelog-invocations.txt"
+git add CHANGELOG.md 2>/dev/null || true
+git commit -q -m "Update CHANGELOG for stub" 2>/dev/null || true
+printf 'COMMITTED=true\nCOMMIT_SHA=stub\n'
+STUB
     chmod +x "$s/commit-changelog.sh"
 
-    # rebase-push.sh: already fresh
+    cat > "$s/larch-log.sh" <<STUB
+#!/usr/bin/env bash
+printf '%s\n' "\$@" >> "$SANDBOX/larch-log-invocations.txt"
+printf 'LOG_WRITTEN=true\nUNCHANGED=false\nCOMMIT_SHA=abc\n'
+STUB
+    chmod +x "$s/larch-log.sh"
+
     printf '#!/usr/bin/env bash\nprintf '"'"'SKIPPED_ALREADY_FRESH=true\n'"'"'\n' > "$s/rebase-push.sh"
     chmod +x "$s/rebase-push.sh"
 
-    # check-remote-branch.sh: branch absent (no push needed)
     printf '#!/usr/bin/env bash\nprintf '"'"'STATE=absent\n'"'"'\n' > "$s/check-remote-branch.sh"
     chmod +x "$s/check-remote-branch.sh"
 
-    # No-op telemetry stubs
     for stub in read-session-env-key.sh token-ledger.sh timing-ledger.sh \
-                token-report.sh timing-report.sh; do
+                token-report.sh timing-report.sh tracking-issue-write.sh; do
         printf '#!/usr/bin/env bash\nexit 0\n' > "$s/$stub"
         chmod +x "$s/$stub"
     done
 
-    # Stub tracking-issue-write.sh used in postbump_tail
-    cat > "$s/tracking-issue-write.sh" <<'SH'
-#!/usr/bin/env bash
-printf 'RENAMED=false\nNEW_TITLE=stub\n'
-SH
-    chmod +x "$s/tracking-issue-write.sh"
-
-    # execution-issues log
     touch "$t/execution-issues.md"
 }
 
 make_state_file() {
-    local issue_num=$1 pr_title=$2 manifest_path=$3 run_id=${4:-run-001}
+    local manifest_path=$1
     local sf="$SANDBOX/tmp/state.sh"
     cat > "$sf" <<STATE
 BRANCH_NAME=feature-test
-ISSUE_NUMBER=$issue_num
-PR_TITLE=$pr_title
+ISSUE_NUMBER=42
+PR_TITLE=Test PR
 REPO=test/repo
 REPO_UNAVAILABLE=false
 FORKED_TARGET=false
@@ -152,7 +122,7 @@ NEW_VERSION=1.0.1
 BUMP_REASONING_FILE=
 MANIFEST_PATH=$manifest_path
 TOOL_LABEL=test
-RUN_ID=$run_id
+RUN_ID=run-001
 STATE
     printf '%s\n' "$sf"
 }
@@ -172,85 +142,51 @@ run_postbump() {
     printf '%s\n' "$out"
 }
 
-# ===========================================================================
-# Setup common sandbox (shared across fixtures to save time)
-# ===========================================================================
 build_sandbox
 
-# Create a valid manifest for fixture (a)
-MANIFEST_A="$SANDBOX/tmp/manifest-a.json"
-cat > "$MANIFEST_A" <<'JSON'
+MANIFEST="$SANDBOX/tmp/manifest.json"
+cat > "$MANIFEST" <<'JSON'
 {
   "summary_bullets_categorized": {
-    "Changed": ["Fix apply-bump rebase detection", "Add git-push stderr dedup"]
-  },
-  "commit_message": "test commit"
+    "Changed": ["Would have been a changelog bullet pre-Phase-1"]
+  }
 }
 JSON
 
-# ===========================================================================
-# Fixture (a): valid manifest → CHANGELOG_STATUS=updated
-# ===========================================================================
 echo
-echo "Fixture (a): valid manifest → CHANGELOG_STATUS=updated"
+echo "Phase 1 postbump: manifest present but CHANGELOG untouched"
 
-# Restore clean CHANGELOG.md for each fixture
 git -C "$SANDBOX/repo" checkout -- CHANGELOG.md 2>/dev/null || true
-
-state_a=$(make_state_file "42" "Test PR" "$MANIFEST_A")
-out_a=$(run_postbump "$state_a")
-assert_contains "CHANGELOG_STATUS=updated" "$out_a" "a: CHANGELOG_STATUS=updated"
-# CHANGELOG.md should contain the bullet
-assert_file_contains "Fix apply-bump rebase detection" "$SANDBOX/repo/CHANGELOG.md" \
-    "a: bullet from manifest in CHANGELOG.md"
-if [ "$(git -C "$SANDBOX/repo" log -1 --format=%s)" = "Update CHANGELOG for 1.0.1" ] &&
-    [ "$(git -C "$SANDBOX/repo" log -2 --format=%s | tail -1)" = "Bump version to 1.0.1" ]; then
-    PASS=$((PASS + 1))
-    echo "PASS: a: CHANGELOG update is a separate commit above bump"
-else
+rm -f "$SANDBOX/commit-changelog-invocations.txt" "$SANDBOX/larch-log-invocations.txt"
+state=$(make_state_file "$MANIFEST")
+out=$(run_postbump "$state")
+assert_contains "CHANGELOG_STATUS=skipped-phase1" "$out" "postbump reports skipped-phase1"
+assert_contains "STATUS=ok" "$out" "postbump completes ok"
+assert_not_contains "CHANGELOG_STATUS=updated" "$out" "postbump does not report changelog updated"
+if [ -e "$SANDBOX/commit-changelog-invocations.txt" ]; then
     FAIL=$((FAIL + 1))
-    echo "FAIL: a: expected separate CHANGELOG commit above bump"
+    echo "FAIL: commit-changelog.sh was invoked"
+    sed 's/^/    /' "$SANDBOX/commit-changelog-invocations.txt"
+else
+    PASS=$((PASS + 1))
+    echo "PASS: commit-changelog.sh not invoked"
+fi
+if grep -qF 'Would have been a changelog bullet' "$SANDBOX/repo/CHANGELOG.md"; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: CHANGELOG.md was mutated"
+else
+    PASS=$((PASS + 1))
+    echo "PASS: CHANGELOG.md unchanged"
+fi
+if [ "$(git -C "$SANDBOX/repo" log --oneline | wc -l | tr -d ' ')" -ne 2 ]; then
+    FAIL=$((FAIL + 1))
+    echo "FAIL: unexpected commit count after postbump"
+    git -C "$SANDBOX/repo" log --oneline | sed 's/^/    /'
+else
+    PASS=$((PASS + 1))
+    echo "PASS: no extra CHANGELOG commit on branch"
 fi
 
-# ===========================================================================
-# Fixture (b): empty manifest + ISSUE_NUMBER set → fallback bullet
-# ===========================================================================
-echo
-echo "Fixture (b): empty manifest + ISSUE_NUMBER → fallback bullet"
-
-git -C "$SANDBOX/repo" checkout -- CHANGELOG.md 2>/dev/null || true
-
-state_b=$(make_state_file "2354" "ship-pr.sh helper polish batch 2" "")
-out_b=$(run_postbump "$state_b")
-assert_contains "CHANGELOG_STATUS=updated" "$out_b" "b: CHANGELOG_STATUS=updated (fallback)"
-assert_file_contains "Closed: #2354" "$SANDBOX/repo/CHANGELOG.md" \
-    "b: fallback bullet Closed: #N in CHANGELOG.md"
-assert_file_contains "ship-pr.sh helper polish batch 2" "$SANDBOX/repo/CHANGELOG.md" \
-    "b: PR title included in fallback bullet"
-
-# ===========================================================================
-# Fixture (c): empty manifest + no ISSUE_NUMBER → loud failure
-# ===========================================================================
-echo
-echo "Fixture (c): empty manifest + no ISSUE_NUMBER → fail-no-manifest-no-issue"
-
-git -C "$SANDBOX/repo" checkout -- CHANGELOG.md 2>/dev/null || true
-
-state_c=$(make_state_file "" "" "")
-out_c=$(run_postbump "$state_c")
-assert_contains "STATUS=changelog-failed" "$out_c" \
-    "c: STATUS=changelog-failed"
-assert_contains "CHANGELOG_STATUS=fail-no-manifest-no-issue" "$out_c" \
-    "c: CHANGELOG_STATUS=fail-no-manifest-no-issue"
-# The warn_line writes to stderr, captured by run_postbump's 2>&1 redirect.
-assert_contains "summary bullets absent and no tracking-issue context" "$out_c" \
-    "c: loud error message present"
-assert_file_contains \
-    "ERROR=Cannot generate changelog bullet: no manifest AND no tracking-issue context." \
-    "$SANDBOX/tmp/execution-issues.md" \
-    "c: execution-issues logs stable ERROR line"
-
-# ===========================================================================
 echo
 TOTAL=$((PASS + FAIL))
 echo "test-step-8a-changelog: $PASS/$TOTAL passed"

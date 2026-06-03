@@ -81,6 +81,30 @@ def test_classify_timeout() -> None:
     assert failure.reason == "timeout"
 
 
+def test_is_quota_failure(tmp_path: Path) -> None:
+    sidecar = tmp_path / "sidecar.log"
+    _ = sidecar.write_text("You've hit your usage limit. Try again at 3pm.\n", encoding="utf-8")
+    assert agents.is_quota_failure("codex", sidecar) is True
+    assert agents.is_quota_failure("cursor", sidecar) is True
+    # Unsupported tool and unrelated text do not classify as quota.
+    assert agents.is_quota_failure("claude", sidecar) is False
+    other = tmp_path / "other.log"
+    _ = other.write_text("ordinary failure\n", encoding="utf-8")
+    assert agents.is_quota_failure("codex", other) is False
+    assert agents.is_quota_failure("codex", tmp_path / "missing.log") is False
+
+
+def test_classify_quota_is_health(tmp_path: Path) -> None:
+    sidecar = tmp_path / "sidecar.log"
+    _ = sidecar.write_text("Error: 429 Too Many Requests\n", encoding="utf-8")
+    failure = agents.classify_launch_failure(
+        1, sidecar, auth_verdict="non-auth", tool="codex",
+    )
+    # quota is a health-class condition so the waterfall escalates rather than
+    # bailing first-fixer-non-health (#3378).
+    assert failure == LaunchFailure("health", "quota")
+
+
 @pytest.mark.skipif(
     not LIB_COMMON.is_file() or shutil.which("bash") is None,
     reason="bash or lib-external-launcher-common.sh unavailable",
@@ -107,6 +131,8 @@ def test_parity_classify_timeout() -> None:
         (1, "", "parse error", "non-auth", "1", "cursor"),
         (1, "", "refused to continue", "non-auth", "1", "cursor"),
         (99, "", "ordinary failure", "non-auth", "1", "cursor"),
+        (1, "You've hit your usage limit. Try again at 3pm.", "", "non-auth", "1", "codex"),
+        (1, "", "rate limit exceeded", "non-auth", "1", "cursor"),
     ],
 )
 def test_parity_classify_launch_failures(

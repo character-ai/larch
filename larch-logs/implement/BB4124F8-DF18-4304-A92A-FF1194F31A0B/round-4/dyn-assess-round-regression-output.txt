@@ -1,0 +1,13 @@
+I'll review the branch diff with focus on `resolve_workflow_path` / `json_scalar_or_sed` consistency across the assessor lane.
+Verifying whether `json_scalar_or_sed` trailing newlines break HARD/SIMPLE string comparisons.
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/test-assess-plan-round.sh:16-56` — The branch replaces `read_workflow_path` with `resolve_workflow_path` in `assess-plan-round.sh` (empty/missing `workflow_path` falls back to `design_classification`, mismatch aligns to `design_classification`), but this harness still only writes `workflow_path` via `write_params` and never references `design_classification`. `make test-assess-plan-round` therefore cannot catch drift between `assess-plan-round.sh` and `design-plan-quality-assessor.sh` on those branches when `assess-plan-round.sh` is exercised directly. **Suggested fix:** Add cases analogous to `test-design-plan-quality-assessor.sh` #19 (only `{"design_classification":"HARD"}`) and a mismatch fixture (`workflow_path` vs `design_classification`), asserting resolved HARD vs skipped behavior and emitted KVs.
+
+### Out-of-Scope Observations
+
+- No remaining `read_workflow_path` references in executable code (grep only hits historical `larch-logs/` review artifacts).
+- `resolve_workflow_path` in `skills/design/scripts/assess-plan-round.sh:38-56`, the pre-invoke block in `skills/design/SKILL.md:1051-1067`, and `skills/design/scripts/design-plan-quality-assessor.sh:108-125` use the same resolution rules (empty `workflow_path` → `HARD` only when `design_classification` is exactly `HARD`, else `SIMPLE`; when both are non-empty and differ, follow `design_classification`). The driver additionally emits a `WARN=` on mismatch; the orchestrator pre-read aligns silently, which is consistent because the driver warning is replayed via the handoff parse.
+- `json_scalar_or_sed` is duplicated in `assess-plan-round.sh`, `design-plan-quality-assessor.sh`, and `design-postplan-emit.sh` with the same jq → sed → default behavior; command substitution strips trailing newlines, so `[[ … == HARD ]]` / `!= HARD` gates are not broken by `printf '%s\n'`.
+- Intentional behavior change (not a regression on normal runs): `design-init-runparams.sh` always writes both fields, but `run-params.json` with only `design_classification":"HARD"` now enters the HARD assessor lane; covered at the driver layer in `test-design-plan-quality-assessor.sh` #19, not in `test-assess-plan-round.sh`.
+- `skills/design/scripts/assess-plan-round.md:7` still describes only `workflow_path` gating and does not document the `design_classification` fallback added in this branch (doc drift only).

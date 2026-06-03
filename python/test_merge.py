@@ -90,6 +90,10 @@ def _mock_refresh_skip_ok(*_a: object, **_k: object) -> run_logs.RefreshSkip:
     return run_logs.RefreshSkip(skipped=False, reason="")
 
 
+def _mock_ensure_head_behind(*_a: object, **_k: object) -> gh.MergeState:
+    return gh.MergeState("BEHIND", "abc")
+
+
 def _mock_true(*_a: object, **_k: object) -> bool:
     return True
 
@@ -119,7 +123,10 @@ def test_merge_skip_modes_have_dedicated_errors() -> None:
         assert out.error == expected
 
 
-def test_merge_continues_when_flush_skips_missing_state(tmp_path: Path) -> None:
+def test_merge_continues_when_flush_skips_missing_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(
@@ -143,15 +150,20 @@ def test_merge_continues_when_flush_skips_missing_state(tmp_path: Path) -> None:
                 "",
                 0.01,
             ),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
         ],
     )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(
         tmpdir=str(tmp_path),
         state_file=None,
         pr_number=1,
     )
     out = merge_module.merge_pr(runner, ctx)
-    assert out.result == config.MERGE_RESULT_MAIN_ADVANCED
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
     assert "flush_logs_pre skipped" not in out.error
 
 
@@ -554,6 +566,7 @@ def test_merge_continues_when_pre_flush_commit_fails(
                 "",
                 0.01,
             ),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
         ],
     )
     def fake_pre_skipped(*_a: object, **_k: object) -> run_logs.RefreshSkip:
@@ -561,9 +574,12 @@ def test_merge_continues_when_pre_flush_commit_fails(
 
     monkeypatch.setattr(run_logs, "flush_logs_pre", fake_pre_skipped)
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
     out = merge_module.merge_pr(runner, ctx)
-    assert out.result == config.MERGE_RESULT_MAIN_ADVANCED
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
 
 
 def test_version_race_gate_version_already_published(

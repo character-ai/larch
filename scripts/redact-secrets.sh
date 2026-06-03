@@ -10,6 +10,7 @@
 #
 # Covered families (each replaced with <REDACTED-TOKEN> unless noted):
 #   - Anthropic / OpenAI sk-* and sk-ant-* keys
+#   - Cursor CLI API keys (crsr_…)
 #   - GitHub PATs and fine-grained tokens: ghp_, gho_, ghu_, ghs_, ghr_, github_pat_
 #   - AWS long-term access key IDs (AKIA[0-9A-Z]{16})
 #   - Generic JWT (eyJ…header.payload.signature)
@@ -90,6 +91,7 @@ if [[ "${1:-}" == "--streaming" ]]; then
         # shellcheck disable=SC2016
         printf '%s\n' "$1" | sed -E \
             -e 's/sk-(ant-)?[A-Za-z0-9_-]{20,}/<REDACTED-TOKEN>/g' \
+            -e 's/crsr_[A-Za-z0-9_-]{20,}/<REDACTED-TOKEN>/g' \
             -e 's/(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}/<REDACTED-TOKEN>/g' \
             -e 's/AKIA[0-9A-Z]{16}/<REDACTED-TOKEN>/g' \
             -e 's/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/<REDACTED-TOKEN>/g'
@@ -136,6 +138,7 @@ larch_quiet_init
 # whole block. Non-PEM lines pass through unchanged.
 sed -E \
     -e 's/sk-(ant-)?[A-Za-z0-9_-]{20,}/<REDACTED-TOKEN>/g' \
+    -e 's/crsr_[A-Za-z0-9_-]{20,}/<REDACTED-TOKEN>/g' \
     -e 's/(ghp|gho|ghu|ghs|ghr|github_pat)_[A-Za-z0-9_]{20,}/<REDACTED-TOKEN>/g' \
     -e 's/AKIA[0-9A-Z]{16}/<REDACTED-TOKEN>/g' \
     -e 's/eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_-]{10,}/<REDACTED-TOKEN>/g' \

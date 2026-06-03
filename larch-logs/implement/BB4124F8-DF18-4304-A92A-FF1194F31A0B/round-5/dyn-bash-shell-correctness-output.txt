@@ -1,0 +1,16 @@
+Reviewing branch changes with focus on bash shell correctness in the new assessor driver.
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/design-plan-quality-assessor.sh:173-182` — `_assessor_pause_checkpoint` always flushes `ASSESSOR_STATUS=skipped` / `ASSESSOR_VERDICT=skipped` before `exec design-pause-save.sh`, unlike the sibling `design-postplan-emit.sh` pause helper which writes `POSTPLAN_EMIT_STATUS=paused` with an explicit comment that this avoids empty mandatory-key aborts under `$()` capture. After a successful `write-after`, a pause therefore leaves `.step3.6-assessor.env` claiming the lane was “skipped” even though `plan-after-round-<N>.txt` may already exist, which mislabels partial Step 3.6 progress for resume/debug and conflates pause with the non-HARD skip path. **Suggested fix:** Add a dedicated settled status (for example `ASSESSOR_STATUS=paused`), document it in `design-plan-quality-assessor.md` and `assessor.md`, and teach the Step 3.6 orchestrator handoff to treat it like postplan’s `paused` (no WORSE gate, fail-closed only when status is truly empty).
+
+- **correctness** `skills/design/scripts/design-plan-quality-assessor.sh:234-343` — Pause is only checked at entry (`214`), after HARD `read-cursor` (`227`), and immediately before launching assess (`266`) on the write-after **success** path. Terminal paths that settle and `exit 0`—`write-after-failed` rollback (`234-263`), `assess-failed` (`283-305`), empty-status assess (`310-332`), and the happy assess tail (`338-343`)—never re-check `.pause-requested`, so a pause requested while rollback logging or assess is running is deferred until the driver finishes and the orchestrator moves on. **Suggested fix:** Call `_assessor_pause_checkpoint` immediately before every `_write_result_and_emit` on settled exit paths (and after a successful assess return), mirroring the postplan driver’s checkpoint spacing.
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/design/SKILL.md:1115-1120` — The Step 3.6 handoff uses `${!_assessor_key}` fill-only-unset merging, copied from the Step 2b postplan fence. That pattern predates this branch; on macOS `/bin/bash` 3.2, `${!name}` is not general scalar indirection (only array-index expansion), so portability depends on the Bash version Claude Code uses for skill fences, not on the new driver.
+
+- **correctness** `skills/design/scripts/design-plan-quality-assessor.sh:20-36` — `parse_kv_from_output` assigns into globals and does not trim values; corrupted child stdout with trailing `\r` in `ROUND_CURSOR=` could make `write-after --round` fail validation and is only handled indirectly via the write-after-failure path. Same class of risk exists in other KV parsers in this tree.
+
+**Shell-mechanics note (scout checklist):** After round 4, the `set +e` / `_snap_rc` / `_assess_rc` / `_cursor_rc` / `_rollback_rc` capture ordering matches `design-postplan-emit.sh`; child failures on settled paths reach `_write_result_and_emit`; `local -a _kvs` and `"${WARN_LINES[@]+"${WARN_LINES[@]}"}"` follow the repo’s bash 3.2-safe conventions; clearing assessor globals at `268-272` before parsing assess stdout prevents stale `ASSESSOR_*` from the initial `skipped` defaults.
+
+**Commits reviewed (9):** `dbb253d81` … `9625272d7` on branch vs `main`.

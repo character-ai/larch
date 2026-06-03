@@ -14,6 +14,8 @@ source "$SCRIPT_DIR/lib-voter-parse-rate.sh"
 source "$SCRIPT_DIR/lib-plan-voter-coverage.sh"
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/lib-design-tmpdir.sh"
+# shellcheck source=scripts/lib-external-launcher-common.sh
+source "$SCRIPT_DIR/lib-external-launcher-common.sh"
 
 usage() {
     larch_err "Usage: dispatch-plan-voters.sh --ballot-file FILE --design-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE]"
@@ -218,7 +220,32 @@ effective_judges=$(plan_voter_coverage_compute_effective_judges \
     "$VOTER_1_STATUS"$'\t'"$VOTER_1_PATH"$'\t'"$VOTER_1_PARSE_RATE_STATUS" \
     "$VOTER_2_STATUS"$'\t'"$VOTER_2_PATH"$'\t'"$VOTER_2_PARSE_RATE_STATUS" \
     "$VOTER_3_STATUS"$'\t'"$VOTER_3_PATH"$'\t'"$VOTER_3_PARSE_RATE_STATUS")
-plan_voter_coverage_emit_degraded_warning_if_needed "$effective_judges" "$expected_judges"
+
+# When the panel is degraded, attribute a usage-limit/quota cause if a failed
+# external voter (codex/cursor) left a quota signature in its sidecar/diag, so
+# the banner names the reason instead of leaving it silent (#3378). The matching
+# per-tool failure is also recorded to execution-issues.md by launch-review.sh.
+# Path invariant: the waterfall above runs with --no-fallback, so a FAILED
+# external slot is dropped (never reassigned to a Claude fallback path) and
+# VOTER_{2,3}_PATH stays at its default — the same base the phase-1 launch wrote
+# ${base}.sidecar/${base}.diag to. So probing ${VOTER_N_PATH}.sidecar always
+# targets the original codex/cursor sidecar for a failed slot.
+_voter_failed_on_quota() {
+    local tool="$1" base="$2"
+    external_is_quota_failure "$tool" "${base}.sidecar" \
+        || external_is_quota_failure "$tool" "${base}.diag"
+}
+_degraded_reason=""
+if (( effective_judges < expected_judges )); then
+    if [[ "$VOTER_2_STATUS" == "failed" ]] && _voter_failed_on_quota codex "$VOTER_2_PATH"; then
+        _degraded_reason="Cause: codex hit a usage-limit/quota; see execution-issues.md."
+        emit_kv WARN "plan-voter slot 2 (codex) failed on usage-limit/quota; see execution-issues.md"
+    elif [[ "$VOTER_3_STATUS" == "failed" ]] && _voter_failed_on_quota cursor "$VOTER_3_PATH"; then
+        _degraded_reason="Cause: cursor hit a usage-limit/quota; see execution-issues.md."
+        emit_kv WARN "plan-voter slot 3 (cursor) failed on usage-limit/quota; see execution-issues.md"
+    fi
+fi
+plan_voter_coverage_emit_degraded_warning_if_needed "$effective_judges" "$expected_judges" "$_degraded_reason"
 
 plan_voter_paths_file="$DESIGN_TMPDIR/plan-voter-paths.txt"
 pv_tmp=$(mktemp "${DESIGN_TMPDIR}/.plan-voter-paths.XXXXXX")
