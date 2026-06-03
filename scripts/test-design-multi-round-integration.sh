@@ -21,7 +21,14 @@ fi
 if [[ "$1" == "pr" ]]; then
     case "$2" in
         create) echo "https://github.com/owner/repo/pull/101"; exit 0 ;;
-        checks) echo "all checks passing"; exit 0 ;;
+        checks)
+            if printf '%s\n' "$*" | grep -q -- '--json'; then
+                printf '[{"name":"ci","bucket":"pass"}]\n'
+            else
+                echo "all checks passing"
+            fi
+            exit 0
+            ;;
         merge)
             if [[ -n "${TEST_CLONE_ROOT:-}" && -n "${TEST_MERGE_BRANCH:-}" ]]; then
                 git -C "$TEST_CLONE_ROOT" fetch origin "$TEST_MERGE_BRANCH" >/dev/null 2>&1 || true
