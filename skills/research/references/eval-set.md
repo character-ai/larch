@@ -114,7 +114,7 @@
 - **question**: What are the failure modes of `/implement`'s Step 12 rebase-rebump sub-procedure, and how does each map to step12-family hard-bail versus step10-family graceful-degrade behavior?
 - **category**: risk-assessment
 - **expected_provenance_count**: 2
-- **expected_keywords**: rebase-push.sh, check-release.sh, VERIFIED, hard-bail, 12d, step10
+- **expected_keywords**: rebase-push.sh, conflict-resolution.md, VERIFIED, hard-bail, 12d, step10
 - **notes**: Risk; should enumerate at least three failure modes (rebase conflict, push rejection, post-check `STATUS != ok`) and pair each with the correct caller-family disposition.
 
 ### eval-16: deny-edit-write-bypass-blast-radius

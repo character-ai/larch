@@ -41,7 +41,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - `scripts/plan-block-read.sh`, `scripts/plan-block-write.sh`, `scripts/clarify-comment-post.sh`, `scripts/clarify-state.sh`, `scripts/clarify-label.sh`, `scripts/test-plan-block.sh`, `scripts/test-clarify-comment.sh`, `scripts/test-clarify-state.sh` — helpers and offline harnesses for that wire format (Makefile registers the `test-*` targets).
 - `scripts/lib-quiet.md` — quiet-by-default contract stream for larch scripts (FD 3, `emit`/`emit_kv` API, `LARCH_QUIET_DISABLE` escape hatch)
 - `scripts/larch-log.md`, `scripts/larch-log-batches.md` — committed run-log contract and batch table
-- `.claude/skills/bump-version/SKILL.md` — authoritative version classification rules
+- `.claude/skills/release/scripts/classify-bump.md` — authoritative release classification rules
 - `skills/shared/topology.tsv` — projection rows for cross-doc topology counts; runtime authorities listed in the TSV remain source of truth
 - `skills/shared/subskill-invocation.md` — sub-skill invocation conventions (invocation patterns, `allowed-tools` narrowing, post-invocation verification, anti-halt continuation reminder, session-env handoff)
 - `skills/shared/skill-design-principles.md` — design principles for every larch skill (knowledge delta, structure, mechanical rules A/B/C, writing style, anti-patterns, freedom calibration); Section III overrides Section IV for larch skills

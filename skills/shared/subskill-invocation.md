@@ -65,7 +65,7 @@ Canonical examples:
   # run conflict-resolution.md before re-invoking ship-pr.sh --resume-phase ship-pr-rrr-phase14.
   ```
 
-  See `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` for the exit-code matrix. Phase 1 (#3364) removed `/implement` `/release` and `check-release.sh` gates on the ship path; use `/release` or manual `.claude/skills/release` when versioning is required outside implement.
+  See `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` for the exit-code matrix. Phase 1 (#3364) removed `/implement` `/release` gates on the ship path; use `/release` or manual `.claude/skills/release` when versioning is required outside implement.
 
 - **Parsed stdout machine value after `/issue`** — the orchestrator reads `ISSUES_CREATED=<N>` / `ISSUES_FAILED=<N>` / per-issue `ISSUE_N_NUMBER`/`ISSUE_N_URL` lines from `/issue`'s stdout. Without those parsed values, the parent cannot file the created issue links into the PR body. See `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` (the OOS pipeline runs as a checkpoint inside the ship-pr orchestration).
 

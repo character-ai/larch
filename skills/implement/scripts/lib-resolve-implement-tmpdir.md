@@ -5,8 +5,9 @@ post-/design and post-/review hook scripts. It exposes `resolve_implement_tmpdir
 enumerates `${XDG_CACHE_HOME:-$HOME/.cache}/larch/sessions`, `/tmp`, and
 `/private/tmp` for `claude-implement-*` directories that have `design-export/manifest.env`
 (normal path), `review-round-summary.md` (both-externals-down path that skips
-`/design` — issue #1862), or `.release-armed` (post-/bump resume when
-manifest/review artifacts are absent). Each candidate must provide `.larch-keepalive`,
+`/design` — issue #1862), or legacy `.release-armed` residue from pre-Phase-1
+runs. `.release-armed` is resolver compatibility only; current SessionStart
+does not emit a post-release advisory from it. Each candidate must provide `.larch-keepalive`,
 a slim session-identity record whose `CLONE_PATH` exactly matches the
 supplied hook cwd. The helper returns the freshest eligible manifest mtime with
 lexicographic tie-break.

@@ -1,6 +1,6 @@
 # classify-bump.sh
 
-`classify-bump.sh` is the deterministic classifier for the dev-only `/release` skill. It inspects the public plugin surface (`skills/**`, `agents/**`), writes the reasoning file, and emits `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, and `REASONING_FILE`.
+`classify-bump.sh` is the deterministic classifier for the dev-only `/release` skill. It inspects the public plugin surface (`skills/**`, `agents/**`), writes `${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasoning.md`, and emits `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, and `REASONING_FILE`.
 
 ## Optional `--base <ref>` and `--head <ref>`
 
@@ -18,7 +18,7 @@ When `--base` / `--head` are omitted, the classifier uses the merge-base against
 
 ## Idempotency
 
-The classifier treats the branch as already versioned when the idempotency head is a `Bump version to X.Y.Z` commit. Before checking that subject, it walks past up to three transparent `chore(larch-logs): ...` commits that touch only `larch-logs/**`. Subject matches alone are not trusted.
+The classifier treats the branch as already versioned when the idempotency head is a `Bump version to X.Y.Z` commit. Before checking that subject, it walks past up to three transparent `Update CHANGELOG for ...` commits that touch only `CHANGELOG.md` or `chore(larch-logs): ...` commits that touch only `larch-logs/**`. Subject matches alone are not trusted.
 
 ## Edit-in-sync
 

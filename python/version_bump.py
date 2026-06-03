@@ -26,6 +26,8 @@ _AGENT_PATH = "agents/*.md"
 _SHORT_SHA_LEN = 7
 _PORCELAIN_STATUS_PREFIX_LEN = 2
 _NAME_STATUS_RENAME_PATH_INDEX = 2
+_TRANSPARENT_CHANGELOG_SUBJECT_PREFIX = "Update CHANGELOG for "
+_CHANGELOG_DEFAULT_PATH = "CHANGELOG.md"
 
 
 @dataclass(frozen=True)
@@ -130,7 +132,11 @@ def _resolve_classify_base(runner: Runner, *, cwd: str | None) -> str:
 
 def _idempotency_transparent(runner: Runner, ref: str, *, cwd: str | None) -> bool:
     subject = git.log_subject(runner, ref, cwd=cwd)
-    if not subject.startswith(config.TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX):
+    if subject.startswith(_TRANSPARENT_CHANGELOG_SUBJECT_PREFIX):
+        expected_changelog = True
+    elif subject.startswith(config.TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX):
+        expected_changelog = False
+    else:
         return False
 
     result = git.diff_tree_name_only(runner, ref, cwd=cwd)
@@ -140,6 +146,8 @@ def _idempotency_transparent(runner: Runner, ref: str, *, cwd: str | None) -> bo
     if not changed:
         return False
 
+    if expected_changelog:
+        return all(file == _CHANGELOG_DEFAULT_PATH for file in changed)
     return all(file.startswith("larch-logs/") for file in changed)
 
 
@@ -192,7 +200,7 @@ def _build_reasoning(
             "### PATCH rationale",
             "",
             "No MAJOR or MINOR evidence found in the public plugin surface. "
-            'Defaulting to PATCH per policy ("every PR must bump at least PATCH").',
+            "Defaulting to PATCH for this release classification.",
         ])
     return "\n".join(lines)
 

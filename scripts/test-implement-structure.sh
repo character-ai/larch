@@ -33,7 +33,7 @@ for heading in "## Load-Bearing Invariants" "## NEVER List" "## Rebase Checkpoin
   [[ "$count" == "1" ]] || fail "expected exactly one $heading heading, found $count"
 done
 
-for ref in summary-comment-template.md conflict-resolution.md codex-manifest-schema.md conflict-resolution.md pr-body-template.md conflict-resolution.md; do
+for ref in summary-comment-template.md conflict-resolution.md codex-manifest-schema.md pr-body-template.md; do
   [[ -f "$REFS_DIR/$ref" ]] || fail "missing reference: $ref"
 done
 
@@ -43,10 +43,10 @@ grep -Fq 'Version Bump Freshness' "$SKILL_MD" \
   && fail "SKILL.md must not retain retired Invariant #1 (Version Bump Freshness)"
 grep -Fq 'Degraded-Git Fail-Closed' "$SKILL_MD" \
   && fail "SKILL.md must not retain retired Invariant #3 (Degraded-Git Fail-Closed)"
-grep -Fq 'Retired in Phase 1 (#3364)' "$REFS_DIR/conflict-resolution.md" \
-  || fail "conflict-resolution.md must be a Phase 1 retirement stub"
-grep -Fq 'Retired in Phase 1 (#3364)' "$REFS_DIR/conflict-resolution.md" \
-  || fail "conflict-resolution.md must be a Phase 1 retirement stub"
+grep -Fq 'caller_kind=ship_pr_pre_push' "$REFS_DIR/conflict-resolution.md" \
+  || fail "conflict-resolution.md must retain the active ship_pr_pre_push conflict handoff"
+grep -Fq 'caller_kind=early_rebase' "$REFS_DIR/conflict-resolution.md" \
+  || fail "conflict-resolution.md must retain the active early_rebase conflict handoff"
 grep -Fq '### Step 8a' "$SKILL_MD" \
   && fail "SKILL.md must not retain a Step 8a release notes section after Phase 1 (#3364)"
 grep -Fq "NEVER end the turn after \`/release\`" "$SKILL_MD" \
@@ -727,9 +727,8 @@ grep -Fq 'copy the full canonical key set' "$SKILL_MD" \
 # Stage 4 (#3119): Family-B fence shape must stay absent from implement orchestrator docs.
 assert_p3119_family_b_fence_absent "$SKILL_MD" "SKILL.md" ship-pr-invocation
 assert_p3119_family_b_fence_absent "$STALL_RECOVERY_MD" "stall-recovery.md"
-# Retirement stub: no Family-B fence prose expected; absence is enforced on live orchestrator docs only.
-wc -c < "$REFS_DIR/conflict-resolution.md" | awk '{ if ($1 > 800) exit 1 }' \
-  || fail "conflict-resolution.md retirement stub should stay short"
+# conflict-resolution.md is active again for early rebase and ship-pr pre-push
+# handoffs; Family-B fence absence is enforced on the live orchestrator docs only.
 grep -Fq "treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD" \
   || fail "(3119) SKILL.md Step 8+ must pin foreground writer_rc routing (post ship-pr return)"
 grep -Fq "Treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD" \
