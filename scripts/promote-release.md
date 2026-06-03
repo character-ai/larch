@@ -4,7 +4,7 @@
 
 ## Purpose
 
-Every merge to main creates a GitHub Release with `--latest=false --prerelease` (via `.github/workflows/release-tag.yaml`). This script manually promotes one of those releases to "Latest" and clears the pre-release flag, making it the version shown on the repo's front page and installed by default via `claude plugin marketplace add`.
+The operator-run `/release` skill (`release-finish.sh`) creates the tag and GitHub Release and normally promotes to "Latest" in the same run (it invokes `promote-release.sh` at the end of `release-finish.sh`). This script also promotes an existing version to "Latest" and clears any pre-release flag when used standalone (retry after partial finish, legacy releases, or promote-only).
 
 ## Usage
 
@@ -40,5 +40,5 @@ Optional `--repo OWNER/REPO` threads through every `gh release view`, `gh releas
 ## Edit-in-sync
 
 - `scripts/promote-release.sh` — the script itself
-- `.github/workflows/release-tag.yaml` — creates releases with `--latest=false --prerelease`; this script is the manual promotion counterpart (sets latest, clears pre-release)
+- `.claude/skills/release/scripts/release-finish.sh` — creates the tag and Release during `/release`; this script promotes to Latest (also invoked at the end of `release-finish.sh`)
 - `docs/installation-and-setup.md` — documents the "Latest" release concept and version pinning

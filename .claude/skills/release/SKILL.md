@@ -100,7 +100,7 @@ $PWD/.claude/skills/release/scripts/release-finish.sh \
   --pr "$PR_NUMBER"
 ```
 
-See `$PWD/.claude/skills/release/scripts/release-finish.md` for `TARGET_OID` resolution and idempotency vs `release-tag.yaml`.
+See `$PWD/.claude/skills/release/scripts/release-finish.md` for `TARGET_OID` resolution and idempotent re-run safety.
 
 If Step 6 fails after Step 5 merged the release PR (tag/Release/promote partial failure), do **not** re-run full `/release` — `release-prepare.sh` will hit `ERROR=release-already-cut`. Re-run Step 6 only:
 
@@ -114,7 +114,7 @@ $PWD/.claude/skills/release/scripts/release-finish.sh \
 
 Or promote-only: `scripts/promote-release.sh "$NEW_VERSION" --repo "$REPO"`.
 
-**Recovery when `release-tag.yaml` tags `origin/main` tip but finish targets `mergeCommit.oid`:** if remote `vX.Y.Z` already exists at a different commit than `TARGET_OID` but `plugin.json` at `origin/main` matches `--version`, delete the incorrect remote tag only with maintainer intent, or re-run `release-finish.sh` after aligning local `origin/main` (see `release-finish.md`).
+**Recovery when remote tag exists on a different commit:** `release-finish.sh` fails closed with `ERROR=remote tag … exists on different commit`. Verify `TARGET_OID` with `git show "$TARGET_OID:.claude-plugin/plugin.json"` (`.version` must equal `--version`). If a legacy or manual tag points at the wrong OID, delete or move the incorrect remote tag only with maintainer intent, `git fetch origin main`, then re-run `release-finish.sh` with the same `--version`, `--notes-file`, `--repo`, and `--pr` (see `release-finish.md`).
 
 ## Step 7 — Upgrade local install
 
