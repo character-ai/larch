@@ -37,14 +37,13 @@ production external-agent launches: `/design`, `/implement`, nested `/review`,
 CI-fix launchers, and review launchers all funnel through this wrapper rather
 than owning separate probes.
 
-The gate is enabled only when a positive
-`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` resolves from the process environment,
-`$SESSION_ENV_PATH`, or `$IMPLEMENT_TMPDIR/session-env.sh`; session files are
+The gate is on by default because the resolver falls back to `30` when no
+source resolves a value. Resolution order is the process environment,
+`$SESSION_ENV_PATH`, then `$IMPLEMENT_TMPDIR/session-env.sh`; session files are
 read through `scripts/read-session-env-key.sh` and are never sourced. An
-explicit numeric `0` at a higher-priority source opts out instead of falling
-through to lower-priority session files. With no positive value, the gate is
-off and byte-compatible with ordinary command launch. Non-Codex/Cursor tool
-labels also no-op even when the variable is set.
+explicit numeric `0` at any source opts out; an explicit positive value
+overrides the default. Non-Codex/Cursor tool labels also no-op even when the
+variable is set.
 
 When enabled, the gate reuses `scripts/check-reviewers.sh` with the other tool's
 probe skipped and `LARCH_EXTERNAL_AUTH_RETRIES=1`. If `timeout` or `gtimeout` is
@@ -121,6 +120,8 @@ Production entry points include `scripts/launch-review.sh` (per-tool review lane
 ## Test harness
 
 `scripts/test-run-external-agent.sh` exercises timeout behavior, sentinel contracts, `CMD_JSON` failure paths, and related edge cases. Stall-detection integration for Cursor CI lives in `scripts/test-launch-cursor-ci.sh`.
+
+New harnesses that stub `run-external-agent.sh` should `export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0` at suite entry unless they intentionally exercise the pre-launch health gate — default-on resolution otherwise runs `scripts/check-reviewers.sh` and can flake offline.
 
 ## Edit-in-sync
 

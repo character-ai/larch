@@ -429,11 +429,11 @@ assert_health_gate_rc "health gate cursor unhealthy false" 1 cursor 5 "" "" "CUR
 assert_health_gate_rc "health gate timeout 124 unhealthy before fail-open" 1 codex 5 "" "" "" 0 124 >/dev/null
 assert_health_gate_rc "health gate timeout 143 unhealthy before fail-open" 1 cursor 5 "" "" "" 0 143 >/dev/null
 
-_hg_off=$(assert_health_gate_rc "health gate off without timeout" 0 codex "" "" "" "CODEX_PRESENT=false" 0 "")
-if [[ ! -e "$_hg_off/checker-call" ]]; then
+_hg_default=$(assert_health_gate_rc "health gate defaults on without explicit timeout" 1 codex "" "" "" "CODEX_PRESENT=false" 0 "")
+if [[ -e "$_hg_default/checker-call" ]]; then
     pass
 else
-    fail "health gate off without timeout must not call check-reviewers"
+    fail "health gate defaults on without explicit timeout must call check-reviewers"
 fi
 
 _hg_zero=$(assert_health_gate_rc "health gate zero opt-out beats session fallback" 0 codex 0 5 5 "CODEX_PRESENT=false" 0 "")
@@ -454,6 +454,53 @@ else
 fi
 
 assert_health_gate_rc "health gate fail-open on unparsable non-timeout result" 0 codex 5 "" "" "" 2 "" >/dev/null
+
+assert_resolver_timeout() {
+    local label="$1" env_val="$2" session_val="$3" implement_val="$4" want="$5"
+    local case_dir="$TMPDIR_ROOT/resolver-$label"
+    mkdir -p "$case_dir/implement"
+    local got=""
+    if [[ -n "$session_val" ]]; then
+        printf 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=%s\n' "$session_val" > "$case_dir/session-env-path.env"
+    else
+        : > "$case_dir/session-env-path.env"
+    fi
+    if [[ -n "$implement_val" ]]; then
+        printf 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=%s\n' "$implement_val" > "$case_dir/implement/session-env.sh"
+    fi
+    local -a resolver_env=(env -u LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT)
+    if [[ "$env_val" == "__EMPTY__" ]]; then
+        resolver_env+=(LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="")
+    elif [[ -n "$env_val" ]]; then
+        resolver_env+=(LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="$env_val")
+    fi
+    cat > "$case_dir/run-resolver.sh" <<'RESOLVER_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=/dev/null
+source "$1"
+external_launch_health_gate_timeout _t
+printf '%s' "$_t"
+RESOLVER_EOF
+    chmod +x "$case_dir/run-resolver.sh"
+    set +e
+    got=$("${resolver_env[@]}" \
+        SESSION_ENV_PATH="$case_dir/session-env-path.env" \
+        IMPLEMENT_TMPDIR="$case_dir/implement" \
+        "$case_dir/run-resolver.sh" "$REPO_ROOT/scripts/lib-external-launcher-common.sh" 2>/dev/null)
+    set -e
+    if [[ "$got" == "$want" ]]; then
+        pass
+    else
+        fail "$label: expected timeout '$want', got '$got'"
+    fi
+}
+
+assert_resolver_timeout "resolver default without sources" "" "" "" "30"
+assert_resolver_timeout "resolver zero opt-out" "0" "" "" ""
+assert_resolver_timeout "resolver positive override" "45" "" "" "45"
+assert_resolver_timeout "resolver non-numeric env" "abc" "" "" "30"
+assert_resolver_timeout "resolver empty env" "__EMPTY__" "" "" "30"
 
 if (( FAIL > 0 )); then
     printf 'FAIL: test-lib-external-launcher-common.sh — %s failed, %s passed\n' "$FAIL" "$PASS" >&2

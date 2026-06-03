@@ -2,6 +2,7 @@
 # test-token-vendor-scrapers.sh — offline regression harness for vendor token extraction.
 
 set -euo pipefail
+export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 PASS=0

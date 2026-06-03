@@ -5,6 +5,7 @@ set -uo pipefail
 
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
 export LARCH_QUIET_DISABLE=1
+export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COLLECTOR="$REPO_ROOT/scripts/collect-agent-results.sh"

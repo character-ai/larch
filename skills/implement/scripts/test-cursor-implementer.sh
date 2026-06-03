@@ -95,6 +95,7 @@ unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR
 export LARCH_QUIET_DISABLE=1  # prevent launcher quiet-mode from swallowing test harness FDs
 export LARCH_EXECUTION_ISSUES_LOG="$SCRATCH/execution-issues.md"
 export LARCH_TIMING_LEDGER="$SCRATCH/timing-ledger.tsv"
+export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 # Tighten run-external-agent.sh's poll cadence so the wrapper does not pay a
 # 10s sleep per stub invocation. Production callers (real Cursor) inherit the

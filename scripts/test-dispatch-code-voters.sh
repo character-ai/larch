@@ -7,6 +7,7 @@ export LARCH_QUIET_DISABLE=1
 # 10s (run-external-agent) or 5s (wait-for-reviewers) sleep cycles.
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL="${RUN_EXTERNAL_AGENT_POLL_INTERVAL:-0.05}"
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL="${WAIT_FOR_REVIEWERS_POLL_INTERVAL:-0.05}"
+export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 # --section CLI selector: splits the 12 scenarios + 3 regression blocks into
 # 8 groups so the CI matrix can pack them as independent harness rows. Sections:

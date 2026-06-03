@@ -8,7 +8,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WRAPPER="$REPO_ROOT/scripts/run-external-agent.sh"
 HELPER="$REPO_ROOT/scripts/lib-validate-meta-path.sh"
 TMPDIR="$(mktemp -d /tmp/larch-test-run-external-agent-XXXXXX)"
-unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT || true
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX || true
+export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR/execution-issues.md"
 trap 'rm -rf "$TMPDIR"' EXIT
 
@@ -586,12 +587,24 @@ else
     pass
 fi
 
-GATE_DISABLED_OUT="$TMPDIR/gate-disabled.txt"
-GATE_DISABLED_MARKER="$TMPDIR/gate-disabled-ran"
-run_gate_wrapper "gate-disabled" codex "" "CODEX_PRESENT=false" 0 "$GATE_DISABLED_OUT" "$GATE_DISABLED_MARKER"
-assert_equals "gate-disabled exit" "0" "$RUN_CODE"
-assert_file_content "gate-disabled command marker" "$GATE_DISABLED_MARKER" "ran"
-assert_file_content "gate-disabled output" "$GATE_DISABLED_OUT" "agent-output"
+GATE_DEFAULT_ON_OUT="$TMPDIR/gate-default-on.txt"
+GATE_DEFAULT_ON_MARKER="$TMPDIR/gate-default-on-ran"
+run_gate_wrapper "gate-default-on" codex "" "CODEX_PRESENT=false" 0 "$GATE_DEFAULT_ON_OUT" "$GATE_DEFAULT_ON_MARKER"
+assert_equals "gate-default-on exit" "7" "$RUN_CODE"
+assert_file_content "gate-default-on done" "${GATE_DEFAULT_ON_OUT}.done" "7"
+assert_grep "gate-default-on diag" "health-probe fast-fail" "${GATE_DEFAULT_ON_OUT}.diag"
+if [[ -e "$GATE_DEFAULT_ON_MARKER" ]]; then
+    fail "gate-default-on must not run command"
+else
+    pass
+fi
+
+GATE_OPT_OUT_OUT="$TMPDIR/gate-opt-out.txt"
+GATE_OPT_OUT_MARKER="$TMPDIR/gate-opt-out-ran"
+run_gate_wrapper "gate-explicit-zero-opt-out" codex 0 "CODEX_PRESENT=false" 0 "$GATE_OPT_OUT_OUT" "$GATE_OPT_OUT_MARKER"
+assert_equals "gate-explicit-zero-opt-out exit" "0" "$RUN_CODE"
+assert_file_content "gate-explicit-zero-opt-out command marker" "$GATE_OPT_OUT_MARKER" "ran"
+assert_file_content "gate-explicit-zero-opt-out output" "$GATE_OPT_OUT_OUT" "agent-output"
 
 GATE_OTHER_OUT="$TMPDIR/gate-other.txt"
 GATE_OTHER_MARKER="$TMPDIR/gate-other-ran"

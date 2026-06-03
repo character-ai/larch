@@ -202,6 +202,16 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            scripts/lib-external-launcher-common.sh|scripts/lib-external-launcher-common.md|scripts/test-lib-external-launcher-common.sh|scripts/test-lib-external-launcher-common.md)
+                append_target_once test-lib-external-launcher-common
+                ;;
+        esac
+        case "$f" in
+            scripts/run-external-agent.sh|scripts/run-external-agent.md|scripts/test-run-external-agent.sh|scripts/test-run-external-agent.md)
+                append_target_once test-run-external-agent
+                ;;
+        esac
+        case "$f" in
             python/*.py)
                 PYTHON_PY_CHANGED=1
                 maybe_append_py_lint_target
