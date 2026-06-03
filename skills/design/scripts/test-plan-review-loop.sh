@@ -522,6 +522,11 @@ EOS
         cat >>"$STUB/collect-agent-results.sh" <<'EOS'
     } >"$tsv"
 EOS
+    elif [[ "$mode" == "no_issues_sentinel" ]]; then
+        cat >>"$STUB/collect-agent-results.sh" <<'EOS'
+    } >"$tsv"
+    printf '{"no_issues_found": true}\n' >"$p"
+EOS
     elif [[ "$mode" == "one_nit" ]]; then
         cat >>"$STUB/collect-agent-results.sh" <<'EOS'
         printf '%s\n' "in_scope	nit	correctness	src/a	Nit streak finding	scenario	fix"
@@ -957,6 +962,19 @@ printf '%s\n' "$out0" | grep -q '^WARN=plan-review-tsv:' || fail "expected WARN 
 grep -q 'No findings were raised' "$D0/voting-tally.md" || fail "expected zero-findings tally prose"
 [[ -f "$D0/plan-review/round-1/findings-classification.tsv" ]] || fail "zero-findings classification TSV missing"
 [[ "$(wc -l < "$D0/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "zero-findings classification TSV should contain header only"
+
+echo "=== stubbed driver: zero findings (no_issues_found sentinel) ==="
+D0S="$TMP/z0s"
+mkdir -p "$D0S"
+printf 'plan\n' >"$D0S/plan.txt"
+printf 'feat\n' >"$D0S/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect no_issues_sentinel
+write_voters_three
+out0s=$(run_loop "$D0S")
+printf '%s\n' "$out0s" | grep -q '^TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings$' || fail "expected skipped-empty-findings for no_issues_found sentinel"
+printf '%s\n' "$out0s" | grep -vq '^WARN=plan-review-tsv:' || fail "no_issues_found sentinel must not emit plan-review-tsv WARN"
 
 echo "=== stubbed driver: one finding + real tally ==="
 D1="$TMP/z1"

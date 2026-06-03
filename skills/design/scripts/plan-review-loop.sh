@@ -1042,7 +1042,9 @@ PY
             cat "$_frag" >> "$_findings_tmp"
         elif [[ ! -s "$_frag" ]]; then
             if [[ "$_st" == "OK" ]]; then
-                emit_kv WARN "plan-review-tsv: empty or missing structured reviewer rows for ${_rf}"
+                if ! grep -qE '^[[:space:]]*\{"no_issues_found' "$_rf" 2>/dev/null; then
+                    emit_kv WARN "plan-review-tsv: empty or missing structured reviewer rows for ${_rf}"
+                fi
             fi
         else
             emit_kv WARN "plan-review-tsv-parse: ${_rf}"

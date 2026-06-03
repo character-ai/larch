@@ -186,16 +186,27 @@ larch_run_one_cursor_probe() {
 }
 
 larch_run_one_codex_probe() {
-    local probe_out probe_side probe_pid probe_rc _SERIAL_LOCK
+    local probe_out probe_side probe_pid probe_rc _SERIAL_LOCK _probe_model_args
     probe_out=$(mktemp "${TMPDIR:-/tmp}/larch-codex-probe.XXXXXX") || return 1
     PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_out"
     probe_side="${probe_out}.sidecar"
     : >"$probe_side"
     PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_side"
 
+    _probe_model_args=()
+    if MODEL_ARGS_TMP=$(mktemp) && "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort >"$MODEL_ARGS_TMP" 2>/dev/null; then
+        while IFS= read -r _model_arg; do
+            _probe_model_args+=("$_model_arg")
+        done <"$MODEL_ARGS_TMP"
+    fi
+    [[ -n "${MODEL_ARGS_TMP:-}" ]] && rm -f "$MODEL_ARGS_TMP"
+
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "codex" || { rm -f "$probe_out" "$probe_side"; return 1; }
-    codex exec --sandbox read-only -C "$PWD" --output-last-message "$probe_out" -- "Respond with OK" \
+    # shellcheck disable=SC2068
+    codex exec --sandbox read-only -C "$PWD" --output-last-message "$probe_out" \
+        ${_probe_model_args[@]+"${_probe_model_args[@]}"} \
+        -- "Respond with OK" \
         >/dev/null 2>>"$probe_side" &
     probe_pid=$!
     PROBE_PIDS[${#PROBE_PIDS[@]}]="$probe_pid"
