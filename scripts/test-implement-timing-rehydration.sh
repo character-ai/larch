@@ -21,6 +21,11 @@
 #   D) Cardinality guards stay in sync: every timing-ledger rehydration template
 #      has the token-session-id sibling/export, and IMPLEMENT_TMPDIR assignment
 #      plus export counts equal token_read_count + step_telemetry_mark_count.
+#   E) The Step 18 closing-marks block (token/timing `--since-last-mark` reports
+#      and the closing `Step 18 — done` marks) appears BEFORE the
+#      `implement-finalize.sh teardown` invocation. The per-run token/timing
+#      ledgers live INSIDE $IMPLEMENT_TMPDIR and teardown deletes them, so a
+#      post-teardown mark fails with "no per-run ledger root set" (issue #3425).
 
 set -euo pipefail
 
@@ -148,4 +153,25 @@ legacy_fence_count=$(grep -Fxc 'if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${I
 [[ "$legacy_fence_count" == "0" ]] \
   || fail "legacy 4-line awk fence opener count ($legacy_fence_count) expected 0"
 
-echo "PASS: test-implement-timing-rehydration.sh ($token_read_count token reads; $step_telemetry_mark_count step-telemetry-mark calls; $plugin_root_source_count plugin-root source guards; $plugin_root_awk_count awk fallbacks)"
+# Invariant E (issue #3425): the Step 18 closing-marks block MUST run BEFORE
+# `implement-finalize.sh teardown` removes $IMPLEMENT_TMPDIR. The per-run
+# token/timing ledgers live INSIDE the tmpdir and resolve_ledger_path() requires
+# a live $IMPLEMENT_TMPDIR directory root; a post-teardown mark fails with
+# "no per-run ledger root set". Guard the ordering so the block is never moved
+# back after teardown.
+# shellcheck disable=SC2016 # SKILL.md literal token — single-quoted on purpose.
+done_mark_pattern='"${CLAUDE_PLUGIN_ROOT}/scripts/token-ledger.sh" mark "Step 18 — done"'
+# shellcheck disable=SC2016 # SKILL.md literal token — single-quoted on purpose.
+teardown_pattern='"${CLAUDE_PLUGIN_ROOT}/scripts/implement-finalize.sh" teardown'
+done_mark_count=$(grep -Fc "$done_mark_pattern" "$SKILL_MD" || true)
+teardown_count=$(grep -Fc "$teardown_pattern" "$SKILL_MD" || true)
+[[ "$done_mark_count" == "1" ]] \
+  || fail "expected exactly 1 closing 'Step 18 — done' token mark in SKILL.md, found $done_mark_count"
+[[ "$teardown_count" == "1" ]] \
+  || fail "expected exactly 1 'implement-finalize.sh teardown' invocation in SKILL.md, found $teardown_count"
+done_mark_line=$(grep -Fn "$done_mark_pattern" "$SKILL_MD"); done_mark_line=${done_mark_line%%:*}
+teardown_line=$(grep -Fn "$teardown_pattern" "$SKILL_MD"); teardown_line=${teardown_line%%:*}
+[[ "$done_mark_line" -lt "$teardown_line" ]] \
+  || fail "Step 18 closing 'Step 18 — done' mark (line $done_mark_line) must precede implement-finalize.sh teardown (line $teardown_line) — per-run ledgers live inside \$IMPLEMENT_TMPDIR and teardown deletes them (issue #3425)"
+
+echo "PASS: test-implement-timing-rehydration.sh ($token_read_count token reads; $step_telemetry_mark_count step-telemetry-mark calls; $plugin_root_source_count plugin-root source guards; $plugin_root_awk_count awk fallbacks; closing marks before teardown: line $done_mark_line < $teardown_line)"
