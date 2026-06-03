@@ -1228,7 +1228,8 @@ EOF
       exit 1
       ;;
     10) # 10 = Step 3.6 WORSE-majority action branch
-      : # AskUserQuestion Continue/Stop branch below uses the trusted ASSESSOR_ROUND_NUM printed above.
+      printf '%s\n' "**⏸ Step 3.6: assessor WORSE-majority requires Continue/Stop before Step 3b.**"
+      # Do not write step-3.6 here; the Continue branch below writes it only after operator confirmation.
       ;;
     11)
       exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
@@ -1241,7 +1242,7 @@ EOF
 fi
 ```
 
-For `ASSESSOR_RC=10`, the displayed WORSE block above is already driver-rendered and the parser-only `LARCH_ASSESSOR_*` trailer lines have been filtered from chat. Fire `AskUserQuestion` (**Continue** / **Stop**) without re-rendering verdict files. On **Continue**: immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.6"`, then proceed to Step 3b. On **Stop**: use only the trusted numeric `ASSESSOR_ROUND_NUM` parsed after the last exact trailer marker; export `SUMMARY_OUTCOME=cancelled-assessor-worse` and `ASSESSOR_ROUND_NUM`, run the Final summary block, print `**ℹ /design cancelled by operator (assessor WORSE verdict, round <N>).**`, exit 0; do NOT call `cleanup-tmpdir.sh`; skip the Step 3.6 success marker, skip every Step 3b+ action, skip `[DESIGNED]` rename, and skip design-log publish. Invalid/missing rc=10 trailers abort fail-closed before the prompt and before Final summary.
+For `ASSESSOR_RC=10`, the displayed WORSE block above is already driver-rendered and the parser-only `LARCH_ASSESSOR_*` trailer lines have been filtered from chat. This is a pending operator decision, not settled completion: do not proceed to Step 3b, do not write `step-3.6`, and do not run any completion/finalization path until `AskUserQuestion` returns. Fire `AskUserQuestion` (**Continue** / **Stop**) without re-rendering verdict files. On **Continue**: immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.6"`, then proceed to Step 3b. On **Stop**: use only the trusted numeric `ASSESSOR_ROUND_NUM` parsed after the last exact trailer marker; export `SUMMARY_OUTCOME=cancelled-assessor-worse` and `ASSESSOR_ROUND_NUM`, run the Final summary block, print `**ℹ /design cancelled by operator (assessor WORSE verdict, round <N>).**`, exit 0; do NOT call `cleanup-tmpdir.sh`; skip the Step 3.6 success marker, skip every Step 3b+ action, skip `[DESIGNED]` rename, and skip design-log publish. Invalid/missing rc=10 trailers abort fail-closed before the prompt and before Final summary.
 
 Normative reference: `${CLAUDE_PLUGIN_ROOT}/skills/design/references/assessor.md`.
 

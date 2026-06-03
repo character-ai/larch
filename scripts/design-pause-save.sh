@@ -79,9 +79,9 @@ STEP_REGISTRY="$REPO_ROOT/skills/design/scripts/step-name-registry.tsv"
 [[ -f "$STEP_REGISTRY" ]] || emit_fail "missing-step-registry"
 
 STEP=""
-if [[ -f "$DESIGN_TMPDIR/.completed/step-3.6" && ! -f "$DESIGN_TMPDIR/.completed/step-3b" ]]; then
+if [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/step-3.5" && -f "$DESIGN_TMPDIR/.completed/step-3.6" && ! -f "$DESIGN_TMPDIR/.completed/step-3b" ]]; then
     STEP="3b"
-elif [[ -f "$DESIGN_TMPDIR/.completed/step-3.5" && ! -f "$DESIGN_TMPDIR/.completed/step-3.6" ]]; then
+elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/step-3.5" && ! -f "$DESIGN_TMPDIR/.completed/step-3.6" ]]; then
     STEP="3.6"
 elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && ! -f "$DESIGN_TMPDIR/.completed/step-3.5" ]]; then
     STEP="3.5"

@@ -250,6 +250,13 @@ printf 'issue body gate b missing\n' >"$BODY_FILE"
 out_gate_b_missing=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_MISSING" --issue 9 --repo owner/repo)
 [[ "$out_gate_b_missing" == *"PAUSE_OK=true"* && "$out_gate_b_missing" == *"STEP=3.5"* ]] || fail "missing gate B bypass sentinels should resume at 3.5: $out_gate_b_missing"
 
+DESIGN_GATE_B_PARTIAL="$TMP/design-gate-b-partial-sentinel"
+make_design_tmpdir "$DESIGN_GATE_B_PARTIAL"
+complete_design_steps "$DESIGN_GATE_B_PARTIAL" 3.6
+printf 'issue body gate b partial\n' >"$BODY_FILE"
+out_gate_b_partial=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_PARTIAL" --issue 9 --repo owner/repo)
+[[ "$out_gate_b_partial" == *"PAUSE_OK=true"* && "$out_gate_b_partial" != *"STEP=3b"* ]] || fail "partial step-3.6 sentinel must not resume at 3b: $out_gate_b_partial"
+
 DESIGN_GATE_B_DONE="$TMP/design-gate-b-done"
 make_design_tmpdir "$DESIGN_GATE_B_DONE"
 complete_design_steps "$DESIGN_GATE_B_DONE" 3 3.5 3.6
@@ -441,6 +448,19 @@ out_missing=$(bash "$LOAD" --design-tmpdir "$TMP/missing" --issue 9 --repo owner
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=3\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_missing_plan_late=$(bash "$LOAD" --design-tmpdir "$TMP/missing-plan-late" --issue 9 --repo owner/repo)
 [[ "$out_missing_plan_late" == *"ERROR=missing-restored-artifact"* ]] || fail "late-step restore should require plan.txt: $out_missing_plan_late"
+
+LEGACY_HARD="$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
+rm -rf "$LEGACY_HARD"
+mkdir -p "$LEGACY_HARD/.completed"
+printf 'plan\n' >"$LEGACY_HARD/plan.txt"
+printf '{"design_classification":"HARD"}\n' >"$LEGACY_HARD/run-params.json"
+printf '{"run_id":"RUNPAUSE1","issue_number":"9"}\n' >"$LEGACY_HARD/manifest.json"
+printf 'ISSUE_NUMBER=9\nRUN_ID=RUNPAUSE1\n' >"$LEGACY_HARD/pause-state.txt"
+: >"$LEGACY_HARD/.completed/step-3"
+: >"$LEGACY_HARD/.completed/step-3.5"
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=3b\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+out_legacy_3b=$(bash "$LOAD" --design-tmpdir "$TMP/legacy-3b" --issue 9 --repo owner/repo)
+[[ "$out_legacy_3b" == *"LOAD_OK=true"* && "$out_legacy_3b" == *"STEP=3.6"* ]] || fail "legacy HARD STEP=3b without step-3.6 should resume at assessor: $out_legacy_3b"
 
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSESSION_ID=RUNPAUSE1\nTIER=SIMPLE\nBRAINSTORM_DONE=true\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_valid_marker=$(bash "$LOAD" --design-tmpdir "$TMP/valid-marker-fields" --issue 9 --repo owner/repo)

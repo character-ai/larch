@@ -168,9 +168,11 @@ _write_result_env() {
 }
 
 _emit_warn_lines() {
-    local _warn
+    local _warn _line
     for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
-        emit "$_warn"
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            emit "$(printf '%s' "$_line" | sanitize_diagnostic_line)"
+        done <<<"$_warn"
     done
 }
 

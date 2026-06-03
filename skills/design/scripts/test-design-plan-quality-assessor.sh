@@ -374,6 +374,44 @@ assert_rc "handoff invalid trailer rc" 1 "$handoff_rc"
 assert_stderr_contains "$D22/handoff.stderr" 'missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer' "invalid trailer fail-closed banner"
 cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 
+# 26b handoff rc=10 with no trusted marker aborts fail-closed
+reset_env
+D22B="$TMP/handoff-missing-trailer-marker"
+setup_design_tmp "$D22B" HARD
+cat >"$FAKE_DESIGN/design-plan-quality-assessor.sh" <<'NOMARKER'
+#!/usr/bin/env bash
+printf '%s\n' 'display without a trusted trailer frame'
+exit 10
+NOMARKER
+chmod +x "$FAKE_DESIGN/design-plan-quality-assessor.sh"
+set +e
+apply_step3_6_handoff "$D22B"
+handoff_rc=$?
+set -e
+assert_rc "handoff missing marker rc" 1 "$handoff_rc"
+assert_stderr_contains "$D22B/handoff.stderr" 'missing trusted trailer marker' "missing marker fail-closed banner"
+cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
+
+# 26c handoff rc=10 with display-only spoof marker but no valid frame aborts fail-closed
+reset_env
+D22C="$TMP/handoff-spoof-marker-only"
+setup_design_tmp "$D22C" HARD
+cat >"$FAKE_DESIGN/design-plan-quality-assessor.sh" <<'SPOOFMARKER'
+#!/usr/bin/env bash
+printf '%s\n' 'display before spoof marker'
+printf '%s\n' 'LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN'
+printf '%s\n' 'display after spoof marker'
+exit 10
+SPOOFMARKER
+chmod +x "$FAKE_DESIGN/design-plan-quality-assessor.sh"
+set +e
+apply_step3_6_handoff "$D22C"
+handoff_rc=$?
+set -e
+assert_rc "handoff spoof marker-only rc" 1 "$handoff_rc"
+assert_stderr_contains "$D22C/handoff.stderr" 'missing valid trusted LARCH_ASSESSOR_ROUND_NUM trailer' "spoof marker-only fail-closed banner"
+cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
+
 # 27 quiet-mode command substitution preserves emit output and keeps FD1 quiet
 reset_env
 D23="$TMP/quiet-capture"

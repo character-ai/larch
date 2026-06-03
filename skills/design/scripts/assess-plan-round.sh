@@ -136,9 +136,9 @@ mkdir -p "$DESIGN_TMPDIR"
 DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
 ROUND_NUM=1
 
-workflow_path="$(resolve_design_classification)"
-if [[ "$workflow_path" != "HARD" ]]; then
-    emit "⏩ assessor: design_classification=${workflow_path:-<unset>}; skipped"
+design_classification="$(resolve_design_classification)"
+if [[ "$design_classification" != "HARD" ]]; then
+    emit "⏩ assessor: design_classification=${design_classification:-<unset>}; skipped"
     emit_assessor_kv skipped skipped 0 "" ""
     exit 0
 fi
