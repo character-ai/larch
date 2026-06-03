@@ -45,6 +45,7 @@ class CiStatus:
     status: str
     behind_count: int
     failed_run_id: str | None
+    conflicted: bool = False
 
 
 @dataclass(frozen=True)
@@ -106,6 +107,19 @@ class MonitorResult:
     rerun_already_running: bool = False
 
 
+def _conflicted_from_merge_state(merge_state: str | None) -> bool:
+    """Mirror ci-status.sh CONFLICTED derivation (conservative for UNKNOWN/empty)."""
+    if not merge_state:
+        return True
+    if merge_state == "DIRTY":
+        return True
+    if merge_state in ("CLEAN", "BEHIND", "BLOCKED", "UNSTABLE", "HAS_HOOKS"):
+        return False
+    if merge_state == "UNKNOWN":
+        return True
+    return True
+
+
 def decide(
     status: CiStatus,
     *,
@@ -122,7 +136,7 @@ def decide(
             bail_reason="ci-status.sh returned error — check script arguments",
         )
     behind = status.behind_count > 0
-    if status.status == "pass" and not behind:
+    if status.status == "pass" and (not behind or not status.conflicted):
         return Decision(action="merge")
     if iteration >= config.CI_MONITOR_MAX_ITERATIONS:
         return Decision(
@@ -264,13 +278,15 @@ def gather_status(
     try:
         pr_info = gh.pr_view(runner, pr, repo=repo, cwd=cwd)
     except Exception:  # pylint: disable=broad-except
-        return CiStatus(status="error", behind_count=0, failed_run_id=None)
+        return CiStatus(status="error", behind_count=0, failed_run_id=None, conflicted=False)
     if pr_info.state.upper() == "MERGED":
-        return CiStatus(status="merged", behind_count=0, failed_run_id=None)
+        return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
+
+    conflicted = _conflicted_from_merge_state(pr_info.merge_state_status)
 
     fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
     if fetch.returncode != 0:
-        return CiStatus(status="pending", behind_count=0, failed_run_id=None)
+        return CiStatus(status="pending", behind_count=0, failed_run_id=None, conflicted=conflicted)
 
     checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
     checks_json = checks.stdout if checks.returncode == 0 else ""
@@ -316,7 +332,12 @@ def gather_status(
         cwd=cwd,
     )
     if behind_raw is None:
-        return CiStatus(status="pending", behind_count=0, failed_run_id=failed_run_id)
+        return CiStatus(
+            status="pending",
+            behind_count=0,
+            failed_run_id=failed_run_id,
+            conflicted=conflicted,
+        )
     behind = behind_raw
     if behind > 0 and _squash_merge_race(
         runner,
@@ -325,8 +346,13 @@ def gather_status(
         base_ref=base_ref,
         cwd=cwd,
     ):
-        return CiStatus(status="merged", behind_count=0, failed_run_id=None)
-    return CiStatus(status=status, behind_count=behind, failed_run_id=failed_run_id)
+        return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
+    return CiStatus(
+        status=status,
+        behind_count=behind,
+        failed_run_id=failed_run_id,
+        conflicted=conflicted,
+    )
 
 
 def poll_ci(

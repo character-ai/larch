@@ -86,6 +86,7 @@ def _status(
     status: str = "pass",
     behind: int = 0,
     merged: bool = False,
+    merge_state: str = "CLEAN",
 ) -> dict[tuple[str, ...], CommandResult]:
     pr_json = json.dumps(
         {
@@ -93,6 +94,7 @@ def _status(
             "url": "https://github.com/o/r/pull/1",
             "state": "MERGED" if merged else "OPEN",
             "headRefName": "feature",
+            "mergeStateStatus": merge_state,
         },
     )
     if status == "fail":
@@ -117,7 +119,7 @@ def _status(
             [{"name": "lint", "state": "SUCCESS", "bucket": "pass", "link": ""}],
         )
     return {
-        ("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt"): _cr(
+        ("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus"): _cr(
             ("gh", "pr", "view"),
             stdout=pr_json,
         ),
@@ -144,31 +146,38 @@ def _status(
 
 
 @pytest.mark.parametrize(
-    ("status", "behind", "iteration", "rebase_count", "fix_attempts", "expected"),
+    ("status", "behind", "conflicted", "iteration", "rebase_count", "fix_attempts", "expected"),
     [
-        ("merged", 0, 0, 0, 0, "already_merged"),
-        ("pass", 0, 0, 0, 0, "merge"),
-        ("pass", 1, 0, 0, 0, "rebase"),
-        ("pending", 1, 0, 0, 0, "rebase"),
-        ("pending", 0, 0, 0, 0, "wait"),
-        ("fail", 1, 0, 0, 0, "rebase_then_evaluate"),
-        ("fail", 0, 0, 0, 0, "evaluate_failure"),
-        ("error", 0, 0, 0, 0, "bail"),
-        ("pass", 0, 50, 0, 0, "merge"),
-        ("pending", 0, 50, 0, 0, "bail"),
-        ("fail", 0, 0, 0, 10, "bail"),
-        ("fail", 0, 0, 20, 0, "bail"),
+        ("merged", 0, False, 0, 0, 0, "already_merged"),
+        ("pass", 0, False, 0, 0, 0, "merge"),
+        ("pass", 1, False, 0, 0, 0, "merge"),
+        ("pass", 1, True, 0, 0, 0, "rebase"),
+        ("pending", 1, False, 0, 0, 0, "rebase"),
+        ("pending", 0, False, 0, 0, 0, "wait"),
+        ("fail", 1, False, 0, 0, 0, "rebase_then_evaluate"),
+        ("fail", 0, False, 0, 0, 0, "evaluate_failure"),
+        ("error", 0, False, 0, 0, 0, "bail"),
+        ("pass", 0, False, 50, 0, 0, "merge"),
+        ("pending", 0, False, 50, 0, 0, "bail"),
+        ("fail", 0, False, 0, 0, 10, "bail"),
+        ("fail", 0, False, 0, 20, 0, "bail"),
     ],
 )
 def test_decide_parity_table(
     status: str,
     behind: int,
+    conflicted: bool,
     iteration: int,
     rebase_count: int,
     fix_attempts: int,
     expected: str,
 ) -> None:
-    ci_status = ci_monitor.CiStatus(status=status, behind_count=behind, failed_run_id=None)
+    ci_status = ci_monitor.CiStatus(
+        status=status,
+        behind_count=behind,
+        failed_run_id=None,
+        conflicted=conflicted,
+    )
     decision = ci_monitor.decide(
         ci_status,
         iteration=iteration,
@@ -183,6 +192,24 @@ def test_gather_status_merged_short_circuit() -> None:
     status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
     assert status.status == "merged"
     assert status.behind_count == 0
+
+
+@pytest.mark.parametrize(
+    ("merge_state", "expected_conflicted"),
+    [
+        ("DIRTY", True),
+        ("UNKNOWN", True),
+        ("BEHIND", False),
+        ("CLEAN", False),
+    ],
+)
+def test_gather_status_conflicted_from_merge_state(
+    merge_state: str,
+    expected_conflicted: bool,
+) -> None:
+    runner = RecordingRunner(_status(status="pass", merge_state=merge_state))
+    status = ci_monitor.gather_status(runner, pr=1, repo="o/r")
+    assert status.conflicted is expected_conflicted
 
 
 def test_gather_status_fail_extracts_run_id() -> None:
@@ -274,7 +301,7 @@ def test_poll_ci_budget_exhaustion_bails() -> None:
 
 def test_poll_ci_three_consecutive_errors_bail() -> None:
     responses = _status(status="pass")
-    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt")] = _cr(
+    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus")] = _cr(
         ("gh", "pr", "view"),
         rc=1,
     )
@@ -1441,7 +1468,7 @@ def test_monitor_pushed_goto_rebase(tmp_path: Any) -> None:
     responses: dict[tuple[str, ...], CommandResult] = {}
     pr_json = json.dumps({"number": 1, "url": "https://github.com/o/r/pull/1", "state": "OPEN", "headRefName": "feat"})
     checks = json.dumps([{"name": "lint", "state": "FAIL", "bucket": "fail", "link": "https://github.com/o/r/actions/runs/42/job/1"}])
-    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt")] = _cr(("gh", "pr", "view"), stdout=pr_json)
+    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus")] = _cr(("gh", "pr", "view"), stdout=pr_json)
     responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(("git", "fetch"), 0)
     responses[("gh", "pr", "checks", "1", "--repo", "o/r", "--json", "name,state,bucket,link")] = _cr(("gh", "pr", "checks"), stdout=checks)
     responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(("git", "rev-list"), stdout="0\n")
@@ -1495,7 +1522,7 @@ def test_monitor_first_fixer_non_health_needs_user_input(tmp_path: Any) -> None:
     responses: dict[tuple[str, ...], CommandResult] = {}
     pr_json = json.dumps({"number": 1, "url": "https://github.com/o/r/pull/1", "state": "OPEN", "headRefName": "feat"})
     checks = json.dumps([{"name": "lint", "state": "FAIL", "bucket": "fail", "link": "https://github.com/o/r/actions/runs/55/job/1"}])
-    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt")] = _cr(("gh", "pr", "view"), stdout=pr_json)
+    responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus")] = _cr(("gh", "pr", "view"), stdout=pr_json)
     responses[("git", "fetch", "origin", "main", "--quiet")] = _cr(("git", "fetch"), 0)
     responses[("gh", "pr", "checks", "1", "--repo", "o/r", "--json", "name,state,bucket,link")] = _cr(("gh", "pr", "checks"), stdout=checks)
     responses[("git", "rev-list", "--count", "HEAD..origin/main")] = _cr(("git", "rev-list"), stdout="0\n")

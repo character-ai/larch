@@ -201,6 +201,7 @@ ADMIN_ELIGIBLE_MERGE_STATES: Final[frozenset[str]] = frozenset({
     "UNSTABLE",
     "HAS_HOOKS",
     "BLOCKED",
+    "BEHIND",
 })
 
 INLINE_TRIAGE_MARKER: Final = "Inline-triage rule"

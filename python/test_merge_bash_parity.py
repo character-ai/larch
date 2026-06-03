@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 
 import config
+import gh
 import git
 import merge as merge_module
 import run_logs
@@ -31,6 +32,14 @@ def _mock_rev_cccc(*_a: object, **_k: object) -> str:
 
 def _mock_refresh_skip_ok(*_a: object, **_k: object) -> run_logs.RefreshSkip:
     return run_logs.RefreshSkip(skipped=False, reason="")
+
+
+def _mock_ensure_head_behind(*_a: object, **_k: object) -> gh.MergeState:
+    return gh.MergeState("BEHIND", "abc")
+
+
+def _mock_version_gate_none(*_a: object, **_k: object) -> None:
+    return None
 
 
 def _empty_str_lists() -> list[list[str]]:
@@ -66,7 +75,10 @@ class RecordingRunner:
         return result
 
 
-def test_python_merge_behind_emits_main_advanced(tmp_path: Path) -> None:
+def test_python_merge_behind_emits_admin_merged(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(
@@ -90,8 +102,12 @@ def test_python_merge_behind_emits_main_advanced(tmp_path: Path) -> None:
                 "",
                 0.01,
             ),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
         ],
     )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
     ctx = RunContext(
         branch="feat",
         issue="1",
@@ -109,17 +125,18 @@ def test_python_merge_behind_emits_main_advanced(tmp_path: Path) -> None:
         state_file=None,
     )
     out = merge_module.merge_pr(runner, ctx)
-    assert out.result == config.MERGE_RESULT_MAIN_ADVANCED
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
 
 
 @pytest.mark.skipif(not MERGE_SH.is_file(), reason="merge-pr.sh missing")
-def test_behind_emits_main_advanced(tmp_path: Path) -> None:
+def test_behind_emits_admin_merged(tmp_path: Path) -> None:
     env = os.environ.copy()
     env.update(
         {
             "LARCH_QUIET_DISABLE": "1",
             "GH_MERGE_STATE": "BEHIND",
             "STUB_PR_HEAD_OID": "abc123",
+            "GH_ADMIN_EXIT": "0",
         },
     )
     bin_dir = tmp_path / "bin"
@@ -128,7 +145,6 @@ def test_behind_emits_main_advanced(tmp_path: Path) -> None:
     trace = tmp_path / "trace.log"
     env["GH_LOG_FILE"] = str(gh_log)
     env["TRACE_LOG_FILE"] = str(trace)
-    # Minimal stub gh from test-merge-pr.sh pattern
     gh_stub = bin_dir / "gh"
     _ = gh_stub.write_text(
         '#!/usr/bin/env bash\n'
@@ -137,12 +153,92 @@ def test_behind_emits_main_advanced(tmp_path: Path) -> None:
         '  printf \'{"mergeStateStatus":"%s","headRefOid":"abc123"}\\n\' "${GH_MERGE_STATE:-CLEAN}"\n'
         '  exit 0\n'
         'fi\n'
+        'if [[ "$2" == "checks" ]]; then\n'
+        '  printf \'[{"name":"ci","bucket":"pass"}]\\n\'\n'
+        '  exit 0\n'
+        'fi\n'
+        'if [[ "$2" == "merge" ]]; then\n'
+        '  exit "${GH_ADMIN_EXIT:-0}"\n'
+        'fi\n'
         'exit 0\n',
         encoding="utf-8",
     )
     _ = gh_stub.chmod(0o755)
     git_stub = bin_dir / "git"
-    _ = git_stub.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
+    _ = git_stub.write_text(
+        '#!/usr/bin/env bash\n'
+        'case "$1" in\n'
+        '  rev-parse) printf "abc123\\n"; exit 0 ;;\n'
+        '  fetch) exit 0 ;;\n'
+        '  log) exit 0 ;;\n'
+        'esac\n'
+        'exit 0\n',
+        encoding="utf-8",
+    )
+    _ = git_stub.chmod(0o755)
+    env["PATH"] = f"{bin_dir}:{env['PATH']}"
+    completed = subprocess.run(
+        ["bash", str(MERGE_SH), "--pr", "1", "--repo", "o/r"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+        cwd=REPO_ROOT,
+    )
+    assert completed.returncode == 0
+    assert "MERGE_RESULT=admin_merged" in completed.stdout
+
+
+@pytest.mark.skipif(not MERGE_SH.is_file(), reason="merge-pr.sh missing")
+def test_behind_staleness_safety_emits_main_advanced(tmp_path: Path) -> None:
+    env = os.environ.copy()
+    env.update(
+        {
+            "LARCH_QUIET_DISABLE": "1",
+            "GH_MERGE_STATE": "BEHIND",
+            "STUB_PR_HEAD_OID": "abc123",
+            "STUB_BRANCH_LOG": "Bump version to 2.3.4",
+            "STUB_ORIGIN_PLUGIN_JSON": '{"version":"2.3.3"}',
+            "STUB_ANCESTOR_EXIT": "1",
+        },
+    )
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    env["GH_LOG_FILE"] = str(tmp_path / "gh.log")
+    env["TRACE_LOG_FILE"] = str(tmp_path / "trace.log")
+    gh_stub = bin_dir / "gh"
+    _ = gh_stub.write_text(
+        '#!/usr/bin/env bash\n'
+        'set -euo pipefail\n'
+        'if [[ "$2" == "view" ]]; then\n'
+        '  printf \'{"mergeStateStatus":"%s","headRefOid":"abc123"}\\n\' "${GH_MERGE_STATE:-CLEAN}"\n'
+        '  exit 0\n'
+        'fi\n'
+        'if [[ "$2" == "checks" ]]; then\n'
+        '  printf \'[{"name":"ci","bucket":"pass"}]\\n\'\n'
+        '  exit 0\n'
+        'fi\n'
+        'exit 0\n',
+        encoding="utf-8",
+    )
+    _ = gh_stub.chmod(0o755)
+    git_stub = bin_dir / "git"
+    _ = git_stub.write_text(
+        '#!/usr/bin/env bash\n'
+        'case "$1" in\n'
+        '  rev-parse) printf "abc123\\n"; exit 0 ;;\n'
+        '  fetch) exit 0 ;;\n'
+        '  log)\n'
+        '    if [[ "$3" == "origin/main..HEAD" ]]; then printf "%s\\n" "${STUB_BRANCH_LOG:-}"; fi\n'
+        '    exit 0 ;;\n'
+        '  show)\n'
+        '    if [[ "$2" == "origin/main:.claude-plugin/plugin.json" ]]; then printf "%s" "${STUB_ORIGIN_PLUGIN_JSON:-}"; fi\n'
+        '    exit 0 ;;\n'
+        '  merge-base) exit "${STUB_ANCESTOR_EXIT:-0}" ;;\n'
+        'esac\n'
+        'exit 0\n',
+        encoding="utf-8",
+    )
     _ = git_stub.chmod(0o755)
     env["PATH"] = f"{bin_dir}:{env['PATH']}"
     completed = subprocess.run(

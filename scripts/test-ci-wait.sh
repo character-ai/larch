@@ -58,7 +58,8 @@ if [ "$slow_n" -gt 0 ] && [ "$count" -eq "$slow_n" ] && [ "$slow_secs" -gt 0 ]; 
     sleep "$slow_secs"
 fi
 
-printf 'CI_STATUS=%s\nBEHIND_COUNT=0\nFAILED_RUN_ID=\n' "$status"
+printf 'CI_STATUS=%s\nBEHIND_COUNT=%s\nCONFLICTED=%s\nFAILED_RUN_ID=\n' \
+    "$status" "${STUB_BEHIND_COUNT:-0}" "${STUB_CONFLICTED:-false}"
 SH
     chmod +x "$root/scripts/ci-status.sh"
 }
@@ -68,14 +69,29 @@ write_ci_decide_stub() {
     cat > "$root/scripts/ci-decide.sh" <<'SH'
 #!/usr/bin/env bash
 set -euo pipefail
-# Read --status argument
+DECIDE_LOG="$(dirname "$0")/../.ci-decide-log"
+: > "$DECIDE_LOG"
+CI_STATUS=""
+BEHIND=0
+CONFLICTED=false
 while [[ $# -gt 0 ]]; do
-    [[ "$1" == --status ]] && { CI_STATUS="$2"; shift 2; continue; }
-    shift
+    case "$1" in
+        --status) CI_STATUS="$2"; shift 2 ;;
+        --behind) BEHIND="$2"; shift 2 ;;
+        --conflicted) CONFLICTED="$2"; shift 2 ;;
+        *) shift ;;
+    esac
 done
+printf 'status=%s behind=%s conflicted=%s\n' "$CI_STATUS" "$BEHIND" "$CONFLICTED" >> "$DECIDE_LOG"
 CI_STATUS="${CI_STATUS:-pending}"
 case "$CI_STATUS" in
-    pass)   printf 'ACTION=merge\nBAIL_REASON=\n' ;;
+    pass)
+        if [[ "$BEHIND" -gt 0 ]] && [[ "$CONFLICTED" == "true" ]]; then
+            printf 'ACTION=rebase\nBAIL_REASON=\n'
+        else
+            printf 'ACTION=merge\nBAIL_REASON=\n'
+        fi
+        ;;
     fail)   printf 'ACTION=bail\nBAIL_REASON=CI failed\n' ;;
     *)      printf 'ACTION=wait\nBAIL_REASON=\n' ;;
 esac
@@ -293,6 +309,56 @@ STUB_STATUSES=pending run_subject "$root" "$root/.rc" --timeout 20
 assert_rc "$root/.rc" 0 "breadcrumb timeout bail: exits 0"
 assert_stdout_contains "$root" "ACTION=bail" "breadcrumb timeout bail: ACTION=bail"
 assert_stderr_contains "$root" "⚠ CI wait timed out after 2 polls" "breadcrumb timeout bail: timeout warning on stderr"
+
+# --- Case 8: CONFLICTED=false + pass + behind>0 -> merge ---
+root=$(make_env conflict_free_behind_merge)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+STUB_STATUSES=pass STUB_BEHIND_COUNT=2 STUB_CONFLICTED=false run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "conflict-free behind: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "conflict-free behind: ACTION=merge"
+assert_stdout_contains "$root" "CONFLICTED=false" "conflict-free behind: CONFLICTED emitted"
+grep -Fq 'conflicted=false' "$root/.ci-decide-log" || fail "conflict-free behind: --conflicted false passed to ci-decide"
+grep -Fq 'behind=2' "$root/.ci-decide-log" || fail "conflict-free behind: --behind passed to ci-decide"
+ok "conflict-free behind: ci-decide received conflicted=false"
+
+# --- Case 9: CONFLICTED=true + pass + behind>0 -> rebase ---
+root=$(make_env conflicted_behind_rebase)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+STUB_STATUSES=pass STUB_BEHIND_COUNT=1 STUB_CONFLICTED=true run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "conflicted behind: exits 0"
+assert_stdout_contains "$root" "ACTION=rebase" "conflicted behind: ACTION=rebase"
+assert_stdout_contains "$root" "CONFLICTED=true" "conflicted behind: CONFLICTED emitted"
+grep -Fq 'conflicted=true' "$root/.ci-decide-log" || fail "conflicted behind: --conflicted true passed to ci-decide"
+ok "conflicted behind: ci-decide received conflicted=true"
+
+# --- Case 10: absent CONFLICTED from ci-status defaults to false (older stub) ---
+root=$(make_env absent_conflicted_default)
+write_ci_decide_stub "$root"
+cat > "$root/scripts/ci-status.sh" <<'SH'
+#!/usr/bin/env bash
+printf 'CI_STATUS=pass\nBEHIND_COUNT=2\nFAILED_RUN_ID=\n'
+SH
+chmod +x "$root/scripts/ci-status.sh"
+run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "absent CONFLICTED: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "absent CONFLICTED: defaults to merge while behind"
+assert_stdout_contains "$root" "CONFLICTED=false" "absent CONFLICTED: ci-wait defaults CONFLICTED=false"
+grep -Fq 'conflicted=false' "$root/.ci-decide-log" || fail "absent CONFLICTED: ci-decide receives false default"
+ok "absent CONFLICTED: default false threaded to ci-decide"
+
+# --- Case 11: CONFLICTED=true + pass + behind=0 -> merge (up-to-date ignores conflict flag) ---
+root=$(make_env conflicted_up_to_date_merge)
+write_ci_status_stub "$root"
+write_ci_decide_stub "$root"
+STUB_STATUSES=pass STUB_BEHIND_COUNT=0 STUB_CONFLICTED=true run_subject "$root" "$root/.rc" --timeout 60
+assert_rc "$root/.rc" 0 "conflicted up-to-date: exits 0"
+assert_stdout_contains "$root" "ACTION=merge" "conflicted up-to-date: ACTION=merge"
+assert_stdout_contains "$root" "CONFLICTED=true" "conflicted up-to-date: CONFLICTED emitted"
+grep -Fq 'conflicted=true' "$root/.ci-decide-log" || fail "conflicted up-to-date: --conflicted true passed to ci-decide"
+grep -Fq 'behind=0' "$root/.ci-decide-log" || fail "conflicted up-to-date: --behind 0 passed to ci-decide"
+ok "conflicted up-to-date: ci-decide received conflicted=true with behind=0"
 
 if [[ "$FAIL_COUNT" -ne 0 ]]; then
     echo "test-ci-wait: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2
