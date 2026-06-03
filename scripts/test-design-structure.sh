@@ -256,6 +256,23 @@ grep -Fq 'parse-design-argv.sh' "$SKILL_MD" || fail 'SKILL.md missing parse-desi
 if ! grep -Fq 'POSITIONAL_KIND' "$SKILL_MD" || grep -Fq 'remaining tokens after flags' "$SKILL_MD"; then
   fail 'Step 0b must consume POSITIONAL_KIND from 0-pre, not re-parse argv tail'
 fi
+step0pre_block=$(awk '/^### 0-pre /,/^### 0a /' "$SKILL_MD")
+printf '%s\n' "$step0pre_block" | grep -Fq 'set +e' \
+  || fail 'Step 0-pre fence missing set +e around parse-design-argv.sh capture'
+printf '%s\n' "$step0pre_block" | grep -Fq '_argv_rc=$?' \
+  || fail 'Step 0-pre fence missing explicit _argv_rc capture'
+printf '%s\n' "$step0pre_block" | grep -Fq 'VALIDATION_ERROR' \
+  || fail 'Step 0-pre fence missing VALIDATION_ERROR handling'
+printf '%s\n' "$step0pre_block" | grep -Fq '<PUBLIC_ARGV_WORDS>' \
+  || fail 'Step 0-pre fence must invoke parse-design-argv.sh via <PUBLIC_ARGV_WORDS> substitution'
+if printf '%s\n' "$step0pre_block" | grep -Fq '\$ARGUMENTS'; then
+  fail 'Step 0-pre fence must not re-parse $ARGUMENTS'
+fi
+printf '%s\n' "$step0pre_block" | grep -Fq 'unexpanded template literal' \
+  || fail 'Step 0-pre must reject unexpanded CLAUDE_PLUGIN_ROOT template literal'
+printf '%s\n' "$step0pre_block" | grep -Fq 'parse-design-argv.sh not executable' \
+  || fail 'Step 0-pre must verify parse-design-argv.sh is executable before invoke'
+contains "$PARSE_DESIGN_ARGV_SH" 'assert_safe_kv_value' 'parse-design-argv.sh missing newline guard on emitted values'
 
 DESIGN_DRIVER_SH="$REPO_ROOT/skills/design/scripts/design-driver.sh"
 [[ -x "$DESIGN_POSTPLAN_EMIT_SH" ]] || fail "design-postplan-emit.sh must be executable"

@@ -9,13 +9,19 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 source "$REPO_ROOT/scripts/lib-quiet.sh"
 LARCH_QUIET_DISABLE=1 larch_quiet_init
 
-usage() {
-    larch_err 'Usage: parse-design-argv.sh [--hard] [-p|--partition] [--brainstorm] [--manual|-m] [--no-dedup] [--run-id ID] [--] [issue-N|feature text]'
+validation_error() {
+    local token="$1"
+    case "$token" in
+        *$'\n'* | *$'\r'*) token='newline-in-value' ;;
+    esac
+    printf '%s\n' "VALIDATION_ERROR=$token"
+    exit 3
 }
 
-validation_error() {
-    printf '%s\n' "VALIDATION_ERROR=$1"
-    exit 3
+assert_safe_kv_value() {
+    case "$1" in
+        *$'\n'* | *$'\r'*) validation_error 'newline-in-value' ;;
+    esac
 }
 
 hard_requested=false
@@ -77,14 +83,16 @@ done
 
 if [ "$#" -gt 0 ]; then
     first_positional="$1"
-    while [ "$#" -gt 0 ]; do
-        if [ -z "$positional_value" ]; then
-            positional_value="$1"
-        else
-            positional_value="$positional_value $1"
-        fi
+    if [[ "$first_positional" =~ ^[0-9]+$ ]]; then
+        positional_value="$first_positional"
+    else
+        positional_value="$1"
         shift
-    done
+        while [ "$#" -gt 0 ]; do
+            positional_value="$positional_value $1"
+            shift
+        done
+    fi
 fi
 
 if [ -z "$first_positional" ]; then
@@ -92,10 +100,12 @@ if [ -z "$first_positional" ]; then
     positional_value=""
 elif [[ "$first_positional" =~ ^[0-9]+$ ]]; then
     positional_kind=issue
-    positional_value="$first_positional"
 else
     positional_kind=verbal
 fi
+
+assert_safe_kv_value "$run_id"
+assert_safe_kv_value "$positional_value"
 
 printf '%s\n' "HARD_REQUESTED=$hard_requested"
 printf '%s\n' "PARTITION_REQUESTED=$partition_requested"

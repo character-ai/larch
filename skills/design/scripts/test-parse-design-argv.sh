@@ -53,10 +53,10 @@ assert_kv() {
 
 assert_no_flag_kvs() {
     local label="$1"
-    if printf '%s\n' "$OUT" | grep -Eq '^(HARD_REQUESTED|POSITIONAL_KIND)='; then
-        fail "$label emitted partial success KVs"
+    if printf '%s\n' "$OUT" | grep -Eq '^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|MANUAL_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)='; then
+        fail "$label emitted success KVs on validation failure"
     else
-        pass "$label emitted no partial KVs"
+        pass "$label emitted no success KVs"
     fi
 }
 
@@ -76,6 +76,12 @@ assert_rc 'numeric tail' 0
 assert_common_false 'numeric tail'
 assert_kv 'numeric tail' POSITIONAL_KIND issue
 assert_kv 'numeric tail' POSITIONAL_VALUE 3249
+
+# numeric issue ignores trailing tokens
+run_case 3249 extra words
+assert_rc 'numeric issue extra tokens' 0
+assert_kv 'numeric issue extra tokens' POSITIONAL_KIND issue
+assert_kv 'numeric issue extra tokens' POSITIONAL_VALUE 3249
 
 # bare verbal tail
 run_case add a foo flag
@@ -119,6 +125,12 @@ assert_rc '--run-id issue' 0
 assert_kv '--run-id issue' RUN_ID RID42
 assert_kv '--run-id issue' POSITIONAL_KIND issue
 assert_kv '--run-id issue' POSITIONAL_VALUE 3249
+
+run_case --run-id r1 add a thing
+assert_rc '--run-id verbal tail' 0
+assert_kv '--run-id verbal tail' RUN_ID r1
+assert_kv '--run-id verbal tail' POSITIONAL_KIND verbal
+assert_kv '--run-id verbal tail' POSITIONAL_VALUE 'add a thing'
 
 run_case --run-id
 assert_rc '--run-id missing' 3
@@ -167,6 +179,12 @@ assert_kv 'empty argv' POSITIONAL_KIND none
 assert_kv 'empty argv' POSITIONAL_VALUE ""
 
 # end of options
+run_case --hard --
+assert_rc 'terminator only' 0
+assert_kv 'terminator only' HARD_REQUESTED true
+assert_kv 'terminator only' POSITIONAL_KIND none
+assert_kv 'terminator only' POSITIONAL_VALUE ""
+
 run_case --hard -- 3249
 assert_rc 'terminator issue' 0
 assert_kv 'terminator issue' HARD_REQUESTED true
@@ -184,6 +202,12 @@ run_case "Strunk & White \$x"
 assert_rc 'metachar verbal' 0
 assert_kv 'metachar verbal' POSITIONAL_KIND verbal
 assert_kv 'metachar verbal' POSITIONAL_VALUE "Strunk & White \$x"
+
+# embedded newline in verbal token is rejected
+run_case $'foo\nHARD_REQUESTED=true'
+assert_rc 'newline smuggling' 3
+assert_kv 'newline smuggling' VALIDATION_ERROR newline-in-value
+assert_no_flag_kvs 'newline smuggling'
 
 if [ "$FAIL" -ne 0 ]; then
     printf '\nparse-design-argv tests: %s passed, %s failed\n' "$PASS" "$FAIL" >&2

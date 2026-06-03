@@ -6,6 +6,8 @@
 
 The script receives the raw public `/design` argv as positional parameters (`"$@"`). The orchestrator must pass one shell-quoted word per original argv token so verbal tails preserve spaces and shell metacharacters.
 
+Before invoking the Step 0-pre fence, substitute `<PUBLIC_ARGV_WORDS>` with those quoted tokens (never leave the literal placeholder in the rendered Bash). Example: public argv `--hard add a foo` → invoke `parse-design-argv.sh '--hard' 'add a foo'`.
+
 ## Allowlist
 
 `skills/design/references/flags.md` is normative for the public flag allowlist and tier mapping. This parser implements only Step 0-pre validation and raw flag binding; Step 0b still maps `--hard` to `design_classification`.
@@ -29,9 +31,11 @@ On validation failure, stdout contains only `VALIDATION_ERROR=<token>`.
 
 The parser scans leading flags only until the first positional token or bare `--` terminator.
 
-- First positional token all digits (`^[0-9]+$`) → `POSITIONAL_KIND=issue`, `POSITIONAL_VALUE=<digits>`.
+- First positional token all digits (`^[0-9]+$`) → `POSITIONAL_KIND=issue`, `POSITIONAL_VALUE=<digits>` only. Any additional tokens after a numeric issue are ignored (not joined into `POSITIONAL_VALUE` and not reclassified as verbal).
 - First positional token non-empty and non-numeric → `POSITIONAL_KIND=verbal`, `POSITIONAL_VALUE=<tail joined by single spaces>`.
 - No positional token → `POSITIONAL_KIND=none`, `POSITIONAL_VALUE=`.
+
+Emitted KV values must not contain embedded newline or carriage-return characters; such input yields `VALIDATION_ERROR=newline-in-value` on exit `3`.
 
 ## End-of-options
 
@@ -43,9 +47,8 @@ Bare `--` terminates the flag scan. It is not a validation error and is excluded
 |------|---------|
 | `0` | Parsed OK; eight KVs on stdout |
 | `3` | Validation error; `VALIDATION_ERROR=<token>` on stdout |
-| `2` | Defensive usage/configuration error |
 
-The script never exits `1`; the orchestrator owns user-facing aborts.
+The script never exits `1` or `2`; the orchestrator owns user-facing aborts.
 
 ## Bash 3.2
 

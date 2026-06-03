@@ -9,7 +9,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 Design an implementation plan for a feature and review it with the **full** panel on both tiers (10 static reviewers on the full diagonal: 5 personalities × Cursor + Codex, plus adjudication and voting as documented in this file). The sketch phase (Step 2a) reads `run-params.json`: **`design_classification` is `SIMPLE` or `HARD`**. SIMPLE skips sketches and dialectic but still runs the full plan-review panel; HARD runs 4 personality sketches, dialectic when needed, and the full panel. Plan + acceptance are written back to the issue body via `plan-block-write.sh` (no design manifest export). Accepted non-security OOS items are filed via `/larch:issue` in **Step 5b** before the `larch:plan` write (**Step 5c**).
 
-**Flags**: Parse flags from the start of `$ARGUMENTS` before consuming the positional tail. **Public argv** allows only `--hard`, `-p`, `--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** The default tier is SIMPLE; `--hard` selects HARD. Any unrecognized or disallowed leading public `--` flag is a hard error before Step 0 and is never treated as positional feature text.
+**Flags**: Step **0-pre** is authoritative — `parse-design-argv.sh` emits `POSITIONAL_KIND` / `POSITIONAL_VALUE` and flag KVs; do not mentally re-parse `$ARGUMENTS` after that fence. **Public argv** allows only `--hard`, `-p`, `--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id` (see table). **All boolean flags default to `false`.** The default tier is SIMPLE; `--hard` selects HARD. Any unrecognized or disallowed leading public `--` flag is a hard error before Step 0 and is never treated as positional feature text.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
@@ -132,6 +132,14 @@ if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
   printf '%s\n' '/design Step 0-pre: CLAUDE_PLUGIN_ROOT is empty after export — skill loader must expand ${CLAUDE_PLUGIN_ROOT} in the template line before Bash runs; abort' >&2
   exit 1
 fi
+if [ "${CLAUDE_PLUGIN_ROOT:-}" = '${CLAUDE_PLUGIN_ROOT}' ]; then
+  printf '%s\n' '/design Step 0-pre: CLAUDE_PLUGIN_ROOT is the unexpanded template literal — skill loader must expand ${CLAUDE_PLUGIN_ROOT} before Bash runs; abort' >&2
+  exit 1
+fi
+if [ ! -x "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh" ]; then
+  printf '%s\n' "/design Step 0-pre: parse-design-argv.sh not executable at ${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh; abort" >&2
+  exit 1
+fi
 
 # Contract pin for CI (scripts/test-design-structure.sh): parse-design-argv.sh
 set +e
@@ -149,6 +157,7 @@ POSITIONAL_KIND=none
 POSITIONAL_VALUE=""
 VALIDATION_ERROR=""
 while IFS= read -r _line || [ -n "$_line" ]; do
+  [ -z "$_line" ] && continue
   _key="${_line%%=*}"
   _value="${_line#*=}"
   case "$_key" in
@@ -161,9 +170,17 @@ while IFS= read -r _line || [ -n "$_line" ]; do
     POSITIONAL_KIND) POSITIONAL_KIND="$_value" ;;
     POSITIONAL_VALUE) POSITIONAL_VALUE="$_value" ;;
     VALIDATION_ERROR) VALIDATION_ERROR="$_value" ;;
+    *)
+      printf '%s\n' "**⚠ /design: parse-design-argv.sh emitted unexpected stdout line; aborting before session setup.**" >&2
+      exit 1
+      ;;
   esac
 done <<<"${_argv_out:-}"
 
+if [ -n "$VALIDATION_ERROR" ] && [ "${_argv_rc:-0}" -ne 3 ]; then
+  printf '%s\n' "**⚠ /design: parse-design-argv.sh reported VALIDATION_ERROR but exited ${_argv_rc}; aborting before session setup.**" >&2
+  exit 1
+fi
 if [ "${_argv_rc:-0}" -eq 3 ] || [ -n "$VALIDATION_ERROR" ]; then
   if [ -n "$VALIDATION_ERROR" ]; then
     printf '%s %s\n' "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**" "$VALIDATION_ERROR" >&2
