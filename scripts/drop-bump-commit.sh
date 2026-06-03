@@ -52,6 +52,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib-quiet.sh
 source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
+# Honor the repository implied by cwd, not inherited GIT_DIR/GIT_WORK_TREE overrides
+# (hermetic harnesses and nested git tooling may export these).
+unset GIT_DIR GIT_WORK_TREE
 # Note: not using set -e — we handle errors explicitly so all no-op paths
 # exit 0 with DROPPED=false, matching the contract used by callers.
 
