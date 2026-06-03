@@ -1131,6 +1131,28 @@ if [[ -s "$OUTPUT" ]]; then
     elif command -v jq >/dev/null 2>&1 && [[ -s "${OUTPUT}.json" ]]; then
         EXTRACT_TMP="${OUTPUT}.extract.$$"
         if jq -re '.result // ""' "${OUTPUT}.json" > "$EXTRACT_TMP" 2>/dev/null && [[ -s "$EXTRACT_TMP" ]]; then
+            # #3423: Cursor sometimes emits a same-line narration prefix before
+            # the no-issues sentinel (`Reviewing... {"no_issues_found": true}`).
+            # The dispatch-with-waterfall first-line gate salvages a
+            # *separate-line* preamble but cannot recover a same-line one, so
+            # normalize that single shape to the bare sentinel here, before
+            # $OUTPUT is written. Scoped to the case where the first non-blank
+            # line itself carries the trailing sentinel object: never fired when
+            # a TSV schema_version header is present (findings must survive
+            # verbatim), when the result already leads with `{` (already a
+            # bare/structured payload), or when the sentinel sits on a *later*
+            # line (left to the gate's separate-line salvage — preserves the
+            # #3283 narration-then-sentinel contract). The grep pipelines carry
+            # `|| true` so a no-match cannot abort under `set -euo pipefail`.
+            _norm_fnb=$(awk '/[^[:space:]]/ { sub(/^[[:space:]]+/, ""); print; exit }' "$EXTRACT_TMP" 2>/dev/null || true)
+            if [[ -n "$_norm_fnb" && "$_norm_fnb" != \{* ]] \
+                && ! grep -Eq '^[[:space:]]*schema_version' "$EXTRACT_TMP"; then
+                _norm_obj=$(printf '%s' "$_norm_fnb" | grep -oE '\{[^{}]*"no_issues_found"[^{}]*\}' | tail -n1 || true)
+                if [[ -n "$_norm_obj" ]] \
+                    && printf '%s' "$_norm_obj" | jq -e 'type == "object" and .no_issues_found == true' >/dev/null 2>&1; then
+                    printf '{"no_issues_found": true}\n' > "$EXTRACT_TMP"
+                fi
+            fi
             RESULT_BYTES=$(wc -c < "$EXTRACT_TMP" 2>/dev/null | tr -d ' ')
             OUT_TOKENS=$(jq -r '.usage.outputTokens // 0' "${OUTPUT}.json" 2>/dev/null || echo 0)
             if [[ "$OUT_TOKENS" =~ ^[0-9]+$ && "$RESULT_BYTES" =~ ^[0-9]+$ \

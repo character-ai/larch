@@ -442,7 +442,11 @@ assert_line "FALLBACK_COUNT=0" "$out"
 assert_line "ALL_OUTPUT_TOOLS=cursor" "$out"
 assert_line "DISPATCH_OK=true" "$out"
 
-# Case E: first-line miss falls through even when a matching TSV header appears later.
+# Case E (#3423): a first-line miss with a matching TSV header on a LATER line is
+# SALVAGED in phase 1 — the narration preamble is stripped and the slot settles
+# on its phase-1 tool, instead of falling through to the other tool (the prior
+# behavior). This is the multi-phase counterpart to the --no-fallback salvage
+# cases above.
 manifest="$TMPROOT/slots-first-line-fallback.ndjson"
 printf '{"slot":"s1","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
     "$TMPROOT/first-line-fallback-slot.txt" "$prompt" > "$manifest"
@@ -457,12 +461,19 @@ out=$(PATH="$STUB_BIN:$PATH" \
     --require-first-line-pattern '^[[:space:]]*schema_version' \
     --timeout 5)
 assert_line "FALLBACK_COUNT=0" "$out"
-assert_line "ALL_OUTPUT_TOOLS=codex" "$out"
+assert_line "ALL_OUTPUT_TOOLS=cursor" "$out"
 assert_line "DISPATCH_OK=true" "$out"
-grep -Fxq 'operational narration first' "$TMPROOT/first-line-fallback-slot.txt" \
-    || { echo "FAIL: phase1 first-line miss fixture missing" >&2; exit 1; }
-grep -Fq 'schema_version' "$TMPROOT/first-line-fallback-slot-phase2.txt" \
-    || { echo "FAIL: phase2 first-line fallback did not produce schema header" >&2; exit 1; }
+# Salvage stripped the narration in place; the phase-1 output now leads with the
+# TSV header and no longer contains the preamble, and no phase-2 fallback fired.
+grep -Fq 'schema_version' "$TMPROOT/first-line-fallback-slot.txt" \
+    || { echo "FAIL: salvaged phase1 output must retain the TSV header" >&2; cat "$TMPROOT/first-line-fallback-slot.txt" >&2; exit 1; }
+if grep -Fq 'operational narration first' "$TMPROOT/first-line-fallback-slot.txt"; then
+    echo "FAIL: salvaged phase1 output must NOT contain the narration preamble" >&2
+    cat "$TMPROOT/first-line-fallback-slot.txt" >&2
+    exit 1
+fi
+[[ ! -f "$TMPROOT/first-line-fallback-slot-phase2.txt" ]] \
+    || { echo "FAIL: salvage should prevent any phase2 fallback launch" >&2; exit 1; }
 
 # Case F: invalid first-line ERE exits 2 before any slot launches.
 manifest="$TMPROOT/slots-first-line-invalid.ndjson"
@@ -550,6 +561,98 @@ IFS=$'\t' read -r fm_slot fm_tool fm_reason fm_snip < "$fm_file"
 [[ "$fm_slot" == "cursor-plan-arch" && "$fm_tool" == "cursor" ]] || { echo "FAIL: format-gate-miss record slot/tool" >&2; cat "$fm_file" >&2; exit 1; }
 [[ "$fm_reason" == "format-gate-miss" ]] || { echo "FAIL: expected reason=format-gate-miss, got '$fm_reason'" >&2; cat "$fm_file" >&2; exit 1; }
 case "$fm_snip" in *"Reviewing the plan against the repo"*) ;; *) echo "FAIL: format-gate-miss snippet must contain the offending preamble" >&2; cat "$fm_file" >&2; exit 1 ;; esac
+# The case above doubles as #3423 case (c): a narration-ONLY output (no later
+# pattern-matching line) is not salvageable and still drops as format-gate-miss.
+
+# #3423 salvage (a): a non-empty STATUS=OK Cursor output that leads with a
+# narration line but carries a valid TSV header+row on a LATER line is SALVAGED.
+# The gate strips the preamble, the slot settles (not dropped), and the settled
+# output file no longer contains the narration. Cursor's launcher normalization
+# is same-line-only, so a separate-line TSV reaches the gate intact and this
+# exercises the dispatch gate's preamble-salvage path.
+manifest="$TMPROOT/slots-nf-salvage-tsv.ndjson"
+printf '{"slot":"cursor-plan-edge","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/nf-salvage-tsv.txt" "$prompt" >"$manifest"
+salvage_tsv_content=$'Reviewing the plan and tracing cited code paths for edge cases.\nschema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tin_scope\timportant\tcorrectness\tscripts/foo.sh:42\tLock before validation\tRace between runs\tMove lock after validation'
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT="$salvage_tsv_content" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present false \
+    --cursor-present true \
+    --no-fallback \
+    --mode description \
+    --require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)' \
+    --timeout 5)
+assert_line "ALL_OUTPUT_TOOLS=cursor" "$out"
+grep -Fxq "$TMPROOT/nf-salvage-tsv.txt" "${manifest}.output-files" \
+    || { echo "FAIL: salvage-tsv slot should settle and list its path" >&2; printf '%s\n' "$out" >&2; exit 1; }
+grep -Fq "schema_version" "$TMPROOT/nf-salvage-tsv.txt" \
+    || { echo "FAIL: salvage-tsv settled output must retain the TSV header" >&2; cat "$TMPROOT/nf-salvage-tsv.txt" >&2; exit 1; }
+if grep -Fq "Reviewing the plan and tracing cited code paths" "$TMPROOT/nf-salvage-tsv.txt"; then
+    echo "FAIL: salvage-tsv settled output must NOT contain the narration preamble" >&2
+    cat "$TMPROOT/nf-salvage-tsv.txt" >&2
+    exit 1
+fi
+if grep -Fq 'ALL_SLOTS_DROPPED' <<<"$out"; then
+    echo "FAIL: salvage-tsv must not report ALL_SLOTS_DROPPED" >&2; printf '%s\n' "$out" >&2; exit 1
+fi
+if grep -Fq 'DROPPED_SLOTS_FILE=' <<<"$out"; then
+    echo "FAIL: salvage-tsv must not emit DROPPED_SLOTS_FILE (slot settled)" >&2; printf '%s\n' "$out" >&2; exit 1
+fi
+
+# #3423 salvage (b): a narration line followed by the bare no-issues sentinel on
+# a LATER line is salvaged to the bare sentinel. Cursor's launcher normalization
+# is same-line-only, so a separate-line sentinel reaches the gate unchanged and
+# is recovered here.
+manifest="$TMPROOT/slots-nf-salvage-sentinel.ndjson"
+printf '{"slot":"cursor-plan-arch","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/nf-salvage-sentinel.txt" "$prompt" >"$manifest"
+salvage_sentinel_content=$'Reviewing the plan and validating loader-substitution claims.\n{"no_issues_found": true}'
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT="$salvage_sentinel_content" \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present false \
+    --cursor-present true \
+    --no-fallback \
+    --mode description \
+    --require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)' \
+    --timeout 5)
+grep -Fxq "$TMPROOT/nf-salvage-sentinel.txt" "${manifest}.output-files" \
+    || { echo "FAIL: salvage-sentinel slot should settle and list its path" >&2; printf '%s\n' "$out" >&2; exit 1; }
+grep -Fxq '{"no_issues_found": true}' "$TMPROOT/nf-salvage-sentinel.txt" \
+    || { echo "FAIL: salvage-sentinel settled output must be the bare sentinel" >&2; cat "$TMPROOT/nf-salvage-sentinel.txt" >&2; exit 1; }
+if grep -Fq "Reviewing the plan and validating loader-substitution" "$TMPROOT/nf-salvage-sentinel.txt"; then
+    echo "FAIL: salvage-sentinel settled output must NOT contain the narration preamble" >&2
+    cat "$TMPROOT/nf-salvage-sentinel.txt" >&2
+    exit 1
+fi
+
+# #3423 salvage (d): a genuinely empty (whitespace-only) STATUS=OK output still
+# drops as reason=empty. Salvage is confined to the format-gate-miss branch and
+# never fires on the empty branch. A lone space survives the `:-` default in the
+# stub and yields a blank, non-zero-byte file (STATUS=OK, no non-blank line).
+manifest="$TMPROOT/slots-nf-empty.ndjson"
+printf '{"slot":"cursor-plan-pragmatic","tool":"cursor","output":"%s","prompt_file":"%s"}\n' \
+    "$TMPROOT/nf-empty.txt" "$prompt" >"$manifest"
+out=$(PATH="$STUB_BIN:$PATH" \
+    CURSOR_STUB_RESULT_CONTENT=' ' \
+    "$REPO_ROOT/scripts/dispatch-with-waterfall.sh" \
+    --slots-file "$manifest" \
+    --codex-present false \
+    --cursor-present true \
+    --no-fallback \
+    --mode description \
+    --require-first-line-pattern '^[[:space:]]*(schema_version|\{"no_issues_found)' \
+    --timeout 5)
+assert_line "ALL_SLOTS_DROPPED=true" "$out"
+assert_line "ALL_OUTPUT_FILES=" "$out"
+empty_kv=$(printf '%s\n' "$out" | grep '^DROPPED_SLOTS_FILE=' || true)
+[[ -n "$empty_kv" ]] || { echo "FAIL: empty drop must emit DROPPED_SLOTS_FILE" >&2; printf '%s\n' "$out" >&2; exit 1; }
+empty_file="${empty_kv#DROPPED_SLOTS_FILE=}"
+IFS=$'\t' read -r _ _ e_reason _ < "$empty_file"
+[[ "$e_reason" == "empty" ]] || { echo "FAIL: expected reason=empty, got '$e_reason'" >&2; cat "$empty_file" >&2; exit 1; }
 
 # #3392 robustness: a slot name carrying a literal TAB must not corrupt the
 # line-oriented drops TSV — the slot field is flattened so the record keeps

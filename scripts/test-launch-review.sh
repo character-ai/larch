@@ -1854,6 +1854,27 @@ PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=3068 CURSOR_STUB_RESULT="$B3_BA
     "$LAUNCHER" --output "$OUT_B3_BALLOT" --timeout 5 --prompt "voter ballot" >/dev/null 2>"$TMPDIR/case-b3-ballot.stderr"
 assert_equals "case B3 voter ballot grammar preserves result (#3283)" "$B3_BALLOT" "$(cat "$OUT_B3_BALLOT")"
 
+# Case B3 (#3423): a same-line narration prefix before the no-issues sentinel
+# (`Reviewing... {"no_issues_found": true}`) is normalized to the bare sentinel.
+# The dispatch-with-waterfall first-line gate salvages a *separate-line* preamble
+# but cannot recover a same-line one, so the launcher normalizes it here. High
+# outputTokens proves the normalized sentinel survives the degraded heuristic.
+OUT_B3_SAMELINE="$TMPDIR/cursor-b3-sameline-sentinel.txt"
+B3_SAMELINE='Reviewing the plan and tracing cited code paths. {"no_issues_found": true}'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_OUTPUT_TOKENS=5000 CURSOR_STUB_RESULT="$B3_SAMELINE" \
+    "$LAUNCHER" --output "$OUT_B3_SAMELINE" --timeout 5 --prompt "same-line narration sentinel" >/dev/null 2>"$TMPDIR/case-b3-sameline.stderr"
+assert_equals "case B3 same-line narration + sentinel normalized to bare sentinel (#3423)" '{"no_issues_found": true}' "$(cat "$OUT_B3_SAMELINE")"
+
+# Case B3 (#3423) guard: a .result carrying TSV findings (schema_version header)
+# is NEVER normalized, even behind a leading narration line — findings must
+# survive byte-for-byte. Low outputTokens isolates the normalization guard from
+# the degraded-response heuristic.
+OUT_B3_TSV_GUARD="$TMPDIR/cursor-b3-tsv-guard.txt"
+B3_TSV_GUARD=$'Reviewing the plan and validating loader-substitution claims.\nschema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tin_scope\timportant\tcorrectness\tscripts/foo.sh:42\tBug\tBreakage\tFix'
+PATH="$STUB_BIN:$PATH" CURSOR_STUB_RESULT="$B3_TSV_GUARD" \
+    "$LAUNCHER" --output "$OUT_B3_TSV_GUARD" --timeout 5 --prompt "narration then tsv guard" >/dev/null 2>"$TMPDIR/case-b3-tsv-guard.stderr"
+assert_equals "case B3 narration + TSV findings left unmodified (#3423)" "$B3_TSV_GUARD" "$(cat "$OUT_B3_TSV_GUARD")"
+
 # Case C: --prompt-file preserves trailing newlines through the wrapper prompt.
 # Issue #1529: the wrapper output (last argv to cursor) has the form
 # ` /max-mode on. Prompt: <preamble>\n\n<body>`. Verify the wrapper prefix,

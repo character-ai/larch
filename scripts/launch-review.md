@@ -88,6 +88,18 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   fields, empty-result retry count). All extracted fields are sanitized
   (newlines/pipes stripped, length capped) before interpolation. The full
   envelope is always copied to `${OUTPUT}.json` before `.result` extraction.
+- **Same-line narration-prefixed sentinel normalization (cursor-only, #3423).**
+  When the extracted `.result` leads with a narration prefix on the *same line*
+  as the no-issues sentinel (`Reviewing… {"no_issues_found": true}`), the
+  launcher rewrites `$OUTPUT` to the bare `{"no_issues_found": true}` literal
+  before it is installed. Scoped to the first non-blank line carrying a
+  jq-validated `{…"no_issues_found": true}` object: it never fires when a TSV
+  `schema_version` header is present (findings survive byte-for-byte), when the
+  result already leads with `{`, or when the sentinel sits on a *later* line —
+  that separate-line shape is handled by the `dispatch-with-waterfall.sh`
+  first-line gate salvage, preserving the #3283 narration-then-sentinel
+  contract. Codex has no `.result` envelope, so this is intentionally
+  cursor-only.
 - **Exit-0 empty `.result` transient retry (cursor-only).** Inside the cursor
   auth loop, after the exit-code transient branch and before auth retry: when
   `EXIT_CODE==0`, `jq` is available, `$OUTPUT` is non-empty JSON,

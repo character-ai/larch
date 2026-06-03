@@ -263,6 +263,7 @@ launch_slot() {
 collect_phase() {
     local failed_var="$1"
     local idx output tool block key value status rf check_file _first_nonblank _drop_stderr
+    local _salvage_lineno _salvage_tmp _salvage_ok
     local -a failed=()
     [[ ${#phase_outputs[@]} -gt 0 ]] || {
         eval "$failed_var=()"
@@ -344,12 +345,40 @@ collect_phase() {
                     if [[ -z "$_first_nonblank" ]]; then
                         slot_drop_reason[idx]="empty"
                         slot_drop_detail[idx]=""
-                    else
+                        failed+=("$idx")
+                        continue
+                    fi
+                    # #3423 preamble-salvage: the first non-blank line is a
+                    # narration preamble, but a valid TSV/sentinel payload may
+                    # follow on a LATER line. Find the first line matching the
+                    # gate; when it is below line 1, strip every preceding line,
+                    # rewrite check_file in place, and settle the slot instead of
+                    # dropping it. Narration-only output (no later match), a
+                    # match already on line 1, or a rewrite failure all keep the
+                    # existing format-gate-miss drop. Salvage is confined to this
+                    # branch — the empty / result-gate-miss / result-unreadable /
+                    # collector-failure paths are untouched. The grep|head|cut
+                    # substitution carries `|| true` so a no-match (grep rc 1) or
+                    # head-induced SIGPIPE cannot abort the run under
+                    # `set -euo pipefail`; the line number is validated as a
+                    # positive integer before `tail -n +N`.
+                    _salvage_ok=false
+                    _salvage_lineno=$(grep -nE -- "$REQUIRE_FIRST_LINE_PATTERN" "$check_file" 2>/dev/null | head -n1 | cut -d: -f1 || true)
+                    if [[ "$_salvage_lineno" =~ ^[0-9]+$ ]] && (( _salvage_lineno > 1 )); then
+                        _salvage_tmp=$(mktemp "${check_file}.salvage.XXXXXX")
+                        if tail -n +"$_salvage_lineno" "$check_file" > "$_salvage_tmp" 2>/dev/null && mv -f "$_salvage_tmp" "$check_file"; then
+                            _salvage_ok=true
+                        else
+                            rm -f "$_salvage_tmp"
+                        fi
+                    fi
+                    if [[ "$_salvage_ok" != "true" ]]; then
                         slot_drop_reason[idx]="format-gate-miss"
                         slot_drop_detail[idx]="$(snippet_from_file "$check_file")"
+                        failed+=("$idx")
+                        continue
                     fi
-                    failed+=("$idx")
-                    continue
+                    # Salvage succeeded — fall through to the settle block below.
                 fi
             fi
             # shellcheck disable=SC2004
