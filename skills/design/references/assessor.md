@@ -4,7 +4,7 @@
 
 **Contract**: Normative source for the plan-quality assessor stage: when it fires, input/output artifact schema, the strict-majority tally rule with worked examples, fail-open policy on missing snapshots and panel-wide failure, Continue/Stop `AskUserQuestion` contract, `QUALIFICATIONS:` surfacing, round-cursor advancement, Cursor narration backstop, and top-level artifact location scheme.
 
-**When to load**: before executing Step 3.6 (plan-quality assessor invocation) or when implementing `assess-plan-round.sh`, `dispatch-plan-assessors.sh`, `tally-plan-assessor.sh`, or `snapshot-plan-round.sh`.
+**When to load**: before executing Step 3.6 (plan-quality assessor invocation) or when implementing `design-plan-quality-assessor.sh`, `assess-plan-round.sh`, `dispatch-plan-assessors.sh`, `tally-plan-assessor.sh`, or `snapshot-plan-round.sh`.
 
 ## Artifacts (top-level under `$DESIGN_TMPDIR`)
 
@@ -49,6 +49,7 @@ On `EFFECTIVE_ASSESSORS=0`: proceed as NOT_WORSE; print `**⚠ 3.6: 0/3 effectiv
 
 ## Scripts
 
+- `skills/design/scripts/design-plan-quality-assessor.sh` — Step 3.6 phase driver (workflow HARD gate, post-Gate-B `write-after`, assessor dispatch, `.step3.6-assessor.env` contract)
 - `skills/design/scripts/snapshot-plan-round.sh`
 - `skills/design/scripts/dispatch-plan-assessors.sh`
 - `skills/shared/scripts/render-assessor-prompt.sh`

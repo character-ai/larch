@@ -1051,74 +1051,72 @@ _wp=$(jq -r '.workflow_path // ""' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null 
 if [ -z "$_wp" ]; then
   _wp=$(sed -n 's/.*"workflow_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null | head -1)
 fi
-if [ "$_wp" != "HARD" ]; then
-  printf '%s\n' "⏩ 3.6: assessor — workflow_path=$_wp; skipped"
-else
+if [ "$_wp" = "HARD" ]; then
   printf '%s\n' "> **🔶 /design 3.6: assessor**"
-  _cursor_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" read-cursor --design-tmpdir "$DESIGN_TMPDIR")
-  ROUND_NUM=1
-  ASSESSOR_STATUS=skipped
-  ASSESSOR_VERDICT=skipped
-  EFFECTIVE_ASSESSORS=0
-  ASSESSOR_VERDICT_FILE=""
-  ASSESSOR_VERDICT_ENV=""
-  ASSESSOR_STATE_FILE="$DESIGN_TMPDIR/.step3.6-assessor.env"
-  while IFS= read -r _line || [ -n "$_line" ]; do
-    case "$_line" in
-      ROUND_CURSOR=*) ROUND_NUM="${_line#ROUND_CURSOR=}" ;;
-    esac
-  done <<< "$_cursor_out"
-  if ! "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" \
-    write-after --design-tmpdir "$DESIGN_TMPDIR" --round "$ROUND_NUM"; then
-    printf '%s\n' "**⚠ 3.6: failed to snapshot post-Gate-B plan for round ${ROUND_NUM:-?}; rolling back pending review-round state and skipping assessor.**"
-    _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-write-after.XXXXXX")
-    printf 'round=%s\n' "${ROUND_NUM:-?}" >"$_cap"
-    "${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" \
-      --log "$DESIGN_TMPDIR/execution-issues.md" \
-      --site "design Step 3.6" \
-      --tool "snapshot-plan-round.sh write-after" \
-      --exit-code 1 \
-      --category Warnings \
-      --redact \
-      --output-file "$_cap" \
-      >/dev/null 2>&1 || true
-    rm -f "$_cap"
-    if [ "${ROUND_NUM:-0}" -ge 1 ]; then
-      printf '%s\n' "$((ROUND_NUM - 1))" >"$DESIGN_TMPDIR/review-round-count.txt"
-      "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh" \
-        write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$ROUND_NUM" >/dev/null 2>&1 || true
-    fi
-    ASSESSOR_STATUS=write-after-failed
-    ASSESSOR_VERDICT=skipped
-    EFFECTIVE_ASSESSORS=0
+else
+  printf '%s\n' "⏩ 3.6: assessor — workflow_path=$_wp; skipped"
+fi
+set +e
+_assessor_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh" \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --codex-present "$CODEX_PRESENT" \
+  --cursor-present "$CURSOR_PRESENT")
+_assessor_rc=$?
+set -e
+ASSESSOR_STATUS=""
+ASSESSOR_VERDICT=""
+EFFECTIVE_ASSESSORS=""
+ASSESSOR_VERDICT_FILE=""
+ASSESSOR_VERDICT_ENV=""
+ROUND_NUM=""
+WORKFLOW_PATH=""
+_assessor_parse_ok=false
+if [[ -f "$DESIGN_TMPDIR/.step3.6-assessor.env" ]]; then
+  if [[ -L "$DESIGN_TMPDIR/.step3.6-assessor.env" ]]; then
+    printf '%s\n' "**⚠ Step 3.6: refusing symlink .step3.6-assessor.env; using stdout fallback.**" >&2
   else
-  _assess_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/assess-plan-round.sh" \
-    --design-tmpdir "$DESIGN_TMPDIR" \
-    --codex-present "$CODEX_PRESENT" \
-    --cursor-present "$CURSOR_PRESENT")
-  ASSESSOR_STATUS="" ASSESSOR_VERDICT="" EFFECTIVE_ASSESSORS="" ASSESSOR_VERDICT_FILE="" ASSESSOR_VERDICT_ENV=""
-  while IFS= read -r _line || [ -n "$_line" ]; do
-    case "$_line" in
-      ASSESSOR_STATUS=*) ASSESSOR_STATUS="${_line#ASSESSOR_STATUS=}" ;;
-      ASSESSOR_VERDICT=*) ASSESSOR_VERDICT="${_line#ASSESSOR_VERDICT=}" ;;
-      EFFECTIVE_ASSESSORS=*) EFFECTIVE_ASSESSORS="${_line#EFFECTIVE_ASSESSORS=}" ;;
-      ASSESSOR_VERDICT_FILE=*) ASSESSOR_VERDICT_FILE="${_line#ASSESSOR_VERDICT_FILE=}" ;;
-      ASSESSOR_VERDICT_ENV=*) ASSESSOR_VERDICT_ENV="${_line#ASSESSOR_VERDICT_ENV=}" ;;
-      ROUND_NUM=*) ROUND_NUM="${_line#ROUND_NUM=}" ;;
-    esac
-  done <<< "$_assess_out"
-  if [ "$ASSESSOR_VERDICT" = "not-worse" ] && [ "${EFFECTIVE_ASSESSORS:-0}" = "0" ]; then
-    printf '%s\n' "**⚠ 3.6: 0/3 effective assessors; proceeding without quality gate (round ${ROUND_NUM:-?}, see ${ASSESSOR_VERDICT_ENV:-?}).**"
+    while IFS= read -r _assessor_line || [[ -n "$_assessor_line" ]]; do
+      _assessor_key="${_assessor_line%%=*}"
+      _assessor_value="${_assessor_line#*=}"
+      case "$_assessor_key" in
+        ASSESSOR_STATUS|ASSESSOR_VERDICT|EFFECTIVE_ASSESSORS|ASSESSOR_VERDICT_FILE|ASSESSOR_VERDICT_ENV|ROUND_NUM|WORKFLOW_PATH)
+          printf -v "$_assessor_key" '%s' "$_assessor_value"
+          _assessor_parse_ok=true
+          ;;
+        WARN)
+          printf '%s\n' "$_assessor_value"
+          ;;
+      esac
+    done <"$DESIGN_TMPDIR/.step3.6-assessor.env"
   fi
-  fi
-  {
-    printf 'ROUND_NUM=%s\n' "${ROUND_NUM:-}"
-    printf 'ASSESSOR_STATUS=%s\n' "${ASSESSOR_STATUS:-}"
-    printf 'ASSESSOR_VERDICT=%s\n' "${ASSESSOR_VERDICT:-}"
-    printf 'EFFECTIVE_ASSESSORS=%s\n' "${EFFECTIVE_ASSESSORS:-0}"
-    printf 'ASSESSOR_VERDICT_FILE=%s\n' "${ASSESSOR_VERDICT_FILE:-}"
-    printf 'ASSESSOR_VERDICT_ENV=%s\n' "${ASSESSOR_VERDICT_ENV:-}"
-  } >"$ASSESSOR_STATE_FILE"
+fi
+while IFS= read -r _assessor_line || [[ -n "$_assessor_line" ]]; do
+  _assessor_key="${_assessor_line%%=*}"
+  _assessor_value="${_assessor_line#*=}"
+  case "$_assessor_key" in
+    ASSESSOR_STATUS|ASSESSOR_VERDICT|EFFECTIVE_ASSESSORS|ASSESSOR_VERDICT_FILE|ASSESSOR_VERDICT_ENV|ROUND_NUM|WORKFLOW_PATH)
+      if [[ -z "${!_assessor_key:-}" ]]; then
+        printf -v "$_assessor_key" '%s' "$_assessor_value"
+      fi
+      ;;
+    WARN)
+      if [[ "$_assessor_parse_ok" != true ]]; then
+        printf '%s\n' "$_assessor_value"
+      fi
+      ;;
+  esac
+done <<<"${_assessor_out:-}"
+if [[ "${_assessor_rc:-0}" -eq 2 ]]; then
+  printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh configuration error (exit 2); aborting /design.**" >&2
+  exit 1
+fi
+if [[ "${_assessor_rc:-0}" -eq 0 && -z "${ASSESSOR_STATUS:-}" ]]; then
+  printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh result env missing/unreadable and stdout did not populate mandatory keys; aborting /design.**" >&2
+  exit 1
+fi
+if [[ "${_assessor_rc:-0}" -ne 0 && "${_assessor_rc:-0}" -ne 2 ]]; then
+  printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh failed (exit ${_assessor_rc}); aborting /design.**" >&2
+  exit 1
 fi
 ```
 
@@ -1126,7 +1124,7 @@ On `ASSESSOR_VERDICT=worse-majority` with `ASSESSOR_STATUS=ok` and `EFFECTIVE_AS
 
 Normative reference: `${CLAUDE_PLUGIN_ROOT}/skills/design/references/assessor.md`.
 
-Step 3.6 helper surface: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh` writes `plan.txt-original`, round snapshots, and `plan-review-round-cursor.txt` (contract: `snapshot-plan-round.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/dispatch-plan-assessors.sh` launches the three-assessor panel (contract: `dispatch-plan-assessors.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-assessor.sh` resolves the strict-majority WORSE verdict and `.env` sidecar (contract: `tally-plan-assessor.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/assess-plan-round.sh` orchestrates the round dispatch+tally path (contract: `assess-plan-round.md`). Offline harness coverage for this assessor lane lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-snapshot-plan-round.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-snapshot-plan-round.md`), `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-dispatch-plan-assessors.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-dispatch-plan-assessors.md`), `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-tally-plan-assessor.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-tally-plan-assessor.md`), and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-assess-plan-round.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-assess-plan-round.md`).
+Step 3.6 helper surface: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh` is the Step 3.6 phase driver wrapping `snapshot-plan-round.sh`, `assess-plan-round.sh`, `dispatch-plan-assessors.sh`, and `tally-plan-assessor.sh` (contract: `design-plan-quality-assessor.md`). `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/snapshot-plan-round.sh` writes `plan.txt-original`, round snapshots, and `plan-review-round-cursor.txt` (contract: `snapshot-plan-round.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/dispatch-plan-assessors.sh` launches the three-assessor panel (contract: `dispatch-plan-assessors.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/tally-plan-assessor.sh` resolves the strict-majority WORSE verdict and `.env` sidecar (contract: `tally-plan-assessor.md`); `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/assess-plan-round.sh` orchestrates the round dispatch+tally path (contract: `assess-plan-round.md`). Offline harness coverage for this assessor lane lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-plan-quality-assessor.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-plan-quality-assessor.md`), `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-snapshot-plan-round.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-snapshot-plan-round.md`), `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-dispatch-plan-assessors.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-dispatch-plan-assessors.md`), `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-tally-plan-assessor.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-tally-plan-assessor.md`), and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-assess-plan-round.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-assess-plan-round.md`).
 
 At the Step 3.6 success boundary on non-exiting paths only (Continue, skip, write-after-failed, or degraded-default-open), immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.6"` before entering Step 3b.
 
@@ -1463,6 +1461,7 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use 
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan-commands.sh` — Tier 2 + Tier 3 validator (TSV in). Sibling: `validate-plan-commands.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan.sh` — `ACTION=VALIDATE_PLAN_COMMANDS` driver (parser → validator; log copy). Sibling: `validate-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh` — Step 2b / re-emit post-plan phase driver; wraps `ACTION=EMIT_PLAN`, the optional HARD snapshot, and `invoke-plan-validator.sh` with one result-env contract. Sibling: `design-postplan-emit.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-postplan-emit.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-postplan-emit.md`).
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh` — Step 3.6 HARD-only plan-quality assessor phase driver; wraps `snapshot-plan-round.sh` post-Gate-B `write-after`, round rollback, and `assess-plan-round.sh` with one result-env contract (`.step3.6-assessor.env`). Sibling: `design-plan-quality-assessor.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-plan-quality-assessor.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-plan-quality-assessor.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh` — dispatches `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh` for the supplied plan file. `design-postplan-emit.sh` owns the `review_budget=quick` skip for `plan.txt`; Step 5c still guards composed-plan validation prompt-side. Sibling: `invoke-plan-validator.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.md`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry (+ `dry-runnable-scripts.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.

@@ -1,0 +1,87 @@
+# design-plan-quality-assessor.sh
+
+**Consumer**: `/design` Step 3.6 plan-quality assessor lane between Gate B settled paths and Step 3b.
+
+**Callers**: `skills/design/SKILL.md` Step 3.6 fence (orchestrator prints HARD `🔶` banner or non-HARD skip breadcrumb, then invokes this driver).
+
+## Argv
+
+| Flag | Required | Notes |
+|------|----------|-------|
+| `--design-tmpdir PATH` | yes | Canonicalized with `cd … && pwd -P` |
+| `--codex-present true\|false` | yes | Forwarded to `assess-plan-round.sh` on HARD paths |
+| `--cursor-present true\|false` | yes | Forwarded to `assess-plan-round.sh` on HARD paths |
+| `--timeout SECS` | no | Default `1860`; forwarded to `assess-plan-round.sh` |
+
+Unknown flags → exit `2`.
+
+## Derived / session inputs
+
+- `run-params.json` `workflow_path` (`jq` primary, `sed` fallback)
+- `CODEX_PRESENT` / `CURSOR_PRESENT` from argv (not re-read from session-env in the driver)
+- Child script overrides (hermetic harness):
+  - `LARCH_SNAPSHOT_PLAN_ROUND_SH` — default `$PLUGIN_ROOT/skills/design/scripts/snapshot-plan-round.sh`
+  - `LARCH_ASSESS_PLAN_ROUND_SH` — default `$PLUGIN_ROOT/skills/design/scripts/assess-plan-round.sh`
+
+Every `read-cursor`, `write-after`, rollback `write-cursor`, and assessor-round call resolves through these bindings.
+
+## Responsibilities
+
+1. Resolve `CLAUDE_PLUGIN_ROOT`, export `DESIGN_TMPDIR`, bind child script seams.
+2. Pause checkpoint (awk-only `ISSUE_NUMBER`; never `source` `source-env.sh`). On `.pause-requested`, write `ASSESSOR_STATUS=skipped` to the result env, then `exec design-pause-save.sh`.
+3. Non-HARD `workflow_path` → `ASSESSOR_STATUS=skipped`, `WORKFLOW_PATH` from run-params, `ROUND_NUM` from read-cursor (or `1`), write+emit, exit `0`.
+4. HARD: `read-cursor` → `write-after` for current round.
+5. `write-after` failure → `WARN=` with the post-Gate-B snapshot-failure sentence, `append-tool-failure.sh`, round rollback (`review-round-count.txt` = `ROUND_NUM-1`, best-effort `write-cursor`), `ASSESSOR_STATUS=write-after-failed`, write+emit, exit `0`.
+6. `write-after` success → `assess-plan-round.sh`; parse assessor KVs; when `ASSESSOR_VERDICT=not-worse` and `EFFECTIVE_ASSESSORS=0`, append the 0/3 `WARN=` line; write+emit, exit `0`.
+
+Stops before the WORSE Continue/Stop `AskUserQuestion` (LLM boundary in `SKILL.md`).
+
+## Result env (`.step3.6-assessor.env`)
+
+Dual-purpose: driver result-env and cross-turn state for the WORSE-Stop branch.
+
+Allowlist / stdout KV contract:
+
+- `ASSESSOR_STATUS`
+- `ASSESSOR_VERDICT`
+- `EFFECTIVE_ASSESSORS`
+- `ASSESSOR_VERDICT_FILE`
+- `ASSESSOR_VERDICT_ENV`
+- `ROUND_NUM`
+- `WORKFLOW_PATH`
+- `WARN` (optional, repeatable)
+
+## Exit codes
+
+| Code | When |
+|------|------|
+| `0` | Settled (any `ASSESSOR_STATUS`, including skips and degraded paths) |
+| `2` | Argv / configuration error |
+
+Never exit `1`.
+
+## `set -e` child-call invariant
+
+Under `set -euo pipefail`, every `"$SNAPSHOT_SH"` and `"$ASSESS_SH"` invocation uses local `set +e` capture. A child non-zero exit must not skip `_write_result_and_emit` on settled exit-`0` paths.
+
+## Orchestrator handoff
+
+Prompt-side `SKILL.md` Step 3.6 fence:
+
+1. Cheap `workflow_path` pre-read; when `_wp=HARD`, print `> **🔶 /design 3.6: assessor**` **before** driver invoke; when non-HARD, print `⏩ 3.6: assessor — workflow_path=…; skipped` then invoke.
+2. `set +e` capture to `_assessor_out` / `_assessor_rc` via `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh"` (qualified path — never bare script name).
+3. Initialize seven allowlisted routing keys to empty; `_assessor_parse_ok=false`.
+4. File-first read of `.step3.6-assessor.env` when present and not a symlink; on symlink, `printf '%s\n' "**⚠ Step 3.6: refusing symlink .step3.6-assessor.env; using stdout fallback.**" >&2` and skip file-read.
+5. File-read loop: allowlisted keys → `printf -v` + `_assessor_parse_ok=true`; `WARN)` → `printf '%s\n'` verbatim (chat-visible on successful file parse).
+6. Stdout merge: fill-only-unset for routing keys; `WARN)` only when `_assessor_parse_ok` is false.
+7. Fail-closed abort: rc=`2` config error; rc=`0` with empty `ASSESSOR_STATUS`; rc not in `{0,2}` catch-all — each prints stderr banner and `exit 1`.
+
+## Edit in sync
+
+Update together: `skills/design/SKILL.md` Step 3.6, `skills/design/references/assessor.md`, `skills/design/scripts/test-design-plan-quality-assessor.sh`, `scripts/test-design-structure.sh`, and `Makefile`.
+
+## Harness
+
+`skills/design/scripts/test-design-plan-quality-assessor.sh` (Makefile target: `test-design-plan-quality-assessor`).
+
+Cross-links: `assessor.md`, `assess-plan-round.md`, `snapshot-plan-round.md`, `lib-phase-driver.md`, `design-postplan-emit.md`.
