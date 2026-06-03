@@ -1,0 +1,16 @@
+Reviewing the branch diff and CI/Makefile wiring for the test-harnesses shard.
+### In-Scope Findings
+
+- **risk-integration** `.github/workflows/ci.yaml:169-171` — The `test-harnesses` job comment still says it “Installs only PyYAML via requirements-test-harnesses.txt”, but this branch adds `pytest==9.0.3` to that file specifically so shard 5 can run `test-merge-parity`. That mismatch is easy to miss during future dependency cleanup and undermines the #3339 goal of making pytest availability explicit in the harness gate. **Suggested fix:** Update the `test-harnesses` job comment to state that `requirements-test-harnesses.txt` installs PyYAML plus pytest for Python parity harnesses, matching `.github/workflows/requirements-test-harnesses.txt:1-5`.
+
+- **risk-integration** `python/test_merge_bash_parity.py:25-28`, `Makefile:372-373` — The new `test-merge-parity` target is now on the critical `test-harnesses-5` path next to `test-merge-pr`, but the file carries a module-level `pytest.mark.skipif(shutil.which("bash") is None, ...)`. Pytest exits 0 when every test is skipped, so a bash-less or misconfigured runner would make shard 5 go green without executing any merge-parity assertions—the exact “silent skip” failure mode called out in the Phase 7 plan for #3339. **Suggested fix:** Harden the Makefile target (for example, a small wrapper that fails when collected tests are all skipped, or run with an explicit minimum-pass assertion), or restrict the bash skip marker to local-only discovery while keeping the CI harness path fail-closed.
+
+- **risk-integration** `Makefile:372-373`, `Makefile:33-34` — `test-merge-parity` invokes `python3 -m pytest python/test_merge_bash_parity.py` from the repo root, while `py-test` runs `cd python && pytest` and relies on `python/pyproject.toml` for `pythonpath`. Today both paths work, but they depend on different pytest config-discovery behavior; a future move of `pyproject.toml` or pytest-version change could break shard 5 while the dedicated `python-tests` job stays green, recreating the “merge parity regression hidden in a separate gate” risk #3339 was meant to close. **Suggested fix:** Align `test-merge-parity` with the `py-test` invocation shape (`cd python && python3 -m pytest test_merge_bash_parity.py`) so both gates share one config entrypoint.
+
+### Out-of-Scope Observations
+
+- `docs/linting.md:33` still claims the `test-harnesses` matrix installs from `requirements-lint.txt`, but CI actually uses `.github/workflows/requirements-test-harnesses.txt`; that predates this branch and can confuse local setup even though CI itself is wired correctly.
+
+- `python/test_finalize_bash_parity.py` is added by this branch but only runs under `make py-test`, not co-located with `test-implement-finalize` on `test-harnesses-18`; that matches the plan’s split between a lightweight Python smoke test and the full bash harness, but finalize parity is not co-gated with merge parity the way #3339 wired merge.
+
+- The branch does not add a `docs/linting.md` entry for `make test-merge-parity`; local contributors running `make lint` / `make test-harnesses-5` now need `pip install -r .github/workflows/requirements-test-harnesses.txt` (not just PyYAML) or shard 5 fails on missing pytest.

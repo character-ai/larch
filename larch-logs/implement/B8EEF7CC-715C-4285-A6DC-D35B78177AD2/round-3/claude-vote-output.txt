@@ -1,0 +1,49 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- plan explicitly describes ship.py as glue orchestration; monolithic linear flow is the intended design
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate alias fields (branch/branch_name, issue/issue_number) are required by plan for bash state-file compatibility and RunContext.with_() semantics
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- bail-path specificity requires per-branch state writes; extracting a helper would not reduce the number of write sites
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- probing env at ship time is correct; session-stored binary availability flags would be stale on resume
+FINDING_12: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- Python path uses RunContext fields rather than manifest metadata by design; bash init recovery metadata not required in the same manifest fields
+FINDING_16: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- pr_url is an intentionally public GitHub URL; redaction covers sensitive free-text fields
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- detail goes through _redacted_result_payload; mapping unexpected exceptions to STALLED is acceptable fail-safe behavior
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- best-effort post-create comment refresh is explicitly documented as intentional in the plan
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- consistent with bash report subprocess behavior; no new risk introduced
+FINDING_22: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- commit-failed in REFRESH_SKIP_MERGE_OK mirrors bash ship-pr.sh parity as confirmed by test_merge_continues_when_pre_flush_commit_fails
+FINDING_23: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- SKILL.md new paragraph explicitly says not to read ship-pr-state.sh for Python routing; bash concepts remain for the default path only
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- postbump log refresh is intentionally best-effort; the main pre-push flush runs later in run_ship
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_26: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_27: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- 8-pre-ship probe is environment-neutral and runs before either driver; documentation nit only
+FINDING_28: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- full re-derive on re-invocation is the explicit plan design; plan states no --resume-phase
+FINDING_29: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_30: EXONERATE CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=weak UNCERTAIN=true -- cannot verify bash maps local-unfixable to exit 3 from the diff; ci_monitor catch-all mapping to STALLED is defensible
+FINDING_31: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- SKILL.md Python branch explicitly reads failed_run_id from JSON; autonomous CI-fix procedure is bash-backed and unchanged
+FINDING_32: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_33: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- RunContext.from_env() reads EXPECTED_SESSION_ID and EXPECTED_TMPDIR_BASENAME_PREFIX from env; no CLI arg needed for sourced session-env.sh values
+FINDING_34: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_35: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_36: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation that the safe default is unchanged; not a problem worth filing
+FINDING_37: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_38: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_39: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_40: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive no-concern observation; not worth filing as a GitHub issue
+FINDING_41: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_42: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_43: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- within the same-UID trust model documented in SECURITY.md; operator-supplied env is trusted by design
+FINDING_44: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- merge_result is always a config constant literal; practical injection risk is negligible
+FINDING_45: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_46: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_47: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive hardening observation; not a problem worth filing as a GitHub issue
+FINDING_48: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_49: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
