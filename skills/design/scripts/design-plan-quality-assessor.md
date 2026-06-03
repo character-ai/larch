@@ -33,7 +33,7 @@ Every `read-cursor`, `write-after`, rollback `write-cursor`, and assessor-round 
 4. HARD: `read-cursor` → `write-after` for current round.
 5. `write-after` failure → `WARN=` with the post-Gate-B snapshot-failure sentence, `append-tool-failure.sh`, round rollback (`review-round-count.txt` = `ROUND_NUM-1`, best-effort `write-cursor`), `ASSESSOR_STATUS=write-after-failed`, write+emit, exit `0`.
 6. `write-after` success → `assess-plan-round.sh`. Non-zero assess child exit → `append-tool-failure.sh`, `ASSESSOR_STATUS=assess-failed`, `WARN=` with assess exit code, write+emit, exit `0` (do not treat empty stdout as intentional skip). On assess exit `0`, parse assessor KVs; when `ASSESSOR_VERDICT=not-worse` and `EFFECTIVE_ASSESSORS=0`, append the 0/3 `WARN=` line; write+emit, exit `0`.
-7. Non-zero `read-cursor` → `WARN=` + `append-tool-failure.sh`, `ROUND_NUM=1` default. `write-cursor` rollback runs before decrementing `review-round-count.txt`; rollback failure adds `WARN=` without count decrement.
+7. Non-zero `read-cursor` → `WARN=` + `append-tool-failure.sh`, `ROUND_NUM=1` default. On `write-after` failure rollback: decrement `review-round-count.txt` to `ROUND_NUM-1`, then best-effort `write-cursor --value ROUND_NUM`; `write-cursor` failure adds `WARN=` without restoring the count.
 
 Stops before the WORSE Continue/Stop `AskUserQuestion` (LLM boundary in `SKILL.md`).
 
@@ -74,7 +74,7 @@ Prompt-side `SKILL.md` Step 3.6 fence:
 3. Initialize seven allowlisted routing keys to empty; `_assessor_parse_ok=false`.
 4. When driver stdout contains `design-plan-quality-assessor: result env write failed`, set `_assessor_force_stdout=true` and skip file-read (stale env must not win).
 5. File-first read of `.step3.6-assessor.env` when present, not a symlink, and `_assessor_force_stdout` is false; on symlink, `printf '%s\n' "**⚠ Step 3.6: refusing symlink .step3.6-assessor.env; using stdout fallback.**" >&2` and skip file-read.
-6. File-read loop: allowlisted keys → `printf -v` + `_assessor_parse_ok=true`; `WARN)` → `printf '%s\n'` verbatim (chat-visible on successful file parse).
+6. File-read loop: allowlisted keys → `printf -v`; set `_assessor_parse_ok=true` only when `ASSESSOR_STATUS` is populated from the file. `WARN)` → `printf '%s\n'` verbatim (chat-visible on successful file parse).
 7. Stdout merge: when `_assessor_force_stdout`, overwrite routing keys from stdout; otherwise fill-only-unset. `WARN)` when `_assessor_parse_ok` is false or `_assessor_force_stdout` is true.
 8. Fail-closed abort: rc=`2` config error; rc=`0` with empty `ASSESSOR_STATUS`; rc not in `{0,2}` catch-all — each prints stderr banner and `exit 1`.
 

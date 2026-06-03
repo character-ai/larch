@@ -194,9 +194,9 @@ _read_round_cursor() {
         parse_kv_from_output "$_cursor_out"
     else
         WARN_LINES+=("**⚠ design-plan-quality-assessor: snapshot read-cursor failed (exit ${_cursor_rc}); using ROUND_NUM=1.**")
-        _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-read-cursor.XXXXXX")
-        printf '%s\n' "$_cursor_out" >"$_cap"
         set +e
+        _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-read-cursor.XXXXXX")
+        printf '%s\n' "$_cursor_out" >"$_cap" 2>/dev/null || true
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 3.6" \
@@ -205,9 +205,9 @@ _read_round_cursor() {
             --category Warnings \
             --redact \
             --output-file "$_cap" \
-            >/dev/null 2>&1
+            >/dev/null 2>&1 || true
+        rm -f "$_cap" 2>/dev/null || true
         set -e
-        rm -f "$_cap"
     fi
 }
 
@@ -234,9 +234,9 @@ set -e
 if [[ "$_snap_rc" -ne 0 ]]; then
     local_warn="**⚠ 3.6: failed to snapshot post-Gate-B plan for round ${ROUND_NUM}; rolling back pending review-round state and skipping assessor.**"
     WARN_LINES+=("$local_warn")
-    _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-write-after.XXXXXX")
-    printf 'round=%s\n' "${ROUND_NUM}" >"$_cap"
     set +e
+    _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-write-after.XXXXXX")
+    printf 'round=%s\n' "${ROUND_NUM}" >"$_cap" 2>/dev/null || true
     "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site "design Step 3.6" \
@@ -245,19 +245,17 @@ if [[ "$_snap_rc" -ne 0 ]]; then
         --category Warnings \
         --redact \
         --output-file "$_cap" \
-        >/dev/null 2>&1
-    set -e
-    rm -f "$_cap"
+        >/dev/null 2>&1 || true
+    rm -f "$_cap" 2>/dev/null || true
     if [[ "${ROUND_NUM:-0}" -ge 1 ]]; then
-        printf '%s\n' "$((ROUND_NUM - 1))" >"$DESIGN_TMPDIR/review-round-count.txt"
-        set +e
+        printf '%s\n' "$((ROUND_NUM - 1))" >"$DESIGN_TMPDIR/review-round-count.txt" 2>/dev/null || true
         "$SNAPSHOT_SH" write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$ROUND_NUM" >/dev/null 2>&1
         _rollback_rc=$?
-        set -e
         if [[ "$_rollback_rc" -ne 0 ]]; then
             WARN_LINES+=("**⚠ design-plan-quality-assessor: write-cursor rollback failed (exit ${_rollback_rc}); review-round count may be inconsistent.**")
         fi
     fi
+    set -e
     ASSESSOR_STATUS=write-after-failed
     ASSESSOR_VERDICT=skipped
     EFFECTIVE_ASSESSORS=0
@@ -284,9 +282,9 @@ set -e
 
 if [[ "$_assess_rc" -ne 0 ]]; then
     WARN_LINES+=("**⚠ design-plan-quality-assessor: assess-plan-round.sh failed (exit ${_assess_rc}); settling as assess-failed.**")
-    _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-assess.XXXXXX")
-    printf '%s\n' "$_assess_out" >"$_cap"
     set +e
+    _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-assess.XXXXXX")
+    printf '%s\n' "$_assess_out" >"$_cap" 2>/dev/null || true
     "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
         --log "$DESIGN_TMPDIR/execution-issues.md" \
         --site "design Step 3.6" \
@@ -295,9 +293,9 @@ if [[ "$_assess_rc" -ne 0 ]]; then
         --category Warnings \
         --redact \
         --output-file "$_cap" \
-        >/dev/null 2>&1
+        >/dev/null 2>&1 || true
+    rm -f "$_cap" 2>/dev/null || true
     set -e
-    rm -f "$_cap"
     ASSESSOR_STATUS=assess-failed
     ASSESSOR_VERDICT=skipped
     EFFECTIVE_ASSESSORS=0
@@ -309,7 +307,31 @@ fi
 
 parse_kv_from_output "$_assess_out"
 
-[[ -n "$ASSESSOR_STATUS" ]] || ASSESSOR_STATUS=skipped
+if [[ -z "$ASSESSOR_STATUS" ]]; then
+    WARN_LINES+=("**⚠ design-plan-quality-assessor: assess-plan-round.sh exited 0 but ASSESSOR_STATUS missing; settling as assess-failed.**")
+    set +e
+    _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-assess-empty.XXXXXX")
+    printf '%s\n' "$_assess_out" >"$_cap" 2>/dev/null || true
+    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        --log "$DESIGN_TMPDIR/execution-issues.md" \
+        --site "design Step 3.6" \
+        --tool "assess-plan-round.sh" \
+        --exit-code 0 \
+        --category Warnings \
+        --redact \
+        --output-file "$_cap" \
+        >/dev/null 2>&1 || true
+    rm -f "$_cap" 2>/dev/null || true
+    set -e
+    ASSESSOR_STATUS=assess-failed
+    ASSESSOR_VERDICT=skipped
+    EFFECTIVE_ASSESSORS=0
+    ASSESSOR_VERDICT_FILE=""
+    ASSESSOR_VERDICT_ENV=""
+    _write_result_and_emit
+    exit 0
+fi
+
 [[ -n "$ASSESSOR_VERDICT" ]] || ASSESSOR_VERDICT=skipped
 [[ -n "$EFFECTIVE_ASSESSORS" ]] || EFFECTIVE_ASSESSORS=0
 

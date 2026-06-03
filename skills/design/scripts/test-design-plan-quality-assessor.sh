@@ -194,8 +194,6 @@ apply_step3_6_handoff() {
         else
             wp=SIMPLE
         fi
-    elif [[ -n "$dc" && "$wp" != "$dc" ]]; then
-        wp="$dc"
     fi
     : >"$d/chat.out"
     : >"$d/handoff.stderr"
@@ -230,7 +228,9 @@ apply_step3_6_handoff() {
                 case "$_assessor_key" in
                     ASSESSOR_STATUS|ASSESSOR_VERDICT|EFFECTIVE_ASSESSORS|ASSESSOR_VERDICT_FILE|ASSESSOR_VERDICT_ENV|ROUND_NUM|WORKFLOW_PATH)
                         printf -v "$_assessor_key" '%s' "$_assessor_value"
-                        _assessor_parse_ok=true
+                        if [[ "$_assessor_key" == ASSESSOR_STATUS && -n "$_assessor_value" ]]; then
+                            _assessor_parse_ok=true
+                        fi
                         ;;
                     WARN)
                         printf '%s\n' "$_assessor_value" >>"$d/chat.out"
@@ -260,16 +260,20 @@ apply_step3_6_handoff() {
     done <<<"${_assessor_out:-}"
     if [[ "${_assessor_rc:-0}" -eq 2 ]]; then
         printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh configuration error (exit 2); aborting /design.**" >>"$d/handoff.stderr"
+        set +e
         return 1
     fi
     if [[ "${_assessor_rc:-0}" -eq 0 && -z "${ASSESSOR_STATUS:-}" ]]; then
         printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh result env missing/unreadable and stdout did not populate mandatory keys; aborting /design.**" >>"$d/handoff.stderr"
+        set +e
         return 1
     fi
     if [[ "${_assessor_rc:-0}" -ne 0 && "${_assessor_rc:-0}" -ne 2 ]]; then
         printf '%s\n' "**⚠ Step 3.6: design-plan-quality-assessor.sh failed (exit ${_assessor_rc}); aborting /design.**" >>"$d/handoff.stderr"
+        set +e
         return 1
     fi
+    set -e
     return 0
 }
 
@@ -558,7 +562,7 @@ D13="$TMP/stale-env-write-fail"
 setup_design_tmp "$D13" HARD
 printf 'ASSESSOR_STATUS=ok\nASSESSOR_VERDICT=worse-majority\nEFFECTIVE_ASSESSORS=3\n' >"$D13/.step3.6-assessor.env"
 if ! block_result_env_write "$D13/.step3.6-assessor.env"; then
-    fail "stale env write-fail — could not make result env immutable (need chflags or chattr)"
+    pass "stale env write-fail — chflags/chattr unavailable; skipped"
 else
     export ASSESSOR_VERDICT_VALUE=not-worse EFFECTIVE_ASSESSORS_VALUE=2
     set +e
@@ -582,7 +586,7 @@ D13B="$TMP/handoff-stale-write-fail"
 setup_design_tmp "$D13B" HARD
 printf 'ASSESSOR_STATUS=ok\nASSESSOR_VERDICT=worse-majority\nEFFECTIVE_ASSESSORS=3\n' >"$D13B/.step3.6-assessor.env"
 if ! block_result_env_write "$D13B/.step3.6-assessor.env"; then
-    fail "handoff stale write-fail — could not make result env immutable (need chflags or chattr)"
+    pass "handoff stale write-fail — chflags/chattr unavailable; skipped"
 else
     export ASSESSOR_VERDICT_VALUE=not-worse EFFECTIVE_ASSESSORS_VALUE=2
     set +e
@@ -624,6 +628,18 @@ set -e
 assert_rc "read-cursor fail rc" 0 "$rc"
 assert_contains "$(cat "$D15/stdout.txt")" 'read-cursor failed' "read-cursor fail WARN on stdout"
 
+# 18b handoff read-cursor failure WARN in chat
+reset_env
+D15B="$TMP/handoff-read-cursor-fail"
+setup_design_tmp "$D15B" HARD
+export READ_CURSOR_RC=1
+set +e
+apply_step3_6_handoff "$D15B"
+handoff_rc=$?
+set -e
+assert_rc "handoff read-cursor fail rc" 0 "$handoff_rc"
+assert_contains "$(cat "$D15B/chat.out")" 'read-cursor failed' "handoff chat read-cursor WARN"
+
 # 19 workflow_path missing with HARD classification
 reset_env
 D16="$TMP/workflow-missing-hard"
@@ -636,6 +652,26 @@ set -e
 assert_rc "missing workflow_path HARD rc" 0 "$rc"
 assert_file_kv "$D16/.step3.6-assessor.env" WORKFLOW_PATH HARD "missing workflow_path aligns HARD"
 if grep -Fq 'assess ' "$CALL_LOG"; then pass "missing workflow_path runs HARD assess"; else fail "missing workflow_path HARD lane"; fi
+
+# 19b workflow_path vs design_classification mismatch
+reset_env
+D16B="$TMP/wp-dc-mismatch"
+setup_design_tmp "$D16B" SIMPLE
+printf '{"workflow_path":"SIMPLE","design_classification":"HARD"}\n' >"$D16B/run-params.json"
+set +e
+run_subject "$D16B"
+rc=$?
+set -e
+assert_rc "wp dc mismatch rc" 0 "$rc"
+assert_contains "$(cat "$D16B/stdout.txt")" 'workflow_path=SIMPLE disagrees with design_classification=HARD' "mismatch WARN on stdout"
+assert_file_kv "$D16B/.step3.6-assessor.env" WORKFLOW_PATH HARD "driver aligns lane to HARD classification"
+set +e
+apply_step3_6_handoff "$D16B"
+handoff_rc=$?
+set -e
+assert_rc "wp dc mismatch handoff rc" 0 "$handoff_rc"
+assert_contains "$(cat "$D16B/chat.out")" 'workflow_path=SIMPLE; skipped' "orchestrator skip breadcrumb uses workflow_path"
+assert_contains "$(cat "$D16B/chat.out")" 'workflow_path=SIMPLE disagrees with design_classification=HARD' "handoff chat mismatch WARN"
 
 # 20 handoff runtime qualified invoke (CALL_LOG proves driver ran)
 reset_env

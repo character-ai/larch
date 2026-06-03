@@ -1062,8 +1062,6 @@ if [ -z "$_wp" ]; then
   else
     _wp=SIMPLE
   fi
-elif [ -n "$_dc" ] && [ "$_wp" != "$_dc" ]; then
-  _wp="$_dc"
 fi
 if [ "$_wp" = "HARD" ]; then
   printf '%s\n' "> **🔶 /design 3.6: assessor**"
@@ -1099,7 +1097,9 @@ if [[ -f "$DESIGN_TMPDIR/.step3.6-assessor.env" && "$_assessor_force_stdout" != 
       case "$_assessor_key" in
         ASSESSOR_STATUS|ASSESSOR_VERDICT|EFFECTIVE_ASSESSORS|ASSESSOR_VERDICT_FILE|ASSESSOR_VERDICT_ENV|ROUND_NUM|WORKFLOW_PATH)
           printf -v "$_assessor_key" '%s' "$_assessor_value"
-          _assessor_parse_ok=true
+          if [ "$_assessor_key" = ASSESSOR_STATUS ] && [ -n "$_assessor_value" ]; then
+            _assessor_parse_ok=true
+          fi
           ;;
         WARN)
           printf '%s\n' "$_assessor_value"
