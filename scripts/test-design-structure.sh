@@ -272,6 +272,10 @@ printf '%s\n' "$step0pre_block" | grep -Fq 'unexpanded template literal' \
   || fail 'Step 0-pre must reject unexpanded CLAUDE_PLUGIN_ROOT template literal'
 printf '%s\n' "$step0pre_block" | grep -Fq 'parse-design-argv.sh not executable' \
   || fail 'Step 0-pre must verify parse-design-argv.sh is executable before invoke'
+# shellcheck disable=SC2016 # Markdown literal; ${CLAUDE_PLUGIN_ROOT} must stay unexpanded in the forbidden pattern.
+if printf '%s\n' "$step0pre_block" | grep -Fq "= '\${CLAUDE_PLUGIN_ROOT}'"; then
+  fail 'Step 0-pre must not compare CLAUDE_PLUGIN_ROOT against a bare ${CLAUDE_PLUGIN_ROOT} sentinel (loader expands it; use a de-tokenized literal)'
+fi
 contains "$PARSE_DESIGN_ARGV_SH" 'assert_safe_kv_value' 'parse-design-argv.sh missing newline guard on emitted values'
 
 DESIGN_DRIVER_SH="$REPO_ROOT/skills/design/scripts/design-driver.sh"
