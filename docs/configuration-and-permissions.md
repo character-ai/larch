@@ -203,6 +203,16 @@ tracked separately in OOS #3369.
 
 Darwin-only mutex delay remains **`LARCH_EXTERNAL_SERIAL_LOCK_DELAY`** (default `0.5` seconds) via `external_serial_lock_release_after`.
 
+### `LARCH_CURSOR_RETRY_EMPTY_RESULT`
+
+When set to `0`, disables the cursor launcher's exit-0 empty-`.result` transient retry inside `scripts/launch-review.sh` (the branch that re-invokes `cursor agent` when the JSON envelope has an empty, null, or absent `.result` while still exiting 0). Any other value (including unset) leaves retry enabled. Empty-result retries share the exit-code `TRANSIENT_ATTEMPT` counter (bounded by `MAX_TRANSIENT_RETRIES=2`), so per auth pass the worst case is at most three total `cursor agent` backend calls across mixed exit-code transients and empty-`.result` responses.
+
+**Diagnostic capture is independent:** even with retry disabled, a terminal empty `.result` still writes `${OUTPUT}.diag` and promotes `CURSOR_EMPTY_RESPONSE`.
+
+### `LARCH_CURSOR_LAUNCH_JITTER_MS`
+
+Per-process random delay (milliseconds) applied once before the cursor auth/retry loop in `scripts/launch-review.sh`, in the range `0..N`, to de-synchronize parallel cursor reviewer launches. Default `250`. Non-numeric or empty values fall back to `250`. Set to `0` to disable jitter entirely.
+
 ### `LARCH_CODEX_EFFORT`
 
 Codex reasoning effort for all Codex launches (reviews, sketches, voting). Accepted values: `minimal`, `low`, `medium`, `high`. Default `high` (matches the plugin's `codex_effort` userConfig default).

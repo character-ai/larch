@@ -1,0 +1,16 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- inline block is large but functional; helper extraction is a style preference that adds indirection without fixing a bug
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- whitespace-only cursor result has never been observed; tightening probe adds complexity for a hypothetical
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- cursor's API contract defines .result as string; non-string result is speculative and cursor tooling enforces schema
+FINDING_7: YES CORRECTNESS=uncertain SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- test script gained significant new cases but MD sibling update not visible in diff; uncertain whether file exists
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- speculative CI performance concern with no concrete evidence of slowdown; suggested fix is advisory monitoring only
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- literal-0-disables is the established codebase convention used by all other env knobs and explicitly documented; false/no semantics would diverge from codebase pattern
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- re-reading a stable env var each loop iteration is functionally harmless; plan's read-once language was a style preference not a correctness requirement
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- reviewer's own finding states no practical collision exists and no change is required; not a real problem to file
