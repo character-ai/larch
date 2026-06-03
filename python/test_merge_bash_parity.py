@@ -34,6 +34,14 @@ def _mock_refresh_skip_ok(*_a: object, **_k: object) -> run_logs.RefreshSkip:
     return run_logs.RefreshSkip(skipped=False, reason="")
 
 
+def _mock_ensure_head_behind(*_a: object, **_k: object) -> gh.MergeState:
+    return gh.MergeState("BEHIND", "abc")
+
+
+def _mock_version_gate_none(*_a: object, **_k: object) -> None:
+    return None
+
+
 def _empty_str_lists() -> list[list[str]]:
     return []
 
@@ -98,8 +106,8 @@ def test_python_merge_behind_emits_admin_merged(
         ],
     )
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
-    monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", lambda *_a, **_k: gh.MergeState("BEHIND", "abc"))
-    monkeypatch.setattr(merge_module, "_version_race_gate", lambda *_a, **_k: None)
+    monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
     ctx = RunContext(
         branch="feat",
         issue="1",

@@ -297,21 +297,6 @@ assert_stdout_matches() {
     fi
 }
 
-assert_stdout_line_count() {
-    local case_name="$1"
-    local pattern="$2"
-    local expected="$3"
-    local label="$4"
-
-    local actual
-    actual="$(grep -Ec "$pattern" "$TMPDIR_BASE/$case_name/stdout.log" 2>/dev/null || true)"
-    if [[ "$actual" == "$expected" ]]; then
-        ok "$label"
-    else
-        fail "$label (expected $expected, got $actual)"
-        sed 's/^/    stdout: /' "$TMPDIR_BASE/$case_name/stdout.log"
-    fi
-}
 
 assert_command_count() {
     local case_name="$1"
