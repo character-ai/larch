@@ -1,0 +1,20 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dead usage() and documented exit 2 are drift, but no operator path hits them today
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- numeric-first path overwrites joined tail with first token only, silently discarding extra argv words
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Step 0-pre depends on orchestrator substitution of PUBLIC_ARGV_WORDS with no structural pin against literal or mis-quoted expansion
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- exit-3 harness only denies two success KV prefixes though contract requires stdout contain only VALIDATION_ERROR
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- sole empty-string positional is an abnormal argv shape and matches documented none semantics
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- unescaped newlines in emitted KV values can spoof additional keys in the Step 0-pre read loop
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Step 0-pre accepts arbitrary KEY=value lines from captured stdout without allowlist or fail-closed rejection
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- success path binds defaults when expected KVs are missing from truncated or partial parser stdout
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- harness lacks lone -- terminator and --run-id with verbal tail cases called out in the plan surface
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- test-design-structure.sh does not grep-pin Step 0-pre set +e and explicit _argv_rc capture documented in parse-design-argv.md
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- exact eight-line stdout assertion is useful hardening but redundant with stronger per-key and exit-3 checks
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- empty-only CLAUDE_PLUGIN_ROOT guard misses literal unexpanded ${CLAUDE_PLUGIN_ROOT} before parser invoke
+FINDING_13: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan explicitly preserves POSITIONAL_KIND=none empty-invocation behavior rather than adding a new abort
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- intro Flags prose is stale but Step 0-pre parser authority is wired; a one-line note is polish not a defect
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- --run-id is not wired into path-building log slug validation in this change set
+OOS_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of in-scope FINDING_4; no separate issue needed beyond that harness fix
+OOS_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent CI parity gap largely subsumed by FINDING_10 actionable pin
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- flags.md positional tail still omits -- terminator and parser-only semantics despite new parser pointer
+OOS_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Step 0a guard weakness predates this refactor; FINDING_12 covers the introduced surface
+OOS_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- runtime validation_error already emits only VALIDATION_ERROR; gap is harness-only per FINDING_4

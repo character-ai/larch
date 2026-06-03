@@ -1,0 +1,6 @@
+[sergey-zhupanov/implementing-design-refactor-extract-pub-3249 567db2d5c] Fixes #3249: Extract /design Step 0-pre into parse-design-argv phase driver
+ 8 files changed, 452 insertions(+), 11 deletions(-)
+ create mode 100644 skills/design/scripts/parse-design-argv.md
+ create mode 100755 skills/design/scripts/parse-design-argv.sh
+ create mode 100644 skills/design/scripts/test-parse-design-argv.md
+ create mode 100755 skills/design/scripts/test-parse-design-argv.sh

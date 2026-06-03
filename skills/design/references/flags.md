@@ -12,6 +12,8 @@
 
 ## Public `/design` flags
 
+Step 0-pre validation and positional classification are implemented by `skills/design/scripts/parse-design-argv.sh`; this file remains the normative allowlist and tier-mapping source.
+
 **Tier**: SIMPLE is the default (no tier flag). `--hard` is the only public tier flag and maps to `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`. When `--hard` is absent, the orchestrator resolves `design_classification=SIMPLE`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE` (no sketches; full plan-review panel per `SKILL.md` Step 2a).
 
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
@@ -24,7 +26,7 @@
 
 **Mutual exclusion**: at most one `--hard` on argv; duplicate `--hard` → hard error before Step 0. Any unrecognized or disallowed leading public `--` flag → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` is independent of all other public flags.
 
-**Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first).
+**Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, only that token becomes `POSITIONAL_VALUE`; any later tokens are ignored (see `parse-design-argv.md`).
 
 ## Plan-size thresholds (Step 2b.5)
 

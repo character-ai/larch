@@ -1,0 +1,10 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+structure	code-quality	1	4	4	0	1.000000
+correctness	correctness	1	6	4	0	0.666667
+testing	risk-integration	1	6	5	0	0.833333
+security	security	1	4	3	0	0.750000
+edge-cases	correctness	1	7	5	0	0.714286
+plan-fidelity	architecture	1	3	3	0	1.000000
+dyn-bash32-portability	code-quality	1	0	0	0	n/a
+dyn-skill-fence-kv-protocol	risk-integration	1	3	3	0	1.000000
+dyn-partial-emission-coverage	architecture	1	2	2	0	1.000000

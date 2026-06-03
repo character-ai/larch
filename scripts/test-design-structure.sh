@@ -15,6 +15,7 @@ PLAN_REVIEW_LOOP_SH="$PLAN_LOOP_SH"
 RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
 RUN_STEP3_MD="$REPO_ROOT/skills/design/scripts/run-step3-review.md"
 DESIGN_POSTPLAN_EMIT_SH="$REPO_ROOT/skills/design/scripts/design-postplan-emit.sh"
+PARSE_DESIGN_ARGV_SH="$REPO_ROOT/skills/design/scripts/parse-design-argv.sh"
 DESIGN_PLAN_QUALITY_ASSESSOR_SH="$REPO_ROOT/skills/design/scripts/design-plan-quality-assessor.sh"
 MAKEFILE="$REPO_ROOT/Makefile"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
@@ -247,6 +248,31 @@ TR_LOOP_SH="$REPO_ROOT/skills/design/scripts/test-plan-review-loop.sh"
 TR_LOOP_MD="$REPO_ROOT/skills/design/scripts/test-plan-review-loop.md"
 [[ -x "$TR_LOOP_SH" ]] || fail "(14c13) test-plan-review-loop.sh missing or not executable"
 [[ -f "$TR_LOOP_MD" ]] || fail "(14c14) test-plan-review-loop.md missing"
+
+[[ -x "$PARSE_DESIGN_ARGV_SH" ]] || fail 'parse-design-argv.sh must be executable'
+contains "$PARSE_DESIGN_ARGV_SH" 'VALIDATION_ERROR=' 'parse-design-argv.sh missing validation-error output'
+contains "$PARSE_DESIGN_ARGV_SH" 'POSITIONAL_KIND=' 'parse-design-argv.sh missing positional-kind output'
+grep -Fq 'parse-design-argv.sh' "$SKILL_MD" || fail 'SKILL.md missing parse-design-argv.sh Step 0-pre wiring'
+if ! grep -Fq 'POSITIONAL_KIND' "$SKILL_MD" || grep -Fq 'remaining tokens after flags' "$SKILL_MD"; then
+  fail 'Step 0b must consume POSITIONAL_KIND from 0-pre, not re-parse argv tail'
+fi
+step0pre_block=$(awk '/^### 0-pre /,/^### 0a /' "$SKILL_MD")
+printf '%s\n' "$step0pre_block" | grep -Fq 'set +e' \
+  || fail 'Step 0-pre fence missing set +e around parse-design-argv.sh capture'
+printf '%s\n' "$step0pre_block" | grep -Fq '_argv_rc=$?' \
+  || fail 'Step 0-pre fence missing explicit _argv_rc capture'
+printf '%s\n' "$step0pre_block" | grep -Fq 'VALIDATION_ERROR' \
+  || fail 'Step 0-pre fence missing VALIDATION_ERROR handling'
+printf '%s\n' "$step0pre_block" | grep -Fq '<PUBLIC_ARGV_WORDS>' \
+  || fail 'Step 0-pre fence must invoke parse-design-argv.sh via <PUBLIC_ARGV_WORDS> substitution'
+if printf '%s\n' "$step0pre_block" | grep -Fq "\$ARGUMENTS"; then
+  fail "Step 0-pre fence must not re-parse \$ARGUMENTS"
+fi
+printf '%s\n' "$step0pre_block" | grep -Fq 'unexpanded template literal' \
+  || fail 'Step 0-pre must reject unexpanded CLAUDE_PLUGIN_ROOT template literal'
+printf '%s\n' "$step0pre_block" | grep -Fq 'parse-design-argv.sh not executable' \
+  || fail 'Step 0-pre must verify parse-design-argv.sh is executable before invoke'
+contains "$PARSE_DESIGN_ARGV_SH" 'assert_safe_kv_value' 'parse-design-argv.sh missing newline guard on emitted values'
 
 DESIGN_DRIVER_SH="$REPO_ROOT/skills/design/scripts/design-driver.sh"
 [[ -x "$DESIGN_POSTPLAN_EMIT_SH" ]] || fail "design-postplan-emit.sh must be executable"
@@ -638,9 +664,7 @@ echo "PASS: (2974) Step 1d.7 outline approval anchors OK"
 # Check 21 (#2930): Gate B auto-apply default and --manual opt-out pins.
 grep -Fq '[--brainstorm] [--manual|-m] [--no-dedup]' "$SKILL_MD" \
   || fail "(2930) SKILL.md argument-hint missing [--manual|-m] between brainstorm and no-dedup"
-# shellcheck disable=SC2016 # Markdown literal contains backticks and "$manual" text intentionally.
-grep -Fq 'Parse public flags (`--hard`, `-p`/`--partition`, `--brainstorm`, `--manual|-m`, `--no-dedup`, `--run-id`)' "$SKILL_MD" \
-  || fail "(FINDING_5) SKILL.md Step 0b public-flag parse list missing --manual|-m"
+contains "$PARSE_DESIGN_ARGV_SH" '--manual | -m)' '(FINDING_5) parse-design-argv.sh missing --manual|-m branch'
 # shellcheck disable=SC2016 # Markdown table cell literal
 grep -Fq '| `--manual` / `-m` |' "$SKILL_MD" \
   || fail "(2930) SKILL.md compact flag table missing --manual/-m row"

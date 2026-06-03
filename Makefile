@@ -15,6 +15,7 @@
 .PHONY: test-step-7a
 .PHONY: test-stall-recovery-report test-step-18b-final-report
 .PHONY: test-design-pause-resume
+.PHONY: test-parse-design-argv
 .PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 .PHONY: test-persist-implement-run-flags
@@ -100,7 +101,7 @@ test-harnesses-14: test-dispatch-plan-review-panel test-step-7a test-wait-for-re
 
 test-harnesses-15: test-implement-bootstrap test-implement-bootstrap-invoke test-validate-citations-budget test-lint-fix-loop test-validate-research-output test-render-findings-batch test-generate-topology-docs test-step3-review-cap test-clarify-state test-commit-changelog test-lint-gh-body-inline test-compose-collector-failure-log test-render-cost-line-realism test-render-cost-line-callsites test-resolve-repo test-run-step2-dispatch test-persist-implement-run-flags test-implement-anti-polling-rule
 
-test-harnesses-16: test-dispatch-code-voters-happy test-timing-ledger test-step-telemetry-mark test-collect-agent-retry test-review-core test-validate-citations test-drop-bump-commit test-lint-skill-invocations test-verify-skill-called test-implement-structure test-run-step5-review test-design-driver test-design-publish test-design-postplan-emit test-upgrade-larch-retention test-render-lane-status test-agent-model-args test-git-push test-pause-skill test-lib-phase-driver test-implement-step2-routing test-ballot-parse
+test-harnesses-16: test-dispatch-code-voters-happy test-timing-ledger test-step-telemetry-mark test-collect-agent-retry test-review-core test-validate-citations test-drop-bump-commit test-lint-skill-invocations test-verify-skill-called test-implement-structure test-run-step5-review test-design-driver test-design-publish test-design-postplan-emit test-parse-design-argv test-upgrade-larch-retention test-render-lane-status test-agent-model-args test-git-push test-pause-skill test-lib-phase-driver test-implement-step2-routing test-ballot-parse
 
 test-harnesses-17: test-dispatch-plan-voters test-tally-code-votes test-larch-log test-hook-anti-read-poll test-dispatch-code-voters-retry-claude test-token-claude-source test-dispatch-code-voters-retry-codex-success test-parse-input test-tracking-issue-read-sentinel test-scout-plan-archetypes-wrapper test-write-run-params test-lib-failed-agent-stderr-tail test-ci-failed-jobs test-run-step1-plan-log test-decompose-aggregator test-invoke-plan-validator test-render-assessor-prompt test-plan-adequacy-audit test-lib-design-round-artifacts
 
@@ -441,6 +442,9 @@ test-design-publish:
 
 test-design-postplan-emit:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-postplan-emit.sh
+
+test-parse-design-argv:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-parse-design-argv.sh
 
 test-upgrade-larch-retention:
 	bash scripts/harness-timer.sh $@ bash skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh
