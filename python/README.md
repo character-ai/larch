@@ -1,6 +1,6 @@
-# ship-pr Python foundation (Phase 1–2)
+# ship-pr Python foundation (Phase 1–7)
 
-Flat `python/` tree for the in-progress `scripts/ship-pr.sh` → Python rework. **Runtime
+Flat `python/` tree for the `scripts/ship-pr.sh` → Python rework. **Runtime
 modules import stdlib only** (Python ≥ 3.12). Linters and pytest are dev/CI-only and are never
 imported by runtime code.
 
@@ -17,8 +17,8 @@ imported by runtime code.
 - `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)
 - `ci_monitor.py` — Phase 6 CI poll + classify + collect + fixer-waterfall + GOTO-Rebase signal
-  (not wired into the live `/implement` path until Phase 7)
-- **Phase 5** (dev/CI-only until Phase 7): `run_logs.py`, `tokens.py`, `tracking_issue.py`,
+- `ship.py`, `finalize.py` — Phase 7 driver/CLI and post-merge/teardown finalization, wired behind `LARCH_SHIP_PR_IMPL=python` while default `bash` soaks.
+- **Phase 5**: `run_logs.py`, `tokens.py`, `tracking_issue.py`,
   `pr_body.py`, `push.py`, `pr.py`, `oos.py`, `merge.py` — PR/merge/logging ports with split
   `flush_logs_pre` (may commit log batches) vs `flush_logs_post` (tmpdir-only). `merge.py`
   classifies the eight `merge-pr.sh` `MERGE_RESULT` literals; driver-only `already_merged` is
@@ -53,7 +53,7 @@ for tests.
 Python parity tests require **bash** for shell helper comparisons. CI `python-tests` installs the required shell tooling;
 local runs without it skip those cases via `pytest.mark.skipif`.
 
-The live `/implement` path still uses bash until Phase 7 (`LARCH_SHIP_PR_IMPL=python`).
+The live `/implement` path is now selectable: `LARCH_SHIP_PR_IMPL=bash` remains the default, while `LARCH_SHIP_PR_IMPL=python` routes Step 8+ through `python/ship.py`. The Phase 7 plan assumes the post-#3368 tree and folds in #3339's merge-parity/log-flush integration; flipping the default to Python and removing `scripts/ship-pr.sh` remain deferred until after soak.
 
 ## Phase 1 wiring outside `python/`
 

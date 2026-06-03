@@ -59,8 +59,29 @@ read_state() {
     ' "$STATE_FILE"
 }
 
+read_finalize() {
+    local key=$1 default=${2-}
+    [ -f "$FINALIZE_FILE" ] || { printf '%s\n' "$default"; return; }
+    awk -F= -v k="$key" -v d="$default" '
+        $1 == k {
+            print substr($0, index($0, "=") + 1)
+            found = 1
+            exit
+        }
+        END {
+            if (!found) print d
+        }
+    ' "$FINALIZE_FILE"
+}
+
 write_finalize_state() {
     local tmp key default
+    if [ -s "$FINALIZE_FILE" ] \
+        && [ -n "$(read_finalize PR_NUMBER)" ] \
+        && [ -z "$(read_state PR_NUMBER)" ]; then
+        echo "restore-finalize-state.sh: existing finalize-state.sh has PR_NUMBER; leaving authoritative state unchanged" >&2
+        return
+    fi
     tmp="$FINALIZE_FILE.tmp.$$"
     {
         for key in "${LARCH_FINALIZE_STATE_KEYS[@]}"; do

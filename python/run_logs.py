@@ -9,6 +9,7 @@ import re
 import shutil
 import sys
 import tempfile
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -41,6 +42,7 @@ class Manifest:
     steps_ran: dict[str, Any]
     created_at: str = ""
     updated_at: str = ""
+    extra: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -229,14 +231,16 @@ def init_run(
 
 
 def _manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
-    return {
+    data = dict(manifest.extra or {})
+    data.update({
         "status": manifest.status,
         "version": manifest.version,
         "run_id": manifest.run_id,
         "steps_ran": manifest.steps_ran,
         "created_at": manifest.created_at,
         "updated_at": manifest.updated_at,
-    }
+    })
+    return data
 
 
 def _dict_to_manifest(data: dict[str, Any]) -> Manifest:
@@ -249,6 +253,19 @@ def _dict_to_manifest(data: dict[str, Any]) -> Manifest:
         steps_ran=steps,
         created_at=str(data.get("created_at", "")),
         updated_at=str(data.get("updated_at", "")),
+        extra={
+            key: value
+            for key, value in data.items()
+            if key
+            not in {
+                "status",
+                "version",
+                "run_id",
+                "steps_ran",
+                "created_at",
+                "updated_at",
+            }
+        },
     )
 
 
@@ -280,6 +297,7 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
         steps_ran=steps,
         created_at=created_at,
         updated_at=updated_at,
+        extra=current.extra,
     )
     _write_manifest(ctx, updated)
     return updated
@@ -298,6 +316,7 @@ def _recover_manifest_from_run_dir(run_id: str, run_dir: Path) -> Manifest | Non
         version="1",
         run_id=run_id,
         steps_ran=steps,
+        extra={"recovery_reason": "manifest_lost_mid_run"},
     )
 
 
@@ -333,17 +352,29 @@ def _write_manifest(ctx: RunContext, manifest: Manifest) -> None:
 
 
 def _pre_push_probe(ctx: RunContext) -> RefreshSkip:
-    if not ctx.state_file:
-        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_STATE_FILE_MISSING)
-    merge_result = _read_state_kv(ctx.state_file, "MERGE_RESULT")
+    tmpdir = Path(ctx.tmpdir)
+    finalize_state = tmpdir / "finalize-state.sh"
+    if ctx.state_file:
+        merge_result = _read_state_kv(ctx.state_file, "MERGE_RESULT")
+        run_id = _read_state_kv(ctx.state_file, "RUN_ID")
+        no_logs_commit = _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") == "true"
+    else:
+        merge_result = ctx.merge_result
+        run_id = ctx.run_id
+        no_logs_commit = ctx.no_logs_commit
+    if not merge_result:
+        merge_result = _read_kv_file(finalize_state, "MERGE_RESULT")
+    if not run_id:
+        run_id = _read_kv_file(finalize_state, "RUN_ID")
+    if (tmpdir / "post-merge-sentinel").is_file() and not merge_result:
+        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
     if merge_result in config.POST_MERGE_MERGE_RESULTS:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
-    run_id = _read_state_kv(ctx.state_file, "RUN_ID")
     if not run_id:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_RUN_ID)
     if not validate_run_id_slug(run_id):
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_INVALID_RUN_ID)
-    if _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") == "true":
+    if no_logs_commit:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_LOGS_COMMIT)
     return RefreshSkip(skipped=False, reason="")
 
@@ -465,10 +496,31 @@ def _execution_issue_record(
 def _write_final_report(runner: Runner, ctx: RunContext) -> None:
     if not _WRITE_FINAL_REPORT.is_file():
         return
-    _ = runner.run(
+    result = runner.run(
         ["bash", str(_WRITE_FINAL_REPORT), "--implement-tmpdir", ctx.tmpdir],
         cwd=str(_REPO_ROOT),
     )
+    if result.returncode != 0:
+        msg = "write-final-report.sh failed"
+        raise ShipError(msg)
+
+
+def write_final_report_comment(runner: Runner, ctx: RunContext) -> None:
+    if not _WRITE_FINAL_REPORT.is_file():
+        return
+    result = runner.run(
+        [
+            "bash",
+            str(_WRITE_FINAL_REPORT),
+            "--implement-tmpdir",
+            ctx.tmpdir,
+            "--comment-only",
+        ],
+        cwd=str(_REPO_ROOT),
+    )
+    if result.returncode != 0:
+        msg = "write-final-report.sh --comment-only failed"
+        raise ShipError(msg)
 
 
 def flush_logs_pre(
@@ -491,7 +543,8 @@ def flush_logs_pre(
         step_label="pre-push",
         source_label="execution-issues.md pre-push refresh",
     )
-    _write_final_report(runner, ctx)
+    with suppress(ShipError):
+        _write_final_report(runner, ctx)
     _render_ledger_reports(runner, ctx, log_root)
     _render_token_timing_batches(ctx, log_root)
     _ = capture_session_transcript(ctx, runner, defer_commit=True)
@@ -523,23 +576,31 @@ def flush_logs_post(
     """Post-merge tmpdir-only flush; never git-commits."""
     manifest = load_or_recover_manifest(ctx)
     log_root = Path(ctx.tmpdir) / "larch-logs"
-    if runner is not None:
-        _write_final_report(runner, ctx)
+    resolved = merge_result or _read_state_kv(ctx.state_file, "MERGE_RESULT") or ctx.merge_result
+    finalize = resolved in config.POST_MERGE_MERGE_RESULTS
+    steps = dict(manifest.steps_ran)
+    pr_number = _read_state_kv(ctx.state_file, "PR_NUMBER") if ctx.state_file else ""
+    if not pr_number and ctx.pr_number is not None:
+        pr_number = str(ctx.pr_number)
+    if pr_number and str(pr_number).isdigit():
+        steps["pr_number"] = int(pr_number)
     try:
+        if runner is not None:
+            _write_final_report(runner, ctx)
         if runner is not None:
             _render_ledger_reports(runner, ctx, log_root)
         _render_token_timing_batches(ctx, log_root)
     except ShipError:
         return RefreshSkip(skipped=True, reason="redaction-failed")
-    resolved = merge_result or _read_state_kv(ctx.state_file, "MERGE_RESULT")
-    finalize = resolved in config.POST_MERGE_MERGE_RESULTS
+    status = config.MANIFEST_STATUS_DONE if finalize else manifest.status
     updated = Manifest(
-        status=config.MANIFEST_STATUS_DONE if finalize else manifest.status,
+        status=status,
         version=manifest.version,
         run_id=manifest.run_id,
-        steps_ran=manifest.steps_ran,
+        steps_ran=steps,
         created_at=manifest.created_at,
         updated_at=manifest.updated_at,
+        extra={**(manifest.extra or {}), **({"pr_number": int(pr_number)} if str(pr_number).isdigit() else {})},
     )
     _write_manifest(ctx, updated)
     return RefreshSkip(skipped=False, reason="")
@@ -607,7 +668,7 @@ def capture_session_transcript(
     log_root = Path(ctx.tmpdir) / "larch-logs"
     issue_log = Path(ctx.tmpdir) / "execution-issues.md"
     source = os.environ.get("LARCH_CLAUDE_SOURCE_FILE", "")
-    no_logs = _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") or "false"
+    no_logs = _read_state_kv(ctx.state_file, "NO_LOGS_COMMIT") or ("true" if ctx.no_logs_commit else "false")
     if _CAPTURE_SESSION_TRANSCRIPT.is_file():
         _ = runner.run(
             [

@@ -156,6 +156,7 @@ def test_merge_continues_when_flush_skips_missing_state(
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
     monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(
         tmpdir=str(tmp_path),
@@ -434,18 +435,20 @@ def test_merge_pr_emits_ci_not_ready(
     assert out.result == config.MERGE_RESULT_CI_NOT_READY
 
 
-def test_merge_pr_emits_version_already_published(
+def test_merge_pr_ignores_obsolete_version_race_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
-    runner = RecordingRunner(responses=_open_pr_responses())
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
+        ],
+    )
     def fake_version_race(*_a: object, **_k: object) -> merge_module.MergeResult:
-        return merge_module.MergeResult(
-            result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
-            error="race",
-        )
+        raise AssertionError("obsolete version race gate must not run")
 
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
@@ -454,7 +457,7 @@ def test_merge_pr_emits_version_already_published(
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
-    assert out.result == config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
 
 
 def test_merge_noop_preserves_admin_merged_from_state(tmp_path: Path) -> None:
@@ -576,45 +579,9 @@ def test_merge_continues_when_pre_flush_commit_fails(
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
-    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
-
-
-def test_version_race_gate_version_already_published(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    runner = RecordingRunner(
-        responses=[
-            CommandResult(("git", "fetch"), 0, "", "", 0.01),
-            CommandResult(("git", "show"), 0, '{"version": "1.2.3"}', "", 0.01),
-            CommandResult(("git", "fetch"), 0, "", "", 0.01),
-            CommandResult(("git", "show"), 0, '{"version": "1.2.3"}', "", 0.01),
-        ],
-    )
-    def fake_log_bump(*_a: object, **_k: object) -> git_module.LogSubjects:
-        return git_module.LogSubjects(("Bump version to 1.2.3",))
-
-    monkeypatch.setattr(git_module, "try_log_subjects", fake_log_bump)
-    monkeypatch.setattr(git_module, "is_ancestor", _mock_true)
-    out = merge_module._version_race_gate(runner, cwd=None)  # pyright: ignore[reportPrivateUsage]
-    assert out is not None
-    assert out.result == config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED
-
-
-def test_version_race_gate_no_bump_commits_returns_none(
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    runner = RecordingRunner(
-        responses=[CommandResult(("git", "fetch"), 0, "", "", 0.01)],
-    )
-    def fake_log_feat(*_a: object, **_k: object) -> git_module.LogSubjects:
-        return git_module.LogSubjects(("feat: add widget",))
-
-    monkeypatch.setattr(git_module, "try_log_subjects", fake_log_feat)
-    out = merge_module._version_race_gate(runner, cwd=None)  # pyright: ignore[reportPrivateUsage]
-    assert out is None
 
 
 def test_merge_flush_recovery_success_emits_admin_merged(
@@ -885,3 +852,48 @@ def test_merge_noop_defaults_to_merged_when_state_unknown(
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_MERGED
+
+
+def test_merge_post_flush_false_skips_internal_flush(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"BEHIND","headRefOid":"abc"}',
+                "",
+                0.01,
+            ),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
+        ],
+    )
+    calls = {"post": 0}
+
+    def fake_post(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        calls["post"] += 1
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_post", fake_post)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
+    out = merge_module.merge_pr(runner, _ctx(), post_flush=False)
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+    assert calls["post"] == 0

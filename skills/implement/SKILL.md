@@ -952,6 +952,8 @@ In `scripts/refresh-run-logs.sh`, on each retry (CI failure, merge conflict, reb
 
 Steps 8–14 (PR prep, OOS, PR create, CI, merge, cleanup — internal `ship-pr.sh` phase names; legacy versioning substeps are skipped in Phase 1 #3364) are mechanically delegated to `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh`. Step 6 relevant checks remain documented above for prompt-side review-change handling, but the delegated state machine reruns the Step 6 helper as its first phase so resumed post-review runs have one deterministic entrypoint. Step 16, Step 17, and Step 18 remain prompt-side because they replay rejected findings, final notes, and the terminal token/timing cap.
 
+**Python driver selector:** default `LARCH_SHIP_PR_IMPL=bash` runs the bash contract below byte-for-byte. When `LARCH_SHIP_PR_IMPL=python`, replace the foreground `ship-pr.sh` invocation with one foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` invocation, passing the same env/argv values (`--branch`, `--issue`, `--repo`, `--run-id`, `--tmpdir`, `--manifest-path`, `--tool-label`, `--merge`, `--draft`, `--forked`, `--repo-unavailable`, `--no-admin-fallback`, `--expected-session-id`, `--expected-tmpdir-basename-prefix`). Parse both the process exit code and the single JSON object on stdout: `outcome`, `needs_user_reason`, `failed_run_id`, `pr_number`, `pr_url`, `merge_result`, `detail`. Do **not** read `ship-pr-state.sh` for Python-path routing. Route bash-compatible exit codes exactly: `0` OK → continue to Step 16; `6` TRANSIENT → sleep/reinvoke using the JSON outcome plus the same tmpdir counter files used by the bash Exit 6 path; `3` NEEDS_USER_INPUT → dispatch on `needs_user_reason` (`oos-filing` runs the existing Step 9a.1 `/issue` pipeline, then reinvokes Python; `first-fixer-non-health`, `ci-fix-exhausted`, and `local-unfixable` run the autonomous main-agent CI-fix sub-procedure using JSON `failed_run_id` when present before any `AskUserQuestion`; `fix-attempts-exhausted` and post-autonomous fall-through use the existing user-input path); `4` STALLED → continue to Step 16/Step 18 as a stall. Step 18 is unchanged for the Python path: `python/ship.py` writes `$IMPLEMENT_TMPDIR/finalize-state.sh` during postmerge and does not call teardown or remove the tmpdir.
+
 Immediately before the first foreground `ship-pr.sh` invocation below, run the **8-pre-ship** Phantom Untracked Probe (one foreground Bash call):
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
@@ -1030,7 +1032,7 @@ Parse the process exit code and then read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` w
   7. Run the captured relevant-checks helper (`run-relevant-checks-captured.sh --site step8-main-agent-fix --tmpdir "$IMPLEMENT_TMPDIR"`). On failure, log to `execution-issues.md` and fall through to user-bail.
   8. Stage edited files explicitly via `git add -- <paths>` (mirror the `ship-pr.sh` CI-fix staging contract; do **not** use `git add -A`).
   9. Commit via `${CLAUDE_PLUGIN_ROOT}/scripts/git-commit.sh -m "Fix CI failure (main-agent)"`.
-  10. Refresh run-log token/timing artifacts: `${CLAUDE_PLUGIN_ROOT}/scripts/refresh-run-logs.sh --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"` (mirrors the existing CI-fix push sequence).
+  10. Refresh run-log token/timing artifacts: `${CLAUDE_PLUGIN_ROOT}/scripts/refresh-run-logs.sh --state-file "${SHIP_PR_STATE_FILE:-$IMPLEMENT_TMPDIR/finalize-state.sh}" --implement-tmpdir "$IMPLEMENT_TMPDIR"` where `SHIP_PR_STATE_FILE` is `$IMPLEMENT_TMPDIR/ship-pr-state.sh` on the bash path and `$IMPLEMENT_TMPDIR/finalize-state.sh` on the Python path (mirrors the existing CI-fix push sequence without reading stale bash state).
   11. Push via `${CLAUDE_PLUGIN_ROOT}/scripts/git-push.sh`.
   12. Re-invoke `ship-pr.sh` in the foreground with the same Step 8+ `Invoke:` argv (no `--resume-phase`).
   For **other** exit-3 `BAIL_REASON` values (legacy `needs_user_bail_reason` tokens, or `first-fixer-non-health` **after** autonomous fall-through, or `ci-fix-exhausted` **after** autonomous fall-through), present the reason via `AskUserQuestion` using the existing Step 12d user-input path. Then continue to Step 16 with `STALL_TRACKING=true`. **Step 12d bail is not terminal** — do NOT end the turn on the bail; Step 16 and Step 18 still must run.
@@ -1184,7 +1186,7 @@ Print: `> **🔶 /implement 18: cleanup**`
 
 ### Step 18a — Stall recovery gate
 
-Step 18a runs first on every Step 18 entry, before teardown. Resolve `STALL_TRACKING` from three layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh`. Use the same session-env rehydration pattern as the teardown blocks below; do not create a `current-implement-env-$PPID.sh` file.
+Step 18a runs first on every Step 18 entry, before teardown. Resolve `STALL_TRACKING` from four layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh`. Use the same session-env rehydration pattern as the teardown blocks below; do not create a `current-implement-env-$PPID.sh` file.
 
 ```bash
 IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
@@ -1195,19 +1197,24 @@ LARCH_CLAUDE_SOURCE_FILE=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.s
 LARCH_TIMING_LEDGER=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
 export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 _stall_disk=false
+_stall_finalize=false
 _stall_session=false
 if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
   _stall_disk=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --key STALL_TRACKING --default "false")
+fi
+if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then
+  _stall_finalize=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/finalize-state.sh" --key STALL_TRACKING --default "false")
 fi
 if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
   _stall_session=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key STALL_TRACKING --default "false")
 fi
 printf 'STALL_TRACKING_MEMORY=%s\n' "${STALL_TRACKING:-false}"
 printf 'STALL_TRACKING_DISK=%s\n' "$_stall_disk"
+printf 'STALL_TRACKING_FINALIZE=%s\n' "$_stall_finalize"
 printf 'STALL_TRACKING_SESSION=%s\n' "$_stall_session"
 ```
 
-If in-memory `STALL_TRACKING=false`, `STALL_TRACKING_DISK` is false or empty, and `STALL_TRACKING_SESSION` is false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b. Treat the three layers as an any-of-three gate: skip recovery only when all three layers are false or empty.
+If in-memory `STALL_TRACKING=false`, `STALL_TRACKING_DISK` is false or empty, `STALL_TRACKING_FINALIZE` is false or empty, and `STALL_TRACKING_SESSION` is false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b. Treat the four layers as an any-of-four gate: skip recovery only when all four layers are false or empty.
 
 If any layer is true: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall-recovery.md`, then execute its 9-sub-step procedure. That procedure owns attempt initialization, classification, canonical `BAIL_FAILURE_DETAIL_LOG` handoff from `ship-pr-state.sh`, first-detection issue filing or consumer print, dispatch/retry, atomic success clearing, terminal-failure comment/print, and the final continuation into Step 18b.
 

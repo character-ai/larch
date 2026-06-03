@@ -105,6 +105,7 @@ class MonitorResult:
     iterations: int
     result: StepResult
     rerun_already_running: bool = False
+    transient_rerun_attempted: bool = False
 
 
 def _conflicted_from_merge_state(merge_state: str | None) -> bool:
@@ -1216,6 +1217,7 @@ def monitor(
         goto: bool,
         step: StepResult,
         rerun_already_running: bool = False,
+        transient_rerun_attempted: bool = False,
     ) -> MonitorResult:
         return MonitorResult(
             action=decision.action,
@@ -1227,6 +1229,7 @@ def monitor(
             iterations=iteration,
             result=step,
             rerun_already_running=rerun_already_running,
+            transient_rerun_attempted=transient_rerun_attempted,
         )
 
     if decision.action in ("merge", "already_merged"):
@@ -1236,14 +1239,20 @@ def monitor(
             step=StepResult(outcome=Outcome.OK),
         )
 
-    if decision.action in ("rebase", "rebase_then_evaluate"):
+    if decision.action == "rebase":
         return _base_result(
             did_fixing=False,
             goto=True,
             step=StepResult(outcome=Outcome.OK),
         )
 
-    if decision.action == "evaluate_failure":
+    if decision.action in ("evaluate_failure", "rebase_then_evaluate"):
+        if decision.action == "rebase_then_evaluate":
+            return _base_result(
+                did_fixing=False,
+                goto=True,
+                step=StepResult(outcome=Outcome.OK),
+            )
         if not status.failed_run_id:
             return _base_result(
                 did_fixing=False,
@@ -1270,11 +1279,12 @@ def monitor(
                 goto=False,
                 step=StepResult(outcome=Outcome.OK),
                 rerun_already_running=fix.rerun_already_running,
+                transient_rerun_attempted=True,
             )
         if fix.status == "pushed":
             return _base_result(
                 did_fixing=True,
-                goto=True,
+                goto=status.behind_count > 0,
                 step=StepResult(outcome=Outcome.OK),
             )
         if fix.status == "head-changed":
@@ -1306,6 +1316,12 @@ def monitor(
             detail = f"{fix.status}: {', '.join(fix.failed_verify)}"
         if fix.unfixable:
             detail = f"{fix.status}: {', '.join(fix.unfixable)}"
+        if fix.status == "local-unfixable":
+            return _base_result(
+                did_fixing=True,
+                goto=False,
+                step=StepResult(outcome=Outcome.NEEDS_USER_INPUT, detail=detail),
+            )
         return _base_result(
             did_fixing=True,
             goto=False,
@@ -1313,6 +1329,15 @@ def monitor(
         )
 
     if decision.action == "bail":
+        if decision.bail_reason and retry.is_transient_net_signature(decision.bail_reason):
+            return _base_result(
+                did_fixing=False,
+                goto=False,
+                step=StepResult(
+                    outcome=Outcome.TRANSIENT,
+                    detail=decision.bail_reason,
+                ),
+            )
         if decision.bail_reason == "fix-attempts-exhausted":
             return _base_result(
                 did_fixing=False,

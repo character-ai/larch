@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -17,10 +16,6 @@ from errors import ShipError
 from proc import Runner
 from retry import with_transient_retry
 from run_context import RunContext
-
-_BUMP_SUBJECT_RE = re.compile(r"^Bump version to ([0-9]+\.[0-9]+\.[0-9]+)$")
-_SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
-
 
 @dataclass(frozen=True)
 class MergeResult:
@@ -45,6 +40,7 @@ def merge_pr(
     *,
     cwd: str | None = None,
     sleeper: Callable[[float], None] | None = None,
+    post_flush: bool = True,
 ) -> MergeResult:
     """Classify merge into one of eight merge-pr.sh MERGE_RESULT literals."""
     if sleeper is None:
@@ -69,7 +65,7 @@ def merge_pr(
     if ctx.pr_number is None:
         return MergeResult(result=config.MERGE_RESULT_ERROR, error="pr_number required")
 
-    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd)
+    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd, post_flush=post_flush)
     if terminal is not None:
         return terminal
 
@@ -80,7 +76,7 @@ def merge_pr(
             error=redact_merge_diagnostic(f"flush_logs_pre skipped: {pre_skip.reason}"),
         )
 
-    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd)
+    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd, post_flush=post_flush)
     if terminal is not None:
         return terminal
 
@@ -96,7 +92,7 @@ def merge_pr(
             cwd=cwd,
         )
     if not state.merge_state_status or state.merge_state_status == "UNKNOWN":
-        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_ERROR)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_ERROR) if post_flush else None
         if post_err is not None:
             return post_err
         return MergeResult(
@@ -108,7 +104,7 @@ def merge_pr(
         )
 
     if not gh.pr_checks_all_pass(runner, pr_num, repo=ctx.repo, cwd=cwd):
-        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_CI_NOT_READY)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_CI_NOT_READY) if post_flush else None
         if post_err is not None:
             return post_err
         return MergeResult(
@@ -117,7 +113,7 @@ def merge_pr(
         )
 
     if state.merge_state_status not in config.ADMIN_ELIGIBLE_MERGE_STATES:
-        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED)
+        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_MAIN_ADVANCED) if post_flush else None
         if post_err is not None:
             return post_err
         return MergeResult(
@@ -133,22 +129,16 @@ def merge_pr(
         cwd=cwd,
     )
     if isinstance(head_match, MergeResult):
-        post_err = _post_flush(runner, ctx, head_match.result)
+        post_err = _post_flush(runner, ctx, head_match.result) if post_flush else None
         if post_err is not None:
             return post_err
         return head_match
 
-    version_outcome = _version_race_gate(runner, cwd=cwd)
-    if version_outcome is not None:
-        post_err = _post_flush(runner, ctx, version_outcome.result)
+    merge_outcome = _attempt_merge(runner, ctx, pr_num, cwd=cwd)
+    if post_flush:
+        post_err = _post_flush(runner, ctx, merge_outcome.result)
         if post_err is not None:
             return post_err
-        return version_outcome
-
-    merge_outcome = _attempt_merge(runner, ctx, pr_num, cwd=cwd)
-    post_err = _post_flush(runner, ctx, merge_outcome.result)
-    if post_err is not None:
-        return post_err
     return merge_outcome
 
 
@@ -181,6 +171,7 @@ def _merge_noop_if_pr_closed(
     ctx: RunContext,
     *,
     cwd: str | None,
+    post_flush: bool = True,
 ) -> MergeResult | None:
     """Idempotent re-entry when the PR is already merged."""
     pr_num = ctx.pr_number
@@ -203,9 +194,10 @@ def _merge_noop_if_pr_closed(
             outcome = MergeResult(result=config.MERGE_RESULT_MERGED, error="")
         else:
             outcome = MergeResult(result=config.MERGE_RESULT_MERGED, error="")
-        post_err = _post_flush(runner, ctx, outcome.result)
-        if post_err is not None:
-            return post_err
+        if post_flush:
+            post_err = _post_flush(runner, ctx, outcome.result)
+            if post_err is not None:
+                return post_err
         return outcome
     if pr.state == "CLOSED":
         return MergeResult(
@@ -367,74 +359,14 @@ def _flush_recoverable(
     return git.is_ancestor(runner, pr_head_oid, "HEAD", cwd=cwd)
 
 
-def _version_race_gate(
-    runner: Runner,
+def _version_race_gate(  # pylint: disable=useless-return  # pyright: ignore[reportUnusedFunction]
+    _runner: Runner,
     *,
     cwd: str | None,
 ) -> MergeResult | None:
-    fetch = git.fetch(runner, "origin", "main", cwd=cwd)
-    if fetch.returncode != 0:
-        return MergeResult(
-            result=config.MERGE_RESULT_ERROR,
-            error="git fetch origin main failed; cannot verify same-version race",
-        )
-    subjects = git.try_log_subjects(runner, "origin/main..HEAD", cwd=cwd)
-    if not subjects.subjects:
-        return None
-    bump_subject = ""
-    for subj in subjects.subjects:
-        if _BUMP_SUBJECT_RE.match(subj):
-            bump_subject = subj
-            break
-    if not bump_subject:
-        return None
-    match = _BUMP_SUBJECT_RE.match(bump_subject)
-    if not match:
-        return None
-    local_version = match.group(1)
-    origin_version = _origin_plugin_version(runner, cwd=cwd)
-    if not _SEMVER_RE.match(origin_version):
-        return MergeResult(
-            result=config.MERGE_RESULT_ERROR,
-            error=f"could not parse origin/main published version (got: {origin_version!r})",
-        )
-    if origin_version == local_version:
-        return MergeResult(
-            result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
-            error=f"origin/main HEAD already bumped to {local_version}; rebase and re-bump",
-        )
-    if not git.is_ancestor(runner, "origin/main", "HEAD", cwd=cwd):
-        return MergeResult(
-            result=config.MERGE_RESULT_MAIN_ADVANCED,
-            error="origin/main advanced to a different version; rebase needed",
-        )
-    fetch2 = git.fetch(runner, "origin", "main", cwd=cwd)
-    if fetch2.returncode != 0:
-        return MergeResult(
-            result=config.MERGE_RESULT_ERROR,
-            error="git fetch origin main failed (pre-merge re-fetch)",
-        )
-    premerge_version = _origin_plugin_version(runner, cwd=cwd)
-    if _SEMVER_RE.match(premerge_version) and premerge_version == local_version:
-        return MergeResult(
-            result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
-            error=(
-                f"origin/main HEAD already bumped to {local_version} "
-                "(pre-merge re-fetch); rebase and re-bump"
-            ),
-        )
+    """Deprecated compatibility hook; the ship merge path no longer runs it."""
+    _ = cwd
     return None
-
-
-def _origin_plugin_version(runner: Runner, *, cwd: str | None) -> str:
-    result = git.show_file(runner, "origin/main:.claude-plugin/plugin.json", cwd=cwd)
-    if result.returncode != 0:
-        return ""
-    try:
-        data = json.loads(result.stdout)
-        return str(data.get("version") or "")
-    except json.JSONDecodeError:
-        return ""
 
 
 def _attempt_merge(

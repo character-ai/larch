@@ -106,8 +106,8 @@ grep -Fq '### Step 18a — Stall recovery gate' "$SKILL_MD" \
 grep -Fq '### Step 18b — Teardown' "$SKILL_MD" \
   || fail "SKILL.md must retain Step 18b heading"
 # shellcheck disable=SC2016
-grep -Fq 'If in-memory `STALL_TRACKING=false`, `STALL_TRACKING_DISK` is false or empty, and `STALL_TRACKING_SESSION` is false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b.' "$SKILL_MD" \
-  || fail "SKILL.md must require all three stall-tracking layers false before the Step 18a no-stall fast path"
+grep -Fq 'If in-memory `STALL_TRACKING=false`, `STALL_TRACKING_DISK` is false or empty, `STALL_TRACKING_FINALIZE` is false or empty, and `STALL_TRACKING_SESSION` is false or empty, print `⏩ 18a: stall recovery — no stall detected` and continue to Step 18b.' "$SKILL_MD" \
+  || fail "SKILL.md must require all four stall-tracking layers false before the Step 18a no-stall fast path"
 
 stall_step18a_tmp=$(mktemp -d "${TMPDIR:-/tmp}/larch-step18a-structure.XXXXXX")
 cat >"$stall_step18a_tmp/ship-pr-state.sh" <<'EOF'
