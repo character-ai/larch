@@ -1,0 +1,16 @@
+Reviewing the branch diff and Step 3.6 fence control flow for correctness issues.
+### In-Scope Findings
+
+- **correctness** `skills/design/SKILL.md:1208-1214` — The rc=10 trailer parser feeds `_assessor_trailers` through an unquoted `<<EOF` heredoc. In Bash, each heredoc line is subject to command substitution after parameter expansion, so a trailer line containing `$(…)` is executed while parsing, not merely printed. The driver emits `LARCH_ASSESSOR_ROUND_NUM=${ROUND_NUM}` without validating that `ROUND_NUM` is digits-only after `parse_kv_from_output` / cursor reads (`skills/design/scripts/design-plan-quality-assessor.sh:35-36`, `257`), so a poisoned assessor/cursor KV could reach the heredoc. **Suggested fix:** Drop the heredoc loop; extract and validate the round in one `awk` pass (as the handoff harness already does for display splitting), and in the driver reject non-numeric `ROUND_NUM` before `_emit_trailer_frame`.
+
+- **correctness** `skills/design/SKILL.md:1189-1214` — On rc=10, missing/invalid trusted-trailer handling calls `exit 1` before the fence echoes `_assessor_display` (`1217`). Operators hit the fail-closed stderr banner without the driver-rendered WORSE block, even though the driver already produced it in `_assessor_out`. That is a regression from the old inline path, which printed verdict material before aborting. **Suggested fix:** Echo the pre-marker display prefix first, then run trailer validation and abort; or print the display prefix in the abort branch.
+
+- **correctness** `skills/design/SKILL.md:1244-1250` — After rc=10, the Bash fence falls through with exit status 0 (`case 10` is a no-op) while line 1250 tells the orchestrator to write `.completed/step-3.6` on “Continue, skip, …” success-boundary paths. Line 1244 correctly says Stop must skip that marker and Continue must write it only after `AskUserQuestion`, but line 1250 does not exclude “rc=10, prompt pending.” An orchestrator can write `step-3.6` immediately after the fence, then honor **Stop**—leaving a false completion sentinel and breaking pause/resume (the harness at `skills/design/scripts/test-design-pause-resume.sh:246-251` shows missing `step-3.6` resumes at 3.5 instead of 3b). **Suggested fix:** Narrow line 1250 to settled rc=0 paths only, or add explicit prose: “Do not write `step-3.6` after the fence when `ASSESSOR_RC=10` until the operator chooses **Continue**.”
+
+### Out-of-Scope Observations
+
+- **risk-integration** `skills/design/SKILL.md:1114-1136` — Gate-B-bypass triple-sentinel writes (`step-3`, `step-3.5`, `step-3.6`) live only in the Step 3 post-loop prose matrix, not in the Step 3 Bash fence (`1059-1105`). That matches the thin-fence direction but remains orchestrator-dependent; `test-design-pause-resume.sh` documents the failure mode when `step-3.6` is omitted.
+
+- **architecture** `scripts/test-design-structure.sh:40-51` — `assert_thin_fence` is applied to `design-plan-quality-assessor.sh` itself and only checks for `set +e` / `$?`, not the SKILL.md capture→echo→`case "$rc"` shape described in `lib-phase-driver.md`. Structural coverage for Step 3.6 is mostly prose pins plus the handoff harness, not the production fence block.
+
+**Branch commits (since `main`):** `404eae209` (pilot), plus three review-feedback commits; `29ae19d84` is a run-log chore commit.
