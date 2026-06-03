@@ -198,6 +198,28 @@ out=$(run_cr "$SCRATCH/t6" env PATH="$SB6:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS
 assert_line "codex ok" "CODEX_PRESENT=true" "$out"
 assert_line "codex ok binary" "CODEX_BINARY_FOUND=true" "$out"
 
+# --- Codex: probe forwards production model args ---
+SB6M="$SCRATCH/bin6m"
+mkdir -p "$SB6M" "$SCRATCH/t6m"
+CODEX_PROBE_ARGV_LOG="$SCRATCH/t6m/codex-probe-argv.log"
+: >"$CODEX_PROBE_ARGV_LOG"
+cat > "$SB6M/codex" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >>"${LARCH_TEST_CODEX_PROBE_ARGV_LOG:?}"
+exit 0
+STUB
+chmod +x "$SB6M/codex"
+cat > "$SB6M/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 127
+STUB
+chmod +x "$SB6M/cursor"
+out=$(run_cr "$SCRATCH/t6m" env PATH="$SB6M:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=0 \
+    LARCH_CODEX_MODEL="sentinel-model" LARCH_TEST_CODEX_PROBE_ARGV_LOG="$CODEX_PROBE_ARGV_LOG" \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+assert_line "codex probe model present" "CODEX_PRESENT=true" "$out"
+grep -Fq 'sentinel-model' "$CODEX_PROBE_ARGV_LOG" || fail "codex probe argv must include sentinel-model"
+
 SB7="$SCRATCH/bin7"
 mkdir -p "$SB7"
 cat > "$SB7/codex" <<'STUB'
