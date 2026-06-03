@@ -265,8 +265,8 @@ printf '%s\n' "$step0pre_block" | grep -Fq 'VALIDATION_ERROR' \
   || fail 'Step 0-pre fence missing VALIDATION_ERROR handling'
 printf '%s\n' "$step0pre_block" | grep -Fq '<PUBLIC_ARGV_WORDS>' \
   || fail 'Step 0-pre fence must invoke parse-design-argv.sh via <PUBLIC_ARGV_WORDS> substitution'
-if printf '%s\n' "$step0pre_block" | grep -Fq '\$ARGUMENTS'; then
-  fail 'Step 0-pre fence must not re-parse $ARGUMENTS'
+if printf '%s\n' "$step0pre_block" | grep -Fq "\$ARGUMENTS"; then
+  fail "Step 0-pre fence must not re-parse \$ARGUMENTS"
 fi
 printf '%s\n' "$step0pre_block" | grep -Fq 'unexpanded template literal' \
   || fail 'Step 0-pre must reject unexpanded CLAUDE_PLUGIN_ROOT template literal'
