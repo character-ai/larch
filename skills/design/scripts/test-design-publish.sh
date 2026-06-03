@@ -85,6 +85,9 @@ fi
 if [[ "${PUBLISH_EMIT_OK:-true}" == true ]]; then
   echo "PUBLISH_OK=${PUBLISH_OK_VALUE:-true}"
 fi
+[[ -n "${PUBLISH_PR_NUMBER:-}" ]] && echo "PR_NUMBER=${PUBLISH_PR_NUMBER}"
+[[ -n "${PUBLISH_PR_URL:-}" ]] && echo "PR_URL=${PUBLISH_PR_URL}"
+[[ -n "${PUBLISH_RECOVERY_BRANCH:-}" ]] && echo "RECOVERY_BRANCH=${PUBLISH_RECOVERY_BRANCH}"
 STUB
     cat >"$STUB/upsert-diagrams-comment.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -128,6 +131,7 @@ export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
 
 reset_publish_stub_env() {
     unset PLAN_BLOCK_RC PUBLISH_STUB_RC PUBLISH_EMIT_OK PUBLISH_OK_VALUE \
+        PUBLISH_PR_NUMBER PUBLISH_PR_URL PUBLISH_RECOVERY_BRANCH \
         UPSERT_STUB_RC UPSERT_STATUS_VALUE ARCH_SOURCE_VALUE \
         RENAME_STUB_RC RENAMED_OMIT_LINE RENAMED_VALUE RESOLVE_REPO_VALUE \
         MARKER_STUB_RC || true
@@ -238,6 +242,7 @@ assert_rc "happy path" 0 "$rc"
 grep -q 'PLAN_WRITE_OK=true' "$D_OK/.design-publish-result.env" || fail "happy PLAN_WRITE_OK"
 grep -q 'PUBLISH_OK=true' "$D_OK/.design-publish-result.env" || fail "happy PUBLISH_OK"
 grep -q 'RENAMED=true' "$D_OK/.design-publish-result.env" || fail "happy RENAMED"
+
 plan_pos=$(grep -n 'plan-block-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 marker_pos=$(grep -n 'design-reentry-marker-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 upsert_pos=$(grep -n 'upsert-diagrams' "$CALL_LOG" | head -1 | cut -d: -f1)
@@ -250,6 +255,7 @@ else
     pass "happy path call-log ordering plan→marker→upsert→publish"
 fi
 grep -q 'design-log-publish' "$PUBLISH_LOG" || fail "design-log-publish.sh should run on happy path"
+
 marker_file="$D_OK_HOME/.cache/larch/sessions/design-completed-42-9999"
 [[ -f "$marker_file" ]] || fail "happy path reentry marker file missing at $marker_file"
 grep -q 'pre-publish-only' "$RENDER_LOG" || fail "happy path missing pre-publish render"
@@ -260,6 +266,22 @@ D_OK_CANON=$(cd "$D_OK" && pwd -P)
 grep -q "DESIGN_TMPDIR=${D_OK_CANON}" "$RENDER_LOG" || fail "happy render missing DESIGN_TMPDIR"
 grep -q 'upsert-diagrams' "$UPSERT_LOG" || fail "upsert not called on happy path"
 test -s "$D_OK/diagrams-architecture-upsert.stdout" || fail "upsert stdout not captured"
+
+# --- publish envelope fields persisted ---
+D_ENV="$TMP/publish-env"
+setup_design_tmp "$D_ENV"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_OK_VALUE=false
+export PUBLISH_PR_NUMBER=123
+export PUBLISH_PR_URL=https://github.example/pull/123
+export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid-1
+bash "$SUBJECT" --design-tmpdir "$D_ENV" --issue 42 --session-id sid-1 --claude-pid 9999 2>/dev/null
+grep -q '^PR_NUMBER=123$' "$D_ENV/.design-publish-result.env" || fail "publish PR_NUMBER missing"
+grep -q '^PR_URL=https://github.example/pull/123$' "$D_ENV/.design-publish-result.env" || fail "publish PR_URL missing"
+grep -q '^RECOVERY_BRANCH=larch-log-design-sid-1$' "$D_ENV/.design-publish-result.env" || fail "publish RECOVERY_BRANCH missing"
+grep -q '^LOG_RECOVERY_BRANCH=larch-log-design-sid-1$' "$D_ENV/.design-publish-result.env" || fail "publish LOG_RECOVERY_BRANCH missing"
 
 # --- SESSION_ID empty ---
 D_EMPTY="$TMP/empty-sid"

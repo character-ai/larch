@@ -43,6 +43,9 @@ parse_kv_from_output() {
         _value="${_line#*=}"
         case "$_key" in
             PUBLISH_OK) PUBLISH_OK="$_value" ;;
+            PR_NUMBER) PR_NUMBER="$_value" ;;
+            PR_URL) PR_URL="$_value" ;;
+            RECOVERY_BRANCH) RECOVERY_BRANCH="$_value" ;;
             RENAMED) RENAMED="$_value" ;;
             UPSERT_STATUS) UPSERT_STATUS="$_value" ;;
             ARCHITECTURE_SOURCE) ARCHITECTURE_SOURCE="$_value" ;;
@@ -126,6 +129,9 @@ FINAL_SUMMARY_PATH="$DESIGN_TMPDIR/final-summary.md"
 WARN_LINES=()
 PLAN_WRITE_OK=false
 PUBLISH_OK=""
+PR_NUMBER=""
+PR_URL=""
+RECOVERY_BRANCH=""
 RENAMED=""
 UPSERT_STATUS=""
 ARCHITECTURE_SOURCE=""
@@ -138,6 +144,10 @@ write_result_env_and_emit() {
     local -a _kvs=()
     _kvs+=("PLAN_WRITE_OK=$PLAN_WRITE_OK")
     [[ -n "${PUBLISH_OK:-}" ]] && _kvs+=("PUBLISH_OK=$PUBLISH_OK")
+    [[ -n "${PR_NUMBER:-}" ]] && _kvs+=("PR_NUMBER=$PR_NUMBER")
+    [[ -n "${PR_URL:-}" ]] && _kvs+=("PR_URL=$PR_URL")
+    [[ -n "${RECOVERY_BRANCH:-}" ]] && _kvs+=("RECOVERY_BRANCH=$RECOVERY_BRANCH")
+    [[ -n "${RECOVERY_BRANCH:-}" ]] && _kvs+=("LOG_RECOVERY_BRANCH=$RECOVERY_BRANCH")
     [[ -n "${RENAMED:-}" ]] && _kvs+=("RENAMED=$RENAMED")
     [[ -n "${UPSERT_STATUS:-}" ]] && _kvs+=("UPSERT_STATUS=$UPSERT_STATUS")
     [[ -n "${ARCHITECTURE_SOURCE:-}" ]] && _kvs+=("ARCHITECTURE_SOURCE=$ARCHITECTURE_SOURCE")
@@ -148,6 +158,10 @@ write_result_env_and_emit() {
     done
     emit_kv PLAN_WRITE_OK "$PLAN_WRITE_OK"
     [[ -n "${PUBLISH_OK:-}" ]] && emit_kv PUBLISH_OK "$PUBLISH_OK"
+    [[ -n "${PR_NUMBER:-}" ]] && emit_kv PR_NUMBER "$PR_NUMBER"
+    [[ -n "${PR_URL:-}" ]] && emit_kv PR_URL "$PR_URL"
+    [[ -n "${RECOVERY_BRANCH:-}" ]] && emit_kv RECOVERY_BRANCH "$RECOVERY_BRANCH"
+    [[ -n "${RECOVERY_BRANCH:-}" ]] && emit_kv LOG_RECOVERY_BRANCH "$RECOVERY_BRANCH"
     [[ -n "${RENAMED:-}" ]] && emit_kv RENAMED "$RENAMED"
     [[ -n "${UPSERT_STATUS:-}" ]] && emit_kv UPSERT_STATUS "$UPSERT_STATUS"
     [[ -n "${ARCHITECTURE_SOURCE:-}" ]] && emit_kv ARCHITECTURE_SOURCE "$ARCHITECTURE_SOURCE"
@@ -259,6 +273,9 @@ if [[ -n "$SESSION_ID" ]]; then
     _publish_rc=$?
     set -e
     PUBLISH_OK=""
+    PR_NUMBER=""
+    PR_URL=""
+    RECOVERY_BRANCH=""
     parse_kv_from_output "$_publish_out"
     _scrub_n="$(printf '%s\n' "$_publish_out" | sed -n 's/^SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
     case "${_scrub_n:-}" in ''|*[!0-9]*) _scrub_n=0 ;; esac

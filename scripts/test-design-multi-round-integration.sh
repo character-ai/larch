@@ -24,10 +24,15 @@ if [[ "$1" == "pr" ]]; then
         checks)
             if printf '%s\n' "$*" | grep -q -- '--json'; then
                 printf '[{"name":"ci","bucket":"pass"}]\n'
-            else
-                echo "all checks passing"
+                exit 0
             fi
-            exit 0
+            if printf '%s\n' "$*" | grep -q -- '--watch' && printf '%s\n' "$*" | grep -q -- '--fail-fast'; then
+                echo "all checks passing"
+                exit 0
+            else
+                echo "STUB ERROR: unhandled pr checks $*" >&2
+                exit 99
+            fi
             ;;
         merge)
             if [[ -n "${TEST_CLONE_ROOT:-}" && -n "${TEST_MERGE_BRANCH:-}" ]]; then
@@ -108,7 +113,7 @@ run_loop_fixture() {
     export LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH="$STUB/dispatch-plan-voters.sh"
     export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
     export LARCH_AGGREGATOR_DISABLED=1
-    bash "$PLR" \
+    env -u LARCH_QUIET_PID bash "$PLR" \
         --design-tmpdir "$design_dir" \
         --plan-file "$design_dir/plan.txt" \
         --feature-file "$design_dir/feature-description.txt" \

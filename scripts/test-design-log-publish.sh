@@ -305,6 +305,14 @@ setup_clone_with_origin_head() {
     printf '%s\n' "$clone"
 }
 
+expected_registration_probes() {
+    local timeout interval
+    timeout=$(awk -F= '$1=="REG_TIMEOUT"{gsub(/[^0-9]/, "", $2); print $2; exit}' "$PUBLISH")
+    interval=$(awk -F= '$1=="REG_INTERVAL"{gsub(/[^0-9]/, "", $2); print $2; exit}' "$PUBLISH")
+    [[ -n "$timeout" && -n "$interval" && "$interval" -gt 0 ]] || fail "could not derive registration probe count"
+    printf '%s\n' $(( (timeout + interval - 1) / interval + 1 ))
+}
+
 echo "=== dry-run preflight inside git worktree ==="
 DRYROOT=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-dry.XXXXXX")
 GLOBAL_SLEEP_STUB="$DRYROOT/sleep-stub"
@@ -552,6 +560,8 @@ exec /bin/date "$@"
 EOF
 chmod +x "$date_stub_rec/date"
 export PATH="$date_stub_rec:$stub_pause_rec:$PATH"
+export TEST_CLONE_ROOT="$clone_pause_rec"
+export TEST_MERGE_BRANCH="larch-log-design-RUNPAUSEREC1"
 unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
 mkdir -p "$TMPPAUSE_REC/design/.completed"
 printf 'p\n' >"$TMPPAUSE_REC/design/plan.txt"
@@ -575,10 +585,13 @@ TMPPAUSE_REUSE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-reuse.XXXXXX")
 clone_pause_reuse=$(setup_clone_with_origin_head "$TMPPAUSE_REUSE")
 stub_pause_reuse="$TMPPAUSE_REUSE/stub"
 make_gh_stub "$stub_pause_reuse"
+GH_STUB_LOG="$TMPPAUSE_REUSE/gh-pause-reuse.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
 export PATH="$stub_pause_reuse:$PATH"
 export TEST_CLONE_ROOT="$clone_pause_reuse"
 export TEST_MERGE_BRANCH="larch-log-design-RUNPAUSEREUSE1"
-unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+unset GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
 mkdir -p "$TMPPAUSE_REUSE/design/.completed"
 printf 'first\n' >"$TMPPAUSE_REUSE/design/plan.txt"
 printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
@@ -591,8 +604,9 @@ printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
     [[ "$rc_seed_reuse" -eq 1 ]] || fail "pause branch reuse seed should exit 1 on merge fail (got $rc_seed_reuse)"
     [[ "$seed_reuse" == *"PUBLISH_OK=false"* && "$seed_reuse" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREUSE1"* ]] || fail "pause branch reuse seed should leave remote branch: $seed_reuse"
     printf 'second\n' >"$TMPPAUSE_REUSE/design/plan.txt"
-    reuse_out=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
+    reuse_out=$(GH_STUB_PR_HEAD_OID_MISMATCH_FIRST=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
     [[ "$reuse_out" == *"PUBLISH_OK=true"* ]] || fail "pause branch reuse publish should succeed: $reuse_out"
+    [[ "$(cat "$GH_STUB_LOG.head-count")" == "2" ]] || fail "pause branch reuse should cover stale-head retry probes, got $(cat "$GH_STUB_LOG.head-count" 2>/dev/null || echo missing)"
 )
 git -C "$clone_pause_reuse" pull -q origin main
 grep -Fxq 'second' "$clone_pause_reuse/larch-logs/design/RUNPAUSEREUSE1/plan.txt" || fail "pause branch reuse should publish updated snapshot"
@@ -904,12 +918,46 @@ set -e
 [[ "$out_noreg" == *"PUBLISH_OK=false"* ]] || fail "never-registered PUBLISH_OK: $out_noreg"
 [[ "$rc_noreg" -eq 1 ]] || fail "never-registered should exit 1 (got $rc_noreg)"
 grep -q 'did not register within' "$noreg_stderr" || fail "never-registered stderr missing registration-timeout"
-[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "31" ]] || fail "never-registered should exhaust 31 probes, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
+expected_probes=$(expected_registration_probes)
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "$expected_probes" ]] || fail "never-registered should exhaust $expected_probes probes, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
 grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--json' || fail "never-registered should run json probes"
 ! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "never-registered must not invoke --watch"
 ! grep -q 'pr merge' "$GH_STUB_LOG" || fail "never-registered must not merge"
 unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY
 rm -rf "$TMPNOREG"
+
+echo "=== registration probe fails fast on non-array JSON ==="
+TMPREGOBJ=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-reg-object.XXXXXX")
+clone_regobj=$(setup_clone_with_origin_head "$TMPREGOBJ")
+stub_regobj="$TMPREGOBJ/stub"
+GH_STUB_LOG="$TMPREGOBJ/gh-reg-object.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_regobj"
+make_sleep_stub "$TMPREGOBJ/sleep"
+export PATH="$stub_regobj:$PATH"
+export SLEEP_SCRIPT_DIR="$TMPREGOBJ/sleep"
+export TEST_CLONE_ROOT="$clone_regobj"
+export TEST_MERGE_BRANCH="larch-log-design-RUNREGOBJ1"
+export GH_STUB_CHECKS_JSON_OUT='{"message":"rate limited"}'
+unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_PR_HEAD_OID_MISMATCH_FIRST GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPREGOBJ/design"
+printf 'object\n' >"$TMPREGOBJ/design/object.txt"
+regobj_stderr="$TMPREGOBJ/reg-object.stderr"
+set +e
+out_regobj=$(
+    (cd "$clone_regobj" && bash "$PUBLISH" --design-tmpdir "$TMPREGOBJ/design" --run-id "RUNREGOBJ1" --issue 26 --repo owner/repo) 2>"$regobj_stderr"
+)
+rc_regobj=$?
+set -e
+[[ "$out_regobj" == *"PUBLISH_OK=false"* ]] || fail "non-array registration PUBLISH_OK: $out_regobj"
+[[ "$rc_regobj" -eq 1 ]] || fail "non-array registration should exit 1 (got $rc_regobj)"
+grep -q 'non-array JSON' "$regobj_stderr" || fail "non-array registration stderr missing diagnostic"
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "1" ]] || fail "non-array registration should fail after one probe"
+! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "non-array registration must not invoke --watch"
+! grep -q 'pr merge' "$GH_STUB_LOG" || fail "non-array registration must not merge"
+unset GH_STUB_CHECKS_JSON_OUT
+rm -rf "$TMPREGOBJ"
 
 echo "=== registration probe accepts non-zero rc with pending JSON ==="
 TMPREGRC=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-reg-rc.XXXXXX")

@@ -69,6 +69,13 @@ emit_publish_result() {
     emit_kv PR_URL "${3:-}"
 }
 
+emit_publish_failure() {
+    emit_publish_result false "${1:-}" "${2:-}"
+    if [[ "${PUSH_DONE:-false}" == true ]]; then
+        emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+    fi
+}
+
 redact_diagnostic() {
     local text=$1 redacted=""
     if [ -x "$SCRIPT_DIR/redact-tmpdir-paths.sh" ] && [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
@@ -667,7 +674,8 @@ fi
 
 PR_BODY_TMP=$(mktemp "${TMPDIR:-/tmp}/larch-design-log-pr-body.XXXXXX") || {
     larch_err "design-log-publish: mktemp failed for PR body"
-    emit_publish_result false
+    emit_publish_failure
+    [[ "$PUSH_DONE" == true ]] && exit 1
     exit 0
 }
 printf 'Automated design log directory for run %s. Merged once required CI checks pass.' "$RUN_ID" >"$PR_BODY_TMP"
@@ -706,7 +714,8 @@ PUSH_HEAD_SHA=$(git -C "$WT_DIR" rev-parse HEAD 2>/dev/null || true)
 
 create_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-create.XXXXXX") || {
     larch_err "design-log-publish: mktemp failed for pr-create capture"
-    emit_publish_result false
+    emit_publish_failure
+    [[ "$PUSH_DONE" == true ]] && exit 1
     exit 0
 }
 if with_transient_retry transient_envelope_predicate_none "$create_fail_file" \
@@ -734,8 +743,8 @@ if [[ -z "$PR_NUM" ]]; then
     list_rc=1
     list_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-list.XXXXXX") || {
         larch_err "design-log-publish: mktemp failed for pr-list capture"
-        emit_publish_result false
-        exit 0
+        emit_publish_failure "$PR_NUM" "${PR_URL:-}"
+        exit 1
     }
     if with_transient_retry transient_envelope_predicate_none "$list_fail_file" \
         gh pr list "${gh_repo_args[@]}" --head "$WT_BRANCH" --state open --json number --jq '.[0].number'; then
@@ -763,8 +772,8 @@ if [[ -z "$PR_NUM" ]]; then
     rm -f "$list_fail_file"
     view_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-view.XXXXXX") || {
         larch_err "design-log-publish: mktemp failed for pr-view capture"
-        emit_publish_result false
-        exit 0
+        emit_publish_failure "$PR_NUM" "${PR_URL:-}"
+        exit 1
     }
     if with_transient_retry transient_envelope_predicate_none "$view_fail_file" \
         gh pr view "${gh_repo_args[@]}" "$PR_NUM" --json url --jq '.url'; then
@@ -789,6 +798,7 @@ REG_TIMEOUT=300
 REG_INTERVAL=10
 REG_MAX_PROBES=$(( (REG_TIMEOUT + REG_INTERVAL - 1) / REG_INTERVAL + 1 ))
 checks_registered=false
+checks_registration_fatal=false
 last_checks_out=""
 last_checks_err=""
 last_view_out=""
@@ -801,13 +811,13 @@ if [[ -z "${PUSH_HEAD_SHA:-}" ]]; then
 else
     reg_checks_err_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-checks.XXXXXX") || {
         larch_err "design-log-publish: mktemp failed for checks-registration capture"
-        emit_publish_result false
-        exit 0
+        emit_publish_failure "$PR_NUM" "${PR_URL:-}"
+        exit 1
     }
     reg_view_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-head.XXXXXX") || {
         larch_err "design-log-publish: mktemp failed for pr-head capture"
-        emit_publish_result false
-        exit 0
+        emit_publish_failure "$PR_NUM" "${PR_URL:-}"
+        exit 1
     }
     while [[ "$reg_probe" -le "$REG_MAX_PROBES" ]]; do
         : >"$reg_checks_err_file"
@@ -818,8 +828,14 @@ else
         last_checks_out="$reg_checks_out"
         last_checks_err=$(cat "$reg_checks_err_file" 2>/dev/null || true)
         checks_json_nonempty=false
-        if printf '%s\n' "${reg_checks_out:-}" | jq -e 'type == "array" and length > 0' >/dev/null 2>&1; then
-            checks_json_nonempty=true
+        if printf '%s\n' "${reg_checks_out:-}" | jq -e 'type == "array"' >/dev/null 2>&1; then
+            if printf '%s\n' "${reg_checks_out:-}" | jq -e 'length > 0' >/dev/null 2>&1; then
+                checks_json_nonempty=true
+            fi
+        elif printf '%s\n' "${reg_checks_out:-}" | jq -e '.' >/dev/null 2>&1; then
+            larch_err "design-log-publish: gh pr checks returned non-array JSON during registration for PR $PR_NUM; refusing to merge: $(redact_diagnostic "${reg_checks_out:-unknown}")"
+            checks_registration_fatal=true
+            break
         fi
         if [[ "$checks_json_nonempty" == true ]]; then
             if with_transient_retry transient_envelope_predicate_none "$reg_view_fail_file" \
@@ -847,7 +863,9 @@ else
     done
     rm -f "$reg_checks_err_file" "$reg_view_fail_file"
 
-    if [[ "$checks_registered" != true ]]; then
+    if [[ "$checks_registration_fatal" == true ]]; then
+        merge_rc=1
+    elif [[ "$checks_registered" != true ]]; then
         larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (${REG_MAX_PROBES} probes; pushed head ${PUSH_HEAD_SHA}) for PR $PR_NUM; refusing to merge: checks=$(redact_diagnostic "${last_checks_out:-${last_checks_err:-unknown}}") head=$(redact_diagnostic "${last_view_out:-${last_view_err:-unknown}}")"
         merge_rc=1
     else
@@ -861,8 +879,8 @@ else
         else
             merge_fail_file=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-merge.XXXXXX") || {
                 larch_err "design-log-publish: mktemp failed for merge capture"
-                emit_publish_result false
-                exit 0
+                emit_publish_failure "$PR_NUM" "${PR_URL:-}"
+                exit 1
             }
             if with_transient_retry transient_envelope_predicate_none "$merge_fail_file" \
                 gh pr merge "${gh_repo_args[@]}" "$PR_NUM" --squash --admin --delete-branch; then

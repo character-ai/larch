@@ -837,6 +837,8 @@ _collect_stderr_fd=2
 if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
     _collect_stderr_fd=4
 fi
+: >"$_collect_err"
+_collect_err_tmp=$(mktemp "${DESIGN_TMPDIR}/plan-review-collector.stderr.XXXXXX")
 set +e
 _collect_rc=0
 _collect_out=""
@@ -846,7 +848,7 @@ if [[ "$_paths_readable" -eq 1 ]]; then
         --substantive-validation \
         --validation-mode \
         --structured-reviewer-validation \
-        --paths-file "$PANEL_PATHS_FILE" 2> >(tee -a "$_collect_err" >&${_collect_stderr_fd}))
+        --paths-file "$PANEL_PATHS_FILE" 2>"$_collect_err_tmp")
     _collect_rc=$?
 elif (( _dropped_slot_count > 0 )); then
     emit_kv WARN "plan-review-panel: dispatch produced no reviewer paths (--no-fallback dropped ${_dropped_slot_count} slot(s); per-slot reasons recorded in execution-issues.md → External Reviewer Issues)"
@@ -873,6 +875,11 @@ if [[ "$_collect_rc" -ne 0 ]]; then
     fi
 fi
 set -e
+if [[ -s "$_collect_err_tmp" ]]; then
+    cat "$_collect_err_tmp" >>"$_collect_err" || true
+    cat "$_collect_err_tmp" >&${_collect_stderr_fd} || true
+fi
+rm -f "$_collect_err_tmp"
 
 _manifest="$DESIGN_TMPDIR/plan-review-slots.ndjson"
 _slot_lines=()
