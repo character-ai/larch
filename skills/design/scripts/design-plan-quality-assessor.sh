@@ -105,7 +105,24 @@ ASSESS_SH="${LARCH_ASSESS_PLAN_ROUND_SH:-$PLUGIN_ROOT/skills/design/scripts/asse
 
 RESULT_ENV="$DESIGN_TMPDIR/.step3.6-assessor.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
-WORKFLOW_PATH="$(json_scalar_or_sed "$RUN_PARAMS_PATH" workflow_path SIMPLE)"
+_WORKFLOW_RAW="$(json_scalar_or_sed "$RUN_PARAMS_PATH" workflow_path "")"
+_DESIGN_CLASSIFICATION="$(json_scalar_or_sed "$RUN_PARAMS_PATH" design_classification "")"
+WARN_LINES=()
+
+if [[ -z "$_WORKFLOW_RAW" ]]; then
+    if [[ "$_DESIGN_CLASSIFICATION" == HARD ]]; then
+        WORKFLOW_PATH=HARD
+    else
+        WORKFLOW_PATH=SIMPLE
+    fi
+else
+    WORKFLOW_PATH="$_WORKFLOW_RAW"
+fi
+
+if [[ -n "$_WORKFLOW_RAW" && -n "$_DESIGN_CLASSIFICATION" && "$_WORKFLOW_RAW" != "$_DESIGN_CLASSIFICATION" ]]; then
+    WARN_LINES+=("**⚠ design-plan-quality-assessor: workflow_path=${_WORKFLOW_RAW} disagrees with design_classification=${_DESIGN_CLASSIFICATION}; aligning assessor lane to design_classification.**")
+    WORKFLOW_PATH="$_DESIGN_CLASSIFICATION"
+fi
 
 ASSESSOR_STATUS=skipped
 ASSESSOR_VERDICT=skipped
@@ -113,7 +130,6 @@ EFFECTIVE_ASSESSORS=0
 ASSESSOR_VERDICT_FILE=""
 ASSESSOR_VERDICT_ENV=""
 ROUND_NUM=1
-WARN_LINES=()
 
 _write_result_and_emit() {
     local -a _kvs=()
@@ -176,6 +192,22 @@ _read_round_cursor() {
     ROUND_NUM=1
     if [[ "$_cursor_rc" -eq 0 ]]; then
         parse_kv_from_output "$_cursor_out"
+    else
+        WARN_LINES+=("**⚠ design-plan-quality-assessor: snapshot read-cursor failed (exit ${_cursor_rc}); using ROUND_NUM=1.**")
+        _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-read-cursor.XXXXXX")
+        printf '%s\n' "$_cursor_out" >"$_cap"
+        set +e
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 3.6" \
+            --tool "snapshot-plan-round.sh read-cursor" \
+            --exit-code "$_cursor_rc" \
+            --category Warnings \
+            --redact \
+            --output-file "$_cap" \
+            >/dev/null 2>&1
+        set -e
+        rm -f "$_cap"
     fi
 }
 
@@ -217,10 +249,15 @@ if [[ "$_snap_rc" -ne 0 ]]; then
     set -e
     rm -f "$_cap"
     if [[ "${ROUND_NUM:-0}" -ge 1 ]]; then
-        printf '%s\n' "$((ROUND_NUM - 1))" >"$DESIGN_TMPDIR/review-round-count.txt"
         set +e
         "$SNAPSHOT_SH" write-cursor --design-tmpdir "$DESIGN_TMPDIR" --value "$ROUND_NUM" >/dev/null 2>&1
+        _rollback_rc=$?
         set -e
+        if [[ "$_rollback_rc" -eq 0 ]]; then
+            printf '%s\n' "$((ROUND_NUM - 1))" >"$DESIGN_TMPDIR/review-round-count.txt"
+        else
+            WARN_LINES+=("**⚠ design-plan-quality-assessor: write-cursor rollback failed (exit ${_rollback_rc}); review-round count may be inconsistent.**")
+        fi
     fi
     ASSESSOR_STATUS=write-after-failed
     ASSESSOR_VERDICT=skipped
@@ -245,6 +282,31 @@ _assess_out=$("$ASSESS_SH" \
     --timeout "$TIMEOUT" 2>&1)
 _assess_rc=$?
 set -e
+
+if [[ "$_assess_rc" -ne 0 ]]; then
+    WARN_LINES+=("**⚠ design-plan-quality-assessor: assess-plan-round.sh failed (exit ${_assess_rc}); settling as assess-failed.**")
+    _cap=$(mktemp "${TMPDIR:-/tmp}/design-step3.6-assess.XXXXXX")
+    printf '%s\n' "$_assess_out" >"$_cap"
+    set +e
+    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        --log "$DESIGN_TMPDIR/execution-issues.md" \
+        --site "design Step 3.6" \
+        --tool "assess-plan-round.sh" \
+        --exit-code "$_assess_rc" \
+        --category Warnings \
+        --redact \
+        --output-file "$_cap" \
+        >/dev/null 2>&1
+    set -e
+    rm -f "$_cap"
+    ASSESSOR_STATUS=assess-failed
+    ASSESSOR_VERDICT=skipped
+    EFFECTIVE_ASSESSORS=0
+    ASSESSOR_VERDICT_FILE=""
+    ASSESSOR_VERDICT_ENV=""
+    _write_result_and_emit
+    exit 0
+fi
 
 parse_kv_from_output "$_assess_out"
 

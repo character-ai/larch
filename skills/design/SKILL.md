@@ -1052,6 +1052,17 @@ _wp=$(jq -r '.workflow_path // ""' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null 
 if [ -z "$_wp" ]; then
   _wp=$(sed -n 's/.*"workflow_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null | head -1)
 fi
+if [ -z "$_wp" ]; then
+  _dc=$(jq -r '.design_classification // ""' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo "")
+  if [ -z "$_dc" ]; then
+    _dc=$(sed -n 's/.*"design_classification"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null | head -1)
+  fi
+  if [ "$_dc" = "HARD" ]; then
+    _wp=HARD
+  else
+    _wp=SIMPLE
+  fi
+fi
 if [ "$_wp" = "HARD" ]; then
   printf '%s\n' "> **🔶 /design 3.6: assessor**"
 else
@@ -1072,7 +1083,11 @@ ASSESSOR_VERDICT_ENV=""
 ROUND_NUM=""
 WORKFLOW_PATH=""
 _assessor_parse_ok=false
-if [[ -f "$DESIGN_TMPDIR/.step3.6-assessor.env" ]]; then
+_assessor_force_stdout=false
+if command grep -Fq 'design-plan-quality-assessor: result env write failed' <<<"${_assessor_out:-}"; then
+  _assessor_force_stdout=true
+fi
+if [[ -f "$DESIGN_TMPDIR/.step3.6-assessor.env" && "$_assessor_force_stdout" != true ]]; then
   if [[ -L "$DESIGN_TMPDIR/.step3.6-assessor.env" ]]; then
     printf '%s\n' "**⚠ Step 3.6: refusing symlink .step3.6-assessor.env; using stdout fallback.**" >&2
   else
@@ -1096,12 +1111,14 @@ while IFS= read -r _assessor_line || [[ -n "$_assessor_line" ]]; do
   _assessor_value="${_assessor_line#*=}"
   case "$_assessor_key" in
     ASSESSOR_STATUS|ASSESSOR_VERDICT|EFFECTIVE_ASSESSORS|ASSESSOR_VERDICT_FILE|ASSESSOR_VERDICT_ENV|ROUND_NUM|WORKFLOW_PATH)
-      if [[ -z "${!_assessor_key:-}" ]]; then
+      if [[ "$_assessor_force_stdout" == true ]]; then
+        printf -v "$_assessor_key" '%s' "$_assessor_value"
+      elif [[ -z "${!_assessor_key:-}" ]]; then
         printf -v "$_assessor_key" '%s' "$_assessor_value"
       fi
       ;;
     WARN)
-      if [[ "$_assessor_parse_ok" != true ]]; then
+      if [[ "$_assessor_parse_ok" != true || "$_assessor_force_stdout" == true ]]; then
         printf '%s\n' "$_assessor_value"
       fi
       ;;

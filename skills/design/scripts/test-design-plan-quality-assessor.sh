@@ -169,6 +169,18 @@ apply_step3_6_handoff() {
     if [[ -z "$wp" ]]; then
         wp=$(sed -n 's/.*"workflow_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/run-params.json" 2>/dev/null | head -1)
     fi
+    if [[ -z "$wp" ]]; then
+        local dc
+        dc=$(jq -r '.design_classification // ""' "$d/run-params.json" 2>/dev/null || echo "")
+        if [[ -z "$dc" ]]; then
+            dc=$(sed -n 's/.*"design_classification"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$d/run-params.json" 2>/dev/null | head -1)
+        fi
+        if [[ "$dc" == HARD ]]; then
+            wp=HARD
+        else
+            wp=SIMPLE
+        fi
+    fi
     : >"$d/chat.out"
     : >"$d/handoff.stderr"
     if [[ "$wp" == HARD ]]; then
@@ -187,8 +199,11 @@ apply_step3_6_handoff() {
     # shellcheck disable=SC2034 # Populated via indirect assignment (printf -v / ${!name}).
     local ASSESSOR_STATUS="" ASSESSOR_VERDICT="" EFFECTIVE_ASSESSORS="" \
         ASSESSOR_VERDICT_FILE="" ASSESSOR_VERDICT_ENV="" ROUND_NUM="" WORKFLOW_PATH=""
-    local _assessor_parse_ok=false
-    if [[ -f "$d/.step3.6-assessor.env" ]]; then
+    local _assessor_parse_ok=false _assessor_force_stdout=false
+    if command grep -Fq 'design-plan-quality-assessor: result env write failed' <<<"${_assessor_out:-}"; then
+        _assessor_force_stdout=true
+    fi
+    if [[ -f "$d/.step3.6-assessor.env" && "$_assessor_force_stdout" != true ]]; then
         if [[ -L "$d/.step3.6-assessor.env" ]]; then
             printf '%s\n' "**⚠ Step 3.6: refusing symlink .step3.6-assessor.env; using stdout fallback.**" >>"$d/handoff.stderr"
         else
@@ -214,12 +229,14 @@ apply_step3_6_handoff() {
         _assessor_value="${_assessor_line#*=}"
         case "$_assessor_key" in
             ASSESSOR_STATUS|ASSESSOR_VERDICT|EFFECTIVE_ASSESSORS|ASSESSOR_VERDICT_FILE|ASSESSOR_VERDICT_ENV|ROUND_NUM|WORKFLOW_PATH)
-                if [[ -z "${!_assessor_key:-}" ]]; then
+                if [[ "$_assessor_force_stdout" == true ]]; then
+                    printf -v "$_assessor_key" '%s' "$_assessor_value"
+                elif [[ -z "${!_assessor_key:-}" ]]; then
                     printf -v "$_assessor_key" '%s' "$_assessor_value"
                 fi
                 ;;
             WARN)
-                if [[ "$_assessor_parse_ok" != true ]]; then
+                if [[ "$_assessor_parse_ok" != true || "$_assessor_force_stdout" == true ]]; then
                     printf '%s\n' "$_assessor_value" >>"$d/chat.out"
                 fi
                 ;;
@@ -271,6 +288,17 @@ assert_file_kv "$D1/.step3.6-assessor.env" ASSESSOR_STATUS skipped "non-HARD sta
 assert_file_kv "$D1/.step3.6-assessor.env" WORKFLOW_PATH SIMPLE "non-HARD workflow"
 if grep -Fq 'assess ' "$CALL_LOG"; then fail "assess stub called on SIMPLE"; else pass "assess not called on SIMPLE"; fi
 
+# 3b handoff SIMPLE skip breadcrumb
+reset_env
+D1B="$TMP/handoff-simple"
+setup_design_tmp "$D1B" SIMPLE
+set +e
+apply_step3_6_handoff "$D1B"
+handoff_rc=$?
+set -e
+assert_rc "handoff SIMPLE rc" 0 "$handoff_rc"
+assert_contains "$(cat "$D1B/chat.out")" 'workflow_path=SIMPLE; skipped' "handoff SIMPLE skip breadcrumb"
+
 # 4 HARD happy path
 reset_env
 D2="$TMP/hard-happy"
@@ -284,6 +312,36 @@ assert_rc "HARD happy rc" 0 "$rc"
 assert_file_kv "$D2/.step3.6-assessor.env" ASSESSOR_STATUS ok "HARD happy status"
 assert_file_kv "$D2/.step3.6-assessor.env" ASSESSOR_VERDICT not-worse "HARD happy verdict"
 assert_contains "$(cat "$D2/stdout.txt")" 'ASSESSOR_STATUS=ok' "HARD happy stdout KV"
+
+# 4b HARD worse-majority happy path
+reset_env
+D2B="$TMP/hard-worse-majority"
+setup_design_tmp "$D2B" HARD
+export ASSESSOR_VERDICT_VALUE=worse-majority EFFECTIVE_ASSESSORS_VALUE=3 ASSESSOR_STATUS_VALUE=ok
+set +e
+run_subject "$D2B"
+rc=$?
+set -e
+assert_rc "HARD worse-majority rc" 0 "$rc"
+assert_file_kv "$D2B/.step3.6-assessor.env" ASSESSOR_STATUS ok "HARD worse-majority status"
+assert_file_kv "$D2B/.step3.6-assessor.env" ASSESSOR_VERDICT worse-majority "HARD worse-majority verdict"
+assert_file_kv "$D2B/.step3.6-assessor.env" EFFECTIVE_ASSESSORS 3 "HARD worse-majority effective"
+assert_contains "$(cat "$D2B/stdout.txt")" 'ASSESSOR_VERDICT=worse-majority' "HARD worse-majority stdout KV"
+
+# 4c HARD round 1 write-after then assess skipped
+reset_env
+D2C="$TMP/hard-round1"
+setup_design_tmp "$D2C" HARD
+export ROUND_CURSOR_VALUE=1 ASSESSOR_STATUS_VALUE=skipped ASSESSOR_VERDICT_VALUE=skipped \
+    EFFECTIVE_ASSESSORS_VALUE=0 ROUND_NUM_VALUE=1
+set +e
+run_subject "$D2C"
+rc=$?
+set -e
+assert_rc "HARD round1 rc" 0 "$rc"
+if grep -Fq 'write-after' "$CALL_LOG"; then pass "round1 write-after invoked"; else fail "round1 write-after not invoked"; fi
+assert_file_kv "$D2C/.step3.6-assessor.env" ASSESSOR_STATUS skipped "round1 assess skipped status"
+assert_file_kv "$D2C/.step3.6-assessor.env" ASSESSOR_VERDICT skipped "round1 assess skipped verdict"
 
 # 5 write-after failure
 reset_env
@@ -301,6 +359,10 @@ if [[ "$count" == "1" ]]; then pass "rollback count"; else fail "rollback count 
 if grep -Fq 'append-tool-failure' "$CALL_LOG"; then pass "append-tool-failure called"; else fail "append-tool-failure not called"; fi
 warn_in_env=$(awk -F= '$1=="WARN"{print substr($0,6); exit}' "$D3/.step3.6-assessor.env" || true)
 if [[ "$warn_in_env" == "$SNAPSHOT_FAIL_WARN" ]]; then pass "write-after WARN in env"; else fail "write-after WARN in env"; fi
+if grep -Fq 'assess ' "$CALL_LOG"; then fail "assess not called on write-after failure"; else pass "assess not called on write-after failure"; fi
+if grep -Fq 'write-cursor' "$CALL_LOG"; then pass "write-cursor rollback invoked"; else fail "write-cursor rollback not invoked"; fi
+cursor_file=$(cat "$D3/plan-review-round-cursor.txt" 2>/dev/null || echo "")
+if [[ "$cursor_file" == "2" ]]; then pass "rollback cursor file"; else fail "rollback cursor file — expected 2, got ${cursor_file:-<empty>}"; fi
 
 # 6 EFFECTIVE_ASSESSORS=0
 reset_env
@@ -353,12 +415,31 @@ apply_step3_6_handoff "$D7"
 handoff_rc=$?
 set -e
 assert_rc "handoff symlink rc" 0 "$handoff_rc"
-assert_stderr_contains "$D7/handoff.stderr" 'refusing symlink .step3.6-assessor.env' "symlink stderr"
+if grep -Fq 'refusing symlink .step3.6-assessor.env' "$D7/handoff.stderr" 2>/dev/null \
+    || grep -Fq 'refusing to write symlink result env' "$D7/handoff.stderr" 2>/dev/null; then
+    pass "symlink refusal on handoff stderr"
+else
+    fail "symlink refusal on handoff stderr"
+fi
 if grep -Fq 'ASSESSOR_VERDICT=worse-majority' "$D7/handoff-driver.stdout" 2>/dev/null; then
     pass "symlink stdout fallback KVs"
 else
     fail "symlink stdout fallback KVs"
 fi
+
+# 9b handoff symlink + write-after: driver WARN in chat via stdout merge
+reset_env
+D7B="$TMP/handoff-symlink-warn"
+setup_design_tmp "$D7B" HARD
+printf 'ASSESSOR_STATUS=skipped\n' >"$TMP/outside-assessor-b.env"
+ln -sf "$TMP/outside-assessor-b.env" "$D7B/.step3.6-assessor.env"
+export WRITE_AFTER_FAIL=true ROUND_CURSOR_VALUE=2
+set +e
+apply_step3_6_handoff "$D7B"
+handoff_rc=$?
+set -e
+assert_rc "handoff symlink write-after rc" 0 "$handoff_rc"
+assert_contains "$(cat "$D7B/chat.out")" "$SNAPSHOT_FAIL_WARN" "handoff symlink chat write-after WARN"
 
 # 10 result-env keys
 for key in ASSESSOR_STATUS ASSESSOR_VERDICT EFFECTIVE_ASSESSORS ASSESSOR_VERDICT_FILE ASSESSOR_VERDICT_ENV ROUND_NUM WORKFLOW_PATH; do
@@ -479,15 +560,98 @@ else
     fi
 fi
 
-# 17 handoff uses qualified CLAUDE_PLUGIN_ROOT assessor path
-# shellcheck disable=SC2016 # Literal pattern checks unexpanded path token in handoff source.
-if grep -Fq '${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh' "$0"; then
-    pass 'handoff qualified plugin path'
+# 16b handoff stale env write-fail: stdout routing and WARN win over immutable file
+reset_env
+D13B="$TMP/handoff-stale-write-fail"
+setup_design_tmp "$D13B" HARD
+printf 'ASSESSOR_STATUS=ok\nASSESSOR_VERDICT=worse-majority\nEFFECTIVE_ASSESSORS=3\n' >"$D13B/.step3.6-assessor.env"
+if ! chflags uchg "$D13B/.step3.6-assessor.env" 2>/dev/null; then
+    pass "handoff stale write-fail (skip: chflags unavailable)"
 else
-    fail 'handoff qualified plugin path'
+    export ASSESSOR_VERDICT_VALUE=not-worse EFFECTIVE_ASSESSORS_VALUE=2
+    set +e
+    apply_step3_6_handoff "$D13B"
+    handoff_rc=$?
+    set -e
+    chflags nouchg "$D13B/.step3.6-assessor.env" 2>/dev/null || true
+    assert_rc "handoff stale write-fail rc" 0 "$handoff_rc"
+    assert_contains "$(cat "$D13B/chat.out")" 'result env write failed' "handoff stale write-failure WARN in chat"
+    if grep -Fq 'ASSESSOR_VERDICT=not-worse' "$D13B/handoff-driver.stdout" 2>/dev/null; then
+        pass "handoff stale stdout verdict"
+    else
+        fail "handoff stale stdout verdict"
+    fi
 fi
 
-# 18 driver uses seam bindings (not hardcoded plugin paths in body)
+# 17 assess non-zero exit fail-closed
+reset_env
+D14="$TMP/assess-fail"
+setup_design_tmp "$D14" HARD
+export ASSESS_STUB_RC=1
+set +e
+run_subject "$D14"
+rc=$?
+set -e
+assert_rc "assess fail rc" 0 "$rc"
+assert_file_kv "$D14/.step3.6-assessor.env" ASSESSOR_STATUS assess-failed "assess-failed status"
+assert_contains "$(cat "$D14/stdout.txt")" 'assess-plan-round.sh failed' "assess fail WARN on stdout"
+
+# 18 read-cursor failure WARN
+reset_env
+D15="$TMP/read-cursor-fail"
+setup_design_tmp "$D15" HARD
+export READ_CURSOR_RC=1
+set +e
+run_subject "$D15"
+rc=$?
+set -e
+assert_rc "read-cursor fail rc" 0 "$rc"
+assert_contains "$(cat "$D15/stdout.txt")" 'read-cursor failed' "read-cursor fail WARN on stdout"
+
+# 19 workflow_path missing with HARD classification
+reset_env
+D16="$TMP/workflow-missing-hard"
+setup_design_tmp "$D16" HARD
+printf '{"design_classification":"HARD"}\n' >"$D16/run-params.json"
+set +e
+run_subject "$D16"
+rc=$?
+set -e
+assert_rc "missing workflow_path HARD rc" 0 "$rc"
+assert_file_kv "$D16/.step3.6-assessor.env" WORKFLOW_PATH HARD "missing workflow_path aligns HARD"
+if grep -Fq 'assess ' "$CALL_LOG"; then pass "missing workflow_path runs HARD assess"; else fail "missing workflow_path HARD lane"; fi
+
+# 20 handoff runtime qualified invoke (CALL_LOG proves driver ran)
+reset_env
+D17="$TMP/qualified-runtime"
+setup_design_tmp "$D17" HARD
+set +e
+apply_step3_6_handoff "$D17"
+handoff_rc=$?
+set -e
+assert_rc "qualified runtime handoff rc" 0 "$handoff_rc"
+if grep -Fq 'snapshot read-cursor' "$CALL_LOG" && grep -Fq 'assess ' "$CALL_LOG"; then
+    pass 'handoff qualified runtime invoke'
+else
+    fail 'handoff qualified runtime invoke'
+fi
+
+# 21 write-cursor rollback failure preserves count
+reset_env
+D18="$TMP/write-cursor-rollback-fail"
+setup_design_tmp "$D18" HARD
+export WRITE_AFTER_FAIL=true ROUND_CURSOR_VALUE=2 WRITE_CURSOR_RC=1
+printf '2\n' >"$D18/review-round-count.txt"
+set +e
+run_subject "$D18"
+rc=$?
+set -e
+assert_rc "write-cursor rollback fail rc" 0 "$rc"
+count=$(cat "$D18/review-round-count.txt" 2>/dev/null || echo "")
+if [[ "$count" == "2" ]]; then pass "rollback fail preserves count"; else fail "rollback fail preserves count — expected 2, got $count"; fi
+assert_contains "$(cat "$D18/stdout.txt")" 'write-cursor rollback failed' "write-cursor rollback fail WARN"
+
+# 22 driver uses seam bindings (not hardcoded plugin paths in body)
 contains_driver() {
     grep -Fq -- "$1" "$SUBJECT" || fail "$2"
 }
