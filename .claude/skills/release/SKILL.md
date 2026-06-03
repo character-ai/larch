@@ -100,7 +100,7 @@ $PWD/.claude/skills/release/scripts/release-finish.sh \
   --pr "$PR_NUMBER"
 ```
 
-See `$PWD/.claude/skills/release/scripts/release-finish.md` for `TARGET_OID` resolution and idempotency vs `release-tag.yaml`.
+See `$PWD/.claude/skills/release/scripts/release-finish.md` for `TARGET_OID` resolution and idempotent re-run safety.
 
 If Step 6 fails after Step 5 merged the release PR (tag/Release/promote partial failure), do **not** re-run full `/release` — `release-prepare.sh` will hit `ERROR=release-already-cut`. Re-run Step 6 only:
 
@@ -113,8 +113,6 @@ $PWD/.claude/skills/release/scripts/release-finish.sh \
 ```
 
 Or promote-only: `scripts/promote-release.sh "$NEW_VERSION" --repo "$REPO"`.
-
-**Recovery when `release-tag.yaml` tags `origin/main` tip but finish targets `mergeCommit.oid`:** if remote `vX.Y.Z` already exists at a different commit than `TARGET_OID` but `plugin.json` at `origin/main` matches `--version`, delete the incorrect remote tag only with maintainer intent, or re-run `release-finish.sh` after aligning local `origin/main` (see `release-finish.md`).
 
 ## Step 7 — Upgrade local install
 

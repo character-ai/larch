@@ -37,8 +37,8 @@ After `git fetch origin main` (or a direct fetch of `TARGET_OID` when `origin/ma
 - Remote tag on a **different** OID → exit **1** (fail closed) before release/promote steps.
 - After every `ls-remote` probe that finds a remote tag, re-verify the peeled commit OID equals `TARGET_OID`.
 - Local/remote tag already on `TARGET_OID` → skip create; push only when remote lacks the tag.
-- Stale **local** tag on a different OID when **remote** tag already matches `TARGET_OID` → `git tag -f` realigns local ref and continue (idempotent re-run after `release-tag.yaml`).
-- On push failure, re-check remote tag at `TARGET_OID` and continue when it matches (TOCTOU vs `release-tag.yaml`).
+- Stale **local** tag on a different OID when **remote** tag already matches `TARGET_OID` → `git tag -f` realigns local ref and continue (idempotent re-run safety).
+- On push failure, re-check remote tag at `TARGET_OID` and continue when it matches (concurrent-write / TOCTOU safety).
 - Otherwise create tag at `TARGET_OID` and `git push origin`.
 
 ## Partial-failure recovery
@@ -47,14 +47,10 @@ If tag push and `gh release create`/`edit` succeed but `promote-release.sh` fail
 
 If Step 6 failed after the release PR merged, a full `/release` re-run hits `ERROR=release-already-cut` in prepare — resume with `release-finish.sh` (or promote-only) instead.
 
-## `release-tag.yaml` race
-
-Concurrent workflow may tag `origin/main` tip while finish targets `mergeCommit.oid`. When remote `vX.Y.Z` exists on a different commit than `TARGET_OID`, finish fails closed. Recovery: align `origin/main` fetch, verify `plugin.json` version, delete or move the incorrect remote tag only with maintainer intent, then re-run finish.
-
 ## GitHub Release
 
 - `gh release create v<version> --title v<version> --notes-file <file> --repo <repo>` when absent.
-- `gh release edit` with the same `--notes-file` when the release already exists (e.g. `release-tag.yaml` race).
+- `gh release edit` with the same `--notes-file` when the release already exists (idempotent re-run).
 
 ## Promote
 

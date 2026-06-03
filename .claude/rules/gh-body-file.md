@@ -6,7 +6,6 @@ paths:
   - ".claude/skills/audit-runs/scripts/test-audit-runs.sh"
   - ".claude/skills/combine-issues/SKILL.md"
   - ".claude/skills/combine-issues/scripts/apply-combination.sh"
-  - ".github/workflows/release-tag.yaml"
   - "AGENTS.md"
   - "BASH_AUTHORING.md"
   - "SECURITY.md"

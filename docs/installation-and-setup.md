@@ -6,6 +6,8 @@ Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/p
 
 ### Latest stable release
 
+GitHub Releases are cut by the operator-run `/release` skill (tag, Release, and promote to "Latest" in one run), not auto-created on every merge to `main`.
+
 #### Install
 ```bash
 claude plugin marketplace add character-ai/larch --sparse .claude .claude-plugin .gemini .github agents docs hooks scripts skills tests
