@@ -36,6 +36,8 @@ Downstream docs use `*_BINARY_FOUND=false` vs `*_PRESENT=false` to distinguish "
 
 `scripts/test-check-reviewers.sh` — PATH-stubbed binaries, auth-retry matrix, TTL stamp hit/expired, skip flags, invalid env normalization, and `--probe` rejection.
 
+- **Codex probe model-args forwarding**: PATH-stubbed `codex` appends argv to `LARCH_TEST_CODEX_PROBE_ARGV_LOG` (fixture `codex-probe-argv.log`); with `LARCH_CODEX_MODEL=sentinel-model` asserts `CODEX_PRESENT=true` and that the logged argv contains `sentinel-model`.
+
 ## Edit-in-sync
 
 | File | Relationship |
