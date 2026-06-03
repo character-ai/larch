@@ -20,17 +20,39 @@ usage() {
     larch_err "Usage: assess-plan-round.sh --design-tmpdir DIR --codex-present true|false --cursor-present true|false [--timeout SECS]"
 }
 
-read_workflow_path() {
+json_scalar_or_sed() {
+    local file="$1" key="$2" default_value="$3" value=""
+    if command -v jq >/dev/null 2>&1 && [[ -f "$file" ]]; then
+        value=$(jq -r --arg key "$key" '.[$key] // ""' "$file" 2>/dev/null || echo "")
+    fi
+    if [[ -z "$value" && -f "$file" ]]; then
+        value=$(sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$file" 2>/dev/null | head -1)
+    fi
+    if [[ -z "$value" ]]; then
+        printf '%s\n' "$default_value"
+    else
+        printf '%s\n' "$value"
+    fi
+}
+
+resolve_workflow_path() {
     local params="$DESIGN_TMPDIR/run-params.json"
-    local parsed=""
-    [[ -f "$params" ]] || return 0
-    if command -v jq >/dev/null 2>&1; then
-        parsed=$(jq -r '.workflow_path // ""' "$params" 2>/dev/null || echo "")
+    local workflow_raw design_classification resolved
+    workflow_raw="$(json_scalar_or_sed "$params" workflow_path "")"
+    design_classification="$(json_scalar_or_sed "$params" design_classification "")"
+    if [[ -z "$workflow_raw" ]]; then
+        if [[ "$design_classification" == HARD ]]; then
+            resolved=HARD
+        else
+            resolved=SIMPLE
+        fi
+    else
+        resolved="$workflow_raw"
     fi
-    if [[ -z "$parsed" ]]; then
-        parsed=$(sed -n 's/.*"workflow_path"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$params" | head -1)
+    if [[ -n "$workflow_raw" && -n "$design_classification" && "$workflow_raw" != "$design_classification" ]]; then
+        resolved="$design_classification"
     fi
-    printf '%s' "$parsed"
+    printf '%s' "$resolved"
 }
 
 read_round_cursor() {
@@ -125,7 +147,7 @@ mkdir -p "$DESIGN_TMPDIR"
 DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
 ROUND_NUM=1
 
-workflow_path="$(read_workflow_path)"
+workflow_path="$(resolve_workflow_path)"
 if [[ "$workflow_path" != "HARD" ]]; then
     emit "⏩ assessor: workflow_path=${workflow_path:-<unset>}; skipped"
     emit_assessor_kv skipped skipped 0 "" ""

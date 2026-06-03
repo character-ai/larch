@@ -132,6 +132,12 @@ run_direct_relevant_targets() {
                 ;;
         esac
         case "$f" in
+            skills/design/scripts/design-plan-quality-assessor.sh|skills/design/scripts/design-plan-quality-assessor.md|skills/design/scripts/test-design-plan-quality-assessor.sh|skills/design/scripts/test-design-plan-quality-assessor.md)
+                append_target_once test-design-plan-quality-assessor
+                append_target_once test-design-structure
+                ;;
+        esac
+        case "$f" in
             skills/design/scripts/render-final-summary.sh|skills/design/scripts/render-final-summary.md|skills/design/scripts/test-render-final-summary.sh|skills/design/scripts/test-render-final-summary.md|scripts/test-render-final-summary-bash32.sh|scripts/test-render-final-summary-bash32.md)
                 append_target_once test-render-final-summary
                 append_target_once test-render-final-summary-bash32

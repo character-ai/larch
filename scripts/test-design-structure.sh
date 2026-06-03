@@ -15,6 +15,7 @@ PLAN_REVIEW_LOOP_SH="$PLAN_LOOP_SH"
 RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
 RUN_STEP3_MD="$REPO_ROOT/skills/design/scripts/run-step3-review.md"
 DESIGN_POSTPLAN_EMIT_SH="$REPO_ROOT/skills/design/scripts/design-postplan-emit.sh"
+DESIGN_PLAN_QUALITY_ASSESSOR_SH="$REPO_ROOT/skills/design/scripts/design-plan-quality-assessor.sh"
 MAKEFILE="$REPO_ROOT/Makefile"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
 
@@ -1155,7 +1156,21 @@ contains "$DESIGN_POSTPLAN_EMIT_SH" 'snapshot-plan-round.sh' 'design-postplan-em
 contains "$DESIGN_POSTPLAN_EMIT_SH" 'write-original --design-tmpdir' 'design-postplan-emit.sh missing write-original invocation'
 contains "$SKILL_MD" 'assess-plan-round.sh' 'SKILL.md Step 3.6 missing assess-plan-round.sh'
 contains "$SKILL_MD" 'plan-review-round-cursor.txt' 'SKILL.md missing plan-review-round-cursor reference'
-contains "$SKILL_MD" 'write-cursor --design-tmpdir' 'SKILL.md missing round-cursor advancement write-cursor'
+contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'write-cursor --design-tmpdir' 'design-plan-quality-assessor.sh missing round-cursor advancement write-cursor'
+contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'assess-plan-round.sh' 'design-plan-quality-assessor.sh missing assess-plan-round'
+contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'snapshot-plan-round.sh' 'design-plan-quality-assessor.sh missing snapshot-plan-round'
+# shellcheck disable=SC2016 # SKILL.md bash excerpt; qualified path must remain unexpanded.
+contains "$SKILL_MD" '"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh"' 'SKILL.md missing qualified design-plan-quality-assessor invocation'
+contains "$SKILL_MD" 'Step 3.6: refusing symlink .step3.6-assessor.env; using stdout fallback.' 'SKILL.md missing Step 3.6 symlink refusal'
+contains "$SKILL_MD" 'design-plan-quality-assessor.sh configuration error (exit 2)' 'SKILL.md missing assessor exit-2 abort prose'
+contains "$SKILL_MD" 'design-plan-quality-assessor.sh result env missing/unreadable and stdout did not populate mandatory keys; aborting /design.' 'SKILL.md missing assessor mandatory-keys abort prose'
+contains "$MAKEFILE" 'test-design-plan-quality-assessor' 'Makefile missing test-design-plan-quality-assessor target'
+[[ -x "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" ]] || fail "design-plan-quality-assessor.sh must be executable"
+contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'LARCH_SNAPSHOT_PLAN_ROUND_SH' 'design-plan-quality-assessor.sh missing SNAPSHOT_SH seam'
+contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'LARCH_ASSESS_PLAN_ROUND_SH' 'design-plan-quality-assessor.sh missing ASSESS_SH seam'
+contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" '_write_result_and_emit' 'design-plan-quality-assessor.sh missing result flush helper'
+contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" '_assessor_pause_checkpoint' 'design-plan-quality-assessor.sh missing pause checkpoint'
+contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'set +e' 'design-plan-quality-assessor.sh missing child set +e capture'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" '--round-num "$ROUND_NUM"' 'run-step3-review.sh missing --round-num ROUND_NUM to plan-review-loop'
 contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'

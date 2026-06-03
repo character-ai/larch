@@ -9,7 +9,7 @@
 .PHONY: test-extract-plan-scope-paths test-git-commit-only
 .PHONY: test-design-reentry-guard
 .PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
-.PHONY: test-snapshot-plan-round test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round
+.PHONY: test-snapshot-plan-round test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round test-design-plan-quality-assessor
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
 .PHONY: test-step-7a
@@ -104,7 +104,7 @@ test-harnesses-16: test-dispatch-code-voters-happy test-timing-ledger test-step-
 
 test-harnesses-17: test-dispatch-plan-voters test-tally-code-votes test-larch-log test-hook-anti-read-poll test-dispatch-code-voters-retry-claude test-token-claude-source test-dispatch-code-voters-retry-codex-success test-parse-input test-tracking-issue-read-sentinel test-scout-plan-archetypes-wrapper test-write-run-params test-lib-failed-agent-stderr-tail test-ci-failed-jobs test-run-step1-plan-log test-decompose-aggregator test-invoke-plan-validator test-render-assessor-prompt test-plan-adequacy-audit test-lib-design-round-artifacts
 
-test-harnesses-18: test-implement-finalize test-tracking-issue-write test-revise-plan-with-waterfall test-harness-timer test-pipe-sigpipe-safety test-check-plan-size test-assess-plan-round test-dispatch-plan-assessors test-check-phantom-dirty test-log-phase test-ci-behind-count test-compose-plan-goals-test test-token-cost-per-bucket test-design-reentry-guard test-gh-run-logs test-github-remote-repo test-scoreboard test-synthesis-subagent
+test-harnesses-18: test-implement-finalize test-tracking-issue-write test-revise-plan-with-waterfall test-harness-timer test-pipe-sigpipe-safety test-check-plan-size test-assess-plan-round test-design-plan-quality-assessor test-dispatch-plan-assessors test-check-phantom-dirty test-log-phase test-ci-behind-count test-compose-plan-goals-test test-token-cost-per-bucket test-design-reentry-guard test-gh-run-logs test-github-remote-repo test-scoreboard test-synthesis-subagent
 
 test-harnesses-19: test-dispatch-with-waterfall test-verify-run-log-completeness test-cleanup test-write-final-report test-upsert-diagrams-comment test-capture-session-transcript test-analyze test-lint-readability-preamble test-larch-logs-batches test-restore-finalize-state test-check-reviewer-failure-threshold test-rebase-push-keep-on-conflict test-get-issue-state test-quick-mode-docs-sync test-read-design-classification test-lib-title-eligibility test-subskill-anchors test-alias-structure test-lib-title-markers test-phantom-probe-with-warn test-rebase-checkpoint-probe
 
@@ -488,6 +488,9 @@ test-tally-plan-assessor:
 
 test-assess-plan-round:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-assess-plan-round.sh
+
+test-design-plan-quality-assessor:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-plan-quality-assessor.sh
 
 test-parse-plan-commands:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-parse-plan-commands.sh
