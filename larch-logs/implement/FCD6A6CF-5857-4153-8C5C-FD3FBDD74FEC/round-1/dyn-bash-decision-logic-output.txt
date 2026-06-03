@@ -1,0 +1,12 @@
+Reviewing branch changes with emphasis on `ci-decide.sh` merge-gate logic and related correctness.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **code-quality** `scripts/ci-decide.sh:7-8` — The top-of-file summary still says merge is allowed only when CI passes and the branch is “up-to-date,” but the decision matrix and implementation (lines 19–21, 116–118) also allow `pass + behind + conflict-free`. **Suggested fix:** Align the lines 7–8 comment with the conflict-aware matrix so future edits do not reintroduce the old “must be up-to-date” assumption.
+
+- **risk-integration** `scripts/ci-wait.sh:216-221` — When `CONFLICTED` is missing from `ci-status.sh` output, `ci-wait.sh` defaults it to `false`, so `pass + behind>0` routes to `merge` (Case 10 in `scripts/test-ci-wait.sh`). That is intentional backward compatibility per the plan, but a mixed deploy (old `ci-status` + new `ci-wait`/`ci-decide`) on a genuinely `DIRTY` behind PR could loop `merge` → `merge-pr.sh` `main_advanced` until caps. **Suggested fix:** No change required if the deploy is atomic; otherwise document that `ci-status.sh` must emit `CONFLICTED` before enabling merge-while-behind in production.
+
+**Scout checklist (no defect):** The `{ [[ "$BEHIND" == "false" ]] || [[ "$CONFLICTED" != "true" ]]; }` group on line 116 is valid Bash 3.2 (semicolon before `}`; group used as a single `&&` operand). It correctly implements `pass ∧ (¬behind ∨ ¬conflicted)`, matching the header table. `--conflicted` defaults to `false` (line 58); invalid values are rejected at lines 98–101 before the matrix at line 116, so they cannot silently become “conflict-free.” In the normal `ship-pr` path, `ci-status.sh` derives `CONFLICTED` from `mergeStateStatus` (including conservative `true` for `DIRTY`/`UNKNOWN`/empty at `scripts/ci-status.sh:201-206`), and `ci-wait.sh` forwards it (`scripts/ci-wait.sh:236`), so a conflicted behind branch does not get `ACTION=merge` unless the conflict signal is missing (degraded mode above).
