@@ -10,7 +10,7 @@ def _env_bool(env: dict[str, str], key: str, *, default: bool = False) -> bool:
     raw = env.get(key)
     if raw is None or raw == "":
         return default
-    return raw.lower() == "true"
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 
 def _env_int(env: dict[str, str], key: str) -> int | None:

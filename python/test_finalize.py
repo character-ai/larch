@@ -84,6 +84,7 @@ def test_postmerge_verifies_main_title(tmp_path: Path) -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "switch", "main"), 0, "", "", 0.01),
+            CommandResult(("git", "pull", "--ff-only", "origin", "main"), 0, "", "", 0.01),
             CommandResult(("git", "branch", "-D", "feat"), 0, "", "", 0.01),
             CommandResult(("git", "log", "-1", "--format=%s", "main"), 0, "Implement thing (#7)\n", "", 0.01),
         ],
@@ -98,6 +99,7 @@ def test_teardown_stall_preserves_tmpdir_and_writes_manifest(tmp_path: Path) -> 
     git_dir.mkdir()
     runner = RecordingRunner(
         responses=[
+            CommandResult(("gh", "issue", "view"), 0, '{"title":"Existing title","state":"OPEN"}\n', "", 0.01),
             CommandResult(("gh", "issue", "edit"), 0, "", "", 0.01),
             CommandResult(("git", "status"), 0, " M file\n", "", 0.01),
             CommandResult(("git", "stash"), 0, "", "", 0.01),

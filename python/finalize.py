@@ -2,8 +2,10 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 import config
@@ -51,8 +53,15 @@ def postbump(
 ) -> FinalizeResult:
     """Refresh run logs, rebase, and force-push before PR creation."""
     try:
+        branch = git.try_current_branch(runner, cwd=cwd)
+        target = ctx.branch_name or ctx.branch
+        if not branch or (target and branch != target):
+            return FinalizeResult(Outcome.STALLED, "branch-invalid", "wrong branch")
+        if branch in {"main", "master"} and not (ctx.forked or ctx.forked_target):
+            return FinalizeResult(Outcome.STALLED, "branch-protected", "refusing postbump on protected branch")
         _ = run_logs.flush_logs_pre(runner, ctx, cwd=cwd)
         base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
+        remote_tip = git.try_rev_parse(runner, f"origin/{branch}", cwd=cwd)
         result = rebase.rebase_and_push(
             runner,
             repo=ctx.repo,
@@ -61,12 +70,12 @@ def postbump(
             tmpdir=ctx.tmpdir,
             base_remote=base_remote,
             base_ref="main",
-            defer_push=ctx.repo_unavailable,
+            defer_push=ctx.repo_unavailable or remote_tip is None,
         )
     except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
         return _result_from_error(exc)
     status = "rebased" if result.rebased else "already-fresh"
-    if ctx.repo_unavailable:
+    if ctx.repo_unavailable or not result.pushed:
         status = f"{status}-push-skipped"
     return FinalizeResult(Outcome.OK, status)
 
@@ -108,6 +117,9 @@ def postmerge(
     switch = runner.run(["git", "switch", "main"], cwd=cwd)
     if switch.returncode != 0:
         cleanup_status = "partial"
+    pull = runner.run(["git", "pull", "--ff-only", "origin", "main"], cwd=cwd)
+    if pull.returncode != 0:
+        cleanup_status = "partial"
     delete = runner.run(["git", "branch", "-D", branch], cwd=cwd)
     if delete.returncode != 0:
         cleanup_status = "partial"
@@ -116,11 +128,15 @@ def postmerge(
     if ctx.pr_number is not None and expected_title:
         expected_title = f"{expected_title} (#{ctx.pr_number})"
     actual = git.log_subject(runner, "main", cwd=cwd)
-    verify_status = "verified" if expected_title and actual == expected_title else "unexpected"
-    outcome = Outcome.OK if verify_status == "verified" else Outcome.STALLED
+    suffix = f"(#{ctx.pr_number})" if ctx.pr_number is not None else ""
+    title_ok = bool(
+        expected_title
+        and (actual == expected_title or actual.startswith(expected_title) or (suffix and actual.endswith(suffix)))
+    )
+    verify_status = "verified" if title_ok else "unexpected"
     return FinalizeResult(
-        outcome,
-        "ok" if outcome is Outcome.OK else "verify-main-unexpected",
+        Outcome.OK,
+        "ok" if title_ok else "verify-main-unexpected",
         local_cleanup_status=cleanup_status,
         verify_main_status=verify_status,
     )
@@ -137,6 +153,18 @@ def _rename_issue(
     if not issue or ctx.repo_unavailable:
         return "skipped"
     current = ctx.pr_title or f"Issue {issue}"
+    result = runner.run(
+        ["gh", "issue", "view", str(issue), "--repo", ctx.repo, "--json", "title,state"],
+        cwd=cwd,
+    )
+    if result.returncode == 0:
+        try:
+            data = json.loads(result.stdout or "{}")
+            if str(data.get("state", "")).upper() not in {"", "OPEN"}:
+                return "skipped"
+            current = str(data.get("title") or current)
+        except json.JSONDecodeError:
+            pass
     try:
         _ = tracking_issue.rename(
             runner,
@@ -185,11 +213,14 @@ def _write_stalled_sentinel(
     path = git_dir / "larch-stalled-run.txt"
     path.parent.mkdir(parents=True, exist_ok=True)
     issue = ctx.issue_number or ctx.issue
+    issue_url = f"https://github.com/{ctx.repo}/issues/{issue}" if issue and ctx.repo else ""
+    timestamp = datetime.now(UTC).isoformat()
     content = (
         f"ISSUE_NUMBER={issue}\n"
-        f"ISSUE_URL=\n"
+        f"ISSUE_URL={issue_url}\n"
         f"STALL_STEP={ctx.stall_step or 'unknown'}\n"
         f"STASH_REF={stash_ref}\n"
+        f"TIMESTAMP={timestamp}\n"
     )
     tmp = path.with_suffix(".txt.tmp")
     _ = tmp.write_text(content, encoding="utf-8")
@@ -246,9 +277,10 @@ def teardown(
     if tmpdir.exists() and _cleanup_target_ok(ctx, tmpdir):
         shutil.rmtree(tmpdir, ignore_errors=True)
         removed = not tmpdir.exists()
+    status = "cleaned" if removed else "cleanup-skipped"
     return FinalizeResult(
         Outcome.OK,
-        "cleaned",
+        status,
         rename_branch=rename_branch,
         rename_status=rename_status,
         cleanup_removed=removed,
@@ -256,10 +288,29 @@ def teardown(
 
 
 def _cleanup_target_ok(ctx: RunContext, tmpdir: Path) -> bool:
+    raw = str(tmpdir)
+    cache_root = Path.home() / ".cache" / "larch" / "sessions"
+    allowed_prefixes = (
+        "/tmp/",  # noqa: S108 - parity allowlist for session tmpdirs.
+        "/private/tmp/",
+        "/var/folders/",
+        "/private/var/folders/",
+        str(cache_root) + "/",
+    )
+    if not raw.startswith(allowed_prefixes):
+        return False
     prefix = ctx.expected_tmpdir_basename_prefix
+    if not prefix:
+        repo = Path.cwd().name or "_"
+        prefix = f"claude-implement-{repo[:32]}-"
     if prefix and not tmpdir.name.startswith(prefix):
         session_file = tmpdir / "session-id"
         if not ctx.expected_session_id or not session_file.is_file():
+            return False
+        return session_file.read_text(encoding="utf-8").strip() == ctx.expected_session_id
+    if ctx.expected_session_id:
+        session_file = tmpdir / "session-id"
+        if not session_file.is_file():
             return False
         return session_file.read_text(encoding="utf-8").strip() == ctx.expected_session_id
     return True
@@ -289,6 +340,10 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
         "EXPECTED_TMPDIR_BASENAME_PREFIX": ctx.expected_tmpdir_basename_prefix,
         "NO_LOGS_COMMIT": _bool_text(ctx.no_logs_commit),
     }
+    for key, value in data.items():
+        if "\n" in str(value) or "\r" in str(value):
+            msg = f"finalize-state value for {key} contains a newline"
+            raise ShipError(msg)
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")

@@ -41,6 +41,7 @@ class Manifest:
     steps_ran: dict[str, Any]
     created_at: str = ""
     updated_at: str = ""
+    extra: dict[str, Any] | None = None
 
 
 @dataclass(frozen=True)
@@ -229,14 +230,16 @@ def init_run(
 
 
 def _manifest_to_dict(manifest: Manifest) -> dict[str, Any]:
-    return {
+    data = dict(manifest.extra or {})
+    data.update({
         "status": manifest.status,
         "version": manifest.version,
         "run_id": manifest.run_id,
         "steps_ran": manifest.steps_ran,
         "created_at": manifest.created_at,
         "updated_at": manifest.updated_at,
-    }
+    })
+    return data
 
 
 def _dict_to_manifest(data: dict[str, Any]) -> Manifest:
@@ -249,6 +252,19 @@ def _dict_to_manifest(data: dict[str, Any]) -> Manifest:
         steps_ran=steps,
         created_at=str(data.get("created_at", "")),
         updated_at=str(data.get("updated_at", "")),
+        extra={
+            key: value
+            for key, value in data.items()
+            if key
+            not in {
+                "status",
+                "version",
+                "run_id",
+                "steps_ran",
+                "created_at",
+                "updated_at",
+            }
+        },
     )
 
 
@@ -280,6 +296,7 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
         steps_ran=steps,
         created_at=created_at,
         updated_at=updated_at,
+        extra=current.extra,
     )
     _write_manifest(ctx, updated)
     return updated
@@ -469,10 +486,31 @@ def _execution_issue_record(
 def _write_final_report(runner: Runner, ctx: RunContext) -> None:
     if not _WRITE_FINAL_REPORT.is_file():
         return
-    _ = runner.run(
+    result = runner.run(
         ["bash", str(_WRITE_FINAL_REPORT), "--implement-tmpdir", ctx.tmpdir],
         cwd=str(_REPO_ROOT),
     )
+    if result.returncode != 0:
+        msg = "write-final-report.sh failed"
+        raise ShipError(msg)
+
+
+def write_final_report_comment(runner: Runner, ctx: RunContext) -> None:
+    if not _WRITE_FINAL_REPORT.is_file():
+        return
+    result = runner.run(
+        [
+            "bash",
+            str(_WRITE_FINAL_REPORT),
+            "--implement-tmpdir",
+            ctx.tmpdir,
+            "--comment-only",
+        ],
+        cwd=str(_REPO_ROOT),
+    )
+    if result.returncode != 0:
+        msg = "write-final-report.sh --comment-only failed"
+        raise ShipError(msg)
 
 
 def flush_logs_pre(
@@ -542,6 +580,7 @@ def flush_logs_post(
         steps_ran=steps,
         created_at=manifest.created_at,
         updated_at=manifest.updated_at,
+        extra={**(manifest.extra or {}), **({"pr_number": int(pr_number)} if str(pr_number).isdigit() else {})},
     )
     _write_manifest(ctx, updated)
     if runner is not None:

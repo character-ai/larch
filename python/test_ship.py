@@ -146,6 +146,7 @@ def test_happy_path_stage_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         lambda *_a, **_k: order.append("flush-post") or run_logs.RefreshSkip(skipped=False, reason=""),
     )
     monkeypatch.setattr(ship.run_logs, "load_or_recover_manifest", lambda *_a, **_k: object())
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: order.append("comment"))
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: order.append("state"))
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
 
@@ -158,6 +159,7 @@ def test_happy_path_stage_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         "oos",
         "flush-pre",
         "ensure-pr",
+        "comment",
         "monitor",
         "merge",
         "postmerge",

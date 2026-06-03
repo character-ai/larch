@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -20,6 +19,7 @@ import oos
 import pr
 import pr_body
 import proc
+import redact
 import rebase
 import run_logs
 from errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
@@ -154,14 +154,14 @@ def run_postmerge_phase(
     cwd: str | None = None,
 ) -> ShipResult:
     post = finalize.postmerge(runner, ctx, cwd=cwd)
-    if post.outcome is not Outcome.OK:
-        return ShipResult(post.outcome, detail=post.detail or post.status)
     if _postmerge_should_flush(ctx):
         _ = run_logs.load_or_recover_manifest(ctx)
         skip = run_logs.flush_logs_post(ctx, merge_result=ctx.merge_result, runner=runner)
         if skip.skipped:
             return ShipResult(Outcome.STALLED, detail=f"post-merge flush skipped: {skip.reason}")
     finalize.write_finalize_state(ctx, Path(ctx.tmpdir) / "finalize-state.sh")
+    if post.outcome is not Outcome.OK:
+        return ShipResult(post.outcome, detail=post.detail or post.status)
     return ShipResult(
         Outcome.OK,
         pr_number=ctx.pr_number,
@@ -191,7 +191,7 @@ def run_ship(
         if checks_result.outcome is not Outcome.OK:
             return _step_result_to_ship(checks_result)
 
-        postbump = finalize.postbump(runner, ctx, cwd=cwd)
+        postbump = finalize.postbump(runner, ctx, cwd=repo_root)
         if postbump.outcome is not Outcome.OK:
             return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
 
@@ -214,8 +214,10 @@ def run_ship(
         working = ctx.with_(
             pr_number=ensured.number or None,
             pr_url=ensured.url,
+            pr_title=title,
             pr_closed=False,
         )
+        run_logs.write_final_report_comment(runner, working)
         if not working.merge or working.draft or working.forked or working.repo_unavailable:
             finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
             return ShipResult(
@@ -248,44 +250,53 @@ def run_ship(
                     pr_number=working.pr_number,
                     pr_url=working.pr_url,
                 )
-            if monitor.action in {"merge", "already_merged"}:
-                break
-            if monitor.goto_rebase:
-                _ = rebase.rebase_and_push(
-                    runner,
-                    repo=working.repo,
-                    run_id=working.run_id,
-                    cwd=cwd,
-                    tmpdir=working.tmpdir,
-                )
-                rebase_count += 1
-            if monitor.did_fixing:
-                fix_attempts += 1
-            iteration += 1
+            if monitor.action not in {"merge", "already_merged"}:
+                if monitor.goto_rebase:
+                    pre_rebase = run_logs.flush_logs_pre(runner, working, cwd=repo_root)
+                    if pre_rebase.skipped and pre_rebase.reason not in config.REFRESH_SKIP_MERGE_OK:
+                        return ShipResult(
+                            Outcome.STALLED,
+                            detail=f"pre-rebase flush skipped: {pre_rebase.reason}",
+                        )
+                    _ = rebase.rebase_and_push(
+                        runner,
+                        repo=working.repo,
+                        run_id=working.run_id,
+                        cwd=repo_root,
+                        tmpdir=working.tmpdir,
+                    )
+                    rebase_count += 1
+                if monitor.did_fixing:
+                    fix_attempts += 1
+                iteration += 1
+                continue
 
-        merged = merge.merge_pr(runner, working, cwd=cwd, post_flush=False)
-        pr_closed = merged.result in config.POST_MERGE_MERGE_RESULTS
-        working = working.with_(
-            merge_result=merged.result,
-            pr_closed=pr_closed,
-        )
-        if merged.result == config.MERGE_RESULT_ERROR:
-            finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
+            merged = merge.merge_pr(runner, working, cwd=cwd, post_flush=False)
+            if merged.result in {config.MERGE_RESULT_CI_NOT_READY, config.MERGE_RESULT_MAIN_ADVANCED}:
+                iteration += 1
+                continue
+            pr_closed = merged.result in config.POST_MERGE_MERGE_RESULTS
+            working = working.with_(
+                merge_result=merged.result,
+                pr_closed=pr_closed,
+            )
+            if merged.result == config.MERGE_RESULT_ERROR:
+                finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
+                return ShipResult(
+                    Outcome.STALLED,
+                    pr_number=working.pr_number,
+                    pr_url=working.pr_url,
+                    merge_result=merged.result,
+                    detail=merged.error,
+                )
+            post = run_postmerge_phase(runner, working, cwd=cwd)
             return ShipResult(
-                Outcome.STALLED,
+                post.outcome,
                 pr_number=working.pr_number,
                 pr_url=working.pr_url,
-                merge_result=merged.result,
-                detail=merged.error,
+                merge_result=working.merge_result,
+                detail=post.detail,
             )
-        post = run_postmerge_phase(runner, working, cwd=cwd)
-        return ShipResult(
-            post.outcome,
-            pr_number=working.pr_number,
-            pr_url=working.pr_url,
-            merge_result=working.merge_result,
-            detail=post.detail,
-        )
     except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
         return _error_to_result(exc)
 
@@ -300,56 +311,83 @@ def _journal_path(ctx: RunContext) -> Path:
 
 
 def emit_result(ctx: RunContext, result: ShipResult) -> None:
-    payload = result.to_json_dict()
+    payload = _redacted_result_payload(result)
     if ctx.run_id:
         journal = logging_util.JsonlJournal(_journal_path(ctx), ctx.run_id)
         _ = journal.append(config.JOURNAL_EVENT_SHIP_RESULT, **payload)
     print(json.dumps(payload, sort_keys=True))
 
 
+def _redacted_result_payload(result: ShipResult) -> dict[str, Any]:
+    payload = result.to_json_dict()
+    for key in ("needs_user_reason", "failed_run_id", "merge_result", "detail"):
+        value = payload.get(key)
+        if isinstance(value, str) and value:
+            redacted = redact.redact_outbound(value)
+            payload[key] = "redacted" if "[content truncated" in redacted else redacted
+    return payload
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run the Python ship-pr driver")
-    _ = parser.add_argument("--branch", default=os.environ.get("BRANCH_NAME", ""))
-    _ = parser.add_argument("--issue", default=os.environ.get("ISSUE_NUMBER", ""))
-    _ = parser.add_argument("--repo", default=os.environ.get("REPO", ""))
-    _ = parser.add_argument("--run-id", default=os.environ.get("RUN_ID", ""))
-    _ = parser.add_argument("--tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
-    _ = parser.add_argument("--manifest-path", default=os.environ.get("MANIFEST_PATH", ""))
-    _ = parser.add_argument("--tool-label", default=os.environ.get("TOOL_LABEL", "codex"))
-    _ = parser.add_argument("--merge", default=os.environ.get("MERGE", "true"))
-    _ = parser.add_argument("--draft", default=os.environ.get("DRAFT", "false"))
-    _ = parser.add_argument("--forked", default=os.environ.get("FORKED_TARGET", "false"))
-    _ = parser.add_argument("--repo-unavailable", default=os.environ.get("REPO_UNAVAILABLE", "false"))
-    _ = parser.add_argument("--no-admin-fallback", default=os.environ.get("NO_ADMIN_FALLBACK", "false"))
+    _ = parser.add_argument("--branch")
+    _ = parser.add_argument("--issue")
+    _ = parser.add_argument("--repo")
+    _ = parser.add_argument("--run-id")
+    _ = parser.add_argument("--tmpdir")
+    _ = parser.add_argument("--manifest-path")
+    _ = parser.add_argument("--tool-label")
+    _ = parser.add_argument("--merge")
+    _ = parser.add_argument("--draft")
+    _ = parser.add_argument("--forked")
+    _ = parser.add_argument("--repo-unavailable")
+    _ = parser.add_argument("--no-admin-fallback")
+    _ = parser.add_argument("--no-logs-commit", action="store_true", default=None)
     return parser
 
 
 def _ctx_from_args(args: argparse.Namespace) -> RunContext:
     env_ctx = RunContext.from_env()
-    return env_ctx.with_(
-        branch=args.branch,
-        branch_name=args.branch,
-        issue=args.issue,
-        issue_number=args.issue,
-        repo=args.repo,
-        run_id=args.run_id,
-        tmpdir=args.tmpdir,
-        manifest_path=args.manifest_path,
-        tool_label=args.tool_label,
-        merge=str(args.merge).lower() == "true",
-        draft=str(args.draft).lower() == "true",
-        forked=str(args.forked).lower() == "true",
-        forked_target=str(args.forked).lower() == "true",
-        repo_unavailable=str(args.repo_unavailable).lower() == "true",
-        no_admin_fallback=str(args.no_admin_fallback).lower() == "true",
-    )
+    changes: dict[str, object] = {}
+    for arg_name, field_name in (
+        ("branch", "branch"),
+        ("branch", "branch_name"),
+        ("issue", "issue"),
+        ("issue", "issue_number"),
+        ("repo", "repo"),
+        ("run_id", "run_id"),
+        ("tmpdir", "tmpdir"),
+        ("manifest_path", "manifest_path"),
+        ("tool_label", "tool_label"),
+    ):
+        value = getattr(args, arg_name)
+        if value not in (None, ""):
+            changes[field_name] = value
+    for arg_name, field_name in (
+        ("merge", "merge"),
+        ("draft", "draft"),
+        ("forked", "forked"),
+        ("forked", "forked_target"),
+        ("repo_unavailable", "repo_unavailable"),
+        ("no_admin_fallback", "no_admin_fallback"),
+    ):
+        value = getattr(args, arg_name)
+        if value is not None:
+            changes[field_name] = str(value).strip().lower() in {"1", "true", "yes", "on"}
+    if args.no_logs_commit is True:
+        changes["no_logs_commit"] = True
+    return env_ctx.with_(**changes)
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    ctx = _ctx_from_args(args)
-    result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
+    ctx = RunContext.from_env()
+    try:
+        parser = build_parser()
+        args = parser.parse_args(argv)
+        ctx = _ctx_from_args(args)
+        result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
+    except Exception as exc:
+        result = _error_to_result(exc)
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

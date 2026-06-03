@@ -370,7 +370,7 @@ test-merge-pr:
 	bash scripts/harness-timer.sh $@ bash scripts/test-merge-pr.sh
 
 test-merge-parity:
-	python3 -m pytest python/test_merge_bash_parity.py
+	bash scripts/harness-timer.sh $@ python3 -m pytest python/test_merge_bash_parity.py
 
 
 test-git-push:
