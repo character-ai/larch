@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
@@ -568,13 +567,3 @@ def test_classify_modified_argument_hint_minor(tmp_path: Path) -> None:
     )
     result = version_bump.classify_bump(runner, cwd=str(repo))
     assert result.bump_type == "MINOR"
-
-
-
-
-
-
-
-
-
-

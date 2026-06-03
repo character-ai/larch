@@ -133,9 +133,14 @@ Repo-root helpers referenced from steps above:
 
 - `scripts/resolve-repo.sh`, `scripts/redact-tmpdir-paths.sh`, `scripts/redact-secrets.sh`, `scripts/create-pr.sh`, `scripts/ci-wait.sh`, `scripts/merge-pr.sh`, `scripts/promote-release.sh` (contract: `scripts/promote-release.md`)
 
-Offline harnesses (Makefile: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`):
+Bump classification (relocated from `.claude/skills/bump-version/` in Phase 5):
+
+- `classify-bump.sh` (contract: `classify-bump.md`) — semver bump classifier; `release-prepare.sh` defaults `CLASSIFY_BUMP` to this path
+
+Offline harnesses (Makefile: `test-release-prepare`, `test-release-set-version`, `test-release-finish`, `test-promote-release`, `test-classify-bump`):
 
 - `test-release-prepare.sh` (contract: `test-release-prepare.md`)
 - `test-release-set-version.sh` (contract: `test-release-set-version.md`)
 - `test-release-finish.sh` (contract: `test-release-finish.md`)
 - `scripts/test-promote-release.sh` (contract: `scripts/test-promote-release.md`)
+- `test-classify-bump.sh` (contract: `test-classify-bump.md`)

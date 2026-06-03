@@ -80,10 +80,6 @@ def _semver_parts(version: str) -> tuple[int, int, int]:
     return int(maj_s), int(min_s), int(pat_s)
 
 
-def _semver_lt(left: str, right: str) -> bool:
-    return _semver_parts(left) < _semver_parts(right)
-
-
 def _apply_bump_type(current: str, bump_type: str) -> str:
     maj, min_, pat = _semver_parts(current)
     if bump_type == "MAJOR":
@@ -91,16 +87,6 @@ def _apply_bump_type(current: str, bump_type: str) -> str:
     if bump_type == "MINOR":
         return f"{maj}.{min_ + 1}.0"
     return f"{maj}.{min_}.{pat + 1}"
-
-
-def _infer_bump_type(original_current: str, initial_target: str) -> BumpType:
-    c_maj, c_min, _ = _semver_parts(original_current)
-    n_maj, n_min, _ = _semver_parts(initial_target)
-    if n_maj > c_maj:
-        return "MAJOR"
-    if n_min > c_min:
-        return "MINOR"
-    return "PATCH"
 
 
 def _public_surface_path(path: str) -> bool:
