@@ -136,7 +136,7 @@ if [[ "$1" == "pr" ]]; then
                 fi
                 checks_knob_probe=1
                 if [[ -n "${GH_STUB_CHECKS_JSON_EMPTY_FIRST:-}" ]]; then
-                    knob_count_file="${GH_STUB_CHECKS_JSON_COUNT_FILE:-${GH_STUB_LOG:-}.checks-json-knob-count}"
+                    knob_count_file="${GH_STUB_LOG:-/tmp/gh-stub}.checks-json-knob-count"
                     if [[ -n "$knob_count_file" ]]; then
                         checks_knob_probe=$(( $(cat "$knob_count_file" 2>/dev/null || echo 0) + 1 ))
                         printf '%s\n' "$checks_knob_probe" >"$knob_count_file"
@@ -180,13 +180,14 @@ if [[ "$1" == "pr" ]]; then
             exit 0
             ;;
         view)
-            if [[ -n "${GH_STUB_PR_VIEW_RC:-}" && "${GH_STUB_PR_VIEW_RC}" != "0" ]]; then
-                echo "Could not resolve host: api.github.com" >&2
-                exit "${GH_STUB_PR_VIEW_RC}"
-            fi
             json_fields=$(arg_after --json "$@" || true)
             case "$json_fields" in
                 *headRefOid*)
+                    head_rc="${GH_STUB_PR_VIEW_HEAD_RC:-${GH_STUB_PR_VIEW_RC:-}}"
+                    if [[ -n "$head_rc" && "$head_rc" != "0" ]]; then
+                        echo "Could not resolve host: api.github.com" >&2
+                        exit "$head_rc"
+                    fi
                     head_count_file="${GH_STUB_PR_HEAD_OID_COUNT_FILE:-}"
                     if [[ -z "$head_count_file" && -n "${GH_STUB_LOG:-}" ]]; then
                         head_count_file="${GH_STUB_LOG}.head-count"
@@ -198,7 +199,7 @@ if [[ "$1" == "pr" ]]; then
                     fi
                     head_knob_probe=1
                     if [[ -n "${GH_STUB_PR_HEAD_OID_MISMATCH_FIRST:-}" ]]; then
-                        head_knob_count_file="${GH_STUB_PR_HEAD_OID_COUNT_FILE:-${GH_STUB_LOG:-}.head-knob-count}"
+                        head_knob_count_file="${GH_STUB_LOG:-/tmp/gh-stub}.head-knob-count"
                         if [[ -n "$head_knob_count_file" ]]; then
                             head_knob_probe=$(( $(cat "$head_knob_count_file" 2>/dev/null || echo 0) + 1 ))
                             printf '%s\n' "$head_knob_probe" >"$head_knob_count_file"
@@ -942,7 +943,7 @@ grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--json' || fail "never-registered 
 unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY
 rm -rf "$TMPNOREG"
 
-echo "=== registration probe fails fast on non-array JSON ==="
+echo "=== registration probe treats non-array JSON as not registered ==="
 TMPREGOBJ=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-reg-object.XXXXXX")
 clone_regobj=$(setup_clone_with_origin_head "$TMPREGOBJ")
 stub_regobj="$TMPREGOBJ/stub"
@@ -967,9 +968,10 @@ out_regobj=$(
 rc_regobj=$?
 set -e
 [[ "$out_regobj" == *"PUBLISH_OK=false"* ]] || fail "non-array registration PUBLISH_OK: $out_regobj"
-[[ "$rc_regobj" -eq 1 ]] || fail "non-array registration should exit 1 (got $rc_regobj)"
+[[ "$rc_regobj" -eq 1 ]] || fail "non-array registration should exit 1 after timeout (got $rc_regobj)"
 grep -q 'non-array JSON' "$regobj_stderr" || fail "non-array registration stderr missing diagnostic"
-[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "1" ]] || fail "non-array registration should fail after one probe"
+expected_probes=$(expected_registration_probes)
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "$expected_probes" ]] || fail "non-array registration should exhaust $expected_probes probes, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
 ! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "non-array registration must not invoke --watch"
 ! grep -q 'pr merge' "$GH_STUB_LOG" || fail "non-array registration must not merge"
 unset GH_STUB_CHECKS_JSON_OUT
@@ -1054,6 +1056,7 @@ out_stale=$(cd "$clone_stale" && bash "$PUBLISH" --design-tmpdir "$TMPSTALE/desi
 [[ "$(cat "$GH_STUB_LOG.head-count")" == "3" ]] || fail "stale-head should wait for third head probe, got $(cat "$GH_STUB_LOG.head-count" 2>/dev/null || echo missing)"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "stale-head eventual match should merge"
 unset GH_STUB_PR_HEAD_OID_MISMATCH_FIRST
+export SLEEP_SCRIPT_DIR="$GLOBAL_SLEEP_STUB"
 rm -rf "$TMPSTALE"
 
 echo "=== stale head never aligns skips watch and merge ==="

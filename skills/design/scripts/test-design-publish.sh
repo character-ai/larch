@@ -329,6 +329,7 @@ set -e
 assert_rc "PUBLISH_OK=false" 0 "$rc"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "PUBLISH_OK=false should render post-publish summary"
 grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "PUBLISH_OK=false should render failed-publish outcome"
+grep -q 'design-log-publish.sh failed (exit 1)' "$D_PFAIL/execution-issues.md" 2>/dev/null || fail "PUBLISH_OK=false should record nonzero publish failure exit"
 grep -q 'design log publish failed; recovery metadata' "$D_PFAIL/.design-publish-result.env" || fail "PUBLISH_OK=false should emit recovery WARN"
 if ! grep -q 'tracking-issue-write' "$RENAME_LOG"; then
     pass "rename skipped on PUBLISH_OK=false"
@@ -351,6 +352,7 @@ set -e
 assert_rc "unexpected publish rc" 0 "$rc"
 grep -q 'PUBLISH_OK=false' "$D_UNEXP/.design-publish-result.env" || fail "unexpected publish must set PUBLISH_OK=false"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "unexpected publish should render post-publish summary"
+grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "unexpected publish rc should render failed-publish outcome"
 if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
     fail "rename should be skipped after unexpected publish rc"
 else
@@ -373,6 +375,7 @@ set -e
 assert_rc "missing PUBLISH_OK on exit 0" 0 "$rc"
 grep -q 'PUBLISH_OK=false' "$D_NO_PUB_KV/.design-publish-result.env"   || fail "exit 0 without PUBLISH_OK= must set PUBLISH_OK=false"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "exit 0 without PUBLISH_OK should render post-publish summary"
+grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "exit 0 without PUBLISH_OK should render failed-publish outcome"
 if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
     fail "rename should be skipped when PUBLISH_OK is missing"
 else

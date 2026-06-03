@@ -310,11 +310,15 @@ if [[ -n "$SESSION_ID" ]]; then
             --redact >/dev/null 2>&1 || true
         add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
     elif [[ "${PUBLISH_OK:-}" == false ]]; then
+        _publish_failure_rc=${_publish_rc:-1}
+        if [[ "$_publish_failure_rc" -eq 0 ]]; then
+            _publish_failure_rc=1
+        fi
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c" \
             --tool "design-log-publish.sh" \
-            --exit-code "${_publish_rc:-1}" \
+            --exit-code "$_publish_failure_rc" \
             --category Warnings \
             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
             --redact >/dev/null 2>&1 || true

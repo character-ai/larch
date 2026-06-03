@@ -800,8 +800,8 @@ fi
 REG_TIMEOUT=300
 REG_INTERVAL=10
 REG_MAX_PROBES=$(( (REG_TIMEOUT + REG_INTERVAL - 1) / REG_INTERVAL + 1 ))
+REG_DEADLINE=$((SECONDS + REG_TIMEOUT))
 checks_registered=false
-checks_registration_fatal=false
 last_checks_out=""
 last_checks_err=""
 last_view_out=""
@@ -822,7 +822,7 @@ else
         emit_publish_failure "$PR_NUM" "${PR_URL:-}"
         exit 1
     }
-    while [[ "$reg_probe" -le "$REG_MAX_PROBES" ]]; do
+    while [[ "$reg_probe" -le "$REG_MAX_PROBES" && "$SECONDS" -le "$REG_DEADLINE" ]]; do
         : >"$reg_checks_err_file"
         set +e
         reg_checks_out=$(gh pr checks "$PR_NUM" "${gh_repo_args[@]}" --required --json bucket 2>"$reg_checks_err_file")
@@ -836,11 +836,10 @@ else
                 checks_json_nonempty=true
             fi
         elif printf '%s\n' "${reg_checks_out:-}" | jq -e '.' >/dev/null 2>&1; then
-            larch_err "design-log-publish: gh pr checks returned non-array JSON during registration for PR $PR_NUM; refusing to merge: $(redact_diagnostic "${reg_checks_out:-unknown}")"
-            checks_registration_fatal=true
-            break
+            larch_err "design-log-publish: gh pr checks returned non-array JSON during registration for PR $PR_NUM; treating as not registered yet: $(redact_diagnostic "${reg_checks_out:-unknown}")"
         fi
         if [[ "$checks_json_nonempty" == true ]]; then
+            : >"$reg_view_fail_file"
             if with_transient_retry transient_envelope_predicate_none "$reg_view_fail_file" \
                 gh pr view "$PR_NUM" "${gh_repo_args[@]}" --json headRefOid; then
                 view_rc=0
@@ -859,7 +858,15 @@ else
             fi
         fi
         if [[ "$reg_probe" -lt "$REG_MAX_PROBES" ]]; then
-            "${SLEEP_SCRIPT_DIR:-$SCRIPT_DIR}/sleep-seconds.sh" "$REG_INTERVAL" >/dev/null 2>&1 || sleep "$REG_INTERVAL"
+            reg_remaining=$((REG_DEADLINE - SECONDS))
+            if [[ "$reg_remaining" -le 0 ]]; then
+                break
+            fi
+            reg_sleep="$REG_INTERVAL"
+            if [[ "$reg_sleep" -gt "$reg_remaining" ]]; then
+                reg_sleep="$reg_remaining"
+            fi
+            "${SLEEP_SCRIPT_DIR:-$SCRIPT_DIR}/sleep-seconds.sh" "$reg_sleep" >/dev/null 2>&1 || sleep "$reg_sleep"
         fi
         reg_probe=$((reg_probe + 1))
         : "$reg_checks_rc"
@@ -868,9 +875,7 @@ else
     reg_checks_err_file=""
     reg_view_fail_file=""
 
-    if [[ "$checks_registration_fatal" == true ]]; then
-        merge_rc=1
-    elif [[ "$checks_registered" != true ]]; then
+    if [[ "$checks_registered" != true ]]; then
         larch_err "design-log-publish: required CI checks did not register within ${REG_TIMEOUT}s (${REG_MAX_PROBES} probes; pushed head ${PUSH_HEAD_SHA}) for PR $PR_NUM; refusing to merge: checks=$(redact_diagnostic "${last_checks_out:-${last_checks_err:-unknown}}") head=$(redact_diagnostic "${last_view_out:-${last_view_err:-unknown}}")"
         merge_rc=1
     else
