@@ -1,0 +1,18 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- new_version is explicitly documented as always None in the code comment at line 293; the field is self-documenting dead code, removing it buys little and touches all construction sites
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- passthrough components without 10# normalization are real but semver spec forbids leading zeros and the fix adds code noise for a case that cannot arise from any valid plugin version
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- adding extra negative pins is an enhancement beyond the plan's testing requirements; the grep-clean gate covers the whole codebase
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- git_error is still exercised via Section 3f (line 300-303); the header comment at line 22 claiming git_error coverage remains accurate
+FINDING_11: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- bash and git are standard system utilities guaranteed on ubuntu-latest; asserting their presence would be cargo-cult CI
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- removing bump halt guards is the explicit goal of Phase 5, not an unintended risk; filing an issue about intentional deletion serves no purpose
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- anchoring classification to --head ref rather than local HEAD is the intended design; the version-equality check at lines 100-111 is the intended guard
+FINDING_17: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the text at lines 23 and 68 accurately states that Phase 1 removed /release gates from the ship path and /release remains the external versioning tool; the wording is not stale
