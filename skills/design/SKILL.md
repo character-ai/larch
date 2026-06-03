@@ -128,12 +128,13 @@ Run `parse-design-argv.sh` as the single authoritative Step 0-pre parser. Render
 
 ```bash
 export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'
+_cpr_literal='$''{CLAUDE_PLUGIN_ROOT}'
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-  printf '%s\n' '/design Step 0-pre: CLAUDE_PLUGIN_ROOT is empty after export — skill loader must expand ${CLAUDE_PLUGIN_ROOT} in the template line before Bash runs; abort' >&2
+  printf '%s\n' "/design Step 0-pre: CLAUDE_PLUGIN_ROOT is empty after export — skill loader must expand ${_cpr_literal} in the template line before Bash runs; abort" >&2
   exit 1
 fi
-if [ "${CLAUDE_PLUGIN_ROOT:-}" = '${CLAUDE_PLUGIN_ROOT}' ]; then
-  printf '%s\n' '/design Step 0-pre: CLAUDE_PLUGIN_ROOT is the unexpanded template literal — skill loader must expand ${CLAUDE_PLUGIN_ROOT} before Bash runs; abort' >&2
+if [ "${CLAUDE_PLUGIN_ROOT:-}" = "$_cpr_literal" ]; then
+  printf '%s\n' "/design Step 0-pre: CLAUDE_PLUGIN_ROOT is the unexpanded template literal ${_cpr_literal} — skill loader must expand it before Bash runs; abort" >&2
   exit 1
 fi
 if [ ! -x "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/parse-design-argv.sh" ]; then
@@ -245,8 +246,9 @@ On success, Step 0b consumes the bound mental booleans, optional `run_id`, `POSI
 
 ```bash
 export CLAUDE_PLUGIN_ROOT='${CLAUDE_PLUGIN_ROOT}'
+_cpr_literal='$''{CLAUDE_PLUGIN_ROOT}'
 if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
-  printf '%s\n' '/design Step 0: CLAUDE_PLUGIN_ROOT is empty after export — skill loader must expand ${CLAUDE_PLUGIN_ROOT} in the template line before Bash runs; abort' >&2
+  printf '%s\n' "/design Step 0: CLAUDE_PLUGIN_ROOT is empty after export — skill loader must expand ${_cpr_literal} in the template line before Bash runs; abort" >&2
   exit 1
 fi
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 0 — session setup" || true
