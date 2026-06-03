@@ -147,7 +147,9 @@ block_result_env_write() {
 unblock_result_env_write() {
     local f="$1"
     chflags nouchg "$f" 2>/dev/null || true
-    command -v chattr >/dev/null 2>&1 && chattr -i "$f" 2>/dev/null || true
+    if command -v chattr >/dev/null 2>&1; then
+        chattr -i "$f" 2>/dev/null || true
+    fi
 }
 
 reset_env() {
