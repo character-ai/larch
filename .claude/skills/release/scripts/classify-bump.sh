@@ -23,7 +23,8 @@
 #   BUMP_TYPE=MAJOR|MINOR|PATCH|NONE
 #   REASONING_FILE=<path>
 #
-# Reasoning log: ${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasoning.md
+# Reasoning log: $IMPLEMENT_TMPDIR/bump-version-reasoning.md when available,
+# otherwise a mktemp-created bump-version-reasoning.XXXXXX under ${TMPDIR:-/tmp}.
 #
 # Exit codes: 0 success, 1 validation failure
 
@@ -109,17 +110,21 @@ fi
 [[ -n "$CURRENT_VERSION" ]] || err "$PLUGIN_JSON missing .version field"
 [[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || err "version '$CURRENT_VERSION' is not semver (expected X.Y.Z)"
 
-# Reasoning log path. When IMPLEMENT_TMPDIR is set, the file lands in that
-# session-owned tmpdir. When unset, fall back to the system tmp directory —
-# never write to $PWD/.git,
-# which triggers Claude Code permission prompts on the .git directory.
-REASONING_DIR="${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}"
-mkdir -p "$REASONING_DIR" 2>/dev/null || true
-if [[ ! -w "$REASONING_DIR" ]]; then
-  REASONING_DIR="${TMPDIR:-/tmp}"
+# Reasoning log path. Prefer the session-owned tmpdir when it is writable. If
+# it is unavailable, create a unique file in TMPDIR instead of using a fixed
+# fallback basename in a shared directory.
+REASONING_DIR="${IMPLEMENT_TMPDIR:-}"
+if [[ -n "$REASONING_DIR" ]]; then
   mkdir -p "$REASONING_DIR" 2>/dev/null || true
 fi
-REASONING_FILE="$REASONING_DIR/bump-version-reasoning.md"
+if [[ -n "$REASONING_DIR" && -w "$REASONING_DIR" ]]; then
+  REASONING_FILE="$REASONING_DIR/bump-version-reasoning.md"
+else
+  REASONING_DIR="${TMPDIR:-/tmp}"
+  mkdir -p "$REASONING_DIR" 2>/dev/null || true
+  REASONING_FILE=$(mktemp "$REASONING_DIR/bump-version-reasoning.XXXXXX") \
+    || err "could not create reasoning log in $REASONING_DIR"
+fi
 
 # Helper: append to reasoning log.
 log() {

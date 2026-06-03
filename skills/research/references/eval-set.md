@@ -54,12 +54,12 @@
 - **expected_keywords**: parent-issue.md, ADOPTED, Branch 1, Branch 2, RUN_ID, tracking-issue-summary.sh
 - **notes**: Architecture; should cover sentinel-reuse (Branch 1), positional `--issue` adoption (Branch 2), when `post-tracking-issue.sh` writes the sentinel after successful metadata publication, and how `RUN_ID` / manifest init interact on resume versus fresh adopt.
 
-### eval-7: rebase-rebump-step12-interaction
-- **question**: How does the rebase-rebump sub-procedure interact with `/implement` Step 12's CI+merge loop, and what is the difference between step12-family and step10-family failure semantics?
+### eval-7: ci-fix-rebase-step12-interaction
+- **question**: How does `ship-pr.sh`'s CI-fix rebase and conflict-resolution handoff interact with `/implement` Step 12's CI+merge loop, and what differs between Step 12 hard-bail and Step 10 best-effort behavior?
 - **category**: architecture
 - **expected_provenance_count**: 2
-- **expected_keywords**: conflict-resolution.md, step12, step10, hard-bail, 12d, Load-Bearing Invariant
-- **notes**: Architecture; should explain why Step 12 is the strict last-chance enforcement point for Invariant #1 and why Step 10 is best-effort.
+- **expected_keywords**: conflict-resolution.md, ship_pr_pre_push, run_rebase_rebump, step12, step10, hard-bail, 12d
+- **notes**: Architecture; should explain why `ship-pr.sh` owns CI-fix rebase/force-push sequencing, when non-bump conflicts hand off through `CALLER_KIND=ship_pr_pre_push`, and why Step 12 remains the strict last-chance path while Step 10 is best-effort.
 
 ### eval-8: dialectic-tenure-weighting
 - **question**: How does the dialectic protocol weight reviewer judges by tenure, and where in the codebase is the tenure-lookup table stored?
@@ -110,12 +110,12 @@
 - **expected_keywords**: Runtime Timeout Fallback, dialectic_cursor_available, snapshot, Option B
 - **notes**: Risk; should explain the orchestrator-wide flip that affects subsequent steps versus the dialectic-scoped shadow flag that does NOT mutate the orchestrator-wide flag.
 
-### eval-15: rebase-rebump-failure-modes
-- **question**: What are the failure modes of `/implement`'s Step 12 rebase-rebump sub-procedure, and how does each map to step12-family hard-bail versus step10-family graceful-degrade behavior?
+### eval-15: ci-fix-rebase-failure-modes
+- **question**: What are the failure modes of `/implement`'s CI-fix rebase/conflict-resolution flow, and how does each map to Step 12 hard-bail versus Step 10 graceful-degrade behavior?
 - **category**: risk-assessment
 - **expected_provenance_count**: 2
-- **expected_keywords**: rebase-push.sh, conflict-resolution.md, VERIFIED, hard-bail, 12d, step10
-- **notes**: Risk; should enumerate at least three failure modes (rebase conflict, push rejection, post-check `STATUS != ok`) and pair each with the correct caller-family disposition.
+- **expected_keywords**: rebase-push.sh, conflict-resolution.md, ship_pr_pre_push, force-push, hard-bail, 12d, step10
+- **notes**: Risk; should enumerate at least three failure modes (non-bump rebase conflict handoff, unresolved conflict-resolution bail, force-push rejection, post-rebase verification failure) and pair each with the correct Step 12 versus Step 10 disposition.
 
 ### eval-16: deny-edit-write-bypass-blast-radius
 - **question**: What is the security blast-radius if `/research`'s deny-edit-write hook is bypassed, what mechanisms in the repo backstop the hook, and what residual risk is documented?

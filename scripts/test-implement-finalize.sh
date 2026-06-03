@@ -106,15 +106,8 @@ write_state() {
 }
 
 write_postbump_state() {
-    local path=$1 reasoning_file manifest_path
+    local path=$1
     shift
-    reasoning_file=$(override_value BUMP_REASONING_FILE "$SANDBOX/tmp/larch-log-batches-input/version-bump-reasoning-sanitized.md" "$@")
-    manifest_path=$(override_value MANIFEST_PATH "$SANDBOX/tmp/manifest.json" "$@")
-    mkdir -p "$(dirname "$reasoning_file")"
-    [ -e "$reasoning_file" ] || printf 'Bump reasoning\n' > "$reasoning_file"
-    if [ -n "$manifest_path" ] && [ ! -e "$manifest_path" ]; then
-        printf '{"summary_bullets":["Ship postbump finalization"]}\n' > "$manifest_path"
-    fi
     {
         printf 'BRANCH_NAME=%s\n' "$(override_value BRANCH_NAME feature/finalize "$@")"
         printf 'ISSUE_NUMBER=%s\n' "$(override_value ISSUE_NUMBER 456 "$@")"
@@ -122,12 +115,8 @@ write_postbump_state() {
         printf 'REPO=%s\n' "$(override_value REPO owner/repo "$@")"
         printf 'REPO_UNAVAILABLE=%s\n' "$(override_value REPO_UNAVAILABLE false "$@")"
         printf 'FORKED_TARGET=%s\n' "$(override_value FORKED_TARGET false "$@")"
-        printf 'HAS_BUMP=%s\n' "$(override_value HAS_BUMP true "$@")"
         printf 'BUMP_TYPE=%s\n' "$(override_value BUMP_TYPE PATCH "$@")"
         printf 'NEW_VERSION=%s\n' "$(override_value NEW_VERSION 17.0.4 "$@")"
-        printf 'BUMP_REASONING_FILE=%s\n' "$reasoning_file"
-        printf 'MANIFEST_PATH=%s\n' "$manifest_path"
-        printf 'TOOL_LABEL=%s\n' "$(override_value TOOL_LABEL codex "$@")"
         printf 'EXPECTED_SESSION_ID=%s\n' "$(override_value EXPECTED_SESSION_ID session-123 "$@")"
         printf 'EXPECTED_TMPDIR_BASENAME_PREFIX=%s\n' "$(override_value EXPECTED_TMPDIR_BASENAME_PREFIX tmp "$@")"
     } > "$path"

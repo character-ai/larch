@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Force-push the current branch with `--force-with-lease` protection and single-retry recovery. Wraps the full recovery logic from `/implement`'s Rebase + Re-bump Sub-procedure step 5 (`skills/implement/references/conflict-resolution.md`):
+Force-push the current branch with `--force-with-lease` protection and single-retry recovery. Used by `/implement` ship/CI-fix rebase paths after the local branch has been verified and is ready to update the PR branch:
 
 1. Refresh the local tracking ref (`git fetch origin <branch>`) best-effort, then try `git push --force-with-lease` once.
 2. On failure: refresh the local tracking ref again, compare local HEAD vs `origin/<branch>`. If equal, the push actually landed (rare race) — return success with `STATUS=noop_same_ref`.
@@ -52,7 +52,7 @@ After branch detection, `git-force-push.sh` runs `git status --porcelain` and ab
 - `scripts/create-pr.sh` — existing-PR fast-path escalation when a plain `git push` fails (non-fast-forward after rebase). Stdout is suppressed (`>/dev/null`) so the `PR_*` contract stays clean; exit code drives success/failure.
 - `scripts/merge-pr.sh` — flush-only PR-head recovery path. Passes `--expected-remote-oid "$PR_HEAD_OID"` so the recovery push fails closed if the remote head changed after the initial PR metadata read.
 - `/implement` Step 8b force-push gate — force-pushes after a rebase when the feature branch already exists on origin. `STATUS` is parsed to decide whether to proceed to Step 9 or bail to Step 18.
-- Rebase + Re-bump Sub-procedure step 5 (`skills/implement/references/conflict-resolution.md`) — force-pushes after rebase + re-bump during Steps 10/12 CI+merge iterations. Exit code and `STATUS` drive the caller-family failure semantics (step12 hard-bail vs step10 best-effort).
+- `/implement` Step 8b postbump and `ship-pr.sh` CI-fix rebase/force-push paths — force-push after a verified local rebase during Step 10/12 CI+merge iterations. Exit code and `STATUS` drive the caller failure semantics (Step 12 hard-bail vs Step 10 best-effort).
 
 ## Test harness
 
@@ -65,4 +65,4 @@ When changing `scripts/git-force-push.sh`:
 - Update this file (`scripts/git-force-push.md`) in the same PR if any of the following changes: stdout contract (`BRANCH`/`PUSHED`/`STATUS` keys or their values), exit code semantics, retry logic or timing, dependency on `sleep-seconds.sh`.
 - Verify `scripts/create-pr.sh`'s escalation path still suppresses stdout and checks exit code correctly.
 - Verify `/implement` Step 8b's `STATUS` parsing in `skills/implement/SKILL.md`.
-- Verify the Rebase + Re-bump Sub-procedure step 5's invocation and exit-code handling in `skills/implement/references/conflict-resolution.md`.
+- Verify `ship-pr.sh` CI-fix rebase/force-push and `implement-finalize.sh postbump` invocation and exit-code handling.

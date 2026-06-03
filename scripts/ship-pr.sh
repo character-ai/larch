@@ -813,13 +813,9 @@ write_postbump_state() {
         printf 'REPO=%s\n' "$(read_state REPO)"
         printf 'REPO_UNAVAILABLE=%s\n' "$(read_state REPO_UNAVAILABLE)"
         printf 'FORKED_TARGET=%s\n' "$(read_state FORKED_TARGET)"
-        printf 'HAS_BUMP=false\n'
         printf 'BUMP_TYPE=NONE\n'
         printf 'NEW_VERSION=\n'
         printf 'RUN_ID=%s\n' "$(read_state RUN_ID)"
-        printf 'BUMP_REASONING_FILE=\n'
-        printf 'MANIFEST_PATH=%s\n' "$(read_state MANIFEST_PATH)"
-        printf 'TOOL_LABEL=%s\n' "$(read_state TOOL_LABEL)"
     } > "$tmp" && mv "$tmp" "$IMPLEMENT_TMPDIR/postbump-state.sh"
 }
 

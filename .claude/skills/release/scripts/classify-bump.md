@@ -1,6 +1,6 @@
 # classify-bump.sh
 
-`classify-bump.sh` is the deterministic classifier for the dev-only `/release` skill. It inspects the public plugin surface (`skills/**`, `agents/**`), writes `${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasoning.md`, and emits `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, and `REASONING_FILE`.
+`classify-bump.sh` is the deterministic classifier for the dev-only `/release` skill. It inspects the public plugin surface (`skills/**`, `agents/**`), writes `$IMPLEMENT_TMPDIR/bump-version-reasoning.md` when the session tmpdir is writable (otherwise a `mktemp`-created `bump-version-reasoning.XXXXXX` under `${TMPDIR:-/tmp}`), and emits `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_TYPE`, and `REASONING_FILE`.
 
 ## Optional `--base <ref>` and `--head <ref>`
 

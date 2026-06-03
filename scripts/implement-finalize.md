@@ -34,9 +34,9 @@ Optional keys:
 
 Required keys:
 
-`BRANCH_NAME`, `ISSUE_NUMBER`, `PR_TITLE`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`, `BUMP_TYPE`, `NEW_VERSION`, `BUMP_REASONING_FILE`, `MANIFEST_PATH`, `TOOL_LABEL`.
+`BRANCH_NAME`, `ISSUE_NUMBER`, `PR_TITLE`, `REPO`, `REPO_UNAVAILABLE`, `FORKED_TARGET`, `BUMP_TYPE`, `NEW_VERSION`.
 
-`FORKED_TARGET` and `REPO_UNAVAILABLE` must be literal `true` or `false`. `BUMP_TYPE` must be `MAJOR`, `MINOR`, `PATCH`, or `NONE`. `BRANCH_NAME` must be non-empty and must not be `main` or `master` unless `FORKED_TARGET=true` (forked upstream-target flows). Phases that rebase or push also verify the current git branch still matches `BRANCH_NAME`. `PR_TITLE` must be present in the state file but may be empty. When `BUMP_TYPE` is not `NONE`, `NEW_VERSION` must match `X.Y.Z`. Stub bump keys (`BUMP_TYPE=NONE`, empty `NEW_VERSION`, empty `BUMP_REASONING_FILE`) are written by `scripts/ship-pr.sh` in Phase 1; `HAS_BUMP` is no longer required or validated.
+`FORKED_TARGET` and `REPO_UNAVAILABLE` must be literal `true` or `false`. `BUMP_TYPE` must be `MAJOR`, `MINOR`, `PATCH`, or `NONE`. `BRANCH_NAME` must be non-empty and must not be `main` or `master` unless `FORKED_TARGET=true` (forked upstream-target flows). Phases that rebase or push also verify the current git branch still matches `BRANCH_NAME`. `PR_TITLE` must be present in the state file but may be empty. When `BUMP_TYPE` is not `NONE`, `NEW_VERSION` must match `X.Y.Z`. Phase 1 ship paths write placeholder bump keys (`BUMP_TYPE=NONE`, empty `NEW_VERSION`) because per-PR versioning no longer runs here.
 
 Phase 1 (#3364) does not resume legacy `$IMPLEMENT_TMPDIR/.postbump-phase` checkpoints (including `force-push-gate`). `ship-pr.sh` clears stale checkpoint files before postbump entry; `implement-finalize.sh postbump` clears any remaining checkpoint and always runs the full Step 8b rebase + force-push path. Corrupt, symlinked, or oversized checkpoint files still fail closed with `STATUS=postbump-state-corrupt`. Step 8b rebase conflicts do not write a checkpoint; they emit `STATUS=rebase-failed` and require stall/bail.
 

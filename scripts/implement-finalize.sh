@@ -273,7 +273,7 @@ require_postbump_state_keys() {
     local key
     for key in \
         BRANCH_NAME ISSUE_NUMBER PR_TITLE REPO REPO_UNAVAILABLE FORKED_TARGET \
-        BUMP_TYPE NEW_VERSION BUMP_REASONING_FILE MANIFEST_PATH TOOL_LABEL
+        BUMP_TYPE NEW_VERSION
     do
         state_has_key "$key" || die_usage "state-file missing required key: $key"
     done
