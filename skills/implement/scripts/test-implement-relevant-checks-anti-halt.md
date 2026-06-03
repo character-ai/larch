@@ -2,7 +2,7 @@
 
 `skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh` is the offline regression harness for `/implement`'s per-site relevant-checks helper anti-halt reminders in `skills/implement/SKILL.md`. It is hermetic and runs against the checked-in skill prose; it does not invoke the helper, touch git state, or require network access.
 
-The harness scans the three load-bearing `"${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh"` invocation lines currently present in `skills/implement/SKILL.md` (basename-only prose mentions are ignored). Steps 10 and 12c moved into `scripts/ship-pr.sh` (covered by `test-ship-pr.sh`):
+The harness scans the three load-bearing `"${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh"` invocation lines currently present in `skills/implement/SKILL.md` (basename-only prose mentions are ignored). Steps 10 and 12c moved into `scripts/ship-pr.sh`:
 
 - Step 3 first-pass checks.
 - Step 5 after accepted review fixes from `review-and-fix.sh`.

@@ -1,0 +1,26 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": "skills/design/scripts/design-plan-quality-assessor.sh", "lines_added": 248, "lines_removed": 0},
+    {"path": "skills/design/scripts/design-plan-quality-assessor.md", "lines_added": 95, "lines_removed": 0},
+    {"path": "skills/design/scripts/test-design-plan-quality-assessor.sh", "lines_added": 420, "lines_removed": 0},
+    {"path": "skills/design/scripts/test-design-plan-quality-assessor.md", "lines_added": 8, "lines_removed": 0},
+    {"path": "skills/design/SKILL.md", "lines_added": 72, "lines_removed": 75},
+    {"path": "scripts/test-design-structure.sh", "lines_added": 14, "lines_removed": 1},
+    {"path": "skills/design/references/assessor.md", "lines_added": 2, "lines_removed": 1},
+    {"path": "Makefile", "lines_added": 4, "lines_removed": 1}
+  ],
+  "tests_added_or_modified": [
+    "skills/design/scripts/test-design-plan-quality-assessor.sh",
+    "scripts/test-design-structure.sh"
+  ],
+  "summary_bullets": [
+    "Extract Step 3.6 assessor lane into design-plan-quality-assessor.sh phase driver with hermetic child-script seams",
+    "Replace SKILL.md inline fence with driver invoke plus postplan-parity result-env handoff and fail-closed abort guards",
+    "Add offline harness, Makefile target, and structural pins for the new driver contract"
+  ],
+  "commit_message": "Extract /design Step 3.6 into design-plan-quality-assessor phase driver\n\nMove the HARD-only post-Gate-B snapshot, assessor dispatch, and .step3.6-assessor.env write into a sibling phase driver modeled on design-postplan-emit.sh. The SKILL.md fence keeps the WORSE Continue/Stop gate and gains file-first env parse, two-step WARN replay, and fail-closed abort prose. Wire test-design-plan-quality-assessor and test-design-structure pins.",
+  "todos_left": [],
+  "oos_observations": []
+}

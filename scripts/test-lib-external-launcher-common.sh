@@ -130,6 +130,128 @@ assert_classify_kv "parse sidecar" "other" "parse" \
 assert_classify_kv "generic non-zero" "other" "unknown" \
     external_classify_launch_failure 99 "/dev/null" "non-auth" 1 "cursor" "$NONEMPTY_OUTPUT"
 
+# --- external_is_quota_failure (#3378) ---
+_sidecar_quota="$TMPDIR_ROOT/sidecar-quota.txt"
+printf "You've hit your usage limit. Try again at 3:00 PM.\n" > "$_sidecar_quota"
+_sidecar_ratelimit="$TMPDIR_ROOT/sidecar-ratelimit.txt"
+printf 'Error: 429 Too Many Requests (rate-limit)\n' > "$_sidecar_ratelimit"
+_sidecar_nonquota="$TMPDIR_ROOT/sidecar-nonquota.txt"
+printf 'ordinary failure, no limit text\n' > "$_sidecar_nonquota"
+
+assert_returns "quota: codex usage-limit matches" 0 \
+    external_is_quota_failure "codex" "$_sidecar_quota"
+assert_returns "quota: cursor usage-limit matches" 0 \
+    external_is_quota_failure "cursor" "$_sidecar_quota"
+assert_returns "quota: 429 rate-limit matches" 0 \
+    external_is_quota_failure "codex" "$_sidecar_ratelimit"
+assert_returns "quota: non-quota text returns 1" 1 \
+    external_is_quota_failure "codex" "$_sidecar_nonquota"
+assert_returns "quota: unsupported tool returns 1" 1 \
+    external_is_quota_failure "claude" "$_sidecar_quota"
+assert_returns "quota: unreadable sidecar returns 1" 1 \
+    external_is_quota_failure "codex" "$TMPDIR_ROOT/does-not-exist.txt"
+# Auth and quota signatures are disjoint: an auth sidecar is not a quota match.
+assert_returns "quota: auth sidecar is not a quota match" 1 \
+    external_is_quota_failure "codex" "$_sidecar_auth"
+
+# --- external_classify_launch_failure quota branch (#3378) ---
+assert_classify_kv "quota sidecar → health/quota" "health" "quota" \
+    external_classify_launch_failure 1 "$_sidecar_quota" "non-auth" 1 "codex" "$EMPTY_OUTPUT"
+assert_classify_kv "quota in output file → health/quota" "health" "quota" \
+    external_classify_launch_failure 1 "$TMPDIR_ROOT/empty.sidecar" "non-auth" 1 "cursor" "$_sidecar_quota"
+
+# --- external_failure_verdict (#3378) ---
+assert_verdict() {
+    local label="$1" expected="$2"
+    shift 2
+    local got
+    got=$("$@" 2>/dev/null || true)
+    if [[ "$got" == "$expected" ]]; then
+        pass
+    else
+        fail "$label: expected '$expected', got '$got'"
+    fi
+}
+_sidecar_codex_auth="$TMPDIR_ROOT/sidecar-codex-auth.txt"
+printf 'Error: not logged in\n' > "$_sidecar_codex_auth"
+assert_verdict "verdict: auth precedence → auth-retries-exhausted" "auth-retries-exhausted" \
+    external_failure_verdict "codex" "$_sidecar_codex_auth"
+assert_verdict "verdict: quota → quota" "quota" \
+    external_failure_verdict "codex" "$_sidecar_quota"
+assert_verdict "verdict: generic readable → non-auth" "non-auth" \
+    external_failure_verdict "codex" "$_sidecar_nonquota"
+assert_verdict "verdict: no readable sidecar → unclassified" "unclassified" \
+    external_failure_verdict "codex" "$TMPDIR_ROOT/does-not-exist.txt"
+# Cursor passes two sidecars; quota detected in the second (.diag) sidecar.
+assert_verdict "verdict: quota in second sidecar → quota" "quota" \
+    external_failure_verdict "cursor" "$_sidecar_nonquota" "$_sidecar_quota"
+
+# --- external_launcher_mirror_quota_from_events (#3390) ---
+# codex exec --json reports usage-limit/quota on its stdout events stream, not the
+# stderr sidecar; the launcher mirrors that signal into the sidecar so the
+# sidecar-scanning classifiers catch it and skip the {5,7} transient-retry loop.
+_events_quota="$TMPDIR_ROOT/events-quota.jsonl"
+printf '%s\n' "{\"type\":\"error\",\"message\":\"You've hit your usage limit. Try again at Jun 7th, 2026 8:22 AM.\"}" > "$_events_quota"
+printf '%s\n' "{\"type\":\"turn.failed\",\"error\":{\"message\":\"You've hit your usage limit.\"}}" >> "$_events_quota"
+_events_clean="$TMPDIR_ROOT/events-clean.jsonl"
+printf '%s\n' "{\"type\":\"item.completed\",\"item\":{\"text\":\"ordinary review output\"}}" > "$_events_clean"
+
+# Empty sidecar + quota on the events stream → marker mirrored; sidecar now
+# classifies as quota and the verdict resolves to quota end-to-end.
+_mirror_sidecar="$TMPDIR_ROOT/mirror.sidecar"
+: > "$_mirror_sidecar"
+assert_returns "mirror: returns 0 on quota events" 0 \
+    external_launcher_mirror_quota_from_events "$_events_quota" "$_mirror_sidecar"
+assert_returns "mirror: empty sidecar classifies as quota after mirror" 0 \
+    external_is_quota_failure "codex" "$_mirror_sidecar"
+assert_verdict "mirror: verdict resolves to quota after mirror" "quota" \
+    external_failure_verdict "codex" "$_mirror_sidecar"
+# The mirrored marker must not collide with the auth classifier.
+assert_returns "mirror: mirrored marker is not an auth match" 1 \
+    external_is_auth_failure "codex" "$_mirror_sidecar"
+
+# Idempotent: a sidecar already carrying the signature gets no second marker line.
+_mirror_idem="$TMPDIR_ROOT/mirror-idem.sidecar"
+printf "You've hit your usage limit already.\n" > "$_mirror_idem"
+external_launcher_mirror_quota_from_events "$_events_quota" "$_mirror_idem"
+if grep -Fq 'codex exec --json events stream' "$_mirror_idem" 2>/dev/null; then
+    fail "mirror: must not append a marker when the sidecar already carries the signature"
+else
+    pass
+fi
+
+# Non-quota events → sidecar untouched and still not a quota match.
+_mirror_clean="$TMPDIR_ROOT/mirror-clean.sidecar"
+: > "$_mirror_clean"
+external_launcher_mirror_quota_from_events "$_events_clean" "$_mirror_clean"
+assert_returns "mirror: non-quota events leave sidecar non-quota" 1 \
+    external_is_quota_failure "codex" "$_mirror_clean"
+if [[ -s "$_mirror_clean" ]]; then
+    fail "mirror: non-quota events must not write to the sidecar"
+else
+    pass
+fi
+
+# Missing or empty events file → no-op (returns 0), sidecar untouched. A genuine
+# 0-output transient blip must stay transient-retryable.
+_mirror_noevents="$TMPDIR_ROOT/mirror-noevents.sidecar"
+: > "$_mirror_noevents"
+assert_returns "mirror: missing events file is a no-op (returns 0)" 0 \
+    external_launcher_mirror_quota_from_events "$TMPDIR_ROOT/does-not-exist.jsonl" "$_mirror_noevents"
+_events_empty="$TMPDIR_ROOT/events-empty.jsonl"
+: > "$_events_empty"
+assert_returns "mirror: empty events file is a no-op (returns 0)" 0 \
+    external_launcher_mirror_quota_from_events "$_events_empty" "$_mirror_noevents"
+if [[ -s "$_mirror_noevents" ]]; then
+    fail "mirror: missing/empty events must not write to the sidecar"
+else
+    pass
+fi
+
+# /dev/null sidecar → no-op (returns 0); the not-writable path must not error.
+assert_returns "mirror: /dev/null sidecar is a no-op (returns 0)" 0 \
+    external_launcher_mirror_quota_from_events "$_events_quota" "/dev/null"
+
 PLUGIN_ROOT="$TMPDIR_ROOT/plugin-root"
 mkdir -p "$PLUGIN_ROOT/scripts"
 cat > "$PLUGIN_ROOT/scripts/parse-codex-usage.sh" <<'EOF'
@@ -223,6 +345,162 @@ if grep -q '^STDERR_SINK=' "$APPEND_META_NO_SINK" 2>/dev/null; then
 else
     pass
 fi
+
+run_health_gate_case() {
+    local label="$1" tool="$2" env_timeout="$3" session_timeout="$4" implement_timeout="$5" present_line="$6" checker_rc="$7" timeout_rc="$8"
+    local case_dir="$TMPDIR_ROOT/health-$label"
+    local rc_file="$case_dir/rc"
+    local call_file="$case_dir/checker-call"
+    mkdir -p "$case_dir/scripts" "$case_dir/bin"
+    cp "$REPO_ROOT/scripts/lib-external-launcher-common.sh" "$case_dir/scripts/lib-external-launcher-common.sh"
+    cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$case_dir/scripts/read-session-env-key.sh"
+    cp "$REPO_ROOT/scripts/lib-quiet.sh" "$case_dir/scripts/lib-quiet.sh"
+    chmod +x "$case_dir/scripts/read-session-env-key.sh"
+    cat > "$case_dir/scripts/check-reviewers.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+{
+    printf 'ARGS=%s\n' "$*"
+    printf 'AUTH_RETRIES=%s\n' "${LARCH_EXTERNAL_AUTH_RETRIES:-}"
+} >> "${LARCH_TEST_CHECKER_CALL:?}"
+if [[ -n "${LARCH_TEST_PRESENT_LINE:-}" ]]; then
+    printf '%s\n' "$LARCH_TEST_PRESENT_LINE"
+fi
+exit "${LARCH_TEST_CHECKER_RC:-0}"
+EOF
+    chmod +x "$case_dir/scripts/check-reviewers.sh"
+    cat > "$case_dir/bin/timeout" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ -n "${LARCH_TEST_TIMEOUT_RC:-}" ]]; then
+    exit "$LARCH_TEST_TIMEOUT_RC"
+fi
+shift
+exec "$@"
+EOF
+    chmod +x "$case_dir/bin/timeout"
+
+    if [[ -n "$session_timeout" ]]; then
+        printf 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=%s\n' "$session_timeout" > "$case_dir/session-env-path.env"
+    fi
+    if [[ -n "$implement_timeout" ]]; then
+        mkdir -p "$case_dir/implement"
+        printf 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=%s\n' "$implement_timeout" > "$case_dir/implement/session-env.sh"
+    fi
+
+    set +e
+    LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="$env_timeout" \
+        LARCH_TEST_PRESENT_LINE="$present_line" \
+        LARCH_TEST_CHECKER_RC="$checker_rc" \
+        LARCH_TEST_TIMEOUT_RC="$timeout_rc" \
+        LARCH_TEST_CHECKER_CALL="$call_file" \
+        SESSION_ENV_PATH="$case_dir/session-env-path.env" \
+        IMPLEMENT_TMPDIR="$case_dir/implement" \
+        PATH="$case_dir/bin:$PATH" \
+        bash -c 'source "$1"; external_launch_health_gate "$2"' bash "$case_dir/scripts/lib-external-launcher-common.sh" "$tool" \
+        >"$case_dir/stdout" 2>"$case_dir/stderr"
+    printf '%s\n' "$?" > "$rc_file"
+    set -e
+    printf '%s' "$case_dir"
+}
+
+assert_health_gate_rc() {
+    local label="$1" want_rc="$2"
+    shift 2
+    local case_dir rc
+    case_dir=$(run_health_gate_case "$label" "$@")
+    rc=$(cat "$case_dir/rc")
+    if [[ "$rc" == "$want_rc" ]]; then
+        pass
+    else
+        fail "$label: expected health gate rc $want_rc, got $rc (stderr=$(cat "$case_dir/stderr"))"
+    fi
+    printf '%s' "$case_dir"
+}
+
+_hg_case=$(assert_health_gate_rc "health gate codex healthy" 0 codex 5 "" "" "CODEX_PRESENT=true" 0 "")
+if grep -Fq 'ARGS=--skip-cursor-probe' "$_hg_case/checker-call" && grep -Fq 'AUTH_RETRIES=1' "$_hg_case/checker-call"; then
+    pass
+else
+    fail "health gate codex healthy should call check-reviewers with skip-cursor and one auth retry"
+fi
+
+assert_health_gate_rc "health gate cursor unhealthy false" 1 cursor 5 "" "" "CURSOR_PRESENT=false" 0 "" >/dev/null
+assert_health_gate_rc "health gate timeout 124 unhealthy before fail-open" 1 codex 5 "" "" "" 0 124 >/dev/null
+assert_health_gate_rc "health gate timeout 143 unhealthy before fail-open" 1 cursor 5 "" "" "" 0 143 >/dev/null
+
+_hg_default=$(assert_health_gate_rc "health gate defaults on without explicit timeout" 1 codex "" "" "" "CODEX_PRESENT=false" 0 "")
+if [[ -e "$_hg_default/checker-call" ]]; then
+    pass
+else
+    fail "health gate defaults on without explicit timeout must call check-reviewers"
+fi
+
+_hg_zero=$(assert_health_gate_rc "health gate zero opt-out beats session fallback" 0 codex 0 5 5 "CODEX_PRESENT=false" 0 "")
+if [[ ! -e "$_hg_zero/checker-call" ]]; then
+    pass
+else
+    fail "health gate zero opt-out must not call check-reviewers"
+fi
+
+assert_health_gate_rc "health gate reads SESSION_ENV_PATH" 1 cursor "" 5 "" "CURSOR_PRESENT=false" 0 "" >/dev/null
+assert_health_gate_rc "health gate reads IMPLEMENT_TMPDIR session env" 1 codex "" "" 5 "CODEX_PRESENT=false" 0 "" >/dev/null
+
+_hg_non_tool=$(assert_health_gate_rc "health gate ignores non external tool" 0 claude 5 "" "" "CODEX_PRESENT=false" 0 "")
+if [[ ! -e "$_hg_non_tool/checker-call" ]]; then
+    pass
+else
+    fail "health gate non-tool must not call check-reviewers"
+fi
+
+assert_health_gate_rc "health gate fail-open on unparsable non-timeout result" 0 codex 5 "" "" "" 2 "" >/dev/null
+
+assert_resolver_timeout() {
+    local label="$1" env_val="$2" session_val="$3" implement_val="$4" want="$5"
+    local case_dir="$TMPDIR_ROOT/resolver-$label"
+    mkdir -p "$case_dir/implement"
+    local got=""
+    if [[ -n "$session_val" ]]; then
+        printf 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=%s\n' "$session_val" > "$case_dir/session-env-path.env"
+    else
+        : > "$case_dir/session-env-path.env"
+    fi
+    if [[ -n "$implement_val" ]]; then
+        printf 'LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=%s\n' "$implement_val" > "$case_dir/implement/session-env.sh"
+    fi
+    local -a resolver_env=(env -u LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT)
+    if [[ "$env_val" == "__EMPTY__" ]]; then
+        resolver_env+=(LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="")
+    elif [[ -n "$env_val" ]]; then
+        resolver_env+=(LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="$env_val")
+    fi
+    cat > "$case_dir/run-resolver.sh" <<'RESOLVER_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+# shellcheck source=/dev/null
+source "$1"
+external_launch_health_gate_timeout _t
+printf '%s' "$_t"
+RESOLVER_EOF
+    chmod +x "$case_dir/run-resolver.sh"
+    set +e
+    got=$("${resolver_env[@]}" \
+        SESSION_ENV_PATH="$case_dir/session-env-path.env" \
+        IMPLEMENT_TMPDIR="$case_dir/implement" \
+        "$case_dir/run-resolver.sh" "$REPO_ROOT/scripts/lib-external-launcher-common.sh" 2>/dev/null)
+    set -e
+    if [[ "$got" == "$want" ]]; then
+        pass
+    else
+        fail "$label: expected timeout '$want', got '$got'"
+    fi
+}
+
+assert_resolver_timeout "resolver default without sources" "" "" "" "30"
+assert_resolver_timeout "resolver zero opt-out" "0" "" "" ""
+assert_resolver_timeout "resolver positive override" "45" "" "" "45"
+assert_resolver_timeout "resolver non-numeric env" "abc" "" "" "30"
+assert_resolver_timeout "resolver empty env" "__EMPTY__" "" "" "30"
 
 if (( FAIL > 0 )); then
     printf 'FAIL: test-lib-external-launcher-common.sh — %s failed, %s passed\n' "$FAIL" "$PASS" >&2

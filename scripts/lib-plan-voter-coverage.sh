@@ -28,10 +28,14 @@ plan_voter_coverage_compute_effective_judges() {
 plan_voter_coverage_emit_degraded_warning_if_needed() {
     local effective_judges="${1:?effective_judges is required}"
     local expected_judges="${2:?expected_judges is required}"
+    # Optional single-line cause note appended to the banner so a usage-limit /
+    # quota degradation is not silently attributed to a generic failure (#3378).
+    local reason_note="${3:-}"
     local warn_msg
 
     if (( effective_judges < expected_judges )); then
         warn_msg="**⚠ Degraded plan-review panel: ${effective_judges}/${expected_judges} effective judges produced substantive vote output.**"
+        [[ -n "$reason_note" ]] && warn_msg="${warn_msg} ${reason_note}"
         larch_err "$warn_msg"
         emit_kv DEGRADED_PANEL_WARNING "$warn_msg"
     fi

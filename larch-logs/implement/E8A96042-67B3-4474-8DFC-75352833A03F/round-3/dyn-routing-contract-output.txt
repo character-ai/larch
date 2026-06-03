@@ -1,0 +1,26 @@
+Reviewing the routing-envelope key set against removed `_ib_kv_scan` arms and tracing pre-rehydration consumers.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+The routing-contract refactor looks sound for the architecture concern in the scout notes.
+
+**Dropped `_ib_kv_scan` keys vs envelope.** On `main`, `_ib_kv_scan` exported infra keys (`CURRENT_BRANCH`, `IS_MAIN`, `IS_USER_BRANCH`, `USER_PREFIX`, `ENTRY_GATE`, `SKIP_BRANCH_CHECK`, `SESSION_ID`, `BRANCH_SELECTED`, `CLAUDE_SOURCE_OK`, `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`, `EMERGENCY_REQUESTED`) plus the routing set. A search of `skills/implement/SKILL.md` shows no orchestrator bash references to those dropped names (no `$CURRENT_BRANCH`, `$SESSION_ID`, etc.). The keys that matter before the first routine `read-session-env-key.sh` use on the happy path are covered:
+
+| Consumer (Step 0 → first rehydration) | Source after refactor |
+|---|---|
+| Routing table, degraded-tools gate (`CODEX_*`, `codex_available`, bail/branch/plan keys) | `bootstrap-routing.env` + stdout (`_inv_routing_keys` at `skills/implement/SKILL.md:322-373`) |
+| `run-step2-dispatch.sh --coder` | Envelope `coder` |
+| Post-dispatch / ship-pr `BRANCH_NAME`, `REPO`, `ISSUE_NUMBER`, `RUN_ID` | Envelope (Step 8 `--repo "$REPO"` at `skills/implement/SKILL.md:1118`) |
+| Token/timing trio | `read-session-env-key.sh` on `session-env.sh` (first on happy path at `skills/implement/SKILL.md:612-614`; dirty-tree fence at `401-404` reads session-env before `--mode resume`, which matches the documented rehydration pattern at line 121) |
+| `EMERGENCY_REQUESTED` | `persist-implement-run-flags.sh` / `run-flags.sh` inside bootstrap; orchestrator keeps preflight `emergency_requested` export (`skills/implement/SKILL.md:309`) |
+
+Infra keys remain in bootstrap stdout and `session-env.sh` for child scripts; they were not referenced from orchestrator shell on `main` either.
+
+**`unset` before parse.** Initial Step 0 (`skills/implement/SKILL.md:320`) and dirty-tree resume (`414`) clear volatile routing keys including `BRANCH_NAME` / `BRANCH_ACTION` before re-parse. Resume intentionally omits `coder` / `coder_fallback` from `unset`, matching `scripts/implement-bootstrap-invoke.md` and the wrapper’s resume-mode omission of empty `coder` lines (`scripts/implement-bootstrap-invoke.sh:147-152`). File-first parse overwrites from a fresh `bootstrap-routing.env`; stdout fallback only fills empty keys, so stale `BRANCH_NAME` cannot survive resume after `unset`.
+
+**Harness.** `skills/implement/scripts/test-implement-bootstrap-invoke.sh:420-456` pins the canonical `_inv_routing_keys` list against both the wrapper and `SKILL.md`, which limits silent envelope drift.
+
+**Minor pre-existing note (not introduced here):** `ISSUE_NUMBER` is not in the Step 0 `unset` lists; preflight may export it before bootstrap. That was also true of the old broad `export` after `_ib_kv_scan`. Mitigation is unchanged: file-first routing parse overwrites from bootstrap output; stdout fallback uses `_inv_apply_routing_line_if_empty` for `ISSUE_NUMBER` (`skills/implement/SKILL.md:355`).

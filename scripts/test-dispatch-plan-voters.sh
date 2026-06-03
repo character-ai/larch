@@ -161,6 +161,13 @@ while IFS= read -r row || [[ -n "$row" ]]; do
                 ;;
             failed)
                 rm -f "$output"
+                # Optionally leave a usage-limit/quota sidecar so the dispatcher's
+                # degraded-banner quota detection (#3378) has something to find.
+                if [[ "$slot" == "voter-2" && "${PLAN_VOTER_SLOT_2_QUOTA:-}" == "1" ]]; then
+                    printf "You've hit your usage limit. Try again at 4pm.\n" > "${output}.sidecar"
+                elif [[ "$slot" == "voter-3" && "${PLAN_VOTER_SLOT_3_QUOTA:-}" == "1" ]]; then
+                    printf "You've hit your usage limit.\n" > "${output}.sidecar"
+                fi
                 ;;
             *) echo "unknown requested status: $requested_status" >&2; exit 2 ;;
         esac
@@ -309,6 +316,15 @@ grep -Fq 'VOTER_2_STATUS=failed' <<< "$out" || fail 'codex-fail/cursor-ok must m
 grep -Fq 'VOTER_3_STATUS=launched' <<< "$out" || fail 'codex-fail/cursor-ok must mark VOTER_3 launched'
 grep -Fq 'VOTER_3_TOOL=cursor' <<< "$out" || fail 'codex-fail/cursor-ok must keep VOTER_3_TOOL=cursor'
 grep -Fq 'VOTER_2_TOOL=codex' <<< "$out" || fail 'codex-fail/cursor-ok must keep VOTER_2_TOOL=codex'
+
+# --- usage-limit/quota surfaces a cause in the degraded banner (#3378) ---
+out_quota=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" \
+    PLAN_VOTER_SLOT_2_STATUS=failed PLAN_VOTER_SLOT_2_QUOTA=1 PLAN_VOTER_STUB_LOG="$TMP/stub-codex-quota.log" \
+    "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/codex-quota" --codex-available true --cursor-available true)
+grep -Fq 'DEGRADED_PANEL_WARNING=' <<< "$out_quota" || fail 'codex-quota case must emit degraded warning'
+grep -iq 'quota' <<< "$out_quota" || fail "degraded banner must name codex usage-limit/quota cause: $out_quota"
+grep -Fq 'WARN=plan-voter slot 2 (codex) failed on usage-limit/quota' <<< "$out_quota" \
+    || fail "codex-quota must emit per-slot quota WARN: $out_quota"
 
 out=$(PATH="$STUB_BIN:$PATH" CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT_STUB" PLAN_VOTER_STUB_LOG="$TMP/stub-cursor-only.log" \
     "$SCRIPT" --ballot-file "$BALLOT" --design-tmpdir "$TMP/cursor-only" --codex-available false --cursor-available true)

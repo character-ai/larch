@@ -139,7 +139,17 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
                     "$_generic_output" >/dev/null 2>&1; then
                 _generic_dispatch_ok=true
                 _generic_degraded=false
+            else
+                emit_kv WARN "plan-review-panel: generic Claude reviewer passed the first-line gate but failed structured validation (degraded)"
             fi
+        else
+            # #3392: a non-empty generic reviewer response that fails the
+            # first-line format gate (e.g. leads with a preamble) must be
+            # observable, not just collapsed into DISPATCH_OK=false. Surface the
+            # offending first line so a format-miss is distinguishable from an
+            # empty/failed reviewer.
+            _generic_first_snip=$(printf '%s' "${_generic_first:-<empty>}" | LC_ALL=C tr -d '\r\n\t' | cut -c1-160)
+            emit_kv WARN "plan-review-panel: generic Claude reviewer failed the first-line format gate (degraded) — first line: ${_generic_first_snip}"
         fi
     fi
     if [[ "$_generic_has_output" != true ]]; then

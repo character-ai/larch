@@ -19,6 +19,7 @@ import config
 import gh
 import git
 import redact
+import retry
 from agents import TierAttempt
 from gh import FailedJob
 from outcomes import Outcome, StepResult
@@ -44,6 +45,7 @@ class CiStatus:
     status: str
     behind_count: int
     failed_run_id: str | None
+    conflicted: bool = False
 
 
 @dataclass(frozen=True)
@@ -89,6 +91,7 @@ class FixResult:
     failed_verify: tuple[str, ...] = ()
     detail: str | None = None
     rerun_already_running: bool = False
+    code_fix_attempted_on_ready_log: bool = False
 
 
 @dataclass(frozen=True)
@@ -102,6 +105,19 @@ class MonitorResult:
     iterations: int
     result: StepResult
     rerun_already_running: bool = False
+
+
+def _conflicted_from_merge_state(merge_state: str | None) -> bool:
+    """Mirror ci-status.sh CONFLICTED derivation (conservative for UNKNOWN/empty)."""
+    if not merge_state:
+        return True
+    if merge_state == "DIRTY":
+        return True
+    if merge_state in ("CLEAN", "BEHIND", "BLOCKED", "UNSTABLE", "HAS_HOOKS"):
+        return False
+    if merge_state == "UNKNOWN":
+        return True
+    return True
 
 
 def decide(
@@ -120,7 +136,7 @@ def decide(
             bail_reason="ci-status.sh returned error — check script arguments",
         )
     behind = status.behind_count > 0
-    if status.status == "pass" and not behind:
+    if status.status == "pass" and (not behind or not status.conflicted):
         return Decision(action="merge")
     if iteration >= config.CI_MONITOR_MAX_ITERATIONS:
         return Decision(
@@ -262,13 +278,15 @@ def gather_status(
     try:
         pr_info = gh.pr_view(runner, pr, repo=repo, cwd=cwd)
     except Exception:  # pylint: disable=broad-except
-        return CiStatus(status="error", behind_count=0, failed_run_id=None)
+        return CiStatus(status="error", behind_count=0, failed_run_id=None, conflicted=False)
     if pr_info.state.upper() == "MERGED":
-        return CiStatus(status="merged", behind_count=0, failed_run_id=None)
+        return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
+
+    conflicted = _conflicted_from_merge_state(pr_info.merge_state_status)
 
     fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
     if fetch.returncode != 0:
-        return CiStatus(status="pending", behind_count=0, failed_run_id=None)
+        return CiStatus(status="pending", behind_count=0, failed_run_id=None, conflicted=conflicted)
 
     checks = _gh_pr_checks(runner, pr=pr, repo=repo, cwd=cwd)
     checks_json = checks.stdout if checks.returncode == 0 else ""
@@ -314,7 +332,12 @@ def gather_status(
         cwd=cwd,
     )
     if behind_raw is None:
-        return CiStatus(status="pending", behind_count=0, failed_run_id=failed_run_id)
+        return CiStatus(
+            status="pending",
+            behind_count=0,
+            failed_run_id=failed_run_id,
+            conflicted=conflicted,
+        )
     behind = behind_raw
     if behind > 0 and _squash_merge_race(
         runner,
@@ -323,8 +346,13 @@ def gather_status(
         base_ref=base_ref,
         cwd=cwd,
     ):
-        return CiStatus(status="merged", behind_count=0, failed_run_id=None)
-    return CiStatus(status=status, behind_count=behind, failed_run_id=failed_run_id)
+        return CiStatus(status="merged", behind_count=0, failed_run_id=None, conflicted=False)
+    return CiStatus(
+        status=status,
+        behind_count=behind,
+        failed_run_id=failed_run_id,
+        conflicted=conflicted,
+    )
 
 
 def poll_ci(
@@ -906,6 +934,8 @@ def run_ci_fix(
         if not classified.fixable and unfixable:
             return FixResult(status="local-unfixable", unfixable=tuple(unfixable))
 
+        code_fix_attempted = False
+
         tiers = _available_tiers()
         if not tiers:
             return FixResult(status="waterfall-failed", detail="no launcher tiers available")
@@ -923,20 +953,32 @@ def run_ci_fix(
             )
         if waterfall.winning_tier is None:
             _rollback()
-            return FixResult(status="waterfall-failed", detail="all tiers failed")
+            return FixResult(
+                status="waterfall-failed",
+                detail="all tiers failed",
+            )
 
+        if classified.fixable:
+            code_fix_attempted = True
         for job in classified.fixable:
             argv = per_job_command(job.name, job.shard)
             if argv is None or not prepare_python_toolchain(runner, job.name, cwd=cwd):
                 unfixable.append(_job_token(job.name, job.shard))
         if unfixable:
             _rollback()
-            return FixResult(status="local-unfixable", unfixable=tuple(unfixable))
+            return FixResult(
+                status="local-unfixable",
+                unfixable=tuple(unfixable),
+                code_fix_attempted_on_ready_log=code_fix_attempted,
+            )
 
         current_head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
         if current_head != baseline_head:
             _rollback()
-            return FixResult(status="head-changed")
+            return FixResult(
+                status="head-changed",
+                code_fix_attempted_on_ready_log=code_fix_attempted,
+            )
 
         failed_verify = [
             _job_token(job.name, job.shard)
@@ -945,7 +987,11 @@ def run_ci_fix(
         ]
         if failed_verify:
             _rollback()
-            return FixResult(status="verify-failed", failed_verify=tuple(failed_verify))
+            return FixResult(
+                status="verify-failed",
+                failed_verify=tuple(failed_verify),
+                code_fix_attempted_on_ready_log=code_fix_attempted,
+            )
 
         delta = _delta_paths(
             runner,
@@ -960,7 +1006,11 @@ def run_ci_fix(
             delta_paths=delta,
         )
         if not pushed:
-            return FixResult(status="waterfall-failed", detail="push failed")
+            return FixResult(
+                status="waterfall-failed",
+                detail="push failed",
+                code_fix_attempted_on_ready_log=code_fix_attempted,
+            )
         if post_head == baseline_head:
             return FixResult(
                 status="first-fixer-non-health",
@@ -971,10 +1021,33 @@ def run_ci_fix(
             status="pushed",
             winning_tier=waterfall.winning_tier,
             delta_paths=delta_paths,
+            code_fix_attempted_on_ready_log=code_fix_attempted,
         )
     finally:
         for path in failure_log_paths:
             Path(path).unlink(missing_ok=True)
+
+
+def _fix_exhausted_detail(
+    classified: ClassifiedJobs | None,
+    logs: LogCollectResult | None,
+) -> str:
+    """Compose the diagnostic detail surfaced when the CI-fix loop exhausts.
+
+    Carries the stable ``ci-fix-exhausted`` reason token, the failing job
+    name(s), and the already-redacted CI log tail so Step 18a stall recovery
+    can route the stall to an inline fix (``RESUME_HINT=step8-shippr``) instead
+    of terminal ``unrecoverable`` handling. The job names come from the closed
+    CI-job enum and the log tail is redacted upstream in ``collect_failed_logs``.
+    """
+    jobs = ""
+    if classified is not None:
+        jobs = ", ".join(_job_token(job.name, job.shard) for job in classified.jobs)
+    header = f"ci-fix-exhausted: {jobs}" if jobs else "ci-fix-exhausted"
+    tail = logs.text if logs is not None and logs.state == "ready" else ""
+    if tail.strip():
+        return f"{header}\n{tail.rstrip()}\n"
+    return header
 
 
 def evaluate_failure(
@@ -993,7 +1066,15 @@ def evaluate_failure(
     if not run_id or not str(run_id).strip():
         return FixResult(status="waterfall-failed", detail="missing run_id")
 
-    if transient_retries < config.CI_MONITOR_TRANSIENT_RERUN_MAX:
+    upfront_logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
+    upfront_ready_stash: LogCollectResult | None = None
+    blind_rerun_attempted = False
+    if (
+        transient_retries < config.CI_MONITOR_TRANSIENT_RERUN_MAX
+        and upfront_logs.state == "ready"
+        and retry.is_transient_net_signature(upfront_logs.text)
+    ):
+        blind_rerun_attempted = True
         rerun = rerun_failed(runner, run_id=run_id, repo=repo, cwd=cwd)
         if rerun.submitted and not rerun.already_running:
             return FixResult(status="no-changes")
@@ -1003,27 +1084,41 @@ def evaluate_failure(
             _warn_stderr(
                 f"evaluate_failure: transient rerun failed: {rerun.error}; continuing to fix loop",
             )
+    if upfront_logs.state == "ready" and not blind_rerun_attempted:
+        upfront_ready_stash = upfront_logs
 
     last_verify: tuple[str, ...] = ()
+    last_classified: ClassifiedJobs | None = None
+    last_logs: LogCollectResult | None = None
+    code_fix_attempted_on_ready_log = False
     for attempt in range(1, config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS + 1):
         if not _on_named_branch(runner, cwd=cwd):
             return FixResult(
                 status="waterfall-failed",
                 detail="evaluate_failure: detached HEAD",
             )
-        logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
+        if attempt == 1 and upfront_ready_stash is not None:
+            logs = upfront_ready_stash
+        else:
+            logs = collect_failed_logs(runner, run_id=run_id, repo=repo, cwd=cwd)
+        if logs.state != "ready":
+            if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
+                sleep_fn(_outer_backoff_seconds(attempt))
+            continue
         jobs_raw, jobs_state = read_failed_jobs(
             runner,
             run_id=run_id,
             repo=repo,
             cwd=cwd,
         )
-        if logs.state == "in_progress" or jobs_state == "in_progress":
+        if jobs_state != "ready":
             if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
                 sleep_fn(_outer_backoff_seconds(attempt))
             continue
 
         classified = classify_failed_jobs(jobs_raw)
+        last_classified = classified
+        last_logs = logs
         fix = run_ci_fix(
             runner,
             run_id=run_id,
@@ -1035,9 +1130,21 @@ def evaluate_failure(
             cwd=cwd,
             launch_fn=launch_fn,
         )
+        if fix.code_fix_attempted_on_ready_log:
+            code_fix_attempted_on_ready_log = True
         if fix.status == "local-unfixable":
+            if code_fix_attempted_on_ready_log:
+                return FixResult(
+                    status="fix-exhausted",
+                    detail=_fix_exhausted_detail(classified, logs),
+                )
             return fix
         if fix.status == "head-changed":
+            if code_fix_attempted_on_ready_log:
+                return FixResult(
+                    status="fix-exhausted",
+                    detail=_fix_exhausted_detail(classified, logs),
+                )
             return fix
         if fix.status == "pushed":
             return fix
@@ -1054,6 +1161,11 @@ def evaluate_failure(
             continue
         return fix
 
+    if code_fix_attempted_on_ready_log:
+        return FixResult(
+            status="fix-exhausted",
+            detail=_fix_exhausted_detail(last_classified, last_logs),
+        )
     if last_verify:
         jobs = ", ".join(last_verify)
         return FixResult(
@@ -1178,6 +1290,15 @@ def monitor(
                 step=StepResult(
                     outcome=Outcome.NEEDS_USER_INPUT,
                     detail="first-fixer-non-health",
+                ),
+            )
+        if fix.status == "fix-exhausted":
+            return _base_result(
+                did_fixing=True,
+                goto=False,
+                step=StepResult(
+                    outcome=Outcome.NEEDS_USER_INPUT,
+                    detail=fix.detail or "ci-fix-exhausted",
                 ),
             )
         detail = fix.detail or fix.status

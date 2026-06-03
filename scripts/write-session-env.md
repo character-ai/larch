@@ -11,6 +11,13 @@ Always writes `REPO`, `REPO_UNAVAILABLE`, and `FORKED_TARGET` (default `false`; 
 - `CODEX_AVAILABLE`
 - `CURSOR_AVAILABLE`
 
+Always writes `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` (default `30`, inheriting a
+numeric process-env override such as `0` for opt-out). `run-external-agent.sh`
+reads this durable key through `read-session-env-key.sh` when the process
+environment does not already provide a positive timeout, so `/implement` and
+nested `/review` external launches get the same health gate even after
+orchestrator subshell rehydration.
+
 It may also write `LARCH_TIMING_LEDGER` when the caller passes `--timing-ledger <path>`. `/implement` uses this durable key so nested `/design` and `/review` invocations continue appending to the parent timing ledger after session-env rewrites.
 
 It may also write `LARCH_TOKEN_SESSION_ID` when the caller passes `--token-session-id <id>` and `LARCH_CLAUDE_SOURCE_FILE` when the caller passes `--claude-source-file <path>`. `/implement` writes both keys so every orchestrator-side token-ledger / token-report Bash block can rehydrate the parent run's token context, and `/review` can forward that context to nested review launchers. `/fix-issue` does not pass these keys; `/implement` always establishes its own token session id and Claude source snapshot.
@@ -51,7 +58,7 @@ It may also write `LARCH_DYNAMIC_ARCHETYPES_MAX` when the caller passes
 `review-and-fix.sh`'s `DYNAMIC_ARCHETYPES` resolution logic, which reads
 `LARCH_DYNAMIC_ARCHETYPES_MAX` from session-env via `session_get`.
 
-Values must stay narrow and caller-controlled (`true|false` for presence booleans and `--forked-target`; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` and `CLAUDE_PLUGIN_ROOT` must be absolute paths of 512 characters or fewer using the same path character set; `--dynamic-archetypes` must be an integer from 0 to 8. Empty optional values are omitted from the file.
+Values must stay narrow and caller-controlled (`true|false` for presence booleans and `--forked-target`; validated repo strings for repo identity; caller-owned tmp paths for timing ledgers). `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is normalized to digits with invalid / empty values falling back to `30`. `--token-session-id` must match `^[A-Za-z0-9_.-]{1,128}$`; `--claude-source-file` and `--timing-ledger` must match `^[A-Za-z0-9_./~+-]{1,512}$`; `--prev-implement-tmpdir` and `CLAUDE_PLUGIN_ROOT` must be absolute paths of 512 characters or fewer using the same path character set; `--dynamic-archetypes` must be an integer from 0 to 8. Empty optional values are omitted from the file.
 
 ## Invariants
 

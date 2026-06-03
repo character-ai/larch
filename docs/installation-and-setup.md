@@ -6,6 +6,8 @@ Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/p
 
 ### Latest stable release
 
+Maintainers publish GitHub Releases on a release cadence (not on every merge to `main`). `/upgrade-larch` tracks the Latest stable release.
+
 #### Install
 ```bash
 claude plugin marketplace add character-ai/larch --sparse .claude .claude-plugin .gemini .github agents docs hooks scripts skills tests
@@ -161,9 +163,9 @@ Subprocesses inherit the top-level session's environment, so billing tracks the 
 
 #### macOS keychain interaction
 
-When `CURSOR_API_KEY` is set in your environment, larch's launchers (`scripts/launch-review.sh --tool cursor`, `scripts/launch-cursor-implement.sh`, `scripts/run-negotiation-round.sh`, plus the runtime markdown templates that emit `cursor agent` invocations) pass `--api-key "$CURSOR_API_KEY"` explicitly to `cursor agent`, bypassing the macOS keychain entirely for that auth path. This is the recommended setup for larch.
+When `CURSOR_API_KEY` is set in your environment, larch's launchers (`scripts/launch-review.sh --tool cursor`, `scripts/launch-cursor-implement.sh`, `scripts/run-negotiation-round.sh`, plus the runtime markdown templates that emit `cursor agent` invocations) export the normalized `CURSOR_API_KEY` into the environment the `cursor agent` child inherits and pass **no** `--api-key` argv element (issue #3375 — keeping the secret off the command line, `.meta` logs, and `ps`). `cursor agent` reads the key from the `CURSOR_API_KEY` environment variable, bypassing the macOS keychain entirely for that auth path. This is the recommended setup for larch.
 
-When `CURSOR_API_KEY` is unset or empty on macOS, larch's shared Cursor launchers first pre-read the service that Cursor itself uses (`cursor-user` / `cursor-access-token`) and export the result as `CURSOR_API_KEY` for the child invocation. If that read succeeds, the Cursor child receives `--api-key` and does not perform its own keychain read. If the pre-read fails or returns empty, larch falls back to Cursor's default auth resolution, which may consult the keychain entry created by `cursor login`.
+When `CURSOR_API_KEY` is unset or empty on macOS, larch's shared Cursor launchers first pre-read the service that Cursor itself uses (`cursor-user` / `cursor-access-token`) and export the result as `CURSOR_API_KEY` for the child invocation. If that read succeeds, the Cursor child inherits `CURSOR_API_KEY` from the environment and does not perform its own keychain read. If the pre-read fails or returns empty, larch falls back to Cursor's default auth resolution, which may consult the keychain entry created by `cursor login`.
 
 A stale or transiently-unhealthy `cursor-user` keychain entry can produce intermittent failures during parallel reviewer launches with errors like:
 

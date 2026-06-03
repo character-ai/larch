@@ -41,12 +41,20 @@ if [ -s "$issue_log" ] && { [ -f "$checkpoint" ] || [ -f "$sentinel" ] || [ -f "
         >/dev/null 2>&1 || true
 fi
 
-if ! "$SCRIPT_DIR/larch-log.sh" commit \
+# Capture the commit's stdout contract so a secret-scrub warning is not lost:
+# larch-log.sh commit emits SECRET_SCRUB_VIOLATIONS=<n> when the pre-flush gate
+# redacted a secret. This script's stderr IS surfaced by its caller (unlike the
+# commit's own, which is quieted), so re-print the warning here.
+flush_commit_out="$("$SCRIPT_DIR/larch-log.sh" commit \
     --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
     --skill implement \
-    --run-id "$run_id" \
-    >/dev/null 2>&1; then
+    --run-id "$run_id" 2>/dev/null)" || {
     printf 'larch-log-flush.sh: warn — larch-log commit failed for run %s (continuing)\n' "$run_id" >&2
+}
+flush_scrub_n="$(printf '%s\n' "${flush_commit_out:-}" | sed -n 's/^SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
+case "${flush_scrub_n:-}" in ''|*[!0-9]*) flush_scrub_n=0 ;; esac
+if [ "$flush_scrub_n" -gt 0 ]; then
+    printf 'larch-log-flush.sh: SECURITY WARNING — scrub-log-secrets.sh redacted %s secret-shaped value(s) from run %s logs before flush; ROTATE the affected credential(s)\n' "$flush_scrub_n" "$run_id" >&2
 fi
 
 exit 0

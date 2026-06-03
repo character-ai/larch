@@ -83,6 +83,37 @@ def test_compose_pr_body_rejects_bad_mermaid_in_summary() -> None:
         _ = pr_body.compose_pr_body(summary=bad_summary)
 
 
+def test_compose_pr_body_appends_closes() -> None:
+    body = pr_body.compose_pr_body(summary="- x", issue_number=42)
+    assert body.count("Closes #42") == 1
+
+
+def test_compose_pr_body_routes_closes_through_helper(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[tuple[str, int]] = []
+
+    def fake_link(body: str, issue_number: int) -> str:
+        calls.append((body, issue_number))
+        return body.rstrip() + "\n\nCloses #42\n"
+
+    monkeypatch.setattr(pr_body.tracking_issue, "link_pr_closes", fake_link)
+    body = pr_body.compose_pr_body(summary="- x", issue_number=42)
+    assert calls
+    assert calls[0][1] == 42
+    assert body.rstrip().endswith("Closes #42")
+
+
+def test_compose_pr_body_appends_closes_when_mermaid_mentions_closes() -> None:
+    body = pr_body.compose_pr_body(
+        summary="- x",
+        mermaid="flowchart LR\n  A[Closes #42] --> B\n",
+        issue_number=42,
+    )
+    assert body.count("Closes #42") == 2
+    assert body.rstrip().endswith("Closes #42")
+
+
 def test_compose_pr_body_fail_closed_on_truncation(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

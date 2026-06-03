@@ -14,6 +14,7 @@ pass(){ PASS=$((PASS+1)); printf 'PASS: %s\n' "$1"; }
 fail(){ FAIL=$((FAIL+1)); printf 'FAIL: %s\n' "$1" >&2; }
 assert_contains(){ case "$2" in *"$1"*) pass "$3" ;; *) fail "$3 (missing $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; esac; }
 assert_not_contains(){ case "$2" in *"$1"*) fail "$3 (unexpected $1)"; printf 'ACTUAL: %s\n' "$2" >&2 ;; *) pass "$3" ;; esac; }
+assert_eq(){ if [ "$1" = "$2" ]; then pass "$3"; else fail "$3 (expected=$1 actual=$2)"; fi; }
 stdout_summary_block() {
     printf '%s\n' "$1" | awk '
         /^COMMENT_URL=|^STATUS=|^REASON=|^ERROR=/ { exit }
@@ -502,46 +503,67 @@ assert_contains '## Fork CI Dry-Run Complete' "$fork_fb" 'renderer fallback stag
 cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
 chmod +x "$plugin/scripts/render-run-summary.sh"
 
+STEP18B_IMPL="$TMP_ROOT/step18b-implement-scripts"
+mkdir -p "$STEP18B_IMPL"
+cp "$SCRIPT_DIR/step-18b-final-report.sh" "$STEP18B_IMPL/step-18b-final-report.sh"
+cp "$HELPER" "$STEP18B_IMPL/write-final-report.sh"
+cp "$REPO_ROOT/scripts/read-session-env-key.sh" "$plugin/scripts/read-session-env-key.sh"
+chmod +x "$plugin/scripts/read-session-env-key.sh" "$STEP18B_IMPL/step-18b-final-report.sh" "$STEP18B_IMPL/write-final-report.sh"
+cat > "$plugin/scripts/token-report.sh" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) printf '{}\n' >"$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+exit 0
+STUB
+chmod +x "$plugin/scripts/token-report.sh"
+kv_step18() {
+  awk -v k="$1" 'BEGIN{p=k"="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$2"
+}
+
 rm -f "$impl_bl/.step17-emitted"
-step18_printed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-print.md" bash -c '
-  _wfr_args=(--implement-tmpdir "$1")
-  [ ! -f "$1/.step17-emitted" ] && _wfr_args+=(--print-stdout)
-  "$2" "${_wfr_args[@]}" || true
-' bash "$impl_bl" "$HELPER" 2>/dev/null)
-assert_contains '## /implement run run-bl — bailed' "$step18_printed" 'Step 18 absent sentinel prints summary body'
+step18_out="$TMP_ROOT/step18-print.out"
+set +e
+CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-print.md" \
+  "$STEP18B_IMPL/step-18b-final-report.sh" --implement-tmpdir "$impl_bl" >"$step18_out" 2>/dev/null
+set -e
+assert_eq true "$(kv_step18 EMIT_BODY "$step18_out")" 'Step 18 absent sentinel sets EMIT_BODY=true'
+assert_eq 0 "$(kv_step18 WFR_RC "$step18_out")" 'Step 18 absent sentinel sets WFR_RC=0'
+step18_printed=""
+if [ "$(kv_step18 EMIT_BODY "$step18_out")" = true ] && [ -s "$impl_bl/summary-final.md" ]; then
+  step18_printed=$(cat "$impl_bl/summary-final.md")
+fi
+assert_contains '## /implement run run-bl — bailed' "$step18_printed" 'Step 18 absent sentinel emits summary body'
 touch "$impl_bl/.step17-emitted"
-step18_suppressed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-suppressed.md" bash -c '
-  _wfr_args=(--implement-tmpdir "$1")
-  [ ! -f "$1/.step17-emitted" ] && _wfr_args+=(--print-stdout)
-  "$2" "${_wfr_args[@]}" || true
-' bash "$impl_bl" "$HELPER" 2>/dev/null)
-assert_not_contains '## /implement run run-bl — bailed' "$step18_suppressed" 'Step 18 sentinel suppresses summary body'
-assert_not_contains '- **Cost**:' "$step18_suppressed" 'Step 18 sentinel suppresses summary cost line'
+step18_out="$TMP_ROOT/step18-suppressed.out"
+set +e
+CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-suppressed.md" \
+  "$STEP18B_IMPL/step-18b-final-report.sh" --implement-tmpdir "$impl_bl" >"$step18_out" 2>/dev/null
+set -e
+assert_eq false "$(kv_step18 EMIT_BODY "$step18_out")" 'Step 18 sentinel suppresses summary body via EMIT_BODY=false'
+assert_eq 0 "$(kv_step18 WFR_RC "$step18_out")" 'Step 18 sentinel path keeps WFR_RC=0'
 
 cat > "$impl_bl/larch-logs/implement/run-bl/token-report.json" <<'JSON'
 {
   "claude": {"totals": {"total": 1000}}
 }
 JSON
-step18_changed=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-changed.md" bash -c '
-  _wfr_args=(--implement-tmpdir "$1")
-  _wfr_printed=false
-  _wfr_emit_body=false
-  [ ! -f "$1/.step17-emitted" ] && _wfr_args+=(--print-stdout) && _wfr_printed=true && _wfr_emit_body=true
-  if [ -f "$1/summary-final.md" ]; then
-    cp "$1/summary-final.md" "$1/.step18-prebody"
-  else
-    rm -f "$1/.step18-prebody"
-  fi
-  if "$2" "${_wfr_args[@]}" >/dev/null 2>&1; then
-    if [ "$_wfr_printed" = false ] && ! cmp -s "$1/.step18-prebody" "$1/summary-final.md"; then
-      _wfr_emit_body=true
-    fi
-    if [ "$_wfr_emit_body" = true ] && [ -s "$1/summary-final.md" ]; then
-      cat "$1/summary-final.md"
-    fi
-  fi
-' bash "$impl_bl" "$HELPER" 2>/dev/null)
+printf 'old body\n' > "$impl_bl/summary-final.md"
+step18_out="$TMP_ROOT/step18-changed.out"
+set +e
+CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-step18-changed.md" \
+  "$STEP18B_IMPL/step-18b-final-report.sh" --implement-tmpdir "$impl_bl" >"$step18_out" 2>/dev/null
+set -e
+assert_eq true "$(kv_step18 EMIT_BODY "$step18_out")" 'Step 18 body-diff path sets EMIT_BODY=true'
+assert_eq 0 "$(kv_step18 WFR_RC "$step18_out")" 'Step 18 body-diff path sets WFR_RC=0'
+step18_changed=""
+if [ "$(kv_step18 EMIT_BODY "$step18_out")" = true ] && [ "$(kv_step18 WFR_RC "$step18_out")" = 0 ] && [ -s "$impl_bl/summary-final.md" ]; then
+  step18_changed=$(cat "$impl_bl/summary-final.md")
+fi
 assert_schema_ordered "$step18_changed" 'Step 18 body-diff path emits refreshed summary body' \
     '## /implement run run-bl — bailed' \
     '- **Outcome**: bailed' \

@@ -38,9 +38,11 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   directory under the session root that owns `--output` (scout passes staged-context only).
   Rejects symlinks, control characters, `..`, and paths outside the session root.
 - Cursor auth setup runs the Darwin preflight, then best-effort pre-reads the
-  `cursor-user` / `cursor-access-token` keychain service into `CURSOR_API_KEY`
-  before composing argv. A successful pre-read becomes an explicit `--api-key`
-  argument.
+  `cursor-user` / `cursor-access-token` keychain service into `CURSOR_API_KEY`,
+  then normalizes/exports `CURSOR_API_KEY` via `cursor_auth_export_env`. Auth is
+  delivered to the Cursor child via that environment variable (issue #3375) —
+  **no** `--api-key` argv element, so the key never reaches argv, `.meta`
+  `CMD_JSON`, or `ps`.
 - Every external spawn site is wrapped by the shared helpers in
   `scripts/lib-external-launcher-common.sh`: Darwin-only per-tool startup locks
   CLI initialization, delayed release starts at process spawn, stale locks are
@@ -50,12 +52,17 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   `LARCH_EXTERNAL_SERIAL_LOCK_TRIES`, and
   `LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME`.
 - When Codex or Cursor review launches finish their auth-retry loops with a
-  non-zero exit and `IMPLEMENT_TMPDIR` is set, the launcher best-effort appends
-  captured sidecar diagnostics to `$IMPLEMENT_TMPDIR/execution-issues.md`
-  through `scripts/append-tool-failure.sh --redact` under
-  `External Reviewer Issues`, including an auth verdict and the final auth-loop
-  attempt count. Cursor verdicts inspect both `${OUTPUT}.sidecar` and
-  `${OUTPUT}.diag` because stderr can land in either place.
+  non-zero exit, the launcher best-effort appends captured sidecar diagnostics
+  to an `execution-issues.md` through `scripts/append-tool-failure.sh --redact`
+  under `External Reviewer Issues`, including a failure verdict and the final
+  auth-loop attempt count. The log path resolves to
+  `$IMPLEMENT_TMPDIR/execution-issues.md` when `IMPLEMENT_TMPDIR` is set, else
+  `$DESIGN_TMPDIR/execution-issues.md` so `/design` voter failures are recorded
+  rather than silently dropped (#3378). The verdict is computed by
+  `external_failure_verdict`: `auth-retries-exhausted`, `quota`
+  (usage-limit/quota, distinct from auth), `non-auth`, or `unclassified`.
+  Cursor verdicts inspect both `${OUTPUT}.sidecar` and `${OUTPUT}.diag` because
+  stderr can land in either place.
 - The Cursor path calls `cursor_launcher_setup_private_config_dir` (from
   `lib-cursor-launcher-common.sh`) immediately before the auth-retry loop to
   give each invocation a fresh private `CURSOR_CONFIG_DIR` directory (seeded
@@ -74,7 +81,32 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   literal `CURSOR_EMPTY_RESPONSE` in the reviewer output file after JSON
   post-processing. Missing `.result`, malformed JSON, or non-JSON prose keep the
   existing fallback behavior; only the explicit empty-result backend response
-  gets the distinct marker.
+  gets the distinct marker. When the terminal state is still empty after the
+  auth/transient loop, the launcher also writes `${OUTPUT}.diag` in the
+  established `TOOL=cursor` / `FAILURE_REASON=…` KV grammar (envelope `type`,
+  `subtype`, `is_error`, `error`, `usage`, optional `duration` / request-id
+  fields, empty-result retry count). All extracted fields are sanitized
+  (newlines/pipes stripped, length capped) before interpolation. The full
+  envelope is always copied to `${OUTPUT}.json` before `.result` extraction.
+- **Exit-0 empty `.result` transient retry (cursor-only).** Inside the cursor
+  auth loop, after the exit-code transient branch and before auth retry: when
+  `EXIT_CODE==0`, `jq` is available, `$OUTPUT` is non-empty JSON,
+  `(.result // "") == ""`, and no quota/auth signal is detected in `$SIDECAR`,
+  `${OUTPUT}.diag`, or the raw `$OUTPUT` envelope, the launcher treats the
+  response as transient and re-runs the same `cursor agent` invocation after
+  backoff. Empty-result retries share the same `TRANSIENT_ATTEMPT` counter as
+  exit-code transients (bounded by `MAX_TRANSIENT_RETRIES=2`, so at most three
+  total `cursor agent` backend calls per auth pass across both failure modes).
+  This does **not** apply when `.result` is the legitimate no-findings
+  sentinel `{"no_issues_found": true}` (non-empty string) or any other
+  non-empty `.result`. Malformed/non-JSON `$OUTPUT` skips this branch (`jq`
+  probe false). `LARCH_CURSOR_RETRY_EMPTY_RESULT` defaults on; set to `0` to
+  disable retry only (diagnostics still written). Codex has no `.result`
+  envelope — do not mirror this branch into the codex launcher.
+- **Per-process launch jitter (cursor-only).** Before the cursor auth loop, a
+  one-time random sleep in `0..LARCH_CURSOR_LAUNCH_JITTER_MS` (default `250`,
+  non-numeric → default, `0` disables) de-synchronizes parallel slot launches.
+  See `docs/configuration-and-permissions.md`.
 - Cursor JSON envelopes with high `usage.outputTokens` but a very short
   extracted `.result` are promoted to `CURSOR_DEGRADED_RESPONSE` before the
   result is installed. The heuristic is skipped for legitimate terse sentinels
@@ -90,8 +122,15 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   running the scan — `--sandbox read-only` blocks writes at the syscall level,
   making the after-the-fact scan redundant. Cursor still runs the full scan.
 - Codex runs with `--json`: stdout JSONL events land in `${OUTPUT}.events.jsonl`,
-  while stderr remains in `${OUTPUT}.sidecar`. Auth and transient
-  classification intentionally inspect stderr only. Token capture is
+  while stderr remains in `${OUTPUT}.sidecar`. Auth and transient-infra
+  classification inspect stderr only, but usage-limit/quota classification also
+  consults the events stream: because `codex exec --json` reports a usage limit
+  as a `{"type":"error",…}` / `turn.failed` event on stdout (with an empty stderr
+  sidecar and `--output-last-message` file), the launcher mirrors that signal
+  into the sidecar via `external_launcher_mirror_quota_from_events` before
+  classifying, so the sidecar-based quota guard short-circuits the `{5,7}`
+  transient-retry loop instead of re-hitting the limit and reports a `quota`
+  verdict rather than a generic non-auth exit 7 (#3390). Token capture is
   fail-closed through `scripts/parse-codex-usage.sh`: exit 0 records
   per-bucket `token-ledger.sh record-vendor codex` fields; non-zero appends
   the parser diagnostic to `${OUTPUT}.sidecar` and writes no Codex token row.

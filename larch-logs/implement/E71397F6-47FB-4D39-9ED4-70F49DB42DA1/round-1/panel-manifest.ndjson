@@ -1,0 +1,10 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.45/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.45/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.45/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.45/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.45/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.45/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-report-gates","tool":"cursor","output":"<TMPDIR>/round-1/dyn-report-gates-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-report-gates-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-bash32","tool":"cursor","output":"<TMPDIR>/round-1/dyn-bash32-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-bash32-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-pr-linkage","tool":"cursor","output":"<TMPDIR>/round-1/dyn-pr-linkage-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-pr-linkage-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-surface-sync","tool":"cursor","output":"<TMPDIR>/round-1/dyn-surface-sync-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-surface-sync-prompt.md","weight":1,"focus_area":"architecture"}

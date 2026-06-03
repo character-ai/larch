@@ -68,6 +68,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib-validate-meta-path.sh"
 # shellcheck source=scripts/lib-failed-agent-stderr-tail.sh
 source "$SCRIPT_DIR/lib-failed-agent-stderr-tail.sh"
+# shellcheck source=scripts/lib-external-launcher-common.sh
+source "$SCRIPT_DIR/lib-external-launcher-common.sh"
 
 usage() { echo "Usage: run-external-agent.sh --tool NAME --output FILE --timeout SECS [--capture-stdout|--capture-stdout-only] [--stderr-sink PATH] -- CMD..." >&2; }
 
@@ -201,6 +203,20 @@ fi
     fi
     printf 'CMD_JSON=%s\n' "$META_CMD_JSON"
 } > "${OUTPUT_FILE}.meta"
+
+case "$TOOL_NAME" in
+    codex|cursor)
+        if ! external_launch_health_gate "$TOOL_NAME"; then
+            : > "$OUTPUT_FILE"
+            echo "health-probe fast-fail: ${TOOL_NAME} unhealthy before launch" >> "${OUTPUT_FILE}.diag"
+            case "$TOOL_NAME" in
+                codex) EXIT_CODE=7 ;;
+                cursor) EXIT_CODE=8 ;;
+            esac
+            exit "$EXIT_CODE"
+        fi
+        ;;
+esac
 
 # Optional: when redirecting captured stdout to a file, libc may fully buffer the
 # writer even when the tool uses unbuffered Python (-u); stall monitors that

@@ -1,0 +1,10 @@
+Reviewing the diff and `python/rebase.py` / `python/test_rebase.py` for dead imports and broken test references.
+Checking the diff for `python/rebase.py` and scanning tests for stale imports.
+Checking callers of `rebase_and_rebump` and scanning the diff for other correctness issues.
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- The scout note that `python/rebase.py` still has a dead `import changelog` / `_CHANGELOG_BASENAMES` is a false positive on this branch. Both are used in `_deterministic_prepass` at `python/rebase.py:103-105` (`_CHANGELOG_BASENAMES` membership check and `changelog.auto_resolve(...)`). The diff only removed re-bump/changelog **write** helpers (`_stage_rebump_bullets`, `_commit_changelog_after_rebump`, etc.) and the `version_bump` import; it correctly kept conflict-resolution prepass logic.
+- `python/test_rebase.py` no longer imports `changelog`, `version_bump`, `ChangelogError`, `BumpClassification`, `ApplyResult`, `DropResult`, or `bump_worktree`; nothing in the surviving tests references those symbols, so pytest collection should not hit `ImportError` from stale imports.
+- The branch deletes many rebump/changelog unit tests from `python/test_rebase.py` but does not add a replacement test for the surviving CHANGELOG branch in `_deterministic_prepass` (unlike `plugin.json`, `version.go`, and `go.sum`, which still have prepass tests). That is a coverage gap, not a runtime correctness defect in the module itself.

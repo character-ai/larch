@@ -39,6 +39,7 @@
 #       fork's checks array is still empty after the grace period
 #       (paired with ACTION=bail per the fork dry-run contract).
 #   BEHIND_COUNT=<N>
+#   CONFLICTED=<true|false>
 #   FAILED_RUN_ID=<id>          (empty string if no failure)
 #   BAIL_REASON=<text>          (empty string if ACTION != bail)
 #   ITERATION=<N>               (final iteration count)
@@ -128,6 +129,7 @@ fi
 ACTION="bail"
 CI_STATUS="pending"
 BEHIND_COUNT="0"
+CONFLICTED="false"
 FAILED_RUN_ID=""
 BAIL_REASON="ci-wait.sh exited unexpectedly"
 
@@ -140,6 +142,7 @@ emit_output() {
             printf 'ACTION=%s\n' "$ACTION"
             printf 'CI_STATUS=%s\n' "$CI_STATUS"
             printf 'BEHIND_COUNT=%s\n' "$BEHIND_COUNT"
+            printf 'CONFLICTED=%s\n' "$CONFLICTED"
             printf 'FAILED_RUN_ID=%s\n' "$FAILED_RUN_ID"
             printf 'BAIL_REASON=%s\n' "$BAIL_REASON"
             printf 'ITERATION=%s\n' "$ITERATION"
@@ -150,6 +153,7 @@ emit_output() {
         emit_kv ACTION "$ACTION"
         emit_kv CI_STATUS "$CI_STATUS"
         emit_kv BEHIND_COUNT "$BEHIND_COUNT"
+        emit_kv CONFLICTED "$CONFLICTED"
         emit_kv FAILED_RUN_ID "$FAILED_RUN_ID"
         emit_kv BAIL_REASON "$BAIL_REASON"
         emit_kv ITERATION "$ITERATION"
@@ -195,6 +199,7 @@ while true; do
     CI_OUTPUT=$("$SCRIPT_DIR/ci-status.sh" --pr "$PR_NUMBER" --repo "$REPO" --base-remote "$BASE_REMOTE" --base-ref "$BASE_REF" --empty-checks-grace "$EMPTY_CHECKS_GRACE" ) || true
     CI_STATUS=$(echo "$CI_OUTPUT" | grep '^CI_STATUS=' | head -1 | cut -d= -f2-)
     BEHIND_COUNT=$(echo "$CI_OUTPUT" | grep '^BEHIND_COUNT=' | head -1 | cut -d= -f2-)
+    CONFLICTED=$(echo "$CI_OUTPUT" | grep '^CONFLICTED=' | head -1 | cut -d= -f2-)
     FAILED_RUN_ID=$(echo "$CI_OUTPUT" | grep '^FAILED_RUN_ID=' | head -1 | cut -d= -f2-)
 
     # If ci-status.sh produced no valid output, bail rather than silently defaulting to pending
@@ -208,10 +213,12 @@ while true; do
         fi
         CI_STATUS="pending"
         BEHIND_COUNT="${BEHIND_COUNT:-0}"
+        CONFLICTED="${CONFLICTED:-false}"
         FAILED_RUN_ID="${FAILED_RUN_ID:-}"
     else
         ci_failures=0
         BEHIND_COUNT="${BEHIND_COUNT:-0}"
+        CONFLICTED="${CONFLICTED:-false}"
         FAILED_RUN_ID="${FAILED_RUN_ID:-}"
     fi
 
@@ -226,6 +233,7 @@ while true; do
     DECIDE_OUTPUT=$("$SCRIPT_DIR/ci-decide.sh" \
         --status "$CI_STATUS" \
         --behind "$BEHIND_COUNT" \
+        --conflicted "$CONFLICTED" \
         --iteration "$ITERATION" \
         --rebase-count "$REBASE_COUNT" \
         --fix-attempts "$FIX_ATTEMPTS")

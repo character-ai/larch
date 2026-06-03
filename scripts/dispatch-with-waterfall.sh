@@ -145,10 +145,32 @@ fi
 
 final_outputs=()
 final_tools=()
+# Parallel per-slot drop bookkeeping (indexed like final_outputs). When a slot
+# is dropped (only possible under --no-fallback), slot_drop_reason[idx] records
+# *why* (format-gate-miss / result-gate-miss / empty / collector-failure /
+# result-unreadable / tool-absent) and slot_drop_detail[idx] holds a single-line
+# ~200-char snippet of the offending output so the drop is observable downstream
+# (#3392). Cleared when a slot settles OK so stale phase-1 reasons never leak.
+slot_drop_reason=()
+slot_drop_detail=()
 for ((i=0; i<slot_count; i++)); do
     final_outputs+=("")
     final_tools+=("")
+    slot_drop_reason+=("")
+    slot_drop_detail+=("")
 done
+
+# Flatten a captured snippet to a single line: read the leading bytes of a file,
+# collapse newlines/CR/tabs to spaces, and cap at 200 chars (the line-oriented
+# DROPPED_SLOTS_FILE / KV contract forbids embedded newlines or tabs).
+snippet_from_file() {
+    local f="$1"
+    [[ -r "$f" ]] || { printf ''; return 0; }
+    # `cut -c` reads each line to its end (no early close), so `tr`/`head` do not
+    # take SIGPIPE here; the trailing `|| true` is defensive so a snippet capture
+    # can never abort the caller under `set -euo pipefail`.
+    head -c 2000 "$f" 2>/dev/null | LC_ALL=C tr '\n\r\t' '   ' | cut -c1-200 || true
+}
 
 present_for_tool() {
     case "$1" in
@@ -240,7 +262,7 @@ launch_slot() {
 
 collect_phase() {
     local failed_var="$1"
-    local idx output tool block key value status rf check_file
+    local idx output tool block key value status rf check_file _first_nonblank _drop_stderr
     local -a failed=()
     [[ ${#phase_outputs[@]} -gt 0 ]] || {
         eval "$failed_var=()"
@@ -293,10 +315,14 @@ collect_phase() {
                 check_file="${rf:-$output}"
                 if [[ ! -r "$check_file" ]]; then
                     larch_err "dispatch-with-waterfall.sh: result file not readable for --require-result-pattern check: $check_file"
+                    slot_drop_reason[idx]="result-unreadable"
+                    slot_drop_detail[idx]="result file not readable: $check_file"
                     failed+=("$idx")
                     continue
                 fi
                 if ! grep -Eq -- "$REQUIRE_RESULT_PATTERN" "$check_file"; then
+                    slot_drop_reason[idx]="result-gate-miss"
+                    slot_drop_detail[idx]="$(snippet_from_file "$check_file")"
                     failed+=("$idx")
                     continue
                 fi
@@ -305,11 +331,23 @@ collect_phase() {
                 check_file="${rf:-$output}"
                 if [[ ! -r "$check_file" ]]; then
                     larch_err "dispatch-with-waterfall.sh: result file not readable for --require-first-line-pattern check: $check_file"
+                    slot_drop_reason[idx]="result-unreadable"
+                    slot_drop_detail[idx]="result file not readable: $check_file"
                     failed+=("$idx")
                     continue
                 fi
                 _first_nonblank=$(awk '/[^[:space:]]/ { sub(/^[[:space:]]+/, ""); sub(/[[:space:]]+$/, ""); print; exit }' "$check_file")
                 if ! printf '%s\n' "$_first_nonblank" | grep -Eq -- "$REQUIRE_FIRST_LINE_PATTERN"; then
+                    # Distinguish a genuinely empty result (reviewer produced
+                    # nothing) from a format-gate-miss (reviewer produced a
+                    # healthy response that merely leads with a preamble).
+                    if [[ -z "$_first_nonblank" ]]; then
+                        slot_drop_reason[idx]="empty"
+                        slot_drop_detail[idx]=""
+                    else
+                        slot_drop_reason[idx]="format-gate-miss"
+                        slot_drop_detail[idx]="$(snippet_from_file "$check_file")"
+                    fi
                     failed+=("$idx")
                     continue
                 fi
@@ -318,7 +356,19 @@ collect_phase() {
             final_outputs[$idx]="${rf:-$output}"
             # shellcheck disable=SC2004
             final_tools[$idx]="$tool"
+            # Slot settled OK — clear any drop reason recorded on a prior phase.
+            slot_drop_reason[idx]=""
+            slot_drop_detail[idx]=""
         else
+            # Non-OK / non-cap_hit collector status: launch or collection failed.
+            _drop_stderr=""
+            [[ -r "${output}.launch-stderr" ]] && _drop_stderr="$(snippet_from_file "${output}.launch-stderr")"
+            slot_drop_reason[idx]="collector-failure"
+            if [[ -n "$_drop_stderr" ]]; then
+                slot_drop_detail[idx]="STATUS=${status:-unknown} ${_drop_stderr}"
+            else
+                slot_drop_detail[idx]="STATUS=${status:-unknown}"
+            fi
             failed+=("$idx")
         fi
     done
@@ -356,6 +406,12 @@ dynamic_dispatch_ok=true
 
 if [[ "$NO_FALLBACK" == "true" ]]; then
     combined_fallback=0
+    # phase1_queue slots never launched (their primary tool was absent); record
+    # the drop reason so it is distinguishable from a format/collector failure.
+    for idx in "${phase1_queue[@]+"${phase1_queue[@]}"}"; do
+        slot_drop_reason[idx]="tool-absent"
+        slot_drop_detail[idx]="primary tool ${slot_tools[$idx]} not present"
+    done
     for idx in "${phase1_queue[@]+"${phase1_queue[@]}"}" "${phase1_failed[@]+"${phase1_failed[@]}"}"; do
         case "${slot_names[$idx]}" in
             dyn-*) dynamic_dispatch_ok=false ;;
@@ -469,6 +525,40 @@ emit_kv STATIC_DISPATCH_OK "$static_dispatch_ok"
 emit_kv DYNAMIC_DISPATCH_OK "$dynamic_dispatch_ok"
 if [[ "$NO_FALLBACK" == "true" && ${#all_output_files[@]} -eq 0 && slot_count -gt 0 ]]; then
     emit_kv ALL_SLOTS_DROPPED true
+fi
+
+# Per-slot drop diagnostics (#3392). Under --no-fallback a slot with empty
+# final_outputs was dropped; surface each as a TSV record
+# (slot<TAB>tool<TAB>reason<TAB>snippet) in a sidecar so the caller can record a
+# per-slot reason in execution-issues.md instead of only seeing one terse
+# aggregate WARN. Reason/snippet are single-line and tab-free by construction
+# (snippet_from_file flattens). The sidecar is written only when ≥1 slot dropped.
+if [[ "$NO_FALLBACK" == "true" ]]; then
+    drops_tmp=$(mktemp "${paths_dir}/.dispatch-waterfall-drops.XXXXXX")
+    drop_any=0
+    for ((i=0; i<slot_count; i++)); do
+        [[ -n "${final_outputs[$i]}" ]] && continue
+        drop_any=1
+        # Flatten any TAB/newline/CR out of the externally-derived slot/tool
+        # fields so the line-oriented TSV cannot be corrupted (e.g. a dynamic
+        # archetype slug carrying a tab). Replacement is a literal space, so the
+        # `&`-corruption hazard of `${var//…}` does not apply. reason is an
+        # internal constant; detail is already flattened by snippet_from_file.
+        _ds_slot=${slot_names[$i]}
+        _ds_slot=${_ds_slot//$'\t'/ }; _ds_slot=${_ds_slot//$'\n'/ }; _ds_slot=${_ds_slot//$'\r'/ }
+        _ds_tool=${slot_tools[$i]}
+        _ds_tool=${_ds_tool//$'\t'/ }; _ds_tool=${_ds_tool//$'\n'/ }; _ds_tool=${_ds_tool//$'\r'/ }
+        printf '%s\t%s\t%s\t%s\n' \
+            "$_ds_slot" "$_ds_tool" \
+            "${slot_drop_reason[$i]:-unknown}" "${slot_drop_detail[$i]:-}" >> "$drops_tmp"
+    done
+    if (( drop_any )); then
+        dropped_slots_file="${resolved_paths_file}.dropped-slots"
+        mv -f "$drops_tmp" "$dropped_slots_file"
+        emit_kv DROPPED_SLOTS_FILE "$dropped_slots_file"
+    else
+        rm -f "$drops_tmp"
+    fi
 fi
 
 paths_tmp=$(mktemp "${paths_dir}/.dispatch-waterfall-paths.XXXXXX")

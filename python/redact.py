@@ -26,6 +26,37 @@ _UNTERMINATED_MARKER = (
     "[content truncated — unterminated PEM block; tail of body dropped for safety]"
 )
 
+# --- Pre-flush log-gate secret families (parity with scrub-log-secrets.sh) ---
+# High-precision prefixed patterns NOT covered by the base families above.
+# `crsr_` is the confirmed Cursor key prefix; `key_{32,}` is the hedge for
+# Cursor admin keys that avoids matching ordinary `key_` identifiers (which
+# carry underscores and rarely run 32 unbroken alphanumerics).
+_CURSOR_RE = re.compile(r"crsr_[A-Za-z0-9]{20,}|key_[A-Za-z0-9]{32,}")
+_SLACK_RE = re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")
+_GOOGLE_API_RE = re.compile(r"AIza[0-9A-Za-z_-]{35}")
+_STRIPE_LIVE_RE = re.compile(r"(?:sk|rk)_live_[0-9A-Za-z]{16,}")
+_GITLAB_PAT_RE = re.compile(r"glpat-[0-9A-Za-z_-]{20,}")
+
+_EXTRA_SECRET_FAMILIES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("cursor-api-key", _CURSOR_RE),
+    ("slack-token", _SLACK_RE),
+    ("google-api-key", _GOOGLE_API_RE),
+    ("stripe-live-key", _STRIPE_LIVE_RE),
+    ("gitlab-pat", _GITLAB_PAT_RE),
+)
+
+# Base families re-detected for backstop counting; their scrubbing is performed
+# by the PEM-aware pass (_redact_secrets_pem). The PEM detector matches the
+# BEGIN marker anywhere (not line-anchored) for occurrence counting.
+_PEM_DETECT_RE = re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")
+_BASE_SECRET_FAMILIES: tuple[tuple[str, re.Pattern[str]], ...] = (
+    ("anthropic-openai-key", _SK_RE),
+    ("github-token", _GH_RE),
+    ("aws-akia", _AKIA_RE),
+    ("jwt", _JWT_RE),
+    ("pem-private-key", _PEM_DETECT_RE),
+)
+
 _SESSION_SUFFIX = (
     r"(claude|larch)-(implement|design|review|research|fix-issue|issue)-[A-Za-z0-9_.-]+"
 )
@@ -279,3 +310,25 @@ def redact_outbound(text: str) -> str:
     if text.endswith("\n"):
         return out
     return out.rstrip("\n")
+
+
+def scrub_log_secrets(text: str) -> tuple[str, dict[str, int]]:
+    """Scrub secret-shaped values from run-log text before a flush commit
+    (parity with scripts/scrub-log-secrets.sh).
+
+    Returns ``(scrubbed_text, findings)`` where ``findings`` maps a family name
+    to its occurrence count in the ORIGINAL text. Base families
+    (sk-/GitHub/AWS/JWT/PEM) are scrubbed by the redact-secrets.sh-equivalent
+    PEM-aware pass; the extra prefixed families (Cursor et al.) by additional
+    substitutions. Unlike :func:`redact`, this does NOT rewrite session tmpdir
+    paths — it is a secret gate, not a path normaliser.
+    """
+    findings: dict[str, int] = {}
+    for name, pattern in (*_BASE_SECRET_FAMILIES, *_EXTRA_SECRET_FAMILIES):
+        count = len(pattern.findall(text))
+        if count:
+            findings[name] = count
+    scrubbed, _ = _redact_secrets_pem(text)
+    for _, pattern in _EXTRA_SECRET_FAMILIES:
+        scrubbed = pattern.sub(config.REDACTED_TOKEN, scrubbed)
+    return scrubbed, findings

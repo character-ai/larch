@@ -24,8 +24,8 @@ Downstream docs use `*_BINARY_FOUND=false` vs `*_PRESENT=false` to distinguish "
   - `LARCH_PROBE_TTL_SECONDS` (default `60`) — stamp freshness window; `0` disables stamp cache (always re-probe when the binary exists and the probe is not skipped).
   - `LARCH_PROBE_TIMEOUT_SECONDS` (default `30`; `0` treated as invalid → `30`) — per-attempt wall-clock cap while the background probe PID is alive.
   - `LARCH_EXTERNAL_AUTH_RETRIES` (default `5`; `0` / invalid → `5`) — max auth-classified failures before giving up (`MAX_AUTH_RETRIES` in the script).
-- **Cursor**: Darwin serial mutex (`external_serial_lock_acquire` / `external_serial_lock_release_after` with `LARCH_EXTERNAL_SERIAL_LOCK_DELAY`, default `0.5s`); `cursor_auth_preflight` before the probe loop; `cursor_preread_service_token` + `cursor_auth_argv`; private config dir (`cursor_launcher_setup_private_config_dir` / cleanup); probe argv mirrors production Cursor invocations: `cursor agent -p "<wrapped-prompt>" --trust --workspace "$PWD" --model <resolved> …` where `<wrapped-prompt>` is `" /max-mode on. Prompt: Respond with OK"` from `cursor-wrap-prompt.sh` and `<resolved>` comes from `scripts/agent-model-args.sh --tool cursor` (defaults to `composer-2.5`). This makes the probe surface auth/quota errors that are model-specific. `--mode plan` and `--output-format json` remain off — reachability + auth only.
-- **Codex**: same mutex pattern on Darwin; probe uses `codex exec --sandbox read-only -C "$PWD" --output-last-message <tmp> -- "Respond with OK"` (read-only posture aligned with reviewer launches; no `--add-dir` / model args).
+- **Cursor**: Darwin serial mutex (`external_serial_lock_acquire` / `external_serial_lock_release_after` with `LARCH_EXTERNAL_SERIAL_LOCK_DELAY`, default `0.5s`); `cursor_auth_preflight` before the probe loop; `cursor_preread_service_token` + `cursor_auth_export_env` (env-based auth — the probe child inherits `CURSOR_API_KEY`, no `--api-key` argv element, issue #3375); private config dir (`cursor_launcher_setup_private_config_dir` / cleanup); probe argv mirrors production Cursor invocations: `cursor agent -p "<wrapped-prompt>" --trust --workspace "$PWD" --model <resolved> …` where `<wrapped-prompt>` is `" /max-mode on. Prompt: Respond with OK"` from `cursor-wrap-prompt.sh` and `<resolved>` comes from `scripts/agent-model-args.sh --tool cursor` (defaults to `composer-2.5`). This makes the probe surface auth/quota errors that are model-specific. `--mode plan` and `--output-format json` remain off — reachability + auth only.
+- **Codex**: same mutex pattern on Darwin; probe uses `codex exec --sandbox read-only -C "$PWD" --output-last-message <tmp> <model-args…> -- "Respond with OK"` where `<model-args…>` comes from `scripts/agent-model-args.sh --tool codex --with-effort` (mirrors production reviewer launches in `launch-review.sh`). Intentional asymmetry per `.claude/rules/external-tool-launcher-parity.md`: Codex passes `--with-effort` (effort is meaningful for Codex) while the Cursor probe omits it (Cursor ignores effort). Read-only posture aligned with reviewer launches; no `--add-dir` on the probe.
 - **Stamps** (atomic `mktemp` + `mv` under `${TMPDIR:-/tmp}`): `larch-cursor-present-${USER:-larch}.stamp`, `larch-codex-present-${USER:-larch}.stamp`; first line must be exactly `true` or `false` to count as a cache hit.
 
 ## Rejected flags
@@ -35,6 +35,8 @@ Downstream docs use `*_BINARY_FOUND=false` vs `*_PRESENT=false` to distinguish "
 ## Test harness
 
 `scripts/test-check-reviewers.sh` — PATH-stubbed binaries, auth-retry matrix, TTL stamp hit/expired, skip flags, invalid env normalization, and `--probe` rejection.
+
+- **Codex probe model-args forwarding**: PATH-stubbed `codex` appends argv to `LARCH_TEST_CODEX_PROBE_ARGV_LOG` (fixture `codex-probe-argv.log`); with `LARCH_CODEX_MODEL=sentinel-model` asserts `CODEX_PRESENT=true` and that the logged argv contains `sentinel-model`.
 
 ## Edit-in-sync
 

@@ -107,9 +107,14 @@ if (( 10#$TIMEOUT < 1 )); then
     exit 2
 fi
 
+_codex_add_dir_has_control_chars() {
+    printf '%s' "$1" | LC_ALL=C grep -q '[[:cntrl:]]'
+}
 _codex_canonical_existing_dir() {
     local p="$1"
     [[ -n "$p" ]] || return 1
+    _codex_add_dir_has_control_chars "$p" && return 1
+    [[ "$p" != *..* ]] || return 1
     [[ -d "$p" ]] || return 1
     [[ ! -L "$p" ]] || return 1
     (cd "$p" && pwd -P) || return 1
@@ -161,7 +166,7 @@ if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
     fi
     unset _canon_implement_tmpdir
 fi
-unset -f _codex_canonical_existing_dir
+unset -f _codex_add_dir_has_control_chars _codex_canonical_existing_dir
 
 if [[ -n "${IMPLEMENT_TMPDIR:-}" && -s "${IMPLEMENT_TMPDIR}/session-id" ]]; then
     file_id=$(tr -d '\r\n' < "${IMPLEMENT_TMPDIR}/session-id" 2>/dev/null || true)

@@ -14,12 +14,13 @@ excluded from the writer list because it is a nested synchronous child under
 
 ## Default I/O contract
 
-When `--output-file` is **absent**, the EXIT trap emits 7 KV lines on stdout in this order:
+When `--output-file` is **absent**, the EXIT trap emits 8 KV lines on stdout in this order:
 
 ```
 ACTION=merge|rebase|already_merged|rebase_then_evaluate|evaluate_failure|bail
 CI_STATUS=pass|fail|pending|merged|NO_CHECKS
 BEHIND_COUNT=<N>
+CONFLICTED=<true|false>
 FAILED_RUN_ID=<id-or-empty>
 BAIL_REASON=<text-or-empty>
 ITERATION=<N>
@@ -30,7 +31,7 @@ When `ci-decide.sh` applies the `fix_attempts >= 10` cap, `BAIL_REASON` is the e
 
 Default callers (`/implement` Step 10, Step 12a, and the four step-7 re-invocation branches in `skills/implement/references/rebase-rebump-subprocedure.md`) parse stdout. No `.done` sentinel is written in default mode.
 
-`--base-remote NAME`, `--base-ref BRANCH`, and `--empty-checks-grace SECONDS` are forwarded to `ci-status.sh` on every poll. When `ci-status.sh` returns `CI_STATUS=NO_CHECKS`, `ci-wait.sh` stops polling immediately and emits `ACTION=bail` with a no-checks bail reason; this is used by `/implement --forked` to avoid burning the full CI timeout on forks where Actions are disabled or every workflow is upstream-only.
+`--base-remote NAME`, `--base-ref BRANCH`, and `--empty-checks-grace SECONDS` are forwarded to `ci-status.sh` on every poll. `CONFLICTED` is parsed from the `ci-status.sh` output block (defaulting to `false` when absent) and forwarded to `ci-decide.sh` as `--conflicted`. When `ci-status.sh` returns `CI_STATUS=NO_CHECKS`, `ci-wait.sh` stops polling immediately and emits `ACTION=bail` with a no-checks bail reason; this is used by `/implement --forked` to avoid burning the full CI timeout on forks where Actions are disabled or every workflow is upstream-only.
 
 Progress output uses `larch_errf` on operator stderr, preserving printf
 semantics including no-newline dot progress on the two inline-progress callsites.
@@ -40,7 +41,7 @@ semantics including no-newline dot progress on the two inline-progress callsites
 When `--output-file <path>` is set, the trap behavior changes in three coordinated ways:
 
 1. **Stale clear**: on script start (after argument validation, before the polling loop), `<path>`, `<path>.done`, and `<path>.tmp` are removed. Consumers polling for `.done` never see a stale sentinel from a prior crashed run.
-2. **Atomic publish of the KV payload**: `emit_output` writes the same 7 KV lines to `<path>.tmp`, then performs `mv -f "<path>.tmp" "<path>"` as a single same-filesystem atomic rename. The two operations are AND-chained; if either fails (disk full, permission denied), the `<path>` does NOT exist.
+2. **Atomic publish of the KV payload**: `emit_output` writes the same 8 KV lines to `<path>.tmp`, then performs `mv -f "<path>.tmp" "<path>"` as a single same-filesystem atomic rename. The two operations are AND-chained; if either fails (disk full, permission denied), the `<path>` does NOT exist.
 3. **Numeric `.done` sentinel** (gated on publish success): the EXIT trap captures the script's exit status FIRST (before `emit_output` mutates `$?`), runs `emit_output`, and writes `printf '%s\n' "$EXIT_STATUS" > "${OUTPUT_FILE}.done" 2>/dev/null || true` **only if `emit_output` returned 0**. This shares the same consumer contract (numeric exit code in `.done`) as `scripts/run-external-agent.sh:70`; existing repo readers (`scripts/collect-agent-results.sh`, `scripts/wait-for-reviewers.sh`) parse `.done` as a numeric exit code. The `emit_output`-success gate is what enforces the fail-closed semantics described below — without it, a failed publish would still produce `.done`.
 
 **Consumer read order** (same discipline as `collect-agent-results.sh`): wait for `<path>.done` to exist; THEN parse `<path>`. Never read `<path>` directly without first observing `<path>.done` — a partial KV file (publish mid-write) cannot be observed by conforming consumers because `.done` is written only AFTER the atomic rename publishes `<path>`.
@@ -62,7 +63,7 @@ The EXIT trap fires on every signal that bash can trap (most importantly **SIGTE
 `scripts/test-ci-wait-exit-trap.sh` (sibling: `scripts/test-ci-wait-exit-trap.md`) regression-tests both modes:
 
 - **Sub-test A**: `--output-file` SIGTERM-mid-poll convergence — asserts `<path>` exists with parseable `ACTION=` and `<path>.done` exists with parseable numeric content.
-- **Sub-test B**: default-mode backward-compat — asserts all 7 KV keys appear on stdout in order with no implicit file-mode side effects.
+- **Sub-test B**: default-mode backward-compat — asserts all 8 KV keys appear on stdout in order with no implicit file-mode side effects.
 
 Wired into `Makefile`'s `lint` and `test-harnesses` targets via the `test-ci-wait-exit-trap` rule.
 

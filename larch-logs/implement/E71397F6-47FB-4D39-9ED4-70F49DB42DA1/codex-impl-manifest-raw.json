@@ -1,0 +1,48 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {
+      "path": "python/pr_body.py",
+      "lines_added": 3,
+      "lines_removed": 10
+    },
+    {
+      "path": "python/tracking_issue.py",
+      "lines_added": 1,
+      "lines_removed": 1
+    },
+    {
+      "path": "python/test_pr_body.py",
+      "lines_added": 5,
+      "lines_removed": 0
+    },
+    {
+      "path": "python/test_tracking_issue.py",
+      "lines_added": 13,
+      "lines_removed": 0
+    }
+  ],
+  "tests_added_or_modified": [
+    "python/test_pr_body.py",
+    "python/test_tracking_issue.py"
+  ],
+  "summary_bullets": [
+    "Use one canonical Python helper for PR-body issue-closing lines.",
+    "Prevent longer issue numbers from masking shorter Closes links.",
+    "Remove unused PR-body surface while preserving Mermaid and redaction checks."
+  ],
+  "commit_message": "Reconcile Python Closes helper\n\nRoute PR body Closes composition through tracking_issue.link_pr_closes, make the helper prefix-collision safe, remove the dead PrBodyParts dataclass, and add regression coverage.",
+  "todos_left": [],
+  "oos_observations": [
+    {
+      "title": "Python version-bump parity tests receive no bash BUMP_TYPE output",
+      "description": "During this python-only cleanup, make py-test and relevant-checks failed in test_version_bump parity cases because the bash classify helper stdout parsed to an empty key/value map while the Python classifier returned bump types. The touched pr_body/tracking_issue tests passed separately.",
+      "phase": "implement"
+    }
+  ],
+  "bail_reason": "",
+  "needs_qa": {
+    "questions": []
+  }
+}

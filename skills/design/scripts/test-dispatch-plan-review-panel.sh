@@ -66,6 +66,11 @@ fi
 printf 'ALL_OUTPUT_FILES=%s\n' "$_outpath"
 printf 'ALL_OUTPUT_TOOLS=cursor\n'
 printf 'ALL_OUTPUT_FILES_PATH=%s\n' "${WATERFALL_STUB_PATHS_OUT:-$_outpath}"
+if [[ -n "${W_STUB_EMIT_DROPS:-}" ]]; then
+    _drops="$(dirname "$log")/drops.tsv"
+    printf 'cursor-plan-arch\tcursor\tformat-gate-miss\tReviewing the plan against the repo: it looks solid.\n' >"$_drops"
+    printf 'DROPPED_SLOTS_FILE=%s\n' "$_drops"
+fi
 STUB
 chmod +x "$STUB"
 
@@ -110,6 +115,29 @@ for archetype in arch edge innovation pragmatic requirements; do
     ' "$D1/plan-review-slots.ndjson" >/dev/null \
         || fail "both vendors expected for static archetype $archetype"
 done
+
+echo "=== #3392: DROPPED_SLOTS_FILE forwarded from waterfall to panel ==="
+D1D="$TMP/s1d"
+prep "$D1D"
+printf '{"archetypes":[]}\n' >"$D1D/scout-plan-manifest.json"
+log1d="$D1D/wf.log"
+: >"$log1d"
+DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
+    WATERFALL_STUB_LOG="$log1d" \
+    WATERFALL_STUB_PATHS_OUT="$D1D/paths.out" \
+    W_STUB_EMIT_DROPS=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$PANEL" \
+    --design-tmpdir "$D1D" \
+    --codex-present true \
+    --cursor-present true \
+    --plan-file "$D1D/plan.txt" \
+    --feature-file "$D1D/feature-description.txt" \
+    --timeout 60 >"$D1D/out.env"
+grep -Fq 'DROPPED_SLOTS_FILE=' "$D1D/out.env" || fail "panel must forward DROPPED_SLOTS_FILE from waterfall"
+_drops_path=$(grep '^DROPPED_SLOTS_FILE=' "$D1D/out.env" | head -1 | cut -d= -f2-)
+[[ -n "$_drops_path" && -f "$_drops_path" ]] || fail "forwarded DROPPED_SLOTS_FILE must name an existing file"
+grep -Fq 'format-gate-miss' "$_drops_path" || fail "forwarded drops file must carry the format-gate-miss record"
 
 echo "=== two dynamic archetypes => 14 slots ==="
 D2="$TMP/s2"
@@ -371,6 +399,10 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --plan-file "$D10B/plan.txt" \
     --timeout 60 >"$D10B/out.env"
 grep -Fq 'DISPATCH_OK=false' "$D10B/out.env" || fail "malformed generic output should not dispatch ok"
+# #3392: a generic reviewer that fails its own first-line gate must surface a
+# WARN naming the format-gate miss, not just collapse into DISPATCH_OK=false.
+grep -Fq 'WARN=plan-review-panel: generic Claude reviewer failed the first-line format gate' "$D10B/out.env" \
+    || fail "both-absent format-gate miss must emit an observable WARN"
 
 echo "=== codex-down panel paths: collect stub completes without SENTINEL_TIMEOUT ==="
 COLLECT_STUB="$TMP/collect-stub.sh"

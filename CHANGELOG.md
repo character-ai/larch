@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- Pre-flush run-log secret gate `scripts/scrub-log-secrets.sh`: scans the entire staged run-log tree (no path exclusions) before every flush commit (`larch-log.sh commit` for implement/review/research, `design-log-publish.sh` for design), scrubs secret-shaped values in place — Cursor `crsr_`/`key_` keys (the leak class `redact-secrets.sh` did not cover) plus Slack/Google/Stripe-live/GitLab prefixes, with the `redact-secrets.sh` base families (sk-/GitHub/AWS/JWT/PEM) as a backstop — and emits a loud warning (surfaced to the operator via `skills/design/scripts/design-publish.sh`, `scripts/larch-log-flush.sh`, and `skills/implement/scripts/step-7a.sh`) so the exposed credential can be rotated. The gate exits `0` so the flush still proceeds; it fails closed (non-zero) only when it cannot guarantee a clean tree. Removes the blanket `^larch-logs/` allowlist from `.gitleaks.toml` so gitleaks scans committed run logs in larch CI (verified clean on the pinned v8.18.4 engine — the historical UUID-shaped `LARCH_TOKEN_SESSION_ID` `generic-api-key` false positive does not fire). Consumer repos need no third-party scanner for the flush to be safe. Python parity for the in-progress `ship-pr` rework in `python/run_logs.py` (`_scrub_run_tree`, called from `_larch_log_commit`) and `python/redact.py` (`scrub_log_secrets`). New regression harness `scripts/test-scrub-log-secrets.sh` wired into `make lint`; `SECURITY.md` "Layered secret scanning" updated; the previously leaked Cursor key (since rotated) redacted from committed logs. Closes #3379.
 - Phase 3 Python `rebase.py`: auto-resolve trivial/bump/CHANGELOG conflicts, drop stale bump commit before replay, in-process fixer-agent waterfall for non-trivial conflicts, re-classify/re-bump after rebase, force-push-with-lease, attempt cap (dev/CI-only until Phase 7 cutover) (#3236).
 - Extend #3202 failed-agent stderr-tail surfacing to implement/CI/lint-fix lanes (producer writes in launchers and `lint-fix-loop.sh`; consumer surfacing in `step2-implement.sh`, `ship-pr.sh`, and Step 5 lint-fix) and add a plan-review-loop FD-2 tail regression test (#3227).
 - `lint-awk-multibyte-regex` catches non-ASCII characters inside `awk -v VAR=...` values and inside awk-body regex callsites (`match`, `gsub`, `sub`, `split`, `~`, `!~`); wired into `make lint`, the pre-commit hook chain, `docs/linting.md`, and `agent-lint.toml`. Add ship-pr `run_ci_fix_vendor` HEAD-non-advance detection so a vendor that exits 0 without producing any commit is classified as `first-fixer-non-health`, routing the run to Exit 3 → autonomous main-agent CI-fix; existing tier-order happy-path tests updated to produce real commits so they remain rc 0. Fixes #3134.
@@ -42,6 +43,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `/design` log-publish PR (`scripts/design-log-publish.sh`) no longer skips CI: the `flush`/`pause` commit subjects drop the `[skip ci]` marker (and the PR body wording) so CI runs on the PR, and the tail now waits for the PR's required status checks (`gh pr checks --required --watch --fail-fast`) and squash `--admin` merges only once they pass — refusing to merge on a required-check failure, so CI gates the merge instead of being bypassed. `--admin` is retained (not `--auto`) because the repo's review ruleset has no bot reviewer, so a server-side auto-merge would enable but never complete; `--admin` bypasses only the review gate, not the CI the wait already enforced. The publish fails closed (`PUBLISH_OK=false`) when a required check fails or none are configured, and the wait is intentionally unbounded (no local timeout yet — deferred to the `ship-pr.sh` Python migration). `scripts/design-log-publish.md` and the `SECURITY.md` design-log-publish note updated in sync. Closes #3391.
 - `/design`: remove Step 2b.5 optional plan-size prompts and retire the file-count metric; only hard `PLAN_LINES` / `DIFF_LINES` thresholds remain, while `--partition` routes directly to the decomposition panel (#2805).
 - `/implement` now resolves omitted `--coder` in Step 0 via the Codex → Cursor → Claude waterfall inside `scripts/implement-bootstrap.sh phase_coder_select` (#3337), and Step 2 consumes that resolved coder without re-deciding from `diff_lines`. CI fixer (`run_ci_fix_vendor`) and merge-resolve fixer (`run_recovery_waterfall`) in `scripts/ship-pr.sh` also prefer Codex first. Python `python/config.py FIXER_TIER_ORDER` updated for parity. Review/fix and other fixer lanes remain Codex-first. Cross-doc and harness surfaces follow the same split routing contract (`SECURITY.md`, `docs/linting.md`, sibling `.md` contracts). The `apiKeyHelper`-free dual-auth alias pattern is now documented in `docs/installation-and-setup.md` (Part 1 of #3337).
 - `/design`: re-print the plan candidate at Step 3 entry (first-time only) and Gate C entry, with a large-plan summary mode controlled by `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` (default 120).
@@ -53,6 +55,64 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 
 - Removed `skills/report-tokens/scripts/test-report-tokens-recompute.sh`, `skills/report-tokens/scripts/test-rate-assertions.sh`, `skills/report-tokens/scripts/test-rate-assertions.md`, and the `skills/report-tokens/scripts/fixtures/recompute-run/` fixture directory. The harnesses wrote fixture run directories into the live `larch-logs/implement/` and `larch-logs/design/` working-tree paths, which risked cross-talk with real run logs. They are deleted rather than migrated to `${TMPDIR}` per project preference: `run-analysis.sh` is intentionally not test-covered. Makefile recipes (`test-rate-assertions`, `test-report-tokens-recompute`) and their `test-harnesses-13` / `test-harnesses-20` shard prerequisites are removed; the matching `agent-lint.toml` exclude entry and `docs/linting.md` row are dropped; the dangling rate-harness sentence in `skills/report-tokens/SKILL.md` is trimmed. Closes #3121.
+
+## [47.0.63] - 2026-06-02
+
+### Changed
+
+- Closed: #3369
+
+## [47.0.61] - 2026-06-02
+
+### Changed
+
+- Remove per-PR version bump and CHANGELOG writes from ship-pr and implement-finalize postbump
+- Retire bump-specific NEVER rules, invariants, and reference docs; neutralize bump hooks
+- Mirror subtractive change in python/rebase.py and refresh offline harnesses
+
+## [47.0.60] - 2026-06-02
+
+### Changed
+
+- Replace dev-only /release with a seven-step cut-a-release flow from a clean main branch
+- Add release-prepare, release-set-version, and release-finish bash helpers with offline harnesses
+- Extend classify-bump and promote-release for /release via --base and --repo
+
+## [47.0.59] - 2026-06-02
+
+### Changed
+
+- Retry exit-0 empty Cursor .result envelopes with the shared transient budget and backoff helper
+- Capture terminal empty-result envelope fields in ${OUTPUT}.diag for collector diagnostics
+- De-synchronize parallel cursor launches with per-process LARCH_CURSOR_LAUNCH_JITTER_MS
+
+## [47.0.58] - 2026-06-02
+
+### Changed
+
+- Scope lint-fix-loop non-per-job prompts to the embedded checks log instead of a global relevant-checks pass goal
+- Derive in-scope file lists and phase-gated optional pre-commit hints from the same 60k-byte log excerpt
+- Add harness cases 12–16 and extend per-job case 6 for prompt composition regressions
+
+## [47.0.54] - 2026-06-02
+
+### Changed
+
+- Closed: #3348
+
+## [47.0.53] - 2026-06-02
+
+### Changed
+
+- Add a Step 2b post-plan emit driver that preserves emit, snapshot, validator, and pause contracts
+- Route initial and re-emit design prose through the shared post-plan handoff
+- Cover the driver and structural call-site migration with offline harness pins
+
+## [47.0.47] - 2026-06-01
+
+### Changed
+
+- Closed: #3326
 
 ## [47.0.44] - 2026-06-01
 

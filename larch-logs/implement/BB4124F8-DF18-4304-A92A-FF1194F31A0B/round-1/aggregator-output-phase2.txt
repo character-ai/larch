@@ -1,0 +1,222 @@
+Verifying key code paths so merged findings reflect the implementation accurately.
+Normalized finding list from the supplied reviewer outputs. Merged items share the same behavioral risk; distinct fixes or code paths stay separate. Reviewer slots that only said “Address the concern above” have no revision bullets (no verbatim fix to quote).
+
+---
+
+### FINDING_1: Driver ignores assess-plan-round.sh exit code
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: `design-plan-quality-assessor.sh` captures `_assess_rc` from `assess-plan-round.sh` (lines 237–257) but never branches on it; empty or KV-less assess output defaults to `ASSESSOR_STATUS=skipped` and the driver always exits 0. Today `assess-plan-round.sh` mainly exits 0 or 2, so `assess-plan-round.sh` exit 2 after tmpdir validation can surface as driver exit 0 with `skipped`, letting `/design` continue past Step 3.6 without the orchestrator catch-all abort that `set -e` would have triggered on the old inline path. A future non-zero assess exit without KVs would be misclassified the same way.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Branch on `_assess_rc` after assess capture; fail closed or emit explicit degraded status; add harness with `ASSESS_STUB_RC=2` and no KVs.
+  - From cursor-specialist-testing-output.txt: Document as intentional or propagate assess rc into driver/orchestrator failure handling plus harness case.
+  - From cursor-specialist-edge-cases-output.txt: Branch on `_assess_rc`; WARN plus distinct status or orchestrator-visible failure.
+
+---
+
+### FINDING_2: Handoff harness does not use qualified plugin path
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `apply_step3_6_handoff` in `test-design-plan-quality-assessor.sh` invokes the driver via bare `bash "$SUBJECT"` instead of `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh` as pinned in `SKILL.md`. PATH/CWD regressions in production invocation would not be caught by handoff mirror tests; structural pins on `SKILL.md` alone are insufficient.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Invoke `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh"` in handoff; assert pattern in harness.
+  - From cursor-specialist-plan-fidelity-output.txt: Change handoff capture to use the qualified plugin path and assert the pattern in harness source.
+
+---
+
+### FINDING_3: Missing catch-all handoff abort harness (driver exit not 0 or 2)
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `SKILL.md` adds a third abort guard for driver exit codes other than 0 and 2 (e.g. exit 1), but `test-design-plan-quality-assessor.sh` does not stub that path. A future driver regression returning 1 could ship with only config-error (exit 2) and empty-key tests passing; the orchestrator might continue with partial KVs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Add stub driver exit 3; assert failed banner and handoff return 1.
+  - From cursor-specialist-testing-output.txt: Add `apply_step3_6_handoff` case with stub driver exit 1; assert handoff rc 1 and stderr contains `design-plan-quality-assessor.sh failed (exit`.
+  - From cursor-specialist-plan-fidelity-output.txt: Add stub driver exit 1 test asserting stderr banner and handoff exit 1.
+
+---
+
+### FINDING_4: `_assessor_parse_ok` set without successful `ASSESSOR_STATUS` read
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: In `SKILL.md` Step 3.6 handoff (1082–1084), `_assessor_parse_ok` becomes true when any allowlisted routing key is read from `.step3.6-assessor.env`, not only when `ASSESSOR_STATUS` is successfully populated. A partial env file can suppress stdout `WARN=` replay while `ASSESSOR_STATUS` remains empty until a later guard fires.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Set parse ok only when `ASSESSOR_STATUS` read from file succeeds.
+
+---
+
+### FINDING_5: Duplicated KV/json helpers vs design-postplan-emit
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `design-plan-quality-assessor.sh` (38–61) duplicates `json_scalar_or_sed` / `parse_kv` helpers already in `design-postplan-emit.sh`; future KV or `workflow_path` parsing fixes must be duplicated unless shared.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Extract shared helpers to `lib-phase-driver` if touching drivers anyway.
+
+---
+
+### FINDING_6: Step 3.6 fence omits timing-ledger mark
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: The Step 3.6 Bash fence (1047–1058) has no `timing-ledger.sh` mark, unlike adjacent steps 3.5/3b. HARD assessor duration is missing from timing reports; plan acceptance explicitly required a timing mark in the fence.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Add timing-ledger mark consistent with Steps 3.5/3b.
+  - From cursor-specialist-plan-fidelity-output.txt: Add `LARCH_TIMING_SKILL=design` `timing-ledger.sh mark "design Step 3.6 — assessor"` after pause-check, before `workflow_path` pre-read.
+
+---
+
+### FINDING_7: Assess stderr merged into KV parse (routing spoof / WORSE bypass)
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: important
+- **Concern**: The driver captures assess output with `2>&1` (243–257); inline Step 3.6 captured stdout only. `parse_kv_from_output` can treat stderr lines as KVs and overwrite keys—e.g. stdout `worse-majority` then stderr `ASSESSOR_VERDICT=skipped`—so the orchestrator skips WORSE Continue/Stop and proceeds as if the gate passed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Capture assess (and snapshot) stdout only; log stderr separately. Do not feed stderr into routing KV parse unless it is a validated contract stream.
+
+---
+
+### FINDING_8: `LARCH_*_SH` seam overrides lack plugin-root validation
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `LARCH_SNAPSHOT_PLAN_ROUND_SH` and `LARCH_ASSESS_PLAN_ROUND_SH` (103–104) substitute child scripts without validating resolved paths stay under `CLAUDE_PLUGIN_ROOT`. Inherited env in a `/design` session could redirect the driver to an attacker-controlled script while still receiving `--design-tmpdir` and session paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Restrict overrides to harness runs or validate resolved paths stay under `CLAUDE_PLUGIN_ROOT` before exec.
+
+---
+
+### FINDING_9: Result env write lacks newline rejection on persisted values
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `phase_driver_write_result_env` persists parsed child values without the newline rejection `emit_kv` applies. Newline-bearing `ASSESSOR_*` values can split into extra lines in `.step3.6-assessor.env` and confuse the orchestrator line parser.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Sanitize or reject newline/carriage-return in values before writing the result env; prefer writing only driver-controlled paths under `DESIGN_TMPDIR`.
+
+---
+
+### FINDING_10: Stale `.step3.6-assessor.env` after failed result-env write
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt, dyn-driver-protocol-output.txt
+- **Severity**: important
+- **Concern**: On `phase_driver_write_result_env` failure, `_write_result_and_emit` (118–143) appends a write-failure `WARN` and still `emit_kv`s fresh contract to stdout, but leaves any previous `.step3.6-assessor.env`. Step 3.6 file-first parse sets `_assessor_parse_ok=true` from stale routing keys, suppresses stdout `WARN=` replay, and post-fence WORSE handling reads the file from disk (1123)—so stale `ASSESSOR_VERDICT=worse-majority` can mis-fire Continue/Stop. Regression vs old inline `>` redirect that always replaced state in the same invocation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: On write failure `rm -f` stale env (non-symlink) or skip file-read and force stdout fallback when `phase_driver_write_result_env` fails.
+  - From dyn-driver-protocol-output.txt: On failed `phase_driver_write_result_env`, `rm -f "$RESULT_ENV"` (or write an explicit tombstone) before emitting stdout KVs; and/or in the SKILL.md handoff, if stderr/stdout contains the write-failure `WARN`, force `_assessor_parse_ok=false` and ignore the existing env file so stdout merge and `WARN=` replay run.
+
+---
+
+### FINDING_11: WORSE gate depends on result-env file; stdout fallback insufficient
+- **Reviewer(s)**: dyn-driver-protocol-output.txt
+- **Severity**: important
+- **Concern**: Documented “stdout fallback” only merges `_assessor_out` inside the Bash subshell; contract KVs are not echoed to tool-visible stdout (only skip/`🔶` banners and selected `WARN=`). Prompt-side WORSE gate reads `.step3.6-assessor.env` after the fence (1123), so correctness depends on a successful result-env write, not `$()` capture. The `rc=0 && -z ASSESSOR_STATUS` guard can pass when shell variables were populated from `_assessor_out` but the file is missing, while the LLM lacks a durable contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-driver-protocol-output.txt: Treat result-env presence after `rc=0` as mandatory for continuation (fail closed if the file is missing/unreadable after merge), or emit the seven routing KVs to stdout after a failed env write so the orchestrator can still recover without relying on a stale file.
+
+---
+
+### FINDING_12: `read-cursor` failure silently defaults `ROUND_NUM` to 1
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: `_read_round_cursor` (167–177) leaves `ROUND_NUM=1` on non-zero `read-cursor` exit with no warning. A HARD run with real cursor ≥2 can run `write-after` for round 1 and corrupt round/snapshot state.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Emit WARN and skip or abort write-after when read-cursor fails; do not default silently to 1.
+
+---
+
+### FINDING_13: No pause-checkpoint harness coverage
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: Despite `_assessor_pause_checkpoint` in the driver and postplan sibling coverage, `test-design-plan-quality-assessor.sh` has no case for `.pause-requested`. Breaking pause-before-assess ordering or `ISSUE_NUMBER` awk resolution would not fail CI until manual `/design` pause.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Mirror `test-design-postplan-emit.sh` pause case: `.pause-requested`, assert skipped result env and pause-save before snapshot/assess stubs.
+  - From cursor-specialist-edge-cases-output.txt: Add harness cases for `.pause-requested`.
+
+---
+
+### FINDING_14: No test that stdout WARN replay is suppressed on successful file parse
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: important
+- **Concern**: No harness asserts that when `_assessor_parse_ok=true`, stdout `WARN=` lines from `_assessor_out` are not replayed. Regression could duplicate write-after or 0/3 warnings in chat while file-parse visibility tests still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Assert exactly one WARN line in `chat.out` on successful handoff; optional duplicate stdout WARN fixture.
+
+---
+
+### FINDING_15: `--timeout` not forwarded from SKILL.md / undocumented in harness
+- **Reviewer(s)**: cursor-specialist-testing-output.txt, cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: Step 3.6 fence invokes the driver without documented `--timeout` (1059–1063) though the driver passes `--timeout` to assess. Harness does not assert `--timeout` appears in `CALL_LOG`; driver could stop forwarding without CI failure.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Assert `CALL_LOG` contains `--timeout` with default or overridden value.
+  - From cursor-specialist-edge-cases-output.txt: Forward `--timeout` from env or argv if tunability is required.
+
+---
+
+### FINDING_16: Missing harness for stale env on write failure
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: nit
+- **Concern**: No test for result-env write failure with a pre-existing `.step3.6-assessor.env`; regression can reintroduce stale-env WORSE mis-routing without CI signal (complements FINDING_10).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Add harness cases for failed env write plus pre-existing env.
+
+---
+
+### OOS_1: [OUT_OF_SCOPE] Pre-existing write-after rollback cursor vs count mismatch
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt, dyn-driver-protocol-output.txt
+- **Severity**: latent
+- **Concern**: On `write-after` failure the driver sets `review-round-count.txt` to `ROUND_NUM-1` but calls `write-cursor --value "$ROUND_NUM"` (not `ROUND_NUM-1`). Matches removed inline `SKILL.md` behavior; this branch does not introduce the mismatch. Fixing count/cursor alignment belongs to a separate change with `run-step3-review.sh` / cap semantics tests.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-edge-cases-output.txt: Document pairing in `assessor.md` if not intentional.
+
+---
+
+### OOS_2: [OUT_OF_SCOPE] `_assess_rc` never consulted (future exit expansion)
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, dyn-driver-protocol-output.txt
+- **Severity**: important
+- **Concern**: Same class as in-scope FINDING_1, framed as pre-existing / low risk while `assess-plan-round.sh` only exits 0 on settled paths; noted explicitly as out-of-scope for this branch’s production-path bug claim.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+---
+
+### OOS_3: [OUT_OF_SCOPE] Quiet contract / `$()` capture parity with inline assess
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: nit
+- **Concern**: `larch_quiet_init` + `emit_kv` on FD 3 matches `design-postplan-emit.sh`; command substitution in `SKILL.md` should still receive KVs the same way as the old inline `assess-plan-round.sh` capture.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+---
+
+### OOS_4: [OUT_OF_SCOPE] Non-HARD runs always invoke driver and write `.step3.6-assessor.env`
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: nit
+- **Concern**: Intentional contract extension: SIMPLE paths now get `ASSESSOR_STATUS=skipped` in result env; previously skipped without writing the file. Should not affect WORSE gate (requires `worse-majority` on HARD paths).
+- **Suggested revisions (informational for voters; coder decides)**:
+
+---
+
+### OOS_5: [OUT_OF_SCOPE] Pre-existing `LARCH_DISPATCH_PLAN_ASSESSORS_SH` override class
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `assess-plan-round.sh:179` allows arbitrary dispatch script substitution; same class as new driver seams; needs repo-wide plugin-root allowlist policy for all `LARCH_*_SH` overrides.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Document and enforce a shared plugin-root allowlist for all `LARCH_*_SH` overrides repo-wide.
+
+---
+
+### OOS_6: [OUT_OF_SCOPE] WARN replay to chat without untrusted-data framing
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: nit
+- **Concern**: `WARN=` replay from result env goes to chat without untrusted-data framing; concurrent tmpdir tampering could inject operator-visible text (low likelihood in same-fence read).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: Optional untrusted wrapper for WARN replay or rely on atomic write + immediate read (current model).
+
+---
+
+### OOS_7: [OUT_OF_SCOPE] Catch-all abort test deferred (driver never exits 1 today)
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: nit
+- **Concern**: Harness mirrors handoff well but does not cover catch-all abort when driver exits 1; worth adding later; not a production-path bug given driver contract never exits 1 (overlaps in-scope FINDING_3, which treats missing test as actionable).
+- **Suggested revisions (informational for voters; coder decides)**:
+
+---
+
+### OOS_8: [OUT_OF_SCOPE] Verification / branch-commit notes (non-actionable)
+- **Reviewer(s)**: dyn-driver-protocol-output.txt
+- **Severity**: nit
+- **Concern**: Reviewer verification notes: `_assessor_parse_ok` on any allowlisted key; stdout merge fill-only-unset; abort order matches Step 2b postplan; non-HARD single skip breadcrumb; `emit_kv`/FD3 capture in driver subprocess; branch commits `dbb253d81`, `0eff34913`, `11a04f421`.
+- **Suggested revisions (informational for voters; coder decides)**:

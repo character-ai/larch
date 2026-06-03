@@ -1,0 +1,34 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly defers collector enrichment to #3392; .diag written to disk satisfies the plan's additive-diagnostic requirement
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- multiple single-field defensive jq calls with independent || true guards are appropriate for a one-time diagnostic path; collapsing adds multi-field parsing complexity
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- codex launcher not modified in this PR; cross-tool factoring is out of scope
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=true
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- whitespace-only .result is entirely hypothetical Cursor behavior; adding trim probe adds complexity without observed evidence
+FINDING_9: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- once FINDING_27 is fixed the unset-default jitter will fire on all legacy cursor test cases; harness determinism requires LARCH_CURSOR_LAUNCH_JITTER_MS=0 globally for cursor suite
+FINDING_10: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- TRANSIENT_ATTEMPT is initialized to 1 and never decremented; the else branch is dead code
+FINDING_11: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- plan says capture "any rate-limit / duration / request-id fields present"; implementation does exactly that; speculation about undocumented Cursor fields is not actionable
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- once FINDING_27 default parse is fixed all legacy cursor harness cases gain 0-250ms random sleep; export LARCH_CURSOR_LAUNCH_JITTER_MS=0 at cursor suite entry is correct fix
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- acceptance criterion requires full envelope at ${OUTPUT}.json but no test asserts it; regression would silently pass
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- shared TRANSIENT_ATTEMPT across failure classes is untested in combination; FINDING_30 shows it can defeat empty-result retry entirely
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- jq-missing degrades gracefully to pre-existing behavior; optional test coverage not warranted
+FINDING_16: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- _diag_error extracted from Cursor envelope without redact-secrets.sh pass; other failure-path diag writers (append_launch_failure) do redact; inconsistency is a real gap
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- launch-review.md updated but combined-budget semantics and their consequence (fewer empty retries after exit-code transients) not documented
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same rationale as FINDING_2; collector enrichment deferred to #3392 by design
+FINDING_20: EXONERATE CORRECTNESS=uncertain SEVERITY=nit QUALITY=weak UNCERTAIN=true -- same as FINDING_8; hypothetical
+FINDING_21: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- already tracked by #3392; filing a new issue would be a duplicate
+FINDING_22: YES CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=true -- ballot item body is the commit message itself, not a finding; no actionable concern stated
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- run-log flush commits are excluded from plan review per policy; not a finding
+FINDING_25: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- binding design comment says "read once"; LARCH_CURSOR_RETRY_EMPTY_RESULT re-evaluated each loop iteration while LARCH_CURSOR_LAUNCH_JITTER_MS is cached; stylistic inconsistency with stated contract
+FINDING_26: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan explicitly preserves full envelope at ${OUTPUT}.json; 500-char FAILURE_REASON truncation is pre-existing and acceptable
+FINDING_27: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- when LARCH_CURSOR_LAUNCH_JITTER_MS is unset the case :-250 expansion matches *) but assigns from the still-unset variable giving empty string; (( > 0 )) treats empty as 0 and skips jitter, contradicting the documented 250ms default
+FINDING_28: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- reviewer explicitly found no defect; no actionable concern
+FINDING_29: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- test coverage for the unset-default jitter case needed to prevent regression after FINDING_27 fix
+FINDING_30: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- two exit 4/8 transients exhaust TRANSIENT_ATTEMPT to 3; subsequent exit-0 empty-.result fails the budget check and gets zero empty-specific retries
+FINDING_31: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_32: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- _diag_retries uses TRANSIENT_ATTEMPT-1 which counts exit-code transients too; diag says "N transient retries" when zero were empty-result specific
+FINDING_33: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- mixed exit-code-then-empty and empty-then-auth stub cases are absent; (1) exit-8 then exit-0-empty would expose FINDING_30; reviewer correctly exonerates (2) and (3) but (1) is a real gap
+FINDING_34: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

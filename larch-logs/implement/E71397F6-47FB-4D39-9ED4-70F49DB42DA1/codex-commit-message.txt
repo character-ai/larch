@@ -1,0 +1,3 @@
+Reconcile Python Closes helper
+
+Route PR body Closes composition through tracking_issue.link_pr_closes, make the helper prefix-collision safe, remove the dead PrBodyParts dataclass, and add regression coverage.

@@ -1,0 +1,21 @@
+Validating the plan against sibling drivers, current Step 2b behavior, and integration contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:1414-1417	Shared **Fix-and-retry** keeps bare `ACTION=EMIT_PLAN` / `ACTION=VALIDATE_PLAN_COMMANDS` while call sites move to `design-postplan-emit.sh`	After **Fix-and-retry** at Step 2b / Gate B / discussion-round2 / Gate A, the executor may re-run only EMIT (or EMIT+validator ad hoc), skipping the unified post-plan contract (quick skip, `--force-validate`, snapshot suppression) and diverging from the driver table	Update **### Plan command validator failure (shared)** Fix-and-retry to: re-invoke `design-postplan-emit.sh` with the same flags as the surrounding site (Step 2b: `--snapshot-original`; re-emits: no snapshot flag; discussion-round2: add `--force-validate`); drop the plan’s “keep literals only in shared section” carve-out or limit it to Step 5c `composed-plan.md`
+1	in_scope	important	risk-integration	skills/design/scripts/design-postplan-emit.sh (proposed `_postplan_write_result_and_emit`)	Approach step 1 orders `phase_driver_write_result_env` before `emit_kv`; success-path write refusal is not assigned a distinct exit code	Operational success with `POSTPLAN_EMIT_STATUS=ok` but a failed env write can exit **1**, so Step 2b/Gate B treat a successful EMIT/validate as hard failure; stdout fallback is empty if KVs were never emitted to FD 3	Match `design-publish.sh` `write_result_env_and_emit`: `emit_kv` all mandatory keys first, then `phase_driver_write_result_env`; on write failure after operational success still exit **0** (optional `WARN=`); reserve exit **1** for EMIT/snapshot/validator failures only
+1	in_scope	latent	correctness	scripts/test-design-structure.sh (proposed pins) + skills/design/references/approval-gates.md + skills/design/references/discussion-rounds.md	FINDING_1 stdout-fallback pins target `SKILL.md` only; Gate B / discussion-round2 prose may cross-ref “same parse as Step 2b” without a fence	Executor skips `_postplan_out` merge at re-emit sites; mandatory keys stay empty despite KVs in capture → false abort or wrong `defects-found` vs hard-failure routing	Add one structural grep in `approval-gates.md` shared post-apply (and discussion-round2 plan-revision block) for `_postplan_out` / `<<<` merge, or require a minimal inline parse fence there—not only a SKILL.md anchor
+
+**1. Fix-and-retry vs driver (correctness)**  
+The plan migrates four call sites to `design-postplan-emit.sh` but leaves `skills/design/SKILL.md` **### Plan command validator failure (shared)** on bare `ACTION=EMIT_PLAN` / `ACTION=VALIDATE_PLAN_COMMANDS` (plan lines 241–242). That is a real post-land regression path for **Fix-and-retry**, not a style nit.
+
+**2. Flush ordering / exit 1 conflation (risk-integration)**  
+FINDING_1 requires stdout fallback when `.design-postplan-emit-result.env` is missing, but the Approach lists writing the result env before mirroring KVs. Siblings that must survive write failure emit first (`design-publish.sh`); `design-route.sh` exits **1** without stdout and is a poor model here because postplan exit **1** already means `missing-diff-lines` / `emit-failed` / etc.
+
+**3. Re-emit parse pins (latent)**  
+Step 2b gets full inline parse + structural pins; `approval-gates.md` / `discussion-rounds.md` may only cross-reference Step 2b. Worth one pin if FINDING_1 fallback is meant to hold at every call site.
+
+**Exonerated (not raised as findings)**  
+- Gate A `--site` `design discussion-round2` matches the shared body allowlist (`SKILL.md:1417`).  
+- `--force-validate` / discussion-round2 parity is scoped and harnessed (#12).  
+- `set +e` child capture, pause checkpoints, and `defects-found` exit **0** are adequately specified.  
+- Adding `defects-found` AskUserQuestion at re-emit sites aligns with `flags.md` where references were silent—not flagged as scope creep.  
+- `SNAPSHOT_STATUS=taken|preserved` can be derived from a pre-call `plan.txt-original` existence check; snapshot helper emits prose, not KV lines.

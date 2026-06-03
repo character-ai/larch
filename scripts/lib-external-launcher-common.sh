@@ -32,6 +32,108 @@ external_launcher_append_outer_meta() {
     } >> "$meta_path"
 }
 
+external_launch_health_gate_timeout() {
+    local _out_var="$1"
+    local candidate="" session_file="" script_dir=""
+    printf -v "$_out_var" '%s' ""
+
+    candidate="${LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT:-}"
+    case "$candidate" in
+        ''|*[!0-9]*) ;;
+        *)
+            if (( 10#$candidate > 0 )); then
+                printf -v "$_out_var" '%s' "$((10#$candidate))"
+                return 0
+            fi
+            return 0
+            ;;
+    esac
+
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    for session_file in "${SESSION_ENV_PATH:-}" "${IMPLEMENT_TMPDIR:+${IMPLEMENT_TMPDIR}/session-env.sh}"; do
+        [[ -n "$session_file" ]] || continue
+        candidate=""
+        if candidate=$("$script_dir/read-session-env-key.sh" \
+            --file "$session_file" \
+            --key LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT \
+            --default "" 2>/dev/null); then
+            :
+        else
+            candidate=""
+        fi
+        case "$candidate" in
+            ''|*[!0-9]*) ;;
+            *)
+                if (( 10#$candidate > 0 )); then
+                    printf -v "$_out_var" '%s' "$((10#$candidate))"
+                    return 0
+                fi
+                return 0
+                ;;
+        esac
+    done
+
+    # Canonical default when no source resolves; keep in sync with write-session-env.sh / write-design-current-env.sh
+    printf -v "$_out_var" '%s' '30'
+    return 0
+}
+
+external_launch_health_gate() {
+    local tool="$1"
+    local timeout_seconds="" script_dir="" skip_arg="" present_key=""
+    local probe_out="" probe_rc=0 timeout_bin=""
+
+    case "$tool" in
+        codex)
+            skip_arg="--skip-cursor-probe"
+            present_key="CODEX_PRESENT"
+            ;;
+        cursor)
+            skip_arg="--skip-codex-probe"
+            present_key="CURSOR_PRESENT"
+            ;;
+        *)
+            return 0
+            ;;
+    esac
+
+    external_launch_health_gate_timeout timeout_seconds
+    [[ -n "$timeout_seconds" ]] || return 0
+
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+    if command -v timeout >/dev/null 2>&1; then
+        timeout_bin="timeout"
+    elif command -v gtimeout >/dev/null 2>&1; then
+        timeout_bin="gtimeout"
+    fi
+
+    if [[ -n "$timeout_bin" ]]; then
+        if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 "$timeout_bin" "$timeout_seconds" \
+            "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+            probe_rc=0
+        else
+            probe_rc=$?
+        fi
+    else
+        if probe_out=$(LARCH_EXTERNAL_AUTH_RETRIES=1 \
+            "$script_dir/check-reviewers.sh" "$skip_arg" 2>/dev/null); then
+            probe_rc=0
+        else
+            probe_rc=$?
+        fi
+    fi
+
+    case "$probe_rc" in
+        124|143) return 1 ;;
+    esac
+
+    case "$(printf '%s\n' "$probe_out" | awk -F= -v key="$present_key" '$1 == key {print $2; exit}')" in
+        false) return 1 ;;
+        true) return 0 ;;
+        *) return 0 ;;
+    esac
+}
+
 external_launcher_record_usage_from_events() {
     local plugin_root="$1"
     local events_file="$2"
@@ -158,6 +260,69 @@ external_is_auth_failure() {
     esac
 }
 
+# Detect a usage-limit / quota / rate-limit failure from a launcher sidecar.
+# Distinct from external_is_auth_failure: a ChatGPT/Codex usage limit
+# ("You've hit your usage limit … try again at …") or an API rate-limit/quota
+# response is an environmental account condition, not an auth misconfiguration
+# and not a code-logic failure. Callers surface it as a separate `quota`
+# verdict/reason so a degraded judge/reviewer panel is not silently attributed
+# to a generic launch error (#3378). The signatures are disjoint from the auth
+# classifier above, so a sidecar never classifies as both auth and quota.
+# The pattern is intentionally recall-biased (bare `quota` with no word boundary):
+# this fix exists to STOP silent degradation, so a missed quota (false negative)
+# reintroduces the bug, while a false positive is low-harm (treated as a health
+# condition that waterfalls to the next vendor). Word boundaries (`\b`) are a GNU
+# grep extension and unreliable on BSD/macOS grep, and must stay byte-identical to
+# python/agents.py `_QUOTA_RE` for the bash↔python classifier parity test.
+external_is_quota_failure() {
+    local tool="$1"
+    local sidecar="$2"
+    [[ -r "$sidecar" ]] || return 1
+
+    case "$tool" in
+        codex|cursor)
+            grep -Eiq 'usage limit|rate[ _-]?limit|too many requests|quota|429 too many|over your usage' "$sidecar"
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+# Mirror a Codex usage-limit / quota signal from the JSON events stream into the
+# launcher sidecar so the sidecar-scanning classifiers (external_is_quota_failure,
+# external_failure_verdict, external_classify_launch_failure) catch it.
+#
+# `codex exec --json` reports a usage/quota limit as a {"type":"error",…} /
+# turn.failed event on its STDOUT events stream — which the launcher redirects to
+# ${OUTPUT}.events.jsonl — while the stderr sidecar and the --output-last-message
+# file stay empty. On that path the sidecar classifier never sees the signal, so
+# the failure mis-classifies as a generic non-auth exit 7 and then also burns the
+# {5,7} transient-retry budget, each retry re-hitting the limit (#3390).
+#
+# Detection reuses external_is_quota_failure against the events file so the quota
+# regex stays single-sourced (do NOT inline a second copy here — it must remain
+# byte-identical to python/agents.py _QUOTA_RE). On a match, one marker line is
+# appended to the sidecar; the marker text itself carries the `usage limit` /
+# `quota` tokens so the downstream sidecar scan classifies it. Idempotent: no-op
+# when the sidecar already carries the signature. No-op when the events file is
+# unreadable/empty (e.g. a genuine 0-output transient blip, which must stay
+# transient-retryable) or the sidecar is not writable (e.g. /dev/null).
+external_launcher_mirror_quota_from_events() {
+    local events_file="$1"
+    local sidecar="$2"
+    [[ -n "$sidecar" && "$sidecar" != "/dev/null" ]] || return 0
+    [[ -r "$events_file" && -s "$events_file" ]] || return 0
+    if external_is_quota_failure "codex" "$sidecar"; then
+        return 0
+    fi
+    if external_is_quota_failure "codex" "$events_file"; then
+        printf 'codex-quota: usage limit / quota reported on the codex exec --json events stream (%s); see that file for the reset time\n' \
+            "$events_file" >> "$sidecar" 2>/dev/null || true
+    fi
+    return 0
+}
+
 external_is_transient_infra_failure() {
     local tool="$1" exit_code="$2" output_file="$4"
     # Check the output file (where the tool would write its actual response),
@@ -205,6 +370,32 @@ external_auth_verdict() {
     fi
 }
 
+# Map an external-launcher failure to the single-line operator-facing verdict
+# passed to append-tool-failure.sh --verdict. Encapsulates the auth→quota→raw
+# precedence so every launcher (codex/cursor review + codex CI) stays in parity
+# (#3378). Precedence:
+#   auth (after the in-launcher auth-retry loop exhausts) → `auth-retries-exhausted`
+#   usage-limit/quota                                     → `quota`
+#   otherwise                                             → the raw external_auth_verdict (`non-auth` | `unclassified`)
+# Accepts the same variadic sidecar list as external_auth_verdict so cursor
+# callers can pass both the wrapper sidecar and the `.diag` file.
+external_failure_verdict() {
+    local tool="$1"; shift
+    local verdict sidecar
+    verdict=$(external_auth_verdict "$tool" "$@")
+    if [[ "$verdict" == "auth" ]]; then
+        printf 'auth-retries-exhausted\n'
+        return 0
+    fi
+    for sidecar in "$@"; do
+        if external_is_quota_failure "$tool" "$sidecar"; then
+            printf 'quota\n'
+            return 0
+        fi
+    done
+    printf '%s\n' "$verdict"
+}
+
 # Print LAUNCHER_FAILURE_CLASS / LAUNCHER_FAILURE_REASON lines to stdout (KV
 # grammar, one line each). Single source of truth for CI launcher contracts;
 # enums pinned in tests — see skills/implement plan / test-lib-external-launcher-common.sh.
@@ -239,6 +430,19 @@ external_classify_launch_failure() {
     if [[ "$auth_verdict" == "auth" ]]; then
         printf 'LAUNCHER_FAILURE_CLASS=%s\n' "health"
         printf 'LAUNCHER_FAILURE_REASON=%s\n' "auth"
+        return 0
+    fi
+
+    # Usage-limit / quota is an environmental account condition (like auth),
+    # not a code-logic failure. Class `health` so CI-fix callers waterfall to
+    # the next vendor instead of bailing first-fixer-non-health (#3378). The
+    # explicit quota message takes precedence over the exit-code-based transient
+    # heuristic below. Check the sidecar first, then the tool output file
+    # (codex emits the limit text on stderr → sidecar in normal failures).
+    if { [[ -n "$sidecar" ]] && external_is_quota_failure "$tool" "$sidecar"; } \
+        || { [[ -n "$output_file" ]] && external_is_quota_failure "$tool" "$output_file"; }; then
+        printf 'LAUNCHER_FAILURE_CLASS=%s\n' "health"
+        printf 'LAUNCHER_FAILURE_REASON=%s\n' "quota"
         return 0
     fi
 

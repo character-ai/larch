@@ -1,0 +1,153 @@
+Normalized aggregator output from the supplied reviewer slots. Positive security attestations (input FINDING_11–17) are omitted — they describe no actionable risk. Merged items share one behavioral concern; distinct doc paths stay separate.
+
+---
+
+### FINDING_1: conflict-resolution.md still mandates retired re-bump sub-procedure
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: Phase 1 retired the Rebase + Re-bump Sub-procedure and per-PR `/bump-version` on the ship path, but `skills/implement/references/conflict-resolution.md` still tells the orchestrator (Consumer/Contract, caller families, Step 12 Phase 4, and related bullets) to dispatch `step8b_rebase` / `step12_phase4` and run `/bump-version`. An orchestrator loading this doc after `ship-pr` exit 4 or during Step 12 merge/ship stall gets dead instructions instead of `ship_pr_pre_push` + `ship-pr-rrr-phase14` resume, risking wrong recovery or stall without re-entering `ship-pr.sh`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Remove unreachable caller families; align Step 12 Phase 4 with ship-pr-only CI-fix rebase; scrub bump-sub-procedure assumptions in trivial-file notes
+  - From cursor-specialist-correctness-output.txt: Rewrite Consumer/Contract/caller-family/Phase-4 Step 12 sections for Phase 1: only `early_rebase` and `ship_pr_pre_push`; remove or mark unreachable `step12_phase4` and `step8b_rebase`; update `test-implement-rebase-macro.sh` pins accordingly
+  - From cursor-specialist-plan-fidelity-output.txt: Rewrite or remove `step8b_rebase` and `step12_phase4` families and Step 12 Phase 4 exit-0 text; align `test-implement-rebase-macro` (I) pins
+
+---
+
+### FINDING_2: Harness still pins `step8b_rebase` in conflict-resolution.md
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: `scripts/test-implement-rebase-macro.sh` still requires a `step8b_rebase` dispatch pin in `conflict-resolution.md`, blocking coherent doc retirement and enforcing unreachable contract text.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Drop `step8b_rebase` pin; assert only `ship_pr_pre_push` and Phase 1 exit semantics
+
+---
+
+### FINDING_3: Stale NEVER #11 cross-reference in ship-pr.md
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: `scripts/ship-pr.md` still cross-references NEVER #11 after SKILL.md renumbering, so maintainers may follow the wrong invariant (e.g. finalize-state vs bump breadcrumb suppression).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Point to issue #1944 / SKILL verbosity rule or add a dedicated NEVER for breadcrumb suppression
+  - From cursor-specialist-plan-fidelity-output.txt: Fix xref to current anti-halt/breadcrumb guidance in SKILL.md
+
+---
+
+### FINDING_4: Postbump `STATUS` / `run_bump_phase` contract drift (`conflict`, `changelog-failed`, naming)
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt, cursor-specialist-edge-cases-output.txt, dyn-script-state-machine-output.txt
+- **Severity**: important
+- **Concern**: Phase 1 `implement-finalize.sh` emits `STATUS=rebase-failed` for rebase exit 1 and no longer emits `STATUS=conflict` or `changelog-failed`, but `scripts/ship-pr.md` still documents `STATUS=conflict` and `run_bump_phase` still branches on `conflict)` and `changelog-failed`. Those arms are dead on the normal path; hand-crafted or mixed-version `STATUS=conflict` lines stall at `8b` via `exit_stall` without the removed exit-5 / sub-procedure handoff or `RESUME_PHASE` on stdout. The `run_bump_phase` name and changelog-failed handling also misread the state machine.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Rename phase when convenient; prune `changelog-failed` from case list
+  - From cursor-specialist-correctness-output.txt: Align `ship-pr.md` with `rebase-failed` or restore `conflict` status everywhere; drop or document the unused `conflict` case in `run_bump_phase`
+  - From cursor-specialist-edge-cases-output.txt: Align `ship-pr.md` and `run_bump_phase` case arms with `rebase-failed`; remove dead `conflict)` branch or restore `STATUS=conflict` emission if handoff is intended
+  - From dyn-script-state-machine-output.txt: Drop the `conflict)` arm and `changelog-failed` from the `case` (or map them explicitly to the same handling as `rebase-failed`), and align `scripts/ship-pr.md` with the documented `STATUS=` set in `scripts/implement-finalize.md:60`
+
+---
+
+### FINDING_5: `run_rebase_rebump` skips `ship-branch-guard`
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: CI-fix rebase + force-push in `run_rebase_rebump` does not run `ship-branch-guard` while `run_bump_phase` still documents/enforces it at entry. If checkout or branch state diverges after the pre-ship guard, force-push can target the wrong remote branch (`git-force-push.sh` pushes current `HEAD` branch, not necessarily `read_state BRANCH_NAME`).
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-structure-output.txt: Share guard helper with `run_rebase_rebump` or document accepted risk in `ship-pr.md`
+  - From cursor-specialist-correctness-output.txt: Relocate `ship-branch-guard` to `run_rebase_rebump` entry (and resume path) or document the accepted risk explicitly in `ship-pr.md`
+
+---
+
+### FINDING_6: `subskill-invocation.md` still documents per-PR bump verification
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: important
+- **Concern**: Canonical post-invocation verification in `skills/shared/subskill-invocation.md` still documents `/bump-version` plus `check-bump-version` pre/post and points at Step 8+ ship recipe. An `/implement` orchestrator treating shared SSOT as authoritative may still run per-PR bump verification after `ship-pr` despite Phase 1 removal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-testing-output.txt: Replace with a Phase-1-accurate example; mark bump path retired; add a docs-sync structural pin
+
+---
+
+### FINDING_7: `docs/skills.md` still claims `/implement` performs version bump
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: Alias/routing docs still state `/implement` performs version bump; users via `/alias` may expect automatic per-PR bump on implement runs contrary to Phase 1.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Update line to Phase 1 ship contract (review+PR; bump via `/release` not `/implement`)
+
+---
+
+### FINDING_8: `docs/review-agents.md` still lists implement version-bump reasoning
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: Doc still lists version-bump reasoning as `/implement` run-log content; readers may assume implement merges always carry bump reasoning batches.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Remove or qualify version-bump reasoning for implement; point to `/release`
+
+---
+
+### FINDING_9: `docs/run-logs.md` still documents implement ship-path bump batches
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: important
+- **Concern**: Run-log docs still describe version-bump batches and pre-bump transcript boundaries; operators may misread merged `larch-logs` and token reports after Phase 1.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Update `run-logs.md` for no implement ship-path bump; fix transcript boundary wording
+
+---
+
+### FINDING_10: Corrupt-checkpoint `CHANGELOG_STATUS` uses `skipped-resume` not `skipped-phase1`
+- **Reviewer(s)**: dyn-script-state-machine-output.txt
+- **Severity**: important
+- **Concern**: On the `postbump-state-corrupt` path, `implement-finalize.sh` `postbump_tail` hard-codes `CHANGELOG_STATUS=skipped-resume` instead of `skipped-phase1`. Other Phase 1 paths use `skipped-phase1`; `ship-pr.sh` keys off `STATUS` so behavior is unchanged, but run-log/audit consumers parsing `CHANGELOG_STATUS` can misread a corrupt checkpoint as a resume skip vs Phase 1 default documented in `implement-finalize.md`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-script-state-machine-output.txt: Pass `skipped-phase1` as the third argument (or reuse `$CHANGELOG_STATUS` after setting it to `skipped-phase1` before the tail), e.g. `postbump_tail postbump-state-corrupt skipped skipped-phase1 skipped-resume absent`
+
+---
+
+### OOS_1: [OUT_OF_SCOPE] Unrelated #3395 Codex quota changes bundled on branch
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt, cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: Commit(s) such as `d45f89d90` change Codex quota classification (#3395) outside versioning Phase 1 (#3364), expanding review and regression scope for a versioning-focused PR.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness-output.txt: Split into a separate PR or call out clearly in the PR description
+  - From cursor-specialist-plan-fidelity-output.txt: Treat as separate concern in PR review
+
+---
+
+### OOS_2: [OUT_OF_SCOPE] conflict-resolution Phase 4 doc sync (follow-up)
+- **Reviewer(s)**: dyn-script-state-machine-output.txt
+- **Severity**: latent
+- **Concern**: Phase 4 still documents `caller_kind=step8b_rebase` and invoking retired `rebase-rebump-subprocedure.md`; postbump conflicts no longer reach that handoff. Doc sync worth a follow-up, not an `implement-finalize.sh` state-machine defect.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (No slot-specific fix beyond concern text.)
+
+---
+
+### OOS_3: [OUT_OF_SCOPE] Revisit `test-implement-rebase-macro.sh` pin after conflict-resolution cleanup
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: Harness requirement for `step8b_rebase` token in `conflict-resolution.md` blocks full retirement of dead `caller_kind` prose; not in Phase 1 plan file list.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-plan-fidelity-output.txt: Revisit pin after `conflict-resolution.md` cleanup (not in Phase 1 plan file list)
+
+---
+
+### OOS_4: [OUT_OF_SCOPE] `run_rebase_rebump` branch-guard omission predates Phase 1
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: latent
+- **Concern**: `run_rebase_rebump` still does not run `ship-branch-guard` before rebase/force-push (comment documents reliance on checkout + state alignment). Desynced checkout could force-push wrong branch during CI-fix; predates Phase 1 but more visible after bump removal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: (if desired later) call the same branch-alignment check at `run_rebase_rebump` entry as in `run_bump_phase`
+
+---
+
+### OOS_5: [OUT_OF_SCOPE] Quota detection via substring grep on JSONL
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: nit
+- **Concern**: `external_is_quota_failure` / `external_launcher_mirror_quota_from_events` classify quota via substring grep over full Codex JSONL; benign prose containing `"quota"` could false-positive (fail-closed by design). Not confidentiality; may mis-route external panel.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-security-output.txt: none required unless false-positive rate matters; optional structured parse of `type":"error"` events instead of line grep
+
+---
+
+### OOS_6: [OUT_OF_SCOPE] `test-implement-finalize.sh` lacks corrupt-path `CHANGELOG_STATUS` assertion
+- **Reviewer(s)**: dyn-script-state-machine-output.txt
+- **Severity**: nit
+- **Concern**: Harness asserts `CHANGELOG_STATUS=skipped-phase1` on happy, checkpoint, and conflict paths but not on `postbump-state-corrupt` (e.g. line 975), so line-560 `skipped-resume` regression would not be caught by CI.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - (No slot-specific fix beyond concern text.)

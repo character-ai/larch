@@ -1,6 +1,6 @@
 # phantom-probe-with-warn.sh
 
-Standalone wrapper for the two **Phantom Untracked Probe** sites that are not bundled into `rebase-checkpoint-probe.sh` (`2-post-dispatch`, `8-pre-bump`).
+Standalone wrapper for the two **Phantom Untracked Probe** sites that are not bundled into `rebase-checkpoint-probe.sh` (`2-post-dispatch`, `8-pre-ship`).
 
 ## Argv
 

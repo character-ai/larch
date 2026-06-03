@@ -1,0 +1,176 @@
+Verifying a few merge candidates against the cited code so normalized concerns stay accurate.
+Normalized aggregator output from the supplied reviewer slots. Merged items share the same behavioral risk; positive-only OOS attestations (inputs 27, 28, 34, 36–38) are omitted as non-actionable. Input 33 is subsumed by the merged prepare-harness finding (same stub-classify gap as inputs 4 and 13). Input 22 is subsumed by input 9 (same `gh release list --limit 100` concern).
+
+### FINDING_1: --bump override duplicates semver increment logic
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: `--bump` override re-implements semver increment instead of reusing classify/apply-bump helpers. Operator override could compute a different `NEW_VERSION` than classify-bump for the same `CURRENT_VERSION` and `BUMP_TYPE` if arithmetic rules diverge.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_2: release-finish.sh is a monolithic script
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: important
+- **Concern**: `release-finish.sh` bundles OID resolution, tag push, release create/edit, and promote in one long script. Hard to safely extend race recovery or tag logic; regressions in nested fetch/ancestor branches are easy to miss.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_3: semver_lt duplicated across release and bump scripts
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: latent
+- **Concern**: `semver_lt` is duplicated from apply-bump and ship-pr. A future fix in one copy may not propagate, leading to inconsistent downgrade checks.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_4: test-release-prepare stubs classify-bump instead of integration
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: The prepare harness stubs `classify-bump`, so real `--base`/`--head` wiring from `release-prepare.sh` is untested in integration. Argv, cwd, or classify output parsing bugs in `release-prepare` could ship while unit tests stay green; removing `--head` or breaking classify invocation would not fail `make test-release-prepare`.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_5: SKILL.md script index conflates legacy and runtime promote helpers
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: Script index highlights `promote-latest-release.sh` while the runtime path uses `promote-release.sh`. Operators or agents may run the legacy promote script during recovery.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_6: Sequential gh pr view per PR in prepare
+- **Reviewer(s)**: cursor-specialist-structure-output.txt
+- **Severity**: nit
+- **Concern**: `release-prepare.sh` calls `gh pr view` sequentially per PR. Very large release windows mean slow prepare and many API calls.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_1: [OUT_OF_SCOPE] promote-release lacks Latest-release uniqueness guard
+- **Reviewer(s)**: cursor-specialist-structure-output.txt, cursor-specialist-correctness-output.txt
+- **Severity**: nit
+- **Concern**: `promote-release.sh` does not fail on ambiguous `isLatest` unlike `release-prepare`. Multiple Latest releases could cause unpredictable promote targets or multi-line `CURRENT_LATEST` that breaks string compare (pre-existing).
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_7: Open-release guard matches any release/v* branch name
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: important
+- **Concern**: The open-release guard uses `startswith("release/v")`, so any branch named `release/v*` blocks prepare. An open PR from `release/validation` or `release/victim-fix` yields `ERROR=release-cut-in-progress` and aborts a legitimate cut.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_8: Baseline Latest resolved only within gh release list --limit 100
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: Baseline Latest is resolved only within `gh release list --limit 100`. If the true Latest release is outside the first 100 rows, prepare reports `ERROR=no-unique-latest-release` (`LATEST_COUNT=0`).
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_9: PR notes omit merges without (#N) in squash subject
+- **Reviewer(s)**: cursor-specialist-correctness-output.txt
+- **Severity**: latent
+- **Concern**: PR extraction requires trailing `(#N)` in squash subject; other merges are omitted from notes. Merged work without `(#N)` suffix is missing from `PR_COUNT`/notes while still affecting classify-bump.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_10: test-release-prepare Case 4 omits HEAD != origin/main guard
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: important
+- **Concern**: Case 4 only tests `main != origin/main`; `release-prepare` also errors when `HEAD != origin/main`. An operator on branch `main` with stale/detached `HEAD` passes Case 4 fixtures but hits `stale-local-main` at runtime; CI gives false confidence.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_11: No harness for git push failure with no remote tag
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: No case for git push failure with no matching remote tag (`release-finish.sh:312-318`). After merge, network/auth push failure leaves no remote tag; operator gets an untested error path and recovery semantics.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_12: test-release-finish gh stub does not return mergeCommit JSON
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: The `gh` stub returns raw OID for `pr view`, not `mergeCommit` JSON from production `gh` invocation. Breaking `--json mergeCommit -q` in `release-finish.sh` would pass the harness but fail live `/release` Step 6.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_13: test-promote-release does not assert --repo gh argv threading
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: The `--repo` case checks exit 0 only, not `gh` argv threading. A regression dropping `REPO_ARGS` from `promote-release.sh` would break fork/custom-repo release promote without failing tests.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_14: WARN when commit count exceeds PR_COUNT is untested
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: latent
+- **Concern**: WARN when `git log` commit count exceeds `PR_COUNT` is untested. Operators may miss that release notes omit squash merges without `(#N)` while bump still reflects the full diff.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_15: Makefile test-harnesses-20 may approach CI timeout
+- **Reviewer(s)**: cursor-specialist-testing-output.txt
+- **Severity**: nit
+- **Concern**: Four new harnesses were added to `test-harnesses-20` under a 5m CI timeout. Shard 20 may approach timeout as harnesses grow; flaky CI on busy runners.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_16: Step 3 trust boundary covers PR titles only, not full TSV
+- **Reviewer(s)**: cursor-specialist-security-output.txt
+- **Severity**: important
+- **Concern**: Step 3 trust boundary covers PR titles only, but `PR_LIST_FILE` also includes labels, author, and url from `gh`, all fed to the LLM composer. A merged PR with prompt-injection text in labels or title can steer public GitHub Release notes and the release PR body; operator confirm is not a mechanical sanitizer.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_17: No check that BASELINE_TAG is ancestor of origin/main
+- **Reviewer(s)**: cursor-specialist-edge-cases-output.txt
+- **Severity**: important
+- **Concern**: No check that `BASELINE_TAG` is an ancestor of `origin/main`. A mis-set `isLatest` tag yields a wrong PR list and classify range with exit 0.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_2: [OUT_OF_SCOPE] promote-release.md purpose text predates /release primary path
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: nit
+- **Concern**: `scripts/promote-release.md:22-24` purpose text still describes promoting workflow-created pre-releases from `release-tag.yaml` only; it now documents `--repo` and `/release` as a consumer but not that `/release` is the primary cut path. Pre-existing tone; not introduced as a functional gap by this diff.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_3: [OUT_OF_SCOPE] Plan testing deliverable for live gh release/tag verification
+- **Reviewer(s)**: cursor-specialist-plan-fidelity-output.txt
+- **Severity**: latent
+- **Concern**: Plan testing strategy asked for a PR note that live `gh release create/edit` / tag push are left to manual/CI verification per verify-external-tool-invocations; that deliverable is not visible in the committed diff (may exist only in the PR description). Plan fidelity otherwise satisfied from the code side.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_18: Local-tag reconciliation uses stale first ls-remote probe
+- **Reviewer(s)**: dyn-toctou-race-output.txt
+- **Severity**: important
+- **Concern**: The local-tag reconciliation branch uses `remote_oid` from the initial `ls-remote` at lines 281–282 and never re-probes before deciding whether to `git tag -f`. If the first probe sees no remote tag, a stale local `vX.Y.Z` points elsewhere, and `release-tag.yaml` pushes the correct tag to `TARGET_OID` before line 289 runs, the script exits with `ERROR=local tag … points at … not TARGET_OID` even though the remote race is already resolved. The re-probe at lines 303–309 runs only after this block, so it never runs on the failure path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-toctou-race-output.txt: Call `remote_tag_commit_oid` again immediately before the `local_oid != TARGET_OID` branch (or move the empty-remote re-probe block above local-tag handling) so workflow wins between the first probe and local inspection follow the same recovery path as push failure (lines 313–318).
+
+### FINDING_19: mergeCommit polling capped without fetch inside loop
+- **Reviewer(s)**: dyn-toctou-race-output.txt
+- **Severity**: important
+- **Concern**: `mergeCommit` polling is capped at five attempts (~10s) with no `fetch origin main` inside the loop, and there is no second `gh pr view` after the post-poll fetch. If GitHub’s merge metadata lags ref updates by more than ~10s while `origin/main` already carries the bumped `plugin.json`, the script can still hit `ERROR=merge-commit-missing` and abort even though a retry would succeed; conversely, if metadata is slow but `origin/main` already matches `--version`, it silently falls back to `origin/main^{commit}` without ever binding the release PR’s `mergeCommit`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-toctou-race-output.txt: Interleave `fetch origin main` (and optionally a short post-fetch `gh pr view`) inside the merge poll loop, or extend/document the bound with a single retry after fetch; when using the `origin/main` fallback, optionally require `gh pr view` state `MERGED` for `--pr` so finish does not tag a tip that merely matches version.
+
+### OOS_4: [OUT_OF_SCOPE] No harness for first ls-remote empty then workflow tag push
+- **Reviewer(s)**: dyn-toctou-race-output.txt
+- **Severity**: latent
+- **Concern**: Case 8 covers stale local tag when remote already matches at probe time; there is no harness case for “first `ls-remote` empty → workflow pushes correct tag → stale local tag,” which is the regression shape for FINDING_18. Contract text in `release-finish.md:40-41` describes push-failure TOCTOU recovery but not local-tag / first-probe ordering.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_5: [OUT_OF_SCOPE] Tag-push TOCTOU recovery asymmetric with pre-push local-tag path
+- **Reviewer(s)**: dyn-toctou-race-output.txt
+- **Severity**: latent
+- **Concern**: Post-push failure re-probe and same-OID continuation correctly close the tag-push TOCTOU against `release-tag.yaml`; the gap is asymmetric with the pre-push local-tag path (see FINDING_18).
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_20: classify-bump --head idempotency still walks symbolic HEAD
+- **Reviewer(s)**: dyn-script-interface-output.txt
+- **Severity**: important
+- **Concern**: The new `--head` flag moves diff scope, `git show` reads, and `CURRENT_VERSION` sourcing onto `HEAD_COMPARE`, but the idempotency short-circuit still walks symbolic `HEAD` / `HEAD~N`. When `--head` is passed without `--base`, `SKIP_IDEMPOTENCY` stays `false`, so a local `Bump version to X.Y.Z` tip can yield `BUMP_TYPE=NONE` even though `git diff "$BASE" "$HEAD_COMPARE"` still spans unreleased public-surface changes. `/release` avoids this because `release-prepare.sh:235` always pairs `--base`; the standalone `--head` surface is internally inconsistent for callers that omit `--base`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-script-interface-output.txt: Anchor the idempotency walk on `HEAD_COMPARE` whenever `--head` is set (or fail closed unless `--base` is also present), and add a harness case for `--head` without `--base` so the contract cannot regress silently.
+
+### FINDING_21: classify-bump --head does not require HEAD OID equals HEAD_COMPARE
+- **Reviewer(s)**: dyn-script-interface-output.txt
+- **Severity**: latent
+- **Concern**: The `--head` guard validates only that worktree and `HEAD_COMPARE` share the same `.version` string; it does not require `git rev-parse HEAD` to equal `HEAD_COMPARE`. Two commits can carry identical `plugin.json` versions while differing in tree/history, which lets classification proceed with a misaligned checkout ref while idempotency (when not skipped) still inspects the local tip. `release-prepare.sh:142-144` mitigates this for `/release`; the classifier does not encode that invariant for direct `--head` callers.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-script-interface-output.txt: After resolving `HEAD_COMPARE`, fail closed unless `$(git rev-parse HEAD)` equals `HEAD_COMPARE` when `--head` is supplied (or document and enforce `--head` as release-only via mandatory `--base` plus OID equality).
+
+### FINDING_22: classify-bump NEW_VERSION arithmetic lacks 10# decimal forcing
+- **Reviewer(s)**: dyn-script-interface-output.txt
+- **Severity**: important
+- **Concern**: Aggregate `NEW_VERSION` arithmetic in `classify-bump.sh` uses bare `$((MAJ + 1))` / `$((MIN + 1))` / `$((PAT + 1))` without `10#`, while `release-prepare.sh:258-260` applies decimal-forced `10#` only on the `--bump` override path and `release-prepare.md` documents decimal-forced arithmetic for the release flow. The primary `/release` path (no override) forwards `NEW_VERSION` straight from classify-bump output, so semver components with leading zeros can be mis-incremented or fail under bash octal rules.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-script-interface-output.txt: Use `10#`-prefixed arithmetic in `classify-bump.sh`'s `NEW_VERSION` computation so aggregate classification and `release-prepare.sh` override recompute share one arithmetic policy.
+
+### FINDING_23: create-pr.sh secrets_redacted temp file not in EXIT trap
+- **Reviewer(s)**: dyn-redaction-tmpfiles-output.txt
+- **Severity**: important
+- **Concern**: The new two-phase redaction uses a second `mktemp` (`secrets_redacted`) that is not registered with the existing `EXIT` trap. Only `REDACTED_BODY_FILE` is removed in `cleanup()`. On abnormal exit between `mktemp` and `mv`, a persistent `/tmp` file can remain containing PR/release body text—a local information-disclosure footgun for release notes or bodies that may still hold secrets until the move completes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From dyn-redaction-tmpfiles-output.txt: Track the intermediate path in the same `EXIT` trap as `REDACTED_BODY_FILE` (e.g. add `SECRETS_REDACTED_FILE` to `cleanup`, append to `NET_FAIL_FILES` until `mv` succeeds, or avoid a second file by piping `redact-secrets` into a fresh `mktemp` that immediately becomes `REDACTED_BODY_FILE` via atomic replace).

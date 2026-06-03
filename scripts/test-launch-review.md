@@ -13,6 +13,15 @@
   metadata, prompt byte preservation, signal-trap sentinel publication,
   auth-preflight short-circuit, exact stdin-file inheritance on the non-Codex
   control path, and dirty-tree sidecars.
+- Cursor empty-result retry cases: `SL-cursor-empty-retry-success` (retry then
+  valid result), `SL-cursor-empty-retry-exhausted` (all attempts empty,
+  `CURSOR_EMPTY_RESPONSE` marker, `.diag` envelope fields asserted),
+  `SL-cursor-empty-no-retry-sentinel` (`{"no_issues_found": true}` not
+  retried), `SL-cursor-empty-retry-disabled` (`LARCH_CURSOR_RETRY_EMPTY_RESULT=0`,
+  retry off, `.diag` still written), and mixed-failure sequences.
+- Launch jitter env var `LARCH_CURSOR_LAUNCH_JITTER_MS` (default `250`, `0`
+  disables) and retry-empty-result env var `LARCH_CURSOR_RETRY_EMPTY_RESULT`
+  (default on, `0` disables retry only).
 - Successful Codex and Cursor launches with no stderr populate their sidecars
   with informational `codex-status: ok` / `cursor-status: ok` markers.
 - Model rejection, prompt hardening, token-session rehydration, timeout

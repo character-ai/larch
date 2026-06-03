@@ -4,6 +4,11 @@
 
 **Primary callers**: `skills/design/scripts/run-step3-review.sh` (invoked from `skills/design/SKILL.md` Step 3).
 
+External plan-review launches are transitively covered by the launch-time
+health gate in `scripts/run-external-agent.sh`: the Step 3 review launcher
+family funnels Codex/Cursor commands through that chokepoint, so this driver
+does not own a separate `check-reviewers.sh` probe or timeout knob.
+
 ## Invariants
 
 Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required-arg check, before resolving the path with `cd ... && pwd -P`.
@@ -11,7 +16,8 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 - Writes session-root artifacts under `$DESIGN_TMPDIR/`: `ballot.txt`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, `voting-tally.md`. `ballot.txt` is created or truncated on every exit path (including `panel-failed` and zero-finding short-circuit) so consumers avoid `ENOENT`. Never revises `plan.txt` in legacy mode; multi-round mode auto-applies via `revise-plan-with-waterfall.sh` when `manual_gate_b=false`.
 - In multi-round mode, `oos-accepted-design.md` is cumulative across settled rounds. Zero-finding, tally-error, and panel-failed branches preserve the prior cumulative file instead of truncating it, and only accepted OOS blocks are merged forward.
 - Honors `LARCH_AGGREGATOR_DISABLED=1` by skipping `aggregate-findings.sh` and setting `AGGREGATOR_STATUS=disabled`.
-- Emits stdout KV lines documented below plus optional `WARN=` lines.
+- Emits stdout KV lines documented below plus optional `WARN=` lines. `WARN=plan-review-tsv: empty or missing structured reviewer rows for …` is suppressed when the reviewer output file contains the canonical `{"no_issues_found": true}` zero-findings sentinel (healthy slot with no TSV rows); the warning still fires for genuinely empty or unparseable output (header-only TSV with no sentinel).
+- **Per-slot drop diagnostics (#3392).** When the panel forwards `DROPPED_SLOTS_FILE` (the `--no-fallback` drop sidecar from `dispatch-with-waterfall.sh`), `_log_dropped_slots` appends one entry per dropped reviewer slot to `$DESIGN_TMPDIR/execution-issues.md` under **External Reviewer Issues** (via `scripts/append-tool-failure.sh --redact`), tagged with the drop reason (`format-gate-miss`, `collector-failure`, `tool-absent`, `empty`, `result-gate-miss`, `result-unreadable`) and a snippet of the offending output. This fires for partial drops (some slots kept) as well as total drops, so a healthy reviewer dropped only for leading with a preamble is no longer invisible. When the round produces no reviewer paths at all, the aggregate `WARN=plan-review-panel: dispatch produced no reviewer paths …` names the dropped-slot count and points at the per-slot records.
 - Writes `$DESIGN_TMPDIR/plan-review/round-<N>/findings-classification.tsv` for normal tally runs; header-only TSV on empty-artifact exits.
 - Writes `$DESIGN_TMPDIR/.step3-plan-review-result.env` at every terminal exit (multi-round and legacy).
 - Per-round forensics allowlist: `scripts/lib-design-round-artifacts.md`.

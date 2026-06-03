@@ -14,6 +14,9 @@
 # Idempotent no-op: if HEAD..BASE already contains a commit matching
 # `^Bump version to X\.Y\.Z$`, emits BUMP_TYPE=NONE and exits 0.
 #
+# Optional: --base <ref> — use <ref> as BASE directly (skip merge-base + idempotency).
+#   Consumer: /release via release-prepare.sh. Default path unchanged.
+#
 # Output (stdout, KEY=VALUE):
 #   CURRENT_VERSION=<x.y.z>
 #   NEW_VERSION=<x.y.z>                (same as current if BUMP_TYPE=NONE)
@@ -27,33 +30,84 @@
 set -euo pipefail
 
 PLUGIN_JSON="$PWD/.claude-plugin/plugin.json"
+BASE_REF=""
+HEAD_REF=""
+SKIP_IDEMPOTENCY=false
 
 err() {
   echo "ERROR: $*" >&2
   exit 1
 }
 
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --base)
+      [[ $# -ge 2 ]] || err "--base requires a ref"
+      BASE_REF="$2"
+      shift 2
+      ;;
+    --head)
+      [[ $# -ge 2 ]] || err "--head requires a ref"
+      HEAD_REF="$2"
+      shift 2
+      ;;
+    -h|--help)
+      echo "Usage: classify-bump.sh [--base <git-ref>] [--head <git-ref>]" >&2
+      exit 0
+      ;;
+    *)
+      err "unknown argument: $1"
+      ;;
+  esac
+done
+
 # Validate plugin.json exists and parses.
 [[ -f "$PLUGIN_JSON" ]] || err "$PLUGIN_JSON not found"
 jq empty "$PLUGIN_JSON" 2>/dev/null || err "$PLUGIN_JSON is not valid JSON"
 
-# Read current version.
+# Resolve BASE: explicit --base ref (e.g. /release baseline tag) or merge-base path.
+BASE=""
+if [[ -n "$BASE_REF" ]]; then
+  git rev-parse --verify "$BASE_REF^{commit}" >/dev/null 2>&1 \
+    || err "could not resolve --base ref: $BASE_REF"
+  BASE=$(git rev-parse "$BASE_REF^{commit}")
+  SKIP_IDEMPOTENCY=true
+else
+  # Best-effort fetch so origin/main is fresh. Non-fatal.
+  git fetch origin main --quiet 2>/dev/null || true
+
+  # Resolve BASE: prefer local main, fall back to origin/main.
+  if git rev-parse --verify main >/dev/null 2>&1; then
+    BASE=$(git merge-base main HEAD 2>/dev/null || true)
+  fi
+  if [[ -z "$BASE" ]] && git rev-parse --verify origin/main >/dev/null 2>&1; then
+    BASE=$(git merge-base origin/main HEAD 2>/dev/null || true)
+  fi
+  [[ -n "$BASE" ]] || err "could not resolve merge-base against main or origin/main"
+fi
+
+HEAD_COMPARE="HEAD"
+if [[ -n "$HEAD_REF" ]]; then
+  git rev-parse --verify "$HEAD_REF^{commit}" >/dev/null 2>&1 \
+    || err "could not resolve --head ref: $HEAD_REF"
+  HEAD_COMPARE="$(git rev-parse "$HEAD_REF^{commit}")"
+fi
+
+# Read current version (worktree by default; --head ref when set for /release).
 CURRENT_VERSION=$(jq -r '.version // empty' "$PLUGIN_JSON")
+if [[ -n "$HEAD_REF" ]]; then
+  head_plugin_json="$(git show "${HEAD_COMPARE}:.claude-plugin/plugin.json" 2>/dev/null)" \
+    || err "could not read plugin.json at --head ref: $HEAD_REF"
+  head_version="$(printf '%s\n' "$head_plugin_json" | jq -r '.version // empty' 2>/dev/null)" \
+    || err "could not parse plugin.json at --head ref: $HEAD_REF"
+  [[ -n "$head_version" ]] || err "plugin.json at --head ref missing .version field"
+  if [[ -n "$CURRENT_VERSION" && "$CURRENT_VERSION" != "$head_version" ]]; then
+    err "worktree plugin.json version ($CURRENT_VERSION) != --head ref ($head_version)"
+  fi
+  CURRENT_VERSION="$head_version"
+fi
 [[ -n "$CURRENT_VERSION" ]] || err "$PLUGIN_JSON missing .version field"
 [[ "$CURRENT_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || err "version '$CURRENT_VERSION' is not semver (expected X.Y.Z)"
-
-# Best-effort fetch so origin/main is fresh. Non-fatal.
-git fetch origin main --quiet 2>/dev/null || true
-
-# Resolve BASE: prefer local main, fall back to origin/main.
-BASE=""
-if git rev-parse --verify main >/dev/null 2>&1; then
-  BASE=$(git merge-base main HEAD 2>/dev/null || true)
-fi
-if [[ -z "$BASE" ]] && git rev-parse --verify origin/main >/dev/null 2>&1; then
-  BASE=$(git merge-base origin/main HEAD 2>/dev/null || true)
-fi
-[[ -n "$BASE" ]] || err "could not resolve merge-base against main or origin/main"
 
 # Reasoning log path. When IMPLEMENT_TMPDIR is set (the /implement caller),
 # the file lands in that skill-owned tmpdir. When unset (standalone /bump-version
@@ -124,24 +178,26 @@ while [[ "$IDEMPOTENCY_DEPTH" -lt 3 ]]; do
   fi
   break
 done
-HEAD_SUBJECT=$(git log -1 --format=%s "$IDEMPOTENCY_REF" 2>/dev/null || true)
-if [[ "$HEAD_SUBJECT" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-  log "## Result: NONE (already bumped)"
-  log ""
-  log "The idempotency HEAD after transparent CHANGELOG commits is a version bump commit: \`$(git rev-parse --short "$IDEMPOTENCY_REF")\` — \"$HEAD_SUBJECT\""
-  log ""
-  log "No additional bump will be applied."
+if [[ "$SKIP_IDEMPOTENCY" != "true" ]]; then
+  HEAD_SUBJECT=$(git log -1 --format=%s "$IDEMPOTENCY_REF" 2>/dev/null || true)
+  if [[ "$HEAD_SUBJECT" =~ ^Bump\ version\ to\ [0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    log "## Result: NONE (already bumped)"
+    log ""
+    log "The idempotency HEAD after transparent CHANGELOG commits is a version bump commit: \`$(git rev-parse --short "$IDEMPOTENCY_REF")\` — \"$HEAD_SUBJECT\""
+    log ""
+    log "No additional bump will be applied."
 
-  echo "CURRENT_VERSION=$CURRENT_VERSION"
-  echo "NEW_VERSION=$CURRENT_VERSION"
-  echo "BUMP_TYPE=NONE"
-  echo "REASONING_FILE=$REASONING_FILE"
-  exit 0
+    echo "CURRENT_VERSION=$CURRENT_VERSION"
+    echo "NEW_VERSION=$CURRENT_VERSION"
+    echo "BUMP_TYPE=NONE"
+    echo "REASONING_FILE=$REASONING_FILE"
+    exit 0
+  fi
 fi
 
 # Collect file-level changes in public surface.
 # Use -M for rename detection.
-NAME_STATUS=$(git diff -M --name-status "$BASE" HEAD -- skills agents 2>/dev/null || true)
+NAME_STATUS=$(git diff -M --name-status "$BASE" "$HEAD_COMPARE" -- skills agents 2>/dev/null || true)
 
 # Track evidence.
 MAJOR_REASONS=()
@@ -179,7 +235,7 @@ while IFS=$'\t' read -r status old new_or_blank; do
       # so wording-only edits to a flag bullet do not trigger MAJOR.
       if [[ "$old" == skills/*/SKILL.md || "$old" == agents/*.md ]]; then
         OLD_FILE=$(git show "$BASE:$old" 2>/dev/null || true)
-        NEW_FILE=$(git show "HEAD:$old" 2>/dev/null || true)
+        NEW_FILE=$(git show "${HEAD_COMPARE}:${old}" 2>/dev/null || true)
 
         # Extract the first YAML frontmatter block (between two `---` lines at
         # column 0). Returns empty if no frontmatter, or if the opening `---`
@@ -259,9 +315,9 @@ fi
 # Compute new version.
 IFS='.' read -r MAJ MIN PAT <<< "$CURRENT_VERSION"
 case "$BUMP_TYPE" in
-  MAJOR) NEW_VERSION="$((MAJ + 1)).0.0" ;;
-  MINOR) NEW_VERSION="${MAJ}.$((MIN + 1)).0" ;;
-  PATCH) NEW_VERSION="${MAJ}.${MIN}.$((PAT + 1))" ;;
+  MAJOR) NEW_VERSION="$((10#${MAJ} + 1)).0.0" ;;
+  MINOR) NEW_VERSION="${MAJ}.$((10#${MIN} + 1)).0" ;;
+  PATCH) NEW_VERSION="${MAJ}.${MIN}.$((10#${PAT} + 1))" ;;
 esac
 
 # Log reasoning.

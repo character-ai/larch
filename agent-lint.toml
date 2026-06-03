@@ -328,6 +328,14 @@ exclude = [
   "scripts/test-larch-logs-batches.md",
   "scripts/test-larch-log-write-round.sh",
   "scripts/test-larch-log-write-round.md",
+  # scripts/test-scrub-log-secrets.sh is the Makefile-only regression harness for
+  # scripts/scrub-log-secrets.sh (the pre-flush secret gate). The gate itself is
+  # reached via "$SCRIPT_DIR/scrub-log-secrets.sh" from larch-log.sh /
+  # design-log-publish.sh and is not flagged; the harness is referenced only from
+  # Makefile (test-scrub-log-secrets target) and its sibling contract, matching
+  # the same Makefile-only pattern as the other run-log test-* harnesses above.
+  "scripts/test-scrub-log-secrets.sh",
+  "scripts/test-scrub-log-secrets.md",
   # Step 1 launcher split: compose-plan-goals-test.sh is now invoked by
   # scripts/run-step1-plan-log.sh rather than directly from SKILL.md, and
   # agent-lint does not follow Bash-to-Bash launcher edges. The launcher
@@ -1009,6 +1017,7 @@ exclude = [
   # skill-local regression tests.
   "skills/pause/scripts/test-pause-skill.sh",
   "scripts/test-implement-rebase-macro.sh",
+  "scripts/test-ship-pr-rebase.sh",
   # scripts/test-rebase-checkpoint-probe.sh — offline harness for
   # scripts/rebase-checkpoint-probe.sh (Makefile test-rebase-checkpoint-probe).
   "scripts/test-rebase-checkpoint-probe.sh",
@@ -1423,6 +1432,12 @@ exclude = [
   # scripts/promote-release.md is excluded for the same reason.
   "scripts/promote-release.sh",
   "scripts/promote-release.md",
+  # scripts/test-promote-release.sh is the offline harness for promote-release.sh.
+  # Referenced from Makefile (test-promote-release target in test-harnesses-20)
+  # and scripts/test-promote-release.md (sibling contract). G004 cannot discover
+  # the Makefile edge.
+  "scripts/test-promote-release.sh",
+  "scripts/test-promote-release.md",
   # scripts/render-cost-line.sh is a deprecated standalone operator helper (PR
   # #2714); dollar-primary summaries flow through render-run-summary.sh. G004
   # would flag it without an explicit SKILL.md literal path.
@@ -1582,23 +1597,6 @@ exclude = [
   # contract scripts/test-gh-run-logs.md, not from runtime skill prose.
   "scripts/test-gh-run-logs.sh",
   "scripts/test-gh-run-logs.md",
-  # scripts/test-ship-pr.sh and the two CI launcher argv harnesses are
-  # Makefile-only regression entrypoints for the ship-pr state machine. They
-  # are referenced from Makefile, docs/linting.md, and sibling contracts, not
-  # from runtime skill prose.
-  "scripts/test-ship-pr.sh",
-  "scripts/test-ship-pr.md",
-  # scripts/test-ship-pr-fix-loop-2632.inc.sh is sourced from scripts/test-ship-pr.sh
-  # (fix-loop section; issue #2632). It is not a standalone entrypoint — same
-  # sourced-harness shape as scripts/render-lane-status-lib.sh.
-  "scripts/test-ship-pr-fix-loop-2632.inc.sh",
-  # scripts/test-ship-pr-rebase-phase14.sh delegates to test-ship-pr.sh
-  # --section phase14 (Makefile test-ship-pr-rebase-phase14 target).
-  "scripts/test-ship-pr-rebase-phase14.sh",
-  "scripts/test-ship-pr-rebase-phase14.md",
-  # scripts/test-ship-pr-3210-spot.sh delegates to test-ship-pr.sh
-  # --section fix-loop (Makefile test-ship-pr-3210-spot target).
-  "scripts/test-ship-pr-3210-spot.sh",
   # scripts/test-ci-wait.sh is the offline regression harness for the
   # poll-count budget and suspend-resilience in ci-wait.sh. Referenced only
   # from Makefile (test-ci-wait target) and the sibling contract
@@ -1669,6 +1667,10 @@ exclude = [
   "skills/implement/scripts/test-slack-issue-announce.md",
   "skills/implement/scripts/test-write-final-report.sh",
   "skills/implement/scripts/test-write-final-report.md",
+  "skills/implement/scripts/test-stall-recovery-report.sh",
+  "skills/implement/scripts/test-stall-recovery-report.md",
+  "skills/implement/scripts/test-step-18b-final-report.sh",
+  "skills/implement/scripts/test-step-18b-final-report.md",
   "skills/implement/scripts/test-cleanup.sh",
   "skills/implement/scripts/test-cleanup.md",
   # scripts/lib-submodule-prohibition.sh is a sourced-only shell library (no

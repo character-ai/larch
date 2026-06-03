@@ -10,7 +10,7 @@
   - Truthy values are exactly `1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, and `On`; every other value is false.
   - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.
   - The emitted `STALL_STEP`, `PHASE`, and `BAIL_REASON` values are sanitized enums/tokens only. `BAIL_REASON` is a closed enum (`adopted-issue-closed`, `tracking-init-failed`) plus empty; every other value is emitted as `redacted`.
-  - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
+  - `FAILURE_CLASS` is one of `transient-infra`, `test-failure`, `lint-failure`, `dispatch-failure`, `ci-fix-exhausted`, `contract-failure`, `same-cause-repeat`, or `unrecoverable`.
   - `RESUME_HINT` is one of `step2-impl`, `step5-review`, `step8-shippr`, or `none`. `step3-checks` and `step6-checks` are never resume hints; mapped ship-pr restart tokens are the `8`-through-`15` family except the explicit no-resume terminals `12d` and `bump-branch-guard`.
   - `--attempts-file`, when provided, must be an absolute path that resolves to a regular, non-symlink, readable file under `$IMPLEMENT_TMPDIR`.
 - `init-attempts --implement-tmpdir <path> --attempts-file <path>`
@@ -32,10 +32,22 @@
   - Writes a batch-mode `/larch:issue` input file. The first line is `### [Bug] /implement stall: <class> at <step>`.
   - `--classification-file` and `--body-file` must be absolute paths that resolve to regular, non-symlink, readable files under `$IMPLEMENT_TMPDIR`.
   - `--output-file` must stay under `$IMPLEMENT_TMPDIR`.
+- `clear-stall --implement-tmpdir <path>`
+  - Owns the Step 18a success-path atomic clear of `$IMPLEMENT_TMPDIR/ship-pr-state.sh` (disk before memory). Emits `CLEARED=true|false` on every path.
+  - Present-file guards are two-tier: (1) symlink or non-regular file → `CLEARED=false`, exit 3; (2) syntax-invalid lines (`check_ship_pr_state_syntax`) → `CLEARED=false`, exit 3. Never call `validate_ship_pr_state` (it exits 3 without emitting `CLEARED`).
+  - On success (including absent state and syntax-valid keyless empty or comment-only files): key-rewrite or minimal seeding sets `STALL_TRACKING=false` and `STALL_STEP=` (appending both when absent), preserves every other key and line order for keyed files, temp-write → re-read-assert `false` via `read-session-env-key.sh` → `mv -f` → destination re-read-assert `false`. Operational failures on temp-write, re-read, `mv`, or destination re-read emit `CLEARED=false` before exit (explicit handlers; no bare `set -e` abort without the KV).
+  - Never clears in-memory orchestrator state.
+- `seed-terminal-state --implement-tmpdir <path> [--stall-step <N>] [--phase <token>]`
+  - Owns the Step 18a terminal-failure durable write (steps 8.1–8.3). Emits `SEEDED=true|false` and, on success, `SEED_MODE=rewrite|seed`.
+  - When `ship-pr-state.sh` exists: same three-tier present-file guards as `clear-stall` for symlink/non-regular (exit 3) and syntax-invalid (exit 3). Unlike `clear-stall`, a syntax-valid keyless present file is not a no-op: the helper seeds the canonical minimal Step-8 shape (`SEED_MODE=seed`) instead of exiting 3. When the file has keys, rewrite keeps `STALL_TRACKING=true`, refreshes `STALL_STEP` / `PHASE` from sanitized args when provided else keeps existing sanitized disk values, and preserves `BAIL_FAILURE_DETAIL_LOG` and all other keys by construction (key-rewrite updates only the named keys).
+  - When absent: seeds the canonical minimal Step-8 shape (`PHASE=ci-initial`, `STALL_TRACKING=true`, `STALL_STEP=8`, `BAIL_REASON=`, `BAIL_FAILURE_DETAIL_LOG=`, `EXIT_CODE=4`) with `--stall-step` / `--phase` overriding defaults when supplied.
+  - Re-read-assert `STALL_TRACKING=true` after `mv -f`. Operational failures emit `SEEDED=false` before exit.
 - `lint`
   - Asserts allowlist parity: TSV surface keys == helper code surface keys == this document's surface keys.
 
 ## Surface Allowlists
+
+`clear-stall` and `seed-terminal-state` compose no public report text. The `## Surface Allowlists` table, TSV, and `lint` parity checks are unchanged — only classification/report subcommands participate in allowlisted surfaces.
 
 The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint` subcommand, and this table must remain byte-equivalent at the `surface + field_key` level.
 
@@ -77,9 +89,10 @@ The committed TSV at `stall-recovery-report-allowlists.tsv`, the helper's `lint`
 - `test-failure`: pytest, jest, vitest, rspec, go test, or generic failing-test evidence.
 - `lint-failure`: lint-fix, shellcheck, markdownlint, pre-commit, relevant-checks, or generic lint-failed evidence.
 - `dispatch-failure`: Step 2 dispatch envelope, wrapper-validation, or orchestrator-envelope-invalid evidence.
+- `ci-fix-exhausted`: `BAIL_REASON=ci-fix-exhausted` together with a readable validated failure-detail log. The CI fix loop exhausted its retry budget, but the surfaced failing job and redacted log tail are actionable, so the main agent applies an inline fix and re-ships (`RESUME_HINT=step8-shippr`). The evidence-specific classes above (test/lint/dispatch/transient) still win when the log matches a more precise signature; without a readable detail log the stall stays `unrecoverable`.
 - `contract-failure`: `STALL_STEP=3` or `STALL_STEP=6`; these are checks contracts where prompt-side recovery edits are intentionally forbidden.
 - `same-cause-repeat`: the current sanitized signature matches the latest durable attempt signature; `RESUME_HINT` is forced to `none` so the orchestrator takes the alternate strategy instead of redispatching the same step. Terminal classes (`contract-failure`, `unrecoverable`) never reclassify to `same-cause-repeat`, including repeated Step 3 / Step 6 checks failures.
-- `unrecoverable`: no recoverable classifier matched, `STALL_TRACKING` is not true, or the bail reason is terminal (`adopted-issue-closed`, `tracking-init-failed`).
+- `unrecoverable`: no recoverable classifier matched, `STALL_TRACKING` is not true, or the bail reason is terminal (`adopted-issue-closed`, `tracking-init-failed`). Reserved for cases where no code fix is possible (merge conflict, repo access failure, or a CI-fix exhaustion with no readable failure-detail log to act on).
 
 ## Retry Caps
 
@@ -91,11 +104,13 @@ This table is the single normative retry-cap source. `skills/implement/reference
 | test-failure | 8 | none |
 | lint-failure | 8 | none |
 | dispatch-failure | 3 | none |
+| ci-fix-exhausted | 8 | none |
 | same-cause-repeat | 2 | none |
 | contract-failure | 0 | none |
 | unrecoverable | 0 | none |
 
 For `same-cause-repeat`, the absence of a delay is intentional: the orchestrator uses the one-time alternate strategy immediately instead of sleeping before redispatch.
+`ci-fix-exhausted` shares the fixable-code cap (`8`) with `test-failure` / `lint-failure`: all three resolve to the same `step8-shippr` re-dispatch, so a CI failure gets the same recovery budget whether or not its log matched a more precise signature. The `same-cause-repeat` guard (cap `2`) still bounds an inline fix that keeps reproducing the same sanitized signature.
 For `transient-infra`, the emitted retry delay means "sleep this command between attempts."
 
 ## Exit Codes
@@ -105,7 +120,7 @@ For `transient-infra`, the emitted retry delay means "sleep this command between
 | 0 | success |
 | 1 | argv error, validation rejection, or lint parity failure |
 | 2 | missing required input |
-| 3 | malformed/unparseable present `ship-pr-state.sh` only |
+| 3 | present `ship-pr-state.sh` is symlinked, non-regular, or syntax-invalid only |
 
 Missing `ship-pr-state.sh` is never exit 3. Without other recoverable evidence it is classified as a bounded `unrecoverable` outcome; `session-env.sh` plus a recoverable bail/detail signal can still produce a recoverable class.
 

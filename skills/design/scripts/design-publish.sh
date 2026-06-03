@@ -249,51 +249,71 @@ if [[ -n "$SESSION_ID" ]]; then
         --pre-publish-only || true
 fi
 
+# --- DESIGN RUN-LOG GITHUB FLUSH TEMPORARILY DISABLED (#3378) ---
+# The end-of-/design run-log flush to GitHub is disabled while larch run logs
+# are migrated from GitHub to S3/R2. The plan was already written to the issue
+# body above; the [DESIGNED] rename and summary render below still run — only
+# the larch-logs/design/<run-id>/ GitHub PR is skipped. PUBLISH_OK is forced
+# true so those tail steps proceed exactly as on a successful publish.
+# TODO(s3-r2-migration): re-enable the commented design-log-publish.sh block
+# below (and the matching gated cases in
+# skills/design/scripts/test-design-publish.sh) once run logs flush to S3/R2.
 if [[ -n "$SESSION_ID" ]]; then
-    set +e
-    _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \
-        --design-tmpdir "$DESIGN_TMPDIR" \
-        --run-id "$SESSION_ID" \
-        --issue "$ISSUE" \
-        ${REPO:+--repo "$REPO"} 2>"$DESIGN_TMPDIR/design-log-publish.failure.log")
-    _publish_rc=$?
-    set -e
-    PUBLISH_OK=""
-    parse_kv_from_output "$_publish_out"
-    if [[ "$_publish_rc" -ne 0 ]] && [[ "$_publish_out" != *$'PUBLISH_OK='* ]]; then
-        PUBLISH_OK=false
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-            --log "$DESIGN_TMPDIR/execution-issues.md" \
-            --site "design Step 5c" \
-            --tool "design-log-publish.sh" \
-            --exit-code "$_publish_rc" \
-            --category Warnings \
-            --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
-            --redact >/dev/null 2>&1 || true
-    elif [[ "${PUBLISH_OK:-}" == false ]]; then
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-            --log "$DESIGN_TMPDIR/execution-issues.md" \
-            --site "design Step 5c" \
-            --tool "design-log-publish.sh" \
-            --exit-code "${_publish_rc:-1}" \
-            --category Warnings \
-            --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
-            --redact >/dev/null 2>&1 || true
-    elif [[ -z "${PUBLISH_OK:-}" ]]; then
-        PUBLISH_OK=false
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-            --log "$DESIGN_TMPDIR/execution-issues.md" \
-            --site "design Step 5c" \
-            --tool "design-log-publish.sh" \
-            --exit-code "${_publish_rc:-0}" \
-            --category Warnings \
-            --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
-            --redact >/dev/null 2>&1 || true
-        add_warn '**⚠ 5c: design-log-publish.sh returned without PUBLISH_OK=; treating publish as failed**'
-    fi
+    PUBLISH_OK=true
+    add_warn '**ℹ /design: run-log GitHub flush disabled pending migration to S3/R2; design-log-publish.sh skipped**'
 else
     add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'
 fi
+# if [[ -n "$SESSION_ID" ]]; then
+#     set +e
+#     _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \
+#         --design-tmpdir "$DESIGN_TMPDIR" \
+#         --run-id "$SESSION_ID" \
+#         --issue "$ISSUE" \
+#         ${REPO:+--repo "$REPO"} 2>"$DESIGN_TMPDIR/design-log-publish.failure.log")
+#     _publish_rc=$?
+#     set -e
+#     PUBLISH_OK=""
+#     parse_kv_from_output "$_publish_out"
+#     _scrub_n="$(printf '%s\n' "$_publish_out" | sed -n 's/^SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
+#     case "${_scrub_n:-}" in ''|*[!0-9]*) _scrub_n=0 ;; esac
+#     if [[ "$_scrub_n" -gt 0 ]]; then
+#         add_warn "**⚠ SECURITY: scrub-log-secrets.sh redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
+#     fi
+#     if [[ "$_publish_rc" -ne 0 ]] && [[ "$_publish_out" != *$'PUBLISH_OK='* ]]; then
+#         PUBLISH_OK=false
+#         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+#             --log "$DESIGN_TMPDIR/execution-issues.md" \
+#             --site "design Step 5c" \
+#             --tool "design-log-publish.sh" \
+#             --exit-code "$_publish_rc" \
+#             --category Warnings \
+#             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
+#             --redact >/dev/null 2>&1 || true
+#     elif [[ "${PUBLISH_OK:-}" == false ]]; then
+#         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+#             --log "$DESIGN_TMPDIR/execution-issues.md" \
+#             --site "design Step 5c" \
+#             --tool "design-log-publish.sh" \
+#             --exit-code "${_publish_rc:-1}" \
+#             --category Warnings \
+#             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
+#             --redact >/dev/null 2>&1 || true
+#     elif [[ -z "${PUBLISH_OK:-}" ]]; then
+#         PUBLISH_OK=false
+#         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+#             --log "$DESIGN_TMPDIR/execution-issues.md" \
+#             --site "design Step 5c" \
+#             --tool "design-log-publish.sh" \
+#             --exit-code "${_publish_rc:-0}" \
+#             --category Warnings \
+#             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
+#             --redact >/dev/null 2>&1 || true
+#         add_warn '**⚠ 5c: design-log-publish.sh returned without PUBLISH_OK=; treating publish as failed**'
+#     fi
+# else
+#     add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'
+# fi
 
 "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
     --outcome approved \

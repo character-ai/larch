@@ -1,0 +1,6 @@
+TOOL=codex
+TIMEOUT=7200
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=false
+OUTPUT_FILE=<TMPDIR>/codex-step2-out/codex-impl-transcript.txt
+STDERR_SINK=<TMPDIR>/codex-impl.log

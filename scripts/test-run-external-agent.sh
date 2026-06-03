@@ -8,7 +8,8 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 WRAPPER="$REPO_ROOT/scripts/run-external-agent.sh"
 HELPER="$REPO_ROOT/scripts/lib-validate-meta-path.sh"
 TMPDIR="$(mktemp -d /tmp/larch-test-run-external-agent-XXXXXX)"
-unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR RUN_EXTERNAL_AGENT_INNER_SENTINEL_SUFFIX || true
+export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR/execution-issues.md"
 trap 'rm -rf "$TMPDIR"' EXIT
 
@@ -504,6 +505,115 @@ run_subject "meta-no-sink" "$META_NO_SINK_OUT" -- bash -c 'printf ok'
 assert_equals "meta-no-sink exit" "0" "$RUN_CODE"
 if grep -q '^STDERR_SINK=' "${META_NO_SINK_OUT}.meta" 2>/dev/null; then
     fail "meta-no-sink must omit STDERR_SINK= line when flag absent"
+else
+    pass
+fi
+
+GATE_WRAPPER_DIR="$TMPDIR/gate-wrapper"
+mkdir -p "$GATE_WRAPPER_DIR/scripts"
+cp "$WRAPPER" "$GATE_WRAPPER_DIR/scripts/run-external-agent.sh"
+for _gate_dep in \
+    lib-validate-meta-path.sh \
+    lib-failed-agent-stderr-tail.sh \
+    lib-external-launcher-common.sh \
+    lib-quiet.sh \
+    read-session-env-key.sh \
+    redact-tmpdir-paths.sh \
+    redact-secrets.sh
+do
+    cp "$REPO_ROOT/scripts/$_gate_dep" "$GATE_WRAPPER_DIR/scripts/$_gate_dep"
+done
+chmod +x "$GATE_WRAPPER_DIR/scripts/run-external-agent.sh" \
+    "$GATE_WRAPPER_DIR/scripts/read-session-env-key.sh" \
+    "$GATE_WRAPPER_DIR/scripts/redact-tmpdir-paths.sh" \
+    "$GATE_WRAPPER_DIR/scripts/redact-secrets.sh"
+cat > "$GATE_WRAPPER_DIR/scripts/check-reviewers.sh" <<'GATE_CHECK_EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >> "${LARCH_TEST_GATE_CHECK_CALLS:?}"
+if [[ -n "${LARCH_TEST_GATE_PRESENT_LINE:-}" ]]; then
+    printf '%s\n' "$LARCH_TEST_GATE_PRESENT_LINE"
+fi
+exit "${LARCH_TEST_GATE_CHECK_RC:-0}"
+GATE_CHECK_EOF
+chmod +x "$GATE_WRAPPER_DIR/scripts/check-reviewers.sh"
+
+run_gate_wrapper() {
+    local label="$1"
+    local tool="$2"
+    local timeout_value="$3"
+    local present_line="$4"
+    local check_rc="$5"
+    local output="$6"
+    local marker="$7"
+    RUN_STDOUT="$TMPDIR/${label}.stdout"
+    RUN_STDERR="$TMPDIR/${label}.stderr"
+    rm -f "$marker" "$TMPDIR/${label}.check-calls"
+    set +e
+    env -u SESSION_ENV_PATH -u IMPLEMENT_TMPDIR \
+        RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+        LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT="$timeout_value" \
+        LARCH_TEST_GATE_PRESENT_LINE="$present_line" \
+        LARCH_TEST_GATE_CHECK_RC="$check_rc" \
+        LARCH_TEST_GATE_CHECK_CALLS="$TMPDIR/${label}.check-calls" \
+        "$GATE_WRAPPER_DIR/scripts/run-external-agent.sh" --tool "$tool" --output "$output" --timeout 5 --capture-stdout -- \
+        bash -c "printf ran > \"\$1\"; printf agent-output" bash "$marker" >"$RUN_STDOUT" 2>"$RUN_STDERR"
+    RUN_CODE=$?
+    set -e
+}
+
+GATE_CODEX_OUT="$TMPDIR/gate-codex.txt"
+GATE_CODEX_MARKER="$TMPDIR/gate-codex-ran"
+run_gate_wrapper "gate-codex-unhealthy" codex 5 "CODEX_PRESENT=false" 0 "$GATE_CODEX_OUT" "$GATE_CODEX_MARKER"
+assert_equals "gate-codex-unhealthy exit" "7" "$RUN_CODE"
+assert_file_content "gate-codex-unhealthy done" "${GATE_CODEX_OUT}.done" "7"
+assert_file_content "gate-codex-unhealthy output empty" "$GATE_CODEX_OUT" ""
+assert_grep "gate-codex-unhealthy diag" "health-probe fast-fail" "${GATE_CODEX_OUT}.diag"
+if [[ -e "$GATE_CODEX_MARKER" ]]; then
+    fail "gate-codex-unhealthy must not run command"
+else
+    pass
+fi
+
+GATE_CURSOR_OUT="$TMPDIR/gate-cursor.txt"
+GATE_CURSOR_MARKER="$TMPDIR/gate-cursor-ran"
+run_gate_wrapper "gate-cursor-unhealthy" cursor 5 "CURSOR_PRESENT=false" 0 "$GATE_CURSOR_OUT" "$GATE_CURSOR_MARKER"
+assert_equals "gate-cursor-unhealthy exit" "8" "$RUN_CODE"
+assert_file_content "gate-cursor-unhealthy done" "${GATE_CURSOR_OUT}.done" "8"
+assert_grep "gate-cursor-unhealthy diag" "health-probe fast-fail" "${GATE_CURSOR_OUT}.diag"
+if [[ -e "$GATE_CURSOR_MARKER" ]]; then
+    fail "gate-cursor-unhealthy must not run command"
+else
+    pass
+fi
+
+GATE_DEFAULT_ON_OUT="$TMPDIR/gate-default-on.txt"
+GATE_DEFAULT_ON_MARKER="$TMPDIR/gate-default-on-ran"
+run_gate_wrapper "gate-default-on" codex "" "CODEX_PRESENT=false" 0 "$GATE_DEFAULT_ON_OUT" "$GATE_DEFAULT_ON_MARKER"
+assert_equals "gate-default-on exit" "7" "$RUN_CODE"
+assert_file_content "gate-default-on done" "${GATE_DEFAULT_ON_OUT}.done" "7"
+assert_grep "gate-default-on diag" "health-probe fast-fail" "${GATE_DEFAULT_ON_OUT}.diag"
+if [[ -e "$GATE_DEFAULT_ON_MARKER" ]]; then
+    fail "gate-default-on must not run command"
+else
+    pass
+fi
+
+GATE_OPT_OUT_OUT="$TMPDIR/gate-opt-out.txt"
+GATE_OPT_OUT_MARKER="$TMPDIR/gate-opt-out-ran"
+run_gate_wrapper "gate-explicit-zero-opt-out" codex 0 "CODEX_PRESENT=false" 0 "$GATE_OPT_OUT_OUT" "$GATE_OPT_OUT_MARKER"
+assert_equals "gate-explicit-zero-opt-out exit" "0" "$RUN_CODE"
+assert_file_content "gate-explicit-zero-opt-out command marker" "$GATE_OPT_OUT_MARKER" "ran"
+assert_file_content "gate-explicit-zero-opt-out output" "$GATE_OPT_OUT_OUT" "agent-output"
+
+GATE_OTHER_OUT="$TMPDIR/gate-other.txt"
+GATE_OTHER_MARKER="$TMPDIR/gate-other-ran"
+run_gate_wrapper "gate-other-tool" claude 5 "CODEX_PRESENT=false" 0 "$GATE_OTHER_OUT" "$GATE_OTHER_MARKER"
+assert_equals "gate-other-tool exit" "0" "$RUN_CODE"
+assert_file_content "gate-other-tool command marker" "$GATE_OTHER_MARKER" "ran"
+assert_file_content "gate-other-tool output" "$GATE_OTHER_OUT" "agent-output"
+if [[ -e "$TMPDIR/gate-other-tool.check-calls" ]]; then
+    fail "gate-other-tool must not run health probe"
 else
     pass
 fi

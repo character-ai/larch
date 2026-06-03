@@ -3,6 +3,7 @@
 if [[ -n "${LARCH_LIB_CURSOR_LAUNCHER_COMMON_LOADED:-}" ]]; then
     return 0
 fi
+SCRIPT_DIR="${SCRIPT_DIR:-$(cd "${BASH_SOURCE[0]%/*}" && pwd)}"
 
 # Shared launcher mechanics common to Cursor and Codex live in
 # lib-external-launcher-common.sh; the cursor_launcher_* wrappers below
@@ -34,10 +35,12 @@ cursor_launcher_setup_auth_argv() {
     # shellcheck disable=SC1091
     source "$SCRIPT_DIR/lib-cursor-auth.sh" || return 1
     cursor_auth_preflight || return $?
-    # shellcheck disable=SC2034 # Fixed global consumed by the sourcing launcher.
-    CURSOR_AUTH_ARGS=()
     cursor_preread_service_token
-    cursor_auth_argv
+    # Auth is delivered via the CURSOR_API_KEY environment variable (issue
+    # #3375), NOT a `--api-key` argv element — the Cursor child inherits the
+    # normalized env key from this launcher process. The function name retains
+    # the historical `_argv` suffix; callers pass no auth argv element.
+    cursor_auth_export_env
 }
 
 cursor_launcher_append_outer_meta() {

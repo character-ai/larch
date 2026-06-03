@@ -60,13 +60,24 @@ fi
 append_launch_failure() {
     local site="$1" tool_label="$2" rc="$3" diag_file="$4" verdict="${5:-}" retry_count="${6:-}" transient_retry_count="${7:-}"
     [[ -x "$PLUGIN_ROOT/scripts/append-tool-failure.sh" ]] || return 0
-    [[ -n "${IMPLEMENT_TMPDIR:-}" ]] || return 0
+    # Resolve the execution-issues log. IMPLEMENT_TMPDIR (Step 5 code review)
+    # keeps its existing first precedence; DESIGN_TMPDIR is the /design voter
+    # fallback so usage-limit/quota voter failures are no longer silently
+    # dropped when only DESIGN_TMPDIR is set (#3378).
+    local _log=""
+    if [[ -n "${IMPLEMENT_TMPDIR:-}" ]]; then
+        _log="${IMPLEMENT_TMPDIR}/execution-issues.md"
+    elif [[ -n "${DESIGN_TMPDIR:-}" ]]; then
+        _log="${DESIGN_TMPDIR}/execution-issues.md"
+    else
+        return 0
+    fi
     local _args=()
     [[ -n "$verdict" ]] && _args+=(--verdict "$verdict")
     [[ -n "$retry_count" ]] && _args+=(--retry-count "$retry_count")
     [[ -n "$transient_retry_count" ]] && _args+=(--transient-retry-count "$transient_retry_count")
     "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-        --log "${IMPLEMENT_TMPDIR}/execution-issues.md" \
+        --log "$_log" \
         --site "$site" --tool "$tool_label" --exit-code "$rc" \
         --category "External Reviewer Issues" --output-file "$diag_file" \
         "${_args[@]}" --redact >/dev/null 2>&1 || true
@@ -570,8 +581,17 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             >/dev/null 2>&1 || EXIT_CODE=$?
     fi
     _ELAPSED=$((SECONDS - _ATTEMPT_START))
+    # codex exec --json reports usage-limit/quota on its stdout events stream
+    # (${OUTPUT}.events.jsonl), not the stderr sidecar; mirror that signal into
+    # the sidecar before classification so the sidecar-based quota guard below
+    # short-circuits the transient-retry loop instead of re-hitting the limit
+    # twice more (#3390). No-op on a genuine 0-output transient blip.
+    if (( EXIT_CODE != 0 )); then
+        external_launcher_mirror_quota_from_events "$CODEX_EVENTS" "$SIDECAR"
+    fi
     if (( EXIT_CODE != 0 && TRANSIENT_ATTEMPT <= MAX_TRANSIENT_RETRIES )) \
         && ! external_is_auth_failure "codex" "$SIDECAR" \
+        && ! external_is_quota_failure "codex" "$SIDECAR" \
         && external_is_transient_infra_failure "codex" "$EXIT_CODE" "$_ELAPSED" "$OUTPUT"; then
         TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
         if [[ -n "${LARCH_TRANSIENT_RETRY_DELAY:-}" ]]; then
@@ -593,8 +613,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
 done
 
 if (( EXIT_CODE != 0 )); then
-    _AUTH_VERDICT=$(external_auth_verdict "codex" "$SIDECAR")
-    [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
+    _VERDICT=$(external_failure_verdict "codex" "$SIDECAR")
     append_launch_failure "review Step 2" "codex-review" "$EXIT_CODE" "$SIDECAR" "$_VERDICT" "$AUTH_ATTEMPT" "$TRANSIENT_ATTEMPT"
 fi
 
@@ -965,6 +984,33 @@ MAX_TRANSIENT_RETRIES=2
 HOLD=${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}
 AUTH_ATTEMPT=1
 TRANSIENT_ATTEMPT=1
+
+# Per-process launch jitter: parallel cursor slots from dispatch-with-waterfall.sh
+# fan out near-simultaneously; a random 0..JITTER_MS delay de-synchronizes backend
+# hits without a coordinator (primarily non-Darwin/CI; Darwin serial lock already
+# spaces launches ~0.5s apart).
+_CURSOR_JITTER_MS="${LARCH_CURSOR_LAUNCH_JITTER_MS:-250}"
+case "$_CURSOR_JITTER_MS" in
+    ''|*[!0-9]*) _CURSOR_JITTER_MS=250 ;;
+esac
+if (( _CURSOR_JITTER_MS > 0 )); then
+    _launch_jitter_ms=$(( RANDOM % (_CURSOR_JITTER_MS + 1) ))
+    _launch_jitter_sec=$(( _launch_jitter_ms / 1000 ))
+    _launch_jitter_rem=$(( _launch_jitter_ms % 1000 ))
+    sleep "$(printf '%d.%03d' "$_launch_jitter_sec" "$_launch_jitter_rem")" 2>/dev/null || true
+fi
+
+_cursor_transient_backoff() {
+    local _attempt="$TRANSIENT_ATTEMPT"
+    if [[ -n "${LARCH_TRANSIENT_RETRY_DELAY:-}" ]]; then
+        if (( LARCH_TRANSIENT_RETRY_DELAY > 0 )); then sleep "$LARCH_TRANSIENT_RETRY_DELAY"; fi
+    else
+        _backoff=$(( 1 << _attempt ))
+        _jitter=$(( RANDOM % 2 ))
+        sleep $(( _backoff + _jitter )) || true
+    fi
+}
+
 while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     _SERIAL_LOCK=""
     external_serial_lock_acquire _SERIAL_LOCK "cursor"
@@ -980,7 +1026,6 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             cursor agent -p --trust --mode ask \
             --output-format json \
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-            ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
             --workspace "$PWD" \
             "$WRAPPED_PROMPT" \
             2>>"$_STDERR_TARGET" &
@@ -991,15 +1036,22 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
     _ELAPSED=$((SECONDS - _ATTEMPT_START))
     if (( EXIT_CODE != 0 && TRANSIENT_ATTEMPT <= MAX_TRANSIENT_RETRIES )) \
         && ! { external_is_auth_failure "cursor" "$SIDECAR" || external_is_auth_failure "cursor" "${OUTPUT}.diag"; } \
+        && ! { external_is_quota_failure "cursor" "$SIDECAR" || external_is_quota_failure "cursor" "${OUTPUT}.diag"; } \
         && external_is_transient_infra_failure "cursor" "$EXIT_CODE" "$_ELAPSED" "$OUTPUT"; then
         TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
-        if [[ -n "${LARCH_TRANSIENT_RETRY_DELAY:-}" ]]; then
-            if (( LARCH_TRANSIENT_RETRY_DELAY > 0 )); then sleep "$LARCH_TRANSIENT_RETRY_DELAY"; fi
-        else
-            _backoff=$(( 1 << TRANSIENT_ATTEMPT ))
-            _jitter=$(( RANDOM % 2 ))
-            sleep $(( _backoff + _jitter )) || true
-        fi
+        _cursor_transient_backoff
+        : > "$SIDECAR" 2>/dev/null || true
+        continue
+    fi
+    if (( EXIT_CODE == 0 && TRANSIENT_ATTEMPT <= MAX_TRANSIENT_RETRIES )) \
+        && [[ "${LARCH_CURSOR_RETRY_EMPTY_RESULT:-1}" != "0" ]] \
+        && ! { external_is_auth_failure "cursor" "$SIDECAR" || external_is_auth_failure "cursor" "${OUTPUT}.diag"; } \
+        && ! { external_is_quota_failure "cursor" "$SIDECAR" || external_is_quota_failure "cursor" "${OUTPUT}.diag" || external_is_quota_failure "cursor" "$OUTPUT"; } \
+        && command -v jq >/dev/null 2>&1 \
+        && [[ -s "$OUTPUT" ]] \
+        && jq -e '(.result // "") == ""' "$OUTPUT" >/dev/null 2>&1; then
+        TRANSIENT_ATTEMPT=$((TRANSIENT_ATTEMPT + 1))
+        _cursor_transient_backoff
         : > "$SIDECAR" 2>/dev/null || true
         continue
     fi
@@ -1014,8 +1066,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
 done
 
 if (( EXIT_CODE != 0 )); then
-    _AUTH_VERDICT=$(external_auth_verdict "cursor" "$SIDECAR" "${OUTPUT}.diag")
-    [[ "$_AUTH_VERDICT" == "auth" ]] && _VERDICT="auth-retries-exhausted" || _VERDICT="$_AUTH_VERDICT"
+    _VERDICT=$(external_failure_verdict "cursor" "$SIDECAR" "${OUTPUT}.diag")
     _FAILURE_OUTPUT="$SIDECAR"
     if [[ ! -s "$_FAILURE_OUTPUT" && -s "${OUTPUT}.diag" ]]; then
         _FAILURE_OUTPUT="${OUTPUT}.diag"
@@ -1115,6 +1166,52 @@ if [[ -s "$OUTPUT" ]]; then
         # .result are treated identically to an explicit empty string.
         if jq -e '(.result // "") == ""' "${OUTPUT}.json" >/dev/null 2>&1; then
             printf 'CURSOR_EMPTY_RESPONSE\n' > "$OUTPUT"
+            # Sanitize extracted fields: strip newlines/pipes that would break the
+            # two-line TOOL=/FAILURE_REASON= sidecar grammar, and cap length.
+            _diag_sanitize() { printf '%s' "$1" | tr '\n\r|' '   ' | cut -c1-200; }
+            _diag_type=$(_diag_sanitize "$(jq -r '.type // empty' "${OUTPUT}.json" 2>/dev/null || true)")
+            _diag_subtype=$(_diag_sanitize "$(jq -r '.subtype // empty' "${OUTPUT}.json" 2>/dev/null || true)")
+            _diag_is_error=$(_diag_sanitize "$(jq -r '.is_error // empty' "${OUTPUT}.json" 2>/dev/null || true)")
+            _diag_error=$(_diag_sanitize "$(jq -r 'if (.error | type) == "string" then .error elif (.error | type) == "object" then (.error.message // .error.code // (.error | tostring)) else empty end' "${OUTPUT}.json" 2>/dev/null || true)")
+            _diag_usage_in=$(_diag_sanitize "$(jq -r '.usage.inputTokens // empty' "${OUTPUT}.json" 2>/dev/null || true)")
+            _diag_usage_out=$(_diag_sanitize "$(jq -r '.usage.outputTokens // empty' "${OUTPUT}.json" 2>/dev/null || true)")
+            _diag_duration=$(_diag_sanitize "$(jq -r '.duration // empty' "${OUTPUT}.json" 2>/dev/null || true)")
+            _diag_request_id=$(_diag_sanitize "$(jq -r '.request_id // .requestId // empty' "${OUTPUT}.json" 2>/dev/null || true)")
+            if (( TRANSIENT_ATTEMPT > 1 )); then
+                _diag_transient_retries=$(( TRANSIENT_ATTEMPT - 1 ))
+            else
+                _diag_transient_retries=0
+            fi
+            _diag_tmp="${OUTPUT}.diag.$$"
+            {
+                printf 'TOOL=cursor\n'
+                printf 'FAILURE_REASON=cursor-empty-result: exit 0, .result empty/null after %s transient retries (shared exit-code and empty-result budget)' \
+                    "$_diag_transient_retries"
+                [[ -n "$_diag_type" ]] && printf '; type=%s' "$_diag_type"
+                [[ -n "$_diag_subtype" ]] && printf ' subtype=%s' "$_diag_subtype"
+                [[ -n "$_diag_is_error" ]] && printf ' is_error=%s' "$_diag_is_error"
+                [[ -n "$_diag_error" ]] && printf ' error=%s' "$_diag_error"
+                [[ -n "$_diag_usage_in" ]] && printf ' usage.inputTokens=%s' "$_diag_usage_in"
+                [[ -n "$_diag_usage_out" ]] && printf ' usage.outputTokens=%s' "$_diag_usage_out"
+                [[ -n "$_diag_duration" ]] && printf ' duration=%s' "$_diag_duration"
+                [[ -n "$_diag_request_id" ]] && printf ' request_id=%s' "$_diag_request_id"
+                printf '\n'
+            } > "$_diag_tmp" 2>/dev/null || true
+            if [[ -s "$_diag_tmp" ]]; then
+                _diag_redact_in="$_diag_tmp"
+                _diag_redact_out="${_diag_tmp}.out"
+                if [[ -x "$SCRIPT_DIR/redact-tmpdir-paths.sh" ]] \
+                    && "$SCRIPT_DIR/redact-tmpdir-paths.sh" < "$_diag_redact_in" > "$_diag_redact_out" 2>/dev/null; then
+                    _diag_redact_in="$_diag_redact_out"
+                fi
+                if [[ -x "$SCRIPT_DIR/redact-secrets.sh" ]] \
+                    && "$SCRIPT_DIR/redact-secrets.sh" < "$_diag_redact_in" > "${OUTPUT}.diag" 2>/dev/null; then
+                    :
+                else
+                    cp "$_diag_redact_in" "${OUTPUT}.diag" 2>/dev/null || true
+                fi
+                rm -f "$_diag_tmp" "${_diag_tmp}.out" 2>/dev/null || true
+            fi
         fi
     fi
 fi

@@ -136,18 +136,18 @@ Refer to `docs/dev-hook-audit.md` lines 115-137 for the analogous (stricter) pol
 
 ## `--admin` merge behavior
 
-When `/implement --merge` reaches a PR that is fresh against main and has passing CI, it tries `gh pr merge --admin` first, then falls back to a plain squash merge if the privileged attempt is rejected (for example, because the account lacks admin permission or the installed `gh` does not support the flag). The `--admin` flag overrides **all** branch protection rules including review requirements.
+When `/implement --merge` reaches a PR with passing CI and a conflict-free merge state, it tries `gh pr merge --admin` first, then falls back to a plain squash merge if the privileged attempt is rejected (for example, because the account lacks admin permission or the installed `gh` does not support the flag). The `--admin` flag overrides **all** branch protection rules including review requirements. A branch that is merely `BEHIND` main but conflict-free (`mergeStateStatus=BEHIND`) is admin-merge-eligible; the CI loop (`ci-decide.sh` via `ci-wait.sh`) also merges while behind when CI passes and `CONFLICTED=false`.
 
 **Safety invariants enforced before `--admin` is attempted:**
 
 1. All CI checks must be passing (every check in the "pass" bucket)
-2. The branch must be up-to-date with main (not behind)
+2. The branch must be conflict-free (`mergeStateStatus` must not be `DIRTY`; `UNKNOWN`/empty are treated as conflicted conservatively in the CI loop)
 
 These checks are verified immediately before any merge attempt — the script does not rely on cached state. See `scripts/merge-pr.sh` for the implementation.
 
-**Audit trail when `--admin` fires.** When the `--admin` attempt succeeds, `/implement` Step 12b posts a best-effort comment on the merged PR explaining that branch protection was overridden after CI and freshness were re-verified. The comment is informational; if posting it fails (e.g., token cannot comment), the failure is logged to `Tool Failures` and the merge stays merged. The existing stderr `**⚠ Merged with --admin (review overridden).**` warning in the run output is also retained.
+**Audit trail when `--admin` fires.** When the `--admin` attempt succeeds, `/implement` Step 12b posts a best-effort comment on the merged PR explaining that branch protection was overridden after CI passed and merge state was re-verified. The comment is informational; if posting it fails (e.g., token cannot comment), the failure is logged to `Tool Failures` and the merge stays merged. The existing stderr `**⚠ Merged with --admin (review overridden).**` warning in the run output is also retained.
 
-**Opt out: `--no-admin-fallback`.** Pass `--no-admin-fallback` to `/implement` (or to `/im` — they forward through) to require branch-protection policies to actually deny the merge. With this flag set, `merge-pr.sh` skips the `--admin` attempt once the admin-eligible gate (CI good + branch fresh) is reached, tries only a plain squash merge, returns `MERGE_RESULT=policy_denied` if that plain merge fails, and `/implement` bails to Step 12d with `FINAL_BAIL_REASON="branch protection denied merge; --no-admin-fallback set"`. The opt-out applies to all admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`) — not just review-required denials. See `scripts/merge-pr.md` for the script-level contract.
+**Opt out: `--no-admin-fallback`.** Pass `--no-admin-fallback` to `/implement` (or to `/im` — they forward through) to require branch-protection policies to actually deny the merge. With this flag set, `merge-pr.sh` skips the `--admin` attempt once the admin-eligible gate (CI good + admin-eligible merge state) is reached, tries only a plain squash merge, returns `MERGE_RESULT=policy_denied` if that plain merge fails, and `/implement` bails to Step 12d with `FINAL_BAIL_REASON="branch protection denied merge; --no-admin-fallback set"`. The opt-out applies to all admin-eligible `mergeStateStatus` values (`CLEAN`, `UNSTABLE`, `HAS_HOOKS`, `BLOCKED`, `BEHIND`) — not just review-required denials. See `scripts/merge-pr.md` for the script-level contract.
 
 ## Selecting the Step 2 implementer (`--coder`)
 
@@ -193,8 +193,24 @@ These knobs apply to the Step 0 runtime probes emitted into session-env via `ses
 - **`LARCH_PROBE_TTL_SECONDS`** — positive integer seconds for USER-scoped stamp freshness (default `60`). Non-numeric / empty falls back to `60`. `0` disables the stamp cache (always re-probe when the binary exists and the probe is not skipped).
 - **`LARCH_PROBE_TIMEOUT_SECONDS`** — per-attempt wall-clock timeout while waiting on the background probe PID (default `30`). Non-numeric, empty, or `0` falls back to `30`.
 - **`LARCH_EXTERNAL_AUTH_RETRIES`** — maximum auth-classified failures before treating the tool as absent for this session (default `5`; `0` or invalid → `5`). Shared with external launchers; the probe loops use the same counter semantics.
+- **`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT`** — launch-time health-gate timeout for `run-external-agent.sh`. Every Codex/Cursor launch via `run-external-agent.sh` gets the gate on by default (`30` via the resolver fallback when nothing else resolves); set `0` to opt out; a positive value overrides the default. Resolution order is the process environment, `$SESSION_ENV_PATH`, then `$IMPLEMENT_TMPDIR/session-env.sh`. When enabled, launches first reuse `check-reviewers.sh` with the other tool skipped and `LARCH_EXTERNAL_AUTH_RETRIES=1`; unhealthy probes fast-fail as `health-probe` instead of waiting for the full launch `--timeout`.
+
+`LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` is auto-on for all callers via the resolver
+default; `/design` and `/implement` session writers also persist `30` explicitly.
+Standalone `/review` and `/research` inherit the gate without session-env writers.
+This closes the activation gap previously tracked in OOS #3369.
 
 Darwin-only mutex delay remains **`LARCH_EXTERNAL_SERIAL_LOCK_DELAY`** (default `0.5` seconds) via `external_serial_lock_release_after`.
+
+### `LARCH_CURSOR_RETRY_EMPTY_RESULT`
+
+When set to `0`, disables the cursor launcher's exit-0 empty-`.result` transient retry inside `scripts/launch-review.sh` (the branch that re-invokes `cursor agent` when the JSON envelope has an empty, null, or absent `.result` while still exiting 0). Any other value (including unset) leaves retry enabled. Empty-result retries share the exit-code `TRANSIENT_ATTEMPT` counter (bounded by `MAX_TRANSIENT_RETRIES=2`), so per auth pass the worst case is at most three total `cursor agent` backend calls across mixed exit-code transients and empty-`.result` responses.
+
+**Diagnostic capture is independent:** even with retry disabled, a terminal empty `.result` still writes `${OUTPUT}.diag` and promotes `CURSOR_EMPTY_RESPONSE`.
+
+### `LARCH_CURSOR_LAUNCH_JITTER_MS`
+
+Per-process random delay (milliseconds) applied once before the cursor auth/retry loop in `scripts/launch-review.sh`, in the range `0..N`, to de-synchronize parallel cursor reviewer launches. Default `250`. Non-numeric or empty values fall back to `250`. Set to `0` to disable jitter entirely.
 
 ### `LARCH_CODEX_EFFORT`
 
@@ -283,7 +299,7 @@ Retention window for `/cleanup` age-based session directory pruning. Default: `7
 
 Colon-separated list of bump files that `scripts/drop-bump-commit.sh` Guard 4 accepts as the allowed non-changelog file set. Uses **replacement semantics**: when set, this list replaces the built-in default (`.claude-plugin/plugin.json`) — it is NOT additive. `CHANGELOG.md` is allowed alongside bump files regardless of this setting (never required, always optional). The `--allow-changelog-only` flag is independent: it gates the special case where a bump-subject commit touches exactly `CHANGELOG.md`.
 
-This variable controls which commit shapes the Rebase + Re-bump Sub-procedure's step 1 (`drop-bump-commit.sh`) considers safe for destructive `git reset --hard HEAD~1`. Consumer repos whose `/bump-version` touches additional version files (e.g., `version.go`, `package.json`, `Cargo.toml`) should set this so the bump commit can be cleanly dropped before rebasing.
+**Phase 1 (#3364):** `/implement` no longer runs `drop-bump-commit.sh` on the ship path (the Rebase + Re-bump Sub-procedure is retired). This variable remains active for `/release`, manual `.claude/skills/bump-version` runs, and legacy conflict-resolution trivial-file rules when bump-shaped commits still appear on a branch. Consumer repos whose bump skill touches additional version files (e.g., `version.go`, `package.json`, `Cargo.toml`) should set `LARCH_BUMP_FILES` so `drop-bump-commit.sh` and conflict auto-resolve recognize those paths outside `/implement`.
 
 Paths must match `git diff --name-only` output format (repo-root-relative, no `./` prefix). Paths must not contain `:` (the delimiter).
 

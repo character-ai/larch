@@ -1,0 +1,10 @@
+Reviewing redaction temp-file handling in the branch diff and the cited scripts.
+### In-Scope Findings
+
+- **security** `scripts/create-pr.sh:125-131` — The new two-phase redaction uses a second `mktemp` (`secrets_redacted`) that is not registered with the existing `EXIT` trap. Only `REDACTED_BODY_FILE` is removed in `cleanup()`; on the happy path `mv` renames `secrets_redacted` away, but if the process exits abnormally between `secrets_redacted=$(mktemp)` and `mv` (signal, `mv` failure under `set -e`, or any path that bypasses the explicit `rm -f` on the `redact-secrets` failure branch), a world-private but persistent `/tmp` file can remain containing PR/release body text (fully or partially secret-redacted). That is a local information-disclosure footgun for release notes or bodies that may still hold secrets in `REDACTED_BODY_FILE` until the move completes. **Suggested fix:** Track the intermediate path in the same `EXIT` trap as `REDACTED_BODY_FILE` (e.g. add `SECRETS_REDACTED_FILE` to `cleanup`, append to `NET_FAIL_FILES` until `mv` succeeds, or avoid a second file by piping `redact-secrets` into a fresh `mktemp` that immediately becomes `REDACTED_BODY_FILE` via atomic replace).
+
+### Out-of-Scope Observations
+
+- **security** `release-finish.sh:26-30,137-148` — The `_tmp_notes` / `REDACTED_NOTES_FILE` pipeline matches the intended pattern: both paths are covered by the `EXIT` trap; after success `rm` + `unset _tmp_notes` makes the trap’s `[[ -n "${_tmp_notes:-}" ]]` guard avoid double-remove; `REDACTED_NOTES_FILE` is still removed on all `exit` paths (including `gh release` / `promote-release` failures). No defect found in the trap logic the scout asked about.
+- **security** `release-finish.sh:155-245` — `fetch_err` temporaries are explicitly `rm -f`’d on every branch; no leak introduced there.
+- **security** `release-prepare.sh:234-240` — `classify_err_file` is always `rm -f`’d on success and failure; pre-existing style, not part of the new redaction surface.

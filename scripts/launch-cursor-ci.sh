@@ -5,7 +5,7 @@
 # scripts/lib-cursor-launcher-common.sh (cursor_launcher_run_stall_monitor,
 # cursor_launcher_emit_cursor_ci_stall_json_sidecar); triage stall behavior there.
 
-# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth binary-missing health-probe timeout parse refusal unknown
+# LAUNCHER_FAILURE_* canonical token pin (grep tests; classifier emits): none health other auth quota binary-missing health-probe timeout parse refusal unknown
 
 set -euo pipefail
 
@@ -203,7 +203,6 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         cursor agent -p --force --trust \
         --output-format json \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
-        ${CURSOR_AUTH_ARGS[@]+"${CURSOR_AUTH_ARGS[@]}"} \
         --workspace "$PWD" \
         "$WRAPPED_PROMPT" &
     _REA_PID=$!

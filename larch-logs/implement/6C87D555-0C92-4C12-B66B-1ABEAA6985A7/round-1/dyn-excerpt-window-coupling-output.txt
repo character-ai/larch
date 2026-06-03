@@ -1,0 +1,12 @@
+Reviewing branch changes for excerpt-window coupling correctness. Reading the diff and implementation.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **correctness** `scripts/lint-fix-loop.sh:140-223` — Excerpt-window coupling is implemented as intended: `compose_prompt` builds one `excerpt_file` via `checks_log_excerpt`, passes that path to `affected_files_from_log`, `infer_failure_phase_from_log`, and the `## Checks Log` embed (`sed` on `"$excerpt_file"` only), and prints `[truncated to last 60000 bytes]` iff `log_bytes > 60000` using the same threshold as `checks_log_excerpt`’s `tail -c 60000`. Case 16 in `scripts/test-lint-fix-loop.sh` locks tail-vs-prefix behavior. **Suggested fix:** None for coupling; optional hardening only below.
+
+- **risk-integration** `scripts/lint-fix-loop.sh:145-222` — `excerpt_file` is removed only on the success path at the end of `compose_prompt`; with `set -euo pipefail`, a failure after `mktemp` (e.g. `checks_log_excerpt`, the redirected `{ … } >"$prompt_file"` block, or `sed`) skips `rm -f "$excerpt_file"` and can leave orphans under `$TMPDIR`. **Suggested fix:** Add a `RETURN` trap (or `trap` on `EXIT`) to always `rm -f` the excerpt temp, matching cleanup already done inside `affected_files_from_log` for its own temps.
+
+- **correctness** `scripts/lint-fix-loop.sh:150-153` — If `affected_files_from_log` exits non-zero (e.g. `mktemp` failure), Bash may not treat the process substitution as fatal under `set -e`, so `affected_list` stays empty and the prompt uses the “no scoped file list could be derived” variant even when the excerpt contains parseable paths. **Suggested fix:** Capture `affected_files_from_log` output to a temp file or variable, check its exit status explicitly, and fail closed (or surface `FAILURE_REASON`) instead of silently falling back to the empty-list sentence.

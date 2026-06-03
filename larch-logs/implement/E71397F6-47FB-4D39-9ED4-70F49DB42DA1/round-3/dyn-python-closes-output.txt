@@ -1,0 +1,12 @@
+### In-Scope Findings
+
+- **correctness** `python/tracking_issue.py:178-183` — Footer idempotency uses `(?m)^Closes #{issue_number}[ \t]*$` on the whole body, so any line that is exactly `Closes #N` at column 0 counts as “already linked,” including lines inside fenced code blocks or other non-footer contexts. After `compose_pr_body` started delegating to `link_pr_closes`, a summary (or other section) that documents the keyword on its own line can suppress the real trailing footer that the old `parts.extend([..., f"Closes #{issue_number}"])` always added after the Test plan section; auto-close can then depend on a match inside a fence that GitHub may not treat as a closing keyword. **Suggested fix:** Narrow idempotency to the document suffix (e.g., scan only the last non-empty line, or only lines after the Test plan block), or strip fenced regions before the guard; alternatively, have `compose_pr_body` append unconditionally and reserve `link_pr_closes` idempotency for `ensure_pr` updates only.
+
+### Out-of-Scope Observations
+
+- **correctness** `python/pr_body.py:268-273` — `sanitize_fragment(body, from_md=True)` is only used for pass/fail; `redact.redact(body)` still runs on the pre-sanitize string. That ordering predates this branch and is unchanged by the Closes refactor.
+- **architecture** Plan/acceptance text still describes the digit-boundary guard `Closes #{issue_number}(?!\d)`, but round 2 replaced it with footer-line matching; behavior is intentional (prose/mermaid tests) and is an docs/plan drift item, not a runtime bug in the shipped code.
+- **risk-integration** `scripts/extract-closes-issue-from-pr.sh:28-31` — Recovery still takes the first `Closes #[0-9]+` anywhere in the body (`head -1`), so a prose/mermaid mention before the canonical footer can mis-read the issue number; not introduced by this diff.
+- Branch history includes non-`python/` commits (implement logs flush, stall-recovery helpers, version bump) beyond the SIMPLE-tier plan scope; unrelated to the Closes helper correctness path.
+
+**Commits reviewed (since merge-base with `main`):** `c4b8b5a10` Reconcile Python Closes helper; `798bae3b9` / `23017c711` review rounds (footer-line guard + tests); plus out-of-scope merge-base commits.

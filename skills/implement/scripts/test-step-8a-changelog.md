@@ -2,7 +2,4 @@
 
 Stub: see `scripts/implement-finalize.md` for the primary contract.
 
-Offline regression harness for the Step 8a changelog fallback logic in `scripts/implement-finalize.sh::maybe_update_changelog()`. Exercises three fixtures:
-- Valid manifest → `CHANGELOG_STATUS=updated`
-- Empty manifest + `ISSUE_NUMBER` set → fallback `Closed: #N` bullet written to `CHANGELOG.md`
-- Empty manifest + no `ISSUE_NUMBER` → `CHANGELOG_STATUS=fail-no-manifest-no-issue` and loud error
+Phase 1 (#3364) offline regression harness: `implement-finalize.sh postbump` must not write `CHANGELOG.md` or invoke `commit-changelog.sh` even when a manifest is present (`CHANGELOG_STATUS=skipped-phase1`). See `scripts/implement-finalize.md` for the postbump contract.

@@ -1,0 +1,6 @@
+warning: fix text for slot 'dyn-upfront-stash-scope-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Decouple stash from the rerun cap—e.g. after the rerun block, set `upfront_ready')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] Branch bundles unrelated f')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.')
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.')
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] Comment that `ci-fix-exhau')
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_18 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_4: [OUT_OF_SCOPE] Parity scout: most checkli')
