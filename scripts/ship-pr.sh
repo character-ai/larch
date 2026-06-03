@@ -519,9 +519,6 @@ write_initial_state() {
         printf 'REPO=%s\n' "$repo"
         printf 'REPO_UNAVAILABLE=%s\n' "$([ -n "$repo" ] && echo false || echo true)"
         printf 'FORKED_TARGET=%s\n' "${FORKED_TARGET:-false}"
-        printf 'HAS_BUMP=true\n'
-        printf 'BUMP_TYPE=NONE\n'
-        printf 'NEW_VERSION=\n'
         printf 'MERGE=%s\n' "${MERGE:-false}"
         printf 'DRAFT=%s\n' "${DRAFT:-false}"
         printf 'DEFERRED=false\n'
@@ -580,223 +577,6 @@ kv_value() {
     printf '%s\n' "$input" | awk -F= -v k="$key" '$1 == k {print substr($0, index($0, "=") + 1); found=1} END {if (!found) print ""}' | tail -n 1
 }
 
-ship_pr_record_old_bump_version() {
-    local old_bump_sha=$1 old_subject old_version
-    if [ -z "$old_bump_sha" ]; then
-        state_set_many RRR_OLD_BUMP_SHA "" RRR_OLD_BUMP_VERSION ""
-        return 0
-    fi
-    old_subject=$(git log -1 --format=%s "$old_bump_sha" 2>/dev/null || true)
-    old_version=${old_subject#Bump version to }
-    if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-        state_set_many RRR_OLD_BUMP_SHA "$old_bump_sha" RRR_OLD_BUMP_VERSION "$old_version"
-    else
-        old_version=$(changelog_first_version_heading CHANGELOG.md 2>/dev/null || true)
-        if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            state_set_many RRR_OLD_BUMP_SHA "$old_bump_sha" RRR_OLD_BUMP_VERSION "$old_version"
-        else
-            state_set_many RRR_OLD_BUMP_SHA "$old_bump_sha" RRR_OLD_BUMP_VERSION ""
-        fi
-    fi
-}
-
-ship_pr_changelog_ready_after_rebump() {
-    local new_version=$1 old_version=${2:-} status_out
-    [ -f CHANGELOG.md ] || return 1
-    if ! grep -Eq "^## \[$new_version\] - " CHANGELOG.md 2>/dev/null; then
-        return 1
-    fi
-    if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$old_version" != "$new_version" ]] && \
-        grep -Eq "^## \[$old_version\] - " CHANGELOG.md 2>/dev/null; then
-        return 1
-    fi
-    status_out=$(git status --porcelain -- CHANGELOG.md 2>/dev/null || true)
-    [ -z "$status_out" ]
-}
-
-ship_pr_rebump_bullets_path() {
-    printf '%s/.rrr-rebump-bullets.md\n' "$IMPLEMENT_TMPDIR"
-}
-
-# After drop-bump-commit removes the stale "Bump version to <OLD>" commit,
-# (a) extract the bullets from the matching `## [OLD]` section in CHANGELOG.md
-# to a staging file under $IMPLEMENT_TMPDIR, and (b) drop the matching
-# "Update CHANGELOG for <OLD>" commit so the rebase replay does not reproduce
-# the stale section (issue #2952 Bug A).
-#
-# Bullets-file presence is the canonical signal for the consumer
-# (ship_pr_commit_changelog_after_rebump): the file is kept iff the
-# companion changelog commit was successfully dropped, so the consumer can
-# safely reconstruct a fresh `## [NEW]` section without a `--replaces-version`
-# argument that would otherwise drop main's `## [OLD]` section. Partial-
-# completion shapes (extract OK + drop refused, or extract refused + drop
-# OK) collapse to "no bullets staged", reverting to the legacy commit-
-# changelog.sh `--replaces-version` path which still handles the on-branch
-# `## [OLD]` heading via the awk rename in scripts/commit-changelog.sh.
-#
-# A stale file from a prior invocation is overwritten or cleared up-front,
-# so partial runs cannot leak bullets across attempts.
-ship_pr_stage_rebump_bullets() {
-    local phase=$1 bullets_path drop_chg_out drop_chg_rc drop_dropped old_version fail_file
-    bullets_path=$(ship_pr_rebump_bullets_path)
-    rm -f "$bullets_path"
-
-    old_version=$(read_state RRR_OLD_BUMP_VERSION "")
-    [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
-    [ -f CHANGELOG.md ] || return 0
-
-    # Extract bullets first so we still have them after the drop strips the
-    # commit (and thus the working-tree `## [OLD]` section). Missing or empty
-    # body removes the file and we will fall back to the legacy path below.
-    changelog_extract_version_body "$old_version" "$bullets_path" CHANGELOG.md || rm -f "$bullets_path"
-
-    fail_file=$(failure_capture_path rebase)
-    set +e
-    drop_chg_out=$("$SCRIPT_DIR/drop-changelog-commit.sh" \
-        --version "$old_version" --max-depth 20 2>"$fail_file")
-    drop_chg_rc=$?
-    set +e
-    printf '%s\n' "$drop_chg_out" >> "$fail_file"
-    if [ "$drop_chg_rc" -ne 0 ]; then
-        record_failure rebase "drop-changelog-commit.sh" "$drop_chg_rc" "$fail_file" Warnings
-        rm -f "$bullets_path"
-        return 0
-    fi
-
-    drop_dropped=$(kv_value DROPPED "$drop_chg_out")
-    if [ "$drop_dropped" != "true" ]; then
-        rm -f "$bullets_path"
-        if drop_changelog_no_matching_commit "$fail_file"; then
-            # No matching commit within the walk window — nothing stale to
-            # replay. Fall through to the legacy commit-changelog.sh path
-            # which inserts the new entry via insert_version_heading and
-            # commits.
-            return 0
-        fi
-        # A guard (dirty tree, parent-missing, unexpected files) refused the
-        # drop. The stale `Update CHANGELOG for OLD` commit is still on the
-        # branch and will replay during rebase, producing the same #2952 Bug A
-        # loop we are trying to break. Stall instead of force-pushing into
-        # the same conflict cycle.
-        printf 'run_rebase_rebump: drop-changelog-commit returned DROPPED=false without "no match" reason; stalling to prevent stale Update CHANGELOG replay loop\n' >> "$fail_file"
-        record_failure rebase "drop-changelog-commit.sh DROPPED=false" 1 "$fail_file" "CI Issues"
-        exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-    fi
-}
-
-ship_pr_commit_changelog_after_rebump() {
-    local new_version=$1 fail_file=$2 commit_out commit_rc old_version committed
-    local bullets_path entry_rc dup_count used_bullets=false
-    local -a commit_args
-    [ -f CHANGELOG.md ] || return 0
-    [[ "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || return 0
-
-    old_version=$(read_state RRR_OLD_BUMP_VERSION "")
-    bullets_path=$(ship_pr_rebump_bullets_path)
-
-    # When ship_pr_stage_rebump_bullets dropped the companion "Update CHANGELOG"
-    # commit, the working tree CHANGELOG.md is now at origin/main's state and
-    # the new `## [NEW]` section must be reconstructed from the staged bullets
-    # before commit-changelog.sh can produce a non-empty diff. Without this
-    # reconstruction the rebump path emits an empty section and (when OLD ==
-    # NEW) the loop stalls in commit-changelog.sh's "no diff" return path
-    # (issue #2952 Bug A).
-    if [ -s "$bullets_path" ]; then
-        dup_count=$(changelog_duplicate_version_heading_count "$new_version" CHANGELOG.md)
-        if [ "$dup_count" -eq 0 ]; then
-            set +e
-            write_changelog_entry "$new_version" "$bullets_path" CHANGELOG.md.rrr.$$
-            entry_rc=$?
-            set +e
-            if [ "$entry_rc" -eq 0 ] && [ -f CHANGELOG.md.rrr.$$ ]; then
-                mv CHANGELOG.md.rrr.$$ CHANGELOG.md
-                used_bullets=true
-            else
-                rm -f CHANGELOG.md.rrr.$$
-                rm -f "$bullets_path"
-                printf 'ERROR: run_rebase_rebump: write_changelog_entry rc=%s with staged bullets present; cannot safely commit\n' \
-                    "$entry_rc" >> "$fail_file"
-                return 1
-            fi
-        else
-            # origin/main already has `## [NEW]` (rare concurrent same-version
-            # bump path that survived to this point). Inserting our `## [NEW]`
-            # would trip write_changelog_entry's duplicate-heading exit-4 guard;
-            # silently skipping would discard this branch's bullets. Stall so
-            # the operator can merge by hand rather than lose data.
-            rm -f "$bullets_path"
-            printf 'ERROR: run_rebase_rebump: origin/main already has ## [%s] section but staged rebump bullets exist; refusing to silently discard them. Manually merge bullets into the existing section and re-run.\n' \
-                "$new_version" >> "$fail_file"
-            return 1
-        fi
-    fi
-    rm -f "$bullets_path"
-
-    commit_args=(--version "$new_version")
-    # When bullets were restored, the fresh `## [NEW]` from write_changelog_entry
-    # is the only entry for that version on our side — the companion changelog
-    # drop already stripped the on-branch `## [OLD]` heading. Passing
-    # --replaces-version OLD here would direct commit-changelog.sh's awk to
-    # main's `## [OLD]` (if main bumped through OLD in the past) and drop that
-    # section. Only pass --replaces-version on the legacy path where a stale
-    # `## [OLD]` heading is still on-branch from a replayed Update CHANGELOG
-    # commit (drop-changelog-commit refused or was skipped).
-    if [ "$used_bullets" = "false" ]; then
-        local _changelog_replaces=""
-        if [[ "$old_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$old_version" != "$new_version" ]]; then
-            _changelog_replaces="$old_version"
-        else
-            # old_version is unusable as --replaces-version (empty/invalid or
-            # equals new_version on a re-run where origin/main has not
-            # advanced past the prior bump base). Without --replaces-version,
-            # commit-changelog.sh skips its awk retitle/insert and emits
-            # COMMITTED=false when CHANGELOG.md has no working-tree diff
-            # (e.g. the rebase resolved CHANGELOG.md by taking upstream which
-            # lacks `## [new_version]`) — stalling run_rebase_rebump
-            # (issue #3102). Fall back to origin/main's plugin version so the
-            # awk has a target to retitle or, when origin's heading is
-            # absent, falls back to insert_version_heading.
-            local _origin_ver
-            _origin_ver=$(git show origin/main:.claude-plugin/plugin.json 2>/dev/null \
-                | jq -r '.version // empty' 2>/dev/null || echo "")
-            if [[ "$_origin_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ && "$_origin_ver" != "$new_version" ]]; then
-                _changelog_replaces="$_origin_ver"
-            fi
-        fi
-        if [ -n "$_changelog_replaces" ]; then
-            commit_args+=(--replaces-version "$_changelog_replaces")
-        fi
-    fi
-
-    set +e
-    commit_out=$("$SCRIPT_DIR/commit-changelog.sh" "${commit_args[@]}" 2>>"$fail_file")
-    commit_rc=$?
-    set +e
-    printf '%s\n' "$commit_out" >> "$fail_file"
-    if [ "$commit_rc" -ne 0 ]; then
-        printf 'ERROR: run_rebase_rebump: commit-changelog.sh failed after re-bump\n' >> "$fail_file"
-        return 1
-    fi
-
-    committed=$(kv_value COMMITTED "$commit_out")
-    case "$committed" in
-        true)
-            return 0
-            ;;
-        false)
-            if ship_pr_changelog_ready_after_rebump "$new_version" "$old_version"; then
-                return 0
-            fi
-            printf 'ERROR: run_rebase_rebump: commit-changelog.sh reported COMMITTED=false before CHANGELOG.md was verified at %s\n' "$new_version" >> "$fail_file"
-            return 1
-            ;;
-        *)
-            printf 'ERROR: run_rebase_rebump: commit-changelog.sh exited 0 without COMMITTED=true|false\n' >> "$fail_file"
-            return 1
-            ;;
-    esac
-}
-
 capture_command_output() {
     local __outvar=$1 __fail_file=$2
     shift 2
@@ -821,16 +601,6 @@ resolve_existing_file() {
     printf '%s/%s\n' "$real_dir" "$base"
 }
 
-drop_bump_no_matching_commit() {
-    local fail_file=$1
-    grep -Fq 'WARN: no bump commit found within ' "$fail_file" 2>/dev/null
-}
-
-drop_changelog_no_matching_commit() {
-    local fail_file=$1
-    grep -Fq "WARN: no 'Update CHANGELOG for " "$fail_file" 2>/dev/null
-}
-
 resolve_checks_log_path() {
     local candidate resolved allowed_root
     candidate=$1
@@ -840,76 +610,6 @@ resolve_checks_log_path() {
         "$allowed_root"/*) printf '%s\n' "$resolved" ;;
         *) return 1 ;;
     esac
-}
-
-semver_lt() {
-    local a_maj a_min a_pat b_maj b_min b_pat
-    IFS='.' read -r a_maj a_min a_pat <<< "$1"
-    IFS='.' read -r b_maj b_min b_pat <<< "$2"
-    if [[ $a_maj -lt $b_maj ]]; then return 0; fi
-    if [[ $a_maj -gt $b_maj ]]; then return 1; fi
-    if [[ $a_min -lt $b_min ]]; then return 0; fi
-    if [[ $a_min -gt $b_min ]]; then return 1; fi
-    if [[ $a_pat -lt $b_pat ]]; then return 0; fi
-    return 1
-}
-
-rewrite_reasoning_new_version() {
-    local file=$1 classified_version=$2 origin_version=$3 corrected_version=$4 tmp_file
-    [ -n "$file" ] && [ -f "$file" ] || return 1
-    tmp_file="${file}.tmp.$$"
-    awk -v new_version="$corrected_version" \
-        -v classified="$classified_version" \
-        -v origin="$origin_version" '
-        BEGIN { replaced=0 }
-        /^- \*\*New version\*\*: / {
-            print "- **New version**: `" new_version "`"
-            replaced=1
-            next
-        }
-        { print }
-        END {
-            if (replaced) {
-                print ""
-                print "### Rebase + Re-bump Correction"
-                print ""
-                print "- **Classified version**: `" classified "`"
-                print "- **origin/main version at correction time**: `" origin "`"
-                print "- **Corrected version applied by `ship-pr.sh`**: `" new_version "`"
-                exit 0
-            }
-            exit 3
-        }
-    ' "$file" > "$tmp_file" &&
-        grep -Fqx -- "- **New version**: \`$corrected_version\`" "$tmp_file" &&
-        mv "$tmp_file" "$file"
-    local rc=$?
-    [ $rc -eq 0 ] || rm -f "$tmp_file"
-    return $rc
-}
-
-write_corrected_reasoning_fallback() {
-    local file=$1 classified_version=$2 origin_version=$3 corrected_version=$4 tmp_file
-    [ -n "$file" ] || return 1
-    tmp_file="$(dirname "$file")/bump-version-reasoning-corrected-$$.md"
-    {
-        printf '%s\n\n' '# Version Bump Reasoning'
-        printf '%s\n\n' '## Result: Corrected after rebase'
-        printf -- "- **New version**: \`%s\`\n\n" "$corrected_version"
-        printf '%s\n\n' '### Rebase + Re-bump Correction'
-        printf -- "- **Classified version**: \`%s\`\n" "$classified_version"
-        printf -- "- **origin/main version at correction time**: \`%s\`\n" "$origin_version"
-        printf -- "- **Corrected version applied by \`ship-pr.sh\`**: \`%s\`\n" "$corrected_version"
-        if [ -f "$file" ]; then
-            printf '\n%s\n\n' '### Original reasoning snapshot'
-            cat "$file"
-            printf '\n'
-        fi
-    } > "$tmp_file" || {
-        rm -f "$tmp_file"
-        return 1
-    }
-    printf '%s\n' "$tmp_file"
 }
 
 FAILURE_LOG_SEQ=0
@@ -1116,11 +816,11 @@ write_postbump_state() {
         printf 'REPO=%s\n' "$(read_state REPO)"
         printf 'REPO_UNAVAILABLE=%s\n' "$(read_state REPO_UNAVAILABLE)"
         printf 'FORKED_TARGET=%s\n' "$(read_state FORKED_TARGET)"
-        printf 'HAS_BUMP=%s\n' "$(read_state HAS_BUMP)"
-        printf 'BUMP_TYPE=%s\n' "$(read_state BUMP_TYPE)"
-        printf 'NEW_VERSION=%s\n' "$(read_state NEW_VERSION)"
+        printf 'HAS_BUMP=false\n'
+        printf 'BUMP_TYPE=NONE\n'
+        printf 'NEW_VERSION=\n'
         printf 'RUN_ID=%s\n' "$(read_state RUN_ID)"
-        printf 'BUMP_REASONING_FILE=%s\n' "${BUMP_REASONING_FILE:-$(read_state BUMP_REASONING_FILE)}"
+        printf 'BUMP_REASONING_FILE=\n'
         printf 'MANIFEST_PATH=%s\n' "$(read_state MANIFEST_PATH)"
         printf 'TOOL_LABEL=%s\n' "$(read_state TOOL_LABEL)"
     } > "$tmp" && mv "$tmp" "$IMPLEMENT_TMPDIR/postbump-state.sh"
@@ -1347,84 +1047,59 @@ run_checks_with_lint_fix_loop() {
     esac
 }
 
-run_bump_phase() {
-    local forked has_bump commits_before classify_out apply_out finalize_out status resume_phase error_text rc fail_file \
-        _bump_guard_branch _bump_guard_state_branch _bump_guard_fail
+run_ship_branch_guard() {
+    local failure_phase=$1 stall_token=${2:-bump-branch-guard}
+    local forked _ship_guard_state_branch _ship_guard_branch _ship_guard_fail
     forked=$(read_state FORKED_TARGET)
-    _bump_guard_state_branch=$(read_state BRANCH_NAME)
+    _ship_guard_state_branch=$(read_state BRANCH_NAME)
     # Match scripts/git-current-branch.sh: symbolic-ref works on older Git than
     # `git branch --show-current` (2.22+); empty here means detached / no branch.
-    _bump_guard_branch=$(git symbolic-ref -q --short HEAD 2>/dev/null || echo "")
-    if [[ -z "$_bump_guard_state_branch" || -z "$_bump_guard_branch" ]]; then
-        _bump_guard_fail=$(failure_capture_path bump)
-        printf 'bump-branch-guard: BRANCH_NAME=%s current=%s\n' \
-            "$_bump_guard_state_branch" "$_bump_guard_branch" > "$_bump_guard_fail"
-        record_failure bump "bump-branch-guard" 1 "$_bump_guard_fail"
-        exit_stall bump-branch-guard
+    _ship_guard_branch=$(git symbolic-ref -q --short HEAD 2>/dev/null || echo "")
+    if [[ -z "$_ship_guard_state_branch" || -z "$_ship_guard_branch" ]]; then
+        _ship_guard_fail=$(failure_capture_path "$failure_phase")
+        printf 'ship-branch-guard: BRANCH_NAME=%s current=%s\n' \
+            "$_ship_guard_state_branch" "$_ship_guard_branch" > "$_ship_guard_fail"
+        record_failure "$failure_phase" "ship-branch-guard" 1 "$_ship_guard_fail"
+        exit_stall "$stall_token"
     fi
-    if [[ "$_bump_guard_branch" != "$_bump_guard_state_branch" ]]; then
-        _bump_guard_fail=$(failure_capture_path bump)
-        printf 'bump-branch-guard: BRANCH_NAME=%s current=%s\n' \
-            "$_bump_guard_state_branch" "$_bump_guard_branch" > "$_bump_guard_fail"
-        record_failure bump "bump-branch-guard" 1 "$_bump_guard_fail"
-        exit_stall bump-branch-guard
+    if [[ "$_ship_guard_branch" != "$_ship_guard_state_branch" ]]; then
+        _ship_guard_fail=$(failure_capture_path "$failure_phase")
+        printf 'ship-branch-guard: BRANCH_NAME=%s current=%s\n' \
+            "$_ship_guard_state_branch" "$_ship_guard_branch" > "$_ship_guard_fail"
+        record_failure "$failure_phase" "ship-branch-guard" 1 "$_ship_guard_fail"
+        exit_stall "$stall_token"
     fi
     # FORKED_TARGET=true is an intentional operator/runbook trust signal
-    # documented in scripts/ship-pr.md: when BRANCH_NAME matches checkout, bump may
+    # documented in scripts/ship-pr.md: when BRANCH_NAME matches checkout, ship may
     # proceed on main/master for forked upstream-target flows. Non-forked runs
     # always stall here on those branch names even when checkout matches.
     # There is no extra fork-evidence probe beyond state + branch-name alignment.
-    if [[ "$forked" != "true" ]] && { [[ "$_bump_guard_state_branch" == "main" ]] || [[ "$_bump_guard_state_branch" == "master" ]]; }; then
-        _bump_guard_fail=$(failure_capture_path bump)
-        printf 'bump-branch-guard: BRANCH_NAME=%s current=%s\n' \
-            "$_bump_guard_state_branch" "$_bump_guard_branch" > "$_bump_guard_fail"
-        record_failure bump "bump-branch-guard" 1 "$_bump_guard_fail"
-        exit_stall bump-branch-guard
+    if [[ "$forked" != "true" ]] && { [[ "$_ship_guard_state_branch" == "main" ]] || [[ "$_ship_guard_state_branch" == "master" ]]; }; then
+        _ship_guard_fail=$(failure_capture_path "$failure_phase")
+        printf 'ship-branch-guard: BRANCH_NAME=%s current=%s\n' \
+            "$_ship_guard_state_branch" "$_ship_guard_branch" > "$_ship_guard_fail"
+        record_failure "$failure_phase" "ship-branch-guard" 1 "$_ship_guard_fail"
+        exit_stall "$stall_token"
     fi
-    larch_err "→ ship-pr: version bump"
-    has_bump=$(read_state HAS_BUMP)
-    if [ "$forked" = "true" ] || [ "$has_bump" = "false" ]; then
-        state_set_many HAS_BUMP false BUMP_TYPE NONE NEW_VERSION "" BUMP_REASONING_FILE ""
-    else
-        commits_before=$(git rev-list --count HEAD 2>/dev/null || echo 0)
-        fail_file=$(failure_capture_path bump)
-        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>"$fail_file")
-        rc=$?
-        printf '%s\n' "$classify_out" >> "$fail_file"
-        if [ "$rc" -ne 0 ]; then
-            record_failure bump "classify-bump.sh" "$rc" "$fail_file"
-            exit_stall 8
-        fi
-        state_set_many \
-            HAS_BUMP true \
-            BUMP_TYPE "$(kv_value BUMP_TYPE "$classify_out")" \
-            NEW_VERSION "$(kv_value NEW_VERSION "$classify_out")" \
-            BUMP_REASONING_FILE "$(kv_value REASONING_FILE "$classify_out")"
-        if [ "$(read_state BUMP_TYPE)" != "NONE" ]; then
-            fail_file=$(failure_capture_path bump)
-            apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" --new-version "$(read_state NEW_VERSION)" 2>"$fail_file")
-            rc=$?
-            printf '%s\n' "$apply_out" >> "$fail_file"
-            if [ "$rc" -ne 0 ] || [ "$(kv_value APPLIED "$apply_out")" != "true" ]; then
-                record_failure bump "apply-bump.sh" "$rc" "$fail_file"
-                error_text=$(kv_value ERROR "$apply_out")
-                case "$error_text" in
-                    origin/main\ has\ already\ bumped\ to*|version\ regression:*)
-                        state_set_many RESUME_PHASE bump CALLER_KIND step8_apply_bump_same_version
-                        _run_step8_same_version_mechanically || exit_stall 8
-                        ;;
-                    *) exit_stall 8 ;;
-                esac
-            fi
-            fail_file=$(failure_capture_path bump)
-            "$SCRIPT_DIR/check-bump-version.sh" --mode post --before-count "$commits_before" > "$fail_file" 2>&1
-            rc=$?
-            if [ "$rc" -ne 0 ]; then
-                record_failure bump "check-bump-version.sh" "$rc" "$fail_file"
-                exit_stall 8
-            fi
-        fi
-    fi
+}
+
+_clear_phase1_postbump_residue() {
+    local resume
+    rm -f "${IMPLEMENT_TMPDIR}/.postbump-phase" 2>/dev/null || true
+    state_set CALLER_KIND ""
+    resume=$(read_state RESUME_PHASE)
+    case "$resume" in
+        force-push-gate|step8b_rebase|step8_apply_bump_same_version|bump)
+            state_set RESUME_PHASE ""
+            ;;
+    esac
+}
+
+run_bump_phase() {
+    local finalize_out status rc fail_file
+    _clear_phase1_postbump_residue
+    run_ship_branch_guard bump bump-branch-guard
+    larch_err "→ ship-pr: ship (no per-PR version bump)"
 
     # Refresh larch-log token/timing artifacts before push via postbump (Trigger C).
     fail_file=$(failure_capture_path bump)
@@ -1443,35 +1118,10 @@ run_bump_phase() {
     fi
     case "$status" in
         ok|skipped)
-            local _cur _new _btype
-            _cur=$(kv_value CURRENT_VERSION "$classify_out")
-            _new=$(read_state NEW_VERSION)
-            _btype=$(read_state BUMP_TYPE)
-            case "$_btype" in
-                PATCH|MINOR|MAJOR)
-                    emit "$(printf '✅ 8: version bump — %s → %s (%s)' "$_cur" "$_new" "$_btype")"
-                    ;;
-                *)
-                    if [ "$forked" = "true" ]; then
-                        emit '⏩ 8: version bump status=skip reason=forked'
-                    else
-                        emit "$(printf '⏩ 8: version bump status=skip reason=%s' "${_btype:-NONE}")"
-                    fi
-                    ;;
-            esac
+            emit '⏩ 8: version bump status=skip reason=phase1-no-per-pr-bump'
             advance_phase pr-prep
             ;;
-        conflict)
-            resume_phase=$(kv_value RESUME_PHASE "$finalize_out")
-            if [ "$resume_phase" = "force-push-gate" ]; then
-                state_set_many RESUME_PHASE force-push-gate CALLER_KIND step8b_rebase
-                larch_err "⚠ ship-pr: postbump rebase conflict — handing off to Rebase + Re-bump Sub-procedure (caller_kind=step8b_rebase)"
-                exit 5
-            else
-                exit_stall 8b
-            fi
-            ;;
-        changelog-failed|rebase-failed|push-failed|remote-check-failed|branch-mismatch|postbump-state-corrupt)
+        rebase-failed|push-failed|remote-check-failed|branch-mismatch|postbump-state-corrupt)
             exit_stall 8b
             ;;
         *)
@@ -2910,41 +2560,6 @@ run_recovery_waterfall() {
     return 1
 }
 
-_run_step8_same_version_mechanically() {
-    local cnt fail_file classify_out apply_out rc error_text commits_before
-    cnt=$(read_state STEP8_SAME_VERSION_RETRY_COUNT "0")
-    case "$cnt" in ''|*[!0-9]*) cnt=0 ;; esac
-    if [ "$cnt" -ge 1 ]; then
-        return 1
-    fi
-    state_set STEP8_SAME_VERSION_RETRY_COUNT 1
-    fail_file=$(failure_capture_path bump)
-    "$SCRIPT_DIR/git-sync-local-main.sh" > "$fail_file" 2>&1 || true
-    classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>"$fail_file")
-    rc=$?
-    printf '%s\n' "$classify_out" >> "$fail_file"
-    [ "$rc" -eq 0 ] || return 1
-    state_set_many \
-        HAS_BUMP true \
-        BUMP_TYPE "$(kv_value BUMP_TYPE "$classify_out")" \
-        NEW_VERSION "$(kv_value NEW_VERSION "$classify_out")" \
-        BUMP_REASONING_FILE "$(kv_value REASONING_FILE "$classify_out")"
-    commits_before=$(git rev-list --count HEAD 2>/dev/null || echo 0)
-    fail_file=$(failure_capture_path bump)
-    apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" --new-version "$(read_state NEW_VERSION)" 2>"$fail_file")
-    rc=$?
-    printf '%s\n' "$apply_out" >> "$fail_file"
-    if [ "$rc" -ne 0 ] || [ "$(kv_value APPLIED "$apply_out")" != "true" ]; then
-        return 1
-    fi
-    fail_file=$(failure_capture_path bump)
-    "$SCRIPT_DIR/check-bump-version.sh" --mode post --before-count "$commits_before" > "$fail_file" 2>&1
-    rc=$?
-    [ "$rc" -eq 0 ] || return 1
-    state_set STEP8_SAME_VERSION_RETRY_COUNT 0
-    return 0
-}
-
 # True when every path in the comma-separated vendor conflict list is a
 # non-bump file (exclude CHANGELOG.md, CHANGELOG.rst, bare CHANGELOG,
 # .claude-plugin/plugin.json, bump-adjacent basenames handled by the deterministic
@@ -3005,106 +2620,12 @@ _run_rebase_rebump_verify_plain_no_push() {
 
 _run_rebase_rebump_from_step3() {
     local phase=$1 defer_push=${2:-false} base_remote=${3:-origin} base_ref=${4:-main}
-    local fail_file rc classify_out classify_rc apply_out
-    local new_version bump_type reasoning_file reasoning_log_file
-    local _origin_ver="" _classified_version="" _corrected=""
-    local run_id pr_n repo_r
+    local fail_file rc
 
-    # 3. Fast-forward local main so classify-bump.sh uses the correct merge-base
     fail_file=$(failure_capture_path rebase)
     "$SCRIPT_DIR/git-sync-local-main.sh" --base-remote "$base_remote" --base-ref "$base_ref" > "$fail_file" 2>&1
     rc=$?
     [ "$rc" -eq 0 ] || record_failure rebase "git-sync-local-main.sh" "$rc" "$fail_file" Warnings
-
-    # 4. Re-bump using classify-bump.sh + apply-bump.sh directly
-    if [ "$(read_state HAS_BUMP)" != "false" ]; then
-        fail_file=$(failure_capture_path rebase)
-        classify_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/classify-bump.sh" 2>"$fail_file")
-        classify_rc=$?
-        printf '%s\n' "$classify_out" >> "$fail_file"
-        if [ "$classify_rc" -ne 0 ]; then
-            record_failure rebase "classify-bump.sh" "$classify_rc" "$fail_file" "CI Issues"
-            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-        fi
-        new_version=$(kv_value NEW_VERSION "$classify_out")
-        bump_type=$(kv_value BUMP_TYPE "$classify_out")
-        reasoning_file=$(kv_value REASONING_FILE "$classify_out")
-        reasoning_log_file=$reasoning_file
-        _classified_version="$new_version"
-        # Version-regression guard: when rebase conflict was resolved to the branch's
-        # stale version instead of origin/main's, classify-bump produces NEW_VERSION <
-        # ORIGIN_VERSION. Correct by applying bump_type to origin/main's version.
-        if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
-            if [[ ! "$new_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-                printf 'ERROR: run_rebase_rebump: classify-bump produced invalid NEW_VERSION: %s\n' \
-                    "$new_version" >> "$fail_file"
-                record_failure rebase "classify-bump.sh" 1 "$fail_file" "CI Issues"
-                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-            fi
-            _origin_ver=$(git show "${base_remote}/${base_ref}:.claude-plugin/plugin.json" 2>/dev/null \
-                | jq -r '.version // empty' 2>/dev/null || echo "")
-            if [[ "$_origin_ver" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] && semver_lt "$new_version" "$_origin_ver"; then
-                IFS='.' read -r _ov_maj _ov_min _ov_pat <<< "$_origin_ver"
-                case "$bump_type" in
-                    MAJOR) _corrected="$(( _ov_maj + 1 )).0.0" ;;
-                    MINOR) _corrected="${_ov_maj}.$(( _ov_min + 1 )).0" ;;
-                    PATCH) _corrected="${_ov_maj}.${_ov_min}.$(( _ov_pat + 1 ))" ;;
-                    *)     _corrected="$new_version" ;;
-                esac
-                printf 'WARN: run_rebase_rebump: version regression detected: classify-bump produced %s < %s/%s %s; corrected to %s\n' \
-                    "$new_version" "$base_remote" "$base_ref" "$_origin_ver" "$_corrected" >> "$fail_file"
-                new_version="$_corrected"
-                if [ -n "$reasoning_file" ] && [ -f "$reasoning_file" ]; then
-                    if ! rewrite_reasoning_new_version "$reasoning_file" "$_classified_version" "$_origin_ver" "$_corrected"; then
-                        reasoning_log_file=$(write_corrected_reasoning_fallback \
-                            "$reasoning_file" "$_classified_version" "$_origin_ver" "$_corrected" 2>/dev/null || true)
-                        if [ -n "$reasoning_log_file" ] && [ -f "$reasoning_log_file" ]; then
-                            printf 'WARN: run_rebase_rebump: failed to rewrite reasoning file after version correction; using fallback reasoning snapshot: %s\n' \
-                                "$reasoning_log_file" >> "$fail_file"
-                        else
-                            printf 'WARN: run_rebase_rebump: failed to rewrite reasoning file after version correction and could not build fallback snapshot: %s\n' \
-                                "$reasoning_file" >> "$fail_file"
-                            reasoning_log_file=""
-                        fi
-                    fi
-                fi
-            fi
-        fi
-        state_set_many BUMP_TYPE "$bump_type" NEW_VERSION "$new_version" BUMP_REASONING_FILE "$reasoning_log_file"
-        if [ "$bump_type" != "NONE" ] && [ -n "$new_version" ]; then
-            fail_file=$(failure_capture_path rebase)
-            apply_out=$("$PLUGIN_ROOT/.claude/skills/bump-version/scripts/apply-bump.sh" \
-                --new-version "$new_version" 2>"$fail_file")
-            rc=$?
-            printf '%s\n' "$apply_out" >> "$fail_file"
-            if [ "$rc" -ne 0 ] || [ "$(kv_value APPLIED "$apply_out")" != "true" ]; then
-                record_failure rebase "apply-bump.sh" "$rc" "$fail_file" "CI Issues"
-                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-            fi
-            if ! ship_pr_commit_changelog_after_rebump "$new_version" "$fail_file"; then
-                record_failure rebase "commit-changelog.sh" 1 "$fail_file" "CI Issues"
-                exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-            fi
-            pr_n=$(read_state PR_NUMBER); repo_r=$(read_state REPO)
-            if [ -n "$pr_n" ] && [ -n "$repo_r" ]; then
-                fail_file=$(failure_capture_path rebase)
-                with_transient_retry transient_envelope_predicate_none "$fail_file" \
-                    gh pr edit "$pr_n" --repo "$repo_r" \
-                    --title "Bump version to $new_version" >/dev/null 2>&1 || true
-            fi
-            if [ -n "$reasoning_log_file" ] && [ -f "$reasoning_log_file" ]; then
-                run_id=$(read_state RUN_ID)
-                if [ -n "$run_id" ]; then
-                    "$SCRIPT_DIR/larch-log.sh" write \
-                        --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
-                        --skill implement \
-                        --run-id "$run_id" \
-                        --batch version-bump-reasoning \
-                        --input-file "$reasoning_log_file" 2>/dev/null || true
-                fi
-            fi
-        fi
-    fi
 
     fail_file=$(failure_capture_path rebase)
     "$SCRIPT_DIR/refresh-run-logs.sh" \
@@ -3121,22 +2642,15 @@ _run_rebase_rebump_from_step3() {
         fi
     fi
 
-    if [ "$defer_push" = true ]; then
-        state_set_many \
-            REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
-            ITERATION "$(( $(read_state ITERATION) + 1 ))" \
-            TRANSIENT_RETRIES 0
-    else
-        state_set_many \
-            REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
-            ITERATION "$(( $(read_state ITERATION) + 1 ))" \
-            TRANSIENT_RETRIES 0
-    fi
+    state_set_many \
+        REBASE_COUNT "$(( $(read_state REBASE_COUNT) + 1 ))" \
+        ITERATION "$(( $(read_state ITERATION) + 1 ))" \
+        TRANSIENT_RETRIES 0
 }
 
 run_rebase_rebump() {
     local phase=$1 defer_push=false base_remote=origin base_ref=main
-    local drop_out rebase_out rebase_rc conflict_out run_id
+    local rebase_out rebase_rc conflict_out run_id
     local fail_file rc tool_label plan_file
     local plan_args=()
     shift
@@ -3152,7 +2666,7 @@ run_rebase_rebump() {
                 ;;
         esac
     done
-    larch_err "⚠ ship-pr: rebase + re-bump"
+    larch_err "⚠ ship-pr: rebase (CI-fix, no re-bump)"
 
     # Resume after prompt-side Conflict Resolution Procedure (Phase 1–4) for
     # non-bump conflicts: skip drop/rebase replay; verify tree then continue.
@@ -3164,9 +2678,7 @@ run_rebase_rebump() {
         return 0
     fi
 
-    # Operator invariant: unlike `run_bump_phase`, this path does not re-run the
-    # bump-branch-guard (empty branch / name mismatch / non-forked main|master)
-    # before `drop-bump-commit.sh`; rely on correct checkout + state alignment.
+    run_ship_branch_guard rebase "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
 
     # Cap rebase retries to prevent indefinite storms (e.g. concurrent merges
     # to main that keep triggering ACTION=rebase from ci-wait.sh).
@@ -3193,20 +2705,16 @@ run_rebase_rebump() {
         plan_args=(--plan-file "$plan_file")
     fi
 
-    # 0. Pre-flush any pending larch-log writes so drop-bump-commit.sh's
-    # Guard 1 (clean tracked tree) does not false-positive on modified
-    # larch-logs/ files that an intermediate operation left uncommitted
-    # (see issue #2952 Bug B). Failure is non-fatal: refresh-run-logs.sh
-    # short-circuits cleanly on post-merge or missing-state and any
-    # remaining dirtiness will be surfaced by Guard 1 below.
+    # 0. Pre-flush any pending larch-log writes before rebase (issue #2952 Bug B).
+    # Failure is non-fatal: refresh-run-logs.sh short-circuits cleanly on post-merge
+    # or missing-state.
     fail_file=$(failure_capture_path rebase)
     "$SCRIPT_DIR/refresh-run-logs.sh" \
         --state-file "$STATE_FILE" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" > "$fail_file" 2>&1 || true
 
-    # 0b. Commit tracked larch-logs/ leftovers before drop-bump so Guard 1 cannot
-    # stall on a dirty tree (issue #3209). Scoped to larch-logs/ only; best-effort
-    # failure falls through to drop-bump-commit.sh, which still refuses when dirty.
+    # 0b. Commit tracked larch-logs/ leftovers before rebase when porcelain remains
+    # (issue #3209). Scoped to larch-logs/ only; best-effort failure is non-fatal.
     ship_pr_pre_rebase_larch_logs_fixup() {
         local msg="$1"
         fail_file=$(failure_capture_path rebase)
@@ -3235,43 +2743,9 @@ run_rebase_rebump() {
         fi
     fi
 
-    # 1. Drop existing bump commit before rebasing. No-op is acceptable only
-    # when no bump commit exists in the walk window; other DROPPED=false cases
-    # stall so a stale bump is never silently force-pushed.
-    # --allow-changelog-only is defense-in-depth for legacy in-flight branches;
-    # the normal path now keeps CHANGELOG.md in its own commit.
-    fail_file=$(failure_capture_path rebase)
-    drop_out=$("$SCRIPT_DIR/drop-bump-commit.sh" --allow-changelog-only --max-depth 20 2>"$fail_file")
-    rc=$?
-    printf '%s\n' "$drop_out" >> "$fail_file"
-    ship_pr_record_old_bump_version "$(kv_value OLD_BUMP_SHA "$drop_out")"
-    if [ "$rc" -ne 0 ]; then
-        record_failure rebase "drop-bump-commit.sh" "$rc" "$fail_file" Warnings
-    elif [ "$(kv_value DROPPED "$drop_out")" = "false" ]; then
-        if drop_bump_no_matching_commit "$fail_file"; then
-            :
-        else
-            # A guarded no-op here means the stale bump may still be on-branch.
-            # Continuing could let classify-bump return NONE and force-push
-            # without a fresh bump — the silent #2852 failure class.
-            printf 'run_rebase_rebump: drop-bump-commit returned DROPPED=false; stalling to prevent silent stale-bump push\n' > "$fail_file"
-            record_failure rebase "drop-bump-commit.sh DROPPED=false" 1 "$fail_file" "CI Issues"
-            exit_stall "$([ "$phase" = "ci-initial" ] && echo 10 || echo 12)"
-        fi
-    fi
-
-    # 1b. Stage bullets and drop the stale "Update CHANGELOG for <OLD>" commit
-    # that the bump dropped above carried as its companion. Without this drop
-    # the stale commit replays during rebase; on subsequent iterations where
-    # origin/main bumps to the same OLD version, the duplicate `## [OLD]`
-    # section produces an unresolvable CHANGELOG.md conflict (issue #2952
-    # Bug A). Bullets are extracted up-front so the re-bump path can
-    # reconstruct the entry under the new version.
-    ship_pr_stage_rebump_bullets "$phase"
-
     run_id=$(read_state RUN_ID)
 
-    # 2. Rebase without pushing; keep in-progress on conflict for vendor resolution
+    # 1. Rebase without pushing; keep in-progress on conflict for vendor resolution
     fail_file=$(failure_capture_path rebase)
     ship_pr_with_transient_retry transient_envelope_predicate_none "$fail_file" \
         "$SCRIPT_DIR/rebase-push.sh" --no-push --keep-on-conflict --base-remote "$base_remote" --base-ref "$base_ref"
@@ -3738,7 +3212,7 @@ main() {
 
     for key in \
         PHASE BRANCH_NAME ISSUE_NUMBER RUN_ID REPO REPO_UNAVAILABLE FORKED_TARGET \
-        HAS_BUMP BUMP_TYPE NEW_VERSION MERGE DRAFT DEFERRED PR_CLOSED \
+        MERGE DRAFT DEFERRED PR_CLOSED \
         DONE_RENAME_APPLIED STALL_TRACKING STALL_STEP BAIL_NEEDS_USER_INPUT \
         CI_PASSED OOS_PENDING PR_NUMBER PR_URL PR_TITLE RESUME_PHASE CALLER_KIND \
         REBASE_COUNT FIX_ATTEMPTS ITERATION TRANSIENT_RETRIES FAILED_RUN_ID \
@@ -3749,7 +3223,7 @@ main() {
         require_key "$key"
     done
 
-    for key in REPO_UNAVAILABLE FORKED_TARGET HAS_BUMP MERGE DRAFT DEFERRED PR_CLOSED DONE_RENAME_APPLIED STALL_TRACKING BAIL_NEEDS_USER_INPUT CI_PASSED OOS_PENDING CI_FIX_REBASE_PENDING DESIGN_ONLY_DONE NO_LOGS_COMMIT; do
+    for key in REPO_UNAVAILABLE FORKED_TARGET MERGE DRAFT DEFERRED PR_CLOSED DONE_RENAME_APPLIED STALL_TRACKING BAIL_NEEDS_USER_INPUT CI_PASSED OOS_PENDING CI_FIX_REBASE_PENDING DESIGN_ONLY_DONE NO_LOGS_COMMIT; do
         is_bool "$(read_state "$key")" || die_usage "state-file key $key must be true or false"
     done
 
@@ -3763,7 +3237,15 @@ main() {
 
     if [ -n "$RESUME_PHASE" ]; then
         case "$RESUME_PHASE" in
-            force-push-gate|bump) advance_phase bump ;;
+            force-push-gate|bump|step8b_rebase|step8_apply_bump_same_version)
+                case "$RESUME_PHASE" in
+                    step8b_rebase|step8_apply_bump_same_version)
+                        larch_err "⚠ ship-pr: tolerating legacy --resume-phase $RESUME_PHASE (Phase 1 #3364)"
+                        ;;
+                esac
+                advance_phase bump
+                state_set_many RESUME_PHASE "" CALLER_KIND ""
+                ;;
             pr-create) advance_phase pr-create ;;
             ci-initial) advance_phase ci-initial ;;
             ci-merge) state_set CI_PASSED false; advance_phase ci-merge ;;

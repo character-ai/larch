@@ -12,6 +12,11 @@ set -uo pipefail
 # stub-driven harness needs the fast cadence. Companion knob to the existing
 # RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 set inline at run_collector below.
 export WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.05
+# CMD_JSON and outer-launcher retries invoke run-external-agent.sh (via launch-review.sh
+# for the outer path). Opt out of the production health gate so offline stub runs do
+# not depend on real Codex/Cursor probe results from the parent CI environment.
+export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
+unset SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COLLECTOR="$REPO_ROOT/scripts/collect-agent-results.sh"

@@ -1,6 +1,6 @@
 # Larch Run Logs
 
-On a default `/implement --merge` run, a directory of structured log files is committed alongside the PR. These committed files are the single source of truth for full run content — voting tallies, rejected findings, version-bump reasoning, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections.
+On a default `/implement --merge` run, a directory of structured log files is committed alongside the PR. These committed files are the single source of truth for full run content — voting tallies, rejected findings, OOS observations, execution issues, run statistics, token/timing reports, and the session transcript. The tracking issue and PR body carry only slim projections. **Phase 1 (#3364):** `/implement` no longer writes `version-bump-reasoning.md` on the ship path; use `/release` or manual bump flows when version reasoning must be committed.
 
 Exceptions: `repo_unavailable=true` produces no committed log at all (`$IMPLEMENT_TMPDIR/execution-issues.md` is the only audit trail and is removed at cleanup). Fork dry-run mode (`--forked`) does not create a tracking issue. In all cases, session-derived content in `larch-logs/` passes through secrets and tmpdir-path redaction, but redaction is best-effort — operators should avoid pasting sensitive content into `/implement` prompts.
 
@@ -338,9 +338,9 @@ See `scripts/compose-review-findings.md` for the same mixed-stream contract.
 
 ### version-bump-reasoning.md
 
-**Mode**: replace. **Written**: Step 8, after `ship-pr.sh` completes the version-bump phase.
+**Mode**: replace. **Written**: **not** on the `/implement` ship path after Phase 1 (#3364). Legacy runs may still carry this batch from pre-Phase-1 implement bumps; new implement runs omit it. `/release` and manual `.claude/skills/bump-version` flows own version reasoning when operators need an auditable bump record.
 
-Markdown explanation of the version bump classification: which bump type was chosen (PATCH / MINOR / MAJOR), which changed files drove the decision, and the reasoning applied. Useful for auditing unexpected version jumps.
+Markdown explanation of the version bump classification: which bump type was chosen (PATCH / MINOR / MAJOR), which changed files drove the decision, and the reasoning applied. Useful for auditing unexpected version jumps on release-driven paths.
 
 ### final-summary.md
 
@@ -362,9 +362,9 @@ Summary statistics for the run: number of accepted and rejected OOS items, filed
 
 ### token-report.json
 
-**Mode**: replace. **Written**: Step 7a tail (pre-bump log flush) and refreshed at Step 9a.1. Each CI retry in the Rebase + Re-bump Sub-procedure also refreshes the batch so the merged PR carries the most recent data.
+**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) and refreshed at Step 9a.1. `scripts/refresh-run-logs.sh` inside `ship-pr.sh` (CI-fix rebase/push retries) also refreshes the batch so the merged PR carries the most recent data.
 
-Structured per-step Claude and external-vendor token usage for the session. The pre-bump flush captures cost up through implementation and review.
+Structured per-step Claude and external-vendor token usage for the session. The pre-ship flush captures cost up through implementation and review.
 
 ### timing-report.json
 
@@ -376,11 +376,11 @@ Structured per-step elapsed-time data for the session, measured from the timing 
 
 **Mode**: append (NDJSON records). **Written**: Step 2 (Q/A entries, progressive), Step 7a (pre-bump flush of `execution-issues.md`), later external-implementer / pre-push refreshes when new entries are added after Step 7a, and Step 18's safety net when the normal flush path was missed.
 
-Log of noteworthy events during the run, grouped by category: `Pre-existing Code Issues`, `Tool Failures`, `Permission Prompts`, `External Reviewer Issues`, `CI Issues`, `Warnings`, and `Q/A`. Entries from Step 2's Q/A loop are appended progressively; the main flush happens at Step 7a before the bump so the audit log is part of the same PR tree that CI validates. If later steps append new execution issues, the shared external-implementer / pre-push flush paths append only the unflushed tail, and Step 18 remains the best-effort fallback. This batch is the durable audit trail for follow-up work and operational events.
+Log of noteworthy events during the run, grouped by category: `Pre-existing Code Issues`, `Tool Failures`, `Permission Prompts`, `External Reviewer Issues`, `CI Issues`, `Warnings`, and `Q/A`. Entries from Step 2's Q/A loop are appended progressively; the main flush happens at Step 7a before shipping so the audit log is part of the same PR tree that CI validates. If later steps append new execution issues, the shared external-implementer / pre-push flush paths append only the unflushed tail, and Step 18 remains the best-effort fallback. This batch is the durable audit trail for follow-up work and operational events.
 
 ### session-transcript.jsonl
 
-**Mode**: replace. **Written**: Step 7a tail (pre-bump log flush) for runs that reach Step 7a. Runs that bail out before Step 7a do not write this batch. The transcript is truncated at the pre-bump boundary — Steps 8+ (version bump, PR creation, CI, merge, cleanup) are not included. On each CI retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-captures and refreshes the batch before each push, so the final merged PR carries the most up-to-date transcript available before merge.
+**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) for runs that reach Step 7a. Runs that bail out before Step 7a do not write this batch. The transcript is truncated at the pre-ship boundary — Steps 8+ (PR creation, CI, merge, cleanup; version bump omitted in Phase 1) are not included. On each CI retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-captures and refreshes the batch before each push, so the final merged PR carries the most up-to-date transcript available before merge.
 
 A filtered, machine-readable rendering of the Claude Code session, produced by `scripts/render-session-transcript.py` from the raw session JSONL. The first line is a `{"v": 1, "source_basename": ..., "turns": N}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, `tool_call` entries with full input objects, and `tool_result` entries — full body when the result reported an error or warning (`is_error: true`, Bash `^Exit code [1-9]` / `^Error:`, or `warning:`), otherwise collapsed to an `elided_bytes` count. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit. The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including refresh/deferred-commit `captured` outcomes and `render-failed` / `render-empty` when the renderer cannot produce a usable output (the run continues; nothing is committed). For runs that reach Step 7a, `session-transcript.jsonl` is part of the required-file completeness manifest; pre-Step-7a partial directories remain excluded by the verifier's step reachability rules. The recovery warning records only the discovered transcript basename, not the full operator-local path. See `scripts/render-session-transcript.md` for the complete schema.
 

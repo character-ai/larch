@@ -409,29 +409,19 @@ stdout=$(cat "$tmp/c14b.out")
 assert_empty "$stdout" "case 14b: stdout empty after review boundary"
 assert_not_contains "$stdout" "post-/review boundary" "case 14b: no review boundary advisory"
 
-echo "=== Case 15: SessionStart detects pending post-/bump-version boundary ==="
+echo "=== Case 15: Phase 1 — .bump-version-armed does not emit post-/bump-version advisory ==="
 mkdir -p "$tmp/c15-cwd"
 impl=$(make_impl_tmpdir c15-bump "$tmp/c15-cwd")
-# Bump-only fixtures: isolate post-/bump-version SessionStart branch without a pending review boundary.
 touch "$impl/.bump-version-armed"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c15-cwd" '{"cwd":"'"$tmp/c15-cwd"'"}' "$XDG_TEST" "$tmp/c15.out" "$tmp/c15.err")
 assert_eq "$rc" "0" "case 15: exit code 0"
 stdout=$(cat "$tmp/c15.out")
-assert_valid_json "$stdout" "case 15"
-ctx=$(ctx_from_stdout "$stdout")
-assert_contains "$ctx" "post-/bump-version boundary" "case 15: bump boundary advisory"
+assert_empty "$stdout" "case 15: no SessionStart advisory for retired bump boundary"
+assert_not_contains "$stdout" "post-/bump-version boundary" "case 15: bump boundary advisory retired"
 
-echo "=== Case 15b: postbump-state.sh suppresses post-/bump-version advisory ==="
-printf 'STATUS=ok\n' > "$impl/postbump-state.sh"
-rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c15-cwd" '{"cwd":"'"$tmp/c15-cwd"'"}' "$XDG_TEST" "$tmp/c15b.out" "$tmp/c15b.err")
-assert_eq "$rc" "0" "case 15b: exit code 0"
-stdout=$(cat "$tmp/c15b.out")
-assert_empty "$stdout" "case 15b: stdout empty after postbump state"
-assert_not_contains "$stdout" "post-/bump-version boundary" "case 15b: no bump boundary advisory"
-
-echo "=== Case 16: pending review + bump boundaries concatenate ==="
+echo "=== Case 16: pending review boundary only (bump advisory retired) ==="
 mkdir -p "$tmp/c16-cwd"
-impl=$(make_impl_tmpdir c16-all-boundaries "$tmp/c16-cwd")
+impl=$(make_impl_tmpdir c16-review-boundary "$tmp/c16-cwd")
 printf 'review summary\n' > "$impl/review-round-summary.md"
 touch "$impl/.bump-version-armed"
 rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c16-cwd" '{"cwd":"'"$tmp/c16-cwd"'"}' "$XDG_TEST" "$tmp/c16.out" "$tmp/c16.err")
@@ -440,7 +430,7 @@ stdout=$(cat "$tmp/c16.out")
 assert_valid_json "$stdout" "case 16"
 ctx=$(ctx_from_stdout "$stdout")
 assert_contains "$ctx" "post-/review boundary" "case 16: review boundary advisory"
-assert_contains "$ctx" "post-/bump-version boundary" "case 16: bump boundary advisory"
+assert_not_contains "$ctx" "post-/bump-version boundary" "case 16: bump boundary advisory retired"
 
 echo
 echo "=== Summary ==="

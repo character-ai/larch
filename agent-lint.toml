@@ -1017,6 +1017,7 @@ exclude = [
   # skill-local regression tests.
   "skills/pause/scripts/test-pause-skill.sh",
   "scripts/test-implement-rebase-macro.sh",
+  "scripts/test-ship-pr-rebase.sh",
   # scripts/test-rebase-checkpoint-probe.sh — offline harness for
   # scripts/rebase-checkpoint-probe.sh (Makefile test-rebase-checkpoint-probe).
   "scripts/test-rebase-checkpoint-probe.sh",

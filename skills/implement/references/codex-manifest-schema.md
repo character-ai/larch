@@ -150,6 +150,6 @@ Any change to this schema MUST be paired with edits in:
 - `skills/implement/scripts/step2-implement.sh` — dispatcher validation (`jq -e` filters).
 - `agents/codex-implementer.md` — Codex prompt's manifest-writing instructions.
 - `agents/cursor-implementer.md` — Cursor prompt's manifest-writing instructions.
-- `skills/implement/SKILL.md` — Step 4 (commit verification), Step 8a (CHANGELOG), Step 9a (PR `## Summary`), Step 9a.1 (OOS pipeline) consumption blocks.
+- `skills/implement/SKILL.md` — Step 4 (commit verification), Step 9a (PR `## Summary`), Step 9a.1 (OOS pipeline) consumption blocks. Phase 1 (#3364) retired `/implement` Step 8a CHANGELOG; manifest `summary_bullets` feed PR summary / OOS only until `/release` owns changelog updates.
 - `skills/implement/scripts/test-step2-dispatch.sh` — golden manifest fixtures.
 - `skills/implement/references/codex-manifest-schema.digest.md` — required-keys table and bail-reason token list (keep in sync with the corresponding sections above).

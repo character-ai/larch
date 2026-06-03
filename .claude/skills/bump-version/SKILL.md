@@ -1,12 +1,12 @@
 ---
 name: bump-version
-description: Use when applying a version bump after implementation. Classify and apply a semantic version bump based on the current branch diff. Updates .claude-plugin/plugin.json and commits exactly one version-only commit. Invoked by /implement Step 8. Only inspects the public plugin surface (skills/**, agents/**) — changes under .claude/** default to PATCH.
+description: Use when applying a version bump on a feature branch (manual or via /release). Classify and apply a semantic version bump based on the current branch diff. Updates .claude-plugin/plugin.json and commits exactly one version-only commit. Not invoked by /implement after Phase 1 (#3364). Only inspects the public plugin surface (skills/**, agents/**) — changes under .claude/** default to PATCH.
 allowed-tools: Bash, Read
 ---
 
 # Bump Version
 
-Classify and apply a semantic version bump for this PR. This is a development-only skill invoked by `/implement` Step 8. It produces exactly ONE commit: a version-only edit of `.claude-plugin/plugin.json`.
+Classify and apply a semantic version bump for this PR. This is a development-only skill (not on the `/implement` ship path after Phase 1 #3364). It produces exactly ONE commit: a version-only edit of `.claude-plugin/plugin.json`.
 
 ## Classification rules
 
@@ -27,7 +27,7 @@ Any of the following in `skills/**` or `agents/**` (only if not MAJOR):
 - A `--<flag>` token added to a SKILL.md's `argument-hint:` frontmatter field
 
 ### PATCH — everything else
-Default for all other changes. Every PR must bump at least PATCH per policy.
+Default for all other changes when this skill runs (manual operator or `/release`). `/implement` post-Phase 1 (#3364) does not require a per-PR bump on the ship path.
 
 ## Caveat — escalation-only clause
 
@@ -39,7 +39,7 @@ If you escalate, append at most 5 sentences (≤100 words) to the reasoning log 
 
 ## How it works
 
-1. The caller (`/implement` Step 8) invokes this skill.
+1. The operator or `/release` (Phase 3) invokes this skill — not `/implement` post-Phase 1.
 2. The skill runs `classify-bump.sh`, which:
    - Fetches `origin/main` (best-effort, non-fatal on failure)
    - Resolves `BASE` via `main` → `origin/main` fallback
@@ -57,10 +57,10 @@ If you escalate, append at most 5 sentences (≤100 words) to the reasoning log 
    - Rewrites the `version` field via `jq` (atomic via tmp + mv)
    - Runs `git add`, then `git fetch origin main` before `git commit`. Fetch failure is fatal with rollback: restore from `$BACKUP`, `git reset HEAD "$PLUGIN_JSON"`, and emit `ERROR="git fetch origin main failed; cannot verify origin/main version guards"`.
    - Reads `origin/main:.claude-plugin/plugin.json`'s version with strict semver validation. Parse failure is fatal with the same rollback.
-   - If the parsed origin version equals `NEW_VERSION`, rolls back the staged `plugin.json` mutation and calls `fail()` with `ERROR="origin/main has already bumped to <NEW_VERSION>; re-classify needed"`. `/implement` Step 8 routes this to the Rebase + Re-bump Sub-procedure with `caller_kind=step8_apply_bump_same_version` for one re-classification attempt; subsequent failure stalls.
-   - If `NEW_VERSION < ORIGIN_VERSION`, rolls back the staged `plugin.json` mutation and fails closed on the version-regression guard with `ERROR="version regression: <NEW_VERSION> < origin/main <ORIGIN_VERSION>; rebase conflict may have been resolved to branch stale version — re-resolve and re-bump"`. `/implement` Step 8 treats that as a hard failure; Step 10/12's delegated `ship-pr.sh` rebase/re-bump path instead recomputes the bump from the refreshed `origin/main` baseline and rewrites the reasoning artifact before refreshing `version-bump-reasoning`.
+   - If the parsed origin version equals `NEW_VERSION`, rolls back the staged `plugin.json` mutation and calls `fail()` with `ERROR="origin/main has already bumped to <NEW_VERSION>; re-classify needed"`.
+   - If `NEW_VERSION < ORIGIN_VERSION`, rolls back the staged `plugin.json` mutation and fails closed on the version-regression guard with `ERROR="version regression: <NEW_VERSION> < origin/main <ORIGIN_VERSION>; rebase conflict may have been resolved to branch stale version — re-resolve and re-bump"`.
    - `git commit -m "Bump version to <NEW_VERSION>"`
-   - No `larch-log-flush.sh` tail-call after the bump commit: the rebase+re-bump machinery must be able to find and drop the bump commit. `CHANGELOG.md` is committed separately by `scripts/commit-changelog.sh` when Step 8a or re-bump paths update it.
+   - `CHANGELOG.md` updates are owned by `/release` (Phase 3), not `/implement` post-Phase 1.
    - Rolls back from backup on commit failure
    - Maintains its sibling contract at `$PWD/.claude/skills/bump-version/scripts/apply-bump.md`; update that file with any behavioral change.
 5. If `BUMP_TYPE=NONE`, skip the apply step and report "already bumped".
@@ -87,7 +87,7 @@ $PWD/.claude/skills/bump-version/scripts/apply-bump.sh --new-version <NEW_VERSIO
 
 ## Output contract
 
-The reasoning log at `${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasoning.md` is consumed by `/implement` Step 8 — specifically by the `implement-finalize.sh postbump` subcommand, which composes the `version-bump-reasoning` anchor fragment from this file's contents after orchestrator-side sanitization. The slim PR body template (`skills/implement/references/pr-body-template.md`) no longer contains a `<details><summary>Version Bump Reasoning</summary>` block — the anchor comment is the canonical audit surface. The absolute path of the reasoning log is also emitted on stdout by `classify-bump.sh` as `REASONING_FILE=<path>` — callers should prefer that structured output over reconstructing the path from env vars.
+The reasoning log at `${IMPLEMENT_TMPDIR:-${TMPDIR:-/tmp}}/bump-version-reasoning.md` may be archived to committed `larch-logs/` by `/release` or manual workflows. `/implement` no longer runs `implement-finalize.sh postbump` changelog or version-bump-reasoning batches (Phase 1 #3364). The absolute path of the reasoning log is also emitted on stdout by `classify-bump.sh` as `REASONING_FILE=<path>` — callers should prefer that structured output over reconstructing the path from env vars.
 
 ## Exit codes
 - `classify-bump.sh` — 0 on success (including `BUMP_TYPE=NONE`), non-zero on parse/validation failure

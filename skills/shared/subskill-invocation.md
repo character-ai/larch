@@ -20,7 +20,7 @@ Keep the block together. The bare-name-first rule is important — see `## Bare-
 
 ### Pattern B — Stateful orchestrator (inline)
 
-Used when the parent runs setup, exports `SESSION_ENV_PATH` for the child session merge, invokes the child, and then parses structured output to continue. Appears in `skills/implement/SKILL.md` (nested `/review` / `/bump-version` / `/issue` calls; `/design` runs separately before `/implement` on the issue-anchored happy path). Canonical form:
+Used when the parent runs setup, exports `SESSION_ENV_PATH` for the child session merge, invokes the child, and then parses structured output to continue. Appears in `skills/implement/SKILL.md` (nested `/review` and `/issue` calls only after Phase 1 #3364 — `/implement` no longer nests `/bump-version`; `/design` runs separately before `/implement` on the issue-anchored happy path). Canonical form:
 
 ```
 Invoke `/implement` via the Skill tool:
@@ -56,21 +56,16 @@ For every mandatory sub-skill call inside an orchestrator's step, pair the call 
 
 Canonical examples:
 
-- **Commit-count delta around `/bump-version`** — the orchestrator captures a pre-count, invokes the skill, then compares with a post-count:
+- **`ship-pr.sh` stdout / state-file parse after Step 8+** — the orchestrator reads machine lines from the foreground `ship-pr.sh` invocation and cross-checks `$IMPLEMENT_TMPDIR/ship-pr-state.sh` before continuing:
 
   ```bash
-  ${CLAUDE_PLUGIN_ROOT}/scripts/check-bump-version.sh --mode pre
-  # Parse HAS_BUMP, COMMITS_BEFORE, STATUS from stdout.
-  # Invoke /bump-version via the Skill tool.
-  ${CLAUDE_PLUGIN_ROOT}/scripts/check-bump-version.sh --mode post --before-count "$COMMITS_BEFORE"
-  # Parse VERIFIED, COMMITS_AFTER, EXPECTED, STATUS.
-  # STATUS ∈ {ok, missing_main_ref, git_error}. MUST check STATUS=ok before trusting
-  # the COMMITS_* counts — a non-ok STATUS means the count is 0-by-coercion, not
-  # a legitimate "0 commits ahead" result (#172). --mode post already forces
-  # VERIFIED=false when STATUS != ok, independent of the numeric comparison.
+  # Parse STATUS, PHASE, OOS_PENDING, STALL_TRACKING, STALL_STEP, RESUME_PHASE,
+  # CALLER_KIND, and CONFLICT_FILES (when present) from ship-pr stdout.
+  # On Exit 4 with RESUME_PHASE=ship-pr-rrr-phase14 and CALLER_KIND=ship_pr_pre_push,
+  # run conflict-resolution.md before re-invoking ship-pr.sh --resume-phase ship-pr-rrr-phase14.
   ```
 
-  See `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` for the full recipe. `--mode post` **requires** `--before-count $COMMITS_BEFORE` — calling `--mode post` without it errors out at the script level.
+  See `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` for the exit-code matrix. Phase 1 (#3364) removed `/implement` `/bump-version` and `check-bump-version.sh` gates on the ship path; use `/release` or manual `.claude/skills/bump-version` when versioning is required outside implement.
 
 - **Parsed stdout machine value after `/issue`** — the orchestrator reads `ISSUES_CREATED=<N>` / `ISSUES_FAILED=<N>` / per-issue `ISSUE_N_NUMBER`/`ISSUE_N_URL` lines from `/issue`'s stdout. Without those parsed values, the parent cannot file the created issue links into the PR body. See `skills/implement/SKILL.md § Step 8+ — Ship PR State Machine` (the OOS pipeline runs as a checkpoint inside the ship-pr orchestration).
 
@@ -105,7 +100,7 @@ The substring `**Anti-halt continuation reminder.**` is a contract token asserte
 
 ### Canonical micro-reminder (per Skill-tool call site — branch-specific placement)
 
-Place the micro-reminder **inside the specific branch that actually invokes the child** — not at the top of a step whose body may skip the invocation on some branches (e.g., `/implement` Step 0 tails that skip a nested child on a branch; Step 8 `HAS_BUMP=false` skips `/bump-version`). The reminder belongs next to the real Skill-tool call, inside the branch that emits it.
+Place the micro-reminder **inside the specific branch that actually invokes the child** — not at the top of a step whose body may skip the invocation on some branches (e.g., `/implement` Step 0 tails that skip a nested child on a branch; Step 9a.1 OOS branches that skip `/issue` when the combined file is empty). The reminder belongs next to the real Skill-tool call, inside the branch that emits it.
 
 Standard variant:
 
