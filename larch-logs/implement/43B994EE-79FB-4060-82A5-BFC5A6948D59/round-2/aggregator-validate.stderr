@@ -1,0 +1,7 @@
+warning: fix text for slot 'dyn-tag-release-race-output.txt' in FINDING_30 not traceable to scoped input (first 80 chars: 'Align flags with the workflow (`--latest=false --prerelease` on create; keep edi')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_30 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_2: [OUT_OF_SCOPE] Legacy `promote-latest-rel')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_30 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_3: [OUT_OF_SCOPE] `merge-pr.sh` never fetche')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_30 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_4: [OUT_OF_SCOPE] Harness fixtures use wrong')
+warning: fix text for slot 'cursor-specialist-correctness-output.txt' in FINDING_30 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_5: [OUT_OF_SCOPE] `release-tag.yaml` still b')
+warning: fix text for slot 'dyn-tag-release-race-output.txt' in FINDING_30 not traceable to scoped input (first 80 chars: 'Address the concern above.  ### OOS_6: [OUT_OF_SCOPE] Plan vs `release-finish.md')
+warning: fix text for slot 'dyn-tag-release-race-output.txt' in FINDING_30 not traceable to scoped input (first 80 chars: 'Address the concern above.  ---  **Merge summary (for voters):** 49 raw inputs →')

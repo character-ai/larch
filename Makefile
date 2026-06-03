@@ -8,6 +8,7 @@
 .PHONY: test-scout-dynamic-archetypes
 .PHONY: test-extract-plan-scope-paths test-git-commit-only
 .PHONY: test-design-reentry-guard
+.PHONY: test-promote-release test-release-finish test-release-prepare test-release-set-version
 .PHONY: test-snapshot-plan-round test-dispatch-plan-assessors test-render-assessor-prompt test-tally-plan-assessor test-assess-plan-round
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-render-run-summary-callsites test-render-run-summary-format test-token-report-summary-format
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline test-lint-gh-body-inline lint-mermaid agent-sync test-ci-failed-jobs test-ci-behind-count
@@ -107,7 +108,7 @@ test-harnesses-18: test-implement-finalize test-tracking-issue-write test-revise
 
 test-harnesses-19: test-dispatch-with-waterfall test-verify-run-log-completeness test-cleanup test-write-final-report test-upsert-diagrams-comment test-capture-session-transcript test-analyze test-lint-readability-preamble test-larch-logs-batches test-restore-finalize-state test-check-reviewer-failure-threshold test-rebase-push-keep-on-conflict test-get-issue-state test-quick-mode-docs-sync test-read-design-classification test-lib-title-eligibility test-subskill-anchors test-alias-structure test-lib-title-markers test-phantom-probe-with-warn test-rebase-checkpoint-probe
 
-test-harnesses-20: test-collect-agent-results test-collect-findings test-decompose-panel-dispatch test-compose-review-findings test-relevant-checks test-write-tally test-check-generators test-check-main-sync test-classify-bump test-implement-review-token-propagation test-emit-design-plan-preview test-token-cost test-get-issue-context test-run-external-agent-args test-external-tool-registry test-implement-timing-rehydration test-anti-halt
+test-harnesses-20: test-collect-agent-results test-collect-findings test-decompose-panel-dispatch test-compose-review-findings test-relevant-checks test-write-tally test-check-generators test-check-main-sync test-classify-bump test-release-prepare test-release-set-version test-release-finish test-promote-release test-implement-review-token-propagation test-emit-design-plan-preview test-token-cost test-get-issue-context test-run-external-agent-args test-external-tool-registry test-implement-timing-rehydration test-anti-halt
 test-pipe-sigpipe-safety:
 	bash scripts/harness-timer.sh $@ bash scripts/test-pipe-sigpipe-safety.sh
 
@@ -344,6 +345,18 @@ test-drop-changelog-commit:
 
 test-classify-bump:
 	bash scripts/harness-timer.sh $@ bash scripts/test-classify-bump.sh
+
+test-release-prepare:
+	bash scripts/harness-timer.sh $@ bash .claude/skills/release/scripts/test-release-prepare.sh
+
+test-release-set-version:
+	bash scripts/harness-timer.sh $@ bash .claude/skills/release/scripts/test-release-set-version.sh
+
+test-release-finish:
+	bash scripts/harness-timer.sh $@ bash .claude/skills/release/scripts/test-release-finish.sh
+
+test-promote-release:
+	bash scripts/harness-timer.sh $@ bash scripts/test-promote-release.sh
 
 test-commit-changelog:
 	bash scripts/harness-timer.sh $@ bash scripts/test-commit-changelog.sh

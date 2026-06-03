@@ -10,9 +10,12 @@ Every merge to main creates a GitHub Release with `--latest=false --prerelease` 
 
 ```bash
 scripts/promote-release.sh 12.4.5
+scripts/promote-release.sh 12.4.5 --repo OWNER/REPO
 ```
 
 The argument is a bare semver (`X.Y.Z`) — no `v` prefix. The script prepends `v` internally.
+
+Optional `--repo OWNER/REPO` threads through every `gh release view`, `gh release list`, and `gh release edit` call. When omitted, `gh` uses the current repository (existing callers unchanged). `/release` (`release-finish.sh`) must pass the same `REPO` as all other release `gh` steps.
 
 ## Behavior
 

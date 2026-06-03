@@ -1,0 +1,37 @@
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [
+    {"path": ".claude/skills/release/SKILL.md", "lines_added": 95, "lines_removed": 12},
+    {"path": ".claude/skills/release/scripts/release-prepare.sh", "lines_added": 175, "lines_removed": 0},
+    {"path": ".claude/skills/release/scripts/release-prepare.md", "lines_added": 48, "lines_removed": 0},
+    {"path": ".claude/skills/release/scripts/release-set-version.sh", "lines_added": 68, "lines_removed": 0},
+    {"path": ".claude/skills/release/scripts/release-set-version.md", "lines_added": 35, "lines_removed": 0},
+    {"path": ".claude/skills/release/scripts/release-finish.sh", "lines_added": 130, "lines_removed": 0},
+    {"path": ".claude/skills/release/scripts/release-finish.md", "lines_added": 42, "lines_removed": 0},
+    {"path": ".claude/skills/release/scripts/test-release-prepare.sh", "lines_added": 245, "lines_removed": 0},
+    {"path": ".claude/skills/release/scripts/test-release-prepare.md", "lines_added": 22, "lines_removed": 0},
+    {"path": ".claude/skills/release/scripts/test-release-set-version.sh", "lines_added": 88, "lines_removed": 0},
+    {"path": ".claude/skills/release/scripts/test-release-set-version.md", "lines_added": 18, "lines_removed": 0},
+    {"path": ".claude/skills/bump-version/scripts/classify-bump.sh", "lines_added": 45, "lines_removed": 20},
+    {"path": ".claude/skills/bump-version/scripts/classify-bump.md", "lines_added": 9, "lines_removed": 0},
+    {"path": ".claude/skills/bump-version/scripts/test-classify-bump.sh", "lines_added": 27, "lines_removed": 0},
+    {"path": "scripts/promote-release.sh", "lines_added": 35, "lines_removed": 12},
+    {"path": "scripts/promote-release.md", "lines_added": 3, "lines_removed": 0},
+    {"path": "Makefile", "lines_added": 8, "lines_removed": 1}
+  ],
+  "tests_added_or_modified": [
+    ".claude/skills/release/scripts/test-release-prepare.sh",
+    ".claude/skills/release/scripts/test-release-set-version.sh",
+    ".claude/skills/bump-version/scripts/test-classify-bump.sh"
+  ],
+  "summary_bullets": [
+    "Replace dev-only /release with a seven-step cut-a-release flow from a clean main branch",
+    "Add release-prepare, release-set-version, and release-finish bash helpers with offline harnesses",
+    "Extend classify-bump and promote-release for /release via --base and --repo"
+  ],
+  "commit_message": "Add operator-run /release skill for aggregate version cuts\n\nRewrites the private .claude/skills/release flow to gather PRs since the Latest tag, classify an aggregate bump, land plugin.json via PR, tag and publish the GitHub Release, and promote to Latest. Adds classify-bump --base for release windows and promote-release --repo passthrough.",
+  "todos_left": [],
+  "oos_observations": [],
+  "bail_reason": ""
+}

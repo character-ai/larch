@@ -1,0 +1,20 @@
+Reviewing the branch diff for Bash 3.2 portability issues.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+Audited the branch diff (4 commits since `main`: `6576ec069` … `bb55e1f45`) against the scout’s Bash 3.2 checklist:
+
+- **`${REPO_ARGS[@]+"${REPO_ARGS[@]}"}` in `scripts/promote-release.sh` (lines 74–92)** — Matches the repo’s established `set -u`-safe empty-array idiom (same as `scripts/create-pr.sh`). When `REPO_ARGS` is unset/empty, expansion is omitted; when set to `(--repo OWNER/REPO)`, it expands to two words. No Bash 3.2 defect; `scripts/test-promote-release.sh` case 1 exercises the no-`--repo` path under `set -euo pipefail`.
+
+- **`10#` arithmetic in `.claude/skills/release/scripts/release-prepare.sh` (lines 151–153, 240–243)** — All six compared/incremented semver components in the `release-already-cut` block use `10#` on both sides; `--bump` override recompute matches `classify-bump.sh` (lines 307–309). Leading-zero segments are handled correctly.
+
+- **Bash 4+ constructs** — No `declare -A`, `mapfile`/`readarray`, `${var^^}`, or `&>>` in new/modified release or `promote-release` scripts.
+
+- **Bare `grep` in `release-prepare.sh` (line 154)** — `git log … | grep -qE` is pipeline `grep` (safe in committed scripts per `BASH_AUTHORING.md` §1); not a top-level orchestrator bare-grep probe.
+
+- **Incidental correctness improvement** — `classify-bump.sh` renames bump locals to `ver_maj`/`ver_min`/`ver_pat` (lines 304–309), avoiding clash with a common `$PAT` environment variable under the `PATCH` case label; that is a fix, not a regression.
+
+**Coverage note (not a script bug):** `scripts/test-promote-release.sh` does not mirror `scripts/test-create-pr.sh`’s explicit `/bin/bash` 3.2 empty-array regression, though it uses the same expansion pattern.

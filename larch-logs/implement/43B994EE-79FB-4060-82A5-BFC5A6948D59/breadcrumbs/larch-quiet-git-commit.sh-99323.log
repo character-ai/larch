@@ -1,0 +1,6 @@
+[sergey-zhupanov/implementing-versioning-overhaul-phase-3-3366 8999fde88] Fix shellcheck SC2097/SC2098 and G004 dead-script lint errors
+ 5 files changed, 428 insertions(+)
+ create mode 100644 .claude/skills/release/scripts/test-release-finish.md
+ create mode 100755 .claude/skills/release/scripts/test-release-finish.sh
+ create mode 100644 scripts/test-promote-release.md
+ create mode 100755 scripts/test-promote-release.sh
