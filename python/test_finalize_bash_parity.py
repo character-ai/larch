@@ -66,7 +66,7 @@ def test_postbump_uses_rebase_without_changelog(monkeypatch: pytest.MonkeyPatch,
 
     def fake_flush(*_args: object, **_kwargs: object) -> object:
         calls.append("flush")
-        return object()
+        return finalize.run_logs.RefreshSkip(skipped=False, reason="")
 
     def fake_rebase(*_args: object, **_kwargs: object) -> object:
         calls.append("rebase")

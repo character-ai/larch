@@ -1310,6 +1310,12 @@ def monitor(
             detail = f"{fix.status}: {', '.join(fix.failed_verify)}"
         if fix.unfixable:
             detail = f"{fix.status}: {', '.join(fix.unfixable)}"
+        if fix.status == "local-unfixable":
+            return _base_result(
+                did_fixing=True,
+                goto=False,
+                step=StepResult(outcome=Outcome.NEEDS_USER_INPUT, detail=detail),
+            )
         return _base_result(
             did_fixing=True,
             goto=False,

@@ -540,7 +540,7 @@ def test_ensure_head_empty_local_head_is_error() -> None:
     assert "local HEAD" in out.error
 
 
-def test_merge_continues_when_pre_flush_commit_fails(
+def test_merge_stalls_when_pre_flush_commit_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -581,7 +581,7 @@ def test_merge_continues_when_pre_flush_commit_fails(
     monkeypatch.setattr(merge_module, "_ensure_head_matches_pr", _mock_ensure_head_behind)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
     out = merge_module.merge_pr(runner, ctx)
-    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+    assert out.result == config.MERGE_RESULT_ERROR
 
 
 def test_merge_flush_recovery_success_emits_admin_merged(

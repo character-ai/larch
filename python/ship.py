@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import argparse
-import contextlib
 import json
 import os
 from dataclasses import dataclass
@@ -118,7 +117,7 @@ def _pr_title(ctx: RunContext, runner: Runner, *, cwd: str | None) -> str:
     return title if not prefix or title.startswith(prefix) else f"{prefix}{title}"
 
 
-def _oos_gate(runner: Runner, ctx: RunContext) -> ShipResult | None:
+def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult | None:
     tmpdir = Path(ctx.tmpdir)
     accepted = tuple(
         str(path)
@@ -133,7 +132,8 @@ def _oos_gate(runner: Runner, ctx: RunContext) -> ShipResult | None:
     run_dir_ndjson = tmpdir / "larch-logs" / "implement" / ctx.run_id / "oos-issues.ndjson"
     commit_messages = ""
     if ctx.run_id:
-        messages = runner.run(["git", "log", "--format=%s", "origin/main..HEAD"], cwd=None)
+        base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
+        messages = runner.run(["git", "log", "--format=%s", f"{base_remote}/main..HEAD"], cwd=cwd)
         if messages.returncode == 0:
             commit_messages = messages.stdout
     disposition = oos.disposition_ok(
@@ -170,24 +170,49 @@ def _write_terminal_state(ctx: RunContext, result: Outcome, step: str) -> None:
     )
 
 
+def _tmpdir_under_allowed_root(tmpdir: str) -> bool:
+    if not tmpdir:
+        return False
+    path = Path(tmpdir)
+    if ".." in path.parts:
+        return False
+    try:
+        resolved = path.resolve(strict=False)
+    except OSError:
+        return False
+    cache_root = Path.home() / ".cache" / "larch" / "sessions"
+    allowed_roots = (
+        Path("/tmp").resolve(strict=False),  # noqa: S108 - parity allowlist for session tmpdirs.
+        Path("/private/tmp").resolve(strict=False),
+        Path("/var/folders").resolve(strict=False),
+        Path("/private/var/folders").resolve(strict=False),
+        cache_root.resolve(strict=False),
+    )
+    return any(resolved == root or root in resolved.parents for root in allowed_roots)
+
+
 def run_postmerge_phase(
     runner: Runner,
     ctx: RunContext,
     *,
     cwd: str | None = None,
 ) -> ShipResult:
-    state_ctx = ctx.with_(pr_closed=True)
-    finalize.write_finalize_state(state_ctx, Path(ctx.tmpdir) / "finalize-state.sh")
     sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
     _ = sentinel.write_text(f"MERGE_RESULT={ctx.merge_result}\n", encoding="utf-8")
     post = finalize.postmerge(runner, ctx, cwd=cwd)
-    if post.outcome is not Outcome.OK:
-        return ShipResult(post.outcome, detail=post.detail or post.status)
+    state_ctx = ctx.with_(
+        pr_closed=post.outcome is Outcome.OK,
+        stall_tracking=post.outcome is Outcome.STALLED,
+        stall_step=post.status if post.outcome is Outcome.STALLED else ctx.stall_step,
+    )
+    finalize.write_finalize_state(state_ctx, Path(ctx.tmpdir) / "finalize-state.sh")
     if _postmerge_should_flush(ctx):
         _ = run_logs.load_or_recover_manifest(ctx)
         skip = run_logs.flush_logs_post(ctx, merge_result=ctx.merge_result, runner=runner)
-        if skip.skipped:
+        if post.outcome is Outcome.OK and skip.skipped:
             return ShipResult(Outcome.STALLED, detail=f"post-merge flush skipped: {skip.reason}")
+    if post.outcome is not Outcome.OK:
+        return ShipResult(post.outcome, detail=post.detail or post.status)
     return ShipResult(
         Outcome.OK,
         pr_number=ctx.pr_number,
@@ -204,6 +229,8 @@ def run_ship(
 ) -> ShipResult:
     try:
         repo_root = cwd or str(Path.cwd())
+        if not _tmpdir_under_allowed_root(ctx.tmpdir):
+            return ShipResult(Outcome.STALLED, detail="invalid tmpdir")
         codex_present = bool(os.environ.get("CODEX") or os.environ.get("CODEX_HOME") or ctx.tool_label == "codex")
         cursor_present = bool(os.environ.get("CURSOR") or os.environ.get("CURSOR_AUTH_ARGS") or ctx.tool_label == "cursor")
         base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
@@ -236,7 +263,7 @@ def run_ship(
             test_plan=ctx.test_plan or "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
             issue_number=int(ctx.issue_number or ctx.issue) if (ctx.issue_number or ctx.issue).isdigit() else None,
         )
-        oos_result = _oos_gate(runner, ctx)
+        oos_result = _oos_gate(runner, ctx, cwd=repo_root)
         if oos_result is not None:
             return oos_result
 
@@ -245,16 +272,19 @@ def run_ship(
             _write_terminal_state(ctx, Outcome.STALLED, "pre-push")
             return ShipResult(Outcome.STALLED, detail=f"pre-push flush skipped: {pre.reason}")
 
-        title = _pr_title(ctx, runner, cwd=cwd)
-        ensured = pr.ensure_pr(runner, ctx, body, title=title, cwd=cwd)
+        title = _pr_title(ctx, runner, cwd=repo_root)
+        ensured = pr.ensure_pr(runner, ctx, body, title=title, cwd=repo_root)
         working = ctx.with_(
             pr_number=ensured.number or None,
             pr_url=ensured.url,
             pr_title=title,
             pr_closed=False,
         )
-        with contextlib.suppress(ShipError):
+        try:
             run_logs.write_final_report_comment(runner, working)
+        except ShipError as exc:
+            _write_terminal_state(working, Outcome.STALLED, "final-report-comment")
+            return ShipResult(Outcome.STALLED, pr_number=working.pr_number, pr_url=working.pr_url, detail=str(exc))
         if not working.merge or working.draft or working.forked or working.repo_unavailable:
             finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
             return ShipResult(
@@ -330,7 +360,10 @@ def run_ship(
                 pr_closed=pr_closed,
             )
             if merged.result == config.MERGE_RESULT_ERROR:
-                finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
+                finalize.write_finalize_state(
+                    working.with_(stall_tracking=True, stall_step="merge"),
+                    Path(working.tmpdir) / "finalize-state.sh",
+                )
                 return ShipResult(
                     Outcome.STALLED,
                     pr_number=working.pr_number,
@@ -339,7 +372,10 @@ def run_ship(
                     detail=merged.error,
                 )
             if merged.result not in config.POST_MERGE_MERGE_RESULTS:
-                finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
+                finalize.write_finalize_state(
+                    working.with_(stall_tracking=True, stall_step="merge"),
+                    Path(working.tmpdir) / "finalize-state.sh",
+                )
                 return ShipResult(
                     Outcome.STALLED,
                     pr_number=working.pr_number,
@@ -401,6 +437,8 @@ def build_parser() -> argparse.ArgumentParser:
     _ = parser.add_argument("--repo-unavailable")
     _ = parser.add_argument("--no-admin-fallback")
     _ = parser.add_argument("--no-logs-commit", action="store_true", default=None)
+    _ = parser.add_argument("--expected-session-id")
+    _ = parser.add_argument("--expected-tmpdir-basename-prefix")
     return parser
 
 
@@ -417,6 +455,8 @@ def _ctx_from_args(args: argparse.Namespace) -> RunContext:
         ("tmpdir", "tmpdir"),
         ("manifest_path", "manifest_path"),
         ("tool_label", "tool_label"),
+        ("expected_session_id", "expected_session_id"),
+        ("expected_tmpdir_basename_prefix", "expected_tmpdir_basename_prefix"),
     ):
         value = getattr(args, arg_name)
         if value not in (None, ""):
@@ -439,13 +479,10 @@ def _ctx_from_args(args: argparse.Namespace) -> RunContext:
 
 def main(argv: list[str] | None = None) -> int:
     ctx = RunContext.from_env()
-    try:
-        parser = build_parser()
-        args = parser.parse_args(argv)
-        ctx = _ctx_from_args(args)
-        result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
-    except Exception as exc:
-        result = _error_to_result(exc)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    ctx = _ctx_from_args(args)
+    result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

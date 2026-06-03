@@ -59,7 +59,9 @@ def postbump(
             return FinalizeResult(Outcome.STALLED, "branch-invalid", "wrong branch")
         if branch in {"main", "master"} and not (ctx.forked or ctx.forked_target):
             return FinalizeResult(Outcome.STALLED, "branch-protected", "refusing postbump on protected branch")
-        _ = run_logs.flush_logs_pre(runner, ctx.with_(state_file=None), cwd=cwd)
+        skip = run_logs.flush_logs_pre(runner, ctx.with_(state_file=None), cwd=cwd)
+        if skip.skipped and skip.reason not in config.REFRESH_SKIP_MERGE_OK:
+            return FinalizeResult(Outcome.STALLED, "log-refresh-skipped", skip.reason)
         base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
         remote_tip = git.try_rev_parse(runner, f"origin/{branch}", cwd=cwd)
         remote_missing = remote_tip is None
@@ -120,10 +122,11 @@ def postmerge(
         return FinalizeResult(Outcome.STALLED, "branch-invalid", "invalid branch")
 
     cleanup_status = "success"
+    verify_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
     switch = runner.run(["git", "switch", "main"], cwd=cwd)
     if switch.returncode != 0:
         cleanup_status = "partial"
-    pull = runner.run(["git", "pull", "--ff-only", "origin", "main"], cwd=cwd)
+    pull = runner.run(["git", "pull", "--ff-only", verify_remote, "main"], cwd=cwd)
     if pull.returncode != 0:
         cleanup_status = "partial"
     delete = runner.run(["git", "branch", "-D", "--", branch], cwd=cwd)
@@ -225,13 +228,18 @@ def _write_stalled_sentinel(
     issue = ctx.issue_number or ctx.issue
     issue_url = f"https://github.com/{ctx.repo}/issues/{issue}" if issue and ctx.repo else ""
     timestamp = datetime.now(UTC).isoformat()
-    content = (
-        f"ISSUE_NUMBER={issue}\n"
-        f"ISSUE_URL={issue_url}\n"
-        f"STALL_STEP={ctx.stall_step or 'unknown'}\n"
-        f"STASH_REF={stash_ref}\n"
-        f"TIMESTAMP={timestamp}\n"
-    )
+    data = {
+        "ISSUE_NUMBER": issue or "",
+        "ISSUE_URL": issue_url,
+        "STALL_STEP": ctx.stall_step or "unknown",
+        "STASH_REF": stash_ref,
+        "TIMESTAMP": timestamp,
+    }
+    for key, value in data.items():
+        if "\n" in str(value) or "\r" in str(value):
+            msg = f"stalled sentinel value for {key} contains a newline"
+            raise ShipError(msg)
+    content = "".join(f"{key}={value}\n" for key, value in data.items())
     tmp = path.with_suffix(".txt.tmp")
     _ = tmp.write_text(content, encoding="utf-8")
     _ = tmp.replace(path)
@@ -298,28 +306,33 @@ def teardown(
 
 
 def _cleanup_target_ok(ctx: RunContext, tmpdir: Path) -> bool:
-    raw = str(tmpdir)
+    try:
+        resolved = tmpdir.resolve(strict=False)
+    except OSError:
+        return False
+    if ".." in tmpdir.parts:
+        return False
     cache_root = Path.home() / ".cache" / "larch" / "sessions"
-    allowed_prefixes = (
-        "/tmp/",  # noqa: S108 - parity allowlist for session tmpdirs.
-        "/private/tmp/",
-        "/var/folders/",
-        "/private/var/folders/",
-        str(cache_root) + "/",
+    allowed_roots = (
+        Path("/tmp").resolve(strict=False),  # noqa: S108 - parity allowlist for session tmpdirs.
+        Path("/private/tmp").resolve(strict=False),
+        Path("/var/folders").resolve(strict=False),
+        Path("/private/var/folders").resolve(strict=False),
+        cache_root.resolve(strict=False),
     )
-    if not raw.startswith(allowed_prefixes):
+    if not any(resolved == root or root in resolved.parents for root in allowed_roots):
         return False
     prefix = ctx.expected_tmpdir_basename_prefix
     if not prefix:
         repo = Path.cwd().name or "_"
         prefix = f"claude-implement-{repo[:32]}-"
     if prefix and not tmpdir.name.startswith(prefix):
-        session_file = tmpdir / "session-id"
+        session_file = resolved / "session-id"
         if not ctx.expected_session_id or not session_file.is_file():
             return False
         return session_file.read_text(encoding="utf-8").strip() == ctx.expected_session_id
     if ctx.expected_session_id:
-        session_file = tmpdir / "session-id"
+        session_file = resolved / "session-id"
         if not session_file.is_file():
             return False
         return session_file.read_text(encoding="utf-8").strip() == ctx.expected_session_id

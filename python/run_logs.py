@@ -315,6 +315,7 @@ def _recover_manifest_from_run_dir(run_id: str, run_dir: Path) -> Manifest | Non
         version="1",
         run_id=run_id,
         steps_ran=steps,
+        extra={"recovery_reason": "manifest_lost_mid_run"},
     )
 
 
@@ -571,8 +572,8 @@ def flush_logs_post(
     pr_number = _read_state_kv(ctx.state_file, "PR_NUMBER") if ctx.state_file else ""
     if not pr_number and ctx.pr_number is not None:
         pr_number = str(ctx.pr_number)
-    if pr_number:
-        steps["pr_number"] = pr_number
+    if pr_number and str(pr_number).isdigit():
+        steps["pr_number"] = int(pr_number)
     updated = Manifest(
         status=manifest.status,
         version=manifest.version,

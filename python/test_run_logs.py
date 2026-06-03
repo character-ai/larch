@@ -122,7 +122,7 @@ def test_flush_logs_post_no_git_commit(tmp_path: Path) -> None:
     manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["status"] == config.MANIFEST_STATUS_DONE
-    assert manifest["steps_ran"]["pr_number"] == "17"
+    assert manifest["steps_ran"]["pr_number"] == 17
 
 
 def test_flush_logs_post_leaves_partial_on_failed_merge(tmp_path: Path) -> None:

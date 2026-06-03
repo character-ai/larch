@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 from dataclasses import dataclass, fields, replace
+from pathlib import Path
 
 
 def _env_bool(env: dict[str, str], key: str, *, default: bool = False) -> bool:
@@ -75,6 +76,7 @@ class RunContext:
             source,
             "LARCH_NO_LOGS_COMMIT",
         )
+        default_plan_file = Path(tmpdir) / "plan.txt" if tmpdir else None
         return cls(
             branch=branch,
             issue=issue,
@@ -110,7 +112,12 @@ class RunContext:
             deferred=_env_bool(source, "DEFERRED"),
             forked_target=_env_bool(source, "FORKED_TARGET"),
             oos_pending=_env_bool(source, "OOS_PENDING"),
-            plan_file=source.get("PLAN_FILE", ""),
+            plan_file=source.get("PLAN_FILE", "")
+            or (
+                str(default_plan_file)
+                if default_plan_file is not None and default_plan_file.is_file()
+                else ""
+            ),
             summary=source.get("PR_SUMMARY", ""),
             mermaid=source.get("PR_MERMAID", ""),
             test_plan=source.get("PR_TEST_PLAN", ""),

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
@@ -20,6 +21,11 @@ from run_context import RunContext
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MERGE_SH = REPO_ROOT / "scripts" / "merge-pr.sh"
+
+pytestmark = pytest.mark.skipif(
+    shutil.which("bash") is None,
+    reason="bash is required for merge-pr.sh parity tests",
+)
 
 
 def _mock_checks_pass(*_a: object, **_k: object) -> bool:
