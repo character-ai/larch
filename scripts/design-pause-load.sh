@@ -90,6 +90,7 @@ larch_design_tmpdir_validate "$DESIGN_TMPDIR" || emit_load_fail "tmpdir-invalid"
 mkdir -p "$DESIGN_TMPDIR" || emit_load_fail "tmpdir-create-failed"
 [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]] || emit_load_fail "invalid-issue"
 jq --null-input 'null' >/dev/null 2>&1 || emit_load_fail "jq-missing"
+[[ -z "$REPO" ]] || validate_repo_value "$REPO"
 
 gh_repo_args=()
 [[ -n "$REPO" ]] && gh_repo_args+=(--repo "$REPO")
@@ -97,6 +98,7 @@ CURRENT_REPO=""
 if resolved_repo=$(resolve_repo "$REPO"); then
     CURRENT_REPO="$resolved_repo"
 fi
+[[ -z "$CURRENT_REPO" ]] || validate_repo_value "$CURRENT_REPO"
 
 body_tmp=$(mktemp "${TMPDIR:-/tmp}/design-pause-load-body.XXXXXX")
 payload_tmp=$(mktemp "${TMPDIR:-/tmp}/design-pause-load-payload.XXXXXX")

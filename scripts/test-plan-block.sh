@@ -253,6 +253,13 @@ PATH="$STUB:$ORIG_PATH" "$WRITE" --issue 99 --content-file "$CONTENT" --repo own
 grep -q 'MODE=appended' "$TMP/w4.out" || fail "empty append mode"
 head -1 "$EDIT_CAPTURE" | grep -q '<!-- larch:plan:start -->' || fail "empty body should start with marker block"
 
+set +e
+PATH="$STUB:$ORIG_PATH" "$WRITE" --issue 99 --content-file "$CONTENT" --repo bad..repo >"$TMP/w-bad-repo.out" 2>&1
+rc=$?
+set -e
+[[ "$rc" == "1" ]] || fail "named-block invalid repo exit $rc"
+grep -q 'ERROR=invalid-repo' "$TMP/w-bad-repo.out" || fail "named-block invalid repo error missing"
+
 LABEL_HELPER="$REPO_ROOT/scripts/clarify-label.sh"
 [ -x "$LABEL_HELPER" ] || fail "clarify-label.sh not executable"
 grep -Fq -- '--create-if-missing' "$LABEL_HELPER" || fail "clarify-label.sh missing --create-if-missing flag"

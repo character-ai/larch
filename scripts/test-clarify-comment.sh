@@ -170,4 +170,12 @@ set -e
 [ "$rc" = "1" ] || fail "kind exit $rc"
 echo "$out" | grep -q 'ERROR=invalid-kind' || fail "invalid-kind: $out"
 
+echo "=== invalid repo ==="
+set +e
+out="$(PATH="$STUB:$ORIG_PATH" "$POST" --issue 42 --kind request --id 1 --content-file "$CONTENT" --repo bad..repo 2>&1)"
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "invalid repo exit $rc"
+echo "$out" | grep -q 'ERROR=invalid-repo' || fail "invalid repo error missing: $out"
+
 echo "All assertions passed."

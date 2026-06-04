@@ -40,6 +40,20 @@ resolve_repo() {
     printf '%s' "$r"
 }
 
+validate_repo() {
+    local value="$1"
+    case "$value" in
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) return 1 ;;
+    esac
+    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
+}
+
+emit_invalid_repo() {
+    emit_kv FAILED "true"
+    emit_kv ERROR "invalid-repo"
+    exit 1
+}
+
 redact_gh_error() {
     local err_text="$1" redacted status=0
     if [ ! -x "$REDACT_HELPER" ]; then
@@ -125,7 +139,9 @@ if [ ! -f "$CONTENT_FILE" ]; then
     exit 1
 fi
 
+[[ -z "$REPO_ARG" ]] || validate_repo "$REPO_ARG" || emit_invalid_repo
 REPO=$(resolve_repo "$REPO_ARG")
+validate_repo "$REPO" || emit_invalid_repo
 
 MARKER_LINE="<!-- larch:clarify-${KIND} id=${CID} -->"
 BODY_TMP=$(mktemp "${TMPDIR:-/tmp}/clarify-comment.XXXXXX")

@@ -278,6 +278,7 @@ if [[ -z "$REPO" ]]; then
         REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
     fi
 fi
+[[ -n "$REPO" ]] && validate_repo "$REPO"
 
 MODE="N/A"
 if command -v jq >/dev/null 2>&1 && [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then

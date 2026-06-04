@@ -356,6 +356,14 @@ printf 'body\n' >"$BODY_FILE"
 out_bad_repo_source=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9)
 [[ "$out_bad_repo_source" == *"PAUSE_OK=false"* && "$out_bad_repo_source" == *"ERROR=invalid-repo"* ]] || fail "bad source-env REPO should fail before pause save: $out_bad_repo_source"
 ! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad source-env REPO must not write marker"
+make_design_tmpdir "$DESIGN"
+printf 'export SESSION_ID=bad/../run\nexport REPO=owner/repo\n' >"$DESIGN/source-env.sh"
+: >"$DESIGN/.pause-requested"
+printf 'body\n' >"$BODY_FILE"
+out_bad_session_source=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9)
+[[ "$out_bad_session_source" == *"PAUSE_OK=false"* && "$out_bad_session_source" == *"ERROR=invalid-run-id"* ]] || fail "bad source-env SESSION_ID should fail before pause save: $out_bad_session_source"
+[[ ! -e "$DESIGN/.pause-requested" ]] || fail "pause-save terminal failure must clear .pause-requested sentinel"
+! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad source-env SESSION_ID must not write marker"
 
 echo "=== recovery branch and hard publish failure ==="
 make_design_tmpdir "$DESIGN"

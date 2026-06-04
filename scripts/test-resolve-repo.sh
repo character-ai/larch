@@ -27,6 +27,14 @@ case "${GH_MODE:-success}" in
             exit 0
         fi
         ;;
+    flag-repo)
+        echo "--owner/repo"
+        exit 0
+        ;;
+    double-dot)
+        echo "bad..repo"
+        exit 0
+        ;;
     fail)
         exit 1
         ;;
@@ -56,6 +64,23 @@ out=$(cd "$repo" && GH_MODE=fail PATH="$stub_dir:$PATH" "$SCRIPT")
 git -C "$repo" remote set-url origin "https://x-access-token:secret@github.com/cred/repo.git"
 out=$(cd "$repo" && GH_MODE=fail PATH="$stub_dir:$PATH" "$SCRIPT")
 [[ "$out" == "cred/repo" ]] || fail "credentialed HTTPS remote did not resolve (got '$out')"
+
+for mode in flag-repo double-dot; do
+    set +e
+    (cd "$repo" && GH_MODE="$mode" PATH="$stub_dir:$PATH" "$SCRIPT") >"$TMPROOT/$mode.out" 2>"$TMPROOT/$mode.err"
+    rc=$?
+    set -e
+    [[ "$rc" -ne 0 ]] || fail "malformed gh repo output ($mode) should exit non-zero"
+    grep -q 'ERROR=could not resolve repo' "$TMPROOT/$mode.err" || fail "malformed gh repo output ($mode) did not emit ERROR"
+done
+
+git -C "$repo" remote set-url origin https://github.com/bad..repo.git
+set +e
+(cd "$repo" && GH_MODE=fail PATH="$stub_dir:$PATH" "$SCRIPT") >"$TMPROOT/bad-remote.out" 2>"$TMPROOT/bad-remote.err"
+rc=$?
+set -e
+[[ "$rc" -ne 0 ]] || fail "malformed remote fallback should exit non-zero"
+grep -q 'ERROR=could not resolve repo' "$TMPROOT/bad-remote.err" || fail "malformed remote fallback did not emit ERROR"
 
 git -C "$repo" remote remove origin
 set +e

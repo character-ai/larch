@@ -14,4 +14,8 @@ The marker must be the first line of the remote comment. Zero matching comments
 creates a new comment; one matching comment patches it; multiple matches fail
 closed. The body is redacted before publication.
 
+`--repo`, when supplied or resolved from `gh repo view`, must match
+`OWNER/REPO`; malformed values fail before issue/comment `gh` calls with
+`FAILED=true`, `ERROR=invalid repo: expected OWNER/REPO`, exit 1.
+
 Edit in sync with `scripts/test-tracking-issue-summary.sh`.

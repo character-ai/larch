@@ -383,4 +383,22 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "${CODEX_AVAILABLE+x}" != x ] || exit 154
 ) || fail "case15: strict boolean recovery did not preserve expected values (subshell exit $?)"
 
+# Case 16 — invalid repo is rejected before writing output
+case16_dir="$TMPROOT/case16"
+design16="$case16_dir/design"
+out16="$case16_dir/source-env.sh"
+mkdir -p "$design16"
+set +e
+bad_repo_out=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
+    --output "$out16" \
+    --design-tmpdir "$design16" \
+    --session-id "BAD-REPO" \
+    --repo bad..repo \
+    --claude-pid "$TEST_CLAUDE_PID" 2>&1)
+bad_repo_rc=$?
+set -e
+[ "$bad_repo_rc" = "1" ] || fail "case16: invalid repo exit $bad_repo_rc"
+[[ "$bad_repo_out" == *"ERROR=Invalid --repo"* ]] || fail "case16: invalid repo error missing: $bad_repo_out"
+[ ! -e "$out16" ] || fail "case16: invalid repo should not write output"
+
 echo "PASS: test-write-design-current-env.sh"

@@ -418,7 +418,7 @@ echo "gh should not run for invalid repo" >&2
 exit 99
 STUB
 chmod +x "$BAD_REPO_STUB/gh"
-for bad_repo in --owner/repo 'owner\repo' ../repo; do
+for bad_repo in --owner/repo 'owner\repo' ../repo bad..repo a/b/c; do
     set +e
     bad_out=$(PATH="$BAD_REPO_STUB:$PATH" bash "$PUBLISH" --design-tmpdir "$BAD_REPO_TMP/design" --run-id RUNBADREPO1 --issue 1 --repo "$bad_repo" 2>&1)
     bad_rc=$?

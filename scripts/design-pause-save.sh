@@ -10,6 +10,8 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/lib-design-tmpdir.sh"
+# shellcheck source=scripts/lib-larch-log.sh
+source "$SCRIPT_DIR/lib-larch-log.sh"
 
 DESIGN_TMPDIR=""
 ISSUE=""
@@ -56,6 +58,9 @@ usage() {
 }
 
 emit_fail() {
+    if [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] && larch_design_tmpdir_validate "$DESIGN_TMPDIR" >/dev/null 2>&1; then
+        rm -f "$DESIGN_TMPDIR/.pause-requested" 2>/dev/null || true
+    fi
     emit_kv PAUSE_OK false
     emit_kv ERROR "$1"
     if [[ "${LARCH_PAUSE_REQUIRE_SUCCESS:-0}" == "1" ]]; then
@@ -115,6 +120,8 @@ fi
 
 RUN_ID="${SESSION_ID:-}"
 [[ -n "$RUN_ID" ]] || emit_fail "run-id-unset"
+case "$RUN_ID" in *$'\n'*|*$'\r'*) emit_fail "invalid-run-id" ;; esac
+larch_log_slug_is_valid "$RUN_ID" || emit_fail "invalid-run-id"
 
 STEP_REGISTRY="$REPO_ROOT/skills/design/scripts/step-name-registry.tsv"
 [[ -f "$STEP_REGISTRY" ]] || emit_fail "missing-step-registry"
@@ -215,6 +222,7 @@ set -e
 
 PUBLISH_OK=$(awk -F= '$1=="PUBLISH_OK"{print $2}' "$publish_out" | tail -1)
 RECOVERY_BRANCH=$(awk -F= '$1=="RECOVERY_BRANCH"{print $2}' "$publish_out" | tail -1)
+publish_failure_logged=false
 
 if [[ "$publish_rc" -ne 0 && -z "$PUBLISH_OK" ]]; then
     log_failure "design-log-publish.sh" "$publish_err"
@@ -222,12 +230,13 @@ if [[ "$publish_rc" -ne 0 && -z "$PUBLISH_OK" ]]; then
 fi
 if [[ "$publish_rc" -ne 0 && "$PUBLISH_OK" == "true" ]]; then
     log_failure "design-log-publish.sh" "$publish_err"
+    publish_failure_logged=true
     PUBLISH_OK=false
     RECOVERY_BRANCH=""
 fi
 
 if [[ "$PUBLISH_OK" != "true" ]]; then
-    log_failure "design-log-publish.sh" "$publish_err"
+    [[ "$publish_failure_logged" == true ]] || log_failure "design-log-publish.sh" "$publish_err"
     if [[ -n "$RECOVERY_BRANCH" ]]; then
         if [[ "$RECOVERY_BRANCH" == "larch-log-design-$RUN_ID" || "$RECOVERY_BRANCH" == "larch-log-design-recovery-$RUN_ID" ]]; then
             printf 'LOG_RECOVERY_BRANCH=%s\n' "$RECOVERY_BRANCH" >> "$state_tmp"

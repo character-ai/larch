@@ -225,6 +225,23 @@ for bad_repo in /abs bad..repo a/b/c --owner/repo 'owner\repo' ../repo; do
     assert_rc "invalid --repo $bad_repo" 2 "$rc"
 done
 
+D_BAD_RESOLVED_REPO="$TMP/bad-resolved-repo"
+setup_design_tmp "$D_BAD_RESOLVED_REPO"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export RESOLVE_REPO_VALUE=bad..repo
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_BAD_RESOLVED_REPO" --issue 1 --session-id x --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "invalid resolved repo" 2 "$rc"
+if grep -q 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then
+    fail "invalid resolved repo must fail before plan-block-write"
+else
+    pass "invalid resolved repo fails before plan-block-write"
+fi
+
 # --- missing step-5b ---
 D_PRE="$TMP/pre-5b"
 setup_design_tmp "$D_PRE"
@@ -530,6 +547,18 @@ if grep -q 'design-reentry-marker-write' "$CALL_LOG"; then
     fail "reentry marker should be skipped on PUBLISH_OK=false"
 else
     pass "reentry marker skipped on PUBLISH_OK=false"
+fi
+rm -f "$D_PFAIL/.completed/step-5c"
+PUBLISH_OK="$(awk -F= '$1=="PUBLISH_OK"{print $2}' "$D_PFAIL/.design-publish-result.env" | tail -1)"
+SESSION_ID=sid
+if [[ "$SESSION_ID" == "" || "$PUBLISH_OK" == true ]]; then
+    mkdir -p "$D_PFAIL/.completed"
+    : >"$D_PFAIL/.completed/step-5c"
+fi
+if [[ -e "$D_PFAIL/.completed/step-5c" ]]; then
+    fail "orchestrator sentinel simulation must withhold step-5c on failed publish"
+else
+    pass "orchestrator sentinel simulation withholds step-5c on failed publish"
 fi
 
 # --- unexpected publish (nonzero, no PUBLISH_OK line) ---

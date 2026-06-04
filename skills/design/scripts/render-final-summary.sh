@@ -432,11 +432,6 @@ compose_self_fallback() {
         else
             printf -- '- **Issue**: N/A\n'
         fi
-        if [ "$OUTCOME" = "failed-publish" ]; then
-            append_failed_publish_notes /dev/stdout
-        elif [ "$OUTCOME" = "publish-skipped" ]; then
-            printf '%s\n' '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.'
-        fi
         printf -- '- **Plan review**: %s\n' "${PLAN_LINE:-N/A}"
         if [ "${OOS_COUNT:-0}" != "0" ] && [ -n "${OOS_URLS:-}" ] && [ "${OOS_URLS:-}" != "N/A" ]; then
             printf -- '- **OOS filed**: %s — %s\n' "$OOS_COUNT" "$OOS_URLS"
@@ -448,6 +443,11 @@ compose_self_fallback() {
         printf -- "- **Run logs**: \`%s\`\n\n" "${RUN_LOGS_PATH:-N/A}"
         printf '%s\n' '<!-- larch:run-summary v=1 -->'
         printf '%s\n' '<!-- larch:final-summary-fallback v1 -->'
+        if [ "$OUTCOME" = "failed-publish" ]; then
+            append_failed_publish_notes /dev/stdout
+        elif [ "$OUTCOME" = "publish-skipped" ]; then
+            printf '%s\n' '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.'
+        fi
         if [ "$OUTCOME" = "cancelled-outline" ]; then
             printf '%s\n' '- **Cancel site**: Step 1d.7 outline gate'
         fi

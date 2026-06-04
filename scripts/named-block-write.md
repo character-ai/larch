@@ -31,6 +31,7 @@ body back with `MODE=absent-noop`.
 
 - Success: `WRITTEN=true`, `MODE=appended|replaced|removed|absent-noop`, `MARKERS_PRESENT=true|false` (pre-edit), `BODY_BYTES=<n>`, exit 0.
 - Malformed current body: `MALFORMED=multiple-start|multiple-end|start-without-end|end-without-start|end-before-start`, exit 1.
+- Invalid `--repo` or malformed resolved repo: `FAILED=true`, `ERROR=invalid-repo`, exit 1.
 - `gh` failure: `FAILED=true`, `ERROR=...`, exit 2.
 - Redaction helper missing / failure: `FAILED=true`, `ERROR=...`, exit 3.
 
