@@ -161,9 +161,12 @@ PREPARE_DIR="$(dirname "$PR_LIST_FILE")"
 STEP7_STATE="$PREPARE_DIR/release-step7.env"
 CONE_RECONCILED=false
 NEW_VERSION_INSTALLED=false
+RESTART_REQUIRED=false
 RESOLVED_ROOT=""
 
-# Resolve RESOLVED_ROOT using the ordering above before this point.
+# shellcheck source=skills/upgrade-larch/scripts/upgrade-larch.sh
+source "$PWD/skills/upgrade-larch/scripts/upgrade-larch.sh"
+RESOLVED_ROOT=$(resolve_release_step7_root "${CURRENT_VERSION:-}" 2>/dev/null || true)
 
 if [ -n "$RESOLVED_ROOT" ]; then
   echo "Applying the just-released larch sparse allowlist through the working-tree upgrade script..."
@@ -172,13 +175,17 @@ if [ -n "$RESOLVED_ROOT" ]; then
     CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" bash "$PWD/skills/upgrade-larch/scripts/upgrade-larch.sh" 2>&1
   ) || upgrade_rc=$?
   printf '%s\n' "$upgrade_out"
-  if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]]; then
-    CONE_RECONCILED=true
-  fi
-  if [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
-    NEW_VERSION_INSTALLED=true
-  fi
-  if [ "$upgrade_rc" -ne 0 ]; then
+  if [ "$upgrade_rc" -eq 0 ]; then
+    if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]]; then
+      CONE_RECONCILED=true
+    fi
+    if [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
+      NEW_VERSION_INSTALLED=true
+    fi
+    if [[ "$upgrade_out" == *"LARCH_RESTART_REQUIRED=true"* ]]; then
+      RESTART_REQUIRED=true
+    fi
+  else
     echo "Warning: working-tree upgrade-larch failed during local install refresh; continuing to cleanup."
   fi
 else
@@ -187,21 +194,22 @@ else
   # /upgrade-larch via the Skill tool (bare name first; fall back to
   # larch:upgrade-larch on Unknown skill) and warn if that fallback is the only
   # available path, because it may be the stale installed implementation. Capture
-  # the fallback output; if it includes LARCH_CONE_RECONCILED=true or
-  # LARCH_NEW_VERSION_INSTALLED=true, set the matching state variable before the
-  # env file is written.
+  # the fallback output; if it includes LARCH_CONE_RECONCILED=true,
+  # LARCH_NEW_VERSION_INSTALLED=true, or LARCH_RESTART_REQUIRED=true, set the
+  # matching state variable before the env file is written.
 fi
 
 tmp_state="$STEP7_STATE.tmp"
 {
   printf 'CONE_RECONCILED=%s\n' "$CONE_RECONCILED"
   printf 'NEW_VERSION_INSTALLED=%s\n' "$NEW_VERSION_INSTALLED"
+  printf 'RESTART_REQUIRED=%s\n' "$RESTART_REQUIRED"
   printf 'RESOLVED_ROOT=%s\n' "$RESOLVED_ROOT"
 } > "$tmp_state"
 mv "$tmp_state" "$STEP7_STATE"
 ```
 
-If metadata names a newer install than the active `CLAUDE_PLUGIN_ROOT`, still run against the active root from item 1; the upgrade script protects both the active `INSTALLED_VERSION` (from `PLUGIN_ROOT`) and the target version during prune. If the working-tree invocation fails, warn and continue to Step 8; the release is already published, so a local-install upgrade hiccup must not strand the operator on the release branch. If no root is resolvable and the Skill-tool fallback is used, record `CONE_RECONCILED=false` and `NEW_VERSION_INSTALLED=false` unless the captured fallback output explicitly includes the corresponding machine-readable line.
+If metadata names a newer install than the active `CLAUDE_PLUGIN_ROOT`, still run against the active root from item 1; the upgrade script protects both the active `INSTALLED_VERSION` (from `PLUGIN_ROOT`) and the target version during prune. If the working-tree invocation fails, warn and continue to Step 8; the release is already published, so a local-install upgrade hiccup must not strand the operator on the release branch. If no root is resolvable and the Skill-tool fallback is used, record `CONE_RECONCILED=false`, `NEW_VERSION_INSTALLED=false`, and `RESTART_REQUIRED=false` unless the captured fallback output explicitly includes the corresponding machine-readable line.
 
 ## Step 8 — Local cleanup (post-merge teardown)
 
@@ -240,16 +248,19 @@ Before the restart message, re-derive `PREPARE_DIR` from the prepare artifacts a
 PREPARE_DIR="$(dirname "$PR_LIST_FILE")"
 CONE_RECONCILED=false
 NEW_VERSION_INSTALLED=false
+RESTART_REQUIRED=false
 STEP7_STATE="$PREPARE_DIR/release-step7.env"
 if [ -f "$STEP7_STATE" ]; then
   CONE_RECONCILED=$(awk -F= '$1=="CONE_RECONCILED"{print $2; exit}' "$STEP7_STATE")
   NEW_VERSION_INSTALLED=$(awk -F= '$1=="NEW_VERSION_INSTALLED"{print $2; exit}' "$STEP7_STATE")
+  RESTART_REQUIRED=$(awk -F= '$1=="RESTART_REQUIRED"{print $2; exit}' "$STEP7_STATE")
   CONE_RECONCILED=${CONE_RECONCILED:-false}
   NEW_VERSION_INSTALLED=${NEW_VERSION_INSTALLED:-false}
+  RESTART_REQUIRED=${RESTART_REQUIRED:-false}
 fi
 ```
 
-If `NEW_VERSION_INSTALLED=true` or `CONE_RECONCILED=true`, tell the operator to restart Claude Code after cleanup finishes. A same-version sparse-cone repair still leaves stale in-memory plugin state until restart; do not limit the restart instruction to `NEW_VERSION != CURRENT_VERSION`.
+If `NEW_VERSION_INSTALLED=true`, `CONE_RECONCILED=true`, or `RESTART_REQUIRED=true`, tell the operator to restart Claude Code after cleanup finishes. A same-version sparse-cone repair still leaves stale in-memory plugin state until restart; do not limit the restart instruction to `NEW_VERSION != CURRENT_VERSION`.
 
 ## Script index
 

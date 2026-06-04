@@ -6,6 +6,10 @@ SCRIPT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$SCRIPT_ROOT}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+if [ ! -f "$SCRIPT_ROOT/scripts/lib-sparse-dirs.sh" ]; then
+    larch_err "ERROR: sparse allowlist library not found at $SCRIPT_ROOT/scripts/lib-sparse-dirs.sh"
+    exit 1
+fi
 # shellcheck source=scripts/lib-sparse-dirs.sh
 source "$SCRIPT_ROOT/scripts/lib-sparse-dirs.sh"
 larch_quiet_init
@@ -150,6 +154,81 @@ get_installed_larch_version() {
         return 0
     fi
 
+    return 1
+}
+
+is_cache_shaped_larch_root() {
+    local root="$1" version
+
+    [ -n "$root" ] || return 1
+    case "$root" in
+        "$HOME/.claude/plugins/cache/larch-local/larch/"*) ;;
+        *) return 1 ;;
+    esac
+    [ -d "$root" ] || return 1
+    version=$(basename "$root")
+    is_safe_version "$version"
+}
+
+single_larch_cache_version_dir() {
+    local cache_parent="$HOME/.claude/plugins/cache/larch-local/larch"
+    local dir found="" count=0 version
+
+    shopt -s nullglob
+    for dir in "$cache_parent"/*; do
+        [ -d "$dir" ] || continue
+        version=$(basename "$dir")
+        is_safe_version "$version" || continue
+        found="$dir"
+        count=$((count + 1))
+    done
+    shopt -u nullglob
+    [ "$count" -eq 1 ] || return 1
+    printf '%s\n' "$found"
+}
+
+resolve_release_step7_root() {
+    local current_version="${1:-}"
+    local installed_version active_root cache_parent metadata_root current_root sole_root
+
+    active_root="${CLAUDE_PLUGIN_ROOT:-}"
+    if is_cache_shaped_larch_root "$active_root"; then
+        printf '%s\n' "$active_root"
+        return 0
+    fi
+
+    cache_parent="$HOME/.claude/plugins/cache/larch-local/larch"
+    installed_version=$(get_installed_larch_version || true)
+    if is_safe_version "${installed_version:-}"; then
+        metadata_root="$cache_parent/$installed_version"
+        if [ -d "$metadata_root" ]; then
+            printf '%s\n' "$metadata_root"
+            return 0
+        fi
+    fi
+
+    if is_safe_version "${current_version:-}"; then
+        current_root="$cache_parent/$current_version"
+        if [ -d "$current_root" ]; then
+            if [ -n "${installed_version:-}" ] && [ "$current_version" = "$installed_version" ]; then
+                printf '%s\n' "$current_root"
+                return 0
+            fi
+            if [ -z "${installed_version:-}" ]; then
+                sole_root=$(single_larch_cache_version_dir 2>/dev/null || true)
+                if [ "$sole_root" = "$current_root" ]; then
+                    printf '%s\n' "$current_root"
+                    return 0
+                fi
+            fi
+        fi
+    fi
+
+    sole_root=$(single_larch_cache_version_dir 2>/dev/null || true)
+    if [ -n "$sole_root" ]; then
+        printf '%s\n' "$sole_root"
+        return 0
+    fi
     return 1
 }
 
@@ -434,12 +513,14 @@ if [ -n "$LATEST_STABLE" ]; then
     fi
 fi
 
-if [ "$MARKETPLACE_CONE_WILL_RECONCILE" = true ]; then
+if [ "$MARKETPLACE_CONE_WILL_RECONCILE" = true ] && marketplace_sparse_cone_matches; then
     larch_err "LARCH_CONE_RECONCILED=true"
 fi
-if is_safe_version "${ACTUAL_VERSION:-}" && \
-   [ "$ACTUAL_VERSION" != "${CURRENT_INSTALLED_VERSION:-}" ] && \
-   { [ -z "$LATEST_STABLE" ] || [ "$VERIFIED_TARGET" = true ]; }; then
+if [ -z "$LATEST_STABLE" ]; then
+    larch_err "LARCH_RESTART_REQUIRED=true"
+elif [ "$VERIFIED_TARGET" = true ] && \
+     is_safe_version "${ACTUAL_VERSION:-}" && \
+     [ "$ACTUAL_VERSION" != "${CURRENT_INSTALLED_VERSION:-}" ]; then
     larch_err "LARCH_NEW_VERSION_INSTALLED=true"
 fi
 
