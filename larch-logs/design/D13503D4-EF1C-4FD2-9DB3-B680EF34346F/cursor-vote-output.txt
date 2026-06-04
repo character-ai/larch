@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan Summary already explicitly defers the turn-reduction goal and reconciles scope.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- run-step3-review.sh plan section already specifies the full sentinel contract for implementers.
+FINDING_6: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Non-header stub coverage is planned; bare missing plan.txt without the exact warning string is still absent.
+FINDING_7: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Files list covers most docs but step 6 drift sweep and docs/linting.md make test-run-step3-review row remain underspecified.

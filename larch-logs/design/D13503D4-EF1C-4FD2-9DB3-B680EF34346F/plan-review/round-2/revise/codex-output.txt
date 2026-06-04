@@ -1,0 +1,273 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -34,11 +34,25 @@
+   `phase_driver_write_result_env` write, and WARN emits. Preview mode must not
+   gate or reorder the cap/persist logic.
++- Parse mode before review validation/canonicalization. `--preview-only`
++  requires only `--design-tmpdir`, does not require `--round-cap`, does not
++  `cd`/canonicalize the tmpdir before calling the renderer, and passes the raw
++  tmpdir through so the renderer can produce its allowlist / missing-tmpdir
++  warnings. Full tmpdir validation and `--round-cap` remain review-mode
++  (`--no-preview`) requirements.
+ - If no safe non-symlink result env was loaded, stdout fallback KVs are parsed
+   in order and later allowlisted values overwrite earlier values so terminal
+   driver KVs win over any earlier diagnostic-looking lines. A safely read
+   result env keeps file-first precedence.
++- The stdout fallback allowlist is exactly: `LOOP_STATUS`,
++  `TALLY_PLAN_REVIEW_STATUS`, `STEP3_REVIEW_CAP_REACHED`,
++  `STEP3_REVIEW_ROUND_NUM`, `ROUND_NUM`, `ACCEPTED_COUNT`,
++  `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `ROUNDS_COMPLETED`,
++  `AGGREGATOR_STATUS`, `VOTING_TALLY_FILE`, and `REVIEW_ROUND_COUNT`.
++  `WARN` is replayed as display-only, not as state.
+ - `assert_thin_fence` (added in Phase 1) forbids the literal
+   `is a symlink; refusing to source` in the scoped region and requires the
+-  region's entry pause guard to thread `${REPO:+--repo "$REPO"}`. The thin Step
+-  3 fence therefore guards the result-env read with `! -L` (no message) and
+-  threads `${REPO:+--repo "$REPO"}` into the Step 3 pause guard.
++  region's first entry pause guard to thread `${REPO:+--repo "$REPO"}`. The
++  thin Step 3 fence therefore guards the result-env read with
++  `-f ... && ! -L ...` (no message) and threads `${REPO:+--repo "$REPO"}` into
++  the timing-ledger Step 3 entry pause guard as well as the review fences.
+ - Sentinel ownership moves to the driver preview mode:
+   `emit-design-plan-preview.sh --variant step3` becomes a pure renderer;
+   `run-step3-review.sh --preview-only` checks and touches
+@@ -49,7 +63,7 @@
+ 
+ ### UPDATED: `skills/design/scripts/run-step3-review.sh`
+ 
+-- After argv parse, `DESIGN_TMPDIR` resolution, and `CLAUDE_PLUGIN_ROOT`
++- After argv parse, before review-mode validation/canonicalization, and after `CLAUDE_PLUGIN_ROOT`
+   resolution, add preview-mode support:
+   - Parse `--preview-only` and `--no-preview`.
+   - Resolve the renderer path with a test seam:
+@@ -58,15 +72,19 @@
+   - In `--preview-only`, render the first-entry preview live and exit before
+     cap/persist/review logic. When `.step3-entry-plan-printed` is absent,
+     capture the renderer stdout (`_preview_out=$("$_preview_sh" --design-tmpdir
+-    "$DESIGN_TMPDIR" --variant step3)` guarded with `set +e`/`|| true`),
+-    then `emit "$_preview_out"` when non-empty.
++    "$RAW_DESIGN_TMPDIR" --variant step3)` guarded with `set +e`/`|| true`),
++    then `emit "$_preview_out"` when non-empty. Do not require `--round-cap`,
++    do not `cd`/canonicalize `$RAW_DESIGN_TMPDIR`, and do not fail before the
++    renderer can emit allowlist / invalid-tmpdir warnings.
+   - Touch `.step3-entry-plan-printed` only when the renderer output contains
+-    `## Plan Candidate for Review` or when the driver can verify the documented
+-    missing/empty `plan.txt` path (`[[ ! -s "$DESIGN_TMPDIR/plan.txt" ]]`).
+-    Never touch the sentinel for renderer allowlist failures or missing/invalid
+-    tmpdir warnings.
++    `## Plan Candidate for Review` or the renderer's exact documented
++    missing/empty-plan warning for `plan.txt`. Never use a bare filesystem
++    `[[ ! -s .../plan.txt ]]` check after renderer failure; never touch the
++    sentinel for allowlist failures, missing/invalid tmpdir warnings, or
++    non-header renderer output.
+     When the sentinel is present, skip the render (re-entry suppression).
+   - In `--no-preview`, run only the existing review path; do not render or
+-    capture preview text.
++    capture preview text. `--round-cap` and canonical tmpdir validation remain
++    required here.
+ - Keep ALL existing behavior unchanged: cap guard, symlink-safe round cleanup,
+   HARD round-cursor read/advance, pending-round persist, `plan-review-loop.sh`
+   launch, inner result-env parse, `review-round-count.txt` persist/rollback,
+@@ -78,7 +96,9 @@
+ 
+ - Add preview mode as responsibility 0 (`--preview-only`; live FD-3 via
+   `emit`; driver owns `.step3-entry-plan-printed`).
+-- Document `--preview-only`, `--no-preview`, and the
++- Document `--preview-only` as requiring only `--design-tmpdir` and deliberately
++  bypassing review-mode `--round-cap` / canonical tmpdir validation so renderer
++  warnings can surface. Document `--no-preview`, `--round-cap`, and the
+   `RUN_STEP3_EMIT_PREVIEW_SH` override seam.
+ - Note the caller relationship: `SKILL.md` Step 3 no longer runs a separate
+   direct `emit-design-plan-preview.sh --variant step3` fence; it invokes the
+@@ -112,20 +132,28 @@
+ - Remove the separate `emit-design-plan-preview.sh --variant step3` Bash fence
+   and replace it with a preview-only driver fence:
+   `run-step3-review.sh --preview-only ...`. Keep this as a separate live fence
+-  before the captured review driver so `## Plan Candidate for Review` appears
+-  before the long-running review and the large-plan summary / "show full plan"
+-  interrupt behavior is preserved.
++  before the captured review driver, and do not pass `--round-cap` to this
++  preview-only call. `## Plan Candidate for Review` must appear before the
++  long-running review and the large-plan summary / "show full plan" interrupt
++  behavior must be preserved.
+ - Keep a `## Plan Candidate for Review` reference in the Step 3 prose so the
+   structure-test anchor (Check 18) and operator-visible contract survive.
+ - Collapse the result-env consumption to the thin-fence shape:
+   `set +e; _plan_review_out=$(run-step3-review.sh --no-preview ...);
+   _plan_review_rc=$?;
+   set -e`; echo the non-KV display lines from the capture; read
+-  `.step3-review-result.env` guarded by `! -L` (no `is a symlink; refusing to
+-  source` string); fall back to the driver's stdout KVs for missing keys
+-  (and rc!=0 LOOP_STATUS/TALLY override); re-emit `WARN` lines; warn on exit 2;
+-  normalize an empty/invalid `LOOP_STATUS` to `panel-failed`.
++  `.step3-review-result.env` guarded by
++  `[[ -f "$DESIGN_TMPDIR/.step3-review-result.env" && ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]`
++  (no `is a symlink; refusing to source` string); fall back to the driver's
++  stdout KVs for missing keys (and rc!=0 LOOP_STATUS/TALLY override); re-emit
++  `WARN` lines as display-only; warn on exit 2; normalize an empty/invalid
++  `LOOP_STATUS` to `panel-failed`.
+ - In stdout fallback, parse allowlisted KVs in stream order and allow later KVs
+   to overwrite earlier fallback values only when the safe result env was not
+-  loaded; keep safe result-env values authoritative otherwise.
++  loaded; keep safe result-env values authoritative otherwise. The exact
++  allowlist is `LOOP_STATUS`, `TALLY_PLAN_REVIEW_STATUS`,
++  `STEP3_REVIEW_CAP_REACHED`, `STEP3_REVIEW_ROUND_NUM`, `ROUND_NUM`,
++  `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`,
++  `ROUNDS_COMPLETED`, `AGGREGATOR_STATUS`, `VOTING_TALLY_FILE`, and
++  `REVIEW_ROUND_COUNT`.
+ - Thread `${REPO:+--repo "$REPO"}` into the Step 3 entry pause guard(s) so
+   `assert_thin_fence` passes (matches Step 3.6 / Step 3b guards). Keep the
+   timing-ledger mark before the driver call.
+@@ -135,19 +163,25 @@
+ 
+ ### UPDATED: `skills/design/scripts/test-step3-orchestrator-fence.sh`
+ 
+-- Update `apply_step3_handoff` to mirror the thin fence: echo non-KV display
+-  lines, read the result env via the `! -L` guard, stdout fallback for missing
+-  keys, later-stdout-KV-wins fallback ordering when no safe env was loaded,
+-  rc!=0 LOOP_STATUS/TALLY override, `LOOP_STATUS` normalization, rc=2
+-  short-circuit.
++- Update `apply_step3_handoff` to mirror the thin fence: echo non-KV display
++  lines, read the result env via the
++  `-f "$DESIGN_TMPDIR/.step3-review-result.env" && ! -L ...` guard, stdout
++  fallback for missing keys, later-stdout-KV-wins fallback ordering when no
++  safe env was loaded, rc!=0 LOOP_STATUS/TALLY override, `LOOP_STATUS`
++  normalization, rc=2 short-circuit.
+ - Add a case asserting non-preview display lines in the captured stream are
+   echoed to chat while allowlisted KV lines are parsed (not echoed).
+ - Add a case where an early allowlisted-looking stdout line is superseded by the
+-  driver's later terminal KV when no safe result env was loaded.
++  driver's later terminal KV when no safe result env was loaded; the early line
++  must look like plan-body text using one of the exact allowlisted keys, and
++  the later line must use the same key.
++- Pin the stdout fallback allowlist to exactly the 12 driver result keys named
++  in the SKILL.md section, with `WARN` replayed as display-only.
+ - Keep the symlink-result-env -> stdout-fallback case (now via `! -L` skip
+   rather than the removed `refusing to source` message) and the existing
+   rc/merge/normalize cases.
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+ 
+ - Apply `assert_thin_fence "$SKILL_MD" 'SKILL Step 3 thin-fence shape'
+   '<!-- step:3 —' '<!-- step:3.5'`.
++- Add/adjust the Step 3 pin so the first `design-pause-save` line in that
++  region (the timing-ledger fence) includes `${REPO:+--repo "$REPO"}`.
+ - Remove obsolete fat-shape Step 3 pins that conflict with the thin fence
+   (any pin asserting the removed separate `--variant step3` fence in `SKILL.md`
+   or the `refusing to source` orchestrator string).
+@@ -155,8 +189,10 @@
+   `-f "$DESIGN_TMPDIR/.step3-review-result.env"`, `WARN) printf`,
+   missing/invalid LOOP_STATUS -> panel-failed, `configuration error (exit 2)`,
+   `_plan_review_rc=$?`.
++- Pin the safe result-env guard as both `-f` and `! -L`, not `! -L` alone, and
++  pin the exact 12-key stdout fallback allowlist.
+ - Add a pin that `run-step3-review.sh` renders the step3 preview and owns the
+   sentinel (e.g. references `emit-design-plan-preview` / `--variant step3` and
+   `.step3-entry-plan-printed`), and a pin that the `RUN_STEP3_EMIT_PREVIEW_SH`
+@@ -167,18 +203,23 @@
+ - Add coverage: `--preview-only` first Step 3 entry renders
+   `## Plan Candidate for Review` to live stdout and creates
+   `.step3-entry-plan-printed`; a second `--preview-only` entry with the
+   sentinel present suppresses the preview; render uses the
+-  `RUN_STEP3_EMIT_PREVIEW_SH` seam (stub) so the harness is hermetic.
++  `RUN_STEP3_EMIT_PREVIEW_SH` seam (stub) so the harness is hermetic. Assert
++  `--preview-only` succeeds without `--round-cap`.
+ - Add coverage that `--no-preview` captured review output contains only the
+   driver KV/WARN stream, not plan preview text, including a plan body with a
+   fake allowlisted `LOOP_STATUS=...` line.
+ - Add coverage for missing/empty `plan.txt`: warning emitted, sentinel created,
+-  and a subsequent `--no-preview` review still proceeds.
++  and a subsequent `--no-preview` review still proceeds. The sentinel assertion
++  must be driven by the renderer's exact missing/empty-plan warning, not by a
++  bare filesystem check after a failed render.
+ - Add coverage mirroring the disallowed-tmpdir/allowlist harness case: preview
+   warning is emitted but `.step3-entry-plan-printed` is not created.
++- Add a hermetic `RUN_STEP3_EMIT_PREVIEW_SH` case where the stub prints
++  non-empty non-header output and exits non-zero; assert the live output is
++  emitted, the sentinel is not created, and a later valid preview-only run still
++  renders the header and creates the sentinel.
+ - Keep every existing KV / cap / persist-rollback / symlink-outer-fallback /
+   normalization assertion green.
+@@ -225,15 +266,18 @@
+ ## Approach
+ 
+ 1. Add `--preview-only` / `--no-preview` plus sentinel ownership to
+-   `run-step3-review.sh` (`emit`, `RUN_STEP3_EMIT_PREVIEW_SH` seam); keep
+-   KV/result-env/persist logic intact.
++   `run-step3-review.sh` (`emit`, `RUN_STEP3_EMIT_PREVIEW_SH` seam); parse mode
++   before validation, exempt preview-only from `--round-cap`, pass raw
++   `--design-tmpdir` to the renderer, and keep KV/result-env/persist logic
++   intact in review mode.
+ 2. Strip the sentinel logic from the `emit-design-plan-preview.sh` `step3`
+    variant (pure renderer); leave `gatec` untouched.
+ 3. Update `SKILL.md` Step 3: replace the direct renderer fence with a live
+    preview-only driver fence, then thin the captured review fence (`--no-preview`):
+    echo captured non-KV diagnostics, single `! -L`-guarded result-env read,
+-   ordered stdout fallback, thread REPO into the pause guard, retain the
+-   `## Plan Candidate for Review` prose anchor.
++   ordered stdout fallback, exact 12-key allowlist plus display-only `WARN`,
++   `-f && ! -L` result-env guard, thread REPO into the timing-ledger pause
++   guard, retain the `## Plan Candidate for Review` prose anchor.
+ 4. Update the three harnesses (`test-step3-orchestrator-fence.sh`,
+    `test-run-step3-review.sh`, `test-emit-design-plan-preview.sh`) and
+    `test-design-structure.sh` (apply `assert_thin_fence`, swap fat pins for
+@@ -252,8 +296,8 @@
+   as today (symlink -> stdout fallback), now without the forbidden
+   `refusing to source` message.
+ - **Missing/empty `plan.txt` at Step 3**: the renderer prints its warning and
+-  exits 0; `--preview-only` touches the sentinel for this documented path and
+-  the subsequent `--no-preview` call proceeds to review.
++  exits 0; `--preview-only` touches the sentinel only after seeing that exact
++  warning and the subsequent `--no-preview` call proceeds to review.
+ - **Allowlist-invalid or missing/invalid tmpdir preview warning**: preview mode
+   emits the warning but does not create `.step3-entry-plan-printed`, so a later
+   valid Step 3 entry can still show the preview.
+@@ -264,7 +308,7 @@
+ - **Plan body line resembling an allowlisted `KEY=value`**: theoretical
+   mis-parse is avoided for preview text because preview is not in the captured
+   review stream; fallback parsing also lets later terminal KVs win when no safe
+-  result env was loaded.
++  result env was loaded, and only the exact 12-key result allowlist is parsed.
+ 
+ ## Failure modes
+ 
+@@ -290,7 +334,13 @@
+   `${REPO:+--repo "$REPO"}` or the region keeps `refusing to source`. Signal:
+   `scripts/test-design-structure.sh` Step 3 thin-fence assertion. Mitigation:
+   thread REPO; `! -L` guard with no forbidden string.
++- **Preview-only validation regression** — `--preview-only` starts sharing
++  review-mode validation again and fails before rendering due to missing
++  `--round-cap`, failed `cd`, or invalid tmpdir. Signal:
++  `test-run-step3-review.sh` preview-without-round-cap and invalid-tmpdir
++  warning cases fail. Mitigation: mode-first parse; preview-only requires only
++  raw `--design-tmpdir`.
+ 
+ ## Testing strategy
+ 
+ - `test-run-step3-review.sh`: `--preview-only` first-entry preview render +
+   sentinel create, re-entry suppression, `RUN_STEP3_EMIT_PREVIEW_SH` seam,
+   `--no-preview` excludes preview/fake-KV plan text, missing/empty-plan warning
+-  creates sentinel, disallowed tmpdir warning does not; existing
++  creates sentinel only via the exact warning, disallowed tmpdir warning does
++  not, no-round-cap preview succeeds, non-header failing stub emits output but
++  does not create sentinel and a later valid preview still renders; existing
+   KV/cap/persist/symlink-fallback/normalization assertions stay green.
+ - `test-step3-orchestrator-fence.sh`: thin-fence `apply_step3_handoff` (echo
+   display + retained parse), display-echo assertion, later-KV-wins fallback,
+-  symlink->stdout fallback.
++  exact 12-key allowlist plus display-only `WARN`, symlink->stdout fallback,
++  missing-file result-env fallback under `set -e`.
+ - `test-emit-design-plan-preview.sh`: `step3` pure-renderer (no sentinel),
+   gatec + threshold cases retained.
+ - `scripts/test-design-structure.sh`: `assert_thin_fence` on Step 3; retained
+-  anchors; preview/sentinel/seam pins; fat-shape pins removed.
++  anchors; preview/sentinel/seam pins; timing-ledger REPO pin; `-f && ! -L`
++  result-env guard pin; fat-shape pins removed.
+ - `make lint`, `scripts/test-design-multi-round-integration.sh`, and updated
+   drift-doc pins green.
+@@ -306,4 +356,4 @@
+ - Review panel, cap guard, round-cursor, branch matrix, and SIMPLE/HARD
+   semantics.
+ 
+-diff_lines: 210
++diff_lines: 235

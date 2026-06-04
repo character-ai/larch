@@ -1,0 +1,13 @@
+Round II of /design refactor, Phase 2: fold Step 3 preview into review driver
+
+**Context.** Part of Round II of the `/design` refactor (rationale in Phase 1). Adopts the Phase 1 thin-fence contract for Step 3.
+
+**Problem.** Step 3 emits the plan preview in its own Bash turn (`emit-design-plan-preview.sh --variant step3`, `SKILL.md:1027-1033`) immediately before the review driver (`run-step3-review.sh`, `SKILL.md:1057-1103`), with no LLM judgment between them — `run-step3-review.md` itself notes it runs "after timing + plan preview". Separately the Step 3 result-env consumption (`SKILL.md:1066-1103`) is ~37 lines of hand-rolled parsing.
+
+**Change.** Make the step3 plan preview the first action inside `run-step3-review.sh` (let the driver own the `.step3-entry-plan-printed` first-entry sentinel), removing the separate preview turn. Then collapse the Step 3 consumption fence to the thin-fence contract.
+
+**Why.** Step 3 re-enters on Gate C "Re-run review panel" and the Gate B(c)/Gate C(b) -> Gate A -> Step 3 loops, so this removes 1 turn **per Step 3 entry** (2-5x on contested/HARD runs), plus the per-turn byte/determinism win from thinning the fence.
+
+**Scope / acceptance.** `run-step3-review.{sh,md}` + `emit-design-plan-preview.{sh,md}` updated; Step 3 fence thinned; `test-step3-orchestrator-fence.sh` + `test-design-structure.sh` updated; preview still shown before the (long-running) review; harnesses + `make lint` green.
+
+**Dependencies.** Blocked by Phase 1.

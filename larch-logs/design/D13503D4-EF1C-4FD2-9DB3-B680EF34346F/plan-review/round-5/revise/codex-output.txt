@@ -1,0 +1,85 @@
+--- a/plan.txt
++++ b/plan.txt
+@@
+-Review panel / cap guard / branch matrix / SIMPLE-HARD semantics are unchanged. The original per-Step-3-entry turn-reduction goal is deferred because accepted review requires preserving the preview yield.
++Review panel / cap guard / branch matrix semantics / SIMPLE-HARD semantics are unchanged, but the branch-matrix result-source intro is revised to match the new KV precedence contract. The original per-Step-3-entry turn-reduction goal is deferred because accepted review requires preserving the preview yield.
+@@
+-Accepted review revisions (this revision): preview mode parses and runs before `--round-cap` / tmpdir `cd` validation; every Step 3 `design-pause-save.sh` line threads REPO; sentinel read/write/touch is allowlist-gated after live renderer output; omitted mode flags default to `--no-preview` for harness compatibility; result-env read requires `-f` and `! -L`; stdout fallback pins the exact 12 driver KV keys; `docs/issue-anchored-plan.md` updated in the file list; **display echo excludes both the 12-key allowlist and `WARN=` (WARN replay stays parse-only)**; **mutually exclusive mode flags get an argv reject test**; **rc!=0 `LOOP_STATUS`/`TALLY_PLAN_REVIEW_STATUS` stdout override applies only when no safe result env was loaded**; **exit 2 short-circuits before `LOOP_STATUS` normalization**.
++Accepted review revisions (this revision): preview mode parses and runs before `--round-cap` / tmpdir `cd` validation; every Step 3 `design-pause-save.sh` line threads REPO; sentinel read/write/touch is allowlist-gated after live renderer output; omitted mode flags default to `--no-preview` for harness compatibility; result-env read requires `-f` and `! -L`; stdout fallback pins the exact 12 driver KV keys; `docs/issue-anchored-plan.md` updated in the file list; **display pass prints non-KV breadcrumbs verbatim while excluding both the 12-key allowlist and `WARN=` for `KEY=value` lines (WARN replay stays parse-only)**; **mutually exclusive mode flags get an argv reject test**; **rc!=0 `LOOP_STATUS`/`TALLY_PLAN_REVIEW_STATUS` stdout override applies only when no safe result env was loaded**; **exit 2 short-circuits before safe-env read/parse, `LOOP_STATUS` normalization, and post-loop branching with a banner plus fence abort**.
+@@
+-- **Thin-fence display vs parse**: before KV parse, echo captured stdout lines that look like `KEY=value` **only when** `KEY` is not one of the twelve allowlisted keys **and** `KEY` is not `WARN`. `WARN=…` lines are replayed **only** in the parse loops (result-env read + stdout parse), never in the display-echo pass — prevents duplicate WARN breadcrumbs on the typical rc=0 + safe-env path.
+-- **Exit 2 ordering**: when `_plan_review_rc==2`, print the configuration-error banner and **stop handoff** (abort plan review / return 2 from harness) **before** empty/invalid `LOOP_STATUS` normalization to `panel-failed`. Normalization runs only for non-2 exits.
++- **Thin-fence display vs parse**: before KV parse, echo captured stdout non-KV lines verbatim. For captured stdout lines that look like `KEY=value`, echo them **only when** `KEY` is not one of the twelve allowlisted keys **and** `KEY` is not `WARN`. `WARN=…` lines are replayed **only** in the parse loops (result-env read + stdout parse), never in the display-echo pass — prevents duplicate WARN breadcrumbs on the typical rc=0 + safe-env path while preserving human breadcrumbs.
++- **Exit 2 ordering**: when `_plan_review_rc==2`, print the configuration-error banner and **fail closed immediately** (`exit 1` in the SKILL fence / return 2 in the harness) before safe-env read, stdout parse, empty/invalid `LOOP_STATUS` normalization, or any post-loop branch-matrix logic. Normalization runs only for non-2 exits.
++- **Post-loop branch-matrix intro**: revise the Step 3 prose immediately before downstream branching so it states the same source-of-truth rule as this plan: safe non-symlink result env is authoritative and stdout fills only missing keys; when no safe env exists, stdout is primary with later allowlisted KVs winning and the rc!=0 override allowed.
+@@
+-- Add `--preview-only` / `--no-preview` with mode-before-validation, omitted-mode default, mutual-exclusion exit 2, and allowlist-gated sentinel ownership to `run-step3-review.sh`; keep KV/result-env/persist logic intact on `--no-preview`.
++- Add `--preview-only` / `--no-preview` with mode-before-validation, omitted-mode default, mutual-exclusion exit 2, and allowlist-gated sentinel ownership to `run-step3-review.sh`; keep KV/result-env/persist logic intact on `--no-preview`.
+@@
+-- Collapse the result-env consumption to the thin-fence shape:
++- Collapse the result-env consumption to the thin-fence shape:
+   - `set +e; _plan_review_out=$(run-step3-review.sh --no-preview ...); _plan_review_rc=$?; set -e`.
++  - If `_plan_review_rc==2`, print `**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**` and `exit 1` immediately, before display pass, safe-env read, stdout parse, `LOOP_STATUS` normalization, or post-loop branch matrix.
+   - Bind `_step3_safe_env_loaded=false`; set true only after successfully opening a non-symlink `.step3-review-result.env` via `[[ -f … && ! -L … ]]`.
+-  - **Display pass** (before parse): loop `_plan_review_out`; for each `KEY=value` line, `printf` the line only when `KEY` is not in the twelve-key allowlist **and** `KEY != WARN` (human/display lines only; never duplicate WARN).
++  - **Display pass** (before parse): loop `_plan_review_out`; print non-KV lines verbatim; for each `KEY=value` line, `printf` the line only when `KEY` is not in the twelve-key allowlist **and** `KEY != WARN` (human/display lines preserved; never duplicate WARN).
+@@
+-  - If `_plan_review_rc==2`: print `**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**` and **abort plan review before** any empty/invalid `LOOP_STATUS` → `panel-failed` normalization.
++  - Do not let rc=2 load stale/safe `.step3-review-result.env` values or leave `LOOP_STATUS=complete` available to downstream branching.
+   - For `_plan_review_rc!=2`: normalize empty/invalid `LOOP_STATUS` to `panel-failed` as today.
+@@
+-- Leave the post-loop branch matrix, Gate-B-bypass triple-sentinel writes, main-agent-vote path, and `.completed/step-3` sentinel unchanged.
++- Leave the post-loop branch matrix semantics, Gate-B-bypass triple-sentinel writes, main-agent-vote path, and `.completed/step-3` sentinel unchanged; update only the branch-matrix result-source intro sentence to match safe-env-authoritative / no-safe-env-stdout-primary precedence.
+@@
+-- Refactor `apply_step3_handoff` to mirror the thin fence:
++- Refactor `apply_step3_handoff` to mirror the thin fence:
+   - Track `_step3_safe_env_loaded` from `-f && ! -L` result-env read.
+-  - **Display pass** over captured stdout: echo non-allowlisted, non-`WARN` `KEY=value` lines; assert display-echo cases separately.
++  - **Display pass** over captured stdout: echo non-KV lines verbatim and echo only non-allowlisted, non-`WARN` `KEY=value` lines; assert display-echo cases separately.
+@@
+-  - `rc=2`: return 2 **before** `LOOP_STATUS` normalization (retain `D8`; assert normalized `LOOP_STATUS` is not consulted on rc=2 path).
++  - `rc=2`: return 2 **before** safe-env read/parse, `LOOP_STATUS` normalization, and branchable state (retain `D8`; assert normalized `LOOP_STATUS` is not consulted on rc=2 path).
++  - Add safe-env + `rc=2` stale-state case: file has `LOOP_STATUS=complete`, stdout has config-error noise, rc=2 → harness returns 2 and does not expose branchable `LOOP_STATUS`.
+   - Add case: captured stdout contains `WARN=foo` + allowlisted KVs → WARN appears once (parse replay only), not in display-echo output.
++  - Add case: captured stdout contains a non-KV warning/breadcrumb line → display pass prints it verbatim.
+@@
+-- Add pins: driver-owned step3 preview/sentinel + `RUN_STEP3_EMIT_PREVIEW_SH` seam; `${REPO:+--repo "$REPO"}` on **every** `design-pause-save.sh` in Step 3; optional pin that rc=2 normalization block follows the exit-2 banner (ordering).
+-- Optionally pin display-pass exclusion: non-allowlisted echo must not duplicate `WARN)` parse replay (grep for display-loop guard or `KEY != WARN` / equivalent in the thin fence region).
++- Add pins: driver-owned step3 preview/sentinel + `RUN_STEP3_EMIT_PREVIEW_SH` seam; `${REPO:+--repo "$REPO"}` on **every** `design-pause-save.sh` in Step 3; rc=2 banner is followed by a fence abort before result-env read/parse and before normalization.
++- Optionally pin display-pass behavior: non-KV lines are printed verbatim, while non-allowlisted `KEY=value` echo must not duplicate `WARN)` parse replay (grep for display-loop guard plus `KEY != WARN` / equivalent in the thin fence region).
+@@
+-- Add stub cases: non-header body no sentinel then successful re-render; missing/empty `plan.txt` warning + sentinel when tmpdir validates; disallowed tmpdir no sentinel; stale sentinel on invalid tmpdir still warns; `--preview-only` without `--round-cap`.
++- Add stub cases: non-header body no sentinel then successful re-render; renderer nonzero exit with non-header body leaves `.step3-entry-plan-printed` absent and does not abort; bare missing `plan.txt` / stubbed missing-plan output without the exact warning string leaves sentinel absent; missing/empty `plan.txt` exact warning + sentinel when tmpdir validates; disallowed tmpdir no sentinel; stale sentinel on invalid tmpdir still warns; `--preview-only` without `--round-cap`.
+@@
+-3. Update `SKILL.md` Step 3: REPO on every pause-save; live `--preview-only`; thin captured `--no-preview` fence with display pass (exclude 12 keys + `WARN`), `-f && ! -L` safe-env binding, file-first precedence, qualified rc!=0 override, exit-2-before-normalize ordering.
++3. Update `SKILL.md` Step 3: REPO on every pause-save; live `--preview-only`; thin captured `--no-preview` fence with display pass (non-KV verbatim; exclude 12 keys + `WARN` for `KEY=value`), immediate rc=2 banner + `exit 1` before safe-env read/parse, `-f && ! -L` safe-env binding, file-first precedence, qualified rc!=0 override, exit-2-before-normalize ordering, and a branch-matrix intro aligned with the KV precedence rule.
+@@
+-4. Update harnesses: `test-step3-orchestrator-fence.sh` mirrors display/parse/precedence/ordering; `test-run-step3-review.sh` adds argv conflict + preview cases; adjust override case to no-safe-env only and add safe-env-wins-on-rc!=0; update structure + emit-preview + multi-round tests.
++4. Update harnesses: `test-step3-orchestrator-fence.sh` mirrors display/parse/precedence/fail-closed ordering; `test-run-step3-review.sh` adds argv conflict + preview + sentinel no-touch cases; adjust override case to no-safe-env only and add safe-env-wins-on-rc!=0 plus stale-safe-env+rc=2 fail-closed coverage; update structure + emit-preview + multi-round tests.
+@@
+-- **Duplicate WARN**: display pass must not echo `WARN=`; parse loops replay once.
++- **Duplicate WARN / hidden breadcrumbs**: display pass must not echo `WARN=`; parse loops replay once; non-KV warning/breadcrumb lines still print verbatim.
+@@
+-- **Exit 2 vs normalization**: config errors must not normalize to `panel-failed`; handoff stops at banner.
++- **Exit 2 vs stale state / normalization**: config errors must not read stale env, normalize to `panel-failed`, or reach post-loop branch logic; handoff stops at banner + fence abort.
+@@
+-- **Re-entry / stale sentinel / allowlist-invalid tmpdir / missing plan.txt / large-plan summary / fake KV in plan body**: unchanged from prior plan; preview not in captured stream; twelve-key allowlist only.
++- **Re-entry / stale sentinel / allowlist-invalid tmpdir / missing plan.txt / renderer nonzero non-header output / large-plan summary / fake KV in plan body**: unchanged from prior plan; preview not in captured stream; twelve-key allowlist only; sentinel touch requires validated tmpdir plus the exact header or exact missing-plan warning.
+@@
+-- **Duplicate WARN breadcrumbs** — display pass echoes `WARN=` and parse replays. Mitigation: exclude `WARN` from display pass (FINDING_1).
++- **Duplicate WARN breadcrumbs** — display pass echoes `WARN=` and parse replays. Mitigation: exclude `WARN` from display pass while still printing non-KV breadcrumbs (accepted display-pass finding).
+@@
+-- **Config error misclassified as panel-failed** — normalization before exit-2 handling. Mitigation: abort handoff before normalize on rc=2 (FINDING_7).
+-- **Display / KV bleed**, **sentinel split-ownership**, **REPO / thin-fence regression**, **doc drift** — mitigations as in prior plan plus new harness cases above.
++- **Config error misclassified as panel-failed or stale complete state** — safe-env read / normalization / branch matrix after exit-2 handling. Mitigation: handle rc=2 immediately after capture with banner + `exit 1`, before parse or branch (accepted rc=2 fail-closed finding).
++- **Non-KV breadcrumb hidden** — display pass only echoes non-allowlisted `KEY=value` lines. Mitigation: print non-KV lines verbatim and suppress only allowlisted KVs + `WARN=`.
++- **Sentinel no-touch gaps** — harness misses renderer nonzero non-header output and bare missing-plan output without exact warning. Mitigation: add stub-seam no-touch assertions.
++- **Display / KV bleed**, **sentinel split-ownership**, **REPO / thin-fence regression**, **doc drift** — mitigations as in prior plan plus new harness cases above.
+@@
+-- `test-run-step3-review.sh`: preview/sentinel/seam/default-mode/**argv mutual exclusion**/`--no-preview` stream purity/tmpdir/plan-warning cases; existing KV/cap/persist/symlink-fallback green.
+-- `test-step3-orchestrator-fence.sh`: display pass (non-KV echo, WARN not echoed), twelve-key parse, file-first + safe-env-wins-on-rc!=0, no-safe-env later-KV-wins + rc!=0 override, WARN-once, rc=2 before normalize, symlink/missing file paths.
++- `test-run-step3-review.sh`: preview/sentinel/seam/default-mode/**argv mutual exclusion**/`--no-preview` stream purity/tmpdir/plan-warning cases, including no-touch coverage for renderer nonzero non-header output and missing-plan output without the exact warning; existing KV/cap/persist/symlink-fallback green.
++- `test-step3-orchestrator-fence.sh`: display pass (non-KV verbatim, non-allowlisted KV echo, WARN not echoed), twelve-key parse, file-first + safe-env-wins-on-rc!=0, no-safe-env later-KV-wins + rc!=0 override, WARN-once, rc=2 before safe-env read/normalize/branchable state, symlink/missing file paths.
+@@
+-diff_lines: 465
++diff_lines: 493

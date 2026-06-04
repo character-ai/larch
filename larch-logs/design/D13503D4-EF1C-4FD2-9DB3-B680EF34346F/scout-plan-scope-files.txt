@@ -1,0 +1,14 @@
+skills/design/scripts/run-step3-review.sh
+skills/design/scripts/run-step3-review.md
+skills/design/scripts/emit-design-plan-preview.sh
+skills/design/scripts/emit-design-plan-preview.md
+skills/design/SKILL.md
+skills/design/scripts/test-step3-orchestrator-fence.sh
+scripts/test-design-structure.sh
+skills/design/scripts/test-run-step3-review.sh
+scripts/test-design-multi-round-integration.sh
+skills/design/scripts/test-emit-design-plan-preview.sh
+docs/configuration-and-permissions.md
+docs/issue-anchored-plan.md
+docs/linting.md
+SECURITY.md
