@@ -1,0 +1,1 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The note is only tangential to the scan-input bullet, but it is explicitly part of the security-docs request and a one-sentence reminder does not warrant another plan change.

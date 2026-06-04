@@ -1,0 +1,20 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -53,8 +53,9 @@
+   are skipped**; manifest or token-report JSON that is invalid or not a JSON
+   object **skips that run** (warning to local stderr); workflow auxiliary JSON
+   (`timing-report*.json`, `run-params.json`) that is invalid or lacks
+-  SIMPLE/HARD classification is **ignored for classification** (warning) and
+-  the run falls back to **unknown** workflow class rather than being dropped;
++  SIMPLE/HARD classification is **ignored for classification** (warning); the
++  run is retained with workflow **unknown** only when no valid SIMPLE/HARD
++  classification is found across all checked auxiliary files (not dropped);
+   `_run_dirs` rejects directories that resolve **outside the
+   `larch-logs/<skill>` base** (path-containment); the repo slug is validated as a
+   safe `OWNER/REPO` shape and rejects `.`/`..` parts; records require a numeric
+@@ -149,4 +150,4 @@
+ - No new test files; no follow-up issue filed; `requirements-test-harnesses.txt`
+   unchanged.
+ 
+-diff_lines: 42
++diff_lines: 43

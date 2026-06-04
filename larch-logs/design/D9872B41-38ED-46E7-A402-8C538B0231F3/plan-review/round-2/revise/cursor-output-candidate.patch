@@ -1,0 +1,31 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -52,9 +52,10 @@
+ - Scan-path defenses: run-dir, JSON-file, token-report, and manifest **symlinks
+   are skipped**; manifest or token-report JSON that is invalid or not a JSON
+   object **skips that run** (warning to local stderr); workflow auxiliary JSON
+-  (`timing-report*.json`, `run-params.json`) that is invalid or lacks
+-  SIMPLE/HARD classification is **ignored for classification** (warning) and
+-  the run falls back to **unknown** workflow class rather than being dropped;
++  (`timing-report*.json`, `run-params.json`): invalid or unclassified auxiliary
++  artifacts are **ignored with a warning** while the scanner keeps checking later
++  auxiliary files; workflow is **unknown** only when no auxiliary yields a valid
++  SIMPLE/HARD classification (e.g. invalid `timing-report-final.json` but valid
++  `run-params.json` uses the latter); runs are never dropped for auxiliary
++  classification failure;
+ - **Scan warnings** (`_warn` to local stderr) are **not** redacted and may include
+   repo-local paths or parser/OS error text; only **GitHub repo slug resolution**
+   failures pass exception/detail through `redact.redact()` before printing.
+@@ -134,7 +135,8 @@
+ - `make test-harness-shards-coverage` and `make py-test` both pass; no
+   carve-out was added.
+ - `docs/linting.md`: `make test-merge-parity` table row removed; catalog matches
+   Makefile.
+-- `SECURITY.md`: new scan-input Trust Model bullet (accurate skip/redaction
+-  semantics); existing public-issue-boundary bullet egress sentence updated to
++- `SECURITY.md`: new scan-input Trust Model bullet (accurate skip/redaction
++  semantics, including multi-file workflow auxiliary fallthrough); existing
++  public-issue-boundary bullet egress sentence updated to
+   `python/redact.py` / `redact_body=False`; pending targeted security review of
+   `plot-cost-over-time.py` / `python/ship.py` / `python/finalize.py` noted;
+   markdownlint passes.
