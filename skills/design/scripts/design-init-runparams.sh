@@ -152,12 +152,10 @@ add_warn() {
 if [[ "$CLASSIFICATION" == SIMPLE ]]; then
     design_classification_reason='default tier: SIMPLE (no --hard)'
     sketch_budget=0
-    review_budget=full
     workflow_path=SIMPLE
 else
     design_classification_reason='argv tier: --hard'
     sketch_budget=4
-    review_budget=full
     workflow_path=HARD
 fi
 design_classification_source=caller-forwarded
@@ -206,7 +204,6 @@ if ! "$PLUGIN_ROOT/scripts/write-run-params.sh" \
     --reason "$design_classification_reason" \
     --source "$design_classification_source" \
     --sketch-budget "$sketch_budget" \
-    --review-budget "$review_budget" \
     --workflow-path "$workflow_path" \
     --partition-requested "$PARTITION_REQUESTED" \
     --brainstorm-requested "$BRAINSTORM_REQUESTED" \

@@ -14,7 +14,7 @@
 
 Step 0-pre validation and positional classification are implemented by `skills/design/scripts/parse-design-argv.sh`; this file remains the normative allowlist and tier-mapping source.
 
-**Tier**: SIMPLE is the default (no tier flag). `--hard` is the only public tier flag and maps to `design_classification=HARD`, `sketch_budget=4`, `review_budget=full`, `workflow_path=HARD`. When `--hard` is absent, the orchestrator resolves `design_classification=SIMPLE`, `sketch_budget=0`, `review_budget=full`, `workflow_path=SIMPLE` (no sketches; full plan-review panel per `SKILL.md` Step 2a).
+**Tier**: SIMPLE is the default (no tier flag). `--hard` is the only public tier flag and maps to `design_classification=HARD`, `sketch_budget=4`, `workflow_path=HARD`. When `--hard` is absent, the orchestrator resolves `design_classification=SIMPLE`, `sketch_budget=0`, `workflow_path=SIMPLE` (no sketches; full plan-review panel per `SKILL.md` Step 2a).
 
 - `--no-dedup`: forward to `/larch:issue` on the verbal-create path. Default `false`.
 - `--run-id <ID>`: optional stable run id. Default empty.
@@ -22,7 +22,7 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 - `--brainstorm`: public boolean flag, default `false`. When set, Step **1d.5** runs after Round 1 discussion and before Step **1d.7** outline-approval (Gate A re-entry only post-plan) (see `references/brainstorm.md`). Persisted as `brainstorm_requested` (boolean) in `run-params.json` via `scripts/write-run-params.sh`.
 - `--manual` / `-m`: public boolean flag, default `false`. When set, restores today's Gate B 3-option `AskUserQuestion` (Apply all / Go through each / Switch to discussion mode) on every Gate B entry. Default (`false`) makes Gate B auto-apply every accepted finding to `$DESIGN_TMPDIR/plan.txt` after printing a compact findings list. Persisted as `manual_gate_b` (boolean) in `run-params.json` via `scripts/write-run-params.sh`. Scope: Gate B only — Gate A (Step 1e) discussion sub-rounds and Gate C (Step 4b) final approval are unchanged in both modes. Whole-run sticky: parsed once at argv, read on every Gate B entry including Step 3 re-entries from Gate C(c) "Re-run review panel". Independent of all tier/partition/brainstorm flags (no mutual exclusion).
 
-`scripts/write-run-params.sh` writes schema v3 `run-params.json`. In addition to the v2 boolean fields, it persists nullable `design_classification_reason`, `design_classification_source`, `sketch_budget`, `review_budget`, and `workflow_path` fields for Step 2 and Step 3 rehydration.
+`scripts/write-run-params.sh` writes schema v3 `run-params.json`. In addition to the v2 boolean fields, it persists nullable `design_classification_reason`, `design_classification_source`, `sketch_budget`, and `workflow_path` fields for Step 2 and Step 3 rehydration.
 
 **Mutual exclusion**: at most one `--hard` on argv; duplicate `--hard` → hard error before Step 0. Any unrecognized or disallowed leading public `--` flag → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` is independent of all other public flags.
 
@@ -67,9 +67,9 @@ Between-review-round velocity (>20% plan growth **and** >10 accepted findings) i
 
 ## Plan-command validator
 
-Post-plan validation for `plan.txt` is owned by `design-postplan-emit.sh` after each successful plan emit (initial Step 2b, Gate A re-entry, Gate B, and discussion-round2). When `review_budget` is `quick`, the driver emits `VALIDATE_STATUS=skipped-quick` at Step 2b, Gate A re-entry, and Gate B; `discussion-round2` passes `--force-validate` so validation still runs on quick. Step 5c still validates `composed-plan.md` before publish when its prompt-side guard allows it.
+Post-plan validation for `plan.txt` is owned by `design-postplan-emit.sh` after each successful plan emit (initial Step 2b, Gate A re-entry, Gate B, and discussion-round2). Validation is unconditional: there is no quick-skip path and no force flag. Step 5c validates `composed-plan.md` inside `design-publish.sh` before redaction unless the operator has accepted the proceed-anyway path.
 
-**Defect handling**: when machine output reports `VALIDATE_STATUS=defects-found`, use the shared **Fix-and-retry / Override / Cancel** AskUserQuestion body in `SKILL.md` (**### Plan command validator failure (shared)**).
+**Defect handling**: when machine output reports `VALIDATE_STATUS=defects-found`, use the shared auto-repair-then-escalate body in `SKILL.md` (**### Plan command validator failure (shared)**).
 
 ## Internal — sketch dispatch (not public argv)
 

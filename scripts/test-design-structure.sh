@@ -332,7 +332,7 @@ contains "$SKILL_MD" 'plan review MUST ALWAYS run the full Step 3 panel' 'SKILL 
 
 grep -Fq 'sketch_budget=0' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
   || fail 'design-init-runparams.sh must pin SIMPLE sketch_budget=0'
-contains "$SKILL_MD" 'design-postplan-emit.sh' 'SKILL missing postplan driver quick validator skip owner'
+contains "$SKILL_MD" 'design-postplan-emit.sh' 'SKILL missing postplan driver validator owner'
 absent "$SKILL_MD" 'invoke-plan-validator-if-not-quick.sh' 'SKILL must not reference old validator helper'
 absent "$SKILL_MD" 'read-design-review-budget.sh' 'SKILL must not reference old budget reader'
 absent "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_TRIVIAL' 'SKILL must not reference old trivial sentinel'
@@ -346,8 +346,9 @@ grep -Fq 'refusing to recreate it with fallback defaults' "$REPO_ROOT/skills/des
 absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must not retain old HARD fallback recovery reason'
 
 contains "$FLAGS_MD" 'design-postplan-emit.sh' 'flags.md missing postplan driver validator contract'
-contains "$FLAGS_MD" 'skipped-quick' 'flags.md missing quick validator skip contract'
-contains "$FLAGS_MD" '--force-validate' 'flags.md missing discussion-round2 force-validate contract'
+absent "$FLAGS_MD" 'skipped-quick' 'flags.md must not retain quick validator skip contract'
+absent "$FLAGS_MD" '--force-validate' 'flags.md must not retain force-validate contract'
+contains "$FLAGS_MD" 'Validation is unconditional' 'flags.md missing unconditional validator contract'
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, Step 4, then Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -533,10 +534,10 @@ grep -Fq 'validate-plan.sh' "$DESIGN_DRIVER_SH" \
   || fail "(14b6) design-driver.sh missing validate-plan.sh dispatch arm"
 grep -Fq 'ACTION=VALIDATE_PLAN_COMMANDS' "$SKILL_MD" \
   || fail "(14b7) SKILL.md missing ACTION=VALIDATE_PLAN_COMMANDS"
-grep -Fq 'Fix-and-retry' "$SKILL_MD" \
-  || fail "(14b8) SKILL.md missing Fix-and-retry validator option label"
-grep -Fq 'Override' "$SKILL_MD" \
-  || fail "(14b9a) SKILL.md missing Override validator option label"
+grep -Fq 'Apply proposed fix' "$SKILL_MD" \
+  || fail "(14b8) SKILL.md missing Apply proposed fix validator option label"
+grep -Fq 'Accept / proceed-anyway' "$SKILL_MD" \
+  || fail "(14b9a) SKILL.md missing Accept / proceed-anyway validator option label"
 grep -Fq 'Cancel' "$SKILL_MD" \
   || fail "(14b9b) SKILL.md missing Cancel validator option label"
 step2b_mark=$(grep -nF 'mark "design Step 2b — plan"' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
@@ -558,8 +559,7 @@ postplan_before_size_ag=$(awk '/^### Shared post-apply pipeline/ { in_section=1 
   || fail "(14c14e) approval-gates.md must mention design-postplan-emit.sh at or before Step 2b.5"
 grep -Fq 'design-postplan-emit.sh' "$DR_MD" \
   || fail "(14c14f) discussion-rounds.md missing design-postplan-emit.sh pin"
-grep -Fq -- '--force-validate' "$DR_MD" \
-  || fail "(14c14g) discussion-rounds.md missing --force-validate pin"
+absent "$DR_MD" '--force-validate' '(14c14g) discussion-rounds.md must not retain --force-validate pin'
 postplan_before_size_dr=$(awk '/\*\*Plan revision authority\*\*/ { in_section=1 } in_section && /design-postplan-emit\.sh/ && !e { e=NR } in_section && e && /Step 2b\.5/ && !v { v=NR } /^## Cap/ { in_section=0 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$DR_MD")
 [[ "$postplan_before_size_dr" == "1" ]] \
   || fail "(14c14h) discussion-rounds.md must mention design-postplan-emit.sh at or before Step 2b.5"
@@ -612,22 +612,28 @@ grep -Fq '> **🔶 /design 6: cleanup**' "$SKILL_MD" \
   || fail "(15b) SKILL.md missing /design 6 cleanup breadcrumb"
 step5b_line=$(grep -nF '### 5b — File accepted OOS issues' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 step5c_line=$(grep -nF "### 5c — Write \`larch:plan\` to GitHub + publish" "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$step5b_line" && -n "$step5c_line" ]] || fail "(15b) missing Step 5b or 5c sub-step headers"
+step5d_line=$(grep -nF '### 5d — Final warning replay + footer' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+DESIGN_PUBLISH_SH="$REPO_ROOT/skills/design/scripts/design-publish.sh"
+[[ -n "$step5b_line" && -n "$step5c_line" && -n "$step5d_line" ]] || fail "(15b) missing Step 5b, 5c, or 5d sub-step headers"
 if (( step5b_line >= step5c_line )); then
   fail "(15b) Step 5b must appear before Step 5c in SKILL.md"
 fi
-red_line=$(awk -v s="$step5c_line" 'NR>s && /redact-secrets\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
-val5=$(awk -v s="$step5c_line" 'NR>s && /invoke-plan-validator\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
-[[ -n "$red_line" && -n "$val5" && "$val5" -lt "$red_line" ]] \
-  || fail "(14b11) Step 5c validator must appear before redact-secrets on composed-plan.md"
+validator_pub_line=$(grep -nF 'invoke-plan-validator.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
+redactor_pub_line=$(grep -nF 'redact-secrets.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
+[[ -n "$validator_pub_line" && -n "$redactor_pub_line" && "$validator_pub_line" -lt "$redactor_pub_line" ]] \
+  || fail "(14b11) design-publish.sh must validate composed-plan before redaction"
+step5c_block=$(sed -n "${step5c_line},${step5d_line}p" "$SKILL_MD")
+# shellcheck disable=SC2016 # literal SKILL.md bash excerpt should not expand.
+if printf '%s\n' "$step5c_block" | grep -Fq '_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh"'; then
+  fail "(14b11) SKILL.md Step 5c must not inline invoke-plan-validator.sh"
+fi
 # shellcheck disable=SC2016  # literal backticks + $DESIGN_TMPDIR token must match SKILL.md prose
 needle='preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup'
 grep -Fq "$needle" "$SKILL_MD" \
   || fail "(14b12) Step 5c validator cancel must preserve tmpdir and skip cleanup"
-grep -Fq '5c.5→5c.7→5c.8→6' "$SKILL_MD" \
-  || fail "(15b) anti-halt reminder must mention 5c.5→5c.7→5c.8→6 step boundary (intra-Step-5 through rename)"
+grep -Fq 'Step 5c items 3–5, Step 5d, or Step 6' "$SKILL_MD" \
+  || fail "(15b) anti-halt reminder must mention rc-4 Step 5c/5d/6 carve-out"
 
-DESIGN_PUBLISH_SH="$REPO_ROOT/skills/design/scripts/design-publish.sh"
 [[ -x "$DESIGN_PUBLISH_SH" ]] || fail "design-publish.sh must be executable"
 publish_plan_line=$(grep -nF 'plan-block-write.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
 publish_upsert_line=$(grep -nF 'upsert-diagrams-comment.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
@@ -661,7 +667,7 @@ assert_thin_fence "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'design-plan-quality-assess
 # Check 17: Step 5b /larch:issue summary-halt guardrails (#2681).
 ORCHESTRATOR_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"
 [[ -f "$ORCHESTRATOR_NEVER_MD" ]] || fail "(17) orchestrator-never.md missing: $ORCHESTRATOR_NEVER_MD"
-grep -Fq '5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
+grep -Fq '5→5a→5b→5c.1→5c.3→5c.5→6' "$SKILL_MD" \
   || fail "(17) anti-halt reminder missing intra-Step-5 sub-step enumeration"
 grep -Fq "NEVER treat a sub-skill's terminal output as the parent skill's terminal output" "$ORCHESTRATOR_NEVER_MD" \
   || fail "(17) orchestrator-never.md missing sub-skill vs parent-skill terminal-output NEVER literal"
@@ -854,7 +860,7 @@ grep -Fq 'The already-planned ad-hoc Q&A-only branch does **not** invoke this fi
 if grep -Fq 'proceed to Step 1e' "$DESIGN_OUTLINE_MD"; then
   fail "(2974) design-outline.md must not hand off outline approval to Step 1e"
 fi
-grep -Fq '1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
+grep -Fq '1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.3→5c.5→6' "$SKILL_MD" \
   || fail "(2974) SKILL.md missing updated anti-halt sequence"
 if grep -Fq '1c→1d→1d.5→1e' "$SKILL_MD"; then
   fail "(2974) SKILL.md still contains stale 1d.5→1e anti-halt sequence"
@@ -1341,12 +1347,13 @@ grep -Fq 'design-publish.sh configuration error (exit 2)' "$SKILL_MD" \
 grep -Fq '.completed/step-5c' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must write .completed/step-5c sentinel"
 # shellcheck disable=SC2016 # Markdown literal contains $DESIGN_TMPDIR and backticks intentionally.
-grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true`' "$SKILL_MD" \
+grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** the latest `_publish_rc` ∈ {0,1,3} **and** `PLAN_WRITE_OK=true`' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must gate step-5c sentinel on PLAN_WRITE_OK=true"
 grep -Fq 'result-env write failed (exit 3)' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing design-publish.sh exit 3 result-env WARN prose"
-grep -Fq '_publish_rc` is 0, 1, or 3' "$SKILL_MD" \
-  || fail "(15b) SKILL.md Step 5c missing exit 3 parse-and-continue contract"
+# shellcheck disable=SC2016 # literal markdown code span should not expand.
+grep -Fq 'latest `_publish_rc` ∈ {0, 1, 3}' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c missing latest rc parse-and-continue contract"
 grep -Fq '_publish_rc`=3' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing _publish_rc=3 contract"
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.

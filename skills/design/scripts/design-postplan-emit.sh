@@ -14,7 +14,7 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: design-postplan-emit.sh --design-tmpdir PATH [--snapshot-original] [--force-validate]'
+    larch_err 'Usage: design-postplan-emit.sh --design-tmpdir PATH [--snapshot-original]'
 }
 
 parse_kv_from_output() {
@@ -36,24 +36,8 @@ parse_kv_from_output() {
     done <<<"$text"
 }
 
-json_scalar_or_sed() {
-    local file="$1" key="$2" default_value="$3" value=""
-    if command -v jq >/dev/null 2>&1 && [[ -f "$file" ]]; then
-        value=$(jq -r --arg key "$key" '.[$key] // ""' "$file" 2>/dev/null || echo "")
-    fi
-    if [[ -z "$value" && -f "$file" ]]; then
-        value=$(sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$file" 2>/dev/null | head -1)
-    fi
-    if [[ -z "$value" ]]; then
-        printf '%s\n' "$default_value"
-    else
-        printf '%s\n' "$value"
-    fi
-}
-
 DESIGN_TMPDIR_ARG=""
 SNAPSHOT_ORIGINAL=false
-FORCE_VALIDATE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -64,10 +48,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --snapshot-original)
             SNAPSHOT_ORIGINAL=true
-            shift
-            ;;
-        --force-validate)
-            FORCE_VALIDATE=true
             shift
             ;;
         -h | --help)
@@ -94,7 +74,6 @@ export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 RESULT_ENV="$DESIGN_TMPDIR/.design-postplan-emit-result.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
 WARN_LINES=()
-REVIEW_BUDGET="$(json_scalar_or_sed "$RUN_PARAMS_PATH" review_budget full)"
 READ_CLASSIFICATION_SH="$PLUGIN_ROOT/scripts/read-design-classification.sh"
 if [[ -x "$READ_CLASSIFICATION_SH" ]]; then
     _classification_stderr="$DESIGN_TMPDIR/.read-design-classification.stderr.$$"
@@ -259,24 +238,20 @@ else
 fi
 
 _postplan_pause_checkpoint
-if [[ "$REVIEW_BUDGET" == quick && "$FORCE_VALIDATE" != true ]]; then
-    VALIDATE_STATUS=skipped-quick
-else
-    set +e
-    _val_out=$("$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt" 2>&1)
-    _val_rc=$?
-    set -e
-    parse_kv_from_output "$_val_out"
-    if [[ "$_val_rc" -ne 0 && "$VALIDATE_STATUS" != defects-found ]]; then
-        POSTPLAN_EMIT_STATUS=validate-driver-failed
-        _postplan_write_result_and_emit
-        exit 1
-    fi
-    if [[ -z "$VALIDATE_STATUS" || "$VALIDATE_STATUS" == not-run ]]; then
-        POSTPLAN_EMIT_STATUS=validate-driver-failed
-        _postplan_write_result_and_emit
-        exit 1
-    fi
+set +e
+_val_out=$("$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt" 2>&1)
+_val_rc=$?
+set -e
+parse_kv_from_output "$_val_out"
+if [[ "$_val_rc" -ne 0 && "$VALIDATE_STATUS" != defects-found ]]; then
+    POSTPLAN_EMIT_STATUS=validate-driver-failed
+    _postplan_write_result_and_emit
+    exit 1
+fi
+if [[ -z "$VALIDATE_STATUS" || "$VALIDATE_STATUS" == not-run ]]; then
+    POSTPLAN_EMIT_STATUS=validate-driver-failed
+    _postplan_write_result_and_emit
+    exit 1
 fi
 
 POSTPLAN_EMIT_STATUS=ok

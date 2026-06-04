@@ -63,7 +63,7 @@ setup_design_tmp() {
     local d="$1"
     mkdir -p "$d/.completed"
     : >"$d/.completed/step-5b"
-    printf '# plan\n' >"$d/composed-plan.redacted.md"
+    printf '# plan\n' >"$d/composed-plan.md"
     printf '{"design_classification":"SIMPLE"}\n' >"$d/run-params.json"
     printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$FAKE_PLUGIN" >"$d/session-env.sh"
 }
@@ -115,6 +115,24 @@ STUB
 #!/usr/bin/env bash
 echo "${RESOLVE_REPO_VALUE:-owner/repo}"
 STUB
+    cat >"$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" <<'STUB'
+#!/usr/bin/env bash
+[[ -n "${CALL_LOG:-}" ]] && echo "validator $*" >>"$CALL_LOG"
+if [[ "${VALIDATOR_STATUS_OMIT:-false}" == true ]]; then
+  exit "${VALIDATOR_STUB_RC:-0}"
+fi
+printf 'VALIDATE_STATUS=%s
+' "${VALIDATE_STATUS_VALUE:-ok}"
+printf 'VALIDATE_DEFECT_COUNT=%s
+' "${VALIDATE_DEFECT_COUNT_VALUE:-0}"
+printf 'VALIDATE_SKIPPED_COUNT=%s
+' "${VALIDATE_SKIPPED_COUNT_VALUE:-0}"
+printf 'VALIDATE_UNSAFE_TOKEN_COUNT=%s
+' "${VALIDATE_UNSAFE_TOKEN_COUNT_VALUE:-0}"
+printf 'VALIDATE_LOG_FILE=%s
+' "${VALIDATE_LOG_FILE_VALUE:-${DESIGN_TMPDIR:-}/validate-plan-commands.log}"
+exit "${VALIDATOR_STUB_RC:-0}"
+STUB
     cat >"$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh" <<'STUB'
 #!/usr/bin/env bash
 {
@@ -122,7 +140,7 @@ STUB
 } >>"${RENDER_LOG:?}"
 printf '# summary\n' >"${DESIGN_TMPDIR:?}/final-summary.md"
 STUB
-    chmod +x "$STUB"/*.sh "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
+    chmod +x "$STUB"/*.sh "$FAKE_PLUGIN/skills/design/scripts/invoke-plan-validator.sh" "$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh"
 }
 
 write_stubs
@@ -134,7 +152,7 @@ reset_publish_stub_env() {
         PUBLISH_PR_NUMBER PUBLISH_PR_URL PUBLISH_RECOVERY_BRANCH \
         UPSERT_STUB_RC UPSERT_STATUS_VALUE ARCH_SOURCE_VALUE \
         RENAME_STUB_RC RENAMED_OMIT_LINE RENAMED_VALUE RESOLVE_REPO_VALUE \
-        MARKER_STUB_RC || true
+        MARKER_STUB_RC VALIDATOR_STUB_RC VALIDATOR_STATUS_OMIT VALIDATE_STATUS_VALUE         VALIDATE_DEFECT_COUNT_VALUE VALIDATE_SKIPPED_COUNT_VALUE         VALIDATE_UNSAFE_TOKEN_COUNT_VALUE VALIDATE_LOG_FILE_VALUE || true
 }
 
 init_publish_logs() {
@@ -196,15 +214,97 @@ rc=$?
 set -e
 assert_rc "missing step-5b" 2 "$rc"
 
-# --- missing redacted plan ---
+# --- missing composed plan ---
 D_NOP="$TMP/no-plan"
 setup_design_tmp "$D_NOP"
-: >"$D_NOP/composed-plan.redacted.md"
+: >"$D_NOP/composed-plan.md"
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_NOP" --issue 1 --session-id x --claude-pid 1 2>/dev/null
 rc=$?
 set -e
-assert_rc "empty redacted plan" 2 "$rc"
+assert_rc "empty composed plan" 2 "$rc"
+
+
+# --- validator defects: exit 4, no redaction or publish side effects ---
+D_DEF="$TMP/defects"
+setup_design_tmp "$D_DEF"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_DEF" --issue 42 --session-id sid-1 --claude-pid 9999 >"$D_DEF/stdout.txt" 2>/dev/null
+rc=$?
+set -e
+assert_rc "validator defects exit 4" 4 "$rc"
+grep -q 'VALIDATE_STATUS=defects-found' "$D_DEF/.design-publish-result.env" || fail "defects result env status"
+grep -q 'VALIDATE_STATUS=defects-found' "$D_DEF/stdout.txt" || fail "defects stdout status fallback"
+if [[ -e "$D_DEF/composed-plan.redacted.md" ]]; then fail "defects must not redact"; else pass "defects skipped redaction"; fi
+if grep -q 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then fail "defects must not publish"; else pass "defects skipped publish tail"; fi
+
+# --- validator infra failure ---
+D_VINFRA="$TMP/validator-infra"
+setup_design_tmp "$D_VINFRA"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export VALIDATOR_STUB_RC=7 VALIDATE_STATUS_VALUE=ok
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_VINFRA" --issue 1 --session-id x --claude-pid 1 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "validator infra failure" 2 "$rc"
+if [[ -e "$D_VINFRA/composed-plan.redacted.md" ]]; then fail "infra failure must not redact"; else pass "infra failure skipped redaction"; fi
+
+# --- validator not-run/missing status failure ---
+D_VMISS="$TMP/validator-missing-status"
+setup_design_tmp "$D_VMISS"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export VALIDATOR_STATUS_OMIT=true
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_VMISS" --issue 1 --session-id x --claude-pid 1 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "validator missing status" 2 "$rc"
+
+# --- skip validate publishes and marks status skipped ---
+D_SKIP="$TMP/skip-validate"
+setup_design_tmp "$D_SKIP"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export VALIDATE_STATUS_VALUE=defects-found
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_SKIP" --issue 42 --session-id sid-1 --claude-pid 9999 --skip-validate >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "skip validate" 0 "$rc"
+grep -q 'VALIDATE_STATUS=skipped' "$D_SKIP/.design-publish-result.env" || fail "skip validate status"
+if grep -q 'validator' "$CALL_LOG" 2>/dev/null; then fail "skip validate must not call validator"; else pass "skip validate did not call validator"; fi
+[[ -s "$D_SKIP/composed-plan.redacted.md" ]] || fail "skip validate must redact"
+
+# --- pause before validator/publish ---
+D_PAUSE="$TMP/pause"
+setup_design_tmp "$D_PAUSE"
+: >"$D_PAUSE/.pause-requested"
+cat >"$STUB/design-pause-save.sh" <<'STUB'
+#!/usr/bin/env bash
+echo "pause-save $*" >>"${CALL_LOG:?}"
+exit 0
+STUB
+chmod +x "$STUB/design-pause-save.sh"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PAUSE" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "pause checkpoint" 0 "$rc"
+grep -q 'pause-save' "$CALL_LOG" || fail "pause save not called"
+if grep -q 'validator\|plan-block-write' "$CALL_LOG"; then fail "pause must happen before validator/publish"; else pass "pause skipped validator/publish"; fi
 
 # --- plan-block-write failure ---
 D_FAIL="$TMP/fail-plan"

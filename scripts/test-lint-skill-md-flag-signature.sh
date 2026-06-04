@@ -118,7 +118,7 @@ assert_lint_ok waiver "$waiver"
 
 multiline_bad="$TMPROOT/multiline-bad"
 make_skill "$multiline_bad" design
-write_script "$multiline_bad/scripts/write-run-params.sh" classification output source sketch-budget review-budget workflow-path partition-requested brainstorm-requested manual-gate-b
+write_script "$multiline_bad/scripts/write-run-params.sh" classification output source sketch-budget workflow-path partition-requested brainstorm-requested manual-gate-b
 cat > "$multiline_bad/skills/design/SKILL.md" <<'EOF'
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
@@ -126,7 +126,6 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
   --reason "$design_classification_reason" \
   --source "$design_classification_source" \
   --sketch-budget "$sketch_budget" \
-  --review-budget "$review_budget" \
   --workflow-path "$workflow_path" \
   --partition-requested "$partition_requested" \
   --brainstorm-requested "$brainstorm_requested" \
@@ -138,7 +137,7 @@ assert_lint_fails_for multiline-bad "$multiline_bad" 'skills/design/SKILL.md:2: 
 
 multiline_good="$TMPROOT/multiline-good"
 make_skill "$multiline_good" design
-write_script "$multiline_good/scripts/write-run-params.sh" classification reason source sketch-budget review-budget workflow-path partition-requested brainstorm-requested manual-gate-b output
+write_script "$multiline_good/scripts/write-run-params.sh" classification reason source sketch-budget workflow-path partition-requested brainstorm-requested manual-gate-b output
 cp "$multiline_bad/skills/design/SKILL.md" "$multiline_good/skills/design/SKILL.md"
 assert_lint_ok multiline-good "$multiline_good"
 
@@ -150,7 +149,7 @@ assert_lint_fails_for regression-bad "$regression_bad" 'skills/design/SKILL.md:2
 
 regression_fixed="$TMPROOT/regression-fixed"
 make_skill "$regression_fixed" design
-write_script "$regression_fixed/scripts/write-run-params.sh" classification reason source sketch-budget review-budget workflow-path partition-requested brainstorm-requested manual-gate-b output
+write_script "$regression_fixed/scripts/write-run-params.sh" classification reason source sketch-budget workflow-path partition-requested brainstorm-requested manual-gate-b output
 cp "$multiline_bad/skills/design/SKILL.md" "$regression_fixed/skills/design/SKILL.md"
 assert_lint_ok regression-fixed "$regression_fixed"
 

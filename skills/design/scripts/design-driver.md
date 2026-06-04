@@ -7,7 +7,7 @@
 ## Primary Callers
 
 - `/design` Step 2b for `ACTION=EMIT_PLAN` and `ACTION=VALIDATE_PLAN_COMMANDS` (after `EMIT_PLAN` on both SIMPLE and HARD, via `invoke-plan-validator.sh`)
-- `/design` Step 5c for `ACTION=VALIDATE_PLAN_COMMANDS` on `composed-plan.md` before `redact-secrets.sh` (Tier 3 dry-run disabled on composed artifacts; same helper as Step 2b)
+- `/design` Step 5c composes `composed-plan.md` and invokes `design-publish.sh`; composed-plan validation now runs inside `design-publish.sh` before redaction (Tier 3 dry-run disabled on composed artifacts; same helper as Step 2b).
 - `/design` Step 3 for the second `ACTION=EMIT_PLAN` (plan-review tallying runs in `plan-review-loop.sh`, not via `ACTION=TALLY`)
 - `/design` Step 4 for `ACTION=FINALIZE`
 
