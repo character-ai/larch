@@ -1006,9 +1006,6 @@ if [ "${LARCH_SHIP_PR_IMPL:-bash}" = "python" ]; then
     printf '%s\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
     exit 4
   fi
-  if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
-    exec 1>&3 2>&4
-  fi
   python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py" \
     --branch "$BRANCH_NAME" \
     --issue "$ISSUE_NUMBER" \
