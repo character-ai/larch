@@ -1,0 +1,80 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -118,8 +118,9 @@
+ - **FINDING_25**: in Step 5c item 6, extend the sentinel gate. Keep the pinned literal `` : > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true` `` intact (the `test-design-structure.sh` `grep -Fq` is a fixed substring), then append: `` **and** the publish step did not fail (`SESSION_ID` empty **or** `PUBLISH_OK=true`) ``.
+ - Extend item 7 (or add one sentence): on a failed publish (`PLAN_WRITE_OK=true`, `SESSION_ID` non-empty, `PUBLISH_OK != true`), do **not** write `step-5c`, so pause/resume re-enters Step 5c and retries the publish tail (plan-block-write is idempotent; OOS already filed in Step 5b).
+ - Add a one-line correction near Step 5c: the `step-5c` sentinel writer is the orchestrator, not `design-publish.sh`.
++- **FINDING_17 / clarify parity**: in Step 0b clarify publish substep 3.5, mirror the fail-closed publish parsing rule used by Step 5c: after parsing `design-log-publish.sh` stdout, any non-zero publish exit must set `PUBLISH_OK=false`, record the publish warning, and do so before any `PUBLISH_OK`-gated rename/reentry-marker action. This closes the direct-`design-log-publish.sh` clarify path where stdout could contain `PUBLISH_OK=true` despite a non-zero exit.
+ - No Step 5d / Step 6 change: resume scans for the **first** missing `.completed/step-*` (`design-pause-save.sh` breaks on first gap), so a withheld `step-5c` resolves resume to `5c` regardless of `step-5d`. The publish-incomplete footer and `PUBLISH_OK`-gated cleanup already exist.
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+-- **FINDING_25**: keep the existing `(15b)` assertion (still matches the preserved substring). Add one assertion that greps SKILL.md for the new publish-gate clause (`` `SESSION_ID` empty **or** `PUBLISH_OK=true` ``) with a `(25)` fail message, so dropping the publish gate is caught.
++- **FINDING_25**: keep the existing `(15b)` assertion (still matches the preserved substring). Add one assertion that greps SKILL.md for the new publish-gate clause (`` `SESSION_ID` empty **or** `PUBLISH_OK=true` ``) with a new unused `(27)` fail message, so dropping the publish gate is caught without colliding with the existing `(25)` `design_reentry_marker_write` ordering assertions. Add/extend a nearby structural assertion that Step 0b clarify documents the non-zero publish exit ⇒ `PUBLISH_OK=false` rule before rename.
+ 
+ ### UPDATED: `skills/design/scripts/test-design-publish.sh`
+ - **FINDING_17**: extend the `design-log-publish.sh` stub so it can emit `PUBLISH_OK=true` and **then** exit non-zero. Add a case: that knob → assert `.design-publish-result.env` carries `PUBLISH_OK=false`, render is invoked with `--outcome failed-publish`, and rename + reentry-marker are skipped.
+@@ -142,6 +143,21 @@
+ ### UPDATED: `scripts/test-render-run-summary.sh`
+ - **FINDING_4 / unknown-run-id**: add a case `--skill design --run-id unknown --run-logs-path N/A` → **Run logs** bullet is `N/A`; body must not contain `larch-logs/design/unknown/`. Add/confirm a real-run-id case still renders `larch-logs/design/<id>/`.
+ 
++### UPDATED: `scripts/test-design-structure.md`
++- Document the new `(27)` Step 5c publish-gate assertion and the Step 0b clarify fail-closed structural assertion. Note that `(25)` remains reserved for the existing `design_reentry_marker_write` ordering checks.
++
++### UPDATED: `skills/design/scripts/test-design-publish.md`
++- Document the new non-zero publish exit + stdout `PUBLISH_OK=true` regression case and the empty-`SESSION_ID` `publish-skipped` case, including the expected skipped rename/reentry-marker assertions.
++
++### UPDATED: `scripts/test-design-log-publish.md`
++- Document the malformed-`--repo` regression case (`exit 1`, no success envelope) and confirm the valid `owner/repo` and omitted-`--repo` paths remain covered.
++
++### UPDATED: `skills/design/scripts/test-render-final-summary.md`
++- Document the `publish-skipped` final-summary case: accepted outcome enum, honest skipped-publish note, no failed-publish recovery prose, and **Run logs** `N/A` with no `larch-logs/design/unknown/`.
++
++### UPDATED: `scripts/test-render-run-summary.md`
++- Document the `RUN_ID=unknown` + `RUN_LOGS_PATH=N/A` case and the real-run-id fallback case.
++
+ ### UPDATED: `skills/design/scripts/design-publish.md`
+ - Document FINDING_17 (any non-zero publish exit ⇒ `PUBLISH_OK=false`, fail-closed) and FINDING_4 (empty `SESSION_ID` ⇒ `publish-skipped` outcome) in the publish-parse and outcome-selection contract sections.
+ 
+@@ -157,6 +173,9 @@
+ ### UPDATED: `scripts/render-run-summary.md`
+ - Document that the `RUN_LOGS_PATH=N/A` fallback to `larch-logs/<skill>/<run-id>/` does not apply when `RUN_ID` is `unknown`.
+ 
++### UPDATED: `SECURITY.md`
++- Add a short note to the design-log publish boundary documenting that `--repo` is validated as `OWNER/REPO` and malformed values fail closed with `exit 1` before `gh` / network operations.
++
+ ## Approach
+ Four narrow, independent edits plus their tests and contract docs. No shared
+ helper or refactor. Each finding is fixed at its true site: FINDING_17 and
+@@ -164,7 +183,9 @@
+ outcome and `render-run-summary.sh` for the honest Run-logs path), FINDING_11
+ in `design-log-publish.sh`, FINDING_25 in SKILL.md (the real sentinel writer)
+ plus its pinned structural test. The FINDING_11 exit-1 choice and the
+-`publish-skipped` outcome follow Round 1.
++`publish-skipped` outcome follow Round 1. The direct Step 0b clarify publish
++path receives the same fail-closed non-zero-exit handling before any rename
++gate.
+ 
+ ## Edge cases
+ - FINDING_17: success path (exit 0 + `PUBLISH_OK=true`) is untouched; only non-zero exits flip to false. Exit 0 + `PUBLISH_OK=false` still routes through the `elif` (rc bumped to 1 for the failure log).
+@@ -178,7 +199,8 @@
+ - A direct/manual caller relying on `design-log-publish.sh` returning exit 0 + `PUBLISH_OK=false` for a bad repo now sees `exit 1`. Mitigation: all three in-repo callers pre-resolve/validate the repo and forward `--repo` only when non-empty; `design-pause-save.sh` already treats exit-non-zero + empty `PUBLISH_OK` as `publish-failed`. Earliest signal: `test-design-log-publish.sh` green.
+ - Omitting the `render-run-summary.sh unknown` guard leaves a fake `larch-logs/design/unknown/` path on a `publish-skipped` summary. Mitigation: `test-render-run-summary.sh` + `test-render-final-summary.sh` assert **Run logs** is `N/A`.
+ - SKILL.md gate wording could drift from the pinned test. Mitigation: keep the existing substring intact, add the new `(25)` assertion, run `bash scripts/test-design-structure.sh`.
++- Step 0b clarify could regress to trusting `PUBLISH_OK=true` after a non-zero publish exit. Mitigation: SKILL.md fail-closed prose plus the new structural assertion that the clarify path records the non-zero-exit warning and forces `PUBLISH_OK=false` before rename.
+ - `publish-skipped` not added to the `render-final-summary.sh` enum would `exit 2`. Mitigation: enum edit + `test-render-final-summary.sh` case.
+ 
+ ## Testing strategy
+@@ -187,10 +209,10 @@
+ - `bash skills/design/scripts/test-render-final-summary.sh` — `publish-skipped` accepted + honest note + **Run logs** `N/A`.
+ - `bash scripts/test-render-run-summary.sh` — `RUN_ID=unknown` + `RUN_LOGS_PATH=N/A` stays `N/A`; real run id still synthesizes the path. Also run `bash scripts/test-render-run-summary-format.sh` and `bash scripts/test-render-run-summary-callsites.sh` to confirm no implement-side format regression.
+ - `bash scripts/test-design-structure.sh` — existing step-5c assertion plus the new publish-gate assertion.
++- Review the updated sibling harness `.md` files and `SECURITY.md` as part of the same change set.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) after edits.
+ 
+ ## Diff size estimate
+-diff_added: 165
+-diff_deleted: 12
+-diff_lines: 177
++diff_added: 202
++diff_deleted: 12
++diff_lines: 214

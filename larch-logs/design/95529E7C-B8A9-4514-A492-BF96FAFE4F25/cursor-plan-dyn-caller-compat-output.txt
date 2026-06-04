@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-design-structure.sh:1119-1121	FINDING_25 proposes a new `(25)` assertion but that ID is already used for design_reentry_marker_write ordering checks	Implementer adds a second `(25)` fail message; CI failures become ambiguous and the harness numbering convention drifts	Use `(27)` for the new Step 5c publish-gate grep assertion instead of `(25)`

@@ -1,0 +1,14 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:463-465	Plan targets FINDING_17 clarify parity at Step 0b substep 3.5 but publish parsing lives in substep 3	Clarify substep 3 (`skills/design/SKILL.md:463`) still only treats non-zero `design-log-publish.sh` exit as failure when stdout lacks `PUBLISH_OK=`; rename substep 5 (`:465`) already gates on `PUBLISH_OK=true`. If implementers follow the plan literally and only add prose near substep 5, stdout `PUBLISH_OK=true` on a non-zero exit can still satisfy the rename gate and run `tracking-issue-write.sh --state designing` despite a failed publish	Edit clarify substep 3 publish prose (line 463): after parsing stdout, any non-zero `_publish_rc` must force `PUBLISH_OK=false`, append the failure log, and warn — matching Step 5c/`design-publish.sh`. Keep substep 5 rename gate unchanged. Point `test-design-structure.sh` assertion at that substep 3 text (not only before-rename wording near substep 5)
+
+### 1. [correctness] `skills/design/SKILL.md:463-465` — Clarify FINDING_17 fix aimed at wrong substep
+
+The plan’s FINDING_17 clarify parity bullet says to update “Step 0b clarify publish **substep 3.5**,” but in `SKILL.md` the publish call and stdout/`_publish_rc` parsing are **substep 3** (`:463`). Substep 5 (`:465`) is rename-only and already requires `PUBLISH_OK=true` “after sub-step 3.3.”
+
+Current clarify publish text (`:463`) still matches the pre-fix Step 5c bug: it parses `PUBLISH_OK` regardless of `_publish_rc` and only treats non-zero exit as failure when stdout lacks `PUBLISH_OK=`. A contradictory envelope (`PUBLISH_OK=true`, exit ≠ 0) can leave mental `PUBLISH_OK=true` through substep 5 and run the designing rename.
+
+**Suggested revision:** Apply the fail-closed rule in **substep 3** (same pattern as the planned `design-publish.sh` change), and aim the new structural grep at that publish block. Substep 5 needs no new publish logic.
+
+---
+
+Other state-transition items in the plan align with the repo: `design-publish.sh:277-332` (FINDING_17/4), orchestrator-owned `step-5c` at `SKILL.md:1526`, pause `design-pause-save.sh:175-178`, `render-run-summary.sh:222-224` unknown guard, and resume via `design-pause-save.sh:89-95` + `step-name-registry.tsv:21-22` (missing `step-5c` resolves to `5c` even if `step-5d` exists). EXONERATE pre-existing `design-publish.md` marker-order drift vs code (`design-publish.sh:332-364`).
