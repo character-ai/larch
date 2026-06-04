@@ -308,6 +308,11 @@ run_coder_dispatch() {
     else
         rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
         printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$codex_rc" > "$codex_wrapper_log" 2>/dev/null || true
+        if external_codex_env_key_enabled; then
+            printf 'codex-env-key-failure: Codex auth setup failed on the OPENAI_API_KEY auth path; falling back when possible (exit %s)\n' "$codex_rc" >> "$codex_wrapper_log" 2>/dev/null || true
+            printf 'codex-env-key-failure: Codex auth setup failed on the OPENAI_API_KEY auth path; falling back when possible (exit %s)\n' "$codex_rc" >> "$codex_telemetry_sidecar" 2>/dev/null || true
+            larch_err "⚠ review-and-fix: Codex OPENAI_API_KEY auth setup failed; falling back when possible (exit $codex_rc)"
+        fi
     fi
     [[ -n "$codex_home" ]] && rm -rf "$codex_home"
 
@@ -320,6 +325,7 @@ run_coder_dispatch() {
     if [[ "$codex_auth_prepared" == "true" ]] && external_codex_env_key_enabled; then
         printf 'codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path; falling back when possible (exit %s)\n' "$codex_rc" >> "$codex_wrapper_log" 2>/dev/null || true
         printf 'codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path; falling back when possible (exit %s)\n' "$codex_rc" >> "$codex_telemetry_sidecar" 2>/dev/null || true
+        larch_err "⚠ review-and-fix: Codex OPENAI_API_KEY auth path failed; falling back when possible (exit $codex_rc)"
     fi
 
     if cursor_launcher_load_model_args && cursor_launcher_setup_auth_argv; then

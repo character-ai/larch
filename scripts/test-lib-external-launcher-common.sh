@@ -56,6 +56,19 @@ assert_file_not_line() {
     fi
 }
 
+assert_top_level_not_line() {
+    local label="$1" file="$2" needle="$3"
+    if awk -v needle="$needle" '
+        /^[[:space:]]*\[/ { in_table=1 }
+        !in_table && $0 == needle { found=1 }
+        END { exit found ? 0 : 1 }
+    ' "$file" 2>/dev/null; then
+        fail "$label: unexpected top-level line '$needle' in $file"
+    else
+        pass
+    fi
+}
+
 # --- Codex env-key auth helper ---
 _codex_auth_home="$TMPDIR_ROOT/codex-auth-home"
 mkdir -p "$TMPDIR_ROOT/home/.codex"
@@ -105,8 +118,8 @@ HOME="$TMPDIR_ROOT/home" env -u OPENAI_API_KEY bash -c '
     cp "$2/copied-config.toml" "$2/login-home/config.toml"
     external_prepare_codex_auth "$2/login-home"
 ' bash "$REPO_ROOT" "$TMPDIR_ROOT"
-assert_file_not_line "codex login strip removes selector" "$TMPDIR_ROOT/login-home/config.toml" 'model_provider = "openai-larch-env"'
-assert_file_not_line "codex login strip removes legacy env_key" "$TMPDIR_ROOT/login-home/config.toml" 'env_key = "OPENAI_API_KEY"'
+assert_top_level_not_line "codex login strip removes selector" "$TMPDIR_ROOT/login-home/config.toml" 'model_provider = "openai-larch-env"'
+assert_top_level_not_line "codex login strip removes legacy env_key" "$TMPDIR_ROOT/login-home/config.toml" 'env_key = "OPENAI_API_KEY"'
 assert_file_not_contains "codex login strip removes larch provider table body" "$TMPDIR_ROOT/login-home/config.toml" 'name = "old larch"'
 assert_file_not_contains "codex login strip removes larch provider array table" "$TMPDIR_ROOT/login-home/config.toml" '[[model_providers.openai-larch-env]]'
 assert_file_not_contains "codex login strip removes larch provider array body" "$TMPDIR_ROOT/login-home/config.toml" 'name = "old array larch"'
@@ -117,6 +130,52 @@ if [[ -L "$TMPDIR_ROOT/login-home/auth.json" ]]; then
     pass
 else
     fail "codex login path must symlink auth.json"
+fi
+
+printf '%s\n' \
+    "model_provider='openai-larch-env'" \
+    "env_key='OPENAI_API_KEY'" \
+    '[ model_providers.openai-larch-env ]' \
+    'name = "strip spaced table"' \
+    '[model_providers.other]' \
+    'model_provider = "openai-larch-env"' \
+    'env_key = "OPENAI_API_KEY"' \
+    'name = "keep nested selector text"' \
+    '# comment with """ must not enter multiline mode' \
+    'instructions = """' \
+    'model_provider = "openai-larch-env"' \
+    '"""' \
+    '[model_providers.openai-larch-env]' \
+    'instructions = """' \
+    '[model_providers.after]' \
+    'name = "keep after malformed skipped table"' > "$TMPDIR_ROOT/strip-edge-config.toml"
+external_strip_codex_larch_env_provider "$TMPDIR_ROOT/strip-edge-config.toml"
+assert_file_not_contains "codex login strip removes single-quoted selector" "$TMPDIR_ROOT/strip-edge-config.toml" "model_provider='openai-larch-env'"
+assert_file_not_contains "codex login strip removes single-quoted env_key" "$TMPDIR_ROOT/strip-edge-config.toml" "env_key='OPENAI_API_KEY'"
+assert_file_not_contains "codex login strip removes spaced larch provider body" "$TMPDIR_ROOT/strip-edge-config.toml" 'strip spaced table'
+assert_file_contains "codex login strip preserves nested selector text" "$TMPDIR_ROOT/strip-edge-config.toml" 'name = "keep nested selector text"'
+assert_file_contains "codex login strip recovers after malformed skipped table" "$TMPDIR_ROOT/strip-edge-config.toml" '[model_providers.after]'
+assert_file_contains "codex login strip preserves table after malformed skipped table" "$TMPDIR_ROOT/strip-edge-config.toml" 'name = "keep after malformed skipped table"'
+
+_strip_fail_home="$TMPDIR_ROOT/strip-fail-home"
+mkdir -p "$_strip_fail_home" "$TMPDIR_ROOT/no-mv"
+printf 'model_provider = "openai-larch-env"\n' > "$_strip_fail_home/config.toml"
+# Force the helper rewrite to fail after it has decided stripping is required.
+mv() { return 99; }
+set +e
+(
+    unset OPENAI_API_KEY
+    HOME="$TMPDIR_ROOT/home"
+    export HOME
+    external_prepare_codex_auth "$_strip_fail_home"
+)
+_strip_fail_rc=$?
+set -e
+unset -f mv
+if [[ "$_strip_fail_rc" -ne 0 && ! -e "$_strip_fail_home/auth.json" ]]; then
+    pass
+else
+    fail "codex auth prep strip failure must fail closed without linking auth.json"
 fi
 
 # shellcheck disable=SC2016

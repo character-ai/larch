@@ -538,7 +538,17 @@ external_strip_codex_larch_env_provider() {
             }
             return n
         }
+        function is_comment(line) {
+            return line ~ /^[[:space:]]*#/
+        }
+        function is_table_header(line) {
+            return line ~ /^[[:space:]]*\[\[?[[:space:]]*[^][]+[[:space:]]*\]?\][[:space:]]*(#.*)?$/
+        }
+        function is_larch_provider_header(line) {
+            return line ~ /^[[:space:]]*\[\[?[[:space:]]*model_providers\.openai-larch-env[[:space:]]*\]?\][[:space:]]*(#.*)?$/
+        }
         function update_multiline_state(line,    dq, sq) {
+            if (is_comment(line)) return
             dq = count_occurrences(line, "\"\"\"")
             sq = count_occurrences(line, "'\'''\'''\''")
             if (dq % 2 == 1) in_dq_multiline = !in_dq_multiline
@@ -547,17 +557,26 @@ external_strip_codex_larch_env_provider() {
         {
             was_in_multiline = (in_dq_multiline || in_sq_multiline)
         }
-        !was_in_multiline && /^[[:space:]]*\[/ {
-            if ($0 ~ /^[[:space:]]*\[\[?model_providers\.openai-larch-env\]?\][[:space:]]*(#.*)?$/) {
-                skip_larch_provider=1
+        skip_larch_provider {
+            if (is_table_header($0)) {
+                if (is_larch_provider_header($0)) next
+                skip_larch_provider=0
+                current_table="other"
+                print
                 update_multiline_state($0)
                 next
             }
-            skip_larch_provider=0
+            next
         }
-        !was_in_multiline && skip_larch_provider { update_multiline_state($0); next }
-        !was_in_multiline && $0 ~ /^[[:space:]]*model_provider[[:space:]]*=[[:space:]]*"openai-larch-env"[[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
-        !was_in_multiline && $0 ~ /^[[:space:]]*env_key[[:space:]]*=[[:space:]]*"OPENAI_API_KEY"[[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
+        !was_in_multiline && is_table_header($0) {
+            if (is_larch_provider_header($0)) {
+                skip_larch_provider=1
+                next
+            }
+            current_table="other"
+        }
+        !was_in_multiline && current_table == "" && $0 ~ /^[[:space:]]*model_provider[[:space:]]*=[[:space:]]*["'\'']openai-larch-env["'\''][[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
+        !was_in_multiline && current_table == "" && $0 ~ /^[[:space:]]*env_key[[:space:]]*=[[:space:]]*["'\'']OPENAI_API_KEY["'\''][[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
         { print; update_multiline_state($0) }
     ' "$config_path" > "$tmp_path"; then
         mv -f "$tmp_path" "$config_path" || { rm -f "$tmp_path"; return 1; }

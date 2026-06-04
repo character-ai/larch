@@ -327,6 +327,49 @@ fi
 assert_grep "codex review argv includes --json" "--json" "$ARGV"
 assert_grep "codex success sidecar marker" "codex-status: ok" "${OUTPUT}.sidecar"
 
+ARGV_ENV_KEY="$TMPDIR/argv-env-key.txt"
+COUNT_ENV_KEY="$TMPDIR/count-env-key.txt"
+PATH="$STUB_BIN:$PATH" \
+    CODEX_STUB_ARGV_LOG="$ARGV_ENV_KEY" \
+    CODEX_STUB_COUNT_FILE="$COUNT_ENV_KEY" \
+    OPENAI_API_KEY="sk-larch-review-sentinel" \
+    LARCH_CODEX_MODEL="stub-model" \
+    "$LAUNCHER" --output "$TMPDIR/out-env-key.txt" --timeout 5 --prompt "env-key" >/dev/null
+if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_ENV_KEY" \
+   && ! grep -Fq 'sk-larch-review-sentinel' "$ARGV_ENV_KEY"; then
+    pass
+else
+    fail "set OPENAI_API_KEY should use env-key auth argv without leaking key value"
+fi
+
+ARGV_LOGIN_UNSET="$TMPDIR/argv-login-unset.txt"
+COUNT_LOGIN_UNSET="$TMPDIR/count-login-unset.txt"
+PATH="$STUB_BIN:$PATH" \
+    env -u OPENAI_API_KEY \
+    CODEX_STUB_ARGV_LOG="$ARGV_LOGIN_UNSET" \
+    CODEX_STUB_COUNT_FILE="$COUNT_LOGIN_UNSET" \
+    LARCH_CODEX_MODEL="stub-model" \
+    "$LAUNCHER" --output "$TMPDIR/out-login-unset.txt" --timeout 5 --prompt "login-unset" >/dev/null
+if ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_UNSET" 2>/dev/null; then
+    pass
+else
+    fail "unset OPENAI_API_KEY should use login auth without env-key argv"
+fi
+
+ARGV_LOGIN_EMPTY="$TMPDIR/argv-login-empty.txt"
+COUNT_LOGIN_EMPTY="$TMPDIR/count-login-empty.txt"
+PATH="$STUB_BIN:$PATH" \
+    OPENAI_API_KEY="" \
+    CODEX_STUB_ARGV_LOG="$ARGV_LOGIN_EMPTY" \
+    CODEX_STUB_COUNT_FILE="$COUNT_LOGIN_EMPTY" \
+    LARCH_CODEX_MODEL="stub-model" \
+    "$LAUNCHER" --output "$TMPDIR/out-login-empty.txt" --timeout 5 --prompt "login-empty" >/dev/null
+if ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_EMPTY" 2>/dev/null; then
+    pass
+else
+    fail "empty OPENAI_API_KEY should use login auth without env-key argv"
+fi
+
 CODEX_LOCK_USER="larch-test-codex-$$"
 CODEX_LOCK_PATH="/tmp/larch-codex-serial-${CODEX_LOCK_USER}.lock"
 CODEX_LOCK_SEEN="$TMPDIR/codex-lock-seen.txt"

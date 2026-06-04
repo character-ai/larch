@@ -373,6 +373,60 @@ else
     fail 4e "env-key auth should use argv var-name overrides only"
 fi
 
+ARGV_LOGIN_UNSET="$SCRATCH/codex-argv-login-unset.txt"
+OUT_LOGIN_UNSET=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    env -u OPENAI_API_KEY \
+    STUB_ARGV_FILE="$ARGV_LOGIN_UNSET" \
+    STUB_PROMPT_FILE="$SCRATCH/codex-prompt-login-unset.txt" \
+    STUB_LAST_ARG_FILE="$SCRATCH/codex-last-arg-login-unset.txt" \
+    STUB_SEPARATOR_INDEX_FILE="$SCRATCH/codex-separator-index-login-unset.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/manifest-login-unset.json" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$LAUNCHER" \
+        --transcript-path "$SCRATCH/transcript-login-unset.txt" \
+        --sidecar-log "$SCRATCH/sidecar-login-unset.log" \
+        --manifest-path "$SCRATCH/manifest-login-unset.json" \
+        --qa-pending-path "$SCRATCH/qa-login-unset.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$OUT_LOGIN_UNSET" == LAUNCHER_EXIT=0* ]] \
+   && ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_UNSET" 2>/dev/null; then
+    pass
+else
+    fail 4f "unset OPENAI_API_KEY should use login auth without env-key argv"
+fi
+
+ARGV_LOGIN_EMPTY="$SCRATCH/codex-argv-login-empty.txt"
+OUT_LOGIN_EMPTY=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    STUB_ARGV_FILE="$ARGV_LOGIN_EMPTY" \
+    STUB_PROMPT_FILE="$SCRATCH/codex-prompt-login-empty.txt" \
+    STUB_LAST_ARG_FILE="$SCRATCH/codex-last-arg-login-empty.txt" \
+    STUB_SEPARATOR_INDEX_FILE="$SCRATCH/codex-separator-index-login-empty.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/manifest-login-empty.json" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    OPENAI_API_KEY="" \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$LAUNCHER" \
+        --transcript-path "$SCRATCH/transcript-login-empty.txt" \
+        --sidecar-log "$SCRATCH/sidecar-login-empty.log" \
+        --manifest-path "$SCRATCH/manifest-login-empty.json" \
+        --qa-pending-path "$SCRATCH/qa-login-empty.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$OUT_LOGIN_EMPTY" == LAUNCHER_EXIT=0* ]] \
+   && ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_EMPTY" 2>/dev/null; then
+    pass
+else
+    fail 4g "empty OPENAI_API_KEY should use login auth without env-key argv"
+fi
+
 if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub codex stdout' "$TRANSCRIPT"; then
     pass
 else

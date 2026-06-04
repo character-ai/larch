@@ -32,6 +32,13 @@ run_cr() {
     ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 env -u OPENAI_API_KEY "$@" )
 }
 
+run_cr_with_env() {
+    local tmp="$1"
+    shift
+    mkdir -p "$tmp"
+    ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 "$@" )
+}
+
 # --- Baseline stubs (exit 0) ---
 STUB_BIN="$SCRATCH/bin0"
 mkdir -p "$STUB_BIN"
@@ -197,6 +204,25 @@ out=$(run_cr "$SCRATCH/t6" env PATH="$SB6:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex ok" "CODEX_PRESENT=true" "$out"
 assert_line "codex ok binary" "CODEX_BINARY_FOUND=true" "$out"
+
+SB6E="$SCRATCH/bin6e"
+mkdir -p "$SB6E" "$SCRATCH/t6e"
+cat > "$SB6E/codex" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$SB6E/codex"
+cat > "$SB6E/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 127
+STUB
+chmod +x "$SB6E/cursor"
+printf 'false\n' > "$SCRATCH/t6e/larch-codex-login-present-${STAMP_USER}.stamp"
+touch "$SCRATCH/t6e/larch-codex-login-present-${STAMP_USER}.stamp"
+out=$(run_cr_with_env "$SCRATCH/t6e" env PATH="$SB6E:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=3600 \
+    OPENAI_API_KEY=sk-larch-probe-sentinel \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+assert_line "codex env-key ignores fresh login false stamp" "CODEX_PRESENT=true" "$out"
 
 # --- Codex: probe forwards production model args ---
 SB6M="$SCRATCH/bin6m"
