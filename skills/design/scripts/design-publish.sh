@@ -238,6 +238,9 @@ else
     if [[ "$_validate_rc" -ne 0 || -z "$VALIDATE_STATUS" || "$VALIDATE_STATUS" == not-run ]]; then
         fail 'plan validator failed before publish'
     fi
+    if [[ "$VALIDATE_STATUS" != ok ]]; then
+        fail 'plan validator returned unexpected VALIDATE_STATUS before publish'
+    fi
 fi
 
 if ! "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$DESIGN_TMPDIR/composed-plan.md" >"$DESIGN_TMPDIR/composed-plan.redacted.md"; then

@@ -540,6 +540,19 @@ grep -Fq 'Accept / proceed-anyway' "$SKILL_MD" \
   || fail "(14b9a) SKILL.md missing Accept / proceed-anyway validator option label"
 grep -Fq 'Cancel' "$SKILL_MD" \
   || fail "(14b9b) SKILL.md missing Cancel validator option label"
+validator_handler_block=$(awk '/^### Plan command validator failure \(shared\)/,/^\*\*Plan helper contracts\*\*/' "$SKILL_MD")
+printf '%s\n' "$validator_handler_block" | grep -Fq 'cap 2' \
+  || fail "(14b13a) shared validator handler missing auto-repair cap"
+printf '%s\n' "$validator_handler_block" | grep -Fq 're-capture `design-publish.sh`' \
+  || fail "(14b13b) shared validator handler missing Step 5c design-publish.sh re-capture"
+printf '%s\n' "$validator_handler_block" | grep -Fq 'bare `ACTION=VALIDATE_PLAN_COMMANDS` on `composed-plan.md`' \
+  || fail "(14b13c) shared validator handler missing composed-plan validate-only prohibition"
+printf '%s\n' "$validator_handler_block" | grep -Fq 'append-tool-failure.sh' \
+  || fail "(14b13d) shared validator handler missing append-tool-failure.sh audit logging"
+printf '%s\n' "$validator_handler_block" | grep -Fqe '--redact' \
+  || fail "(14b13e) shared validator handler missing append-tool-failure --redact"
+printf '%s\n' "$validator_handler_block" | grep -Fq 'redact-secrets.sh' \
+  || fail "(14b13f) shared validator handler missing redacted VALIDATE_LOG_FILE diagnosis"
 step2b_mark=$(grep -nF 'mark "design Step 2b — plan"' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 postplan_line=$(awk -v s="$step2b_mark" 'NR>s && /design-postplan-emit\.sh/ {print NR; exit}' "$SKILL_MD" || true)
 step2b5_line=$(awk -v s="$step2b_mark" 'NR>s && /### Step 2b\.5/ {print NR; exit}' "$SKILL_MD" || true)

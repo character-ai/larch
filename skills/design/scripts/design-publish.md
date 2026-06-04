@@ -19,7 +19,7 @@
 
 1. Preconditions: `.completed/step-5b` present; `composed-plan.md` non-empty (`exit 2` otherwise).
 2. Pre-side-effect pause checkpoint: when `.pause-requested` exists, immediately `exec design-pause-save.sh --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"}` before validation, redaction, plan write, publish, rename, or marker side effects.
-3. Unless `--skip-validate` is passed, run `invoke-plan-validator.sh DIR/composed-plan.md` under `set +e`, parse the five `VALIDATE_*` KVs, and treat `VALIDATE_STATUS=defects-found` as `exit 4` with no redaction or publish-tail side effects. Empty, `not-run`, or nonzero validator output that is not `defects-found` is validator infrastructure failure (`exit 2`).
+3. Unless `--skip-validate` is passed, run `invoke-plan-validator.sh DIR/composed-plan.md` under `set +e`, parse the five `VALIDATE_*` KVs, and treat `VALIDATE_STATUS=defects-found` as `exit 4` with no redaction or publish-tail side effects. Empty, `not-run`, unexpected status (anything other than `ok` after the defects-found branch), or nonzero validator output that is not `defects-found` is validator infrastructure failure (`exit 2`).
 4. Redact `composed-plan.md` through `scripts/redact-secrets.sh` (stdin) to `composed-plan.redacted.md`; redactor nonzero is `exit 2` with `redact-secrets.sh failed`, and an empty redacted file is also `exit 2`.
 5. Resolve `REPO` once (`resolve-repo.sh` → `gh repo view` → empty).
 6. `plan-block-write.sh` with `if !` guard; failure → `failed-plan-write` render, `PLAN_WRITE_OK=false`, `exit 1`.
