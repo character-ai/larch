@@ -223,6 +223,9 @@ run_direct_relevant_targets() {
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
                 ;;
+            skills/report-tokens/scripts/run-analysis.sh|skills/report-tokens/scripts/test-run-analysis-quiet.sh)
+                append_target_once test-run-analysis-quiet
+                ;;
             python/pyproject.toml|python/ruff.toml|python/pyrightconfig.json|python/.pylintrc|python/requirements-dev.txt|python/requirements-test.txt)
                 maybe_append_py_lint_target
                 maybe_append_py_test_target

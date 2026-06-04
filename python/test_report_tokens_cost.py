@@ -59,6 +59,25 @@ def test_mixed_bucket_and_blended_argv() -> None:
     assert "--cursor-tokens" in argv
 
 
+def test_zero_bucket_uses_aggregate_tokens() -> None:
+    record = RunRecord(
+        number=1,
+        title="t",
+        url="u",
+        started_at="2026-01-01T00:00:00Z",
+        closed_at="2026-01-01T00:00:00Z",
+        workflow="HARD",
+        claude=VendorTotals(total=123),
+        codex=VendorTotals(total=0),
+        cursor=VendorTotals(total=0),
+        phase_rows=(),
+        raw_report={"BUCKETS_claude": {"input": 0, "malformed": "x"}},
+    )
+    argv = token_cost_argv(record, plugin_root=Path("/repo"))
+    assert "--claude-tokens" in argv
+    assert "--claude-input-tokens" not in argv
+
+
 def test_kv_parse_into_cost_fields() -> None:
     runner = Runner(CommandResult(("token-cost",), 0, "CLAUDE_COST=1.00\nCODEX_COST=2.00\nCURSOR_COST=3.00\nTOTAL_COST=6.00\n", "", 0.01))
     priced = price_run(runner, record=_record(), plugin_root=Path.cwd().parent)

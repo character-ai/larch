@@ -4,12 +4,15 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 from collections.abc import Mapping
 
+import config
+from errors import ShipError
 from proc import Runner
 from report_tokens_models import PhaseRow, RunRecord, Skill, VendorName, VendorTotals, VENDORS, safe_int
 
@@ -40,24 +43,33 @@ def _as_mapping(value: object) -> Mapping[str, object]:
 def _repo_root(runner: Runner) -> Path:
     try:
         result = runner.run(["git", "rev-parse", "--show-toplevel"])
-    except OSError:
-        _warn("git rev-parse failed; using current working directory as scan root")
-        return Path.cwd().resolve()
+    except OSError as exc:
+        raise ShipError(f"ERROR: could not resolve git repository root: {exc}") from exc
     if result.returncode == 0 and result.stdout.strip():
         return Path(result.stdout.strip()).resolve()
-    _warn("git rev-parse failed; using current working directory as scan root")
-    return Path.cwd().resolve()
+    detail = (result.stderr or result.stdout).strip()
+    suffix = f": {detail}" if detail else ""
+    raise ShipError(f"ERROR: could not resolve git repository root{suffix}")
+
+
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
+
+
+def _valid_repo_slug(value: str) -> bool:
+    return bool(_REPO_SLUG_RE.fullmatch(value)) and not any(part in {".", ".."} for part in value.split("/"))
 
 
 def _repo_slug(runner: Runner, override: str | None) -> str | None:
     if override:
-        return override if "/" in override else None
+        if _valid_repo_slug(override):
+            return override
+        raise ShipError(f"ERROR: {config.ENV_LARCH_REPORT_TOKENS_REPO} must be a safe OWNER/REPO slug")
     try:
         result = runner.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
     except OSError as exc:
         print(f"ERROR: could not resolve GitHub repo owner/name: {exc}", file=sys.stderr)
         return None
-    if result.returncode == 0 and "/" in result.stdout.strip():
+    if result.returncode == 0 and _valid_repo_slug(result.stdout.strip()):
         return result.stdout.strip()
     detail = (result.stderr or result.stdout).strip()
     suffix = f": {detail}" if detail else ""
@@ -145,6 +157,9 @@ def _phase_rows(report: Mapping[str, object]) -> tuple[PhaseRow, ...]:
 def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord | None:
     manifest_obj = _json_file(run_dir / "manifest.json")
     manifest = _as_mapping(manifest_obj)
+    if manifest_obj is not None and not manifest:
+        _warn(f"manifest for {run_dir} lacks numeric issue_number; skipping")
+        return None
     if not manifest:
         return None
     number = safe_int(manifest.get("issue_number"))
@@ -161,11 +176,11 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
     if not _has_numeric_tokens(report):
         _warn(f"{token_path} lacks vendor totals/BUCKETS with numeric token counts; skipping")
         return None
-    slug = repo_slug or "unknown/unknown"
+    url = f"https://github.com/{repo_slug}/issues/{number}" if repo_slug else ""
     return RunRecord(
         number=number,
         title=str(manifest.get("title") or f"Issue #{number}"),
-        url=f"https://github.com/{slug}/issues/{number}",
+        url=url,
         started_at=str(manifest.get("started_at") or ""),
         closed_at=str(manifest.get("updated_at") or manifest.get("started_at") or ""),
         workflow=_workflow(run_dir, skill),
@@ -175,6 +190,30 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
         phase_rows=_phase_rows(report),
         raw_report=report,
     )
+
+
+def _run_dirs(log_base: Path) -> list[Path]:
+    dirs: list[Path] = []
+    try:
+        resolved_base = log_base.resolve(strict=True)
+    except OSError:
+        return []
+    for path in sorted(log_base.glob("*")):
+        if path.is_symlink():
+            _warn(f"run directory {path} is a symlink; skipping")
+            continue
+        if not path.is_dir():
+            continue
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError as exc:
+            _warn(f"could not resolve run directory {path}: {exc}; skipping")
+            continue
+        if not (resolved == resolved_base or resolved_base in resolved.parents):
+            _warn(f"run directory {path} resolves outside {log_base}; skipping")
+            continue
+        dirs.append(path)
+    return dirs
 
 
 def _limit_value(limit: int | None) -> int | None:
@@ -203,7 +242,7 @@ def scan(
     print(f"Scanning {log_base} for larch run logs (--skill={skill})...", file=sys.stderr)
     max_dirs = _limit_value(limit)
     records: list[RunRecord] = []
-    for seen, run_dir in enumerate(sorted(path for path in log_base.glob("*") if path.is_dir()), start=1):
+    for seen, run_dir in enumerate(_run_dirs(log_base), start=1):
         record = _record(run_dir, skill=skill, repo_slug=slug)
         if record is not None:
             records.append(record)

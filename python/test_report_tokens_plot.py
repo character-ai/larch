@@ -6,6 +6,10 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pytest
 
 from proc import CommandResult
 from report_tokens_models import RunRecord, VendorTotals
@@ -39,6 +43,10 @@ class Runner:
     ) -> CommandResult:
         self.calls.append(list(argv))
         self.envs.append(env)
+        if self.result.stdout == "__PLOT_DIR__" and len(argv) > 3:
+            path = Path(argv[3]) / "x.png"
+            _ = path.write_text("png", encoding="utf-8")
+            return CommandResult(tuple(argv), 0, json.dumps([str(path)]), "", 0.01)
         return self.result
 
 
@@ -47,11 +55,10 @@ def _record() -> RunRecord:
 
 
 def test_plot_contract_and_mplconfig(tmp_path: Path) -> None:
-    png = tmp_path / "x.png"
-    _ = png.write_text("png", encoding="utf-8")
-    runner = Runner(CommandResult(("python",), 0, json.dumps([str(png)]), "", 0.01))
+    runner = Runner(CommandResult(("python",), 0, "__PLOT_DIR__", "", 0.01))
     paths = plot(runner, skill="implement", records=(_record(),), plot_parent_dir=tmp_path, plugin_root=Path.cwd())
-    assert paths == [png]
+    assert paths
+    assert paths[0].name == "x.png"
     env = runner.envs[0]
     assert env is not None
     assert "MPLCONFIGDIR" in env
@@ -59,5 +66,19 @@ def test_plot_contract_and_mplconfig(tmp_path: Path) -> None:
 
 def test_no_plot_returns_empty(tmp_path: Path) -> None:
     runner = Runner(CommandResult(("python",), 0, "[]", "", 0.01))
-    assert plot(runner, skill="design", records=(), plot_parent_dir=tmp_path, no_plot=True) == []
+    assert not plot(runner, skill="design", records=(), plot_parent_dir=tmp_path, no_plot=True)
     assert not runner.calls
+
+
+def test_no_plot_zero_env_does_not_disable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_REPORT_TOKENS_NO_PLOT", "0")
+    runner = Runner(CommandResult(("python",), 0, "__PLOT_DIR__", "", 0.01))
+    assert plot(runner, skill="implement", records=(_record(),), plot_parent_dir=tmp_path, plugin_root=Path.cwd())
+    assert runner.calls
+
+
+def test_plot_rejects_child_path_outside_plot_dir(tmp_path: Path) -> None:
+    outside = tmp_path / "outside.png"
+    _ = outside.write_text("png", encoding="utf-8")
+    runner = Runner(CommandResult(("python",), 0, json.dumps([str(outside)]), "", 0.01))
+    assert not plot(runner, skill="implement", records=(_record(),), plot_parent_dir=tmp_path, plugin_root=Path.cwd())

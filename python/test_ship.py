@@ -189,6 +189,34 @@ def test_oos_gate_before_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
 
 
+def test_ship_writes_phase_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    state_file = tmp_path / "ship-pr-state.sh"
+
+    result = ship.run_ship(
+        _ctx(tmp_path, merge=False, state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.OK
+    state = state_file.read_text(encoding="utf-8")
+    assert "PHASE=done\n" in state
+    assert "PR_NUMBER=5\n" in state
+    assert "REBASE_COUNT=0\n" in state
+
+
 def test_failed_run_id_surfaces_for_ci_fix_handback() -> None:
     step = StepResult(Outcome.NEEDS_USER_INPUT, "first-fixer-non-health")
     result = ship._step_result_to_ship(step, failed_run_id="123")  # pyright: ignore[reportPrivateUsage]

@@ -32,13 +32,23 @@ def _vendor_totals(record: RunRecord, vendor: VendorName) -> VendorTotals:
     return record.cursor
 
 
+def _bucket_total(bucket: Mapping[str, object], vendor: VendorName) -> int:
+    if vendor == "claude":
+        keys = ("input", "cache_read", "cache_create_5m", "cache_create_1h", "output")
+    elif vendor == "codex":
+        keys = ("input", "cached_input", "output")
+    else:
+        keys = ("input", "cache_read", "output")
+    return sum(safe_int(bucket.get(key)) for key in keys)
+
+
 def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> list[str]:
     root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
     argv = [str(root / "scripts" / "token-cost.sh")]
     for vendor in VENDORS:
         bucket = _bucket(record, vendor)
         totals = _vendor_totals(record, vendor)
-        if bucket:
+        if bucket and _bucket_total(bucket, vendor) > 0:
             if vendor == "claude":
                 argv.extend([
                     "--claude-input-tokens", str(safe_int(bucket.get("input"))),

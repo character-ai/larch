@@ -55,9 +55,11 @@ def main(argv: list[str] | None = None) -> int:
     no_plot = bool(args.no_plot) or env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_NO_PLOT)
     temp_root = Path(tempfile.mkdtemp(prefix="larch-report-tokens."))
     repo_override = os.environ.get(config.ENV_LARCH_REPORT_TOKENS_REPO)
-    if no_issue and repo_override is None:
-        repo_override = "unknown/unknown"
-    scanned = scan(proc, skill=skill, repo_override=repo_override)
+    try:
+        scanned = scan(proc, skill=skill, repo_override=repo_override)
+    except ShipError as exc:
+        print(str(exc), file=sys.stderr)
+        return config.EXIT_BAIL
     if not scanned.records:
         print("## Report Tokens Analysis")
         print()

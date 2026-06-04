@@ -17,6 +17,16 @@ _TRUNCATION_PREFIX = (
     "Run `/report-tokens --no-issue` locally for the full output.\n\n"
 )
 
+_TITLE_BY_SECTION = {
+    "summary": "Report Tokens Analysis",
+    "aggregate": "Aggregate cost by workflow",
+    "vendor": "Vendor breakdown",
+    "top": "Top runs by estimated cost",
+    "trends": "Per-day cost trends",
+    "suggestions": "Cost-reduction suggestions",
+    "rates": "Rates used for display/fallback",
+}
+
 
 def _bytes(text: str) -> int:
     return len(text.encode("utf-8"))
@@ -26,10 +36,18 @@ def _assemble(sections: list[ReportSection]) -> str:
     return "\n\n".join(section.body.strip() for section in sections if section.body.strip()) + "\n"
 
 
+def _posting_body(text: str) -> str:
+    return redact.redact(redact.redact(text))
+
+
+def _section_label(section: ReportSection) -> str:
+    return _TITLE_BY_SECTION.get(section.title, section.title)
+
+
 def _trim_sections(sections: list[ReportSection], *, limit: int) -> tuple[str, list[str]]:
     kept = list(sections)
     omitted: list[str] = []
-    redacted = redact.redact(_assemble(kept))
+    redacted = _posting_body(_assemble(kept))
     if _bytes(redacted) <= limit:
         return redacted, omitted
     candidates = sorted(
@@ -39,13 +57,13 @@ def _trim_sections(sections: list[ReportSection], *, limit: int) -> tuple[str, l
     )
     for candidate in candidates:
         kept.remove(candidate)
-        omitted.append(candidate.title)
+        omitted.append(_section_label(candidate))
         notice = _TRUNCATION_PREFIX + f"Omitted sections: {', '.join(omitted)}.\n\n"
-        redacted = redact.redact(notice + _assemble(kept))
+        redacted = _posting_body(notice + _assemble(kept))
         if _bytes(redacted) <= limit:
             return redacted, omitted
     notice = _TRUNCATION_PREFIX + f"Omitted sections: {', '.join(omitted)}.\n\n"
-    return redact.redact(notice + _assemble(kept)), omitted
+    return _posting_body(notice + _assemble(kept)), omitted
 
 
 def assemble_issue_body(sections: list[ReportSection]) -> str:

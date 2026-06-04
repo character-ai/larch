@@ -17,6 +17,11 @@ from report_tokens_models import RunRecord, Skill
 DATE_LEN = 10
 
 
+def _env_flag_enabled(name: str) -> bool:
+    value = os.environ.get(name, "").strip().lower()
+    return value not in ("", "0", "false", "no")
+
+
 def _date(value: str) -> str | None:
     return value[:DATE_LEN] if len(value) >= DATE_LEN else None
 
@@ -49,7 +54,7 @@ def plot(
     no_plot: bool = False,
     plugin_root: Path | None = None,
 ) -> list[Path]:
-    if no_plot or os.environ.get(config.ENV_LARCH_REPORT_TOKENS_NO_PLOT):
+    if no_plot or _env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_NO_PLOT):
         print("No plots generated (--no-plot).", file=sys.stderr)
         return []
     root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
@@ -76,7 +81,23 @@ def plot(
         print("No plots generated (plot child returned non-list JSON).", file=sys.stderr)
         return []
     path_items = cast("list[object]", raw_paths)
-    paths = [Path(str(item)) for item in path_items]
+    paths: list[Path] = []
+    try:
+        resolved_plot_dir = plot_dir.resolve(strict=True)
+    except OSError:
+        print("No plots generated (plot directory disappeared).", file=sys.stderr)
+        return []
+    for item in path_items:
+        path = Path(str(item))
+        try:
+            resolved = path.resolve(strict=True)
+        except OSError:
+            print("No plots generated (plot child returned missing path).", file=sys.stderr)
+            return []
+        if not path.is_file() or not (resolved == resolved_plot_dir or resolved_plot_dir in resolved.parents):
+            print("No plots generated (plot child returned path outside plot directory).", file=sys.stderr)
+            return []
+        paths.append(path)
     if sys.platform == "darwin" and not os.environ.get(config.ENV_LARCH_REPORT_TOKENS_NO_OPEN):
         for path in paths:
             _ = runner.run(["open", str(path)])
