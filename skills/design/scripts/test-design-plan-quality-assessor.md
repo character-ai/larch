@@ -9,3 +9,7 @@ Makefile target: `test-design-plan-quality-assessor`.
 ## Thin-fence regressions
 
 The harness covers rc `0/2/10/11/*`, SIMPLE cheap-skip behavior, rc=10 trailer filtering/validation with fail-closed invalid trailers, rc=11 pause-save handoff, display neutralization for spoofed marker/KV lines, quiet-mode capture through FD 3, and confined fixed-key sidecar loading. Stale fat-handoff expectations such as symlink result-env routing, mandatory-key stdout fallback, workflow-path gating, and `ASSESSOR_STATUS=paused` routing are obsolete.
+
+## Step 3.6 handoff mirror
+
+Case 12 now documents the empty-key path as a settled rc `0` handoff, not an abort. The `apply_step3_6_handoff` mirror keeps parity with `SKILL.md`: classification stderr is not suppressed, and the entry `.pause-requested` pause-save guard threads `${REPO:+--repo "$REPO"}`.

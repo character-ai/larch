@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 3.6 plan-quality assessor lane between Gate B settled paths and Step 3b.
 
-**Callers**: `skills/design/SKILL.md` Step 3.6 fence (orchestrator prints HARD `🔶` banner or non-HARD skip breadcrumb, then invokes this driver).
+**Callers**: `skills/design/SKILL.md` Step 3.6 fence. The orchestrator runs the cheap classification gate: HARD invokes this driver, and the driver renders the HARD `🔶` banner; non-HARD prints the skip breadcrumb and writes the Step 3.6 sentinel without invoking the driver.
 
 ## Argv
 
@@ -39,9 +39,9 @@ Stops before the WORSE Continue/Stop `AskUserQuestion` (LLM boundary in `SKILL.m
 
 ## Result env (`.step3.6-assessor.env`)
 
-Dual-purpose: driver result-env and cross-turn state for the WORSE-Stop branch.
+Driver result-env for audit and settled-path state only. It is not a control input for the WORSE Continue/Stop branch, which uses the trusted trailer frame in driver stdout.
 
-Allowlist / stdout KV contract:
+Result-env allowlist (not stdout):
 
 - `ASSESSOR_STATUS`
 - `ASSESSOR_VERDICT`
@@ -71,10 +71,10 @@ Under `set -euo pipefail`, every `"$SNAPSHOT_SH"` and `"$ASSESS_SH"` invocation 
 
 Prompt-side `SKILL.md` Step 3.6 fence:
 
-1. Cheap `design_classification` pre-read. When `_design_classification=HARD`, print `> **🔶 /design 3.6: assessor**` before driver invoke; when non-HARD, print `⏩ 3.6: assessor — design_classification=…; skipped` and write the Step 3.6 sentinel without invoking the driver.
+1. Cheap `design_classification` pre-read. When `_design_classification=HARD`, invoke the driver; the driver renders `> **🔶 /design 3.6: assessor**`. When non-HARD, print `⏩ 3.6: assessor — design_classification=…; skipped` and write the Step 3.6 sentinel without invoking the driver.
 2. `set +e` capture to `_assessor_out` / `_assessor_rc` via `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh"` (qualified path — never bare script name).
 3. For rc `10`, parse only the final exact `LARCH_ASSESSOR_TRUSTED_TRAILERS_BEGIN` frame from driver stdout. Filter that frame from chat, require exactly one numeric `LARCH_ASSESSOR_ROUND_NUM`, and abort fail-closed before Continue/Stop if validation fails.
-4. Print filtered display text and diagnostic `ASSESSOR_RC=` / trusted `ASSESSOR_ROUND_NUM=` scalars for the prompt-side branch. Do not source or route from `.step3.6-assessor.env`.
+4. Print filtered driver-rendered display text and diagnostic `ASSESSOR_RC=` / trusted `ASSESSOR_ROUND_NUM=` scalars for the prompt-side branch. Do not source or route from `.step3.6-assessor.env`.
 5. rc=`0` writes the Step 3.6 sentinel and continues to Step 3b; rc=`2` aborts as configuration error; rc=`10` fires the Continue/Stop prompt using the trusted trailer scalar; any unexpected rc aborts.
 6. On rc `11`, `exec design-pause-save.sh --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}`. The paused result env is audit data only; it must not be treated as a settled skip.
 
@@ -92,4 +92,4 @@ Cross-links: `assessor.md`, `assess-plan-round.md`, `snapshot-plan-round.md`, `l
 
 Exit codes are now: `0` settled (including `missing-snapshot` fail-open/degraded statuses), `2` argv/configuration error, `10` WORSE-majority action branch, and `11` pause-save handoff. Exit `1` is reserved. The driver writes paused state and exits `11`; the prompt-side orchestrator executes `design-pause-save.sh`.
 
-The driver renders the HARD banner, warnings, paused note, and WORSE-majority display via `emit`. On rc=`10`, it appends a trusted trailer frame after display text; the orchestrator filters trailer lines from chat, parses only the last exact marker frame, and requires a numeric `LARCH_ASSESSOR_ROUND_NUM` before Continue/Stop. General machine KVs stay in `.step3.6-assessor.env` and are not emitted on FD 3.
+The driver renders the HARD banner, warnings, paused note, and WORSE-majority display via `emit`. On rc=`10`, it appends a trusted trailer frame after display text; the orchestrator filters trailer lines from chat, parses only the last exact marker frame, and requires a numeric `LARCH_ASSESSOR_ROUND_NUM` before Continue/Stop. General machine KVs stay in `.step3.6-assessor.env` as audit/settled-path state and are not emitted on FD 3 or used for Continue/Stop control.

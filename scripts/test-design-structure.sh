@@ -38,17 +38,144 @@ absent() {
 }
 
 assert_thin_fence() {
-  local file="$1" label="$2"
-  grep -Fq 'set +e' "$file" || fail "$label missing set +e child capture"
-  grep -Fq '$?' "$file" || fail "$label missing explicit rc capture"
+  local file="$1" label="$2" start_marker="${3:-}" end_marker="${4:-}"
+  local subject="$file" scoped=false
+  if [[ -n "$start_marker" || -n "$end_marker" ]]; then
+    [[ -n "$start_marker" && -n "$end_marker" ]] || fail "$label region markers must be supplied together"
+    local start_line end_line
+    start_line=$(grep -nF -- "$start_marker" "$file" | head -1 | cut -d: -f1 || true)
+    end_line=$(grep -nF -- "$end_marker" "$file" | awk -F: -v s="${start_line:-0}" '$1 > s {print $1; exit}' || true)
+    [[ -n "$start_line" ]] || fail "$label missing start marker: $start_marker"
+    [[ -n "$end_line" ]] || fail "$label missing end marker after $start_marker: $end_marker"
+    (( end_line > start_line )) || fail "$label end marker must follow start marker"
+    subject=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-region.XXXXXX")
+    sed -n "${start_line},$((end_line - 1))p" "$file" >"$subject"
+    scoped=true
+  fi
+
+  grep -Fq 'set +e' "$subject" || fail "$label missing set +e child capture"
+  grep -Fq '$?' "$subject" || fail "$label missing explicit rc capture"
   # shellcheck disable=SC2016 # literal shell snippet should not expand in the harness.
-  if grep -Fq 'source "$DESIGN_TMPDIR/.step3.6-assessor.env"' "$file"; then
+  if grep -Fq 'source "$DESIGN_TMPDIR/.step3.6-assessor.env"' "$subject"; then
     fail "$label must not source assessor result env"
   fi
-  if grep -Fq '2>&1 | tail -n 1' "$file"; then
+  if grep -Fq '2>&1 | tail -n 1' "$subject"; then
     fail "$label must not merge stdout/stderr for scalar parsing"
   fi
+  if [[ "$scoped" == true ]]; then
+    if grep -Fq 'is a symlink; refusing to source' "$subject"; then
+      fail "$label must not carry fat-fence symlink-source handling"
+    fi
+    if grep -Fq 'phase_driver_read_result_env' "$subject"; then
+      fail "$label must not call phase_driver_read_result_env"
+    fi
+    if awk '
+      /while[[:space:]].*read/ { in_read_loop=1 }
+      in_read_loop && /done[[:space:]]*<.*\.step3\.6-assessor\.env/ { found=1; in_read_loop=0 }
+      in_read_loop && /^[[:space:]]*done([[:space:]]|$)/ { in_read_loop=0 }
+      END { exit found ? 0 : 1 }
+    ' "$subject"; then
+      fail "$label must not read .step3.6-assessor.env with a file-first while/read loop"
+    fi
+    local entry_guard_line
+    entry_guard_line=$(awk '/read-design-classification\.sh/ { exit } /\.pause-requested/ && /design-pause-save\.sh/ { print; exit }' "$subject")
+    [[ -n "$entry_guard_line" ]] || fail "$label missing entry pause-save guard before classification"
+    # shellcheck disable=SC2016 # literal repo passthrough syntax is pinned.
+    [[ "$entry_guard_line" == *'${REPO:+--repo "$REPO"}'* ]] || fail "$label entry pause-save guard must thread REPO"
+  fi
+  [[ "$subject" == "$file" ]] || rm -f "$subject"
 }
+
+assert_gate_b_bypass_branch_sentinels() {
+  local file="$1"
+  local branch
+  branch=$(awk '
+    /`LOOP_STATUS=plan-size-trigger`/ { in_branch=1 }
+    in_branch && /`LOOP_STATUS=plan-validator-defects`/ { exit }
+    in_branch { print }
+  ' "$file")
+  [[ -n "$branch" ]] || fail "SKILL.md missing LOOP_STATUS=plan-size-trigger branch"
+  # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the harness.
+  grep -Fq 'mkdir -p "$DESIGN_TMPDIR/.completed"' <<<"$branch" \
+    || fail "plan-size-trigger branch missing .completed mkdir"
+  # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the harness.
+  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3"' <<<"$branch" \
+    || fail "plan-size-trigger branch missing step-3 sentinel"
+  # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the harness.
+  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3.5"' <<<"$branch" \
+    || fail "plan-size-trigger branch missing step-3.5 sentinel"
+  # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the harness.
+  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3.6"' <<<"$branch" \
+    || fail "plan-size-trigger branch missing step-3.6 sentinel"
+}
+
+run_thin_fence_self_tests() {
+  local tmp base inside_loop missing_repo
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-design-structure-self.XXXXXX")
+  trap 'rm -rf "$tmp"' RETURN
+  base="$tmp/base.md"
+  cat >"$base" <<'EOF_SELF'
+source "$DESIGN_TMPDIR/.step3.6-assessor.env"
+<!-- step:3.6 — Plan-Quality Assessor (HARD-only) -->
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+set +e
+_assessor_out=$(driver)
+_assessor_rc=$?
+set -e
+_design_classification=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)
+<!-- step:3b — Architecture Diagram -->
+EOF_SELF
+  assert_thin_fence "$base" 'self-test outside-region fat token' '<!-- step:3.6' '<!-- step:3b'
+
+  cat >"$tmp/inside-fat.md" <<'EOF_SELF'
+<!-- step:3.6 — Plan-Quality Assessor (HARD-only) -->
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+set +e
+source "$DESIGN_TMPDIR/.step3.6-assessor.env"
+_assessor_rc=$?
+set -e
+_design_classification=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)
+<!-- step:3b — Architecture Diagram -->
+EOF_SELF
+  if (assert_thin_fence "$tmp/inside-fat.md" 'self-test inside-region fat token' '<!-- step:3.6' '<!-- step:3b') 2>/dev/null; then
+    fail 'self-test: fat-fence token inside Step 3.6 region should fail'
+  fi
+
+  inside_loop="$tmp/inside-loop.md"
+  cat >"$inside_loop" <<'EOF_SELF'
+<!-- step:3.6 — Plan-Quality Assessor (HARD-only) -->
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+set +e
+while IFS= read -r _line; do
+  :
+done <"$DESIGN_TMPDIR/.step3.6-assessor.env"
+_assessor_rc=$?
+set -e
+_design_classification=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)
+<!-- step:3b — Architecture Diagram -->
+EOF_SELF
+  if (assert_thin_fence "$inside_loop" 'self-test file-first read loop' '<!-- step:3.6' '<!-- step:3b') 2>/dev/null; then
+    fail 'self-test: file-first .step3.6-assessor.env read loop should fail'
+  fi
+
+  missing_repo="$tmp/missing-repo.md"
+  cat >"$missing_repo" <<'EOF_SELF'
+<!-- step:3.6 — Plan-Quality Assessor (HARD-only) -->
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+set +e
+_assessor_out=$(driver)
+_assessor_rc=$?
+exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+set -e
+_design_classification=$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)
+<!-- step:3b — Architecture Diagram -->
+EOF_SELF
+  if (assert_thin_fence "$missing_repo" 'self-test missing entry repo' '<!-- step:3.6' '<!-- step:3b') 2>/dev/null; then
+    fail 'self-test: first entry pause-save guard without REPO should fail'
+  fi
+}
+
+run_thin_fence_self_tests
 
 contains "$SKILL_MD" '[--hard]' 'SKILL argument hint must expose --hard as the sole tier flag'
 absent "$SKILL_MD" '[--simple|' 'SKILL argument hint must not restore [--simple|--hard] tier alternation'
@@ -444,9 +571,10 @@ contains "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-3.5"' 'SKILL missing G
 contains "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-3.6"' 'SKILL missing Gate-B-bypass step-3.6 sentinel write'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$SKILL_MD" '${REPO:+--repo "$REPO"}' 'SKILL Step 3.6 rc=11 pause-save must thread REPO'
-contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'gate B bypass triple-sentinel layout should resume at 3b' 'pause/resume harness missing Gate-B-bypass 3b regression'
+contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'gate B bypass plan-size-trigger writes triple sentinels from empty state' 'pause/resume harness missing Gate-B-bypass empty-state 3b regression'
 contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'missing gate B bypass sentinels should resume at 3.5' 'pause/resume harness missing missing-sentinel regression'
-assert_thin_fence "$SKILL_MD" 'SKILL Step 3.6 thin-fence shape'
+assert_gate_b_bypass_branch_sentinels "$SKILL_MD"
+assert_thin_fence "$SKILL_MD" 'SKILL Step 3.6 thin-fence shape' '<!-- step:3.6' '<!-- step:3b'
 assert_thin_fence "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'design-plan-quality-assessor.sh thin-fence shape'
 # Check 17: Step 5b /larch:issue summary-halt guardrails (#2681).
 ORCHESTRATOR_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"

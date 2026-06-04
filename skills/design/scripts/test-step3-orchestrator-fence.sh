@@ -3,6 +3,29 @@
 
 set -euo pipefail
 
+apply_gate_b_bypass_sentinels() {
+    local design_tmpdir="$1"
+    if [[ -f "$design_tmpdir/.completed/step-3.5" \
+        || -f "$design_tmpdir/.completed/step-3.6" ]]; then
+        return 1
+    fi
+    local DESIGN_TMPDIR="$design_tmpdir"
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    if [[ -f "$design_tmpdir/.completed/step-3" ]]; then
+        : >"$DESIGN_TMPDIR/.completed/step-3.5"
+        : >"$DESIGN_TMPDIR/.completed/step-3.6"
+        return 0
+    fi
+    : >"$DESIGN_TMPDIR/.completed/step-3"
+    : >"$DESIGN_TMPDIR/.completed/step-3.5"
+    : >"$DESIGN_TMPDIR/.completed/step-3.6"
+}
+export -f apply_gate_b_bypass_sentinels
+
+if [[ "${BASH_SOURCE[0]}" != "$0" ]]; then
+    return 0
+fi
+
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-step3-orchestrator-fence.XXXXXX")"
 TMP="$(cd "$TMP" && pwd -P)"
 trap 'rm -rf "$TMP"' EXIT
@@ -186,6 +209,35 @@ if [[ "$_apply_rc" -eq 2 ]]; then
     pass 'rc=2 returns 2'
 else
     fail "rc=2 expected exit 2 got $_apply_rc"
+fi
+
+echo "=== gate B bypass helper writes triple sentinels from empty state ==="
+D9="$TMP/gate-b-helper"
+mkdir -p "$D9"
+if [[ ! -f "$D9/.completed/step-3" && ! -f "$D9/.completed/step-3.5" && ! -f "$D9/.completed/step-3.6" ]]; then
+    pass 'helper precondition starts empty'
+else
+    fail 'helper precondition should start empty'
+fi
+if apply_gate_b_bypass_sentinels "$D9" \
+    && [[ -f "$D9/.completed/step-3" ]] \
+    && [[ -f "$D9/.completed/step-3.5" ]] \
+    && [[ -f "$D9/.completed/step-3.6" ]]; then
+    pass 'helper writes triple sentinels'
+else
+    fail 'helper did not write triple sentinels'
+fi
+
+echo "=== gate B bypass helper supplements 3.5/3.6 when step-3 exists ==="
+D9b="$TMP/gate-b-helper-step3"
+mkdir -p "$D9b/.completed"
+: >"$D9b/.completed/step-3"
+if apply_gate_b_bypass_sentinels "$D9b" \
+    && [[ -f "$D9b/.completed/step-3.5" ]] \
+    && [[ -f "$D9b/.completed/step-3.6" ]]; then
+    pass 'helper supplements missing 3.5/3.6 with pre-existing step-3'
+else
+    fail 'helper did not supplement 3.5/3.6 with pre-existing step-3'
 fi
 
 TOTAL=$((PASS + FAIL))

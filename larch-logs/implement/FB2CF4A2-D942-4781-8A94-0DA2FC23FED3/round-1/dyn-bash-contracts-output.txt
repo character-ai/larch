@@ -1,0 +1,15 @@
+Reviewing branch changes against main: reading the precomputed diff and commit history.
+Examining key bash changes in full context for semantics issues.
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/test-design-pause-resume.sh:237-249` — The new empty-state Gate-B-bypass case only exercises `design-pause-save.sh` and asserts `STEP=3b` on save output; it never runs `design-pause-load.sh` to prove the round-trip resume contract. The issue plan and acceptance criteria explicitly require “pause-save/load yields `PAUSE_OK=true` and `STEP=3b`”, and the sibling `.md` contract still describes save **and** load. A save-only check can pass even if load mis-derives `STEP` from the triple-sentinel layout. **Suggested fix:** After a successful save, run `design-pause-load.sh` into a fresh restore tmpdir (same pattern as the Step 3.6 case above) and assert `LOAD_OK=true` plus `STEP=3b`.
+
+- **correctness** `skills/design/scripts/design-postplan-emit.sh:99-113` — Classification stderr is captured into `WARN_LINES`, but the `if [[ "$_classification_rc" -ne 0 ]]; then WORKFLOW_PATH=HARD` branch does not append a `WARN=` when the helper exits non-zero without writing stderr (or when stderr capture is empty). Today `read-design-classification.sh` almost always exits 0 and uses `warn_default` on stderr, so this is defensive; if that script ever starts exiting non-zero without stderr, operators would get a silent HARD default with no `WARN=` under quiet mode. **Suggested fix:** On `_classification_rc -ne 0`, append a synthetic `WARN_LINES` entry (for example noting non-zero exit and that classification defaulted to HARD) before forcing `WORKFLOW_PATH=HARD`, or document and test that the helper must never exit non-zero without stderr.
+
+### Out-of-Scope Observations
+
+- **correctness** `scripts/read-design-classification.sh` — All failure paths use `warn_default`, which prints to stderr and still exits **0** with `HARD` on stdout. The branch’s removal of `2>/dev/null` is the right fix for visibility; the `|| printf '%s\n' HARD` fallbacks in `SKILL.md` Step 3.6 and `design-postplan-emit.sh` remain mostly redundant with current helper behavior rather than the primary warning path.
+
+- **risk-integration** `skills/design/SKILL.md` (Gate-B-bypass bullets ~1115–1121) — Production sentinel writes remain orchestrator prose, not executable shell in the diff. This branch adds a structural pin for `LOOP_STATUS=plan-size-trigger` plus the hermetic `apply_gate_b_bypass_sentinels` helper; it does not mechanically prove every other bypass status (`panel-failed`, `degraded-empty-collector`, etc.) still carries all three writes if SKILL prose drifts—only the named branch is pinned.
+
+**Commits reviewed:** `ca9b1896f` (hardening implementation), `77afb7125` (larch-logs flush; outside the bash-contract surface above).

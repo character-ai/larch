@@ -7,3 +7,11 @@ The harness asserts that `/design` exposes only SIMPLE/HARD tier routing, uses t
 It also verifies `plan-review-loop.sh` remains stateless with respect to `review-round-count.txt`; Step 3 in `SKILL.md` owns the counter and passes the computed `--round-num`.
 
 Check 17 also pins the per-turn background-polling NEVER literal in `skills/shared/orchestrator-never.md`.
+
+## Step 3.6 region fence
+
+`assert_thin_fence FILE LABEL [START_MARKER END_MARKER]` may now operate on an explicit region. With markers, the harness extracts the inclusive start/exclusive end range and fails if either marker is absent; without markers, it preserves whole-file checks.
+
+The `skills/design/SKILL.md` check is scoped to `<!-- step:3.6` through `<!-- step:3b`. Region-only pins forbid fat-fence symlink/result-env shapes, including `phase_driver_read_result_env`, symlink-source warnings, and file-first `.step3.6-assessor.env` while/read loops. The same region pins the first entry `.pause-requested` pause-save guard before classification to include `${REPO:+--repo "$REPO"}`.
+
+The harness also pins the named `LOOP_STATUS=plan-size-trigger` Gate-B-bypass branch to contain the `.completed` mkdir plus all three `step-3`, `step-3.5`, and `step-3.6` sentinel writes.

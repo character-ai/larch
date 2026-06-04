@@ -86,3 +86,7 @@ Update together: `skills/design/SKILL.md` Step 2b and Gate A re-entry prose, `sk
 ## Snapshot classification gate
 
 `--snapshot-original` resolves eligibility with `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh` against `run-params.json`. Missing, unreadable, or invalid `design_classification` resolves to HARD for snapshot purposes. Legacy `workflow_path` cannot suppress the original snapshot when classification resolves HARD; SIMPLE classification emits `SNAPSHOT_STATUS=skipped-not-hard`.
+
+## Classification warnings
+
+Classification warnings from `read-design-classification.sh` are operator-visible under default quiet mode. `WARN_LINES=()` is initialized before the classification read, stderr from the classification helper is captured, and non-empty warning lines are emitted as repeatable `WARN=` stdout KVs by `_postplan_write_result_and_emit`. The stdout classification value and `HARD` fallback semantics are unchanged.
