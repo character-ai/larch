@@ -6,7 +6,6 @@ import json
 import math
 import os
 import re
-import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -18,6 +17,7 @@ import agents
 import config
 import gh
 import git
+import logging_util
 import redact
 import retry
 from agents import TierAttempt
@@ -190,8 +190,7 @@ def _gh_pr_checks(
 
 
 def _warn_stderr(message: str) -> None:
-    _ = sys.stderr.write(message.rstrip("\n") + "\n")
-    _ = sys.stderr.flush()
+    logging_util.BreadcrumbWriter().emit(message, quiet=None)
 
 
 def _behind_count(

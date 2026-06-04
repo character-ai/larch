@@ -78,7 +78,11 @@ def test_outcome_exit_map_matches_bash_contract() -> None:
     }
 
 
-def test_happy_path_stage_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_happy_path_stage_order(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     order: list[str] = []
     flush_args: list[tuple[str | None, str | None]] = []
 
@@ -167,6 +171,10 @@ def test_happy_path_stage_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         "flush-post",
     ]
     assert not flush_args
+    captured = capsys.readouterr()
+    assert "ship.py: checks:" in captured.err
+    assert "ship.py: pr-create:" in captured.err
+    assert "ship.py: merge" in captured.err
 
 
 def test_oos_gate_before_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -588,5 +596,16 @@ def test_main_emits_json_stdout_on_unexpected_exception(
     assert rc == config.EXIT_STALLED
     payload = json.loads(captured.out)
     assert payload["outcome"] == "STALLED"
-    assert payload["detail"] == "unexpected failure"
+    assert payload["detail"] == "internal error"
     assert captured.out.count("\n") == 1
+    assert "internal error" in captured.err
+
+
+def _meets_python_ship_floor(major: int, minor: int) -> bool:
+    return (major, minor) >= (3, 11)
+
+
+def test_python_ship_driver_version_guard_probe() -> None:
+    """Pin the /implement Step 8+ and ship.py runtime floor (Python >= 3.11)."""
+    assert _meets_python_ship_floor(3, 11)
+    assert not _meets_python_ship_floor(3, 10)

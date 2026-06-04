@@ -697,7 +697,7 @@ def test_larch_log_commit_volatile_cleanup_git_failures_fail_closed(
     assert all(call != ["git", "clean", "-fd", "--", rel] for call in runner.calls)
 
 
-def test_larch_log_commit_scrubbed_volatile_sidecar_is_committed(
+def test_larch_log_commit_scrubbed_volatile_sidecar_skips_commit_and_cleans(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -717,9 +717,8 @@ def test_larch_log_commit_scrubbed_volatile_sidecar_is_committed(
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "status"), 0, f" M {rel}/token-report-refresh.json\n", "", 0.01),
-            CommandResult(("git", "add"), 0, "", "", 0.01),
-            CommandResult(("git", "diff"), 1, "", "", 0.01),
-            CommandResult(("git", "commit", "-m"), 0, "", "", 0.01),
+            CommandResult(("git", "restore"), 0, "", "", 0.01),
+            CommandResult(("git", "status"), 0, "", "", 0.01),
         ],
     )
     result = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
@@ -729,5 +728,69 @@ def test_larch_log_commit_scrubbed_volatile_sidecar_is_committed(
         cwd=str(repo),
     )
     assert result.returncode == 0
-    assert any(call[:3] == ["git", "commit", "-m"] for call in runner.calls)
-    assert not any(call[:2] == ["git", "restore"] for call in runner.calls)
+    assert result.argv == ("larch-log-volatile-only",)
+    assert not any(call[:3] == ["git", "commit", "-m"] for call in runner.calls)
+    assert ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", f"{rel}/token-report-refresh.json"] in runner.calls
+
+
+def test_larch_log_commit_volatile_session_transcript_refresh_skips_commit(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "session-transcript-refresh.txt").write_text("transcript", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rel = "larch-logs/implement/run-abc"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("git", "status"),
+                0,
+                f"?? {rel}/session-transcript-refresh.txt\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("git", "clean"), 0, "", "", 0.01),
+            CommandResult(("git", "status"), 0, "", "", 0.01),
+        ],
+    )
+    result = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        _ctx(tmp_path, str(state)),
+        tmp_path / "larch-logs",
+        cwd=str(repo),
+    )
+    assert result.argv == ("larch-log-volatile-only",)
+    assert ["git", "clean", "-fd", "--", f"{rel}/session-transcript-refresh.txt"] in runner.calls
+
+
+def test_larch_log_commit_volatile_cleanup_restores_am_porcelain(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rel = "larch-logs/implement/run-abc"
+    path = f"{rel}/token-report-refresh.json"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "status"), 0, f"AM {path}\n", "", 0.01),
+            CommandResult(("git", "restore"), 0, "", "", 0.01),
+            CommandResult(("git", "status"), 0, "", "", 0.01),
+        ],
+    )
+    result = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        _ctx(tmp_path, str(state)),
+        tmp_path / "larch-logs",
+        cwd=str(repo),
+    )
+    assert result.argv == ("larch-log-volatile-only",)
+    assert ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", path] in runner.calls

@@ -337,11 +337,12 @@ def _is_create_conflict(text: str) -> bool:
 _PR_CONFLICT_URL_RE = re.compile(r"https?://[^\s]+/pull/\d+")
 
 
-def _recover_pr_from_conflict_text(text: str, *, branch: str) -> PullRequest | None:
-    matches = _PR_CONFLICT_URL_RE.findall(text)
-    if not matches:
-        return None
-    url = matches[-1]
+def _repo_matches_pr_url(repo: str, url: str) -> bool:
+    needle = f"github.com/{repo}/pull/"
+    return needle in url.lower()
+
+
+def _candidate_from_pr_url(url: str, *, branch: str) -> PullRequest | None:
     number_match = re.search(r"/(\d+)$", url)
     if number_match is None:
         return None
@@ -350,6 +351,101 @@ def _recover_pr_from_conflict_text(text: str, *, branch: str) -> PullRequest | N
         url=url,
         state="OPEN",
         head_ref=branch,
+    )
+
+
+def _validate_recovered_pr(
+    runner: Runner,
+    candidate: PullRequest,
+    *,
+    repo: str,
+    branch: str,
+    cwd: str | None,
+) -> PullRequest | None:
+    if not _repo_matches_pr_url(repo, candidate.url):
+        return None
+    try:
+        viewed = pr_view(runner, candidate.number, repo=repo, cwd=cwd)
+    except (ShipError, TransientNetworkError):
+        return None
+    if viewed.head_ref != branch:
+        return None
+    if viewed.state.upper() != "OPEN":
+        return None
+    return viewed
+
+
+def _recover_pr_from_urls(
+    runner: Runner,
+    urls: Sequence[str],
+    *,
+    branch: str,
+    repo: str,
+    cwd: str | None,
+) -> PullRequest | None:
+    for url in reversed(list(urls)):
+        candidate = _candidate_from_pr_url(url, branch=branch)
+        if candidate is None:
+            continue
+        validated = _validate_recovered_pr(
+            runner,
+            candidate,
+            repo=repo,
+            branch=branch,
+            cwd=cwd,
+        )
+        if validated is not None:
+            return validated
+    return None
+
+
+def _recover_pr_from_create_output(
+    runner: Runner,
+    stdout: str,
+    stderr: str,
+    *,
+    branch: str,
+    repo: str,
+    cwd: str | None,
+) -> PullRequest | None:
+    stdout_urls = _PR_CONFLICT_URL_RE.findall(stdout)
+    if stdout_urls:
+        return _recover_pr_from_urls(
+            runner,
+            stdout_urls,
+            branch=branch,
+            repo=repo,
+            cwd=cwd,
+        )
+    stderr_urls = _PR_CONFLICT_URL_RE.findall(stderr)
+    if not stderr_urls:
+        return None
+    return _recover_pr_from_urls(
+        runner,
+        stderr_urls,
+        branch=branch,
+        repo=repo,
+        cwd=cwd,
+    )
+
+
+def _recover_pr_from_conflict_text(
+    runner: Runner,
+    text: str,
+    *,
+    branch: str,
+    repo: str,
+    cwd: str | None,
+) -> PullRequest | None:
+    matches = _PR_CONFLICT_URL_RE.findall(text)
+    if not matches:
+        return None
+    return _recover_pr_from_urls(
+        runner,
+        matches,
+        branch=branch,
+        repo=repo,
+        cwd=cwd,
     )
 
 
@@ -398,8 +494,11 @@ def pr_create(
             if recovered is not None:
                 return recovered, False
             recovered = _recover_pr_from_conflict_text(
+                runner,
                 conflict_text,
                 branch=branch,
+                repo=repo,
+                cwd=cwd,
             )
             if recovered is not None:
                 return recovered, False
@@ -410,7 +509,14 @@ def pr_create(
         recovered = None
     if recovered is not None:
         return recovered, True
-    recovered = _recover_pr_from_conflict_text(_combined(result), branch=branch)
+    recovered = _recover_pr_from_create_output(
+        runner,
+        result.stdout,
+        result.stderr,
+        branch=branch,
+        repo=repo,
+        cwd=cwd,
+    )
     if recovered is not None:
         return recovered, True
     try:
@@ -418,7 +524,15 @@ def pr_create(
     except (ShipError, TransientNetworkError):
         recovered = None
     if recovered is not None and recovered.head_ref == branch:
-        return recovered, True
+        validated = _validate_recovered_pr(
+            runner,
+            recovered,
+            repo=repo,
+            branch=branch,
+            cwd=cwd,
+        )
+        if validated is not None:
+            return validated, True
     msg = "gh pr create succeeded, but the created PR could not be resolved"
     raise ShipError(msg)
 

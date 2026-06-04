@@ -31,3 +31,18 @@ def test_breadcrumb_suppressed_when_quiet(monkeypatch: pytest.MonkeyPatch) -> No
     writer = logging_util.BreadcrumbWriter(stream=stream)
     writer.emit("hidden", quiet=True)
     assert stream.getvalue() == ""
+
+
+def test_breadcrumb_routes_to_quiet_log_when_active(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    log_file = tmp_path / "quiet.log"
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_LOG_FILE, str(log_file))
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
+    stream = StringIO()
+    writer = logging_util.BreadcrumbWriter(stream=stream)
+    writer.emit("ship.py: checks", quiet=None)
+    assert stream.getvalue() == ""
+    assert "ship.py: checks" in log_file.read_text(encoding="utf-8")

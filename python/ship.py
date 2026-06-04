@@ -6,6 +6,7 @@ import argparse
 import json
 import os
 import sys
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -99,7 +100,7 @@ def _error_to_result(exc: Exception) -> ShipResult:
 
 def _breadcrumb(step: str, detail: str = "") -> None:
     suffix = f": {detail}" if detail else ""
-    logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}")
+    logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}", quiet=None)
 
 
 def _summary_from_manifest(ctx: RunContext) -> str:
@@ -751,8 +752,10 @@ def main(argv: list[str] | None = None) -> int:
     ctx = _ctx_from_args(args)
     try:
         result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
-    except Exception as exc:
-        result = ShipResult(Outcome.STALLED, detail=str(exc) or exc.__class__.__name__)
+    except Exception:
+        _ = sys.stderr.write("ship.py: internal error\n")
+        traceback.print_exc(file=sys.stderr)
+        result = ShipResult(Outcome.STALLED, detail="internal error")
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

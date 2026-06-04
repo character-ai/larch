@@ -1000,6 +1000,28 @@ else
   CLONE_TAG_FULL=$(printf '%.32s' "$CLONE_TAG_FULL")
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
+if [ "${LARCH_SHIP_PR_IMPL:-bash}" = "python" ]; then
+  if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+    echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
+    exit 1
+  fi
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py" \
+    --branch "$BRANCH_NAME" \
+    --issue "$ISSUE_NUMBER" \
+    --repo "$REPO" \
+    --run-id "$RUN_ID" \
+    --tmpdir "$IMPLEMENT_TMPDIR" \
+    --manifest-path "${MANIFEST_PATH:-}" \
+    --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" \
+    --tool-label "${coder:-claude}" \
+    --merge "$merge" \
+    --draft "$draft" \
+    --forked "$forked_target" \
+    --repo-unavailable "$REPO_UNAVAILABLE" \
+    --no-admin-fallback "$no_admin_fallback" \
+    --expected-session-id "$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)" \
+    --expected-tmpdir-basename-prefix "claude-implement-${CLONE_TAG_FULL}-"
+else
 "${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh" \
   --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
@@ -1016,6 +1038,7 @@ fi
   --no-admin-fallback "$no_admin_fallback" \
   --no-logs-commit "$no_logs_commit" \
   --repo "$REPO"
+fi
 ```
 
 Parse the process exit code and then read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction only; do not source it.

@@ -882,7 +882,6 @@ def _cleanup_volatile_run_tree(
         path
         for line in lines
         if not line.startswith("?? ")
-        if "A" not in line[:2]
         for path in (_status_line_path(line),)
         if path in paths
     )
@@ -895,11 +894,11 @@ def _cleanup_volatile_run_tree(
     clean_paths = tuple(
         clean_path
         for line in lines
-        if line.startswith("?? ") or "A" in line[:2]
+        if line.startswith("?? ")
         for path in (_status_line_path(line),)
         for clean_path in (
             paths
-            if line.startswith("?? ") and path.rstrip("/") == rel
+            if path.rstrip("/") == rel
             else (path,)
         )
         if clean_path in paths
@@ -992,7 +991,7 @@ def _larch_log_commit(
         return CommandResult(("true",), 0, "", "", 0.0)
     if cwd is not None:
         volatile_paths = _volatile_only_under_run_tree(rel, cwd, status.stdout)
-        if volatile_paths is not None and violations == 0:
+        if volatile_paths is not None:
             _cleanup_volatile_run_tree(
                 runner,
                 rel,
