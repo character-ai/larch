@@ -45,6 +45,19 @@ fail() {
 
 # Mirrors skills/design/SKILL.md Step 3 thin-fence (run-step3-review.sh --no-preview handoff).
 # rc=2 check first; display pass; safe-env load via -f && ! -L; file-first vs later-wins.
+apply_step3_display_pass() {
+    local plan_review_out="$1"
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+        _key="${_line%%=*}"
+        case "$_key" in
+            LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|WARN)
+                : ;;
+            *)
+                printf '%s\n' "$_line" ;;
+        esac
+    done <<<"${plan_review_out:-}"
+}
+
 apply_step3_handoff() {
     local design_tmpdir="$1" plan_review_out="$2" plan_review_rc="$3"
     unset -v LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
@@ -57,16 +70,13 @@ apply_step3_handoff() {
         return 2
     fi
 
+    if [[ "${DISPLAY_ONLY:-}" == 1 ]]; then
+        apply_step3_display_pass "${plan_review_out:-}"
+        return 0
+    fi
+
     # Display pass: print verbatim except twelve-key allowlist KEY=value and WARN=.
-    while IFS= read -r _line || [[ -n "$_line" ]]; do
-        _key="${_line%%=*}"
-        case "$_key" in
-            LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|WARN)
-                : ;;
-            *)
-                printf '%s\n' "$_line" ;;
-        esac
-    done <<<"${plan_review_out:-}"
+    apply_step3_display_pass "${plan_review_out:-}"
 
     # Safe-env load: -f && ! -L (no "is a symlink; refusing to source" message).
     _step3_safe_env_loaded=false
@@ -270,16 +280,28 @@ fi
 echo "=== WARN= suppressed in display pass, replayed once in parse ==="
 D_WARN="$TMP/warn-dedup"
 mkdir -p "$D_WARN"
-_disp_out=$(apply_step3_handoff "$D_WARN" $'WARN=some-warning\nLOOP_STATUS=complete\n' 0; printf 'LOOP_STATUS_END=%s\n' "${LOOP_STATUS:-}")
-if printf '%s\n' "$_disp_out" | command grep -Fq 'WARN='; then
+_disp_only=$(DISPLAY_ONLY=1 apply_step3_handoff "$D_WARN" $'WARN=some-warning\nLOOP_STATUS=complete\n' 0)
+if printf '%s\n' "$_disp_only" | command grep -Fq 'WARN='; then
     fail 'WARN= should be suppressed from display pass output'
 else
     pass 'WARN= suppressed in display pass'
 fi
-if printf '%s\n' "$_disp_out" | command grep -Fq 'LOOP_STATUS='; then
+if printf '%s\n' "$_disp_only" | command grep -Fq 'LOOP_STATUS='; then
     fail 'LOOP_STATUS= should be suppressed from display pass output'
 else
     pass 'LOOP_STATUS= suppressed from display pass'
+fi
+_warn_handoff_out=$(apply_step3_handoff "$D_WARN" $'WARN=some-warning\nLOOP_STATUS=complete\n' 0; printf 'LOOP_STATUS_END=%s\n' "${LOOP_STATUS:-}")
+_warn_count=$(printf '%s\n' "$_warn_handoff_out" | command grep -c '^WARN=' || true)
+if [[ "$_warn_count" -eq 1 ]]; then
+    pass 'WARN= replayed exactly once in parse pass'
+else
+    fail "WARN= should appear exactly once in full handoff output; got $_warn_count"
+fi
+if printf '%s\n' "$_warn_handoff_out" | command grep -Fq 'WARN=some-warning'; then
+    pass 'WARN=some-warning value preserved in parse replay'
+else
+    fail 'WARN=some-warning missing from parse replay output'
 fi
 
 echo "=== non-KV breadcrumb printed in display pass ==="

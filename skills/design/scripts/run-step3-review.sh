@@ -80,10 +80,13 @@ if [[ "$_preview_only" == true ]]; then
     _preview_sh="${RUN_STEP3_EMIT_PREVIEW_SH:-$PLUGIN_ROOT/skills/design/scripts/emit-design-plan-preview.sh}"
 
     # Sentinel re-entry suppression: skip renderer when sentinel exists AND tmpdir validates.
+    # Canonicalize only for sentinel read/write/touch; renderer keeps raw path for allowlist warnings.
     _sentinel_ok=false
+    _canonical_tmpdir=""
     if [[ -d "$DESIGN_TMPDIR_ARG" ]] && larch_design_tmpdir_validate "$DESIGN_TMPDIR_ARG"; then
         _sentinel_ok=true
-        if [[ -e "$DESIGN_TMPDIR_ARG/.step3-entry-plan-printed" ]]; then
+        _canonical_tmpdir="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
+        if [[ -e "$_canonical_tmpdir/.step3-entry-plan-printed" ]]; then
             exit 0
         fi
     fi
@@ -107,7 +110,7 @@ if [[ "$_preview_only" == true ]]; then
             *'**⚠ 3: plan.txt missing or empty; cannot present plan candidate for review**'*) _has_header=true ;;
         esac
         if [[ "$_has_header" == true ]]; then
-            touch "$DESIGN_TMPDIR_ARG/.step3-entry-plan-printed" || true
+            touch "$_canonical_tmpdir/.step3-entry-plan-printed" || true
         fi
     fi
 

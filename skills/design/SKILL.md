@@ -1029,9 +1029,16 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+set +e
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
   --preview-only \
   --design-tmpdir "$DESIGN_TMPDIR"
+_preview_rc=$?
+set -e
+if [[ "${_preview_rc:-0}" -eq 2 ]]; then
+  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
+  exit 1
+fi
 ```
 
 The preview-only driver invokes `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` (pure renderer for `step3`; sentinel ownership moved to driver). Hermetic regression coverage lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.md`) and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-run-step3-review.sh`. Script contracts: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.md`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.md`.

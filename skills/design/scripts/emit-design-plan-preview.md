@@ -1,7 +1,5 @@
 # emit-design-plan-preview.sh
 
-# emit-design-plan-preview.sh
-
 **Purpose**: Emit the Step 3 plan-candidate preview or Gate C final-plan preview, with a shared large-plan summary note when `plan.txt` exceeds a size threshold.
 
 **CLI**: `--design-tmpdir DIR --variant step3|gatec`. Reads `$design_tmpdir/plan.txt`.
