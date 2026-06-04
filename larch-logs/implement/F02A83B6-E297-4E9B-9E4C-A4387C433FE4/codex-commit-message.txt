@@ -1,0 +1,9 @@
+Add release post-merge local cleanup
+
+Teach the release flow to keep generated notes under the prepare temp directory, continue recovery paths through upgrade and cleanup, and run best-effort local cleanup as the final post-publish step.
+
+Harden local cleanup to pull main with --ff-only, document the /release caller and exit envelope, and extend the regression harness for flag safety, ff-only invocation, and divergent main behavior.
+
+Tests: bash -n scripts/local-cleanup.sh scripts/test-local-cleanup.sh; scripts/local-cleanup.sh --help; scripts/local-cleanup.sh --branch main; make lint-bash32; make lint-bare-grep-probe; pre-commit run markdownlint --files .claude/skills/release/SKILL.md scripts/local-cleanup.md scripts/test-local-cleanup.md; pre-commit run agent-lint --files .claude/skills/release/SKILL.md; pre-commit run shellcheck --files scripts/local-cleanup.sh scripts/test-local-cleanup.sh; git diff --check.
+
+Not run: bash scripts/test-local-cleanup.sh or bash scripts/relevant-checks.sh because this implementer is forbidden from running the harness path that executes git reset --hard in its temporary repos.
