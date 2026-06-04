@@ -1571,11 +1571,11 @@ When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=true`, the
 
 `➡️ 5: finalize — plan written to issue #<N>; NEXT REQUIRED: continue`
 
-When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and `RENAMED=true`, the footer line is:
+When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and `/implement` admission is ready (`RENAMED=true`, or idempotent `RENAMED=false` with `NEW_TITLE` already prefixed `[DESIGNED]`), the footer line is:
 
 `➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] is set; log publish incomplete; /implement may proceed while logs are retried manually from the preserved $DESIGN_TMPDIR; NEXT REQUIRED: continue`
 
-When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and `RENAMED` is not `true`, the footer line is:
+When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and `/implement` admission is not confirmed (`RENAMED` is not `true` and idempotent `[DESIGNED]` title state was not observed), the footer line is:
 
 `➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] rename not confirmed; log publish incomplete; fix the issue title before /implement and retry log publish manually from the preserved $DESIGN_TMPDIR; NEXT REQUIRED: continue`
 

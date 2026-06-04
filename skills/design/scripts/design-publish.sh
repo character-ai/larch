@@ -47,6 +47,7 @@ parse_kv_from_output() {
             PR_URL) PR_URL="$_value" ;;
             RECOVERY_BRANCH) RECOVERY_BRANCH="$_value" ;;
             RENAMED) RENAMED="$_value" ;;
+            NEW_TITLE) NEW_TITLE="$_value" ;;
             UPSERT_STATUS) UPSERT_STATUS="$_value" ;;
             ARCHITECTURE_SOURCE) ARCHITECTURE_SOURCE="$_value" ;;
             VALIDATE_STATUS) VALIDATE_STATUS="$_value" ;;
@@ -165,6 +166,7 @@ PR_NUMBER=""
 PR_URL=""
 RECOVERY_BRANCH=""
 RENAMED=""
+NEW_TITLE=""
 UPSERT_STATUS=""
 ARCHITECTURE_SOURCE=""
 UPSERT_RAN=false
@@ -192,6 +194,12 @@ publish_recovery_detail() {
         done
         printf '%s\n' "$_joined"
     fi
+}
+
+renamed_admission_ready() {
+    [[ "${RENAMED:-}" == true ]] && return 0
+    [[ "${RENAMED:-}" == false && "${NEW_TITLE:-}" == "[DESIGNED]"* ]] && return 0
+    return 1
 }
 
 write_result_env_and_emit() {
@@ -341,10 +349,12 @@ if [[ -n "$SESSION_ID" ]]; then
     _rename_seen=false
     if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designed ${REPO:+--repo "$REPO"}); then
         RENAMED=false
+        NEW_TITLE=""
         while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
             case "$_rename_line" in
                 RENAMED=true) RENAMED=true; _rename_seen=true ;;
                 RENAMED=false) RENAMED=false; _rename_seen=true ;;
+                NEW_TITLE=*) NEW_TITLE="${_rename_line#NEW_TITLE=}" ;;
             esac
         done <<<"${_rename_out:-}"
         if [[ "$_rename_seen" != true ]]; then
@@ -352,6 +362,7 @@ if [[ -n "$SESSION_ID" ]]; then
         fi
     else
         RENAMED=false
+        NEW_TITLE=""
         _diagram_detail="diagram upsert skipped"
         if [[ "$UPSERT_RAN" == true ]]; then
             if [[ "${UPSERT_STATUS:-}" == failed ]]; then
@@ -362,7 +373,7 @@ if [[ -n "$SESSION_ID" ]]; then
                 _diagram_detail="diagram upsert ran without UPSERT_STATUS"
             fi
         fi
-        add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan block was written; ${_diagram_detail}; the issue title was not updated. Re-invoke /design or rename manually if the title is still wrong.**"
+        add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan block was written; ${_diagram_detail}; the issue title was not updated. Rename manually with gh issue edit or tracking-issue-write.sh, or drop the lifecycle prefix before re-running /design.**"
     fi
 fi
 
@@ -442,6 +453,13 @@ fi
 export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"
 export DESIGN_LOG_PR_URL="${PR_URL:-}"
 export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
+export RENAMED="${RENAMED:-}"
+export NEW_TITLE="${NEW_TITLE:-}"
+DESIGNED_ADMISSION_READY=false
+if renamed_admission_ready; then
+    DESIGNED_ADMISSION_READY=true
+fi
+export DESIGNED_ADMISSION_READY
 "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
     --outcome "$SUMMARY_OUTCOME" \
     --mode "$MODE" \

@@ -1394,6 +1394,9 @@ esac
 
 publish_marker_line=$(grep -nF 'design_reentry_marker_write' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
 publish_rename_line=$(grep -n 'tracking-issue-write.sh' "$DESIGN_PUBLISH_SH" | grep 'state designed' | head -1 | cut -d: -f1 || true)
+publish_rename_count=$(grep -c 'tracking-issue-write.sh.*state designed' "$DESIGN_PUBLISH_SH" || true)
+[[ "$publish_rename_count" -eq 1 ]] \
+  || fail "(FINDING_2) design-publish.sh must contain exactly one tracking-issue-write.sh rename --state designed call site"
 [[ -n "$publish_upsert_line" && -n "$publish_rename_line" && -n "$publish_log_line" && "$publish_upsert_line" -lt "$publish_rename_line" && "$publish_rename_line" -lt "$publish_log_line" ]] \
   || fail "(25) design-publish.sh rename --state designed must run after upsert-diagrams-comment.sh and before design-log-publish.sh"
 [[ -n "$publish_marker_line" && -n "$publish_log_line" && "$publish_log_line" -lt "$publish_marker_line" ]] \
@@ -1430,6 +1433,12 @@ grep -Fq 'export SESSION_ID' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must export SESSION_ID before render-final-summary.sh"
 grep -Fq 'render-final-summary.sh' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must invoke render-final-summary.sh"
+# shellcheck disable=SC2016 # Markdown literal intentionally contains $DESIGN_TMPDIR.
+grep -Fq '[DESIGNED] is set; log publish incomplete; /implement may proceed while logs are retried manually from the preserved $DESIGN_TMPDIR' "$SKILL_MD" \
+  || fail "(FINDING_6) SKILL.md missing RENAMED/admission-ready failed-publish footer"
+# shellcheck disable=SC2016 # Markdown literal intentionally contains $DESIGN_TMPDIR.
+grep -Fq '[DESIGNED] rename not confirmed; log publish incomplete; fix the issue title before /implement and retry log publish manually from the preserved $DESIGN_TMPDIR' "$SKILL_MD" \
+  || fail "(FINDING_6) SKILL.md missing rename-not-confirmed failed-publish footer"
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 grep -Fq 'phase_driver_write_result_env "$RESULT_ENV"' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must write result env via phase_driver_write_result_env"

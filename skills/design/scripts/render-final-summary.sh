@@ -334,7 +334,11 @@ append_failed_publish_notes() {
             printf -- '- **Log flush PR**: %s\n' "$DESIGN_LOG_PR_URL" >>"$out"
         fi
     fi
-    printf -- '- **Publish recovery**: design logs did not finish publishing; recover or close the flush PR before treating logs as complete.\n' >>"$out"
+    if [ "${DESIGNED_ADMISSION_READY:-false}" = true ] || [ "${RENAMED:-}" = true ]; then
+        printf -- '- **Publish recovery**: design logs did not finish publishing; /implement may proceed because the issue is [DESIGNED], while logs are retried manually from the preserved design tmpdir.\n' >>"$out"
+    else
+        printf -- '- **Publish recovery**: design logs did not finish publishing and the [DESIGNED] rename was not confirmed; fix the issue title before /implement, then retry logs manually from the preserved design tmpdir.\n' >>"$out"
+    fi
 }
 
 invoke_render() {
