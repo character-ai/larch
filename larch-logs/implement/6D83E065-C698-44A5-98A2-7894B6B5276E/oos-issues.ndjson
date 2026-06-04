@@ -1,0 +1,2 @@
+{"phase":"implement","step":"9a.1","category":"OOS","body":"Accepted OOS #3495: [OOS] Fix python/ship.py parity gaps: tool-failure logging and OOS enforcement bypass canonical bash helpers — Filed: https://github.com/character-ai/larch/issues/3495"}
+{"phase":"implement","step":"9a.1","category":"OOS","body":"Accepted OOS #3496: [OOS] Two medium-bug OOS items: untested manifest-OOS fail-closed path + stale DESIGN_TMPDIR hides design-export OOS — Filed: https://github.com/character-ai/larch/issues/3496"}

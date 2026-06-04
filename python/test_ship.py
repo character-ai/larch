@@ -184,10 +184,293 @@ def test_oos_gate_before_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         raise AssertionError("ensure_pr must not run before OOS filing")
 
     monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
-    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
     assert result.outcome is Outcome.NEEDS_USER_INPUT
     assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
 
+
+
+def test_design_export_oos_allows_pr_create_after_disposition(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    exported = tmp_path / "design-export" / "oos-accepted-design.md"
+    exported.parent.mkdir()
+    _ = exported.write_text("### OOS_1: exported design OOS\nbody\n", encoding="utf-8")
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+
+
+def test_design_tmpdir_oos_allows_pr_create_after_disposition(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    accepted = design_tmpdir / "oos-accepted-design.md"
+    _ = accepted.write_text("### OOS_1: design tmpdir OOS\nbody\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design_tmpdir))
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+
+
+def test_stale_design_tmpdir_falls_back_to_design_export(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stale_design = tmp_path / "stale-design"
+    exported = tmp_path / "design-export" / "oos-accepted-design.md"
+    exported.parent.mkdir()
+    _ = exported.write_text("### OOS_1: exported design OOS\nbody\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(stale_design))
+
+    assert ship.resolve_oos_accepted_design_path(tmp_path) == exported
+
+
+def test_oos_gate_uses_single_alternate_ndjson_when_run_id_path_missing(tmp_path: Path) -> None:
+    accepted = tmp_path / "oos-accepted-main-agent.md"
+    _ = accepted.write_text(
+        "### OOS_1: Filed elsewhere\n- **Description**: already filed\n",
+        encoding="utf-8",
+    )
+    alternate = tmp_path / "larch-logs" / "implement" / "other-run" / "oos-issues.ndjson"
+    alternate.parent.mkdir(parents=True)
+    _ = alternate.write_text(
+        '{"body":"Created https://github.com/example/larch/issues/99"}\n',
+        encoding="utf-8",
+    )
+
+    result = ship._oos_gate(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+
+
+def test_oos_gate_requires_ndjson_for_non_security_without_filed_evidence(tmp_path: Path) -> None:
+    accepted = tmp_path / "oos-accepted-main-agent.md"
+    _ = accepted.write_text(
+        "### OOS_1: Needs ndjson\n- **Description**: unresolved\n",
+        encoding="utf-8",
+    )
+
+    result = ship._oos_gate(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+
+    assert result is not None
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
+
+
+def test_run_ship_proceeds_when_disposition_satisfied_with_non_empty_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "oos-accepted-main-agent.md"
+    _ = accepted.write_text(
+        "### OOS_1: Filed\n- **Description**: already filed\n",
+        encoding="utf-8",
+    )
+    ndjson = tmp_path / "larch-logs" / "implement" / "run-abc" / "oos-issues.ndjson"
+    ndjson.parent.mkdir(parents=True)
+    _ = ndjson.write_text(
+        '{"body":"Created https://github.com/example/larch/issues/42"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 9, "url": "https://example.test/pr/9", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+
+    ctx = _ctx(tmp_path, merge=False, oos_pending=True)
+    result = ship.run_ship(ctx, runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+
+
+def test_oos_gate_allows_inline_triage_without_ndjson(tmp_path: Path) -> None:
+    class InlineRunner(RecordingRunner):
+        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
+            self.calls.append(list(argv))
+            if argv[:3] == ["git", "log", "--format=%B"]:
+                return CommandResult(tuple(argv), 0, "Inline-triage rule 1: folded\n", "", 0.01)
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    accepted = tmp_path / "oos-accepted-main-agent.md"
+    _ = accepted.write_text(
+        "### OOS_1: Folded\n- **Description**: fixed inline\n",
+        encoding="utf-8",
+    )
+    ndjson = tmp_path / "larch-logs" / "implement" / "run-abc" / "oos-issues.ndjson"
+    ndjson.parent.mkdir(parents=True)
+    _ = ndjson.write_text("", encoding="utf-8")
+
+    result = ship._oos_gate(InlineRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+
+
+def test_oos_observation_count_matches_materializer_policy(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.json"
+    _ = missing.write_text('{"summary_bullets":["x"]}', encoding="utf-8")
+    empty = tmp_path / "empty.json"
+    _ = empty.write_text('{"oos_observations":[]}', encoding="utf-8")
+    invalid_type = tmp_path / "invalid-type.json"
+    _ = invalid_type.write_text('{"oos_observations":"bad"}', encoding="utf-8")
+    malformed = tmp_path / "malformed.json"
+    _ = malformed.write_text("{", encoding="utf-8")
+
+    assert ship.oos_observation_count(missing) == 0
+    assert ship.oos_observation_count(empty) == 0
+    assert ship.oos_observation_count(invalid_type) is None
+    assert ship.oos_observation_count(malformed) is None
+
+
+def test_manifest_materialize_failure_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    class FailingMaterializeRunner(RecordingRunner):
+        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
+            self.calls.append(list(argv))
+            if "materialize-manifest-oos.sh" in " ".join(argv):
+                return CommandResult(tuple(argv), 1, "", "boom", 0.01)
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("ensure_pr must not run after materialize failure")
+
+    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
+    ctx = _ctx(tmp_path)
+    _ = Path(ctx.manifest_path).write_text(
+        json.dumps({"summary_bullets": ["x"], "oos_observations": [{"title": "OOS", "description": "x"}]}),
+        encoding="utf-8",
+    )
+    runner = FailingMaterializeRunner()
+    result = ship.run_ship(ctx, runner=runner, cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
+    assert any("materialize-manifest-oos.sh" in " ".join(call) for call in runner.calls)
+    assert "materialize-manifest-oos.sh failed" in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+
+
+def test_manifest_materialize_empty_failure_does_not_block_pr_create(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FailingMaterializeRunner(RecordingRunner):
+        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
+            self.calls.append(list(argv))
+            if "materialize-manifest-oos.sh" in " ".join(argv):
+                return CommandResult(tuple(argv), 1, "", "boom", 0.01)
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+
+    ctx = _ctx(tmp_path, merge=False)
+    _ = Path(ctx.manifest_path).write_text(
+        json.dumps({"summary_bullets": ["x"], "oos_observations": []}),
+        encoding="utf-8",
+    )
+    result = ship.run_ship(ctx, runner=FailingMaterializeRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+
+
+def test_security_sidecar_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("ensure_pr must not run with security sidecar")
+
+    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
+    sidecar = tmp_path / "security-oos-observations.md"
+    _ = sidecar.write_text("### Security OOS: audit\n", encoding="utf-8")
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
+
+
+def test_manifest_materialize_success_blocks_for_step9a1(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class MaterializingRunner(RecordingRunner):
+        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
+            self.calls.append(list(argv))
+            if "materialize-manifest-oos.sh" in " ".join(argv):
+                _ = (tmp_path / "oos-accepted-main-agent.md").write_text(
+                    "### OOS_1: Manifest OOS\n- **Description**: x\n",
+                    encoding="utf-8",
+                )
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("ensure_pr must not run with materialized OOS")
+
+    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
+    ctx = _ctx(tmp_path)
+    _ = Path(ctx.manifest_path).write_text(
+        json.dumps({"summary_bullets": ["x"], "oos_observations": [{"title": "OOS", "description": "x"}]}),
+        encoding="utf-8",
+    )
+    result = ship.run_ship(ctx, runner=MaterializingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
 
 def test_ship_writes_phase_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))

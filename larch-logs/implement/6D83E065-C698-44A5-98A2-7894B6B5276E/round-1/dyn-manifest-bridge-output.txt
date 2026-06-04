@@ -1,0 +1,15 @@
+Reviewing the manifest-bridge changes for correctness: reading the diff and key implementation files.
+Checking heredoc expansion behavior and whether step2 sanitization mitigates it:
+### In-Scope Findings
+
+- **correctness** `skills/implement/scripts/materialize-manifest-oos.sh:85-96` — `write_description` feeds `$description` through an **unquoted** heredoc (`<<EOF_DESC`), so bash performs command substitution and parameter expansion on manifest text before line splitting. A `description` containing `$(…)` or backticks can run arbitrary shell code during materialization; `redact-secrets.sh` at Step 2 does not neutralize that. **Suggested fix:** Stop using an expanding heredoc. Pipe the description safely, e.g. `printf '%s\n' "$description" | while IFS= read -r line || [ -n "$line" ]; do … done`, or use a quoted delimiter plus a here-string/`jq -Rs` path that never re-parses the body as shell syntax.
+
+- **correctness** `skills/implement/scripts/materialize-manifest-oos.sh:109-118` — Missing/empty `title` values are all normalized to the same literal `Untitled external implementer OOS`, and `has_title` then treats later entries as duplicates. A manifest like `oos_observations: [{}, {"title":"Real bug"}]` only materializes one block; additional untitled observations are dropped with no error. **Suggested fix:** Derive a dedup key from stable manifest identity (array index, content hash, or explicit id if added to the schema), or suffix untitled headings (`Untitled external implementer OOS #2`, etc.) instead of title-only idempotency for the default title.
+
+- **correctness** `python/ship.py:153-185` — `_materialize_manifest_oos` returns `NEEDS_USER_OOS_FILING` on **any** non-zero helper exit, without checking whether `oos_observations[]` is non-empty. `step2-implement.sh:1112-1128` only fail-closes when `MAT_OOS_COUNT > 0`; infrastructure failures with an empty array are fail-open there. The Python driver can therefore block PR creation for jq/disk/usage errors when there is nothing to materialize—diverging from the contract in `materialize-manifest-oos.md` and from bash Step 2. **Suggested fix:** Mirror Step 2: parse observation count from the manifest (same `jq` expression as the helper) and return `NEEDS_USER_OOS_FILING` only when count > 0; otherwise log Tool Failures and continue to `_oos_gate`.
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/implement/scripts/materialize-manifest-oos.sh:116-118` — Title-only idempotency skips re-materialization when the manifest `description` changes but the title is unchanged, leaving stale text in `oos-accepted-main-agent.md`. This matches the documented “idempotent by title” contract and is intentional, but operators should know manifest updates are not merged on re-run.
+
+- **correctness** `skills/implement/scripts/test-materialize-manifest-oos.sh` — The harness does not cover multiple empty-title observations, heredoc/shell-metacharacter descriptions, or Python’s empty-array / failed-materialize branch; those gaps would have caught the issues above.

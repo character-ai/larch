@@ -2115,6 +2115,74 @@ else
 fi
 
 # ---------------------------------------------------------------------------
+# Test 26: manifest OOS + materialize failure must bail (fail closed).
+# ---------------------------------------------------------------------------
+TMP26="$SCRATCH/test26"
+mkdir -p "$TMP26/codex-step2-out"
+printf 'fresh-step2-26\n' > "$TMP26/session-id"
+
+SCRATCH_REPO_26="$SCRATCH/scratch-repo-26"
+mkdir -p "$SCRATCH_REPO_26"
+git -C "$SCRATCH_REPO_26" init -q -b main
+git -C "$SCRATCH_REPO_26" config user.email "test@example.com"
+git -C "$SCRATCH_REPO_26" config user.name "Test"
+echo "initial" > "$SCRATCH_REPO_26/README.md"
+git -C "$SCRATCH_REPO_26" add README.md
+git -C "$SCRATCH_REPO_26" commit -q -m "init"
+
+STUB26="$SCRATCH/stub-bin-26"
+mkdir -p "$STUB26"
+cat > "$STUB26/codex" <<'STUB26_CODEX'
+#!/usr/bin/env bash
+set -euo pipefail
+: "${STEP2_MANIFEST_PATH:?}"
+output_path=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        output_path="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+echo "edited by stub" >> "$PWD/README.md"
+cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "complete",
+  "files_touched": [{"path": "README.md"}],
+  "commit_message": "stub: edit README",
+  "summary_bullets": ["edited README"],
+  "tests_added_or_modified": [],
+  "todos_left": [],
+  "oos_observations": [{"title": "OOS", "description": "manifest OOS", "phase": "implement"}]
+}
+JSON
+mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
+printf 'stub codex stdout\n'
+STUB26_CODEX
+chmod +x "$STUB26/codex"
+
+OUT_26=$(cd "$SCRATCH_REPO_26" && \
+    PATH="$STUB26:$PATH" \
+    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    STEP2_MANIFEST_PATH="$TMP26/codex-step2-out/manifest.json" \
+    LARCH_TIMING_LEDGER="$TMP26/timing-ledger.tsv" \
+    LARCH_CODEX_MODEL=stub-codex-model \
+    LARCH_TEST_MATERIALIZE_FORCE_FAIL=true \
+    LARCH_QUIET_DISABLE=1 \
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    "$DISPATCHER" --tmpdir "$TMP26" --plan-file "$PLAN" --feature-file "$FEATURE" \
+        --coder codex 2>&1)
+
+if [[ "$OUT_26" == *"STATUS=bailed"* ]] \
+   && [[ "$OUT_26" == *"REASON=manifest-oos-materialization-failed"* ]]; then
+    pass
+else
+    fail 26 "manifest OOS + materialize failure must bail manifest-oos-materialization-failed; got: $OUT_26"
+fi
+
+# ---------------------------------------------------------------------------
 # Summary.
 # ---------------------------------------------------------------------------
 TOTAL=$((PASS_COUNT + FAIL_COUNT))

@@ -45,13 +45,16 @@ fail() {
 
 [[ -d "$SKILLS_DIR" ]] || fail "skills/ directory missing: $SKILLS_DIR"
 
-# Collect every skills/*/references/*.md via flat glob (no nested descent).
+# Collect every skills/*/references/*.md via flat glob (no nested descent), plus
+# implement script contracts that use the same Consumer/Contract/When-to-load triplet.
 shopt -s nullglob
 ref_files=( "$SKILLS_DIR"/*/references/*.md )
+script_contract_files=( "$SKILLS_DIR"/implement/scripts/materialize-manifest-oos.md )
+ref_files+=( "${script_contract_files[@]}" )
 shopt -u nullglob
 
 (( ${#ref_files[@]} > 0 )) \
-  || fail "no skills/*/references/*.md files found — harness would silently pass without this guard"
+  || fail "no reference or script-contract .md files found — harness would silently pass without this guard"
 
 # Required headers, matched at line-start (anchored) to avoid false-positives
 # on prose or fenced-code examples. Patterns are grep -E (ERE) with '*'
@@ -115,5 +118,5 @@ for ref_path in "${ref_files[@]}"; do
   fi
 done
 
-echo "PASS: test-references-headers.sh — triplet + no-stale-line-range verified across ${#ref_files[@]} skills/*/references/*.md files"
+echo "PASS: test-references-headers.sh — triplet + no-stale-line-range verified across ${#ref_files[@]} reference and script-contract files"
 exit 0

@@ -85,6 +85,11 @@ def _count_non_security(accepted_paths: tuple[str, ...]) -> int:
     return total
 
 
+def count_non_security(accepted_paths: tuple[str, ...]) -> int:
+    """Count non-security accepted OOS blocks in markdown files."""
+    return _count_non_security(accepted_paths)
+
+
 def _count_filed_urls_loose(paths: tuple[str, ...]) -> int:
     url_re = _github_issue_url_pattern()
     urls: set[str] = set()

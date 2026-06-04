@@ -683,7 +683,7 @@ record_failure() {
 # Canonical path for plan-review accepted OOS (mirrors skills/implement/SKILL.md disposition gate).
 resolve_oos_accepted_design_path() {
     local impl="$1"
-    if [[ -n "${DESIGN_TMPDIR:-}" ]]; then
+    if [[ -n "${DESIGN_TMPDIR:-}" && -f "${DESIGN_TMPDIR%/}/oos-accepted-design.md" ]]; then
         printf '%s\n' "${DESIGN_TMPDIR%/}/oos-accepted-design.md"
         return
     fi
@@ -737,14 +737,34 @@ run_oos_disposition_gate_if_required_before_oos_pending_false() {
     if [ -n "$oos_ndjson" ] && [ -f "$oos_ndjson" ]; then
         gate_extra+=(--oos-issues-ndjson "$oos_ndjson")
     fi
-    gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
     oos_design_path=$(resolve_oos_accepted_design_path "$IMPLEMENT_TMPDIR")
+    local non_sec_oos=0 oos_acc n
+    while IFS= read -r oos_acc; do
+        [ -z "$oos_acc" ] && continue
+        [ -f "$oos_acc" ] || continue
+        n=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$oos_acc" 2>/dev/null | tr -d '[:space:]' || printf '0')
+        non_sec_oos=$((non_sec_oos + n))
+    done <<EOF
+$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md
+$oos_design_path
+$IMPLEMENT_TMPDIR/oos-accepted-review.md
+EOF
+    if [ "${non_sec_oos:-0}" -gt 0 ] && { [ -z "$oos_ndjson" ] || [ ! -f "$oos_ndjson" ]; }; then
+        larch_err "ship-pr.sh: non-security accepted OOS requires oos-issues.ndjson evidence before clearing OOS_PENDING"
+        return 2
+    fi
+    if [ -s "$IMPLEMENT_TMPDIR/security-oos-observations.md" ]; then
+        larch_err "ship-pr.sh: security-routed manifest OOS requires private SECURITY.md disposition before clearing OOS_PENDING"
+        return 2
+    fi
+    gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
     case $- in *e*) _had_errexit=1 ;; esac
     set +e
     bash "$gate_script" \
         "${gate_extra[@]+"${gate_extra[@]}"}" \
         --accepted-files "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$oos_design_path,$IMPLEMENT_TMPDIR/oos-accepted-review.md" \
         --filed-urls-file "$IMPLEMENT_TMPDIR/oos-issues-created.md" \
+        --filed-urls-strict-file "$oos_design_path" \
         --commit-range "$oos_range" 2>"$gate_log"
     gate_rc=$?
     (( _had_errexit )) && set -e
@@ -1159,7 +1179,7 @@ sanitize_diagram_or_placeholder() {
 }
 
 run_pr_prep_phase() {
-    local summary tests closes code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path _had_errexit=0
+    local summary tests closes code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path _had_errexit=0 manifest_path materialize_oos materialize_rc
     larch_err "→ ship-pr: PR prep"
     summary=$(manifest_summary)
     if [ -z "$summary" ]; then
@@ -1188,8 +1208,31 @@ run_pr_prep_phase() {
         printf '%s\n\nGenerated with [Claude Code](https://claude.com/claude-code)\n' "$closes"
     } > "$IMPLEMENT_TMPDIR/pr-body.md"
 
+    manifest_path=$(read_state MANIFEST_PATH)
+    materialize_oos="$PLUGIN_ROOT/skills/implement/scripts/materialize-manifest-oos.sh"
+    if [ -n "$manifest_path" ] && [ -f "$manifest_path" ]; then
+        materialize_count=""
+        materialize_count_rc=0
+        materialize_count=$(bash "$materialize_oos" --count-only --manifest-path "$manifest_path" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>/dev/null) || materialize_count_rc=$?
+        fail_file=$(failure_capture_path pr-prep)
+        _had_errexit=0
+        case $- in *e*) _had_errexit=1 ;; esac
+        set +e
+        bash "$materialize_oos" --manifest-path "$manifest_path" --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$fail_file" 2>&1
+        materialize_rc=$?
+        (( _had_errexit )) && set -e
+        if [ "$materialize_rc" -ne 0 ]; then
+            record_failure pr-prep "materialize-manifest-oos.sh" "$materialize_rc" "$fail_file" Tool Failures
+            if [ "$materialize_count_rc" -ne 0 ] || [ "${materialize_count:-0}" -gt 0 ]; then
+                state_set OOS_PENDING true
+                advance_phase pr-create
+                exit 0
+            fi
+        fi
+    fi
+
     oos_design_path=$(resolve_oos_accepted_design_path "$IMPLEMENT_TMPDIR")
-    if [ -s "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" ] || [ -s "$oos_design_path" ] || [ -s "$IMPLEMENT_TMPDIR/oos-accepted-review.md" ]; then
+    if [ -s "$IMPLEMENT_TMPDIR/security-oos-observations.md" ]; then
         state_set OOS_PENDING true
         advance_phase pr-create
         exit 0
@@ -1228,6 +1271,11 @@ run_pr_prep_phase() {
 run_pr_create_phase() {
     local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base final_report_output issue_num
     larch_err "→ ship-pr: opening PR"
+    if [ "$(read_state OOS_PENDING)" = "true" ]; then
+        larch_err "ship-pr.sh: refusing PR creation while OOS_PENDING=true"
+        advance_phase pr-prep
+        exit 0
+    fi
     _merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || _merge_base=
     if [ -n "$_merge_base" ]; then
         title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | tail -1)
@@ -3235,7 +3283,7 @@ main() {
                 advance_phase bump
                 state_set_many RESUME_PHASE "" CALLER_KIND ""
                 ;;
-            pr-create) advance_phase pr-create ;;
+            pr-create) advance_phase pr-prep ;;
             ci-initial) advance_phase ci-initial ;;
             ci-merge) state_set CI_PASSED false; advance_phase ci-merge ;;
             evaluate-failure) advance_phase evaluate-failure ;;

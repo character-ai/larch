@@ -154,7 +154,7 @@ fi
 
 _design_tmpdir="${DESIGN_TMPDIR_ARG:-${DESIGN_TMPDIR:-}}"
 _oos_design_path="$IMPLEMENT_TMPDIR/oos-accepted-design.md"
-if [ -n "$_design_tmpdir" ]; then
+if [ -n "$_design_tmpdir" ] && [ -f "$_design_tmpdir/oos-accepted-design.md" ]; then
   _oos_design_path="$_design_tmpdir/oos-accepted-design.md"
 elif [ -f "$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md" ]; then
   _oos_design_path="$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md"
@@ -173,6 +173,9 @@ $(printf '%s' "$_oos_accepted_csv" | tr ',' '\n')
 EOF
 
 if [ "${_forked:-false}" != "true" ] && [ "${_repo_unavail:-false}" != "true" ]; then
+  if [ -s "$IMPLEMENT_TMPDIR/security-oos-observations.md" ]; then
+    fail_validation 'implement: security-routed manifest OOS requires private SECURITY.md disposition; refusing all-clear checkpoint'
+  fi
   if [ "${_non_sec_oos:-0}" -gt 0 ]; then
     if [ -z "$_oos_ndjson" ] || [ ! -f "$_oos_ndjson" ]; then
       fail_validation 'implement: non-security accepted OOS requires a resolved oos-issues.ndjson path for disposition gate (--oos-issues-ndjson); batch missing or undiscoverable'
