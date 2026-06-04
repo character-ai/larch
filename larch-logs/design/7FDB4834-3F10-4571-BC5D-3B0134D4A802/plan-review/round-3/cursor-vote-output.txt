@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already repoints helper see-also to oos-pipeline.md; Edit-in-sync drift is minor
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already mandates NEVER #5 narrowing in the same PR; OR pin is weaker but paired with required SKILL edit
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- gate-aligned dedicated focus-area field is intentional; broader voting predicate would mismatch checkpoint counting
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- real manifest harvest gap but outside this plan's docs-only scope
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- checkpoint rejects unknown flags today; plan does not introduce checkpoint --filed-urls-file misuse
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false

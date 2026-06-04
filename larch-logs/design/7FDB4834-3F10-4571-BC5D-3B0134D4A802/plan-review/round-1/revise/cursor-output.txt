@@ -1,0 +1,96 @@
+Reviewing the codebase to align the revised plan with current contracts before emitting the diff.
+Compiling the revised plan diff incorporating all nine findings.
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,6 +1,6 @@
+ # Implementation Plan — Restore Step 9a.1 OOS pipeline (#3457)
+ 
+-Restore the lost canonical Step 9a.1 OOS-filing procedure as a reference file, pin the `oos-issues-created.md` sentinel format, and add an awk-robust CI regression guard. Documentation/structure + test only — no OOS pipeline behavior change. Reconstruct against current helpers and carve-outs (not a verbatim PR #1896 restore).
++Restore the lost canonical Step 9a.1 OOS-filing procedure as a reference file, pin the `oos-issues-created.md` sentinel format, and add an awk-robust CI regression guard. Documentation/structure + test only — no OOS pipeline behavior change. Reconstruct against current helpers and carve-outs (not a verbatim PR #1896 restore). Align procedure ordering with the existing Step 8+ contract: `oos-disposition-checkpoint.sh` runs after the pipeline and **before** the unconditional `run-statistics` write in `SKILL.md`.
+ 
+ ## Files to modify/create
+ 
+@@ -9,22 +9,28 @@
+ The canonical numbered Step 9a.1 OOS-pipeline procedure, reconstructed against current code. Structure:
+ - Header triplet required by `test-references-headers.sh` (#308): line-start `**Consumer**:` / `**Contract**:` / `**When to load**:`. Consumer = `/implement` Step 8+ OOS checkpoint; load is MANDATORY before executing the pipeline; do not load outside that checkpoint.
+ - Numbered procedure preserving the historical step labels so existing `step 3.4` / `step 3.4b` citations resolve:
+-  - **1.** Read `$IMPLEMENT_TMPDIR/oos-accepted-{design,review,main-agent}.md`; treat missing == empty (none mandatory). Apply the `focus-area=security` exclusion with the fenced/unfenced match-discrimination guard (route security findings to SECURITY.md private flow). Apply the design-phase carve-out: exclude any `### OOS_` block whose body already contains a `- **Filed URL**:` line.
+-  - **2.** Empty post-filter batch → emit no Accepted-OOS bullets and take the early-exit (same path as missing/empty).
+-  - **3.** Idempotency guard: if `$IMPLEMENT_TMPDIR/oos-issues-created.md` exists, recover URLs + tallies and skip `/issue`. On this branch still perform the NEVER #5 `oos-issues` / `run-statistics` larch-log writes from the recovered URLs.
++  - **1.** Read accepted-OOS sources; treat missing == empty (none mandatory). **Design path** (mirror `oos-disposition-checkpoint.sh`): when `--design-tmpdir` / `DESIGN_TMPDIR` is set, use `$DESIGN_TMPDIR/oos-accepted-design.md`; else when `$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md` exists, use that; else `$IMPLEMENT_TMPDIR/oos-accepted-design.md`. **Review** and **main-agent**: `$IMPLEMENT_TMPDIR/oos-accepted-review.md` and `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` (review mirror per Step 8+ `review-and-fix-summary.json` contract). Apply the `focus-area=security` exclusion with the fenced/unfenced match-discrimination guard (route security findings to SECURITY.md private flow). Apply the design-phase carve-out: exclude any `### OOS_` block whose body already contains a `- **Filed URL**:` line.
++  - **2.** **True empty** (no accepted-OOS content in any source after missing==empty) → emit no Accepted-OOS bullets and take the early-exit (same path as historical missing/empty). **All-already-filed** (pre-filter had non-security accepted OOS, but every surviving block was excluded by `- **Filed URL**:`) → do **not** treat as true empty: skip combine/cap/`/issue`/sentinel; still run Step **6** to ensure `$IMPLEMENT_TMPDIR/larch-logs/implement/$RUN_ID/oos-issues.ndjson` exists (append via `larch-log.sh` when absent) so `oos-disposition-checkpoint.sh` does not fail the `non_security_oos > 0` ndjson precondition; document filed design blocks in the `oos-issues` Accepted sub-block per `SKILL.md` carve-outs.
++  - **3.** Idempotency guard: if `$IMPLEMENT_TMPDIR/oos-issues-created.md` exists, recover disposition URLs + tallies (created **and** deduplicated — see format section) and skip `/issue`. On this branch still perform the NEVER #5 `oos-issues` larch-log append from recovered URLs only — **do not** write the `run-statistics` batch here (owned exclusively by the post-checkpoint Step 8+ block in `SKILL.md`).
+   - **3.3.** Cross-phase dedup of `### OOS_N:` blocks (fixed phase order: design, review, main-agent).
+   - **3.4.** Combine pass → write `$IMPLEMENT_TMPDIR/oos-combined.md` + `oos-grouping-worksheet.md`. Cascade `Rule A → Rule B → criteria 1-4 → criterion 5 → criterion 6`; reuse the SKILL.md `~30` LOC threshold convention. Skip combining (and worksheet) on the step-3 sentinel-recovery branch and on the Step 2 all-already-filed branch.
+-  - **3.4b.** Per-run cap pre-pass: `oos-issue-cap.sh --input-file ...oos-combined.md` (fail-closed on non-zero — do not write the sentinel, skip filing, breadcrumb).
+-  - **3.5.** File-conflict pre-pass: `oos-file-conflict-deps.sh --input-file ...oos-combined.md --output ...oos-intra-batch-deps.tsv` (degraded-continue without `--intra-batch-deps-file` on non-zero or empty TSV).
+-  - **4.** `/issue` batch: forward `--input-file ...oos-combined.md`, `--title-prefix "[OOS]"`, and (when `$ISSUE_NUMBER` set, not deferred, not repo-unavailable) `--blocked-by-issue $ISSUE_NUMBER`; forward `--intra-batch-deps-file` only on exit-0 non-empty TSV; never `--no-dep-llm`. Parse `ISSUES_CREATED` / `ISSUES_FAILED` / `ISSUES_DEDUPLICATED` / `ISSUE_<i>_NUMBER=` / `ISSUE_<i>_URL=`.
+-  - **5.** Write the `$IMPLEMENT_TMPDIR/oos-issues-created.md` sentinel in the pinned format (see the format section below).
+-  - **6.** Append the `oos-issues` larch-log batch (Accepted entries; Rejected/non-accepted under the Rejected sub-block per `scripts/larch-log-batches.md`).
+-  - **7.** Write the `run-statistics` larch-log OOS-filed count (recovered-from-sentinel items excluded).
+-  - **Carve-outs:** `forked_target=true` and `repo_unavailable=true` skip `/issue` and the larch-log Accepted-OOS writes (preserve existing behavior). After the pipeline, control returns to the Step 8+ `oos-disposition-checkpoint.sh` gate (cross-reference, not duplicated) which gates clearing `OOS_PENDING`.
+-- A stable `## oos-issues-created.md sentinel format` section pinning the format consumed by the Invariant #1 idempotent-rerun recovery AND the `oos-disposition-gate.sh --filed-urls-file` loose counter: a markdown table (`| OOS title | Issue | URL |`) with one row per filed issue (URL as a literal `https://…/issues/<n>` token so the gate's loose grep counts it) plus a trailing `- **Filed**: <N>` tally line. Cross-reference `oos-disposition-gate.md` Counting rules (loose URL-token union) and the SKILL.md Terminal disposition invariant ("URL tables in oos-issues-created.md").
++  - **3.4b.** Per-run cap pre-pass: `oos-issue-cap.sh --input-file "$IMPLEMENT_TMPDIR/oos-combined.md"` (fail-closed on non-zero — do not write the sentinel, skip filing, breadcrumb).
++  - **3.5.** File-conflict pre-pass: `oos-file-conflict-deps.sh --input-file "$IMPLEMENT_TMPDIR/oos-combined.md" --output "$IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv"` (degraded-continue without `--intra-batch-deps-file` on non-zero or empty TSV).
++  - **4.** `/issue` batch: forward `--input-file ...oos-combined.md`, `--title-prefix "[OOS]"`, and (when `$ISSUE_NUMBER` set, not deferred, not `repo_unavailable=true`) `--blocked-by-issue $ISSUE_NUMBER`; forward `--intra-batch-deps-file` only on exit-0 non-empty TSV; never `--no-dep-llm`. Parse `ISSUES_CREATED` / `ISSUES_FAILED` / `ISSUES_DEDUPLICATED` / `ISSUE_<i>_NUMBER=` / `ISSUE_<i>_URL=` / `ISSUE_<i>_DUPLICATE_OF_URL=` / `ISSUE_<i>_DUPLICATE_OF_NUMBER=` (mirror `skills/design/scripts/file-design-oos.sh` stdout parsing). **Failure branch:** when `/issue` exits non-zero or `ISSUES_FAILED>0`, do **not** write `oos-issues-created.md`; breadcrumb the partial failure and return to the checkpoint (which must block — NEVER #14–15).
++  - **5.** Write `$IMPLEMENT_TMPDIR/oos-issues-created.md` in the pinned format **only** when Step 4 succeeded with `ISSUES_FAILED=0` (includes all-dedup batches where every item resolved via `DUPLICATE_OF_URL`).
++  - **6.** Append the `oos-issues` larch-log batch (Accepted entries; Rejected/non-accepted under the Rejected sub-block per `scripts/larch-log-batches.md`). Expose filed/dedup counts for the operator; **do not** write `run-statistics` — the Step 8+ OOS checkpoint block in `SKILL.md` owns that write after `oos-disposition-checkpoint.sh` exit 0.
++  - **Carve-outs (split):** `forked_target=true` skips `/issue` and **all** larch-log Accepted-OOS updates (final-report text only). `repo_unavailable=true` skips `/issue` but **still** appends the documented `Skipped — repo unavailable` row to the `oos-issues` batch per `SKILL.md` Execution Issues / carve-outs prose. After the pipeline, control returns to the Step 8+ `oos-disposition-checkpoint.sh` gate (cross-reference, not duplicated), which runs **before** `run-statistics` and clearing `OOS_PENDING`.
++- A stable `## oos-issues-created.md sentinel format` section pinning the format consumed by the Invariant #1 idempotent-rerun recovery AND the `oos-disposition-gate.sh --filed-urls-file` loose counter: a markdown table (`| OOS title | Issue | URL |`) with one row per disposition URL (use `ISSUE_<i>_URL` when present, else `ISSUE_<i>_DUPLICATE_OF_URL`; Issue column may show `#<n>` from `ISSUE_<i>_NUMBER` or `ISSUE_<i>_DUPLICATE_OF_NUMBER`) — each URL a literal `https://…/issues/<n>` token so the gate's loose grep counts it — plus a trailing `- **Filed**: <N>` tally line counting disposition URLs (created + deduplicated). Cross-reference `oos-disposition-gate.md` Counting rules (loose URL-token union) and the SKILL.md Terminal disposition invariant ("URL tables in oos-issues-created.md").
+ 
+ ### UPDATED: `skills/implement/SKILL.md`
+-- At the two Step 8+ OOS-checkpoint consumption points (the `Exit 0` OOS branch and the `OOS checkpoint` block), add a MANDATORY load directive: `**MANDATORY — READ ENTIRE FILE before executing the OOS pipeline**: ${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`. Repoint the phantom `the earlier "Out-of-Scope Handling" section` citation to the real `## Execution Issues Tracking` section (OOS triage policy) plus the new procedure file.
++- At **both** Step 8+ OOS consumption points (the `Exit 0` OOS branch **and** the `OOS checkpoint` block), add the **same** MANDATORY load directive (must appear **twice**): `**MANDATORY — READ ENTIRE FILE before executing the OOS pipeline**: ${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`. Repoint the phantom `the earlier "Out-of-Scope Handling" section` citation to the real `## Execution Issues Tracking` section (OOS triage policy) plus the new procedure file.
+ - Add a one-line pointer in the `### OOS triage policy` / `File-conflict rule` area so the `Step 9a.1 step 3.4` / `step 3.4b` mentions name `oos-pipeline.md` as the procedure home.
+ - Preserve all existing OOS prose (Invariant #1, NEVER #5/#14/#15, Terminal disposition invariant, dual-write schema) byte-stable except the citation repoints above.
+ 
+ ### UPDATED: `scripts/test-implement-structure.sh`
+ Add fixed-string (`grep -Fq`) assertions beside the existing OOS-disposition block (after the `oos-disposition-checkpoint.sh` assertion) — robust, no awk section-boundary extraction (the #1477 fragility class):
+ 1. `oos-pipeline.md` exists under `$REFS_DIR`.
+-2. SKILL.md contains the literal `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md` load directive (`# shellcheck disable=SC2016`).
++2. SKILL.md contains the literal `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md` load directive **at least twice** (`# shellcheck disable=SC2016` on the count line).
+ 3. `oos-pipeline.md` contains the `3.4` and `3.4b` step labels so the SKILL.md citations resolve.
+-4. `oos-pipeline.md` contains the `oos-issues-created.md sentinel format` anchor.
+-5. `oos-pipeline.md` wires the core helpers (`oos-issue-cap.sh` and `oos-file-conflict-deps.sh`) so a gutted restore fails CI.
++4. `oos-pipeline.md` contains the `oos-issues-created.md sentinel format` anchor **and** the pinned table/tally/URL-token literals: `| OOS title | Issue | URL |`, `- **Filed**:`, and `issues/<n>` (loose gate shape).
++5. `oos-pipeline.md` wires helper **invocations** (not name-drops only): `oos-issue-cap.sh --input-file`, `oos-file-conflict-deps.sh --input-file`, and `--output "$IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv"`.
++6. `oos-pipeline.md` documents the Step 2 all-already-filed branch and ndjson precondition (fixed-string `all-already-filed` or `oos-issues.ndjson` in that branch prose).
+ 
+ ### UPDATED: `skills/implement/scripts/oos-file-conflict-deps.md`
+ Repoint its `SKILL.md Step 9a.1 procedure` see-also pointer to `oos-pipeline.md` (keep the narrative pointer at SKILL.md).
+@@ -36,17 +42,23 @@
+ - Recover the historical procedure from git (`anchor-template-oos-pipeline.md` at `c53086d96^`) as the structural skeleton, then rewrite each step against current helpers and carve-outs. Do NOT reintroduce anchor-comment-era surfaces (the deleted "Accepted OOS section" placeholder, the `run-statistics` anchor row); use today's larch-log batches.
+ - Keep the step numbering (1, 2, 3, 3.3, 3.4, 3.4b, 3.5, 4–7) identical to the citations so no SKILL.md renumbering is needed.
+ - The format pin is documentation only — `oos-disposition-gate.sh` already accepts the loose URL-token shape; the section makes the writer/reader contract explicit so they cannot drift.
+-- The guard reuses the harness's existing `grep -Fq` idiom; no new Makefile target (it runs under the existing `test-implement-structure` target in `test-harnesses-16`).
++- **Run-statistics ordering:** procedure ends at Step 6; post-checkpoint `SKILL.md` writes `run-statistics` only after `oos-disposition-checkpoint.sh` exit 0 (never from `oos-pipeline.md`).
++- The guard reuses the harness's existing `grep -Fq` idiom; no new Makefile target (it runs under the existing `test-implement-structure` target in `test-harnesses-16`).
+ 
+ ## Edge cases
+ - `test-references-headers.sh` (#308) scans every `skills/*/references/*.md` for the Consumer/Contract/When-to-load triplet and forbids stale line-range descriptions — the new file must satisfy both.
+ - Markdown hygiene: MD038 (no inner-whitespace code spans) on literals like `- **Filed URL**:`; MD001 heading increments; `${CLAUDE_PLUGIN_ROOT}/…` paths (public skill convention), no machine-local paths, no hardcoded counts/line-numbers in prose.
+ - The fenced/unfenced security match-discrimination prose must stay intact (it is the last-line public-filing backstop).
+-- The sentinel-recovery branch must NOT re-run combine/cap/worksheet but MUST still write the larch-log batches (NEVER #5).
++- The sentinel-recovery branch must NOT re-run combine/cap/worksheet but MUST still append the `oos-issues` larch-log batch (NEVER #5); `run-statistics` waits for checkpoint pass.
++- All-dedup `/issue` stdout must still populate the sentinel via `DUPLICATE_OF_URL` rows or disposition gates see zero filed URLs.
++- Design accepted-OOS path resolution must match `oos-disposition-checkpoint.sh` / `oos-disposition-checkpoint.md` so filing is not skipped while the gate still counts unresolved design blocks.
+ 
+ ## Failure modes
+ - **Stale-restore drift:** a verbatim #1896 paste would reference deleted anchor surfaces. Mitigation: reconstruct against current helpers; cross-check every helper name against `skills/implement/scripts/`.
+ - **Guard rot (the core regression):** an awk-boundary assertion silently passes after a future edit. Mitigation: fixed-string `grep -Fq` assertions only; assert the file, the load directive, the citation anchors, and the format anchor independently.
+ - **Citation/anchor drift:** if the new file drops the `3.4b` label, the SKILL.md citation dangles again. Mitigation: guard assertion #3 pins both `3.4` and `3.4b`.
++- **Run-statistics before checkpoint:** documenting a pipeline-local `run-statistics` write would let durable stats survive a disposition failure. Mitigation: defer to post-checkpoint `SKILL.md` only (FINDING_1).
++- **Partial `/issue` + sentinel:** writing `oos-issues-created.md` when `ISSUES_FAILED>0` makes reruns skip failed items. Mitigation: Step 4/5 failure branch (FINDING_5).
++- **All-dedup / all-filed zero-URL:** omitting `DUPLICATE_OF_URL` or ndjson bootstrap leaves the gate blocked. Mitigation: duplicate URL parsing + Step 2 all-already-filed ndjson path (FINDING_2/4).
+ 
+ ## Testing strategy
+ - `bash scripts/test-implement-structure.sh` — new assertions pass; run before/after to confirm the guard fails when `oos-pipeline.md` is removed (manual negative check).
+@@ -55,6 +67,6 @@
+ - `make markdownlint` (MD038/MD001) and `bash scripts/relevant-checks.sh` on the changed files.
+ - Spot-grep that every `Step 9a.1 step 3.4 / 3.4b` and "execute the Step 9a.1 OOS GitHub issue pipeline" citation now resolves to `oos-pipeline.md`.
+ 
+-diff_added: 175
++diff_added: 215
+ diff_deleted: 15
+-diff_lines: 190
++diff_lines: 230

@@ -1,0 +1,14 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Pragmatic, Codex-Requirements, Cursor-dyn-witness-gap, Codex-dyn-witness-gap	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_2	Cursor-Edge, Cursor-Innovation	accepted	YES	true	major	good	false	Claude	YES	partially-true	major	good	false	Codex	YES	true	major	good	false	Cursor
+FINDING_3	Cursor-Edge	accepted	YES	true	major	adequate	false	Claude	YES	true	major	adequate	false	Codex	EXONERATE	true	minor	adequate	false	Cursor
+FINDING_4	Cursor-Edge	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor
+FINDING_5	Codex-Innovation, Codex-Pragmatic, Codex-dyn-witness-gap, Cursor-dyn-assertion-logic, Codex-dyn-assertion-logic	accepted	YES	true	major	excellent	false	Claude	YES	true	major	excellent	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_6	Codex-Innovation	accepted	YES	partially-true	major	adequate	true	Claude	YES	partially-true	major	adequate	true	Codex	YES	true	major	good	false	Cursor
+FINDING_7	Cursor-Pragmatic	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor
+FINDING_8	Cursor-Requirements, Codex-dyn-assertion-logic	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_9	Codex-Requirements, Cursor-dyn-dispatch-wiring	accepted	YES	true	major	good	false	Claude	YES	true	major	adequate	false	Codex	YES	true	major	good	false	Cursor
+FINDING_10	Codex-Requirements	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	EXONERATE	partially-true	minor	adequate	false	Cursor
+FINDING_11	Codex-dyn-assertion-logic	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor
+FINDING_12	Codex-dyn-assertion-logic	exonerated	EXONERATE	true	nit	adequate	false	Claude	EXONERATE	partially-true	nit	adequate	false	Codex	YES	true	minor	good	false	Cursor
+FINDING_13	Codex-dyn-assertion-logic	accepted	YES	true	major	adequate	false	Claude	YES	true	major	adequate	false	Codex	YES	true	major	good	false	Cursor

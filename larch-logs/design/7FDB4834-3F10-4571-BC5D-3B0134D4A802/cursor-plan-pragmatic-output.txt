@@ -1,0 +1,12 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/materialize-manifest-oos.md (plan NEW)	Merge contract omits monotonic OOS_N allocation	Appending manifest blocks without renumbering can duplicate ### OOS_1 headings when oos-accepted-main-agent.md already has dual-write blocks, breaking parse-input.sh and combine/cap	Specify allocate next free OOS_N after scanning existing headings; title dedup only is insufficient
+2	in_scope	important	correctness	skills/implement/references/oos-pipeline.md (plan NEW step 2)	All-already-filed handling scoped to design batch only	Review/main-agent blocks with only - **Filed URL**: can be treated as true no-input, skipping sentinel/ndjson evidence; checkpoint strict-file is design-only so loose oos-issues-created.md is required for other phases	Replace design-batch-only branch with any-phase all-disposition-satisfied batch: explicitly write oos-issues-created.md (pinned format) from harvested Filed URL lines before early exit; distinguish from zero-block no-input
+3	in_scope	important	risk-integration	scripts/test-implement-structure.sh (plan assertion 12)	Assertion 12 pins vague phrase not sentinel write	Passing grep for materialize checkpoint-visible evidence does not require oos-issues-created.md with https issues/n tokens needed when strict-file cannot cover review/main-agent	Extend assertion 12 to require step 2 prose to name oos-issues-created.md synthesis (or pin table header plus issues/n in oos-pipeline.md step 2)
+
+1. **[correctness]** `materialize-manifest-oos.md` (plan) — Specify monotonic `### OOS_N:` renumbering when appending to a non-empty `oos-accepted-main-agent.md`; title-only dedup is not enough for `parse-input.sh`.
+
+2. **[correctness]** `oos-pipeline.md` (plan step 2) — Broaden all-already-filed handling beyond “design batch”; when every remaining block already has `- **Filed URL**:`, write `oos-issues-created.md` (pinned sentinel) before early exit — do not use the true no-input branch.
+
+3. **[risk-integration]** `scripts/test-implement-structure.sh` (plan assertion 12) — Tighten the pin so CI requires explicit sentinel synthesis, not only the phrase “materialize checkpoint-visible evidence.”
+
+[OUT_OF_SCOPE] `python/ship.py:129-157` — `_oos_gate` still omits `design-export/oos-accepted-design.md` resolution that `ship-pr.sh` uses via `resolve_oos_accepted_design_path`; pre-existing Python/bash parity gap, not introduced by this plan’s materialize hook alone.

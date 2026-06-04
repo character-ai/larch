@@ -1,0 +1,37 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/SKILL.md:1024,1042	Step 8+ Exit 0 and OOS checkpoint still tell the orchestrator to use policy from the earlier Out-of-Scope Handling section, but that heading does not exist (triage lives under ## Execution Issues Tracking). The UPDATED SKILL.md section repoints a phantom citation and adds MANDATORY load lines, yet also says to preserve OOS prose byte-stable except citation/load repoints without explicitly replacing these two runtime sentences; new structure tests only count load-directive occurrences.	After the PR an implementer can add the two MANDATORY READ lines while leaving the broken earlier-section pointer at both consumption sites; operators following SKILL.md without re-reading oos-pipeline.md still chase a non-existent section.	In the same SKILL.md edit, replace using the canonical OOS policy from the earlier "Out-of-Scope Handling" section at both sites with executing per ${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md (or drop the clause because the new MANDATORY READ already binds the procedure). Add a fixed-string regression in scripts/test-implement-structure.sh that fails if Out-of-Scope Handling section remains in SKILL.md.
+
+## Findings
+
+### 1. [correctness] Phantom “Out-of-Scope Handling” survives at both Step 8+ entry points
+
+`skills/implement/SKILL.md` still contains:
+
+```1024:1024:skills/implement/SKILL.md
+- **Exit 0**: if `OOS_PENDING=true`, run the Step 9a.1 OOS pipeline using the canonical OOS policy from the earlier "Out-of-Scope Handling" section, then run the disposition checkpoint sequence below;
+```
+
+and the same phrase at line 1042 in the **OOS checkpoint** block. There is no `## Out-of-Scope Handling` section; policy is under `## Execution Issues Tracking` (line 396).
+
+The plan’s `UPDATED: skills/implement/SKILL.md` asks to repoint the phantom citation and add two mandatory load directives, but also says to keep OOS prose byte-stable except for citation/load repoints without naming lines 1024/1042. Proposed structure tests (plan items 1–2) verify `oos-pipeline.md` exists and count load directives; they do not forbid the stale phrase.
+
+**Suggested revision:** In the same edit, replace or delete the “earlier Out-of-Scope Handling section” clause at both sites (redundant once MANDATORY READ is present). Optionally add `! grep -Fq 'Out-of-Scope Handling section' "$SKILL_MD"` to `scripts/test-implement-structure.sh`.
+
+---
+
+## Cross-ref checks (no additional findings)
+
+| Contract | Verdict |
+|----------|---------|
+| Header triplet `**Consumer**:` / `**Contract**:` / `**When to load**:` | Matches `scripts/test-references-headers.sh` lines 59–62 |
+| Security `- **focus-area**:` predicate | Aligns with `oos-non-security-block-count.awk` line 13 and `oos-disposition-gate.md` lines 29–30 |
+| `--filed-urls-file` + URL grep | `oos-disposition-checkpoint.sh` passes it to `oos-disposition-gate.sh` (lines 195–196); loose counter uses `https://…/issues/<digits>` in `scripts/oos-disposition-shared.inc.bash` lines 17–27 — compatible with pinned table/`issues/<n>` sentinel |
+| Helpers `--input-file`, duplicate stdout keys | `oos-issue-cap.sh`, `oos-file-conflict-deps.sh`, `skills/issue/SKILL.md` lines 332–342 |
+| Design path order | Matches `oos-disposition-checkpoint.sh` lines 155–161 |
+| NEVER #5 / post-checkpoint `run-statistics` | Plan explicitly narrows NEVER #5; consistent with NEVER #14 |
+
+## EXONERATED (SIMPLE lane)
+
+- **`oos-grouping-worksheet.md`:** Not present in today’s tree, but required by the pre-#1887 anchor the plan recovers; step 3 already skips worksheet on sentinel recovery.
+- **Review source:** `oos-accepted-review.md` is a load-bearing mirror of accumulated review OOS (`review-and-fix.md`); omitting `review-and-fix-summary.json` paths in `oos-pipeline.md` step 1 is acceptable if the mirror contract is honored.
+- **`--filed-urls-file` on checkpoint:** Flag lives on `oos-disposition-gate.sh`; checkpoint wires it correctly (not a checkpoint CLI flag).
