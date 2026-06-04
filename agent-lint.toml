@@ -598,6 +598,14 @@ exclude = [
   # shebang, not invokable directly). It is referenced from the Codex launcher
   # via source directives only, which agent-lint does not follow.
   "scripts/lib-codex-launcher-common.sh",
+  # scripts/lib-sparse-dirs.sh is a sourced-only shell library (no shebang,
+  # not invokable directly) carrying the canonical plugin sparse install
+  # allowlist for upgrade-larch.sh and SessionStart probes. Referenced via
+  # source directives only, which agent-lint does not follow.
+  "scripts/lib-sparse-dirs.sh",
+  # scripts/lib-sparse-dirs.md — sibling contract for lib-sparse-dirs.sh
+  # (script-md-siblings / G004).
+  "scripts/lib-sparse-dirs.md",
   # scripts/lib-voter-parse-rate.sh is a sourced-only shell library (no shebang,
   # not invokable directly). dispatch-code-voters.sh and dispatch-plan-voters.sh
   # source it; agent-lint does not follow source directives.

@@ -105,6 +105,9 @@ build_bin() {
     link_tool "$dir" grep
     link_tool "$dir" awk
     link_tool "$dir" cat
+    link_tool "$dir" sed
+    link_tool "$dir" sort
+    link_tool "$dir" tr
     link_tool "$dir" stat
     link_tool "$dir" basename
     link_tool "$dir" date
@@ -130,13 +133,23 @@ STUB
 
 run_from_dir() {
     local bin=$1 cwd=$2 out_file=$3 err_file=$4 rc=0
-    (cd "$cwd" && env -i PATH="$bin" "$BASH_BIN" "$SCRIPT" < /dev/null > "$out_file" 2> "$err_file") || rc=$?
+    local home="${5:-}"
+    local env_args=(PATH="$bin")
+    if [[ -n "$home" ]]; then
+        env_args+=(HOME="$home")
+    fi
+    (cd "$cwd" && env -i "${env_args[@]}" "$BASH_BIN" "$SCRIPT" < /dev/null > "$out_file" 2> "$err_file") || rc=$?
     printf '%s\n' "$rc"
 }
 
 run_with_stdin() {
     local bin=$1 cwd=$2 input=$3 xdg_cache=$4 out_file=$5 err_file=$6 rc=0
-    (cd "$cwd" && printf '%s' "$input" | env -i PATH="$bin" XDG_CACHE_HOME="$xdg_cache" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$BASH_BIN" "$SCRIPT" > "$out_file" 2> "$err_file") || rc=$?
+    local home="${7:-}"
+    local env_args=(PATH="$bin" XDG_CACHE_HOME="$xdg_cache" CLAUDE_PLUGIN_ROOT="$REPO_ROOT")
+    if [[ -n "$home" ]]; then
+        env_args+=(HOME="$home")
+    fi
+    (cd "$cwd" && printf '%s' "$input" | env -i "${env_args[@]}" "$BASH_BIN" "$SCRIPT" > "$out_file" 2> "$err_file") || rc=$?
     printf '%s\n' "$rc"
 }
 
@@ -185,6 +198,18 @@ make_impl_tmpdir() {
     printf '%s\n' "$impl"
 }
 
+make_sparse_marketplace() {
+    local home_dir=$1
+    shift
+    local clone="$home_dir/.claude/plugins/marketplaces/larch-local"
+
+    mkdir -p "$clone"
+    git init "$clone" >/dev/null 2>&1
+    git -C "$clone" sparse-checkout init --cone >/dev/null 2>&1
+    git -C "$clone" sparse-checkout set "$@" >/dev/null 2>&1
+    printf '%s\n' "$clone"
+}
+
 echo "=== Case 1: jq + git both present, not a work-tree ==="
 build_bin "$tmp/c1_bin"
 add_real_tool "$tmp/c1_bin" jq "$REAL_JQ"
@@ -231,6 +256,131 @@ assert_contains "$ctx" "jq not on PATH and git not on PATH" "case 4: fixed jq+gi
 build_bin "$tmp/real_bin"
 add_real_tool "$tmp/real_bin" jq "$REAL_JQ"
 add_real_tool "$tmp/real_bin" git "$REAL_GIT"
+
+EXPECTED_SPARSE_DIRS=(.claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests)
+
+echo "=== Case 4b: sparse cone drift emits /upgrade-larch advisory ==="
+mkdir -p "$tmp/c4b-cwd"
+home="$tmp/c4b-home"
+make_sparse_marketplace "$home" .claude scripts skills >/dev/null
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4b-cwd" "$tmp/c4b.out" "$tmp/c4b.err" "$home")
+assert_eq "$rc" "0" "case 4b: exit code 0"
+stdout=$(cat "$tmp/c4b.out")
+assert_valid_json "$stdout" "case 4b"
+ctx=$(ctx_from_stdout "$stdout")
+assert_contains "$ctx" "/upgrade-larch" "case 4b: drift advisory points to /upgrade-larch"
+
+echo "=== Case 4c: matching sparse cone emits no advisory ==="
+mkdir -p "$tmp/c4c-cwd"
+home="$tmp/c4c-home"
+make_sparse_marketplace "$home" "${EXPECTED_SPARSE_DIRS[@]}" >/dev/null
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4c-cwd" "$tmp/c4c.out" "$tmp/c4c.err" "$home")
+assert_eq "$rc" "0" "case 4c: exit code 0"
+stdout=$(cat "$tmp/c4c.out")
+assert_empty "$stdout" "case 4c: stdout empty on matching sparse cone"
+
+echo "=== Case 4d: no marketplace clone is silent ==="
+mkdir -p "$tmp/c4d-cwd" "$tmp/c4d-home"
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4d-cwd" "$tmp/c4d.out" "$tmp/c4d.err" "$tmp/c4d-home")
+assert_eq "$rc" "0" "case 4d: exit code 0"
+stdout=$(cat "$tmp/c4d.out")
+assert_empty "$stdout" "case 4d: stdout empty with no marketplace clone"
+
+echo "=== Case 4e: missing sparse library is silent ==="
+mkdir -p "$tmp/c4e/scripts" "$tmp/c4e-cwd"
+cp "$SCRIPT" "$tmp/c4e/scripts/sessionstart-health.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$tmp/c4e/scripts/lib-quiet.sh"
+home="$tmp/c4e-home"
+make_sparse_marketplace "$home" .claude scripts skills >/dev/null
+ORIGINAL_SCRIPT="$SCRIPT"
+SCRIPT="$tmp/c4e/scripts/sessionstart-health.sh"
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4e-cwd" "$tmp/c4e.out" "$tmp/c4e.err" "$home")
+SCRIPT="$ORIGINAL_SCRIPT"
+assert_eq "$rc" "0" "case 4e: exit code 0"
+stdout=$(cat "$tmp/c4e.out")
+assert_empty "$stdout" "case 4e: stdout empty when lib-sparse-dirs.sh is missing"
+
+echo "=== Case 4f: missing normalize_sparse_dirs is silent ==="
+mkdir -p "$tmp/c4f/scripts" "$tmp/c4f-cwd"
+cp "$SCRIPT" "$tmp/c4f/scripts/sessionstart-health.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$tmp/c4f/scripts/lib-quiet.sh"
+printf '%s\n' '# shellcheck shell=bash' 'LARCH_SPARSE_DIRS=".claude scripts skills"' > "$tmp/c4f/scripts/lib-sparse-dirs.sh"
+home="$tmp/c4f-home"
+make_sparse_marketplace "$home" .claude scripts skills >/dev/null
+ORIGINAL_SCRIPT="$SCRIPT"
+SCRIPT="$tmp/c4f/scripts/sessionstart-health.sh"
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4f-cwd" "$tmp/c4f.out" "$tmp/c4f.err" "$home")
+SCRIPT="$ORIGINAL_SCRIPT"
+assert_eq "$rc" "0" "case 4f: exit code 0"
+stdout=$(cat "$tmp/c4f.out")
+assert_empty "$stdout" "case 4f: stdout empty when normalize_sparse_dirs is missing"
+
+echo "=== Case 4g: probe ignores HOOK_CWD and later PLUGIN_ROOT ==="
+mkdir -p "$tmp/c4g-cwd" "$tmp/c4g-hook-cwd"
+home="$tmp/c4g-home"
+make_sparse_marketplace "$home" .claude scripts skills >/dev/null
+rc=$(run_with_stdin "$tmp/real_bin" "$tmp/c4g-cwd" '{"cwd":"'"$tmp/c4g-hook-cwd"'"}' "$XDG_TEST" "$tmp/c4g.out" "$tmp/c4g.err" "$home")
+assert_eq "$rc" "0" "case 4g: exit code 0"
+ctx=$(ctx_from_stdout "$(cat "$tmp/c4g.out")")
+assert_contains "$ctx" "/upgrade-larch" "case 4g: drift probe is cwd-independent"
+
+echo "=== Case 4h: unset HOME is silent ==="
+mkdir -p "$tmp/c4h-cwd"
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4h-cwd" "$tmp/c4h.out" "$tmp/c4h.err")
+assert_eq "$rc" "0" "case 4h: exit code 0"
+stdout=$(cat "$tmp/c4h.out")
+assert_empty "$stdout" "case 4h: stdout empty when HOME is unset"
+
+echo "=== Case 4i: non-git marketplace dir is silent ==="
+mkdir -p "$tmp/c4i-cwd"
+home="$tmp/c4i-home"
+mkdir -p "$home/.claude/plugins/marketplaces/larch-local"
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4i-cwd" "$tmp/c4i.out" "$tmp/c4i.err" "$home")
+assert_eq "$rc" "0" "case 4i: exit code 0"
+stdout=$(cat "$tmp/c4i.out")
+assert_empty "$stdout" "case 4i: stdout empty for non-git marketplace dir"
+
+echo "=== Case 4j: larch-logs marketplace is silent ==="
+mkdir -p "$tmp/c4j-cwd"
+home="$tmp/c4j-home"
+clone=$(make_sparse_marketplace "$home" .claude scripts skills)
+mkdir -p "$clone/larch-logs"
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4j-cwd" "$tmp/c4j.out" "$tmp/c4j.err" "$home")
+assert_eq "$rc" "0" "case 4j: exit code 0"
+stdout=$(cat "$tmp/c4j.out")
+assert_empty "$stdout" "case 4j: stdout empty for legacy larch-logs marketplace"
+
+echo "=== Case 4k: empty configured sparse list is silent ==="
+mkdir -p "$tmp/c4k-cwd"
+home="$tmp/c4k-home"
+clone="$home/.claude/plugins/marketplaces/larch-local"
+mkdir -p "$clone"
+git init "$clone" >/dev/null 2>&1
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4k-cwd" "$tmp/c4k.out" "$tmp/c4k.err" "$home")
+assert_eq "$rc" "0" "case 4k: exit code 0"
+stdout=$(cat "$tmp/c4k.out")
+assert_empty "$stdout" "case 4k: stdout empty when configured sparse list is empty"
+
+echo "=== Case 4l: empty expected sparse list is silent ==="
+mkdir -p "$tmp/c4l/scripts" "$tmp/c4l-cwd"
+cp "$SCRIPT" "$tmp/c4l/scripts/sessionstart-health.sh"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$tmp/c4l/scripts/lib-quiet.sh"
+cat > "$tmp/c4l/scripts/lib-sparse-dirs.sh" <<'LIB'
+# shellcheck shell=bash
+LARCH_SPARSE_DIRS=""
+normalize_sparse_dirs() {
+    tr ' ' '\n' <<< "$LARCH_SPARSE_DIRS" | sed '/^$/d' | sort
+}
+LIB
+home="$tmp/c4l-home"
+make_sparse_marketplace "$home" .claude scripts skills >/dev/null
+ORIGINAL_SCRIPT="$SCRIPT"
+SCRIPT="$tmp/c4l/scripts/sessionstart-health.sh"
+rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4l-cwd" "$tmp/c4l.out" "$tmp/c4l.err" "$home")
+SCRIPT="$ORIGINAL_SCRIPT"
+assert_eq "$rc" "0" "case 4l: exit code 0"
+stdout=$(cat "$tmp/c4l.out")
+assert_empty "$stdout" "case 4l: stdout empty when expected sparse list is empty"
 
 echo "=== Case 5: dirty working tree ==="
 repo=$(make_repo dirty)
