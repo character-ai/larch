@@ -45,11 +45,14 @@ def test_tmpdir_scrub_and_raw_data_absent() -> None:
     assert "Raw per-issue data" not in body
 
 
-def test_post_issue_uses_repo_option_and_surfaces_failure() -> None:
-    runner = Runner(CommandResult(("gh",), 1, "", "body is too long", 0.01))
+def test_post_issue_uses_repo_option_and_surfaces_redacted_failure(capsys: pytest.CaptureFixture[str]) -> None:
+    runner = Runner(CommandResult(("gh",), 1, "", "body is too long ghp_abcdefghijklmnopqrstuvwx", 0.01))
     with pytest.raises(ShipError):
         post_issue(runner, repo="o/r", title="t", sections=[ReportSection("s", "body", SectionPriority.SUMMARY)])
     assert "--repo" in runner.calls[0]
+    err = capsys.readouterr().err
+    assert "body is too long" in err
+    assert "ghp_abcdefghijklmnopqrstuvwx" not in err
 
 
 def test_trim_notice_uses_reader_titles(monkeypatch: pytest.MonkeyPatch) -> None:

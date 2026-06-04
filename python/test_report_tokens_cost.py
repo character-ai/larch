@@ -112,14 +112,16 @@ def test_claude_blended_argv_uses_component_sum() -> None:
         started_at="2026-01-01T00:00:00Z",
         closed_at="2026-01-01T00:00:00Z",
         workflow="HARD",
-        claude=VendorTotals(input=10, cache_read=20, cache_create_5m=30, cache_create_1h=40, output=50, total=999),
-        codex=VendorTotals(),
-        cursor=VendorTotals(),
+        claude=VendorTotals(input=10, cache_read=20, cache_create=5, cache_create_5m=30, cache_create_1h=40, output=50, total=999),
+        codex=VendorTotals(input=1, cached_input=2, output=3, total=999),
+        cursor=VendorTotals(input=4, cache_read=5, output=6, total=999),
         phase_rows=(),
         raw_report={},
     )
     argv = token_cost_argv(record, plugin_root=Path("/repo"))
-    assert argv[argv.index("--claude-tokens") + 1] == "150"
+    assert argv[argv.index("--claude-tokens") + 1] == "155"
+    assert argv[argv.index("--codex-tokens") + 1] == "6"
+    assert argv[argv.index("--cursor-tokens") + 1] == "15"
 
 
 @dataclass
@@ -167,3 +169,25 @@ def test_token_cost_failure_warns_and_uses_fallback(capsys: pytest.CaptureFixtur
     captured = capsys.readouterr()
     assert "token-cost.sh failed" in captured.err
     assert priced.priced_by_token_cost is False
+
+
+def test_fallback_cost_uses_component_sums(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CODEX_RATE_PER_M", "1")
+    monkeypatch.setenv("LARCH_CURSOR_RATE_PER_M", "1")
+    runner = Runner(CommandResult(("token-cost",), 1, "", "bad", 0.01))
+    record = RunRecord(
+        number=1,
+        title="t",
+        url="u",
+        started_at="2026-01-01T00:00:00Z",
+        closed_at="2026-01-01T00:00:00Z",
+        workflow="HARD",
+        claude=VendorTotals(),
+        codex=VendorTotals(input=1_000_000, output=1_000_000, total=0),
+        cursor=VendorTotals(input=1_000_000, cache_read=1_000_000, output=1_000_000, total=0),
+        phase_rows=(),
+        raw_report={},
+    )
+    priced = price_run(runner, record=record, plugin_root=Path.cwd().parent)
+    assert priced.codex_cost == 2.0
+    assert priced.cursor_cost == 3.0

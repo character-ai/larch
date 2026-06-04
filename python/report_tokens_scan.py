@@ -17,6 +17,9 @@ from proc import Runner
 from report_tokens_models import PhaseRow, RunRecord, Skill, VendorName, VendorTotals, VENDORS, safe_int
 
 
+_JSON_ERROR = object()
+
+
 @dataclass(frozen=True)
 class ScanResult:
     repo_root: Path
@@ -28,12 +31,12 @@ def _warn(message: str) -> None:
     print(f"Warning: {message}", file=sys.stderr)
 
 
-def _json_file(path: Path) -> object | None:
+def _json_file(path: Path) -> object:
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
         _warn(f"invalid {path.name} at {path}: {exc}; skipping")
-        return None
+        return _JSON_ERROR
 
 
 def _as_mapping(value: object) -> Mapping[str, object]:
@@ -87,22 +90,32 @@ def _timing_basename(skill: Skill) -> str:
 
 def _workflow_from(path: Path) -> str:
     data = _json_file(path)
+    if data is _JSON_ERROR:
+        return "unknown"
     mapping = _as_mapping(data)
+    if not mapping:
+        _warn(f"{path.name} at {path} is not a JSON object with workflow classification; using unknown")
+        return "unknown"
     for key in ("workflow_path", "design_classification"):
         value = mapping.get(key)
         if value in ("SIMPLE", "HARD"):
             return str(value)
+    _warn(f"{path.name} at {path} lacks SIMPLE/HARD workflow classification; using unknown")
     return "unknown"
 
 
 def _workflow(run_dir: Path, skill: Skill) -> str:
+    saw_artifact = False
     for name in (_timing_basename(skill), "run-params.json"):
         path = run_dir / name
         if not path.is_file():
             continue
+        saw_artifact = True
         value = _workflow_from(path)
         if value != "unknown":
             return value
+    if not saw_artifact:
+        _warn(f"{run_dir} has no workflow artifacts; using unknown")
     return "unknown"
 
 
@@ -122,11 +135,29 @@ def _totals(report: Mapping[str, object], vendor: VendorName) -> VendorTotals:
 
 
 def _has_numeric_tokens(report: Mapping[str, object]) -> bool:
+    bucket_keys = {
+        "claude": ("input", "cache_read", "cache_create_5m", "cache_create_1h", "output"),
+        "codex": ("input", "cached_input", "output"),
+        "cursor": ("input", "cache_read", "output"),
+    }
     for vendor in VENDORS:
         bucket = _as_mapping(report.get(f"BUCKETS_{vendor}"))
-        if any(safe_int(value) > 0 for value in bucket.values()):
+        if any(safe_int(bucket.get(key)) > 0 for key in bucket_keys[vendor]):
             return True
-        if _totals(report, vendor).total > 0:
+        totals = _totals(report, vendor)
+        if any(
+            value > 0
+            for value in (
+                totals.input,
+                totals.cache_read,
+                totals.cache_create,
+                totals.cache_create_5m,
+                totals.cache_create_1h,
+                totals.cached_input,
+                totals.output,
+                totals.total,
+            )
+        ):
             return True
     return False
 
@@ -156,11 +187,14 @@ def _phase_rows(report: Mapping[str, object]) -> tuple[PhaseRow, ...]:
 
 def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord | None:
     manifest_obj = _json_file(run_dir / "manifest.json")
+    if manifest_obj is _JSON_ERROR:
+        return None
     manifest = _as_mapping(manifest_obj)
-    if manifest_obj is not None and not manifest:
-        _warn(f"manifest for {run_dir} lacks numeric issue_number; skipping")
+    if not isinstance(manifest_obj, dict):
+        _warn(f"manifest for {run_dir} is not a JSON object; skipping")
         return None
     if not manifest:
+        _warn(f"manifest for {run_dir} lacks numeric issue_number; skipping")
         return None
     number = safe_int(manifest.get("issue_number"))
     if number <= 0:
@@ -171,8 +205,14 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
         _warn(f"{run_dir} has no {_token_basename(skill)}; skipping")
         return None
     report_obj = _json_file(token_path)
+    if report_obj is _JSON_ERROR:
+        return None
     report = _as_mapping(report_obj)
+    if not isinstance(report_obj, dict):
+        _warn(f"{token_path} is not a JSON object; skipping")
+        return None
     if not report:
+        _warn(f"{token_path} lacks vendor totals/BUCKETS with numeric token counts; skipping")
         return None
     if not _has_numeric_tokens(report):
         _warn(f"{token_path} lacks vendor totals/BUCKETS with numeric token counts; skipping")

@@ -46,6 +46,7 @@ CLAUDE_PLUGIN_ROOT="$ROOT" \
   "$ROOT/skills/report-tokens/scripts/run-analysis.sh" --skill implement --no-issue --no-plot >"$stdout_file" 2>"$stderr_file"
 
 grep -Fq '## Report Tokens Analysis' "$stdout_file"
+grep -Fq 'Cache JSON:' "$stdout_file"
 grep -Fq 'Scanning ' "$stderr_file"
 
 stdout_file="$TMPROOT/design-stdout.txt"
@@ -60,6 +61,7 @@ CLAUDE_PLUGIN_ROOT="$ROOT" \
   "$ROOT/skills/report-tokens/scripts/run-analysis.sh" --skill design --no-issue --no-plot >"$stdout_file" 2>"$stderr_file"
 grep -Fq '## Report Tokens Analysis' "$stdout_file"
 grep -Fq '### HARD' "$stdout_file"
+grep -Fq 'Cache JSON:' "$stdout_file"
 grep -Fq 'Scanning ' "$stderr_file"
 
 stdout_file="$TMPROOT/plot-from-stdout.txt"

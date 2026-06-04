@@ -22,6 +22,12 @@ def _date(value: str) -> str | None:
     return value[:DATE_LEN] if len(value) >= DATE_LEN else None
 
 
+def _md_cell(value: object) -> str:
+    text = str(value).replace("\r\n", "\n").replace("\r", "\n")
+    text = text.replace("\\", "\\\\").replace("|", "\\|")
+    return " ".join(text.splitlines()) or "unknown"
+
+
 def _workflow_groups(skill: Skill, records: tuple[RunRecord, ...]) -> dict[str, list[RunRecord]]:
     groups: dict[str, list[RunRecord]] = defaultdict(list)
     for record in records:
@@ -41,6 +47,9 @@ def _summary(records: tuple[RunRecord, ...], *, actual_spend: float | None) -> s
         f"Analyzed {len(records)} parseable runs.",
         f"Tracked total estimated cost: {_money(total)}.",
     ]
+    fallback_count = sum(1 for record in records if not record.priced_by_token_cost)
+    if fallback_count:
+        lines.append(f"Pricing fallback used for {fallback_count} runs; blended rates are marked with `fallback` in tables.")
     if actual_spend is not None:
         delta = actual_spend - total
         pct = (delta / total * 100) if total else 0.0
@@ -61,7 +70,7 @@ def _aggregate(records: tuple[RunRecord, ...]) -> str:
     for workflow in sorted(by_workflow):
         costs = [record.total_cost for record in by_workflow[workflow]]
         lines.append(
-            f"| {workflow} | {len(costs)} | {_money(sum(costs))} | "
+            f"| {_md_cell(workflow)} | {len(costs)} | {_money(sum(costs))} | "
             f"{_money(statistics.median(costs))} | {_money(statistics.mean(costs))} | {_money(max(costs))} |",
         )
     return "\n".join(lines)
@@ -89,9 +98,10 @@ def _top_runs(records: tuple[RunRecord, ...]) -> str:
     ]
     for record in sorted(records, key=lambda item: item.total_cost, reverse=True)[:10]:
         issue = f"[#{record.number}]({record.url})" if record.url else f"#{record.number}"
+        pricing = "token-cost" if record.priced_by_token_cost else "fallback"
         lines.append(
-            f"| {issue} | {record.workflow} | {_date(record.started_at) or 'unknown'} | "
-            f"{_money(record.total_cost)} | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_money(record.cursor_cost)} |",
+            f"| {issue} | {_md_cell(record.workflow)} | {_md_cell(_date(record.started_at) or 'unknown')} | "
+            f"{_money(record.total_cost)} ({pricing}) | {_money(record.claude_cost)} | {_money(record.codex_cost)} | {_money(record.cursor_cost)} |",
         )
     return "\n".join(lines)
 
@@ -114,7 +124,7 @@ def _phase_breakdown(records: tuple[RunRecord, ...]) -> str:
         "| --- | --- | --- | ---: | ---: |",
     ]
     for (workflow, vendor, step), values in sorted(by_phase.items(), key=lambda item: item[1]["tokens"], reverse=True)[:20]:
-        lines.append(f"| {workflow} | {vendor} | {step} | {values['runs']} | {values['tokens']:,} |")
+        lines.append(f"| {_md_cell(workflow)} | {_md_cell(vendor)} | {_md_cell(step)} | {values['runs']} | {values['tokens']:,} |")
     return "\n".join(lines)
 
 

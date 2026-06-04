@@ -47,10 +47,19 @@ def _aggregate_tokens(totals: VendorTotals, vendor: VendorName) -> int:
         component_total = (
             totals.input
             + totals.cache_read
+            + totals.cache_create
             + totals.cache_create_5m
             + totals.cache_create_1h
             + totals.output
         )
+        if component_total > 0:
+            return component_total
+    elif vendor == "codex":
+        component_total = totals.input + totals.cached_input + totals.output
+        if component_total > 0:
+            return component_total
+    else:
+        component_total = totals.input + totals.cache_read + totals.output
         if component_total > 0:
             return component_total
     return totals.total
@@ -125,9 +134,9 @@ def _parse_kv(stdout: str) -> dict[str, float]:
 
 def _fallback_cost(record: RunRecord) -> RunRecord:
     rates = display_rates()
-    claude_cost = (record.claude.total / 1_000_000) * rates.claude_blended
-    codex_cost = (record.codex.total / 1_000_000) * rates.codex_blended
-    cursor_cost = (record.cursor.total / 1_000_000) * rates.cursor_blended
+    claude_cost = (_aggregate_tokens(record.claude, "claude") / 1_000_000) * rates.claude_blended
+    codex_cost = (_aggregate_tokens(record.codex, "codex") / 1_000_000) * rates.codex_blended
+    cursor_cost = (_aggregate_tokens(record.cursor, "cursor") / 1_000_000) * rates.cursor_blended
     total_cost = claude_cost + codex_cost + cursor_cost
     return replace(
         record,

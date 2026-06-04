@@ -26,6 +26,7 @@ def _load(path: Path) -> dict[str, object]:
 
 
 _LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,80}$")
+_DATE_RE = re.compile(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$")
 
 
 def _safe_name(label: str) -> str:
@@ -34,38 +35,75 @@ def _safe_name(label: str) -> str:
     return label.lower().replace(" ", "-")
 
 
+def _validate_series(skill: str, series: object) -> list[dict[str, object]]:
+    expected = ["All runs"] if skill == "implement" else ["SIMPLE", "HARD"]
+    if not isinstance(series, list):
+        raise ValueError("plot input series must be a list")
+    items = cast("list[object]", series)
+    if len(items) != len(expected):
+        raise ValueError(f"plot input for {skill} must contain {len(expected)} series")
+    validated: list[dict[str, object]] = []
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError("plot input series items must be objects")
+        item_map = cast("dict[str, object]", item)
+        label = item_map.get("label")
+        if label != expected[index]:
+            raise ValueError(f"plot input series label must be {expected[index]!r}")
+        points = item_map.get("points")
+        if not isinstance(points, list):
+            raise ValueError("plot input series points must be lists")
+        for point in cast("list[object]", points):
+            if not isinstance(point, dict):
+                raise ValueError("plot input points must be objects")
+            point_map = cast("dict[str, object]", point)
+            date = point_map.get("date")
+            cost = point_map.get("cost")
+            if not isinstance(date, str) or not _DATE_RE.fullmatch(date):
+                raise ValueError("plot input point date must be YYYY-MM-DD")
+            if isinstance(cost, bool) or not isinstance(cost, (int, float)):
+                raise ValueError("plot input point cost must be numeric")
+        validated.append(item_map)
+    return validated
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
         print("Usage: plot-cost-over-time.py <plot-input.json> <output-dir>", file=sys.stderr)
         return 2
-    data = _load(Path(argv[1]))
+    try:
+        data = _load(Path(argv[1]))
+    except (OSError, json.JSONDecodeError, ValueError) as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
     out_dir = Path(argv[2])
     out_dir.mkdir(parents=True, exist_ok=True)
     skill = str(data.get("skill"))
-    series = data.get("series")
-    if not isinstance(series, list):
-        print("plot input series must be a list", file=sys.stderr)
+    if data.get("version") != 1:
+        print("plot input version must be 1", file=sys.stderr)
+        return 2
+    if skill not in ("design", "implement"):
+        print("plot input skill must be design or implement", file=sys.stderr)
+        return 2
+    try:
+        series = _validate_series(skill, data.get("series"))
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
         return 2
     written: list[str] = []
     for item in series:
-        if not isinstance(item, dict):
-            continue
-        label = str(item.get("label") or "series")
+        label = str(item["label"])
         try:
             name = _safe_name(label)
         except ValueError as exc:
             print(str(exc), file=sys.stderr)
             return 2
-        points = item.get("points")
-        if not isinstance(points, list):
-            continue
+        points = cast("list[dict[str, object]]", item["points"])
         dates: list[str] = []
         costs: list[float] = []
         for point in points:
-            if not isinstance(point, dict):
-                continue
-            dates.append(str(point.get("date") or ""))
-            costs.append(float(point.get("cost") or 0.0))
+            dates.append(str(point["date"]))
+            costs.append(float(point["cost"]))
         fig, ax = plt.subplots(figsize=(10, 4))
         ax.plot(dates, costs, marker="o")
         ax.set_title(f"{skill} token cost over time — {label}")

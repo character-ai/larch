@@ -93,7 +93,7 @@ def post_issue(
         detail = (result.stderr or result.stdout).strip()
         msg = f"ERROR: gh issue create failed ({result.returncode})"
         if detail:
-            msg = f"{msg}: {detail}"
+            msg = f"{msg}: {redact.redact(detail)}"
         print(msg, file=sys.stderr)
         raise ShipError(msg)
     output = result.stdout.strip()

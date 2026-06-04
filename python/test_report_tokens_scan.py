@@ -142,3 +142,39 @@ def test_scan_warns_and_skips_invalid_auxiliary_json(tmp_path: Path, capsys: pyt
     captured = capsys.readouterr()
     assert "invalid timing-report-final.json" in captured.err
     assert "invalid run-params.json" in captured.err
+
+
+def test_scan_warns_and_skips_non_object_manifest_and_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    log_base = tmp_path / "larch-logs" / "implement"
+    run1 = log_base / "run1"
+    run1.mkdir(parents=True)
+    _ = (run1 / "manifest.json").write_text("[]", encoding="utf-8")
+    run2 = log_base / "run2"
+    run2.mkdir()
+    _ = (run2 / "manifest.json").write_text(json.dumps({"issue_number": 2}), encoding="utf-8")
+    _ = (run2 / "token-report.json").write_text("null", encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+    assert not result.records
+    captured = capsys.readouterr()
+    assert "manifest for" in captured.err
+    assert "is not a JSON object; skipping" in captured.err
+    assert "token-report.json is not a JSON object" in captured.err
+
+
+def test_scan_ignores_unknown_positive_bucket_keys(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "larch-logs" / "implement" / "run1"
+    run.mkdir(parents=True)
+    _ = (run / "manifest.json").write_text(json.dumps({"issue_number": 1}), encoding="utf-8")
+    _ = (run / "token-report.json").write_text(json.dumps({"BUCKETS_codex": {"surprise": 5}}), encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+    assert not result.records
+    assert "lacks vendor totals/BUCKETS" in capsys.readouterr().err
+
+
+def test_scan_warns_unknown_workflow_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_run(tmp_path, skill="design")
+    run = tmp_path / "larch-logs" / "design" / "run1"
+    _ = (run / "run-params.json").write_text(json.dumps({"design_classification": "MEDIUM"}), encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
+    assert result.records[0].workflow == "unknown"
+    assert "lacks SIMPLE/HARD workflow classification" in capsys.readouterr().err
