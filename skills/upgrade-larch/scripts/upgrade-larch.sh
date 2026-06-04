@@ -18,7 +18,7 @@ larch_quiet_init
 # cone mode always keeps top-level files, so root markdown imports ship anyway.
 # MAINTENANCE: if a new top-level directory is added to the repo and must ship,
 # add it here; larch-logs/ and mermaid-lint/ must NOT be added.
-LARCH_SPARSE_DIRS=".claude .claude-plugin .gemini .github agents docs hooks scripts skills tests"
+LARCH_SPARSE_DIRS=".claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests"
 MARKETPLACE_CLONE="$HOME/.claude/plugins/marketplaces/larch-local"
 
 recover() {
