@@ -287,6 +287,18 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
     messages = runner.run(["git", "log", "--format=%B", commit_range], cwd=cwd)
     if messages.returncode == 0:
         commit_messages = messages.stdout
+    non_sec = oos.count_non_security(accepted)
+    if (
+        non_sec > 0
+        and not (ctx.forked or ctx.forked_target or ctx.repo_unavailable)
+        and not run_dir_ndjson.is_file()
+    ):
+        _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
+        return ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason=config.NEEDS_USER_OOS_FILING,
+            detail=config.NEEDS_USER_OOS_FILING,
+        )
     disposition = oos.disposition_ok(
         runner,
         accepted_files=accepted,
@@ -298,6 +310,7 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
         repo_unavailable=ctx.repo_unavailable,
     )
     if disposition.ok:
+        _write_ship_state(ctx.with_(oos_pending=False), phase="pr-create")
         return None
     _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
     return ShipResult(
@@ -471,30 +484,8 @@ def run_ship(
         materialize_result = _materialize_manifest_oos(runner, ctx, cwd=repo_root)
         if materialize_result is not None:
             return materialize_result
-        if ctx.oos_pending:
-            _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
-            return ShipResult(
-                Outcome.NEEDS_USER_INPUT,
-                needs_user_reason=config.NEEDS_USER_OOS_FILING,
-                detail=config.NEEDS_USER_OOS_FILING,
-            )
         security_oos = Path(ctx.tmpdir) / "security-oos-observations.md"
         if security_oos.is_file() and security_oos.stat().st_size > 0:
-            _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
-            return ShipResult(
-                Outcome.NEEDS_USER_INPUT,
-                needs_user_reason=config.NEEDS_USER_OOS_FILING,
-                detail=config.NEEDS_USER_OOS_FILING,
-            )
-        design_path = resolve_oos_accepted_design_path(Path(ctx.tmpdir))
-        if any(
-            path.is_file() and path.stat().st_size > 0
-            for path in (
-                Path(ctx.tmpdir) / "oos-accepted-main-agent.md",
-                design_path,
-                Path(ctx.tmpdir) / "oos-accepted-review.md",
-            )
-        ):
             _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
             return ShipResult(
                 Outcome.NEEDS_USER_INPUT,

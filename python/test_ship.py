@@ -273,6 +273,53 @@ def test_oos_gate_uses_single_alternate_ndjson_when_run_id_path_missing(tmp_path
     assert result is None
 
 
+def test_oos_gate_requires_ndjson_for_non_security_without_filed_evidence(tmp_path: Path) -> None:
+    accepted = tmp_path / "oos-accepted-main-agent.md"
+    _ = accepted.write_text(
+        "### OOS_1: Needs ndjson\n- **Description**: unresolved\n",
+        encoding="utf-8",
+    )
+
+    result = ship._oos_gate(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+
+    assert result is not None
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
+
+
+def test_run_ship_proceeds_when_disposition_satisfied_with_non_empty_accepted(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    accepted = tmp_path / "oos-accepted-main-agent.md"
+    _ = accepted.write_text(
+        "### OOS_1: Filed\n- **Description**: already filed\n",
+        encoding="utf-8",
+    )
+    ndjson = tmp_path / "larch-logs" / "implement" / "run-abc" / "oos-issues.ndjson"
+    ndjson.parent.mkdir(parents=True)
+    _ = ndjson.write_text(
+        '{"body":"Created https://github.com/example/larch/issues/42"}\n',
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 9, "url": "https://example.test/pr/9", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+
+    ctx = _ctx(tmp_path, merge=False, oos_pending=True)
+    result = ship.run_ship(ctx, runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+
+
 def test_oos_gate_allows_inline_triage_without_ndjson(tmp_path: Path) -> None:
     class InlineRunner(RecordingRunner):
         def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
@@ -286,6 +333,9 @@ def test_oos_gate_allows_inline_triage_without_ndjson(tmp_path: Path) -> None:
         "### OOS_1: Folded\n- **Description**: fixed inline\n",
         encoding="utf-8",
     )
+    ndjson = tmp_path / "larch-logs" / "implement" / "run-abc" / "oos-issues.ndjson"
+    ndjson.parent.mkdir(parents=True)
+    _ = ndjson.write_text("", encoding="utf-8")
 
     result = ship._oos_gate(InlineRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
 
@@ -371,6 +421,24 @@ def test_manifest_materialize_empty_failure_does_not_block_pr_create(
     result = ship.run_ship(ctx, runner=FailingMaterializeRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
+
+
+def test_security_sidecar_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("ensure_pr must not run with security sidecar")
+
+    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
+    sidecar = tmp_path / "security-oos-observations.md"
+    _ = sidecar.write_text("### Security OOS: audit\n", encoding="utf-8")
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
 
 
 def test_manifest_materialize_success_blocks_for_step9a1(

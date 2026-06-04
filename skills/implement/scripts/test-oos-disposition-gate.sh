@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 GATE="$SCRIPT_DIR/oos-disposition-gate.sh"
 CHECKPOINT="$SCRIPT_DIR/oos-disposition-checkpoint.sh"
 
@@ -868,6 +869,26 @@ if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_missing_design/execution-
   pass "checkpoint missing design-tmpdir value logs under implement tmpdir"
 else
   fail "checkpoint missing design-tmpdir value did not log under implement tmpdir"
+fi
+
+# --- Case: checkpoint security sidecar refuses all-clear ---
+_impl_sec=$(mkitmp)
+printf '### Security OOS: Private audit\n- **focus-area**: security-hardening\n' \
+  >"$_impl_sec/security-oos-observations.md"
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_sec" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint security sidecar exit 2" 2 "$rc"
+if grep -Fq 'security-routed manifest OOS requires private SECURITY.md disposition' \
+  "$_impl_sec/oos-disposition-checkpoint.stderr.log" \
+  && grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_sec/execution-issues.md"; then
+  pass "checkpoint security sidecar logs validation failure"
+else
+  fail "checkpoint security sidecar missing validation log or checkpoint stderr"
 fi
 
 if [ "$FAIL" -ne 0 ]; then

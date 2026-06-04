@@ -61,6 +61,10 @@ if [ "$count_only" = "true" ]; then
   exit 0
 fi
 [ "${count:-0}" -gt 0 ] || exit 0
+if [ "${LARCH_TEST_MATERIALIZE_FORCE_FAIL:-}" = "true" ] && [ "$count_only" != "true" ]; then
+  echo "LARCH_TEST_MATERIALIZE_FORCE_FAIL" >&2
+  exit 1
+fi
 if [ ! -x "$redact_secrets" ]; then
   echo "redact-secrets.sh missing or not executable: $redact_secrets" >&2
   exit 1

@@ -12,6 +12,7 @@
    - Resolve design input in the same order as `scripts/ship-pr.sh` `resolve_oos_accepted_design_path` and `oos-disposition-checkpoint.sh`: `$DESIGN_TMPDIR/oos-accepted-design.md` when `$DESIGN_TMPDIR` is set and that file exists, else `$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md` when present, else `$IMPLEMENT_TMPDIR/oos-accepted-design.md`.
    - Also read `$IMPLEMENT_TMPDIR/oos-accepted-review.md` and `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`. The main-agent file already includes dispatcher-materialized manifest OOS when Step 2, `ship-pr.sh`, or `python/ship.py` ran `materialize-manifest-oos.sh`.
    - Treat missing files as empty.
+   - **Security sidecar (`security-oos-observations.md`)**: security-routed manifest OOS is retained locally by `materialize-manifest-oos.sh` in `$IMPLEMENT_TMPDIR/security-oos-observations.md` (never merged into public accepted-OOS files). Handle disposition through SECURITY.md's private flow; do not file via `/issue`. While this sidecar is non-empty, `oos-disposition-checkpoint.sh`, `ship-pr.sh` `pr-prep`, and `python/ship.py` refuse all-clear / PR creation (they set or retain `OOS_PENDING=true` and stall until private security disposition clears the sidecar).
    - **Security routing (gate-aligned)**: exclude a `### OOS_` block only when its body contains a dedicated `- **focus-area**:` field line whose value begins with `security` (case-folded), optionally continued with `-word` tokens such as `security-hardening`. This is the same predicate as `oos-non-security-block-count.awk` and `oos-disposition-gate.md` Counting rules (`non_security_oos`). Manifest `focus_area` / `focus-area` values are preserved by the dispatcher and materializer as this dedicated field before routing. Prose such as `focus-area = security` inside a `**Description**` line does **not** mark a block security-routed, and title prefixes alone do not security-route. Route excluded blocks through SECURITY.md's private flow; do not file them via `/issue`.
    - Apply the design-phase carve-out: exclude any `### OOS_` block whose body already contains `- **Filed URL**:`, while retaining those URLs as already-filed disposition evidence.
 2. **Handle empty or already-filed batches**.
@@ -21,7 +22,7 @@
    - If `$IMPLEMENT_TMPDIR/oos-issues-created.md` exists, recover created-or-deduplicated URLs and tallies from it, then skip `/issue`.
    - On this branch, still perform the NEVER #5 `oos-issues` larch-log append from recovered URLs and refresh the terminal summary when applicable; do not write `run-statistics` here.
    - Do not run combine, cap, worksheet, or helper pre-passes on sentinel recovery (steps 3.4–3.5).
-3.3. **Cross-phase dedup**. Build the working batch from `### OOS_N:` blocks in fixed phase order: design, review, main-agent. Deduplicate equivalent titles across phases before grouping.
+3.3. **Cross-phase dedup**. Build the working batch from `### OOS_N:` blocks in fixed phase order: main-agent, design, review (same accepted-file order as `oos-disposition-checkpoint.sh` and `ship-pr.sh` `run_oos_disposition_gate_if_required_before_oos_pending_false`). Deduplicate equivalent titles across phases before grouping.
 3.4. **Combine pass**. Write `$IMPLEMENT_TMPDIR/oos-combined.md` and `$IMPLEMENT_TMPDIR/oos-grouping-worksheet.md` for the post-3.3 working batch.
    - **Sanitize before compose**: apply the SKILL.md dual-write redaction rules to combined issue bodies and session-derived worksheet prose destined for public `/issue` bodies or committed larch-log records: secrets → `<REDACTED-TOKEN>`, internal URLs → `<INTERNAL-URL>`, PII → `<REDACTED-PII>`. Paraphrase when in doubt.
    - Cascade `Rule A → Rule B → criteria 1-4 → criterion 5 → criterion 6` with the `~30` LOC threshold convention from SKILL.md.
@@ -54,7 +55,7 @@
    - Rejected/non-accepted entries remain under the Rejected sub-block per SKILL.md OOS carve-outs and the Terminal disposition invariant (`## Rejected` with structured `### OOS_` markers in the NDJSON body). Use `scripts/larch-log-batches.md` only for the compact NDJSON record schema (`jq -nc` with `-c`).
    - Sentinel-recovery and all-already-filed branches still write the required evidence rows; step 6 is not skipped on all-already-filed.
 7. **Return control to the Step 8+ checkpoint**.
-   - `oos-disposition-checkpoint.sh` gates clearing `OOS_PENDING`.
+   - `oos-disposition-checkpoint.sh` gates clearing `OOS_PENDING` (non-security accepted OOS requires a resolved `oos-issues.ndjson`; non-empty `security-oos-observations.md` refuses all-clear until SECURITY.md disposition).
    - `run-statistics` OOS-filed counts are written only by the existing post-checkpoint SKILL.md block, after the disposition checkpoint passes.
    - Recovered-from-sentinel items remain excluded from newly filed counts.
 

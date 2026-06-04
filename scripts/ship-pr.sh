@@ -1237,11 +1237,6 @@ run_pr_prep_phase() {
         advance_phase pr-create
         exit 0
     fi
-    if [ -s "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" ] || [ -s "$oos_design_path" ] || [ -s "$IMPLEMENT_TMPDIR/oos-accepted-review.md" ]; then
-        state_set OOS_PENDING true
-        advance_phase pr-create
-        exit 0
-    fi
     fail_file=$(failure_capture_path pr-prep)
     _had_errexit=0
     case $- in *e*) _had_errexit=1 ;; esac
