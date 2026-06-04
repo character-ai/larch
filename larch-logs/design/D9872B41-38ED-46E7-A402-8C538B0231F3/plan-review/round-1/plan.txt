@@ -1,0 +1,152 @@
+# Implementation Plan — #3458 report_tokens follow-ups (Makefile CI fix + SECURITY.md docs)
+
+Scope is narrowed by Round 1: do only the Makefile CI regression fix and the
+SECURITY.md trust-boundary documentation. All "Test coverage and correctness
+gaps" from the issue are OUT OF SCOPE — deferred to the upcoming bash→Python
+migration of `token-cost.sh` / `merge-pr.sh` / the checks / `read-workflow-path.sh`,
+where new tests will be written. No new tests are added here. No separate
+follow-up issue is filed.
+
+## Files to modify/create
+
+### UPDATED: `Makefile`
+Remove the suppressed, redundant `test-merge-parity` wiring. Three edits, all in
+the same change:
+- Drop the `test-merge-parity` token from the long `.PHONY:` line (it sits
+  between `test-merge-pr` and `test-git-push`).
+- Drop the `test-merge-parity` token from the `test-harnesses-5:` shard recipe
+  line (it sits between `test-merge-pr` and `test-plan-review-prompt`; the
+  single-line shard-rule shape is preserved).
+- Delete the standalone `test-merge-parity:` target and its recipe line
+  (the recipe currently carries the `command -v pytest ... || ... exit 0`
+  suppression guard). Collapse the surrounding blank lines so exactly one blank
+  line separates the `test-merge-pr` recipe from the `test-git-push:` target.
+
+Do NOT add `test-merge-parity` to the `test-harness-shards-coverage` CARVE_OUTS
+list — removing the target entirely (rather than orphaning it) keeps that gate
+green with no carve-out. `python/test_merge_bash_parity.py` stays in the tree and
+remains covered by `make py-test` (the `python-tests` CI job runs
+`cd python && pytest`, which collects it).
+
+### UPDATED: `docs/linting.md`
+Delete the `make test-merge-parity` table row (the harness catalog entry that
+documents shard-5 parity). Optionally extend the `make test-merge-pr` row with
+one clause that `python/test_merge_bash_parity.py` is exercised via `make py-test`
+/ the `python-tests` CI job (not via a separate Makefile target). Do not leave any
+catalog pointer to the removed target.
+
+### UPDATED: `SECURITY.md`
+Add one new bullet to the `## Trust Model` section, immediately after the
+existing `**/report-tokens public issue boundary**` bullet, documenting the
+report_tokens **scan-input** trust boundary (the issue's missing piece; the
+egress/"what reaches GitHub" side is covered by that sibling bullet once its
+redaction sentence is corrected below). In the **same** `SECURITY.md` edit,
+replace the stale `scripts/redact-secrets.sh` sentence in the existing
+`**/report-tokens` public issue boundary**` bullet with accurate egress wording:
+issue bodies are redacted once through `python/redact.py` in
+`report_tokens_issue.py` before trim sizing and `gh issue create`
+(`redact_body=False` because redaction already ran).
+The new bullet states:
+- Committed `larch-logs/` directories are untrusted input to the report_tokens
+  scan path (`python/report_tokens_scan.py`).
+- Scan-path defenses: run-dir, JSON-file, token-report, and manifest **symlinks
+  are skipped**; manifest or token-report JSON that is invalid or not a JSON
+  object **skips that run** (warning to local stderr); workflow auxiliary JSON
+  (`timing-report*.json`, `run-params.json`) that is invalid or lacks
+  SIMPLE/HARD classification is **ignored for classification** (warning) and
+  the run falls back to **unknown** workflow class rather than being dropped;
+  `_run_dirs` rejects directories that resolve **outside the
+  `larch-logs/<skill>` base** (path-containment); the repo slug is validated as a
+  safe `OWNER/REPO` shape and rejects `.`/`..` parts; records require a numeric
+  `issue_number`.
+- **Scan warnings** (`_warn` to local stderr) are **not** redacted and may include
+  repo-local paths or parser/OS error text; only **GitHub repo slug resolution**
+  failures pass exception/detail through `redact.redact()` before printing.
+- Cross-reference the updated public-issue-boundary bullet for which fields may
+  reach public GitHub issue bodies and the single-pass Python egress redactor —
+  do not restate field lists or table-escaping rules.
+- One sentence noting a **pending targeted security review** of
+  `skills/report-tokens/scripts/plot-cost-over-time.py`, `python/ship.py`, and
+  `python/finalize.py` that should occur before the Phase 7
+  `LARCH_SHIP_PR_IMPL=python` default flip (these surfaces were not in this
+  work's review pass). Doc-only note; no review is performed and no issue is
+  filed here.
+
+Keep the addition as plain Trust Model bullet prose (bold lead-in + sentences),
+matching the surrounding bullets. Add no new heading (avoids MD001), and keep
+backtick code spans free of inner boundary whitespace (MD038).
+
+## Approach
+- The `test-merge-parity` shard wiring was a hotfix (#3460) that masked a real
+  problem with a `|| exit 0` pytest-availability guard. The clean fix is to stop
+  running it as a harness shard at all: `make py-test` / the `python-tests` job
+  already runs `test_merge_bash_parity.py`, so the shard is pure redundancy.
+- Removing the target outright (not just the shard reference) is required for
+  consistency with `scripts/test-harness-shards-coverage.sh`, which fails if a
+  `test-*` target exists but is neither sharded nor carve-out listed.
+- Sync `docs/linting.md` so the harness catalog does not document a removed
+  `make test-merge-parity` target.
+- The SECURITY.md change is documentation only; it records an existing trust
+  boundary (untrusted `larch-logs/` scan input) plus a pending-review reminder.
+  It changes no runtime behavior.
+
+## Edge cases
+- `.PHONY` and the `test-harnesses-5:` line are long single lines; remove only
+  the `test-merge-parity` token (plus one adjacent separating space) and leave
+  every other target untouched on each line.
+- `requirements-test-harnesses.txt` keeps its `pytest==9.0.3` pin: pytest is
+  still used by another harness (`scripts/test-relevant-checks.sh`), so the pin
+  is NOT removed. `requirements-test-harnesses.txt` is out of scope.
+- No `.md` sibling exists for a Makefile target, so no script-sibling doc update
+  is triggered. No other file references `test-merge-parity` (only historical
+  `larch-logs/` artifacts, which are immutable run records and are not edited).
+- `docs/linting.md` **does** enumerate `make test-merge-parity` (table row ~264);
+  delete that row in the same change as the Makefile removal.
+
+## Failure modes
+- Partial Makefile edit (e.g., deleting the target but leaving a `.PHONY` or
+  shard reference, or vice versa) → `make` "No rule to make target" error or a
+  `test-harness-shards-coverage` failure. Earliest signal: `make
+  test-harness-shards-coverage` (catches orphaned unsharded targets, not stale
+  extra `.PHONY` tokens). Mitigation: make all three Makefile edits together;
+  run `rg -n test-merge-parity Makefile docs/linting.md` and expect no matches
+  outside immutable `larch-logs/` history.
+- SECURITY.md markdownlint violation (MD038 inner-span whitespace, MD001 heading
+  jump). Earliest signal: `markdownlint` / `make lint`. Mitigation: add a bullet
+  under the existing heading (no new heading); keep code spans whitespace-clean.
+- Mistaken belief that coverage is lost. Mitigation: this is verified false —
+  `cd python && pytest` collects `test_merge_bash_parity.py`; the `python-tests`
+  job runs it.
+
+## Testing strategy
+No new tests are added (Round 1 Decision 1 — deferred to the bash→Python
+migration). Validation is via existing gates:
+- `make test-harness-shards-coverage` — passes with `test-merge-parity` removed
+  (no orphaned target, no carve-out needed).
+- `make py-test` — still collects and runs `python/test_merge_bash_parity.py`
+  (coverage preserved).
+- `bash scripts/relevant-checks.sh` (or `make lint`) — markdownlint passes for
+  `SECURITY.md`; Makefile remains well-formed.
+- `rg -n test-merge-parity Makefile docs/linting.md` — no remaining references
+  (confirms Makefile + catalog cleanup, including stale `.PHONY` tokens).
+- Spot-check `docs/linting.md` — no `test-merge-parity` row; optional parity note
+  on `test-merge-pr` only.
+- Spot-check: `make test-harnesses-5` no longer references the removed target.
+
+## Acceptance
+- `Makefile`: `test-merge-parity` removed from the `.PHONY` line, the
+  `test-harnesses-5:` shard line, and the standalone target+recipe; one blank
+  line separates `test-merge-pr` and `test-git-push:`.
+- `make test-harness-shards-coverage` and `make py-test` both pass; no
+  carve-out was added.
+- `docs/linting.md`: `make test-merge-parity` table row removed; catalog matches
+  Makefile.
+- `SECURITY.md`: new scan-input Trust Model bullet (accurate skip/redaction
+  semantics); existing public-issue-boundary bullet egress sentence updated to
+  `python/redact.py` / `redact_body=False`; pending targeted security review of
+  `plot-cost-over-time.py` / `python/ship.py` / `python/finalize.py` noted;
+  markdownlint passes.
+- No new test files; no follow-up issue filed; `requirements-test-harnesses.txt`
+  unchanged.
+
+diff_lines: 42
