@@ -45,12 +45,11 @@ jq -e '
   has("design_classification_reason") and
   has("design_classification_source") and
   has("sketch_budget") and
-  has("review_budget") and
   has("workflow_path") and
   .design_classification_reason == null and
   .design_classification_source == null and
   .sketch_budget == null and
-  .review_budget == null and
+  has("review_budget") == false and
   .workflow_path == null and
   .partition_requested == false and
   .brainstorm_requested == false and
@@ -141,10 +140,10 @@ assert_rejected_with bad-sketch-budget 'invalid --sketch-budget: 5' \
     --sketch-budget 5 \
     --output "$TMPROOT/bad-sketch-budget.json"
 
-assert_rejected_with bad-review-budget 'invalid --review-budget: medium' \
+assert_rejected_with removed-review-budget 'unknown flag: --review-budget' \
     --classification SIMPLE \
-    --review-budget medium \
-    --output "$TMPROOT/bad-review-budget.json"
+    --review-budget full \
+    --output "$TMPROOT/removed-review-budget.json"
 
 assert_rejected_with bad-workflow-path 'invalid --workflow-path: MEDIUM' \
     --classification SIMPLE \
@@ -193,7 +192,6 @@ jq -e '.partition_requested == true and .brainstorm_requested == true and .manua
     --reason "argv tier: --hard" \
     --source caller-forwarded \
     --sketch-budget 4 \
-    --review-budget full \
     --workflow-path HARD \
     --partition-requested true \
     --brainstorm-requested true \
@@ -205,7 +203,7 @@ jq -e '
   .design_classification_reason == "argv tier: --hard" and
   .design_classification_source == "caller-forwarded" and
   .sketch_budget == 4 and
-  .review_budget == "full" and
+  has("review_budget") == false and
   .workflow_path == "HARD" and
   .partition_requested == true and
   .brainstorm_requested == true and
@@ -217,15 +215,14 @@ jq -e '
     --reason "" \
     --source "" \
     --sketch-budget "" \
-    --review-budget "" \
     --workflow-path "" \
     --output "$TMPROOT/empty-v3-fields.json" >/dev/null
 jq -e '
   .design_classification_reason == null and
   .design_classification_source == null and
   .sketch_budget == null and
-  .review_budget == null and
-  .workflow_path == null
+  .workflow_path == null and
+  has("review_budget") == false
 ' "$TMPROOT/empty-v3-fields.json" >/dev/null || fail "empty optional v3 fields did not emit JSON null"
 
 "$WRITER" \
@@ -233,14 +230,13 @@ jq -e '
     --reason "free form" \
     --source caller-forwarded \
     --sketch-budget 0 \
-    --review-budget full \
     --workflow-path SIMPLE \
     --output "$TMPROOT/simple-v3-fields.json" >/dev/null
 jq -e '
   .design_classification_reason == "free form" and
   .design_classification_source == "caller-forwarded" and
   .sketch_budget == 0 and
-  .review_budget == "full" and
+  has("review_budget") == false and
   .workflow_path == "SIMPLE"
 ' "$TMPROOT/simple-v3-fields.json" >/dev/null || fail "v3 fields did not round-trip by exact name"
 

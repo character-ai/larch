@@ -14,7 +14,7 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: design-publish.sh --design-tmpdir PATH --issue N --session-id STR --claude-pid N [--repo OWNER/REPO]'
+    larch_err 'Usage: design-publish.sh --design-tmpdir PATH --issue N --session-id STR --claude-pid N [--repo OWNER/REPO] [--skip-validate]'
 }
 
 validate_session_id_flag() {
@@ -49,6 +49,11 @@ parse_kv_from_output() {
             RENAMED) RENAMED="$_value" ;;
             UPSERT_STATUS) UPSERT_STATUS="$_value" ;;
             ARCHITECTURE_SOURCE) ARCHITECTURE_SOURCE="$_value" ;;
+            VALIDATE_STATUS) VALIDATE_STATUS="$_value" ;;
+            VALIDATE_DEFECT_COUNT) VALIDATE_DEFECT_COUNT="$_value" ;;
+            VALIDATE_SKIPPED_COUNT) VALIDATE_SKIPPED_COUNT="$_value" ;;
+            VALIDATE_UNSAFE_TOKEN_COUNT) VALIDATE_UNSAFE_TOKEN_COUNT="$_value" ;;
+            VALIDATE_LOG_FILE) VALIDATE_LOG_FILE="$_value" ;;
         esac
     done <<<"$text"
 }
@@ -59,6 +64,7 @@ SESSION_ID=""
 HAVE_SESSION_ID=false
 CLAUDE_PID=""
 REPO=""
+SKIP_VALIDATE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -87,6 +93,10 @@ while [[ $# -gt 0 ]]; do
             [[ $# -ge 2 ]] || fail '--repo requires a value'
             REPO="$2"
             shift 2
+            ;;
+        --skip-validate)
+            SKIP_VALIDATE=true
+            shift
             ;;
         -h | --help)
             usage
@@ -135,6 +145,11 @@ RECOVERY_BRANCH=""
 RENAMED=""
 UPSERT_STATUS=""
 ARCHITECTURE_SOURCE=""
+VALIDATE_STATUS=not-run
+VALIDATE_DEFECT_COUNT=0
+VALIDATE_SKIPPED_COUNT=0
+VALIDATE_UNSAFE_TOKEN_COUNT=0
+VALIDATE_LOG_FILE=""
 
 add_warn() {
     WARN_LINES+=("$1")
@@ -159,6 +174,11 @@ publish_recovery_detail() {
 write_result_env_and_emit() {
     local -a _kvs=()
     _kvs+=("PLAN_WRITE_OK=$PLAN_WRITE_OK")
+    _kvs+=("VALIDATE_STATUS=$VALIDATE_STATUS")
+    _kvs+=("VALIDATE_DEFECT_COUNT=$VALIDATE_DEFECT_COUNT")
+    _kvs+=("VALIDATE_SKIPPED_COUNT=$VALIDATE_SKIPPED_COUNT")
+    _kvs+=("VALIDATE_UNSAFE_TOKEN_COUNT=$VALIDATE_UNSAFE_TOKEN_COUNT")
+    _kvs+=("VALIDATE_LOG_FILE=$VALIDATE_LOG_FILE")
     [[ -n "${PUBLISH_OK:-}" ]] && _kvs+=("PUBLISH_OK=$PUBLISH_OK")
     [[ -n "${PR_NUMBER:-}" ]] && _kvs+=("PR_NUMBER=$PR_NUMBER")
     [[ -n "${PR_URL:-}" ]] && _kvs+=("PR_URL=$PR_URL")
@@ -173,6 +193,11 @@ write_result_env_and_emit() {
         _kvs+=("WARN=$_warn")
     done
     emit_kv PLAN_WRITE_OK "$PLAN_WRITE_OK"
+    emit_kv VALIDATE_STATUS "$VALIDATE_STATUS"
+    emit_kv VALIDATE_DEFECT_COUNT "$VALIDATE_DEFECT_COUNT"
+    emit_kv VALIDATE_SKIPPED_COUNT "$VALIDATE_SKIPPED_COUNT"
+    emit_kv VALIDATE_UNSAFE_TOKEN_COUNT "$VALIDATE_UNSAFE_TOKEN_COUNT"
+    emit_kv VALIDATE_LOG_FILE "$VALIDATE_LOG_FILE"
     [[ -n "${PUBLISH_OK:-}" ]] && emit_kv PUBLISH_OK "$PUBLISH_OK"
     [[ -n "${PR_NUMBER:-}" ]] && emit_kv PR_NUMBER "$PR_NUMBER"
     [[ -n "${PR_URL:-}" ]] && emit_kv PR_URL "$PR_URL"
@@ -190,8 +215,39 @@ write_result_env_and_emit() {
 
 [[ -f "$DESIGN_TMPDIR/.completed/step-5b" ]] \
     || fail 'Step 5b sentinel missing — refusing to publish before OOS filing'
+[[ -s "$DESIGN_TMPDIR/composed-plan.md" ]] \
+    || fail 'composed-plan.md missing or empty — orchestrator must compose the plan first'
+
+if [[ -f "$DESIGN_TMPDIR/.pause-requested" ]]; then
+    exec "$PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"}
+fi
+
+if [[ "$SKIP_VALIDATE" == true ]]; then
+    VALIDATE_STATUS=skipped
+else
+    set +e
+    _validate_out=$("$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md" 2>&1)
+    _validate_rc=$?
+    set -e
+    parse_kv_from_output "$_validate_out"
+    if [[ "$VALIDATE_STATUS" == defects-found ]]; then
+        PLAN_WRITE_OK=false
+        write_result_env_and_emit || true
+        exit 4
+    fi
+    if [[ "$_validate_rc" -ne 0 || -z "$VALIDATE_STATUS" || "$VALIDATE_STATUS" == not-run ]]; then
+        fail 'plan validator failed before publish'
+    fi
+    if [[ "$VALIDATE_STATUS" != ok ]]; then
+        fail 'plan validator returned unexpected VALIDATE_STATUS before publish'
+    fi
+fi
+
+if ! "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$DESIGN_TMPDIR/composed-plan.md" >"$DESIGN_TMPDIR/composed-plan.redacted.md"; then
+    fail 'redact-secrets.sh failed'
+fi
 [[ -s "$DESIGN_TMPDIR/composed-plan.redacted.md" ]] \
-    || fail 'composed-plan.redacted.md missing or empty — orchestrator must run redact-secrets.sh first'
+    || fail 'composed-plan.redacted.md missing or empty after redaction'
 
 if [[ -z "$REPO" ]]; then
     if _resolved=$("$PLUGIN_ROOT/scripts/resolve-repo.sh" 2>/dev/null); then

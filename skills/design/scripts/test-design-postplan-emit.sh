@@ -145,11 +145,16 @@ reset_env() {
 }
 
 setup_design_tmp() {
-    local d="$1" budget="${2:-full}" workflow="${3:-SIMPLE}"
+    local d="$1" _legacy_budget="${2:-full}" workflow="${3:-SIMPLE}"
     mkdir -p "$d"
-    printf '# Plan\n\ndiff_lines: 12\n' >"$d/plan.txt"
-    printf '{"review_budget":"%s","workflow_path":"%s","design_classification":"%s"}\n' "$budget" "$workflow" "$workflow" >"$d/run-params.json"
-    printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$FAKE_PLUGIN" >"$d/session-env.sh"
+    printf '# Plan
+
+diff_lines: 12
+' >"$d/plan.txt"
+    printf '{"workflow_path":"%s","design_classification":"%s"}
+' "$workflow" "$workflow" >"$d/run-params.json"
+    printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s
+' "$FAKE_PLUGIN" >"$d/session-env.sh"
 }
 
 run_subject() {
@@ -203,7 +208,7 @@ assert_file_kv "$D2b/.design-postplan-emit-result.env" SNAPSHOT_STATUS preserved
 # 2c classification overrides legacy workflow_path for snapshots
 D2c="$TMP/classification-hard-legacy-simple"
 setup_design_tmp "$D2c" full SIMPLE
-printf '{"review_budget":"full","workflow_path":"SIMPLE","design_classification":"HARD"}
+printf '{"workflow_path":"SIMPLE","design_classification":"HARD"}
 ' >"$D2c/run-params.json"
 set +e
 run_subject "$D2c" --snapshot-original
@@ -214,7 +219,7 @@ assert_file_kv "$D2c/.design-postplan-emit-result.env" SNAPSHOT_STATUS taken "cl
 
 D2d="$TMP/classification-missing"
 setup_design_tmp "$D2d" full SIMPLE
-printf '{"review_budget":"full","workflow_path":"SIMPLE"}
+printf '{"workflow_path":"SIMPLE"}
 ' >"$D2d/run-params.json"
 set +e
 run_subject "$D2d" --snapshot-original
@@ -241,7 +246,7 @@ D2d_invalid_warn="$TMP/classification-invalid-quiet"
 mkdir -p "$D2d_invalid_warn"
 printf '# Plan\n\ndiff_lines: 12\n' >"$D2d_invalid_warn/plan.txt"
 printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$FAKE_PLUGIN" >"$D2d_invalid_warn/session-env.sh"
-printf '{"review_budget":"full","workflow_path":"SIMPLE"}\n' >"$D2d_invalid_warn/run-params.json"
+printf '{"workflow_path":"SIMPLE"}\n' >"$D2d_invalid_warn/run-params.json"
 reset_env
 set +e
 env -u LARCH_QUIET_DISABLE CALL_LOG="$CALL_LOG" CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" \
@@ -272,7 +277,7 @@ ln -sf "$REPO_ROOT/scripts/read-design-classification.sh" "$FAKE_SCRIPTS/read-de
 
 D2e="$TMP/classification-simple-legacy-hard"
 setup_design_tmp "$D2e" full HARD
-printf '{"review_budget":"full","workflow_path":"HARD","design_classification":"SIMPLE"}
+printf '{"workflow_path":"HARD","design_classification":"SIMPLE"}
 ' >"$D2e/run-params.json"
 set +e
 run_subject "$D2e" --snapshot-original
@@ -291,16 +296,18 @@ set -e
 assert_rc "HARD re-emit snapshot suppressed" 0 "$rc"
 assert_file_kv "$D3/.design-postplan-emit-result.env" SNAPSHOT_STATUS skipped-suppressed "HARD re-emit suppressed"
 
-# 4 quick skip
-D4="$TMP/quick-skip"
+# 4 legacy review_budget=quick is ignored; validator still runs
+D4="$TMP/legacy-quick-validates"
 setup_design_tmp "$D4" quick SIMPLE
+printf '{"review_budget":"quick","workflow_path":"SIMPLE","design_classification":"SIMPLE"}
+' >"$D4/run-params.json"
 set +e
 run_subject "$D4"
 rc=$?
 set -e
-assert_rc "quick skip" 0 "$rc"
-assert_file_kv "$D4/.design-postplan-emit-result.env" VALIDATE_STATUS skipped-quick "quick skipped validator"
-if grep -Fq validator "$CALL_LOG"; then fail "quick should not call validator"; else pass "quick did not call validator"; fi
+assert_rc "legacy quick validates" 0 "$rc"
+assert_file_kv "$D4/.design-postplan-emit-result.env" VALIDATE_STATUS ok "legacy quick validator status"
+assert_contains "$CALL_LOG" 'validator' "legacy quick called validator"
 
 # 5 defects-found is success
 D5="$TMP/defects"
@@ -432,16 +439,15 @@ assert_rc "pause no repo checkpoint rc" 0 "$rc"
 assert_contains "$CALL_LOG" '--issue 88' "pause no repo issue resolved"
 assert_not_contains "$CALL_LOG" '--repo' "pause no repo omits repo flag"
 
-# 12 quick + force validate runs
-D12="$TMP/quick-force"
-setup_design_tmp "$D12" quick SIMPLE
+# 12 --force-validate is removed and rejected as unknown
+D12="$TMP/force-removed"
+setup_design_tmp "$D12" full SIMPLE
 set +e
 run_subject "$D12" --force-validate
 rc=$?
 set -e
-assert_rc "quick force validate" 0 "$rc"
-assert_file_kv "$D12/.design-postplan-emit-result.env" VALIDATE_STATUS ok "quick force validator status"
-assert_contains "$CALL_LOG" 'validator' "quick force called validator"
+assert_rc "force validate removed" 2 "$rc"
+assert_not_exists_or_empty "$D12/.design-postplan-emit-result.env" "force validate removed writes no result env"
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2
