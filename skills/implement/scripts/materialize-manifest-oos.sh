@@ -34,6 +34,8 @@ done
 [ -f "$manifest_path" ] || { echo "manifest not readable: $manifest_path" >&2; exit 1; }
 [ -d "$implement_tmpdir" ] || { echo "implement tmpdir missing: $implement_tmpdir" >&2; exit 1; }
 command -v jq >/dev/null 2>&1 || { echo "jq is required" >&2; exit 1; }
+plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$(dirname "$0")/../../.." && pwd -P)}"
+redact_secrets="$plugin_root/scripts/redact-secrets.sh"
 
 if ! jq -e 'type == "object"' "$manifest_path" >/dev/null 2>&1; then
   echo "manifest must be a JSON object" >&2
@@ -59,12 +61,17 @@ max_n=$(awk '
 next_n=$((max_n + 1))
 
 has_title() {
-  local title=$1
-  awk -v wanted="$title" '
+  local title key
+  title=$(normalize_title "$1")
+  key=$(printf '%s' "$title" | awk '{ print tolower($0) }')
+  awk -v wanted="$key" '
     /^### OOS_[0-9]+:/ {
       line = $0
       sub(/^### OOS_[0-9]+:[[:space:]]*/, "", line)
-      if (line == wanted) found = 1
+      gsub(/[[:space:]]+/, " ", line)
+      sub(/^[[:space:]]+/, "", line)
+      sub(/[[:space:]]+$/, "", line)
+      if (tolower(line) == wanted) found = 1
     }
     END { exit(found ? 0 : 1) }
   ' "$out"
@@ -72,31 +79,67 @@ has_title() {
 
 security_focus_area() {
   awk '
-    /^[[:space:]]*-[[:space:]]+\*\*focus-area\*\*:[[:space:]]*/ {
+    /^[[:space:]]*-[[:space:]]*\*\*focus-area\*\*[[:space:]]*:[[:space:]]*/ {
       value = $0
-      sub(/^[[:space:]]*-[[:space:]]+\*\*focus-area\*\*:[[:space:]]*/, "", value)
+      sub(/^[[:space:]]*-[[:space:]]*\*\*focus-area\*\*[[:space:]]*:[[:space:]]*/, "", value)
       value = tolower(value)
-      if (value ~ /^security(-[[:alnum:]_]+)*([[:space:]]|$)/) found = 1
+      if (value ~ /^security([-[:alnum:][:space:]_]*)([[:space:]]|$|\(|#|\.|,)/) found = 1
     }
     END { exit(found ? 0 : 1) }
   '
 }
 
+sanitize_public_text() {
+  if [ -x "$redact_secrets" ]; then
+    printf '%s' "$1" | "$redact_secrets"
+  else
+    printf '%s' "$1"
+  fi | sed -E \
+    -e 's#https?://(localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|[^[:space:]/]+[.](internal|local|corp|lan|intranet))[^[:space:]]*#<INTERNAL-URL>#g' \
+    -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<REDACTED-PII>/g' \
+    -e 's/([0-9]{3}-[0-9]{2}-[0-9]{4})/<REDACTED-PII>/g' \
+    -e 's/(\+?1[ .-]?)?\(?[0-9]{3}\)?[ .-]?[0-9]{3}[ .-]?[0-9]{4}/<REDACTED-PII>/g'
+}
+
+normalize_title() {
+  sanitize_public_text "$1" | tr '\000-\037\177' ' ' | awk '
+    {
+      gsub(/[[:space:]]+/, " ")
+      sub(/^[[:space:]]+/, "")
+      sub(/[[:space:]]+$/, "")
+      printf "%s", $0
+    }
+  '
+}
+
 write_description() {
   local description=$1 first=true line
-  while IFS= read -r line || [ -n "$line" ]; do
+  if [ -z "$description" ]; then
+    printf -- '- **Description**: \n'
+    return
+  fi
+  sanitize_public_text "$description" | while IFS= read -r line || [ -n "$line" ]; do
     if [ "$first" = "true" ]; then
       printf -- '- **Description**: %s\n' "$line"
       first=false
     else
       printf '  %s\n' "$line"
     fi
-  done <<EOF_DESC
-$description
-EOF_DESC
-  if [ "$first" = "true" ]; then
-    printf -- '- **Description**: \n'
-  fi
+  done
+}
+
+append_security_audit() {
+  local title=$1 audit="$implement_tmpdir/security-oos-observations.md" had_audit_content=false
+  [ -s "$audit" ] && had_audit_content=true
+  {
+    [ "$had_audit_content" = "true" ] && printf '\n'
+    printf '### Security OOS: %s\n' "$title"
+    printf -- '- **Disposition**: security-routed; not materialized for public OOS filing\n'
+  } >> "$audit"
+  {
+    printf '\n### Warnings\n'
+    printf -- '- **materialize-manifest-oos.sh**: security-routed manifest OOS retained in security-oos-observations.md: %s\n' "$title"
+  } >> "$implement_tmpdir/execution-issues.md"
 }
 
 i=0
@@ -104,12 +147,13 @@ while [ "$i" -lt "$count" ]; do
   title=$(jq -r --argjson i "$i" '.oos_observations[$i].title // ""' "$manifest_path") || exit 1
   description=$(jq -r --argjson i "$i" '.oos_observations[$i].description // ""' "$manifest_path") || exit 1
   phase=$(jq -r --argjson i "$i" '.oos_observations[$i].phase // "implement"' "$manifest_path") || exit 1
-  title=$(printf '%s' "$title" | tr -d '\r')
-  phase=$(printf '%s' "$phase" | tr -d '\r')
+  title=$(normalize_title "$title")
+  phase=$(normalize_title "$phase")
   if [ -z "$title" ]; then
-    title="Untitled external implementer OOS"
+    title="Untitled external implementer OOS $((i + 1))"
   fi
   if printf '%s\n' "$description" | security_focus_area; then
+    append_security_audit "$title"
     i=$((i + 1))
     continue
   fi

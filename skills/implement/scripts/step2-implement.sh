@@ -1109,22 +1109,26 @@ fi
 # with a Tool Failures breadcrumb when there is no OOS to lose.
 if [[ "$STATUS" == "complete" ]]; then
     MATERIALIZE_OOS="$PLUGIN_ROOT/skills/implement/scripts/materialize-manifest-oos.sh"
-    MAT_OOS_COUNT=$(jq 'if (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$MANIFEST_PATH" 2>/dev/null || printf '0')
+    MAT_OOS_COUNT=""
+    MAT_OOS_COUNT_RC=0
+    MAT_OOS_COUNT=$(jq 'if (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$MANIFEST_PATH" 2>/dev/null) || MAT_OOS_COUNT_RC=$?
     MAT_OOS_LOG="$TMPDIR_ARG/materialize-manifest-oos.log"
     if [[ -x "$MATERIALIZE_OOS" ]]; then
-        if ! bash "$MATERIALIZE_OOS" --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" >"$MAT_OOS_LOG" 2>&1; then
+        MAT_RC=0
+        bash "$MATERIALIZE_OOS" --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" >"$MAT_OOS_LOG" 2>&1 || MAT_RC=$?
+        if [[ "$MAT_RC" -ne 0 ]]; then
             APPEND_TOOL="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
             if [[ -x "$APPEND_TOOL" ]]; then
                 "$APPEND_TOOL" \
                     --log "$TMPDIR_ARG/execution-issues.md" \
                     --site "step2-materialize-manifest-oos" \
                     --tool "materialize-manifest-oos.sh" \
-                    --exit-code "1" \
+                    --exit-code "$MAT_RC" \
                     --category "Tool Failures" \
                     --output-file "$MAT_OOS_LOG" \
                     --redact >/dev/null 2>&1 || true
             fi
-            if [[ "${MAT_OOS_COUNT:-0}" -gt 0 ]]; then
+            if [[ "$MAT_OOS_COUNT_RC" -ne 0 || "${MAT_OOS_COUNT:-0}" -gt 0 ]]; then
                 emit_bailed "manifest-oos-materialization-failed"
             fi
         fi
@@ -1136,12 +1140,12 @@ if [[ "$STATUS" == "complete" ]]; then
                 --log "$TMPDIR_ARG/execution-issues.md" \
                 --site "step2-materialize-manifest-oos" \
                 --tool "materialize-manifest-oos.sh" \
-                --exit-code "1" \
+                --exit-code "127" \
                 --category "Tool Failures" \
                 --output-file "$MAT_OOS_LOG" \
                 --redact >/dev/null 2>&1 || true
         fi
-        if [[ "${MAT_OOS_COUNT:-0}" -gt 0 ]]; then
+        if [[ "$MAT_OOS_COUNT_RC" -ne 0 || "${MAT_OOS_COUNT:-0}" -gt 0 ]]; then
             emit_bailed "manifest-oos-materialization-failed"
         fi
     fi

@@ -1191,6 +1191,9 @@ run_pr_prep_phase() {
     manifest_path=$(read_state MANIFEST_PATH)
     materialize_oos="$PLUGIN_ROOT/skills/implement/scripts/materialize-manifest-oos.sh"
     if [ -n "$manifest_path" ] && [ -f "$manifest_path" ]; then
+        materialize_count=""
+        materialize_count_rc=0
+        materialize_count=$(jq 'if (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$manifest_path" 2>/dev/null) || materialize_count_rc=$?
         fail_file=$(failure_capture_path pr-prep)
         _had_errexit=0
         case $- in *e*) _had_errexit=1 ;; esac
@@ -1200,9 +1203,11 @@ run_pr_prep_phase() {
         (( _had_errexit )) && set -e
         if [ "$materialize_rc" -ne 0 ]; then
             record_failure pr-prep "materialize-manifest-oos.sh" "$materialize_rc" "$fail_file" Tool Failures
-            state_set OOS_PENDING true
-            advance_phase pr-create
-            exit 0
+            if [ "$materialize_count_rc" -ne 0 ] || [ "${materialize_count:-0}" -gt 0 ]; then
+                state_set OOS_PENDING true
+                advance_phase pr-create
+                exit 0
+            fi
         fi
     fi
 
@@ -1246,6 +1251,11 @@ run_pr_prep_phase() {
 run_pr_create_phase() {
     local title out rc pr_number pr_url pr_status repo_args draft_args fail_file _merge_base final_report_output issue_num
     larch_err "→ ship-pr: opening PR"
+    if [ "$(read_state OOS_PENDING)" = "true" ]; then
+        larch_err "ship-pr.sh: refusing PR creation while OOS_PENDING=true"
+        advance_phase pr-prep
+        exit 0
+    fi
     _merge_base=$(git merge-base HEAD origin/main 2>/dev/null) || _merge_base=
     if [ -n "$_merge_base" ]; then
         title=$(git log --format=%s "${_merge_base}..HEAD" 2>/dev/null | grep -v '^chore(larch-logs): flush ' | tail -1)

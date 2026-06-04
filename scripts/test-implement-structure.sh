@@ -468,6 +468,14 @@ grep -Fq 'ISSUES_FAILED>0`, do not write `$IMPLEMENT_TMPDIR/oos-issues-created.m
   || fail "partial failure must suppress sentinel write"
 grep -Fq 'do **not** append accepted disposition URL rows to the `oos-issues` NDJSON batch' "$OOS_PIPELINE_MD" \
   || fail "partial failure must suppress gate-visible accepted oos-issues rows"
+awk '
+  /ISSUES_FAILED>0/ { window = 8 }
+  window > 0 && /append accepted disposition URL rows/ && $0 !~ /do \*\*not\*\* append accepted disposition URL rows/ {
+    exit 1
+  }
+  window > 0 { window-- }
+' "$OOS_PIPELINE_MD" \
+  || fail "ISSUES_FAILED>0 guidance must not sit near positive accepted-URL append instructions"
 
 never5_block=$(awk '/^5\. \*\*NEVER let the Step 9a\.1 sentinel/{flag=1; print; next} flag && /^6\. \*\*/{exit} flag{print}' "$SKILL_MD")
 if printf '%s\n' "$never5_block" | grep -Fq 'write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --batch run-statistics'; then
@@ -509,6 +517,16 @@ grep -Fq 'materialize-manifest-oos.sh' "$SHIP_PR_SH" \
   || fail "ship-pr.sh must invoke materialize-manifest-oos.sh"
 grep -Fq 'materialize-manifest-oos.sh' "$PY_SHIP" \
   || fail "python/ship.py must invoke materialize-manifest-oos.sh"
+python_materialize_order=0
+awk '
+  /^def run_ship\(/ { in_fn=1; next }
+  in_fn && /^def / { exit }
+  in_fn && /_materialize_manifest_oos/ && mat == 0 { mat = NR }
+  in_fn && /_oos_gate/ && gate == 0 { gate = NR }
+  END { if (mat == 0 || gate == 0 || mat >= gate) exit 1 }
+' "$PY_SHIP" || python_materialize_order=$?
+[[ "$python_materialize_order" == "0" ]] \
+  || fail "python/ship.py must materialize manifest OOS before _oos_gate"
 ship_pr_materialize_order=0
 awk '
   /^run_pr_prep_phase\(\)/ { in_fn=1; next }
@@ -532,6 +550,8 @@ grep -Fq '<REDACTED-TOKEN>' "$OOS_PIPELINE_MD" \
   || fail "oos-pipeline.md must pin redaction token"
 grep -Fq '<INTERNAL-URL>' "$OOS_PIPELINE_MD" \
   || fail "oos-pipeline.md must pin internal URL redaction"
+grep -Fq '<REDACTED-PII>' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must pin PII redaction token"
 grep -Fq 'monotonic `OOS_N`' "$MATERIALIZE_OOS_MD" \
   || fail "materialize-manifest-oos contract must pin monotonic OOS_N allocation"
 

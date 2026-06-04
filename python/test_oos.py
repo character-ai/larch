@@ -70,6 +70,21 @@ def test_disposition_counts_markdown_oos_blocks(tmp_path: Path) -> None:
     assert result.non_security_count == 1
 
 
+def test_disposition_counts_strict_filed_url_fields(tmp_path: Path) -> None:
+    accepted = tmp_path / "acc.md"
+    _ = accepted.write_text(
+        "### OOS_1: Design item\n- **Filed URL**: https://github.com/example/larch/issues/99\n",
+        encoding="utf-8",
+    )
+    result = oos.disposition_ok(
+        _NoopRunner(),  # type: ignore[arg-type]
+        accepted_files=(str(accepted),),
+        filed_urls_strict_files=(str(accepted),),
+    )
+    assert result.ok
+    assert result.filed_urls == 1
+
+
 def test_disposition_fails_without_coverage(tmp_path: Path) -> None:
     accepted = tmp_path / "bad.md"
     _ = accepted.write_text(

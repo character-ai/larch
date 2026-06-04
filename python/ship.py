@@ -154,6 +154,18 @@ def _materialize_manifest_oos(runner: Runner, ctx: RunContext, *, cwd: str | Non
     manifest_path = Path(ctx.manifest_path) if ctx.manifest_path else None
     if manifest_path is None or not manifest_path.is_file():
         return None
+    manifest_oos_count: int | None = None
+    try:
+        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            data = cast("dict[str, object]", loaded)
+            observations = data.get("oos_observations")
+            if isinstance(observations, list):
+                manifest_oos_count = len(cast("list[object]", observations))
+            else:
+                manifest_oos_count = 0
+    except (OSError, json.JSONDecodeError):
+        manifest_oos_count = None
     script = (
         Path(__file__).resolve().parents[1]
         / "skills"
@@ -178,6 +190,8 @@ def _materialize_manifest_oos(runner: Runner, ctx: RunContext, *, cwd: str | Non
         ctx,
         "materialize-manifest-oos.sh failed before OOS disposition; leaving OOS filing pending.",
     )
+    if manifest_oos_count == 0:
+        return None
     return ShipResult(
         Outcome.NEEDS_USER_INPUT,
         needs_user_reason=config.NEEDS_USER_OOS_FILING,
@@ -199,6 +213,16 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
     )
     created = tmpdir / "oos-issues-created.md"
     run_dir_ndjson = tmpdir / "larch-logs" / "implement" / ctx.run_id / "oos-issues.ndjson"
+    if not run_dir_ndjson.is_file():
+        candidates = sorted((tmpdir / "larch-logs" / "implement").glob("*/oos-issues.ndjson"))
+        if len(candidates) == 1:
+            run_dir_ndjson = candidates[0]
+        elif len(candidates) > 1 and not ctx.run_id:
+            return ShipResult(
+                Outcome.NEEDS_USER_INPUT,
+                needs_user_reason=config.NEEDS_USER_OOS_FILING,
+                detail=config.NEEDS_USER_OOS_FILING,
+            )
     commit_messages = ""
     if ctx.run_id:
         base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
@@ -209,6 +233,7 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
         runner,
         accepted_files=accepted,
         filed_urls_files=(str(created),) if created.is_file() else (),
+        filed_urls_strict_files=(str(design_path),) if design_path.is_file() else (),
         oos_issues_ndjson=str(run_dir_ndjson) if run_dir_ndjson.is_file() else None,
         commit_range_messages=commit_messages,
         forked=ctx.forked or ctx.forked_target,
@@ -387,6 +412,26 @@ def run_ship(
         materialize_result = _materialize_manifest_oos(runner, ctx, cwd=repo_root)
         if materialize_result is not None:
             return materialize_result
+        if ctx.oos_pending:
+            return ShipResult(
+                Outcome.NEEDS_USER_INPUT,
+                needs_user_reason=config.NEEDS_USER_OOS_FILING,
+                detail=config.NEEDS_USER_OOS_FILING,
+            )
+        design_oos_path = resolve_oos_accepted_design_path(Path(ctx.tmpdir))
+        if any(
+            path.is_file() and path.stat().st_size > 0
+            for path in (
+                Path(ctx.tmpdir) / "oos-accepted-main-agent.md",
+                design_oos_path,
+                Path(ctx.tmpdir) / "oos-accepted-review.md",
+            )
+        ):
+            return ShipResult(
+                Outcome.NEEDS_USER_INPUT,
+                needs_user_reason=config.NEEDS_USER_OOS_FILING,
+                detail=config.NEEDS_USER_OOS_FILING,
+            )
         oos_result = _oos_gate(runner, ctx, cwd=repo_root)
         if oos_result is not None:
             return oos_result

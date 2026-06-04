@@ -7,7 +7,7 @@ import json
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import pytest
@@ -194,16 +194,10 @@ def test_design_export_oos_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp
     exported = tmp_path / "design-export" / "oos-accepted-design.md"
     exported.parent.mkdir()
     _ = exported.write_text("### OOS_1: exported design OOS\nbody\n", encoding="utf-8")
-    observed: dict[str, tuple[str, ...]] = {}
     monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
-
-    def fake_disposition(*_args: object, **kwargs: object) -> object:
-        observed["accepted"] = tuple(cast("tuple[str, ...]", kwargs["accepted_files"]))
-        return type("D", (), {"ok": False})()
-
-    monkeypatch.setattr(ship.oos, "disposition_ok", fake_disposition)
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
 
     def forbidden(*_args: object, **_kwargs: object) -> object:
         raise AssertionError("ensure_pr must not run before design-export OOS filing")
@@ -213,7 +207,30 @@ def test_design_export_oos_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp
 
     assert result.outcome is Outcome.NEEDS_USER_INPUT
     assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
-    assert str(exported) in observed["accepted"]
+
+
+def test_design_tmpdir_oos_blocks_pr_create(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    accepted = design_tmpdir / "oos-accepted-design.md"
+    _ = accepted.write_text("### OOS_1: design tmpdir OOS\nbody\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design_tmpdir))
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("ensure_pr must not run before DESIGN_TMPDIR OOS filing")
+
+    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
 
 
 def test_manifest_materialize_failure_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -233,13 +250,84 @@ def test_manifest_materialize_failure_blocks_pr_create(monkeypatch: pytest.Monke
         raise AssertionError("ensure_pr must not run after materialize failure")
 
     monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
+    ctx = _ctx(tmp_path)
+    _ = Path(ctx.manifest_path).write_text(
+        json.dumps({"summary_bullets": ["x"], "oos_observations": [{"title": "OOS", "description": "x"}]}),
+        encoding="utf-8",
+    )
     runner = FailingMaterializeRunner()
-    result = ship.run_ship(_ctx(tmp_path), runner=runner, cwd=str(tmp_path))
+    result = ship.run_ship(ctx, runner=runner, cwd=str(tmp_path))
 
     assert result.outcome is Outcome.NEEDS_USER_INPUT
     assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
     assert any("materialize-manifest-oos.sh" in " ".join(call) for call in runner.calls)
     assert "materialize-manifest-oos.sh failed" in (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+
+
+def test_manifest_materialize_empty_failure_does_not_block_pr_create(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class FailingMaterializeRunner(RecordingRunner):
+        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
+            self.calls.append(list(argv))
+            if "materialize-manifest-oos.sh" in " ".join(argv):
+                return CommandResult(tuple(argv), 1, "", "boom", 0.01)
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+
+    ctx = _ctx(tmp_path, merge=False)
+    _ = Path(ctx.manifest_path).write_text(
+        json.dumps({"summary_bullets": ["x"], "oos_observations": []}),
+        encoding="utf-8",
+    )
+    result = ship.run_ship(ctx, runner=FailingMaterializeRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+
+
+def test_manifest_materialize_success_blocks_for_step9a1(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    class MaterializingRunner(RecordingRunner):
+        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
+            self.calls.append(list(argv))
+            if "materialize-manifest-oos.sh" in " ".join(argv):
+                _ = (tmp_path / "oos-accepted-main-agent.md").write_text(
+                    "### OOS_1: Manifest OOS\n- **Description**: x\n",
+                    encoding="utf-8",
+                )
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+
+    def forbidden(*_args: object, **_kwargs: object) -> object:
+        raise AssertionError("ensure_pr must not run with materialized OOS")
+
+    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
+    ctx = _ctx(tmp_path)
+    _ = Path(ctx.manifest_path).write_text(
+        json.dumps({"summary_bullets": ["x"], "oos_observations": [{"title": "OOS", "description": "x"}]}),
+        encoding="utf-8",
+    )
+    result = ship.run_ship(ctx, runner=MaterializingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
 
 def test_ship_writes_phase_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
