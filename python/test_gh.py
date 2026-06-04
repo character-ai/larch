@@ -706,3 +706,24 @@ def test_find_issue_comment_id_by_marker_normalizes_bom_crlf() -> None:
         repo="o/r",
     )
     assert comment_id == 100
+
+
+def test_issue_create_uses_body_file_and_optional_repo() -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "issue", "create"), 0, "", "", 0.01)],
+    )
+    result = gh.issue_create(runner, repo=None, title="t", body="body")
+    assert result.returncode == 0
+    assert runner.calls[0][0:4] == ["gh", "issue", "create", "--title"]
+    assert "--repo" not in runner.calls[0]
+    assert "--body-file" in runner.calls[0]
+
+
+def test_issue_create_adds_repo_and_surfaces_failure() -> None:
+    runner = RecordingRunner(
+        responses=[CommandResult(("gh", "issue", "create"), 1, "", "fail", 0.01)],
+    )
+    result = gh.issue_create(runner, repo="o/r", title="t", body="body")
+    assert result.returncode == 1
+    assert "--repo" in runner.calls[0]
+    assert "o/r" in runner.calls[0]

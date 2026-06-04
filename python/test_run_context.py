@@ -34,3 +34,8 @@ def test_with_returns_new_instance() -> None:
 def test_with_rejects_unknown_fields() -> None:
     with pytest.raises(TypeError, match="unknown"):
         _ = _ctx().with_(not_a_field=True)
+
+
+def test_from_env_defaults_merge_disabled() -> None:
+    ctx = run_context.RunContext.from_env(env={})
+    assert ctx.merge is False

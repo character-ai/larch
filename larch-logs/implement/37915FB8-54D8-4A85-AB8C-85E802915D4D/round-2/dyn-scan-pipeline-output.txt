@@ -1,0 +1,16 @@
+Reviewing the scan pipeline: reading the diff and key source files.
+### In-Scope Findings
+
+- **correctness** `python/report_tokens_scan.py:245-250` — `LARCH_REPORT_TOKENS_LIMIT` stops after the first N immediate children under `larch-logs/<skill>/` (`seen` in the loop), including directories with no `manifest.json`, no skill-specific token report, or only invalid JSON. The bash `larch-logs` scanner removed in this branch only incremented its counter when both `manifest.json` and the skill token-report basename existed, so a limit of 10 could still reach valid runs past placeholder dirs. With many incomplete run folders (common during active `/implement` usage), analysis can miss real runs and under-report costs. **Suggested fix:** Advance the limit counter only for directories that pass the same eligibility gate as a parsed run (at minimum: readable manifest with positive `issue_number` and present token-report file), or document and test the “first N subdirs alphabetically” contract explicitly if that is intentional.
+
+- **correctness** `python/report_tokens_scan.py:169-171` — When `manifest.json` is valid but the skill-specific token report file is absent (`token-report.json` for implement, `token-report-final.json` for design), `_record` returns `None` with no stderr warning. The implementation plan and acceptance edge cases require the same “skip with warning” behavior as invalid token JSON; operators only see a smaller run set with no explanation. **Suggested fix:** Emit a stderr warning naming the run directory and expected basename before returning `None`, and add a scan test (manifest present, token report missing) that asserts the warning and empty record list.
+
+### Out-of-Scope Observations
+
+- **correctness** `python/report_tokens_scan.py:98-106` — Missing `timing-report*.json` / `run-params.json` still default workflow to `unknown` without a warning. That matches the prior bash loop (it only called `read-workflow-path.sh` when files existed), but not the plan’s “invalid/missing → warn” wording; treat as a doc/plan drift item if stricter parity is desired later.
+
+- **correctness** — No `python/test_report_tokens_scan.py` coverage for `LARCH_REPORT_TOKENS_LIMIT` or CLI failure when `repo_slug` is unset and issue posting is enabled (`report_tokens_cli.py:97-100`); plan called for the latter at the CLI layer.
+
+- Pre-existing / documented quirks unchanged by this branch: duplicate `issue_number` across run dirs double-count; `closed_at` vs `started_at` axis split lives in render/plot, not scan.
+
+**Commits reviewed (since merge-base with main):** `f5ad40e26` Migrate report-tokens to Python; `b91533246` larch-logs flush; `74b161cbf` Address code review feedback (round 1).

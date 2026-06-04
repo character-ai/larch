@@ -425,6 +425,19 @@ setup_parse_codex_usage_repo() {
     )
 }
 
+setup_report_tokens_wrapper_repo() {
+    local dir="$1"
+    setup_git_repo "$dir"
+    (
+        cd "$dir"
+        git checkout -q -b report-tokens-wrapper-change
+        mkdir -p skills/report-tokens/scripts
+        printf '%s\n' "# run analysis wrapper" > skills/report-tokens/scripts/run-analysis.md
+        git add skills/report-tokens/scripts/run-analysis.md
+        git commit -q -m "touch report tokens wrapper docs"
+    )
+}
+
 setup_python_source_repo() {
     local dir="$1"
     setup_git_repo "$dir"
@@ -481,6 +494,16 @@ make_stub_dir "$STUB_3J" present absent
 run_checks "$REPO_3J" "$(controlled_path "$STUB_3J")"
 assert_exit_eq "3j: parse codex usage change exits 0" "$RUN_EXIT" 0
 assert_stdout_not_contains "3j: does not route test-check-contains-pins" "$RUN_OUT" "test-check-contains-pins"
+
+echo "=== Section 3j2: report-tokens wrapper routing ==="
+
+REPO_3J2="$TMPROOT/repo-report-tokens-wrapper"
+STUB_3J2="$TMPROOT/stub-report-tokens-wrapper"
+setup_report_tokens_wrapper_repo "$REPO_3J2"
+make_stub_dir "$STUB_3J2" present absent
+run_checks "$REPO_3J2" "$(controlled_path "$STUB_3J2")"
+assert_exit_eq "3j2: report-tokens wrapper change exits 0" "$RUN_EXIT" 0
+assert_stdout_contains "3j2: routes test-run-analysis-quiet" "$RUN_OUT" "test-run-analysis-quiet"
 
 echo "=== Section 3k: Python direct targets with missing lint tools ==="
 

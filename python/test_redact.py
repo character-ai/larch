@@ -298,3 +298,10 @@ def test_scrub_log_secrets_parity_with_shell_gate(tmp_path: Path) -> None:
     sh_scrubbed = target.read_text(encoding="utf-8")
     assert py_scrubbed == sh_scrubbed
     assert "crsr_1620" not in sh_scrubbed
+
+
+def test_report_tokens_tmpdir_redacted() -> None:
+    text = "see /tmp/larch-report-tokens.abc123/report-cache.ndjson and /var/folders/aa/bb/T/larch-report-tokens-plot.xyz/x.png"
+    redacted = redact.redact(text)
+    assert "/tmp/larch-report-tokens" not in redacted
+    assert "/var/folders" not in redacted

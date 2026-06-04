@@ -177,6 +177,55 @@ def _write_terminal_state(ctx: RunContext, result: Outcome, step: str) -> None:
         ctx.with_(stall_tracking=result is Outcome.STALLED, stall_step=step),
         Path(ctx.tmpdir) / "finalize-state.sh",
     )
+    phase = "done" if result is Outcome.OK else step or "stalled"
+    _write_ship_state(ctx, phase=phase)
+
+
+def _state_bool(*, value: bool) -> str:
+    return "true" if value else "false"
+
+
+def _write_ship_state(
+    ctx: RunContext,
+    *,
+    phase: str,
+    iteration: int = 0,
+    rebase_count: int = 0,
+    fix_attempts: int = 0,
+    transient_retries: int = 0,
+) -> None:
+    if not ctx.state_file:
+        return
+    path = Path(ctx.state_file)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fields = {
+        "PHASE": phase,
+        "BRANCH_NAME": ctx.branch_name or ctx.branch,
+        "ISSUE_NUMBER": ctx.issue_number or ctx.issue,
+        "RUN_ID": ctx.run_id,
+        "REPO": ctx.repo,
+        "REPO_UNAVAILABLE": _state_bool(value=ctx.repo_unavailable),
+        "FORKED_TARGET": _state_bool(value=ctx.forked_target or ctx.forked),
+        "IMPLEMENT_TMPDIR": ctx.tmpdir,
+        "MANIFEST_PATH": ctx.manifest_path,
+        "MERGE": _state_bool(value=ctx.merge),
+        "DRAFT": _state_bool(value=ctx.draft),
+        "PR_CLOSED": _state_bool(value=ctx.pr_closed),
+        "PR_NUMBER": "" if ctx.pr_number is None else str(ctx.pr_number),
+        "PR_URL": ctx.pr_url,
+        "PR_TITLE": ctx.pr_title,
+        "MERGE_RESULT": ctx.merge_result,
+        "OOS_PENDING": _state_bool(value=ctx.oos_pending),
+        "REBASE_COUNT": str(rebase_count),
+        "FIX_ATTEMPTS": str(fix_attempts),
+        "ITERATION": str(iteration),
+        "TRANSIENT_RETRIES": str(transient_retries),
+        "RESUME_PHASE": "",
+        "CALLER_KIND": "",
+    }
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    _ = tmp.write_text("".join(f"{key}={value}\n" for key, value in fields.items()), encoding="utf-8")
+    _ = tmp.replace(path)
 
 
 def _tmpdir_under_allowed_root(tmpdir: str) -> bool:
@@ -244,6 +293,7 @@ def run_ship(
         cursor_present = ctx.cursor_present or bool(os.environ.get("CURSOR") or os.environ.get("CURSOR_AUTH_ARGS") or ctx.tool_label == "cursor")
         base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
         base_ref = "main"
+        _write_ship_state(ctx, phase="checks")
         checks_result = checks.run_checks_phase(
             runner,
             tmpdir=ctx.tmpdir,
@@ -258,6 +308,7 @@ def run_ship(
             _write_terminal_state(ctx, checks_result.outcome, checks_result.detail or "checks")
             return _step_result_to_ship(checks_result)
 
+        _write_ship_state(ctx, phase="pr-prep")
         postbump = finalize.postbump(runner, ctx, cwd=repo_root)
         if postbump.outcome is not Outcome.OK:
             finalize.write_finalize_state(
@@ -266,6 +317,7 @@ def run_ship(
             )
             return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
 
+        _write_ship_state(ctx, phase="pr-create")
         body = pr_body.compose_pr_body(
             summary=_summary_from_manifest(ctx),
             mermaid=ctx.mermaid,
@@ -284,12 +336,14 @@ def run_ship(
             pr_title=title,
             pr_closed=False,
         )
+        _write_ship_state(working, phase="ci-initial" if working.merge and not working.draft else "done")
         try:
             run_logs.write_final_report_comment(runner, working)
         except ShipError as exc:
             _ = sys.stderr.write(f"ship.py: warning: {exc}\n")
         if not working.merge or working.draft or working.forked or working.repo_unavailable:
             finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
+            _write_ship_state(working, phase="done")
             return ShipResult(
                 Outcome.OK,
                 pr_number=working.pr_number,
@@ -302,6 +356,14 @@ def run_ship(
         fix_attempts = 0
         transient_retries = 0
         while True:
+            _write_ship_state(
+                working,
+                phase="ci-initial",
+                iteration=iteration,
+                rebase_count=rebase_count,
+                fix_attempts=fix_attempts,
+                transient_retries=transient_retries,
+            )
             monitor = ci_monitor.monitor(
                 runner,
                 pr=working.pr_number or 0,
@@ -329,6 +391,14 @@ def run_ship(
                 )
             if monitor.action not in {"merge", "already_merged"}:
                 if monitor.goto_rebase:
+                    _write_ship_state(
+                        working,
+                        phase="rebase",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                    )
                     pre_rebase = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=repo_root)
                     if pre_rebase.skipped and pre_rebase.reason not in config.REFRESH_SKIP_MERGE_OK:
                         _write_terminal_state(working, Outcome.STALLED, "pre-rebase")
@@ -363,6 +433,14 @@ def run_ship(
                 merge_result=merged.result,
                 pr_closed=pr_closed,
             )
+            _write_ship_state(
+                working,
+                phase="postmerge" if pr_closed else "merge",
+                iteration=iteration,
+                rebase_count=rebase_count,
+                fix_attempts=fix_attempts,
+                transient_retries=transient_retries,
+            )
             if merged.result == config.MERGE_RESULT_ERROR:
                 finalize.write_finalize_state(
                     working.with_(stall_tracking=True, stall_step="merge"),
@@ -388,6 +466,7 @@ def run_ship(
                     detail=merged.error or f"merge did not complete: {merged.result}",
                 )
             post = run_postmerge_phase(runner, working, cwd=repo_root)
+            _write_ship_state(working, phase="done")
             return ShipResult(
                 post.outcome,
                 pr_number=working.pr_number,
@@ -434,6 +513,7 @@ def build_parser() -> argparse.ArgumentParser:
     _ = parser.add_argument("--run-id")
     _ = parser.add_argument("--tmpdir")
     _ = parser.add_argument("--manifest-path")
+    _ = parser.add_argument("--state-file")
     _ = parser.add_argument("--tool-label")
     _ = parser.add_argument("--merge")
     _ = parser.add_argument("--draft")
@@ -458,6 +538,7 @@ def _ctx_from_args(args: argparse.Namespace) -> RunContext:
         ("run_id", "run_id"),
         ("tmpdir", "tmpdir"),
         ("manifest_path", "manifest_path"),
+        ("state_file", "state_file"),
         ("tool_label", "tool_label"),
         ("expected_session_id", "expected_session_id"),
         ("expected_tmpdir_basename_prefix", "expected_tmpdir_basename_prefix"),

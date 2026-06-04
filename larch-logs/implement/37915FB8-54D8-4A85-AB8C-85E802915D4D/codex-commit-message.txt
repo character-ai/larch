@@ -1,0 +1,5 @@
+Migrate report-tokens to Python
+
+Cut the report-tokens analyzer over to a typed Python pipeline that scans committed larch logs, prices runs through scripts/token-cost.sh, renders skill-aware markdown, optionally plots through an isolated matplotlib child, and posts trimmed GitHub issues through file-backed gh calls.
+
+Remove legacy markdown parsing, the reported-vs-estimated table, raw per-issue issue payloads, and the old replot-from-issue path. Update docs for the live Python entrypoint and add regression coverage across scan, cost, render, plot, issue, CLI, gh, redaction, and the quiet wrapper.

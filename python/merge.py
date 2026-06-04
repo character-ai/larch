@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
+from typing import cast
 
 import config
 import gh
@@ -21,6 +23,10 @@ from run_context import RunContext
 class MergeResult:
     result: str
     error: str = ""
+
+
+_BUMP_SUBJECT_RE = re.compile(r"^Bump version to ([0-9]+\.[0-9]+\.[0-9]+)$")
+_SEMVER_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 
 
 def redact_merge_diagnostic(text: str) -> str:
@@ -133,6 +139,13 @@ def merge_pr(
         if post_err is not None:
             return post_err
         return head_match
+
+    race = _version_race_gate(runner, cwd=cwd)
+    if race is not None:
+        post_err = _post_flush(runner, ctx, race.result) if post_flush else None
+        if post_err is not None:
+            return post_err
+        return race
 
     merge_outcome = _attempt_merge(runner, ctx, pr_num, cwd=cwd)
     if post_flush:
@@ -359,14 +372,79 @@ def _flush_recoverable(
     return git.is_ancestor(runner, pr_head_oid, "HEAD", cwd=cwd)
 
 
-def _version_race_gate(  # pylint: disable=useless-return  # pyright: ignore[reportUnusedFunction]
-    _runner: Runner,
+def _version_race_gate(
+    runner: Runner,
     *,
     cwd: str | None,
 ) -> MergeResult | None:
-    """Deprecated compatibility hook; the ship merge path no longer runs it."""
-    _ = cwd
+    fetch = runner.run(["git", "fetch", "origin", "main", "--quiet"], cwd=cwd)
+    if fetch.returncode != 0:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error="git fetch origin main failed; cannot verify same-version race",
+        )
+    bump_subject = _bump_subject(runner, cwd=cwd)
+    if not bump_subject:
+        return None
+    match = _BUMP_SUBJECT_RE.fullmatch(bump_subject)
+    if match is None:
+        return None
+    local_version = match.group(1)
+    origin_version = _origin_plugin_version(runner, cwd=cwd)
+    if not _SEMVER_RE.fullmatch(origin_version):
+        sanitized = origin_version.replace("\n", " ")
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=f"could not parse origin/main published version (got: '{sanitized}')",
+        )
+    if origin_version == local_version:
+        return MergeResult(
+            result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
+            error=f"origin/main HEAD already bumped to {local_version}; rebase and re-bump",
+        )
+    if not git.is_ancestor(runner, "origin/main", "HEAD", cwd=cwd):
+        return MergeResult(
+            result=config.MERGE_RESULT_MAIN_ADVANCED,
+            error="origin/main advanced to a different version; rebase needed",
+        )
+    premerge = runner.run(["git", "fetch", "origin", "main", "--quiet"], cwd=cwd)
+    if premerge.returncode != 0:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error="git fetch origin main failed (pre-merge re-fetch)",
+        )
+    premerge_origin_version = _origin_plugin_version(runner, cwd=cwd)
+    if _SEMVER_RE.fullmatch(premerge_origin_version) and premerge_origin_version == local_version:
+        return MergeResult(
+            result=config.MERGE_RESULT_VERSION_ALREADY_PUBLISHED,
+            error=f"origin/main HEAD already bumped to {local_version} (pre-merge re-fetch); rebase and re-bump",
+        )
     return None
+
+
+def _bump_subject(runner: Runner, *, cwd: str | None) -> str:
+    result = runner.run(["git", "log", "--format=%s", "origin/main..HEAD"], cwd=cwd)
+    if result.returncode != 0:
+        return ""
+    for line in result.stdout.splitlines():
+        if _BUMP_SUBJECT_RE.fullmatch(line):
+            return line
+    return ""
+
+
+def _origin_plugin_version(runner: Runner, *, cwd: str | None) -> str:
+    result = runner.run(["git", "show", "origin/main:.claude-plugin/plugin.json"], cwd=cwd)
+    if result.returncode != 0:
+        return ""
+    try:
+        data = json.loads(result.stdout or "{}")
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    typed = cast("dict[str, object]", data)
+    value = typed.get("version")
+    return str(value or "")
 
 
 def _attempt_merge(

@@ -1,0 +1,32 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- render groups records by workflow, plot builds time-series by day+workflow; the aggregation rules differ and serve distinct purposes, making a shared helper harder to justify than it appears
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the work is already committed; the concern is real but raising it as a code finding produces no actionable in-diff change
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- BANNER priority is correctly never trimmed in _trim_sections; the string-prefix approach is a simpler and functionally equivalent implementation
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stdlib-only flat-module layout intentionally accepts some duplication to avoid circular imports; the helpers are trivial
+FINDING_7: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the plan explicitly requires different stdout vs issue-section content for actual-spend; the parallel paths are the intended design
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- warn-and-ignore on invalid config values is a defensible graceful-degradation choice; fail-fast would break callers with typos in non-critical env vars
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_17: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_18: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_21: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_22: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- series labels are hardcoded by the Python caller as "All runs"/"SIMPLE"/"HARD"; the standalone-payload attack surface is theoretical for an internal developer tool
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- report-tokens is an interactive CLI; users can abort; token-cost.sh is a simple awk/shell script unlikely to hang; adding a timeout adds complexity without proportional benefit
+FINDING_24: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_25: YES CORRECTNESS=uncertain SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_26: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Cache JSON stdout path is explicitly part of the plan contract ("Stdout still ends with Cache JSON: <path>"); redacting it would break consumers
+FINDING_27: EXONERATE CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- post_issue already prints to stderr before raising ShipError, so the CLI catch-and-return pattern is not silent
+FINDING_28: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_29: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_30: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- path-containment validation is the correct security boundary; PNG cardinality checking adds fragility for a latent quality concern
+FINDING_31: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_32: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

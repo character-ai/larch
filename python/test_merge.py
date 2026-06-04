@@ -435,7 +435,7 @@ def test_merge_pr_emits_ci_not_ready(
     assert out.result == config.MERGE_RESULT_CI_NOT_READY
 
 
-def test_merge_pr_ignores_obsolete_version_race_gate(
+def test_merge_pr_runs_version_race_gate_before_admin_merge(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -444,20 +444,19 @@ def test_merge_pr_ignores_obsolete_version_race_gate(
     runner = RecordingRunner(
         responses=[
             *_open_pr_responses(),
+            CommandResult(("git", "fetch"), 0, "", "", 0.01),
+            CommandResult(("git", "log"), 0, "", "", 0.01),
             CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
         ],
     )
-    def fake_version_race(*_a: object, **_k: object) -> merge_module.MergeResult:
-        raise AssertionError("obsolete version race gate must not run")
-
     monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
     monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
-    monkeypatch.setattr(merge_module, "_version_race_gate", fake_version_race)
     monkeypatch.setattr(run_logs, "flush_logs_pre", _mock_refresh_skip_ok)
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+    assert ["git", "fetch", "origin", "main", "--quiet"] in runner.calls
 
 
 def test_merge_noop_preserves_admin_merged_from_state(tmp_path: Path) -> None:

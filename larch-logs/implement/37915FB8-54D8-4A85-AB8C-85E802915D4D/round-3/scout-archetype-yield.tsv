@@ -1,0 +1,13 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+structure	code-quality	1	5	0	0	0.000000
+correctness	correctness	1	3	3	0	1.000000
+testing	risk-integration	1	10	10	0	1.000000
+security	security	1	2	1	0	0.500000
+edge-cases	correctness	1	3	2	0	0.666667
+plan-fidelity	architecture	1	2	2	0	1.000000
+dyn-pricing-pipeline	correctness	1	2	2	0	1.000000
+dyn-issue-posting	risk-integration	1	2	1	0	0.500000
+dyn-quiet-wrapper	risk-integration	1	0	0	0	n/a
+dyn-scan-semantics	correctness	1	2	2	0	1.000000
+dyn-plot-isolation	architecture	1	3	2	0	0.666667
+dyn-ci-parity	risk-integration	1	2	2	0	1.000000

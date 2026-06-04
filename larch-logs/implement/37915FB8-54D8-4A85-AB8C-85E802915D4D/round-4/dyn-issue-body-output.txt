@@ -1,0 +1,18 @@
+Reviewing the issue-posting path for security: reading the diff and key modules.
+### In-Scope Findings
+
+- **security** `python/report_tokens_cli.py:88-93` — The public GitHub issue path redacts via `report_tokens_issue._posting_body()` and `gh._body_file_args()`, but the operator-facing stdout path prints the full `render()` markdown and plot paths with no `redact.redact()` pass. Rendered tables include free-text from committed run logs (notably phase `step` labels in `report_tokens_render._phase_breakdown`), so token-shaped or path-like material scrubbed from the filed issue can still appear in terminal output, CI job logs, or copied transcripts. **Suggested fix:** Apply `redact.redact()` (or `redact.redact_outbound()`) to everything written to stdout, including the analysis body, `Cache JSON:` trailer, and plot path lines, so outbound secret/tmpdir scrubbing matches the issue-posting boundary.
+
+- **security** `python/report_tokens_scan.py:73-79` — When `gh repo view` fails, repo-resolution diagnostics are printed to stderr verbatim (`detail = (result.stderr or result.stdout).strip()`), unlike `report_tokens_issue.post_issue` which redacts `gh` failure text before emitting it. A flaky or misconfigured `gh` invocation can surface auth or API error text that may contain sensitive fragments on the caller’s real stderr (including under quiet mode after the wrapper restores FD 2). **Suggested fix:** Pipe repo-resolution error suffixes through `redact.redact()` before printing, mirroring `post_issue` lines 93–97.
+
+### Out-of-Scope Observations
+
+- The issue-posting pipeline itself is materially improved vs the removed bash path: no `## Raw per-issue data` JSON block, trim is measured on post-redaction UTF-8 bytes (`report_tokens_issue.py:48-67`, `83-86`), oversize-after-trim and `gh issue create` failures exit loud with stderr (`report_tokens_issue.py:83-98`), `repo_slug` is validated before argv construction (`report_tokens_scan.py:58-69`), issue posting is blocked when slug is missing (`report_tokens_cli.py:97-99`), and tmpdir scrubbing for `larch-report-tokens.*` in posted bodies is covered by tests (`python/test_report_tokens_issue.py`).
+
+- Issue URLs are synthesized as `https://github.com/{repo_slug}/issues/{number}` (`report_tokens_scan.py:220`) without verifying that the manifest issue exists in that repository; a wrong `LARCH_REPORT_TOKENS_REPO` or fork/upstream `gh` default can produce misleading public links (integrity/operator-config), not silent success.
+
+- Phase-breakdown `step` strings from `token-report*.json` still flow into posted markdown tables (after secret-pattern redaction only); that exposure class predates the Python migration and is reduced by dropping the raw JSON issue appendix.
+
+- Plot subprocess failures echo child stderr unredacted (`report_tokens_plot.py:71-73`); adjacent to but outside the issue-create path.
+
+- Local cache NDJSON under `tempfile.mkdtemp(prefix="larch-report-tokens.")` includes manifest `title` unredacted (`report_tokens_render.py:198-214`); it is not posted to GitHub but the full path is echoed on stdout via the `Cache JSON:` trailer in `report_tokens_render.py:245`.

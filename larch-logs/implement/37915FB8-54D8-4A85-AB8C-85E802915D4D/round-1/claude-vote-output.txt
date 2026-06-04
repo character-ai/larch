@@ -1,0 +1,44 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- code checks timing-report and run-params which are the main bash helper paths; specific missed fallback locations not cited by reviewer
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- argv-based gh call prevents shell injection; late-visible gh failure is not silent; validation complexity not warranted
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- flat module layout is intentional plan design; shared module would add coupling and risk stdlib-only confusion
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- BANNER is actively used in trim filtering logic; absent section instance is intentional design
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- priced_by_token_cost field exists on RunRecord; stderr warning fires on fallback; surfacing in render tables adds complexity for observability-only tool
+FINDING_10: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- gh.issue_create in the diff does not re-redact the body; a second redaction pass cannot increase body size, so the described failure mode is physically impossible
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Cache JSON path in stdout is explicitly designed per plan; not sensitive data on local operator machine
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- process observation about review scope, not a code defect worth filing
+FINDING_19: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- cwd fallback is explicitly designed scan-robustness behavior per plan edge-case section
+FINDING_21: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- print-then-maybe-fail is standard CLI behavior; non-zero exit signals the failure
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- explicitly pre-existing OOS per plan's edge-case section
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- explicitly pre-existing OOS per plan's edge-case section
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- persistent mkdtemp is explicitly designed behavior per plan
+FINDING_27: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_28: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_29: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- branch-hygiene process observation, not an actionable code fix
+FINDING_30: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- meta-commentary on FINDING_11, not a standalone problem
+FINDING_31: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan explicitly says empty-larch-logs exits 0 with no-records message; early return without issue is correct per design
+FINDING_32: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- new Python rewrite; prior bash exit-code contract unclear; no known downstream callers cited
+FINDING_33: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_34: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- plot-cost-over-time.py absent from diff; plan requires normative schema enforcement
+FINDING_35: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- plot-cost-over-time.py absent from diff; silent skip producing exit-0 on partial data is a real concern
+FINDING_36: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_37: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation, not a defect
+FINDING_38: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Phase 7 code not wired to live path; concern is real but premature before Phase 7 wiring
+FINDING_39: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- minor SKILL.md documentation discrepancy; not worth a standalone issue
+FINDING_40: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_41: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- file absent from diff; hardcoded /usr/bin/git claim is plausible and portability concern is real
+FINDING_42: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_43: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation
+FINDING_44: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation

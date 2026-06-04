@@ -1,0 +1,14 @@
+Reviewing CI/Makefile/harness wiring for the report-tokens migration. Reading the diff and related config files.
+### In-Scope Findings
+
+- **risk-integration** `python/test_report_tokens_render.py:61` — `test_implement_golden_output` reads `fixtures/report_tokens_implement_golden.md` relative to the `python/` working directory, but that file is not in `HEAD` (only an untracked `python/fixtures/` tree exists locally). The `python-tests` CI job runs `make py-test`, so a clean checkout will raise `FileNotFoundError` and fail the required gate even though the test and modules are committed. **Suggested fix:** Add `python/fixtures/report_tokens_implement_golden.md` to the branch (and keep it updated when render output changes), or inline/generate the golden in the test so CI does not depend on an uncommitted path.
+
+- **risk-integration** `scripts/relevant-checks.sh:220-232` — Direct routing for `/report-tokens` covers skill wrapper/plot files and maps `python/*.py` to `py-lint`/`py-test`, but edits to `scripts/token-cost.sh` (the sole pricing authority for headline costs) match neither path. A contributor changing only `token-cost.sh` can pass scoped `relevant-checks` while breaking `test_report_tokens_cost.py`’s real `token-cost.sh` integration and live pricing until full CI or a manual `make py-test` runs. **Suggested fix:** Extend `relevant-checks.sh` so `scripts/token-cost.sh` (and its existing `scripts/test-token-cost.sh` harness if desired) also append `py-test` and/or `test-run-analysis-quiet`, aligning local gates with acceptance item 4 and the plan’s contract-test intent.
+
+- **risk-integration** `scripts/relevant-checks.sh:221` — The `python/*.py` glob does not include `python/fixtures/**`, so updates to the golden fixture alone will not trigger `py-test` under `relevant-checks` even after the fixture is committed. That weakens the “run relevant-checks after edits” workflow for render-only output tweaks. **Suggested fix:** Add a `python/fixtures/*` case (or broaden the Python routing rule) to call `maybe_append_py_test_target` when fixture files under `python/fixtures/` change.
+
+### Out-of-Scope Observations
+
+- **risk-integration** `Makefile:372-373` — `test-merge-parity` is wired into `test-harnesses-5` and pulls `pytest` into every harness matrix cell via `.github/workflows/requirements-test-harnesses.txt`, but unlike `test-run-analysis-quiet` it has no entry in the secondary `.PHONY` block at `Makefile:13`. This is a minor Make hygiene gap, not a CI functional break.
+
+- Installing `pytest==9.0.3` on all twenty harness shards while only shard 5 runs `test-merge-parity` adds pip work to unrelated shards; acceptable trade-off for harness parity wiring from the ship-pr work, not a correctness defect for report-tokens.

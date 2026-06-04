@@ -1,0 +1,12 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.68/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.68/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.68/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.68/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.68/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.68/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-token-pricing","tool":"cursor","output":"<TMPDIR>/round-5/dyn-token-pricing-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-token-pricing-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-cli-bridge","tool":"cursor","output":"<TMPDIR>/round-5/dyn-cli-bridge-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-cli-bridge-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-issue-posting","tool":"cursor","output":"<TMPDIR>/round-5/dyn-issue-posting-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-issue-posting-prompt.md","weight":1,"focus_area":"security"}
+{"slot":"dyn-log-scan","tool":"cursor","output":"<TMPDIR>/round-5/dyn-log-scan-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-log-scan-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-plot-boundary","tool":"cursor","output":"<TMPDIR>/round-5/dyn-plot-boundary-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-plot-boundary-prompt.md","weight":1,"focus_area":"architecture"}
+{"slot":"dyn-shell-parity","tool":"cursor","output":"<TMPDIR>/round-5/dyn-shell-parity-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-shell-parity-prompt.md","weight":1,"focus_area":"risk-integration"}
