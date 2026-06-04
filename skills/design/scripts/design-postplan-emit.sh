@@ -14,7 +14,7 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: design-postplan-emit.sh --design-tmpdir PATH [--snapshot-original] [--force-validate] [--repo OWNER/REPO]'
+    larch_err 'Usage: design-postplan-emit.sh --design-tmpdir PATH [--snapshot-original] [--repo OWNER/REPO]'
 }
 
 validate_repo() {
@@ -46,7 +46,6 @@ parse_kv_from_output() {
 
 DESIGN_TMPDIR_ARG=""
 SNAPSHOT_ORIGINAL=false
-FORCE_VALIDATE=false
 REPO=""
 
 while [[ $# -gt 0 ]]; do
@@ -58,10 +57,6 @@ while [[ $# -gt 0 ]]; do
             ;;
         --snapshot-original)
             SNAPSHOT_ORIGINAL=true
-            shift
-            ;;
-        --force-validate)
-            FORCE_VALIDATE=true
             shift
             ;;
         --repo)
