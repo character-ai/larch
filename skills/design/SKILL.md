@@ -549,6 +549,12 @@ if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; the
   SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
 fi
 [ -n "$SUMMARY_MODE_STRING" ] || SUMMARY_MODE_STRING=N/A
+if [[ -f "$DESIGN_TMPDIR/.design-log-publish-metadata.env" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$DESIGN_TMPDIR/.design-log-publish-metadata.env"
+  set +a
+fi
 export DESIGN_LOG_PR_NUMBER="${DESIGN_LOG_PR_NUMBER:-}"
 export DESIGN_LOG_PR_URL="${DESIGN_LOG_PR_URL:-}"
 export DESIGN_LOG_RECOVERY_BRANCH="${DESIGN_LOG_RECOVERY_BRANCH:-}"
@@ -954,6 +960,10 @@ if [[ "${_postplan_rc:-0}" -eq 1 ]]; then
       ;;
     validate-driver-failed)
       printf '%s\n' "**⚠ 2b: plan-command validator infrastructure failed; aborting before Step 3.**" >&2
+      exit 1
+      ;;
+    pause-failed)
+      printf '%s\n' "**⚠ 2b: pause checkpoint failed (${POSTPLAN_EMIT_STATUS:-unknown}); fix pause/repo bindings and re-invoke /design.**" >&2
       exit 1
       ;;
     *)

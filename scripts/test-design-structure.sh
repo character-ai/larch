@@ -1455,6 +1455,8 @@ contains "$SKILL_MD" 'when `SESSION_ID` is empty, export `SUMMARY_OUTCOME=publis
 contains "$SKILL_MD" 'otherwise export `SUMMARY_OUTCOME=cancelled-clarify` for publish succeeded (`PUBLISH_OK=true`)' '(28c.1) SKILL.md clarify sub-step 6 missing cancelled-clarify success branch'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
 contains "$SKILL_MD" 'export `DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"`, `DESIGN_LOG_PR_URL="${PR_URL:-}"`, and `DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"` immediately before the Final summary block' '(28d) SKILL.md clarify missing recovery metadata preservation prose'
+grep -Fq '.design-log-publish-metadata.env' "$SKILL_MD" \
+  || fail '(28d) SKILL.md Final summary block must source .design-log-publish-metadata.env'
 # shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
 contains "$SKILL_MD" 'with failed publish using `RUN_LOGS_PATH=N/A` and no successful run-log path' '(28e) SKILL.md clarify missing failed-publish run-log suppression prose'
 python3 - "$SKILL_MD" <<'PY_ASSERT'

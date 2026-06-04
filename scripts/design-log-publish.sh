@@ -65,16 +65,35 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+_PUBLISH_META_PR_NUMBER=""
+_PUBLISH_META_PR_URL=""
+_PUBLISH_META_RECOVERY_BRANCH=""
+
+persist_design_log_metadata() {
+    [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
+    larch_design_tmpdir_validate "$DESIGN_TMPDIR" >/dev/null 2>&1 || return 0
+    {
+        printf 'DESIGN_LOG_PR_NUMBER=%s\n' "${_PUBLISH_META_PR_NUMBER:-}"
+        printf 'DESIGN_LOG_PR_URL=%s\n' "${_PUBLISH_META_PR_URL:-}"
+        printf 'DESIGN_LOG_RECOVERY_BRANCH=%s\n' "${_PUBLISH_META_RECOVERY_BRANCH:-}"
+    } >"$DESIGN_TMPDIR/.design-log-publish-metadata.env"
+}
+
 emit_publish_result() {
+    _PUBLISH_META_PR_NUMBER="${2:-}"
+    _PUBLISH_META_PR_URL="${3:-}"
     emit_kv PUBLISH_OK "$1"
-    emit_kv PR_NUMBER "${2:-}"
-    emit_kv PR_URL "${3:-}"
+    emit_kv PR_NUMBER "${_PUBLISH_META_PR_NUMBER}"
+    emit_kv PR_URL "${_PUBLISH_META_PR_URL}"
+    persist_design_log_metadata
 }
 
 emit_publish_failure() {
     emit_publish_result false "${1:-}" "${2:-}"
     if [[ "${PUSH_DONE:-false}" == true ]]; then
+        _PUBLISH_META_RECOVERY_BRANCH="$WT_BRANCH"
         emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+        persist_design_log_metadata
     fi
 }
 

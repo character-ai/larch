@@ -58,11 +58,14 @@ usage() {
 }
 
 emit_fail() {
-    if [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] && larch_design_tmpdir_validate "$DESIGN_TMPDIR" >/dev/null 2>&1; then
+    local reason="${1:-}"
+    if [[ "$reason" != invalid-repo ]] \
+        && [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] \
+        && larch_design_tmpdir_validate "$DESIGN_TMPDIR" >/dev/null 2>&1; then
         rm -f "$DESIGN_TMPDIR/.pause-requested" 2>/dev/null || true
     fi
     emit_kv PAUSE_OK false
-    emit_kv ERROR "$1"
+    emit_kv ERROR "$reason"
     if [[ "${LARCH_PAUSE_REQUIRE_SUCCESS:-0}" == "1" ]]; then
         exit 1
     fi
@@ -133,6 +136,8 @@ elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/s
     STEP="3.6"
 elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && ! -f "$DESIGN_TMPDIR/.completed/step-3.5" ]]; then
     STEP="3.5"
+elif [[ -f "$DESIGN_TMPDIR/.completed/step-5b" && ! -f "$DESIGN_TMPDIR/.completed/step-5c" ]]; then
+    STEP="5c"
 else
     while IFS=$'\t' read -r step_id _step_name || [[ -n "$step_id" ]]; do
         [[ -z "$step_id" || "$step_id" == "step" || "$step_id" == "0" || "$step_id" == "5" ]] && continue
@@ -232,7 +237,6 @@ if [[ "$publish_rc" -ne 0 && "$PUBLISH_OK" == "true" ]]; then
     log_failure "design-log-publish.sh" "$publish_err"
     publish_failure_logged=true
     PUBLISH_OK=false
-    RECOVERY_BRANCH=""
 fi
 
 if [[ "$PUBLISH_OK" != "true" ]]; then

@@ -449,8 +449,8 @@ set +e
 run_subject "$D11a_bad_source"
 rc=$?
 set -e
-assert_rc "pause invalid source repo rc" 0 "$rc"
-assert_contains "$D11a_bad_source/stdout.txt" 'POSTPLAN_EMIT_STATUS=paused' "pause invalid source repo writes paused status"
+assert_rc "pause invalid source repo rc" 1 "$rc"
+assert_contains "$D11a_bad_source/stdout.txt" 'POSTPLAN_EMIT_STATUS=pause-failed' "pause invalid source repo writes pause-failed status"
 assert_contains "$D11a_bad_source/stdout.txt" 'PAUSE_OK=false' "pause invalid source repo emits PAUSE_OK=false"
 assert_contains "$D11a_bad_source/stdout.txt" 'ERROR=invalid-repo' "pause invalid source repo emits invalid-repo"
 assert_not_contains "$CALL_LOG" 'pause-save' "pause invalid source repo skips pause-save"

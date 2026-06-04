@@ -340,9 +340,11 @@ done
 
 echo "=== malformed repo fails before publish or marker ==="
 make_design_tmpdir "$DESIGN"
+: >"$DESIGN/.pause-requested"
 printf 'body\n' >"$BODY_FILE"
 out_bad_repo_save=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo /abs)
 [[ "$out_bad_repo_save" == *"PAUSE_OK=false"* && "$out_bad_repo_save" == *"ERROR=invalid-repo"* ]] || fail "bad --repo should fail early: $out_bad_repo_save"
+[[ -f "$DESIGN/.pause-requested" ]] || fail "bad --repo must preserve .pause-requested for retry"
 ! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad --repo must not write marker"
 make_design_tmpdir "$DESIGN"
 printf 'export SESSION_ID=RUNPAUSE1\nexport REPO=owner/repo\n' >"$DESIGN/source-env.sh"
@@ -352,9 +354,11 @@ out_bad_repo_pre_source=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --rep
 ! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad argv --repo with source-env must not write marker"
 make_design_tmpdir "$DESIGN"
 printf 'export SESSION_ID=RUNPAUSE1\nexport REPO=bad..repo\n' >"$DESIGN/source-env.sh"
+: >"$DESIGN/.pause-requested"
 printf 'body\n' >"$BODY_FILE"
 out_bad_repo_source=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9)
 [[ "$out_bad_repo_source" == *"PAUSE_OK=false"* && "$out_bad_repo_source" == *"ERROR=invalid-repo"* ]] || fail "bad source-env REPO should fail before pause save: $out_bad_repo_source"
+[[ -f "$DESIGN/.pause-requested" ]] || fail "bad source-env REPO must preserve .pause-requested for retry"
 ! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad source-env REPO must not write marker"
 make_design_tmpdir "$DESIGN"
 printf 'export SESSION_ID=bad/../run\nexport REPO=owner/repo\n' >"$DESIGN/source-env.sh"
@@ -364,6 +368,18 @@ out_bad_session_source=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9)
 [[ "$out_bad_session_source" == *"PAUSE_OK=false"* && "$out_bad_session_source" == *"ERROR=invalid-run-id"* ]] || fail "bad source-env SESSION_ID should fail before pause save: $out_bad_session_source"
 [[ ! -e "$DESIGN/.pause-requested" ]] || fail "pause-save terminal failure must clear .pause-requested sentinel"
 ! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad source-env SESSION_ID must not write marker"
+
+echo "=== step-5b complete with withheld step-5c resumes at 5c ==="
+DESIGN_5C="$TMP/design-5c-withheld"
+make_design_tmpdir "$DESIGN_5C"
+complete_design_steps "$DESIGN_5C" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3.6 3b 4 4b 5b
+[[ -f "$DESIGN_5C/.completed/step-5b" ]] || fail "step-5b withheld-5c precondition missing step-5b"
+[[ ! -f "$DESIGN_5C/.completed/step-5c" ]] || fail "step-5c withheld-5c precondition unexpectedly has step-5c"
+printf 'issue body 5c withheld\n' >"$BODY_FILE"
+out_5c=$(bash "$SAVE" --design-tmpdir "$DESIGN_5C" --issue 9 --repo owner/repo)
+[[ "$out_5c" == *"PAUSE_OK=true"* && "$out_5c" == *"STEP=5c"* ]] || fail "withheld step-5c should pause at 5c: $out_5c"
+out_5c_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-5c-withheld" --issue 9 --repo owner/repo)
+[[ "$out_5c_load" == *"LOAD_OK=true"* && "$out_5c_load" == *"STEP=5c"* ]] || fail "withheld step-5c load mismatch: $out_5c_load"
 
 echo "=== recovery branch and hard publish failure ==="
 make_design_tmpdir "$DESIGN"
