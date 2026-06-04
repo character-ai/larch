@@ -33,6 +33,15 @@ fi
 exec /usr/bin/git "$@"
 SHIM
 chmod +x "$TMPROOT/git"
+PYTHON_BIN="$(command -v python3)"
+cat > "$TMPROOT/python3" <<SHIM
+#!/usr/bin/env bash
+if [ "\$1" = "-c" ] && printf '%s\n' "\$2" | grep -Fq 'sys.version_info >= (3, 12)'; then
+  exit 0
+fi
+exec "$PYTHON_BIN" "\$@"
+SHIM
+chmod +x "$TMPROOT/python3"
 
 stdout_file="$TMPROOT/stdout.txt"
 stderr_file="$TMPROOT/stderr.txt"

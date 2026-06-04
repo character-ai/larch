@@ -114,6 +114,18 @@ def test_scan_skips_symlinked_run_dir(tmp_path: Path, capsys: pytest.CaptureFixt
     assert "is a symlink; skipping" in capsys.readouterr().err
 
 
+def test_scan_skips_symlinked_token_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "larch-logs" / "implement" / "run1"
+    run.mkdir(parents=True)
+    outside = tmp_path / "outside.json"
+    _ = outside.write_text(json.dumps({"BUCKETS_claude": {"input": 10}}), encoding="utf-8")
+    _ = (run / "manifest.json").write_text(json.dumps({"issue_number": 1}), encoding="utf-8")
+    (run / "token-report.json").symlink_to(outside)
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+    assert not result.records
+    assert "token-report.json is a symlink; skipping" in capsys.readouterr().err
+
+
 def test_scan_rejects_invalid_limit_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _write_run(tmp_path, skill="implement")
     monkeypatch.setenv("LARCH_REPORT_TOKENS_LIMIT", "100x")

@@ -119,6 +119,19 @@ def test_main_no_issue_and_no_plot_forwarding(monkeypatch: pytest.MonkeyPatch, t
     assert not posted
 
 
+def test_main_no_issue_disables_repo_resolution(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    seen: list[bool] = []
+
+    def fake_scan(_runner: object, skill: str, repo_override: str | None = None, resolve_repo: bool = True) -> ScanResult:
+        _ = (skill, repo_override)
+        seen.append(resolve_repo)
+        return ScanResult(tmp_path, None, ())
+
+    monkeypatch.setattr(report_tokens_cli, "scan", fake_scan)
+    assert report_tokens_cli.main(["--skill", "implement", "--no-issue"]) == config.EXIT_OK
+    assert seen == [False]
+
+
 def test_empty_scan_cli_success_path(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     def fake_scan(_runner: object, skill: str, repo_override: str | None = None) -> ScanResult:
         _ = (skill, repo_override)

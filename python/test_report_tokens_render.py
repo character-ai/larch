@@ -33,6 +33,7 @@ def test_render_implement_aggregate_and_absent_removed_sections(tmp_path: Path) 
     assert "Reported vs estimated" not in body
     assert "Raw per-issue data" not in body
     assert cache.is_file()
+    assert '"pricing_source": "python-blended-fallback"' in cache.read_text(encoding="utf-8")
     assert sections
 
 
@@ -59,6 +60,51 @@ def test_render_implement_golden_markdown(tmp_path: Path) -> None:
     body, _sections, cache = render("implement", (record,), temp_root=tmp_path)
     normalized = body.replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
     expected = Path("fixtures/report_tokens_implement_golden.md").read_text(encoding="utf-8").rstrip("\n")
+    assert normalized == expected
+
+
+def test_render_design_golden_markdown(tmp_path: Path) -> None:
+    simple = _record("SIMPLE")
+    hard = _record("HARD")
+    simple = RunRecord(
+        7,
+        "Issue SIMPLE",
+        "https://example.invalid/SIMPLE",
+        simple.started_at,
+        simple.closed_at,
+        simple.workflow,
+        simple.claude,
+        simple.codex,
+        simple.cursor,
+        simple.phase_rows,
+        simple.raw_report,
+        simple.claude_cost,
+        simple.codex_cost,
+        simple.cursor_cost,
+        simple.total_cost,
+        priced_by_token_cost=True,
+    )
+    hard = RunRecord(
+        8,
+        "Issue HARD",
+        "https://example.invalid/HARD",
+        hard.started_at,
+        hard.closed_at,
+        hard.workflow,
+        hard.claude,
+        hard.codex,
+        hard.cursor,
+        hard.phase_rows,
+        hard.raw_report,
+        hard.claude_cost,
+        hard.codex_cost,
+        hard.cursor_cost,
+        7,
+        priced_by_token_cost=True,
+    )
+    body, _sections, cache = render("design", (simple, hard), temp_root=tmp_path)
+    normalized = body.replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
+    expected = Path("fixtures/report_tokens_design_golden.md").read_text(encoding="utf-8").rstrip("\n")
     assert normalized == expected
 
 

@@ -85,7 +85,7 @@ class RunContext:
             repo=repo,
             run_id=run_id,
             tmpdir=tmpdir,
-            merge=_env_bool(source, "MERGE", default=True),
+            merge=_env_bool(source, "MERGE"),
             draft=_env_bool(source, "DRAFT"),
             forked=_env_bool(source, "FORKED_TARGET") or _env_bool(source, "FORKED"),
             manifest_path=source.get("MANIFEST_PATH", ""),

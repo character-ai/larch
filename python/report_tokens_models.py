@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from dataclasses import dataclass
 from enum import IntEnum
 from typing import Literal
@@ -11,6 +12,8 @@ from collections.abc import Mapping, Sequence
 Skill = Literal["design", "implement"]
 VendorName = Literal["claude", "codex", "cursor"]
 VENDORS: tuple[VendorName, ...] = ("claude", "codex", "cursor")
+DATE_LEN = 10
+_INT_RE = re.compile(r"^[+-]?[0-9]+$")
 
 
 class SectionPriority(IntEnum):
@@ -98,13 +101,37 @@ def safe_int(value: object, default: int = 0) -> int:
         return default
     if isinstance(value, int):
         return value
-    if isinstance(value, float) and value.is_integer():
+    if isinstance(value, float):
         return int(value)
     if isinstance(value, str):
-        stripped = value.strip()
-        if stripped.isdigit():
+        stripped = value.strip().replace(",", "")
+        if _INT_RE.fullmatch(stripped):
             return int(stripped)
+        try:
+            return int(float(stripped))
+        except ValueError:
+            pass
     return default
+
+
+def record_date(record: RunRecord) -> str | None:
+    value = record.started_at or record.closed_at
+    return value[:DATE_LEN] if len(value) >= DATE_LEN else None
+
+
+def workflow_groups(skill: Skill, records: tuple[RunRecord, ...]) -> dict[str, list[RunRecord]]:
+    groups: dict[str, list[RunRecord]] = {}
+    labels = ("All runs",) if skill == "implement" else ("SIMPLE", "HARD")
+    for label in labels:
+        groups[label] = []
+    for record in records:
+        workflow = record.workflow if record.workflow in ("SIMPLE", "HARD") else "unknown"
+        if skill == "design":
+            if workflow in groups:
+                groups[workflow].append(record)
+        else:
+            groups["All runs"].append(record)
+    return {label: items for label, items in groups.items() if items or skill == "design"}
 
 
 def env_rate(

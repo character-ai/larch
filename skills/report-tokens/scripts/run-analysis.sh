@@ -71,6 +71,10 @@ if ! command -v python3 >/dev/null 2>&1; then
     larch_err "ERROR: required command not found: python3"
     exit 1
 fi
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 12) else 1)' >/dev/null 2>&1; then
+    larch_err "ERROR: /report-tokens requires Python 3.12 or newer"
+    exit 1
+fi
 
 export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 

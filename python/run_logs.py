@@ -590,8 +590,9 @@ def flush_logs_post(
         if runner is not None:
             _render_ledger_reports(runner, ctx, log_root)
         _render_token_timing_batches(ctx, log_root)
-    except ShipError:
-        return RefreshSkip(skipped=True, reason="redaction-failed")
+    except ShipError as exc:
+        reason = "redaction-failed" if "redaction" in str(exc).lower() else "post-merge-refresh-failed"
+        return RefreshSkip(skipped=True, reason=reason)
     status = config.MANIFEST_STATUS_DONE if finalize else manifest.status
     updated = Manifest(
         status=status,

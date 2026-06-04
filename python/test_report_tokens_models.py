@@ -19,6 +19,8 @@ def test_dataclasses_and_helpers() -> None:
     )
     assert record.number == 1
     assert safe_int("42") == 42
+    assert safe_int("1,234") == 1234
+    assert safe_int("42.9") == 42
     value: object = True
     assert safe_int(value, 9) == 9
 

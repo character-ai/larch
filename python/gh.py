@@ -147,8 +147,8 @@ def _fail_closed_redacted(text: str, *, context: str) -> str:
 
 
 @contextmanager
-def _body_file_args(body: str) -> Generator[tuple[str, str], None, None]:
-    redacted = _fail_closed_redacted(body, context="gh body file")
+def _body_file_args(body: str, *, redact_body: bool = True) -> Generator[tuple[str, str], None, None]:
+    redacted = _fail_closed_redacted(body, context="gh body file") if redact_body else body
     with tempfile.NamedTemporaryFile(
         mode="w",
         encoding="utf-8",
@@ -833,11 +833,12 @@ def issue_create(
     title: str,
     body: str,
     cwd: str | None = None,
+    redact_body: bool = True,
 ) -> CommandResult:
     argv = ["issue", "create", "--title", _redact_gh_scalar(title)]
     if repo:
         argv.extend(["--repo", repo])
-    with _body_file_args(body) as (body_flag, body_path):
+    with _body_file_args(body, redact_body=redact_body) as (body_flag, body_path):
         argv.extend([body_flag, body_path])
         return _gh(runner, argv, cwd=cwd)
 

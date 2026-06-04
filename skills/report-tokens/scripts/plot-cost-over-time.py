@@ -9,14 +9,6 @@ import sys
 from pathlib import Path
 from typing import cast
 
-try:
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
-except Exception as exc:  # pragma: no cover - depends on optional dependency
-    print(f"matplotlib unavailable: {exc}", file=sys.stderr)
-    raise SystemExit(3) from exc
-
 
 def _load(path: Path) -> dict[str, object]:
     data = json.loads(path.read_text(encoding="utf-8"))
@@ -90,6 +82,13 @@ def main(argv: list[str]) -> int:
     except ValueError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    try:
+        import matplotlib
+        matplotlib.use("Agg")
+        import matplotlib.pyplot as plt
+    except Exception as exc:  # pragma: no cover - depends on optional dependency
+        print(f"matplotlib unavailable: {exc}", file=sys.stderr)
+        return 3
     written: list[str] = []
     for item in series:
         label = str(item["label"])

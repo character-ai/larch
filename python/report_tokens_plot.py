@@ -11,30 +11,22 @@ from collections import defaultdict
 from typing import cast
 
 import config
+import redact
 from proc import Runner
-from report_tokens_models import RunRecord, Skill
-
-DATE_LEN = 10
-
+from report_tokens_models import RunRecord, Skill, record_date, workflow_groups
 
 def _env_flag_enabled(name: str) -> bool:
     value = os.environ.get(name, "").strip().lower()
     return value not in ("", "0", "false", "no")
 
-
-def _date(value: str) -> str | None:
-    return value[:DATE_LEN] if len(value) >= DATE_LEN else None
-
-
 def _series(skill: Skill, records: tuple[RunRecord, ...]) -> list[dict[str, object]]:
-    labels = ["All runs"] if skill == "implement" else ["SIMPLE", "HARD"]
     output: list[dict[str, object]] = []
+    groups = workflow_groups(skill, records)
+    labels = ["All runs"] if skill == "implement" else ["SIMPLE", "HARD"]
     for label in labels:
         by_day: dict[str, float] = defaultdict(float)
-        for record in records:
-            if skill == "design" and record.workflow != label:
-                continue
-            day = _date(record.closed_at)
+        for record in groups.get(label, []):
+            day = record_date(record)
             if day is None:
                 continue
             by_day[day] += record.total_cost
@@ -67,8 +59,8 @@ def plot(
     env["MPLCONFIGDIR"] = str(mpl_dir)
     result = runner.run([sys.executable, str(script), str(input_path), str(plot_dir)], env=env)
     if result.returncode != 0:
-        detail = (result.stderr or result.stdout).strip()
-        suffix = f": {detail}" if detail else ""
+        detail = redact.redact((result.stderr or result.stdout).strip()).strip()
+        suffix = f": {detail[:160]}" if detail else ""
         print(f"No plots generated (plot child failed{suffix}).", file=sys.stderr)
         return []
     try:

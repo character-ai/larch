@@ -38,7 +38,12 @@ def _assemble(sections: list[ReportSection]) -> str:
 
 
 def _posting_body(text: str) -> str:
-    return redact.redact(text)
+    redacted = redact.redact(text)
+    if "[content truncated" in redacted:
+        msg = "ERROR: report issue body redaction failed"
+        print(msg, file=sys.stderr)
+        raise ShipError(msg)
+    return redacted
 
 
 def _section_label(section: ReportSection) -> str:
@@ -85,7 +90,7 @@ def post_issue(
         print(msg, file=sys.stderr)
         raise ShipError(msg)
     try:
-        result: CommandResult = gh.issue_create(runner, repo=repo, title=title, body=body)
+        result: CommandResult = gh.issue_create(runner, repo=repo, title=title, body=body, redact_body=False)
     except ShipError as exc:
         print(f"ERROR: gh issue create failed: {exc}", file=sys.stderr)
         raise

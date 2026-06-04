@@ -10,7 +10,7 @@ from collections import defaultdict
 
 import config
 from report_tokens_cost import aggregate_vendor_tokens
-from report_tokens_models import DisplayRates, ReportSection, RunRecord, SectionPriority, Skill, display_rates
+from report_tokens_models import DisplayRates, ReportSection, RunRecord, SectionPriority, Skill, display_rates, workflow_groups
 
 DATE_LEN = 10
 
@@ -28,17 +28,6 @@ def _md_cell(value: object) -> str:
     text = text.replace("\\", "\\\\").replace("|", "\\|")
     text = text.replace("[", "\\[").replace("]", "\\]")
     return " ".join(text.splitlines()) or "unknown"
-
-
-def _workflow_groups(skill: Skill, records: tuple[RunRecord, ...]) -> dict[str, list[RunRecord]]:
-    groups: dict[str, list[RunRecord]] = defaultdict(list)
-    for record in records:
-        workflow = record.workflow if record.workflow in ("SIMPLE", "HARD") else "unknown"
-        if skill == "design" and workflow == "unknown":
-            continue
-        key = "All runs" if skill == "implement" else workflow
-        groups[key].append(record)
-    return dict(groups)
 
 
 def _summary(records: tuple[RunRecord, ...], *, actual_spend: float | None) -> str:
@@ -158,7 +147,7 @@ def _trends(skill: Skill, records: tuple[RunRecord, ...]) -> str:
         ("Codex cost", "codex_cost"),
         ("Cursor cost", "cursor_cost"),
     )
-    groups = _workflow_groups(skill, records)
+    groups = workflow_groups(skill, records)
     lines = ["## Per-day cost trends", ""]
     for group_name in sorted(groups):
         if skill == "design":
@@ -172,12 +161,16 @@ def _trends(skill: Skill, records: tuple[RunRecord, ...]) -> str:
 
 def _suggestions(records: tuple[RunRecord, ...]) -> str:
     total_cache_read = sum(record.claude.cache_read + record.cursor.cache_read for record in records)
+    if any(not record.priced_by_token_cost for record in records):
+        pricing_line = "- Treat dollar values as estimates; rows marked `fallback` used blended display rates because `scripts/token-cost.sh` was unavailable or incomplete."
+    else:
+        pricing_line = "- Treat dollar values as estimates; `scripts/token-cost.sh` remains the pricing authority used for headline totals."
     return "\n".join([
         "## Cost-reduction suggestions",
         "",
         "- Review the highest-cost runs above before optimizing lower-cost phases.",
         f"- Cache-read tokens observed: {total_cache_read:,}; preserve prompt stability where cache hits are useful.",
-        "- Treat dollar values as estimates; `scripts/token-cost.sh` remains the pricing authority used for headline totals.",
+        pricing_line,
     ])
 
 
@@ -212,6 +205,7 @@ def _write_cache(path: Path, records: tuple[RunRecord, ...]) -> None:
                 "codex_cost": record.codex_cost,
                 "cursor_cost": record.cursor_cost,
                 "total_cost": record.total_cost,
+                "pricing_source": "token-cost.sh" if record.priced_by_token_cost else "python-blended-fallback",
             }
             _ = handle.write(json.dumps(row, sort_keys=True) + "\n")
     _ = tmp.replace(path)

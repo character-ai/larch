@@ -33,6 +33,9 @@ def _warn(message: str) -> None:
 
 
 def _json_file(path: Path) -> object:
+    if path.is_symlink():
+        _warn(f"{path.name} at {path} is a symlink; skipping")
+        return _JSON_ERROR
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as exc:
@@ -195,13 +198,16 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
         _warn(f"manifest for {run_dir} is not a JSON object; skipping")
         return None
     if not manifest:
-        _warn(f"manifest for {run_dir} lacks numeric issue_number; skipping")
+        _warn(f"manifest for {run_dir} is empty and lacks numeric issue_number; skipping")
         return None
     number = safe_int(manifest.get("issue_number"))
     if number <= 0:
         _warn(f"manifest for {run_dir} lacks numeric issue_number; skipping")
         return None
     token_path = run_dir / _token_basename(skill)
+    if token_path.is_symlink():
+        _warn(f"{token_path} is a symlink; skipping")
+        return None
     if not token_path.is_file():
         _warn(f"{run_dir} has no {_token_basename(skill)}; skipping")
         return None
@@ -213,7 +219,7 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
         _warn(f"{token_path} is not a JSON object; skipping")
         return None
     if not report:
-        _warn(f"{token_path} lacks vendor totals/BUCKETS with numeric token counts; skipping")
+        _warn(f"{token_path} is empty; skipping")
         return None
     if not _has_numeric_tokens(report):
         _warn(f"{token_path} lacks vendor totals/BUCKETS with numeric token counts; skipping")
@@ -277,9 +283,10 @@ def scan(
     skill: Skill,
     repo_override: str | None = None,
     limit: int | None = None,
+    resolve_repo: bool = True,
 ) -> ScanResult:
     root = _repo_root(runner)
-    slug = _repo_slug(runner, repo_override or os.environ.get("LARCH_REPORT_TOKENS_REPO"))
+    slug = _repo_slug(runner, repo_override or os.environ.get("LARCH_REPORT_TOKENS_REPO")) if resolve_repo else None
     log_base = root / "larch-logs" / skill
     print(f"Scanning {log_base} for larch run logs (--skill={skill})...", file=sys.stderr)
     max_dirs = _limit_value(limit)

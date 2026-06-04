@@ -76,17 +76,15 @@ read_finalize() {
 
 write_finalize_state() {
     local tmp key default
-    if [ -s "$FINALIZE_FILE" ] \
-        && [ -n "$(read_finalize PR_NUMBER)" ] \
-        && [ -z "$(read_state PR_NUMBER)" ]; then
-        echo "restore-finalize-state.sh: existing finalize-state.sh has PR_NUMBER; leaving authoritative state unchanged" >&2
-        return
-    fi
     tmp="$FINALIZE_FILE.tmp.$$"
     {
         for key in "${LARCH_FINALIZE_STATE_KEYS[@]}"; do
             default=$(larch_finalize_state_default "$key")
-            printf '%s=%s\n' "$key" "$(read_state "$key" "$default")"
+            value=$(read_state "$key" "")
+            if [ -z "$value" ]; then
+                value=$(read_finalize "$key" "$default")
+            fi
+            printf '%s=%s\n' "$key" "$value"
         done
     } > "$tmp" && mv "$tmp" "$FINALIZE_FILE"
     printf '%s' "$(read_state BAIL_REASON)" > "$BAIL_REASON_FILE"

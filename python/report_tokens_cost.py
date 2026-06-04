@@ -10,6 +10,7 @@ from typing import cast
 from collections.abc import Mapping
 
 from proc import Runner
+import redact
 from report_tokens_models import RunRecord, VendorName, VENDORS, VendorTotals, display_rates, safe_int
 
 
@@ -168,10 +169,10 @@ def price_run(runner: Runner, *, record: RunRecord, plugin_root: Path | None = N
         print(f"Warning: {script} missing; using blended Python fallback", file=sys.stderr)
         return _fallback_cost(record)
     result = runner.run(argv, env=_cost_env())
-    if result.stderr:
-        print(result.stderr.rstrip(), file=sys.stderr)
     if result.returncode != 0:
-        print(f"Warning: token-cost.sh failed for issue #{record.number}; using blended Python fallback", file=sys.stderr)
+        detail = redact.redact(result.stderr.strip())
+        suffix = f": {detail[:120]}" if detail else ""
+        print(f"Warning: token-cost.sh failed for issue #{record.number}; using blended Python fallback{suffix}", file=sys.stderr)
         return _fallback_cost(record)
     parsed = _parse_kv(result.stdout)
     required = ("CLAUDE_COST", "CODEX_COST", "CURSOR_COST", "TOTAL_COST")
