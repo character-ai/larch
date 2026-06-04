@@ -47,6 +47,15 @@ assert_file_not_contains() {
     fi
 }
 
+assert_file_not_line() {
+    local label="$1" file="$2" needle="$3"
+    if grep -Fxq -- "$needle" "$file" 2>/dev/null; then
+        fail "$label: unexpected line '$needle' in $file"
+    else
+        pass
+    fi
+}
+
 # --- Codex env-key auth helper ---
 _codex_auth_home="$TMPDIR_ROOT/codex-auth-home"
 mkdir -p "$TMPDIR_ROOT/home/.codex"
@@ -57,7 +66,15 @@ printf '%s\n' \
     '[model_providers.openai-larch-env]' \
     'name = "old larch"' \
     '[model_providers.other]' \
-    'name = "keep"' > "$TMPDIR_ROOT/copied-config.toml"
+    'name = "keep"' \
+    'model_provider = "openai-larch-env"' \
+    'env_key = "OPENAI_API_KEY"' \
+    'instructions = """' \
+    '[model_providers.openai-larch-env]' \
+    'example model_provider = "openai-larch-env"' \
+    '"""' \
+    '[[model_providers.openai-larch-env]]' \
+    'name = "old array larch"' > "$TMPDIR_ROOT/copied-config.toml"
 
 # shellcheck disable=SC2016
 OPENAI_API_KEY='sk-larch-sentinel-value' HOME="$TMPDIR_ROOT/home" bash -c '
@@ -88,10 +105,14 @@ HOME="$TMPDIR_ROOT/home" env -u OPENAI_API_KEY bash -c '
     cp "$2/copied-config.toml" "$2/login-home/config.toml"
     external_prepare_codex_auth "$2/login-home"
 ' bash "$REPO_ROOT" "$TMPDIR_ROOT"
-assert_file_not_contains "codex login strip removes selector" "$TMPDIR_ROOT/login-home/config.toml" 'model_provider = "openai-larch-env"'
-assert_file_not_contains "codex login strip removes legacy env_key" "$TMPDIR_ROOT/login-home/config.toml" 'env_key = "OPENAI_API_KEY"'
-assert_file_not_contains "codex login strip removes larch provider table" "$TMPDIR_ROOT/login-home/config.toml" '[model_providers.openai-larch-env]'
+assert_file_not_line "codex login strip removes selector" "$TMPDIR_ROOT/login-home/config.toml" 'model_provider = "openai-larch-env"'
+assert_file_not_line "codex login strip removes legacy env_key" "$TMPDIR_ROOT/login-home/config.toml" 'env_key = "OPENAI_API_KEY"'
+assert_file_not_contains "codex login strip removes larch provider table body" "$TMPDIR_ROOT/login-home/config.toml" 'name = "old larch"'
+assert_file_not_contains "codex login strip removes larch provider array table" "$TMPDIR_ROOT/login-home/config.toml" '[[model_providers.openai-larch-env]]'
+assert_file_not_contains "codex login strip removes larch provider array body" "$TMPDIR_ROOT/login-home/config.toml" 'name = "old array larch"'
 assert_file_contains "codex login strip preserves unrelated provider" "$TMPDIR_ROOT/login-home/config.toml" '[model_providers.other]'
+assert_file_contains "codex login strip preserves multiline header text" "$TMPDIR_ROOT/login-home/config.toml" '[model_providers.openai-larch-env]'
+assert_file_contains "codex login strip preserves multiline selector text" "$TMPDIR_ROOT/login-home/config.toml" 'example model_provider = "openai-larch-env"'
 if [[ -L "$TMPDIR_ROOT/login-home/auth.json" ]]; then
     pass
 else

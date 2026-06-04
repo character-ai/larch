@@ -170,7 +170,7 @@ if (( AUTH_PREP_RC != 0 )); then
     printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$AUTH_PREP_RC" >> "$SIDECAR_LOG" 2>/dev/null || true
     : > "${OUTPUT}.token-record" 2>/dev/null || true
     emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
-    external_classify_launch_failure "$LAUNCHER_EXIT" "$SIDECAR_LOG" "auth" 1 "codex" "$OUTPUT"
+    external_classify_launch_failure "$LAUNCHER_EXIT" "$SIDECAR_LOG" "unclassified" 1 "codex" "$OUTPUT"
     emit_kv OUTPUT "$OUTPUT"
     emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
     exit 0

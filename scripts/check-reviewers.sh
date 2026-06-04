@@ -59,10 +59,14 @@ HOLD="${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
 
 PROBE_TMPFILES=()
 PROBE_PIDS=()
+PROBE_DIRS=()
 larch_probe_exit_cleanup() {
     local i
     for ((i = 0; i < ${#PROBE_TMPFILES[@]}; i++)); do
         rm -f "${PROBE_TMPFILES[i]}"
+    done
+    for ((i = 0; i < ${#PROBE_DIRS[@]}; i++)); do
+        rm -rf "${PROBE_DIRS[i]}"
     done
     for ((i = 0; i < ${#PROBE_PIDS[@]}; i++)); do
         kill "${PROBE_PIDS[i]}" 2>/dev/null || true
@@ -202,6 +206,7 @@ larch_run_one_codex_probe() {
     : >"$probe_side"
     PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_side"
     codex_home=$(mktemp -d "${TMPDIR:-/tmp}/larch-codex-probe-home.XXXXXX") || { rm -f "$probe_out" "$probe_side"; return 1; }
+    PROBE_DIRS[${#PROBE_DIRS[@]}]="$codex_home"
 
     if [[ -f ~/.codex/config.toml ]]; then
         cp ~/.codex/config.toml "$codex_home/config.toml" || { rm -rf "$codex_home"; rm -f "$probe_out" "$probe_side"; return 1; }
@@ -312,7 +317,7 @@ else
     _CACHED_C=""
     _CODEX_STAMP_KEY=$(larch_codex_probe_stamp_key)
     if larch_try_read_fresh_stamp "$(larch_stamp_path "$_CODEX_STAMP_KEY")" _CACHED_C \
-        && ! { external_codex_env_key_enabled && [[ "$_CACHED_C" == "false" ]]; }; then
+        && ! external_codex_env_key_enabled; then
         CODEX_PRESENT="$_CACHED_C"
     else
         AUTH_ATTEMPT=1

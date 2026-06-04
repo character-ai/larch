@@ -530,19 +530,35 @@ external_strip_codex_larch_env_provider() {
     [[ -f "$config_path" && -r "$config_path" && -w "$config_path" ]] || return 1
     tmp_path=$(mktemp "${config_path}.XXXXXX") || return 1
     if awk '
-        /^[[:space:]]*\[/ {
-            if ($0 ~ /^[[:space:]]*\[model_providers\.openai-larch-env\][[:space:]]*(#.*)?$/) {
+        function count_occurrences(s, needle,    n, p) {
+            n = 0
+            while ((p = index(s, needle)) > 0) {
+                n++
+                s = substr(s, p + length(needle))
+            }
+            return n
+        }
+        function update_multiline_state(line,    dq, sq) {
+            dq = count_occurrences(line, "\"\"\"")
+            sq = count_occurrences(line, "'\'''\'''\''")
+            if (dq % 2 == 1) in_dq_multiline = !in_dq_multiline
+            if (sq % 2 == 1) in_sq_multiline = !in_sq_multiline
+        }
+        {
+            was_in_multiline = (in_dq_multiline || in_sq_multiline)
+        }
+        !was_in_multiline && /^[[:space:]]*\[/ {
+            if ($0 ~ /^[[:space:]]*\[\[?model_providers\.openai-larch-env\]?\][[:space:]]*(#.*)?$/) {
                 skip_larch_provider=1
-                in_table=1
+                update_multiline_state($0)
                 next
             }
             skip_larch_provider=0
-            in_table=1
         }
-        skip_larch_provider { next }
-        !in_table && $0 ~ /^[[:space:]]*model_provider[[:space:]]*=[[:space:]]*"openai-larch-env"[[:space:]]*(#.*)?$/ { next }
-        !in_table && $0 ~ /^[[:space:]]*env_key[[:space:]]*=[[:space:]]*"OPENAI_API_KEY"[[:space:]]*(#.*)?$/ { next }
-        { print }
+        !was_in_multiline && skip_larch_provider { update_multiline_state($0); next }
+        !was_in_multiline && $0 ~ /^[[:space:]]*model_provider[[:space:]]*=[[:space:]]*"openai-larch-env"[[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
+        !was_in_multiline && $0 ~ /^[[:space:]]*env_key[[:space:]]*=[[:space:]]*"OPENAI_API_KEY"[[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
+        { print; update_multiline_state($0) }
     ' "$config_path" > "$tmp_path"; then
         mv -f "$tmp_path" "$config_path" || { rm -f "$tmp_path"; return 1; }
     else

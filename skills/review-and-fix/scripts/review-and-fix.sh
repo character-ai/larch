@@ -58,6 +58,15 @@ CODEX_AVAILABLE="${CODEX_AVAILABLE:-}"
 CURSOR_AVAILABLE="${CURSOR_AVAILABLE:-}"
 DYNAMIC_ARCHETYPES_CLI=""
 readonly CONVERGENCE_NON_NIT_MAX=5
+REVIEW_FIX_TMPDIRS=()
+
+review_fix_exit_cleanup() {
+    local i
+    for ((i = 0; i < ${#REVIEW_FIX_TMPDIRS[@]}; i++)); do
+        rm -rf "${REVIEW_FIX_TMPDIRS[i]}"
+    done
+}
+trap 'review_fix_exit_cleanup' EXIT
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -265,6 +274,7 @@ run_coder_dispatch() {
     local project_key trust_config_arg _codex_auth_args
 
     codex_home=$(mktemp -d "${TMPDIR:-/tmp}/larch-codex-review-fix-home.XXXXXX") || codex_rc=1
+    [[ -n "$codex_home" ]] && REVIEW_FIX_TMPDIRS[${#REVIEW_FIX_TMPDIRS[@]}]="$codex_home"
     if [[ "$codex_rc" -eq 0 ]]; then
         if [[ -f ~/.codex/config.toml ]]; then
             cp ~/.codex/config.toml "$codex_home/config.toml" || codex_rc=1
@@ -307,7 +317,7 @@ run_coder_dispatch() {
         return 0
     fi
 
-    if external_codex_env_key_enabled; then
+    if [[ "$codex_auth_prepared" == "true" ]] && external_codex_env_key_enabled; then
         printf 'codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path; falling back when possible (exit %s)\n' "$codex_rc" >> "$codex_wrapper_log" 2>/dev/null || true
         printf 'codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path; falling back when possible (exit %s)\n' "$codex_rc" >> "$codex_telemetry_sidecar" 2>/dev/null || true
     fi
