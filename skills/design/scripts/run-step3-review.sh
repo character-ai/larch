@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # run-step3-review.sh - /design Step 3 plan-review phase driver.
+# --preview-only: render plan-candidate preview live; driver owns .step3-entry-plan-printed sentinel.
+# --no-preview (default): cap guard, round-cursor advance, plan-review-loop launch, result normalization.
 
 set -euo pipefail
 
@@ -14,11 +16,13 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: run-step3-review.sh --design-tmpdir PATH --round-cap N'
+    larch_err 'Usage: run-step3-review.sh --design-tmpdir PATH [--preview-only | --no-preview] [--round-cap N]'
 }
 
 DESIGN_TMPDIR_ARG=""
 ROUND_CAP=""
+_preview_only=false
+_no_preview=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -32,6 +36,14 @@ while [[ $# -gt 0 ]]; do
             ROUND_CAP="$2"
             shift 2
             ;;
+        --preview-only)
+            _preview_only=true
+            shift
+            ;;
+        --no-preview)
+            _no_preview=true
+            shift
+            ;;
         -h | --help)
             usage
             exit 0
@@ -43,7 +55,66 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+if [[ "$_preview_only" == true && "$_no_preview" == true ]]; then
+    fail 'error: --preview-only and --no-preview are mutually exclusive'
+fi
+
+# Default to --no-preview when neither flag given (backward-compatible for direct harness callers).
+if [[ "$_preview_only" != true ]]; then
+    _no_preview=true
+fi
+
 [[ -n "$DESIGN_TMPDIR_ARG" ]] || { usage; fail '--design-tmpdir is required'; }
+
+if [[ "$_preview_only" == true ]]; then
+    # Preview mode: render plan-candidate preview live. Does not require --round-cap.
+    # Does not cd/canonicalize the tmpdir — pass raw path so allowlist warnings work.
+    SESSION_ENV_PATH="$DESIGN_TMPDIR_ARG/session-env.sh"
+    PLUGIN_ROOT="$(phase_driver_resolve_plugin_root "$SCRIPT_DIR" "$SESSION_ENV_PATH")"
+    [[ -d "$PLUGIN_ROOT" ]] || fail "plugin root not a directory: $PLUGIN_ROOT"
+    export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
+
+    # shellcheck source=scripts/lib-design-tmpdir.sh
+    source "$PLUGIN_ROOT/scripts/lib-design-tmpdir.sh"
+
+    _preview_sh="${RUN_STEP3_EMIT_PREVIEW_SH:-$PLUGIN_ROOT/skills/design/scripts/emit-design-plan-preview.sh}"
+
+    # Sentinel re-entry suppression: skip renderer when sentinel exists AND tmpdir validates.
+    _sentinel_ok=false
+    if [[ -d "$DESIGN_TMPDIR_ARG" ]] && larch_design_tmpdir_validate "$DESIGN_TMPDIR_ARG"; then
+        _sentinel_ok=true
+        if [[ -e "$DESIGN_TMPDIR_ARG/.step3-entry-plan-printed" ]]; then
+            exit 0
+        fi
+    fi
+
+    # Capture renderer stdout with raw tmpdir so allowlist and missing-plan warnings print live.
+    _preview_out=""
+    set +e
+    _preview_out=$("$_preview_sh" --design-tmpdir "$DESIGN_TMPDIR_ARG" --variant step3) || true
+    set -e
+
+    if [[ -n "${_preview_out:-}" ]]; then
+        emit "$_preview_out"
+    fi
+
+    # Touch sentinel only when tmpdir validates AND renderer output contains the expected header
+    # or the exact missing-plan warning. Never touch for non-header output or invalid tmpdir.
+    if [[ "$_sentinel_ok" == true ]]; then
+        _has_header=false
+        case "${_preview_out:-}" in
+            *'## Plan Candidate for Review'*) _has_header=true ;;
+            *'**⚠ 3: plan.txt missing or empty; cannot present plan candidate for review**'*) _has_header=true ;;
+        esac
+        if [[ "$_has_header" == true ]]; then
+            touch "$DESIGN_TMPDIR_ARG/.step3-entry-plan-printed" || true
+        fi
+    fi
+
+    exit 0
+fi
+
+# --no-preview path: requires --round-cap; canonicalizes tmpdir.
 [[ -n "$ROUND_CAP" ]] || { usage; fail '--round-cap is required'; }
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"

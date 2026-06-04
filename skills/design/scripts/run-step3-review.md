@@ -2,25 +2,30 @@
 
 **Consumer**: `/design` Step 3 — deterministic plan-review phase driver wrapping `plan-review-loop.sh`.
 
-**Caller**: `skills/design/SKILL.md` Step 3 (foreground Bash fence after timing + plan preview).
+**Caller**: `skills/design/SKILL.md` Step 3 (uncaptured `--preview-only` fence for live preview; captured `--no-preview` fence for review KVs).
 
 ## Argv
 
 | Flag | Required | Notes |
 |------|----------|-------|
-| `--design-tmpdir PATH` | yes | Validated with `cd … && pwd -P` |
-| `--round-cap N` | yes | Orchestrator expands `${LARCH_DESIGN_ROUND_CAP:-5}` |
+| `--design-tmpdir PATH` | yes | Raw path in `--preview-only`; validated with `cd … && pwd -P` in `--no-preview` |
+| `--preview-only` | no | Render preview live; owns `.step3-entry-plan-printed` sentinel; no `--round-cap` needed |
+| `--no-preview` | no | Default when neither flag given; requires `--round-cap`; runs cap guard + review |
+| `--round-cap N` | `--no-preview` only | Orchestrator expands `${LARCH_DESIGN_ROUND_CAP:-5}` |
 
-The driver does **not** re-read `LARCH_DESIGN_*` env vars.
+`--preview-only` and `--no-preview` are mutually exclusive (exit 2 when both supplied). Omitting both defaults to `--no-preview` for backward compatibility.
+
+The driver does **not** re-read `LARCH_DESIGN_*` env vars (except `RUN_STEP3_EMIT_PREVIEW_SH` seam in preview mode).
 
 ## Derived / session inputs
 
-- Tier cap via `read-design-classification.sh` on `$DESIGN_TMPDIR/run-params.json` (SIMPLE = 3 review runs, HARD = 5).
+- Tier cap via `read-design-classification.sh` on `$DESIGN_TMPDIR/run-params.json` (SIMPLE = 3 review runs, HARD = 5). (`--no-preview` only)
 - `CODEX_PRESENT`, `CURSOR_PRESENT`, optional `IMPLEMENT_TMPDIR` from the orchestrator session (not read from files inside the driver).
 - `$DESIGN_TMPDIR/plan.txt`, `review-round-count.txt`, `.step3-review-cap.env`, `.step3-plan-review-result.env`.
 
 ## Responsibilities
 
+0. **`--preview-only`** — live FD-3 preview via `emit`; driver owns `.step3-entry-plan-printed` with output-string + allowlist touch rules. `--preview-only` needs only `--design-tmpdir` (raw path to renderer); `--round-cap` and canonicalized tmpdir `cd` apply only to `--no-preview`. `larch_design_tmpdir_validate` gates sentinel read/write/touch; stale sentinel on invalid tmpdir does not suppress warnings. Renderer path: `RUN_STEP3_EMIT_PREVIEW_SH` override seam (default: `emit-design-plan-preview.sh`).
 1. Review-round cap entry guard → `.step3-review-cap.env`
 2. Symlink-safe `plan-review/round-*` cleanup
 3. HARD round-cursor read/advance via `snapshot-plan-round.sh`

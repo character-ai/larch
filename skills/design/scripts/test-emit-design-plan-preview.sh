@@ -53,10 +53,10 @@ out3=$("$SUBJECT" --design-tmpdir "$d3" --variant step3)
 printf '%s\n' "$out3" | grep -Fq 'Hello' || fail "small plan should include full body"
 printf '%s\n' "$out3" | grep -Fq 'very large' && fail "small plan should not print large-plan note"
 
-# Sentinel: second step3 invocation is a no-op
-[[ -f "$d3/.step3-entry-plan-printed" ]] || fail "sentinel not created"
+# step3 is a pure renderer: no sentinel written, always renders
+[[ ! -e "$d3/.step3-entry-plan-printed" ]] || fail "step3 pure renderer must not write .step3-entry-plan-printed sentinel"
 out3b=$("$SUBJECT" --design-tmpdir "$d3" --variant step3)
-[[ -z "$(printf '%s' "$out3b" | tr -d '\n')" ]] || fail "second step3 should emit nothing"
+printf '%s\n' "$out3b" | grep -Fq '## Plan Candidate for Review' || fail "step3 second call should re-render (pure renderer, no sentinel)"
 
 # Gate C header path
 d4="$TMPROOT/d4"

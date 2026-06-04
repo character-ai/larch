@@ -310,7 +310,8 @@ contains "$RUN_STEP3_SH" '.step3-review-cap.env' 'run-step3-review.sh missing pe
 contains "$RUN_STEP3_SH" 'STEP3_REVIEW_CAP_REACHED=false' 'run-step3-review.sh missing persisted cap-false state'
 contains "$RUN_STEP3_SH" 'STEP3_REVIEW_ROUND_NUM=' 'run-step3-review.sh missing persisted Step 3 round number state'
 contains "$SKILL_MD" 'run-step3-review.sh' 'SKILL must invoke run-step3-review.sh'
-contains "$SKILL_MD" 'step3 review result env is a symlink; refusing to source' 'SKILL must read allowlisted KVs from .step3-review-result.env'
+# shellcheck disable=SC2016 # Markdown/bash excerpt literal; $DESIGN_TMPDIR must not expand here.
+contains "$SKILL_MD" '! -L "$DESIGN_TMPDIR/.step3-review-result.env"' 'SKILL Step 3 fence must use ! -L safe-env guard (thin-fence shape)'
 [[ -x "$RUN_STEP3_SH" ]] || fail 'run-step3-review.sh must be executable'
 [[ -f "$RUN_STEP3_MD" ]] || fail "run-step3-review.md missing: $RUN_STEP3_MD"
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -442,6 +443,11 @@ contains "$SKILL_MD" '-f "$DESIGN_TMPDIR/.step3-review-result.env"' 'SKILL must 
 contains "$SKILL_MD" 'WARN) printf' 'SKILL must re-emit WARN lines from step3 review handoff'
 contains "$SKILL_MD" 'missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed' 'SKILL must default missing LOOP_STATUS to panel-failed (not hard abort on driver exit 1)'
 contains "$SKILL_MD" 'configuration error (exit 2)' 'SKILL must warn on run-step3-review.sh exit 2'
+contains "$SKILL_MD" '_step3_safe_env_loaded' 'SKILL Step 3 thin-fence must track safe-env loaded flag'
+contains "$SKILL_MD" '--preview-only' 'SKILL Step 3 must have preview-only driver fence'
+contains "$SKILL_MD" '--no-preview' 'SKILL Step 3 captured fence must use --no-preview'
+contains "$RUN_STEP3_SH" 'RUN_STEP3_EMIT_PREVIEW_SH' 'run-step3-review.sh must have RUN_STEP3_EMIT_PREVIEW_SH override seam'
+assert_thin_fence "$SKILL_MD" 'SKILL Step 3 thin-fence shape' '<!-- step:3 —' '<!-- step:3.5'
 grep -Fq 'scout-plan-archetypes-wrapper.sh' "$PLAN_REVIEW_LOOP_SH" \
   || fail "(14c1) plan-review-loop.sh missing scout-plan-archetypes-wrapper.sh"
 grep -Fq 'dispatch-plan-review-panel.sh' "$PLAN_REVIEW_LOOP_SH" \
