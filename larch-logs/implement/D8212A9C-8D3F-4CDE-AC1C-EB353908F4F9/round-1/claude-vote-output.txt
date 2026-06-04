@@ -1,0 +1,18 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=true
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- centralizing inline case-statement allowlists in shell requires eval tricks or sourced arrays; drift risk is real but fix complexity outweighs latent concern
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_5: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- errexit on bad plugin root is correct fail-closed behavior; a broken plugin root warrants aborting the session, not continuing with panel-failed
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- file-first precedence on stale env is intentional design; the failure scenario requires coincident driver-write failure with a non-symlink stale file
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- both fences use the same $DESIGN_TMPDIR session variable so raw vs canonical only diverges with symlinked path forms, which the allowlist validator already rejects
+FINDING_9: EXONERATE CORRECTNESS=false SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly replaced the "refusing to source" message with silent ! -L check; silent skip is the intended behavior
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- rc=2 mapping to exit 1 is explicit in the plan, matching Step 0b/2b/3.6 fence behavior; intentional design not a regression
+FINDING_11: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- mirrors three existing override seams in the same script without prior security note; consistent with existing posture for developer-facing test seams
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan said "optionally pass --no-preview"; default-mode behavior is already pinned in test-run-step3-review.sh
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- driver does not persist WARN to result env today so file+stdout WARN dedup is a non-occurring scenario; adding array dedup adds complexity for a theoretical case
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

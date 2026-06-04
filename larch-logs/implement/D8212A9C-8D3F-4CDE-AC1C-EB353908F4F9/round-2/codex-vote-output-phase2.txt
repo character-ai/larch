@@ -1,0 +1,27 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Allowlist is duplicated but mirrored in orchestrator-fence harness; shared helper is optional hardening not required for this phase.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicated plugin-root resolution is real yet low-risk; extract-helper refactor is discretionary.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- `_has_header` naming is slightly misleading but behavior and tests are clear.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate rc=2 banners are identical today; centralizing prose is optional maintenance.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Integration call omits explicit flag but driver default `--no-preview` matches plan acceptance.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Safe-env file-first on rc!=0 can load stale converged state when a new run fails to rewrite `.step3-review-result.env`.
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Coverage is documented via expanded `test-emit-design-plan-preview` row and Makefile target, not a missing dedicated row.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Same as FINDING_5; explicit `--no-preview` is optional hardening per plan.
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Stub seam matches existing harness pattern; real-renderer integration is worthwhile follow-up, not a blocker.
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Preview-only driver path currently exits 0; SKILL rc=2 guard is defensive with argv mutual-exclusion already tested.
+FINDING_11: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Affirms implemented hardening; not a defect requiring change.
+FINDING_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Affirms implemented hardening; not a defect requiring change.
+FINDING_13: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Affirms intentional KV precedence; tradeoff is tracked separately in FINDING_6.
+FINDING_14: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Documentation alignment note, not an actionable problem.
+FINDING_15: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- REPO threading is correct consistency work, not a security finding.
+FINDING_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Pre-existing trust boundary, explicitly out of scope for this refactor.
+FINDING_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Pre-existing delegation model; not introduced or worsened here.
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- States gatec was intentionally untouched; not a concrete issue to file.
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Sentinel can suppress preview after plan.txt is repaired on re-entry; worth a follow-up issue.
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Theoretical preview/review skew if plan.txt mutates mid-step; operator documentation suffices for now.
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- cd failure after validate is extremely rare; current fail-fast behavior is acceptable.
+FINDING_22: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Plan-fidelity traceability note, not a defect.
+FINDING_23: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Plan-fidelity traceability note, not a defect.
+FINDING_24: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Plan-fidelity scope summary, not a defect.
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Topology row still names renderer-only authority; projection drift is optional per plan fidelity verdict.
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Pre-existing quiet/capture contract; explicitly not introduced by this diff.
+FINDING_27: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Plan allowed folded linting prose; dedicated table row is optional polish only.

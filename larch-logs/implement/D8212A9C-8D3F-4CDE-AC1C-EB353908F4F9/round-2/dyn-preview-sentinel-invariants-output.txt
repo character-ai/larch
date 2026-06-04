@@ -1,0 +1,23 @@
+Reviewing the branch diff and sentinel/preview code paths against the scout checklist.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+The `--preview-only` path in `run-step3-review.sh` matches the plan’s sentinel contract on the points in the scout checklist:
+
+1. **`_sentinel_ok` / `_canonical_tmpdir`** — Set only when the tmpdir exists and `larch_design_tmpdir_validate` succeeds (`86:88:skills/design/scripts/run-step3-review.sh`).
+2. **Raw renderer argv** — The renderer is always invoked with `"$DESIGN_TMPDIR_ARG"`, not the canonical path (`97:97:skills/design/scripts/run-step3-review.sh`).
+3. **Non-zero renderer exit** — `set +e` plus `|| true` on the substitution prevents `set -e` from aborting the preview path (`96:98:skills/design/scripts/run-step3-review.sh`).
+4. **`_has_header` matching** — Only two substrings qualify: `## Plan Candidate for Review` and the exact missing-plan warning (byte match to `emit-design-plan-preview.sh` line 104) (`108:111:skills/design/scripts/run-step3-review.sh`). Allowlist / invalid-tmpdir warnings do not match.
+5. **Touch guard** — `touch` runs only when both `_sentinel_ok` and `_has_header` are true (`106:114:skills/design/scripts/run-step3-review.sh`).
+6. **Pure `step3` renderer** — `emit-design-plan-preview.sh` has no sentinel read/touch in the `step3` branch (`94:108:skills/design/scripts/emit-design-plan-preview.sh`).
+
+Harness cases in `test-run-step3-review.sh` exercise the intended branches: non-header output (`200:216`), renderer exit 1 with non-header body (`218:242`), exact missing-plan warning via stub (`244:261`), stale sentinel on disallowed tmpdir (`263:284`), two-call non-header→header (`286:312`), and non-exact warning text with allowlisted tmpdir (`314:333`).
+
+### Out-of-Scope Observations
+
+- **`test-run-step3-review.sh` “bare missing plan” case (`314:333`)** — It uses a custom stub that prints a non-exact warning, not the production path (`rm plan.txt` + default `emit-design-plan-preview.sh`). That correctly tests driver substring logic, but there is no end-to-end case proving sentinel creation when the real renderer emits the exact missing-plan line. `test-emit-design-plan-preview.sh` also has no missing/empty `plan.txt` case for `step3`.
+- **Re-entry suppression** — When `.step3-entry-plan-printed` exists on a valid tmpdir, the driver exits before rendering (`89:90:skills/design/scripts/run-step3-review.sh`). If `plan.txt` is removed before a later Step 3 re-entry, the operator will not see the missing-plan warning again; that matches prior sentinel semantics and the SKILL prose, but it is operational behavior worth knowing.
+- **Preview fence exit handling in `SKILL.md`** — The live preview fence treats driver exit `2` as fatal (`1038:1041:skills/design/SKILL.md`) but not exit `1`. A rare failure between `larch_design_tmpdir_validate` and `cd`/`pwd -P` (`88:88:skills/design/scripts/run-step3-review.sh`) would abort preview with exit `1` under `set -e` while review could still proceed; that is outside the sentinel touch rules but adjacent to Step 3 orchestration.
+
+**Branch commits (since `main`):** `e9a468593` (Phase 2 implementation), `591715344` (review feedback), `a3f9ae3f7` (relevant-checks fixes).

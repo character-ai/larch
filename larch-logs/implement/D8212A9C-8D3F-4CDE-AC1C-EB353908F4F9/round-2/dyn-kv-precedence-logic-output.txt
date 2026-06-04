@@ -1,0 +1,10 @@
+Reviewing the branch diff and Step 3 thin-fence KV precedence logic in `SKILL.md`.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- The Step 3 thin-fence KV precedence in `skills/design/SKILL.md` (lines 1076–1126) matches the stated contract: `rc=2` exits before display, safe-env load, parse, or normalization; the display pass suppresses only the twelve allowlisted keys plus `WARN=`; `-f && ! -L` gates file load; with `_step3_safe_env_loaded=true`, file values win and stdout only fills empty keys (including on driver exit 1); with `_step3_safe_env_loaded=false`, later stdout KVs win, and the `LOOP_STATUS`/`TALLY_PLAN_REVIEW_STATUS` non-empty override runs only on that path when `_plan_review_rc!=0`. `skills/design/scripts/test-step3-orchestrator-fence.sh` mirrors this logic and covers the contested cases (rc=2 before parse, safe-env + rc≠0 file-wins, no-safe-env later-wins, WARN dedup in display).
+
+- `_plan_review_rc` is the **driver** exit code from `run-step3-review.sh`, not `plan-review-loop.sh`’s inner rc. On the usual panel-failure path the driver still exits **0** after writing `.step3-review-result.env`, so the `elif [[ _plan_review_rc -ne 0 ]]` stdout branch is mainly relevant when the driver exits **1** (e.g. symlinked result-env write refusal). That matches the pre-refactor fence; the meaningful behavior change is file-first precedence when a safe non-symlink env file exists, which is intentional and harnessed (e.g. `safe-env rc!=0 file LOOP_STATUS wins`).

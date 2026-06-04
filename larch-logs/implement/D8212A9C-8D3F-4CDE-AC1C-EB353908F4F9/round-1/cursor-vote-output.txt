@@ -1,0 +1,18 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicated twelve-key lists are a maintenance smell but centralizing them is disproportionate for this phase
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- directory sentinel is an extreme edge case; -f is nicer but not worth blocking on
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- file-first precedence on safe env load is explicit plan behavior, not an implementation defect
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- silent -L skip matches the thin-fence contract (no refuse-to-source prose)
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- rc=2 banner then exit 1 is the accepted fail-closed UX in the plan, not an accidental regression
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- RUN_STEP3_EMIT_PREVIEW_SH mirrors existing harness override seams with the same operator-session trust model
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- omitted flag already defaults to --no-preview in the driver
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- driver does not persist WARN= to result env today; dedup is speculative until that changes
+OOS_1: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false

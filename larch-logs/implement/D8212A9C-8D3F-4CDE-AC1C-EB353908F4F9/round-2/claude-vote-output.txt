@@ -1,0 +1,27 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- twelve-key allowlist is real copy-paste but structure tests already guard cross-file parity; shared-helper abstraction adds complexity for a low-probability divergence scenario; separate issue if desired
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplication real but two paths have genuinely different tmpdir semantics (raw vs canonicalized); extract requires careful design; nit in a well-tested surface
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- _has_header is slightly misleading but semantics clear from inline case pattern; rename alone is a low-value nit
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- both banners are in structure-pinned region; message-drift risk is nit-level; separate cleanup if desired
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan marked this optional; default is documented and exercised by existing harness cases
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true -- stale-env scenario is theoretically real but plan explicitly designed file-first precedence; rc=1 paths (snapshot-failure writes panel-failed env; symlink-refusal makes _step3_safe_env_loaded=false via -L) prevent the most likely failure shapes; fix requires a design change out of this phase scope
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_5; plan marked optional; default is tested
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive security observation about correct behavior; no defect raised
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation about symlink-safe env load; no defect
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive KV-hardening observation; no defect
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- docs-aligned acknowledgment; no defect
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive consistency observation; no defect
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing behavior explicitly listed as out-of-scope unchanged surface; not a new concern
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing delegation posture; not introduced by this diff
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- acknowledged unchanged out-of-scope item; no defect
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- race is inherent to split-fence design; plan accepted this limitation; plan.txt is written in Step 2 not during Step 3 fences so mutation is very unlikely; no viable fix without architecture redesign
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- cd inside command substitution is guarded by preceding -d check; TOCTOU window is theoretical; nit not worth separate issue
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- commit traceability listing, not a problem statement
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- commit traceability listing, not a problem statement
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan completeness observation; substantive topology concern is covered by FINDING_25
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_26: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pre-existing quiet/capture contract acknowledgment; not a new concern from this diff
+FINDING_27: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
