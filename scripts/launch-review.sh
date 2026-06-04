@@ -443,9 +443,14 @@ AUTH_PREP_RC=0
 external_prepare_codex_auth "$CODEX_HOME_DIR" || AUTH_PREP_RC=$?
 if (( AUTH_PREP_RC != 0 )); then
     : > "$OUTPUT" 2>/dev/null || true
+    if external_codex_env_key_enabled; then
+        _auth_failure_reason="codex OPENAI_API_KEY auth setup failed (exit $AUTH_PREP_RC)"
+    else
+        _auth_failure_reason="codex auth setup failed (exit $AUTH_PREP_RC)"
+    fi
     {
         printf 'STATUS=FAILED\n'
-        printf 'FAILURE_REASON=codex auth setup failed (exit %s)\n' "$AUTH_PREP_RC"
+        printf 'FAILURE_REASON=%s\n' "$_auth_failure_reason"
     } > "${OUTPUT}.diag" 2>/dev/null || true
     {
         printf 'TOOL=codex\n'
@@ -455,7 +460,7 @@ if (( AUTH_PREP_RC != 0 )); then
         printf 'CMD_JSON=[]\n'
     } > "${OUTPUT}.meta" 2>/dev/null || true
     printf '%s\n' "$AUTH_PREP_RC" > "${OUTPUT}.done" 2>/dev/null || true
-    exit "$AUTH_PREP_RC"
+    exit 0
 fi
 MODEL_ARGS_TMP=$(mktemp)
 PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"

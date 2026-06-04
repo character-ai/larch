@@ -315,7 +315,11 @@ AUTH_PREP_RC=0
 external_prepare_codex_auth "$CODEX_HOME_DIR" || AUTH_PREP_RC=$?
 if (( AUTH_PREP_RC != 0 )); then
     : > "$SIDECAR_LOG" 2>/dev/null || true
-    printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$AUTH_PREP_RC" >> "$SIDECAR_LOG" 2>/dev/null || true
+    if external_codex_env_key_enabled; then
+        printf 'codex-env-key-failure: failed to prepare Codex auth material on the OPENAI_API_KEY auth path (exit %s)\n' "$AUTH_PREP_RC" >> "$SIDECAR_LOG" 2>/dev/null || true
+    else
+        printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$AUTH_PREP_RC" >> "$SIDECAR_LOG" 2>/dev/null || true
+    fi
     write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true
     emit_timing_record "$AUTH_PREP_RC"
     emit_kv LAUNCHER_EXIT "$AUTH_PREP_RC"

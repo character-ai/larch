@@ -135,6 +135,8 @@ fi
 printf '%s\n' \
     "model_provider='openai-larch-env'" \
     "env_key='OPENAI_API_KEY'" \
+    "model_provider = openai-larch-env" \
+    "env_key = OPENAI_API_KEY" \
     '[ model_providers.openai-larch-env ]' \
     'name = "strip spaced table"' \
     '[model_providers.other]' \
@@ -154,6 +156,8 @@ printf '%s\n' \
 external_strip_codex_larch_env_provider "$TMPDIR_ROOT/strip-edge-config.toml"
 assert_file_not_contains "codex login strip removes single-quoted selector" "$TMPDIR_ROOT/strip-edge-config.toml" "model_provider='openai-larch-env'"
 assert_file_not_contains "codex login strip removes single-quoted env_key" "$TMPDIR_ROOT/strip-edge-config.toml" "env_key='OPENAI_API_KEY'"
+assert_file_not_contains "codex login strip removes bare selector" "$TMPDIR_ROOT/strip-edge-config.toml" "model_provider = openai-larch-env"
+assert_file_not_contains "codex login strip removes bare env_key" "$TMPDIR_ROOT/strip-edge-config.toml" "env_key = OPENAI_API_KEY"
 assert_file_not_contains "codex login strip removes spaced larch provider body" "$TMPDIR_ROOT/strip-edge-config.toml" 'strip spaced table'
 assert_file_not_contains "codex login strip removes nested larch selector" "$TMPDIR_ROOT/strip-edge-config.toml" 'model_provider = "openai-larch-env" # strip nested selector'
 assert_file_contains "codex login strip preserves nested selector text" "$TMPDIR_ROOT/strip-edge-config.toml" 'name = "keep nested selector text"'
@@ -216,11 +220,23 @@ HOME="$TMPDIR_ROOT/home" OPENAI_API_KEY='sk-larch-strip-mode' bash -c '
     set -euo pipefail
     source "$1/scripts/lib-external-launcher-common.sh"
     mkdir -p "$2/literal-strip-home"
-    printf "api_key = \"sk-larch-copied-config\"\nopenai_api_key = \"sk-larch-openai-copied\"\n[profiles.keep]\nmodel = \"ok\"\n" > "$2/literal-strip-home/config.toml"
+    cat > "$2/literal-strip-home/config.toml" <<'"'"'TOML'"'"'
+api_key = "sk-larch-copied-config"
+openai_api_key = "sk-larch-openai-copied"
+model_providers.openai.api_key = "sk-larch-provider-copied"
+[model_providers.other]
+api_key = """
+sk-larch-multiline-copied
+"""
+[profiles.keep]
+model = "ok"
+TOML
     external_prepare_codex_auth "$2/literal-strip-home"
 ' bash "$REPO_ROOT" "$TMPDIR_ROOT"
 assert_file_not_contains "codex copied config strips literal api_key" "$TMPDIR_ROOT/literal-strip-home/config.toml" 'sk-larch-copied-config'
 assert_file_not_contains "codex copied config strips literal openai_api_key" "$TMPDIR_ROOT/literal-strip-home/config.toml" 'sk-larch-openai-copied'
+assert_file_not_contains "codex copied config strips provider api_key" "$TMPDIR_ROOT/literal-strip-home/config.toml" 'sk-larch-provider-copied'
+assert_file_not_contains "codex copied config strips multiline api_key body" "$TMPDIR_ROOT/literal-strip-home/config.toml" 'sk-larch-multiline-copied'
 assert_file_contains "codex copied config preserves unrelated profiles" "$TMPDIR_ROOT/literal-strip-home/config.toml" '[profiles.keep]'
 
 _xtrace="$TMPDIR_ROOT/codex-env-xtrace.txt"

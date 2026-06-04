@@ -35,14 +35,17 @@ Codex and Cursor support generic prompts plus specialist `--agent-file` modes;
   per-invocation `CODEX_HOME/config.toml`; Cursor receives the same compact
   prohibition in the wrapped prompt plus a `--mode ask` enforcement note.
 - Codex runs from a fresh temp `CODEX_HOME` for every review launch. When
-  `OPENAI_API_KEY` is present and non-empty, auth is supplied only through
+  `OPENAI_API_KEY` is present and non-whitespace, auth is supplied only through
   per-invocation `-c` overrides for the larch-owned `openai-larch-env` provider;
   argv includes the env var name but never the key bytes, no `auth.json` is
   linked, and the copied config does not gain provider material. When the env
-  var is unset or empty, the launcher strips larch-owned top-level selectors and
+  var is unset, empty, or whitespace-only, the launcher strips larch-owned top-level selectors and
   the `[model_providers.openai-larch-env]` table from copied `config.toml`, then
   symlinks `~/.codex/auth.json` when present. Strip/auth-prep failure is
   fail-closed before Codex exec.
+- This auth contract is limited to `launch-review.sh` itself. It does not define
+  `/implement` Step 5 review-and-fix behavior or direct `/research` Codex lanes;
+  those surfaces must document and wire their own auth handling.
 - Optional `--codex-add-dir DIR` narrows Codex `codex exec --add-dir` to a
   directory under the session root that owns `--output` (scout passes staged-context only).
   Rejects symlinks, control characters, `..`, and paths outside the session root.

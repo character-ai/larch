@@ -236,6 +236,9 @@ fi
 if [[ -n "${STUB_CODEX_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
     cp "$CODEX_HOME/config.toml" "$STUB_CODEX_CONFIG_FILE"
 fi
+if [[ -n "${STUB_CODEX_AUTH_LINK_FILE:-}" && -n "${CODEX_HOME:-}" && -L "$CODEX_HOME/auth.json" ]]; then
+    readlink "$CODEX_HOME/auth.json" > "$STUB_CODEX_AUTH_LINK_FILE"
+fi
 if [[ -n "${STUB_LOCK_PATH:-}" && -n "${STUB_LOCK_SEEN_FILE:-}" && -d "$STUB_LOCK_PATH" ]]; then
     printf 'present\n' > "$STUB_LOCK_SEEN_FILE"
 fi
@@ -374,14 +377,20 @@ else
 fi
 
 ARGV_LOGIN_UNSET="$SCRATCH/codex-argv-login-unset.txt"
+AUTH_LINK_LOGIN_UNSET="$SCRATCH/codex-auth-link-login-unset.txt"
+HOME_LOGIN="$SCRATCH/codex-login-home"
+mkdir -p "$HOME_LOGIN/.codex"
+printf '{"token":"login"}\n' > "$HOME_LOGIN/.codex/auth.json"
 OUT_LOGIN_UNSET=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
     env -u OPENAI_API_KEY \
+    HOME="$HOME_LOGIN" \
     STUB_ARGV_FILE="$ARGV_LOGIN_UNSET" \
     STUB_PROMPT_FILE="$SCRATCH/codex-prompt-login-unset.txt" \
     STUB_LAST_ARG_FILE="$SCRATCH/codex-last-arg-login-unset.txt" \
     STUB_SEPARATOR_INDEX_FILE="$SCRATCH/codex-separator-index-login-unset.txt" \
     STUB_MANIFEST_PATH="$SCRATCH/manifest-login-unset.json" \
+    STUB_CODEX_AUTH_LINK_FILE="$AUTH_LINK_LOGIN_UNSET" \
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
     LARCH_CODEX_MODEL="stub-codex-model" \
     "$LAUNCHER" \
@@ -394,7 +403,8 @@ OUT_LOGIN_UNSET=$(cd "$REPO_ROOT" && \
         --agent-prompt "$AGENT_PROMPT" \
         --timeout 30)
 if [[ "$OUT_LOGIN_UNSET" == LAUNCHER_EXIT=0* ]] \
-   && ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_UNSET" 2>/dev/null; then
+   && ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_UNSET" 2>/dev/null \
+   && [[ "$(cat "$AUTH_LINK_LOGIN_UNSET" 2>/dev/null)" == "$HOME_LOGIN/.codex/auth.json" ]]; then
     pass
 else
     fail 4f "unset OPENAI_API_KEY should use login auth without env-key argv"
@@ -403,6 +413,7 @@ fi
 ARGV_LOGIN_EMPTY="$SCRATCH/codex-argv-login-empty.txt"
 OUT_LOGIN_EMPTY=$(cd "$REPO_ROOT" && \
     PATH="$STUB_BIN:$PATH" \
+    HOME="$HOME_LOGIN" \
     STUB_ARGV_FILE="$ARGV_LOGIN_EMPTY" \
     STUB_PROMPT_FILE="$SCRATCH/codex-prompt-login-empty.txt" \
     STUB_LAST_ARG_FILE="$SCRATCH/codex-last-arg-login-empty.txt" \

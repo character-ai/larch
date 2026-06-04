@@ -521,10 +521,16 @@ larch_validate_vendor_conflict_csv() {
 
 external_codex_env_key_enabled() {
     [[ ${OPENAI_API_KEY+x} == x ]] || return 1
+    [[ ${#OPENAI_API_KEY} -gt 0 ]] || return 1
+    local _larch_xtrace_was_enabled=false
+    case $- in *x*) _larch_xtrace_was_enabled=true; set +x ;; esac
+    local _larch_env_key_rc=1
     case "$OPENAI_API_KEY" in
-        *[!$' \t\r\n']*) return 0 ;;
-        *) return 1 ;;
+        *[!$' \t\r\n']*) _larch_env_key_rc=0 ;;
+        *) _larch_env_key_rc=1 ;;
     esac
+    [[ "$_larch_xtrace_was_enabled" == "true" ]] && set -x
+    return "$_larch_env_key_rc"
 }
 
 external_strip_codex_larch_env_provider() {
@@ -594,8 +600,8 @@ external_strip_codex_larch_env_provider() {
             }
             current_table="other"
         }
-        !was_in_multiline && $0 ~ /^[[:space:]]*model_provider[[:space:]]*=[[:space:]]*["'\'']openai-larch-env["'\''][[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
-        !was_in_multiline && $0 ~ /^[[:space:]]*env_key[[:space:]]*=[[:space:]]*["'\'']OPENAI_API_KEY["'\''][[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
+        !was_in_multiline && $0 ~ /^[[:space:]]*model_provider[[:space:]]*=[[:space:]]*["'\'']?openai-larch-env["'\'']?[[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
+        !was_in_multiline && $0 ~ /^[[:space:]]*env_key[[:space:]]*=[[:space:]]*["'\'']?OPENAI_API_KEY["'\'']?[[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
         { print; update_multiline_state($0) }
     ' "$config_path" > "$tmp_path"; then
         mv -f "$tmp_path" "$config_path" || { rm -f "$tmp_path"; return 1; }
@@ -642,10 +648,37 @@ external_strip_codex_literal_credentials() {
             if (dq % 2 == 1) in_dq_multiline = !in_dq_multiline
             if (sq % 2 == 1) in_sq_multiline = !in_sq_multiline
         }
+        function starts_credential_assignment(line) {
+            return line ~ /^[[:space:]]*([A-Za-z0-9_-]+\.)*(api_key|openai_api_key)[[:space:]]*=/
+        }
+        function starts_multiline_value(line,    content, dq, sq) {
+            content = strip_inline_comment(line)
+            dq = count_occurrences(content, "\"\"\"")
+            sq = count_occurrences(content, "'\'''\'''\''")
+            if (dq % 2 == 1) {
+                credential_multiline_delim = "\"\"\""
+                return 1
+            }
+            if (sq % 2 == 1) {
+                credential_multiline_delim = "'\'''\'''\''"
+                return 1
+            }
+            return 0
+        }
         {
             was_in_multiline = (in_dq_multiline || in_sq_multiline)
         }
-        !was_in_multiline && $0 ~ /^[[:space:]]*(api_key|openai_api_key)[[:space:]]*=/ { update_multiline_state($0); next }
+        skip_credential_multiline {
+            if (index(strip_inline_comment($0), credential_multiline_delim)) {
+                skip_credential_multiline = 0
+                credential_multiline_delim = ""
+            }
+            next
+        }
+        !was_in_multiline && starts_credential_assignment($0) {
+            if (starts_multiline_value($0)) skip_credential_multiline = 1
+            next
+        }
         { print; update_multiline_state($0) }
     ' "$config_path" > "$tmp_path"; then
         mv -f "$tmp_path" "$config_path" || { rm -f "$tmp_path"; return 1; }
@@ -658,12 +691,16 @@ external_strip_codex_literal_credentials() {
 external_prepare_codex_auth() {
     local home_dir="$1"
     mkdir -p "$home_dir" || return 1
+    if external_codex_env_key_enabled; then
+        if [[ -f "$home_dir/config.toml" ]]; then
+            external_strip_codex_larch_env_provider "$home_dir/config.toml" || true
+            external_strip_codex_literal_credentials "$home_dir/config.toml" || true
+        fi
+        return 0
+    fi
     if [[ -f "$home_dir/config.toml" ]]; then
         external_strip_codex_larch_env_provider "$home_dir/config.toml" || return 1
         external_strip_codex_literal_credentials "$home_dir/config.toml" || return 1
-    fi
-    if external_codex_env_key_enabled; then
-        return 0
     fi
     if [[ -f ~/.codex/auth.json ]]; then
         ln -sf "$(cd ~/.codex && pwd)/auth.json" "$home_dir/auth.json" || return 1

@@ -156,8 +156,8 @@ Subprocesses inherit the top-level session's environment, so billing tracks the 
 - Via web UI of your Codex org, create your own API key.
 - Add it to your env (e.g., in `.bashrc`: `export OPENAI_API_KEY="<your-key>"`; replace `<your-key>`, of course).
 - Install Codex: `npm install -g @openai/codex`.
-- Larch's covered Codex launch, probe, and review-fix surfaces prefer a non-empty `OPENAI_API_KEY` automatically via per-invocation `-c` overrides. Only the env var name is passed; the key value stays in the environment.
-- When `OPENAI_API_KEY` is unset or empty, those surfaces fall back to `codex login` / `~/.codex/auth.json`.
+- Larch's covered Codex launch, probe, and review-fix surfaces prefer a non-whitespace `OPENAI_API_KEY` automatically via per-invocation `-c` overrides. Only the env var name is passed; the key value stays in the environment.
+- When `OPENAI_API_KEY` is unset, empty, or whitespace-only, those surfaces fall back to `codex login` / `~/.codex/auth.json`.
 - Do not keep the old top-level `env_key = "OPENAI_API_KEY"` setup advice as your Codex path; larch strips that legacy line from copied temp configs on login fallback.
 
 ### Cursor

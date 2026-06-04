@@ -212,6 +212,12 @@ larch_run_one_codex_probe() {
         cp ~/.codex/config.toml "$codex_home/config.toml" || { rm -rf "$codex_home"; rm -f "$probe_out" "$probe_side"; return 1; }
     fi
     if ! external_prepare_codex_auth "$codex_home"; then
+        if external_codex_env_key_enabled; then
+            printf 'codex-env-key-failure: failed to prepare Codex auth material on the OPENAI_API_KEY auth path\n' >>"$probe_side" 2>/dev/null || true
+            larch_err "check-reviewers.sh: Codex OPENAI_API_KEY auth setup failed"
+        else
+            printf 'codex-auth-setup: failed to prepare Codex auth material\n' >>"$probe_side" 2>/dev/null || true
+        fi
         rm -rf "$codex_home"
         rm -f "$probe_out" "$probe_side"
         return 1

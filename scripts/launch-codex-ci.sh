@@ -167,7 +167,11 @@ if (( AUTH_PREP_RC != 0 )); then
     LAUNCHER_EXIT="$AUTH_PREP_RC"
     SIDECAR_LOG="${OUTPUT}.sidecar"
     : > "$SIDECAR_LOG" 2>/dev/null || true
-    printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$AUTH_PREP_RC" >> "$SIDECAR_LOG" 2>/dev/null || true
+    if external_codex_env_key_enabled; then
+        printf 'codex-env-key-failure: failed to prepare Codex auth material on the OPENAI_API_KEY auth path (exit %s)\n' "$AUTH_PREP_RC" >> "$SIDECAR_LOG" 2>/dev/null || true
+    else
+        printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$AUTH_PREP_RC" >> "$SIDECAR_LOG" 2>/dev/null || true
+    fi
     : > "${OUTPUT}.token-record" 2>/dev/null || true
     emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
     external_classify_launch_failure "$LAUNCHER_EXIT" "$SIDECAR_LOG" "unclassified" 1 "codex" "$OUTPUT"
