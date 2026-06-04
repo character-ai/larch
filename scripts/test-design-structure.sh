@@ -131,12 +131,21 @@ assert_gate_b_bypass_branch_sentinels() {
 }
 
 assert_step3b_entry_guard_threads_repo() {
-  local file="$1" line
-  line=$(awk '
+  local file="$1" result line
+  result=$(awk '
     /<!-- step:3b/ { in_region=1; next }
-    in_region && /<!-- step:4 / { exit }
-    in_region && /\.pause-requested/ && /design-pause-save\.sh/ { print; exit }
+    in_region && /<!-- step:4 / { end_marker_seen=1; in_region=0; exit }
+    in_region && line == "" && /\.pause-requested/ && /design-pause-save\.sh/ { line=$0 }
+    END {
+      if (!end_marker_seen) {
+        print "MISSING_END"
+      } else if (line != "") {
+        print line
+      }
+    }
   ' "$file")
+  [[ "$result" != MISSING_END ]] || fail "SKILL Step 3b missing end marker <!-- step:4"
+  line="$result"
   [[ -n "$line" ]] || fail "SKILL Step 3b missing entry pause-save guard"
   # shellcheck disable=SC2016 # literal repo passthrough syntax is pinned.
   [[ "$line" == *'${REPO:+--repo "$REPO"}'* ]] || fail "SKILL Step 3b entry pause-save guard must thread REPO"
