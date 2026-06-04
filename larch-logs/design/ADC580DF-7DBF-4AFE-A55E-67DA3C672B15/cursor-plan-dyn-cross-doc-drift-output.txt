@@ -1,0 +1,37 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:1577-1581	Shared validator-failure Fix/Override bullets still mandate bare ACTION=VALIDATE_PLAN_COMMANDS (and Override “continue surrounding success path”) for composed-plan.md; the plan only adds a Step 5c site branch and does not narrow or supersede the generic bullets	After folding validate+redact into design-publish.sh, an orchestrator following the generic Fix bullet can re-run standalone validation on composed-plan.md, skipping redact/publish and leaving Gate C unfinished—matching the plan’s own failure mode #3	Scope generic Fix/Override to plan.txt only, or add explicit supersession prose (“When --site is design Step 5c, follow the site branch; do not use the generic Fix/Override bullets”) and update Override for Step 5c to re-capture design-publish.sh --skip-validate instead of “continue surrounding success path”
+
+### 1. [correctness] Shared handler generic bullets conflict with folded Step 5c (`skills/design/SKILL.md:1577-1581`)
+
+The plan adds a `--site design Step 5c` branch (Fix/Override via full `design-publish.sh` re-capture; no bare `ACTION=VALIDATE_PLAN_COMMANDS`) and calls out failure mode #3 (“Standalone VALIDATE on composed-plan”). The planned `SKILL.md` edit list does **not** narrow the generic shared-handler bullets, which still tell the orchestrator to re-run `ACTION=VALIDATE_PLAN_COMMANDS` on `composed-plan.md` and, on Override, to “continue the surrounding success path”:
+
+```1577:1581:skills/design/SKILL.md
+When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use **AskUserQuestion** ...
+- **Fix-and-retry** — ... Then re-run `ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-file <that same path>`.
+- **Override** — ... Then continue the surrounding success path; ...
+- **Cancel** — ... **Step 5c**: skip `redact-secrets.sh`, `plan-block-write.sh`, publish/rename tail items, and Step 6 cleanup on this branch.
+```
+
+After the fold, defects surface as `design-publish.sh` exit **4**, not as a standalone `ACTION=VALIDATE_PLAN_COMMANDS` handoff. Without superseding the generic bullets, the site branch and the folded driver can diverge.
+
+**Suggested revision:** In the `### Plan command validator failure (shared)` edit, restrict the generic Fix/Override text to `plan.txt` sites, or add one supersession sentence before the site branch; align the Step 5c Override path with `design-publish.sh --skip-validate` (not “continue success path”).
+
+---
+
+### Cross-doc sweep (hits outside the 18-file scope)
+
+| Location | Assessment |
+|----------|------------|
+| `README.md`, `docs/`, `skills/shared/`, `.claude/rules/`, `AGENTS.md`, `SECURITY.md`, `skills/shared/topology.tsv` | No `review_budget` / `skipped-quick` / `--force-validate` / composed-plan precondition drift beyond what the 18 files already cover |
+| `larch-logs/**/run-params.json`, `larch-logs/implement/**` | Historical artifacts; plan edge case (legacy `review_budget` ignored) is sufficient—no doc migration |
+| `skills/design/scripts/invoke-plan-validator.md` | Already states no `run-params` read; no change required |
+| `skills/design/scripts/design-init-runparams.md` | No `review_budget` prose; script removal is in scope via `design-init-runparams.sh` |
+| `scripts/test-step0b-router-flag-recovery.sh` | No `review_budget` references |
+
+### `schema_version` / run-log topology
+
+The plan’s choice to keep `schema_version: 3` and drop `review_budget` without a bump is consistent with current docs: `run-params.json` is ephemeral per run (`write-run-params.md`), `topology.tsv` does not list `review_budget`, and `docs/run-logs.md` `schema_version` refers to other artifacts—not run-params v3. No migration note required beyond the plan’s legacy-key edge case.
+
+### In-scope coverage verified
+
+Hits inside the 18-file set (`flags.md`, `discussion-rounds.md:126`, `approval-gates.md:157`, `design-driver.md:9-10`, `test-design-structure.sh` pins, Step 5c inline validate/redact, `design-publish.sh` precondition on `composed-plan.redacted.md`) are addressed by the planned edits and harness updates. No additional mandatory file churn identified for SIMPLE minimum-change.

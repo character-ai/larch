@@ -1,0 +1,24 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -9,7 +9,7 @@
+ - Change the precondition (currently `composed-plan.redacted.md` non-empty) to require non-empty `composed-plan.md`. The driver now produces the redacted file itself.
+ - After preconditions and before `plan-block-write.sh`, insert two folded steps:
+   1. Unless `--skip-validate`: capture `"$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md"` under `set +e`, restore `set -e`, then parse `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, `VALIDATE_LOG_FILE` from the captured output (extend the existing `parse_kv_from_output` case arms). The `composed-plan.md` basename makes `validate-plan.sh` pick `source_kind=composed`, so Tier 3 stays disabled.
+-     - On `VALIDATE_STATUS=defects-found`: set `PLAN_WRITE_OK=false`, write the result env with `VALIDATE_STATUS` + counts + `VALIDATE_LOG_FILE`, do NOT redact/publish/rename/write the reentry marker, and `exit 4` (new defects-found hand-back code). No `render-final-summary.sh` on this path.
++     - On `VALIDATE_STATUS=defects-found`: set `PLAN_WRITE_OK=false`, write the result env with `VALIDATE_STATUS` + counts + `VALIDATE_LOG_FILE` **best-effort** (result-env write runs under `set +e`; a write failure is non-fatal — the caller's file-first parser falls back to stdout, which always carries the keys), do NOT redact/publish/rename/write the reentry marker, and unconditionally `exit 4`. No `render-final-summary.sh` on this path.
+      - On validator infra failure (driver rc != 0 with `VALIDATE_STATUS != defects-found`, or empty / `not-run`): `fail` (exit 2). The validator error stays on stderr.
+   2. Redact with an explicit failure contract: `if ! cat "$DESIGN_TMPDIR/composed-plan.md" | "$PLUGIN_ROOT/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"; then fail "redact-secrets.sh failed"; fi`. Then, if the redacted file is empty, `fail` (exit 2).
+ - Leave the existing publish tail otherwise unchanged and preserve the current order: `plan-block-write.sh` -> diagrams upsert -> `design-log-publish.sh` -> `render-final-summary.sh` -> `[DESIGNED]` rename -> `design_reentry_marker_write`. Keep its 0/1/2/3 exit codes intact; exit 4 is additive.
+@@ -85,6 +85,7 @@
+ - Add: validator stub exits 0 with empty / missing `VALIDATE_STATUS` or `VALIDATE_STATUS=not-run` -> exit 2, no redact/plan-block-write/publish/rename/marker.
+ - Add: redactor stub exits 0 with empty stdout on non-empty `composed-plan.md` -> exit 2, no publish-tail side effects.
+ - Add: `--skip-validate` asserts `.design-publish-result.env` contains `VALIDATE_STATUS=skipped` plus existing publish-tail assertions.
++- Add: result-env write fails (tmpdir made read-only) on `VALIDATE_STATUS=defects-found` -> still exits 4; stdout carries `VALIDATE_STATUS=defects-found` for the stdout-fallback path (no env file = caller uses stdout parse).
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+ - Replace the `(14b11)` "validator before redact-secrets inline in SKILL.md" check (it scans SKILL.md Step 5c) with one asserting `design-publish.sh` contains both `invoke-plan-validator.sh` and `redact-secrets.sh` with the validator first, and that SKILL.md Step 5c no longer inlines them.
+@@ -146,3 +147,3 @@
+ - Manual: a `/design` finalize on a plan with a deliberately hallucinated flag exercises defects-found -> shared prompt -> Fix (`design-publish.sh` re-capture) or `--skip-validate` Override path.
+ 
+-diff_lines: 298
++diff_lines: 312

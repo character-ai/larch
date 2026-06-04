@@ -1,0 +1,103 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -6,6 +6,7 @@
+ ### UPDATED: `skills/design/scripts/design-publish.sh`
+ - Add a `--skip-validate` boolean flag (default false). Used only for the operator accept / proceed-anyway path.
+ - Change the precondition (currently `composed-plan.redacted.md` non-empty) to require non-empty `composed-plan.md`. The driver now produces the redacted file itself.
++- After preconditions pass and before validation/redaction side effects, add the canonical pause checkpoint: `[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}` (same contract as other design drivers; honors pause during initial publish and any orchestrator retry re-invocation).
+ - After preconditions and before `plan-block-write.sh`, insert two folded steps:
+   1. Unless `--skip-validate`: capture `"$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md"` under `set +e`, restore `set -e`, then parse `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, `VALIDATE_LOG_FILE` from the captured output (extend the existing `parse_kv_from_output` case arms). The `composed-plan.md` basename makes `validate-plan.sh` pick `source_kind=composed`, so Tier 3 stays disabled.
+      - On `VALIDATE_STATUS=defects-found`: set `PLAN_WRITE_OK=false`, write the result env with `VALIDATE_STATUS` + counts + `VALIDATE_LOG_FILE` **best-effort** (result-env write runs under `set +e`; a write failure is non-fatal — the caller's file-first parser falls back to stdout, which always carries the keys), do NOT redact/publish/rename/write the reentry marker, and unconditionally `exit 4`. No `render-final-summary.sh` on this path.
+@@ -19,6 +20,7 @@
+ ### UPDATED: `skills/design/scripts/design-publish.md`
+ - Change **Caller** to: Step 5c after item 1 (compose `composed-plan.md`) on Gate-C-approved runs.
+ - Document `--skip-validate` in the Argv table.
++- Document the pre-side-effect pause checkpoint (same `design-pause-save.sh` exec as other design drivers) immediately after composed-plan precondition and before validation.
+ - Update Responsibilities: precondition is non-empty `composed-plan.md`; the driver validates (Tier 2; Tier 3 disabled for composed) using a `set +e` capture, then redacts to `composed-plan.redacted.md`, then runs the publish tail; `--skip-validate` skips only validation.
+ - Replace stale **Ordering invariants** / responsibility bullets: remove `design_reentry_marker_write` before publish/rename and remove `render-final-summary.sh --pre-publish-only`; document the actual script order — validate (unless skipped) → redact → `plan-block-write.sh` → `upsert-diagrams-comment.sh` (when applicable) → `design-log-publish.sh` (when `SESSION_ID` non-empty) → `render-final-summary.sh --post-publish-only` → `[DESIGNED]` rename (when `SESSION_ID` non-empty and `PUBLISH_OK=true`) → `design_reentry_marker_write`.
+ - Add exit code `4` = composed-plan validation found defects (`VALIDATE_STATUS=defects-found`); nothing redacted/published/renamed/marked complete.
+@@ -44,7 +46,8 @@
+   1. Compose `composed-plan.md` (unchanged).
+   2. Delete the old item-2 validation fenced block (`review_budget` / `invoke-plan-validator.sh`) and item-3 redaction. Single `design-publish.sh` invoke + file-first/stdout result-env parse fence (validates → redacts → publish tail). Keep `**⚠ Foreground required**` immediately above the fence.
+-     - Before **each** `design-publish.sh` attempt (initial and retries), `rm -f "$DESIGN_TMPDIR/.design-publish-result.env"` so a prior rc-4 defects-found env cannot satisfy the file-first parser on stdout-fallback or partial-write paths; when `_publish_rc`=3, treat stdout as authoritative and do not read a pre-existing result env.
++     - Before **each** `design-publish.sh` attempt (initial and retries), prepend the canonical two-line session prelude plus pause checkpoint immediately before the driver call: source `current-design-env-$PPID.sh`, then `[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}`; then `rm -f "$DESIGN_TMPDIR/.design-publish-result.env"` so a prior rc-4 defects-found env cannot satisfy the file-first parser on stdout-fallback or partial-write paths; when `_publish_rc`=3, treat stdout as authoritative and do not read a pre-existing result env.
++     - Retry recaptures (shared-handler **Fix** / **Override** paths) reuse the same prelude + pause-check + `rm -f .design-publish-result.env` wrapper — do not call `design-publish.sh` bare on retries.
+      - When `_publish_rc`=4, mirror the rc-3 stdout carve-out: if `.design-publish-result.env` is absent or unreadable, parse `VALIDATE_*` from `_publish_out` and proceed to the shared handler — do **not** abort on missing/unreadable result env when stdout carries `VALIDATE_STATUS=defects-found` (covers driver exit 4 after a best-effort result-env write failure).
+      - Add the five `VALIDATE_*` keys to parse case arms before rc handling.
+      - Unexpected-rc abort guard: non-zero outside `{0,1,3,4}` aborts; **do not** treat rc 4 as unexpected.
+@@ -52,7 +55,7 @@
+      - Retry loop after shared handler: **Fix** — operator edits `composed-plan.md` (re-run item 1 when `plan.txt` changed), then re-capture `design-publish.sh` without `--skip-validate`; **Override/Accept** — `append-tool-failure.sh` Warnings (site `design Step 5c`, `validate-plan-commands.log`) then re-capture `design-publish.sh --skip-validate`; **Cancel** — preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, stop before items 3–5. Each retry replaces `_publish_out`, `_publish_rc`, and all parsed result-env fields via the same parse path.
+   3. Final-summary verbatim emit — only when latest `_publish_rc` ∈ {0, 1, 3} (regardless of `PLAN_WRITE_OK`).
+-  4. `step-5c` sentinel — only when latest `_publish_rc` ∈ {0, 1, 3} and `PLAN_WRITE_OK=true`.
++  4. `step-5c` sentinel — only when latest `_publish_rc` ∈ {0, 1, 3} **and** `PLAN_WRITE_OK=true` (both gates required; rc 4 never writes the sentinel).
+   5. Plan-write failure / preserve tmpdir — only when latest `_publish_rc` ∈ {0, 1, 3} and `PLAN_WRITE_OK=false`; skip Step 6 cleanup.
+ - Driver exit-code contract prose: replace all `items 5–7` references with `items 3–5`; widen `{0,1,3}` to `{0,1,3,4}` where the unexpected-rc guard is defined; state rc 4 runs the shared handler before items 3–5.
+ - **### Plan command validator failure (shared)**:
+@@ -60,7 +63,7 @@
+   - **`--site design Step 5c`**: target `composed-plan.md` only — **do not** end Fix/Override with bare `ACTION=VALIDATE_PLAN_COMMANDS` on `composed-plan.md` (that would skip redact/publish). **Fix** — edit `composed-plan.md` (re-compose item 1 when `plan.txt` changed), `rm -f .design-publish-result.env`, re-capture `design-publish.sh` (no `--skip-validate`). **Override/Accept** — Warnings append (same as plan.txt sites), then re-capture `design-publish.sh --skip-validate`. **Cancel** — preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup.
+ - `review_budget` prose: Step 2a — drop the "Also read `review_budget`" sentence. `invoke-plan-validator.sh` helper-list line — drop "owns the `review_budget=quick` skip" / "Step 5c still guards composed-plan validation prompt-side"; state validation is unconditional and `design-publish.sh` owns composed-plan validation. Gate A re-entry note — drop the "driver owns the quick validator skip" clause.
+ 
++### UPDATED: `skills/design/scripts/test-design-publish.sh` (pause)
++- Add a harness case: with `.pause-requested` present before driver invocation, `design-publish.sh` execs `design-pause-save.sh` and does not run validation/redaction/plan-block-write (stub or side-effect counter proves no publish-tail mutation).
++
+ ### UPDATED: `skills/design/scripts/design-postplan-emit.sh`
+ - Remove the `REVIEW_BUDGET` read and the `if [[ "$REVIEW_BUDGET" == quick && "$FORCE_VALIDATE" != true ]]` quick-skip branch; always run the current validate `else` body.
+ - Keep `--force-validate` in the usage string and arg parse as an **accepted no-op** (legacy/resumed callers must not fail unknown-option); do not read `FORCE_VALIDATE` for gating.
+@@ -118,7 +121,9 @@
+ - Add assertions that SKILL.md Step 5c parses the five `VALIDATE_*` keys, handles exit 4 via the shared handler before items 3–5, retries with `rm -f .design-publish-result.env` (or equivalent quarantine prose), replaces `_publish_out` / `_publish_rc` / result-env state, and that the unexpected-rc guard includes 4.
+ - Add assertions that Step 5c does **not** abort on missing/unreadable `.design-publish-result.env` when `_publish_rc=4` and stdout carries `VALIDATE_STATUS=defects-found` (rc-4 stdout-fallback before shared handler).
+-- **Retire/replace** existing `(15b)` pins at lines ~1348, ~1374, ~1380 that hard-require only `_publish_rc` 0/1/3: update greps to allow rc 4 in the driver contract while pinning rc-4-before-items-3-5 and latest-rc gating for items 3–5 / Step 5d.
++- Add assertion that SKILL.md Step 5c publish fence (and retry prose) includes the pause-check prelude before `design-publish.sh`, and that `design-publish.sh` contains an equivalent pre-side-effect pause checkpoint.
++- **Retire/replace** existing `(15b)` pins at lines ~1344–1345, ~1348, ~1374, ~1380 that hard-require only `_publish_rc` 0/1/3 or `PLAN_WRITE_OK`-only sentinel gating: update the ~1344–1345 greps to pin latest `_publish_rc` ∈ {0,1,3} **and** `PLAN_WRITE_OK=true` for the `step-5c` sentinel; update ~1348/~1374/~1380 greps to allow rc 4 in the driver contract while pinning rc-4-before-items-3-5 and latest-rc gating for items 3–5 / Step 5d.
+ - Remove the `flags.md` `skipped-quick` pin and the `discussion-rounds.md` `--force-validate` **gating** pin. Add narrow absence checks for stale `review_budget=quick`, `skipped-quick`, and quick-skip / `FORCE_VALIDATE` gating prose in affected design docs / SKILL helper text; allow legacy-no-op mentions of `--force-validate` / `--review-budget`. Fix the stale "quick validator skip owner" message text.
+ 
+ ### UPDATED: `scripts/test-render-cost-line-callsites.sh`
+@@ -127,9 +132,11 @@
+ ### UPDATED: `skills/design/scripts/test-design-postplan-emit.sh`
+ - Delete the "quick skip" case and the "quick + force validate" case.
+ - Drop `review_budget` from the `setup_design_tmp` fixture and the inline `run-params.json` fixtures; drop the `quick` budget argument.
+-- Add a legacy `run-params.json` fixture carrying `review_budget=quick` and assert the validator stub still runs and emits `VALIDATE_STATUS=ok` (proves no reader/skip branch remains).
++- Add a legacy `run-params.json` fixture carrying `review_budget=quick` and assert the validator stub still runs and emits `VALIDATE_STATUS=ok` (proves no reader/skip branch remains).
++- Add a legacy `--force-validate` argv case (no quick-skip branch): invoke exits 0, validator stub still runs, `.design-postplan-emit-result.env` carries `VALIDATE_STATUS=ok` (proves accepted no-op does not suppress validation).
+ 
+ ### UPDATED: `scripts/test-write-run-params.sh`
+ - Remove the old positive `review_budget` emission assertions and drop `--review-budget` from the primary round-trip invocations.
++- Remove or rewrite the `bad-review-budget` rejection case (`--review-budget medium` must no longer exit non-zero): replace with legacy no-op cases asserting exit 0 and `has("review_budget") == false` for `--review-budget medium` and `--review-budget quick`.
+ - Add jq assertions that emitted JSON does not have `review_budget` (`has("review_budget") == false`).
+-- Add a legacy argv case: `--review-budget full` is **accepted** (exit 0) but `review_budget` is **not** emitted in JSON.
++- Add legacy argv cases: `--review-budget full|quick|medium` are each **accepted** (exit 0) but `review_budget` is **not** emitted in JSON.
++- Rewrite the `empty-v3-fields` jq assertion: when `--review-budget ""` is passed, assert `has("review_budget") == false` (key absent), not `.review_budget == null`.
+ 
+ ### UPDATED: `scripts/test-lint-skill-md-flag-signature.sh`
+ - Remove `--review-budget "$review_budget"` from the generated `SKILL.md` heredoc fixtures (`multiline_good`, `regression_fixed`) so new invocations stay in sync; fixture `write-run-params.sh` may retain `--review-budget` in its allowlist as legacy no-op.
+@@ -139,6 +146,7 @@
+ - **Unconditional validation.** Delete the quick-skip branch in `design-postplan-emit.sh` so the validator always runs; stop emitting/reading `review_budget` in new `run-params.json`. Keep `--force-validate` and `--review-budget` argv accepted as no-ops so resumed scripts and external callers do not fail unknown-option. `design_classification` (SIMPLE/HARD) is untouched.
+ - **Prompt-mediated defect handling.** Keep the existing shared validator-failure prompt. **plan.txt sites** keep `VALIDATE_PLAN_COMMANDS` Fix loops. **Step 5c** uses site-specific Fix/Override: full `design-publish.sh` re-capture (with `--skip-validate` only on Override), never standalone composed-plan validation. Step 5c parse must accept rc-4 stdout fallback (mirror rc 3) so defects-found reaches the shared handler when result-env write fails. Anti-halt / Final summary / Step 5d must not advance on rc 4 until the retry loop settles.
++- **Pause parity.** Folded publish must not bypass pause/resume: driver-internal checkpoint plus orchestrator fence prelude on every initial/retry `design-publish.sh` call so `.pause-requested` during composition or retry saves state instead of validating/redacting/publishing.
+ 
+ ### Edge cases
+ - `composed-plan.md` present but empty -> exit 2 (precondition).
+@@ -152,6 +160,7 @@
+ - Prior `.design-publish-result.env` from rc 4 -> removed before each retry so file-first parse cannot keep stale `VALIDATE_STATUS=defects-found`.
+ - `run-params.json` from a legacy in-flight run still carrying `review_budget` -> ignored (no reader remains); no default needed.
+ - Legacy argv `--review-budget full|quick` or `--force-validate` on `write-run-params.sh` / `design-postplan-emit.sh` -> accepted no-op; validation still runs; JSON omits `review_budget`.
++- Legacy argv `--review-budget medium` (or any other formerly rejected value) on `write-run-params.sh` -> accepted no-op; exit 0; JSON omits `review_budget`.
+ - Step 5c rc 4 with missing/unreadable `.design-publish-result.env` but stdout `VALIDATE_STATUS=defects-found` -> parse stdout, route shared handler; do not abort.
++- `.pause-requested` set after compose or during Step 5c retry -> pause checkpoint runs before validation/redaction/publish side effects (driver and/or orchestrator fence); no plan-block-write/rename/marker.
+ 
+ ### Failure modes
+ - **Exit-4 not threaded through every caller.** Adding exit 4 without updating anti-halt, Final summary, Step 5d, and the SKILL.md unexpected-rc guard makes defects-found finalize abort or run items 3–5 early. Signal: clean path fine; defect path aborts or emits summary before Fix. Mitigation: rc-4 retry-loop carve-out everywhere `_publish_rc` 0/1/3 is gated; route rc 4 before items 3–5; update `test-design-structure.sh` and `test-render-cost-line-callsites.sh` pins.
+@@ -160,6 +169,7 @@
+ - **Standalone VALIDATE on composed-plan.** Shared handler still mandating `ACTION=VALIDATE_PLAN_COMMANDS` for Step 5c Fix leaves Gate C unfinished. Mitigation: site branch re-captures `design-publish.sh` only.
+ - **Unvalidated publish.** If the folded internal validate is mis-wired or skipped, a hallucinated command could publish. Signal: published `larch:plan` contains a bad command. Mitigation: validation is unconditional (no `review_budget` gate); the `defects-found -> exit 4` case is harness-covered, and only user Override uses `--skip-validate`.
+ - **Raw shell exit from validator/redactor.** `set -e` or pipeline failures could bypass the documented exit contract. Signal: defects or redaction errors exit with arbitrary rc/no result env. Mitigation: `set +e` capture for validator and explicit `if ! ...; then fail` around redaction, both harness-covered.
++- **Pause checkpoint dropped on fold.** Removing Step 5c inline validate/redact without preserving pause prelude lets `.pause-requested` during finalize proceed to side effects. Signal: pause during Step 5c still publishes or renames. Mitigation: driver-internal pause check before validation; orchestrator fence + retry wrapper keeps the same prelude; structure + publish harness pins.
+ 
+ ### Testing strategy
+ - Offline harnesses updated as above; run:
+@@ -175,4 +185,4 @@
+ 
+ - Manual: a `/design` finalize on a plan with a deliberately hallucinated flag exercises defects-found -> shared prompt -> Fix (`design-publish.sh` re-capture) or `--skip-validate` Override path.
+ 
+-diff_lines: 338
++diff_lines: 365

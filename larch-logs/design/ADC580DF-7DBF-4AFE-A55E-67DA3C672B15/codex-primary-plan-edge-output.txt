@@ -1,0 +1,4 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:1429-1468	Proposed Step 5c replacement drops the only pause checkpoint before final publish	If .pause-requested exists after Step 5b, the old validation block would exec design-pause-save before validating, but the remaining publish fence has no pause check, so the folded driver can validate, redact, and publish after a requested pause	Add the current pause prelude to the new design-publish attempt wrapper before every initial and retry call, or perform the same checkpoint inside design-publish.sh before validation and redaction
+
+1. [correctness] `skills/design/SKILL.md:1429-1468` — Keep the pause checkpoint when folding Step 5c. The plan deletes the validation fence that currently checks `.pause-requested`, while the publish fence does not check it. Preserve that prelude in the new driver call path.

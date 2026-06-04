@@ -1,0 +1,24 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-write-run-params.sh:144-147	`assert_rejected_with bad-review-budget` still expects `--review-budget medium` to exit 2	After `write-run-params.sh` treats `--review-budget` as a legacy no-op, `make test-write-run-params` fails even when script behavior matches the plan	Add to the plan's `test-write-run-params.sh` section: remove or rewrite the `bad-review-budget` rejection case; assert exit 0 and `has("review_budget") == false` for arbitrary legacy values like `medium`
+1	in_scope	important	correctness	scripts/test-write-run-params.sh:215-228	`empty-v3-fields` jq block still expects `.review_budget == null` after `--review-budget ""`	Once the jq template drops `review_budget`, the key is absent not null; the harness fails post-impl	Extend the plan's harness update: change the empty-string legacy case to assert `has("review_budget") == false` (same as the new default-write case)
+
+### 1. **correctness** — `scripts/test-write-run-params.sh:144-147`
+
+The plan makes `--review-budget` an accepted legacy no-op in `write-run-params.sh` (lines 67-69, 111-114) and drops enum validation, but the harness still requires rejection of `--review-budget medium`:
+
+```144:147:scripts/test-write-run-params.sh
+assert_rejected_with bad-review-budget 'invalid --review-budget: medium' \
+    --classification SIMPLE \
+    --review-budget medium \
+    --output "$TMPROOT/bad-review-budget.json"
+```
+
+After the script change, that case will fail CI. Add an explicit harness step to remove this rejection test and assert legacy values are accepted without emitting `review_budget`.
+
+### 2. **correctness** — `scripts/test-write-run-params.sh:215-228`
+
+The plan stops emitting `review_budget` in JSON but the `empty-v3-fields` round-trip still asserts `.review_budget == null`. With the field removed from the jq template, the correct assertion is `has("review_budget") == false`. The plan's `test-write-run-params.sh` bullet covers the default-write and `--review-budget full` legacy cases but omits this empty-string fixture.
+
+---
+
+**Exonerated (no additional findings):** The plan otherwise aligns legacy no-op handling across `design-postplan-emit.sh`, `design-init-runparams.sh`, `flags.md`, `approval-gates.md`, `discussion-rounds.md`, Step 5c fold into `design-publish.sh`, and the structural-test pin migrations (`skipped-quick`, `(14c14g)`, `(14b11)`, `(15b)` rc-4). Step 2a's false claim that Step 3 reads `review_budget` is addressed. A `--review-budget quick` argv harness case is latent only (edge case prose mentions it; runtime no-op covers it without extra scope).

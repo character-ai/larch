@@ -1,0 +1,7 @@
+cursor-plan-arch	cursor	collector-failure	STATUS=FAILED
+cursor-plan-edge	cursor	collector-failure	STATUS=FAILED
+cursor-plan-innovation	cursor	collector-failure	STATUS=FAILED
+cursor-plan-pragmatic	cursor	collector-failure	STATUS=FAILED
+cursor-plan-requirements	cursor	collector-failure	STATUS=FAILED
+dyn-cursor-plan-exit-code-threading	cursor	collector-failure	STATUS=FAILED
+dyn-cursor-plan-parse-state-lifecycle	cursor	collector-failure	STATUS=FAILED
