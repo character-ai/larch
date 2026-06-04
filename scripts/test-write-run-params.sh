@@ -221,7 +221,8 @@ jq -e '
   .design_classification_reason == null and
   .design_classification_source == null and
   .sketch_budget == null and
-  .workflow_path == null
+  .workflow_path == null and
+  has("review_budget") == false
 ' "$TMPROOT/empty-v3-fields.json" >/dev/null || fail "empty optional v3 fields did not emit JSON null"
 
 "$WRITER" \

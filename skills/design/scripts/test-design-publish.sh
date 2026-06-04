@@ -39,7 +39,14 @@ ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$STUB/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-net.sh" "$STUB/lib-net.sh" 2>/dev/null || true
 ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$STUB/append-tool-failure.sh"
 ln -sf "$REPO_ROOT/scripts/append-execution-issue.sh" "$STUB/append-execution-issue.sh"
-ln -sf "$REPO_ROOT/scripts/redact-secrets.sh" "$STUB/redact-secrets.sh"
+cat >"$STUB/redact-secrets.sh" <<'REDACT_STUB'
+#!/usr/bin/env bash
+# Controllable stub: REDACT_STUB_RC=N exits with that code; REDACT_EMPTY_OUTPUT=true emits nothing; else passes stdin through.
+if [[ "${REDACT_STUB_RC:-0}" -ne 0 ]]; then exit "${REDACT_STUB_RC}"; fi
+if [[ "${REDACT_EMPTY_OUTPUT:-false}" == true ]]; then exit 0; fi
+exec cat
+REDACT_STUB
+chmod +x "$STUB/redact-secrets.sh"
 write_reentry_guard_wrapper() {
     cat >"$STUB/lib-design-reentry-guard.sh" <<WRAP
 # shellcheck shell=bash
@@ -152,7 +159,10 @@ reset_publish_stub_env() {
         PUBLISH_PR_NUMBER PUBLISH_PR_URL PUBLISH_RECOVERY_BRANCH \
         UPSERT_STUB_RC UPSERT_STATUS_VALUE ARCH_SOURCE_VALUE \
         RENAME_STUB_RC RENAMED_OMIT_LINE RENAMED_VALUE RESOLVE_REPO_VALUE \
-        MARKER_STUB_RC VALIDATOR_STUB_RC VALIDATOR_STATUS_OMIT VALIDATE_STATUS_VALUE         VALIDATE_DEFECT_COUNT_VALUE VALIDATE_SKIPPED_COUNT_VALUE         VALIDATE_UNSAFE_TOKEN_COUNT_VALUE VALIDATE_LOG_FILE_VALUE || true
+        MARKER_STUB_RC VALIDATOR_STUB_RC VALIDATOR_STATUS_OMIT VALIDATE_STATUS_VALUE \
+        VALIDATE_DEFECT_COUNT_VALUE VALIDATE_SKIPPED_COUNT_VALUE \
+        VALIDATE_UNSAFE_TOKEN_COUNT_VALUE VALIDATE_LOG_FILE_VALUE \
+        REDACT_STUB_RC REDACT_EMPTY_OUTPUT || true
 }
 
 init_publish_logs() {
@@ -305,6 +315,49 @@ set -e
 assert_rc "pause checkpoint" 0 "$rc"
 grep -q 'pause-save' "$CALL_LOG" || fail "pause save not called"
 if grep -q 'validator\|plan-block-write' "$CALL_LOG"; then fail "pause must happen before validator/publish"; else pass "pause skipped validator/publish"; fi
+
+# --- redactor nonzero exit: exit 2, no publish side effects ---
+D_REDACT_FAIL="$TMP/redact-fail"
+setup_design_tmp "$D_REDACT_FAIL"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export REDACT_STUB_RC=1
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_REDACT_FAIL" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "redactor failure exit 2" 2 "$rc"
+if grep -q 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then fail "redactor failure must not publish"; else pass "redactor failure skipped plan-block-write"; fi
+
+# --- redactor produces empty output: exit 2, no publish side effects ---
+D_REDACT_EMPTY="$TMP/redact-empty"
+setup_design_tmp "$D_REDACT_EMPTY"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export REDACT_EMPTY_OUTPUT=true
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_REDACT_EMPTY" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>/dev/null
+rc=$?
+set -e
+assert_rc "redactor empty output exit 2" 2 "$rc"
+if grep -q 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then fail "empty redact must not publish"; else pass "empty redact skipped plan-block-write"; fi
+
+# --- exit-4 stdout-fallback when result-env write fails ---
+D_DEF_NOENV="$TMP/defects-no-result-env"
+setup_design_tmp "$D_DEF_NOENV"
+ln -sf /dev/null "$D_DEF_NOENV/.design-publish-result.env"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=1
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_DEF_NOENV" --issue 42 --session-id sid-1 --claude-pid 9999 >"$D_DEF_NOENV/stdout.txt" 2>/dev/null
+rc=$?
+set -e
+assert_rc "exit-4 result-env write fail still exits 4" 4 "$rc"
+grep -q 'VALIDATE_STATUS=defects-found' "$D_DEF_NOENV/stdout.txt" || fail "exit-4 stdout fallback must emit VALIDATE_STATUS"
 
 # --- plan-block-write failure ---
 D_FAIL="$TMP/fail-plan"

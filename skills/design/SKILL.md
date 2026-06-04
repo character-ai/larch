@@ -68,7 +68,7 @@ The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a w
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 ```
 
 The conditional `[ -f ... ] &&` form is uniform across blocks so that pre-upgrade in-progress runs degrade silently and unexpected absence surfaces as the standard `set -u` unbound-variable error rather than a corrupted `source` call. Step 0 itself (which CREATES the env file) does not prepend the line.

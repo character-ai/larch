@@ -1401,6 +1401,18 @@ grep -Fq 'do not abort solely because `_publish_rc`=1' "$SKILL_MD" \
 # shellcheck disable=SC2016
 grep -Fq '"${_publish_rc:-0}" -ne 3' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c unexpected-rc guard must exclude exit 3"
+grep -Fq '{0,1,3,4}' "$SKILL_MD" \
+  || fail "(FINDING_5) SKILL.md missing unexpected-rc {0,1,3,4} guard prose"
+grep -Fq 'rc-4 stdout-fallback' "$SKILL_MD" \
+  || fail "(FINDING_5) SKILL.md missing rc-4 stdout-fallback prose"
+# shellcheck disable=SC2016 # literal markdown pin should not expand
+grep -Fq 'rm -f "$DESIGN_TMPDIR/.design-publish-result.env"' "$SKILL_MD" \
+  || fail "(FINDING_5) SKILL.md Step 5c missing stale result-env quarantine before each attempt"
+grep -Fq 'set +e' "$DESIGN_PUBLISH_SH" \
+  || fail "(FINDING_5) design-publish.sh missing set +e around validator capture"
+# shellcheck disable=SC2016 # Literal markdown checking parameter expansion syntax
+printf '%s\n' "$step5c_block" | grep -Fq '${REPO:+--repo' \
+  || fail "(OOS_3) SKILL.md Step 5c pause checkpoint missing \${REPO:+--repo} threading"
 
 grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$SKILL_MD" \
   || fail "(26) SKILL.md missing literal session-cache banner"
