@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:13-16	--with-plan-size omits LARCH_QUIET_DISABLE=1 when invoking check-plan-size.sh from an already quiet-init parent	Under $() capture design-postplan-emit.sh runs larch_quiet_init; nested check-plan-size emit_kv lines go to the quiet log not the driver capture so HARD_TRIGGER_FIRED/SOFT_ADVISORY parsing rc12/rc13/0 and nonfatal rc2/3 WARN text silently fail	Match skills/design/SKILL.md:980: pin the subprocess call to LARCH_QUIET_DISABLE=1 stdout-only capture (same as standalone Step 2b.5) before mapping verdicts
+2	in_scope	important	correctness	plan.txt:29-31	skills/design/scripts/design-postplan-emit.sh:133-141	Thin-fence rc1 diagnostics channel unspecified — plan says driver emits human-readable failure lines but not that they must use emit/FD3	Current rc1 text lives on orchestrator stderr (skills/design/SKILL.md:942-959); thin fences only echo $() capture so larch_err/>&2 diagnostics are invisible to operators	Pin --with-plan-size rc1 subfailures to emit() on FD3 (lib-phase-driver.md:44-46); keep stderr generic abort only after capture is echoed
+
+**1. correctness** (`plan.txt:13-16`, `skills/design/scripts/check-plan-size.md:40`)
+
+The Approach says to run `check-plan-size.sh` after validation but never carries forward the standalone Step 2b.5 requirement to call it with `LARCH_QUIET_DISABLE=1` and capture stdout only (`skills/design/SKILL.md:979-980`). After `larch_quiet_init`, nested `check-plan-size.sh` `emit_kv` output is routed to the quiet log, not back into the parent `$()` capture (`scripts/lib-quiet.sh:53-78`, `158-178`). Hard/partition routing (rc 12/13), soft-advisory breadcrumbs, and rc 2/3 nonfatal WARN text would all be parsed from an empty capture.
+
+**Suggested revision:** Add an explicit subprocess contract in Approach and `design-postplan-emit.sh`: `LARCH_QUIET_DISABLE=1` + stdout-only capture for `check-plan-size.sh`, mirroring standalone Step 2b.5.
+
+**2. correctness** (`plan.txt:29-31`, `skills/design/scripts/design-postplan-emit.sh:133-225`)
+
+The plan moves rc1 failure-specific messaging into the driver for thin fences, but does not require those messages to use the FD3 display channel. Today the specific strings are printed by the orchestrator to stderr (`skills/design/SKILL.md:942-959`). Thin fences follow `lib-phase-driver.md:46` (`out=$(driver); echo "$out"; case "$rc"`), so stderr/`larch_err` diagnostics are not operator-visible.
+
+**Suggested revision:** Specify that `--with-plan-size` rc1 subfailure text (`missing-diff-lines`, emit failure, snapshot failure, validator infrastructure failure) is emitted via `emit` on FD3 before exit 1; thin-fence stderr may remain a generic abort line only.

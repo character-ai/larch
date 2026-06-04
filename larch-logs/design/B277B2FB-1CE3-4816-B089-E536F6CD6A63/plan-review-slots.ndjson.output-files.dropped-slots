@@ -1,0 +1,4 @@
+cursor-plan-innovation	cursor	collector-failure	STATUS=FAILED
+cursor-plan-pragmatic	cursor	collector-failure	STATUS=FAILED
+dyn-cursor-plan-state-handoff	cursor	collector-failure	STATUS=FAILED
+dyn-cursor-plan-caller-synchrony	cursor	collector-failure	STATUS=FAILED
