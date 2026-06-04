@@ -377,6 +377,7 @@ def poll_ci(
     checks = 0
     ci_failures = 0
     poll_interval = float(config.CI_WAIT_POLL_INTERVAL_SEC)
+    started_at = clock()
 
     while True:
         if checks >= max_polls:
@@ -436,6 +437,11 @@ def poll_ci(
             return status, decision
 
         checks += 1
+        elapsed = max(0.0, clock() - started_at)
+        _warn_stderr(
+            f"ci_monitor: poll {checks}/{max_polls} pending after {elapsed:.0f}s; "
+            f"sleeping {poll_interval:.0f}s",
+        )
         iter_start = clock()
         sleep_fn(poll_interval)
         iter_delta = clock() - iter_start

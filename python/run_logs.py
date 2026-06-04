@@ -799,6 +799,113 @@ def _safe_copy_run_tree(src: Path, dest: Path) -> None:
             _ = shutil.copy2(item, target)
 
 
+_VOLATILE_REFRESH_BASENAMES = frozenset({
+    "token-report-refresh.json",
+    "timing-report-refresh.json",
+    "session-transcript-refresh.txt",
+    "token-report-refresh.redacted.json",
+    "timing-report-refresh.redacted.json",
+    "session-transcript-refresh.redacted.txt",
+})
+_PORCELAIN_PATH_OFFSET = 3
+_IMPLEMENT_RUN_REL_PARTS = 3
+
+
+def _status_line_path(line: str) -> str:
+    if len(line) <= _PORCELAIN_PATH_OFFSET:
+        return ""
+    path = line[_PORCELAIN_PATH_OFFSET:].strip()
+    if " -> " in path:
+        path = path.rsplit(" -> ", 1)[1]
+    return path
+
+
+def _volatile_file_paths(rel: str, cwd: str, status_stdout: str) -> tuple[str, ...] | None:
+    if not rel.startswith("larch-logs/implement/") or len(rel.split("/")) != _IMPLEMENT_RUN_REL_PARTS:
+        return None
+    root = Path(cwd) / rel
+    paths: list[str] = []
+    for line in status_stdout.splitlines():
+        path = _status_line_path(line)
+        if not path:
+            return None
+        if path.rstrip("/") == rel and line.startswith("?? "):
+            if not root.is_dir():
+                return None
+            for item in sorted(root.rglob("*")):
+                if item.is_file():
+                    item_rel = item.relative_to(Path(cwd)).as_posix()
+                    if item.name not in _VOLATILE_REFRESH_BASENAMES:
+                        return None
+                    paths.append(item_rel)
+            continue
+        if not path.startswith(f"{rel}/"):
+            return None
+        if Path(path).name not in _VOLATILE_REFRESH_BASENAMES:
+            return None
+        paths.append(path)
+    return tuple(dict.fromkeys(paths))
+
+
+def _volatile_only_under_run_tree(rel: str, cwd: str, status_stdout: str) -> tuple[str, ...] | None:
+    paths = _volatile_file_paths(rel, cwd, status_stdout)
+    if paths is None or not paths:
+        return None
+    return paths
+
+
+def _run_git_cleanup(runner: Runner, argv: list[str], *, cwd: str | None) -> None:
+    result = runner.run(argv, cwd=cwd)
+    if result.returncode != 0:
+        msg = f"run-log volatile cleanup failed ({result.returncode}): {' '.join(argv)}"
+        raise ShipError(msg)
+
+
+def _cleanup_volatile_run_tree(
+    runner: Runner,
+    rel: str,
+    paths: tuple[str, ...],
+    status_stdout: str,
+    *,
+    cwd: str,
+) -> None:
+    lines = status_stdout.splitlines()
+    has_added = any(
+        not line.startswith("?? ") and "A" in line[:2]
+        for line in lines
+    )
+    has_staged = any(
+        not line.startswith("?? ") and line[:1] != " "
+        for line in lines
+    )
+    if has_staged:
+        _run_git_cleanup(runner, ["git", "reset", "HEAD", "--", rel], cwd=cwd)
+    tracked_paths = tuple(
+        path
+        for line in lines
+        if not line.startswith("?? ")
+        if "A" not in line[:2]
+        for path in (_status_line_path(line),)
+        if path in paths
+    )
+    if tracked_paths:
+        _run_git_cleanup(
+            runner,
+            ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", *tracked_paths],
+            cwd=cwd,
+        )
+    if has_added or any(line.startswith("?? ") for line in lines):
+        _run_git_cleanup(runner, ["git", "clean", "-fd", "--", rel], cwd=cwd)
+    repo_status = git.status_porcelain(runner, cwd=cwd)
+    if repo_status.returncode != 0:
+        msg = "git status failed after volatile run-log cleanup"
+        raise ShipError(msg)
+    if repo_status.stdout.strip():
+        snippet = "\n".join(repo_status.stdout.splitlines()[:20])
+        msg = f"volatile run-log cleanup left dirty porcelain:\n{snippet}"
+        raise ShipError(msg)
+
+
 def _scrub_run_tree(directory: Path) -> tuple[int, int]:
     """Scrub secret-shaped values from every file under ``directory`` in place
     before commit (parity with scripts/scrub-log-secrets.sh).
@@ -872,6 +979,17 @@ def _larch_log_commit(
         return status
     if not status.stdout.strip():
         return CommandResult(("true",), 0, "", "", 0.0)
+    if cwd is not None:
+        volatile_paths = _volatile_only_under_run_tree(rel, cwd, status.stdout)
+        if volatile_paths is not None:
+            _cleanup_volatile_run_tree(
+                runner,
+                rel,
+                volatile_paths,
+                status.stdout,
+                cwd=cwd,
+            )
+            return CommandResult(("true",), 0, "", "", 0.0)
     _ = git.add(runner, rel, cwd=cwd)
     if git.diff_quiet(runner, rel, cached=True, cwd=cwd):
         return CommandResult(("true",), 0, "", "", 0.0)

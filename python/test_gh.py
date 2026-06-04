@@ -171,7 +171,14 @@ def test_pr_create_uses_body_file_not_inline_body() -> None:
             CommandResult(
                 ("gh", "pr", "create"),
                 0,
-                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "https://github.com/o/r/pull/1\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "list"),
+                0,
+                '[{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}]',
                 "",
                 0.01,
             ),
@@ -186,9 +193,84 @@ def test_pr_create_uses_body_file_not_inline_body() -> None:
     )
     create_argv = runner.calls[1]
     assert "--body-file" in create_argv
+    assert "--json" not in create_argv
     assert "secret-body" not in create_argv
     body_path = create_argv[create_argv.index("--body-file") + 1]
     assert Path(body_path).is_file() is False
+
+
+def test_pr_create_resolves_success_from_post_create_list() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"),
+                0,
+                "https://github.com/o/r/pull/123\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "list"),
+                0,
+                '[{"number":123,"url":"https://github.com/o/r/pull/123","state":"OPEN","headRefName":"feat"}]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    pr, created = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
+    assert created is True
+    assert pr.number == 123
+    assert "--json" not in runner.calls[1]
+
+
+def test_pr_create_resolves_success_from_stdout_url_when_list_lags() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"),
+                0,
+                "https://github.com/o/r/pull/456\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+        ],
+    )
+    pr, created = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
+    assert created is True
+    assert pr.number == 456
+    assert pr.url == "https://github.com/o/r/pull/456"
+    assert pr.head_ref == "feat"
+
+
+def test_pr_create_success_without_resolvable_pr_raises_ship_error() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("gh", "pr", "create"), 0, "", "", 0.01),
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+        ],
+    )
+    with pytest.raises(ShipError, match="could not be resolved"):
+        _ = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
+
+
+def test_pr_create_recorded_gh_transcript_no_json_flag() -> None:
+    transcript_stdout = "https://github.com/o/r/pull/321\n"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("gh", "pr", "create"), 0, transcript_stdout, "", 0.01),
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+        ],
+    )
+    pr, created = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
+    assert created is True
+    assert pr.number == 321
+    assert "--json" not in runner.calls[1]
 
 
 def test_pr_merge_not_retried() -> None:
@@ -454,7 +536,14 @@ def test_pr_create_passes_base_and_assignee() -> None:
             CommandResult(
                 ("gh", "pr", "create"),
                 0,
-                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "https://github.com/o/r/pull/1\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "list"),
+                0,
+                '[{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}]',
                 "",
                 0.01,
             ),
@@ -484,7 +573,14 @@ def test_pr_create_redacts_title() -> None:
             CommandResult(
                 ("gh", "pr", "create"),
                 0,
-                '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}',
+                "https://github.com/o/r/pull/1\n",
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "list"),
+                0,
+                '[{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}]',
                 "",
                 0.01,
             ),

@@ -337,8 +337,6 @@ def pr_create(
             _redact_gh_scalar(title),
             body_flag,
             body_path,
-            "--json",
-            "number,url,state,headRefName",
         ]
         if assignee is not None:
             argv.extend(["--assignee", assignee])
@@ -363,24 +361,17 @@ def pr_create(
             if recovered is not None:
                 return recovered, False
         _ = _ensure_success(result)
-    data = _as_json_object(
-        _loads_json(result.stdout, context="pr create"),
-        context="pr create",
-    )
-    _require_json_keys(
-        data,
-        ("number", "url", "state", "headRefName"),
-        context="pr create",
-    )
-    return (
-        PullRequest(
-            number=_as_int(data["number"], context="pr create", field="number"),
-            url=str(data["url"]),
-            state=str(data["state"]),
-            head_ref=str(data["headRefName"]),
-        ),
-        True,
-    )
+    try:
+        recovered = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
+    except (ShipError, TransientNetworkError):
+        recovered = None
+    if recovered is not None:
+        return recovered, True
+    recovered = _recover_pr_from_conflict_text(result.stdout, branch=branch)
+    if recovered is not None:
+        return recovered, True
+    msg = "gh pr create succeeded, but the created PR could not be resolved"
+    raise ShipError(msg)
 
 
 def pr_merge(

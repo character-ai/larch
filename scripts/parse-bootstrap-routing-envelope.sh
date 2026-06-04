@@ -67,6 +67,7 @@ _inv_apply_routing_line() {
     coder|coder_fallback) [ -n "$_inv_value" ] || return 0 ;;
   esac
   printf -v "$_inv_key" '%s' "$_inv_value"
+  return 0
 }
 
 _inv_apply_routing_line_if_empty() {
@@ -103,6 +104,7 @@ _inv_apply_routing_line_if_empty() {
     BRANCH_NAME) [ -z "${BRANCH_NAME:-}" ] && BRANCH_NAME="$_inv_value" ;;
     BRANCH_ACTION) [ -z "${BRANCH_ACTION:-}" ] && BRANCH_ACTION="$_inv_value" ;;
   esac
+  return 0
 }
 
 if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/bootstrap-routing.env" ] && [ ! -L "$IMPLEMENT_TMPDIR/bootstrap-routing.env" ]; then

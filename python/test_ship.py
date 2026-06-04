@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 import config
 import run_logs
 import ship
+from errors import ShipError
 from outcomes import Outcome, StepResult
 from proc import CommandResult
 from run_context import RunContext
@@ -513,3 +514,51 @@ def test_emit_result_prints_json(capsys: pytest.CaptureFixture[str], tmp_path: P
     payload = json.loads(capsys.readouterr().out)
     assert payload["outcome"] == "OK"
     assert payload["pr_number"] == 2
+
+
+def test_ship_error_maps_to_stalled_result() -> None:
+    result = ship._error_to_result(ShipError("operational failure"))  # pyright: ignore[reportPrivateUsage]
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "operational failure"
+
+
+def test_run_ship_catches_ship_error_as_stalled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def raise_ship_error(*_a: object, **_k: object) -> StepResult:
+        raise ShipError("checks failed operationally")
+
+    monkeypatch.setattr(ship.checks, "run_checks_phase", raise_ship_error)
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "checks failed operationally"
+
+
+def test_main_emits_json_stdout_and_breadcrumb_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
+        ship._breadcrumb("checks", "Lint&Tests")  # pyright: ignore[reportPrivateUsage]
+        return ship.ShipResult(Outcome.STALLED, detail="stalled")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    rc = ship.main(
+        [
+            "--tmpdir",
+            str(tmp_path),
+            "--manifest-path",
+            str(tmp_path / "manifest.json"),
+            "--run-id",
+            "run-abc",
+        ],
+    )
+    captured = capsys.readouterr()
+    assert rc == 4
+    payload = json.loads(captured.out)
+    assert payload["outcome"] == "STALLED"
+    assert captured.out.count("\n") == 1
+    assert "ship.py: checks: Lint&Tests" in captured.err

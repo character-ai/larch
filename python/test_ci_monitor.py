@@ -299,6 +299,31 @@ def test_poll_ci_budget_exhaustion_bails() -> None:
     assert "Poll budget" in (decision.bail_reason or "")
 
 
+def test_poll_ci_emits_poll_breadcrumb_to_stderr(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    runner = RecordingRunner(_status(status="pending", behind=0))
+    _, decision = ci_monitor.poll_ci(
+        runner,
+        pr=1,
+        repo="o/r",
+        base_remote="origin",
+        base_ref="main",
+        empty_checks_grace=0,
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        timeout=10.0,
+        sleep_fn=lambda _s: None,
+        clock=lambda: 7.0,
+    )
+    captured = capsys.readouterr()
+    assert decision.action == "bail"
+    assert captured.out == ""
+    assert "ci_monitor: poll 1/" in captured.err
+    assert "sleeping" in captured.err
+
+
 def test_poll_ci_three_consecutive_errors_bail() -> None:
     responses = _status(status="pass")
     responses[("gh", "pr", "view", "1", "--repo", "o/r", "--json", "number,url,state,headRefName,mergedAt,mergeStateStatus")] = _cr(

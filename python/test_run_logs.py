@@ -544,3 +544,94 @@ def test_scrub_run_tree_fail_closed_on_residual(
     monkeypatch.setattr(run_logs.redact, "scrub_log_secrets", _never_scrubs)
     with pytest.raises(ShipError, match="secret survived scrubbing"):
         _ = run_logs._scrub_run_tree(run_dir)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_larch_log_commit_skips_volatile_refresh_only_and_cleans(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rel = "larch-logs/implement/run-abc"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("git", "status"),
+                0,
+                f"?? {rel}/token-report-refresh.json\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("git", "clean"), 0, "", "", 0.01),
+            CommandResult(("git", "status"), 0, "", "", 0.01),
+        ],
+    )
+    result = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        _ctx(tmp_path, str(state)),
+        tmp_path / "larch-logs",
+        cwd=str(repo),
+    )
+    assert result.returncode == 0
+    assert runner.git_commits == 0
+    assert ["git", "clean", "-fd", "--", rel] in runner.calls
+
+
+def test_larch_log_commit_commits_canonical_token_report_delta(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "token-report.json").write_text("{}", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rel = "larch-logs/implement/run-abc"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "status"), 0, f" M {rel}/token-report.json\n", "", 0.01),
+            CommandResult(("git", "add"), 0, "", "", 0.01),
+            CommandResult(("git", "diff"), 1, "", "", 0.01),
+            CommandResult(("git", "commit", "-m"), 0, "", "", 0.01),
+        ],
+    )
+    result = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        _ctx(tmp_path, str(state)),
+        tmp_path / "larch-logs",
+        cwd=str(repo),
+    )
+    assert result.returncode == 0
+    assert any(call[:3] == ["git", "commit", "-m"] for call in runner.calls)
+
+
+def test_larch_log_commit_volatile_cleanup_fails_closed_on_dirty_repo(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "timing-report-refresh.json").write_text("{}", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rel = "larch-logs/implement/run-abc"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "status"), 0, f"?? {rel}/timing-report-refresh.json\n", "", 0.01),
+            CommandResult(("git", "clean"), 0, "", "", 0.01),
+            CommandResult(("git", "status"), 0, " M README.md\n", "", 0.01),
+        ],
+    )
+    with pytest.raises(ShipError, match="dirty porcelain"):
+        _ = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            _ctx(tmp_path, str(state)),
+            tmp_path / "larch-logs",
+            cwd=str(repo),
+        )

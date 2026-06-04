@@ -30,7 +30,7 @@ Shared `/implement` Step 0 routing envelope parse (file-first `bootstrap-routing
 4. Fill any still-empty keys from `_inv_out` lines.
 5. `export` the canonical routing key set.
 
-Malformed lines (empty key, non-identifier key, unknown key) are ignored.
+Malformed lines (empty key, non-identifier key, unknown key) are ignored. The `_inv_apply_*` helpers always end with `return 0` after handling a valid line so duplicate stdout-fallback keys cannot trip `set -e` when file-first parsing already populated them.
 
 ## Primary caller
 
@@ -40,4 +40,5 @@ Malformed lines (empty key, non-identifier key, unknown key) are ignored.
 
 - `scripts/implement-bootstrap-invoke.sh` (envelope key list + `_inv_emit_routing_kv` allowlist)
 - `scripts/test-implement-structure.sh` + `scripts/test-implement-structure.md`
+- `scripts/test-parse-bootstrap-routing-envelope.sh` + `scripts/test-parse-bootstrap-routing-envelope.md`
 - `skills/implement/SKILL.md` Step 0 bash fences

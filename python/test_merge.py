@@ -98,6 +98,14 @@ def _mock_true(*_a: object, **_k: object) -> bool:
     return True
 
 
+def _mock_rev_new(*_a: object, **_k: object) -> str:
+    return "new"
+
+
+def _mock_force_push_ok(*_a: object, **_k: object) -> git_module.ForcePushResult:
+    return git_module.ForcePushResult(pushed=True, status="ok", branch="feat")
+
+
 def test_redact_merge_diagnostic_truncates() -> None:
     text = "x" * 1000
     out = merge_module.redact_merge_diagnostic(text)
@@ -244,7 +252,7 @@ def test_merge_closed_unmerged_is_error(tmp_path: Path) -> None:
     assert "not merged" in out.error
 
 
-def test_merge_flush_pre_post_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_merge_skips_pre_flush_and_runs_post_flush(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     order: list[str] = []
 
     def fake_pre(*_a: object, **_k: object) -> run_logs.RefreshSkip:
@@ -290,7 +298,7 @@ def test_merge_flush_pre_post_order(monkeypatch: pytest.MonkeyPatch, tmp_path: P
     _ = (tmp_path / "state.env").write_text("RUN_ID=run-abc\n", encoding="utf-8")
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_MERGED
-    assert order == ["pre", "post"]
+    assert order == ["post"]
 
 
 def test_flush_recoverable_rejects_more_than_five_commits(
@@ -539,7 +547,7 @@ def test_ensure_head_empty_local_head_is_error() -> None:
     assert "local HEAD" in out.error
 
 
-def test_merge_continues_when_pre_flush_commit_fails(
+def test_merge_does_not_call_pre_flush_on_clean_green_path(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -571,7 +579,10 @@ def test_merge_continues_when_pre_flush_commit_fails(
             CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
         ],
     )
+    pre_calls = {"count": 0}
+
     def fake_pre_skipped(*_a: object, **_k: object) -> run_logs.RefreshSkip:
+        pre_calls["count"] += 1
         return run_logs.RefreshSkip(skipped=True, reason="commit-failed")
 
     monkeypatch.setattr(run_logs, "flush_logs_pre", fake_pre_skipped)
@@ -581,6 +592,7 @@ def test_merge_continues_when_pre_flush_commit_fails(
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state), pr_number=1)
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+    assert pre_calls["count"] == 0
 
 
 def test_merge_flush_recovery_success_emits_admin_merged(
@@ -633,6 +645,98 @@ def test_merge_flush_recovery_success_emits_admin_merged(
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+
+
+def test_merge_flush_recovery_polls_lagged_pr_head_oid(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    open_pr = '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}'
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"old"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"old"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"new"}',
+                "",
+                0.01,
+            ),
+            CommandResult(("gh", "pr", "merge"), 0, "", "", 0.01),
+        ],
+    )
+    sleeps: list[float] = []
+
+    monkeypatch.setattr(merge_module, "_flush_recoverable", _mock_true)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_new)
+    monkeypatch.setattr(git_module, "force_push_recovery", _mock_force_push_ok)
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx, sleeper=sleeps.append)
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
+    assert sleeps == [5.0]
+
+
+def test_merge_flush_recovery_oid_poll_exhaustion_errors(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    open_pr = '{"number":1,"url":"u","state":"OPEN","headRefName":"feat"}'
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(("gh", "pr", "view", "1"), 0, open_pr, "", 0.01),
+            CommandResult(
+                ("gh", "pr", "view", "1"),
+                0,
+                '{"mergeStateStatus":"CLEAN","headRefOid":"old"}',
+                "",
+                0.01,
+            ),
+            *[
+                CommandResult(
+                    ("gh", "pr", "view", "1"),
+                    0,
+                    '{"mergeStateStatus":"CLEAN","headRefOid":"old"}',
+                    "",
+                    0.01,
+                )
+                for _ in range(config.MERGE_PR_POST_PUSH_UNKNOWN_RETRIES)
+            ],
+        ],
+    )
+    sleeps: list[float] = []
+    monkeypatch.setattr(merge_module, "_flush_recoverable", _mock_true)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_new)
+    monkeypatch.setattr(git_module, "force_push_recovery", _mock_force_push_ok)
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module.merge_pr(runner, ctx, sleeper=sleeps.append)
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert "after force-push recovery" in out.error
+    assert len(sleeps) == config.MERGE_PR_POST_PUSH_UNKNOWN_RETRIES - 1
 
 
 def test_merge_post_recovery_ci_pending(
