@@ -1,0 +1,109 @@
+## Summary
+
+Move the `[DESIGNING]`→`[DESIGNED]` title rename in `design-publish.sh` to right after the architecture-diagram upsert, and drop its `PUBLISH_OK==true` gate. This admits the issue to `/implement` as soon as the plan + diagram are posted, without waiting on the design-log PR. A later log-publish failure can no longer block or delay `/implement`. The `design_reentry_marker_write` guard stays where it is (after publish, still gated on `PUBLISH_OK==true`), per operator decision.
+
+This is a SIMPLE-tier reorder inside one script plus its contracts, four test harnesses, and stale admission/Gate C/operator prose. No `/implement` Preflight logic, security, or publish-model change. Sync Step 0b clarify, Gate C approval copy, Step 5d failed-publish footer, and `failed-publish` summary notes so operators do not infer the removed `PUBLISH_OK` rename gate still blocks `/implement`.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/scripts/design-publish.sh`
+
+Move the rename out of the publish-gated block and run it earlier.
+
+- Lift the rename sub-block (the `_rename_out=$(... tracking-issue-write.sh rename --issue "$ISSUE" --state designed ...)` `if`/`else` with its `RENAMED` / `_rename_seen` parse) out of the existing `if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then ... fi` block.
+- Insert it as a new block **immediately after the `upsert-diagrams-comment.sh` block** (after the diagram upsert `fi`, before the `if [[ -n "$SESSION_ID" ]]; then ... design-log-publish.sh ...` publish block), gated on `if [[ -n "$SESSION_ID" ]]; then ... fi` only — no `PUBLISH_OK` condition.
+- Leave the reentry-marker sub-block (the `source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"` + `design_reentry_marker_write "$ISSUE" "$CLAUDE_PID"` + `append-tool-failure.sh` failure handling) where it is, still inside `if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then ... fi`. That block now contains only the marker logic.
+- Update the rename-failure warn string: drop the now-inaccurate "and logs may have published" clause (the rename now runs before publish). Keep the literal `[DESIGNED]` token and the words `rename failed` so the existing result-env regex assertion still matches. New text, e.g.: `**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); the plan was written but the issue title was not updated. Re-invoke /design or rename the issue manually if the title is still wrong.**`
+
+Resulting publish-tail order: `plan-block-write.sh` → `upsert-diagrams-comment.sh` → **rename `--state designed`** → `design-log-publish.sh` → `render-final-summary.sh --post-publish-only` → `design_reentry_marker_write`.
+
+Preserve everything else byte-for-byte: the `set +e`/`set -e` capture discipline, `RENAMED=""` init at the top, `write_result_env_and_emit`, exit codes, and the `${REPO:+--repo "$REPO"}` threading on the rename call.
+
+### UPDATED: `skills/design/scripts/design-publish.md`
+
+Bring the contract in line with the new code (and correct pre-existing drift in the same sections).
+
+- **Ordering invariants** ("On success:" line): rewrite to the true post-change order — `plan-block-write.sh` → `upsert-diagrams-comment.sh` (when architecture file or skipped sentinel) → `tracking-issue-write.sh rename --state designed` (when `SESSION_ID` non-empty) → `design-log-publish.sh` (when `SESSION_ID` non-empty) → `render-final-summary.sh` (`--post-publish-only`) → `design_reentry_marker_write` (when `SESSION_ID` non-empty and `PUBLISH_OK=true`). Drop the stale `--pre-publish-only` render step (the code never calls it; the harness forbids it) and the stale marker-before-upsert position.
+- **Responsibilities** item for the rename (currently item 9): state the rename runs right after the diagram upsert, gated only on `SESSION_ID` non-empty — no longer on `PUBLISH_OK`. Keep the note that Step 6 cleanup stays publish-gated outside this driver.
+- **Responsibilities** item for the marker (currently item 4): correct "before publish/rename" to the real position — after publish, only when `SESSION_ID` non-empty and `PUBLISH_OK=true`.
+- **Responsibilities** publish item (currently item 6): drop the stale `render-final-summary.sh --pre-publish-only` mention so it matches the code and the harness.
+- Leave the `Edit in sync`, `Exit codes`, `Result env`, and `Migration limit` sections unchanged.
+
+### UPDATED: `skills/design/scripts/test-design-publish.sh`
+
+Re-pin the harness to the new order and the decoupled rename.
+
+- **Happy-path ordering**: change the expected chain from `plan→upsert→publish→rename→marker` to `plan→upsert→rename→publish→marker`. Update the position comparison so it fails unless `plan_pos < upsert_pos < rename_pos < publish_pos < marker_pos`, and update the pass/fail message text.
+- **`PUBLISH_OK=false` case**: flip the rename assertion — the rename now runs **before** publish, so assert `tracking-issue-write` **is** present in `RENAME_LOG` (and assert `RENAMED=true` in the result env) on `PUBLISH_OK=false`. Keep the marker assertion unchanged (marker still skipped on `PUBLISH_OK=false`).
+- **Unexpected publish rc** case: flip the rename assertion to assert the rename ran (it precedes the publish attempt).
+- **Exit 0 without `PUBLISH_OK=` line** case: flip the rename assertion to assert the rename ran.
+- Leave unchanged: `SESSION_ID` empty → rename skipped (still gated on `SESSION_ID`); happy-path marker file exists; marker-failure non-blocking; exit-3 result-env path; upsert/plan-block-write/render assertions.
+
+### UPDATED: `scripts/test-design-structure.sh`
+
+Add a structural pin for the new ordering; existing pins stay green.
+
+- Near the existing check (25) block (where `publish_upsert_line`, `publish_rename_line`, and `publish_log_line` are already in scope), add one assertion: `publish_upsert_line < publish_rename_line < publish_log_line` — design-publish.sh must rename `--state designed` after `upsert-diagrams-comment.sh` and before `design-log-publish.sh` (early `[DESIGNED]` admission).
+- The existing (25) assertions (`publish_log_line < publish_marker_line`; `publish_rename_line < publish_marker_line`) and the (15b) `plan < upsert < log` assertion remain true under the new order — do not edit them.
+
+### UPDATED: `skills/design/references/approval-gates.md`
+
+- **Gate C Prompt** — **Approve final design** bullet (~line 181): replace the stale tail "run `design-log-publish.sh`, rename tracking issue" with the true Step 5c driver order after Step 5b — e.g. proceed to Step 5b OOS filing, then Step 5c `design-publish.sh` (plan block write, diagram upsert, `[DESIGNED]` rename, `design-log-publish.sh`, post-publish summary render, reentry marker when `PUBLISH_OK=true`). Do not imply rename waits on publish success.
+
+### UPDATED: `skills/design/SKILL.md`
+
+Fix stale admission and operator prose in addition to the two Step 5c spots.
+
+- **Step 0b clarify sub-step 5** (~line 465): in the `--state designed` reservation sentence, remove **and the same publish guard**. State that `--state designed` is reserved for Step 5c after Gate C, composed `larch:plan`, and diagram upsert; the Step 5c `[DESIGNED]` rename in `design-publish.sh` runs right after diagram upsert when `SESSION_ID` is non-empty and is **not** `PUBLISH_OK`-gated. Only this clarify-path `[DESIGNING]` rename (sub-step 5) stays `PUBLISH_OK`-gated after successful clarify log publish.
+- **Step 0b clarify sub-step 6** (~line 466): replace "Gate C + OOS filing + composed plan + publish" with "Gate C + OOS filing + composed `larch:plan` + diagram upsert + `[DESIGNED]` rename". `/implement` still requires `[DESIGNED]`; design-log publish success is not an admission prerequisite.
+- **Step 5 finalize invariant** (~line 1377): update the Step 5c parenthetical from "`larch:plan` write + publish + rename" to "`larch:plan` write, diagram upsert, `[DESIGNED]` rename, log publish" (5b-before-5c ordering invariant unchanged).
+- **Step 5c item 4**: change the responsibilities parenthetical from "(plan block write, reentry marker, diagrams upsert, log publish, summary render, `[DESIGNED]` rename)" to "(plan block write, diagrams upsert, `[DESIGNED]` rename, log publish, summary render, reentry marker)".
+- **Step 5c item 6**: change "Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately (see Step 6)." to state that **only** Step 6 cleanup remains `PUBLISH_OK`-gated; the `[DESIGNED]` rename is no longer `PUBLISH_OK`-gated — `design-publish.sh` performs it right after the diagram upsert so `/implement` admission does not wait on log publish. Preserve the pinned substring `` : > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true` `` exactly (a structure-test greps for it).
+- **Step 5d** (~lines 1550–1554): when `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, extend the failed-publish machine footer (and the immediately following `> **Continue to Step 6**` note) with explicit guidance: `/implement` Preflight admits on the `[DESIGNED]` title once `design-publish.sh` has renamed; log flush failure does **not** block `/implement`; Step 6 cleanup remains publish-gated. Leave warning-replay prose unchanged.
+
+### UPDATED: `skills/design/scripts/render-final-summary.sh`
+
+- In `append_failed_publish_notes`, after the existing **Publish recovery** line, append one bullet: `/implement` may proceed when the issue title is already `[DESIGNED]` and `larch:plan` is present — log recovery is separate from admission.
+
+### UPDATED: `skills/design/scripts/render-final-summary.md`
+
+- Document the new failed-publish admission bullet in **Publish-tail render behavior** (or adjacent failed-publish notes prose) so the sibling contract matches `append_failed_publish_notes`.
+
+### UPDATED: `skills/design/scripts/test-render-final-summary.sh`
+
+- Extend the existing `failed-publish` case (~line 522): after the three recovery-bullet greps, assert the new `/implement` admission bullet appears in `final-summary.md` (same stdout/file parity as the recovery bullets).
+
+Leave Step 6 cleanup gating unchanged — it correctly keys on `PUBLISH_OK` for tmpdir removal.
+
+## Approach
+
+The change is a pure reorder plus one gate removal. The rename block already returns `RENAMED` into the result env via `write_result_env_and_emit`; moving the block earlier does not change what it emits, only when it runs and under which condition. Splitting the old combined block keeps each concern with its own gate: rename → `SESSION_ID` only; marker → `SESSION_ID` + `PUBLISH_OK`. The `lib-design-reentry-guard.sh` source stays bundled with the marker because only the marker needs it.
+
+`/implement` is untouched: it admits on the `[DESIGNED]` title, which now appears earlier. No new flags, no new files, no signature changes.
+
+## Edge cases
+
+- **`SESSION_ID` empty** (defensive path; never hit in real runs since Step 0a guarantees a UUID): rename still skipped, because the new block keeps the `SESSION_ID` guard. Marker still skipped. Matches today.
+- **Publish fails after a successful rename**: issue is already `[DESIGNED]` with a `larch:plan` block; `RENAMED=true` in the result env; `SUMMARY_OUTCOME=failed-publish` and the "log publish incomplete" footer still fire. `/implement` can proceed. This is the intended new behavior.
+- **Operator reads only the Step 5d footer or `failed-publish` summary**: footer and `append_failed_publish_notes` must state explicitly that `/implement` is not blocked by log flush failure once `[DESIGNED]` is set.
+- **Rename fails** (best-effort): warn is emitted and the run continues to publish exactly as before; only the warn text changed.
+- **Spurious `/design` re-invocation after a publish failure**: no reentry marker is written (still publish-gated), but the already-`[DESIGNED]` title routes a re-invocation to the already-planned path, so there is no protection gap.
+
+## Failure modes
+
+1. **A test silently keeps the old order green** — if the structure-test pin or the harness ordering assertion is mis-edited, a future refactor could move the rename back without detection. Mitigation: the new `upsert < rename < publish_log` structure pin plus the flipped harness assertions both fail loudly if the rename drifts back behind publish. Earliest signal: `bash scripts/test-design-structure.sh` and `bash skills/design/scripts/test-design-publish.sh`.
+2. **Result-env regex drift** — the rename-failure warn text feeds `grep 'WARN=.*\[DESIGNED\].*rename failed'`. Mitigation: keep `[DESIGNED]` and `rename failed` literally in the new string. Earliest signal: the "rename failure" harness case.
+3. **SKILL.md structure-pin breakage** — editing Step 5c item 6 could disturb the pinned `step-5c` sentinel substring. Mitigation: edit only the trailing rename/cleanup clause; re-run `scripts/test-design-structure.sh`. Earliest signal: a `(15b)` / `(25)` structure-test failure.
+4. **Admission prose drift** — if Step 0b, Gate C, or failed-publish copy still describes a publish-gated `[DESIGNED]` transition, operators may delay `/implement` unnecessarily. Mitigation: grep for removed phrases (`same publish guard`, publish-before-rename Gate C tail); extend `test-render-final-summary.sh` for the new summary bullet. Earliest signal: manual `/implement` wait after a failed log flush despite `[DESIGNED]`.
+
+## Testing strategy
+
+- Run `bash skills/design/scripts/test-design-publish.sh` — verify the new ordering case passes and the flipped `PUBLISH_OK=false` / unexpected-rc / no-`PUBLISH_OK` cases assert the rename ran.
+- Run `bash scripts/test-design-structure.sh` — verify the new `upsert < rename < publish_log` pin passes and existing (15b)/(25) pins stay green.
+- Run `bash skills/design/scripts/test-render-final-summary.sh` — verify the `failed-publish` case asserts the new `/implement` admission bullet.
+- Run `bash scripts/relevant-checks.sh` (or `make lint`) for the touched `.sh` / `.md` surfaces (shellcheck, bash32, bare-grep-probe, script-md-sibling, markdownlint).
+- No `/implement` test change is needed; admission is title-keyed.
+
+diff_added: 98
+diff_deleted: 34
+diff_lines: 132

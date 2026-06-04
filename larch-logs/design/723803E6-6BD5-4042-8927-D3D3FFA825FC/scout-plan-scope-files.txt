@@ -1,0 +1,13 @@
+skills/design/scripts/design-publish.sh
+scripts/design-log-publish.sh
+skills/design/scripts/design-publish.md
+skills/design/SKILL.md
+skills/design/scripts/render-final-summary.sh
+skills/design/scripts/render-final-summary.md
+scripts/implement-admission.md
+skills/design/references/approval-gates.md
+SECURITY.md
+skills/design/scripts/test-design-publish.sh
+scripts/test-design-structure.sh
+scripts/test-design-log-publish.sh
+skills/design/scripts/test-render-final-summary.sh

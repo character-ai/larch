@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:1526	Step 5c item 6 still gates rename on PUBLISH_OK	Orchestrator prose contradicts driver ADMISSION_READY semantics; Step 5d/footer can still treat rename as publish-gated	Revise item 6: rename/admission follows ADMISSION_READY/ADMISSION_BLOCK_REASON; keep Step 6 cleanup on PUBLISH_OK only

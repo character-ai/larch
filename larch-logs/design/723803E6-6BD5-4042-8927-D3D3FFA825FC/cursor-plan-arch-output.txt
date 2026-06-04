@@ -1,0 +1,11 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/design/SKILL.md:1526	Step 5c item 6 still says rename and Step 6 cleanup are gated on PUBLISH_OK	The plan updates Step 5c parser keys and Step 5d/footer admission prose but not this bullet. Orchestrators can keep treating RENAMED/PUBLISH_OK as coupled and block or mis-route /implement after rename succeeds with log publish or scrub failure	In the same SKILL.md edit, replace item 6 with: rename/admission is driven by ADMISSION_READY/ADMISSION_BLOCK_REASON (and RENAME_*); Step 6 cleanup stays gated on PUBLISH_OK=true when SESSION_ID is non-empty; step-5c sentinel remains PLAN_WRITE_OK-only
+2	in_scope	important	correctness	skills/design/scripts/test-design-publish.sh:409-410	Exit-3 harness still expects design-log-publish before rename	After reorder, rename and scrub-only run before publish; the symlink refusal case still completes the tail but ordering assertions fail even when implementation is correct	Update the exit-3 block to assert rename (and scrub-only when SESSION_ID is set) before the last design-log-publish call, and keep the result-env symlink refusal checks
+
+**1. [architecture] `skills/design/SKILL.md:1526`** — Step 5c item 6 still says `Rename (RENAMED) and Step 6 cleanup remain gated on PUBLISH_OK`. The plan updates parser keys and Step 5d admission prose but not this bullet, so orchestration text can contradict `ADMISSION_READY` after a successful rename with failed log publish/scrub.
+
+**Suggested revision:** In the same SKILL.md edit, state that admission/`[DESIGNED]` rename is keyed off `ADMISSION_READY` / `ADMISSION_BLOCK_REASON`, Step 6 cleanup stays `PUBLISH_OK`-gated when `SESSION_ID` is non-empty, and the `step-5c` sentinel stays `PLAN_WRITE_OK`-only.
+
+**2. [correctness] `skills/design/scripts/test-design-publish.sh:409-410`** — The exit-3 test still requires `design-log-publish` before `tracking-issue-write` rename. Post-reorder, rename (and scrub-only) precede full publish, so the harness will fail on a correct implementation.
+
+**Suggested revision:** Assert rename (and `--scrub-only` when `SESSION_ID` is set) before the final flush `design-log-publish` call; keep symlink refusal expectations.

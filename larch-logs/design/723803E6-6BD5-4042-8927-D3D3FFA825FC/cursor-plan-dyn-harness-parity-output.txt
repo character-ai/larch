@@ -1,0 +1,27 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/test-design-publish.sh:524-540	The no-diagram case only asserts upsert is skipped; it never asserts `[DESIGNED]` rename runs when `SESSION_ID` is set	An implementer can nest `tracking-issue-write.sh rename --state designed` inside the `_run_upsert` block; happy-path and `PUBLISH_OK=false` ordering tests still pass while no-architecture designs never get `[DESIGNED]` and `/implement` Preflight blocks	In `test-design-publish.sh` no-arch case, after the upsert-skip pass, assert `tracking-issue-write` appears in `RENAME_LOG`/`CALL_LOG` and `RENAMED=true` in `.design-publish-result.env` (and optionally `rename_pos < publish_pos` when upsert line is absent)
+
+**1. [correctness] `skills/design/scripts/test-design-publish.sh:524-540` — No-arch rename not exercised**
+
+The plan re-pins happy-path ordering (`plan→upsert→rename→publish→marker`), flips `PUBLISH_OK=false` / unexpected-rc / missing-`PUBLISH_OK=` rename presence, and adds `scripts/test-design-structure.sh` `upsert < rename < publish_log`. That combination adequately locks the main reorder and decoupling.
+
+The **no diagram and no skipped sentinel** case only checks that upsert is skipped:
+
+```524:540:skills/design/scripts/test-design-publish.sh
+# --- no diagram and no skipped sentinel ---
+D_NO_ARCH="$TMP/no-arch"
+...
+if grep -q 'upsert-diagrams' "$UPSERT_LOG" 2>/dev/null; then
+    fail "upsert must be skipped when neither diagram nor sentinel exists"
+else
+    pass "upsert skipped when neither diagram nor sentinel"
+fi
+```
+
+After the change, rename must run in a separate `SESSION_ID` block **after** the upsert `fi`, not inside `_run_upsert`. Nesting rename incorrectly would still satisfy happy-path (always has `architecture-diagram.md`), structure pin (line order in source), and flipped failure-path rename assertions, but would skip rename on this path and block `/implement` when Step 3b wrote no diagram file.
+
+**Suggested revision:** Extend the no-arch case with `grep tracking-issue-write` on `RENAME_LOG`/`CALL_LOG`, `RENAMED=true` in result env, and optionally `rename_pos < publish_pos` when `upsert_pos` is empty.
+
+---
+
+**Exonerated (SIMPLE / harness-parity):** Failure-path cases that only flip rename presence without `CALL_LOG` ordering (happy-path ordering still catches `publish` before `rename`); upsert-failure path without rename assertions (publish succeeds there today); `test-design-publish.md` sync; `render-final-summary.md` callers still mentioning `--pre-publish-only` for Step 5c (pre-existing drift; plan updates `design-publish.md` and adds the failed-publish admission bullet elsewhere).
