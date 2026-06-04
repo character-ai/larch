@@ -1,0 +1,18 @@
+Reviewing the branch diff and merge-gate implementation for correctness issues.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+The branch correctly implements the two-phase merge gate described in #3413:
+
+- **Registration vs failure** — `scripts/design-log-publish.sh` polls `gh pr checks --required --json bucket` under `set +e`, treats a parseable non-empty array as “reported” regardless of `gh` exit code, and only then compares `gh pr view --json headRefOid` to post-push `PUSH_HEAD_SHA` (lines 721, 831–865). Timeout uses `did not register within` and never calls `--watch` (lines 885–891 vs 893–899).
+- **Stale-head guard** — Non-empty checks with a mismatched `headRefOid` do not satisfy registration; pause force-push reuse is covered by `scripts/test-design-log-publish.sh` (stale-head cases ~1042–1095).
+- **CI failure path** — After registration, `--watch --fail-fast` non-zero still sets `merge_rc` from `ci_rc` and refuses merge with `did not pass` (lines 897–899); harness asserts `--watch` ran and registration-timeout wording is absent (~857–885).
+- **Flush re-enable** — `skills/design/scripts/design-publish.sh` invokes `design-log-publish.sh` again; rename stays gated on `PUBLISH_OK=true` while `render-final-summary.sh --post-publish-only` runs after publish regardless (~282–354).
+
+Probe budget (`REG_MAX_PROBES`, `REG_DEADLINE`, sleep only between probes) matches the documented `ceil(timeout/interval)+1` contract.
+
+### Out-of-Scope Observations
+
+- Commit `a7ff7c857` adds `larch-logs/implement/1FE6CE06-…/` on this branch; it is unrelated to the design flush / merge-gate work and may add review noise when merging to `main`.
+- Registration intentionally treats “any non-empty required-check JSON + matching head” as sufficient before `--watch`; whether that is safe for all repos depends on `gh pr checks --watch` continuing to wait for checks that appear after the first non-empty probe. The plan accepted that tradeoff; the harness does not model partial required-check cardinality.

@@ -1,0 +1,27 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- inlined gate is readable; extracting a helper adds abstraction without clear payoff for a single call site
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- all current paths assign merge_rc before use; defensive init is hygiene only
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- plan explicitly accepts 300s registration budget as a documented trade-off
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- happy-path still invokes both json probes and watch; strict ordering assertion is nice-to-have
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- persistent pr-view failure during registration is an edge case with low regression risk
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- bot-only disposable branch plus head binding at registration; pre-merge recheck adds complexity beyond plan scope
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- narrow race between final probe and watch is unlikely in practice
+FINDING_15: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- temp leak requires rare second mktemp failure after first succeeds
+FINDING_17: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- same concern as FINDING_10; reasonable for bot-only branch per reviewer
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_20: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- non-empty required-check JSON is the intentional registration predicate per plan
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- affects test observability only when GH_STUB_LOG is unset, not production behavior
+FINDING_22: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- each case resets SLEEP_SCRIPT_DIR before publish; mostly masked today
+FINDING_23: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_24: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- unit harness intentionally stubs design-log-publish.sh; merge gate covered elsewhere
+FINDING_25: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- pre-existing ordering with low user impact
+FINDING_27: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documented Gate-C vs log-flush split; approved outcome on failed publish is intentional

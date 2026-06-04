@@ -85,6 +85,9 @@ fi
 if [[ "${PUBLISH_EMIT_OK:-true}" == true ]]; then
   echo "PUBLISH_OK=${PUBLISH_OK_VALUE:-true}"
 fi
+[[ -n "${PUBLISH_PR_NUMBER:-}" ]] && echo "PR_NUMBER=${PUBLISH_PR_NUMBER}"
+[[ -n "${PUBLISH_PR_URL:-}" ]] && echo "PR_URL=${PUBLISH_PR_URL}"
+[[ -n "${PUBLISH_RECOVERY_BRANCH:-}" ]] && echo "RECOVERY_BRANCH=${PUBLISH_RECOVERY_BRANCH}"
 STUB
     cat >"$STUB/upsert-diagrams-comment.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -115,7 +118,7 @@ STUB
     cat >"$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh" <<'STUB'
 #!/usr/bin/env bash
 {
-  echo "render ISSUE_NUMBER=${ISSUE_NUMBER:-} SESSION_ID=${SESSION_ID:-} DESIGN_TMPDIR=${DESIGN_TMPDIR:-} $*"
+  echo "render ISSUE_NUMBER=${ISSUE_NUMBER:-} SESSION_ID=${SESSION_ID:-} DESIGN_TMPDIR=${DESIGN_TMPDIR:-} DESIGN_LOG_PR_NUMBER=${DESIGN_LOG_PR_NUMBER:-} DESIGN_LOG_PR_URL=${DESIGN_LOG_PR_URL:-} DESIGN_LOG_RECOVERY_BRANCH=${DESIGN_LOG_RECOVERY_BRANCH:-} $*"
 } >>"${RENDER_LOG:?}"
 printf '# summary\n' >"${DESIGN_TMPDIR:?}/final-summary.md"
 STUB
@@ -128,6 +131,7 @@ export CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN"
 
 reset_publish_stub_env() {
     unset PLAN_BLOCK_RC PUBLISH_STUB_RC PUBLISH_EMIT_OK PUBLISH_OK_VALUE \
+        PUBLISH_PR_NUMBER PUBLISH_PR_URL PUBLISH_RECOVERY_BRANCH \
         UPSERT_STUB_RC UPSERT_STATUS_VALUE ARCH_SOURCE_VALUE \
         RENAME_STUB_RC RENAMED_OMIT_LINE RENAMED_VALUE RESOLVE_REPO_VALUE \
         MARKER_STUB_RC || true
@@ -238,29 +242,24 @@ assert_rc "happy path" 0 "$rc"
 grep -q 'PLAN_WRITE_OK=true' "$D_OK/.design-publish-result.env" || fail "happy PLAN_WRITE_OK"
 grep -q 'PUBLISH_OK=true' "$D_OK/.design-publish-result.env" || fail "happy PUBLISH_OK"
 grep -q 'RENAMED=true' "$D_OK/.design-publish-result.env" || fail "happy RENAMED"
+
 plan_pos=$(grep -n 'plan-block-write' "$CALL_LOG" | head -1 | cut -d: -f1)
-marker_pos=$(grep -n 'design-reentry-marker-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 upsert_pos=$(grep -n 'upsert-diagrams' "$CALL_LOG" | head -1 | cut -d: -f1)
-# design-log-publish.sh is disabled pending the S3/R2 run-log migration (#3378);
-# restore the publish ordering position when the flush block in design-publish.sh
-# is re-enabled.
-if [[ -z "$plan_pos" || -z "$marker_pos" || -z "$upsert_pos" ]]; then
-    fail "happy path call log missing plan/marker/upsert entries"
-elif [[ "$plan_pos" -ge "$marker_pos" || "$marker_pos" -ge "$upsert_pos" ]]; then
-    fail "happy path call-log ordering plan→marker→upsert"
+publish_pos=$(grep -n 'design-log-publish' "$CALL_LOG" | head -1 | cut -d: -f1)
+rename_pos=$(grep -n 'tracking-issue-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+marker_pos=$(grep -n 'design-reentry-marker-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+if [[ -z "$plan_pos" || -z "$upsert_pos" || -z "$publish_pos" || -z "$rename_pos" || -z "$marker_pos" ]]; then
+    fail "happy path call log missing plan/marker/upsert/publish entries"
+elif [[ "$plan_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$publish_pos" || "$publish_pos" -ge "$rename_pos" || "$rename_pos" -ge "$marker_pos" ]]; then
+    fail "happy path call-log ordering plan→upsert→publish→rename→marker"
 else
-    pass "happy path call-log ordering plan→marker→upsert"
+    pass "happy path call-log ordering plan→upsert→publish→rename→marker"
 fi
-# Flush disabled (#3378): design-log-publish.sh must NOT be invoked, and
-# PUBLISH_OK=true must still be forced so the rename tail proceeds.
-if grep -q 'design-log-publish' "$CALL_LOG" 2>/dev/null; then
-    fail "design-log-publish.sh should be skipped while GitHub flush disabled (#3378)"
-else
-    pass "design-log-publish.sh skipped while GitHub flush disabled (#3378)"
-fi
+grep -q 'design-log-publish' "$PUBLISH_LOG" || fail "design-log-publish.sh should run on happy path"
+
 marker_file="$D_OK_HOME/.cache/larch/sessions/design-completed-42-9999"
 [[ -f "$marker_file" ]] || fail "happy path reentry marker file missing at $marker_file"
-grep -q 'pre-publish-only' "$RENDER_LOG" || fail "happy path missing pre-publish render"
+! grep -q 'pre-publish-only' "$RENDER_LOG" || fail "happy path must not pre-stage final-summary before publish outcome"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "happy path missing post-publish render"
 grep -q 'ISSUE_NUMBER=42' "$RENDER_LOG" || fail "happy render missing ISSUE_NUMBER=42"
 grep -q 'SESSION_ID=sid-1' "$RENDER_LOG" || fail "happy render missing SESSION_ID=sid-1"
@@ -268,6 +267,22 @@ D_OK_CANON=$(cd "$D_OK" && pwd -P)
 grep -q "DESIGN_TMPDIR=${D_OK_CANON}" "$RENDER_LOG" || fail "happy render missing DESIGN_TMPDIR"
 grep -q 'upsert-diagrams' "$UPSERT_LOG" || fail "upsert not called on happy path"
 test -s "$D_OK/diagrams-architecture-upsert.stdout" || fail "upsert stdout not captured"
+
+# --- publish envelope fields persisted ---
+D_ENV="$TMP/publish-env"
+setup_design_tmp "$D_ENV"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_OK_VALUE=false
+export PUBLISH_PR_NUMBER=123
+export PUBLISH_PR_URL=https://github.example/pull/123
+export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid-1
+bash "$SUBJECT" --design-tmpdir "$D_ENV" --issue 42 --session-id sid-1 --claude-pid 9999 2>/dev/null
+grep -q '^PR_NUMBER=123$' "$D_ENV/.design-publish-result.env" || fail "publish PR_NUMBER missing"
+grep -q '^PR_URL=https://github.example/pull/123$' "$D_ENV/.design-publish-result.env" || fail "publish PR_URL missing"
+grep -q '^RECOVERY_BRANCH=larch-log-design-sid-1$' "$D_ENV/.design-publish-result.env" || fail "publish RECOVERY_BRANCH missing"
+grep -q '^LOG_RECOVERY_BRANCH=larch-log-design-sid-1$' "$D_ENV/.design-publish-result.env" || fail "publish LOG_RECOVERY_BRANCH missing"
 
 # --- SESSION_ID empty ---
 D_EMPTY="$TMP/empty-sid"
@@ -301,13 +316,6 @@ else
     fail "rename should be skipped"
 fi
 
-# --- DISABLED pending S3/R2 run-log migration (#3378) ---
-# The three cases below exercise design-publish.sh's handling of
-# design-log-publish.sh failure envelopes (PUBLISH_OK=false / nonzero-no-KV /
-# exit-0-no-KV). That invocation is commented out in design-publish.sh while the
-# GitHub run-log flush is disabled, so the handling is unreachable. Re-enable
-# these together with the flush block in design-publish.sh.
-if false; then
 # --- PUBLISH_OK=false ---
 D_PFAIL="$TMP/pub-fail"
 setup_design_tmp "$D_PFAIL"
@@ -315,15 +323,30 @@ reset_publish_stub_env
 init_publish_logs
 apply_publish_stub_defaults
 export PUBLISH_OK_VALUE=false
+export PUBLISH_PR_NUMBER=456
+export PUBLISH_PR_URL=https://github.example/pull/456
+export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_PFAIL" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
 rc=$?
 set -e
 assert_rc "PUBLISH_OK=false" 0 "$rc"
+grep -q 'post-publish-only' "$RENDER_LOG" || fail "PUBLISH_OK=false should render post-publish summary"
+grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "PUBLISH_OK=false should render failed-publish outcome"
+grep -q 'DESIGN_LOG_PR_NUMBER=456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_NUMBER"
+grep -q 'DESIGN_LOG_PR_URL=https://github.example/pull/456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_URL"
+grep -q 'DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_RECOVERY_BRANCH"
+grep -q 'design-log-publish.sh failed (exit 1)' "$D_PFAIL/execution-issues.md" 2>/dev/null || fail "PUBLISH_OK=false should record nonzero publish failure exit"
+grep -q 'design log publish failed; recovery metadata' "$D_PFAIL/.design-publish-result.env" || fail "PUBLISH_OK=false should emit recovery WARN"
 if ! grep -q 'tracking-issue-write' "$RENAME_LOG"; then
     pass "rename skipped on PUBLISH_OK=false"
 else
     fail "rename should be skipped"
+fi
+if grep -q 'design-reentry-marker-write' "$CALL_LOG"; then
+    fail "reentry marker should be skipped on PUBLISH_OK=false"
+else
+    pass "reentry marker skipped on PUBLISH_OK=false"
 fi
 
 # --- unexpected publish (nonzero, no PUBLISH_OK line) ---
@@ -340,8 +363,14 @@ rc=$?
 set -e
 assert_rc "unexpected publish rc" 0 "$rc"
 grep -q 'PUBLISH_OK=false' "$D_UNEXP/.design-publish-result.env" || fail "unexpected publish must set PUBLISH_OK=false"
-grep -q 'design-log-publish.sh' "$D_UNEXP/execution-issues.md" 2>/dev/null \
-  || fail "unexpected publish must append to execution-issues.md"
+grep -q 'post-publish-only' "$RENDER_LOG" || fail "unexpected publish should render post-publish summary"
+grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "unexpected publish rc should render failed-publish outcome"
+if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
+    fail "rename should be skipped after unexpected publish rc"
+else
+    pass "rename skipped after unexpected publish rc"
+fi
+grep -q 'design-log-publish.sh' "$D_UNEXP/execution-issues.md" 2>/dev/null   || fail "unexpected publish must append to execution-issues.md"
 
 # --- exit 0 without PUBLISH_OK= line ---
 D_NO_PUB_KV="$TMP/no-publish-kv"
@@ -356,11 +385,15 @@ bash "$SUBJECT" --design-tmpdir "$D_NO_PUB_KV" --issue 1 --session-id sid --clau
 rc=$?
 set -e
 assert_rc "missing PUBLISH_OK on exit 0" 0 "$rc"
-grep -q 'PUBLISH_OK=false' "$D_NO_PUB_KV/.design-publish-result.env" \
-  || fail "exit 0 without PUBLISH_OK= must set PUBLISH_OK=false"
-grep -q 'design-log-publish.sh' "$D_NO_PUB_KV/execution-issues.md" 2>/dev/null \
-  || fail "exit 0 without PUBLISH_OK= must append to execution-issues.md"
-fi  # end DISABLED block (#3378)
+grep -q 'PUBLISH_OK=false' "$D_NO_PUB_KV/.design-publish-result.env"   || fail "exit 0 without PUBLISH_OK= must set PUBLISH_OK=false"
+grep -q 'post-publish-only' "$RENDER_LOG" || fail "exit 0 without PUBLISH_OK should render post-publish summary"
+grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "exit 0 without PUBLISH_OK should render failed-publish outcome"
+if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
+    fail "rename should be skipped when PUBLISH_OK is missing"
+else
+    pass "rename skipped when PUBLISH_OK is missing"
+fi
+grep -q 'design-log-publish.sh' "$D_NO_PUB_KV/execution-issues.md" 2>/dev/null   || fail "exit 0 without PUBLISH_OK= must append to execution-issues.md"
 
 # --- result-env write failure (exit 3) ---
 D_EXIT3="$TMP/exit3-result-env"
@@ -373,12 +406,8 @@ set -e
 assert_rc "result-env symlink refusal" 3 "$rc"
 [[ -L "$D_EXIT3/.design-publish-result.env" ]] \
   || fail "exit 3 must not replace symlink result env"
-# Flush disabled (#3378): the publish tail still completes (rename runs under the
-# forced PUBLISH_OK=true) before the result-env write; assert via the rename log
-# rather than the now-skipped design-log-publish call. Restore the
-# design-log-publish PUBLISH_LOG assertion when the flush is re-enabled.
-grep -q 'tracking-issue-write' "$RENAME_LOG" \
-  || fail "exit 3 should still complete publish tail (rename) before result-env write"
+grep -q 'design-log-publish' "$PUBLISH_LOG"   || fail "exit 3 should run design-log-publish before result-env write"
+grep -q 'tracking-issue-write' "$RENAME_LOG"   || fail "exit 3 should still complete publish tail (rename) before result-env write"
 
 # --- if ! plan-block-write guard ---
 # shellcheck disable=SC2016 # Literal pattern checks unexpanded shell syntax in source.

@@ -26,6 +26,51 @@ make_gh_stub() {
 if [[ -n "${GH_STUB_LOG:-}" ]]; then
     printf '%s\n' "$*" >>"$GH_STUB_LOG"
 fi
+
+has_arg() {
+    needle="$1"
+    shift
+    for arg in "$@"; do
+        [[ "$arg" == "$needle" ]] && return 0
+    done
+    return 1
+}
+
+arg_after() {
+    needle="$1"
+    shift
+    prev=""
+    for arg in "$@"; do
+        if [[ "$prev" == "$needle" ]]; then
+            printf '%s\n' "$arg"
+            return 0
+        fi
+        prev="$arg"
+    done
+    return 1
+}
+
+resolve_pr_head_oid() {
+    if [[ -n "${GH_STUB_PR_HEAD_OID:-}" ]]; then
+        printf '%s\n' "$GH_STUB_PR_HEAD_OID"
+        return 0
+    fi
+    branch="${TEST_MERGE_BRANCH:-}"
+    if [[ -z "$branch" && -n "${GH_STUB_LOG:-}" && -f "$GH_STUB_LOG" ]]; then
+        branch=$(awk '/pr create/ { for (i = 1; i <= NF; i++) if ($i == "--head") h = $(i + 1) } END { print h }' "$GH_STUB_LOG")
+    fi
+    if [[ -z "${TEST_CLONE_ROOT:-}" || -z "$branch" ]]; then
+        echo "stub pr view headRefOid missing TEST_CLONE_ROOT or branch" >&2
+        exit 98
+    fi
+    oid=$(git -C "$TEST_CLONE_ROOT" ls-remote origin "$branch" | awk '{ print $1; exit }')
+    if [[ -z "$oid" ]]; then
+        echo "stub pr view headRefOid could not resolve $branch" >&2
+        exit 98
+    fi
+    printf '%s\n' "$oid"
+}
+
 if [[ "$1" == "repo" ]] && [[ "$2" == "view" ]]; then
     printf '{"nameWithOwner":"owner/repo"}\n'
     exit 0
@@ -79,12 +124,53 @@ if [[ "$1" == "pr" ]]; then
             exit 0
             ;;
         checks)
-            if [[ -n "${GH_STUB_CHECKS_RC:-}" && "${GH_STUB_CHECKS_RC}" != "0" ]]; then
-                echo "${GH_STUB_CHECKS_OUT:-some required checks failed}"
-                exit "${GH_STUB_CHECKS_RC}"
+            if has_arg --json "$@"; then
+                if ! has_arg --required "$@"; then
+                    echo "STUB ERROR: pr checks --json missing --required: $*" >&2
+                    exit 99
+                fi
+                count_file="${GH_STUB_CHECKS_JSON_COUNT_FILE:-}"
+                if [[ -z "$count_file" && -n "${GH_STUB_LOG:-}" ]]; then
+                    count_file="${GH_STUB_LOG}.checks-json-count"
+                fi
+                checks_probe=1
+                if [[ -n "$count_file" ]]; then
+                    checks_probe=$(( $(cat "$count_file" 2>/dev/null || echo 0) + 1 ))
+                    printf '%s\n' "$checks_probe" >"$count_file"
+                fi
+                checks_knob_probe=1
+                if [[ -n "${GH_STUB_CHECKS_JSON_EMPTY_FIRST:-}" ]]; then
+                    knob_count_file="${GH_STUB_LOG:-/tmp/gh-stub}.checks-json-knob-count"
+                    if [[ -n "$knob_count_file" ]]; then
+                        checks_knob_probe=$(( $(cat "$knob_count_file" 2>/dev/null || echo 0) + 1 ))
+                        printf '%s\n' "$checks_knob_probe" >"$knob_count_file"
+                    fi
+                fi
+                if [[ "${GH_STUB_CHECKS_JSON_ALWAYS_EMPTY:-0}" == "1" ]]; then
+                    printf '[]\n'
+                    exit "${GH_STUB_CHECKS_JSON_RC:-0}"
+                fi
+                if [[ -n "${GH_STUB_CHECKS_JSON_EMPTY_FIRST:-}" && "$checks_knob_probe" -le "$GH_STUB_CHECKS_JSON_EMPTY_FIRST" ]]; then
+                    printf '[]\n'
+                    exit "${GH_STUB_CHECKS_JSON_RC:-0}"
+                fi
+                if [[ -n "${GH_STUB_CHECKS_JSON_OUT:-}" ]]; then
+                    printf '%s\n' "$GH_STUB_CHECKS_JSON_OUT"
+                else
+                    printf '[{"name":"ci","bucket":"pass"}]\n'
+                fi
+                exit "${GH_STUB_CHECKS_JSON_RC:-0}"
             fi
-            echo "all checks passing"
-            exit 0
+            if has_arg --watch "$@" && has_arg --fail-fast "$@" && has_arg --required "$@"; then
+                if [[ -n "${GH_STUB_CHECKS_RC:-}" && "${GH_STUB_CHECKS_RC}" != "0" ]]; then
+                    echo "${GH_STUB_CHECKS_OUT:-some required checks failed}"
+                    exit "${GH_STUB_CHECKS_RC}"
+                fi
+                echo "${GH_STUB_CHECKS_OUT:-all checks passing}"
+                exit 0
+            fi
+            echo "STUB ERROR: unhandled pr checks $*" >&2
+            exit 99
             ;;
         merge)
             if [[ -n "${GH_STUB_MERGE_RC:-}" && "${GH_STUB_MERGE_RC}" != "0" ]]; then
@@ -98,10 +184,42 @@ if [[ "$1" == "pr" ]]; then
             exit 0
             ;;
         view)
-            if [[ -n "${GH_STUB_PR_VIEW_RC:-}" && "${GH_STUB_PR_VIEW_RC}" != "0" ]]; then
-                echo "Could not resolve host: api.github.com" >&2
-                exit "${GH_STUB_PR_VIEW_RC}"
-            fi
+            json_fields=$(arg_after --json "$@" || true)
+            case "$json_fields" in
+                *headRefOid*)
+                    head_rc="${GH_STUB_PR_VIEW_HEAD_RC:-${GH_STUB_PR_VIEW_RC:-}}"
+                    if [[ -n "$head_rc" && "$head_rc" != "0" ]]; then
+                        echo "Could not resolve host: api.github.com" >&2
+                        exit "$head_rc"
+                    fi
+                    head_count_file="${GH_STUB_PR_HEAD_OID_COUNT_FILE:-}"
+                    if [[ -z "$head_count_file" && -n "${GH_STUB_LOG:-}" ]]; then
+                        head_count_file="${GH_STUB_LOG}.head-count"
+                    fi
+                    head_probe=1
+                    if [[ -n "$head_count_file" ]]; then
+                        head_probe=$(( $(cat "$head_count_file" 2>/dev/null || echo 0) + 1 ))
+                        printf '%s\n' "$head_probe" >"$head_count_file"
+                    fi
+                    head_knob_probe=1
+                    if [[ -n "${GH_STUB_PR_HEAD_OID_MISMATCH_FIRST:-}" ]]; then
+                        head_knob_count_file="${GH_STUB_LOG:-/tmp/gh-stub}.head-knob-count"
+                        if [[ -n "$head_knob_count_file" ]]; then
+                            head_knob_probe=$(( $(cat "$head_knob_count_file" 2>/dev/null || echo 0) + 1 ))
+                            printf '%s\n' "$head_knob_probe" >"$head_knob_count_file"
+                        fi
+                    fi
+                    if [[ "${GH_STUB_PR_HEAD_OID_MISMATCH:-0}" == "1" ]]; then
+                        oid="${GH_STUB_PR_HEAD_OID_STALE:-0000000000000000000000000000000000000000}"
+                    elif [[ -n "${GH_STUB_PR_HEAD_OID_MISMATCH_FIRST:-}" && "$head_knob_probe" -le "$GH_STUB_PR_HEAD_OID_MISMATCH_FIRST" ]]; then
+                        oid="${GH_STUB_PR_HEAD_OID_STALE:-0000000000000000000000000000000000000000}"
+                    else
+                        oid=$(resolve_pr_head_oid)
+                    fi
+                    printf '{"headRefOid":"%s"}\n' "$oid"
+                    exit 0
+                    ;;
+            esac
             echo '{"url":"https://github.com/owner/repo/pull/101"}'
             exit 0
             ;;
@@ -131,6 +249,16 @@ echo "STUB ERROR: unhandled gh $*" >&2
 exit 99
 STUB
     chmod +x "$d/gh"
+}
+
+make_sleep_stub() {
+    local d="$1"
+    mkdir -p "$d"
+    cat >"$d/sleep-seconds.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+    chmod +x "$d/sleep-seconds.sh"
 }
 
 make_find_escape_stub() {
@@ -198,8 +326,19 @@ setup_clone_with_origin_head() {
     printf '%s\n' "$clone"
 }
 
+expected_registration_probes() {
+    local timeout interval
+    timeout=$(awk -F= '$1=="REG_TIMEOUT"{gsub(/[^0-9]/, "", $2); print $2; exit}' "$PUBLISH")
+    interval=$(awk -F= '$1=="REG_INTERVAL"{gsub(/[^0-9]/, "", $2); print $2; exit}' "$PUBLISH")
+    [[ -n "$timeout" && -n "$interval" && "$interval" -gt 0 ]] || fail "could not derive registration probe count"
+    printf '%s\n' $(( (timeout + interval - 1) / interval + 1 ))
+}
+
 echo "=== dry-run preflight inside git worktree ==="
 DRYROOT=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-dry.XXXXXX")
+GLOBAL_SLEEP_STUB="$DRYROOT/sleep-stub"
+make_sleep_stub "$GLOBAL_SLEEP_STUB"
+export SLEEP_SCRIPT_DIR="$GLOBAL_SLEEP_STUB"
 trap 'rm -rf "$DRYROOT"' EXIT
 DRYCLONE=$(setup_clone_with_origin_head "$DRYROOT")
 STUBDR="$DRYROOT/minigh"
@@ -322,6 +461,9 @@ grep -qE '"ok"[[:space:]]*:[[:space:]]*1' "$clone/larch-logs/design/RUNPUB1/vote
 grep -q 'pr create' "$GH_STUB_LOG" || fail "expected gh pr create in log"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "expected gh pr merge in log"
 grep -q 'pr checks' "$GH_STUB_LOG" || fail "expected gh pr checks (required CI wait) before merge"
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "1" ]] || fail "happy path should register checks on first JSON probe, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
+[[ "$(grep -c 'pr checks' "$GH_STUB_LOG")" == "2" ]] || fail "happy path should run one registration probe and one checks watch"
+[[ "$(grep 'pr checks' "$GH_STUB_LOG" | grep -c -- '--watch')" == "1" ]] || fail "happy path should invoke exactly one checks watch"
 grep -Fq -- '--admin' "$GH_STUB_LOG" || fail "expected gh pr merge --admin in log"
 ! grep -Fq -- '--auto' "$GH_STUB_LOG" || fail "gh pr merge must not use --auto (review gate would never complete it)"
 grep -Fq -- '--body-file' "$GH_STUB_LOG" || fail "expected gh pr create --body-file in log"
@@ -341,6 +483,78 @@ for denied in \
 done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.events.jsonl" ]] || fail "denied events basename leaked into render-cache"
+
+echo "=== final no-delta succeeds idempotently when main already has run id ==="
+TMPNOOP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-noop.XXXXXX")
+clone_noop=$(setup_clone_with_origin_head "$TMPNOOP")
+stub_noop="$TMPNOOP/stub"
+make_gh_stub "$stub_noop"
+date_noop="$TMPNOOP/date-stub"
+mkdir -p "$date_noop"
+cat >"$date_noop/date" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-u" && "${2:-}" == "+%Y-%m-%dT%H:%M:%SZ" ]]; then
+    printf '%s\n' '2026-01-01T00:00:00Z'
+    exit 0
+fi
+exec /bin/date "$@"
+EOF
+chmod +x "$date_noop/date"
+GH_STUB_LOG="$TMPNOOP/gh.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+export PATH="$date_noop:$stub_noop:$PATH"
+export TEST_CLONE_ROOT="$clone_noop"
+export TEST_MERGE_BRANCH="larch-log-design-RUNNOOP1"
+mkdir -p "$TMPNOOP/design"
+printf 'stable\n' >"$TMPNOOP/design/stable.txt"
+(
+    cd "$clone_noop" || exit 1
+    seed_noop=$(bash "$PUBLISH" --design-tmpdir "$TMPNOOP/design" --run-id "RUNNOOP1" --issue 42 --repo owner/repo)
+    [[ "$seed_noop" == *"PUBLISH_OK=true"* ]] || fail "final no-delta seed failed: $seed_noop"
+)
+git -C "$clone_noop" pull -q origin main
+: >"$GH_STUB_LOG"
+out_noop=$(cd "$clone_noop" && bash "$PUBLISH" --design-tmpdir "$TMPNOOP/design" --run-id "RUNNOOP1" --issue 42 --repo owner/repo)
+[[ "$out_noop" == *"PUBLISH_OK=true"* ]] || fail "final no-delta should succeed when run id already exists on main: $out_noop"
+! grep -q 'pr create' "$GH_STUB_LOG" || fail "final no-delta should not create a PR"
+! grep -q 'pr merge' "$GH_STUB_LOG" || fail "final no-delta should not merge a PR"
+unset GH_STUB_LOG
+rm -rf "$TMPNOOP"
+
+echo "=== final no-delta fails closed when main lacks run id ==="
+TMPMISS=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-missing.XXXXXX")
+clone_miss=$(setup_clone_with_origin_head "$TMPMISS")
+stub_miss="$TMPMISS/stub"
+make_gh_stub "$stub_miss"
+REAL_GIT=$(command -v git)
+mkdir -p "$TMPMISS/gitstub"
+cat >"$TMPMISS/gitstub/git" <<GITS
+#!/usr/bin/env bash
+last_arg=""
+for arg in "\$@"; do
+    last_arg="\$arg"
+done
+if [[ "\${GIT_STUB_EMPTY_STATUS_FOR:-}" == "\$last_arg" ]]; then
+    for arg in "\$@"; do
+        if [[ "\$arg" == "status" ]]; then
+            exit 0
+        fi
+    done
+fi
+exec "$REAL_GIT" "\$@"
+GITS
+chmod +x "$TMPMISS/gitstub/git"
+export PATH="$TMPMISS/gitstub:$stub_miss:$PATH"
+export GIT_STUB_EMPTY_STATUS_FOR="larch-logs/design/RUNEMPTYMISS1"
+mkdir -p "$TMPMISS/design"
+printf 'missing\n' >"$TMPMISS/design/missing.txt"
+out_miss=$(
+    (cd "$clone_miss" && bash "$PUBLISH" --design-tmpdir "$TMPMISS/design" --run-id "RUNEMPTYMISS1" --issue 42 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_miss" == *"PUBLISH_OK=false"* ]] || fail "final no-delta should fail when run id is missing from main: $out_miss"
+unset GIT_STUB_EMPTY_STATUS_FOR
+rm -rf "$TMPMISS"
 
 echo "=== revise allowlist rejects unexpected file under round-N/revise ==="
 printf 'nope\n' >"$TMP/design/plan-review/round-1/revise/extra.log"
@@ -442,6 +656,8 @@ exec /bin/date "$@"
 EOF
 chmod +x "$date_stub_rec/date"
 export PATH="$date_stub_rec:$stub_pause_rec:$PATH"
+export TEST_CLONE_ROOT="$clone_pause_rec"
+export TEST_MERGE_BRANCH="larch-log-design-RUNPAUSEREC1"
 unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
 mkdir -p "$TMPPAUSE_REC/design/.completed"
 printf 'p\n' >"$TMPPAUSE_REC/design/plan.txt"
@@ -465,10 +681,13 @@ TMPPAUSE_REUSE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-pause-reuse.XXXXXX")
 clone_pause_reuse=$(setup_clone_with_origin_head "$TMPPAUSE_REUSE")
 stub_pause_reuse="$TMPPAUSE_REUSE/stub"
 make_gh_stub "$stub_pause_reuse"
+GH_STUB_LOG="$TMPPAUSE_REUSE/gh-pause-reuse.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
 export PATH="$stub_pause_reuse:$PATH"
 export TEST_CLONE_ROOT="$clone_pause_reuse"
 export TEST_MERGE_BRANCH="larch-log-design-RUNPAUSEREUSE1"
-unset GH_STUB_LOG GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
+unset GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
 mkdir -p "$TMPPAUSE_REUSE/design/.completed"
 printf 'first\n' >"$TMPPAUSE_REUSE/design/plan.txt"
 printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
@@ -481,8 +700,11 @@ printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
     [[ "$rc_seed_reuse" -eq 1 ]] || fail "pause branch reuse seed should exit 1 on merge fail (got $rc_seed_reuse)"
     [[ "$seed_reuse" == *"PUBLISH_OK=false"* && "$seed_reuse" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREUSE1"* ]] || fail "pause branch reuse seed should leave remote branch: $seed_reuse"
     printf 'second\n' >"$TMPPAUSE_REUSE/design/plan.txt"
-    reuse_out=$(bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
+    stale_reuse_sha=$(git ls-remote origin larch-log-design-RUNPAUSEREUSE1 | awk '{ print $1; exit }')
+    [[ -n "$stale_reuse_sha" ]] || fail "pause branch reuse should resolve stale remote branch SHA"
+    reuse_out=$(GH_STUB_PR_HEAD_OID_STALE="$stale_reuse_sha" GH_STUB_PR_HEAD_OID_MISMATCH_FIRST=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
     [[ "$reuse_out" == *"PUBLISH_OK=true"* ]] || fail "pause branch reuse publish should succeed: $reuse_out"
+    [[ "$(cat "$GH_STUB_LOG.head-knob-count")" == "2" ]] || fail "pause branch reuse should cover stale-head retry probes, got $(cat "$GH_STUB_LOG.head-knob-count" 2>/dev/null || echo missing)"
 )
 git -C "$clone_pause_reuse" pull -q origin main
 grep -Fxq 'second' "$clone_pause_reuse/larch-logs/design/RUNPAUSEREUSE1/plan.txt" || fail "pause branch reuse should publish updated snapshot"
@@ -719,21 +941,245 @@ GH_STUB_LOG="$TMPCI/gh-cifail.log"
 export GH_STUB_LOG
 make_gh_stub "$stub_ci"
 export PATH="$stub_ci:$PATH"
-unset TEST_CLONE_ROOT TEST_MERGE_BRANCH GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+export TEST_CLONE_ROOT="$clone_ci"
+export TEST_MERGE_BRANCH="larch-log-design-RUNCIFAIL1"
+unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST
 mkdir -p "$TMPCI/design"
 printf 'c\n' >"$TMPCI/design/cifail.txt"
+ci_stderr="$TMPCI/cifail.stderr"
 set +e
 out_ci=$(
-    (cd "$clone_ci" && GH_STUB_CHECKS_RC=8 bash "$PUBLISH" --design-tmpdir "$TMPCI/design" --run-id "RUNCIFAIL1" --issue 7 --repo owner/repo) 2>/dev/null
+    (cd "$clone_ci" && GH_STUB_CHECKS_RC=8 GH_STUB_CHECKS_OUT='required check failed' bash "$PUBLISH" --design-tmpdir "$TMPCI/design" --run-id "RUNCIFAIL1" --issue 7 --repo owner/repo) 2>"$ci_stderr"
 )
 rc_ci=$?
 set -e
 [[ "$out_ci" == *"PUBLISH_OK=false"* ]] || fail "ci fail PUBLISH_OK: $out_ci"
 [[ "$rc_ci" -eq 1 ]] || fail "ci fail should exit 1 (got $rc_ci)"
 [[ "$out_ci" == *"RECOVERY_BRANCH=larch-log-design-RUNCIFAIL1"* ]] || fail "ci fail RECOVERY_BRANCH: $out_ci"
-grep -q 'pr checks' "$GH_STUB_LOG" || fail "expected pr checks (CI wait) in stub log"
+grep -q 'required CI checks did not pass' "$ci_stderr" || fail "ci fail stderr missing did-not-pass diagnostic"
+! grep -q 'did not register within' "$ci_stderr" || fail "ci fail stderr must not use registration-timeout wording"
+grep -q 'pr checks' "$GH_STUB_LOG" || fail "expected pr checks in stub log"
+grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "ci fail should invoke --watch"
 ! grep -q 'pr merge' "$GH_STUB_LOG" || fail "gh pr merge must NOT run when required CI checks fail"
 rm -rf "$TMPCI"
+
+echo "=== registration race waits for checks before watch/merge ==="
+TMPREG=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-reg-race.XXXXXX")
+clone_reg=$(setup_clone_with_origin_head "$TMPREG")
+stub_reg="$TMPREG/stub"
+GH_STUB_LOG="$TMPREG/gh-reg-race.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_reg"
+make_sleep_stub "$TMPREG/sleep"
+export PATH="$stub_reg:$PATH"
+export SLEEP_SCRIPT_DIR="$TMPREG/sleep"
+export TEST_CLONE_ROOT="$clone_reg"
+export TEST_MERGE_BRANCH="larch-log-design-RUNREGRACE1"
+unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_PR_HEAD_OID_MISMATCH_FIRST GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+export GH_STUB_CHECKS_JSON_EMPTY_FIRST=2
+mkdir -p "$TMPREG/design"
+printf 'race\n' >"$TMPREG/design/race.txt"
+out_reg=$(cd "$clone_reg" && bash "$PUBLISH" --design-tmpdir "$TMPREG/design" --run-id "RUNREGRACE1" --issue 21 --repo owner/repo)
+[[ "$out_reg" == *"PUBLISH_OK=true"* ]] || fail "registration race PUBLISH_OK: $out_reg"
+grep -q 'pr merge' "$GH_STUB_LOG" || fail "registration race should merge"
+grep -Fq -- '--admin' "$GH_STUB_LOG" || fail "registration race merge should keep --admin"
+grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "registration race should invoke --watch after registration"
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "3" ]] || fail "registration race probe count mismatch: $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
+unset GH_STUB_CHECKS_JSON_EMPTY_FIRST
+rm -rf "$TMPREG"
+
+echo "=== required checks never register skips watch and merge ==="
+TMPNOREG=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-no-reg.XXXXXX")
+clone_noreg=$(setup_clone_with_origin_head "$TMPNOREG")
+stub_noreg="$TMPNOREG/stub"
+GH_STUB_LOG="$TMPNOREG/gh-no-reg.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_noreg"
+make_sleep_stub "$TMPNOREG/sleep"
+export PATH="$stub_noreg:$PATH"
+export SLEEP_SCRIPT_DIR="$TMPNOREG/sleep"
+export TEST_CLONE_ROOT="$clone_noreg"
+export TEST_MERGE_BRANCH="larch-log-design-RUNNOREG1"
+export GH_STUB_CHECKS_JSON_ALWAYS_EMPTY=1
+unset GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_PR_HEAD_OID_MISMATCH_FIRST GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPNOREG/design"
+printf 'never\n' >"$TMPNOREG/design/never.txt"
+noreg_stderr="$TMPNOREG/no-reg.stderr"
+set +e
+out_noreg=$(
+    (cd "$clone_noreg" && bash "$PUBLISH" --design-tmpdir "$TMPNOREG/design" --run-id "RUNNOREG1" --issue 22 --repo owner/repo) 2>"$noreg_stderr"
+)
+rc_noreg=$?
+set -e
+[[ "$out_noreg" == *"PUBLISH_OK=false"* ]] || fail "never-registered PUBLISH_OK: $out_noreg"
+[[ "$rc_noreg" -eq 1 ]] || fail "never-registered should exit 1 (got $rc_noreg)"
+grep -q 'did not register within' "$noreg_stderr" || fail "never-registered stderr missing registration-timeout"
+expected_probes=$(expected_registration_probes)
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "$expected_probes" ]] || fail "never-registered should exhaust $expected_probes probes, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
+grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--json' || fail "never-registered should run json probes"
+! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "never-registered must not invoke --watch"
+! grep -q 'pr merge' "$GH_STUB_LOG" || fail "never-registered must not merge"
+unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY
+rm -rf "$TMPNOREG"
+
+echo "=== registration probe treats non-array JSON as not registered ==="
+TMPREGOBJ=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-reg-object.XXXXXX")
+clone_regobj=$(setup_clone_with_origin_head "$TMPREGOBJ")
+stub_regobj="$TMPREGOBJ/stub"
+GH_STUB_LOG="$TMPREGOBJ/gh-reg-object.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_regobj"
+make_sleep_stub "$TMPREGOBJ/sleep"
+export PATH="$stub_regobj:$PATH"
+export SLEEP_SCRIPT_DIR="$TMPREGOBJ/sleep"
+export TEST_CLONE_ROOT="$clone_regobj"
+export TEST_MERGE_BRANCH="larch-log-design-RUNREGOBJ1"
+export GH_STUB_CHECKS_JSON_OUT='{"message":"rate limited"}'
+unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_PR_HEAD_OID_MISMATCH_FIRST GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPREGOBJ/design"
+printf 'object\n' >"$TMPREGOBJ/design/object.txt"
+regobj_stderr="$TMPREGOBJ/reg-object.stderr"
+set +e
+out_regobj=$(
+    (cd "$clone_regobj" && bash "$PUBLISH" --design-tmpdir "$TMPREGOBJ/design" --run-id "RUNREGOBJ1" --issue 26 --repo owner/repo) 2>"$regobj_stderr"
+)
+rc_regobj=$?
+set -e
+[[ "$out_regobj" == *"PUBLISH_OK=false"* ]] || fail "non-array registration PUBLISH_OK: $out_regobj"
+[[ "$rc_regobj" -eq 1 ]] || fail "non-array registration should exit 1 after timeout (got $rc_regobj)"
+grep -q 'non-array JSON' "$regobj_stderr" || fail "non-array registration stderr missing diagnostic"
+[[ "$(grep -c 'non-array JSON' "$regobj_stderr")" == "1" ]] || fail "non-array registration should log diagnostic once"
+expected_probes=$(expected_registration_probes)
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "$expected_probes" ]] || fail "non-array registration should exhaust $expected_probes probes, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
+! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "non-array registration must not invoke --watch"
+! grep -q 'pr merge' "$GH_STUB_LOG" || fail "non-array registration must not merge"
+unset GH_STUB_CHECKS_JSON_OUT
+rm -rf "$TMPREGOBJ"
+
+echo "=== registration probe accepts non-zero rc with pending JSON ==="
+TMPREGRC=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-reg-rc.XXXXXX")
+clone_regrc=$(setup_clone_with_origin_head "$TMPREGRC")
+stub_regrc="$TMPREGRC/stub"
+GH_STUB_LOG="$TMPREGRC/gh-reg-rc.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_regrc"
+export PATH="$stub_regrc:$PATH"
+export TEST_CLONE_ROOT="$clone_regrc"
+export TEST_MERGE_BRANCH="larch-log-design-RUNREGRC1"
+export GH_STUB_CHECKS_JSON_RC=8
+export GH_STUB_CHECKS_JSON_OUT='[{"name":"ci","bucket":"pending"}]'
+unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_PR_HEAD_OID_MISMATCH_FIRST GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPREGRC/design"
+printf 'pending\n' >"$TMPREGRC/design/pending.txt"
+out_regrc=$(cd "$clone_regrc" && bash "$PUBLISH" --design-tmpdir "$TMPREGRC/design" --run-id "RUNREGRC1" --issue 23 --repo owner/repo)
+[[ "$out_regrc" == *"PUBLISH_OK=true"* ]] || fail "nonzero registration rc PUBLISH_OK: $out_regrc"
+grep -q 'pr merge' "$GH_STUB_LOG" || fail "nonzero registration rc should merge"
+grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "nonzero registration rc should still watch"
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "1" ]] || fail "nonzero registration rc should register on first JSON probe, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
+unset GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_JSON_OUT
+rm -rf "$TMPREGRC"
+
+echo "=== registration pr view failure refuses merge ==="
+TMPREGVIEW=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-reg-view.XXXXXX")
+clone_regview=$(setup_clone_with_origin_head "$TMPREGVIEW")
+stub_regview="$TMPREGVIEW/stub"
+GH_STUB_LOG="$TMPREGVIEW/gh-reg-view.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_regview"
+make_sleep_stub "$TMPREGVIEW/sleep"
+export PATH="$stub_regview:$PATH"
+export SLEEP_SCRIPT_DIR="$TMPREGVIEW/sleep"
+export TEST_CLONE_ROOT="$clone_regview"
+export TEST_MERGE_BRANCH="larch-log-design-RUNREGVIEW1"
+export GH_STUB_PR_VIEW_RC=7
+unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_PR_HEAD_OID_MISMATCH_FIRST GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPREGVIEW/design"
+printf 'view fail\n' >"$TMPREGVIEW/design/view.txt"
+regview_stderr="$TMPREGVIEW/reg-view.stderr"
+set +e
+out_regview=$(
+    (cd "$clone_regview" && bash "$PUBLISH" --design-tmpdir "$TMPREGVIEW/design" --run-id "RUNREGVIEW1" --issue 27 --repo owner/repo) 2>"$regview_stderr"
+)
+rc_regview=$?
+set -e
+[[ "$out_regview" == *"PUBLISH_OK=false"* ]] || fail "registration view failure PUBLISH_OK: $out_regview"
+[[ "$rc_regview" -eq 1 ]] || fail "registration view failure should exit 1 (got $rc_regview)"
+grep -q 'did not register within' "$regview_stderr" || fail "registration view failure stderr missing registration-timeout"
+grep -q 'Could not resolve host' "$regview_stderr" || fail "registration view failure stderr missing pr view diagnostic"
+! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "registration view failure must not invoke --watch"
+! grep -q 'pr merge' "$GH_STUB_LOG" || fail "registration view failure must not merge"
+unset GH_STUB_PR_VIEW_RC
+export SLEEP_SCRIPT_DIR="$GLOBAL_SLEEP_STUB"
+rm -rf "$TMPREGVIEW"
+
+echo "=== stale head checks wait until PR head matches pushed head ==="
+TMPSTALE=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-stale-head.XXXXXX")
+clone_stale=$(setup_clone_with_origin_head "$TMPSTALE")
+stub_stale="$TMPSTALE/stub"
+GH_STUB_LOG="$TMPSTALE/gh-stale-head.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_stale"
+make_sleep_stub "$TMPSTALE/sleep"
+export PATH="$stub_stale:$PATH"
+export SLEEP_SCRIPT_DIR="$TMPSTALE/sleep"
+export TEST_CLONE_ROOT="$clone_stale"
+export TEST_MERGE_BRANCH="larch-log-design-RUNSTALE1"
+export GH_STUB_PR_HEAD_OID_STALE
+GH_STUB_PR_HEAD_OID_STALE=$(git -C "$clone_stale" rev-parse HEAD)
+export GH_STUB_PR_HEAD_OID_MISMATCH_FIRST=2
+unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPSTALE/design"
+printf 'stale\n' >"$TMPSTALE/design/stale.txt"
+out_stale=$(cd "$clone_stale" && bash "$PUBLISH" --design-tmpdir "$TMPSTALE/design" --run-id "RUNSTALE1" --issue 24 --repo owner/repo)
+[[ "$out_stale" == *"PUBLISH_OK=true"* ]] || fail "stale-head eventual match PUBLISH_OK: $out_stale"
+[[ "$(cat "$GH_STUB_LOG.head-count")" == "3" ]] || fail "stale-head should wait for third head probe, got $(cat "$GH_STUB_LOG.head-count" 2>/dev/null || echo missing)"
+grep -q 'pr merge' "$GH_STUB_LOG" || fail "stale-head eventual match should merge"
+unset GH_STUB_PR_HEAD_OID_MISMATCH_FIRST
+unset GH_STUB_PR_HEAD_OID_STALE
+export SLEEP_SCRIPT_DIR="$GLOBAL_SLEEP_STUB"
+rm -rf "$TMPSTALE"
+
+echo "=== stale head never aligns skips watch and merge ==="
+TMPSTALEN=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-stale-never.XXXXXX")
+clone_stalen=$(setup_clone_with_origin_head "$TMPSTALEN")
+stub_stalen="$TMPSTALEN/stub"
+GH_STUB_LOG="$TMPSTALEN/gh-stale-never.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+make_gh_stub "$stub_stalen"
+make_sleep_stub "$TMPSTALEN/sleep"
+export PATH="$stub_stalen:$PATH"
+export SLEEP_SCRIPT_DIR="$TMPSTALEN/sleep"
+export TEST_CLONE_ROOT="$clone_stalen"
+export TEST_MERGE_BRANCH="larch-log-design-RUNSTALEN1"
+export GH_STUB_PR_HEAD_OID_STALE
+GH_STUB_PR_HEAD_OID_STALE=$(git -C "$clone_stalen" rev-parse HEAD)
+export GH_STUB_PR_HEAD_OID_MISMATCH=1
+unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_RC GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
+mkdir -p "$TMPSTALEN/design"
+printf 'stale never\n' >"$TMPSTALEN/design/stale.txt"
+stalen_stderr="$TMPSTALEN/stale-never.stderr"
+set +e
+out_stalen=$(
+    (cd "$clone_stalen" && bash "$PUBLISH" --design-tmpdir "$TMPSTALEN/design" --run-id "RUNSTALEN1" --issue 25 --repo owner/repo) 2>"$stalen_stderr"
+)
+rc_stalen=$?
+set -e
+[[ "$out_stalen" == *"PUBLISH_OK=false"* ]] || fail "stale-head never aligns PUBLISH_OK: $out_stalen"
+[[ "$rc_stalen" -eq 1 ]] || fail "stale-head never aligns should exit 1 (got $rc_stalen)"
+grep -q 'did not register within' "$stalen_stderr" || fail "stale-head never aligns stderr missing registration-timeout"
+! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "stale-head never aligns must not invoke --watch"
+! grep -q 'pr merge' "$GH_STUB_LOG" || fail "stale-head never aligns must not merge"
+unset GH_STUB_PR_HEAD_OID_MISMATCH
+unset GH_STUB_PR_HEAD_OID_STALE
+export SLEEP_SCRIPT_DIR="$GLOBAL_SLEEP_STUB"
+rm -rf "$TMPSTALEN"
 
 echo "=== git push failure after commit preserves recovery ref; no gh pr merge ==="
 _PRE_PUSH_PATH="$PATH"
@@ -896,6 +1342,9 @@ clone_pre=$(setup_clone_with_origin_head "$TMPPRE")
 stub_pre="$TMPPRE/stub"
 make_gh_stub "$stub_pre"
 export PATH="$stub_pre:$PATH"
+export TEST_CLONE_ROOT="$clone_pre"
+export TEST_MERGE_BRANCH="larch-log-design-RUNPREMPTY1"
+unset GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_PR_HEAD_OID_MISMATCH_FIRST
 mkdir -p "$TMPPRE/design/plan-review"
 printf 'body\n' >"$TMPPRE/design/plan.txt"
 out_pre=$(

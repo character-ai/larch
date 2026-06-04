@@ -1,0 +1,9 @@
+Implemented the plan and wrote the required manifest atomically.
+
+Validation run highlights:
+- `make test-design-publish` passed.
+- Gate-only extracted `design-log-publish` regression cases passed.
+- `make lint-bash32` passed.
+- `make markdownlint` passed.
+- Targeted `pre-commit run shellcheck --files ...` passed.
+- `scripts/relevant-checks.sh` was attempted but hit the 29s guard before completing.

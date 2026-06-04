@@ -1,0 +1,20 @@
+I have enough context. Now I'll write the review.
+
+---
+
+### In-Scope Findings
+
+1. **architecture** `skills/design/scripts/plan-review-loop.sh` and `scripts/test-design-multi-round-integration.sh` — both files are modified but neither appears in the implementation plan's `## Files to modify/create`. `plan-review-loop.sh` replaces the collector's process-substitution stderr forwarding (`2> >(tee -a "$_collect_err" >&${_collect_stderr_fd})`) with a temp-file approach, and `test-design-multi-round-integration.sh` adds `env -u LARCH_QUIET_PID` to the loop invocation to ensure `_collect_stderr_fd=2`. The changes are a real improvement (eliminates background-process timing issues and eliminates the fd-4-may-not-be-open problem), but the scope expansion is invisible to plan-traceability audits: the plan's testing strategy does not name these files, so future readers cannot trace the change to a requirement. **Suggested fix:** add `skills/design/scripts/plan-review-loop.sh` (and its sibling `.md`) to the plan's files list with a one-line rationale ("process-substitution stderr forwarding caused timing issues in the integration test"), or squash the change into a separate labelled commit so it is discoverable from `git log`.
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+---
+
+**Note on jq split (not a finding):** The implementation uses two separate `jq -e` calls (`type == "array"` then `length > 0`) rather than the single combined `jq -e 'type=="array" and length>0'` the plan suggested. This is intentional and correct: a single combined expression would make an empty array (`[]`) fall through to the `elif jq -e '.'` branch and trigger a fatal break, causing the never-registered case to fail after one probe instead of exhausting the full budget. The two-step structure correctly keeps `[]` in the "not yet registered, keep polling" path.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	architecture	skills/design/scripts/plan-review-loop.sh, scripts/test-design-multi-round-integration.sh	Both files modified but absent from the plan's Files to modify/create section	Future plan-traceability audit cannot link the process-substitution→temp-file refactor to a stated requirement; the integration test change is similarly untraceable	Add these files to the plan's file list with a one-line rationale, or land the change in a separate labelled commit
+```

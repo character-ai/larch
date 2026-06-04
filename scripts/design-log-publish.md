@@ -50,19 +50,40 @@ branch by:
    `pause design run` in the subject; the default `--reason final` uses
    `flush design run`.
 7. Pushing the disposable branch, creating a PR with `gh pr create --head`
-   (not `create-pr.sh`), waiting for the PR's required status checks via
-   `gh pr checks --required --watch --fail-fast`, squash-merging with
-   `gh pr merge --squash --admin --delete-branch` once they pass (the publish
-   refuses to merge when a required check fails), then
-   `git worktree remove --force`. `--admin` is retained because the repo's
-   review ruleset has no bot reviewer, so a server-side `--auto` merge would be
-   enabled but never complete; CI now gates the merge via the required-check
-   wait rather than via `[skip ci]` being absent alone. The publish fails closed
-   on any non-zero wait result — a failed required check, or a repo with no
-   required checks at all, yields `PUBLISH_OK=false` rather than an unchecked
-   merge. The wait is intentionally unbounded (no local timeout machinery yet —
-   deferred to the `ship-pr.sh` Python migration); GitHub's per-job timeouts
-   bound the realistic wait.
+   (not `create-pr.sh`), then running a two-phase required-check gate before
+   `git worktree remove --force`:
+   - Registration wait: the script records the post-push commit and polls until
+     required checks are reported for that pushed head. Registration requires
+     both a parseable, non-empty `gh pr checks --required --json bucket` array
+     and `gh pr view --json headRefOid` matching the pushed commit. "No checks
+     reported yet" and checks attached to a stale prior PR head are transient
+     within the bounded grace, not CI failures.
+   - Completion watch: only after registration does it call
+     `gh pr checks --required --watch --fail-fast`, then squash-merges with
+     `gh pr merge --squash --admin --delete-branch` once required checks pass.
+   `--admin` is retained because the repo's review ruleset has no bot reviewer,
+   so a server-side `--auto` merge would be enabled but never complete; the gate
+   bypasses review only after CI is registered for the current head and passes.
+   The registration budget is derived from the timeout and interval constants as
+   `ceil(timeout/interval)+1` probes, including the initial t=0 probe, so tests
+   can stub sleep without waiting on wall clock. Registration probes capture
+   stdout under `set +e` and parse the JSON array regardless of `gh`'s exit code;
+   `jq -e` output is redirected away from stdout so boolean probe results never
+   leak onto the `KEY=value` contract stream. Registration timeout emits a
+   dedicated `did not register within` diagnostic with the timeout/probe budget,
+   redacts the last captured checks/head diagnostics, sets `merge_rc=1`, and
+   explicitly skips `--watch`. A non-zero completion watch keeps the distinct
+   `required CI checks did not pass` diagnostic.
+
+## Empty Porcelain (Final)
+
+For `--reason final`, an empty `git status --porcelain -- larch-logs/design/<RUN_ID>`
+after staging is treated as an idempotent success only when `origin/<default>`
+already contains at least one path below that run directory. In that case the
+script emits `PUBLISH_OK=true` with empty PR fields and does not create or merge
+a flush PR. If the default branch does not contain the run directory, the same
+empty-porcelain state is a fail-closed publish (`PUBLISH_OK=false`) because no
+fresh log snapshot can be proven to exist.
 
 ## Pause Reason
 
@@ -103,10 +124,10 @@ On stdout (parseable `KEY=value` lines):
 **Exit code**: `PUBLISH_OK=true|false` remains the stdout contract. Exit `0` on
 all expected failures before a successful `git push`, and on post-push paths
 that still parse cleanly via stdout alone. Exit `1` on `git push` failure,
-`gh pr create` failure after push (when list recovery also fails), a required
-status check that does not pass during the `gh pr checks --required --watch`
-gate (the publish refuses to merge), and `gh pr merge` failure after a
-successful create — while still emitting
+`gh pr create` failure after push (when list recovery also fails), required-check
+registration timeout for the pushed head, a required status check that does not
+pass during the `gh pr checks --required --watch` gate (the publish refuses to
+merge), and `gh pr merge` failure after a successful create — while still emitting
 `PUBLISH_OK=false` (and `RECOVERY_BRANCH=…` when applicable). Callers that
 already parse `PUBLISH_OK` need no change; callers that want fail-closed
 signaling can additionally check the exit code.
@@ -133,20 +154,21 @@ empty `PR_NUMBER` / `PR_URL`.
 Validates `$DESIGN_TMPDIR` is under the allowlist via `larch_design_tmpdir_validate` immediately after the required-arg check and before any worktree or log-root mkdir; failure routes through `emit_publish_result false; exit 0` to preserve `PUBLISH_OK=false`.
 
 Design log bytes follow the same tmpdir + secrets redaction pipeline as
-implement round artifacts. Dropping the `[skip ci]` marker means CI runs on the
-publish PR; the script then waits for the PR's required status checks
-(`gh pr checks --required --watch --fail-fast`) and refuses to merge if any do
-not pass, so CI gates the merge. The merge itself is `gh pr merge --squash
---admin --delete-branch`: `--admin` bypasses the review-required branch
-protection (this repo's review ruleset has no bot reviewer, so a server-side
-`--auto` merge would enable but never complete), and requires a `gh` OAuth token
-with `repo` (or equivalent) including admin-merge privileges. It bypasses only
-review — not CI, which the wait above has already enforced. Orgs that forbid
-admin merges see `PUBLISH_OK=false` while the disposable branch may still exist
-remotely — operators reconcile manually. When `git push` succeeds but the
-CI-wait, PR create, or merge fails, stderr notes the remote branch and stdout
-may include `RECOVERY_BRANCH=…` for automation. See `SECURITY.md` for the
-consolidated note.
+implement round artifacts. Dropping the `[skip ci]` marker means CI runs on the publish PR; the script
+first waits for required checks to register on the pushed commit head, then
+waits for those checks with `gh pr checks --required --watch --fail-fast`, and
+refuses to merge on registration timeout, head mismatch within the grace, or a
+required-check failure. The merge itself is `gh pr merge --squash --admin
+--delete-branch`: `--admin` bypasses the review-required branch protection (this
+repo's review ruleset has no bot reviewer, so a server-side `--auto` merge
+would enable but never complete), and requires a `gh` OAuth token with `repo`
+(or equivalent) including admin-merge privileges. It bypasses only review — not
+CI, which the registration-plus-watch gate has already enforced. Orgs that
+forbid admin merges see `PUBLISH_OK=false` while the disposable branch may still
+exist remotely — operators reconcile manually. When `git push` succeeds but
+registration, CI-watch, PR create, or merge fails, stderr notes the remote
+branch and stdout may include `RECOVERY_BRANCH=…` for automation. See
+`SECURITY.md` for the consolidated note.
 
 ## plan-review allowlist
 

@@ -1,0 +1,11 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-ci-gate","tool":"cursor","output":"<TMPDIR>/round-5/dyn-ci-gate-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-ci-gate-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-shell-contract","tool":"cursor","output":"<TMPDIR>/round-5/dyn-shell-contract-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-shell-contract-prompt.md","weight":1,"focus_area":"code-quality"}
+{"slot":"dyn-gh-harness","tool":"cursor","output":"<TMPDIR>/round-5/dyn-gh-harness-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-gh-harness-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-publish-tail","tool":"cursor","output":"<TMPDIR>/round-5/dyn-publish-tail-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-publish-tail-prompt.md","weight":1,"focus_area":"architecture"}
+{"slot":"dyn-admin-merge","tool":"cursor","output":"<TMPDIR>/round-5/dyn-admin-merge-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-admin-merge-prompt.md","weight":1,"focus_area":"security"}

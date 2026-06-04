@@ -1,0 +1,11 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-ci-gate","tool":"cursor","output":"<TMPDIR>/round-2/dyn-ci-gate-output.txt","prompt_file":"<TMPDIR>/round-2/dynamic-archetypes/dyn-ci-gate-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-gh-stub","tool":"cursor","output":"<TMPDIR>/round-2/dyn-gh-stub-output.txt","prompt_file":"<TMPDIR>/round-2/dynamic-archetypes/dyn-gh-stub-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-stdout-contract","tool":"cursor","output":"<TMPDIR>/round-2/dyn-stdout-contract-output.txt","prompt_file":"<TMPDIR>/round-2/dynamic-archetypes/dyn-stdout-contract-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-publish-state","tool":"cursor","output":"<TMPDIR>/round-2/dyn-publish-state-output.txt","prompt_file":"<TMPDIR>/round-2/dynamic-archetypes/dyn-publish-state-prompt.md","weight":1,"focus_area":"architecture"}
+{"slot":"dyn-temp-cleanup","tool":"cursor","output":"<TMPDIR>/round-2/dyn-temp-cleanup-output.txt","prompt_file":"<TMPDIR>/round-2/dynamic-archetypes/dyn-temp-cleanup-prompt.md","weight":1,"focus_area":"code-quality"}

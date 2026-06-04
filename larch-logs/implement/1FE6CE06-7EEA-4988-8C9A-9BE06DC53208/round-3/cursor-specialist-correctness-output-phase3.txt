@@ -1,0 +1,15 @@
+Now I have everything I need for a complete correctness review.
+
+### In-Scope Findings
+
+1. - **code-quality** `scripts/design-log-publish.sh:879` — `reg_checks_rc` is captured under `set +e` (`reg_checks_rc=$?`) but its only consumer is the no-op `: "$reg_checks_rc"` at the bottom of the loop body, which exists solely to suppress a shellcheck "unused variable" warning. The plan correctly requires capturing stdout regardless of rc (implemented), but the rc variable itself is semantically dead. No wrong behavior results; a `# shellcheck disable=SC2034` comment would be clearer than the sentinel no-op. **Suggested fix:** Replace `: "$reg_checks_rc"` with a `# shellcheck disable=SC2034` comment, or simply remove the captured rc assignment and the no-op.
+
+2. - **correctness** `skills/design/scripts/test-design-publish.sh:~370-382` (unexpected-publish-rc case) — The test block for `PUBLISH_STUB_RC=2 / PUBLISH_EMIT_OK=false` asserts `post-publish-only` rendered but does not assert `--outcome failed-publish` in `RENDER_LOG`, unlike the `PUBLISH_OK=false` case which explicitly checks `grep -q -- '--outcome failed-publish'`. The code does set `SUMMARY_OUTCOME=failed-publish` for this path (via `PUBLISH_OK=false` from the first `elif` branch), so the render IS called with the right outcome; the test just under-asserts compared to the analogous case above it. **Suggested fix:** Add `grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "unexpected publish rc should render failed-publish outcome"` after the existing `post-publish-only` assertion in the nonzero-without-KV block. Same gap exists in the exit-0-no-KV block.
+
+No out-of-scope observations.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	scripts/design-log-publish.sh:879	reg_checks_rc captured but only consumed by no-op `: "$reg_checks_rc"` used as shellcheck suppressor	No runtime impact; variable is semantically dead	Replace with # shellcheck disable=SC2034 comment or remove capture and no-op entirely
+1	in_scope	nit	correctness	skills/design/scripts/test-design-publish.sh:370-382	nonzero-without-KV and exit-0-no-KV failure-envelope cases assert post-publish-only rendered but do not assert --outcome failed-publish unlike the PUBLISH_OK=false case	Code correctly sets SUMMARY_OUTCOME=failed-publish but the test silently passes even if the wrong outcome is passed to render-final-summary.sh	Add grep -q -- '--outcome failed-publish' "$RENDER_LOG" assertion after existing post-publish-only assertion in both blocks
+```

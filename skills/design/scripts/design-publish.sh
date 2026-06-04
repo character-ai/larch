@@ -43,6 +43,9 @@ parse_kv_from_output() {
         _value="${_line#*=}"
         case "$_key" in
             PUBLISH_OK) PUBLISH_OK="$_value" ;;
+            PR_NUMBER) PR_NUMBER="$_value" ;;
+            PR_URL) PR_URL="$_value" ;;
+            RECOVERY_BRANCH) RECOVERY_BRANCH="$_value" ;;
             RENAMED) RENAMED="$_value" ;;
             UPSERT_STATUS) UPSERT_STATUS="$_value" ;;
             ARCHITECTURE_SOURCE) ARCHITECTURE_SOURCE="$_value" ;;
@@ -126,6 +129,9 @@ FINAL_SUMMARY_PATH="$DESIGN_TMPDIR/final-summary.md"
 WARN_LINES=()
 PLAN_WRITE_OK=false
 PUBLISH_OK=""
+PR_NUMBER=""
+PR_URL=""
+RECOVERY_BRANCH=""
 RENAMED=""
 UPSERT_STATUS=""
 ARCHITECTURE_SOURCE=""
@@ -134,10 +140,30 @@ add_warn() {
     WARN_LINES+=("$1")
 }
 
+publish_recovery_detail() {
+    local _details=()
+    [[ -n "${PR_NUMBER:-}" ]] && _details+=("PR #$PR_NUMBER")
+    [[ -n "${PR_URL:-}" ]] && _details+=("$PR_URL")
+    [[ -n "${RECOVERY_BRANCH:-}" ]] && _details+=("recovery branch $RECOVERY_BRANCH")
+    if [[ "${#_details[@]}" -eq 0 ]]; then
+        printf '%s\n' 'no PR or recovery branch metadata was returned'
+    else
+        local _joined="${_details[0]}" _detail
+        for _detail in "${_details[@]:1}"; do
+            _joined="${_joined}, ${_detail}"
+        done
+        printf '%s\n' "$_joined"
+    fi
+}
+
 write_result_env_and_emit() {
     local -a _kvs=()
     _kvs+=("PLAN_WRITE_OK=$PLAN_WRITE_OK")
     [[ -n "${PUBLISH_OK:-}" ]] && _kvs+=("PUBLISH_OK=$PUBLISH_OK")
+    [[ -n "${PR_NUMBER:-}" ]] && _kvs+=("PR_NUMBER=$PR_NUMBER")
+    [[ -n "${PR_URL:-}" ]] && _kvs+=("PR_URL=$PR_URL")
+    [[ -n "${RECOVERY_BRANCH:-}" ]] && _kvs+=("RECOVERY_BRANCH=$RECOVERY_BRANCH")
+    [[ -n "${RECOVERY_BRANCH:-}" ]] && _kvs+=("LOG_RECOVERY_BRANCH=$RECOVERY_BRANCH")
     [[ -n "${RENAMED:-}" ]] && _kvs+=("RENAMED=$RENAMED")
     [[ -n "${UPSERT_STATUS:-}" ]] && _kvs+=("UPSERT_STATUS=$UPSERT_STATUS")
     [[ -n "${ARCHITECTURE_SOURCE:-}" ]] && _kvs+=("ARCHITECTURE_SOURCE=$ARCHITECTURE_SOURCE")
@@ -148,6 +174,10 @@ write_result_env_and_emit() {
     done
     emit_kv PLAN_WRITE_OK "$PLAN_WRITE_OK"
     [[ -n "${PUBLISH_OK:-}" ]] && emit_kv PUBLISH_OK "$PUBLISH_OK"
+    [[ -n "${PR_NUMBER:-}" ]] && emit_kv PR_NUMBER "$PR_NUMBER"
+    [[ -n "${PR_URL:-}" ]] && emit_kv PR_URL "$PR_URL"
+    [[ -n "${RECOVERY_BRANCH:-}" ]] && emit_kv RECOVERY_BRANCH "$RECOVERY_BRANCH"
+    [[ -n "${RECOVERY_BRANCH:-}" ]] && emit_kv LOG_RECOVERY_BRANCH "$RECOVERY_BRANCH"
     [[ -n "${RENAMED:-}" ]] && emit_kv RENAMED "$RENAMED"
     [[ -n "${UPSERT_STATUS:-}" ]] && emit_kv UPSERT_STATUS "$UPSERT_STATUS"
     [[ -n "${ARCHITECTURE_SOURCE:-}" ]] && emit_kv ARCHITECTURE_SOURCE "$ARCHITECTURE_SOURCE"
@@ -189,23 +219,6 @@ fi
 
 PLAN_WRITE_OK=true
 
-# shellcheck source=scripts/lib-design-reentry-guard.sh
-source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"
-set +e
-design_reentry_marker_write "$ISSUE" "$CLAUDE_PID" 2>"$DESIGN_TMPDIR/design-reentry-marker-write.failure.log"
-_marker_rc=$?
-if [[ "$_marker_rc" -ne 0 ]]; then
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-        --log "$DESIGN_TMPDIR/execution-issues.md" \
-        --site "design Step 5c marker write" \
-        --tool "design_reentry_marker_write" \
-        --exit-code "$_marker_rc" \
-        --category Warnings \
-        --output-file "$DESIGN_TMPDIR/design-reentry-marker-write.failure.log" \
-        --redact >/dev/null 2>&1 || true
-fi
-set -e
-
 _arch_file="$DESIGN_TMPDIR/architecture-diagram.md"
 _arch_skipped="$DESIGN_TMPDIR/architecture-diagram.skipped"
 _run_upsert=false
@@ -242,81 +255,76 @@ if [[ "$_run_upsert" == true ]]; then
 fi
 
 if [[ -n "$SESSION_ID" ]]; then
-    "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
-        --outcome approved \
-        --mode "$MODE" \
-        ${REPO:+--repo "$REPO"} \
-        --pre-publish-only || true
-fi
-
-# --- DESIGN RUN-LOG GITHUB FLUSH TEMPORARILY DISABLED (#3378) ---
-# The end-of-/design run-log flush to GitHub is disabled while larch run logs
-# are migrated from GitHub to S3/R2. The plan was already written to the issue
-# body above; the [DESIGNED] rename and summary render below still run — only
-# the larch-logs/design/<run-id>/ GitHub PR is skipped. PUBLISH_OK is forced
-# true so those tail steps proceed exactly as on a successful publish.
-# TODO(s3-r2-migration): re-enable the commented design-log-publish.sh block
-# below (and the matching gated cases in
-# skills/design/scripts/test-design-publish.sh) once run logs flush to S3/R2.
-if [[ -n "$SESSION_ID" ]]; then
-    PUBLISH_OK=true
-    add_warn '**ℹ /design: run-log GitHub flush disabled pending migration to S3/R2; design-log-publish.sh skipped**'
+    rm -f "$FINAL_SUMMARY_PATH" 2>/dev/null || true
+    set +e
+    _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \
+        --design-tmpdir "$DESIGN_TMPDIR" \
+        --run-id "$SESSION_ID" \
+        --issue "$ISSUE" \
+        ${REPO:+--repo "$REPO"} 2>"$DESIGN_TMPDIR/design-log-publish.failure.log")
+    _publish_rc=$?
+    set -e
+    PUBLISH_OK=""
+    PR_NUMBER=""
+    PR_URL=""
+    RECOVERY_BRANCH=""
+    parse_kv_from_output "$_publish_out"
+    _scrub_n="$(printf '%s\n' "$_publish_out" | sed -n 's/^SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
+    case "${_scrub_n:-}" in ''|*[!0-9]*) _scrub_n=0 ;; esac
+    if [[ "$_scrub_n" -gt 0 ]]; then
+        add_warn "**⚠ SECURITY: scrub-log-secrets.sh redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
+    fi
+    if [[ "$_publish_rc" -ne 0 ]] && [[ "$_publish_out" != *$'PUBLISH_OK='* ]]; then
+        PUBLISH_OK=false
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 5c" \
+            --tool "design-log-publish.sh" \
+            --exit-code "$_publish_rc" \
+            --category Warnings \
+            --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
+            --redact >/dev/null 2>&1 || true
+        add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
+    elif [[ "${PUBLISH_OK:-}" == false ]]; then
+        _publish_failure_rc=${_publish_rc:-1}
+        if [[ "$_publish_failure_rc" -eq 0 ]]; then
+            _publish_failure_rc=1
+        fi
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 5c" \
+            --tool "design-log-publish.sh" \
+            --exit-code "$_publish_failure_rc" \
+            --category Warnings \
+            --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
+            --redact >/dev/null 2>&1 || true
+        add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
+    elif [[ -z "${PUBLISH_OK:-}" ]]; then
+        PUBLISH_OK=false
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 5c" \
+            --tool "design-log-publish.sh" \
+            --exit-code "${_publish_rc:-0}" \
+            --category Warnings \
+            --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
+            --redact >/dev/null 2>&1 || true
+        add_warn '**⚠ 5c: design-log-publish.sh returned without PUBLISH_OK=; treating publish as failed**'
+        add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
+    fi
 else
     add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'
 fi
-# if [[ -n "$SESSION_ID" ]]; then
-#     set +e
-#     _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \
-#         --design-tmpdir "$DESIGN_TMPDIR" \
-#         --run-id "$SESSION_ID" \
-#         --issue "$ISSUE" \
-#         ${REPO:+--repo "$REPO"} 2>"$DESIGN_TMPDIR/design-log-publish.failure.log")
-#     _publish_rc=$?
-#     set -e
-#     PUBLISH_OK=""
-#     parse_kv_from_output "$_publish_out"
-#     _scrub_n="$(printf '%s\n' "$_publish_out" | sed -n 's/^SECRET_SCRUB_VIOLATIONS=//p' | tail -1)"
-#     case "${_scrub_n:-}" in ''|*[!0-9]*) _scrub_n=0 ;; esac
-#     if [[ "$_scrub_n" -gt 0 ]]; then
-#         add_warn "**⚠ SECURITY: scrub-log-secrets.sh redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
-#     fi
-#     if [[ "$_publish_rc" -ne 0 ]] && [[ "$_publish_out" != *$'PUBLISH_OK='* ]]; then
-#         PUBLISH_OK=false
-#         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-#             --log "$DESIGN_TMPDIR/execution-issues.md" \
-#             --site "design Step 5c" \
-#             --tool "design-log-publish.sh" \
-#             --exit-code "$_publish_rc" \
-#             --category Warnings \
-#             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
-#             --redact >/dev/null 2>&1 || true
-#     elif [[ "${PUBLISH_OK:-}" == false ]]; then
-#         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-#             --log "$DESIGN_TMPDIR/execution-issues.md" \
-#             --site "design Step 5c" \
-#             --tool "design-log-publish.sh" \
-#             --exit-code "${_publish_rc:-1}" \
-#             --category Warnings \
-#             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
-#             --redact >/dev/null 2>&1 || true
-#     elif [[ -z "${PUBLISH_OK:-}" ]]; then
-#         PUBLISH_OK=false
-#         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-#             --log "$DESIGN_TMPDIR/execution-issues.md" \
-#             --site "design Step 5c" \
-#             --tool "design-log-publish.sh" \
-#             --exit-code "${_publish_rc:-0}" \
-#             --category Warnings \
-#             --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" \
-#             --redact >/dev/null 2>&1 || true
-#         add_warn '**⚠ 5c: design-log-publish.sh returned without PUBLISH_OK=; treating publish as failed**'
-#     fi
-# else
-#     add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'
-# fi
 
+SUMMARY_OUTCOME=approved
+if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" != true ]]; then
+    SUMMARY_OUTCOME=failed-publish
+fi
+export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"
+export DESIGN_LOG_PR_URL="${PR_URL:-}"
+export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
 "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
-    --outcome approved \
+    --outcome "$SUMMARY_OUTCOME" \
     --mode "$MODE" \
     ${REPO:+--repo "$REPO"} \
     --post-publish-only || true
@@ -337,6 +345,23 @@ if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
     else
         add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan and logs may have published but the issue title was not updated. Re-invoke /design or rename manually if the title is still wrong.**"
     fi
+
+    # shellcheck source=scripts/lib-design-reentry-guard.sh
+    source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"
+    set +e
+    design_reentry_marker_write "$ISSUE" "$CLAUDE_PID" 2>"$DESIGN_TMPDIR/design-reentry-marker-write.failure.log"
+    _marker_rc=$?
+    if [[ "$_marker_rc" -ne 0 ]]; then
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 5c marker write" \
+            --tool "design_reentry_marker_write" \
+            --exit-code "$_marker_rc" \
+            --category Warnings \
+            --output-file "$DESIGN_TMPDIR/design-reentry-marker-write.failure.log" \
+            --redact >/dev/null 2>&1 || true
+    fi
+    set -e
 fi
 
 if ! write_result_env_and_emit; then

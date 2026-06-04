@@ -1,0 +1,18 @@
+warning: `--full-auto` is deprecated; use `--sandbox workspace-write` instead.
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+⏳ codex agent: still running (4m elapsed)
+⏳ codex agent: still running (5m elapsed)
+⏳ codex agent: still running (6m elapsed)
+⏳ codex agent: still running (7m elapsed)
+⏳ codex agent: still running (8m elapsed)
+⏳ codex agent: still running (9m elapsed)
+⏳ codex agent: still running (10m elapsed)
+⏳ codex agent: still running (11m elapsed)
+⏳ codex agent: still running (12m elapsed)
+⏳ codex agent: still running (13m elapsed)
+⏳ codex agent: still running (14m elapsed)
+⏳ codex agent: still running (15m elapsed)
+✓ codex agent: completed (exit code 0, 941s elapsed, output 136 bytes)

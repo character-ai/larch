@@ -535,7 +535,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 **When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or disallowed public argv abort before Step 0 (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh`. **Split-path** (Step 2b.5) invokes this block only on the **terminal** branches that set `SUMMARY_OUTCOME=approved-partition` or `SUMMARY_OUTCOME=cancelled-decompose` (see `decompose-panel.md`); other Split-path exits (e.g. return to caller, retry paths) preserve `$DESIGN_TMPDIR` without running this fence.
 
-**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-assessor-worse` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` **immediately before** running this fenced block on single-phase exits. Gate-C success uses `design-publish.sh` (internal two-phase render); **do not** run this single-phase fence on the Gate-C happy path.
+**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-assessor-worse` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` **immediately before** running this fenced block on single-phase exits. Gate-C success uses `design-publish.sh` (internal two-phase render); **do not** run this single-phase fence on the Gate-C happy path.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
@@ -1494,7 +1494,7 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
        while IFS= read -r _line || [[ -n "$_line" ]]; do
          _key="${_line%%=*}"; _value="${_line#*=}"
          case "$_key" in
-           PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH) printf -v "$_key" '%s' "$_value" ;;
+           PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH) printf -v "$_key" '%s' "$_value" ;;
            WARN) _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done; if [[ "$_publish_warn_dup" != true ]]; then _publish_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
          esac
        done <"$DESIGN_TMPDIR/.design-publish-result.env"
@@ -1503,7 +1503,7 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
    while IFS= read -r _line || [[ -n "$_line" ]]; do
      _key="${_line%%=*}"; _value="${_line#*=}"
      case "$_key" in
-       PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
+       PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
        WARN)
          if [[ "$_publish_parse_ok" != true ]]; then
            _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done
@@ -1539,15 +1539,19 @@ Do NOT write any farewell message such as "Design complete", "Returning to the /
 
 Additionally, after Step 5c's `design-publish.sh` driver refreshes the persisted summary artifacts (or after any cancellation outcome's `### Final summary block` fence does the same) AND after the mandatory shared verbatim full-body emit from Step 5c item 5, NEVER write a free-form natural-language recap summary at end of turn. This includes a "Design complete." prose line, a bullet list of artifacts (Run / Discovery / Plan / Plan review / Design log PR / Summary comment), a parenthetical cost paraphrase (for example `~$10.46` or `SIMPLE tier, ~27m`), or any natural-language replacement for the structured `## /design run ...` block. The shared post-publish/full-body emit rule runs when `$DESIGN_TMPDIR/final-summary.md` or parsed `FINAL_SUMMARY_PATH` is non-empty after driver handoff (`_publish_rc` 0, 1, or 3), followed by any required repeated external-reviewer warnings, and then the machine footer. No free-form recap may appear between or after those pieces. Reason: a verbatim full-block emission ensures the per-agent breakdown (`Claude $X, Codex $X, Cursor $X`) and all other bullets are visible at top chat without depending on Bash-tool UI expansion. Free-form summaries are forbidden because they would either omit or paraphrase that breakdown.
 
-The rigid `larch:final-summary` body is produced by `skills/design/scripts/render-final-summary.sh` inside `design-publish.sh` (two-phase on the happy path; single `--post-publish-only` on plan-block-write failure). The orchestrator emits the rendered `final-summary.md` body verbatim once per Step 5c handoff. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer below.
+The rigid `larch:final-summary` body is produced by `skills/design/scripts/render-final-summary.sh` inside `design-publish.sh` after the publish outcome is known. The orchestrator emits the rendered `final-summary.md` body verbatim once per Step 5c handoff. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer below.
 
 When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings above, then emit exactly **one** terminal machine footer as the **last human-visible output line** of Step 5. When `PLAN_WRITE_OK=false`, Step 5c item 5 already ran the summary before the `**⚠ 5: plan-block-write failed**` line — do not invoke `render-final-summary.sh` again here.
 
-When `PLAN_WRITE_OK=true`, the footer line is:
+When `PLAN_WRITE_OK=true` and either `SESSION_ID` is empty or `PUBLISH_OK=true`, the footer line is:
 
 `➡️ 5: finalize — plan written to issue #<N>; NEXT REQUIRED: continue`
 
-> **Continue to Step 6 IMMEDIATELY** after the Step 5 footer when `PLAN_WRITE_OK=true` — tmpdir removal is not optional on the happy path.
+When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, the footer line is:
+
+`➡️ 5: finalize — plan written to issue #<N>; log publish incomplete; NEXT REQUIRED: continue`
+
+> **Continue to Step 6 IMMEDIATELY** after the Step 5 footer when `PLAN_WRITE_OK=true`. Step 6 decides whether cleanup is allowed from `PUBLISH_OK`; do not remove `$DESIGN_TMPDIR` from Step 5d when log publish failed.
 At the Step 5d success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5d"` before entering Step 6.
 
 <!-- step:6 — Cleanup -->
@@ -1560,7 +1564,7 @@ Print: `> **🔶 /design 6: cleanup**`
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 6 — cleanup" || true
 ```
 
-Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 7). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout.
+Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 7). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout. Do not run the cleanup fence below when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"

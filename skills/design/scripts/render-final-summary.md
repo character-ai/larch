@@ -16,27 +16,27 @@ Step 0b title-filter refuse (`cancelled-title-filter`), clarify exit, already-pl
 cancel; Step 1d.7 outline cancel (`cancelled-outline`); Step 2b.5 hard cancel; Step 2b.5 Split-path terminal cancels / successful
 partition filing (`cancelled-decompose`, `approved-partition`, `cancelled-assessor-worse`); Step 5c happy path (two-phase: `--pre-publish-only`
 before `design-log-publish.sh`, `--post-publish-only` after); Step 5c
-plan-block-write failure (`--outcome failed-plan-write`).
+plan-block-write failure (`--outcome failed-plan-write`), and log-publish failure
+after Gate-C approval (`--outcome failed-publish`).
 
-The shell enum keeps file-order with newest cancelled entries appended before `failed-plan-write`; `SKILL.md` Step 0b documents the same token set alphabetically within `cancelled-*`.
+The shell enum keeps file-order with newest cancelled entries appended before the `failed-*` outcomes; `SKILL.md` Step 0b documents the same token set alphabetically within `cancelled-*`.
 
 ## Split-path / pre–Step 0a
 
 Step 2b.5 Split-path calls this helper on **`SUMMARY_OUTCOME=approved-partition`** and **`SUMMARY_OUTCOME=cancelled-decompose`** terminal exits (same `### Final summary block` fence as other single-phase cancels). Other Split-path branches preserve `$DESIGN_TMPDIR` without invoking `render-final-summary.sh` until a terminal outcome is chosen.
 Pre–Step 0a aborts have no `$DESIGN_TMPDIR`.
 
-## Two-phase render behavior
+## Publish-tail render behavior
 
-Phase 1 writes `final-summary.md` before `design-log-publish.sh` so the design
-log commit can bundle it. Phase 2 re-renders after publish (success or failure) so
-GitHub upsert and chat match post-publish warnings. The committed Phase-1 file
-may differ slightly from the Phase-2 body when publish appends warnings; a
-second commit to refresh the log bundle is intentionally not required. If either
-phase render fails or leaves the file empty, the helper appends a Warning and
-writes the self-composed fallback schema. On post-phase failures it refreshes
-`Exec issues` / `Warnings` from `execution-issues.md` and only carries forward
-the prior non-`N/A` `- **Cost**:` line when one already existed; it does not
-preserve the rest of the stale Phase-1 body.
+`design-publish.sh` removes any stale `final-summary.md` before invoking
+`design-log-publish.sh`, then renders the terminal summary after the publish
+outcome is known. This avoids committing an approved summary into an open
+failed-publish flush PR. If the post-publish render fails or leaves the file
+empty, the helper appends a Warning and writes the self-composed fallback
+schema. On post-phase failures it refreshes `Exec issues` / `Warnings` from
+`execution-issues.md` and only carries forward the prior non-`N/A`
+`- **Cost**:` line when one already existed; it does not preserve the rest of a
+stale body.
 
 ## Cost unavailable (FINDING_12)
 

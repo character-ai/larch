@@ -1,0 +1,11 @@
+Reviewing the branch diff and commit history with a security focus on the admin-merge gate.
+Reviewed branch commits `01a6d33fd` through `1b96c2290` against the precomputed diff and the merge-gate implementation in `scripts/design-log-publish.sh`.
+
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+- Re-enabling the GitHub flush in `skills/design/scripts/design-publish.sh` restores the existing public-boundary model (trim + `redact-tmpdir-paths.sh` / `redact-secrets.sh` before commit); that is intentional exposure, not a new merge-gate bypass.
+- The two-phase gate (`scripts/design-log-publish.sh:805-914`) addresses the #3413 race (zero checks → immediate `--watch` failure), adds head binding so stale green checks cannot satisfy registration after force-push reuse, keeps registration-timeout (`did not register within`) separate from watch failure (`did not pass`), skips `--watch` on timeout paths, and routes captured `gh` output through `redact_diagnostic` before `larch_err`. Failed paths leave `PUBLISH_OK=false`, emit `RECOVERY_BRANCH` when appropriate, and do not call `gh pr merge --admin`.
+- `[DESIGNED]` rename remains gated on `PUBLISH_OK=true` in `design-publish.sh`; publish failure surfaces `failed-publish` recovery metadata without implying logs landed on the default branch.
+- Residual trust boundary (pre-existing): `--admin` still bypasses human review; enforcement depends on `gh pr checks --required --watch --fail-fast` succeeding before merge, plus GitHub’s server-side rules for required status checks on the merge API.
