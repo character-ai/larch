@@ -350,6 +350,12 @@ printf 'body\n' >"$BODY_FILE"
 out_bad_repo_pre_source=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo /abs)
 [[ "$out_bad_repo_pre_source" == *"PAUSE_OK=false"* && "$out_bad_repo_pre_source" == *"ERROR=invalid-repo"* ]] || fail "bad argv --repo should not be overwritten by source-env: $out_bad_repo_pre_source"
 ! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad argv --repo with source-env must not write marker"
+make_design_tmpdir "$DESIGN"
+printf 'export SESSION_ID=RUNPAUSE1\nexport REPO=bad..repo\n' >"$DESIGN/source-env.sh"
+printf 'body\n' >"$BODY_FILE"
+out_bad_repo_source=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9)
+[[ "$out_bad_repo_source" == *"PAUSE_OK=false"* && "$out_bad_repo_source" == *"ERROR=invalid-repo"* ]] || fail "bad source-env REPO should fail before pause save: $out_bad_repo_source"
+! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad source-env REPO must not write marker"
 
 echo "=== recovery branch and hard publish failure ==="
 make_design_tmpdir "$DESIGN"

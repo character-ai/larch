@@ -1158,7 +1158,7 @@ printf '%s\n' "$step0b_block" | grep -Fq 'resume env refresh failed via write-de
 printf '%s\n' "$step0b_block" | grep -Fq 'only when `ROUTE=proceed`' \
   || fail "(FINDING_15) SKILL.md Step 0b sub-step 6 must be ROUTE=proceed guarded"
 
-skill_fetch_line=$(printf '%s\n' "$step0b_block" | grep -nF '2. **Fetch issue' | head -1 | cut -d: -f1 || true)
+skill_fetch_line=$(printf '%s\n' "$step0b_block" | grep -nF '2. **Resolve repo, then fetch issue' | head -1 | cut -d: -f1 || true)
 skill_route_line=$(printf '%s\n' "$step0b_block" | grep -nF '2.5. **Route driver**' | head -1 | cut -d: -f1 || true)
 skill_clarify_line=$(printf '%s\n' "$step0b_block" | grep -nF '3. **Clarify loop**' | head -1 | cut -d: -f1 || true)
 [[ -n "$skill_fetch_line" && -n "$skill_route_line" && -n "$skill_clarify_line" ]] \
@@ -1166,6 +1166,9 @@ skill_clarify_line=$(printf '%s\n' "$step0b_block" | grep -nF '3. **Clarify loop
 if (( skill_fetch_line >= skill_route_line || skill_route_line >= skill_clarify_line )); then
   fail "(FINDING_4) SKILL.md Step 0b must fetch before route driver before clarify"
 fi
+# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
+printf '%s\n' "$step0b_block" | grep -Fq 'gh issue view "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"} --json body,labels,number,title' \
+  || fail "(FINDING_20) SKILL.md Step 0b issue fetch must thread resolved --repo"
 
 route_resume_line=$(grep -nF '# 1. Resume detection' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
 route_title_line=$(grep -nF '# 2. Title-eligibility' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)

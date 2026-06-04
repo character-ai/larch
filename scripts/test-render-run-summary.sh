@@ -401,6 +401,31 @@ pass 'publish-skipped unknown run keeps logs N/A'
 
 "$HELPER" \
     --skill design \
+    --outcome publish-skipped \
+    --run-id RUN-D-SKIP \
+    --mode SIMPLE \
+    --workflow-path SIMPLE \
+    --duration 'N/A' \
+    --cost-unavailable \
+    --issue-number 9 \
+    --issue-url 'https://github.com/o/r/issues/9' \
+    --pr-number 0 \
+    --pr-url 'N/A' \
+    --plan-review-line '0 findings' \
+    --code-review-line 'N/A' \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path 'N/A' \
+    --output-file "$TMP_DES_OUT" >/dev/null 2>/dev/null
+# shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
+grep -Fq -- '- **Run logs**: `N/A`' "$TMP_DES_OUT" || fail 'publish-skipped real run-id must keep Run logs N/A'
+if grep -Fq 'larch-logs/design/RUN-D-SKIP/' "$TMP_DES_OUT"; then fail 'publish-skipped real run-id must not synthesize run-log path'; fi
+pass 'publish-skipped real run keeps logs N/A'
+
+"$HELPER" \
+    --skill design \
     --outcome approved \
     --run-id RUN-D3 \
     --mode SIMPLE \

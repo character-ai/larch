@@ -219,7 +219,7 @@ ex_disp=$(na "${EXEC_ISSUES:-0}")
 warn_disp=$(na "${WARNINGS:-0}")
 
 run_logs_disp=$(na "$RUN_LOGS_PATH")
-if [ "$run_logs_disp" = "N/A" ] && [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ] && [ "$OUTCOME" != "failed-publish" ]; then
+if [ "$run_logs_disp" = "N/A" ] && [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ] && [ "$OUTCOME" != "failed-publish" ] && [ "$OUTCOME" != "publish-skipped" ]; then
     run_logs_disp="larch-logs/${SKILL}/${RUN_ID}/"
 fi
 

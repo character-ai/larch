@@ -214,6 +214,17 @@ rc=$?
 set -e
 assert_rc "--help" 0 "$rc"
 
+# --- malformed --repo shapes ---
+for bad_repo in /abs bad..repo a/b/c; do
+    D_BAD_REPO="$TMP/bad-repo-${bad_repo//\//_}"
+    setup_design_tmp "$D_BAD_REPO"
+    set +e
+    bash "$SUBJECT" --design-tmpdir "$D_BAD_REPO" --issue 1 --session-id x --claude-pid 1 --repo "$bad_repo" 2>/dev/null
+    rc=$?
+    set -e
+    assert_rc "invalid --repo $bad_repo" 2 "$rc"
+done
+
 # --- missing step-5b ---
 D_PRE="$TMP/pre-5b"
 setup_design_tmp "$D_PRE"
