@@ -533,6 +533,14 @@ def run_ship(
         fix_attempts = 0
         transient_retries = 0
         while True:
+            if iteration >= config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
+                _write_terminal_state(working, Outcome.STALLED, "merge-loop-iteration-cap")
+                return ShipResult(
+                    Outcome.STALLED,
+                    pr_number=working.pr_number,
+                    pr_url=working.pr_url,
+                    detail="merge loop iteration cap reached",
+                )
             _write_ship_state(
                 working,
                 phase="ci-initial",

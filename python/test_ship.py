@@ -171,6 +171,8 @@ def test_happy_path_stage_order(
         "state",
         "flush-post",
     ]
+    assert order.count("monitor") == 1
+    assert order.count("merge") == 1
     assert not flush_args
     captured = capsys.readouterr()
     assert "ship.py: checks:" in captured.err
@@ -179,6 +181,44 @@ def test_happy_path_stage_order(
     assert "ship.py: ci:" in captured.err
     assert "ship.py: merge" in captured.err
     assert "ship.py: post-merge" in captured.err
+
+
+def test_merge_loop_iteration_cap_stalls(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(config, "SHIP_MERGE_LOOP_MAX_ITERATIONS", 2)
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "u", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "wait",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "merge loop iteration cap reached"
 
 
 def test_oos_gate_before_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

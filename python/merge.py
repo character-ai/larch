@@ -132,14 +132,8 @@ def merge_pr(
         if post_err is not None:
             return post_err
         return head_match
-    if head_match is not None and head_match.head_ref_oid != state.head_ref_oid:
-        post_err = _post_flush(runner, ctx, config.MERGE_RESULT_CI_NOT_READY) if post_flush else None
-        if post_err is not None:
-            return post_err
-        return MergeResult(
-            result=config.MERGE_RESULT_CI_NOT_READY,
-            error="CI monitor must rerun after force-push recovery",
-        )
+    if head_match is not None:
+        state = head_match
 
     race = _version_race_gate(runner, cwd=cwd)
     if race is not None:

@@ -361,6 +361,28 @@ def test_pr_create_success_without_url_does_not_use_current_branch_pr_view() -> 
     assert len(runner.calls) == 3
 
 
+def test_pr_create_recovers_url_when_pr_view_temporarily_missing() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"),
+                0,
+                "https://github.example.test/Owner/Repo/pull/456\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("gh", "pr", "view", "456"), 1, "", "not found", 0.01),
+        ],
+    )
+    pr, created = gh.pr_create(runner, repo="owner/repo", branch="feat", title="t", body="b")
+    assert created is True
+    assert pr.number == 456
+    assert pr.url == "https://github.example.test/Owner/Repo/pull/456"
+    assert pr.head_ref == "feat"
+
+
 def test_pr_create_propagates_transient_post_create_resolution() -> None:
     runner = RecordingRunner(
         responses=[

@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Any, TextIO
 
 import config
+import redact
 
 
 def _env_truthy(name: str) -> bool:
@@ -43,7 +44,7 @@ class BreadcrumbWriter:
 
     def emit(self, message: str, *, quiet: bool | None = None) -> None:
         use_quiet = _quiet_active() if quiet is None else quiet
-        line = message.rstrip("\n") + "\n"
+        line = redact.redact_outbound(message).rstrip("\n") + "\n"
         if use_quiet and not _quiet_disabled():
             routed = False
             log_file = os.environ.get(config.ENV_LARCH_QUIET_LOG_FILE, "")

@@ -7,7 +7,6 @@ import json
 import os
 import re
 import shutil
-import sys
 import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
@@ -16,6 +15,7 @@ from typing import Any, cast
 
 import config
 import git
+import logging_util
 import redact
 import tokens
 from errors import ShipError
@@ -637,11 +637,23 @@ def _render_token_timing_batches(ctx: RunContext, log_root: Path) -> None:
     batch_dir = log_root / "implement" / run_id
     batch_dir.mkdir(parents=True, exist_ok=True)
     sidecars: list[tuple[str, Path]] = list(_token_sidecar_paths(tmpdir))
+    has_canonical_sidecars = bool(sidecars)
     if token_path.is_file():
         sidecars.append(("refresh", token_path))
     timing_sidecars: list[tuple[str, Path]] = list(_timing_sidecar_paths(tmpdir))
+    has_canonical_sidecars = has_canonical_sidecars or bool(timing_sidecars)
     if timing_path.is_file():
         timing_sidecars.append(("refresh", timing_path))
+    if not has_canonical_sidecars:
+        for path in (token_path, timing_path):
+            if not path.is_file():
+                continue
+            dest = batch_dir / path.name
+            _ = dest.write_text(
+                _redact_batch_payload(path.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+        return
     _ = tokens.scrape_run(
         sidecar_paths=tuple(sidecars),
         timing_sidecar_paths=tuple(timing_sidecars),
@@ -960,8 +972,7 @@ def _warn_secret_scrub(violations: int, files_scrubbed: int, directory: Path) ->
         "## the same value.\n"
         "#############################################################################\n"
     )
-    _ = sys.stderr.write(banner)
-    _ = sys.stderr.flush()
+    logging_util.BreadcrumbWriter().emit(redact.redact_outbound(banner), quiet=None)
 
 
 def _larch_log_commit(

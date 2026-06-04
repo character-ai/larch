@@ -692,8 +692,7 @@ def test_merge_flush_recovery_polls_lagged_pr_head_oid(
     monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
     ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
     out = merge_module.merge_pr(runner, ctx, sleeper=sleeps.append)
-    assert out.result == config.MERGE_RESULT_CI_NOT_READY
-    assert "CI monitor must rerun" in out.error
+    assert out.result == config.MERGE_RESULT_ADMIN_MERGED
     assert sleeps == [5.0]
 
 

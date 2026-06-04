@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from typing import cast
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 import redact
 from errors import ShipError, TransientNetworkError
@@ -329,11 +330,19 @@ def _is_create_conflict(text: str) -> bool:
 
 
 _PR_CONFLICT_URL_RE = re.compile(r"https?://[^\s]+/pull/\d+")
+_PR_URL_MIN_PARTS = 4
+_REPO_SLUG_PARTS = 2
 
 
 def _repo_matches_pr_url(repo: str, url: str) -> bool:
-    needle = f"github.com/{repo}/pull/"
-    return needle in url.lower()
+    parsed = urlparse(url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < _PR_URL_MIN_PARTS or parts[2].lower() != "pull":
+        return False
+    repo_parts = repo.split("/")
+    if len(repo_parts) != _REPO_SLUG_PARTS:
+        return False
+    return parts[0].lower() == repo_parts[0].lower() and parts[1].lower() == repo_parts[1].lower()
 
 
 def _candidate_from_pr_url(url: str, *, branch: str) -> PullRequest | None:
@@ -355,6 +364,7 @@ def _validate_recovered_pr(
     repo: str,
     branch: str,
     cwd: str | None,
+    allow_unverified: bool = False,
 ) -> PullRequest | None:
     if not _repo_matches_pr_url(repo, candidate.url):
         return None
@@ -363,6 +373,8 @@ def _validate_recovered_pr(
     except TransientNetworkError:
         raise
     except ShipError:
+        if allow_unverified:
+            return candidate
         return None
     if viewed.head_ref != branch:
         return None
@@ -378,6 +390,7 @@ def _recover_pr_from_urls(
     branch: str,
     repo: str,
     cwd: str | None,
+    allow_unverified: bool = False,
 ) -> PullRequest | None:
     for url in reversed(list(urls)):
         candidate = _candidate_from_pr_url(url, branch=branch)
@@ -389,6 +402,7 @@ def _recover_pr_from_urls(
             repo=repo,
             branch=branch,
             cwd=cwd,
+            allow_unverified=allow_unverified,
         )
         if validated is not None:
             return validated
@@ -416,6 +430,7 @@ def _recover_pr_from_create_output(
             branch=branch,
             repo=repo,
             cwd=cwd,
+            allow_unverified=True,
         )
         if recovered is not None:
             return recovered

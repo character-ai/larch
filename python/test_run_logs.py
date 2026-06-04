@@ -306,6 +306,22 @@ def test_publish_run_tree_copies_run_id_pathspec(tmp_path: Path) -> None:
     assert (repo / rel / "token-report-refresh.json").is_file()
 
 
+def test_refresh_only_sidecars_do_not_render_canonical_batches(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    _ = (tmp_path / "token-report-refresh.json").write_text("{}", encoding="utf-8")
+    _ = (tmp_path / "timing-report-refresh.json").write_text("{}", encoding="utf-8")
+    run_logs._render_token_timing_batches(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmp_path, str(state)),
+        tmp_path / "larch-logs",
+    )
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    assert (run_dir / "token-report-refresh.json").is_file()
+    assert (run_dir / "timing-report-refresh.json").is_file()
+    assert not (run_dir / "token-report.ndjson").exists()
+    assert not (run_dir / "timing-report.ndjson").exists()
+
+
 def test_flush_logs_pre_happy_path_commits(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
