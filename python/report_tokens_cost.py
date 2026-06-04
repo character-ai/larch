@@ -34,7 +34,7 @@ def _vendor_totals(record: RunRecord, vendor: VendorName) -> VendorTotals:
 
 def _bucket_total(bucket: Mapping[str, object], vendor: VendorName) -> int:
     if vendor == "claude":
-        keys = ("input", "cache_read", "cache_create_5m", "cache_create_1h", "output")
+        keys = ("input", "cache_read", "cache_create", "cache_create_5m", "cache_create_1h", "output")
     elif vendor == "codex":
         keys = ("input", "cached_input", "output")
     else:
@@ -44,12 +44,12 @@ def _bucket_total(bucket: Mapping[str, object], vendor: VendorName) -> int:
 
 def _aggregate_tokens(totals: VendorTotals, vendor: VendorName) -> int:
     if vendor == "claude":
+        split_cache_create = totals.cache_create_5m + totals.cache_create_1h
+        cache_create = split_cache_create if split_cache_create > 0 else totals.cache_create
         component_total = (
             totals.input
             + totals.cache_read
-            + totals.cache_create
-            + totals.cache_create_5m
-            + totals.cache_create_1h
+            + cache_create
             + totals.output
         )
         if component_total > 0:
@@ -65,6 +65,14 @@ def _aggregate_tokens(totals: VendorTotals, vendor: VendorName) -> int:
     return totals.total
 
 
+def aggregate_vendor_tokens(record: RunRecord, vendor: VendorName) -> int:
+    bucket = _bucket(record, vendor)
+    bucket_total = _bucket_total(bucket, vendor)
+    if bucket_total > 0:
+        return bucket_total
+    return _aggregate_tokens(_vendor_totals(record, vendor), vendor)
+
+
 def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> list[str]:
     root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
     argv = [str(root / "scripts" / "token-cost.sh")]
@@ -73,11 +81,16 @@ def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> li
         totals = _vendor_totals(record, vendor)
         if bucket and _bucket_total(bucket, vendor) > 0:
             if vendor == "claude":
+                legacy_cache_create = safe_int(bucket.get("cache_create"))
+                cache_create_5m = safe_int(bucket.get("cache_create_5m"))
+                cache_create_1h = safe_int(bucket.get("cache_create_1h"))
+                if legacy_cache_create > 0 and cache_create_5m == 0 and cache_create_1h == 0:
+                    cache_create_5m = legacy_cache_create
                 argv.extend([
                     "--claude-input-tokens", str(safe_int(bucket.get("input"))),
                     "--claude-cache-read-tokens", str(safe_int(bucket.get("cache_read"))),
-                    "--claude-cache-write-5m-tokens", str(safe_int(bucket.get("cache_create_5m"))),
-                    "--claude-cache-write-1h-tokens", str(safe_int(bucket.get("cache_create_1h"))),
+                    "--claude-cache-write-5m-tokens", str(cache_create_5m),
+                    "--claude-cache-write-1h-tokens", str(cache_create_1h),
                     "--claude-output-tokens", str(safe_int(bucket.get("output"))),
                 ])
             elif vendor == "codex":
@@ -134,9 +147,9 @@ def _parse_kv(stdout: str) -> dict[str, float]:
 
 def _fallback_cost(record: RunRecord) -> RunRecord:
     rates = display_rates()
-    claude_cost = (_aggregate_tokens(record.claude, "claude") / 1_000_000) * rates.claude_blended
-    codex_cost = (_aggregate_tokens(record.codex, "codex") / 1_000_000) * rates.codex_blended
-    cursor_cost = (_aggregate_tokens(record.cursor, "cursor") / 1_000_000) * rates.cursor_blended
+    claude_cost = (aggregate_vendor_tokens(record, "claude") / 1_000_000) * rates.claude_blended
+    codex_cost = (aggregate_vendor_tokens(record, "codex") / 1_000_000) * rates.codex_blended
+    cursor_cost = (aggregate_vendor_tokens(record, "cursor") / 1_000_000) * rates.cursor_blended
     total_cost = claude_cost + codex_cost + cursor_cost
     return replace(
         record,

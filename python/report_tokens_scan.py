@@ -12,6 +12,7 @@ from typing import cast
 from collections.abc import Mapping
 
 import config
+import redact
 from errors import ShipError
 from proc import Runner
 from report_tokens_models import PhaseRow, RunRecord, Skill, VendorName, VendorTotals, VENDORS, safe_int
@@ -70,12 +71,12 @@ def _repo_slug(runner: Runner, override: str | None) -> str | None:
     try:
         result = runner.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
     except OSError as exc:
-        print(f"ERROR: could not resolve GitHub repo owner/name: {exc}", file=sys.stderr)
+        print(f"ERROR: could not resolve GitHub repo owner/name: {redact.redact(str(exc))}", file=sys.stderr)
         return None
     if result.returncode == 0 and _valid_repo_slug(result.stdout.strip()):
         return result.stdout.strip()
     detail = (result.stderr or result.stdout).strip()
-    suffix = f": {detail}" if detail else ""
+    suffix = f": {redact.redact(detail)}" if detail else ""
     print(f"ERROR: could not resolve GitHub repo owner/name{suffix}", file=sys.stderr)
     return None
 
@@ -136,7 +137,7 @@ def _totals(report: Mapping[str, object], vendor: VendorName) -> VendorTotals:
 
 def _has_numeric_tokens(report: Mapping[str, object]) -> bool:
     bucket_keys = {
-        "claude": ("input", "cache_read", "cache_create_5m", "cache_create_1h", "output"),
+        "claude": ("input", "cache_read", "cache_create", "cache_create_5m", "cache_create_1h", "output"),
         "codex": ("input", "cached_input", "output"),
         "cursor": ("input", "cache_read", "output"),
     }
@@ -237,7 +238,8 @@ def _run_dirs(log_base: Path) -> list[Path]:
     dirs: list[Path] = []
     try:
         resolved_base = log_base.resolve(strict=True)
-    except OSError:
+    except OSError as exc:
+        _warn(f"log root {log_base} is missing or unreadable: {exc}; no run logs scanned")
         return []
     for path in sorted(log_base.glob("*")):
         if path.is_symlink():
@@ -260,13 +262,13 @@ def _run_dirs(log_base: Path) -> list[Path]:
 def _limit_value(limit: int | None) -> int | None:
     if limit is not None:
         return limit if limit > 0 else None
-    raw = os.environ.get("LARCH_REPORT_TOKENS_LIMIT", "").strip()
+    raw = os.environ.get(config.ENV_LARCH_REPORT_TOKENS_LIMIT, "").strip()
     if not raw:
         return None
     if raw.isdigit():
         value = int(raw)
         return value if value > 0 else None
-    raise ShipError("ERROR: LARCH_REPORT_TOKENS_LIMIT must be a non-negative integer")
+    raise ShipError(f"ERROR: {config.ENV_LARCH_REPORT_TOKENS_LIMIT} must be a non-negative integer")
 
 
 def scan(

@@ -38,7 +38,7 @@ def _assemble(sections: list[ReportSection]) -> str:
 
 
 def _posting_body(text: str) -> str:
-    return redact.redact(redact.redact(text))
+    return redact.redact(text)
 
 
 def _section_label(section: ReportSection) -> str:

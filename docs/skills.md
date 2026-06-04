@@ -88,7 +88,7 @@ Create one or more GitHub issues with LLM-based semantic duplicate detection. Su
 
 ## `/report-tokens`
 
-**Arguments**: *(none)*
+**Arguments**: `--skill <design|implement> [--no-issue] [--no-plot]`
 
 **Source**: [`skills/report-tokens/SKILL.md`](../skills/report-tokens/SKILL.md)
 

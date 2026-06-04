@@ -55,7 +55,6 @@ def plot(
     plugin_root: Path | None = None,
 ) -> list[Path]:
     if no_plot or _env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_NO_PLOT):
-        print("No plots generated (--no-plot).", file=sys.stderr)
         return []
     root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
     script = root / "skills" / "report-tokens" / "scripts" / "plot-cost-over-time.py"

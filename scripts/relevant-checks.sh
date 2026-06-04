@@ -223,6 +223,9 @@ run_direct_relevant_targets() {
                 maybe_append_py_lint_target
                 maybe_append_py_test_target
                 ;;
+            python/fixtures/**|scripts/token-cost.sh|scripts/token-cost.md)
+                maybe_append_py_test_target
+                ;;
             skills/report-tokens/SKILL.md|skills/report-tokens/scripts/run-analysis.sh|skills/report-tokens/scripts/run-analysis.md|skills/report-tokens/scripts/plot-cost-over-time.py|skills/report-tokens/scripts/plot-cost-over-time.md|skills/report-tokens/scripts/test-run-analysis-quiet.sh|skills/report-tokens/scripts/test-run-analysis-quiet.md|docs/run-logs.md)
                 append_target_once test-run-analysis-quiet
                 ;;

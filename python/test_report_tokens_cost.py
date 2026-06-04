@@ -119,9 +119,28 @@ def test_claude_blended_argv_uses_component_sum() -> None:
         raw_report={},
     )
     argv = token_cost_argv(record, plugin_root=Path("/repo"))
-    assert argv[argv.index("--claude-tokens") + 1] == "155"
+    assert argv[argv.index("--claude-tokens") + 1] == "150"
     assert argv[argv.index("--codex-tokens") + 1] == "6"
     assert argv[argv.index("--cursor-tokens") + 1] == "15"
+
+
+def test_legacy_claude_cache_create_bucket_prices_as_cache_write_5m() -> None:
+    record = RunRecord(
+        number=1,
+        title="t",
+        url="u",
+        started_at="2026-01-01T00:00:00Z",
+        closed_at="2026-01-01T00:00:00Z",
+        workflow="HARD",
+        claude=VendorTotals(),
+        codex=VendorTotals(),
+        cursor=VendorTotals(),
+        phase_rows=(),
+        raw_report={"BUCKETS_claude": {"cache_create": 123}},
+    )
+    argv = token_cost_argv(record, plugin_root=Path("/repo"))
+    assert argv[argv.index("--claude-cache-write-5m-tokens") + 1] == "123"
+    assert argv[argv.index("--claude-cache-write-1h-tokens") + 1] == "0"
 
 
 @dataclass

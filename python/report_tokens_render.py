@@ -9,6 +9,7 @@ from pathlib import Path
 from collections import defaultdict
 
 import config
+from report_tokens_cost import aggregate_vendor_tokens
 from report_tokens_models import DisplayRates, ReportSection, RunRecord, SectionPriority, Skill, display_rates
 
 DATE_LEN = 10
@@ -25,6 +26,7 @@ def _date(value: str) -> str | None:
 def _md_cell(value: object) -> str:
     text = str(value).replace("\r\n", "\n").replace("\r", "\n")
     text = text.replace("\\", "\\\\").replace("|", "\\|")
+    text = text.replace("[", "\\[").replace("]", "\\]")
     return " ".join(text.splitlines()) or "unknown"
 
 
@@ -82,9 +84,9 @@ def _vendor_breakdown(records: tuple[RunRecord, ...]) -> str:
         "",
         "| Vendor | Cost | Tokens |",
         "| --- | ---: | ---: |",
-        f"| Claude | {_money(sum(record.claude_cost for record in records))} | {sum(record.claude.total for record in records):,} |",
-        f"| Codex | {_money(sum(record.codex_cost for record in records))} | {sum(record.codex.total for record in records):,} |",
-        f"| Cursor | {_money(sum(record.cursor_cost for record in records))} | {sum(record.cursor.total for record in records):,} |",
+        f"| Claude | {_money(sum(record.claude_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'claude') for record in records):,} |",
+        f"| Codex | {_money(sum(record.codex_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'codex') for record in records):,} |",
+        f"| Cursor | {_money(sum(record.cursor_cost for record in records))} | {sum(aggregate_vendor_tokens(record, 'cursor') for record in records):,} |",
     ]
     return "\n".join(lines)
 

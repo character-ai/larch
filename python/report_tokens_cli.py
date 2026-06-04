@@ -11,6 +11,7 @@ from pathlib import Path
 
 import config
 import proc
+import redact
 from errors import ShipError
 from report_tokens_cost import price_run
 from report_tokens_issue import post_issue
@@ -61,12 +62,12 @@ def main(argv: list[str] | None = None) -> int:
         print(str(exc), file=sys.stderr)
         return config.EXIT_BAIL
     if not scanned.records:
-        print("## Report Tokens Analysis")
+        print(redact.redact("## Report Tokens Analysis"))
         print()
-        print("No parseable token reports found.")
+        print(redact.redact("No parseable token reports found."))
         cache_path = temp_root / "report-cache.ndjson"
         _ = cache_path.write_text("", encoding="utf-8")
-        print(f"Cache JSON: {cache_path}")
+        print(redact.redact(f"Cache JSON: {cache_path}"))
         return config.EXIT_OK
     priced = tuple(price_run(proc, record=record) for record in scanned.records)
     actual_spend = _actual_spend()
@@ -86,13 +87,13 @@ def main(argv: list[str] | None = None) -> int:
         temp_root=temp_root,
     )
     plot_paths = plot(proc, skill=skill, records=priced, plot_parent_dir=temp_root, no_plot=no_plot)
-    print(analysis)
+    print(redact.redact(analysis))
     if plot_paths:
-        print("\nPlots written to:")
+        print(redact.redact("\nPlots written to:"))
         for path in plot_paths:
-            print(f"- {path}")
+            print(redact.redact(f"- {path}"))
     else:
-        print("\nNo plots generated.")
+        print(redact.redact("\nNo plots generated."))
     if not no_issue:
         if not scanned.repo_slug:
             print("ERROR: could not resolve GitHub repo owner/name; rerun with --no-issue or LARCH_REPORT_TOKENS_REPO", file=sys.stderr)
