@@ -1768,6 +1768,38 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_size=$(run_loop "$DSIZE" 1 --round-cap 2)
 printf '%s\n' "$out_size" | grep -q '^LOOP_STATUS=plan-size-trigger$' || fail "plan-size hard trigger should surface plan-size-trigger"
 
+echo "=== multi-round: soft+hard revised plan mentions Override in advisory ==="
+DSOFTHARD="$TMP/mr-soft-hard-override"
+mkdir -p "$DSOFTHARD"
+printf 'plan\n\ndiff_lines: 1\n' >"$DSOFTHARD/plan.txt"
+printf 'feat\n' >"$DSOFTHARD/feature-description.txt"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+{
+    printf '## Plan\n\n'
+    awk 'BEGIN { for (i = 1; i <= 805; i++) print "line " i }'
+    printf 'diff_added: 5000\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 6000\n'
+} >"$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_softhard=$(run_loop "$DSOFTHARD" 1 --round-cap 2)
+printf '%s\n' "$out_softhard" | grep -q 'Split / Override / Cancel' || fail "plan-review-loop soft+hard advisory must mention Override"
+
 echo "=== multi-round: mechanical churn revised plan avoids plan-size-trigger ==="
 DMECH="$TMP/mr-mech-churn"
 mkdir -p "$DMECH"
@@ -1805,6 +1837,74 @@ grep -q '^diff_added: 5000$' "$DMECH/plan.txt" || fail "mechanical churn plan mu
 grep -q '^diff_deleted: 100$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep diff_deleted trailer"
 grep -q '^mechanical_churn: true$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep mechanical_churn trailer"
 grep -q '^diff_lines: 5100$' "$DMECH/plan.txt" || fail "mechanical churn plan must keep diff_lines trailer"
+
+echo "=== multi-round: partition_requested surfaces plan-size-trigger when size check ok ==="
+DPART="$TMP/mr-partition"
+mkdir -p "$DPART"
+printf 'plan\n\ndiff_lines: 1\n' >"$DPART/plan.txt"
+printf 'feat\n' >"$DPART/feature-description.txt"
+printf '{"partition_requested":true}\n' >"$DPART/run-params.json"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+printf '## Plan\n\nok\n\ndiff_lines: 12\n' >"$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+out_part=$(run_loop "$DPART" 1 --round-cap 2)
+printf '%s\n' "$out_part" | grep -q '^LOOP_STATUS=plan-size-trigger$' || fail "partition_requested should surface plan-size-trigger"
+printf '%s\n' "$out_part" | grep -q '^REASON=plan-size-partition$' || fail "partition_requested should set plan-size-partition reason"
+
+echo "=== multi-round: plan-size rc2 with partition does not surface plan-size-trigger ==="
+DPARTBAD="$TMP/mr-partition-rc2"
+mkdir -p "$DPARTBAD"
+printf 'plan\n\ndiff_lines: 1\n' >"$DPARTBAD/plan.txt"
+printf 'feat\n' >"$DPARTBAD/feature-description.txt"
+printf '{"partition_requested":true}\n' >"$DPARTBAD/run-params.json"
+write_scout
+write_dispatch_one_slot
+write_collect one
+write_voters_three
+cat >"$STUB/revise-plan-with-waterfall.sh" <<'EOS'
+#!/usr/bin/env bash
+DESIGN_TMPDIR=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
+        *) shift 2 ;;
+    esac
+done
+printf '## Plan\n\nok\n\ndiff_lines: 12\n' >"$DESIGN_TMPDIR/plan.txt"
+printf 'REVISE_STATUS=ok\nREVISE_WINNING_TIER=stub\n'
+EOS
+chmod +x "$STUB/revise-plan-with-waterfall.sh"
+export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
+cat >"$STUB/check-plan-size-rc2.sh" <<'EOS'
+#!/usr/bin/env bash
+printf 'PLAN_SIZE_STATUS=missing-diff-lines\n'
+exit 2
+EOS
+chmod +x "$STUB/check-plan-size-rc2.sh"
+export LARCH_CHECK_PLAN_SIZE_SH="$STUB/check-plan-size-rc2.sh"
+out_part_bad=$(run_loop "$DPARTBAD" 1 --round-cap 2)
+unset LARCH_CHECK_PLAN_SIZE_SH
+printf '%s\n' "$out_part_bad" | grep -qv '^LOOP_STATUS=plan-size-trigger$' || fail "plan-size rc2 must not emit plan-size-trigger for partition"
+printf '%s\n' "$out_part_bad" | grep -q 'proceeding without threshold check' || fail "plan-size rc2 should warn and continue"
+if printf '%s\n' "$out_part_bad" | grep -q '^APPENDED='; then
+    fail "plan-size rc2 append must not leak APPENDED="
+fi
+[[ -f "$DPARTBAD/check-plan-size.validation.log" ]] || fail "plan-size rc2 writes validation log"
 
 echo "=== multi-round: post-revision dedup preserves optional size trailers ==="
 DDEDUP="$TMP/mr-dedup-trailers"

@@ -26,7 +26,7 @@ Design an implementation plan for a feature and review it with the **full** pane
 
 **Positional tail**: Step **0-pre** binds this as `POSITIONAL_KIND=issue|verbal|none` and `POSITIONAL_VALUE=<value>`; see `parse-design-argv.md` for classification details. `POSITIONAL_KIND=verbal` triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
 
-**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.3→5c.5→6). Step 1e Gate A is reachable only via re-entry from Gate B(c) → Step 1e (Shape 2) or Gate C(b) → Step 1e (Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c `design-publish.sh` returns with the latest `_publish_rc` 0, 1, or 3 (exit 4 stays inside the Step 5c shared-handler retry loop and does not permit Step 5c items 3–5, Step 5d, or Step 6), or after any cancellation outcome's Final summary block has written a non-empty summary file, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46` or `SIMPLE tier, ~27m`, and no replacement for the structured `## /design run ...` block. The only orchestrator-text addition permitted after that driver handoff is the shared verbatim full-body emission of `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]` (including when `_publish_rc`=1 after plan-block-write failure). **Not** gated on `render-final-summary.sh` exit 0. **Narrow exception — Step 1d.5 and Step 1d.7 only**: after printing the brainstorm synthesis digest, the free-form discussion loop may yield the turn between operator messages per `references/brainstorm.md`; after printing the proposed design outline at Step 1d.7, the Refine free-form discussion loop may yield the turn between operator messages per `references/design-outline.md`; do **not** use `ScheduleWakeup`, scripted sleep polling loops, or Monitor-driven polling waits on either lane. The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
+**Anti-halt continuation reminder.** After every `Bash` tool call that completes a numbered step or sub-step, and after every visible output (plans, diagrams, voting tallies, skip breadcrumbs), IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on a Bash result, a status message, or a deliverable-looking output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. This applies to ALL step boundaries from Step 0 through Step 6, and to ALL sub-step transitions (1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6). Step 1e Gate A is reachable only via re-entry from Gate B(c) → Step 1e (Shape 2) or Gate C(b) → Step 1e (Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c `design-publish.sh` returns (`_publish_rc` 0, 1, or 3), or after any cancellation outcome's Final summary block has written a non-empty summary file, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46` or `SIMPLE tier, ~27m`, and no replacement for the structured `## /design run ...` block. The only orchestrator-text addition permitted after that driver handoff is the shared verbatim full-body emission of `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]` (including when `_publish_rc`=1 after plan-block-write failure). **Not** gated on `render-final-summary.sh` exit 0. **Narrow exception — Step 1d.5 and Step 1d.7 only**: after printing the brainstorm synthesis digest, the free-form discussion loop may yield the turn between operator messages per `references/brainstorm.md`; after printing the proposed design outline at Step 1d.7, the Refine free-form discussion loop may yield the turn between operator messages per `references/design-outline.md`; do **not** use `ScheduleWakeup`, scripted sleep polling loops, or Monitor-driven polling waits on either lane. The approval gates (Step 1e Gate A, Step 3.5 Gate B, Step 4b Gate C) may also re-enter earlier steps per the user's `AskUserQuestion` choice (Gate B(c) → Step 1e; Gate C(b) → Step 1e; Gate C(c) → Step 3); those re-entry transitions are explicit non-sequential control-flow directives and are NOT halts. **Critical: the implementation plan (Step 2b) and architecture diagram (Step 3b) are intermediate deliverables, NOT the end of the design — plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), and cleanup (Step 6) must still execute.** **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception.
 
 ## Progress Reporting
 
@@ -64,11 +64,11 @@ Icons: ✅ done (with elapsed time since launch), ⏳ pending/in-progress, ❌ f
 
 ### Bash block prelude
 
-The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a writes `$DESIGN_TMPDIR/source-env.sh` containing `DESIGN_TMPDIR`, `SESSION_TMPDIR`, `SESSION_ID`, `CLAUDE_PLUGIN_ROOT`, optional `REPO`, and reviewer presence/availability booleans; Step 0b refreshes the same file once `ISSUE_NUMBER` and `manual_requested` are known so later Bash blocks can source `MANUAL_REQUESTED` without re-reading argv. The writer refresh also updates the stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` (keyed on `$PPID` from the **root** Bash-tool subshell for that call — in normal `/design` orchestration this matches the Claude Code process for the session; do not nest the Step 0 writer or prelude inside an extra `bash` / `bash -c` layer without an explicit `--claude-pid` re-handoff, because `$PPID` would then name an intermediate shell instead). **Every Bash block from Step 1c onward MUST prepend the canonical two-line prelude** so those values survive into the new subshell and pause requests are honored at Bash boundaries:
+The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a writes `$DESIGN_TMPDIR/source-env.sh` containing `DESIGN_TMPDIR`, `SESSION_TMPDIR`, `SESSION_ID`, `CLAUDE_PLUGIN_ROOT`, and reviewer presence/availability booleans; Step 0b refreshes the same file once `ISSUE_NUMBER` and `manual_requested` are known so later Bash blocks can source `MANUAL_REQUESTED` without re-reading argv. The writer refresh also updates the stable symlink at `~/.cache/larch/sessions/current-design-env-$PPID.sh` (keyed on `$PPID` from the **root** Bash-tool subshell for that call — in normal `/design` orchestration this matches the Claude Code process for the session; do not nest the Step 0 writer or prelude inside an extra `bash` / `bash -c` layer without an explicit `--claude-pid` re-handoff, because `$PPID` would then name an intermediate shell instead). **Every Bash block from Step 1c onward MUST prepend the canonical two-line prelude** so those values survive into the new subshell and pause requests are honored at Bash boundaries:
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 ```
 
 The conditional `[ -f ... ] &&` form is uniform across blocks so that pre-upgrade in-progress runs degrade silently and unexpected absence surfaces as the standard `set -u` unbound-variable error rather than a corrupted `source` call. Step 0 itself (which CREATES the env file) does not prepend the line.
@@ -306,7 +306,7 @@ If `session-setup.sh` exits non-zero, the block prints its captured stdout/stder
 
 **⚠ /design: session-setup.sh failed. Investigate `PREFLIGHT_ERROR` and re-run.**
 
-This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.cache/larch/sessions/current-design-env-$PPID.sh` so the prelude line resolves on every later Bash block. `--issue-number "$ISSUE_NUMBER"` should be appended on the Step 0b follow-up writer invocation once that value is bound. Append `--repo "$REPO"` on the Step 0b follow-up writer invocation when `REPO` is non-empty, so later pause checks preserve non-default repositories. Append `--manual-requested true` on that follow-up invocation only when `manual_requested=true`; omit the flag entirely when `manual_requested=false` so non-manual runs do not stamp `MANUAL_REQUESTED=false` into session env. The writer accepts a re-invocation to refresh keys (each invocation must still pass `--claude-pid "$PPID"`).
+This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.cache/larch/sessions/current-design-env-$PPID.sh` so the prelude line resolves on every later Bash block. `--issue-number "$ISSUE_NUMBER"` should be appended on the Step 0b follow-up writer invocation once that value is bound. Append `--manual-requested true` on that follow-up invocation only when `manual_requested=true`; omit the flag entirely when `manual_requested=false` so non-manual runs do not stamp `MANUAL_REQUESTED=false` into session env. The writer accepts a re-invocation to refresh keys (each invocation must still pass `--claude-pid "$PPID"`).
 
 **Execution-issues logging**: Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` to `$DESIGN_TMPDIR/execution-issues.md` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
@@ -318,7 +318,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    - `POSITIONAL_KIND=issue` → set `ISSUE_NUMBER` to `POSITIONAL_VALUE` (digits only; do not re-match raw argv).
    - `POSITIONAL_KIND=verbal` → invoke **`/larch:issue`** via the Skill tool with `POSITIONAL_VALUE` as the feature text (forward `--no-dedup` when `no_dedup_requested=true`). Parse the created issue number into `ISSUE_NUMBER`. The route driver at sub-step **2.5** still applies title-eligibility once the issue is fetched — if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
    - `POSITIONAL_KIND=none` → preserve today's empty-invocation / no-positional behavior; this refactor does not add a new usage error.
-2. **Resolve repo, then fetch issue**: resolve `REPO` before the first `gh issue view` so explicit repository binding applies to both reads and later writes. Prefer the Step 0-pre explicit repo binding when present; otherwise prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree, then fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty only when both fail so downstream helpers use the hub default. Fetch with `gh issue view "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"} --json body,labels,number,title` and **2× retry** on transient failure. Bind `ISSUE_TITLE` from the JSON `title` field. Write the fetched `body` to `$DESIGN_TMPDIR/issue-body.txt`. Set `HAS_CLARIFY_LABEL=true` when the `needs-design-clarification` label is present, else `HAS_CLARIFY_LABEL=false`.
+2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure. Bind `ISSUE_TITLE` from the JSON `title` field. Write the fetched `body` to `$DESIGN_TMPDIR/issue-body.txt`. Set `HAS_CLARIFY_LABEL=true` when the `needs-design-clarification` label is present, else `HAS_CLARIFY_LABEL=false`. **Resolve `REPO`** once for explicit `gh --repo` threading: prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so downstream helpers use the hub default.
 2.5. **Route driver** — `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` (contract: `design-route.md`). Resume detection (via `${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-load.sh` when the body carries a pause marker), title-eligibility, re-entry guard, and `ROUTE=` verdict run inside the driver; cancel banners and `AskUserQuestion` gates stay here.
 
    ```bash
@@ -458,12 +458,12 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes). On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. On `LOAD_OK=false` fallthrough inside the driver, `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
 
 3. **Clarify loop** when `ROUTE=clarify` (or `resume@0c`) — follow `skills/implement/SKILL.md` Preflight clarify semantics:
-   1. Resolve `REPO` before the first clarify helper and persist it for clarify-only exits: prefer the Step 0b persisted `REPO` binding, then `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree, then `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty only when all fail so downstream helpers use the hub default. Immediately refresh `$DESIGN_TMPDIR/source-env.sh` with `write-design-current-env.sh --output "$DESIGN_TMPDIR/source-env.sh" --design-tmpdir "$DESIGN_TMPDIR" --session-id "$SESSION_ID" --issue-number "$ISSUE_NUMBER" --claude-pid "$PPID" ${REPO:+--repo "$REPO"}` before running `clarify-state.sh`.
-   2. `clarify-state.sh --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}`, fetch the request comment body with explicit `${REPO:+--repo "$REPO"}`, `AskUserQuestion`, compose plan sections, `redact-secrets.sh`, and `plan-block-write.sh --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"} --content-file`. **Only when `plan-block-write.sh` exits 0**, continue to sub-steps 3.3–3.6; otherwise follow implement Preflight failure handling for a failed plan write (do not run publish, clarify response post, label removal, or rename in this branch).
-   3. When `SESSION_ID` is non-empty, run publish under `set +e` so post-push `exit 1` does not abort before stdout is parsed: `set +e; _publish_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"} 2> "$DESIGN_TMPDIR/design-log-publish.failure.log"); _publish_rc=$?; set -e`; parse `PUBLISH_OK`, `PR_NUMBER`, `PR_URL`, and `RECOVERY_BRANCH` from `_publish_out` before fail-closed branching. When `_publish_rc` is non-zero, force `PUBLISH_OK=false`, append `$DESIGN_TMPDIR/design-log-publish.failure.log` under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 0b clarify publish" --tool "design-log-publish.sh" --exit-code "$_publish_rc" --category Warnings --output-file "$DESIGN_TMPDIR/design-log-publish.failure.log" --redact`, and emit the publish-failure warning even when stdout carried `PUBLISH_OK=true`. When `_publish_rc` is zero but parsed `PUBLISH_OK=false`, append the same execution issue with `--exit-code 1` and emit the publish-failure warning with parsed recovery metadata. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). When an attempted clarify publish ends with `PUBLISH_OK != true`, export `DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"`, `DESIGN_LOG_PR_URL="${PR_URL:-}"`, and `DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"` immediately before the Final summary block so the metadata parsed in the publish subshell is available to the renderer; sub-step 6 selects `SUMMARY_OUTCOME`, with failed publish using `RUN_LOGS_PATH=N/A` and no successful run-log path. On `PUBLISH_OK=false`, continue (do not roll back the successful plan write from sub-step 3.1).
-   4. Run `clarify-comment-post.sh --kind response --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}`, then `clarify-label.sh --action remove --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}`.
-   5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3 publish normalization, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
-   6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, choose `SUMMARY_OUTCOME`: when `SESSION_ID` is non-empty and normalized `PUBLISH_OK` is not true after sub-step 3, export `SUMMARY_OUTCOME=failed-publish` with the `DESIGN_LOG_*` metadata already set; when `SESSION_ID` is empty, export `SUMMARY_OUTCOME=publish-skipped`; otherwise export `SUMMARY_OUTCOME=cancelled-clarify` for publish succeeded (`PUBLISH_OK=true`). Then run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
+   1. `clarify-state.sh`, fetch the request comment body, `AskUserQuestion`, compose plan sections, `redact-secrets.sh`, and `plan-block-write.sh --content-file`. **Only when `plan-block-write.sh` exits 0**, continue to sub-steps 3.2–3.6; otherwise follow implement Preflight failure handling for a failed plan write (do not run publish, clarify response post, label removal, or rename in this branch).
+   2. Resolve `REPO` for explicit `gh --repo` threading: prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so downstream helpers use the hub default.
+   3. When `SESSION_ID` is non-empty, run publish under `set +e` so post-push `exit 1` does not abort before stdout is parsed: `set +e; _publish_out=$("${CLAUDE_PLUGIN_ROOT}/scripts/design-log-publish.sh" --design-tmpdir "$DESIGN_TMPDIR" --run-id "$SESSION_ID" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"} 2> "$DESIGN_TMPDIR/design-log-publish.failure.log"); _publish_rc=$?; set -e`; parse `PUBLISH_OK` from `_publish_out` regardless of `_publish_rc`. When `SESSION_ID` is empty, print `printf '\n**⚠ /design: SESSION_ID missing; skipping design log publish**\n'` (use `printf`, not `print`). If `_publish_rc` is non-zero and `_publish_out` lacks a `PUBLISH_OK=` line, treat as unexpected shell failure. On `PUBLISH_OK=false`, append `$DESIGN_TMPDIR/design-log-publish.failure.log` under `Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md"`, then continue (do not roll back the successful plan write from sub-step 3.1).
+   4. Run `clarify-comment-post.sh --kind response`, then `clarify-label.sh --action remove`.
+   5. **Only when** `SESSION_ID` is non-empty **and** `PUBLISH_OK=true` after sub-step 3.3, run `"${CLAUDE_PLUGIN_ROOT}/scripts/tracking-issue-write.sh" rename --issue "$ISSUE_NUMBER" --state designing ${REPO:+--repo "$REPO"}` (best-effort; treat `RENAMED=false` as idempotent success). Sub-step 3.4 removes `needs-design-clarification` before this rename; **do not** run `--state designed` here — that token is reserved for Step 5c after Gate C, composed `larch:plan`, and the same publish guard — so `/implement` admission cannot treat a clarify-only `larch:plan` update as terminal design completion. When `SESSION_ID` is empty or `PUBLISH_OK=false`, **skip** this rename in this sub-step.
+   6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below. The issue title remains `[DESIGNING]` until a later `/design` run reaches Step 5c (Gate C + OOS filing + composed plan + publish) — `/implement` still requires `[DESIGNED]`.
 4. **Already-planned branch** when `ROUTE=already-planned`: `AskUserQuestion` **(a)** replace via full flow, **(b)** ad-hoc Q&A only, **(c)** cancel — on **(c) cancel**, export `SUMMARY_OUTCOME=cancelled-already-planned` and run the **Final summary block** fenced bash block in `### Final summary block` below, then print `**ℹ /design cancelled by operator.**` and exit **0**. On **(b) ad-hoc Q&A only** when mental `brainstorm_requested=true` (from argv or the Step 0b Brainstorm title-prefix auto-enable): ensure `$DESIGN_TMPDIR/run-params.json` exists and contains `brainstorm_requested: true` (write via `write-run-params.sh` or `jq` merge without dropping unrelated keys), conduct the Q&A session, then **MANDATORY** execute Step **1d.5** per `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` before the terminal already-planned hygiene / **Final summary block** / exit **0**. Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because no new plan is being produced; the every-run outline contract applies only to runs that proceed past Step 1d to plan production.
 5. **Tier resolution** (only when `ROUTE=proceed`): set `design_classification` to HARD when `hard_requested=true` (from Step 0-pre), else SIMPLE (the default). Source router booleans from Step 0-pre bindings: keep `partition_requested=true` only when the Step 0-pre binding is true; keep `manual_requested=true` only when the Step 0-pre binding is true; set `brainstorm_requested=true` when the Step 0-pre binding is true **or** when the route driver auto-enabled `BRAINSTORM_PREFIX`, else `false`. No `AskUserQuestion` on this sub-step.
 6. **Write** `$DESIGN_TMPDIR/feature-description.txt` from issue title+body (or verbal prompt) only when `ROUTE=proceed`, then invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-init-runparams.sh` (contract: `design-init-runparams.md`) for env refresh (before rename), `[DESIGNING]` rename, `write-run-params.sh`, and router-flag jq-merge.
@@ -535,7 +535,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 **When**: after `DESIGN_TMPDIR` exists (post–Step 0a session-setup success) and **before** any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` line on the paths enumerated in Step 0b / Steps 5–6. **Do not** run this block on Step 0a `session-setup.sh` failure or disallowed public argv abort before Step 0 (no `DESIGN_TMPDIR` yet). Runs **before** `cleanup-tmpdir.sh`. **Split-path** (Step 2b.5) invokes this block only on the **terminal** branches that set `SUMMARY_OUTCOME=approved-partition` or `SUMMARY_OUTCOME=cancelled-decompose` (see `decompose-panel.md`); other Split-path exits (e.g. return to caller, retry paths) preserve `$DESIGN_TMPDIR` without running this fence.
 
-**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-assessor-worse` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` | `publish-skipped` **immediately before** running this fenced block on single-phase exits. Gate-C success uses `design-publish.sh`; **do not** run this single-phase fence on the Gate-C happy path.
+**Orchestrator contract**: export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-assessor-worse` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size-hard` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` **immediately before** running this fenced block on single-phase exits. Gate-C success uses `design-publish.sh` (internal two-phase render); **do not** run this single-phase fence on the Gate-C happy path.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
@@ -549,15 +549,6 @@ if [ -f "$DESIGN_TMPDIR/run-params.json" ] && command -v jq >/dev/null 2>&1; the
   SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
 fi
 [ -n "$SUMMARY_MODE_STRING" ] || SUMMARY_MODE_STRING=N/A
-if [[ -f "$DESIGN_TMPDIR/.design-log-publish-metadata.env" ]]; then
-  set -a
-  # shellcheck disable=SC1090
-  source "$DESIGN_TMPDIR/.design-log-publish-metadata.env"
-  set +a
-fi
-export DESIGN_LOG_PR_NUMBER="${DESIGN_LOG_PR_NUMBER:-}"
-export DESIGN_LOG_PR_URL="${DESIGN_LOG_PR_URL:-}"
-export DESIGN_LOG_RECOVERY_BRANCH="${DESIGN_LOG_RECOVERY_BRANCH:-}"
 DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
   "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
   --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}" \
@@ -566,7 +557,7 @@ DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SE
   --post-publish-only
 ```
 
-After Step 5c `design-publish.sh` returns with the latest `_publish_rc` 0, 1, or 3 (rc 4 must first settle through the retry loop), when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, the orchestrator MUST read that path and emit its full body verbatim as plain chat markdown (same mechanism as Step 5c item 3). This applies on plan-block-write failure (`PLAN_WRITE_OK=false`) and success. After this cancellation fence's `render-final-summary.sh --post-publish-only` invocation, use the same non-empty-file gate (not helper exit 0). Mechanism: read `final-summary.md` (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text), emit the entire file body verbatim as plain markdown chat text. Do NOT paraphrase, summarize, reorder, or add prose between bullets. The full structured block — including title, mode, duration, cost line with per-agent breakdown, tokens, and all bullets — must appear at top chat. Do NOT add free-form prose around the block. The verbatim file body is the only permitted summary content at top chat.
+After Step 5c `design-publish.sh` returns (`_publish_rc` 0, 1, or 3), when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, the orchestrator MUST read that path and emit its full body verbatim as plain chat markdown (same mechanism as Step 5c item 5). This applies on plan-block-write failure (`PLAN_WRITE_OK=false`) and success. After this cancellation fence's `render-final-summary.sh --post-publish-only` invocation, use the same non-empty-file gate (not helper exit 0). Mechanism: read `final-summary.md` (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text), emit the entire file body verbatim as plain markdown chat text. Do NOT paraphrase, summarize, reorder, or add prose between bullets. The full structured block — including title, mode, duration, cost line with per-agent breakdown, tokens, and all bullets — must appear at top chat. Do NOT add free-form prose around the block. The verbatim file body is the only permitted summary content at top chat.
 
 See sibling contract `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.md` (path: `skills/design/scripts/render-final-summary.md`).
 
@@ -580,7 +571,7 @@ After the Step 0c grep pass succeeds, write `mkdir -p "$DESIGN_TMPDIR/.completed
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1c — questions" || true
 ```
 
@@ -594,7 +585,7 @@ At the Step 1c success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.comp
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d — discussion r1" || true
 ```
 
@@ -608,7 +599,7 @@ At the Step 1d success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.comp
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d.5 — brainstorm" || true
 ```
 
@@ -620,7 +611,7 @@ When Step 1d.5 finishes or is skipped by its entry guard, immediately run `mkdir
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1d.7 — outline" || true
 ```
 
@@ -630,7 +621,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 1e — gate A" || true
 ```
 
@@ -642,7 +633,7 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 
 **Entry guard**: If control did **not** arrive from Gate B(c)/Gate C(b) re-entry, Step 1e must not fire the Gate A prompt on a pre-plan path. When `$DESIGN_TMPDIR/.outline-approved` exists and `$DESIGN_TMPDIR/plan.txt` does **not** exist, print `⏩ 1e: gate A — first-time entry handled by Step 1d.7; proceed to Step 2a` and proceed to Step 2a without firing the Gate A prompt. When `$DESIGN_TMPDIR/plan.txt` does **not** exist and `.outline-approved` is absent, print `⏩ 1e: gate A — outline not yet approved; return to Step 1d.7` and return to Step 1d.7 without firing the Gate A prompt. When `$DESIGN_TMPDIR/plan.txt` exists, stay on the post-plan gate path — never route back to Step 2a from Step 1e. On this path: run the Gate A re-entry body even when `.outline-approved` is absent.
 
-**Optional trailer guard (Gate A re-entry rewrites)**: When `plan.txt` is revised after discussion (per `references/discussion-rounds.md`), run the same post-rewrite sequence as `references/approval-gates.md` §Shared post-apply pipeline: before any direct replacement or dedup rewrite run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/gate-b-dedup-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers` to snapshot strict optional trailer keys and values (`diff_added`, `diff_deleted`, `mechanical_churn`) into `$DESIGN_TMPDIR/.gate-b-optional-trailer-keys` (companion `.gate-b-optional-trailer-keys.values`); after the rewrite run `gate-b-dedup-plan.sh --dedup` (fail closed if snapshot missing — `--dedup` refreshes the values snapshot from the post-rewrite plan before mechanical dedup so explicitly recomputed estimates are allowed). Preserve snapshotted keys with strict grammar or explicitly recompute estimates; when the snapshot is empty, do not introduce new optional trailers. Only after the dedup breadcrumb run `design-postplan-emit.sh --design-tmpdir "$DESIGN_TMPDIR"` with the canonical session-env / pause prelude, `set +e` capture, and the same file-first/stdout parse block as Step 2b (snapshot suppressed; driver validates unconditionally). On driver exit `0` with `VALIDATE_STATUS=defects-found`, execute **### Plan command validator failure (shared)** with `--site` context `design discussion-round2` and **Cancel** semantics returning to Gate A; on exit `0` otherwise, run Step 2b.5. Exit `1` / `2` handling mirrors Step 2b.
+**Optional trailer guard (Gate A re-entry rewrites)**: When `plan.txt` is revised after discussion (per `references/discussion-rounds.md`), run the same post-rewrite sequence as `references/approval-gates.md` §Shared post-apply pipeline: before any direct replacement or dedup rewrite run `"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/gate-b-dedup-plan.sh" --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers` to snapshot strict optional trailer keys and values (`diff_added`, `diff_deleted`, `mechanical_churn`) into `$DESIGN_TMPDIR/.gate-b-optional-trailer-keys` (companion `.gate-b-optional-trailer-keys.values`); after the rewrite run `gate-b-dedup-plan.sh --dedup` (fail closed if snapshot missing — `--dedup` refreshes the values snapshot from the post-rewrite plan before mechanical dedup so explicitly recomputed estimates are allowed). Preserve snapshotted keys with strict grammar or explicitly recompute estimates; when the snapshot is empty, do not introduce new optional trailers. Only after the dedup breadcrumb run the same merged post-plan fence as `references/discussion-rounds.md` Round 2 (`design-postplan-emit.sh --with-plan-size --force-validate` with the Step 2b thin-fence `case` arms). On `_postplan_rc=10`, execute **### Plan command validator failure (shared)** with `--site` context `design discussion-round2`; on Override run retained Step 2b.5; on `_postplan_rc=0` write `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before returning to Gate A.
 
 Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a (sketches) or Step 2a.5 (dialectic).
 
@@ -653,11 +644,11 @@ At the Gate A success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.compl
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
 ```
 
-Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. Do not re-classify here; Step 0 owns router judgment.
+Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. Also read `review_budget` (`quick` vs `full`): it gates the Step 2b plan-command validator (skipped on `quick` alongside the full plan-review panel) and is consumed again explicitly in Step 3. Do not re-classify here; Step 0 owns router judgment.
 
 **IMPORTANT: The collaborative sketch phase MUST run for `design_classification == HARD` with the 4 personality sketch slots. Per #3207, a slot whose external tool is unavailable is **skipped** (fewer sketches) — it is NOT padded with a Claude replacement; if both Cursor and Codex are down the phase runs zero sketches and falls through to the no-sketches path. SIMPLE is the only deliberate no-sketch carve-out and must write the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel. Never abbreviate HARD by choice regardless of how simple or obvious the feature appears.**
 
@@ -669,7 +660,7 @@ Launch no external agents and no Claude fallback agents. Write sentinel artifact
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
 printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
 : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
@@ -727,7 +718,7 @@ If `design_classification == SIMPLE`, skip this section entirely. Do NOT call `c
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-arch-output.txt" \
   "$DESIGN_TMPDIR/cursor-sketch-edge-output.txt" \
@@ -739,7 +730,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 ${CLAUDE_PLUGIN_ROOT}/scripts/collect-agent-results.sh --timeout 1260 \
   "$DESIGN_TMPDIR/cursor-sketch-generic-output.txt" \
   "$DESIGN_TMPDIR/codex-sketch-generic-output.txt"
@@ -792,7 +783,7 @@ At the Step 2a success boundary, including the zero-sketch sentinel path, immedi
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a.5 — dialectic" || true
 ```
 
@@ -882,7 +873,7 @@ Produce a plan that includes:
 
 Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. Print the plan to the user under a `## Implementation Plan` header so reviewers can see it. The plan is an intermediate deliverable — after Step **2b.5** below completes, continue to Step 3 (Plan Review). Do NOT halt, summarize, or treat the plan as the end of the design.
 
-Immediately after saving `plan.txt`, run the post-plan driver so `diff-lines.txt` is refreshed, the initial HARD snapshot is preserved, and plan-command validation is surfaced through one result contract:
+Immediately after saving `plan.txt`, run the merged post-plan driver (`design-postplan-emit.sh --with-plan-size`) so `diff-lines.txt` is refreshed, the initial HARD snapshot is preserved, plan-command validation and plan-size thresholds are surfaced through one result contract and thin-fence exit codes. Display output is FD 3 only; read machine keys from `$DESIGN_TMPDIR/.design-postplan-emit-result.env` when needed (never `source` it). Contract: `skills/design/scripts/design-postplan-emit.md`.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -890,110 +881,78 @@ Immediately after saving `plan.txt`, run the post-plan driver so `diff-lines.txt
 set +e
 _postplan_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh" \
   --design-tmpdir "$DESIGN_TMPDIR" \
+  --with-plan-size \
   --snapshot-original)
 _postplan_rc=$?
 set -e
-POSTPLAN_EMIT_STATUS=""
-EMIT_PLAN_STATUS=""
-DIFF_LINES=""
-SNAPSHOT_STATUS=""
-VALIDATE_STATUS=""
-VALIDATE_DEFECT_COUNT=""
-VALIDATE_SKIPPED_COUNT=""
-VALIDATE_UNSAFE_TOKEN_COUNT=""
-VALIDATE_LOG_FILE=""
-_postplan_parse_ok=false
-if [[ -f "$DESIGN_TMPDIR/.design-postplan-emit-result.env" ]]; then
-  if [[ -L "$DESIGN_TMPDIR/.design-postplan-emit-result.env" ]]; then
-    printf '%s\n' "**⚠ Step 2b: refusing symlink .design-postplan-emit-result.env; using stdout fallback.**" >&2
-  else
-    while IFS= read -r _postplan_line || [[ -n "$_postplan_line" ]]; do
-      _postplan_key="${_postplan_line%%=*}"
-      _postplan_value="${_postplan_line#*=}"
-      case "$_postplan_key" in
-        POSTPLAN_EMIT_STATUS|EMIT_PLAN_STATUS|DIFF_LINES|SNAPSHOT_STATUS|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE)
-          printf -v "$_postplan_key" '%s' "$_postplan_value"
-          _postplan_parse_ok=true
-          ;;
-        WARN)
-          printf '%s\n' "$_postplan_value"
-          ;;
-      esac
-    done <"$DESIGN_TMPDIR/.design-postplan-emit-result.env"
-  fi
-fi
-while IFS= read -r _postplan_line || [[ -n "$_postplan_line" ]]; do
-  _postplan_key="${_postplan_line%%=*}"
-  _postplan_value="${_postplan_line#*=}"
-  case "$_postplan_key" in
-    POSTPLAN_EMIT_STATUS|EMIT_PLAN_STATUS|DIFF_LINES|SNAPSHOT_STATUS|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE)
-      if [[ -z "${!_postplan_key:-}" ]]; then
-        printf -v "$_postplan_key" '%s' "$_postplan_value"
-      fi
-      ;;
-    WARN)
-      if [[ "$_postplan_parse_ok" != true ]]; then
-        printf '%s\n' "$_postplan_value"
-      fi
-      ;;
-  esac
-done <<<"${_postplan_out:-}"
-if [[ "${_postplan_rc:-0}" -eq 2 ]]; then
-  printf '%s\n' "**⚠ Step 2b: design-postplan-emit.sh configuration error (exit 2); aborting /design.**" >&2
-  exit 1
-fi
-if [[ "${_postplan_rc:-0}" -eq 0 || "${_postplan_rc:-0}" -eq 1 ]]; then
-  if [[ -z "${POSTPLAN_EMIT_STATUS:-}" || -z "${VALIDATE_STATUS:-}" ]]; then
-    printf '%s\n' "**⚠ Step 2b: design-postplan-emit.sh result env missing/unreadable and stdout did not populate mandatory keys; aborting /design.**" >&2
+printf '%s\n' "${_postplan_out:-}"
+case "${_postplan_rc:-1}" in
+  0)
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2b"
+    : > "$DESIGN_TMPDIR/.completed/step-2b.5"
+    ;;
+  10)
+    VALIDATE_STATUS=""
+    VALIDATE_DEFECT_COUNT=""
+    VALIDATE_SKIPPED_COUNT=""
+    VALIDATE_UNSAFE_TOKEN_COUNT=""
+    VALIDATE_LOG_FILE=""
+    if [[ -f "$DESIGN_TMPDIR/.design-postplan-emit-result.env" && ! -L "$DESIGN_TMPDIR/.design-postplan-emit-result.env" ]]; then
+      while IFS= read -r _postplan_line || [[ -n "$_postplan_line" ]]; do
+        _postplan_key="${_postplan_line%%=*}"
+        _postplan_value="${_postplan_line#*=}"
+        case "$_postplan_key" in
+          VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE)
+            printf -v "$_postplan_key" '%s' "$_postplan_value"
+            ;;
+        esac
+      done <"$DESIGN_TMPDIR/.design-postplan-emit-result.env"
+    fi
+    ;;
+  11)
+    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+    ;;
+  12)
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2b"
+    ;;
+  13)
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2b"
+    ;;
+  2)
+    printf '%s\n' "**⚠ Step 2b: design-postplan-emit.sh configuration error (exit 2); aborting /design.**" >&2
     exit 1
-  fi
-fi
-if [[ "${_postplan_rc:-0}" -eq 1 ]]; then
-  case "${POSTPLAN_EMIT_STATUS:-}" in
-    missing-diff-lines)
-      printf '%s\n' "**⚠ 2b: plan.txt is missing a final diff_lines metadata line; repair plan.txt before Step 2b.5 / Step 3.**" >&2
-      exit 1
-      ;;
-    snapshot-failed)
-      printf '%s\n' "**⚠ 2b: failed to snapshot plan.txt-original for HARD assessor flow; aborting before Step 3.**" >&2
-      exit 1
-      ;;
-    validate-driver-failed)
-      printf '%s\n' "**⚠ 2b: plan-command validator infrastructure failed; aborting before Step 3.**" >&2
-      exit 1
-      ;;
-    pause-failed)
-      printf '%s\n' "**⚠ 2b: pause checkpoint failed (${POSTPLAN_EMIT_STATUS:-unknown}); fix pause/repo bindings and re-invoke /design.**" >&2
-      exit 1
-      ;;
-    *)
-      printf '%s\n' "**⚠ 2b: post-plan emit failed (${POSTPLAN_EMIT_STATUS:-unknown}); repair plan.txt before Step 2b.5 / Step 3.**" >&2
-      exit 1
-      ;;
-  esac
-fi
-if [[ "${_postplan_rc:-0}" -ne 0 ]]; then
-  printf '%s\n' "**⚠ Step 2b: design-postplan-emit.sh failed (exit ${_postplan_rc}); aborting /design.**" >&2
-  exit 1
-fi
+    ;;
+  1)
+    printf '%s\n' "**⚠ Step 2b: design-postplan-emit.sh failed (exit 1); aborting /design.**" >&2
+    exit 1
+    ;;
+  *)
+    printf '%s\n' "**⚠ Step 2b: design-postplan-emit.sh unexpected exit (${_postplan_rc}); aborting /design.**" >&2
+    exit 1
+    ;;
+esac
 ```
 
-When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`).
+On `_postplan_rc=10`, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`). Fix-and-retry re-enters this same `--with-plan-size --snapshot-original` fence. On **Override**, write `: > "$DESIGN_TMPDIR/.completed/step-2b"` then run the retained **Step 2b.5** procedure before continuing.
 
-Parse `POSTPLAN_EMIT_STATUS`, `EMIT_PLAN_STATUS`, `DIFF_LINES`, `SNAPSHOT_STATUS`, `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, and `VALIDATE_LOG_FILE` from the merged result contract as needed for operator breadcrumbs. Infrastructure failure is `POSTPLAN_EMIT_STATUS=validate-driver-failed`; **`defects-found` is not a driver failure** — handle it only via `VALIDATE_STATUS` and the shared AskUserQuestion body.
+On `_postplan_rc=12`, the driver already printed the hard-trigger section. `AskUserQuestion` with exactly **"Let my panel of agents split this feature for you"** / **"Cancel"** (initial site — no Override). On **Split** or partition routing (`_postplan_rc=13`), run **Split-path** in `decompose-panel.md` only — do not re-run Step 2b.5 display subsections after `printf '%s\n' "${_postplan_out:-}"`. On non-exiting Split returns (**Refine**, no-split **Continue**), write `: > "$DESIGN_TMPDIR/.completed/step-2b"` and `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before continuing to Step 3.
 
-> **Continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
-At the Step 2b success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-2b"` before entering Step 2b.5.
+> **Continue to Step 3 IMMEDIATELY** when `_postplan_rc=0` (or after non-exiting Split/Override paths complete). The implementation plan is an intermediate design artifact — plan review, optional discussion, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
 
 ### Step 2b.5 — Plan-size threshold check (named procedure)
 
-**Callable from**: initial Step 2b (after `design-postplan-emit.sh` returns successfully — then continue to Step 3 when this procedure returns); Gate B after each settled `design-postplan-emit.sh` re-emit (see `references/approval-gates.md` — then continue to Step 3b); the post-plan discussion sub-round after its `design-postplan-emit.sh` re-emit (see `references/discussion-rounds.md` — then return to the invoking Gate A). **Gate B** and **post-plan discussion** own the normative “call Step 2b.5 after re-emit” prose; this subsection defines the procedure.
+**Merged callers** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) fold emit + validation + plan-size into `design-postplan-emit.sh --with-plan-size`; they do **not** run steps 1–6 below on the clean path. **Retained callers** (Override-after-defects, Step 3 `LOOP_STATUS=plan-size-trigger`, `plan-review-loop.sh` handoffs) still invoke this procedure or `check-plan-size.sh` directly.
+
+**Callable from**: retained paths above; Gate B after Override on validator defects (see `references/approval-gates.md`); Step 3 `LOOP_STATUS=plan-size-trigger` (see Step 3 branch matrix). **Gate B** and **post-plan discussion** merged re-emits use `--with-plan-size` instead of a standalone Step 2b.5 call on success.
 
 1. Read `partition_requested` from `$DESIGN_TMPDIR/run-params.json` (boolean; default `false` when absent). Bind mental `PARTITION_REQUESTED` from that field — Step 2b.5 does **not** re-parse argv.
 2. Run `check-plan-size.sh` in a Bash subshell with `export LARCH_QUIET_DISABLE=1`, capture **stdout only** into a variable `_plan_size_out` (the `emit_kv` / `emit` contract stream matches `emit-plan.sh` consumers; do not merge stderr into `_plan_size_out` or KV parsing may ingest `larch_err` lines). Example:
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
    set +e
    _plan_size_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh" --design-tmpdir "$DESIGN_TMPDIR")
    _plan_size_rc=$?
@@ -1025,36 +984,27 @@ On `PANEL_STATUS=panel-failed`: `AskUserQuestion` (**Retry panel** / **Cancel**)
 > **After Step 2b.5 returns to caller on a non-exiting path, continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, Gate B, diagram generation, rejected-findings reporting, and cleanup still must run. → shared/subskill-invocation.md#step-boundary
 At the Step 2b.5 success boundary on any non-exiting return path, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before entering Step 3.
 
-Run Step 2b.5 now (initial plan path) before entering Step 3.
-
 <!-- step:3 — Plan Review -->
 
 Print: `> **🔶 /design 3: plan review**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
 ```
 
-**Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed` (owned by `run-step3-review.sh --preview-only` with allowlist-gated touch rules); subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `timing-ledger.sh mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
+**Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed`; subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `timing-ledger.sh mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-set +e
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
-  --preview-only \
-  --design-tmpdir "$DESIGN_TMPDIR"
-_preview_rc=$?
-set -e
-if [[ "${_preview_rc:-0}" -eq 2 ]]; then
-  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
-  exit 1
-fi
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh" \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --variant step3
 ```
 
-The preview-only driver invokes `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` (pure renderer for `step3`; sentinel ownership moved to driver). Hermetic regression coverage lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.md`) and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-run-step3-review.sh`. Script contracts: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.md`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.md`.
+Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.md`). Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.md`.
 
 **Review-round cap entry guard**: `run-step3-review.sh` is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. The driver runs this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). It persists the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` and normalized KVs to `$DESIGN_TMPDIR/.step3-review-result.env`. Before launching `plan-review-loop.sh`, the driver persists the pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, the driver keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`, when `LOOP_STATUS=tally-error`, or when `LOOP_STATUS=degraded-empty-collector`; on those paths, roll back to the prior count (same semantics as `run-step3-review.sh` persist/rollback). If the cap is reached, the driver prints the warning, skips `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b/4/4b with existing artifacts.
 
@@ -1078,61 +1028,45 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 set +e
 _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
-  --no-preview \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --round-cap "${LARCH_DESIGN_ROUND_CAP:-5}")
 _plan_review_rc=$?
 set -e
-if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
-  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
-  exit 1
-fi
-while IFS= read -r _line || [[ -n "$_line" ]]; do
-  _key="${_line%%=*}"
-  case "$_key" in
-    LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|WARN)
-      : ;;
-    *)
-      printf '%s\n' "$_line" ;;
-  esac
-done <<<"${_plan_review_out:-}"
-_step3_safe_env_loaded=false
-if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" && ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
-  _step3_safe_env_loaded=true
-  while IFS= read -r _line || [[ -n "$_line" ]]; do
-    _key="${_line%%=*}"; _value="${_line#*=}"
-    case "$_key" in
-      LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT)
-        printf -v "$_key" '%s' "$_value" ;;
-      WARN) printf '%s\n' "WARN=$_value" ;;
-    esac
-  done <"$DESIGN_TMPDIR/.step3-review-result.env"
+if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
+  if [[ -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
+    printf '%s\n' "**⚠ Step 3: step3 review result env is a symlink; refusing to source**"
+  else
+    while IFS= read -r _line || [[ -n "$_line" ]]; do
+      _key="${_line%%=*}"; _value="${_line#*=}"
+      case "$_key" in
+        LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
+          printf -v "$_key" '%s' "$_value" ;;
+        WARN) printf '%s\n' "WARN=$_value" ;;
+      esac
+    done <"$DESIGN_TMPDIR/.step3-review-result.env"
+  fi
 fi
 while IFS= read -r _line || [[ -n "$_line" ]]; do
   _key="${_line%%=*}"; _value="${_line#*=}"
   case "$_key" in
     LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS)
-      if [[ "$_step3_safe_env_loaded" == true ]]; then
-        [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
-      elif [[ "${_plan_review_rc:-0}" -ne 0 ]]; then
+      if [[ "${_plan_review_rc:-0}" -ne 0 ]]; then
         [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
       else
-        printf -v "$_key" '%s' "$_value"
-      fi
-      ;;
-    STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT)
-      if [[ "$_step3_safe_env_loaded" == true ]]; then
         [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
-      else
-        printf -v "$_key" '%s' "$_value"
       fi
       ;;
+    ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
+      [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
     WARN) printf '%s\n' "WARN=$_value" ;;
   esac
 done <<<"${_plan_review_out:-}"
+if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
+  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
+fi
 if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|cap-reached|zero-findings-degraded-panel|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|emit-plan-failed|optional-trailer-dedup-loss|panel-failed|main-agent-vote-required)$ ]]; then
   printf '%s\n' "**⚠ Step 3: missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
   LOOP_STATUS=panel-failed
@@ -1142,7 +1076,7 @@ fi
 
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.
 
-**Post-loop branch matrix** (when `_step3_safe_env_loaded=true`, the safe non-symlink `.step3-review-result.env` is authoritative and stdout fills **only missing** keys; when `_step3_safe_env_loaded=false`, allowlisted stdout KVs are primary with later-wins; rc!=0 stdout override for `LOOP_STATUS`/`TALLY_PLAN_REVIEW_STATUS` applies **only** on the no-safe-env path; **do not enter this matrix when `_plan_review_rc==2`** — fence already exited):
+**Post-loop branch matrix** (read `$DESIGN_TMPDIR/.step3-review-result.env` first; driver stdout KVs are fallback only):
 
 - `LOOP_STATUS=complete` — proceed to Gate B (legacy single-pass callers without `--round-cap` also land here; Gate B may auto-apply when `manual_gate_b=false`). Gate-B-settled path proceeds through Step 3.6 after Gate B and any Step 2b.5 return.
 - `LOOP_STATUS=converged|cap-hit` — proceed to Gate B **passive-summary mode** (findings already auto-applied inside the loop; do not re-apply them at Gate B). Passive-summary auto-continue routes through Step 3.6 before Step 3b.
@@ -1177,7 +1111,7 @@ At the Step 3 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.compl
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.5 — gate B" || true
 ```
 
@@ -1314,7 +1248,7 @@ Write the diagram to `$DESIGN_TMPDIR/architecture-diagram.candidate.md` first. T
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 "${CLAUDE_PLUGIN_ROOT}/scripts/sanitize-mermaid-fragment.sh" \
   --input "$DESIGN_TMPDIR/architecture-diagram.candidate.md" \
   --from-md \
@@ -1346,7 +1280,7 @@ Print: `> **🔶 /design 4: rejected findings**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4 — rejected findings" || true
 ```
 
@@ -1357,7 +1291,7 @@ Print any rejected plan review findings:
 1. Emit `ACTION=FINALIZE` to ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist and to validate non-empty finalize-required artifacts before Step 5:
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
    printf '%s\n' 'ACTION=FINALIZE' \
      | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
    ```
@@ -1375,7 +1309,7 @@ At the Step 4 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.compl
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4b — gate C" || true
 ```
 
@@ -1389,7 +1323,7 @@ Execute the Gate C body in `approval-gates.md` — `approval-gates.md` is the si
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh" \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --variant gatec
@@ -1406,11 +1340,11 @@ Print: `> **🔶 /design 5: finalize**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 5 — finalize" || true
 ```
 
-**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5c** (`larch:plan` write + diagram upsert + rename + publish).
+**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5c** (`larch:plan` write + publish + rename).
 
 ### 5a — Update Reviewer Presence Status
 
@@ -1425,7 +1359,7 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
 1. Run prepare and capture stdout to `$DESIGN_TMPDIR/oos-filing-prepare.env` (KV lines only on stdout; deps-grace warnings may appear on stderr):
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
    set +e
    "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/file-design-oos.sh" prepare --design-tmpdir "$DESIGN_TMPDIR" >"$DESIGN_TMPDIR/oos-filing-prepare.env" 2>"$DESIGN_TMPDIR/oos-filing-prepare.stderr.log"
    _oos_prep_rc=$?
@@ -1450,7 +1384,7 @@ Cross-session idempotency: after a successful `annotate` with `ISSUES_FAILED=0`,
      - On **non-zero** `_oos_ann_rc` when `ISSUES_FAILED>0` in the captured stdout (partial `/issue` failure): append under `Tool Failures` via `append-tool-failure.sh` (site `design Step 5b`, include stderr), print `**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**`, and **continue to Step 5c** (per-block `Filed URL` lines are written only for successful items).
      - On **non-zero** `_oos_ann_rc` without a partial-failure contract: treat as annotate/parse failure — append `Tool Failures` and continue to Step 5c.
 
-> **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output — NOT the `/design` machine footer. Step 5b annotate (when /issue was invoked) and Step 5c (compose → `design-publish.sh` validate/redact/publish tail) still must run.
+> **Continue to Step 5c IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output — NOT the `/design` machine footer. Step 5b annotate (when /issue was invoked) and Step 5c (compose → validate → redact → `design-publish.sh` publish tail) still must run.
 At the Step 5b success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5b"` before entering Step 5c.
 
 ### 5c — Write `larch:plan` to GitHub + publish
@@ -1460,17 +1394,40 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 **MANDATORY — READ ENTIRE FILE before composing the final plan block: `skills/design/references/readability-style.md`.**
 
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
+2. When `review_budget` from `$DESIGN_TMPDIR/run-params.json` is not `quick`, run plan-command validation on the composed plan **before** redaction (Tier 3 dry-run is disabled for `composed-plan.md`; Tier 2 still runs). Same dispatch as Step 2b (`invoke-plan-validator.sh` → `ACTION=VALIDATE_PLAN_COMMANDS` → `design-driver.sh`), but pass `composed-plan.md`:
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md")
+VALIDATE_STATUS=ok
+VALIDATE_DEFECT_COUNT=0
+VALIDATE_SKIPPED_COUNT=0
+VALIDATE_UNSAFE_TOKEN_COUNT=0
+VALIDATE_LOG_FILE=""
+while IFS= read -r _vl || [[ -n "$_vl" ]]; do
+  _vk="${_vl%%=*}"
+  _vv="${_vl#*=}"
+  case "$_vk" in
+    VALIDATE_STATUS) VALIDATE_STATUS="$_vv" ;;
+    VALIDATE_DEFECT_COUNT) VALIDATE_DEFECT_COUNT="$_vv" ;;
+    VALIDATE_SKIPPED_COUNT) VALIDATE_SKIPPED_COUNT="$_vv" ;;
+    VALIDATE_UNSAFE_TOKEN_COUNT) VALIDATE_UNSAFE_TOKEN_COUNT="$_vv" ;;
+    VALIDATE_LOG_FILE) VALIDATE_LOG_FILE="$_vv" ;;
+  esac
+done <<< "$_validate_out"
+```
+
+When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and **do not** run the remaining Step 5c items (redaction, `plan-block-write.sh`, publish, rename) on this exit branch.
+
+3. Run `cat "$DESIGN_TMPDIR/composed-plan.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
-2. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`, including composed-plan validation, redaction, **Migration limit** for legacy `runid=` diagram comments, and exit 4 validator hand-back) for the deterministic publish tail (plan block write, diagrams upsert, `[DESIGNED]` rename, log publish, summary render, reentry marker).
-
-   Before **each** attempt (initial, auto-repair retry, Apply proposed fix, or Accept / proceed-anyway), prepend the canonical session prelude and pause checkpoint, then remove any stale `.design-publish-result.env` so an earlier exit-4 result cannot satisfy the file-first parser. Retry recaptures must replace `_publish_out`, `_publish_rc`, and every parsed result-env field through this same parse path; do not call `design-publish.sh` bare on retries.
+4. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`, including **Migration limit** for legacy `runid=` diagram comments) for the deterministic publish tail (plan block write, reentry marker, diagrams upsert, log publish, summary render, `[DESIGNED]` rename).
 
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-   rm -f "$DESIGN_TMPDIR/.design-publish-result.env"
    set +e
    _publish_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh" \
      --design-tmpdir "$DESIGN_TMPDIR" \
@@ -1487,26 +1444,19 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
    if [[ "${_publish_rc:-0}" -eq 3 ]]; then
      printf '%s\n' "**⚠ Step 5c: design-publish.sh result-env write failed (exit 3); continuing with stdout parse**" >&2
    fi
-   if [[ "${_publish_rc:-0}" -ne 0 && "${_publish_rc:-0}" -ne 1 && "${_publish_rc:-0}" -ne 3 && "${_publish_rc:-0}" -ne 4 ]]; then
+   if [[ "${_publish_rc:-0}" -ne 0 && "${_publish_rc:-0}" -ne 1 && "${_publish_rc:-0}" -ne 3 ]]; then
      printf '%s\n' "**⚠ Step 5c: design-publish.sh failed (exit ${_publish_rc}); aborting /design**" >&2
      exit 1
    fi
    PLAN_WRITE_OK=""
    PUBLISH_OK=""
    RENAMED=""
-   NEW_TITLE=""
-   DESIGNED_ADMISSION_READY=""
    UPSERT_STATUS=""
    ARCHITECTURE_SOURCE=""
    FINAL_SUMMARY_PATH=""
-   VALIDATE_STATUS=""
-   VALIDATE_DEFECT_COUNT=""
-   VALIDATE_SKIPPED_COUNT=""
-   VALIDATE_UNSAFE_TOKEN_COUNT=""
-   VALIDATE_LOG_FILE=""
    _publish_warn_lines=()
    _publish_parse_ok=false
-   if [[ "${_publish_rc:-0}" -ne 3 && -f "$DESIGN_TMPDIR/.design-publish-result.env" ]]; then
+   if [[ -f "$DESIGN_TMPDIR/.design-publish-result.env" ]]; then
      if [[ -L "$DESIGN_TMPDIR/.design-publish-result.env" ]]; then
        printf '%s\n' "**⚠ Step 5c: design-publish result env is a symlink; refusing to source**"
      else
@@ -1514,7 +1464,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
        while IFS= read -r _line || [[ -n "$_line" ]]; do
          _key="${_line%%=*}"; _value="${_line#*=}"
          case "$_key" in
-           PLAN_WRITE_OK|PUBLISH_OK|RENAMED|NEW_TITLE|DESIGNED_ADMISSION_READY|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE) printf -v "$_key" '%s' "$_value" ;;
+           PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH) printf -v "$_key" '%s' "$_value" ;;
            WARN) _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done; if [[ "$_publish_warn_dup" != true ]]; then _publish_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
          esac
        done <"$DESIGN_TMPDIR/.design-publish-result.env"
@@ -1523,7 +1473,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
    while IFS= read -r _line || [[ -n "$_line" ]]; do
      _key="${_line%%=*}"; _value="${_line#*=}"
      case "$_key" in
-       PLAN_WRITE_OK|PUBLISH_OK|RENAMED|NEW_TITLE|DESIGNED_ADMISSION_READY|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
+       PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
        WARN)
          if [[ "$_publish_parse_ok" != true ]]; then
            _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done
@@ -1532,21 +1482,19 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
          ;;
      esac
    done <<<"${_publish_out:-}"
-   if [[ "$_publish_parse_ok" != true ]] && [[ "${_publish_rc:-0}" -ne 3 ]] && { [[ "${_publish_rc:-0}" -ne 4 ]] || [[ "${VALIDATE_STATUS:-}" != defects-found ]]; }; then
+   if [[ "$_publish_parse_ok" != true ]] && [[ "${_publish_rc:-0}" -ne 3 ]]; then
      printf '%s\n' "**⚠ Step 5c: design-publish result env missing or unreadable; aborting /design**" >&2
      exit 1
    fi
    ```
 
-   If `_publish_rc == 4`, run **### Plan command validator failure (shared)** with `--site` `design Step 5c` and parsed `VALIDATE_*`; do **not** run items 3–5, Step 5d, or Step 6 while rc remains 4. The rc-4 stdout-fallback above is intentional: when `.design-publish-result.env` is absent or unreadable but `_publish_out` carries `VALIDATE_STATUS=defects-found`, route to the shared handler rather than aborting. Auto-repair / Apply proposed fix edits `composed-plan.md` (re-compose item 1 when `plan.txt` changed), removes `.design-publish-result.env`, and re-captures `design-publish.sh` without `--skip-validate`. Accept / proceed-anyway appends a `Warnings` entry via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 5c" --tool "validate-plan-commands" --exit-code 0 --category Warnings --output-file "${VALIDATE_LOG_FILE:-$DESIGN_TMPDIR/validate-plan-commands.log}" --redact || true`, then re-captures `design-publish.sh --skip-validate`. Cancel: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and stop before items 3–5. Each retry replaces `_publish_out`, `_publish_rc`, and all parsed result-env fields via the same prelude + pause-check + `rm -f .design-publish-result.env` wrapper.
+**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1,3}` abort above — **stop `/design` immediately; do not run Step 5c items 5–7, Step 5d, or Step 6.** `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written — parse stdout (`_publish_out`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete. When `_publish_rc` ∈ {0, 1, 3}, always parse `.design-publish-result.env` when present (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
 
-**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}` abort above — **stop `/design` immediately; do not run Step 5c items 3–5, Step 5d, or Step 6.** `_publish_rc`=4 runs the shared handler before items 3–5 and does not permit post-driver continuation until the latest `_publish_rc` ∈ {0, 1, 3} or Cancel. `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written — parse stdout (`_publish_out`) and continue Step 5c items 3–5 with the WARN above; do not treat exit 3 as publish-tail incomplete. When `_publish_rc` ∈ {0, 1, 3}, always parse `.design-publish-result.env` when present (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
+**Driver WARN replay (top chat):** After the Bash block above, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
 
-**Driver WARN replay (top chat):** After the Bash block above, when the latest `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
-
-3. **Regardless of `PLAN_WRITE_OK` after the latest `_publish_rc` ∈ {0, 1, 3}:** when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that path and emit its full body verbatim as plain chat markdown (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text). Do NOT paraphrase, summarize, reorder, or add prose between bullets. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `render-final-summary.sh` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary). Do not emit while `_publish_rc` is still 4; the retry loop must settle to `{0,1,3}` first.
-4. **Only when the latest `_publish_rc` ∈ {0, 1, 3} and driver output was parsed (file and/or stdout):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** the latest `_publish_rc` ∈ {0,1,3} **and** `PLAN_WRITE_OK=true` **before** Step 5d. The `[DESIGNED]` rename is already attempted by the driver after diagram upsert and is not gated on `PUBLISH_OK`; design-log publish runs after rename and is best-effort for `/implement` admission. Automation that requires scrubbed/published logs must gate on `PUBLISH_OK=true`, not on the `[DESIGNED]` title alone.
-5. **Only when the latest `_publish_rc` ∈ {0, 1, 3} and driver output was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
+5. **Regardless of `PLAN_WRITE_OK` and `_publish_rc` (when 0, 1, or 3):** when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that path and emit its full body verbatim as plain chat markdown (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text). Do NOT paraphrase, summarize, reorder, or add prose between bullets. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `render-final-summary.sh` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary).
+6. **Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (file and/or stdout):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true` **before** Step 5d. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately (see Step 6).
+7. **Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
 
 ### 5d — Final warning replay + footer
 
@@ -1559,27 +1507,19 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 
 Do NOT write any farewell message such as "Design complete", "Returning to the /implement orchestrator", "Handing back control", or any other prose that signals the skill is done — those are halts in disguise.
 
-Additionally, after Step 5c's `design-publish.sh` driver refreshes the persisted summary artifacts (or after any cancellation outcome's `### Final summary block` fence does the same) AND after the mandatory shared verbatim full-body emit from Step 5c item 3, NEVER write a free-form natural-language recap summary at end of turn. This includes a "Design complete." prose line, a bullet list of artifacts (Run / Discovery / Plan / Plan review / Design log PR / Summary comment), a parenthetical cost paraphrase (for example `~$10.46` or `SIMPLE tier, ~27m`), or any natural-language replacement for the structured `## /design run ...` block. The shared post-publish/full-body emit rule runs when `$DESIGN_TMPDIR/final-summary.md` or parsed `FINAL_SUMMARY_PATH` is non-empty after driver handoff with the latest `_publish_rc` 0, 1, or 3, followed by any required repeated external-reviewer warnings, and then the machine footer. No free-form recap may appear between or after those pieces. Reason: a verbatim full-block emission ensures the per-agent breakdown (`Claude $X, Codex $X, Cursor $X`) and all other bullets are visible at top chat without depending on Bash-tool UI expansion. Free-form summaries are forbidden because they would either omit or paraphrase that breakdown.
+Additionally, after Step 5c's `design-publish.sh` driver refreshes the persisted summary artifacts (or after any cancellation outcome's `### Final summary block` fence does the same) AND after the mandatory shared verbatim full-body emit from Step 5c item 5, NEVER write a free-form natural-language recap summary at end of turn. This includes a "Design complete." prose line, a bullet list of artifacts (Run / Discovery / Plan / Plan review / Design log PR / Summary comment), a parenthetical cost paraphrase (for example `~$10.46` or `SIMPLE tier, ~27m`), or any natural-language replacement for the structured `## /design run ...` block. The shared post-publish/full-body emit rule runs when `$DESIGN_TMPDIR/final-summary.md` or parsed `FINAL_SUMMARY_PATH` is non-empty after driver handoff (`_publish_rc` 0, 1, or 3), followed by any required repeated external-reviewer warnings, and then the machine footer. No free-form recap may appear between or after those pieces. Reason: a verbatim full-block emission ensures the per-agent breakdown (`Claude $X, Codex $X, Cursor $X`) and all other bullets are visible at top chat without depending on Bash-tool UI expansion. Free-form summaries are forbidden because they would either omit or paraphrase that breakdown.
 
 The rigid `larch:final-summary` body is produced by `skills/design/scripts/render-final-summary.sh` inside `design-publish.sh` after the publish outcome is known. The orchestrator emits the rendered `final-summary.md` body verbatim once per Step 5c handoff. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer below.
 
-When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings above, then emit exactly **one** terminal machine footer as the **last human-visible output line** of Step 5. When `PLAN_WRITE_OK=false`, Step 5c item 3 already ran the summary before the `**⚠ 5: plan-block-write failed**` line — do not invoke `render-final-summary.sh` again here.
+When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings above, then emit exactly **one** terminal machine footer as the **last human-visible output line** of Step 5. When `PLAN_WRITE_OK=false`, Step 5c item 5 already ran the summary before the `**⚠ 5: plan-block-write failed**` line — do not invoke `render-final-summary.sh` again here.
 
-When `PLAN_WRITE_OK=true` and `SESSION_ID` is empty, the footer line is:
-
-`➡️ 5: finalize — plan written to issue #<N>; log publish skipped; NEXT REQUIRED: continue`
-
-When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=true`, the footer line is:
+When `PLAN_WRITE_OK=true` and either `SESSION_ID` is empty or `PUBLISH_OK=true`, the footer line is:
 
 `➡️ 5: finalize — plan written to issue #<N>; NEXT REQUIRED: continue`
 
-When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and the issue title is confirmed `[DESIGNED]` with the diagram upsert confirmed when it ran (`DESIGNED_ADMISSION_READY=true`, derived from `RENAMED=true` or idempotent `RENAMED=false` with `NEW_TITLE` already prefixed by `[DESIGNED]` plus a required space, and forced false when `UPSERT_RAN=true && UPSERT_STATUS!=ok`), the footer line is:
+When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, the footer line is:
 
-`➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] is set; log publish incomplete; retry log publish manually from the preserved $DESIGN_TMPDIR before /implement when the session may contain secrets; NEXT REQUIRED: continue`
-
-When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and the issue title is not confirmed `[DESIGNED]` or the diagram upsert was not confirmed (`DESIGNED_ADMISSION_READY` is not `true`), the footer line is:
-
-`➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] rename not confirmed; log publish incomplete; fix the issue title before /implement and retry log publish manually from the preserved $DESIGN_TMPDIR; NEXT REQUIRED: continue`
+`➡️ 5: finalize — plan written to issue #<N>; log publish incomplete; NEXT REQUIRED: continue`
 
 > **Continue to Step 6 IMMEDIATELY** after the Step 5 footer when `PLAN_WRITE_OK=true`. Step 6 decides whether cleanup is allowed from `PUBLISH_OK`; do not remove `$DESIGN_TMPDIR` from Step 5d when log publish failed.
 At the Step 5d success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5d"` before entering Step 6.
@@ -1590,25 +1530,25 @@ Print: `> **🔶 /design 6: cleanup**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 6 — cleanup" || true
 ```
 
-Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 5). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout. Log recovery must use a manual `design-log-publish.sh` retry from the preserved `$DESIGN_TMPDIR`; re-invoking `/design` on a `[DESIGNED]` issue is blocked by title eligibility unless the operator first renames the title to drop `[DESIGNED]` for a full `/design` re-run. Do not run the cleanup fence below when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
+Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 7). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout. Do not run the cleanup fence below when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 ${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"
 ```
 Before invoking `cleanup-tmpdir.sh` on the happy path, run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-6"`.
 
 ### Plan command validator failure (shared)
 
-When `VALIDATE_STATUS=defects-found`, diagnose the root cause from `VALIDATE_LOG_FILE` only through a redacted view: read the log via `"${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" <"${VALIDATE_LOG_FILE:-$DESIGN_TMPDIR/validate-plan-commands.log}"` (or a bounded excerpt of that redacted output) before using content in operator-visible surfaces (`AskUserQuestion`, warnings, chat). Do not quote raw command lines or flag values verbatim in escalation prompts unless they already appear as redacted placeholders.
+When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, use **AskUserQuestion** with exactly these three option labels (verbatim): **Fix-and-retry**, **Override**, **Cancel**.
 
-- **Auto-repair (cap 2 attempts, no prompt)** — When the root cause is clear, edit only the offending artifact and re-validate by re-running the surfacing driver. For `plan.txt` sites (Step 2b, Gate B, Step 3 `plan-review-loop`, discussion-round2), fix `plan.txt`, re-run `design-postplan-emit.sh` so `ACTION=EMIT_PLAN` refreshes `diff-lines.txt`, then re-read `VALIDATE_STATUS`. For `--site design Step 5c`, fix `composed-plan.md` (re-compose Step 5c item 1 when `plan.txt` changed), `rm -f .design-publish-result.env`, and re-capture `design-publish.sh` without `--skip-validate`; the driver self-gates and only publishes when validation passes. **Never** end a Step 5c repair with bare `ACTION=VALIDATE_PLAN_COMMANDS` on `composed-plan.md` because that re-validates only and skips redact/publish. On clean re-validation, continue the surrounding success path and append a `Warnings` note describing the auto-fix; **no prompt**.
-- **Escalate** — Only after 2 failed auto-repair attempts, or when the defect is a likely false positive that should not be silently accepted, fire `AskUserQuestion` explaining the root cause and offering context-specific options: **Apply proposed fix**, **Accept / proceed-anyway**, **Edit myself**, **Cancel**. Apply proposed fix uses the diagnosed fix and reruns the surfacing driver. Accept / proceed-anyway appends a `Warnings` entry via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "<SITE>" --tool "validate-plan-commands" --exit-code 0 --category Warnings --output-file "${VALIDATE_LOG_FILE:-$DESIGN_TMPDIR/validate-plan-commands.log}" --redact || true` (substitute `<SITE>` with `design Step 2b`, `design Step 3.5 / Gate B`, `design discussion-round2`, or `design Step 5c` as appropriate). On `plan.txt` sites, continue the surrounding success path. On Step 5c, then re-capture `design-publish.sh --skip-validate`. Edit myself waits for the operator's edit, then reruns the surfacing driver. Cancel on `plan.txt` sites returns to Gate A where applicable; Cancel on Step 5c must preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and stop before Step 5c items 3–5.
-- Each Step 5c re-capture (auto-repair, Apply proposed fix, or Accept / proceed-anyway) replaces `_publish_out`, `_publish_rc`, and all parsed result-env fields via the same prelude + pause-check + `rm -f .design-publish-result.env` wrapper.
+- **Fix-and-retry** — The operator edits `plan.txt` or `composed-plan.md` (whichever file the failing validator pass targeted) to resolve the defect. Re-run `ACTION=EMIT_PLAN` first when the edited artifact is `plan.txt` (refreshes `diff-lines.txt`). When the edited artifact is `composed-plan.md`, either re-run `ACTION=EMIT_PLAN` after syncing `plan.txt` so `diff-lines.txt` matches, or update the trailing `diff_lines: <N>` line in `composed-plan.md` to match the integer in `diff-lines.txt` before re-validation. Then re-run `ACTION=VALIDATE_PLAN_COMMANDS ARGS=--plan-file <that same path>`. Loop until `VALIDATE_STATUS=ok` or the operator picks another option.
+- **Override** — The operator accepts proceeding despite defects. Append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` using `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "<SITE>" --tool "validate-plan-commands" --exit-code 0 --category Warnings --output-file "$DESIGN_TMPDIR/validate-plan-commands.log" --redact` (substitute `<SITE>` with `design Step 2b`, `design Step 3.5 / Gate B`, `design discussion-round2`, or `design Step 5c` as appropriate). Then continue the surrounding success path; `defects-found` is **not** a driver `STEP_FAILED`.
+- **Cancel** — Abort the surrounding path while preserving `$DESIGN_TMPDIR` for inspection. **Step 2b / Gate B / discussion-round2**: return to Gate A. **Step 5c**: skip `redact-secrets.sh`, `plan-block-write.sh`, publish/rename tail items, and Step 6 cleanup on this branch.
 
 **Plan helper contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh` — ACTION dispatcher. Sibling: `design-driver.md`.
@@ -1618,7 +1558,7 @@ When `VALIDATE_STATUS=defects-found`, diagnose the root cause from `VALIDATE_LOG
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/validate-plan.sh` — `ACTION=VALIDATE_PLAN_COMMANDS` driver (parser → validator; log copy). Sibling: `validate-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh` — Step 2b / re-emit post-plan phase driver; wraps `ACTION=EMIT_PLAN`, the optional HARD snapshot, and `invoke-plan-validator.sh` with one result-env contract. Sibling: `design-postplan-emit.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-postplan-emit.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-postplan-emit.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-plan-quality-assessor.sh` — Step 3.6 HARD-only plan-quality assessor phase driver; wraps `snapshot-plan-round.sh` post-Gate-B `write-after`, round rollback, and `assess-plan-round.sh` with one result-env contract (`.step3.6-assessor.env`). Sibling: `design-plan-quality-assessor.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-plan-quality-assessor.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-plan-quality-assessor.md`).
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh` — dispatches `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh` for the supplied plan file. `design-postplan-emit.sh` owns the validation for `plan.txt`; `design-publish.sh` owns composed-plan validation before redaction. Sibling: `invoke-plan-validator.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.md`).
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh` — dispatches `ACTION=VALIDATE_PLAN_COMMANDS` into `design-driver.sh` for the supplied plan file. `design-postplan-emit.sh` owns the `review_budget=quick` skip for `plan.txt`; Step 5c still guards composed-plan validation prompt-side. Sibling: `invoke-plan-validator.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-invoke-plan-validator.md`).
 - `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry (+ `dry-runnable-scripts.md`).
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-plan.sh` — `ACTION=EMIT_PLAN`. Sibling: `emit-plan.md`.
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh` — Step 2b.5 plan-size thresholds. Sibling: `check-plan-size.md`. Shared optional-trailer helpers: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-plan-optional-trailers.sh` (sourced by `check-plan-size.sh`, `revise-plan-with-waterfall.sh`, `plan-review-loop.sh`, `gate-b-dedup-plan.sh`); awk: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/lib-plan-optional-trailers.awk`. Sibling: `lib-plan-optional-trailers.md`. Offline harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-check-plan-size.md`. Optional-trailer unit harness (`make test-trailer-helpers`): `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-trailer-helpers.sh` (wraps `test-trailer-dedup.sh`, `test-trailer-has-any.sh`, `test-trailer-validate.sh`, `test-trailer-awk.sh`; harness contract: `test-trailer-awk.md`).

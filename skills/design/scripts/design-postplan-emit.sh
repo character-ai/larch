@@ -14,15 +14,7 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: design-postplan-emit.sh --design-tmpdir PATH [--snapshot-original] [--repo OWNER/REPO]'
-}
-
-validate_repo() {
-    local value="$1"
-    case "$value" in
-        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) fail 'invalid --repo' ;;
-    esac
-    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail 'invalid --repo'
+    larch_err 'Usage: design-postplan-emit.sh --design-tmpdir PATH [--snapshot-original] [--force-validate] [--with-plan-size]'
 }
 
 parse_kv_from_output() {
@@ -39,14 +31,52 @@ parse_kv_from_output() {
             VALIDATE_SKIPPED_COUNT) VALIDATE_SKIPPED_COUNT="$_value" ;;
             VALIDATE_UNSAFE_TOKEN_COUNT) VALIDATE_UNSAFE_TOKEN_COUNT="$_value" ;;
             VALIDATE_LOG_FILE) VALIDATE_LOG_FILE="$_value" ;;
+            HARD_TRIGGER_FIRED) HARD_TRIGGER_FIRED="$_value" ;;
+            TRIGGER_REASONS) TRIGGER_REASONS="$_value" ;;
+            PLAN_LINES) PLAN_LINES="$_value" ;;
+            DIFF_ADDED) DIFF_ADDED="$_value" ;;
+            DIFF_DELETED) DIFF_DELETED="$_value" ;;
+            MECHANICAL_CHURN) MECHANICAL_CHURN="$_value" ;;
+            SOFT_ADVISORY) SOFT_ADVISORY="$_value" ;;
+            PLAN_SIZE_STATUS) PLAN_SIZE_STATUS="$_value" ;;
             WARN) WARN_LINES+=("$_value") ;;
         esac
     done <<<"$text"
 }
 
+json_scalar_or_sed() {
+    local file="$1" key="$2" default_value="$3" value=""
+    if command -v jq >/dev/null 2>&1 && [[ -f "$file" ]]; then
+        value=$(jq -r --arg key "$key" '.[$key] // ""' "$file" 2>/dev/null || echo "")
+    fi
+    if [[ -z "$value" && -f "$file" ]]; then
+        value=$(sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$file" 2>/dev/null | head -1)
+    fi
+    if [[ -z "$value" ]]; then
+        printf '%s\n' "$default_value"
+    else
+        printf '%s\n' "$value"
+    fi
+}
+
+json_boolean_or_sed() {
+    local file="$1" key="$2" default_value="${3:-false}" value=""
+    if command -v jq >/dev/null 2>&1 && [[ -f "$file" ]]; then
+        value=$(jq -r --arg key "$key" 'if (.[$key] | type) == "boolean" then (.[$key] | tostring) else "" end' "$file" 2>/dev/null || echo "")
+    fi
+    if [[ -z "$value" && -f "$file" ]]; then
+        value=$(sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' "$file" 2>/dev/null | head -1)
+    fi
+    case "$value" in
+        true|false) printf '%s\n' "$value" ;;
+        *) printf '%s\n' "$default_value" ;;
+    esac
+}
+
 DESIGN_TMPDIR_ARG=""
 SNAPSHOT_ORIGINAL=false
-REPO=""
+FORCE_VALIDATE=false
+WITH_PLAN_SIZE=false
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -59,11 +89,13 @@ while [[ $# -gt 0 ]]; do
             SNAPSHOT_ORIGINAL=true
             shift
             ;;
-        --repo)
-            [[ $# -ge 2 ]] || fail '--repo requires a value'
-            REPO="$2"
-            validate_repo "$REPO"
-            shift 2
+        --force-validate)
+            FORCE_VALIDATE=true
+            shift
+            ;;
+        --with-plan-size)
+            WITH_PLAN_SIZE=true
+            shift
             ;;
         -h | --help)
             usage
@@ -89,6 +121,8 @@ export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 RESULT_ENV="$DESIGN_TMPDIR/.design-postplan-emit-result.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
 WARN_LINES=()
+REVIEW_BUDGET="$(json_scalar_or_sed "$RUN_PARAMS_PATH" review_budget full)"
+PARTITION_REQUESTED="$(json_boolean_or_sed "$RUN_PARAMS_PATH" partition_requested false)"
 READ_CLASSIFICATION_SH="$PLUGIN_ROOT/scripts/read-design-classification.sh"
 if [[ -x "$READ_CLASSIFICATION_SH" ]]; then
     _classification_stderr="$DESIGN_TMPDIR/.read-design-classification.stderr.$$"
@@ -123,19 +157,42 @@ VALIDATE_DEFECT_COUNT=0
 VALIDATE_SKIPPED_COUNT=0
 VALIDATE_UNSAFE_TOKEN_COUNT=0
 VALIDATE_LOG_FILE=""
+PLAN_SIZE_STATUS=not-run
+HARD_TRIGGER_FIRED=false
+TRIGGER_REASONS=""
+PLAN_LINES=""
+DIFF_ADDED=""
+DIFF_DELETED=""
+MECHANICAL_CHURN=false
+SOFT_ADVISORY=false
+_plan_size_out=""
+_plan_size_stderr=""
 
 _postplan_fatal() {
     local status="${1:-emit-failed}"
     shift
     if ((${#WARN_LINES[@]})); then
         POSTPLAN_EMIT_STATUS="$status"
-        _postplan_write_result_and_emit
+        if [[ "$WITH_PLAN_SIZE" == true ]]; then
+            _postplan_write_result_merged || exit 1
+        else
+            _postplan_write_result_and_emit
+        fi
     fi
     larch_err "design-postplan-emit.sh: $*"
     exit 2
 }
 
-_postplan_write_result_and_emit() {
+_postplan_emit_warn_display() {
+    local _warn _line
+    for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
+        while IFS= read -r _line || [[ -n "$_line" ]]; do
+            [[ -n "$_line" ]] && emit "$(printf '%s' "$_line" | sanitize_diagnostic_line)"
+        done <<<"$_warn"
+    done
+}
+
+_postplan_build_kvs() {
     local -a _kvs=()
     _kvs+=("POSTPLAN_EMIT_STATUS=$POSTPLAN_EMIT_STATUS")
     _kvs+=("EMIT_PLAN_STATUS=$EMIT_PLAN_STATUS")
@@ -146,10 +203,42 @@ _postplan_write_result_and_emit() {
     _kvs+=("VALIDATE_SKIPPED_COUNT=$VALIDATE_SKIPPED_COUNT")
     _kvs+=("VALIDATE_UNSAFE_TOKEN_COUNT=$VALIDATE_UNSAFE_TOKEN_COUNT")
     _kvs+=("VALIDATE_LOG_FILE=$VALIDATE_LOG_FILE")
+    if [[ "$WITH_PLAN_SIZE" == true ]]; then
+        _kvs+=("PLAN_SIZE_STATUS=$PLAN_SIZE_STATUS")
+        _kvs+=("HARD_TRIGGER_FIRED=$HARD_TRIGGER_FIRED")
+        _kvs+=("TRIGGER_REASONS=$TRIGGER_REASONS")
+        _kvs+=("PLAN_LINES=$PLAN_LINES")
+        _kvs+=("DIFF_ADDED=$DIFF_ADDED")
+        _kvs+=("DIFF_DELETED=$DIFF_DELETED")
+        _kvs+=("MECHANICAL_CHURN=$MECHANICAL_CHURN")
+        _kvs+=("SOFT_ADVISORY=$SOFT_ADVISORY")
+        _kvs+=("PARTITION_REQUESTED=$PARTITION_REQUESTED")
+    fi
     local _warn
     for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
         _kvs+=("WARN=$_warn")
     done
+    printf '%s\n' "${_kvs[@]}"
+}
+
+_postplan_write_result_merged() {
+    local -a _kvs=()
+    while IFS= read -r _kv || [[ -n "$_kv" ]]; do
+        _kvs+=("$_kv")
+    done < <(_postplan_build_kvs)
+    if ! phase_driver_write_result_env "$RESULT_ENV" "${_kvs[@]}"; then
+        emit "**⚠ design-postplan-emit: result env write failed; aborting before action dispatch.**"
+        return 1
+    fi
+    _postplan_emit_warn_display
+    return 0
+}
+
+_postplan_write_result_and_emit() {
+    local -a _kvs=()
+    while IFS= read -r _kv || [[ -n "$_kv" ]]; do
+        _kvs+=("$_kv")
+    done < <(_postplan_build_kvs)
     if ! phase_driver_write_result_env "$RESULT_ENV" "${_kvs[@]}"; then
         WARN_LINES+=("**⚠ design-postplan-emit: result env write failed; using stdout fallback.**")
     fi
@@ -162,14 +251,159 @@ _postplan_write_result_and_emit() {
     emit_kv VALIDATE_SKIPPED_COUNT "$VALIDATE_SKIPPED_COUNT"
     emit_kv VALIDATE_UNSAFE_TOKEN_COUNT "$VALIDATE_UNSAFE_TOKEN_COUNT"
     emit_kv VALIDATE_LOG_FILE "$VALIDATE_LOG_FILE"
+    local _warn
     for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
         emit_kv WARN "$_warn"
     done
 }
 
+_postplan_flush() {
+    if [[ "$WITH_PLAN_SIZE" == true ]]; then
+        _postplan_write_result_merged
+    else
+        _postplan_write_result_and_emit
+    fi
+}
+
+_postplan_emit_rc1_diagnostic() {
+    case "${POSTPLAN_EMIT_STATUS:-}" in
+        missing-diff-lines)
+            emit "**⚠ 2b: plan.txt is missing a final diff_lines metadata line; repair plan.txt before Step 2b.5 / Step 3.**"
+            ;;
+        snapshot-failed)
+            emit "**⚠ 2b: failed to snapshot plan.txt-original for HARD assessor flow; aborting before Step 3.**"
+            ;;
+        validate-driver-failed)
+            emit "**⚠ 2b: plan-command validator infrastructure failed; aborting before Step 3.**"
+            ;;
+        *)
+            emit "**⚠ 2b: post-plan emit failed (${POSTPLAN_EMIT_STATUS:-unknown}); repair plan.txt before Step 2b.5 / Step 3.**"
+            ;;
+    esac
+}
+
+_postplan_exit_merged_failure() {
+    _postplan_emit_rc1_diagnostic
+    _postplan_flush || exit 1
+    exit 1
+}
+
+_postplan_emit_soft_advisory() {
+    if [[ "$SOFT_ADVISORY" != true ]]; then
+        return 0
+    fi
+    if [[ "$HARD_TRIGGER_FIRED" == true ]]; then
+        emit "⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=${DIFF_ADDED:-} DIFF_DELETED=${DIFF_DELETED:-} DIFF_LINES=${DIFF_LINES:-}); plan-body gate still requires Split/Cancel"
+    else
+        emit "⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=${DIFF_ADDED:-} DIFF_DELETED=${DIFF_DELETED:-} DIFF_LINES=${DIFF_LINES:-}); proceeding"
+    fi
+}
+
+_postplan_emit_hard_section() {
+    emit "## Plan Size — Hard Trigger"
+    emit "PLAN_LINES=${PLAN_LINES:-} DIFF_LINES=${DIFF_LINES:-}"
+    if [[ -n "${DIFF_ADDED:-}" ]]; then
+        emit "DIFF_ADDED=${DIFF_ADDED}"
+    fi
+    if [[ -n "${DIFF_DELETED:-}" ]]; then
+        emit "DIFF_DELETED=${DIFF_DELETED}"
+    fi
+}
+
+_postplan_emit_partition_section() {
+    emit "## Plan Size — Partition requested"
+    emit "trigger=partition-flag PLAN_LINES=${PLAN_LINES:-} DIFF_LINES=${DIFF_LINES:-}"
+}
+
+_postplan_append_plan_size_warning() {
+    local _plan_size_rc="$1" _validation_log="$DESIGN_TMPDIR/check-plan-size.validation.log"
+    local _combined_cap _status_label
+    {
+        printf '%s\n' "${_plan_size_out:-}"
+        [[ -s "$_plan_size_stderr" ]] && cat "$_plan_size_stderr"
+    } >"$_validation_log" 2>/dev/null || true
+    _status_label="${PLAN_SIZE_STATUS:-unknown}"
+    if [[ "$_plan_size_rc" -eq 3 ]]; then
+        _status_label=argv-error
+    fi
+    WARN_LINES+=("**⚠ 2b.5: check-plan-size — ${_status_label}; proceeding without threshold check**")
+    set +e
+    _combined_cap=$(mktemp "${TMPDIR:-/tmp}/design-postplan-plan-size.XXXXXX")
+    cp -f "$_validation_log" "$_combined_cap" 2>/dev/null || printf '%s\n' "${_plan_size_out:-}" >"$_combined_cap"
+    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        --log "$DESIGN_TMPDIR/execution-issues.md" \
+        --site "design Step 2b.5" \
+        --tool "check-plan-size.sh" \
+        --exit-code "$_plan_size_rc" \
+        --category Warnings \
+        --output-file "$_combined_cap" \
+        >/dev/null 2>&1 || true
+    rm -f "$_combined_cap" 2>/dev/null || true
+    set -e
+}
+
+_postplan_run_plan_size() {
+    local _check_sh="$PLUGIN_ROOT/skills/design/scripts/check-plan-size.sh"
+    [[ -x "$_check_sh" ]] || fail "check-plan-size.sh not executable: $_check_sh"
+    _plan_size_stderr="$DESIGN_TMPDIR/.check-plan-size.stderr.$$"
+    _plan_size_out=""
+    set +e
+    _plan_size_out=$(env LARCH_QUIET_DISABLE=1 "$_check_sh" --design-tmpdir "$DESIGN_TMPDIR" 2>"$_plan_size_stderr")
+    _plan_size_rc=$?
+    set -e
+    PLAN_SIZE_STATUS=ok
+    if [[ "$_plan_size_rc" -eq 0 ]]; then
+        parse_kv_from_output "$_plan_size_out"
+        rm -f "$_plan_size_stderr" 2>/dev/null || true
+        return 0
+    fi
+    if [[ "$_plan_size_rc" -eq 2 || "$_plan_size_rc" -eq 3 ]]; then
+        parse_kv_from_output "$_plan_size_out"
+        PLAN_SIZE_STATUS="${PLAN_SIZE_STATUS:-unknown}"
+        [[ "$PLAN_SIZE_STATUS" == not-run ]] && PLAN_SIZE_STATUS=unknown
+        _postplan_append_plan_size_warning "$_plan_size_rc"
+        HARD_TRIGGER_FIRED=false
+        TRIGGER_REASONS=""
+        SOFT_ADVISORY=false
+        rm -f "$_plan_size_stderr" 2>/dev/null || true
+        return 2
+    fi
+    rm -f "$_plan_size_stderr" 2>/dev/null || true
+    fail "check-plan-size.sh failed unexpectedly (exit ${_plan_size_rc})"
+}
+
+_postplan_finish_merged_plan_size() {
+    local _plan_size_rc=$1
+    if [[ "$_plan_size_rc" -eq 2 ]]; then
+        POSTPLAN_EMIT_STATUS=ok
+        PLAN_SIZE_STATUS="${PLAN_SIZE_STATUS:-unknown}"
+        _postplan_flush || exit 1
+        exit 0
+    fi
+    _postplan_emit_soft_advisory
+    if [[ "$HARD_TRIGGER_FIRED" == true ]]; then
+        _postplan_emit_hard_section
+        POSTPLAN_EMIT_STATUS=ok
+        PLAN_SIZE_STATUS=hard-trigger
+        _postplan_flush || exit 1
+        exit 12
+    fi
+    if [[ "$PARTITION_REQUESTED" == true ]]; then
+        _postplan_emit_partition_section
+        POSTPLAN_EMIT_STATUS=ok
+        PLAN_SIZE_STATUS=partition-requested
+        _postplan_flush || exit 1
+        exit 13
+    fi
+    POSTPLAN_EMIT_STATUS=ok
+    PLAN_SIZE_STATUS=under-threshold
+    _postplan_flush || exit 1
+    emit "⏩ 2b.5: plan-size — under thresholds (PLAN_LINES=${PLAN_LINES:-} DIFF_LINES=${DIFF_LINES:-})"
+    exit 0
+}
+
 _postplan_resolve_issue() {
     local _issue="${ISSUE_NUMBER:-}"
-    # Use awk-only extraction: sourcing source-env.sh executes arbitrary shell code.
     if [[ -z "$_issue" && -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
         _issue=$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+ISSUE_NUMBER=/ {v=$0; sub(/^export[[:space:]]+ISSUE_NUMBER=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
     fi
@@ -177,9 +411,7 @@ _postplan_resolve_issue() {
 }
 
 _postplan_resolve_repo() {
-    local _repo="${REPO:-}"
-    [[ -n "$_repo" ]] && { printf '%s\n' "$_repo"; return 0; }
-    # Use awk-only extraction: sourcing source-env.sh executes arbitrary shell code.
+    local _repo=""
     if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
         _repo=$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+REPO=/ {v=$0; sub(/^export[[:space:]]+REPO=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
     fi
@@ -187,31 +419,21 @@ _postplan_resolve_repo() {
 }
 
 _postplan_pause_checkpoint() {
-    if [[ -f "$DESIGN_TMPDIR/.pause-requested" ]]; then
-        local _issue _repo
-        _issue="$(_postplan_resolve_issue)"
-        _repo="$(_postplan_resolve_repo)"
-        [[ -n "$_issue" ]] || _postplan_fatal emit-failed 'pause requested but ISSUE_NUMBER could not be resolved'
-        if [[ -z "$_repo" ]]; then
-            POSTPLAN_EMIT_STATUS=paused
-            _postplan_write_result_and_emit
-            exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue"
-        fi
-        case "$_repo" in
-            '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) _repo=invalid ;;
-            *) [[ "$_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || _repo=invalid ;;
-        esac
-        if [[ "$_repo" == invalid ]]; then
-            POSTPLAN_EMIT_STATUS=pause-failed
-            _postplan_write_result_and_emit
-            emit_kv PAUSE_OK false
-            emit_kv ERROR invalid-repo
-            exit 1
-        fi
-        POSTPLAN_EMIT_STATUS=paused
-        _postplan_write_result_and_emit
-        exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue" --repo "$_repo"
+    if [[ ! -f "$DESIGN_TMPDIR/.pause-requested" ]]; then
+        return 0
     fi
+    local _issue _repo
+    _issue="$(_postplan_resolve_issue)"
+    _repo="$(_postplan_resolve_repo)"
+    [[ -n "$_issue" ]] || _postplan_fatal emit-failed 'pause requested but ISSUE_NUMBER could not be resolved'
+    POSTPLAN_EMIT_STATUS=paused
+    if [[ "$WITH_PLAN_SIZE" == true ]]; then
+        _postplan_flush || exit 1
+        emit "**⏸ /design Step 2b: pause requested; saving design state.**"
+        exit 11
+    fi
+    _postplan_write_result_and_emit
+    exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue" ${_repo:+--repo "$_repo"}
 }
 
 [[ -s "$DESIGN_TMPDIR/plan.txt" ]] || _postplan_fatal missing-plan 'plan.txt missing or empty'
@@ -229,11 +451,17 @@ if [[ "$_emit_rc" -ne 0 || "$EMIT_PLAN_STATUS" == missing-diff-lines ]]; then
         POSTPLAN_EMIT_STATUS=emit-failed
     fi
     [[ -n "$EMIT_PLAN_STATUS" ]] || EMIT_PLAN_STATUS=not-run
+    if [[ "$WITH_PLAN_SIZE" == true ]]; then
+        _postplan_exit_merged_failure
+    fi
     _postplan_write_result_and_emit
     exit 1
 fi
 if [[ "$EMIT_PLAN_STATUS" != ok ]]; then
     POSTPLAN_EMIT_STATUS=emit-failed
+    if [[ "$WITH_PLAN_SIZE" == true ]]; then
+        _postplan_exit_merged_failure
+    fi
     _postplan_write_result_and_emit
     exit 1
 fi
@@ -251,6 +479,9 @@ if [[ "$SNAPSHOT_ORIGINAL" == true ]]; then
         if [[ "$_snap_rc" -ne 0 ]]; then
             SNAPSHOT_STATUS=failed
             POSTPLAN_EMIT_STATUS=snapshot-failed
+            if [[ "$WITH_PLAN_SIZE" == true ]]; then
+                _postplan_exit_merged_failure
+            fi
             _postplan_write_result_and_emit
             exit 1
         fi
@@ -267,22 +498,46 @@ else
 fi
 
 _postplan_pause_checkpoint
-set +e
-_val_out=$("$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt" 2>&1)
-_val_rc=$?
-set -e
-parse_kv_from_output "$_val_out"
-if [[ "$_val_rc" -ne 0 && "$VALIDATE_STATUS" != defects-found ]]; then
-    POSTPLAN_EMIT_STATUS=validate-driver-failed
-    _postplan_write_result_and_emit
-    exit 1
+if [[ "$REVIEW_BUDGET" == quick && "$FORCE_VALIDATE" != true ]]; then
+    VALIDATE_STATUS=skipped-quick
+else
+    set +e
+    _val_out=$("$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/plan.txt" 2>&1)
+    _val_rc=$?
+    set -e
+    parse_kv_from_output "$_val_out"
+    if [[ "$_val_rc" -ne 0 && "$VALIDATE_STATUS" != defects-found ]]; then
+        POSTPLAN_EMIT_STATUS=validate-driver-failed
+        if [[ "$WITH_PLAN_SIZE" == true ]]; then
+            _postplan_exit_merged_failure
+        fi
+        _postplan_write_result_and_emit
+        exit 1
+    fi
+    if [[ -z "$VALIDATE_STATUS" || "$VALIDATE_STATUS" == not-run ]]; then
+        POSTPLAN_EMIT_STATUS=validate-driver-failed
+        if [[ "$WITH_PLAN_SIZE" == true ]]; then
+            _postplan_exit_merged_failure
+        fi
+        _postplan_write_result_and_emit
+        exit 1
+    fi
 fi
-if [[ -z "$VALIDATE_STATUS" || "$VALIDATE_STATUS" == not-run ]]; then
-    POSTPLAN_EMIT_STATUS=validate-driver-failed
+
+if [[ "$WITH_PLAN_SIZE" != true ]]; then
+    POSTPLAN_EMIT_STATUS=ok
     _postplan_write_result_and_emit
-    exit 1
+    exit 0
 fi
 
 POSTPLAN_EMIT_STATUS=ok
-_postplan_write_result_and_emit
-exit 0
+if [[ "$VALIDATE_STATUS" == defects-found ]]; then
+    PLAN_SIZE_STATUS=skipped-defects
+    _postplan_flush || exit 1
+    exit 10
+fi
+
+_postplan_pause_checkpoint
+_plan_size_run_rc=0
+_postplan_run_plan_size || _plan_size_run_rc=$?
+_postplan_finish_merged_plan_size "$_plan_size_run_rc"

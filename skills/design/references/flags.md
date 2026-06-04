@@ -30,6 +30,12 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 
 ## Plan-size thresholds (Step 2b.5)
 
+**Merged post-plan sites** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) call `design-postplan-emit.sh --with-plan-size`, which runs `check-plan-size.sh` internally and maps verdicts to thin-fence exit codes (`0`, `10`, `11`, `12`, `13`, `1`, `2`). **`check-plan-size.sh` remains standalone** for retained Step 2b.5 callers (Override-after-defects, Step 3 `LOOP_STATUS=plan-size-trigger`, `plan-review-loop.sh`).
+
+**Site-aware hard prompts**: initial Step 2b and discussion paths use Split/Cancel only; Gate B, Step 3 `LOOP_STATUS=plan-size-trigger`, and `plan-review-loop.sh` retain Split/Override/Cancel.
+
+Merged fence pause-save preludes and `_postplan_rc=11` `exec` arms thread `${REPO:+--repo "$REPO"}`; `design-postplan-emit.sh` itself is not passed `--repo`.
+
 Mechanical evaluation lives in `skills/design/scripts/check-plan-size.sh` (sibling `check-plan-size.md`). Thresholds use **strict `>`** (800 lines does **not** trip the hard plan-body trigger; 801 does).
 
 The historical **ownership-domains** sprawl heuristic from early design notes is **not** part of L1; it is intentionally omitted (Round 1 decision on issue #2670).
