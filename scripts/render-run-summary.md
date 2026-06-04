@@ -88,5 +88,9 @@ The flag is compatible with token flags; when both are present,
 | Skill | Outcome values with `- **Outcome**:` bullet |
 |-------|-----------------------------------------------|
 | `/implement` | `bailed*`, `stalled`, `cancelled-*`, `failed-*` (shell pattern; includes design-style strings if ever passed) |
-| `/design` | `cancelled-clarify`, `cancelled-already-planned`, `cancelled-reentry-guard`, `cancelled-sprawl`, `cancelled-plan-size-hard`, `failed-plan-write` (plus implement-style `bailed*` / `stalled` if reused) |
+| `/design` | `cancelled-clarify`, `cancelled-already-planned`, `cancelled-reentry-guard`, `cancelled-sprawl`, `cancelled-plan-size-hard`, `failed-plan-write`, `failed-publish`, `publish-skipped` (plus implement-style `bailed*` / `stalled` if reused) |
 | Both | `approved` and other happy-path implement outcomes **omit** the Outcome bullet |
+
+## Recent contract coverage
+
+- `RUN_LOGS_PATH=N/A` no longer synthesizes a run-log path when `RUN_ID=unknown`, `OUTCOME=failed-publish`, or `OUTCOME=publish-skipped`; `publish-skipped` emits an Outcome bullet.

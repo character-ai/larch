@@ -27,7 +27,7 @@ validate_plain_scalar() {
 validate_repo() {
     local value="$1"
     case "$value" in
-        '' | *$'\n'* | *$'\r'* | /* | *../*) fail 'invalid --repo' ;;
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) fail 'invalid --repo' ;;
     esac
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail 'invalid --repo'
 }
@@ -172,6 +172,7 @@ _wdce_args=(
 if [[ "$MANUAL_REQUESTED" == true ]]; then
     _wdce_args+=(--manual-requested true)
 fi
+[[ -n "$REPO" ]] && _wdce_args+=(--repo "$REPO")
 if ! "${_wdce_args[@]}"; then
     INIT_STATUS=env-refresh-failed
     emit_kv INIT_STATUS "$INIT_STATUS"

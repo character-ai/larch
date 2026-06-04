@@ -372,6 +372,108 @@ pass 'design skill schema + cmp byte identity'
 grep -Fq -- '- **Outcome**: cancelled-clarify' "$TMP_DES_OUT" || fail 'design cancelled outcome bullet'
 pass 'design intermediate outcome'
 
+
+"$HELPER" \
+    --skill design \
+    --outcome publish-skipped \
+    --run-id unknown \
+    --mode SIMPLE \
+    --workflow-path SIMPLE \
+    --duration 'N/A' \
+    --cost-unavailable \
+    --issue-number 9 \
+    --issue-url 'https://github.com/o/r/issues/9' \
+    --pr-number 0 \
+    --pr-url 'N/A' \
+    --plan-review-line '0 findings' \
+    --code-review-line 'N/A' \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path 'N/A' \
+    --output-file "$TMP_DES_OUT" >/dev/null 2>/dev/null
+grep -Fq -- '- **Outcome**: publish-skipped' "$TMP_DES_OUT" || fail 'publish-skipped outcome bullet'
+# shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
+grep -Fq -- '- **Run logs**: `N/A`' "$TMP_DES_OUT" || fail 'unknown run-id must keep Run logs N/A'
+if grep -Fq 'larch-logs/design/unknown/' "$TMP_DES_OUT"; then fail 'unknown run-id must not synthesize run-log path'; fi
+pass 'publish-skipped unknown run keeps logs N/A'
+
+"$HELPER" \
+    --skill design \
+    --outcome publish-skipped \
+    --run-id RUN-D-SKIP \
+    --mode SIMPLE \
+    --workflow-path SIMPLE \
+    --duration 'N/A' \
+    --cost-unavailable \
+    --issue-number 9 \
+    --issue-url 'https://github.com/o/r/issues/9' \
+    --pr-number 0 \
+    --pr-url 'N/A' \
+    --plan-review-line '0 findings' \
+    --code-review-line 'N/A' \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path 'N/A' \
+    --output-file "$TMP_DES_OUT" >/dev/null 2>/dev/null
+# shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
+grep -Fq -- '- **Run logs**: `N/A`' "$TMP_DES_OUT" || fail 'publish-skipped real run-id must keep Run logs N/A'
+if grep -Fq 'larch-logs/design/RUN-D-SKIP/' "$TMP_DES_OUT"; then fail 'publish-skipped real run-id must not synthesize run-log path'; fi
+pass 'publish-skipped real run keeps logs N/A'
+
+"$HELPER" \
+    --skill design \
+    --outcome approved \
+    --run-id RUN-D3 \
+    --mode SIMPLE \
+    --workflow-path SIMPLE \
+    --duration 'N/A' \
+    --cost-unavailable \
+    --issue-number 9 \
+    --issue-url 'https://github.com/o/r/issues/9' \
+    --pr-number 0 \
+    --pr-url 'N/A' \
+    --plan-review-line '0 findings' \
+    --code-review-line 'N/A' \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path 'N/A' \
+    --output-file "$TMP_DES_OUT" >/dev/null 2>/dev/null
+# shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
+grep -Fq -- '- **Run logs**: `larch-logs/design/RUN-D3/`' "$TMP_DES_OUT" || fail 'approved real run-id should synthesize Run logs path'
+pass 'approved real run-id logs fallback'
+
+"$HELPER" \
+    --skill design \
+    --outcome failed-publish \
+    --run-id RUN-D4 \
+    --mode SIMPLE \
+    --workflow-path SIMPLE \
+    --duration 'N/A' \
+    --cost-unavailable \
+    --issue-number 9 \
+    --issue-url 'https://github.com/o/r/issues/9' \
+    --pr-number 0 \
+    --pr-url 'N/A' \
+    --plan-review-line '0 findings' \
+    --code-review-line 'N/A' \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path 'N/A' \
+    --output-file "$TMP_DES_OUT" >/dev/null 2>/dev/null
+grep -Fq -- '- **Outcome**: failed-publish' "$TMP_DES_OUT" || fail 'failed-publish outcome bullet'
+# shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
+grep -Fq -- '- **Run logs**: `N/A`' "$TMP_DES_OUT" || fail 'failed-publish must keep Run logs N/A'
+if grep -Fq 'larch-logs/design/RUN-D4/' "$TMP_DES_OUT"; then fail 'failed-publish must not synthesize run-log path'; fi
+pass 'failed-publish real run keeps logs N/A'
+
 set +e
 "$HELPER" --skill foo --outcome approved --run-id X --mode m --workflow-path w --duration d \
     --claude-tokens 0 --codex-tokens 0 --cursor-tokens 0 \

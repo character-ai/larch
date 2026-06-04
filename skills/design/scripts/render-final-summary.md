@@ -86,3 +86,7 @@ Counts `- **Step` lines under `### Tool Failures`, `### External Reviewer Issues
 
 Upsert runs when `ISSUE_NUMBER` is non-empty and the rendered body is non-empty,
 independent of `PLAN_WRITE_OK` (publish/rename remain gated separately in SKILL.md).
+
+## Recent contract coverage
+
+- `publish-skipped` is an accepted outcome with an explicit Outcome bullet, a skipped-publish note, no failed-publish recovery prose, and `Run logs` left as `N/A`.

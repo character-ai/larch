@@ -30,7 +30,7 @@ validate_session_id_flag() {
 validate_repo() {
     local value="$1"
     case "$value" in
-        '' | *$'\n'* | *$'\r'* | /* | *../*) fail 'invalid --repo' ;;
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) fail 'invalid --repo' ;;
     esac
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail 'invalid --repo'
 }
@@ -56,6 +56,28 @@ parse_kv_from_output() {
             VALIDATE_LOG_FILE) VALIDATE_LOG_FILE="$_value" ;;
         esac
     done <<<"$text"
+}
+
+validate_pr_number() {
+    local value="$1"
+    [[ "$value" =~ ^[1-9][0-9]*$ ]]
+}
+
+validate_pr_url() {
+    local value="$1"
+    [[ "$value" =~ ^https://github[.]com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/[1-9][0-9]*([/?#].*)?$ ]]
+}
+
+validate_recovery_branch() {
+    local value="$1"
+    [[ "$value" =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
+    git check-ref-format --branch "$value" >/dev/null 2>&1
+}
+
+sanitize_publish_metadata() {
+    [[ -z "${PR_NUMBER:-}" ]] || validate_pr_number "$PR_NUMBER" || PR_NUMBER=""
+    [[ -z "${PR_URL:-}" ]] || validate_pr_url "$PR_URL" || PR_URL=""
+    [[ -z "${RECOVERY_BRANCH:-}" ]] || validate_recovery_branch "$RECOVERY_BRANCH" || RECOVERY_BRANCH=""
 }
 
 DESIGN_TMPDIR_ARG=""
@@ -256,13 +278,16 @@ if [[ -z "$REPO" ]]; then
         REPO=$(gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null || true)
     fi
 fi
+[[ -n "$REPO" ]] && validate_repo "$REPO"
 
 MODE="N/A"
 if command -v jq >/dev/null 2>&1 && [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
     MODE=$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)
 fi
 
-if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh" --issue "$ISSUE" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"; then
+_plan_block_args=(--issue "$ISSUE" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md")
+[[ -n "$REPO" ]] && _plan_block_args+=(--repo "$REPO")
+if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh" "${_plan_block_args[@]}"; then
     PLAN_WRITE_OK=false
     "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome failed-plan-write \
@@ -330,7 +355,8 @@ if [[ -n "$SESSION_ID" ]]; then
     if [[ "$_scrub_n" -gt 0 ]]; then
         add_warn "**⚠ SECURITY: scrub-log-secrets.sh redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
     fi
-    if [[ "$_publish_rc" -ne 0 ]] && [[ "$_publish_out" != *$'PUBLISH_OK='* ]]; then
+    if [[ "$_publish_rc" -ne 0 ]]; then
+        sanitize_publish_metadata
         PUBLISH_OK=false
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
@@ -342,6 +368,7 @@ if [[ -n "$SESSION_ID" ]]; then
             --redact >/dev/null 2>&1 || true
         add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
     elif [[ "${PUBLISH_OK:-}" == false ]]; then
+        sanitize_publish_metadata
         _publish_failure_rc=${_publish_rc:-1}
         if [[ "$_publish_failure_rc" -eq 0 ]]; then
             _publish_failure_rc=1
@@ -357,6 +384,7 @@ if [[ -n "$SESSION_ID" ]]; then
         add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
     elif [[ -z "${PUBLISH_OK:-}" ]]; then
         PUBLISH_OK=false
+        sanitize_publish_metadata
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c" \
@@ -367,13 +395,17 @@ if [[ -n "$SESSION_ID" ]]; then
             --redact >/dev/null 2>&1 || true
         add_warn '**⚠ 5c: design-log-publish.sh returned without PUBLISH_OK=; treating publish as failed**'
         add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
+    else
+        sanitize_publish_metadata
     fi
 else
     add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'
 fi
 
 SUMMARY_OUTCOME=approved
-if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" != true ]]; then
+if [[ -z "$SESSION_ID" ]]; then
+    SUMMARY_OUTCOME=publish-skipped
+elif [[ "${PUBLISH_OK:-}" != true ]]; then
     SUMMARY_OUTCOME=failed-publish
 fi
 export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"

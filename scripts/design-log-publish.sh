@@ -11,9 +11,11 @@
 # Usage:
 #   design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--reason final|pause] [--dry-run]
 #
-# Expected operational failures emit PUBLISH_OK=false on stdout. Pre-validation and
-# pre-push failures exit 0 so callers can parse stdout. Post-push failures (git push,
-# gh pr create after push, gh pr merge) exit 1 while preserving PUBLISH_OK=false.
+# Expected operational failures emit PUBLISH_OK=false on stdout. Most pre-validation and
+# pre-push failures exit 0 so callers can parse stdout. A malformed --repo is a
+# structural argv failure: it exits 1 before gh/network work and does not emit a
+# success envelope. Post-push failures (git push, gh pr create after push,
+# gh pr merge) exit 1 while preserving PUBLISH_OK=false.
 # Per-script larch-quiet-*-*.log files are excluded from top-level staging; they are
 # published only under breadcrumbs/ via larch_log_publish_breadcrumbs_shared.
 
@@ -63,17 +65,45 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+_PUBLISH_META_PR_NUMBER=""
+_PUBLISH_META_PR_URL=""
+_PUBLISH_META_RECOVERY_BRANCH=""
+
+persist_design_log_metadata() {
+    [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] || return 0
+    larch_design_tmpdir_validate "$DESIGN_TMPDIR" >/dev/null 2>&1 || return 0
+    {
+        printf 'DESIGN_LOG_PR_NUMBER=%s\n' "${_PUBLISH_META_PR_NUMBER:-}"
+        printf 'DESIGN_LOG_PR_URL=%s\n' "${_PUBLISH_META_PR_URL:-}"
+        printf 'DESIGN_LOG_RECOVERY_BRANCH=%s\n' "${_PUBLISH_META_RECOVERY_BRANCH:-}"
+    } >"$DESIGN_TMPDIR/.design-log-publish-metadata.env"
+}
+
 emit_publish_result() {
+    _PUBLISH_META_PR_NUMBER="${2:-}"
+    _PUBLISH_META_PR_URL="${3:-}"
     emit_kv PUBLISH_OK "$1"
-    emit_kv PR_NUMBER "${2:-}"
-    emit_kv PR_URL "${3:-}"
+    emit_kv PR_NUMBER "${_PUBLISH_META_PR_NUMBER}"
+    emit_kv PR_URL "${_PUBLISH_META_PR_URL}"
+    persist_design_log_metadata
 }
 
 emit_publish_failure() {
     emit_publish_result false "${1:-}" "${2:-}"
     if [[ "${PUSH_DONE:-false}" == true ]]; then
+        _PUBLISH_META_RECOVERY_BRANCH="$WT_BRANCH"
         emit_kv RECOVERY_BRANCH "$WT_BRANCH"
+        persist_design_log_metadata
     fi
+}
+
+
+validate_repo() {
+    local value="$1"
+    case "$value" in
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) return 1 ;;
+    esac
+    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
 }
 
 redact_diagnostic() {
@@ -111,6 +141,11 @@ if ! larch_log_slug_is_valid "$RUN_ID"; then
     larch_err "design-log-publish: invalid --run-id slug"
     emit_publish_result false
     exit 0
+fi
+
+if [[ -n "$REPO" ]] && ! validate_repo "$REPO"; then
+    larch_err "design-log-publish: invalid --repo"
+    exit 1
 fi
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || { emit_publish_result false; exit 0; }
@@ -266,7 +301,7 @@ design_artifact_excluded() {
         esac
     fi
     case "$name" in
-        larch-quiet-*-*.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
+        .design-log-publish-metadata.env|larch-quiet-*-*.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
             return 0
             ;;
     esac
@@ -576,29 +611,6 @@ if ! design_publish_breadcrumbs "$DESIGN_TMPDIR/breadcrumbs" "$RUN_DEST/breadcru
     exit 0
 fi
 
-MF="$RUN_DEST/manifest.json"
-ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-mf_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-mf.XXXXXX")
-if [[ "$REASON" == "pause" ]]; then
-    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
-    jq_expr='.updated_at = $ts | .paused = true'
-else
-    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
-    jq_expr='.updated_at = $ts'
-fi
-if ! jq --arg ts "$ts" "$jq_expr" "$MF" >"$mf_tmp"; then
-    rm -f "$mf_tmp"
-    larch_err "design-log-publish: manifest refresh failed"
-    emit_publish_result false
-    exit 0
-fi
-if ! mv -f "$mf_tmp" "$MF"; then
-    rm -f "$mf_tmp"
-    larch_err "design-log-publish: manifest install failed"
-    emit_publish_result false
-    exit 0
-fi
-
 # Pre-flush secret gate: scrub secret-shaped values (Cursor keys et al.) from
 # the staged run tree before commit. Fail-closed on scrub failure. On a real
 # redaction, propagate the count via emit_kv SECRET_SCRUB_VIOLATIONS so the
@@ -656,6 +668,29 @@ if [[ -z "$_porcelain" ]]; then
         larch_err "design-log-publish: final publish produced no new snapshot delta and origin/$ORIGIN_DEFAULT does not contain $rel"
         emit_publish_result false
     fi
+    exit 0
+fi
+
+MF="$RUN_DEST/manifest.json"
+ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+mf_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-mf.XXXXXX")
+if [[ "$REASON" == "pause" ]]; then
+    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
+    jq_expr='.updated_at = $ts | .paused = true'
+else
+    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
+    jq_expr='.updated_at = $ts'
+fi
+if ! jq --arg ts "$ts" "$jq_expr" "$MF" >"$mf_tmp"; then
+    rm -f "$mf_tmp"
+    larch_err "design-log-publish: manifest refresh failed"
+    emit_publish_result false
+    exit 0
+fi
+if ! mv -f "$mf_tmp" "$MF"; then
+    rm -f "$mf_tmp"
+    larch_err "design-log-publish: manifest install failed"
+    emit_publish_result false
     exit 0
 fi
 

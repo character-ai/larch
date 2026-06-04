@@ -39,6 +39,20 @@ resolve_repo() {
     printf '%s' "$r"
 }
 
+validate_repo() {
+    local value="$1"
+    case "$value" in
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) return 1 ;;
+    esac
+    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
+}
+
+emit_invalid_repo() {
+    emit_kv FAILED "true"
+    emit_kv ERROR "invalid-repo"
+    exit 1
+}
+
 redact_gh_error() {
     local err_text="$1" redacted status=0
     if [ ! -x "$REDACT_HELPER" ]; then
@@ -162,7 +176,9 @@ MARK_END="^[[:space:]]*<!--[[:space:]]+larch:${MARKER}:end[[:space:]]+-->[[:spac
 CANON_START="<!-- larch:${MARKER}:start -->"
 CANON_END="<!-- larch:${MARKER}:end -->"
 
+[[ -z "$REPO_ARG" ]] || validate_repo "$REPO_ARG" || emit_invalid_repo
 REPO=$(resolve_repo "$REPO_ARG")
+validate_repo "$REPO" || emit_invalid_repo
 
 ERR_TMP=$(mktemp "${TMPDIR:-/tmp}/named-block-write-err.XXXXXX")
 CUR_BODY_FILE=$(mktemp "${TMPDIR:-/tmp}/named-block-write-cur.XXXXXX")

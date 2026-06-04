@@ -40,6 +40,20 @@ resolve_repo() {
     printf '%s' "$r"
 }
 
+validate_repo() {
+    local value="$1"
+    case "$value" in
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) return 1 ;;
+    esac
+    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
+}
+
+emit_invalid_repo() {
+    emit_kv FAILED "true"
+    emit_kv ERROR "invalid-repo"
+    exit 1
+}
+
 redact_gh_error() {
     local err_text="$1" redacted status=0
     if [ ! -x "$REDACT_HELPER" ]; then
@@ -100,7 +114,9 @@ case "$ACTION" in
     *) larch_err "clarify-label.sh: --action must be add or remove"; exit 1 ;;
 esac
 
+[[ -z "$REPO_ARG" ]] || validate_repo "$REPO_ARG" || emit_invalid_repo
 REPO=$(resolve_repo "$REPO_ARG")
+validate_repo "$REPO" || emit_invalid_repo
 
 ERR_TMP=$(mktemp "${TMPDIR:-/tmp}/clarify-label-err.XXXXXX")
 trap 'rm -f "$ERR_TMP"' EXIT

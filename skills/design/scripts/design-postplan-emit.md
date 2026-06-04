@@ -89,3 +89,7 @@ Update together: `skills/design/SKILL.md` Step 2b and Gate A re-entry prose, `sk
 ## Classification warnings
 
 Classification warnings from `read-design-classification.sh` are operator-visible under default quiet mode. `WARN_LINES=()` is initialized before the classification read, stderr from the classification helper is captured, and non-empty warning lines are emitted as repeatable `WARN=` stdout KVs by `_postplan_write_result_and_emit`. If the helper exits non-zero without stderr, the driver appends a synthetic `WARN=` noting the non-zero exit and the HARD fallback. The stdout classification value and `HARD` fallback semantics are unchanged.
+
+## Recent contract coverage
+
+- Pause checkpoints resolve `REPO` from explicit `--repo` or awk-only `source-env.sh` parsing and forward `${REPO:+--repo "$REPO"}` to `design-pause-save.sh`.

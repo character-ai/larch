@@ -139,6 +139,14 @@ run_case_dual 'paginate_merge' \
     '[{"body":"<!-- larch:clarify-response id=1 -->"}]' \
     'STATE=response-pending' 'LAST_REQUEST_ID=1' 'LAST_RESPONSE_ID=1'
 
+echo "=== invalid repo ==="
+set +e
+out="$(PATH="$STUB:$ORIG_PATH" "$STATE" --issue 7 --repo bad..repo 2>&1)"
+rc=$?
+set -e
+[ "$rc" = "1" ] || fail "clarify-state invalid repo exit $rc: $out"
+echo "$out" | grep -q 'ERROR=invalid-repo' || fail "clarify-state invalid repo error missing: $out"
+
 LABEL="$REPO_ROOT/scripts/clarify-label.sh"
 [ -x "$LABEL" ] || fail "clarify-label.sh not executable"
 grep -Fq -- '--create-if-missing' "$LABEL" || fail "clarify-label.sh missing --create-if-missing argv"
@@ -178,6 +186,13 @@ rc2=$?
 set -e
 [ "$rc1" = "0" ] || fail "clarify-label first add exit $rc1: $out1"
 [ "$rc2" = "0" ] || fail "clarify-label second add exit $rc2: $out2"
+
+set +e
+out_bad_label="$(PATH="$LABEL_STUB:$ORIG_PATH" "$LABEL" --issue 7 --action add --repo bad..repo 2>&1)"
+rc_bad_label=$?
+set -e
+[ "$rc_bad_label" = "1" ] || fail "clarify-label invalid repo exit $rc_bad_label: $out_bad_label"
+echo "$out_bad_label" | grep -q 'ERROR=invalid-repo' || fail "clarify-label invalid repo error missing: $out_bad_label"
 creates=$(wc -l < "$LABEL_LOG" | tr -d ' ')
 [ "$creates" = "2" ] || fail "expected gh label create twice (once per invocation), got $creates"
 

@@ -86,15 +86,29 @@ STUB
 #!/usr/bin/env bash
 echo "design-log-publish $*" >>"${PUBLISH_LOG:?}"
 [[ -n "${CALL_LOG:-}" ]] && echo "design-log-publish $*" >>"$CALL_LOG"
-if [[ "${PUBLISH_STUB_RC:-0}" -ne 0 ]]; then
-  exit "${PUBLISH_STUB_RC}"
-fi
+design_tmpdir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --design-tmpdir) design_tmpdir="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
 if [[ "${PUBLISH_EMIT_OK:-true}" == true ]]; then
   echo "PUBLISH_OK=${PUBLISH_OK_VALUE:-true}"
 fi
 [[ -n "${PUBLISH_PR_NUMBER:-}" ]] && echo "PR_NUMBER=${PUBLISH_PR_NUMBER}"
 [[ -n "${PUBLISH_PR_URL:-}" ]] && echo "PR_URL=${PUBLISH_PR_URL}"
 [[ -n "${PUBLISH_RECOVERY_BRANCH:-}" ]] && echo "RECOVERY_BRANCH=${PUBLISH_RECOVERY_BRANCH}"
+if [[ -n "$design_tmpdir" && -d "$design_tmpdir" ]]; then
+  {
+    printf 'DESIGN_LOG_PR_NUMBER=%s\n' "${PUBLISH_PR_NUMBER:-}"
+    printf 'DESIGN_LOG_PR_URL=%s\n' "${PUBLISH_PR_URL:-}"
+    printf 'DESIGN_LOG_RECOVERY_BRANCH=%s\n' "${PUBLISH_RECOVERY_BRANCH:-}"
+  } >"$design_tmpdir/.design-log-publish-metadata.env"
+fi
+if [[ "${PUBLISH_STUB_RC:-0}" -ne 0 ]]; then
+  exit "${PUBLISH_STUB_RC}"
+fi
 STUB
     cat >"$STUB/upsert-diagrams-comment.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -213,6 +227,34 @@ bash "$SUBJECT" --help 2>/dev/null
 rc=$?
 set -e
 assert_rc "--help" 0 "$rc"
+
+# --- malformed --repo shapes ---
+for bad_repo in /abs bad..repo a/b/c --owner/repo 'owner\repo' ../repo; do
+    D_BAD_REPO="$TMP/bad-repo-${bad_repo//\//_}"
+    setup_design_tmp "$D_BAD_REPO"
+    set +e
+    bash "$SUBJECT" --design-tmpdir "$D_BAD_REPO" --issue 1 --session-id x --claude-pid 1 --repo "$bad_repo" 2>/dev/null
+    rc=$?
+    set -e
+    assert_rc "invalid --repo $bad_repo" 2 "$rc"
+done
+
+D_BAD_RESOLVED_REPO="$TMP/bad-resolved-repo"
+setup_design_tmp "$D_BAD_RESOLVED_REPO"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export RESOLVE_REPO_VALUE=bad..repo
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_BAD_RESOLVED_REPO" --issue 1 --session-id x --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "invalid resolved repo" 2 "$rc"
+if grep -q 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then
+    fail "invalid resolved repo must fail before plan-block-write"
+else
+    pass "invalid resolved repo fails before plan-block-write"
+fi
 
 # --- missing step-5b ---
 D_PRE="$TMP/pre-5b"
@@ -420,6 +462,24 @@ D_OK_CANON=$(cd "$D_OK" && pwd -P)
 grep -q "DESIGN_TMPDIR=${D_OK_CANON}" "$RENDER_LOG" || fail "happy render missing DESIGN_TMPDIR"
 grep -q 'upsert-diagrams' "$UPSERT_LOG" || fail "upsert not called on happy path"
 test -s "$D_OK/diagrams-architecture-upsert.stdout" || fail "upsert stdout not captured"
+grep -Fq -- '--repo owner/repo' "$PLAN_BLOCK_LOG" \
+  || fail "plan-block-write missing resolved --repo"
+
+# --- explicit/resolved repo forwarded to plan-block-write ---
+D_PLAN_REPO="$TMP/plan-repo"
+setup_design_tmp "$D_PLAN_REPO"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PLAN_REPO" --issue 42 --session-id sid-1 --claude-pid 9999 --repo explicit/repo >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "plan-block-write receives explicit repo" 0 "$rc"
+grep -Fq -- 'plan-block-write --issue 42 --content-file' "$PLAN_BLOCK_LOG" \
+  || fail "plan-block-write call missing"
+grep -Fq -- '--repo explicit/repo' "$PLAN_BLOCK_LOG" \
+  || fail "plan-block-write missing explicit --repo"
 
 # --- publish envelope fields persisted ---
 D_ENV="$TMP/publish-env"
@@ -429,11 +489,11 @@ init_publish_logs
 apply_publish_stub_defaults
 export PUBLISH_OK_VALUE=false
 export PUBLISH_PR_NUMBER=123
-export PUBLISH_PR_URL=https://github.example/pull/123
+export PUBLISH_PR_URL=https://github.com/owner/repo/pull/123
 export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid-1
 bash "$SUBJECT" --design-tmpdir "$D_ENV" --issue 42 --session-id sid-1 --claude-pid 9999 2>/dev/null
 grep -q '^PR_NUMBER=123$' "$D_ENV/.design-publish-result.env" || fail "publish PR_NUMBER missing"
-grep -q '^PR_URL=https://github.example/pull/123$' "$D_ENV/.design-publish-result.env" || fail "publish PR_URL missing"
+grep -q '^PR_URL=https://github.com/owner/repo/pull/123$' "$D_ENV/.design-publish-result.env" || fail "publish PR_URL missing"
 grep -q '^RECOVERY_BRANCH=larch-log-design-sid-1$' "$D_ENV/.design-publish-result.env" || fail "publish RECOVERY_BRANCH missing"
 grep -q '^LOG_RECOVERY_BRANCH=larch-log-design-sid-1$' "$D_ENV/.design-publish-result.env" || fail "publish LOG_RECOVERY_BRANCH missing"
 
@@ -461,6 +521,7 @@ else
     pass "empty SESSION_ID single post-publish render"
 fi
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "empty SESSION_ID missing post-publish render"
+grep -q -- '--outcome publish-skipped' "$RENDER_LOG" || fail "empty SESSION_ID should render publish-skipped outcome"
 grep -q 'ISSUE_NUMBER=1' "$RENDER_LOG" || fail "empty SESSION_ID render missing ISSUE_NUMBER"
 grep -q 'DESIGN_TMPDIR=' "$RENDER_LOG" || fail "empty SESSION_ID render missing DESIGN_TMPDIR"
 if ! grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
@@ -477,7 +538,7 @@ init_publish_logs
 apply_publish_stub_defaults
 export PUBLISH_OK_VALUE=false
 export PUBLISH_PR_NUMBER=456
-export PUBLISH_PR_URL=https://github.example/pull/456
+export PUBLISH_PR_URL=https://github.com/owner/repo/pull/456
 export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_PFAIL" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
@@ -487,7 +548,7 @@ assert_rc "PUBLISH_OK=false" 0 "$rc"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "PUBLISH_OK=false should render post-publish summary"
 grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "PUBLISH_OK=false should render failed-publish outcome"
 grep -q 'DESIGN_LOG_PR_NUMBER=456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_NUMBER"
-grep -q 'DESIGN_LOG_PR_URL=https://github.example/pull/456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_URL"
+grep -q 'DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_URL"
 grep -q 'DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_RECOVERY_BRANCH"
 grep -q 'design-log-publish.sh failed (exit 1)' "$D_PFAIL/execution-issues.md" 2>/dev/null || fail "PUBLISH_OK=false should record nonzero publish failure exit"
 grep -q 'design log publish failed; recovery metadata' "$D_PFAIL/.design-publish-result.env" || fail "PUBLISH_OK=false should emit recovery WARN"
@@ -500,6 +561,18 @@ if grep -q 'design-reentry-marker-write' "$CALL_LOG"; then
     fail "reentry marker should be skipped on PUBLISH_OK=false"
 else
     pass "reentry marker skipped on PUBLISH_OK=false"
+fi
+rm -f "$D_PFAIL/.completed/step-5c"
+PUBLISH_OK="$(awk -F= '$1=="PUBLISH_OK"{print $2}' "$D_PFAIL/.design-publish-result.env" | tail -1)"
+SESSION_ID=sid
+if [[ "$SESSION_ID" == "" || "$PUBLISH_OK" == true ]]; then
+    mkdir -p "$D_PFAIL/.completed"
+    : >"$D_PFAIL/.completed/step-5c"
+fi
+if [[ -e "$D_PFAIL/.completed/step-5c" ]]; then
+    fail "orchestrator sentinel simulation must withhold step-5c on failed publish"
+else
+    pass "orchestrator sentinel simulation withholds step-5c on failed publish"
 fi
 
 # --- unexpected publish (nonzero, no PUBLISH_OK line) ---
@@ -524,6 +597,39 @@ else
     pass "rename skipped after unexpected publish rc"
 fi
 grep -q 'design-log-publish.sh' "$D_UNEXP/execution-issues.md" 2>/dev/null   || fail "unexpected publish must append to execution-issues.md"
+
+# --- nonzero publish rc with PUBLISH_OK=true is fail-closed ---
+D_RC_TRUE="$TMP/pub-rc-true"
+setup_design_tmp "$D_RC_TRUE"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_STUB_RC=2
+export PUBLISH_EMIT_OK=true
+export PUBLISH_OK_VALUE=true
+export PUBLISH_PR_NUMBER=456
+export PUBLISH_PR_URL=https://github.com/owner/repo/pull/456
+export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_RC_TRUE" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "publish rc nonzero with PUBLISH_OK=true" 0 "$rc"
+grep -q 'PUBLISH_OK=false' "$D_RC_TRUE/.design-publish-result.env" || fail "nonzero publish rc must force PUBLISH_OK=false"
+grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "nonzero publish rc should render failed-publish outcome"
+grep -q 'DESIGN_LOG_PR_NUMBER=456' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep PR number"
+grep -q 'DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/456' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep PR URL"
+grep -q 'DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep recovery branch"
+if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
+    fail "rename should be skipped when publish rc is nonzero despite PUBLISH_OK=true"
+else
+    pass "rename skipped when publish rc is nonzero despite PUBLISH_OK=true"
+fi
+if grep -q 'design-reentry-marker-write' "$CALL_LOG" 2>/dev/null; then
+    fail "reentry marker should be skipped when publish rc is nonzero despite PUBLISH_OK=true"
+else
+    pass "reentry marker skipped when publish rc is nonzero despite PUBLISH_OK=true"
+fi
 
 # --- exit 0 without PUBLISH_OK= line ---
 D_NO_PUB_KV="$TMP/no-publish-kv"
@@ -673,6 +779,68 @@ grep -q 'PLAN_WRITE_OK=true' "$D_MARKER_FAIL/.design-publish-result.env" \
   || fail "marker failure must still complete publish tail"
 grep -q 'design Step 5c marker write' "$D_MARKER_FAIL/execution-issues.md" \
   || fail "marker failure must append to execution-issues.md"
+
+# --- sanitize_publish_metadata strips malformed PR_URL on failed publish ---
+D_BAD_URL="$TMP/bad-pr-url"
+setup_design_tmp "$D_BAD_URL"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_OK_VALUE=false
+export PUBLISH_STUB_RC=1
+export PUBLISH_PR_NUMBER=456
+export PUBLISH_PR_URL=not-a-valid-github-pr-url
+export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_BAD_URL" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "malformed PR_URL failed publish" 0 "$rc"
+grep -q 'PUBLISH_OK=false' "$D_BAD_URL/.design-publish-result.env" || fail "malformed PR_URL must set PUBLISH_OK=false"
+grep -q 'RECOVERY_BRANCH=larch-log-design-sid' "$D_BAD_URL/.design-publish-result.env" \
+  || fail "malformed PR_URL must keep valid RECOVERY_BRANCH in result env"
+if grep -q 'PR_URL=not-a-valid-github-pr-url' "$D_BAD_URL/.design-publish-result.env"; then
+    fail "malformed PR_URL must be stripped from result env"
+else
+    pass "malformed PR_URL stripped from result env"
+fi
+grep -q 'DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid' "$RENDER_LOG" \
+  || fail "malformed PR_URL render must keep DESIGN_LOG_RECOVERY_BRANCH"
+if grep -q 'DESIGN_LOG_PR_URL=not-a-valid-github-pr-url' "$RENDER_LOG"; then
+    fail "malformed PR_URL render must strip DESIGN_LOG_PR_URL"
+else
+    pass "malformed PR_URL render strips DESIGN_LOG_PR_URL"
+fi
+
+# --- clarify-style metadata survives a separate Final-summary subshell ---
+D_META="$TMP/clarify-metadata"
+setup_design_tmp "$D_META"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_OK_VALUE=false
+export PUBLISH_STUB_RC=1
+export PUBLISH_PR_NUMBER=456
+export PUBLISH_PR_URL=https://github.com/owner/repo/pull/456
+export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid
+bash "$SUBJECT" --design-tmpdir "$D_META" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
+[[ -f "$D_META/.design-log-publish-metadata.env" ]] || fail "publish must write .design-log-publish-metadata.env"
+meta_render=$(
+  bash -c '
+    set -a
+    source "$1/.design-log-publish-metadata.env"
+    set +a
+    export DESIGN_LOG_PR_NUMBER="${DESIGN_LOG_PR_NUMBER:-}"
+    export DESIGN_LOG_PR_URL="${DESIGN_LOG_PR_URL:-}"
+    export DESIGN_LOG_RECOVERY_BRANCH="${DESIGN_LOG_RECOVERY_BRANCH:-}"
+    printf "DESIGN_LOG_PR_NUMBER=%s DESIGN_LOG_PR_URL=%s DESIGN_LOG_RECOVERY_BRANCH=%s\n" \
+      "$DESIGN_LOG_PR_NUMBER" "$DESIGN_LOG_PR_URL" "$DESIGN_LOG_RECOVERY_BRANCH"
+  ' bash "$D_META"
+)
+[[ "$meta_render" == *"DESIGN_LOG_PR_NUMBER=456"* ]] || fail "metadata subshell missing PR number: $meta_render"
+[[ "$meta_render" == *"DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/456"* ]] || fail "metadata subshell missing PR URL: $meta_render"
+[[ "$meta_render" == *"DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid"* ]] || fail "metadata subshell missing recovery branch: $meta_render"
+pass "clarify metadata survives separate subshell via tmpdir env file"
 
 # --- no diagram and no skipped sentinel ---
 D_NO_ARCH="$TMP/no-arch"

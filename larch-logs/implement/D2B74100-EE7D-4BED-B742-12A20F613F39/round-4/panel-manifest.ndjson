@@ -1,0 +1,10 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-4/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-repo-binding","tool":"cursor","output":"<TMPDIR>/round-4/dyn-repo-binding-output.txt","prompt_file":"<TMPDIR>/round-4/dynamic-archetypes/dyn-repo-binding-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-publish-state","tool":"cursor","output":"<TMPDIR>/round-4/dyn-publish-state-output.txt","prompt_file":"<TMPDIR>/round-4/dynamic-archetypes/dyn-publish-state-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-summary-renderer","tool":"cursor","output":"<TMPDIR>/round-4/dyn-summary-renderer-output.txt","prompt_file":"<TMPDIR>/round-4/dynamic-archetypes/dyn-summary-renderer-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-shell-boundary","tool":"cursor","output":"<TMPDIR>/round-4/dyn-shell-boundary-output.txt","prompt_file":"<TMPDIR>/round-4/dynamic-archetypes/dyn-shell-boundary-prompt.md","weight":1,"focus_area":"security"}

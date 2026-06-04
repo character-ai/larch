@@ -48,7 +48,7 @@ fi
 # SKILL.md Step 0b uses alphabetical-within-cancelled documentation order.
 # Both forms accept the same token set.
 case "$OUTCOME" in
-    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-reentry-guard|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|cancelled-assessor-worse|failed-plan-write|failed-publish) ;;
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-reentry-guard|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|cancelled-assessor-worse|failed-plan-write|failed-publish|publish-skipped) ;;
     *)
         larch_err "render-final-summary.sh: outcome not in enumeration: $OUTCOME"
         exit 2
@@ -293,12 +293,35 @@ if [ -f "$DESIGN_TMPDIR/oos-issues-created.md" ] && [ -s "$DESIGN_TMPDIR/oos-iss
 fi
 
 RUN_LOGS_PATH="N/A"
-if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ] && [ "$OUTCOME" != "failed-publish" ]; then
+if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ] && [ "$OUTCOME" != "failed-publish" ] && [ "$OUTCOME" != "publish-skipped" ]; then
     RUN_LOGS_PATH="larch-logs/design/${RUN_ID}/"
 fi
 
+valid_log_pr_number() {
+    local value="$1"
+    [[ "$value" =~ ^[1-9][0-9]*$ ]]
+}
+
+valid_log_pr_url() {
+    local value="$1"
+    [[ "$value" =~ ^https://github[.]com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/[1-9][0-9]*([/?#].*)?$ ]]
+}
+
+valid_log_recovery_branch() {
+    local value="$1"
+    [[ "$value" =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
+    git check-ref-format --branch "$value" >/dev/null 2>&1
+}
+
+sanitize_failed_publish_notes() {
+    [[ -z "${DESIGN_LOG_PR_NUMBER:-}" ]] || valid_log_pr_number "$DESIGN_LOG_PR_NUMBER" || DESIGN_LOG_PR_NUMBER=""
+    [[ -z "${DESIGN_LOG_PR_URL:-}" ]] || valid_log_pr_url "$DESIGN_LOG_PR_URL" || DESIGN_LOG_PR_URL=""
+    [[ -z "${DESIGN_LOG_RECOVERY_BRANCH:-}" ]] || valid_log_recovery_branch "$DESIGN_LOG_RECOVERY_BRANCH" || DESIGN_LOG_RECOVERY_BRANCH=""
+}
+
 append_failed_publish_notes() {
     local out="$1"
+    sanitize_failed_publish_notes
     if [ -n "${DESIGN_LOG_RECOVERY_BRANCH:-}" ]; then
         printf '%s\n' "- **Log recovery branch**: \`$DESIGN_LOG_RECOVERY_BRANCH\`" >>"$out"
     fi
@@ -330,6 +353,9 @@ invoke_render() {
     elif [ "$OUTCOME" = "failed-publish" ]; then
         : >"$note_file"
         append_failed_publish_notes "$note_file"
+        note_args=(--note-lines-file "$note_file")
+    elif [ "$OUTCOME" = "publish-skipped" ]; then
+        printf '%s\n' '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.' >"$note_file"
         note_args=(--note-lines-file "$note_file")
     else
         if rm -f "$note_file" 2>/dev/null; then
@@ -392,7 +418,7 @@ compose_self_fallback() {
     {
         printf '## /design run %s — %s\n\n' "$RUN_ID" "$OUTCOME"
         printf '%s\n\n' "$banner"
-        case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
+        case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*|publish-skipped) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
         printf -- '- **Mode**: %s\n' "${MODE_STR:-N/A}"
         printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
         printf -- '- **Duration**: %s\n' "${DURATION:-N/A}"
@@ -406,9 +432,6 @@ compose_self_fallback() {
         else
             printf -- '- **Issue**: N/A\n'
         fi
-        if [ "$OUTCOME" = "failed-publish" ]; then
-            append_failed_publish_notes /dev/stdout
-        fi
         printf -- '- **Plan review**: %s\n' "${PLAN_LINE:-N/A}"
         if [ "${OOS_COUNT:-0}" != "0" ] && [ -n "${OOS_URLS:-}" ] && [ "${OOS_URLS:-}" != "N/A" ]; then
             printf -- '- **OOS filed**: %s — %s\n' "$OOS_COUNT" "$OOS_URLS"
@@ -420,6 +443,11 @@ compose_self_fallback() {
         printf -- "- **Run logs**: \`%s\`\n\n" "${RUN_LOGS_PATH:-N/A}"
         printf '%s\n' '<!-- larch:run-summary v=1 -->'
         printf '%s\n' '<!-- larch:final-summary-fallback v1 -->'
+        if [ "$OUTCOME" = "failed-publish" ]; then
+            append_failed_publish_notes /dev/stdout
+        elif [ "$OUTCOME" = "publish-skipped" ]; then
+            printf '%s\n' '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.'
+        fi
         if [ "$OUTCOME" = "cancelled-outline" ]; then
             printf '%s\n' '- **Cancel site**: Step 1d.7 outline gate'
         fi

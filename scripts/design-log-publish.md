@@ -237,3 +237,7 @@ Allowed files are staged through the same trim/redact pipeline at
 
 Offline harness: `scripts/test-design-log-publish.sh` (Makefile target
 `test-design-log-publish`).
+
+## Recent contract coverage
+
+- `--repo` is validated as `OWNER/REPO`; malformed values exit 1 before `gh` / network work and do not emit a success envelope.

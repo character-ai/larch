@@ -5,3 +5,7 @@ Offline harness for `skills/design/scripts/render-final-summary.sh`: approved pa
 bullet, invalid outcome exit code 2, per-agent cost breakdown, token-data-missing
 `--cost-unavailable`, renderer fallback, and early-cancellation empty-mode
 normalization.
+
+## Recent contract coverage
+
+- Covers `publish-skipped` in primary and degraded fallback render paths: Outcome bullet, skipped-publish note, `Run logs` `N/A`, no recovery prose, and stdout/file identity.

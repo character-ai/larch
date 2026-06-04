@@ -14,7 +14,15 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: design-postplan-emit.sh --design-tmpdir PATH [--snapshot-original]'
+    larch_err 'Usage: design-postplan-emit.sh --design-tmpdir PATH [--snapshot-original] [--repo OWNER/REPO]'
+}
+
+validate_repo() {
+    local value="$1"
+    case "$value" in
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) fail 'invalid --repo' ;;
+    esac
+    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail 'invalid --repo'
 }
 
 parse_kv_from_output() {
@@ -38,6 +46,7 @@ parse_kv_from_output() {
 
 DESIGN_TMPDIR_ARG=""
 SNAPSHOT_ORIGINAL=false
+REPO=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -49,6 +58,12 @@ while [[ $# -gt 0 ]]; do
         --snapshot-original)
             SNAPSHOT_ORIGINAL=true
             shift
+            ;;
+        --repo)
+            [[ $# -ge 2 ]] || fail '--repo requires a value'
+            REPO="$2"
+            validate_repo "$REPO"
+            shift 2
             ;;
         -h | --help)
             usage
@@ -162,7 +177,8 @@ _postplan_resolve_issue() {
 }
 
 _postplan_resolve_repo() {
-    local _repo=""
+    local _repo="${REPO:-}"
+    [[ -n "$_repo" ]] && { printf '%s\n' "$_repo"; return 0; }
     # Use awk-only extraction: sourcing source-env.sh executes arbitrary shell code.
     if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
         _repo=$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+REPO=/ {v=$0; sub(/^export[[:space:]]+REPO=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
@@ -176,12 +192,25 @@ _postplan_pause_checkpoint() {
         _issue="$(_postplan_resolve_issue)"
         _repo="$(_postplan_resolve_repo)"
         [[ -n "$_issue" ]] || _postplan_fatal emit-failed 'pause requested but ISSUE_NUMBER could not be resolved'
-        # Write result env before exec so the orchestrator's mandatory-key check
-        # sees POSTPLAN_EMIT_STATUS=paused rather than an empty-result abort when
-        # this driver is called via $() capture (exec replaces the subshell only).
+        if [[ -z "$_repo" ]]; then
+            POSTPLAN_EMIT_STATUS=paused
+            _postplan_write_result_and_emit
+            exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue"
+        fi
+        case "$_repo" in
+            '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) _repo=invalid ;;
+            *) [[ "$_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || _repo=invalid ;;
+        esac
+        if [[ "$_repo" == invalid ]]; then
+            POSTPLAN_EMIT_STATUS=pause-failed
+            _postplan_write_result_and_emit
+            emit_kv PAUSE_OK false
+            emit_kv ERROR invalid-repo
+            exit 1
+        fi
         POSTPLAN_EMIT_STATUS=paused
         _postplan_write_result_and_emit
-        exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue" ${_repo:+--repo "$_repo"}
+        exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue" --repo "$_repo"
     fi
 }
 

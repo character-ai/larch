@@ -10,10 +10,39 @@ source "$SCRIPT_DIR/lib-quiet.sh"
 larch_quiet_init
 # shellcheck source=scripts/lib-design-tmpdir.sh
 source "$SCRIPT_DIR/lib-design-tmpdir.sh"
+# shellcheck source=scripts/lib-larch-log.sh
+source "$SCRIPT_DIR/lib-larch-log.sh"
 
 DESIGN_TMPDIR=""
 ISSUE=""
 REPO=""
+
+validate_repo() {
+    local value="$1"
+    case "$value" in
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) return 1 ;;
+    esac
+    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
+}
+
+source_env_get() {
+    local key="$1" file="$2"
+    awk -v k="$key" '
+      BEGIN { q=sprintf("%c", 39) }
+      $1 == "export" {
+        v=$0
+        sub(/^[[:space:]]*export[[:space:]]+/, "", v)
+        if (index(v, k "=") != 1) next
+        sub("^[^=]*=", "", v)
+        if ((substr(v, 1, 1) == q && substr(v, length(v), 1) == q) ||
+            (substr(v, 1, 1) == "\"" && substr(v, length(v), 1) == "\"")) {
+          v=substr(v, 2, length(v)-2)
+        }
+        print v
+        exit
+      }
+    ' "$file"
+}
 
 resolve_repo() {
     local repo="${1:-}"
@@ -29,8 +58,14 @@ usage() {
 }
 
 emit_fail() {
+    local reason="${1:-}"
+    if [[ "$reason" != invalid-repo ]] \
+        && [[ -n "${DESIGN_TMPDIR:-}" && -d "$DESIGN_TMPDIR" ]] \
+        && larch_design_tmpdir_validate "$DESIGN_TMPDIR" >/dev/null 2>&1; then
+        rm -f "$DESIGN_TMPDIR/.pause-requested" 2>/dev/null || true
+    fi
     emit_kv PAUSE_OK false
-    emit_kv ERROR "$1"
+    emit_kv ERROR "$reason"
     if [[ "${LARCH_PAUSE_REQUIRE_SUCCESS:-0}" == "1" ]]; then
         exit 1
     fi
@@ -61,19 +96,35 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+REPO_ARG="${REPO:-}"
+if [[ -n "$REPO_ARG" ]] && ! validate_repo "$REPO_ARG"; then
+    emit_fail "invalid-repo"
+fi
+
 [[ -n "$DESIGN_TMPDIR" ]] || emit_fail "tmpdir-unset"
 [[ -d "$DESIGN_TMPDIR" ]] || emit_fail "tmpdir-missing"
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || emit_fail "tmpdir-invalid"
 [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]] || emit_fail "invalid-issue"
 
 if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
-    # shellcheck disable=SC1090
-    # shellcheck disable=SC1091
-    source "$DESIGN_TMPDIR/source-env.sh" || true
+    _source_session_id=$(source_env_get SESSION_ID "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
+    [[ -n "${SESSION_ID:-}" || -z "$_source_session_id" ]] || SESSION_ID="$_source_session_id"
+    if [[ -z "$REPO_ARG" ]]; then
+        _source_repo=$(source_env_get REPO "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
+        if [[ -n "$_source_repo" ]]; then
+            validate_repo "$_source_repo" || emit_fail "invalid-repo"
+            REPO="$_source_repo"
+        fi
+    fi
+fi
+if [[ -n "$REPO_ARG" ]]; then
+    REPO="$REPO_ARG"
 fi
 
 RUN_ID="${SESSION_ID:-}"
 [[ -n "$RUN_ID" ]] || emit_fail "run-id-unset"
+case "$RUN_ID" in *$'\n'*|*$'\r'*) emit_fail "invalid-run-id" ;; esac
+larch_log_slug_is_valid "$RUN_ID" || emit_fail "invalid-run-id"
 
 STEP_REGISTRY="$REPO_ROOT/skills/design/scripts/step-name-registry.tsv"
 [[ -f "$STEP_REGISTRY" ]] || emit_fail "missing-step-registry"
@@ -85,6 +136,8 @@ elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/s
     STEP="3.6"
 elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && ! -f "$DESIGN_TMPDIR/.completed/step-3.5" ]]; then
     STEP="3.5"
+elif [[ -f "$DESIGN_TMPDIR/.completed/step-5b" && ! -f "$DESIGN_TMPDIR/.completed/step-5c" ]]; then
+    STEP="5c"
 else
     while IFS=$'\t' read -r step_id _step_name || [[ -n "$step_id" ]]; do
         [[ -z "$step_id" || "$step_id" == "step" || "$step_id" == "0" || "$step_id" == "5" ]] && continue
@@ -105,6 +158,9 @@ BRAINSTORM_DONE=false
 
 if resolved_repo=$(resolve_repo "$REPO"); then
     REPO="$resolved_repo"
+fi
+if [[ -n "$REPO" ]] && ! validate_repo "$REPO"; then
+    emit_fail "invalid-repo"
 fi
 
 gh_repo_args=()
@@ -171,14 +227,20 @@ set -e
 
 PUBLISH_OK=$(awk -F= '$1=="PUBLISH_OK"{print $2}' "$publish_out" | tail -1)
 RECOVERY_BRANCH=$(awk -F= '$1=="RECOVERY_BRANCH"{print $2}' "$publish_out" | tail -1)
+publish_failure_logged=false
 
 if [[ "$publish_rc" -ne 0 && -z "$PUBLISH_OK" ]]; then
     log_failure "design-log-publish.sh" "$publish_err"
     emit_fail "publish-failed"
 fi
+if [[ "$publish_rc" -ne 0 && "$PUBLISH_OK" == "true" ]]; then
+    log_failure "design-log-publish.sh" "$publish_err"
+    publish_failure_logged=true
+    PUBLISH_OK=false
+fi
 
 if [[ "$PUBLISH_OK" != "true" ]]; then
-    log_failure "design-log-publish.sh" "$publish_err"
+    [[ "$publish_failure_logged" == true ]] || log_failure "design-log-publish.sh" "$publish_err"
     if [[ -n "$RECOVERY_BRANCH" ]]; then
         if [[ "$RECOVERY_BRANCH" == "larch-log-design-$RUN_ID" || "$RECOVERY_BRANCH" == "larch-log-design-recovery-$RUN_ID" ]]; then
             printf 'LOG_RECOVERY_BRANCH=%s\n' "$RECOVERY_BRANCH" >> "$state_tmp"

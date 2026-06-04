@@ -14,7 +14,13 @@ if [[ -z "$RESOLVED" ]]; then
     RESOLVED=$("$SCRIPT_DIR/github-remote-repo.sh" origin 2>/dev/null) || RESOLVED=""
 fi
 
-if [[ -z "$RESOLVED" || ! "$RESOLVED" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+case "$RESOLVED" in
+    '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*)
+        larch_err "ERROR=could not resolve repo (gh repo view + git remote both failed)"
+        exit 1
+        ;;
+esac
+if [[ ! "$RESOLVED" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
     larch_err "ERROR=could not resolve repo (gh repo view + git remote both failed)"
     exit 1
 fi

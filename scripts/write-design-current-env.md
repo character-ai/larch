@@ -96,6 +96,7 @@ find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l \
 ## Validation
 
 - `--session-id` matches `^[A-Za-z0-9_.-]{1,128}$`.
+- `--repo`, when present, matches `OWNER/REPO`; malformed values exit 1.
 - `--design-tmpdir` and `--output` must be absolute paths.
 - `--issue-number` matches `^[0-9]+$` when present.
 - `CLAUDE_PLUGIN_ROOT`, when set, must be an absolute path of 512 characters or fewer using `[A-Za-z0-9_./~+-]`.

@@ -44,3 +44,7 @@ Normal invocation is synchronous from `/larch:pause`. The `/design` Bash
 prelude may also invoke it defensively when `.pause-requested` exists, and
 `/larch:pause` itself now arms that sentinel before invoking the helper so the
 next Bash boundary can honor a deferred pause request.
+
+## Recent contract coverage
+
+- `--repo` is snapshotted and validated before `source-env.sh`; argv wins over source-env, and malformed values return `invalid-repo` before `gh issue view`, publish, or marker writes. Non-zero publish exits with `PUBLISH_OK=true` are normalized to `PUBLISH_OK=false`, while `PUBLISH_OK=false` plus a valid `RECOVERY_BRANCH` remains resumable.

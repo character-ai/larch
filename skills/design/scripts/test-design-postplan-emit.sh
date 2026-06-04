@@ -426,6 +426,35 @@ assert_contains "$CALL_LOG" '--repo owner/name' "pause-save repo resolved"
 if grep -Fq 'design-driver EMIT' "$CALL_LOG"; then fail "pause should happen before EMIT"; else pass "pause happened before EMIT"; fi
 assert_file_kv "$D11/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS paused "pause writes paused status to result env"
 
+# 11a explicit --repo overrides source-env repo
+D11a="$TMP/pause-explicit-repo"
+setup_design_tmp "$D11a" full SIMPLE
+printf 'export ISSUE_NUMBER=78\nexport REPO=source/repo\n' >"$D11a/source-env.sh"
+: >"$D11a/.pause-requested"
+set +e
+run_subject "$D11a" --repo explicit/repo
+rc=$?
+set -e
+assert_rc "pause explicit repo checkpoint rc" 0 "$rc"
+assert_contains "$CALL_LOG" '--issue 78' "pause explicit repo issue resolved"
+assert_contains "$CALL_LOG" '--repo explicit/repo' "pause explicit repo forwarded"
+assert_not_contains "$CALL_LOG" '--repo source/repo' "pause explicit repo overrides source-env repo"
+
+# 11a.1 invalid source-env repo emits structured pause failure
+D11a_bad_source="$TMP/pause-invalid-source-repo"
+setup_design_tmp "$D11a_bad_source" full SIMPLE
+printf 'export ISSUE_NUMBER=79\nexport REPO=--bad/repo\n' >"$D11a_bad_source/source-env.sh"
+: >"$D11a_bad_source/.pause-requested"
+set +e
+run_subject "$D11a_bad_source"
+rc=$?
+set -e
+assert_rc "pause invalid source repo rc" 1 "$rc"
+assert_contains "$D11a_bad_source/stdout.txt" 'POSTPLAN_EMIT_STATUS=pause-failed' "pause invalid source repo writes pause-failed status"
+assert_contains "$D11a_bad_source/stdout.txt" 'PAUSE_OK=false' "pause invalid source repo emits PAUSE_OK=false"
+assert_contains "$D11a_bad_source/stdout.txt" 'ERROR=invalid-repo' "pause invalid source repo emits invalid-repo"
+assert_not_contains "$CALL_LOG" 'pause-save' "pause invalid source repo skips pause-save"
+
 # 11b empty/absent REPO omits --repo
 D11b="$TMP/pause-no-repo"
 setup_design_tmp "$D11b" full SIMPLE

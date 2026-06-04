@@ -68,3 +68,7 @@ Update together: `skills/design/SKILL.md` Step 5c, `skills/design/scripts/test-d
 `skills/design/scripts/test-design-publish.sh` (contract: `test-design-publish.md`).
 
 Orchestrator handoff: `_publish_out` capture + file-first `.design-publish-result.env` read + stdout merge; exit `2` / unexpected non-zero abort; `_publish_rc=1` is the normal plan-write failure path (parse, do not abort); `_publish_rc=4` routes to the shared validator-failure handler.
+
+## Recent contract coverage
+
+- Non-zero `design-log-publish.sh` exits are fail-closed even when stdout contains `PUBLISH_OK=true`; empty `SESSION_ID` renders `publish-skipped`.
