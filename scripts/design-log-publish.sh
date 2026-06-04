@@ -301,7 +301,7 @@ design_artifact_excluded() {
         esac
     fi
     case "$name" in
-        larch-quiet-*-*.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
+        .design-log-publish-metadata.env|larch-quiet-*-*.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
             return 0
             ;;
     esac
@@ -611,29 +611,6 @@ if ! design_publish_breadcrumbs "$DESIGN_TMPDIR/breadcrumbs" "$RUN_DEST/breadcru
     exit 0
 fi
 
-MF="$RUN_DEST/manifest.json"
-ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
-mf_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-mf.XXXXXX")
-if [[ "$REASON" == "pause" ]]; then
-    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
-    jq_expr='.updated_at = $ts | .paused = true'
-else
-    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
-    jq_expr='.updated_at = $ts'
-fi
-if ! jq --arg ts "$ts" "$jq_expr" "$MF" >"$mf_tmp"; then
-    rm -f "$mf_tmp"
-    larch_err "design-log-publish: manifest refresh failed"
-    emit_publish_result false
-    exit 0
-fi
-if ! mv -f "$mf_tmp" "$MF"; then
-    rm -f "$mf_tmp"
-    larch_err "design-log-publish: manifest install failed"
-    emit_publish_result false
-    exit 0
-fi
-
 # Pre-flush secret gate: scrub secret-shaped values (Cursor keys et al.) from
 # the staged run tree before commit. Fail-closed on scrub failure. On a real
 # redaction, propagate the count via emit_kv SECRET_SCRUB_VIOLATIONS so the
@@ -691,6 +668,29 @@ if [[ -z "$_porcelain" ]]; then
         larch_err "design-log-publish: final publish produced no new snapshot delta and origin/$ORIGIN_DEFAULT does not contain $rel"
         emit_publish_result false
     fi
+    exit 0
+fi
+
+MF="$RUN_DEST/manifest.json"
+ts=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+mf_tmp=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-mf.XXXXXX")
+if [[ "$REASON" == "pause" ]]; then
+    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
+    jq_expr='.updated_at = $ts | .paused = true'
+else
+    # shellcheck disable=SC2016 # jq variable $ts is supplied by --arg below.
+    jq_expr='.updated_at = $ts'
+fi
+if ! jq --arg ts "$ts" "$jq_expr" "$MF" >"$mf_tmp"; then
+    rm -f "$mf_tmp"
+    larch_err "design-log-publish: manifest refresh failed"
+    emit_publish_result false
+    exit 0
+fi
+if ! mv -f "$mf_tmp" "$MF"; then
+    rm -f "$mf_tmp"
+    larch_err "design-log-publish: manifest install failed"
+    emit_publish_result false
     exit 0
 fi
 
