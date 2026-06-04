@@ -459,13 +459,12 @@ setup_design_tmp "$D11a" full SIMPLE
 printf 'export ISSUE_NUMBER=78\nexport REPO=source/repo\n' >"$D11a/source-env.sh"
 : >"$D11a/.pause-requested"
 set +e
-run_subject "$D11a" --repo explicit/repo
+run_subject "$D11a"
 rc=$?
 set -e
-assert_rc "pause explicit repo checkpoint rc" 0 "$rc"
+assert_rc "pause source repo checkpoint rc" 0 "$rc"
 assert_contains "$CALL_LOG" '--issue 78' "pause explicit repo issue resolved"
-assert_contains "$CALL_LOG" '--repo explicit/repo' "pause explicit repo forwarded"
-assert_not_contains "$CALL_LOG" '--repo source/repo' "pause explicit repo overrides source-env repo"
+assert_contains "$CALL_LOG" '--repo source/repo' "pause source repo forwarded"
 
 # 11a.1 invalid source-env repo emits structured pause failure
 D11a_bad_source="$TMP/pause-invalid-source-repo"
@@ -704,6 +703,58 @@ rm -f "$D26/.design-postplan-emit-result.env"
 assert_rc "merged result env refuse" 1 "$rc"
 assert_contains "$D26/stdout.txt" 'result env write failed' "merged result env diagnostic"
 assert_not_contains "$D26/stdout.txt" 'POSTPLAN_EMIT_STATUS=' "merged result env no stdout fallback"
+
+D27="$TMP/merged-plan-size-append-fails"
+rm -f "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+cat >"$FAKE_DESIGN/check-plan-size.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'PLAN_SIZE_STATUS=missing-plan\n'
+printf 'stderr detail from check-plan-size\n' >&2
+exit 2
+STUB
+cat >"$FAKE_SCRIPTS/append-tool-failure.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'APPENDED=false\nLOG=/tmp/leak\n'
+exit 7
+STUB
+chmod +x "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+setup_design_tmp "$D27" full SIMPLE
+set +e
+run_subject "$D27" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged plan-size append failure is nonfatal" 0 "$rc"
+assert_contains "$D27/stdout.txt" 'proceeding without threshold check' "merged append failure warning display"
+assert_contains "$D27/check-plan-size.validation.log" 'stderr detail from check-plan-size' "merged append failure preserves stderr"
+assert_not_contains "$D27/stdout.txt" 'APPENDED=' "merged append failure no APPENDED leak"
+assert_not_contains "$D27/stdout.txt" 'LOG=' "merged append failure no LOG leak"
+rm -f "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
+ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+
+D28="$TMP/merged-snapshot-failed-diagnostic"
+setup_design_tmp "$D28" full HARD
+reset_env
+export SNAPSHOT_STUB_RC=9
+set +e
+bash "$SUBJECT" --design-tmpdir "$D28" --with-plan-size --snapshot-original >"$D28/stdout.txt" 2>"$D28/stderr.txt"
+rc=$?
+set -e
+assert_rc "merged snapshot failed rc1" 1 "$rc"
+assert_file_kv "$D28/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS snapshot-failed "merged snapshot failed status"
+assert_contains "$D28/stdout.txt" 'failed to snapshot plan.txt-original' "merged snapshot failed diagnostic"
+
+D29="$TMP/merged-validate-driver-failed-diagnostic"
+setup_design_tmp "$D29" full SIMPLE
+reset_env
+export VALIDATOR_STUB_RC=8 VALIDATOR_EMIT_STATUS_ON_FAIL=false
+set +e
+bash "$SUBJECT" --design-tmpdir "$D29" --with-plan-size >"$D29/stdout.txt" 2>"$D29/stderr.txt"
+rc=$?
+set -e
+assert_rc "merged validate driver failed rc1" 1 "$rc"
+assert_file_kv "$D29/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS validate-driver-failed "merged validate driver failed status"
+assert_contains "$D29/stdout.txt" 'plan-command validator infrastructure failed' "merged validate driver failed diagnostic"
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2

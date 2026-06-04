@@ -18,7 +18,7 @@ Tests added for the new mode (real `check-plan-size.sh` symlinked into the fake 
 - **`partition_requested=true` + hard-sized plan**: rc 12, not rc 13 (hard wins over partition).
 - **defects-found**: rc 10; plan-size skipped; validator context in result env.
 - **`--snapshot-original` composition**: rc 0 clean path with snapshot.
-- **nonfatal plan-size rc 2/3**: WARN display, `check-plan-size.validation.log` written, stderr diagnostics preserved, `execution-issues.md` entry appended, no `APPENDED=` / `LOG=` in display output; nonfatal even when `append-tool-failure.sh` itself fails.
+- **D27+ nonfatal / merged failures**: plan-size rc 2/3 WARN display, `check-plan-size.validation.log` written, stderr diagnostics preserved, `execution-issues.md` entry attempted, no `APPENDED=` / `LOG=` in display output, nonfatal even when `append-tool-failure.sh` itself fails; merged rc1 diagnostics for `snapshot-failed` and `validate-driver-failed`.
 - **pause rc 11**: thin fence can exec pause-save.
 - **classification-stderr WARN display**: WARN body appears in display; no `WARN=` KV leaks to display; WARN retained in result env.
 - **rc1 subfailures**: failure-specific diagnostic emitted before exit.

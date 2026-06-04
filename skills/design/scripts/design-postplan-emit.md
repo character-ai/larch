@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 2b post-plan emit sequence and prompt-side re-emit sites.
 
-**Callers**: `skills/design/SKILL.md` initial Step 2b (`--with-plan-size --snapshot-original`), Gate A after-discussion re-emit (`--with-plan-size --force-validate`), `skills/design/references/approval-gates.md` Gate B shared post-apply (`--with-plan-size`), and `skills/design/references/discussion-rounds.md` post-plan Round 2 (`--with-plan-size --force-validate`). Retained callers still use standalone `check-plan-size.sh` via Step 2b.5 / `plan-review-loop.sh`.
+**Callers**: `skills/design/SKILL.md` initial Step 2b (`--with-plan-size --snapshot-original`), Gate A after-discussion re-emit (`--with-plan-size`), `skills/design/references/approval-gates.md` Gate B shared post-apply (`--with-plan-size`), and `skills/design/references/discussion-rounds.md` post-plan Round 2 (`--with-plan-size`). Retained callers still use standalone `check-plan-size.sh` via Step 2b.5 / `plan-review-loop.sh`.
 
 ## Argv
 
@@ -10,19 +10,18 @@
 |------|----------|-------|
 | `--design-tmpdir PATH` | yes | Canonicalized with `cd … && pwd -P` |
 | `--snapshot-original` | no | Enables the initial HARD `plan.txt-original` write-once snapshot |
-| `--force-validate` | no | Runs the validator even when `review_budget=quick` |
 | `--with-plan-size` | no | Merged mode: run `check-plan-size.sh` after successful validation; action exit codes; display-only FD 3 |
 
-Only the initial Step 2b call passes `--snapshot-original`. Re-emit sites suppress the HARD snapshot. Discussion-round2 and Gate A after-discussion pass `--force-validate`.
+Only the initial Step 2b call passes `--snapshot-original`. Re-emit sites suppress the HARD snapshot. Validation is unconditional for all sites.
 
 ## Responsibilities
 
-1. Resolve `CLAUDE_PLUGIN_ROOT`, export `DESIGN_TMPDIR`, read `review_budget` and `partition_requested` from `run-params.json` (`json_scalar_or_sed` / `json_boolean_or_sed` for bare `true`/`false` without `jq`).
+1. Resolve `CLAUDE_PLUGIN_ROOT`, export `DESIGN_TMPDIR`, read `partition_requested` from `run-params.json` (`json_boolean_or_sed` for bare `true`/`false` without `jq`).
 2. Pause checkpoint before each internal step. **`--with-plan-size`**: exit **11** after writing result env (orchestrator `exec`s `design-pause-save.sh`). **Legacy**: `exec` pause-save from the driver.
 3. Pipe `ACTION=EMIT_PLAN` to `design-driver.sh`.
 4. Optional HARD snapshot when `--snapshot-original`.
-5. Run `invoke-plan-validator.sh` unless `review_budget=quick` and `--force-validate` is absent.
-6. **`--with-plan-size`**: after validation succeeds or `skipped-quick` without defects, run `check-plan-size.sh` with `LARCH_QUIET_DISABLE=1`; parse stdout only; stderr to a sidecar on failure paths.
+5. Run `invoke-plan-validator.sh` unconditionally.
+6. **`--with-plan-size`**: after validation succeeds without defects, run `check-plan-size.sh` with `LARCH_QUIET_DISABLE=1`; parse stdout only; stderr to a sidecar on failure paths.
 
 ## Result env (`.design-postplan-emit-result.env`)
 
@@ -43,7 +42,7 @@ Allowlisted keys for orchestrator reads (never `source`):
 
 | Code | When |
 |------|------|
-| `0` | Success, including `VALIDATE_STATUS=defects-found` and `skipped-quick` |
+| `0` | Success, including `VALIDATE_STATUS=defects-found` |
 | `1` | `missing-diff-lines`, `emit-failed`, `snapshot-failed`, `validate-driver-failed` |
 | `2` | Argv / configuration / precondition error |
 

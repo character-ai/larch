@@ -51,6 +51,13 @@ phase_driver_write_result_env() {
     : >"$tmp"
     local kv
     for kv in "$@"; do
+        case "$kv" in
+            *$'\n'* | *$'\r'*)
+                larch_err "lib-phase-driver: refusing to write result env value containing newline or carriage return"
+                rm -f "$tmp"
+                return 1
+                ;;
+        esac
         printf '%s\n' "$kv" >>"$tmp"
     done
     mv "$tmp" "$path"

@@ -385,8 +385,7 @@ grep -Fq 'refusing to recreate it with fallback defaults' "$REPO_ROOT/skills/des
 absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must not retain old HARD fallback recovery reason'
 
 contains "$FLAGS_MD" 'design-postplan-emit.sh' 'flags.md missing postplan driver validator contract'
-contains "$FLAGS_MD" 'skipped-quick' 'flags.md missing quick validator skip contract'
-contains "$FLAGS_MD" '--force-validate' 'flags.md missing discussion-round2 force-validate contract'
+contains "$FLAGS_MD" 'Validation is unconditional: there is no quick-skip path and no force flag.' 'flags.md missing unconditional validator contract'
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, Step 4, then Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -559,6 +558,16 @@ postplan_val_line=$(grep -nF 'invoke-plan-validator.sh' "$DESIGN_POSTPLAN_EMIT_S
 contains "$SKILL_MD" '.design-postplan-emit-result.env' 'SKILL.md missing postplan result env read'
 contains "$SKILL_MD" 'design-postplan-emit.sh configuration error (exit 2)' 'SKILL.md missing postplan exit-2 abort prose'
 assert_postplan_thin_fence "$SKILL_MD" 'SKILL Step 2b thin-fence' '<!-- step:2b ' '### Step 2b.5'
+# shellcheck disable=SC2016 # Markdown literal contains unexpanded shell syntax.
+contains "$APPROVAL_MD" 'case "${_postplan_rc:-1}" in' 'approval-gates Gate B postplan fence missing rc case'
+contains "$APPROVAL_MD" 'default-abort' 'approval-gates Gate B postplan fence missing default-abort arm'
+# shellcheck disable=SC2016 # Markdown literal contains unexpanded shell syntax.
+contains "$DISCUSSION_MD" 'case "${_postplan_rc:-1}" in' 'discussion-round2 postplan fence missing rc case'
+contains "$DISCUSSION_MD" 'default-abort' 'discussion-round2 postplan fence missing default-abort arm'
+# shellcheck disable=SC2016 # Markdown literal contains unexpanded shell syntax.
+absent "$APPROVAL_MD" '<<<"${_postplan_out:-}"' 'approval-gates Gate B postplan fence must not merge stdout KVs via heredoc'
+# shellcheck disable=SC2016 # Markdown literal contains unexpanded shell syntax.
+absent "$DISCUSSION_MD" '<<<"${_postplan_out:-}"' 'discussion-round2 postplan fence must not merge stdout KVs via heredoc'
 # shellcheck disable=SC2016 # Markdown literal; $PPID must remain unexpanded.
 contains "$SKILL_MD" 'current-design-env-$PPID.sh' 'SKILL.md Step 2b postplan fence missing canonical prelude'
 DESIGN_POSTPLAN_STEP2B=$(awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD")
@@ -607,16 +616,20 @@ grep -Fq 'case` arms as `SKILL.md` Step 2b' "$AG_MD" \
   || fail "(14c14e) approval-gates.md must delegate to SKILL Step 2b case arms"
 grep -Fq 'design-postplan-emit.sh' "$DR_MD" \
   || fail "(14c14f) discussion-rounds.md missing design-postplan-emit.sh pin"
-grep -Fq -- '--force-validate' "$DR_MD" \
-  || fail "(14c14g) discussion-rounds.md missing --force-validate pin"
-grep -Fq -- '--with-plan-size --force-validate' "$DR_MD" \
-  || fail "(14c14h) discussion-rounds.md missing merged --with-plan-size --force-validate"
+grep -Fq -- '--with-plan-size' "$DR_MD" \
+  || fail "(14c14g) discussion-rounds.md missing merged --with-plan-size"
+if grep -Fq -- '--force-validate' "$DR_MD"; then
+  fail "(14c14h) discussion-rounds.md must not mention retired --force-validate"
+fi
 grep -Fq '_postplan_rc=10' "$DR_MD" \
   || fail "(14c14h) discussion-rounds.md missing _postplan_rc=10 handling"
 grep -Fq '_postplan_rc=0' "$DR_MD" \
   || fail "(14c14h) discussion-rounds.md missing _postplan_rc=0 sentinel handling"
-printf '%s\n' "$step1e_block" | grep -Fq -- '--with-plan-size --force-validate' \
-  || fail "(14c14i) Gate A optional-trailer guard missing --with-plan-size --force-validate"
+printf '%s\n' "$step1e_block" | grep -Fq -- '--with-plan-size' \
+  || fail "(14c14i) Gate A optional-trailer guard missing --with-plan-size"
+if printf '%s\n' "$step1e_block" | grep -Fq -- '--force-validate'; then
+  fail "(14c14i) Gate A optional-trailer guard must not mention retired --force-validate"
+fi
 
 # Check 16: dialectic waterfall + per-side assignment contract pins (#2620).
 DIALPROTO_MD="$REPO_ROOT/skills/shared/dialectic-protocol.md"
@@ -805,10 +818,12 @@ grep -Fq 'diff_deleted' "$FLAGS_MD" \
   || fail "(3175) flags.md missing diff_deleted preservation language"
 # shellcheck disable=SC2016 # Markdown literal; backticks are prose, not command substitution
 grep -Fq 'before `ACTION=EMIT_PLAN`' "$APPROVAL_MD" \
-  || fail "(3175) approval-gates.md missing validate-before-EMIT_PLAN guard"
+  || grep -Fq 'before the merged post-plan fence' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing validate-before-postplan-fence guard"
 # shellcheck disable=SC2016 # Markdown literal; backticks are prose, not command substitution
 grep -Fq 'before `ACTION=EMIT_PLAN`' "$DISCUSSION_MD" \
-  || fail "(3175) discussion-rounds.md missing validate-before-EMIT_PLAN guard"
+  || grep -Fq 'before the merged post-plan fence' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing validate-before-postplan-fence guard"
 grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh" \
   || fail "(3175) revise-plan-with-waterfall.sh must source shared optional-trailer lib"
 grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/plan-review-loop.sh" \

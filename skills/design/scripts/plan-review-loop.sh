@@ -608,14 +608,19 @@ _run_post_apply_pipeline() {
             true) partition_requested=true ;;
         esac
     fi
+    local size_stderr
+    size_stderr="$DESIGN_TMPDIR/.check-plan-size.plan-review.stderr.$$"
     set +e
-    size_out=$("$CHECK_PLAN_SIZE_SH" --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$plan_path")
+    size_out=$("$CHECK_PLAN_SIZE_SH" --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$plan_path" 2>"$size_stderr")
     size_rc=$?
     set -e
     if [[ "$size_rc" -eq 2 || "$size_rc" -eq 3 ]]; then
         local _plan_size_status _validation_log _combined_cap
         _validation_log="$DESIGN_TMPDIR/check-plan-size.validation.log"
-        printf '%s\n' "$size_out" >"$_validation_log" 2>/dev/null || true
+        {
+            printf '%s\n' "$size_out"
+            [[ -s "$size_stderr" ]] && cat "$size_stderr"
+        } >"$_validation_log" 2>/dev/null || true
         _plan_size_status=$(printf '%s\n' "$size_out" | awk -F= '$1 == "PLAN_SIZE_STATUS" { print $2; found=1 } END { if (!found) print "" }')
         printf '**⚠ plan-review: check-plan-size — %s; proceeding without threshold check**\n' "${_plan_size_status:-unknown}"
         set +e
@@ -631,9 +636,11 @@ _run_post_apply_pipeline() {
             >/dev/null 2>&1 || true
         rm -f "$_combined_cap" 2>/dev/null || true
         set -e
+        rm -f "$size_stderr" 2>/dev/null || true
         rm -f "$plan_backup"
         return 0
     fi
+    rm -f "$size_stderr" 2>/dev/null || true
     hard=$(printf '%s\n' "$size_out" | awk -F= '$1 == "HARD_TRIGGER_FIRED" { print $2; found=1 } END { if (!found) print "false" }')
     soft=$(printf '%s\n' "$size_out" | awk -F= '$1 == "SOFT_ADVISORY" { print $2; found=1 } END { if (!found) print "false" }')
     if [[ "$soft" == "true" ]]; then
