@@ -56,6 +56,7 @@ grep -Fq 'caller_kind=step8b_rebase' "$SKILL_MD" \
   && fail "SKILL.md must not retain retired NEVER #8 (step8b_rebase caller_kind pin)"
 grep -Fq "NEVER call \`/release\` as a direct Skill invocation" "$SKILL_MD" \
   && fail "SKILL.md must not retain retired NEVER #11 (orchestrator /release Skill pin)"
+# shellcheck disable=SC2016 # Intentional literal probe of SKILL.md content.
 grep -Fq 'if [ "${LARCH_SHIP_PR_IMPL:-bash}" = "python" ]; then' "$SKILL_MD" \
   || fail "SKILL.md Step 8+ Invoke fence must branch on LARCH_SHIP_PR_IMPL=python"
 grep -Fq "sys.version_info >= (3, 11)" "$SKILL_MD" \
