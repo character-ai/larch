@@ -1,0 +1,98 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -8,6 +8,7 @@
+ - Header triplet required by `test-references-headers.sh` (#308): line-start `**Consumer**:` / `**Contract**:` / `**When to load**:`.
+   - Consumer = `/implement` Step 8+ OOS checkpoint.
+   - Load is MANDATORY before executing the OOS pipeline.
++  - **Contract precedence**: Step 9a.1 owns `oos-issues` larch-log evidence on all branches (including sentinel recovery). `run-statistics` is owned exclusively by the existing post-checkpoint Step 8+ block after `oos-disposition-checkpoint.sh` exit 0 (NEVER #14); on sentinel recovery, NEVER #5 applies only to the `oos-issues` half — not `run-statistics`.
+   - Do not load outside that checkpoint.
+ - Numbered procedure preserving historical labels so existing `step 3.4` / `step 3.4b` citations resolve:
+   - **1.** Resolve accepted-OOS inputs:
+@@ -15,7 +16,8 @@
+     - Also read `$IMPLEMENT_TMPDIR/oos-accepted-review.md` and `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`.
+     - Treat missing files as empty.
+-    - Apply the `focus-area=security` exclusion with the fenced/unfenced match-discrimination guard; route security findings to the SECURITY.md private flow.
++    - **Security routing (gate-aligned)**: exclude a `### OOS_` block only when its body contains a dedicated `- **focus-area**:` field line whose value begins with `security` (case-folded), optionally continued with `-word` tokens (e.g. `security-hardening`) — same predicate as `oos-non-security-block-count.awk` and `oos-disposition-gate.md` Counting rules (`non_security_oos`). Prose such as `focus-area = security` inside a `**Description**` line does **not** mark a block security-routed. Route excluded blocks to SECURITY.md's private flow; do not file via `/issue`.
+     - Apply the design-phase carve-out: exclude any `### OOS_` block whose body already contains `- **Filed URL**:`, but retain those URLs as already-filed disposition evidence.
+   - **2.** Empty handling:
+     - True no-input batch → emit no Accepted-OOS bullets and early-exit.
+@@ -23,7 +25,7 @@
+   - **3.** Idempotency guard:
+     - If `$IMPLEMENT_TMPDIR/oos-issues-created.md` exists, recover created-or-deduplicated URLs + tallies and skip `/issue`.
+-    - On this branch, still perform the NEVER #5 `oos-issues` larch-log write from recovered URLs.
++    - On this branch, still perform the NEVER #5 `oos-issues` larch-log append from recovered URLs (and terminal-summary refresh if applicable); do **not** write `run-statistics` here.
+     - Do not run combine/cap/worksheet/helper pre-passes on sentinel recovery.
+     - Do not write `run-statistics` here; that remains owned by the existing post-checkpoint Step 8+ block.
+   - **3.3.** Cross-phase dedup of `### OOS_N:` blocks using fixed phase order: design, review, main-agent.
+@@ -67,12 +69,14 @@
+ - Repoint the phantom `the earlier "Out-of-Scope Handling" section` citation to:
+   - the real `## Execution Issues Tracking` section for OOS triage policy, and
+   - `skills/implement/references/oos-pipeline.md` for the executable Step 9a.1 procedure.
++- **Minimal NEVER #5 reconciliation** (required — not byte-stable): narrow **How to apply** so the idempotent-rerun branch writes only `larch-log.sh append … --batch oos-issues` (plus terminal-summary refresh when applicable) from recovered `oos-issues-created.md` URLs; remove the `run-statistics` write from sentinel recovery and state explicitly that `run-statistics` remains owned by the post-checkpoint Step 8+ block after checkpoint exit 0 (consistent with NEVER #14).
+ - Add a one-line pointer in the `### OOS triage policy` / `File-conflict rule` area so `Step 9a.1 step 3.4` and `step 3.4b` explicitly name `oos-pipeline.md` as the procedure home.
+ - Keep post-checkpoint ownership of `run-statistics` unchanged; the new reference must not imply stats are written before `oos-disposition-checkpoint.sh` passes.
+ - Preserve existing OOS prose byte-stable except for citation/load-directive repoints:
+   - Invariant #1
+-  - NEVER #5/#14/#15
++  - NEVER #14/#15
+   - Terminal disposition invariant
+   - dual-write schema
+   - existing checkpoint and post-checkpoint sequencing
+@@ -99,6 +103,10 @@
+    - `ISSUE_<i>_DUPLICATE_OF_NUMBER=`
+ 8. Partial-failure pin:
+    - text proving `ISSUES_FAILED>0` suppresses sentinel writes.
+-9. Run-statistics ordering pin:
++9. Run-statistics / NEVER #5 ordering pins:
+    - text proving `run-statistics` remains post-checkpoint-owned.
++   - text proving sentinel-recovery branch does not instruct a pre-checkpoint `run-statistics` write (NEVER #5 narrowed or `oos-pipeline.md` step 3 precedence).
++10. Security-routing predicate pin in `oos-pipeline.md`:
++   - dedicated `- **focus-area**:` field-line wording aligned with `oos-non-security-block-count.awk` / gate Counting rules (not bare `focus-area=security` token-only exclusion).
+ 
+ ### UPDATED: `skills/implement/scripts/oos-file-conflict-deps.md`
+ 
+@@ -120,6 +128,7 @@
+ - Make the sentinel format documentation-only but exact: the gate already accepts loose URL-token shape; the new section makes the writer/reader contract explicit.
+ - Use only fixed-string structure guards; no awk range extraction and no new Makefile target.
++- Reconcile NEVER #5 with post-checkpoint `run-statistics` ownership in the same PR so `oos-pipeline.md` and SKILL.md cannot contradict on sentinel recovery.
+ 
+ ## Edge cases
+ 
+@@ -127,7 +136,8 @@
+   - MD038 on literals like `- **Filed URL**:`
+   - MD001 heading increments
+   - `${CLAUDE_PLUGIN_ROOT}/…` public skill convention
+   - no machine-local paths
+   - no hardcoded prose line numbers
+-- The fenced/unfenced security match-discrimination prose must stay intact.
++- Security-routed blocks must use the same dedicated `- **focus-area**:` field-line predicate as the disposition gate (`oos-non-security-block-count.awk`); do not introduce a broader `focus-area=security` substring rule that would drop blocks the checkpoint still counts as non-security.
+ - The sentinel-recovery branch must not re-run combine/cap/worksheet.
++- Sentinel recovery must not write `run-statistics` before `oos-disposition-checkpoint.sh` passes (NEVER #5 narrowed + `oos-pipeline.md` Contract/step 3 precedence).
+ - Partial `/issue` failure must not create an idempotency sentinel.
+ - All-deduplicated `/issue` success must still produce disposition URL evidence using duplicate-of URLs.
+ - All-already-filed design OOS must not disappear from checkpoint evidence.
+@@ -137,7 +147,8 @@
+ ## Failure modes
+ 
+ - **Stale-restore drift:** a verbatim #1896 paste could reference deleted anchor surfaces. Mitigation: reconstruct against current helpers and checkpoint flow.
+-- **Pre-checkpoint stats drift:** documenting run-statistics inside the new pipeline could persist stats before disposition passes. Mitigation: Step 7 defers stats to existing post-checkpoint SKILL.md block and structure test pins that wording.
++- **Pre-checkpoint stats drift:** documenting run-statistics inside the new pipeline or leaving NEVER #5's sentinel-recovery `run-statistics` clause unchanged could persist stats before disposition passes. Mitigation: narrow NEVER #5 to `oos-issues` only on sentinel recovery; `oos-pipeline.md` Contract + step 3 precedence; Step 7 defers stats to post-checkpoint SKILL.md; structure test pins both.
++- **Security predicate mismatch:** a broader `focus-area=security` filter could exclude blocks the gate still counts as non-security, causing checkpoint failure after filing. Mitigation: cite `oos-disposition-gate.md` Counting rules / `oos-non-security-block-count.awk` in step 1; structure-test pin dedicated field-line wording.
+ - **Duplicate disposition loss:** all-deduplicated batches could have no `ISSUE_<i>_URL`. Mitigation: parse and record `ISSUE_<i>_DUPLICATE_OF_URL`.
+ - **Design-source mismatch:** filing could miss design OOS that checkpoint still sees. Mitigation: document the same design-source resolution order as checkpoint.
+ - **Filed-only early-exit gap:** already-filed design OOS could lack checkpoint evidence. Mitigation: explicitly materialize/reuse URL evidence before returning.
+@@ -155,8 +166,10 @@
+   - run final relevant checks on changed files.
+ - Spot-grep:
+   - every `Step 9a.1 step 3.4 / 3.4b` citation resolves to `oos-pipeline.md`.
+   - both Step 8+ OOS runtime paths contain the mandatory load directive.
+-  - `run-statistics` wording remains post-checkpoint-owned.
++  - `run-statistics` wording remains post-checkpoint-owned; NEVER #5 sentinel branch omits `run-statistics` write.
++  - `oos-pipeline.md` step 1 security predicate matches gate/awk dedicated field-line rule.
+ 
+-diff_added: 215
+-diff_deleted: 20
+-diff_lines: 235
++diff_added: 248
++diff_deleted: 22
++diff_lines: 270

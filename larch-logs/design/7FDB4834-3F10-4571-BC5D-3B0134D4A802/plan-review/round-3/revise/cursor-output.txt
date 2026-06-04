@@ -1,0 +1,134 @@
+Reviewing the codebase to align the plan revisions with current implementation details.
+Compiling the unified diff incorporating all accepted findings.
+--- a/plan.txt
++++ b/plan.txt
+@@ -14,6 +14,13 @@
+   - **1.** Resolve accepted-OOS inputs:
+     - Design source resolution must match the checkpoint contract: explicit design tmpdir / `$DESIGN_TMPDIR`, then `$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md`, then `$IMPLEMENT_TMPDIR/oos-accepted-design.md`.
+     - Also read `$IMPLEMENT_TMPDIR/oos-accepted-review.md` and `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`.
++    - When `$MANIFEST_PATH` is set and readable JSON, harvest `oos_observations[]` from the external implementer manifest into `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` as `### OOS_N:` blocks (`title`, `description`, `phase` per `skills/implement/references/codex-manifest-schema.md`). Merge with any existing main-agent blocks; do not duplicate titles already present. Apply the same security-routing predicate and design-phase carve-out as other sources. Manifest harvest does **not** perform rules-1-2 inline triage (per schema and SKILL.md dual-write note).
+     - Treat missing files as empty.
+     - **Security routing (gate-aligned)**: exclude a `### OOS_` block only when its body contains a dedicated `- **focus-area**:` field line whose value begins with `security` (case-folded), optionally continued with `-word` tokens (e.g. `security-hardening`) — same predicate as `oos-non-security-block-count.awk` and `oos-disposition-gate.md` Counting rules (`non_security_oos`). Prose such as `focus-area = security` inside a `**Description**` line does **not** mark a block security-routed. Route excluded blocks to SECURITY.md's private flow; do not file via `/issue`.
+     - Apply the design-phase carve-out: exclude any `### OOS_` block whose body already contains `- **Filed URL**:`, but retain those URLs as already-filed disposition evidence.
+@@ -44,11 +51,13 @@
+     - Parse `ISSUES_CREATED`, `ISSUES_FAILED`, `ISSUES_DEDUPLICATED`, `ISSUE_<i>_NUMBER=`, `ISSUE_<i>_URL=`, `ISSUE_<i>_DUPLICATE_OF_NUMBER=`, and `ISSUE_<i>_DUPLICATE_OF_URL=`.
+     - Treat both created URLs and duplicate-of URLs as valid disposition URLs.
+-    - If `/issue` exits non-zero or `ISSUES_FAILED>0`, do not write `$IMPLEMENT_TMPDIR/oos-issues-created.md`; breadcrumb partial failure and let the checkpoint block until missing dispositions are resolved.
++    - If `/issue` exits non-zero or `ISSUES_FAILED>0`, do not write `$IMPLEMENT_TMPDIR/oos-issues-created.md`; breadcrumb partial failure and let the checkpoint block until missing dispositions are resolved. Do **not** treat any URL from the failed batch as disposition-satisfied — failed items remain undispositioned until a successful rerun or manual resolution.
+   - **5.** Write `$IMPLEMENT_TMPDIR/oos-issues-created.md` only after a successful `/issue` batch with no failed items, using the pinned created-or-deduplicated sentinel format below.
+   - **6.** Append the `oos-issues` larch-log batch:
+     - Accepted entries include created and deduplicated disposition URLs.
++    - On non-zero `/issue` or `ISSUES_FAILED>0`, do **not** append accepted disposition URL rows to the `oos-issues` NDJSON batch (or any other gate-read surface); log the partial failure only under `Tool Failures` / operator breadcrumbs outside gate-satisfaction paths until the batch succeeds with no failed items.
+     - Rejected/non-accepted entries remain under the Rejected sub-block per `scripts/larch-log-batches.md`.
+     - Sentinel-recovery and all-already-filed branches still write the required evidence rows.
+   - **7.** Return control to the existing Step 8+ `oos-disposition-checkpoint.sh` gate.
+@@ -62,12 +71,18 @@
+ 
+ ### UPDATED: `skills/implement/SKILL.md`
+ 
+-- At both Step 8+ OOS-checkpoint consumption points — the `Exit 0` OOS branch and the `OOS checkpoint` block — add the mandatory load directive:
++- At all three Step 9a.1 pipeline entry points — the `Exit 0` OOS branch, the `OOS checkpoint` block, and the Python driver `needs_user_reason=oos-filing` dispatch clause — add the mandatory load directive:
+ 
+   `**MANDATORY — READ ENTIRE FILE before executing the OOS pipeline**: ${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`
+ 
+-- Repoint the phantom `the earlier "Out-of-Scope Handling" section` citation to:
++- Repoint every Step 8+ phantom `the earlier "Out-of-Scope Handling" section` / `Out-of-Scope Handling section` citation (including **Exit 0**, **OOS checkpoint**, and **Exit 1** disposition-gap remediation) to:
+   - the real `## Execution Issues Tracking` section for OOS triage policy, and
+   - `skills/implement/references/oos-pipeline.md` for the executable Step 9a.1 procedure.
++- In the Python driver selector paragraph, require the same mandatory `oos-pipeline.md` read immediately before running the existing Step 9a.1 `/issue` pipeline on `needs_user_reason=oos-filing` (do not rely on bash-path load directives alone).
+ - **Minimal NEVER #5 reconciliation** (required — not byte-stable): narrow **How to apply** so the idempotent-rerun branch writes only `larch-log.sh append … --batch oos-issues` (plus terminal-summary refresh when applicable) from recovered `oos-issues-created.md` URLs; remove the `run-statistics` write from sentinel recovery and state explicitly that `run-statistics` remains owned by the post-checkpoint Step 8+ block after checkpoint exit 0 (consistent with NEVER #14).
+ - Add a one-line pointer in the `### OOS triage policy` / `File-conflict rule` area so `Step 9a.1 step 3.4` and `step 3.4b` explicitly name `oos-pipeline.md` as the procedure home.
+ - Keep post-checkpoint ownership of `run-statistics` unchanged; the new reference must not imply stats are written before `oos-disposition-checkpoint.sh` passes.
+@@ -86,8 +101,9 @@
+ 
+ 1. `oos-pipeline.md` exists under `$REFS_DIR`.
+-2. The exact mandatory load directive containing `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md` occurs at least twice in SKILL.md.
++2. The exact mandatory load directive containing `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md` occurs at least three times in SKILL.md (Exit 0 OOS branch, OOS checkpoint block, Python `oos-filing` dispatch).
+    - Use fixed-string count logic.
+    - Include `# shellcheck disable=SC2016` for the literal variable path.
++2b. Fixed-string guard: the substring `Out-of-Scope Handling` section must be absent from SKILL.md (phantom Step 8+ citations fully removed).
+ 3. `oos-pipeline.md` contains the `3.4` and `3.4b` step labels.
+ 4. `oos-pipeline.md` contains the `oos-issues-created.md sentinel format` anchor.
+ 5. Sentinel-format pins:
+@@ -101,12 +117,18 @@
+    - `ISSUE_<i>_DUPLICATE_OF_URL=`
+    - `ISSUE_<i>_DUPLICATE_OF_NUMBER=`
+ 8. Partial-failure pin:
+    - text proving `ISSUES_FAILED>0` suppresses sentinel writes.
++8b. Partial-failure gate pin:
++    - text proving `ISSUES_FAILED>0` (or non-zero `/issue`) must not append accepted disposition URL rows to the `oos-issues` batch before checkpoint.
+ 9. Run-statistics / NEVER #5 ordering pins:
+-   - text proving `run-statistics` remains post-checkpoint-owned.
+-   - text proving sentinel-recovery branch does not instruct a pre-checkpoint `run-statistics` write (NEVER #5 narrowed or `oos-pipeline.md` step 3 precedence).
++   - **AND** (not OR): grep that narrowed NEVER #5 **How to apply** omits `run-statistics` on the sentinel-recovery branch.
++   - **AND**: grep that `oos-pipeline.md` step 3 forbids pre-checkpoint `run-statistics` on sentinel recovery.
++   - grep that `run-statistics` remains post-checkpoint-owned in SKILL.md Exit 0 / OOS checkpoint sequencing.
+ 10. Security-routing predicate pin in `oos-pipeline.md`:
+    - dedicated `- **focus-area**:` field-line wording aligned with `oos-non-security-block-count.awk` / gate Counting rules (not bare `focus-area=security` token-only exclusion).
++11. Manifest harvest pin in `oos-pipeline.md`:
++    - `oos_observations[]` and `$MANIFEST_PATH` harvest into `oos-accepted-main-agent.md`.
+ 
+ ### UPDATED: `skills/implement/scripts/oos-file-conflict-deps.md`
+ 
+@@ -118,7 +140,7 @@
+ 
+ ## Approach
+ 
+-- Recover the historical procedure from git (`anchor-template-oos-pipeline.md` at `c53086d96^`) only as a structural skeleton.
++- Recover the historical procedure from git (`c53086d96^:skills/implement/references/anchor-template-oos-pipeline.md`) only as a structural skeleton.
+ - Rewrite each step against current helpers, checkpoint ownership, duplicate-output fields, design-source resolution, and carve-outs.
+ - Do not reintroduce anchor-comment-era surfaces:
+   - deleted “Accepted OOS section” placeholder
+@@ -126,6 +148,7 @@
+ - Keep step numbering `1, 2, 3, 3.3, 3.4, 3.4b, 3.5, 4–7` identical to current citations.
+ - Make the sentinel format documentation-only but exact: the gate already accepts loose URL-token shape; the new section makes the writer/reader contract explicit.
+ - Use only fixed-string structure guards; no awk range extraction and no new Makefile target.
++- Wire all three Step 9a.1 entry paths (bash Exit 0, OOS checkpoint, Python `oos-filing`) to the same mandatory `oos-pipeline.md` load.
+ - Reconcile NEVER #5 with post-checkpoint `run-statistics` ownership in the same PR so `oos-pipeline.md` and SKILL.md cannot contradict on sentinel recovery.
+ 
+ ## Edge cases
+@@ -139,6 +162,8 @@
+ - Security-routed blocks must use the same dedicated `- **focus-area**:` field-line predicate as the disposition gate (`oos-non-security-block-count.awk`); do not introduce a broader `focus-area=security` substring rule that would drop blocks the checkpoint still counts as non-security.
+ - The sentinel-recovery branch must not re-run combine/cap/worksheet.
+ - Sentinel recovery must not write `run-statistics` before `oos-disposition-checkpoint.sh` passes (NEVER #5 narrowed + `oos-pipeline.md` Contract/step 3 precedence).
+-- Partial `/issue` failure must not create an idempotency sentinel.
++- Partial `/issue` failure must not create an idempotency sentinel and must not append accepted disposition URLs to gate-read `oos-issues` NDJSON (partial URLs must not satisfy the disposition gate).
++- External implementer `oos_observations[]` must merge into main-agent accepted OOS without rules-1-2 inline triage; security-routed manifest entries follow the same dedicated `- **focus-area**:` field-line predicate.
+ - All-deduplicated `/issue` success must still produce disposition URL evidence using duplicate-of URLs.
+ - All-already-filed design OOS must not disappear from checkpoint evidence.
+ - `repo_unavailable=true` must preserve the documented skipped audit row even though `/issue` is skipped.
+@@ -151,6 +176,7 @@
+ - **Security predicate mismatch:** a broader `focus-area=security` filter could exclude blocks the gate still counts as non-security, causing checkpoint failure after filing. Mitigation: cite `oos-disposition-gate.md` Counting rules / `oos-non-security-block-count.awk` in step 1; structure-test pin dedicated field-line wording.
+ - **Duplicate disposition loss:** all-deduplicated batches could have no `ISSUE_<i>_URL`. Mitigation: parse and record `ISSUE_<i>_DUPLICATE_OF_URL`.
+ - **Design-source mismatch:** filing could miss design OOS that checkpoint still sees. Mitigation: document the same design-source resolution order as checkpoint.
++- **Manifest harvest gap:** Codex/Cursor `oos_observations[]` could never reach Step 9a.1 inputs. Mitigation: step 1 `$MANIFEST_PATH` harvest; structure-test pin `oos_observations[]`.
+ - **Filed-only early-exit gap:** already-filed design OOS could lack checkpoint evidence. Mitigation: explicitly materialize/reuse URL evidence before returning.
+-- **Partial-failure sentinel poisoning:** reruns could skip failed OOS items. Mitigation: suppress sentinel writes on non-zero `/issue` or `ISSUES_FAILED>0`.
++- **Partial-failure sentinel poisoning:** reruns could skip failed OOS items. Mitigation: suppress sentinel writes on non-zero `/issue` or `ISSUES_FAILED>0`.
++- **Partial-failure gate false-pass:** recording any URL from a failed batch in `oos-issues` NDJSON could clear `OOS_PENDING` while items remain undispositioned. Mitigation: step 4/6 forbid gate-visible accepted URL rows until the batch succeeds with no failed items; structure-test pin 8b.
+ - **Guard rot:** one load directive or helper-name mention could pass while a runtime path remains unwired. Mitigation: fixed-string count for two load directives and invocation-fragment assertions.
+ - **Sentinel format drift:** heading-only guard could pass with a gutted format. Mitigation: pin table header, filed tally, and `issues/<n>` URL-token shape.
+ 
+@@ -158,11 +184,13 @@
+   - positive: all new assertions pass.
+   - negative spot-checks before finalizing: removing `oos-pipeline.md`, deleting one mandatory directive, dropping `3.4b`, removing sentinel table pins, or weakening helper invocation fragments fails the guard.
+ - `bash scripts/test-references-headers.sh`
+   - new reference file passes triplet and stale-line-range checks.
+ - `make markdownlint`
+   - confirm MD038/MD001 compliance.
+ - `bash scripts/relevant-checks.sh`
+   - run final relevant checks on changed files.
+ - Spot-grep:
+   - every `Step 9a.1 step 3.4 / 3.4b` citation resolves to `oos-pipeline.md`.
+-  - both Step 8+ OOS runtime paths contain the mandatory load directive.
++  - all three Step 9a.1 entry paths (Exit 0, OOS checkpoint, Python `oos-filing`) contain the mandatory load directive; `Out-of-Scope Handling` section absent from SKILL.md.
+   - `run-statistics` wording remains post-checkpoint-owned; NEVER #5 sentinel branch omits `run-statistics` write.
+   - `oos-pipeline.md` step 1 security predicate matches gate/awk dedicated field-line rule.
++  - `oos-pipeline.md` step 1 documents `oos_observations[]` manifest harvest.
+ 
+-diff_added: 248
+-diff_deleted: 22
+-diff_lines: 270
++diff_added: 318
++diff_deleted: 24
++diff_lines: 342

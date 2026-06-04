@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/ship.py:129-139	Python OOS trigger still names only tmpdir/oos-accepted-design.md	The plan aligns Step 9a.1 design-source resolution, but the Python gate can still miss design-export/oos-accepted-design.md and proceed to PR creation without needs_user_reason=oos-filing	Reuse the same design accepted-file resolver/order in _oos_gate before counting accepted files

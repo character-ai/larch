@@ -1,0 +1,34 @@
+## Summary
+
+`skills/implement/SKILL.md` repeatedly cites a numbered **"Step 9a.1 step 3.4 / 3.4b"** OOS-issue-filing procedure that **does not exist** in the shipped plugin (`47.0.67`). This is a **regression of #1886 / PR #1896**, which previously restored exactly this procedure — it has been lost again. Surfaced during the autonomous `/implement --merge 3240` run (merged as PR #3447), where the OOS combine/file step had to be reconstructed by hand from ~5 scattered references rather than followed from one canonical procedure.
+
+## Regression history
+
+- `skills/implement/references/anchor-template-oos-pipeline.md` (57 lines) held the canonical numbered OOS-pipeline procedure.
+- **#1438** (larch-logs refactor) deleted it.
+- **#1886** filed to restore it; fixed via **PR #1896** (closed `[DONE]`), restoring the numbered procedure (per #1886: "accepted-OOS collection, manifest harvest, combine pass (Rules A/B + criteria 1-6), cap pre-pass, file-conflict pre-pass, `/issue` batch invocation with `--title-prefix "[OOS]"` and `--blocked-by-issue`, output parsing, larch-log batch writes, summary comment upsert, and sentinel write").
+- **Now (`47.0.67`): the procedure is gone again.** Neither `skills/implement/references/oos-pipeline.md` nor `anchor-template-oos-pipeline.md` exists, and there is no inline `## Step 9a.1` section. It has now been lost **twice**, which means whatever guard should prevent this is missing or ineffective.
+
+## Evidence (current `47.0.67`)
+
+- `SKILL.md` references **"Step 9a.1 step 3.4"** / **"step 3.4b"** at lines 440, 457, 459, and "execute the Step 9a.1 OOS GitHub issue pipeline" at lines 1022 / 1040.
+- The step structure goes **Step 7a -> Step 8+ -> Step 16**; there is **no `## Step 9a.1` section** and **no numbered 3.1–3.4b procedure** in `SKILL.md`, `skills/implement/references/` (contents: `codex-manifest-schema*.md`, `conflict-resolution.md`, `pr-body-template.md`, `stall-recovery.md`, `summary-comment-template.md` — no OOS file), or any script `.md`.
+- What remains is the `## Execution Issues Tracking` section (~ lines 396–481): triage policy (rules 1–4), one-line descriptions of Rule A / Rule B / criteria 5/6, the file-conflict rule, the `### OOS_<N>` schema, the dual-write rule, the Terminal disposition invariant; plus the Step 8+ "OOS checkpoint" sequence. Rules without one runnable numbered procedure, and not labeled "Step 9a.1".
+
+## Concrete gaps
+
+1. **Phantom procedure.** The cited "Step 9a.1 §3.4 / §3.4b" substeps are undefined. The real order — collect accepted-OOS sources -> exclude blocks already carrying `- **Filed URL**:` -> combine via Rules A/B + criteria 5/6 -> write `oos-combined.md` -> `oos-issue-cap.sh` -> `oos-file-conflict-deps.sh` -> `/issue` batch -> record filed URLs -> `oos-issues` ndjson append (NEVER #5) -> disposition gate -> `run-statistics` -> clear `OOS_PENDING` -> resume `pr-create` — must be reconstructed from scattered text + helper contracts. A different run/model could assemble it differently or drop a step (e.g. omit the NEVER #5 `oos-issues` ndjson append or the `oos-issues-created.md` sentinel).
+2. **`oos-issues-created.md` format is unspecified.** It is named as the Invariant #1 idempotency sentinel and the disposition gate's `--filed-urls-file`, but no format is documented where it is written; the URL-counting rules live only in `oos-disposition-gate.md`. A run must guess a layout the gate will accept.
+
+## Suggested fix
+
+- **Restore** the numbered Step 9a.1 OOS-pipeline procedure (recover from PR #1896's content / git history), either inline as a `## Step 9a.1 — OOS issue filing` section in `SKILL.md` or as `skills/implement/references/oos-pipeline.md` with a MANDATORY load directive, and point the existing `step 3.4 / 3.4b` citations at it.
+- **Pin the `oos-issues-created.md` format** the disposition gate's `--filed-urls-file` consumes (cross-reference `oos-disposition-gate.md` counting rules) so writer and reader cannot drift.
+- **Add a durable regression guard** (this is the key delta vs. #1886): extend `scripts/test-implement-structure.sh` to assert the Step 9a.1 section/file exists and that the `Step 9a.1 step 3.4 / 3.4b` citations resolve, so a third silent deletion fails CI. #1886/#1477 already noted awk-boundary fragility in that harness; the recurrence shows the assertion is still missing.
+
+## Notes
+
+- Policy-level behavior is present, so outcomes are repeatable *in kind* — the OOS pipeline did run correctly in #3240 (5 issues filed: #3442–#3446; disposition gate passed). This is a documentation/structure regression + missing guard, not a missing capability.
+- The combine grouping itself is intentionally LLM-judged (Rule A) and stays non-deterministic; this issue is about the surrounding *procedure* + sentinel *format* + *regression guard*, not the grouping judgment.
+- Related (all closed): #1886 / PR #1896 (prior restore), #1438 (original deletion), #2540 (Step 9a.1 silent-drop bug), #1477 (test-implement-structure.sh awk-boundary fragility).
+- Surfaced at operator request during the #3240 post-run review.

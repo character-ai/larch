@@ -1,0 +1,162 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,6 +1,6 @@
+ ## Plan
+ 
+-Restore the lost canonical Step 9a.1 OOS-filing procedure as a reference file, pin the `oos-issues-created.md` sentinel format, and add fixed-string CI regression guards that cover both runtime load points and the sentinel/helper contracts. Documentation/structure + test only — no OOS pipeline behavior change. Reconstruct against current helpers, checkpoint ownership, and carve-outs; do not paste the old PR #1896 text verbatim.
++Restore the lost canonical Step 9a.1 OOS-filing procedure as a reference file, pin the `oos-issues-created.md` sentinel format, and add fixed-string CI regression guards that cover all three runtime load points, sentinel/helper contracts, checkpoint sequencing, and manifest-only OOS visibility. Primarily documentation/structure + tests, with one narrow helper-backed trigger-visibility fix for declared `oos_observations[]`; no prompt-side JSON parsing and no OOS filing semantics change. Reconstruct against current helpers, checkpoint ownership, and carve-outs; do not paste the old PR #1896 text verbatim.
+@@ -22,10 +22,10 @@
+   - **1.** Resolve accepted-OOS inputs:
+     - Design source resolution must match the checkpoint contract: explicit design tmpdir / `$DESIGN_TMPDIR`, then `$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md`, then `$IMPLEMENT_TMPDIR/oos-accepted-design.md`.
+     - Also read `$IMPLEMENT_TMPDIR/oos-accepted-review.md` and `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`.
+-    - When `$MANIFEST_PATH` is set and readable JSON, harvest `oos_observations[]` from the external implementer manifest into `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` as `### OOS_N:` blocks (`title`, `description`, `phase` per `skills/implement/references/codex-manifest-schema.md`). Merge with any existing main-agent blocks; do not duplicate titles already present. Apply the same security-routing predicate and design-phase carve-out as other sources. Manifest harvest does **not** perform rules-1-2 inline triage (per schema and SKILL.md dual-write note).
++    - Consume any helper-materialized `### OOS_N:` blocks in `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`. Manifest JSON parsing is owned by `skills/implement/scripts/oos-manifest-materialize.py`, not prompt-side orchestration; the pipeline reads markdown inputs only.
+     - Treat missing files as empty.
+     - **Security routing (gate-aligned)**: exclude a `### OOS_` block only when its body contains a dedicated `- **focus-area**:` field line whose value begins with `security` (case-folded), optionally continued with `-word` tokens (e.g. `security-hardening`) — same predicate as `oos-non-security-block-count.awk` and `oos-disposition-gate.md` Counting rules (`non_security_oos`). Prose such as `focus-area = security` inside a `**Description**` line does **not** mark a block security-routed. Route excluded blocks to SECURITY.md's private flow; do not file via `/issue`.
+     - Apply the design-phase carve-out: exclude any `### OOS_` block whose body already contains `- **Filed URL**:`, but retain those URLs as already-filed disposition evidence.
+@@ -45,12 +45,13 @@
+   - **3.4.** Combine pass:
+     - Write `$IMPLEMENT_TMPDIR/oos-combined.md` and `$IMPLEMENT_TMPDIR/oos-grouping-worksheet.md`.
+     - Cascade `Rule A → Rule B → criteria 1-4 → criterion 5 → criterion 6`.
++    - Reconstruct the executable Rule A, Rule B, criteria 1-6, and grouping-worksheet format from the git skeleton, excluding deleted anchor/PR-body surfaces and preserving the current gate-aligned security predicate.
+     - Reuse the SKILL.md `~30` LOC threshold convention.
+   - **3.4b.** Per-run cap pre-pass:
+     - Invoke `oos-issue-cap.sh --input-file "$IMPLEMENT_TMPDIR/oos-combined.md"`.
+     - Fail closed on non-zero: do not write `oos-issues-created.md`, skip filing, breadcrumb the failure, and leave the checkpoint to block unresolved disposition.
+   - **3.5.** File-conflict pre-pass:
+     - Invoke `oos-file-conflict-deps.sh --input-file "$IMPLEMENT_TMPDIR/oos-combined.md" --output "$IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv"`.
+-    - On non-zero or empty TSV, degraded-continue without `--intra-batch-deps-file`.
++    - On exit 0 with empty TSV, treat as normal no-conflict output and omit `--intra-batch-deps-file`; on non-zero, breadcrumb a warning / Tool Failures note and degraded-continue without `--intra-batch-deps-file`.
+@@ -65,7 +66,7 @@
+     - Accepted entries include created and deduplicated disposition URLs.
+     - On non-zero `/issue` or `ISSUES_FAILED>0`, do **not** append accepted disposition URL rows to the `oos-issues` NDJSON batch (or any other gate-read surface); log the partial failure only under `Tool Failures` / operator breadcrumbs outside gate-satisfaction paths until the batch succeeds with no failed items.
+-    - Rejected/non-accepted entries remain under the Rejected sub-block per `scripts/larch-log-batches.md`.
++    - Rejected/non-accepted entries remain under the Rejected sub-block per SKILL.md OOS carve-outs / Terminal disposition invariant and `oos-disposition-gate.md` Counting rules; use `scripts/larch-log-batches.md` only for compact NDJSON record shape.
+     - Sentinel-recovery and all-already-filed branches still write the required evidence rows.
+   - **7.** Return control to the existing Step 8+ `oos-disposition-checkpoint.sh` gate.
+     - The checkpoint gates clearing `OOS_PENDING`.
+@@ -83,6 +84,18 @@
+   - Wording must be neutral: filed/disposition URLs may be newly created issues or duplicate-of existing issues.
+   - Cross-reference `oos-disposition-gate.md` Counting rules and the SKILL.md Terminal disposition invariant for “URL tables in `oos-issues-created.md`”.
+ 
++### NEW: `skills/implement/scripts/oos-manifest-materialize.py`
++
++Small stdlib-only helper that makes external implementer manifest OOS visible to the existing markdown-file trigger contract without prompt-side JSON parsing.
++
++- Inputs: `--manifest "$MANIFEST_PATH"` and `--output "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md"`; tolerate missing/unreadable manifest as no observations.
++- Parse `oos_observations[]` per `skills/implement/references/codex-manifest-schema.md` and render `### OOS_N:` blocks with title, description, phase, and any focus-area field as markdown.
++- Merge with existing main-agent blocks and do not duplicate titles already present.
++- Do not perform rules-1-2 inline triage; the Step 9a.1 pipeline owns routing, grouping, filing, and disposition evidence.
++- Emit quiet-by-default status suitable for trigger paths to detect whether any observations were materialized.
++
++### UPDATED: `skills/implement/references/codex-manifest-schema.md`
++
++- Document that prompt-side orchestration passes `$MANIFEST_PATH` to `oos-manifest-materialize.py`; it does not parse manifest JSON itself.
++- Clarify that manifest `oos_observations[]` materialization must happen before existing OOS_PENDING / Python `oos-filing` trigger decisions so manifest-only observations enter the same file-based Step 9a.1 flow.
++
+ ### UPDATED: `skills/implement/SKILL.md`
+ 
+ - At all three Step 9a.1 pipeline entry points — the `Exit 0` OOS branch, the `OOS checkpoint` block, and the Python driver `needs_user_reason=oos-filing` dispatch clause — add the mandatory load directive:
+@@ -91,10 +104,12 @@
+ 
+ - Repoint every Step 8+ phantom `the earlier "Out-of-Scope Handling" section` / `Out-of-Scope Handling section` citation (including **Exit 0**, **OOS checkpoint**, and **Exit 1** disposition-gap remediation) to:
+   - the real `## Execution Issues Tracking` section for OOS triage policy, and
+   - `skills/implement/references/oos-pipeline.md` for the executable Step 9a.1 procedure.
+-- In the Python driver selector paragraph, require the same mandatory `oos-pipeline.md` read immediately before running the existing Step 9a.1 `/issue` pipeline on `needs_user_reason=oos-filing` (do not rely on bash-path load directives alone).
++- Before deciding there is no accepted OOS in the bash/checkpoint path, run `oos-manifest-materialize.py` when `$MANIFEST_PATH` is set so manifest-only `oos_observations[]` can create `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` and trigger the existing file-based flow.
++- In the Python driver selector paragraph, require the same mandatory `oos-pipeline.md` read immediately before running the full Step 9a.1 procedure on `needs_user_reason=oos-filing` (do not rely on bash-path load directives alone).
++- Require `needs_user_reason=oos-filing` to mirror OOS checkpoint sequencing: manifest materialization if needed → Step 9a.1 steps 1-7 → `oos-disposition-checkpoint.sh` → post-checkpoint `run-statistics` write only when the checkpoint exits 0 → reinvoke `python3 .../ship.py`.
+ - **Minimal NEVER #5 reconciliation** (required — not byte-stable): narrow **How to apply** so the idempotent-rerun branch writes only `larch-log.sh append … --batch oos-issues` (plus terminal-summary refresh when applicable) from recovered `oos-issues-created.md` URLs; remove the `run-statistics` write from sentinel recovery and state explicitly that `run-statistics` remains owned by the post-checkpoint Step 8+ block after checkpoint exit 0 (consistent with NEVER #14).
+ - Add a one-line pointer in the `### OOS triage policy` / `File-conflict rule` area so `Step 9a.1 step 3.4` and `step 3.4b` explicitly name `oos-pipeline.md` as the procedure home.
+ - Keep post-checkpoint ownership of `run-statistics` unchanged; the new reference must not imply stats are written before `oos-disposition-checkpoint.sh` passes.
+@@ -116,28 +131,35 @@
+ 5. Sentinel-format pins:
+    - `| OOS title | Issue | URL |`
+    - `- **Filed**: <N>`
+    - `issues/<n>`
++5b. Source/evidence pins:
++   - explicit design tmpdir / `$DESIGN_TMPDIR`
++   - `$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md`
++   - `$IMPLEMENT_TMPDIR/oos-accepted-design.md`
++   - all-already-filed design batch materializes checkpoint-visible evidence
++   - `Treat both created URLs and duplicate-of URLs as valid disposition URLs`
+ 6. Helper invocation pins:
+    - `oos-issue-cap.sh --input-file`
+    - `oos-file-conflict-deps.sh --input-file`
+    - `--output "$IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv"`
++   - `oos-manifest-materialize.py`
+ 7. `/issue` duplicate-output pins:
+    - `ISSUE_<i>_DUPLICATE_OF_URL=`
+    - `ISSUE_<i>_DUPLICATE_OF_NUMBER=`
+ 8. Partial-failure pin:
+    - text proving `ISSUES_FAILED>0` suppresses sentinel writes.
+ 8b. Partial-failure gate pin:
+-    - text proving `ISSUES_FAILED>0` (or non-zero `/issue`) must not append accepted disposition URL rows to the `oos-issues` batch before checkpoint.
++    - exact fixed-string pin combining `do **not** append accepted disposition URL rows` with `oos-issues` NDJSON batch.
+ 9. Run-statistics / NEVER #5 ordering pins:
+-   - **AND** (not OR): grep that narrowed NEVER #5 **How to apply** omits `run-statistics` on the sentinel-recovery branch.
+-   - **AND**: grep that `oos-pipeline.md` step 3 forbids pre-checkpoint `run-statistics` on sentinel recovery.
+-   - grep that `run-statistics` remains post-checkpoint-owned in SKILL.md Exit 0 / OOS checkpoint sequencing.
++   - exact positive fixed-string for the narrowed NEVER #5 sentence: sentinel recovery writes only `larch-log.sh append … --batch oos-issues` plus terminal-summary refresh when applicable.
++   - exact negative fixed-string for the old sentinel-recovery `run-statistics` fragment.
++   - fixed-string pin that `oos-pipeline.md` step 3 says `Do not write run-statistics here`.
++   - fixed-string pin that SKILL.md post-checkpoint sequencing owns `run-statistics` after `oos-disposition-checkpoint.sh` exit 0.
+ 10. Security-routing predicate pin in `oos-pipeline.md`:
+-   - dedicated `- **focus-area**:` field-line wording aligned with `oos-non-security-block-count.awk` / gate Counting rules (not bare `focus-area=security` token-only exclusion).
++   - exact predicate fragments: dedicated `- **focus-area**:` field line, value begins with `security`, and Description prose does not mark a block security-routed.
+ 11. Manifest harvest pin in `oos-pipeline.md`:
+-    - `oos_observations[]` and `$MANIFEST_PATH` harvest into `oos-accepted-main-agent.md`.
++    - replace with helper/trigger pins: `oos_observations[]`, `$MANIFEST_PATH`, `oos-manifest-materialize.py`, and materialization before OOS_PENDING / Python `oos-filing` trigger decisions.
++12. Grouping-rule pin:
++    - one distinctive fixed-string guard for the reconstructed Rule A/B + criteria 1-6 worksheet contract, not only the `3.4` label.
+@@ -146,12 +168,13 @@
+ 
+ - Recover the historical procedure from git (`c53086d96^:skills/implement/references/anchor-template-oos-pipeline.md`) only as a structural skeleton.
+ - Rewrite each step against current helpers, checkpoint ownership, duplicate-output fields, design-source resolution, and carve-outs.
+ - Do not reintroduce anchor-comment-era surfaces:
+   - deleted “Accepted OOS section” placeholder
+   - deleted `run-statistics` anchor row
+ - Keep step numbering `1, 2, 3, 3.3, 3.4, 3.4b, 3.5, 4–7` identical to current citations.
+ - Make the sentinel format documentation-only but exact: the gate already accepts loose URL-token shape; the new section makes the writer/reader contract explicit.
++- Add helper-backed manifest materialization before OOS trigger decisions; do not parse `$MANIFEST_PATH` in prompt text.
+ - Use only fixed-string structure guards; no awk range extraction and no new Makefile target.
+ - Wire all three Step 9a.1 entry paths (bash Exit 0, OOS checkpoint, Python `oos-filing`) to the same mandatory `oos-pipeline.md` load.
++- Make Python `oos-filing` run the full Step 9a.1 + checkpoint + post-checkpoint sequencing, not only the `/issue` invocation.
+ - Reconcile NEVER #5 with post-checkpoint `run-statistics` ownership in the same PR so `oos-pipeline.md` and SKILL.md cannot contradict on sentinel recovery.
+@@ -167,7 +190,8 @@
+ - Sentinel recovery must not write `run-statistics` before `oos-disposition-checkpoint.sh` passes (NEVER #5 narrowed + `oos-pipeline.md` Contract/step 3 precedence).
+ - Partial `/issue` failure must not create an idempotency sentinel and must not append accepted disposition URLs to gate-read `oos-issues` NDJSON (partial URLs must not satisfy the disposition gate).
+-- External implementer `oos_observations[]` must merge into main-agent accepted OOS without rules-1-2 inline triage; security-routed manifest entries follow the same dedicated `- **focus-area**:` field-line predicate.
++- External implementer `oos_observations[]` must be materialized by helper before OOS trigger decisions, merge into main-agent accepted OOS without rules-1-2 inline triage, and then follow the same dedicated `- **focus-area**:` field-line predicate in the pipeline.
++- Prompt-side orchestration must not parse manifest JSON; it may only invoke the helper and consume markdown/file-existence results.
+ - All-deduplicated `/issue` success must still produce disposition URL evidence using duplicate-of URLs.
+ - All-already-filed design OOS must not disappear from checkpoint evidence.
+ - `repo_unavailable=true` must preserve the documented skipped audit row even though `/issue` is skipped.
+@@ -181,14 +205,17 @@
+ - **Security predicate mismatch:** a broader `focus-area=security` filter could exclude blocks the gate still counts as non-security, causing checkpoint failure after filing. Mitigation: cite `oos-disposition-gate.md` Counting rules / `oos-non-security-block-count.awk` in step 1; structure-test pin dedicated field-line wording.
+ - **Duplicate disposition loss:** all-deduplicated batches could have no `ISSUE_<i>_URL`. Mitigation: parse and record `ISSUE_<i>_DUPLICATE_OF_URL`.
+ - **Design-source mismatch:** filing could miss design OOS that checkpoint still sees. Mitigation: document the same design-source resolution order as checkpoint.
+-- **Manifest harvest gap:** Codex/Cursor `oos_observations[]` could never reach Step 9a.1 inputs. Mitigation: step 1 `$MANIFEST_PATH` harvest; structure-test pin `oos_observations[]`.
++- **Manifest harvest gap:** Codex/Cursor `oos_observations[]` could never reach Step 9a.1 inputs if materialization runs only inside an already-triggered pipeline. Mitigation: run `oos-manifest-materialize.py` before bash/checkpoint and Python trigger decisions; structure-test pin helper + trigger wording.
++- **Manifest parsing contract drift:** prompt text could start parsing `$MANIFEST_PATH`, contradicting the schema. Mitigation: helper-owned parsing; update `codex-manifest-schema.md`; structure-test pin no prompt-side JSON parsing wording.
+ - **Filed-only early-exit gap:** already-filed design OOS could lack checkpoint evidence. Mitigation: explicitly materialize/reuse URL evidence before returning.
+ - **Partial-failure sentinel poisoning:** reruns could skip failed OOS items. Mitigation: suppress sentinel writes on non-zero `/issue` or `ISSUES_FAILED>0`.
+ - **Partial-failure gate false-pass:** recording any URL from a failed batch in `oos-issues` NDJSON could clear `OOS_PENDING` while items remain undispositioned. Mitigation: step 4/6 forbid gate-visible accepted URL rows until the batch succeeds with no failed items; structure-test pin 8b.
+-- **Guard rot:** one load directive or helper-name mention could pass while a runtime path remains unwired. Mitigation: fixed-string count for two load directives and invocation-fragment assertions.
++- **Guard rot:** one load directive or helper-name mention could pass while a runtime path remains unwired. Mitigation: fixed-string count for three load directives and invocation-fragment assertions.
+ - **Sentinel format drift:** heading-only guard could pass with a gutted format. Mitigation: pin table header, filed tally, and `issues/<n>` URL-token shape.
+@@ -205,9 +232,11 @@
+   - every `Step 9a.1 step 3.4 / 3.4b` citation resolves to `oos-pipeline.md`.
+   - all three Step 9a.1 entry paths (Exit 0, OOS checkpoint, Python `oos-filing`) contain the mandatory load directive; `Out-of-Scope Handling` section absent from SKILL.md.
+   - `run-statistics` wording remains post-checkpoint-owned; NEVER #5 sentinel branch omits `run-statistics` write.
+   - `oos-pipeline.md` step 1 security predicate matches gate/awk dedicated field-line rule.
+-  - `oos-pipeline.md` step 1 documents `oos_observations[]` manifest harvest.
++  - manifest materialization is helper-owned, documented in `codex-manifest-schema.md`, and runs before bash/checkpoint and Python trigger decisions.
++  - design-source resolution, already-filed evidence reuse, and duplicate-of URL disposition are each pinned by fixed strings.
+ 
+-diff_added: 318
+-diff_deleted: 24
+-diff_lines: 342
++diff_added: 390
++diff_deleted: 32
++diff_lines: 422

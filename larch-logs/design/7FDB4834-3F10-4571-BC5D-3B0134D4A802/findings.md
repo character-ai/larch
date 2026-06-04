@@ -1,0 +1,215 @@
+### FINDING_1:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/ship.py:129-137
+- **Concern**: Python OOS gate still uses only $IMPLEMENT_TMPDIR/oos-accepted-design.md. Scenario: The plan mirrors bash trigger semantics, but design OOS exported at design-export/oos-accepted-design.md or DESIGN_TMPDIR would not trigger needs_user_reason=oos-filing on the Python path
+- **Proposed resolution**: Update python/ship.py OOS accepted-file resolution to match scripts/ship-pr.sh resolve_oos_accepted_design_path before adding the manifest materialization hook
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:22-24,60-61; skills/implement/scripts/oos-disposition-checkpoint.sh:175-179
+- **Concern**: Step 2 all-already-filed branch says materialize evidence then return, but checkpoint requires oos-issues.ndjson whenever non_security_oos>0. Scenario: Operator hits all-already-filed (design - **Filed URL**: only), Step 9a.1 returns at step 2 without step 6 NDJSON append; oos-disposition-checkpoint.sh fails validation (missing ndjson) even though Filed URLs exist in design markdown
+- **Proposed resolution**: Clarify step 2: skip steps 3-5 and /issue only; still run step 6 (and step 7 handoff). Tie assertion 12 to step 6 NDJSON evidence, not step 2 return alone
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: plan.txt:94-98; skills/implement/scripts/step2-implement.sh (proposed hook)
+- **Concern**: step2-implement.sh materialize is fail-open; bail between Step 2 complete and ship-pr pr-prep skips the only other wired materialize if ship never runs. Scenario: Manifest-only oos_observations[] never reach oos-accepted-main-agent.md; no OOS_PENDING, no Step 9a.1, silent loss until manual discovery
+- **Proposed resolution**: Fail closed on materialize when jq reports a non-empty oos_observations array, or add the same pre-OOS hook to every terminal bail path that can follow STATUS=complete with MANIFEST_PATH set
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:76-81; skills/implement/SKILL.md:467-475
+- **Concern**: materialize-manifest-oos contract lists only title/description/phase blocks; SKILL dual-write schema also requires Reviewer and Vote tally. Scenario: Merged blocks may omit fields; downstream combine/worksheet and /issue attribution differ from main-agent dual-write entries; harder operator audit
+- **Proposed resolution**: Specify merged block template in materialize-manifest-oos.md (e.g. Reviewer: external implementer, Vote tally: N/A — auto-filed per policy) matching SKILL.md schema
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/ship.py:129-139
+- **Concern**: Python OOS trigger still names only tmpdir/oos-accepted-design.md. Scenario: The plan aligns Step 9a.1 design-source resolution, but the Python gate can still miss design-export/oos-accepted-design.md and proceed to PR creation without needs_user_reason=oos-filing
+- **Proposed resolution**: Reuse the same design accepted-file resolver/order in _oos_gate before counting accepted files
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/references/oos-pipeline.md:22-25 (proposed step 2)
+- **Concern**: All-already-filed branch says materialize evidence before returning but does not route to step 6 or skip steps 3-5. Scenario: Orchestrator may exit Step 9a.1 after step 2 without step 6 oos-issues NDJSON rows; checkpoint requires oos-issues.ndjson when non_security_oos>0 (oos-disposition-checkpoint.sh:175-179)
+- **Proposed resolution**: Mirror sentinel-recovery: explicitly skip steps 3.4-3.5 and step 4; write checkpoint evidence per step 6; then step 7 — replace before returning with continue to step 6
+
+### FINDING_7:
+- **Reviewer(s)**: Codex-Innovation, Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/references/oos-pipeline.md proposed Step 1; scripts/test-implement-structure.sh new assertion 15
+- **Concern**: The plan tells oos-pipeline.md to mention oos_observations[] from $MANIFEST_PATH, but the planned structure test negatively greps that same file for those tokens.. Scenario: Following the prose makes the new test fail; satisfying the test removes the planned Step 1 wording.
+- **Proposed resolution**: Move the manifest-specific wording to materialize-manifest-oos.md and keep oos-pipeline.md Step 1 to “read oos-accepted-main-agent.md after dispatcher materialization.”
+
+### FINDING_8:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/SKILL.md:40; scripts/test-implement-structure.sh new assertion 9
+- **Concern**: The planned NEVER #5 replacement still says run-statistics is not written there and is owned post-checkpoint, but assertion 9 says run-statistics must be absent between idempotent-rerun and the fork carve-out.. Scenario: The intended SKILL.md text can fail the new scoped grep even though the old paired write fragment was removed.
+- **Proposed resolution**: Change the assertion to ban only the old write --batch run-statistics fragment and positively assert the post-checkpoint ownership sentence, or scope the absence check to the single append command sentence.
+
+### FINDING_9:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: python/ship.py:132-136
+- **Concern**: The plan updates Python manifest materialization before OOS gating but does not fix Python’s accepted design path list to match the bash 3-way design resolution.. Scenario: A Python-path run with only $IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md can still skip needs_user_reason=oos-filing and proceed without the OOS checkpoint.
+- **Proposed resolution**: Update _oos_gate to resolve design OOS in the same order as ship-pr.sh and oos-disposition-checkpoint.sh: DESIGN_TMPDIR, then design-export/oos-accepted-design.md, then oos-accepted-design.md.
+
+### FINDING_10:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/scripts/materialize-manifest-oos.md (plan NEW)
+- **Concern**: Merge contract omits monotonic OOS_N allocation. Scenario: Appending manifest blocks without renumbering can duplicate ### OOS_1 headings when oos-accepted-main-agent.md already has dual-write blocks, breaking parse-input.sh and combine/cap
+- **Proposed resolution**: Specify allocate next free OOS_N after scanning existing headings; title dedup only is insufficient
+
+### FINDING_11:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/ship.py:129-137
+- **Concern**: Python OOS trigger still uses only $IMPLEMENT_TMPDIR/oos-accepted-design.md and the plan does not add the bash/checkpoint design-source resolver. Scenario: A Python-path run with design OOS in DESIGN_TMPDIR or design-export/oos-accepted-design.md can miss needs_user_reason=oos-filing and proceed to PR creation without Step 9a.1
+- **Proposed resolution**: Extend python/ship.py _oos_gate with the same design path order as ship-pr.sh/oos-disposition-checkpoint.sh before the materialized OOS decision and cover it with a small regression pin
+
+### FINDING_12:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/test-implement-structure.sh:150-151
+- **Concern**: python/ship.py materialize hook has no CI pin. Scenario: Plan requires pre-_oos_gate materialize in python/ship.py and lists manifest-only skip mitigation for the Python path, but assertion 15 and the testing strategy only guard step2-implement.sh and ship-pr.sh; a missed python wire still passes structure tests and can skip oos-filing when only manifest oos_observations exist
+- **Proposed resolution**: Add a fixed-string pin that python/ship.py invokes materialize-manifest-oos.sh before _oos_gate (or extend assertion 15 and spot-grep); optionally add a focused python/test_ship.py case with manifest.json-only OOS
+
+### FINDING_13:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/ship.py:129-137
+- **Concern**: Python OOS gate still only enumerates $IMPLEMENT_TMPDIR/oos-accepted-design.md; the plan's design-source resolution is confined to the new pipeline after the gate has already decided whether to request oos-filing.. Scenario: With LARCH_SHIP_PR_IMPL=python and design OOS exported to $IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md or explicit DESIGN_TMPDIR, _oos_gate sees zero accepted files, returns OK, and PR creation proceeds without Step 9a.1.
+- **Proposed resolution**: Add a Python resolver mirroring scripts/ship-pr.sh resolve_oos_accepted_design_path and oos-disposition-checkpoint.sh, use it in _oos_gate before PR creation, and cover it in the new structure or Python test.
+
+### FINDING_14:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/ship-pr.sh:1188-1195; python/ship.py:327-329
+- **Concern**: The plan requires manifest-only OOS not be skipped, but it does not specify fail-closed handling for the new pre-trigger materialize-manifest-oos.sh calls. ship-pr.sh intentionally has no set -e, so an unhandled helper failure can be ignored.. Scenario: If the helper is missing or exits nonzero after Step 2's fail-open breadcrumb, accepted-OOS files can remain empty and OOS_PENDING can stay false, letting PR creation proceed with manifest oos_observations undispositioned.
+- **Proposed resolution**: For ship-pr.sh and python/ship.py pre-trigger invocations, capture the helper rc; on nonzero, log Tool Failures and stop with NEEDS_USER/STALLED or conservatively force OOS_PENDING instead of clearing/proceeding. Add a regression assertion for this failure path.
+
+### FINDING_15:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: security
+- **Location**: skills/implement/SKILL.md:409; skills/implement/references/oos-pipeline.md:proposed step 4
+- **Concern**: The new canonical OOS pipeline steps omit the existing outbound dual-write redaction requirement before public /issue filing and oos-issues log rows.. Scenario: Materialized manifest oos_observations are secrets-redacted only; internal URLs or PII in descriptions can be forwarded verbatim to public GitHub issues because /issue's scrubber does not cover those classes.
+- **Proposed resolution**: In oos-pipeline.md step 3.4/4/6, add a mandatory sanitize-before-filing/logging instruction that applies SKILL.md's secrets/internal-URL/PII redaction contract to issue bodies and larch-log records, and pin it in the structure test.
+
+### FINDING_16:
+- **Reviewer(s)**: Cursor-dyn-witness-gap
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/ship.py:129-156
+- **Concern**: _oos_gate accepted-file list omits checkpoint design-path resolution. Scenario: Design OOS only under design-export/ or DESIGN_TMPDIR (see oos-disposition-checkpoint.sh:155-161) are ignored; non_security_oos stays 0 and ship.py skips oos-filing even when Step 9a.1 would file them
+- **Proposed resolution**: In python/ship.py resolve design OOS path like resolve_oos_accepted_design_path / checkpoint before _oos_gate; include that path in accepted_files and filed_urls_strict_files when present
+
+### FINDING_17:
+- **Reviewer(s)**: Codex-dyn-witness-gap
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:18,150
+- **Concern**: Planned oos-pipeline.md content includes `oos_observations[]` and `$MANIFEST_PATH`, but planned assertion 15 says oos-pipeline.md must not contain those harvest tokens. Scenario: The implementer can follow step 1 exactly and then fail the new fixed-string structure test
+- **Proposed resolution**: Remove the `oos_observations[]` and `$MANIFEST_PATH` tokens from planned oos-pipeline.md step 1; say main-agent markdown already includes dispatcher-materialized manifest OOS and point to materialize-manifest-oos.md
+
+### FINDING_18:
+- **Reviewer(s)**: Codex-dyn-witness-gap
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/ship.py:129-139; skills/implement/scripts/oos-disposition-checkpoint.sh:155-161; <TMPDIR>/plan.txt:100-102
+- **Concern**: Python OOS gating still reads only `$IMPLEMENT_TMPDIR/oos-accepted-design.md`, while the checkpoint contract resolves design OOS from DESIGN_TMPDIR, then design-export, then implement tmpdir. Scenario: Python path can miss design-export or DESIGN_TMPDIR accepted OOS and proceed without `needs_user_reason=oos-filing`, despite the plan claiming mirrored OOS trigger semantics
+- **Proposed resolution**: Update python/ship.py to use the same design-source resolution before `_oos_gate` decisions, or call the checkpoint helper instead of duplicating the gate path
+
+### FINDING_19:
+- **Reviewer(s)**: Cursor-dyn-assertion-logic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:18,150,195
+- **Concern**: Assertion 15 forbids `oos_observations[]` anywhere in `oos-pipeline.md`, but planned Step 9a.1 step 1 documents dispatcher-merged `oos_observations[]` from `$MANIFEST_PATH`.. Scenario: Implementer follows the plan text; `test-implement-structure.sh` assertion 15 fails on the shipped reference, or assertion 15 is weakened and manifest-parse prose drifts back into step 1.
+- **Proposed resolution**: Align assertion 15 with intent: scope the negative grep to step 1 only and forbid `harvest` (or `jq`/`parse` of manifest) near `MANIFEST_PATH`, not the provenance parenthetical; or drop `oos_observations[]`/`$MANIFEST_PATH` from step 1 and cite only `materialize-manifest-oos.md`.
+
+### FINDING_20:
+- **Reviewer(s)**: Codex-dyn-assertion-logic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:131, skills/implement/SKILL.md:955,1024,1042
+- **Concern**: Assertion 2 only counts three occurrences and does not prove the three distinct entry paths were updated. Scenario: A partial implementation can paste the mandatory oos-pipeline load directive three times in one SKILL.md paragraph while leaving Python oos-filing or the OOS checkpoint on the old /issue-only path
+- **Proposed resolution**: Add three scoped fixed-string checks keyed to the Python driver selector, the Exit 0 OOS branch, and the OOS checkpoint paragraph; keep the total count only as a secondary guard
+
+### FINDING_21:
+- **Reviewer(s)**: Codex-dyn-assertion-logic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:58,139
+- **Concern**: Assertion 8b is worded as two substring presence checks even though the invariant requires one suppression sentence. Scenario: A test implemented as two greps can pass with do not append accepted disposition URL rows in one section and oos-issues NDJSON in a separate sentence across a section boundary
+- **Proposed resolution**: Pin one exact fixed string or a single-line grep that contains both the suppression phrase and oos-issues NDJSON; make the negative check line-scoped to ISSUES_FAILED>0 plus append accepted disposition URLs
+
+### FINDING_22:
+- **Reviewer(s)**: Codex-dyn-assertion-logic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:18,150
+- **Concern**: Assertion 15's negative grep conflicts with the planned oos-pipeline step 1 text. Scenario: The plan tells oos-pipeline.md to mention dispatcher-merged oos_observations[] from $MANIFEST_PATH, but assertion 15 says oos_observations[] must not appear in that file; following the plan can make the test fail
+- **Proposed resolution**: Remove oos_observations[] and $MANIFEST_PATH from the planned oos-pipeline step 1 prose, or narrow the negative check to forbid harvest/jq parsing instructions rather than a neutral materialization pointer
+
+### FINDING_23:
+- **Reviewer(s)**: Codex-dyn-assertion-logic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: <TMPDIR>/plan.txt:101,150, scripts/ship-pr.sh:1191-1195
+- **Concern**: Manifest materialization ordering is not mechanically pinned for the OOS_PENDING trigger. Scenario: A helper call added after the existing OOS_PENDING size check would satisfy a loose invocation grep but still skip manifest-only OOS in pr-prep
+- **Proposed resolution**: Add an order check that the materialize-manifest-oos.sh call in run_pr_prep_phase appears before the first state_set OOS_PENDING true branch
+
+### FINDING_24:
+- **Reviewer(s)**: Codex-dyn-assertion-logic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:99-102,150-151, python/ship.py:150-163
+- **Concern**: The assertion set does not pin python/ship.py manifest materialization. Scenario: Tests can pass with SKILL.md saying the Python oos-filing path runs steps 1-7 while python/ship.py still reaches NEEDS_USER_OOS_FILING without first materializing manifest-only oos_observations
+- **Proposed resolution**: Add a structure assertion that python/ship.py invokes materialize-manifest-oos.sh before the disposition/OOS_PENDING needs_user_reason decision when ctx.manifest_path is set
+
+### FINDING_25:
+- **Reviewer(s)**: Cursor-dyn-dispatch-wiring
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/ship.py:327-329
+- **Concern**: UPDATED python/ship.py omits fail-open semantics and a concrete hook anchor while step2-implement.sh explicitly requires fail-open on helper failure. Scenario: Under LARCH_SHIP_PR_IMPL=python an implementer may treat materialize-manifest-oos.sh non-zero exit as fatal or skip logging; manifest-only oos_observations stay unmaterialized, _oos_gate sees non_security_count=0, and ship proceeds without needs_user_reason=oos-filing
+- **Proposed resolution**: Add to UPDATED python/ship.py: invoke materialize immediately before _oos_gate (line 327), gate on Path(ctx.manifest_path).is_file(), subprocess via runner.run without aborting run_ship on non-zero, append Tool Failures to ctx.tmpdir/execution-issues.md on infrastructure failure (mirror step2 fail-open)
+
+### FINDING_26:
+- **Reviewer(s)**: Cursor-dyn-dispatch-wiring
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: scripts/ship-pr.sh:1191-1196
+- **Concern**: UPDATED ship-pr.sh specifies materialize before the OOS_PENDING size check but unlike step2-implement.sh does not require fail-open Tool Failures logging on helper failure. Scenario: ship-pr.sh intentionally omits set -e (lines 4-7) so an unchecked helper non-zero rc fail-opens silently without breadcrumb; if Step 2 materialization also failed quietly, pr-prep can fall through to run_oos_disposition_gate_if_required_before_oos_pending_false with empty accepted files and clear OOS_PENDING despite manifest-only OOS
+- **Proposed resolution**: Add explicit fail-open contract to UPDATED ship-pr.sh: capture helper rc, append Tool Failures via append-execution-issue.sh on non-zero, always continue to the existing -s oos-accepted-*.md OOS_PENDING branch at lines 1192-1196
+
+### OOS_1:
+- **Description**: Python _oos_gate only checks tmpdir/oos-accepted-design.md, not design-export/ or DESIGN_TMPDIR. Scenario: Accepted OOS only under design-export/oos-accepted-design.md can pass bash OOS_PENDING yet Python LARCH_SHIP_PR_IMPL=python never surfaces oos-filing
+- **Reviewer**: Cursor-Edge
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/ship.py:129-137
+- **Phase**: design

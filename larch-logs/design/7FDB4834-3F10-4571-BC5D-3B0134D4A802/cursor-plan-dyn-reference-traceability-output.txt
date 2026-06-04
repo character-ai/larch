@@ -1,0 +1,22 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:181,197-198	Failure modes claim fixed-string count for two load directives while Testing strategy and assertion 2 require at least three occurrences in SKILL.md	Guard-rot mitigation text contradicts the structure test; implementers may under-wire the Python oos-filing path or write a count check that passes at 2 and misses the third entry	Align Failure modes and Approach guard text with assertion 2: three mandatory load directives (Exit 0 OOS branch, OOS checkpoint block, Python needs_user_reason=oos-filing)
+2	in_scope	important	correctness	skills/implement/scripts/oos-issue-cap.md:95-96	Edit-in-sync still references scripts/test-implement-structure.sh assertion 9g, which is absent from scripts/test-implement-structure.sh after anchor removal	Implementers following oos-issue-cap.md will hunt a non-existent harness pin; drift between cap helper and CI guards persists	Extend the oos-issue-cap.md update to repoint Edit-in-sync to the new structure-test pins (or oos-pipeline.md) and drop the stale 9g reference
+3	in_scope	important	architecture	skills/implement/scripts/oos-file-conflict-deps.md:71-76,skills/implement/scripts/oos-issue-cap.md:86-91	Plan only repoints a nonexistent see-also pointer; both helper contracts Edit-in-sync still require skills/implement/SKILL.md Step 9a.1 procedure	After oos-pipeline.md becomes canonical, Edit-in-sync still sends editors to SKILL.md for executable steps, recreating the missing-procedure gap	Change both helper UPDATED sections to replace Edit-in-sync procedure bullets with skills/implement/references/oos-pipeline.md (keep SKILL.md narrative bullets only)
+4	in_scope	latent	plan.txt:37-39	oos-pipeline.md step 3.4b says breadcrumb cap failure but does not bind the fail-closed warning text already defined in oos-issue-cap.md	Git skeleton c53086d96^ cap-failure prose included pre-checkpoint run-statistics writes; an underspecified step 3.4b could reintroduce that ordering conflict with NEVER #14	In step 3.4b, cite oos-issue-cap.md fail-closed contract verbatim (no sentinel, skip steps 3.5 and 4, exact warning string) and state explicitly that run-statistics is not written before oos-disposition-checkpoint.sh passes
+
+**Verified against current repo (traceability OK for post-PR intent)**
+
+| Plan claim | Current repo |
+|------------|----------------|
+| NEVER #5 at `skills/implement/SKILL.md:40` — sentinel branch includes `run-statistics` write | Present; plan’s narrow reconciliation matches the drift to fix |
+| NEVER #14 at `:58`, #15 at `:60` — checkpoint before `run-statistics` / `OOS_PENDING=false` | Present and accurately summarized |
+| Step 9a.1 sub-steps `3.4` / `3.4b` cited from SKILL | `:440`, `:457`, `:459` reference `Step 9a.1 step 3.4` / `step 3.4b`; no `oos-pipeline.md` yet (plan creates home) |
+| Three entry surfaces | Exit 0 `:1024`, OOS checkpoint `:1042`, Python `needs_user_reason=oos-filing` `:955` |
+| Phantom `"Out-of-Scope Handling"` | Only at `:1024` and `:1042` (Exit 1 remediation on same `:1042` line); real policy is `## Execution Issues Tracking` / `### OOS triage policy` (`:396`, `:448`) |
+| `oos-disposition-gate.md` Counting rules + `oos-non-security-block-count.awk` dedicated `- **focus-area**:` line | `oos-disposition-gate.md:30-31`; awk `:13-14` — matches plan step 1 predicate |
+| Design source order (`DESIGN_TMPDIR`, `design-export/`, implement tmpdir) | `oos-disposition-checkpoint.md:20` and `oos-disposition-checkpoint.sh:156-160` |
+| `/issue` duplicate KV lines | `skills/issue/SKILL.md:332-342` |
+| `Skipped — repo unavailable` audit row | `skills/implement/SKILL.md:407` |
+| Helper invocations `--input-file`, `--output …/oos-intra-batch-deps.tsv` | `oos-issue-cap.md`, `oos-file-conflict-deps.md`, SKILL `:440-442` |
+
+**Exonerated (not plan deficiencies):** missing `oos-pipeline.md` pre-PR; NEVER #5/#14/#15 existing but misaligned until SKILL edit; security predicate change vs deleted anchor substring rule (intentional gate alignment).
