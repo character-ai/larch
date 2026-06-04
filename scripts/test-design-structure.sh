@@ -88,25 +88,58 @@ assert_thin_fence() {
 
 assert_gate_b_bypass_branch_sentinels() {
   local file="$1"
-  local branch
-  branch=$(awk '
-    /`LOOP_STATUS=plan-size-trigger`/ { in_branch=1 }
-    in_branch && /`LOOP_STATUS=plan-validator-defects`/ { exit }
-    in_branch { print }
+  local branch token line required label
+  for branch in cap-reached tally-error panel-failed skipped-cap-reached degraded-empty-collector plan-validator-defects plan-size-trigger; do
+    case "$branch" in
+      skipped-cap-reached)
+        token='TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached'
+        ;;
+      *)
+        token="LOOP_STATUS=$branch"
+        ;;
+    esac
+    # Key on the literal step-3 sentinel write so descriptive prose that only
+    # names the sentinels cannot satisfy the branch-specific pin.
+    line=$(awk -v token="$token" '
+      index($0, token) && index($0, ": > \"$DESIGN_TMPDIR/.completed/step-3\"") { print; exit }
+    ' "$file")
+    [[ -n "$line" ]] || fail "$branch branch missing literal Gate-B-bypass sentinel-write line"
+    # shellcheck disable=SC2016 # literal SKILL.md shell excerpts should not expand in the harness.
+    for required in \
+      'mkdir -p "$DESIGN_TMPDIR/.completed"' \
+      ': > "$DESIGN_TMPDIR/.completed/step-3"' \
+      ': > "$DESIGN_TMPDIR/.completed/step-3.5"' \
+      ': > "$DESIGN_TMPDIR/.completed/step-3.6"'
+    do
+      case "$required" in
+        'mkdir -p '*)
+          label='.completed mkdir'
+          ;;
+        *'step-3.5'*)
+          label='step-3.5 sentinel'
+          ;;
+        *'step-3.6'*)
+          label='step-3.6 sentinel'
+          ;;
+        *)
+          label='step-3 sentinel'
+          ;;
+      esac
+      [[ "$line" == *"$required"* ]] || fail "$branch branch missing $label"
+    done
+  done
+}
+
+assert_step3b_entry_guard_threads_repo() {
+  local file="$1" line
+  line=$(awk '
+    /<!-- step:3b/ { in_region=1; next }
+    in_region && /<!-- step:4 / { exit }
+    in_region && /\.pause-requested/ && /design-pause-save\.sh/ { print; exit }
   ' "$file")
-  [[ -n "$branch" ]] || fail "SKILL.md missing LOOP_STATUS=plan-size-trigger branch"
-  # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the harness.
-  grep -Fq 'mkdir -p "$DESIGN_TMPDIR/.completed"' <<<"$branch" \
-    || fail "plan-size-trigger branch missing .completed mkdir"
-  # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the harness.
-  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3"' <<<"$branch" \
-    || fail "plan-size-trigger branch missing step-3 sentinel"
-  # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the harness.
-  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3.5"' <<<"$branch" \
-    || fail "plan-size-trigger branch missing step-3.5 sentinel"
-  # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the harness.
-  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3.6"' <<<"$branch" \
-    || fail "plan-size-trigger branch missing step-3.6 sentinel"
+  [[ -n "$line" ]] || fail "SKILL Step 3b missing entry pause-save guard"
+  # shellcheck disable=SC2016 # literal repo passthrough syntax is pinned.
+  [[ "$line" == *'${REPO:+--repo "$REPO"}'* ]] || fail "SKILL Step 3b entry pause-save guard must thread REPO"
 }
 
 run_thin_fence_self_tests() {
@@ -175,7 +208,46 @@ EOF_SELF
   fi
 }
 
+write_gate_b_bypass_fixture() {
+  local file="$1" missing_branch="${2:-}" missing_sentinel="${3:-}" branch line step35
+  : >"$file"
+  for branch in tally-error degraded-empty-collector plan-size-trigger plan-validator-defects panel-failed; do
+    # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the fixture.
+    step35=', and `: > "$DESIGN_TMPDIR/.completed/step-3.5"`'
+    if [[ "$branch" == "$missing_branch" && "$missing_sentinel" == step-3.5 ]]; then
+      step35=''
+    fi
+    printf '%s\n' "- \`LOOP_STATUS=$branch\` — Before jumping to Step 3b, write the Gate-B-bypass completion sentinels: \`mkdir -p \"\$DESIGN_TMPDIR/.completed\"\` plus \`: > \"\$DESIGN_TMPDIR/.completed/step-3\"\`${step35}, and \`: > \"\$DESIGN_TMPDIR/.completed/step-3.6\"\`." >>"$file"
+  done
+  # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the fixture.
+  line='If `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, write the Gate-B-bypass completion sentinels: `mkdir -p "$DESIGN_TMPDIR/.completed"` plus `: > "$DESIGN_TMPDIR/.completed/step-3"`, `: > "$DESIGN_TMPDIR/.completed/step-3.5"`, and `: > "$DESIGN_TMPDIR/.completed/step-3.6"`.'
+  printf '%s\n' "$line" >>"$file"
+}
+
+run_gate_b_bypass_branch_sentinel_self_tests() {
+  local tmp base missing_tally missing_panel
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-design-structure-gateb.XXXXXX")
+  trap 'rm -rf "$tmp"' RETURN
+
+  base="$tmp/base.md"
+  write_gate_b_bypass_fixture "$base"
+  assert_gate_b_bypass_branch_sentinels "$base"
+
+  missing_tally="$tmp/missing-tally.md"
+  write_gate_b_bypass_fixture "$missing_tally" tally-error step-3.5
+  if (assert_gate_b_bypass_branch_sentinels "$missing_tally") 2>/dev/null; then
+    fail 'self-test: tally-error branch without step-3.5 sentinel should fail'
+  fi
+
+  missing_panel="$tmp/missing-panel.md"
+  write_gate_b_bypass_fixture "$missing_panel" panel-failed step-3.5
+  if (assert_gate_b_bypass_branch_sentinels "$missing_panel") 2>/dev/null; then
+    fail 'self-test: panel-failed branch without step-3.5 sentinel should fail'
+  fi
+}
+
 run_thin_fence_self_tests
+run_gate_b_bypass_branch_sentinel_self_tests
 
 contains "$SKILL_MD" '[--hard]' 'SKILL argument hint must expose --hard as the sole tier flag'
 absent "$SKILL_MD" '[--simple|' 'SKILL argument hint must not restore [--simple|--hard] tier alternation'
@@ -575,6 +647,7 @@ contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'gate B 
 contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'missing gate B bypass sentinels should resume at 3.5' 'pause/resume harness missing missing-sentinel regression'
 assert_gate_b_bypass_branch_sentinels "$SKILL_MD"
 assert_thin_fence "$SKILL_MD" 'SKILL Step 3.6 thin-fence shape' '<!-- step:3.6' '<!-- step:3b'
+assert_step3b_entry_guard_threads_repo "$SKILL_MD"
 assert_thin_fence "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'design-plan-quality-assessor.sh thin-fence shape'
 # Check 17: Step 5b /larch:issue summary-halt guardrails (#2681).
 ORCHESTRATOR_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"

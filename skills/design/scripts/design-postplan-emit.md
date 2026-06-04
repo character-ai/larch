@@ -17,7 +17,7 @@ Only the initial Step 2b call passes `--snapshot-original`. Re-emit sites suppre
 ## Responsibilities
 
 1. Resolve `CLAUDE_PLUGIN_ROOT`, export `CLAUDE_PLUGIN_ROOT` and `DESIGN_TMPDIR`, and read `review_budget` from `run-params.json` with a `jq` primary path and `sed` fallback. Snapshot eligibility is resolved separately through `read-design-classification.sh`.
-2. Pause checkpoint before each internal step. If `.pause-requested` exists, `_postplan_resolve_issue` uses prelude-sourced `ISSUE_NUMBER` or `source-env.sh` (`export ISSUE_NUMBER=...`) and then `exec`s `design-pause-save.sh`.
+2. Pause checkpoint before each internal step. If `.pause-requested` exists, `_postplan_resolve_issue` uses prelude-sourced `ISSUE_NUMBER` or `source-env.sh` (`export ISSUE_NUMBER=...`), `_postplan_resolve_repo` reads `export REPO=...` from `source-env.sh` without sourcing it, and then the driver `exec`s `design-pause-save.sh` with `--repo` only when `REPO` is non-empty.
 3. Pipe `ACTION=EMIT_PLAN` to `design-driver.sh` and parse `EMIT_PLAN_STATUS` / `DIFF_LINES`.
 4. When `--snapshot-original` and `read-design-classification.sh` resolves `design_classification=HARD`, run `snapshot-plan-round.sh write-original --design-tmpdir DIR`; otherwise emit a skipped snapshot status.
 5. Run `invoke-plan-validator.sh DIR/plan.txt` unless `review_budget=quick` and `--force-validate` is absent.
@@ -89,4 +89,4 @@ Update together: `skills/design/SKILL.md` Step 2b and Gate A re-entry prose, `sk
 
 ## Classification warnings
 
-Classification warnings from `read-design-classification.sh` are operator-visible under default quiet mode. `WARN_LINES=()` is initialized before the classification read, stderr from the classification helper is captured, and non-empty warning lines are emitted as repeatable `WARN=` stdout KVs by `_postplan_write_result_and_emit`. The stdout classification value and `HARD` fallback semantics are unchanged.
+Classification warnings from `read-design-classification.sh` are operator-visible under default quiet mode. `WARN_LINES=()` is initialized before the classification read, stderr from the classification helper is captured, and non-empty warning lines are emitted as repeatable `WARN=` stdout KVs by `_postplan_write_result_and_emit`. If the helper exits non-zero without stderr, the driver appends a synthetic `WARN=` noting the non-zero exit and the HARD fallback. The stdout classification value and `HARD` fallback semantics are unchanged.
