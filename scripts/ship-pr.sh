@@ -1159,7 +1159,7 @@ sanitize_diagram_or_placeholder() {
 }
 
 run_pr_prep_phase() {
-    local summary tests closes code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path _had_errexit=0
+    local summary tests closes code_flow_file composed_summary plan_goals_file run_id fail_file gate_rc oos_design_path _had_errexit=0 manifest_path materialize_oos materialize_rc
     larch_err "→ ship-pr: PR prep"
     summary=$(manifest_summary)
     if [ -z "$summary" ]; then
@@ -1187,6 +1187,24 @@ run_pr_prep_phase() {
         printf '<details><summary>Test plan</summary>\n\n%s\n\n</details>\n\n' "$tests"
         printf '%s\n\nGenerated with [Claude Code](https://claude.com/claude-code)\n' "$closes"
     } > "$IMPLEMENT_TMPDIR/pr-body.md"
+
+    manifest_path=$(read_state MANIFEST_PATH)
+    materialize_oos="$PLUGIN_ROOT/skills/implement/scripts/materialize-manifest-oos.sh"
+    if [ -n "$manifest_path" ] && [ -f "$manifest_path" ]; then
+        fail_file=$(failure_capture_path pr-prep)
+        _had_errexit=0
+        case $- in *e*) _had_errexit=1 ;; esac
+        set +e
+        bash "$materialize_oos" --manifest-path "$manifest_path" --implement-tmpdir "$IMPLEMENT_TMPDIR" >"$fail_file" 2>&1
+        materialize_rc=$?
+        (( _had_errexit )) && set -e
+        if [ "$materialize_rc" -ne 0 ]; then
+            record_failure pr-prep "materialize-manifest-oos.sh" "$materialize_rc" "$fail_file" Tool Failures
+            state_set OOS_PENDING true
+            advance_phase pr-create
+            exit 0
+        fi
+    fi
 
     oos_design_path=$(resolve_oos_accepted_design_path "$IMPLEMENT_TMPDIR")
     if [ -s "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" ] || [ -s "$oos_design_path" ] || [ -s "$IMPLEMENT_TMPDIR/oos-accepted-review.md" ]; then

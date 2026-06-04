@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2016
 # Structural regression test for /implement SKILL.md + larch-log migration.
 
 set -euo pipefail
@@ -416,6 +417,123 @@ grep -Fq 'NEVER set `OOS_PENDING=false` without a passing `oos-disposition-check
 # shellcheck disable=SC2016
 grep -Fq '${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/oos-disposition-checkpoint.sh' "$SKILL_MD" \
   || fail "SKILL.md Step 8+ must reference oos-disposition-checkpoint.sh"
+
+
+OOS_PIPELINE_MD="$REFS_DIR/oos-pipeline.md"
+MATERIALIZE_OOS_SH="$REPO_ROOT/skills/implement/scripts/materialize-manifest-oos.sh"
+MATERIALIZE_OOS_MD="$REPO_ROOT/skills/implement/scripts/materialize-manifest-oos.md"
+STEP2_IMPLEMENT_SH="$REPO_ROOT/skills/implement/scripts/step2-implement.sh"
+PY_SHIP="$REPO_ROOT/python/ship.py"
+
+[[ -f "$OOS_PIPELINE_MD" ]] || fail "oos-pipeline.md must exist under skills/implement/references"
+# shellcheck disable=SC2016
+load_count=$(grep -Fc '${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md' "$SKILL_MD" || true)
+[[ "${load_count:-0}" -ge 3 ]] || fail "SKILL.md must load oos-pipeline.md at least three Step 9a.1 entry points"
+! grep -Fq 'Out-of-Scope Handling' "$SKILL_MD" \
+  || fail "SKILL.md must not retain phantom Out-of-Scope Handling section citations"
+# shellcheck disable=SC2016
+grep -Fq '**MANDATORY — READ ENTIRE FILE before executing the OOS pipeline**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`' "$SKILL_MD" \
+  || fail "SKILL.md must contain the mandatory oos-pipeline.md load directive"
+grep -Fq 'needs_user_reason` (`oos-filing` requires' "$SKILL_MD" \
+  || fail "Python oos-filing dispatch must mention oos-pipeline.md load context"
+grep -Fq '**OOS checkpoint**: when `OOS_PENDING=true`' "$SKILL_MD" \
+  || fail "OOS checkpoint paragraph missing"
+grep -Fq '**Exit 0**: if `OOS_PENDING=true`' "$SKILL_MD" \
+  || fail "Exit 0 OOS_PENDING branch missing"
+
+grep -Fq '3.4. **Combine pass**' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must define step 3.4"
+grep -Fq '3.4b. **Per-run cap pre-pass**' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must define step 3.4b"
+grep -Fq '## oos-issues-created.md sentinel format' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must pin oos-issues-created.md sentinel format"
+grep -Fq '| OOS title | Issue | URL |' "$OOS_PIPELINE_MD" \
+  || fail "sentinel table header missing"
+grep -Fq -- '- **Filed**: <N>' "$OOS_PIPELINE_MD" \
+  || fail "sentinel filed tally missing"
+grep -Fq 'issues/<n>' "$OOS_PIPELINE_MD" \
+  || fail "sentinel URL token issues/<n> missing"
+grep -Fq 'oos-issue-cap.sh --input-file' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must invoke oos-issue-cap.sh --input-file"
+grep -Fq 'oos-file-conflict-deps.sh --input-file' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must invoke oos-file-conflict-deps.sh --input-file"
+# shellcheck disable=SC2016
+grep -Fq -- '--output "$IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv"' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must pin oos-intra-batch-deps.tsv output"
+grep -Fq 'ISSUE_<i>_DUPLICATE_OF_URL=' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must parse duplicate-of URL"
+grep -Fq 'ISSUE_<i>_DUPLICATE_OF_NUMBER=' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must parse duplicate-of number"
+grep -Fq 'ISSUES_FAILED>0`, do not write `$IMPLEMENT_TMPDIR/oos-issues-created.md`' "$OOS_PIPELINE_MD" \
+  || fail "partial failure must suppress sentinel write"
+grep -Fq 'do **not** append accepted disposition URL rows to the `oos-issues` NDJSON batch' "$OOS_PIPELINE_MD" \
+  || fail "partial failure must suppress gate-visible accepted oos-issues rows"
+
+never5_block=$(awk '/^5\. \*\*NEVER let the Step 9a\.1 sentinel/{flag=1; print; next} flag && /^6\. \*\*/{exit} flag{print}' "$SKILL_MD")
+if printf '%s\n' "$never5_block" | grep -Fq 'write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --batch run-statistics'; then
+  fail "NEVER #5 How to apply must not write run-statistics"
+fi
+printf '%s\n' "$never5_block" | grep -Fq 'append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --batch oos-issues' \
+  || fail "NEVER #5 How to apply must append oos-issues"
+grep -Fq 'do not write `run-statistics` here' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md step 3 must forbid run-statistics on sentinel recovery"
+grep -Fq 'larch-log.sh write --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch run-statistics' "$SKILL_MD" \
+  || fail "post-checkpoint run-statistics write must remain in OOS checkpoint prose"
+
+grep -Fq 'dedicated `- **focus-area**:` field line whose value begins with `security`' "$OOS_PIPELINE_MD" \
+  || fail "security predicate must use dedicated focus-area line beginning with security"
+grep -Fq 'Prose such as `focus-area = security` inside a `**Description**` line does **not** mark' "$OOS_PIPELINE_MD" \
+  || fail "security predicate must not treat Description prose as security-routed"
+# shellcheck disable=SC2016
+grep -Fq '$DESIGN_TMPDIR/oos-accepted-design.md' "$OOS_PIPELINE_MD" \
+  || fail "design source resolver must mention DESIGN_TMPDIR"
+grep -Fq 'design-export/oos-accepted-design.md' "$OOS_PIPELINE_MD" \
+  || fail "design source resolver must mention design-export path"
+# shellcheck disable=SC2016
+grep -Fq '$IMPLEMENT_TMPDIR/oos-accepted-design.md' "$OOS_PIPELINE_MD" \
+  || fail "design source resolver must mention flat implement tmpdir path"
+grep -Fq 'Still run step 6' "$OOS_PIPELINE_MD" \
+  || fail "all-already-filed branch must still run step 6"
+grep -Fq 'Treat both created URLs and duplicate-of URLs as valid disposition URLs' "$OOS_PIPELINE_MD" \
+  || fail "duplicate-of URLs must count as disposition URLs"
+grep -Fq 'Rule A — same logical concern' "$OOS_PIPELINE_MD" \
+  || fail "combine substance must include Rule A"
+grep -Fq 'oos-grouping-worksheet.md' "$OOS_PIPELINE_MD" \
+  || fail "combine substance must include worksheet"
+grep -Fq 'INPUT_<i>' "$OOS_PIPELINE_MD" \
+  || fail "worksheet contract must pin INPUT_<i>"
+[[ -x "$MATERIALIZE_OOS_SH" ]] || fail "materialize-manifest-oos.sh must exist and be executable"
+grep -Fq 'materialize-manifest-oos.sh' "$STEP2_IMPLEMENT_SH" \
+  || fail "step2-implement.sh must invoke materialize-manifest-oos.sh"
+grep -Fq 'materialize-manifest-oos.sh' "$SHIP_PR_SH" \
+  || fail "ship-pr.sh must invoke materialize-manifest-oos.sh"
+grep -Fq 'materialize-manifest-oos.sh' "$PY_SHIP" \
+  || fail "python/ship.py must invoke materialize-manifest-oos.sh"
+ship_pr_materialize_order=0
+awk '
+  /^run_pr_prep_phase\(\)/ { in_fn=1; next }
+  in_fn && /^}/ { exit }
+  in_fn && /materialize-manifest-oos\.sh/ && mat == 0 { mat = NR }
+  in_fn && /state_set OOS_PENDING true/ && pend == 0 { pend = NR }
+  END { if (mat == 0 || pend == 0 || mat >= pend) exit 1 }
+' "$SHIP_PR_SH" || ship_pr_materialize_order=$?
+[[ "$ship_pr_materialize_order" == "0" ]] \
+  || fail "ship-pr.sh must materialize manifest OOS before first pr-prep OOS_PENDING=true"
+step1_block=$(awk '/^1\. \*\*Resolve accepted-OOS inputs\*\*/{flag=1; print; next} flag && /^2\. \*\*/{exit} flag{print}' "$OOS_PIPELINE_MD")
+if printf '%s\n' "$step1_block" | grep -Fq 'harvest' && printf '%s\n' "$step1_block" | grep -Fq 'MANIFEST_PATH'; then
+  fail "oos-pipeline.md step 1 must not harvest MANIFEST_PATH"
+fi
+if printf '%s\n' "$step1_block" | grep -Fq 'jq' && printf '%s\n' "$step1_block" | grep -Fq 'manifest'; then
+  fail "oos-pipeline.md step 1 must not parse manifest JSON with jq"
+fi
+grep -Fq 'full Step 9a.1 steps 1–7' "$SKILL_MD" \
+  || fail "Python oos-filing dispatch must mention full steps 1–7"
+grep -Fq '<REDACTED-TOKEN>' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must pin redaction token"
+grep -Fq '<INTERNAL-URL>' "$OOS_PIPELINE_MD" \
+  || fail "oos-pipeline.md must pin internal URL redaction"
+grep -Fq 'monotonic `OOS_N`' "$MATERIALIZE_OOS_MD" \
+  || fail "materialize-manifest-oos contract must pin monotonic OOS_N allocation"
 
 # Folded Step 0 / admission structural pins (fix-issue removal; Step 0 + Preflight admission)
 grep -Fq 'scripts/implement-admission.sh' "$SKILL_MD" \

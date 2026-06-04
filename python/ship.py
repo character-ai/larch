@@ -126,14 +126,74 @@ def _pr_title(ctx: RunContext, runner: Runner, *, cwd: str | None) -> str:
     return title if not prefix or title.startswith(prefix) else f"{prefix}{title}"
 
 
+
+def resolve_oos_accepted_design_path(tmpdir: Path) -> Path:
+    """Resolve accepted design OOS path in bash checkpoint order."""
+    design_tmpdir = os.environ.get("DESIGN_TMPDIR", "")
+    if design_tmpdir:
+        return Path(design_tmpdir) / "oos-accepted-design.md"
+    exported = tmpdir / "design-export" / "oos-accepted-design.md"
+    if exported.is_file():
+        return exported
+    return tmpdir / "oos-accepted-design.md"
+
+
+def _append_execution_tool_failure(ctx: RunContext, message: str) -> None:
+    path = Path(ctx.tmpdir) / "execution-issues.md"
+    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
+    bullet = f"- **Step pr-create**: {message}\n"
+    if "### Tool Failures\n" in existing:
+        updated = existing.rstrip() + "\n" + bullet
+    else:
+        sep = "" if not existing else "\n"
+        updated = existing.rstrip() + sep + "### Tool Failures\n" + bullet
+    _ = path.write_text(updated, encoding="utf-8")
+
+
+def _materialize_manifest_oos(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult | None:
+    manifest_path = Path(ctx.manifest_path) if ctx.manifest_path else None
+    if manifest_path is None or not manifest_path.is_file():
+        return None
+    script = (
+        Path(__file__).resolve().parents[1]
+        / "skills"
+        / "implement"
+        / "scripts"
+        / "materialize-manifest-oos.sh"
+    )
+    result = runner.run(
+        [
+            "bash",
+            str(script),
+            "--manifest-path",
+            str(manifest_path),
+            "--implement-tmpdir",
+            ctx.tmpdir,
+        ],
+        cwd=cwd,
+    )
+    if result.returncode == 0:
+        return None
+    _append_execution_tool_failure(
+        ctx,
+        "materialize-manifest-oos.sh failed before OOS disposition; leaving OOS filing pending.",
+    )
+    return ShipResult(
+        Outcome.NEEDS_USER_INPUT,
+        needs_user_reason=config.NEEDS_USER_OOS_FILING,
+        detail=config.NEEDS_USER_OOS_FILING,
+    )
+
+
 def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult | None:
     tmpdir = Path(ctx.tmpdir)
+    design_path = resolve_oos_accepted_design_path(tmpdir)
     accepted = tuple(
         str(path)
         for path in (
             tmpdir / "oos-accepted-review.md",
             tmpdir / "oos-accepted-main-agent.md",
-            tmpdir / "oos-accepted-design.md",
+            design_path,
         )
         if path.is_file()
     )
@@ -324,6 +384,9 @@ def run_ship(
             test_plan=ctx.test_plan or "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
             issue_number=int(ctx.issue_number or ctx.issue) if (ctx.issue_number or ctx.issue).isdigit() else None,
         )
+        materialize_result = _materialize_manifest_oos(runner, ctx, cwd=repo_root)
+        if materialize_result is not None:
+            return materialize_result
         oos_result = _oos_gate(runner, ctx, cwd=repo_root)
         if oos_result is not None:
             return oos_result

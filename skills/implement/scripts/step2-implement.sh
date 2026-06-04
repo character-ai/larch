@@ -1103,6 +1103,50 @@ if [[ -x "$REDACT" ]]; then
     mv "$TMP_SAN.0" "$MANIFEST_PATH"
 fi
 
+# Step 8b: materialize external-implementer manifest OOS before any
+# downstream OOS_PENDING trigger can inspect only file-based accepted-OOS
+# artifacts. Fail closed when the manifest contains observations; fail open
+# with a Tool Failures breadcrumb when there is no OOS to lose.
+if [[ "$STATUS" == "complete" ]]; then
+    MATERIALIZE_OOS="$PLUGIN_ROOT/skills/implement/scripts/materialize-manifest-oos.sh"
+    MAT_OOS_COUNT=$(jq 'if (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$MANIFEST_PATH" 2>/dev/null || printf '0')
+    MAT_OOS_LOG="$TMPDIR_ARG/materialize-manifest-oos.log"
+    if [[ -x "$MATERIALIZE_OOS" ]]; then
+        if ! bash "$MATERIALIZE_OOS" --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" >"$MAT_OOS_LOG" 2>&1; then
+            APPEND_TOOL="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+            if [[ -x "$APPEND_TOOL" ]]; then
+                "$APPEND_TOOL" \
+                    --log "$TMPDIR_ARG/execution-issues.md" \
+                    --site "step2-materialize-manifest-oos" \
+                    --tool "materialize-manifest-oos.sh" \
+                    --exit-code "1" \
+                    --category "Tool Failures" \
+                    --output-file "$MAT_OOS_LOG" \
+                    --redact >/dev/null 2>&1 || true
+            fi
+            if [[ "${MAT_OOS_COUNT:-0}" -gt 0 ]]; then
+                emit_bailed "manifest-oos-materialization-failed"
+            fi
+        fi
+    else
+        printf 'materialize helper missing or not executable: %s\n' "$MATERIALIZE_OOS" >"$MAT_OOS_LOG"
+        APPEND_TOOL="$PLUGIN_ROOT/scripts/append-tool-failure.sh"
+        if [[ -x "$APPEND_TOOL" ]]; then
+            "$APPEND_TOOL" \
+                --log "$TMPDIR_ARG/execution-issues.md" \
+                --site "step2-materialize-manifest-oos" \
+                --tool "materialize-manifest-oos.sh" \
+                --exit-code "1" \
+                --category "Tool Failures" \
+                --output-file "$MAT_OOS_LOG" \
+                --redact >/dev/null 2>&1 || true
+        fi
+        if [[ "${MAT_OOS_COUNT:-0}" -gt 0 ]]; then
+            emit_bailed "manifest-oos-materialization-failed"
+        fi
+    fi
+fi
+
 # Step 9: emit final KV envelope. ORCHESTRATOR_EDIT_AUTHORITY is the gate the
 # orchestrator uses to decide whether main-agent Edit/Write is permitted at
 # Step 2.4 — `allowed` ONLY when STATUS=claude_fallback (emitted upstream),

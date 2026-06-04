@@ -88,7 +88,7 @@ existing Makefile-only test-harness pattern.
 When behavior changes, update these files together:
 
 - `skills/implement/SKILL.md` Step 9a.1 narrative and file-conflict subsection.
-- `skills/implement/SKILL.md` Step 9a.1 procedure.
+- `skills/implement/references/oos-pipeline.md` Step 9a.1 procedure.
 - `docs/configuration-and-permissions.md` environment variable entries.
 - `skills/issue/scripts/parse-input.sh` if parser stdout changes.
 - `scripts/file-line-regex-lib.sh` if path grammar changes.
