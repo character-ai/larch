@@ -39,6 +39,7 @@ def test_breadcrumb_routes_to_quiet_log_when_active(
 ) -> None:
     log_file = tmp_path / "quiet.log"
     monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_PID, "12345")
     monkeypatch.setenv(config.ENV_LARCH_QUIET_LOG_FILE, str(log_file))
     monkeypatch.delenv(config.ENV_LARCH_QUIET_DISABLE, raising=False)
     stream = StringIO()
@@ -46,3 +47,15 @@ def test_breadcrumb_routes_to_quiet_log_when_active(
     writer.emit("ship.py: checks", quiet=None)
     assert stream.getvalue() == ""
     assert "ship.py: checks" in log_file.read_text(encoding="utf-8")
+
+
+def test_breadcrumb_ignores_unbound_quiet_active(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(config.ENV_LARCH_QUIET_ACTIVE, "1")
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_PID, raising=False)
+    monkeypatch.delenv(config.ENV_LARCH_QUIET_LOG_FILE, raising=False)
+    stream = StringIO()
+    writer = logging_util.BreadcrumbWriter(stream=stream)
+    writer.emit("visible", quiet=None)
+    assert stream.getvalue() == "visible\n"

@@ -211,17 +211,21 @@ def pr_view(
     if result.returncode != 0:
         _raise_read_failure(result)
     data = _as_json_object(_loads_json(result.stdout, context="pr view"), context="pr view")
+    return _pull_request_from_json(data, context="pr view")
+
+
+def _pull_request_from_json(data: Mapping[str, object], *, context: str) -> PullRequest:
     _require_json_keys(
         data,
         ("number", "url", "state", "headRefName"),
-        context="pr view",
+        context=context,
     )
     merged_raw = data.get("mergedAt")
     merged_at = str(merged_raw) if merged_raw else None
     merge_state_raw = data.get("mergeStateStatus")
     merge_state_status = str(merge_state_raw) if merge_state_raw else None
     return PullRequest(
-        number=_as_int(data["number"], context="pr view", field="number"),
+        number=_as_int(data["number"], context=context, field="number"),
         url=str(data["url"]),
         state=str(data["state"]),
         head_ref=str(data["headRefName"]),
@@ -260,17 +264,7 @@ def pr_view_current(
     if result.returncode != 0:
         return None
     data = _as_json_object(_loads_json(result.stdout, context="pr view current"), context="pr view current")
-    _require_json_keys(
-        data,
-        ("number", "url", "state", "headRefName"),
-        context="pr view current",
-    )
-    return PullRequest(
-        number=_as_int(data["number"], context="pr view current", field="number"),
-        url=str(data["url"]),
-        state=str(data["state"]),
-        head_ref=str(data["headRefName"]),
-    )
+    return _pull_request_from_json(data, context="pr view current")
 
 
 def pr_for_branch_read(
@@ -366,7 +360,9 @@ def _validate_recovered_pr(
         return None
     try:
         viewed = pr_view(runner, candidate.number, repo=repo, cwd=cwd)
-    except (ShipError, TransientNetworkError):
+    except TransientNetworkError:
+        raise
+    except ShipError:
         return None
     if viewed.head_ref != branch:
         return None
@@ -408,25 +404,22 @@ def _recover_pr_from_create_output(
     repo: str,
     cwd: str | None,
 ) -> PullRequest | None:
-    stdout_urls = _PR_CONFLICT_URL_RE.findall(stdout)
-    if stdout_urls:
-        return _recover_pr_from_urls(
+    for urls in (
+        _PR_CONFLICT_URL_RE.findall(stdout),
+        _PR_CONFLICT_URL_RE.findall(stderr),
+    ):
+        if not urls:
+            continue
+        recovered = _recover_pr_from_urls(
             runner,
-            stdout_urls,
+            urls,
             branch=branch,
             repo=repo,
             cwd=cwd,
         )
-    stderr_urls = _PR_CONFLICT_URL_RE.findall(stderr)
-    if not stderr_urls:
-        return None
-    return _recover_pr_from_urls(
-        runner,
-        stderr_urls,
-        branch=branch,
-        repo=repo,
-        cwd=cwd,
-    )
+        if recovered is not None:
+            return recovered
+    return None
 
 
 def _recover_pr_from_conflict_text(
@@ -489,7 +482,9 @@ def pr_create(
             conflict_text = _combined(result)
             try:
                 recovered = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
-            except (ShipError, TransientNetworkError):
+            except TransientNetworkError:
+                raise
+            except ShipError:
                 recovered = None
             if recovered is not None:
                 return recovered, False
@@ -505,7 +500,9 @@ def pr_create(
         _ = _ensure_success(result)
     try:
         recovered = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
-    except (ShipError, TransientNetworkError):
+    except TransientNetworkError:
+        raise
+    except ShipError:
         recovered = None
     if recovered is not None:
         return recovered, True
@@ -519,20 +516,6 @@ def pr_create(
     )
     if recovered is not None:
         return recovered, True
-    try:
-        recovered = pr_view_current(runner, repo=repo, cwd=cwd)
-    except (ShipError, TransientNetworkError):
-        recovered = None
-    if recovered is not None and recovered.head_ref == branch:
-        validated = _validate_recovered_pr(
-            runner,
-            recovered,
-            repo=repo,
-            branch=branch,
-            cwd=cwd,
-        )
-        if validated is not None:
-            return validated, True
     msg = "gh pr create succeeded, but the created PR could not be resolved"
     raise ShipError(msg)
 

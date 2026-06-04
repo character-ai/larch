@@ -5,8 +5,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
-import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -519,7 +517,7 @@ def run_ship(
         try:
             run_logs.write_final_report_comment(runner, working)
         except ShipError as exc:
-            _ = sys.stderr.write(f"ship.py: warning: {exc}\n")
+            _breadcrumb("warning", str(exc))
         if not working.merge or working.draft or working.forked or working.repo_unavailable:
             finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
             _write_ship_state(working, phase="done")
@@ -753,9 +751,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
     except Exception:
-        _ = sys.stderr.write("ship.py: internal error\n")
-        traceback.print_exc(file=sys.stderr)
-        result = ShipResult(Outcome.STALLED, detail="internal error")
+        logging_util.BreadcrumbWriter().emit("ship.py: internal error", quiet=None)
+        result = ShipResult(Outcome.INTERNAL_ERROR, detail="internal error")
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

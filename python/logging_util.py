@@ -28,7 +28,11 @@ def _quiet_disabled() -> bool:
 
 
 def _quiet_active() -> bool:
-    return _env_truthy(config.ENV_LARCH_QUIET_ACTIVE) and not _quiet_disabled()
+    return (
+        _env_truthy(config.ENV_LARCH_QUIET_ACTIVE)
+        and bool(os.environ.get(config.ENV_LARCH_QUIET_PID, ""))
+        and not _quiet_disabled()
+    )
 
 
 @dataclass
@@ -41,13 +45,17 @@ class BreadcrumbWriter:
         use_quiet = _quiet_active() if quiet is None else quiet
         line = message.rstrip("\n") + "\n"
         if use_quiet and not _quiet_disabled():
+            routed = False
             log_file = os.environ.get(config.ENV_LARCH_QUIET_LOG_FILE, "")
             if log_file:
                 with Path(log_file).open("a", encoding="utf-8") as handle:
                     _ = handle.write(line)
+                routed = True
             with suppress(OSError):
                 _ = os.write(4, line.encode("utf-8"))
-            return
+                routed = True
+            if routed or quiet is True:
+                return
         stream = self.stream or sys.stderr
         _ = stream.write(line)
         _ = stream.flush()

@@ -72,6 +72,7 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
 def test_outcome_exit_map_matches_bash_contract() -> None:
     assert config.OUTCOME_EXIT_MAP == {
         Outcome.OK: 0,
+        Outcome.INTERNAL_ERROR: 1,
         Outcome.NEEDS_USER_INPUT: 3,
         Outcome.STALLED: 4,
         Outcome.TRANSIENT: 6,
@@ -173,8 +174,11 @@ def test_happy_path_stage_order(
     assert not flush_args
     captured = capsys.readouterr()
     assert "ship.py: checks:" in captured.err
+    assert "ship.py: pr-prep:" in captured.err
     assert "ship.py: pr-create:" in captured.err
+    assert "ship.py: ci:" in captured.err
     assert "ship.py: merge" in captured.err
+    assert "ship.py: post-merge" in captured.err
 
 
 def test_oos_gate_before_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -593,9 +597,9 @@ def test_main_emits_json_stdout_on_unexpected_exception(
         ],
     )
     captured = capsys.readouterr()
-    assert rc == config.EXIT_STALLED
+    assert rc == config.EXIT_INTERNAL_ERROR
     payload = json.loads(captured.out)
-    assert payload["outcome"] == "STALLED"
+    assert payload["outcome"] == "INTERNAL_ERROR"
     assert payload["detail"] == "internal error"
     assert captured.out.count("\n") == 1
     assert "internal error" in captured.err

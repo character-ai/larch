@@ -303,6 +303,7 @@ def test_poll_ci_emits_poll_breadcrumb_to_stderr(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     runner = RecordingRunner(_status(status="pending", behind=0))
+    clock_values = iter((1.0, 8.0, 8.0))
     _, decision = ci_monitor.poll_ci(
         runner,
         pr=1,
@@ -315,12 +316,13 @@ def test_poll_ci_emits_poll_breadcrumb_to_stderr(
         fix_attempts=0,
         timeout=10.0,
         sleep_fn=lambda _s: None,
-        clock=lambda: 7.0,
+        clock=lambda: next(clock_values, 8.0),
     )
     captured = capsys.readouterr()
     assert decision.action == "bail"
     assert captured.out == ""
     assert "ci_monitor: poll 1/" in captured.err
+    assert "after 7s" in captured.err
     assert "sleeping" in captured.err
 
 

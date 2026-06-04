@@ -12,6 +12,7 @@ class Outcome(Enum):
     NEEDS_USER_INPUT = "NEEDS_USER_INPUT"
     STALLED = "STALLED"
     TRANSIENT = "TRANSIENT"
+    INTERNAL_ERROR = "INTERNAL_ERROR"
 
 
 @dataclass(frozen=True)

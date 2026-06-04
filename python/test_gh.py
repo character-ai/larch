@@ -287,6 +287,40 @@ def test_pr_create_prefers_stdout_url_over_stderr_when_both_present() -> None:
     assert pr.url == "https://github.com/o/r/pull/100"
 
 
+def test_pr_create_tries_stderr_url_after_invalid_stdout_url() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"),
+                0,
+                "https://github.com/o/r/pull/100\n",
+                "https://github.com/o/r/pull/999\n",
+                0.01,
+            ),
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "view", "100"),
+                0,
+                '{"number":100,"url":"https://github.com/o/r/pull/100","state":"OPEN","headRefName":"other"}',
+                "",
+                0.01,
+            ),
+            CommandResult(
+                ("gh", "pr", "view", "999"),
+                0,
+                '{"number":999,"url":"https://github.com/o/r/pull/999","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    pr, created = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
+    assert created is True
+    assert pr.number == 999
+    assert pr.url == "https://github.com/o/r/pull/999"
+
+
 def test_pr_create_resolves_success_from_stderr_url_when_list_lags() -> None:
     runner = RecordingRunner(
         responses=[
@@ -314,32 +348,44 @@ def test_pr_create_resolves_success_from_stderr_url_when_list_lags() -> None:
     assert pr.url == "https://github.com/o/r/pull/654"
 
 
-def test_pr_create_success_falls_back_to_current_branch_pr_view() -> None:
+def test_pr_create_success_without_url_does_not_use_current_branch_pr_view() -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
             CommandResult(("gh", "pr", "create"), 0, "Created pull request\n", "", 0.01),
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
-            CommandResult(
-                ("gh", "pr", "view"),
-                0,
-                '{"number":987,"url":"https://github.com/o/r/pull/987","state":"OPEN","headRefName":"feat"}',
-                "",
-                0.01,
-            ),
-            CommandResult(
-                ("gh", "pr", "view", "987"),
-                0,
-                '{"number":987,"url":"https://github.com/o/r/pull/987","state":"OPEN","headRefName":"feat"}',
-                "",
-                0.01,
-            ),
         ],
     )
-    pr, created = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
-    assert created is True
-    assert pr.number == 987
-    assert runner.calls[3][:4] == ["gh", "pr", "view", "--repo"]
+    with pytest.raises(ShipError, match="could not be resolved"):
+        _ = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
+    assert len(runner.calls) == 3
+
+
+def test_pr_create_propagates_transient_post_create_resolution() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"),
+                0,
+                "https://github.com/o/r/pull/456\n",
+                "",
+                0.01,
+            ),
+            *[
+                CommandResult(
+                    ("gh", "pr", "list"),
+                    1,
+                    "",
+                    "api.github.com: connection reset by peer",
+                    0.01,
+                )
+                for _ in range(config.TRANSIENT_RETRY_MAX_ATTEMPTS)
+            ],
+        ],
+    )
+    with pytest.raises(TransientNetworkError):
+        _ = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
 
 
 def test_pr_create_success_without_resolvable_pr_raises_ship_error() -> None:

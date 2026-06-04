@@ -624,6 +624,43 @@ def test_larch_log_commit_commits_canonical_token_report_delta(
     assert any(call[:3] == ["git", "commit", "-m"] for call in runner.calls)
 
 
+def test_larch_log_commit_commits_mixed_volatile_and_canonical_deltas(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
+    _ = (src / "token-report.ndjson").write_text("{}\n", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rel = "larch-logs/implement/run-abc"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("git", "status"),
+                0,
+                f" M {rel}/token-report-refresh.json\n M {rel}/token-report.ndjson\n",
+                "",
+                0.01,
+            ),
+            CommandResult(("git", "add"), 0, "", "", 0.01),
+            CommandResult(("git", "diff"), 1, "", "", 0.01),
+            CommandResult(("git", "commit", "-m"), 0, "", "", 0.01),
+        ],
+    )
+    result = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        _ctx(tmp_path, str(state)),
+        tmp_path / "larch-logs",
+        cwd=str(repo),
+    )
+    assert result.returncode == 0
+    assert result.argv != ("larch-log-volatile-only",)
+    assert any(call[:3] == ["git", "commit", "-m"] for call in runner.calls)
+
+
 def test_larch_log_commit_volatile_cleanup_fails_closed_on_dirty_repo(
     tmp_path: Path,
 ) -> None:

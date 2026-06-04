@@ -61,6 +61,8 @@ grep -Fq 'if [ "${LARCH_SHIP_PR_IMPL:-bash}" = "python" ]; then' "$SKILL_MD" \
   || fail "SKILL.md Step 8+ Invoke fence must branch on LARCH_SHIP_PR_IMPL=python"
 grep -Fq "sys.version_info >= (3, 11)" "$SKILL_MD" \
   || fail "SKILL.md Step 8+ Invoke fence must pin the Python 3.11 ship-driver guard"
+grep -Fq '"outcome":"STALLED"' "$SKILL_MD" \
+  || fail "SKILL.md Step 8+ Python version guard must emit structured JSON on stdout"
 grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-ship' "$SKILL_MD" \
   || fail "SKILL.md must retain 8-pre-ship phantom-probe invocation"
 grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-bump' "$SKILL_MD" \
