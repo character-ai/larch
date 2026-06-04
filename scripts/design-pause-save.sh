@@ -18,9 +18,28 @@ REPO=""
 validate_repo() {
     local value="$1"
     case "$value" in
-        '' | *$'\n'* | *$'\r'* | /* | *../*) return 1 ;;
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) return 1 ;;
     esac
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
+}
+
+source_env_get() {
+    local key="$1" file="$2"
+    awk -v k="$key" '
+      BEGIN { q=sprintf("%c", 39) }
+      $1 == "export" {
+        v=$0
+        sub(/^[[:space:]]*export[[:space:]]+/, "", v)
+        if (index(v, k "=") != 1) next
+        sub("^[^=]*=", "", v)
+        if ((substr(v, 1, 1) == q && substr(v, length(v), 1) == q) ||
+            (substr(v, 1, 1) == "\"" && substr(v, length(v), 1) == "\"")) {
+          v=substr(v, 2, length(v)-2)
+        }
+        print v
+        exit
+      }
+    ' "$file"
 }
 
 resolve_repo() {
@@ -80,9 +99,15 @@ larch_design_tmpdir_validate "$DESIGN_TMPDIR" || emit_fail "tmpdir-invalid"
 [[ "$ISSUE" =~ ^[1-9][0-9]*$ ]] || emit_fail "invalid-issue"
 
 if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
-    # shellcheck disable=SC1090
-    # shellcheck disable=SC1091
-    source "$DESIGN_TMPDIR/source-env.sh" || true
+    _source_session_id=$(source_env_get SESSION_ID "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
+    [[ -n "${SESSION_ID:-}" || -z "$_source_session_id" ]] || SESSION_ID="$_source_session_id"
+    if [[ -z "$REPO_ARG" ]]; then
+        _source_repo=$(source_env_get REPO "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
+        if [[ -n "$_source_repo" ]]; then
+            validate_repo "$_source_repo" || emit_fail "invalid-repo"
+            REPO="$_source_repo"
+        fi
+    fi
 fi
 if [[ -n "$REPO_ARG" ]]; then
     REPO="$REPO_ARG"
@@ -198,6 +223,7 @@ fi
 if [[ "$publish_rc" -ne 0 && "$PUBLISH_OK" == "true" ]]; then
     log_failure "design-log-publish.sh" "$publish_err"
     PUBLISH_OK=false
+    RECOVERY_BRANCH=""
 fi
 
 if [[ "$PUBLISH_OK" != "true" ]]; then

@@ -293,12 +293,35 @@ if [ -f "$DESIGN_TMPDIR/oos-issues-created.md" ] && [ -s "$DESIGN_TMPDIR/oos-iss
 fi
 
 RUN_LOGS_PATH="N/A"
-if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ] && [ "$OUTCOME" != "failed-publish" ]; then
+if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ] && [ "$OUTCOME" != "failed-publish" ] && [ "$OUTCOME" != "publish-skipped" ]; then
     RUN_LOGS_PATH="larch-logs/design/${RUN_ID}/"
 fi
 
+valid_log_pr_number() {
+    local value="$1"
+    [[ "$value" =~ ^[1-9][0-9]*$ ]]
+}
+
+valid_log_pr_url() {
+    local value="$1"
+    [[ "$value" =~ ^https://github[.]com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/[1-9][0-9]*([/?#].*)?$ ]]
+}
+
+valid_log_recovery_branch() {
+    local value="$1"
+    [[ "$value" =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
+    git check-ref-format --branch "$value" >/dev/null 2>&1
+}
+
+sanitize_failed_publish_notes() {
+    [[ -z "${DESIGN_LOG_PR_NUMBER:-}" ]] || valid_log_pr_number "$DESIGN_LOG_PR_NUMBER" || DESIGN_LOG_PR_NUMBER=""
+    [[ -z "${DESIGN_LOG_PR_URL:-}" ]] || valid_log_pr_url "$DESIGN_LOG_PR_URL" || DESIGN_LOG_PR_URL=""
+    [[ -z "${DESIGN_LOG_RECOVERY_BRANCH:-}" ]] || valid_log_recovery_branch "$DESIGN_LOG_RECOVERY_BRANCH" || DESIGN_LOG_RECOVERY_BRANCH=""
+}
+
 append_failed_publish_notes() {
     local out="$1"
+    sanitize_failed_publish_notes
     if [ -n "${DESIGN_LOG_RECOVERY_BRANCH:-}" ]; then
         printf '%s\n' "- **Log recovery branch**: \`$DESIGN_LOG_RECOVERY_BRANCH\`" >>"$out"
     fi

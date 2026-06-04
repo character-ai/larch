@@ -58,6 +58,28 @@ parse_kv_from_output() {
     done <<<"$text"
 }
 
+validate_pr_number() {
+    local value="$1"
+    [[ "$value" =~ ^[1-9][0-9]*$ ]]
+}
+
+validate_pr_url() {
+    local value="$1"
+    [[ "$value" =~ ^https://github[.]com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/[1-9][0-9]*([/?#].*)?$ ]]
+}
+
+validate_recovery_branch() {
+    local value="$1"
+    [[ "$value" =~ ^[A-Za-z0-9._/-]+$ ]] || return 1
+    git check-ref-format --branch "$value" >/dev/null 2>&1
+}
+
+sanitize_publish_metadata() {
+    [[ -z "${PR_NUMBER:-}" ]] || validate_pr_number "$PR_NUMBER" || PR_NUMBER=""
+    [[ -z "${PR_URL:-}" ]] || validate_pr_url "$PR_URL" || PR_URL=""
+    [[ -z "${RECOVERY_BRANCH:-}" ]] || validate_recovery_branch "$RECOVERY_BRANCH" || RECOVERY_BRANCH=""
+}
+
 DESIGN_TMPDIR_ARG=""
 ISSUE=""
 SESSION_ID=""
@@ -331,6 +353,13 @@ if [[ -n "$SESSION_ID" ]]; then
         add_warn "**⚠ SECURITY: scrub-log-secrets.sh redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
     fi
     if [[ "$_publish_rc" -ne 0 ]]; then
+        if [[ "${PUBLISH_OK:-}" == true ]]; then
+            PR_NUMBER=""
+            PR_URL=""
+            RECOVERY_BRANCH=""
+        else
+            sanitize_publish_metadata
+        fi
         PUBLISH_OK=false
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
@@ -342,6 +371,7 @@ if [[ -n "$SESSION_ID" ]]; then
             --redact >/dev/null 2>&1 || true
         add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
     elif [[ "${PUBLISH_OK:-}" == false ]]; then
+        sanitize_publish_metadata
         _publish_failure_rc=${_publish_rc:-1}
         if [[ "$_publish_failure_rc" -eq 0 ]]; then
             _publish_failure_rc=1
@@ -357,6 +387,7 @@ if [[ -n "$SESSION_ID" ]]; then
         add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
     elif [[ -z "${PUBLISH_OK:-}" ]]; then
         PUBLISH_OK=false
+        sanitize_publish_metadata
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \
             --site "design Step 5c" \
@@ -367,6 +398,8 @@ if [[ -n "$SESSION_ID" ]]; then
             --redact >/dev/null 2>&1 || true
         add_warn '**⚠ 5c: design-log-publish.sh returned without PUBLISH_OK=; treating publish as failed**'
         add_warn "**⚠ 5c: design log publish failed; recovery metadata: $(publish_recovery_detail).**"
+    else
+        sanitize_publish_metadata
     fi
 else
     add_warn '**⚠ /design: SESSION_ID missing; skipping design log publish**'

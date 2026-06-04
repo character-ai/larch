@@ -1425,19 +1425,19 @@ grep -Fq '.completed/step-5b' "$DESIGN_PUBLISH_SH" \
 grep -Fq 'exit 1 is the normal plan-block-write failure path' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing exit 1 parse-then-branch contract"
 # shellcheck disable=SC2016 # Markdown literal contains backticks and shell variables intentionally.
-contains "$SKILL_MD" '`SESSION_ID` empty **or** `PUBLISH_OK=true`' '(27) SKILL.md Step 5c missing publish-success sentinel gate'
+contains "$SKILL_MD" '`SESSION_ID` empty **or** `PUBLISH_OK=true`' '(27a) SKILL.md Step 5c missing publish-success sentinel gate'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK != true`, do **not** write `step-5c`' '(27) SKILL.md Step 5c missing failed-publish no-sentinel retry prose'
+contains "$SKILL_MD" 'When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK != true`, do **not** write `step-5c`' '(27b) SKILL.md Step 5c missing failed-publish no-sentinel retry prose'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'When `_publish_rc` is non-zero, force `PUBLISH_OK=false`' '(28) SKILL.md clarify publish must fail closed on nonzero rc'
+contains "$SKILL_MD" 'When `_publish_rc` is non-zero, force `PUBLISH_OK=false`' '(28a) SKILL.md clarify publish must fail closed on nonzero rc'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'export `SUMMARY_OUTCOME=failed-publish` with the `DESIGN_LOG_*` metadata already set' '(28) SKILL.md clarify sub-step 6 missing failed-publish summary branch'
+contains "$SKILL_MD" 'export `SUMMARY_OUTCOME=failed-publish` with the `DESIGN_LOG_*` metadata already set' '(28b) SKILL.md clarify sub-step 6 missing failed-publish summary branch'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'otherwise export `SUMMARY_OUTCOME=cancelled-clarify` for publish skipped (`SESSION_ID` empty) or publish succeeded (`PUBLISH_OK=true`)' '(28) SKILL.md clarify sub-step 6 missing cancelled-clarify skip/success branch'
+contains "$SKILL_MD" 'otherwise export `SUMMARY_OUTCOME=cancelled-clarify` for publish skipped (`SESSION_ID` empty) or publish succeeded (`PUBLISH_OK=true`)' '(28c) SKILL.md clarify sub-step 6 missing cancelled-clarify skip/success branch'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'set `DESIGN_LOG_PR_NUMBER`, `DESIGN_LOG_PR_URL`, and `DESIGN_LOG_RECOVERY_BRANCH` from the parsed `PR_NUMBER`, `PR_URL`, and `RECOVERY_BRANCH`' '(28) SKILL.md clarify missing recovery metadata preservation prose'
+contains "$SKILL_MD" 'set `DESIGN_LOG_PR_NUMBER`, `DESIGN_LOG_PR_URL`, and `DESIGN_LOG_RECOVERY_BRANCH` from the parsed `PR_NUMBER`, `PR_URL`, and `RECOVERY_BRANCH`' '(28d) SKILL.md clarify missing recovery metadata preservation prose'
 # shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
-contains "$SKILL_MD" 'with failed publish using `RUN_LOGS_PATH=N/A` and no successful run-log path' '(28) SKILL.md clarify missing failed-publish run-log suppression prose'
+contains "$SKILL_MD" 'with failed publish using `RUN_LOGS_PATH=N/A` and no successful run-log path' '(28e) SKILL.md clarify missing failed-publish run-log suppression prose'
 python3 - "$SKILL_MD" <<'PY_ASSERT'
 import pathlib, sys
 path=pathlib.Path(sys.argv[1])
@@ -1446,7 +1446,7 @@ for i,line in enumerate(path.read_text().splitlines(),1):
     if 'design-pause-save.sh' in line and '--issue "$ISSUE_NUMBER"' in line and '${REPO:+--repo "$REPO"}' not in line:
         missing.append(f'{i}:{line}')
 if missing:
-    print('FAIL: (27) SKILL.md pause-save invocations missing REPO forwarding: ' + '; '.join(missing[:5]), file=sys.stderr)
+    print('FAIL: (27c) SKILL.md pause-save invocations missing REPO forwarding: ' + '; '.join(missing[:5]), file=sys.stderr)
     sys.exit(1)
 PY_ASSERT
 grep -Fq '_publish_rc` ∈ {0, 1, 3}' "$SKILL_MD" \

@@ -440,11 +440,11 @@ init_publish_logs
 apply_publish_stub_defaults
 export PUBLISH_OK_VALUE=false
 export PUBLISH_PR_NUMBER=123
-export PUBLISH_PR_URL=https://github.example/pull/123
+export PUBLISH_PR_URL=https://github.com/owner/repo/pull/123
 export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid-1
 bash "$SUBJECT" --design-tmpdir "$D_ENV" --issue 42 --session-id sid-1 --claude-pid 9999 2>/dev/null
 grep -q '^PR_NUMBER=123$' "$D_ENV/.design-publish-result.env" || fail "publish PR_NUMBER missing"
-grep -q '^PR_URL=https://github.example/pull/123$' "$D_ENV/.design-publish-result.env" || fail "publish PR_URL missing"
+grep -q '^PR_URL=https://github.com/owner/repo/pull/123$' "$D_ENV/.design-publish-result.env" || fail "publish PR_URL missing"
 grep -q '^RECOVERY_BRANCH=larch-log-design-sid-1$' "$D_ENV/.design-publish-result.env" || fail "publish RECOVERY_BRANCH missing"
 grep -q '^LOG_RECOVERY_BRANCH=larch-log-design-sid-1$' "$D_ENV/.design-publish-result.env" || fail "publish LOG_RECOVERY_BRANCH missing"
 
@@ -489,7 +489,7 @@ init_publish_logs
 apply_publish_stub_defaults
 export PUBLISH_OK_VALUE=false
 export PUBLISH_PR_NUMBER=456
-export PUBLISH_PR_URL=https://github.example/pull/456
+export PUBLISH_PR_URL=https://github.com/owner/repo/pull/456
 export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_PFAIL" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
@@ -499,7 +499,7 @@ assert_rc "PUBLISH_OK=false" 0 "$rc"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "PUBLISH_OK=false should render post-publish summary"
 grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "PUBLISH_OK=false should render failed-publish outcome"
 grep -q 'DESIGN_LOG_PR_NUMBER=456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_NUMBER"
-grep -q 'DESIGN_LOG_PR_URL=https://github.example/pull/456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_URL"
+grep -q 'DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_URL"
 grep -q 'DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_RECOVERY_BRANCH"
 grep -q 'design-log-publish.sh failed (exit 1)' "$D_PFAIL/execution-issues.md" 2>/dev/null || fail "PUBLISH_OK=false should record nonzero publish failure exit"
 grep -q 'design log publish failed; recovery metadata' "$D_PFAIL/.design-publish-result.env" || fail "PUBLISH_OK=false should emit recovery WARN"
