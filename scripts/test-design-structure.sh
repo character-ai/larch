@@ -543,8 +543,10 @@ grep -Fq 'Cancel' "$SKILL_MD" \
 validator_handler_block=$(awk '/^### Plan command validator failure \(shared\)/,/^\*\*Plan helper contracts\*\*/' "$SKILL_MD")
 printf '%s\n' "$validator_handler_block" | grep -Fq 'cap 2' \
   || fail "(14b13a) shared validator handler missing auto-repair cap"
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 printf '%s\n' "$validator_handler_block" | grep -Fq 're-capture `design-publish.sh`' \
   || fail "(14b13b) shared validator handler missing Step 5c design-publish.sh re-capture"
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 printf '%s\n' "$validator_handler_block" | grep -Fq 'bare `ACTION=VALIDATE_PLAN_COMMANDS` on `composed-plan.md`' \
   || fail "(14b13c) shared validator handler missing composed-plan validate-only prohibition"
 printf '%s\n' "$validator_handler_block" | grep -Fq 'append-tool-failure.sh' \
