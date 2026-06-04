@@ -113,10 +113,10 @@ if [[ "$ahead_before" -gt 0 ]]; then
 fi
 
 # --- Step 4: Pull origin main ---
-echo "🔄 Pulling latest main..." >&2
+echo "🔄 Fast-forwarding local main from origin/main..." >&2
 pull_fail_file=$(mktemp "${TMPDIR:-/tmp}/local-cleanup-pull.XXXXXX")
 if with_transient_retry transient_envelope_predicate_none "$pull_fail_file" \
-    git pull origin main; then
+    git pull --ff-only origin main; then
     pull_rc=0
 else
     pull_rc=$_WTR_RC
