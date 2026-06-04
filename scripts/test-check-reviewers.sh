@@ -374,6 +374,32 @@ if [[ -s "$SCRATCH/t10-env-key/codex-argv.log" ]]; then
     fail "codex env-key true stamp should not invoke live probe"
 fi
 
+mkdir -p "$SCRATCH/t10-env-key-false"
+SB10EF="$SCRATCH/bin10-env-key-false"
+mkdir -p "$SB10EF"
+cat > "$SB10EF/codex" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"${LARCH_TEST_CODEX_ARGV_LOG:?}"
+exit 0
+STUB
+chmod +x "$SB10EF/codex"
+cat > "$SB10EF/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 127
+STUB
+chmod +x "$SB10EF/cursor"
+st10ef="$SCRATCH/t10-env-key-false/larch-codex-env-key-present-${STAMP_USER}.stamp"
+printf 'false\n' >"$st10ef"
+touch "$st10ef"
+out=$(cd "$REPO_ROOT" && TMPDIR="$SCRATCH/t10-env-key-false" PATH="$SB10EF:/usr/bin:/bin" LARCH_QUIET_DISABLE=1 \
+    OPENAI_API_KEY=sk-larch-probe-sentinel LARCH_TEST_CODEX_ARGV_LOG="$SCRATCH/t10-env-key-false/codex-argv.log" \
+    LARCH_PROBE_TTL_SECONDS=3600 LARCH_EXTERNAL_AUTH_RETRIES=1 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux "$CR")
+assert_line "codex env-key false stamp retries live probe" "CODEX_PRESENT=true" "$out"
+if ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$SCRATCH/t10-env-key-false/codex-argv.log" 2>/dev/null; then
+    fail "codex env-key false stamp should invoke live env-key probe"
+fi
+
 mkdir -p "$SCRATCH/t11"
 SB11="$SCRATCH/bin11"
 mkdir -p "$SB11"

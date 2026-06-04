@@ -782,6 +782,7 @@ codex_telemetry_config="$TMP/codex-telemetry-config.toml"
 set +e
 out=$(LARCH_TOKEN_LEDGER="$codex_telemetry_ledger" TEST_AGENT_BEHAVIOR=codex-success \
     OPENAI_API_KEY=sk-larch-review-fix-sentinel \
+    LARCH_CODEX_MODEL=review-fix-model-sentinel \
     TEST_AGENT_ARGV_FILE="$codex_telemetry_argv" \
     TEST_AGENT_CODEX_HOME_FILE="$codex_telemetry_home" \
     TEST_AGENT_CODEX_CONFIG_FILE="$codex_telemetry_config" \
@@ -794,6 +795,8 @@ grep -Fq 'CODER_TOOL=codex' <<< "$out" || fail "codex telemetry tool"
 [[ -s "$implement_tmp/round-1/coder-codex.events.jsonl" ]] || fail "codex telemetry events missing"
 grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$codex_telemetry_argv" \
     || fail "codex telemetry env-key argv missing var-name override"
+grep -Fq 'review-fix-model-sentinel' "$codex_telemetry_argv" \
+    || fail "codex telemetry argv missing model args"
 grep -Fq 'sk-larch-review-fix-sentinel' "$codex_telemetry_argv" \
     && fail "codex telemetry argv leaked env-key value"
 grep -Fq 'sk-larch-review-fix-sentinel' "$implement_tmp/round-1/coder-codex.events.jsonl" \

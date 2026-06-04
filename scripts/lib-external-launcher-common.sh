@@ -521,7 +521,10 @@ larch_validate_vendor_conflict_csv() {
 
 external_codex_env_key_enabled() {
     [[ ${OPENAI_API_KEY+x} == x ]] || return 1
-    [[ ${#OPENAI_API_KEY} -gt 0 ]] || return 1
+    case "$OPENAI_API_KEY" in
+        *[!$' \t\r\n']*) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 external_strip_codex_larch_env_provider() {
@@ -602,14 +605,65 @@ external_strip_codex_larch_env_provider() {
     fi
 }
 
+external_strip_codex_literal_credentials() {
+    local config_path="$1"
+    local tmp_path=""
+    [[ -f "$config_path" && -r "$config_path" && -w "$config_path" ]] || return 1
+    tmp_path=$(mktemp "${config_path}.cred.XXXXXX") || return 1
+    if awk '
+        function count_occurrences(s, needle,    n, p) {
+            n = 0
+            while ((p = index(s, needle)) > 0) {
+                n++
+                s = substr(s, p + length(needle))
+            }
+            return n
+        }
+        function strip_inline_comment(line,    i, ch, prev, in_dq, in_sq, out) {
+            out = ""
+            prev = ""
+            in_dq = 0
+            in_sq = 0
+            for (i = 1; i <= length(line); i++) {
+                ch = substr(line, i, 1)
+                if (ch == "\"" && !in_sq && prev != "\\") in_dq = !in_dq
+                else if (ch == "'\''" && !in_dq) in_sq = !in_sq
+                if (ch == "#" && !in_dq && !in_sq) break
+                out = out ch
+                prev = ch
+            }
+            return out
+        }
+        function update_multiline_state(line,    content, dq, sq) {
+            if (line ~ /^[[:space:]]*#/) return
+            content = strip_inline_comment(line)
+            dq = count_occurrences(content, "\"\"\"")
+            sq = count_occurrences(content, "'\'''\'''\''")
+            if (dq % 2 == 1) in_dq_multiline = !in_dq_multiline
+            if (sq % 2 == 1) in_sq_multiline = !in_sq_multiline
+        }
+        {
+            was_in_multiline = (in_dq_multiline || in_sq_multiline)
+        }
+        !was_in_multiline && $0 ~ /^[[:space:]]*(api_key|openai_api_key)[[:space:]]*=/ { update_multiline_state($0); next }
+        { print; update_multiline_state($0) }
+    ' "$config_path" > "$tmp_path"; then
+        mv -f "$tmp_path" "$config_path" || { rm -f "$tmp_path"; return 1; }
+    else
+        rm -f "$tmp_path"
+        return 1
+    fi
+}
+
 external_prepare_codex_auth() {
     local home_dir="$1"
     mkdir -p "$home_dir" || return 1
-    if external_codex_env_key_enabled; then
-        return 0
-    fi
     if [[ -f "$home_dir/config.toml" ]]; then
         external_strip_codex_larch_env_provider "$home_dir/config.toml" || return 1
+        external_strip_codex_literal_credentials "$home_dir/config.toml" || return 1
+    fi
+    if external_codex_env_key_enabled; then
+        return 0
     fi
     if [[ -f ~/.codex/auth.json ]]; then
         ln -sf "$(cd ~/.codex && pwd)/auth.json" "$home_dir/auth.json" || return 1

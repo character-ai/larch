@@ -195,6 +195,34 @@ else
     fail "codex empty env must fall back to auth.json"
 fi
 
+# shellcheck disable=SC2016
+HOME="$TMPDIR_ROOT/home" OPENAI_API_KEY=$' \t\n' bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    mkdir -p "$2/whitespace-home"
+    external_prepare_codex_auth "$2/whitespace-home"
+    args=()
+    external_codex_auth_config_args args
+    ((${#args[@]} == 0))
+' bash "$REPO_ROOT" "$TMPDIR_ROOT"
+if [[ -L "$TMPDIR_ROOT/whitespace-home/auth.json" ]]; then
+    pass
+else
+    fail "codex whitespace env must fall back to auth.json without env-key argv"
+fi
+
+# shellcheck disable=SC2016
+HOME="$TMPDIR_ROOT/home" OPENAI_API_KEY='sk-larch-strip-mode' bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    mkdir -p "$2/literal-strip-home"
+    printf "api_key = \"sk-larch-copied-config\"\nopenai_api_key = \"sk-larch-openai-copied\"\n[profiles.keep]\nmodel = \"ok\"\n" > "$2/literal-strip-home/config.toml"
+    external_prepare_codex_auth "$2/literal-strip-home"
+' bash "$REPO_ROOT" "$TMPDIR_ROOT"
+assert_file_not_contains "codex copied config strips literal api_key" "$TMPDIR_ROOT/literal-strip-home/config.toml" 'sk-larch-copied-config'
+assert_file_not_contains "codex copied config strips literal openai_api_key" "$TMPDIR_ROOT/literal-strip-home/config.toml" 'sk-larch-openai-copied'
+assert_file_contains "codex copied config preserves unrelated profiles" "$TMPDIR_ROOT/literal-strip-home/config.toml" '[profiles.keep]'
+
 _xtrace="$TMPDIR_ROOT/codex-env-xtrace.txt"
 # shellcheck disable=SC2016
 OPENAI_API_KEY='sk-larch-xtrace-sentinel' bash -c '

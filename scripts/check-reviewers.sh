@@ -316,7 +316,8 @@ elif [[ "$SKIP_CODEX_PROBE" == "true" ]]; then
 else
     _CACHED_C=""
     _CODEX_STAMP_KEY=$(larch_codex_probe_stamp_key)
-    if larch_try_read_fresh_stamp "$(larch_stamp_path "$_CODEX_STAMP_KEY")" _CACHED_C; then
+    if larch_try_read_fresh_stamp "$(larch_stamp_path "$_CODEX_STAMP_KEY")" _CACHED_C \
+        && [[ "$_CACHED_C" == "true" || "$_CODEX_STAMP_KEY" != "codex-env-key" ]]; then
         CODEX_PRESENT="$_CACHED_C"
     else
         AUTH_ATTEMPT=1

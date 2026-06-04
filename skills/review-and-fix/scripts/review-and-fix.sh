@@ -270,8 +270,9 @@ run_coder_dispatch() {
     local codex_events="$round_dir/coder-codex.events.jsonl"
     local codex_wrapper_log="$round_dir/coder-codex.wrapper.log"
     local codex_telemetry_sidecar="$round_dir/coder-codex.sidecar"
-    local codex_rc=0 codex_home="" codex_auth_prepared=false
+    local codex_rc=0 codex_home="" codex_auth_prepared=false codex_auth_setup_failed=false
     local project_key trust_config_arg _codex_auth_args
+    local _codex_model_args _codex_model_args_tmp _codex_model_arg
 
     codex_home=$(mktemp -d "${TMPDIR:-/tmp}/larch-codex-review-fix-home.XXXXXX") || codex_rc=1
     [[ -n "$codex_home" ]] && REVIEW_FIX_TMPDIRS[${#REVIEW_FIX_TMPDIRS[@]}]="$codex_home"
@@ -281,7 +282,20 @@ run_coder_dispatch() {
         fi
     fi
     if [[ "$codex_rc" -eq 0 ]]; then
-        external_prepare_codex_auth "$codex_home" || codex_rc=$?
+        external_prepare_codex_auth "$codex_home" || { codex_rc=$?; codex_auth_setup_failed=true; }
+    fi
+    if [[ "$codex_rc" -eq 0 ]]; then
+        _codex_model_args=()
+        _codex_model_args_tmp=$(mktemp) || codex_rc=1
+        if [[ "$codex_rc" -eq 0 ]]; then
+            "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort >"$_codex_model_args_tmp" || codex_rc=$?
+        fi
+        if [[ "$codex_rc" -eq 0 ]]; then
+            while IFS= read -r _codex_model_arg; do
+                _codex_model_args+=("$_codex_model_arg")
+            done <"$_codex_model_args_tmp"
+        fi
+        [[ -n "${_codex_model_args_tmp:-}" ]] && rm -f "$_codex_model_args_tmp"
     fi
     if [[ "$codex_rc" -eq 0 ]]; then
         codex_auth_prepared=true
@@ -298,6 +312,7 @@ run_coder_dispatch() {
         CODEX_HOME="$codex_home" "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 \
             --stderr-sink "$codex_wrapper_log" -- \
             codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" \
+            ${_codex_model_args[@]+"${_codex_model_args[@]}"} \
             -c "$trust_config_arg" \
             ${_codex_auth_args[@]+"${_codex_auth_args[@]}"} \
             --output-last-message "$round_dir/coder-codex.log" \
@@ -308,7 +323,7 @@ run_coder_dispatch() {
     else
         rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
         printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$codex_rc" > "$codex_wrapper_log" 2>/dev/null || true
-        if external_codex_env_key_enabled; then
+        if [[ "$codex_auth_setup_failed" == "true" ]] && external_codex_env_key_enabled; then
             printf 'codex-env-key-failure: Codex auth setup failed on the OPENAI_API_KEY auth path; falling back when possible (exit %s)\n' "$codex_rc" >> "$codex_wrapper_log" 2>/dev/null || true
             printf 'codex-env-key-failure: Codex auth setup failed on the OPENAI_API_KEY auth path; falling back when possible (exit %s)\n' "$codex_rc" >> "$codex_telemetry_sidecar" 2>/dev/null || true
             larch_err "⚠ review-and-fix: Codex OPENAI_API_KEY auth setup failed; falling back when possible (exit $codex_rc)"

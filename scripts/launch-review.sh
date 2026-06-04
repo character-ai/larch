@@ -527,6 +527,8 @@ else
         printf 'CMD_JSON=[]\n'
     } > "${OUTPUT}.meta" 2>/dev/null || true
     printf '%s\n' "$rc" > "${OUTPUT}.done" 2>/dev/null || true
+    rm -rf "$CODEX_HOME_DIR" 2>/dev/null || true
+    CODEX_HOME_DIR=""
     trap - EXIT
     exit "$rc"
 fi
