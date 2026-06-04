@@ -1,6 +1,6 @@
 # scripts/implement-admission.sh — contract
 
-**Purpose**: mechanical **Preflight admission gate** for `/implement` before `session-setup.sh` allocates `$IMPLEMENT_TMPDIR`. Validates the positional design/tracking issue is eligible to start an implement run: not closed, not lifecycle-managed by title prefix, not an audit-report artifact, not blocked (native+prose union, fail-open), not a `[... Report]` title pattern, and carries the `[DESIGNED]` prefix (confirming a completed `/design` run).
+**Purpose**: mechanical **Preflight admission gate** for `/implement` before `session-setup.sh` allocates `$IMPLEMENT_TMPDIR`. Validates the positional design/tracking issue is eligible to start an implement run: not closed, not lifecycle-managed by title prefix, not an audit-report artifact, not blocked (native+prose union, fail-open), not a `[... Report]` title pattern, and carries the `[DESIGNED]` prefix. For admission, `[DESIGNED]` means Step 5c materialized the `larch:plan` block and renamed the issue; the separate design-log PR publish may still be pending or failed.
 
 **Invocation**: `--issue <N>` (required). Decimal digit strings with leading zeros (e.g. `042`) are normalized to the same integer as `10#` arithmetic before validation. Optional `--repo OWNER/REPO`; when omitted, the script resolves `REPO` via `gh repo view --json nameWithOwner --jq '.nameWithOwner'` and exports it before sourcing `scripts/blocker-helpers.sh`. Forked upstream runs MUST pass `--repo "$UPSTREAM_REPO"` from the orchestrator.
 
@@ -14,7 +14,7 @@
 
 **Exit 5 recovery (`managed-prefix`)**: without a surviving `$IMPLEMENT_TMPDIR` to pair with Preflight, rename the GitHub issue title in the web UI (or via `gh issue edit`) to remove the `[DESIGNING]`, `[IMPLEMENTING]`, `[DONE]`, `[STALLED]`, legacy `[IN PROGRESS]`, or legacy `[PLANNED]` prefix, then retry `/implement`. For `[DESIGNING]` titles: wait for the active `/design` session to complete (auto-migrates to `[DESIGNED]`).
 
-**Exit 5 recovery (`missing-designed-prefix`)**: the issue has no `[DESIGNED]` prefix, meaning no `/design` run has completed for it. Run `/design <N>` first; Step 5c will write the `larch:plan` block and rename the issue to `[DESIGNED]`; architecture diagram upsert and design-log PR publish are best-effort follow-ups. Re-run `/implement` after `/design` completes. Legacy `[PLANNED]` issues: re-run `/design` on the issue — it will migrate the prefix from `[PLANNED]` to `[DESIGNED]`.
+**Exit 5 recovery (`missing-designed-prefix`)**: the issue has no `[DESIGNED]` prefix, meaning `/design` has not completed the admission-critical Step 5c plan materialization and rename. Run `/design <N>` first; Step 5c writes the `larch:plan` block, best-effort upserts the architecture diagram, renames the issue to `[DESIGNED]` (not gated on `PUBLISH_OK`), then runs design-log PR publish as a separate best-effort follow-up. Re-run `/implement` once the issue title is `[DESIGNED]` and the plan block is present, even if design-log publish is still incomplete. Legacy `[PLANNED]` issues: re-run `/design` on the issue — it will migrate the prefix from `[PLANNED]` to `[DESIGNED]`.
 
 **Exit codes**:
 | Code | Meaning |

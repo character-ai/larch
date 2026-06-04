@@ -351,6 +351,7 @@ if [[ -n "$SESSION_ID" ]]; then
             add_warn "**⚠ 5c: tracking-issue-write.sh rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
         fi
     else
+        RENAMED=false
         _diagram_detail="diagram upsert skipped"
         if [[ "$UPSERT_RAN" == true ]]; then
             if [[ "${UPSERT_STATUS:-}" == failed ]]; then

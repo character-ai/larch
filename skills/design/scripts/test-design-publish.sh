@@ -293,6 +293,7 @@ grep -q 'VALIDATE_STATUS=defects-found' "$D_DEF/.design-publish-result.env" || f
 grep -q 'VALIDATE_STATUS=defects-found' "$D_DEF/stdout.txt" || fail "defects stdout status fallback"
 if [[ -e "$D_DEF/composed-plan.redacted.md" ]]; then fail "defects must not redact"; else pass "defects skipped redaction"; fi
 if grep -q 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then fail "defects must not publish"; else pass "defects skipped publish tail"; fi
+if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then fail "defects must not rename"; else pass "defects skipped rename"; fi
 
 # --- validator infra failure ---
 D_VINFRA="$TMP/validator-infra"
@@ -324,6 +325,7 @@ assert_rc "validator missing status" 2 "$rc"
 # --- skip validate publishes and marks status skipped ---
 D_SKIP="$TMP/skip-validate"
 setup_design_tmp "$D_SKIP"
+printf 'graph TD\n' >"$D_SKIP/architecture-diagram.md"
 reset_publish_stub_env
 init_publish_logs
 apply_publish_stub_defaults
@@ -336,6 +338,17 @@ assert_rc "skip validate" 0 "$rc"
 grep -q 'VALIDATE_STATUS=skipped' "$D_SKIP/.design-publish-result.env" || fail "skip validate status"
 if grep -q 'validator' "$CALL_LOG" 2>/dev/null; then fail "skip validate must not call validator"; else pass "skip validate did not call validator"; fi
 [[ -s "$D_SKIP/composed-plan.redacted.md" ]] || fail "skip validate must redact"
+skip_plan_pos=$(grep -n 'plan-block-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+skip_upsert_pos=$(grep -n 'upsert-diagrams' "$CALL_LOG" | head -1 | cut -d: -f1)
+skip_rename_pos=$(grep -n 'tracking-issue-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+skip_publish_pos=$(grep -n 'design-log-publish' "$CALL_LOG" | head -1 | cut -d: -f1)
+if [[ -z "$skip_plan_pos" || -z "$skip_upsert_pos" || -z "$skip_rename_pos" || -z "$skip_publish_pos" ]]; then
+    fail "skip validate call log missing plan/upsert/rename/publish entries"
+elif [[ "$skip_plan_pos" -ge "$skip_upsert_pos" || "$skip_upsert_pos" -ge "$skip_rename_pos" || "$skip_rename_pos" -ge "$skip_publish_pos" ]]; then
+    fail "skip validate call-log ordering plan→upsert→rename→publish"
+else
+    pass "skip validate call-log ordering plan→upsert→rename→publish"
+fi
 
 # --- pause before validator/publish ---
 D_PAUSE="$TMP/pause"
@@ -423,6 +436,8 @@ grep -q 'SESSION_ID=sid-1' "$RENDER_LOG" \
 D_FAIL_CANON=$(cd "$D_FAIL" && pwd -P)
 grep -q "DESIGN_TMPDIR=${D_FAIL_CANON}" "$RENDER_LOG" \
   || fail "failed-plan-write render missing DESIGN_TMPDIR"
+if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then fail "failed plan write must not rename"; else pass "failed plan write skipped rename"; fi
+if grep -q 'tracking-issue-write' "$CALL_LOG" 2>/dev/null; then fail "failed plan write call log must not rename"; else pass "failed plan write call log skipped rename"; fi
 
 # --- happy path ---
 D_OK="$TMP/happy"
