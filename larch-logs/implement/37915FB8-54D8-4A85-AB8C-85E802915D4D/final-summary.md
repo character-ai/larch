@@ -1,6 +1,6 @@
-## /implement run 37915FB8-54D8-4A85-AB8C-85E802915D4D — bailed
+## /implement run 37915FB8-54D8-4A85-AB8C-85E802915D4D — stalled
 
-- **Outcome**: bailed
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Path**: HARD
 - **Duration**: 03:38:13
@@ -9,8 +9,8 @@
 - **Plan review**: N/A
 - **Code review**: 89/141 accepted
 - **OOS filed**: 2 — https://github.com/character-ai/larch/issues/3458,https://github.com/character-ai/larch/issues/3459
-- **Exec issues**: 1
-- **Warnings**: 4
+- **Exec issues**: 2
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/37915FB8-54D8-4A85-AB8C-85E802915D4D/`
 
 <!-- larch:run-summary v=1 -->
