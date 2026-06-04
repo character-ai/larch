@@ -94,9 +94,9 @@ cat >"$manifest" <<'JSON'
 JSON
 "$HELPER" --manifest-path "$manifest" --implement-tmpdir "$tmp"
 out="$tmp/oos-accepted-main-agent.md"
-not_contains "$out" 'Security title only' "security title marker must be excluded"
+contains "$out" '### OOS_1: Security title only' "security title alone must remain public-routed"
 not_contains "$out" 'Structured marker' "structured security marker must be excluded"
-contains "$tmp/security-oos-observations.md" '- **Description**: Retain private body.' "title-only security audit body missing"
+not_contains "$tmp/security-oos-observations.md" 'Security title only' "security title alone must not be security-routed"
 contains "$tmp/security-oos-observations.md" '- **focus-area**: security-privacy' "structured focus-area missing from audit"
 rm -rf "$tmp"
 

@@ -196,6 +196,8 @@ def _materialize_manifest_oos(runner: Runner, ctx: RunContext, *, cwd: str | Non
             observations = data.get("oos_observations")
             if isinstance(observations, list):
                 manifest_oos_count = len(cast("list[object]", observations))
+            elif "oos_observations" in data:
+                manifest_oos_count = None
             else:
                 manifest_oos_count = 0
     except (OSError, json.JSONDecodeError):
@@ -254,17 +256,30 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
         if path.is_file()
     )
     created = tmpdir / "oos-issues-created.md"
-    run_dir_ndjson = tmpdir / "larch-logs" / "implement" / ctx.run_id / "oos-issues.ndjson"
-    if not run_dir_ndjson.is_file():
+    run_id = ctx.run_id
+    if not run_id:
+        session_id = tmpdir / "session-id"
+        if session_id.is_file():
+            run_id = session_id.read_text(encoding="utf-8").strip()
+    run_dir_ndjson = tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson" if run_id else Path()
+    if not run_id:
         candidates = sorted((tmpdir / "larch-logs" / "implement").glob("*/oos-issues.ndjson"))
         if len(candidates) == 1:
             run_dir_ndjson = candidates[0]
-        elif len(candidates) > 1 and not ctx.run_id:
+        elif len(candidates) > 1:
             return ShipResult(
                 Outcome.NEEDS_USER_INPUT,
                 needs_user_reason=config.NEEDS_USER_OOS_FILING,
                 detail=config.NEEDS_USER_OOS_FILING,
             )
+    non_security_count = oos.count_non_security(accepted)
+    if non_security_count > 0 and not run_dir_ndjson.is_file():
+        _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
+        return ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason=config.NEEDS_USER_OOS_FILING,
+            detail=config.NEEDS_USER_OOS_FILING,
+        )
     commit_messages = ""
     base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
     commit_range = f"{base_remote}/main..HEAD"
@@ -467,6 +482,21 @@ def run_ship(
             )
         security_oos = Path(ctx.tmpdir) / "security-oos-observations.md"
         if security_oos.is_file() and security_oos.stat().st_size > 0:
+            _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
+            return ShipResult(
+                Outcome.NEEDS_USER_INPUT,
+                needs_user_reason=config.NEEDS_USER_OOS_FILING,
+                detail=config.NEEDS_USER_OOS_FILING,
+            )
+        design_path = resolve_oos_accepted_design_path(Path(ctx.tmpdir))
+        if any(
+            path.is_file() and path.stat().st_size > 0
+            for path in (
+                Path(ctx.tmpdir) / "oos-accepted-main-agent.md",
+                design_path,
+                Path(ctx.tmpdir) / "oos-accepted-review.md",
+            )
+        ):
             _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
             return ShipResult(
                 Outcome.NEEDS_USER_INPUT,

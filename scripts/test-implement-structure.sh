@@ -543,7 +543,7 @@ ship_pr_materialize_order=0
 awk '
   /^run_pr_prep_phase\(\)/ { in_fn=1; next }
   in_fn && /^}/ { exit }
-  in_fn && /materialize-manifest-oos\.sh/ && mat == 0 { mat = NR }
+  in_fn && /bash "\$materialize_oos"/ && mat == 0 { mat = NR }
   in_fn && /state_set OOS_PENDING true/ && pend == 0 { pend = NR }
   END { if (mat == 0 || pend == 0 || mat >= pend) exit 1 }
 ' "$SHIP_PR_SH" || ship_pr_materialize_order=$?

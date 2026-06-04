@@ -41,10 +41,13 @@ def test_disposition_passes_with_inline_triage(tmp_path: Path) -> None:
         '{"title": "x", "phase": "implement", "accepted": true}\n' * 2,
         encoding="utf-8",
     )
+    ndjson = tmp_path / "oos.ndjson"
+    _ = ndjson.write_text("", encoding="utf-8")
     messages = "Inline-triage rule 1: fold docs\nInline-triage rule 2: fold bug\n"
     result = oos.disposition_ok(
         _NoopRunner(),  # type: ignore[arg-type]
         accepted_files=(str(accepted),),
+        oos_issues_ndjson=str(ndjson),
         commit_range_messages=messages,
     )
     assert result.ok
@@ -61,10 +64,13 @@ def test_disposition_counts_markdown_oos_blocks(tmp_path: Path) -> None:
         "Created https://github.com/example/larch/issues/99\n",
         encoding="utf-8",
     )
+    ndjson = tmp_path / "oos.ndjson"
+    _ = ndjson.write_text("", encoding="utf-8")
     result = oos.disposition_ok(
         _NoopRunner(),  # type: ignore[arg-type]
         accepted_files=(str(accepted),),
         filed_urls_files=(str(filed),),
+        oos_issues_ndjson=str(ndjson),
     )
     assert result.ok
     assert result.non_security_count == 1
@@ -76,10 +82,13 @@ def test_disposition_counts_strict_filed_url_fields(tmp_path: Path) -> None:
         "### OOS_1: Design item\n- **Filed URL**: https://github.com/example/larch/issues/99\n",
         encoding="utf-8",
     )
+    ndjson = tmp_path / "oos.ndjson"
+    _ = ndjson.write_text("", encoding="utf-8")
     result = oos.disposition_ok(
         _NoopRunner(),  # type: ignore[arg-type]
         accepted_files=(str(accepted),),
         filed_urls_strict_files=(str(accepted),),
+        oos_issues_ndjson=str(ndjson),
     )
     assert result.ok
     assert result.filed_urls == 1

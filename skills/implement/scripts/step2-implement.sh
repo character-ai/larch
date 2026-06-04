@@ -1076,7 +1076,7 @@ if [[ -x "$REDACT" ]]; then
         mv "$TMP_SAN.1" "$TMP_SAN.0"
     fi
 
-    # oos_observations: title and description only.
+    # oos_observations: public-boundary fields plus structured focus_area.
     if jq -e '.oos_observations | type == "array"' "$TMP_SAN.0" >/dev/null 2>&1; then
         SAN_OOS_FILE="$TMPDIR_ARG/manifest-oos.json"
         : > "$SAN_OOS_FILE"
@@ -1088,11 +1088,13 @@ if [[ -x "$REDACT" ]]; then
             ti=$(jq -r ".oos_observations[$i].title // \"\"" "$TMP_SAN.0")
             de=$(jq -r ".oos_observations[$i].description // \"\"" "$TMP_SAN.0")
             ph=$(jq -r ".oos_observations[$i].phase // \"implement\"" "$TMP_SAN.0")
+            fa=$(jq -r ".oos_observations[$i][\"focus-area\"] // .oos_observations[$i].focus_area // \"\"" "$TMP_SAN.0")
             ti_san=$(sanitize_string "$ti")
             de_san=$(sanitize_string "$de")
+            fa_san=$(sanitize_string "$fa")
             if [[ "$first" == "true" ]]; then first=false; else printf ',' >> "$SAN_OOS_FILE"; fi
-            jq -Rn --arg t "$ti_san" --arg d "$de_san" --arg p "$ph" \
-                '{title: $t, description: $d, phase: $p}' >> "$SAN_OOS_FILE"
+            jq -Rn --arg t "$ti_san" --arg d "$de_san" --arg p "$ph" --arg fa "$fa_san" \
+                '{title: $t, description: $d, phase: $p} + (if $fa == "" then {} else {"focus-area": $fa} end)' >> "$SAN_OOS_FILE"
             i=$((i + 1))
         done
         printf ']' >> "$SAN_OOS_FILE"
@@ -1111,7 +1113,7 @@ if [[ "$STATUS" == "complete" ]]; then
     MATERIALIZE_OOS="$PLUGIN_ROOT/skills/implement/scripts/materialize-manifest-oos.sh"
     MAT_OOS_COUNT=""
     MAT_OOS_COUNT_RC=0
-    MAT_OOS_COUNT=$(jq 'if (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$MANIFEST_PATH" 2>/dev/null) || MAT_OOS_COUNT_RC=$?
+    MAT_OOS_COUNT=$(jq 'if has("oos_observations") and (.oos_observations | type != "array") then error("oos_observations must be an array") elif (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$MANIFEST_PATH" 2>/dev/null) || MAT_OOS_COUNT_RC=$?
     MAT_OOS_LOG="$TMPDIR_ARG/materialize-manifest-oos.log"
     if [[ -x "$MATERIALIZE_OOS" ]]; then
         MAT_RC=0

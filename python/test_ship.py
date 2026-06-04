@@ -212,7 +212,7 @@ def test_design_export_oos_allows_pr_create_after_disposition(
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    assert result.outcome is Outcome.OK
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
 
 
 def test_design_tmpdir_oos_allows_pr_create_after_disposition(
@@ -239,7 +239,7 @@ def test_design_tmpdir_oos_allows_pr_create_after_disposition(
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    assert result.outcome is Outcome.OK
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
 
 
 def test_stale_design_tmpdir_falls_back_to_design_export(

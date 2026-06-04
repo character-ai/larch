@@ -42,7 +42,15 @@ if ! jq -e 'type == "object"' "$manifest_path" >/dev/null 2>&1; then
   exit 1
 fi
 
-count=$(jq 'if (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$manifest_path") || exit 1
+count=$(jq '
+  if has("oos_observations") and (.oos_observations | type != "array") then
+    error("oos_observations must be an array")
+  elif (.oos_observations | type == "array") then
+    (.oos_observations | length)
+  else
+    0
+  end
+' "$manifest_path") || exit 1
 [ "${count:-0}" -gt 0 ] || exit 0
 if [ ! -x "$redact_secrets" ]; then
   echo "redact-secrets.sh missing or not executable: $redact_secrets" >&2
@@ -95,7 +103,9 @@ security_focus_area() {
 
 sanitize_public_text() {
   printf '%s' "$1" | "$redact_secrets" | sed -E \
-    -e 's#https?://(localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|[^[:space:]/]+[.](internal|local|corp|lan|intranet))[^[:space:]]*#<INTERNAL-URL>#g' \
+    -e 's#https?://(localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|169\.254\.[0-9.]+|fc[0-9a-f]{2}:|fd[0-9a-f]{2}:|fe80:|[^[:space:]/]+[.](internal|local|corp|lan|intranet|test|example|invalid))[^[:space:]]*#<INTERNAL-URL>#Ig' \
+    -e 's#\b(localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|169\.254\.[0-9.]+|[^[:space:]/]+[.](internal|local|corp|lan|intranet))\b#<INTERNAL-URL>#Ig' \
+    -e 's/\b(account|user|customer|employee|tenant|org)[_-]?[[:alnum:]]{8,}\b/<REDACTED-PII>/Ig' \
     -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<REDACTED-PII>/g' \
     -e 's/([0-9]{3}-[0-9]{2}-[0-9]{4})/<REDACTED-PII>/g' \
     -e 's/(\+?1[ .-]?)?\(?[0-9]{3}\)?[ .-]?[0-9]{3}[ .-]?[0-9]{4}/<REDACTED-PII>/g'
@@ -103,7 +113,6 @@ sanitize_public_text() {
 
 security_signal() {
   local title=$1 description=$2 focus_area=$3
-  printf '%s\n' "$title" | awk '{ exit(tolower($0) ~ /^security([[:space:]_-]|$)/ ? 0 : 1) }' && return 0
   if [ -n "$focus_area" ] && printf -- '- **focus-area**: %s\n' "$focus_area" | security_focus_area; then
     return 0
   fi

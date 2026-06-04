@@ -737,8 +737,27 @@ run_oos_disposition_gate_if_required_before_oos_pending_false() {
     if [ -n "$oos_ndjson" ] && [ -f "$oos_ndjson" ]; then
         gate_extra+=(--oos-issues-ndjson "$oos_ndjson")
     fi
-    gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
     oos_design_path=$(resolve_oos_accepted_design_path "$IMPLEMENT_TMPDIR")
+    local non_sec_oos=0 oos_acc n
+    while IFS= read -r oos_acc; do
+        [ -z "$oos_acc" ] && continue
+        [ -f "$oos_acc" ] || continue
+        n=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$oos_acc" 2>/dev/null | tr -d '[:space:]' || printf '0')
+        non_sec_oos=$((non_sec_oos + n))
+    done <<EOF
+$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md
+$oos_design_path
+$IMPLEMENT_TMPDIR/oos-accepted-review.md
+EOF
+    if [ "${non_sec_oos:-0}" -gt 0 ] && { [ -z "$oos_ndjson" ] || [ ! -f "$oos_ndjson" ]; }; then
+        larch_err "ship-pr.sh: non-security accepted OOS requires oos-issues.ndjson evidence before clearing OOS_PENDING"
+        return 2
+    fi
+    if [ -s "$IMPLEMENT_TMPDIR/security-oos-observations.md" ]; then
+        larch_err "ship-pr.sh: security-routed manifest OOS requires private SECURITY.md disposition before clearing OOS_PENDING"
+        return 2
+    fi
+    gate_log="$IMPLEMENT_TMPDIR/oos-disposition-gate.stderr.log"
     case $- in *e*) _had_errexit=1 ;; esac
     set +e
     bash "$gate_script" \
@@ -1193,7 +1212,7 @@ run_pr_prep_phase() {
     if [ -n "$manifest_path" ] && [ -f "$manifest_path" ]; then
         materialize_count=""
         materialize_count_rc=0
-        materialize_count=$(jq 'if (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$manifest_path" 2>/dev/null) || materialize_count_rc=$?
+        materialize_count=$(jq 'if has("oos_observations") and (.oos_observations | type != "array") then error("oos_observations must be an array") elif (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$manifest_path" 2>/dev/null) || materialize_count_rc=$?
         fail_file=$(failure_capture_path pr-prep)
         _had_errexit=0
         case $- in *e*) _had_errexit=1 ;; esac
@@ -3268,7 +3287,7 @@ main() {
                 advance_phase bump
                 state_set_many RESUME_PHASE "" CALLER_KIND ""
                 ;;
-            pr-create) advance_phase pr-create ;;
+            pr-create) advance_phase pr-prep ;;
             ci-initial) advance_phase ci-initial ;;
             ci-merge) state_set CI_PASSED false; advance_phase ci-merge ;;
             evaluate-failure) advance_phase evaluate-failure ;;
