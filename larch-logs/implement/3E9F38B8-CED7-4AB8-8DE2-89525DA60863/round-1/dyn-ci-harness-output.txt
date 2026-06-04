@@ -1,0 +1,14 @@
+Reviewing the branch diff and CI/harness wiring for risk-integration issues.
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+The branch makes a coherent CI/harness fix: `test-merge-parity` is removed from `.PHONY`, `test-harnesses-5`, and the standalone recipe (including the `|| exit 0` pytest skip), so shard 5 no longer masks missing parity coverage. Merge bash/Python parity remains enforced by the separate `python-tests` job (`make py-test` → `cd python && pytest`), which collects `python/test_merge_bash_parity.py` with only a `bash`-missing skip, not a silent pass. `test-merge-pr` stays on shard 5 for the Bash harness; `docs/linting.md` drops the removed target and documents parity on the `test-merge-pr` row, consistent with `docs/linting.md:29` (lint/harnesses vs `py-test`). Full target removal satisfies `scripts/test-harness-shards-coverage.sh` (orphan targets fail; stale `.PHONY` alone would not).
+
+**Commits:** `398ce1c15` (Makefile + docs + SECURITY), `3e1f9477f` (larch-logs flush).
+
+### Out-of-Scope Observations
+
+- **risk-integration** `.github/workflows/ci.yaml:169-170` and `.github/workflows/requirements-test-harnesses.txt:1` — Comments still say harness CI installs pytest to run “Python parity harnesses,” but no `test-harnesses-N` target invokes pytest after this change; parity lives only in `python-tests`. Harmless for correctness, but misleading for anyone trimming harness deps. **Suggested fix:** Reword those comments (and drop `pytest` from `requirements-test-harnesses.txt` only after confirming no harness needs the package).
+
+- **risk-integration** (pre-existing, plan-deferred) `python/test_merge_bash_parity.py` — The original issue’s version-race / bump-subject merge scenarios are still not covered by mandatory CI; removing the shard target does not add that gap, it only removes redundant execution of the existing file.
