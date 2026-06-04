@@ -450,6 +450,7 @@ contains "$RUN_STEP3_SH" 'RUN_STEP3_EMIT_PREVIEW_SH' 'run-step3-review.sh must h
 assert_thin_fence "$SKILL_MD" 'SKILL Step 3 thin-fence shape' '<!-- step:3 —' '<!-- step:3.5'
 step3_block=$(awk '/^<!-- step:3 /,/^<!-- step:3.5 /' "$SKILL_MD")
 step3_pause_count=$(printf '%s\n' "$step3_block" | grep -c 'design-pause-save\.sh' || true)
+# shellcheck disable=SC2016 # grep literal contains shell variables and quotes intentionally
 step3_pause_repo_count=$(printf '%s\n' "$step3_block" | grep -c 'design-pause-save\.sh.*\${REPO:+--repo "\$REPO"}' || true)
 [[ "$step3_pause_count" -ge 1 ]] \
   || fail "(14c0d) Step 3 block must contain design-pause-save.sh guards"
@@ -464,6 +465,7 @@ printf '%s\n' "$step3_block" | awk '
 ' || fail "(14c0e) Step 3 block must exit 1 after rc=2 banner before safe-env load"
 printf '%s\n' "$step3_block" | grep -Fq 'LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|WARN)' \
   || fail "(14c0f) Step 3 block missing display-pass twelve-key plus WARN suppression"
+# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally
 printf '%s\n' "$step3_block" | grep -Fq '**Post-loop branch matrix** (when `_step3_safe_env_loaded=true`' \
   || fail "(14c0g) Step 3 block missing post-loop branch matrix intro with _step3_safe_env_loaded"
 grep -Fq 'scout-plan-archetypes-wrapper.sh' "$PLAN_REVIEW_LOOP_SH" \
