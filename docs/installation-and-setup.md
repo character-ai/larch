@@ -153,12 +153,12 @@ alias opus_login='env -u ANTHROPIC_API_KEY claude --model "claude-opus-4-8[1m]" 
 Subprocesses inherit the top-level session's environment, so billing tracks the top-level account: `*_api` → API token (`ANTHROPIC_API_KEY`, which `claude --print` uses directly); `*_login` → subscription OAuth (macOS Keychain). Credential precedence is `ANTHROPIC_API_KEY` (env) > `apiKeyHelper` > stored OAuth, and a configured `apiKeyHelper` never falls back to OAuth — which is why the settings file stays clean and `apiKeyHelper` lives only in the `*_api` aliases.
 
 ### Codex
-- Via web UI of your Codex org, create your own API key
-- Add it to your env (e.g., in `.bashrc`: `export OPENAI_API_KEY="<your-key>"` (replace `<your-key>`, of course))
-- Add to `~/.codex/config.toml`:
-`env_key = "OPENAI_API_KEY"`
-- Install Codex: `npm install -g @openai/codex`
-- Run `codex` and verify the above settings
+- Via web UI of your Codex org, create your own API key.
+- Add it to your env (e.g., in `.bashrc`: `export OPENAI_API_KEY="<your-key>"`; replace `<your-key>`, of course).
+- Install Codex: `npm install -g @openai/codex`.
+- Larch's covered Codex launch, probe, and review-fix surfaces prefer a non-empty `OPENAI_API_KEY` automatically via per-invocation `-c` overrides. Only the env var name is passed; the key value stays in the environment.
+- When `OPENAI_API_KEY` is unset or empty, those surfaces fall back to `codex login` / `~/.codex/auth.json`.
+- Do not keep the old top-level `env_key = "OPENAI_API_KEY"` setup advice as your Codex path; larch strips that legacy line from copied temp configs on login fallback.
 
 ### Cursor
 - Via web UI of your Cursor org, create your own API key

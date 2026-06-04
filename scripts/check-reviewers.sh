@@ -75,6 +75,14 @@ larch_stamp_path() {
     printf '%s' "${TMPDIR:-/tmp}/larch-${1}-present-${_u:-larch}.stamp"
 }
 
+larch_codex_probe_stamp_key() {
+    if external_codex_env_key_enabled; then
+        printf '%s' codex-env-key
+    else
+        printf '%s' codex-login
+    fi
+}
+
 # Reads stamp if fresh; sets named variable from first line; returns 0 on hit.
 larch_try_read_fresh_stamp() {
     local stamp="$1"
@@ -186,26 +194,45 @@ larch_run_one_cursor_probe() {
 }
 
 larch_run_one_codex_probe() {
-    local probe_out probe_side probe_pid probe_rc _SERIAL_LOCK _probe_model_args
+    local probe_out probe_side probe_pid probe_rc _SERIAL_LOCK _probe_model_args _codex_auth_args
+    local codex_home model_args_tmp project_key trust_config_arg
     probe_out=$(mktemp "${TMPDIR:-/tmp}/larch-codex-probe.XXXXXX") || return 1
     PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_out"
     probe_side="${probe_out}.sidecar"
     : >"$probe_side"
     PROBE_TMPFILES[${#PROBE_TMPFILES[@]}]="$probe_side"
+    codex_home=$(mktemp -d "${TMPDIR:-/tmp}/larch-codex-probe-home.XXXXXX") || { rm -f "$probe_out" "$probe_side"; return 1; }
+
+    if [[ -f ~/.codex/config.toml ]]; then
+        cp ~/.codex/config.toml "$codex_home/config.toml" || { rm -rf "$codex_home"; rm -f "$probe_out" "$probe_side"; return 1; }
+    fi
+    if ! external_prepare_codex_auth "$codex_home"; then
+        rm -rf "$codex_home"
+        rm -f "$probe_out" "$probe_side"
+        return 1
+    fi
 
     _probe_model_args=()
-    if MODEL_ARGS_TMP=$(mktemp) && "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort >"$MODEL_ARGS_TMP" 2>/dev/null; then
+    if model_args_tmp=$(mktemp) && "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort >"$model_args_tmp" 2>/dev/null; then
         while IFS= read -r _model_arg; do
             _probe_model_args+=("$_model_arg")
-        done <"$MODEL_ARGS_TMP"
+        done <"$model_args_tmp"
     fi
-    [[ -n "${MODEL_ARGS_TMP:-}" ]] && rm -f "$MODEL_ARGS_TMP"
+    [[ -n "${model_args_tmp:-}" ]] && rm -f "$model_args_tmp"
+
+    project_key=${PWD//\\/\\\\}
+    project_key=${project_key//\"/\\\"}
+    trust_config_arg="projects.\"$project_key\".trust_level=\"trusted\""
+    _codex_auth_args=()
+    external_codex_auth_config_args _codex_auth_args
 
     _SERIAL_LOCK=""
-    external_serial_lock_acquire _SERIAL_LOCK "codex" || { rm -f "$probe_out" "$probe_side"; return 1; }
-    # shellcheck disable=SC2068
-    codex exec --sandbox read-only -C "$PWD" --output-last-message "$probe_out" \
+    external_serial_lock_acquire _SERIAL_LOCK "codex" || { rm -rf "$codex_home"; rm -f "$probe_out" "$probe_side"; return 1; }
+    CODEX_HOME="$codex_home" codex exec --sandbox read-only -C "$PWD" \
         ${_probe_model_args[@]+"${_probe_model_args[@]}"} \
+        -c "$trust_config_arg" \
+        ${_codex_auth_args[@]+"${_codex_auth_args[@]}"} \
+        --output-last-message "$probe_out" \
         -- "Respond with OK" \
         >/dev/null 2>>"$probe_side" &
     probe_pid=$!
@@ -215,19 +242,21 @@ larch_run_one_codex_probe() {
     larch_poll_probe_pid "$probe_pid" probe_rc
 
     if (( probe_rc == 0 )); then
+        rm -rf "$codex_home"
         rm -f "$probe_out" "$probe_side"
         return 0
     fi
     if external_is_auth_failure "codex" "$probe_out" || external_is_auth_failure "codex" "$probe_side"; then
         if (( AUTH_ATTEMPT < MAX_AUTH_RETRIES )); then
+            rm -rf "$codex_home"
             rm -f "$probe_out" "$probe_side"
             return 2
         fi
     fi
+    rm -rf "$codex_home"
     rm -f "$probe_out" "$probe_side"
     return 1
 }
-
 # --- Cursor ---
 if [[ "$CURSOR_BINARY_FOUND" != "true" ]]; then
     CURSOR_PRESENT=false
@@ -281,7 +310,9 @@ elif [[ "$SKIP_CODEX_PROBE" == "true" ]]; then
     CODEX_PRESENT=false
 else
     _CACHED_C=""
-    if larch_try_read_fresh_stamp "$(larch_stamp_path codex)" _CACHED_C; then
+    _CODEX_STAMP_KEY=$(larch_codex_probe_stamp_key)
+    if larch_try_read_fresh_stamp "$(larch_stamp_path "$_CODEX_STAMP_KEY")" _CACHED_C \
+        && ! { external_codex_env_key_enabled && [[ "$_CACHED_C" == "false" ]]; }; then
         CODEX_PRESENT="$_CACHED_C"
     else
         AUTH_ATTEMPT=1
@@ -300,7 +331,7 @@ else
             CODEX_PRESENT=false
             break
         done
-        larch_write_bool_stamp "$(larch_stamp_path codex)" "$CODEX_PRESENT" || true
+        larch_write_bool_stamp "$(larch_stamp_path "$_CODEX_STAMP_KEY")" "$CODEX_PRESENT" || true
     fi
 fi
 

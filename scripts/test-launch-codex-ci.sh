@@ -120,7 +120,7 @@ chmod +x "$runtime_bin/codex"
 
 OUT_SUCCESS="$TMPDIR_BASE/ci-runtime-success"
 (cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
-    LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    OPENAI_API_KEY=sk-larch-ci-sentinel LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
     bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_SUCCESS" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
 if grep -q '^TOOL=codex$' "${OUT_SUCCESS}.token-record" \
     && grep -q '^INPUT=100$' "${OUT_SUCCESS}.token-record" \
@@ -147,6 +147,12 @@ if grep -qx -- '--json' "$runtime_argv" 2>/dev/null; then
     ok "runtime success argv includes --json"
 else
     fail "runtime success argv includes --json: $(cat "$runtime_argv" 2>/dev/null)"
+fi
+
+if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$runtime_argv"     && ! grep -Fq 'sk-larch-ci-sentinel' "$runtime_argv"; then
+    ok "runtime success env-key auth argv uses var name only"
+else
+    fail "runtime success env-key auth argv mismatch: $(cat "$runtime_argv" 2>/dev/null)"
 fi
 
 cat > "$runtime_bin/codex" <<'EOF'

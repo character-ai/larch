@@ -439,8 +439,23 @@ TRUST_CONFIG_ARG="projects.\"$PROJECT_KEY\".trust_level=\"trusted\""
         printf '\n'
     fi
 } > "$CODEX_HOME_DIR/config.toml"
-if [[ -f ~/.codex/auth.json ]]; then
-    ln -sf "$(cd ~/.codex && pwd)/auth.json" "$CODEX_HOME_DIR/auth.json"
+AUTH_PREP_RC=0
+external_prepare_codex_auth "$CODEX_HOME_DIR" || AUTH_PREP_RC=$?
+if (( AUTH_PREP_RC != 0 )); then
+    : > "$OUTPUT" 2>/dev/null || true
+    {
+        printf 'STATUS=FAILED\n'
+        printf 'FAILURE_REASON=codex auth setup failed (exit %s)\n' "$AUTH_PREP_RC"
+    } > "${OUTPUT}.diag" 2>/dev/null || true
+    {
+        printf 'TOOL=codex\n'
+        printf 'TIMEOUT=%s\n' "$TIMEOUT"
+        printf 'CAPTURE_STDOUT=false\n'
+        printf 'OUTPUT_FILE=%s\n' "$OUTPUT"
+        printf 'CMD_JSON=[]\n'
+    } > "${OUTPUT}.meta" 2>/dev/null || true
+    printf '%s\n' "$AUTH_PREP_RC" > "${OUTPUT}.done" 2>/dev/null || true
+    exit "$AUTH_PREP_RC"
 fi
 MODEL_ARGS_TMP=$(mktemp)
 PROMPT_FILE_SIDECAR="${OUTPUT}.prompt"
@@ -520,6 +535,8 @@ MODEL_ARGS=()
 while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")
 done < "$MODEL_ARGS_TMP"
+CODEX_AUTH_ARGS=()
+external_codex_auth_config_args CODEX_AUTH_ARGS
 RUN_EXTERNAL="$SCRIPT_DIR/run-external-agent.sh"
 SIDECAR="${OUTPUT}.sidecar"
 CODEX_EVENTS="${OUTPUT}.events.jsonl"
@@ -556,6 +573,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             --add-dir "$CODEX_SANDBOX_DIR" \
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             -c "$TRUST_CONFIG_ARG" \
+            ${CODEX_AUTH_ARGS[@]+"${CODEX_AUTH_ARGS[@]}"} \
             --output-last-message "$OUTPUT" \
             --json \
             -- \
@@ -574,6 +592,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
             --add-dir "$CODEX_SANDBOX_DIR" \
             ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
             -c "$TRUST_CONFIG_ARG" \
+            ${CODEX_AUTH_ARGS[@]+"${CODEX_AUTH_ARGS[@]}"} \
             --output-last-message "$OUTPUT" \
             --json \
             -- \

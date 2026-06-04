@@ -161,12 +161,25 @@ MODEL_ARGS=()
 while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")
 done < "$MODEL_ARGS_TMP"
-if [ -f ~/.codex/auth.json ]; then
-    ln -sf "$(cd ~/.codex && pwd)/auth.json" "$CODEX_HOME_DIR/auth.json"
+AUTH_PREP_RC=0
+external_prepare_codex_auth "$CODEX_HOME_DIR" || AUTH_PREP_RC=$?
+if (( AUTH_PREP_RC != 0 )); then
+    LAUNCHER_EXIT="$AUTH_PREP_RC"
+    SIDECAR_LOG="${OUTPUT}.sidecar"
+    : > "$SIDECAR_LOG" 2>/dev/null || true
+    printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$AUTH_PREP_RC" >> "$SIDECAR_LOG" 2>/dev/null || true
+    : > "${OUTPUT}.token-record" 2>/dev/null || true
+    emit_kv LAUNCHER_EXIT "$LAUNCHER_EXIT"
+    external_classify_launch_failure "$LAUNCHER_EXIT" "$SIDECAR_LOG" "auth" 1 "codex" "$OUTPUT"
+    emit_kv OUTPUT "$OUTPUT"
+    emit_kv TOKEN_RECORD "${OUTPUT}.token-record"
+    exit 0
 fi
 PROJECT_KEY=${PWD//\\/\\\\}
 PROJECT_KEY=${PROJECT_KEY//\"/\\\"}
 TRUST_CONFIG_ARG="projects.\"$PROJECT_KEY\".trust_level=\"trusted\""
+CODEX_AUTH_ARGS=()
+external_codex_auth_config_args CODEX_AUTH_ARGS
 
 TIMING_START_S=$(date +%s)
 LAUNCHER_EXIT=0
@@ -201,6 +214,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         codex exec --full-auto -C "$PWD" \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         -c "$TRUST_CONFIG_ARG" \
+        ${CODEX_AUTH_ARGS[@]+"${CODEX_AUTH_ARGS[@]}"} \
         --output-last-message "$OUTPUT" \
         --json \
         -- \

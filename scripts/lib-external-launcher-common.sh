@@ -519,4 +519,66 @@ larch_validate_vendor_conflict_csv() {
     return 0
 }
 
+external_codex_env_key_enabled() {
+    [[ ${OPENAI_API_KEY+x} == x ]] || return 1
+    [[ ${#OPENAI_API_KEY} -gt 0 ]] || return 1
+}
+
+external_strip_codex_larch_env_provider() {
+    local config_path="$1"
+    local tmp_path=""
+    [[ -f "$config_path" && -r "$config_path" && -w "$config_path" ]] || return 1
+    tmp_path=$(mktemp "${config_path}.XXXXXX") || return 1
+    if awk '
+        /^[[:space:]]*\[/ {
+            if ($0 ~ /^[[:space:]]*\[model_providers\.openai-larch-env\][[:space:]]*(#.*)?$/) {
+                skip_larch_provider=1
+                in_table=1
+                next
+            }
+            skip_larch_provider=0
+            in_table=1
+        }
+        skip_larch_provider { next }
+        !in_table && $0 ~ /^[[:space:]]*model_provider[[:space:]]*=[[:space:]]*"openai-larch-env"[[:space:]]*(#.*)?$/ { next }
+        !in_table && $0 ~ /^[[:space:]]*env_key[[:space:]]*=[[:space:]]*"OPENAI_API_KEY"[[:space:]]*(#.*)?$/ { next }
+        { print }
+    ' "$config_path" > "$tmp_path"; then
+        mv -f "$tmp_path" "$config_path" || { rm -f "$tmp_path"; return 1; }
+    else
+        rm -f "$tmp_path"
+        return 1
+    fi
+}
+
+external_prepare_codex_auth() {
+    local home_dir="$1"
+    mkdir -p "$home_dir" || return 1
+    if external_codex_env_key_enabled; then
+        return 0
+    fi
+    if [[ -f "$home_dir/config.toml" ]]; then
+        external_strip_codex_larch_env_provider "$home_dir/config.toml" || return 1
+    fi
+    if [[ -f ~/.codex/auth.json ]]; then
+        ln -sf "$(cd ~/.codex && pwd)/auth.json" "$home_dir/auth.json" || return 1
+    fi
+}
+
+external_codex_auth_config_args() {
+    local __array_name="$1"
+    case "$__array_name" in
+        ''|*[!A-Za-z0-9_]*) return 1 ;;
+        [0-9]*) return 1 ;;
+    esac
+    external_codex_env_key_enabled || return 0
+    eval "$__array_name+=(\
+        -c 'model_provider=\"openai-larch-env\"' \
+        -c 'model_providers.openai-larch-env.name=\"OpenAI API (larch env key)\"' \
+        -c 'model_providers.openai-larch-env.base_url=\"https://api.openai.com/v1\"' \
+        -c 'model_providers.openai-larch-env.env_key=\"OPENAI_API_KEY\"' \
+        -c 'model_providers.openai-larch-env.wire_api=\"responses\"' \
+    )"
+}
+
 LARCH_LIB_EXTERNAL_LAUNCHER_COMMON_LOADED=1

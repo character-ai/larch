@@ -29,7 +29,7 @@ run_cr() {
     local tmp="$1"
     shift
     mkdir -p "$tmp"
-    ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 "$@" )
+    ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 env -u OPENAI_API_KEY "$@" )
 }
 
 # --- Baseline stubs (exit 0) ---
@@ -293,7 +293,7 @@ cat > "$SB10/cursor" <<'STUB'
 exit 127
 STUB
 chmod +x "$SB10/cursor"
-st10="$SCRATCH/t10/larch-codex-present-${STAMP_USER}.stamp"
+st10="$SCRATCH/t10/larch-codex-login-present-${STAMP_USER}.stamp"
 printf 'true\n' >"$st10"
 touch "$st10"
 out=$(run_cr "$SCRATCH/t10" env PATH="$SB10:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=3600 \
@@ -314,7 +314,7 @@ cat > "$SB11/cursor" <<'STUB'
 exit 127
 STUB
 chmod +x "$SB11/cursor"
-st11="$SCRATCH/t11/larch-codex-present-${STAMP_USER}.stamp"
+st11="$SCRATCH/t11/larch-codex-login-present-${STAMP_USER}.stamp"
 printf 'false\n' >"$st11"
 touch -t 200001010000 "$st11" 2>/dev/null || touch -A "-876000" "$st11" 2>/dev/null || true
 out=$(run_cr "$SCRATCH/t11" env PATH="$SB11:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=60 \

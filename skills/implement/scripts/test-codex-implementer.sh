@@ -318,6 +318,7 @@ OUT=$(cd "$REPO_ROOT" && \
     STUB_CODEX_CONFIG_FILE="$CODEX_CONFIG_FILE" \
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
     LARCH_TOKEN_SESSION_ID="stale-codex-session" \
+    OPENAI_API_KEY="sk-larch-implement-sentinel" \
     LARCH_CODEX_MODEL="stub-codex-model" \
     "$LAUNCHER" \
         --transcript-path "$TRANSCRIPT" \
@@ -364,6 +365,12 @@ if [[ -s "$CODEX_CONFIG_FILE" ]] \
     pass
 else
     fail 4d "CODEX_HOME config.toml should carry top-level implementer instructions"
+fi
+
+if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_FILE"     && ! grep -Fq 'sk-larch-implement-sentinel' "$ARGV_FILE"     && ! grep -Fq 'openai-larch-env' "$CODEX_CONFIG_FILE"; then
+    pass
+else
+    fail 4e "env-key auth should use argv var-name overrides only"
 fi
 
 if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub codex stdout' "$TRANSCRIPT"; then

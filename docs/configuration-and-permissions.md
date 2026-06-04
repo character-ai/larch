@@ -174,6 +174,12 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 - Cursor review prompts are wrapped with `/max-mode on.` and an effort suffix only when the effective risk is `high` (the default). Risk is `low` for diffs classified as docs-only, test-only, or generated-only by `classify-diff-mode.sh`; the security specialist always forces `high` regardless of diff classification. Pass `--risk low` explicitly to suppress max-mode for a specific launch. Codex review analogously omits `--with-effort` when risk is `low`.
 - To opt into earlier defaults (faster / lower reasoning budget), set `LARCH_CURSOR_MODEL=composer-2` or `LARCH_CURSOR_MODEL=composer-2-fast`
 
+### `OPENAI_API_KEY`
+
+When non-empty, the covered Codex launch, health-probe, and review-fix paths authenticate with API-key billing via per-invocation `-c` provider overrides. Only the variable name `OPENAI_API_KEY` appears in argv or non-secret config references; the key value is read live by Codex from the environment.
+
+Bad or expired keys stay on the env-key path and fail loud / waterfall rather than silently reverting to ChatGPT login. When `OPENAI_API_KEY` is unset or empty, covered paths fall back to `codex login` / `~/.codex/auth.json`. The legacy top-level `env_key = "OPENAI_API_KEY"` config line is no longer the recommended setup path and is removed from copied larch temp configs on login fallback.
+
 ### `LARCH_CODEX_MODEL`
 
 The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).

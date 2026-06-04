@@ -261,25 +261,55 @@ run_coder_dispatch() {
     local codex_events="$round_dir/coder-codex.events.jsonl"
     local codex_wrapper_log="$round_dir/coder-codex.wrapper.log"
     local codex_telemetry_sidecar="$round_dir/coder-codex.sidecar"
-    local codex_rc=0
+    local codex_rc=0 codex_home="" codex_auth_prepared=false
+    local project_key trust_config_arg _codex_auth_args
 
-    _SERIAL_LOCK=""
-    external_serial_lock_acquire _SERIAL_LOCK "codex"
-    external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
-    rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
-    # shellcheck disable=SC2094 # --stderr-sink intentionally names the same fd2 sink used by this invocation.
-    "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 \
-        --stderr-sink "$codex_wrapper_log" -- \
-        codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" \
-        --output-last-message "$round_dir/coder-codex.log" \
-        --json \
-        -- \
-        "$prompt_body" >"$codex_events" 2>"$codex_wrapper_log" || codex_rc=$?
-    codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_telemetry_sidecar" "codex_review_fix" || true
+    codex_home=$(mktemp -d "${TMPDIR:-/tmp}/larch-codex-review-fix-home.XXXXXX") || codex_rc=1
     if [[ "$codex_rc" -eq 0 ]]; then
+        if [[ -f ~/.codex/config.toml ]]; then
+            cp ~/.codex/config.toml "$codex_home/config.toml" || codex_rc=1
+        fi
+    fi
+    if [[ "$codex_rc" -eq 0 ]]; then
+        external_prepare_codex_auth "$codex_home" || codex_rc=$?
+    fi
+    if [[ "$codex_rc" -eq 0 ]]; then
+        codex_auth_prepared=true
+        project_key=${PWD//\\/\\\\}
+        project_key=${project_key//\"/\\\"}
+        trust_config_arg="projects.\"$project_key\".trust_level=\"trusted\""
+        _codex_auth_args=()
+        external_codex_auth_config_args _codex_auth_args
+        _SERIAL_LOCK=""
+        external_serial_lock_acquire _SERIAL_LOCK "codex"
+        external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
+        rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
+        # shellcheck disable=SC2094 # --stderr-sink intentionally names the same fd2 sink used by this invocation.
+        CODEX_HOME="$codex_home" "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$round_dir/coder-codex.log" --timeout 1800 \
+            --stderr-sink "$codex_wrapper_log" -- \
+            codex exec --full-auto -C "$PWD" --add-dir "$round_dir" --add-dir "$PWD" \
+            -c "$trust_config_arg" \
+            ${_codex_auth_args[@]+"${_codex_auth_args[@]}"} \
+            --output-last-message "$round_dir/coder-codex.log" \
+            --json \
+            -- \
+            "$prompt_body" >"$codex_events" 2>"$codex_wrapper_log" || codex_rc=$?
+        codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_telemetry_sidecar" "codex_review_fix" || true
+    else
+        rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
+        printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$codex_rc" > "$codex_wrapper_log" 2>/dev/null || true
+    fi
+    [[ -n "$codex_home" ]] && rm -rf "$codex_home"
+
+    if [[ "$codex_rc" -eq 0 && "$codex_auth_prepared" == "true" ]]; then
         cp "$round_dir/coder-codex.log" "$tool_log" 2>/dev/null || : > "$tool_log"
         printf 'codex\n' > "$tool_stdout"
         return 0
+    fi
+
+    if external_codex_env_key_enabled; then
+        printf 'codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path; falling back when possible (exit %s)\n' "$codex_rc" >> "$codex_wrapper_log" 2>/dev/null || true
+        printf 'codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path; falling back when possible (exit %s)\n' "$codex_rc" >> "$codex_telemetry_sidecar" 2>/dev/null || true
     fi
 
     if cursor_launcher_load_model_args && cursor_launcher_setup_auth_argv; then
@@ -303,7 +333,6 @@ run_coder_dispatch() {
     larch_err "⚠ review-and-fix: coder dispatch failed (both codex and cursor)"
     return 1
 }
-
 post_dispatch_submodule_revert() {
     local round_dir="$1" submodules_list="$2"
     local revert_log="$round_dir/submodule-revert.log"

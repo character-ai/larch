@@ -287,6 +287,8 @@ if grep -Fq "'''" <<< "$AGENT_BODY"; then
 fi
 
 CODEX_HOME_DIR=$(mktemp -d /tmp/larch-codex-home-XXXXXX)
+MODEL_ARGS_TMP=""
+trap 'rm -f "${MODEL_ARGS_TMP:-}"; rm -rf "$CODEX_HOME_DIR"' EXIT
 PROJECT_KEY=${PWD//\\/\\\\}
 PROJECT_KEY=${PROJECT_KEY//\"/\\\"}
 TRUST_CONFIG_ARG="projects.\"$PROJECT_KEY\".trust_level=\"trusted\""
@@ -309,8 +311,19 @@ TRUST_CONFIG_ARG="projects.\"$PROJECT_KEY\".trust_level=\"trusted\""
         printf '\n'
     fi
 } > "$CODEX_HOME_DIR/config.toml"
-if [[ -f ~/.codex/auth.json ]]; then
-    ln -sf "$(cd ~/.codex && pwd)/auth.json" "$CODEX_HOME_DIR/auth.json"
+AUTH_PREP_RC=0
+external_prepare_codex_auth "$CODEX_HOME_DIR" || AUTH_PREP_RC=$?
+if (( AUTH_PREP_RC != 0 )); then
+    : > "$SIDECAR_LOG" 2>/dev/null || true
+    printf 'codex-auth-setup: failed to prepare Codex auth material (exit %s)\n' "$AUTH_PREP_RC" >> "$SIDECAR_LOG" 2>/dev/null || true
+    write_failed_agent_stderr_tail "$SIDECAR_LOG" "$TRANSCRIPT_PATH" || true
+    emit_timing_record "$AUTH_PREP_RC"
+    emit_kv LAUNCHER_EXIT "$AUTH_PREP_RC"
+    emit_kv MANIFEST_WRITTEN false
+    emit_kv QA_PENDING_WRITTEN false
+    emit_kv TRANSCRIPT "$TRANSCRIPT_PATH"
+    emit_kv SIDECAR_LOG "$SIDECAR_LOG"
+    exit 0
 fi
 
 # intentionally non-stable: plan/feature file paths are per-session; initial task for Codex (not Claude API)
@@ -329,7 +342,6 @@ PROMPT_FILE_SIDECAR="${TRANSCRIPT_PATH}.prompt"
 printf '%s' "$PROMPT" > "$PROMPT_FILE_SIDECAR"
 
 MODEL_ARGS_TMP=$(mktemp)
-trap 'rm -f "$MODEL_ARGS_TMP"; rm -rf "$CODEX_HOME_DIR"' EXIT
 MODEL_ARGS_ERR=$(mktemp)
 MODEL_ARGS_RC=0
 "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP" 2> "$MODEL_ARGS_ERR" || MODEL_ARGS_RC=$?
@@ -351,6 +363,8 @@ MODEL_ARGS=()
 while IFS= read -r arg; do
     MODEL_ARGS+=("$arg")
 done < "$MODEL_ARGS_TMP"
+CODEX_AUTH_ARGS=()
+external_codex_auth_config_args CODEX_AUTH_ARGS
 
 # Run the wrapper, redirecting stderr to the sidecar log so Claude (the
 # dispatcher's caller) never sees the wrapper's progress lines. Codex JSONL
@@ -384,6 +398,7 @@ while (( AUTH_ATTEMPT <= MAX_AUTH_RETRIES )); do
         --add-dir "$PWD" \
         ${MODEL_ARGS[@]+"${MODEL_ARGS[@]}"} \
         -c "$TRUST_CONFIG_ARG" \
+        ${CODEX_AUTH_ARGS[@]+"${CODEX_AUTH_ARGS[@]}"} \
         --output-last-message "$TRANSCRIPT_PATH" \
         --json \
         -- \

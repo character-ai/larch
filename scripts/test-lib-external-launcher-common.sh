@@ -29,6 +29,99 @@ assert_returns() {
 # shellcheck source=scripts/lib-external-launcher-common.sh
 source "$REPO_ROOT/scripts/lib-external-launcher-common.sh"
 
+assert_file_contains() {
+    local label="$1" file="$2" needle="$3"
+    if grep -Fq -- "$needle" "$file" 2>/dev/null; then
+        pass
+    else
+        fail "$label: missing '$needle' in $file"
+    fi
+}
+
+assert_file_not_contains() {
+    local label="$1" file="$2" needle="$3"
+    if grep -Fq -- "$needle" "$file" 2>/dev/null; then
+        fail "$label: unexpected '$needle' in $file"
+    else
+        pass
+    fi
+}
+
+# --- Codex env-key auth helper ---
+_codex_auth_home="$TMPDIR_ROOT/codex-auth-home"
+mkdir -p "$TMPDIR_ROOT/home/.codex"
+printf '{"token":"login"}\n' > "$TMPDIR_ROOT/home/.codex/auth.json"
+printf '%s\n' \
+    'model_provider = "openai-larch-env"' \
+    'env_key = "OPENAI_API_KEY"' \
+    '[model_providers.openai-larch-env]' \
+    'name = "old larch"' \
+    '[model_providers.other]' \
+    'name = "keep"' > "$TMPDIR_ROOT/copied-config.toml"
+
+# shellcheck disable=SC2016
+OPENAI_API_KEY='sk-larch-sentinel-value' HOME="$TMPDIR_ROOT/home" bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    args=()
+    external_codex_auth_config_args args
+    printf "%s\n" "${args[@]}" > "$2/args.txt"
+    mkdir -p "$2/env-home"
+    printf "[profile.keep]\nmodel = \"sentinel\"\n" > "$2/env-home/config.toml"
+    external_prepare_codex_auth "$2/env-home"
+' bash "$REPO_ROOT" "$TMPDIR_ROOT"
+assert_file_contains "codex auth args include provider selector" "$TMPDIR_ROOT/args.txt" 'model_provider="openai-larch-env"'
+assert_file_contains "codex auth args include env var name" "$TMPDIR_ROOT/args.txt" 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"'
+assert_file_not_contains "codex auth args exclude key value" "$TMPDIR_ROOT/args.txt" 'sk-larch-sentinel-value'
+if [[ -e "$TMPDIR_ROOT/env-home/auth.json" ]]; then
+    fail "codex env-key path must not create auth.json"
+else
+    pass
+fi
+assert_file_not_contains "codex env-key path does not write provider config" "$TMPDIR_ROOT/env-home/config.toml" 'openai-larch-env'
+
+# shellcheck disable=SC2016
+HOME="$TMPDIR_ROOT/home" env -u OPENAI_API_KEY bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    mkdir -p "$2/login-home"
+    cp "$2/copied-config.toml" "$2/login-home/config.toml"
+    external_prepare_codex_auth "$2/login-home"
+' bash "$REPO_ROOT" "$TMPDIR_ROOT"
+assert_file_not_contains "codex login strip removes selector" "$TMPDIR_ROOT/login-home/config.toml" 'model_provider = "openai-larch-env"'
+assert_file_not_contains "codex login strip removes legacy env_key" "$TMPDIR_ROOT/login-home/config.toml" 'env_key = "OPENAI_API_KEY"'
+assert_file_not_contains "codex login strip removes larch provider table" "$TMPDIR_ROOT/login-home/config.toml" '[model_providers.openai-larch-env]'
+assert_file_contains "codex login strip preserves unrelated provider" "$TMPDIR_ROOT/login-home/config.toml" '[model_providers.other]'
+if [[ -L "$TMPDIR_ROOT/login-home/auth.json" ]]; then
+    pass
+else
+    fail "codex login path must symlink auth.json"
+fi
+
+# shellcheck disable=SC2016
+HOME="$TMPDIR_ROOT/home" OPENAI_API_KEY='' bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    mkdir -p "$2/empty-home"
+    external_prepare_codex_auth "$2/empty-home"
+' bash "$REPO_ROOT" "$TMPDIR_ROOT"
+if [[ -L "$TMPDIR_ROOT/empty-home/auth.json" ]]; then
+    pass
+else
+    fail "codex empty env must fall back to auth.json"
+fi
+
+_xtrace="$TMPDIR_ROOT/codex-env-xtrace.txt"
+# shellcheck disable=SC2016
+OPENAI_API_KEY='sk-larch-xtrace-sentinel' bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    set -x
+    external_codex_env_key_enabled
+    set +x
+' bash "$REPO_ROOT" 2>"$_xtrace"
+assert_file_not_contains "codex env-key predicate xtrace excludes key value" "$_xtrace" 'sk-larch-xtrace-sentinel'
+
 EMPTY_OUTPUT="$TMPDIR_ROOT/empty.output"
 : > "$EMPTY_OUTPUT"
 
