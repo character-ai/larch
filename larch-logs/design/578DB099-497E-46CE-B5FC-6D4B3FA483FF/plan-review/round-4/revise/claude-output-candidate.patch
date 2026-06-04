@@ -1,0 +1,50 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -46,12 +46,12 @@
+ - **Do not** short-circuit the threshold with `THRESHOLD_OK=false` / `THRESHOLD_REASON=dispatch-failed` solely because `STATIC_DISPATCH_OK=false` when collector results exist and partial static peers succeeded; run threshold math (with dropped-file failures) unless dispatch is a true infrastructure failure (e.g. no static outputs at all, `DISPATCH_OK=false` without recoverable paths). Add harness case: Cursor peer dropped + Codex peer OK → threshold still passes for 8-slot panel.
+ 
+ ### UPDATED: `scripts/render-specialist-prompt.sh`
+-- Add a **reviewer-testing-only** plan injection: when the agent basename is `reviewer-testing` (or equivalent stable match) and a readable `PLAN_FILE` is set, include `<implementation_plan>` **regardless of** `DIFF_MODE` (generic, docs-only, test-only, generated-only) so the folded plan-fidelity secondary scan has plan context. Leave other specialists unchanged (existing generic-only plan block stays as-is for non-testing agents).
++- Add a **reviewer-testing-only** plan injection: when the agent basename is `reviewer-testing` (or equivalent stable match) and a readable `PLAN_FILE` is set, include `<implementation_plan>` **regardless of** `DIFF_MODE` (generic, docs-only, test-only, generated-only) **and regardless of `MODE`** (`diff` or `description`) so the folded plan-fidelity secondary scan has plan context in both diff and description reviews. Leave other specialists unchanged (existing generic-only plan block stays as-is for non-testing agents).
+ 
+ ### UPDATED: `scripts/test-render-specialist-prompt.sh`
+-- Regression: `reviewer-testing` receives plan context for generic and non-generic diff modes when `PLAN_FILE` is present; unrelated specialists do not gain broadened plan injection.
++- Regression: `reviewer-testing` receives plan context for generic and non-generic diff modes **and for `MODE=description`** when `PLAN_FILE` is present; narrow the global description-mode no-plan assertion to non-testing agents only; unrelated specialists do not gain broadened plan injection.
+ 
+ ### UPDATED: `scripts/test-render-specialist-prompt.md`
+-- Document the reviewer-testing basename exception and diff-mode matrix.
++- Document the reviewer-testing basename exception, diff-mode matrix, and `MODE` dimension (description mode injects plan for `reviewer-testing`; global description-mode no-plan assertion narrowed to non-testing agents).
+ 
+ ### UPDATED: `agents/reviewer-edge-cases.md`
+@@ -122,6 +122,7 @@
+ - Waterfall argv: `--codex-present true` when Codex available (stub log grep).
+ - `--no-fallback` present in stub log when both vendors; **absent** for both-down and single-vendor cases (mirror `skills/design/scripts/test-dispatch-plan-review-panel.sh` pattern).
+ - `DROPPED_SLOTS_FILE` forwarded when waterfall stub emits drops.
++- Both-down case: expect `>=4` `*phase3.txt` outputs (not `>=6`); sync breadcrumb greps that check phase-3 file counts from 6 to 4.
+ 
+ ### UPDATED: `skills/review/scripts/test-review-core.sh` and `test-review-core.md`
+ - Assert `check-reviewer-failure-threshold.sh` receives `--intended-slots` and `--launched-slots` both from parsed `STATIC_SLOT_COUNT` (4 single-vendor, 8 both-vendor) — **not** from availability-flag arithmetic.
+@@ -151,7 +152,7 @@
+ - **Scout returns 0 dynamics**: static-only; accounting unchanged.
+ - **Folded slug collision**: reserved list blocks `structure` / `plan-fidelity` dynamics.
+ - **Cursor fails, Codex peer OK**: no second Codex via Cursor Phase-2 when `--no-fallback` is on.
+-- **plan-fidelity after fold**: `dispatch-panel.sh` keeps `--plan-file`; `render-specialist-prompt.sh` injects plan for `reviewer-testing` on all diff modes.
++- **plan-fidelity after fold**: `dispatch-panel.sh` keeps `--plan-file`; `render-specialist-prompt.sh` injects plan for `reviewer-testing` on all diff modes and in description mode.
+ - **Codex absent**: degrades to Cursor-primary + Claude (today's shape); `codex_present_for_waterfall=false`.
+ 
+ ## Failure modes
+@@ -167,10 +168,10 @@
+ ## Testing strategy
+ - Harnesses: `test-dispatch-panel.sh`, `test-review-core.sh`, `test-tally-code-votes.sh`, `test-check-reviewer-failure-threshold.sh`, `test-quick-mode-docs-sync.sh`, `test-scout-dynamic-archetypes.sh`, `scripts/test-render-specialist-prompt.sh`, larch-log tests — plus `.md` contract siblings where listed.
+ - Both-vendor (8 static) and single-vendor (4 static) dispatch + threshold; conditional `--no-fallback` and `--codex-present` stub-log cases; dropped-slot threshold cases (1/8 pass, 5/8 fail).
+-- `test-render-specialist-prompt.sh` for reviewer-testing plan injection across diff modes.
++- `test-render-specialist-prompt.sh` for reviewer-testing plan injection across diff modes and description mode.
+ - Regenerate pre-rendered bodies/manifest and `docs/topology.md`.
+ - Run `scripts/relevant-checks.sh` (or `make lint`); confirm `check-focus-area-enum.sh` still passes.
+ 
+-diff_added: 820
+-diff_deleted: 280
+-diff_lines: 1100
++diff_added: 850
++diff_deleted: 285
++diff_lines: 1135

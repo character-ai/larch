@@ -1,0 +1,153 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -10,6 +10,7 @@
+ - 4 archetypes, **keep anchor slugs**: `security` (standalone), `correctness` (standalone), `edge-cases` (primary; folds `structure` as secondary scan), `testing` (primary; folds `plan-fidelity` as secondary scan).
+ - **Both-vendor** on static AND dynamic slots (user choice), gated on availability. Cost reduction comes from collapsing 6→4 distinct lenses; the second vendor offsets raw slot count. Net is "hit harder upfront", with pruning deferred to #3463.
++- Codex peer rows are **not** fallback retries. When a Cursor row has a Codex twin for the same archetype, disable the Phase-2 Codex fallback for that Cursor row (`--no-fallback` / equivalent, matching `/design`) so the same archetype is not double-run if Cursor fails.
+ 
+ ### Honest divergences from the issue's assumed surface (confirmed by codebase read)
+ 1. The merged specialists are **hand-maintained** `agents/reviewer-edge-cases.md` / `agents/reviewer-testing.md` (header: "specialist variant, hand-maintained"), NOT generated from `reviewer-templates.md`. The 4 generators target different agents (code-reviewer, code-robustness, plan-fidelity, security-structure-tests). So the fold edits land in the agent files; `reviewer-templates.md` is touched only for stale enumerating prose, and no new generator is added. `agent-sync` is unaffected.
+@@ -30,7 +31,7 @@
+   - when `CURSOR_AVAILABLE=true`: emit a `tool:"cursor"` row, output `cursor-specialist-${name}-output.txt`, `agent: agents/reviewer-${name}.md`.
+   - when `CODEX_AVAILABLE=true`: emit a `tool:"codex"` row, output `codex-specialist-${name}-output.txt`, same `agent`.
+   - when **neither** is available: emit one `tool:"cursor"` row per archetype (waterfalls to Claude) so every archetype is still reviewed — preserves today's all-Claude-fallback robustness.
+-- Track both counts: `static_cursor` and `static_codex` for the launch breadcrumb; keep `STATIC_SLOT_COUNT` = total static rows emitted.
++- Track both counts: `static_cursor` and `static_codex` for the launch breadcrumb; keep `STATIC_SLOT_COUNT` = total static rows emitted. This emitted static count is the sole intended-slot denominator passed downstream.
+ - In `synthesize_dynamic_slots`, emit a **Codex twin** per scouted archetype in addition to the existing Cursor row (currently hardcoded `tool:"cursor"`): when `CODEX_AVAILABLE=true`, append a `tool:"codex"` row reusing the same rendered `prompt_file`, with a distinct `dyn-`-prefixed output (e.g. `dyn-${name}-output.txt` for Cursor, `dyn-${name}-codex-output.txt` for Codex) so both stay excluded from the threshold denominator and parse through the tally `dyn-*` case.
+ - Gate dynamic rows like static rows: emit Cursor dynamic rows only when `CURSOR_AVAILABLE=true`, Codex dynamic rows only when `CODEX_AVAILABLE=true`, and emit one Cursor-primary Claude-fallback row only when neither vendor is available. This avoids duplicate Codex dynamic reviews in Codex-only runs.
+ - Fix dynamic accounting: increment `DYNAMIC_SLOTS` for each emitted dynamic row, not each scouted archetype, or derive `DYNAMIC_SLOTS` / `SLOT_COUNT` from manifest line count after all rows are written. Launch breadcrumbs must report the actual emitted reviewer count.
+-- Flip the panel gate: change `codex_present_for_waterfall="false"` to `codex_present_for_waterfall="$CODEX_AVAILABLE"` so Codex rows actually dispatch to Codex (and Cursor static slots gain Codex as a Phase-2 fallback before Claude).
++- Re-enable Codex dispatch without duplicate fallback: Codex manifest rows must actually dispatch to Codex, but Cursor rows that already have a Codex peer must pass `--no-fallback` / equivalent so they do **not** also waterfall to Codex. Only the both-down Cursor-primary rows should rely on the existing Claude fallback path.
+ - Update the `# Both panels: 6 Cursor specialists.` comment to the new 4-archetype both-vendor layout. Keep the `Focus area enum anchor for CI` comment line intact (consumed by `check-focus-area-enum.sh`).
+ - Reserved-slug lists (the `scout_manifest_is_valid` jq `reserved:` block): keep all 6 historical slugs reserved, including retired `structure` and `plan-fidelity`, so folded lenses cannot be resurrected as dynamic archetypes. Document intent in a comment; do not treat removal as optional cleanup.
+ 
+ ### UPDATED: `skills/review/scripts/check-reviewer-failure-threshold.sh`
+-- Make the panel denominator availability-aware instead of the hardcoded `STATIC_INTENDED_SLOTS=6`. Add an optional `--intended-slots N` flag; when provided, `INTENDED_SLOTS=N`; when absent, retain a back-compat default (4) so legacy callers do not break. Drop the never-launched padding when `--intended-slots` equals the dispatched count (dispatch-panel emits exactly the available slots).
++- Make the panel denominator caller-supplied instead of the hardcoded `STATIC_INTENDED_SLOTS=6`. Add an optional `--intended-slots N` flag; when provided, `INTENDED_SLOTS=N`; when absent, retain a back-compat default (4) so legacy callers do not break. Drop the never-launched padding when `--intended-slots` equals the dispatched count (dispatch-panel emits exactly the available slots).
+ - Update the `# Both panels use 6 Cursor specialist slots only (Codex removed in #2449).` comment to describe the new 4-archetype both-vendor panel and the availability-derived denominator.
+ - Keep the `>50%` threshold rule; it now scales with the supplied `INTENDED_SLOTS` (4 → fail if >2; 8 → fail if >4).
+ - Ensure dynamic outputs remain excluded from the static failure denominator, including the new `dyn-*-codex-output.txt` naming.
+@@ -41,8 +42,8 @@
+ - Update the contract for `--intended-slots`, default `4`, 4-slot and 8-slot thresholds, launched-slot handling, and dynamic Codex-twin exclusion.
+ 
+ ### UPDATED: `skills/review/scripts/review-core.sh`
+-- Compute the intended static count from availability: `4 * (cursor_available + codex_available)`, floored at 4 (the both-down Claude-fallback case), or simply pass through the dispatcher's emitted `STATIC_SLOT_COUNT`. Pass it to `check-reviewer-failure-threshold.sh` via the new `--intended-slots`. `--launched-slots` continues to carry the emitted static count.
+-- No other behavior change; vendor-availability is already plumbed to `dispatch-panel.sh`.
++- Use the dispatcher's emitted `STATIC_SLOT_COUNT` as the single source of truth for both `--intended-slots` and `--launched-slots`. Do **not** recompute the denominator from boolean availability flags in shell arithmetic; that avoids phantom never-launched failures and bool/string math bugs.
++- No other behavior change; vendor availability remains plumbed to `dispatch-panel.sh`, which owns the availability-gated emission.
+ 
+ ### UPDATED: `agents/reviewer-edge-cases.md`
+ - Fold `structure` in as an explicit **secondary scan** ("flag only critical"): add structure/maintainability concerns (code reuse / duplication, unnecessary complexity, single-responsibility) to the existing `## Secondary scan` section. The primary Architecture/Defensive-Design focus already covers SOC, contract boundaries, and semantic boundaries, so this is a small additive edit. Update the frontmatter `description` to note the folded structure lens.
+@@ -50,8 +51,15 @@
+ ### UPDATED: `agents/reviewer-testing.md`
+ - Fold `plan-fidelity` in as a **secondary scan**: replace the line "Do not expand into a general plan-fidelity review — stay focused on the testing lens." with a bounded secondary plan-fidelity scan (flag only critical plan-to-implementation traceability gaps, missing required surfaces, stale replacement targets). Keep the testing/regression primary lens dominant and keep tagging testing findings `risk-integration`. Update the frontmatter `description`.
+-- Preserve plan-conformance reach: the testing lane already receives the plan via `render-specialist-prompt.sh --plan-file`; no plumbing change. Keep `dispatch-panel.sh`'s `--plan-file` requirement so the folded plan-fidelity scan always has the plan.
++- Preserve plan-conformance reach by updating prompt rendering too: the testing lane must receive the implementation plan whenever `--plan-file` / `PLAN_FILE` is present, including docs-only, tests-only, and generated-only diffs.
+ 
++### UPDATED: `skills/review/scripts/render-specialist-prompt.sh`
++- Add the minimal reviewer-testing-specific plan injection needed for the folded plan-fidelity scan: when rendering `agents/reviewer-testing.md` and a readable `PLAN_FILE` is present, include the plan regardless of diff classification. Leave other specialist rendering behavior unchanged.
++- Keep `dispatch-panel.sh`'s `--plan-file` requirement so the folded plan-fidelity scan has plan context in `/review` and `/implement` runs.
++
++### UPDATED: `skills/review/scripts/test-render-specialist-prompt.sh`
++- Add regression coverage proving reviewer-testing receives plan context for generic and non-generic diffs when `PLAN_FILE` is present, without broadening plan injection for unrelated specialists.
++
+ ### UPDATED: pre-rendered reviewer prompt artifacts
+ - Regenerate `agents/pre-rendered/reviewer-edge-cases-body.txt`.
+ - Regenerate `agents/pre-rendered/reviewer-testing-body.txt`.
+@@ -67,17 +75,20 @@
+ - Verify `write_archetype_map` covers `codex-specialist-*-output.txt` (already present) and the new `dyn-*-codex` outputs (covered by the `dyn-*-output.txt` case). Optional cleanup: remove the dead `structure)` / `plan-fidelity)` arms from `static_focus_area` (no static slot emits them after the collapse), or leave them as harmless no-ops. Keep `edge-cases→correctness` and `testing→risk-integration` mappings (primary lenses unchanged).
+ 
+ ### UPDATED: `scripts/larch-log.sh`
+-- Extend committed run-log filtering to exclude `codex-specialist-*-output.txt` raw outputs and any matching sidecars alongside the existing Cursor specialist raw-output exclusions.
++- Extend committed run-log filtering to exclude **static** `codex-specialist-*-output.txt` raw outputs and any matching sidecars alongside the existing Cursor specialist raw-output exclusions.
++- Keep the deny precise: do **not** exclude `dyn-*-codex-output.txt`; dynamic Codex twin outputs should continue through the existing dynamic-output allow/list behavior.
+ 
+ ### UPDATED: `scripts/larch-log.md`
+-- Document the Codex specialist raw-output exclusion contract in the run-log filter description.
++- Document that static Codex specialist raw outputs are excluded like Cursor specialist raw outputs, while `dyn-*-codex-output.txt` remains governed by the dynamic-output committed-log contract.
++
++### UPDATED: `scripts/test-larch-log-write-round.sh`
++- Update write-round expectations so static `codex-specialist-*-output.txt` raw outputs and matching sidecars/meta are `assert_not_file`, not expected committed metadata. Drop or relocate `CMD_JSON` assertions that only applied to excluded static Codex specialist meta.
++- Add a minimal fixture proving `dyn-api-contract-codex-output.txt` and its expected dynamic sidecar behavior are not caught by the static Codex specialist exclusion.
+ 
+ ### UPDATED: `scripts/scout-dynamic-archetypes.sh`
+-- Reserved-slug list (jq `reserved:` block, mirrors `dispatch-panel.sh`): keep in sync with `dispatch-panel.sh`. Keep all 6 historical static slugs reserved, including folded `structure` and `plan-fidelity`; add the same short comment used in `dispatch-panel.sh` so the two lists do not drift.
++- Update the scout prompt text that names existing static reviewers to list only the 4 surviving static slugs (`security`, `correctness`, `edge-cases`, `testing`) plus generic. This keeps dynamic selection calibrated to the collapsed panel.
++- Reserved-slug list (jq `reserved:` block, mirrors `dispatch-panel.sh`): keep in sync with `dispatch-panel.sh`. Keep all 6 historical static slugs reserved, including folded `structure` and `plan-fidelity`; add the same short comment used in `dispatch-panel.sh` so the two lists do not drift.
+ 
+ ### UPDATED: `skills/review/scripts/dispatch-panel.md`
+-- Rewrite the panel-layout description (currently "6 Cursor specialist slots (structure, correctness, testing, security, edge-cases, plan-fidelity)") to the 4 archetypes, both-vendor static + dynamic emission, and the re-enabled Codex waterfall. This is the authority doc cited by `docs/review-agents.md`.
++- Rewrite the panel-layout description (currently "6 Cursor specialist slots (structure, correctness, testing, security, edge-cases, plan-fidelity)") to the 4 archetypes, both-vendor static + dynamic emission, both-down Claude fallback, and the no-duplicate-Codex-fallback rule for rows with Codex peers. This is the authority doc cited by `docs/review-agents.md`.
+ 
+ ### UPDATED: `skills/shared/topology.tsv`
+ - Update the `implement.review_and_fix.panel_hard` row value from `6 Cursor specialists` to the canonical new phrase (see Approach), then regenerate `docs/topology.md` via `scripts/generate-topology-docs.sh`.
+@@ -95,6 +106,12 @@
+ ### UPDATED: `docs/review-agents.md`
+ - Replace both "6 Cursor specialists" mentions (panel description + Note A) with the canonical new phrase; describe both-vendor per-archetype emission and the re-enabled Codex waterfall. Preserve the existing Note A → `voting-protocol.md` cross-reference (enforced by `test-quick-mode-docs-sync.sh`).
+ 
++### UPDATED: `docs/collaborative-sketches.md`
++- Update the `/review` / code-review fallback matrix row: the panel is 4 archetypes emitted once per available vendor, and when both external vendors are unavailable it emits Cursor-primary rows that waterfall to Claude rather than skipping all specialists. Prefer pointing to `skills/review/scripts/dispatch-panel.md` as the authority for detailed fallback semantics.
++
++### UPDATED: `skills/review/SKILL.md`
++- Update Step 2 / runtime orchestration prose that still describes dynamic archetypes as Cursor-primary only. State the 4-archetype per-available-vendor static layout, Codex dynamic twins, and both-down Claude fallback.
++
+ ### UPDATED: `docs/skills.md`
+ - Replace the `6 Cursor specialists` phrase in the `/implement` Step 5 description with the canonical new phrase.
+ 
+@@ -133,7 +150,7 @@
+ - Update panel plumbing assertions: `--intended-slots` derivation from availability and the threshold result at 8-slot (both vendors) and 4-slot (single vendor) panels.
+ 
+ ### UPDATED: `skills/review/scripts/test-tally-code-votes.sh`
+-- Update/verify: `codex-specialist-*` static attribution; 4-archetype focus map; absence of `structure`/`plan-fidelity` static slots; dynamic Codex-twin attribution.
++- Update/verify: `codex-specialist-*` static attribution; 4-archetype focus map; absence of `structure`/`plan-fidelity` static slots; dynamic Codex-twin attribution for `dyn-*-codex-output.txt`.
+ 
+ ### UPDATED: `skills/review/scripts/test-check-reviewer-failure-threshold.sh`
+ - Update direct threshold regression cases for default `4`, explicit `--intended-slots 4`, explicit `--intended-slots 8`, launched-slots equal intended, both-down launched=4 fallback, and exclusion of a `REVIEWER_FILE` ending in `dyn-example-codex-output.txt`.
+@@ -148,8 +165,8 @@
+ ## Approach
+ - **Canonical replacement phrase**: define ONE literal to replace "6 Cursor specialists" everywhere (proposal: `4 specialists per vendor (Cursor + Codex)`). Use the exact same string across README/docs/topology/diagram and the `test-quick-mode-docs-sync.sh` required-phrase list so the doc-sync harness passes. Pick the final wording during implementation and apply it atomically.
+ - **Mirror `/design`**: copy the both-vendor emission shape from `dispatch-plan-review-panel.sh` (one `tool:cursor` row + one `tool:codex` row per archetype, each gated on availability) rather than inventing a new shape.
+-- **Minimal-logic principle**: most files are count/phrase sync. The only real logic changes are in `dispatch-panel.sh` (both-vendor static/dynamic emission, dynamic row accounting, and gate flip), `check-reviewer-failure-threshold.sh` (availability-derived denominator), `review-core.sh` (pass `--intended-slots`), `larch-log.sh` (exclude Codex specialist raw outputs), and the two agent-prompt folds.
++- **No duplicate Codex retry**: mirror `/design`'s peer-row semantics as well as its emission shape. Codex rows are peers; Cursor rows with Codex peers should not also use Codex as a Phase-2 fallback.
++- **Minimal-logic principle**: most files are count/phrase sync. The only real logic changes are in `dispatch-panel.sh` (both-vendor static/dynamic emission, dynamic row accounting, and no-duplicate fallback), `check-reviewer-failure-threshold.sh` (caller-supplied denominator), `review-core.sh` (pass `STATIC_SLOT_COUNT` as `--intended-slots`), `render-specialist-prompt.sh` (testing-plan injection), `larch-log.sh` (precise static Codex specialist raw-output exclusion), and the two agent-prompt folds.
+ - Keep `--panel simple|hard` behavior identical for the static set (both already select the same specialists today; both select the same 4 after the change).
+ 
+ ## Edge cases
+@@ -159,14 +176,16 @@
+ - **Scout returns 0 dynamics**: no dynamic rows for either vendor; static-only panel unaffected.
+ - **Dynamic name collides with a static slug**: reserved-slug lists still reserve the 4 survivors, so the scout cannot duplicate a static archetype as a dynamic.
+ - **Dynamic name collides with a folded slug**: reserved-slug lists also keep `structure` and `plan-fidelity`, so folded lenses cannot reappear as dynamic archetypes.
+-- **plan-fidelity coverage after fold**: the testing lane keeps the `--plan-file` requirement and the plan is appended by `render-specialist-prompt.sh`, so critical plan-conformance gaps are still flagged.
++- **Cursor row fails while Codex is available**: the Codex peer row has already been launched for that archetype, so the Cursor row must not trigger a second Codex fallback run.
++- **plan-fidelity coverage after fold**: the testing lane keeps the `--plan-file` requirement and `render-specialist-prompt.sh` injects the plan for reviewer-testing even on docs-only/test-only/generated-only diffs, so critical plan-conformance gaps are still flagged.
+ - **Codex absent at runtime**: identical to today (Cursor-primary + Claude fallback); the change degrades gracefully.
+ 
+ ## Failure modes
+ 1. **Threshold denominator mismatch** — if `INTENDED_SLOTS` does not track vendor availability, the >50% hard-stop misfires (too strict when only Cursor runs against an 8-intended denominator; too lenient otherwise). Earliest signal: review-core hard-stops on healthy panels, or fails to stop on mostly-failed panels. Mitigation: availability-derived `--intended-slots`; cover 4-slot and 8-slot cases in tests.
+-2. **Reversing #2449 (Codex re-enablement)** — Codex was deliberately removed from this panel; if the original reason was poor code-review signal or cost, re-enabling degrades signal-to-noise or inflates spend. Earliest signal: post-change run-log mining shows Codex static/dynamic findings mostly rejected, or a cost spike. Mitigation: emission is gated on `CODEX_PRESENT` (absent → today's behavior); the deferred #3463 pruner is the planned cost control; validate by re-mining run logs after ~1 week (issue's stated validation step).
+-3. **Count/phrase drift** — a missed "6 Cursor specialists" site fails `test-quick-mode-docs-sync.sh`, the topology projection, or the `test-dispatch-panel.sh` breadcrumb assertion. Mitigation: one canonical phrase applied to every enumerated site + the harness phrase lists in the same change; run `make lint` and the doc-sync + dispatch-panel harnesses before finalizing.
+-4. **Raw Codex specialist outputs leak into committed run logs** — adding `codex-specialist-*` outputs without extending `larch-log.sh` exclusions could commit large raw reviewer transcripts. Mitigation: update the filter and add larch-log regression coverage.
+-5. **Prompt source/runtime drift** — editing hand-maintained reviewer agents without regenerating `agents/pre-rendered/*` leaves runtime prompts stale. Mitigation: regenerate the two pre-rendered bodies and manifest, and run prompt-generation checks.
++1. **Threshold denominator mismatch** — if `INTENDED_SLOTS` is recomputed separately from emitted static rows, the >50% hard-stop misfires (too strict with phantom never-launched slots; too lenient if hidden failures are omitted). Earliest signal: review-core hard-stops on healthy panels, or fails to stop on mostly-failed panels. Mitigation: pass the dispatcher's `STATIC_SLOT_COUNT` to both `--intended-slots` and `--launched-slots`; cover 4-slot and 8-slot cases in tests.
++2. **Duplicate Codex execution** — if Cursor rows retain Phase-2 Codex fallback while Codex peer rows also launch, a Cursor failure can run the same archetype through Codex twice. Earliest signal: duplicate `codex-specialist-*` outputs or inflated cost/noise for failed Cursor rows. Mitigation: `--no-fallback` / equivalent for rows with Codex peers, plus dispatch-panel tests.
++3. **Reversing #2449 (Codex re-enablement)** — Codex was deliberately removed from this panel; if the original reason was poor code-review signal or cost, re-enabling degrades signal-to-noise or inflates spend. Earliest signal: post-change run-log mining shows Codex static/dynamic findings mostly rejected, or a cost spike. Mitigation: emission is gated on `CODEX_PRESENT` (absent → today's behavior); duplicate fallback is disabled; the deferred #3463 pruner is the planned cost control; validate by re-mining run logs after ~1 week (issue's stated validation step).
++4. **Count/phrase drift** — a missed "6 Cursor specialists" site fails `test-quick-mode-docs-sync.sh`, the topology projection, or the `test-dispatch-panel.sh` breadcrumb assertion. Mitigation: one canonical phrase applied to every enumerated site + the harness phrase lists in the same change; run `make lint` and the doc-sync + dispatch-panel harnesses before finalizing.
++5. **Raw Codex specialist outputs leak into committed run logs, or dynamic Codex outputs are over-excluded** — adding `codex-specialist-*` outputs without extending `larch-log.sh` exclusions could commit large raw reviewer transcripts; an over-broad deny could drop `dyn-*-codex-output.txt` dynamics. Mitigation: update the static filter precisely and add write-round regression coverage for both static exclusion and dynamic Codex allow behavior.
++6. **Prompt source/runtime drift** — editing hand-maintained reviewer agents without regenerating `agents/pre-rendered/*` leaves runtime prompts stale. Mitigation: regenerate the two pre-rendered bodies and manifest, and run prompt-generation checks.
+ 
+ ## Testing strategy
+ - Update the harnesses listed above (`test-dispatch-panel.sh`, `test-review-core.sh`, `test-tally-code-votes.sh`, `test-check-reviewer-failure-threshold.sh`, `test-quick-mode-docs-sync.sh`, `test-scout-dynamic-archetypes.sh`, larch-log tests) plus their `.md` siblings where contracts change.
+@@ -174,10 +193,10 @@
+ - Add dynamic count/breadcrumb assertions showing Codex twin rows are counted in `DYNAMIC_SLOTS`, `SLOT_COUNT`, and launch output.
+ - Verify the two agent folds via `test-render-specialist-prompt.sh` if it asserts agent-body content; regenerate nothing (edge-cases/testing are hand-maintained — `agent-sync`/`check-generators.sh` should stay green untouched, but run it to confirm).
+ - Regenerate `agents/pre-rendered/reviewer-edge-cases-body.txt`, `agents/pre-rendered/reviewer-testing-body.txt`, and `agents/pre-rendered/.manifest`.
+-- Regenerate `docs/topology.md` and run `scripts/relevant-checks.sh` (or `make lint`) repo-wide; manually confirm `skills/review/diagram.svg` renders.
++- Regenerate `docs/topology.md`; update `docs/collaborative-sketches.md` and `skills/review/SKILL.md`; run `scripts/relevant-checks.sh` (or `make lint`) repo-wide; manually confirm `skills/review/diagram.svg` renders.
+ - Confirm `check-focus-area-enum.sh` still passes (focus-area enum anchor preserved in `dispatch-panel.sh`).
+ 
+-diff_added: 620
+-diff_deleted: 220
+-diff_lines: 840
++diff_added: 720
++diff_deleted: 260
++diff_lines: 980

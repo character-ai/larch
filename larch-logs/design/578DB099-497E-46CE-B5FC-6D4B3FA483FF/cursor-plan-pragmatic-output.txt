@@ -1,0 +1,8 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-larch-log-write-round.sh:106-128	Plan mirrors cursor deny for codex-specialist base outputs but omits harness meta assertion sync	The plan adds codex-specialist-*-output.txt|.meta|.json|.cap-hit to scripts/larch-log.sh round_artifact_included deny (same as cursor at lines 77-78). test-larch-log-write-round.sh still assert_file on codex-specialist-security-output.txt.meta (line 106) and assert_not_grep CMD_JSON on that meta (line 128). After the deny change, write-round will drop the meta sidecar and the harness fails even when raw-output exclusion works	Add test-larch-log-write-round.sh to the plan Files section: flip line 106 to assert_not_file for codex-specialist-*-output.txt.meta (and drop or relocate the line 128 CMD_JSON strip check); keep assert_file only for phased *-output-*.txt.meta if still included; document the parity in scripts/larch-log.md alongside the new deny arm
+
+### 1. risk-integration — `scripts/test-larch-log-write-round.sh:106-128`
+
+The plan tells `scripts/larch-log.sh` to deny static `codex-specialist-*-output.txt` artifacts with the same treatment as Cursor (including `.meta`). The larch-log harness still expects `codex-specialist-security-output.txt.meta` to be written into the round directory and strips `CMD_JSON` from it. After the deny-list change, that meta sidecar will not be staged and `test-larch-log-write-round.sh` will fail.
+
+**Suggested revision:** Extend the plan’s `scripts/test-larch-log-write-round.sh` step to flip the meta assertion to `assert_not_file`, remove or relocate the CMD_JSON strip check, and note meta parity in `scripts/larch-log.md`.
