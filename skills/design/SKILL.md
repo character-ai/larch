@@ -1410,7 +1410,7 @@ Print: `> **🔶 /design 5: finalize**`
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 5 — finalize" || true
 ```
 
-**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5c** (`larch:plan` write + publish + rename).
+**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5c** (`larch:plan` write + diagram upsert + rename + publish).
 
 ### 5a — Update Reviewer Presence Status
 
@@ -1463,7 +1463,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
-2. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`, including composed-plan validation, redaction, **Migration limit** for legacy `runid=` diagram comments, and exit 4 validator hand-back) for the deterministic publish tail.
+2. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`, including composed-plan validation, redaction, **Migration limit** for legacy `runid=` diagram comments, and exit 4 validator hand-back) for the deterministic publish tail (plan block write, diagrams upsert, `[DESIGNED]` rename, log publish, summary render, reentry marker).
 
    Before **each** attempt (initial, auto-repair retry, Apply proposed fix, or Accept / proceed-anyway), prepend the canonical session prelude and pause checkpoint, then remove any stale `.design-publish-result.env` so an earlier exit-4 result cannot satisfy the file-first parser. Retry recaptures must replace `_publish_out`, `_publish_rc`, and every parsed result-env field through this same parse path; do not call `design-publish.sh` bare on retries.
 
@@ -1543,8 +1543,8 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 **Driver WARN replay (top chat):** After the Bash block above, when the latest `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
 
 3. **Regardless of `PLAN_WRITE_OK` after the latest `_publish_rc` ∈ {0, 1, 3}:** when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that path and emit its full body verbatim as plain chat markdown (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text). Do NOT paraphrase, summarize, reorder, or add prose between bullets. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `render-final-summary.sh` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary). Do not emit while `_publish_rc` is still 4; the retry loop must settle to `{0,1,3}` first.
-4. **Only when the latest `_publish_rc` ∈ {0, 1, 3} and driver output was parsed (file and/or stdout):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** the latest `_publish_rc` ∈ {0,1,3} **and** `PLAN_WRITE_OK=true` **and** the publish step did not fail (`SESSION_ID` empty **or** `PUBLISH_OK=true`) **before** Step 5d. The `step-5c` sentinel writer is the orchestrator, not `design-publish.sh`. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately (see Step 6).
-5. **Only when the latest `_publish_rc` ∈ {0, 1, 3} and driver output was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`). When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK != true`, do **not** write `step-5c`, so pause/resume re-enters Step 5c and retries the publish tail; `plan-block-write.sh` is idempotent and OOS filing already completed in Step 5b.
+4. **Only when the latest `_publish_rc` ∈ {0, 1, 3} and driver output was parsed (file and/or stdout):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** the latest `_publish_rc` ∈ {0,1,3} **and** `PLAN_WRITE_OK=true` **before** Step 5d. In short: `: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true`. The `[DESIGNED]` rename is already attempted by the driver after diagram upsert and is not gated on `PUBLISH_OK`; only Step 6 cleanup remains gated on `PUBLISH_OK` separately (see Step 6).
+5. **Only when the latest `_publish_rc` ∈ {0, 1, 3} and driver output was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
 
 ### 5d — Final warning replay + footer
 

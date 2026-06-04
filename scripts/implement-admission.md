@@ -14,7 +14,7 @@
 
 **Exit 5 recovery (`managed-prefix`)**: without a surviving `$IMPLEMENT_TMPDIR` to pair with Preflight, rename the GitHub issue title in the web UI (or via `gh issue edit`) to remove the `[DESIGNING]`, `[IMPLEMENTING]`, `[DONE]`, `[STALLED]`, legacy `[IN PROGRESS]`, or legacy `[PLANNED]` prefix, then retry `/implement`. For `[DESIGNING]` titles: wait for the active `/design` session to complete (auto-migrates to `[DESIGNED]`).
 
-**Exit 5 recovery (`missing-designed-prefix`)**: the issue has no `[DESIGNED]` prefix, meaning no `/design` run has completed for it. Run `/design <N>` first; it will rename the issue to `[DESIGNED]` on successful publish. Re-run `/implement` after `/design` completes. Legacy `[PLANNED]` issues: re-run `/design` on the issue — it will migrate the prefix from `[PLANNED]` to `[DESIGNED]`.
+**Exit 5 recovery (`missing-designed-prefix`)**: the issue has no `[DESIGNED]` prefix, meaning no `/design` run has completed for it. Run `/design <N>` first; it will rename the issue to `[DESIGNED]` once the plan and architecture diagram are posted; the design-log PR may publish afterward. Re-run `/implement` after `/design` completes. Legacy `[PLANNED]` issues: re-run `/design` on the issue — it will migrate the prefix from `[PLANNED]` to `[DESIGNED]`.
 
 **Exit codes**:
 | Code | Meaning |

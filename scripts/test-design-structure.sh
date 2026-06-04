@@ -1394,6 +1394,8 @@ esac
 
 publish_marker_line=$(grep -nF 'design_reentry_marker_write' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
 publish_rename_line=$(grep -n 'tracking-issue-write.sh' "$DESIGN_PUBLISH_SH" | grep 'state designed' | head -1 | cut -d: -f1 || true)
+[[ -n "$publish_upsert_line" && -n "$publish_rename_line" && -n "$publish_log_line" && "$publish_upsert_line" -lt "$publish_rename_line" && "$publish_rename_line" -lt "$publish_log_line" ]] \
+  || fail "(25) design-publish.sh rename --state designed must run after upsert-diagrams-comment.sh and before design-log-publish.sh"
 [[ -n "$publish_marker_line" && -n "$publish_log_line" && "$publish_log_line" -lt "$publish_marker_line" ]] \
   || fail "(25) design-publish.sh design_reentry_marker_write must run only after design-log-publish.sh"
 [[ -n "$publish_marker_line" && -n "$publish_rename_line" && "$publish_rename_line" -lt "$publish_marker_line" ]] \

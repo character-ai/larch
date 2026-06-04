@@ -18,16 +18,17 @@
 ## Responsibilities
 
 1. Preconditions: `.completed/step-5b` present; `composed-plan.md` non-empty (`exit 2` otherwise).
-2. Pre-side-effect pause checkpoint: when `.pause-requested` exists, immediately `exec design-pause-save.sh --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"}` before validation, redaction, plan write, publish, rename, or marker side effects.
+2. Pre-side-effect pause checkpoint: when `.pause-requested` exists, immediately `exec design-pause-save.sh --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"}` before validation, redaction, plan write, rename, publish, or marker side effects.
 3. Unless `--skip-validate` is passed, run `invoke-plan-validator.sh DIR/composed-plan.md` under `set +e`, parse the five `VALIDATE_*` KVs, and treat `VALIDATE_STATUS=defects-found` as `exit 4` with no redaction or publish-tail side effects. Empty, `not-run`, unexpected status (anything other than `ok` after the defects-found branch), or nonzero validator output that is not `defects-found` is validator infrastructure failure (`exit 2`).
 4. Redact `composed-plan.md` through `scripts/redact-secrets.sh` (stdin) to `composed-plan.redacted.md`; redactor nonzero is `exit 2` with `redact-secrets.sh failed`, and an empty redacted file is also `exit 2`.
 5. Resolve `REPO` once (`resolve-repo.sh` → `gh repo view` → empty).
 6. `plan-block-write.sh` with `if !` guard; failure → `failed-plan-write` render, `PLAN_WRITE_OK=false`, `exit 1`.
 7. `upsert-diagrams-comment.sh` when architecture file is **non-empty**, when `architecture-diagram.md` is **absent** and `architecture-diagram.skipped` is present (`--clear-architecture`), or when `architecture-diagram.md` is **empty** and `architecture-diagram.skipped` is present (`--clear-architecture`). Subshell stdout capture to `diagrams-architecture-upsert.stdout`; non-blocking failures.
-8. When `SESSION_ID` non-empty: run `scripts/design-log-publish.sh` with subshell capture; parse `PUBLISH_OK`, `PR_NUMBER`, `PR_URL`, and recovery branch metadata; unexpected non-zero without `PUBLISH_OK=`, exit 0 without `PUBLISH_OK=`, or `PUBLISH_OK=false` → `PUBLISH_OK=false` + Warnings. Failed publish envelopes keep the existing `append-tool-failure.sh --redact` reporting.
-9. When `SESSION_ID` empty: `WARN=` via quiet driver (`add_warn`); skip publish and rename.
-10. `render-final-summary.sh --post-publish-only` runs after the publish attempt whenever `PLAN_WRITE_OK=true`, including publish failures, so diagnostics refresh regardless of publish outcome.
-11. `[DESIGNED]` rename and `design_reentry_marker_write` run only when `SESSION_ID` is non-empty **and** `PUBLISH_OK=true`; Step 6 cleanup is likewise gated by the publish result outside this driver.
+8. When `SESSION_ID` non-empty: after the diagram upsert block, run `tracking-issue-write.sh rename --state designed` best-effort and parse `RENAMED`; this rename is not gated on `PUBLISH_OK`.
+9. When `SESSION_ID` non-empty: run `scripts/design-log-publish.sh` with subshell capture; parse `PUBLISH_OK`, `PR_NUMBER`, `PR_URL`, and recovery branch metadata; unexpected non-zero without `PUBLISH_OK=`, exit 0 without `PUBLISH_OK=`, or `PUBLISH_OK=false` → `PUBLISH_OK=false` + Warnings. Failed publish envelopes keep the existing `append-tool-failure.sh --redact` reporting.
+10. When `SESSION_ID` empty: `WARN=` via quiet driver (`add_warn`); skip publish and rename.
+11. `render-final-summary.sh --post-publish-only` runs after the publish attempt whenever `PLAN_WRITE_OK=true`, including publish failures, so diagnostics refresh regardless of publish outcome.
+12. `design_reentry_marker_write` runs after publish/summary only when `SESSION_ID` is non-empty **and** `PUBLISH_OK=true`; Step 6 cleanup is likewise gated by the publish result outside this driver.
 
 Exports `DESIGN_TMPDIR`, `ISSUE_NUMBER`, and `SESSION_ID` before every `render-final-summary.sh` call.
 
@@ -57,7 +58,7 @@ On validation defects: `invoke-plan-validator.sh` → result env best-effort / s
 
 On plan-block-write failure: validate (unless skipped) → redact → `plan-block-write.sh` → `render-final-summary.sh` (`--outcome failed-plan-write`, `--post-publish-only`) → result env → `exit 1`.
 
-On success: validate (unless skipped) → redact → `plan-block-write.sh` → `upsert-diagrams-comment.sh` (when architecture file or skipped sentinel) → `design-log-publish.sh` (when `SESSION_ID` non-empty) → `render-final-summary.sh` (`--post-publish-only`) → `tracking-issue-write.sh rename --state designed` (when `SESSION_ID` non-empty and `PUBLISH_OK=true`) → `design_reentry_marker_write`.
+On success: validate (unless skipped) → redact → `plan-block-write.sh` → `upsert-diagrams-comment.sh` (when architecture file or skipped sentinel) → `tracking-issue-write.sh rename --state designed` (when `SESSION_ID` non-empty) → `design-log-publish.sh` (when `SESSION_ID` non-empty) → `render-final-summary.sh` (`--post-publish-only`) → `design_reentry_marker_write` (when `SESSION_ID` non-empty and `PUBLISH_OK=true`).
 
 ## Edit in sync
 

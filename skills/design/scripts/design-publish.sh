@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# design-publish.sh — /design Step 5c publish-tail phase driver (plan write, diagrams, log publish, rename).
+# design-publish.sh — /design Step 5c publish-tail phase driver (plan write, diagrams, rename, log publish).
 
 set -euo pipefail
 
@@ -336,6 +336,24 @@ if [[ "$_run_upsert" == true ]]; then
 fi
 
 if [[ -n "$SESSION_ID" ]]; then
+    _rename_seen=false
+    if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designed ${REPO:+--repo "$REPO"}); then
+        RENAMED=false
+        while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
+            case "$_rename_line" in
+                RENAMED=true) RENAMED=true; _rename_seen=true ;;
+                RENAMED=false) RENAMED=false; _rename_seen=true ;;
+            esac
+        done <<<"${_rename_out:-}"
+        if [[ "$_rename_seen" != true ]]; then
+            add_warn "**⚠ 5c: tracking-issue-write.sh rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
+        fi
+    else
+        add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan and architecture diagram were posted but the issue title was not updated. Re-invoke /design or rename manually if the title is still wrong.**"
+    fi
+fi
+
+if [[ -n "$SESSION_ID" ]]; then
     rm -f "$FINAL_SUMMARY_PATH" 2>/dev/null || true
     set +e
     _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \
@@ -418,22 +436,6 @@ export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
     --post-publish-only || true
 
 if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
-    _rename_seen=false
-    if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designed ${REPO:+--repo "$REPO"}); then
-        RENAMED=false
-        while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
-            case "$_rename_line" in
-                RENAMED=true) RENAMED=true; _rename_seen=true ;;
-                RENAMED=false) RENAMED=false; _rename_seen=true ;;
-            esac
-        done <<<"${_rename_out:-}"
-        if [[ "$_rename_seen" != true ]]; then
-            add_warn "**⚠ 5c: tracking-issue-write.sh rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
-        fi
-    else
-        add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan and logs may have published but the issue title was not updated. Re-invoke /design or rename manually if the title is still wrong.**"
-    fi
-
     # shellcheck source=scripts/lib-design-reentry-guard.sh
     source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"
     set +e

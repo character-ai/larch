@@ -445,10 +445,10 @@ rename_pos=$(grep -n 'tracking-issue-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 marker_pos=$(grep -n 'design-reentry-marker-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 if [[ -z "$plan_pos" || -z "$upsert_pos" || -z "$publish_pos" || -z "$rename_pos" || -z "$marker_pos" ]]; then
     fail "happy path call log missing plan/marker/upsert/publish entries"
-elif [[ "$plan_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$publish_pos" || "$publish_pos" -ge "$rename_pos" || "$rename_pos" -ge "$marker_pos" ]]; then
-    fail "happy path call-log ordering plan→upsert→publish→rename→marker"
+elif [[ "$plan_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$rename_pos" || "$rename_pos" -ge "$publish_pos" || "$publish_pos" -ge "$marker_pos" ]]; then
+    fail "happy path call-log ordering plan→upsert→rename→publish→marker"
 else
-    pass "happy path call-log ordering plan→upsert→publish→rename→marker"
+    pass "happy path call-log ordering plan→upsert→rename→publish→marker"
 fi
 grep -q 'design-log-publish' "$PUBLISH_LOG" || fail "design-log-publish.sh should run on happy path"
 
@@ -552,11 +552,8 @@ grep -q 'DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/456' "$RENDER_LOG"
 grep -q 'DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_RECOVERY_BRANCH"
 grep -q 'design-log-publish.sh failed (exit 1)' "$D_PFAIL/execution-issues.md" 2>/dev/null || fail "PUBLISH_OK=false should record nonzero publish failure exit"
 grep -q 'design log publish failed; recovery metadata' "$D_PFAIL/.design-publish-result.env" || fail "PUBLISH_OK=false should emit recovery WARN"
-if ! grep -q 'tracking-issue-write' "$RENAME_LOG"; then
-    pass "rename skipped on PUBLISH_OK=false"
-else
-    fail "rename should be skipped"
-fi
+grep -q 'tracking-issue-write' "$RENAME_LOG" || fail "rename should run before PUBLISH_OK=false"
+grep -q 'RENAMED=true' "$D_PFAIL/.design-publish-result.env" || fail "PUBLISH_OK=false should persist RENAMED=true"
 if grep -q 'design-reentry-marker-write' "$CALL_LOG"; then
     fail "reentry marker should be skipped on PUBLISH_OK=false"
 else
@@ -591,11 +588,8 @@ assert_rc "unexpected publish rc" 0 "$rc"
 grep -q 'PUBLISH_OK=false' "$D_UNEXP/.design-publish-result.env" || fail "unexpected publish must set PUBLISH_OK=false"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "unexpected publish should render post-publish summary"
 grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "unexpected publish rc should render failed-publish outcome"
-if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
-    fail "rename should be skipped after unexpected publish rc"
-else
-    pass "rename skipped after unexpected publish rc"
-fi
+grep -q 'tracking-issue-write' "$RENAME_LOG" || fail "rename should run before unexpected publish rc"
+grep -q 'RENAMED=true' "$D_UNEXP/.design-publish-result.env" || fail "unexpected publish should persist RENAMED=true"
 grep -q 'design-log-publish.sh' "$D_UNEXP/execution-issues.md" 2>/dev/null   || fail "unexpected publish must append to execution-issues.md"
 
 # --- nonzero publish rc with PUBLISH_OK=true is fail-closed ---
@@ -647,11 +641,8 @@ assert_rc "missing PUBLISH_OK on exit 0" 0 "$rc"
 grep -q 'PUBLISH_OK=false' "$D_NO_PUB_KV/.design-publish-result.env"   || fail "exit 0 without PUBLISH_OK= must set PUBLISH_OK=false"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "exit 0 without PUBLISH_OK should render post-publish summary"
 grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "exit 0 without PUBLISH_OK should render failed-publish outcome"
-if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
-    fail "rename should be skipped when PUBLISH_OK is missing"
-else
-    pass "rename skipped when PUBLISH_OK is missing"
-fi
+grep -q 'tracking-issue-write' "$RENAME_LOG" || fail "rename should run before missing PUBLISH_OK handling"
+grep -q 'RENAMED=true' "$D_NO_PUB_KV/.design-publish-result.env" || fail "missing PUBLISH_OK should persist RENAMED=true"
 grep -q 'design-log-publish.sh' "$D_NO_PUB_KV/execution-issues.md" 2>/dev/null   || fail "exit 0 without PUBLISH_OK= must append to execution-issues.md"
 
 # --- result-env write failure (exit 3) ---
