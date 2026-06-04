@@ -1,0 +1,332 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Round II of /design refactor, Phase 2: fold Step 3 preview into review driver
+
+## Summary
+
+Fold the Step 3 plan-candidate preview into `run-step3-review.sh` (first render
+action), removing the separate orchestrator preview Bash turn, and collapse the
+Step 3 result-env consumption fence in `SKILL.md` to the Phase 1 thin-fence
+shape. Behavior is preserved: the preview still shows before the long-running
+review (first Step 3 entry only), and the review panel / cap guard / branch
+matrix / SIMPLE-HARD semantics are unchanged.
+
+Tier: SIMPLE. Phase 2 of 7; only the Step 3 surface is touched. Phases 3-7 are
+separate issues.
+
+## Key mechanics
+
+- `larch_quiet_init` (already run by `run-step3-review.sh`) sets `exec 3>&1`
+  then redirects FD 1 -> quiet log. `emit` writes to FD 3, which the
+  orchestrator captures via `_plan_review_out=$(driver)`. So the folded preview
+  must reach FD 3, not the script's plain FD 1 (which is the swallowed log).
+- The driver renders the preview by capturing `emit-design-plan-preview.sh`
+  stdout and re-emitting it through `emit` (robust under `LARCH_QUIET_DISABLE`,
+  unlike a raw `>&3`).
+- The driver MUST keep emitting machine KVs on FD 3: `test-run-step3-review.sh`
+  pins them as the symlink-outer fallback (when `phase_driver_write_result_env`
+  refuses a symlinked `.step3-review-result.env` and exits 1, the orchestrator
+  recovers KVs from stdout). So the captured stream carries preview display +
+  KV lines together; the thin orchestrator fence echoes non-KV display lines
+  and parses KV lines by allowlist.
+- `assert_thin_fence` (added in Phase 1) forbids the literal
+  `is a symlink; refusing to source` in the scoped region and requires the
+  region's entry pause guard to thread `${REPO:+--repo "$REPO"}`. The thin Step
+  3 fence therefore guards the result-env read with `! -L` (no message) and
+  threads `${REPO:+--repo "$REPO"}` into the Step 3 pause guard.
+- Sentinel ownership moves to the driver: `emit-design-plan-preview.sh
+  --variant step3` becomes a pure renderer; `run-step3-review.sh` checks and
+  touches `.step3-entry-plan-printed`.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/scripts/run-step3-review.sh`
+
+- After argv parse, `DESIGN_TMPDIR` resolution, and `CLAUDE_PLUGIN_ROOT`
+  resolution (before the review-round cap guard), add the preview render as the
+  first display action:
+  - Resolve the renderer path with a test seam:
+    `_preview_sh="${RUN_STEP3_EMIT_PREVIEW_SH:-$PLUGIN_ROOT/skills/design/scripts/emit-design-plan-preview.sh}"`
+    (mirrors the existing `RUN_STEP3_PLAN_REVIEW_LOOP_SH` /
+    `RUN_STEP3_SNAPSHOT_PLAN_ROUND_SH` override seams).
+  - First-entry sentinel ownership: when `.step3-entry-plan-printed` is absent,
+    capture the renderer stdout (`_preview_out=$("$_preview_sh" --design-tmpdir
+    "$DESIGN_TMPDIR" --variant step3)` guarded with `set +e`/`|| true`),
+    `emit "$_preview_out"` when non-empty, then `: > "$DESIGN_TMPDIR/.step3-entry-plan-printed"`.
+    When the sentinel is present, skip the render (re-entry suppression).
+- Keep ALL existing behavior unchanged: cap guard, symlink-safe round cleanup,
+  HARD round-cursor read/advance, pending-round persist, `plan-review-loop.sh`
+  launch, inner result-env parse, `review-round-count.txt` persist/rollback,
+  the `emit_kv` machine KV stream, the `phase_driver_write_result_env` write,
+  and WARN emits. The preview is purely additive and must not gate or reorder
+  the cap/persist logic.
+
+### UPDATED: `skills/design/scripts/run-step3-review.md`
+
+- Add the preview render as responsibility 0 (first display action; FD-3 via
+  capture + `emit`; driver owns `.step3-entry-plan-printed`).
+- Document the `RUN_STEP3_EMIT_PREVIEW_SH` override seam.
+- Note the caller relationship: `SKILL.md` Step 3 no longer runs a separate
+  `emit-design-plan-preview.sh --variant step3` fence; the driver renders it.
+
+### UPDATED: `skills/design/scripts/emit-design-plan-preview.sh`
+
+- Make the `step3` variant a pure renderer owned by the driver:
+  - Remove the `[[ -e "$design_tmpdir/.step3-entry-plan-printed" ]] && exit 0`
+    first-entry short-circuit and both `touch ".step3-entry-plan-printed"`
+    calls from the `step3` case.
+  - Keep the `--design-tmpdir` allowlist validation, the missing/empty
+    `plan.txt` warning + `exit 0` (now without the sentinel touch), the
+    `## Plan Candidate for Review` header, and `emit_plan_body` summary logic.
+- Leave the `gatec` variant (Step 4b) byte-unchanged.
+
+### UPDATED: `skills/design/scripts/emit-design-plan-preview.md`
+
+- Document that `step3` is a pure renderer; the driver
+  (`run-step3-review.sh`) owns the `.step3-entry-plan-printed` sentinel.
+- Record `run-step3-review.sh` as the `step3` caller; Step 4b
+  (`SKILL.md` / approval-gates) remains the `gatec` caller.
+
+### UPDATED: `skills/design/SKILL.md`
+
+Within the Step 3 region (`<!-- step:3 —` .. `<!-- step:3.5`):
+
+- Remove the separate `emit-design-plan-preview.sh --variant step3` Bash fence
+  and fold its job into the driver. Keep a `## Plan Candidate for Review`
+  reference in the Step 3 prose so the structure-test anchor (Check 18) and the
+  operator-visible contract survive; reword the "Pre-voting plan re-print" prose
+  to say the driver renders the preview as its first action on first Step 3
+  entry (sentinel-gated), preserving the large-plan summary / "show full plan"
+  interrupt behavior.
+- Collapse the result-env consumption to the thin-fence shape:
+  `set +e; _plan_review_out=$(run-step3-review.sh ...); _plan_review_rc=$?;
+  set -e`; echo the non-KV display lines from the capture; read
+  `.step3-review-result.env` guarded by `! -L` (no `is a symlink; refusing to
+  source` string); fall back to the driver's stdout KVs for missing keys
+  (and rc!=0 LOOP_STATUS/TALLY override); re-emit `WARN` lines; warn on exit 2;
+  normalize an empty/invalid `LOOP_STATUS` to `panel-failed`.
+- Thread `${REPO:+--repo "$REPO"}` into the Step 3 entry pause guard(s) so
+  `assert_thin_fence` passes (matches Step 3.6 / Step 3b guards). Keep the
+  timing-ledger mark before the driver call.
+- Leave the post-loop branch matrix, Gate-B-bypass triple-sentinel writes,
+  main-agent-vote path, and `.completed/step-3` sentinel unchanged.
+
+### UPDATED: `skills/design/scripts/test-step3-orchestrator-fence.sh`
+
+- Update `apply_step3_handoff` to mirror the thin fence: echo non-KV display
+  lines, read the result env via the `! -L` guard, stdout fallback for missing
+  keys, rc!=0 LOOP_STATUS/TALLY override, `LOOP_STATUS` normalization, rc=2
+  short-circuit.
+- Add a case asserting preview/display lines in the captured stream are echoed
+  to chat while allowlisted KV lines are parsed (not echoed).
+- Keep the symlink-result-env -> stdout-fallback case (now via `! -L` skip
+  rather than the removed `refusing to source` message) and the existing
+  rc/merge/normalize cases.
+
+### UPDATED: `scripts/test-design-structure.sh`
+
+- Apply `assert_thin_fence "$SKILL_MD" 'SKILL Step 3 thin-fence shape'
+  '<!-- step:3 —' '<!-- step:3.5'`.
+- Remove obsolete fat-shape Step 3 pins that conflict with the thin fence
+  (any pin asserting the removed separate `--variant step3` fence in `SKILL.md`
+  or the `refusing to source` orchestrator string).
+- Keep the still-valid pins: `## Plan Candidate for Review` anchor (Check 18),
+  `-f "$DESIGN_TMPDIR/.step3-review-result.env"`, `WARN) printf`,
+  missing/invalid LOOP_STATUS -> panel-failed, `configuration error (exit 2)`,
+  `_plan_review_rc=$?`.
+- Add a pin that `run-step3-review.sh` renders the step3 preview and owns the
+  sentinel (e.g. references `emit-design-plan-preview` / `--variant step3` and
+  `.step3-entry-plan-printed`), and a pin that the `RUN_STEP3_EMIT_PREVIEW_SH`
+  seam exists.
+
+### UPDATED: `skills/design/scripts/test-run-step3-review.sh`
+
+- Add coverage: first Step 3 entry renders `## Plan Candidate for Review` to the
+  captured stdout and creates `.step3-entry-plan-printed`; a second entry with
+  the sentinel present suppresses the preview; render uses the
+  `RUN_STEP3_EMIT_PREVIEW_SH` seam (stub) so the harness is hermetic.
+- Keep every existing KV / cap / persist-rollback / symlink-outer-fallback /
+  normalization assertion green (preview output is additive to stdout and must
+  not perturb them).
+
+### UPDATED: `skills/design/scripts/test-emit-design-plan-preview.sh`
+
+- Drop the `step3` sentinel-idempotency assertion (sentinel ownership moved to
+  the driver); assert the `step3` variant now always renders when `plan.txt` is
+  present and does not write `.step3-entry-plan-printed`.
+- Keep large-plan-outline / empty-outline fallback / small-plan full-emit /
+  gatec / threshold-normalization / empty-argv cases.
+
+### UPDATED: `docs/configuration-and-permissions.md`
+
+- Update the "Chat-order note (Step 3 / Gate C)": for Step 3 the preview is now
+  rendered inside `run-step3-review.sh` (first action), not a separate
+  `emit-design-plan-preview.sh` Bash fence. Gate C (`--variant gatec`) prose is
+  unchanged.
+
+## Approach
+
+1. Add the preview render + sentinel ownership to `run-step3-review.sh` (capture
+   + `emit`, `RUN_STEP3_EMIT_PREVIEW_SH` seam); keep KV/result-env/persist logic
+   intact.
+2. Strip the sentinel logic from the `emit-design-plan-preview.sh` `step3`
+   variant (pure renderer); leave `gatec` untouched.
+3. Thin the `SKILL.md` Step 3 fence: remove the separate preview fence, echo
+   captured display, single `! -L`-guarded result-env read + stdout fallback,
+   thread REPO into the pause guard, retain the `## Plan Candidate for Review`
+   prose anchor.
+4. Update the three harnesses (`test-step3-orchestrator-fence.sh`,
+   `test-run-step3-review.sh`, `test-emit-design-plan-preview.sh`) and
+   `test-design-structure.sh` (apply `assert_thin_fence`, swap fat pins for
+   thin pins).
+5. Update the `.md` siblings and the chat-order doc note.
+6. Drift sweep for prose referencing the old separate Step 3 preview turn or the
+   script-owned sentinel (`SKILL.md` prose, `run-step3-review.md`,
+   `emit-design-plan-preview.md`, `docs/configuration-and-permissions.md`,
+   `docs/issue-anchored-plan.md`).
+7. Run: `bash scripts/relevant-checks.sh` / `make lint`,
+   `bash scripts/test-design-structure.sh`,
+   `bash skills/design/scripts/test-step3-orchestrator-fence.sh`,
+   `bash skills/design/scripts/test-run-step3-review.sh`,
+   `bash skills/design/scripts/test-emit-design-plan-preview.sh`,
+   `bash scripts/test-design-multi-round-integration.sh`.
+
+## Edge cases
+
+- **Re-entry** (Gate C re-run, Gate B(c)/Gate C(b) -> Gate A -> Step 3): the
+  sentinel exists, so the driver renders no preview. Preserved.
+- **Symlinked `.step3-review-result.env`**: file read skipped via `! -L`; the
+  orchestrator recovers KVs from the driver's stdout fallback. Same net outcome
+  as today (symlink -> stdout fallback), now without the forbidden
+  `refusing to source` message.
+- **Missing/empty `plan.txt` at Step 3**: the renderer prints its warning and
+  exits 0; the driver still touches the sentinel and proceeds to review.
+- **`LARCH_QUIET_DISABLE` (tests)**: `emit` routes to FD 1, still captured by
+  `$(...)`; the preview still reaches the captured stream.
+- **Large-plan summary mode**: handled inside `emit-design-plan-preview.sh`
+  (`LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD`); unchanged. The "show full plan"
+  interrupt stays an orchestrator free-form interaction.
+- **Plan body line resembling an allowlisted `KEY=value`**: theoretical
+  mis-parse in the display/KV split; pre-existing risk class for the capture
+  parse, low likelihood for plan markdown.
+
+## Failure modes
+
+- **FD routing drift** — rendering the preview to plain FD 1 instead of FD 3
+  sends it to the quiet log (preview never shown). Earliest signal:
+  `test-run-step3-review.sh` first-entry preview-in-stdout assertion fails.
+  Mitigation: render via capture + `emit`; pin the assertion.
+- **Display / KV bleed** — echoing KV lines as display dumps `LOOP_STATUS=...`
+  noise to chat, or parsing preview lines as KVs corrupts branch state. Signal:
+  `test-step3-orchestrator-fence.sh` display-vs-parse assertions. Mitigation:
+  allowlist-keyed parse; echo only non-KV lines.
+- **Sentinel split-ownership** — sentinel logic left in both the script and the
+  driver renders the preview twice or never. Signal:
+  `test-run-step3-review.sh` idempotency case. Mitigation: single owner (driver).
+- **`assert_thin_fence` regression** — the Step 3 pause guard omits
+  `${REPO:+--repo "$REPO"}` or the region keeps `refusing to source`. Signal:
+  `scripts/test-design-structure.sh` Step 3 thin-fence assertion. Mitigation:
+  thread REPO; `! -L` guard with no forbidden string.
+
+## Testing strategy
+
+- `test-run-step3-review.sh`: first-entry preview render + sentinel create,
+  re-entry suppression, `RUN_STEP3_EMIT_PREVIEW_SH` seam; all existing
+  KV/cap/persist/symlink-fallback/normalization assertions stay green.
+- `test-step3-orchestrator-fence.sh`: thin-fence `apply_step3_handoff` (echo
+  display + retained parse), display-echo assertion, symlink->stdout fallback.
+- `test-emit-design-plan-preview.sh`: `step3` pure-renderer (no sentinel),
+  gatec + threshold cases retained.
+- `scripts/test-design-structure.sh`: `assert_thin_fence` on Step 3; retained
+  anchors; preview/sentinel/seam pins; fat-shape pins removed.
+- `make lint` and `scripts/test-design-multi-round-integration.sh` green.
+
+## Out of scope
+
+- Other Round II phases (3-7) and any non-Step-3 `/design` fence.
+- The `gatec` preview variant and Gate C behavior.
+- Review panel, cap guard, round-cursor, branch matrix, and SIMPLE/HARD
+  semantics.
+
+diff_lines: 150
+
+</plan>
+
+<findings>
+### FINDING_2: Capturing the Step 3 driver buffers the preview until after review
+- **Reviewer(s)**: Codex-Arch, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: Moving the preview inside `run-step3-review.sh` while the caller captures the driver with command substitution prevents the user from seeing `## Plan Candidate for Review` before the long review loop starts. This breaks the intended pre-voting preview/show-full-plan interrupt point.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Keep the preview in a separate pre-review display fence, or change the handoff to stream display lines before review starts while still preserving the KV fallback
+  - From Cursor-Innovation: Keep preview uncaptured in the same Step 3 driver fence before the capture (sentinel-gated emit-design-plan-preview call), or split a fast preview-only driver invocation; do not rely on driver-inside preview plus post-capture echo for pre-panel chat order
+  - From Codex-Innovation: Keep the existing separate preview fence for this SIMPLE phase, or rework the handoff so preview/display streams live while only allowlisted KVs are captured
+  - From Cursor-Pragmatic: Keep a pre-driver preview turn (minimal fence or a driver subcommand invoked before `plan-review-loop.sh`), or document and test a streaming path; do not rely on post-capture echo alone if temporal order is required
+  - From Codex-Pragmatic: Keep a separate yield/fence for the summary-mode "show full plan" path, or explicitly remove that contract from SKILL.md and the preview note instead of claiming behavior is preserved
+
+
+### FINDING_3: Driver-owned sentinel touch would suppress later valid previews after renderer warnings
+- **Reviewer(s)**: Cursor-Edge, Cursor-dyn-caller-enumeration
+- **Severity**: important
+- **Concern**: The planned driver sentinel write is not scoped to successful renderer outcomes. If the renderer exits 0 for allowlist-invalid or missing/invalid tmpdir warnings without producing a real preview, an unconditional driver touch would suppress preview on later valid re-entry and could regress allowlist hardening.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Edge: Touch the sentinel only on successful preview output or the documented missing/empty-plan warning path; do not touch on allowlist-invalid or missing/invalid tmpdir warnings. Migrate the d9 no-sentinel assertion into `test-run-step3-review.sh` (driver-owned sentinel).
+  - From Cursor-dyn-caller-enumeration: Only create the sentinel when preview actually rendered (e.g. captured stdout contains `## Plan Candidate for Review`) or on the intentional missing/empty `plan.txt` path; never on allowlist-failure or missing-tmpdir warnings. Add a `test-run-step3-review.sh` case mirroring the disallowed-tmpdir harness (`d9`) asserting no sentinel file is created
+
+
+### FINDING_4: Preview text can be parsed as trusted Step 3 KVs
+- **Reviewer(s)**: Codex-Edge, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan mixes untrusted preview text and machine-readable KVs in the same captured stdout stream. If the safe result env is missing or unsafe, allowlisted-looking lines from `plan.txt` can populate Step 3 state before the driver’s real terminal KVs, causing the wrong branch to be taken.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: When no safe result env was loaded, let later stdout KVs overwrite earlier stdout values so the driver’s terminal KVs win; keep file-first precedence only when a non-symlink result env was read. Add a harness case with preview text containing an allowlisted fake KV before real KVs.
+  - From Codex-Pragmatic: Keep machine stdout distinguishable from display output, for example by parsing only after an explicit KV-begin marker emitted after the preview, or by preserving a separate preview fence while leaving driver stdout KV-only
+
+
+### FINDING_5: Missing or empty plan warning path lacks driver sentinel coverage
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: latent
+- **Concern**: The plan mentions the missing/empty `plan.txt` edge case, but does not require a driver test proving that this warning-only render path creates `.step3-entry-plan-printed`. If missed, Step 3 re-entry can repeatedly warn/re-render.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add one test-run-step3-review.sh case with missing or empty plan.txt asserting the warning is emitted, .step3-entry-plan-printed is created, and the review loop still proceeds
+
+
+### FINDING_6: Drift sweep omits linting docs for moved sentinel coverage
+- **Reviewer(s)**: Codex-dyn-caller-enumeration
+- **Severity**: latent
+- **Concern**: The plan moves Step 3 sentinel ownership from `test-emit-design-plan-preview.sh` coverage to driver coverage, but the Step 6 drift sweep omits `docs/linting.md`, which documents the old harness responsibility.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-caller-enumeration: Add docs/linting.md to the sweep/update list and revise the make test-emit-design-plan-preview row to describe step3 pure-renderer coverage plus driver-owned sentinel coverage in test-run-step3-review.sh
+
+
+### FINDING_7: Drift sweep omits SECURITY.md allowlist/sentinel wording
+- **Reviewer(s)**: Codex-dyn-caller-enumeration
+- **Severity**: latent
+- **Concern**: The plan moves Step 3 sentinel ownership to `run-step3-review.sh`, but the Step 6 drift sweep omits `SECURITY.md`, which still attributes Step 3 sentinel behavior to `emit-design-plan-preview.sh`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-caller-enumeration: Include SECURITY.md in the drift sweep and update the sentence to remove script-owned step3 sentinel wording while preserving the allowlist-warning contract for emit-design-plan-preview.sh
+
+
+</findings>
+
+<feature>
+Round II of /design refactor, Phase 2: fold Step 3 preview into review driver
+
+**Context.** Part of Round II of the `/design` refactor (rationale in Phase 1). Adopts the Phase 1 thin-fence contract for Step 3.
+
+**Problem.** Step 3 emits the plan preview in its own Bash turn (`emit-design-plan-preview.sh --variant step3`, `SKILL.md:1027-1033`) immediately before the review driver (`run-step3-review.sh`, `SKILL.md:1057-1103`), with no LLM judgment between them — `run-step3-review.md` itself notes it runs "after timing + plan preview". Separately the Step 3 result-env consumption (`SKILL.md:1066-1103`) is ~37 lines of hand-rolled parsing.
+
+**Change.** Make the step3 plan preview the first action inside `run-step3-review.sh` (let the driver own the `.step3-entry-plan-printed` first-entry sentinel), removing the separate preview turn. Then collapse the Step 3 consumption fence to the thin-fence contract.
+
+**Why.** Step 3 re-enters on Gate C "Re-run review panel" and the Gate B(c)/Gate C(b) -> Gate A -> Step 3 loops, so this removes 1 turn **per Step 3 entry** (2-5x on contested/HARD runs), plus the per-turn byte/determinism win from thinning the fence.
+
+**Scope / acceptance.** `run-step3-review.{sh,md}` + `emit-design-plan-preview.{sh,md}` updated; Step 3 fence thinned; `test-step3-orchestrator-fence.sh` + `test-design-structure.sh` updated; preview still shown before the (long-running) review; harnesses + `make lint` green.
+
+**Dependencies.** Blocked by Phase 1.
+
+</feature>

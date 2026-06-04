@@ -1,0 +1,39 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	skills/design/scripts/run-step3-review.sh:41-54 (planned preview block)	Driver plan unconditionally touches `.step3-entry-plan-printed` after every first-entry renderer call	When `--design-tmpdir` fails allowlist validation the pure `step3` renderer prints `**⚠ 3: DESIGN_TMPDIR not under allowlist**` and exits 0 without writing the sentinel (`skills/design/scripts/emit-design-plan-preview.sh:99-101`; harness `skills/design/scripts/test-emit-design-plan-preview.sh:128-133`). The driver would still `: > .step3-entry-plan-printed`, writing under a disallowed path and suppressing later preview attempts on re-entry — regressing the allowlist hardening documented in `SECURITY.md:121`	Only create the sentinel when preview actually rendered (e.g. captured stdout contains `## Plan Candidate for Review`) or on the intentional missing/empty `plan.txt` path; never on allowlist-failure or missing-tmpdir warnings. Add a `test-run-step3-review.sh` case mirroring the disallowed-tmpdir harness (`d9`) asserting no sentinel file is created
+2	out_of_scope	latent	risk-integration	docs/linting.md:224	Harness catalog still documents removed `step3` sentinel-idempotency behavior	After `test-emit-design-plan-preview.sh` drops sentinel assertions the Makefile/linting doc line remains stale; operators grepping docs get wrong expectations	Add `docs/linting.md` to Step 6 drift sweep (replace "step3 sentinel idempotency" with driver-owned first-entry/re-entry suppression)
+3	out_of_scope	latent	correctness	docs/configuration-and-permissions.md:270	Mechanical contract still says Step 3 preview is invoked directly from `SKILL.md`	Drift-sweep Step 6 lists this file but the UPDATED section only rewrites the chat-order note (`:268-268`); line 270 would still claim `emit-design-plan-preview.sh` is invoked from `SKILL.md` for Step 3 after the fold	Update line 270 during drift sweep: Step 3 preview is rendered inside `run-step3-review.sh`; Gate C remains a direct `SKILL.md` `gatec` invoke
+
+**1. [security] Driver sentinel touch on allowlist-failure path** (`skills/design/scripts/run-step3-review.sh` planned preview block)
+
+The plan moves sentinel ownership to the driver with: capture renderer → `emit` when non-empty → `: > .step3-entry-plan-printed`. That unconditionally touches the sentinel whenever it is absent, including when the renderer only emitted an allowlist warning.
+
+Today the `step3` variant validates the allowlist and exits 0 without touching the sentinel:
+
+```99:101:skills/design/scripts/emit-design-plan-preview.sh
+        if ! larch_design_tmpdir_validate "$design_tmpdir"; then
+            printf '%s\n' '**⚠ 3: DESIGN_TMPDIR not under allowlist; cannot present plan candidate**'
+            exit 0
+```
+
+The harness explicitly pins that behavior:
+
+```128:133:skills/design/scripts/test-emit-design-plan-preview.sh
+# Disallowed tmpdir: validate before step3 sentinel short-circuit or missing-plan sentinel writes.
+d9=$(mktemp -d "$SCRIPT_DIR/emit-design-plan-preview-disallowed.XXXXXX")
+...
+[[ ! -e "$d9/.step3-entry-plan-printed" ]] || fail "step3 should not write sentinel before allowlist validation"
+```
+
+After the fold, the renderer no longer writes the sentinel (plan correct), but the driver would — writing under a disallowed directory and causing re-entries to skip preview entirely because the sentinel exists. That regresses prior security review findings about sentinel writes before allowlist validation.
+
+**2. [OUT_OF_SCOPE] [risk-integration] `docs/linting.md:224` stale harness description**
+
+Still lists "step3 sentinel idempotency" though the plan removes that test. Not in the Step 6 drift-sweep file list.
+
+**3. [OUT_OF_SCOPE] [latent] `docs/configuration-and-permissions.md:270` mechanical contract**
+
+Says preview is "invoked from `skills/design/SKILL.md`" for both variants. Step 6 drift sweep includes this file but the UPDATED section only specifies the chat-order note at lines 268–268.
+
+**Caller enumeration (no gap):** The only production `--variant step3` caller is `skills/design/SKILL.md:1032-1034`; the plan removes that fence and adds the call inside `run-step3-review.sh`. No hooks, wrappers, or integration harnesses invoke `--variant step3` directly. Sentinel consumers/writers in runtime code are limited to `emit-design-plan-preview.sh` (removed by plan) and the planned driver owner; `test-emit-design-plan-preview.sh` is in scope for updates.
+
+**`docs/issue-anchored-plan.md`:** Lines 189–194 describe the separate preview turn and are explicitly listed in plan Step 6 drift sweep — no omission.

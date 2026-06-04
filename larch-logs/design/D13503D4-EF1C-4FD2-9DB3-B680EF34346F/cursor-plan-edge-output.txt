@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:1097-1103	rc=2 handoff prints banner only; no fail-closed fence exit	Safe .step3-review-result.env can load LOOP_STATUS=complete before the rc=2 check; normalization is skipped but the post-fence branch matrix still keys on LOOP_STATUS, so argv/config failures can route like a successful review	After the exit-2 banner add exit 1 (match Step 2b/3.6); pin in test-design-structure.sh; add harness case that safe-env+rc=2 does not leave LOOP_STATUS=complete for downstream use
+2	in_scope	important	correctness	skills/design/scripts/run-step3-review.sh:35-43	--preview-only path has no explicit early exit before --no-preview validation	Without exit 0 after preview work, a successful live preview falls through to the existing --round-cap required / cd path; SKILL preview fence omits --round-cap so the driver exits 2 after showing the plan	End --preview-only with exit 0 before --no-preview --round-cap / cd; add test-run-step3-review.sh case that preview-only with valid tmpdir exits 0 and does not write .step3-review-result.env or bump review-round-count.txt
+
+### 1. [correctness] `skills/design/SKILL.md` (thin-fence `rc=2` block, ~1097–1103 today)
+
+The plan correctly moves exit-2 handling before `LOOP_STATUS` normalization, but it still only `printf`s the configuration-error banner. Peer steps (0b, 2b, 3.6, 5c) use `exit 1` after an exit-2 banner. Here the fence can still load a safe `.step3-review-result.env` first, leaving `LOOP_STATUS=complete` (or similar) set when `_plan_review_rc==2`. Skipping normalization does not stop the orchestrator from following the **Post-loop branch matrix**, which branches on `LOOP_STATUS`, not `_plan_review_rc`. That is a real mis-route after mutual-exclusion or other driver exit 2.
+
+**Suggested revision:** Add `exit 1` immediately after the banner (and a structure pin), consistent with Step 3.6.
+
+### 2. [correctness] `skills/design/scripts/run-step3-review.sh` (proposed `--preview-only` branch)
+
+Mode-before-validation is right, but the plan never requires an explicit `exit 0` at the end of `--preview-only`. If implementation uses a preview `if` without stopping the script, a successful preview falls through into the existing `--round-cap` / `cd` gate. The SKILL preview fence does not pass `--round-cap`, so operators get a live plan preview followed by a spurious configuration exit 2—not a second review, but still a broken Step 3 entry.
+
+**Suggested revision:** Document and implement `exit 0` after preview emit/sentinel touch; extend `test-run-step3-review.sh` to assert no review side effects (no result env, no round-count mutation).
