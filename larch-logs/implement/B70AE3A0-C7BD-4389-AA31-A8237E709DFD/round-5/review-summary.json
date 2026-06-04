@@ -1,0 +1,36 @@
+{
+  "schema_version": 3,
+  "rounds_completed": 5,
+  "reviewer_output_paths": [
+    "<TMPDIR>/round-5/aggregator-output.txt",
+    "<TMPDIR>/round-5/claude-vote-output.txt",
+    "<TMPDIR>/round-5/codex-vote-output.txt",
+    "<TMPDIR>/round-5/cursor-specialist-correctness-output.txt",
+    "<TMPDIR>/round-5/cursor-specialist-edge-cases-output.txt",
+    "<TMPDIR>/round-5/cursor-specialist-plan-fidelity-output.txt",
+    "<TMPDIR>/round-5/cursor-specialist-security-output.txt",
+    "<TMPDIR>/round-5/cursor-specialist-structure-output.txt",
+    "<TMPDIR>/round-5/cursor-specialist-testing-output.txt",
+    "<TMPDIR>/round-5/cursor-vote-output.txt",
+    "<TMPDIR>/round-5/dyn-gh-cli-contracts-output.txt",
+    "<TMPDIR>/round-5/dyn-merge-head-sync-output.txt",
+    "<TMPDIR>/round-5/dyn-python311-compat-output.txt",
+    "<TMPDIR>/round-5/dyn-runlog-cleanliness-output.txt",
+    "<TMPDIR>/round-5/dyn-shell-sete-routing-output.txt",
+    "<TMPDIR>/round-5/dyn-stdout-protocol-output.txt"
+  ],
+  "panel": {
+    "scout_status": "ok",
+    "static_slot_count": 6,
+    "dynamic_slot_count": 6,
+    "total_slot_count": 12
+  },
+  "finding_counts": {
+    "total_accepted": 9,
+    "total_rejected": 10,
+    "total_exonerated": 9
+  },
+  "accepted_count": 9,
+  "rejected_count": 10,
+  "exonerated_count": 9
+}
