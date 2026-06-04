@@ -1,0 +1,334 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+# Plan: Python ship-pr soak fixes (#3466)
+
+SIMPLE tier. Each fix is surgical and traces to a numbered finding. Two operator-chosen
+scope expansions are honored: lower the runtime Python floor to 3.11 (Decision 1) and
+re-architect post-PR flushes to avoid divergence at the root (Decision 2 / O1).
+
+Out of scope (Round 1): #3446, #3448, #3449 (tracked separately). No bash `ship-pr.sh`
+rewrite beyond the #1 `set -e` fix. No `SECURITY.md` change (no security-relevant behavior
+changes). `AGENTS.md` carries no literal `3.12` floor, so it needs no edit.
+
+## Files to modify/create
+
+### UPDATED: `python/gh.py`
+(#3, BLOCKER) `pr_create` (line 313). Drop the unsupported `--json number,url,state,headRefName`
+flag pair from the `gh pr create` argv (lines 340-341) and delete the stdout-as-JSON parse
+(lines 366-383). On `returncode == 0`, resolve the created PR by reusing the existing
+`pr_for_branch(runner, branch, repo=repo, cwd=cwd)` (line 260); fall back to
+`_recover_pr_from_conflict_text(result.stdout, branch=branch)` (line 297) since `gh pr create`
+prints the PR URL on stdout. If neither resolves, `raise ShipError(...)` (which #4 maps to a
+JSON STALLED result, never a bare traceback). Keep the existing conflict-recovery branch
+(lines 350-365) unchanged. Return `(PullRequest, True)` on a fresh create.
+
+### UPDATED: `python/ship.py`
+(#4) `_error_to_result` (line 88). Add an `isinstance(exc, ShipError)` branch returning
+`ShipResult(Outcome.STALLED, detail=str(exc))` immediately before the final `raise exc`
+(line 95). Order: keep the three subclass checks first (TransientNetworkError, NeedsUserInput,
+Stalled), then the base `ShipError` → STALLED. `OUTCOME_EXIT_MAP[STALLED]` is already
+`EXIT_STALLED = 4`, so operational errors now emit JSON + exit 4. Leave the trailing `raise exc`
+for genuinely non-ShipError exceptions (unreachable via the line-477 `except`, kept defensive).
+(#6) Add a private `_breadcrumb(step: str, detail: str = "")` helper that writes one human-readable
+line to **stderr** (and flushes); stdout stays JSON-only (`emit_result` unchanged). Call it at
+each major phase in `run_ship`: checks/Lint&Tests, pr-prep (postbump/Flush+Push), pr-create (PR),
+rebase, merge, post-merge. Per-CI-poll breadcrumbs live in `ci_monitor.py` (below).
+
+### UPDATED: `python/merge.py`
+(#7, CRITICAL) `merge_pr` (line 43). Remove the per-invocation pre-merge flush block
+(lines 78-83: `pre_skip = run_logs.flush_logs_pre(...)` and its skip→ERROR handling). This stops
+the flush-commit churn that diverged HEAD from the green PR head and re-triggered CI. Note: bash
+`merge-pr.sh` has **no** pre-merge `flush_logs_pre`, so this removal restores bash parity (the
+flush was a python-only addition). The first `_merge_noop_if_pr_closed` (line 74) stays.
+(#5) `_ensure_head_matches_pr` (line 265). Replace the single post-force-push OID re-read
+(lines 311-313) with a poll: add `_poll_head_oid_match(runner, ctx, pr_num, local_head, sleeper, cwd)`
+that re-reads `_refresh_pr_info` up to `config.MERGE_PR_POST_PUSH_UNKNOWN_RETRIES` times with
+`sleeper(5.0)` between reads, returning as soon as `state.head_ref_oid == local_head`. On
+exhaustion, return the unchanged state so the existing mismatch path still returns
+`MERGE_RESULT_ERROR` (no hang). The subsequent UNKNOWN `_retry_unknown` (lines 318-326) is unchanged.
+
+### UPDATED: `python/run_logs.py`
+(O1, Decision 2) `_larch_log_commit` (line 851) / `flush_logs_pre` (line 526). Make in-loop flushes
+non-divergent: after staging (line 875), if every changed path under the run tree is a
+volatile batch artifact — token-report / timing-report ndjson, `session-transcript-refresh.txt`,
+and their redacted copies — skip the commit (return the existing no-op `CommandResult(("true",),0,...)`
+so no `chore(larch-logs): flush` commit is created). Commit only when a substantive run-log path
+changed. Use an explicit volatile-path allowlist scoped to `larch-logs/<run_id>/`, mirroring the
+path-scoping discipline already in `merge._flush_recoverable`. `flush_logs_post` (line 570) stays
+commit-free, so final logs ride the squash-merge without a divergent pre-merge commit.
+
+### UPDATED: `python/config.py`
+(O1) Add a `REFRESH_SKIP_VOLATILE_ONLY` literal and include it in `REFRESH_SKIP_MERGE_OK`
+(line 190) so any caller that still inspects a volatile-only skip treats it as success, not error.
+
+### UPDATED: `python/ci_monitor.py`
+(#6) In `poll_ci` (line 359), emit a per-poll breadcrumb to stderr using the existing
+`_warn_stderr` (line 192) — include the poll index and elapsed seconds before each
+`sleep_fn(poll_interval)` (line 440). No stdout writes.
+
+### UPDATED: `scripts/parse-bootstrap-routing-envelope.sh`
+(#1) Make the `_inv_apply_*` helpers `set -e`-safe. Add a trailing `return 0` to
+`_inv_apply_routing_line_if_empty` (after the `esac`, line 106) so the final
+`[ -z "${KEY:-}" ] && KEY=...` short-circuit no longer makes the function (and the sourcing
+caller under `set -e`) exit 1 once keys are pre-populated by the file-first pass. Add the same
+`return 0` to `_inv_apply_routing_line` (line 70) for symmetry. Keep `set -e` (per
+`.claude/rules/shell-strict-mode.md`); do not switch callers to `set +e`.
+
+### UPDATED: `scripts/parse-bootstrap-routing-envelope.md`
+Document the `set -e`-safety invariant (helpers always `return 0`) and the new regression harness.
+
+### NEW: `scripts/test-parse-bootstrap-routing-envelope.sh`
+(#1) Offline harness: source the script under `set -euo pipefail` with `_inv_out` carrying keys
+that are also pre-populated via a file-first `bootstrap-routing.env`, and assert the source
+returns 0 (reproduces the soak false-failure). Cover both `--preserve-coder` and default modes.
+
+### NEW: `scripts/test-parse-bootstrap-routing-envelope.md`
+Sibling contract stub for the new harness (per `.claude/rules/script-md-siblings.md`).
+
+### UPDATED: `Makefile`
+(#1) Register the new `test-parse-bootstrap-routing-envelope` target and add it to the harness
+shard list so CI runs it.
+
+### UPDATED: `skills/implement/SKILL.md`
+(#2) Python driver selector (line 955). Before invoking `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"`,
+validate the interpreter is **≥ 3.11** (e.g. `python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3,11) else 1)'`),
+failing loudly with a clear message when it is not, instead of silently running on an unsupported
+interpreter. 3.11 is the new documented floor (Decision 1); dev/pre-commit tooling may stay 3.12.
+
+### UPDATED: `python/pyproject.toml`
+(#2) Change `requires-python = ">=3.12"` (line 4) to `">=3.11"`. Ruff infers its target from
+`requires-python`, so this also lowers lint target to py311 and flags any 3.12-only usage (the
+audit grep found none today). Confirm no explicit `target-version`/`python_version` pin re-raises it.
+
+### UPDATED: `python/README.md`
+(#2) Line 3: change "Python ≥ 3.12" to "Python ≥ 3.11".
+
+### UPDATED: `docs/installation-and-setup.md`
+(#2) Line 96: change the `/report-tokens` runtime requirement from "Python 3.12 or newer" to
+"Python 3.11 or newer". Leave line 297 ("Python 3.12+ — required by pre-commit") as a dev-tooling
+requirement, or clarify it as pre-commit-only.
+
+### UPDATED: `.github/workflows/ci.yaml`
+(#2) Convert the `python-lint` (line ~426) and `python-tests` (line ~442) jobs to a
+`strategy.matrix.python-version: ["3.11", "3.12"]` and reference `${{ matrix.python-version }}`
+in their `setup-python` steps, proving 3.11 compliance. Leave the other `setup-python` steps
+(pre-commit, topology) pinned to 3.12 (dev tooling).
+
+### UPDATED: `python/test_gh.py`
+(#3) Add: (a) an argv-capture test asserting `pr_create` never passes `--json` to `gh pr create`;
+(b) a recorded-fixture success test where the stub Runner returns a real `gh pr create` stdout
+(a bare PR URL, not JSON) and `pr_create` resolves the PR via `pr_for_branch` / URL fallback.
+Update any existing stub that returns canned `gh pr create` JSON.
+
+### UPDATED: `python/test_merge.py`
+(#5) Add a poll test: PR head OID lags for the first N reads then matches → merge proceeds;
+OID never matches → `MERGE_RESULT_ERROR` after the retry cap (no hang). (#7) Remove/rewrite the
+pre-merge-flush-skip→error test (around line 574 `fake_pre_skipped`) since that branch is gone;
+add a convergence test asserting `merge_pr` performs **no** `flush_logs_pre` at merge time on a
+clean green path. Drop now-unused `flush_logs_pre` monkeypatches where they no longer apply.
+
+### UPDATED: `python/test_merge_bash_parity.py`
+(#7) Drop `flush_logs_pre` monkeypatches that are no longer exercised by `merge_pr`; keep
+flush-recovery parity cases. Confirm parity now that python no longer pre-flushes (matching bash).
+
+### UPDATED: `python/test_ship.py`
+(#4) Assert a bare `ShipError` raised inside `run_ship` yields a JSON ShipResult with
+`outcome == "stalled"` and `main()` returns exit 4 (no traceback). (#6) Capture stdout and stderr
+separately and assert stdout is exactly one JSON object while phase breadcrumbs appear on stderr.
+
+### UPDATED: `python/test_ci_monitor.py`
+(#6) Assert `poll_ci` writes a per-poll elapsed breadcrumb to stderr and nothing to stdout.
+
+### UPDATED: `python/test_run_logs.py`
+(O1) Assert `flush_logs_pre` skips the commit when only volatile batch artifacts changed, and
+still commits when a substantive run-log path changed.
+
+## Approach
+
+Port the three soak-proven patches verbatim in intent (#3 drop `--json`, #5 OID poll, #7 remove
+pre-merge flush) and add the unpatched fixes (#1 set-e, #4 error contract, #6 breadcrumbs). Layer
+the two operator scope expansions on top: O1 makes in-loop flushes commit only on substantive
+change (so no divergent commit triggers fresh CI), and Decision 1 lowers the runtime floor to 3.11
+across packaging, docs, CI matrix, and the selector guard. Every behavioral change gets a
+regression test; the merge-convergence test is the gate for #7 + O1.
+
+## Edge cases
+- `gh pr create` stdout with a trailing newline or multiple URLs → `_recover_pr_from_conflict_text`
+  takes the last match.
+- `pr_for_branch` transiently fails right after a successful create → URL-parse fallback; if both
+  fail, `ShipError` → JSON STALLED (#4), not a crash.
+- OID poll: genuine (non-lag) mismatch exhausts the cap and returns `MERGE_RESULT_ERROR` (current
+  behavior, just after polling) — it must not loop forever.
+- Volatile-only flush skip: the first flush with real content still commits; a later flush whose
+  only delta is timestamp/elapsed churn skips — substantive paths always force a commit.
+- Selector: `python3` == 3.11 passes; < 3.11 fails loudly; a 3.12 `python3` still passes.
+- parse-bootstrap: file-first pre-populates keys, then the stdout-fallback loop runs with all keys
+  set → must still source cleanly under `set -e`.
+
+## Failure modes
+1. **Run-log completeness regression from removing the pre-merge flush.** If the removed flush was
+   the only commit point for some volatile logs on a clean green path, they could be missing from
+   `main`. Earliest signal: run-log-completeness checks / missing token-timing batches. Mitigation:
+   logs are already committed at earlier implement steps and pre-rebase; the convergence test plus
+   existing run-log verification guard this.
+2. **OID poll masks a real mismatch or hangs.** A too-long/uncapped poll could hang, or an
+   over-eager early return could merge a mismatched head. Signal: merge stalls or merges wrong OID.
+   Mitigation: cap at `MERGE_PR_POST_PUSH_UNKNOWN_RETRIES` × 5s and return ERROR on exhaustion;
+   early-return only on exact `head_ref_oid == local_head`.
+3. **Volatile-only classifier drops substantive logs.** Too-broad volatile matching could skip a
+   real log commit. Signal: missing execution-issues batches in `larch-logs/`. Mitigation: explicit
+   volatile-path allowlist; commit whenever any non-allowlisted path changed; test both directions.
+
+## Testing strategy
+- `make py-test`: new/updated unit tests in `test_gh.py` (#3), `test_merge.py` (#5/#7),
+  `test_merge_bash_parity.py` (#7), `test_ship.py` (#4/#6), `test_ci_monitor.py` (#6),
+  `test_run_logs.py` (O1).
+- New offline harness `scripts/test-parse-bootstrap-routing-envelope.sh` (#1), Makefile-registered.
+- `make py-lint` under the lowered 3.11 ruff target; `make lint` for shell/markdown/structure
+  (`test-implement-structure.sh` still references the bash helper).
+- Manual/CI: the new 3.11/3.12 CI matrix exercises `python/` under both interpreters.
+
+diff_added: 330
+diff_deleted: 70
+diff_lines: 400
+
+</plan>
+
+<findings>
+### FINDING_1: 3.11 runtime floor plan misses explicit lint/type pins
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-Requirements, Codex-dyn-version-floor-sync
+- **Severity**: important
+- **Concern**: Lowering the Python runtime floor to 3.11 while leaving Ruff, Pyright, and/or Pylint pinned to Python 3.12 means `py-lint` can still analyze as 3.12 and fail to catch 3.12-only syntax, APIs, or imports.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add ### UPDATED: python/ruff.toml — set target-version = "py311" (or drop the pin only if ruff is confirmed to follow requires-python).
+  - From Codex-Arch: Update python/ruff.toml to py311 or remove the override, and set python/pyrightconfig.json pythonVersion to 3.11 alongside the pyproject/docs/CI changes
+  - From Codex-Innovation: Change these pins to py311/3.11 or remove them so the lowered floor is enforced
+  - From Codex-Pragmatic: Lower these pins to py311/3.11 or remove the ruff pin so pyproject drives it; keep truly dev-only pre-commit setup on 3.12.
+  - From Codex-Requirements: Add these config files to the plan and lower target-version/pythonVersion/py-version to 3.11, or add an equivalent explicit 3.11 syntax/import gate
+  - From Codex-dyn-version-floor-sync: Add these three config files to the version-floor change and lower or remove the explicit 3.12 analysis pins so py-lint validates Python 3.11 compatibility.
+
+
+### FINDING_2: Volatile-only run-log skip can leave staged or dirty files
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Codex-Pragmatic, Cursor-Innovation, Codex-Innovation, Codex-Requirements, Codex-dyn-contract-drift, Cursor-dyn-run-log-invariants, Codex-dyn-run-log-invariants
+- **Severity**: important
+- **Concern**: The volatile-only no-op path is planned after publishing/staging run-log files, but does not require clearing the index or worktree before returning success. That can leave staged or dirty volatile paths, causing later rebase/force-push clean-tree gates to stall or later commits to accidentally include skipped files.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Make the volatile-only path leave repo state clean before returning, e.g. classify before publishing or restore/unstage the volatile paths; add a status-clean assertion to the new run_logs test
+  - From Codex-Edge, Codex-Pragmatic: On a volatile-only skip, leave git status clean: classify before copying, or unstage plus restore/clean only allowlisted volatile paths before returning. Add a regression asserting git status --porcelain is empty after the skip.
+  - From Cursor-Innovation: The plan skips the flush commit after `git add` when only volatile artifacts changed, but does not unstage. `rebase._force_push_branch` rejects any non-empty `git status --porcelain`, so a later pre-rebase flush during the CI loop can leave the tree "dirty" and force-push raises `dirty worktree before force-push` (STALLED), recreating soak-style merge failures under a different signature. On volatile-only skip, run `git reset HEAD -- <rel>` (mirror `scripts/larch-log.sh` failed-commit cleanup at lines 564-565) or classify volatile paths before `git add` so nothing stays staged when no commit is created.
+  - From Codex-Innovation: When skipping, leave the repo clean: avoid copying those paths, or unstage and restore/remove the allowlisted repo copies; add a test asserting clean status after the skip
+  - From Codex-Requirements: Classify volatile-only changes before staging, or unstage/revert those paths before returning a volatile-only skip; add a regression that the volatile-only path leaves git status clean before rebase/force-push
+  - From Codex-dyn-contract-drift: Classify before publishing/staging, or explicitly reset/checkout/clean the volatile paths before returning; add the planned volatile-only test assertion that git status --porcelain for the run-log path is empty after the skip
+  - From Cursor-dyn-run-log-invariants: After volatile-only classification call git reset HEAD -- on the run pathspec (mirror larch-log.sh commit failure reset) or avoid git add until after the volatile check
+  - From Codex-dyn-run-log-invariants: Classify before staging, or reset/checkout the allowlisted paths before returning; add a regression that volatile-only skip leaves git status --porcelain empty
+
+
+### FINDING_4: Volatile allowlist must exactly cover intended refresh/report artifacts
+- **Reviewer(s)**: Codex-Edge, Cursor-Requirements, Cursor-dyn-run-log-invariants, Codex-dyn-run-log-invariants
+- **Severity**: important
+- **Concern**: The planned volatile allowlist may omit refresh JSON sidecars and canonical report/transcript artifacts that are rewritten during run-log refreshes. If omitted, timestamp-only churn can still create flush commits; if canonical batches are skipped, docs/tests must make that contract explicit.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Include token-report-refresh.json and timing-report-refresh.json explicitly in the volatile allowlist, or stop copying them for in-loop flushes. Test the volatile-only path with those files present.
+  - From Cursor-Requirements: Extend the O1 allowlist (and test_run_logs.py fixtures) to include token-report-refresh.json, timing-report-refresh.json, and any other refresh copies _render_token_timing_batches writes under larch-logs/implement/<run_id>/
+  - From Cursor-dyn-run-log-invariants: Enumerate exact basenames under larch-logs/implement/<run_id>/ including token-report.json timing-report.json token-report.ndjson timing-report.ndjson token-report-refresh.json timing-report-refresh.json session-transcript-refresh.txt; extend test_run_logs.py to assert skip when only .json churn changes
+  - From Codex-dyn-run-log-invariants: Make the allowlist match the exact intended volatile files, including or excluding canonical batches explicitly; if canonical batches may be skipped, update docs/run-logs.md and tests to say those final refreshes can remain tmpdir-local
+
+
+### FINDING_5: `/report-tokens` wrapper still rejects Python 3.11
+- **Reviewer(s)**: Codex-Innovation, Cursor-Requirements, Codex-Requirements, Codex-dyn-version-floor-sync, Codex-Pragmatic, Cursor-dyn-version-floor-sync
+- **Severity**: important
+- **Concern**: The documented/runtime floor is lowered to Python 3.11, but the live `skills/report-tokens/scripts/run-analysis.sh` wrapper still requires Python 3.12, so users on 3.11 would satisfy docs and pyproject but be blocked by the skill wrapper.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation, Cursor-Requirements, Codex-Requirements, Codex-dyn-version-floor-sync: Include run-analysis.sh in the plan and change the probe/message to require >= 3.11
+  - From Codex-Pragmatic: Update this guard and error text to >=3.11 in the same floor-lowering change.
+  - From Cursor-dyn-version-floor-sync: Add `### UPDATED: skills/report-tokens/scripts/run-analysis.sh` lowering the `sys.version_info` check and error text to 3.11 (mirror the implement selector snippet)
+
+
+
+</findings>
+
+<feature>
+# Python ship-pr soak: fix PR-create, merge-loop, error-contract; add breadcrumbs
+
+## Context
+
+First real `/implement` run on the **Python ship driver** (`LARCH_SHIP_PR_IMPL=python` → `python/ship.py`), against #3431 → PR #3464 (merged via the python path). **This is the single consolidated tracking issue for every problem the first soak surfaced** — it supersedes **#3451** and **#3465** (both closed). To complete the soak, throwaway patches were applied to the installed plugin cache (kept active locally per operator; overwritten by the next `/upgrade-larch`); the canonical fixes land here via `/design`→`/implement`.
+
+Env: `gh` 2.92.0; `python3` = 3.11.11 (3.12.8 present).
+
+Boundaries with the sibling python-cutover issues are called out per-finding so nothing is double-tracked; see **Related issues** + **Dependencies** at the bottom.
+
+## Findings & recommended fixes
+
+### #1 — `parse-bootstrap-routing-envelope.sh` is not `set -e`-safe (bash Step-0) [absorbed from #3451]
+- `scripts/parse-bootstrap-routing-envelope.sh`: `_inv_apply_routing_line_if_empty` (and the `[ -z "$_inv_line" ] && return 0` guards) end on `[ -z "${KEY:-}" ] && KEY="$val"`; once the file-first pass pre-populates keys, that guard is false → the function returns 1 → the caller's `set -e` aborts. The skill sources it under `set -e` in the Step-0 + dirty-tree-resume blocks → a fully-successful Step 0 reports **exit 1** (false-failure / latent halt). Confirmed by the soak (Step 0 exited 1 after all side effects; recovered by reading `bootstrap-routing.env`).
+- Fix: make the helper `set -e`-safe (end each `_inv_apply_*` with `return 0`, or `if [ -z … ]; then … fi`), or source under `set +e`.
+- Note: bash Step-0 scope (not strictly the python driver), consolidated here per operator to avoid a stray duplicate.
+
+### #2 — Python interpreter floor: selector has no ≥3.12 enforcement; runs under 3.11 [absorbed from #3465]
+- `skills/implement/SKILL.md` selector invokes bare `python3`; here that's 3.11.11 while AGENTS.md/#3132 mandate runtime Python ≥ 3.12. The tree compiled (`compileall`) + imported cleanly under 3.11, so it ran by luck.
+- Fix: either validate/select the interpreter (require ≥3.12 or invoke `python3.12`), **or** lower the documented floor to 3.11 with a CI matrix and audit `python/` for 3.11 compliance.
+
+### #3 — `gh.pr_create` passes `--json` to `gh pr create` → PR creation always fails (BLOCKER) [PATCHED]
+- `python/gh.py` `pr_create()` builds `gh pr create … --json number,url,state,headRefName` and parses stdout as JSON. `gh pr create` does **not** support `--json` (gh 2.92.0), so it fails every real run with `ShipError`. `python/test_gh.py`'s stub Runner returns canned JSON real gh never emits — a test-fidelity gap.
+- Fix: run `gh pr create` without `--json`, resolve via `gh pr view --json …` / `pr_for_branch(...)`; add a real-CLI/recorded-fixture test that catches an unsupported flag.
+
+### #4 — `ship.py._error_to_result` re-raises non-mapped errors → crash, no JSON, exit 1 (contract)
+- Maps only `TransientNetworkError`/`NeedsUserInput`/`Stalled`; everything else (incl. `ShipError`) hits `raise exc` → Python traceback + `SystemExit(1)`, violating the Step 8+ JSON-stdout + exit-0/3/4/6 contract.
+- Fix: map `ShipError`/operational errors to `Outcome.STALLED` (exit 4) with `detail` so the driver always emits JSON.
+- **Distinct from #3446**: this is the driver **emit**-JSON-on-error side; #3446 is the orchestrator **consume**-JSON routing side.
+
+### #5 — `merge.py._ensure_head_matches_pr` no retry on lagged PR head OID (timing) [PATCHED]
+- After `force_push_recovery`, re-reads the PR head OID once; GitHub's `headRefOid` lags a force-push → false `MERGE_RESULT_ERROR` "local HEAD does not match PR head OID after force-push recovery" → STALLED. (`_retry_unknown` already polls `mergeStateStatus`; the OID check had no equivalent.)
+- Fix: poll `_refresh_pr_info` (e.g. `MERGE_PR_POST_PUSH_UNKNOWN_RETRIES` × 5s) until the OID catches up.
+
+### #6 — Python ship driver emits no progress breadcrumbs (long silent intervals)
+- Only the final JSON reaches stdout; rebase/checks/push/CI-wait are silent (soak: ~6-min silent CI wait). Bash `ship-pr.sh` emitted `🔶`/`⏳`/`✅` step lines.
+- Fix: emit human-readable progress to **stderr** per major step (Rebase, Lint&Tests, Flush, Push, PR, each CI poll w/ elapsed, Merge, Post-merge); keep stdout JSON-only.
+
+### #7 — Non-convergent CI/merge loop: `merge_pr` re-flushes volatile logs before every merge attempt (CRITICAL/BLOCKER) [PATCHED]
+- `python/merge.py` `merge_pr()` calls `run_logs.flush_logs_pre(...)` every invocation → token/timing churn → new `chore(larch-logs): flush` commit → HEAD diverges from the CI-green PR OID → `_ensure_head_matches_pr` force-pushes → fresh CI → BLOCKED → `CI_NOT_READY` → `run_ship` loop forever. Observed: **8 CI runs in 16 min**, never converging.
+- Fix: flush ONCE before CI (not per merge attempt), and/or make flush idempotent (no commit on volatile-only churn), and/or merge the green head and defer final logs to post-merge (NEVER #16). Add a merge-convergence regression test.
+- **Distinct from #3448** (per-process counter resets) and **#3449** (CI-fix `stage_and_push` force-push gate): same "churn against an open PR" family, different mechanisms/locations (`merge_pr` flush vs counter persistence vs CI-fix push).
+
+### O1 — Flush-commit proliferation after PR creation
+- Post-PR flush commits force divergence requiring force-push + OID-sync (the trigger for #5/#7). Squash-merge hides it on `main`; consider fast-forward post-PR flushes instead of divergence-then-force-push. Tracked here with #7.
+
+## Soak patches applied (plugin cache; kept active locally; throwaway, overwritten by `/upgrade-larch`)
+1. `python/gh.py` `pr_create`: drop `--json`; resolve via `pr_for_branch(...)` (fallback `_recover_pr_from_conflict_text`). (#3)
+2. `python/merge.py` `_ensure_head_matches_pr`: poll PR head OID after force-push. (#5)
+3. `python/merge.py` `merge_pr`: remove pre-merge `flush_logs_pre`. (#7)
+4. `skills/implement/SKILL.md`: local preview-of-#3462 default flip bash→python.
+
+Findings #1, #2, #4, #6 were not patched (didn't block, or kept #4's re-raise to surface tracebacks).
+
+## Acceptance
+- #3, #4, #7 fixed in the repo `python/` tree (blockers for the python path and for #3462).
+- `gh pr create` covered by a real-CLI/recorded-fixture integration test.
+- Merge converges with no per-attempt flush-commit churn — regression test pins a single CI cycle on a clean green path.
+- Operational errors yield a JSON result + routing exit code (never a bare traceback/exit 1).
+- Progress breadcrumbs stream to stderr per major step; stdout stays JSON-only.
+- #1 (set-e), #2 (interpreter floor), #5 (OID poll), #6 (breadcrumbs), O1 addressed or explicitly deferred with rationale.
+- `make py-lint` / `make py-test` / `make lint` pass.
+
+## Related issues (distinct scope — NOT duplicated here)
+- **#3446** — orchestrator-side JSON + finalize-state routing contract; `run_ship` availability hardcode; selector harness pin; misc cleanups. (Driver-emit counterpart of #4 lives here in #3466.)
+- **#3448** — persist CI-loop counters + idempotent phase resume + Phase-7 test matrix (`test_ship.py`/`test_ci_monitor.py`). (Counter-reset churn ≠ #7's flush churn.)
+- **#3449** — finalize parity (postmerge/local-cleanup/postbump force-push gate) + real bash-parity tests + fail-closed gate + doc refresh.
+- **#3404** — exit-4 `ship_pr_pre_push` conflict handoff (library-level: `config.py`/`errors.py`/`rebase.py`).
+- **#3405** — `ci_monitor` `CI_FIX_REBASE_PENDING` vs `evaluate_failure` divergence (intentional non-port: comment + test pin).
+- **#3132** — umbrella (ship-pr → modular Python).
+- **#3462** — flip `LARCH_SHIP_PR_IMPL` default bash→python; the final cutover, blocked by all the above.
+
+## Dependencies (native blocked-by applied via /block-issue; file-overlap → can't-parallel)
+`#3466 → #3446 → #3448`; then `#3449` and `#3405` can run in parallel after #3448; `#3404` after #3446 (+ #3405 for `python/README.md`); `#3462` last (blocked by all six work issues). Rationale: shared `ship.py` serializes #3466/#3446/#3448; `finalize.py`/`run_logs.py` link #3446/#3448/#3449; `test_ci_monitor.py` links #3448/#3405; `config.py`/`README.md` link #3446/#3404/#3405.
+
+
+</feature>

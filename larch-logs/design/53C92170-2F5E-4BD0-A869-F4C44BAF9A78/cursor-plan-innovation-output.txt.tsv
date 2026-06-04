@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	python/run_logs.py:851-879	O1 uses publish-then-restore/clean instead of skipping publish	Classify-after-copy adds git restore/reset/clean plus a repo-wide porcelain gate for a delta that never needed to touch the worktree	Mirror bash parity by classifying volatile-only deltas in the tmpdir run tree before `_publish_run_tree_to_repo`; when every change is allowlisted refresh sidecars, return the existing no-op without publishing or mutating the repo

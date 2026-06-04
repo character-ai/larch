@@ -1,0 +1,9 @@
+- `gh pr create` runs without `--json`; the created PR resolves via `pr_for_branch` / stdout-URL fallback, and a real-CLI-or-recorded-transcript test asserts rc=0 resolution with **no** `--json` in argv (kept stubs are not the sole gate) (#3, FINDING_3).
+- Operational errors (the `ShipError` family) yield a JSON `ShipResult` + exit 4 (STALLED) — never a bare traceback / exit 1 (#4).
+- `merge_pr` performs **no** per-attempt pre-merge `flush_logs_pre`; merge converges in a single CI cycle on a clean green path (regression test) (#7).
+- `_ensure_head_matches_pr` polls the PR head OID after force-push recovery (`MERGE_PR_POST_PUSH_UNKNOWN_RETRIES` × 5s) and returns `MERGE_RESULT_ERROR` on exhaustion — never hangs (#5).
+- Progress breadcrumbs stream to **stderr** per major ship phase and per CI poll (with elapsed); stdout stays a single JSON object (#6).
+- `parse-bootstrap-routing-envelope.sh` sources cleanly under `set -e` when keys are pre-populated by the file-first pass (new offline regression harness, Makefile-registered) (#1).
+- Runtime Python floor is **3.11**: `requires-python = ">=3.11"`; `ruff.toml` / `pyrightconfig.json` / `.pylintrc` pins lowered to 3.11; `python/README.md`, `docs/installation-and-setup.md`, the `report-tokens` probe, and the `/implement` selector validate `python3 ≥ 3.11`; CI runs a `["3.11","3.12"]` matrix for `py-lint`/`py-test` (#2, Decision 1).
+- In-loop flush is non-divergent and fail-closed: `flush_logs_pre` skips the commit for refresh-sidecar-only churn, and any failed `git restore`/`clean`/`reset` or non-empty repo-wide `git status --porcelain` raises `ShipError` (→ JSON STALLED) rather than a silent no-op; canonical `token-report.json` / `timing-report.json` still commit on substantive change (O1, Decision 2, FINDING_1/2/3).
+- `make py-lint`, `make py-test`, and `make lint` pass.
