@@ -1,0 +1,45 @@
+finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
+FINDING_1	cursor-specialist-structure-output.txt|cursor-specialist-correctness-output.txt|cursor-specialist-testing-output.txt|cursor-specialist-plan-fidelity-output.txt|dyn-cli-wrapper-output.txt|dyn-ci-harness-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	excellent	false	YES	true	major	good	false
+FINDING_10	cursor-specialist-correctness-output.txt	accepted	YES	true	major	excellent	false	YES	true	major	excellent	false	YES	true	major	excellent	false
+FINDING_11	cursor-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt|dyn-token-pricing-output.txt	accepted	YES	partially-true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_12	cursor-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt|cursor-specialist-plan-fidelity-output.txt|dyn-token-pricing-output.txt	accepted	YES	true	minor	adequate	false	YES	true	major	adequate	false	YES	true	major	adequate	false
+FINDING_13	cursor-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt|dyn-issue-publish-output.txt	accepted	NO	false-positive	nit	weak	false	YES	partially-true	minor	good	true	YES	true	major	good	false
+FINDING_14	cursor-specialist-security-output.txt	accepted	YES	true	minor	adequate	false	EXONERATE	true		adequate	true	YES	true	minor	adequate	false
+FINDING_15	cursor-specialist-security-output.txt|dyn-plot-isolation-output.txt	accepted	YES	true	minor	adequate	false	EXONERATE	true		adequate	true	YES	true	minor	good	false
+FINDING_16	cursor-specialist-security-output.txt|dyn-issue-publish-output.txt	accepted	EXONERATE	true	nit	weak	false	YES	true	nit	adequate	false	YES	true	nit	adequate	false
+FINDING_17	cursor-specialist-security-output.txt	accepted	YES	true	minor	adequate	false	EXONERATE	partially-true		adequate	true	YES	true	minor	adequate	false
+FINDING_18	cursor-specialist-security-output.txt	accepted	EXONERATE	true	nit	no-fix	false	YES	true		adequate	true	YES	true	minor	adequate	false
+FINDING_19	cursor-specialist-edge-cases-output.txt|cursor-specialist-plan-fidelity-output.txt|dyn-cli-wrapper-output.txt|dyn-ship-parity-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_2	cursor-specialist-structure-output.txt|cursor-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt|dyn-issue-publish-output.txt	accepted	YES	true	minor	adequate	false	YES	true	minor	good	false	YES	true	minor	adequate	false
+FINDING_20	cursor-specialist-edge-cases-output.txt|dyn-ship-parity-output.txt	accepted	EXONERATE	true	minor	weak	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_21	cursor-specialist-edge-cases-output.txt|cursor-specialist-plan-fidelity-output.txt|dyn-issue-publish-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	excellent	false	YES	true	major	adequate	false
+FINDING_22	cursor-specialist-edge-cases-output.txt	accepted	YES	true	minor	adequate	false	EXONERATE	true		adequate	true	YES	true	minor	good	false
+FINDING_23	cursor-specialist-edge-cases-output.txt|dyn-issue-publish-output.txt|dyn-cli-wrapper-output.txt	exonerated	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	adequate	false	EXONERATE	true	nit	adequate	false
+FINDING_24	cursor-specialist-edge-cases-output.txt	exonerated	EXONERATE	true	nit	no-fix	false	EXONERATE	true		no-fix	true	YES	true	minor	adequate	false
+FINDING_25	cursor-specialist-edge-cases-output.txt|dyn-plot-isolation-output.txt	exonerated	EXONERATE	true	nit	no-fix	false	EXONERATE	true		no-fix	true	YES	true	minor	adequate	false
+FINDING_26	cursor-specialist-edge-cases-output.txt	exonerated	EXONERATE	true	nit	no-fix	false	EXONERATE	true	nit	adequate	false	EXONERATE	true	nit	weak	false
+FINDING_27	cursor-specialist-plan-fidelity-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	excellent	false	YES	true	major	adequate	false
+FINDING_28	cursor-specialist-plan-fidelity-output.txt	exonerated	YES	true	minor	adequate	false	EXONERATE	true		adequate	true	EXONERATE	partially-true	minor	adequate	false
+FINDING_29	cursor-specialist-plan-fidelity-output.txt|dyn-ship-parity-output.txt	rejected	EXONERATE	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false	NO	true	nit	no-fix	false
+FINDING_3	cursor-specialist-structure-output.txt|cursor-specialist-plan-fidelity-output.txt|dyn-cli-wrapper-output.txt	accepted	YES	true	minor	adequate	false	YES	true	major	adequate	false	YES	true	major	adequate	false
+FINDING_30	dyn-token-pricing-output.txt	exonerated	EXONERATE	partially-true	nit	no-fix	false	EXONERATE	true	nit	no-fix	false	NO	true	nit	no-fix	false
+FINDING_31	dyn-cli-wrapper-output.txt	neutral	NO	false-positive	nit	weak	false	EXONERATE	partially-true	minor	adequate	true	YES	true	major	good	false
+FINDING_32	dyn-cli-wrapper-output.txt	exonerated	EXONERATE	uncertain	minor	weak	true	EXONERATE	true		adequate	true	EXONERATE	true	minor	adequate	false
+FINDING_33	dyn-cli-wrapper-output.txt	accepted	YES	true	minor	adequate	false	EXONERATE	true		adequate	true	YES	true	minor	adequate	false
+FINDING_34	dyn-plot-isolation-output.txt	exonerated	YES	uncertain	minor	adequate	true	EXONERATE	true		adequate	true	EXONERATE	true	minor	adequate	false
+FINDING_35	dyn-plot-isolation-output.txt	exonerated	YES	uncertain	minor	adequate	true	EXONERATE	true		adequate	true	EXONERATE	true	minor	adequate	false
+FINDING_36	dyn-plot-isolation-output.txt	accepted	YES	true	nit	adequate	false	EXONERATE	true	nit	adequate	false	YES	true	nit	adequate	false
+FINDING_37	dyn-plot-isolation-output.txt	rejected	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_38	dyn-ship-parity-output.txt	accepted	EXONERATE	partially-true	minor	weak	false	YES	true	major	good	false	YES	partially-true	major	adequate	true
+FINDING_39	dyn-ship-parity-output.txt	accepted	EXONERATE	true	nit	weak	false	YES	true	nit	good	false	YES	true	nit	adequate	false
+FINDING_4	cursor-specialist-structure-output.txt	exonerated	EXONERATE	uncertain	minor	weak	true	EXONERATE	partially-true		adequate	true	EXONERATE	partially-true	minor	adequate	true
+FINDING_40	dyn-ci-harness-output.txt	accepted	YES	true	minor	adequate	false	EXONERATE	partially-true		adequate	true	YES	true	minor	good	false
+FINDING_41	dyn-ci-harness-output.txt	exonerated	YES	uncertain	minor	adequate	true	EXONERATE	true		adequate	true	EXONERATE	true	minor	weak	false
+FINDING_42	dyn-ci-harness-output.txt	accepted	YES	true	nit	adequate	false	YES	true	nit	excellent	false	YES	true	nit	good	false
+FINDING_43	dyn-ci-harness-output.txt	rejected	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_44	dyn-ci-harness-output.txt	rejected	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_5	cursor-specialist-structure-output.txt|cursor-specialist-security-output.txt|cursor-specialist-edge-cases-output.txt|dyn-cli-wrapper-output.txt	accepted	EXONERATE	partially-true	nit	weak	false	YES	true	major	good	false	YES	true	major	good	false
+FINDING_6	cursor-specialist-structure-output.txt	exonerated	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	adequate	false	EXONERATE	true	nit	adequate	false
+FINDING_7	cursor-specialist-structure-output.txt	exonerated	EXONERATE	partially-true	nit	weak	false	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	weak	false
+FINDING_8	cursor-specialist-structure-output.txt	accepted	YES	true	nit	adequate	false	YES	true	nit	good	false	YES	true	nit	good	false
+FINDING_9	cursor-specialist-structure-output.txt|dyn-token-pricing-output.txt	exonerated	EXONERATE	true	nit	weak	false	EXONERATE	true		adequate	true	YES	partially-true	minor	adequate	true

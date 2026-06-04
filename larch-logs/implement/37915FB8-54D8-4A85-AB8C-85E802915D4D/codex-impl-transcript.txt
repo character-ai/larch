@@ -1,0 +1,7 @@
+Implemented plan and wrote the manifest atomically.
+
+Validation run:
+- `make py-lint` passed
+- `make py-test` passed
+- `bash skills/report-tokens/scripts/test-run-analysis-quiet.sh` passed
+- `bash scripts/relevant-checks.sh` passed
