@@ -11,9 +11,11 @@
 # Usage:
 #   design-log-publish.sh --design-tmpdir PATH --run-id ID --issue N [--repo OWNER/REPO] [--reason final|pause] [--dry-run]
 #
-# Expected operational failures emit PUBLISH_OK=false on stdout. Pre-validation and
-# pre-push failures exit 0 so callers can parse stdout. Post-push failures (git push,
-# gh pr create after push, gh pr merge) exit 1 while preserving PUBLISH_OK=false.
+# Expected operational failures emit PUBLISH_OK=false on stdout. Most pre-validation and
+# pre-push failures exit 0 so callers can parse stdout. A malformed --repo is a
+# structural argv failure: it exits 1 before gh/network work and does not emit a
+# success envelope. Post-push failures (git push, gh pr create after push,
+# gh pr merge) exit 1 while preserving PUBLISH_OK=false.
 # Per-script larch-quiet-*-*.log files are excluded from top-level staging; they are
 # published only under breadcrumbs/ via larch_log_publish_breadcrumbs_shared.
 
@@ -76,6 +78,15 @@ emit_publish_failure() {
     fi
 }
 
+
+validate_repo() {
+    local value="$1"
+    case "$value" in
+        '' | *$'\n'* | *$'\r'* | /* | *../*) return 1 ;;
+    esac
+    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
+}
+
 redact_diagnostic() {
     local text=$1 redacted=""
     if [ -x "$SCRIPT_DIR/redact-tmpdir-paths.sh" ] && [ -x "$SCRIPT_DIR/redact-secrets.sh" ]; then
@@ -111,6 +122,11 @@ if ! larch_log_slug_is_valid "$RUN_ID"; then
     larch_err "design-log-publish: invalid --run-id slug"
     emit_publish_result false
     exit 0
+fi
+
+if [[ -n "$REPO" ]] && ! validate_repo "$REPO"; then
+    larch_err "design-log-publish: invalid --repo"
+    exit 1
 fi
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || { emit_publish_result false; exit 0; }

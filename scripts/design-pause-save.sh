@@ -15,6 +15,14 @@ DESIGN_TMPDIR=""
 ISSUE=""
 REPO=""
 
+validate_repo() {
+    local value="$1"
+    case "$value" in
+        '' | *$'\n'* | *$'\r'* | /* | *../*) return 1 ;;
+    esac
+    [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
+}
+
 resolve_repo() {
     local repo="${1:-}"
     if [[ -n "$repo" ]]; then
@@ -61,6 +69,11 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+REPO_ARG="${REPO:-}"
+if [[ -n "$REPO_ARG" ]] && ! validate_repo "$REPO_ARG"; then
+    emit_fail "invalid-repo"
+fi
+
 [[ -n "$DESIGN_TMPDIR" ]] || emit_fail "tmpdir-unset"
 [[ -d "$DESIGN_TMPDIR" ]] || emit_fail "tmpdir-missing"
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || emit_fail "tmpdir-invalid"
@@ -70,6 +83,9 @@ if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
     # shellcheck disable=SC1090
     # shellcheck disable=SC1091
     source "$DESIGN_TMPDIR/source-env.sh" || true
+fi
+if [[ -n "$REPO_ARG" ]]; then
+    REPO="$REPO_ARG"
 fi
 
 RUN_ID="${SESSION_ID:-}"
@@ -105,6 +121,9 @@ BRAINSTORM_DONE=false
 
 if resolved_repo=$(resolve_repo "$REPO"); then
     REPO="$resolved_repo"
+fi
+if [[ -n "$REPO" ]] && ! validate_repo "$REPO"; then
+    emit_fail "invalid-repo"
 fi
 
 gh_repo_args=()
@@ -175,6 +194,10 @@ RECOVERY_BRANCH=$(awk -F= '$1=="RECOVERY_BRANCH"{print $2}' "$publish_out" | tai
 if [[ "$publish_rc" -ne 0 && -z "$PUBLISH_OK" ]]; then
     log_failure "design-log-publish.sh" "$publish_err"
     emit_fail "publish-failed"
+fi
+if [[ "$publish_rc" -ne 0 && "$PUBLISH_OK" == "true" ]]; then
+    log_failure "design-log-publish.sh" "$publish_err"
+    PUBLISH_OK=false
 fi
 
 if [[ "$PUBLISH_OK" != "true" ]]; then

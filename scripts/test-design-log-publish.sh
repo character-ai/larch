@@ -371,6 +371,16 @@ out=$(
 )
 [[ "$out" == *"PUBLISH_OK=false"* ]] || fail "bad slug should fail: $out"
 
+echo "=== invalid repo argv ==="
+set +e
+out_bad_repo=$(
+    (cd "$DRYCLONE" && PATH="$STUBDR:$PATH" bash "$PUBLISH" --design-tmpdir "$DRYROOT/design" --run-id "RUN1AB" --issue 9 --repo /abs --dry-run) 2>/dev/null
+)
+rc_bad_repo=$?
+set -e
+[[ "$rc_bad_repo" -eq 1 ]] || fail "bad --repo should exit 1 (got $rc_bad_repo)"
+[[ "$out_bad_repo" != *"PUBLISH_OK=true"* ]] || fail "bad --repo must not emit success envelope: $out_bad_repo"
+
 echo "=== jq required for non-dry-run ==="
 JQTEST=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-jq.XXXXXX")
 trap 'rm -rf "$DRYROOT" "$JQTEST"' EXIT

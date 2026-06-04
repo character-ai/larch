@@ -55,3 +55,7 @@ Rename runs before `write-run-params.sh`. If rename succeeds but `write-run-para
 `scripts/test-design-structure.sh` (env-before-rename line-order, jq-merge greps); `scripts/test-step0b-router-flag-recovery.sh` replicates jq-merge.
 
 Orchestrator handoff: `_init_out` capture + file-first `.design-init-runparams-result.env` read + stdout merge; exit `2` / unexpected non-zero abort; `_init_rc=1` may carry `INIT_STATUS=contract-drift` or `INIT_STATUS=env-refresh-failed`, with dedicated operator banners for both after successful KV merge.
+
+## Recent contract coverage
+
+- When `--repo` is present, init forwards it to `write-design-current-env.sh` so `source-env.sh` and the current-design-env symlink preserve the non-default repo.

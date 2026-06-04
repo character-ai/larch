@@ -219,7 +219,7 @@ ex_disp=$(na "${EXEC_ISSUES:-0}")
 warn_disp=$(na "${WARNINGS:-0}")
 
 run_logs_disp=$(na "$RUN_LOGS_PATH")
-if [ "$run_logs_disp" = "N/A" ] && [ -n "$RUN_ID" ]; then
+if [ "$run_logs_disp" = "N/A" ] && [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ] && [ "$OUTCOME" != "failed-publish" ]; then
     run_logs_disp="larch-logs/${SKILL}/${RUN_ID}/"
 fi
 
@@ -232,7 +232,7 @@ trap cleanup EXIT
     printf '## /%s run %s — %s\n\n' "$SKILL" "$RUN_ID" "$OUTCOME"
     # Outcome bullet: skipped printf for happy-path outcomes (not empty-string args) so
     # --print-stdout and --output-file bodies stay byte-identical (FINDING_20).
-    case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
+    case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*|publish-skipped) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
     printf -- '- **Mode**: %s\n' "$mode_disp"
     printf -- '- **Path**: %s\n' "$path_disp"
     if [ "$EMERGENCY_REQUESTED" = "true" ]; then

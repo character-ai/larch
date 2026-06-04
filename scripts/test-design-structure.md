@@ -17,3 +17,7 @@ The `skills/design/SKILL.md` check is scoped to `<!-- step:3.6` through `<!-- st
 The harness also pins every Gate-B-bypass branch (`cap-reached`, `tally-error`, `panel-failed`, `skipped-cap-reached`, `degraded-empty-collector`, `plan-validator-defects`, and `plan-size-trigger`) to contain a literal sentinel-write line with the `.completed` mkdir plus all three `step-3`, `step-3.5`, and `step-3.6` sentinel writes. Its self-tests prove the assertion fails when non-`plan-size-trigger` branches drop a sentinel.
 
 The Step 3b region check slices `<!-- step:3b` through `<!-- step:4` and pins the first entry `.pause-requested` pause-save guard to include `${REPO:+--repo "$REPO"}` so the Step 3.6 occurrence cannot satisfy the check by accident.
+
+## Recent contract coverage
+
+- Covers the Step 5c publish gate, clarify fail-closed publish/recovery metadata, clarify sub-step 6 summary outcome branch, pause-check `--repo` forwarding, and init `--repo` persistence pins.

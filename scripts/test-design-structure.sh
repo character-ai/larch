@@ -1070,6 +1070,8 @@ grep -Fq -- '--claude-pid "$CLAUDE_PID"' "$DESIGN_INIT_SH" \
   || fail "(FINDING_13) design-init-runparams.sh current-design-env refresh must pass --claude-pid"
 grep -Fq '_wdce_args+=(--manual-requested true)' "$DESIGN_INIT_SH" \
   || fail "(FINDING_13) design-init-runparams.sh must add --manual-requested only on manual runs"
+# shellcheck disable=SC2016 # shell literal pins exact repo forwarding syntax.
+contains "$DESIGN_INIT_SH" '_wdce_args+=(--repo "$REPO")' '(27) design-init-runparams.sh must forward REPO to write-design-current-env.sh'
 grep -Fq 'INIT_STATUS=env-refresh-failed' "$DESIGN_INIT_SH" \
   || fail "(FINDING_20) design-init-runparams.sh must emit env-refresh-failed on write-design-current-env.sh failure"
 grep -Fq 'write-design-current-env.sh failed during Step 0b env refresh' "$SKILL_MD" \
@@ -1419,6 +1421,31 @@ grep -Fq '.completed/step-5b' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must require .completed/step-5b precondition"
 grep -Fq 'exit 1 is the normal plan-block-write failure path' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing exit 1 parse-then-branch contract"
+# shellcheck disable=SC2016 # Markdown literal contains backticks and shell variables intentionally.
+contains "$SKILL_MD" '`SESSION_ID` empty **or** `PUBLISH_OK=true`' '(27) SKILL.md Step 5c missing publish-success sentinel gate'
+# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
+contains "$SKILL_MD" 'When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK != true`, do **not** write `step-5c`' '(27) SKILL.md Step 5c missing failed-publish no-sentinel retry prose'
+# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
+contains "$SKILL_MD" 'When `_publish_rc` is non-zero, force `PUBLISH_OK=false`' '(28) SKILL.md clarify publish must fail closed on nonzero rc'
+# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
+contains "$SKILL_MD" 'export `SUMMARY_OUTCOME=failed-publish` with the `DESIGN_LOG_*` metadata already set' '(28) SKILL.md clarify sub-step 6 missing failed-publish summary branch'
+# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
+contains "$SKILL_MD" 'otherwise export `SUMMARY_OUTCOME=cancelled-clarify` for publish skipped (`SESSION_ID` empty) or publish succeeded (`PUBLISH_OK=true`)' '(28) SKILL.md clarify sub-step 6 missing cancelled-clarify skip/success branch'
+# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
+contains "$SKILL_MD" 'set `DESIGN_LOG_PR_NUMBER`, `DESIGN_LOG_PR_URL`, and `DESIGN_LOG_RECOVERY_BRANCH` from the parsed `PR_NUMBER`, `PR_URL`, and `RECOVERY_BRANCH`' '(28) SKILL.md clarify missing recovery metadata preservation prose'
+# shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
+contains "$SKILL_MD" 'with failed publish using `RUN_LOGS_PATH=N/A` and no successful run-log path' '(28) SKILL.md clarify missing failed-publish run-log suppression prose'
+python3 - "$SKILL_MD" <<'PY_ASSERT'
+import pathlib, sys
+path=pathlib.Path(sys.argv[1])
+missing=[]
+for i,line in enumerate(path.read_text().splitlines(),1):
+    if 'design-pause-save.sh' in line and '--issue "$ISSUE_NUMBER"' in line and '${REPO:+--repo "$REPO"}' not in line:
+        missing.append(f'{i}:{line}')
+if missing:
+    print('FAIL: (27) SKILL.md pause-save invocations missing REPO forwarding: ' + '; '.join(missing[:5]), file=sys.stderr)
+    sys.exit(1)
+PY_ASSERT
 grep -Fq '_publish_rc` ∈ {0, 1, 3}' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing driver exit-code contract for rc 0, 1, or 3"
 # shellcheck disable=SC2016

@@ -253,6 +253,19 @@ fb_cancel_fallback_line=$(grep -nF '<!-- larch:final-summary-fallback v1 -->' "$
 [[ -n "$fb_cancel_run_summary_line" && -n "$fb_cancel_fallback_line" && "$fb_cancel_fallback_line" -gt "$fb_cancel_run_summary_line" ]] \
     || fail 'renderer-fail cancelled fallback marker must follow run-summary marker'
 cmp -s "$D/final-summary.md" "$std_fb_cancel" || fail 'renderer-fail cancelled fallback stdout/file mismatch'
+std_fb_skip="$TMP/std-fallback-publish-skipped.log"
+: >"$D/final-summary.md"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="" \
+    "$SUBJECT" --outcome publish-skipped --mode SIMPLE --post-publish-only >"$std_fb_skip" 2>/dev/null
+grep -Fq -- '**⚠ Degraded fallback' "$D/final-summary.md" || fail 'renderer-fail publish-skipped fallback missing degraded banner'
+grep -Fq -- '- **Outcome**: publish-skipped' "$D/final-summary.md" || fail 'renderer-fail publish-skipped fallback missing Outcome bullet'
+grep -Fq -- '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.' "$D/final-summary.md" || fail 'renderer-fail publish-skipped fallback missing publish note'
+# shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
+grep -Fq -- '- **Run logs**: `N/A`' "$D/final-summary.md" || fail 'renderer-fail publish-skipped fallback must keep Run logs N/A'
+if grep -Fq 'Publish recovery' "$D/final-summary.md"; then fail 'renderer-fail publish-skipped fallback must not emit recovery prose'; fi
+if grep -Fq 'Log recovery' "$D/final-summary.md"; then fail 'renderer-fail publish-skipped fallback must not emit log recovery prose'; fi
+if grep -Fq 'larch-logs/design/unknown/' "$D/final-summary.md"; then fail 'renderer-fail publish-skipped fallback must not synthesize unknown run-log path'; fi
+cmp -s "$D/final-summary.md" "$std_fb_skip" || fail 'renderer-fail publish-skipped fallback stdout/file mismatch'
 std_fb_co="$TMP/std-fallback-cancelled-outline.log"
 : >"$D/final-summary.md"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FB-CO" \
@@ -532,6 +545,19 @@ cmp -s "$D/final-summary.md" "$failed_publish_stdout" || fail 'failed-publish re
 unset DESIGN_LOG_PR_NUMBER DESIGN_LOG_PR_URL DESIGN_LOG_RECOVERY_BRANCH
 pass 'failed-publish recovery bullets'
 
+cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/render-run-summary.sh"
+chmod +x "$PLUGIN_STUB/scripts/render-run-summary.sh"
+publish_skipped_stdout="$TMP/std-publish-skipped.log"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID=""     "$SUBJECT" --outcome publish-skipped --mode SIMPLE --post-publish-only >"$publish_skipped_stdout" 2>/dev/null
+grep -Fq -- '- **Outcome**: publish-skipped' "$D/final-summary.md" || fail 'publish-skipped missing Outcome bullet'
+grep -Fq -- '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.' "$D/final-summary.md" || fail 'publish-skipped missing publish note'
+# shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
+grep -Fq -- '- **Run logs**: `N/A`' "$D/final-summary.md" || fail 'publish-skipped Run logs must be N/A'
+if grep -Fq 'Publish recovery' "$D/final-summary.md"; then fail 'publish-skipped must not emit failed-publish recovery prose'; fi
+if grep -Fq 'larch-logs/design/unknown/' "$D/final-summary.md"; then fail 'publish-skipped must not synthesize unknown run-log path'; fi
+cmp -s "$D/final-summary.md" "$publish_skipped_stdout" || fail 'publish-skipped stdout/file mismatch'
+pass 'publish-skipped primary bullets'
+
 for summary_outcome in \
     approved \
     approved-partition \
@@ -544,11 +570,12 @@ for summary_outcome in \
     cancelled-outline \
     cancelled-assessor-worse \
     failed-plan-write \
-    failed-publish
+    failed-publish \
+    publish-skipped
 do
     session="RUN-MATRIX-${summary_outcome}"
     matrix_stdout="$TMP/std-matrix-${summary_outcome}.log"
-    DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="$session" \
+    CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="$session" \
         "$SUBJECT" --outcome "$summary_outcome" --mode SIMPLE --post-publish-only >"$matrix_stdout" 2>/dev/null
     grep -Fq -- '- **Cost**:' "$D/final-summary.md" || fail "matrix $summary_outcome missing Cost bullet"
     grep -Fq "<!-- larch:run-summary v=1 -->" "$D/final-summary.md" || fail "matrix $summary_outcome missing sentinel"
@@ -568,7 +595,7 @@ do
         grep -Fq -- "- **Outcome**: $summary_outcome" "$D/final-summary.md" || fail "matrix $summary_outcome missing Outcome bullet"
     fi
 done
-pass 'thirteen-outcome post-publish matrix'
+pass 'fourteen-outcome post-publish matrix'
 
 grep -Fq -- '--redact' "$ROOT/skills/design/scripts/render-final-summary.sh" || fail 'render-final-summary append_render_warning must redact stderr'
 pass 'render-final-summary append warning redacts stderr'

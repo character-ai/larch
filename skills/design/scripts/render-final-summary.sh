@@ -48,7 +48,7 @@ fi
 # SKILL.md Step 0b uses alphabetical-within-cancelled documentation order.
 # Both forms accept the same token set.
 case "$OUTCOME" in
-    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-reentry-guard|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|cancelled-assessor-worse|failed-plan-write|failed-publish) ;;
+    approved|approved-partition|cancelled-clarify|cancelled-already-planned|cancelled-reentry-guard|cancelled-title-filter|cancelled-sprawl|cancelled-plan-size-hard|cancelled-decompose|cancelled-outline|cancelled-assessor-worse|failed-plan-write|failed-publish|publish-skipped) ;;
     *)
         larch_err "render-final-summary.sh: outcome not in enumeration: $OUTCOME"
         exit 2
@@ -331,6 +331,9 @@ invoke_render() {
         : >"$note_file"
         append_failed_publish_notes "$note_file"
         note_args=(--note-lines-file "$note_file")
+    elif [ "$OUTCOME" = "publish-skipped" ]; then
+        printf '%s\n' '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.' >"$note_file"
+        note_args=(--note-lines-file "$note_file")
     else
         if rm -f "$note_file" 2>/dev/null; then
             note_args=()
@@ -392,7 +395,7 @@ compose_self_fallback() {
     {
         printf '## /design run %s — %s\n\n' "$RUN_ID" "$OUTCOME"
         printf '%s\n\n' "$banner"
-        case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
+        case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*|publish-skipped) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
         printf -- '- **Mode**: %s\n' "${MODE_STR:-N/A}"
         printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
         printf -- '- **Duration**: %s\n' "${DURATION:-N/A}"
@@ -408,6 +411,8 @@ compose_self_fallback() {
         fi
         if [ "$OUTCOME" = "failed-publish" ]; then
             append_failed_publish_notes /dev/stdout
+        elif [ "$OUTCOME" = "publish-skipped" ]; then
+            printf '%s\n' '- **Publish**: skipped — no SESSION_ID / run-log; the plan was written to the issue.'
         fi
         printf -- '- **Plan review**: %s\n' "${PLAN_LINE:-N/A}"
         if [ "${OOS_COUNT:-0}" != "0" ] && [ -n "${OOS_URLS:-}" ] && [ "${OOS_URLS:-}" != "N/A" ]; then

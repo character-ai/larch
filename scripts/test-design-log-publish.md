@@ -27,3 +27,7 @@ bash scripts/test-design-log-publish.sh
 ```
 
 Or `make test-design-log-publish`.
+
+## Recent contract coverage
+
+- Covers malformed `--repo` as an exit-1 structural argv failure while valid `owner/repo` and omitted `--repo` remain accepted.

@@ -131,6 +131,8 @@ case "${PUBLISH_MODE:-ok}" in
   recovery) printf 'PUBLISH_OK=false\nPR_NUMBER=1\nPR_URL=https://example.test/pull/1\nRECOVERY_BRANCH=larch-log-design-%s\n' "$run_id" ;;
   local-recovery) printf 'PUBLISH_OK=false\nPR_NUMBER=\nPR_URL=\nRECOVERY_BRANCH=larch-log-design-recovery-%s\n' "$run_id" ;;
   hardfail) printf 'PUBLISH_OK=false\nPR_NUMBER=\nPR_URL=\n' ;;
+  rc-ok-false) printf 'PUBLISH_OK=true\nPR_NUMBER=1\nPR_URL=https://example.test/pull/1\n'; exit 1 ;;
+  rc-false-recovery) printf 'PUBLISH_OK=false\nPR_NUMBER=1\nPR_URL=https://example.test/pull/1\nRECOVERY_BRANCH=larch-log-design-%s\n' "$run_id"; exit 1 ;;
 esac
 PUB
 chmod +x "$STUB/publish"
@@ -336,6 +338,19 @@ for token_body in multiple-start multiple-end start-without-end end-without-star
   [[ "$rc" == "1" && "$bad_out" == *"MALFORMED=$token_body"* ]] || fail "malformed $token_body mismatch: rc=$rc out=$bad_out"
 done
 
+echo "=== malformed repo fails before publish or marker ==="
+make_design_tmpdir "$DESIGN"
+printf 'body\n' >"$BODY_FILE"
+out_bad_repo_save=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo /abs)
+[[ "$out_bad_repo_save" == *"PAUSE_OK=false"* && "$out_bad_repo_save" == *"ERROR=invalid-repo"* ]] || fail "bad --repo should fail early: $out_bad_repo_save"
+! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad --repo must not write marker"
+make_design_tmpdir "$DESIGN"
+printf 'export SESSION_ID=RUNPAUSE1\nexport REPO=owner/repo\n' >"$DESIGN/source-env.sh"
+printf 'body\n' >"$BODY_FILE"
+out_bad_repo_pre_source=$(bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo /abs)
+[[ "$out_bad_repo_pre_source" == *"PAUSE_OK=false"* && "$out_bad_repo_pre_source" == *"ERROR=invalid-repo"* ]] || fail "bad argv --repo should not be overwritten by source-env: $out_bad_repo_pre_source"
+! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "bad argv --repo with source-env must not write marker"
+
 echo "=== recovery branch and hard publish failure ==="
 make_design_tmpdir "$DESIGN"
 printf 'body\n' >"$BODY_FILE"
@@ -353,6 +368,18 @@ printf 'body\n' >"$BODY_FILE"
 out_hard=$(PUBLISH_MODE=hardfail bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo)
 [[ "$out_hard" == *"PAUSE_OK=false"* && "$out_hard" == *"ERROR=publish-and-recovery-failed"* ]] || fail "hard publish failure mismatch: $out_hard"
 ! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "hard failure must not write marker"
+
+make_design_tmpdir "$DESIGN"
+printf 'body\n' >"$BODY_FILE"
+out_rc_ok=$(PUBLISH_MODE=rc-ok-false bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo)
+[[ "$out_rc_ok" == *"PAUSE_OK=false"* && "$out_rc_ok" == *"ERROR=publish-and-recovery-failed"* ]] || fail "rc-ok-false contradictory envelope should fail closed: $out_rc_ok"
+! grep -Fq 'larch:design-pause' "$BODY_FILE" || fail "rc-ok-false must not write marker"
+
+make_design_tmpdir "$DESIGN"
+printf 'body\n' >"$BODY_FILE"
+out_rc_recovery=$(PUBLISH_MODE=rc-false-recovery bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo)
+[[ "$out_rc_recovery" == *"PAUSE_OK=true"* && "$out_rc_recovery" == *"LOG_RECOVERY_BRANCH=larch-log-design-RUNPAUSE1"* ]] || fail "rc-false-recovery should stay resumable: $out_rc_recovery"
+grep -Fq 'LOG_RECOVERY_BRANCH=larch-log-design-RUNPAUSE1' "$BODY_FILE" || fail "rc-false-recovery marker missing recovery branch"
 
 make_design_tmpdir "$DESIGN"
 printf 'body\n' >"$BODY_FILE"

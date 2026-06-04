@@ -86,15 +86,15 @@ STUB
 #!/usr/bin/env bash
 echo "design-log-publish $*" >>"${PUBLISH_LOG:?}"
 [[ -n "${CALL_LOG:-}" ]] && echo "design-log-publish $*" >>"$CALL_LOG"
-if [[ "${PUBLISH_STUB_RC:-0}" -ne 0 ]]; then
-  exit "${PUBLISH_STUB_RC}"
-fi
 if [[ "${PUBLISH_EMIT_OK:-true}" == true ]]; then
   echo "PUBLISH_OK=${PUBLISH_OK_VALUE:-true}"
 fi
 [[ -n "${PUBLISH_PR_NUMBER:-}" ]] && echo "PR_NUMBER=${PUBLISH_PR_NUMBER}"
 [[ -n "${PUBLISH_PR_URL:-}" ]] && echo "PR_URL=${PUBLISH_PR_URL}"
 [[ -n "${PUBLISH_RECOVERY_BRANCH:-}" ]] && echo "RECOVERY_BRANCH=${PUBLISH_RECOVERY_BRANCH}"
+if [[ "${PUBLISH_STUB_RC:-0}" -ne 0 ]]; then
+  exit "${PUBLISH_STUB_RC}"
+fi
 STUB
     cat >"$STUB/upsert-diagrams-comment.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -461,6 +461,7 @@ else
     pass "empty SESSION_ID single post-publish render"
 fi
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "empty SESSION_ID missing post-publish render"
+grep -q -- '--outcome publish-skipped' "$RENDER_LOG" || fail "empty SESSION_ID should render publish-skipped outcome"
 grep -q 'ISSUE_NUMBER=1' "$RENDER_LOG" || fail "empty SESSION_ID render missing ISSUE_NUMBER"
 grep -q 'DESIGN_TMPDIR=' "$RENDER_LOG" || fail "empty SESSION_ID render missing DESIGN_TMPDIR"
 if ! grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
@@ -524,6 +525,33 @@ else
     pass "rename skipped after unexpected publish rc"
 fi
 grep -q 'design-log-publish.sh' "$D_UNEXP/execution-issues.md" 2>/dev/null   || fail "unexpected publish must append to execution-issues.md"
+
+# --- nonzero publish rc with PUBLISH_OK=true is fail-closed ---
+D_RC_TRUE="$TMP/pub-rc-true"
+setup_design_tmp "$D_RC_TRUE"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_STUB_RC=2
+export PUBLISH_EMIT_OK=true
+export PUBLISH_OK_VALUE=true
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_RC_TRUE" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "publish rc nonzero with PUBLISH_OK=true" 0 "$rc"
+grep -q 'PUBLISH_OK=false' "$D_RC_TRUE/.design-publish-result.env" || fail "nonzero publish rc must force PUBLISH_OK=false"
+grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "nonzero publish rc should render failed-publish outcome"
+if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
+    fail "rename should be skipped when publish rc is nonzero despite PUBLISH_OK=true"
+else
+    pass "rename skipped when publish rc is nonzero despite PUBLISH_OK=true"
+fi
+if grep -q 'design-reentry-marker-write' "$CALL_LOG" 2>/dev/null; then
+    fail "reentry marker should be skipped when publish rc is nonzero despite PUBLISH_OK=true"
+else
+    pass "reentry marker skipped when publish rc is nonzero despite PUBLISH_OK=true"
+fi
 
 # --- exit 0 without PUBLISH_OK= line ---
 D_NO_PUB_KV="$TMP/no-publish-kv"
