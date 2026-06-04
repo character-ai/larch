@@ -241,7 +241,7 @@ else
     fail '--preview-only should not create sentinel for exit 1 non-header renderer output'
 fi
 
-echo "=== --preview-only exact missing-plan warning creates sentinel on allowlisted tmpdir ==="
+echo "=== --preview-only exact missing-plan warning does not create sentinel on allowlisted tmpdir ==="
 D_PV5="$TMP/preview-exact-missing"
 write_common_inputs "$D_PV5" SIMPLE
 rm -f "$D_PV5/plan.txt"
@@ -254,10 +254,53 @@ STUBEOF
 chmod +x "$exact_missing_stub"
 "${launcher_env[@]}" LARCH_QUIET_DISABLE=1 RUN_STEP3_EMIT_PREVIEW_SH="$exact_missing_stub" \
     "$LAUNCHER" --preview-only --design-tmpdir "$D_PV5" >/dev/null 2>&1 || true
-if [[ -e "$D_PV5/.step3-entry-plan-printed" ]]; then
-    pass '--preview-only exact missing-plan warning creates sentinel'
+if [[ ! -e "$D_PV5/.step3-entry-plan-printed" ]]; then
+    pass '--preview-only exact missing-plan warning does not create sentinel'
 else
-    fail '--preview-only should create sentinel for exact missing-plan warning on allowlisted tmpdir'
+    fail '--preview-only should not create sentinel for exact missing-plan warning on allowlisted tmpdir'
+fi
+
+echo "=== --preview-only missing plan then repair re-renders preview ==="
+D_PV5B="$TMP/preview-missing-repair"
+write_common_inputs "$D_PV5B" SIMPLE
+rm -f "$D_PV5B/plan.txt"
+missing_repair_warning_stub="$D_PV5B/missing-repair-warning-stub.sh"
+cat >"$missing_repair_warning_stub" <<'STUBEOF'
+#!/usr/bin/env bash
+printf '**⚠ 3: plan.txt missing or empty; cannot present plan candidate for review**\n'
+exit 0
+STUBEOF
+chmod +x "$missing_repair_warning_stub"
+"${launcher_env[@]}" LARCH_QUIET_DISABLE=1 RUN_STEP3_EMIT_PREVIEW_SH="$missing_repair_warning_stub" \
+    "$LAUNCHER" --preview-only --design-tmpdir "$D_PV5B" >/dev/null 2>&1 || true
+if [[ ! -e "$D_PV5B/.step3-entry-plan-printed" ]]; then
+    pass '--preview-only missing-plan first call leaves sentinel absent'
+else
+    fail '--preview-only missing-plan first call should not create sentinel'
+fi
+printf '# Plan\n\nrepaired\n' >"$D_PV5B/plan.txt"
+missing_repair_header_stub="$D_PV5B/missing-repair-header-stub.sh"
+cat >"$missing_repair_header_stub" <<'STUBEOF'
+#!/usr/bin/env bash
+printf '\n## Plan Candidate for Review\n\nrepaired preview\n'
+exit 0
+STUBEOF
+chmod +x "$missing_repair_header_stub"
+set +e
+out="$("${launcher_env[@]}" LARCH_QUIET_DISABLE=1 RUN_STEP3_EMIT_PREVIEW_SH="$missing_repair_header_stub" \
+    "$LAUNCHER" --preview-only --design-tmpdir "$D_PV5B" 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then
+    pass '--preview-only repaired plan call exits 0'
+else
+    fail "--preview-only repaired plan call rc=$rc"
+fi
+assert_contains "$out" '## Plan Candidate for Review' '--preview-only repaired plan call re-renders header'
+if [[ -e "$D_PV5B/.step3-entry-plan-printed" ]]; then
+    pass '--preview-only repaired plan call creates sentinel'
+else
+    fail '--preview-only repaired plan call should create sentinel'
 fi
 
 echo "=== --preview-only stale sentinel on disallowed tmpdir still emits warnings ==="

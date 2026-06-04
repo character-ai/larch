@@ -25,7 +25,7 @@ The driver does **not** re-read `LARCH_DESIGN_*` env vars (except `RUN_STEP3_EMI
 
 ## Responsibilities
 
-0. **`--preview-only`** — live FD-3 preview via `emit`; driver owns `.step3-entry-plan-printed` with output-string + allowlist touch rules. `--preview-only` needs only `--design-tmpdir` (raw path to renderer); `--round-cap` and canonicalized tmpdir `cd` apply only to `--no-preview`. `larch_design_tmpdir_validate` gates sentinel read/write/touch; stale sentinel on invalid tmpdir does not suppress warnings. Renderer path: `RUN_STEP3_EMIT_PREVIEW_SH` override seam (default: `emit-design-plan-preview.sh`).
+0. **`--preview-only`** — live FD-3 preview via `emit`; driver owns `.step3-entry-plan-printed` with output-string + allowlist touch rules. The sentinel is touched only when rendered output contains the `## Plan Candidate for Review` header; the missing-plan warning never touches it, so a later `plan.txt` repair re-renders the preview on the next Step 3 entry. `--preview-only` needs only `--design-tmpdir` (raw path to renderer); `--round-cap` and canonicalized tmpdir `cd` apply only to `--no-preview`. `larch_design_tmpdir_validate` gates sentinel read/write/touch; stale sentinel on invalid tmpdir does not suppress warnings. Renderer path: `RUN_STEP3_EMIT_PREVIEW_SH` override seam (default: `emit-design-plan-preview.sh`).
 1. Review-round cap entry guard → `.step3-review-cap.env`
 2. Symlink-safe `plan-review/round-*` cleanup
 3. HARD round-cursor read/advance via `snapshot-plan-round.sh`

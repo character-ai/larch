@@ -101,13 +101,12 @@ if [[ "$_preview_only" == true ]]; then
         emit "$_preview_out"
     fi
 
-    # Touch sentinel only when tmpdir validates AND renderer output contains the expected header
-    # or the exact missing-plan warning. Never touch for non-header output or invalid tmpdir.
+    # Touch sentinel only when tmpdir validates AND renderer output contains the expected header.
+    # Missing/empty plan.txt re-warns until repaired, so the first real plan render owns the sentinel.
     if [[ "$_sentinel_ok" == true ]]; then
         _has_header=false
         case "${_preview_out:-}" in
             *'## Plan Candidate for Review'*) _has_header=true ;;
-            *'**⚠ 3: plan.txt missing or empty; cannot present plan candidate for review**'*) _has_header=true ;;
         esac
         if [[ "$_has_header" == true ]]; then
             touch "$_canonical_tmpdir/.step3-entry-plan-printed" || true
