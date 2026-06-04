@@ -1,0 +1,3 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- all callers updated simultaneously; keeping no-op flags adds maintenance burden for a dead flag removed from its only caller sites

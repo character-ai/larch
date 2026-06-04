@@ -1,0 +1,35 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:1515-1517	Step 5c parse-fail abort still treats rc 4 like a hard failure when `.design-publish-result.env` is absent	Plan folds validation into `design-publish.sh` exit 4 with best-effort result-env write and stdout fallback (`plan.txt` lines 12-13, 88). The existing fence only exempts rc 3 from the `_publish_parse_ok` abort (`-ne 3`). After `rm -f .design-publish-result.env`, a defects-found attempt whose env write fails leaves `_publish_parse_ok=false` and `_publish_rc=4`, so the fence hits `exit 1` before the orchestrator can run the shared handler — breaking Fix/Override/Cancel and the stdout-fallback contract	Mirror the rc 3 carve-out: change the guard to also allow `_publish_rc=4` when `_publish_out` carries `VALIDATE_*` (or drop the abort for rc 4 entirely). Pin in `scripts/test-design-structure.sh`.
+2	in_scope	important	correctness	skills/design/SKILL.md:1459-1518	Proposed Step 5c gates use `_publish_rc==4`, but the Bash fence does not surface driver exit 4 to the orchestrator	`_publish_out` is captured in a subshell and never printed; the fence ends with implicit exit 0 even when `design-publish.sh` returns 4 (`plan.txt` items 3-5, 42-43). The orchestrator cannot anchor anti-halt or items 3-5 on the latest `_publish_rc` and may treat a defects attempt as settled rc 0 — risking items 3-5 / Step 5d / stale `final-summary.md` emit	End the fence with `exit "$_publish_rc"` for rc in {0,1,3,4} on non-abort paths, or document that orchestrator binds `_publish_rc=4` iff parsed `VALIDATE_STATUS=defects-found` after file-first/stdout merge; add a structure-test pin.
+
+## Findings
+
+### 1. [correctness] Parse-fail abort blocks rc 4 stdout-fallback (`skills/design/SKILL.md:1515-1517`)
+
+The plan’s retry hygiene (`rm -f .design-publish-result.env` before each attempt) and driver contract (exit 4 with best-effort env write; stdout always carries `VALIDATE_*`) align with the existing rc 3 pattern at lines 1474-1476 and 1515. The plan does not update the parse-fail guard, which today aborts whenever `_publish_parse_ok` is false and `_publish_rc` is not 3.
+
+After a successful `rm`, a defects-found run whose result-env write fails matches the harness case in `plan.txt` line 88 but still trips `exit 1` in the fence. That prevents the shared **Fix / Override / Cancel** loop and contradicts the non-fatal stdout-fallback note in `plan.txt` line 12.
+
+**Suggested revision:** Extend the guard to `-ne 3` **and** `-ne 4` (or require populated `VALIDATE_STATUS` from `_publish_out` before aborting on rc 4). Pin the exemption in `scripts/test-design-structure.sh` alongside the planned rc-4 pins (~lines 93-94).
+
+### 2. [correctness] Driver exit 4 is not visible to the orchestrator (`skills/design/SKILL.md:1459-1518`)
+
+The plan correctly widens the unexpected-rc check to `{0,1,3,4}` and gates items 3-5 / Step 5d on the **latest** `_publish_rc` (plan lines 33-34, 42-46). The fenced capture stores `_publish_rc=$?` only inside the Bash subshell; the script does not print `_publish_out` or exit with the driver code, so the Bash tool typically returns **0** even when the driver returns **4**.
+
+Orchestrator steps that say `_publish_rc == 4` therefore lack a mechanical binding unless the implementer infers rc 4 from `VALIDATE_STATUS=defects-found` after a separate Read of `.design-publish-result.env` — which the plan does not state. That weakens the anti-halt carve-out (“no items 3-5 while rc is 4”) if a prior `final-summary.md` exists.
+
+**Suggested revision:** Add `exit "$_publish_rc"` at the end of the Step 5c fence for rc ∈ {0,1,3,4} on non-abort paths (matching how rc 2 still aborts the fence with `exit 1`), **or** explicitly define orchestrator binding: after parse, set `_publish_rc=4` when `VALIDATE_STATUS=defects-found` from the latest attempt’s file/stdout merge.
+
+---
+
+## Paths reviewed — adequate
+
+- **Fix:** `rm`, re-compose item 1 when `plan.txt` changed, full `design-publish.sh` re-capture without `--skip-validate` (plan lines 43, 51).
+- **Override:** Warnings append + `--skip-validate` re-capture (lines 43, 51).
+- **Cancel:** preserve tmpdir, skip items 3-5 and Step 6 (lines 43, 51).
+- **Stale `.design-publish-result.env`:** `rm` before each attempt (lines 39, 126-127).
+- **Stdout vs file-first after `rm`:** second loop fills only unset keys; with `rm`, current attempt’s `_publish_out` supplies keys when the file is absent (lines 1503-1514) — sound once finding 1 is fixed.
+- **Driver exit 4 vs exit 3 on defects:** plan requires unconditional exit 4; test case at line 88 covers env-write failure.
+- **Site-specific shared handler:** Step 5c must not end Fix/Override with bare `VALIDATE_PLAN_COMMANDS` (lines 50-51) — addresses current generic handler at `SKILL.md:1579-1581`.
+
+No additional material findings for architecture, security, or risk-integration beyond the two correctness gaps above. Retry `rm` prose plus `test-design-structure.sh` grep coverage is sufficient for SIMPLE scope; putting `rm -f` inside the literal fence is preferable but not required if finding 1 is fixed.

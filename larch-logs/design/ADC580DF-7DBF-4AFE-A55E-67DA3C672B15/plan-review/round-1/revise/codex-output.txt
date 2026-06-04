@@ -1,0 +1,114 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,6 +1,6 @@
+ ## Implementation Plan
+ 
+-Fold composed-plan validation + redaction into `design-publish.sh` (Step 5c collapses from 3 mechanical Bash turns to one call), eliminate the vestigial `review_budget` knob and `--force-validate` (validation is now unconditional), and rewrite the shared validator-failure handler to auto-repair then escalate with root cause. SIMPLE tier: smallest change per file; no new files.
++Fold composed-plan validation + redaction into `design-publish.sh` (Step 5c collapses from 3 mechanical Bash turns to one call), eliminate the vestigial `review_budget` knob and `--force-validate` (validation is now unconditional), and keep validator-defect handling prompt-mediated. SIMPLE tier: smallest change per file; no new files.
+ 
+ ### Files to modify/create
+ 
+@@ -10,10 +10,10 @@
+ - Add a `--skip-validate` boolean flag (default false). Used only for the operator accept / proceed-anyway path.
+ - Change the precondition (currently `composed-plan.redacted.md` non-empty) to require non-empty `composed-plan.md`. The driver now produces the redacted file itself.
+ - After preconditions and before `plan-block-write.sh`, insert two folded steps:
+-  1. Unless `--skip-validate`: run `"$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md"`. Parse `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, `VALIDATE_LOG_FILE` (extend the existing `parse_kv_from_output` case arms). The `composed-plan.md` basename makes `validate-plan.sh` pick `source_kind=composed`, so Tier 3 stays disabled.
+-     - On `VALIDATE_STATUS=defects-found`: set `PLAN_WRITE_OK=false`, write the result env with `VALIDATE_STATUS` + counts + `VALIDATE_LOG_FILE`, do NOT redact/publish/rename, and `exit 4` (new defects-found hand-back code). No `render-final-summary.sh` on this path.
++  1. Unless `--skip-validate`: capture `"$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md"` under `set +e`, restore `set -e`, then parse `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, `VALIDATE_LOG_FILE` from the captured output (extend the existing `parse_kv_from_output` case arms). The `composed-plan.md` basename makes `validate-plan.sh` pick `source_kind=composed`, so Tier 3 stays disabled.
++     - On `VALIDATE_STATUS=defects-found`: set `PLAN_WRITE_OK=false`, write the result env with `VALIDATE_STATUS` + counts + `VALIDATE_LOG_FILE`, do NOT redact/publish/rename/write the reentry marker, and `exit 4` (new defects-found hand-back code). No `render-final-summary.sh` on this path.
+      - On validator infra failure (driver rc != 0 with `VALIDATE_STATUS != defects-found`, or empty / `not-run`): `fail` (exit 2). The validator error stays on stderr.
+-  2. Redact: `cat "$DESIGN_TMPDIR/composed-plan.md" | "$PLUGIN_ROOT/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`. If the redacted file is empty, `fail` (exit 2).
+-- Leave the existing publish tail unchanged (plan-block-write -> marker -> diagrams upsert -> log publish -> summary -> rename) and its 0/1/2/3 exit codes intact; exit 4 is additive.
++  2. Redact with an explicit failure contract: `if ! cat "$DESIGN_TMPDIR/composed-plan.md" | "$PLUGIN_ROOT/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"; then fail "redact-secrets.sh failed"; fi`. Then, if the redacted file is empty, `fail` (exit 2).
++- Leave the existing publish tail otherwise unchanged and preserve the current order: `plan-block-write.sh` -> diagrams upsert -> `design-log-publish.sh` -> `render-final-summary.sh` -> `[DESIGNED]` rename -> `design_reentry_marker_write`. Keep its 0/1/2/3 exit codes intact; exit 4 is additive.
+ - Add `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, `VALIDATE_LOG_FILE` to the result-env allowlist and `emit_kv`. Emit `VALIDATE_STATUS=ok` on the happy path and `VALIDATE_STATUS=skipped` under `--skip-validate`.
+ - Keep `set -euo pipefail`, the foreground design, and the `fail()` / `usage()` shapes.
+ 
+@@ -21,9 +21,10 @@
+ ### UPDATED: `skills/design/scripts/design-publish.md`
+ - Document `--skip-validate` in the Argv table.
+-- Update Responsibilities: precondition is non-empty `composed-plan.md`; the driver validates (Tier 2; Tier 3 disabled for composed) then redacts to `composed-plan.redacted.md`, then runs the publish tail; `--skip-validate` skips only validation.
+-- Add exit code `4` = composed-plan validation found defects (`VALIDATE_STATUS=defects-found`); nothing redacted/published.
++- Update Responsibilities: precondition is non-empty `composed-plan.md`; the driver validates (Tier 2; Tier 3 disabled for composed) using a `set +e` capture, then redacts to `composed-plan.redacted.md`, then runs the publish tail in the existing order; `--skip-validate` skips only validation.
++- Add exit code `4` = composed-plan validation found defects (`VALIDATE_STATUS=defects-found`); nothing redacted/published/renamed/marked complete.
++- Document redaction failures as exit 2 (`redact-secrets.sh failed`) and keep the empty-redacted-file exit-2 guard.
+ - Add the five `VALIDATE_*` keys to the result-env allowlist.
+ - Keep the Edit-in-sync list; note the driver now owns `invoke-plan-validator.sh` + `redact-secrets.sh`.
+ 
+ ### UPDATED: `skills/design/SKILL.md`
+-- Step 5c (`### 5c`): keep item 1 (compose `composed-plan.md`). Delete the item-2 validation fenced block and its `review_budget`-gated prose, and delete item-3 redaction. Renumber so the next item is the existing `design-publish.sh` invoke + result-env parse fence — now the single mechanical call that validates -> redacts -> publishes. Keep the `**⚠ Foreground required**` note immediately above it. Add an `_publish_rc == 4` branch: parse `VALIDATE_STATUS` from the result env and run **### Plan command validator failure (shared)** with `--site` `design Step 5c`; extend the unexpected-rc abort guard from `{0,1,3}` to `{0,1,3,4}`. Keep items for the final-summary verbatim emit, the `step-5c` sentinel, and the `preserve $DESIGN_TMPDIR, skip Step 6 cleanup` cancel prose.
+-- Shared handler (`### Plan command validator failure (shared)`): replace the always-prompt 3-option block with the auto-repair-then-escalate flow (see Approach). Keep a **Cancel** branch with the existing return-to-Gate-A (plan.txt sites) and `preserve $DESIGN_TMPDIR` / skip-cleanup (Step 5c) semantics.
++- Step 5c (`### 5c`): keep item 1 (compose `composed-plan.md`). Delete the item-2 validation fenced block and its `review_budget`-gated prose, and delete item-3 redaction. Renumber so the next item is the existing `design-publish.sh` invoke + result-env parse fence — now the single mechanical call that validates -> redacts -> publishes. Keep the `**⚠ Foreground required**` note immediately above it.
++- In that Step 5c publish fence, add the five `VALIDATE_*` keys to the file-first/stdout result-env parse case arms before any rc handling. Extend the unexpected-rc abort guard from `{0,1,3}` to `{0,1,3,4}`.
++- Add an `_publish_rc == 4` branch before final-summary emission: run **### Plan command validator failure (shared)** with `--site` `design Step 5c` and the parsed `VALIDATE_*` context. The branch must not emit the final summary, write the `step-5c` sentinel, run footer handling, or allow Step 6 cleanup while the original rc 4 is still current.
++- Normalize Step 5c retry state: if the shared handler returns **Fix**, re-run the same `design-publish.sh` capture normally after the user-approved correction; if it returns **Override/Accept**, re-run `design-publish.sh --skip-validate`; in both cases replace `_publish_out`, `_publish_rc`, and all parsed result-env variables via the same file-first/stdout parse path, then continue items 5-7 only when the latest rc is 0, 1, or 3. **Cancel** exits that path before items 5-7 and preserves `$DESIGN_TMPDIR` / skips Step 6 cleanup.
++- Keep items for the final-summary verbatim emit, the `step-5c` sentinel, and the `preserve $DESIGN_TMPDIR, skip Step 6 cleanup` cancel prose after the normalized publish result.
++- Shared handler (`### Plan command validator failure (shared)`): keep the existing prompt-first 3-option shape; do not add silent auto-repair. The prompt may summarize root cause from `VALIDATE_LOG_FILE` (offending command, flag, defect kind) but artifact changes must be user-approved. Preserve existing plan.txt site semantics for Step 2b, Gate B, Step 3 `plan-review-loop` defects, and discussion-round2: target `plan.txt`, use the current validator log source/default, **Fix** returns through the existing re-emit/revalidation path, **Override** logs Warnings and continues, and **Cancel** returns to Gate A where that is today's behavior. Add the Step 5c site: target `composed-plan.md`; **Fix** returns to the Step 5c retry loop; **Override/Accept** returns to the retry loop with `--skip-validate`; **Cancel** preserves `$DESIGN_TMPDIR` and skips cleanup.
+ - `review_budget` prose: Step 2a — drop the "Also read `review_budget`" sentence. `invoke-plan-validator.sh` helper-list line — drop "owns the `review_budget=quick` skip" / "Step 5c still guards composed-plan validation prompt-side"; state validation is unconditional and `design-publish.sh` owns composed-plan validation. Gate A re-entry note — drop the "driver owns the quick validator skip" clause.
+ 
+ ### UPDATED: `skills/design/scripts/design-postplan-emit.sh`
+@@ -66,22 +67,27 @@
+ ### UPDATED: `skills/design/scripts/test-design-publish.sh`
+-- Add a stub `invoke-plan-validator.sh` under `$FAKE_PLUGIN/skills/design/scripts/` that emits a configurable `VALIDATE_STATUS` (+ counts, `VALIDATE_LOG_FILE`).
++- Add a stub `invoke-plan-validator.sh` under `$FAKE_PLUGIN/skills/design/scripts/` that emits a configurable `VALIDATE_STATUS` (+ counts, `VALIDATE_LOG_FILE`) and can return nonzero for infra-failure coverage.
+ - `setup_design_tmp`: write `composed-plan.md` (new input) instead of `composed-plan.redacted.md`; keep the real `redact-secrets.sh` symlink so the driver produces the redacted file.
+ - Change the "missing redacted plan" precondition case to "missing `composed-plan.md`" (still exit 2).
+-- Add cases: validation ok -> exit 0, redacted file produced, publish tail ran; `defects-found` -> exit 4, result env has `VALIDATE_STATUS=defects-found`, no plan-block-write/redact/publish; `--skip-validate` -> validation stub not consulted, redact + publish run.
++- Add cases: validation ok -> exit 0, redacted file produced, publish tail ran; `defects-found` -> exit 4, result env has `VALIDATE_STATUS=defects-found`, no plan-block-write/redact/publish; validator infra failure/nonzero without `defects-found` -> exit 2; redactor nonzero -> exit 2 and no publish; `--skip-validate` -> validation stub not consulted, redact + publish run.
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+ - Replace the `(14b11)` "validator before redact-secrets inline in SKILL.md" check (it scans SKILL.md Step 5c) with one asserting `design-publish.sh` contains both `invoke-plan-validator.sh` and `redact-secrets.sh` with the validator first, and that SKILL.md Step 5c no longer inlines them.
+-- Add an assertion that SKILL.md Step 5c handles `design-publish.sh` exit 4 (defects-found -> shared handler) and that the unexpected-rc guard excludes 4.
+-- Remove the `flags.md` `skipped-quick` and `--force-validate` pins and the `discussion-rounds.md` `--force-validate` pin. Fix the stale "quick validator skip owner" message text.
++- Add assertions that `design-publish.sh` captures `invoke-plan-validator.sh` under `set +e`, maps `VALIDATE_STATUS=defects-found` to exit 4, and wraps `redact-secrets.sh` failure as exit 2.
++- Add assertions that SKILL.md Step 5c parses the five `VALIDATE_*` keys, handles `design-publish.sh` exit 4 via the shared handler before items 5-7, retries by replacing `_publish_out` / `_publish_rc` / result-env state, and that the unexpected-rc guard includes 4 instead of treating it as fatal.
++- Remove the `flags.md` `skipped-quick` and `--force-validate` pins and the `discussion-rounds.md` `--force-validate` pin. Add narrow absence checks for stale `review_budget`, `review_budget=quick`, `review_budget=full`, `skipped-quick`, and `--force-validate` contracts in the affected design docs / SKILL helper prose. Fix the stale "quick validator skip owner" message text.
+ 
+ ### UPDATED: `skills/design/scripts/test-design-postplan-emit.sh`
+ - Delete the "quick skip" case and the "quick + force validate" case.
+ - Drop `review_budget` from the `setup_design_tmp` fixture and the inline `run-params.json` fixtures; drop the `quick` budget argument.
++- Add a legacy `run-params.json` fixture carrying `review_budget=quick` and assert the validator stub still runs and emits `VALIDATE_STATUS=ok` (proves no reader/skip branch remains).
+ 
+ ### UPDATED: `scripts/test-write-run-params.sh`
+-- Remove the `review_budget` assertions (key presence, null, `full`) and the `bad-review-budget` enum-rejection case; drop `--review-budget` from the round-trip invocations.
++- Remove the old positive `review_budget` assertions and drop `--review-budget` from the round-trip invocations.
++- Add jq assertions that emitted JSON does not have `review_budget` (`has("review_budget") == false`).
++- Add an argv rejection case proving `--review-budget full` is now an unknown flag.
+ 
+ ### UPDATED: `scripts/test-lint-skill-md-flag-signature.sh`
+ - Drop `review-budget` from the fixture write-run-params.sh flag lists so the flag-signature linter harness still passes after the real flag is removed.
+@@ -91,17 +97,18 @@
+ - **Fold (Step 5c).** `design-publish.sh` becomes the single mechanical tail: validate `composed-plan.md` (Tier 2 only via the existing `invoke-plan-validator.sh` -> `design-driver.sh` -> `validate-plan.sh` chain), redact to `composed-plan.redacted.md`, then run the unchanged publish tail. The orchestrator only composes `composed-plan.md` then calls the driver once. The one hand-back is `exit 4` (`VALIDATE_STATUS=defects-found`), which routes to the shared handler.
+ - **Unconditional validation.** `review_budget` is always `full` today (both SIMPLE and HARD), so its `quick` branch and `--force-validate` are dead. Remove the field end-to-end and delete the skip branch in `design-postplan-emit.sh` so the validator always runs. `design_classification` (SIMPLE/HARD) is untouched.
+-- **Self-healing handler.** On `defects-found`, read `VALIDATE_LOG_FILE`, diagnose the root cause (offending command, flag, defect kind), and auto-fix the offending artifact: `plan.txt` for Step 2b / Gate B / discussion-round2, `composed-plan.md` for Step 5c. Re-validate by re-running the surfacing driver (`design-postplan-emit.sh` for plan.txt sites; `design-publish.sh` for Step 5c, which self-gates and only publishes when validation passes). Cap auto-repair at 2 attempts. On success, continue the surrounding path and log a `Warnings` note of the fix — no prompt. If still failing after 2 attempts, or the agent judges the defect a likely false positive it should not silently accept, fire `AskUserQuestion` that explains the root cause and offers context-specific options: apply the proposed fix, accept (false positive / proceed anyway), edit myself, or cancel. **Accept** at Step 5c re-invokes `design-publish.sh --skip-validate` (+ Warnings); **Accept** at plan.txt sites logs Warnings and continues (defects-found is non-blocking there, as today's Override). **Cancel** keeps today's semantics.
++- **Prompt-mediated defect handling.** Keep the existing shared validator-failure prompt instead of adding silent auto-repair. For plan.txt sites (Step 2b, Gate B, Step 3 `plan-review-loop`, discussion-round2), retain today's Fix / Override / Cancel semantics. For Step 5c, `design-publish.sh` exits 4 before any redaction/publish side effect; the outer Step 5c loop asks the shared prompt, then either retries normally after a user-approved fix, retries with `--skip-validate` on Override/Accept, or cancels while preserving `$DESIGN_TMPDIR`. Every retry replaces `_publish_out`, `_publish_rc`, and parsed result-env state before final summary, sentinel, footer, or cleanup decisions.
+ 
+ ### Edge cases
+ - `composed-plan.md` present but empty -> exit 2 (precondition).
+ - `--skip-validate` with latent defects -> publishes anyway (operator accepted); redaction still runs.
++- `redact-secrets.sh` returns nonzero -> exit 2; no publish/rename/marker.
+ - `redact-secrets.sh` yields an empty file -> exit 2 sanity guard (never publish an empty body).
+ - Validator infra failure (chain broke) -> exit 2 abort, kept distinct from `defects-found` (exit 4).
+-- Auto-repair introduces a new defect -> caught on re-validate; the 2-attempt cap stops loops.
++- Repeated Step 5c defects after a user-approved fix -> re-enters the same prompt-mediated rc4 path; no silent loop or artifact mutation.
+ - `run-params.json` from a legacy in-flight run still carrying `review_budget` -> ignored (no reader remains); no default needed.
+ 
+ ### Failure modes
+-- **Exit-4 not threaded through every caller.** Adding exit 4 without updating the SKILL.md `{0,1,3}` guard makes a defects-found finalize abort as "unexpected rc". Signal: clean validation path fine, defect path aborts. Mitigation: widen the guard to `{0,1,3,4}` and pin it in `test-design-structure.sh`.
+-- **Unvalidated publish.** If the folded internal validate is mis-wired or skipped, a hallucinated command could publish. Signal: published `larch:plan` contains a bad command. Mitigation: validation is unconditional (no `review_budget` gate); the `defects-found -> exit 4` case is harness-covered.
+-- **Auto-repair runaway or destructive edit.** Signal: repeated re-validate with no convergence, or lost plan content. Mitigation: 2-attempt cap, escalate to the user, and edit only the offending command line.
++- **Exit-4 not threaded through every caller.** Adding exit 4 without updating the SKILL.md `{0,1,3}` guard makes a defects-found finalize abort as "unexpected rc". Signal: clean validation path fine, defect path aborts. Mitigation: widen the guard to `{0,1,3,4}`, route rc 4 before items 5-7, and pin it in `test-design-structure.sh`.
++- **Stale retry state after Override/Fix.** If Step 5c reruns publish but keeps the original rc/output/result-env variables, final summary/sentinel/cleanup can reflect the failed attempt. Signal: rc4 path publishes on retry but still aborts or emits stale `VALIDATE_STATUS=defects-found`. Mitigation: require the retry loop to replace `_publish_out`, `_publish_rc`, and parsed result env before continuing.
++- **Unvalidated publish.** If the folded internal validate is mis-wired or skipped, a hallucinated command could publish. Signal: published `larch:plan` contains a bad command. Mitigation: validation is unconditional (no `review_budget` gate); the `defects-found -> exit 4` case is harness-covered, and only user Override uses `--skip-validate`.
++- **Raw shell exit from validator/redactor.** `set -e` or pipeline failures could bypass the documented exit contract. Signal: defects or redaction errors exit with arbitrary rc/no result env. Mitigation: `set +e` capture for validator and explicit `if ! ...; then fail` around redaction, both harness-covered.
+ 
+ ### Testing strategy
+ - Offline harnesses updated as above; run:
+@@ -116,6 +123,6 @@
+ ```
+ 
+-- Manual: a `/design` finalize on a plan with a deliberately hallucinated flag exercises defects-found -> auto-repair -> (escalate) and the `--skip-validate` accept path.
++- Manual: a `/design` finalize on a plan with a deliberately hallucinated flag exercises defects-found -> shared prompt -> Fix retry or `--skip-validate` Override path.
+ 
+-diff_lines: 300
++diff_lines: 226

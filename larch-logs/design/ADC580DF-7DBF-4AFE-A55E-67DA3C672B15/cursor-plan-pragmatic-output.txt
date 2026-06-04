@@ -1,0 +1,22 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/test-design-structure.sh:1344-1345	(15b) step-5c sentinel pin not listed in harness retire list	Plan Step 5c item 4 gates the step-5c sentinel on latest _publish_rc in {0,1,3} and PLAN_WRITE_OK=true, but test-design-structure.sh:1344-1345 still greps the old PLAN_WRITE_OK-only prose; line 100 only names pins at 1348, 1374, 1380	make test-design-structure fail after SKILL.md update	Add 1344-1345 to the (15b) pin update list in the plan and replace the grep with prose that matches the new rc plus PLAN_WRITE_OK gate (or drop the pin if redundant)
+
+**1. Incomplete `(15b)` harness pin list for Step 5c item 4 (risk-integration)**
+
+The plan renumbers Step 5c and gates item 4 (`.completed/step-5c`) on **latest** `_publish_rc` ∈ {0, 1, 3} **and** `PLAN_WRITE_OK=true`. That is required so a defects-found retry (rc 4) does not write the sentinel while the shared handler loop is still open.
+
+`scripts/test-design-structure.sh` still pins the old sentinel wording:
+
+```1343:1345:scripts/test-design-structure.sh
+# shellcheck disable=SC2016 # Markdown literal contains $DESIGN_TMPDIR and backticks intentionally.
+grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true`' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c must gate step-5c sentinel on PLAN_WRITE_OK=true"
+```
+
+The plan’s harness section (line 100) calls out updates at ~1348, ~1374, and ~1380 but **not** 1344–1345. After SKILL.md is updated per item 4, `make test-design-structure` is likely to fail until those greps are retired or rewritten.
+
+**Suggested revision:** Extend `### UPDATED: scripts/test-design-structure.sh` to include 1344–1345 in the (15b) pin refresh, with greps that match the new “latest rc settled to {0,1,3} + `PLAN_WRITE_OK=true`” sentinel prose.
+
+---
+
+Other areas (folded validate/redact in `design-publish.sh`, exit 4 + stdout fallback, `review_budget` deprecation, failure-mode coverage, and the Step 5c site-specific shared-handler branch) are aligned with current contracts; no additional in-scope findings under SIMPLE/minimum-change emphasis.

@@ -1,0 +1,3 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already splits Step 5c Fix/Override to design-publish re-capture and forbids bare composed-plan VALIDATE_PLAN_COMMANDS
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- proposed parse fence still aborts on missing result env for rc 4 unlike rc 3 stdout fallback
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan removes --force-validate and --review-budget argv handling though callers may still pass them

@@ -1,0 +1,9 @@
+TOOL=codex
+TIMEOUT=180
+CAPTURE_STDOUT=false
+CAPTURE_STDOUT_ONLY=false
+OUTPUT_FILE=<TMPDIR>/scout-plan-manifest.json.raw
+OUTER_LAUNCHER=<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/scripts/launch-review.sh
+OUTER_LAUNCHER_PROMPT_FILE=<TMPDIR>/scout-plan-manifest.json.raw.prompt
+OUTER_LAUNCHER_WORKDIR=<OPERATOR_REPO_PATH>
+OUTER_LAUNCHER_RISK=high

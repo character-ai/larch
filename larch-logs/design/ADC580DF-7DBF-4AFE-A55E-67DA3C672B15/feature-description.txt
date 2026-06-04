@@ -1,0 +1,13 @@
+Round II of /design refactor, Phase 3: fold validate+redact into publish (5c)
+
+**Context.** Part of Round II of the `/design` refactor (rationale in Phase 1).
+
+**Problem.** Step 5c runs three sequential Bash turns with no LLM judgment between them on the happy path: composed-plan validation (`invoke-plan-validator.sh`, `SKILL.md:1446-1466`), redaction (`redact-secrets.sh`, item 3 near line 1470), then publish (`design-publish.sh`, `SKILL.md:1476-1536`). `design-publish.md` already *requires* `composed-plan.redacted.md` as a precondition, so validate+redact are mandatory pre-steps. The publish consumption fence is itself ~60 lines.
+
+**Change.** Fold composed-plan validation and redaction into `design-publish.sh`. It returns `VALIDATE_STATUS=defects-found` for the single branch that must engage the shared validator-failure AskUserQuestion, and otherwise proceeds validate -> redact -> publish in one call. Collapse the Step 5c consumption fence to the thin-fence contract.
+
+**Why.** ~2 turns saved on every finalize; large per-turn byte reduction; the validate/redact glue becomes lintable `.sh` and Python-portable.
+
+**Scope / acceptance.** `design-publish.{sh,md}` updated (now owns validate+redact, keeps the defects-found hand-back); SKILL.md Step 5c items 2-4 thinned; `test-design-publish.sh` + `test-design-structure.sh` updated; the foreground-required invariant preserved; harnesses + `make lint` green.
+
+**Dependencies.** Blocked by Phase 1.
