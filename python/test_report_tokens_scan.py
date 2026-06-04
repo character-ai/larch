@@ -112,3 +112,33 @@ def test_scan_skips_symlinked_run_dir(tmp_path: Path, capsys: pytest.CaptureFixt
     result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
     assert not result.records
     assert "is a symlink; skipping" in capsys.readouterr().err
+
+
+def test_scan_rejects_invalid_limit_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _write_run(tmp_path, skill="implement")
+    monkeypatch.setenv("LARCH_REPORT_TOKENS_LIMIT", "100x")
+    with pytest.raises(ShipError):
+        _ = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+
+
+def test_scan_warns_missing_skill_token_report(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "larch-logs" / "design" / "run1"
+    run.mkdir(parents=True)
+    _ = (run / "manifest.json").write_text(json.dumps({"issue_number": 1}), encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
+    assert not result.records
+    assert "has no token-report-final.json" in capsys.readouterr().err
+
+
+def test_scan_warns_and_skips_invalid_auxiliary_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "larch-logs" / "design" / "run1"
+    run.mkdir(parents=True)
+    _ = (run / "manifest.json").write_text(json.dumps({"issue_number": 1}), encoding="utf-8")
+    _ = (run / "token-report-final.json").write_text(json.dumps({"claude": {"totals": {"total": 10}}, "BUCKETS_claude": {"input": 10}}), encoding="utf-8")
+    _ = (run / "timing-report-final.json").write_text("{", encoding="utf-8")
+    _ = (run / "run-params.json").write_text("{", encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
+    assert len(result.records) == 1
+    captured = capsys.readouterr()
+    assert "invalid timing-report-final.json" in captured.err
+    assert "invalid run-params.json" in captured.err

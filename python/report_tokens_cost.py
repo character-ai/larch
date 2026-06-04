@@ -42,6 +42,20 @@ def _bucket_total(bucket: Mapping[str, object], vendor: VendorName) -> int:
     return sum(safe_int(bucket.get(key)) for key in keys)
 
 
+def _aggregate_tokens(totals: VendorTotals, vendor: VendorName) -> int:
+    if vendor == "claude":
+        component_total = (
+            totals.input
+            + totals.cache_read
+            + totals.cache_create_5m
+            + totals.cache_create_1h
+            + totals.output
+        )
+        if component_total > 0:
+            return component_total
+    return totals.total
+
+
 def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> list[str]:
     root = plugin_root or Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[1]))
     argv = [str(root / "scripts" / "token-cost.sh")]
@@ -70,7 +84,7 @@ def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> li
                     "--cursor-output-tokens", str(safe_int(bucket.get("output"))),
                 ])
         else:
-            argv.extend([f"--{vendor}-tokens", str(totals.total)])
+            argv.extend([f"--{vendor}-tokens", str(_aggregate_tokens(totals, vendor))])
     return argv
 
 

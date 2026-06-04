@@ -3,13 +3,18 @@ from __future__ import annotations
 # pylint: disable=unused-argument
 
 import os
+import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 from proc import CommandResult
 from report_tokens_cost import price_run, token_cost_argv
 from report_tokens_models import RunRecord, VendorTotals
+
+if TYPE_CHECKING:
+    import pytest
 
 
 def _calls() -> list[list[str]]:
@@ -97,3 +102,68 @@ def test_real_token_cost_override() -> None:
             _ = os.environ.pop("LARCH_CLAUDE_RATE_PER_M", None)
         else:
             os.environ["LARCH_CLAUDE_RATE_PER_M"] = old
+
+
+def test_claude_blended_argv_uses_component_sum() -> None:
+    record = RunRecord(
+        number=1,
+        title="t",
+        url="u",
+        started_at="2026-01-01T00:00:00Z",
+        closed_at="2026-01-01T00:00:00Z",
+        workflow="HARD",
+        claude=VendorTotals(input=10, cache_read=20, cache_create_5m=30, cache_create_1h=40, output=50, total=999),
+        codex=VendorTotals(),
+        cursor=VendorTotals(),
+        phase_rows=(),
+        raw_report={},
+    )
+    argv = token_cost_argv(record, plugin_root=Path("/repo"))
+    assert argv[argv.index("--claude-tokens") + 1] == "150"
+
+
+@dataclass
+class SubprocessRunner:
+    calls: list[list[str]] = field(default_factory=_calls)
+
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> CommandResult:
+        self.calls.append(list(argv))
+        result = subprocess.run(argv, cwd=cwd, env=env, capture_output=True, text=True, check=False)
+        return CommandResult(tuple(argv), result.returncode, result.stdout, result.stderr, 0.01)
+
+
+def test_real_token_cost_script_receives_rate_override(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_CLAUDE_INPUT_RATE_PER_M", "10")
+    record = RunRecord(
+        number=1,
+        title="t",
+        url="u",
+        started_at="2026-01-01T00:00:00Z",
+        closed_at="2026-01-01T00:00:00Z",
+        workflow="HARD",
+        claude=VendorTotals(),
+        codex=VendorTotals(),
+        cursor=VendorTotals(),
+        phase_rows=(),
+        raw_report={"BUCKETS_claude": {"input": 1_000_000}},
+    )
+    priced = price_run(SubprocessRunner(), record=record, plugin_root=Path.cwd().parent)
+    assert priced.claude_cost == 10.0
+
+
+def test_token_cost_failure_warns_and_uses_fallback(capsys: pytest.CaptureFixture[str]) -> None:
+    runner = Runner(CommandResult(("token-cost",), 1, "", "bad", 0.01))
+    priced = price_run(runner, record=_record(), plugin_root=Path.cwd().parent)
+    captured = capsys.readouterr()
+    assert "token-cost.sh failed" in captured.err
+    assert priced.priced_by_token_cost is False

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import cast
@@ -24,6 +25,15 @@ def _load(path: Path) -> dict[str, object]:
     return cast("dict[str, object]", data)
 
 
+_LABEL_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9 ._-]{0,80}$")
+
+
+def _safe_name(label: str) -> str:
+    if not _LABEL_RE.fullmatch(label):
+        raise ValueError(f"unsafe series label: {label!r}")
+    return label.lower().replace(" ", "-")
+
+
 def main(argv: list[str]) -> int:
     if len(argv) != 3:
         print("Usage: plot-cost-over-time.py <plot-input.json> <output-dir>", file=sys.stderr)
@@ -41,6 +51,11 @@ def main(argv: list[str]) -> int:
         if not isinstance(item, dict):
             continue
         label = str(item.get("label") or "series")
+        try:
+            name = _safe_name(label)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 2
         points = item.get("points")
         if not isinstance(points, list):
             continue
@@ -58,8 +73,11 @@ def main(argv: list[str]) -> int:
         ax.tick_params(axis="x", rotation=45)
         ax.grid(True, alpha=0.25)
         fig.tight_layout()
-        name = label.lower().replace(" ", "-")
         path = (out_dir / f"larch-report-tokens-{name}.png").resolve()
+        resolved_out = out_dir.resolve()
+        if not (path == resolved_out or resolved_out in path.parents):
+            print(f"unsafe output path for series label: {label!r}", file=sys.stderr)
+            return 2
         fig.savefig(path)
         plt.close(fig)
         written.append(str(path))

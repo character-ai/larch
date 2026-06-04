@@ -40,7 +40,7 @@ Express a native GitHub blocked-by relationship between two issues using the `ad
 
 ## `/cleanup`
 
-**Arguments**: *(none)*
+**Arguments**: `--skill <design|implement> [--no-issue] [--no-plot]`
 
 **Source**: [`skills/cleanup/SKILL.md`](../skills/cleanup/SKILL.md)
 

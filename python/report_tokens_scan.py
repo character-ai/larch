@@ -168,6 +168,7 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
         return None
     token_path = run_dir / _token_basename(skill)
     if not token_path.is_file():
+        _warn(f"{run_dir} has no {_token_basename(skill)}; skipping")
         return None
     report_obj = _json_file(token_path)
     report = _as_mapping(report_obj)
@@ -225,8 +226,7 @@ def _limit_value(limit: int | None) -> int | None:
     if raw.isdigit():
         value = int(raw)
         return value if value > 0 else None
-    _warn("LARCH_REPORT_TOKENS_LIMIT must be a non-negative integer; ignoring")
-    return None
+    raise ShipError("ERROR: LARCH_REPORT_TOKENS_LIMIT must be a non-negative integer")
 
 
 def scan(

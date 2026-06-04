@@ -93,7 +93,6 @@ def main(argv: list[str] | None = None) -> int:
             print(f"- {path}")
     else:
         print("\nNo plots generated.")
-    print(f"Cache JSON: {cache_path}")
     if not no_issue:
         if not scanned.repo_slug:
             print("ERROR: could not resolve GitHub repo owner/name; rerun with --no-issue or LARCH_REPORT_TOKENS_REPO", file=sys.stderr)

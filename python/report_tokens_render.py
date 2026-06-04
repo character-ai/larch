@@ -96,6 +96,28 @@ def _top_runs(records: tuple[RunRecord, ...]) -> str:
     return "\n".join(lines)
 
 
+def _phase_breakdown(records: tuple[RunRecord, ...]) -> str:
+    by_phase: dict[tuple[str, str, str], dict[str, int]] = defaultdict(lambda: {"tokens": 0, "runs": 0})
+    seen: set[tuple[int, str, str, str]] = set()
+    for record in records:
+        workflow = record.workflow if record.workflow in ("SIMPLE", "HARD") else "unknown"
+        for row in record.phase_rows:
+            key = (workflow, row.vendor, row.step)
+            by_phase[key]["tokens"] += row.total
+            seen.add((record.number, *key))
+    for _number, workflow, vendor, step in seen:
+        by_phase[(workflow, vendor, step)]["runs"] += 1
+    lines = [
+        "## Phase breakdown",
+        "",
+        "| Workflow | Vendor | Phase | Runs | Tokens |",
+        "| --- | --- | --- | ---: | ---: |",
+    ]
+    for (workflow, vendor, step), values in sorted(by_phase.items(), key=lambda item: item[1]["tokens"], reverse=True)[:20]:
+        lines.append(f"| {workflow} | {vendor} | {step} | {values['runs']} | {values['tokens']:,} |")
+    return "\n".join(lines)
+
+
 def _trend_table(title: str, records: list[RunRecord], attr: str) -> str:
     by_day: dict[str, float] = defaultdict(float)
     missing = 0
@@ -202,6 +224,7 @@ def render(
         ReportSection("aggregate", _aggregate(records), SectionPriority.AGGREGATE),
         ReportSection("vendor", _vendor_breakdown(records), SectionPriority.BREAKDOWN),
         ReportSection("top", _top_runs(records), SectionPriority.BREAKDOWN),
+        ReportSection("phase", _phase_breakdown(records), SectionPriority.BREAKDOWN),
         ReportSection("trends", _trends(skill, records), SectionPriority.TRENDS),
         ReportSection("suggestions", _suggestions(records), SectionPriority.SUGGESTIONS),
         ReportSection("rates", _rates_text(rates), SectionPriority.CACHE),

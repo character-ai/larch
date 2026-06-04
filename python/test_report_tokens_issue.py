@@ -75,3 +75,9 @@ def test_post_issue_fails_when_body_still_oversize(monkeypatch: pytest.MonkeyPat
             sections=[ReportSection("summary", "## Report Tokens Analysis\n\nrequired", SectionPriority.SUMMARY)],
         )
     assert not runner.calls
+
+
+def test_post_issue_prints_created_url(capsys: pytest.CaptureFixture[str]) -> None:
+    runner = Runner(CommandResult(("gh",), 0, "https://github.com/o/r/issues/9\n", "", 0.01))
+    post_issue(runner, repo="o/r", title="t", sections=[ReportSection("summary", "body", SectionPriority.SUMMARY)])
+    assert "https://github.com/o/r/issues/9" in capsys.readouterr().out

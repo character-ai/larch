@@ -24,8 +24,8 @@ EOF
 }
 
 SKILL=""
-NO_ISSUE=()
-NO_PLOT=()
+NO_ISSUE_FLAG=""
+NO_PLOT_FLAG=""
 
 validate_skill() {
     case "${1:-}" in
@@ -43,11 +43,11 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         --no-issue)
-            NO_ISSUE=(--no-issue)
+            NO_ISSUE_FLAG="--no-issue"
             shift
             ;;
         --no-plot)
-            NO_PLOT=(--no-plot)
+            NO_PLOT_FLAG="--no-plot"
             shift
             ;;
         --plot-from)
@@ -80,4 +80,7 @@ if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
     exec 1>&3 2>&4
 fi
 
-exec python3 "$PLUGIN_ROOT/python/report_tokens_cli.py" --skill "$SKILL" "${NO_ISSUE[@]}" "${NO_PLOT[@]}"
+ARGS=(--skill "$SKILL")
+[ -z "$NO_ISSUE_FLAG" ] || ARGS+=("$NO_ISSUE_FLAG")
+[ -z "$NO_PLOT_FLAG" ] || ARGS+=("$NO_PLOT_FLAG")
+exec python3 "$PLUGIN_ROOT/python/report_tokens_cli.py" "${ARGS[@]}"

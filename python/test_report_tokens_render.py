@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from report_tokens_models import RunRecord, VendorTotals
+from report_tokens_models import PhaseRow, RunRecord, VendorTotals
 from report_tokens_render import render
 
 
@@ -40,3 +40,36 @@ def test_actual_spend_omitted_from_issue_by_default(tmp_path: Path) -> None:
     body, sections, _cache = render("design", (_record("SIMPLE"),), actual_spend=10, temp_root=tmp_path)
     assert "Actual-spend reconciliation" in body
     assert all("Actual-spend reconciliation" not in section.body for section in sections)
+
+
+def test_render_design_split_and_phase_breakdown(tmp_path: Path) -> None:
+    hard = _record("HARD")
+    hard = RunRecord(
+        hard.number,
+        hard.title,
+        hard.url,
+        hard.started_at,
+        hard.closed_at,
+        hard.workflow,
+        hard.claude,
+        hard.codex,
+        hard.cursor,
+        (PhaseRow("claude", "Step 5", total=123),),
+        hard.raw_report,
+        hard.claude_cost,
+        hard.codex_cost,
+        hard.cursor_cost,
+        hard.total_cost,
+    )
+    body, _sections, _cache = render("design", (_record("SIMPLE"), hard), temp_root=tmp_path)
+    assert "### SIMPLE" in body
+    assert "### HARD" in body
+    assert "## Phase breakdown" in body
+    assert "| HARD | claude | Step 5 | 1 | 123 |" in body
+
+
+def test_render_implement_trends_have_no_workflow_subheads(tmp_path: Path) -> None:
+    body, _sections, _cache = render("implement", (_record("SIMPLE"), _record("HARD")), temp_root=tmp_path)
+    trends = body.split("## Per-day cost trends", 1)[1]
+    assert "### SIMPLE" not in trends
+    assert "### HARD" not in trends

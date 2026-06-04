@@ -22,6 +22,7 @@ _TITLE_BY_SECTION = {
     "aggregate": "Aggregate cost by workflow",
     "vendor": "Vendor breakdown",
     "top": "Top runs by estimated cost",
+    "phase": "Phase breakdown",
     "trends": "Per-day cost trends",
     "suggestions": "Cost-reduction suggestions",
     "rates": "Rates used for display/fallback",
@@ -95,3 +96,8 @@ def post_issue(
             msg = f"{msg}: {detail}"
         print(msg, file=sys.stderr)
         raise ShipError(msg)
+    output = result.stdout.strip()
+    if output:
+        print(redact.redact(output).rstrip())
+    else:
+        print(f"Created GitHub issue: {title}")
