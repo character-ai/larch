@@ -1,6 +1,6 @@
 # scripts/sessionstart-health.sh — contract
 
-`${CLAUDE_PLUGIN_ROOT}/scripts/sessionstart-health.sh` is the SessionStart preflight hook that probes `jq`, `git`, leftover git state, and pending /implement boundary state at session start, then injects an advisory into session context when anything needs attention. `${CLAUDE_PLUGIN_ROOT}/scripts/test-sessionstart-health.sh` is its regression test, wired into `make lint` via the `test-sessionstart` target (run manually via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/test-sessionstart-health.sh`).
+`${CLAUDE_PLUGIN_ROOT}/scripts/sessionstart-health.sh` is the SessionStart preflight hook that probes `jq`, `git`, the larch marketplace sparse cone, leftover git state, and pending /implement boundary state at session start, then injects an advisory into session context when anything needs attention. `${CLAUDE_PLUGIN_ROOT}/scripts/test-sessionstart-health.sh` is its regression test, wired into `make lint` via the `test-sessionstart` target (run manually via `bash ${CLAUDE_PLUGIN_ROOT}/scripts/test-sessionstart-health.sh`).
 
 The hook MUST always exit 0 (SessionStart is non-blocking by spec). Dynamic advisory content, including stash refs, sentinel fields, and resolved tmpdir basenames, must be emitted via `jq -n --arg`.
 
@@ -15,6 +15,8 @@ When both `jq` and `git` are available and `git rev-parse --is-inside-work-tree`
 - `.git/larch-stalled-run.txt` sentinel content from a prior stalled `/implement` run.
 
 Probe-internal failures are skipped silently; missing `jq` or `git` still produce the existing tool advisory and suppress the git-state probes.
+
+When both `jq` and `git` are available, the hook also performs a warn-only sparse-cone drift probe for `$HOME/.claude/plugins/marketplaces/larch-local`. The probe sources `scripts/lib-sparse-dirs.sh` from `SCRIPT_DIR`, never from `HOOK_CWD`, a later `PLUGIN_ROOT`, or `upgrade-larch.sh`; it skips silently when `HOME` is empty, the marketplace clone is missing, the directory is not a git repo, `larch-logs/` is present, the library cannot be sourced, `normalize_sparse_dirs` is unavailable, or either compare side is empty. The compare is read-only (`git sparse-checkout list` versus `normalize_sparse_dirs`), best-effort under restored parent-shell `errexit`, and non-mutating: it never removes, adds, updates, or installs a marketplace. On mismatch, `append_msg` runs in the parent shell and emits a fixed-string advisory pointing at `/upgrade-larch`. The hook still exits 0.
 
 When `jq` is available, the hook reads the SessionStart JSON payload on stdin and extracts `cwd` and `session_id`. It resolves the active `/implement` tmpdir through `skills/implement/scripts/lib-resolve-implement-tmpdir.sh`, exporting the payload `session_id` as `LARCH_TOKEN_SESSION_ID` when present so the resolver can apply its session binding. Missing stdin, missing `jq`, malformed JSON, a missing resolver, no matching tmpdir, stale candidates, or `.run-cleaned-up` all fail open with no boundary advisory.
 

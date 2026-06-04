@@ -1,0 +1,18 @@
+Now I have enough context. Let me write up the review.
+
+---
+
+### In-Scope Findings
+
+1. **security** `skills/upgrade-larch/scripts/upgrade-larch.sh:29,420` — `$marketplace_clone` (sourced from `$HOME`) is embedded inside single-quoted advisory text: `larch_err "  rm -rf '$marketplace_clone'"`. A `HOME` value containing a literal `'` character (e.g. `/home/user's-box`) breaks the shell quoting of the recovery command the operator is told to paste — producing something like `rm -rf '<OPERATOR_REPO_PATH>/...'`, which would either error or silently drop the closing portion of the path. The command is displayed only and not auto-executed, keeping impact low, but an operator copying and running the broken command could fail to clean up the clone (the `'`-split form evaluates as two separate tokens, leaving the clone directory in place). **Suggested fix:** escape the path for display with `printf '%q' "$marketplace_clone"` or strip/replace `'` characters before interpolating: `marketplace_clone_display=$(printf '%s' "$marketplace_clone" | sed "s/'/\\'\\'/g")`, then use `larch_err "  rm -rf '${marketplace_clone_display}'"`.
+
+---
+
+### Out-of-Scope Observations
+
+No pre-existing issues worth surfacing.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	security	skills/upgrade-larch/scripts/upgrade-larch.sh:29,420	$marketplace_clone (from $HOME) interpolated into single-quoted advisory text without escaping	If HOME contains a literal single-quote, the displayed recovery command has broken quoting (e.g. rm -rf '/home/user's-box/...' splits into two tokens); operator copying the banner fails to delete the clone, leaving a potentially stale marketplace clone in place	Escape the path for display: marketplace_clone_display=$(printf '%s' "$marketplace_clone" | sed "s/'/'\\\\''/g") or use printf '%q', then use the escaped form in the larch_err advisory
+```

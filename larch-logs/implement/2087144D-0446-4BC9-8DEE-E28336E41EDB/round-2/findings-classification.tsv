@@ -1,0 +1,21 @@
+finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
+FINDING_1	cursor-specialist-structure-output.txt|cursor-specialist-testing-output.txt|cursor-specialist-security-output.txt|cursor-specialist-edge-cases-output.txt|dyn-sparse-rooting-output.txt|dyn-release-flow-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	adequate	false	EXONERATE	true	minor	adequate	false
+FINDING_10	cursor-specialist-testing-output.txt	exonerated	EXONERATE	true		weak	true	EXONERATE	true	minor	weak	false	EXONERATE	true	minor	weak	false
+FINDING_11	cursor-specialist-edge-cases-output.txt|dyn-sparse-rooting-output.txt	accepted	YES	true		adequate	true	YES	true	minor	adequate	false	YES	true	minor	adequate	false
+FINDING_12	cursor-specialist-edge-cases-output.txt	accepted	YES	true		weak	true	YES	partially-true	minor	adequate	false	YES	true	minor	adequate	false
+FINDING_13	cursor-specialist-plan-fidelity-output.txt	rejected	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_14	dyn-cli-signals-output.txt	accepted	EXONERATE	true	minor	adequate	false	YES	true	major	adequate	false	YES	true	major	good	false
+FINDING_15	dyn-cli-signals-output.txt	accepted	EXONERATE	true		weak	true	YES	true	major	adequate	false	YES	true	major	good	false
+FINDING_16	dyn-cli-signals-output.txt	accepted	YES	true	nit	adequate	false	EXONERATE	true	nit	weak	false	YES	true	minor	good	false
+FINDING_17	dyn-release-flow-output.txt	accepted	YES	true		weak	true	YES	true	minor	adequate	false	YES	true	minor	adequate	false
+FINDING_18	dyn-sparse-git-output.txt	rejected	NO	true	nit	no-fix	false	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_19	dyn-sparse-git-output.txt	exonerated	EXONERATE	true	nit	no-fix	false	EXONERATE	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_2	cursor-specialist-structure-output.txt|cursor-specialist-correctness-output.txt|cursor-specialist-testing-output.txt|cursor-specialist-security-output.txt|cursor-specialist-edge-cases-output.txt|cursor-specialist-plan-fidelity-output.txt|dyn-sparse-rooting-output.txt|dyn-cli-signals-output.txt|dyn-release-flow-output.txt|dyn-sparse-git-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	adequate	false	YES	true	major	good	false
+FINDING_20	dyn-sparse-git-output.txt	rejected	NO	true	nit	no-fix	false	NO	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_3	cursor-specialist-structure-output.txt|cursor-specialist-plan-fidelity-output.txt|dyn-sparse-rooting-output.txt	exonerated	EXONERATE	true	minor	adequate	false	YES	true	minor	adequate	false	EXONERATE	partially-true	minor	adequate	false
+FINDING_4	cursor-specialist-structure-output.txt|cursor-specialist-correctness-output.txt|dyn-sparse-git-output.txt	exonerated	EXONERATE	partially-true	nit	adequate	false	EXONERATE	partially-true	minor	weak	false	EXONERATE	true	minor	adequate	false
+FINDING_5	cursor-specialist-structure-output.txt	accepted	EXONERATE	true	nit	adequate	false	YES	true	nit	adequate	false	YES	true	nit	good	false
+FINDING_6	cursor-specialist-correctness-output.txt|cursor-specialist-security-output.txt|cursor-specialist-edge-cases-output.txt|dyn-sparse-rooting-output.txt|dyn-cli-signals-output.txt|dyn-release-flow-output.txt|dyn-sparse-git-output.txt	accepted	YES	true	major	adequate	false	YES	true	major	adequate	false	YES	true	major	excellent	false
+FINDING_7	cursor-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt|dyn-sparse-rooting-output.txt	exonerated	EXONERATE	partially-true		weak	true	EXONERATE	partially-true	minor	weak	false	EXONERATE	partially-true	minor	weak	true
+FINDING_8	cursor-specialist-testing-output.txt	accepted	YES	true	major	adequate	false	YES	true	minor	adequate	false	YES	true	minor	good	false
+FINDING_9	cursor-specialist-testing-output.txt	exonerated	EXONERATE	partially-true	minor	adequate	false	EXONERATE	partially-true	minor	weak	false	EXONERATE	partially-true	minor	adequate	false

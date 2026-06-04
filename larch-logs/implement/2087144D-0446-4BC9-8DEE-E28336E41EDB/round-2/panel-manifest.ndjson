@@ -1,0 +1,11 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-sparse-rooting","tool":"cursor","output":"<TMPDIR>/round-2/dyn-sparse-rooting-output.txt","prompt_file":"<TMPDIR>/round-2/dynamic-archetypes/dyn-sparse-rooting-prompt.md","weight":1,"focus_area":"architecture"}
+{"slot":"dyn-hook-failopen","tool":"cursor","output":"<TMPDIR>/round-2/dyn-hook-failopen-output.txt","prompt_file":"<TMPDIR>/round-2/dynamic-archetypes/dyn-hook-failopen-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-cli-signals","tool":"cursor","output":"<TMPDIR>/round-2/dyn-cli-signals-output.txt","prompt_file":"<TMPDIR>/round-2/dynamic-archetypes/dyn-cli-signals-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-release-flow","tool":"cursor","output":"<TMPDIR>/round-2/dyn-release-flow-output.txt","prompt_file":"<TMPDIR>/round-2/dynamic-archetypes/dyn-release-flow-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-sparse-git","tool":"cursor","output":"<TMPDIR>/round-2/dyn-sparse-git-output.txt","prompt_file":"<TMPDIR>/round-2/dynamic-archetypes/dyn-sparse-git-prompt.md","weight":1,"focus_area":"correctness"}

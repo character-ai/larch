@@ -1,0 +1,5 @@
+warning: fix text for slot 'cursor-specialist-testing-output.txt' in FINDING_28 not traceable to scoped input (first 80 chars: 'Move the restore into a `trap ... RETURN` set at function entry, or extract a si')
+warning: fix text for slot 'cursor-specialist-structure-output.txt' in FINDING_28 not traceable to scoped input (first 80 chars: 'Consider splitting into test-upgrade-larch-cone.sh and test-upgrade-larch-retent')
+warning: fix text for slot 'cursor-specialist-edge-cases-output.txt' in FINDING_28 not traceable to scoped input (first 80 chars: 'Use semver comparison to select latest stable tag  ### OOS_3: [OUT_OF_SCOPE] get')
+warning: fix text for slot 'cursor-specialist-plan-fidelity-output.txt' in FINDING_28 not traceable to scoped input (first 80 chars: 'Consolidate into one sourced helper when refactoring root resolution.')
+warning: fix text for slot 'dyn-bash-state-output.txt' in FINDING_28 not traceable to scoped input (first 80 chars: '(no separate fix beyond consolidation note in concern)  ### OOS_4: [OUT_OF_SCOPE')

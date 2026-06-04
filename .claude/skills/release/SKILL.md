@@ -145,7 +145,78 @@ After a successful `release-finish.sh` re-run or promote-only retry, continue to
 
 ## Step 7 — Upgrade local install
 
-Invoke `/upgrade-larch` via the Skill tool (bare name `"upgrade-larch"` first; fall back to `"larch:upgrade-larch"` on `Unknown skill`). Record whether it installed a new version. If `/upgrade-larch` fails, warn and continue to Step 8; the release is already published, so a local-install upgrade hiccup must not strand the operator on the release branch.
+Prefer the working-tree upgrade script over the installed Skill implementation so sparse allowlist changes apply in the same release cycle. Resolve `RESOLVED_ROOT` for `CLAUDE_PLUGIN_ROOT` in this order and stop at the first match:
+
+1. Existing active `CLAUDE_PLUGIN_ROOT` when it is cache-shaped (`.../.claude/plugins/cache/larch-local/larch/<version>`) and exists. This is the running session's prune/stamp context, so it wins even when installed metadata names a newer version after a no-restart or retried release.
+2. Installed metadata: parse the installed larch version with the same semantics as `get_installed_larch_version` in `skills/upgrade-larch/scripts/release-step7-root.sh` (`claude plugin list` first, then `installed_plugins.json`), then map it to `$HOME/.claude/plugins/cache/larch-local/larch/$installed_version` when that directory exists.
+3. Prepare fallback: use `$HOME/.claude/plugins/cache/larch-local/larch/${CURRENT_VERSION}` only when Step 2's `CURRENT_VERSION` matches the parsed installed version, or when installed metadata is unavailable and `CURRENT_VERSION` is the sole defensible cache target.
+4. Last cache fallback: use a cache root only when exactly one version-shaped directory exists under `$HOME/.claude/plugins/cache/larch-local/larch/` and it matches `CURRENT_VERSION`. If zero or multiple version dirs exist, or the sole version does not match `CURRENT_VERSION`, do not pick arbitrarily.
+
+`CURRENT_VERSION` from Step 2 is not proof of the active install and must not override a valid active session root. `CLAUDE_PLUGIN_ROOT` is used only for cache/stamp/prune context; the allowlist comes from the working-tree script's `SCRIPT_ROOT`.
+
+Run root resolution and the working-tree script with captured stdout and stderr whenever `RESOLVED_ROOT` is non-empty. `release-step7.env` is written only when `PR_LIST_FILE` is available:
+
+Do not Invoke the Skill tool as a Step 7 fallback from the Bash fence; without the same capture contract it cannot provide reliable restart state.
+
+```bash
+if [ -z "${PR_LIST_FILE:-}" ]; then
+  echo "Warning: PR_LIST_FILE is unavailable; cannot write release-step7 restart state."
+  STEP7_STATE=""
+else
+PREPARE_DIR="$(dirname "$PR_LIST_FILE")"
+STEP7_STATE="$PREPARE_DIR/release-step7.env"
+fi
+CONE_RECONCILED=false
+NEW_VERSION_INSTALLED=false
+RESTART_REQUIRED=false
+RESOLVED_ROOT=""
+
+# shellcheck source=skills/upgrade-larch/scripts/release-step7-root.sh
+source "$PWD/skills/upgrade-larch/scripts/release-step7-root.sh"
+if ! RESOLVED_ROOT=$(resolve_release_step7_root "${CURRENT_VERSION:-}"); then
+  RESOLVED_ROOT=""
+fi
+
+if [ -n "$RESOLVED_ROOT" ]; then
+  echo "Applying the just-released larch sparse allowlist through the working-tree upgrade script..."
+  upgrade_rc=0
+  upgrade_out=$(
+    LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" bash "$PWD/skills/upgrade-larch/scripts/upgrade-larch.sh" 2>&1
+  ) || upgrade_rc=$?
+  printf '%s\n' "$upgrade_out"
+  if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]] || \
+     { [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"Reconciling the marketplace cone and reinstalling"* ]]; }; then
+    CONE_RECONCILED=true
+  fi
+  if [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
+    NEW_VERSION_INSTALLED=true
+  fi
+  if [[ "$upgrade_out" == *"LARCH_RESTART_REQUIRED=true"* ]]; then
+    RESTART_REQUIRED=true
+  fi
+  if [ "$CONE_RECONCILED" = true ] || [ "$NEW_VERSION_INSTALLED" = true ]; then
+    RESTART_REQUIRED=true
+  fi
+  if [ "$upgrade_rc" -ne 0 ]; then
+    echo "Warning: working-tree upgrade-larch failed during local install refresh; continuing to cleanup."
+  fi
+else
+  echo "Warning: no unambiguous installed larch cache root found; skipping working-tree /upgrade-larch. Restart state remains all-false because this Bash fence cannot capture a Skill-tool fallback."
+fi
+
+if [ -n "$STEP7_STATE" ]; then
+  tmp_state="$STEP7_STATE.tmp"
+  {
+    printf 'CONE_RECONCILED=%s\n' "$CONE_RECONCILED"
+    printf 'NEW_VERSION_INSTALLED=%s\n' "$NEW_VERSION_INSTALLED"
+    printf 'RESTART_REQUIRED=%s\n' "$RESTART_REQUIRED"
+    printf 'RESOLVED_ROOT=%s\n' "$RESOLVED_ROOT"
+  } > "$tmp_state"
+  mv "$tmp_state" "$STEP7_STATE"
+fi
+```
+
+If metadata names a newer install than the active `CLAUDE_PLUGIN_ROOT`, still run against the active root from item 1; the upgrade script protects both the active `INSTALLED_VERSION` (from `PLUGIN_ROOT`) and the target version during prune. If the working-tree invocation fails, warn and continue to Step 8, but still persist any captured machine-readable restart/reconcile state because the local install may already have been mutated. The release is already published, so a local-install upgrade hiccup must not strand the operator on the release branch. If no root is resolvable, record `CONE_RECONCILED=false`, `NEW_VERSION_INSTALLED=false`, and `RESTART_REQUIRED=false`.
 
 ## Step 8 — Local cleanup (post-merge teardown)
 
@@ -178,7 +249,29 @@ After argument validation, the helper emits the key envelope on exit 0; usage/sa
 
 On `CLEANUP_SUCCESS=false` or `BRANCH_DELETED=false`, warn without failing the `/release` run. Name `CURRENT_BRANCH`. If `CURRENT_BRANCH` is already `main`, tell the operator to manually reconcile local `main` with `origin/main` before relying on the local tree, then delete `release/v${NEW_VERSION}` by hand. Otherwise, tell the operator to switch to `main`, manually reconcile it with `origin/main`, and delete `release/v${NEW_VERSION}` by hand.
 
-If Step 7 installed a new version, tell the operator to restart Claude Code after cleanup finishes.
+Before the restart message, require `PR_LIST_FILE` from the prepare artifacts, re-derive `PREPARE_DIR`, and read `"$PREPARE_DIR/release-step7.env"` if it exists:
+
+```bash
+CONE_RECONCILED=false
+NEW_VERSION_INSTALLED=false
+RESTART_REQUIRED=false
+if [ -z "${PR_LIST_FILE:-}" ]; then
+  echo "Warning: PR_LIST_FILE is unavailable; cannot read release-step7 restart state."
+else
+PREPARE_DIR="$(dirname "$PR_LIST_FILE")"
+STEP7_STATE="$PREPARE_DIR/release-step7.env"
+if [ -f "$STEP7_STATE" ]; then
+  CONE_RECONCILED=$(awk -F= '$1=="CONE_RECONCILED"{print $2; exit}' "$STEP7_STATE")
+  NEW_VERSION_INSTALLED=$(awk -F= '$1=="NEW_VERSION_INSTALLED"{print $2; exit}' "$STEP7_STATE")
+  RESTART_REQUIRED=$(awk -F= '$1=="RESTART_REQUIRED"{print $2; exit}' "$STEP7_STATE")
+  CONE_RECONCILED=${CONE_RECONCILED:-false}
+  NEW_VERSION_INSTALLED=${NEW_VERSION_INSTALLED:-false}
+  RESTART_REQUIRED=${RESTART_REQUIRED:-false}
+fi
+fi
+```
+
+If `NEW_VERSION_INSTALLED=true`, `CONE_RECONCILED=true`, or `RESTART_REQUIRED=true`, tell the operator to restart Claude Code after cleanup finishes. A same-version sparse-cone repair still leaves stale in-memory plugin state until restart; do not limit the restart instruction to `NEW_VERSION != CURRENT_VERSION`.
 
 ## Script index
 

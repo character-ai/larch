@@ -2,34 +2,47 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+SCRIPT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$SCRIPT_ROOT}"
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+if [ ! -f "$SCRIPT_ROOT/scripts/lib-sparse-dirs.sh" ]; then
+    larch_err "ERROR: sparse allowlist library not found at $SCRIPT_ROOT/scripts/lib-sparse-dirs.sh"
+    exit 1
+fi
+# shellcheck source=scripts/lib-sparse-dirs.sh
+source "$SCRIPT_ROOT/scripts/lib-sparse-dirs.sh"
+# shellcheck source=skills/upgrade-larch/scripts/release-step7-root.sh
+source "$SCRIPT_DIR/release-step7-root.sh"
 larch_quiet_init
 # Restore original stdout so progress and the installed version line reach the operator.
 [ "${LARCH_QUIET_PID:-}" = "$$" ] && exec 1>&3
 
-# Top-level repo directories shipped to consumers via the plugin install:
-# every top-level tracked directory EXCEPT larch-logs/ (committed run logs,
-# ~317 MB, never read from the install at runtime) and mermaid-lint/ (dev-only
-# Mermaid lint toolchain — excluded so the installed plugin has no package.json
-# and the installer runs no npm install). Passed to
-# `claude plugin marketplace add --sparse` (git sparse-checkout, cone mode);
-# cone mode always keeps top-level files, so root markdown imports ship anyway.
-# MAINTENANCE: if a new top-level directory is added to the repo and must ship,
-# add it here; larch-logs/ and mermaid-lint/ must NOT be added.
-LARCH_SPARSE_DIRS=".claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests"
-MARKETPLACE_CLONE="$HOME/.claude/plugins/marketplaces/larch-local"
+
+marketplace_clone_path() {
+    [ -n "${HOME:-}" ] || return 1
+    printf '%s\n' "$HOME/.claude/plugins/marketplaces/larch-local"
+}
+
+shell_quote() {
+    printf "'%s'" "$(printf '%s' "$1" | sed "s/'/'\\\\''/g")"
+}
 
 recover() {
+    local marketplace_clone
+
+    marketplace_clone=$(marketplace_clone_path 2>/dev/null || true)
     larch_err ""
     larch_err "Recovery: run these commands manually to reinstall:"
     larch_err "  claude plugin marketplace remove larch-local"
-    larch_err "  rm -rf '$MARKETPLACE_CLONE'"
+    if [ -n "$marketplace_clone" ]; then
+        larch_err "  rm -rf $(shell_quote "$marketplace_clone")"
+    else
+        larch_err "  rm -rf ~/.claude/plugins/marketplaces/larch-local"
+    fi
     larch_err "  claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS"
     larch_err "  claude plugin install larch@larch-local"
 }
-trap recover ERR
 
 warn_prune_failure() {
     local version="$1"
@@ -41,24 +54,34 @@ warn_install_stamp_failure() {
     larch_err "Warning: failed to write install stamp for cached larch version '${version}'."
 }
 
-is_safe_version() {
-    [[ "$1" =~ ^[0-9]+(\.[0-9]+)*$ ]]
-}
-
-normalize_sparse_dirs() {
-    tr ' ' '\n' <<< "$LARCH_SPARSE_DIRS" | sed '/^$/d' | sort
+emit_restart_required() {
+    if [ "${RESTART_SIGNAL_EMITTED:-false}" != true ]; then
+        larch_err "LARCH_RESTART_REQUIRED=true"
+        RESTART_SIGNAL_EMITTED=true
+    fi
 }
 
 marketplace_sparse_cone_matches() {
-    local configured expected
+    local configured expected marketplace_clone
 
-    [ -d "$MARKETPLACE_CLONE/.git" ] || return 1
-    [ ! -d "$MARKETPLACE_CLONE/larch-logs" ] || return 1
+    marketplace_clone=$(marketplace_clone_path 2>/dev/null || true)
+    [ -n "$marketplace_clone" ] || return 1
+    [ -d "$marketplace_clone/.git" ] || return 1
+    [ ! -d "$marketplace_clone/larch-logs" ] || return 1
 
-    configured=$(git -C "$MARKETPLACE_CLONE" sparse-checkout list 2>/dev/null | sed '/^$/d' | sort || true)
+    configured=$(git -C "$marketplace_clone" sparse-checkout list 2>/dev/null | sed '/^$/d' | sort || true)
     expected=$(normalize_sparse_dirs)
     [ -n "$configured" ] || return 1
     [ "$configured" = "$expected" ]
+}
+
+already_latest_and_cone_ok() {
+    [ -n "${LATEST_STABLE:-}" ] || return 1
+    [ "${CURRENT_INSTALLED_VERSION:-}" = "$LATEST_STABLE" ] || return 1
+    if is_cache_shaped_larch_root "$PLUGIN_ROOT"; then
+        [ "$(basename "$PLUGIN_ROOT")" = "$LATEST_STABLE" ] || return 1
+    fi
+    marketplace_sparse_cone_matches
 }
 
 warn_marketplace_remove_failure() {
@@ -79,10 +102,13 @@ add_sparse_larch_marketplace() {
 }
 
 prepare_sparse_marketplace_add() {
+    local marketplace_clone
+
     remove_larch_marketplace || true
-    if [ -d "$MARKETPLACE_CLONE" ]; then
-        larch_err "Removing existing larch marketplace clone before sparse add: $MARKETPLACE_CLONE"
-        rm -rf -- "$MARKETPLACE_CLONE"
+    marketplace_clone=$(marketplace_clone_path 2>/dev/null || true)
+    if [ -n "$marketplace_clone" ] && [ -d "$marketplace_clone" ]; then
+        larch_err "Removing existing larch marketplace clone before sparse add: $marketplace_clone"
+        rm -rf -- "$marketplace_clone"
     fi
 }
 
@@ -108,35 +134,6 @@ get_stable_releases() {
     gh api --paginate repos/character-ai/larch/releases \
       --jq '.[] | select(.prerelease == false and .draft == false) | .tag_name' \
       | sed 's/^v//'
-}
-
-get_installed_larch_version() {
-    local plugin_record installed_version
-    plugin_record=$(claude plugin list 2>/dev/null | awk '
-        /larch@larch-local/ { want=1; next }
-        want && /^[[:space:]]*Version:/ {
-            sub(/^[[:space:]]*Version:[[:space:]]*/, "", $0)
-            print
-            exit
-        }
-    ' || true)
-    if is_safe_version "${plugin_record:-}"; then
-        printf '%s\n' "$plugin_record"
-        return 0
-    fi
-
-    installed_version=$(grep -A6 '"larch@larch-local"' "$HOME/.claude/plugins/installed_plugins.json" 2>/dev/null | awk -F'"' '
-        /"version":/ {
-            print $4
-            exit
-        }
-    ' || true)
-    if is_safe_version "${installed_version:-}"; then
-        printf '%s\n' "$installed_version"
-        return 0
-    fi
-
-    return 1
 }
 
 stat_mtime() {
@@ -311,11 +308,14 @@ INSTALLED_VERSION="$(basename "$PLUGIN_ROOT")"
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     return 0 2>/dev/null || exit 0
 fi
+trap recover ERR
 
 # Resolve the latest stable (non-pre-release, non-draft) release from GitHub.
 larch_err "Checking latest stable larch release..."
 LATEST_STABLE=""
-if command -v gh >/dev/null 2>&1; then
+if is_safe_version "${LARCH_EXPECTED_STABLE_VERSION:-}"; then
+    LATEST_STABLE="$LARCH_EXPECTED_STABLE_VERSION"
+elif command -v gh >/dev/null 2>&1; then
     STABLE_RELEASES=()
     GH_RELEASES_OUTPUT=""
     GH_STDERR_LOG=$(mktemp "${TMPDIR:-/tmp}/upgrade-larch-gh-stderr.XXXXXX")
@@ -349,12 +349,19 @@ if command -v gh >/dev/null 2>&1; then
     rm -f -- "$GH_STDERR_LOG"
 fi
 
-# Idempotency: on already-latest, stamp and prune without reinstalling.
+# Idempotency: on already-latest with a matching sparse cone, stamp and prune
+# without reinstalling. A drifted cone falls through to the reinstall path so
+# sparse allowlist additions can reconcile on same-version installs.
+NEEDS_CONE_RECONCILE=false
+MARKETPLACE_CONE_WILL_RECONCILE=false
+ACTIVE_ROOT_STALE=false
+INSTALL_MUTATED=false
+RESTART_SIGNAL_EMITTED=false
 CURRENT_INSTALLED_VERSION=$(get_installed_larch_version || true)
 if ! is_safe_version "${CURRENT_INSTALLED_VERSION:-}"; then
     CURRENT_INSTALLED_VERSION="$INSTALLED_VERSION"
 fi
-if [ -n "$LATEST_STABLE" ] && [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" ]; then
+if already_latest_and_cone_ok; then
     ACTUAL_VERSION="${CURRENT_INSTALLED_VERSION:-$INSTALLED_VERSION}"
     write_install_stamp "$ACTUAL_VERSION"
     prune_cached_versions "$ACTUAL_VERSION"
@@ -362,14 +369,32 @@ if [ -n "$LATEST_STABLE" ] && [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" 
     larch_err "Already at latest stable larch release (${CURRENT_INSTALLED_VERSION}). No upgrade needed."
     exit 0
 fi
+if ! marketplace_sparse_cone_matches; then
+    MARKETPLACE_CONE_WILL_RECONCILE=true
+fi
+if [ -n "$LATEST_STABLE" ] && \
+   [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" ] && \
+   is_cache_shaped_larch_root "$PLUGIN_ROOT" && \
+   [ "$(basename "$PLUGIN_ROOT")" != "$LATEST_STABLE" ]; then
+    ACTIVE_ROOT_STALE=true
+    larch_err ""
+    larch_err "Installed metadata is already at latest stable larch release (${CURRENT_INSTALLED_VERSION}), but this Claude Code session is still running cached larch $(basename "$PLUGIN_ROOT"). Refreshing the install and requiring restart..."
+elif [ -n "$LATEST_STABLE" ] && \
+     [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" ] && \
+     [ "$MARKETPLACE_CONE_WILL_RECONCILE" = true ]; then
+    NEEDS_CONE_RECONCILE=true
+    larch_err ""
+    larch_err "Already at latest stable larch release (${CURRENT_INSTALLED_VERSION}), but the sparse checkout is out of date (allowlist changed). Reconciling the marketplace cone and reinstalling..."
+fi
 
-if [ -n "$LATEST_STABLE" ]; then
+if [ -n "$LATEST_STABLE" ] && [ "$NEEDS_CONE_RECONCILE" != true ]; then
     larch_err "Upgrading larch from ${INSTALLED_VERSION} to ${LATEST_STABLE}..."
-else
+elif [ -z "$LATEST_STABLE" ]; then
     larch_err "Latest stable release could not be determined; upgrading unconditionally..."
 fi
 
 larch_err "Uninstalling larch plugin..."
+INSTALL_MUTATED=true
 claude plugin uninstall larch@larch-local 2>&1 || true
 
 # Marketplace refresh. A valid sparse clone has the expected sparse cone and no
@@ -394,12 +419,39 @@ if [ -n "$LATEST_STABLE" ]; then
         larch_err ""
         larch_err "Warning: expected version ${LATEST_STABLE} but found installed version ${ACTUAL_VERSION:-unknown}."
         larch_err "A pre-release or unexpected version may have been installed."
+        marketplace_clone=$(marketplace_clone_path 2>/dev/null || true)
         larch_err "Re-run /upgrade-larch or install manually:"
         larch_err "  claude plugin marketplace remove larch-local"
-        larch_err "  rm -rf '$MARKETPLACE_CLONE'"
+        if [ -n "$marketplace_clone" ]; then
+            larch_err "  rm -rf $(shell_quote "$marketplace_clone")"
+        else
+            larch_err "  rm -rf ~/.claude/plugins/marketplaces/larch-local"
+        fi
         larch_err "  claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS"
         larch_err "  claude plugin install larch@larch-local"
     fi
+fi
+
+if [ "$MARKETPLACE_CONE_WILL_RECONCILE" = true ]; then
+    if ! marketplace_sparse_cone_matches; then
+        larch_err "Warning: marketplace sparse checkout still differs after reinstall; restart Claude Code and re-run /upgrade-larch if the advisory persists."
+        larch_err "LARCH_CONE_RECONCILED=false"
+        emit_restart_required
+    else
+        larch_err "LARCH_CONE_RECONCILED=true"
+        emit_restart_required
+    fi
+fi
+if [ -z "$LATEST_STABLE" ]; then
+    emit_restart_required
+elif [ "$ACTIVE_ROOT_STALE" = true ]; then
+    emit_restart_required
+elif [ "$VERIFIED_TARGET" = true ] && \
+     is_safe_version "${ACTUAL_VERSION:-}" && \
+     [ "$ACTUAL_VERSION" != "${CURRENT_INSTALLED_VERSION:-}" ]; then
+    larch_err "LARCH_NEW_VERSION_INSTALLED=true"
+elif [ "$INSTALL_MUTATED" = true ] && [ "$VERIFIED_TARGET" = false ]; then
+    emit_restart_required
 fi
 
 if [ "$VERIFIED_TARGET" = true ]; then

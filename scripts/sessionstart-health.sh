@@ -42,6 +42,53 @@ append_msg() {
     MSG="${MSG}$1"
 }
 
+probe_sparse_cone_drift() {
+    local restore_errexit=false
+    local restore_nounset=false
+    local home_dir marketplace_clone configured expected
+
+    case $- in
+        *e*) restore_errexit=true ;;
+    esac
+    case $- in
+        *u*) restore_nounset=true ;;
+    esac
+    set +e
+    set +u
+
+    home_dir="${HOME:-}"
+    if [[ -z "$home_dir" ]]; then
+        [[ "$restore_nounset" == "true" ]] && set -u
+        [[ "$restore_errexit" == "true" ]] && set -e
+        return 0
+    fi
+
+    marketplace_clone="$home_dir/.claude/plugins/marketplaces/larch-local"
+    if [[ ! -d "$marketplace_clone/.git" || -d "$marketplace_clone/larch-logs" ]]; then
+        [[ "$restore_nounset" == "true" ]] && set -u
+        [[ "$restore_errexit" == "true" ]] && set -e
+        return 0
+    fi
+
+    # shellcheck source=scripts/lib-sparse-dirs.sh
+    source "$SCRIPT_DIR/lib-sparse-dirs.sh" 2>/dev/null || true
+    if ! declare -F normalize_sparse_dirs >/dev/null 2>&1; then
+        [[ "$restore_nounset" == "true" ]] && set -u
+        [[ "$restore_errexit" == "true" ]] && set -e
+        return 0
+    fi
+
+    configured=$(git -C "$marketplace_clone" sparse-checkout list 2>/dev/null | sed '/^$/d' | sort || true)
+    expected=$(normalize_sparse_dirs 2>/dev/null || true)
+    if [[ -n "$configured" && -n "$expected" && "$configured" != "$expected" ]]; then
+        append_msg "larch hook preflight: larch-local marketplace sparse checkout is out of date; run /upgrade-larch to repair it."
+    fi
+
+    [[ "$restore_nounset" == "true" ]] && set -u
+    [[ "$restore_errexit" == "true" ]] && set -e
+    return 0
+}
+
 if ! command -v jq >/dev/null 2>&1; then
     JQ_AVAILABLE=false
     append_msg "larch hook preflight: jq not on PATH (install: brew install jq / apt install jq). Claude Code JSON parsing and several larch scripts depend on jq."
@@ -52,6 +99,8 @@ if ! command -v git >/dev/null 2>&1; then
 fi
 
 if [[ "$JQ_AVAILABLE" == "true" && "$GIT_AVAILABLE" == "true" ]]; then
+    probe_sparse_cone_drift
+
     if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         if ! status_out=$(git status --porcelain 2>/dev/null); then
             status_out=""
