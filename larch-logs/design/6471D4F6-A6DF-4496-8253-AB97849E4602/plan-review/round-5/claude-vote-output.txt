@@ -1,0 +1,8 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan says "Replace the early-exit so it exits only when already_latest_and_cone_ok is true"; the existing body already calls stamp/prune; a competent implementer would preserve that body and only change the condition
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SessionStart probe is intentional design with documented safety guards; concern is a design-philosophy disagreement, not a correctness gap
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- "Thread HOME through run_from_dir/run_with_stdin" intent is clear; specific env -i injection shape is implementation detail a bash-familiar developer would handle correctly

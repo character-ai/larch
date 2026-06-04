@@ -1,0 +1,217 @@
+## Plan
+
+## Summary
+
+Fix two compounding defects so a merged `LARCH_SPARSE_DIRS` addition reaches existing installs through the documented `/release` + `/upgrade-larch` path, plus add a proactive drift warning.
+
+- **RC2 (blocker)**: `/upgrade-larch` must reconcile a drifted sparse cone on an already-latest install instead of early-exiting.
+- **RC1 (immediate)**: `/release` must run the working-tree upgrade script against the real installed/cache root so the just-released allowlist applies in the same release cycle.
+- **Drift warning**: SessionStart hook warns (warn-only) when the marketplace cone drifts from the expected allowlist.
+
+The fix is generic to any future allowlist dir. `python` is the first instance, not the subject.
+
+## Files to modify/create
+
+### NEW: `scripts/lib-sparse-dirs.sh`
+
+Sourced-only library (`# shellcheck shell=bash` on line 1; no shebang, no side effects, non-executable) that becomes the single runtime source of truth for the allowlist:
+
+- `LARCH_SPARSE_DIRS=".claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests"` moved verbatim from `upgrade-larch.sh`, with the existing maintenance comment.
+- `normalize_sparse_dirs()` — the `tr ' ' '\n' | sed '/^$/d' | sort` body moved verbatim from `upgrade-larch.sh`.
+
+No `larch_quiet_init`, no `exec`, no `trap`, no top-level commands — safe to source from the SessionStart hook under a stripped PATH.
+
+### NEW: `scripts/lib-sparse-dirs.md`
+
+Sibling contract per `.claude/rules/script-md-siblings.md`:
+
+- Purpose: single source of truth for the install sparse allowlist.
+- Consumers: `skills/upgrade-larch/scripts/upgrade-larch.sh`, `scripts/sessionstart-health.sh`, `.claude/skills/release/SKILL.md` Step 7 via the working-tree upgrade script, and the affected harnesses.
+- No-side-effects invariant.
+- Edit-in-sync note: prose copies in `docs/installation-and-setup.md`, `docs/skills.md`, `skills/upgrade-larch/SKILL.md`, `skills/upgrade-larch/scripts/upgrade-larch.md`, and `.claude/skills/release/SKILL.md` are illustrative and tracked manually.
+- Dual-update test contract: allowlist edits must update both the lib assignment and the intentional expected-literal guard in `skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh`; do not weaken that guard into a lib-vs-itself tautology unless deliberately removing the duplicate assertion.
+
+Document the **script-root vs installed-root split**:
+
+- `upgrade-larch.sh` sources this lib from `SCRIPT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"`, the tree of the script being executed.
+- It must not source the sparse allowlist from `CLAUDE_PLUGIN_ROOT` / `PLUGIN_ROOT`.
+- `PLUGIN_ROOT` remains for `lib-quiet.sh`, `LARCH_CACHE_DIR`, `INSTALLED_VERSION`, and prune protection.
+- SessionStart sources the lib from its own script directory / resolved plugin root, never from `HOOK_CWD` and never from `upgrade-larch.sh`.
+- `/release` Step 7 runs the working-tree script so the just-released allowlist is read from that script tree even when `CLAUDE_PLUGIN_ROOT` points at an older cache root.
+
+Document the ShellCheck contract: line 1 is `# shellcheck shell=bash`; file stays non-executable and is excluded from dead-script G004 via `agent-lint.toml`.
+
+### UPDATED: `skills/upgrade-larch/scripts/upgrade-larch.sh`
+
+1. Split execution root from installed/cache root:
+   - Keep `SCRIPT_DIR` / `PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"` for cache math.
+   - Continue sourcing `lib-quiet.sh` from `"$PLUGIN_ROOT/scripts/lib-quiet.sh"`.
+   - Add `SCRIPT_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"` and source `"$SCRIPT_ROOT/scripts/lib-sparse-dirs.sh"`; fail loudly if missing.
+   - Delete the inline `LARCH_SPARSE_DIRS=` literal and inline `normalize_sparse_dirs()` definition.
+   - `marketplace_sparse_cone_matches()` keeps calling `normalize_sparse_dirs`.
+
+2. RC2 fix — add testable helper and gate the idempotency early-exit:
+   - New `already_latest_and_cone_ok()` returns 0 only when `LATEST_STABLE` is set, `CURRENT_INSTALLED_VERSION = LATEST_STABLE`, and `marketplace_sparse_cone_matches` succeeds.
+   - Replace the early-exit so it exits only when `already_latest_and_cone_ok` is true.
+   - When version matches but cone drifted, set `NEEDS_CONE_RECONCILE=true`, print:
+     `Already at latest stable larch release (<v>), but the sparse checkout is out of date (allowlist changed). Reconciling the marketplace cone and reinstalling...`
+   - Fall through to existing uninstall → `refresh_larch_marketplace` → install → verify → prune path.
+   - Guard the existing `Upgrading larch from X to Y...` message so same-version reconcile does not print `from X to X`.
+
+### UPDATED: `skills/upgrade-larch/scripts/upgrade-larch.md`
+
+Document:
+
+- Step 2 early-exits only when already-latest **and** sparse cone matches.
+- On cone drift, it reconciles + reinstalls even with no version change.
+- `SCRIPT_ROOT` vs `PLUGIN_ROOT` split.
+- `/release` Step 7 coupling: release runs the working-tree upgrade script against the resolved installed cache root so allowlist changes can apply in-cycle.
+- Refresh the legacy full active install note.
+- Keep Edit-in-sync list current and include `.claude/skills/release/SKILL.md` Step 7 / Step 8 restart text plus the intentional sparse-dir literal guard in `test-upgrade-larch-retention.sh`.
+
+### UPDATED: `skills/upgrade-larch/SKILL.md`
+
+Align operator-facing Step 2:
+
+- Early-exit / no-restart only when script reports already-latest and cone matches.
+- If cone drift is reconciled with unchanged version, do not claim no reinstall.
+- Tell operator sparse checkout was repaired and Claude Code must be restarted.
+- Surface the reconcile line before the restart instruction when that path ran.
+- Add/update edit-in-sync note if present to include `.claude/skills/release/SKILL.md`.
+
+### UPDATED: `scripts/sessionstart-health.sh`
+
+Add a warn-only sparse-cone drift probe inside the existing `JQ_AVAILABLE && GIT_AVAILABLE` block, outside the `--is-inside-work-tree` sub-block.
+
+Critical hook-safety requirements:
+
+- Do not reference `PLUGIN_ROOT` unless locally initialized before the probe.
+- Prefer sourcing `"$SCRIPT_DIR/lib-sparse-dirs.sh"` directly; alternatively bind `plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"` inside the probe before use and source `"$plugin_root/scripts/lib-sparse-dirs.sh"`.
+- Probe must be cwd-independent of `HOOK_CWD`.
+- Wrap the whole probe in best-effort isolation (`set +e`/restore or subshell) so `set -euo pipefail` cannot abort SessionStart.
+- Bind `home_dir="${HOME:-}"`; skip when empty.
+- Compute `MARKETPLACE_CLONE="$home_dir/.claude/plugins/marketplaces/larch-local"`.
+- Only inspect when `$MARKETPLACE_CLONE/.git` exists and `$MARKETPLACE_CLONE/larch-logs` is absent.
+- Source `lib-sparse-dirs.sh` with stderr suppressed and `|| true`; never source `upgrade-larch.sh`.
+- After sourcing, require `declare -F normalize_sparse_dirs >/dev/null`; otherwise skip silently.
+- Compute both sides with stderr suppressed and `|| true`.
+- Compare only when both `configured` and `expected` are non-empty.
+- On mismatch, `append_msg` a fixed-string advisory pointing at `/upgrade-larch`.
+- Any failure skips silently; never mutate marketplace state; hook still exits 0.
+
+### UPDATED: `scripts/sessionstart-health.md`
+
+Document the drift probe:
+
+- Checks marketplace sparse cone against `lib-sparse-dirs.sh`.
+- Warn-only, non-mutating, best-effort.
+- Uses `SCRIPT_DIR` / locally bound plugin root, not later `PLUGIN_ROOT` and not `HOOK_CWD`.
+- Guards `HOME`, `source`, `declare -F normalize_sparse_dirs`, `git`, and non-empty compare inputs.
+- Always exits 0.
+
+### UPDATED: `.claude/skills/release/SKILL.md`
+
+RC1 immediate fix in Step 7:
+
+- Run the **working-tree** `skills/upgrade-larch/scripts/upgrade-larch.sh`, not the stale installed Skill implementation, whenever a real installed/cache root can be resolved.
+- Resolve installed/cache root in this order:
+  1. `CUR_ROOT="$HOME/.claude/plugins/cache/larch-local/larch/${CURRENT_VERSION}"` when it exists.
+  2. Existing `CLAUDE_PLUGIN_ROOT` when it points at an existing larch-local cache version dir.
+  3. Parse the currently installed larch version / installed root if available and map to `$HOME/.claude/plugins/cache/larch-local/larch/$installed_version`.
+  4. As a last cache fallback, choose an existing valid larch-local cache version dir only if it is unambiguous.
+- When a root is resolved, run:
+  `CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" bash "$PWD/skills/upgrade-larch/scripts/upgrade-larch.sh"`
+- `CLAUDE_PLUGIN_ROOT` is used only for cache/stamp/prune context; allowlist comes from the working-tree script’s `SCRIPT_ROOT`.
+- Reserve Skill-tool `/upgrade-larch` fallback for true dev-clone / no marketplace-install cases where no installed cache root exists.
+- Keep warn-and-continue failure semantics and Step 8 restart message.
+- Add operator-visible messaging that the new allowlist is being applied this cycle, and warn if only the fallback path is available.
+
+### UPDATED: `agent-lint.toml`
+
+Add `scripts/lib-sparse-dirs.sh` and `scripts/lib-sparse-dirs.md` to the dead-script exclude list with a sourced-only comment, mirroring existing sourced libraries.
+
+### UPDATED: `skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh`
+
+Extend existing hermetic harness:
+
+- Broaden header to “cache retention + sparse-cone reconciliation”.
+- Add `marketplace_sparse_cone_matches` cases:
+  - true when fake clone sparse list matches `normalize_sparse_dirs`
+  - false on missing dir
+  - false when `larch-logs/` present
+  - false when not a git repo
+- Add `already_latest_and_cone_ok` cases:
+  - non-zero when version matches but cone drifts
+  - zero when version matches and cone matches
+  - non-zero when versions differ
+- Add release-style RC1 guard:
+  - invoke working-tree `upgrade-larch.sh` with `CLAUDE_PLUGIN_ROOT` pointing at fake older cache root lacking `scripts/lib-sparse-dirs.sh`
+  - assert logic uses `SCRIPT_ROOT`, not stale cache root
+- Add resolved-root fallback coverage if practical for release helper text/script snippets.
+- Add intentional dual-update regression guard asserting `LARCH_SPARSE_DIRS` equals the expected literal, with comments explaining allowlist edits must update this expected literal together with the lib.
+
+### UPDATED: `scripts/test-sessionstart-health.sh`
+
+Thread `HOME` through `run_from_dir` / `run_with_stdin` because harness uses `env -i`.
+
+Add cases:
+
+- Drift in fake `$HOME/.claude/plugins/marketplaces/larch-local` sparse clone emits advisory containing `/upgrade-larch`.
+- Matching cone emits no advisory.
+- No marketplace clone is silent.
+- Missing `lib-sparse-dirs.sh` or missing `normalize_sparse_dirs` is silent and exits 0.
+- Probe path does not depend on later `PLUGIN_ROOT` or `HOOK_CWD`.
+
+### UPDATED: `docs/installation-and-setup.md`
+
+Document:
+
+- `/upgrade-larch` reconciles drifted sparse cones even on already-latest installs.
+- SessionStart warns on sparse cone drift.
+- `/release` applies a new allowlist dir within its own cycle when a marketplace install/cache root is resolvable.
+
+### UPDATED: `docs/skills.md`
+
+Refresh `/upgrade-larch` catalog text if existing wording implies already-latest always means no reinstall.
+
+## Approach
+
+Reuse existing reconciliation. `refresh_larch_marketplace()` already removes and sparse re-adds the marketplace, repairing both git sparse cone and `known_marketplaces.json`. RC2 makes that path reachable on the idempotent branch by gating early-exit on `marketplace_sparse_cone_matches`.
+
+RC1 runs the working-tree upgrade script against the real installed/cache root. This avoids stale Skill-tool logic while preserving cache/stamp/prune context through `CLAUDE_PLUGIN_ROOT`. The sparse allowlist comes from the executing script’s `SCRIPT_ROOT`, not from the installed root.
+
+SessionStart only warns. It reads the same sourced-only allowlist lib but must resolve that lib through `SCRIPT_DIR` or a locally bound plugin root before any later `PLUGIN_ROOT` assignment. Missing lib/function/tool/input means silent skip.
+
+## Edge cases
+
+- **Version differs**: normal upgrade path unchanged.
+- **RC1 with stale cache root missing `lib-sparse-dirs.sh`**: allowlist still comes from working-tree `SCRIPT_ROOT`.
+- **RC1 when `CURRENT_VERSION` cache dir is absent but another installed root exists**: release resolves the actual installed/cache root and still runs the working-tree script.
+- **True dev clone / no marketplace install**: release falls back to existing Skill-tool path or warns, preserving current behavior.
+- **Legacy full clone** (`larch-logs/` present): treated as drift and repaired by remove + sparse re-add.
+- **`gh` unavailable**: existing unconditional-upgrade behavior remains.
+- **Hook under stripped environment**: empty `HOME`, missing lib, undefined `normalize_sparse_dirs`, missing git, or empty compare inputs all skip silently.
+- **Prune during RC1**: explicit installed root lets prune protect the running and target versions.
+
+## Failure modes
+
+1. **RC1 root conflation**: using installed root as allowlist source would repeat stale cone behavior. Mitigation: source sparse lib only from `SCRIPT_ROOT`; test with older fake cache missing the lib.
+2. **Release fallback runs stale Skill implementation**: missing `CURRENT_VERSION` root could otherwise call stale `/upgrade-larch`. Mitigation: resolve actual installed/cache root before fallback; reserve Skill fallback for true no-install.
+3. **False-negative cone comparison**: already-latest installs reinstall every run. Mitigation: shared normalization plus match/drift harness cases.
+4. **SessionStart fail-open violation**: undefined `PLUGIN_ROOT` or `normalize_sparse_dirs` could abort under `set -u`/`set -e`. Mitigation: local path binding, `declare -F` guard, best-effort isolation, and explicit tests.
+5. **Future allowlist edit misses release/docs/tests**: mitigation through edit-in-sync docs and intentional dual-update literal guard.
+
+## Testing strategy
+
+- Extend `test-upgrade-larch-retention.sh` for cone matching, drift, legacy clone, non-git clone, `already_latest_and_cone_ok`, release-style `CLAUDE_PLUGIN_ROOT` stale-cache guard, and sparse-dir expected literal dual-update guard.
+- Extend `test-sessionstart-health.sh` for drift/no-drift/no-clone/missing-lib cases with explicit `HOME`.
+- Run affected Make targets:
+  - `make test-upgrade-larch-retention`
+  - `make test-sessionstart`
+  - `bash scripts/relevant-checks.sh` or `make lint`
+- Manually verify the release Step 7 invocation shape with explicit `CLAUDE_PLUGIN_ROOT` per external-tool invocation rules.
+- Preserve Bash 3.2 compatibility.
+
+diff_added: 352
+diff_deleted: 50
+diff_lines: 402

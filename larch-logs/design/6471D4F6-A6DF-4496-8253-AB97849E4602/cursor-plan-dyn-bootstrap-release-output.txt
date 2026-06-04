@@ -1,0 +1,31 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/upgrade-larch/scripts/upgrade-larch.sh:5-7,.claude/skills/release/SKILL.md:43-48	RC1 sources lib-sparse-dirs from PLUGIN_ROOT=CUR_ROOT but CUR_ROOT is the pre-release cache tree without the new lib	/release Step 7 runs CLAUDE_PLUGIN_ROOT=$HOME/.claude/plugins/cache/larch-local/larch/${CURRENT_VERSION} bash $PWD/skills/upgrade-larch/scripts/upgrade-larch.sh. After extracting LARCH_SPARSE_DIRS to scripts/lib-sparse-dirs.sh, the script sources $PLUGIN_ROOT/scripts/lib-sparse-dirs.sh (plan line 25). That file is absent on the old cache dir, so the run fails (plan: fail loudly) or, if sourcing is softened, LARCH_SPARSE_DIRS stays the old list. With the old list, marketplace_sparse_cone_matches (upgrade-larch.sh:52-61,93-99) can still match the existing cone and take marketplace update only, never re-adding --sparse with python — RC1 silent miss on the release that introduces the dir.	Source lib-sparse-dirs from the executing script tree: $(cd "$SCRIPT_DIR/../../.." && pwd -P)/scripts/lib-sparse-dirs.sh (working tree on /release Step 7; installed plugin root on normal /upgrade-larch). Keep sourcing lib-quiet.sh from PLUGIN_ROOT for cache/prune. Document the split in release Step 7 and upgrade-larch.md.
+
+## Findings
+
+**1. [correctness]** `skills/upgrade-larch/scripts/upgrade-larch.sh:5-7`, `.claude/skills/release/SKILL.md` (planned Step 7)
+
+The plan’s RC1 path depends on running the **working-tree** `upgrade-larch.sh` while setting `CLAUDE_PLUGIN_ROOT` to the **pre-release cache** directory (`CUR_ROOT`). That split is correct for `LARCH_CACHE_DIR` / `INSTALLED_VERSION` / prune (see `upgrade-larch.sh:305-308`, `prune_cached_versions` at 259-264).
+
+After moving `LARCH_SPARSE_DIRS` into `scripts/lib-sparse-dirs.sh`, the proposed script sources that lib from `$PLUGIN_ROOT` (plan § `upgrade-larch.sh` item 1). On Step 7, `PLUGIN_ROOT` is `CUR_ROOT`, which does not yet contain `lib-sparse-dirs.sh`. The plan’s “fail loudly if the lib is missing” path aborts RC1; `/release` then falls back to the Skill-tool `/upgrade-larch`, which runs `${CLAUDE_PLUGIN_ROOT}/skills/upgrade-larch/scripts/upgrade-larch.sh` from the **still-installed old cache** (`skills/upgrade-larch/SKILL.md:17-18`) — also without the new allowlist for this cut.
+
+Worse than a hard fail: if implementation softens the missing-lib check, `LARCH_SPARSE_DIRS` stays the **old** list. Then `marketplace_sparse_cone_matches` (`upgrade-larch.sh:52-61`) can return true against the existing cone, and `refresh_larch_marketplace` takes the in-place `marketplace update` branch (`upgrade-larch.sh:93-99`) instead of remove + sparse re-add — **python never enters the cone** during the release that adds it.
+
+**Suggested revision:** Source `lib-sparse-dirs.sh` from the script’s repo root (`$(cd "$SCRIPT_DIR/../../.." && pwd -P)/scripts/lib-sparse-dirs.sh`), which is `$PWD` on RC1 and equals `PLUGIN_ROOT` on normal Skill invocations. Keep `lib-quiet.sh` on `PLUGIN_ROOT`. State this explicitly in the release Step 7 SKILL update and `upgrade-larch.md`.
+
+---
+
+**2. [risk-integration]** `.claude/skills/release/SKILL.md:146-148` (planned replacement)
+
+The planned Step 7 change is prose-only (no fenced Bash block). `/release` already requires re-deriving `NOTES_*` paths per Step because Bash subshells do not retain Step 2 locals (`release/SKILL.md:58`). Step 7 must likewise bind `CURRENT_VERSION` (or derive installed version via the same metadata `get_installed_larch_version` uses at `upgrade-larch.sh:113-139`) inside the Step 7 fence before computing `CUR_ROOT`.
+
+**Suggested revision:** Add a Step 7 bash fence that re-parses `CURRENT_VERSION` from prepare output (or reads installed version), sets `CUR_ROOT`, runs the working-tree script with the lib split above, and preserves warn-and-continue on non-zero exit.
+
+---
+
+**Exonerated / out of scope**
+
+- **RC2** (`already_latest_and_cone_ok` gating idempotent exit at `upgrade-larch.sh:357-364`) matches the stated goal; version mismatch short-circuit before cone check is already described in the plan edge cases.
+- **SessionStart drift probe** sourcing `lib-sparse-dirs.sh` beside `sessionstart-health.sh` under `scripts/` is consistent with `SCRIPT_DIR` at `sessionstart-health.sh:19-21`.
+- **No automated RC1 harness** — consistent with existing unit-level upgrade tests; manual verify note is adequate for SIMPLE scope.
+- **GitHub release API ordering** for `LATEST_STABLE` — latent; current `get_stable_releases` behavior is unchanged.
