@@ -75,10 +75,6 @@ def merge_pr(
     if terminal is not None:
         return terminal
 
-    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd, post_flush=post_flush)
-    if terminal is not None:
-        return terminal
-
     pr_num = ctx.pr_number
     state = _refresh_pr_info(runner, pr_num, ctx.repo, cwd=cwd)
     if not state.merge_state_status or state.merge_state_status == "UNKNOWN":

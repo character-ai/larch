@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -98,7 +99,7 @@ def _error_to_result(exc: Exception) -> ShipResult:
 
 def _breadcrumb(step: str, detail: str = "") -> None:
     suffix = f": {detail}" if detail else ""
-    logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}", quiet=None)
+    logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}", quiet=False)
 
 
 def _summary_from_manifest(ctx: RunContext) -> str:
@@ -759,7 +760,10 @@ def main(argv: list[str] | None = None) -> int:
     try:
         result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
     except Exception:
-        logging_util.BreadcrumbWriter().emit("ship.py: internal error", quiet=None)
+        logging_util.BreadcrumbWriter().emit(
+            f"ship.py: internal error\n{traceback.format_exc()}",
+            quiet=False,
+        )
         result = ShipResult(Outcome.INTERNAL_ERROR, detail="internal error")
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]

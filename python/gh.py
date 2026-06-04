@@ -430,7 +430,6 @@ def _recover_pr_from_create_output(
             branch=branch,
             repo=repo,
             cwd=cwd,
-            allow_unverified=True,
         )
         if recovered is not None:
             return recovered
@@ -454,6 +453,7 @@ def _recover_pr_from_conflict_text(
         branch=branch,
         repo=repo,
         cwd=cwd,
+        allow_unverified=True,
     )
 
 

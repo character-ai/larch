@@ -376,10 +376,38 @@ def test_pr_create_recovers_url_when_pr_view_temporarily_missing() -> None:
             CommandResult(("gh", "pr", "view", "456"), 1, "", "not found", 0.01),
         ],
     )
-    pr, created = gh.pr_create(runner, repo="owner/repo", branch="feat", title="t", body="b")
-    assert created is True
-    assert pr.number == 456
-    assert pr.url == "https://github.example.test/Owner/Repo/pull/456"
+    with pytest.raises(ShipError, match="could not be resolved"):
+        _ = gh.pr_create(runner, repo="owner/repo", branch="feat", title="t", body="b")
+
+
+def test_pr_create_recovers_conflict_url_when_list_and_view_fail() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"),
+                1,
+                "",
+                (
+                    'a pull request for branch "feat" into branch "main" already exists:\n'
+                    "https://github.com/o/r/pull/321\n"
+                ),
+                0.01,
+            ),
+            CommandResult(("gh", "pr", "list"), 1, "", "list failed", 0.01),
+            CommandResult(("gh", "pr", "view", "321"), 1, "", "view failed", 0.01),
+        ],
+    )
+    pr, created = gh.pr_create(
+        runner,
+        repo="o/r",
+        branch="feat",
+        title="t",
+        body="b",
+    )
+    assert created is False
+    assert pr.number == 321
+    assert pr.url == "https://github.com/o/r/pull/321"
     assert pr.head_ref == "feat"
 
 

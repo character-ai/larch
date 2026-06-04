@@ -835,6 +835,7 @@ def test_larch_log_commit_volatile_cleanup_restores_am_porcelain(
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "status"), 0, f"AM {path}\n", "", 0.01),
+            CommandResult(("git", "reset", "HEAD"), 0, "", "", 0.01),
             CommandResult(("git", "restore"), 0, "", "", 0.01),
             CommandResult(("git", "status"), 0, "", "", 0.01),
         ],
@@ -846,4 +847,42 @@ def test_larch_log_commit_volatile_cleanup_restores_am_porcelain(
         cwd=str(repo),
     )
     assert result.argv == ("larch-log-volatile-only",)
-    assert ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", path] in runner.calls
+    reset_call = ["git", "reset", "HEAD", "--", rel]
+    restore_call = ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", path]
+    assert reset_call in runner.calls
+    assert restore_call in runner.calls
+    assert runner.calls.index(reset_call) < runner.calls.index(restore_call)
+
+
+def test_larch_log_commit_volatile_cleanup_resets_staged_before_restore(
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "timing-report-refresh.json").write_text("{}", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rel = "larch-logs/implement/run-abc"
+    path = f"{rel}/timing-report-refresh.json"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "status"), 0, f"A  {path}\n", "", 0.01),
+            CommandResult(("git", "reset", "HEAD"), 0, "", "", 0.01),
+            CommandResult(("git", "restore"), 0, "", "", 0.01),
+            CommandResult(("git", "status"), 0, "", "", 0.01),
+        ],
+    )
+    result = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        _ctx(tmp_path, str(state)),
+        tmp_path / "larch-logs",
+        cwd=str(repo),
+    )
+    assert result.argv == ("larch-log-volatile-only",)
+    reset_call = ["git", "reset", "HEAD", "--", rel]
+    restore_call = ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", path]
+    assert reset_call in runner.calls
+    assert restore_call in runner.calls
+    assert runner.calls.index(reset_call) < runner.calls.index(restore_call)

@@ -63,6 +63,8 @@ grep -Fq "sys.version_info >= (3, 11)" "$SKILL_MD" \
   || fail "SKILL.md Step 8+ Invoke fence must pin the Python 3.11 ship-driver guard"
 grep -Fq '"outcome":"STALLED"' "$SKILL_MD" \
   || fail "SKILL.md Step 8+ Python version guard must emit structured JSON on stdout"
+grep -Fq 'exec 1>&3 2>&4' "$SKILL_MD" \
+  || fail "SKILL.md Step 8+ Python invoke fence must restore caller stdout/stderr under lib-quiet"
 grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-ship' "$SKILL_MD" \
   || fail "SKILL.md must retain 8-pre-ship phantom-probe invocation"
 grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-bump' "$SKILL_MD" \
@@ -892,5 +894,35 @@ grep -Fq "Treat the foreground Bash tool exit code as \`writer_rc\`" "$SKILL_MD"
   || fail "(3119) SKILL.md Exit 4 must pin foreground writer_rc routing"
 grep -Fq "treat the foreground Bash tool exit code as \`writer_rc\`" "$STALL_RECOVERY_MD" \
   || fail "(3119) stall-recovery.md step8-shippr must pin foreground writer_rc routing"
+
+guard_tmp="$(mktemp -d "${TMPDIR:-/tmp}/larch-ship-python-guard.XXXXXX")"
+real_python3="$(command -v python3)"
+[[ -n "$real_python3" ]] || fail "python3 required for ship-driver guard runtime probe"
+cat > "$guard_tmp/python3" <<SHIM
+#!/usr/bin/env bash
+if [ "\$1" = "-c" ] && printf '%s\n' "\$2" | grep -Fq 'sys.version_info >= (3, 11)'; then
+  exit 1
+fi
+exec "$real_python3" "\$@"
+SHIM
+chmod +x "$guard_tmp/python3"
+set +e
+PATH="$guard_tmp:$PATH" bash -c '
+if ! python3 -c '"'"'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'"'"' 2>/dev/null; then
+  echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
+  printf "%s\n" '"'"'{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'"'"'
+  exit 4
+fi
+exit 0
+' >"$guard_tmp/stdout.txt" 2>"$guard_tmp/stderr.txt"
+guard_rc=$?
+set -e
+[[ "$guard_rc" -eq 4 ]] \
+  || fail "ship-driver Python version guard must exit 4 when python3 is below 3.11 (got $guard_rc)"
+grep -Fq '"outcome":"STALLED"' "$guard_tmp/stdout.txt" \
+  || fail "ship-driver Python version guard must emit STALLED JSON on stdout"
+grep -Fq 'Python ship driver requires Python 3.11 or newer' "$guard_tmp/stderr.txt" \
+  || fail "ship-driver Python version guard must emit operator-visible stderr"
+rm -rf "$guard_tmp"
 
 echo "All assertions passed."

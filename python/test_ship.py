@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -643,6 +646,8 @@ def test_main_emits_json_stdout_on_unexpected_exception(
     assert payload["detail"] == "internal error"
     assert captured.out.count("\n") == 1
     assert "internal error" in captured.err
+    assert "Traceback" in captured.err
+    assert "RuntimeError" in captured.err
 
 
 def _meets_python_ship_floor(major: int, minor: int) -> bool:
@@ -653,3 +658,43 @@ def test_python_ship_driver_version_guard_probe() -> None:
     """Pin the /implement Step 8+ and ship.py runtime floor (Python >= 3.11)."""
     assert _meets_python_ship_floor(3, 11)
     assert not _meets_python_ship_floor(3, 10)
+
+
+def test_python_ship_driver_version_guard_failure_contract(tmp_path: Path) -> None:
+    """Runtime probe for the Step 8+ guard JSON/exit contract when python3 is too old."""
+    real_python = shutil.which("python3")
+    assert real_python is not None
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "python3"
+    _ = stub.write_text(
+        f"""#!/usr/bin/env bash
+if [ "$1" = "-c" ] && printf '%s\\n' "$2" | grep -Fq 'sys.version_info >= (3, 11)'; then
+  exit 1
+fi
+exec {real_python} "$@"
+""",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    script = """
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
+  printf '%s\\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
+  exit 4
+fi
+exit 0
+"""
+    completed = subprocess.run(
+        ["bash", "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PATH": f"{stub_dir}:{os.environ.get('PATH', '')}",
+        },
+    )
+    assert completed.returncode == 4
+    assert '"outcome":"STALLED"' in completed.stdout
+    assert "Python ship driver requires Python 3.11 or newer" in completed.stderr
