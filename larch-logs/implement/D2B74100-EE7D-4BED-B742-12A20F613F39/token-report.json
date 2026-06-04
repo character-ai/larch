@@ -290,16 +290,42 @@
           "total": 0
         },
         "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 19,
+          "cache_read": 3461887,
+          "cache_create": 15639,
+          "cache_create_5m": 0,
+          "cache_create_1h": 15639,
+          "output": 10487,
+          "total": 3488032
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 19,
+              "cache_read": 3461887,
+              "cache_create": 15639,
+              "cache_create_5m": 0,
+              "cache_create_1h": 15639,
+              "output": 10487,
+              "total": 3488032
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 60,
-      "cache_read": 7894170,
-      "cache_create": 188113,
+      "input": 79,
+      "cache_read": 11356057,
+      "cache_create": 203752,
       "cache_create_5m": 0,
-      "cache_create_1h": 188113,
-      "output": 37972,
-      "total": 8120315
+      "cache_create_1h": 203752,
+      "output": 48459,
+      "total": 11608347
     }
   },
   "codex": {
@@ -410,6 +436,14 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
         "totals": {
           "input": 0,
           "output": 0,
@@ -536,6 +570,14 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -545,12 +587,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 60,
-    "cache_read": 7894170,
+    "input": 79,
+    "cache_read": 11356057,
     "cache_create_5m": 0,
-    "cache_create_1h": 188113,
-    "output": 37972,
-    "total": 8120315
+    "cache_create_1h": 203752,
+    "output": 48459,
+    "total": 11608347
   },
   "BUCKETS_codex": {
     "input": 1834665,
