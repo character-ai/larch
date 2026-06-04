@@ -58,6 +58,28 @@ rm -rf "$tmp"
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/materialize-manifest-oos.XXXXXX")
 manifest="$tmp/manifest.json"
 cat >"$manifest" <<'JSON'
+{"schema_version":"1","status":"complete","oos_observations":[{"title":"Counted","description":"x","phase":"implement","focus_area":"correctness"}]}
+JSON
+[ "$("$HELPER" --count-only --manifest-path "$manifest" --implement-tmpdir "$tmp")" = "1" ] || fail "count-only must report manifest OOS length"
+"$HELPER" --manifest-path "$manifest" --implement-tmpdir "$tmp"
+contains "$tmp/oos-accepted-main-agent.md" '- **focus-area**: correctness' "structured public focus-area missing"
+rm -rf "$tmp"
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/materialize-manifest-oos.XXXXXX")
+manifest="$tmp/manifest.json"
+cat >"$manifest" <<'JSON'
+{"schema_version":"1","status":"complete","oos_observations":"bad"}
+JSON
+set +e
+"$HELPER" --count-only --manifest-path "$manifest" --implement-tmpdir "$tmp" >/dev/null 2>"$tmp/count.err"
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "count-only must fail closed on invalid oos_observations type"
+rm -rf "$tmp"
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/materialize-manifest-oos.XXXXXX")
+manifest="$tmp/manifest.json"
+cat >"$manifest" <<'JSON'
 {
   "schema_version": "1",
   "status": "complete",

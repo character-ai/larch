@@ -183,8 +183,6 @@ def disposition_ok(
     non_sec = _count_non_security(accepted_files)
     if non_sec == 0:
         return DispositionResult(ok=True, skipped=False, non_security_count=0)
-    if not oos_issues_ndjson or not Path(oos_issues_ndjson).is_file():
-        return DispositionResult(ok=False, skipped=False, non_security_count=non_sec)
     ndjson_paths = (oos_issues_ndjson,) if oos_issues_ndjson else ()
     loose_paths = (*filed_urls_files, *ndjson_paths)
     filed = _count_filed_urls_loose(loose_paths) + _count_filed_url_field_lines(

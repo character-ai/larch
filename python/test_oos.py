@@ -53,6 +53,21 @@ def test_disposition_passes_with_inline_triage(tmp_path: Path) -> None:
     assert result.ok
 
 
+def test_disposition_passes_with_inline_triage_without_ndjson(tmp_path: Path) -> None:
+    accepted = tmp_path / "accepted.md"
+    _ = accepted.write_text(
+        "### OOS_1: Folded\n- **Description**: fixed inline\n",
+        encoding="utf-8",
+    )
+    result = oos.disposition_ok(
+        _NoopRunner(),  # type: ignore[arg-type]
+        accepted_files=(str(accepted),),
+        commit_range_messages="Inline-triage rule 1: folded into this branch\n",
+    )
+    assert result.ok
+    assert result.inline_triage == 1
+
+
 def test_disposition_counts_markdown_oos_blocks(tmp_path: Path) -> None:
     accepted = tmp_path / "acc.md"
     _ = accepted.write_text(

@@ -1113,7 +1113,7 @@ if [[ "$STATUS" == "complete" ]]; then
     MATERIALIZE_OOS="$PLUGIN_ROOT/skills/implement/scripts/materialize-manifest-oos.sh"
     MAT_OOS_COUNT=""
     MAT_OOS_COUNT_RC=0
-    MAT_OOS_COUNT=$(jq 'if has("oos_observations") and (.oos_observations | type != "array") then error("oos_observations must be an array") elif (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$MANIFEST_PATH" 2>/dev/null) || MAT_OOS_COUNT_RC=$?
+    MAT_OOS_COUNT=$(bash "$MATERIALIZE_OOS" --count-only --manifest-path "$MANIFEST_PATH" --implement-tmpdir "$TMPDIR_ARG" 2>/dev/null) || MAT_OOS_COUNT_RC=$?
     MAT_OOS_LOG="$TMPDIR_ARG/materialize-manifest-oos.log"
     if [[ -x "$MATERIALIZE_OOS" ]]; then
         MAT_RC=0

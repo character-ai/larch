@@ -2,14 +2,19 @@
 set -euo pipefail
 
 usage() {
-  echo "usage: materialize-manifest-oos.sh --manifest-path PATH --implement-tmpdir DIR" >&2
+  echo "usage: materialize-manifest-oos.sh [--count-only] --manifest-path PATH --implement-tmpdir DIR" >&2
   exit 1
 }
 
 manifest_path=""
 implement_tmpdir=""
+count_only=false
 while [ $# -gt 0 ]; do
   case "$1" in
+    --count-only)
+      count_only=true
+      shift
+      ;;
     --manifest-path)
       [ $# -ge 2 ] || usage
       manifest_path=$2
@@ -51,6 +56,10 @@ count=$(jq '
     0
   end
 ' "$manifest_path") || exit 1
+if [ "$count_only" = "true" ]; then
+  printf '%s\n' "${count:-0}"
+  exit 0
+fi
 [ "${count:-0}" -gt 0 ] || exit 0
 if [ ! -x "$redact_secrets" ]; then
   echo "redact-secrets.sh missing or not executable: $redact_secrets" >&2
@@ -210,6 +219,9 @@ while [ "$i" -lt "$count" ]; do
     printf -- '- **Reviewer**: External implementer\n'
     printf -- '- **Vote tally**: N/A — auto-filed per policy\n'
     printf -- '- **Phase**: %s\n' "$phase"
+    if [ -n "$focus_area" ]; then
+      printf -- '- **focus-area**: %s\n' "$(normalize_title "$focus_area")"
+    fi
   } >> "$out"
   next_n=$((next_n + 1))
   i=$((i + 1))

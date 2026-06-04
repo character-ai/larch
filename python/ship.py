@@ -113,6 +113,23 @@ def _summary_from_manifest(ctx: RunContext) -> str:
     return "- Implement requested changes.\n"
 
 
+def oos_observation_count(manifest_path: Path) -> int | None:
+    """Return manifest oos_observations length, or None for malformed/OOS-invalid JSON."""
+    try:
+        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(loaded, dict):
+        return None
+    data = cast("dict[str, object]", loaded)
+    observations = data.get("oos_observations")
+    if isinstance(observations, list):
+        return len(cast("list[object]", observations))
+    if "oos_observations" in data:
+        return None
+    return 0
+
+
 def _pr_title(ctx: RunContext, runner: Runner, *, cwd: str | None) -> str:
     issue = ctx.issue_number or ctx.issue
     prefix = f"Fixes #{issue}: " if issue and str(issue).isdigit() else ""
@@ -188,20 +205,10 @@ def _materialize_manifest_oos(runner: Runner, ctx: RunContext, *, cwd: str | Non
     manifest_path = Path(ctx.manifest_path) if ctx.manifest_path else None
     if manifest_path is None or not manifest_path.is_file():
         return None
-    manifest_oos_count: int | None = None
-    try:
-        loaded = json.loads(manifest_path.read_text(encoding="utf-8"))
-        if isinstance(loaded, dict):
-            data = cast("dict[str, object]", loaded)
-            observations = data.get("oos_observations")
-            if isinstance(observations, list):
-                manifest_oos_count = len(cast("list[object]", observations))
-            elif "oos_observations" in data:
-                manifest_oos_count = None
-            else:
-                manifest_oos_count = 0
-    except (OSError, json.JSONDecodeError):
-        manifest_oos_count = None
+    manifest_oos_count = oos_observation_count(manifest_path)
+    materialize_failure_blocks = manifest_oos_count is None or manifest_oos_count > 0
+    if materialize_failure_blocks:
+        _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
     script = (
         Path(__file__).resolve().parents[1]
         / "skills"
@@ -233,9 +240,8 @@ def _materialize_manifest_oos(runner: Runner, ctx: RunContext, *, cwd: str | Non
         output_file=stderr_log,
         cwd=cwd,
     )
-    if manifest_oos_count == 0:
+    if not materialize_failure_blocks:
         return None
-    _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
     return ShipResult(
         Outcome.NEEDS_USER_INPUT,
         needs_user_reason=config.NEEDS_USER_OOS_FILING,
@@ -262,24 +268,16 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
         if session_id.is_file():
             run_id = session_id.read_text(encoding="utf-8").strip()
     run_dir_ndjson = tmpdir / "larch-logs" / "implement" / run_id / "oos-issues.ndjson" if run_id else Path()
-    if not run_id:
+    if not run_dir_ndjson.is_file():
         candidates = sorted((tmpdir / "larch-logs" / "implement").glob("*/oos-issues.ndjson"))
         if len(candidates) == 1:
             run_dir_ndjson = candidates[0]
-        elif len(candidates) > 1:
+        elif len(candidates) > 1 and not run_id:
             return ShipResult(
                 Outcome.NEEDS_USER_INPUT,
                 needs_user_reason=config.NEEDS_USER_OOS_FILING,
                 detail=config.NEEDS_USER_OOS_FILING,
             )
-    non_security_count = oos.count_non_security(accepted)
-    if non_security_count > 0 and not run_dir_ndjson.is_file():
-        _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
-        return ShipResult(
-            Outcome.NEEDS_USER_INPUT,
-            needs_user_reason=config.NEEDS_USER_OOS_FILING,
-            detail=config.NEEDS_USER_OOS_FILING,
-        )
     commit_messages = ""
     base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
     commit_range = f"{base_remote}/main..HEAD"

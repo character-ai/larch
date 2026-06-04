@@ -764,6 +764,7 @@ EOF
         "${gate_extra[@]+"${gate_extra[@]}"}" \
         --accepted-files "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md,$oos_design_path,$IMPLEMENT_TMPDIR/oos-accepted-review.md" \
         --filed-urls-file "$IMPLEMENT_TMPDIR/oos-issues-created.md" \
+        --filed-urls-strict-file "$oos_design_path" \
         --commit-range "$oos_range" 2>"$gate_log"
     gate_rc=$?
     (( _had_errexit )) && set -e
@@ -1212,7 +1213,7 @@ run_pr_prep_phase() {
     if [ -n "$manifest_path" ] && [ -f "$manifest_path" ]; then
         materialize_count=""
         materialize_count_rc=0
-        materialize_count=$(jq 'if has("oos_observations") and (.oos_observations | type != "array") then error("oos_observations must be an array") elif (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$manifest_path" 2>/dev/null) || materialize_count_rc=$?
+        materialize_count=$(bash "$materialize_oos" --count-only --manifest-path "$manifest_path" --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>/dev/null) || materialize_count_rc=$?
         fail_file=$(failure_capture_path pr-prep)
         _had_errexit=0
         case $- in *e*) _had_errexit=1 ;; esac

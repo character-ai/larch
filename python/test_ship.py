@@ -255,6 +255,59 @@ def test_stale_design_tmpdir_falls_back_to_design_export(
     assert ship.resolve_oos_accepted_design_path(tmp_path) == exported
 
 
+def test_oos_gate_uses_single_alternate_ndjson_when_run_id_path_missing(tmp_path: Path) -> None:
+    accepted = tmp_path / "oos-accepted-main-agent.md"
+    _ = accepted.write_text(
+        "### OOS_1: Filed elsewhere\n- **Description**: already filed\n",
+        encoding="utf-8",
+    )
+    alternate = tmp_path / "larch-logs" / "implement" / "other-run" / "oos-issues.ndjson"
+    alternate.parent.mkdir(parents=True)
+    _ = alternate.write_text(
+        '{"body":"Created https://github.com/example/larch/issues/99"}\n',
+        encoding="utf-8",
+    )
+
+    result = ship._oos_gate(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+
+
+def test_oos_gate_allows_inline_triage_without_ndjson(tmp_path: Path) -> None:
+    class InlineRunner(RecordingRunner):
+        def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
+            self.calls.append(list(argv))
+            if argv[:3] == ["git", "log", "--format=%B"]:
+                return CommandResult(tuple(argv), 0, "Inline-triage rule 1: folded\n", "", 0.01)
+            return CommandResult(tuple(argv), 0, "", "", 0.01)
+
+    accepted = tmp_path / "oos-accepted-main-agent.md"
+    _ = accepted.write_text(
+        "### OOS_1: Folded\n- **Description**: fixed inline\n",
+        encoding="utf-8",
+    )
+
+    result = ship._oos_gate(InlineRunner(), _ctx(tmp_path), cwd=str(tmp_path))  # pyright: ignore[reportPrivateUsage]
+
+    assert result is None
+
+
+def test_oos_observation_count_matches_materializer_policy(tmp_path: Path) -> None:
+    missing = tmp_path / "missing.json"
+    _ = missing.write_text('{"summary_bullets":["x"]}', encoding="utf-8")
+    empty = tmp_path / "empty.json"
+    _ = empty.write_text('{"oos_observations":[]}', encoding="utf-8")
+    invalid_type = tmp_path / "invalid-type.json"
+    _ = invalid_type.write_text('{"oos_observations":"bad"}', encoding="utf-8")
+    malformed = tmp_path / "malformed.json"
+    _ = malformed.write_text("{", encoding="utf-8")
+
+    assert ship.oos_observation_count(missing) == 0
+    assert ship.oos_observation_count(empty) == 0
+    assert ship.oos_observation_count(invalid_type) is None
+    assert ship.oos_observation_count(malformed) is None
+
+
 def test_manifest_materialize_failure_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     class FailingMaterializeRunner(RecordingRunner):
         def run(self, argv: Sequence[str], **_kwargs: object) -> CommandResult:  # type: ignore[override]
