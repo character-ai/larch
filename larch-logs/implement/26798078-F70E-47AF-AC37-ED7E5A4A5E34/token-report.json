@@ -264,16 +264,68 @@
           "total": 0
         },
         "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 90,
+          "cache_read": 14546769,
+          "cache_create": 80887,
+          "cache_create_5m": 0,
+          "cache_create_1h": 80887,
+          "output": 40054,
+          "total": 14667800
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 90,
+              "cache_read": 14546769,
+              "cache_create": 80887,
+              "cache_create_5m": 0,
+              "cache_create_1h": 80887,
+              "output": 40054,
+              "total": 14667800
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 7 — commit review fixes",
+        "totals": {
+          "input": 14,
+          "cache_read": 2828912,
+          "cache_create": 11143,
+          "cache_create_5m": 0,
+          "cache_create_1h": 11143,
+          "output": 5633,
+          "total": 2845702
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 7 — commit review fixes",
+            "totals": {
+              "input": 14,
+              "cache_read": 2828912,
+              "cache_create": 11143,
+              "cache_create_5m": 0,
+              "cache_create_1h": 11143,
+              "output": 5633,
+              "total": 2845702
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 34,
-      "cache_read": 3034263,
-      "cache_create": 16371,
+      "input": 138,
+      "cache_read": 20409944,
+      "cache_create": 108401,
       "cache_create_5m": 0,
-      "cache_create_1h": 16371,
-      "output": 11364,
-      "total": 3062032
+      "cache_create_1h": 108401,
+      "output": 57051,
+      "total": 20575534
     }
   },
   "codex": {
@@ -368,6 +420,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 7 — commit review fixes",
         "totals": {
           "input": 0,
           "output": 0,
@@ -478,6 +546,22 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 7 — commit review fixes",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -487,12 +571,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 34,
-    "cache_read": 3034263,
+    "input": 138,
+    "cache_read": 20409944,
     "cache_create_5m": 0,
-    "cache_create_1h": 16371,
-    "output": 11364,
-    "total": 3062032
+    "cache_create_1h": 108401,
+    "output": 57051,
+    "total": 20575534
   },
   "BUCKETS_codex": {
     "input": 291863,
