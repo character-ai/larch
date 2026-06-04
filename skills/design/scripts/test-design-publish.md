@@ -1,6 +1,6 @@
 # test-design-publish.sh
 
-Offline harness for [`design-publish.sh`](design-publish.md). Stub `PATH` shims exercise argv, preconditions, plan-write failure, happy path, plan → upsert → rename → publish → marker ordering, exactly one `[DESIGNED]` rename call on the happy path, `SESSION_ID` empty, `PUBLISH_OK=false` after both mutating and idempotent `[DESIGNED]` renames, unexpected publish, rename-failure warning detail, and render env binding.
+Offline harness for [`design-publish.sh`](design-publish.md). Stub `PATH` shims exercise argv, preconditions, plan-write failure, happy path, plan → upsert → rename → publish → marker ordering, exactly one `[DESIGNED]` rename call on the happy path, `SESSION_ID` empty, `PUBLISH_OK=false` after mutating, idempotent, and failed `[DESIGNED]` renames, unexpected publish, rename-failure warning detail, unknown rename-result handling, and render env binding.
 
 Wired via `make test-design-publish` (see `Makefile`).
 

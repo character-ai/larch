@@ -335,7 +335,7 @@ append_failed_publish_notes() {
         fi
     fi
     if [ "${DESIGNED_ADMISSION_READY:-false}" = true ] || [ "${RENAMED:-}" = true ]; then
-        printf -- '- **Publish recovery**: design logs did not finish publishing; /implement may proceed because the issue is [DESIGNED], while logs are retried manually from the preserved design tmpdir.\n' >>"$out"
+        printf -- '- **Publish recovery**: design logs did not finish publishing and the issue is [DESIGNED]; retry log publish from the preserved design tmpdir before starting /implement when the session may contain secrets.\n' >>"$out"
     else
         printf -- '- **Publish recovery**: design logs did not finish publishing and the [DESIGNED] rename was not confirmed; fix the issue title before /implement, then retry logs manually from the preserved design tmpdir.\n' >>"$out"
     fi

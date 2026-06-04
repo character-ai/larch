@@ -1494,6 +1494,8 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
    PLAN_WRITE_OK=""
    PUBLISH_OK=""
    RENAMED=""
+   NEW_TITLE=""
+   DESIGNED_ADMISSION_READY=""
    UPSERT_STATUS=""
    ARCHITECTURE_SOURCE=""
    FINAL_SUMMARY_PATH=""
@@ -1512,7 +1514,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
        while IFS= read -r _line || [[ -n "$_line" ]]; do
          _key="${_line%%=*}"; _value="${_line#*=}"
          case "$_key" in
-           PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE) printf -v "$_key" '%s' "$_value" ;;
+           PLAN_WRITE_OK|PUBLISH_OK|RENAMED|NEW_TITLE|DESIGNED_ADMISSION_READY|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE) printf -v "$_key" '%s' "$_value" ;;
            WARN) _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done; if [[ "$_publish_warn_dup" != true ]]; then _publish_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
          esac
        done <"$DESIGN_TMPDIR/.design-publish-result.env"
@@ -1521,7 +1523,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
    while IFS= read -r _line || [[ -n "$_line" ]]; do
      _key="${_line%%=*}"; _value="${_line#*=}"
      case "$_key" in
-       PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
+       PLAN_WRITE_OK|PUBLISH_OK|RENAMED|NEW_TITLE|DESIGNED_ADMISSION_READY|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
        WARN)
          if [[ "$_publish_parse_ok" != true ]]; then
            _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done
@@ -1571,11 +1573,11 @@ When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=true`, the
 
 `➡️ 5: finalize — plan written to issue #<N>; NEXT REQUIRED: continue`
 
-When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and `/implement` admission is ready (`RENAMED=true`, or idempotent `RENAMED=false` with `NEW_TITLE` already prefixed `[DESIGNED]`), the footer line is:
+When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and the issue title is confirmed `[DESIGNED]` (`DESIGNED_ADMISSION_READY=true`, derived from `RENAMED=true` or idempotent `RENAMED=false` with `NEW_TITLE` already prefixed `[DESIGNED]`), the footer line is:
 
-`➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] is set; log publish incomplete; /implement may proceed while logs are retried manually from the preserved $DESIGN_TMPDIR; NEXT REQUIRED: continue`
+`➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] is set; log publish incomplete; retry log publish manually from the preserved $DESIGN_TMPDIR before /implement when the session may contain secrets; NEXT REQUIRED: continue`
 
-When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and `/implement` admission is not confirmed (`RENAMED` is not `true` and idempotent `[DESIGNED]` title state was not observed), the footer line is:
+When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and the issue title is not confirmed `[DESIGNED]` (`DESIGNED_ADMISSION_READY` is not `true`), the footer line is:
 
 `➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] rename not confirmed; log publish incomplete; fix the issue title before /implement and retry log publish manually from the preserved $DESIGN_TMPDIR; NEXT REQUIRED: continue`
 

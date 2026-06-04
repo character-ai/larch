@@ -1434,7 +1434,7 @@ grep -Fq 'export SESSION_ID' "$DESIGN_PUBLISH_SH" \
 grep -Fq 'render-final-summary.sh' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must invoke render-final-summary.sh"
 # shellcheck disable=SC2016 # Markdown literal intentionally contains $DESIGN_TMPDIR.
-grep -Fq '[DESIGNED] is set; log publish incomplete; /implement may proceed while logs are retried manually from the preserved $DESIGN_TMPDIR' "$SKILL_MD" \
+grep -Fq '[DESIGNED] is set; log publish incomplete; retry log publish manually from the preserved $DESIGN_TMPDIR before /implement when the session may contain secrets' "$SKILL_MD" \
   || fail "(FINDING_6) SKILL.md missing RENAMED/admission-ready failed-publish footer"
 # shellcheck disable=SC2016 # Markdown literal intentionally contains $DESIGN_TMPDIR.
 grep -Fq '[DESIGNED] rename not confirmed; log publish incomplete; fix the issue title before /implement and retry log publish manually from the preserved $DESIGN_TMPDIR' "$SKILL_MD" \

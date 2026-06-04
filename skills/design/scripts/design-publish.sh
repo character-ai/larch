@@ -167,6 +167,7 @@ PR_URL=""
 RECOVERY_BRANCH=""
 RENAMED=""
 NEW_TITLE=""
+DESIGNED_ADMISSION_READY=false
 UPSERT_STATUS=""
 ARCHITECTURE_SOURCE=""
 UPSERT_RAN=false
@@ -202,8 +203,16 @@ renamed_admission_ready() {
     return 1
 }
 
+refresh_designed_admission_ready() {
+    DESIGNED_ADMISSION_READY=false
+    if renamed_admission_ready; then
+        DESIGNED_ADMISSION_READY=true
+    fi
+}
+
 write_result_env_and_emit() {
     local -a _kvs=()
+    refresh_designed_admission_ready
     _kvs+=("PLAN_WRITE_OK=$PLAN_WRITE_OK")
     _kvs+=("VALIDATE_STATUS=$VALIDATE_STATUS")
     _kvs+=("VALIDATE_DEFECT_COUNT=$VALIDATE_DEFECT_COUNT")
@@ -216,6 +225,8 @@ write_result_env_and_emit() {
     [[ -n "${RECOVERY_BRANCH:-}" ]] && _kvs+=("RECOVERY_BRANCH=$RECOVERY_BRANCH")
     [[ -n "${RECOVERY_BRANCH:-}" ]] && _kvs+=("LOG_RECOVERY_BRANCH=$RECOVERY_BRANCH")
     [[ -n "${RENAMED:-}" ]] && _kvs+=("RENAMED=$RENAMED")
+    [[ -n "${NEW_TITLE:-}" ]] && _kvs+=("NEW_TITLE=$NEW_TITLE")
+    _kvs+=("DESIGNED_ADMISSION_READY=$DESIGNED_ADMISSION_READY")
     [[ -n "${UPSERT_STATUS:-}" ]] && _kvs+=("UPSERT_STATUS=$UPSERT_STATUS")
     [[ -n "${ARCHITECTURE_SOURCE:-}" ]] && _kvs+=("ARCHITECTURE_SOURCE=$ARCHITECTURE_SOURCE")
     _kvs+=("FINAL_SUMMARY_PATH=$FINAL_SUMMARY_PATH")
@@ -235,6 +246,8 @@ write_result_env_and_emit() {
     [[ -n "${RECOVERY_BRANCH:-}" ]] && emit_kv RECOVERY_BRANCH "$RECOVERY_BRANCH"
     [[ -n "${RECOVERY_BRANCH:-}" ]] && emit_kv LOG_RECOVERY_BRANCH "$RECOVERY_BRANCH"
     [[ -n "${RENAMED:-}" ]] && emit_kv RENAMED "$RENAMED"
+    [[ -n "${NEW_TITLE:-}" ]] && emit_kv NEW_TITLE "$NEW_TITLE"
+    emit_kv DESIGNED_ADMISSION_READY "$DESIGNED_ADMISSION_READY"
     [[ -n "${UPSERT_STATUS:-}" ]] && emit_kv UPSERT_STATUS "$UPSERT_STATUS"
     [[ -n "${ARCHITECTURE_SOURCE:-}" ]] && emit_kv ARCHITECTURE_SOURCE "$ARCHITECTURE_SOURCE"
     emit_kv FINAL_SUMMARY_PATH "$FINAL_SUMMARY_PATH"
@@ -348,7 +361,7 @@ fi
 if [[ -n "$SESSION_ID" ]]; then
     _rename_seen=false
     if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designed ${REPO:+--repo "$REPO"}); then
-        RENAMED=false
+        RENAMED=""
         NEW_TITLE=""
         while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
             case "$_rename_line" in
@@ -455,10 +468,7 @@ export DESIGN_LOG_PR_URL="${PR_URL:-}"
 export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
 export RENAMED="${RENAMED:-}"
 export NEW_TITLE="${NEW_TITLE:-}"
-DESIGNED_ADMISSION_READY=false
-if renamed_admission_ready; then
-    DESIGNED_ADMISSION_READY=true
-fi
+refresh_designed_admission_ready
 export DESIGNED_ADMISSION_READY
 "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
     --outcome "$SUMMARY_OUTCOME" \
