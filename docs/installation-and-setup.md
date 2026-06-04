@@ -10,7 +10,7 @@ Maintainers publish GitHub Releases on a release cadence (not on every merge to 
 
 #### Install
 ```bash
-claude plugin marketplace add character-ai/larch --sparse .claude .claude-plugin .gemini .github agents docs hooks scripts skills tests
+claude plugin marketplace add character-ai/larch --sparse .claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests
 claude plugin install larch@larch-local
 ```
 The first command registers larch's marketplace manifest (`.claude-plugin/marketplace.json`). The second command installs the `larch` plugin into your Claude Code user scope. Once installed, all larch skills (e.g., /implement) become available in every Claude Code session.  Note that both commands make changes to your `~/.claude/settings.json`.
