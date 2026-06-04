@@ -118,9 +118,51 @@ printf '{"msg":{"usage":{"input_tokens":1000,"cached_input_tokens":900,"output_t
 EOF
 chmod +x "$runtime_bin/codex"
 
+auth_prep_bin="$TMPDIR_BASE/ci-auth-prep-bin"
+auth_prep_home="$TMPDIR_BASE/ci-auth-prep-home"
+auth_prep_out="$TMPDIR_BASE/ci-auth-prep-out"
+auth_prep_argv="$TMPDIR_BASE/ci-auth-prep-argv.txt"
+mkdir -p "$auth_prep_bin" "$auth_prep_home"
+cat > "$auth_prep_bin/mktemp" <<EOF
+#!/usr/bin/env bash
+set -euo pipefail
+if [[ "\${1:-}" == "-d" && "\${2:-}" == /tmp/larch-codex-ci-home-* ]]; then
+    d="$auth_prep_home/codex-home"
+    rm -rf "\$d"
+    mkdir -p "\$d"
+    printf 'model_provider = "openai-larch-env"\n' > "\$d/config.toml"
+    chmod a-w "\$d/config.toml" 2>/dev/null || true
+    printf '%s\n' "\$d"
+    exit 0
+fi
+exec /usr/bin/mktemp "\$@"
+EOF
+chmod +x "$auth_prep_bin/mktemp"
+cat > "$auth_prep_bin/codex" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$@" > "$auth_prep_argv"
+exit 0
+EOF
+chmod +x "$auth_prep_bin/codex"
+set +e
+(cd "$REPO_ROOT" && PATH="$auth_prep_bin:$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    env -u OPENAI_API_KEY LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$auth_prep_out" --run-id r1 --repo owner/repo --timeout 60) >"$TMPDIR_BASE/auth-prep.stdout" 2>"$TMPDIR_BASE/auth-prep.stderr"
+auth_prep_rc=$?
+set -e
+chmod u+w "$auth_prep_home/codex-home/config.toml" 2>/dev/null || true
+if [[ "$auth_prep_rc" -eq 0 ]] \
+    && grep -q '^LAUNCHER_EXIT=1$' "$TMPDIR_BASE/auth-prep.stdout" \
+    && grep -q 'codex-auth-setup: failed to prepare Codex auth material' "${auth_prep_out}.sidecar" \
+    && [[ ! -e "$auth_prep_argv" ]]; then
+    ok "auth-prep failure emits KVs and skips Codex spawn"
+else
+    fail "auth-prep failure emits KVs and skips Codex spawn: rc=$auth_prep_rc stdout=$(cat "$TMPDIR_BASE/auth-prep.stdout" 2>/dev/null) sidecar=$(cat "${auth_prep_out}.sidecar" 2>/dev/null) argv=$(cat "$auth_prep_argv" 2>/dev/null)"
+fi
+
 OUT_SUCCESS="$TMPDIR_BASE/ci-runtime-success"
 (cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
-    LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    OPENAI_API_KEY=sk-larch-ci-sentinel LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
     bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_SUCCESS" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
 if grep -q '^TOOL=codex$' "${OUT_SUCCESS}.token-record" \
     && grep -q '^INPUT=100$' "${OUT_SUCCESS}.token-record" \
@@ -147,6 +189,37 @@ if grep -qx -- '--json' "$runtime_argv" 2>/dev/null; then
     ok "runtime success argv includes --json"
 else
     fail "runtime success argv includes --json: $(cat "$runtime_argv" 2>/dev/null)"
+fi
+
+if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$runtime_argv"     && ! grep -Fq 'sk-larch-ci-sentinel' "$runtime_argv"; then
+    ok "runtime success env-key auth argv uses var name only"
+else
+    fail "runtime success env-key auth argv mismatch: $(cat "$runtime_argv" 2>/dev/null)"
+fi
+if ! grep -Fq 'sk-larch-ci-sentinel' "${OUT_SUCCESS}.events.jsonl" 2>/dev/null; then
+    ok "runtime success env-key events omit secret value"
+else
+    fail "runtime success env-key events leaked secret value: $(cat "${OUT_SUCCESS}.events.jsonl" 2>/dev/null)"
+fi
+
+OUT_LOGIN_UNSET="$TMPDIR_BASE/ci-runtime-login-unset"
+(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    env -u OPENAI_API_KEY LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_LOGIN_UNSET" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
+if ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$runtime_argv" 2>/dev/null; then
+    ok "runtime login auth omits env-key argv when OPENAI_API_KEY unset"
+else
+    fail "runtime login auth should omit env-key argv when unset: $(cat "$runtime_argv" 2>/dev/null)"
+fi
+
+OUT_LOGIN_EMPTY="$TMPDIR_BASE/ci-runtime-login-empty"
+(cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \
+    OPENAI_API_KEY="" LARCH_CODEX_MODEL=stub-model RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
+    bash "$REPO_ROOT/scripts/launch-codex-ci.sh" --role fix --output "$OUT_LOGIN_EMPTY" --run-id r1 --repo owner/repo --timeout 60) >/dev/null 2>&1
+if ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$runtime_argv" 2>/dev/null; then
+    ok "runtime login auth omits env-key argv when OPENAI_API_KEY empty"
+else
+    fail "runtime login auth should omit env-key argv when empty: $(cat "$runtime_argv" 2>/dev/null)"
 fi
 
 cat > "$runtime_bin/codex" <<'EOF'

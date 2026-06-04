@@ -1,0 +1,26 @@
+warning: `--full-auto` is deprecated; use `--sandbox workspace-write` instead.
+Reading additional input from stdin...
+⏳ codex agent: still running (1m elapsed)
+⏳ codex agent: still running (2m elapsed)
+⏳ codex agent: still running (3m elapsed)
+2026-06-04T09:05:07.024765Z ERROR codex_core::tools::router: error=apply_patch verification failed: Failed to find expected lines in <OPERATOR_REPO_PATH>/scripts/test-launch-review.sh:
+if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV"     && ! grep -Fq '<REDACTED-TOKEN>' "$ARGV"     && ! grep -Fq 'openai-larch-env' "$CODEX_CONFIG_FILE"; then
+    pass
+else
+    fail "env-key auth should use argv var-name overrides only"
+fi
+
+# Prompt sidecars are always emitted next to the canonical output file, matching
+# collect-agent-results.sh retry replay expectations.
+⏳ codex agent: still running (4m elapsed)
+⏳ codex agent: still running (5m elapsed)
+⏳ codex agent: still running (6m elapsed)
+⏳ codex agent: still running (7m elapsed)
+⏳ codex agent: still running (8m elapsed)
+⏳ codex agent: still running (9m elapsed)
+⏳ codex agent: still running (10m elapsed)
+⏳ codex agent: still running (11m elapsed)
+⏳ codex agent: still running (12m elapsed)
+⏳ codex agent: still running (13m elapsed)
+⏳ codex agent: still running (14m elapsed)
+✓ codex agent: completed (exit code 0, 851s elapsed, output 315 bytes)

@@ -79,6 +79,15 @@ mkdir -p "$(dirname "$output")"
 json=false
 last_message=""
 if [[ "$tool" == "codex" ]]; then
+  if [[ -n "${TEST_AGENT_ARGV_FILE:-}" ]]; then
+    printf '%s\n' "$@" > "$TEST_AGENT_ARGV_FILE"
+  fi
+  if [[ -n "${TEST_AGENT_CODEX_HOME_FILE:-}" ]]; then
+    printf '%s\n' "${CODEX_HOME:-}" > "$TEST_AGENT_CODEX_HOME_FILE"
+  fi
+  if [[ -n "${TEST_AGENT_CODEX_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
+    cp "$CODEX_HOME/config.toml" "$TEST_AGENT_CODEX_CONFIG_FILE"
+  fi
   inner=("$@")
   i=0
   while [[ $i -lt ${#inner[@]} ]]; do
@@ -767,14 +776,38 @@ implement_tmp="$work_codex_telemetry/implement"
 mkdir -p "$implement_tmp"
 printf 'CODEX_PRESENT=true\nCURSOR_PRESENT=true\n' > "$implement_tmp/session-env.sh"
 codex_telemetry_ledger="$TMP/codex-telemetry-ledger.jsonl"
+codex_telemetry_argv="$TMP/codex-telemetry-argv.txt"
+codex_telemetry_home="$TMP/codex-telemetry-home.txt"
+codex_telemetry_config="$TMP/codex-telemetry-config.toml"
 set +e
-out=$(LARCH_TOKEN_LEDGER="$codex_telemetry_ledger" TEST_AGENT_BEHAVIOR=codex-success run_review_and_fix "$work_codex_telemetry" \
+out=$(LARCH_TOKEN_LEDGER="$codex_telemetry_ledger" TEST_AGENT_BEHAVIOR=codex-success \
+    OPENAI_API_KEY=sk-larch-review-fix-sentinel \
+    LARCH_CODEX_MODEL=review-fix-model-sentinel \
+    TEST_AGENT_ARGV_FILE="$codex_telemetry_argv" \
+    TEST_AGENT_CODEX_HOME_FILE="$codex_telemetry_home" \
+    TEST_AGENT_CODEX_CONFIG_FILE="$codex_telemetry_config" \
+    run_review_and_fix "$work_codex_telemetry" \
     --implement-tmpdir "$implement_tmp" --mode diff --round-num 1 --session-env-path "$implement_tmp/session-env.sh" --run-id codex-telemetry-run)
 rc=$?
 set -e
 [[ "$rc" -eq 0 ]] || { echo "$out" >&2; fail "codex telemetry expected exit 0 got $rc"; }
 grep -Fq 'CODER_TOOL=codex' <<< "$out" || fail "codex telemetry tool"
 [[ -s "$implement_tmp/round-1/coder-codex.events.jsonl" ]] || fail "codex telemetry events missing"
+grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$codex_telemetry_argv" \
+    || fail "codex telemetry env-key argv missing var-name override"
+grep -Fq 'review-fix-model-sentinel' "$codex_telemetry_argv" \
+    || fail "codex telemetry argv missing model args"
+grep -Fq 'sk-larch-review-fix-sentinel' "$codex_telemetry_argv" \
+    && fail "codex telemetry argv leaked env-key value"
+grep -Fq 'sk-larch-review-fix-sentinel' "$implement_tmp/round-1/coder-codex.events.jsonl" \
+    && fail "codex telemetry events leaked env-key value"
+if [[ -s "$codex_telemetry_home" ]] && [[ "$(cat "$codex_telemetry_home")" == */larch-codex-review-fix-home.* ]]; then
+    :
+else
+    fail "codex telemetry should use a temp CODEX_HOME"
+fi
+grep -Fq 'openai-larch-env' "$codex_telemetry_config" \
+    && fail "codex telemetry env-key auth should not write provider config"
 grep -Fq 'APPLIED: FINDING_1' "$implement_tmp/round-1/coder-codex.log" || fail "codex telemetry legacy log missing final message"
 if grep -Fq '"type":"token_usage"' "$implement_tmp/round-1/coder-codex.wrapper.log"; then
     fail "codex telemetry wrapper log must not contain JSONL"

@@ -29,6 +29,256 @@ assert_returns() {
 # shellcheck source=scripts/lib-external-launcher-common.sh
 source "$REPO_ROOT/scripts/lib-external-launcher-common.sh"
 
+assert_file_contains() {
+    local label="$1" file="$2" needle="$3"
+    if grep -Fq -- "$needle" "$file" 2>/dev/null; then
+        pass
+    else
+        fail "$label: missing '$needle' in $file"
+    fi
+}
+
+assert_file_not_contains() {
+    local label="$1" file="$2" needle="$3"
+    if grep -Fq -- "$needle" "$file" 2>/dev/null; then
+        fail "$label: unexpected '$needle' in $file"
+    else
+        pass
+    fi
+}
+
+assert_file_not_line() {
+    local label="$1" file="$2" needle="$3"
+    if grep -Fxq -- "$needle" "$file" 2>/dev/null; then
+        fail "$label: unexpected line '$needle' in $file"
+    else
+        pass
+    fi
+}
+
+assert_top_level_not_line() {
+    local label="$1" file="$2" needle="$3"
+    if awk -v needle="$needle" '
+        /^[[:space:]]*\[/ { in_table=1 }
+        !in_table && $0 == needle { found=1 }
+        END { exit found ? 0 : 1 }
+    ' "$file" 2>/dev/null; then
+        fail "$label: unexpected top-level line '$needle' in $file"
+    else
+        pass
+    fi
+}
+
+# --- Codex env-key auth helper ---
+_codex_auth_home="$TMPDIR_ROOT/codex-auth-home"
+mkdir -p "$TMPDIR_ROOT/home/.codex"
+printf '{"token":"login"}\n' > "$TMPDIR_ROOT/home/.codex/auth.json"
+printf '%s\n' \
+    'model_provider = "openai-larch-env" # strip nested selector' \
+    'env_key = "OPENAI_API_KEY"' \
+    '[model_providers.openai-larch-env]' \
+    'name = "old larch"' \
+    '[model_providers.other]' \
+    'name = "keep"' \
+    'model_provider = "openai-larch-env"' \
+    'env_key = "OPENAI_API_KEY"' \
+    'instructions = """' \
+    '[model_providers.openai-larch-env]' \
+    'example model_provider = "openai-larch-env"' \
+    '"""' \
+    '[[model_providers.openai-larch-env]]' \
+    'name = "old array larch"' > "$TMPDIR_ROOT/copied-config.toml"
+
+# shellcheck disable=SC2016
+OPENAI_API_KEY='sk-larch-sentinel-value' HOME="$TMPDIR_ROOT/home" bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    args=()
+    external_codex_auth_config_args args
+    printf "%s\n" "${args[@]}" > "$2/args.txt"
+    mkdir -p "$2/env-home"
+    printf "[profile.keep]\nmodel = \"sentinel\"\n" > "$2/env-home/config.toml"
+    external_prepare_codex_auth "$2/env-home"
+' bash "$REPO_ROOT" "$TMPDIR_ROOT"
+assert_file_contains "codex auth args include provider selector" "$TMPDIR_ROOT/args.txt" 'model_provider="openai-larch-env"'
+assert_file_contains "codex auth args include env var name" "$TMPDIR_ROOT/args.txt" 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"'
+assert_file_not_contains "codex auth args exclude key value" "$TMPDIR_ROOT/args.txt" 'sk-larch-sentinel-value'
+if [[ -e "$TMPDIR_ROOT/env-home/auth.json" ]]; then
+    fail "codex env-key path must not create auth.json"
+else
+    pass
+fi
+assert_file_not_contains "codex env-key path does not write provider config" "$TMPDIR_ROOT/env-home/config.toml" 'openai-larch-env'
+
+# shellcheck disable=SC2016
+HOME="$TMPDIR_ROOT/home" env -u OPENAI_API_KEY bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    mkdir -p "$2/login-home"
+    cp "$2/copied-config.toml" "$2/login-home/config.toml"
+    external_prepare_codex_auth "$2/login-home"
+' bash "$REPO_ROOT" "$TMPDIR_ROOT"
+assert_top_level_not_line "codex login strip removes selector" "$TMPDIR_ROOT/login-home/config.toml" 'model_provider = "openai-larch-env"'
+assert_top_level_not_line "codex login strip removes legacy env_key" "$TMPDIR_ROOT/login-home/config.toml" 'env_key = "OPENAI_API_KEY"'
+assert_file_not_contains "codex login strip removes larch provider table body" "$TMPDIR_ROOT/login-home/config.toml" 'name = "old larch"'
+assert_file_not_contains "codex login strip removes larch provider array table" "$TMPDIR_ROOT/login-home/config.toml" '[[model_providers.openai-larch-env]]'
+assert_file_not_contains "codex login strip removes larch provider array body" "$TMPDIR_ROOT/login-home/config.toml" 'name = "old array larch"'
+assert_file_contains "codex login strip preserves unrelated provider" "$TMPDIR_ROOT/login-home/config.toml" '[model_providers.other]'
+assert_file_contains "codex login strip preserves multiline header text" "$TMPDIR_ROOT/login-home/config.toml" '[model_providers.openai-larch-env]'
+assert_file_contains "codex login strip preserves multiline selector text" "$TMPDIR_ROOT/login-home/config.toml" 'example model_provider = "openai-larch-env"'
+if [[ -L "$TMPDIR_ROOT/login-home/auth.json" ]]; then
+    pass
+else
+    fail "codex login path must symlink auth.json"
+fi
+
+printf '%s\n' \
+    "model_provider='openai-larch-env'" \
+    "env_key='OPENAI_API_KEY'" \
+    "model_provider = openai-larch-env" \
+    "env_key = OPENAI_API_KEY" \
+    '[ model_providers.openai-larch-env ]' \
+    'name = "strip spaced table"' \
+    '[model_providers.other]' \
+    'model_provider = "openai-larch-env"' \
+    'env_key = "OPENAI_API_KEY"' \
+    'name = "keep nested selector text"' \
+    '# comment with """ must not enter multiline mode' \
+    'title = "keep after inline comment" # comment with """ must not enter multiline mode' \
+    'model_provider = "openai-larch-env"' \
+    'instructions = """' \
+    'model_provider = "openai-larch-env"' \
+    '"""' \
+    '[model_providers.openai-larch-env]' \
+    'instructions = """' \
+    '[model_providers.after]' \
+    'name = "keep after malformed skipped table"' > "$TMPDIR_ROOT/strip-edge-config.toml"
+external_strip_codex_larch_env_provider "$TMPDIR_ROOT/strip-edge-config.toml"
+assert_file_not_contains "codex login strip removes single-quoted selector" "$TMPDIR_ROOT/strip-edge-config.toml" "model_provider='openai-larch-env'"
+assert_file_not_contains "codex login strip removes single-quoted env_key" "$TMPDIR_ROOT/strip-edge-config.toml" "env_key='OPENAI_API_KEY'"
+assert_file_not_contains "codex login strip removes bare selector" "$TMPDIR_ROOT/strip-edge-config.toml" "model_provider = openai-larch-env"
+assert_file_not_contains "codex login strip removes bare env_key" "$TMPDIR_ROOT/strip-edge-config.toml" "env_key = OPENAI_API_KEY"
+assert_file_not_contains "codex login strip removes spaced larch provider body" "$TMPDIR_ROOT/strip-edge-config.toml" 'strip spaced table'
+assert_file_not_contains "codex login strip removes nested larch selector" "$TMPDIR_ROOT/strip-edge-config.toml" 'model_provider = "openai-larch-env" # strip nested selector'
+assert_file_contains "codex login strip preserves nested selector text" "$TMPDIR_ROOT/strip-edge-config.toml" 'name = "keep nested selector text"'
+assert_file_contains "codex login strip ignores triple quote in inline comment" "$TMPDIR_ROOT/strip-edge-config.toml" 'title = "keep after inline comment"'
+assert_file_contains "codex login strip recovers after malformed skipped table" "$TMPDIR_ROOT/strip-edge-config.toml" '[model_providers.after]'
+assert_file_contains "codex login strip preserves table after malformed skipped table" "$TMPDIR_ROOT/strip-edge-config.toml" 'name = "keep after malformed skipped table"'
+
+_strip_fail_home="$TMPDIR_ROOT/strip-fail-home"
+mkdir -p "$_strip_fail_home" "$TMPDIR_ROOT/no-mv"
+printf 'model_provider = "openai-larch-env"\n' > "$_strip_fail_home/config.toml"
+# Force the helper rewrite to fail after it has decided stripping is required.
+mv() { return 99; }
+set +e
+(
+    unset OPENAI_API_KEY
+    HOME="$TMPDIR_ROOT/home"
+    export HOME
+    external_prepare_codex_auth "$_strip_fail_home"
+)
+_strip_fail_rc=$?
+set -e
+unset -f mv
+if [[ "$_strip_fail_rc" -ne 0 && ! -e "$_strip_fail_home/auth.json" ]]; then
+    pass
+else
+    fail "codex auth prep strip failure must fail closed without linking auth.json"
+fi
+
+# shellcheck disable=SC2016
+HOME="$TMPDIR_ROOT/home" OPENAI_API_KEY='' bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    mkdir -p "$2/empty-home"
+    external_prepare_codex_auth "$2/empty-home"
+' bash "$REPO_ROOT" "$TMPDIR_ROOT"
+if [[ -L "$TMPDIR_ROOT/empty-home/auth.json" ]]; then
+    pass
+else
+    fail "codex empty env must fall back to auth.json"
+fi
+
+# shellcheck disable=SC2016
+HOME="$TMPDIR_ROOT/home" OPENAI_API_KEY=$' \t\n' bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    mkdir -p "$2/whitespace-home"
+    external_prepare_codex_auth "$2/whitespace-home"
+    args=()
+    external_codex_auth_config_args args
+    ((${#args[@]} == 0))
+' bash "$REPO_ROOT" "$TMPDIR_ROOT"
+if [[ -L "$TMPDIR_ROOT/whitespace-home/auth.json" ]]; then
+    pass
+else
+    fail "codex whitespace env must fall back to auth.json without env-key argv"
+fi
+
+# shellcheck disable=SC2016
+HOME="$TMPDIR_ROOT/home" OPENAI_API_KEY='sk-larch-strip-mode' bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    mkdir -p "$2/literal-strip-home"
+    cat > "$2/literal-strip-home/config.toml" <<'"'"'TOML'"'"'
+api_key = "sk-larch-copied-config"
+openai_api_key = "sk-larch-openai-copied"
+model_providers.openai.api_key = "sk-larch-provider-copied"
+[model_providers.other]
+api_key = """
+sk-larch-multiline-copied
+"""
+[profiles.keep]
+model = "ok"
+TOML
+    external_prepare_codex_auth "$2/literal-strip-home"
+' bash "$REPO_ROOT" "$TMPDIR_ROOT"
+assert_file_not_contains "codex copied config strips literal api_key" "$TMPDIR_ROOT/literal-strip-home/config.toml" 'sk-larch-copied-config'
+assert_file_not_contains "codex copied config strips literal openai_api_key" "$TMPDIR_ROOT/literal-strip-home/config.toml" 'sk-larch-openai-copied'
+assert_file_not_contains "codex copied config strips provider api_key" "$TMPDIR_ROOT/literal-strip-home/config.toml" 'sk-larch-provider-copied'
+assert_file_not_contains "codex copied config strips multiline api_key body" "$TMPDIR_ROOT/literal-strip-home/config.toml" 'sk-larch-multiline-copied'
+assert_file_contains "codex copied config preserves unrelated profiles" "$TMPDIR_ROOT/literal-strip-home/config.toml" '[profiles.keep]'
+
+_xtrace="$TMPDIR_ROOT/codex-env-xtrace.txt"
+# shellcheck disable=SC2016
+OPENAI_API_KEY='sk-larch-xtrace-sentinel' bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    set -x
+    external_codex_env_key_enabled
+    set +x
+' bash "$REPO_ROOT" 2>"$_xtrace"
+assert_file_not_contains "codex env-key predicate xtrace excludes key value" "$_xtrace" 'sk-larch-xtrace-sentinel'
+
+_args_xtrace="$TMPDIR_ROOT/codex-auth-args-xtrace.txt"
+# shellcheck disable=SC2016
+OPENAI_API_KEY='sk-larch-auth-args-xtrace-sentinel' bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    args=()
+    set -x
+    external_codex_auth_config_args args
+    set +x
+' bash "$REPO_ROOT" 2>"$_args_xtrace"
+assert_file_not_contains "codex auth argv helper xtrace excludes key value" "$_args_xtrace" 'sk-larch-auth-args-xtrace-sentinel'
+
+_env_key_fail_parent="$TMPDIR_ROOT/env-key-auth-fail-parent"
+printf 'not a directory\n' > "$_env_key_fail_parent"
+set +e
+(
+    OPENAI_API_KEY='sk-larch-env-key-fail-sentinel'
+    HOME="$TMPDIR_ROOT/home"
+    export OPENAI_API_KEY HOME
+    external_prepare_codex_auth "$_env_key_fail_parent/child"
+)
+_env_key_fail_rc=$?
+set -e
+if [[ "$_env_key_fail_rc" -ne 0 && ! -e "$_env_key_fail_parent/child/auth.json" ]]; then
+    pass
+else
+    fail "codex env-key auth-prep failure must not fall back to login auth.json"
+fi
+
 EMPTY_OUTPUT="$TMPDIR_ROOT/empty.output"
 : > "$EMPTY_OUTPUT"
 

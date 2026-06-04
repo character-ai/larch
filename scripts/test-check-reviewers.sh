@@ -29,6 +29,13 @@ run_cr() {
     local tmp="$1"
     shift
     mkdir -p "$tmp"
+    ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 env -u OPENAI_API_KEY "$@" )
+}
+
+run_cr_with_env() {
+    local tmp="$1"
+    shift
+    mkdir -p "$tmp"
     ( cd "$REPO_ROOT" && TMPDIR="$tmp" LARCH_QUIET_DISABLE=1 "$@" )
 }
 
@@ -198,6 +205,25 @@ out=$(run_cr "$SCRATCH/t6" env PATH="$SB6:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS
 assert_line "codex ok" "CODEX_PRESENT=true" "$out"
 assert_line "codex ok binary" "CODEX_BINARY_FOUND=true" "$out"
 
+SB6E="$SCRATCH/bin6e"
+mkdir -p "$SB6E" "$SCRATCH/t6e"
+cat > "$SB6E/codex" <<'STUB'
+#!/usr/bin/env bash
+exit 0
+STUB
+chmod +x "$SB6E/codex"
+cat > "$SB6E/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 127
+STUB
+chmod +x "$SB6E/cursor"
+printf 'false\n' > "$SCRATCH/t6e/larch-codex-login-present-${STAMP_USER}.stamp"
+touch "$SCRATCH/t6e/larch-codex-login-present-${STAMP_USER}.stamp"
+out=$(run_cr_with_env "$SCRATCH/t6e" env PATH="$SB6E:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=3600 \
+    OPENAI_API_KEY=sk-larch-probe-sentinel \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+assert_line "codex env-key ignores fresh login false stamp" "CODEX_PRESENT=true" "$out"
+
 # --- Codex: probe forwards production model args ---
 SB6M="$SCRATCH/bin6m"
 mkdir -p "$SB6M" "$SCRATCH/t6m"
@@ -237,6 +263,27 @@ out=$(run_cr "$SCRATCH/t7" env PATH="$SB7:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex non-auth" "CODEX_PRESENT=false" "$out"
 assert_line "codex non-auth binary" "CODEX_BINARY_FOUND=true" "$out"
+
+SB7A="$SCRATCH/bin7a"
+mkdir -p "$SB7A" "$SCRATCH/t7a-home/.codex"
+cat > "$SB7A/codex" <<'STUB'
+#!/usr/bin/env bash
+printf 'codex should not be invoked after auth-prep failure\n' >&2
+exit 0
+STUB
+chmod +x "$SB7A/codex"
+cat > "$SB7A/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 127
+STUB
+chmod +x "$SB7A/cursor"
+printf 'model_provider = "openai-larch-env"\n' > "$SCRATCH/t7a-home/.codex/config.toml"
+chmod a-w "$SCRATCH/t7a-home/.codex/config.toml" 2>/dev/null || true
+out=$(run_cr "$SCRATCH/t7a" env PATH="$SB7A:/usr/bin:/bin" HOME="$SCRATCH/t7a-home" LARCH_PROBE_TTL_SECONDS=0 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+chmod u+w "$SCRATCH/t7a-home/.codex/config.toml" 2>/dev/null || true
+assert_line "codex auth-prep failure non-aborting" "CODEX_PRESENT=false" "$out"
+assert_line "codex auth-prep failure still emits cursor" "CURSOR_PRESENT=false" "$out"
 
 SB8="$SCRATCH/bin8"
 mkdir -p "$SB8"
@@ -293,13 +340,65 @@ cat > "$SB10/cursor" <<'STUB'
 exit 127
 STUB
 chmod +x "$SB10/cursor"
-st10="$SCRATCH/t10/larch-codex-present-${STAMP_USER}.stamp"
+st10="$SCRATCH/t10/larch-codex-login-present-${STAMP_USER}.stamp"
 printf 'true\n' >"$st10"
 touch "$st10"
 out=$(run_cr "$SCRATCH/t10" env PATH="$SB10:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=3600 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
 assert_line "codex stamp hit" "CODEX_PRESENT=true" "$out"
 assert_line "codex stamp hit binary" "CODEX_BINARY_FOUND=true" "$out"
+
+mkdir -p "$SCRATCH/t10-env-key"
+SB10E="$SCRATCH/bin10-env-key"
+mkdir -p "$SB10E"
+cat > "$SB10E/codex" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"${LARCH_TEST_CODEX_ARGV_LOG:?}"
+exit 1
+STUB
+chmod +x "$SB10E/codex"
+cat > "$SB10E/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 127
+STUB
+chmod +x "$SB10E/cursor"
+st10e="$SCRATCH/t10-env-key/larch-codex-env-key-present-${STAMP_USER}.stamp"
+printf 'true\n' >"$st10e"
+touch "$st10e"
+out=$(cd "$REPO_ROOT" && TMPDIR="$SCRATCH/t10-env-key" PATH="$SB10E:/usr/bin:/bin" LARCH_QUIET_DISABLE=1 \
+    OPENAI_API_KEY=sk-larch-probe-sentinel LARCH_TEST_CODEX_ARGV_LOG="$SCRATCH/t10-env-key/codex-argv.log" \
+    LARCH_PROBE_TTL_SECONDS=3600 LARCH_EXTERNAL_AUTH_RETRIES=1 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux "$CR")
+assert_line "codex env-key true stamp uses cache" "CODEX_PRESENT=true" "$out"
+if [[ -s "$SCRATCH/t10-env-key/codex-argv.log" ]]; then
+    fail "codex env-key true stamp should not invoke live probe"
+fi
+
+mkdir -p "$SCRATCH/t10-env-key-false"
+SB10EF="$SCRATCH/bin10-env-key-false"
+mkdir -p "$SB10EF"
+cat > "$SB10EF/codex" <<'STUB'
+#!/usr/bin/env bash
+printf '%s\n' "$@" >"${LARCH_TEST_CODEX_ARGV_LOG:?}"
+exit 0
+STUB
+chmod +x "$SB10EF/codex"
+cat > "$SB10EF/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 127
+STUB
+chmod +x "$SB10EF/cursor"
+st10ef="$SCRATCH/t10-env-key-false/larch-codex-env-key-present-${STAMP_USER}.stamp"
+printf 'false\n' >"$st10ef"
+touch "$st10ef"
+out=$(cd "$REPO_ROOT" && TMPDIR="$SCRATCH/t10-env-key-false" PATH="$SB10EF:/usr/bin:/bin" LARCH_QUIET_DISABLE=1 \
+    OPENAI_API_KEY=sk-larch-probe-sentinel LARCH_TEST_CODEX_ARGV_LOG="$SCRATCH/t10-env-key-false/codex-argv.log" \
+    LARCH_PROBE_TTL_SECONDS=3600 LARCH_EXTERNAL_AUTH_RETRIES=1 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux "$CR")
+assert_line "codex env-key false stamp retries live probe" "CODEX_PRESENT=true" "$out"
+if ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$SCRATCH/t10-env-key-false/codex-argv.log" 2>/dev/null; then
+    fail "codex env-key false stamp should invoke live env-key probe"
+fi
 
 mkdir -p "$SCRATCH/t11"
 SB11="$SCRATCH/bin11"
@@ -314,7 +413,7 @@ cat > "$SB11/cursor" <<'STUB'
 exit 127
 STUB
 chmod +x "$SB11/cursor"
-st11="$SCRATCH/t11/larch-codex-present-${STAMP_USER}.stamp"
+st11="$SCRATCH/t11/larch-codex-login-present-${STAMP_USER}.stamp"
 printf 'false\n' >"$st11"
 touch -t 200001010000 "$st11" 2>/dev/null || touch -A "-876000" "$st11" 2>/dev/null || true
 out=$(run_cr "$SCRATCH/t11" env PATH="$SB11:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS=60 \

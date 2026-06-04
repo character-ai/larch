@@ -1,0 +1,16 @@
+Reviewing branch diff and Codex launcher wiring for parity across call sites.
+### In-Scope Findings
+
+- **architecture** `docs/installation-and-setup.md:159-160`, `docs/external-reviewers.md:12`, `scripts/launch-review.md:37-42`, `scripts/launch-codex-implement.md:15`, `scripts/launch-codex-ci.md:18` — Operator-facing docs describe env-key mode as “non-empty” / “unset or empty,” but `external_codex_env_key_enabled` in `scripts/lib-external-launcher-common.sh:522-527` treats whitespace-only values as login fallback (same as unset). That mismatch is easy to miss when debugging “why did larch use ChatGPT login?” and it diverges from the stricter contract already documented in `docs/configuration-and-permissions.md:179-181` and `.claude/rules/external-tool-launcher-parity.md:25`. **Suggested fix:** Align all Codex auth docs and launcher `.md` siblings on “non-whitespace” / “unset, empty, or whitespace-only → login,” matching the helper and parity rule.
+
+- **architecture** `scripts/test-launch-review.sh:339-409`, `scripts/test-launch-codex-ci.sh:165-220`, `skills/implement/scripts/test-codex-implementer.sh` — Launcher harnesses cover env-set, env-unset, and `OPENAI_API_KEY=""`, but not whitespace-only (`OPENAI_API_KEY=$' \t'`). Whitespace fallback is only exercised in `scripts/test-lib-external-launcher-common.sh:202-211`, so a launcher-specific regression in config copy + strip + argv wiring could slip through despite parity rule coverage on the three launchers. **Suggested fix:** Add a whitespace-only case to each launcher harness (and implementer harness if missing), asserting login branch (auth `-c` absent, `auth.json` symlink when fixture exists, no sentinel leak).
+
+### Out-of-Scope Observations
+
+- **Argv spine parity (good):** Across `launch-codex-implement.sh:396-404`, `launch-review.sh:574-581`, `launch-codex-ci.sh:214-220`, `check-reviewers.sh:236-241`, and `skills/review-and-fix/scripts/review-and-fix.sh:314-320`, the shared order is model args → trusted-project `-c` → auth `-c` overrides → `--output-last-message` → `--json` (probe intentionally omits `--json`, documented in `scripts/check-reviewers.md`). Sandbox/`--add-dir` differences match each surface’s role.
+
+- **Coverage docs (good):** `docs/external-reviewers.md:12` correctly scopes the change to the three launchers, health probe, and `review-and-fix` and excludes `/research` and other direct `codex exec` helpers.
+
+- **Intentional asymmetries:** `launch-review.sh:444-458` exits non-zero on auth-prep failure (`.done` + diag contract) while `launch-codex-implement.sh:316-326` emits KV and exits 0 for the Step 2 dispatcher — consumer-specific, not an argv parity bug. `launch-codex-ci.sh` stays config-file-free (no `~/.codex/config.toml` copy) by design.
+
+- **Deliberate login-path behavior change:** `external_prepare_codex_auth` + `external_strip_codex_literal_credentials` (`scripts/lib-external-launcher-common.sh:661-664`) strip literal `api_key` / `openai_api_key` from copied temp configs even when `~/.codex/auth.json` is absent; that removes a previously workable file-only credential path inside ephemeral homes in favor of env-key `-c` overrides or `auth.json` login (documented in `SECURITY.md` / `docs/configuration-and-permissions.md`).

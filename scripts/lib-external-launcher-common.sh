@@ -519,4 +519,208 @@ larch_validate_vendor_conflict_csv() {
     return 0
 }
 
+external_codex_env_key_enabled() {
+    [[ ${OPENAI_API_KEY+x} == x ]] || return 1
+    [[ ${#OPENAI_API_KEY} -gt 0 ]] || return 1
+    local _larch_xtrace_was_enabled=false
+    case $- in *x*) _larch_xtrace_was_enabled=true; set +x ;; esac
+    local _larch_env_key_rc=1
+    case "$OPENAI_API_KEY" in
+        *[!$' \t\r\n']*) _larch_env_key_rc=0 ;;
+        *) _larch_env_key_rc=1 ;;
+    esac
+    [[ "$_larch_xtrace_was_enabled" == "true" ]] && set -x
+    return "$_larch_env_key_rc"
+}
+
+external_strip_codex_larch_env_provider() {
+    local config_path="$1"
+    local tmp_path=""
+    [[ -f "$config_path" && -r "$config_path" && -w "$config_path" ]] || return 1
+    tmp_path=$(mktemp "${config_path}.XXXXXX") || return 1
+    if awk '
+        function count_occurrences(s, needle,    n, p) {
+            n = 0
+            while ((p = index(s, needle)) > 0) {
+                n++
+                s = substr(s, p + length(needle))
+            }
+            return n
+        }
+        function is_comment(line) {
+            return line ~ /^[[:space:]]*#/
+        }
+        function is_table_header(line) {
+            return line ~ /^[[:space:]]*\[\[?[[:space:]]*[^][]+[[:space:]]*\]?\][[:space:]]*(#.*)?$/
+        }
+        function is_larch_provider_header(line) {
+            return line ~ /^[[:space:]]*\[\[?[[:space:]]*model_providers\.openai-larch-env[[:space:]]*\]?\][[:space:]]*(#.*)?$/
+        }
+        function strip_inline_comment(line,    i, ch, prev, in_dq, in_sq, out) {
+            out = ""
+            prev = ""
+            in_dq = 0
+            in_sq = 0
+            for (i = 1; i <= length(line); i++) {
+                ch = substr(line, i, 1)
+                if (ch == "\"" && !in_sq && prev != "\\") in_dq = !in_dq
+                else if (ch == "'\''" && !in_dq) in_sq = !in_sq
+                if (ch == "#" && !in_dq && !in_sq) break
+                out = out ch
+                prev = ch
+            }
+            return out
+        }
+        function update_multiline_state(line,    content, dq, sq) {
+            if (is_comment(line)) return
+            content = strip_inline_comment(line)
+            dq = count_occurrences(content, "\"\"\"")
+            sq = count_occurrences(content, "'\'''\'''\''")
+            if (dq % 2 == 1) in_dq_multiline = !in_dq_multiline
+            if (sq % 2 == 1) in_sq_multiline = !in_sq_multiline
+        }
+        {
+            was_in_multiline = (in_dq_multiline || in_sq_multiline)
+        }
+        skip_larch_provider {
+            if (is_table_header($0)) {
+                if (is_larch_provider_header($0)) next
+                skip_larch_provider=0
+                current_table="other"
+                print
+                update_multiline_state($0)
+                next
+            }
+            next
+        }
+        !was_in_multiline && is_table_header($0) {
+            if (is_larch_provider_header($0)) {
+                skip_larch_provider=1
+                next
+            }
+            current_table="other"
+        }
+        !was_in_multiline && $0 ~ /^[[:space:]]*model_provider[[:space:]]*=[[:space:]]*["'\'']?openai-larch-env["'\'']?[[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
+        !was_in_multiline && $0 ~ /^[[:space:]]*env_key[[:space:]]*=[[:space:]]*["'\'']?OPENAI_API_KEY["'\'']?[[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
+        { print; update_multiline_state($0) }
+    ' "$config_path" > "$tmp_path"; then
+        mv -f "$tmp_path" "$config_path" || { rm -f "$tmp_path"; return 1; }
+    else
+        rm -f "$tmp_path"
+        return 1
+    fi
+}
+
+external_strip_codex_literal_credentials() {
+    local config_path="$1"
+    local tmp_path=""
+    [[ -f "$config_path" && -r "$config_path" && -w "$config_path" ]] || return 1
+    tmp_path=$(mktemp "${config_path}.cred.XXXXXX") || return 1
+    if awk '
+        function count_occurrences(s, needle,    n, p) {
+            n = 0
+            while ((p = index(s, needle)) > 0) {
+                n++
+                s = substr(s, p + length(needle))
+            }
+            return n
+        }
+        function strip_inline_comment(line,    i, ch, prev, in_dq, in_sq, out) {
+            out = ""
+            prev = ""
+            in_dq = 0
+            in_sq = 0
+            for (i = 1; i <= length(line); i++) {
+                ch = substr(line, i, 1)
+                if (ch == "\"" && !in_sq && prev != "\\") in_dq = !in_dq
+                else if (ch == "'\''" && !in_dq) in_sq = !in_sq
+                if (ch == "#" && !in_dq && !in_sq) break
+                out = out ch
+                prev = ch
+            }
+            return out
+        }
+        function update_multiline_state(line,    content, dq, sq) {
+            if (line ~ /^[[:space:]]*#/) return
+            content = strip_inline_comment(line)
+            dq = count_occurrences(content, "\"\"\"")
+            sq = count_occurrences(content, "'\'''\'''\''")
+            if (dq % 2 == 1) in_dq_multiline = !in_dq_multiline
+            if (sq % 2 == 1) in_sq_multiline = !in_sq_multiline
+        }
+        function starts_credential_assignment(line) {
+            return line ~ /^[[:space:]]*([A-Za-z0-9_-]+\.)*(api_key|openai_api_key)[[:space:]]*=/
+        }
+        function starts_multiline_value(line,    content, dq, sq) {
+            content = strip_inline_comment(line)
+            dq = count_occurrences(content, "\"\"\"")
+            sq = count_occurrences(content, "'\'''\'''\''")
+            if (dq % 2 == 1) {
+                credential_multiline_delim = "\"\"\""
+                return 1
+            }
+            if (sq % 2 == 1) {
+                credential_multiline_delim = "'\'''\'''\''"
+                return 1
+            }
+            return 0
+        }
+        {
+            was_in_multiline = (in_dq_multiline || in_sq_multiline)
+        }
+        skip_credential_multiline {
+            if (index(strip_inline_comment($0), credential_multiline_delim)) {
+                skip_credential_multiline = 0
+                credential_multiline_delim = ""
+            }
+            next
+        }
+        !was_in_multiline && starts_credential_assignment($0) {
+            if (starts_multiline_value($0)) skip_credential_multiline = 1
+            next
+        }
+        { print; update_multiline_state($0) }
+    ' "$config_path" > "$tmp_path"; then
+        mv -f "$tmp_path" "$config_path" || { rm -f "$tmp_path"; return 1; }
+    else
+        rm -f "$tmp_path"
+        return 1
+    fi
+}
+
+external_prepare_codex_auth() {
+    local home_dir="$1"
+    mkdir -p "$home_dir" || return 1
+    if external_codex_env_key_enabled; then
+        if [[ -f "$home_dir/config.toml" ]]; then
+            external_strip_codex_larch_env_provider "$home_dir/config.toml" || true
+            external_strip_codex_literal_credentials "$home_dir/config.toml" || true
+        fi
+        return 0
+    fi
+    if [[ -f "$home_dir/config.toml" ]]; then
+        external_strip_codex_larch_env_provider "$home_dir/config.toml" || return 1
+        external_strip_codex_literal_credentials "$home_dir/config.toml" || return 1
+    fi
+    if [[ -f ~/.codex/auth.json ]]; then
+        ln -sf "$(cd ~/.codex && pwd)/auth.json" "$home_dir/auth.json" || return 1
+    fi
+}
+
+external_codex_auth_config_args() {
+    local __array_name="$1"
+    case "$__array_name" in
+        ''|*[!A-Za-z0-9_]*) return 1 ;;
+        [0-9]*) return 1 ;;
+    esac
+    external_codex_env_key_enabled || return 0
+    eval "$__array_name+=(\
+        -c 'model_provider=\"openai-larch-env\"' \
+        -c 'model_providers.openai-larch-env.name=\"OpenAI API (larch env key)\"' \
+        -c 'model_providers.openai-larch-env.base_url=\"https://api.openai.com/v1\"' \
+        -c 'model_providers.openai-larch-env.env_key=\"OPENAI_API_KEY\"' \
+        -c 'model_providers.openai-larch-env.wire_api=\"responses\"' \
+    )"
+}
+
 LARCH_LIB_EXTERNAL_LAUNCHER_COMMON_LOADED=1

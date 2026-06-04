@@ -1,0 +1,12 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-5/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-auth-flow","tool":"cursor","output":"<TMPDIR>/round-5/dyn-auth-flow-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-auth-flow-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-toml-strip","tool":"cursor","output":"<TMPDIR>/round-5/dyn-toml-strip-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-toml-strip-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-bash-lifecycle","tool":"cursor","output":"<TMPDIR>/round-5/dyn-bash-lifecycle-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-bash-lifecycle-prompt.md","weight":1,"focus_area":"code-quality"}
+{"slot":"dyn-probe-cache","tool":"cursor","output":"<TMPDIR>/round-5/dyn-probe-cache-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-probe-cache-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-launcher-parity","tool":"cursor","output":"<TMPDIR>/round-5/dyn-launcher-parity-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-launcher-parity-prompt.md","weight":1,"focus_area":"architecture"}
+{"slot":"dyn-secret-surface","tool":"cursor","output":"<TMPDIR>/round-5/dyn-secret-surface-output.txt","prompt_file":"<TMPDIR>/round-5/dynamic-archetypes/dyn-secret-surface-prompt.md","weight":1,"focus_area":"security"}

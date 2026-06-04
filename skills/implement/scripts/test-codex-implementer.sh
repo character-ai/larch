@@ -236,6 +236,9 @@ fi
 if [[ -n "${STUB_CODEX_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
     cp "$CODEX_HOME/config.toml" "$STUB_CODEX_CONFIG_FILE"
 fi
+if [[ -n "${STUB_CODEX_AUTH_LINK_FILE:-}" && -n "${CODEX_HOME:-}" && -L "$CODEX_HOME/auth.json" ]]; then
+    readlink "$CODEX_HOME/auth.json" > "$STUB_CODEX_AUTH_LINK_FILE"
+fi
 if [[ -n "${STUB_LOCK_PATH:-}" && -n "${STUB_LOCK_SEEN_FILE:-}" && -d "$STUB_LOCK_PATH" ]]; then
     printf 'present\n' > "$STUB_LOCK_SEEN_FILE"
 fi
@@ -318,6 +321,7 @@ OUT=$(cd "$REPO_ROOT" && \
     STUB_CODEX_CONFIG_FILE="$CODEX_CONFIG_FILE" \
     IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
     LARCH_TOKEN_SESSION_ID="stale-codex-session" \
+    OPENAI_API_KEY="sk-larch-implement-sentinel" \
     LARCH_CODEX_MODEL="stub-codex-model" \
     "$LAUNCHER" \
         --transcript-path "$TRANSCRIPT" \
@@ -364,6 +368,118 @@ if [[ -s "$CODEX_CONFIG_FILE" ]] \
     pass
 else
     fail 4d "CODEX_HOME config.toml should carry top-level implementer instructions"
+fi
+
+if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_FILE"     && ! grep -Fq 'sk-larch-implement-sentinel' "$ARGV_FILE"     && ! grep -Fq 'openai-larch-env' "$CODEX_CONFIG_FILE"; then
+    pass
+else
+    fail 4e "env-key auth should use argv var-name overrides only"
+fi
+
+ARGV_LOGIN_UNSET="$SCRATCH/codex-argv-login-unset.txt"
+AUTH_LINK_LOGIN_UNSET="$SCRATCH/codex-auth-link-login-unset.txt"
+HOME_LOGIN="$SCRATCH/codex-login-home"
+mkdir -p "$HOME_LOGIN/.codex"
+printf '{"token":"login"}\n' > "$HOME_LOGIN/.codex/auth.json"
+OUT_LOGIN_UNSET=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    env -u OPENAI_API_KEY \
+    HOME="$HOME_LOGIN" \
+    STUB_ARGV_FILE="$ARGV_LOGIN_UNSET" \
+    STUB_PROMPT_FILE="$SCRATCH/codex-prompt-login-unset.txt" \
+    STUB_LAST_ARG_FILE="$SCRATCH/codex-last-arg-login-unset.txt" \
+    STUB_SEPARATOR_INDEX_FILE="$SCRATCH/codex-separator-index-login-unset.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/manifest-login-unset.json" \
+    STUB_CODEX_AUTH_LINK_FILE="$AUTH_LINK_LOGIN_UNSET" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$LAUNCHER" \
+        --transcript-path "$SCRATCH/transcript-login-unset.txt" \
+        --sidecar-log "$SCRATCH/sidecar-login-unset.log" \
+        --manifest-path "$SCRATCH/manifest-login-unset.json" \
+        --qa-pending-path "$SCRATCH/qa-login-unset.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$OUT_LOGIN_UNSET" == LAUNCHER_EXIT=0* ]] \
+   && ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_UNSET" 2>/dev/null \
+   && [[ "$(cat "$AUTH_LINK_LOGIN_UNSET" 2>/dev/null)" == "$HOME_LOGIN/.codex/auth.json" ]]; then
+    pass
+else
+    fail 4f "unset OPENAI_API_KEY should use login auth without env-key argv"
+fi
+
+ARGV_LOGIN_EMPTY="$SCRATCH/codex-argv-login-empty.txt"
+OUT_LOGIN_EMPTY=$(cd "$REPO_ROOT" && \
+    PATH="$STUB_BIN:$PATH" \
+    HOME="$HOME_LOGIN" \
+    STUB_ARGV_FILE="$ARGV_LOGIN_EMPTY" \
+    STUB_PROMPT_FILE="$SCRATCH/codex-prompt-login-empty.txt" \
+    STUB_LAST_ARG_FILE="$SCRATCH/codex-last-arg-login-empty.txt" \
+    STUB_SEPARATOR_INDEX_FILE="$SCRATCH/codex-separator-index-login-empty.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/manifest-login-empty.json" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    OPENAI_API_KEY="" \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$LAUNCHER" \
+        --transcript-path "$SCRATCH/transcript-login-empty.txt" \
+        --sidecar-log "$SCRATCH/sidecar-login-empty.log" \
+        --manifest-path "$SCRATCH/manifest-login-empty.json" \
+        --qa-pending-path "$SCRATCH/qa-login-empty.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+if [[ "$OUT_LOGIN_EMPTY" == LAUNCHER_EXIT=0* ]] \
+   && ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_EMPTY" 2>/dev/null; then
+    pass
+else
+    fail 4g "empty OPENAI_API_KEY should use login auth without env-key argv"
+fi
+
+AUTH_PREP_HOME="$SCRATCH/auth-prep-home"
+AUTH_PREP_BIN="$SCRATCH/auth-prep-bin"
+mkdir -p "$AUTH_PREP_BIN"
+ln -sf "$STUB_BIN/codex" "$AUTH_PREP_BIN/codex"
+cat > "$AUTH_PREP_BIN/mv" <<'EOF'
+#!/usr/bin/env bash
+exit 99
+EOF
+chmod +x "$AUTH_PREP_BIN/mv"
+mkdir -p "$AUTH_PREP_HOME/.codex"
+printf 'model_provider = "openai-larch-env"\n' > "$AUTH_PREP_HOME/.codex/config.toml"
+chmod a-w "$AUTH_PREP_HOME/.codex/config.toml" 2>/dev/null || true
+AUTH_PREP_TRANSCRIPT="$SCRATCH/auth-prep-fail-transcript.txt"
+AUTH_PREP_SIDECAR="$SCRATCH/auth-prep-fail-sidecar.log"
+AUTH_PREP_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$AUTH_PREP_BIN:$PATH" \
+    env -u OPENAI_API_KEY \
+    HOME="$AUTH_PREP_HOME" \
+    STUB_ARGV_FILE="$SCRATCH/auth-prep-fail-argv.txt" \
+    STUB_PROMPT_FILE="$SCRATCH/auth-prep-fail-prompt.txt" \
+    STUB_LAST_ARG_FILE="$SCRATCH/auth-prep-fail-last-arg.txt" \
+    STUB_SEPARATOR_INDEX_FILE="$SCRATCH/auth-prep-fail-separator-index.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/auth-prep-fail-manifest.json" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$LAUNCHER" \
+        --transcript-path "$AUTH_PREP_TRANSCRIPT" \
+        --sidecar-log "$AUTH_PREP_SIDECAR" \
+        --manifest-path "$SCRATCH/auth-prep-fail-manifest.json" \
+        --qa-pending-path "$SCRATCH/auth-prep-fail-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+chmod u+w "$AUTH_PREP_HOME/.codex/config.toml" 2>/dev/null || true
+if [[ "$AUTH_PREP_OUT" == *"MANIFEST_WRITTEN=false"* ]] \
+   && [[ "$AUTH_PREP_OUT" == *"QA_PENDING_WRITTEN=false"* ]] \
+   && grep -Fq 'codex-auth-setup: failed to prepare Codex auth material' "$AUTH_PREP_SIDECAR" \
+   && [[ ! -e "$SCRATCH/auth-prep-fail-argv.txt" ]]; then
+    pass
+else
+    fail 4h "auth-prep failure should emit launcher KV envelope and skip Codex spawn; out=$AUTH_PREP_OUT sidecar=$(cat "$AUTH_PREP_SIDECAR" 2>/dev/null)"
 fi
 
 if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub codex stdout' "$TRANSCRIPT"; then
