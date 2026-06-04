@@ -1,0 +1,19 @@
+Reviewing branch changes with focus on postplan WARN capture and correctness. Reading the diff and related source files.
+Inspecting postplan WARN capture, `emit_kv` contract, and classification helper behavior.
+### In-Scope Findings
+
+- **correctness** `skills/design/scripts/design-postplan-emit.sh:96-184` — Classification stderr is captured into `WARN_LINES` before the `plan.txt` guard, but `fail 'plan.txt missing or empty'` (and other early `fail()` calls after that read) exit **2** without calling `_postplan_write_result_and_emit`, so those warnings never land in `.design-postplan-emit-result.env` or the stdout `WARN=` contract stream. That undercuts the branch goal of operator-visible classification warnings under quiet mode on paths that die before the first emit. **Suggested fix:** On fatal exits after the classification read, either invoke a small helper that writes/emits `WARN_LINES` (with a terminal `POSTPLAN_EMIT_STATUS` such as `emit-failed` / `missing-plan`) or emit each warning via `larch_err` / `emit_kv WARN` before `exit 2`.
+
+- **correctness** `skills/design/scripts/design-postplan-emit.sh:129-158` — `WARN=` values are written to the result env via `phase_driver_write_result_env` without newline validation, while stdout uses `emit_kv`, which rejects embedded `\n`/`\r` and returns **2** under `set -euo pipefail`. A multiline `WARN` (e.g. from a later `parse_kv_from_output` merge) can leave a complete result-env file but abort mid–stdout emit, so file-first vs stdout contracts diverge and the orchestrator may treat exit **2** as a configuration error. **Suggested fix:** Sanitize or split warning text before appending to `WARN_LINES`, validate when building `_kvs`, and/or wrap the WARN `emit_kv` loop in `set +e` with explicit handling so one bad line cannot truncate the contract stream.
+
+### Out-of-Scope Observations
+
+- **correctness** `skills/design/scripts/test-design-postplan-emit.sh:880-892` — The new quiet-mode case asserts `WARN=` on captured stdout only, not a matching `WARN=` row in `.design-postplan-emit-result.env`, even though Step 2b parsing is file-first. A regression that broke env writes but kept stdout could slip through.
+
+- **correctness** `scripts/read-design-classification.sh:16-18` — Unreadable/missing `run-params.json` paths use `warn_default` and exit **0**, so `design-postplan-emit.sh:111-113` (`_classification_rc -ne 0`) does not run for the main defaulting cases; behavior relies on stderr capture, not the rc fallback. Harmless today but easy to misread when extending the helper.
+
+- When `read-design-classification.sh` is not executable, `design-postplan-emit.sh` still sets `WORKFLOW_PATH=HARD` with no `WARN=` — pre-existing gap relative to the “surface classification warnings” intent, not introduced by this diff.
+
+**Commits reviewed:** `ca9b1896f` (hardening), `77afb7125` (larch-logs flush — outside the design/postplan WARN surface).
+
+Overall, the core change (early `WARN_LINES=()`, stderr capture, duplicate reset removed, quiet-mode test) matches the plan and aligns with `emit_kv` single-line rules for current `read-design-classification` messages. The main functional gap is warnings collected then dropped on early `fail()` before any emit.

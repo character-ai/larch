@@ -1,0 +1,23 @@
+finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
+FINDING_1	cursor-specialist-structure-output.txt|cursor-specialist-correctness-output.txt|cursor-specialist-testing-output.txt|cursor-specialist-edge-cases-output.txt|dyn-bash-contracts-output.txt|dyn-state-machine-output.txt|dyn-grep-scope-output.txt	accepted	JUDGE_ERROR				true	YES	true	minor	adequate	false	YES	true	minor	good	false
+FINDING_10	cursor-specialist-edge-cases-output.txt	accepted	JUDGE_ERROR				true	YES	true	major	good	false	YES	true	minor	good	false
+FINDING_11	cursor-specialist-plan-fidelity-output.txt|dyn-bash-contracts-output.txt|dyn-state-machine-output.txt	accepted	YES	true		excellent	true	YES	true	minor	excellent	false	YES	true		excellent	true
+FINDING_12	cursor-specialist-plan-fidelity-output.txt|dyn-state-machine-output.txt	exonerated	JUDGE_ERROR				true	EXONERATE	true	nit	adequate	false	EXONERATE	true	minor	good	false
+FINDING_13	dyn-bash-contracts-output.txt|dyn-kv-warnings-output.txt	accepted	JUDGE_ERROR				true	YES	true	minor	adequate	false	YES	true	minor	good	false
+FINDING_14	dyn-kv-warnings-output.txt	accepted	YES	true	minor	adequate	false	EXONERATE	true	nit	weak	false	YES	true		excellent	true
+FINDING_15	dyn-kv-warnings-output.txt	exonerated	EXONERATE	partially-true	nit	adequate	false	EXONERATE	partially-true	nit	weak	false	EXONERATE	partially-true	minor	adequate	false
+FINDING_16	dyn-kv-warnings-output.txt	exonerated	JUDGE_ERROR				true	YES	true	minor	no-fix	false	EXONERATE	true	nit	adequate	false
+FINDING_17	dyn-grep-scope-output.txt	exonerated	YES	true	nit	adequate	false	EXONERATE	true	nit	adequate	false	EXONERATE	true	nit	good	false
+FINDING_18	dyn-grep-scope-output.txt	accepted	YES	true	minor	good	false	YES	true	minor	adequate	false	EXONERATE	partially-true	minor	adequate	false
+FINDING_19	dyn-grep-scope-output.txt	exonerated	EXONERATE	partially-true	nit	adequate	false	EXONERATE	true	nit	adequate	false	EXONERATE	partially-true	minor	adequate	false
+FINDING_2	cursor-specialist-correctness-output.txt	exonerated	JUDGE_ERROR				true	EXONERATE	true	nit	adequate	false	EXONERATE	partially-true	nit	adequate	false
+FINDING_20	dyn-grep-scope-output.txt	exonerated	EXONERATE	partially-true	nit	good	false	EXONERATE	true	nit	weak	false	EXONERATE	true	minor	adequate	false
+FINDING_21	dyn-grep-scope-output.txt	exonerated	YES	true	minor	good	false	EXONERATE	true	nit	adequate	false	EXONERATE	true	minor	adequate	false
+FINDING_22	dyn-grep-scope-output.txt	neutral	JUDGE_ERROR				true	NO	false-positive	nit	no-fix	false	YES	true	nit	adequate	false
+FINDING_3	cursor-specialist-testing-output.txt	accepted	YES	true	minor	adequate	false	YES	true	minor	good	false	YES	true		excellent	true
+FINDING_4	cursor-specialist-testing-output.txt|dyn-state-machine-output.txt|dyn-grep-scope-output.txt	exonerated	JUDGE_ERROR				true	EXONERATE	true	minor	weak	false	EXONERATE	true	minor	adequate	false
+FINDING_5	cursor-specialist-testing-output.txt|cursor-specialist-edge-cases-output.txt	exonerated	EXONERATE	partially-true	nit	weak	false	EXONERATE	true	nit	weak	false	EXONERATE	partially-true	minor	adequate	false
+FINDING_6	cursor-specialist-security-output.txt	accepted	JUDGE_ERROR				true	YES	true	major	good	false	YES	true	minor	good	false
+FINDING_7	cursor-specialist-security-output.txt	exonerated	JUDGE_ERROR				true	EXONERATE	true	nit	no-fix	false	EXONERATE	partially-true	nit	weak	false
+FINDING_8	cursor-specialist-edge-cases-output.txt|dyn-state-machine-output.txt	accepted	YES	true		good	true	YES	true	minor	good	false	YES	true	major	excellent	false
+FINDING_9	cursor-specialist-edge-cases-output.txt|dyn-grep-scope-output.txt	exonerated	EXONERATE	true	nit	adequate	false	EXONERATE	true	nit	adequate	false	EXONERATE	partially-true	nit	adequate	false

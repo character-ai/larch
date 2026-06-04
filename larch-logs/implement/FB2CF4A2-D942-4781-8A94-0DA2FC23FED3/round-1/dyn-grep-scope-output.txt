@@ -1,0 +1,28 @@
+Reviewing the branch diff and commit history, then examining region-scoping assertions in the structure harness.
+Inspecting SKILL.md markers and branch structure against the harness logic.
+Branch commits (since `main`):
+
+- `ca9b1896f` — Harden design Step 3.6 thin-fence coverage  
+- `77afb7125` — chore: larch-logs flush (unrelated to the harness changes)
+
+### In-Scope Findings
+
+- **code-quality** `scripts/test-design-structure.sh:51-86` — Region-scoped `assert_thin_fence` writes the extracted slice to an `mktemp` file but only removes it on the success path (`[[ "$subject" == "$file" ]] || rm -f "$subject"`). Any `fail` call after scoping (missing marker, anti-shape violation, missing REPO on entry guard) exits without deleting the temp file, so a failing assertion can leave debris under `${TMPDIR:-/tmp}` and makes repeated local failures noisier. **Suggested fix:** Use a `trap` on the scoped path (`trap 'rm -f "$subject"' RETURN` or an ERR trap) so cleanup runs on every exit from the function, or wrap scoped checks in a subshell whose temp file is always removed.
+
+- **code-quality** `scripts/test-design-structure.sh:72-78` — The file-first `.step3.6-assessor.env` anti-shape awk clears `in_read_loop` on any line containing `done`, not only a terminating `done <…assessor.env` redirect. A comment or string inside the `while read` body that contains the word `done` (for example `# not done yet`) resets the state machine before the real `done <"$DESIGN_TMPDIR/.step3.6-assessor.env"` line is evaluated, so the harness can miss a banned read-loop shape (false negative). **Suggested fix:** Only clear `in_read_loop` when `done` is a statement terminator (e.g. match `^[[:space:]]*done([[:space:]]|$)`), or require the redirect match on the same `done` line and drop the generic `done` reset rule.
+
+- **code-quality** `scripts/test-design-structure.sh:56-57` — The scoped thin-fence positives still grep the whole extracted region for any `set +e` and any `$?`, not the assessor handoff block specifically. Because the Step 3.6 region also includes long markdown prose after the closing fence, a future edit could add documentation mentioning `$?` or `set +e` while removing the real `_assessor_rc=$?` capture in the bash fence, and the pin would still pass. **Suggested fix:** Narrow the positive checks to the first fenced bash block (extract lines between the opening and closing ` ```bash ` pair inside the region) or anchor greps near `_assessor_out` / `_assessor_rc`.
+
+- **code-quality** `skills/design/scripts/test-step3-orchestrator-fence.sh:6-18` and `scripts/test-design-structure.sh:89-109` — Gate-B bypass coverage is split across two hand-maintained copies: `apply_gate_b_bypass_sentinels` (used by pause/resume tests) and `assert_gate_b_bypass_branch_sentinels` (markdown substring grep on the `plan-size-trigger` bullet). Nothing in CI asserts they stay identical; the helper could drift from `skills/design/SKILL.md:1117` while the structural pin still passes, and pause/resume would keep reporting `STEP=3b` without catching orchestrator prose regression. **Suggested fix:** Have the structural pin source the same literal array the helper uses (shared bash fragment), or add a self-test that runs `assert_gate_b_bypass_branch_sentinels` on a synthetic SKILL snippet with a deliberately stripped bullet and expects failure (mirroring `run_thin_fence_self_tests`).
+
+- **code-quality** `scripts/test-design-structure.sh:89-109` — `assert_gate_b_bypass_branch_sentinels` has no negative self-test, unlike the new `run_thin_fence_self_tests` block. A typo in the awk delimiter (for example changing the backtick-wrapped marker string) could make the pin a no-op (`branch` empty → fail) or overly narrow without a controlled fixture proving sensitivity. **Suggested fix:** Add a minimal synthetic markdown fixture to `run_thin_fence_self_tests` (or a sibling function) that must fail when the three `: >` lines are removed from the `plan-size-trigger` bullet only.
+
+- **correctness** `scripts/test-design-structure.sh:46-47` — Region bounds use `grep -nF … | head -1` for the start marker and the first end marker after it. That is fine today because `<!-- step:3.6` and `<!-- step:3b` each appear once in `SKILL.md`, but a duplicate comment or a partial marker collision would silently shrink or mis-aim the fence region without a dedicated failure mode. **Suggested fix:** After resolving line numbers, assert uniqueness (`grep -cF` equals 1 for each marker) or fail when multiple start matches exist.
+
+### Out-of-Scope Observations
+
+- **code-quality** `skills/design/SKILL.md:1114-1121,1132-1134` — Other Gate-B-bypass bullets and the generic “triple-sentinel bypass layout” prose also describe sentinel writes; only the `plan-size-trigger` bullet is structurally pinned. That matches the stated plan, but regressions on `tally-error`, `panel-failed`, or `cap-reached` paths would not be caught by `assert_gate_b_bypass_branch_sentinels` if those bullets diverge.
+
+- **risk-integration** The empty-state pause/resume case validates sentinel files via `apply_gate_b_bypass_sentinels`, not live orchestrator execution on `LOOP_STATUS=plan-size-trigger` from `plan-review-loop.sh`. Sentinel creation on real bypass paths still depends on prompt-following in `SKILL.md`; the new tests improve regression signal but do not mechanize orchestrator behavior end-to-end.
+
+- **code-quality** Commit `77afb7125` is a committed `larch-logs/implement/…` flush unrelated to the Step 3.6 harness edits; consider keeping that out of the same PR as the structural/test changes if you want a review-only diff surface.
