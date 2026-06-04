@@ -172,13 +172,10 @@ if [ -n "$RESOLVED_ROOT" ]; then
     CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" bash "$PWD/skills/upgrade-larch/scripts/upgrade-larch.sh" 2>&1
   ) || upgrade_rc=$?
   printf '%s\n' "$upgrade_out"
-  if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]] || \
-     [[ "$upgrade_out" == *"Already at latest stable"* && \
-        "$upgrade_out" == *"sparse checkout is out of date"* && \
-        "$upgrade_out" == *"Reconciling"* ]]; then
+  if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]]; then
     CONE_RECONCILED=true
   fi
-  if [[ "$upgrade_out" == *"Upgrading larch from "*" to "* ]]; then
+  if [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
     NEW_VERSION_INSTALLED=true
   fi
   if [ "$upgrade_rc" -ne 0 ]; then
@@ -189,7 +186,10 @@ else
   # Fallback is only for true dev-clone / no marketplace-install cases. Invoke
   # /upgrade-larch via the Skill tool (bare name first; fall back to
   # larch:upgrade-larch on Unknown skill) and warn if that fallback is the only
-  # available path, because it may be the stale installed implementation.
+  # available path, because it may be the stale installed implementation. Capture
+  # the fallback output; if it includes LARCH_CONE_RECONCILED=true or
+  # LARCH_NEW_VERSION_INSTALLED=true, set the matching state variable before the
+  # env file is written.
 fi
 
 tmp_state="$STEP7_STATE.tmp"
@@ -201,7 +201,7 @@ tmp_state="$STEP7_STATE.tmp"
 mv "$tmp_state" "$STEP7_STATE"
 ```
 
-If metadata names a newer install than the active `CLAUDE_PLUGIN_ROOT`, still run against the active root from item 1; the upgrade script protects both the active `INSTALLED_VERSION` (from `PLUGIN_ROOT`) and the target version during prune. If the working-tree invocation fails, warn and continue to Step 8; the release is already published, so a local-install upgrade hiccup must not strand the operator on the release branch. If no root is resolvable and the Skill-tool fallback is used, record `CONE_RECONCILED=false` unless the captured fallback output explicitly includes the reconcile line or fixed reconcile fragment.
+If metadata names a newer install than the active `CLAUDE_PLUGIN_ROOT`, still run against the active root from item 1; the upgrade script protects both the active `INSTALLED_VERSION` (from `PLUGIN_ROOT`) and the target version during prune. If the working-tree invocation fails, warn and continue to Step 8; the release is already published, so a local-install upgrade hiccup must not strand the operator on the release branch. If no root is resolvable and the Skill-tool fallback is used, record `CONE_RECONCILED=false` and `NEW_VERSION_INSTALLED=false` unless the captured fallback output explicitly includes the corresponding machine-readable line.
 
 ## Step 8 — Local cleanup (post-merge teardown)
 

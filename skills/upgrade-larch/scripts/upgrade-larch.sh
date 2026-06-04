@@ -18,6 +18,10 @@ marketplace_clone_path() {
     printf '%s\n' "$HOME/.claude/plugins/marketplaces/larch-local"
 }
 
+shell_quote() {
+    printf '%q' "$1"
+}
+
 recover() {
     local marketplace_clone
 
@@ -26,14 +30,13 @@ recover() {
     larch_err "Recovery: run these commands manually to reinstall:"
     larch_err "  claude plugin marketplace remove larch-local"
     if [ -n "$marketplace_clone" ]; then
-        larch_err "  rm -rf '$marketplace_clone'"
+        larch_err "  rm -rf $(shell_quote "$marketplace_clone")"
     else
-        larch_err "  rm -rf '~/.claude/plugins/marketplaces/larch-local'"
+        larch_err "  rm -rf ~/.claude/plugins/marketplaces/larch-local"
     fi
     larch_err "  claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS"
     larch_err "  claude plugin install larch@larch-local"
 }
-trap recover ERR
 
 warn_prune_failure() {
     local version="$1"
@@ -322,6 +325,7 @@ INSTALLED_VERSION="$(basename "$PLUGIN_ROOT")"
 if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
     return 0 2>/dev/null || exit 0
 fi
+trap recover ERR
 
 # Resolve the latest stable (non-pre-release, non-draft) release from GitHub.
 larch_err "Checking latest stable larch release..."
@@ -364,6 +368,7 @@ fi
 # without reinstalling. A drifted cone falls through to the reinstall path so
 # sparse allowlist additions can reconcile on same-version installs.
 NEEDS_CONE_RECONCILE=false
+MARKETPLACE_CONE_WILL_RECONCILE=false
 CURRENT_INSTALLED_VERSION=$(get_installed_larch_version || true)
 if ! is_safe_version "${CURRENT_INSTALLED_VERSION:-}"; then
     CURRENT_INSTALLED_VERSION="$INSTALLED_VERSION"
@@ -375,6 +380,9 @@ if already_latest_and_cone_ok; then
     larch_err ""
     larch_err "Already at latest stable larch release (${CURRENT_INSTALLED_VERSION}). No upgrade needed."
     exit 0
+fi
+if ! marketplace_sparse_cone_matches; then
+    MARKETPLACE_CONE_WILL_RECONCILE=true
 fi
 if [ -n "$LATEST_STABLE" ] && [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" ]; then
     NEEDS_CONE_RECONCILE=true
@@ -417,13 +425,22 @@ if [ -n "$LATEST_STABLE" ]; then
         larch_err "Re-run /upgrade-larch or install manually:"
         larch_err "  claude plugin marketplace remove larch-local"
         if [ -n "$marketplace_clone" ]; then
-            larch_err "  rm -rf '$marketplace_clone'"
+            larch_err "  rm -rf $(shell_quote "$marketplace_clone")"
         else
-            larch_err "  rm -rf '~/.claude/plugins/marketplaces/larch-local'"
+            larch_err "  rm -rf ~/.claude/plugins/marketplaces/larch-local"
         fi
         larch_err "  claude plugin marketplace add character-ai/larch --sparse $LARCH_SPARSE_DIRS"
         larch_err "  claude plugin install larch@larch-local"
     fi
+fi
+
+if [ "$MARKETPLACE_CONE_WILL_RECONCILE" = true ]; then
+    larch_err "LARCH_CONE_RECONCILED=true"
+fi
+if is_safe_version "${ACTUAL_VERSION:-}" && \
+   [ "$ACTUAL_VERSION" != "${CURRENT_INSTALLED_VERSION:-}" ] && \
+   { [ -z "$LATEST_STABLE" ] || [ "$VERIFIED_TARGET" = true ]; }; then
+    larch_err "LARCH_NEW_VERSION_INSTALLED=true"
 fi
 
 if [ "$VERIFIED_TARGET" = true ]; then
@@ -431,9 +448,6 @@ if [ "$VERIFIED_TARGET" = true ]; then
         write_install_stamp "$ACTUAL_VERSION"
     fi
     prune_cached_versions "$ACTUAL_VERSION"
-    if [ "$NEEDS_CONE_RECONCILE" = true ]; then
-        larch_err "LARCH_CONE_RECONCILED=true"
-    fi
 else
     larch_err "Skipping prune because the expected stable version was not verified."
 fi

@@ -185,17 +185,22 @@ detect_cone_reconcile_for_test() {
     if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]]; then
         return 0
     fi
-    if [[ "$upgrade_out" == *"Already at latest stable"* && \
-          "$upgrade_out" == *"sparse checkout is out of date"* && \
-          "$upgrade_out" == *"Reconciling"* ]]; then
-        return 0
-    fi
     return 1
+}
+
+detect_new_version_installed_for_test() {
+    local upgrade_out="$1"
+    [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]
 }
 
 # --- sourced allowlist dual-update regression ---
 source_upgrade_for_case literal
 assert_eq "$LARCH_SPARSE_DIRS" "$EXPECTED_SPARSE_DIRS" "sparse dir literal matches intentional duplicate guard"
+if trap -p ERR | grep -q 'recover'; then
+    fail "sourcing upgrade-larch.sh must not leave production ERR trap installed"
+else
+    pass "sourcing upgrade-larch.sh leaves ERR trap unchanged"
+fi
 
 # --- marketplace_sparse_cone_matches cases ---
 source_upgrade_for_case cone-match
@@ -215,6 +220,12 @@ assert_failure "marketplace_sparse_cone_matches rejects legacy full clone with l
 source_upgrade_for_case cone-not-git
 mkdir -p "$HOME/.claude/plugins/marketplaces/larch-local"
 assert_failure "marketplace_sparse_cone_matches rejects non-git marketplace dir" marketplace_sparse_cone_matches
+
+source_upgrade_for_case cone-empty
+clone=$(make_sparse_marketplace cone-empty .claude)
+git -C "$clone" sparse-checkout set --no-cone >/dev/null 2>&1
+printf '\n' > "$clone/.git/info/sparse-checkout"
+assert_failure "marketplace_sparse_cone_matches rejects empty configured sparse list" marketplace_sparse_cone_matches
 
 # --- already_latest_and_cone_ok cases ---
 source_upgrade_for_case latest-match
@@ -307,7 +318,65 @@ assert_contains "$out" "root=$resolved_root" "release Step 7 invocation passes e
 assert_contains "$out" "LARCH_CONE_RECONCILED=true" "release Step 7 invocation captures stderr with stdout"
 assert_success "reconcile detector accepts machine-readable line" detect_cone_reconcile_for_test "$out"
 fragment="Already at latest stable larch release (9.0.0), but the sparse checkout is out of date (allowlist changed). Reconciling the marketplace cone and reinstalling..."
-assert_success "reconcile detector accepts fixed reconcile fragment" detect_cone_reconcile_for_test "$fragment"
+assert_failure "reconcile detector rejects pre-install prose fragment" detect_cone_reconcile_for_test "$fragment"
+new_version_line="LARCH_NEW_VERSION_INSTALLED=true"
+assert_success "new-version detector accepts machine-readable line" detect_new_version_installed_for_test "$new_version_line"
+banner="Upgrading larch from 8.0.0 to 9.0.0..."
+assert_failure "new-version detector rejects pre-success upgrade banner" detect_new_version_installed_for_test "$banner"
+
+# --- production upgrade-larch.sh reconciles a real drifted marketplace clone ---
+source_upgrade_for_case production-drift
+bin_dir="$TMP/bin-production-drift"
+mkdir -p "$bin_dir"
+old_path="$PATH"
+export PATH="$bin_dir:$PATH"
+export CLAUDE_PLUGIN_ROOT="$HOME/.claude/plugins/cache/larch-local/larch/9.0.0"
+mkdir -p "$CLAUDE_PLUGIN_ROOT/scripts"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh"
+export LARCH_TEST_VERSION_FILE="$TMP/production-drift-installed-version"
+printf '9.0.0\n' > "$LARCH_TEST_VERSION_FILE"
+make_sparse_marketplace production-drift .claude scripts skills >/dev/null
+cat > "$bin_dir/gh" <<'GH'
+#!/usr/bin/env bash
+printf 'v9.0.0\n'
+GH
+chmod +x "$bin_dir/gh"
+cat > "$bin_dir/claude" <<'CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+clone="$HOME/.claude/plugins/marketplaces/larch-local"
+case "$*" in
+    "plugin list")
+        printf 'larch@larch-local\n'
+        printf '  Version: %s\n' "$(cat "$LARCH_TEST_VERSION_FILE")"
+        ;;
+    "plugin uninstall larch@larch-local")
+        ;;
+    "plugin install larch@larch-local")
+        printf '9.0.0\n' > "$LARCH_TEST_VERSION_FILE"
+        ;;
+    "plugin marketplace remove larch-local")
+        rm -rf -- "$clone"
+        ;;
+    plugin\ marketplace\ add\ character-ai/larch\ --sparse*)
+        mkdir -p "$clone"
+        git init "$clone" >/dev/null 2>&1
+        git -C "$clone" sparse-checkout init --cone >/dev/null 2>&1
+        shift 5
+        git -C "$clone" sparse-checkout set "$@" >/dev/null 2>&1
+        ;;
+    *)
+        printf 'unexpected claude args: %s\n' "$*" >&2
+        exit 1
+        ;;
+esac
+CLAUDE
+chmod +x "$bin_dir/claude"
+prod_out=$(bash "$UPGRADE_SCRIPT" 2>&1)
+assert_contains "$prod_out" "LARCH_CONE_RECONCILED=true" "production upgrade emits reconcile signal after drifted marketplace repair"
+assert_success "production upgrade leaves marketplace cone matching allowlist" marketplace_sparse_cone_matches
+PATH="$old_path"
+unset LARCH_TEST_VERSION_FILE
 
 # --- running dir protected; oldest stamped evicted; eight retained ---
 source_upgrade_for_case prune-protected
