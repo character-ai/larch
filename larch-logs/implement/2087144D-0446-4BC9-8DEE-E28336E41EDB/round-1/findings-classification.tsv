@@ -1,0 +1,31 @@
+finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain
+FINDING_1	cursor-specialist-structure-output.txt|cursor-specialist-testing-output.txt|cursor-specialist-edge-cases-output.txt|cursor-specialist-plan-fidelity-output.txt|dyn-release-state-output.txt|dyn-sparse-contract-output.txt	exonerated	EXONERATE	partially-true	minor	adequate	false	EXONERATE	true		adequate	true	YES	true	major	good	false
+FINDING_10	cursor-specialist-correctness-output.txt|cursor-specialist-edge-cases-output.txt|dyn-upgrade-flow-output.txt|dyn-release-state-output.txt	accepted	YES	true	major	good	false	YES	true		good	true	YES	true	major	good	false
+FINDING_11	cursor-specialist-testing-output.txt	accepted	EXONERATE	true	nit	weak	false	YES	true	nit	adequate	false	YES	true	minor	adequate	false
+FINDING_12	cursor-specialist-testing-output.txt|dyn-upgrade-flow-output.txt|dyn-harness-isolation-output.txt	accepted	YES	true	minor	adequate	false	YES	true		no-fix	true	YES	true	major	adequate	false
+FINDING_13	cursor-specialist-edge-cases-output.txt	exonerated	EXONERATE	true	minor	adequate	false	EXONERATE	true		adequate	true	EXONERATE	true	major	weak	false
+FINDING_14	cursor-specialist-edge-cases-output.txt	exonerated	EXONERATE	true	nit	no-fix	false	NO	false-positive		weak	true	EXONERATE	true	minor	weak	false
+FINDING_15	cursor-specialist-edge-cases-output.txt	exonerated	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	weak	false	EXONERATE	partially-true	nit	adequate	false
+FINDING_16	cursor-specialist-edge-cases-output.txt	accepted	YES	true	minor	adequate	false	YES	true		no-fix	true	YES	true	minor	adequate	false
+FINDING_17	cursor-specialist-edge-cases-output.txt	neutral	YES	true	nit	adequate	false	EXONERATE	true	nit	no-fix	false	NO	partially-true	nit	weak	false
+FINDING_18	cursor-specialist-plan-fidelity-output.txt|dyn-harness-isolation-output.txt|dyn-sparse-contract-output.txt	accepted	YES	true	major	good	false	YES	true		adequate	true	YES	partially-true	major	weak	false
+FINDING_19	cursor-specialist-plan-fidelity-output.txt	exonerated	YES	true	minor	adequate	false	EXONERATE	true		no-fix	true	EXONERATE	true	minor	weak	false
+FINDING_2	cursor-specialist-structure-output.txt|cursor-specialist-testing-output.txt|cursor-specialist-edge-cases-output.txt|dyn-harness-isolation-output.txt	accepted	YES	true	major	adequate	false	YES	true		adequate	true	YES	true	major	good	false
+FINDING_20	dyn-upgrade-flow-output.txt	rejected	NO	false-positive	nit	no-fix	false	NO	false-positive		adequate	true	YES	true	major	good	false
+FINDING_21	dyn-upgrade-flow-output.txt	exonerated	EXONERATE	true	nit	weak	false	EXONERATE	true		adequate	true	EXONERATE	true	nit	adequate	false
+FINDING_22	dyn-upgrade-flow-output.txt	accepted	YES	true	minor	adequate	false	EXONERATE	partially-true		no-fix	true	YES	true	minor	adequate	false
+FINDING_23	dyn-release-state-output.txt	accepted	YES	true	major	good	false	YES	true		adequate	true	YES	true	major	adequate	false
+FINDING_24	dyn-release-state-output.txt	accepted	YES	true	minor	adequate	false	YES	true		no-fix	true	EXONERATE	true	minor	weak	false
+FINDING_25	dyn-release-state-output.txt	accepted	YES	true	minor	adequate	false	YES	true		no-fix	true	EXONERATE	partially-true	minor	weak	false
+FINDING_26	dyn-harness-isolation-output.txt	exonerated	EXONERATE	true	nit	weak	false	YES	true		adequate	true	EXONERATE	partially-true	nit	adequate	false
+FINDING_27	dyn-harness-isolation-output.txt	rejected	YES	true	nit	no-fix	false	NO	false-positive	nit	no-fix	false	NO	false-positive	nit	no-fix	false
+FINDING_28	dyn-harness-isolation-output.txt	accepted	YES	true	minor	adequate	false	YES	true	nit	no-fix	false	EXONERATE	true	nit	adequate	false
+FINDING_29	dyn-sparse-contract-output.txt	neutral	YES	true	nit	no-fix	false	EXONERATE	true		no-fix	true	NO	partially-true	nit	no-fix	false
+FINDING_3	cursor-specialist-structure-output.txt|dyn-sparse-contract-output.txt	exonerated	EXONERATE	true	nit	weak	false	EXONERATE	true	nit	adequate	false	EXONERATE	true	nit	adequate	false
+FINDING_30	cursor-specialist-security-output.txt	accepted	EXONERATE	true	nit	weak	false	YES	true	nit	weak	false	YES	true	nit	good	false
+FINDING_4	cursor-specialist-structure-output.txt|cursor-specialist-testing-output.txt|dyn-harness-isolation-output.txt|dyn-sparse-contract-output.txt	exonerated	EXONERATE	true	nit	adequate	false	EXONERATE	true	nit	adequate	false	YES	partially-true	minor	adequate	false
+FINDING_5	cursor-specialist-structure-output.txt|cursor-specialist-testing-output.txt|cursor-specialist-plan-fidelity-output.txt|dyn-release-state-output.txt|dyn-harness-isolation-output.txt	accepted	EXONERATE	partially-true	minor	adequate	false	YES	true		adequate	true	YES	true	major	good	false
+FINDING_6	cursor-specialist-structure-output.txt	accepted	EXONERATE	true	nit	adequate	false	YES	true		adequate	true	YES	partially-true	minor	adequate	false
+FINDING_7	cursor-specialist-structure-output.txt	accepted	YES	true	nit	adequate	false	YES	true	nit	no-fix	false	EXONERATE	partially-true	nit	weak	false
+FINDING_8	cursor-specialist-structure-output.txt|dyn-sparse-contract-output.txt	neutral	YES	true	nit	adequate	false	NO	false-positive	nit	no-fix	false	EXONERATE	true	nit	weak	false
+FINDING_9	cursor-specialist-correctness-output.txt|dyn-upgrade-flow-output.txt|dyn-release-state-output.txt	accepted	YES	true	major	good	false	YES	true		adequate	true	YES	true	major	good	false

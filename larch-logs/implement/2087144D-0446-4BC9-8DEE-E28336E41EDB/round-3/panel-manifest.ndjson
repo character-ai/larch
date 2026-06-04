@@ -1,0 +1,11 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-3/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-3/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-3/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-3/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-3/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-3/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-bash-runtime","tool":"cursor","output":"<TMPDIR>/round-3/dyn-bash-runtime-output.txt","prompt_file":"<TMPDIR>/round-3/dynamic-archetypes/dyn-bash-runtime-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-release-state","tool":"cursor","output":"<TMPDIR>/round-3/dyn-release-state-output.txt","prompt_file":"<TMPDIR>/round-3/dynamic-archetypes/dyn-release-state-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-sparse-cone","tool":"cursor","output":"<TMPDIR>/round-3/dyn-sparse-cone-output.txt","prompt_file":"<TMPDIR>/round-3/dynamic-archetypes/dyn-sparse-cone-prompt.md","weight":1,"focus_area":"architecture"}
+{"slot":"dyn-hook-failopen","tool":"cursor","output":"<TMPDIR>/round-3/dyn-hook-failopen-output.txt","prompt_file":"<TMPDIR>/round-3/dynamic-archetypes/dyn-hook-failopen-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-harness-hermeticity","tool":"cursor","output":"<TMPDIR>/round-3/dyn-harness-hermeticity-output.txt","prompt_file":"<TMPDIR>/round-3/dynamic-archetypes/dyn-harness-hermeticity-prompt.md","weight":1,"focus_area":"correctness"}

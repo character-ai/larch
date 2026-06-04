@@ -1,0 +1,29 @@
+I have everything I need. Here is my review.
+
+---
+
+### In-Scope Findings
+
+- **risk-integration** `skills/upgrade-larch/scripts/release-step7-root.sh` (whole file) — **Important** The file exists in the working tree but is untracked (`??` in git status) and absent from the diff. The test harness references `RELEASE_STEP7_ROOT_SCRIPT="$SCRIPT_DIR/release-step7-root.sh"` and sources it in `resolve_release_step7_root_for_test`; every root-resolution test case (`root-active`, `root-metadata`, `root-metadata-missing`, `root-current-matches-metadata`, `root-current-sole`, `root-zero`, `root-ambiguous`) depends on it and will fail with "No such file or directory" on a clean checkout. The `.claude/skills/release/SKILL.md` Step 7 code block also `source`s it directly. Without this file committed, `make test-upgrade-larch-retention` fails and the release skill is broken for any operator pulling a clean checkout of this branch. **Suggested fix:** Stage and commit `skills/upgrade-larch/scripts/release-step7-root.sh` as part of this PR.
+
+- **risk-integration** `skills/upgrade-larch/scripts/` (whole directory) — **Important** `release-step7-root.sh` is a new script under `skills/upgrade-larch/scripts/` but has no sibling `release-step7-root.md` contract, violating the project invariant in `.claude/rules/script-md-siblings.md` that every `.sh` file must have a co-located `.md`. The `agent-lint.toml` diff adds excludes for `lib-sparse-dirs.sh` and `lib-sparse-dirs.md` but does not add any entry for `release-step7-root.sh`. If `make lint` runs `agent-lint` on this file as a dead/uninvoked script (it has a shebang and is executable, but is intended to be sourced), the lint will fail; and the missing sibling `.md` will trip the `script-md-siblings` lint separately. **Suggested fix:** Add `skills/upgrade-larch/scripts/release-step7-root.md` as a sibling contract doc. If agent-lint flags it as a dead script, also add an exclude entry in `agent-lint.toml` with a sourced-only comment.
+
+- **risk-integration** `skills/upgrade-larch/scripts/upgrade-larch.sh:521-530` — **Latent** `LARCH_RESTART_REQUIRED=true` is emitted twice when both `MARKETPLACE_CONE_WILL_RECONCILE=true` and `LATEST_STABLE=""` — once in the `elif [ -z "$LATEST_STABLE" ] || [ "$VERIFIED_TARGET" = true ]` branch of the cone-reconcile block (line 526), and again in the unconditional `if [ -z "$LATEST_STABLE" ]` block (line 530). The production test cases do not exercise this combination (the `production-drift` test has `gh` available; the `production-unverified-reinstall` test has a matching cone so `MARKETPLACE_CONE_WILL_RECONCILE=false`), so the double-emission is undetected. Release Step 7 parsing uses substring matching and is unaffected today, but any future consumer that counts or dedupletes the signal tokens would silently see two. **Suggested fix:** Guard the `[ -z "$LATEST_STABLE" ]` block at line 529 with `[ "$MARKETPLACE_CONE_WILL_RECONCILE" != true ]` (or an equivalent single-emission flag) so `LARCH_RESTART_REQUIRED=true` is emitted exactly once per run.
+
+- **code-quality** `scripts/sessionstart-health.sh:46-90` — **Nit** `probe_sparse_cone_drift` restores `set -e`/`set -u` with an identical two-line block immediately before each of the three early `return 0` statements. If a future maintainer adds a new early-exit path and omits the restore, `errexit`/`nounset` could remain disabled for the rest of the hook. **Suggested fix:** Move the restore into a `trap ... RETURN` set at function entry, or extract a single helper function (`restore_shell_opts`) called by all exit paths.
+
+---
+
+### Out-of-Scope Observations
+
+No pre-existing issues were identified that are unrelated to this change.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	skills/upgrade-larch/scripts/release-step7-root.sh	File is untracked (git status ??) and absent from the diff but sourced by both the test harness and the release SKILL.md	On a clean checkout, make test-upgrade-larch-retention fails immediately with "No such file or directory" before any test assertion runs; the release skill Step 7 bash block also breaks	Stage and commit skills/upgrade-larch/scripts/release-step7-root.sh as part of this PR
+1	in_scope	important	risk-integration	skills/upgrade-larch/scripts/	No sibling release-step7-root.md contract for the new release-step7-root.sh; agent-lint.toml does not add an exclude entry for this script	script-md-siblings lint will fail; if agent-lint treats the executable-but-source-only script as dead code it will also emit a G004 warning	Add skills/upgrade-larch/scripts/release-step7-root.md as a sibling contract; add an agent-lint.toml exclude entry if needed
+1	in_scope	latent	risk-integration	skills/upgrade-larch/scripts/upgrade-larch.sh:521-530	LARCH_RESTART_REQUIRED=true is emitted twice when MARKETPLACE_CONE_WILL_RECONCILE=true and LATEST_STABLE="" simultaneously	No existing production test case exercises this combination; a future consumer that counts or deduplicates the token would silently double-count	Guard the unconditional [ -z "$LATEST_STABLE" ] RESTART block (line 529) with [ "$MARKETPLACE_CONE_WILL_RECONCILE" != true ] so the signal is emitted exactly once
+1	in_scope	nit	code-quality	scripts/sessionstart-health.sh:46-90	probe_sparse_cone_drift restores set -e / set -u with an identical two-line block before each of three early return 0 paths	A future maintainer adding a fourth early return who forgets the restore leaves errexit/nounset disabled for the rest of the hook	Move the restore into a trap ... RETURN at function entry or a shared restore helper called from all exit paths
+```

@@ -1,0 +1,11 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-upgrade-flow","tool":"cursor","output":"<TMPDIR>/round-1/dyn-upgrade-flow-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-upgrade-flow-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-release-state","tool":"cursor","output":"<TMPDIR>/round-1/dyn-release-state-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-release-state-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-hook-failopen","tool":"cursor","output":"<TMPDIR>/round-1/dyn-hook-failopen-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-hook-failopen-prompt.md","weight":1,"focus_area":"security"}
+{"slot":"dyn-harness-isolation","tool":"cursor","output":"<TMPDIR>/round-1/dyn-harness-isolation-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-harness-isolation-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-sparse-contract","tool":"cursor","output":"<TMPDIR>/round-1/dyn-sparse-contract-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-sparse-contract-prompt.md","weight":1,"focus_area":"architecture"}

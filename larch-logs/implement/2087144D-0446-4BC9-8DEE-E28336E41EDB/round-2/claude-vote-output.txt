@@ -1,0 +1,20 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- prose fallback emitted before install so it would fire on partial failure; machine-line-only approach is safer
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- behavioral divergence is intentional per plan; sessionstart silences on empty while upgrade triggers reconcile
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- generic shell source error already names the missing file; existence-check guard is boilerplate for a non-occurring scenario
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- fix requires per-upgrade directory content scan; cone metadata consistency is the appropriate proxy
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- production-drift fixture does exercise same-version reconcile path; banner-absence assertion is a narrow gap
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- SKILL.md bash is LLM-orchestrated prose; extracting to a tested script would exceed this PR's scope
+FINDING_11: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- lib-sparse-dirs.md explicitly states "Line 1 stays # shellcheck shell=bash" and "agent-lint.toml excludes the sourced-only .sh plus this sibling contract"
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- restart after gh-unavailable version change is the correct behavior; version did change
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- post-install plugin-list failure is severe enough to be obvious; adding install-ran flag adds complexity for negligible benefit
+FINDING_16: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false
+FINDING_17: YES CORRECTNESS=true SEVERITY=latent QUALITY=weak UNCERTAIN=false
+FINDING_18: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- intentional pre-existing shellcheck-suppressed pattern; not worth filing an issue
+FINDING_19: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- documented longstanding behavior; no regression introduced
+FINDING_20: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- run-log commit is entirely unrelated to this review surface
