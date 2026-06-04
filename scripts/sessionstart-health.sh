@@ -44,21 +44,28 @@ append_msg() {
 
 probe_sparse_cone_drift() {
     local restore_errexit=false
+    local restore_nounset=false
     local home_dir marketplace_clone configured expected
 
     case $- in
         *e*) restore_errexit=true ;;
     esac
+    case $- in
+        *u*) restore_nounset=true ;;
+    esac
     set +e
+    set +u
 
     home_dir="${HOME:-}"
     if [[ -z "$home_dir" ]]; then
+        [[ "$restore_nounset" == "true" ]] && set -u
         [[ "$restore_errexit" == "true" ]] && set -e
         return 0
     fi
 
     marketplace_clone="$home_dir/.claude/plugins/marketplaces/larch-local"
     if [[ ! -d "$marketplace_clone/.git" || -d "$marketplace_clone/larch-logs" ]]; then
+        [[ "$restore_nounset" == "true" ]] && set -u
         [[ "$restore_errexit" == "true" ]] && set -e
         return 0
     fi
@@ -66,6 +73,7 @@ probe_sparse_cone_drift() {
     # shellcheck source=scripts/lib-sparse-dirs.sh
     source "$SCRIPT_DIR/lib-sparse-dirs.sh" 2>/dev/null || true
     if ! declare -F normalize_sparse_dirs >/dev/null 2>&1; then
+        [[ "$restore_nounset" == "true" ]] && set -u
         [[ "$restore_errexit" == "true" ]] && set -e
         return 0
     fi
@@ -76,6 +84,7 @@ probe_sparse_cone_drift() {
         append_msg "larch hook preflight: larch-local marketplace sparse checkout is out of date; run /upgrade-larch to repair it."
     fi
 
+    [[ "$restore_nounset" == "true" ]] && set -u
     [[ "$restore_errexit" == "true" ]] && set -e
     return 0
 }

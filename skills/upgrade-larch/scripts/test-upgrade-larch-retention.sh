@@ -9,6 +9,7 @@ export LARCH_QUIET_DISABLE=1
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 UPGRADE_SCRIPT="$SCRIPT_DIR/upgrade-larch.sh"
+RELEASE_STEP7_ROOT_SCRIPT="$SCRIPT_DIR/release-step7-root.sh"
 EXPECTED_SPARSE_DIRS=".claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests"
 
 PASS=0
@@ -103,32 +104,6 @@ count_version_dirs() {
     find "$LARCH_CACHE_DIR" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' '
 }
 
-is_cache_shaped_root_for_test() {
-    local root="$1" version
-    case "$root" in
-        "$HOME/.claude/plugins/cache/larch-local/larch/"*) ;;
-        *) return 1 ;;
-    esac
-    [ -d "$root" ] || return 1
-    version=$(basename "$root")
-    is_safe_version "$version"
-}
-
-single_cache_version_dir_for_test() {
-    local cache_parent="$HOME/.claude/plugins/cache/larch-local/larch" dir found="" count=0 version
-    shopt -s nullglob
-    for dir in "$cache_parent"/*; do
-        [ -d "$dir" ] || continue
-        version=$(basename "$dir")
-        is_safe_version "$version" || continue
-        found="$dir"
-        count=$((count + 1))
-    done
-    shopt -u nullglob
-    [ "$count" -eq 1 ] || return 1
-    printf '%s\n' "$found"
-}
-
 resolve_release_step7_root_for_test() {
     local current_version="$1" installed_version="$2"
     local bin_dir="$TMP/bin-root-resolve"
@@ -150,6 +125,8 @@ case "\$*" in
 esac
 CLAUDE
     chmod +x "$bin_dir/claude"
+    # shellcheck source=skills/upgrade-larch/scripts/release-step7-root.sh
+    source "$RELEASE_STEP7_ROOT_SCRIPT"
     PATH="$bin_dir:$PATH" resolve_release_step7_root "$current_version"
     PATH="$old_path"
 }
@@ -167,6 +144,9 @@ detect_cone_reconcile_for_test() {
     if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]]; then
         return 0
     fi
+    if [[ "$upgrade_out" == *"Reconciling the marketplace cone and reinstalling"* ]]; then
+        return 0
+    fi
     return 1
 }
 
@@ -179,18 +159,27 @@ parse_release_step7_flags_for_test() {
     local upgrade_rc="$1" upgrade_out="$2"
     local cone_reconciled=false new_version_installed=false restart_required=false
 
-    if [ "$upgrade_rc" -eq 0 ]; then
-        if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]]; then
-            cone_reconciled=true
-        fi
-        if [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
-            new_version_installed=true
-        fi
-        if [[ "$upgrade_out" == *"LARCH_RESTART_REQUIRED=true"* ]]; then
-            restart_required=true
-        fi
+    if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]] ||
+        [[ "$upgrade_out" == *"Reconciling the marketplace cone and reinstalling"* ]]; then
+        cone_reconciled=true
+    fi
+    if [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
+        new_version_installed=true
+    fi
+    if [[ "$upgrade_out" == *"LARCH_RESTART_REQUIRED=true"* ]]; then
+        restart_required=true
+    fi
+    if [[ "$cone_reconciled" == true || "$new_version_installed" == true ]]; then
+        restart_required=true
     fi
     printf 'CONE_RECONCILED=%s\nNEW_VERSION_INSTALLED=%s\nRESTART_REQUIRED=%s\n' "$cone_reconciled" "$new_version_installed" "$restart_required"
+}
+
+run_upgrade_script_for_test() {
+    RUN_UPGRADE_OUT=""
+    RUN_UPGRADE_RC=0
+
+    RUN_UPGRADE_OUT=$("$@" 2>&1) || RUN_UPGRADE_RC=$?
 }
 
 # --- sourced allowlist dual-update regression ---
@@ -276,6 +265,13 @@ mkdir -p "$metadata_root"
 resolved=$(resolve_release_step7_root_for_test 1.0.0 2.0.0 || true)
 assert_eq "$resolved" "$metadata_root" "parsed installed metadata maps to existing cache dir"
 
+source_upgrade_for_case root-metadata-missing
+unset CLAUDE_PLUGIN_ROOT || true
+sole_root="$HOME/.claude/plugins/cache/larch-local/larch/1.0.0"
+mkdir -p "$sole_root"
+resolved=$(resolve_release_step7_root_for_test 1.0.0 2.0.0 || true)
+assert_eq "$resolved" "" "metadata version mismatch does not fall back to sole stale cache dir"
+
 source_upgrade_for_case root-current-matches-metadata
 unset CLAUDE_PLUGIN_ROOT || true
 current_root="$HOME/.claude/plugins/cache/larch-local/larch/3.0.0"
@@ -318,19 +314,22 @@ assert_contains "$out" "root=$resolved_root" "release Step 7 invocation passes e
 assert_contains "$out" "LARCH_CONE_RECONCILED=true" "release Step 7 invocation captures stderr with stdout"
 assert_success "reconcile detector accepts machine-readable line" detect_cone_reconcile_for_test "$out"
 fragment="Already at latest stable larch release (9.0.0), but the sparse checkout is out of date (allowlist changed). Reconciling the marketplace cone and reinstalling..."
-assert_failure "reconcile detector rejects pre-install prose fragment" detect_cone_reconcile_for_test "$fragment"
+assert_success "reconcile detector accepts planned prose fragment fallback" detect_cone_reconcile_for_test "$fragment"
 new_version_line="LARCH_NEW_VERSION_INSTALLED=true"
 assert_success "new-version detector accepts machine-readable line" detect_new_version_installed_for_test "$new_version_line"
 banner="Upgrading larch from 8.0.0 to 9.0.0..."
 assert_failure "new-version detector rejects pre-success upgrade banner" detect_new_version_installed_for_test "$banner"
 failed_flags=$(parse_release_step7_flags_for_test 1 $'LARCH_CONE_RECONCILED=true\nLARCH_NEW_VERSION_INSTALLED=true')
-assert_contains "$failed_flags" "CONE_RECONCILED=false" "release Step 7 ignores reconcile flag from failed upgrade"
-assert_contains "$failed_flags" "NEW_VERSION_INSTALLED=false" "release Step 7 ignores new-version flag from failed upgrade"
+assert_contains "$failed_flags" "CONE_RECONCILED=true" "release Step 7 preserves reconcile flag from failed upgrade"
+assert_contains "$failed_flags" "NEW_VERSION_INSTALLED=true" "release Step 7 preserves new-version flag from failed upgrade"
+assert_contains "$failed_flags" "RESTART_REQUIRED=true" "release Step 7 infers restart from failed upgrade flags"
 restart_flags=$(parse_release_step7_flags_for_test 0 "LARCH_RESTART_REQUIRED=true")
 assert_contains "$restart_flags" "RESTART_REQUIRED=true" "release Step 7 records restart-required flag from successful upgrade"
 
 # --- production upgrade-larch.sh reconciles a real drifted marketplace clone ---
 source_upgrade_for_case production-drift
+prod_out=""
+prod_rc=0
 bin_dir="$TMP/bin-production-drift"
 mkdir -p "$bin_dir"
 old_path="$PATH"
@@ -377,14 +376,20 @@ case "$*" in
 esac
 CLAUDE
 chmod +x "$bin_dir/claude"
-prod_out=$(bash "$UPGRADE_SCRIPT" 2>&1)
+run_upgrade_script_for_test bash "$UPGRADE_SCRIPT"
+prod_out="$RUN_UPGRADE_OUT"
+prod_rc="$RUN_UPGRADE_RC"
+assert_eq "$prod_rc" "0" "production drift upgrade exits successfully"
 assert_contains "$prod_out" "LARCH_CONE_RECONCILED=true" "production upgrade emits reconcile signal after drifted marketplace repair"
+assert_contains "$prod_out" "LARCH_RESTART_REQUIRED=true" "production upgrade emits restart signal after drifted marketplace repair"
 assert_success "production upgrade leaves marketplace cone matching allowlist" marketplace_sparse_cone_matches
 PATH="$old_path"
 unset LARCH_TEST_VERSION_FILE
 
 # --- production upgrade-larch.sh signals restart when stable resolution is unavailable ---
 source_upgrade_for_case production-unverified-reinstall
+unverified_out=""
+unverified_rc=0
 bin_dir="$TMP/bin-production-unverified-reinstall"
 mkdir -p "$bin_dir"
 old_path="$PATH"
@@ -426,7 +431,10 @@ case "$*" in
 esac
 CLAUDE
 chmod +x "$bin_dir/claude"
-unverified_out=$(LARCH_TEST_LIST_FAIL=true bash "$UPGRADE_SCRIPT" 2>&1)
+run_upgrade_script_for_test env LARCH_TEST_LIST_FAIL=true bash "$UPGRADE_SCRIPT"
+unverified_out="$RUN_UPGRADE_OUT"
+unverified_rc="$RUN_UPGRADE_RC"
+assert_eq "$unverified_rc" "0" "production unverified reinstall exits successfully"
 assert_failure "production unverified reinstall emits no verified-new-version signal" detect_new_version_installed_for_test "$unverified_out"
 assert_contains "$unverified_out" "LARCH_RESTART_REQUIRED=true" "production upgrade emits restart signal after unverified reinstall"
 PATH="$old_path"
@@ -434,6 +442,8 @@ unset LARCH_TEST_VERSION_FILE LARCH_TEST_LIST_FAIL
 
 # --- production upgrade-larch.sh early-exits when already latest and cone matches ---
 source_upgrade_for_case production-already-latest
+already_latest_out=""
+already_latest_rc=0
 bin_dir="$TMP/bin-production-already-latest"
 mkdir -p "$bin_dir"
 old_path="$PATH"
@@ -467,9 +477,13 @@ case "$*" in
 esac
 CLAUDE
 chmod +x "$bin_dir/claude"
-already_latest_out=$(bash "$UPGRADE_SCRIPT" 2>&1)
+run_upgrade_script_for_test bash "$UPGRADE_SCRIPT"
+already_latest_out="$RUN_UPGRADE_OUT"
+already_latest_rc="$RUN_UPGRADE_RC"
+assert_eq "$already_latest_rc" "0" "production already-latest path exits successfully"
 assert_contains "$already_latest_out" "No upgrade needed." "production already-latest matching-cone path exits without reinstall"
 assert_failure "production already-latest path emits no new-version signal" detect_new_version_installed_for_test "$already_latest_out"
+assert_failure "production already-latest path emits no cone reconcile signal" detect_cone_reconcile_for_test "$already_latest_out"
 if [[ -f "$CLAUDE_PLUGIN_ROOT/.larch-installed-at" ]]; then
     pass "production already-latest path refreshes install stamp"
 else

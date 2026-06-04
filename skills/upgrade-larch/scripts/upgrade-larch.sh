@@ -158,11 +158,13 @@ get_installed_larch_version() {
 }
 
 is_cache_shaped_larch_root() {
-    local root="$1" version
+    local root="$1" version cache_parent
 
     [ -n "$root" ] || return 1
+    [ -n "${HOME:-}" ] || return 1
+    cache_parent="$HOME/.claude/plugins/cache/larch-local/larch"
     case "$root" in
-        "$HOME/.claude/plugins/cache/larch-local/larch/"*) ;;
+        "$cache_parent/"*) ;;
         *) return 1 ;;
     esac
     [ -d "$root" ] || return 1
@@ -171,9 +173,11 @@ is_cache_shaped_larch_root() {
 }
 
 single_larch_cache_version_dir() {
-    local cache_parent="$HOME/.claude/plugins/cache/larch-local/larch"
+    local cache_parent
     local dir found="" count=0 version
 
+    [ -n "${HOME:-}" ] || return 1
+    cache_parent="$HOME/.claude/plugins/cache/larch-local/larch"
     shopt -s nullglob
     for dir in "$cache_parent"/*; do
         [ -d "$dir" ] || continue
@@ -197,6 +201,7 @@ resolve_release_step7_root() {
         return 0
     fi
 
+    [ -n "${HOME:-}" ] || return 1
     cache_parent="$HOME/.claude/plugins/cache/larch-local/larch"
     installed_version=$(get_installed_larch_version || true)
     if is_safe_version "${installed_version:-}"; then
@@ -205,21 +210,16 @@ resolve_release_step7_root() {
             printf '%s\n' "$metadata_root"
             return 0
         fi
+        return 1
     fi
 
     if is_safe_version "${current_version:-}"; then
         current_root="$cache_parent/$current_version"
         if [ -d "$current_root" ]; then
-            if [ -n "${installed_version:-}" ] && [ "$current_version" = "$installed_version" ]; then
+            sole_root=$(single_larch_cache_version_dir 2>/dev/null || true)
+            if [ "$sole_root" = "$current_root" ]; then
                 printf '%s\n' "$current_root"
                 return 0
-            fi
-            if [ -z "${installed_version:-}" ]; then
-                sole_root=$(single_larch_cache_version_dir 2>/dev/null || true)
-                if [ "$sole_root" = "$current_root" ]; then
-                    printf '%s\n' "$current_root"
-                    return 0
-                fi
             fi
         fi
     fi
@@ -409,7 +409,9 @@ trap recover ERR
 # Resolve the latest stable (non-pre-release, non-draft) release from GitHub.
 larch_err "Checking latest stable larch release..."
 LATEST_STABLE=""
-if command -v gh >/dev/null 2>&1; then
+if is_safe_version "${LARCH_EXPECTED_STABLE_VERSION:-}"; then
+    LATEST_STABLE="$LARCH_EXPECTED_STABLE_VERSION"
+elif command -v gh >/dev/null 2>&1; then
     STABLE_RELEASES=()
     GH_RELEASES_OUTPUT=""
     GH_STDERR_LOG=$(mktemp "${TMPDIR:-/tmp}/upgrade-larch-gh-stderr.XXXXXX")
@@ -513,8 +515,12 @@ if [ -n "$LATEST_STABLE" ]; then
     fi
 fi
 
-if [ "$MARKETPLACE_CONE_WILL_RECONCILE" = true ] && marketplace_sparse_cone_matches; then
+if [ "$MARKETPLACE_CONE_WILL_RECONCILE" = true ]; then
+    if ! marketplace_sparse_cone_matches; then
+        larch_err "Warning: marketplace sparse checkout still differs after reinstall; restart Claude Code and re-run /upgrade-larch if the advisory persists."
+    fi
     larch_err "LARCH_CONE_RECONCILED=true"
+    larch_err "LARCH_RESTART_REQUIRED=true"
 fi
 if [ -z "$LATEST_STABLE" ]; then
     larch_err "LARCH_RESTART_REQUIRED=true"
