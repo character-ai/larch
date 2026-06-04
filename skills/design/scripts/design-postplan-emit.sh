@@ -126,6 +126,17 @@ VALIDATE_SKIPPED_COUNT=0
 VALIDATE_UNSAFE_TOKEN_COUNT=0
 VALIDATE_LOG_FILE=""
 
+_postplan_fatal() {
+    local status="${1:-emit-failed}"
+    shift
+    if ((${#WARN_LINES[@]})); then
+        POSTPLAN_EMIT_STATUS="$status"
+        _postplan_write_result_and_emit
+    fi
+    larch_err "design-postplan-emit.sh: $*"
+    exit 2
+}
+
 _postplan_write_result_and_emit() {
     local -a _kvs=()
     _kvs+=("POSTPLAN_EMIT_STATUS=$POSTPLAN_EMIT_STATUS")
@@ -171,7 +182,7 @@ _postplan_pause_checkpoint() {
     if [[ -f "$DESIGN_TMPDIR/.pause-requested" ]]; then
         local _issue
         _issue="$(_postplan_resolve_issue)"
-        [[ -n "$_issue" ]] || fail 'pause requested but ISSUE_NUMBER could not be resolved'
+        [[ -n "$_issue" ]] || _postplan_fatal emit-failed 'pause requested but ISSUE_NUMBER could not be resolved'
         # Write result env before exec so the orchestrator's mandatory-key check
         # sees POSTPLAN_EMIT_STATUS=paused rather than an empty-result abort when
         # this driver is called via $() capture (exec replaces the subshell only).
@@ -181,7 +192,7 @@ _postplan_pause_checkpoint() {
     fi
 }
 
-[[ -s "$DESIGN_TMPDIR/plan.txt" ]] || fail 'plan.txt missing or empty'
+[[ -s "$DESIGN_TMPDIR/plan.txt" ]] || _postplan_fatal missing-plan 'plan.txt missing or empty'
 
 _postplan_pause_checkpoint
 set +e

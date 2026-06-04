@@ -71,8 +71,8 @@ assert_thin_fence() {
     fi
     if awk '
       /while[[:space:]].*read/ { in_read_loop=1 }
-      in_read_loop && /done[[:space:]]*<.*\.step3\.6-assessor\.env/ { found=1 }
-      in_read_loop && /done/ { in_read_loop=0 }
+      in_read_loop && /done[[:space:]]*<.*\.step3\.6-assessor\.env/ { found=1; in_read_loop=0 }
+      in_read_loop && /^[[:space:]]*done([[:space:]]|$)/ { in_read_loop=0 }
       END { exit found ? 0 : 1 }
     ' "$subject"; then
       fail "$label must not read .step3.6-assessor.env with a file-first while/read loop"

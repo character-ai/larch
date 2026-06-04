@@ -247,6 +247,22 @@ apply_gate_b_bypass_sentinels "$DESIGN_GATE_B" || fail "gate B bypass helper ref
 printf 'issue body gate b\n' >"$BODY_FILE"
 out_gate_b=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B" --issue 9 --repo owner/repo)
 [[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass plan-size-trigger writes triple sentinels from empty state: $out_gate_b"
+out_gate_b_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-gate-b" --issue 9 --repo owner/repo)
+[[ "$out_gate_b_load" == *"LOAD_OK=true"* && "$out_gate_b_load" == *"STEP=3b"* ]] || fail "gate B bypass empty-state load mismatch: $out_gate_b_load"
+
+DESIGN_GATE_B_STEP3="$TMP/design-gate-b-step3-only"
+make_design_tmpdir "$DESIGN_GATE_B_STEP3"
+complete_design_steps "$DESIGN_GATE_B_STEP3" 3
+[[ -f "$DESIGN_GATE_B_STEP3/.completed/step-3" ]] || fail "gate B bypass step-3-only precondition missing step-3"
+[[ ! -f "$DESIGN_GATE_B_STEP3/.completed/step-3.5" ]] || fail "gate B bypass step-3-only precondition unexpectedly has step-3.5"
+[[ ! -f "$DESIGN_GATE_B_STEP3/.completed/step-3.6" ]] || fail "gate B bypass step-3-only precondition unexpectedly has step-3.6"
+apply_gate_b_bypass_sentinels "$DESIGN_GATE_B_STEP3" || fail "gate B bypass helper refused pre-existing step-3"
+[[ -f "$DESIGN_GATE_B_STEP3/.completed/step-3.5" && -f "$DESIGN_GATE_B_STEP3/.completed/step-3.6" ]] || fail "gate B bypass helper missing supplemental sentinels"
+printf 'issue body gate b step3\n' >"$BODY_FILE"
+out_gate_b_step3=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_STEP3" --issue 9 --repo owner/repo)
+[[ "$out_gate_b_step3" == *"PAUSE_OK=true"* && "$out_gate_b_step3" == *"STEP=3b"* ]] || fail "gate B bypass with pre-existing step-3 should resume at 3b: $out_gate_b_step3"
+out_gate_b_step3_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-gate-b-step3" --issue 9 --repo owner/repo)
+[[ "$out_gate_b_step3_load" == *"LOAD_OK=true"* && "$out_gate_b_step3_load" == *"STEP=3b"* ]] || fail "gate B bypass step-3-only load mismatch: $out_gate_b_step3_load"
 
 DESIGN_GATE_B_MISSING="$TMP/design-gate-b-missing-sentinels"
 make_design_tmpdir "$DESIGN_GATE_B_MISSING"

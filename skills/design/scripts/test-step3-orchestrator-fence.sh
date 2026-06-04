@@ -5,16 +5,20 @@ set -euo pipefail
 
 apply_gate_b_bypass_sentinels() {
     local design_tmpdir="$1"
-    if [[ -f "$design_tmpdir/.completed/step-3" \
-        || -f "$design_tmpdir/.completed/step-3.5" \
+    if [[ -f "$design_tmpdir/.completed/step-3.5" \
         || -f "$design_tmpdir/.completed/step-3.6" ]]; then
         return 1
     fi
     local DESIGN_TMPDIR="$design_tmpdir"
     mkdir -p "$DESIGN_TMPDIR/.completed"
-    : > "$DESIGN_TMPDIR/.completed/step-3"
-    : > "$DESIGN_TMPDIR/.completed/step-3.5"
-    : > "$DESIGN_TMPDIR/.completed/step-3.6"
+    if [[ -f "$design_tmpdir/.completed/step-3" ]]; then
+        : >"$DESIGN_TMPDIR/.completed/step-3.5"
+        : >"$DESIGN_TMPDIR/.completed/step-3.6"
+        return 0
+    fi
+    : >"$DESIGN_TMPDIR/.completed/step-3"
+    : >"$DESIGN_TMPDIR/.completed/step-3.5"
+    : >"$DESIGN_TMPDIR/.completed/step-3.6"
 }
 export -f apply_gate_b_bypass_sentinels
 
@@ -222,6 +226,18 @@ if apply_gate_b_bypass_sentinels "$D9" \
     pass 'helper writes triple sentinels'
 else
     fail 'helper did not write triple sentinels'
+fi
+
+echo "=== gate B bypass helper supplements 3.5/3.6 when step-3 exists ==="
+D9b="$TMP/gate-b-helper-step3"
+mkdir -p "$D9b/.completed"
+: >"$D9b/.completed/step-3"
+if apply_gate_b_bypass_sentinels "$D9b" \
+    && [[ -f "$D9b/.completed/step-3.5" ]] \
+    && [[ -f "$D9b/.completed/step-3.6" ]]; then
+    pass 'helper supplements missing 3.5/3.6 with pre-existing step-3'
+else
+    fail 'helper did not supplement 3.5/3.6 with pre-existing step-3'
 fi
 
 TOTAL=$((PASS + FAIL))

@@ -228,6 +228,21 @@ export LARCH_QUIET_DISABLE=1
 assert_rc "classification warning quiet rc" 0 "$rc"
 assert_contains "$D2d_warn/stdout.txt" 'WARN=**⚠ read-design-classification: run-params not readable' "classification warning emits WARN in quiet mode"
 
+D2d_invalid_warn="$TMP/classification-invalid-quiet"
+mkdir -p "$D2d_invalid_warn"
+printf '# Plan\n\ndiff_lines: 12\n' >"$D2d_invalid_warn/plan.txt"
+printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$FAKE_PLUGIN" >"$D2d_invalid_warn/session-env.sh"
+printf '{"review_budget":"full","workflow_path":"SIMPLE"}\n' >"$D2d_invalid_warn/run-params.json"
+reset_env
+set +e
+env -u LARCH_QUIET_DISABLE CALL_LOG="$CALL_LOG" CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" \
+    bash "$SUBJECT" --design-tmpdir "$D2d_invalid_warn" >"$D2d_invalid_warn/stdout.txt" 2>"$D2d_invalid_warn/stderr.txt"
+rc=$?
+set -e
+export LARCH_QUIET_DISABLE=1
+assert_rc "classification invalid quiet rc" 0 "$rc"
+assert_contains "$D2d_invalid_warn/stdout.txt" 'WARN=**⚠ read-design-classification: design_classification missing or invalid' "invalid classification warning emits WARN in quiet mode"
+
 D2e="$TMP/classification-simple-legacy-hard"
 setup_design_tmp "$D2e" full HARD
 printf '{"review_budget":"full","workflow_path":"HARD","design_classification":"SIMPLE"}

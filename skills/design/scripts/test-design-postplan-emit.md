@@ -6,4 +6,4 @@ The primary contract lives in `design-postplan-emit.md`; this sibling exists for
 
 ## Quiet-mode warning regression
 
-The harness includes a default-quiet case that removes `run-params.json`, invokes `design-postplan-emit.sh` with `LARCH_QUIET_DISABLE` unset, and asserts stdout contains a `WARN=` line with the `read-design-classification` defaulting message.
+The harness includes default-quiet cases with `LARCH_QUIET_DISABLE` unset: one removes `run-params.json` and one keeps a readable `run-params.json` missing `design_classification`. Both assert stdout contains a `WARN=` line with the `read-design-classification` defaulting message.
