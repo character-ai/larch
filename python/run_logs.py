@@ -7,7 +7,6 @@ import json
 import os
 import re
 import shutil
-import sys
 import tempfile
 from contextlib import suppress
 from dataclasses import dataclass
@@ -16,6 +15,7 @@ from typing import Any, cast
 
 import config
 import git
+import logging_util
 import redact
 import tokens
 from errors import ShipError
@@ -564,6 +564,8 @@ def flush_logs_pre(
     commit_result = _larch_log_commit(runner, ctx, log_root, cwd=cwd)
     if commit_result.returncode != 0:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
+    if commit_result.argv == ("larch-log-volatile-only",):
+        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
     return RefreshSkip(skipped=False, reason="")
 
 
@@ -635,11 +637,23 @@ def _render_token_timing_batches(ctx: RunContext, log_root: Path) -> None:
     batch_dir = log_root / "implement" / run_id
     batch_dir.mkdir(parents=True, exist_ok=True)
     sidecars: list[tuple[str, Path]] = list(_token_sidecar_paths(tmpdir))
+    has_canonical_sidecars = bool(sidecars)
     if token_path.is_file():
         sidecars.append(("refresh", token_path))
     timing_sidecars: list[tuple[str, Path]] = list(_timing_sidecar_paths(tmpdir))
+    has_canonical_sidecars = has_canonical_sidecars or bool(timing_sidecars)
     if timing_path.is_file():
         timing_sidecars.append(("refresh", timing_path))
+    if not has_canonical_sidecars:
+        for path in (token_path, timing_path):
+            if not path.is_file():
+                continue
+            dest = batch_dir / path.name
+            _ = dest.write_text(
+                _redact_batch_payload(path.read_text(encoding="utf-8")),
+                encoding="utf-8",
+            )
+        return
     _ = tokens.scrape_run(
         sidecar_paths=tuple(sidecars),
         timing_sidecar_paths=tuple(timing_sidecars),
@@ -799,6 +813,120 @@ def _safe_copy_run_tree(src: Path, dest: Path) -> None:
             _ = shutil.copy2(item, target)
 
 
+_VOLATILE_REFRESH_BASENAMES = frozenset({
+    "token-report-refresh.json",
+    "timing-report-refresh.json",
+    "session-transcript-refresh.txt",
+    "token-report-refresh.redacted.json",
+    "timing-report-refresh.redacted.json",
+    "session-transcript-refresh.redacted.txt",
+})
+_PORCELAIN_PATH_OFFSET = 3
+_IMPLEMENT_RUN_REL_PARTS = 3
+
+
+def _status_line_path(line: str) -> str:
+    if len(line) <= _PORCELAIN_PATH_OFFSET:
+        return ""
+    path = line[_PORCELAIN_PATH_OFFSET:].strip()
+    if " -> " in path:
+        path = path.rsplit(" -> ", 1)[1]
+    return path
+
+
+def _volatile_file_paths(rel: str, cwd: str, status_stdout: str) -> tuple[str, ...] | None:
+    if not rel.startswith("larch-logs/implement/") or len(rel.split("/")) != _IMPLEMENT_RUN_REL_PARTS:
+        return None
+    root = Path(cwd) / rel
+    paths: list[str] = []
+    for line in status_stdout.splitlines():
+        path = _status_line_path(line)
+        if not path:
+            return None
+        if path.rstrip("/") == rel and line.startswith("?? "):
+            if not root.is_dir():
+                return None
+            for item in sorted(root.rglob("*")):
+                if item.is_file():
+                    item_rel = item.relative_to(Path(cwd)).as_posix()
+                    if item.name not in _VOLATILE_REFRESH_BASENAMES:
+                        return None
+                    paths.append(item_rel)
+            continue
+        if not path.startswith(f"{rel}/"):
+            return None
+        if Path(path).name not in _VOLATILE_REFRESH_BASENAMES:
+            return None
+        paths.append(path)
+    return tuple(dict.fromkeys(paths))
+
+
+def _volatile_only_under_run_tree(rel: str, cwd: str, status_stdout: str) -> tuple[str, ...] | None:
+    paths = _volatile_file_paths(rel, cwd, status_stdout)
+    if paths is None or not paths:
+        return None
+    return paths
+
+
+def _run_git_cleanup(runner: Runner, argv: list[str], *, cwd: str | None) -> None:
+    result = runner.run(argv, cwd=cwd)
+    if result.returncode != 0:
+        msg = f"run-log volatile cleanup failed ({result.returncode}): {' '.join(argv)}"
+        raise ShipError(msg)
+
+
+def _cleanup_volatile_run_tree(
+    runner: Runner,
+    rel: str,
+    paths: tuple[str, ...],
+    status_stdout: str,
+    *,
+    cwd: str,
+) -> None:
+    lines = status_stdout.splitlines()
+    has_staged = any(
+        not line.startswith("?? ") and line[:1] != " "
+        for line in lines
+    )
+    if has_staged:
+        _run_git_cleanup(runner, ["git", "reset", "HEAD", "--", rel], cwd=cwd)
+    tracked_paths = tuple(
+        path
+        for line in lines
+        if not line.startswith("?? ")
+        for path in (_status_line_path(line),)
+        if path in paths
+    )
+    if tracked_paths:
+        _run_git_cleanup(
+            runner,
+            ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", *tracked_paths],
+            cwd=cwd,
+        )
+    clean_paths = tuple(
+        clean_path
+        for line in lines
+        if line.startswith("?? ")
+        for path in (_status_line_path(line),)
+        for clean_path in (
+            paths
+            if path.rstrip("/") == rel
+            else (path,)
+        )
+        if clean_path in paths
+    )
+    if clean_paths:
+        _run_git_cleanup(runner, ["git", "clean", "-fd", "--", *clean_paths], cwd=cwd)
+    repo_status = git.status_porcelain(runner, cwd=cwd)
+    if repo_status.returncode != 0:
+        msg = "git status failed after volatile run-log cleanup"
+        raise ShipError(msg)
+    if repo_status.stdout.strip():
+        snippet = "\n".join(repo_status.stdout.splitlines()[:20])
+        msg = f"volatile run-log cleanup left dirty porcelain:\n{snippet}"
+        raise ShipError(msg)
+
+
 def _scrub_run_tree(directory: Path) -> tuple[int, int]:
     """Scrub secret-shaped values from every file under ``directory`` in place
     before commit (parity with scripts/scrub-log-secrets.sh).
@@ -844,8 +972,7 @@ def _warn_secret_scrub(violations: int, files_scrubbed: int, directory: Path) ->
         "## the same value.\n"
         "#############################################################################\n"
     )
-    _ = sys.stderr.write(banner)
-    _ = sys.stderr.flush()
+    logging_util.BreadcrumbWriter().emit(redact.redact_outbound(banner), quiet=False)
 
 
 def _larch_log_commit(
@@ -861,6 +988,7 @@ def _larch_log_commit(
     # Pre-flush secret gate: scrub Cursor keys et al. from the staged run tree
     # before commit (parity with scripts/scrub-log-secrets.sh). Fail-closed via
     # ShipError if a detected secret survives.
+    violations = 0
     if cwd is not None:
         scrub_dir = Path(cwd) / rel
         if scrub_dir.is_dir():
@@ -872,6 +1000,17 @@ def _larch_log_commit(
         return status
     if not status.stdout.strip():
         return CommandResult(("true",), 0, "", "", 0.0)
+    if cwd is not None:
+        volatile_paths = _volatile_only_under_run_tree(rel, cwd, status.stdout)
+        if volatile_paths is not None:
+            _cleanup_volatile_run_tree(
+                runner,
+                rel,
+                volatile_paths,
+                status.stdout,
+                cwd=cwd,
+            )
+            return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.0)
     _ = git.add(runner, rel, cwd=cwd)
     if git.diff_quiet(runner, rel, cached=True, cwd=cwd):
         return CommandResult(("true",), 0, "", "", 0.0)

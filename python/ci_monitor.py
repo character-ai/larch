@@ -6,7 +6,6 @@ import json
 import math
 import os
 import re
-import sys
 import tempfile
 import time
 from collections.abc import Callable
@@ -18,6 +17,7 @@ import agents
 import config
 import gh
 import git
+import logging_util
 import redact
 import retry
 from agents import TierAttempt
@@ -190,8 +190,7 @@ def _gh_pr_checks(
 
 
 def _warn_stderr(message: str) -> None:
-    _ = sys.stderr.write(message.rstrip("\n") + "\n")
-    _ = sys.stderr.flush()
+    logging_util.BreadcrumbWriter().emit(message, quiet=False)
 
 
 def _behind_count(
@@ -377,6 +376,7 @@ def poll_ci(
     checks = 0
     ci_failures = 0
     poll_interval = float(config.CI_WAIT_POLL_INTERVAL_SEC)
+    started_at = clock()
 
     while True:
         if checks >= max_polls:
@@ -436,6 +436,11 @@ def poll_ci(
             return status, decision
 
         checks += 1
+        elapsed = max(0.0, clock() - started_at)
+        _warn_stderr(
+            f"ci_monitor: poll {checks}/{max_polls} pending after {elapsed:.0f}s; "
+            f"sleeping {poll_interval:.0f}s",
+        )
         iter_start = clock()
         sleep_fn(poll_interval)
         iter_delta = clock() - iter_start

@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import sys
+import traceback
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
@@ -92,7 +92,14 @@ def _error_to_result(exc: Exception) -> ShipResult:
         return ShipResult(Outcome.NEEDS_USER_INPUT, needs_user_reason=str(exc), detail=str(exc))
     if isinstance(exc, Stalled):
         return ShipResult(Outcome.STALLED, detail=str(exc))
+    if isinstance(exc, ShipError):
+        return ShipResult(Outcome.STALLED, detail=str(exc))
     raise exc
+
+
+def _breadcrumb(step: str, detail: str = "") -> None:
+    suffix = f": {detail}" if detail else ""
+    logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}", quiet=False)
 
 
 def _summary_from_manifest(ctx: RunContext) -> str:
@@ -451,6 +458,7 @@ def run_ship(
         base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
         base_ref = "main"
         _write_ship_state(ctx, phase="checks")
+        _breadcrumb("checks", "Lint&Tests")
         checks_result = checks.run_checks_phase(
             runner,
             tmpdir=ctx.tmpdir,
@@ -466,6 +474,7 @@ def run_ship(
             return _step_result_to_ship(checks_result)
 
         _write_ship_state(ctx, phase="pr-prep")
+        _breadcrumb("pr-prep", "postbump/Flush+Push")
         postbump = finalize.postbump(runner, ctx, cwd=repo_root)
         if postbump.outcome is not Outcome.OK:
             finalize.write_finalize_state(
@@ -475,6 +484,7 @@ def run_ship(
             return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
 
         _write_ship_state(ctx, phase="pr-create")
+        _breadcrumb("pr-create", "PR")
         body = pr_body.compose_pr_body(
             summary=_summary_from_manifest(ctx),
             mermaid=ctx.mermaid,
@@ -508,7 +518,7 @@ def run_ship(
         try:
             run_logs.write_final_report_comment(runner, working)
         except ShipError as exc:
-            _ = sys.stderr.write(f"ship.py: warning: {exc}\n")
+            _breadcrumb("warning", str(exc))
         if not working.merge or working.draft or working.forked or working.repo_unavailable:
             finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
             _write_ship_state(working, phase="done")
@@ -524,6 +534,14 @@ def run_ship(
         fix_attempts = 0
         transient_retries = 0
         while True:
+            if iteration >= config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
+                _write_terminal_state(working, Outcome.STALLED, "merge-loop-iteration-cap")
+                return ShipResult(
+                    Outcome.STALLED,
+                    pr_number=working.pr_number,
+                    pr_url=working.pr_url,
+                    detail="merge loop iteration cap reached",
+                )
             _write_ship_state(
                 working,
                 phase="ci-initial",
@@ -532,6 +550,7 @@ def run_ship(
                 fix_attempts=fix_attempts,
                 transient_retries=transient_retries,
             )
+            _breadcrumb("ci", f"poll iteration {iteration}")
             monitor = ci_monitor.monitor(
                 runner,
                 pr=working.pr_number or 0,
@@ -567,6 +586,7 @@ def run_ship(
                         fix_attempts=fix_attempts,
                         transient_retries=transient_retries,
                     )
+                    _breadcrumb("rebase", "Flush+Push")
                     pre_rebase = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=repo_root)
                     if pre_rebase.skipped and pre_rebase.reason not in config.REFRESH_SKIP_MERGE_OK:
                         _write_terminal_state(working, Outcome.STALLED, "pre-rebase")
@@ -592,6 +612,7 @@ def run_ship(
                 iteration += 1
                 continue
 
+            _breadcrumb("merge")
             merged = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
             if merged.result in {config.MERGE_RESULT_CI_NOT_READY, config.MERGE_RESULT_MAIN_ADVANCED}:
                 iteration += 1
@@ -633,6 +654,7 @@ def run_ship(
                     merge_result=merged.result,
                     detail=merged.error or f"merge did not complete: {merged.result}",
                 )
+            _breadcrumb("post-merge")
             post = run_postmerge_phase(runner, working, cwd=repo_root)
             _write_ship_state(working, phase="done")
             return ShipResult(
@@ -735,7 +757,14 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     ctx = _ctx_from_args(args)
-    result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
+    try:
+        result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
+    except Exception:
+        logging_util.BreadcrumbWriter().emit(
+            f"ship.py: internal error\n{traceback.format_exc()}",
+            quiet=False,
+        )
+        result = ShipResult(Outcome.INTERNAL_ERROR, detail="internal error")
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

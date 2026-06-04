@@ -75,17 +75,6 @@ def merge_pr(
     if terminal is not None:
         return terminal
 
-    pre_skip = run_logs.flush_logs_pre(runner, ctx, cwd=cwd)
-    if pre_skip.skipped and pre_skip.reason not in config.REFRESH_SKIP_MERGE_OK:
-        return MergeResult(
-            result=config.MERGE_RESULT_ERROR,
-            error=redact_merge_diagnostic(f"flush_logs_pre skipped: {pre_skip.reason}"),
-        )
-
-    terminal = _merge_noop_if_pr_closed(runner, ctx, cwd=cwd, post_flush=post_flush)
-    if terminal is not None:
-        return terminal
-
     pr_num = ctx.pr_number
     state = _refresh_pr_info(runner, pr_num, ctx.repo, cwd=cwd)
     if not state.merge_state_status or state.merge_state_status == "UNKNOWN":
@@ -139,6 +128,8 @@ def merge_pr(
         if post_err is not None:
             return post_err
         return head_match
+    if head_match is not None:
+        state = head_match
 
     race = _version_race_gate(runner, cwd=cwd)
     if race is not None:
@@ -262,6 +253,24 @@ def _retry_unknown(
     return state
 
 
+def _poll_head_oid_match(
+    runner: Runner,
+    ctx: RunContext,
+    pr_num: int,
+    local_head: str,
+    sleeper: Callable[[float], None],
+    cwd: str | None,
+) -> gh.MergeState:
+    state = gh.MergeState("", "")
+    for attempt in range(config.MERGE_PR_POST_PUSH_UNKNOWN_RETRIES):
+        state = _refresh_pr_info(runner, pr_num, ctx.repo, cwd=cwd)
+        if state.head_ref_oid == local_head:
+            return state
+        if attempt + 1 < config.MERGE_PR_POST_PUSH_UNKNOWN_RETRIES:
+            sleeper(5.0)
+    return state
+
+
 def _ensure_head_matches_pr(
     runner: Runner,
     ctx: RunContext,
@@ -308,9 +317,14 @@ def _ensure_head_matches_pr(
     pr_num = ctx.pr_number
     if pr_num is None:
         return MergeResult(result=config.MERGE_RESULT_ERROR, error="pr_number required")
-    state = _refresh_pr_info(runner, pr_num, ctx.repo, cwd=cwd)
     local_head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
-    if not local_head or local_head != state.head_ref_oid:
+    if not local_head:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error="could not resolve local HEAD after force-push recovery",
+        )
+    state = _poll_head_oid_match(runner, ctx, pr_num, local_head, sleeper, cwd)
+    if local_head != state.head_ref_oid:
         return MergeResult(
             result=config.MERGE_RESULT_ERROR,
             error="local HEAD does not match PR head OID after force-push recovery",

@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shutil
+import subprocess
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +18,7 @@ if TYPE_CHECKING:
 import config
 import run_logs
 import ship
+from errors import ShipError
 from outcomes import Outcome, StepResult
 from proc import CommandResult
 from run_context import RunContext
@@ -71,13 +75,18 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
 def test_outcome_exit_map_matches_bash_contract() -> None:
     assert config.OUTCOME_EXIT_MAP == {
         Outcome.OK: 0,
+        Outcome.INTERNAL_ERROR: 1,
         Outcome.NEEDS_USER_INPUT: 3,
         Outcome.STALLED: 4,
         Outcome.TRANSIENT: 6,
     }
 
 
-def test_happy_path_stage_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_happy_path_stage_order(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
     order: list[str] = []
     flush_args: list[tuple[str | None, str | None]] = []
 
@@ -165,7 +174,54 @@ def test_happy_path_stage_order(monkeypatch: pytest.MonkeyPatch, tmp_path: Path)
         "state",
         "flush-post",
     ]
+    assert order.count("monitor") == 1
+    assert order.count("merge") == 1
     assert not flush_args
+    captured = capsys.readouterr()
+    assert "ship.py: checks:" in captured.err
+    assert "ship.py: pr-prep:" in captured.err
+    assert "ship.py: pr-create:" in captured.err
+    assert "ship.py: ci:" in captured.err
+    assert "ship.py: merge" in captured.err
+    assert "ship.py: post-merge" in captured.err
+
+
+def test_merge_loop_iteration_cap_stalls(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(config, "SHIP_MERGE_LOOP_MAX_ITERATIONS", 2)
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "u", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "wait",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "merge loop iteration cap reached"
 
 
 def test_oos_gate_before_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -513,3 +569,132 @@ def test_emit_result_prints_json(capsys: pytest.CaptureFixture[str], tmp_path: P
     payload = json.loads(capsys.readouterr().out)
     assert payload["outcome"] == "OK"
     assert payload["pr_number"] == 2
+
+
+def test_ship_error_maps_to_stalled_result() -> None:
+    result = ship._error_to_result(ShipError("operational failure"))  # pyright: ignore[reportPrivateUsage]
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "operational failure"
+
+
+def test_run_ship_catches_ship_error_as_stalled(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def raise_ship_error(*_a: object, **_k: object) -> StepResult:
+        raise ShipError("checks failed operationally")
+
+    monkeypatch.setattr(ship.checks, "run_checks_phase", raise_ship_error)
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "checks failed operationally"
+
+
+def test_main_emits_json_stdout_and_breadcrumb_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
+        ship._breadcrumb("checks", "Lint&Tests")  # pyright: ignore[reportPrivateUsage]
+        return ship.ShipResult(Outcome.STALLED, detail="stalled")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    rc = ship.main(
+        [
+            "--tmpdir",
+            str(tmp_path),
+            "--manifest-path",
+            str(tmp_path / "manifest.json"),
+            "--run-id",
+            "run-abc",
+        ],
+    )
+    captured = capsys.readouterr()
+    assert rc == 4
+    payload = json.loads(captured.out)
+    assert payload["outcome"] == "STALLED"
+    assert captured.out.count("\n") == 1
+    assert "ship.py: checks: Lint&Tests" in captured.err
+
+
+def test_main_emits_json_stdout_on_unexpected_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
+        raise RuntimeError("unexpected failure")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    rc = ship.main(
+        [
+            "--tmpdir",
+            str(tmp_path),
+            "--manifest-path",
+            str(tmp_path / "manifest.json"),
+            "--run-id",
+            "run-abc",
+        ],
+    )
+    captured = capsys.readouterr()
+    assert rc == config.EXIT_INTERNAL_ERROR
+    payload = json.loads(captured.out)
+    assert payload["outcome"] == "INTERNAL_ERROR"
+    assert payload["detail"] == "internal error"
+    assert captured.out.count("\n") == 1
+    assert "internal error" in captured.err
+    assert "Traceback" in captured.err
+    assert "RuntimeError" in captured.err
+
+
+def _meets_python_ship_floor(major: int, minor: int) -> bool:
+    return (major, minor) >= (3, 11)
+
+
+def test_python_ship_driver_version_guard_probe() -> None:
+    """Pin the /implement Step 8+ and ship.py runtime floor (Python >= 3.11)."""
+    assert _meets_python_ship_floor(3, 11)
+    assert not _meets_python_ship_floor(3, 10)
+
+
+def test_python_ship_driver_version_guard_failure_contract(tmp_path: Path) -> None:
+    """Runtime probe for the Step 8+ guard JSON/exit contract when python3 is too old."""
+    real_python = shutil.which("python3")
+    assert real_python is not None
+    stub_dir = tmp_path / "bin"
+    stub_dir.mkdir()
+    stub = stub_dir / "python3"
+    _ = stub.write_text(
+        f"""#!/usr/bin/env bash
+if [ "$1" = "-c" ] && printf '%s\\n' "$2" | grep -Fq 'sys.version_info >= (3, 11)'; then
+  exit 1
+fi
+exec {real_python} "$@"
+""",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    script = """
+if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+  echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
+  printf '%s\\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
+  exit 4
+fi
+exit 0
+"""
+    completed = subprocess.run(
+        ["bash", "-c", script],
+        check=False,
+        capture_output=True,
+        text=True,
+        env={
+            **os.environ,
+            "PATH": f"{stub_dir}:{os.environ.get('PATH', '')}",
+        },
+    )
+    assert completed.returncode == 4
+    assert '"outcome":"STALLED"' in completed.stdout
+    assert "Python ship driver requires Python 3.11 or newer" in completed.stderr

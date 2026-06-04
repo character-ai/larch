@@ -17,6 +17,7 @@ from contextlib import contextmanager
 from typing import cast
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import urlparse
 
 import redact
 from errors import ShipError, TransientNetworkError
@@ -211,23 +212,60 @@ def pr_view(
     if result.returncode != 0:
         _raise_read_failure(result)
     data = _as_json_object(_loads_json(result.stdout, context="pr view"), context="pr view")
+    return _pull_request_from_json(data, context="pr view")
+
+
+def _pull_request_from_json(data: Mapping[str, object], *, context: str) -> PullRequest:
     _require_json_keys(
         data,
         ("number", "url", "state", "headRefName"),
-        context="pr view",
+        context=context,
     )
     merged_raw = data.get("mergedAt")
     merged_at = str(merged_raw) if merged_raw else None
     merge_state_raw = data.get("mergeStateStatus")
     merge_state_status = str(merge_state_raw) if merge_state_raw else None
     return PullRequest(
-        number=_as_int(data["number"], context="pr view", field="number"),
+        number=_as_int(data["number"], context=context, field="number"),
         url=str(data["url"]),
         state=str(data["state"]),
         head_ref=str(data["headRefName"]),
         merged_at=merged_at,
         merge_state_status=merge_state_status,
     )
+
+
+def pr_view_current_read(
+    runner: Runner,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        [
+            "pr",
+            "view",
+            "--repo",
+            repo,
+            "--json",
+            "number,url,state,headRefName",
+        ],
+        cwd=cwd,
+    )
+
+
+def pr_view_current(
+    runner: Runner,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> PullRequest | None:
+    result = pr_view_current_read(runner, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        return None
+    data = _as_json_object(_loads_json(result.stdout, context="pr view current"), context="pr view current")
+    return _pull_request_from_json(data, context="pr view current")
 
 
 def pr_for_branch_read(
@@ -292,13 +330,22 @@ def _is_create_conflict(text: str) -> bool:
 
 
 _PR_CONFLICT_URL_RE = re.compile(r"https?://[^\s]+/pull/\d+")
+_PR_URL_MIN_PARTS = 4
+_REPO_SLUG_PARTS = 2
 
 
-def _recover_pr_from_conflict_text(text: str, *, branch: str) -> PullRequest | None:
-    matches = _PR_CONFLICT_URL_RE.findall(text)
-    if not matches:
-        return None
-    url = matches[-1]
+def _repo_matches_pr_url(repo: str, url: str) -> bool:
+    parsed = urlparse(url)
+    parts = [part for part in parsed.path.split("/") if part]
+    if len(parts) < _PR_URL_MIN_PARTS or parts[2].lower() != "pull":
+        return False
+    repo_parts = repo.split("/")
+    if len(repo_parts) != _REPO_SLUG_PARTS:
+        return False
+    return parts[0].lower() == repo_parts[0].lower() and parts[1].lower() == repo_parts[1].lower()
+
+
+def _candidate_from_pr_url(url: str, *, branch: str) -> PullRequest | None:
     number_match = re.search(r"/(\d+)$", url)
     if number_match is None:
         return None
@@ -307,6 +354,106 @@ def _recover_pr_from_conflict_text(text: str, *, branch: str) -> PullRequest | N
         url=url,
         state="OPEN",
         head_ref=branch,
+    )
+
+
+def _validate_recovered_pr(
+    runner: Runner,
+    candidate: PullRequest,
+    *,
+    repo: str,
+    branch: str,
+    cwd: str | None,
+    allow_unverified: bool = False,
+) -> PullRequest | None:
+    if not _repo_matches_pr_url(repo, candidate.url):
+        return None
+    try:
+        viewed = pr_view(runner, candidate.number, repo=repo, cwd=cwd)
+    except TransientNetworkError:
+        raise
+    except ShipError:
+        if allow_unverified:
+            return candidate
+        return None
+    if viewed.head_ref != branch:
+        return None
+    if viewed.state.upper() != "OPEN":
+        return None
+    return viewed
+
+
+def _recover_pr_from_urls(
+    runner: Runner,
+    urls: Sequence[str],
+    *,
+    branch: str,
+    repo: str,
+    cwd: str | None,
+    allow_unverified: bool = False,
+) -> PullRequest | None:
+    for url in reversed(list(urls)):
+        candidate = _candidate_from_pr_url(url, branch=branch)
+        if candidate is None:
+            continue
+        validated = _validate_recovered_pr(
+            runner,
+            candidate,
+            repo=repo,
+            branch=branch,
+            cwd=cwd,
+            allow_unverified=allow_unverified,
+        )
+        if validated is not None:
+            return validated
+    return None
+
+
+def _recover_pr_from_create_output(
+    runner: Runner,
+    stdout: str,
+    stderr: str,
+    *,
+    branch: str,
+    repo: str,
+    cwd: str | None,
+) -> PullRequest | None:
+    for urls in (
+        _PR_CONFLICT_URL_RE.findall(stdout),
+        _PR_CONFLICT_URL_RE.findall(stderr),
+    ):
+        if not urls:
+            continue
+        recovered = _recover_pr_from_urls(
+            runner,
+            urls,
+            branch=branch,
+            repo=repo,
+            cwd=cwd,
+        )
+        if recovered is not None:
+            return recovered
+    return None
+
+
+def _recover_pr_from_conflict_text(
+    runner: Runner,
+    text: str,
+    *,
+    branch: str,
+    repo: str,
+    cwd: str | None,
+) -> PullRequest | None:
+    matches = _PR_CONFLICT_URL_RE.findall(text)
+    if not matches:
+        return None
+    return _recover_pr_from_urls(
+        runner,
+        matches,
+        branch=branch,
+        repo=repo,
+        cwd=cwd,
+        allow_unverified=True,
     )
 
 
@@ -337,8 +484,6 @@ def pr_create(
             _redact_gh_scalar(title),
             body_flag,
             body_path,
-            "--json",
-            "number,url,state,headRefName",
         ]
         if assignee is not None:
             argv.extend(["--assignee", assignee])
@@ -352,35 +497,42 @@ def pr_create(
             conflict_text = _combined(result)
             try:
                 recovered = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
-            except (ShipError, TransientNetworkError):
+            except TransientNetworkError:
+                raise
+            except ShipError:
                 recovered = None
             if recovered is not None:
                 return recovered, False
             recovered = _recover_pr_from_conflict_text(
+                runner,
                 conflict_text,
                 branch=branch,
+                repo=repo,
+                cwd=cwd,
             )
             if recovered is not None:
                 return recovered, False
         _ = _ensure_success(result)
-    data = _as_json_object(
-        _loads_json(result.stdout, context="pr create"),
-        context="pr create",
+    try:
+        recovered = pr_for_branch(runner, branch, repo=repo, cwd=cwd)
+    except TransientNetworkError:
+        raise
+    except ShipError:
+        recovered = None
+    if recovered is not None:
+        return recovered, True
+    recovered = _recover_pr_from_create_output(
+        runner,
+        result.stdout,
+        result.stderr,
+        branch=branch,
+        repo=repo,
+        cwd=cwd,
     )
-    _require_json_keys(
-        data,
-        ("number", "url", "state", "headRefName"),
-        context="pr create",
-    )
-    return (
-        PullRequest(
-            number=_as_int(data["number"], context="pr create", field="number"),
-            url=str(data["url"]),
-            state=str(data["state"]),
-            head_ref=str(data["headRefName"]),
-        ),
-        True,
-    )
+    if recovered is not None:
+        return recovered, True
+    msg = "gh pr create succeeded, but the created PR could not be resolved"
+    raise ShipError(msg)
 
 
 def pr_merge(

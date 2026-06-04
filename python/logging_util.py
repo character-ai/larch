@@ -5,16 +5,18 @@ from __future__ import annotations
 import json
 import os
 import sys
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, TextIO
 
 import config
+import redact
 
 
-def _quiet_disabled() -> bool:
-    return os.environ.get(config.ENV_LARCH_QUIET_DISABLE, "").lower() in {
+def _env_truthy(name: str) -> bool:
+    return os.environ.get(name, "").lower() in {
         "1",
         "true",
         "yes",
@@ -22,17 +24,42 @@ def _quiet_disabled() -> bool:
     }
 
 
+def _quiet_disabled() -> bool:
+    return _env_truthy(config.ENV_LARCH_QUIET_DISABLE)
+
+
+def _quiet_active() -> bool:
+    return (
+        _env_truthy(config.ENV_LARCH_QUIET_ACTIVE)
+        and bool(os.environ.get(config.ENV_LARCH_QUIET_PID, ""))
+        and not _quiet_disabled()
+    )
+
+
 @dataclass
 class BreadcrumbWriter:
-    """stderr breadcrumb stream; suppressed when quiet is active."""
+    """Progress breadcrumbs; honor lib-quiet routing when LARCH_QUIET_ACTIVE is set."""
 
-    stream: TextIO = sys.stderr
+    stream: TextIO | None = None
 
-    def emit(self, message: str, *, quiet: bool = False) -> None:
-        if quiet and not _quiet_disabled():
-            return
-        _ = self.stream.write(message.rstrip("\n") + "\n")
-        _ = self.stream.flush()
+    def emit(self, message: str, *, quiet: bool | None = None) -> None:
+        use_quiet = _quiet_active() if quiet is None else quiet
+        line = redact.redact_outbound(message).rstrip("\n") + "\n"
+        if use_quiet and not _quiet_disabled():
+            routed = False
+            log_file = os.environ.get(config.ENV_LARCH_QUIET_LOG_FILE, "")
+            if log_file:
+                with Path(log_file).open("a", encoding="utf-8") as handle:
+                    _ = handle.write(line)
+                routed = True
+            with suppress(OSError):
+                _ = os.write(4, line.encode("utf-8"))
+                routed = True
+            if routed or quiet is True:
+                return
+        stream = self.stream or sys.stderr
+        _ = stream.write(line)
+        _ = stream.flush()
 
 
 @dataclass

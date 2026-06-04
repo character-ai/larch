@@ -70,6 +70,10 @@ larch-logs/
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so committed logs preserve schema shape without exposing operator-local absolute paths.
 
+### In-loop refresh sidecars
+
+During open-PR retry loops, the Python ship driver may re-render refresh sidecars under `larch-logs/implement/<RUN_ID>/` before a push. A refresh that changes only `token-report-refresh.json`, `timing-report-refresh.json`, or `session-transcript-refresh.txt` is treated as volatile-only: the repo run tree is restored/cleaned and the flush returns without a commit, leaving repo-wide porcelain empty before any push. Canonical reports such as `token-report.json`, `timing-report.json`, `token-report.ndjson`, and `timing-report.ndjson` are not volatile-only; substantive changes to those files still commit.
+
 ### breadcrumbs/
 
 The tree above shows `implement/<RUN_ID>/breadcrumbs/` as a representative

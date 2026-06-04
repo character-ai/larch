@@ -952,7 +952,8 @@ In `scripts/refresh-run-logs.sh`, on each retry (CI failure, merge conflict, reb
 
 Steps 8–14 (PR prep, OOS, PR create, CI, merge, cleanup — internal `ship-pr.sh` phase names; legacy versioning substeps are skipped in Phase 1 #3364) are mechanically delegated to `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh`. Step 6 relevant checks remain documented above for prompt-side review-change handling, but the delegated state machine reruns the Step 6 helper as its first phase so resumed post-review runs have one deterministic entrypoint. Step 16, Step 17, and Step 18 remain prompt-side because they replay rejected findings, final notes, and the terminal token/timing cap.
 
-**Python driver selector:** default `LARCH_SHIP_PR_IMPL=bash` runs the bash contract below byte-for-byte. When `LARCH_SHIP_PR_IMPL=python`, replace the foreground `ship-pr.sh` invocation with one foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` invocation, passing the same env/argv values (`--branch`, `--issue`, `--repo`, `--run-id`, `--tmpdir`, `--manifest-path`, `--tool-label`, `--merge`, `--draft`, `--forked`, `--repo-unavailable`, `--no-admin-fallback`, `--expected-session-id`, `--expected-tmpdir-basename-prefix`). Parse both the process exit code and the single JSON object on stdout: `outcome`, `needs_user_reason`, `failed_run_id`, `pr_number`, `pr_url`, `merge_result`, `detail`. Do **not** read `ship-pr-state.sh` for Python-path routing. Route bash-compatible exit codes exactly: `0` OK → continue to Step 16; `6` TRANSIENT → sleep/reinvoke using the JSON outcome plus the same tmpdir counter files used by the bash Exit 6 path; `3` NEEDS_USER_INPUT → dispatch on `needs_user_reason` (`oos-filing` requires **MANDATORY — READ ENTIRE FILE before executing the OOS pipeline**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`, executes full Step 9a.1 steps 1–7, then runs the disposition checkpoint, post-checkpoint `run-statistics` write, `OOS_PENDING=false` persistence, and reinvokes `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"`; `first-fixer-non-health`, `ci-fix-exhausted`, and `local-unfixable` run the autonomous main-agent CI-fix sub-procedure using JSON `failed_run_id` when present before any `AskUserQuestion`; `fix-attempts-exhausted` and post-autonomous fall-through use the existing user-input path); `4` STALLED → continue to Step 16/Step 18 as a stall. Step 18 is unchanged for the Python path: `python/ship.py` writes `$IMPLEMENT_TMPDIR/finalize-state.sh` during postmerge and does not call teardown or remove the tmpdir.
+**Python driver selector:** default `LARCH_SHIP_PR_IMPL=bash` runs the bash contract below byte-for-byte. When `LARCH_SHIP_PR_IMPL=python`, first require `python3` to be Python 3.11 or newer and fail loudly when the interpreter is unsupported; then replace the foreground `ship-pr.sh` invocation with one foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` invocation, passing the same env/argv values (`--branch`, `--issue`, `--repo`, `--run-id`, `--tmpdir`, `--manifest-path`, `--tool-label`, `--merge`, `--draft`, `--forked`, `--repo-unavailable`, `--no-admin-fallback`, `--expected-session-id`, `--expected-tmpdir-basename-prefix`). Parse both the process exit code and the single JSON object on stdout: `outcome`, `needs_user_reason`, `failed_run_id`, `pr_number`, `pr_url`, `merge_result`, `detail`. Do **not** read `ship-pr-state.sh` for Python-path routing. Route bash-compatible exit codes exactly: `0` OK → continue to Step 16; `6` TRANSIENT → sleep/reinvoke using the JSON outcome plus the same tmpdir counter files used by the bash Exit 6 path; `3` NEEDS_USER_INPUT → dispatch on `needs_user_reason` (`oos-filing` requires **MANDATORY — READ ENTIRE FILE before executing the OOS pipeline**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/oos-pipeline.md`, executes full Step 9a.1 steps 1–7, then runs the disposition checkpoint, post-checkpoint `run-statistics` write, `OOS_PENDING=false` persistence, and reinvokes `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"`; `first-fixer-non-health`, `ci-fix-exhausted`, and `local-unfixable` run the autonomous main-agent CI-fix sub-procedure using JSON `failed_run_id` when present before any `AskUserQuestion`; `fix-attempts-exhausted` and post-autonomous fall-through use the existing user-input path); `4` STALLED → continue to Step 16/Step 18 as a stall. Python-only exit `1` with `outcome=INTERNAL_ERROR` is a driver bug path: append a Tool Failures row and stop as a hard tool failure rather than renaming the run `[STALLED]`. Step 18 is unchanged for the Python path: `python/ship.py` writes `$IMPLEMENT_TMPDIR/finalize-state.sh` during postmerge and does not call teardown or remove the tmpdir.
+The Python-path invocation guard is load-bearing: run `python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'` before the foreground driver call and print a clear error such as `ERROR: Python ship driver requires Python 3.11 or newer` when it fails. The failure path must still emit the Python-driver JSON protocol on stdout (for example `{"outcome":"STALLED",...}`) and exit with the stalled exit code, so Step 8+ never receives unstructured text only.
 
 Immediately before the first foreground `ship-pr.sh` invocation below, run the **8-pre-ship** Phantom Untracked Probe (one foreground Bash call):
 
@@ -999,6 +1000,29 @@ else
   CLONE_TAG_FULL=$(printf '%.32s' "$CLONE_TAG_FULL")
   [ -n "$CLONE_TAG_FULL" ] || CLONE_TAG_FULL="_"
 fi
+if [ "${LARCH_SHIP_PR_IMPL:-bash}" = "python" ]; then
+  if ! python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)' 2>/dev/null; then
+    echo "ERROR: Python ship driver requires Python 3.11 or newer" >&2
+    printf '%s\n' '{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}'
+    exit 4
+  fi
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py" \
+    --branch "$BRANCH_NAME" \
+    --issue "$ISSUE_NUMBER" \
+    --repo "$REPO" \
+    --run-id "$RUN_ID" \
+    --tmpdir "$IMPLEMENT_TMPDIR" \
+    --manifest-path "${MANIFEST_PATH:-}" \
+    --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" \
+    --tool-label "${coder:-claude}" \
+    --merge "$merge" \
+    --draft "$draft" \
+    --forked "$forked_target" \
+    --repo-unavailable "$REPO_UNAVAILABLE" \
+    --no-admin-fallback "$no_admin_fallback" \
+    --expected-session-id "$(cat "$IMPLEMENT_TMPDIR/session-id" 2>/dev/null || true)" \
+    --expected-tmpdir-basename-prefix "claude-implement-${CLONE_TAG_FULL}-"
+else
 "${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh" \
   --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" \
   --implement-tmpdir "$IMPLEMENT_TMPDIR" \
@@ -1015,6 +1039,7 @@ fi
   --no-admin-fallback "$no_admin_fallback" \
   --no-logs-commit "$no_logs_commit" \
   --repo "$REPO"
+fi
 ```
 
 Parse the process exit code and then read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` with key-based extraction only; do not source it.

@@ -1,6 +1,6 @@
 # larch Python runtime
 
-Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.12). Most modules still support the `scripts/ship-pr.sh` → Python cutover work, but `/report-tokens` is live now through `report_tokens_cli.py` and the `skills/report-tokens/scripts/run-analysis.sh` wrapper. Linters and pytest are dev/CI-only and are never imported by runtime code.
+Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11). Most modules still support the `scripts/ship-pr.sh` → Python cutover work, but `/report-tokens` is live now through `report_tokens_cli.py` and the `skills/report-tokens/scripts/run-analysis.sh` wrapper. Linters and pytest are dev/CI-only and are never imported by runtime code.
 
 ## Layout
 
