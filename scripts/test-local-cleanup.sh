@@ -159,6 +159,11 @@ run_cleanup_args "help" --help
 assert_equals "help exits zero" "$LAST_CLEANUP_RC" "0"
 assert_contains "help prints usage" "$LAST_CLEANUP_ERR" "Usage: local-cleanup.sh --branch BRANCH_NAME"
 
+run_cleanup_args "missing-branch"
+assert_equals "missing-branch exits one" "$LAST_CLEANUP_RC" "1"
+assert_equals "missing-branch emits no keys" "$LAST_CLEANUP_OUT" ""
+assert_contains "missing-branch prints required error" "$LAST_CLEANUP_ERR" "ERROR: --branch is required"
+
 run_cleanup_args "branch-main" --branch main
 assert_equals "branch-main exits one" "$LAST_CLEANUP_RC" "1"
 assert_equals "branch-main emits no keys" "$LAST_CLEANUP_OUT" ""
@@ -188,6 +193,32 @@ assert_contains "no-orphan branch deleted" "$LAST_CLEANUP_OUT" "BRANCH_DELETED=t
 assert_not_contains "no-orphan no drop warning" "$LAST_CLEANUP_ERR" "Dropping"
 no_orphan_head=$(git -C "$no_orphan_repo" rev-parse HEAD)
 assert_equals "no-orphan remains on origin/main" "$no_orphan_head" "$no_orphan_origin"
+
+ff_from_feature_repo=$(setup_remote_repo "ff-from-feature")
+ff_from_feature_bare=$(git -C "$ff_from_feature_repo" remote get-url origin)
+git -C "$ff_from_feature_repo" checkout -q feature
+ff_from_feature_pusher="$TMP/ff-from-feature-pusher"
+git clone -q "$ff_from_feature_bare" "$ff_from_feature_pusher"
+config_git_identity "$ff_from_feature_pusher"
+commit_path \
+    "$ff_from_feature_pusher" \
+    "release-landed.txt" \
+    "release merged" \
+    "Release v1.2.3"
+git -C "$ff_from_feature_pusher" push -q origin main
+ff_from_feature_expected=$(git -C "$ff_from_feature_pusher" rev-parse HEAD)
+run_cleanup "ff-from-feature" "$ff_from_feature_repo"
+assert_contains "ff-from-feature success envelope" "$LAST_CLEANUP_OUT" "CLEANUP_SUCCESS=true"
+assert_contains "ff-from-feature ends on main" "$LAST_CLEANUP_OUT" "CURRENT_BRANCH=main"
+assert_contains "ff-from-feature branch deleted" "$LAST_CLEANUP_OUT" "BRANCH_DELETED=true"
+assert_contains "ff-from-feature pull uses ff-only" "$LAST_GIT_ARGS" "pull --ff-only origin main"
+ff_from_feature_head=$(git -C "$ff_from_feature_repo" rev-parse HEAD)
+assert_equals "ff-from-feature fast-forwards main" "$ff_from_feature_head" "$ff_from_feature_expected"
+if git -C "$ff_from_feature_repo" show-ref --verify --quiet refs/heads/feature; then
+    fail "ff-from-feature deletes feature branch"
+else
+    pass "ff-from-feature deletes feature branch"
+fi
 
 non_flush_repo=$(setup_remote_repo "non-flush-ahead")
 commit_path "$non_flush_repo" "operator-note.txt" "keep me" "operator local note"

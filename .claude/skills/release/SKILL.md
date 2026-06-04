@@ -51,6 +51,8 @@ Parse `prepare_out` for `BASELINE_TAG`, `CURRENT_VERSION`, `NEW_VERSION`, `BUMP_
 NOTES_DIR="$(dirname "$PR_LIST_FILE")"
 NOTES_FILE="$NOTES_DIR/notes.md"
 REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
+RECOVERY_NOTES_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/larch/release-notes"
+RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
 ```
 
 Re-derive these paths from `PR_LIST_FILE` in each later Bash fence that consumes notes (Step 3, Step 5, Step 6, and Step 6 recovery) rather than relying on `PREPARE_DIR` or prior shell-local variables surviving across Bash invocations.
@@ -66,7 +68,14 @@ Read `PR_LIST_FILE` (tab-separated: number, title, labels, author, url). Wrap **
 Write notes to `"$NOTES_FILE"`, then:
 
 ```bash
+NOTES_DIR="$(dirname "$PR_LIST_FILE")"
+NOTES_FILE="$NOTES_DIR/notes.md"
+REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
+RECOVERY_NOTES_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/larch/release-notes"
+RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
 scripts/redact-tmpdir-paths.sh < "$NOTES_FILE" | scripts/redact-secrets.sh > "$REDACTED_NOTES_FILE"
+mkdir -p "$RECOVERY_NOTES_DIR"
+cp "$REDACTED_NOTES_FILE" "$RECOVERY_NOTES_FILE"
 ```
 
 ## Step 4 — Operator confirm
@@ -82,6 +91,8 @@ On **`--dry-run`**: print the preview and **exit** (no writes, no `/upgrade-larc
 ## Step 5 — Land the bump (PR → CI → merge)
 
 ```bash
+NOTES_DIR="$(dirname "$PR_LIST_FILE")"
+REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 git checkout -b "release/v${NEW_VERSION}"
 $PWD/.claude/skills/release/scripts/release-set-version.sh "${NEW_VERSION}"
 git add .claude-plugin/plugin.json
@@ -103,6 +114,8 @@ On CI or merge failure, surface the helper status and stop (no tag/Release/promo
 ## Step 6 — Tag, Release, promote
 
 ```bash
+NOTES_DIR="$(dirname "$PR_LIST_FILE")"
+REDACTED_NOTES_FILE="$NOTES_DIR/notes.redacted.md"
 $PWD/.claude/skills/release/scripts/release-finish.sh \
   --version "$NEW_VERSION" \
   --notes-file "$REDACTED_NOTES_FILE" \
@@ -115,16 +128,18 @@ See `$PWD/.claude/skills/release/scripts/release-finish.md` for `TARGET_OID` res
 If Step 6 fails after Step 5 merged the release PR (tag/Release/promote partial failure), do **not** re-run full `/release` — `release-prepare.sh` will hit `ERROR=release-already-cut`. Re-run Step 6 only:
 
 ```bash
+RECOVERY_NOTES_DIR="${XDG_CACHE_HOME:-$HOME/.cache}/larch/release-notes"
+RECOVERY_NOTES_FILE="$RECOVERY_NOTES_DIR/v${NEW_VERSION}-notes.redacted.md"
 $PWD/.claude/skills/release/scripts/release-finish.sh \
   --version "$NEW_VERSION" \
-  --notes-file "$REDACTED_NOTES_FILE" \
+  --notes-file "$RECOVERY_NOTES_FILE" \
   --repo "$REPO" \
   --pr "$PR_NUMBER"
 ```
 
 Or promote-only: `scripts/promote-release.sh "$NEW_VERSION" --repo "$REPO"`.
 
-After a successful `release-finish.sh` re-run or promote-only retry, continue to Step 7 (`/upgrade-larch`) and Step 8 (cleanup) so recovery paths still perform local teardown. When printing the `release-finish.sh` retry command after a failure, expand `"$REDACTED_NOTES_FILE"` to its concrete path and tell the operator to keep `"$NOTES_DIR"` until recovery completes.
+After a successful `release-finish.sh` re-run or promote-only retry, continue to Step 7 (`/upgrade-larch`) and Step 8 (cleanup) so recovery paths still perform local teardown. When printing the `release-finish.sh` retry command after a failure, expand `"$RECOVERY_NOTES_FILE"` to its concrete path; the temp `"$NOTES_DIR"` may be removed after the durable recovery copy exists.
 
 **Recovery when remote tag exists on a different commit:** `release-finish.sh` fails closed with `ERROR=remote tag … exists on different commit`. Verify `TARGET_OID` with `git show "$TARGET_OID:.claude-plugin/plugin.json"` (`.version` must equal `--version`). If a legacy or manual tag points at the wrong OID, delete or move the incorrect remote tag only with maintainer intent, `git fetch origin main`, then re-run `release-finish.sh` with the same `--version`, `--notes-file`, `--repo`, and `--pr` (see `release-finish.md`).
 
@@ -161,7 +176,7 @@ fi
 
 After argument validation, the helper emits the key envelope on exit 0; usage/safety errors exit nonzero with no keys. When `cleanup_rc` is nonzero or any key is missing, treat missing keys as failure (`CLEANUP_SUCCESS=false`, `CURRENT_BRANCH=unknown`, `BRANCH_DELETED=false`) before warning.
 
-On `CLEANUP_SUCCESS=false` or `BRANCH_DELETED=false`, warn without failing the `/release` run. Name `CURRENT_BRANCH` and tell the operator to switch to `main` and delete `release/v${NEW_VERSION}` by hand.
+On `CLEANUP_SUCCESS=false` or `BRANCH_DELETED=false`, warn without failing the `/release` run. Name `CURRENT_BRANCH`. If `CURRENT_BRANCH` is already `main`, tell the operator to manually reconcile local `main` with `origin/main` before relying on the local tree, then delete `release/v${NEW_VERSION}` by hand. Otherwise, tell the operator to switch to `main`, manually reconcile it with `origin/main`, and delete `release/v${NEW_VERSION}` by hand.
 
 If Step 7 installed a new version, tell the operator to restart Claude Code after cleanup finishes.
 
