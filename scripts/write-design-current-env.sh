@@ -111,6 +111,12 @@ if [[ -n "$ISSUE_NUMBER" && ! "$ISSUE_NUMBER" =~ ^[0-9]+$ ]]; then
   exit 1
 fi
 
+case "$REPO" in
+  --*|*$'\n'*|*$'\r'*|/*|*../*|*\\*)
+    larch_err "ERROR=Invalid --repo: must match OWNER/REPO"
+    exit 1
+    ;;
+esac
 if [[ -n "$REPO" && ! "$REPO" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
   larch_err "ERROR=Invalid --repo: must match OWNER/REPO"
   exit 1

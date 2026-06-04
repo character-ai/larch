@@ -1433,7 +1433,9 @@ contains "$SKILL_MD" 'When `_publish_rc` is non-zero, force `PUBLISH_OK=false`' 
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
 contains "$SKILL_MD" 'export `SUMMARY_OUTCOME=failed-publish` with the `DESIGN_LOG_*` metadata already set' '(28b) SKILL.md clarify sub-step 6 missing failed-publish summary branch'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'otherwise export `SUMMARY_OUTCOME=cancelled-clarify` for publish skipped (`SESSION_ID` empty) or publish succeeded (`PUBLISH_OK=true`)' '(28c) SKILL.md clarify sub-step 6 missing cancelled-clarify skip/success branch'
+contains "$SKILL_MD" 'when `SESSION_ID` is empty, export `SUMMARY_OUTCOME=publish-skipped`' '(28c) SKILL.md clarify sub-step 6 missing publish-skipped empty-session branch'
+# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
+contains "$SKILL_MD" 'otherwise export `SUMMARY_OUTCOME=cancelled-clarify` for publish succeeded (`PUBLISH_OK=true`)' '(28c.1) SKILL.md clarify sub-step 6 missing cancelled-clarify success branch'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
 contains "$SKILL_MD" 'set `DESIGN_LOG_PR_NUMBER`, `DESIGN_LOG_PR_URL`, and `DESIGN_LOG_RECOVERY_BRANCH` from the parsed `PR_NUMBER`, `PR_URL`, and `RECOVERY_BRANCH`' '(28d) SKILL.md clarify missing recovery metadata preservation prose'
 # shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.

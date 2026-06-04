@@ -215,7 +215,7 @@ set -e
 assert_rc "--help" 0 "$rc"
 
 # --- malformed --repo shapes ---
-for bad_repo in /abs bad..repo a/b/c; do
+for bad_repo in /abs bad..repo a/b/c --owner/repo 'owner\repo' ../repo; do
     D_BAD_REPO="$TMP/bad-repo-${bad_repo//\//_}"
     setup_design_tmp "$D_BAD_REPO"
     set +e
@@ -431,6 +431,24 @@ D_OK_CANON=$(cd "$D_OK" && pwd -P)
 grep -q "DESIGN_TMPDIR=${D_OK_CANON}" "$RENDER_LOG" || fail "happy render missing DESIGN_TMPDIR"
 grep -q 'upsert-diagrams' "$UPSERT_LOG" || fail "upsert not called on happy path"
 test -s "$D_OK/diagrams-architecture-upsert.stdout" || fail "upsert stdout not captured"
+grep -Fq -- '--repo owner/repo' "$PLAN_BLOCK_LOG" \
+  || fail "plan-block-write missing resolved --repo"
+
+# --- explicit/resolved repo forwarded to plan-block-write ---
+D_PLAN_REPO="$TMP/plan-repo"
+setup_design_tmp "$D_PLAN_REPO"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PLAN_REPO" --issue 42 --session-id sid-1 --claude-pid 9999 --repo explicit/repo >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "plan-block-write receives explicit repo" 0 "$rc"
+grep -Fq -- 'plan-block-write --issue 42 --content-file' "$PLAN_BLOCK_LOG" \
+  || fail "plan-block-write call missing"
+grep -Fq -- '--repo explicit/repo' "$PLAN_BLOCK_LOG" \
+  || fail "plan-block-write missing explicit --repo"
 
 # --- publish envelope fields persisted ---
 D_ENV="$TMP/publish-env"
@@ -546,6 +564,9 @@ apply_publish_stub_defaults
 export PUBLISH_STUB_RC=2
 export PUBLISH_EMIT_OK=true
 export PUBLISH_OK_VALUE=true
+export PUBLISH_PR_NUMBER=456
+export PUBLISH_PR_URL=https://github.com/owner/repo/pull/456
+export PUBLISH_RECOVERY_BRANCH=larch-log-design-sid
 set +e
 bash "$SUBJECT" --design-tmpdir "$D_RC_TRUE" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
 rc=$?
@@ -553,6 +574,9 @@ set -e
 assert_rc "publish rc nonzero with PUBLISH_OK=true" 0 "$rc"
 grep -q 'PUBLISH_OK=false' "$D_RC_TRUE/.design-publish-result.env" || fail "nonzero publish rc must force PUBLISH_OK=false"
 grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "nonzero publish rc should render failed-publish outcome"
+grep -q 'DESIGN_LOG_PR_NUMBER=456' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep PR number"
+grep -q 'DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/456' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep PR URL"
+grep -q 'DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep recovery branch"
 if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
     fail "rename should be skipped when publish rc is nonzero despite PUBLISH_OK=true"
 else

@@ -82,7 +82,7 @@ emit_publish_failure() {
 validate_repo() {
     local value="$1"
     case "$value" in
-        '' | *$'\n'* | *$'\r'* | /* | *../*) return 1 ;;
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) return 1 ;;
     esac
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]
 }

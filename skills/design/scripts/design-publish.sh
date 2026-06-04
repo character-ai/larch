@@ -30,7 +30,7 @@ validate_session_id_flag() {
 validate_repo() {
     local value="$1"
     case "$value" in
-        '' | *$'\n'* | *$'\r'* | /* | *../*) fail 'invalid --repo' ;;
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) fail 'invalid --repo' ;;
     esac
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail 'invalid --repo'
 }
@@ -284,7 +284,9 @@ if command -v jq >/dev/null 2>&1 && [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; t
     MODE=$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)
 fi
 
-if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh" --issue "$ISSUE" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md"; then
+_plan_block_args=(--issue "$ISSUE" --content-file "$DESIGN_TMPDIR/composed-plan.redacted.md")
+[[ -n "$REPO" ]] && _plan_block_args+=(--repo "$REPO")
+if ! "$PLUGIN_ROOT/scripts/plan-block-write.sh" "${_plan_block_args[@]}"; then
     PLAN_WRITE_OK=false
     "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
         --outcome failed-plan-write \
@@ -353,13 +355,7 @@ if [[ -n "$SESSION_ID" ]]; then
         add_warn "**⚠ SECURITY: scrub-log-secrets.sh redacted ${_scrub_n} secret-shaped value(s) from this /design run's logs before flush. A credential was almost certainly exposed in the session — ROTATE it now and check chat/PRs for the same value.**"
     fi
     if [[ "$_publish_rc" -ne 0 ]]; then
-        if [[ "${PUBLISH_OK:-}" == true ]]; then
-            PR_NUMBER=""
-            PR_URL=""
-            RECOVERY_BRANCH=""
-        else
-            sanitize_publish_metadata
-        fi
+        sanitize_publish_metadata
         PUBLISH_OK=false
         "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
             --log "$DESIGN_TMPDIR/execution-issues.md" \

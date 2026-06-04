@@ -440,6 +440,21 @@ assert_contains "$CALL_LOG" '--issue 78' "pause explicit repo issue resolved"
 assert_contains "$CALL_LOG" '--repo explicit/repo' "pause explicit repo forwarded"
 assert_not_contains "$CALL_LOG" '--repo source/repo' "pause explicit repo overrides source-env repo"
 
+# 11a.1 invalid source-env repo emits structured pause failure
+D11a_bad_source="$TMP/pause-invalid-source-repo"
+setup_design_tmp "$D11a_bad_source" full SIMPLE
+printf 'export ISSUE_NUMBER=79\nexport REPO=--bad/repo\n' >"$D11a_bad_source/source-env.sh"
+: >"$D11a_bad_source/.pause-requested"
+set +e
+run_subject "$D11a_bad_source"
+rc=$?
+set -e
+assert_rc "pause invalid source repo rc" 0 "$rc"
+assert_contains "$D11a_bad_source/stdout.txt" 'POSTPLAN_EMIT_STATUS=paused' "pause invalid source repo writes paused status"
+assert_contains "$D11a_bad_source/stdout.txt" 'PAUSE_OK=false' "pause invalid source repo emits PAUSE_OK=false"
+assert_contains "$D11a_bad_source/stdout.txt" 'ERROR=invalid-repo' "pause invalid source repo emits invalid-repo"
+assert_not_contains "$CALL_LOG" 'pause-save' "pause invalid source repo skips pause-save"
+
 # 11b empty/absent REPO omits --repo
 D11b="$TMP/pause-no-repo"
 setup_design_tmp "$D11b" full SIMPLE

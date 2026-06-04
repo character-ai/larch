@@ -407,9 +407,30 @@ out_j=$(
 )
 [[ "$out_j" == *"PUBLISH_OK=false"* ]] || fail "broken jq stub should fail publish: $out_j"
 
+echo "=== malformed --repo fails before gh/network work ==="
+BAD_REPO_TMP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-bad-repo.XXXXXX")
+BAD_REPO_STUB="$BAD_REPO_TMP/stub"
+mkdir -p "$BAD_REPO_TMP/design" "$BAD_REPO_STUB"
+printf 'body\n' >"$BAD_REPO_TMP/design/plan.txt"
+cat >"$BAD_REPO_STUB/gh" <<'STUB'
+#!/usr/bin/env bash
+echo "gh should not run for invalid repo" >&2
+exit 99
+STUB
+chmod +x "$BAD_REPO_STUB/gh"
+for bad_repo in --owner/repo 'owner\repo' ../repo; do
+    set +e
+    bad_out=$(PATH="$BAD_REPO_STUB:$PATH" bash "$PUBLISH" --design-tmpdir "$BAD_REPO_TMP/design" --run-id RUNBADREPO1 --issue 1 --repo "$bad_repo" 2>&1)
+    bad_rc=$?
+    set -e
+    [[ "$bad_rc" -eq 1 ]] || fail "invalid --repo $bad_repo should exit 1, got $bad_rc: $bad_out"
+    [[ "$bad_out" == *"invalid --repo"* ]] || fail "invalid --repo $bad_repo should report invalid repo: $bad_out"
+    [[ "$bad_out" != *"gh should not run"* ]] || fail "invalid --repo $bad_repo invoked gh: $bad_out"
+done
+
 echo "=== happy path + sidecar trim + render-cache + suffix deny-list ==="
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp.XXXXXX")
-trap 'rm -rf "$DRYROOT" "$JQTEST" "$TMP"' EXIT
+trap 'rm -rf "$DRYROOT" "$JQTEST" "$BAD_REPO_TMP" "$TMP"' EXIT
 clone=$(setup_clone_with_origin_head "$TMP")
 stub="$TMP/stub"
 GH_STUB_LOG="$TMP/gh.log"

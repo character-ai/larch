@@ -20,7 +20,7 @@ usage() {
 validate_repo() {
     local value="$1"
     case "$value" in
-        '' | *$'\n'* | *$'\r'* | /* | *../*) fail 'invalid --repo' ;;
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) fail 'invalid --repo' ;;
     esac
     [[ "$value" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail 'invalid --repo'
 }
@@ -196,14 +196,22 @@ _postplan_pause_checkpoint() {
         local _issue _repo
         _issue="$(_postplan_resolve_issue)"
         _repo="$(_postplan_resolve_repo)"
-        [[ -n "$_repo" ]] && validate_repo "$_repo"
         [[ -n "$_issue" ]] || _postplan_fatal emit-failed 'pause requested but ISSUE_NUMBER could not be resolved'
         # Write result env before exec so the orchestrator's mandatory-key check
         # sees POSTPLAN_EMIT_STATUS=paused rather than an empty-result abort when
         # this driver is called via $() capture (exec replaces the subshell only).
         POSTPLAN_EMIT_STATUS=paused
         _postplan_write_result_and_emit
-        exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue" ${_repo:+--repo "$_repo"}
+        case "$_repo" in
+            '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) ;;
+            *) [[ "$_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue" --repo "$_repo" ;;
+        esac
+        if [[ -z "$_repo" ]]; then
+            exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue"
+        fi
+        emit_kv PAUSE_OK false
+        emit_kv ERROR invalid-repo
+        exit 0
     fi
 }
 

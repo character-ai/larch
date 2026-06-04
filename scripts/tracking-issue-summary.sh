@@ -61,6 +61,9 @@ normalize_first_line() {
 
 validate_repo() {
     local repo="$1"
+    case "$repo" in
+        '' | --* | *$'\n'* | *$'\r'* | /* | *../* | *\\*) fail 1 "invalid repo: expected OWNER/REPO" ;;
+    esac
     [[ "$repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]] || fail 1 "invalid repo: expected OWNER/REPO"
 }
 

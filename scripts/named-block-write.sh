@@ -27,6 +27,14 @@ emit_usage_error() {
 resolve_repo() {
     local r
     if [ -n "${1:-}" ]; then
+        case "$1" in
+            --*|*$'\n'*|*$'\r'*|/*|*../*|*\\*) emit_kv FAILED "true"; emit_kv ERROR "invalid repo"; exit 1 ;;
+        esac
+        if [[ ! "$1" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]; then
+            emit_kv FAILED "true"
+            emit_kv ERROR "invalid repo"
+            exit 1
+        fi
         printf '%s' "$1"
         return 0
     fi
