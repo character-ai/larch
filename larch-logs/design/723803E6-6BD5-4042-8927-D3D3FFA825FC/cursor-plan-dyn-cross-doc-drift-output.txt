@@ -1,0 +1,20 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:1526	Step 5c item 6 still says rename is gated on PUBLISH_OK	After admission decouples rename from log publish, orchestrators still read item 6 and may treat failed publish as blocking [DESIGNED] or skip /implement despite ADMISSION_READY=true	Revise item 6: rename/admission follows ADMISSION_READY/ADMISSION_BLOCK_REASON; keep Step 6 cleanup publish-gated only
+2	in_scope	important	architecture	skills/design/SKILL.md:1457	Step 5c item 4 still lists design-publish tail as plan write → reentry marker → upsert → log publish → summary → [DESIGNED] rename	Operators and implementers follow stale ordering (rename after publish; marker before publish) contradicting the proposed upsert → rename → scrub → flush → render → marker flow	Rewrite item 4 to match the new tail order and note marker stays PUBLISH_OK-gated
+3	in_scope	important	correctness	skills/design/scripts/design-publish.sh:346	Rename-failure WARN still says plan and logs may have published	With rename moved before scrub/full publish, a failed rename can occur before any log flush; the WARN misstates recovery state	Update the WARN to reflect plan/diagram written but log publish not completed (or not attempted)
+4	in_scope	important	correctness	skills/design/scripts/render-final-summary.md:17-18,87-88	Contract still documents two-phase Step 5c with --pre-publish-only before design-log-publish and publish/rename gated together in SKILL.md	Post-change driver drops pre-publish render and decouples admission from PUBLISH_OK; summary/upsert docs stay wrong after partial admission-bullet edits	Extend the render-final-summary.md edit: single post-tail render phase; admission via ADMISSION_* exports; scrub/publish separate from rename
+5	in_scope	important	risk-integration	staged-context/scope-files.txt:1-13	Normative publish contract scripts/design-log-publish.md is absent from scope-files.txt while the plan only nests its update under design-log-publish.sh	Reviewers and implementers can miss SCRUB_OK/--scrub-only stdout/exit contract sync; drift vs design-publish.md allowlist	Add ### UPDATED: scripts/design-log-publish.md to the plan and scope-files.txt
+
+**1. [correctness]** `skills/design/SKILL.md:1526` — Step 5c item 6 still equates rename with `PUBLISH_OK`. After the driver decouples admission, that line will contradict Step 5d and `ADMISSION_READY`.
+
+**2. [architecture]** `skills/design/SKILL.md:1457` — Item 4’s publish-tail bullet list still describes the old order (log publish before `[DESIGNED]` rename).
+
+**3. [correctness]** `skills/design/scripts/design-publish.sh:346` — Rename-failure WARN still implies logs may already be published; that becomes false once rename precedes scrub/flush.
+
+**4. [correctness]** `skills/design/scripts/render-final-summary.md:17-18,87-88` — The plan’s render-final-summary edits cover admission bullets but not the stale two-phase `--pre-publish-only` narrative or “publish/rename gated together” upsert note.
+
+**5. [risk-integration]** `staged-context/scope-files.txt` — `scripts/design-log-publish.md` is a normative contract for `SCRUB_OK` / `--scrub-only` but is not listed in scope-files.txt or as its own `### UPDATED:` plan section (only a nested bullet under `design-log-publish.sh`).
+
+**Harness registration:** `Makefile:447-448` and `scripts/relevant-checks.sh:163-172` already register `test-design-log-publish`; no gap for `--scrub-only` CI routing once the harness cases land.
+
+**[OUT_OF_SCOPE]** `scripts/test-design-log-publish.md:1-29` — Harness doc does not yet mention `--scrub-only`; add when implementing the new cases (low drift risk).

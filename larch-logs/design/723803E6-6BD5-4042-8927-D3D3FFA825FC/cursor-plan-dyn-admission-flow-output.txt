@@ -1,0 +1,49 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/render-final-summary.sh:300-315	Failed-publish admission notes plan to read RENAMED from .design-publish-result.env but render runs before write_result_env_and_emit	In design-publish.sh render-final-summary.sh is invoked before .design-publish-result.env is written (today at lines 326-330 vs 367; after reorder still before the final write_result_env_and_emit). append_failed_publish_notes cannot see RENAMED from that file during the live Step 5c render, so final-summary.md may omit the qualified /implement bullet even when rename succeeded and PUBLISH_OK=false	Export RENAMED (and optional SCRUB_OK) in the environment immediately before calling render-final-summary.sh, mirroring DESIGN_LOG_PR_NUMBER/URL/RECOVERY_BRANCH (lines 323-325); have append_failed_publish_notes read those exports first and treat .design-publish-result.env as fallback only for offline harnesses
+1	in_scope	important	risk-integration	skills/design/SKILL.md:1550-1554	Step 5d failed-publish footer still unconditional after early [DESIGNED] rename	After reorder, PUBLISH_OK=false can occur with RENAMED=true and a [DESIGNED] title while the Step 5d footer remains log publish incomplete; NEXT REQUIRED: continue (lines 1550-1552), which still reads like full admission despite log flush failure	Apply the plan's RENAMED/title qualification to the Step 5d footer itself (not only render-final-summary.md): when RENAMED=true or title is [DESIGNED], state that /implement may proceed and log recovery is separate; when RENAMED=false, point to the [DESIGNED] rename failed WARN
+
+## Findings
+
+### 1. (correctness) `render-final-summary.sh` cannot read `RENAMED` from result env at render time
+
+The plan tells `append_failed_publish_notes` to qualify `/implement` guidance using `RENAMED` from `.design-publish-result.env` when present (`plan.txt` lines 87–89). In `design-publish.sh`, `render-final-summary.sh` runs **before** `write_result_env_and_emit`:
+
+```319:330:skills/design/scripts/design-publish.sh
+SUMMARY_OUTCOME=approved
+if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" != true ]]; then
+    SUMMARY_OUTCOME=failed-publish
+fi
+export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"
+export DESIGN_LOG_PR_URL="${PR_URL:-}"
+export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
+"${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
+    --outcome "$SUMMARY_OUTCOME" \
+    ...
+```
+
+The result env is written only at the end (lines 367–369). Recovery metadata already uses shell exports into `render-final-summary.sh`; `RENAMED` should follow that pattern. After the reorder, `RENAMED` will be set before render, but only an `export` (or a new render flag) makes it visible to `append_failed_publish_notes`.
+
+**Suggested revision:** In the `design-publish.sh` section, require `export RENAMED="${RENAMED:-}"` (and optionally `SCRUB_OK`) immediately before `render-final-summary.sh`. Update `append_failed_publish_notes` / `render-final-summary.md` to read env first; use `.design-publish-result.env` only as a harness fallback.
+
+### 2. (risk-integration) Step 5d footer must be qualified, not only the summary notes
+
+Step 5c item 5 emits `final-summary.md` verbatim before Step 5d (`skills/design/SKILL.md` lines 1525, 1544). The plan’s Step 5d extension (plan.txt lines 76–77) is the right place to fix operator guidance when `PUBLISH_OK=false` but early rename succeeded.
+
+Today’s footer at lines 1550–1552 is unconditional (“log publish incomplete; NEXT REQUIRED: continue”). Without the planned qualification, operators can treat a failed log flush as blocking `/implement` even when `implement-admission.sh` would pass on a live `[DESIGNED]` title (`scripts/implement-admission.sh` lines 239–246).
+
+**Suggested revision:** Keep the Step 5d edit explicit in the plan’s `SKILL.md` section (branch on parsed `RENAMED` / title), not only in `render-final-summary.sh`.
+
+---
+
+## Admission-flow trace (exonerated / covered)
+
+- **Early admission:** Decoupling rename from `PUBLISH_OK` with `--scrub-only` matches `design-log-publish.sh` fail-closed scrub (lines 602–619) and blocks `/implement` while title stays `[DESIGNING]` when `SCRUB_OK=false` — aligned with `implement-admission.sh` managed-prefix check (lines 207–210).
+- **`[DESIGNED]` re-entry:** `lib-title-eligibility.sh` line 12 rejects `[DESIGNED]` before `already-planned` (`design-route.sh` lines 259–310); plan edge case (lines 114–115) matches `cancel-title-filter`, not `already-planned`.
+- **Clarify path:** Plan preserves `PUBLISH_OK`-gated `[DESIGNING]` rename only in Step 0b clarify (SKILL.md line 465) — no accidental `[DESIGNED]` admission.
+- **Reentry marker:** Staying `PUBLISH_OK`-gated preserves spurious-reentry behavior after publish failure (plan lines 4, 114–115).
+- **`implement-admission.md`:** Planned doc updates (lines 79–85) fix stale “on successful publish” wording (current line 17).
+
+## [OUT_OF_SCOPE]
+
+- **`scripts/test-design-log-publish.sh` for `--scrub-only`:** Plan adds `SCRUB_OK=false` via `test-design-publish.sh` stubs but not a direct `design-log-publish.sh` mode test; acceptable for SIMPLE scope if publish harness stubs stay strict.
+- **`SECURITY.md` line 203 “/design must complete”:** Slightly ambiguous after early `[DESIGNED]`; `implement-admission.md` is the operator contract being updated.
