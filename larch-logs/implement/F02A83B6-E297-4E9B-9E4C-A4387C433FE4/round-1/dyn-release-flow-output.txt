@@ -1,0 +1,21 @@
+Reviewing the branch diff and commit history for risk-integration issues in the release flow.
+Branch commits since `main`:
+
+- `3644912c3` — Add release post-merge local cleanup  
+- `07ffefbba` — chore(larch-logs): flush implement run (unrelated to the release-flow change)
+
+### In-Scope Findings
+
+- **risk-integration** `.claude/skills/release/SKILL.md:74-77` — The “Change bump” path says to re-run prepare and re-confirm, but it does not require repeating Step 2’s `prepare_out` parse (new `PR_LIST_FILE` / `NOTES_*` paths) or Step 3’s compose-and-redact pipeline before the second Step 4 preview. Notes now live under each prepare temp dir (`NOTES_DIR` derived from `PR_LIST_FILE`), so an orchestrator that only re-runs prepare and reuses the first `REDACTED_NOTES_FILE` can open/merge/publish with notes for the wrong bump or a missing file. **Suggested fix:** In Step 4’s bump branch, explicitly chain “re-run Step 2 → re-derive `NOTES_*` from new `PR_LIST_FILE` → repeat Step 3 write + redact → then re-confirm,” matching the cross-fence lifetime rule at lines 56–57.
+
+- **risk-integration** `.claude/skills/release/SKILL.md:103-137` — Steps 7–8 are sequenced after Step 6 on the happy path, but Step 7 only says the release is “already published” and Step 8 is keyed off Step 7 running, without tying continuation to `release-finish.sh` exit **0** (full KV) or an explicit successful promote-only recovery. `release-finish.md` allows tag + GitHub Release to succeed while `promote-release.sh` fails (exit **1**, no success KV). A mistaken continue into Step 8 after that partial Step 6 would delete the local `release/v*` branch while Latest promotion is still pending, making promote-only recovery harder. **Suggested fix:** State in Steps 6–8 that Steps 7–8 run only after `release-finish.sh` exit **0** or a documented successful promote-only retry; on any other Step 6 exit, stop before Steps 7–8 and keep the release branch for debugging (align Step 7 prose with line 137’s publish/promote gate).
+
+- **risk-integration** `.claude/skills/release/SKILL.md:127-137` — Recovery tells the operator to keep `NOTES_DIR` until `release-finish.sh` / promote-only completes, but notes live under `mktemp` from Step 2 with no durable copy step. A multi-session or delayed recovery after `/tmp` eviction leaves Step 6 un-runnable (`--notes-file` missing) while the release PR may already be merged and tags/releases partially exist—an integration gap between GitHub state and local artifacts. **Suggested fix:** Add recovery guidance to copy `notes.redacted.md` (and optionally `pr-list.tsv`) to a durable path before ending the session, and require re-deriving `--notes-file` from that copy on retry.
+
+- **risk-integration** `scripts/local-cleanup.sh:115-136` — Switching `/implement` Step 14 and `/release` Step 8 to `git pull --ff-only origin main` removes the prior merge-capable pull behavior when local `main` has non-flush commits and `origin/main` has advanced (covered by the new `divergent-main` test). After a successful remote merge, cleanup can report `CLEANUP_SUCCESS=false` and skip branch deletion while `/release` still completes without aborting (SKILL.md:164). `/implement` still proceeds to `verify-main.sh` in `implement-finalize.sh` postmerge, so integration risk spans both callers on divergent workstations. **Suggested fix:** Document in `scripts/local-cleanup.md` and `/release` Step 8 that a failed ff-only pull means local `main` may not contain the merged release/implement commit and requires manual reconcile before relying on the tree; optionally surface a loud post-release check (out of scope per plan: no `verify-main.sh` for release).
+
+### Out-of-Scope Observations
+
+- **risk-integration** `skills/implement/SKILL.md:62` — NEVER #16 still references `git pull origin main` without `--ff-only`, while `scripts/local-cleanup.sh` now uses ff-only; doc drift predates this branch’s behavior change and may mislead operators debugging post-merge cleanup failures.
+
+- **risk-integration** `scripts/local-cleanup.sh:78-84` — Pre-existing “fetch failed (continuing)” behavior remains; if both the standalone fetch and the pull’s embedded fetch fail, local `origin/main` can stay stale. The next `/release` run’s `release-prepare.sh` fetch usually mitigates this, but it is not introduced by this diff.
