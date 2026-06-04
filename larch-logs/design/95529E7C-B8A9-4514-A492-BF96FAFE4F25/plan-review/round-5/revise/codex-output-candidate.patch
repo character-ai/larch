@@ -1,0 +1,21 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -3,15 +3,26 @@
+-SIMPLE tier. Four accepted review findings (FINDING_17, _11, _25, _4) in the
+-`/design` Step 5c publish tail, plus the entangled `render-run-summary.sh`
+-unknown-run-id leak that shares FINDING_4's root cause (Round 1 Decision 1,
+-"Full honest fix"). Reviewer findings add four plan refinements: preserve the
+-pause recovery marker path, carry clarify-publish recovery metadata while
+-suppressing successful run-log advertising on failed publish, cover the
+-`publish-skipped` degraded renderer fallback, and forward/validate `--repo` in
+-pause-save call sites. Each fix remains surgical; no shared refactor.
++SIMPLE tier. Four accepted source review findings (FINDING_17, _11, _25, _4) in
++the `/design` Step 5c publish tail, plus the entangled `render-run-summary.sh`
++run-log advertising leak that shares FINDING_4's root cause (Round 1 Decision 1,
++"Full honest fix"). Accepted reviewer follow-up findings add six refinements:
++preserve the pause recovery marker path, carry clarify-publish recovery metadata
++through the final-summary outcome branch, suppress successful run-log advertising
++for both `publish-skipped` and `failed-publish`, cover degraded renderer
++fallbacks, forward/validate `--repo` in prompt-side and script-side pause-save
++call sites, prevent source-env repo overwrite bypasses, and persist non-default
++repo into current design env. Each fix remains surgical; no shared refactor.

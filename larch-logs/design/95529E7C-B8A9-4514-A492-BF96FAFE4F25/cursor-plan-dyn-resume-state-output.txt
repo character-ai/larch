@@ -1,0 +1,54 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:463-466	Step 0b clarify sub-step 3 adds fail-closed publish parsing and DESIGN_LOG_* recovery metadata, but sub-step 6 still hard-exports SUMMARY_OUTCOME=cancelled-clarify into the Final summary block	render-final-summary.sh only appends recovery bullets for failed-publish (skills/design/scripts/render-final-summary.sh:330-333); cancelled-clarify never reads DESIGN_LOG_* — operators see a clarify-cancel summary with no PR/recovery-branch guidance after a failed clarify publish	In sub-step 6, branch before the Final summary block: when SESSION_ID is non-empty and PUBLISH_OK != true after sub-step 3 normalization, export DESIGN_LOG_PR_NUMBER/URL/RECOVERY_BRANCH and set SUMMARY_OUTCOME=failed-publish; keep cancelled-clarify only when publish was skipped or succeeded
+2	in_scope	important	correctness	skills/design/scripts/design-postplan-emit.sh:157-168	Plan forwards ${REPO:+--repo "$REPO"} only for SKILL.md pause-check exec lines; design-postplan-emit.sh execs design-pause-save.sh without --repo	Mid-run pause during Step 2b post-plan emit can call gh issue view / design-log-publish / marker writes against the hub default while REPO was resolved for the design session (write-design-current-env.sh can persist REPO)	In design-postplan-emit.sh _postplan_pause_checkpoint, resolve REPO from source-env.sh or resolve-repo.sh and append ${REPO:+--repo "$REPO"} to the pause-save exec; document the call site in design-postplan-emit.md
+
+### 1. Clarify loop: recovery metadata never reaches the terminal summary (correctness)
+
+The plan extends Step 0b clarify **sub-step 3** with fail-closed `PUBLISH_OK` handling, `PR_NUMBER` / `PR_URL` / `RECOVERY_BRANCH` parsing, and prose to render `failed-publish` with suppressed run logs. Sub-step **6** still does this today:
+
+```466:466:skills/design/SKILL.md
+   6. Step 0b clarify hygiene and exit **0** on success — **before** that hygiene, export `SUMMARY_OUTCOME=cancelled-clarify` and run the **Final summary block** fenced bash block in `### Final summary block` below.
+```
+
+`render-final-summary.sh` only attaches recovery bullets when `OUTCOME=failed-publish`:
+
+```330:333:skills/design/scripts/render-final-summary.sh
+    elif [ "$OUTCOME" = "failed-publish" ]; then
+        : >"$note_file"
+        append_failed_publish_notes "$note_file"
+        note_args=(--note-lines-file "$note_file")
+```
+
+Parsing recovery metadata in sub-step 3 without changing sub-step 6 leaves clarify exits on `cancelled-clarify`, so `DESIGN_LOG_*` never surfaces to the operator.
+
+**Suggested revision:** In sub-step 6, branch `SUMMARY_OUTCOME` (and export `DESIGN_LOG_*`) before the Final summary block: use `failed-publish` when `SESSION_ID` is non-empty and normalized `PUBLISH_OK != true`; keep `cancelled-clarify` when publish was skipped or succeeded.
+
+---
+
+### 2. `design-postplan-emit.sh` pause-save omits `--repo` (correctness / integration)
+
+The plan updates the SKILL.md canonical prelude and duplicated pause-check lines to pass `${REPO:+--repo "$REPO"}`, but `design-postplan-emit.sh` has its own pause checkpoint:
+
+```157:168:skills/design/scripts/design-postplan-emit.sh
+_postplan_pause_checkpoint() {
+    if [[ -f "$DESIGN_TMPDIR/.pause-requested" ]]; then
+        ...
+        exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue"
+    fi
+}
+```
+
+That path runs before `gh issue view`, pause publish, and marker writes in `design-pause-save.sh` (lines 123–209). `write-design-current-env.sh` can persist `REPO` into `source-env.sh`, but this exec does not forward it — so non-default-repo designs can pause-save against the wrong repository.
+
+**Suggested revision:** Resolve `REPO` inside `_postplan_pause_checkpoint` (from `source-env.sh` or `resolve-repo.sh`) and append `${REPO:+--repo "$REPO"}` to the pause-save exec; extend `test-design-postplan-emit.sh` pause coverage if needed.
+
+---
+
+### Exonerated / aligned with repo (no finding)
+
+- **FINDING_25 writer attribution** — Correct: `step-5c` is written in SKILL.md item 6 (`1526`), not in `design-publish.sh`.
+- **FINDING_17 publish branch** — `design-publish.sh:277` matches the described bug; the proposed `if [[ "$_publish_rc" -ne 0 ]]` fail-closed fix is the right site.
+- **FINDING_4 empty SESSION_ID** — `SUMMARY_OUTCOME=approved` when publish is skipped (`319-322`) matches the plan; `render-run-summary.sh:222-223` confirms the `unknown` path leak the plan fixes.
+- **Pause-save recovery path** — `rc-false-recovery` coverage in the plan matches `design-pause-save.sh:180-191` (recovery branch + marker).
+- **Resume with withheld `step-5c`** — `design-pause-save.sh:89-94` breaks on the first missing registry step, so a later `step-5d` sentinel does not skip `resume@5c`.
+- **Step 5d footer** — SKILL.md already has the incomplete-publish footer at `1550-1552`; no extra change required for this plan’s scope.

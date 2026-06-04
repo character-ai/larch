@@ -1,0 +1,128 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,8 +1,10 @@
+ # Implementation Plan — fix 4 latent defects in the design-publish flush path (#3453)
+ 
+ SIMPLE tier. Four accepted review findings (FINDING_17, _11, _25, _4) in the
+ `/design` Step 5c publish tail, plus the entangled `render-run-summary.sh`
+ unknown-run-id leak that shares FINDING_4's root cause (Round 1 Decision 1,
+-"Full honest fix"). Each fix is surgical and independent; no shared refactor.
++"Full honest fix"). Accepted plan-review corrections narrow the pause publish
++fail-closed rule so it does not break the existing recovery-branch resume path,
++retarget clarify parity to the real Step 0b publish substep, and add direct
++pause-save repo validation. Each fix is surgical and independent; no shared refactor.
+ Scope, the FINDING_11 exit convention, and the FINDING_4 outcome shape are
+ fixed by Round 1 (`discussion-round1.md`).
+ 
+@@ -62,12 +64,21 @@
+ - **Header contract (review FINDING_4)**: update the script header comment block (~lines 14-16) to carve out malformed `--repo` as a structural argv failure: `exit 1` with no `PUBLISH_OK` success envelope, before `gh`/network work. Operational failures and other pre-validation failures continue to exit 0 with `PUBLISH_OK=false` on stdout; post-push failures remain exit 1 with `PUBLISH_OK=false`.
+ 
+ ### UPDATED: `scripts/design-pause-save.sh`
+-- **FINDING_17 parity (pause publish path)**: broaden the publish failure gate (~lines 175-178). Change `if [[ "$publish_rc" -ne 0 && -z "$PUBLISH_OK" ]]` to `if [[ "$publish_rc" -ne 0 ]]` so any non-zero `design-log-publish.sh` exit forces `emit_fail "publish-failed"` (with `log_failure`) before the downstream `PUBLISH_OK != true` branch can treat stdout `PUBLISH_OK=true` as success. Prevents `PAUSE_OK=true` and pause-marker write when publish exit contradicts the stdout envelope — matching the fail-closed rule applied in `design-publish.sh` and Step 0b clarify.
+-- No other pause-save behavior change: recovery-branch handling, redaction, and marker write remain gated on `PUBLISH_OK=true` after the exit-code check.
++- **FINDING_11 / direct pause-save boundary**: add the same `validate_repo` guard used by the publish scripts for direct `--repo` input. Validate any non-empty `REPO` after arg parsing / repo resolution and **before** building `gh_repo_args`, running `gh issue view`, or writing pause state. On malformed repo, return the script's clear failure envelope (for example `emit_fail "invalid-repo"` after logging `design-pause-save: invalid --repo`) without reaching `gh` or state mutation. This closes the direct-call boundary that `design-log-publish.sh` validation cannot protect because pause-save consumes `REPO` earlier than publish.
++- **FINDING_17 parity (pause publish path)**: narrow the publish failure gate (~lines 175-178) instead of failing on every non-zero publish exit. Keep the existing immediate-fail behavior for a missing envelope (`publish_rc != 0` and empty `PUBLISH_OK`) and add the contradictory-envelope case (`publish_rc != 0` and `PUBLISH_OK=true`) so it forces `PUBLISH_OK=false`, logs the failure, and emits `publish-failed` before any pause marker / resume block can be written.
++- Preserve the existing recovery branch for `publish_rc != 0` + `PUBLISH_OK=false` + `RECOVERY_BRANCH`/local-recovery metadata. That path represents a post-push publish failure with resumable recovery information and must continue through the downstream `PUBLISH_OK != true` recovery handling instead of being short-circuited by the new fail-closed gate.
++- No other pause-save behavior change: recovery-branch handling, redaction, and marker write remain gated by the existing recovery/success branches after the contradictory or missing-envelope checks.
+ 
+ ### UPDATED: `skills/design/scripts/render-final-summary.sh`
+@@ -99,7 +110,7 @@
+ - Extend item 7 (or add one sentence): on a failed publish (`PLAN_WRITE_OK=true`, `SESSION_ID` non-empty, `PUBLISH_OK != true`), do **not** write `step-5c`, so pause/resume re-enters Step 5c and retries the publish tail (plan-block-write is idempotent; OOS already filed in Step 5b).
+ - Add a one-line correction near Step 5c: the `step-5c` sentinel writer is the orchestrator, not `design-publish.sh`.
+-- **FINDING_17 / clarify parity**: in Step 0b clarify publish substep 3.5, mirror the fail-closed publish parsing rule used by Step 5c: after parsing `design-log-publish.sh` stdout, any non-zero publish exit must set `PUBLISH_OK=false`, record the publish warning, and do so before any `PUBLISH_OK`-gated rename/reentry-marker action. This closes the direct-`design-log-publish.sh` clarify path where stdout could contain `PUBLISH_OK=true` despite a non-zero exit.
++- **FINDING_17 / clarify parity**: retarget the edit to Step 0b clarify publish **substep 3** (the `design-log-publish.sh` publish/parse block), not substep 3.5's rename wording. After parsing stdout in substep 3, any non-zero `_publish_rc` must force `PUBLISH_OK=false`, append/record the publish failure warning, and happen before substep 3.5 can perform any `PUBLISH_OK`-gated rename/reentry-marker action. This closes the direct-`design-log-publish.sh` clarify path where stdout could contain `PUBLISH_OK=true` despite a non-zero exit.
+ - No Step 5d / Step 6 change: resume scans for the **first** missing `.completed/step-*` (`design-pause-save.sh` breaks on first gap), so a withheld `step-5c` resolves resume to `5c` regardless of `step-5d`. The publish-incomplete footer and `PUBLISH_OK`-gated cleanup already exist.
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+-- **FINDING_25**: keep the existing `(15b)` assertion (still matches the preserved substring). Add one assertion that greps SKILL.md for the new publish-gate clause (`` `SESSION_ID` empty **or** `PUBLISH_OK=true` ``) with a new unused `(27)` fail message, so dropping the publish gate is caught without colliding with the existing `(25)` `design_reentry_marker_write` ordering assertions. Add/extend a nearby structural assertion that Step 0b clarify documents the non-zero publish exit ⇒ `PUBLISH_OK=false` rule before rename.
++- **FINDING_25**: keep the existing `(15b)` assertion (still matches the preserved substring). Add one assertion that greps SKILL.md for the new publish-gate clause (`` `SESSION_ID` empty **or** `PUBLISH_OK=true` ``) with a new unused `(27)` fail message, so dropping the publish gate is caught without colliding with the existing `(25)` `design_reentry_marker_write` ordering assertions.
++- Add/extend a nearby structural assertion pinned to the Step 0b clarify **substep 3 publish block**: it must document non-zero publish exit ⇒ `PUBLISH_OK=false` before substep 3.5 / `tracking-issue-write.sh` rename can run. Do not satisfy this only with rename-step prose.
+@@ -116,8 +127,10 @@
+ - **FINDING_11**: add a case passing a malformed `--repo` (e.g. `--repo bad..repo`, `--repo /abs`, or `--repo a/b/c`) → assert exit `1` and **no** `PUBLISH_OK=true` on stdout. Confirm existing valid-repo (`owner/repo`) and no-`--repo` cases still pass the new `validate_repo`.
+ 
+ ### UPDATED: `skills/design/scripts/test-design-pause-resume.sh`
+-- **FINDING_17 parity (pause path)**: extend the publish stub with a `PUBLISH_MODE` (e.g. `rc-ok-false`) that prints `PUBLISH_OK=true` then exits non-zero. Assert `PAUSE_OK=false`, `ERROR=publish-failed`, and no pause marker / resume block written. Confirms the broadened `publish_rc` gate blocks contradictory stdout success.
++- **FINDING_17 parity (pause path)**: extend the publish stub with a contradictory mode that prints `PUBLISH_OK=true` then exits non-zero. Assert `PAUSE_OK=false`, `ERROR=publish-failed`, and no pause marker / resume block written. Confirms the narrowed fail-closed gate blocks contradictory stdout success.
++- Add a regression for the preserved recovery path: publish stub prints `PUBLISH_OK=false` plus `RECOVERY_BRANCH`/recovery metadata and exits non-zero; assert pause-save still writes the resumable pause marker / resume block with `LOG_RECOVERY_BRANCH` and does not short-circuit to the missing-envelope `publish-failed` path.
++- Add a direct malformed `--repo` case (for example `/abs` or `a/b/c`) that asserts the new pause-save boundary fails clearly before `gh issue view` / state writes.
+ 
+ ### UPDATED: `skills/design/scripts/test-render-final-summary.sh`
+@@ -132,6 +145,9 @@
+ ### UPDATED: `scripts/test-design-log-publish.md`
+ - Document the malformed-`--repo` regression case (`exit 1`, no success envelope) and confirm the valid `owner/repo` and omitted-`--repo` paths remain covered.
+ 
++### UPDATED: `skills/design/scripts/test-design-pause-resume.md`
++- Document the contradictory non-zero publish exit + stdout `PUBLISH_OK=true` case (`PAUSE_OK=false`, `ERROR=publish-failed`, no marker), the preserved non-zero + `PUBLISH_OK=false` + `RECOVERY_BRANCH` recovery-marker case, and the direct malformed-`--repo` pause-save validation case.
++
+ ### UPDATED: `skills/design/scripts/test-render-final-summary.md`
+ - Document the `publish-skipped` final-summary case: accepted outcome enum, honest skipped-publish note, no failed-publish recovery prose, and **Run logs** `N/A` with no `larch-logs/design/unknown/`.
+@@ -147,7 +163,7 @@
+ - Document the new `--repo` `validate_repo` check and its `exit 1` fail-closed behavior. Note the three runtime callers that forward `--repo` only when non-empty.
+ 
+ ### UPDATED: `scripts/design-pause-save.md`
+-- Document the fail-closed publish exit rule: any non-zero `design-log-publish.sh` exit ⇒ `publish-failed` / `PAUSE_OK=false`, regardless of stdout `PUBLISH_OK=true`. Note this closes the gap where contradictory stdout could previously reach `PAUSE_OK=true`.
++- Document the direct `--repo` validation boundary and the narrowed fail-closed publish exit rule: non-zero `design-log-publish.sh` exits with missing `PUBLISH_OK` or contradictory `PUBLISH_OK=true` yield `publish-failed` / `PAUSE_OK=false`, while non-zero exits with `PUBLISH_OK=false` plus recovery metadata remain eligible for the existing recovery-marker path. Note this closes the gap where contradictory stdout could previously reach `PAUSE_OK=true` without breaking recovery-branch resume.
+ 
+ ### UPDATED: `skills/design/scripts/render-final-summary.md`
+ - Add `publish-skipped` to the documented outcome enumeration and describe its honest note. Note that **Run logs** reads `N/A` for that outcome (empty `SESSION_ID` ⇒ `RUN_ID=unknown`), backed by the `render-run-summary.sh` unknown guard.
+@@ -156,7 +172,7 @@
+ - Document that the `RUN_LOGS_PATH=N/A` fallback to `larch-logs/<skill>/<run-id>/` does not apply when `RUN_ID` is `unknown`.
+ 
+ ### UPDATED: `SECURITY.md`
+-- Add a short note to the design-log publish boundary documenting that `--repo` is validated as `OWNER/REPO` and malformed values fail closed with `exit 1` before `gh` / network operations.
++- Add a short note to the design-log publish / pause-save boundary documenting that direct `--repo` values are validated as `OWNER/REPO`; malformed values fail closed before `gh` / network operations (`design-log-publish.sh` exits `1`, pause-save returns its failure envelope).
+@@ -169,10 +185,10 @@
+ helper or refactor. Each finding is fixed at its true site: FINDING_17 and
+ FINDING_4 in `design-publish.sh` (+ `render-final-summary.sh` for the new
+ outcome and `render-run-summary.sh` for the honest Run-logs path), FINDING_11
+-in `design-log-publish.sh` (entry `validate_repo` plus header contract), FINDING_25
++in `design-log-publish.sh` and the direct pause-save boundary (entry `validate_repo`
++guards plus header/contracts), FINDING_25
+ in SKILL.md (the real sentinel writer) plus its pinned structural test, and
+-FINDING_17 parity in `design-pause-save.sh` so the pause publish path cannot
+-trust stdout `PUBLISH_OK=true` on a non-zero publish exit. The FINDING_11
++FINDING_17 parity in `design-pause-save.sh` with a narrowed contradictory/missing-envelope gate so the pause publish path cannot trust stdout `PUBLISH_OK=true` on a non-zero publish exit while preserving `PUBLISH_OK=false` recovery branches. The FINDING_11
+ exit-1 choice and the `publish-skipped` outcome follow Round 1. The direct
+-Step 0b clarify publish path receives the same fail-closed non-zero-exit
+-handling before any rename gate.
++Step 0b clarify publish path receives the same fail-closed non-zero-exit
++handling in its publish substep before any rename gate.
+@@ -181,8 +197,8 @@
+ ## Edge cases
+ - FINDING_17: success path (exit 0 + `PUBLISH_OK=true`) is untouched; only non-zero exits flip to false. Exit 0 + `PUBLISH_OK=false` still routes through the `elif` (rc bumped to 1 for the failure log).
+-- FINDING_17 pause parity: `design-pause-save.sh` recovery-branch and local-recovery paths still require `PUBLISH_OK=false` on exit 0; only the contradictory non-zero-exit + stdout-true case is newly blocked.
+-- FINDING_11: empty `--repo` is "no repo" (hub default) — validation runs only when `REPO` is non-empty, so omitting `--repo` is unaffected; `owner/repo` passes.
++- FINDING_17 pause parity: `design-pause-save.sh` recovery-branch and local-recovery paths still require `PUBLISH_OK=false` and must survive both exit 0 and post-push exit 1 recovery envelopes; only missing envelopes and contradictory non-zero-exit + stdout-true cases are newly blocked.
++- FINDING_11: empty `--repo` is "no repo" (hub default) — validation runs only when `REPO` is non-empty, so omitting `--repo` is unaffected; `owner/repo` passes. Direct malformed `--repo` is rejected in both `design-log-publish.sh` and `design-pause-save.sh` before their respective `gh`/stateful work.
+ - FINDING_4: `publish-skipped` only fires when `SESSION_ID` is empty (so always `RUN_ID=unknown`); the normal non-empty-`SESSION_ID` flow keeps `approved` / `failed-publish`. **Run logs** stays `N/A` via the `render-run-summary.sh` guard.
+ - FINDING_25: empty-`SESSION_ID` (no publish) and `PUBLISH_OK=true` both still write `step-5c`; only an attempted-and-failed publish withholds it.
+@@ -190,17 +206,18 @@
+ ## Failure modes
+-- A direct/manual caller relying on `design-log-publish.sh` returning exit 0 + `PUBLISH_OK=false` for a bad repo now sees `exit 1`. Mitigation: all three in-repo callers pre-resolve/validate the repo and forward `--repo` only when non-empty; `design-pause-save.sh` already treats exit-non-zero + empty `PUBLISH_OK` as `publish-failed`. Earliest signal: `test-design-log-publish.sh` green.
++- A direct/manual caller relying on `design-log-publish.sh` returning exit 0 + `PUBLISH_OK=false` for a bad repo now sees `exit 1`; a direct malformed `design-pause-save.sh --repo` call now fails before `gh`/state. Mitigation: in-repo callers pre-resolve/validate the repo and forward `--repo` only when non-empty; test both direct boundaries. Earliest signal: `test-design-log-publish.sh` and `test-design-pause-resume.sh` green.
+ - Omitting the `render-run-summary.sh unknown` guard leaves a fake `larch-logs/design/unknown/` path on a `publish-skipped` summary. Mitigation: `test-render-run-summary.sh` + `test-render-final-summary.sh` assert **Run logs** is `N/A`.
+ - SKILL.md gate wording could drift from the pinned test. Mitigation: keep the existing substring intact, add the new `(27)` assertion, run `bash scripts/test-design-structure.sh`.
+-- Pause-save could still write a resume marker when publish exits non-zero but stdout carries `PUBLISH_OK=true`. Mitigation: broaden `design-pause-save.sh` publish_rc gate + `test-design-pause-resume.sh` `rc-ok-false` stub case.
+-- Step 0b clarify could regress to trusting `PUBLISH_OK=true` after a non-zero publish exit. Mitigation: SKILL.md fail-closed prose plus the new structural assertion that the clarify path records the non-zero-exit warning and forces `PUBLISH_OK=false` before rename.
++- Pause-save could still write a resume marker when publish exits non-zero but stdout carries `PUBLISH_OK=true`, or the fix could overcorrect and break non-zero `PUBLISH_OK=false` recovery. Mitigation: narrowed `design-pause-save.sh` gate plus paired tests for contradictory stdout failure and non-zero recovery success.
++- Step 0b clarify could regress to trusting `PUBLISH_OK=true` after a non-zero publish exit. Mitigation: SKILL.md fail-closed prose in substep 3 plus the new structural assertion that the clarify publish block records the non-zero-exit warning and forces `PUBLISH_OK=false` before substep 3.5 rename.
+ - `publish-skipped` not added to the `render-final-summary.sh` enum would `exit 2`. Mitigation: enum edit + `test-render-final-summary.sh` case.
+@@ -210,13 +227,13 @@
+ - `bash skills/design/scripts/test-design-publish.sh` — new FINDING_17 (non-zero + `PUBLISH_OK=true` ⇒ false) and FINDING_4 (empty `SESSION_ID` ⇒ `publish-skipped`) cases.
+ - `bash scripts/test-design-log-publish.sh` — new malformed-`--repo` case; existing valid-repo / no-repo cases stay green.
+ - `bash skills/design/scripts/test-render-final-summary.sh` — `publish-skipped` accepted + honest note + **Run logs** `N/A`.
+-- `bash skills/design/scripts/test-design-pause-resume.sh` — new non-zero publish exit + stdout `PUBLISH_OK=true` ⇒ `PAUSE_OK=false` / `publish-failed` case.
++- `bash skills/design/scripts/test-design-pause-resume.sh` — new non-zero publish exit + stdout `PUBLISH_OK=true` ⇒ `PAUSE_OK=false` / `publish-failed` case; non-zero + `PUBLISH_OK=false` + `RECOVERY_BRANCH` still writes resumable recovery marker; direct malformed `--repo` fails before `gh`/state.
+ - `bash scripts/test-render-run-summary.sh` — `RUN_ID=unknown` + `RUN_LOGS_PATH=N/A` stays `N/A`; real run id still synthesizes the path. Also run `bash scripts/test-render-run-summary-format.sh` and `bash scripts/test-render-run-summary-callsites.sh` to confirm no implement-side format regression.
+-- `bash scripts/test-design-structure.sh` — existing step-5c assertion plus the new publish-gate assertion.
++- `bash scripts/test-design-structure.sh` — existing step-5c assertion plus the new publish-gate assertion and Step 0b substep-3 clarify fail-closed assertion.
+ - Review the updated sibling harness `.md` files and `SECURITY.md` as part of the same change set.
+ - `bash scripts/relevant-checks.sh` (or `make lint`) after edits.
+ 
+ ## Diff size estimate
+-diff_added: 237
+-diff_deleted: 17
+-diff_lines: 254
++diff_added: 284
++diff_deleted: 20
++diff_lines: 304
