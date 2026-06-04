@@ -257,7 +257,17 @@ build_bin "$tmp/real_bin"
 add_real_tool "$tmp/real_bin" jq "$REAL_JQ"
 add_real_tool "$tmp/real_bin" git "$REAL_GIT"
 
-EXPECTED_SPARSE_DIRS=(.claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests)
+EXPECTED_SPARSE_DIRS=()
+# shellcheck source=scripts/lib-sparse-dirs.sh
+source "$REPO_ROOT/scripts/lib-sparse-dirs.sh"
+while IFS= read -r sparse_dir; do
+    [[ -n "$sparse_dir" ]] || continue
+    EXPECTED_SPARSE_DIRS+=("$sparse_dir")
+done < <(normalize_sparse_dirs)
+if [[ "${#EXPECTED_SPARSE_DIRS[@]}" -eq 0 ]]; then
+    echo "FAIL: expected sparse dir library returned no directories" >&2
+    exit 1
+fi
 
 echo "=== Case 4b: sparse cone drift emits /upgrade-larch advisory ==="
 mkdir -p "$tmp/c4b-cwd"

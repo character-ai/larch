@@ -73,6 +73,9 @@ marketplace_sparse_cone_matches() {
 already_latest_and_cone_ok() {
     [ -n "${LATEST_STABLE:-}" ] || return 1
     [ "${CURRENT_INSTALLED_VERSION:-}" = "$LATEST_STABLE" ] || return 1
+    if is_cache_shaped_larch_root "$PLUGIN_ROOT"; then
+        [ "$(basename "$PLUGIN_ROOT")" = "$LATEST_STABLE" ] || return 1
+    fi
     marketplace_sparse_cone_matches
 }
 
@@ -518,9 +521,10 @@ fi
 if [ "$MARKETPLACE_CONE_WILL_RECONCILE" = true ]; then
     if ! marketplace_sparse_cone_matches; then
         larch_err "Warning: marketplace sparse checkout still differs after reinstall; restart Claude Code and re-run /upgrade-larch if the advisory persists."
+    elif [ -z "$LATEST_STABLE" ] || [ "$VERIFIED_TARGET" = true ]; then
+        larch_err "LARCH_CONE_RECONCILED=true"
+        larch_err "LARCH_RESTART_REQUIRED=true"
     fi
-    larch_err "LARCH_CONE_RECONCILED=true"
-    larch_err "LARCH_RESTART_REQUIRED=true"
 fi
 if [ -z "$LATEST_STABLE" ]; then
     larch_err "LARCH_RESTART_REQUIRED=true"
