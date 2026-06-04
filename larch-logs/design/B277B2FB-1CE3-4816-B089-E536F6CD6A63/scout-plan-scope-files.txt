@@ -1,0 +1,16 @@
+skills/design/scripts/design-postplan-emit.sh
+skills/design/scripts/design-postplan-emit.md
+skills/design/SKILL.md
+skills/design/references/approval-gates.md
+skills/design/references/discussion-rounds.md
+skills/design/references/flags.md
+skills/design/references/decompose-panel.md
+skills/design/scripts/check-plan-size.md
+skills/design/scripts/plan-review-loop.sh
+skills/design/scripts/plan-review-loop.md
+skills/design/scripts/test-design-postplan-emit.sh
+skills/design/scripts/test-design-postplan-emit.md
+skills/design/scripts/test-check-plan-size.sh
+skills/design/scripts/test-plan-review-loop.sh
+skills/design/scripts/test-plan-review-loop.md
+scripts/test-design-structure.sh

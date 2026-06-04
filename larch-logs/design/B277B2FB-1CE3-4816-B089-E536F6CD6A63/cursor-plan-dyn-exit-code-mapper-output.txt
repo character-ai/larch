@@ -1,0 +1,34 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:936-965	Post-driver fat guards still run before any rc 10/11/12/13 dispatch	The mandatory-key block runs on rc 0 or 1 (lines 936-940), defects are still handled via `VALIDATE_STATUS=defects-found` after rc 0 (968), and the catch-all `ne 0` abort (962-965) fires before a thin `case` on 10/11/12/13 — rc10/11/12/13 never reach their arms	Replace the Step 2b fence with echo-then-case only: drop stdout KV merge and the rc 0/1 mandatory-key gate for merged `--with-plan-size` calls; route defects via rc 10 (not `VALIDATE_STATUS` after rc 0); handle 11/12/13 before the generic `ne 0` abort
+2	in_scope	important	correctness	skills/design/SKILL.md:1117;skills/design/scripts/plan-review-loop.md:53	`LOOP_STATUS=plan-size-trigger` is not aligned with retained Step 2b.5 site contract	SKILL.md tells the orchestrator to run a "Split-path / Cancel" handler, while plan-review-loop.md requires a full Step 2b.5 re-run with Split/Override/Cancel — the plan only adds site-aware retained prompts and does not rewrite this branch	Extend the SKILL.md update list: on `plan-size-trigger`, call retained Step 2b.5 with plan-review-loop site semantics (full procedure + Override), then apply Gate-B-bypass sentinels and short-circuit to Step 3b
+3	in_scope	important	architecture	skills/design/SKILL.md:975-996;plan.txt:86-87	Retained Step 2b.5 has no caller-site binding in the procedure	The plan says hard prompts "branch by caller site" but Step 2b.5 has no `--site` (or equivalent) parameter — Gate B/plan-review-loop need Override while initial/discussion merged rc12 does not	Add a minimal caller-site binding to the retained Step 2b.5 contract (e.g. `--site initial|gate-b|discussion|plan-review-loop`) and pin each call site in SKILL.md, approval-gates.md, and the Step 3 `plan-size-trigger` branch
+4	in_scope	important	correctness	skills/design/SKILL.md:1575-1581	Shared validator Fix-and-retry still describes raw emit/validate, not merged re-entry	After rc 10, Fix-and-retry that follows the shared section re-runs `ACTION=EMIT_PLAN` + `VALIDATE_PLAN_COMMANDS` and skips `--with-plan-size`, so plan-size and partition routing never run on retry	When editing the shared section, state that plan.txt sites reached via rc 10 must Fix-and-retry through the same site-specific `--with-plan-size` thin fence (and retained Step 2b.5 only on Override), leaving raw emit/validate for Step 5c
+
+**1. Fat fence preempts rc10–rc13 (correctness)**  
+The proposed thin contract assumes `echo "$out"` then `case` on rc. Today’s Step 2b block still parses stdout/result-env KVs, treats `defects-found` as success plus a separate `VALIDATE_STATUS` check, and aborts on any other non-zero rc before action arms exist:
+
+```936:965:skills/design/SKILL.md
+if [[ "${_postplan_rc:-0}" -eq 0 || "${_postplan_rc:-0}" -eq 1 ]]; then
+  if [[ -z "${POSTPLAN_EMIT_STATUS:-}" || -z "${VALIDATE_STATUS:-}" ]]; then
+    ...
+  fi
+fi
+...
+if [[ "${_postplan_rc:-0}" -ne 0 ]]; then
+  printf '%s\n' "**⚠ Step 2b: design-postplan-emit.sh failed (exit ${_postplan_rc}); aborting /design.**" >&2
+  exit 1
+fi
+```
+
+Without removing that ordering, rc10/11/12/13 stay unreachable even after the driver maps them correctly.
+
+**2. Step 3 `plan-size-trigger` vs retained Override (correctness)**  
+The plan keeps standalone Step 2b.5 for `LOOP_STATUS=plan-size-trigger` (plan line 86) and documents plan-review-loop hard prompts with Override (`plan-review-loop.md:53`). SKILL.md still says only “Split-path / Cancel” at line 1117. That branch is not called out in the SKILL.md file list beyond generic “site-aware” retained prose — easy to miss and semantically different from Gate B’s Override path.
+
+**3. No site selector on retained Step 2b.5 (architecture)**  
+Merged rc12/13 fold plan-size into the driver; retained Step 2b.5 must still vary hard prompts by caller. The named procedure has no site parameter today (SKILL.md:975-996 shows one hard branch with Split/Cancel only). Without an explicit binding, plan-review-loop and Gate B Override paths can regress to initial-only Split/Cancel.
+
+**4. Shared validator retry bypasses merged driver (correctness)**  
+rc10 is meant to replace “exit 0 + `VALIDATE_STATUS=defects-found`.” The shared Fix-and-retry body still mandates raw `ACTION=EMIT_PLAN` / `VALIDATE_PLAN_COMMANDS` (`SKILL.md:1579`). If that text survives while fences move to `--with-plan-size`, Fix-and-retry after rc10 will not re-enter the same site fence and will skip integrated plan-size routing.
+
+**Exonerated (plan already covers):** `json_scalar_or_sed` bare-boolean `partition_requested`; driver rc10 before plan-size; non-flag `{0,1,2}` preservation; structure-test repoint of `(14c14e)`/`(14c14h)`; merged Refine `.completed/step-2b.5` writes; plan-review-loop `set +e` for check-plan-size rc2/3.

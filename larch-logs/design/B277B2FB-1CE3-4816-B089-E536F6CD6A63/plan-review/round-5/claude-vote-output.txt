@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan-review-loop.sh writes machine-readable KVs on FD3 via emit_kv, not stdout; append-tool-failure.sh output goes to stdout only (display), not the FD3 machine stream, so the "pollute machine-readable loop stdout" framing overstates impact; "same contract as standalone Step 2b.5" language implies the same handling pattern
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

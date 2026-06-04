@@ -1,0 +1,22 @@
+Round II of /design refactor, Phase 4: merge Step 2b post-emit + plan-size
+
+**Context.** Part of Round II of the `/design` refactor (rationale in Phase 1).
+
+**Problem.** Step 2b runs `design-postplan-emit.sh` (`SKILL.md:876-964`) and then Step 2b.5 runs `check-plan-size.sh` (`SKILL.md:980-986`) as two adjacent Bash turns; on the clean path there is no LLM judgment between them. The plan is re-emitted at Gate B **every review round**, so this pair recurs per round. The Step 2b consumption fence is ~88 lines.
+
+**Change.** Add an additive mode (e.g. `design-postplan-emit.sh --with-plan-size`) that appends the plan-size trigger KVs so the initial Step 2b path is one call; the orchestrator engages AskUserQuestion only on `defects-found` OR `HARD_TRIGGER_FIRED`. Keep `check-plan-size.sh` independently callable — Step 2b.5 is also invoked standalone from Gate B and discussion-round2 (`SKILL.md:975`). Collapse the Step 2b consumption fence to the thin-fence contract.
+
+**Why.** 1 turn saved per plan write (compounds across review rounds); per-turn byte + determinism win.
+
+**Scope / acceptance.** `design-postplan-emit.{sh,md}` (+ `check-plan-size.{sh,md}` as needed) updated; `check-plan-size` remains standalone-callable from Gate B / discussion; SKILL.md Step 2b/2b.5 thinned; `test-design-postplan-emit.sh`, `test-check-plan-size.sh`, `test-design-structure.sh` updated; harnesses + `make lint` green.
+
+**Dependencies.** Blocked by Phase 1.
+
+
+---
+
+**Coordination with #3441** (this phase is blocked by #3441): #3441 §4 also edits
+`skills/design/scripts/design-postplan-emit.sh` — it preserves the classification
+helper's stderr instead of redirecting it to `/dev/null`. When adding the
+`--with-plan-size` mode here, build on that stderr fix; do not revert it.
+

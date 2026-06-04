@@ -1,0 +1,170 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,9 +1,9 @@
+ ## Plan
+ 
+-Tier: SIMPLE. Mechanical consolidation following the Phase 1 thin-fence contract (`lib-phase-driver.md` §Thin orchestrator fence, piloted on Step 3.6). No novel architecture. This revision incorporates accepted reviewer findings: sentinel preservation, nonfatal plan-size failure logging, rc1 diagnostic preservation, rc10 result-env handoff, rc10 re-entry discipline, site-aware hard prompts, Gate A structural pins, classification-WARN coverage, caller-doc completeness, boolean partition fallback parsing, legacy guard removal, Step 1e argv separation, retained plan-review-loop rc2/rc3 handling, Split Refine sentinel docs, and hard+partition precedence coverage.
++Tier: SIMPLE. Mechanical consolidation following the Phase 1 thin-fence contract (`lib-phase-driver.md` §Thin orchestrator fence, piloted on Step 3.6). No novel architecture. This revision incorporates accepted reviewer findings: sentinel preservation, nonfatal plan-size failure logging, rc1 diagnostic preservation, rc10 result-env handoff, rc10 re-entry discipline, site-aware hard prompts, Gate A structural pins, classification-WARN coverage, caller-doc completeness, boolean partition fallback parsing, legacy guard removal, Step 1e argv separation, retained plan-review-loop rc2/rc3 handling, Split Refine sentinel docs, hard+partition precedence coverage, complete non-exiting Split-return sentinel/re-entry handling (Refine, no-split Continue, retained Step 3 plan-size-trigger), partition handoff gated on plan-size rc=0, mandatory thin-fence `*)` default-abort arms, plan-review-loop append-helper output suppression, and strengthened `assert_postplan_thin_fence` harness pins.
+ 
+ ### Summary
+ 
+ Add an additive `--with-plan-size` mode to `design-postplan-emit.sh` that runs `check-plan-size.sh` after a successful emit/validation and maps the merged emit + validate + plan-size verdict to thin-fence action exit codes. Prompt-side emit fences collapse to one driver call plus `echo "$out"` plus `case rc`, while `check-plan-size.sh` remains standalone-callable for retained callers.
+ 
+@@ -13,6 +13,7 @@ Clean merged paths must preserve the legacy completion-sentinel effects: the ini
+ 
+ Merged thin-fence surrounding pause-save/prelude calls and pause-save `exec` arms must preserve existing repo threading with `${REPO:+--repo "$REPO"}`; do not pass `--repo` to `design-postplan-emit.sh` unless parser support is explicitly added and documented. Hard/partition Split paths that return via Refine must explicitly write/update `.completed/step-2b.5` before continuing, because they no longer enter the retained standalone Step 2b.5 procedure on the merged path. Initial-site hard/partition Split paths must also preserve `.completed/step-2b` before entering Split/Refine handling.
+ 
++All non-exiting Split returns — Refine, no-split Continue, and retained Step 3 `LOOP_STATUS=plan-size-trigger` paths — must write/update the same continuation sentinels before resuming; retained Step 3 plan-size-trigger Refine returns must route to the intended re-entry point (Gate A or an explicit pause/refine path), not silently short-circuit to Step 3b without refinement re-entry when the caller contract requires it.
+ ### Approach
+ 
+ - In `--with-plan-size`, after existing emit → optional HARD snapshot → validate:
+@@ -52,6 +53,7 @@ Merged thin-fence surrounding pause-save/prelude calls and pause-save `exec` ar
+ 1. run `design-postplan-emit.sh --with-plan-size ...` under `set +e` capture;
+ 2. immediately `echo "$out"` for display;
+ 3. dispatch on the captured rc with explicit arms for `0`, `10`, `11`, `12`, `13`, `2`, and `1`.
++4. include a mandatory `*)` default arm on every merged fence that prints the unexpected rc and aborts; no merged fence may fall through silently on an unknown rc.
+ 
+ Delete or adapt legacy fat-fence guards that only accept rc `0` / `1`, including mandatory-key parsing gates that could run before the new action-code `case`. In merged mode, do not parse stdout KVs. When rc10 or an Override branch needs validator context, read only allowlisted keys from `.design-postplan-emit-result.env` without `source`; expected keys include `POSTPLAN_EMIT_STATUS`, `VALIDATE_STATUS`, validator log/path/status keys, plan-size verdict keys, and WARN/status fields documented in `design-postplan-emit.md`.
+ 
+@@ -88,7 +90,8 @@ All merged callers dispatch the same driver rc values, but site-specific action a
+ 
+ The standalone Step 2b.5 procedure remains for Override-after-defects, Step 3 `LOOP_STATUS=plan-size-trigger`, and direct `plan-review-loop.sh` handoffs. Its hard-size prompt must be site-aware: initial/discussion routes use Split/Cancel; Gate B, Step 3 `LOOP_STATUS=plan-size-trigger`, and plan-review-loop routes use Split/Override/Cancel.
+ 
+-For every rc 12/rc 13 merged Split path, the Refine-return branch must write/update `.completed/step-2b.5` before returning to Gate A or continuing, preserving the sentinel previously owned by standalone Step 2b.5. For initial-site rc12/rc13 Split entry and Refine return, also write `.completed/step-2b` so pause/resume does not replay Step 2b.
++For every rc 12/rc 13 merged Split path, all non-exiting return branches — Refine, no-split Continue, and any other caller continuation that does not terminate the run — must write/update `.completed/step-2b.5` before returning to Gate A or continuing, preserving the sentinel previously owned by standalone Step 2b.5. For initial-site rc12/rc13 Split entry and non-exiting return, also write `.completed/step-2b` so pause/resume does not replay Step 2b.
++
++Retained Step 3 `LOOP_STATUS=plan-size-trigger` Split paths follow the same non-exiting return sentinel contract: Refine and no-split Continue write/update `.completed/step-2b.5` before continuing; initial-site entries also write `.completed/step-2b`. Refine return must route to the intended re-entry point (Gate A or explicit pause/refine path per site) rather than silently short-circuiting to Step 3b when refinement re-entry is required.
+ 
+ ### Files to modify/create
+ 
+@@ -118,6 +121,7 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ - Update shared Plan command validator failure prose: Fix-and-retry re-enters the same merged fence for plan.txt sites; raw emit/validate remains only for Step 5c composed-plan validation.
+ - Add explicit `.completed/step-2b.5` write/update on every merged rc12/rc13 Split-path Refine return before continuing or returning to Gate A.
+ - Scope merged rc12/rc13 arms to the already-emitted driver display plus AskUserQuestion/Split handling only; standalone Step 2b.5 remains only for Override, `LOOP_STATUS=plan-size-trigger`, plan-review-loop, and other retained callers.
++- Extend non-exiting Split-return sentinel writes from Refine-only to no-split Continue and retained Step 3 `LOOP_STATUS=plan-size-trigger` paths; pin retained Step 3 plan-size-trigger Refine return to Gate A or explicit pause/refine re-entry, not silent Step 3b short-circuit.
++- Require a mandatory `*)` default-abort arm on every merged thin fence.
+ 
+ ### UPDATED: `skills/design/references/approval-gates.md`
+ 
+@@ -129,6 +133,7 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ - Ensure rc10 Fix-and-retry re-enters the Gate B merged fence and reads validator context from result env.
+ - Add Refine-return sentinel write/update for Gate B rc12/rc13 Split paths.
++- Extend Gate B rc12/rc13 non-exiting Split returns (Refine and no-split Continue) to write/update `.completed/step-2b.5` before continuing.
+ 
+ ### UPDATED: `skills/design/references/discussion-rounds.md`
+ 
+@@ -139,6 +144,7 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ - Ensure any SKILL.md Step 1e after-discussion optional-trailer re-entry delegates to this same `--with-plan-size --force-validate` argv.
+ - Add Refine-return sentinel write/update for discussion rc12/rc13 Split paths.
++- Extend discussion rc12/rc13 non-exiting Split returns (Refine and no-split Continue) to write/update `.completed/step-2b.5` before returning to Gate A or continuing.
+ 
+ ### UPDATED: `skills/design/references/flags.md`
+ 
+@@ -149,8 +155,9 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ 
+ ### UPDATED: `skills/design/references/decompose-panel.md`
+ 
+-- In the Split-path Refine-return contract, require merged `--with-plan-size` callers to write/update `.completed/step-2b.5` before returning to Gate A or continuing.
+-- For initial-site merged Split paths, require `.completed/step-2b` on Split entry and Refine return in addition to `.completed/step-2b.5` on Refine return.
+-- Add the same requirement to terminal-outcome prose so implementers do not miss the sentinel on rc12/rc13 Refine returns.
++- In all non-exiting Split-return contracts (Refine, no-split Continue, and retained Step 3 `LOOP_STATUS=plan-size-trigger` paths), require merged `--with-plan-size` callers and retained decomposition callers to write/update `.completed/step-2b.5` before returning to Gate A or continuing.
++- For initial-site merged Split paths and retained initial-site Step 3 plan-size-trigger paths, require `.completed/step-2b` on Split entry and non-exiting return in addition to `.completed/step-2b.5` on non-exiting return.
++- Retained Step 3 `LOOP_STATUS=plan-size-trigger Refine return must route to Gate A or an explicit pause/refine re-entry path; do not silently short-circuit to Step 3b when refinement re-entry is required.
++- Add the same requirements to terminal-outcome prose so implementers do not miss sentinels on rc12/rc13 non-exiting returns.
+ 
+ ### UPDATED: `skills/design/scripts/check-plan-size.md`
+ 
+@@ -163,8 +170,10 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ - Around direct `check-plan-size.sh` calls, use `set +e` capture instead of allowing `set -e` to terminate on rc2/rc3.
+ - Treat rc2/rc3 as warning-and-continue with the same diagnostic/logging contract as standalone Step 2b.5.
+ - Read `partition_requested` from `run-params.json` with the same boolean-safe fallback used by merged mode.
+-- When `partition_requested=true` and no hard trigger fired, surface the retained `LOOP_STATUS=plan-size-trigger` handoff instead of silently continuing.
++- Gate partition handoff on `check-plan-size.sh` rc=0: when rc2/rc3 fires the warn-and-continue path, return early and do **not** emit `LOOP_STATUS=plan-size-trigger` (mirror Step 2b.5 step 3).
++- When `partition_requested=true`, plan-size rc=0, and no hard trigger fired, surface the retained `LOOP_STATUS=plan-size-trigger` handoff instead of silently continuing.
+ - Preserve existing `LOOP_STATUS` handoff behavior for hard/partition/clean routes.
++- On rc2/rc3 warning append, redirect `append-tool-failure.sh` stdout/stderr to `/dev/null` (or equivalent) with `|| true` so helper KVs such as `APPENDED=` / `LOG=` never leak into machine-readable loop stdout.
+ 
+ ### UPDATED: `skills/design/scripts/plan-review-loop.md`
+ 
+@@ -172,6 +181,7 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ - Document nonfatal rc2/rc3 handling for retained direct plan-size calls.
+ - Document that plan-review-loop hard prompts retain Split / Override / Cancel.
+ - Document the partition-requested retained handoff path and boolean fallback.
++- Document rc=0 gating for partition handoff and append-helper output suppression on rc2/rc3.
+ 
+ ### UPDATED: `skills/design/scripts/test-design-postplan-emit.sh`
+ 
+@@ -207,11 +217,14 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ ### UPDATED: `skills/design/scripts/test-plan-review-loop.sh`
+ 
+ - Add or update coverage proving direct `check-plan-size.sh` rc2/rc3 does not abort under `set -e`.
+-- Assert warning/logging behavior and continued `LOOP_STATUS` handoff.
++- Assert warning/logging behavior and continued clean-route `LOOP_STATUS` handoff when rc=0.
+ - Assert plan-review-loop retained hard prompt/site contract still includes Override.
+ - Assert `partition_requested=true` with no hard trigger produces the retained plan-size-trigger handoff.
++- Assert `partition_requested=true` with forced plan-size rc2/rc3 does **not** emit `LOOP_STATUS=plan-size-trigger`.
++- Assert rc2/rc3 append path produces no `APPENDED=` / `LOG=` leakage in loop stdout.
+ 
+ ### UPDATED: `skills/design/scripts/test-plan-review-loop.md`
+ 
+@@ -220,8 +233,10 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+ 
+-- Add `assert_thin_fence` for Step 2b.
++- Add `assert_postplan_thin_fence` (or extend `assert_thin_fence`) for Step 2b and every other merged postplan site.
++- Require immediate `echo "$out"` display merge, explicit `case` arms for `0`, `10`, `11`, `12`, `13`, `2`, `1`, and mandatory `*)` default-abort inside each pinned region; add a negative self-test fixture missing an arm.
+ - Scope the Step 2b thin-fence assertion to the merged driver fence region, with a Step-2b mode that skips unrelated classification-ordering checks if needed.
+ - Make site-specific assertions require `${REPO:+--repo "$REPO"}` passthrough for Step 2b timing/pause-save prelude calls and rc11 pause-save `exec` arms, but assert that `design-postplan-emit.sh` calls are not passed `--repo`.
+ - Add structural pins for all merged sites: initial Step 2b, Gate B, discussion-round2, and Step 1e Gate A re-entry.
+@@ -234,12 +249,15 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+   - initial rc0 writes `.completed/step-2b` and `.completed/step-2b.5`;
+   - initial rc12/rc13 Split entry writes `.completed/step-2b`;
+   - initial rc12/rc13 Split Refine return writes `.completed/step-2b` and `.completed/step-2b.5`;
++  - initial rc12/rc13 no-split Continue writes `.completed/step-2b` and `.completed/step-2b.5`;
+   - retained Override-to-Step-2b.5 writes `.completed/step-2b` before standalone Step 2b.5 and `.completed/step-2b.5` before Step 3;
+   - merged re-entry/review clean branches write/update Step 2b.5 completion before continuing;
+   - Gate B rc12 Override writes/updates `.completed/step-2b.5` before Step 3.6;
+-  - merged rc12/rc13 Split-path Refine returns write/update `.completed/step-2b.5` before continuing or returning to Gate A;
+-  - `decompose-panel.md` contains the same merged Refine-return sentinel rule.
++  - merged rc12/rc13 non-exiting Split returns (Refine and no-split Continue) write/update `.completed/step-2b.5` before continuing or returning to Gate A;
++  - retained Step 3 `LOOP_STATUS=plan-size-trigger` non-exiting Split returns write/update `.completed/step-2b.5` (and `.completed/step-2b` on initial-site paths) and route Refine return to Gate A or explicit pause/refine re-entry, not silent Step 3b short-circuit;
++  - `decompose-panel.md` contains the same non-exiting Split-return sentinel and re-entry rules.
++- Pin mandatory `*)` default-abort arms on every merged thin fence.
+ - Remove assertions that require the old fat inline parse, including stdout-KV merge heredocs such as `<<<"${_postplan_out:-}"`.
+ - Retire or repoint existing ordering pins such as `(14c14e)` / `(14c14h)`, pin 517 stdout-KV merge checks, and FINDING_21 inline `check-plan-size.sh` lines that require literal Step 2b.5/check-plan-size text immediately after `design-postplan-emit.sh`; keep literal Step 2b.5 mentions only for Override/retained-caller branches.
+ - Replace retired pins with thin-fence assertions for `--with-plan-size`, immediate `echo "$out"`, explicit rc `case` arms, and no stdout-KV merge loops.
+@@ -255,6 +273,9 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ - **plan-size rc 2/3**: nonfatal, but validation log, stderr diagnostics, and execution-issues warning are preserved; helper KVs do not leak.
+ - **plan-review-loop rc 2/3**: direct retained calls warn and continue instead of aborting under `set -e`.
++- **plan-review-loop partition + rc 2/3**: partition handoff is suppressed; `LOOP_STATUS=plan-size-trigger` is not emitted after failed size check.
++- **plan-review-loop append helper**: rc2/rc3 append output is suppressed so `APPENDED=` / `LOG=` do not pollute loop stdout.
++- **unexpected merged rc**: every thin fence `*)` arm prints the rc and aborts; no silent fallthrough.
+ - **rc1 subfailures**: thin fences still show specific diagnostics because the driver emits them before exiting.
+ - **mechanical_churn: true**: advisory display, rc 0 unless hard body-size gate also trips.
+ - **soft advisory + hard**: display includes both advisory context and hard prompt preamble.
+@@ -262,7 +283,8 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ - **backward compatibility**: non-flag callers keep exact legacy contract.
+ - **quiet parent process**: nested plan-size capture uses `LARCH_QUIET_DISABLE=1` so verdict KVs and warning display remain observable to the driver.
+-- **Split Refine returns**: merged hard/partition Split paths write/update `.completed/step-2b.5` on Refine return before continuing, preserving the legacy sentinel lifecycle.
+-- **initial Split sentinels**: initial merged rc12/rc13 writes `.completed/step-2b` before Split handling and again with `.completed/step-2b.5` on Refine return as needed.
++- **Split non-exiting returns**: merged and retained hard/partition Split paths write/update `.completed/step-2b.5` on Refine and no-split Continue before continuing; retained Step 3 plan-size-trigger Refine returns route to Gate A or explicit pause/refine re-entry.
++- **initial Split sentinels**: initial merged rc12/rc13 and retained initial-site Step 3 plan-size-trigger paths write `.completed/step-2b` before Split handling and again with `.completed/step-2b.5` on non-exiting return as needed.
+ - **result-env failure**: merged mode fails closed rc1 with a specific diagnostic if result-env handoff cannot be safely written.
+ - **merged display ownership**: after `echo "$out"`, merged rc12/rc13 arms do not rerun Step 2b.5 display subsections; they only ask/dispatch Split or Override/Cancel actions for that site.
+ 
+@@ -273,7 +295,7 @@ For every rc 12/rc 13 merged Split path, the Refine-return branch must write/up
+ - `make test-design-postplan-emit` green.
+ - `make test-check-plan-size` green.
+ - `make test-plan-review-loop` green.
+-- `scripts/test-design-structure.sh` green with thin-fence, sentinel, rc-arm, Gate A, site-prompt, result-env, decompose-panel, and standalone Step 2b.5 pins.
++- `scripts/test-design-structure.sh` green with `assert_postplan_thin_fence`, mandatory `*)` default-abort pins, thin-fence display/rc-arm negative fixture, sentinel, Gate A, site-prompt, result-env, decompose-panel non-exiting-return/re-entry, and standalone Step 2b.5 pins.
+ - `make lint` green.
+ 
+-diff_added: 520
+-diff_deleted: 250
++diff_added: 580
++diff_deleted: 280
+ mechanical_churn: false
+-diff_lines: 770
++diff_lines: 860

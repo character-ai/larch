@@ -1,0 +1,13 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Cursor-Arch, Cursor-Requirements	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_2	Codex-Arch	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_3	Cursor-Edge, Cursor-Innovation	accepted	YES	partially-true	minor	adequate	true	Claude	YES	partially-true	major	adequate	false	Codex	YES	true	major	good	false	Cursor
+FINDING_4	Codex-Edge	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_5	Codex-Edge, Codex-dyn-exit-code-mapper, Codex-dyn-kv-display-boundary	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_6	Codex-Edge, Codex-Pragmatic, Codex-dyn-exit-code-mapper, Codex-dyn-doc-topology-sync	accepted	YES	true	major	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_7	Codex-Innovation, Codex-dyn-exit-code-mapper	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_8	Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-doc-topology-sync	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_9	Cursor-Requirements	accepted	EXONERATE	partially-true	minor	adequate	true	Claude	YES	partially-true	minor	adequate	false	Codex	YES	true	minor	good	false	Cursor
+FINDING_10	Cursor-dyn-exit-code-mapper	exonerated	EXONERATE	true	major	adequate	false	Claude	EXONERATE	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_11	Cursor-dyn-sentinel-lifecycle, Codex-dyn-sentinel-lifecycle	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_12	Cursor-dyn-kv-display-boundary	accepted	YES	true	major	good	false	Claude	YES	true	major	adequate	false	Codex	YES	true	major	excellent	false	Cursor

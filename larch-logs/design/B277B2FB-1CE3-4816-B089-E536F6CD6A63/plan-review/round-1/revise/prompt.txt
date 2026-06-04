@@ -1,0 +1,355 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+## Implementation Plan — Issue #3419 (Phase 4: merge Step 2b post-emit + plan-size)
+
+Tier: SIMPLE. Mechanical consolidation that follows the Phase 1 thin-fence
+contract (`lib-phase-driver.md` §Thin orchestrator fence, piloted on Step 3.6).
+No novel architecture. Round 1 decisions: adopt `--with-plan-size` at **all
+three** prompt-side emit sites; **preserve all behavior** (pure turn-saving on
+the clean path).
+
+### Summary
+
+Add an additive `--with-plan-size` mode to `design-postplan-emit.sh` that runs
+`check-plan-size.sh` after a successful emit and maps the merged
+emit + validate + plan-size verdict to thin-fence **action exit codes**. The
+three prompt-side fences that today run `design-postplan-emit.sh` then a
+standalone `check-plan-size.sh` collapse to one driver call plus a thin
+`call → echo → case rc` fence. `check-plan-size.sh` keeps its current logic and
+stays standalone-callable.
+
+### Approach
+
+- The driver, with `--with-plan-size`, after the existing emit → optional
+  HARD snapshot → validate sequence:
+  - On `VALIDATE_STATUS=defects-found`: exit **10** and **skip** the plan-size
+    check (defects must be resolved first; size is re-evaluated on Fix-and-retry
+    re-emit or on Override via the retained standalone Step 2b.5).
+  - Otherwise run `check-plan-size.sh` and map its verdict:
+    - hard trigger (`HARD_TRIGGER_FIRED=true`) → exit **12**.
+    - partition route (`partition_requested=true` and no hard trigger) →
+      exit **13**.
+    - clean → exit **0**.
+- Output discipline (matches the Step 3.6 thin-fence pilot): in
+  `--with-plan-size` mode the driver writes all KVs to
+  `.design-postplan-emit-result.env` (diagnostics) and emits **display** lines
+  via `emit` on FD 3 — the soft mechanical-churn advisory line, the
+  under-threshold breadcrumb, the `## Plan Size — Hard Trigger` /
+  `## Plan Size — Partition requested` sections, and any `WARN` bodies. It does
+  **not** mirror KVs to FD 3, so the orchestrator's `echo "$out"` shows display
+  only (no `KEY=VALUE` noise).
+- The driver reads `partition_requested` from `run-params.json` with the
+  existing `json_scalar_or_sed` helper (default `false` when absent).
+- Pause in `--with-plan-size` mode returns exit **11**; the orchestrator's thin
+  fence `exec`s `design-pause-save.sh` (the Step 3.6 convention — a cleaner halt
+  than the legacy in-subshell `exec`). The non-flag pause checkpoints are left
+  unchanged.
+- `check-plan-size.sh` exit 2/3 inside `--with-plan-size` is **non-fatal**: the
+  driver appends a `WARN`, treats the plan as under threshold, and exits 0
+  (mirrors the current standalone Step 2b.5 "proceed without threshold check").
+- The driver invokes `check-plan-size.sh` via
+  `${PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh`, consistent with how
+  it already calls `design-driver.sh`, `snapshot-plan-round.sh`, and
+  `invoke-plan-validator.sh`. The offline harness symlinks the real script (and
+  its libs) into the fake plugin tree so the genuine threshold logic runs.
+- Backward compatibility: without `--with-plan-size`, the driver behaves exactly
+  as today — exit codes `{0,1,2}`, `defects-found` exits 0, KVs mirrored to
+  FD 3, legacy in-subshell pause. No non-flag caller changes.
+
+#### Each emit site's thin fence
+
+The driver returns the same exit-code contract at every site; each site's
+`case rc` arms differ only in the downstream target and prompt options
+(preserving today's behavior):
+
+- **Initial Step 2b** (`--with-plan-size --snapshot-original`): rc 0 → Step 3;
+  rc 10 → shared validator-failure body (Fix-and-retry → re-emit; Override → run
+  the retained standalone Step 2b.5; Cancel → Gate A); rc 12 → hard Split/Cancel
+  `AskUserQuestion`; rc 13 → Split-path; rc 11 → `exec` pause-save; rc 2 / rc 1 →
+  abort with the existing messages.
+- **Gate B** §Shared post-apply pipeline (`--with-plan-size`): rc 0 → Step 3.6;
+  rc 12 → hard **Split / Override / Cancel** `AskUserQuestion` (Gate B keeps its
+  3-option prompt); rc 13 → Split-path; rc 10 → validator-failure body
+  (`--site design Step 3.5 / Gate B`); rc 11 / 2 / 1 as above.
+- **discussion-round2 / Step 1e Gate A re-entry rewrite**
+  (`--with-plan-size --force-validate`): rc 0 → return to the invoking Gate A;
+  rc 12 → hard Split/Cancel; rc 13 → Split-path; rc 10 → validator-failure body
+  (`--site design discussion-round2`, Cancel → Gate A); rc 11 / 2 / 1 as above.
+
+The standalone **Step 2b.5** procedure (read `partition_requested`, run
+`check-plan-size.sh`, branch) is **retained** for: the Override-after-defects
+re-route, the Step 3 `LOOP_STATUS=plan-size-trigger` short-circuit, and
+`plan-review-loop.sh`'s internal use. Its Split-path, hard-prompt, and
+cancel-summary bodies remain the named procedures the action arms invoke.
+
+### Files to modify/create
+
+### UPDATED: `skills/design/scripts/design-postplan-emit.sh`
+
+- Add `--with-plan-size` flag (default `false`); keep `--snapshot-original` and
+  `--force-validate`.
+- Read `partition_requested` via `json_scalar_or_sed "$RUN_PARAMS_PATH"
+  partition_requested false`.
+- After the validate step, when `--with-plan-size`: branch on
+  `VALIDATE_STATUS` (defects → exit 10, skip size), else run
+  `${PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh`, parse its KVs,
+  write them into the result env, emit the display lines via `emit`, and exit
+  0 / 12 / 13 by verdict.
+- Add a pause checkpoint before the plan-size step; in `--with-plan-size` mode
+  the checkpoint writes the result env and exits **11** (no in-subshell `exec`).
+- In `--with-plan-size` mode, route status/WARN/section text through `emit`
+  (FD 3) and suppress the `emit_kv` FD-3 mirror; keep writing every KV to
+  `.design-postplan-emit-result.env`.
+- Preserve the #3441 classification-stderr → `WARN` handling unchanged.
+
+### UPDATED: `skills/design/scripts/design-postplan-emit.md`
+
+- Document `--with-plan-size`: the new result-env keys (`HARD_TRIGGER_FIRED`,
+  `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_ADDED`, `DIFF_DELETED`,
+  `MECHANICAL_CHURN`, `SOFT_ADVISORY`); the exit-code map
+  (`0` clean, `10` defects, `12` hard, `13` partition, `11` paused, `2` config,
+  `1` op-failure); the display-via-`emit` / KVs-file-only discipline; the
+  defects-priority (size skipped on rc 10); the `partition_requested` read; the
+  non-fatal plan-size-check-failure rule; and the unchanged non-flag contract.
+
+### UPDATED: `skills/design/SKILL.md`
+
+- Collapse the Step 2b driver-consumption fence to the thin shape: pause guard
+  (threading `${REPO:+--repo "$REPO"}`) → `set +e; out=$(... --with-plan-size
+  --snapshot-original); rc=$?; set -e` → `echo "$out"` → `case "$rc"` with the
+  initial-site arms above. Remove the fat result-env file-first/stdout parse,
+  symlink-refusal block, and mandatory-key checks.
+- Update the Step 2b.5 section prose: the three merged sites now obtain the
+  plan-size verdict from the driver; the standalone procedure remains for the
+  retained callers. Keep the "`check-plan-size.sh` stays standalone-callable"
+  note and the Split-path / hard-prompt / cancel bodies.
+- Update the Step 1e Gate A re-entry optional-trailer-guard re-emit to call
+  `--with-plan-size` and consume the thin contract, consistent with
+  discussion-round2.
+
+### UPDATED: `skills/design/references/approval-gates.md`
+
+- Rewrite the Gate B §Shared post-apply pipeline re-emit (the
+  `design-postplan-emit.sh` step plus the "run Step 2b.5" step) to call
+  `--with-plan-size` and branch with the thin Gate B arms above (hard prompt
+  keeps Split / Override / Cancel). Keep the optional-trailer snapshot/dedup
+  steps that precede the re-emit.
+
+### UPDATED: `skills/design/references/discussion-rounds.md`
+
+- Rewrite the post-plan Round 2 re-emit to call
+  `--with-plan-size --force-validate` and branch with the thin round-2 arms
+  above (clean → return to Gate A). Keep the optional-trailer guard prose.
+
+### UPDATED: `skills/design/references/flags.md`
+
+- Note `--with-plan-size` as an internal `design-postplan-emit.sh` flag and
+  update the Plan-command-validator section: at the merged sites, plan-size is
+  folded into the same driver call; `check-plan-size.sh` stays standalone.
+
+### UPDATED: `skills/design/scripts/check-plan-size.md`
+
+- Add `design-postplan-emit.sh --with-plan-size` to the callers / edit-in-sync
+  list. No change to `check-plan-size.sh` logic or contract.
+
+### UPDATED: `skills/design/scripts/test-design-postplan-emit.sh`
+
+- In the fake plugin tree, symlink the real `check-plan-size.sh` and
+  `lib-plan-optional-trailers.{sh,awk}` into `FAKE_DESIGN`, and
+  `lib-design-tmpdir.sh` into `FAKE_SCRIPTS`, so `--with-plan-size` runs the
+  genuine threshold logic.
+- Add `--with-plan-size` cases: clean (rc 0, under-threshold breadcrumb in
+  `$out`, KVs in result env, no `KEY=VALUE` line in `$out`); plan body > 800
+  (rc 12, hard section emitted); `diff_added > 2000` (rc 12); `mechanical_churn:
+  true` downgrade (rc 0, soft advisory line); `partition_requested=true`
+  (rc 13); `defects-found` (rc 10, plan-size skipped); compose with
+  `--snapshot-original`; non-fatal plan-size-check failure (rc 0 + `WARN`);
+  pause (rc 11). Keep the existing non-flag cases asserting the unchanged
+  `{0,1,2}` + FD-3-KV behavior.
+
+### UPDATED: `skills/design/scripts/test-design-postplan-emit.md`
+
+- Document the new `--with-plan-size` cases and the added symlink wiring.
+
+### UPDATED: `skills/design/scripts/test-check-plan-size.sh`
+
+- Review only; `check-plan-size.sh` logic is unchanged, so no new cases are
+  expected. Add a case only if review surfaces a contract clarification. Listed
+  because the issue scope names it.
+
+### UPDATED: `scripts/test-design-structure.sh`
+
+- Add `assert_thin_fence` over the Step 2b driver-consumption region (markers
+  `<!-- step:2b` → `### Step 2b.5`), mirroring the existing Step 3.6 pin.
+- Audit and remove/replace any assertion that mandates the fat Step 2b inline
+  parse (result-env while/read loop, symlink-refusal, mandatory-key checks).
+- Pin `--with-plan-size` at the three merged sites (SKILL.md Step 2b, Gate B in
+  `approval-gates.md`, Round 2 in `discussion-rounds.md`) and pin the
+  exit-code action arms.
+- Keep an anchor asserting the standalone Step 2b.5 procedure and the
+  Override → Step 2b.5 re-route survive.
+
+### Edge cases
+
+- **defects + hard co-occur**: defects wins (rc 10); plan-size is re-evaluated
+  on Fix-and-retry (re-emit) or on Override (standalone Step 2b.5). Same
+  ordering as today.
+- **partition + hard co-occur**: hard wins (rc 12, Split/Cancel); `--partition`
+  cannot downgrade a hard trigger (preserved).
+- **plan-size-check failure post-emit**: nearly impossible after a successful
+  emit writes a valid `diff_lines:` trailer; handled non-fatally (`WARN` +
+  proceed as clean).
+- **`mechanical_churn: true`**: driver emits the advisory line; rc 0 unless the
+  plan-body gate also trips (then rc 12).
+- **Gate B 3-option hard prompt** vs initial-site 2-option prompt: preserved by
+  site-specific `case rc` arms, not by the driver.
+- **Backward compatibility**: non-flag callers keep exact `{0,1,2}` + FD-3 KVs +
+  legacy pause.
+
+### Failure modes
+
+1. **Exit-code mis-map at a site**: a fence treats an action rc as failure (or
+   vice versa) → false abort or a skipped prompt. Earliest signal: harness rc
+   assertions and `assert_thin_fence`. Mitigation: per-site rc-arm anchors in
+   `test-design-structure.sh` and explicit rc cases in the offline harness.
+2. **KV noise leaking to chat**: if `--with-plan-size` still mirrors KVs to
+   FD 3, the thin `echo "$out"` dumps `KEY=VALUE` lines. Signal: harness asserts
+   `$out` carries display but no `KEY=VALUE` line. Mitigation: file-only KVs in
+   `--with-plan-size`; dedicated harness assertion.
+3. **Override path regression**: if the validator-body Override arm drops the
+   standalone Step 2b.5 re-route, a large or partitioned plan skips its gate.
+   Signal: behavior review of the Override arm. Mitigation: explicit
+   Override → Step 2b.5 prose plus a `test-design-structure.sh` anchor; the
+   standalone procedure is retained.
+
+### Testing strategy
+
+- `make test-design-postplan-emit` green with the new `--with-plan-size` cases
+  and symlink wiring above.
+- `make test-check-plan-size` green (expected unchanged).
+- `scripts/test-design-structure.sh` green with the new thin-fence pin, the
+  `--with-plan-size` site pins, the exit-code anchors, and the retained
+  standalone Step 2b.5 / Override anchors.
+- `make lint` (repo-wide pre-commit: shellcheck, agent-lint S030 path pins,
+  bash32, renderer-substitution-safety, markdownlint, script-md-sibling) green.
+
+diff_added: 230
+diff_deleted: 120
+mechanical_churn: false
+diff_lines: 350
+
+</plan>
+
+<findings>
+### FINDING_2: Merged clean paths must preserve Step 2b / Step 2b.5 completion sentinels
+- **Reviewer(s)**: Cursor-Arch, Codex-Innovation, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: Clean merged `rc 0` paths can proceed to Step 3 without writing the existing `.completed/step-2b` / `.completed/step-2b.5` sentinels, causing pause/resume to restart at the wrong step and potentially rerun plan-size handling.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In thin-fence rc 0 arms (initial, Gate B, Gate A re-entry, discussion-round2), write step-2b.5 before continuing; delete Run Step 2b.5 now on merged paths; keep the standalone procedure for Override and Step 3 short-circuits
+  - From Codex-Innovation: Write both .completed/step-2b and .completed/step-2b.5 on the initial Step 2b rc0 clean branch before entering Step 3, and pin that sentinel preservation in scripts/test-design-structure.sh
+  - From Codex-Pragmatic: Keep the minimum sentinel contract: on initial rc 0 write .completed/step-2b and .completed/step-2b.5 before Step 3; on Override-to-standalone Step 2b.5 write step-2b before the retained procedure and step-2b.5 before Step 3; pin this in test-design-structure.sh
+
+
+### FINDING_3: Nonfatal plan-size failures must preserve validation log and execution-issues contract
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Codex-Requirements
+- **Severity**: important
+- **Concern**: The merged `check-plan-size.sh` `rc 2/3` path preserves only the chat/display warning, but drops the standalone Step 2b.5 behavior that records `check-plan-size.validation.log` and appends a warning to `execution-issues.md`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Mirror Step 2b.5 rc 2/3 handling in the driver: write capture to check-plan-size.validation.log, call append-tool-failure.sh, then WARN and exit 0; document in design-postplan-emit.md
+  - From Codex-Arch: In design-postplan-emit.sh --with-plan-size, reuse the existing Step 2b.5 append-tool-failure logging path for check-plan-size rc 2 and rc 3 before returning cleanly
+  - From Codex-Requirements: Add the same check-plan-size.validation.log plus append-tool-failure Warnings write in the driver rc2/rc3 path, and extend the nonfatal harness case to assert it
+
+
+### FINDING_4: Gate A re-entry merged caller is not structurally pinned
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: Structure tests pin only three merged `--with-plan-size` call sites, leaving the Step 1e Gate A optional-trailer re-entry path free to regress back to the old fat file-first parsing shape.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add assert_thin_fence or contains pin for the Gate A re-entry block with --with-plan-size and rc arms, alongside the three existing site pins
+
+
+### FINDING_5: Thin `rc 1` handling loses failure-specific status/messages
+- **Reviewer(s)**: Codex-Arch, Codex-Edge
+- **Severity**: important
+- **Concern**: The proposed thin fence sees only `rc=1` while `design-postplan-emit.sh` multiplexes distinct failures onto exit 1, so existing targeted abort messages for missing diff lines, snapshot failures, emit failures, or validator infrastructure failures may be lost.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Keep a minimal rc1-only status read, add distinct failure exit codes, or make the driver emit the existing human-readable failure line before exit 1 in --with-plan-size mode
+  - From Codex-Edge: Either have --with-plan-size emit the existing rc1 human failure messages before exit 1, or keep a minimal rc1-only result-env read for POSTPLAN_EMIT_STATUS; add with-plan-size tests for the rc1 subcases.
+
+
+### FINDING_6: `rc10` fix-and-retry can bypass the merged plan-size gate
+- **Reviewer(s)**: Codex-Edge, Codex-dyn-exit-code-contract
+- **Severity**: important
+- **Concern**: When the merged driver exits `rc10` for validator defects before running plan-size, the existing fix-and-retry body may rerun raw emit/validation and then continue without applying the hard-size or partition handling.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Update the rc10 contract so Fix-and-retry reruns the same site's design-postplan-emit.sh --with-plan-size driver and dispatches its rc again, or explicitly runs retained Step 2b.5 after validation succeeds.
+  - From Codex-dyn-exit-code-contract: Revise the shared body or each rc10 arm so Fix-and-retry re-enters the same site-specific design-postplan-emit.sh --with-plan-size fence and Override runs the retained standalone Step 2b.5 before proceeding
+
+
+### FINDING_7: Retained Step 2b.5 hard prompt must be site-aware
+- **Reviewer(s)**: Codex-dyn-exit-code-contract, Codex-dyn-prompt-flow-sync
+- **Severity**: important
+- **Concern**: Retained standalone Step 2b.5 hard-size handling still appears to use the initial Split/Cancel prompt, but Gate B and plan-review-loop routes require Split/Override/Cancel semantics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-exit-code-contract: Keep the minimum change by documenting/coding two named hard-prompt bodies: initial/discussion use Split/Cancel, while Gate B and Step 3 plan-size-trigger retained callers use Split/Override/Cancel before continuing their surrounding flow
+  - From Codex-dyn-prompt-flow-sync: Specify that Override-after-defects and Step 3 plan-size-trigger invoke the correct site hard prompt: Gate B / plan-review-loop get Split/Override/Cancel; initial Step 2b and discussion-round2 keep Split/Cancel.
+
+
+### FINDING_8: `--with-plan-size` tests miss classification WARN display behavior
+- **Reviewer(s)**: Codex-dyn-shell-io-contract
+- **Severity**: important
+- **Concern**: Existing tests do not cover classification-stderr warnings through the new display-only channel, so `--with-plan-size` could drop the warning or leak `WARN=`/KV output while current clean and plan-size failure cases still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-shell-io-contract: Add one --with-plan-size classification-warning fixture, reusing the missing/invalid run-params setup, asserting the warning body appears in stdout, stdout has no full-line KEY=VALUE or WARN= leakage, and .design-postplan-emit-result.env still contains WARN= for diagnostics
+
+
+### FINDING_9: `check-plan-size.md` caller docs omit direct plan-review-loop caller
+- **Reviewer(s)**: Codex-dyn-prompt-flow-sync
+- **Severity**: latent
+- **Concern**: The docs update adds the new driver caller but still omits `plan-review-loop.sh`, which directly calls `check-plan-size.sh`; future edits could miss that retained caller.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-prompt-flow-sync: Add plan-review-loop.sh to the callers / edit-in-sync list alongside design-postplan-emit.sh --with-plan-size.### OOS_1:
+- **Description**: Step 3.5 prose still says Gate B requires Step 2b.5 immediately after each settled design-postplan-emit.sh re-emit. Scenario: After merge, operators and agents may follow stale two-call sequencing at Gate B despite approval-gates rewrite
+- **Reviewer**: Cursor-Arch
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md:1154
+- **Phase**: design
+
+
+
+</findings>
+
+<feature>
+Round II of /design refactor, Phase 4: merge Step 2b post-emit + plan-size
+
+**Context.** Part of Round II of the `/design` refactor (rationale in Phase 1).
+
+**Problem.** Step 2b runs `design-postplan-emit.sh` (`SKILL.md:876-964`) and then Step 2b.5 runs `check-plan-size.sh` (`SKILL.md:980-986`) as two adjacent Bash turns; on the clean path there is no LLM judgment between them. The plan is re-emitted at Gate B **every review round**, so this pair recurs per round. The Step 2b consumption fence is ~88 lines.
+
+**Change.** Add an additive mode (e.g. `design-postplan-emit.sh --with-plan-size`) that appends the plan-size trigger KVs so the initial Step 2b path is one call; the orchestrator engages AskUserQuestion only on `defects-found` OR `HARD_TRIGGER_FIRED`. Keep `check-plan-size.sh` independently callable — Step 2b.5 is also invoked standalone from Gate B and discussion-round2 (`SKILL.md:975`). Collapse the Step 2b consumption fence to the thin-fence contract.
+
+**Why.** 1 turn saved per plan write (compounds across review rounds); per-turn byte + determinism win.
+
+**Scope / acceptance.** `design-postplan-emit.{sh,md}` (+ `check-plan-size.{sh,md}` as needed) updated; `check-plan-size` remains standalone-callable from Gate B / discussion; SKILL.md Step 2b/2b.5 thinned; `test-design-postplan-emit.sh`, `test-check-plan-size.sh`, `test-design-structure.sh` updated; harnesses + `make lint` green.
+
+**Dependencies.** Blocked by Phase 1.
+
+
+---
+
+**Coordination with #3441** (this phase is blocked by #3441): #3441 §4 also edits
+`skills/design/scripts/design-postplan-emit.sh` — it preserves the classification
+helper's stderr instead of redirecting it to `/dev/null`. When adding the
+`--with-plan-size` mode here, build on that stderr fix; do not revert it.
+
+
+</feature>

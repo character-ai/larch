@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:51-57	Thin-fence rc dispatch does not require a default abort arm	If design-postplan-emit.sh exits with an unexpected non-listed rc such as 126, 127, or signal-derived status after set +e capture, a case with only the listed arms can fall through and continue silently	Add a mandatory *) arm to every merged fence that prints the rc and aborts, and pin it in scripts/test-design-structure.sh
