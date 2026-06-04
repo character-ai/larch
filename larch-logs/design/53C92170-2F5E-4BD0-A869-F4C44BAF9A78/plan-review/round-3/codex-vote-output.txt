@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Cleanup risk is real, but classify-before-publish adds complexity beyond what fail-closed restore/status checks warrant.
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The planned argv-capture/no---json tests cover the original failure without requiring real gh or transcript fixtures.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Speculative parallel-merge risk is already covered by the pinned exit-map test and is not worth a separate issue.

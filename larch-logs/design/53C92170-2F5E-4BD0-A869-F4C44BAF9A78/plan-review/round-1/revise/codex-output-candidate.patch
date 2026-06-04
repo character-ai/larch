@@ -1,0 +1,154 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -2,8 +2,9 @@
+ 
+ SIMPLE tier. Each fix is surgical and traces to a numbered finding. Two operator-chosen
+ scope expansions are honored: lower the runtime Python floor to 3.11 (Decision 1) and
+-re-architect post-PR flushes to avoid divergence at the root (Decision 2 / O1).
++re-architect post-PR flushes to avoid divergence at the root (Decision 2 / O1). Accepted
++reviewer findings extend the floor/config sync and make volatile-only skips clean-tree safe.
+ 
+ Out of scope (Round 1): #3446, #3448, #3449 (tracked separately). No bash `ship-pr.sh`
+ rewrite beyond the #1 `set -e` fix. No `SECURITY.md` change (no security-relevant behavior
+@@ -58,13 +59,21 @@
+ ### UPDATED: `python/run_logs.py`
+ (O1, Decision 2) `_larch_log_commit` (line 851) / `flush_logs_pre` (line 526). Make in-loop flushes
+ non-divergent: after staging (line 875), if every changed path under the run tree is a
+-volatile batch artifact — token-report / timing-report ndjson, `session-transcript-refresh.txt`,
+-and their redacted copies — skip the commit (return the existing no-op `CommandResult(("true",),0,...)`
+-so no `chore(larch-logs): flush` commit is created). Commit only when a substantive run-log path
+-changed. Use an explicit volatile-path allowlist scoped to `larch-logs/<run_id>/`, mirroring the
+-path-scoping discipline already in `merge._flush_recoverable`. `flush_logs_post` (line 570) stays
+-commit-free, so final logs ride the squash-merge without a divergent pre-merge commit.
++volatile batch artifact, skip the commit (return the existing no-op
++`CommandResult(("true",),0,...)` so no `chore(larch-logs): flush` commit is created). The skip path
++must leave the repository clean: preferably classify before `git add`; if classification happens
++after staging, explicitly unstage and restore/clean only the allowlisted repo copies before returning,
++so `git status --porcelain -- larch-logs/implement/<run_id>` is empty and later rebase/force-push
++guards cannot stall on skipped artifacts. Commit only when a substantive run-log path changed. Use an
++explicit basename allowlist scoped to `larch-logs/implement/<run_id>/`, mirroring the path-scoping
++discipline already in `merge._flush_recoverable`: `token-report.json`, `timing-report.json`,
++`token-report.ndjson`, `timing-report.ndjson`, `token-report-refresh.json`,
++`timing-report-refresh.json`, `session-transcript-refresh.txt`, plus any current concrete redacted
++twins the renderer already writes (enumerate exact basenames; no broad report-family globs).
++`flush_logs_post` (line 570) stays commit-free, so final logs ride the squash-merge or remain
++tmpdir-local when only volatile refresh churn changed after the last substantive log commit.
+ 
+ ### UPDATED: `python/config.py`
+ (O1) Add a `REFRESH_SKIP_VOLATILE_ONLY` literal and include it in `REFRESH_SKIP_MERGE_OK`
+@@ -72,6 +81,11 @@
+ (line 190) so any caller that still inspects a volatile-only skip treats it as success, not error.
+ 
++### UPDATED: `docs/run-logs.md`
++(O1) Document the volatile-only in-loop refresh contract: exact artifacts eligible for skip, the
++clean-tree invariant after a skip, and the fact that timestamp/elapsed-only refresh churn may remain
++tmpdir-local until a substantive run-log commit or the squash-merged PR carries the last durable copy.
++
+ ### UPDATED: `python/ci_monitor.py`
+ (#6) In `poll_ci` (line 359), emit a per-poll breadcrumb to stderr using the existing
+ `_warn_stderr` (line 192) — include the poll index and elapsed seconds before each
+@@ -111,17 +125,36 @@
+ interpreter. 3.11 is the new documented floor (Decision 1); dev/pre-commit tooling may stay 3.12.
+ 
++### UPDATED: `skills/report-tokens/scripts/run-analysis.sh`
++(#2 / accepted reviewer finding) Lower the live `/report-tokens` wrapper probe and error text from
++Python ≥ 3.12 to Python ≥ 3.11, mirroring the implement selector guard so the documented runtime
++floor is actually accepted by the skill entrypoint.
++
+ ### UPDATED: `python/pyproject.toml`
+-#2) Change `requires-python = ">=3.12"` (line 4) to `">=3.11"`. Ruff infers its target from
+-`requires-python`, so this also lowers lint target to py311 and flags any 3.12-only usage (the
+-audit grep found none today). Confirm no explicit `target-version`/`python_version` pin re-raises it.
++(#2) Change `requires-python = ">=3.12"` (line 4) to `">=3.11"`. Keep this as the packaging/runtime
++floor; explicit lint/type pins are handled in the config files below so `py-lint` validates 3.11.
++
++### UPDATED: `python/ruff.toml`
++(#2 / accepted reviewer finding) Lower `target-version = "py312"` to `target-version = "py311"` (or
++remove the override only if verified that Ruff then follows `requires-python = ">=3.11"`). This must
++be part of the same floor-lowering patch so Ruff flags 3.12-only syntax/API usage.
++
++### UPDATED: `python/pyrightconfig.json`
++(#2 / accepted reviewer finding) Lower `"pythonVersion": "3.12"` to `"3.11"` so type analysis uses
++the runtime floor.
++
++### UPDATED: `python/.pylintrc`
++(#2 / accepted reviewer finding) Lower `py-version=3.12` to `py-version=3.11` so Pylint analysis
++does not silently permit 3.12-only constructs.
+ 
+ ### UPDATED: `python/README.md`
+ (#2) Line 3: change "Python ≥ 3.12" to "Python ≥ 3.11".
+ 
+ ### UPDATED: `docs/installation-and-setup.md`
+ (#2) Line 96: change the `/report-tokens` runtime requirement from "Python 3.12 or newer" to
+-"Python 3.11 or newer". Leave line 297 ("Python 3.12+ — required by pre-commit") as a dev-tooling
+-requirement, or clarify it as pre-commit-only.
++"Python 3.11 or newer" and ensure it agrees with `skills/report-tokens/scripts/run-analysis.sh`.
++Leave line 297 ("Python 3.12+ — required by pre-commit") as a dev-tooling requirement, or clarify
++it as pre-commit-only.
+ 
+ ### UPDATED: `.github/workflows/ci.yaml`
+ (#2) Convert the `python-lint` (line ~426) and `python-tests` (line ~442) jobs to a
+@@ -158,8 +191,11 @@
+ ### UPDATED: `python/test_run_logs.py`
+-(O1) Assert `flush_logs_pre` skips the commit when only volatile batch artifacts changed, and
+-still commits when a substantive run-log path changed.
++(O1) Assert `flush_logs_pre` skips the commit when only volatile batch artifacts changed and still
++commits when a substantive run-log path changed. The volatile-only regression must include
++`token-report-refresh.json` and `timing-report-refresh.json` alongside the canonical
++token/timing/report/transcript artifacts, and must assert the skip path leaves
++`git status --porcelain` empty for the run-log path after returning.
+ 
+ ## Approach
+ 
+@@ -168,8 +204,9 @@
+ the two operator scope expansions on top: O1 makes in-loop flushes commit only on substantive
+-change (so no divergent commit triggers fresh CI), and Decision 1 lowers the runtime floor to 3.11
+-across packaging, docs, CI matrix, and the selector guard. Every behavioral change gets a
++change while leaving the tree clean (so no divergent commit or dirty staged skip triggers fresh CI
++or force-push stalls), and Decision 1 lowers the runtime floor to 3.11 across packaging, docs,
++CI matrix, lint/type configs, `/report-tokens`, and the selector guard. Every behavioral change gets a
+ regression test; the merge-convergence test is the gate for #7 + O1.
+ 
+ ## Edge cases
+@@ -181,8 +218,10 @@
+   behavior, just after polling) — it must not loop forever.
+ - Volatile-only flush skip: the first flush with real content still commits; a later flush whose
+-  only delta is timestamp/elapsed churn skips — substantive paths always force a commit.
+-- Selector: `python3` == 3.11 passes; < 3.11 fails loudly; a 3.12 `python3` still passes.
++  only delta is timestamp/elapsed churn skips, unstage/restores only allowlisted artifacts, and
++  leaves git status clean — substantive paths always force a commit.
++- Selector/report-tokens wrapper: `python3` == 3.11 passes; < 3.11 fails loudly; a 3.12 `python3`
++  still passes.
+ - parse-bootstrap: file-first pre-populates keys, then the stdout-fallback loop runs with all keys
+   set → must still source cleanly under `set -e`.
+ 
+@@ -201,10 +240,10 @@
+    Mitigation: cap at `MERGE_PR_POST_PUSH_UNKNOWN_RETRIES` × 5s and return ERROR on exhaustion;
+    early-return only on exact `head_ref_oid == local_head`.
+-3. **Volatile-only classifier drops substantive logs.** Too-broad volatile matching could skip a
+-   real log commit. Signal: missing execution-issues batches in `larch-logs/`. Mitigation: explicit
+-   volatile-path allowlist; commit whenever any non-allowlisted path changed; test both directions.
++3. **Volatile-only classifier drops substantive logs or leaves dirty state.** Too-broad volatile
++   matching could skip a real log commit; cleanup mistakes could leave staged/dirty files. Signal:
++   missing execution-issues batches or `dirty worktree before force-push`. Mitigation: exact
++   volatile basename allowlist, commit whenever any non-allowlisted path changed, and assert clean
++   git status after volatile-only skip.
+ 
+ ## Testing strategy
+@@ -212,12 +251,13 @@
+   `test_merge_bash_parity.py` (#7), `test_ship.py` (#4/#6), `test_ci_monitor.py` (#6),
+-  `test_run_logs.py` (O1).
++  `test_run_logs.py` (O1 exact allowlist + clean-status skip).
+ - New offline harness `scripts/test-parse-bootstrap-routing-envelope.sh` (#1), Makefile-registered.
+-- `make py-lint` under the lowered 3.11 ruff target; `make lint` for shell/markdown/structure
+-  (`test-implement-structure.sh` still references the bash helper).
++- `make py-lint` under lowered 3.11 Ruff/Pyright/Pylint pins; `make lint` for
++  shell/markdown/structure (`test-implement-structure.sh` still references the bash helper).
+ - Manual/CI: the new 3.11/3.12 CI matrix exercises `python/` under both interpreters.
+ 
+-diff_added: 330
+-diff_deleted: 70
+-diff_lines: 400
++diff_added: 460
++diff_deleted: 100
++diff_lines: 560

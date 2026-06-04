@@ -1,0 +1,75 @@
+# Python ship-pr soak: fix PR-create, merge-loop, error-contract; add breadcrumbs
+
+## Context
+
+First real `/implement` run on the **Python ship driver** (`LARCH_SHIP_PR_IMPL=python` → `python/ship.py`), against #3431 → PR #3464 (merged via the python path). **This is the single consolidated tracking issue for every problem the first soak surfaced** — it supersedes **#3451** and **#3465** (both closed). To complete the soak, throwaway patches were applied to the installed plugin cache (kept active locally per operator; overwritten by the next `/upgrade-larch`); the canonical fixes land here via `/design`→`/implement`.
+
+Env: `gh` 2.92.0; `python3` = 3.11.11 (3.12.8 present).
+
+Boundaries with the sibling python-cutover issues are called out per-finding so nothing is double-tracked; see **Related issues** + **Dependencies** at the bottom.
+
+## Findings & recommended fixes
+
+### #1 — `parse-bootstrap-routing-envelope.sh` is not `set -e`-safe (bash Step-0) [absorbed from #3451]
+- `scripts/parse-bootstrap-routing-envelope.sh`: `_inv_apply_routing_line_if_empty` (and the `[ -z "$_inv_line" ] && return 0` guards) end on `[ -z "${KEY:-}" ] && KEY="$val"`; once the file-first pass pre-populates keys, that guard is false → the function returns 1 → the caller's `set -e` aborts. The skill sources it under `set -e` in the Step-0 + dirty-tree-resume blocks → a fully-successful Step 0 reports **exit 1** (false-failure / latent halt). Confirmed by the soak (Step 0 exited 1 after all side effects; recovered by reading `bootstrap-routing.env`).
+- Fix: make the helper `set -e`-safe (end each `_inv_apply_*` with `return 0`, or `if [ -z … ]; then … fi`), or source under `set +e`.
+- Note: bash Step-0 scope (not strictly the python driver), consolidated here per operator to avoid a stray duplicate.
+
+### #2 — Python interpreter floor: selector has no ≥3.12 enforcement; runs under 3.11 [absorbed from #3465]
+- `skills/implement/SKILL.md` selector invokes bare `python3`; here that's 3.11.11 while AGENTS.md/#3132 mandate runtime Python ≥ 3.12. The tree compiled (`compileall`) + imported cleanly under 3.11, so it ran by luck.
+- Fix: either validate/select the interpreter (require ≥3.12 or invoke `python3.12`), **or** lower the documented floor to 3.11 with a CI matrix and audit `python/` for 3.11 compliance.
+
+### #3 — `gh.pr_create` passes `--json` to `gh pr create` → PR creation always fails (BLOCKER) [PATCHED]
+- `python/gh.py` `pr_create()` builds `gh pr create … --json number,url,state,headRefName` and parses stdout as JSON. `gh pr create` does **not** support `--json` (gh 2.92.0), so it fails every real run with `ShipError`. `python/test_gh.py`'s stub Runner returns canned JSON real gh never emits — a test-fidelity gap.
+- Fix: run `gh pr create` without `--json`, resolve via `gh pr view --json …` / `pr_for_branch(...)`; add a real-CLI/recorded-fixture test that catches an unsupported flag.
+
+### #4 — `ship.py._error_to_result` re-raises non-mapped errors → crash, no JSON, exit 1 (contract)
+- Maps only `TransientNetworkError`/`NeedsUserInput`/`Stalled`; everything else (incl. `ShipError`) hits `raise exc` → Python traceback + `SystemExit(1)`, violating the Step 8+ JSON-stdout + exit-0/3/4/6 contract.
+- Fix: map `ShipError`/operational errors to `Outcome.STALLED` (exit 4) with `detail` so the driver always emits JSON.
+- **Distinct from #3446**: this is the driver **emit**-JSON-on-error side; #3446 is the orchestrator **consume**-JSON routing side.
+
+### #5 — `merge.py._ensure_head_matches_pr` no retry on lagged PR head OID (timing) [PATCHED]
+- After `force_push_recovery`, re-reads the PR head OID once; GitHub's `headRefOid` lags a force-push → false `MERGE_RESULT_ERROR` "local HEAD does not match PR head OID after force-push recovery" → STALLED. (`_retry_unknown` already polls `mergeStateStatus`; the OID check had no equivalent.)
+- Fix: poll `_refresh_pr_info` (e.g. `MERGE_PR_POST_PUSH_UNKNOWN_RETRIES` × 5s) until the OID catches up.
+
+### #6 — Python ship driver emits no progress breadcrumbs (long silent intervals)
+- Only the final JSON reaches stdout; rebase/checks/push/CI-wait are silent (soak: ~6-min silent CI wait). Bash `ship-pr.sh` emitted `🔶`/`⏳`/`✅` step lines.
+- Fix: emit human-readable progress to **stderr** per major step (Rebase, Lint&Tests, Flush, Push, PR, each CI poll w/ elapsed, Merge, Post-merge); keep stdout JSON-only.
+
+### #7 — Non-convergent CI/merge loop: `merge_pr` re-flushes volatile logs before every merge attempt (CRITICAL/BLOCKER) [PATCHED]
+- `python/merge.py` `merge_pr()` calls `run_logs.flush_logs_pre(...)` every invocation → token/timing churn → new `chore(larch-logs): flush` commit → HEAD diverges from the CI-green PR OID → `_ensure_head_matches_pr` force-pushes → fresh CI → BLOCKED → `CI_NOT_READY` → `run_ship` loop forever. Observed: **8 CI runs in 16 min**, never converging.
+- Fix: flush ONCE before CI (not per merge attempt), and/or make flush idempotent (no commit on volatile-only churn), and/or merge the green head and defer final logs to post-merge (NEVER #16). Add a merge-convergence regression test.
+- **Distinct from #3448** (per-process counter resets) and **#3449** (CI-fix `stage_and_push` force-push gate): same "churn against an open PR" family, different mechanisms/locations (`merge_pr` flush vs counter persistence vs CI-fix push).
+
+### O1 — Flush-commit proliferation after PR creation
+- Post-PR flush commits force divergence requiring force-push + OID-sync (the trigger for #5/#7). Squash-merge hides it on `main`; consider fast-forward post-PR flushes instead of divergence-then-force-push. Tracked here with #7.
+
+## Soak patches applied (plugin cache; kept active locally; throwaway, overwritten by `/upgrade-larch`)
+1. `python/gh.py` `pr_create`: drop `--json`; resolve via `pr_for_branch(...)` (fallback `_recover_pr_from_conflict_text`). (#3)
+2. `python/merge.py` `_ensure_head_matches_pr`: poll PR head OID after force-push. (#5)
+3. `python/merge.py` `merge_pr`: remove pre-merge `flush_logs_pre`. (#7)
+4. `skills/implement/SKILL.md`: local preview-of-#3462 default flip bash→python.
+
+Findings #1, #2, #4, #6 were not patched (didn't block, or kept #4's re-raise to surface tracebacks).
+
+## Acceptance
+- #3, #4, #7 fixed in the repo `python/` tree (blockers for the python path and for #3462).
+- `gh pr create` covered by a real-CLI/recorded-fixture integration test.
+- Merge converges with no per-attempt flush-commit churn — regression test pins a single CI cycle on a clean green path.
+- Operational errors yield a JSON result + routing exit code (never a bare traceback/exit 1).
+- Progress breadcrumbs stream to stderr per major step; stdout stays JSON-only.
+- #1 (set-e), #2 (interpreter floor), #5 (OID poll), #6 (breadcrumbs), O1 addressed or explicitly deferred with rationale.
+- `make py-lint` / `make py-test` / `make lint` pass.
+
+## Related issues (distinct scope — NOT duplicated here)
+- **#3446** — orchestrator-side JSON + finalize-state routing contract; `run_ship` availability hardcode; selector harness pin; misc cleanups. (Driver-emit counterpart of #4 lives here in #3466.)
+- **#3448** — persist CI-loop counters + idempotent phase resume + Phase-7 test matrix (`test_ship.py`/`test_ci_monitor.py`). (Counter-reset churn ≠ #7's flush churn.)
+- **#3449** — finalize parity (postmerge/local-cleanup/postbump force-push gate) + real bash-parity tests + fail-closed gate + doc refresh.
+- **#3404** — exit-4 `ship_pr_pre_push` conflict handoff (library-level: `config.py`/`errors.py`/`rebase.py`).
+- **#3405** — `ci_monitor` `CI_FIX_REBASE_PENDING` vs `evaluate_failure` divergence (intentional non-port: comment + test pin).
+- **#3132** — umbrella (ship-pr → modular Python).
+- **#3462** — flip `LARCH_SHIP_PR_IMPL` default bash→python; the final cutover, blocked by all the above.
+
+## Dependencies (native blocked-by applied via /block-issue; file-overlap → can't-parallel)
+`#3466 → #3446 → #3448`; then `#3449` and `#3405` can run in parallel after #3448; `#3404` after #3446 (+ #3405 for `python/README.md`); `#3462` last (blocked by all six work issues). Rationale: shared `ship.py` serializes #3466/#3446/#3448; `finalize.py`/`run_logs.py` link #3446/#3448/#3449; `test_ci_monitor.py` links #3448/#3405; `config.py`/`README.md` link #3446/#3404/#3405.
+

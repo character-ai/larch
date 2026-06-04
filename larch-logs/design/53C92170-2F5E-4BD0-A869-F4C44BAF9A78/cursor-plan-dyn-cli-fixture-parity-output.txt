@@ -1,0 +1,22 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/gh.py:313-383	Post-create success path omits the try/except around pr_for_branch that the conflict branch already uses	After rc=0 create, a transient pr list failure raises TransientNetworkError/ShipError before stdout URL fallback runs, contradicting Edge cases (plan.txt:183-184) and leaving no STALLED JSON path	Mirror lines 353-356: wrap post-create pr_for_branch in except (ShipError, TransientNetworkError), set recovered=None, then call _recover_pr_from_conflict_text(result.stdout); only then raise ShipError if still unresolved
+1	in_scope	important	correctness	python/test_gh.py:140-144	test_gh.py (#3) names only --json argv capture and one combined success fixture; no required cases for list-lag URL fallback or total resolution failure	Stubs can keep returning post-create list hits so stdout URL parsing never runs, or success-with-unparseable-output never asserts ShipError—regression reintroduces JSON-style create handling without detection	Add three fixtures: (1) create stdout URL + post-create list returns PR; (2) create stdout URL + post-create list [] (timing lag) resolves via URL only; (3) create rc=0 with empty stdout and post-create list [] raises ShipError (optionally assert test_ship #4 STALLED mapping)
+
+## Findings
+
+**1. [correctness] `python/gh.py:313-383` — Post-create `pr_for_branch` needs the same exception guard as conflict recovery**
+
+The plan’s `### UPDATED: python/gh.py` block says that on `returncode == 0` the code should call `pr_for_branch`, then fall back to `_recover_pr_from_conflict_text(result.stdout)`, then raise `ShipError`. Edge cases (plan.txt:183-184) require URL fallback when `pr_for_branch` “transiently fails” after a successful create. The existing conflict branch already does this at ```353:356:python/gh.py``` with `except (ShipError, TransientNetworkError)`. The proposed success-path wording does not repeat that guard. Uncaught `TransientNetworkError` from post-create `pr_for_branch` would abort before stdout URL parsing—the exact soak failure mode this PR targets.
+
+**Suggested revision:** Wrap the post-create `pr_for_branch` call in the same `try/except (ShipError, TransientNetworkError)` pattern, then URL-parse stdout, then `raise ShipError(...)` if still unresolved.
+
+**2. [correctness] `python/test_gh.py:140-144` — Planned tests do not lock in success-path resolution timing or failure-to-resolve**
+
+Item (#3) lists (a) no `--json` on argv and (b) one “URL stdout / pr_for_branch / URL fallback” success test plus updating JSON stubs. That leaves two cli-fixture gaps:
+
+- **List-lag timing:** Real `gh pr create` prints a bare URL immediately while `gh pr list --head` can briefly return `[]`. Without a fixture where create stdout is a URL and the *post-create* list is empty, implementation can rely solely on list hits and never exercise stdout recovery on the success path—the behavior that replaces JSON parsing.
+- **Failure-to-resolve:** Edge cases document `ShipError` when both paths fail (plan.txt:183-184), but the testing strategy does not require a case where create succeeds with empty/unparseable stdout and post-create list stays empty. Stubs could still pass while accepting impossible post-change behavior.
+
+Bash `scripts/test-create-pr.sh` models create stdout as a bare URL (line 361); `scripts/design-log-publish.sh` tests list fallback when create omits a URL (line 767), but neither replaces the Python-specific list-then-URL success ordering in the plan.
+
+**Suggested revision:** Extend `test_gh.py` (#3) with explicit fixtures for (2) list-lag URL-only recovery and (3) dual-resolution failure → `ShipError`, in addition to (a) and the happy list-hit path.

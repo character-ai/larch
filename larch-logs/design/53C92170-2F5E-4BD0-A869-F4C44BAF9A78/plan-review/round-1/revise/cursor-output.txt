@@ -1,0 +1,128 @@
+Gathering codebase details so the revised plan diff reflects accurate paths and conventions.
+--- a/plan.txt
++++ b/plan.txt
+@@ -40,11 +40,24 @@
+ ### UPDATED: `python/run_logs.py`
+-(O1, Decision 2) `_larch_log_commit` (line 851) / `flush_logs_pre` (line 526). Make in-loop flushes
+-non-divergent: after staging (line 875), if every changed path under the run tree is a
+-volatile batch artifact — token-report / timing-report ndjson, `session-transcript-refresh.txt`,
+-and their redacted copies — skip the commit (return the existing no-op `CommandResult(("true",),0,...)`
+-so no `chore(larch-logs): flush` commit is created). Commit only when a substantive run-log path
+-changed. Use an explicit volatile-path allowlist scoped to `larch-logs/<run_id>/`, mirroring the
+-path-scoping discipline already in `merge._flush_recoverable`. `flush_logs_post` (line 570) stays
+-commit-free, so final logs ride the squash-merge without a divergent pre-merge commit.
++(O1, Decision 2; FINDING_2, FINDING_4) `_larch_log_commit` (line 851) / `flush_logs_pre` (line 526).
++Add `_volatile_only_under_run_tree(rel, cwd)` with an explicit basename allowlist under
++`larch-logs/implement/<run_id>/` only: `token-report.json`, `timing-report.json`,
++`token-report.ndjson`, `timing-report.ndjson`, `token-report-refresh.json`,
++`timing-report-refresh.json`, `session-transcript-refresh.txt` (and any redacted copies of those
++paths the publisher writes). **Prefer classify-before-stage**: after `_publish_run_tree_to_repo`
++but **before** `git.add`, if porcelain under `rel` is volatile-only, return the existing no-op
++`CommandResult(("true",),0,...)` without staging. If staging already occurred on a legacy path,
++on volatile-only skip run `git reset HEAD -- <rel>` (mirror `scripts/larch-log.sh` failed-commit
++cleanup at lines 564-565) and ensure `git status --porcelain -- <rel>` is empty before returning —
++never leave staged/dirty volatile paths (FINDING_2: `rebase._force_push_branch` rejects non-empty
++porcelain). Commit only when any non-allowlisted run-log path changed. `flush_logs_post` (line 570)
++stays commit-free, so final logs ride the squash-merge without a divergent pre-merge commit.
+ 
+ ### UPDATED: `python/config.py`
+ (O1) Add a `REFRESH_SKIP_VOLATILE_ONLY` literal and include it in `REFRESH_SKIP_MERGE_OK`
+@@ -78,6 +91,18 @@
+ ### UPDATED: `docs/installation-and-setup.md`
+ (#2) Line 96: change the `/report-tokens` runtime requirement from "Python 3.12 or newer" to
+ "Python 3.11 or newer". Leave line 297 ("Python 3.12+ — required by pre-commit") as a dev-tooling
+ requirement, or clarify it as pre-commit-only.
+ 
++### UPDATED: `python/ruff.toml`
++(#2, FINDING_1) Change `target-version = "py312"` (line 1) to `"py311"` so Ruff enforces 3.11 syntax
++alongside the lowered `requires-python` floor (do not rely on inference alone while this pin exists).
++
++### UPDATED: `python/pyrightconfig.json`
++(#2, FINDING_1) Change `"pythonVersion": "3.12"` (line 3) to `"3.11"` so Pyright matches the runtime floor.
++
++### UPDATED: `python/.pylintrc`
++(#2, FINDING_1) Change `py-version=3.12` (line 90) to `py-version=3.11`.
++
++### UPDATED: `skills/report-tokens/scripts/run-analysis.sh`
++(#2, FINDING_5) Lower the `python3 -c 'import sys; …'` probe and `larch_err` text (lines 74-75) from
++**≥ 3.12** to **≥ 3.11** (mirror the implement selector guard).
++
+ ### UPDATED: `.github/workflows/ci.yaml`
+ (#2) Convert the `python-lint` (line ~426) and `python-tests` (line ~442) jobs to a
+ `strategy.matrix.python-version: ["3.11", "3.12"]` and reference `${{ matrix.python-version }}`
+@@ -85,8 +110,11 @@
+ 
+ ### UPDATED: `python/pyproject.toml`
+ (#2) Change `requires-python = ">=3.12"` (line 4) to `">=3.11"`. Ruff infers its target from
+-`requires-python`, so this also lowers lint target to py311 and flags any 3.12-only usage (the
+-audit grep found none today). Confirm no explicit `target-version`/`python_version` pin re-raises it.
++`requires-python`, but explicit pins in `ruff.toml`, `pyrightconfig.json`, and `.pylintrc` must be
++lowered to 3.11 in the same change (FINDING_1) so `make py-lint` does not keep analyzing as 3.12.
++
++### UPDATED: `docs/run-logs.md`
++(O1, FINDING_4) Document the in-loop volatile-only skip contract: which basenames under
++`larch-logs/implement/<run_id>/` may be refreshed without a flush commit, and that canonical
++`token-report.json` / `timing-report.json` commits still occur when substantive (non-volatile-only)
++content changes.
+ 
+ ### UPDATED: `python/README.md`
+ (#2) Line 3: change "Python ≥ 3.12" to "Python ≥ 3.11".
+@@ -120,7 +148,9 @@
+ (#6) Assert `poll_ci` writes a per-poll elapsed breadcrumb to stderr and nothing to stdout.
+ 
+ ### UPDATED: `python/test_run_logs.py`
+-(O1) Assert `flush_logs_pre` skips the commit when only volatile batch artifacts changed, and
+-still commits when a substantive run-log path changed.
++(O1, FINDING_2, FINDING_4) Assert `flush_logs_pre` skips the commit when only allowlisted volatile
++artifacts changed (including `token-report-refresh.json` / `timing-report-refresh.json` fixtures),
++still commits when a substantive run-log path changed, and after a volatile-only skip
++`git status --porcelain -- larch-logs/implement/<run_id>` is empty (no staged dirty tree).
+ 
+ ## Approach
+ 
+@@ -128,7 +158,8 @@
+ pre-merge flush) and add the unpatched fixes (#1 set-e, #4 error contract, #6 breadcrumbs). Layer
+ the two operator scope expansions on top: O1 makes in-loop flushes commit only on substantive
+-change (so no divergent commit triggers fresh CI), and Decision 1 lowers the runtime floor to 3.11
+-across packaging, docs, CI matrix, and the selector guard. Every behavioral change gets a
++change without leaving a dirty index (FINDING_2), and Decision 1 lowers the runtime floor to 3.11
++across packaging, lint/type pins, docs, CI matrix, implement + report-tokens guards. Every behavioral change gets a
+ regression test; the merge-convergence test is the gate for #7 + O1.
+ 
+ ## Edge cases
+@@ -142,6 +173,8 @@
+   behavior, just after polling) — it must not loop forever.
+ - Volatile-only flush skip: the first flush with real content still commits; a later flush whose
+   only delta is timestamp/elapsed churn skips — substantive paths always force a commit.
++- Volatile-only skip after publish: porcelain under the run path must be empty (classify-before-add
++  or `git reset HEAD --` cleanup) so a later force-push does not see staged refresh JSON.
+ - Selector: `python3` == 3.11 passes; < 3.11 fails loudly; a 3.12 `python3` still passes.
++- `/report-tokens`: `run-analysis.sh` probe matches docs/pyproject (≥ 3.11).
+ - parse-bootstrap: file-first pre-populates keys, then the stdout-fallback loop runs with all keys
+   set → must still source cleanly under `set -e`.
+ 
+@@ -157,8 +190,9 @@
+    Mitigation: cap at `MERGE_PR_POST_PUSH_UNKNOWN_RETRIES` × 5s and return ERROR on exhaustion;
+    early-return only on exact `head_ref_oid == local_head`.
+ 3. **Volatile-only classifier drops substantive logs.** Too-broad volatile matching could skip a
+-   real log commit. Signal: missing execution-issues batches in `larch-logs/`. Mitigation: explicit
+-   volatile-path allowlist; commit whenever any non-allowlisted path changed; test both directions.
++   real log commit or leave a dirty tree. Signal: missing execution-issues batches in `larch-logs/`
++   or `dirty worktree before force-push`. Mitigation: explicit basename allowlist (FINDING_4);
++   classify-before-add or reset on skip (FINDING_2); commit whenever any non-allowlisted path changed; test both directions plus clean porcelain.
+ 
+ ## Testing strategy
+ - `make py-test`: new/updated unit tests in `test_gh.py` (#3), `test_merge.py` (#5/#7),
+@@ -166,7 +200,7 @@
+   `test_run_logs.py` (O1).
+ - New offline harness `scripts/test-parse-bootstrap-routing-envelope.sh` (#1), Makefile-registered.
+ - `make py-lint` under the lowered 3.11 ruff target; `make lint` for shell/markdown/structure
+   (`test-implement-structure.sh` still references the bash helper).
+ - Manual/CI: the new 3.11/3.12 CI matrix exercises `python/` under both interpreters.
+ 
+-diff_added: 330
+-diff_deleted: 70
+-diff_lines: 400
++diff_added: 395
++diff_deleted: 78
++diff_lines: 473

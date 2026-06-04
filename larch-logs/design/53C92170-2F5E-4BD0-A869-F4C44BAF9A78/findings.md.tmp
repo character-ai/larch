@@ -1,0 +1,32 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Edge
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/run_logs.py:851-879
+- **Concern**: Volatile-only skip lacks fail-closed handling when restore/clean or repo-wide porcelain check fails. Scenario: Plan requires classify-before-add, git restore/clean, then repo-wide empty porcelain, but does not require checking return codes or raising on leftover dirty paths. An implementer could return CommandResult(("true",),0,...) after a failed restore, leaving M/?? under rel or outside rel; rebase._force_push_branch then hits dirty worktree (Stalled) or, worse, races with a partial index state
+- **Proposed resolution**: After each git restore/clean/reset, require returncode==0 or raise ShipError; after cleanup call git.status_porcelain(repo-wide); if stdout non-empty raise ShipError with the porcelain snippet (maps to JSON STALLED via #4). Do not treat failed cleanup as a no-op success
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/run_logs.py:851-879
+- **Concern**: O1 uses publish-then-restore/clean instead of skipping publish. Scenario: Classify-after-copy adds git restore/reset/clean plus a repo-wide porcelain gate for a delta that never needed to touch the worktree
+- **Proposed resolution**: Mirror bash parity by classifying volatile-only deltas in the tmpdir run tree before `_publish_run_tree_to_repo`; when every change is allowlisted refresh sidecars, return the existing no-op without publishing or mutating the repo
+
+### FINDING_1:
+- **Reviewer(s)**: Cursor-dyn-acceptance-test-gap
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:150-155 / feature-description.txt:57
+- **Concern**: #3 acceptance requires a real-CLI or recorded-fixture `gh pr create` test; the plan only adds `RecordingRunner` argv-capture and canned-stdout cases in `test_gh.py`. Scenario: The soak failure was an unsupported `--json` flag on real `gh` 2.92.0; stub tests that return fake JSON on `gh pr create` (see `python/test_gh.py:167-177`) would still pass if `--json` were reintroduced
+- **Proposed resolution**: Add one integration test that either shells out to `gh` when available or replays a recorded `gh pr create` transcript and asserts rc=0 resolution without `--json` in argv; keep the stub cases as fast regression but not as the sole #3 gate
+
+### OOS_1:
+- **Description**: Parallel issue #3446 may edit OUTCOME_EXIT_MAP while this plan assumes STALLED stays EXIT_STALLED (4). Scenario: Merge or rebase order could land a #3446 change that remaps Outcome.STALLED or drops the key; main() would return a non-4 exit while tests still expect 4 only if this branch’s test_ship.py pin wins review
+- **Reviewer**: Cursor-dyn-stdout-contract
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: python/config.py:18-23
+- **Phase**: design
+

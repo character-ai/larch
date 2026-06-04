@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- volatile-only skip is new Python behavior with no bash counterpart; publish-then-restore plus repo-wide empty porcelain gate is sufficient without classify-before-publish
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+OOS_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- merge-order risk is already covered by the documented #3466→#3446 dependency chain

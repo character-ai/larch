@@ -1,0 +1,193 @@
+Checking referenced paths for accuracy before producing the revised plan diff.
+Generating the unified diff with a read-only comparison (no workspace writes).
+Fixing diff formatting and the `test_gh.py` line artifact.
+--- a/plan.txt
++++ b/plan.txt
+@@ -11,14 +11,15 @@
+ ## Files to modify/create
+ 
+ ### UPDATED: `python/gh.py`
+-(#3, BLOCKER) `pr_create` (line 313). Drop the unsupported `--json number,url,state,headRefName`
++(#3, BLOCKER; FINDING_5) `pr_create` (line 313). Drop the unsupported `--json number,url,state,headRefName`
+ flag pair from the `gh pr create` argv (lines 340-341) and delete the stdout-as-JSON parse
+-(lines 366-383). On `returncode == 0`, resolve the created PR by reusing the existing
+-`pr_for_branch(runner, branch, repo=repo, cwd=cwd)` (line 260); fall back to
+-`_recover_pr_from_conflict_text(result.stdout, branch=branch)` (line 297) since `gh pr create`
+-prints the PR URL on stdout. If neither resolves, `raise ShipError(...)` (which #4 maps to a
+-JSON STALLED result, never a bare traceback). Keep the existing conflict-recovery branch
+-(lines 350-365) unchanged. Return `(PullRequest, True)` on a fresh create.
++(lines 366-383). On `returncode == 0`, resolve the created PR with the same resilience as the
++conflict branch (lines 353-356): wrap `pr_for_branch(runner, branch, repo=repo, cwd=cwd)` in
++`except (ShipError, TransientNetworkError)` → `recovered = None` on failure/lag, then call
++`_recover_pr_from_conflict_text(result.stdout, branch=branch)` (line 297) because `gh pr create`
++prints the PR URL on stdout. If still unresolved, `raise ShipError(...)` (which #4 maps to JSON
++STALLED, never a bare traceback). Keep the existing conflict-recovery branch unchanged.
++Return `(PullRequest, True)` on a fresh create.
+ 
+ ### UPDATED: `python/ship.py`
+ (#4) `_error_to_result` (line 88). Add an `isinstance(exc, ShipError)` branch returning
+@@ -46,18 +47,21 @@
+ `MERGE_RESULT_ERROR` (no hang). The subsequent UNKNOWN `_retry_unknown` (lines 318-326) is unchanged.
+ 
+ ### UPDATED: `python/run_logs.py`
+-(O1, Decision 2; FINDING_2, FINDING_4) `_larch_log_commit` (line 851) / `flush_logs_pre` (line 526).
+-Add `_volatile_only_under_run_tree(rel, cwd)` with an explicit basename allowlist under
+-`larch-logs/implement/<run_id>/` only: `token-report.json`, `timing-report.json`,
+-`token-report.ndjson`, `timing-report.ndjson`, `token-report-refresh.json`,
+-`timing-report-refresh.json`, `session-transcript-refresh.txt` (and any redacted copies of those
+-paths the publisher writes). **Prefer classify-before-stage**: after `_publish_run_tree_to_repo`
+-but **before** `git.add`, if porcelain under `rel` is volatile-only, return the existing no-op
+-`CommandResult(("true",),0,...)` without staging. If staging already occurred on a legacy path,
+-on volatile-only skip run `git reset HEAD -- <rel>` (mirror `scripts/larch-log.sh` failed-commit
+-cleanup at lines 564-565) and ensure `git status --porcelain -- <rel>` is empty before returning —
+-never leave staged/dirty volatile paths (FINDING_2: `rebase._force_push_branch` rejects non-empty
+-porcelain). Commit only when any non-allowlisted run-log path changed. `flush_logs_post` (line 570)
++(O1, Decision 2; FINDING_2, FINDING_3) `_larch_log_commit` (line 851) / `flush_logs_pre` (line 526).
++Add `_volatile_only_under_run_tree(rel, cwd)` with a **narrow** basename allowlist under
++`larch-logs/implement/<run_id>/` only: `token-report-refresh.json`, `timing-report-refresh.json`,
++`session-transcript-refresh.txt` (and redacted copies of those refresh sidecars the publisher
++writes). **Do not** treat canonical `token-report.json`, `timing-report.json`, `token-report.ndjson`,
++or `timing-report.ndjson` as volatile-only — substantive token/timing totals or record-count changes
++must still commit (FINDING_3). **Prefer classify-before-stage**: after `_publish_run_tree_to_repo`
++but **before** `git.add`, if porcelain under `rel` is volatile-only, run worktree cleanup then
++return the existing no-op `CommandResult(("true",),0,...)` without staging: for each changed
++allowlisted path under `rel`, `git restore --worktree --staged --source=HEAD -- <path>`; for
++untracked allowlisted names, `git clean -fd -- <rel>` when needed. If staging already occurred on a
++legacy path, `git reset HEAD -- <rel>` first (mirror `scripts/larch-log.sh` lines 564-565), then the
++same restore/clean pass. Before returning, assert **repo-wide** `git status --porcelain` is empty
++(`rebase._force_push_branch` and other push paths gate on full-repo porcelain, not only
++`-- <rel>`). Commit only when any non-allowlisted run-log path changed. `flush_logs_post` (line 570)
+ stays commit-free, so final logs ride the squash-merge without a divergent pre-merge commit.
+ 
+ ### UPDATED: `python/config.py`
+@@ -104,18 +108,18 @@
+ lowered to 3.11 in the same change (FINDING_1) so `make py-lint` does not keep analyzing as 3.12.
+ 
+ ### UPDATED: `docs/run-logs.md`
+-(O1, FINDING_4) Document the in-loop volatile-only skip contract: which basenames under
+-`larch-logs/implement/<run_id>/` may be refreshed without a flush commit, and that canonical
+-`token-report.json` / `timing-report.json` commits still occur when substantive (non-volatile-only)
+-content changes.
++(O1, FINDING_3) Document the in-loop volatile-only skip contract: limit skip to refresh sidecars
++(`*-refresh.json`, `session-transcript-refresh.txt`) under `larch-logs/implement/<run_id>/`; canonical
++`token-report.json` / `timing-report.json` (and `.ndjson` when present) always commit on substantive
++changes; volatile-only skips restore/clean the run tree so repo-wide porcelain is empty before push.
+ 
+ ### UPDATED: `python/README.md`
+ (#2) Line 3: change "Python ≥ 3.12" to "Python ≥ 3.11".
+ 
+ ### UPDATED: `docs/installation-and-setup.md`
+-(#2) Line 96: change the `/report-tokens` runtime requirement from "Python 3.12 or newer" to
+-"Python 3.11 or newer". Leave line 297 ("Python 3.12+ — required by pre-commit") as a dev-tooling
+-requirement, or clarify it as pre-commit-only.
++(#2, FINDING_4) Line 96: change the `/report-tokens` runtime requirement to "Python 3.11 or newer"
++and **drop** any "matching contributor tooling" wording (runtime floor 3.11 ≠ contributor pre-commit
++3.12+). Line 297 stays explicit dev/pre-commit-only ("Python 3.12+ — required by pre-commit").
+ 
+ ### UPDATED: `python/ruff.toml`
+ (#2, FINDING_1) Change `target-version = "py312"` (line 1) to `"py311"` so Ruff enforces 3.11 syntax
+@@ -128,8 +132,14 @@
+ (#2, FINDING_1) Change `py-version=3.12` (line 90) to `py-version=3.11`.
+ 
+ ### UPDATED: `skills/report-tokens/scripts/run-analysis.sh`
+-(#2, FINDING_5) Lower the `python3 -c 'import sys; …'` probe and `larch_err` text (lines 74-75) from
++(#2) Lower the `python3 -c 'import sys; …'` probe and `larch_err` text (lines 74-75) from
+ **≥ 3.12** to **≥ 3.11** (mirror the implement selector guard).
++
++### UPDATED: `skills/report-tokens/scripts/test-run-analysis-quiet.sh`
++(#2, FINDING_1) In the same change as `run-analysis.sh`, update the `python3` shim grep/assertions
++from `sys.version_info >= (3, 12)` to `>= (3, 11)` (and any expected error text) so the Makefile-
++registered quiet harness (`test-harnesses-20` / `relevant-checks.sh`) stays aligned with the runtime
++probe instead of diverging under `make lint` on hosts with 3.11-only `python3`.
+ 
+ ### UPDATED: `.github/workflows/ci.yaml`
+ (#2) Convert the `python-lint` (line ~426) and `python-tests` (line ~442) jobs to a
+@@ -138,10 +148,11 @@
+ (pre-commit, topology) pinned to 3.12 (dev tooling).
+ 
+ ### UPDATED: `python/test_gh.py`
+-(#3) Add: (a) an argv-capture test asserting `pr_create` never passes `--json` to `gh pr create`;
+-(b) a recorded-fixture success test where the stub Runner returns a real `gh pr create` stdout
+-(a bare PR URL, not JSON) and `pr_create` resolves the PR via `pr_for_branch` / URL fallback.
+-Update any existing stub that returns canned `gh pr create` JSON.
++(#3, FINDING_5) Add: (a) argv-capture asserting `pr_create` never passes `--json` to `gh pr create`;
++(b) create rc=0 + stdout PR URL + post-create `pr_for_branch` returns PR; (c) create rc=0 + stdout URL +
++post-create list empty (timing lag) resolves via URL only; (d) create rc=0 + empty stdout + list
++empty raises `ShipError` (optionally assert `test_ship` #4 STALLED mapping). Update stubs that return
++canned `gh pr create` JSON.
+ 
+ ### UPDATED: `python/test_merge.py`
+ (#5) Add a poll test: PR head OID lags for the first N reads then matches → merge proceeds;
+@@ -163,17 +174,18 @@
+ (#6) Assert `poll_ci` writes a per-poll elapsed breadcrumb to stderr and nothing to stdout.
+ 
+ ### UPDATED: `python/test_run_logs.py`
+-(O1, FINDING_2, FINDING_4) Assert `flush_logs_pre` skips the commit when only allowlisted volatile
+-artifacts changed (including `token-report-refresh.json` / `timing-report-refresh.json` fixtures),
+-still commits when a substantive run-log path changed, and after a volatile-only skip
+-`git status --porcelain -- larch-logs/implement/<run_id>` is empty (no staged dirty tree).
++(O1, FINDING_2, FINDING_3) Assert `flush_logs_pre` skips commit when only refresh sidecars changed
++(`token-report-refresh.json` / `timing-report-refresh.json` fixtures) and **repo-wide**
++`git status --porcelain` is empty after restore/clean; still commits when canonical
++`token-report.json` (or other non-allowlisted path) has a substantive delta; publish-only volatile
++refresh deltas exercise the classify-before-add + worktree-restore path.
+ 
+ ## Approach
+ 
+ Port the three soak-proven patches verbatim in intent (#3 drop `--json`, #5 OID poll, #7 remove
+ pre-merge flush) and add the unpatched fixes (#1 set-e, #4 error contract, #6 breadcrumbs). Layer
+ the two operator scope expansions on top: O1 makes in-loop flushes commit only on substantive
+-change without leaving a dirty index (FINDING_2), and Decision 1 lowers the runtime floor to 3.11
++change without leaving repo-wide dirty porcelain (FINDING_2/3), and Decision 1 lowers the runtime floor to 3.11
+ across packaging, lint/type pins, docs, CI matrix, implement + report-tokens guards. Every behavioral change gets a
+ regression test; the merge-convergence test is the gate for #7 + O1.
+ 
+@@ -184,10 +196,13 @@
+   fail, `ShipError` → JSON STALLED (#4), not a crash.
+ - OID poll: genuine (non-lag) mismatch exhausts the cap and returns `MERGE_RESULT_ERROR` (current
+   behavior, just after polling) — it must not loop forever.
+-- Volatile-only flush skip: the first flush with real content still commits; a later flush whose
+-  only delta is timestamp/elapsed churn skips — substantive paths always force a commit.
+-- Volatile-only skip after publish: porcelain under the run path must be empty (classify-before-add
+-  or `git reset HEAD --` cleanup) so a later force-push does not see staged refresh JSON.
++- Volatile-only flush skip: limited to refresh sidecars; canonical token/timing reports commit on
++  substantive deltas; timestamp-only refresh sidecar churn may skip after restore/clean.
++- Volatile-only skip after publish: repo-wide `git status --porcelain` must be empty (`git restore`
++  + `git clean` on allowlisted paths under `rel`, plus legacy `git reset HEAD` when already staged)
++  so pre-rebase/postbump force-push does not hit dirty-worktree gates.
++- Post-create PR resolution: `pr_for_branch` list failure/lag after rc=0 must not bypass stdout URL
++  fallback; total resolution failure → `ShipError` → JSON STALLED (#4).
+ - Selector: `python3` == 3.11 passes; < 3.11 fails loudly; a 3.12 `python3` still passes.
+ - `/report-tokens`: `run-analysis.sh` probe matches docs/pyproject (≥ 3.11).
+ - parse-bootstrap: file-first pre-populates keys, then the stdout-fallback loop runs with all keys
+@@ -203,20 +218,22 @@
+    over-eager early return could merge a mismatched head. Signal: merge stalls or merges wrong OID.
+    Mitigation: cap at `MERGE_PR_POST_PUSH_UNKNOWN_RETRIES` × 5s and return ERROR on exhaustion;
+    early-return only on exact `head_ref_oid == local_head`.
+-3. **Volatile-only classifier drops substantive logs.** Too-broad volatile matching could skip a
+-   real log commit or leave a dirty tree. Signal: missing execution-issues batches in `larch-logs/`
+-   or `dirty worktree before force-push`. Mitigation: explicit basename allowlist (FINDING_4);
+-   classify-before-add or reset on skip (FINDING_2); commit whenever any non-allowlisted path changed; test both directions plus clean porcelain.
++3. **Volatile-only classifier drops substantive logs or leaves dirty porcelain.** Too-broad
++   volatile matching could skip canonical token/timing commits; restore-only-on-index would leave
++   `M`/`??` under `rel` and stall force-push. Signal: stale merged reports or `dirty worktree before
++   force-push`. Mitigation: refresh-sidecar-only allowlist (FINDING_3); restore/clean + repo-wide
++   empty porcelain before no-op return (FINDING_2); commit on any non-allowlisted change; tests for
++   refresh skip, substantive `token-report.json` commit, and full-repo clean skip.
+ 
+ ## Testing strategy
+ - `make py-test`: new/updated unit tests in `test_gh.py` (#3), `test_merge.py` (#5/#7),
+   `test_merge_bash_parity.py` (#7), `test_ship.py` (#4/#6), `test_ci_monitor.py` (#6),
+-  `test_run_logs.py` (O1).
++  `test_run_logs.py` (O1/FINDING_2/3), `skills/report-tokens/scripts/test-run-analysis-quiet.sh` (#2/FINDING_1).
+ - New offline harness `scripts/test-parse-bootstrap-routing-envelope.sh` (#1), Makefile-registered.
+ - `make py-lint` under the lowered 3.11 ruff target; `make lint` for shell/markdown/structure
+   (`test-implement-structure.sh` still references the bash helper).
+ - Manual/CI: the new 3.11/3.12 CI matrix exercises `python/` under both interpreters.
+ 
+-diff_added: 395
+-diff_deleted: 78
+-diff_lines: 473
++diff_added: 455
++diff_deleted: 82
++diff_lines: 537

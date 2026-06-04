@@ -1,0 +1,6 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool
+FINDING_1	Cursor-Arch, Codex-Pragmatic	accepted	YES	true	major	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_2	Codex-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Codex-Requirements, Cursor-dyn-run-log-contract, Codex-dyn-run-log-contract	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_3	Codex-Edge, Codex-Innovation, Codex-Pragmatic, Cursor-Requirements, Cursor-dyn-run-log-contract, Codex-dyn-run-log-contract	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor
+FINDING_4	Cursor-dyn-runtime-floor-sync	accepted	YES	true	minor	good	false	Claude	YES	true	minor	excellent	false	Codex	YES	true	minor	excellent	false	Cursor
+FINDING_5	Cursor-dyn-cli-fixture-parity, Codex-dyn-cli-fixture-parity	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor
