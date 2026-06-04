@@ -48,6 +48,7 @@ JSON
 "$HELPER" --manifest-path "$manifest" --implement-tmpdir "$tmp"
 out="$tmp/oos-accepted-main-agent.md"
 contains "$out" '### OOS_1: Retain manifest OOS' "non-empty manifest must append OOS_1"
+contains "$out" '- **Description**: Fix docs for manifest OOS.' "description field missing"
 contains "$out" '- **Reviewer**: External implementer' "reviewer attribution missing"
 contains "$out" '- **Vote tally**: N/A — auto-filed per policy' "vote tally attribution missing"
 "$HELPER" --manifest-path "$manifest" --implement-tmpdir "$tmp"
@@ -70,6 +71,46 @@ JSON
 out="$tmp/oos-accepted-main-agent.md"
 not_contains "$out" 'Security hardening' "dedicated security focus-area must be excluded"
 contains "$out" '### OOS_1: Prose retained' "prose focus-area mention must be retained"
+contains "$tmp/security-oos-observations.md" '### Security OOS: Security hardening' "security audit title missing"
+contains "$tmp/security-oos-observations.md" '- **Description**: - **focus-area**: security-hardening' "security audit description missing"
+contains "$tmp/execution-issues.md" 'security-routed manifest OOS retained in security-oos-observations.md' "security breadcrumb missing"
+not_contains "$tmp/execution-issues.md" 'Security hardening' "security breadcrumb must not expose title"
+"$HELPER" --manifest-path "$manifest" --implement-tmpdir "$tmp"
+[ "$(grep -c '^### Security OOS: Security hardening' "$tmp/security-oos-observations.md")" = "1" ] || fail "security audit rerun must be idempotent"
+[ "$(grep -c '^### Warnings' "$tmp/execution-issues.md")" = "1" ] || fail "security warnings must upsert one category header"
+rm -rf "$tmp"
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/materialize-manifest-oos.XXXXXX")
+manifest="$tmp/manifest.json"
+cat >"$manifest" <<'JSON'
+{
+  "schema_version": "1",
+  "status": "complete",
+  "oos_observations": [
+    {"title":"Security title only","description":"Retain private body.","phase":"review"},
+    {"title":"Structured marker","description":"Retain structured body.","phase":"implement","focus_area":"security-privacy"}
+  ]
+}
+JSON
+"$HELPER" --manifest-path "$manifest" --implement-tmpdir "$tmp"
+out="$tmp/oos-accepted-main-agent.md"
+not_contains "$out" 'Security title only' "security title marker must be excluded"
+not_contains "$out" 'Structured marker' "structured security marker must be excluded"
+contains "$tmp/security-oos-observations.md" '- **Description**: Retain private body.' "title-only security audit body missing"
+contains "$tmp/security-oos-observations.md" '- **focus-area**: security-privacy' "structured focus-area missing from audit"
+rm -rf "$tmp"
+
+tmp=$(mktemp -d "${TMPDIR:-/tmp}/materialize-manifest-oos.XXXXXX")
+manifest="$tmp/manifest.json"
+cat >"$manifest" <<'JSON'
+{"schema_version":"1","status":"complete","oos_observations":[{"title":"Needs scrub","description":"token text"}]}
+JSON
+set +e
+CLAUDE_PLUGIN_ROOT="$tmp/missing-plugin-root" "$HELPER" --manifest-path "$manifest" --implement-tmpdir "$tmp" >/dev/null 2>"$tmp/missing-redactor.err"
+rc=$?
+set -e
+[ "$rc" -ne 0 ] || fail "missing redact-secrets.sh with observations must fail closed"
+contains "$tmp/missing-redactor.err" 'redact-secrets.sh missing or not executable' "missing redactor error missing"
 rm -rf "$tmp"
 
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/materialize-manifest-oos.XXXXXX")

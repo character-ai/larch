@@ -184,13 +184,16 @@ def test_oos_gate_before_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         raise AssertionError("ensure_pr must not run before OOS filing")
 
     monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
-    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
     assert result.outcome is Outcome.NEEDS_USER_INPUT
     assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
 
 
 
-def test_design_export_oos_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_design_export_oos_allows_pr_create_after_disposition(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
     exported = tmp_path / "design-export" / "oos-accepted-design.md"
     exported.parent.mkdir()
     _ = exported.write_text("### OOS_1: exported design OOS\nbody\n", encoding="utf-8")
@@ -199,17 +202,20 @@ def test_design_export_oos_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
 
-    def forbidden(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("ensure_pr must not run before design-export OOS filing")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
-    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
-
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
+    assert result.outcome is Outcome.OK
 
 
-def test_design_tmpdir_oos_blocks_pr_create(
+def test_design_tmpdir_oos_allows_pr_create_after_disposition(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -223,14 +229,30 @@ def test_design_tmpdir_oos_blocks_pr_create(
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
 
-    def forbidden(*_args: object, **_kwargs: object) -> object:
-        raise AssertionError("ensure_pr must not run before DESIGN_TMPDIR OOS filing")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/5", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    monkeypatch.setattr(ship.pr, "ensure_pr", forbidden)
-    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+    assert result.outcome is Outcome.OK
 
-    assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
+
+def test_stale_design_tmpdir_falls_back_to_design_export(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    stale_design = tmp_path / "stale-design"
+    exported = tmp_path / "design-export" / "oos-accepted-design.md"
+    exported.parent.mkdir()
+    _ = exported.write_text("### OOS_1: exported design OOS\nbody\n", encoding="utf-8")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(stale_design))
+
+    assert ship.resolve_oos_accepted_design_path(tmp_path) == exported
 
 
 def test_manifest_materialize_failure_blocks_pr_create(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

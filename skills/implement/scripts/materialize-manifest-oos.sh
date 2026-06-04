@@ -44,6 +44,10 @@ fi
 
 count=$(jq 'if (.oos_observations | type == "array") then (.oos_observations | length) else 0 end' "$manifest_path") || exit 1
 [ "${count:-0}" -gt 0 ] || exit 0
+if [ ! -x "$redact_secrets" ]; then
+  echo "redact-secrets.sh missing or not executable: $redact_secrets" >&2
+  exit 1
+fi
 
 out="$implement_tmpdir/oos-accepted-main-agent.md"
 mkdir -p "$(dirname "$out")"
@@ -90,15 +94,20 @@ security_focus_area() {
 }
 
 sanitize_public_text() {
-  if [ -x "$redact_secrets" ]; then
-    printf '%s' "$1" | "$redact_secrets"
-  else
-    printf '%s' "$1"
-  fi | sed -E \
+  printf '%s' "$1" | "$redact_secrets" | sed -E \
     -e 's#https?://(localhost|127\.0\.0\.1|10\.[0-9.]+|192\.168\.[0-9.]+|172\.(1[6-9]|2[0-9]|3[0-1])\.[0-9.]+|[^[:space:]/]+[.](internal|local|corp|lan|intranet))[^[:space:]]*#<INTERNAL-URL>#g' \
     -e 's/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/<REDACTED-PII>/g' \
     -e 's/([0-9]{3}-[0-9]{2}-[0-9]{4})/<REDACTED-PII>/g' \
     -e 's/(\+?1[ .-]?)?\(?[0-9]{3}\)?[ .-]?[0-9]{3}[ .-]?[0-9]{4}/<REDACTED-PII>/g'
+}
+
+security_signal() {
+  local title=$1 description=$2 focus_area=$3
+  printf '%s\n' "$title" | awk '{ exit(tolower($0) ~ /^security([[:space:]_-]|$)/ ? 0 : 1) }' && return 0
+  if [ -n "$focus_area" ] && printf -- '- **focus-area**: %s\n' "$focus_area" | security_focus_area; then
+    return 0
+  fi
+  printf '%s\n' "$description" | security_focus_area
 }
 
 normalize_title() {
@@ -128,18 +137,37 @@ write_description() {
   done
 }
 
+security_has_title() {
+  local title=$1 audit="$implement_tmpdir/security-oos-observations.md"
+  [ -f "$audit" ] || return 1
+  grep -Fqx "### Security OOS: $title" "$audit"
+}
+
 append_security_audit() {
-  local title=$1 audit="$implement_tmpdir/security-oos-observations.md" had_audit_content=false
+  local title=$1 description=$2 phase=$3 focus_area=$4 audit="$implement_tmpdir/security-oos-observations.md" had_audit_content=false entry
+  if security_has_title "$title"; then
+    return 0
+  fi
   [ -s "$audit" ] && had_audit_content=true
   {
     [ "$had_audit_content" = "true" ] && printf '\n'
     printf '### Security OOS: %s\n' "$title"
+    write_description "$description"
+    printf -- '- **Phase**: %s\n' "$phase"
+    if [ -n "$focus_area" ]; then
+      printf -- '- **focus-area**: %s\n' "$(normalize_title "$focus_area")"
+    fi
     printf -- '- **Disposition**: security-routed; not materialized for public OOS filing\n'
   } >> "$audit"
-  {
-    printf '\n### Warnings\n'
-    printf -- '- **materialize-manifest-oos.sh**: security-routed manifest OOS retained in security-oos-observations.md: %s\n' "$title"
-  } >> "$implement_tmpdir/execution-issues.md"
+  entry='- **materialize-manifest-oos.sh**: security-routed manifest OOS retained in security-oos-observations.md'
+  if [ -x "$plugin_root/scripts/append-execution-issue.sh" ]; then
+    "$plugin_root/scripts/append-execution-issue.sh" \
+      --log "$implement_tmpdir/execution-issues.md" \
+      --category Warnings \
+      --entry "$entry" >/dev/null 2>&1 || printf '\n### Warnings\n%s\n' "$entry" >> "$implement_tmpdir/execution-issues.md"
+  else
+    printf '\n### Warnings\n%s\n' "$entry" >> "$implement_tmpdir/execution-issues.md"
+  fi
 }
 
 i=0
@@ -147,13 +175,14 @@ while [ "$i" -lt "$count" ]; do
   title=$(jq -r --argjson i "$i" '.oos_observations[$i].title // ""' "$manifest_path") || exit 1
   description=$(jq -r --argjson i "$i" '.oos_observations[$i].description // ""' "$manifest_path") || exit 1
   phase=$(jq -r --argjson i "$i" '.oos_observations[$i].phase // "implement"' "$manifest_path") || exit 1
+  focus_area=$(jq -r --argjson i "$i" '.oos_observations[$i]["focus-area"] // .oos_observations[$i].focus_area // ""' "$manifest_path") || exit 1
   title=$(normalize_title "$title")
   phase=$(normalize_title "$phase")
   if [ -z "$title" ]; then
     title="Untitled external implementer OOS $((i + 1))"
   fi
-  if printf '%s\n' "$description" | security_focus_area; then
-    append_security_audit "$title"
+  if security_signal "$title" "$description" "$focus_area"; then
+    append_security_audit "$title" "$description" "$phase" "$focus_area"
     i=$((i + 1))
     continue
   fi

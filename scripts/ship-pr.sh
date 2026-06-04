@@ -683,7 +683,7 @@ record_failure() {
 # Canonical path for plan-review accepted OOS (mirrors skills/implement/SKILL.md disposition gate).
 resolve_oos_accepted_design_path() {
     local impl="$1"
-    if [[ -n "${DESIGN_TMPDIR:-}" ]]; then
+    if [[ -n "${DESIGN_TMPDIR:-}" && -f "${DESIGN_TMPDIR%/}/oos-accepted-design.md" ]]; then
         printf '%s\n' "${DESIGN_TMPDIR%/}/oos-accepted-design.md"
         return
     fi
@@ -1212,6 +1212,11 @@ run_pr_prep_phase() {
     fi
 
     oos_design_path=$(resolve_oos_accepted_design_path "$IMPLEMENT_TMPDIR")
+    if [ -s "$IMPLEMENT_TMPDIR/security-oos-observations.md" ]; then
+        state_set OOS_PENDING true
+        advance_phase pr-create
+        exit 0
+    fi
     if [ -s "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" ] || [ -s "$oos_design_path" ] || [ -s "$IMPLEMENT_TMPDIR/oos-accepted-review.md" ]; then
         state_set OOS_PENDING true
         advance_phase pr-create

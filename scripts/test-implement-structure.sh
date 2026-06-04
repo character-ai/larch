@@ -440,6 +440,18 @@ grep -Fq '**OOS checkpoint**: when `OOS_PENDING=true`' "$SKILL_MD" \
   || fail "OOS checkpoint paragraph missing"
 grep -Fq '**Exit 0**: if `OOS_PENDING=true`' "$SKILL_MD" \
   || fail "Exit 0 OOS_PENDING branch missing"
+awk '
+  /\*\*Exit 0\*\*: if `OOS_PENDING=true`/ { in_exit = 1; seen_exit = 0; n_exit = 0 }
+  in_exit && /\*\*MANDATORY — READ ENTIRE FILE before executing the OOS pipeline\*\*: `\$\{CLAUDE_PLUGIN_ROOT\}\/skills\/implement\/references\/oos-pipeline\.md`/ { seen_exit = 1 }
+  in_exit { n_exit++; if (n_exit > 8) in_exit = 0 }
+  /\*\*OOS checkpoint\*\*: when `OOS_PENDING=true`/ { in_checkpoint = 1; seen_checkpoint = 0; n_checkpoint = 0 }
+  in_checkpoint && /\*\*MANDATORY — READ ENTIRE FILE before executing the OOS pipeline\*\*: `\$\{CLAUDE_PLUGIN_ROOT\}\/skills\/implement\/references\/oos-pipeline\.md`/ { seen_checkpoint = 1 }
+  in_checkpoint { n_checkpoint++; if (n_checkpoint > 8) in_checkpoint = 0 }
+  /needs_user_reason` \(`oos-filing` requires/ { in_python = 1; seen_python = 0; n_python = 0 }
+  in_python && /\*\*MANDATORY — READ ENTIRE FILE before executing the OOS pipeline\*\*: `\$\{CLAUDE_PLUGIN_ROOT\}\/skills\/implement\/references\/oos-pipeline\.md`/ { seen_python = 1 }
+  in_python { n_python++; if (n_python > 8) in_python = 0 }
+  END { exit(seen_exit && seen_checkpoint && seen_python ? 0 : 1) }
+' "$SKILL_MD" || fail "SKILL.md must keep mandatory oos-pipeline.md load directive scoped to Exit 0, OOS checkpoint, and Python oos-filing dispatch"
 
 grep -Fq '3.4. **Combine pass**' "$OOS_PIPELINE_MD" \
   || fail "oos-pipeline.md must define step 3.4"

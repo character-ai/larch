@@ -131,23 +131,57 @@ def resolve_oos_accepted_design_path(tmpdir: Path) -> Path:
     """Resolve accepted design OOS path in bash checkpoint order."""
     design_tmpdir = os.environ.get("DESIGN_TMPDIR", "")
     if design_tmpdir:
-        return Path(design_tmpdir) / "oos-accepted-design.md"
+        design_path = Path(design_tmpdir) / "oos-accepted-design.md"
+        if design_path.is_file():
+            return design_path
     exported = tmpdir / "design-export" / "oos-accepted-design.md"
     if exported.is_file():
         return exported
     return tmpdir / "oos-accepted-design.md"
 
 
-def _append_execution_tool_failure(ctx: RunContext, message: str) -> None:
-    path = Path(ctx.tmpdir) / "execution-issues.md"
-    existing = path.read_text(encoding="utf-8") if path.is_file() else ""
-    bullet = f"- **Step pr-create**: {message}\n"
-    if "### Tool Failures\n" in existing:
-        updated = existing.rstrip() + "\n" + bullet
-    else:
-        sep = "" if not existing else "\n"
-        updated = existing.rstrip() + sep + "### Tool Failures\n" + bullet
-    _ = path.write_text(updated, encoding="utf-8")
+def _append_execution_tool_failure(
+    runner: Runner,
+    ctx: RunContext,
+    *,
+    site: str,
+    tool: str,
+    exit_code: int,
+    output_file: Path,
+    cwd: str | None,
+) -> None:
+    script = Path(__file__).resolve().parents[1] / "scripts" / "append-tool-failure.sh"
+    if script.is_file():
+        _ = runner.run(
+            [
+                "bash",
+                str(script),
+                "--log",
+                str(Path(ctx.tmpdir) / "execution-issues.md"),
+                "--site",
+                site,
+                "--tool",
+                tool,
+                "--exit-code",
+                str(exit_code),
+                "--category",
+                "Tool Failures",
+                "--output-file",
+                str(output_file),
+                "--redact",
+            ],
+            cwd=cwd,
+        )
+    log_path = Path(ctx.tmpdir) / "execution-issues.md"
+    existing = log_path.read_text(encoding="utf-8") if log_path.is_file() else ""
+    if tool not in existing:
+        bullet = f"- **Step {site}**: {tool} failed with exit {exit_code}; see {output_file}\n"
+        if "### Tool Failures\n" in existing:
+            updated = existing.rstrip() + "\n" + bullet
+        else:
+            sep = "" if not existing else "\n"
+            updated = existing.rstrip() + sep + "### Tool Failures\n" + bullet
+        _ = log_path.write_text(updated, encoding="utf-8")
 
 
 def _materialize_manifest_oos(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult | None:
@@ -186,12 +220,20 @@ def _materialize_manifest_oos(runner: Runner, ctx: RunContext, *, cwd: str | Non
     )
     if result.returncode == 0:
         return None
+    stderr_log = Path(ctx.tmpdir) / "materialize-manifest-oos.log"
+    _ = stderr_log.write_text(result.stderr or result.stdout, encoding="utf-8")
     _append_execution_tool_failure(
+        runner,
         ctx,
-        "materialize-manifest-oos.sh failed before OOS disposition; leaving OOS filing pending.",
+        site="pr-create",
+        tool="materialize-manifest-oos.sh",
+        exit_code=result.returncode,
+        output_file=stderr_log,
+        cwd=cwd,
     )
     if manifest_oos_count == 0:
         return None
+    _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
     return ShipResult(
         Outcome.NEEDS_USER_INPUT,
         needs_user_reason=config.NEEDS_USER_OOS_FILING,
@@ -224,11 +266,14 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
                 detail=config.NEEDS_USER_OOS_FILING,
             )
     commit_messages = ""
-    if ctx.run_id:
-        base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
-        messages = runner.run(["git", "log", "--format=%s", f"{base_remote}/main..HEAD"], cwd=cwd)
-        if messages.returncode == 0:
-            commit_messages = messages.stdout
+    base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
+    commit_range = f"{base_remote}/main..HEAD"
+    merge_base = runner.run(["git", "merge-base", "HEAD", f"{base_remote}/main"], cwd=cwd)
+    if merge_base.returncode == 0 and merge_base.stdout.strip():
+        commit_range = f"{merge_base.stdout.strip()}..HEAD"
+    messages = runner.run(["git", "log", "--format=%B", commit_range], cwd=cwd)
+    if messages.returncode == 0:
+        commit_messages = messages.stdout
     disposition = oos.disposition_ok(
         runner,
         accepted_files=accepted,
@@ -241,6 +286,7 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
     )
     if disposition.ok:
         return None
+    _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
     return ShipResult(
         Outcome.NEEDS_USER_INPUT,
         needs_user_reason=config.NEEDS_USER_OOS_FILING,
@@ -413,20 +459,15 @@ def run_ship(
         if materialize_result is not None:
             return materialize_result
         if ctx.oos_pending:
+            _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
             return ShipResult(
                 Outcome.NEEDS_USER_INPUT,
                 needs_user_reason=config.NEEDS_USER_OOS_FILING,
                 detail=config.NEEDS_USER_OOS_FILING,
             )
-        design_oos_path = resolve_oos_accepted_design_path(Path(ctx.tmpdir))
-        if any(
-            path.is_file() and path.stat().st_size > 0
-            for path in (
-                Path(ctx.tmpdir) / "oos-accepted-main-agent.md",
-                design_oos_path,
-                Path(ctx.tmpdir) / "oos-accepted-review.md",
-            )
-        ):
+        security_oos = Path(ctx.tmpdir) / "security-oos-observations.md"
+        if security_oos.is_file() and security_oos.stat().st_size > 0:
+            _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
             return ShipResult(
                 Outcome.NEEDS_USER_INPUT,
                 needs_user_reason=config.NEEDS_USER_OOS_FILING,
