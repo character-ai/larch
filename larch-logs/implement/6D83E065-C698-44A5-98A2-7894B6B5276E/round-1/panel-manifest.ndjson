@@ -1,0 +1,11 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.70/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-oos-flow","tool":"cursor","output":"<TMPDIR>/round-1/dyn-oos-flow-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-oos-flow-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-manifest-bridge","tool":"cursor","output":"<TMPDIR>/round-1/dyn-manifest-bridge-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-manifest-bridge-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-python-parity","tool":"cursor","output":"<TMPDIR>/round-1/dyn-python-parity-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-python-parity-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-shell-flow","tool":"cursor","output":"<TMPDIR>/round-1/dyn-shell-flow-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-shell-flow-prompt.md","weight":1,"focus_area":"code-quality"}
+{"slot":"dyn-evidence-logging","tool":"cursor","output":"<TMPDIR>/round-1/dyn-evidence-logging-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-evidence-logging-prompt.md","weight":1,"focus_area":"architecture"}

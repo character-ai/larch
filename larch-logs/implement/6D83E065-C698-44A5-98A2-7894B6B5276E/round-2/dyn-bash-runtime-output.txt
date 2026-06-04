@@ -1,0 +1,12 @@
+Reviewing the branch diff and Bash changes for runtime hazards.
+### In-Scope Findings
+
+- **code-quality** `skills/implement/scripts/materialize-manifest-oos.sh:131-142` — `append_security_audit` appends a fresh `### Warnings` header on every security-routed observation instead of reusing the repo’s category-merge contract (`scripts/append-execution-issue.sh` inserts under an existing `### Warnings` block and uses file locking). Multiple security items in one manifest therefore produce duplicate category headers and bypass the standard helper. **Suggested fix:** Route each security breadcrumb through `append-execution-issue.sh --category Warnings` (or mirror its awk-based header merge + lock) and only write `security-oos-observations.md` from `append_security_audit`.
+
+- **correctness** `skills/implement/scripts/materialize-manifest-oos.sh:63-77,145-163` — Title dedup is asymmetric: `has_title` normalizes the incoming title with `normalize_title` (redaction + whitespace collapse) but compares it to on-disk headings that only get whitespace/case normalization in awk, not the same `sanitize_public_text` pass. A manifest title containing PII or an internal URL can redact to a different string than an existing `oos-accepted-main-agent.md` heading for the same item, so dedup misses and a second `### OOS_N:` block is appended. **Suggested fix:** Apply the same `sanitize_public_text` + whitespace normalization to extracted heading text in `has_title`, or compare a pre-redaction dedup key while still writing the redacted public title.
+
+### Out-of-Scope Observations
+
+- **risk-integration** `scripts/ship-pr.sh:684-694` — `resolve_oos_accepted_design_path` still prefers `$DESIGN_TMPDIR/oos-accepted-design.md` whenever `DESIGN_TMPDIR` is set, even when that file is missing and `$IMPLEMENT_TMPDIR/design-export/oos-accepted-design.md` holds the only design OOS. That behavior predates this branch; the new Python resolver mirrors it rather than introducing it.
+
+- **architecture** `scripts/ship-pr.sh:744-748` vs `skills/implement/scripts/oos-disposition-checkpoint.sh:192-197` — `run_oos_disposition_gate_if_required_before_oos_pending_false` does not pass `--filed-urls-strict-file` for the design path while the Step 8+ checkpoint does. Also pre-existing, not introduced by the materialization hooks in this diff.

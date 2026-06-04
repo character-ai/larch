@@ -1,0 +1,27 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- resolver parity exists in bash/Python/checkpoint; duplication is intentional maintenance risk, not a current miss
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ndjson discovery is duplicated but current bash/Python logic matches; consolidation is refactor scope
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- oos-pipeline.md omits security-oos-observations.md stall semantics though SECURITY.md and checkpoint enforce them
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- combine/issue redaction beyond materializer is pre-existing prompt scope, not a regression in this change set
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- piped while in write_description resets first-line state so every line can get a Description prefix
+FINDING_6: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=true -- substring fallback after append-tool-failure.sh is redundant but low-impact duplicate risk
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- 8-line awk proximity windows are brittle yet currently pin the three load directives
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- count-only then full materialize is intentional fail-closed gating, not a functional defect
+FINDING_9: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- phase dedup order in oos-pipeline.md differs from gate CSV order but does not change gate counting
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-materialize OOS_PENDING=true is conservative by design to force Step 9a.1, not a post-disposition stuck state
+FINDING_11: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- misnamed tests assert NEEDS_USER_INPUT despite disposition_ok true, encoding the post-9a.1 resume regression
+FINDING_12: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- no runtime harness asserts Step 2 bails when non-empty manifest materialization fails
+FINDING_13: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ship-pr failure policy is grep-pinned and Python has a materialize-failure integration test
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- security sidecar checkpoint blocks lack dedicated regression tests beyond structure greps
+FINDING_15: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- security_signal scans description prose for focus-area lines, not only structured manifest fields
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- non-empty accepted-file size checks run before disposition and block PR create after satisfied filing
+FINDING_17: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- narrative focus-area text in descriptions can mis-route observations to the private sidecar
+FINDING_18: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- materialize-manifest-oos.md is absent from references-header contract coverage
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- routing uses the same dedicated-field awk as public paths; whitespace edge is theoretical
+FINDING_20: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Python _oos_gate skips checkpoint ndjson precondition that bash enforces before disposition_ok
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- SECURITY.md now documents manifest routing; remaining asymmetry is minor operator-doc polish
+FINDING_22: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- mandatory ndjson when non-security accepted OOS exists can block inline-triage-only satisfaction
+FINDING_23: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- ship-pr sets OOS_PENDING on count-only jq failure even when observation count is zero
+FINDING_24: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- _oos_gate omits checkpoint security-sidecar and ndjson prechecks beyond the pr-create path
+FINDING_25: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Python ship driver lacks bash --resume-phase semantics, a known parity gap worth tracking
+FINDING_26: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- redaction harness covers public accepted output but not security-oos-observations.md content
+FINDING_27: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Step 9a.1 combine and /issue redaction remain prompt-enforced outside the new materializer hook

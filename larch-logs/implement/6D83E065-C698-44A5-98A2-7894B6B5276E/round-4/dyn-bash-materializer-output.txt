@@ -1,0 +1,10 @@
+Reviewing the diff and materialize-manifest-oos implementation for correctness.
+### In-Scope Findings
+
+- **correctness** `skills/implement/scripts/materialize-manifest-oos.sh:114-120` — `security_signal` feeds the manifest’s structured `focus_area` / `focus-area` into `security_focus_area` without the same whitespace normalization used for titles (`normalize_title` is only applied when writing the audit block at lines 167–168). A value like `" security-hardening"` or `"  security"` becomes `- **focus-area**:  security-hardening` after the synthetic prefix, the awk value keeps leading spaces, and `^security…` does not match, so the observation is written to `oos-accepted-main-agent.md` instead of `security-oos-observations.md`. That diverges from `oos-non-security-block-count.awk` / gate counting and can push security-tagged manifest OOS toward public `/issue` filing. **Suggested fix:** Normalize `focus_area` (at minimum trim/collapse whitespace and case-fold for the predicate) before the `security_focus_area` check, and add a harness case with leading whitespace on `focus_area` / `focus-area`.
+
+- **correctness** `skills/implement/scripts/materialize-manifest-oos.sh:75-90` — Title idempotency in `has_title` only scans `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`, while the contract in `materialize-manifest-oos.md` says the helper is “idempotent by title” and Step 9a.1 later dedupes across design, review, and main-agent (`oos-pipeline.md` step 3.3). If the same normalized title already exists in `oos-accepted-review.md` or the resolved design accepted file, materialization still appends a second `### OOS_N:` block to main-agent, inflating accepted-OOS block counts and forcing Step 9a.1 to dedupe a duplicate the helper could have skipped. **Suggested fix:** Reuse the same design-path resolution as `ship-pr.sh` / `resolve_oos_accepted_design_path` and treat a normalized title as present if it appears under any `^### OOS_[0-9]+:` heading in main-agent, review, or design accepted files; add a harness where review already contains the title and materialize must no-op.
+
+### Out-of-Scope Observations
+
+NO_ISSUES_FOUND

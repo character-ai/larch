@@ -1,0 +1,5 @@
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:50: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:51: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:52: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:72: could not resolve $out
+UNRESOLVED_VAR: skills/implement/scripts/test-materialize-manifest-oos.sh:92: could not resolve $out
