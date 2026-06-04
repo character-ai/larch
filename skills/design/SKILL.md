@@ -1020,21 +1020,28 @@ Print: `> **🔶 /design 3: plan review**`
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3 — plan review" || true
 ```
 
-**Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed`; subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `timing-ledger.sh mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
+**Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under a `## Plan Candidate for Review` header so the user can see the plan that is about to enter the review/voting panel. Apply the shared large-plan summary mode documented in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C — large-plan summary mode). Gated by sentinel `$DESIGN_TMPDIR/.step3-entry-plan-printed` (owned by `run-step3-review.sh --preview-only` with allowlist-gated touch rules); subsequent re-entries (from Gate B(c) → Gate A → Step 3, Gate C(b) → Gate A → Step 3, or Gate C(c) → Step 3) skip the print because the sentinel exists. If summary mode fires, the user may interrupt the voting kickoff with a free-form "show full plan" request and the orchestrator emits the full plan before continuing. **Step 3 ordering (timing vs plan header)**: the `timing-ledger.sh mark` fence above runs before this block; the `## Plan Candidate for Review` header and plan body appear only in the Bash output below (not between the `> **🔶 /design 3**` breadcrumb and the timing ledger). Manual QA should expect the ledger line before the plan preview.
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh" \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --variant step3
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+set +e
+"${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
+  --preview-only \
+  --design-tmpdir "$DESIGN_TMPDIR"
+_preview_rc=$?
+set -e
+if [[ "${_preview_rc:-0}" -eq 2 ]]; then
+  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
+  exit 1
+fi
 ```
 
-Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.md`). Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.md`.
+The preview-only driver invokes `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` (pure renderer for `step3`; sentinel ownership moved to driver). Hermetic regression coverage lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.md`) and `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-run-step3-review.sh`. Script contracts: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.md`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.md`.
 
 **Review-round cap entry guard**: `run-step3-review.sh` is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. The driver runs this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). It persists the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` and normalized KVs to `$DESIGN_TMPDIR/.step3-review-result.env`. Before launching `plan-review-loop.sh`, the driver persists the pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, the driver keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`, when `LOOP_STATUS=tally-error`, or when `LOOP_STATUS=degraded-empty-collector`; on those paths, roll back to the prior count (same semantics as `run-step3-review.sh` persist/rollback). If the cap is reached, the driver prints the warning, skips `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b/4/4b with existing artifacts.
 
@@ -1058,45 +1065,61 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 set +e
 _plan_review_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/run-step3-review.sh" \
+  --no-preview \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --round-cap "${LARCH_DESIGN_ROUND_CAP:-5}")
 _plan_review_rc=$?
 set -e
-if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
-  if [[ -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
-    printf '%s\n' "**⚠ Step 3: step3 review result env is a symlink; refusing to source**"
-  else
-    while IFS= read -r _line || [[ -n "$_line" ]]; do
-      _key="${_line%%=*}"; _value="${_line#*=}"
-      case "$_key" in
-        LOOP_STATUS|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|TALLY_PLAN_REVIEW_STATUS|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
-          printf -v "$_key" '%s' "$_value" ;;
-        WARN) printf '%s\n' "WARN=$_value" ;;
-      esac
-    done <"$DESIGN_TMPDIR/.step3-review-result.env"
-  fi
+if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
+  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
+  exit 1
+fi
+while IFS= read -r _line || [[ -n "$_line" ]]; do
+  _key="${_line%%=*}"
+  case "$_key" in
+    LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|WARN)
+      : ;;
+    *)
+      printf '%s\n' "$_line" ;;
+  esac
+done <<<"${_plan_review_out:-}"
+_step3_safe_env_loaded=false
+if [[ -f "$DESIGN_TMPDIR/.step3-review-result.env" && ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
+  _step3_safe_env_loaded=true
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    _key="${_line%%=*}"; _value="${_line#*=}"
+    case "$_key" in
+      LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT)
+        printf -v "$_key" '%s' "$_value" ;;
+      WARN) printf '%s\n' "WARN=$_value" ;;
+    esac
+  done <"$DESIGN_TMPDIR/.step3-review-result.env"
 fi
 while IFS= read -r _line || [[ -n "$_line" ]]; do
   _key="${_line%%=*}"; _value="${_line#*=}"
   case "$_key" in
     LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS)
-      if [[ "${_plan_review_rc:-0}" -ne 0 ]]; then
+      if [[ "$_step3_safe_env_loaded" == true ]]; then
+        [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
+      elif [[ "${_plan_review_rc:-0}" -ne 0 ]]; then
         [[ -n "$_value" ]] && printf -v "$_key" '%s' "$_value"
       else
-        [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
+        printf -v "$_key" '%s' "$_value"
       fi
       ;;
-    ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|REVIEW_ROUND_COUNT)
-      [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
+    STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT)
+      if [[ "$_step3_safe_env_loaded" == true ]]; then
+        [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
+      else
+        printf -v "$_key" '%s' "$_value"
+      fi
+      ;;
     WARN) printf '%s\n' "WARN=$_value" ;;
   esac
 done <<<"${_plan_review_out:-}"
-if [[ "${_plan_review_rc:-0}" -eq 2 ]]; then
-  printf '%s\n' "**⚠ Step 3: run-step3-review.sh configuration error (exit 2); aborting plan review**"
-fi
 if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|cap-reached|zero-findings-degraded-panel|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|emit-plan-failed|optional-trailer-dedup-loss|panel-failed|main-agent-vote-required)$ ]]; then
   printf '%s\n' "**⚠ Step 3: missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed**"
   LOOP_STATUS=panel-failed
@@ -1106,7 +1129,7 @@ fi
 
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.
 
-**Post-loop branch matrix** (read `$DESIGN_TMPDIR/.step3-review-result.env` first; driver stdout KVs are fallback only):
+**Post-loop branch matrix** (when `_step3_safe_env_loaded=true`, the safe non-symlink `.step3-review-result.env` is authoritative and stdout fills **only missing** keys; when `_step3_safe_env_loaded=false`, allowlisted stdout KVs are primary with later-wins; rc!=0 stdout override for `LOOP_STATUS`/`TALLY_PLAN_REVIEW_STATUS` applies **only** on the no-safe-env path; **do not enter this matrix when `_plan_review_rc==2`** — fence already exited):
 
 - `LOOP_STATUS=complete` — proceed to Gate B (legacy single-pass callers without `--round-cap` also land here; Gate B may auto-apply when `manual_gate_b=false`). Gate-B-settled path proceeds through Step 3.6 after Gate B and any Step 2b.5 return.
 - `LOOP_STATUS=converged|cap-hit` — proceed to Gate B **passive-summary mode** (findings already auto-applied inside the loop; do not re-apply them at Gate B). Passive-summary auto-continue routes through Step 3.6 before Step 3b.

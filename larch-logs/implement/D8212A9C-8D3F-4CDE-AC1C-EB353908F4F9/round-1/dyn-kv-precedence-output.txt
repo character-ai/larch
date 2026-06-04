@@ -1,0 +1,25 @@
+Reviewing the Step 3 KV precedence implementation against the plan: reading the diff and the SKILL.md / harness mirror code.
+Checking whether the Step 3 region's two Bash fences affect thin-fence assertions and scanning for precedence edge cases in related docs.
+**Branch:** `e9a468593` — Move Step 3 preview ownership into `run-step3-review.sh --preview-only`
+
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **`skills/design/scripts/test-step3-orchestrator-fence.sh`** — D6B exercises file-wins for `LOOP_STATUS` on the safe-env + `rc!=0` path; `TALLY_PLAN_REVIEW_STATUS` uses the same branch in both `SKILL.md` (1097–1104) and `apply_step3_handoff` (92–99) but has no symmetric harness case. Low risk because the logic is shared.
+
+- **`skills/design/SKILL.md` / `apply_step3_handoff`** — On the safe-env + `rc!=0` path, `[[ -n "${!_key:-}" ]]` treats an explicit `LOOP_STATUS=` / `TALLY_PLAN_REVIEW_STATUS=` line in `.step3-review-result.env` as “missing,” so a non-empty stdout KV can still fill those keys. Unlikely if the driver always writes non-empty statuses; only matters for a deliberate empty value in the result env.
+
+- **`scripts/test-design-structure.sh`** — The Step 3 thin-fence is covered via `assert_thin_fence`, `! -L`, `_step3_safe_env_loaded`, and `--preview-only` / `--no-preview` pins; the plan also called for grep pins on `exit 1` immediately after the exit-2 banner and on the display-pass suppress rule. Those strings exist in `SKILL.md` (1069–1115) but are not separately grep-pinned in the structure harness—behavioral coverage lives in `test-step3-orchestrator-fence.sh` instead.
+
+**KV precedence verdict:** The three-branch model is aligned across `skills/design/SKILL.md` (1069–1119) and `apply_step3_handoff` in `skills/design/scripts/test-step3-orchestrator-fence.sh` (54–114):
+
+1. **`rc=2`** — Banner then `exit 1` / `return 2` before display pass, safe-env load, stdout/file parse, or `LOOP_STATUS` normalization (fixes the pre-refactor bug where `rc=2` was checked after parsing and could leave stale file state in play).
+
+2. **Safe env (`-f && ! -L`)** — File values win; stdout fills only unset keys for all twelve keys; `LOOP_STATUS` / `TALLY` are not overwritten from stdout when `rc!=0` (D6B).
+
+3. **No safe env** — Later stdout allowlisted KVs win; `rc!=0` override for `LOOP_STATUS` / `TALLY` only applies when `_value` is non-empty (D6, D_LATER).
+
+Both display and parse loops read the same `_plan_review_out`; display suppresses only the twelve-key allowlist plus `WARN=`, while parse binds state and replays `WARN=` once.

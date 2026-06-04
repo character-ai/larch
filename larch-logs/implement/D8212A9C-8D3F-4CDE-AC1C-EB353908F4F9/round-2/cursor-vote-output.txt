@@ -1,0 +1,27 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Allowlist duplication is real but a shared helper or parity test is optional hardening, not required for this phase.
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicated plugin-root resolution is accurate; extracting a helper is reasonable nit-level DRY only.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Misleading `_has_header` name is cosmetic; rename adds little beyond current case block clarity.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate rc=2 banners exist but are byte-identical today; centralizing is optional doc hygiene.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Plan explicitly treats explicit `--no-preview` as optional because omitted mode defaults to review path.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Stale safe-env on failed rewrite is a narrow edge case; file-first precedence is intentional per plan anti-spoofing contract.
+FINDING_7: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- New coverage is documented in the updated `test-emit-design-plan-preview` linting row; a separate table row is nice-to-have only.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of FINDING_5; default `--no-preview` is pinned in driver tests and plan.
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Preview harnesses intentionally use `RUN_STEP3_EMIT_PREVIEW_SH` stubs; driver sentinel logic is well covered without full renderer integration.
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SKILL preview fence passes only `--preview-only`, so rc=2 there is largely unreachable; argv rc=2 is covered in driver tests.
+FINDING_11: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Describes an intentional security improvement, not a defect requiring change.
+FINDING_12: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Describes implemented hardening, not a problem to fix.
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Documents deliberate KV precedence design, not a vulnerability.
+FINDING_14: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Confirms doc alignment; no actionable issue.
+FINDING_15: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Positive consistency note, not a finding.
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Pre-existing trust-boundary note, not introduced by this diff.
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Pre-existing delegation surface, unchanged here.
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Explicitly out of scope and untouched; not a regression.
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Sentinel can suppress preview after plan.txt is repaired without clearing sentinel; worth a follow-up issue.
+FINDING_20: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Preview and captured review can observe different plan.txt revisions; concrete operator-confusion follow-up.
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- Rare post-validate `cd` failure under `set -e` is theoretically possible but unlikely and low impact.
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Plan-fidelity confirmation of landed work, not a defect.
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Round-1 feedback commit note only; not an open issue.
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Step 5 checks commit note; implementation scope matches plan.
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Topology still names renderer-only authority; plan allows deferring projection update to a later drift sweep.
+FINDING_26: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Quiet/capture cap-reached behavior predates this refactor and was not introduced here.
+FINDING_27: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Plan accepted folding `test-run-step3-review` prose into the emit-preview linting row with Makefile registration intact.
