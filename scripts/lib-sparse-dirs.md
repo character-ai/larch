@@ -1,6 +1,6 @@
 # scripts/lib-sparse-dirs.sh — contract
 
-`scripts/lib-sparse-dirs.sh` is the sourced-only single source of truth for the plugin install sparse allowlist. It defines `LARCH_SPARSE_DIRS` and `normalize_sparse_dirs()` for `skills/upgrade-larch/scripts/upgrade-larch.sh`, `skills/upgrade-larch/scripts/release-step7-root.sh`, `scripts/sessionstart-health.sh`, the `/release` Step 7 working-tree upgrade path, and the related harnesses.
+`scripts/lib-sparse-dirs.sh` is the sourced-only single source of truth for the plugin install sparse allowlist. It defines `LARCH_SPARSE_DIRS` and `normalize_sparse_dirs()` for `skills/upgrade-larch/scripts/upgrade-larch.sh`, `scripts/sessionstart-health.sh`, the `/release` Step 7 working-tree upgrade path, and the related harnesses.
 
 The file has no shebang, no `set`, no `exec`, no trap, no quiet-log initialization, and no top-level commands beyond function/variable definitions. Line 1 stays `# shellcheck shell=bash`, the file stays non-executable, and `agent-lint.toml` excludes the sourced-only `.sh` plus this sibling contract from dead-script checks.
 

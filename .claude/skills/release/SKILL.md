@@ -150,18 +150,22 @@ Prefer the working-tree upgrade script over the installed Skill implementation s
 1. Existing active `CLAUDE_PLUGIN_ROOT` when it is cache-shaped (`.../.claude/plugins/cache/larch-local/larch/<version>`) and exists. This is the running session's prune/stamp context, so it wins even when installed metadata names a newer version after a no-restart or retried release.
 2. Installed metadata: parse the installed larch version with the same semantics as `get_installed_larch_version` in `skills/upgrade-larch/scripts/release-step7-root.sh` (`claude plugin list` first, then `installed_plugins.json`), then map it to `$HOME/.claude/plugins/cache/larch-local/larch/$installed_version` when that directory exists.
 3. Prepare fallback: use `$HOME/.claude/plugins/cache/larch-local/larch/${CURRENT_VERSION}` only when Step 2's `CURRENT_VERSION` matches the parsed installed version, or when installed metadata is unavailable and `CURRENT_VERSION` is the sole defensible cache target.
-4. Last cache fallback: use a cache root only when exactly one version-shaped directory exists under `$HOME/.claude/plugins/cache/larch-local/larch/`. If zero or multiple version dirs exist, do not pick arbitrarily.
+4. Last cache fallback: use a cache root only when exactly one version-shaped directory exists under `$HOME/.claude/plugins/cache/larch-local/larch/` and it matches `CURRENT_VERSION`. If zero or multiple version dirs exist, or the sole version does not match `CURRENT_VERSION`, do not pick arbitrarily.
 
 `CURRENT_VERSION` from Step 2 is not proof of the active install and must not override a valid active session root. `CLAUDE_PLUGIN_ROOT` is used only for cache/stamp/prune context; the allowlist comes from the working-tree script's `SCRIPT_ROOT`.
 
-Run the working-tree script with captured stdout and stderr whenever `RESOLVED_ROOT` is non-empty:
+Run root resolution and the working-tree script with captured stdout and stderr whenever `RESOLVED_ROOT` is non-empty. `release-step7.env` is written only when `PR_LIST_FILE` is available:
+
+Do not Invoke the Skill tool as a Step 7 fallback from the Bash fence; without the same capture contract it cannot provide reliable restart state.
 
 ```bash
 if [ -z "${PR_LIST_FILE:-}" ]; then
   echo "Warning: PR_LIST_FILE is unavailable; cannot write release-step7 restart state."
+  STEP7_STATE=""
 else
 PREPARE_DIR="$(dirname "$PR_LIST_FILE")"
 STEP7_STATE="$PREPARE_DIR/release-step7.env"
+fi
 CONE_RECONCILED=false
 NEW_VERSION_INSTALLED=false
 RESTART_REQUIRED=false
@@ -180,13 +184,14 @@ if [ -n "$RESOLVED_ROOT" ]; then
     LARCH_EXPECTED_STABLE_VERSION="$NEW_VERSION" CLAUDE_PLUGIN_ROOT="$RESOLVED_ROOT" bash "$PWD/skills/upgrade-larch/scripts/upgrade-larch.sh" 2>&1
   ) || upgrade_rc=$?
   printf '%s\n' "$upgrade_out"
-  if [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]]; then
+  if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]] || \
+     { [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"Reconciling the marketplace cone and reinstalling"* ]]; }; then
     CONE_RECONCILED=true
   fi
-  if [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
+  if [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
     NEW_VERSION_INSTALLED=true
   fi
-  if [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"LARCH_RESTART_REQUIRED=true"* ]]; then
+  if [[ "$upgrade_out" == *"LARCH_RESTART_REQUIRED=true"* ]]; then
     RESTART_REQUIRED=true
   fi
   if [ "$CONE_RECONCILED" = true ] || [ "$NEW_VERSION_INSTALLED" = true ]; then
@@ -196,28 +201,22 @@ if [ -n "$RESOLVED_ROOT" ]; then
     echo "Warning: working-tree upgrade-larch failed during local install refresh; continuing to cleanup."
   fi
 else
-  echo "Warning: no unambiguous installed larch cache root found; falling back to the installed /upgrade-larch skill if available."
-  # Fallback is only for true dev-clone / no marketplace-install cases. Invoke
-  # /upgrade-larch via the Skill tool (bare name first; fall back to
-  # larch:upgrade-larch on Unknown skill) and warn if that fallback is the only
-  # available path, because it may be the stale installed implementation. Capture
-  # the fallback output; if it includes LARCH_CONE_RECONCILED=true,
-  # LARCH_NEW_VERSION_INSTALLED=true, or LARCH_RESTART_REQUIRED=true, set the
-  # matching state variable before the env file is written.
+  echo "Warning: no unambiguous installed larch cache root found; skipping working-tree /upgrade-larch. Restart state remains all-false because this Bash fence cannot capture a Skill-tool fallback."
 fi
 
-tmp_state="$STEP7_STATE.tmp"
-{
-  printf 'CONE_RECONCILED=%s\n' "$CONE_RECONCILED"
-  printf 'NEW_VERSION_INSTALLED=%s\n' "$NEW_VERSION_INSTALLED"
-  printf 'RESTART_REQUIRED=%s\n' "$RESTART_REQUIRED"
-  printf 'RESOLVED_ROOT=%s\n' "$RESOLVED_ROOT"
-} > "$tmp_state"
-mv "$tmp_state" "$STEP7_STATE"
+if [ -n "$STEP7_STATE" ]; then
+  tmp_state="$STEP7_STATE.tmp"
+  {
+    printf 'CONE_RECONCILED=%s\n' "$CONE_RECONCILED"
+    printf 'NEW_VERSION_INSTALLED=%s\n' "$NEW_VERSION_INSTALLED"
+    printf 'RESTART_REQUIRED=%s\n' "$RESTART_REQUIRED"
+    printf 'RESOLVED_ROOT=%s\n' "$RESOLVED_ROOT"
+  } > "$tmp_state"
+  mv "$tmp_state" "$STEP7_STATE"
 fi
 ```
 
-If metadata names a newer install than the active `CLAUDE_PLUGIN_ROOT`, still run against the active root from item 1; the upgrade script protects both the active `INSTALLED_VERSION` (from `PLUGIN_ROOT`) and the target version during prune. If the working-tree invocation fails, warn and continue to Step 8 without persisting restart/reconcile state from the failed run. The release is already published, so a local-install upgrade hiccup must not strand the operator on the release branch. If no root is resolvable and the Skill-tool fallback is used, record `CONE_RECONCILED=false`, `NEW_VERSION_INSTALLED=false`, and `RESTART_REQUIRED=false` unless the captured fallback output explicitly includes the corresponding machine-readable line.
+If metadata names a newer install than the active `CLAUDE_PLUGIN_ROOT`, still run against the active root from item 1; the upgrade script protects both the active `INSTALLED_VERSION` (from `PLUGIN_ROOT`) and the target version during prune. If the working-tree invocation fails, warn and continue to Step 8, but still persist any captured machine-readable restart/reconcile state because the local install may already have been mutated. The release is already published, so a local-install upgrade hiccup must not strand the operator on the release branch. If no root is resolvable, record `CONE_RECONCILED=false`, `NEW_VERSION_INSTALLED=false`, and `RESTART_REQUIRED=false`.
 
 ## Step 8 — Local cleanup (post-merge teardown)
 

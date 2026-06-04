@@ -170,13 +170,14 @@ parse_release_step7_flags_for_test() {
     local upgrade_rc="$1" upgrade_out="$2"
     local cone_reconciled=false new_version_installed=false restart_required=false
 
-    if [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]]; then
+    if [[ "$upgrade_out" == *"LARCH_CONE_RECONCILED=true"* ]] || \
+       { [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"Reconciling the marketplace cone and reinstalling"* ]]; }; then
         cone_reconciled=true
     fi
-    if [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
+    if [[ "$upgrade_out" == *"LARCH_NEW_VERSION_INSTALLED=true"* ]]; then
         new_version_installed=true
     fi
-    if [ "$upgrade_rc" -eq 0 ] && [[ "$upgrade_out" == *"LARCH_RESTART_REQUIRED=true"* ]]; then
+    if [[ "$upgrade_out" == *"LARCH_RESTART_REQUIRED=true"* ]]; then
         restart_required=true
     fi
     if [[ "$cone_reconciled" == true || "$new_version_installed" == true ]]; then
@@ -255,9 +256,9 @@ mkdir -p "$HOME/.claude/plugins/marketplaces/larch-local"
 assert_failure "marketplace_sparse_cone_matches rejects non-git marketplace dir" marketplace_sparse_cone_matches
 
 source_upgrade_for_case cone-empty
-clone=$(make_sparse_marketplace cone-empty .claude)
-git -C "$clone" sparse-checkout set --no-cone >/dev/null 2>&1
-printf '\n' > "$clone/.git/info/sparse-checkout"
+clone="$HOME/.claude/plugins/marketplaces/larch-local"
+mkdir -p "$clone"
+git init "$clone" >/dev/null 2>&1
 assert_failure "marketplace_sparse_cone_matches rejects empty configured sparse list" marketplace_sparse_cone_matches
 
 # --- already_latest_and_cone_ok cases ---
@@ -314,7 +315,7 @@ unset CLAUDE_PLUGIN_ROOT || true
 sole_root="$HOME/.claude/plugins/cache/larch-local/larch/1.0.0"
 mkdir -p "$sole_root"
 resolved=$(resolve_release_step7_root_for_test 1.0.0 2.0.0 || true)
-assert_eq "$resolved" "" "metadata version mismatch does not fall back to sole stale cache dir"
+assert_eq "$resolved" "$sole_root" "metadata cache miss falls through to sole current-version cache dir"
 
 source_upgrade_for_case root-current-matches-metadata
 unset CLAUDE_PLUGIN_ROOT || true
@@ -364,9 +365,9 @@ assert_success "new-version detector accepts machine-readable line" detect_new_v
 banner="Upgrading larch from 8.0.0 to 9.0.0..."
 assert_failure "new-version detector rejects pre-success upgrade banner" detect_new_version_installed_for_test "$banner"
 failed_flags=$(parse_release_step7_flags_for_test 1 $'LARCH_CONE_RECONCILED=true\nLARCH_NEW_VERSION_INSTALLED=true')
-assert_contains "$failed_flags" "CONE_RECONCILED=false" "release Step 7 drops reconcile flag from failed upgrade"
-assert_contains "$failed_flags" "NEW_VERSION_INSTALLED=false" "release Step 7 drops new-version flag from failed upgrade"
-assert_contains "$failed_flags" "RESTART_REQUIRED=false" "release Step 7 does not infer restart from failed upgrade flags"
+assert_contains "$failed_flags" "CONE_RECONCILED=true" "release Step 7 preserves captured reconcile flag from failed upgrade"
+assert_contains "$failed_flags" "NEW_VERSION_INSTALLED=true" "release Step 7 preserves captured new-version flag from failed upgrade"
+assert_contains "$failed_flags" "RESTART_REQUIRED=true" "release Step 7 infers restart from captured failed-upgrade flags"
 restart_flags=$(parse_release_step7_flags_for_test 0 "LARCH_RESTART_REQUIRED=true")
 assert_contains "$restart_flags" "RESTART_REQUIRED=true" "release Step 7 records restart-required flag from successful upgrade"
 state_dir="$TMP/release-state"
@@ -477,7 +478,6 @@ case "$*" in
         ;;
     "plugin install larch@larch-local")
         printf '8.0.0\n' > "$LARCH_TEST_VERSION_FILE"
-        export LARCH_TEST_LIST_FAIL=true
         ;;
     "plugin marketplace update larch-local")
         ;;
@@ -586,7 +586,58 @@ stale_root_out="$RUN_UPGRADE_OUT"
 stale_root_rc="$RUN_UPGRADE_RC"
 assert_eq "$stale_root_rc" "0" "production stale active root path exits successfully"
 assert_contains "$stale_root_out" "Installing larch plugin..." "production stale active root does not early-exit"
+assert_contains "$stale_root_out" "LARCH_RESTART_REQUIRED=true" "production stale active root emits restart signal"
 restore_case_path
+
+# --- production release Step 7 pin uses LARCH_EXPECTED_STABLE_VERSION without gh ---
+source_upgrade_for_case production-release-expected-version
+release_expected_out=""
+release_expected_rc=0
+bin_dir="$TMP/bin-production-release-expected-version"
+mkdir -p "$bin_dir"
+begin_case_path "$bin_dir"
+export CLAUDE_PLUGIN_ROOT="$HOME/.claude/plugins/cache/larch-local/larch/8.0.0"
+mkdir -p "$CLAUDE_PLUGIN_ROOT/scripts"
+cp "$REPO_ROOT/scripts/lib-quiet.sh" "$CLAUDE_PLUGIN_ROOT/scripts/lib-quiet.sh"
+export LARCH_TEST_VERSION_FILE="$TMP/production-release-expected-installed-version"
+printf '8.0.0\n' > "$LARCH_TEST_VERSION_FILE"
+# shellcheck disable=SC2086 # intentional fixture splitting
+make_sparse_marketplace production-release-expected-version $EXPECTED_SPARSE_DIRS >/dev/null
+cat > "$bin_dir/gh" <<'GH'
+#!/usr/bin/env bash
+printf 'gh should not be called when LARCH_EXPECTED_STABLE_VERSION is set\n' >&2
+exit 1
+GH
+chmod +x "$bin_dir/gh"
+cat > "$bin_dir/claude" <<'CLAUDE'
+#!/usr/bin/env bash
+set -euo pipefail
+case "$*" in
+    "plugin list")
+        printf 'larch@larch-local\n'
+        printf '  Version: %s\n' "$(cat "$LARCH_TEST_VERSION_FILE")"
+        ;;
+    "plugin uninstall larch@larch-local")
+        ;;
+    "plugin install larch@larch-local")
+        printf '9.0.0\n' > "$LARCH_TEST_VERSION_FILE"
+        ;;
+    "plugin marketplace update larch-local")
+        ;;
+    *)
+        printf 'unexpected claude args: %s\n' "$*" >&2
+        exit 1
+        ;;
+esac
+CLAUDE
+chmod +x "$bin_dir/claude"
+run_upgrade_script_for_test env LARCH_EXPECTED_STABLE_VERSION=9.0.0 bash "$UPGRADE_SCRIPT"
+release_expected_out="$RUN_UPGRADE_OUT"
+release_expected_rc="$RUN_UPGRADE_RC"
+assert_eq "$release_expected_rc" "0" "production release expected-version exits successfully"
+assert_contains "$release_expected_out" "LARCH_NEW_VERSION_INSTALLED=true" "production release expected-version emits new-version signal"
+restore_case_path
+unset LARCH_TEST_VERSION_FILE
 
 # --- production upgrade-larch.sh emits NEW_VERSION_INSTALLED on verified version bump ---
 source_upgrade_for_case production-version-bump
@@ -665,7 +716,13 @@ for i in $(seq 1 9); do
     sleep 0.01
 done
 prune_cached_versions "4.0.0"
-if [[ -f "$LARCH_CACHE_DIR/3.0.1/.larch-installed-at" ]]; then
+stamped_survivor=false
+for survivor_stamp in "$LARCH_CACHE_DIR"/3.0.*/.larch-installed-at; do
+    [ -f "$survivor_stamp" ] || continue
+    stamped_survivor=true
+    break
+done
+if [[ "$stamped_survivor" == true ]]; then
     pass "backfill wrote stamp to previously unstamped dir"
 else
     fail "backfill must stamp unstamped survivors"

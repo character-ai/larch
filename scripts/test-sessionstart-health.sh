@@ -325,7 +325,7 @@ assert_eq "$rc" "0" "case 4f: exit code 0"
 stdout=$(cat "$tmp/c4f.out")
 assert_empty "$stdout" "case 4f: stdout empty when normalize_sparse_dirs is missing"
 
-echo "=== Case 4f2: sparse library unset-variable failure is fail-open ==="
+echo "=== Case 4f2: sparse library source-time failure is fail-open ==="
 mkdir -p "$tmp/c4f2/scripts" "$tmp/c4f2-cwd"
 cp "$SCRIPT" "$tmp/c4f2/scripts/sessionstart-health.sh"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$tmp/c4f2/scripts/lib-quiet.sh"
@@ -339,7 +339,7 @@ rc=$(run_from_dir "$tmp/real_bin" "$tmp/c4f2-cwd" "$tmp/c4f2.out" "$tmp/c4f2.err
 SCRIPT="$ORIGINAL_SCRIPT"
 assert_eq "$rc" "0" "case 4f2: exit code 0"
 stdout=$(cat "$tmp/c4f2.out")
-assert_empty "$stdout" "case 4f2: stdout empty when sparse library touches unset variable"
+assert_empty "$stdout" "case 4f2: stdout empty when sparse library fails while sourcing"
 
 echo "=== Case 4g: probe ignores HOOK_CWD and later PLUGIN_ROOT ==="
 mkdir -p "$tmp/c4g-cwd" "$tmp/c4g-hook-cwd"

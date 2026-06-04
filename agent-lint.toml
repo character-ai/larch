@@ -971,6 +971,11 @@ exclude = [
   "scripts/test-design-reentry-guard.md",
   "skills/design/scripts/test-design-driver.sh",
   "skills/design/scripts/test-design-publish.sh",
+  # release-step7-root.sh is sourced by /release Step 7 and upgrade-larch.sh;
+  # agent-lint's dead-script graph does not follow source directives or prompt
+  # fence source comments, so exclude the sourced-only helper and contract.
+  "skills/upgrade-larch/scripts/release-step7-root.sh",
+  "skills/upgrade-larch/scripts/release-step7-root.md",
   "skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh",
   "skills/design/scripts/test-design-pause-resume.sh",
   # skills/design/scripts/test-write-design-current-env.sh — offline harness
