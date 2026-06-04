@@ -154,8 +154,10 @@ PROMPT_FILE="${OUTPUT}.prompt"
 printf '%s' "$PROMPT" > "$PROMPT_FILE"
 
 MODEL_ARGS_TMP=$(mktemp)
+# Inline-triage rule 2: FINDING_28 — install EXIT trap before CODEX_HOME_DIR creation
+# so MODEL_ARGS_TMP is cleaned up even if mktemp -d fails.
+trap 'rm -f "${MODEL_ARGS_TMP:-}"; rm -rf "${CODEX_HOME_DIR:-}"' EXIT
 CODEX_HOME_DIR=$(mktemp -d /tmp/larch-codex-ci-home-XXXXXX)
-trap 'rm -f "$MODEL_ARGS_TMP"; rm -rf "$CODEX_HOME_DIR"' EXIT
 "$SCRIPT_DIR/agent-model-args.sh" --tool codex --with-effort > "$MODEL_ARGS_TMP"
 MODEL_ARGS=()
 while IFS= read -r arg; do
