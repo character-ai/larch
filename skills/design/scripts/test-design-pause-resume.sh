@@ -6,6 +6,8 @@ set -euo pipefail
 export LARCH_QUIET_DISABLE=1
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+# shellcheck source=skills/design/scripts/test-step3-orchestrator-fence.sh
+source "$REPO_ROOT/skills/design/scripts/test-step3-orchestrator-fence.sh"
 SAVE="$REPO_ROOT/scripts/design-pause-save.sh"
 LOAD="$REPO_ROOT/scripts/design-pause-load.sh"
 NBW="$REPO_ROOT/scripts/named-block-write.sh"
@@ -237,11 +239,14 @@ out_36_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-36" --issue 9 --repo ow
 
 DESIGN_GATE_B="$TMP/design-gate-b-bypass"
 make_design_tmpdir "$DESIGN_GATE_B"
-complete_design_steps "$DESIGN_GATE_B" 3 3.5 3.6
+[[ ! -f "$DESIGN_GATE_B/.completed/step-3" ]] || fail "gate B bypass empty-state precondition unexpectedly has step-3"
+[[ ! -f "$DESIGN_GATE_B/.completed/step-3.5" ]] || fail "gate B bypass empty-state precondition unexpectedly has step-3.5"
+[[ ! -f "$DESIGN_GATE_B/.completed/step-3.6" ]] || fail "gate B bypass empty-state precondition unexpectedly has step-3.6"
+apply_gate_b_bypass_sentinels "$DESIGN_GATE_B" || fail "gate B bypass helper refused empty state"
+[[ -f "$DESIGN_GATE_B/.completed/step-3" && -f "$DESIGN_GATE_B/.completed/step-3.5" && -f "$DESIGN_GATE_B/.completed/step-3.6" ]] || fail "gate B bypass helper missing triple sentinels"
 printf 'issue body gate b\n' >"$BODY_FILE"
 out_gate_b=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B" --issue 9 --repo owner/repo)
-[[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass triple-sentinel layout should resume at 3b: $out_gate_b"
-[[ -f "$DESIGN_GATE_B/.completed/step-3" && -f "$DESIGN_GATE_B/.completed/step-3.5" && -f "$DESIGN_GATE_B/.completed/step-3.6" ]] || fail "gate B bypass missing triple sentinels"
+[[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass plan-size-trigger writes triple sentinels from empty state: $out_gate_b"
 
 DESIGN_GATE_B_MISSING="$TMP/design-gate-b-missing-sentinels"
 make_design_tmpdir "$DESIGN_GATE_B_MISSING"

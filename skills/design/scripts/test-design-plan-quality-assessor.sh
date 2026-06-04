@@ -200,11 +200,11 @@ apply_step3_6_handoff() {
     : >"$d/chat.out"
     : >"$d/handoff.stderr"
     if [[ -f "$d/.pause-requested" ]]; then
-        bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-save.sh" --design-tmpdir "$d" --issue "$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+ISSUE_NUMBER=/ {v=$0; sub(/^export[[:space:]]+ISSUE_NUMBER=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$d/source-env.sh" 2>/dev/null || echo "")" >>"$d/handoff.stderr" 2>&1 || true
+        bash "${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-save.sh" --design-tmpdir "$d" --issue "$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+ISSUE_NUMBER=/ {v=$0; sub(/^export[[:space:]]+ISSUE_NUMBER=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$d/source-env.sh" 2>/dev/null || echo "")" ${REPO:+--repo "$REPO"} >>"$d/handoff.stderr" 2>&1 || true
         return 0
     fi
     LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 3.6 — assessor" >>"$d/handoff.stderr" 2>&1 || true
-    dc=$("$FAKE_SCRIPTS/read-design-classification.sh" "$d/run-params.json" 2>/dev/null || printf '%s\n' HARD)
+    dc=$("$FAKE_SCRIPTS/read-design-classification.sh" "$d/run-params.json" || printf '%s\n' HARD)
     case "$dc" in
         HARD|SIMPLE) ;;
         *) dc=HARD ;;
@@ -730,7 +730,7 @@ assert_rc "handoff exit 2" 1 "$handoff_rc"
 assert_stderr_contains "$D8/handoff.stderr" 'configuration error (exit 2)' "handoff config error banner"
 cp "$SUBJECT" "$FAKE_DESIGN/design-plan-quality-assessor.sh"
 
-# 12 handoff abort: empty mandatory keys
+# 12 handoff settle (rc 0): empty mandatory keys
 reset_env
 D9="$TMP/handoff-empty"
 setup_design_tmp "$D9" HARD

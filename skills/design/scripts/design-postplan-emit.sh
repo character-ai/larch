@@ -93,10 +93,24 @@ export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 
 RESULT_ENV="$DESIGN_TMPDIR/.design-postplan-emit-result.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
+WARN_LINES=()
 REVIEW_BUDGET="$(json_scalar_or_sed "$RUN_PARAMS_PATH" review_budget full)"
 READ_CLASSIFICATION_SH="$PLUGIN_ROOT/scripts/read-design-classification.sh"
 if [[ -x "$READ_CLASSIFICATION_SH" ]]; then
-    WORKFLOW_PATH=$("$READ_CLASSIFICATION_SH" "$RUN_PARAMS_PATH" 2>/dev/null || printf '%s\n' HARD)
+    _classification_stderr="$DESIGN_TMPDIR/.read-design-classification.stderr.$$"
+    set +e
+    WORKFLOW_PATH=$("$READ_CLASSIFICATION_SH" "$RUN_PARAMS_PATH" 2>"$_classification_stderr")
+    _classification_rc=$?
+    set -e
+    if [[ -s "$_classification_stderr" ]]; then
+        while IFS= read -r _classification_warn || [[ -n "$_classification_warn" ]]; do
+            [[ -n "$_classification_warn" ]] && WARN_LINES+=("$_classification_warn")
+        done <"$_classification_stderr"
+    fi
+    rm -f "$_classification_stderr"
+    if [[ "$_classification_rc" -ne 0 ]]; then
+        WORKFLOW_PATH=HARD
+    fi
 else
     WORKFLOW_PATH=HARD
 fi
@@ -111,7 +125,6 @@ VALIDATE_DEFECT_COUNT=0
 VALIDATE_SKIPPED_COUNT=0
 VALIDATE_UNSAFE_TOKEN_COUNT=0
 VALIDATE_LOG_FILE=""
-WARN_LINES=()
 
 _postplan_write_result_and_emit() {
     local -a _kvs=()

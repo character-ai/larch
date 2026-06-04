@@ -214,6 +214,20 @@ set -e
 assert_rc "missing classification snapshot" 0 "$rc"
 assert_file_kv "$D2d/.design-postplan-emit-result.env" SNAPSHOT_STATUS taken "missing classification fails closed HARD snapshot"
 
+D2d_warn="$TMP/classification-warning-quiet"
+mkdir -p "$D2d_warn"
+printf '# Plan\n\ndiff_lines: 12\n' >"$D2d_warn/plan.txt"
+printf 'LARCH_CLAUDE_PLUGIN_ROOT=%s\n' "$FAKE_PLUGIN" >"$D2d_warn/session-env.sh"
+reset_env
+set +e
+env -u LARCH_QUIET_DISABLE CALL_LOG="$CALL_LOG" CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" \
+    bash "$SUBJECT" --design-tmpdir "$D2d_warn" >"$D2d_warn/stdout.txt" 2>"$D2d_warn/stderr.txt"
+rc=$?
+set -e
+export LARCH_QUIET_DISABLE=1
+assert_rc "classification warning quiet rc" 0 "$rc"
+assert_contains "$D2d_warn/stdout.txt" 'WARN=**⚠ read-design-classification: run-params not readable' "classification warning emits WARN in quiet mode"
+
 D2e="$TMP/classification-simple-legacy-hard"
 setup_design_tmp "$D2e" full HARD
 printf '{"review_budget":"full","workflow_path":"HARD","design_classification":"SIMPLE"}
