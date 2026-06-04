@@ -99,8 +99,7 @@ def _error_to_result(exc: Exception) -> ShipResult:
 
 def _breadcrumb(step: str, detail: str = "") -> None:
     suffix = f": {detail}" if detail else ""
-    _ = sys.stderr.write(f"ship.py: {step}{suffix}\n")
-    _ = sys.stderr.flush()
+    logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}")
 
 
 def _summary_from_manifest(ctx: RunContext) -> str:
@@ -750,7 +749,10 @@ def main(argv: list[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     ctx = _ctx_from_args(args)
-    result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
+    try:
+        result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
+    except Exception as exc:
+        result = ShipResult(Outcome.STALLED, detail=str(exc) or exc.__class__.__name__)
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

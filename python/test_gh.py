@@ -246,12 +246,54 @@ def test_pr_create_resolves_success_from_stdout_url_when_list_lags() -> None:
     assert pr.head_ref == "feat"
 
 
+def test_pr_create_resolves_success_from_stderr_url_when_list_lags() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "create"),
+                0,
+                "",
+                "warning: created\nhttps://github.com/o/r/pull/654\n",
+                0.01,
+            ),
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+        ],
+    )
+    pr, created = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
+    assert created is True
+    assert pr.number == 654
+    assert pr.url == "https://github.com/o/r/pull/654"
+
+
+def test_pr_create_success_falls_back_to_current_branch_pr_view() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("gh", "pr", "create"), 0, "Created pull request\n", "", 0.01),
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(
+                ("gh", "pr", "view"),
+                0,
+                '{"number":987,"url":"https://github.com/o/r/pull/987","state":"OPEN","headRefName":"feat"}',
+                "",
+                0.01,
+            ),
+        ],
+    )
+    pr, created = gh.pr_create(runner, repo="o/r", branch="feat", title="t", body="b")
+    assert created is True
+    assert pr.number == 987
+    assert runner.calls[3][:4] == ["gh", "pr", "view", "--repo"]
+
+
 def test_pr_create_success_without_resolvable_pr_raises_ship_error() -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
             CommandResult(("gh", "pr", "create"), 0, "", "", 0.01),
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("gh", "pr", "view"), 1, "", "no pull requests found", 0.01),
         ],
     )
     with pytest.raises(ShipError, match="could not be resolved"):
@@ -259,7 +301,9 @@ def test_pr_create_success_without_resolvable_pr_raises_ship_error() -> None:
 
 
 def test_pr_create_recorded_gh_transcript_no_json_flag() -> None:
-    transcript_stdout = "https://github.com/o/r/pull/321\n"
+    transcript_stdout = (Path(__file__).parent / "fixtures" / "gh-pr-create-success.txt").read_text(
+        encoding="utf-8",
+    )
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),

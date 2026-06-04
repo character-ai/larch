@@ -22,7 +22,6 @@
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence
 .PHONY: test-no-grouped-reuse-guard
-.PHONY: test-parse-bootstrap-routing-envelope
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.

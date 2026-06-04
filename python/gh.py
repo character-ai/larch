@@ -230,6 +230,49 @@ def pr_view(
     )
 
 
+def pr_view_current_read(
+    runner: Runner,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        [
+            "pr",
+            "view",
+            "--repo",
+            repo,
+            "--json",
+            "number,url,state,headRefName",
+        ],
+        cwd=cwd,
+    )
+
+
+def pr_view_current(
+    runner: Runner,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> PullRequest | None:
+    result = pr_view_current_read(runner, repo=repo, cwd=cwd)
+    if result.returncode != 0:
+        return None
+    data = _as_json_object(_loads_json(result.stdout, context="pr view current"), context="pr view current")
+    _require_json_keys(
+        data,
+        ("number", "url", "state", "headRefName"),
+        context="pr view current",
+    )
+    return PullRequest(
+        number=_as_int(data["number"], context="pr view current", field="number"),
+        url=str(data["url"]),
+        state=str(data["state"]),
+        head_ref=str(data["headRefName"]),
+    )
+
+
 def pr_for_branch_read(
     runner: Runner,
     branch: str,
@@ -367,8 +410,14 @@ def pr_create(
         recovered = None
     if recovered is not None:
         return recovered, True
-    recovered = _recover_pr_from_conflict_text(result.stdout, branch=branch)
+    recovered = _recover_pr_from_conflict_text(_combined(result), branch=branch)
     if recovered is not None:
+        return recovered, True
+    try:
+        recovered = pr_view_current(runner, repo=repo, cwd=cwd)
+    except (ShipError, TransientNetworkError):
+        recovered = None
+    if recovered is not None and recovered.head_ref == branch:
         return recovered, True
     msg = "gh pr create succeeded, but the created PR could not be resolved"
     raise ShipError(msg)

@@ -26,13 +26,14 @@ def _quiet_disabled() -> bool:
 class BreadcrumbWriter:
     """stderr breadcrumb stream; suppressed when quiet is active."""
 
-    stream: TextIO = sys.stderr
+    stream: TextIO | None = None
 
     def emit(self, message: str, *, quiet: bool = False) -> None:
         if quiet and not _quiet_disabled():
             return
-        _ = self.stream.write(message.rstrip("\n") + "\n")
-        _ = self.stream.flush()
+        stream = self.stream or sys.stderr
+        _ = stream.write(message.rstrip("\n") + "\n")
+        _ = stream.flush()
 
 
 @dataclass

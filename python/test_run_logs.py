@@ -577,8 +577,22 @@ def test_larch_log_commit_skips_volatile_refresh_only_and_cleans(
         cwd=str(repo),
     )
     assert result.returncode == 0
+    assert result.argv == ("larch-log-volatile-only",)
     assert runner.git_commits == 0
-    assert ["git", "clean", "-fd", "--", rel] in runner.calls
+    assert ["git", "clean", "-fd", "--", f"{rel}/token-report-refresh.json"] in runner.calls
+
+
+def test_flush_logs_pre_reports_volatile_only_skip_reason(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    def fake_commit(*_a: object, **_k: object) -> CommandResult:
+        return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.01)
+
+    monkeypatch.setattr(run_logs, "_larch_log_commit", fake_commit)
+    skip = run_logs.flush_logs_pre(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))
+    assert skip.skipped
+    assert skip.reason == config.REFRESH_SKIP_VOLATILE_ONLY
 
 
 def test_larch_log_commit_commits_canonical_token_report_delta(
@@ -635,3 +649,85 @@ def test_larch_log_commit_volatile_cleanup_fails_closed_on_dirty_repo(
             tmp_path / "larch-logs",
             cwd=str(repo),
         )
+
+
+@pytest.mark.parametrize(
+    ("failing_call", "status_stdout"),
+    [
+        (
+            ("git", "reset"),
+            "A  larch-logs/implement/run-abc/token-report-refresh.json\n",
+        ),
+        (
+            ("git", "restore"),
+            " M larch-logs/implement/run-abc/token-report-refresh.json\n",
+        ),
+        (
+            ("git", "clean"),
+            "?? larch-logs/implement/run-abc/token-report-refresh.json\n",
+        ),
+    ],
+)
+def test_larch_log_commit_volatile_cleanup_git_failures_fail_closed(
+    failing_call: tuple[str, str],
+    status_stdout: str,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "token-report-refresh.json").write_text("{}", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rel = "larch-logs/implement/run-abc"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "status"), 0, status_stdout, "", 0.01),
+            CommandResult(failing_call, 1, "", "failed", 0.01),
+        ],
+    )
+    with pytest.raises(ShipError, match="run-log volatile cleanup failed"):
+        _ = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            _ctx(tmp_path, str(state)),
+            tmp_path / "larch-logs",
+            cwd=str(repo),
+        )
+    assert all(call != ["git", "clean", "-fd", "--", rel] for call in runner.calls)
+
+
+def test_larch_log_commit_scrubbed_volatile_sidecar_is_committed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    src = tmp_path / "larch-logs" / "implement" / "run-abc"
+    src.mkdir(parents=True)
+    _ = (src / "token-report-refresh.json").write_text("secret", encoding="utf-8")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    rel = "larch-logs/implement/run-abc"
+
+    def fake_scrub(_directory: Path) -> tuple[int, int]:
+        return 1, 1
+
+    monkeypatch.setattr(run_logs, "_scrub_run_tree", fake_scrub)
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "status"), 0, f" M {rel}/token-report-refresh.json\n", "", 0.01),
+            CommandResult(("git", "add"), 0, "", "", 0.01),
+            CommandResult(("git", "diff"), 1, "", "", 0.01),
+            CommandResult(("git", "commit", "-m"), 0, "", "", 0.01),
+        ],
+    )
+    result = run_logs._larch_log_commit(  # pyright: ignore[reportPrivateUsage]
+        runner,
+        _ctx(tmp_path, str(state)),
+        tmp_path / "larch-logs",
+        cwd=str(repo),
+    )
+    assert result.returncode == 0
+    assert any(call[:3] == ["git", "commit", "-m"] for call in runner.calls)
+    assert not any(call[:2] == ["git", "restore"] for call in runner.calls)

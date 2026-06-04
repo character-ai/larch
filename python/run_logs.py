@@ -564,6 +564,8 @@ def flush_logs_pre(
     commit_result = _larch_log_commit(runner, ctx, log_root, cwd=cwd)
     if commit_result.returncode != 0:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
+    if commit_result.argv == ("larch-log-volatile-only",):
+        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
     return RefreshSkip(skipped=False, reason="")
 
 
@@ -870,10 +872,6 @@ def _cleanup_volatile_run_tree(
     cwd: str,
 ) -> None:
     lines = status_stdout.splitlines()
-    has_added = any(
-        not line.startswith("?? ") and "A" in line[:2]
-        for line in lines
-    )
     has_staged = any(
         not line.startswith("?? ") and line[:1] != " "
         for line in lines
@@ -894,8 +892,20 @@ def _cleanup_volatile_run_tree(
             ["git", "restore", "--worktree", "--staged", "--source=HEAD", "--", *tracked_paths],
             cwd=cwd,
         )
-    if has_added or any(line.startswith("?? ") for line in lines):
-        _run_git_cleanup(runner, ["git", "clean", "-fd", "--", rel], cwd=cwd)
+    clean_paths = tuple(
+        clean_path
+        for line in lines
+        if line.startswith("?? ") or "A" in line[:2]
+        for path in (_status_line_path(line),)
+        for clean_path in (
+            paths
+            if line.startswith("?? ") and path.rstrip("/") == rel
+            else (path,)
+        )
+        if clean_path in paths
+    )
+    if clean_paths:
+        _run_git_cleanup(runner, ["git", "clean", "-fd", "--", *clean_paths], cwd=cwd)
     repo_status = git.status_porcelain(runner, cwd=cwd)
     if repo_status.returncode != 0:
         msg = "git status failed after volatile run-log cleanup"
@@ -968,6 +978,7 @@ def _larch_log_commit(
     # Pre-flush secret gate: scrub Cursor keys et al. from the staged run tree
     # before commit (parity with scripts/scrub-log-secrets.sh). Fail-closed via
     # ShipError if a detected secret survives.
+    violations = 0
     if cwd is not None:
         scrub_dir = Path(cwd) / rel
         if scrub_dir.is_dir():
@@ -981,7 +992,7 @@ def _larch_log_commit(
         return CommandResult(("true",), 0, "", "", 0.0)
     if cwd is not None:
         volatile_paths = _volatile_only_under_run_tree(rel, cwd, status.stdout)
-        if volatile_paths is not None:
+        if volatile_paths is not None and violations == 0:
             _cleanup_volatile_run_tree(
                 runner,
                 rel,
@@ -989,7 +1000,7 @@ def _larch_log_commit(
                 status.stdout,
                 cwd=cwd,
             )
-            return CommandResult(("true",), 0, "", "", 0.0)
+            return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.0)
     _ = git.add(runner, rel, cwd=cwd)
     if git.diff_quiet(runner, rel, cached=True, cwd=cwd):
         return CommandResult(("true",), 0, "", "", 0.0)

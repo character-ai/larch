@@ -562,3 +562,31 @@ def test_main_emits_json_stdout_and_breadcrumb_stderr(
     assert payload["outcome"] == "STALLED"
     assert captured.out.count("\n") == 1
     assert "ship.py: checks: Lint&Tests" in captured.err
+
+
+def test_main_emits_json_stdout_on_unexpected_exception(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    def fake_run_ship(*_a: object, **_k: object) -> ship.ShipResult:
+        raise RuntimeError("unexpected failure")
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    rc = ship.main(
+        [
+            "--tmpdir",
+            str(tmp_path),
+            "--manifest-path",
+            str(tmp_path / "manifest.json"),
+            "--run-id",
+            "run-abc",
+        ],
+    )
+    captured = capsys.readouterr()
+    assert rc == config.EXIT_STALLED
+    payload = json.loads(captured.out)
+    assert payload["outcome"] == "STALLED"
+    assert payload["detail"] == "unexpected failure"
+    assert captured.out.count("\n") == 1
