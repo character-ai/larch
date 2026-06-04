@@ -427,6 +427,50 @@ else
     fail 4g "empty OPENAI_API_KEY should use login auth without env-key argv"
 fi
 
+AUTH_PREP_HOME="$SCRATCH/auth-prep-home"
+AUTH_PREP_BIN="$SCRATCH/auth-prep-bin"
+mkdir -p "$AUTH_PREP_BIN"
+ln -sf "$STUB_BIN/codex" "$AUTH_PREP_BIN/codex"
+cat > "$AUTH_PREP_BIN/mv" <<'EOF'
+#!/usr/bin/env bash
+exit 99
+EOF
+chmod +x "$AUTH_PREP_BIN/mv"
+mkdir -p "$AUTH_PREP_HOME/.codex"
+printf 'model_provider = "openai-larch-env"\n' > "$AUTH_PREP_HOME/.codex/config.toml"
+chmod a-w "$AUTH_PREP_HOME/.codex/config.toml" 2>/dev/null || true
+AUTH_PREP_TRANSCRIPT="$SCRATCH/auth-prep-fail-transcript.txt"
+AUTH_PREP_SIDECAR="$SCRATCH/auth-prep-fail-sidecar.log"
+AUTH_PREP_OUT=$(cd "$REPO_ROOT" && \
+    PATH="$AUTH_PREP_BIN:$PATH" \
+    env -u OPENAI_API_KEY \
+    HOME="$AUTH_PREP_HOME" \
+    STUB_ARGV_FILE="$SCRATCH/auth-prep-fail-argv.txt" \
+    STUB_PROMPT_FILE="$SCRATCH/auth-prep-fail-prompt.txt" \
+    STUB_LAST_ARG_FILE="$SCRATCH/auth-prep-fail-last-arg.txt" \
+    STUB_SEPARATOR_INDEX_FILE="$SCRATCH/auth-prep-fail-separator-index.txt" \
+    STUB_MANIFEST_PATH="$SCRATCH/auth-prep-fail-manifest.json" \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR_FIXTURE" \
+    LARCH_CODEX_MODEL="stub-codex-model" \
+    "$LAUNCHER" \
+        --transcript-path "$AUTH_PREP_TRANSCRIPT" \
+        --sidecar-log "$AUTH_PREP_SIDECAR" \
+        --manifest-path "$SCRATCH/auth-prep-fail-manifest.json" \
+        --qa-pending-path "$SCRATCH/auth-prep-fail-qa.json" \
+        --plan-file "$PLAN" \
+        --feature-file "$FEATURE" \
+        --agent-prompt "$AGENT_PROMPT" \
+        --timeout 30)
+chmod u+w "$AUTH_PREP_HOME/.codex/config.toml" 2>/dev/null || true
+if [[ "$AUTH_PREP_OUT" == *"MANIFEST_WRITTEN=false"* ]] \
+   && [[ "$AUTH_PREP_OUT" == *"QA_PENDING_WRITTEN=false"* ]] \
+   && grep -Fq 'codex-auth-setup: failed to prepare Codex auth material' "$AUTH_PREP_SIDECAR" \
+   && [[ ! -e "$SCRATCH/auth-prep-fail-argv.txt" ]]; then
+    pass
+else
+    fail 4h "auth-prep failure should emit launcher KV envelope and skip Codex spawn; out=$AUTH_PREP_OUT sidecar=$(cat "$AUTH_PREP_SIDECAR" 2>/dev/null)"
+fi
+
 if [[ -s "$TRANSCRIPT" ]] && grep -Fq 'stub codex stdout' "$TRANSCRIPT"; then
     pass
 else

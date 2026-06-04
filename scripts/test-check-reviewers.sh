@@ -264,6 +264,27 @@ out=$(run_cr "$SCRATCH/t7" env PATH="$SB7:/usr/bin:/bin" LARCH_PROBE_TTL_SECONDS
 assert_line "codex non-auth" "CODEX_PRESENT=false" "$out"
 assert_line "codex non-auth binary" "CODEX_BINARY_FOUND=true" "$out"
 
+SB7A="$SCRATCH/bin7a"
+mkdir -p "$SB7A" "$SCRATCH/t7a-home/.codex"
+cat > "$SB7A/codex" <<'STUB'
+#!/usr/bin/env bash
+printf 'codex should not be invoked after auth-prep failure\n' >&2
+exit 0
+STUB
+chmod +x "$SB7A/codex"
+cat > "$SB7A/cursor" <<'STUB'
+#!/usr/bin/env bash
+exit 127
+STUB
+chmod +x "$SB7A/cursor"
+printf 'model_provider = "openai-larch-env"\n' > "$SCRATCH/t7a-home/.codex/config.toml"
+chmod a-w "$SCRATCH/t7a-home/.codex/config.toml" 2>/dev/null || true
+out=$(run_cr "$SCRATCH/t7a" env PATH="$SB7A:/usr/bin:/bin" HOME="$SCRATCH/t7a-home" LARCH_PROBE_TTL_SECONDS=0 \
+    LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux LARCH_EXTERNAL_AUTH_RETRIES=3 "$CR")
+chmod u+w "$SCRATCH/t7a-home/.codex/config.toml" 2>/dev/null || true
+assert_line "codex auth-prep failure non-aborting" "CODEX_PRESENT=false" "$out"
+assert_line "codex auth-prep failure still emits cursor" "CURSOR_PRESENT=false" "$out"
+
 SB8="$SCRATCH/bin8"
 mkdir -p "$SB8"
 cat > "$SB8/codex" <<'STUB'
@@ -348,11 +369,10 @@ out=$(cd "$REPO_ROOT" && TMPDIR="$SCRATCH/t10-env-key" PATH="$SB10E:/usr/bin:/bi
     OPENAI_API_KEY=sk-larch-probe-sentinel LARCH_TEST_CODEX_ARGV_LOG="$SCRATCH/t10-env-key/codex-argv.log" \
     LARCH_PROBE_TTL_SECONDS=3600 LARCH_EXTERNAL_AUTH_RETRIES=1 \
     LARCH_LIB_CURSOR_AUTH_TEST_MODE=1 LIB_CURSOR_AUTH_TEST_UNAME=Linux "$CR")
-assert_line "codex env-key true stamp bypasses cache" "CODEX_PRESENT=false" "$out"
-grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$SCRATCH/t10-env-key/codex-argv.log" \
-    || fail "codex env-key probe must pass auth config argv when bypassing cache"
-grep -Fq 'sk-larch-probe-sentinel' "$SCRATCH/t10-env-key/codex-argv.log" \
-    && fail "codex env-key probe argv must not include secret value"
+assert_line "codex env-key true stamp uses cache" "CODEX_PRESENT=true" "$out"
+if [[ -s "$SCRATCH/t10-env-key/codex-argv.log" ]]; then
+    fail "codex env-key true stamp should not invoke live probe"
+fi
 
 mkdir -p "$SCRATCH/t11"
 SB11="$SCRATCH/bin11"

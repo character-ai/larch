@@ -547,10 +547,26 @@ external_strip_codex_larch_env_provider() {
         function is_larch_provider_header(line) {
             return line ~ /^[[:space:]]*\[\[?[[:space:]]*model_providers\.openai-larch-env[[:space:]]*\]?\][[:space:]]*(#.*)?$/
         }
-        function update_multiline_state(line,    dq, sq) {
+        function strip_inline_comment(line,    i, ch, prev, in_dq, in_sq, out) {
+            out = ""
+            prev = ""
+            in_dq = 0
+            in_sq = 0
+            for (i = 1; i <= length(line); i++) {
+                ch = substr(line, i, 1)
+                if (ch == "\"" && !in_sq && prev != "\\") in_dq = !in_dq
+                else if (ch == "'\''" && !in_dq) in_sq = !in_sq
+                if (ch == "#" && !in_dq && !in_sq) break
+                out = out ch
+                prev = ch
+            }
+            return out
+        }
+        function update_multiline_state(line,    content, dq, sq) {
             if (is_comment(line)) return
-            dq = count_occurrences(line, "\"\"\"")
-            sq = count_occurrences(line, "'\'''\'''\''")
+            content = strip_inline_comment(line)
+            dq = count_occurrences(content, "\"\"\"")
+            sq = count_occurrences(content, "'\'''\'''\''")
             if (dq % 2 == 1) in_dq_multiline = !in_dq_multiline
             if (sq % 2 == 1) in_sq_multiline = !in_sq_multiline
         }
@@ -575,8 +591,8 @@ external_strip_codex_larch_env_provider() {
             }
             current_table="other"
         }
-        !was_in_multiline && current_table == "" && $0 ~ /^[[:space:]]*model_provider[[:space:]]*=[[:space:]]*["'\'']openai-larch-env["'\''][[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
-        !was_in_multiline && current_table == "" && $0 ~ /^[[:space:]]*env_key[[:space:]]*=[[:space:]]*["'\'']OPENAI_API_KEY["'\''][[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
+        !was_in_multiline && $0 ~ /^[[:space:]]*model_provider[[:space:]]*=[[:space:]]*["'\'']openai-larch-env["'\''][[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
+        !was_in_multiline && $0 ~ /^[[:space:]]*env_key[[:space:]]*=[[:space:]]*["'\'']OPENAI_API_KEY["'\''][[:space:]]*(#.*)?$/ { update_multiline_state($0); next }
         { print; update_multiline_state($0) }
     ' "$config_path" > "$tmp_path"; then
         mv -f "$tmp_path" "$config_path" || { rm -f "$tmp_path"; return 1; }

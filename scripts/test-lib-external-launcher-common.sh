@@ -74,7 +74,7 @@ _codex_auth_home="$TMPDIR_ROOT/codex-auth-home"
 mkdir -p "$TMPDIR_ROOT/home/.codex"
 printf '{"token":"login"}\n' > "$TMPDIR_ROOT/home/.codex/auth.json"
 printf '%s\n' \
-    'model_provider = "openai-larch-env"' \
+    'model_provider = "openai-larch-env" # strip nested selector' \
     'env_key = "OPENAI_API_KEY"' \
     '[model_providers.openai-larch-env]' \
     'name = "old larch"' \
@@ -142,6 +142,8 @@ printf '%s\n' \
     'env_key = "OPENAI_API_KEY"' \
     'name = "keep nested selector text"' \
     '# comment with """ must not enter multiline mode' \
+    'title = "keep after inline comment" # comment with """ must not enter multiline mode' \
+    'model_provider = "openai-larch-env"' \
     'instructions = """' \
     'model_provider = "openai-larch-env"' \
     '"""' \
@@ -153,7 +155,9 @@ external_strip_codex_larch_env_provider "$TMPDIR_ROOT/strip-edge-config.toml"
 assert_file_not_contains "codex login strip removes single-quoted selector" "$TMPDIR_ROOT/strip-edge-config.toml" "model_provider='openai-larch-env'"
 assert_file_not_contains "codex login strip removes single-quoted env_key" "$TMPDIR_ROOT/strip-edge-config.toml" "env_key='OPENAI_API_KEY'"
 assert_file_not_contains "codex login strip removes spaced larch provider body" "$TMPDIR_ROOT/strip-edge-config.toml" 'strip spaced table'
+assert_file_not_contains "codex login strip removes nested larch selector" "$TMPDIR_ROOT/strip-edge-config.toml" 'model_provider = "openai-larch-env" # strip nested selector'
 assert_file_contains "codex login strip preserves nested selector text" "$TMPDIR_ROOT/strip-edge-config.toml" 'name = "keep nested selector text"'
+assert_file_contains "codex login strip ignores triple quote in inline comment" "$TMPDIR_ROOT/strip-edge-config.toml" 'title = "keep after inline comment"'
 assert_file_contains "codex login strip recovers after malformed skipped table" "$TMPDIR_ROOT/strip-edge-config.toml" '[model_providers.after]'
 assert_file_contains "codex login strip preserves table after malformed skipped table" "$TMPDIR_ROOT/strip-edge-config.toml" 'name = "keep after malformed skipped table"'
 
@@ -201,6 +205,35 @@ OPENAI_API_KEY='sk-larch-xtrace-sentinel' bash -c '
     set +x
 ' bash "$REPO_ROOT" 2>"$_xtrace"
 assert_file_not_contains "codex env-key predicate xtrace excludes key value" "$_xtrace" 'sk-larch-xtrace-sentinel'
+
+_args_xtrace="$TMPDIR_ROOT/codex-auth-args-xtrace.txt"
+# shellcheck disable=SC2016
+OPENAI_API_KEY='sk-larch-auth-args-xtrace-sentinel' bash -c '
+    set -euo pipefail
+    source "$1/scripts/lib-external-launcher-common.sh"
+    args=()
+    set -x
+    external_codex_auth_config_args args
+    set +x
+' bash "$REPO_ROOT" 2>"$_args_xtrace"
+assert_file_not_contains "codex auth argv helper xtrace excludes key value" "$_args_xtrace" 'sk-larch-auth-args-xtrace-sentinel'
+
+_env_key_fail_parent="$TMPDIR_ROOT/env-key-auth-fail-parent"
+printf 'not a directory\n' > "$_env_key_fail_parent"
+set +e
+(
+    OPENAI_API_KEY='sk-larch-env-key-fail-sentinel'
+    HOME="$TMPDIR_ROOT/home"
+    export OPENAI_API_KEY HOME
+    external_prepare_codex_auth "$_env_key_fail_parent/child"
+)
+_env_key_fail_rc=$?
+set -e
+if [[ "$_env_key_fail_rc" -ne 0 && ! -e "$_env_key_fail_parent/child/auth.json" ]]; then
+    pass
+else
+    fail "codex env-key auth-prep failure must not fall back to login auth.json"
+fi
 
 EMPTY_OUTPUT="$TMPDIR_ROOT/empty.output"
 : > "$EMPTY_OUTPUT"

@@ -65,11 +65,11 @@ larch_probe_exit_cleanup() {
     for ((i = 0; i < ${#PROBE_TMPFILES[@]}; i++)); do
         rm -f "${PROBE_TMPFILES[i]}"
     done
-    for ((i = 0; i < ${#PROBE_DIRS[@]}; i++)); do
-        rm -rf "${PROBE_DIRS[i]}"
-    done
     for ((i = 0; i < ${#PROBE_PIDS[@]}; i++)); do
         kill "${PROBE_PIDS[i]}" 2>/dev/null || true
+    done
+    for ((i = 0; i < ${#PROBE_DIRS[@]}; i++)); do
+        rm -rf "${PROBE_DIRS[i]}"
     done
 }
 trap 'larch_probe_exit_cleanup' EXIT
@@ -316,8 +316,7 @@ elif [[ "$SKIP_CODEX_PROBE" == "true" ]]; then
 else
     _CACHED_C=""
     _CODEX_STAMP_KEY=$(larch_codex_probe_stamp_key)
-    if larch_try_read_fresh_stamp "$(larch_stamp_path "$_CODEX_STAMP_KEY")" _CACHED_C \
-        && ! external_codex_env_key_enabled; then
+    if larch_try_read_fresh_stamp "$(larch_stamp_path "$_CODEX_STAMP_KEY")" _CACHED_C; then
         CODEX_PRESENT="$_CACHED_C"
     else
         AUTH_ATTEMPT=1

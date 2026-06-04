@@ -154,6 +154,11 @@ if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$runtim
 else
     fail "runtime success env-key auth argv mismatch: $(cat "$runtime_argv" 2>/dev/null)"
 fi
+if ! grep -Fq 'sk-larch-ci-sentinel' "${OUT_SUCCESS}.events.jsonl" 2>/dev/null; then
+    ok "runtime success env-key events omit secret value"
+else
+    fail "runtime success env-key events leaked secret value: $(cat "${OUT_SUCCESS}.events.jsonl" 2>/dev/null)"
+fi
 
 OUT_LOGIN_UNSET="$TMPDIR_BASE/ci-runtime-login-unset"
 (cd "$REPO_ROOT" && PATH="$runtime_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" IMPLEMENT_TMPDIR="$TMPDIR_BASE" \

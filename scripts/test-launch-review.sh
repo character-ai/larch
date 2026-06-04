@@ -167,6 +167,15 @@ fi
 if [[ -n "${CODEX_STUB_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
     cp "$CODEX_HOME/config.toml" "$CODEX_STUB_CONFIG_FILE"
 fi
+if [[ -n "${CODEX_STUB_AUTH_LINK_FILE:-}" && -n "${CODEX_HOME:-}" ]]; then
+    if [[ -L "$CODEX_HOME/auth.json" ]]; then
+        readlink "$CODEX_HOME/auth.json" > "$CODEX_STUB_AUTH_LINK_FILE"
+    elif [[ -e "$CODEX_HOME/auth.json" ]]; then
+        printf 'not-symlink\n' > "$CODEX_STUB_AUTH_LINK_FILE"
+    else
+        : > "$CODEX_STUB_AUTH_LINK_FILE"
+    fi
+fi
 if [[ -n "${CODEX_STUB_LOCK_PATH:-}" && -n "${CODEX_STUB_LOCK_SEEN_FILE:-}" && -d "$CODEX_STUB_LOCK_PATH" ]]; then
     printf 'present\n' > "$CODEX_STUB_LOCK_SEEN_FILE"
 fi
@@ -341,13 +350,36 @@ if grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_E
 else
     fail "set OPENAI_API_KEY should use env-key auth argv without leaking key value"
 fi
+for _codex_env_key_artifact in \
+    "$TMPDIR/out-env-key.txt.meta" \
+    "$TMPDIR/out-env-key.txt.events.jsonl" \
+    "$TMPDIR/out-env-key.txt.sidecar" \
+    "$TMPDIR/out-env-key.txt"; do
+    if grep -Fq 'sk-larch-review-sentinel' "$_codex_env_key_artifact" 2>/dev/null; then
+        fail "set OPENAI_API_KEY must not leak key value into $_codex_env_key_artifact"
+    fi
+done
 
 ARGV_LOGIN_UNSET="$TMPDIR/argv-login-unset.txt"
 COUNT_LOGIN_UNSET="$TMPDIR/count-login-unset.txt"
+HOME_LOGIN_UNSET="$TMPDIR/home-login-unset"
+CONFIG_LOGIN_UNSET="$TMPDIR/config-login-unset.toml"
+AUTH_LINK_LOGIN_UNSET="$TMPDIR/auth-link-login-unset.txt"
+mkdir -p "$HOME_LOGIN_UNSET/.codex"
+printf '{"token":"login"}\n' > "$HOME_LOGIN_UNSET/.codex/auth.json"
+printf '%s\n' \
+    '[model_providers.openai-larch-env]' \
+    'name = "strip stale env provider"' \
+    '[model_providers.keep]' \
+    'name = "keep provider"' \
+    'model_provider = "openai-larch-env"' > "$HOME_LOGIN_UNSET/.codex/config.toml"
 PATH="$STUB_BIN:$PATH" \
     env -u OPENAI_API_KEY \
+    HOME="$HOME_LOGIN_UNSET" \
     CODEX_STUB_ARGV_LOG="$ARGV_LOGIN_UNSET" \
     CODEX_STUB_COUNT_FILE="$COUNT_LOGIN_UNSET" \
+    CODEX_STUB_CONFIG_FILE="$CONFIG_LOGIN_UNSET" \
+    CODEX_STUB_AUTH_LINK_FILE="$AUTH_LINK_LOGIN_UNSET" \
     LARCH_CODEX_MODEL="stub-model" \
     "$LAUNCHER" --output "$TMPDIR/out-login-unset.txt" --timeout 5 --prompt "login-unset" >/dev/null
 if ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV_LOGIN_UNSET" 2>/dev/null; then
@@ -355,6 +387,12 @@ if ! grep -Fq 'model_providers.openai-larch-env.env_key="OPENAI_API_KEY"' "$ARGV
 else
     fail "unset OPENAI_API_KEY should use login auth without env-key argv"
 fi
+grep -Fq 'strip stale env provider' "$CONFIG_LOGIN_UNSET" \
+    && fail "unset OPENAI_API_KEY login config should strip larch env provider"
+grep -Fq 'model_provider = "openai-larch-env"' "$CONFIG_LOGIN_UNSET" \
+    && fail "unset OPENAI_API_KEY login config should strip stale selector"
+assert_grep "unset OPENAI_API_KEY login config preserves unrelated provider" 'name = "keep provider"' "$CONFIG_LOGIN_UNSET"
+assert_eq "unset OPENAI_API_KEY login auth symlink" "$HOME_LOGIN_UNSET/.codex/auth.json" "$(cat "$AUTH_LINK_LOGIN_UNSET")"
 
 ARGV_LOGIN_EMPTY="$TMPDIR/argv-login-empty.txt"
 COUNT_LOGIN_EMPTY="$TMPDIR/count-login-empty.txt"
