@@ -75,6 +75,16 @@ branch by:
    explicitly skips `--watch`. A non-zero completion watch keeps the distinct
    `required CI checks did not pass` diagnostic.
 
+## Empty Porcelain (Final)
+
+For `--reason final`, an empty `git status --porcelain -- larch-logs/design/<RUN_ID>`
+after staging is treated as an idempotent success only when `origin/<default>`
+already contains at least one path below that run directory. In that case the
+script emits `PUBLISH_OK=true` with empty PR fields and does not create or merge
+a flush PR. If the default branch does not contain the run directory, the same
+empty-porcelain state is a fail-closed publish (`PUBLISH_OK=false`) because no
+fresh log snapshot can be proven to exist.
+
 ## Pause Reason
 
 `--reason final|pause` defaults to `final`. Pause callers MUST pass

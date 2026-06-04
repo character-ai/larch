@@ -519,6 +519,19 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-ASSESSOR2" \
 grep -Fq 'assessor WORSE verdict (round ?)' "$D/final-summary.md" || fail 'cancelled-assessor-worse missing ? round default'
 pass 'cancelled-assessor-worse outcome'
 
+failed_publish_stdout="$TMP/std-failed-publish-recovery.log"
+DESIGN_LOG_PR_NUMBER=456 \
+DESIGN_LOG_PR_URL=https://github.example/pull/456 \
+DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-RUNRECOVERY \
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-RECOVERY" \
+    "$SUBJECT" --outcome failed-publish --mode SIMPLE --post-publish-only >"$failed_publish_stdout" 2>/dev/null
+grep -Fq -- "- **Log recovery branch**: \`larch-log-design-RUNRECOVERY\`" "$D/final-summary.md" || fail 'failed-publish missing recovery branch'
+grep -Fq -- '- **Log flush PR**: #456 — https://github.example/pull/456' "$D/final-summary.md" || fail 'failed-publish missing flush PR'
+grep -Fq -- '- **Publish recovery**: design logs did not finish publishing; recover or close the flush PR before treating logs as complete.' "$D/final-summary.md" || fail 'failed-publish missing recovery guidance'
+cmp -s "$D/final-summary.md" "$failed_publish_stdout" || fail 'failed-publish recovery stdout/file mismatch'
+unset DESIGN_LOG_PR_NUMBER DESIGN_LOG_PR_URL DESIGN_LOG_RECOVERY_BRANCH
+pass 'failed-publish recovery bullets'
+
 for summary_outcome in \
     approved \
     approved-partition \

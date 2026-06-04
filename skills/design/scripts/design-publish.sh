@@ -219,23 +219,6 @@ fi
 
 PLAN_WRITE_OK=true
 
-# shellcheck source=scripts/lib-design-reentry-guard.sh
-source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"
-set +e
-design_reentry_marker_write "$ISSUE" "$CLAUDE_PID" 2>"$DESIGN_TMPDIR/design-reentry-marker-write.failure.log"
-_marker_rc=$?
-if [[ "$_marker_rc" -ne 0 ]]; then
-    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-        --log "$DESIGN_TMPDIR/execution-issues.md" \
-        --site "design Step 5c marker write" \
-        --tool "design_reentry_marker_write" \
-        --exit-code "$_marker_rc" \
-        --category Warnings \
-        --output-file "$DESIGN_TMPDIR/design-reentry-marker-write.failure.log" \
-        --redact >/dev/null 2>&1 || true
-fi
-set -e
-
 _arch_file="$DESIGN_TMPDIR/architecture-diagram.md"
 _arch_skipped="$DESIGN_TMPDIR/architecture-diagram.skipped"
 _run_upsert=false
@@ -272,14 +255,7 @@ if [[ "$_run_upsert" == true ]]; then
 fi
 
 if [[ -n "$SESSION_ID" ]]; then
-    "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
-        --outcome approved \
-        --mode "$MODE" \
-        ${REPO:+--repo "$REPO"} \
-        --pre-publish-only || true
-fi
-
-if [[ -n "$SESSION_ID" ]]; then
+    rm -f "$FINAL_SUMMARY_PATH" 2>/dev/null || true
     set +e
     _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \
         --design-tmpdir "$DESIGN_TMPDIR" \
@@ -369,6 +345,23 @@ if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
     else
         add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan and logs may have published but the issue title was not updated. Re-invoke /design or rename manually if the title is still wrong.**"
     fi
+
+    # shellcheck source=scripts/lib-design-reentry-guard.sh
+    source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"
+    set +e
+    design_reentry_marker_write "$ISSUE" "$CLAUDE_PID" 2>"$DESIGN_TMPDIR/design-reentry-marker-write.failure.log"
+    _marker_rc=$?
+    if [[ "$_marker_rc" -ne 0 ]]; then
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 5c marker write" \
+            --tool "design_reentry_marker_write" \
+            --exit-code "$_marker_rc" \
+            --category Warnings \
+            --output-file "$DESIGN_TMPDIR/design-reentry-marker-write.failure.log" \
+            --redact >/dev/null 2>&1 || true
+    fi
+    set -e
 fi
 
 if ! write_result_env_and_emit; then

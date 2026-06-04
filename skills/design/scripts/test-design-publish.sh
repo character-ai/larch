@@ -244,21 +244,22 @@ grep -q 'PUBLISH_OK=true' "$D_OK/.design-publish-result.env" || fail "happy PUBL
 grep -q 'RENAMED=true' "$D_OK/.design-publish-result.env" || fail "happy RENAMED"
 
 plan_pos=$(grep -n 'plan-block-write' "$CALL_LOG" | head -1 | cut -d: -f1)
-marker_pos=$(grep -n 'design-reentry-marker-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 upsert_pos=$(grep -n 'upsert-diagrams' "$CALL_LOG" | head -1 | cut -d: -f1)
 publish_pos=$(grep -n 'design-log-publish' "$CALL_LOG" | head -1 | cut -d: -f1)
-if [[ -z "$plan_pos" || -z "$marker_pos" || -z "$upsert_pos" || -z "$publish_pos" ]]; then
+rename_pos=$(grep -n 'tracking-issue-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+marker_pos=$(grep -n 'design-reentry-marker-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+if [[ -z "$plan_pos" || -z "$upsert_pos" || -z "$publish_pos" || -z "$rename_pos" || -z "$marker_pos" ]]; then
     fail "happy path call log missing plan/marker/upsert/publish entries"
-elif [[ "$plan_pos" -ge "$marker_pos" || "$marker_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$publish_pos" ]]; then
-    fail "happy path call-log ordering plan→marker→upsert→publish"
+elif [[ "$plan_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$publish_pos" || "$publish_pos" -ge "$rename_pos" || "$rename_pos" -ge "$marker_pos" ]]; then
+    fail "happy path call-log ordering plan→upsert→publish→rename→marker"
 else
-    pass "happy path call-log ordering plan→marker→upsert→publish"
+    pass "happy path call-log ordering plan→upsert→publish→rename→marker"
 fi
 grep -q 'design-log-publish' "$PUBLISH_LOG" || fail "design-log-publish.sh should run on happy path"
 
 marker_file="$D_OK_HOME/.cache/larch/sessions/design-completed-42-9999"
 [[ -f "$marker_file" ]] || fail "happy path reentry marker file missing at $marker_file"
-grep -q 'pre-publish-only' "$RENDER_LOG" || fail "happy path missing pre-publish render"
+! grep -q 'pre-publish-only' "$RENDER_LOG" || fail "happy path must not pre-stage final-summary before publish outcome"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "happy path missing post-publish render"
 grep -q 'ISSUE_NUMBER=42' "$RENDER_LOG" || fail "happy render missing ISSUE_NUMBER=42"
 grep -q 'SESSION_ID=sid-1' "$RENDER_LOG" || fail "happy render missing SESSION_ID=sid-1"
@@ -341,6 +342,11 @@ if ! grep -q 'tracking-issue-write' "$RENAME_LOG"; then
     pass "rename skipped on PUBLISH_OK=false"
 else
     fail "rename should be skipped"
+fi
+if grep -q 'design-reentry-marker-write' "$CALL_LOG"; then
+    fail "reentry marker should be skipped on PUBLISH_OK=false"
+else
+    pass "reentry marker skipped on PUBLISH_OK=false"
 fi
 
 # --- unexpected publish (nonzero, no PUBLISH_OK line) ---

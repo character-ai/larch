@@ -297,6 +297,23 @@ if [ -n "$RUN_ID" ] && [ "$RUN_ID" != "unknown" ] && [ "$OUTCOME" != "failed-pub
     RUN_LOGS_PATH="larch-logs/design/${RUN_ID}/"
 fi
 
+append_failed_publish_notes() {
+    local out="$1"
+    if [ -n "${DESIGN_LOG_RECOVERY_BRANCH:-}" ]; then
+        printf '%s\n' "- **Log recovery branch**: \`$DESIGN_LOG_RECOVERY_BRANCH\`" >>"$out"
+    fi
+    if [ -n "${DESIGN_LOG_PR_NUMBER:-}" ] || [ -n "${DESIGN_LOG_PR_URL:-}" ]; then
+        if [ -n "${DESIGN_LOG_PR_NUMBER:-}" ] && [ -n "${DESIGN_LOG_PR_URL:-}" ]; then
+            printf -- '- **Log flush PR**: #%s — %s\n' "$DESIGN_LOG_PR_NUMBER" "$DESIGN_LOG_PR_URL" >>"$out"
+        elif [ -n "${DESIGN_LOG_PR_NUMBER:-}" ]; then
+            printf -- '- **Log flush PR**: #%s\n' "$DESIGN_LOG_PR_NUMBER" >>"$out"
+        else
+            printf -- '- **Log flush PR**: %s\n' "$DESIGN_LOG_PR_URL" >>"$out"
+        fi
+    fi
+    printf -- '- **Publish recovery**: design logs did not finish publishing; recover or close the flush PR before treating logs as complete.\n' >>"$out"
+}
+
 invoke_render() {
     local out_file="$DESIGN_TMPDIR/final-summary.md"
     local render_cost_args=()
@@ -312,19 +329,7 @@ invoke_render() {
         note_args=(--note-lines-file "$note_file")
     elif [ "$OUTCOME" = "failed-publish" ]; then
         : >"$note_file"
-        if [ -n "${DESIGN_LOG_RECOVERY_BRANCH:-}" ]; then
-            printf '%s\n' "- **Log recovery branch**: \`$DESIGN_LOG_RECOVERY_BRANCH\`" >>"$note_file"
-        fi
-        if [ -n "${DESIGN_LOG_PR_NUMBER:-}" ] || [ -n "${DESIGN_LOG_PR_URL:-}" ]; then
-            if [ -n "${DESIGN_LOG_PR_NUMBER:-}" ] && [ -n "${DESIGN_LOG_PR_URL:-}" ]; then
-                printf -- '- **Log flush PR**: #%s — %s\n' "$DESIGN_LOG_PR_NUMBER" "$DESIGN_LOG_PR_URL" >>"$note_file"
-            elif [ -n "${DESIGN_LOG_PR_NUMBER:-}" ]; then
-                printf -- '- **Log flush PR**: #%s\n' "$DESIGN_LOG_PR_NUMBER" >>"$note_file"
-            else
-                printf -- '- **Log flush PR**: %s\n' "$DESIGN_LOG_PR_URL" >>"$note_file"
-            fi
-        fi
-        printf -- '- **Publish recovery**: design logs did not finish publishing; recover or close the flush PR before treating logs as complete.\n' >>"$note_file"
+        append_failed_publish_notes "$note_file"
         note_args=(--note-lines-file "$note_file")
     else
         if rm -f "$note_file" 2>/dev/null; then
@@ -402,19 +407,7 @@ compose_self_fallback() {
             printf -- '- **Issue**: N/A\n'
         fi
         if [ "$OUTCOME" = "failed-publish" ]; then
-            if [ -n "${DESIGN_LOG_RECOVERY_BRANCH:-}" ]; then
-                printf '%s\n' "- **Log recovery branch**: \`$DESIGN_LOG_RECOVERY_BRANCH\`"
-            fi
-            if [ -n "${DESIGN_LOG_PR_NUMBER:-}" ] || [ -n "${DESIGN_LOG_PR_URL:-}" ]; then
-                if [ -n "${DESIGN_LOG_PR_NUMBER:-}" ] && [ -n "${DESIGN_LOG_PR_URL:-}" ]; then
-                    printf -- '- **Log flush PR**: #%s — %s\n' "$DESIGN_LOG_PR_NUMBER" "$DESIGN_LOG_PR_URL"
-                elif [ -n "${DESIGN_LOG_PR_NUMBER:-}" ]; then
-                    printf -- '- **Log flush PR**: #%s\n' "$DESIGN_LOG_PR_NUMBER"
-                else
-                    printf -- '- **Log flush PR**: %s\n' "$DESIGN_LOG_PR_URL"
-                fi
-            fi
-            printf -- '- **Publish recovery**: design logs did not finish publishing; recover or close the flush PR before treating logs as complete.\n'
+            append_failed_publish_notes /dev/stdout
         fi
         printf -- '- **Plan review**: %s\n' "${PLAN_LINE:-N/A}"
         if [ "${OOS_COUNT:-0}" != "0" ] && [ -n "${OOS_URLS:-}" ] && [ "${OOS_URLS:-}" != "N/A" ]; then

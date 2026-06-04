@@ -125,6 +125,10 @@ if [[ "$1" == "pr" ]]; then
             ;;
         checks)
             if has_arg --json "$@"; then
+                if ! has_arg --required "$@"; then
+                    echo "STUB ERROR: pr checks --json missing --required: $*" >&2
+                    exit 99
+                fi
                 count_file="${GH_STUB_CHECKS_JSON_COUNT_FILE:-}"
                 if [[ -z "$count_file" && -n "${GH_STUB_LOG:-}" ]]; then
                     count_file="${GH_STUB_LOG}.checks-json-count"
@@ -157,7 +161,7 @@ if [[ "$1" == "pr" ]]; then
                 fi
                 exit "${GH_STUB_CHECKS_JSON_RC:-0}"
             fi
-            if has_arg --watch "$@" && has_arg --fail-fast "$@"; then
+            if has_arg --watch "$@" && has_arg --fail-fast "$@" && has_arg --required "$@"; then
                 if [[ -n "${GH_STUB_CHECKS_RC:-}" && "${GH_STUB_CHECKS_RC}" != "0" ]]; then
                     echo "${GH_STUB_CHECKS_OUT:-some required checks failed}"
                     exit "${GH_STUB_CHECKS_RC}"
@@ -206,9 +210,9 @@ if [[ "$1" == "pr" ]]; then
                         fi
                     fi
                     if [[ "${GH_STUB_PR_HEAD_OID_MISMATCH:-0}" == "1" ]]; then
-                        oid="0000000000000000000000000000000000000000"
+                        oid="${GH_STUB_PR_HEAD_OID_STALE:-0000000000000000000000000000000000000000}"
                     elif [[ -n "${GH_STUB_PR_HEAD_OID_MISMATCH_FIRST:-}" && "$head_knob_probe" -le "$GH_STUB_PR_HEAD_OID_MISMATCH_FIRST" ]]; then
-                        oid="0000000000000000000000000000000000000000"
+                        oid="${GH_STUB_PR_HEAD_OID_STALE:-0000000000000000000000000000000000000000}"
                     else
                         oid=$(resolve_pr_head_oid)
                     fi
@@ -480,6 +484,78 @@ done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.events.jsonl" ]] || fail "denied events basename leaked into render-cache"
 
+echo "=== final no-delta succeeds idempotently when main already has run id ==="
+TMPNOOP=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-noop.XXXXXX")
+clone_noop=$(setup_clone_with_origin_head "$TMPNOOP")
+stub_noop="$TMPNOOP/stub"
+make_gh_stub "$stub_noop"
+date_noop="$TMPNOOP/date-stub"
+mkdir -p "$date_noop"
+cat >"$date_noop/date" <<'EOF'
+#!/usr/bin/env bash
+if [[ "${1:-}" == "-u" && "${2:-}" == "+%Y-%m-%dT%H:%M:%SZ" ]]; then
+    printf '%s\n' '2026-01-01T00:00:00Z'
+    exit 0
+fi
+exec /bin/date "$@"
+EOF
+chmod +x "$date_noop/date"
+GH_STUB_LOG="$TMPNOOP/gh.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+export PATH="$date_noop:$stub_noop:$PATH"
+export TEST_CLONE_ROOT="$clone_noop"
+export TEST_MERGE_BRANCH="larch-log-design-RUNNOOP1"
+mkdir -p "$TMPNOOP/design"
+printf 'stable\n' >"$TMPNOOP/design/stable.txt"
+(
+    cd "$clone_noop" || exit 1
+    seed_noop=$(bash "$PUBLISH" --design-tmpdir "$TMPNOOP/design" --run-id "RUNNOOP1" --issue 42 --repo owner/repo)
+    [[ "$seed_noop" == *"PUBLISH_OK=true"* ]] || fail "final no-delta seed failed: $seed_noop"
+)
+git -C "$clone_noop" pull -q origin main
+: >"$GH_STUB_LOG"
+out_noop=$(cd "$clone_noop" && bash "$PUBLISH" --design-tmpdir "$TMPNOOP/design" --run-id "RUNNOOP1" --issue 42 --repo owner/repo)
+[[ "$out_noop" == *"PUBLISH_OK=true"* ]] || fail "final no-delta should succeed when run id already exists on main: $out_noop"
+! grep -q 'pr create' "$GH_STUB_LOG" || fail "final no-delta should not create a PR"
+! grep -q 'pr merge' "$GH_STUB_LOG" || fail "final no-delta should not merge a PR"
+unset GH_STUB_LOG
+rm -rf "$TMPNOOP"
+
+echo "=== final no-delta fails closed when main lacks run id ==="
+TMPMISS=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-final-missing.XXXXXX")
+clone_miss=$(setup_clone_with_origin_head "$TMPMISS")
+stub_miss="$TMPMISS/stub"
+make_gh_stub "$stub_miss"
+REAL_GIT=$(command -v git)
+mkdir -p "$TMPMISS/gitstub"
+cat >"$TMPMISS/gitstub/git" <<GITS
+#!/usr/bin/env bash
+last_arg=""
+for arg in "\$@"; do
+    last_arg="\$arg"
+done
+if [[ "\${GIT_STUB_EMPTY_STATUS_FOR:-}" == "\$last_arg" ]]; then
+    for arg in "\$@"; do
+        if [[ "\$arg" == "status" ]]; then
+            exit 0
+        fi
+    done
+fi
+exec "$REAL_GIT" "\$@"
+GITS
+chmod +x "$TMPMISS/gitstub/git"
+export PATH="$TMPMISS/gitstub:$stub_miss:$PATH"
+export GIT_STUB_EMPTY_STATUS_FOR="larch-logs/design/RUNEMPTYMISS1"
+mkdir -p "$TMPMISS/design"
+printf 'missing\n' >"$TMPMISS/design/missing.txt"
+out_miss=$(
+    (cd "$clone_miss" && bash "$PUBLISH" --design-tmpdir "$TMPMISS/design" --run-id "RUNEMPTYMISS1" --issue 42 --repo owner/repo) 2>/dev/null || true
+)
+[[ "$out_miss" == *"PUBLISH_OK=false"* ]] || fail "final no-delta should fail when run id is missing from main: $out_miss"
+unset GIT_STUB_EMPTY_STATUS_FOR
+rm -rf "$TMPMISS"
+
 echo "=== revise allowlist rejects unexpected file under round-N/revise ==="
 printf 'nope\n' >"$TMP/design/plan-review/round-1/revise/extra.log"
 out_revise_bad=$(
@@ -624,7 +700,9 @@ printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
     [[ "$rc_seed_reuse" -eq 1 ]] || fail "pause branch reuse seed should exit 1 on merge fail (got $rc_seed_reuse)"
     [[ "$seed_reuse" == *"PUBLISH_OK=false"* && "$seed_reuse" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREUSE1"* ]] || fail "pause branch reuse seed should leave remote branch: $seed_reuse"
     printf 'second\n' >"$TMPPAUSE_REUSE/design/plan.txt"
-    reuse_out=$(GH_STUB_PR_HEAD_OID_MISMATCH_FIRST=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
+    stale_reuse_sha=$(git ls-remote origin larch-log-design-RUNPAUSEREUSE1 | awk '{ print $1; exit }')
+    [[ -n "$stale_reuse_sha" ]] || fail "pause branch reuse should resolve stale remote branch SHA"
+    reuse_out=$(GH_STUB_PR_HEAD_OID_STALE="$stale_reuse_sha" GH_STUB_PR_HEAD_OID_MISMATCH_FIRST=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
     [[ "$reuse_out" == *"PUBLISH_OK=true"* ]] || fail "pause branch reuse publish should succeed: $reuse_out"
     [[ "$(cat "$GH_STUB_LOG.head-knob-count")" == "2" ]] || fail "pause branch reuse should cover stale-head retry probes, got $(cat "$GH_STUB_LOG.head-knob-count" 2>/dev/null || echo missing)"
 )
@@ -1052,6 +1130,8 @@ export PATH="$stub_stale:$PATH"
 export SLEEP_SCRIPT_DIR="$TMPSTALE/sleep"
 export TEST_CLONE_ROOT="$clone_stale"
 export TEST_MERGE_BRANCH="larch-log-design-RUNSTALE1"
+export GH_STUB_PR_HEAD_OID_STALE
+GH_STUB_PR_HEAD_OID_STALE=$(git -C "$clone_stale" rev-parse HEAD)
 export GH_STUB_PR_HEAD_OID_MISMATCH_FIRST=2
 unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_RC GH_STUB_PR_HEAD_OID_MISMATCH GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
 mkdir -p "$TMPSTALE/design"
@@ -1061,6 +1141,7 @@ out_stale=$(cd "$clone_stale" && bash "$PUBLISH" --design-tmpdir "$TMPSTALE/desi
 [[ "$(cat "$GH_STUB_LOG.head-count")" == "3" ]] || fail "stale-head should wait for third head probe, got $(cat "$GH_STUB_LOG.head-count" 2>/dev/null || echo missing)"
 grep -q 'pr merge' "$GH_STUB_LOG" || fail "stale-head eventual match should merge"
 unset GH_STUB_PR_HEAD_OID_MISMATCH_FIRST
+unset GH_STUB_PR_HEAD_OID_STALE
 export SLEEP_SCRIPT_DIR="$GLOBAL_SLEEP_STUB"
 rm -rf "$TMPSTALE"
 
@@ -1077,6 +1158,8 @@ export PATH="$stub_stalen:$PATH"
 export SLEEP_SCRIPT_DIR="$TMPSTALEN/sleep"
 export TEST_CLONE_ROOT="$clone_stalen"
 export TEST_MERGE_BRANCH="larch-log-design-RUNSTALEN1"
+export GH_STUB_PR_HEAD_OID_STALE
+GH_STUB_PR_HEAD_OID_STALE=$(git -C "$clone_stalen" rev-parse HEAD)
 export GH_STUB_PR_HEAD_OID_MISMATCH=1
 unset GH_STUB_CHECKS_JSON_ALWAYS_EMPTY GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_CHECKS_JSON_RC GH_STUB_CHECKS_RC GH_STUB_CREATE_NO_URL GH_STUB_CREATE_RC GH_STUB_MERGE_RC
 mkdir -p "$TMPSTALEN/design"
@@ -1094,6 +1177,7 @@ grep -q 'did not register within' "$stalen_stderr" || fail "stale-head never ali
 ! grep 'pr checks' "$GH_STUB_LOG" | grep -q -- '--watch' || fail "stale-head never aligns must not invoke --watch"
 ! grep -q 'pr merge' "$GH_STUB_LOG" || fail "stale-head never aligns must not merge"
 unset GH_STUB_PR_HEAD_OID_MISMATCH
+unset GH_STUB_PR_HEAD_OID_STALE
 export SLEEP_SCRIPT_DIR="$GLOBAL_SLEEP_STUB"
 rm -rf "$TMPSTALEN"
 

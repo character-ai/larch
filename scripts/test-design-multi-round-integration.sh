@@ -14,6 +14,17 @@ make_gh_stub() {
     mkdir -p "$d"
     cat >"$d/gh" <<'EOF'
 #!/usr/bin/env bash
+if [[ -n "${GH_STUB_LOG:-}" ]]; then
+    printf '%s\n' "$*" >>"$GH_STUB_LOG"
+fi
+has_arg() {
+    needle="$1"
+    shift
+    for arg in "$@"; do
+        [[ "$arg" == "$needle" ]] && return 0
+    done
+    return 1
+}
 if [[ "$1" == "repo" && "$2" == "view" ]]; then
     printf '{"nameWithOwner":"owner/repo"}\n'
     exit 0
@@ -22,11 +33,28 @@ if [[ "$1" == "pr" ]]; then
     case "$2" in
         create) echo "https://github.com/owner/repo/pull/101"; exit 0 ;;
         checks)
-            if printf '%s\n' "$*" | grep -q -- '--json'; then
+            if has_arg --json "$@"; then
+                if ! has_arg --required "$@"; then
+                    echo "STUB ERROR: pr checks --json missing --required: $*" >&2
+                    exit 99
+                fi
+                count_file="${GH_STUB_CHECKS_JSON_COUNT_FILE:-}"
+                if [[ -z "$count_file" && -n "${GH_STUB_LOG:-}" ]]; then
+                    count_file="${GH_STUB_LOG}.checks-json-count"
+                fi
+                checks_probe=1
+                if [[ -n "$count_file" ]]; then
+                    checks_probe=$(( $(cat "$count_file" 2>/dev/null || echo 0) + 1 ))
+                    printf '%s\n' "$checks_probe" >"$count_file"
+                fi
+                if [[ -n "${GH_STUB_CHECKS_JSON_EMPTY_FIRST:-}" && "$checks_probe" -le "$GH_STUB_CHECKS_JSON_EMPTY_FIRST" ]]; then
+                    printf '[]\n'
+                    exit 0
+                fi
                 printf '[{"name":"ci","bucket":"pass"}]\n'
                 exit 0
             fi
-            if printf '%s\n' "$*" | grep -q -- '--watch' && printf '%s\n' "$*" | grep -q -- '--fail-fast'; then
+            if has_arg --watch "$@" && has_arg --fail-fast "$@" && has_arg --required "$@"; then
                 echo "all checks passing"
                 exit 0
             else
@@ -297,6 +325,10 @@ PUBROOT="$TMP/publish"
 clone=$(setup_clone_with_origin_head "$PUBROOT")
 stub_publish="$PUBROOT/stub"
 make_gh_stub "$stub_publish"
+GH_STUB_LOG="$PUBROOT/gh-publish.log"
+: >"$GH_STUB_LOG"
+export GH_STUB_LOG
+export GH_STUB_CHECKS_JSON_EMPTY_FIRST=1
 export PATH="$stub_publish:$PATH"
 export TEST_CLONE_ROOT="$clone"
 export TEST_MERGE_BRANCH="larch-log-design-RUNMRINT1"
@@ -306,6 +338,7 @@ export TEST_MERGE_BRANCH="larch-log-design-RUNMRINT1"
     [[ "$publish_out" == *"PUBLISH_OK=true"* ]] || fail "publish parity run should succeed: $publish_out"
 )
 git -C "$clone" pull -q origin main
+[[ "$(cat "$GH_STUB_LOG.checks-json-count")" == "2" ]] || fail "publish parity should exercise delayed required-check registration, got $(cat "$GH_STUB_LOG.checks-json-count" 2>/dev/null || echo missing)"
 expected_paths=$(expected_round_paths "$TMP/design")
 actual_paths=$(published_round_paths "$clone" "RUNMRINT1")
 [[ "$expected_paths" == "$actual_paths" ]] || fail "published plan-review file list must match loop snapshot"
@@ -314,6 +347,7 @@ cmp -s "$TMP/design/plan.txt-original" "$clone/larch-logs/design/RUNMRINT1/plan.
 cmp -s "$TMP/design/plan-after-round-2.txt" "$clone/larch-logs/design/RUNMRINT1/plan-after-round-2.txt" || fail "published assessor snapshot mismatch"
 cmp -s "$TMP/design/assessor-verdict-round-2.txt" "$clone/larch-logs/design/RUNMRINT1/assessor-verdict-round-2.txt" || fail "published assessor verdict mismatch"
 cmp -s "$TMP/design/assessor-verdict-round-2.txt.env" "$clone/larch-logs/design/RUNMRINT1/assessor-verdict-round-2.txt.env" || fail "published assessor verdict env mismatch"
+unset GH_STUB_CHECKS_JSON_EMPTY_FIRST GH_STUB_LOG
 
 echo "=== publish fails closed on unknown.bin ==="
 printf 'x\n' >"$TMP/design/plan-review/round-1/unknown.bin"
