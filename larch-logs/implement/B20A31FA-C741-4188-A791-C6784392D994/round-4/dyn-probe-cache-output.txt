@@ -1,0 +1,9 @@
+Reviewing Codex probe-cache changes: reading the diff and relevant source files.
+### In-Scope Findings
+
+- **correctness** `scripts/check-reviewers.sh:317-320` — Auth-mode stamp keys correctly stop login-mode `false` from blocking env-key probes (covered by `test-check-reviewers.sh` t6e), but env-key mode still treats a fresh `false` stamp as a cache hit. After a failed env-key probe (bad key, quota, timeout, or auth-prep failure while `OPENAI_API_KEY` is set), `larch_write_bool_stamp` writes to `larch-codex-env-key-present-*`, and the next run with a fixed key skips the live probe until TTL expires. That contradicts `scripts/check-reviewers.md:29`, which says env-key cached `false` is treated as a miss, and the plan’s “fail loud / retry rotated key within TTL” intent. **Suggested fix:** After `larch_try_read_fresh_stamp` for the Codex branch, treat `$_CODEX_STAMP_KEY=codex-env-key` plus `_CACHED_C=false` as a cache miss (fall through to `larch_run_one_codex_probe`), or add an equivalent guard inside `larch_try_read_fresh_stamp` when the stamp basename is `codex-env-key`; add a harness case mirroring t6e (fresh env-key `false` stamp + working stub + `OPENAI_API_KEY` → live probe runs and `CODEX_PRESENT=true`).
+
+### Out-of-Scope Observations
+
+- **correctness** `scripts/test-check-reviewers.sh` — No assertion that the Codex probe argv includes `projects."…".trust_level="trusted"` (only model-args forwarding is checked in t6m). Implementation at `scripts/check-reviewers.sh:228-239` matches `launch-review.sh`, but a regression could drop trust `-c` without failing CI.
+- **risk-integration** Legacy `${TMPDIR}/larch-codex-present-${USER}.stamp` files from before this branch are never read after the rename to `codex-login` / `codex-env-key`; harmless but may leave stale files until TTL.

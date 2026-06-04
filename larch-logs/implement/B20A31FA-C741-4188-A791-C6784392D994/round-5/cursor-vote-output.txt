@@ -1,0 +1,30 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Two focused strip helpers are acceptable duplication until a shared primitive is clearly worth the refactor.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- `external_prepare_codex_auth` always rewrites copied config before the env-key branch, so strip failures can block API-key auth that needs no config rewrite.
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- `launch-review.sh` exits non-zero on auth-prep failure while implement/CI launchers emit KVs and exit 0.
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Helper contract describes login-only stripping but `external_prepare_codex_auth` strips whenever a temp `config.toml` exists.
+FINDING_5: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Repeated `TRUST_CONFIG_ARG` construction is a minor DRY concern, not a functional defect.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate `codex-env-key-failure` lines are redundant logging only.
+FINDING_7: YES CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- `docs/installation-and-setup.md` and `docs/external-reviewers.md` still say non-empty/unset-empty while runtime treats whitespace-only as login fallback.
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- `external_codex_env_key_enabled` uses `case "$OPENAI_API_KEY"`, contradicting the documented no-expansion/xtrace contract.
+FINDING_9: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Direct `codex exec` paths such as `lint-fix-loop.sh` and `run-negotiation-round.sh` are not wired to shared env-key auth.
+FINDING_10: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Step 5 harness lacks several plan-listed auth/fallback/sentinel cases worth tracking as follow-up coverage.
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- `test-check-reviewers.sh` does not cover several new probe/auth/strip behaviors described in the plan.
+FINDING_12: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Implement-launcher auth symlink/KV regressions are plausible test gaps but not demonstrated failures in this diff.
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Auth-mode stamp rename causes one-time reprobe after upgrade; acceptable migration cost.
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Only `review-and-fix.sh` emits `codex-env-key-failure`; other covered launchers/probe use generic auth failure text.
+FINDING_15: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Env-key probe honors cached `true` until TTL even after key revocation, so Step 0 can over-report availability.
+FINDING_16: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- `external_strip_codex_literal_credentials` drops only the assignment line and prints subsequent multiline `api_key` body lines.
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- `external_strip_codex_larch_env_provider` matchers require quoted selectors, so unquoted legacy forms can survive.
+FINDING_18: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Strip helpers already fail closed on rewrite errors; post-parse TOML validation would add heavy complexity for marginal gain.
+FINDING_19: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Auth scope boundaries are already documented in `docs/external-reviewers.md`; `launch-review.md` need not duplicate them.
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Missing mention of literal-credential stripping in the primary contract is minor doc drift.
+FINDING_21: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- CI EXIT trap references `MODEL_ARGS_TMP` only after it is created; nounset risk is hypothetical on future edits.
+FINDING_22: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Stale `PROBE_DIRS` entries after eager `rm -rf` are harmless because EXIT cleanup tolerates missing paths.
+FINDING_23: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Cached login-mode `false` is reused after env-key success when `OPENAI_API_KEY` is later cleared within TTL.
+FINDING_24: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Whitespace-only `OPENAI_API_KEY` parity is covered in lib harness but not every launcher test matrix.
+FINDING_25: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- argv persistence in `.meta`/`CMD_JSON` is a documented pre-existing security tradeoff, not introduced by this change.
+FINDING_26: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=true -- CRLF/table-header edge cases are theoretical for typical Unix Codex configs.
+FINDING_27: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Strip helpers remove matching keys globally while contract prose implies narrower top-level/login-only scope.
+FINDING_28: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- `launch-codex-ci.sh` creates `MODEL_ARGS_TMP` before installing the EXIT trap, so early `mktemp -d` failure can leak the tempfile.
+FINDING_29: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- No harness covers clearing `OPENAI_API_KEY` after env-key success with a stale login-false stamp (FINDING_23 scenario).
+FINDING_30: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- `SECURITY.md` still describes only `auth.json` symlink behavior in the older implementer paragraph while a newer section documents env-key precedence.

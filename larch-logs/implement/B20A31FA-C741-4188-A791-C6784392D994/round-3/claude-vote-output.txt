@@ -1,0 +1,32 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplication exists but drift between the two log sites is speculative; the cost of consolidation outweighs the nit risk
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- rm -rf on an already-removed path is idempotent; FINDING_30 confirms this is safe
+FINDING_4: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the awk is large but covered by test-lib-external-launcher-common.sh; extracting to a file adds its own complexity
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_8: EXONERATE CORRECTNESS=uncertain SEVERITY=minor QUALITY=weak UNCERTAIN=true -- per-invocation -c overrides define the full provider; file-based legacy entries are redundant but likely harmless when overridden
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- all call sites pass statically valid array names; validation catches programmer errors, not runtime conditions
+FINDING_10: YES CORRECTNESS=true SEVERITY=important QUALITY=excellent UNCERTAIN=false
+FINDING_11: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_12: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_13: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_14: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- code structure makes this impossible by design; auth setup is one-time before exec loop, so env-key failure cannot trigger a later auth.json symlink
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- a one-time extra probe on cache-name migration is acceptable
+FINDING_16: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- config is already at rest on disk; copying to user-owned temp adds no meaningful additional exposure
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
+FINDING_18: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the key is in the environment, not in argv, so it cannot appear in the Codex events stream; the check would be vacuously satisfied
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_20: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation; the described problem does not exist
+FINDING_21: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation; the described problem does not exist
+FINDING_22: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_23: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the eval'd string is a static literal that does not expand OPENAI_API_KEY; currently safe without an additional xtrace test
+FINDING_24: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation; no problem to file
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_26: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational; no actionable problem
+FINDING_27: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- inherent to env-based auth, not a defect in this change
+FINDING_28: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- Codex reads CODEX_HOME at startup; by the time cleanup fires the child has already consumed its config
+FINDING_29: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation confirming the plan requirement is satisfied
+FINDING_30: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational; safe redundancy confirmed
+FINDING_31: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- informational; idempotency confirmed
+FINDING_32: NO CORRECTNESS=false SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- positive observation; no problem to file

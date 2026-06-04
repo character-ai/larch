@@ -1,0 +1,10 @@
+Implemented the plan and wrote the manifest atomically at the requested path with `status=complete`.
+
+Validation run:
+- `bash scripts/test-lib-external-launcher-common.sh`
+- `bash scripts/test-launch-codex-ci.sh`
+- `bash skills/implement/scripts/test-codex-implementer.sh`
+- `bash scripts/test-check-reviewers.sh`
+- `bash scripts/test-launch-review.sh`
+- `bash skills/review-and-fix/scripts/test-review-and-fix.sh`
+- `bash scripts/relevant-checks.sh` passed.

@@ -1,0 +1,11 @@
+Tracing temp-home lifecycle across the changed files and reading the diff and relevant code paths.
+### In-Scope Findings
+
+- **architecture** `scripts/check-reviewers.sh:63-73` — `larch_probe_exit_cleanup` deletes every `PROBE_DIRS` entry before it kills `PROBE_PIDS`. On the happy path that is fine because `larch_run_one_codex_probe` waits on the background `codex exec`, then inline-`rm -rf`s `codex_home` before return (e.g. ```249:263:scripts/check-reviewers.sh```). If the script exits while a probe is still in flight (signal or other abrupt EXIT during `larch_poll_probe_pid`), the handler can remove a live temp `CODEX_HOME` while the child is still running; the probe PID is only killed afterward. This is amplified by the branch: each probe now registers a real `codex_home` in `PROBE_DIRS`, not just tmp probe output files. **Suggested fix:** Reorder `larch_probe_exit_cleanup` to kill (and preferably `wait` on) `PROBE_PIDS` first, then `rm -rf` `PROBE_DIRS` entries.
+
+### Out-of-Scope Observations
+
+- **`launch-codex-implement.sh` trap ordering (scout checklist):** Satisfied — `MODEL_ARGS_TMP=""` and the EXIT trap are installed at ```289:291:scripts/launch-codex-implement.sh``` before `external_prepare_codex_auth` at ```315:315:scripts/launch-codex-implement.sh```; auth-prep failure still runs the trap and removes `CODEX_HOME_DIR`.
+- **`review-and-fix.sh` `run_coder_dispatch`:** `mktemp` failure sets `codex_rc=1` and does not push an empty path into `REVIEW_FIX_TMPDIRS` (```276:277:skills/review-and-fix/scripts/review-and-fix.sh```). Every path that creates `codex_home` reaches the unconditional inline `rm -rf` at ```317:317:skills/review-and-fix/scripts/review-and-fix.sh``` before Cursor fallback; the script-level EXIT trap then re-`rm -rf`s the same (already removed) paths — redundant but safe.
+- **`PROBE_DIRS` + inline `rm -rf`:** After each probe return, `PROBE_DIRS` still holds paths to directories already removed inline; EXIT cleanup’s second `rm -rf` is idempotent, not a leak.
+- **`launch-review.sh`:** EXIT trap is registered at ```282:282:scripts/launch-review.sh``` with `CODEX_HOME_DIR=""` initialized earlier; `CODEX_HOME_DIR` is created later at ```419:419:scripts/launch-review.sh```, matching the implement launcher pattern.
