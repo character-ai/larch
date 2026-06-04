@@ -1,0 +1,219 @@
+## Plan
+
+SIMPLE-tier change. Flip the `/implement` Step 8+ ship-pr driver default from bash to python; keep bash as explicit opt-in (`LARCH_SHIP_PR_IMPL=bash`). Per Round 1: flip **unconditionally** (no gate on soak blockers #3446 / #3404 / #3405 / #3449). Incorporate accepted review: default-path continuations route only through `python/ship.py` + JSON (not `ship-pr-state.sh` / bash exit matrix / fenced `Invoke:`); Python passes `--state-file` only after merge-safe `_write_ship_state`; finalize and ship-state writes are gated by `_tmpdir_under_allowed_root`; terminal finalize writes are **narrow** (not on TRANSIENT / immediate re-entry NEEDS_USER_INPUT); post-merge flush-skip STALLED refreshes stall-shaped finalize; terminal writer overlays bash-compatible outcome keys into both `finalize-state.sh` and merged `ship-pr-state.sh`; Step 18 `restore-finalize-state.sh` is conditional (bash opt-in, missing/stale finalize, or terminal overrides in `ship-pr-state.sh`); Exit 6 on Python uses a fixed `ship-pr-net-retries-python.count`; full exit-3 `needs_user_reason` routing is preserved in the selector; stall recovery aligns with Step 18a four-layer resolve; `conflict-resolution.md` and consumer docs match the Python default; operators get Python 3.12+ and cached-plugin timing notices; `py-test` pins merge + terminal finalize behavior.
+
+The default is resolved **prompt-side** in `skills/implement/SKILL.md`. `python/ship.py` gains merge-safe state refresh, guarded writes, narrowed terminal finalize, flush-skip stall refresh, and outcome overlays. The flip is selector rewrite, Python-path continuation guards, argv alignment, NEVER #11 / Step 18b writer prose, Step 18 restore gating, `stall-recovery.md` + `subskill-invocation.md` + `conflict-resolution.md` alignment, doc reconciliation, upgrade notice, structure-test pins, and focused `python/test_ship.py` cases. The bash fenced `Invoke:` block and exit-matrix bullet bodies stay byte-stable except for bash-only qualifiers prepended to the matrix block and targeted continuation qualifiers (no matrix bullet rewrites).
+
+## Files to modify/create
+
+### UPDATED: `python/ship.py`
+
+**FINDING_5 — merge before overwrite.** Change `_write_ship_state` so when `ctx.state_file` exists and is readable, parse existing `KEY=value` lines into a dict, overlay Python-managed fields (same keys as today’s `fields` map) **plus outcome-derived terminal keys** (FINDING_8: `EXIT_CODE`, `STALL_TRACKING`, `STALL_STEP`, `BAIL_REASON`, `BAIL_NEEDS_USER_INPUT`, `FAILED_RUN_ID`, `BAIL_FAILURE_DETAIL_LOG` when available from the active `RunContext` / terminal outcome), and write the union. Preserve orchestrator-seeded keys Python does not set each phase (`STALL_TRACKING`, `STALL_STEP`, `BAIL_*`, `DEFERRED`, `DONE_RENAME_APPLIED`, `CI_PASSED`, `FAILED_RUN_ID`, `NO_LOGS_COMMIT`, `DESIGN_ONLY_DONE`, `EXPECTED_SESSION_ID`, `EXPECTED_TMPDIR_BASENAME_PREFIX`, `CI_FIX_REBASE_PENDING`, `TOOL_LABEL`, `EXIT_CODE`, `RESUME_PHASE`, `CALLER_KIND`, etc.). Empty/missing file keeps today’s full write. **FINDING_2:** no-op `_write_ship_state` / `finalize.write_finalize_state` / `_write_terminal_state` when `not _tmpdir_under_allowed_root(ctx.tmpdir)`; invalid tmpdir remains JSON-only (`Outcome.STALLED`, `detail=invalid tmpdir`) with **no** state files written.
+
+**FINDING_3 / FINDING_6 — narrowed terminal finalize writes.** Introduce a single helper (e.g. `_write_terminal_finalize_if_terminal`) called only on paths that end the active driver invocation without immediate selector re-entry:
+- Postmerge success and existing `_write_terminal_state` stall paths (checks failure, postbump stall, merge error, CI monitor stall, pre-rebase flush stall, etc.).
+- **`run_postmerge_phase` flush-skip** (FINDING_5): when `skip.skipped` returns `Outcome.STALLED`, call `_write_terminal_state` / stall-shaped `finalize.write_finalize_state` **after** the skip decision (overwrite any prior non-stall finalize from line 266).
+- Outer `main()` exception handler: best-effort stall-shaped finalize **only** when `ctx.tmpdir` passes `_tmpdir_under_allowed_root`.
+- **Exclude** `Outcome.TRANSIENT` (`TransientNetworkError` → exit 6) and `Outcome.NEEDS_USER_INPUT` (`NeedsUserInput`, OOS gate, CI-fix handoffs that immediately re-invoke the selector) — these must **not** write `finalize-state.sh`, so Step 18 restore remains available when `ship-pr-state.sh` was updated via `--state-file` merge.
+
+**FINDING_8:** `_write_terminal_state` and terminal `finalize.write_finalize_state` calls must pass `ctx.with_(…)` including bash-compatible stall/bail fields so `restore-finalize-state.sh` / `implement-finalize.sh teardown` / `write-final-report.sh` read correct `EXIT_CODE` and `STALL_*` keys.
+
+No change to JSON envelope shape or exit-code mapping.
+
+### UPDATED: `skills/implement/SKILL.md`
+
+**Anti-halt Critical boundary (~line 14) — FINDING_1.** Split the Step 8+ boundary into two sentences:
+- **Default Python path:** after the active Step 8+ driver (`python3 …/python/ship.py` unless `LARCH_SHIP_PR_IMPL=bash`) exits, route **only** from process exit code + JSON stdout per the Python driver selector — **do not** parse `ship-pr-state.sh` for driver continuation and **do not** treat the bash exit matrix as authoritative.
+- **Bash opt-in:** when `LARCH_SHIP_PR_IMPL=bash`, after each `ship-pr.sh` return, parse `ship-pr-state.sh` silently and re-invoke per the Step 8+ exit-code table — do NOT end the turn on ship-pr stdout.
+
+**NEVER #11 (~line 52) — FINDING_1.** Rewrite **Why** and **How to apply** (not only the one-line summary): on the default path, `python/ship.py` writes `$IMPLEMENT_TMPDIR/finalize-state.sh` on **terminal** driver outcomes (postmerge success, driver-local stalls, hard failures) before JSON return; `LARCH_SHIP_PR_IMPL=bash` keeps the legacy `ship-pr.sh` / `write_finalize_state()` contract. Prompt-side orchestrator code still must not write `finalize-state.sh`. The blessed pre-teardown reconstructor is `restore-finalize-state.sh`, run per the Step 18 gate below — **not** on every run.
+
+**NEVER #13 (~line 56):** Timeout recovery: read `ship-pr-state.sh` and re-invoke fenced `Invoke:` **only when `LARCH_SHIP_PR_IMPL=bash`**; default path re-invokes `python/ship.py` per selector (no `--resume-phase`).
+
+**Step 8+ State Machine**
+
+- **Delegation sentence (~953):** Replace ``Steps 8–14 … mechanically delegated to …/ship-pr.sh`` with: ``Steps 8–14 are driven by the **Python driver selector** below: unless `LARCH_SHIP_PR_IMPL=bash`, run the default Python foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` invocation and JSON exit routing from that paragraph; when `LARCH_SHIP_PR_IMPL=bash`, run the legacy `scripts/ship-pr.sh` contract in the fenced `Invoke:` block below byte-for-byte.`` Shared prep (orchestrator seed of `ship-pr-state.sh`, 8-pre-ship phantom probe) applies to **both** paths; Python refreshes seeded state via `--state-file` after merge (see `python/ship.py`).
+
+- **Python driver selector (~955) — FINDING_9:** Lead clause: ``default `LARCH_SHIP_PR_IMPL=python` runs`` one foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` invocation. Expand argv to match the bash `Invoke:` block **including** `--no-logs-commit "$no_logs_commit"` **and** `--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"`. Parse exit code + JSON (`outcome`, `needs_user_reason`, `failed_run_id`, `pr_number`, `pr_url`, `merge_result`, `detail`). **Carry forward verbatim** the committed exit-3 dispatch prose from current SKILL (~955–1038): `needs_user_reason=oos-filing` → Step 9a.1 then re-invoke Python; `first-fixer-non-health` / `ci-fix-exhausted` / `local-unfixable` → autonomous main-agent CI-fix using JSON `failed_run_id` when present; `fix-attempts-exhausted` and fall-through → `AskUserQuestion`; do **not** abbreviate to a short bullet list. Exit routing: `0` → Step 16; `6` TRANSIENT → **FINDING_3:** maintain `$IMPLEMENT_TMPDIR/ship-pr-net-retries-python.count` (initialize 0; increment each Exit 6; sleep 30s; re-invoke selector argv; 4th failure → treat as Exit 4 stall) — **do not** use `ship-pr-net-retries-$PHASE.count` (JSON has no `PHASE`); `3` NEEDS_USER_INPUT → full `needs_user_reason` table above; `4` STALLED → Step 16/18. Note: Python path does **not** read `ship-pr-state.sh` for continuation; may read it for OOS checkpoint / Exit 4 `ship_pr_pre_push` **classification evidence** only after Python refreshed it via `--state-file`. Terminal finalize: `python/ship.py` writes `finalize-state.sh` only on terminal outcomes per narrowed contract above.
+
+- **Default-path continuation:** After Step 8+ ship driver returns on default Python path, route **only** from exit code + JSON + selector table. Step 8+ bullets that say re-invoke fenced ``Invoke:`` / `ship-pr.sh` / `ship-pr.sh --resume-phase …` mean re-invoke selector `python3 …/python/ship.py` foreground argv (including `--state-file`); fenced block and bash matrix apply **only** when `LARCH_SHIP_PR_IMPL=bash`. Autonomous CI-fix step 12 and OOS re-entry: re-invoke **active** driver (Python argv unless bash).
+
+- **Pre-`Invoke:` routing:** ``Unless `LARCH_SHIP_PR_IMPL=bash`, do not run the fenced `ship-pr.sh` invocation — use the Python foreground invocation and JSON exit routing from the selector above; the fenced block documents the bash opt-in contract only.``
+
+- **Bash opt-in trailer:** ``When `LARCH_SHIP_PR_IMPL=bash`, run the bash contract below byte-for-byte.``
+
+- **Phantom probe lead-in (~957) — FINDING_7:** ``Immediately before the active Step 8+ driver (Python selector foreground call unless `LARCH_SHIP_PR_IMPL=bash`, else the fenced `ship-pr.sh` invocation below), run the **8-pre-ship** Phantom Untracked Probe.``
+
+- **Bash-only exit matrix gate (~1020) — FINDING_11:** Immediately before ``Parse the process exit code and then read `$IMPLEMENT_TMPDIR/ship-pr-state.sh`…`` add exactly: ``Apply the following exit matrix **only when `LARCH_SHIP_PR_IMPL=bash`**; on the default Python path, follow the Python driver selector JSON exit routing and re-invoke `python/ship.py` per the selector continuation rules above.`` Do **not** rewrite matrix bullets.
+
+- **Recovery bullet (~987):** Qualify bash-only; default path re-invokes `python/ship.py`, not bash table.
+
+- **Post-`ship-pr.sh` boundary (~1022):** Prefix: ``**When `LARCH_SHIP_PR_IMPL=bash`:** after each `ship-pr.sh` return…``
+
+- **Exit 0 / OOS checkpoint — FINDING_6:** Qualify ``re-invoke `ship-pr.sh --resume-phase pr-create`` as bash-only. Default Python path: after checkpoint, re-invoke selector `python3 …/python/ship.py` (including `--state-file`); **do not** pass `--resume-phase``.
+
+- **Autonomous CI-fix / Exit 6 / Exit 4 conflict:** “re-invoke `ship-pr.sh`” → “re-invoke the **active** Step 8+ driver” with bash-only qualifiers for `--resume-phase` / `ship_pr_pre_push` conflict handoff.
+
+- **Step 18 restore block (~1277–1294) — FINDING_2 / #4 / #7:** Replace unconditional restore-on-`ship-pr-state.sh` with gated restore:
+  - **Always** run `restore-finalize-state.sh` when `LARCH_SHIP_PR_IMPL=bash` and `ship-pr-state.sh` exists.
+  - **Default Python path — skip restore** when `finalize-state.sh` exists **and** `ship-pr-state.sh` does **not** show post-driver terminal overrides requiring refresh: key-based read; **run restore** if any of `STALL_TRACKING=true`, `BAIL_NEEDS_USER_INPUT=true`, or `STALL_STEP` differs from the stall step recorded in `finalize-state.sh` (when both files exist).
+  - **Default Python path — run restore** when `finalize-state.sh` is **missing** and `ship-pr-state.sh` exists (pre-Step-8 stall seeding, or TRANSIENT/NEEDS_USER_INPUT mid-loop without finalize write).
+  - Rewrite Step 18b intro (~1277): default writer is `python/ship.py` on terminal outcomes; bash writer is `ship-pr.sh`; `restore-finalize-state.sh` is reconstruction for bash opt-in or stale/missing finalize per gate above — not “only when ship-pr-state.sh exists” alone.
+
+- **Phantom Untracked Probe registry (~389):** ``Immediately before the active Step 8+ driver …`` (mirror Step 8+ lead-in).
+
+Do NOT rewrite bash `Invoke:` argv lines beyond qualifiers. OOS disposition checkpoint may still **read** merged `ship-pr-state.sh` after Python `--state-file`.
+
+### UPDATED: `skills/implement/references/stall-recovery.md`
+
+**FINDING_4**
+
+- **When to load / Procedure step 1:** Replace three-layer resolve with **four layers** matching Step 18a SKILL (~1189): in-memory → `ship-pr-state.sh` → `finalize-state.sh` → `session-env.sh` via `read-session-env-key.sh`. Update the opening **Contract** line accordingly.
+
+- **`step8-shippr` (~24):** Re-enter Step 8+ through the same selector: foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` with Step 8+ argv unless `LARCH_SHIP_PR_IMPL=bash`, else `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh` with fenced argv. Python path: `writer_rc` + JSON routing authoritative; read `ship-pr-state.sh` / `BAIL_FAILURE_DETAIL_LOG` / `finalize-state.sh` only for classification (bash branch or evidence Python updated disk state).
+
+- **Step 9 teardown (~34):** Defer to Step 18b active-driver restore gate (bash always when `ship-pr-state.sh` exists; Python skip when finalize current; run when finalize missing or `ship-pr-state.sh` terminal overrides stale).
+
+- **Safety Constraints (~41):** Replace ``ALWAYS invoke … ship-pr.sh`` with: invoke `run-step5-review.sh` as today; invoke the **active** Step 8+ driver (Python selector unless `LARCH_SHIP_PR_IMPL=bash`, else `ship-pr.sh`) as foreground Bash calls.
+
+### UPDATED: `skills/implement/references/conflict-resolution.md`
+
+**FINDING_10.** Minimal qualifier edits (same pattern as SKILL Exit 4):
+- **Phase 4 exit 0 / `ship_pr_pre_push`:** Default Python path: re-invoke Step 8+ selector `python3 …/python/ship.py` foreground argv (including `--state-file`); **do not** pass `--resume-phase`. Keep ``re-invoke `ship-pr.sh --resume-phase ship-pr-rrr-phase14``` **bash-only** (`LARCH_SHIP_PR_IMPL=bash`).
+- Update **When to load** / consumer bullets that name only `ship-pr.sh` exit 4 to say “active Step 8+ driver (Python unless bash)”.
+
+### UPDATED: `skills/shared/subskill-invocation.md`
+
+**FINDING_1.** Qualify the ``ship-pr.sh` stdout / state-file parse after Step 8+`` bullet: bash opt-in only; default Python path uses JSON + exit code from `python/ship.py`, not `ship-pr-state.sh` continuation parse.
+
+### UPDATED: `AGENTS.md`
+
+`python/` paragraph: ship-pr→Python is **live by default** at `/implement` Step 8+ (`python3 python/ship.py`); `LARCH_SHIP_PR_IMPL=bash` selects legacy `scripts/ship-pr.sh`. Keep `/report-tokens`, `python/README.md`, `make py-lint`, `make py-test`.
+
+### UPDATED: `docs/configuration-and-permissions.md`
+
+`LARCH_SHIP_PR_IMPL`: default `python` (`python/ship.py`); `LARCH_SHIP_PR_IMPL=bash` for legacy `scripts/ship-pr.sh`. Drop “during the soak”. Step 18: `restore-finalize-state.sh` on bash opt-in, missing `finalize-state.sh`, or stale finalize vs terminal `ship-pr-state.sh` overrides.
+
+### UPDATED: `docs/installation-and-setup.md`
+
+**FINDING_8.** Operator notice: default `/implement` Step 8+ requires **Python 3.12+** as `python3`; set `LARCH_SHIP_PR_IMPL=bash` before the session if not met. **Cache:** Step 8+ defaults to Python in cached `SKILL.md` under `~/.claude/plugins/cache/…`; applies on **first `/implement` after upgraded plugin load** (restart Claude Code after `/upgrade-larch`). Set `LARCH_SHIP_PR_IMPL=bash` before session start to keep bash during rollout.
+
+### UPDATED: `docs/workflow-lifecycle.md`
+
+**FINDING_11.** Reword Step 8+ / CI-fix passages that name `scripts/ship-pr.sh` as the sole active driver to “active Step 8+ driver (default `python/ship.py`; `LARCH_SHIP_PR_IMPL=bash` → `scripts/ship-pr.sh`)”. Keep `run_rebase_rebump` / `ci-behind-count.sh` behavior descriptions; qualify bash-only internals where the script is explicitly the bash path.
+
+### UPDATED: `docs/run-logs.md`
+
+**FINDING_11.** Reword batch-write / refresh triggers that say “inside `ship-pr.sh`” to active Step 8+ driver (default Python `ship.py`; bash opt-in `ship-pr.sh`). PR creation / `final-summary.md` paragraphs: default Python path with bash opt-in qualifier.
+
+### UPDATED: `python/README.md`
+
+Replace “live path still uses bash until Phase 7”. State live `/implement` defaults to Python; `LARCH_SHIP_PR_IMPL=bash` for bash. Reconcile soak / Phase 7-only wording.
+
+### UPDATED: `SECURITY.md`
+
+Python is the **default** driver; `LARCH_SHIP_PR_IMPL=bash` opts out. Security properties unchanged.
+
+### UPDATED: `python/config.py`
+
+Reword ~131 comment from “dev/CI until Phase 7” to live/default-neutral. No behavior change.
+
+### UPDATED: `scripts/test-implement-structure.sh`
+
+**FINDING_9 / #10 / #11** — pins use **exact** SKILL prose after edit. Add awk-scoped helpers where noted.
+
+Positive (file-wide `grep -Fq`):
+- ``default `LARCH_SHIP_PR_IMPL=python` runs``
+- ``When `LARCH_SHIP_PR_IMPL=bash`, run the bash contract below byte-for-byte``
+- ``driven by the **Python driver selector** below``
+- ``Unless `LARCH_SHIP_PR_IMPL=bash`, do not run the fenced``
+- ``ship-pr-net-retries-python.count`` (Exit 6 Python counter)
+
+Negative:
+- must NOT contain ``default `LARCH_SHIP_PR_IMPL=bash` runs the bash contract``
+
+Positive (awk window: ``**Python driver selector:**`` through line before ``Invoke:``):
+- ``python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"``
+- ``--state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh"``
+- substring from exit-3 prose: ``needs_user_reason`` and ``oos-filing`` (FINDING_9 — not abbreviated routing only)
+
+Positive (awk window: ``Apply the following exit matrix **only when `LARCH_SHIP_PR_IMPL=bash`**`` through ``Parse the process exit code and then read``):
+- exact gate phrase (FINDING_11)
+
+Positive (Step 18 region awk):
+- ``restore-finalize-state.sh`` with bash-only and/or ``finalize-state.sh`` skip + terminal-override wording
+
+Positive (NEVER #11 region awk):
+- ``python/ship.py`` as default finalize writer; ``restore-finalize-state.sh`` conditional (FINDING_1)
+
+Positive (anti-halt region): default Python must not require unqualified ``parse `ship-pr-state.sh` silently`` without bash qualifier.
+
+Optional: `stall-recovery.md` contains ``finalize-state.sh`` in step-1 four-layer resolve; `conflict-resolution.md` contains Python selector re-invoke qualifier.
+
+### UPDATED: `scripts/test-implement-structure.md`
+
+Document new assertions, awk windows, Exit 6 Python counter pin, NEVER #11 / Step 18 restore pins. Note empty `LARCH_SHIP_PR_IMPL=` → python is manual matrix only.
+
+### UPDATED: `python/test_ship.py` (or new focused module)
+
+**FINDING_12**
+
+- **Merge preservation:** Pre-seed `ship-pr-state.sh` with `STALL_TRACKING=true` plus one other orchestrator-only key (`EXPECTED_SESSION_ID=…`); call `_write_ship_state` (or short `run_ship` path with `--state-file`); assert seeded keys unchanged and Python-managed keys (`PHASE`, `PR_NUMBER`, counters) updated.
+- **Invalid tmpdir:** `run_ship` with tmpdir outside allowlist → no `ship-pr-state.sh` / `finalize-state.sh` created; JSON stall only.
+- **Terminal finalize (parametrize):** After checks stall, postbump stall, and postmerge flush-skip stall paths, assert `finalize-state.sh` exists with `STALL_TRACKING=true`.
+- **No finalize on re-entry:** TRANSIENT and `NEEDS_USER_INPUT` / OOS gate paths → `finalize-state.sh` absent (or unchanged) while `ship-pr-state.sh` updated.
+- **Flush-skip:** postmerge path where flush returns skipped → finalize has stall shape, not success-only keys alone.
+
+### UPDATED: `skills/implement/scripts/stall-recovery-report.sh` (if classify reads only three layers)
+
+**FINDING_4.** Align `classify` stall resolution with four-layer SKILL order: consult `finalize-state.sh` for `STALL_TRACKING` / `STALL_STEP` / `EXIT_CODE` when `ship-pr-state.sh` lacks them. Add harness assertion in `test-implement-structure.sh` or dedicated stall-recovery test if one exists.
+
+## Approach
+
+Surgical default flip plus **routing closure** so Python-default runs cannot fall through to bash `Invoke:`, stale continuation via `ship-pr-state.sh`, or wrong restore/teardown. **`_write_ship_state` merge** plus **outcome overlays** (FINDING_5/8) make `--state-file` safe and recovery-aligned. **Guarded writes** (FINDING_2), **narrowed finalize** (FINDING_3/6), **flush-skip stall refresh** (FINDING_5), and **conditional restore with stale-finalize detection** (FINDING_2/7) keep teardown coherent. **Fixed Python Exit 6 counter** (FINDING_3). **Full exit-3 selector prose** (FINDING_9). **Four-layer stall recovery** (FINDING_4). **conflict-resolution.md** Python handoff (FINDING_10). Consumer docs + **concrete py-test** (FINDING_11/12). Anti-halt, phantom probe, NEVER #11/Step 18b writer truth, and byte-exact structure pins land in the same PR.
+
+Trade-off accepted (Round 1): no blocker-gating on #3446 / #3404 / #3405 / #3449.
+
+## Edge cases
+
+- **Unset vs empty `LARCH_SHIP_PR_IMPL`:** Both select Python; only literal `bash` selects legacy path.
+- **Invalid tmpdir:** JSON-only; no state files (FINDING_2).
+- **`=bash` byte-stable:** Fenced `Invoke:` and bash exit matrix unchanged in substance; bash-only gates added.
+- **`--no-logs-commit` and `--state-file`:** On Python selector argv after merge lands.
+- **OOS / disposition checkpoint:** May read merged `ship-pr-state.sh`; re-entry uses Python argv, no `--resume-phase`; no finalize write until terminal (FINDING_6).
+- **Exit 6 Python:** `ship-pr-net-retries-python.count`, not per-phase file (FINDING_3).
+- **Pre-Step-8 stall:** `ship-pr-state.sh` seeded, no `finalize-state.sh` → Step 18 **runs** restore on Python path.
+- **Python postmerge success:** `finalize-state.sh` present, no terminal overrides in `ship-pr-state.sh` → Step 18 **skips** restore.
+- **Post-merge flush skip:** finalize rewritten stall-shaped; restore skip safe only if consistent (FINDING_5).
+- **Prompt-side stall overrides after driver:** `STALL_TRACKING` / `BAIL_NEEDS_USER_INPUT` in `ship-pr-state.sh` → Step 18 **runs** restore even if old finalize exists (FINDING_7).
+- **TRANSIENT / mid-loop exit 3:** No finalize write; restore allowed when re-entering selector then reaching Step 18 without terminal finalize (FINDING_6).
+- **`ship_pr_pre_push`:** conflict-resolution loads; Phase 4 success re-invokes Python selector (FINDING_10).
+- **Token drift:** SKILL phrases and pins must match exactly (FINDING_9).
+- **Cached plugin / missing python3 3.12+:** installation notice; `LARCH_SHIP_PR_IMPL=bash` escape hatch.
+
+## Failure modes
+
+- **Partial flip (docs lag SKILL.md):** Mitigation: enumerated files + `rg` sweep including `workflow-lifecycle.md`, `run-logs.md`, `conflict-resolution.md`.
+- **Default path still runs bash `Invoke:`:** Mitigation: routing pins + manual matrix.
+- **Seeded keys dropped:** Mitigation: merge test (FINDING_12).
+- **Writes outside tmpdir:** Mitigation: `_tmpdir_under_allowed_root` on all writers (FINDING_2).
+- **Premature finalize blocks restore:** Mitigation: narrow finalize + conditional restore (FINDING_6/7).
+- **Stale success finalize after flush-skip stall:** Mitigation: post-skip `_write_terminal_state` (FINDING_5).
+- **Stall recovery misses Python stall:** Mitigation: four-layer + finalize in classifier (FINDING_4).
+- **Exit 3 routing regression:** Mitigation: selector prose pin + manual OOS/CI-fix matrix (FINDING_9).
+- **Pin false pass:** Mitigation: awk-scoped pins (FINDING_10/11).
+- **Shallow py-test:** Mitigation: concrete fixtures (FINDING_12).
+
+## Testing strategy
+
+- `bash scripts/test-implement-structure.sh` and `make lint` — selector, full exit-3 substring, routing, awk-scoped `--state-file`, matrix gate, Step 18 restore + NEVER #11, anti-halt, Python Exit 6 counter; negative bash-default absent; optional stall-recovery / conflict-resolution pins.
+- `make py-test` — merge preservation, invalid tmpdir no-write, parametrized terminal finalize, no finalize on TRANSIENT/NEEDS_USER_INPUT, flush-skip stall finalize (FINDING_12).
+- If `stall-recovery-report.sh` changes: assert classify reads `finalize-state.sh` when ship-pr-state lacks stall keys.
+- Repo-wide sweep: `rg -n 'LARCH_SHIP_PR_IMPL|during the soak|still uses bash|dev/CI-only until Phase 7|mechanically delegated to.*ship-pr' --glob '!larch-logs/**'`; triage `skills/`, `docs/`, `python/`, `AGENTS.md`, `SECURITY.md`, `skills/shared/`.
+- Manual matrix: (1) unset → `python/ship.py` + JSON, no bash `Invoke:`; (2) empty → same; (3) `=bash` → fenced `ship-pr.sh`; (4) `--no-logs-commit` on Python argv; (5) post-run `ship-pr-state.sh` retains seeded `STALL_TRACKING` after `--state-file`; (6) Python success → finalize present, restore skipped; (7) Step 5 pre-Step-8 stall → restore runs; (8) OOS → Python re-invoke, no `--resume-phase`, no premature finalize; (9) Exit 6 → `ship-pr-net-retries-python.count`; (10) flush-skip stall → stall-shaped finalize; (11) `ship_pr_pre_push` success → Python re-invoke not bash resume-phase.
+
+## Diff size estimate
+
+Small–medium. `python/ship.py`: merge, guards, narrowed finalize, flush-skip refresh, outcome overlays (~70 lines). `python/test_ship.py`: new cases (~55 lines). `SKILL.md`: selector invert, full exit-3 carry-forward, anti-halt, NEVER #11/13/18b, continuation/bash gates, OOS/phantom/restore gate (~140 lines). `stall-recovery.md`, `conflict-resolution.md`, `subskill-invocation.md` (~35 lines). Eight doc/comment surfaces; structure-test + sibling `.md` (~45 lines); possible `stall-recovery-report.sh` tweak (~15 lines). Roughly **195** changed lines.
+
+diff_lines: 195

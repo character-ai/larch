@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	plan.txt:7-37	No consumer-facing release or upgrade warning in the file list	Users who never set LARCH_SHIP_PR_IMPL get python Step 8+ on the next plugin install with no changelog, release-note, or upgrade-larch callout	Add a minimal operator notice path to the plan (release-note bullet for the shipping version and/or a short docs/installation-and-setup.md or upgrade-larch note that the default flipped and bash is the escape hatch)

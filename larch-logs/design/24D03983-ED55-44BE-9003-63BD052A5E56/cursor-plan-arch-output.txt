@@ -1,0 +1,20 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	skills/implement/scripts/stall-recovery-report.sh:566-625	FINDING_4 four-layer resolve is mandatory for classify but plan keeps the script update conditional	Step 18a SKILL resolves STALL_TRACKING across finalize-state.sh yet classify still reads only ship-pr-state.sh and session-env.sh so stall metadata present only in Python-written finalize can yield RESUME_HINT=none or wrong FAILURE_CLASS before Step 18b restore	Make stall-recovery-report.sh classify update mandatory (drop the if classify reads only three layers guard) and add a test-stall-recovery-report.sh case where finalize-state.sh alone carries STALL_TRACKING/STALL_STEP
+2	in_scope	latent	correctness	python/ship.py:565-572	Proposed main() exception handler specifies stall-shaped finalize but not JSON stdout	Uncaught exceptions outside run_ship handled errors leave the default Python orchestrator without exit+JSON routing closure the selector requires even though SECURITY.md claims crash paths emit JSON	In the same main() handler emit emit_result(ctx ShipResult(Outcome.STALLED ...)) before returning config.OUTCOME_EXIT_MAP STALLED or document that handler is finalize-only and narrow the SECURITY.md crash-path JSON claim
+3	out_of_scope	latent	architecture	skills/implement/SKILL.md:942-948	Pre-ship and log-refresh prose still names ship-pr.sh as the sole Step 8+ writer after the default flip	Default-path operators reading Step 7a context may assume final-summary and refresh-run-logs behavior is bash-only even though python/ship.py now owns equivalent paths	Qualify these paragraphs with active Step 8+ driver wording in the same PR or track as follow-up doc debt
+
+**1. [architecture] `stall-recovery-report.sh` classify must be mandatory, not conditional** (`skills/implement/scripts/stall-recovery-report.sh:566-625`)
+
+FINDING_4 aligns `stall-recovery.md` and Step 18a with a four-layer resolve (including `finalize-state.sh`). `cmd_classify` today reads only `ship-pr-state.sh` and `session-env.sh`. The plan gates the script change with “if classify reads only three layers,” but classify already omits the finalize layer that the narrowed Python terminal writer and conditional Step 18 restore gate depend on. After the default flip, stall keys can live in `finalize-state.sh` before `restore-finalize-state.sh` runs, so classification can diverge from Step 18a’s gate.
+
+**Suggested revision:** Treat the `stall-recovery-report.sh` update as required. Add a `test-stall-recovery-report.sh` fixture where `finalize-state.sh` carries `STALL_TRACKING`/`STALL_STEP` and `ship-pr-state.sh` does not, and assert classify honors finalize.
+
+**2. [correctness] `main()` exception handler contract is incomplete** (`python/ship.py:565-572`)
+
+The plan adds an outer `main()` exception handler for best-effort stall-shaped finalize when tmpdir is allowed, but does not require a JSON envelope on that path. Default-path Step 8+ routing is exit code + JSON only; an handler that writes finalize without `emit_result` leaves the orchestrator without selector input. `SECURITY.md` already states the Python driver emits JSON “including crash paths.”
+
+**Suggested revision:** In the handler, call `emit_result` with an `Outcome.STALLED` payload before returning, or narrow the SECURITY.md claim if finalize-only recovery is intentional.
+
+**3. [OUT_OF_SCOPE] Pre-ship prose still bash-centric** (`skills/implement/SKILL.md:942-948`)
+
+The plan rewrites Step 8+ selector, restore gate, and phantom-probe lead-ins but does not list the Step 7a “Pre-ship log flush” block, which still describes `ship-pr.sh` as the exclusive Step 8+ owner of `final-summary.md` and `refresh-run-logs.sh` triggers. The rg sweep may catch this; it is doc drift, not a routing hole, because the selector remains authoritative.
