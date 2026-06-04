@@ -1,0 +1,17 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/sessionstart-health.sh:54-114 / scripts/sessionstart-health.sh:121-122	Drift probe resolves lib via unset PLUGIN_ROOT under set -u	Plan places the probe inside the JQ_AVAILABLE && GIT_AVAILABLE block before HOOK_CWD parsing; PLUGIN_ROOT is only assigned inside the later if [[ -n "$HOOK_CWD" ]] block. set +e does not disable set -u, so expanding "$PLUGIN_ROOT/scripts/lib-sparse-dirs.sh" aborts SessionStart before exit 0	At probe entry bind plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}" (or source "$SCRIPT_DIR/lib-sparse-dirs.sh" directly) before any PLUGIN_ROOT expansion; keep the probe cwd-independent of HOOK_CWD
+1	in_scope	latent	correctness	scripts/sessionstart-health.sh:17 / plan sessionstart-health section	Subshell-only wrapper is insufficient for missing normalize_sparse_dirs	Plan allows "set +e … set -e or a subshell". A bare ( … ) inherits set -euo pipefail; calling an undefined normalize_sparse_dirs after a silent source still exits 127 and kills the subshell; parent continues but a top-level probe without an inner set +e still violates exit 0 if any step escapes the subshell	Treat subshell as requiring inner set +e, or match existing line 127-129: source … || true then declare -F normalize_sparse_dirs before expected=$(normalize_sparse_dirs …); alternatively expected=$(normalize_sparse_dirs 2>/dev/null || true) so missing lib skips without a set +e envelope
+
+## Findings
+
+**1. [correctness] `scripts/sessionstart-health.sh:54-114` / `scripts/sessionstart-health.sh:121-122` — PLUGIN_ROOT used before assignment**
+
+The plan puts the drift probe in the `JQ_AVAILABLE && GIT_AVAILABLE` block (after the work-tree sub-block, ~lines 113–114) and resolves the lib at `"$PLUGIN_ROOT/scripts/lib-sparse-dirs.sh"`. In the current script, `PLUGIN_ROOT` is only set inside `if [[ -n "$HOOK_CWD" ]]` at lines 121–122, which runs after stdin/`cwd` parsing and only when `HOOK_CWD` is non-empty. The probe is meant to be cwd-independent, so it will often run with `PLUGIN_ROOT` still unset. With `set -u` at line 17, that expansion aborts the hook before `exit 0`, breaking the SessionStart non-blocking contract. `set +e` does not relax `set -u`.
+
+**Suggested revision:** At probe entry, initialize `plugin_root="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/.." && pwd -P)}"` or source `"$SCRIPT_DIR/lib-sparse-dirs.sh"` directly (always valid because `SCRIPT_DIR` is set at line 19).
+
+**2. [correctness] `scripts/sessionstart-health.sh:17` — subshell-only guard vs missing `normalize_sparse_dirs`**
+
+The plan’s missing-lib path (`source … 2>/dev/null || true`) leaves `normalize_sparse_dirs` undefined. A later bare call returns 127. That is safe only inside `set +e` or with `|| true` / `declare -F` on the call path (as at lines 127–129 for `resolve_implement_tmpdir`). The plan lists “set +e … or a subshell” as equivalent; a subshell still inherits `set -e`, so subshell-only is not sufficient. The `[ -n "$expected" ]` guard is never evaluated if the assignment line exits under `set -e` outside the envelope.
+
+**Suggested revision:** Require inner `set +e` inside any subshell, or mirror the existing pattern: `declare -F normalize_sparse_dirs >/dev/null 2>&1` before calling, or `expected=$(normalize_sparse_dirs 2>/dev/null || true)`.

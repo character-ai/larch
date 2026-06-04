@@ -1,0 +1,118 @@
+v1	mark	1780559242	design	design Step 1c — questions	-	-	-	-	-	-	-	-
+v1	mark	1780559637	design	design Step 1d — discussion r1	-	-	-	-	-	-	-	-
+v1	mark	1780559748	design	design Step 1d.5 — brainstorm	-	-	-	-	-	-	-	-
+v1	mark	1780559748	design	design Step 1d.7 — outline	-	-	-	-	-	-	-	-
+v1	mark	1780559941	design	design Step 2a — sketches	-	-	-	-	-	-	-	-
+v1	mark	1780560474	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	mark	1780560530	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1780560615	implement	-	codex	scout-dynamic-archetypes	1780560583	1780560615	32	scout-plan-manifest.json.raw	0	complete
+v1	vendor	1780560723	implement	-	codex	codex-phase1-codex-plan-innovation	1780560620	1780560723	103	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1780560725	implement	-	codex	codex-phase1-codex-plan-requirements	1780560621	1780560725	104	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1780560738	implement	-	cursor	cursor-phase1-dyn-cursor-plan-sparse-contract	1780560621	1780560738	117	cursor-plan-dyn-sparse-contract-output.txt	0	complete
+v1	vendor	1780560745	implement	-	codex	codex-phase1-dyn-codex-plan-bootstrap-release	1780560621	1780560745	124	codex-primary-plan-dyn-bootstrap-release-output.txt	0	complete
+v1	vendor	1780560754	implement	-	codex	codex-phase1-codex-plan-arch	1780560620	1780560754	134	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1780560757	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780560620	1780560757	137	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780560758	implement	-	codex	codex-phase1-codex-plan-pragmatic	1780560621	1780560758	137	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780560815	implement	-	codex	codex-phase1-codex-plan-edge	1780560620	1780560815	195	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1780560829	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780560620	1780560829	209	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780560856	implement	-	codex	codex-phase1-dyn-codex-plan-sparse-contract	1780560621	1780560856	235	codex-primary-plan-dyn-sparse-contract-output.txt	0	complete
+v1	vendor	1780560860	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780560620	1780560859	239	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780560876	implement	-	cursor	cursor-phase1-dyn-cursor-plan-bootstrap-release	1780560621	1780560876	255	cursor-plan-dyn-bootstrap-release-output.txt	0	complete
+v1	vendor	1780560888	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780560621	1780560888	267	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780560904	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780560620	1780560904	284	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780560961	implement	-	codex	codex-phase1-aggregator	1780560920	1780560961	41	aggregator-output.txt	0	complete
+v1	vendor	1780561170	implement	-	codex	codex-phase1-voter-2	1780561108	1780561170	62	codex-vote-output.txt	0	complete
+v1	vendor	1780561178	implement	-	cursor	cursor-phase1-voter-3	1780561108	1780561178	70	cursor-vote-output.txt	0	complete
+v1	vendor	1780561228	implement	-	codex	codex-review	1780561183	1780561228	45	codex-output.txt	7	signal
+v1	vendor	1780561312	implement	-	cursor	cursor-review	1780561228	1780561312	84	cursor-output.txt	0	complete
+v1	vendor	1780561362	implement	-	codex	scout-dynamic-archetypes	1780561316	1780561362	46	scout-plan-manifest.json.raw	7	signal
+v1	vendor	1780561564	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780561430	1780561563	133	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780561573	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780561429	1780561573	144	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780561575	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780561429	1780561575	146	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780561592	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780561429	1780561592	163	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780561601	implement	-	codex	codex-phase1-codex-plan-requirements	1780561430	1780561601	171	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1780561607	implement	-	codex	codex-phase1-codex-plan-innovation	1780561429	1780561607	178	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1780561623	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780561429	1780561623	194	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780561660	implement	-	codex	codex-phase1-codex-plan-edge	1780561429	1780561660	231	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1780561699	implement	-	codex	codex-phase1-codex-plan-arch	1780561429	1780561699	270	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1780561751	implement	-	codex	codex-phase1-codex-plan-pragmatic	1780561429	1780561751	322	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780561798	implement	-	codex	codex-phase1-aggregator	1780561762	1780561798	36	aggregator-output.txt	0	complete
+v1	vendor	1780561948	implement	-	codex	codex-phase1-voter-2	1780561933	1780561948	15	codex-vote-output.txt	7	signal
+v1	vendor	1780562008	implement	-	cursor	cursor-phase1-voter-3	1780561933	1780562008	75	cursor-vote-output.txt	0	complete
+v1	vendor	1780562057	implement	-	codex	codex-review	1780562013	1780562057	44	codex-output.txt	7	signal
+v1	vendor	1780562130	implement	-	cursor	cursor-review	1780562057	1780562130	73	cursor-output.txt	0	complete
+v1	vendor	1780562180	implement	-	codex	scout-dynamic-archetypes	1780562136	1780562180	44	scout-plan-manifest.json.raw	7	signal
+v1	vendor	1780562441	implement	-	cursor	cursor-phase1-dyn-cursor-plan-hook-isolation	1780562302	1780562441	139	cursor-plan-dyn-hook-isolation-output.txt	0	complete
+v1	vendor	1780562443	implement	-	codex	codex-phase1-dyn-codex-plan-hook-isolation	1780562302	1780562443	141	codex-primary-plan-dyn-hook-isolation-output.txt	0	complete
+v1	vendor	1780562443	implement	-	cursor	cursor-phase1-dyn-cursor-plan-sync-surfaces	1780562302	1780562443	141	cursor-plan-dyn-sync-surfaces-output.txt	0	complete
+v1	vendor	1780562468	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780562301	1780562468	167	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780562475	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780562301	1780562475	174	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780562483	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780562301	1780562483	182	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780562491	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780562301	1780562491	190	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780562494	implement	-	codex	codex-phase1-codex-plan-innovation	1780562301	1780562494	193	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1780562498	implement	-	cursor	cursor-phase1-dyn-cursor-plan-release-coupling	1780562302	1780562498	196	cursor-plan-dyn-release-coupling-output.txt	0	complete
+v1	vendor	1780562502	implement	-	codex	codex-phase1-dyn-codex-plan-sync-surfaces	1780562302	1780562502	200	codex-primary-plan-dyn-sync-surfaces-output.txt	0	complete
+v1	vendor	1780562508	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780562301	1780562508	207	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780562521	implement	-	codex	codex-phase1-dyn-codex-plan-release-coupling	1780562302	1780562521	219	codex-primary-plan-dyn-release-coupling-output.txt	0	complete
+v1	vendor	1780562523	implement	-	codex	codex-phase1-codex-plan-requirements	1780562302	1780562523	221	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1780562532	implement	-	codex	codex-phase1-codex-plan-arch	1780562301	1780562532	231	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1780562535	implement	-	codex	codex-phase1-codex-plan-edge	1780562301	1780562535	234	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1780562575	implement	-	codex	codex-phase1-codex-plan-pragmatic	1780562301	1780562575	274	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780562691	implement	-	codex	codex-phase1-aggregator	1780562628	1780562691	63	aggregator-output.txt	0	complete
+v1	vendor	1780562913	implement	-	cursor	cursor-phase1-voter-3	1780562848	1780562913	65	cursor-vote-output.txt	0	complete
+v1	vendor	1780562920	implement	-	codex	codex-phase1-voter-2	1780562848	1780562920	72	codex-vote-output.txt	0	complete
+v1	vendor	1780563061	implement	-	codex	codex-review	1780562930	1780563061	131	codex-output.txt	0	complete
+v1	vendor	1780563273	implement	-	cursor	cursor-review	1780563062	1780563273	211	cursor-output.txt	0	complete
+v1	vendor	1780565373	implement	-	codex	codex-review	1780565291	1780565373	82	codex-output.txt	0	complete
+v1	vendor	1780565422	implement	-	codex	scout-dynamic-archetypes	1780565378	1780565422	44	scout-plan-manifest.json.raw	7	signal
+v1	vendor	1780565620	implement	-	codex	codex-phase1-dyn-codex-plan-hook-probe-completeness	1780565516	1780565620	104	codex-primary-plan-dyn-hook-probe-completeness-output.txt	0	complete
+v1	vendor	1780565661	implement	-	codex	codex-phase1-dyn-codex-plan-release-root-resolution	1780565515	1780565661	146	codex-primary-plan-dyn-release-root-resolution-output.txt	0	complete
+v1	vendor	1780565677	implement	-	codex	codex-phase1-dyn-codex-plan-shell-root-binding	1780565515	1780565677	162	codex-primary-plan-dyn-shell-root-binding-output.txt	0	complete
+v1	vendor	1780565679	implement	-	cursor	cursor-phase1-dyn-cursor-plan-hook-probe-completeness	1780565515	1780565679	164	cursor-plan-dyn-hook-probe-completeness-output.txt	0	complete
+v1	vendor	1780565691	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780565514	1780565691	177	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780565692	implement	-	cursor	cursor-phase1-dyn-cursor-plan-release-root-resolution	1780565515	1780565692	177	cursor-plan-dyn-release-root-resolution-output.txt	0	complete
+v1	vendor	1780565694	implement	-	codex	codex-phase1-codex-plan-requirements	1780565515	1780565694	179	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1780565696	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780565514	1780565696	182	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780565706	implement	-	codex	codex-phase1-codex-plan-edge	1780565514	1780565706	192	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1780565712	implement	-	codex	codex-phase1-codex-plan-innovation	1780565514	1780565712	198	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1780565718	implement	-	cursor	cursor-phase1-dyn-cursor-plan-shell-root-binding	1780565515	1780565718	203	cursor-plan-dyn-shell-root-binding-output.txt	0	complete
+v1	vendor	1780565719	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780565515	1780565718	203	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780565734	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780565515	1780565734	219	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1780565756	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780565514	1780565756	242	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780565793	implement	-	codex	codex-phase1-codex-plan-pragmatic	1780565515	1780565793	278	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780565801	implement	-	codex	codex-phase1-codex-plan-arch	1780565514	1780565801	287	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1780565861	implement	-	codex	codex-phase1-aggregator	1780565816	1780565861	45	aggregator-output.txt	0	complete
+v1	vendor	1780566106	implement	-	codex	codex-phase1-voter-2	1780566040	1780566106	66	codex-vote-output.txt	0	complete
+v1	vendor	1780566113	implement	-	cursor	cursor-phase1-voter-3	1780566040	1780566113	73	cursor-vote-output.txt	0	complete
+v1	vendor	1780566171	implement	-	codex	codex-review	1780566125	1780566171	46	codex-output.txt	7	signal
+v1	vendor	1780566242	implement	-	cursor	cursor-review	1780566171	1780566242	71	cursor-output.txt	0	complete
+v1	vendor	1780566296	implement	-	codex	scout-dynamic-archetypes	1780566249	1780566296	47	scout-plan-manifest.json.raw	7	signal
+v1	vendor	1780566510	implement	-	cursor	cursor-phase1-dyn-cursor-plan-release-cone-detection	1780566456	1780566510	54	cursor-plan-dyn-release-cone-detection-output.txt	8	signal
+v1	vendor	1780566512	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1780566455	1780566512	57	cursor-plan-requirements-output.txt	8	signal
+v1	vendor	1780566577	implement	-	codex	codex-phase1-dyn-codex-plan-home-fixture-isolation	1780566456	1780566577	121	codex-primary-plan-dyn-home-fixture-isolation-output.txt	0	complete
+v1	vendor	1780566579	implement	-	cursor	cursor-phase1-dyn-cursor-plan-home-fixture-isolation	1780566456	1780566579	123	cursor-plan-dyn-home-fixture-isolation-output.txt	0	complete
+v1	vendor	1780566580	implement	-	codex	codex-phase1-dyn-codex-plan-release-cone-detection	1780566456	1780566580	124	codex-primary-plan-dyn-release-cone-detection-output.txt	0	complete
+v1	vendor	1780566627	implement	-	codex	codex-phase1-dyn-codex-plan-sourcing-root-split	1780566456	1780566626	170	codex-primary-plan-dyn-sourcing-root-split-output.txt	0	complete
+v1	vendor	1780566632	implement	-	codex	codex-phase1-codex-plan-innovation	1780566455	1780566632	177	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1780566637	implement	-	cursor	cursor-phase1-dyn-cursor-plan-sourcing-root-split	1780566456	1780566637	181	cursor-plan-dyn-sourcing-root-split-output.txt	0	complete
+v1	vendor	1780566648	implement	-	codex	codex-phase1-codex-plan-pragmatic	1780566455	1780566648	193	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780566650	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1780566455	1780566650	195	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1780566655	implement	-	codex	codex-phase1-codex-plan-arch	1780566455	1780566655	200	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1780566665	implement	-	cursor	cursor-phase1-cursor-plan-edge	1780566455	1780566665	210	cursor-plan-edge-output.txt	0	complete
+v1	vendor	1780566668	implement	-	codex	codex-phase1-codex-plan-edge	1780566455	1780566668	213	codex-primary-plan-edge-output.txt	0	complete
+v1	vendor	1780566672	implement	-	cursor	cursor-phase1-cursor-plan-arch	1780566455	1780566672	217	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1780566682	implement	-	codex	codex-phase1-codex-plan-requirements	1780566455	1780566682	227	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1780566770	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1780566455	1780566770	315	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1780566838	implement	-	codex	codex-phase1-aggregator	1780566782	1780566837	55	aggregator-output.txt	0	complete
+v1	vendor	1780567080	implement	-	cursor	cursor-phase1-voter-3	1780567035	1780567080	45	cursor-vote-output.txt	8	signal
+v1	vendor	1780567134	implement	-	codex	codex-phase1-voter-2	1780567035	1780567134	99	codex-vote-output.txt	0	complete
+v1	vendor	1780567187	implement	-	codex	codex-review	1780567142	1780567187	45	codex-output.txt	7	signal
+v1	vendor	1780567322	implement	-	cursor	cursor-review	1780567187	1780567322	135	cursor-output.txt	0	complete
+v1	vendor	1780569352	implement	-	codex	codex-review	1780569306	1780569352	46	codex-output.txt	7	signal
+v1	vendor	1780569457	implement	-	cursor	cursor-review	1780569352	1780569457	105	cursor-output.txt	0	complete
+v1	mark	1780569515	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	mark	1780569579	design	design Step 3.6 — assessor	-	-	-	-	-	-	-	-
+v1	mark	1780569598	design	design Step 3b — arch diagram	-	-	-	-	-	-	-	-
+v1	mark	1780569644	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1780569696	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1780592507	design	design Step 5 — finalize	-	-	-	-	-	-	-	-

@@ -1,0 +1,14 @@
+scripts/lib-sparse-dirs.sh
+scripts/lib-sparse-dirs.md
+skills/upgrade-larch/scripts/upgrade-larch.sh
+skills/upgrade-larch/scripts/upgrade-larch.md
+skills/upgrade-larch/SKILL.md
+scripts/sessionstart-health.sh
+scripts/sessionstart-health.md
+.claude/skills/release/SKILL.md
+agent-lint.toml
+skills/upgrade-larch/scripts/test-upgrade-larch-retention.sh
+scripts/test-sessionstart-health.sh
+SECURITY.md
+docs/installation-and-setup.md
+docs/skills.md

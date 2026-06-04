@@ -1,0 +1,96 @@
+# Sparse-allowlist additions (e.g. python/) never reach existing installs despite #3455 + release
+
+## Summary
+
+After #3455 added `python/` to the plugin sparse-checkout allowlist (`LARCH_SPARSE_DIRS`) and was merged and released as **v47.0.70**, the Python ship-pr driver (`python/ship.py` + supporting modules) **still did not reach the installed plugin**. With `LARCH_SHIP_PR_IMPL=python`, the `/implement` orchestrator resolves `${CLAUDE_PLUGIN_ROOT}/python/ship.py` to a **non-existent path** on already-installed (marketplace) setups, so the Python ship path is unusable.
+
+Root cause is **two compounding defects** in the release/upgrade machinery. Neither `/release` nor a subsequent `/upgrade-larch` can apply a newly-added allowlist directory to an existing install — the operator following the documented flow has no working path to it.
+
+This issue documents **context + root cause only**. The fix is intentionally left to `/design` (run `/design` on this issue after restart).
+
+## Symptom (observed)
+
+On a machine running larch **47.0.70** installed via the `larch-local` marketplace:
+
+- `~/.claude/plugins/cache/larch-local/larch/47.0.70/python/` — **absent** (so `python/ship.py` 404s).
+- `git -C ~/.claude/plugins/marketplaces/larch-local sparse-checkout list` → `.claude .claude-plugin .gemini .github agents docs hooks scripts skills tests` (**no `python`**).
+- `~/.claude/plugins/known_marketplaces.json` → `larch-local.sparsePaths` is the same 10 dirs, **no `python`**.
+- Yet `python/` **is** tracked at the 47.0.70 release commit (`43c7f9f43`), and `LARCH_SPARSE_DIRS` in 47.0.70's `upgrade-larch.sh` **does** include `python`.
+
+So the allowlist fix shipped inside the release artifact but never took effect on the install.
+
+## Evidence
+
+| Check | Result |
+|---|---|
+| #3455 (`e553ad33f`) merged to main | ✅ ancestor of HEAD |
+| `LARCH_SPARSE_DIRS` includes `python` (47.0.70 + repo HEAD) | ✅ |
+| `python/` tracked at release commit `43c7f9f43` | ✅ |
+| 47.0.70 cache dir / marketplace cone / `sparsePaths` include `python` | ❌ all three lacked it |
+| `LARCH_SPARSE_DIRS` in 47.0.68 / 47.0.69 | ❌ no `python` (both cut before #3455) |
+| `LARCH_SPARSE_DIRS` in 47.0.70 | ✅ `python` present |
+| installed == latest_stable | ✅ both `47.0.70` (arms the early-exit; see RC2) |
+
+## Root cause 1 — `/release` bootstrap lag (runs the *previously-installed* `/upgrade-larch`)
+
+`.claude/skills/release/SKILL.md:121`:
+
+> Invoke `/upgrade-larch` via the Skill tool (bare name `"upgrade-larch"` first ...). After success, tell the operator to restart Claude Code.
+
+`/release` cuts the new version, then invokes `/upgrade-larch` **via the Skill tool**, which loads the **currently-installed** copy of the skill. During the v47.0.70 release, the installed plugin was still the **pre-#3455 version (47.0.69)**, whose `LARCH_SPARSE_DIRS` has **no `python`**. So the *old* upgrade-larch performed the install, set the sparse cone **without** `python`, and cached 47.0.70 minus `python/`. The corrected `LARCH_SPARSE_DIRS` that shipped inside 47.0.70 **never executed**.
+
+**Consequence:** a change to `LARCH_SPARSE_DIRS` can never apply itself in the release that introduces it — it lags by exactly one release/upgrade cycle.
+
+## Root cause 2 — `/upgrade-larch` idempotency early-exit skips cone reconciliation (the blocker)
+
+`skills/upgrade-larch/scripts/upgrade-larch.sh` lines 352–364 (idempotency early-exit):
+
+```bash
+if [ -n "$LATEST_STABLE" ] && [ "$CURRENT_INSTALLED_VERSION" = "$LATEST_STABLE" ]; then
+    ACTUAL_VERSION="${CURRENT_INSTALLED_VERSION:-$INSTALLED_VERSION}"
+    write_install_stamp "$ACTUAL_VERSION"
+    prune_cached_versions "$ACTUAL_VERSION"
+    larch_err "Already at latest stable larch release (...). No upgrade needed."
+    exit 0
+fi
+```
+
+The sparse-cone reconciliation — `marketplace_sparse_cone_matches()` (lines 52–62) → remove + `claude plugin marketplace add --sparse` — lives **only** inside `refresh_larch_marketplace()` (lines 89–105), which is reached **only on the non-idempotent (version-changed) path** at line 378 (after the early-exit block).
+
+`refresh_larch_marketplace()`'s own comment (lines 90–92) states the cone comparison exists to *"catch future include-list additions for existing installs"* — but on the already-latest path it is **unreachable dead code**.
+
+**Consequence:** once a machine is on the latest stable version (the normal post-release state), `/upgrade-larch` returns at the early-exit and **never re-evaluates the cone**. A newly-allowlisted directory is never added — no matter how many times `/upgrade-larch` is run.
+
+## Why the two defects compound
+
+- **RC1** means #3455's fix did not apply during the v47.0.70 release (the pre-fix upgrade-larch ran).
+- **RC2** means the natural recovery — re-running `/upgrade-larch` from a 47.0.70 session, which *does* have `python` in its list — **also fails**, because `installed == latest` ⇒ early-exit *before* `refresh_larch_marketplace()`.
+
+Net: the only ways to actually land `python/` are (a) a manual `marketplace remove` + `add --sparse <list-with-python>` + reinstall, or (b) cutting a *new* version so the non-idempotent path runs from a session already on 47.0.70. Neither is discoverable by an operator following the documented flow, and (a) is what was used to unblock this machine.
+
+## Impact / blast radius
+
+- **Not python-specific.** Any future top-level directory added to `LARCH_SPARSE_DIRS` will silently fail to reach existing installs via the documented path (same trap).
+- The Python ship-pr rollout (`LARCH_SHIP_PR_IMPL=python`) is unusable on marketplace/installed setups until manually repaired.
+- **Silent failure:** no error surfaces; operators reasonably believe merge + `/release` propagated the change (as happened here).
+
+## Reproduction
+
+1. On an install at the latest stable version, add a new top-level dir `D` to `LARCH_SPARSE_DIRS`, merge, run `/release`.
+2. Observe the cached version dir, the marketplace sparse cone, and `known_marketplaces.json` `sparsePaths` still lack `D`.
+3. Run `/upgrade-larch` again → "Already at latest stable larch release. No upgrade needed." (early-exit) → cone still lacks `D`.
+
+## What a fix must achieve (non-prescriptive — for `/design`)
+
+- A merged `LARCH_SPARSE_DIRS` addition must reach existing installs through the **documented** path (`/release` and/or `/upgrade-larch`), without a manual `marketplace remove` + `add`.
+- `/upgrade-larch` on an already-latest install must still **reconcile a drifted sparse cone** — run `marketplace_sparse_cone_matches()` and re-add on mismatch even when there is no version change (i.e., the cone check must be reachable on the idempotent path).
+- Reconsider the `/release` → `/upgrade-larch` invocation so an allowlist change can take effect in (or be deterministically and visibly deferred exactly one cycle from) its own release, with operator-visible messaging.
+- Regression coverage for both "cone drift on already-latest install is reconciled" and "allowlist addition propagates to an existing install."
+
+## Notes
+
+- **Related:** #3452 / #3455 (added `python` to the allowlist — necessary but inert on existing installs due to the above), #3447 (Python Phase 7 ship driver), #3364 Phase 1 (versioning move out of `/implement`).
+- **Manual workaround applied on the affected machine to unblock the Python run:** `claude plugin uninstall larch@larch-local` → `claude plugin marketplace remove larch-local` → `rm -rf ~/.claude/plugins/marketplaces/larch-local` → `rm -rf ~/.claude/plugins/cache/larch-local/larch/47.0.70` → `claude plugin marketplace add character-ai/larch --sparse ".claude .claude-plugin .gemini .github agents docs hooks python scripts skills tests"` → `claude plugin install larch@larch-local`. This restored `47.0.70/python/ship.py` and the cone now includes `python`.
+- `/release` and `upgrade-larch` are pure bash/prompt; they are **not** part of the Python rework (which is scoped to ship-pr via `LARCH_SHIP_PR_IMPL`), so this defect is independent of the Python ship-pr work.
+
+*Solution to be designed separately — run `/design` on this issue after restart.*

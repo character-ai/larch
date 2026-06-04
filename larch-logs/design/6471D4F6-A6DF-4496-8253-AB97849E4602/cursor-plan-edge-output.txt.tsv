@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/upgrade-larch/scripts/upgrade-larch.sh:352-363	Plan replaces idempotency early-exit but does not require stamp+prune on the match path	When already-latest and cone already match, installs lose write_install_stamp and prune_cached_versions that today run before exit 0; cache retention regresses with no reinstall	carry write_install_stamp and prune_cached_versions into the already_latest_and_cone_ok branch before the no-upgrade exit message
