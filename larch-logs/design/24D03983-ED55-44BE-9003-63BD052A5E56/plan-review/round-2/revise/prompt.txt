@@ -1,0 +1,181 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Plan: Make python/ship.py the default ship driver (LARCH_SHIP_PR_IMPL bash→python)
+
+SIMPLE-tier change. Flip the `/implement` Step 8+ ship-pr driver default from bash to python, and keep bash as an explicit opt-in. Per Round 1: flip **unconditionally** (do not gate on the open soak blockers #3446 / #3404 / #3405 / #3449), and add a selector-default regression pin.
+
+The default is resolved **prompt-side** in `skills/implement/SKILL.md` — there is no `${LARCH_SHIP_PR_IMPL:-bash}` shell helper, and `python/ship.py` does not branch on the selector. So the flip is a selector-sentence rewrite, two routing-clarity sentences (delegation + pre-`Invoke:`), doc/comment reconciliation, an operator upgrade note, and one CI pin. The legacy bash `Invoke:` fenced block and `python/ship.py` behavior stay byte-stable except the Python argv list gains `--no-logs-commit`.
+
+## Files to modify/create
+
+### UPDATED: `skills/implement/SKILL.md`
+The Step 8+ State Machine section is the contract that picks the driver. Invert the default in the **Python driver selector** paragraph; add routing clarity so stale bash-only prose cannot override the python default; preserve the bash `Invoke:` fenced block byte-for-byte.
+
+- **Delegation sentence (line ~953):** Replace ``Steps 8–14 … are mechanically delegated to `${CLAUDE_PLUGIN_ROOT}/scripts/ship-pr.sh` `` with selector-authoritative wording, e.g. ``Steps 8–14 are delegated by the **Python driver selector** below: unless `LARCH_SHIP_PR_IMPL=bash`, run the default Python foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` invocation and JSON exit routing from that paragraph; when `LARCH_SHIP_PR_IMPL=bash`, run the legacy `scripts/ship-pr.sh` contract in the fenced `Invoke:` block below byte-for-byte.`` Leave surrounding bash-centric choreography (ship-pr-state.sh seeding, 8-pre-ship phantom probe, exit-code matrix keyed on `ship-pr-state.sh`) unchanged — it documents the `=bash` path and argv the Python path reuses.
+
+- Flip the lead clause to: ``default `LARCH_SHIP_PR_IMPL=python` runs`` one foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` invocation in place of `ship-pr.sh`.
+- Keep the python-path detail: the same env/argv flag list as the bash `Invoke:` block **including** `--no-logs-commit "$no_logs_commit"` (today omitted from the selector list — add it so `/implement --no-logs-commit` with unset `LARCH_SHIP_PR_IMPL` reaches `RunContext.no_logs_commit`), plus `--branch` … `--expected-tmpdir-basename-prefix`; the JSON field list (`outcome`, `needs_user_reason`, `failed_run_id`, `pr_number`, `pr_url`, `merge_result`, `detail`); the `Do **not** read ship-pr-state.sh for Python-path routing` clause; exit-code routing (`0`/`6`/`3`/`4`); and the `Step 18 is unchanged for the Python path` sentence.
+- **Pre-`Invoke:` routing sentence:** Immediately before the fenced ``Invoke:`` block (after ship-pr-state.sh seeding / phantom probe), add one sentence: ``Unless `LARCH_SHIP_PR_IMPL=bash`, do not run the fenced `ship-pr.sh` invocation — use the Python foreground invocation and JSON exit routing from the selector above; the fenced block documents the bash opt-in contract only.``
+- Append a trailing opt-in clause: ``When `LARCH_SHIP_PR_IMPL=bash`, run the bash contract below byte-for-byte`` instead (the legacy foreground `ship-pr.sh` invocation).
+- Do NOT rewrite the bash exit-routing matrix, OOS handback prose, or the fenced `ship-pr.sh` argv lines beyond the two routing sentences above.
+
+### UPDATED: `AGENTS.md`
+The `python/` paragraph says the ship-pr→Python rework "remains dev/CI-only until Phase 7 (`LARCH_SHIP_PR_IMPL=python` cutover)". Update it to state the rework is now live by default at `/implement` Step 8+ (`python3 python/ship.py`), with `LARCH_SHIP_PR_IMPL=bash` selecting the legacy `scripts/ship-pr.sh` path. Keep the `/report-tokens` and `python/README.md` / `make py-lint` / `make py-test` references intact.
+
+### UPDATED: `docs/configuration-and-permissions.md`
+The `LARCH_SHIP_PR_IMPL` section says "Default is `bash` …. Set `LARCH_SHIP_PR_IMPL=python` to run the Phase 7 Python driver … during the soak." Flip to: default is `python` (`python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to opt into the legacy `scripts/ship-pr.sh` path. Drop "during the soak" (soak→default is complete); keep the note that Step 18 teardown remains bash-backed.
+
+### UPDATED: `python/README.md`
+The line "The live `/implement` path still uses bash until Phase 7 (`LARCH_SHIP_PR_IMPL=python`)." is now false. Update to: the live `/implement` path now defaults to Python (`python3 python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` for the legacy bash path. Reconcile adjacent stale phrases in the same file, including the layout bullet ``(not wired into the live `/implement` path until Phase 7)`` on `ci_monitor.py` and the ``Phase 5 (dev/CI-only until Phase 7)`` header — make them live/default-neutral (Python is the Step 8+ default; bash remains opt-in; module-level "Phase N" labels are historical scope notes, not "not wired").
+
+### UPDATED: `SECURITY.md`
+Light touch. The "Python ship-pr driver (`LARCH_SHIP_PR_IMPL=python`)" paragraph frames python as the opt-in value. Adjust the parenthetical to reflect that python is now the default and `LARCH_SHIP_PR_IMPL=bash` opts out. Do not change the security properties described (JSON envelope, redaction, finalize-state newline rejection, fail-closed refresh).
+
+### UPDATED: `python/config.py`
+Light touch. Line ~131 comment ``# Phase 5 — PR / merge / logging (dev/CI until Phase 7)`` reads as "not live on `/implement`"; reword to live/default-neutral (e.g. Phase 5 PR/merge/logging modules; Step 8+ defaults to `python/ship.py`, bash opt-in via `LARCH_SHIP_PR_IMPL=bash`). No behavior change.
+
+### UPDATED: `docs/installation-and-setup.md`
+Add a short **Upgrade / operator notice** subsection (after the `/upgrade-larch` block or under "Latest stable release"): `/implement` Step 8+ now defaults to the Python ship driver (`python3 …/python/ship.py`); set `LARCH_SHIP_PR_IMPL=bash` to restore the legacy `scripts/ship-pr.sh` path. Operators who never set the env var will switch drivers on the next plugin upgrade — bash is the explicit escape hatch. No install-script changes.
+
+### UPDATED: `scripts/test-implement-structure.sh`
+Add a selector-default regression pin (3 assertions) in the same `grep -Fq … "$SKILL_MD"` style as existing checks. The script is already Makefile-wired (`test-implement-structure` target, CI shard `test-harnesses-16`), so no new target or shard entry is needed.
+- Positive: assert `$SKILL_MD` contains the python-default lead token ``default `LARCH_SHIP_PR_IMPL=python` runs`` → fail if absent.
+- Positive: assert `$SKILL_MD` contains the bash-opt-in token ``When `LARCH_SHIP_PR_IMPL=bash`, run the bash contract below byte-for-byte`` → fail if absent.
+- Negative: assert `$SKILL_MD` does NOT contain the old bash-default token ``default `LARCH_SHIP_PR_IMPL=bash` runs the bash contract`` → fail if present.
+- Positive (routing clarity): assert `$SKILL_MD` contains a delegation/selector-authority marker such as ``delegated by the **Python driver selector**`` or ``Unless `LARCH_SHIP_PR_IMPL=bash` `` before the fenced bash `Invoke:` block → fail if absent (guards FINDING_1 revert).
+- Tag the assertions with `#3462` so the pin's origin is greppable.
+
+### UPDATED: `scripts/test-implement-structure.md`
+Per the script-md-siblings rule, document the selector-default and routing-clarity assertions (what they pin and why) in the same PR. Note the empty-string manual case (`LARCH_SHIP_PR_IMPL=` → python) is validated in Testing strategy, not grep-pinned.
+
+## Approach
+Smallest change that achieves the goal. The selector lives in one SKILL.md paragraph plus two routing sentences; flipping its default is a surgical rewrite that leaves the bash `Invoke:` block byte-stable while forwarding `--no-logs-commit` on the Python argv list. Doc surfaces and `python/config.py` comments that assert bash-default / soak-only / not-wired are reconciled in lockstep. One CI pin in an already-wired structure test guards selector tokens and routing clarity. A short upgrade note makes the silent default flip visible to operators.
+
+Trade-off accepted (Round 1): no blocker-gating. The plan flips the default independently of #3446 / #3404 / #3405 / #3449 status; those soak-phase correctness gaps are out of scope here.
+
+## Edge cases
+- **Token drift between SKILL.md and the pin.** The flipped SKILL.md wording and the three `grep -Fq` tokens must match exactly (backticks included). Implement both in the same edit and run the harness to confirm.
+- **`=bash` still byte-for-byte.** With `LARCH_SHIP_PR_IMPL=bash`, Step 8+ must invoke `scripts/ship-pr.sh` exactly as today. The flip only re-gates the default; it must not alter the bash contract block, its argv, or its exit-code handling.
+- **Empty vs unset selector.** Both unset and empty `LARCH_SHIP_PR_IMPL` must select python (same "default" branch); only the literal value `bash` selects the legacy path.
+- **`--no-logs-commit` on Python path.** After the flip, default-path runs must pass `"$no_logs_commit"` into `python/ship.py` the same way the bash `Invoke:` block does; verify with `/implement --no-logs-commit` manual check.
+- **Adjacent stale prose.** `python/README.md`, `docs/`, and `python/config.py` may carry more than one "soak" / "Phase 7" / "not wired" sentence; reconcile each surfaced hit, not just the primary line per file.
+- **Stale Step 8+ delegation.** If the opening "mechanically delegated to ship-pr.sh" sentence survives, orchestrators may ignore the selector; the delegation rewrite and pre-`Invoke:` sentence are load-bearing.
+
+## Failure modes
+- **Partial flip (docs lag SKILL.md).** A reader trusts `docs/configuration-and-permissions.md`, `python/README.md`, or `python/config.py` still claiming bash-default / soak-only / not wired. Signal: repo-wide sweep (see Testing strategy). Mitigation: enumerated file list plus post-edit `rg` gate.
+- **Pin tokens do not match the rewritten sentence.** `make lint` / `test-implement-structure` fails (or, worse, a too-loose token passes while the real default is wrong). Mitigation: copy the exact backticked phrases between the SKILL.md edit and the assertions; run the harness locally.
+- **Orchestrator follows bash `Invoke:` on python default.** Stale delegation or missing pre-`Invoke:` sentence causes `ship-pr.sh` despite unset env. Mitigation: routing sentences + structure-test routing marker.
+- **`--no-logs-commit` dropped on default path.** Log commits still run despite explicit flag. Mitigation: include flag in selector argv list; manual unset-vs-bash matrix includes `--no-logs-commit`.
+- **Scope creep into python-path choreography.** Rewriting the broader bash exit matrix or soak fixes risks colliding with open blockers. Mitigation: confine SKILL edits to selector + two routing sentences + `--no-logs-commit`; leave fenced bash block and exit matrix untouched.
+
+## Testing strategy
+- Run `bash scripts/test-implement-structure.sh` (and `make lint`) — the new selector-default assertions must pass; the negative assertion must fail loudly if the old bash-default token survives anywhere in SKILL.md.
+- `make lint` exercises markdownlint (MD038 code-span hygiene on the edited `.md` files) and agent-lint over the SKILL/docs edits.
+- **Repo-wide stale-reference sweep** before merge (exclude immutable history): `rg -n 'LARCH_SHIP_PR_IMPL|during the soak|still uses bash|dev/CI-only until Phase 7|not wired into the live' --glob '!larch-logs/**'` (or equivalent documented patterns). Triage every hit under `skills/`, `docs/`, `python/`, `AGENTS.md`, `SECURITY.md`; fix live prose; ignore intentional historical mentions only when clearly scoped to past releases.
+- Manual confirmation matrix: (1) `LARCH_SHIP_PR_IMPL` **unset** → Step 8+ uses `python/ship.py` + JSON routing; (2) `LARCH_SHIP_PR_IMPL=` **empty string** → same python path; (3) `LARCH_SHIP_PR_IMPL=bash` → fenced `ship-pr.sh` byte-for-byte; (4) `/implement --no-logs-commit` with unset selector → `--no-logs-commit` reaches `python/ship.py`.
+- No new Python behavior is added, so `make py-test` is unaffected; run it only as a regression sanity check.
+
+## Diff size estimate
+Small–medium. One SKILL.md selector rewrite + two routing sentences + `--no-logs-commit` in selector argv; six doc/comment surfaces (`AGENTS.md`, two docs files, `python/README.md` multi-line, `SECURITY.md`, `python/config.py` comment); ~16 lines of structure-test assertions; upgrade subsection; sibling `.md` note. Roughly 75 changed lines; well under the Step 2b.5 thresholds.
+
+diff_lines: 75
+
+</plan>
+
+<findings>
+### FINDING_1: Python default can still route Step 8+ continuations through bash ship-pr.sh
+- **Reviewer(s)**: Cursor-Arch, Cursor-Edge, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements, Cursor-dyn-selector-routing, Codex-dyn-selector-routing, Cursor-dyn-stale-reference-sweep
+- **Severity**: important
+- **Concern**: After flipping the Step 8+ default to `python/ship.py`, multiple load-bearing routing, anti-halt, recovery, and continuation instructions still tell the orchestrator to parse `ship-pr-state.sh`, follow the bash exit matrix, or re-invoke the fenced `ship-pr.sh` block. A default Python run can therefore switch drivers mid-run, ignore JSON routing, or route from stale/missing bash state.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add one load-bearing sentence to the flipped **Python driver selector** (within the two routing sentences): on the default Python path, any Step 8+ bullet that says re-invoke the fenced `Invoke:` block or `ship-pr.sh` means re-invoke the Python foreground command from the selector; matrix and `Invoke:` apply only when `LARCH_SHIP_PR_IMPL=bash`
+  - From Cursor-Edge: Add one minimal sentence to the flipped selector (or edit this critical boundary): on the default Python path, after `python/ship.py` returns, route from JSON stdout + selector exit routing only—do not parse `ship-pr-state.sh` for driver continuation and do not treat the bash exit table as authoritative unless `LARCH_SHIP_PR_IMPL=bash`
+  - From Cursor-Innovation: Default-path runs can mis-route exits (e.g. read stale/missing `PHASE`/`BAIL_REASON`, re-enter bash matrix) despite a successful `python/ship.py` JSON envelope Add one anti-halt qualifier: unless `LARCH_SHIP_PR_IMPL=bash`, after Step 8+ ship driver return use Python selector JSON + exit routing, not `ship-pr-state.sh` / bash exit table
+  - From Cursor-Pragmatic: Add one minimum sentence (same pattern as the planned pre-`Invoke:` guard): on the default Python path, re-invoke the selector’s `python3 …/python/ship.py` foreground call; use the fenced `Invoke:` block only when `LARCH_SHIP_PR_IMPL=bash`
+  - From Codex-Pragmatic: Keep the bash matrix, but label it bash-only and add minimal Python-path continuation rules: use JSON fields, re-invoke python/ship.py with the same argv after OOS or main-agent CI fix, and avoid ship-pr-state.sh for Python routing.
+  - From Cursor-Requirements: Add one load-bearing override in the flipped Python driver selector: autonomous sub-procedure step 12 re-invokes the active Step 8+ driver (python/ship.py foreground argv unless LARCH_SHIP_PR_IMPL=bash, then fenced Invoke)
+  - From Cursor-dyn-selector-routing: Pre-Invoke routing alone is insufficient. Add one bash-only gate immediately before line 1020 (e.g. apply the following exit matrix only when LARCH_SHIP_PR_IMPL=bash; otherwise follow the Python driver selector JSON exit routing and reinvoke python/ship.py) without rewriting the matrix bullets. Keeps the fenced Invoke: block byte-stable per plan scope.
+  - From Codex-dyn-selector-routing: Add a minimal selector-neutral rewrite for these specific reminders: after the Step 8+ ship driver exits, use Python JSON routing unless LARCH_SHIP_PR_IMPL=bash; only the bash branch parses ship-pr-state.sh and re-invokes the fenced ship-pr.sh contract.
+  - From Cursor-dyn-stale-reference-sweep: Add a bash-only qualifier on the recovery bullet (or point recovery at the selector’s Python re-invocation) so default-path recovery never names the fenced `ship-pr.sh` `Invoke:` block as authoritative
+
+
+### FINDING_2: Python path can restore stale seeded ship-pr-state into finalize-state during teardown
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Codex-Innovation, Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned Python-default path still seeds `ship-pr-state.sh`, but `python/ship.py` is invoked without `--state-file`, so that state file is not refreshed. Step 18 restore can later rebuild or overwrite `finalize-state.sh` from stale bash-shaped values, masking Python-written PR, stall, cleanup, or terminal state.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Make restore-finalize-state.sh invocation bash-path only, or otherwise ensure Python-path teardown ignores the seeded ship-pr-state.sh; if the state file must remain for OOS helpers, do not use it to restore finalize-state on the Python path
+  - From Codex-Edge: Add --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" to the Python argv list so python/ship.py replaces the seeded state before teardown, or gate ship-pr-state seeding and restore to the bash opt-in path only
+  - From Codex-Innovation: Pass --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" to python/ship.py in the selector argv, or skip ship-pr-state seeding/restore on the Python path; passing the existing supported flag is the smaller fix
+  - From Codex-Requirements: Add --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" to the Python selector invocation and pin or validate it, or explicitly skip creating/restoring ship-pr-state.sh on the Python path; keep the bash fenced block byte-stable
+
+
+### FINDING_3: Stall recovery reference still hard-codes bash ship-pr.sh re-entry
+- **Reviewer(s)**: Codex-Edge, Codex-dyn-selector-routing
+- **Severity**: important
+- **Concern**: `stall-recovery.md` still tells `step8-shippr` recovery to re-invoke `scripts/ship-pr.sh` as a foreground bash call. A Python-default run that enters Step 18a recovery can therefore switch back to the legacy bash driver instead of re-entering the active Step 8+ selector and JSON routing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Update only the step8-shippr bullet and safety constraint to re-enter Step 8+ through the same selector: Python unless LARCH_SHIP_PR_IMPL=bash; keep the foreground writer_rc routing for the bash opt-in path
+  - From Codex-dyn-selector-routing: Extend the plan to update only the step8-shippr bullet and safety constraint: re-enter the Step 8+ driver selector; use python/ship.py plus JSON routing unless LARCH_SHIP_PR_IMPL=bash, and keep the existing writer_rc/ship-pr-state wording scoped to the bash branch.
+
+
+### FINDING_6: Upgrade notice omits cached-plugin/restart timing for the default flip
+- **Reviewer(s)**: Cursor-dyn-operator-upgrade
+- **Severity**: latent
+- **Concern**: The planned operator notice says users who never set `LARCH_SHIP_PR_IMPL` switch drivers on the next plugin upgrade, but the default lives in cached `SKILL.md` and changes only after the upgraded plugin is loaded. Without tying the notice to restart/cache refresh timing, operators may expect Python default behavior while still running the old bash-default skill.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-operator-upgrade: Tie the notice to the existing restart rule at docs/installation-and-setup.md:38 and the cached-plugin note at docs/installation-and-setup.md:77-82 (e.g. the Python default applies on the first /implement after the upgraded plugin is loaded; set LARCH_SHIP_PR_IMPL=bash before starting Claude Code to pin legacy behavior during rollout).
+
+
+</findings>
+
+<feature>
+# Make python/ship.py the default ship driver (LARCH_SHIP_PR_IMPL bash→python)
+
+## Summary
+
+Flip the default of `LARCH_SHIP_PR_IMPL` so the **Python** ship driver (`python3 python/ship.py`) is selected by default at `/implement` Step 8+, and the legacy bash `scripts/ship-pr.sh` path becomes **opt-in** via `LARCH_SHIP_PR_IMPL=bash`.
+
+## Background
+
+Phase 7 of the ship-pr→Python rework (umbrella #3132, child #3240, merged) introduced the `LARCH_SHIP_PR_IMPL` selector with default `bash` and `python` opt-in. Per umbrella #3132 locked architecture decision #2, the cutover lifecycle is:
+
+> default bash → soak → **default python** → delete bash
+
+This issue covers the **"default python"** flip (soak → default-python). Bash `scripts/ship-pr.sh` removal stays deferred to a later step.
+
+## Change
+
+Flip the default so unset/empty `LARCH_SHIP_PR_IMPL` selects `python3 python/ship.py` at `/implement` Step 8+; the legacy bash `scripts/ship-pr.sh` path is selected only when `LARCH_SHIP_PR_IMPL=bash` is set explicitly.
+
+## Affected surfaces (implementer to confirm during /design)
+
+- `skills/implement/SKILL.md` — the "Python driver selector" block currently states `default LARCH_SHIP_PR_IMPL=bash runs the bash contract ... When LARCH_SHIP_PR_IMPL=python, replace ...`; flip so python is the default and bash is the explicit opt-in.
+- `AGENTS.md` — the `python/` section currently says the live `/implement` path is "wired behind `LARCH_SHIP_PR_IMPL` (default `bash`, optional `python`)"; update to python-default.
+- `docs/configuration-and-permissions.md` and any other docs documenting the env-var default.
+- Any test harness / selector pin that encodes the default (see the SKILL Python-branch selector pin requested in #3446).
+
+## Acceptance
+
+- With `LARCH_SHIP_PR_IMPL` unset, `/implement` Step 8+ invokes `python/ship.py` (JSON stdout contract), not `ship-pr.sh`.
+- With `LARCH_SHIP_PR_IMPL=bash`, Step 8+ invokes the legacy `ship-pr.sh` byte-for-byte as today.
+- `skills/implement/SKILL.md` + `AGENTS.md` + docs reflect python-default / bash-opt-in.
+- `make lint` and relevant harnesses pass; any selector-default pin updated.
+
+## Sequencing / blockers
+
+The Python Step 8+ path still has open soak-phase correctness gaps. The default flip should likely land only **after** these are resolved and soaked:
+
+- #3446 — JSON + finalize-state routing vs `ship-pr-state.sh`
+- #3404 — exit-4 `ship_pr_pre_push` conflict handoff
+- #3405 — `CI_FIX_REBASE_PENDING` vs `evaluate_failure` divergence
+- #3449 — finalize postmerge/cleanup parity
+
+(Recorded for reviewer consideration. `--no-dedup` was used for this filing, so /issue's automatic blocker-dependency wiring was skipped — these edges are documentation-only here.)
+
+</feature>
