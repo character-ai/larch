@@ -1,0 +1,3 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_2: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly accepts this tradeoff and docs/linting.md was updated to document where parity runs; no net regression beyond the known tradeoff
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false
