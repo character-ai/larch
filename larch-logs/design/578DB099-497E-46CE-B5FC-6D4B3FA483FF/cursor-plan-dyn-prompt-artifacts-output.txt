@@ -1,0 +1,30 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/test-render-specialist-prompt.sh:367-375	Plan adds reviewer-testing-only plan injection across DIFF_MODE and MODE but test contract only guards non-testing plan absence for docs-only and description mode	A mistaken refactor of the injection gate could inject `<implementation_plan>` into every specialist on test-only or generated-only diffs; only docs-only has a negative assert today (reviewer-correctness)	Add explicit assert_not_contains cases for reviewer-correctness (or another non-testing agent) with --diff-mode test-only and --diff-mode generated-only plus --plan-file, mirroring the existing docs-only guard
+2	in_scope	nit	architecture	scripts/render-specialist-prompt.md:33-34	Plan updates scripts/test-render-specialist-prompt.md but omits the sibling contract for render-specialist-prompt.sh	Contract still claims --plan-file is diff-mode-only and generic-only; after the change reviewer-testing receives inline plan in description mode and all diff modes, so prompt-surface docs drift from runtime	Add ### UPDATED: scripts/render-specialist-prompt.md documenting the reviewer-testing basename exception and the unchanged generic-only rule for other specialists
+3	in_scope	nit	code-quality	skills/review/scripts/dispatch-panel.sh:99-100	Plan rewrites panel comments but not the hard-fail diagnostic string tied to --plan-file	Operators hitting missing-plan errors still see plan-fidelity specialist is always dispatched after plan-fidelity is folded into reviewer-testing	Update the exit-2 message to cite reviewer-testing folded plan-fidelity scan (or generic plan-required for code review) when shrinking to four static archetypes
+
+### 1. architecture — `scripts/test-render-specialist-prompt.sh:367-375`
+
+The plan’s core prompt change is a conditional branch: inject `<implementation_plan>` for `reviewer-testing` in every `DIFF_MODE` and in `MODE=description`, while leaving other specialists on the existing generic-only diff path. That is the highest-risk surface for accidental context expansion.
+
+The planned harness updates (plan lines 51–52) add positive coverage for `reviewer-testing` but only one negative guard for non-testing agents (`reviewer-correctness` + `docs-only`, lines 369–370). There is no parallel guard for `test-only` or `generated-only`. A logic mistake—dropping the `DIFF_MODE == generic` predicate globally instead of scoping it to non-testing basenames—would silently broaden plan injection to all six surviving static personalities on narrowed diffs.
+
+**Suggested revision:** Extend `scripts/test-render-specialist-prompt.sh` with `assert_not_contains` cases for a non-testing agent under `--diff-mode test-only` and `--diff-mode generated-only` with `--plan-file`, alongside the planned `reviewer-testing` positive matrix.
+
+### 2. architecture — `scripts/render-specialist-prompt.md:33-34`
+
+`render-specialist-prompt.sh` is the runtime authority for prompt assembly; its `.md` sibling is the edit-in-sync contract (line 42: update harness in the same PR). The plan lists `scripts/test-render-specialist-prompt.md` but not `scripts/render-specialist-prompt.md`. After implementation, the contract would still document `--plan-file` as optional and diff-mode-only with generic-only injection, which would be false for `reviewer-testing`.
+
+**Suggested revision:** Add `### UPDATED: scripts/render-specialist-prompt.md` describing basename-scoped plan injection for `reviewer-testing` across all diff modes and description mode, and unchanged generic-only behavior for other specialists.
+
+### 3. code-quality — `skills/review/scripts/dispatch-panel.sh:99-100`
+
+The plan correctly keeps `--plan-file` mandatory (folded plan-fidelity scan lives on `reviewer-testing`) and updates `dispatch-panel.md`, but the `dispatch-panel.sh` section only mentions comment rewrites. The exit-2 string still says `plan-fidelity specialist is always dispatched`, which will be stale once `plan-fidelity` leaves the static manifest.
+
+**Suggested revision:** When editing `dispatch-panel.sh`, update the `--plan-file` validation message to reference the folded `reviewer-testing` plan context requirement.
+
+---
+
+**[OUT_OF_SCOPE] latent — `scripts/launch-review.md:174-175`**
+
+The launch contract also documents `--plan-file` as diff-mode-only embedding. It is not in the plan’s file list; consider syncing in a follow-up so launcher docs match the renderer exception.
