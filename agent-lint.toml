@@ -1011,6 +1011,11 @@ exclude = [
   "skills/pause/scripts/test-pause-skill.sh",
   "scripts/test-implement-rebase-macro.sh",
   "scripts/test-ship-pr-rebase.sh",
+  # scripts/test-ship-pr-oos-pr-prep.sh — offline harness for ship-pr.sh
+  # pr-prep materialize failure with manifest OOS (Makefile
+  # test-ship-pr-oos-pr-prep target). Same Makefile-only pattern as
+  # test-ship-pr-rebase.sh.
+  "scripts/test-ship-pr-oos-pr-prep.sh",
   # scripts/test-rebase-checkpoint-probe.sh — offline harness for
   # scripts/rebase-checkpoint-probe.sh (Makefile test-rebase-checkpoint-probe).
   "scripts/test-rebase-checkpoint-probe.sh",
