@@ -1,0 +1,5 @@
+### In-Scope Findings
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+NO_ISSUES_FOUND

@@ -48,6 +48,15 @@ assert_contains() {
     fi
 }
 
+assert_not_contains() {
+    local file="$1" needle="$2" label="$3"
+    if grep -Fq -- "$needle" "$file"; then
+        fail "$label"
+    else
+        pass "$label"
+    fi
+}
+
 assert_not_exists_or_empty() {
     local file="$1" label="$2"
     if [[ ! -s "$file" ]]; then
@@ -132,7 +141,7 @@ reset_env() {
     unset EMIT_STUB_RC EMIT_STATUS_VALUE EMIT_OMIT_STATUS DIFF_LINES_VALUE \
         SNAPSHOT_STUB_RC VALIDATOR_STUB_RC VALIDATOR_EMIT_STATUS_ON_FAIL \
         VALIDATE_STATUS_VALUE VALIDATE_DEFECT_COUNT_VALUE VALIDATE_SKIPPED_COUNT_VALUE \
-        VALIDATE_UNSAFE_TOKEN_COUNT_VALUE ISSUE_NUMBER || true
+        VALIDATE_UNSAFE_TOKEN_COUNT_VALUE ISSUE_NUMBER REPO || true
 }
 
 setup_design_tmp() {
@@ -242,6 +251,24 @@ set -e
 export LARCH_QUIET_DISABLE=1
 assert_rc "classification invalid quiet rc" 0 "$rc"
 assert_contains "$D2d_invalid_warn/stdout.txt" 'WARN=**⚠ read-design-classification: design_classification missing or invalid' "invalid classification warning emits WARN in quiet mode"
+
+D2d_silent_nonzero="$TMP/classification-silent-nonzero"
+setup_design_tmp "$D2d_silent_nonzero" full SIMPLE
+rm -f "$FAKE_SCRIPTS/read-design-classification.sh"
+cat >"$FAKE_SCRIPTS/read-design-classification.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 9
+STUB
+chmod +x "$FAKE_SCRIPTS/read-design-classification.sh"
+set +e
+run_subject "$D2d_silent_nonzero" --snapshot-original
+rc=$?
+set -e
+assert_rc "classification silent nonzero rc" 0 "$rc"
+assert_contains "$D2d_silent_nonzero/stdout.txt" 'WARN=**⚠ read-design-classification: exited 9; defaulting design_classification to HARD.**' "classification silent nonzero emits synthetic WARN"
+assert_file_kv "$D2d_silent_nonzero/.design-postplan-emit-result.env" SNAPSHOT_STATUS taken "classification silent nonzero defaults HARD"
+rm -f "$FAKE_SCRIPTS/read-design-classification.sh"
+ln -sf "$REPO_ROOT/scripts/read-design-classification.sh" "$FAKE_SCRIPTS/read-design-classification.sh"
 
 D2e="$TMP/classification-simple-legacy-hard"
 setup_design_tmp "$D2e" full HARD
@@ -379,7 +406,7 @@ pass "partial failures write mandatory KV matrix"
 # 11 pause before first internal step, export-format source-env issue
 D11="$TMP/pause"
 setup_design_tmp "$D11" full SIMPLE
-printf 'export ISSUE_NUMBER=77\n' >"$D11/source-env.sh"
+printf 'export ISSUE_NUMBER=77\nexport REPO=owner/name\n' >"$D11/source-env.sh"
 : >"$D11/.pause-requested"
 set +e
 run_subject "$D11"
@@ -388,8 +415,22 @@ set -e
 assert_rc "pause checkpoint rc" 0 "$rc"
 assert_contains "$CALL_LOG" 'pause-save --design-tmpdir' "pause-save invoked"
 assert_contains "$CALL_LOG" '--issue 77' "pause-save issue resolved"
+assert_contains "$CALL_LOG" '--repo owner/name' "pause-save repo resolved"
 if grep -Fq 'design-driver EMIT' "$CALL_LOG"; then fail "pause should happen before EMIT"; else pass "pause happened before EMIT"; fi
 assert_file_kv "$D11/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS paused "pause writes paused status to result env"
+
+# 11b empty/absent REPO omits --repo
+D11b="$TMP/pause-no-repo"
+setup_design_tmp "$D11b" full SIMPLE
+printf 'export ISSUE_NUMBER=88\n' >"$D11b/source-env.sh"
+: >"$D11b/.pause-requested"
+set +e
+run_subject "$D11b"
+rc=$?
+set -e
+assert_rc "pause no repo checkpoint rc" 0 "$rc"
+assert_contains "$CALL_LOG" '--issue 88' "pause no repo issue resolved"
+assert_not_contains "$CALL_LOG" '--repo' "pause no repo omits repo flag"
 
 # 12 quick + force validate runs
 D12="$TMP/quick-force"

@@ -1,0 +1,18 @@
+Good — `write-design-current-env.sh:114–117` validates `REPO` with `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$` at write time, constraining the value before it ever reaches source-env.sh. I now have enough context.
+
+---
+
+### In-Scope Findings
+
+1. **security** `skills/design/scripts/design-postplan-emit.sh:205` — **Nit** — The `${_repo:+--repo "$_repo"}` expansion is unquoted in the `exec` call, meaning the result undergoes word splitting before exec receives the arguments. A REPO value containing whitespace (e.g., `owner/repo name`) would be split into multiple arguments, potentially injecting unexpected flags into `design-pause-save.sh`. In practice this is safe because `write-design-current-env.sh:114–117` validates REPO against `^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$` at write time; and the same unquoted pattern was already present in `skills/design/SKILL.md` Step 3.6 and Step 3b. However, the read site (`_postplan_resolve_repo`) carries no matching validation, so a source-env.sh written outside the normal write path could inject extra arguments. **Suggested fix:** Either add a read-side guard (`[[ "$_repo" =~ ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$ ]]` before use, bailing on mismatch) to enforce the same invariant the write side assumes, or quote the expansion using an array: `set -- "$@" ${_repo:+--repo "$_repo"}` with proper quoting — this is consistent with the `${REPO:+--repo "$REPO"}` idiom already audited in SKILL.md and needs no structural change to the established pattern.
+
+---
+
+### Out-of-Scope Observations
+
+No pre-existing issues to surface.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	security	skills/design/scripts/design-postplan-emit.sh:205	Unquoted ${_repo:+--repo "$_repo"} expansion in exec call; word-splitting at read site has no REPO format guard mirroring the write-side validation in write-design-current-env.sh:114	A source-env.sh written outside write-design-current-env.sh with REPO='owner/repo --extra-flag' would cause word-splitting to pass --extra-flag as a separate argument to design-pause-save.sh	Add a read-side format check (regex match against ^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$) in _postplan_resolve_repo before returning _repo, or emit a WARN and clear _repo on mismatch
+```

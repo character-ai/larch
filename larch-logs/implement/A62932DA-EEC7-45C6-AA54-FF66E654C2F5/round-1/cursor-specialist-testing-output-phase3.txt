@@ -1,0 +1,22 @@
+The SKILL.md at line 1132 confirms the cap pair has all sentinel writes on one combined line. Now I have enough context for the full review.
+
+### In-Scope Findings
+
+1. **Latent** · `risk-integration` · `scripts/test-design-structure.sh:211-246` — `run_gate_b_bypass_branch_sentinel_self_tests` cannot produce negative fixtures for the `cap-reached` / `skipped-cap-reached` pair. The `write_gate_b_bypass_fixture` helper hard-codes the cap-pair line as an always-complete `printf` (no missing-sentinel variant for `$2`/`$3`), so removing a sentinel from that combined line in SKILL.md would not be caught by CI self-tests. The plan explicitly allows "at least two non-`plan-size-trigger` branches," so this is within spec, but it leaves the only two-token combined line unguarded by negative self-test. **Suggested fix:** add a `cap_reached_missing` fixture variant that writes the combined cap line without `step-3.5` and asserts `assert_gate_b_bypass_branch_sentinels` fails; or note the gap in the self-test function comment.
+
+2. **Nit** · `risk-integration` · `scripts/test-design-structure.sh:133-143` — `assert_step3b_entry_guard_threads_repo` is invoked in the main harness body (line 643) but has no self-test proving it fails when the Step 3b guard lacks `${REPO:+--repo "$REPO"}`. Every other structural assertion in this harness (`assert_thin_fence`, `assert_gate_b_bypass_branch_sentinels`) has a corresponding negative fixture via `run_*_self_tests`. **Suggested fix:** add a `run_step3b_entry_guard_threads_repo_self_tests` that builds a fixture with the guard missing REPO and verifies the assertion returns non-zero.
+
+3. **Nit** · `risk-integration` · `skills/design/scripts/test-design-postplan-emit.sh:622-638` — the `D2d_silent_nonzero` test verifies the HARD default indirectly via `SNAPSHOT_STATUS=taken` rather than directly asserting `WORKFLOW_PATH=HARD` in the result env (the result env doesn't surface `WORKFLOW_PATH`). The indirect check is sound since snapshot=taken ↔ HARD+snapshot-original, but a future refactor that adds `WORKFLOW_PATH` to the result-env allowlist would make the assertion more explicit. **Suggested fix:** no action required; note left here for future strengthening.
+
+### Out-of-Scope Observations
+
+No pre-existing issues identified outside the diff surface.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/test-design-structure.sh:211-246	write_gate_b_bypass_fixture cannot inject missing sentinels into the cap-reached/skipped-cap-reached combined line	If someone removes step-3.5 from the cap-pair paragraph in SKILL.md the CI self-tests do not catch it; only the main assert_gate_b_bypass_branch_sentinels call against the live SKILL.md would fail — but that is not a self-test of the assertion itself	Add a cap_reached_missing fixture variant to run_gate_b_bypass_branch_sentinel_self_tests that writes the combined line without step-3.5 and asserts the assertion fails
+1	in_scope	nit	risk-integration	scripts/test-design-structure.sh:133-143	assert_step3b_entry_guard_threads_repo has no negative self-test	Every other structural assertion (assert_thin_fence assert_gate_b_bypass_branch_sentinels) is meta-tested; this one is not — a bug in the assertion itself (e.g. wrong region bounds) would not be caught	Add run_step3b_entry_guard_threads_repo_self_tests with a fixture missing REPO in the Step 3b guard and assert the function returns non-zero
+1	in_scope	nit	risk-integration	skills/design/scripts/test-design-postplan-emit.sh:622-638	D2d_silent_nonzero test verifies HARD default via SNAPSHOT_STATUS=taken rather than directly	Indirect assertion is sound but if snapshot logic changes independently of classification defaulting the test gives false confidence	Note accepted; no immediate action needed unless WORKFLOW_PATH is added to the result-env allowlist
+```

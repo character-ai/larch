@@ -98,6 +98,7 @@ REVIEW_BUDGET="$(json_scalar_or_sed "$RUN_PARAMS_PATH" review_budget full)"
 READ_CLASSIFICATION_SH="$PLUGIN_ROOT/scripts/read-design-classification.sh"
 if [[ -x "$READ_CLASSIFICATION_SH" ]]; then
     _classification_stderr="$DESIGN_TMPDIR/.read-design-classification.stderr.$$"
+    _classification_warn_count_before=${#WARN_LINES[@]}
     set +e
     WORKFLOW_PATH=$("$READ_CLASSIFICATION_SH" "$RUN_PARAMS_PATH" 2>"$_classification_stderr")
     _classification_rc=$?
@@ -109,6 +110,9 @@ if [[ -x "$READ_CLASSIFICATION_SH" ]]; then
     fi
     rm -f "$_classification_stderr"
     if [[ "$_classification_rc" -ne 0 ]]; then
+        if [[ "${#WARN_LINES[@]}" -eq "$_classification_warn_count_before" ]]; then
+            WARN_LINES+=("**⚠ read-design-classification: exited ${_classification_rc}; defaulting design_classification to HARD.**")
+        fi
         WORKFLOW_PATH=HARD
     fi
 else
@@ -178,17 +182,27 @@ _postplan_resolve_issue() {
     printf '%s\n' "$_issue"
 }
 
+_postplan_resolve_repo() {
+    local _repo=""
+    # Use awk-only extraction: sourcing source-env.sh executes arbitrary shell code.
+    if [[ -f "$DESIGN_TMPDIR/source-env.sh" ]]; then
+        _repo=$(awk 'BEGIN{q=sprintf("%c",39)} /^export[[:space:]]+REPO=/ {v=$0; sub(/^export[[:space:]]+REPO=/, "", v); if ((substr(v,1,1)==q && substr(v,length(v),1)==q) || (substr(v,1,1)=="\"" && substr(v,length(v),1)=="\"")) v=substr(v,2,length(v)-2); print v; exit}' "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
+    fi
+    printf '%s\n' "$_repo"
+}
+
 _postplan_pause_checkpoint() {
     if [[ -f "$DESIGN_TMPDIR/.pause-requested" ]]; then
-        local _issue
+        local _issue _repo
         _issue="$(_postplan_resolve_issue)"
+        _repo="$(_postplan_resolve_repo)"
         [[ -n "$_issue" ]] || _postplan_fatal emit-failed 'pause requested but ISSUE_NUMBER could not be resolved'
         # Write result env before exec so the orchestrator's mandatory-key check
         # sees POSTPLAN_EMIT_STATUS=paused rather than an empty-result abort when
         # this driver is called via $() capture (exec replaces the subshell only).
         POSTPLAN_EMIT_STATUS=paused
         _postplan_write_result_and_emit
-        exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue"
+        exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$_issue" ${_repo:+--repo "$_repo"}
     fi
 }
 

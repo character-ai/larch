@@ -1,0 +1,24 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate extraction is real, but factoring two callers is not worth the added helper churn.
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the labels are harmless and mildly improve failure readability, so this is not worth changing.
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- extra negative permutations would be nice, but the live SKILL.md assertion already checks all required sentinels.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the fixture prose is awkward but purely cosmetic and not worth churn.
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the only concrete issue embedded here is the already-duplicated cosmetic fixture prose nit, not an OOS-worthy problem.
+FINDING_10: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the self-test coverage asymmetry is real, but the live all-branch assertion catches the actual SKILL.md regression.
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- a negative self-test would be fine, but the current live structural pin is adequate for this scope.
+FINDING_12: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the item itself says the indirect assertion is sound and no action is required.
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the quoted alternate expansion does not split the repo value into injectable flags as claimed.
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the fixture coverage ceiling is real but the live all-branch check covers the actual regression path.
+FINDING_16: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_17: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_18: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_19: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification rather than a problem, notwithstanding the separate end-marker robustness gap.
+FINDING_20: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_21: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_22: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_23: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
+FINDING_24: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- this is a successful verification, not a concrete problem to fix.
