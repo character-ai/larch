@@ -1,0 +1,24 @@
+FINDING_1: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Real duplication, but two small awk call sites do not warrant extra helper abstraction.
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The mapping is verbose, but it improves failure readability enough that this churn is not worth requiring.
+FINDING_3: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The self-test coverage is narrow, but the live SKILL.md assertion still checks all required sentinels.
+FINDING_4: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Cosmetic fixture grammar with no assertion or runtime impact is not worth requiring.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of correct implementation, not a defect.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of correct implementation, not a defect.
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of correct implementation, not a defect.
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of correct implementation, not a defect.
+FINDING_9: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The stated item is a confirmation, and the embedded cosmetic fixture note is not worth filing.
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The cap-pair negative fixture gap is real, but the live assertion covers the production SKILL.md and extra fixture machinery is disproportionate.
+FINDING_11: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- A negative self-test would be nice, but the assertion is simple and this is not worth requiring.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The indirect assertion is sound today and the suggested action is explicitly no action.
+FINDING_13: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- The quoted inner word in `${_repo:+--repo "$_repo"}` preserves the repo as one argument, so the whitespace flag-injection claim is not real.
+FINDING_14: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_15: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The coverage ceiling is real but intentional per scope, and the live SKILL.md assertion still catches missing sentinels.
+FINDING_16: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of correct implementation, not a defect.
+FINDING_17: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of correct implementation, not a defect.
+FINDING_18: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of correct implementation, not a defect.
+FINDING_19: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of correct implementation, not a defect.
+FINDING_20: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of correct implementation, not a defect.
+FINDING_21: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of correct implementation, not a defect.
+FINDING_22: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of documentation coverage, not a defect.
+FINDING_23: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of test coverage, not a defect.
+FINDING_24: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- This is a confirmation of documentation coverage, not a defect.

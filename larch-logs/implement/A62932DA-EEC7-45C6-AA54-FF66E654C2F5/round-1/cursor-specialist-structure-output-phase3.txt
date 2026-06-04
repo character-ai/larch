@@ -1,0 +1,20 @@
+### In-Scope Findings
+
+1. **Nit** `code-quality` `skills/design/scripts/design-postplan-emit.sh:185-192` — `_postplan_resolve_repo` duplicates the 120-character awk one-liner (including the `BEGIN{q=sprintf("%c",39)}` quote-stripping logic) verbatim from `_postplan_resolve_issue` at line 176–183; only the variable name and the matched key differ. If the extraction pattern ever needs to change (e.g., to handle a third quoting form), both copies must be updated in sync. **Suggested fix:** Factor out a single `_postplan_extract_source_env_key` helper taking the key name as `$1`, and replace both callers with `_issue="$(_postplan_extract_source_env_key ISSUE_NUMBER)"` / `_repo="$(_postplan_extract_source_env_key REPO)"`.
+
+2. **Nit** `code-quality` `scripts/test-design-structure.sh:114-128` — The `case "$required" in` block inside the inner `for required in` loop derives a human-readable `label` from the `$required` value in ~10 lines, but `$required` (e.g., `: > "$DESIGN_TMPDIR/.completed/step-3.5"`) is already self-describing in an error message. The mapping adds no information a reader couldn't recover from the sentinel string itself. **Suggested fix:** Remove the `case` block and use `$required` directly in the failure message: `[[ "$line" == *"$required"* ]] || fail "$branch branch missing: $required"`.
+
+3. **Latent** `correctness` `scripts/test-design-structure.sh:162-198` — `write_gate_b_bypass_fixture` only supports injecting a missing `step-3.5` sentinel (the `missing_sentinel` parameter is only acted on when its value is exactly `step-3.5`). The negative self-tests exclusively verify that a `step-3.5` drop is caught; no self-test verifies that omitting `step-3` or `step-3.6` from a branch also fires the assertion. A future refactoring that drops the `step-3` or `step-3.6` write from a branch in SKILL.md would not be caught by `run_gate_b_bypass_branch_sentinel_self_tests`. **Suggested fix:** Extend `write_gate_b_bypass_fixture` to accept `step-3` and `step-3.6` as `missing_sentinel` values, and add at least one additional negative self-test covering a different sentinel (e.g., `step-3.6` removed from `degraded-empty-collector`).
+
+---
+
+### Out-of-Scope Observations
+
+No out-of-scope observations.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	skills/design/scripts/design-postplan-emit.sh:185-192	_postplan_resolve_repo duplicates the full 120-char awk one-liner from _postplan_resolve_issue verbatim	If the extraction logic needs to change (e.g. new quoting form), both copies must be updated in sync; one will be missed	Factor out a _postplan_extract_source_env_key KEY helper and call it from both resolvers
+1	in_scope	nit	code-quality	scripts/test-design-structure.sh:114-128	case "$required" in block derives a human-readable label from $required in ~10 lines but $required is already self-describing	No concrete breakage; adds dead code weight and a reader must trace the case to see it adds nothing	Remove the case block and use $required directly in the fail message
+1	in_scope	latent	correctness	scripts/test-design-structure.sh:162-198	write_gate_b_bypass_fixture only supports step-3.5 as missing_sentinel; step-3 and step-3.6 removals are not covered by negative self-tests	A branch in SKILL.md that drops step-3 or step-3.6 but keeps step-3.5 would pass assert_gate_b_bypass_branch_sentinels and the self-tests would not catch that the harness failed to detect it	Extend write_gate_b_bypass_fixture for step-3 and step-3.6 and add at least one more negative self-test
+```

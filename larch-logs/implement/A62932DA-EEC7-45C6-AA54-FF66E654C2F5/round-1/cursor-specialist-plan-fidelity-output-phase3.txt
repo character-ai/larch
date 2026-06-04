@@ -1,0 +1,17 @@
+I've verified all the key points. The implementation fully matches the plan. All 7 Gate-B-bypass branches in the live SKILL.md have the correct 4-literal format on single lines, the Step 3b/4 markers match the awk patterns in `assert_step3b_entry_guard_threads_repo`, and all plan requirements are satisfied.
+
+### In-Scope Findings
+
+No in-scope issues found.
+
+All plan requirements are accounted for:
+
+- **Part A**: `assert_gate_b_bypass_branch_sentinels` rewrites iterates all 7 branches with the correct `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached` token for `skipped-cap-reached`, keys on the literal `: >` sentinel-write form, and asserts all four literals on the matched line.
+- **Part A negative self-tests**: `run_gate_b_bypass_branch_sentinel_self_tests` + `write_gate_b_bypass_fixture` implement a positive control plus negative controls for `tally-error` and `panel-failed`; invoked immediately after `run_thin_fence_self_tests`.
+- **Part B.1 SKILL.md**: Single-line `${REPO:+--repo "$REPO"}` addition to the Step 3b entry guard. Confirmed against live SKILL.md line 1263.
+- **Part B.1 test pin**: `assert_step3b_entry_guard_threads_repo` slices the `<!-- step:3b` / `<!-- step:4 ` region correctly; called on `$SKILL_MD`.
+- **Part B.2**: `_postplan_resolve_repo()` mirrors `_postplan_resolve_issue()` with awk-only extraction; `_postplan_pause_checkpoint` threads `${_repo:+--repo "$_repo"}`.
+- **Part B.3**: `_classification_warn_count_before` captured before classification; synthetic `WARN_LINES` entry appended only when no new warns were added in the non-zero-exit arm; `else` arm (non-executable) left unchanged as required.
+- **`design-postplan-emit.md`**: Both `_postplan_resolve_repo` and the synthetic WARN guarantee documented.
+- **`test-design-postplan-emit.sh`**: Tests D11/D11b cover `--repo` threading and omission; `D2d_silent_nonzero` covers the synthetic WARN path; `reset_env` unsets `REPO` correctly.
+- **`scripts/test-design-structure.md`**: Updated to document both the all-branches pin and the Step 3b region check.
