@@ -1,0 +1,4 @@
+Unknown option: --output-file
+Usage: oos-file-conflict-deps.sh --input-file FILE [--output FILE]
+  When --output is omitted and IMPLEMENT_TMPDIR is set, the output
+  defaults to $IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv.

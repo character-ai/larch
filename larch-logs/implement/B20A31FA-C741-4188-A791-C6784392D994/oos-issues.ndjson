@@ -1,0 +1,2 @@
+{"phase":"implement","step":"9a.1","category":"OOS","body":"OOS_1: Direct /research and uncovered Codex exec paths not wired to shared env-key auth \u2014 filed as https://github.com/character-ai/larch/issues/3475"}
+{"phase":"implement","step":"9a.1","category":"OOS","body":"OOS_2: Codex auth test harness gaps (strip failure, probe coverage, review-and-fix dispatch) \u2014 filed as https://github.com/character-ai/larch/issues/3476"}
