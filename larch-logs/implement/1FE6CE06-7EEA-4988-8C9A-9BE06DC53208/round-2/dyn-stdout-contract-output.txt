@@ -1,0 +1,28 @@
+Reviewing branch changes for stdout-contract hygiene on machine-readable shell scripts.
+**Branch commits** (since `main`):
+
+```
+72e64afe0 Address code review feedback (round 1)
+45b8751ef Fix gh stub --json/--watch split in multi-round integration test
+68394499f Apply relevant-checks fixes (Step 3)
+a7ff7c857 chore(larch-logs): flush implement run 1FE6CE06-7EEA-4988-8C9A-9BE06DC53208
+01a6d33fd Re-enable design log publish merge gate
+```
+
+### In-Scope Findings
+
+NO_ISSUES_FOUND
+
+### Out-of-Scope Observations
+
+- **code-quality** `skills/design/scripts/plan-review-loop.sh:873-874` — On the `panel-failed` early-return path (collector exits non-zero and stdout has no parseable records), control returns before the block at 878–882 that appends `_collect_err_tmp` to `plan-review-collector.stderr`, replays it to FD 4, and removes the temp file. That does not corrupt the `emit_kv` stdout contract (replay targets FD 4, not FD 3), but it is a behavioral regression versus the old `tee` path for empty-collector failures: stderr is neither persisted nor surfaced. **Suggested fix:** Before `return 1` at 874, run the same append/replay/`rm -f` sequence used at 878–882 (or factor a small helper) so collector stderr is always captured on failure paths.
+
+- **code-quality** `skills/design/scripts/test-plan-review-loop.md:16` — The harness doc still describes the collector `tee` FD-2 contract; HEAD uses temp-file capture + replay. **Suggested fix:** Update the doc to match the current `plan-review-loop.sh` stderr wiring.
+
+---
+
+**Review notes (stdout contract / risk-integration):**
+
+The merge-gate work in `scripts/design-log-publish.sh` follows the intended hygiene: registration probes use `set +e`, route `gh pr checks --json` stderr to a temp file, keep JSON in shell variables only, run `jq -e` with stdout/stderr redirected to `/dev/null`, and route operator diagnostics through `larch_err` (quiet FD 4 / log, not FD 3). The completion watch still uses `ci_wait_out=$(gh ... 2>&1)` inside a substitution, so watch output never hits the `PUBLISH_OK=` stream. `design-publish.sh` keeps the child envelope clean with `2>"$DESIGN_TMPDIR/design-log-publish.failure.log"` and `parse_kv_from_output` on `_publish_out` only.
+
+The plan-review collector change removes async `tee` from the stdout capture path, which reduces cross-stream interleaving risk for `collect-agent-results.sh` KV output; replay stays on FD 4 when quiet mode is active.

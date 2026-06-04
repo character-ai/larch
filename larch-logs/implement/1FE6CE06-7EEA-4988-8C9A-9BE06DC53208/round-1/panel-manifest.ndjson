@@ -1,0 +1,10 @@
+{"slot":"structure","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-structure-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-structure.md"}
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-correctness.md"}
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-testing.md"}
+{"slot":"security","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-security-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-security.md"}
+{"slot":"edge-cases","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-edge-cases.md"}
+{"slot":"plan-fidelity","tool":"cursor","output":"<TMPDIR>/round-1/cursor-specialist-plan-fidelity-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/47.0.67/agents/reviewer-plan-fidelity.md"}
+{"slot":"dyn-bash-contract","tool":"cursor","output":"<TMPDIR>/round-1/dyn-bash-contract-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-bash-contract-prompt.md","weight":1,"focus_area":"code-quality"}
+{"slot":"dyn-gh-ci-gate","tool":"cursor","output":"<TMPDIR>/round-1/dyn-gh-ci-gate-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-gh-ci-gate-prompt.md","weight":1,"focus_area":"risk-integration"}
+{"slot":"dyn-harness-fidelity","tool":"cursor","output":"<TMPDIR>/round-1/dyn-harness-fidelity-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-harness-fidelity-prompt.md","weight":1,"focus_area":"correctness"}
+{"slot":"dyn-publish-tail","tool":"cursor","output":"<TMPDIR>/round-1/dyn-publish-tail-output.txt","prompt_file":"<TMPDIR>/round-1/dynamic-archetypes/dyn-publish-tail-prompt.md","weight":1,"focus_area":"architecture"}

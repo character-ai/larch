@@ -1,0 +1,24 @@
+I've now read the full diff and the key live sections. Here is my security review.
+
+---
+
+### In-Scope Findings
+
+1. **correctness** `scripts/design-log-publish.sh:865` — The `reg_checks_rc` variable is assigned from the `gh pr checks --required --json bucket` call and then only referenced in a no-op `": "$reg_checks_rc"` acknowledgment with no inline comment explaining the intentional disuse. The design specifies that `gh`'s exit code must NOT be used as the registration signal (rc=8 means pending-but-valid JSON). Without an inline rationale comment, a future maintainer could add `if [[ "$reg_checks_rc" -ne 0 ]]; then fail fi` logic that would break the plan's case 4 (non-zero rc with valid pending JSON must still register and proceed to `--watch`). **Suggested fix:** Add a one-line comment immediately after the assignment: `# rc intentionally unused; JSON array content — not gh's exit code — is the registration signal (see #3413)`.
+
+- **risk-integration** `scripts/design-log-publish.sh:838-842` — The `elif ... jq -e '.'` arm immediately sets `checks_registration_fatal=true` and breaks the loop on any valid non-array JSON from `gh pr checks --json bucket` (e.g. a transient rate-limit object `{"message":"API rate limit exceeded"}`). This exhausts the registration attempt after a single probe rather than retrying within the 31-probe budget. The plan said to use `jq -e 'type=="array" and length>0'` as a single predicate (empty-array → not-yet-registered → keep polling); the added fatal path for non-array JSON objects is security-favorable (fail-closed) but could cause false registration failures during brief GitHub API errors that would self-heal on retry. **Suggested fix:** Replace the fatal break with a continue (treat non-array JSON as "not registered yet") or add a bounded retry counter for non-array cases before switching to fatal, consistent with the transient-network-error resilience documented in the plan's failure-modes section.
+
+---
+
+### Out-of-Scope Observations
+
+1. **risk-integration** `skills/design/scripts/plan-review-loop.sh:840-843` — The new `_collect_err_tmp=$(mktemp ...)` call has no error-handling fallback. If `mktemp` fails (disk full, `DESIGN_TMPDIR` already removed), `_collect_err_tmp` is empty and `2>"$_collect_err_tmp"` under `set +e` silently drops stderr. Pre-existing fragility in the surrounding pattern; this diff does not materially worsen it but the move to an explicit temp-file approach makes the gap slightly more visible. Out of scope: this file is not listed in the plan as a change target, and the fragility predates this diff.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	scripts/design-log-publish.sh:865	reg_checks_rc assigned but only acknowledged with no-op colon command, no comment explaining intentional disuse	A future maintainer adds an if [[ "$reg_checks_rc" -ne 0 ]] guard, breaking case 4 (pending JSON with rc=8 should still register and proceed to --watch)	Add inline comment: # rc intentionally unused; JSON array content — not gh exit code — is the registration signal (see #3413)
+1	in_scope	nit	risk-integration	scripts/design-log-publish.sh:838-842	Non-array valid JSON from gh pr checks --json bucket (e.g. rate-limit object) causes immediate checks_registration_fatal=true break, skipping the remaining probe budget	A transient GitHub API error returning {"message":"rate limited"} on probe 1 of 31 immediately fails closed instead of retrying; PR is left open even though CI would have registered within the grace period	Treat non-array JSON as not-registered-yet (continue polling) or add a bounded retry counter before escalating to fatal, matching the plan's transient-network-error self-heal intent
+1	out_of_scope	nit	risk-integration	skills/design/scripts/plan-review-loop.sh:840-843	New _collect_err_tmp mktemp call has no error fallback; empty path would silently drop stderr capture under set +e	Pre-existing fragility; not introduced or materially worsened by this diff (plan-review-loop.sh not in the implementation plan)	Add || fail/larch_err on the mktemp call; pre-existing issue outside this diff's scope
+```

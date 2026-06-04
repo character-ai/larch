@@ -1,0 +1,25 @@
+FINDING_1: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Recovery bullets are duplicated across render paths but test-design-publish already asserts failed-publish DESIGN_LOG_* metadata.
+FINDING_2: EXONERATE CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=true -- HeadRefOid binding addresses the main stale-head race; per-check commit SHA alignment is a residual GitHub API limitation.
+FINDING_3: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Co-equal REG_DEADLINE and REG_MAX_PROBES are real but already documented in design-log-publish.md.
+FINDING_4: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Missing SESSION_ID leaves SUMMARY_OUTCOME approved even though publish was skipped.
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Final empty-porcelain idempotent ls-tree branch exists in code but lacks dedicated test and doc subsection.
+FINDING_6: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Unbounded gh pr checks --watch is intentional; bounded watch would add complexity beyond this change.
+FINDING_7: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Preservation reminder for an invariant the branch already implements and tests; not a concrete defect.
+FINDING_8: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Distinct fail-closed paths are present in code; item restates design intent without a gap.
+FINDING_9: EXONERATE CORRECTNESS=true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Redaction and PUBLISH_OK rename gating are unchanged and covered by existing harnesses.
+FINDING_10: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Docs were updated in-branch; no specific doc or validation mismatch cited.
+FINDING_11: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Direct --repo on design-log-publish.sh is forwarded without the validate_repo guard used by sibling gh helpers.
+FINDING_12: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- Documented intentional --admin trust model, not a new defect worth filing.
+FINDING_13: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- Increased committed artifacts are the stated feature outcome with existing scrub controls.
+FINDING_14: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- design-publish.sh always exits 0 after plan write even when PUBLISH_OK=false, misleading exit-code-only automation.
+FINDING_15: EXONERATE CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Watch/merge lack retry but fail-closed open PR is safer than speculative merge retries.
+FINDING_16: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan-review-loop collector and LARCH_QUIET_PID harness edits are outside the #3413 plan file set.
+FINDING_17: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- test-design-multi-round-integration.sh embeds a simplified gh stub that omits registration failure modes covered elsewhere.
+FINDING_18: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Stale-head tests use all-zero mismatch OIDs rather than a realistic pre-push commit SHA.
+FINDING_19: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Watch stub accepts --watch without --required, so production could drop --required and still pass tests.
+FINDING_20: EXONERATE CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- jq-required case intentionally targets jq availability, not merge-gate behavior.
+FINDING_21: EXONERATE CORRECTNESS=true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- Intentional test layering with merge-gate coverage in test-design-log-publish.sh.
+FINDING_22: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Pre-publish approved final-summary.md is staged into the flush PR before publish outcome is known.
+FINDING_23: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Reentry marker is written after plan write but before successful publish, blocking quick retry after PUBLISH_OK=false.
+FINDING_24: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Step 5d implies mandatory cleanup when PLAN_WRITE_OK=true while Step 6 fence runs cleanup-tmpdir.sh unconditionally.
+FINDING_25: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- step-5c is written on PLAN_WRITE_OK alone, so pause/resume can skip publish retry after a failed flush.
