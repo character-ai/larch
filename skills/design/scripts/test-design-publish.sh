@@ -693,6 +693,10 @@ grep -q 'PLAN_WRITE_OK=true' "$D_UPSERT_FAIL/.design-publish-result.env" \
   || fail "upsert failure must still complete publish tail"
 grep -q 'upsert-diagrams-comment.sh' "$D_UPSERT_FAIL/execution-issues.md" 2>/dev/null \
   || fail "upsert failure must append to execution-issues.md"
+grep -q 'tracking-issue-write .*--state designed' "$RENAME_LOG" \
+  || fail "upsert failure must still attempt [DESIGNED] rename"
+grep -q 'RENAMED=true' "$D_UPSERT_FAIL/.design-publish-result.env" \
+  || fail "upsert failure must record rename outcome"
 
 # --- empty architecture-diagram.md (no upsert) ---
 D_EMPTY_ARCH="$TMP/empty-arch-file"
@@ -738,6 +742,13 @@ set -e
 assert_rc "rename failure non-blocking" 0 "$rc"
 grep -q 'WARN=.*\[DESIGNED\].*rename failed' "$D_REN_FAIL/.design-publish-result.env" \
   || fail "rename failure must emit [DESIGNED] WARN in result env"
+grep -q 'WARN=.*plan block was written.*diagram upsert skipped' "$D_REN_FAIL/.design-publish-result.env" \
+  || fail "rename failure WARN must not assert diagram was posted when upsert skipped"
+awk '
+  /tracking-issue-write .*--state designed/ { seen_rename=1 }
+  /design-log-publish / && seen_rename { seen_publish_after_rename=1 }
+  END { exit seen_publish_after_rename ? 0 : 1 }
+' "$CALL_LOG" || fail "rename failure must continue to design-log-publish"
 
 # --- rename success without RENAMED= line ---
 D_REN_OMIT="$TMP/rename-omit"
@@ -850,6 +861,10 @@ if grep -q 'upsert-diagrams' "$UPSERT_LOG" 2>/dev/null; then
 else
     pass "upsert skipped when neither diagram nor sentinel"
 fi
+grep -q 'tracking-issue-write .*--state designed' "$RENAME_LOG" \
+  || fail "missing diagram artifacts must still attempt [DESIGNED] rename"
+grep -q 'RENAMED=true' "$D_NO_ARCH/.design-publish-result.env" \
+  || fail "missing diagram artifacts must record rename outcome"
 
 if [[ "$FAIL" -gt 0 ]]; then
     echo "FAIL: $FAIL test(s) failed ($PASS passed)" >&2

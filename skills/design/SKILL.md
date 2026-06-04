@@ -1573,7 +1573,7 @@ When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=true`, the
 
 When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, the footer line is:
 
-`➡️ 5: finalize — plan written to issue #<N>; log publish incomplete; NEXT REQUIRED: continue`
+`➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] may already be set; log publish incomplete; /implement may proceed while logs are retried; NEXT REQUIRED: continue`
 
 > **Continue to Step 6 IMMEDIATELY** after the Step 5 footer when `PLAN_WRITE_OK=true`. Step 6 decides whether cleanup is allowed from `PUBLISH_OK`; do not remove `$DESIGN_TMPDIR` from Step 5d when log publish failed.
 At the Step 5d success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5d"` before entering Step 6.

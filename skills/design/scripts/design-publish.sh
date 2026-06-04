@@ -167,6 +167,7 @@ RECOVERY_BRANCH=""
 RENAMED=""
 UPSERT_STATUS=""
 ARCHITECTURE_SOURCE=""
+UPSERT_RAN=false
 VALIDATE_STATUS=not-run
 VALIDATE_DEFECT_COUNT=0
 VALIDATE_SKIPPED_COUNT=0
@@ -317,6 +318,7 @@ elif [[ ! -f "$_arch_file" ]] && [[ -f "$_arch_skipped" ]]; then
 fi
 
 if [[ "$_run_upsert" == true ]]; then
+    UPSERT_RAN=true
     set +e
     _upsert_out=$("$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" "${_upsert_args[@]}" 2>"$DESIGN_TMPDIR/diagrams-architecture-upsert.stderr")
     _upsert_rc=$?
@@ -349,7 +351,17 @@ if [[ -n "$SESSION_ID" ]]; then
             add_warn "**⚠ 5c: tracking-issue-write.sh rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
         fi
     else
-        add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan and architecture diagram were posted but the issue title was not updated. Re-invoke /design or rename manually if the title is still wrong.**"
+        _diagram_detail="diagram upsert skipped"
+        if [[ "$UPSERT_RAN" == true ]]; then
+            if [[ "${UPSERT_STATUS:-}" == failed ]]; then
+                _diagram_detail="diagram upsert failed"
+            elif [[ -n "${UPSERT_STATUS:-}" ]]; then
+                _diagram_detail="diagram upsert status=${UPSERT_STATUS}"
+            else
+                _diagram_detail="diagram upsert ran without UPSERT_STATUS"
+            fi
+        fi
+        add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan block was written; ${_diagram_detail}; the issue title was not updated. Re-invoke /design or rename manually if the title is still wrong.**"
     fi
 fi
 
