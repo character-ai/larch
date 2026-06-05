@@ -71,10 +71,18 @@ fi
 export DESIGN_TMPDIR
 export LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv"
 export LARCH_TIMING_SKILL=design
+ledger="$DESIGN_TMPDIR/timing-ledger.tsv"
+round_decimal="$((10#$ROUND_NUM))"
+step_label="design Step 3 — plan review"
+if [[ -f "$ledger" ]] && awk -F '\t' -v r="$round_decimal" -v step="$step_label" \
+    '$2 == "round" && $4 == "design" && $5 == step && $6 == r { found=1 } END { exit !found }' \
+    "$ledger" 2>/dev/null; then
+    exit 0
+fi
 "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round \
     --skill design \
-    --step "design Step 3 — plan review" \
-    --round "$((10#$ROUND_NUM))" \
+    --step "$step_label" \
+    --round "$round_decimal" \
     --start-s "$START_S" \
     --end-s "$END_S" \
     --accepted "$accepted" \

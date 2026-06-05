@@ -101,15 +101,16 @@ step5_persist_round_start() {
 _emit_implement_round_timing_row() {
     local round_num="$1" start_s="$2" end_s="$3" accepted="${4:-0}" rejected="${5:-0}"
     local guard_var="STEP5_ROUND_${round_num}_TIMING_EMITTED"
+    local ledger="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
     if [[ "${!guard_var:-}" == "true" ]]; then
         return 0
     fi
-    printf -v "$guard_var" '%s' true
     [[ "$start_s" =~ ^[0-9]+$ ]] || return 0
     [[ "$end_s" =~ ^[0-9]+$ ]] || return 0
     [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
     [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
-    LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round \
+    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" LARCH_TIMING_LEDGER="$ledger" LARCH_TIMING_SKILL=implement \
+        "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round \
         --skill implement \
         --step "Step 5 — code review" \
         --round "$((10#$round_num))" \
@@ -117,6 +118,11 @@ _emit_implement_round_timing_row() {
         --end-s "$end_s" \
         --accepted "$accepted" \
         --rejected "$rejected" || true
+    if [[ -f "$ledger" ]] && awk -F '\t' -v r="$((10#$round_num))" -v s="$start_s" -v e="$end_s" \
+        '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == r && $7 == s && $8 == e { found=1 } END { exit !found }' \
+        "$ledger" 2>/dev/null; then
+        printf -v "$guard_var" '%s' true
+    fi
 }
 
 step5_emit_final_envelope() {
@@ -341,7 +347,7 @@ run_implement_loop() {
                         ;;
                     main-agent-required)
                         step5_surface_lint_stderr_tail
-                        _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
+                        step5_persist_round_start "$round_num" "$round_start_s"
                         step5_emit_final_envelope stall true lint-fix-main-agent-required "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                         exit 2

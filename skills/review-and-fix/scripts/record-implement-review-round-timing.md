@@ -6,4 +6,4 @@ Args: `--implement-tmpdir PATH --round N --start-s S --end-s E`.
 
 The helper canonicalizes the tmpdir, binds `LARCH_TIMING_LEDGER` to `$IMPLEMENT_TMPDIR/timing-ledger.tsv`, counts round-local accepted/rejected findings from `round-N/review-tally.env` when present, falls back to accepted/rejected artifacts, then emits `timing-ledger.sh record-round --skill implement --step "Step 5 — code review"`. Failures are warn-only for callers.
 
-Harness: covered by `scripts/test-timing-ledger.sh` / `scripts/test-timing-report.sh` plus Step 5 handoff structure checks.
+Harness: covered by `skills/review-and-fix/scripts/test-record-implement-review-round-timing.sh` for helper-specific counting, idempotency, foreign-row isolation, stall-style deferred emit, and record-before-Step-7 ordering cases, plus `scripts/test-timing-ledger.sh` / `scripts/test-timing-report.sh` for shared ledger and reporting behavior.

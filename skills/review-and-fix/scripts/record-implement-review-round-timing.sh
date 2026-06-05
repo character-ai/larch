@@ -78,7 +78,11 @@ fi
 [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
 
 ledger="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
-if [[ -f "$ledger" ]] && awk -F '\t' -v r="$((10#$ROUND_NUM))" '$2 == "round" && $6 == r { found=1 } END { exit !found }' "$ledger" 2>/dev/null; then
+round_decimal="$((10#$ROUND_NUM))"
+step_label="Step 5 — code review"
+if [[ -f "$ledger" ]] && awk -F '\t' -v r="$round_decimal" -v step="$step_label" \
+    '$2 == "round" && $4 == "implement" && $5 == step && $6 == r { found=1 } END { exit !found }' \
+    "$ledger" 2>/dev/null; then
     exit 0
 fi
 
@@ -87,8 +91,8 @@ export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
 export LARCH_TIMING_SKILL=implement
 "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round \
     --skill implement \
-    --step "Step 5 — code review" \
-    --round "$((10#$ROUND_NUM))" \
+    --step "$step_label" \
+    --round "$round_decimal" \
     --start-s "$START_S" \
     --end-s "$END_S" \
     --accepted "$accepted" \

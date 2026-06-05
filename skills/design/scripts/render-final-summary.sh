@@ -214,7 +214,7 @@ else
 fi
 
 if [ -z "$DURATION" ]; then
-    if [ ! -f "$DESIGN_TMPDIR/timing-report-final.json" ] || [ "$tmrc" -ne 0 ]; then
+    if [ ! -f "$DESIGN_TMPDIR/timing-report-final.json" ] || [ "${tmrc:-0}" -ne 0 ]; then
         : >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
         if [ -s "$DESIGN_TMPDIR/timing-report-final.stderr.log" ]; then
             cat "$DESIGN_TMPDIR/timing-report-final.stderr.log" >>"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true

@@ -378,11 +378,17 @@ render_report() {
           }
         }
       }
-      function emit_round_array(skill, step, start, end,    i, j, tmp, mc, ri, comma, oos) {
+      function emit_round_array(skill, step, start, end,    i, j, tmp, mc, ri, comma, oos, rkey) {
         mc = 0
         for (i = 1; i <= round_count; i++) {
           if (round_skill[i] == skill && round_step[i] == step && round_start[i] >= start && round_start[i] < end) {
-            match_idx[++mc] = i
+            rkey = round_num[i] + 0
+            if (!(rkey in round_match_pos)) {
+              match_idx[++mc] = i
+              round_match_pos[rkey] = mc
+            } else {
+              match_idx[round_match_pos[rkey]] = i
+            }
           }
         }
         if (mc == 0) return
@@ -403,7 +409,10 @@ render_report() {
           printf "}"
         }
         printf "]"
-        for (i = 1; i <= mc; i++) delete match_idx[i]
+        for (i = 1; i <= mc; i++) {
+          delete round_match_pos[round_num[match_idx[i]] + 0]
+          delete match_idx[i]
+        }
       }
       function emit_json_step(skill, step, start, end, dur, outlier,    comma) {
         comma = json_step_count++ ? "," : ""

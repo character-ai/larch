@@ -1152,6 +1152,7 @@ set -e
 printf '%s\n' "$out1p" | grep -q '^LOOP_STATUS=panel-failed$' || fail "expected panel-failed loop status"
 [[ -f "$D1P/plan-review/round-1/findings-classification.tsv" ]] || fail "panel-failed classification TSV missing"
 [[ "$(wc -l < "$D1P/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "panel-failed TSV should contain header only"
+assert_plan_round_timing_row "$D1P" 1
 
 echo "=== stubbed driver: failed middle voter preserves canonical tally slot ==="
 D1B="$TMP/z1b"
@@ -1562,6 +1563,10 @@ out_ma=$(run_loop "$DMA" 1 --round-cap 2)
 unset LARCH_PLAN_REVIEW_TALLY_SH
 printf '%s\n' "$out_ma" | grep -q '^LOOP_STATUS=main-agent-vote-required$' || fail "main-agent stub should surface main-agent-vote-required"
 grep -q 'Main-agent branch OOS' "$DMA/oos-accepted-design.md" || fail "main-agent branch must preserve accepted OOS artifact"
+if [[ -f "$DMA/timing-ledger.tsv" ]] && awk -F '\t' '$2 == "round" && $4 == "design" && $6 == 1 { found=1 } END { exit !found }' "$DMA/timing-ledger.tsv" 2>/dev/null; then
+    fail "main-agent-vote-required should defer design round timing row"
+fi
+[[ -s "$DMA/plan-review/round-1/round-start-s" ]] || fail "main-agent-vote-required should preserve round-start-s"
 
 echo "=== multi-round: tally-error exits before revise ==="
 DTM="$TMP/mr-tally"

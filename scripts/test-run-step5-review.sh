@@ -185,6 +185,23 @@ argv_file="$TMP/run-id-manifest.argv"
 RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --round-num 2 >/dev/null
 assert_contains "$(cat "$argv_file")" "review-manifest-run" "manifest RUN_ID overrides session-id"
 
+echo "=== loop resume re-marks Step 5 timing interval ==="
+case_dir="$TMP/loop-resume-mark"
+make_tmpdir "$case_dir" default true false
+argv_file="$TMP/loop-resume-mark.argv"
+RUN_STEP5_REVIEW_SH="$SPY" RUN_STEP5_ARGV_FILE="$argv_file" "$LAUNCHER" --implement-tmpdir "$case_dir" --mode loop --starting-round 2 >/dev/null
+if awk -F '\t' '$2 == "mark" && $4 == "implement" && $5 == "Step 5 — code review" { found=1 } END { exit found ? 0 : 1 }' "$case_dir/timing-ledger.tsv"; then
+    pass "loop resume records Step 5 timing mark"
+else
+    fail "loop resume records Step 5 timing mark"
+fi
+"$REPO_ROOT/scripts/timing-report.sh" --ledger "$case_dir/timing-ledger.tsv" --full --format json --output "$case_dir/timing-report.json" >/dev/null
+if command -v jq >/dev/null 2>&1 && jq -e '.per_step[] | select(.skill == "implement" and .step == "Step 5 — code review")' "$case_dir/timing-report.json" >/dev/null; then
+    pass "loop resume mark appears in timing-report"
+else
+    fail "loop resume mark appears in timing-report"
+fi
+
 echo "=== conventional plan.txt empty: fail closed ==="
 case_dir="$TMP/plan-file-empty"
 make_tmpdir "$case_dir" default true false

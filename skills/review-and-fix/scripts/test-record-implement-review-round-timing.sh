@@ -41,4 +41,19 @@ awk -F '\t' '$2 == "round" && $6 == 4 && $7 == 30 && $10 == 1 && $11 == 0 { foun
 "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 4 --start-s 40 --end-s 41
 round_rows=$(awk -F '\t' '$2 == "round" && $6 == 4 { c++ } END { print c + 0 }' "$TMP_BASE/timing-ledger.tsv")
 [[ "$round_rows" == 1 ]] || { echo "expected idempotent deferred emit (1 round-4 row), got $round_rows" >&2; exit 1; }
+printf 'v1\tround\t1\tdesign\tdesign Step 3 — plan review\t5\t1\t2\t1\t9\t9\t0\t-\n' >> "$TMP_BASE/timing-ledger.tsv"
+mkdir -p "$TMP_BASE/round-5"
+"$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 5 --start-s 50 --end-s 55
+awk -F '\t' '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == 5 && $7 == 50 { found=1 } END { exit found ? 0 : 1 }' "$TMP_BASE/timing-ledger.tsv"
+order_tmp=$(mktemp -d "$TMP_BASE/order.XXXXXX")
+mkdir -p "$order_tmp/round-6"
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$order_tmp/timing-ledger.tsv" mark "Step 5 — code review"
+printf '%s\n' 60 > "$order_tmp/round-6/round-start-s"
+"$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$order_tmp" --round 6 --start-s 60 --end-s 70
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$order_tmp/timing-ledger.tsv" mark "Step 7 — commit review fixes"
+awk -F '\t' '
+    $2 == "round" && $6 == 6 { round_line=NR }
+    $2 == "mark" && $5 == "Step 7 — commit review fixes" { step7_line=NR }
+    END { exit (round_line > 0 && step7_line > round_line) ? 0 : 1 }
+' "$order_tmp/timing-ledger.tsv"
 echo "PASS: test-record-implement-review-round-timing.sh"

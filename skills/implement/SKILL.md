@@ -797,6 +797,16 @@ Before committing the main-agent-applied fixes, read `$IMPLEMENT_TMPDIR/round-$F
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+round_start_file="$IMPLEMENT_TMPDIR/round-$FINAL_ROUND_NUM/round-start-s"
+if [ -f "$round_start_file" ]; then
+  round_start_s="$(tr -d '\r\n' < "$round_start_file" 2>/dev/null || true)"
+  end_s="$(date +%s)"
+  "${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+    --round "$FINAL_ROUND_NUM" \
+    --start-s "$round_start_s" \
+    --end-s "$end_s" || true
+fi
 git add -A
 "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-review-fixes.sh"
 ```
@@ -813,7 +823,7 @@ Then re-invoke the loop wrapper:
 
 On resume, the loop evaluates substantiality and bulk-skip against the round-`FINAL_ROUND_NUM` artifacts before scheduling additional rounds. If `FINAL_ROUND_NUM == EFFECTIVE_ROUND_CAP`, the wrapper returns `STEP5_REVIEW_STATUS=mav-resume-past-cap`.
 
-- **`mav-resume-past-cap`**: print `**ℹ 5: MAV resume past cap; no additional review round executed.**` and follow the same post-Step-5 chain as `complete`.
+- **`mav-resume-past-cap`**: print `**ℹ 5: MAV resume past cap; no additional review round executed.**`. If `$IMPLEMENT_TMPDIR/round-$FINAL_ROUND_NUM/round-start-s` exists, read it, set `end_s=$(date +%s)`, and invoke `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/record-implement-review-round-timing.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --round "$FINAL_ROUND_NUM" --start-s "$round_start_s" --end-s "$end_s" || true` before following the same post-Step-5 chain as `complete`.
 
 Note: `review-and-fix.sh` runs `flush_review_batches` at the end of every successful `_implement_round_body` round (and best-effort once on many stall paths inside the loop), writing both `code-review-tally` and `review-findings-full` batches. `compose_review_findings_output` passes `--issue 0` as the authoritative contract; downstream log consumers join records by `RUN_ID`. No additional main-agent `write-tally.sh` / `compose-review-findings.sh` composition is required in Step 5.
 

@@ -66,6 +66,7 @@ v1	mark	0	implement	Step 4 — preflight	-	-	-	-	-	-	-	-
 v1	mark	10	implement	Step 5 — code review	-	-	-	-	-	-	-	-
 v1	round	15	implement	Step 5 — code review	2	15	20	5	4	1	-	-
 v1	round	12	implement	Step 5 — code review	1	12	14	2	2	3	-	-
+v1	round	18	implement	Step 5 — code review	2	15	22	7	6	5	-	-
 v1	round	25	implement	Step 6 — checks	3	25	26	1	9	9	-	-
 v1	mark	30	implement	Step 7 — commit	-	-	-	-	-	-	-	-
 v1	round	35	implement	Step 5 — code review	4	35	40	5	8	8	-	-
@@ -81,7 +82,7 @@ LARCH_TEST_TIMING_NOW=100 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$ROUND
 jq -e '
   (.per_step[] | select(.skill == "implement" and .step == "Step 5 — code review" and .duration_seconds == 20) | .rounds == [
     {"round":1,"duration_seconds":2,"accepted":2,"rejected":3},
-    {"round":2,"duration_seconds":5,"accepted":4,"rejected":1}
+    {"round":2,"duration_seconds":7,"accepted":6,"rejected":5}
   ]) and
   (.per_step[] | select(.skill == "implement" and .step == "Step 5 — code review" and .duration_seconds == 15) | .rounds == [
     {"round":5,"duration_seconds":3,"accepted":1,"rejected":0}

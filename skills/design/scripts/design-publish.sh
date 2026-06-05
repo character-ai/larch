@@ -216,6 +216,16 @@ render_fresh_timing_report_for_publish() {
     local _tmp_dir _tmp_json _tmp_stderr _render_rc=0 _existing
     _tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/larch-design-timing-report.XXXXXX") || {
         add_warn '**⚠ 5c: failed to create temporary directory for timing report render.**'
+        : >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
+        printf '%s\n' "mktemp failed while preparing timing-report-final.json" >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 5c timing-report" \
+            --tool "mktemp" \
+            --exit-code 1 \
+            --category Warnings \
+            --output-file "$DESIGN_TMPDIR/timing-report-final.failure.log" \
+            --redact >/dev/null 2>&1 || true
         rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
         return 0
     }
@@ -227,13 +237,23 @@ render_fresh_timing_report_for_publish() {
     done
     if ! command -v jq >/dev/null 2>&1; then
         add_warn '**⚠ 5c: jq is required to validate timing-report-final.json before publish.**'
+        : >"$_tmp_stderr" 2>/dev/null || true
+        printf '%s\n' "jq is required to validate timing-report-final.json before publish" >"$_tmp_stderr" 2>/dev/null || true
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 5c timing-report" \
+            --tool "jq" \
+            --exit-code 127 \
+            --category Warnings \
+            --output-file "$_tmp_stderr" \
+            --redact >/dev/null 2>&1 || true
         rm -rf "$_tmp_dir"
         rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
         return 0
     fi
     set +e
-    LARCH_TIMING_SKILL=design DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv" \
-        env -u IMPLEMENT_TMPDIR \
+    env -u IMPLEMENT_TMPDIR \
+        LARCH_TIMING_SKILL=design DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv" \
         "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json --output "$_tmp_json" > /dev/null 2>"$_tmp_stderr"
     _render_rc=$?
     set -e
