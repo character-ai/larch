@@ -27,7 +27,8 @@ BODY_FILE="$TMP/issue-body.md"
 EDIT_CAPTURE="$TMP/edit-body.md"
 SNAPSHOT_ROOT="$TMP/snapshot"
 FETCH_LOG="$TMP/fetch.log"
-export BODY_FILE EDIT_CAPTURE SNAPSHOT_ROOT FETCH_LOG
+REV_PARSE_LOG="$TMP/rev-parse.log"
+export BODY_FILE EDIT_CAPTURE SNAPSHOT_ROOT FETCH_LOG REV_PARSE_LOG
 
 STUB="$TMP/stub"
 mkdir -p "$STUB"
@@ -73,8 +74,13 @@ chmod +x "$STUB/gh"
 cat >"$STUB/git" <<GIT
 #!/usr/bin/env bash
 set -euo pipefail
+STUB_SNAPSHOT_SHA="deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"
 if [[ "\${1:-}" == "rev-parse" ]]; then
-  printf '%s\n' "$TMP/repo"
+  if [[ "\${2:-}" == "--show-toplevel" ]]; then
+    printf '%s\n' "$TMP/repo"
+    exit 0
+  fi
+  printf '%s\n' "\$STUB_SNAPSHOT_SHA"
   exit 0
 fi
 if [[ "\${1:-}" == "symbolic-ref" ]]; then
@@ -87,7 +93,25 @@ fi
 if [[ "\${1:-}" == "-C" ]]; then
   shift 2
   case "\${1:-}" in
-    rev-parse) printf '%s\n' "$TMP/repo"; exit 0 ;;
+    rev-parse)
+      shift
+      ref=""
+      show_toplevel=false
+      while [[ \$# -gt 0 ]]; do
+        case "\$1" in
+          --show-toplevel) show_toplevel=true; shift ;;
+          --verify) shift; ref="\${1:-}"; shift ;;
+          *) ref="\$1"; shift ;;
+        esac
+      done
+      if [[ "\$show_toplevel" == true ]]; then
+        printf '%s\n' "$TMP/repo"
+        exit 0
+      fi
+      printf '%s\n' "rev-parse --verify \${ref}" >>"$REV_PARSE_LOG"
+      printf '%s\n' "\$STUB_SNAPSHOT_SHA"
+      exit 0
+      ;;
     symbolic-ref) printf '%s\n' 'refs/remotes/origin/main'; exit 0 ;;
     fetch)
       if [[ "\${GIT_STUB_FETCH_FAIL:-0}" == "1" ]]; then
@@ -108,11 +132,23 @@ if [[ "\${1:-}" == "-C" ]]; then
         echo "stub git ls-tree forced failure" >&2
         exit 97
       fi
-      path=""
+      tree_sha=""
+      tree_path=""
+      after_dash=false
       for arg in "\$@"; do
-        path="\$arg"
+        if [[ "\$after_dash" == true ]]; then
+          tree_path="\$arg"
+        elif [[ "\$arg" == "--" ]]; then
+          after_dash=true
+        elif [[ "\$arg" != -* ]]; then
+          tree_sha="\$arg"
+        fi
       done
-      run="\${path#larch-logs/design/}"
+      if [[ "\$tree_sha" != "\$STUB_SNAPSHOT_SHA" ]]; then
+        echo "stub git ls-tree unexpected object id: \$tree_sha" >&2
+        exit 1
+      fi
+      run="\${tree_path#larch-logs/design/}"
       run="\${run%/}"
       if [[ -d "$SNAPSHOT_ROOT/larch-logs/design/\$run" ]]; then
         (cd "$SNAPSHOT_ROOT" && find "larch-logs/design/\$run" -type f -print0)
@@ -125,7 +161,12 @@ if [[ "\${1:-}" == "-C" ]]; then
         exit 97
       fi
       spec="\$2"
+      object_id="\${spec%%:*}"
       path="\${spec#*:}"
+      if [[ "\$object_id" != "\$STUB_SNAPSHOT_SHA" ]]; then
+        echo "stub git show unexpected object id: \$object_id" >&2
+        exit 1
+      fi
       cat "$SNAPSHOT_ROOT/\$path"
       exit 0
       ;;
@@ -213,6 +254,7 @@ RESTORE="$TMP/restore1"
 : >"$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.pause-requested"
 out_load=$(bash "$LOAD" --design-tmpdir "$RESTORE" --issue 9 --repo owner/repo)
 [[ "$out_load" == *"LOAD_OK=true"* ]] || fail "load failed: $out_load"
+[[ "$out_load" == *"MARKER_CLEARED=true"* ]] || fail "round-trip restore should emit MARKER_CLEARED=true: $out_load"
 [[ "$out_load" == *"STEP=1d"* ]] || fail "load step mismatch: $out_load"
 [[ -f "$RESTORE/plan.txt" && -f "$RESTORE/run-params.json" && -f "$RESTORE/pause-state.txt" ]] || fail "restored root artifacts missing"
 [[ -f "$RESTORE/.resume-loaded" ]] || fail "resume sentinel missing after restore"
@@ -698,8 +740,10 @@ out_rec=$(PUBLISH_MODE=recovery bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9
 [[ "$out_rec" == *"LOG_RECOVERY_BRANCH=larch-log-design-RUNPAUSE1"* ]] || fail "recovery save should surface recovery branch: $out_rec"
 grep -Fq 'LOG_RECOVERY_BRANCH=larch-log-design-RUNPAUSE1' "$BODY_FILE" || fail "recovery branch missing from marker"
 : >"$FETCH_LOG"
+: >"$REV_PARSE_LOG"
 bash "$LOAD" --design-tmpdir "$TMP/restore-recovery" --issue 9 --repo owner/repo >/dev/null
 grep -Fq 'fetch origin larch-log-design-RUNPAUSE1' "$FETCH_LOG" || fail "load did not fetch recovery branch"
+grep -Fq 'rev-parse --verify FETCH_HEAD^{commit}' "$REV_PARSE_LOG" || fail "recovery fetch path should pin FETCH_HEAD via rev-parse"
 
 make_design_tmpdir "$DESIGN"
 printf 'body\n' >"$BODY_FILE"
@@ -813,18 +857,23 @@ echo "=== value validation and missing artifact ==="
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=8\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_issue=$(bash "$LOAD" --design-tmpdir "$TMP/bad-issue" --issue 9 --repo owner/repo)
 [[ "$out_bad_issue" == *"ERROR=issue-mismatch"* ]] || fail "issue binding mismatch failed open: $out_bad_issue"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "issue mismatch should keep marker"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=other/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_repo=$(bash "$LOAD" --design-tmpdir "$TMP/bad-repo" --issue 9 --repo owner/repo)
 [[ "$out_bad_repo" == *"ERROR=repo-mismatch"* ]] || fail "repo binding mismatch failed open: $out_bad_repo"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "repo mismatch should keep marker"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=../bad\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_run=$(bash "$LOAD" --design-tmpdir "$TMP/bad-run" --issue 9 --repo owner/repo)
 [[ "$out_bad_run" == *"LOAD_OK=false"* && "$out_bad_run" == *"ERROR=invalid-run-id"* ]] || fail "bad run validation mismatch: $out_bad_run"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid run id should keep marker"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=nope\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_step=$(bash "$LOAD" --design-tmpdir "$TMP/bad-step" --issue 9 --repo owner/repo)
 [[ "$out_bad_step" == *"ERROR=invalid-step"* ]] || fail "bad step validation mismatch: $out_bad_step"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid step should keep marker"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nLOG_RECOVERY_BRANCH=badbranch\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_branch=$(bash "$LOAD" --design-tmpdir "$TMP/bad-branch" --issue 9 --repo owner/repo)
 [[ "$out_bad_branch" == *"ERROR=invalid-recovery-branch"* ]] || fail "bad branch validation mismatch: $out_bad_branch"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid recovery branch should keep marker"
 
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNMISSING1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_missing_snapshot=$(bash "$LOAD" --design-tmpdir "$TMP/missing-snapshot" --issue 9 --repo owner/repo)

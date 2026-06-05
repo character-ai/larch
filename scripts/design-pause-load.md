@@ -46,6 +46,10 @@ ref/fetch failures before enumeration. Remote recovery refs
 `larch-log-design-<RUN_ID>` are fetched from `origin` first; local-only
 recovery refs `larch-log-design-recovery-<RUN_ID>` are restored from the local
 branch in the current clone. Otherwise the origin default branch is used.
+After fetch, mutable refs such as `FETCH_HEAD` are pinned to an immutable commit
+SHA with `git rev-parse --verify '<ref>^{commit}'` before any `ls-tree` or
+`git show` enumeration/extraction; extraction always uses that resolved SHA,
+never the mutable ref name directly.
 
 After extraction, `manifest.json`, `run-params.json`, and `pause-state.txt`
 must exist at the staging root. `plan.txt` is required only once the saved

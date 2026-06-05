@@ -999,6 +999,19 @@ def _hydrate_resume_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
     )
 
 
+def _merge_loop_uses_resume_counters(resume: ResumePlan) -> bool:
+    if resume.start == "open-pr":
+        return True
+    if resume.start == "fresh":
+        return bool(
+            resume.iteration
+            or resume.rebase_count
+            or resume.fix_attempts
+            or resume.transient_retries
+        )
+    return False
+
+
 def _hydrate_fresh_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
     changes: dict[str, object] = {
         "repo": resume.repo or ctx.repo,
@@ -1309,10 +1322,11 @@ def run_ship(
             )
 
         base_remote = "upstream" if working.forked or working.forked_target else "origin"
-        iteration = resume.iteration if resume.start == "open-pr" else 0
-        rebase_count = resume.rebase_count if resume.start == "open-pr" else 0
-        fix_attempts = resume.fix_attempts if resume.start == "open-pr" else 0
-        transient_retries = resume.transient_retries if resume.start == "open-pr" else 0
+        preserve_counters = _merge_loop_uses_resume_counters(resume)
+        iteration = resume.iteration if preserve_counters else 0
+        rebase_count = resume.rebase_count if preserve_counters else 0
+        fix_attempts = resume.fix_attempts if preserve_counters else 0
+        transient_retries = resume.transient_retries if preserve_counters else 0
         while True:
             if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
                 _write_terminal_state(

@@ -105,10 +105,10 @@ post-success marker deletion failure is non-fatal and surfaces as
 operators can clean up the stale marker manually; successful marker deletion
 surfaces `MARKER_CLEARED=true`.
 Supported recovery-branch prefixes are both `larch-log-design-<RUN_ID>` and
-`larch-log-design-recovery-<RUN_ID>`. Recovery-branch restore reads committed
-blobs from the selected ref with `git show`, rather than relying on
-`git archive`, so committed `larch-logs/ export-ignore` attributes do not hide
-pause snapshots from the loader. Residual risk: collaborators with issue body
+`larch-log-design-recovery-<RUN_ID>`. Remote recovery fetches the branch, then
+pins `FETCH_HEAD` to an immutable commit SHA via `git rev-parse --verify
+'<ref>^{commit}'` before `git ls-tree` / `git show` enumeration and extraction;
+the loader never passes mutable `FETCH_HEAD` directly into extraction. Recovery-branch restore reads committed blobs from the resolved commit with `git show`, rather than relying on `git archive`, so committed `larch-logs/ export-ignore` attributes do not hide pause snapshots from the loader. Residual risk: collaborators with issue body
 edit rights can still redirect the marker to another snapshot for the same
 issue, so resume surfaces a warning that the marker is collaborator-editable
 rather than claiming a stronger authenticity guarantee than GitHub issue
