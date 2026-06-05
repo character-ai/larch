@@ -466,6 +466,8 @@ printf 'OK\n' >"$TMP/design/codex-plan-arch-output.txt.done"
 printf 'launcher prompt body\n' >"$TMP/design/codex-plan-arch-output.txt.prompt"
 printf 'phased launcher prompt\n' >"$TMP/design/codex-plan-arch-output-phase2.txt.prompt"
 printf '{"type":"token_usage","input_tokens":1,"cached_input_tokens":0,"output_tokens":1}\n' >"$TMP/design/codex-plan-arch-output.txt.events.jsonl"
+printf 'timing stderr\n' >"$TMP/design/timing-report-final.stderr.log"
+printf 'timing failure\n' >"$TMP/design/timing-report-final.failure.log"
 # Same suffix family in render-cache must also be denied:
 printf 'rc noisy\n' >"$TMP/design/render-cache/cached-output.txt.sidecar"
 printf '{"type":"token_usage","input_tokens":2,"cached_input_tokens":0,"output_tokens":1}\n' >"$TMP/design/render-cache/cached-output.txt.events.jsonl"
@@ -509,7 +511,9 @@ for denied in \
     "cursor-plan-arch-output.txt.diag" \
     "codex-plan-arch-output.txt.events.jsonl" \
     "codex-plan-arch-output.txt.prompt" \
-    "codex-plan-arch-output-phase2.txt.prompt"; do
+    "codex-plan-arch-output-phase2.txt.prompt" \
+    "timing-report-final.stderr.log" \
+    "timing-report-final.failure.log"; do
     [[ ! -f "$clone/larch-logs/design/RUNPUB1/$denied" ]] || fail "denied basename leaked into top-level: $denied"
 done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"

@@ -149,6 +149,10 @@ make_design_tmpdir() {
   printf '{"run_id":"RUNPAUSE1","issue_number":"9"}\n' >"$d/manifest.json"
   printf 'plan\n' >"$d/plan.txt"
   printf '{"design_classification":"SIMPLE","brainstorm_requested":false}\n' >"$d/run-params.json"
+  DESIGN_TMPDIR="$d" LARCH_TIMING_SKILL=design LARCH_TIMING_LEDGER="$d/timing-ledger.tsv" \
+    "$REPO_ROOT/scripts/timing-ledger.sh" record-round \
+      --skill design --step "Step 3 — plan review" --round 1 --start-s 10 --end-s 15 \
+      --accepted 0 --rejected 0 >/dev/null
 }
 
 complete_design_steps() {
@@ -173,6 +177,7 @@ grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "pause marker 
 grep -Fq 'ISSUE_NUMBER=9' "$BODY_FILE" || fail "pause marker missing issue binding"
 grep -Fq 'REPO=owner/repo' "$BODY_FILE" || fail "pause marker missing repo binding"
 [[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.completed/step-1c" ]] || fail ".completed sentinel not staged"
+[[ -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/timing-report-final.json" ]] || fail "pause publish must stage fresh timing-report-final.json"
 
 RESTORE="$TMP/restore1"
 out_load=$(bash "$LOAD" --design-tmpdir "$RESTORE" --issue 9 --repo owner/repo)

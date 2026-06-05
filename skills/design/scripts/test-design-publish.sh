@@ -555,6 +555,7 @@ setup_design_tmp "$D_FAIL_TIMING"
 : >"$D_FAIL_TIMING/timing-ledger.tsv"
 printf 'old\n' >"$D_FAIL_TIMING/timing-report-final.json"
 printf 'old stderr\n' >"$D_FAIL_TIMING/timing-report-final.stderr.log"
+printf 'old failure\n' >"$D_FAIL_TIMING/timing-report-final.failure.log"
 reset_publish_stub_env
 init_publish_logs
 apply_publish_stub_defaults
@@ -567,6 +568,7 @@ unset TIMING_REPORT_FAIL
 assert_rc "failed timing render still publishes" 0 "$rc"
 [[ ! -f "$D_FAIL_TIMING/timing-report-final.json" ]] || fail "failed render must remove timing-report-final.json"
 [[ ! -f "$D_FAIL_TIMING/timing-report-final.stderr.log" ]] || fail "failed render must remove timing-report-final.stderr.log"
+[[ ! -f "$D_FAIL_TIMING/timing-report-final.failure.log" ]] || fail "failed render must remove timing-report-final.failure.log"
 pass "failed timing render quarantines timing-report-final.* artifacts"
 
 # --- explicit/resolved repo forwarded to plan-block-write ---

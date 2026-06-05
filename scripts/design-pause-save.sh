@@ -86,6 +86,44 @@ log_failure() {
     fi
 }
 
+render_fresh_timing_report_for_pause_publish() {
+    local tmp_dir tmp_json tmp_stderr render_rc=0 existing
+    for existing in "$DESIGN_TMPDIR"/timing-report-final.*; do
+        [[ -e "$existing" ]] || continue
+        rm -f "$existing" 2>/dev/null || true
+    done
+    tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/larch-design-pause-timing.XXXXXX") || {
+        : >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
+        printf '%s\n' "mktemp failed while preparing timing-report-final.json" >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
+        log_failure "timing-report.sh" "$DESIGN_TMPDIR/timing-report-final.failure.log"
+        rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
+        return 0
+    }
+    tmp_json="$tmp_dir/timing-report-final.json"
+    tmp_stderr="$tmp_dir/timing-report-final.stderr.log"
+    if ! command -v jq >/dev/null 2>&1; then
+        printf '%s\n' "jq is required to validate timing-report-final.json before pause publish" >"$tmp_stderr" 2>/dev/null || true
+        log_failure "jq" "$tmp_stderr"
+        rm -rf "$tmp_dir"
+        rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
+        return 0
+    fi
+    set +e
+    env -u IMPLEMENT_TMPDIR \
+        LARCH_TIMING_SKILL=design DESIGN_TMPDIR="$DESIGN_TMPDIR" LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv" \
+        "$SCRIPT_DIR/timing-report.sh" --full --format json --output "$tmp_json" > /dev/null 2>"$tmp_stderr"
+    render_rc=$?
+    set -e
+    if [[ "$render_rc" -eq 0 && -s "$tmp_json" ]] && jq -e . "$tmp_json" >/dev/null 2>>"$tmp_stderr"; then
+        mv -f "$tmp_json" "$DESIGN_TMPDIR/timing-report-final.json"
+        rm -rf "$tmp_dir"
+        return 0
+    fi
+    rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
+    log_failure "timing-report.sh" "$tmp_stderr"
+    rm -rf "$tmp_dir"
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --design-tmpdir) DESIGN_TMPDIR="${2:?--design-tmpdir requires a value}"; shift 2 ;;
@@ -211,6 +249,7 @@ fi
 cp "$redacted_state_tmp" "$DESIGN_TMPDIR/pause-state.txt"
 
 publish_cmd="${LARCH_DESIGN_LOG_PUBLISH:-$SCRIPT_DIR/design-log-publish.sh}"
+render_fresh_timing_report_for_pause_publish
 publish_args=(
     "$publish_cmd"
     --reason pause

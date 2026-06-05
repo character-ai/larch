@@ -1324,6 +1324,7 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_z=$(run_loop "$DZ" 1 --round-cap 3)
 printf '%s\n' "$out_z" | grep -q '^LOOP_STATUS=converged$' || fail "expected converged zero-findings"
 printf '%s\n' "$out_z" | grep -q '^REASON=zero-findings$' || fail "expected zero-findings reason"
+assert_plan_round_timing_row "$DZ" 1
 
 echo "=== multi-round: zero findings + degraded panel stays non-converged ==="
 DZD="$TMP/mrzd"

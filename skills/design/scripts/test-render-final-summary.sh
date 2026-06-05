@@ -108,6 +108,16 @@ chmod +x "$PLUGIN_STUB/scripts/token-report.sh" "$PLUGIN_STUB/scripts/timing-rep
     "$PLUGIN_STUB/scripts/append-tool-failure.sh" "$PLUGIN_STUB/scripts/append-execution-issue.sh" \
     "$PLUGIN_STUB/scripts/redact-secrets.sh"
 
+printf '%s\n' '{"total_hms":"44s"}' >"$D/timing-report-final.json"
+rm -f "$D/timing-report-final.stderr.log" "$D/timing-report-final.failure.log"
+std_reuse_timing="$TMP/std-reuse-timing.log"
+CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-REUSE-TIMING" \
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_reuse_timing" 2>/dev/null
+grep -Fq -- '- **Duration**: 44s' "$D/final-summary.md" || fail 'post-publish path must reuse valid timing-report-final.json duration'
+[[ ! -f "$D/timing-report-final.stderr.log" ]] || fail 'post-publish timing reuse must not regather timing stderr'
+cmp -s "$D/final-summary.md" "$std_reuse_timing" || fail 'post-publish timing reuse stdout/file mismatch'
+pass 'post-publish reuses existing final timing JSON'
+
 std_codex="$TMP/std-codex.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \
     "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_codex" 2>"$TMP/std-codex.err"

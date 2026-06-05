@@ -428,14 +428,15 @@ _emit_plan_round_timing_row() {
     if [[ "${!guard_var:-}" == "true" ]]; then
         return 0
     fi
-    printf -v "$guard_var" '%s' true
     [[ "$start_s" =~ ^[0-9]+$ ]] || return 0
     [[ "$end_s" =~ ^[0-9]+$ ]] || return 0
-    "$SCRIPT_DIR/record-plan-review-round-timing.sh" \
+    if "$SCRIPT_DIR/record-plan-review-round-timing.sh" \
         --design-tmpdir "$DESIGN_TMPDIR" \
         --round "$round_num" \
         --start-s "$start_s" \
-        --end-s "$end_s" || true
+        --end-s "$end_s"; then
+        printf -v "$guard_var" '%s' true
+    fi
 }
 
 _snapshot_terminal_exit_preserving_status() {
