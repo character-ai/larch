@@ -14,20 +14,25 @@ LABEL=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --implement-tmpdir)
-            [ $# -ge 2 ] || break
+            [ $# -ge 2 ] || exit 0
+            case "$2" in --*) exit 0 ;; esac
             IMPLEMENT_TMPDIR="$2"
             shift 2
             ;;
         --label)
-            [ $# -ge 2 ] || break
+            [ $# -ge 2 ] || exit 0
             LABEL="$2"
             shift 2
             ;;
         *)
-            shift
+            exit 0
             ;;
     esac
 done
+
+[ -n "$IMPLEMENT_TMPDIR" ] || exit 0
+[ -d "$IMPLEMENT_TMPDIR" ] || exit 0
+[ -n "$LABEL" ] || exit 0
 
 _session_env="${IMPLEMENT_TMPDIR:-}/session-env.sh"
 _read="$SCRIPT_DIR/read-session-env-key.sh"
@@ -39,6 +44,6 @@ LARCH_TIMING_LEDGER=$("$_read" --file "$_session_env" --key LARCH_TIMING_LEDGER 
 export IMPLEMENT_TMPDIR LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 "$SCRIPT_DIR/token-ledger.sh" mark "$LABEL" || true
-LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "$LABEL" || true
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" "$SCRIPT_DIR/timing-ledger.sh" mark "$LABEL" || true
 
 exit 0

@@ -76,4 +76,16 @@ BAD_TMP="$TMP_BASE/no-such-dir"
 # Missing --label: never fatal.
 "$HELPER" --implement-tmpdir "$IMPL_TMP" || fail "missing --label should exit 0"
 
+# Malformed argv: never fatal, but fail closed instead of binding the next flag
+# as a tmpdir path or silently accepting unknown flags.
+MALFORMED_LABEL="Step malformed — harness"
+"$HELPER" --implement-tmpdir --label "$MALFORMED_LABEL" || fail "missing tmpdir value should exit 0"
+if grep -Fq "$MALFORMED_LABEL" "$TIMING_LEDGER"; then
+  fail "missing tmpdir value must not emit a timing mark"
+fi
+"$HELPER" --unknown "$IMPL_TMP" --label "$MALFORMED_LABEL" || fail "unknown option should exit 0"
+if grep -Fq "$MALFORMED_LABEL" "$TIMING_LEDGER"; then
+  fail "unknown option must not emit a timing mark"
+fi
+
 echo "PASS: test-step-telemetry-mark.sh"

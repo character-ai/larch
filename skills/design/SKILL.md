@@ -310,19 +310,18 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 
 **Execution-issues logging**: Any failing Bash tool, external reviewer launch, external reviewer collector status not equal to `OK`, or Agent-tool fallback failure must append the full captured stdout/stderr or returned text verbatim through `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh` to `$DESIGN_TMPDIR/execution-issues.md` under `External Reviewer Issues` (or `Warnings` for diagram generation/sanitizer failures). Capture into a `$DESIGN_TMPDIR/*-failure.log` file first; include `${OUTPUT}.diag` sidecar content for reviewer collector failures. Do not summarize or truncate these captures.
 
-**Degraded-tools gate (#3207).** In a separate Bash block from Step 0a, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: source the durable design env written by `write-design-current-env.sh`, then invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with explicit `--codex-present` / `--cursor-present` flags defaulted to `false`, binary-found flags only when set, and `--skill design`.
+**Degraded-tools gate (#3207).** In a separate Bash block from Step 0a, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: source the durable design env written by `write-design-current-env.sh`, then invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags defaulted to `false` and `--skill design`.
 
 ```bash
 export DESIGN_TMPDIR="${DESIGN_TMPDIR:?DESIGN_TMPDIR required}"
 . "$DESIGN_TMPDIR/source-env.sh"
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
-_gate_args=("$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill design \
+"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill design \
   --codex-present "${CODEX_PRESENT:-false}" \
-  --cursor-present "${CURSOR_PRESENT:-false}")
-[ -n "${CODEX_BINARY_FOUND+x}" ] && _gate_args+=(--codex-binary-found "$CODEX_BINARY_FOUND")
-[ -n "${CURSOR_BINARY_FOUND+x}" ] && _gate_args+=(--cursor-binary-found "$CURSOR_BINARY_FOUND")
-"${_gate_args[@]}"
+  --cursor-present "${CURSOR_PRESENT:-false}" \
+  --codex-binary-found "${CODEX_BINARY_FOUND:-false}" \
+  --cursor-binary-found "${CURSOR_BINARY_FOUND:-false}"
 ```
 
 Use the canonical interactive predicate from that shared procedure. If gate stdout contains `PRESENCE_INPUT_EMPTY=true`, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output; treat it as a caller rehydration warning, not a normal outage. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run `${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-tmpdir.sh --dir "$DESIGN_TMPDIR"` and stop (run no further steps). On a **non-interactive / autonomous** run, log the explanation to `$DESIGN_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded. Guard with a `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` sentinel so re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.

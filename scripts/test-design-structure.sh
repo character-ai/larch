@@ -117,10 +117,9 @@ assert_degraded_tools_gate_fence() {
   for needle in \
     '"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill design' \
     '--codex-present "${CODEX_PRESENT:-false}"' \
-    '--cursor-present "${CURSOR_PRESENT:-false}")' \
-    '[ -n "${CODEX_BINARY_FOUND+x}" ] && _gate_args+=(--codex-binary-found "$CODEX_BINARY_FOUND")' \
-    '[ -n "${CURSOR_BINARY_FOUND+x}" ] && _gate_args+=(--cursor-binary-found "$CURSOR_BINARY_FOUND")' \
-    '"${_gate_args[@]}"'
+    '--cursor-present "${CURSOR_PRESENT:-false}"' \
+    '--codex-binary-found "${CODEX_BINARY_FOUND:-false}"' \
+    '--cursor-binary-found "${CURSOR_BINARY_FOUND:-false}"'
   do
     grep -Fq -- "$needle" "$tmp" || { rm -f "$tmp"; fail "SKILL Degraded-tools gate fence missing: $needle"; }
   done

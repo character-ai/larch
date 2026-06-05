@@ -33,7 +33,6 @@ LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=2 LARCH_CURSOR_RATE_PER_M=3 \
     --outcome merged \
     --run-id RUN-X \
     --mode '--quick' \
-    --workflow-path SIMPLE \
     --emergency-requested true \
     --duration '00:01:00' \
     --claude-tokens 1000000 \
@@ -72,6 +71,7 @@ grep -Fq '<!-- larch:run-summary v=1 -->' "$TMP" || fail 'missing sentinel'
 grep -Fq '## /implement run RUN-X — merged' "$TMP" || fail 'missing title outcome'
 if grep -Fq '**Outcome**:' "$TMP"; then fail 'merged run must not emit Outcome bullet'; fi
 grep -Fq '**PR**:' "$TMP" || fail 'missing PR bullet when URL known'
+if grep -Fq -- '- **Path**:' "$TMP"; then fail 'implement happy path must omit Path bullet'; fi
 grep -Fq -- '- Emergency: true' "$TMP" || fail 'missing emergency line when requested'
 grep -Fq '**Note:** fixture note' "$TMP" || fail 'missing appended note'
 grep -Fxq -- '- **Lines (PR diff)**: code +107/-23, larch-logs +50/-10' "$TMP" || fail 'missing full Lines (PR diff) bullet'
@@ -86,7 +86,6 @@ env -u LARCH_CLAUDE_RATE_PER_M -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PE
     --outcome merged \
     --run-id RUN-DEF \
     --mode '--quick' \
-    --workflow-path SIMPLE \
     --duration '00:01:00' \
     --claude-tokens 1000000 \
     --codex-tokens 1000000 \
@@ -119,6 +118,7 @@ grep -Fq "Claude \$0.80" "$TMP_DEF" || fail 'all-defaulted Claude slot'
 grep -Fq "Codex \$2.00" "$TMP_DEF" || fail 'all-defaulted Codex slot'
 grep -Fq "Cursor \$1.50" "$TMP_DEF" || fail 'all-defaulted Cursor slot'
 if grep -Fq '**Tokens**:' "$TMP_DEF"; then fail 'legacy Tokens bullet must not appear'; fi
+if grep -Fq -- '- **Path**:' "$TMP_DEF"; then fail 'implement default path must omit Path bullet'; fi
 if grep -Fq 'Emergency: true' "$TMP_DEF"; then fail 'omitted emergency state must not render emergency line'; fi
 pass 'all-defaulted cost semantics (shipped blended defaults)'
 
@@ -130,7 +130,6 @@ LARCH_CLAUDE_RATE_PER_M=2 env -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER
     --outcome merged \
     --run-id RUN-PART \
     --mode '--quick' \
-    --workflow-path SIMPLE \
     --duration '00:01:00' \
     --claude-tokens 1000000 \
     --codex-tokens 0 \
@@ -161,6 +160,7 @@ LARCH_CLAUDE_RATE_PER_M=2 env -u LARCH_CODEX_RATE_PER_M -u LARCH_CURSOR_RATE_PER
 grep -Fq "TOTAL ~\$2.00" "$TMP_PART" || fail 'Claude-only priced total'
 grep -Fq "Codex \$0.00" "$TMP_PART" || fail 'zero-token codex slot'
 grep -Fq "Cursor \$0.00" "$TMP_PART" || fail 'zero-token cursor slot'
+if grep -Fq -- '- **Path**:' "$TMP_PART"; then fail 'implement partial path must omit Path bullet'; fi
 if grep -Fq 'Emergency: true' "$TMP_PART"; then fail 'explicit non-emergency case must not render emergency line'; fi
 pass "priced Claude + zero-token lanes at \$0.00"
 

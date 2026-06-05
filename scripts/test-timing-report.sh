@@ -159,6 +159,21 @@ V1_PATH_JSON="$TMP_BASE/v1-path.json"
 LARCH_TIMING_SKILL=design LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V1_PATH_LEDGER" --full --format json --output "$V1_PATH_JSON"
 jq -e '.workflow_path == "SIMPLE"' "$V1_PATH_JSON" >/dev/null
 
+DESIGN_TMPDIR_ONLY_DIR="$TMP_BASE/design-tmpdir-only"
+DESIGN_TMPDIR_ONLY_LEDGER="$TMP_BASE/design-tmpdir-only-ledger.tsv"
+mkdir -p "$DESIGN_TMPDIR_ONLY_DIR"
+cat > "$DESIGN_TMPDIR_ONLY_LEDGER" <<'EOF'
+v1	mark	10	design	Step 0	-	-	-	-	-	-	-	-
+v1	mark	70	design	Step 2a	-	-	-	-	-	-	-	-
+EOF
+cat > "$DESIGN_TMPDIR_ONLY_DIR/run-params.json" <<'EOF'
+{"schema_version":1,"design_classification":"HARD","workflow_path":"HARD","partition_requested":true}
+EOF
+DESIGN_TMPDIR="$DESIGN_TMPDIR_ONLY_DIR" LARCH_TIMING_SKILL=design LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$DESIGN_TMPDIR_ONLY_LEDGER" --full --markdown > "$TMP_BASE/design-tmpdir-only.out"
+grep -Fq '**Workflow path**: HARD' "$TMP_BASE/design-tmpdir-only.out"
+DESIGN_TMPDIR="$DESIGN_TMPDIR_ONLY_DIR" LARCH_TIMING_SKILL=design LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$DESIGN_TMPDIR_ONLY_LEDGER" --full --format json --output "$TMP_BASE/design-tmpdir-only.json"
+jq -e '.workflow_path == "HARD"' "$TMP_BASE/design-tmpdir-only.json" >/dev/null
+
 LEGACY_WORKFLOW_LEDGER="$TMP_BASE/legacy-workflow.tsv"
 cat > "$LEGACY_WORKFLOW_LEDGER" <<'EOF'
 v1	mark	0	implement	Step 1	-	-	-	-	-	-	-	-

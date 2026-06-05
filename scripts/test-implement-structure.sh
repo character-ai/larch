@@ -447,11 +447,32 @@ grep -qF 'LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" m
   || fail "commit-review-fixes.sh must contain Step 7 timing-ledger mark pinned to implement"
 
 [[ -f "$STEP_7A_SH" ]] || fail "skills/implement/scripts/step-7a.sh missing"
-grep -qF 'timing-ledger.sh" mark "Step 7a — code flow diagram"' "$STEP_7A_SH" \
-  || fail "step-7a.sh must contain Step 7a timing-ledger mark"
+grep -qF 'LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram"' "$STEP_7A_SH" \
+  || fail "step-7a.sh must contain Step 7a timing-ledger mark pinned to implement"
+grep -qF "DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement \"\$PLUGIN_ROOT/scripts/timing-report.sh\" --full --format json" "$STEP_7A_SH" \
+  || fail "step-7a.sh must render timing-report with design tmpdir cleared and skill pinned to implement"
 [[ -f "$GEN_DIAGRAM_SH" ]] || fail "skills/implement/scripts/generate-code-flow-diagram.sh missing"
 grep -qF 'timing-ledger.sh" mark "Step 7a — code flow diagram"' "$GEN_DIAGRAM_SH" \
   && fail "generate-code-flow-diagram.sh must not contain Step 7a timing-ledger mark (consolidated into step-7a.sh)"
+
+REFRESH_RUN_LOGS_SH="$REPO_ROOT/scripts/refresh-run-logs.sh"
+IMPLEMENT_FINALIZE_SH="$REPO_ROOT/scripts/implement-finalize.sh"
+IMPLEMENT_BOOTSTRAP_SH="$REPO_ROOT/scripts/implement-bootstrap.sh"
+[[ -f "$REFRESH_RUN_LOGS_SH" ]] || fail "scripts/refresh-run-logs.sh missing"
+grep -qF "DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement \"\$SCRIPT_DIR/timing-report.sh\" --full --format json" "$REFRESH_RUN_LOGS_SH" \
+  || fail "refresh-run-logs.sh must render timing-report with design tmpdir cleared and skill pinned to implement"
+[[ -f "$IMPLEMENT_FINALIZE_SH" ]] || fail "scripts/implement-finalize.sh missing"
+grep -qF 'LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "$label"' "$IMPLEMENT_FINALIZE_SH" \
+  || fail "implement-finalize.sh must contain timing-ledger marks pinned to implement"
+grep -qF "DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement \"\$SCRIPT_DIR/timing-report.sh\" --since-last-mark --terse" "$IMPLEMENT_FINALIZE_SH" \
+  || fail "implement-finalize.sh must render timing-report with design tmpdir cleared and skill pinned to implement"
+[[ -f "$IMPLEMENT_BOOTSTRAP_SH" ]] || fail "scripts/implement-bootstrap.sh missing"
+grep -qF 'LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — preflight"' "$IMPLEMENT_BOOTSTRAP_SH" \
+  || fail "implement-bootstrap.sh must contain Step 0 preflight timing-ledger mark pinned to implement"
+grep -qF 'LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — tracking issue"' "$IMPLEMENT_BOOTSTRAP_SH" \
+  || fail "implement-bootstrap.sh must contain Step 0 tracking issue timing-ledger mark pinned to implement"
+grep -qF 'LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — plan materialization"' "$IMPLEMENT_BOOTSTRAP_SH" \
+  || fail "implement-bootstrap.sh must contain plan materialization timing-ledger mark pinned to implement"
 
 # Pin Exit 4 handling in SKILL.md: must direct orchestrator to "Continue to Step 16"
 exit4_step16_status=0
