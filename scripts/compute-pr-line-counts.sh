@@ -103,5 +103,5 @@ END {
 ' "$tsv_tmp"
 
 trap - EXIT
-rm -f "$tsv_tmp"
+rm -f "$tsv_tmp" || true
 exit 0

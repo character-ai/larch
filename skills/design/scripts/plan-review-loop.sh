@@ -131,6 +131,7 @@ fi
 [[ -f "$FEATURE_FILE" ]] || { larch_err "plan-review-loop.sh: feature file not found: $FEATURE_FILE"; exit 2; }
 ORIGINAL_FEATURE_FILE="$FEATURE_FILE"
 SCOPE_ANCHOR_FILE="$DESIGN_TMPDIR/plan-review-scope-anchor.txt"
+SCOUT_SCOPE_ANCHOR_FILE="$DESIGN_TMPDIR/plan-review-scope-anchor.scout.txt"
 
 _materialize_scope_anchor() {
     local stripped_tmp anchor_tmp malformed
@@ -161,6 +162,11 @@ _materialize_scope_anchor() {
         fi
     } >"$anchor_tmp"
     "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$anchor_tmp" >"$SCOPE_ANCHOR_FILE"
+    sed -E \
+        -e 's/&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g' \
+        "$SCOPE_ANCHOR_FILE" >"$SCOUT_SCOPE_ANCHOR_FILE"
     rm -f "$stripped_tmp" "$anchor_tmp"
     case "$SCOPE_ANCHOR_FILE" in
         *$'\r'*|*$'\n'*) larch_err "plan-review-loop.sh: scope anchor path contains CR/LF"; exit 2 ;;
@@ -758,7 +764,9 @@ _run_post_apply_pipeline() {
 
 _terminal_exit() {
     local rc="$1" rounds_completed="$2"
-    write_step3_result_env "$rounds_completed"
+    if ! write_step3_result_env "$rounds_completed"; then
+        emit_kv WARN "plan-review-loop: failed to write .step3-plan-review-result.env; continuing with terminal stdout KVs"
+    fi
     emit_loop_kvs "$LOOP_STATUS" "$ACCEPTED_COUNT" "$DEGRADED_PANEL" "$AGGREGATOR_STATUS" \
         "$TALLY_PLAN_REVIEW_STATUS" "$VOTING_TALLY_FILE" "$VOTER_1_PARSE_RATE_STATUS" "$rounds_completed"
     exit "$rc"
@@ -888,7 +896,7 @@ _run_plan_review_round() {
 # --- Step 2: scout (fail-open) ---
 "$PLAN_REVIEW_SCOUT_SH" \
     --plan-file "$PLAN_FILE" \
-    --description-file "$SCOPE_ANCHOR_FILE" \
+    --description-file "$SCOUT_SCOPE_ANCHOR_FILE" \
     --output "$DESIGN_TMPDIR/scout-plan-manifest.json" \
     --max-archetypes 6 \
     --session-env-path "$DESIGN_TMPDIR/source-env.sh" \
@@ -1239,8 +1247,8 @@ def is_tagged(block):
             return True
         if proc.returncode == 1:
             return False
-        print("WARN: scope marker helper failed (rc=%d); treating block as untagged" % proc.returncode, file=sys.stderr)
-        return False
+        print("ERROR: scope marker helper failed (rc=%d); refusing to dedup scope-reduction findings" % proc.returncode, file=sys.stderr)
+        raise SystemExit(2)
     finally:
         try:
             os.unlink(name)
@@ -1304,6 +1312,9 @@ def dedup(blocks, thresh=0.6):
         merged = False
         for i, kb in enumerate(kept):
             if jaccard(t, tokens(comparison_text(kb))) > thresh:
+                if tagged and kept_tagged[i]:
+                    merged = False
+                    break
                 if tagged and not kept_tagged[i]:
                     kept[i] = merge_reviewers(blk, kb)
                     kept_tagged[i] = True
@@ -1394,7 +1405,12 @@ def tagged(block):
     f=tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False); f.write(block); f.close()
     try:
         rc=subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
-        return rc == 0
+        if rc == 0:
+            return True
+        if rc == 1:
+            return False
+        print("scope marker helper failed during dedup parity (rc=%d)" % rc, file=sys.stderr)
+        raise SystemExit(2)
     finally: os.unlink(f.name)
 def prob(block):
     m=re.search(r'- \*\*Concern\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)', block, re.S)
@@ -1411,16 +1427,23 @@ def reviewers(block):
         return set()
     return {x.strip().lower() for x in m.group(1).split(',') if x.strip()}
 post_tag=[b for b in blocks(post) if tagged(b)]
-for src in [b for b in blocks(pre) if tagged(b)]:
+pre_tag=[b for b in blocks(pre) if tagged(b)]
+if len(post_tag) < len(pre_tag):
+    sys.exit(1)
+used=set()
+for src in pre_tag:
     st=prob(src); sr=reviewers(src)
     ok=False
-    for dst in post_tag:
+    for i,dst in enumerate(post_tag):
+        if i in used:
+            continue
         if not tagged(dst):
             continue
         dt=prob(dst); dr=reviewers(dst)
         if sr and dr and not (sr & dr):
             continue
         if st and dt and len(st & dt)/len(st | dt) >= 0.5:
+            used.add(i)
             ok=True
             break
     if not ok:

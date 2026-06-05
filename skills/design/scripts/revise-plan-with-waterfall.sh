@@ -573,7 +573,7 @@ launch_tier() {
             "$LAUNCH_CURSOR_REVIEW" --tool cursor --output "$output" --prompt-file "$PROMPT_PATH" --mode description --timeout "$TIMEOUT" --plan-file "$PLAN_FILE" --feature-file "$FEATURE_FILE" --scope-files "$FINDINGS_FILE"
             ;;
         claude)
-            "$LAUNCH_CLAUDE_REVIEW" --output "$output" --prompt-file "$PROMPT_PATH" --mode description --timeout "$TIMEOUT" --plan-file "$PLAN_FILE" --feature-file "$FEATURE_FILE" --scope-files "$FINDINGS_FILE"
+            "$LAUNCH_CLAUDE_REVIEW" --output "$output" --prompt-file "$PROMPT_PATH" --mode description --timeout "$TIMEOUT" --plan-file "$PLAN_FILE" --scope-files "$FINDINGS_FILE"
             ;;
         *) return 2 ;;
     esac

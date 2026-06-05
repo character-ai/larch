@@ -110,6 +110,8 @@ case_scope_anchor_file() {
         || { echo "FAIL: non-leading marker instruction missing" >&2; exit 1; }
     grep -Fq 'Normal voting thresholds still apply' <<< "$withflag" \
         || { echo "FAIL: normal threshold instruction missing" >&2; exit 1; }
+    grep -Fq 'originating issue scope, not merely to the finding text' <<< "$withflag" \
+        || { echo "FAIL: anchored proportionality override missing" >&2; exit 1; }
     cmp -s <(printf '%s\n' "$noflag") <("$RENDER" \
         --ballot-file "$BALLOT" \
         --panel-role "test panel role" \
@@ -189,6 +191,20 @@ case_argument_validation() {
     rc=$?
     set -e
     [[ "$rc" -eq 2 ]] || { echo "FAIL: invalid --verification-context should exit 2 (got $rc)" >&2; exit 1; }
+
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-render-voter-args.XXXXXX")
+    printf '%s\n' scope > "$tmp/scope.txt"
+    set +e
+    "$RENDER" \
+        --ballot-file "$BALLOT" \
+        --panel-role x \
+        --id-grammar finding-oos \
+        --verification-context code \
+        --scope-anchor-file "$tmp/scope.txt" >/dev/null 2>&1
+    rc=$?
+    set -e
+    rm -rf "$tmp"
+    [[ "$rc" -eq 2 ]] || { echo "FAIL: scope anchor with code context should exit 2 (got $rc)" >&2; exit 1; }
 }
 
 case_finding_only

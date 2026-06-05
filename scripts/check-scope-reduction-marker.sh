@@ -40,7 +40,7 @@ def candidates(body):
     body = strip_code(body)
     for line in body.splitlines():
         stripped = line.strip()
-        m = re.match(r"^###\s+(?:FINDING|OOS)_[0-9]+:\s*(.*)$", stripped, re.I)
+        m = re.match(r"^###\s+FINDING_[0-9]+:\s*(.*)$", stripped, re.I)
         if m:
             yield m.group(1)
         m = re.match(r"^-?\s*\*\*Concern\*\*:\s*(.*)$", stripped, re.I)
@@ -79,7 +79,7 @@ def candidates(body):
     body = strip_code(body)
     for line in body.splitlines():
         stripped = line.strip()
-        m = re.match(r"^###\s+(?:FINDING|OOS)_[0-9]+:\s*(.*)$", stripped, re.I)
+        m = re.match(r"^###\s+FINDING_[0-9]+:\s*(.*)$", stripped, re.I)
         if m:
             yield m.group(1)
         m = re.match(r"^-?\s*\*\*Concern\*\*:\s*(.*)$", stripped, re.I)

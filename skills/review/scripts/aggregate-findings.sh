@@ -162,7 +162,14 @@ text=open(src, encoding='utf-8', errors='replace').read()
 blocks=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', text)]
 def tagged(block):
     f=tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False); f.write(block); f.close()
-    try: return subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    try:
+        rc = subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        if rc == 0:
+            return True
+        if rc == 1:
+            return False
+        print("scope marker helper failed during plan aggregation split (rc=%d)" % rc, file=sys.stderr)
+        raise SystemExit(2)
     finally: os.unlink(f.name)
 tag=[]; un=[]
 for b in blocks:
@@ -174,6 +181,7 @@ PY
         AGGREGATE_SOURCE_FILE="$_plan_untagged_file"
         PLAN_TAGGED_COUNT=$(count_finding_blocks "$PLAN_TAGGED_FILE")
     else
+        larch_err "aggregate-findings.sh: WARNING: scope marker helper failed during plan split; leaving plan findings unaggregated"
         REASON="validation-failed"
         emit_result
         exit 0
@@ -754,7 +762,14 @@ text=open(combined_path, encoding='utf-8', errors='replace').read()
 blocks=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', text)]
 def tagged(block):
     f=tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False); f.write(block); f.close()
-    try: return subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
+    try:
+        rc = subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        if rc == 0:
+            return True
+        if rc == 1:
+            return False
+        print("scope marker helper failed during plan aggregation parity (rc=%d)" % rc, file=sys.stderr)
+        raise SystemExit(2)
     finally: os.unlink(f.name)
 def norm_body(block):
     body=re.sub(r'^### FINDING_[0-9]+:\s*','',block,count=1,flags=re.M)

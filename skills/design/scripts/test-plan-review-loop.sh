@@ -1214,7 +1214,9 @@ grep -Fq '## Feature / issue context (base)' "$DB/plan-review-feature-context.tx
 grep -Fq '## Brainstorm synthesis (additive; optional, non-binding)' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing brainstorm header"
 grep -Fq 'extra context' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing brainstorm content"
 grep -Fq -- '--description-file' "$DB/scout-argv.log" || fail "scout argv missing --description-file"
-grep -Fq 'plan-review-scope-anchor.txt' "$DB/scout-argv.log" || fail "scout argv missing staged scope anchor path"
+grep -Fq 'plan-review-scope-anchor.scout.txt' "$DB/scout-argv.log" || fail "scout argv missing escaped staged scope anchor path"
+grep -Fq '&lt;!-- larch:plan:start --&gt;' "$DB/plan-review-scope-anchor.scout.txt" 2>/dev/null \
+    && fail "scout scope anchor should be based on stripped issue body, not prior plan markup"
 grep -Fq -- '--scope-anchor-file' "$DB/voter-argv.log" || fail "voter argv missing --scope-anchor-file"
 grep -Fq 'plan-review-scope-anchor.txt' "$DB/voter-argv.log" || fail "voter argv missing staged scope anchor path"
 
@@ -1321,7 +1323,7 @@ out_leg=$(run_loop "$DLEG")
 printf '%s\n' "$out_leg" | grep -q '^LOOP_STATUS=complete$' || fail "legacy golden case should complete"
 actual_legacy_layout=$(sorted_file_list "$DLEG")
 actual_legacy_layout=${actual_legacy_layout//$'\ndirty-tree-detected.env'/}
-expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings.md\nfindings.md.tmp\noos-accepted-design.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/findings-classification.tsv\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
+expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings.md\nfindings.md.tmp\noos-accepted-design.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-scope-anchor.scout.txt\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/findings-classification.tsv\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
 [[ "$actual_legacy_layout" == "$expected_legacy_layout" ]] || fail "legacy file layout drifted: $actual_legacy_layout"
 [[ ! -d "$DLENV/plan-review/round-1/revise" ]] || fail "env-only round cap should not create revise artifacts"
 
