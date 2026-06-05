@@ -1012,6 +1012,11 @@ def run_ci_fix(
             delta_paths=delta,
         )
         if not pushed:
+            # Bash ship-pr remembers a verified-but-unpushed CI fix via
+            # CI_FIX_REBASE_PENDING and retries push-only (_stage_and_push_ci_fixes)
+            # on the next loop iteration. Python deliberately omits that persisted
+            # fast path (#3405): stateless monitor design (#3132), rebase→merge-conflict-only,
+            # bash retired — outer evaluate_failure re-runs the full fix waterfall.
             return FixResult(
                 status="waterfall-failed",
                 detail="push failed",

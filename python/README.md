@@ -61,3 +61,7 @@ Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, har
 ## Phase 4 scope note (branch hygiene)
 
 The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, and this README. The same branch may also carry ancillary harness or plugin surface updates (for example `scripts/test-lint-literal-counts.sh`, `scripts/test-plan-review-loop.sh`, `.claude-plugin/plugin.json`) that are not Phase-4 module ports; review those diffs separately from the `python/` parity work.
+
+## Phase 6 scope note (`CI_FIX_REBASE_PENDING`)
+
+`ci_monitor.py` deliberately omits bash ship-pr's `CI_FIX_REBASE_PENDING` pending-retry fast path: a verified-but-unpushed CI fix that fails `git push` terminates as `Outcome.STALLED` by design (stateless monitor, rebase limited to merge-conflict-only, bash retired — not a parity gap). See issue #3405.
