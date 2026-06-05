@@ -51,6 +51,9 @@ WATERFALL_MAX_TIERS: Final = 3
 FIXER_TIER_ORDER: Final[tuple[str, ...]] = ("codex", "cursor", "claude")
 FIXER_ROLE: Final = "resolve-conflict"
 REBASE_MAX_ATTEMPTS: Final = 20
+SHIP_PR_RRR_RESUME_PHASE: Final = "ship-pr-rrr-phase14"
+SHIP_PR_PRE_PUSH_CALLER_KIND: Final = "ship_pr_pre_push"
+SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME: Final = "ship-pr-rrr-after-phase14.flag"
 
 # Environment variable names
 ENV_LARCH_SHIP_PR_IMPL: Final = "LARCH_SHIP_PR_IMPL"
@@ -63,6 +66,7 @@ ENV_LARCH_QUIET_ACTIVE: Final = "LARCH_QUIET_ACTIVE"
 ENV_LARCH_QUIET_LOG_FILE: Final = "LARCH_QUIET_LOG_FILE"
 ENV_LARCH_QUIET_PID: Final = "LARCH_QUIET_PID"
 ENV_LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT: Final = "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"
+ENV_LARCH_BUMP_FILES: Final = "LARCH_BUMP_FILES"
 EXTERNAL_HEALTH_CHECK_TIMEOUT_DEFAULT_SEC: Final = 30
 
 # Implementation selector values

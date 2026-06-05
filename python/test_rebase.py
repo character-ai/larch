@@ -11,7 +11,7 @@ import pytest
 import config
 import rebase
 from agents import LaunchFailure, TierAttempt
-from errors import NeedsUserInput, Stalled, TransientNetworkError
+from errors import PrePushConflictHandoff, Stalled, TransientNetworkError
 from proc import CommandResult
 
 
@@ -200,7 +200,7 @@ def test_fresh_branch_force_pushes(tmp_path: Path) -> None:
     assert ("git", "push", "--force-with-lease", "origin", "feat") in runner.calls
 
 
-def test_waterfall_exhaustion_needs_user_input(tmp_path: Path) -> None:
+def test_waterfall_exhaustion_pre_push_handoff(tmp_path: Path) -> None:
     runner = ScriptRunner(
         [
             (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
@@ -226,7 +226,7 @@ def test_waterfall_exhaustion_needs_user_input(tmp_path: Path) -> None:
             failure=LaunchFailure("other", "unknown"),
         )
 
-    with pytest.raises(NeedsUserInput):
+    with pytest.raises(PrePushConflictHandoff) as exc_info:
         _ = rebase.rebase_and_push(
             runner,
             launch_fn,
@@ -235,6 +235,12 @@ def test_waterfall_exhaustion_needs_user_input(tmp_path: Path) -> None:
             tmpdir=str(tmp_path),
             cwd=str(tmp_path),
         )
+    err = exc_info.value
+    assert err.conflict_files == ("vendor/foo.txt",)
+    assert err.resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
+    assert err.caller_kind == config.SHIP_PR_PRE_PUSH_CALLER_KIND
+    assert err.conflict_csv == "vendor/foo.txt"
+    assert (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).is_file()
 
 
 def test_is_empty_or_already_applied_error() -> None:
@@ -274,12 +280,12 @@ def test_force_push_oid_and_retry(tmp_path: Path) -> None:
     assert not sleeps
 
 
-def test_launch_fn_receives_conflict_csv() -> None:
+def test_launch_fn_receives_conflict_csv_and_handoff_flag(tmp_path: Path) -> None:
     seen: list[tuple[str, str]] = []
 
     def launch_fn(tier: str, csv: str) -> TierAttempt:
         seen.append((tier, csv))
-        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
+        return TierAttempt(tier, 0, 1, LaunchFailure("other", "unknown"))
 
     runner = ScriptRunner(
         [
@@ -289,16 +295,145 @@ def test_launch_fn_receives_conflict_csv() -> None:
             )),
         ],
     )
-    with pytest.raises(NeedsUserInput):
+    with pytest.raises(PrePushConflictHandoff) as exc_info:
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
             runner,
             launch_fn,
             repo="o/r",
             run_id="run",
             cwd=None,
+            tmpdir=str(tmp_path),
         )
     assert seen
     assert seen[0][1] == "vendor/x.txt"
+    assert exc_info.value.conflict_files == ("vendor/x.txt",)
+    assert (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).is_file()
+
+
+def test_bump_only_waterfall_exhaustion_stalls_without_handoff_flag(
+    tmp_path: Path,
+) -> None:
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "CHANGELOG.md\n",
+            )),
+        ],
+    )
+
+    with pytest.raises(Stalled, match="fixer waterfall"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=1,
+                failure=LaunchFailure("other", "unknown"),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=str(tmp_path),
+            tmpdir=str(tmp_path),
+        )
+    assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
+
+
+def test_mixed_bump_waterfall_exhaustion_stalls_without_handoff_flag(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(config.ENV_LARCH_BUMP_FILES, "pkg/version.txt")
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "vendor/foo.txt\npkg/version.txt\n",
+            )),
+        ],
+    )
+
+    with pytest.raises(Stalled, match="fixer waterfall"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=1,
+                failure=LaunchFailure("other", "unknown"),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=str(tmp_path),
+            tmpdir=str(tmp_path),
+        )
+    assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
+
+
+def test_waterfall_win_with_remaining_conflicts_stalls_without_handoff_flag(
+    tmp_path: Path,
+) -> None:
+    diff_calls = {"n": 0}
+
+    def unmerged_handler(_argv: tuple[str, ...]) -> CommandResult:
+        diff_calls["n"] += 1
+        return _ok(
+            ("git", "diff", "--name-only", "--diff-filter=U"),
+            "vendor/foo.txt\n",
+        )
+
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), unmerged_handler),
+        ],
+    )
+
+    with pytest.raises(Stalled, match="conflicts remain"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=0,
+                failure=LaunchFailure("none", ""),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=str(tmp_path),
+            tmpdir=str(tmp_path),
+        )
+    assert diff_calls["n"] >= 2
+    assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
+
+
+def test_unresolvable_handoff_dir_stalls_without_handoff_tokens(tmp_path: Path) -> None:
+    missing_tmpdir = tmp_path / "missing"
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "vendor/foo.txt\n",
+            )),
+        ],
+    )
+
+    with pytest.raises(Stalled, match="cannot write"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=1,
+                failure=LaunchFailure("other", "unknown"),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=str(tmp_path),
+            tmpdir=str(missing_tmpdir),
+        )
+    assert not (
+        missing_tmpdir / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    ).exists()
 
 
 def test_non_conflict_rebase_aborts_and_stalls(tmp_path: Path) -> None:

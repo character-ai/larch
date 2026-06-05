@@ -54,6 +54,20 @@ local runs without it skip those cases via `pytest.mark.skipif`.
 
 The live `/implement` path still uses bash until Phase 7 (`LARCH_SHIP_PR_IMPL=python`). `/report-tokens` is already cut over to Python; only the shell wrapper remains for skill compatibility and quiet-mode stream setup.
 
+## Pre-push conflict handoff scope
+
+`rebase.py` represents the bash exit-4 `ship_pr_pre_push` conflict handoff at
+library level only. When the in-process conflict fixer waterfall exhausts on
+non-bump-only conflicts, it writes `ship-pr-rrr-after-phase14.flag` under the
+resolved implement tmpdir and raises `PrePushConflictHandoff` with the conflict
+files plus the `ship-pr-rrr-phase14` / `ship_pr_pre_push` tokens. Bump-only or
+mixed conflicts, conflicts that remain after a tier reported success, and flag
+write failures all raise plain `Stalled` instead.
+
+Phase 7 driver wiring remains deferred: no Python path currently emits exit 4,
+writes `RESUME_PHASE` / `CALLER_KIND` state, emits `CONFLICT_FILES`, or parses
+`--resume-phase ship-pr-rrr-phase14`.
+
 ## Phase 1 wiring outside `python/`
 
 Plan acceptance lists four non-`python/` files (Makefile, CI workflow, docs, harnesses). **`scripts/ship-pr.sh`** is an intentional fifth wiring change: failed-job replay maps `python-lint` / `python-tests` CI jobs to `make py-lint` / `make py-test` (see `scripts/test-ship-pr.sh` replay cases). Revert only if replay stays allowlist-only until a later phase.
