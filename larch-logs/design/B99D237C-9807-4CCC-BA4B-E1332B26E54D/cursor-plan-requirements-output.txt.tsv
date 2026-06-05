@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/ship.py:352-388	Blocked-rebase refusal write clears RESUME_PHASE/CALLER_KIND	After NEEDS_USER_INPUT for ship-pr-rrr-phase14, state may show RESUME_PHASE empty and a later run mis-classifies as open-pr/fresh instead of refusing continuation	Preserve existing RESUME_PHASE/CALLER_KIND on blocked writes (or skip the write); add a repeat-invocation test that still returns NEEDS_USER_INPUT
