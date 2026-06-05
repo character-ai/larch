@@ -1,0 +1,3 @@
+OUTER_LAUNCHER=claude
+TIMEOUT=180
+TOOL=claude
