@@ -107,7 +107,7 @@ Certain steps in the workflow depend on configuration prerequisites and are skip
 
 ## CI-fix push sequencing
 
-When `scripts/ship-pr.sh` commits a CI-fix locally, it checks staleness via `scripts/ci-behind-count.sh` (shared with `scripts/ci-status.sh`) before pushing. If the branch is behind `origin/main` (or `upstream/main` on forked targets), it reuses `run_rebase_rebump` with deferred push, re-verifies failed jobs and lint on the rebased tree, then pushes with `git-force-push.sh` (force-with-lease). When already current, it uses plain `git-push.sh`. The next `ci-wait` poll should see `BEHIND_COUNT=0`, so the separate `ACTION=rebase` path remains a no-op fallback rather than a second rebase.
+When the active Step 8+ driver (default `python/ship.py`; `LARCH_SHIP_PR_IMPL=bash` → `scripts/ship-pr.sh`) commits a CI-fix locally, it checks staleness via `scripts/ci-behind-count.sh` (shared with `scripts/ci-status.sh`) before pushing. If the branch is behind `origin/main` (or `upstream/main` on forked targets), it reuses `run_rebase_rebump` with deferred push, re-verifies failed jobs and lint on the rebased tree, then pushes with `git-force-push.sh` (force-with-lease). When already current, it uses plain `git-push.sh`. The next `ci-wait` poll should see `BEHIND_COUNT=0`, so the separate `ACTION=rebase` path remains a no-op fallback rather than a second rebase.
 
 ## Pre-push Clean-Tree Invariant
 

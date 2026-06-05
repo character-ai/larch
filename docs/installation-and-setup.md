@@ -37,6 +37,8 @@ To upgrade larch to the latest stable version, run the `/upgrade-larch` skill in
 
 After `/upgrade-larch` finishes, restart Claude Code if it installed a new version or repaired the marketplace sparse checkout. If it reports that you are already on the latest stable release and says `No upgrade needed.`, no restart is needed; install-stamp refresh and cache prune may still have run. If it reports `LARCH_CONE_RECONCILED=true`, `LARCH_RESTART_REQUIRED=true`, or says the sparse checkout is out of date, the plugin was reinstalled and Claude Code needs a restart. The upgrade script prints an installed-version block when `claude plugin list` succeeds; treat it as best-effort confirmation.
 
+Default `/implement` Step 8+ uses the Python ship driver from the cached plugin (`python3 ${CLAUDE_PLUGIN_ROOT}/python/ship.py`) on the first `/implement` after the upgraded plugin is loaded. Ensure `python3` is Python 3.11 or newer before starting the session; set `LARCH_SHIP_PR_IMPL=bash` before session start to keep the legacy bash driver temporarily. See [Plugin cache vs. working-tree version](#plugin-cache-vs-working-tree-version) for why restart timing controls which cached `SKILL.md` is active.
+
 `/upgrade-larch` is idempotent only when `gh` is installed, can resolve the latest stable release, and the marketplace sparse cone already matches larch's allowlist: if the currently installed version already matches that stable release and the cone matches, it skips reinstall but still refreshes the install stamp and prunes old cache directories. If the version matches but the sparse cone drifted (for example, a new top-level runtime directory was added to larch), `/upgrade-larch` repairs the cone with a sparse re-add and reinstalls the same version. If `gh` is unavailable or cannot resolve stable releases, the script warns and upgrades unconditionally, skips stable-version verification, and skips pruning.
 
 Any successful install writes `.larch-installed-at` when the installed version resolves safely; pruning still runs only after a verified stable install or on the already-latest path (`gh` unavailable still skips prune). On prune, the script retains both the verified or just-installed target and the currently-running cached version directory (`basename "$PLUGIN_ROOT"`). At prune entry, unstamped numeric cache directories are normally backfilled from directory mtime before ranking; directories may stay unstamped until a prune run or if backfill cannot run. It keeps the eight most-recently-installed cached versions by install-stamp order (stamped directories sort before unstamped). There are no session pins. If a cache-directory removal fails, extra directories can remain on disk and the script warns instead of claiming they were deleted.
@@ -80,7 +82,7 @@ claude plugin install larch@larch-local
 
 When larch is installed via the plugin system, Claude Code caches the installed version under `~/.claude/plugins/cache/larch-local/larch/<version>/`. Skills and scripts run from this **cached copy**, not from your live working tree. This means:
 
-- A bug fix committed to your working tree does not take effect until you reinstall or refresh the plugin from that checkout. `/larch:upgrade-larch` updates the latest stable GitHub install; a local checkout install (`claude --plugin-dir .` or `claude plugin marketplace add .`) needs a local reinstall/refresh instead. Until then, every `/implement` run uses the older cached version.
+- A bug fix committed to your working tree does not take effect until you reinstall or refresh the plugin from that checkout. `/larch:upgrade-larch` updates the latest stable GitHub install; a local checkout install (`claude --plugin-dir .` or `claude plugin marketplace add .`) needs a local reinstall/refresh instead. Until then, every `/implement` run uses the older cached version, including whether Step 8+ defaults to Python or bash.
 - Multiple concurrent clones (e.g., `larch1/`, `larch2/`) share the same plugin cache. Upgrading from one clone upgrades for all.
 
 **Automatic detection**: when the installed version is behind your working-tree version, larch emits a warning at session setup time:
@@ -285,6 +287,7 @@ These tools are required for the full design → implement → PR → merge work
 - **git** — version control (used by all skills)
 - **gh** — [GitHub CLI](https://cli.github.com/), authenticated with repo write access (`gh auth login`). Required for PR creation, CI monitoring, and merge automation.
 - **jq** — [JSON processor](https://jqlang.github.io/jq/). Used by validation scripts, session setup, and the shipped Stop hook (`hook-stop-fail-close.sh`). When `jq` is missing, JSON-dependent validation and fail-close behavior can be disabled. The SessionStart hook (see below) injects an advisory when `jq` is absent so the gap is visible at session start.
+- **python3** — Python 3.11 or newer for the default `/implement` Step 8+ ship driver (`python/ship.py`). Set `LARCH_SHIP_PR_IMPL=bash` before the session to use the legacy bash driver if the interpreter requirement is not met.
 
 ### Optional integrations
 

@@ -194,7 +194,7 @@ The model name to pass to Codex's `-m` flag (e.g., `o3`, `o4-mini`).
 
 ### `LARCH_SHIP_PR_IMPL`
 
-Selects the `/implement` Step 8+ ship-pr driver. Default is `bash`, which preserves the existing `scripts/ship-pr.sh` path. Set `LARCH_SHIP_PR_IMPL=python` to run the Phase 7 Python driver (`python/ship.py`) behind the additive cutover branch; Step 18 teardown remains bash-backed during the soak.
+Selects the `/implement` Step 8+ ship-pr driver. Default is `python`, which runs `python/ship.py` with JSON stdout routing. Set `LARCH_SHIP_PR_IMPL=bash` to run the legacy `scripts/ship-pr.sh` path. Step 18 runs `restore-finalize-state.sh` on bash opt-in, when `finalize-state.sh` is missing, or when terminal `ship-pr-state.sh` overrides make the finalize file stale.
 
 ### External reviewer probe tuning (`check-reviewers.sh`)
 

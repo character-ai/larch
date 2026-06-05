@@ -5,7 +5,7 @@
 ## Subcommands
 
 - `classify --implement-tmpdir <path> [--in-memory-stall-tracking <true|false>] [--bail-reason <token>] [--failure-detail-log <path>] [--attempts-file <path>]`
-  - Resolves `STALL_TRACKING` conservatively across the in-memory flag, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, and `$IMPLEMENT_TMPDIR/session-env.sh`; missing ship-pr state does not suppress a session-env stall.
+  - Resolves `STALL_TRACKING` conservatively across the in-memory flag, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, and `$IMPLEMENT_TMPDIR/session-env.sh`; missing ship-pr state does not suppress finalize-state or session-env stalls.
   - Precondition: callers that resolved "no stall detected" must skip `classify` entirely and continue to teardown; this helper is only for persisted or confirmed stalls.
   - Truthy values are exactly `1`, `true`, `TRUE`, `True`, `yes`, `YES`, `Yes`, `on`, `ON`, and `On`; every other value is false.
   - Emits `FAILURE_CLASS`, `FAILURE_SIGNATURE`, `RESUME_HINT`, `STALL_STEP`, `PHASE`, `STALL_TRACKING`, `BAIL_REASON`, and `EXIT_CODE`.

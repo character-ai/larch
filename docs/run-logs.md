@@ -366,7 +366,7 @@ Summary statistics for the run: number of accepted and rejected OOS items, filed
 
 ### token-report.json
 
-**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) and refreshed at Step 9a.1. `scripts/refresh-run-logs.sh` inside `ship-pr.sh` (CI-fix rebase/push retries) also refreshes the batch so the merged PR carries the most recent data.
+**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) and refreshed at Step 9a.1. `scripts/refresh-run-logs.sh` inside the active Step 8+ driver (default `python/ship.py`; bash opt-in `ship-pr.sh`) (CI-fix rebase/push retries) also refreshes the batch so the merged PR carries the most recent data.
 
 Structured per-step Claude and external-vendor token usage for the session. The pre-ship flush captures cost up through implementation and review.
 
@@ -386,7 +386,7 @@ Log of noteworthy events during the run, grouped by category: `Pre-existing Code
 
 ### session-transcript.jsonl
 
-**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) for runs that reach Step 7a. Runs that bail out before Step 7a do not write this batch. The transcript is truncated at the pre-ship boundary — Steps 8+ (PR creation, CI, merge, cleanup; version bump omitted in Phase 1) are not included. On each CI retry `scripts/refresh-run-logs.sh` (Triggers A-C in `ship-pr.sh`) re-captures and refreshes the batch before each push, so the final merged PR carries the most up-to-date transcript available before merge.
+**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) for runs that reach Step 7a. Runs that bail out before Step 7a do not write this batch. The transcript is truncated at the pre-ship boundary — Steps 8+ (PR creation, CI, merge, cleanup; version bump omitted in Phase 1) are not included. On each CI retry `scripts/refresh-run-logs.sh` (Triggers A-C in the active Step 8+ driver) re-captures and refreshes the batch before each push, so the final merged PR carries the most up-to-date transcript available before merge.
 
 A filtered, machine-readable rendering of the Claude Code session, produced by `scripts/render-session-transcript.py` from the raw session JSONL. The first line is a `{"v": 1, "source_basename": ..., "turns": N}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, `tool_call` entries with full input objects, and `tool_result` entries — full body when the result reported an error or warning (`is_error: true`, Bash `^Exit code [1-9]` / `^Error:`, or `warning:`), otherwise collapsed to an `elided_bytes` count. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit. The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including refresh/deferred-commit `captured` outcomes and `render-failed` / `render-empty` when the renderer cannot produce a usable output (the run continues; nothing is committed). For runs that reach Step 7a, `session-transcript.jsonl` is part of the required-file completeness manifest; pre-Step-7a partial directories remain excluded by the verifier's step reachability rules. The recovery warning records only the discovered transcript basename, not the full operator-local path. See `scripts/render-session-transcript.md` for the complete schema.
 
@@ -439,7 +439,7 @@ Content: the Architecture Diagram (from `/design`) and Code Flow Diagram (genera
 ### `larch:final-summary`
 
 For `/implement`, written in two phases for full runs: first during Step 8+
-PR creation, where `ship-pr.sh` renders and commits `final-summary.md` with
+PR creation, where the active Step 8+ driver renders and commits `final-summary.md` with
 placeholder PR fields before `create-pr.sh` pushes the branch, and later
 refreshed during Step 18 terminal cleanup. The tracking-issue comment may also
 be refreshed immediately after PR creation with the live URL, without a second

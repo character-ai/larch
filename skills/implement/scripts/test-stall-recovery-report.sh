@@ -210,6 +210,37 @@ assert_eq 0 "$RC" "8: missing ship state exits 0"
 assert_eq unrecoverable "$(kv FAILURE_CLASS "$SANDBOX/case8a.out")" "8: no-signal missing ship state is unrecoverable"
 assert_eq false "$(kv STALL_TRACKING "$SANDBOX/case8a.out")" "8: no-signal missing ship state stays non-stalled"
 
+
+dir=$(make_tmp case_finalize_fallback)
+cat >"$dir/finalize-state.sh" <<'STATE'
+STALL_TRACKING=true
+STALL_STEP=8
+EXIT_CODE=4
+STATE
+printf '%s\n' 'gh: API rate limit exceeded' >"$dir/failure.log"
+run_capture "$SANDBOX/case_finalize_fallback.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/failure.log"
+assert_eq 0 "$RC" "finalize fallback classify exits 0"
+assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case_finalize_fallback.out")" "finalize fallback classifies from finalize-state stall keys"
+assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case_finalize_fallback.out")" "finalize fallback reports stall tracking"
+assert_eq 8 "$(kv STALL_STEP "$SANDBOX/case_finalize_fallback.out")" "finalize fallback reports stall step"
+
+dir=$(make_tmp case8finalize)
+cat >"$dir/ship-pr-state.sh" <<'STATE'
+PHASE=ci-initial
+EXIT_CODE=4
+STATE
+cat >"$dir/finalize-state.sh" <<'STATE'
+STALL_TRACKING=true
+STALL_STEP=8
+EXIT_CODE=4
+NOTE=network timeout
+STATE
+run_capture "$SANDBOX/case8finalize.out" "$SCRIPT" classify --implement-tmpdir "$dir"
+assert_eq 0 "$RC" "8: finalize-only stall exits 0"
+assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case8finalize.out")" "8: finalize-only stall tracking consulted"
+assert_eq 8 "$(kv STALL_STEP "$SANDBOX/case8finalize.out")" "8: finalize-only stall step consulted"
+assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case8finalize.out")" "8: finalize-only evidence classifies"
+
 dir=$(make_tmp case8b)
 cat >"$dir/session-env.sh" <<'EOF'
 STALL_TRACKING=true

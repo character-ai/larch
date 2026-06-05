@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 import config
 import run_logs
 import ship
-from errors import PrePushConflictHandoff, ShipError
+from errors import PrePushConflictHandoff, ShipError, Stalled
 from outcomes import Outcome, StepResult
 from proc import CommandResult
 from run_context import RunContext
@@ -2308,3 +2308,104 @@ def test_persist_stall_metadata_invalid_tmpdir_is_json_only(tmp_path: Path) -> N
     ctx = _ctx(tmp_path, tmpdir=str(invalid))
     ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="invalid tmpdir"), invalid)  # pylint: disable=protected-access
     assert not (invalid / "finalize-state.sh").exists()
+
+
+def test_ship_state_merge_preserves_orchestrator_keys(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text("STALL_TRACKING=true\nEXPECTED_SESSION_ID=session-1\n", encoding="utf-8")
+
+    ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmp_path, state_file=str(state_file), pr_number=12),
+        phase="ci-initial",
+    )
+
+    state = state_file.read_text(encoding="utf-8")
+    assert "STALL_TRACKING=true\n" in state
+    assert "EXPECTED_SESSION_ID=session-1\n" in state
+    assert "PHASE=ci-initial\n" in state
+    assert "PR_NUMBER=12\n" in state
+
+
+def test_invalid_tmpdir_writes_no_state_files(tmp_path: Path) -> None:
+    invalid_tmpdir = tmp_path / ".." / "not-allowed"
+    ctx = _ctx(tmp_path, tmpdir=str(invalid_tmpdir), state_file=str(invalid_tmpdir / "ship-pr-state.sh"))
+
+    result = ship.run_ship(ctx, runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "invalid tmpdir"
+    assert not (invalid_tmpdir / "ship-pr-state.sh").exists()
+    assert not (invalid_tmpdir / "finalize-state.sh").exists()
+
+
+def test_postmerge_flush_skip_writes_stall_shape(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state_file),
+        pr_number=5,
+        pr_url="https://example.test/pr/5",
+        pr_closed=True,
+        merge_result=config.MERGE_RESULT_MERGED,
+    )
+    monkeypatch.setattr(
+        ship.finalize,
+        "postmerge",
+        lambda *_a, **_k: type("Post", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})(),
+    )
+    monkeypatch.setattr(
+        ship.run_logs,
+        "finalize_postmerge_logs",
+        lambda *_a, **_k: run_logs.RefreshSkip(skipped=True, reason="commit-failed"),
+    )
+
+    result = ship.run_postmerge_phase(RecordingRunner(), ctx, cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    finalize_state = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
+    assert finalize_state["STALL_TRACKING"] == "true"
+    assert finalize_state["STALL_STEP"] == "postmerge-flush"
+    state = state_file.read_text(encoding="utf-8")
+    assert "PHASE=postmerge\n" in state
+    assert "PHASE=done\n" not in state
+    assert "STALL_TRACKING=true\n" in state
+
+
+def test_transient_and_oos_reentry_do_not_write_finalize(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.TRANSIENT, "network"))
+    transient = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+    assert transient.outcome is Outcome.TRANSIENT
+    assert not (tmp_path / "finalize-state.sh").exists()
+    assert state_file.is_file()
+
+    tmp2 = tmp_path / "oos"
+    tmp2.mkdir()
+    accepted = tmp2 / "oos-accepted-main-agent.md"
+    _ = accepted.write_text("### OOS_1\nbody\n", encoding="utf-8")
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": False})())
+    oos_state = tmp2 / "ship-pr-state.sh"
+    oos_result = ship.run_ship(_ctx(tmp2, state_file=str(oos_state)), runner=RecordingRunner(), cwd=str(tmp2))
+    assert oos_result.outcome is Outcome.NEEDS_USER_INPUT
+    assert not (tmp2 / "finalize-state.sh").exists()
+    assert oos_state.is_file()
+
+
+def test_outer_stalled_exception_writes_terminal_state(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+
+    def raise_stalled(*_a: object, **_k: object) -> StepResult:
+        raise Stalled("outer stalled path")
+
+    monkeypatch.setattr(ship.checks, "run_checks_phase", raise_stalled)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    finalize_state = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
+    assert finalize_state["STALL_TRACKING"] == "true"
+    assert finalize_state["EXIT_CODE"] == "4"
+    assert "STALL_TRACKING=true\n" in state_file.read_text(encoding="utf-8")

@@ -481,9 +481,19 @@ def _write_terminal_state(
     rebase_count: int = 0,
     fix_attempts: int = 0,
     transient_retries: int = 0,
+    failed_run_id: str = "",
+    bail_failure_detail_log: str = "",
 ) -> None:
+    if not _tmpdir_under_allowed_root(ctx.tmpdir):
+        return
     terminal_ctx = ctx.with_(stall_tracking=result is Outcome.STALLED, stall_step=step)
-    finalize.write_finalize_state(terminal_ctx, Path(ctx.tmpdir) / "finalize-state.sh")
+    _write_terminal_finalize_if_terminal(
+        terminal_ctx,
+        result,
+        step,
+        failed_run_id=failed_run_id,
+        bail_failure_detail_log=bail_failure_detail_log,
+    )
     phase = "done" if result is Outcome.OK else "stalled"
     _write_ship_state(
         terminal_ctx,
@@ -492,11 +502,64 @@ def _write_terminal_state(
         rebase_count=rebase_count,
         fix_attempts=fix_attempts,
         transient_retries=transient_retries,
+        terminal_outcome=result,
+        failed_run_id=failed_run_id,
+        bail_failure_detail_log=bail_failure_detail_log,
     )
 
 
 def _state_bool(*, value: bool) -> str:
     return "true" if value else "false"
+
+
+def _terminal_exit_code(result: Outcome) -> str:
+    return str(config.OUTCOME_EXIT_MAP.get(result, config.OUTCOME_EXIT_MAP[Outcome.STALLED]))
+
+
+def _terminal_overlay_fields(
+    ctx: RunContext,
+    result: Outcome,
+    step: str,
+    *,
+    failed_run_id: str = "",
+    bail_failure_detail_log: str = "",
+) -> dict[str, str]:
+    return {
+        "EXIT_CODE": _terminal_exit_code(result),
+        "STALL_TRACKING": _state_bool(value=result is Outcome.STALLED),
+        "STALL_STEP": step if result is Outcome.STALLED else "",
+        "BAIL_REASON": ctx.final_bail_reason,
+        "BAIL_NEEDS_USER_INPUT": _state_bool(value=ctx.bail_needs_user_input),
+        "FAILED_RUN_ID": failed_run_id,
+        "BAIL_FAILURE_DETAIL_LOG": bail_failure_detail_log,
+    }
+
+
+def _write_terminal_finalize_if_terminal(
+    ctx: RunContext,
+    result: Outcome,
+    step: str,
+    *,
+    failed_run_id: str = "",
+    bail_failure_detail_log: str = "",
+) -> None:
+    if result in {Outcome.TRANSIENT, Outcome.NEEDS_USER_INPUT}:
+        return
+    if not _tmpdir_under_allowed_root(ctx.tmpdir):
+        return
+    path = Path(ctx.tmpdir) / "finalize-state.sh"
+    finalize.write_finalize_state(ctx, path)
+    data = finalize.read_finalize_state(path) if path.is_file() else {}
+    data.update(
+        _terminal_overlay_fields(
+            ctx,
+            result,
+            step,
+            failed_run_id=failed_run_id,
+            bail_failure_detail_log=bail_failure_detail_log,
+        ),
+    )
+    finalize.write_finalize_state_merged(path, data)
 
 
 def _valid_repo_slug(value: str) -> bool:
@@ -540,8 +603,13 @@ def _write_ship_state(
     caller_kind: str | None = None,
     extra_fields: dict[str, str] | None = None,
     ci_fix_rebase_pending_head: str = "",
+    terminal_outcome: Outcome | None = None,
+    failed_run_id: str = "",
+    bail_failure_detail_log: str = "",
 ) -> None:
     if not ctx.state_file:
+        return
+    if not _tmpdir_under_allowed_root(ctx.tmpdir):
         return
     path = Path(ctx.state_file)
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -605,12 +673,26 @@ def _write_ship_state(
             "STALL_TRACKING": "false",
             "STALL_STEP": "",
             "BAIL_REASON": "",
+            "BAIL_NEEDS_USER_INPUT": "false",
             "BAIL_FAILURE_DETAIL_LOG": "",
             "EXIT_CODE": "0",
+            "FAILED_RUN_ID": "",
         })
     else:
-        fields["STALL_TRACKING"] = _state_bool(value=ctx.stall_tracking)
-        fields["STALL_STEP"] = ctx.stall_step
+        if terminal_outcome is not None or ctx.stall_tracking or "STALL_TRACKING" not in fields:
+            fields["STALL_TRACKING"] = _state_bool(value=ctx.stall_tracking)
+        if terminal_outcome is not None or ctx.stall_step or "STALL_STEP" not in fields:
+            fields["STALL_STEP"] = ctx.stall_step
+    if terminal_outcome is not None:
+        fields.update(
+            _terminal_overlay_fields(
+                ctx,
+                terminal_outcome,
+                ctx.stall_step,
+                failed_run_id=failed_run_id,
+                bail_failure_detail_log=bail_failure_detail_log,
+            ),
+        )
     if extra_fields:
         fields.update(extra_fields)
     for key, value in fields.items():
@@ -1097,15 +1179,21 @@ def run_postmerge_phase(
         stall_tracking=post.outcome is Outcome.STALLED,
         stall_step=post.status if post.outcome is Outcome.STALLED else ctx.stall_step,
     )
-    finalize.write_finalize_state(state_ctx, Path(ctx.tmpdir) / "finalize-state.sh")
+    if post.outcome is Outcome.OK:
+        _write_terminal_finalize_if_terminal(state_ctx, Outcome.OK, "")
     if post.outcome is Outcome.OK and _postmerge_should_flush(state_ctx):
         skip = run_logs.finalize_postmerge_logs(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
         if skip.skipped:
             _breadcrumb("warning", f"post-merge flush skipped: {skip.reason}")
+            stall_ctx = state_ctx.with_(stall_tracking=True, stall_step="postmerge-flush")
+            _write_terminal_finalize_if_terminal(stall_ctx, Outcome.STALLED, "postmerge-flush")
+            _write_ship_state(stall_ctx, phase="postmerge", terminal_outcome=Outcome.STALLED)
+            return ShipResult(Outcome.STALLED, detail=f"post-merge flush skipped: {skip.reason}")
     if post.outcome is not Outcome.OK:
-        _write_ship_state(state_ctx, phase="postmerge")
+        _write_terminal_finalize_if_terminal(state_ctx, post.outcome, post.status)
+        _write_ship_state(state_ctx, phase="postmerge", terminal_outcome=post.outcome)
         return ShipResult(post.outcome, detail=post.detail or post.status)
-    _write_ship_state(state_ctx, phase="done")
+    _write_ship_state(state_ctx, phase="done", terminal_outcome=Outcome.OK)
     return ShipResult(
         Outcome.OK,
         pr_number=ctx.pr_number,
@@ -1234,17 +1322,19 @@ def run_ship(
                     _breadcrumb("warning", f"postbump refresh skipped: {refresh.reason}")
                 postbump = finalize.postbump(runner, fresh_context, cwd=repo_root)
             if postbump.outcome is not Outcome.OK:
-                finalize.write_finalize_state(
-                    fresh_context.with_(stall_tracking=postbump.outcome is Outcome.STALLED, stall_step=postbump.status),
-                    Path(fresh_context.tmpdir) / "finalize-state.sh",
+                postbump_ctx = fresh_context.with_(
+                    stall_tracking=postbump.outcome is Outcome.STALLED,
+                    stall_step=postbump.status if postbump.outcome is Outcome.STALLED else "",
                 )
+                _write_terminal_finalize_if_terminal(postbump_ctx, postbump.outcome, postbump.status)
                 _write_ship_state(
-                    fresh_context,
+                    postbump_ctx,
                     phase=postbump.status,
                     iteration=resume.iteration,
                     rebase_count=resume.rebase_count,
                     fix_attempts=resume.fix_attempts,
                     transient_retries=resume.transient_retries,
+                    terminal_outcome=postbump.outcome,
                 )
                 return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
 
@@ -1399,6 +1489,7 @@ def run_ship(
                     rebase_count=persisted[1],
                     fix_attempts=persisted[2],
                     transient_retries=persisted[3],
+                    failed_run_id=monitor.failed_run_id or "",
                 )
                 return _step_result_to_ship(
                     monitor.result,
@@ -1521,9 +1612,14 @@ def run_ship(
                 transient_retries=transient_retries,
             )
             if merged.result == config.MERGE_RESULT_ERROR:
-                finalize.write_finalize_state(
+                _write_terminal_state(
                     working.with_(stall_tracking=True, stall_step="merge"),
-                    Path(working.tmpdir) / "finalize-state.sh",
+                    Outcome.STALLED,
+                    "merge",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
                 )
                 return ShipResult(
                     Outcome.STALLED,
@@ -1533,9 +1629,14 @@ def run_ship(
                     detail=merged.error,
                 )
             if merged.result not in config.POST_MERGE_MERGE_RESULTS:
-                finalize.write_finalize_state(
+                _write_terminal_state(
                     working.with_(stall_tracking=True, stall_step="merge"),
-                    Path(working.tmpdir) / "finalize-state.sh",
+                    Outcome.STALLED,
+                    "merge",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
                 )
                 return ShipResult(
                     Outcome.STALLED,
@@ -1563,7 +1664,12 @@ def run_ship(
                 detail=post.detail,
             )
     except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
-        return _error_to_result(exc)
+        result = _error_to_result(exc)
+        if result.outcome is Outcome.STALLED:
+            step = ctx.stall_step or _slug_from_detail(result.detail)
+            with suppress(Exception):
+                _write_terminal_state(ctx.with_(stall_tracking=True, stall_step=step), Outcome.STALLED, step)
+        return result
 
 
 def _journal_path(ctx: RunContext) -> Path:
