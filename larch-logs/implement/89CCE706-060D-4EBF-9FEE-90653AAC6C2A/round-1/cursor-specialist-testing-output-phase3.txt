@@ -1,0 +1,84 @@
+I now have all the information needed. Here is the review output:
+
+---
+
+### In-Scope Findings
+
+**1. [Important] [risk-integration]** `skills/review/scripts/test-dispatch-panel.sh:263`
+
+**CI-breaking test assertion for single-vendor SLOT_COUNT**
+
+The `dynamic-fail` fixture runs `--codex-available false --cursor-available true` (single-vendor Cursor), so `dispatch-panel.sh` correctly emits `STATIC_SLOT_COUNT=4` and `SLOT_COUNT=4`. But the assertion on line 263 is `grep -Fq 'SLOT_COUNT=8'`, which fails because neither `STATIC_SLOT_COUNT=4` nor `SLOT_COUNT=4` contains the substring `SLOT_COUNT=8`. Confirmed: `bash skills/review/scripts/test-dispatch-panel.sh --section core` exits 1.
+
+Scenario: `make test-harnesses` / CI fails after merge.
+
+Suggested fix: Change the assertion to `grep -Fq 'SLOT_COUNT=4'` (and `STATIC_SLOT_COUNT=4`). The assertion was updated from the old `6` to `8` (both-vendor count), but should be `4` for the single-vendor case.
+
+---
+
+**2. [Important] [risk-integration]** `skills/review/SKILL.md:39` (Step 2 waterfall description)
+
+**Stale SKILL.md — acceptance criterion not met**
+
+`skills/review/SKILL.md` is absent from the diff despite being explicitly listed in the acceptance criteria as requiring the canonical phrase update. Step 2's waterfall description still reads "Dynamic archetypes are default-off, scout-driven… **Cursor-primary with standard waterfall fallback**" with no mention of both-vendor Codex twin emission or conditional `--no-fallback`. The `DISPATCH_OK=false` sentence also predates the new `DROPPED_SLOTS_FILE` semantics (dispatch-panel.md now says `DISPATCH_OK=false` is for true dispatcher exhaustion; dropped no-fallback rows are surfaced through `DROPPED_SLOTS_FILE`).
+
+Scenario: doc-sync test (`test-quick-mode-docs-sync.sh`) gates on `skills/implement/SKILL.md`; a later doc-sync sweep that also checks `skills/review/SKILL.md` would fail. More immediately, the stale "Cursor-primary" phrasing contradicts the shipped behavior for both-vendor runs.
+
+Suggested fix: Update Step 2 to match `dispatch-panel.md`'s current contract: both-vendor emits one Cursor + one Codex slot per archetype; `--no-fallback` is added only when both vendors are present; `DISPATCH_OK=false` is for true dispatcher exhaustion, with dropped peer rows in `DROPPED_SLOTS_FILE`.
+
+---
+
+**3. [Important] [risk-integration]** `skills/review/scripts/test-dispatch-panel.sh` (core section, both-vendor fixtures)
+
+**No assertion that `--no-fallback` is passed/omitted to the waterfall**
+
+The both-vendor test fixtures (lines 150–198) verify output KVs (`STATIC_SLOT_COUNT=8`, `DISPATCH_OK=true`, etc.) but no test captures the argv passed to `dispatch-with-waterfall.sh`. There is no overriding of `DISPATCH_WATERFALL` to a logging stub, and no grep against a captured argv log to verify:
+- both-vendor → `--no-fallback` present
+- single-vendor → `--no-fallback` absent
+- single-vendor → `DROPPED_SLOTS_FILE` not emitted
+
+The conditional wiring (`if [[ "$CURSOR_AVAILABLE" == "true" && "$CODEX_AVAILABLE" == "true" ]]; then waterfall_args+=(--no-fallback)`) is exactly the kind of branch that fails silently: a future accidental deletion would produce duplicate Claude-fallback rows for both Cursor and Codex peer outputs without any test catching it.
+
+Suggested fix: Add a `DISPATCH_WATERFALL` stub that appends its argv to a log file. Then add assertions: `grep -Fq -- '--no-fallback'` for the both-vendor case; `grep -v -- '--no-fallback'` (or absence check) for the single-vendor case.
+
+---
+
+**4. [Important] [risk-integration]** `skills/review/scripts/test-review-core.sh`
+
+**Three plan-required test cases missing from test-review-core.sh**
+
+The implementation plan explicitly required:
+- **Case #4** (per-archetype coverage gate): When one of the four archetypes has zero successful static peers, `static_archetype_coverage_ok` returns failure, causing `threshold_ok=false` and `REVIEW_CORE_STATUS=panel-failed`. No test exercises this path; the stub collector always produces OK records for all four archetypes.
+- **Case #8** (dropped dirty-tree recovery): When `DROPPED_SLOTS_FILE` maps dropped rows to panel-manifest entries, `recover_dirty_tree` is called with those extra paths. Not tested.
+- **Case #9** (`DROPPED_SLOTS_FILE` wire): `--dropped-slots-file` is forwarded to `check-reviewer-failure-threshold.sh` when the file is present. No test verifies the forwarding or the resulting `DROPPED_STATIC_SLOTS` output.
+
+Scenario: regressions in any of these three paths (coverage gate, dropped-slot threshold accounting, dirty-tree cleanup for no-fallback drops) would pass CI undetected.
+
+Suggested fix: Add a collector stub variant (via `TEST_COLLECTOR_VARIANT` or inline override) that produces a collector-results.env with `STATUS=FAILED` for one archetype; assert `REVIEW_CORE_STATUS=panel-failed`. Add a dispatch stub that emits `DROPPED_SLOTS_FILE` pointing to a TSV with one static drop row; assert `check-reviewer-failure-threshold.sh` receives `--dropped-slots-file`.
+
+---
+
+**5. [Nit] [risk-integration]** `skills/review/scripts/tally-code-votes.sh:315`
+
+**`dyn-*-codex-output.txt` attribution covered by implementation but not regression-tested**
+
+The `dyn-*-output.txt` case statement matches `dyn-api-contract-codex-output.txt` because `*` in bash `case` is greedy over hyphens. But no test in `test-tally-code-votes.sh` exercises a `dyn-*-codex-output.txt` input to confirm the archetype label is set from `$slot` (not corrupted). The plan listed tally attribution for Codex dynamic twins as a verification checkpoint; that check is absent.
+
+Suggested fix: Add a `dyn-api-contract-codex-output.txt` entry to the tally test fixtures and assert `archetype=dyn-api-contract-codex` (or whatever the slot value is) appears in the tally output.
+
+---
+
+### Out-of-Scope Observations
+
+None — all findings are within the testing/CI/plan-fidelity scope of this reviewer role.
+
+---
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in-scope	important	risk-integration	skills/review/scripts/test-dispatch-panel.sh:263	CI-breaking SLOT_COUNT assertion: single-vendor fixture asserts SLOT_COUNT=8 but implementation emits SLOT_COUNT=4	make test-harnesses / CI fails; test-dispatch-panel.sh --section core exits 1	Change assertion to grep -Fq 'SLOT_COUNT=4' (and add STATIC_SLOT_COUNT=4) for the dynamic-fail fixture
+1	in-scope	important	risk-integration	skills/review/SKILL.md:39	SKILL.md not updated: Step 2 still says "Cursor-primary with standard waterfall fallback"; no mention of both-vendor Codex twin emission or --no-fallback; DISPATCH_OK=false description is stale	Acceptance criterion unmet; stale "Cursor-primary" phrasing contradicts shipped behavior; doc-sync sweep would fail	Update Step 2 to describe both-vendor per-archetype emission, conditional --no-fallback, and new DROPPED_SLOTS_FILE semantics
+1	in-scope	important	risk-integration	skills/review/scripts/test-dispatch-panel.sh:150-210	No assertion that both-vendor dispatch passes --no-fallback to the waterfall (and single-vendor omits it); DISPATCH_WATERFALL argv is never captured or asserted	Silent regression if the no-fallback conditional is accidentally removed: duplicate Claude-fallback rows for peer outputs with no CI signal	Override DISPATCH_WATERFALL with a logging stub; add grep assertions for --no-fallback present (both-vendor) and absent (single-vendor)
+1	in-scope	important	risk-integration	skills/review/scripts/test-review-core.sh	Three plan-required test cases missing: per-archetype coverage gate failure (#4), dropped dirty-tree recovery (#8), DROPPED_SLOTS_FILE forwarding (#9)	Coverage gate, dropped-slot threshold accounting, and dropped dirty-tree cleanup regressions pass CI silently	Add collector stub variant producing one FAILED archetype (assert panel-failed); add dispatch stub emitting DROPPED_SLOTS_FILE (assert --dropped-slots-file forwarded)
+1	in-scope	nit	risk-integration	skills/review/scripts/tally-code-votes.sh:315	dyn-*-codex-output.txt attribution not regression-tested; plan listed tally attribution for Codex dynamic twins as a verification checkpoint	Silent archetype label corruption if dyn-*-codex pattern handling regresses	Add dyn-api-contract-codex-output.txt fixture to test-tally-code-votes.sh and assert correct archetype label
+```
