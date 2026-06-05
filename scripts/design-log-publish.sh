@@ -586,11 +586,17 @@ if [[ "$REASON" == "pause" && ( -e "$DESIGN_TMPDIR/.completed" || -L "$DESIGN_TM
                 ;;
         esac
         rel=${f#"$completed_root/"}
-        if [[ ! "$rel" =~ ^step-[A-Za-z0-9._-]+$ ]]; then
-            larch_err "design-log-publish: unexpected file under .completed: $rel"
-            emit_publish_result false
-            exit 0
-        fi
+        # Keep in sync with skills/design/scripts/design-driver.sh accepted ACTION names.
+        case "$rel" in
+            emit_plan|tally|finalize|validate_plan_commands) ;;
+            *)
+                if [[ ! "$rel" =~ ^step-[A-Za-z0-9._-]+$ ]]; then
+                    larch_err "design-log-publish: unexpected file under .completed: $rel"
+                    emit_publish_result false
+                    exit 0
+                fi
+                ;;
+        esac
         if [[ -L "$f" ]]; then
             larch_err "design-log-publish: .completed file became a symlink before staging: $f"
             emit_publish_result false

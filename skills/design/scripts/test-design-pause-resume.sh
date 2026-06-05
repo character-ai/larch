@@ -32,6 +32,7 @@ export BODY_FILE EDIT_CAPTURE SNAPSHOT_ROOT FETCH_LOG
 STUB="$TMP/stub"
 mkdir -p "$STUB"
 REAL_GIT=$(command -v git)
+ORIGINAL_PATH="$PATH"
 
 cat >"$STUB/gh" <<'GH'
 #!/usr/bin/env bash
@@ -95,12 +96,30 @@ if [[ "\${1:-}" == "-C" ]]; then
       fi
       exit 1
       ;;
-    archive)
-      ref="\$2"
-      path="\$3"
+    ls-tree)
+      if [[ "\${GIT_STUB_LS_TREE_FAIL:-0}" == "1" ]]; then
+        echo "stub git ls-tree forced failure" >&2
+        exit 97
+      fi
+      path=""
+      for arg in "\$@"; do
+        path="\$arg"
+      done
       run="\${path#larch-logs/design/}"
       run="\${run%/}"
-      tar -C "$SNAPSHOT_ROOT" -cf - "larch-logs/design/\$run"
+      if [[ -d "$SNAPSHOT_ROOT/larch-logs/design/\$run" ]]; then
+        (cd "$SNAPSHOT_ROOT" && find "larch-logs/design/\$run" -type f -print0)
+      fi
+      exit 0
+      ;;
+    show)
+      if [[ "\${GIT_STUB_SHOW_FAIL:-0}" == "1" ]]; then
+        echo "stub git show forced failure" >&2
+        exit 97
+      fi
+      spec="\$2"
+      path="\${spec#*:}"
+      cat "$SNAPSHOT_ROOT/\$path"
       exit 0
       ;;
   esac
@@ -189,9 +208,37 @@ out_load=$(bash "$LOAD" --design-tmpdir "$RESTORE" --issue 9 --repo owner/repo)
 [[ "$out_load" == *"STEP=1d"* ]] || fail "load step mismatch: $out_load"
 [[ -f "$RESTORE/plan.txt" && -f "$RESTORE/run-params.json" && -f "$RESTORE/pause-state.txt" ]] || fail "restored root artifacts missing"
 [[ -f "$RESTORE/.resume-loaded" ]] || fail "resume sentinel missing after restore"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should remain until terminal cleanup"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should be deleted after successful restore"
 HOME="$TMP/home" bash "$WDCE" --output "$RESTORE/source-env.sh" --design-tmpdir "$RESTORE" --session-id RUNPAUSE1 --issue-number 9 --claude-pid 12345 >/dev/null
 grep -Fq 'export ISSUE_NUMBER=9' "$RESTORE/source-env.sh" || fail "issue refresh missing after restore"
+
+echo "=== real git export-ignore snapshot restores ==="
+EXPORT_REPO="$TMP/export-ignore-repo"
+EXPORT_RESTORE="$TMP/export-ignore-restore"
+GH_ONLY="$TMP/gh-only"
+mkdir -p "$GH_ONLY"
+ln -sf "$STUB/gh" "$GH_ONLY/gh"
+"$REAL_GIT" init -q -b main "$EXPORT_REPO"
+"$REAL_GIT" -C "$EXPORT_REPO" config user.email test@example.com
+"$REAL_GIT" -C "$EXPORT_REPO" config user.name 'Test User'
+printf '%s\n' 'larch-logs/ export-ignore' >"$EXPORT_REPO/.gitattributes"
+mkdir -p "$EXPORT_REPO/larch-logs/design/RUNEXPORT1/.completed"
+printf '%s\n' '{"run_id":"RUNEXPORT1","issue_number":"9"}' >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/manifest.json"
+printf '%s\n' '{"design_classification":"SIMPLE","brainstorm_requested":false}' >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/run-params.json"
+printf '%s\n' 'ISSUE_NUMBER=9' 'RUN_ID=RUNEXPORT1' 'REPO=owner/repo' >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/pause-state.txt"
+printf '%s\n' 'plan export-ignore' >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/plan.txt"
+: >"$EXPORT_REPO/larch-logs/design/RUNEXPORT1/.completed/step-1c"
+"$REAL_GIT" -C "$EXPORT_REPO" add .
+"$REAL_GIT" -C "$EXPORT_REPO" commit -q -m 'add paused design snapshot'
+"$REAL_GIT" -C "$EXPORT_REPO" branch larch-log-design-recovery-RUNEXPORT1
+printf '%s\n' '<!-- larch:design-pause:start -->' 'ISSUE_NUMBER=9' 'REPO=owner/repo' 'RUN_ID=RUNEXPORT1' 'STEP=1d' 'LOG_RECOVERY_BRANCH=larch-log-design-recovery-RUNEXPORT1' '<!-- larch:design-pause:end -->' >"$BODY_FILE"
+(
+  cd "$EXPORT_REPO" || exit 1
+  out_export=$(PATH="$GH_ONLY:$ORIGINAL_PATH" bash "$LOAD" --design-tmpdir "$EXPORT_RESTORE" --issue 9 --repo owner/repo)
+  [[ "$out_export" == *"LOAD_OK=true"* && "$out_export" == *"RUN_ID=RUNEXPORT1"* ]] || fail "export-ignore restore failed: $out_export"
+)
+[[ -f "$EXPORT_RESTORE/plan.txt" && -f "$EXPORT_RESTORE/.completed/step-1c" ]] || fail "export-ignore restore artifacts missing"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "export-ignore restore should delete marker after success"
 
 echo "=== restore install failure keeps marker ==="
 make_design_tmpdir "$DESIGN"
@@ -518,7 +565,15 @@ bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
 printf '\noperator edit\n' >>"$BODY_FILE"
 out_drift=$(bash "$LOAD" --design-tmpdir "$TMP/restore-drift" --issue 9 --repo owner/repo)
 [[ "$out_drift" == *"LOAD_OK=true"* && "$out_drift" == *"WARN=body-drift"* ]] || fail "expected body drift warning: $out_drift"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "body-drift restore should keep marker"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "body-drift restore should delete marker after success"
+
+echo "=== marker delete failure warns after successful load ==="
+make_design_tmpdir "$DESIGN"
+printf '%s\n' 'body delete fail' >"$BODY_FILE"
+bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
+out_delete_fail=$(GH_EDIT_FAIL=1 bash "$LOAD" --design-tmpdir "$TMP/restore-delete-fail" --issue 9 --repo owner/repo)
+[[ "$out_delete_fail" == *"LOAD_OK=true"* && "$out_delete_fail" == *"WARN=marker-delete-failed"* ]] || fail "expected marker-delete warning: $out_delete_fail"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "failed marker delete should leave marker"
 
 echo "=== named block delete + empty content semantics ==="
 printf 'x\n<!-- larch:design-pause:start -->\nA\n<!-- larch:design-pause:end -->\ny\n' >"$BODY_FILE"
@@ -750,6 +805,7 @@ out_missing=$(bash "$LOAD" --design-tmpdir "$TMP/missing" --issue 9 --repo owner
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=3\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_missing_plan_late=$(bash "$LOAD" --design-tmpdir "$TMP/missing-plan-late" --issue 9 --repo owner/repo)
 [[ "$out_missing_plan_late" == *"ERROR=missing-restored-artifact"* ]] || fail "late-step restore should require plan.txt: $out_missing_plan_late"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "late-step missing artifact should keep marker"
 
 LEGACY_HARD="$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
 rm -rf "$LEGACY_HARD"
@@ -778,17 +834,28 @@ printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_
 out_bad_brainstorm=$(bash "$LOAD" --design-tmpdir "$TMP/bad-brainstorm" --issue 9 --repo owner/repo)
 [[ "$out_bad_brainstorm" == *"ERROR=invalid-brainstorm-done"* ]] || fail "bad brainstorm validation mismatch: $out_bad_brainstorm"
 
-echo "=== unloadable snapshot clears marker ==="
+echo "=== missing snapshot subtree keeps marker ==="
 make_design_tmpdir "$DESIGN"
-printf 'body\n' >"$BODY_FILE"
+printf '%s\n' 'body' >"$BODY_FILE"
 bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
 rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
 FAIL_RESTORE="$TMP/unloadable-restore"
 mkdir -p "$FAIL_RESTORE"
 out_unloadable=$(bash "$LOAD" --design-tmpdir "$FAIL_RESTORE" --issue 9 --repo owner/repo)
-[[ "$out_unloadable" == *"ERROR=snapshot-extract-failed"* ]] || fail "unloadable snapshot mismatch: $out_unloadable"
-! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "unloadable snapshot should clear marker"
-! [[ -f "$FAIL_RESTORE/.resume-loaded" ]] || fail "unloadable snapshot should not install resume sentinel"
+[[ "$out_unloadable" == *"ERROR=missing-restored-artifact"* ]] || fail "missing snapshot subtree mismatch: $out_unloadable"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "missing snapshot subtree should keep marker"
+! [[ -f "$FAIL_RESTORE/.resume-loaded" ]] || fail "missing snapshot subtree should not install resume sentinel"
+
+echo "=== snapshot extract failure keeps marker ==="
+make_design_tmpdir "$DESIGN"
+printf '%s\n' 'body extract fail' >"$BODY_FILE"
+bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
+EXTRACT_FAIL_RESTORE="$TMP/extract-fail-restore"
+mkdir -p "$EXTRACT_FAIL_RESTORE"
+out_extract_fail=$(GIT_STUB_LS_TREE_FAIL=1 bash "$LOAD" --design-tmpdir "$EXTRACT_FAIL_RESTORE" --issue 9 --repo owner/repo)
+[[ "$out_extract_fail" == *"ERROR=snapshot-extract-failed"* ]] || fail "snapshot extract failure mismatch: $out_extract_fail"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "snapshot extract failure should keep marker"
+! [[ -f "$EXTRACT_FAIL_RESTORE/.resume-loaded" ]] || fail "snapshot extract failure should not install resume sentinel"
 
 echo "=== marker name validation ==="
 set +e

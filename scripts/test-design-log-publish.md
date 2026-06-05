@@ -31,3 +31,5 @@ Or `make test-design-log-publish`.
 ## Recent contract coverage
 
 - Covers malformed `--repo` as an exit-1 structural argv failure while valid `owner/repo` and omitted `--repo` remain accepted.
+- Covers pause publish staging for `step-*` sentinels and the four driver
+  phase-sentinel basenames while rejecting arbitrary `.completed/` basenames.
