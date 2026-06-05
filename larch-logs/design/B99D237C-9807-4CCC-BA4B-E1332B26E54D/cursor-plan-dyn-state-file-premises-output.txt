@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/test_ship.py (planned acceptance matrix)	Cap-exhaustion resume test specifies ITERATION=49 with cap 50 for immediate stall	Loop guard is `if iteration >= SHIP_MERGE_LOOP_MAX_ITERATIONS` (python/ship.py:537-538). With cap 50, iteration 49 still runs one more `ci_monitor.monitor` pass before incrementing to 50 and stalling; only iteration>=50 stalls at loop entry. Seeding/resuming with ITERATION=49 therefore allows an extra monitor cycle, not immediate stall.	Session-wide cap test should seed/resume with ITERATION=50 (expect stall before monitor), or rename the case to assert one final monitor then stall when ITERATION=49.
+2	[OUT_OF_SCOPE]	out_of_scope	nit	architecture	python/test_ci_monitor.py (planned §)	Three new `monitor` outcome tests are bundled but not required for resume reconciliation	The resume change is in `run_ship`/`_resume_plan` and state-file I/O; monitor exit mapping is already exercised elsewhere. Adds ~720 diff_lines without tightening the resume contract.	Drop the `test_ci_monitor.py` additions from this change unless a separate monitor-gap issue is filed.
+
+**Ground-truth verification (current `python/ship.py`)**
+
+| Plan claim | Verdict |
+|------------|---------|
+| `_write_ship_state` persists `REBASE_COUNT`/`FIX_ATTEMPTS`/`ITERATION`/`TRANSIENT_RETRIES` at 383-386 | **Accurate** — keys written at 383-386 |
+| `_write_terminal_state` calls `_write_ship_state(ctx, phase=phase)` with default counter args 0 | **Accurate** — 339-345; counters default to 0 in `_write_ship_state` (356-359) |
+| Terminal CI handbacks at 538, 568, 592 overwrite counters | **Accurate** — those three merge-loop sites call `_write_terminal_state` without counter kwargs |
+| “Exactly three” terminal call sites | **Imprecise** — a fourth `_write_terminal_state` exists at 473 (checks failure, pre-loop; counters are still 0 there) |
+| State keys `BRANCH_NAME`, `PR_CLOSED`, `MERGE_RESULT`, `PHASE`, `PR_NUMBER`, `PR_URL` | **Accurate** — exact key names at 366-379 |
+
+Proposed FINDING_2 (thread counters through `_write_terminal_state` at 538/568/592) matches the verified bug. Proposed resume branching and key reads align with current writers; no key-name mismatch found for the listed fields.
