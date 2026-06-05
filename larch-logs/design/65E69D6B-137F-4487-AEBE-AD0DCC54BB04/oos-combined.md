@@ -5,4 +5,4 @@
 - **Focus area**: architecture
 - **Location**: skills/design/references/design-outline.md:121
 - **Phase**: design
-- **Filed URL**: https://github.com/character-ai/larch/issues/3528
+
