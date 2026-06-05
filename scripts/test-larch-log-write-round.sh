@@ -68,6 +68,24 @@ CMD_JSON=["codex","exec","secret argv"]
 OUTPUT_FILE=/tmp/source/codex-specialist-security-output.txt
 EOF
 
+cat > "$source_dir/dyn-api-contract-codex-output.txt.meta" <<'EOF'
+TOOL=codex
+TIMEOUT=1200
+CMD_JSON=["codex","exec","dynamic argv"]
+OUTPUT_FILE=/tmp/source/dyn-api-contract-codex-output.txt
+EOF
+printf 'dynamic codex raw body\n' > "$source_dir/dyn-api-contract-codex-output.txt"
+printf 'dynamic cursor raw body\n' > "$source_dir/dyn-api-contract-output.txt"
+cat > "$source_dir/dyn-api-contract-output.txt.meta" <<'EOF'
+TOOL=cursor
+TIMEOUT=1200
+CMD_JSON=["cursor","agent","dynamic argv"]
+OUTPUT_FILE=/tmp/source/dyn-api-contract-output.txt
+EOF
+cat > "$source_dir/dyn-api-contract-codex-output.txt.json" <<'EOF'
+{"result":"dynamic raw codex payload","status":"ok"}
+EOF
+
 cat > "$source_dir/cursor-specialist-security-output-phase2.txt.meta" <<'EOF'
 TOOL=cursor
   CMD_JSON=["cursor","agent","secret argv"]
@@ -103,8 +121,13 @@ out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-i
 
 round_dir="$log_root/implement/run123/round-1"
 assert_file "$round_dir/findings.md" "findings"
-assert_file "$round_dir/codex-specialist-security-output.txt.meta" "meta sidecar"
+assert_not_file "$round_dir/codex-specialist-security-output.txt.meta" "static codex meta sidecar excluded"
 assert_file "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phase sidecar"
+assert_file "$round_dir/dyn-api-contract-codex-output.txt" "dynamic codex raw body included"
+assert_file "$round_dir/dyn-api-contract-codex-output.txt.meta" "dynamic codex meta sidecar included"
+assert_file "$round_dir/dyn-api-contract-codex-output.txt.json" "dynamic codex json sidecar included"
+assert_file "$round_dir/dyn-api-contract-output.txt" "dynamic cursor raw body included"
+assert_file "$round_dir/dyn-api-contract-output.txt.meta" "dynamic cursor meta sidecar included"
 assert_file "$round_dir/cursor-vote-output.txt.json" "cursor json sidecar"
 assert_file "$round_dir/codex-vote-output.txt.json" "codex json sidecar"
 assert_file "$round_dir/review-round-summary.md" "summary"
@@ -125,7 +148,6 @@ assert_file "$round_dir/cursor-specialist-edge-cases-output-first-pass.txt" "ns-
 
 assert_grep '<TMPDIR>' "$round_dir/findings.md" "tmpdir path redacted"
 assert_grep '<REDACTED-TOKEN>' "$round_dir/findings.md" "secret redacted"
-assert_not_grep '^CMD_JSON=' "$round_dir/codex-specialist-security-output.txt.meta" "CMD_JSON stripped"
 assert_not_grep '^CMD_JSON=' "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phase CMD_JSON stripped"
 assert_json_result_stripped "$round_dir/cursor-vote-output.txt.json" "cursor .result field should be stripped"
 assert_json_result_stripped "$round_dir/codex-vote-output.txt.json" "codex .result field should be stripped"

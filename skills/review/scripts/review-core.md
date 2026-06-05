@@ -22,7 +22,7 @@ Accepted flags:
 
 After `gather-context.sh`, resolved `--scope-files` (explicit flag or `FILE_LIST_FILE` when the flag was unset) and `--plan-file`, when non-empty and the scope file has content / the plan path exists, are forwarded to `tally-code-votes.sh` so the scope-fit gate can treat plan-mentioned paths as in-scope.
 
-After collection, `review-core.sh` writes `collector-results.env` and `review-core-threshold.env` under `$REVIEW_TMPDIR`. The threshold file carries `NOT_SUBSTANTIVE_SLOTS`, which `review-core.sh` forwards to `tally-code-votes.sh` together with `--collector-results-file "$REVIEW_TMPDIR/collector-results.env"` and `--manifest-file "$REVIEW_TMPDIR/panel-manifest.ndjson"` when present so degraded reviewer slots remain visible in `voting-tally.md`.
+After collection, `review-core.sh` writes `collector-results.env` and `review-core-threshold.env` under `$REVIEW_TMPDIR`. The threshold file carries `NOT_SUBSTANTIVE_SLOTS`, which `review-core.sh` forwards to `tally-code-votes.sh` together with `--collector-results-file "$REVIEW_TMPDIR/collector-results.env"` and `--manifest-file "$REVIEW_TMPDIR/panel-manifest.ndjson"` when present so degraded reviewer slots remain visible in `voting-tally.md`. The threshold denominator comes from `STATIC_SLOT_COUNT` emitted by `dispatch-panel.sh` (4 single-vendor/both-down static rows, 8 both-vendor rows); `review-core.sh` does not recompute it from availability flags.
 
 The script emits only `KEY=value` records on the lib-quiet FD3 contract stream. Ordinary stdout/stderr is redirected by `scripts/lib-quiet.sh` unless quiet mode is disabled.
 
@@ -56,7 +56,7 @@ Round stages:
 
 1. Gather context with `gather-context.sh --mode <mode> --output-dir "$REVIEW_TMPDIR"`.
 2. Dispatch the reviewer panel with `dispatch-panel.sh --mode "$MODE" --review-tmpdir "$REVIEW_TMPDIR" --panel "$PANEL" --dynamic-archetypes "$DYNAMIC_ARCHETYPES"`.
-3. Collect findings with `collect-findings.sh`, run dirty-tree recovery (`recover_dirty_tree` immediately after collection on the reviewer output paths), run `aggregate-findings.sh` (non-fatal LLM merge of cross-reviewer `FINDING_N` blocks when enabled), then dispatch voters only when findings remain for voting, run `tally-code-votes.sh`, and emit tally artifacts. When `aggregate-findings.sh` reports `REASON=validation-exhausted`, `review-core.sh` mirrors the `panel-failed` tally isolation path, emits `REVIEW_CORE_STATUS=aggregator-validation-exhausted`, and exits `2` **without** voter dispatch or tally. When aggregation succeeds with `REASON=ok` and `MERGED_COUNT=0`, `review-core.sh` takes the zero-findings branch and skips voter dispatch. Zero-findings rounds still invoke `tally-code-votes.sh` with the collector results + manifest inputs so degraded `NOT_SUBSTANTIVE` slots show up in `voting-tally.md` even when no findings were proposed. If the tally emits `TALLY_STATUS=main-agent-vote-required`, skip `emit-tally.sh`, emit `REVIEW_CORE_STATUS=main-agent-vote-required`, and hand the findings ballot back to the caller for main-agent adjudication.
+3. Collect findings with `collect-findings.sh`, run dirty-tree recovery (`recover_dirty_tree` immediately after collection on the reviewer output paths, plus dropped static peer sidecars when `DROPPED_SLOTS_FILE` maps them back through `panel-manifest.ndjson`), run threshold math with `--intended-slots "$STATIC_SLOT_COUNT"` and optional `--dropped-slots-file`, then apply the per-archetype coverage gate (`security`, `correctness`, `edge-cases`, `testing` must each have at least one successful static peer). Dropped no-fallback rows are appended to **External Reviewer Issues** via `append-tool-failure.sh` and copied to `round-<N>-dropped-slots.tsv` for forensics. After threshold succeeds, run `aggregate-findings.sh` (non-fatal LLM merge of cross-reviewer `FINDING_N` blocks when enabled), then dispatch voters only when findings remain for voting, run `tally-code-votes.sh`, and emit tally artifacts. When `aggregate-findings.sh` reports `REASON=validation-exhausted`, `review-core.sh` mirrors the `panel-failed` tally isolation path, emits `REVIEW_CORE_STATUS=aggregator-validation-exhausted`, and exits `2` **without** voter dispatch or tally. When aggregation succeeds with `REASON=ok` and `MERGED_COUNT=0`, `review-core.sh` takes the zero-findings branch and skips voter dispatch. Zero-findings rounds still invoke `tally-code-votes.sh` with the collector results + manifest inputs so degraded `NOT_SUBSTANTIVE` slots show up in `voting-tally.md` even when no findings were proposed. If the tally emits `TALLY_STATUS=main-agent-vote-required`, skip `emit-tally.sh`, emit `REVIEW_CORE_STATUS=main-agent-vote-required`, and hand the findings ballot back to the caller for main-agent adjudication.
 4. Copy parent tmpdir artifacts when `SESSION_ENV_PATH` is set.
 
 Artifact paths under `$REVIEW_TMPDIR`:
@@ -69,6 +69,8 @@ Artifact paths under `$REVIEW_TMPDIR`:
 - `oos-accepted-review.md`
 - `collector-results.env`
 - `review-core-threshold.env`
+- `round-<N>-dropped-slots.tsv` when the waterfall reports dropped no-fallback peer rows
+- `dropped-static-outputs.txt` when dropped static rows map back to manifest output paths for dirty-tree recovery
 - `review-round-summary.md`
 - `review-summary.json`
 - `review-dirty-tree-summary.env`

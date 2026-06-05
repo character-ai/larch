@@ -760,7 +760,7 @@ Derive a local `dynamic_archetypes_cap` with the same precedence `review-and-fix
 
 Print once before the `run-step5-review.sh` invocation:
 
-`> **🔶 /implement 5: code review — run-step5-review.sh --mode loop, up to $effective_round_cap rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: 6 Cursor specialists; dynamic-archetypes cap=$dynamic_archetypes_cap**`
+`> **🔶 /implement 5: code review — run-step5-review.sh --mode loop, up to $effective_round_cap rounds; 3-judge panel on every round (Claude+Codex+Cursor); review panel: 4 specialists per vendor (Cursor + Codex); dynamic-archetypes cap=$dynamic_archetypes_cap**`
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"

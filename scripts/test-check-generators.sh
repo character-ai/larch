@@ -264,6 +264,11 @@ printf 'scripts/gen.sh\tagents/out.md\n' >"$dir/scripts/generators.tsv"
 commit_fixture "$dir" scripts/generators.tsv agents/out.md
 assert_walker_failure_contains "post-run drift" "$dir" "post-run working-tree delta"
 
+# o2. Pre-existing generated-output drift is allowed when --check does not mutate it.
+dir="$(setup_single_valid_fixture preexisting-drift)"
+printf 'locally regenerated\n' >"$dir/agents/out.md"
+assert_walker_success "preexisting output drift" "$dir"
+
 # p. CRLF rejection.
 dir="$(new_fixture crlf)"
 printf 'generated\n' >"$dir/agents/out.md"

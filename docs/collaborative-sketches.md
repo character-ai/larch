@@ -41,7 +41,7 @@ The handling of unavailable external tools differs across workflow phases:
 |---|---|
 | **Sketch phase** (`/design`) | **Skip** any slot whose tool is unavailable — fewer sketches, no Claude substitution (#3207); both down → zero sketches (no-sketches path) |
 | **Plan review** (`/design`) | Per-archetype Cursor → Codex → Claude fallback chain; Codex generic → Claude — the configured panel stays intact |
-| **Code review** (`/review`) | Cursor down → skip Cursor specialist slots; Codex down → skip Codex specialist slots; both down → no slots launched (voting skipped per threshold rules) |
+| **Code review** (`/review`) | Four active archetypes emit per available vendor; both vendors present uses `--no-fallback`, single-vendor and both-down manifests keep Claude fallback. See `skills/review/scripts/dispatch-panel.md`. |
 | **Voting (plan review)** | Claude replacement voters used — always 3 voters. 3 voters: 2+ YES to accept; 2 voters: unanimous YES; <2 voters: voting skipped, all findings accepted |
 | **Voting (code review)** | Claude + Codex + Cursor launched every round; Claude replacement voters fill unhealthy external slots so the panel stays at 3 voters when possible |
 | **Dialectic debate** (`/design`) | **No Claude substitution for debaters** — when the assigned external tool (Cursor for odd-indexed decisions, Codex for even-indexed) is unavailable, that decision's debater bucket is skipped entirely and a `Disposition: bucket-skipped` resolution is written (synthesis decision stands). Intentional divergence from the rules above for debate execution only; see Step 2a.5 in `skills/design/SKILL.md` |

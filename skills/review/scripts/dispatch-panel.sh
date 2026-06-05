@@ -22,7 +22,7 @@ COMPETITION_NOTICE_FILE=""
 PLAN_FILE=""
 FEATURE_FILE=""
 DESCRIPTION_TEXT=""
-DISPATCH_WATERFALL="$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh"
+DISPATCH_WATERFALL="${DISPATCH_WATERFALL:-$PLUGIN_ROOT/scripts/dispatch-with-waterfall.sh}"
 CLASSIFY_DIFF_MODE_SH="${CLASSIFY_DIFF_MODE_SH:-$PLUGIN_ROOT/scripts/classify-diff-mode.sh}"
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
 PANEL="hard"
@@ -88,6 +88,8 @@ manifest="$REVIEW_TMPDIR/panel-manifest.ndjson"
 external_outputs=()
 claude_outputs=()
 static_slot_count=0
+static_cursor=0
+static_codex=0
 
 queue_external_slot() {
     local tool="$1" name="$2" out="$3"
@@ -96,17 +98,29 @@ queue_external_slot() {
     static_slot_count=$((static_slot_count + 1))
 }
 
-# Plan file is required when reviewers run; plan-fidelity is always dispatched.
-[[ -n "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: --plan-file is required (plan-fidelity specialist is always dispatched)"; exit 2; }
+# Plan file is required when reviewers run; reviewer-testing carries the folded
+# plan-fidelity secondary scan and needs implementation-plan context.
+[[ -n "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: --plan-file is required (reviewer-testing injects the folded plan-fidelity scan)"; exit 2; }
 [[ -f "$PLAN_FILE" ]] || { larch_err "dispatch-panel.sh: plan file not found: $PLAN_FILE"; exit 2; }
 
-# Both panels: 6 Cursor specialists.
-# Both panels always include plan-fidelity (plan file required above).
+# Both panels: 4 specialists per vendor; one row per active archetype/vendor.
+# Both panels always include testing with folded plan-fidelity (plan file required above).
 # Focus area enum anchor for CI: code-quality / risk-integration / correctness / architecture / security
-cursor_specialists=(structure correctness testing security edge-cases plan-fidelity)
+static_specialists=(security correctness edge-cases testing)
 
-for name in "${cursor_specialists[@]}"; do
-    queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
+for name in "${static_specialists[@]}"; do
+    if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
+        queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
+        static_cursor=$((static_cursor + 1))
+    fi
+    if [[ "$CODEX_AVAILABLE" == "true" ]]; then
+        queue_external_slot codex "$name" "$REVIEW_TMPDIR/codex-specialist-${name}-output.txt"
+        static_codex=$((static_codex + 1))
+    fi
+    if [[ "$CURSOR_AVAILABLE" == "false" && "$CODEX_AVAILABLE" == "false" ]]; then
+        queue_external_slot cursor "$name" "$REVIEW_TMPDIR/cursor-specialist-${name}-output.txt"
+        static_cursor=$((static_cursor + 1))
+    fi
 done
 
 if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$MODE" == "diff" && -n "$DIFF_FILE" && -s "$DIFF_FILE" ]]; then
@@ -123,12 +137,14 @@ synthesize_dynamic_slots() {
     local scout_manifest="$1"
     [[ -s "$scout_manifest" ]] || return 0
     mkdir -p "$REVIEW_TMPDIR/dynamic-archetypes"
-    local row name focus_area weight agent_file rendered_prompt output_file render_args
-    while IFS= read -r row || [[ -n "$row" ]]; do
-        [[ -n "$row" ]] || continue
-        name=$(printf '%s' "$row" | jq -r '.name')
-        focus_area=$(printf '%s' "$row" | jq -r '.focus_area')
-        weight=$(printf '%s' "$row" | jq -r '.weight')
+        local row name focus_area weight agent_file rendered_prompt output_file render_args rationale prompt_body
+        while IFS= read -r row || [[ -n "$row" ]]; do
+            [[ -n "$row" ]] || continue
+            name=$(printf '%s' "$row" | jq -r '.name')
+            focus_area=$(printf '%s' "$row" | jq -r '.focus_area')
+            weight=$(printf '%s' "$row" | jq -r '.weight')
+            rationale=$(printf '%s' "$row" | jq -r '.rationale')
+            prompt_body=$(printf '%s' "$row" | jq -r '.prompt_body')
         agent_file="$REVIEW_TMPDIR/dynamic-archetypes/reviewer-dyn-${name}.md"
         rendered_prompt="$REVIEW_TMPDIR/dynamic-archetypes/dyn-${name}-prompt.md"
         output_file="$REVIEW_TMPDIR/dyn-${name}-output.txt"
@@ -153,9 +169,9 @@ synthesize_dynamic_slots() {
             printf 'NO_ISSUES_FOUND\n\n'
             printf '<scout_notes>\n'
             printf 'rationale: |\n'
-            printf '%s\n' "$(printf '%s' "$row" | jq -r '.rationale' | sed 's/^/  /')"
+            printf '%s\n' "$(escape_scout_field "$rationale" | sed 's/^/  /')"
             printf 'prompt_body: |\n'
-            printf '%s\n' "$(printf '%s' "$row" | jq -r '.prompt_body' | sed 's/^/  /')"
+            printf '%s\n' "$(escape_scout_field "$prompt_body" | sed 's/^/  /')"
             printf '</scout_notes>\n'
         } > "$agent_file"
         render_args=(--agent-file "$agent_file" --mode "$MODE")
@@ -172,15 +188,39 @@ synthesize_dynamic_slots() {
             render_args+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
         fi
         "$PLUGIN_ROOT/scripts/render-specialist-prompt.sh" "${render_args[@]}" > "$rendered_prompt"
-        jq -cn \
-            --arg slot "dyn-$name" \
-            --arg output "$output_file" \
-            --arg prompt_file "$rendered_prompt" \
-            --arg focus_area "$focus_area" \
-            --argjson weight "$weight" \
-            '{slot:$slot, tool:"cursor", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
-            >> "$manifest"
-        DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
+        if [[ "$CURSOR_AVAILABLE" == "true" ]]; then
+            jq -cn \
+                --arg slot "dyn-$name" \
+                --arg output "$output_file" \
+                --arg prompt_file "$rendered_prompt" \
+                --arg focus_area "$focus_area" \
+                --argjson weight "$weight" \
+                '{slot:$slot, tool:"cursor", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
+                >> "$manifest"
+            DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
+        fi
+        if [[ "$CODEX_AVAILABLE" == "true" ]]; then
+            jq -cn \
+                --arg slot "dyn-$name-codex" \
+                --arg output "$REVIEW_TMPDIR/dyn-${name}-codex-output.txt" \
+                --arg prompt_file "$rendered_prompt" \
+                --arg focus_area "$focus_area" \
+                --argjson weight "$weight" \
+                '{slot:$slot, tool:"codex", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
+                >> "$manifest"
+            DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
+        fi
+        if [[ "$CURSOR_AVAILABLE" == "false" && "$CODEX_AVAILABLE" == "false" ]]; then
+            jq -cn \
+                --arg slot "dyn-$name" \
+                --arg output "$output_file" \
+                --arg prompt_file "$rendered_prompt" \
+                --arg focus_area "$focus_area" \
+                --argjson weight "$weight" \
+                '{slot:$slot, tool:"cursor", output:$output, prompt_file:$prompt_file, weight:$weight, focus_area:$focus_area}' \
+                >> "$manifest"
+            DYNAMIC_SLOTS=$((DYNAMIC_SLOTS + 1))
+        fi
     done < <(jq -c '.archetypes[]?' "$scout_manifest")
 }
 
@@ -192,9 +232,22 @@ write_empty_scout_manifest() {
     mv -f "$tmp" "$target"
 }
 
+redact_untrusted_stream() {
+    "$PLUGIN_ROOT/scripts/redact-secrets.sh" | sed -E \
+        -e 's/&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g'
+}
+
+escape_scout_field() {
+    printf '%s' "$1" | redact_untrusted_stream
+}
+
 scout_manifest_is_valid() {
     local scout_manifest="$1" max="${2:-8}"
     [[ -s "$scout_manifest" ]] || return 1
+    # Keep historical folded slugs reserved so the scout cannot resurrect
+    # static lenses that still exist as legacy agent files.
     jq -e --argjson max "$max" '
         def reserved:
           ["generic","structure","correctness","testing","security","edge-cases","plan-fidelity",
@@ -202,8 +255,11 @@ scout_manifest_is_valid() {
            "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
         def has_unsafe_wrapper_tag:
           (ascii_downcase | contains("</scout_notes>"));
+        def has_unsafe_plan_delimiter:
+          test("<implementation_plan") or test("<feature_description");
         def has_unsafe_rationale:
           has_unsafe_wrapper_tag
+          or has_unsafe_plan_delimiter
           or test("\n")
           or test("(?m)^---$");
         def names:
@@ -229,6 +285,7 @@ scout_manifest_is_valid() {
             and ((.prompt_body | test("(?m)^---$")) | not)
             and ((.prompt_body | ascii_downcase | contains("</reviewer_")) | not)
             and ((.prompt_body | has_unsafe_wrapper_tag) | not)
+            and ((.prompt_body | has_unsafe_plan_delimiter) | not)
         )
     ' "$scout_manifest" >/dev/null 2>&1
 }
@@ -388,20 +445,21 @@ if [[ "$DYNAMIC_ARCHETYPES" != "0" && "$SCOUT_STATUS" == "na" ]]; then
 fi
 append_scout_parse_issue
 
-static_cursor=${#cursor_specialists[@]}
-static_codex=0
 total=$((static_cursor + static_codex + DYNAMIC_SLOTS))
 if (( total > 0 )); then
-    larch_err "→ review: launching $total reviewers ($static_cursor Cursor static, $DYNAMIC_SLOTS dynamic)"
+    larch_err "→ review: launching $total reviewers ($static_cursor Cursor static, $static_codex Codex static, $DYNAMIC_SLOTS dynamic)"
 fi
 
-codex_present_for_waterfall="false"
+codex_present_for_waterfall="$CODEX_AVAILABLE"
 waterfall_args=(--slots-file "$manifest" --codex-present "$codex_present_for_waterfall" --cursor-present "$CURSOR_AVAILABLE" --mode "$MODE" --timeout 1800)
 [[ "$MODE" == "diff" && -n "$DIFF_FILE" ]] && waterfall_args+=(--diff-file "$DIFF_FILE" --commit-count "$COMMIT_COUNT")
 [[ "$MODE" == "description" && -n "$SCOPE_FILES" ]] && waterfall_args+=(--description-text "${DESCRIPTION_TEXT:-description review}" --scope-files "$SCOPE_FILES")
 [[ -n "$PLAN_FILE" && -f "$PLAN_FILE" ]] && waterfall_args+=(--plan-file "$PLAN_FILE")
 [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]] && waterfall_args+=(--feature-file "$FEATURE_FILE")
 [[ -n "$COMPETITION_NOTICE_FILE" && -f "$COMPETITION_NOTICE_FILE" ]] && waterfall_args+=(--competition-notice --competition-notice-file "$COMPETITION_NOTICE_FILE")
+if [[ "$CURSOR_AVAILABLE" == "true" && "$CODEX_AVAILABLE" == "true" ]]; then
+    waterfall_args+=(--no-fallback)
+fi
 
 waterfall_output=$("$DISPATCH_WATERFALL" "${waterfall_args[@]}")
 all_outputs=""
@@ -409,6 +467,7 @@ all_tools=""
 dispatch_ok="true"
 static_dispatch_ok="true"
 dynamic_dispatch_ok="true"
+dropped_slots_file=""
 while IFS= read -r line || [[ -n "$line" ]]; do
     key="${line%%=*}"
     value="${line#*=}"
@@ -418,6 +477,7 @@ while IFS= read -r line || [[ -n "$line" ]]; do
         DISPATCH_OK) dispatch_ok="$value" ;;
         STATIC_DISPATCH_OK) static_dispatch_ok="$value" ;;
         DYNAMIC_DISPATCH_OK) dynamic_dispatch_ok="$value" ;;
+        DROPPED_SLOTS_FILE) dropped_slots_file="$value" ;;
         WARN) emit_kv WARN "$value" ;;
     esac
 done <<< "$waterfall_output"
@@ -448,3 +508,5 @@ emit_kv PANEL_MANIFEST "$manifest"
 emit_kv DISPATCH_OK "$dispatch_ok"
 emit_kv STATIC_DISPATCH_OK "$static_dispatch_ok"
 emit_kv DYNAMIC_DISPATCH_OK "$dynamic_dispatch_ok"
+[[ -n "$dropped_slots_file" ]] && emit_kv DROPPED_SLOTS_FILE "$dropped_slots_file"
+exit 0

@@ -621,55 +621,52 @@ out="$TMP/out.env"
     --review-tmpdir "$TMP" > "$out"
 grep -Fq 'WARN=yield TSV missing manifest entry for reviewer basename: cursor-specialist-unknown-output.txt' "$out" || { FAIL=1; printf '  FAIL orphan reviewer warning missing\n'; }
 
-echo "# Case: panel-manifest with 8 slots, only 5 produce findings — scoreboard shows 8 rows"
+echo "# Case: both-vendor panel manifest, only 5 produce findings — scoreboard shows every row"
 TMP="$WORKDIR/case_dead_slots"
 mkdir -p "$TMP"
-# 5-slot ballot (structure + correctness + testing + security + edge-cases)
+# 5-finding ballot over the collapsed 4-archetype topology, including a Codex static peer.
 cat > "$TMP/ballot.md" <<'EOF'
-### FINDING_1: Structure concern
-- **Reviewer**: cursor-specialist-structure-output.txt
-- **Concern**: Structure issue.
-- **Suggested revision**: Fix it.
-
-### FINDING_2: Correctness concern
+### FINDING_1: Correctness concern
 - **Reviewer**: cursor-specialist-correctness-output.txt
 - **Concern**: Correctness issue.
 - **Suggested revision**: Fix it.
 
-### FINDING_3: Testing concern
+### FINDING_2: Testing concern
 - **Reviewer**: cursor-specialist-testing-output.txt
 - **Concern**: Testing issue.
 - **Suggested revision**: Fix it.
 
-### FINDING_4: Security concern
+### FINDING_3: Security concern
 - **Reviewer**: cursor-specialist-security-output.txt
 - **Concern**: Security issue.
 - **Suggested revision**: Fix it.
 
-### FINDING_5: Edge cases concern
+### FINDING_4: Edge cases concern
 - **Reviewer**: cursor-specialist-edge-cases-output.txt
 - **Concern**: Edge case issue.
 - **Suggested revision**: Fix it.
-EOF
-# 8-slot panel manifest (structure+correctness+testing+security+edge-cases+plan-fidelity+codex-generalist+dyn-zero)
-cat > "$TMP/panel-manifest.ndjson" <<EOF
-{"slot":"structure","tool":"cursor","output":"$TMP/cursor-specialist-structure-output.txt","agent":"agents/reviewer-structure.md"}
-{"slot":"correctness","tool":"cursor","output":"$TMP/cursor-specialist-correctness-output.txt","agent":"agents/reviewer-correctness.md"}
-{"slot":"testing","tool":"cursor","output":"$TMP/cursor-specialist-testing-output.txt","agent":"agents/reviewer-testing.md"}
-{"slot":"security","tool":"cursor","output":"$TMP/cursor-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
-{"slot":"edge-cases","tool":"cursor","output":"$TMP/cursor-specialist-edge-cases-output.txt","agent":"agents/reviewer-edge-cases.md"}
-{"slot":"plan-fidelity","tool":"cursor","output":"$TMP/cursor-specialist-plan-fidelity-output.txt","agent":"agents/reviewer-plan-fidelity.md"}
-{"slot":"generic","tool":"codex","output":"$TMP/codex-generalist-output.txt","agent":"agents/codex-generalist.md"}
-{"slot":"dyn-zero","tool":"cursor","output":"$TMP/dyn-zero-output.txt","prompt_file":"$TMP/dyn-zero-prompt.md","weight":3,"focus_area":"correctness"}
-EOF
-# Collector results: plan-fidelity and codex-generalist are NOT_SUBSTANTIVE (dead slots),
-# dyn-zero is OK but produced no findings.
-cat > "$TMP/collector-results.env" <<EOF
-REVIEWER_FILE=$TMP/cursor-specialist-structure-output.txt
-TOOL=cursor
-STATUS=OK
-EXIT_CODE=0
 
+### FINDING_5: Codex security concern
+- **Reviewer**: codex-specialist-security-output.txt
+- **Concern**: Codex security issue.
+- **Suggested revision**: Fix it.
+EOF
+# 10-slot panel manifest: 4 static archetypes per vendor plus dynamic Cursor/Codex twins.
+cat > "$TMP/panel-manifest.ndjson" <<EOF
+{"slot":"security","tool":"cursor","output":"$TMP/cursor-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
+{"slot":"correctness","tool":"cursor","output":"$TMP/cursor-specialist-correctness-output.txt","agent":"agents/reviewer-correctness.md"}
+{"slot":"edge-cases","tool":"cursor","output":"$TMP/cursor-specialist-edge-cases-output.txt","agent":"agents/reviewer-edge-cases.md"}
+{"slot":"testing","tool":"cursor","output":"$TMP/cursor-specialist-testing-output.txt","agent":"agents/reviewer-testing.md"}
+{"slot":"security","tool":"codex","output":"$TMP/codex-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
+{"slot":"correctness","tool":"codex","output":"$TMP/codex-specialist-correctness-output.txt","agent":"agents/reviewer-correctness.md"}
+{"slot":"edge-cases","tool":"codex","output":"$TMP/codex-specialist-edge-cases-output.txt","agent":"agents/reviewer-edge-cases.md"}
+{"slot":"testing","tool":"codex","output":"$TMP/codex-specialist-testing-output.txt","agent":"agents/reviewer-testing.md"}
+{"slot":"dyn-zero","tool":"cursor","output":"$TMP/dyn-zero-output.txt","prompt_file":"$TMP/dyn-zero-prompt.md","weight":3,"focus_area":"correctness"}
+{"slot":"dyn-zero-codex","tool":"codex","output":"$TMP/dyn-zero-codex-output.txt","prompt_file":"$TMP/dyn-zero-prompt.md","weight":3,"focus_area":"correctness"}
+EOF
+# Collector results: two Codex static peers are NOT_SUBSTANTIVE (dead slots),
+# dynamic Cursor/Codex twins are OK but produced no findings.
+cat > "$TMP/collector-results.env" <<EOF
 REVIEWER_FILE=$TMP/cursor-specialist-correctness-output.txt
 TOOL=cursor
 STATUS=OK
@@ -690,18 +687,33 @@ TOOL=cursor
 STATUS=OK
 EXIT_CODE=0
 
-REVIEWER_FILE=$TMP/cursor-specialist-plan-fidelity-output.txt
-TOOL=cursor
-STATUS=NOT_SUBSTANTIVE
+REVIEWER_FILE=$TMP/codex-specialist-security-output.txt
+TOOL=codex
+STATUS=OK
 EXIT_CODE=0
 
-REVIEWER_FILE=$TMP/codex-generalist-output.txt
+REVIEWER_FILE=$TMP/codex-specialist-correctness-output.txt
 TOOL=codex
 STATUS=NOT_SUBSTANTIVE
 EXIT_CODE=0
 
+REVIEWER_FILE=$TMP/codex-specialist-edge-cases-output.txt
+TOOL=codex
+STATUS=NOT_SUBSTANTIVE
+EXIT_CODE=0
+
+REVIEWER_FILE=$TMP/codex-specialist-testing-output.txt
+TOOL=codex
+STATUS=OK
+EXIT_CODE=0
+
 REVIEWER_FILE=$TMP/dyn-zero-output.txt
 TOOL=cursor
+STATUS=OK
+EXIT_CODE=0
+
+REVIEWER_FILE=$TMP/dyn-zero-codex-output.txt
+TOOL=codex
 STATUS=OK
 EXIT_CODE=0
 EOF
@@ -717,9 +729,9 @@ out="$TMP/out.env"
     --review-tmpdir "$TMP" > "$out"
 tally_content=$(cat "$TMP/voting-tally.md" 2>/dev/null || true)
 # Scoreboard must include rows for live slots using the same short label as dead slots.
-for _slot in cursor-specialist-structure cursor-specialist-correctness \
-             cursor-specialist-testing cursor-specialist-security \
-             cursor-specialist-edge-cases; do
+for _slot in cursor-specialist-correctness cursor-specialist-testing \
+             cursor-specialist-security cursor-specialist-edge-cases \
+             codex-specialist-security codex-specialist-testing; do
     if printf '%s\n' "$tally_content" | grep -Fq "| $_slot " \
        && printf '%s\n' "$tally_content" | grep -F "| $_slot " | grep -Fq '| STATUS=OK |'; then
         printf '  ok   dead_slots: live slot %s row present\n' "$_slot"
@@ -728,7 +740,7 @@ for _slot in cursor-specialist-structure cursor-specialist-correctness \
     fi
 done
 # Dead slots use short label (no -output.txt suffix)
-for _slot in cursor-specialist-plan-fidelity codex-generalist dyn-zero; do
+for _slot in codex-specialist-correctness codex-specialist-edge-cases dyn-zero dyn-zero-codex; do
     if printf '%s\n' "$tally_content" | grep -Fq "| $_slot "; then
         printf '  ok   dead_slots: dead slot %s row present in scoreboard\n' "$_slot"
     else
@@ -742,10 +754,11 @@ else
     FAIL=1; printf '  FAIL dead_slots: NOT_SUBSTANTIVE annotation missing\n'
 fi
 # OK dynamic slots with zero findings should appear in the scoreboard.
-if printf '%s\n' "$tally_content" | grep -Fq '| dyn-zero | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |'; then
-    printf '  ok   dead_slots: dynamic zero-finding slot shows STATUS=OK\n'
+if printf '%s\n' "$tally_content" | grep -Fq '| dyn-zero | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |' \
+   && printf '%s\n' "$tally_content" | grep -Fq '| dyn-zero-codex | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |'; then
+    printf '  ok   dead_slots: dynamic zero-finding Cursor/Codex rows show STATUS=OK\n'
 else
-    FAIL=1; printf '  FAIL dead_slots: dynamic zero-finding slot missing STATUS=OK row\n'
+    FAIL=1; printf '  FAIL dead_slots: dynamic zero-finding Cursor/Codex rows missing STATUS=OK row\n'
 fi
 # Manifest rows missing collector entries should fall back to STATUS=OK.
 TMP="$WORKDIR/case8"

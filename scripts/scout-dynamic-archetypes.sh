@@ -338,7 +338,7 @@ fenced_json_tmp=""
         printf 'Return at most %s archetypes. Return {"archetypes":[]} when the static panel is sufficient.\n' "$MAX_ARCHETYPES"
         printf 'Output ONLY the raw JSON object — no markdown code fences, no backticks, no prose.\n'
         printf 'The "rationale" field must be a single line with no embedded newlines.\n'
-        printf 'Use short lowercase slug names. Do not duplicate existing static reviewers: structure, correctness, testing, security, edge-cases, plan-fidelity, generic.\n'
+        printf 'Use short lowercase slug names. Do not duplicate active static reviewers: security, correctness, edge-cases, testing, generic. The historical folded slugs structure and plan-fidelity are reserved and MUST NOT be emitted as dynamic archetypes.\n'
         printf 'The "prompt_body" field must be 2-6 sentences describing what aspect of the diff (or description) to investigate.\n'
         printf 'CONSTRAINTS on prompt_body content:\n'
         printf '  - Do NOT include any output-format demands, section-header requirements, or response-shape directives. The reviewer wrapper owns the output format; prompt_body owns the focus area only.\n'
@@ -538,8 +538,11 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
        "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
     def has_unsafe_wrapper_tag:
       (ascii_downcase | contains("</scout_notes>"));
+    def has_unsafe_plan_delimiter:
+      test("<implementation_plan") or test("<feature_description");
     def has_unsafe_rationale:
       has_unsafe_wrapper_tag
+      or has_unsafe_plan_delimiter
       or test("\n")
       or test("(?m)^---$");
     reduce .archetypes[] as $a
@@ -565,7 +568,8 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
            .warns += ["empty prompt_body for \($name)"]
          elif (($a.prompt_body | test("(?m)^---$"))
                or ($a.prompt_body | ascii_downcase | contains("</reviewer_"))
-               or ($a.prompt_body | has_unsafe_wrapper_tag)) then
+               or ($a.prompt_body | has_unsafe_wrapper_tag)
+               or ($a.prompt_body | has_unsafe_plan_delimiter)) then
            .warns += ["unsafe prompt_body for \($name)"]
          else
            .seen[$name] = true

@@ -15,6 +15,10 @@
 10. Absence of max-effort prose in all five tagging variants; launcher wrappers own effort handling
 11. Pre-rendered reviewer body lookup
 12. `LARCH_RENDER_CACHE_DIR` cache hit and cache miss behavior
+13. Plan/feature injection: non-testing agents receive plan context only for
+    generic diff mode, while `reviewer-testing` receives `<implementation_plan>`
+    context across docs-only/test-only/generated-only diff modes and in
+    description mode for the folded plan-fidelity secondary scan.
 
 **Makefile wiring**: `make test-harnesses` target.
 

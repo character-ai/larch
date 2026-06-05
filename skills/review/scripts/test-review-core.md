@@ -13,6 +13,9 @@ The harness stubs the one-round helper scripts through `REVIEW_CORE_*_SH` enviro
 - description mode producing `ok` rather than a fix loop
 - summary artifact and parent tmpdir copies when `SESSION_ENV_PATH` is set
 - dirty-tree recovery summaries for clean, dirty, and unknown sidecars
+- threshold wiring uses `STATIC_SLOT_COUNT` as the static denominator and the
+  stub collector produces successful coverage for the four active archetypes
+  (`security`, `correctness`, `edge-cases`, `testing`)
 - a set-but-empty `LARCH_DYNAMIC_ARCHETYPES_MAX` is ignored for the pre-parse default (cap `0`), so the round completes instead of failing validation
 - aggregate stderr relay sanitization via `REVIEW_CORE_AGGREGATE_FINDINGS_SH` stub emitting T8-style control bytes on stderr (merged `2>&1` capture; BEL/ESC absent)
 

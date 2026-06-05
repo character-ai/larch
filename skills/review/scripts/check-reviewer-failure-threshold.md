@@ -2,15 +2,19 @@
 
 **Type**: executable script.
 
-**Purpose**: Compute whether the per-round reviewer specialist panel had more than half its intended slots fail. When the failure rate exceeds 50%, `review-core.sh` exits 2 with `REVIEW_CORE_STATUS=panel-failed`, which `review-and-fix.sh` propagates as exit 2 with `REVIEW_AND_FIX_STATUS=panel-failed`. `/implement` Step 5 already maps that to `STALL_TRACKING=true` and skips to Step 16.
+**Purpose**: Compute whether the per-round reviewer specialist panel had more than half its intended static slots fail. When the failure rate exceeds 50%, `review-core.sh` exits 2 with `REVIEW_CORE_STATUS=panel-failed`, which `review-and-fix.sh` propagates as exit 2 with `REVIEW_AND_FIX_STATUS=panel-failed`.
 
 ## Args
 
 | Flag | Type | Required | Description |
 |---|---|---|---|
 | `--collector-results-file FILE` | path | yes | The per-slot status records written by `scripts/collect-agent-results.sh` (blank-line-separated; each record has `STATUS=<value>`). |
-| `--panel hard\|simple` | enum | yes | The intended panel size: 6 (both panels). |
-| `--launched-slots N` | non-negative int | no | When set, static slots in `[LAUNCHED_SLOTS, INTENDED_SLOTS)` are counted as `never-launched` failures (vendor was unhealthy → slot never dispatched). Callers must pass the count of launched static slots only; dynamic scout slots are excluded from this math. When omitted, only the static-slot records in the collector results file are counted. |
+| `--panel hard\|simple` | enum | yes | Panel shape label. Both shapes use the caller-supplied static denominator. |
+| `--intended-slots N` | non-negative int | no | Static slot denominator. Default is `4` for single-vendor/back-compat callers; both-vendor review panels pass `8`. |
+| `--launched-slots N` | non-negative int | no | When set, static slots in `[LAUNCHED_SLOTS, INTENDED_SLOTS)` are counted as `never-launched` failures unless dropped-slot accounting is already present. Dynamic scout slots are excluded. |
+| `--dropped-slots-file FILE` | path | no | TSV from `dispatch-with-waterfall.sh --no-fallback` (`slot<TAB>tool<TAB>reason<TAB>snippet`). Static dropped rows count as failures; `dyn-*` rows are excluded. |
+| `--reviewer-output-files FILE...` | paths | no | Additional reviewer transcript files to count when they are static Cursor/Codex specialist outputs not already present in the collector records. This lets callers credit substantive phase-2/phase-3 or otherwise recovered static outputs while still excluding dynamic `dyn-*` reviewers. |
+| `--round-num N` | positive int | no | Round label for diagnostics; default `1`. |
 
 ## Output
 
@@ -18,21 +22,22 @@ Emits to FD 3 (`emit_kv`):
 
 | Key | Value |
 |---|---|
-| `INTENDED_SLOTS` | 6 (both panels) |
+| `INTENDED_SLOTS` | caller-supplied static denominator (`4` default; commonly `8` when both vendors are available) |
 | `SUCCEEDED_SLOTS` | count of static-slot records with `STATUS=OK` or `STATUS=cap_hit` |
-| `FAILED_SLOTS` | count of static-slot records with `STATUS != OK && STATUS != cap_hit` plus static never-launched slots |
-| `COUNTED_SLOTS` | total static-slot record count from the collector file |
+| `FAILED_SLOTS` | count of static-slot records with `STATUS != OK && STATUS != cap_hit`, plus dropped static rows and applicable never-launched slots |
+| `COUNTED_SLOTS` | total static slots counted from collector records plus deduped static files supplied via `--reviewer-output-files` |
 | `NOT_SUBSTANTIVE_SLOTS` | count of static-slot records with `STATUS=NOT_SUBSTANTIVE` (subset of `FAILED_SLOTS`; useful for the degraded-panel banner) |
+| `DROPPED_STATIC_SLOTS` | dropped no-fallback static rows counted from `--dropped-slots-file` |
 | `THRESHOLD_OK` | `true` when failures ≤ 50% of intended panel size, else `false` |
 | `THRESHOLD_REASON` | human-readable explanation when `THRESHOLD_OK=false`; empty otherwise |
 
 ## Threshold
 
-> 50% of intended panel size. Implementation: failure threshold is `INTENDED_SLOTS / 2 + 1` (integer division). For 6 slots this is 4 → fail if `FAILED_SLOTS >= 4` (both panels).
+> 50% of intended panel size. Implementation: failure threshold is `INTENDED_SLOTS / 2 + 1` (integer division). For 4 slots this is 3; for 8 slots this is 5.
 
 ## STATUS classification
 
-`STATUS=cap_hit` is a deliberate static slot-skip, NOT a failure. It counts as `SUCCEEDED_SLOTS` for threshold purposes. `STATUS=NOT_SUBSTANTIVE` counts as both `FAILED_SLOTS` AND `NOT_SUBSTANTIVE_SLOTS`; it indicates a reviewer produced narrative-only output without structured findings. Dynamic scout slots are ignored entirely by this script, including fallback basenames such as `dyn-foo-output-phase2.txt`, `dyn-foo-output-phase3.txt`, and `dyn-foo-output-retry.txt`; the threshold answers whether the baseline 6-slot static specialist panel failed (both `hard` and `simple`), not whether optional dynamic slots failed.
+`STATUS=cap_hit` is a deliberate static slot-skip, NOT a failure. It counts as `SUCCEEDED_SLOTS` for threshold purposes. `STATUS=NOT_SUBSTANTIVE` counts as both `FAILED_SLOTS` AND `NOT_SUBSTANTIVE_SLOTS`; it indicates a reviewer produced narrative-only output without structured findings. Dynamic scout slots are ignored entirely by this script, including Cursor and Codex dynamic basenames such as `dyn-foo-output.txt`, `dyn-foo-codex-output.txt`, and their phase/retry variants. The threshold answers whether the static specialist panel failed, not whether optional dynamic slots failed.
 
 ## Callers
 
@@ -40,4 +45,4 @@ Emits to FD 3 (`emit_kv`):
 
 ## Harness
 
-`skills/review/scripts/test-check-reviewer-failure-threshold.sh` covers HARD/SIMPLE boundary cases (exactly 50%, just-over-50%, both-down).
+`skills/review/scripts/test-check-reviewer-failure-threshold.sh` covers 4-slot and 8-slot boundary cases, dropped-static accounting, and dynamic Codex-twin exclusion.

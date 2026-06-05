@@ -331,6 +331,161 @@ recover_dirty_tree() {
     copy_to_parent "$summary" review-dirty-tree-summary.env
 }
 
+log_dropped_slots() {
+    local dropped_file="$1" issues_log drop_dir idx=0 slot tool reason snippet entry_file
+    [[ -n "$dropped_file" && -r "$dropped_file" ]] || return 0
+    if [[ -n "$REVIEW_TMPDIR" ]]; then
+        cp "$dropped_file" "$REVIEW_TMPDIR/round-${ROUND_NUM}-dropped-slots.tsv" 2>/dev/null || true
+    fi
+    [[ -x "$APPEND_TOOL_FAILURE_SH" ]] || return 0
+    issues_log="$(execution_issues_log)"
+    drop_dir="$REVIEW_TMPDIR/dropped-slot-diags"
+    mkdir -p "$drop_dir" 2>/dev/null || return 0
+    while IFS=$'\t' read -r slot tool reason snippet || [[ -n "$slot" ]]; do
+        [[ -n "$slot" ]] || continue
+        idx=$((idx + 1))
+        entry_file="$drop_dir/drop-${idx}.txt"
+        {
+            printf 'slot=%s\n' "$slot"
+            printf 'tool=%s\n' "$tool"
+            printf 'reason=%s\n' "$reason"
+            [[ -n "$snippet" ]] && printf 'snippet=%s\n' "$snippet"
+        } > "$entry_file"
+        "$APPEND_TOOL_FAILURE_SH" \
+            --log "$issues_log" \
+            --site "5" \
+            --tool "reviewer slot $slot/$tool" \
+            --exit-code 1 \
+            --category "External Reviewer Issues" \
+            --output-file "$entry_file" \
+            --verdict "dropped before fallback" \
+            --redact >/dev/null 2>&1 || true
+    done < "$dropped_file"
+}
+
+collect_dropped_static_outputs() {
+    local dropped_file="$1" manifest_file="$2" out_file="$3"
+    local slot tool _reason _snippet row row_slot row_tool row_output
+    : > "$out_file"
+    [[ -n "$dropped_file" && -r "$dropped_file" && -n "$manifest_file" && -f "$manifest_file" ]] || return 0
+    while IFS=$'\t' read -r slot tool _reason _snippet || [[ -n "$slot" ]]; do
+        [[ -n "$slot" ]] || continue
+        case "$slot" in dyn-*) continue ;; esac
+        while IFS= read -r row || [[ -n "$row" ]]; do
+            [[ -n "$row" ]] || continue
+            row_slot=$(printf '%s' "$row" | jq -r '.slot // ""')
+            row_tool=$(printf '%s' "$row" | jq -r '.tool // ""')
+            if [[ "$row_slot" == "$slot" && "$row_tool" == "$tool" ]]; then
+                row_output=$(printf '%s' "$row" | jq -r '.output // ""')
+                [[ -n "$row_output" ]] && printf '%s\n' "$row_output" >> "$out_file"
+                break
+            fi
+        done < "$manifest_file"
+    done < "$dropped_file"
+}
+
+normalize_reviewer_output_base() {
+    local base="$1" stem ext=""
+    base="${base##*/}"
+    case "$base" in
+        *.txt) stem="${base%.txt}"; ext=".txt" ;;
+        *) stem="$base" ;;
+    esac
+    while :; do
+        case "$stem" in
+            *-phase2) stem="${stem%-phase2}" ;;
+            *-phase3) stem="${stem%-phase3}" ;;
+            *-retry) stem="${stem%-retry}" ;;
+            *) break ;;
+        esac
+    done
+    printf '%s%s' "$stem" "$ext"
+}
+
+static_slug_for_reviewer_file() {
+    local base="$1"
+    base=$(normalize_reviewer_output_base "$base")
+    case "$base" in
+        cursor-specialist-*-output.txt)
+            base="${base#cursor-specialist-}"
+            printf '%s\n' "${base%-output.txt}"
+            ;;
+        codex-specialist-*-output.txt)
+            base="${base#codex-specialist-}"
+            printf '%s\n' "${base%-output.txt}"
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+claude_static_output_is_success() {
+    local file="$1"
+    [[ -s "$file" ]] || return 1
+    if grep -Eq '(^|[^A-Z_])NOT_SUBSTANTIVE([^A-Z_]|$)' "$file" 2>/dev/null; then
+        return 1
+    fi
+    return 0
+}
+
+static_archetype_coverage_ok() {
+    local collector_file="$1" success_file rejected_file current_reviewer_file="" current_status="" current_base normalized_base slug missing="" static_output
+    shift || true
+    [[ -n "$collector_file" && -f "$collector_file" ]] || {
+        printf 'missing collector results'
+        return 1
+    }
+    success_file="$REVIEW_TMPDIR/static-success-slugs.txt"
+    rejected_file="$REVIEW_TMPDIR/static-collector-rejected-bases.txt"
+    : > "$success_file"
+    : > "$rejected_file"
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        if [[ -z "$line" ]]; then
+            if [[ -n "$current_status" ]]; then
+                current_base=$(basename "${current_reviewer_file:-}")
+                normalized_base=$(normalize_reviewer_output_base "$current_base")
+                if slug=$(static_slug_for_reviewer_file "$current_base" 2>/dev/null); then
+                    [[ "$current_status" == "OK" || "$current_status" == "cap_hit" ]] && printf '%s\n' "$slug" >> "$success_file"
+                    [[ "$current_status" != "OK" && "$current_status" != "cap_hit" ]] && printf '%s\n' "$normalized_base" >> "$rejected_file"
+                fi
+            fi
+            current_reviewer_file=""
+            current_status=""
+            continue
+        fi
+        case "$line" in
+            REVIEWER_FILE=*) current_reviewer_file="${line#REVIEWER_FILE=}" ;;
+            STATUS=*) current_status="${line#STATUS=}" ;;
+        esac
+    done < "$collector_file"
+    if [[ -n "$current_status" ]]; then
+        current_base=$(basename "${current_reviewer_file:-}")
+        normalized_base=$(normalize_reviewer_output_base "$current_base")
+        if slug=$(static_slug_for_reviewer_file "$current_base" 2>/dev/null); then
+            [[ "$current_status" == "OK" || "$current_status" == "cap_hit" ]] && printf '%s\n' "$slug" >> "$success_file"
+            [[ "$current_status" != "OK" && "$current_status" != "cap_hit" ]] && printf '%s\n' "$normalized_base" >> "$rejected_file"
+        fi
+    fi
+    for static_output in "$@"; do
+        current_base=$(basename "$static_output")
+        if slug=$(static_slug_for_reviewer_file "$current_base" 2>/dev/null); then
+            if ! grep -Fxq "$(normalize_reviewer_output_base "$current_base")" "$rejected_file" 2>/dev/null \
+                && claude_static_output_is_success "$static_output"; then
+                printf '%s\n' "$slug" >> "$success_file"
+            fi
+        fi
+    done
+    for slug in security correctness edge-cases testing; do
+        if ! grep -Fxq "$slug" "$success_file" 2>/dev/null; then
+            missing="${missing}${missing:+,}$slug"
+        fi
+    done
+    if [[ -n "$missing" ]]; then
+        printf 'no successful static reviewer for archetype(s): %s' "$missing"
+        return 1
+    fi
+    return 0
+}
+
 gather_out="$REVIEW_TMPDIR/review-core-gather.env"
 gather_args=(--mode "$MODE" --output-dir "$REVIEW_TMPDIR")
 [[ -n "$DESCRIPTION_TEXT" ]] && gather_args+=(--description-text "$DESCRIPTION_TEXT")
@@ -393,9 +548,8 @@ external_outputs=$(kv_get "$dispatch_out" EXTERNAL_OUTPUT_FILES)
 claude_outputs=$(kv_get "$dispatch_out" CLAUDE_OUTPUT_FILES)
 panel_mode=$(kv_get "$dispatch_out" PANEL_MODE)
 panel_shape=$(kv_get "$dispatch_out" PANEL_SHAPE)
-dispatch_ok=$(kv_get "$dispatch_out" DISPATCH_OK)
-static_dispatch_ok=$(kv_get "$dispatch_out" STATIC_DISPATCH_OK)
 panel_manifest=$(kv_get "$dispatch_out" PANEL_MANIFEST)
+dropped_slots_file=$(kv_get "$dispatch_out" DROPPED_SLOTS_FILE)
 scout_status=$(kv_get "$dispatch_out" SCOUT_STATUS)
 dynamic_slots=$(kv_get "$dispatch_out" DYNAMIC_SLOTS)
 scout_manifest=$(kv_get "$dispatch_out" SCOUT_MANIFEST)
@@ -403,8 +557,6 @@ scout_fail_reason=$(kv_get "$dispatch_out" SCOUT_FAIL_REASON)
 static_slot_count=$(kv_get "$dispatch_out" STATIC_SLOT_COUNT)
 panel_mode="${panel_mode:-waterfall}"
 panel_shape="${panel_shape:-$PANEL}"
-dispatch_ok="${dispatch_ok:-true}"
-static_dispatch_ok="${static_dispatch_ok:-true}"
 scout_status="${scout_status:-na}"
 scout_fail_reason="${scout_fail_reason:-}"
 dynamic_slots="${dynamic_slots:-0}"
@@ -441,7 +593,15 @@ else
 fi
 larch_err "→ review: consolidating findings"
 "$COLLECT_FINDINGS_SH" "${collect_args[@]}" > "$collect_out"
-recover_dirty_tree "${external_array[@]+"${external_array[@]}"}" "${claude_array[@]+"${claude_array[@]}"}"
+dropped_static_outputs_file="$REVIEW_TMPDIR/dropped-static-outputs.txt"
+collect_dropped_static_outputs "$dropped_slots_file" "$panel_manifest" "$dropped_static_outputs_file"
+dropped_static_outputs=()
+if [[ -s "$dropped_static_outputs_file" ]]; then
+    while IFS= read -r dropped_output || [[ -n "$dropped_output" ]]; do
+        [[ -n "$dropped_output" ]] && dropped_static_outputs+=("$dropped_output")
+    done < "$dropped_static_outputs_file"
+fi
+recover_dirty_tree "${external_array[@]+"${external_array[@]}"}" "${claude_array[@]+"${claude_array[@]}"}" "${dropped_static_outputs[@]+"${dropped_static_outputs[@]}"}"
 
 # Reviewer failure threshold: hard-stop the round when >50% of the intended
 # panel slots failed. THRESHOLD_OK=false → REVIEW_CORE_STATUS=panel-failed and
@@ -449,16 +609,39 @@ recover_dirty_tree "${external_array[@]+"${external_array[@]}"}" "${claude_array
 collector_results_file="$REVIEW_TMPDIR/collector-results.env"
 threshold_out="$REVIEW_TMPDIR/review-core-threshold.env"
 launched_slots="$static_slot_count"
-threshold_args=(--collector-results-file "$collector_results_file" --panel "$panel_shape" --launched-slots "$launched_slots" --round-num "$ROUND_NUM")
-if [[ "$static_dispatch_ok" == "false" ]]; then
-    printf 'THRESHOLD_OK=false\nTHRESHOLD_REASON=dispatch-failed\n' > "$threshold_out"
-else
-    "$CHECK_THRESHOLD_SH" "${threshold_args[@]}" > "$threshold_out"
+threshold_args=(
+    --collector-results-file "$collector_results_file"
+    --panel "$panel_shape"
+    --intended-slots "$static_slot_count"
+    --launched-slots "$launched_slots"
+    --round-num "$ROUND_NUM"
+)
+if [[ -n "$dropped_slots_file" && -r "$dropped_slots_file" ]]; then
+    log_dropped_slots "$dropped_slots_file"
+    threshold_args+=(--dropped-slots-file "$dropped_slots_file")
 fi
+if (( ${#external_array[@]} > 0 || ${#claude_array[@]} > 0 )); then
+    threshold_args+=(--reviewer-output-files)
+    threshold_args+=("${external_array[@]+"${external_array[@]}"}" "${claude_array[@]+"${claude_array[@]}"}")
+fi
+"$CHECK_THRESHOLD_SH" "${threshold_args[@]}" > "$threshold_out"
 threshold_ok=$(kv_get "$threshold_out" THRESHOLD_OK)
 threshold_reason=$(kv_get "$threshold_out" THRESHOLD_REASON)
 not_substantive_slots=$(kv_get "$threshold_out" NOT_SUBSTANTIVE_SLOTS)
 not_substantive_slots="${not_substantive_slots:-0}"
+if [[ "$threshold_ok" != "false" ]]; then
+    coverage_reason=$(static_archetype_coverage_ok "$collector_results_file" "${external_array[@]+"${external_array[@]}"}" "${claude_array[@]+"${claude_array[@]}"}" || true)
+    if [[ -n "$coverage_reason" ]]; then
+        threshold_ok=false
+        threshold_reason="$coverage_reason"
+        {
+            cat "$threshold_out"
+            printf 'COVERAGE_GATE_OK=false\n'
+            printf 'COVERAGE_GATE_REASON=%s\n' "$coverage_reason"
+        } > "${threshold_out}.tmp"
+        mv -f "${threshold_out}.tmp" "$threshold_out"
+    fi
+fi
 if [[ "$threshold_ok" == "false" ]]; then
     panel_failed_tally="$REVIEW_TMPDIR/review-core-panel-failed-tally.env"
     panel_failed_emit_out="$REVIEW_TMPDIR/review-core-panel-failed-emit.env"

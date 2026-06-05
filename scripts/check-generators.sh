@@ -110,6 +110,12 @@ done <"$REGISTRY"
 
 [[ "${#generators[@]}" -gt 0 ]] || fail "$REGISTRY: no rows registered"
 
+BEFORE_DIFF="$(mktemp)"
+AFTER_DIFF="$(mktemp)"
+trap 'rm -f "$BEFORE_DIFF" "$AFTER_DIFF"' EXIT
+
+git diff HEAD -- "${output_paths[@]}" >"$BEFORE_DIFF"
+
 idx=0
 while [[ "$idx" -lt "${#generators[@]}" ]]; do
   generator="${generators[$idx]}"
@@ -120,6 +126,7 @@ while [[ "$idx" -lt "${#generators[@]}" ]]; do
   idx=$((idx + 1))
 done
 
-if ! git diff HEAD --exit-code -- "${output_paths[@]}"; then
+git diff HEAD -- "${output_paths[@]}" >"$AFTER_DIFF"
+if ! diff -u "$BEFORE_DIFF" "$AFTER_DIFF" >/dev/null; then
   fail "check-generators: post-run working-tree delta detected at: ${output_paths[*]}"
 fi

@@ -23,6 +23,14 @@ Primary verbs:
   raw `.meta` / JSON sidecars for retry state, but committed `round-<N>/`
   artifacts always use the trimmed form and fail closed if trimming fails. It
   writes only to the log root; `commit` later picks up the round directory.
+  Raw static specialist outputs are excluded for both Cursor
+  (`cursor-specialist-*-output.txt`) and Codex
+  (`codex-specialist-*-output.txt`), including their unphased `.meta`, `.json`,
+  and `.cap-hit` sidecars; phased static Cursor/Codex fallback outputs remain
+  included. Dynamic Codex twins (`dyn-*-codex-output.txt`) and their unphased
+  `.meta`, `.json`, and `.cap-hit` sidecars follow the same retention path as
+  dynamic Cursor outputs; only unphased static `codex-specialist-*-output.txt`
+  raw transcripts remain excluded.
   The allow-list includes scout artifacts (`scout-round*-status.env`,
   `scout-round*-manifest.json`, `scout-round*-manifest.json.raw`,
   `scout-archetype-yield.tsv`), dynamic-archetype files
