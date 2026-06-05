@@ -94,9 +94,13 @@ def postbump_preflight(
     repo_root = runner.run(["git", "rev-parse", "--show-toplevel"], cwd=cwd)
     if repo_root.returncode != 0:
         return PostbumpPreflight(ok=False, status="postbump-cwd-not-repo", detail="cwd is not in a repo")
-    branch = git.try_current_branch(runner, cwd=cwd)
+    branch_result = runner.run(["git", "symbolic-ref", "--short", "HEAD"], cwd=cwd)
+    if branch_result.returncode != 0:
+        branch = None
+    else:
+        branch = branch_result.stdout.strip() or None
     target = ctx.branch_name or ctx.branch
-    if branch is None:
+    if branch is None and branch_result.returncode == 0:
         branch = target
     if not branch or (target and branch != target):
         return PostbumpPreflight(ok=False, status="branch-mismatch", detail="wrong branch", branch=branch or "")
@@ -153,7 +157,11 @@ def _rebase_no_push(
 
 
 def _remote_branch_state(runner: Runner, branch: str, *, cwd: str | None) -> str:
-    result = runner.run(["git", "ls-remote", "--exit-code", "--heads", "origin", branch], cwd=cwd)
+    def attempt() -> tuple[CommandResult, int, str]:
+        result = runner.run(["git", "ls-remote", "--exit-code", "--heads", "origin", branch], cwd=cwd)
+        return result, result.returncode, result.stdout + result.stderr
+
+    result = retry.with_transient_retry(attempt).value
     if result.returncode == 0:
         return "present"
     if result.returncode == LS_REMOTE_NOT_FOUND_RC:
@@ -288,6 +296,23 @@ def postbump(
                 log_write_status="skipped",
             )
         remote_tip = git.try_rev_parse(runner, f"origin/{branch}", cwd=cwd)
+        if not remote_tip:
+            remote = runner.run(
+                ["git", "ls-remote", "--exit-code", "--heads", "origin", branch],
+                cwd=cwd,
+            )
+            if remote.returncode == 0:
+                fields = remote.stdout.split()
+                remote_tip = fields[0] if fields else ""
+        if not remote_tip:
+            return FinalizeResult(
+                Outcome.STALLED,
+                "remote-check-failed",
+                "remote branch OID unavailable",
+                rebase_status=rebase_status,
+                force_push_status="failed",
+                log_write_status="skipped",
+            )
         push_result = git.force_push_recovery(
             runner,
             branch=branch,
@@ -472,6 +497,7 @@ def _teardown_log_flush(runner: Runner, ctx: RunContext, *, cwd: str | None) -> 
     if not run_id or ctx.repo_unavailable:
         return True
     run_dir = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id
+    writer = logging_util.BreadcrumbWriter()
     try:
         run_dir.mkdir(parents=True, exist_ok=True)
         run_logs.render_execution_issues_batch(
@@ -480,17 +506,24 @@ def _teardown_log_flush(runner: Runner, ctx: RunContext, *, cwd: str | None) -> 
             step_label="teardown",
             source_label="execution-issues.md teardown safety-net",
         )
+    except (OSError, ShipError) as exc:
+        writer.emit(f"teardown log flush: execution-issues safety net failed: {exc}", quiet=False)
+    try:
         recovery = run_logs.load_or_recover_manifest_checked(ctx)
-    except (OSError, ShipError):
-        return False
+    except (OSError, ShipError) as exc:
+        writer.emit(f"teardown log flush: manifest recovery failed: {exc}", quiet=False)
+        recovery = run_logs.ManifestRecovery(
+            run_logs.Manifest(status=config.MANIFEST_STATUS_PARTIAL, version="1", run_id=run_id, steps_ran={}),
+            recovery_ok=False,
+        )
     if recovery.recovery_ok and ctx.stall_tracking:
         try:
             _ = run_logs.update_manifest(
                 ctx,
-                status=config.MANIFEST_STATUS_PARTIAL,
                 stalled_at_step=ctx.stall_step or "unknown",
             )
-        except (OSError, ShipError):
+        except (OSError, ShipError) as exc:
+            writer.emit(f"teardown log flush: stalled manifest update failed: {exc}", quiet=False)
             recovery = run_logs.ManifestRecovery(recovery.manifest, recovery_ok=False)
     post_merge_sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
     if not ctx.no_logs_commit and not post_merge_sentinel.exists():
@@ -504,8 +537,10 @@ def _teardown_log_flush(runner: Runner, ctx: RunContext, *, cwd: str | None) -> 
                     cwd=cwd,
                 )
                 if commit.returncode != 0:
+                    writer.emit("teardown log flush: larch-log commit failed", quiet=False)
                     recovery = run_logs.ManifestRecovery(recovery.manifest, recovery_ok=False)
-            except (OSError, ShipError):
+            except (OSError, ShipError) as exc:
+                writer.emit(f"teardown log flush: larch-log commit failed: {exc}", quiet=False)
                 recovery = run_logs.ManifestRecovery(recovery.manifest, recovery_ok=False)
     return recovery.recovery_ok
 

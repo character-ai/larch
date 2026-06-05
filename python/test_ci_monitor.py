@@ -725,7 +725,7 @@ def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:
     assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
 
 
-def test_pending_retry_missing_remote_oid_does_not_remain_pending(tmp_path: Any) -> None:
+def test_pending_retry_missing_remote_oid_preserves_pending(tmp_path: Any) -> None:
     responses = {
         ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
         ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
@@ -743,7 +743,7 @@ def test_pending_retry_missing_remote_oid_does_not_remain_pending(tmp_path: Any)
         classified=ci_monitor.ClassifiedJobs(0, (), (), ()),
     )
     assert pushed is False
-    assert pending is False
+    assert pending is True
 
 
 def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: Any) -> None:

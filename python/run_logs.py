@@ -803,6 +803,15 @@ def flush_logs_post(
         pr_number = str(ctx.pr_number)
     status = config.MANIFEST_STATUS_DONE if finalize else manifest.status
     extra = {**(manifest.extra or {}), **({"pr_number": int(pr_number)} if str(pr_number).isdigit() else {})}
+    try:
+        if runner is not None:
+            _write_final_report(runner, ctx)
+        if runner is not None:
+            _render_ledger_reports(runner, ctx, log_root)
+        _render_token_timing_batches(ctx, log_root)
+    except ShipError as exc:
+        reason = "redaction-failed" if "redaction" in str(exc).lower() else "post-merge-refresh-failed"
+        return RefreshSkip(skipped=True, reason=reason)
     updated = Manifest(
         status=status,
         version=manifest.version,
@@ -816,15 +825,6 @@ def flush_logs_post(
         _write_manifest(ctx, updated)
     except OSError:
         return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
-    try:
-        if runner is not None:
-            _write_final_report(runner, ctx)
-        if runner is not None:
-            _render_ledger_reports(runner, ctx, log_root)
-        _render_token_timing_batches(ctx, log_root)
-    except ShipError as exc:
-        reason = "redaction-failed" if "redaction" in str(exc).lower() else "post-merge-refresh-failed"
-        return RefreshSkip(skipped=True, reason=reason)
     return RefreshSkip(skipped=False, reason="")
 
 
@@ -1211,6 +1211,20 @@ def _larch_log_commit(
     *,
     cwd: str | None = None,
 ) -> CommandResult:
+    sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
+    if sentinel.exists():
+        raise ShipError("refusing larch-log commit after post-merge sentinel")
+    if cwd is not None and (Path(cwd) / ".git").exists():
+        branch = git.try_current_branch(runner, cwd=cwd)
+        default_branches = {"main", "master"}
+        origin_head = runner.run(
+            ["git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+            cwd=cwd,
+        )
+        if origin_head.returncode == 0 and origin_head.stdout.strip().startswith("origin/"):
+            default_branches.add(origin_head.stdout.strip().split("/", 1)[1])
+        if branch in default_branches:
+            raise ShipError(f"refusing larch-log commit on default branch {branch}")
     rel = _publish_run_tree_to_repo(ctx, log_root, cwd=cwd)
     if not rel:
         return CommandResult(("true",), 0, "", "", 0.0)

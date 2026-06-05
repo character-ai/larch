@@ -118,7 +118,7 @@ def test_flush_logs_post_no_git_commit(tmp_path: Path) -> None:
     assert "pr_number" not in manifest["steps_ran"]
 
 
-def test_flush_logs_post_writes_done_manifest_before_reports(
+def test_flush_logs_post_does_not_write_done_manifest_before_reports(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -137,8 +137,8 @@ def test_flush_logs_post_writes_done_manifest_before_reports(
     manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert skip.skipped is True
-    assert manifest["status"] == config.MANIFEST_STATUS_DONE
-    assert manifest["pr_number"] == 17
+    assert manifest["status"] == config.MANIFEST_STATUS_PARTIAL
+    assert "pr_number" not in manifest
 
 
 def test_flush_logs_post_manifest_write_oserror_returns_recovery_skip(

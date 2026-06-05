@@ -79,3 +79,7 @@ The Phase 4 plan file list names `python/checks.py`, `python/test_checks.py`, an
 ## Phase 6 scope note (`CI_FIX_REBASE_PENDING`)
 
 `ci_monitor.py` deliberately omits bash ship-pr's `CI_FIX_REBASE_PENDING` pending-retry fast path: a verified-but-unpushed CI fix that fails `git push` terminates as `Outcome.STALLED` by design (stateless monitor, rebase limited to merge-conflict-only, bash retired — not a parity gap). See issue #3405.
+
+## Orphan flush-reset parity note
+
+`finalize._local_cleanup` intentionally requires non-empty `git log` subject evidence before dropping local flush-only commits. Bash's empty-loop shape could reset with empty or malformed log output, but the Python port keeps the safer fail-closed behavior and pins it in `test_local_cleanup_does_not_reset_on_empty_orphan_evidence`.

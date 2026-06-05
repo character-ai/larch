@@ -1044,7 +1044,9 @@ def run_postmerge_phase(
         if skip.skipped:
             _breadcrumb("warning", f"post-merge flush skipped: {skip.reason}")
     if post.outcome is not Outcome.OK:
+        _write_ship_state(state_ctx, phase=post.status or "postmerge")
         return ShipResult(post.outcome, detail=post.detail or post.status)
+    _write_ship_state(state_ctx, phase="done")
     return ShipResult(
         Outcome.OK,
         pr_number=ctx.pr_number,

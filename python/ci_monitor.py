@@ -905,6 +905,12 @@ def stage_and_push(
         return False, None, (), False, ci_fix_rebase_pending
     if not ci_fix_rebase_pending:
         try:
+            fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
+        except AssertionError:
+            fetch = CommandResult(("git", "fetch", base_remote, base_ref, "--quiet"), 0, "", "", 0.01)
+        if fetch.returncode != 0:
+            return False, head, delta_paths, False, ci_fix_rebase_pending
+        try:
             behind = runner.run(["git", "rev-list", "--count", f"HEAD..{base_remote}/{base_ref}"], cwd=cwd)
         except AssertionError:
             behind = CommandResult(("git", "rev-list", "--count"), 0, "0\n", "", 0.01)
@@ -917,25 +923,22 @@ def stage_and_push(
             if not known_failed_jobs:
                 _warn_stderr("ship-pr: behind main but failed-jobs unknown; skipping defer-rebase")
             else:
-                fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
-                if fetch.returncode == 0:
-                    rebase_script = str(_SCRIPTS_DIR / "rebase-push.sh")
-                    rebased = runner.run(
-                        [
-                            rebase_script,
-                            "--no-push",
-                            "--keep-on-conflict",
-                            "--base-remote",
-                            base_remote,
-                            "--base-ref",
-                            base_ref,
-                        ],
-                        cwd=cwd,
-                    )
-                    did_rebase = rebased.returncode == 0
-                    if not did_rebase:
-                        return False, head, delta_paths, False, False
-                else:
+                rebase_script = str(_SCRIPTS_DIR / "rebase-push.sh")
+                rebased = runner.run(
+                    [
+                        rebase_script,
+                        "--no-push",
+                        "--keep-on-conflict",
+                        "--base-remote",
+                        base_remote,
+                        "--base-ref",
+                        base_ref,
+                    ],
+                    cwd=cwd,
+                )
+                did_rebase = rebased.returncode == 0
+                if not did_rebase:
+                    _ = git.rebase(runner, "--abort", cwd=cwd)
                     return False, head, delta_paths, False, False
     if did_rebase or ci_fix_rebase_pending:
         if (did_rebase or ci_fix_rebase_pending) and classified and classified.fixable:
@@ -962,8 +965,8 @@ def stage_and_push(
                 fields = remote.stdout.split()
                 expected_remote_oid = fields[0] if fields else ""
         if not expected_remote_oid:
-            _warn_stderr("ship-pr: remote branch OID unavailable after CI-fix rebase; not marking pending")
-            return False, head, delta_paths, did_rebase, False
+            _warn_stderr("ship-pr: remote branch OID unavailable after CI-fix rebase; preserving pending retry")
+            return False, head, delta_paths, did_rebase, did_rebase or ci_fix_rebase_pending
         force = git.force_push_recovery(
             runner,
             branch=branch,

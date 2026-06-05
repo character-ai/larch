@@ -432,9 +432,6 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
    done <"$_post_route_env"
    case "${ROUTE:-}" in
      cancel-title-filter|cancel-reentry-guard)
-       if [ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]; then
-         cat "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}"
-       fi
        exit 1 ;;
    esac
    ```
@@ -628,7 +625,10 @@ if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
   printf '%s\n' '**⚠ Step 2a: run-params.json is not readable; cannot resolve design_classification for SIMPLE sentinel fence. Repair run params before continuing.**' >&2
   exit 1
 fi
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+if ! _design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")"; then
+  printf '%s\n' '**⚠ Step 2a: run-params.json has no valid design_classification/workflow_path; repair run params before continuing.**' >&2
+  exit 1
+fi
 if [ "$_design_classification" = SIMPLE ]; then
   set -e
   _simple_artifacts_ok=true
@@ -710,7 +710,7 @@ Collect and validate external sketch outputs using the shared collection script.
 
 If `design_classification == SIMPLE`, skip this section entirely. Do NOT call `collect-agent-results.sh`.
 
-**Zero-sketches guard (#3207, NEVER #4).** If `design_classification == HARD` but **no** sketch slots were launched (both Cursor and Codex unavailable), do NOT call `collect-agent-results.sh` with zero entries. Instead take the no-sketches path: write the same sentinels as the SIMPLE branch (`NO_SKETCHES_CLASSIFIED_SIMPLE` → `approach-synthesis.txt`, `NO_CONTESTED_DECISIONS` → `contested-decisions.md`, empty `dialectic-resolutions.md`), log a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` noting "Step 2a — both external tools unavailable; ran 0 sketches (degraded)", then skip Step 2a.5 and proceed directly to Step 2b. When at least one slot was launched, collect only the launched outputs below.
+**Zero-sketches guard (#3207, NEVER #4).** If `design_classification == HARD` but **no** sketch slots were launched (both Cursor and Codex unavailable), do NOT call `collect-agent-results.sh` with zero entries. Instead take the degraded no-sketches path: write `NO_SKETCHES_DEGRADED_HARD` to `approach-synthesis.txt`, `NO_CONTESTED_DECISIONS` to `contested-decisions.md`, and an empty `dialectic-resolutions.md`; log a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` noting "Step 2a — both external tools unavailable; ran 0 sketches (degraded)", then skip Step 2a.5 and proceed directly to Step 2b. When at least one slot was launched, collect only the launched outputs below.
 
 **Regular mode** (4 external output files when both tools available):
 
@@ -796,7 +796,10 @@ if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
   printf '%s\n' '**⚠ Step 2a.5: run-params.json is not readable; cannot resolve design_classification for SIMPLE repair fence. Repair run params before continuing.**' >&2
   exit 1
 fi
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
+if ! _design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")"; then
+  printf '%s\n' '**⚠ Step 2a.5: run-params.json has no valid design_classification/workflow_path; repair run params before continuing.**' >&2
+  exit 1
+fi
 if [ "$_design_classification" = SIMPLE ]; then
   set -e
   _simple_artifacts_ok=true
@@ -880,7 +883,7 @@ Read the tier with `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh 
 - SIMPLE: "This is a SIMPLE-tier design. Bias the plan toward the **smallest change that achieves the goal**. Resist adding files, abstractions, refactors, or scope not strictly required by the feature description. If you find yourself writing more than the minimum, stop and prune. Prefer single-file edits to multi-file refactors. Prefer renaming over rewriting. Prefer leaving working code alone over polishing it."
 - HARD: "This is a HARD-tier design. Bias the plan toward **thoroughness**. Surface all relevant edge cases, failure modes, and cross-cutting concerns; do not omit considerations to save effort. Address invariants, contract boundaries, and downstream consumers explicitly."
 
-Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a and incorporate the synthesis into the plan. The synthesis should inform architectural decisions, file selection, and tradeoff resolutions. If it contains exactly `NO_SKETCHES_CLASSIFIED_SIMPLE`, treat that as a sentinel that no sketches ran on this SIMPLE-tier run; write the plan from direct codebase/doc inspection instead of fabricating sketch agreement.
+Read `$DESIGN_TMPDIR/approach-synthesis.txt` from Step 2a and incorporate the synthesis into the plan. The synthesis should inform architectural decisions, file selection, and tradeoff resolutions. If it contains exactly `NO_SKETCHES_CLASSIFIED_SIMPLE`, treat that as a sentinel that no sketches ran on this SIMPLE-tier run; write the plan from direct codebase/doc inspection instead of fabricating sketch agreement. If it contains exactly `NO_SKETCHES_DEGRADED_HARD`, treat that as a HARD-tier degraded-tools sentinel: preserve HARD thoroughness, but do not fabricate sketch agreement.
 
 Also read `$DESIGN_TMPDIR/discussion-round1.md` if it exists and is non-empty. Incorporate the scope boundaries and hard constraints established during the design discussion into the plan — these define what is in-scope, what must not break, and what the user explicitly does not want.
 
