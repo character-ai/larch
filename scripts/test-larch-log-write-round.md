@@ -8,11 +8,18 @@ reviewer outputs and sidecars, and asserts that:
 - registered artifacts land under `larch-logs/implement/<run-id>/round-<N>/`
 - unregistered files such as session env or arbitrary notes stay out
 - `.meta` sidecars drop `CMD_JSON=...`
-- unphased static `codex-specialist-*-output.txt` sidecars are excluded; dynamic
-  Codex twin raw outputs/sidecars (`dyn-*-codex-output.txt`) are included
+- unphased static `codex-specialist-*-output.txt` raw transcripts and sidecars
+  are excluded, while phased static Codex fallback outputs are included
+- dynamic Codex twin raw outputs (`dyn-*-codex-output.txt` and
+  `dyn-*-codex-output-phase*.txt`) are included with their `.meta`, `.json`, and
+  `.cap-hit` sidecars
 - included `*-output*.json` sidecars drop top-level `.result`
 - the normal tmpdir and secrets redaction still runs
-- excluded prompt/sidecar/sentinel/dirty-tree artifacts never land in `round-<N>/`
+- excluded prompt/sidecar/sentinel/dirty-tree artifacts never land in
+  `round-<N>/`
+- dynamic Codex `.prompt`, dynamic-shaped `*-vote-prompt.txt`, and unphased
+  `.events.jsonl` sidecars stay excluded; phased Dynamic Codex does not produce
+  `.events.jsonl` in real runs
 - repeated writes report `UNCHANGED=true`
 
 Run with:

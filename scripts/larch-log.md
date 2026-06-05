@@ -27,10 +27,17 @@ Primary verbs:
   (`cursor-specialist-*-output.txt`) and Codex
   (`codex-specialist-*-output.txt`), including their unphased `.meta`, `.json`,
   and `.cap-hit` sidecars; phased static Cursor/Codex fallback outputs remain
-  included. Dynamic Codex twins (`dyn-*-codex-output.txt`) and their unphased
-  `.meta`, `.json`, and `.cap-hit` sidecars follow the same retention path as
-  dynamic Cursor outputs; only unphased static `codex-specialist-*-output.txt`
-  raw transcripts remain excluded.
+  included. Dynamic Codex twins (`dyn-*-codex-output.txt` and
+  `dyn-*-codex-output-phase*.txt`) and their unphased/phased `.meta`, `.json`,
+  and `.cap-hit` sidecars follow the same retention path as dynamic Cursor
+  outputs. `round_artifact_included()` mirrors this retention path with an
+  explicit narrow allow clause, preserving the existing runtime outcome while
+  regression-protecting the dynamic Codex boundary. It does not use a catch-all
+  dynamic Codex suffix glob; dynamic Codex `.prompt`,
+  dynamic-shaped `*-vote-prompt.txt`, and unphased `.events.jsonl` sidecars
+  remain excluded (phased Dynamic Codex does not produce `.events.jsonl` in real
+  runs). Only unphased static `codex-specialist-*-output.txt` raw transcripts
+  remain excluded.
   The allow-list includes scout artifacts (`scout-round*-status.env`,
   `scout-round*-manifest.json`, `scout-round*-manifest.json.raw`,
   `scout-archetype-yield.tsv`), dynamic-archetype files

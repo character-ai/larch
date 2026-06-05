@@ -38,6 +38,18 @@ assert_not_grep() {
     fi
 }
 
+assert_round_order() {
+    python3 - "$LARCH_LOG" <<'PYEOF' || fail "dynamic codex retry deny must precede broad output allow"
+import sys
+
+text = open(sys.argv[1], encoding="utf-8").read()
+deny = text.index("dyn-*-codex-output-retry*.txt")
+allow = text.index("*-output.txt|*-output-*.txt")
+if deny > allow:
+    raise SystemExit(1)
+PYEOF
+}
+
 assert_json_result_stripped() {
     local path="$1" label="$2"
     python3 - "$path" <<'PYEOF' || fail "$label"
@@ -75,6 +87,33 @@ CMD_JSON=["codex","exec","dynamic argv"]
 OUTPUT_FILE=/tmp/source/dyn-api-contract-codex-output.txt
 EOF
 printf 'dynamic codex raw body\n' > "$source_dir/dyn-api-contract-codex-output.txt"
+printf 'dynamic codex cap hit\n' > "$source_dir/dyn-api-contract-codex-output.txt.cap-hit"
+cat > "$source_dir/dyn-api-contract-codex-output-phase2.txt.meta" <<'EOF'
+TOOL=codex
+TIMEOUT=1200
+CMD_JSON=["codex","exec","dynamic phase argv"]
+OUTPUT_FILE=/tmp/source/dyn-api-contract-codex-output-phase2.txt
+EOF
+printf 'dynamic codex phase raw body\n' > "$source_dir/dyn-api-contract-codex-output-phase2.txt"
+cat > "$source_dir/dyn-api-contract-codex-output-phase2.txt.json" <<'EOF'
+{"result":"dynamic raw phase codex payload","status":"ok"}
+EOF
+printf 'dynamic codex phase cap hit\n' > "$source_dir/dyn-api-contract-codex-output-phase2.txt.cap-hit"
+printf 'dynamic codex named phase raw body\n' > "$source_dir/dyn-api-contract-codex-output-phasealpha.txt"
+cat > "$source_dir/dyn-api-contract-codex-output-phasealpha.txt.meta" <<'EOF'
+TOOL=codex
+TIMEOUT=1200
+CMD_JSON=["codex","exec","dynamic named phase argv"]
+OUTPUT_FILE=/tmp/source/dyn-api-contract-codex-output-phasealpha.txt
+EOF
+cat > "$source_dir/dyn-api-contract-codex-output-phasealpha.txt.json" <<'EOF'
+{"result":"dynamic raw named phase codex payload","status":"ok"}
+EOF
+printf 'dynamic codex named phase cap hit\n' > "$source_dir/dyn-api-contract-codex-output-phasealpha.txt.cap-hit"
+printf 'dynamic codex retry raw body\n' > "$source_dir/dyn-api-contract-codex-output-retry.txt"
+printf 'dynamic codex retry meta\n' > "$source_dir/dyn-api-contract-codex-output-retry.txt.meta"
+printf '{"result":"dynamic codex retry json"}\n' > "$source_dir/dyn-api-contract-codex-output-retry.txt.json"
+printf 'dynamic codex retry cap hit\n' > "$source_dir/dyn-api-contract-codex-output-retry.txt.cap-hit"
 printf 'dynamic cursor raw body\n' > "$source_dir/dyn-api-contract-output.txt"
 cat > "$source_dir/dyn-api-contract-output.txt.meta" <<'EOF'
 TOOL=cursor
@@ -107,10 +146,22 @@ printf 'excluded\n' > "$source_dir/random-notes.txt"
 printf 'excluded\n' > "$source_dir/session-env.sh"
 printf 'excluded\n' > "$source_dir/coder-output.log"
 printf 'excluded\n' > "$source_dir/coder-codex.log"
+printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt"
+printf 'included phased static codex raw body\n' > "$source_dir/codex-specialist-security-output-phase2.txt"
+cat > "$source_dir/codex-specialist-security-output-phase2.txt.meta" <<'EOF'
+TOOL=codex
+TIMEOUT=1200
+CMD_JSON=["codex","exec","static phase argv"]
+OUTPUT_FILE=/tmp/source/codex-specialist-security-output-phase2.txt
+EOF
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.done"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.inner.done"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.diag"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.prompt"
+printf 'excluded\n' > "$source_dir/dyn-api-contract-codex-output.txt.prompt"
+printf 'excluded\n' > "$source_dir/dyn-api-contract-codex-output-phase2.txt.prompt"
+printf 'excluded\n' > "$source_dir/dyn-api-contract-codex-output-vote-prompt.txt"
+printf 'excluded\n' > "$source_dir/dyn-api-contract-codex-output.txt.events.jsonl"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.sidecar"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.dirty-tree"
 printf 'excluded\n' > "$source_dir/codex-specialist-security-output.txt.untracked-baseline"
@@ -126,6 +177,19 @@ assert_file "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phas
 assert_file "$round_dir/dyn-api-contract-codex-output.txt" "dynamic codex raw body included"
 assert_file "$round_dir/dyn-api-contract-codex-output.txt.meta" "dynamic codex meta sidecar included"
 assert_file "$round_dir/dyn-api-contract-codex-output.txt.json" "dynamic codex json sidecar included"
+assert_file "$round_dir/dyn-api-contract-codex-output.txt.cap-hit" "dynamic codex cap-hit sidecar included"
+assert_file "$round_dir/dyn-api-contract-codex-output-phase2.txt" "dynamic codex phase raw body included"
+assert_file "$round_dir/dyn-api-contract-codex-output-phase2.txt.meta" "dynamic codex phase meta sidecar included"
+assert_file "$round_dir/dyn-api-contract-codex-output-phase2.txt.json" "dynamic codex phase json sidecar included"
+assert_file "$round_dir/dyn-api-contract-codex-output-phase2.txt.cap-hit" "dynamic codex phase cap-hit sidecar included"
+assert_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt" "dynamic codex named phase raw body included"
+assert_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.meta" "dynamic codex named phase meta sidecar included"
+assert_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.json" "dynamic codex named phase json sidecar included"
+assert_file "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.cap-hit" "dynamic codex named phase cap-hit sidecar included"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-retry.txt" "unsupported dynamic codex retry raw body excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-retry.txt.meta" "unsupported dynamic codex retry meta excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-retry.txt.json" "unsupported dynamic codex retry json excluded"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-retry.txt.cap-hit" "unsupported dynamic codex retry cap-hit excluded"
 assert_file "$round_dir/dyn-api-contract-output.txt" "dynamic cursor raw body included"
 assert_file "$round_dir/dyn-api-contract-output.txt.meta" "dynamic cursor meta sidecar included"
 assert_file "$round_dir/cursor-vote-output.txt.json" "cursor json sidecar"
@@ -137,10 +201,17 @@ assert_not_file "$round_dir/random-notes.txt" "unregistered file"
 assert_not_file "$round_dir/session-env.sh" "session env"
 assert_not_file "$round_dir/coder-output.log" "excluded coder transcript"
 assert_not_file "$round_dir/coder-codex.log" "excluded coder codex transcript"
+assert_not_file "$round_dir/codex-specialist-security-output.txt" "static codex raw transcript excluded"
+assert_file "$round_dir/codex-specialist-security-output-phase2.txt" "phased static codex raw transcript included"
+assert_file "$round_dir/codex-specialist-security-output-phase2.txt.meta" "phased static codex meta sidecar included"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.done" "excluded done sentinel"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.inner.done" "excluded inner done sentinel"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.diag" "excluded diag sidecar"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.prompt" "excluded prompt sidecar"
+assert_not_file "$round_dir/dyn-api-contract-codex-output.txt.prompt" "excluded dynamic codex prompt sidecar"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-phase2.txt.prompt" "excluded dynamic codex phase prompt sidecar"
+assert_not_file "$round_dir/dyn-api-contract-codex-output-vote-prompt.txt" "excluded dynamic-shaped vote prompt"
+assert_not_file "$round_dir/dyn-api-contract-codex-output.txt.events.jsonl" "excluded dynamic codex events telemetry"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.sidecar" "excluded sidecar"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.dirty-tree" "excluded dirty tree sidecar"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.untracked-baseline" "excluded untracked baseline sidecar"
@@ -149,8 +220,16 @@ assert_file "$round_dir/cursor-specialist-edge-cases-output-first-pass.txt" "ns-
 assert_grep '<TMPDIR>' "$round_dir/findings.md" "tmpdir path redacted"
 assert_grep '<REDACTED-TOKEN>' "$round_dir/findings.md" "secret redacted"
 assert_not_grep '^CMD_JSON=' "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phase CMD_JSON stripped"
+assert_not_grep '^CMD_JSON=' "$round_dir/codex-specialist-security-output-phase2.txt.meta" "static codex phase CMD_JSON stripped"
+assert_not_grep '^CMD_JSON=' "$round_dir/dyn-api-contract-codex-output.txt.meta" "dynamic codex CMD_JSON stripped"
+assert_not_grep '^CMD_JSON=' "$round_dir/dyn-api-contract-codex-output-phase2.txt.meta" "dynamic codex phase CMD_JSON stripped"
+assert_not_grep '^CMD_JSON=' "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.meta" "dynamic codex named phase CMD_JSON stripped"
 assert_json_result_stripped "$round_dir/cursor-vote-output.txt.json" "cursor .result field should be stripped"
 assert_json_result_stripped "$round_dir/codex-vote-output.txt.json" "codex .result field should be stripped"
+assert_json_result_stripped "$round_dir/dyn-api-contract-codex-output.txt.json" "dynamic codex .result field should be stripped"
+assert_json_result_stripped "$round_dir/dyn-api-contract-codex-output-phase2.txt.json" "dynamic codex phase .result field should be stripped"
+assert_json_result_stripped "$round_dir/dyn-api-contract-codex-output-phasealpha.txt.json" "dynamic codex named phase .result field should be stripped"
+assert_round_order
 
 out="$("$LARCH_LOG" write-round --log-root "$log_root" --skill implement --run-id run123 --round 1 --source-dir "$source_dir")"
 [[ "$out" == *"UNCHANGED=true"* ]] || fail "write-round retry should be unchanged: $out"
