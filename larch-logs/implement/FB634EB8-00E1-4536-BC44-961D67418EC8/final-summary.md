@@ -9,8 +9,8 @@
 - **Plan review**: N/A
 - **Code review**: 101/139 accepted
 - **OOS filed**: 0
-- **Exec issues**: 0
-- **Warnings**: 1
+- **Exec issues**: 2
+- **Warnings**: 5
 - **Run logs**: `larch-logs/implement/FB634EB8-00E1-4536-BC44-961D67418EC8/`
 
 <!-- larch:run-summary v=1 -->
