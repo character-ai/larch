@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-degraded-tools-gate.sh:42-51	Proposed harness cases assert stderr resolved-empty diagnostics but do not require 2>&1 capture	New empty-presence cases that invoke the gate with stdout-only capture (as in current Case 5 line 92) will miss larch_err stderr lines; stderr substring assertions pass vacuously or get dropped and the ERROR-vs-WARNING contract regresses silently	Add an explicit Testing strategy requirement: every new empty-presence case must use the Case 8/9 pattern (bash "$GATE" … 2>&1) before assert_contains on resolved empty / flag-name stderr substrings
+2	in_scope	important	risk-integration	skills/design/SKILL.md:313-313	/design gate fix is prose-only while /implement gets a pinned rehydration fence	Step 0 gate runs in a fresh Bash block after the Step 0a session-setup fence (design/SKILL.md separates them); without a mandatory source ~/.cache/larch/sessions/current-design-env-$PPID.sh prelude plus explicit flag pass-through, orchestrators can still call degraded-tools-gate.sh with empty presence expansions and only see the new diagnostic—not a durable fix on the design path	Mirror the implement minimum: add a small fenced bash block under the design Degraded-tools gate paragraph that sources current-design-env-$PPID.sh (or $DESIGN_TMPDIR/source-env.sh) then passes the four explicit flags; optionally add a test-design-structure grep pin like implement
+
+**1. [correctness]** `scripts/test-degraded-tools-gate.sh` / plan Testing strategy (plan.txt:24-29)
+
+The plan requires new cases to assert stderr names presence flags and the `resolved empty` substring, but the only existing empty-flag invocation (Case 5, lines 92-98) captures stdout alone. `larch_err` diagnostics go to stderr (`scripts/degraded-tools-gate.sh:60-69`; `scripts/lib-quiet.sh` quiet contract). Without mandating `2>&1` on the new invocations (as Cases 8–9 already do at lines 118–141), harness coverage of the stderr half of the bug-class signal can be skipped while stdout KV checks still pass.
+
+**Suggested revision:** State in the test plan that all empty-presence cases must merge stderr (`2>&1`) before `assert_contains` on `resolved empty` or per-flag ERROR lines.
+
+**2. [risk-integration]** `skills/design/SKILL.md:313` / plan.txt:37-38
+
+The root cause is cross-block loss of session-setup variables. The plan fixes `/implement` with a self-contained `read-session-env-key.sh` fence plus `test-implement-structure.sh` pins (plan.txt:34-46), but `/design` only gets prose (“prelude-sourced … values”) with no fenced bash block and no structural pin. The design gate sits between the Step 0a bash fence and Step 0b (`skills/design/SKILL.md:303-315`), before the Step 1c+ prelude convention is established, so prose alone does not enforce rehydration the way the implement pins do.
+
+**Suggested revision:** Add a minimal design gate fence (`source current-design-env-$PPID.sh` then explicit four-flag `degraded-tools-gate.sh` call), matching the implement pattern at minimum scope.
