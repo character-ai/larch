@@ -180,3 +180,10 @@ health-probe fast-fail: cursor unhealthy before launch
   ```
 design-log-publish: unexpected file under .completed: emit_plan
   ```
+
+### Warnings
+
+- **Step design Step 5b — file-design-oos.sh deps-pre-pass failed (exit 0)**:
+  ```
+Step 5b: file-conflict pre-pass unavailable (FILE_DESIGN_OOS_DEPS_AVAILABLE=false); invoking /larch:issue without --intra-batch-deps-file (degraded mode).
+  ```
