@@ -13,8 +13,8 @@ EXIT_NEEDS_USER_INPUT: Final = 3
 EXIT_STALLED: Final = 4
 EXIT_TRANSIENT: Final = 6
 EXIT_INTERNAL_ERROR: Final = 1
+# report_tokens_cli uses EXIT_BAIL; ship STALLED uses EXIT_STALLED.
 EXIT_BAIL: Final = 4
-EXIT_STALL: Final = 6
 EXIT_TIMEOUT: Final = 124
 OUTCOME_EXIT_MAP: Final[dict[Outcome, int]] = {
     Outcome.OK: EXIT_OK,

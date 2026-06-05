@@ -207,6 +207,39 @@ case "$step18_order_status" in
   *) fail "unexpected Step 18 finalize-state order check failure: $step18_order_status" ;;
 esac
 
+# Python Step 8+ cutover contract pins (#3446).
+grep -Fq 'Python-path routing uses stdout JSON plus `finalize-state.sh` for stall/PR continuation keys when present; scoped `ship-pr-state.sh` reads remain valid for orchestrator-only keys (`PHASE` retry budgeting/gates, `RESUME_PHASE`, `CALLER_KIND`, `OOS_PENDING`, `FORKED_TARGET`, `REPO_UNAVAILABLE`).' "$SKILL_MD" \
+  || fail "SKILL.md must document Python JSON + finalize-state routing with scoped ship-pr-state reads"
+grep -Fq '`ship.py` does not consume `PHASE` from `ship-pr-state.sh` on startup; the orchestrator re-invokes the driver and uses persisted `PHASE` only for gates and retry budgeting.' "$SKILL_MD" \
+  || fail "SKILL.md must document PHASE as orchestrator-only for Python"
+grep -Fq 'Python-only exit `1` with `outcome=INTERNAL_ERROR` is a driver bug path' "$SKILL_MD" \
+  || fail "SKILL.md must route Python INTERNAL_ERROR exit 1 as hard tool failure"
+grep -Fq 'on the Python path, dispatch on stdout JSON `needs_user_reason` and read JSON `failed_run_id` for autonomous CI-fix.' "$SKILL_MD" \
+  || fail "SKILL.md must dispatch Python Exit 3 from JSON needs_user_reason and failed_run_id"
+grep -Fq 'on the Python path, read `STALL_TRACKING` and `STALL_STEP` from `finalize-state.sh` when present, with stdout JSON `detail` as the fallback when `finalize-state.sh` is absent (invalid-tmpdir JSON-only edge).' "$SKILL_MD" \
+  || fail "SKILL.md must document Python Exit 4 finalize-state stall keys plus JSON-only fallback"
+grep -Fq 'Read `RESUME_PHASE` and `CALLER_KIND` from `ship-pr-state.sh` on both paths.' "$SKILL_MD" \
+  || fail "SKILL.md must document Exit 4 RESUME_PHASE/CALLER_KIND scoped ship-pr-state reads"
+grep -Fq 'Read `PHASE` from `ship-pr-state.sh` for orchestrator-side per-phase retry budgeting only; `ship.py` does not read `PHASE` on startup.' "$SKILL_MD" \
+  || fail "SKILL.md must document Exit 6 PHASE as orchestrator retry input only"
+grep -Fq 'On the Python path, read `OOS_PENDING`, `FORKED_TARGET`, and `REPO_UNAVAILABLE` from `ship-pr-state.sh`, then re-invoke the same `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` foreground fence without `--resume-phase`; do not substitute `finalize-state.sh` for those OOS gate inputs.' "$SKILL_MD" \
+  || fail "SKILL.md must document Python OOS checkpoint scoped ship-pr-state reads and no --resume-phase re-entry"
+grep -Fq 'on the Python path, re-invoke the same `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` foreground fence without `--resume-phase`.' "$SKILL_MD" \
+  || fail "SKILL.md must document Python Exit 0/OOS re-entry without --resume-phase"
+python_fence=$(awk '
+  /if \[ "\$\{LARCH_SHIP_PR_IMPL:-bash\}" = "python" \]; then/ { in_py=1 }
+  in_py { print }
+  in_py && /^else$/ { exit }
+' "$SKILL_MD")
+printf '%s\n' "$python_fence" | grep -Fq -- '--no-logs-commit "$no_logs_commit"' \
+  || fail "SKILL.md Python invoke fence must include --no-logs-commit inside python branch"
+grep -Fq 'existing_stall_tracking=$(read_finalize STALL_TRACKING "")' "$RESTORE_FINALIZE_SH" \
+  || fail "restore-finalize-state.sh must read existing finalize STALL_TRACKING"
+grep -Fq 'STALL_TRACKING) value=true ;;' "$RESTORE_FINALIZE_SH" \
+  || fail "restore-finalize-state.sh must preserve existing finalize STALL_TRACKING=true"
+grep -Fq 'STALL_TRACKING=false' "$REPO_ROOT/scripts/test-restore-finalize-state.sh" \
+  || fail "restore-finalize-state harness must seed ship-pr STALL_TRACKING=false"
+
 [[ -f "$RESTORE_FINALIZE_SH" ]] || fail "scripts/restore-finalize-state.sh missing"
 [[ -x "$RESTORE_FINALIZE_SH" ]] || fail "scripts/restore-finalize-state.sh must be executable"
 [[ -f "$REPO_ROOT/scripts/restore-finalize-state.md" ]] || fail "scripts/restore-finalize-state.sh must have sibling restore-finalize-state.md"

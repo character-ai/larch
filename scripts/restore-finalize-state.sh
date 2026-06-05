@@ -75,12 +75,20 @@ read_finalize() {
 }
 
 write_finalize_state() {
-    local tmp key default
+    local tmp key default value existing_stall_tracking existing_stall_step
+    existing_stall_tracking=$(read_finalize STALL_TRACKING "")
+    existing_stall_step=$(read_finalize STALL_STEP "")
     tmp="$FINALIZE_FILE.tmp.$$"
     {
         for key in "${LARCH_FINALIZE_STATE_KEYS[@]}"; do
             default=$(larch_finalize_state_default "$key")
             value=$(read_state "$key" "")
+            if [ "$existing_stall_tracking" = true ]; then
+                case "$key" in
+                    STALL_TRACKING) value=true ;;
+                    STALL_STEP) [ -n "$existing_stall_step" ] && value=$existing_stall_step ;;
+                esac
+            fi
             if [ -z "$value" ]; then
                 value=$(read_finalize "$key" "$default")
             fi

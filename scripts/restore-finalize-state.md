@@ -4,7 +4,7 @@
 
 ## Purpose
 
-`ship-pr.sh` writes `finalize-state.sh` during postmerge, but Step 18 can still run after a prompt-side interruption or stale partial file. This helper treats `ship-pr-state.sh` as the authoritative checkpoint and rewrites the teardown input atomically so cleanup, tracking-issue rename, manifest finalization, and tmpdir removal consume the latest state.
+`ship-pr.sh` writes `finalize-state.sh` during postmerge, but Step 18 can still run after a prompt-side interruption or stale partial file. This helper treats `ship-pr-state.sh` as the authoritative checkpoint and rewrites the teardown input atomically so cleanup, tracking-issue rename, manifest finalization, and tmpdir removal consume the latest state. When an existing `finalize-state.sh` already carries Python-written `STALL_TRACKING=true`, that stall metadata remains authoritative over `ship-pr-state.sh` values so a prewritten `STALL_TRACKING=false` cannot downgrade a stalled run.
 
 ## Interface
 
@@ -16,7 +16,7 @@ restore-finalize-state.sh --implement-tmpdir PATH
 
 ## State Contract
 
-The helper never sources `ship-pr-state.sh`. It reads values with the same `awk` key lookup pattern as `ship-pr.sh`, preserving literal shell metacharacters after the first `=`.
+The helper never sources `ship-pr-state.sh`. It reads values with the same `awk` key lookup pattern as `ship-pr.sh`, preserving literal shell metacharacters after the first `=`. Existing `finalize-state.sh` `STALL_TRACKING=true` and non-empty `STALL_STEP` are preserved during restore, including when `ship-pr-state.sh` explicitly says `STALL_TRACKING=false`.
 
 `scripts/lib-finalize-state-keys.sh` owns the canonical finalize-state key order shared by `ship-pr.sh` and this helper. The shared list contains:
 
@@ -48,7 +48,7 @@ Only `DESIGN_ONLY_DONE` has a non-empty default, `false`, for compatibility with
 ## Invariants
 
 - Writes use `tmp.$$` plus `mv`.
-- The helper is idempotent and overwrites any existing `finalize-state.sh`.
+- The helper is idempotent and overwrites any existing `finalize-state.sh` while preserving Python-written stall tracking when it is already true.
 - `ship-pr-state.sh` is read-only input and is never sourced.
 - The shared key library is sourced through the `LARCH_LIB_FINALIZE_STATE_KEYS_LOADED` sentinel.
 - Bash stays 3.2-compatible; the defaults table uses parallel indexed arrays instead of associative arrays.
@@ -59,7 +59,7 @@ Only `DESIGN_ONLY_DONE` has a non-empty default, `false`, for compatibility with
 
 ## Harness
 
-`scripts/test-restore-finalize-state.sh` covers missing `ship-pr-state.sh`, partial and complete state files, idempotent rewrites, the `DESIGN_ONLY_DONE=false` default, `BAIL_REASON` copying, `final-bail-reason` larch-log batch publish when `BAIL_REASON` is non-empty (and absence when it is empty), and the final `finalize-state.sh` presence after the atomic rename.
+`scripts/test-restore-finalize-state.sh` covers missing `ship-pr-state.sh`, partial and complete state files, idempotent rewrites, the `DESIGN_ONLY_DONE=false` default, `BAIL_REASON` copying, `final-bail-reason` larch-log batch publish when `BAIL_REASON` is non-empty (and absence when it is empty), the final `finalize-state.sh` presence after the atomic rename, and preservation of existing `STALL_TRACKING=true` / `STALL_STEP` when `ship-pr-state.sh` contains `STALL_TRACKING=false`.
 
 ## Edit In Sync
 

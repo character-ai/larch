@@ -255,19 +255,6 @@ def pr_view_current_read(
     )
 
 
-def pr_view_current(
-    runner: Runner,
-    *,
-    repo: str,
-    cwd: str | None = None,
-) -> PullRequest | None:
-    result = pr_view_current_read(runner, repo=repo, cwd=cwd)
-    if result.returncode != 0:
-        return None
-    data = _as_json_object(_loads_json(result.stdout, context="pr view current"), context="pr view current")
-    return _pull_request_from_json(data, context="pr view current")
-
-
 def pr_for_branch_read(
     runner: Runner,
     branch: str,

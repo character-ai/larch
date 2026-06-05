@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -15,41 +14,34 @@ from errors import ShipError
 from proc import CommandResult
 from run_context import RunContext
 
-
-def _empty_str_lists() -> list[list[str]]:
-    return []
+from test_support import RecordingRunner as _RecordingRunner
 
 
-def _empty_command_results() -> list[CommandResult]:
-    return []
-
-
-@dataclass
-class RecordingRunner:
-    calls: list[list[str]] = field(default_factory=_empty_str_lists)
-    responses: list[CommandResult] = field(default_factory=_empty_command_results)
-    _index: int = 0
+class RecordingRunner(_RecordingRunner):
     git_commits: int = 0
 
     def run(
         self,
         argv: Sequence[str],
         *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
     ) -> CommandResult:
-        self.calls.append(list(argv))
-        if argv[:3] == ("git", "commit", "-m"):
+        if tuple(argv[:3]) == ("git", "commit", "-m"):
             self.git_commits += 1
-        if self._index >= len(self.responses):
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-        result = self.responses[self._index]
-        self._index += 1
-        return result
+        return super().run(
+            argv,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            check=check,
+            stdout=stdout,
+            stderr=stderr,
+        )
 
 
 def _ctx(tmp_path: Path, state_file: str | None = None) -> RunContext:

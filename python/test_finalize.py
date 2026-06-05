@@ -3,9 +3,9 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
+
+import pytest
 
 import finalize
 import run_logs
@@ -13,37 +13,7 @@ from proc import CommandResult
 from run_context import RunContext
 
 
-def _empty_calls() -> list[list[str]]:
-    return []
-
-
-def _empty_results() -> list[CommandResult]:
-    return []
-
-
-@dataclass
-class RecordingRunner:
-    calls: list[list[str]] = field(default_factory=_empty_calls)
-    responses: list[CommandResult] = field(default_factory=_empty_results)
-    _index: int = 0
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
-    ) -> CommandResult:
-        self.calls.append(list(argv))
-        if self._index >= len(self.responses):
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-        result = self.responses[self._index]
-        self._index += 1
-        return result
+from test_support import RecordingRunner
 
 
 def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
@@ -61,7 +31,6 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
         no_admin_fallback=False,
         repo_unavailable=False,
         pr_number=7,
-        branch_name="feat",
         pr_title="Implement thing",
         issue_number="1",
     )
@@ -127,5 +96,52 @@ def test_write_finalize_state_contains_teardown_keys(tmp_path: Path) -> None:
     target = tmp_path / "finalize-state.sh"
     finalize.write_finalize_state(_ctx(tmp_path, pr_closed=True), target)
     text = target.read_text(encoding="utf-8")
-    assert "PR_CLOSED=true\n" in text
-    assert "NO_LOGS_COMMIT=false\n" in text
+    assert "PR_CLOSED='true'\n" in text
+    assert "NO_LOGS_COMMIT='false'\n" in text
+
+
+def test_cache_sessions_root_honors_absolute_xdg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "xdg"))
+    assert finalize.cache_sessions_root() == tmp_path / "xdg" / "larch" / "sessions"
+
+
+def test_cache_sessions_root_ignores_empty_or_relative_xdg(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("XDG_CACHE_HOME", "relative")
+    assert finalize.cache_sessions_root() == Path.home() / ".cache" / "larch" / "sessions"
+    monkeypatch.setenv("XDG_CACHE_HOME", "")
+    assert finalize.cache_sessions_root() == Path.home() / ".cache" / "larch" / "sessions"
+
+
+def test_write_finalize_state_merged_preserves_custom_keys(tmp_path: Path) -> None:
+    target = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state_merged(target, {"CUSTOM_PIN": "keep", "STALL_TRACKING": "true"})
+    data = finalize.read_finalize_state(target)
+    assert data["CUSTOM_PIN"] == "keep"
+    assert data["STALL_TRACKING"] == "true"
+
+
+def test_write_finalize_state_merged_shell_quotes_values(tmp_path: Path) -> None:
+    target = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state_merged(
+        target,
+        {"PR_TITLE": "Implement feature $(echo unsafe) 'quoted'"},
+    )
+    text = target.read_text(encoding="utf-8")
+    assert text == "PR_TITLE='Implement feature $(echo unsafe) '\\''quoted'\\'''\n"
+    assert finalize.read_finalize_state(target)["PR_TITLE"] == "Implement feature $(echo unsafe) 'quoted'"
+
+
+def test_write_finalize_state_shell_quotes_values(tmp_path: Path) -> None:
+    target = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state(_ctx(tmp_path, pr_title="Implement feature $(echo unsafe)"), target)
+    text = target.read_text(encoding="utf-8")
+    assert "PR_TITLE='Implement feature $(echo unsafe)'\n" in text
+    assert finalize.read_finalize_state(target)["PR_TITLE"] == "Implement feature $(echo unsafe)"
+
+
+def test_write_finalize_state_merged_rejects_newline_values(tmp_path: Path) -> None:
+    target = tmp_path / "finalize-state.sh"
+    with pytest.raises(Exception, match="newline"):
+        finalize.write_finalize_state_merged(target, {"BAD": "x\ny"})
+    with pytest.raises(Exception, match="newline"):
+        finalize.write_finalize_state_merged(target, {"BAD": "x\ry"})

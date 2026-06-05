@@ -1,0 +1,84 @@
+Now I have everything needed to write the final review output.
+
+---
+
+### In-Scope Findings
+
+---
+
+**F-1** | **Severity: Important** | **Focus: Coverage gap — plan B regression 7** | **File: `python/test_ship.py`**
+
+**Issue:** No test for gap-fill write failure with STALLED outcome preserved. `ship.py:825` swallows `(OSError, ShipError)` from `finalize.write_finalize_state_merged` with a breadcrumb but no other side-effect. The plan's section B acceptance criteria require "write_finalize_state_merged raises → STALLED preserved + breadcrumb emitted". No test exercises this: (a) the breadcrumb appears on stderr, and (b) the outer `emit_result()` still emits `outcome=STALLED` JSON on stdout. If a future change moves the swallow below `emit_result`, the contract would silently break.
+
+**Fix:** Add `test_persist_stall_write_failure_emits_breadcrumb`: monkeypatch `finalize.write_finalize_state_merged` to raise `ShipError("disk full")`, call `_persist_stall_metadata_if_needed(...)`, assert `"stall metadata gap-fill skipped"` in capsys stderr. Then add an integration-level test via `main()` that patches the write to raise and verifies the outer JSON still has `outcome=STALLED` (not `INTERNAL_ERROR`).
+
+---
+
+**F-2** | **Severity: Important** | **Focus: Coverage gap — plan B regressions 1+2** | **File: `python/test_ship.py`**
+
+**Issue:** No test for early `ensure_pr` ShipError → gap-fill creates `finalize-state.sh` from scratch (no-clobber). The three existing `test_persist_stall_metadata_*` tests call `_persist_stall_metadata_if_needed` directly and only cover: (a) finalize already exists + custom keys preserved, (b) state-file PR_NUMBER wins over ctx, (c) invalid tmpdir → no write. None exercise the path through `main()` or `run_ship()` where a ShipError is raised before `ensure_pr` completes (so `result.pr_number=None`) and `finalize-state.sh` does not yet exist. The plan explicitly lists "early ensure_pr ShipError" as regression 1 and "no-clobber: existing file not overwritten" as regression 2.
+
+**Fix:** Add `test_gap_fill_creates_finalize_on_early_ship_error`: stub `pr.ensure_pr` to raise `ShipError("blocked")`, run `main()`, read `tmp_path/"finalize-state.sh"`, assert `STALL_TRACKING=true`, `BRANCH_NAME`, `RUN_ID` present. Add a second test pre-seeding `finalize-state.sh` with `CUSTOM_PIN=keep` and verifying the key survives when the write merges rather than overwrites.
+
+---
+
+**F-3** | **Severity: Important** | **Focus: Coverage gap — plan B regression 4** | **File: `python/test_ship.py`**
+
+**Issue:** No test for post-merge PR field preservation. The plan's regression 4 is "post-merge STALLED: PR_NUMBER/PR_URL from result preserved". The existing `test_persist_stall_metadata_gap_fill_preserves_custom_key` uses `pr_number=2` in ctx but doesn't exercise `result.pr_number` specifically. No test runs a full `main()` (or `run_ship()`) path where the merge step completes and returns a ShipResult with `pr_number=99`, then stalls, and asserts `finalize-state.sh` contains `PR_NUMBER=99`. The fill order at `ship.py:814` puts `result.pr_number` first, which is the right priority — but that specific priority ordering is not tested end-to-end.
+
+**Fix:** Add `test_gap_fill_preserves_post_merge_pr_number`: stub `run_ship` to return `ShipResult(Outcome.STALLED, pr_number=99, pr_url="https://example.invalid/99")`, run `main()`, read `finalize-state.sh`, assert `PR_NUMBER=99` and `PR_URL` correct.
+
+---
+
+**F-4** | **Severity: Important** | **Focus: Coverage gap — new module `logging_util`** | **File: `python/logging_util.py`**
+
+**Issue:** `quiet_init()` has zero unit tests. The entire function body — fd1→fd3 dup (`os.dup2(1,3)`), fd2→fd4 dup (`os.dup2(2,4)`), log-file redirect, `_self_initialized_quiet=True` flag set, `LARCH_QUIET_ACTIVE`/`LARCH_QUIET_PID` env writes, and OSError degradation path — is covered only indirectly by the autouse `conftest.py` fixture, which always disables quiet via `LARCH_QUIET_DISABLE=1`. No test ever invokes `quiet_init()` with the disable flag absent. The fd-dup side-effects and all no-op guard conditions (`_quiet_active()` check, PID check, idempotency check) are untested.
+
+**Fix:** Add `test_logging_util.py` with at minimum: (1) `test_quiet_init_no_op_when_disabled` — env has `LARCH_QUIET_DISABLE=1`, call `quiet_init()`, assert `_self_initialized_quiet` remains False and no fd-dup occurred; (2) `test_quiet_init_sets_flag` — remove disable env, mock `os.dup2` and `open`, call `quiet_init()`, assert `_self_initialized_quiet=True` and `LARCH_QUIET_ACTIVE`/`LARCH_QUIET_PID` set in env; (3) `test_quiet_init_oserror_degrades` — `os.dup2` raises `OSError`, assert no crash and env cleared.
+
+---
+
+**F-5** | **Severity: Latent** | **Focus: Coverage gap — fd3 contract path** | **File: `python/logging_util.py` — `contract_stream()`**
+
+**Issue:** The fd3 branch of `contract_stream()` is never exercised in any test. Because `conftest.py` always runs `monkeypatch.setattr(logging_util, "_self_initialized_quiet", False)`, `contract_stream()` always returns `sys.stdout`. The `os.fdopen(os.dup(3), "w", closefd=True)` branch (activated when `_self_initialized_quiet=True`) is dead code in tests. A regression in the fd-dup path — including the dup-on-every-call semantics, which could leak fds — would not be caught. The risk is latent rather than immediate because the `sys.stdout` fallback is what non-quiet callers use, but the feature's primary correctness guarantee (JSON staying on fd3, not fd1) is unverified.
+
+**Fix:** Add test that: (1) uses `monkeypatch.setattr(logging_util, "_self_initialized_quiet", True)`, (2) pre-opens a writable fd at position 3 via `os.pipe()` or a tmpfile, (3) calls `contract_stream()`, writes to it, closes it, (4) reads back the fd3 pipe and asserts the data arrived.
+
+---
+
+**F-6** | **Severity: Latent** | **Focus: Coverage gap — XDG integration** | **File: `python/finalize.py` — `_cleanup_target_ok()`**
+
+**Issue:** `_cleanup_target_ok()` is not exercised with an XDG-rooted path. `test_finalize.py` tests `cache_sessions_root()` in isolation (absolute XDG honored, relative/empty falls back to `~/.cache`), but no test calls `_cleanup_target_ok()` with a path that would only be approved because `XDG_CACHE_HOME` was set. If `_cleanup_target_ok()` were ever refactored to use a cached root instead of calling `cache_sessions_root()` fresh, or if it used a different path separator check, the unit tests for `cache_sessions_root` would still pass while the allowlist integration would silently fail for XDG users.
+
+**Fix:** Add `test_cleanup_target_ok_accepts_xdg_rooted_path` in `test_finalize.py`: set `XDG_CACHE_HOME=/custom/cache` via monkeypatch, construct `path=Path("/custom/cache/larch/sessions/run-x/finalize-state.sh")`, assert `_cleanup_target_ok(str(path))` returns True (or that `_tmpdir_under_allowed_root` returns True for `/custom/cache/larch/sessions/run-x`).
+
+---
+
+**F-7** | **Severity: Nit** | **Focus: Coverage gap — parser edge cases** | **File: `python/test_finalize.py` — `read_finalize_state`**
+
+**Issue:** `read_finalize_state` uses `shlex.split()` per line but only the newline-rejection path is tested for non-standard input. Edge cases not covered: (a) `KEY=` (empty value — `shlex.split("KEY=")` returns `["KEY="]`, split on first `=` gives `("KEY","")`, correct); (b) `KEY="quoted value"` (shlex would return `["KEY=quoted value"]` if unquoted at word level, or `["KEY=", "quoted", "value"]` — behavior is ambiguous and worth a test); (c) comment lines (`#...`); (d) `export KEY=value` lines from real bash files. If `finalize-state.sh` was written by bash and contains `export` declarations, the current parser would silently misparse them.
+
+**Fix:** Add parametrized test for `KEY=`, `KEY=v`, and a line starting with `export KEY=v` (assert raises or strips prefix), plus a line starting with `#` (assert skipped or included — document the contract).
+
+---
+
+### Out-of-Scope Observations
+
+**O-1** | File: `python/ship.py:810-811`
+`_fill_if_empty` for `ISSUE_NUMBER` falls back through `ctx.issue_number` then `ctx.issue`. If `ctx.issue` is a GitHub URL rather than a bare number (some callers pass URLs), this would silently write a URL into `ISSUE_NUMBER`. Not a testing gap per se, but a latent data-quality risk not covered by any test.
+
+**O-2** | File: `python/test_ship.py:707-721`
+`test_emit_result_prints_before_journal_failure` tests the case where `JsonlJournal` construction raises. A more common real-world failure is journal construction succeeds but `append()` raises (disk-full mid-write). Consider a companion test for that path.
+
+---
+
+```tsv
+ID	Severity	Area	File	Finding
+F-1	Important	Coverage gap (plan B reg-7)	python/test_ship.py	Gap-fill write failure: no test that write raises → STALLED preserved + breadcrumb emitted
+F-2	Important	Coverage gap (plan B reg-1+2)	python/test_ship.py	Gap-fill early ShipError / no-clobber: no end-to-end test via main()/run_ship()
+F-3	Important	Coverage gap (plan B reg-4)	python/test_ship.py	Post-merge PR preservation: no test that result.pr_number survives in finalize-state.sh
+F-4	Important	Coverage gap (new module)	python/logging_util.py	quiet_init() has zero unit tests; all fd-dup and degradation paths untested
+F-5	Latent	Coverage gap (fd3 path)	python/logging_util.py	contract_stream() fd3 branch (os.fdopen dup(3)) never exercised in any test
+F-6	Latent	Coverage gap (XDG integration)	python/finalize.py	_cleanup_target_ok() not tested with XDG-rooted path; cache_sessions_root() only tested in isolation
+F-7	Nit	Coverage gap (parser edge cases)	python/test_finalize.py	read_finalize_state: empty value (KEY=), quoted values, export-prefixed lines not tested
+```

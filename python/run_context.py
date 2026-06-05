@@ -53,9 +53,7 @@ class RunContext:
     pr_url: str = ""
     expected_session_id: str = ""
     expected_tmpdir_basename_prefix: str = ""
-    branch_name: str = ""
     deferred: bool = False
-    forked_target: bool = False
     oos_pending: bool = False
     plan_file: str = ""
     summary: str = ""
@@ -110,9 +108,7 @@ class RunContext:
                 "EXPECTED_TMPDIR_BASENAME_PREFIX",
                 "",
             ),
-            branch_name=branch,
             deferred=_env_bool(source, "DEFERRED"),
-            forked_target=_env_bool(source, "FORKED_TARGET"),
             oos_pending=_env_bool(source, "OOS_PENDING"),
             plan_file=source.get("PLAN_FILE", "")
             or (
@@ -128,7 +124,19 @@ class RunContext:
             cursor_present=_env_bool(source, "CURSOR_PRESENT"),
         )
 
+    @property
+    def branch_name(self) -> str:
+        return self.branch
+
+    @property
+    def forked_target(self) -> bool:
+        return self.forked
+
     def with_(self, **changes: object) -> RunContext:
+        if "branch_name" in changes:
+            changes["branch"] = changes.pop("branch_name")
+        if "forked_target" in changes:
+            changes["forked"] = changes.pop("forked_target")
         known = {f.name for f in fields(self)}
         unknown = set(changes) - known
         if unknown:

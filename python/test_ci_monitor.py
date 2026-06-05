@@ -40,6 +40,7 @@ def _new_call_log() -> list[tuple[str, ...]]:
 
 
 @dataclass
+# Keep this keyed runner local; use test_support.py for simple queue runners.
 class RecordingRunner:
     """Stub Runner keyed by argv prefix or exact match."""
 

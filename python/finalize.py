@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import os
+import re
+import shlex
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -307,6 +310,61 @@ def teardown(
     )
 
 
+def cache_sessions_root() -> Path:
+    xdg = os.environ.get("XDG_CACHE_HOME", "")
+    root = Path(xdg) if xdg and Path(xdg).is_absolute() else Path.home() / ".cache"
+    return root / "larch" / "sessions"
+
+
+_FINALIZE_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+
+
+def _shell_single_quote(value: object) -> str:
+    text = str(value)
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
+def read_finalize_state(path: str | Path) -> dict[str, str]:
+    target = Path(path)
+    if not target.is_file():
+        return {}
+    data: dict[str, str] = {}
+    for line in target.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        if not _FINALIZE_KEY_RE.match(key):
+            continue
+        try:
+            parsed = shlex.split(value, posix=True)
+        except ValueError:
+            parsed = [value]
+        data[key] = parsed[0] if len(parsed) == 1 else value
+    for key, value in data.items():
+        if "\n" in value or "\r" in value:
+            msg = f"finalize-state value for {key} contains a newline"
+            raise ShipError(msg)
+    return data
+
+
+def write_finalize_state_merged(path: str | Path, data: dict[str, str]) -> None:
+    for key, value in data.items():
+        if not _FINALIZE_KEY_RE.match(key):
+            msg = f"invalid finalize-state key: {key}"
+            raise ShipError(msg)
+        if "\n" in str(value) or "\r" in str(value):
+            msg = f"finalize-state value for {key} contains a newline"
+            raise ShipError(msg)
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    tmp = target.with_suffix(target.suffix + ".tmp")
+    _ = tmp.write_text(
+        "".join(f"{key}={_shell_single_quote(data[key])}\n" for key in sorted(data)),
+        encoding="utf-8",
+    )
+    _ = tmp.replace(target)
+
+
 def _cleanup_target_ok(ctx: RunContext, tmpdir: Path, *, cwd: str | None = None) -> bool:
     try:
         resolved = tmpdir.resolve(strict=False)
@@ -314,7 +372,7 @@ def _cleanup_target_ok(ctx: RunContext, tmpdir: Path, *, cwd: str | None = None)
         return False
     if ".." in tmpdir.parts:
         return False
-    cache_root = Path.home() / ".cache" / "larch" / "sessions"
+    cache_root = cache_sessions_root()
     allowed_roots = (
         Path("/tmp").resolve(strict=False),  # noqa: S108 - parity allowlist for session tmpdirs.
         Path("/private/tmp").resolve(strict=False),
@@ -374,5 +432,8 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")
-    _ = tmp.write_text("".join(f"{key}={value}\n" for key, value in data.items()), encoding="utf-8")
+    _ = tmp.write_text(
+        "".join(f"{key}={_shell_single_quote(value)}\n" for key, value in data.items()),
+        encoding="utf-8",
+    )
     _ = tmp.replace(target)

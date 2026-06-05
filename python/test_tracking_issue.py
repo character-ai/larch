@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 
 import pytest
 
@@ -13,37 +11,7 @@ from errors import ShipError
 from proc import CommandResult
 
 
-def _empty_str_lists() -> list[list[str]]:
-    return []
-
-
-def _empty_command_results() -> list[CommandResult]:
-    return []
-
-
-@dataclass
-class RecordingRunner:
-    calls: list[list[str]] = field(default_factory=_empty_str_lists)
-    responses: list[CommandResult] = field(default_factory=_empty_command_results)
-    _index: int = 0
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
-    ) -> CommandResult:
-        self.calls.append(list(argv))
-        if self._index >= len(self.responses):
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-        result = self.responses[self._index]
-        self._index += 1
-        return result
+from test_support import RecordingRunner
 
 
 def test_link_pr_closes_appends() -> None:

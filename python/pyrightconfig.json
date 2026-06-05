@@ -3,7 +3,7 @@
   "pythonVersion": "3.11",
   "pythonPlatform": "Linux",
   "include": ["."],
-  "exclude": [".venv/**"],
+  "exclude": [".venv/**", "conftest.py"],
   "enableExperimentalFeatures": true,
   "reportUntypedFunctionDecorator": "error",
   "reportUntypedClassDecorator": "error",

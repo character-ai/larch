@@ -1,14 +1,44 @@
 """Top-level ship-pr Python driver and CLI."""
+# ruff: noqa: E402
 
 from __future__ import annotations
 
-import argparse
 import json
+import sys
+
+
+def _version_supported(version_info: object) -> bool:
+    return tuple(version_info) >= (3, 11)  # type: ignore[arg-type]
+
+
+if not _version_supported(sys.version_info):
+    _VERSION_ERROR = "Python ship driver requires Python 3.11 or newer"
+    print(
+        json.dumps(
+            {
+                "detail": _VERSION_ERROR,
+                "failed_run_id": "",
+                "merge_result": "",
+                "needs_user_reason": "",
+                "outcome": "STALLED",
+                "pr_number": None,
+                "pr_url": "",
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+    )
+    print(f"ERROR: {_VERSION_ERROR}", file=sys.stderr)
+    raise SystemExit(4)
+
+import argparse
 import os
+import re
 import traceback
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, TextIO, cast
 
 import checks
 import ci_monitor
@@ -99,7 +129,7 @@ def _error_to_result(exc: Exception) -> ShipResult:
 
 def _breadcrumb(step: str, detail: str = "") -> None:
     suffix = f": {detail}" if detail else ""
-    logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}", quiet=False)
+    logging_util.BreadcrumbWriter().emit(f"ship.py: {step}{suffix}")
 
 
 def _summary_from_manifest(ctx: RunContext) -> str:
@@ -402,7 +432,7 @@ def _tmpdir_under_allowed_root(tmpdir: str) -> bool:
         resolved = path.resolve(strict=False)
     except OSError:
         return False
-    cache_root = Path.home() / ".cache" / "larch" / "sessions"
+    cache_root = finalize.cache_sessions_root()
     allowed_roots = (
         Path("/tmp").resolve(strict=False),  # noqa: S108 - parity allowlist for session tmpdirs.
         Path("/private/tmp").resolve(strict=False),
@@ -507,7 +537,7 @@ def run_ship(
             return oos_result
 
         title = _pr_title(ctx, runner, cwd=repo_root)
-        ensured = pr.ensure_pr(runner, ctx, body, title=title, cwd=repo_root)
+        ensured = pr.ensure_pr(runner, ctx, body, title=title, cwd=repo_root, base=base_ref)
         working = ctx.with_(
             pr_number=ensured.number or None,
             pr_url=ensured.url,
@@ -550,7 +580,6 @@ def run_ship(
                 fix_attempts=fix_attempts,
                 transient_retries=transient_retries,
             )
-            _breadcrumb("ci", f"poll iteration {iteration}")
             monitor = ci_monitor.monitor(
                 runner,
                 pr=working.pr_number or 0,
@@ -678,12 +707,26 @@ def _journal_path(ctx: RunContext) -> Path:
     )
 
 
+def _close_contract_stream(stream: TextIO) -> None:
+    if stream is not sys.stdout:
+        with suppress(Exception):
+            stream.close()
+
+
 def emit_result(ctx: RunContext, result: ShipResult) -> None:
     payload = _redacted_result_payload(result)
-    if ctx.run_id:
-        journal = logging_util.JsonlJournal(_journal_path(ctx), ctx.run_id)
-        _ = journal.append(config.JOURNAL_EVENT_SHIP_RESULT, **payload)
-    print(json.dumps(payload, sort_keys=True))
+    stream = logging_util.contract_stream()
+    try:
+        print(json.dumps(payload, sort_keys=True), file=stream)
+        stream.flush()
+    finally:
+        _close_contract_stream(stream)
+    if ctx.run_id and _tmpdir_under_allowed_root(ctx.tmpdir):
+        try:
+            journal = logging_util.JsonlJournal(_journal_path(ctx), ctx.run_id)
+            _ = journal.append(config.JOURNAL_EVENT_SHIP_RESULT, **payload)
+        except OSError as exc:
+            logging_util.BreadcrumbWriter().emit(f"ship.py: journal append skipped: {exc}")
 
 
 def _redacted_result_payload(result: ShipResult) -> dict[str, Any]:
@@ -717,12 +760,82 @@ def build_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _state_file_kv(path: str | None) -> dict[str, str]:
+    if not path:
+        return {}
+    try:
+        return finalize.read_finalize_state(path)
+    except ShipError:
+        return {}
+
+
+def _truthy(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _first_present(*values: object) -> str:
+    for value in values:
+        if value is None:
+            continue
+        if isinstance(value, int):
+            if value != 0:
+                return str(value)
+            continue
+        text = str(value)
+        if text:
+            return text
+    return ""
+
+
+def _slug_from_detail(detail: str) -> str:
+    slug = re.sub(r"[^A-Za-z0-9]+", "-", detail.strip().lower()).strip("-")
+    return slug[:80] or "stalled"
+
+
+def _fill_if_empty(data: dict[str, str], key: str, *values: object) -> None:
+    if data.get(key):
+        return
+    value = _first_present(*values)
+    if value:
+        data[key] = value
+
+
+def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdir: Path) -> None:
+    if result.outcome is not Outcome.STALLED:
+        return
+    if not _tmpdir_under_allowed_root(str(tmpdir)):
+        return
+    path = tmpdir / "finalize-state.sh"
+    try:
+        data = finalize.read_finalize_state(path)
+        if _truthy(data.get("STALL_TRACKING", "")):
+            return
+        state = _state_file_kv(ctx.state_file)
+        _fill_if_empty(data, "BRANCH_NAME", state.get("BRANCH_NAME"), ctx.branch)
+        _fill_if_empty(data, "ISSUE_NUMBER", state.get("ISSUE_NUMBER"), ctx.issue_number, ctx.issue)
+        _fill_if_empty(data, "REPO", state.get("REPO"), ctx.repo)
+        _fill_if_empty(data, "RUN_ID", state.get("RUN_ID"), ctx.run_id)
+        _fill_if_empty(data, "PR_NUMBER", result.pr_number, state.get("PR_NUMBER"), ctx.pr_number)
+        _fill_if_empty(data, "PR_URL", result.pr_url, state.get("PR_URL"), ctx.pr_url)
+        _fill_if_empty(data, "PR_TITLE", state.get("PR_TITLE"), ctx.pr_title)
+        _fill_if_empty(data, "MERGE_RESULT", result.merge_result, state.get("MERGE_RESULT"), ctx.merge_result)
+        _fill_if_empty(data, "FORKED_TARGET", state.get("FORKED_TARGET"), "true" if ctx.forked else "false")
+        _fill_if_empty(data, "REPO_UNAVAILABLE", state.get("REPO_UNAVAILABLE"), "true" if ctx.repo_unavailable else "false")
+        _fill_if_empty(data, "DRAFT", state.get("DRAFT"), "true" if ctx.draft else "false")
+        _fill_if_empty(data, "MERGE", state.get("MERGE"), "true" if ctx.merge else "false")
+        data["STALL_TRACKING"] = "true"
+        _fill_if_empty(data, "STALL_STEP", state.get("STALL_STEP"), ctx.stall_step, _slug_from_detail(result.detail))
+        finalize.write_finalize_state_merged(path, data)
+    except Exception as exc:
+        with suppress(Exception):
+            logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill skipped: {exc}")
+
+
 def _ctx_from_args(args: argparse.Namespace) -> RunContext:
     env_ctx = RunContext.from_env()
     changes: dict[str, object] = {}
     for arg_name, field_name in (
         ("branch", "branch"),
-        ("branch", "branch_name"),
         ("issue", "issue"),
         ("issue", "issue_number"),
         ("repo", "repo"),
@@ -741,7 +854,6 @@ def _ctx_from_args(args: argparse.Namespace) -> RunContext:
         ("merge", "merge"),
         ("draft", "draft"),
         ("forked", "forked"),
-        ("forked", "forked_target"),
         ("repo_unavailable", "repo_unavailable"),
         ("no_admin_fallback", "no_admin_fallback"),
     ):
@@ -754,18 +866,35 @@ def _ctx_from_args(args: argparse.Namespace) -> RunContext:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ctx = RunContext.from_env()
+    ctx = RunContext.from_env(env={})
+    result: ShipResult
     parser = build_parser()
-    args = parser.parse_args(argv)
-    ctx = _ctx_from_args(args)
     try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+        if code == 0:
+            return 0
+        result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"argparse failed with exit {code}")
+        with suppress(Exception):
+            emit_result(ctx, result)
+        return config.OUTCOME_EXIT_MAP[Outcome.INTERNAL_ERROR]
+    try:
+        ctx = _ctx_from_args(args)
+        if _tmpdir_under_allowed_root(ctx.tmpdir):
+            os.environ[config.ENV_IMPLEMENT_TMPDIR] = ctx.tmpdir
+            logging_util.quiet_init(argv0="ship.py")
         result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
-    except Exception:
+    except Exception as exc:  # top-level contract envelope
         logging_util.BreadcrumbWriter().emit(
             f"ship.py: internal error\n{traceback.format_exc()}",
-            quiet=False,
         )
-        result = ShipResult(Outcome.INTERNAL_ERROR, detail="internal error")
+        result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"{type(exc).__name__}: {exc}")
+    try:
+        _persist_stall_metadata_if_needed(ctx, result, Path(ctx.tmpdir))
+    except Exception as exc:
+        with suppress(Exception):
+            logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill skipped: {exc}")
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

@@ -1,4 +1,4 @@
-# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 """Tests for ship.py."""
 
 from __future__ import annotations
@@ -7,8 +7,8 @@ import json
 import os
 import shutil
 import subprocess
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+import sys
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,27 +24,7 @@ from proc import CommandResult
 from run_context import RunContext
 
 
-def _empty_calls() -> list[list[str]]:
-    return []
-
-
-@dataclass
-class RecordingRunner:
-    calls: list[list[str]] = field(default_factory=_empty_calls)
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
-    ) -> CommandResult:
-        self.calls.append(list(argv))
-        return CommandResult(tuple(argv), 0, "", "", 0.01)
+from test_support import RecordingRunner
 
 
 def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
@@ -181,7 +161,7 @@ def test_happy_path_stage_order(
     assert "ship.py: checks:" in captured.err
     assert "ship.py: pr-prep:" in captured.err
     assert "ship.py: pr-create:" in captured.err
-    assert "ship.py: ci:" in captured.err
+    assert "ship.py: ci:" not in captured.err
     assert "ship.py: merge" in captured.err
     assert "ship.py: post-merge" in captured.err
 
@@ -601,6 +581,7 @@ def test_main_emits_json_stdout_and_breadcrumb_stderr(
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
     rc = ship.main(
         [
             "--tmpdir",
@@ -629,6 +610,7 @@ def test_main_emits_json_stdout_on_unexpected_exception(
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
     rc = ship.main(
         [
             "--tmpdir",
@@ -643,7 +625,7 @@ def test_main_emits_json_stdout_on_unexpected_exception(
     assert rc == config.EXIT_INTERNAL_ERROR
     payload = json.loads(captured.out)
     assert payload["outcome"] == "INTERNAL_ERROR"
-    assert payload["detail"] == "internal error"
+    assert payload["detail"] == "RuntimeError: unexpected failure"
     assert captured.out.count("\n") == 1
     assert "internal error" in captured.err
     assert "Traceback" in captured.err
@@ -698,3 +680,217 @@ exit 0
     assert completed.returncode == 4
     assert '"outcome":"STALLED"' in completed.stdout
     assert "Python ship driver requires Python 3.11 or newer" in completed.stderr
+
+
+def test_version_supported_gate() -> None:
+    assert ship._version_supported((3, 11))  # pylint: disable=protected-access
+    assert not ship._version_supported((3, 10))  # pylint: disable=protected-access
+
+
+def test_main_argparse_failure_emits_internal_error(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = ship.main(["--unknown-flag"])
+    assert rc == 1
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["outcome"] == "INTERNAL_ERROR"
+    assert "argparse failed" in payload["detail"]
+    assert "usage:" in captured.err
+
+
+def test_main_argparse_failure_uses_empty_env_ctx(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(stale))
+    monkeypatch.setenv("RUN_ID", "preparse")
+    rc = ship.main(["--unknown-flag"])
+    assert rc == config.EXIT_INTERNAL_ERROR
+    assert json.loads(capsys.readouterr().out)["outcome"] == "INTERNAL_ERROR"
+    assert not list(stale.glob("*.jsonl"))
+
+
+def test_main_overwrites_implement_tmpdir_after_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stale = tmp_path / "stale"
+    stale.mkdir()
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(stale))
+    monkeypatch.setattr(ship, "run_ship", lambda *_a, **_k: ship.ShipResult(Outcome.OK))
+
+    def fake_quiet_init(**_kwargs: object) -> None:
+        assert os.environ[config.ENV_IMPLEMENT_TMPDIR] == str(tmp_path)
+
+    monkeypatch.setattr(ship.logging_util, "quiet_init", fake_quiet_init)
+    rc = ship.main(["--tmpdir", str(tmp_path), "--manifest-path", str(tmp_path / "manifest.json")])
+    assert rc == 0
+    assert json.loads(capsys.readouterr().out)["outcome"] == "OK"
+
+
+def test_quiet_init_routes_contract_and_breadcrumb_fds(tmp_path: Path) -> None:
+    script = """
+import logging_util
+import config
+import os
+
+os.environ.pop(config.ENV_LARCH_QUIET_DISABLE, None)
+os.environ[config.ENV_IMPLEMENT_TMPDIR] = os.environ["QUIET_TMPDIR"]
+logging_util.quiet_init(argv0="ship.py")
+stream = logging_util.contract_stream()
+print("contract", file=stream)
+stream.close()
+logging_util.BreadcrumbWriter().emit("crumb")
+print(os.environ[config.ENV_LARCH_QUIET_LOG_FILE], file=logging_util.contract_stream())
+"""
+    _quiet_vars = {config.ENV_LARCH_QUIET_ACTIVE, config.ENV_LARCH_QUIET_PID, config.ENV_LARCH_QUIET_LOG_FILE, config.ENV_LARCH_QUIET_DISABLE}
+    clean_env = {k: v for k, v in os.environ.items() if k not in _quiet_vars}
+    completed = subprocess.run(
+        [sys.executable, "-c", script],
+        check=True,
+        capture_output=True,
+        text=True,
+        env={**clean_env, "PYTHONPATH": str(Path.cwd()), "QUIET_TMPDIR": str(tmp_path)},
+    )
+    lines = completed.stdout.strip().splitlines()
+    assert lines[0] == "contract"
+    log_path = Path(lines[1])
+    assert log_path.name.startswith("larch-quiet-ship.py-")
+    assert log_path.parent == tmp_path
+    assert "crumb" in completed.stderr
+    assert "crumb" in log_path.read_text(encoding="utf-8")
+
+
+def test_main_help_has_no_json(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = ship.main(["--help"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "Run the Python ship-pr driver" in captured.out
+    assert '"outcome"' not in captured.out
+
+
+def test_emit_result_prints_before_journal_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    class FailingJournal:
+        def __init__(self, *_args: object) -> None:
+            pass
+
+        def append(self, *_args: object, **_kwargs: object) -> object:
+            raise OSError("journal blocked")
+
+    monkeypatch.setattr(ship.logging_util, "JsonlJournal", FailingJournal)
+    ctx = _ctx(tmp_path)
+    ship.emit_result(ctx, ship.ShipResult(Outcome.OK, pr_number=1, pr_url="u"))
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["outcome"] == "OK"
+    assert "journal append skipped" in captured.err
+
+
+def test_emit_result_skips_journal_on_invalid_tmpdir(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    ctx = _ctx(tmp_path, tmpdir="/not/allowed/larch")
+    ship.emit_result(ctx, ship.ShipResult(Outcome.STALLED, detail="invalid tmpdir"))
+    assert json.loads(capsys.readouterr().out)["outcome"] == "STALLED"
+    assert not Path("/not/allowed/larch").exists()
+
+
+def test_persist_stall_metadata_gap_fill_preserves_custom_key(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path, pr_number=2, pr_url="u")
+    target = tmp_path / "finalize-state.sh"
+    finalize_data = {"CUSTOM_PIN": "keep", "PR_NUMBER": "7"}
+    ship.finalize.write_finalize_state_merged(target, finalize_data)
+    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="merge failed"), tmp_path)  # pylint: disable=protected-access
+    data = ship.finalize.read_finalize_state(target)
+    assert data["CUSTOM_PIN"] == "keep"
+    assert data["PR_NUMBER"] == "7"
+    assert data["STALL_TRACKING"] == "true"
+
+
+def test_persist_stall_metadata_uses_state_file_before_ctx(tmp_path: Path) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text("PR_NUMBER=44\nPR_URL=https://example.invalid/pr/44\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, pr_number=None, pr_url="", state_file=str(state))
+    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="rebase stalled"), tmp_path)  # pylint: disable=protected-access
+    data = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
+    assert data["PR_NUMBER"] == "44"
+    assert data["PR_URL"] == "https://example.invalid/pr/44"
+    assert data["STALL_TRACKING"] == "true"
+
+
+def test_persist_stall_metadata_treats_zero_pr_number_as_absent(tmp_path: Path) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text("PR_NUMBER=44\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, pr_number=0, state_file=str(state))
+    result = ship.ShipResult(Outcome.STALLED, pr_number=0, detail="rebase stalled")
+    ship._persist_stall_metadata_if_needed(ctx, result, tmp_path)  # pylint: disable=protected-access
+    data = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
+    assert data["PR_NUMBER"] == "44"
+
+
+def test_persist_stall_metadata_preserves_existing_tracking(tmp_path: Path) -> None:
+    target = tmp_path / "finalize-state.sh"
+    ship.finalize.write_finalize_state_merged(target, {"STALL_TRACKING": "true", "STALL_STEP": "existing"})
+    ctx = _ctx(tmp_path, stall_step="new")
+    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="new"), tmp_path)  # pylint: disable=protected-access
+    data = ship.finalize.read_finalize_state(target)
+    assert data == {"STALL_TRACKING": "true", "STALL_STEP": "existing"}
+
+
+def test_main_stalled_json_survives_stall_metadata_write_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
+    monkeypatch.setattr(ship, "run_ship", lambda *_a, **_k: ship.ShipResult(Outcome.STALLED, detail="ensure-pr"))
+
+    def fail_write(*_args: object, **_kwargs: object) -> None:
+        raise ShipError("blocked")
+
+    monkeypatch.setattr(ship.finalize, "write_finalize_state_merged", fail_write)
+    rc = ship.main(["--tmpdir", str(tmp_path), "--manifest-path", str(tmp_path / "manifest.json")])
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert rc == config.OUTCOME_EXIT_MAP[Outcome.STALLED]
+    assert payload["outcome"] == "STALLED"
+    assert payload["detail"] == "ensure-pr"
+
+
+def test_main_ensure_pr_stall_creates_finalize_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+    monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(ShipError("ensure-pr failed")))
+    rc = ship.main(["--tmpdir", str(tmp_path), "--manifest-path", str(tmp_path / "manifest.json"), "--repo", "o/r"])
+    assert rc == config.OUTCOME_EXIT_MAP[Outcome.STALLED]
+    assert json.loads(capsys.readouterr().out)["outcome"] == "STALLED"
+    data = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
+    assert data["STALL_TRACKING"] == "true"
+    assert data["STALL_STEP"] == "ensure-pr-failed"
+
+
+def test_postmerge_flush_skip_stall_preserves_preseeded_pr_number(
+    tmp_path: Path,
+) -> None:
+    target = tmp_path / "finalize-state.sh"
+    ship.finalize.write_finalize_state_merged(target, {"PR_NUMBER": "88"})
+    result = ship.ShipResult(Outcome.STALLED, pr_number=7, detail="post-merge flush skipped: blocked")
+    ship._persist_stall_metadata_if_needed(_ctx(tmp_path, pr_number=7), result, tmp_path)  # pylint: disable=protected-access
+    data = ship.finalize.read_finalize_state(target)
+    assert data["PR_NUMBER"] == "88"
+    assert data["STALL_TRACKING"] == "true"
+
+
+def test_persist_stall_metadata_invalid_tmpdir_is_json_only(tmp_path: Path) -> None:
+    invalid = Path("/not/allowed/larch")
+    ctx = _ctx(tmp_path, tmpdir=str(invalid))
+    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="invalid tmpdir"), invalid)  # pylint: disable=protected-access
+    assert not (invalid / "finalize-state.sh").exists()

@@ -39,3 +39,17 @@ def test_with_rejects_unknown_fields() -> None:
 def test_from_env_defaults_merge_disabled() -> None:
     ctx = run_context.RunContext.from_env(env={})
     assert ctx.merge is False
+
+
+def test_alias_properties_track_canonical_fields() -> None:
+    ctx = _ctx().with_(branch="feature/z", forked=True)
+    assert ctx.branch_name == "feature/z"
+    assert ctx.forked_target is True
+
+
+def test_with_translates_legacy_aliases() -> None:
+    ctx = _ctx().with_(branch_name="feature/alias", forked_target=True)
+    assert ctx.branch == "feature/alias"
+    assert ctx.branch_name == "feature/alias"
+    assert ctx.forked is True
+    assert ctx.forked_target is True

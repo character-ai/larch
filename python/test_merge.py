@@ -1,9 +1,8 @@
+# pyright: reportPrivateUsage=false, reportUnknownLambdaType=false, reportUnknownArgumentType=false
 """Tests for merge.py."""
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 
 import pytest
 
@@ -18,37 +17,7 @@ from pathlib import Path
 from run_context import RunContext
 
 
-def _empty_str_lists() -> list[list[str]]:
-    return []
-
-
-def _empty_command_results() -> list[CommandResult]:
-    return []
-
-
-@dataclass
-class RecordingRunner:
-    calls: list[list[str]] = field(default_factory=_empty_str_lists)
-    responses: list[CommandResult] = field(default_factory=_empty_command_results)
-    _index: int = 0
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
-    ) -> CommandResult:
-        self.calls.append(list(argv))
-        if self._index >= len(self.responses):
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-        result = self.responses[self._index]
-        self._index += 1
-        return result
+from test_support import RecordingRunner
 
 
 def _ctx(**kwargs: object) -> RunContext:
@@ -964,3 +933,17 @@ def test_merge_post_flush_false_skips_internal_flush(
     out = merge_module.merge_pr(runner, _ctx(), post_flush=False)
     assert out.result == config.MERGE_RESULT_ADMIN_MERGED
     assert calls["post"] == 0
+
+
+def test_post_flush_warns_on_degraded_skip(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=True, reason="post-merge-refresh-failed"))
+    result = merge_module._post_flush(RecordingRunner(), _ctx(), config.MERGE_RESULT_MERGED)  # pylint: disable=protected-access
+    assert result is None
+    assert "merge: post-merge flush skipped: post-merge-refresh-failed" in capsys.readouterr().err
+
+
+def test_post_flush_redaction_failed_still_errors(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(run_logs, "flush_logs_post", lambda *_a, **_k: run_logs.RefreshSkip(skipped=True, reason="redaction-failed"))
+    result = merge_module._post_flush(RecordingRunner(), _ctx(), config.MERGE_RESULT_MERGED)  # pylint: disable=protected-access
+    assert result is not None
+    assert result.result == config.MERGE_RESULT_ERROR

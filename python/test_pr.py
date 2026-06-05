@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 
 import git as git_module
 import gh
@@ -15,37 +13,7 @@ from proc import CommandResult
 from run_context import RunContext
 
 
-def _empty_str_lists() -> list[list[str]]:
-    return []
-
-
-def _empty_command_results() -> list[CommandResult]:
-    return []
-
-
-@dataclass
-class RecordingRunner:
-    calls: list[list[str]] = field(default_factory=_empty_str_lists)
-    responses: list[CommandResult] = field(default_factory=_empty_command_results)
-    _index: int = 0
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
-    ) -> CommandResult:
-        self.calls.append(list(argv))
-        if self._index >= len(self.responses):
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-        result = self.responses[self._index]
-        self._index += 1
-        return result
+from test_support import RecordingRunner
 
 
 _PORCELAIN_CLEAN = CommandResult(
@@ -301,3 +269,23 @@ def test_ensure_pr_refuses_dirty_tree() -> None:
     )
     with pytest.raises(ShipError):
         _ = pr_module.ensure_pr(runner, _ctx(), "body", title="t")
+
+
+def test_ensure_pr_threads_base_to_create() -> None:
+    runner = RecordingRunner(
+        responses=[
+            _PORCELAIN_CLEAN,
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            _PORCELAIN_CLEAN,
+            _HEAD_FEAT,
+            CommandResult(("git", "push", "origin"), 0, "", "", 0.01),
+            CommandResult(("gh", "pr", "list"), 0, "[]", "", 0.01),
+            CommandResult(("gh", "pr", "create"), 0, "https://github.com/o/r/pull/10\n", "", 0.01),
+            CommandResult(("gh", "pr", "list"), 0, '[{"number":10,"url":"u","state":"OPEN","headRefName":"feat"}]', "", 0.01),
+        ],
+    )
+    result = pr_module.ensure_pr(runner, _ctx(), "body", title="t", base="main")
+    assert result.number == 10
+    create_call = next(call for call in runner.calls if call[:3] == ["gh", "pr", "create"])
+    assert "--base" in create_call
+    assert "main" in create_call

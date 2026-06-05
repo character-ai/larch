@@ -972,7 +972,7 @@ def _warn_secret_scrub(violations: int, files_scrubbed: int, directory: Path) ->
         "## the same value.\n"
         "#############################################################################\n"
     )
-    logging_util.BreadcrumbWriter().emit(redact.redact_outbound(banner), quiet=False)
+    logging_util.BreadcrumbWriter().emit(redact.redact_outbound(banner))
 
 
 def _larch_log_commit(
