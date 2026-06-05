@@ -110,7 +110,7 @@ assert_degraded_tools_gate_fence() {
     || { rm -f "$tmp"; fail 'SKILL Degraded-tools gate fence must export DESIGN_TMPDIR prelude'; }
   grep -Fq '. "$DESIGN_TMPDIR/source-env.sh"' "$tmp" \
     || { rm -f "$tmp"; fail 'SKILL Degraded-tools gate fence must source durable design env'; }
-  if grep -Fq 'After the presence parse above' "$SKILL_MD"; then
+  if grep -Fq 'from the session-setup parse above' "$SKILL_MD"; then
     rm -f "$tmp"
     fail 'SKILL Degraded-tools gate prose must not refer to session-setup parse above'
   fi
