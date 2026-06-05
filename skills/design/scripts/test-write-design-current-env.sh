@@ -305,6 +305,8 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     --cursor-present false \
     --codex-available true \
     --cursor-available false \
+    --codex-binary-found true \
+    --cursor-binary-found false \
     --claude-pid "$TEST_CLAUDE_PID"
 CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     --output "$out13" \
@@ -321,7 +323,9 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "$CURSOR_PRESENT" = "false" ] || exit 134
     [ "$CODEX_AVAILABLE" = "true" ] || exit 135
     [ "$CURSOR_AVAILABLE" = "false" ] || exit 136
-) || fail "case13: no-flag refresh did not preserve reviewer keys or clear MANUAL_REQUESTED (subshell exit $?)"
+    [ "$CODEX_BINARY_FOUND" = "true" ] || exit 137
+    [ "$CURSOR_BINARY_FOUND" = "false" ] || exit 138
+) || fail "case13: no-flag refresh did not preserve reviewer gate keys or clear MANUAL_REQUESTED (subshell exit $?)"
 
 # Case 14 — partial codex override mirrors alias peer; cursor keys preserved
 case14_dir="$TMPROOT/case14"

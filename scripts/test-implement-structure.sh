@@ -22,6 +22,47 @@ fail() {
 [[ -f "$SKILL_MD" ]] || fail "skills/implement/SKILL.md missing"
 [[ -d "$REFS_DIR" ]] || fail "skills/implement/references missing"
 
+assert_degraded_tools_gate_fence() {
+  local tmp region
+  tmp=$(mktemp "${TMPDIR:-/tmp}/implement-degraded-gate.XXXXXX")
+  awk '
+    /\*\*Degraded-tools gate \(#3207\)\.\*\*/ { in_region = 1 }
+    in_region && /^Step 0 dirty-tree recovery gate:/ { in_region = 0 }
+    in_region { print }
+  ' "$SKILL_MD" >"$tmp.region"
+  region=$(cat "$tmp.region")
+  [[ -n "$region" ]] || fail "SKILL.md missing Degraded-tools gate (#3207) region"
+  if printf '%s\n' "$region" | grep -Fq 'from the bootstrap parse above'; then
+    rm -f "$tmp" "$tmp.region"
+    fail "Degraded-tools gate region must not rely on bootstrap parse variables"
+  fi
+  awk '
+    /\*\*Degraded-tools gate \(#3207\)\.\*\*/ { start = 1; next }
+    start && /^```bash$/ { in_fence = 1; next }
+    start && in_fence && /^```$/ { exit }
+    start && in_fence { print }
+  ' "$SKILL_MD" >"$tmp"
+  [[ -s "$tmp" ]] || fail "Degraded-tools gate region missing bash fence"
+  for needle in \
+    'export IMPLEMENT_TMPDIR' \
+    'plugin-root.env' \
+    'LARCH_CLAUDE_PLUGIN_ROOT' \
+    'export CLAUDE_PLUGIN_ROOT' \
+    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "false"' \
+    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "false"' \
+    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "false"' \
+    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "false"' \
+    '"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill implement' \
+    '--codex-present "$CODEX_PRESENT"' \
+    '--cursor-present "$CURSOR_PRESENT"' \
+    '--codex-binary-found "$CODEX_BINARY_FOUND"' \
+    '--cursor-binary-found "$CURSOR_BINARY_FOUND"'
+  do
+    grep -Fq -- "$needle" "$tmp" || { rm -f "$tmp" "$tmp.region"; fail "Degraded-tools gate fence missing: $needle"; }
+  done
+  rm -f "$tmp" "$tmp.region"
+}
+
 # Issue #2497: /implement docs must not reintroduce removed --auto / --auto-mode flag surfaces.
 if grep -Eq '(^|[[:space:]])--auto([^A-Za-z0-9_-]|$)' "$SKILL_MD"; then
   fail "SKILL.md must not document standalone --auto flag token (issue #2497 structural pin)"
@@ -637,6 +678,7 @@ grep -Fq "$time0_plan_bootstrap" "$REPO_ROOT/scripts/implement-bootstrap.sh" \
   || fail "implement-bootstrap.sh must retain timing-ledger implement Step 0 — plan materialization mark"
 grep -Fq 'phase_coder_select' "$SKILL_MD" \
   || fail "SKILL.md must pin coder selection ownership to implement-bootstrap.sh"
+assert_degraded_tools_gate_fence
 grep -Fq 'mark "implement Step 0 — coder select"' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
   || fail "implement-bootstrap.sh must contain coder-select token/timing mark"
 [ -f "$REPO_ROOT/scripts/implement-bootstrap-invoke.sh" ] \

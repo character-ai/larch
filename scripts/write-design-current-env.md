@@ -27,7 +27,8 @@ restores it on every block from Step 1c onward.
 
 Always writes `DESIGN_TMPDIR`, `SESSION_TMPDIR`, and `SESSION_ID`.
 Optionally writes `MANUAL_REQUESTED`, `ISSUE_NUMBER`, `CODEX_PRESENT`, `CURSOR_PRESENT`,
-`CODEX_AVAILABLE`, `CURSOR_AVAILABLE`. Always writes
+`CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_BINARY_FOUND`, and
+`CURSOR_BINARY_FOUND`. Always writes
 `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` (default `30`, inheriting a numeric
 process-env override such as `0` for opt-out) so later `/design` Bash blocks
 and external launchers inherit the launch-time health gate without parsing
@@ -37,9 +38,10 @@ whenever it is set in the writer's environment, mirroring
 the directly-usable variable name (sourceable, not parsed).
 
 **Refresh preservation (issue #3181)**: on a no-flag refresh (Step 0b / Step 5.5-bis
-shape — only `--output`, `--design-tmpdir`, `--session-id`, and friends), the four
-reviewer keys (`CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`)
-are recovered from the existing `--output` file when the matching flag is omitted.
+shape — only `--output`, `--design-tmpdir`, `--session-id`, and friends), the six
+reviewer keys (`CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`,
+`CODEX_BINARY_FOUND`, and `CURSOR_BINARY_FOUND`) are recovered from the existing
+`--output` file when the matching flag is omitted.
 An explicit flag overrides the recovered value. When exactly one side of a
 `*_PRESENT` / `*_AVAILABLE` alias pair is passed, the writer mirrors that value to
 the omitted peer so a partial override cannot leave a stale peer (see harness Case 14).
@@ -102,7 +104,7 @@ find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l \
 - `CLAUDE_PLUGIN_ROOT`, when set, must be an absolute path of 512 characters or fewer using `[A-Za-z0-9_./~+-]`.
 - `--manual-requested`, when present, must be `true` or `false`.
 - When `--claude-pid` is passed, its value must be non-empty and match `^[1-9][0-9]{0,6}$`. Omitting the flag entirely selects the legacy shim (stderr warning).
-- Presence/availability booleans must be `true` or `false`.
+- Presence, availability, and binary-found booleans must be `true` or `false`.
 
 ## Edit-in-sync
 

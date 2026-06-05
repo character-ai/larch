@@ -13,9 +13,12 @@ implement/review branches), present-only wiring (binary-found omitted, as
 `/design` / `/review` / `/research` call it; case 7 clears
 `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` in the child env so inherited runner
 exports cannot skew classification), the `--skill`
-label, and the unknown-flag exit-2 path.
+label, empty-presence signaling (`PRESENCE_INPUT_EMPTY=true`), stderr-only
+`resolved empty` diagnostics for caller rehydration bugs, explicit-`false`
+non-signaling, omitted-presence flags with empty ambient env, and the
+unknown-flag exit-2 path.
 
 Run via `make test-degraded-tools-gate` (registered in the Makefile `.PHONY` list
-and the `test-harnesses-1` shard). Makefile-only harness — runtime reachability
+and the `test-harnesses-4` shard). Makefile-only harness — runtime reachability
 of the primary is through the Step 0 `degraded-tools-gate.sh` invocation in
 `/design`, `/implement`, `/review`, and `/research` SKILL.md.

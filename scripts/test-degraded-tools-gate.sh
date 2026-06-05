@@ -48,6 +48,7 @@ assert_contains "$out" "DEGRADED=false" "all-healthy DEGRADED=false"
 assert_contains "$out" "CODEX_STATE=ok" "all-healthy codex ok"
 assert_contains "$out" "CURSOR_STATE=ok" "all-healthy cursor ok"
 assert_contains "$out" "BOTH_DOWN=false" "all-healthy BOTH_DOWN=false"
+assert_not_contains "$out" "PRESENCE_INPUT_EMPTY" "all-healthy no empty-presence signal"
 assert_not_contains "$out" "DEGRADED_EXPLANATION_BEGIN" "all-healthy no explanation"
 
 # --- Case 2: codex probe-failed, cursor ok → degraded, probe-failed phrasing ---
@@ -90,12 +91,55 @@ assert_not_contains "$out" "proceeding automatically" "both-probe-failed no auto
 
 # --- Case 5: empty binary-found + empty present → generic `unavailable` ---
 out=$(bash "$GATE" --codex-binary-found "" --codex-present "" \
-    --cursor-binary-found true --cursor-present true) && rc=$? || rc=$?
+    --cursor-binary-found true --cursor-present true 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 0 "empty-codex exit 0"
 assert_contains "$out" "DEGRADED=true" "empty-codex degraded"
 assert_contains "$out" "CODEX_STATE=unavailable" "empty-codex → generic unavailable"
 assert_contains "$out" "BOTH_DOWN=false" "empty-codex BOTH_DOWN=false"
 assert_contains "$out" "/this run" "default skill label"
+
+# --- Case 5a: all presence flags empty → fail-safe down plus empty-presence signal ---
+_empty_all_err=$(mktemp "${TMPDIR:-/tmp}/degraded-tools-empty-all.XXXXXX")
+out=$(bash "$GATE" --codex-binary-found "" --codex-present "" \
+    --cursor-binary-found "" --cursor-present "" --skill implement 2>"$_empty_all_err") && rc=$? || rc=$?
+err=$(cat "$_empty_all_err")
+rm -f "$_empty_all_err"
+assert_rc "$rc" 0 "all-empty exit 0"
+assert_contains "$out" "DEGRADED=true" "all-empty degraded"
+assert_contains "$out" "BOTH_DOWN=true" "all-empty BOTH_DOWN=true"
+assert_contains "$out" "PRESENCE_INPUT_EMPTY=true" "all-empty signal on stdout"
+assert_not_contains "$out" "resolved empty" "all-empty diagnostic absent from stdout"
+assert_contains "$err" "--codex-present resolved empty" "all-empty codex diagnostic on stderr"
+assert_contains "$err" "--cursor-present resolved empty" "all-empty cursor diagnostic on stderr"
+assert_not_contains "$err" "PRESENCE_INPUT_EMPTY=true" "all-empty signal absent from stderr"
+
+# --- Case 5b: one presence empty, other healthy → signal but not BOTH_DOWN ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present "" \
+    --cursor-binary-found true --cursor-present true --skill implement 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 0 "one-empty exit 0"
+assert_contains "$out" "DEGRADED=true" "one-empty degraded"
+assert_contains "$out" "BOTH_DOWN=false" "one-empty BOTH_DOWN=false"
+assert_contains "$out" "PRESENCE_INPUT_EMPTY=true" "one-empty signal"
+assert_contains "$out" "--codex-present resolved empty" "one-empty codex diagnostic"
+assert_not_contains "$out" "--cursor-present resolved empty" "one-empty no cursor diagnostic"
+
+# --- Case 5c: explicit false presence is a legitimate outage, not empty input ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present false \
+    --cursor-binary-found true --cursor-present false --skill implement 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 0 "explicit-false exit 0"
+assert_contains "$out" "BOTH_DOWN=true" "explicit-false BOTH_DOWN=true"
+assert_not_contains "$out" "PRESENCE_INPUT_EMPTY" "explicit-false no empty signal"
+assert_not_contains "$out" "resolved empty" "explicit-false no empty diagnostic"
+
+# --- Case 5d: omitted presence flags with empty ambient env → no WARNING, signal fires ---
+out=$(CODEX_PRESENT='' CURSOR_PRESENT='' bash "$GATE" \
+    --codex-binary-found true --cursor-binary-found true --skill implement 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 0 "omitted-empty-env exit 0"
+assert_contains "$out" "PRESENCE_INPUT_EMPTY=true" "omitted-empty-env signal"
+assert_contains "$out" "--codex-present resolved empty" "omitted-empty-env codex diagnostic"
+assert_contains "$out" "--cursor-present resolved empty" "omitted-empty-env cursor diagnostic"
+assert_not_contains "$out" "WARNING: --codex-present omitted" "omitted-empty-env no codex present warning"
+assert_not_contains "$out" "WARNING: --cursor-present omitted" "omitted-empty-env no cursor present warning"
 
 # --- Case 6: present=true but binary-found=false is still binary-missing (binary gate wins) ---
 out=$(bash "$GATE" --codex-binary-found false --codex-present true \
