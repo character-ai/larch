@@ -12,7 +12,7 @@ The sketch phase runs the topology selected by `/design`'s run-depth router. Per
 
 ### Simple Mode
 
-For SIMPLE work, `/design` uses [0 sketch agents](topology.md#design.sketch.simple_slots). The Step 2a entry fence is the sole write site for SIMPLE sentinel synthesis artifacts and completion markers; after that, the flow proceeds directly to plan writing and no collector runs on this path.
+For SIMPLE work, `/design` uses [0 sketch agents](topology.md#design.sketch.simple_slots). The Step 2a entry fence is the primary write site on fresh SIMPLE runs for sentinel synthesis artifacts and completion markers; the Step 2a.5 compatibility repair fence may restore missing SIMPLE sentinels or markers for legacy/corrupt pauses before the flow proceeds to plan writing. No collector runs on this path.
 
 ### Hard Mode
 
@@ -31,7 +31,7 @@ The sketch agents are **completely separate** from the plan-review agents that e
 
 ## Per-Slot Skip (no Claude substitution)
 
-When Cursor or Codex is unavailable, each affected slot is **skipped** (issue #3207) — the sketch phase proceeds with fewer sketches rather than substituting a Claude subagent. When both tools are down, zero sketches run and `/design` falls through to its no-sketches path (same sentinels as SIMPLE). The Step 0 degraded-tools gate warns the operator about this degradation before the run proceeds.
+When Cursor or Codex is unavailable, each affected slot is **skipped** (issue #3207) — the sketch phase proceeds with fewer sketches rather than substituting a Claude subagent. When both tools are down, zero sketches run and `/design` falls through to the HARD degraded zero-sketches path: Step 2a.3 writes the same sentinel values as SIMPLE, but from a different write site and with HARD completion-marker rules. The Step 0 degraded-tools gate warns the operator about this degradation before the run proceeds.
 
 ## Fallback Behavior by Phase
 
@@ -39,7 +39,7 @@ The handling of unavailable external tools differs across workflow phases:
 
 | Phase | Unavailable Tool Handling |
 |---|---|
-| **Sketch phase** (`/design`) | **Skip** any slot whose tool is unavailable — fewer sketches, no Claude substitution (#3207); both down → zero sketches (no-sketches path) |
+| **Sketch phase** (`/design`) | **Skip** any slot whose tool is unavailable — fewer sketches, no Claude substitution (#3207); SIMPLE → Step 2a entry fence; HARD both-down → Step 2a.3 degraded zero-sketches guard |
 | **Plan review** (`/design`) | Per-archetype Cursor → Codex → Claude fallback chain; Codex generic → Claude — the configured panel stays intact |
 | **Code review** (`/review`) | Four active archetypes emit per available vendor; both vendors present uses `--no-fallback`, single-vendor and both-down manifests keep Claude fallback. See `skills/review/scripts/dispatch-panel.md`. |
 | **Voting (plan review)** | Claude replacement voters used — always 3 voters. 3 voters: 2+ YES to accept; 2 voters: unanimous YES; <2 voters: voting skipped, all findings accepted |
@@ -56,6 +56,7 @@ flowchart TD
     TIER -->|HARD| HARD_LAUNCH[Launch 4 personality sketches]
     HARD_LAUNCH --> HARD_WAIT[Wait for sketches]
     HARD_WAIT --> SYNTHESIS[Approach synthesis]
+    HARD_LAUNCH -->|both tools down| HARD_ZERO[Step 2a.3 writes degraded no-sketch sentinels]
     SYNTHESIS --> CONTESTED{Contested decisions}
     CONTESTED -->|none| PLAN[Full implementation plan]
     CONTESTED -->|present| DIALECTIC[Dialectic debate]

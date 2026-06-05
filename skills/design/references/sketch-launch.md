@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 2a.2 — external sketch launches (Cursor/Codex). A slot whose tool is unavailable is **skipped** (no Claude substitution, #3207).
 
-**Contract**: SIMPLE launches 0 sketch agents; its sentinel artifacts and `.completed/step-2a` / `.completed/step-2a.5` markers are written only by `skills/design/SKILL.md` Step 2a entry fence when `design_classification == SIMPLE`. HARD launches up to 4 regular sketch slots: 2 Cursor + 2 Codex personality slots on the diagonal split (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic), plus the spawn-order rule, `run_in_background: true` + `timeout: 1260000` requirements, and per-slot **skip** rules (a slot whose tool is unavailable is skipped — fewer sketches, no Claude substitution). Token bodies (`<ARCH_PROMPT>` etc.) are resolved from `references/sketch-prompts.md`, not here. Sketch-phase collection (`collect-agent-results.sh` for Step 2a.3) is NOT defined here.
+**Contract**: SIMPLE launches 0 sketch agents; its sentinel artifacts and `.completed/step-2a` / `.completed/step-2a.5` markers are written primarily by `skills/design/SKILL.md` Step 2a entry fence on fresh SIMPLE runs when `design_classification == SIMPLE`, with the Step 2a.5 compatibility repair fence allowed to restore missing SIMPLE sentinels or markers for legacy/corrupt pauses. HARD launches up to 4 regular sketch slots: 2 Cursor + 2 Codex personality slots on the diagonal split (Cursor-Arch + Cursor-Edge + Codex-Innovation + Codex-Pragmatic), plus the spawn-order rule, `run_in_background: true` + `timeout: 1260000` requirements, and per-slot **skip** rules (a slot whose tool is unavailable is skipped — fewer sketches, no Claude substitution). Token bodies (`<ARCH_PROMPT>` etc.) are resolved from `references/sketch-prompts.md`, not here. Sketch-phase collection (`collect-agent-results.sh` for Step 2a.3) is NOT defined here.
 
 **Sketch degradation — no Claude substitution (#3207)**: unlike the plan-review waterfall, the sketch phase does NOT substitute a Claude subagent when an external tool is unavailable. The affected slot is skipped and the phase runs with **fewer sketches** (possibly zero when both Cursor and Codex are down — Step 2a.3 then skips the collector and Step 2a falls through to the no-sketches path).
 
@@ -12,7 +12,7 @@
 
 ---
 
-**Critical sequencing**: For `design_classification == HARD`, you MUST launch all **available** external sketch Bash tool calls (with `run_in_background: true`) in a single message. Issue Cursor slots first (slowest), then Codex slots. Skip any slot whose tool is unavailable — do NOT substitute a Claude subagent (#3207). For `design_classification == SIMPLE`, launch nothing, do not call `collect-agent-results.sh`, and rely on the Step 2a entry fence in `skills/design/SKILL.md` for the guarded sentinel and completion-marker writes.
+**Critical sequencing**: For `design_classification == HARD`, you MUST launch all **available** external sketch Bash tool calls (with `run_in_background: true`) in a single message. Issue Cursor slots first (slowest), then Codex slots. Skip any slot whose tool is unavailable — do NOT substitute a Claude subagent (#3207). For `design_classification == SIMPLE`, launch nothing, do not call `collect-agent-results.sh`, and rely on the Step 2a entry fence in `skills/design/SKILL.md` for the guarded sentinel and completion-marker writes on fresh runs; Step 2a.5 may repair only SIMPLE legacy/corrupt pauses and must not run on HARD paths.
 
 **Launch failure logging**: For every `launch-review.sh` Bash block below, capture launcher stdout/stderr to `$DESIGN_TMPDIR/<slot>-launch.failure.log`. If the Bash tool reports a non-zero exit, append that capture verbatim to `$DESIGN_TMPDIR/execution-issues.md`.
 
@@ -24,7 +24,7 @@ Before launching, read `skills/design/references/readability-style.md` once and 
 
 ## SIMPLE Mode
 
-Use when `design_classification == SIMPLE`. This path uses 0 sketch agents: launch no external agents and no Claude fallback agents. The Step 2a entry fence in `skills/design/SKILL.md` is the only write site for these sentinel values and completion markers when `design_classification == SIMPLE`:
+Use when `design_classification == SIMPLE`. This path uses 0 sketch agents: launch no external agents and no Claude fallback agents. The Step 2a entry fence in `skills/design/SKILL.md` is the primary fresh-run write site for these sentinel values and completion markers when `design_classification == SIMPLE`; the Step 2a.5 compatibility repair fence may restore missing values or markers for legacy/corrupt SIMPLE pauses and must not run on HARD paths:
 
 - `NO_SKETCHES_CLASSIFIED_SIMPLE` → `$DESIGN_TMPDIR/approach-synthesis.txt`
 - `NO_CONTESTED_DECISIONS` → `$DESIGN_TMPDIR/contested-decisions.md`

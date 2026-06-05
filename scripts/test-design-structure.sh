@@ -941,7 +941,7 @@ grep -Fq 'architecture-diagram.skipped' "$DESIGN_PUBLISH_SH" \
 grep -Fq -- '--clear-architecture' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must invoke --clear-architecture when skipped sentinel present"
 step3b_line=$(grep -nF '<!-- step:3b' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-step4_line=$(grep -nF '<!-- step:4 ' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+step4_line=$(grep -nF '<!-- step:4 —' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 [[ -n "$step3b_line" && -n "$step4_line" ]] || fail "(15b) missing Step 3b or Step 4 marker"
 step3b_between=$(sed -n "$((step3b_line + 1)),$((step4_line - 1))p" "$SKILL_MD")
 grep -Fq 'architecture-diagram.skipped' <<<"$step3b_between" \

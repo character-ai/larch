@@ -610,8 +610,13 @@ At the Gate A success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.compl
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf '%s\n' HARD)"
+if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
+  printf '%s\n' '**⚠ Step 2a: run-params.json is not readable; cannot resolve design_classification for SIMPLE sentinel fence. Repair run params before continuing.**' >&2
+  exit 1
+fi
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
+  set -e
   _simple_artifacts_ok=true
   if ( grep -Fxq 'NO_SKETCHES_CLASSIFIED_SIMPLE' "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if ( grep -Fxq 'NO_CONTESTED_DECISIONS' "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
@@ -625,7 +630,6 @@ if [ "$_design_classification" = SIMPLE ]; then
     exit 1
   fi
   if [ "$_simple_artifacts_ok" != true ]; then
-    set -e
     printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
     printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
     : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
@@ -774,8 +778,13 @@ Before taking the SIMPLE skip, repair pre-existing paused SIMPLE runs. If SIMPLE
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf '%s\n' HARD)"
+if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
+  printf '%s\n' '**⚠ Step 2a.5: run-params.json is not readable; cannot resolve design_classification for SIMPLE repair fence. Repair run params before continuing.**' >&2
+  exit 1
+fi
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
+  set -e
   _simple_artifacts_ok=true
   if ( grep -Fxq 'NO_SKETCHES_CLASSIFIED_SIMPLE' "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if ( grep -Fxq 'NO_CONTESTED_DECISIONS' "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
@@ -789,16 +798,16 @@ if [ "$_design_classification" = SIMPLE ]; then
     exit 1
   fi
   if [ "$_simple_artifacts_ok" != true ]; then
-    set -e
     printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
     printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
     : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
     mkdir -p "$DESIGN_TMPDIR/.completed"
     : > "$DESIGN_TMPDIR/.completed/step-2a"
     : > "$DESIGN_TMPDIR/.completed/step-2a.5"
-  elif [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] && [ ! -f "$DESIGN_TMPDIR/.completed/step-2a.5" ]; then
+  elif [ ! -f "$DESIGN_TMPDIR/.completed/step-2a" ] || [ ! -f "$DESIGN_TMPDIR/.completed/step-2a.5" ]; then
     mkdir -p "$DESIGN_TMPDIR/.completed"
-    : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+    [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"
+    [ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"
   fi
 fi
 ```
