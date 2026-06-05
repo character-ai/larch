@@ -1615,6 +1615,17 @@ exclude = [
   # same Makefile-only pattern as the other test-* harnesses above.
   "scripts/test-compose-pr-summary.sh",
   "scripts/test-compose-pr-summary.md",
+  # scripts/test-compute-pr-line-counts.sh is the regression harness for the PR
+  # line-count helper. It is referenced from Makefile and from the primary
+  # script's sibling contract, but NOT from SKILL.md runtime prose — same
+  # Makefile-only pattern as the other test-* harnesses above.
+  "scripts/test-compute-pr-line-counts.sh",
+  "scripts/test-compute-pr-line-counts.md",
+  # scripts/compute-pr-line-counts.sh is invoked at runtime only from
+  # skills/implement/scripts/write-final-report.sh via a variable-expanded shell
+  # edge that G004 dead-script reachability cannot discover.
+  "scripts/compute-pr-line-counts.sh",
+  "scripts/compute-pr-line-counts.md",
   # scripts/test-upsert-diagrams-comment.sh is the offline harness for the
   # shared larch:diagrams helper. It is referenced from Makefile and from the
   # helper's sibling contract rather than from SKILL.md runtime prose.

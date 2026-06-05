@@ -51,9 +51,34 @@ cp "$REPO_ROOT/scripts/lib-cost-line-format.sh" "$plugin/scripts/lib-cost-line-f
 cp "$REPO_ROOT/scripts/append-tool-failure.sh" "$plugin/scripts/append-tool-failure.sh"
 cp "$REPO_ROOT/scripts/append-execution-issue.sh" "$plugin/scripts/append-execution-issue.sh"
 cp "$REPO_ROOT/scripts/redact-secrets.sh" "$plugin/scripts/redact-secrets.sh"
+cp "$REPO_ROOT/scripts/compute-pr-line-counts.sh" "$plugin/scripts/compute-pr-line-counts.sh"
 chmod +x "$plugin/scripts/render-run-summary.sh" "$plugin/scripts/token-cost.sh" \
     "$plugin/scripts/append-tool-failure.sh" "$plugin/scripts/append-execution-issue.sh" \
-    "$plugin/scripts/redact-secrets.sh"
+    "$plugin/scripts/redact-secrets.sh" "$plugin/scripts/compute-pr-line-counts.sh"
+mkdir -p "$TMP_ROOT/bin"
+GH_SHIM_LOG="$TMP_ROOT/gh-shim.log"
+: >"$GH_SHIM_LOG"
+export GH_SHIM_LOG
+cat > "$TMP_ROOT/bin/gh" <<'SHIM'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "$*" >>"${GH_SHIM_LOG:?}"
+if [ "${GH_SHIM_FAIL:-false}" = true ]; then
+    exit 1
+fi
+case "$*" in
+    *pulls/*/files*)
+        printf '%s\t%s\t%s\n' 'scripts/foo.sh' 10 2
+        printf '%s\t%s\t%s\n' 'larch-logs/implement/run-x/summary.md' 5 1
+        printf '%s\t%s\t%s\n' 'assets/binary.png' 0 0
+        printf '%s\t%s\t%s\n' 'scripts/renamed.sh' 4 0
+        printf '%s\t%s\t%s\n' 'docs/user guide.md' 3 1
+        ;;
+esac
+exit 0
+SHIM
+chmod +x "$TMP_ROOT/bin/gh"
+export PATH="$TMP_ROOT/bin:$PATH"
 cat > "$plugin/scripts/larch-log.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -113,6 +138,7 @@ assert_contains 'COMMENT_URL=https://example.test/comment/final' "$out" 'comment
 assert_contains 'https://example.test/pr/5' "$(cat "$TMP_ROOT/content.md")" 'summary includes PR URL'
 assert_contains '<!-- larch:run-summary v=1 -->' "$(cat "$TMP_ROOT/content.md")" 'summary includes run-summary sentinel'
 assert_contains '## /implement run run-5 — merged' "$(cat "$TMP_ROOT/content.md")" 'summary title shows merged outcome'
+assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$TMP_ROOT/content.md")" 'happy path includes bucketed line counts'
 assert_not_contains '**Outcome**:' "$(cat "$TMP_ROOT/content.md")" 'success path omits Outcome bullet'
 if [ -s "$impl_dir/larch-logs/implement/run-5/final-summary.md" ]; then pass 'final summary file written'; else fail 'final summary file written'; fi
 assert_contains '## /implement run run-5 — merged' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary title merged'
@@ -223,6 +249,7 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-bl.md
 assert_contains 'STATUS=ok' "$out" 'bailed path status ok'
 assert_contains '**Outcome**: bailed' "$(cat "$TMP_ROOT/content-bl.md")" 'plain bailed outcome in summary'
 assert_contains '- **Cost**: N/A' "$(cat "$TMP_ROOT/content-bl.md")" 'missing token data renders cost N/A'
+assert_contains '- **Lines (PR diff)**: N/A' "$(cat "$TMP_ROOT/content-bl.md")" 'no PR renders line counts N/A'
 assert_not_contains '- **PR**:' "$(cat "$TMP_ROOT/content-bl.md")" 'bailed path omits PR bullet when PR is N/A'
 
 impl_em="$TMP_ROOT/impl-em"; mkdir -p "$impl_em"
@@ -457,6 +484,7 @@ assert_schema_ordered "$fallback_stage2" 'renderer fallback stage2 keeps ordered
     '- **Issue**: #9 — https://github.com/owner/repo/issues/9' \
     '- **Plan review**: N/A' \
     '- **Code review**: N/A' \
+    '- **Lines (PR diff)**: N/A' \
     '- **OOS filed**: 0' \
     '- **Exec issues**: 0' \
     '- **Warnings**: 2' \
@@ -726,6 +754,100 @@ make_impl_fixture "$TMP_ROOT/impl-pr-created" 30 run-pr-created https://example.
 make_impl_fixture "$TMP_ROOT/impl-pr-created-draft" 31 run-pr-created-draft https://example.test/pr/31 31 false "" false true false false false
 make_impl_fixture "$TMP_ROOT/impl-forked" 32 run-forked https://example.test/pr/32 32 false "" false false true false false
 make_impl_fixture "$TMP_ROOT/impl-force-merged" 33 run-force-merged https://example.test/pr/33 33 false already_merged true false false false false
+
+impl_lines="$TMP_ROOT/impl-lines"
+mkdir -p "$impl_lines/larch-logs/implement/run-lines"
+printf 'ISSUE_NUMBER=40\nRUN_ID=run-lines\nADOPTED=true\n' > "$impl_lines/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_lines/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/40\n'
+    printf 'PR_NUMBER=40\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_lines/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_lines/finalize-state.sh"
+cat > "$impl_lines/larch-logs/implement/run-lines/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 1000}},
+  "codex": {"totals": {"total": 2000}},
+  "cursor": {"totals": {"total": 3000}},
+  "BUCKETS_claude": {"input": 500, "cache_read": 100, "cache_create_5m": 50, "cache_create_1h": 50, "output": 300},
+  "BUCKETS_codex": {"input": 1000, "cached_input": 500, "output": 500},
+  "BUCKETS_cursor": {"input": 1500, "cache_read": 500, "output": 1000}
+}
+JSON
+lines_out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-lines.md" \
+      "$HELPER" --implement-tmpdir "$impl_lines")
+assert_contains 'STATUS=ok' "$lines_out" 'line-count fixture status ok'
+assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$TMP_ROOT/content-lines.md")" 'line-count fixture bucketed values'
+assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$impl_lines/summary-final.md")" 'line-count fixture summary-final bucketed values'
+
+impl_runav="$TMP_ROOT/impl-runav"
+mkdir -p "$impl_runav/larch-logs/implement/run-runav"
+printf 'ISSUE_NUMBER=41\nRUN_ID=run-runav\nADOPTED=true\n' > "$impl_runav/parent-issue.md"
+printf 'REPO=owner/repo\nREPO_UNAVAILABLE=true\n' > "$impl_runav/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/41\n'
+    printf 'PR_NUMBER=41\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_runav/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_runav/finalize-state.sh"
+cat > "$impl_runav/larch-logs/implement/run-runav/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 1000}},
+  "codex": {"totals": {"total": 2000}},
+  "cursor": {"totals": {"total": 3000}},
+  "BUCKETS_claude": {"input": 500, "cache_read": 100, "cache_create_5m": 50, "cache_create_1h": 50, "output": 300},
+  "BUCKETS_codex": {"input": 1000, "cached_input": 500, "output": 500},
+  "BUCKETS_cursor": {"input": 1500, "cache_read": 500, "output": 1000}
+}
+JSON
+: >"$GH_SHIM_LOG"
+runav_out=$(GH_SHIM_FAIL=true CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-runav.md" \
+      "$HELPER" --implement-tmpdir "$impl_runav")
+assert_contains 'STATUS=skipped' "$runav_out" 'repo-unavailable skips tracking upsert'
+assert_contains '- **Lines (PR diff)**: N/A' "$(cat "$impl_runav/summary-final.md")" 'repo-unavailable line counts N/A'
+if [ -s "$GH_SHIM_LOG" ]; then
+    fail 'repo-unavailable must not invoke gh'
+else
+    pass 'repo-unavailable bypasses gh shim'
+fi
+
+impl_ghfail="$TMP_ROOT/impl-ghfail"
+mkdir -p "$impl_ghfail/larch-logs/implement/run-ghfail"
+printf 'ISSUE_NUMBER=42\nRUN_ID=run-ghfail\nADOPTED=true\n' > "$impl_ghfail/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_ghfail/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/42\n'
+    printf 'PR_NUMBER=42\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_ghfail/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_ghfail/finalize-state.sh"
+cat > "$impl_ghfail/larch-logs/implement/run-ghfail/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 1000}},
+  "codex": {"totals": {"total": 2000}},
+  "cursor": {"totals": {"total": 3000}},
+  "BUCKETS_claude": {"input": 500, "cache_read": 100, "cache_create_5m": 50, "cache_create_1h": 50, "output": 300},
+  "BUCKETS_codex": {"input": 1000, "cached_input": 500, "output": 500},
+  "BUCKETS_cursor": {"input": 1500, "cache_read": 500, "output": 1000}
+}
+JSON
+ghfail_out=$(GH_SHIM_FAIL=true CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-ghfail.md" \
+      "$HELPER" --implement-tmpdir "$impl_ghfail")
+assert_contains 'STATUS=ok' "$ghfail_out" 'gh-failed line-count status ok'
+assert_contains '- **Lines (PR diff)**: N/A' "$(cat "$impl_ghfail/summary-final.md")" 'gh-failed line counts N/A'
 
 for outcome_case in \
     "merged:$impl_dir:absent:present" \

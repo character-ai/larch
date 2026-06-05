@@ -16,7 +16,9 @@ TMP_CU_OUT=""
 TMP_CU_STD=""
 TMP_ZERO_OUT=""
 TMP_CU_NZ_OUT=""
-trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR" "$TMP_DES_OUT" "$TMP_DES_STD" "$TMP_CU_OUT" "$TMP_CU_STD" "$TMP_ZERO_OUT" "$TMP_CU_NZ_OUT"' EXIT
+TMP_LINES_NA=""
+TMP_LINES_PARTIAL=""
+trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR" "$TMP_DES_OUT" "$TMP_DES_STD" "$TMP_CU_OUT" "$TMP_CU_STD" "$TMP_ZERO_OUT" "$TMP_CU_NZ_OUT" "$TMP_LINES_NA" "$TMP_LINES_PARTIAL"' EXIT
 PASS=0
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; PASS=$((PASS+1)); }
@@ -53,6 +55,10 @@ LARCH_CLAUDE_RATE_PER_M=1 LARCH_CODEX_RATE_PER_M=2 LARCH_CURSOR_RATE_PER_M=3 \
     --pr-url 'https://github.com/o/r/pull/10' \
     --plan-review-line '1/2 accepted' \
     --code-review-line '3/4 accepted' \
+    --code-added 107 \
+    --code-deleted 23 \
+    --logs-added 50 \
+    --logs-deleted 10 \
     --oos-count 0 \
     --oos-urls '' \
     --exec-issues 1 \
@@ -67,8 +73,9 @@ if grep -Fq '**Outcome**:' "$TMP"; then fail 'merged run must not emit Outcome b
 grep -Fq '**PR**:' "$TMP" || fail 'missing PR bullet when URL known'
 grep -Fq -- '- Emergency: true' "$TMP" || fail 'missing emergency line when requested'
 grep -Fq '**Note:** fixture note' "$TMP" || fail 'missing appended note'
+grep -Fxq -- '- **Lines (PR diff)**: code +107/-23, larch-logs +50/-10' "$TMP" || fail 'missing full Lines (PR diff) bullet'
 grep -Fq "TOTAL ~\$5.00" "$TMP" || fail 'missing expected total cost line (approx prefix)'
-pass 'render body shape + sentinel + notes + cost'
+pass 'render body shape + sentinel + notes + cost + lines'
 
 # Shipped defaults: 1M tokens each lane (aggregate-only) → blended 0.80 + 2.00 + 1.50 = 4.30 USD total.
 TMP_DEF="$(mktemp "${TMPDIR:-/tmp}/trs-def.XXXXXX")"
@@ -221,7 +228,56 @@ TMP_ZERO_OUT="$(mktemp "${TMPDIR:-/tmp}/trs-zero-out.XXXXXX")"
     --run-logs-path N/A \
     --output-file "$TMP_ZERO_OUT" >/dev/null 2>/dev/null
 grep -Fq "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$TMP_ZERO_OUT" || fail 'omitted token flags should retain zero-dollar behavior'
+grep -Fxq -- '- **Lines (PR diff)**: N/A' "$TMP_ZERO_OUT" || fail 'omitted line-count flags render N/A'
 pass 'omitted token flags render zero-dollar cost'
+
+TMP_LINES_NA="$(mktemp "${TMPDIR:-/tmp}/trs-lines-na.XXXXXX")"
+"$HELPER" \
+    --skill implement \
+    --outcome merged \
+    --run-id RUN-LINES-NA \
+    --mode N/A \
+    --workflow-path N/A \
+    --duration N/A \
+    --issue-number 0 \
+    --issue-url N/A \
+    --pr-number 0 \
+    --pr-url N/A \
+    --plan-review-line N/A \
+    --code-review-line N/A \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path N/A \
+    --output-file "$TMP_LINES_NA" >/dev/null 2>/dev/null
+grep -Fxq -- '- **Lines (PR diff)**: N/A' "$TMP_LINES_NA" || fail 'implement without line flags renders N/A'
+pass 'implement no line-count data renders N/A'
+
+TMP_LINES_PARTIAL="$(mktemp "${TMPDIR:-/tmp}/trs-lines-partial.XXXXXX")"
+"$HELPER" \
+    --skill implement \
+    --outcome merged \
+    --run-id RUN-LINES-PARTIAL \
+    --mode N/A \
+    --workflow-path N/A \
+    --duration N/A \
+    --issue-number 0 \
+    --issue-url N/A \
+    --pr-number 0 \
+    --pr-url N/A \
+    --plan-review-line N/A \
+    --code-review-line N/A \
+    --code-added 107 \
+    --code-deleted 23 \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path N/A \
+    --output-file "$TMP_LINES_PARTIAL" >/dev/null 2>/dev/null
+grep -Fxq -- '- **Lines (PR diff)**: N/A' "$TMP_LINES_PARTIAL" || fail 'partial line-count flags render N/A'
+pass 'partial line-count data renders N/A'
 
 TMP_CU_OUT="$(mktemp "${TMPDIR:-/tmp}/trs-cu-out.XXXXXX")"
 TMP_CU_STD="$(mktemp "${TMPDIR:-/tmp}/trs-cu-std.XXXXXX")"
@@ -332,6 +388,7 @@ grep -Fq -- '- **OOS filed**:' "$TMP_DES_OUT" || fail 'design oos'
 grep -Fq '<!-- larch:run-summary v=1 -->' "$TMP_DES_OUT" || fail 'design sentinel'
 if grep -Fq -- '- **PR**:' "$TMP_DES_OUT"; then fail 'design must not emit PR'; fi
 if grep -Fq -- '- **Code review**:' "$TMP_DES_OUT"; then fail 'design must not emit code review'; fi
+if grep -Fq -- '- **Lines (PR diff)**:' "$TMP_DES_OUT"; then fail 'design must not emit Lines (PR diff)'; fi
 if grep -Fq -- '- **Outcome**:' "$TMP_DES_OUT"; then fail 'approved design must not emit Outcome'; fi
 cmp -s "$TMP_DES_OUT" "$TMP_DES_STD" || fail 'design stdout must match --output-file byte-for-byte'
 pass 'design skill schema + cmp byte identity'

@@ -66,6 +66,23 @@ After resolving `RUN_ID` from `parent-issue.md` or `session-id`, the script reje
 
 Still refreshes `summary-final.md` for the upsert but **does not** overwrite `larch-logs/.../final-summary.md`. Used by `ship-pr.sh` after PR creation so the tracking comment picks up the live URL without dirtying the run-log tree before the next flush.
 
+## PR line counts
+
+After `REPO` and `PR_NUMBER` resolve, when `REPO_UNAVAILABLE=true` the script
+skips `scripts/compute-pr-line-counts.sh` entirely and treats line data as
+unavailable. Otherwise it invokes the helper under `set +e`, parses
+`LINES_STATUS` and the four counter keys, and never aborts the report on helper
+failure.
+
+When `LINES_STATUS=ok` and all four counters are non-empty integers, both
+`run_body_render` branches forward `--code-added`, `--code-deleted`,
+`--logs-added`, and `--logs-deleted` to `render-run-summary.sh` using the
+Bash 3.2-safe `${line_args[@]+"${line_args[@]}"}` expansion. Otherwise the
+renderer omits those flags and the bullet shows `N/A`.
+
+`compose_self_fallback` emits `- **Lines (PR diff)**: …` for schema parity
+(`N/A` when counts are unavailable).
+
 ## Token-data-missing primary path
 
 When no usable token JSON exists, or the JSON is unparseable / lacks

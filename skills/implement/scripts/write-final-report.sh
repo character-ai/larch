@@ -101,6 +101,51 @@ fi
 REPO="$(read_kv REPO "$SESSION_ENV")"
 REPO_UNAV="$(read_kv REPO_UNAVAILABLE "$SESSION_ENV")"; [ -n "$REPO_UNAV" ] || REPO_UNAV="false"
 
+# --- PR line counts (non-fatal) ---
+LINES_STATUS=""
+CODE_ADDED=""
+CODE_DELETED=""
+LOGS_ADDED=""
+LOGS_DELETED=""
+LINES_DATA_OK=false
+read_lines_kv() {
+    local key=$1 blob=$2
+    printf '%s\n' "$blob" | awk -F= -v k="$key" '$1==k{print $2; exit}'
+}
+if [ "$REPO_UNAV" = "true" ]; then
+    LINES_STATUS=unavailable
+else
+    set +e
+    lines_blob=$("$PLUGIN_ROOT/scripts/compute-pr-line-counts.sh" --repo "$REPO" --pr-number "${PR_NUMBER:-0}")
+    set -e
+    LINES_STATUS=$(read_lines_kv LINES_STATUS "$lines_blob")
+    CODE_ADDED=$(read_lines_kv CODE_ADDED "$lines_blob")
+    CODE_DELETED=$(read_lines_kv CODE_DELETED "$lines_blob")
+    LOGS_ADDED=$(read_lines_kv LOGS_ADDED "$lines_blob")
+    LOGS_DELETED=$(read_lines_kv LOGS_DELETED "$lines_blob")
+fi
+if [ "$LINES_STATUS" = "ok" ]; then
+    case "$CODE_ADDED" in
+        ''|*[!0-9]*) ;;
+        *)
+            case "$CODE_DELETED" in
+                ''|*[!0-9]*) ;;
+                *)
+                    case "$LOGS_ADDED" in
+                        ''|*[!0-9]*) ;;
+                        *)
+                            case "$LOGS_DELETED" in
+                                ''|*[!0-9]*) ;;
+                                *) LINES_DATA_OK=true ;;
+                            esac
+                            ;;
+                    esac
+                    ;;
+            esac
+            ;;
+    esac
+fi
+
 NO_ISSUES="$(read_kv NO_ISSUES "$RUN_FLAGS")"; [ -n "$NO_ISSUES" ] || NO_ISSUES="false"
 EMERGENCY_REQUESTED="$(read_kv EMERGENCY_REQUESTED "$RUN_FLAGS")"; [ -n "$EMERGENCY_REQUESTED" ] || EMERGENCY_REQUESTED="false"
 EMERGENCY_REQUESTED_INVALID=false
@@ -408,6 +453,7 @@ run_body_render() {
     local force_cost_unavailable="${2:-false}"
     local cost_args=()
     local note_args=()
+    local line_args=()
     if [ "$force_cost_unavailable" = true ] || [ "$TOKEN_DATA_AVAILABLE" != true ]; then
         cost_args=(--cost-unavailable)
     else
@@ -431,6 +477,14 @@ run_body_render() {
     if [ -n "$nf" ] && [ -f "$nf" ]; then
         note_args=(--note-lines-file "$nf")
     fi
+    if [ "$LINES_DATA_OK" = true ]; then
+        line_args=(
+            --code-added "$CODE_ADDED"
+            --code-deleted "$CODE_DELETED"
+            --logs-added "$LOGS_ADDED"
+            --logs-deleted "$LOGS_DELETED"
+        )
+    fi
     "$PLUGIN_ROOT/scripts/render-run-summary.sh" \
         --skill implement \
         --outcome "$OUTCOME" \
@@ -446,6 +500,7 @@ run_body_render() {
         --pr-url "$PR_URL" \
         --plan-review-line "$PLAN_LINE" \
         --code-review-line "$CODE_LINE" \
+        "${line_args[@]+"${line_args[@]}"}" \
         --oos-count "$OOS_COUNT" \
         --oos-urls "${OOS_URLS:-}" \
         --exec-issues "$EXEC_N" \
@@ -485,6 +540,12 @@ compose_self_fallback() {
         fi
         printf -- '- **Plan review**: %s\n' "${PLAN_LINE:-N/A}"
         printf -- '- **Code review**: %s\n' "${CODE_LINE:-N/A}"
+        if [ "$LINES_DATA_OK" = true ]; then
+            printf -- '- **Lines (PR diff)**: code +%s/-%s, larch-logs +%s/-%s\n' \
+                "$CODE_ADDED" "$CODE_DELETED" "$LOGS_ADDED" "$LOGS_DELETED"
+        else
+            printf -- '- **Lines (PR diff)**: N/A\n'
+        fi
         if [ "${OOS_COUNT:-0}" != "0" ] && [ -n "${OOS_URLS:-}" ] && [ "${OOS_URLS:-}" != "N/A" ]; then
             printf -- '- **OOS filed**: %s — %s\n' "$OOS_COUNT" "$OOS_URLS"
         else
