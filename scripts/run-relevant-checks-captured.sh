@@ -115,11 +115,11 @@ TMPDIR_CANONICAL=$(validate_tmpdir "$TMPDIR_ARG") || fail "tmpdir-validation" 2
 case "$SITE" in
     step3)
         IMPLEMENT_TMPDIR="$TMPDIR_CANONICAL" "$SCRIPT_DIR/token-ledger.sh" mark "Step 3 — checks first pass" || true
-        IMPLEMENT_TMPDIR="$TMPDIR_CANONICAL" "$SCRIPT_DIR/timing-ledger.sh" mark "Step 3 — checks first pass" || true
+        LARCH_TIMING_SKILL=implement IMPLEMENT_TMPDIR="$TMPDIR_CANONICAL" "$SCRIPT_DIR/timing-ledger.sh" mark "Step 3 — checks first pass" || true
         ;;
     step6)
         IMPLEMENT_TMPDIR="$TMPDIR_CANONICAL" "$SCRIPT_DIR/token-ledger.sh" mark "Step 6 — checks second pass" || true
-        IMPLEMENT_TMPDIR="$TMPDIR_CANONICAL" "$SCRIPT_DIR/timing-ledger.sh" mark "Step 6 — checks second pass" || true
+        LARCH_TIMING_SKILL=implement IMPLEMENT_TMPDIR="$TMPDIR_CANONICAL" "$SCRIPT_DIR/timing-ledger.sh" mark "Step 6 — checks second pass" || true
         ;;
 esac
 

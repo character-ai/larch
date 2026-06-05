@@ -51,13 +51,15 @@ def _summary(records: tuple[RunRecord, ...], *, actual_spend: float | None) -> s
 def _aggregate(skill: Skill, records: tuple[RunRecord, ...]) -> str:
     if skill == "implement":
         costs = [record.total_cost for record in records]
-        return "\n".join([
+        lines = [
             "## Aggregate cost",
             "",
             "| Label | Runs | Total | Median | Mean | Max |",
             "| --- | ---: | ---: | ---: | ---: | ---: |",
-            f"| All runs | {len(costs)} | {_money(sum(costs))} | {_money(statistics.median(costs))} | {_money(statistics.mean(costs))} | {_money(max(costs))} |",
-        ])
+        ]
+        if costs:
+            lines.append(f"| All runs | {len(costs)} | {_money(sum(costs))} | {_money(statistics.median(costs))} | {_money(statistics.mean(costs))} | {_money(max(costs))} |")
+        return "\n".join(lines)
     by_workflow: dict[str, list[RunRecord]] = defaultdict(list)
     for record in records:
         by_workflow[record.workflow if record.workflow in ("SIMPLE", "HARD") else "unknown"].append(record)

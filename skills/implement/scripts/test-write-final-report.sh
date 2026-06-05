@@ -330,6 +330,28 @@ assert_contains "Invalid \`EMERGENCY_REQUESTED\` value" "$(cat "$TMP_ROOT/conten
 assert_contains '### Warnings' "$(cat "$impl_emi/execution-issues.md")" 'invalid-emergency appends warning section'
 assert_contains 'Invalid EMERGENCY_REQUESTED value in run-flags.sh: maybe' "$(cat "$impl_emi/execution-issues.md")" 'invalid-emergency warning content'
 
+impl_legacy="$TMP_ROOT/impl-legacy"; mkdir -p "$impl_legacy"
+printf 'ISSUE_NUMBER=17\nRUN_ID=run-legacy\nADOPTED=true\n' > "$impl_legacy/parent-issue.md"
+printf 'REPO=owner/repo\nPOST_PLAN_WORKFLOW_PATH=HARD\n' > "$impl_legacy/session-env.sh"
+{
+    printf 'PR_URL=N/A\n'
+    printf 'PR_NUMBER=\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=\n'
+    printf 'MERGE=false\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_legacy/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_legacy/finalize-state.sh"
+printf 'NO_ISSUES=false\nWORKFLOW_PATH=SIMPLE\nEMERGENCY_REQUESTED=false\n' > "$impl_legacy/run-flags.sh"
+out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-legacy.md" \
+      "$HELPER" --implement-tmpdir "$impl_legacy")
+legacy_body="$(cat "$TMP_ROOT/content-legacy.md")"
+assert_contains 'STATUS=ok' "$out" 'legacy workflow flags status ok'
+assert_not_contains '- **Path**:' "$legacy_body" 'legacy workflow flags do not render Path bullet'
+assert_not_contains 'SIMPLE' "$legacy_body" 'legacy WORKFLOW_PATH does not leak into summary'
+assert_not_contains 'HARD' "$legacy_body" 'legacy POST_PLAN_WORKFLOW_PATH does not leak into summary'
+
 impl_exec="$TMP_ROOT/impl-exec"; mkdir -p "$impl_exec/larch-logs/implement/run-exec"
 printf 'ISSUE_NUMBER=11\nRUN_ID=run-exec\nADOPTED=true\n' > "$impl_exec/parent-issue.md"
 printf 'REPO=owner/repo\n' > "$impl_exec/session-env.sh"

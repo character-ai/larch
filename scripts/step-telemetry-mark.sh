@@ -39,6 +39,6 @@ LARCH_TIMING_LEDGER=$("$_read" --file "$_session_env" --key LARCH_TIMING_LEDGER 
 export IMPLEMENT_TMPDIR LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 
 "$SCRIPT_DIR/token-ledger.sh" mark "$LABEL" || true
-"$SCRIPT_DIR/timing-ledger.sh" mark "$LABEL" || true
+LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "$LABEL" || true
 
 exit 0

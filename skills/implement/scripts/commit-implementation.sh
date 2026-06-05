@@ -43,7 +43,7 @@ err_file="${TMPDIR:-/tmp}/commit-implementation.$$.err"
 trap 'rm -f "$out_file" "$err_file"' EXIT
 
 "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 4 — commit implementation" || true
-"$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 4 — commit implementation" || true
+LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 4 — commit implementation" || true
 
 commit_args=(-m "$MESSAGE")
 if [[ -n "$PATHSPEC_FROM_FILE" ]]; then

@@ -8,8 +8,9 @@
 #   B) Every fenced ```bash block (including indented ones) AFTER Step 0 that invokes
 #      `timing-ledger.sh` or `timing-report.sh` is preceded — inside the SAME
 #      bash fence — by an `LARCH_TIMING_LEDGER=$(... read-session-env-key.sh ...)`
-#      rehydration line. This catches the workflow-path one-liner regression
-#      where a standalone timing-ledger call lacks per-run ledger isolation.
+#      rehydration line and an `LARCH_TIMING_SKILL=implement` pin. This catches
+#      standalone timing calls that lack per-run ledger isolation or get routed
+#      through polluted ambient design timing state.
 #
 # Step 0's preflight block is exempt from (B) because it canonically writes
 # `export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"` rather than
@@ -49,16 +50,20 @@ stale_count=$(grep -Fxc 'export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE'
 # the same fence MUST contain an
 # `LARCH_TIMING_LEDGER=$(... read-session-env-key.sh ...)` line.
 awk '
-  BEGIN { in_fence=0; has_timing=0; has_rehydration=0; fence_start=0; offending=0 }
+  BEGIN { in_fence=0; has_timing=0; has_rehydration=0; has_timing_skill_implement=0; fence_start=0; offending=0 }
   /^[[:space:]]*```bash[[:space:]]*$/ {
-    in_fence=1; has_timing=0; has_rehydration=0; fence_start=NR; next
+    in_fence=1; has_timing=0; has_rehydration=0; has_timing_skill_implement=0; fence_start=NR; next
   }
   /^[[:space:]]*```[[:space:]]*$/ && in_fence {
     if (has_timing && !has_rehydration && !is_step0) {
       printf "skills/implement/SKILL.md fence starting at line %d: timing-ledger/timing-report call lacks LARCH_TIMING_LEDGER rehydration in the same fence\n", fence_start > "/dev/stderr"
       offending=1
     }
-    in_fence=0; has_timing=0; has_rehydration=0; is_step0=0; next
+    if (has_timing && !has_timing_skill_implement && !is_step0) {
+      printf "skills/implement/SKILL.md fence starting at line %d: timing-ledger/timing-report call lacks LARCH_TIMING_SKILL=implement in the same fence\n", fence_start > "/dev/stderr"
+      offending=1
+    }
+    in_fence=0; has_timing=0; has_rehydration=0; has_timing_skill_implement=0; is_step0=0; next
   }
   in_fence {
     # Step 0 carve-out: a fence containing the canonical static export is the
@@ -70,6 +75,9 @@ awk '
     if (index($0, "LARCH_TIMING_LEDGER=$(") > 0 && index($0, "read-session-env-key.sh") > 0) {
       has_rehydration=1
     }
+    if (index($0, "LARCH_TIMING_SKILL=implement") > 0) {
+      has_timing_skill_implement=1
+    }
     if (index($0, "scripts/timing-ledger.sh") > 0 || index($0, "scripts/timing-report.sh") > 0) {
       has_timing=1
     }
@@ -79,9 +87,13 @@ awk '
       printf "skills/implement/SKILL.md fence starting at line %d: timing-ledger/timing-report call lacks LARCH_TIMING_LEDGER rehydration in the same fence\n", fence_start > "/dev/stderr"
       offending=1
     }
+    if (in_fence && has_timing && !has_timing_skill_implement && !is_step0) {
+      printf "skills/implement/SKILL.md fence starting at line %d: timing-ledger/timing-report call lacks LARCH_TIMING_SKILL=implement in the same fence\n", fence_start > "/dev/stderr"
+      offending=1
+    }
     exit offending
   }
-' "$SKILL_MD" || fail "one or more timing-ledger / timing-report fences are missing LARCH_TIMING_LEDGER rehydration (see stderr above)"
+' "$SKILL_MD" || fail "one or more timing-ledger / timing-report fences are missing LARCH_TIMING_LEDGER rehydration or LARCH_TIMING_SKILL=implement (see stderr above)"
 
 # Invariant C: every fenced bash block that uses CLAUDE_PLUGIN_ROOT must carry
 # the same-fence plugin-root rehydration guard (plugin-root.env source, or

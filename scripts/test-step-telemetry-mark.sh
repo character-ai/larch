@@ -49,6 +49,22 @@ else
 fi
 
 grep -Fq "$LABEL" "$TIMING_LEDGER" || fail "timing ledger missing mark row for label"
+awk -F '\t' -v step="$LABEL" '$2 == "mark" && $5 == step { if ($4 != "implement") exit 2; found=1 } END { exit found ? 0 : 1 }' "$TIMING_LEDGER" \
+  || fail "timing ledger mark must be pinned to implement"
+
+POLLUTED_TMP="$TMP_BASE/impl-polluted"
+mkdir -p "$POLLUTED_TMP"
+POLLUTED_LEDGER="$POLLUTED_TMP/timing-ledger.tsv"
+cat > "$POLLUTED_TMP/session-env.sh" <<EOF
+LARCH_TOKEN_SESSION_ID=polluted-session-id
+LARCH_CLAUDE_SOURCE_FILE=/dev/null
+LARCH_TIMING_LEDGER=$POLLUTED_LEDGER
+EOF
+POLLUTED_LABEL="Step polluted — harness"
+LARCH_TIMING_SKILL=design "$HELPER" --implement-tmpdir "$POLLUTED_TMP" --label "$POLLUTED_LABEL" \
+  || fail "polluted env should exit 0"
+awk -F '\t' -v step="$POLLUTED_LABEL" '$2 == "mark" && $5 == step { if ($4 != "implement") exit 2; found=1 } END { exit found ? 0 : 1 }' "$POLLUTED_LEDGER" \
+  || fail "polluted env timing mark must still be pinned to implement"
 
 # Bad --implement-tmpdir: never fatal.
 BAD_TMP="$TMP_BASE/no-such-dir"

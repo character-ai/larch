@@ -18,7 +18,8 @@ TMP_ZERO_OUT=""
 TMP_CU_NZ_OUT=""
 TMP_LINES_NA=""
 TMP_LINES_PARTIAL=""
-trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR" "$TMP_DES_OUT" "$TMP_DES_STD" "$TMP_CU_OUT" "$TMP_CU_STD" "$TMP_ZERO_OUT" "$TMP_CU_NZ_OUT" "$TMP_LINES_NA" "$TMP_LINES_PARTIAL"' EXIT
+TMP_NO_PATH=""
+trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR" "$TMP_DES_OUT" "$TMP_DES_STD" "$TMP_CU_OUT" "$TMP_CU_STD" "$TMP_ZERO_OUT" "$TMP_CU_NZ_OUT" "$TMP_LINES_NA" "$TMP_LINES_PARTIAL" "$TMP_NO_PATH"' EXIT
 PASS=0
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; PASS=$((PASS+1)); }
@@ -230,6 +231,28 @@ TMP_ZERO_OUT="$(mktemp "${TMPDIR:-/tmp}/trs-zero-out.XXXXXX")"
 grep -Fq "Claude \$0.00, Codex \$0.00, Cursor \$0.00" "$TMP_ZERO_OUT" || fail 'omitted token flags should retain zero-dollar behavior'
 grep -Fxq -- '- **Lines (PR diff)**: N/A' "$TMP_ZERO_OUT" || fail 'omitted line-count flags render N/A'
 pass 'omitted token flags render zero-dollar cost'
+
+TMP_NO_PATH="$(mktemp "${TMPDIR:-/tmp}/trs-no-path.XXXXXX")"
+"$HELPER" \
+    --skill implement \
+    --outcome merged \
+    --run-id RUN-NO-PATH \
+    --mode N/A \
+    --duration N/A \
+    --issue-number 0 \
+    --issue-url N/A \
+    --pr-number 0 \
+    --pr-url N/A \
+    --plan-review-line N/A \
+    --code-review-line N/A \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path N/A \
+    --output-file "$TMP_NO_PATH" >/dev/null 2>/dev/null
+if grep -Fq -- '- **Path**:' "$TMP_NO_PATH"; then fail 'implement without workflow path must omit Path bullet'; fi
+pass 'implement without workflow path omits Path bullet'
 
 TMP_LINES_NA="$(mktemp "${TMPDIR:-/tmp}/trs-lines-na.XXXXXX")"
 "$HELPER" \

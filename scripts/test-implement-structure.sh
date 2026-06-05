@@ -386,6 +386,10 @@ grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$SH
   || fail "implement-bootstrap.sh must not call timing-ledger workflow-path"
 ! grep -Fq -- '--workflow' "$REPO_ROOT/skills/implement/scripts/run-step2-dispatch.sh" \
   || fail "run-step2-dispatch.sh must not pass --workflow"
+! grep -Fq 'conventional hard workflow path' "$REPO_ROOT/.claude-plugin/plugin.json" \
+  || fail "plugin.json must not advertise a retired /implement hard workflow path"
+grep -Fq '/implement` has no workflow tier/path dimension' "$REPO_ROOT/.claude-plugin/plugin.json" \
+  || fail "plugin.json must describe /implement as having no workflow tier/path dimension"
 # Post-cutover: /implement no longer accepts --hard, so hard_mode references must be gone.
 ! grep -Fq 'hard_mode' "$SKILL_MD" \
   || fail "Post-plan router must not reference hard_mode (--hard flag removed in cutover)"
@@ -435,12 +439,12 @@ STEP_7A_SH="$REPO_ROOT/skills/implement/scripts/step-7a.sh"
 GEN_DIAGRAM_SH="$REPO_ROOT/skills/implement/scripts/generate-code-flow-diagram.sh"
 
 [[ -f "$COMMIT_IMPL_SH" ]] || fail "skills/implement/scripts/commit-implementation.sh missing"
-grep -qF 'timing-ledger.sh" mark "Step 4 — commit implementation"' "$COMMIT_IMPL_SH" \
-  || fail "commit-implementation.sh must contain Step 4 timing-ledger mark"
+grep -qF 'LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 4 — commit implementation"' "$COMMIT_IMPL_SH" \
+  || fail "commit-implementation.sh must contain Step 4 timing-ledger mark pinned to implement"
 
 [[ -f "$COMMIT_REVIEW_SH" ]] || fail "skills/implement/scripts/commit-review-fixes.sh missing"
-grep -qF 'timing-ledger.sh" mark "Step 7 — commit review fixes"' "$COMMIT_REVIEW_SH" \
-  || fail "commit-review-fixes.sh must contain Step 7 timing-ledger mark"
+grep -qF 'LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7 — commit review fixes"' "$COMMIT_REVIEW_SH" \
+  || fail "commit-review-fixes.sh must contain Step 7 timing-ledger mark pinned to implement"
 
 [[ -f "$STEP_7A_SH" ]] || fail "skills/implement/scripts/step-7a.sh missing"
 grep -qF 'timing-ledger.sh" mark "Step 7a — code flow diagram"' "$STEP_7A_SH" \

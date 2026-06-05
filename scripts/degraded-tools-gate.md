@@ -40,8 +40,9 @@ the **current** `session-setup.sh --check-reviewers` parse in that same Bash
 block (canonical example in `skills/shared/external-reviewers.md`). When the
 gate call runs in a different Bash block from `session-setup.sh`, rehydrate the
 four keys from durable session env first (`read-session-env-key.sh --default
-"false"` for `/implement`; prelude-sourced `source-env.sh` for `/design`) and
-then pass explicit flags. Env vars (`CODEX_BINARY_FOUND`, etc.) are initialized
+""` for `/implement`, including binary-found keys; prelude-sourced
+`source-env.sh` for `/design`, omitting binary-found flags when unset) and then
+pass explicit flags for every known key. Env vars (`CODEX_BINARY_FOUND`, etc.) are initialized
 before argv parsing as a fallback only; if a flag is omitted while the
 corresponding env var is set, the script prints a stderr `WARNING` (stale or
 cross-skill inheritance in long-lived orchestrator shells).
