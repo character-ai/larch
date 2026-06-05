@@ -117,6 +117,22 @@ def test_flush_logs_post_no_git_commit(tmp_path: Path) -> None:
     assert manifest["steps_ran"]["pr_number"] == 17
 
 
+def test_flush_logs_post_manifest_write_oserror_returns_recovery_skip(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ctx = _ctx(tmp_path)
+    _ = run_logs.init_run(ctx)
+
+    def boom(*_a: object, **_k: object) -> None:
+        raise OSError("disk full")
+
+    monkeypatch.setattr(run_logs, "_write_manifest", boom)
+    skip = run_logs.flush_logs_post(ctx, merge_result=config.MERGE_RESULT_MERGED)
+    assert skip.skipped is True
+    assert skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED
+
+
 def test_flush_logs_post_leaves_partial_on_failed_merge(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     _ = run_logs.init_run(ctx)

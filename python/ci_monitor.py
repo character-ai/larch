@@ -9,6 +9,7 @@ import re
 import tempfile
 import time
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -20,10 +21,13 @@ import git
 import logging_util
 import redact
 import retry
+import run_logs
 from agents import TierAttempt
+from errors import ShipError
 from gh import FailedJob
 from outcomes import Outcome, StepResult
 from proc import CommandResult, Runner
+from run_context import RunContext
 
 _IN_PROGRESS_MSG = "is still in progress; logs will be available"
 _CI_SUSPEND_THRESHOLD_SEC = 60.0
@@ -874,23 +878,31 @@ def stage_and_push(
     base_remote: str = "origin",
     base_ref: str = "main",
     ci_fix_rebase_pending: bool = False,
+    classified: ClassifiedJobs | None = None,
+    ctx: RunContext | None = None,
 ) -> tuple[bool, str | None, tuple[str, ...], bool, bool]:
     """Stage delta paths, commit, then push; force-push only after a rebase."""
-    if not delta_paths:
-        return False, None, (), False, ci_fix_rebase_pending
-    for path in delta_paths:
-        _ = runner.run(["git", "add", "--", path], cwd=cwd)
-    commit_msg = f"Apply CI fixes ({commit_label})"
-    commit_script = str(_SCRIPTS_DIR / "git-commit.sh")
-    commit = runner.run(
-        [commit_script, "--no-trailer", "-m", commit_msg],
-        cwd=cwd,
-    )
-    if commit.returncode != 0:
-        return False, None, delta_paths, False, ci_fix_rebase_pending
-    head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
-    branch = git.current_branch(runner, cwd=cwd) if head else "HEAD"
+    head: str | None
+    branch: str
     did_rebase = False
+    if delta_paths:
+        for path in delta_paths:
+            _ = runner.run(["git", "add", "--", path], cwd=cwd)
+        commit_msg = f"Apply CI fixes ({commit_label})"
+        commit_script = str(_SCRIPTS_DIR / "git-commit.sh")
+        commit = runner.run(
+            [commit_script, "--no-trailer", "-m", commit_msg],
+            cwd=cwd,
+        )
+        if commit.returncode != 0:
+            return False, None, delta_paths, False, ci_fix_rebase_pending
+        head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
+        branch = git.current_branch(runner, cwd=cwd) if head else "HEAD"
+    elif ci_fix_rebase_pending:
+        head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
+        branch = git.current_branch(runner, cwd=cwd) if head else "HEAD"
+    else:
+        return False, None, (), False, ci_fix_rebase_pending
     if not ci_fix_rebase_pending:
         try:
             behind = runner.run(["git", "rev-list", "--count", f"HEAD..{base_remote}/{base_ref}"], cwd=cwd)
@@ -901,12 +913,43 @@ def stage_and_push(
         except ValueError:
             behind_count = 0
         if behind.returncode == 0 and behind_count > 0:
-            fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
-            if fetch.returncode == 0:
-                rebased = git.rebase(runner, f"{base_remote}/{base_ref}", cwd=cwd)
-                did_rebase = rebased.returncode == 0
+            known_failed_jobs = classified is not None and classified.count > 0
+            if not known_failed_jobs:
+                _warn_stderr("ship-pr: behind main but failed-jobs unknown; skipping defer-rebase")
+            else:
+                fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
+                if fetch.returncode == 0:
+                    rebased = git.rebase(runner, f"{base_remote}/{base_ref}", cwd=cwd)
+                    did_rebase = rebased.returncode == 0
+                    if not did_rebase:
+                        _abort_rebase_result = git.rebase(runner, "--abort", cwd=cwd)
+                        _ = _abort_rebase_result
+                        return False, head, delta_paths, False, False
+                else:
+                    return False, head, delta_paths, False, False
     if did_rebase or ci_fix_rebase_pending:
-        force = git.force_push_recovery(runner, branch=branch, remote="origin", cwd=cwd)
+        if did_rebase and classified and classified.fixable:
+            failed_verify = [
+                _job_token(job.name, job.shard)
+                for job in classified.fixable
+                if not verify_job_locally(runner, job.name, job.shard, cwd=cwd)
+            ]
+            if failed_verify:
+                return False, head, delta_paths, did_rebase, False
+        if ctx is not None:
+            with suppress(OSError, ShipError):
+                _ = run_logs.flush_logs_pre(runner, ctx.with_(state_file=None), cwd=cwd)
+        _ = git.fetch(runner, "origin", branch, cwd=cwd)
+        expected_remote_oid = git.try_rev_parse(runner, f"origin/{branch}", cwd=cwd)
+        if not expected_remote_oid:
+            return False, head, delta_paths, did_rebase, True
+        force = git.force_push_recovery(
+            runner,
+            branch=branch,
+            remote="origin",
+            expected_remote_oid=expected_remote_oid,
+            cwd=cwd,
+        )
         pushed = force.pushed
     else:
         push = git.push(runner, "origin", branch, cwd=cwd)
@@ -931,8 +974,34 @@ def run_ci_fix(
     base_remote: str = "origin",
     base_ref: str = "main",
     ci_fix_rebase_pending: bool = False,
+    ctx: RunContext | None = None,
 ) -> FixResult:
     """Drive the CI vendor waterfall once."""
+    if ci_fix_rebase_pending:
+        pushed, post_head, delta_paths, did_rebase, pending = stage_and_push(
+            runner,
+            cwd=cwd,
+            commit_label="pending-retry",
+            delta_paths=(),
+            base_remote=base_remote,
+            base_ref=base_ref,
+            ci_fix_rebase_pending=True,
+            classified=classified,
+            ctx=ctx,
+        )
+        if not pushed:
+            return FixResult(
+                status="waterfall-failed",
+                detail="push failed",
+                did_rebase=did_rebase,
+                ci_fix_rebase_pending=pending,
+            )
+        return FixResult(
+            status="pushed",
+            delta_paths=delta_paths,
+            did_rebase=did_rebase,
+            ci_fix_rebase_pending=False,
+        )
     baseline_tracked, baseline_untracked, baseline_staged, baseline_head = _capture_baseline(
         runner,
         cwd=cwd,
@@ -1042,6 +1111,8 @@ def run_ci_fix(
             base_remote=base_remote,
             base_ref=base_ref,
             ci_fix_rebase_pending=ci_fix_rebase_pending,
+            classified=classified,
+            ctx=ctx,
         )
         if not pushed:
             return FixResult(
@@ -1106,6 +1177,7 @@ def evaluate_failure(
     base_remote: str = "origin",
     base_ref: str = "main",
     ci_fix_rebase_pending: bool = False,
+    ctx: RunContext | None = None,
 ) -> FixResult:
     """Port of run_evaluate_failure outer loop."""
     if not run_id or not str(run_id).strip():
@@ -1142,6 +1214,30 @@ def evaluate_failure(
                 status="waterfall-failed",
                 detail="evaluate_failure: detached HEAD",
             )
+        if ci_fix_rebase_pending:
+            pending_fix = run_ci_fix(
+                runner,
+                run_id=run_id,
+                repo=repo,
+                classified=last_classified or ClassifiedJobs(0, (), (), ()),
+                logs=last_logs or LogCollectResult(text="", state="ready"),
+                plan_file=plan_file,
+                start_attempt=0,
+                cwd=cwd,
+                launch_fn=launch_fn,
+                base_remote=base_remote,
+                base_ref=base_ref,
+                ci_fix_rebase_pending=True,
+                ctx=ctx,
+            )
+            if pending_fix.status == "pushed":
+                return pending_fix
+            if pending_fix.ci_fix_rebase_pending:
+                if attempt < config.CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS:
+                    sleep_fn(_outer_backoff_seconds(attempt))
+                    continue
+                return pending_fix
+            return pending_fix
         if attempt == 1 and upfront_ready_stash is not None:
             logs = upfront_ready_stash
         else:
@@ -1177,6 +1273,7 @@ def evaluate_failure(
             base_remote=base_remote,
             base_ref=base_ref,
             ci_fix_rebase_pending=ci_fix_rebase_pending,
+            ctx=ctx,
         )
         if fix.code_fix_attempted_on_ready_log:
             code_fix_attempted_on_ready_log = True
@@ -1238,6 +1335,7 @@ def monitor(
     transient_retries: int = 0,
     plan_file: str | None = None,
     ci_fix_rebase_pending: bool = False,
+    ctx: RunContext | None = None,
     cwd: str | None = None,
     launch_fn: LaunchFn | None = None,
     sleep_fn: SleepFn = time.sleep,
@@ -1325,6 +1423,7 @@ def monitor(
             base_remote=base_remote,
             base_ref=base_ref,
             ci_fix_rebase_pending=ci_fix_rebase_pending,
+            ctx=ctx,
         )
         if fix.status == "no-changes":
             return _base_result(
@@ -1380,6 +1479,13 @@ def monitor(
                 goto=False,
                 step=StepResult(outcome=Outcome.NEEDS_USER_INPUT, detail=detail),
                 pending=fix.ci_fix_rebase_pending,
+            )
+        if fix.status == "waterfall-failed" and fix.ci_fix_rebase_pending:
+            return _base_result(
+                did_fixing=True,
+                goto=False,
+                step=StepResult(outcome=Outcome.OK),
+                pending=True,
             )
         return _base_result(
             did_fixing=True,

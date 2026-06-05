@@ -847,6 +847,31 @@ def test_merge_unknown_exhaustion_errors(
     assert len(sleeps) == config.MERGE_PR_INITIAL_UNKNOWN_RETRIES
 
 
+def test_merge_post_flush_manifest_recovery_failed_emits_error(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+
+    def fake_post(*_a: object, **_k: object) -> run_logs.RefreshSkip:
+        return run_logs.RefreshSkip(
+            skipped=True,
+            reason=run_logs.REFRESH_SKIP_RECOVERY_FAILED,
+        )
+
+    monkeypatch.setattr(run_logs, "flush_logs_post", fake_post)
+    ctx = _ctx(tmpdir=str(tmp_path), state_file=str(state))
+    out = merge_module._post_flush(  # pyright: ignore[reportPrivateUsage]
+        RecordingRunner(),
+        ctx,
+        config.MERGE_RESULT_MERGED,
+    )
+    assert out is not None
+    assert out.result == config.MERGE_RESULT_ERROR
+    assert run_logs.REFRESH_SKIP_RECOVERY_FAILED in out.error
+
+
 def test_post_flush_redaction_skip_is_merge_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

@@ -355,7 +355,6 @@ def rebase_and_push(
     base_target = f"{base_remote}/{base_ref}"
     fetch_result = git.fetch(runner, base_remote, base_ref, cwd=cwd)
     if fetch_result.returncode != 0:
-        _abort_rebase(runner, cwd=cwd)
         combined = f"{fetch_result.stdout}\n{fetch_result.stderr}"
         if retry.is_transient_net_signature(combined):
             raise TransientNetworkError(

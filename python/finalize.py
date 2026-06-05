@@ -13,6 +13,7 @@ from pathlib import Path
 
 import config
 import git
+import logging_util
 import retry
 import run_logs
 import tracking_issue
@@ -21,7 +22,7 @@ from outcomes import Outcome
 from proc import CommandResult, Runner
 from run_context import RunContext
 
-POSTBUMP_CHECKPOINT_MAX_BYTES = 4096
+POSTBUMP_CHECKPOINT_MAX_BYTES = 64
 LS_REMOTE_NOT_FOUND_RC = 2
 
 
@@ -48,10 +49,31 @@ def _bool_text(value: object) -> str:
 
 def _result_from_error(exc: Exception) -> FinalizeResult:
     if isinstance(exc, TransientNetworkError):
-        return FinalizeResult(Outcome.TRANSIENT, "transient", str(exc))
+        return FinalizeResult(
+            Outcome.TRANSIENT,
+            "transient",
+            str(exc),
+            rebase_status="skipped-resume",
+            force_push_status="absent",
+            log_write_status="skipped",
+        )
     if isinstance(exc, NeedsUserInput):
-        return FinalizeResult(Outcome.NEEDS_USER_INPUT, "needs-user-input", str(exc))
-    return FinalizeResult(Outcome.STALLED, "stalled", str(exc))
+        return FinalizeResult(
+            Outcome.NEEDS_USER_INPUT,
+            "needs-user-input",
+            str(exc),
+            rebase_status="skipped-resume",
+            force_push_status="absent",
+            log_write_status="skipped",
+        )
+    return FinalizeResult(
+        Outcome.STALLED,
+        "stalled",
+        str(exc),
+        rebase_status="skipped-resume",
+        force_push_status="absent",
+        log_write_status="skipped",
+    )
 
 
 @dataclass(frozen=True)
@@ -92,7 +114,11 @@ def _postbump_checkpoint_status(ctx: RunContext) -> str:
         text = path.read_text(encoding="utf-8").replace("\r", "").strip()
     except (OSError, UnicodeDecodeError):
         return "corrupt"
-    if not text or not all(part.islower() or part.isdigit() or part == "-" for part in text):
+    if not text or not text[0].islower() or not all(
+        part.islower() or part.isdigit() or part == "-" for part in text
+    ):
+        return "corrupt"
+    if text != "force-push-gate":
         return "corrupt"
     path.unlink(missing_ok=True)
     return "ok"
@@ -113,7 +139,6 @@ def _rebase_no_push(
     cwd: str | None,
 ) -> str:
     if not _retry_fetch(runner, base_remote, "main", cwd=cwd):
-        _ = git.rebase(runner, "--abort", cwd=cwd)
         return "failed"
     base = f"{base_remote}/main"
     if git.is_ancestor(runner, base, "HEAD", cwd=cwd):
@@ -177,10 +202,25 @@ def _local_cleanup(
         )
         if all_flushes and larch_only:
             _ = runner.run(["git", "reset", "--hard", "origin/main"], cwd=cwd)
-    pull = runner.run(["git", "pull", "--ff-only", "origin", "main"], cwd=cwd)
-    if pull.returncode != 0:
+    def pull_attempt() -> tuple[CommandResult, int, str]:
+        result = runner.run(["git", "pull", "--ff-only", "origin", "main"], cwd=cwd)
+        return result, result.returncode, result.stdout + result.stderr
+
+    pull = retry.with_transient_retry(pull_attempt)
+    if pull.last_returncode != 0:
+        ahead_after = _numeric_stdout(
+            runner.run(["git", "rev-list", "--count", "origin/main..HEAD"], cwd=cwd),
+        )
+        if ahead_after > 0:
+            logging_util.BreadcrumbWriter().emit(
+                f"local cleanup: pull failed; local main is ahead of origin/main by {ahead_after} commit(s)",
+                quiet=False,
+            )
         return LocalCleanupResult(cleanup_success=False, current_branch=current, branch_deleted=False)
-    deleted = runner.run(["git", "branch", "-D", branch], cwd=cwd).returncode == 0
+    branch_check = runner.run(["git", "check-ref-format", "--branch", branch], cwd=cwd)
+    if branch_check.returncode != 0:
+        return LocalCleanupResult(cleanup_success=True, current_branch=current, branch_deleted=False)
+    deleted = runner.run(["git", "branch", "-D", "--", branch], cwd=cwd).returncode == 0
     return LocalCleanupResult(cleanup_success=True, current_branch=current, branch_deleted=deleted)
 
 
@@ -444,7 +484,7 @@ def _teardown_log_flush(runner: Runner, ctx: RunContext, *, cwd: str | None) -> 
         _ = run_logs.update_manifest(
             ctx,
             status=config.MANIFEST_STATUS_PARTIAL,
-            steps_ran={"stalled_at_step": ctx.stall_step or "unknown"},
+            stalled_at_step=ctx.stall_step or "unknown",
         )
     post_merge_sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
     if not ctx.no_logs_commit and not post_merge_sentinel.exists():

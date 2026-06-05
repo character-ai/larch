@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import shutil
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -61,6 +62,55 @@ def test_postmerge_skip_decisions_match_trimmed_bash(
 ) -> None:
     result = finalize.postmerge(RecordingRunner(), _ctx(tmp_path, **changes), cwd=str(tmp_path))
     assert result.local_cleanup_status == expected
+
+
+def test_postmerge_draft_status_matches_bash_subprocess(tmp_path: Path) -> None:
+    state = tmp_path / "state.sh"
+    bail = tmp_path / "final-bail-reason"
+    _ = state.write_text(
+        "BRANCH_NAME=feat\n"
+        "PR_NUMBER=2\n"
+        "PR_URL=https://example.test/pr/2\n"
+        "PR_TITLE=Title\n"
+        "ISSUE_NUMBER=1\n"
+        "REPO=o/r\n"
+        "DRAFT=true\n"
+        "MERGE=true\n"
+        "DEFERRED=false\n"
+        "REPO_UNAVAILABLE=false\n"
+        "PR_CLOSED=false\n"
+        "DESIGN_ONLY_DONE=false\n"
+        "BAIL_NEEDS_USER_INPUT=false\n"
+        "STALL_TRACKING=false\n"
+        "DONE_RENAME_APPLIED=false\n"
+        "RUN_ID=run-abc\n"
+        "FORKED_TARGET=false\n"
+        "MERGE_RESULT=\n",
+        encoding="utf-8",
+    )
+    _ = bail.write_text("", encoding="utf-8")
+    bash = subprocess.run(
+        [
+            "bash",
+            str(IMPLEMENT_FINALIZE_SH),
+            "postmerge",
+            "--state-file",
+            str(state),
+            "--final-bail-reason-file",
+            str(bail),
+        ],
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    bash_kv = dict(line.split("=", 1) for line in bash.stdout.splitlines() if "=" in line)
+    python_result = finalize.postmerge(
+        RecordingRunner(),
+        _ctx(tmp_path, draft=True),
+        cwd=str(tmp_path),
+    )
+    assert bash_kv["LOCAL_CLEANUP_STATUS"] == python_result.local_cleanup_status
+    assert bash_kv["VERIFY_MAIN_STATUS"] == python_result.verify_main_status
 
 
 def test_postbump_uses_rebase_without_changelog(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

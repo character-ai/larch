@@ -450,7 +450,7 @@ def _pending_oos_gate(
 
 def _postmerge_should_flush(ctx: RunContext) -> bool:
     return bool(
-        ctx.run_id
+        run_logs.effective_run_id(ctx)
         and ctx.pr_number is not None
         and not ctx.repo_unavailable
         and ctx.pr_closed
@@ -526,6 +526,7 @@ def _write_ship_state(
     resume_phase: str | None = None,
     caller_kind: str | None = None,
     extra_fields: dict[str, str] | None = None,
+    ci_fix_rebase_pending_head: str = "",
 ) -> None:
     if not ctx.state_file:
         return
@@ -546,7 +547,18 @@ def _write_ship_state(
             raise ShipError(f"invalid ship state extra field: {sorted(unexpected)[0]}")
         if "CONFLICT_FILES" in extra_fields:
             _validate_conflict_csv(extra_fields["CONFLICT_FILES"])
-    fields = {
+    fields: dict[str, str] = {}
+    if path.is_file():
+        try:
+            for line in path.read_text(encoding="utf-8").splitlines():
+                if "=" not in line:
+                    continue
+                key, _, value = line.partition("=")
+                if key and "\n" not in key and "\r" not in key:
+                    fields[key] = value
+        except (OSError, UnicodeDecodeError):
+            fields = {}
+    fields.update({
         "PHASE": phase,
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
         "ISSUE_NUMBER": ctx.issue_number or ctx.issue,
@@ -565,13 +577,16 @@ def _write_ship_state(
         "MERGE_RESULT": ctx.merge_result,
         "OOS_PENDING": _state_bool(value=ctx.oos_pending),
         "CI_FIX_REBASE_PENDING": _state_bool(value=ctx.ci_fix_rebase_pending),
+        "CI_FIX_REBASE_PENDING_HEAD": ci_fix_rebase_pending_head
+        if ctx.ci_fix_rebase_pending
+        else "",
         "REBASE_COUNT": str(rebase_count),
         "FIX_ATTEMPTS": str(fix_attempts),
         "ITERATION": str(iteration),
         "TRANSIENT_RETRIES": str(transient_retries),
         "RESUME_PHASE": resume_phase,
         "CALLER_KIND": caller_kind,
-    }
+    })
     if extra_fields:
         fields.update(extra_fields)
     for key, value in fields.items():
@@ -1053,6 +1068,11 @@ def run_ship(
         codex_present = ctx.codex_present or bool(os.environ.get("CODEX") or os.environ.get("CODEX_HOME") or ctx.tool_label == "codex")
         cursor_present = ctx.cursor_present or bool(os.environ.get("CURSOR") or os.environ.get("CURSOR_AUTH_ARGS") or ctx.tool_label == "cursor")
         base_ref = "main"
+        if ctx.ci_fix_rebase_pending:
+            expected_pending_head = run_logs.read_state_kv(ctx.state_file, "CI_FIX_REBASE_PENDING_HEAD")
+            current_head = git.try_rev_parse(runner, "HEAD", cwd=repo_root)
+            if not expected_pending_head or expected_pending_head != current_head:
+                ctx = ctx.with_(ci_fix_rebase_pending=False)
         resume = _resume_plan(ctx, runner, cwd=repo_root)
         if resume.start == "blocked-rebase-continuation":
             return ShipResult(
@@ -1273,6 +1293,9 @@ def run_ship(
                 rebase_count=rebase_count,
                 fix_attempts=fix_attempts,
                 transient_retries=transient_retries,
+                ci_fix_rebase_pending_head=(git.try_rev_parse(runner, "HEAD", cwd=repo_root) or "")
+                if working.ci_fix_rebase_pending
+                else "",
             )
             monitor = ci_monitor.monitor(
                 runner,
@@ -1286,11 +1309,13 @@ def run_ship(
                 base_ref=base_ref,
                 plan_file=working.plan_file or None,
                 ci_fix_rebase_pending=working.ci_fix_rebase_pending,
+                ctx=working,
                 cwd=repo_root,
             )
             monitor_pending = getattr(monitor, "ci_fix_rebase_pending", working.ci_fix_rebase_pending)
             if monitor_pending != working.ci_fix_rebase_pending:
                 working = working.with_(ci_fix_rebase_pending=monitor_pending)
+                pending_head = git.try_rev_parse(runner, "HEAD", cwd=repo_root) if monitor_pending else ""
                 _write_ship_state(
                     working,
                     phase="ci-initial",
@@ -1298,6 +1323,7 @@ def run_ship(
                     rebase_count=rebase_count,
                     fix_attempts=fix_attempts,
                     transient_retries=transient_retries,
+                    ci_fix_rebase_pending_head=pending_head or "",
                 )
             if monitor.result.outcome is not Outcome.OK:
                 persisted = _monitor_persisted_counters(
@@ -1350,7 +1376,11 @@ def run_ship(
                     )
                     _breadcrumb("rebase", "Flush+Push")
                     pre_rebase = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=repo_root)
-                    if pre_rebase.skipped and pre_rebase.reason not in config.REFRESH_SKIP_MERGE_OK:
+                    if (
+                        pre_rebase.skipped
+                        and pre_rebase.reason != run_logs.REFRESH_SKIP_RECOVERY_FAILED
+                        and pre_rebase.reason not in config.REFRESH_SKIP_MERGE_OK
+                    ):
                         _write_terminal_state(
                             working,
                             Outcome.STALLED,

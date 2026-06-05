@@ -84,6 +84,7 @@ fi
 export DESIGN_TMPDIR
 export LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv"
 export LARCH_TIMING_SKILL=design
+unset IMPLEMENT_TMPDIR
 ledger="$DESIGN_TMPDIR/timing-ledger.tsv"
 step_label="design Step 3 — plan review"
 if [[ -f "$ledger" ]]; then

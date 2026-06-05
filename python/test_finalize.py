@@ -57,7 +57,8 @@ def test_postmerge_verifies_main_title(tmp_path: Path) -> None:
             CommandResult(("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01),
             CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "0\n", "", 0.01),
             CommandResult(("git", "pull", "--ff-only", "origin", "main"), 0, "", "", 0.01),
-            CommandResult(("git", "branch", "-D", "feat"), 0, "", "", 0.01),
+            CommandResult(("git", "check-ref-format", "--branch", "feat"), 0, "", "", 0.01),
+            CommandResult(("git", "branch", "-D", "--", "feat"), 0, "", "", 0.01),
             CommandResult(("git", "log", "-1", "--format=%s", "HEAD"), 0, "Implement thing (#7)\n", "", 0.01),
         ],
     )
@@ -92,7 +93,50 @@ def test_teardown_stall_preserves_tmpdir_and_writes_manifest(tmp_path: Path) -> 
             encoding="utf-8",
         ),
     )
-    assert manifest["steps_ran"]["stalled_at_step"] == "12"
+    assert manifest["stalled_at_step"] == "12"
+
+
+def test_postbump_rejects_corrupt_checkpoint(tmp_path: Path) -> None:
+    checkpoint = tmp_path / ".postbump-phase"
+    _ = checkpoint.write_text("not-a-valid-checkpoint", encoding="utf-8")
+    result = finalize.postbump(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))
+    assert result.status == "postbump-state-corrupt"
+    assert result.rebase_status == "skipped-resume"
+    assert result.log_write_status == "skipped"
+
+
+def test_postbump_rejects_oversized_checkpoint(tmp_path: Path) -> None:
+    checkpoint = tmp_path / ".postbump-phase"
+    _ = checkpoint.write_bytes(b"x" * 65)
+    result = finalize.postbump(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))
+    assert result.status == "postbump-state-corrupt"
+
+
+def test_postmerge_skips_when_pr_not_merged(tmp_path: Path) -> None:
+    result = finalize.postmerge(
+        RecordingRunner(),
+        _ctx(tmp_path, final_bail_reason="blocked"),
+        cwd=str(tmp_path),
+    )
+    assert result.local_cleanup_status == "skipped-bail"
+    assert result.verify_main_status == "skipped"
+
+
+def test_local_cleanup_partial_on_pull_failure(tmp_path: Path) -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("git", "checkout", "main"), 0, "", "", 0.01),
+            CommandResult(("git", "rev-parse", "origin/main"), 0, "base\n", "", 0.01),
+            CommandResult(("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01),
+            CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "2\n", "", 0.01),
+            CommandResult(("git", "log", "origin/main..HEAD", "--format=%s"), 0, "other\n", "", 0.01),
+            CommandResult(("git", "diff", "--name-only", "base", "HEAD"), 0, "src/a.py\n", "", 0.01),
+            CommandResult(("git", "pull", "--ff-only", "origin", "main"), 1, "", "error", 0.01),
+            CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "2\n", "", 0.01),
+        ],
+    )
+    result = finalize.postmerge(runner, _ctx(tmp_path), cwd=str(tmp_path))
+    assert result.local_cleanup_status == "partial"
 
 
 def test_write_finalize_state_contains_teardown_keys(tmp_path: Path) -> None:

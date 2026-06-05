@@ -1893,6 +1893,71 @@ def _meets_python_ship_floor(major: int, minor: int) -> bool:
     return (major, minor) >= (3, 11)
 
 
+def test_postmerge_should_flush_uses_state_file_run_id(tmp_path: Path) -> None:
+    state = tmp_path / "state.sh"
+    _ = state.write_text("RUN_ID=state-run\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, run_id="", state_file=str(state), pr_number=5, pr_closed=True)
+    assert ship._postmerge_should_flush(ctx) is True  # pyright: ignore[reportPrivateUsage]
+
+
+def test_postmerge_should_flush_false_without_run_id(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path, run_id="", pr_number=5, pr_closed=True)
+    assert ship._postmerge_should_flush(ctx) is False  # pyright: ignore[reportPrivateUsage]
+
+
+def test_ci_fix_rebase_pending_cleared_when_head_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.sh"
+    _ = state.write_text(
+        "CI_FIX_REBASE_PENDING=true\nCI_FIX_REBASE_PENDING_HEAD=oldhead\n",
+        encoding="utf-8",
+    )
+    ctx = _ctx(tmp_path, state_file=str(state), ci_fix_rebase_pending=True)
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "u", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "newhead")
+    written: list[str] = []
+
+    def capture_state(ctx_arg: RunContext, **kwargs: object) -> None:
+        if kwargs.get("phase") == "checks":
+            written.append("true" if ctx_arg.ci_fix_rebase_pending else "false")
+
+    monkeypatch.setattr(ship, "_write_ship_state", capture_state)
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.STALLED, detail="stop"),
+                "action": "evaluate_failure",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "failed_run_id": "1",
+                "ci_fix_rebase_pending": False,
+                "transient_rerun_attempted": False,
+            },
+        )(),
+    )
+    _ = ship.run_ship(ctx, runner=RecordingRunner(), cwd=str(tmp_path))
+    assert written == ["false"]
+
+
 def test_python_ship_driver_version_guard_probe() -> None:
     """Pin the /implement Step 8+ and ship.py runtime floor (Python >= 3.11)."""
     assert _meets_python_ship_floor(3, 11)

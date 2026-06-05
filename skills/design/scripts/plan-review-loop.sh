@@ -443,6 +443,7 @@ _snapshot_terminal_exit_preserving_status() {
     local round_num="$1" rc="$2" summary_revise="$3"
     if [[ "${LOOP_STATUS:-}" == "main-agent-vote-required" ]]; then
         _persist_plan_round_start "$round_num" "${_round_start:-}"
+        _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
     else
         _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
     fi

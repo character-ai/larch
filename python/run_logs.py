@@ -404,6 +404,7 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
     run_id = current.run_id
     created_at = current.created_at
     updated_at = current.updated_at
+    extra = dict(current.extra or {})
     for key, value in changes.items():
         if key == "steps_ran" and isinstance(value, dict):
             steps.update(cast("dict[str, Any]", value))
@@ -417,6 +418,8 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
             created_at = str(value)
         elif key == "updated_at":
             updated_at = str(value)
+        else:
+            extra[key] = value
     updated = Manifest(
         status=status,
         version=version,
@@ -424,7 +427,7 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
         steps_ran=steps,
         created_at=created_at,
         updated_at=updated_at,
-        extra=current.extra,
+        extra=extra or None,
     )
     _write_manifest(ctx, updated)
     return updated
@@ -795,7 +798,10 @@ def flush_logs_post(
         updated_at=manifest.updated_at,
         extra={**(manifest.extra or {}), **({"pr_number": int(pr_number)} if str(pr_number).isdigit() else {})},
     )
-    _write_manifest(ctx, updated)
+    try:
+        _write_manifest(ctx, updated)
+    except OSError:
+        return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
     return RefreshSkip(skipped=False, reason="")
 
 
