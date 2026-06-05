@@ -192,6 +192,8 @@ On `gh` or redactor failure, the helper appends via `scripts/append-tool-failure
 - **Cancel paths** — already covered in §4 / §6.
 - **Retry exhaustion** — §2 second `panel-failed` → exit **1** (preserve tmpdir).
 
+**Non-exiting Split returns** (Refine, no-split Continue, and retained Step 3 `LOOP_STATUS=plan-size-trigger` paths): merged `--with-plan-size` callers and retained decomposition callers MUST `mkdir -p "$DESIGN_TMPDIR/.completed"` and write/update `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` before returning to Gate A or continuing. Initial-site merged Split entry and non-exiting return also write `: > "$DESIGN_TMPDIR/.completed/step-2b"`. Retained Step 3 `plan-size-trigger` **Refine** returns route to Gate A or an explicit pause/refine re-entry — do not silently short-circuit to Step 3b when refinement re-entry is required.
+
 ---
 
 ## 10) Operator follow-through

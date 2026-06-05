@@ -4,6 +4,29 @@ Regression harness for `design-postplan-emit.sh`.
 
 The primary contract lives in `design-postplan-emit.md`; this sibling exists for the script-documentation invariant and should be updated with that primary when harness coverage changes.
 
+## `--with-plan-size` harness coverage
+
+Tests added for the new mode (real `check-plan-size.sh` symlinked into the fake plugin tree via `$TMP/fake-plugin`):
+
+- **clean rc 0**: display breadcrumb present, KVs only in result env, no stdout KV leakage.
+- **plan body > 800 lines**: hard rc 12.
+- **`diff_added > 2000`**: hard rc 12.
+- **`mechanical_churn: true`**: soft advisory display, rc 0.
+- **soft advisory + hard trigger**: both advisory and hard-section preamble displayed before rc 12.
+- **`partition_requested=true`**: rc 13.
+- **`partition_requested=true` with jq hidden from PATH**: still rc 13 (sed boolean fallback).
+- **`partition_requested=true` + hard-sized plan**: rc 12, not rc 13 (hard wins over partition).
+- **defects-found**: rc 10; plan-size skipped; validator context in result env.
+- **`--snapshot-original` composition**: rc 0 clean path with snapshot.
+- **D27+ nonfatal / merged failures**: plan-size rc 2/3 WARN display, `check-plan-size.validation.log` written, stderr diagnostics preserved, `execution-issues.md` entry attempted, no `APPENDED=` / `LOG=` in display output, nonfatal even when `append-tool-failure.sh` itself fails; merged rc1 diagnostics for `snapshot-failed` and `validate-driver-failed`.
+- **pause rc 11**: thin fence can exec pause-save.
+- **classification-stderr WARN display**: WARN body appears in display; no `WARN=` KV leaks to display; WARN retained in result env.
+- **rc1 subfailures**: failure-specific diagnostic emitted before exit.
+- **result-env create/truncate/write failure or symlink**: rc1 with clear diagnostic, no stdout-KV fallback.
+- **nested plan-size with `LARCH_QUIET_DISABLE=1`**: verdict KVs and WARNs captured even under a quiet-mode parent.
+
+Non-flag cases retained to prove unchanged `{0,1,2}` + FD3-KV contract.
+
 ## Quiet-mode warning regression
 
 The harness includes default-quiet cases with `LARCH_QUIET_DISABLE` unset: one removes `run-params.json` and one keeps a readable `run-params.json` missing `design_classification`. Both assert stdout contains a `WARN=` line with the `read-design-classification` defaulting message.

@@ -68,6 +68,15 @@ Emitted keys (exit **0** only):
 | 2 | Missing plan file → `PLAN_SIZE_STATUS=missing-plan`; or missing/malformed trailer → `PLAN_SIZE_STATUS=missing-diff-lines` |
 | 3 | Invocation / argv error (e.g. missing `--design-tmpdir`, unknown flag) — stderr only; **no** `PLAN_SIZE_STATUS` on the contract stream |
 
+## Callers
+
+- **Merged**: `design-postplan-emit.sh --with-plan-size` (initial Step 2b, Gate B, discussion-round2 / Gate A after-discussion).
+- **Retained**: `SKILL.md` Step 2b.5 procedure (Override-after-defects, Step 3 `LOOP_STATUS=plan-size-trigger`), `plan-review-loop.sh` post-revise pipeline.
+
+**Site-aware retained hard prompts**: initial/discussion Step 2b.5 uses Split/Cancel only; Gate B, Step 3 `LOOP_STATUS=plan-size-trigger`, and `plan-review-loop.sh` use Split/Override/Cancel.
+
+Merged mode treats rc 2/3 nonfatally in the driver; `plan-review-loop.sh` uses the same warn-and-continue contract and gates `partition_requested` handoff on plan-size rc=0.
+
 ## Edit in sync
 
-Update [`test-check-plan-size.sh`](test-check-plan-size.sh), [`test-check-plan-size.md`](test-check-plan-size.md), [`lib-plan-optional-trailers.sh`](lib-plan-optional-trailers.sh), [`lib-plan-optional-trailers.awk`](lib-plan-optional-trailers.awk), `Makefile` (`test-check-plan-size`), `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b.5 when changing thresholds or contracts.
+Update [`test-check-plan-size.sh`](test-check-plan-size.sh), [`test-check-plan-size.md`](test-check-plan-size.md), [`lib-plan-optional-trailers.sh`](lib-plan-optional-trailers.sh), [`lib-plan-optional-trailers.awk`](lib-plan-optional-trailers.awk), `Makefile` (`test-check-plan-size`), `design-postplan-emit.sh`, `design-postplan-emit.md`, `plan-review-loop.sh`, `skills/design/references/flags.md`, and `skills/design/SKILL.md` Step 2b / 2b.5 when changing thresholds or contracts.

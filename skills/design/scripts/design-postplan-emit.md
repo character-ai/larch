@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Step 2b post-plan emit sequence and prompt-side re-emit sites.
 
-**Callers**: `skills/design/SKILL.md` initial Step 2b, Gate A re-entry rewrites, `skills/design/references/approval-gates.md` Gate B shared post-apply pipeline, and `skills/design/references/discussion-rounds.md` post-plan Round 2 revisions.
+**Callers**: `skills/design/SKILL.md` initial Step 2b (`--with-plan-size --snapshot-original`), Gate A after-discussion re-emit (`--with-plan-size`), `skills/design/references/approval-gates.md` Gate B shared post-apply (`--with-plan-size`), and `skills/design/references/discussion-rounds.md` post-plan Round 2 (`--with-plan-size`). Retained callers still use standalone `check-plan-size.sh` via Step 2b.5 / `plan-review-loop.sh`.
 
 ## Argv
 
@@ -10,86 +10,72 @@
 |------|----------|-------|
 | `--design-tmpdir PATH` | yes | Canonicalized with `cd … && pwd -P` |
 | `--snapshot-original` | no | Enables the initial HARD `plan.txt-original` write-once snapshot |
+| `--with-plan-size` | no | Merged mode: run `check-plan-size.sh` after successful validation; action exit codes; display-only FD 3 |
 
-Only the initial Step 2b call passes `--snapshot-original`. Re-emit sites suppress the HARD snapshot. Validation runs on every emit.
+Only the initial Step 2b call passes `--snapshot-original`. Re-emit sites suppress the HARD snapshot. Validation is unconditional for all sites.
 
 ## Responsibilities
 
-1. Resolve `CLAUDE_PLUGIN_ROOT`, export `CLAUDE_PLUGIN_ROOT` and `DESIGN_TMPDIR`. Snapshot eligibility is resolved through `read-design-classification.sh`.
-2. Pause checkpoint before each internal step. If `.pause-requested` exists, `_postplan_resolve_issue` uses prelude-sourced `ISSUE_NUMBER` or `source-env.sh` (`export ISSUE_NUMBER=...`), `_postplan_resolve_repo` reads `export REPO=...` from `source-env.sh` without sourcing it, and then the driver `exec`s `design-pause-save.sh` with `--repo` only when `REPO` is non-empty.
-3. Pipe `ACTION=EMIT_PLAN` to `design-driver.sh` and parse `EMIT_PLAN_STATUS` / `DIFF_LINES`.
-4. When `--snapshot-original` and `read-design-classification.sh` resolves `design_classification=HARD`, run `snapshot-plan-round.sh write-original --design-tmpdir DIR`; otherwise emit a skipped snapshot status.
-5. Run `invoke-plan-validator.sh DIR/plan.txt` on every successful emit.
-6. Stop before Step 2b.5 and before the prompt-side `AskUserQuestion` for plan-command validator defects.
-
-The driver wraps existing helpers; it does not duplicate `emit-plan.sh`, `snapshot-plan-round.sh`, or validator logic.
+1. Resolve `CLAUDE_PLUGIN_ROOT`, export `DESIGN_TMPDIR`, read `partition_requested` from `run-params.json` (`json_boolean_or_sed` for bare `true`/`false` without `jq`).
+2. Pause checkpoint before each internal step. **`--with-plan-size`**: exit **11** after writing result env (orchestrator `exec`s `design-pause-save.sh`). **Legacy**: `exec` pause-save from the driver.
+3. Pipe `ACTION=EMIT_PLAN` to `design-driver.sh`.
+4. Optional HARD snapshot when `--snapshot-original`.
+5. Run `invoke-plan-validator.sh` unconditionally.
+6. **`--with-plan-size`**: after validation succeeds without defects, run `check-plan-size.sh` with `LARCH_QUIET_DISABLE=1`; parse stdout only; stderr to a sidecar on failure paths.
 
 ## Result env (`.design-postplan-emit-result.env`)
 
-Allowlist / stdout KV contract:
+**Legacy mode** mirrors mandatory KVs to stdout via `emit_kv`.
 
-- `POSTPLAN_EMIT_STATUS`
-- `EMIT_PLAN_STATUS`
-- `DIFF_LINES`
-- `SNAPSHOT_STATUS`
-- `VALIDATE_STATUS`
-- `VALIDATE_DEFECT_COUNT`
-- `VALIDATE_SKIPPED_COUNT`
-- `VALIDATE_UNSAFE_TOKEN_COUNT`
-- `VALIDATE_LOG_FILE`
-- `WARN` (optional, repeatable)
+**Merged mode** writes KVs only to the result env. Display lines use `emit` on FD 3 (no `emit_kv` / no `WARN=` leakage on display). If the result env cannot be created/truncated/written (including symlink refusal), exit **1** with a display diagnostic — no stdout-KV fallback.
 
-Default/status matrix:
+Allowlisted keys for orchestrator reads (never `source`):
 
-| Key | Initial default | EMIT failure | Snapshot skipped | After snapshot | Success |
-|-----|-----------------|--------------|------------------|-------------------|---------|
-| `POSTPLAN_EMIT_STATUS` | `pending` | `missing-diff-lines` or `emit-failed` | unchanged | unchanged | `ok` |
-| `EMIT_PLAN_STATUS` | `not-run` | parsed value | parsed value | parsed value | parsed value |
-| `DIFF_LINES` | empty | empty unless emitted | parsed value | parsed value | parsed value |
-| `SNAPSHOT_STATUS` | `not-run` | `not-run` | `skipped-not-hard` or `skipped-suppressed` | current value | `taken`, `preserved`, or skipped |
-| `VALIDATE_STATUS` | `not-run` | `not-run` | `not-run` | parsed status | parsed status |
-| Validator counts/log | `0` / empty | `0` / empty | `0` / empty | `0` / empty | parsed values |
+- `POSTPLAN_EMIT_STATUS`, `EMIT_PLAN_STATUS`, `DIFF_LINES`, `SNAPSHOT_STATUS`
+- `VALIDATE_STATUS`, `VALIDATE_DEFECT_COUNT`, `VALIDATE_SKIPPED_COUNT`, `VALIDATE_UNSAFE_TOKEN_COUNT`, `VALIDATE_LOG_FILE`
+- `PLAN_SIZE_STATUS`, `HARD_TRIGGER_FIRED`, `TRIGGER_REASONS`, `PLAN_LINES`, `DIFF_ADDED`, `DIFF_DELETED`, `MECHANICAL_CHURN`, `SOFT_ADVISORY`, `PARTITION_REQUESTED`
+- `WARN` (repeatable)
 
 ## Exit codes
+
+### Legacy (no `--with-plan-size`)
 
 | Code | When |
 |------|------|
 | `0` | Success, including `VALIDATE_STATUS=defects-found` |
-| `1` | Operation failure: `missing-diff-lines`, `emit-failed`, `snapshot-failed`, or `validate-driver-failed` |
+| `1` | `missing-diff-lines`, `emit-failed`, `snapshot-failed`, `validate-driver-failed` |
 | `2` | Argv / configuration / precondition error |
 
-`POSTPLAN_EMIT_STATUS=missing-diff-lines` is the orchestrator repair route for `plan.txt`. `VALIDATE_STATUS=defects-found` is not a driver failure; the orchestrator fires the shared Plan command validator failure body.
+### Merged (`--with-plan-size`)
 
-## `set -e` child-call invariant
+| Code | When |
+|------|------|
+| `0` | Clean under thresholds; or plan-size rc 2/3 warn-and-continue (nonfatal) |
+| `1` | Emit/snapshot/validator infrastructure failure (specific diagnostic emitted on FD 3 before exit) |
+| `2` | Argv / configuration error |
+| `10` | `VALIDATE_STATUS=defects-found` (plan-size skipped) |
+| `11` | Pause requested (orchestrator runs `design-pause-save.sh`) |
+| `12` | Hard trigger (`HARD_TRIGGER_FIRED=true`; hard wins over partition) |
+| `13` | `partition_requested=true` without hard trigger |
 
-The script runs under `set -euo pipefail`, but every child helper is called inside a local `set +e` capture. A child non-zero exit must never skip `_postplan_write_result_and_emit`. On every `0` / `1` exit path, `_postplan_write_result_and_emit` writes the result env and mirrors the mandatory KVs to stdout so the orchestrator can fall back to stdout when the file is absent or refused as a symlink.
+**Precedence**: defects → plan-size skipped; hard → partition when both apply.
 
-## Orchestrator handoff
+## Plan-size nonfatal failures (merged)
 
-Prompt-side callers use the same pattern as `design-route.sh` and `design-publish.sh`:
+On `check-plan-size.sh` rc **2** or **3**: capture stdout+stderr to `check-plan-size.validation.log`, append via `append-tool-failure.sh` (helper stdout/stderr suppressed), emit display `WARN`, exit **0** (under-threshold continuation).
 
-1. `set +e` capture to `_postplan_out` and `_postplan_rc`, then `set -e`.
-2. Initialize every allowlisted variable to empty before parsing.
-3. Prefer `$DESIGN_TMPDIR/.design-postplan-emit-result.env` when it exists and is not a symlink; never `source` it.
-4. Merge stdout from `_postplan_out` only for still-unset allowlisted keys so file-first values win. Replay `WARN=` lines from stdout only when the file parse did not succeed.
-5. When `_postplan_rc` is `0` or `1`, abort if routing keys such as `POSTPLAN_EMIT_STATUS` or `VALIDATE_STATUS` remain empty after the merge.
+## Soft advisory display
+
+When `SOFT_ADVISORY=true` and `HARD_TRIGGER_FIRED=false`, emit mechanical-churn advisory then exit `0`. When both soft advisory and hard trigger, emit advisory plus hard-section preamble before exit **12**.
+
+## Classification warnings (#3441)
+
+`read-design-classification.sh` stderr is captured into `WARN` result-env lines and replayed via display `emit` (not `WARN=` tokens on FD 3).
 
 ## Edit in sync
 
-Update together: `skills/design/SKILL.md` Step 2b and Gate A re-entry prose, `skills/design/references/approval-gates.md`, `skills/design/references/discussion-rounds.md`, `skills/design/references/flags.md`, `skills/design/scripts/test-design-postplan-emit.sh`, `scripts/test-design-structure.sh`, and `Makefile`.
+Update together: `skills/design/SKILL.md`, `references/approval-gates.md`, `references/discussion-rounds.md`, `references/flags.md`, `references/decompose-panel.md`, `check-plan-size.md`, `test-design-postplan-emit.sh`, `scripts/test-design-structure.sh`, and `Makefile`.
 
 ## Harness
 
-`skills/design/scripts/test-design-postplan-emit.sh` (Makefile target: `test-design-postplan-emit`).
-
-## Snapshot classification gate
-
-`--snapshot-original` resolves eligibility with `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh` against `run-params.json`. Missing, unreadable, or invalid `design_classification` resolves to HARD for snapshot purposes. Legacy `workflow_path` cannot suppress the original snapshot when classification resolves HARD; SIMPLE classification emits `SNAPSHOT_STATUS=skipped-not-hard`.
-
-## Classification warnings
-
-Classification warnings from `read-design-classification.sh` are operator-visible under default quiet mode. `WARN_LINES=()` is initialized before the classification read, stderr from the classification helper is captured, and non-empty warning lines are emitted as repeatable `WARN=` stdout KVs by `_postplan_write_result_and_emit`. If the helper exits non-zero without stderr, the driver appends a synthetic `WARN=` noting the non-zero exit and the HARD fallback. The stdout classification value and `HARD` fallback semantics are unchanged.
-
-## Recent contract coverage
-
-- Pause checkpoints resolve `REPO` from explicit `--repo` or awk-only `source-env.sh` parsing and forward `${REPO:+--repo "$REPO"}` to `design-pause-save.sh`.
+`skills/design/scripts/test-design-postplan-emit.sh` (`make test-design-postplan-emit`).

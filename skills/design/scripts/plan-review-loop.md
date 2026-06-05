@@ -72,6 +72,17 @@ Written under `plan-review/round-N/round-summary.env` after each round's outcome
 | 1 | `panel-failed` |
 | 2 | argv error |
 
+## `check-plan-size.sh` call in `_run_post_apply_pipeline`
+
+The post-apply pipeline calls `check-plan-size.sh` to check the revised plan size. Behavior:
+
+- **rc 2/3 (nonfatal)**: captures stdout to `check-plan-size.validation.log`; appends a `Warnings` entry to `execution-issues.md` via `append-tool-failure.sh` with `>/dev/null 2>&1 || true` so helper KVs such as `APPENDED=` / `LOG=` never reach loop stdout; emits a display `⚠` line; treats the plan as under-threshold and returns clean (partition handoff suppressed when rc=0 check was skipped this way).
+- **rc 0 + `partition_requested=true`** (from `run-params.json`, parsed with `jq` when available, bare sed-based boolean fallback otherwise): emits `LOOP_STATUS=plan-size-trigger` with `REASON=plan-size-partition`. Caller must use the retained **Split / Override / Cancel** hard-prompt contract for plan-review-loop sites.
+- **rc 0 + hard trigger**: emits `LOOP_STATUS=plan-size-trigger` as before.
+- **Hard wins over partition** when both fire on the same plan.
+
+`CHECK_PLAN_SIZE_SH` resolves as `${LARCH_CHECK_PLAN_SIZE_SH:-${CHECK_PLAN_SIZE_SH:-$PLUGIN_ROOT/.../check-plan-size.sh}}`, exposing a test-override env var.
+
 ## Cross-links
 
 - `scripts/lib-design-round-artifacts.md` — snapshot/publish allowlist

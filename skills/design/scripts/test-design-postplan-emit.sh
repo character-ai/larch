@@ -74,8 +74,13 @@ FAKE_DESIGN="$FAKE_PLUGIN/skills/design/scripts"
 FAKE_SCRIPTS="$FAKE_PLUGIN/scripts"
 mkdir -p "$FAKE_DESIGN" "$FAKE_SCRIPTS"
 ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$FAKE_SCRIPTS/lib-quiet.sh"
+ln -sf "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$FAKE_SCRIPTS/lib-design-tmpdir.sh"
 ln -sf "$REPO_ROOT/scripts/read-design-classification.sh" "$FAKE_SCRIPTS/read-design-classification.sh"
+ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
 ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
+ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
+ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.sh" "$FAKE_DESIGN/lib-plan-optional-trailers.sh"
+ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.awk" "$FAKE_DESIGN/lib-plan-optional-trailers.awk"
 
 cat >"$FAKE_DESIGN/design-driver.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -162,6 +167,28 @@ run_subject() {
     shift
     reset_env
     bash "$SUBJECT" --design-tmpdir "$d" "$@" >"$d/stdout.txt" 2>"$d/stderr.txt"
+}
+
+run_subject_quiet_parent() {
+    local d="$1"
+    shift
+    reset_env
+    env -u LARCH_QUIET_DISABLE CALL_LOG="$CALL_LOG" CLAUDE_PLUGIN_ROOT="$FAKE_PLUGIN" \
+        bash "$SUBJECT" --design-tmpdir "$d" "$@" >"$d/stdout.txt" 2>"$d/stderr.txt"
+}
+
+fill_plan_lines() {
+    local file="$1" n="$2" msg="${3:-body line}"
+    if [[ "$file" == /dev/stdout ]]; then
+        awk -v n="$n" -v m="$msg" 'BEGIN { for (i = 1; i <= n; i++) print m }'
+    else
+        awk -v n="$n" -v m="$msg" 'BEGIN { for (i = 1; i <= n; i++) print m }' >>"$file"
+    fi
+}
+
+write_small_plan() {
+    local d="$1"
+    printf '# Plan\n\ndiff_lines: 12\n' >"$d/plan.txt"
 }
 
 # 1 happy SIMPLE non-quick
@@ -432,13 +459,12 @@ setup_design_tmp "$D11a" full SIMPLE
 printf 'export ISSUE_NUMBER=78\nexport REPO=source/repo\n' >"$D11a/source-env.sh"
 : >"$D11a/.pause-requested"
 set +e
-run_subject "$D11a" --repo explicit/repo
+run_subject "$D11a"
 rc=$?
 set -e
-assert_rc "pause explicit repo checkpoint rc" 0 "$rc"
+assert_rc "pause source repo checkpoint rc" 0 "$rc"
 assert_contains "$CALL_LOG" '--issue 78' "pause explicit repo issue resolved"
-assert_contains "$CALL_LOG" '--repo explicit/repo' "pause explicit repo forwarded"
-assert_not_contains "$CALL_LOG" '--repo source/repo' "pause explicit repo overrides source-env repo"
+assert_contains "$CALL_LOG" '--repo source/repo' "pause source repo forwarded"
 
 # 11a.1 invalid source-env repo emits structured pause failure
 D11a_bad_source="$TMP/pause-invalid-source-repo"
@@ -477,6 +503,258 @@ rc=$?
 set -e
 assert_rc "force validate removed" 2 "$rc"
 assert_not_exists_or_empty "$D12/.design-postplan-emit-result.env" "force validate removed writes no result env"
+
+# --- --with-plan-size merged mode ---
+D13="$TMP/merged-clean"
+setup_design_tmp "$D13" full SIMPLE
+set +e
+run_subject "$D13" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged clean" 0 "$rc"
+assert_file_kv "$D13/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS ok "merged clean status"
+assert_file_kv "$D13/.design-postplan-emit-result.env" PLAN_SIZE_STATUS under-threshold "merged clean plan-size"
+assert_contains "$D13/stdout.txt" 'under thresholds' "merged clean breadcrumb"
+assert_not_contains "$D13/stdout.txt" 'POSTPLAN_EMIT_STATUS=' "merged no stdout KV"
+assert_not_contains "$D13/stdout.txt" 'WARN=' "merged no WARN= leakage"
+
+D14="$TMP/merged-hard-body"
+setup_design_tmp "$D14" full SIMPLE
+{
+    printf '# Plan\n'
+    for _ in $(seq 1 5); do printf "### NEW: \`z%s.md\`\n" "$_"; done
+    fill_plan_lines /dev/stdout 796 b
+    printf 'diff_lines: 400\n'
+} >"$D14/plan.txt"
+set +e
+run_subject "$D14" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged hard body" 12 "$rc"
+assert_file_kv "$D14/.design-postplan-emit-result.env" HARD_TRIGGER_FIRED true "merged hard KV"
+assert_contains "$D14/stdout.txt" '## Plan Size — Hard Trigger' "merged hard section"
+
+D15="$TMP/merged-hard-diff-added"
+setup_design_tmp "$D15" full SIMPLE
+{
+    printf '# Plan\n'
+    for _ in $(seq 1 5); do printf "### NEW: \`q%s.md\`\n" "$_"; done
+    fill_plan_lines /dev/stdout 195 b
+    printf 'diff_added: 2001\n'
+    printf 'diff_lines: 500\n'
+} >"$D15/plan.txt"
+set +e
+run_subject "$D15" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged hard diff_added" 12 "$rc"
+
+D16="$TMP/merged-soft"
+setup_design_tmp "$D16" full SIMPLE
+{
+    printf '# Plan\n'
+    for _ in $(seq 1 5); do printf "### NEW: \`m%s.md\`\n" "$_"; done
+    fill_plan_lines /dev/stdout 195 b
+    printf 'diff_added: 2001\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5000\n'
+} >"$D16/plan.txt"
+set +e
+run_subject "$D16" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged soft advisory" 0 "$rc"
+assert_contains "$D16/stdout.txt" 'mechanical-churn advisory' "merged soft advisory display"
+
+D17="$TMP/merged-soft-hard"
+setup_design_tmp "$D17" full SIMPLE
+{
+    printf '# Plan\n'
+    for _ in $(seq 1 5); do printf "### NEW: \`z%s.md\`\n" "$_"; done
+    fill_plan_lines /dev/stdout 796 b
+    printf 'diff_added: 2001\n'
+    printf 'mechanical_churn: true\n'
+    printf 'diff_lines: 5000\n'
+} >"$D17/plan.txt"
+set +e
+run_subject "$D17" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged soft+hard" 12 "$rc"
+assert_contains "$D17/stdout.txt" 'mechanical-churn advisory' "merged soft+hard advisory"
+assert_contains "$D17/stdout.txt" '## Plan Size — Hard Trigger' "merged soft+hard hard section"
+
+D18="$TMP/merged-partition"
+setup_design_tmp "$D18" full SIMPLE
+printf '{"review_budget":"full","workflow_path":"SIMPLE","design_classification":"SIMPLE","partition_requested":true}\n' >"$D18/run-params.json"
+write_small_plan "$D18"
+set +e
+run_subject "$D18" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged partition" 13 "$rc"
+assert_contains "$D18/stdout.txt" '## Plan Size — Partition requested' "merged partition section"
+
+D18b="$TMP/merged-partition-no-jq"
+setup_design_tmp "$D18b" full SIMPLE
+printf '{"review_budget":"full","partition_requested":true}\n' >"$D18b/run-params.json"
+write_small_plan "$D18b"
+PATH_SAVE="$PATH"
+PATH=$(printf '%s\n' "$PATH" | tr ':' '\n' | grep -vx 'jq' | paste -sd: -)
+set +e
+run_subject "$D18b" --with-plan-size
+rc=$?
+set -e
+PATH="$PATH_SAVE"
+assert_rc "merged partition no jq" 13 "$rc"
+
+D19="$TMP/merged-partition-hard"
+setup_design_tmp "$D19" full SIMPLE
+printf '{"review_budget":"full","partition_requested":true}\n' >"$D19/run-params.json"
+{
+    printf '# Plan\n'
+    for _ in $(seq 1 5); do printf "### NEW: \`z%s.md\`\n" "$_"; done
+    fill_plan_lines /dev/stdout 796 b
+    printf 'diff_lines: 400\n'
+} >"$D19/plan.txt"
+set +e
+run_subject "$D19" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged partition+hard" 12 "$rc"
+
+D20="$TMP/merged-defects"
+setup_design_tmp "$D20" full SIMPLE
+reset_env
+export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
+set +e
+bash "$SUBJECT" --design-tmpdir "$D20" --with-plan-size >"$D20/stdout.txt" 2>"$D20/stderr.txt"
+rc=$?
+set -e
+assert_rc "merged defects" 10 "$rc"
+assert_file_kv "$D20/.design-postplan-emit-result.env" VALIDATE_STATUS defects-found "merged defects validate"
+assert_file_kv "$D20/.design-postplan-emit-result.env" PLAN_SIZE_STATUS skipped-defects "merged defects skip plan-size"
+
+D21="$TMP/merged-pause"
+setup_design_tmp "$D21" full SIMPLE
+printf 'export ISSUE_NUMBER=99\n' >"$D21/source-env.sh"
+: >"$D21/.pause-requested"
+set +e
+run_subject "$D21" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged pause" 11 "$rc"
+assert_not_contains "$CALL_LOG" 'pause-save' "merged pause no exec"
+assert_file_kv "$D21/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS paused "merged pause status"
+
+D22="$TMP/merged-plan-size-rc2"
+setup_design_tmp "$D22" full SIMPLE
+printf 'x\n' >"$D22/plan.txt"
+set +e
+run_subject "$D22" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged plan-size rc2" 0 "$rc"
+assert_contains "$D22/stdout.txt" 'proceeding without threshold check' "merged rc2 warn display"
+assert_not_contains "$D22/stdout.txt" 'APPENDED=' "merged rc2 no APPENDED"
+[[ -f "$D22/check-plan-size.validation.log" ]] || fail "merged rc2 validation log"
+
+D23="$TMP/merged-quiet-nested"
+setup_design_tmp "$D23" full SIMPLE
+set +e
+run_subject_quiet_parent "$D23" --with-plan-size
+rc=$?
+set -e
+export LARCH_QUIET_DISABLE=1
+assert_rc "merged quiet parent" 0 "$rc"
+assert_file_kv "$D23/.design-postplan-emit-result.env" PLAN_SIZE_STATUS under-threshold "merged quiet parent env"
+
+D24="$TMP/merged-classification-warn"
+setup_design_tmp "$D24" full SIMPLE
+rm -f "$D24/run-params.json"
+set +e
+run_subject "$D24" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "merged classification warn" 0 "$rc"
+assert_contains "$D24/stdout.txt" 'read-design-classification' "merged classification warn display"
+assert_not_contains "$D24/stdout.txt" 'WARN=' "merged classification no WARN="
+grep -Fq 'WARN=' "$D24/.design-postplan-emit-result.env" || fail "merged classification WARN in env"
+
+D25="$TMP/merged-missing-diff"
+setup_design_tmp "$D25" full SIMPLE
+reset_env
+export EMIT_STATUS_VALUE=missing-diff-lines
+set +e
+bash "$SUBJECT" --design-tmpdir "$D25" --with-plan-size >"$D25/stdout.txt" 2>"$D25/stderr.txt"
+rc=$?
+set -e
+assert_rc "merged missing diff" 1 "$rc"
+assert_contains "$D25/stdout.txt" 'missing a final diff_lines' "merged missing diff diagnostic"
+
+D26="$TMP/merged-result-env-refuse"
+setup_design_tmp "$D26" full SIMPLE
+ln -sf /tmp "$D26/.design-postplan-emit-result.env"
+set +e
+run_subject "$D26" --with-plan-size
+rc=$?
+set -e
+rm -f "$D26/.design-postplan-emit-result.env"
+assert_rc "merged result env refuse" 1 "$rc"
+assert_contains "$D26/stdout.txt" 'result env write failed' "merged result env diagnostic"
+assert_not_contains "$D26/stdout.txt" 'POSTPLAN_EMIT_STATUS=' "merged result env no stdout fallback"
+
+D27="$TMP/merged-plan-size-append-fails"
+rm -f "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+cat >"$FAKE_DESIGN/check-plan-size.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'PLAN_SIZE_STATUS=missing-plan\n'
+printf 'stderr detail from check-plan-size\n' >&2
+exit 2
+STUB
+cat >"$FAKE_SCRIPTS/append-tool-failure.sh" <<'STUB'
+#!/usr/bin/env bash
+printf 'APPENDED=false\nLOG=/tmp/leak\n'
+exit 7
+STUB
+chmod +x "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+setup_design_tmp "$D27" full SIMPLE
+set +e
+run_subject "$D27" --with-plan-size
+rc=$?
+set -e
+assert_rc "merged plan-size append failure is nonfatal" 0 "$rc"
+assert_contains "$D27/stdout.txt" 'proceeding without threshold check' "merged append failure warning display"
+assert_contains "$D27/check-plan-size.validation.log" 'stderr detail from check-plan-size' "merged append failure preserves stderr"
+assert_not_contains "$D27/stdout.txt" 'APPENDED=' "merged append failure no APPENDED leak"
+assert_not_contains "$D27/stdout.txt" 'LOG=' "merged append failure no LOG leak"
+rm -f "$FAKE_DESIGN/check-plan-size.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
+ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$FAKE_SCRIPTS/append-tool-failure.sh"
+
+D28="$TMP/merged-snapshot-failed-diagnostic"
+setup_design_tmp "$D28" full HARD
+reset_env
+export SNAPSHOT_STUB_RC=9
+set +e
+bash "$SUBJECT" --design-tmpdir "$D28" --with-plan-size --snapshot-original >"$D28/stdout.txt" 2>"$D28/stderr.txt"
+rc=$?
+set -e
+assert_rc "merged snapshot failed rc1" 1 "$rc"
+assert_file_kv "$D28/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS snapshot-failed "merged snapshot failed status"
+assert_contains "$D28/stdout.txt" 'failed to snapshot plan.txt-original' "merged snapshot failed diagnostic"
+
+D29="$TMP/merged-validate-driver-failed-diagnostic"
+setup_design_tmp "$D29" full SIMPLE
+reset_env
+export VALIDATOR_STUB_RC=8 VALIDATOR_EMIT_STATUS_ON_FAIL=false
+set +e
+bash "$SUBJECT" --design-tmpdir "$D29" --with-plan-size >"$D29/stdout.txt" 2>"$D29/stderr.txt"
+rc=$?
+set -e
+assert_rc "merged validate driver failed rc1" 1 "$rc"
+assert_file_kv "$D29/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS validate-driver-failed "merged validate driver failed status"
+assert_contains "$D29/stdout.txt" 'plan-command validator infrastructure failed' "merged validate driver failed diagnostic"
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2

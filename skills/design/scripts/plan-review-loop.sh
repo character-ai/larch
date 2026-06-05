@@ -19,7 +19,7 @@ PLAN_REVIEW_DISPATCH_VOTERS_SH="${LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH:-$PLUGIN_
 PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$PLUGIN_ROOT/skills/design/scripts/tally-plan-review.sh}"
 PLAN_REVIEW_REVISE_SH="${LARCH_PLAN_REVIEW_REVISE_SH:-$PLUGIN_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
 DESIGN_DRIVER_SH="$PLUGIN_ROOT/skills/design/scripts/design-driver.sh"
-CHECK_PLAN_SIZE_SH="$PLUGIN_ROOT/skills/design/scripts/check-plan-size.sh"
+CHECK_PLAN_SIZE_SH="${LARCH_CHECK_PLAN_SIZE_SH:-${CHECK_PLAN_SIZE_SH:-$PLUGIN_ROOT/skills/design/scripts/check-plan-size.sh}}"
 INVOKE_PLAN_VALIDATOR_SH="$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh"
 DEDUP_PLAN_LINES_PY="${LARCH_DEDUP_PLAN_LINES_PY:-$PLUGIN_ROOT/skills/design/scripts/dedup-plan-lines.py}"
 # shellcheck source=scripts/lib-quiet.sh
@@ -35,6 +35,8 @@ source "$SCRIPT_DIR/lib-findings-classification.sh"
 source "$SCRIPT_DIR/../../../scripts/lib-design-round-artifacts.sh"
 # shellcheck source=skills/design/scripts/lib-plan-optional-trailers.sh
 source "$SCRIPT_DIR/lib-plan-optional-trailers.sh"
+# shellcheck source=skills/design/scripts/lib-phase-driver.sh
+source "$SCRIPT_DIR/lib-phase-driver.sh"
 
 usage() {
     larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--round-cap N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
@@ -597,8 +599,42 @@ _run_post_apply_pipeline() {
         rm -f "$plan_backup"
         return 1
     fi
-    local size_out hard soft diff_added diff_deleted diff_lines
-    size_out=$("$CHECK_PLAN_SIZE_SH" --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$plan_path")
+    local size_out size_rc hard soft diff_added diff_deleted diff_lines partition_requested
+    partition_requested="$(phase_driver_json_boolean_or_sed "$DESIGN_TMPDIR/run-params.json" partition_requested false)"
+    local size_stderr
+    size_stderr="$DESIGN_TMPDIR/.check-plan-size.plan-review.stderr.$$"
+    set +e
+    size_out=$("$CHECK_PLAN_SIZE_SH" --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$plan_path" 2>"$size_stderr")
+    size_rc=$?
+    set -e
+    if [[ "$size_rc" -eq 2 || "$size_rc" -eq 3 ]]; then
+        local _plan_size_status _validation_log _combined_cap
+        _validation_log="$DESIGN_TMPDIR/check-plan-size.validation.log"
+        {
+            printf '%s\n' "$size_out"
+            [[ -s "$size_stderr" ]] && cat "$size_stderr"
+        } >"$_validation_log" 2>/dev/null || true
+        _plan_size_status=$(printf '%s\n' "$size_out" | awk -F= '$1 == "PLAN_SIZE_STATUS" { print $2; found=1 } END { if (!found) print "" }')
+        printf '**⚠ plan-review: check-plan-size — %s; proceeding without threshold check**\n' "${_plan_size_status:-unknown}"
+        set +e
+        _combined_cap=$(mktemp "${TMPDIR:-/tmp}/plan-review-plan-size.XXXXXX")
+        cp -f "$_validation_log" "$_combined_cap" 2>/dev/null || printf '%s\n' "$size_out" >"$_combined_cap"
+        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+            --log "$DESIGN_TMPDIR/execution-issues.md" \
+            --site "design Step 3 plan-review-loop" \
+            --tool "check-plan-size.sh" \
+            --exit-code "$size_rc" \
+            --category Warnings \
+            --output-file "$_combined_cap" \
+            --redact \
+            >/dev/null 2>&1 || true
+        rm -f "$_combined_cap" 2>/dev/null || true
+        set -e
+        rm -f "$size_stderr" 2>/dev/null || true
+        rm -f "$plan_backup"
+        return 0
+    fi
+    rm -f "$size_stderr" 2>/dev/null || true
     hard=$(printf '%s\n' "$size_out" | awk -F= '$1 == "HARD_TRIGGER_FIRED" { print $2; found=1 } END { if (!found) print "false" }')
     soft=$(printf '%s\n' "$size_out" | awk -F= '$1 == "SOFT_ADVISORY" { print $2; found=1 } END { if (!found) print "false" }')
     if [[ "$soft" == "true" ]]; then
@@ -616,6 +652,12 @@ _run_post_apply_pipeline() {
     if [[ "$hard" == "true" ]]; then
         LOOP_STATUS="plan-size-trigger"
         LOOP_REASON="plan-size-hard"
+        rm -f "$plan_backup"
+        return 1
+    fi
+    if [[ "$partition_requested" == true ]]; then
+        LOOP_STATUS="plan-size-trigger"
+        LOOP_REASON="plan-size-partition"
         rm -f "$plan_backup"
         return 1
     fi

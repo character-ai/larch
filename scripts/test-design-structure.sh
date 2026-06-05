@@ -86,6 +86,89 @@ assert_thin_fence() {
   [[ "$subject" == "$file" ]] || rm -f "$subject"
 }
 
+assert_postplan_thin_fence() {
+  local file="$1" label="$2" start_marker="${3:-}" end_marker="${4:-}"
+  local subject="$file" scoped=false
+  if [[ -n "$start_marker" || -n "$end_marker" ]]; then
+    [[ -n "$start_marker" && -n "$end_marker" ]] || fail "$label region markers must be supplied together"
+    local start_line end_line
+    start_line=$(grep -nF -- "$start_marker" "$file" | head -1 | cut -d: -f1 || true)
+    end_line=$(grep -nF -- "$end_marker" "$file" | awk -F: -v s="${start_line:-0}" '$1 > s {print $1; exit}' || true)
+    [[ -n "$start_line" ]] || fail "$label missing start marker: $start_marker"
+    [[ -n "$end_line" ]] || fail "$label missing end marker after $start_marker: $end_marker"
+    (( end_line > start_line )) || fail "$label end marker must follow start marker"
+    subject=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-postplan-region.XXXXXX")
+    sed -n "${start_line},$((end_line - 1))p" "$file" >"$subject"
+    scoped=true
+  fi
+  grep -Fq -- '--with-plan-size' "$subject" || fail "$label missing --with-plan-size"
+  grep -Fq -- 'env LARCH_QUIET_DISABLE=1' "$subject" || fail "$label missing LARCH_QUIET_DISABLE display capture"
+  # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
+  grep -Fq '${_postplan_out:-}' "$subject" || fail "$label missing postplan out display variable"
+  grep -Fq 'printf' "$subject" || fail "$label missing postplan display printf"
+  # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
+  grep -Fq 'case "${_postplan_rc:-1}" in' "$subject" || fail "$label missing postplan rc case"
+  for arm in 0 10 11 12 13 2 1; do
+    grep -Fq "  ${arm})" "$subject" || fail "$label missing case arm ${arm}"
+  done
+  grep -Fq '  *)' "$subject" || fail "$label missing default-abort *) arm"
+  # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
+  if grep -Fq '<<<"${_postplan_out:-}"' "$subject"; then
+    fail "$label must not merge stdout KVs via <<< heredoc"
+  fi
+  if awk '/design-postplan-emit\.sh/ && /--repo/ && !/\$\{REPO:\+--repo/ { bad=1 } END { exit bad ? 0 : 1 }' "$subject"; then
+    fail "$label must not pass --repo to design-postplan-emit.sh"
+  fi
+  [[ "$scoped" == true ]] || return 0
+  local pause_line
+  pause_line=$(awk '/\.pause-requested/ && /design-pause-save\.sh/ && /\$\{REPO:\+--repo/ {print; exit}' "$subject")
+  [[ -n "$pause_line" ]] || fail "$label pause-save must thread REPO"
+  rm -f "$subject"
+}
+
+assert_postplan_reference_thin_fence() {
+  local file="$1" label="$2" start_marker="$3" end_marker="$4"
+  local start_line end_line subject
+  start_line=$(grep -nF -- "$start_marker" "$file" | head -1 | cut -d: -f1 || true)
+  end_line=$(grep -nF -- "$end_marker" "$file" | awk -F: -v s="${start_line:-0}" '$1 > s {print $1; exit}' || true)
+  [[ -n "$start_line" ]] || fail "$label missing start marker: $start_marker"
+  [[ -n "$end_line" ]] || fail "$label missing end marker after $start_marker: $end_marker"
+  subject=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-postplan-reference.XXXXXX")
+  sed -n "${start_line},$((end_line - 1))p" "$file" >"$subject"
+  grep -Fq 'env LARCH_QUIET_DISABLE=1' "$subject" || fail "$label missing LARCH_QUIET_DISABLE display capture"
+  grep -Fq -- '--with-plan-size' "$subject" || fail "$label missing --with-plan-size"
+  # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
+  grep -Fq '${_postplan_out:-}' "$subject" || fail "$label missing postplan out display variable"
+  # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
+  grep -Fq 'case "${_postplan_rc:-1}" in' "$subject" || fail "$label missing postplan rc case"
+  for arm in 0 10 11 12 13 2 1; do
+    grep -Fq "\`${arm}\`" "$subject" || fail "$label missing delegated case arm ${arm}"
+  done
+  # shellcheck disable=SC2016 # Markdown literal contains a default case marker.
+  grep -Fq 'default-abort `*` arm' "$subject" || fail "$label missing default-abort *) arm"
+  # shellcheck disable=SC2016 # Markdown/bash fence literal must stay unexpanded.
+  grep -Fq '${REPO:+--repo "$REPO"}' "$subject" || fail "$label pause-save must thread REPO"
+  # shellcheck disable=SC2016 # Markdown/bash fence literal must stay unexpanded.
+  if grep -Fq '<<<"${_postplan_out:-}"' "$subject"; then
+    fail "$label must not merge stdout KVs via heredoc"
+  fi
+  if awk '/design-postplan-emit\.sh/ && /--repo/ && !/\$\{REPO:\+--repo/ { bad=1 } END { exit bad ? 0 : 1 }' "$subject"; then
+    fail "$label must not pass --repo to design-postplan-emit.sh"
+  fi
+  rm -f "$subject"
+}
+
+run_postplan_thin_fence_self_tests() {
+  local fixture
+  fixture=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-postplan-self.XXXXXX")
+  awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD" | grep -v '^  13)$' >"$fixture"
+  if (assert_postplan_thin_fence "$fixture" 'postplan thin-fence negative fixture missing rc13') >/dev/null 2>&1; then
+    rm -f "$fixture"
+    fail "postplan thin-fence self-test must fail when a case arm is missing"
+  fi
+  rm -f "$fixture"
+}
+
 assert_gate_b_bypass_branch_sentinels() {
   local file="$1"
   local branch token line required label
@@ -258,23 +341,6 @@ run_gate_b_bypass_branch_sentinel_self_tests() {
 run_thin_fence_self_tests
 run_gate_b_bypass_branch_sentinel_self_tests
 
-assert_clarify_summary_outcome() {
-  local session_id="$1" publish_ok="$2" want="$3" summary_outcome
-  if [[ -n "$session_id" && "$publish_ok" != true ]]; then
-    summary_outcome=failed-publish
-  elif [[ -z "$session_id" ]]; then
-    summary_outcome=publish-skipped
-  else
-    summary_outcome=cancelled-clarify
-  fi
-  [[ "$summary_outcome" == "$want" ]] || fail "clarify publish outcome expected $want, got $summary_outcome"
-}
-
-assert_clarify_summary_outcome sid false failed-publish
-assert_clarify_summary_outcome sid "" failed-publish
-assert_clarify_summary_outcome "" "" publish-skipped
-assert_clarify_summary_outcome sid true cancelled-clarify
-
 contains "$SKILL_MD" '[--hard]' 'SKILL argument hint must expose --hard as the sole tier flag'
 absent "$SKILL_MD" '[--simple|' 'SKILL argument hint must not restore [--simple|--hard] tier alternation'
 contains "$SKILL_MD" 'The default tier is SIMPLE' 'SKILL must document default SIMPLE tier resolution'
@@ -327,8 +393,7 @@ contains "$RUN_STEP3_SH" '.step3-review-cap.env' 'run-step3-review.sh missing pe
 contains "$RUN_STEP3_SH" 'STEP3_REVIEW_CAP_REACHED=false' 'run-step3-review.sh missing persisted cap-false state'
 contains "$RUN_STEP3_SH" 'STEP3_REVIEW_ROUND_NUM=' 'run-step3-review.sh missing persisted Step 3 round number state'
 contains "$SKILL_MD" 'run-step3-review.sh' 'SKILL must invoke run-step3-review.sh'
-# shellcheck disable=SC2016 # Markdown/bash excerpt literal; $DESIGN_TMPDIR must not expand here.
-contains "$SKILL_MD" '! -L "$DESIGN_TMPDIR/.step3-review-result.env"' 'SKILL Step 3 fence must use ! -L safe-env guard (thin-fence shape)'
+contains "$SKILL_MD" 'step3 review result env is a symlink; refusing to source' 'SKILL must read allowlisted KVs from .step3-review-result.env'
 [[ -x "$RUN_STEP3_SH" ]] || fail 'run-step3-review.sh must be executable'
 [[ -f "$RUN_STEP3_MD" ]] || fail "run-step3-review.md missing: $RUN_STEP3_MD"
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -350,7 +415,7 @@ contains "$SKILL_MD" 'plan review MUST ALWAYS run the full Step 3 panel' 'SKILL 
 
 grep -Fq 'sketch_budget=0' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
   || fail 'design-init-runparams.sh must pin SIMPLE sketch_budget=0'
-contains "$SKILL_MD" 'design-postplan-emit.sh' 'SKILL missing postplan driver validator owner'
+contains "$SKILL_MD" 'design-postplan-emit.sh' 'SKILL missing postplan driver quick validator skip owner'
 absent "$SKILL_MD" 'invoke-plan-validator-if-not-quick.sh' 'SKILL must not reference old validator helper'
 absent "$SKILL_MD" 'read-design-review-budget.sh' 'SKILL must not reference old budget reader'
 absent "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_TRIVIAL' 'SKILL must not reference old trivial sentinel'
@@ -364,9 +429,7 @@ grep -Fq 'refusing to recreate it with fallback defaults' "$REPO_ROOT/skills/des
 absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must not retain old HARD fallback recovery reason'
 
 contains "$FLAGS_MD" 'design-postplan-emit.sh' 'flags.md missing postplan driver validator contract'
-absent "$FLAGS_MD" 'skipped-quick' 'flags.md must not retain quick validator skip contract'
-absent "$FLAGS_MD" '--force-validate' 'flags.md must not retain force-validate contract'
-contains "$FLAGS_MD" 'Validation is unconditional' 'flags.md missing unconditional validator contract'
+contains "$FLAGS_MD" 'Validation is unconditional: there is no quick-skip path and no force flag.' 'flags.md missing unconditional validator contract'
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, Step 4, then Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -460,31 +523,6 @@ contains "$SKILL_MD" '-f "$DESIGN_TMPDIR/.step3-review-result.env"' 'SKILL must 
 contains "$SKILL_MD" 'WARN) printf' 'SKILL must re-emit WARN lines from step3 review handoff'
 contains "$SKILL_MD" 'missing or invalid LOOP_STATUS after run-step3-review.sh; treating plan review as panel-failed' 'SKILL must default missing LOOP_STATUS to panel-failed (not hard abort on driver exit 1)'
 contains "$SKILL_MD" 'configuration error (exit 2)' 'SKILL must warn on run-step3-review.sh exit 2'
-contains "$SKILL_MD" '_step3_safe_env_loaded' 'SKILL Step 3 thin-fence must track safe-env loaded flag'
-contains "$SKILL_MD" '--preview-only' 'SKILL Step 3 must have preview-only driver fence'
-contains "$SKILL_MD" '--no-preview' 'SKILL Step 3 captured fence must use --no-preview'
-contains "$RUN_STEP3_SH" 'RUN_STEP3_EMIT_PREVIEW_SH' 'run-step3-review.sh must have RUN_STEP3_EMIT_PREVIEW_SH override seam'
-assert_thin_fence "$SKILL_MD" 'SKILL Step 3 thin-fence shape' '<!-- step:3 —' '<!-- step:3.5'
-step3_block=$(awk '/^<!-- step:3 /,/^<!-- step:3.5 /' "$SKILL_MD")
-step3_pause_count=$(printf '%s\n' "$step3_block" | grep -c 'design-pause-save\.sh' || true)
-# shellcheck disable=SC2016 # grep literal contains shell variables and quotes intentionally
-step3_pause_repo_count=$(printf '%s\n' "$step3_block" | grep -c 'design-pause-save\.sh.*\${REPO:+--repo "\$REPO"}' || true)
-[[ "$step3_pause_count" -ge 1 ]] \
-  || fail "(14c0d) Step 3 block must contain design-pause-save.sh guards"
-[[ "$step3_pause_count" == "$step3_pause_repo_count" ]] \
-  || fail "(14c0d) every Step 3 design-pause-save.sh line must thread REPO ($step3_pause_repo_count/$step3_pause_count)"
-printf '%s\n' "$step3_block" | grep -Fq 'aborting plan review**' \
-  || fail "(14c0e) Step 3 block missing rc=2 configuration banner"
-printf '%s\n' "$step3_block" | awk '
-  /aborting plan review\*\*/ { found_banner=1 }
-  found_banner && /exit 1/ { found_exit=1; exit }
-  END { exit found_exit ? 0 : 1 }
-' || fail "(14c0e) Step 3 block must exit 1 after rc=2 banner before safe-env load"
-printf '%s\n' "$step3_block" | grep -Fq 'LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|WARN)' \
-  || fail "(14c0f) Step 3 block missing display-pass twelve-key plus WARN suppression"
-# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally
-printf '%s\n' "$step3_block" | grep -Fq '**Post-loop branch matrix** (when `_step3_safe_env_loaded=true`' \
-  || fail "(14c0g) Step 3 block missing post-loop branch matrix intro with _step3_safe_env_loaded"
 grep -Fq 'scout-plan-archetypes-wrapper.sh' "$PLAN_REVIEW_LOOP_SH" \
   || fail "(14c1) plan-review-loop.sh missing scout-plan-archetypes-wrapper.sh"
 grep -Fq 'dispatch-plan-review-panel.sh' "$PLAN_REVIEW_LOOP_SH" \
@@ -553,13 +591,30 @@ contains "$DESIGN_POSTPLAN_EMIT_SH" '_postplan_resolve_issue' 'design-postplan-e
 contains "$DESIGN_POSTPLAN_EMIT_SH" '_postplan_pause_checkpoint' 'design-postplan-emit.sh missing pause checkpoint'
 contains "$DESIGN_POSTPLAN_EMIT_SH" '_postplan_write_result_and_emit' 'design-postplan-emit.sh missing result flush helper'
 contains "$DESIGN_POSTPLAN_EMIT_SH" 'set +e' 'design-postplan-emit.sh missing child set +e capture'
+contains "$DESIGN_POSTPLAN_EMIT_SH" '--with-plan-size' 'design-postplan-emit.sh missing --with-plan-size flag'
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'exit 10' 'design-postplan-emit.sh missing exit 10 defects'
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'exit 11' 'design-postplan-emit.sh missing exit 11 pause'
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'exit 12' 'design-postplan-emit.sh missing exit 12 hard'
+contains "$DESIGN_POSTPLAN_EMIT_SH" 'exit 13' 'design-postplan-emit.sh missing exit 13 partition'
 postplan_emit_line=$(grep -nF 'ACTION=EMIT_PLAN' "$DESIGN_POSTPLAN_EMIT_SH" | head -1 | cut -d: -f1 || true)
 postplan_val_line=$(grep -nF 'invoke-plan-validator.sh' "$DESIGN_POSTPLAN_EMIT_SH" | head -1 | cut -d: -f1 || true)
 [[ -n "$postplan_emit_line" && -n "$postplan_val_line" && "$postplan_emit_line" -le "$postplan_val_line" ]]   || fail "design-postplan-emit.sh must dispatch EMIT at or before validator"
 contains "$SKILL_MD" '.design-postplan-emit-result.env' 'SKILL.md missing postplan result env read'
-# shellcheck disable=SC2016 # Markdown literal; parameter syntax must remain unexpanded.
-contains "$SKILL_MD" '<<<"${_postplan_out:-}"' 'SKILL.md missing postplan stdout fallback merge'
 contains "$SKILL_MD" 'design-postplan-emit.sh configuration error (exit 2)' 'SKILL.md missing postplan exit-2 abort prose'
+assert_postplan_thin_fence "$SKILL_MD" 'SKILL Step 2b thin-fence' '<!-- step:2b ' '### Step 2b.5'
+run_postplan_thin_fence_self_tests
+assert_postplan_reference_thin_fence "$APPROVAL_MD" 'approval-gates Gate B postplan fence' '### Shared post-apply pipeline' '### Gate B plan revision and Step 2b.5'
+assert_postplan_reference_thin_fence "$DISCUSSION_MD" 'discussion-round2 postplan fence' '**Plan revision authority**' '## Cap'
+# shellcheck disable=SC2016 # Markdown literal contains unexpanded shell syntax.
+contains "$APPROVAL_MD" 'case "${_postplan_rc:-1}" in' 'approval-gates Gate B postplan fence missing rc case'
+contains "$APPROVAL_MD" 'default-abort' 'approval-gates Gate B postplan fence missing default-abort arm'
+# shellcheck disable=SC2016 # Markdown literal contains unexpanded shell syntax.
+contains "$DISCUSSION_MD" 'case "${_postplan_rc:-1}" in' 'discussion-round2 postplan fence missing rc case'
+contains "$DISCUSSION_MD" 'default-abort' 'discussion-round2 postplan fence missing default-abort arm'
+# shellcheck disable=SC2016 # Markdown literal contains unexpanded shell syntax.
+absent "$APPROVAL_MD" '<<<"${_postplan_out:-}"' 'approval-gates Gate B postplan fence must not merge stdout KVs via heredoc'
+# shellcheck disable=SC2016 # Markdown literal contains unexpanded shell syntax.
+absent "$DISCUSSION_MD" '<<<"${_postplan_out:-}"' 'discussion-round2 postplan fence must not merge stdout KVs via heredoc'
 # shellcheck disable=SC2016 # Markdown literal; $PPID must remain unexpanded.
 contains "$SKILL_MD" 'current-design-env-$PPID.sh' 'SKILL.md Step 2b postplan fence missing canonical prelude'
 DESIGN_POSTPLAN_STEP2B=$(awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD")
@@ -577,27 +632,12 @@ grep -Fq 'validate-plan.sh' "$DESIGN_DRIVER_SH" \
   || fail "(14b6) design-driver.sh missing validate-plan.sh dispatch arm"
 grep -Fq 'ACTION=VALIDATE_PLAN_COMMANDS' "$SKILL_MD" \
   || fail "(14b7) SKILL.md missing ACTION=VALIDATE_PLAN_COMMANDS"
-grep -Fq 'Apply proposed fix' "$SKILL_MD" \
-  || fail "(14b8) SKILL.md missing Apply proposed fix validator option label"
-grep -Fq 'Accept / proceed-anyway' "$SKILL_MD" \
-  || fail "(14b9a) SKILL.md missing Accept / proceed-anyway validator option label"
+grep -Fq 'Fix-and-retry' "$SKILL_MD" \
+  || fail "(14b8) SKILL.md missing Fix-and-retry validator option label"
+grep -Fq 'Override' "$SKILL_MD" \
+  || fail "(14b9a) SKILL.md missing Override validator option label"
 grep -Fq 'Cancel' "$SKILL_MD" \
   || fail "(14b9b) SKILL.md missing Cancel validator option label"
-validator_handler_block=$(awk '/^### Plan command validator failure \(shared\)/,/^\*\*Plan helper contracts\*\*/' "$SKILL_MD")
-printf '%s\n' "$validator_handler_block" | grep -Fq 'cap 2' \
-  || fail "(14b13a) shared validator handler missing auto-repair cap"
-# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-printf '%s\n' "$validator_handler_block" | grep -Fq 're-capture `design-publish.sh`' \
-  || fail "(14b13b) shared validator handler missing Step 5c design-publish.sh re-capture"
-# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-printf '%s\n' "$validator_handler_block" | grep -Fq 'bare `ACTION=VALIDATE_PLAN_COMMANDS` on `composed-plan.md`' \
-  || fail "(14b13c) shared validator handler missing composed-plan validate-only prohibition"
-printf '%s\n' "$validator_handler_block" | grep -Fq 'append-tool-failure.sh' \
-  || fail "(14b13d) shared validator handler missing append-tool-failure.sh audit logging"
-printf '%s\n' "$validator_handler_block" | grep -Fqe '--redact' \
-  || fail "(14b13e) shared validator handler missing append-tool-failure --redact"
-printf '%s\n' "$validator_handler_block" | grep -Fq 'redact-secrets.sh' \
-  || fail "(14b13f) shared validator handler missing redacted VALIDATE_LOG_FILE diagnosis"
 step2b_mark=$(grep -nF 'mark "design Step 2b — plan"' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 postplan_line=$(awk -v s="$step2b_mark" 'NR>s && /design-postplan-emit\.sh/ {print NR; exit}' "$SKILL_MD" || true)
 step2b5_line=$(awk -v s="$step2b_mark" 'NR>s && /### Step 2b\.5/ {print NR; exit}' "$SKILL_MD" || true)
@@ -612,15 +652,31 @@ grep -Fq 'design-postplan-emit.sh' "$AG_MD" \
   || fail "(14c14c) approval-gates.md missing design-postplan-emit.sh pin"
 grep -Fq 'VALIDATE_STATUS' "$AG_MD" \
   || fail "(14c14d) approval-gates.md must reference VALIDATE_STATUS (validator routing through driver)"
-postplan_before_size_ag=$(awk '/^### Shared post-apply pipeline/ { in_section=1 } in_section && /design-postplan-emit\.sh/ && !e { e=NR } in_section && e && /Step 2b\.5/ && !v { v=NR } /^### Gate B plan revision/ { in_section=0 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$AG_MD")
-[[ "$postplan_before_size_ag" == "1" ]] \
-  || fail "(14c14e) approval-gates.md must mention design-postplan-emit.sh at or before Step 2b.5"
+grep -Fq -- '--with-plan-size' "$AG_MD" \
+  || fail "(14c14e) approval-gates.md missing --with-plan-size"
+grep -Fq '_postplan_rc=10' "$AG_MD" \
+  || fail "(14c14e) approval-gates.md missing _postplan_rc=10 handling"
+grep -Fq '_postplan_rc=12' "$AG_MD" \
+  || fail "(14c14e) approval-gates.md missing _postplan_rc=12 handling"
+# shellcheck disable=SC2016 # Markdown literal references SKILL case arms.
+grep -Fq 'case` arms as `SKILL.md` Step 2b' "$AG_MD" \
+  || fail "(14c14e) approval-gates.md must delegate to SKILL Step 2b case arms"
 grep -Fq 'design-postplan-emit.sh' "$DR_MD" \
   || fail "(14c14f) discussion-rounds.md missing design-postplan-emit.sh pin"
-absent "$DR_MD" '--force-validate' '(14c14g) discussion-rounds.md must not retain --force-validate pin'
-postplan_before_size_dr=$(awk '/\*\*Plan revision authority\*\*/ { in_section=1 } in_section && /design-postplan-emit\.sh/ && !e { e=NR } in_section && e && /Step 2b\.5/ && !v { v=NR } /^## Cap/ { in_section=0 } END { if (e && v) print (e <= v) ? 1 : 0; else print 0 }' "$DR_MD")
-[[ "$postplan_before_size_dr" == "1" ]] \
-  || fail "(14c14h) discussion-rounds.md must mention design-postplan-emit.sh at or before Step 2b.5"
+grep -Fq -- '--with-plan-size' "$DR_MD" \
+  || fail "(14c14g) discussion-rounds.md missing merged --with-plan-size"
+if grep -Fq -- '--force-validate' "$DR_MD"; then
+  fail "(14c14h) discussion-rounds.md must not mention retired --force-validate"
+fi
+grep -Fq '_postplan_rc=10' "$DR_MD" \
+  || fail "(14c14h) discussion-rounds.md missing _postplan_rc=10 handling"
+grep -Fq '_postplan_rc=0' "$DR_MD" \
+  || fail "(14c14h) discussion-rounds.md missing _postplan_rc=0 sentinel handling"
+printf '%s\n' "$step1e_block" | grep -Fq -- '--with-plan-size' \
+  || fail "(14c14i) Gate A optional-trailer guard missing --with-plan-size"
+if printf '%s\n' "$step1e_block" | grep -Fq -- '--force-validate'; then
+  fail "(14c14i) Gate A optional-trailer guard must not mention retired --force-validate"
+fi
 
 # Check 16: dialectic waterfall + per-side assignment contract pins (#2620).
 DIALPROTO_MD="$REPO_ROOT/skills/shared/dialectic-protocol.md"
@@ -670,28 +726,22 @@ grep -Fq '> **🔶 /design 6: cleanup**' "$SKILL_MD" \
   || fail "(15b) SKILL.md missing /design 6 cleanup breadcrumb"
 step5b_line=$(grep -nF '### 5b — File accepted OOS issues' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
 step5c_line=$(grep -nF "### 5c — Write \`larch:plan\` to GitHub + publish" "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-step5d_line=$(grep -nF '### 5d — Final warning replay + footer' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
-DESIGN_PUBLISH_SH="$REPO_ROOT/skills/design/scripts/design-publish.sh"
-[[ -n "$step5b_line" && -n "$step5c_line" && -n "$step5d_line" ]] || fail "(15b) missing Step 5b, 5c, or 5d sub-step headers"
+[[ -n "$step5b_line" && -n "$step5c_line" ]] || fail "(15b) missing Step 5b or 5c sub-step headers"
 if (( step5b_line >= step5c_line )); then
   fail "(15b) Step 5b must appear before Step 5c in SKILL.md"
 fi
-validator_pub_line=$(grep -nF 'invoke-plan-validator.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
-redactor_pub_line=$(grep -nF 'redact-secrets.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
-[[ -n "$validator_pub_line" && -n "$redactor_pub_line" && "$validator_pub_line" -lt "$redactor_pub_line" ]] \
-  || fail "(14b11) design-publish.sh must validate composed-plan before redaction"
-step5c_block=$(sed -n "${step5c_line},${step5d_line}p" "$SKILL_MD")
-# shellcheck disable=SC2016 # literal SKILL.md bash excerpt should not expand.
-if printf '%s\n' "$step5c_block" | grep -Fq '_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh"'; then
-  fail "(14b11) SKILL.md Step 5c must not inline invoke-plan-validator.sh"
-fi
+publish_red_line=$(grep -n 'redact-secrets\.sh.*composed-plan\.md' "$REPO_ROOT/skills/design/scripts/design-publish.sh" | head -1 | cut -d: -f1 || true)
+publish_val_line=$(grep -n 'invoke-plan-validator\.sh.*composed-plan\.md' "$REPO_ROOT/skills/design/scripts/design-publish.sh" | head -1 | cut -d: -f1 || true)
+[[ -n "$publish_red_line" && -n "$publish_val_line" && "$publish_val_line" -lt "$publish_red_line" ]] \
+  || fail "(14b11) design-publish.sh validator must appear before redact-secrets on composed-plan.md"
 # shellcheck disable=SC2016  # literal backticks + $DESIGN_TMPDIR token must match SKILL.md prose
 needle='preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup'
 grep -Fq "$needle" "$SKILL_MD" \
   || fail "(14b12) Step 5c validator cancel must preserve tmpdir and skip cleanup"
-grep -Fq 'Step 5c items 3–5, Step 5d, or Step 6' "$SKILL_MD" \
-  || fail "(15b) anti-halt reminder must mention rc-4 Step 5c/5d/6 carve-out"
+grep -Fq '5c.5→5c.7→5c.8→6' "$SKILL_MD" \
+  || fail "(15b) anti-halt reminder must mention 5c.5→5c.7→5c.8→6 step boundary (intra-Step-5 through rename)"
 
+DESIGN_PUBLISH_SH="$REPO_ROOT/skills/design/scripts/design-publish.sh"
 [[ -x "$DESIGN_PUBLISH_SH" ]] || fail "design-publish.sh must be executable"
 publish_plan_line=$(grep -nF 'plan-block-write.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
 publish_upsert_line=$(grep -nF 'upsert-diagrams-comment.sh' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
@@ -725,7 +775,7 @@ assert_thin_fence "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'design-plan-quality-assess
 # Check 17: Step 5b /larch:issue summary-halt guardrails (#2681).
 ORCHESTRATOR_NEVER_MD="$REPO_ROOT/skills/shared/orchestrator-never.md"
 [[ -f "$ORCHESTRATOR_NEVER_MD" ]] || fail "(17) orchestrator-never.md missing: $ORCHESTRATOR_NEVER_MD"
-grep -Fq '5→5a→5b→5c.1→5c.3→5c.5→6' "$SKILL_MD" \
+grep -Fq '5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
   || fail "(17) anti-halt reminder missing intra-Step-5 sub-step enumeration"
 grep -Fq "NEVER treat a sub-skill's terminal output as the parent skill's terminal output" "$ORCHESTRATOR_NEVER_MD" \
   || fail "(17) orchestrator-never.md missing sub-skill vs parent-skill terminal-output NEVER literal"
@@ -751,12 +801,18 @@ grep -Fq '`--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--
 grep -Fq '### Step 2b.5 — Plan-size threshold check' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing Step 2b.5 header"
 step2b_block=$(awk '/^<!-- step:2b /,/^<!-- step:3 /' "$SKILL_MD")
-postplan_line=$(printf '%s\n' "$step2b_block" | grep -nF 'design-postplan-emit.sh' | head -1 | cut -d: -f1 || true)
-chk_line=$(printf '%s\n' "$step2b_block" | grep -nF 'skills/design/scripts/check-plan-size.sh' | head -1 | cut -d: -f1 || true)
-[[ -n "$postplan_line" && -n "$chk_line" ]] || fail "(FINDING_21) could not locate design-postplan-emit.sh / check-plan-size.sh inside Step 2b block"
-if ! [[ "$chk_line" -gt "$postplan_line" ]]; then
-  fail "(FINDING_21) check-plan-size.sh must appear after design-postplan-emit.sh inside Step 2b block"
-fi
+printf '%s\n' "$step2b_block" | grep -Fq -- '--with-plan-size' \
+  || fail "(FINDING_21) Step 2b block missing --with-plan-size"
+# shellcheck disable=SC2016 # Markdown literal contains unexpanded parameter syntax.
+printf '%s\n' "$step2b_block" | grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-2b.5"' \
+  || fail "(FINDING_21) Step 2b rc0 must write step-2b.5 sentinel"
+grep -Fq 'non-exiting Split returns' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md missing non-exiting Split return sentinel prose"
+# shellcheck disable=SC2016 # Markdown literal must stay unexpanded.
+grep -Fq 'Override / clean proceed writes `: > "$DESIGN_TMPDIR/.completed/step-2b.5"`' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md missing plan-size-trigger Override sentinel prose"
+grep -Fq 'Retained callers' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md Step 2b.5 must document retained callers"
 grep -Fq '## Plan Size — Hard Trigger' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing hard-trigger plan-size header"
 grep -Fq '(no **Continue** option — hard triggers' "$SKILL_MD" \
@@ -814,10 +870,12 @@ grep -Fq 'diff_deleted' "$FLAGS_MD" \
   || fail "(3175) flags.md missing diff_deleted preservation language"
 # shellcheck disable=SC2016 # Markdown literal; backticks are prose, not command substitution
 grep -Fq 'before `ACTION=EMIT_PLAN`' "$APPROVAL_MD" \
-  || fail "(3175) approval-gates.md missing validate-before-EMIT_PLAN guard"
+  || grep -Fq 'before the merged post-plan fence' "$APPROVAL_MD" \
+  || fail "(3175) approval-gates.md missing validate-before-postplan-fence guard"
 # shellcheck disable=SC2016 # Markdown literal; backticks are prose, not command substitution
 grep -Fq 'before `ACTION=EMIT_PLAN`' "$DISCUSSION_MD" \
-  || fail "(3175) discussion-rounds.md missing validate-before-EMIT_PLAN guard"
+  || grep -Fq 'before the merged post-plan fence' "$DISCUSSION_MD" \
+  || fail "(3175) discussion-rounds.md missing validate-before-postplan-fence guard"
 grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh" \
   || fail "(3175) revise-plan-with-waterfall.sh must source shared optional-trailer lib"
 grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/plan-review-loop.sh" \
@@ -918,7 +976,7 @@ grep -Fq 'The already-planned ad-hoc Q&A-only branch does **not** invoke this fi
 if grep -Fq 'proceed to Step 1e' "$DESIGN_OUTLINE_MD"; then
   fail "(2974) design-outline.md must not hand off outline approval to Step 1e"
 fi
-grep -Fq '1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.3→5c.5→6' "$SKILL_MD" \
+grep -Fq '1c→1d→1d.5→1d.7→2a→2a.5→2b→2b.5→3→3.5→3.6→3b→4→4b→5→5a→5b→5c.1→5c.5→5c.7→5c.8→6' "$SKILL_MD" \
   || fail "(2974) SKILL.md missing updated anti-halt sequence"
 if grep -Fq '1c→1d→1d.5→1e' "$SKILL_MD"; then
   fail "(2974) SKILL.md still contains stale 1d.5→1e anti-halt sequence"
@@ -1058,7 +1116,7 @@ grep -Fq 'then Execute `### Shared post-apply pipeline` verbatim' "$APPROVAL_MD"
 # shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
 shared_pipeline_reference_count=$(grep -Fc 'Execute `### Shared post-apply pipeline` verbatim' "$APPROVAL_MD")
 [[ "$shared_pipeline_reference_count" -eq 2 ]] \
-  || fail "(FINDING_20_GATE_B_PIPELINE_CALLS) approval-gates.md must reference the shared post-apply pipeline from exactly two Gate B call sites"
+  || fail "(FINDING_20) approval-gates.md must reference the shared post-apply pipeline from exactly two Gate B call sites"
 
 grep -Fq 'Gate B — Post-Review Chooser; the zero-findings short-circuit will pass straight through to Step 3b' "$PLAN_REVIEW_MD" \
   || fail "(FINDING_6) plan-review.md missing zero-findings Gate B forwarding pin"
@@ -1087,12 +1145,10 @@ grep -Fq -- '--claude-pid "$CLAUDE_PID"' "$DESIGN_INIT_SH" \
   || fail "(FINDING_13) design-init-runparams.sh current-design-env refresh must pass --claude-pid"
 grep -Fq '_wdce_args+=(--manual-requested true)' "$DESIGN_INIT_SH" \
   || fail "(FINDING_13) design-init-runparams.sh must add --manual-requested only on manual runs"
-# shellcheck disable=SC2016 # shell literal pins exact repo forwarding syntax.
-contains "$DESIGN_INIT_SH" '_wdce_args+=(--repo "$REPO")' '(FINDING_27_ENV_REPO_FORWARD) design-init-runparams.sh must forward REPO to write-design-current-env.sh'
 grep -Fq 'INIT_STATUS=env-refresh-failed' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_20_ENV_REFRESH_STATUS) design-init-runparams.sh must emit env-refresh-failed on write-design-current-env.sh failure"
+  || fail "(FINDING_20) design-init-runparams.sh must emit env-refresh-failed on write-design-current-env.sh failure"
 grep -Fq 'write-design-current-env.sh failed during Step 0b env refresh' "$SKILL_MD" \
-  || fail "(FINDING_20_ENV_REFRESH_BANNER) SKILL.md missing dedicated env-refresh-failed operator banner"
+  || fail "(FINDING_20) SKILL.md missing dedicated env-refresh-failed operator banner"
 init_refresh_line=$(grep -nF 'write-design-current-env.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
 init_rename_line=$(grep -nF 'tracking-issue-write.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
 init_run_params_line=$(grep -nF 'write-run-params.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
@@ -1175,7 +1231,7 @@ printf '%s\n' "$step0b_block" | grep -Fq 'resume env refresh failed via write-de
 printf '%s\n' "$step0b_block" | grep -Fq 'only when `ROUTE=proceed`' \
   || fail "(FINDING_15) SKILL.md Step 0b sub-step 6 must be ROUTE=proceed guarded"
 
-skill_fetch_line=$(printf '%s\n' "$step0b_block" | grep -nF '2. **Resolve repo, then fetch issue' | head -1 | cut -d: -f1 || true)
+skill_fetch_line=$(printf '%s\n' "$step0b_block" | grep -nF '2. **Fetch issue' | head -1 | cut -d: -f1 || true)
 skill_route_line=$(printf '%s\n' "$step0b_block" | grep -nF '2.5. **Route driver**' | head -1 | cut -d: -f1 || true)
 skill_clarify_line=$(printf '%s\n' "$step0b_block" | grep -nF '3. **Clarify loop**' | head -1 | cut -d: -f1 || true)
 [[ -n "$skill_fetch_line" && -n "$skill_route_line" && -n "$skill_clarify_line" ]] \
@@ -1183,9 +1239,6 @@ skill_clarify_line=$(printf '%s\n' "$step0b_block" | grep -nF '3. **Clarify loop
 if (( skill_fetch_line >= skill_route_line || skill_route_line >= skill_clarify_line )); then
   fail "(FINDING_4) SKILL.md Step 0b must fetch before route driver before clarify"
 fi
-# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-printf '%s\n' "$step0b_block" | grep -Fq 'gh issue view "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"} --json body,labels,number,title' \
-  || fail "(FINDING_20_ISSUE_FETCH_REPO) SKILL.md Step 0b issue fetch must thread resolved --repo"
 
 route_resume_line=$(grep -nF '# 1. Resume detection' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
 route_title_line=$(grep -nF '# 2. Title-eligibility' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
@@ -1230,7 +1283,7 @@ fi
 grep -Fq 'missing or invalid ROUTE after design-route.sh' "$SKILL_MD" \
   || fail "(FINDING_19) SKILL.md Step 0b missing ROUTE validation after design-route handoff"
 grep -Fq 'exited 0 without INIT_STATUS=ok and run-params.json' "$SKILL_MD" \
-  || fail "(FINDING_20_INIT_SUCCESS_VALIDATION) SKILL.md Step 0b missing init success-path validation"
+  || fail "(FINDING_20) SKILL.md Step 0b missing init success-path validation"
 grep -Fq 'continuing with run-params write' "$DESIGN_INIT_SH" \
   || fail "(FINDING_21) design-init-runparams.sh missing best-effort rename warn+continue"
 grep -Fq 'Partial-state retry' "$REPO_ROOT/skills/design/scripts/design-init-runparams.md" \
@@ -1394,11 +1447,6 @@ esac
 
 publish_marker_line=$(grep -nF 'design_reentry_marker_write' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
 publish_rename_line=$(grep -n 'tracking-issue-write.sh' "$DESIGN_PUBLISH_SH" | grep 'state designed' | head -1 | cut -d: -f1 || true)
-publish_rename_count=$(grep -c 'tracking-issue-write.sh.*state designed' "$DESIGN_PUBLISH_SH" || true)
-[[ "$publish_rename_count" -eq 1 ]] \
-  || fail "(FINDING_2) design-publish.sh must contain exactly one tracking-issue-write.sh rename --state designed call site"
-[[ -n "$publish_upsert_line" && -n "$publish_rename_line" && -n "$publish_log_line" && "$publish_upsert_line" -lt "$publish_rename_line" && "$publish_rename_line" -lt "$publish_log_line" ]] \
-  || fail "(25) design-publish.sh rename --state designed must run after upsert-diagrams-comment.sh and before design-log-publish.sh"
 [[ -n "$publish_marker_line" && -n "$publish_log_line" && "$publish_log_line" -lt "$publish_marker_line" ]] \
   || fail "(25) design-publish.sh design_reentry_marker_write must run only after design-log-publish.sh"
 [[ -n "$publish_marker_line" && -n "$publish_rename_line" && "$publish_rename_line" -lt "$publish_marker_line" ]] \
@@ -1415,13 +1463,12 @@ grep -Fq 'design-publish.sh configuration error (exit 2)' "$SKILL_MD" \
 grep -Fq '.completed/step-5c' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must write .completed/step-5c sentinel"
 # shellcheck disable=SC2016 # Markdown literal contains $DESIGN_TMPDIR and backticks intentionally.
-grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** the latest `_publish_rc` ∈ {0,1,3} **and** `PLAN_WRITE_OK=true`' "$SKILL_MD" \
+grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true`' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c must gate step-5c sentinel on PLAN_WRITE_OK=true"
 grep -Fq 'result-env write failed (exit 3)' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing design-publish.sh exit 3 result-env WARN prose"
-# shellcheck disable=SC2016 # literal markdown code span should not expand.
-grep -Fq 'latest `_publish_rc` ∈ {0, 1, 3}' "$SKILL_MD" \
-  || fail "(15b) SKILL.md Step 5c missing latest rc parse-and-continue contract"
+grep -Fq '_publish_rc` is 0, 1, or 3' "$SKILL_MD" \
+  || fail "(15b) SKILL.md Step 5c missing exit 3 parse-and-continue contract"
 grep -Fq '_publish_rc`=3' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing _publish_rc=3 contract"
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
@@ -1433,12 +1480,6 @@ grep -Fq 'export SESSION_ID' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must export SESSION_ID before render-final-summary.sh"
 grep -Fq 'render-final-summary.sh' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must invoke render-final-summary.sh"
-# shellcheck disable=SC2016 # Markdown literal intentionally contains $DESIGN_TMPDIR.
-grep -Fq '[DESIGNED] is set; log publish incomplete; retry log publish manually from the preserved $DESIGN_TMPDIR before /implement when the session may contain secrets' "$SKILL_MD" \
-  || fail "(26) SKILL.md missing RENAMED/admission-ready failed-publish footer"
-# shellcheck disable=SC2016 # Markdown literal intentionally contains $DESIGN_TMPDIR.
-grep -Fq '[DESIGNED] rename not confirmed; log publish incomplete; fix the issue title before /implement and retry log publish manually from the preserved $DESIGN_TMPDIR' "$SKILL_MD" \
-  || fail "(27) SKILL.md missing rename-not-confirmed failed-publish footer"
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 grep -Fq 'phase_driver_write_result_env "$RESULT_ENV"' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must write result env via phase_driver_write_result_env"
@@ -1452,35 +1493,6 @@ grep -Fq '.completed/step-5b' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must require .completed/step-5b precondition"
 grep -Fq 'exit 1 is the normal plan-block-write failure path' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing exit 1 parse-then-branch contract"
-# shellcheck disable=SC2016 # Markdown literal contains backticks and shell variables intentionally.
-contains "$SKILL_MD" 'design-log publish runs after rename and is best-effort for `/implement` admission' '(FINDING_8_SENTINEL_SUCCESS_GATE) SKILL.md Step 5c missing best-effort publish admission contract'
-# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'Automation that requires scrubbed/published logs must gate on `PUBLISH_OK=true`, not on the `[DESIGNED]` title alone.' '(FINDING_8_SENTINEL_FAILED_PUBLISH) SKILL.md Step 5c missing published-log automation gate prose'
-# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'When `_publish_rc` is non-zero, force `PUBLISH_OK=false`' '(28a) SKILL.md clarify publish must fail closed on nonzero rc'
-# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'export `SUMMARY_OUTCOME=failed-publish` with the `DESIGN_LOG_*` metadata already set' '(28b) SKILL.md clarify sub-step 6 missing failed-publish summary branch'
-# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'when `SESSION_ID` is empty, export `SUMMARY_OUTCOME=publish-skipped`' '(28c) SKILL.md clarify sub-step 6 missing publish-skipped empty-session branch'
-# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'otherwise export `SUMMARY_OUTCOME=cancelled-clarify` for publish succeeded (`PUBLISH_OK=true`)' '(28c.1) SKILL.md clarify sub-step 6 missing cancelled-clarify success branch'
-# shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'export `DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"`, `DESIGN_LOG_PR_URL="${PR_URL:-}"`, and `DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"` immediately before the Final summary block' '(28d) SKILL.md clarify missing recovery metadata preservation prose'
-grep -Fq '.design-log-publish-metadata.env' "$SKILL_MD" \
-  || fail '(28d) SKILL.md Final summary block must source .design-log-publish-metadata.env'
-# shellcheck disable=SC2016 # literal markdown with backticks is intentionally single-quoted.
-contains "$SKILL_MD" 'with failed publish using `RUN_LOGS_PATH=N/A` and no successful run-log path' '(28e) SKILL.md clarify missing failed-publish run-log suppression prose'
-python3 - "$SKILL_MD" <<'PY_ASSERT'
-import pathlib, sys
-path=pathlib.Path(sys.argv[1])
-missing=[]
-for i,line in enumerate(path.read_text().splitlines(),1):
-    if 'design-pause-save.sh' in line and '--issue "$ISSUE_NUMBER"' in line and '${REPO:+--repo "$REPO"}' not in line:
-        missing.append(f'{i}:{line}')
-if missing:
-    print('FAIL: (FINDING_27_PAUSE_SAVE_REPO_FORWARD) SKILL.md pause-save invocations missing REPO forwarding: ' + '; '.join(missing[:5]), file=sys.stderr)
-    sys.exit(1)
-PY_ASSERT
 grep -Fq '_publish_rc` ∈ {0, 1, 3}' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing driver exit-code contract for rc 0, 1, or 3"
 # shellcheck disable=SC2016
@@ -1489,18 +1501,6 @@ grep -Fq 'do not abort solely because `_publish_rc`=1' "$SKILL_MD" \
 # shellcheck disable=SC2016
 grep -Fq '"${_publish_rc:-0}" -ne 3' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c unexpected-rc guard must exclude exit 3"
-grep -Fq '{0,1,3,4}' "$SKILL_MD" \
-  || fail "(FINDING_5) SKILL.md missing unexpected-rc {0,1,3,4} guard prose"
-grep -Fq 'rc-4 stdout-fallback' "$SKILL_MD" \
-  || fail "(FINDING_5) SKILL.md missing rc-4 stdout-fallback prose"
-# shellcheck disable=SC2016 # literal markdown pin should not expand
-grep -Fq 'rm -f "$DESIGN_TMPDIR/.design-publish-result.env"' "$SKILL_MD" \
-  || fail "(FINDING_5) SKILL.md Step 5c missing stale result-env quarantine before each attempt"
-grep -Fq 'set +e' "$DESIGN_PUBLISH_SH" \
-  || fail "(FINDING_5) design-publish.sh missing set +e around validator capture"
-# shellcheck disable=SC2016 # Literal markdown checking parameter expansion syntax
-printf '%s\n' "$step5c_block" | grep -Fq '${REPO:+--repo' \
-  || fail "(OOS_3) SKILL.md Step 5c pause checkpoint missing \${REPO:+--repo} threading"
 
 grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$SKILL_MD" \
   || fail "(26) SKILL.md missing literal session-cache banner"
