@@ -67,6 +67,7 @@ _PR_URL_RE = re.compile(r"^https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$")
 _ALLOWED_EXTRA_FIELDS = {"CONFLICT_FILES"}
 _ALLOWED_RESUME_PHASES = {"", config.SHIP_PR_RRR_RESUME_PHASE}
 _ALLOWED_CALLER_KINDS = {"", config.SHIP_PR_PRE_PUSH_CALLER_KIND}
+_MIN_GH_SKIPPED_MERGE_SIGNALS = 2
 
 
 @dataclass(frozen=True)
@@ -448,6 +449,20 @@ def _pending_oos_gate(
     )
 
 
+def _has_oos_gate_inputs(ctx: RunContext) -> bool:
+    tmpdir = Path(ctx.tmpdir)
+    design_path = resolve_oos_accepted_design_path(tmpdir)
+    return any(
+        path.is_file() and path.stat().st_size > 0
+        for path in (
+            tmpdir / "oos-accepted-review.md",
+            tmpdir / "oos-accepted-main-agent.md",
+            design_path,
+            tmpdir / "security-oos-observations.md",
+        )
+    )
+
+
 def _postmerge_should_flush(ctx: RunContext) -> bool:
     return bool(
         run_logs.effective_run_id(ctx)
@@ -620,8 +635,8 @@ def _fresh_resume_plan(
     counters: run_logs.ResumeCounters | None = None,
     detail: str = "",
 ) -> ResumePlan:
-    _ = counters
-    counters = run_logs.ResumeCounters(0, 0, 0, 0)
+    if counters is None:
+        counters = run_logs.ResumeCounters(0, 0, 0, 0)
     return ResumePlan(
         start="fresh",
         iteration=counters.iteration,
@@ -836,9 +851,20 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             repo=state_repo,
             detail="cannot verify gh-skipped resume branch anchor",
         )
-
     branch_name = current_branch
     pr_number = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
+    if gh_skipped and pr_number is not None and not pr_url:
+        return _resume_from_state(
+            "blocked-checkout-mismatch",
+            counters,
+            durable,
+            pr_number=None,
+            pr_url="",
+            merge_result=merge_result,
+            branch_name=branch_name,
+            repo=state_repo,
+            detail="cannot verify gh-skipped resume PR identity anchor",
+        )
     if pr_number is None and not durable.repo_unavailable:
         return _fresh_resume_plan(
             durable,
@@ -901,23 +927,34 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             detail=f"PR state {viewed.state} is not resumable",
         )
 
-    local_merged = (
-        _state_bool_text(run_logs.read_state_kv(ctx.state_file, "PR_CLOSED"))
-        or state_phase == "postmerge"
-        or merge_result in config.POST_MERGE_MERGE_RESULTS
-        or (run_logs.manifest_status(ctx) == config.MANIFEST_STATUS_DONE and pr_number is not None)
-    )
-    if state_phase == "done":
-        return _resume_from_state(
-            "done",
-            counters,
-            durable,
-            pr_number=pr_number,
-            pr_url=pr_url,
-            merge_result=_valid_merge_result(merge_result),
-            branch_name=branch_name,
-            repo=state_repo,
+    pr_closed_signal = _state_bool_text(run_logs.read_state_kv(ctx.state_file, "PR_CLOSED"))
+    postmerge_phase_signal = state_phase == "postmerge"
+    merge_result_signal = merge_result in config.POST_MERGE_MERGE_RESULTS
+    postmerge_sentinel_signal = (Path(ctx.tmpdir) / "post-merge-sentinel").is_file()
+    manifest_done_signal = run_logs.manifest_status(ctx) == config.MANIFEST_STATUS_DONE and postmerge_sentinel_signal
+    local_merged_signal_count = sum(
+        bool(signal)
+        for signal in (
+            pr_closed_signal,
+            postmerge_phase_signal,
+            merge_result_signal,
+            manifest_done_signal,
         )
+    )
+    local_merged = local_merged_signal_count >= _MIN_GH_SKIPPED_MERGE_SIGNALS
+    if state_phase == "done":
+        if local_merged:
+            return _resume_from_state(
+                "done",
+                counters,
+                durable,
+                pr_number=pr_number,
+                pr_url=pr_url,
+                merge_result=_valid_merge_result(merge_result),
+                branch_name=branch_name,
+                repo=state_repo,
+            )
+        state_phase = "ci-initial"
     if local_merged:
         return _resume_from_state(
             "merged",
@@ -1221,6 +1258,7 @@ def run_ship(
             materialize_result = _materialize_manifest_oos(runner, pr_context, cwd=repo_root)
             if materialize_result is not None:
                 return materialize_result
+        if resume.start == "fresh" or pr_context.oos_pending or _has_oos_gate_inputs(pr_context):
             oos_result = _pending_oos_gate(
                 runner,
                 pr_context,

@@ -203,11 +203,13 @@ jq -e '.per_step[] | select(.skill == "design" and .step == "design Step 3 — p
   || fail "pause timing JSON must attach round 1 to canonical Step 3 label"
 
 RESTORE="$TMP/restore1"
+: >"$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/.pause-requested"
 out_load=$(bash "$LOAD" --design-tmpdir "$RESTORE" --issue 9 --repo owner/repo)
 [[ "$out_load" == *"LOAD_OK=true"* ]] || fail "load failed: $out_load"
 [[ "$out_load" == *"STEP=1d"* ]] || fail "load step mismatch: $out_load"
 [[ -f "$RESTORE/plan.txt" && -f "$RESTORE/run-params.json" && -f "$RESTORE/pause-state.txt" ]] || fail "restored root artifacts missing"
 [[ -f "$RESTORE/.resume-loaded" ]] || fail "resume sentinel missing after restore"
+[[ ! -e "$RESTORE/.pause-requested" ]] || fail "restored .pause-requested should be cleared after load"
 ! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should be deleted after successful restore"
 HOME="$TMP/home" bash "$WDCE" --output "$RESTORE/source-env.sh" --design-tmpdir "$RESTORE" --session-id RUNPAUSE1 --issue-number 9 --claude-pid 12345 >/dev/null
 grep -Fq 'export ISSUE_NUMBER=9' "$RESTORE/source-env.sh" || fail "issue refresh missing after restore"
@@ -573,6 +575,7 @@ printf '%s\n' 'body delete fail' >"$BODY_FILE"
 bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
 out_delete_fail=$(GH_EDIT_FAIL=1 bash "$LOAD" --design-tmpdir "$TMP/restore-delete-fail" --issue 9 --repo owner/repo)
 [[ "$out_delete_fail" == *"LOAD_OK=true"* && "$out_delete_fail" == *"WARN=marker-delete-failed"* ]] || fail "expected marker-delete warning: $out_delete_fail"
+[[ "$out_delete_fail" == *"MARKER_CLEARED=false"* ]] || fail "marker-delete failure should emit MARKER_CLEARED=false: $out_delete_fail"
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "failed marker delete should leave marker"
 
 echo "=== named block delete + empty content semantics ==="
@@ -797,6 +800,11 @@ printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_
 out_bad_branch=$(bash "$LOAD" --design-tmpdir "$TMP/bad-branch" --issue 9 --repo owner/repo)
 [[ "$out_bad_branch" == *"ERROR=invalid-recovery-branch"* ]] || fail "bad branch validation mismatch: $out_bad_branch"
 
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNMISSING1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+out_missing_snapshot=$(bash "$LOAD" --design-tmpdir "$TMP/missing-snapshot" --issue 9 --repo owner/repo)
+[[ "$out_missing_snapshot" == *"ERROR=snapshot-not-found"* ]] || fail "missing snapshot mismatch: $out_missing_snapshot"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "missing snapshot should keep marker"
+
 rm -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/plan.txt"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_missing=$(bash "$LOAD" --design-tmpdir "$TMP/missing" --issue 9 --repo owner/repo)
@@ -806,6 +814,23 @@ printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_
 out_missing_plan_late=$(bash "$LOAD" --design-tmpdir "$TMP/missing-plan-late" --issue 9 --repo owner/repo)
 [[ "$out_missing_plan_late" == *"ERROR=missing-restored-artifact"* ]] || fail "late-step restore should require plan.txt: $out_missing_plan_late"
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "late-step missing artifact should keep marker"
+
+printf 'plan\n' >"$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/plan.txt"
+printf 'ISSUE_NUMBER=8\nRUN_ID=RUNPAUSE1\n' >"$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/pause-state.txt"
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
+out_restored_issue=$(bash "$LOAD" --design-tmpdir "$TMP/restored-issue" --issue 9 --repo owner/repo)
+[[ "$out_restored_issue" == *"ERROR=restored-issue-mismatch"* ]] || fail "restored issue mismatch failed open: $out_restored_issue"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restored issue mismatch should keep marker"
+
+printf 'ISSUE_NUMBER=9\nRUN_ID=OTHER\n' >"$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/pause-state.txt"
+out_restored_run=$(bash "$LOAD" --design-tmpdir "$TMP/restored-run" --issue 9 --repo owner/repo)
+[[ "$out_restored_run" == *"ERROR=restored-run-id-mismatch"* ]] || fail "restored run mismatch failed open: $out_restored_run"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restored run mismatch should keep marker"
+
+printf 'ISSUE_NUMBER=9\nRUN_ID=RUNPAUSE1\nREPO=other/repo\n' >"$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/pause-state.txt"
+out_restored_repo=$(bash "$LOAD" --design-tmpdir "$TMP/restored-repo" --issue 9 --repo owner/repo)
+[[ "$out_restored_repo" == *"ERROR=restored-repo-mismatch"* ]] || fail "restored repo mismatch failed open: $out_restored_repo"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restored repo mismatch should keep marker"
 
 LEGACY_HARD="$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
 rm -rf "$LEGACY_HARD"
@@ -842,7 +867,7 @@ rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
 FAIL_RESTORE="$TMP/unloadable-restore"
 mkdir -p "$FAIL_RESTORE"
 out_unloadable=$(bash "$LOAD" --design-tmpdir "$FAIL_RESTORE" --issue 9 --repo owner/repo)
-[[ "$out_unloadable" == *"ERROR=missing-restored-artifact"* ]] || fail "missing snapshot subtree mismatch: $out_unloadable"
+[[ "$out_unloadable" == *"ERROR=snapshot-not-found"* ]] || fail "missing snapshot subtree mismatch: $out_unloadable"
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "missing snapshot subtree should keep marker"
 ! [[ -f "$FAIL_RESTORE/.resume-loaded" ]] || fail "missing snapshot subtree should not install resume sentinel"
 

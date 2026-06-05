@@ -646,7 +646,8 @@ def test_forked_target_main_resume_uses_pr_only_path(
 ) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
-        "PHASE=ci-initial\nBRANCH_NAME=main\nPR_NUMBER=7\nFORKED_TARGET=true\nMERGE=false\n",
+        "PHASE=ci-initial\nBRANCH_NAME=main\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        "FORKED_TARGET=true\nMERGE=false\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "main")
@@ -726,7 +727,7 @@ def test_merged_resume_with_merge_disabled_does_not_mark_done(
     assert "PHASE=done\n" not in state
 
 
-def test_open_pr_resume_skips_pending_oos_gate(
+def test_open_pr_resume_runs_pending_oos_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -752,12 +753,13 @@ def test_open_pr_resume_skips_pending_oos_gate(
     monkeypatch.setattr(
         ship.oos,
         "disposition_ok",
-        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("OOS gate forbidden on open-pr resume")),
+        lambda *_a, **_k: type("D", (), {"ok": False})(),
     )
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    assert result.outcome is Outcome.OK
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
     state = state_file.read_text(encoding="utf-8")
     assert "ITERATION=10\n" in state
     assert "REBASE_COUNT=2\n" in state
@@ -765,7 +767,7 @@ def test_open_pr_resume_skips_pending_oos_gate(
     assert "TRANSIENT_RETRIES=4\n" in state
 
 
-def test_open_pr_resume_skips_leftover_oos_artifacts(
+def test_open_pr_resume_blocks_leftover_oos_artifacts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -793,13 +795,13 @@ def test_open_pr_resume_skips_leftover_oos_artifacts(
     monkeypatch.setattr(
         ship.oos,
         "disposition_ok",
-        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("OOS gate forbidden on open-pr resume")),
+        lambda *_a, **_k: type("D", (), {"ok": False})(),
     )
-    monkeypatch.setattr(ship, "_materialize_manifest_oos", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("manifest OOS forbidden")))
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
-    assert result.outcome is Outcome.OK
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
     state = state_file.read_text(encoding="utf-8")
     assert "OOS_PENDING=true\n" in state
     assert "ITERATION=10\n" in state
@@ -846,7 +848,7 @@ def test_terminal_monitor_goto_rebase_does_not_increment_rebase_count() -> None:
     ) == (3, 2, 4, 5)
 
 
-def test_gh_skipped_resume_uses_done_manifest_as_merged_signal(
+def test_gh_skipped_resume_requires_multiple_merge_signals(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -855,23 +857,24 @@ def test_gh_skipped_resume_uses_done_manifest_as_merged_signal(
     manifest.parent.mkdir(parents=True)
     _ = manifest.write_text(json.dumps({"status": config.MANIFEST_STATUS_DONE}), encoding="utf-8")
     _ = state_file.write_text(
-        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nREPO_UNAVAILABLE=true\nMERGE=true\n",
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        "REPO=o/r\nREPO_UNAVAILABLE=true\nMERGE=true\n",
         encoding="utf-8",
     )
-    calls: list[str] = []
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(
-        ship.finalize,
-        "postmerge",
-        lambda *_a, **_k: calls.append("postmerge")
-        or type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})(),
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "", "status": "existing"})(),
     )
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
-    assert calls == ["postmerge"]
+    assert "PHASE=done\n" in state_file.read_text(encoding="utf-8")
 
 
 def test_open_pr_resume_wrong_head_routes_through_fresh_checks(
@@ -1479,7 +1482,7 @@ def test_terminal_counter_round_trip_reuses_persisted_fix_attempts(
     assert "FIX_ATTEMPTS=5\n" in state_file.read_text(encoding="utf-8")
 
 
-def test_fresh_fallback_hydrates_modes_and_resets_counters(
+def test_fresh_fallback_hydrates_modes_and_preserves_counters(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1502,8 +1505,8 @@ def test_fresh_fallback_hydrates_modes_and_resets_counters(
     assert result.outcome is Outcome.STALLED
     assert "MERGE=false\n" in state
     assert "DRAFT=true\n" in state
-    assert "ITERATION=0\n" in state
-    assert "FIX_ATTEMPTS=0\n" in state
+    assert "ITERATION=9\n" in state
+    assert "FIX_ATTEMPTS=3\n" in state
     assert "PR_NUMBER=\n" in state
     assert "PR_URL=\n" in state
 

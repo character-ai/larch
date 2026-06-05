@@ -203,18 +203,18 @@ fi
 REPO_TOP=$(git rev-parse --show-toplevel 2>/dev/null) || REPO_TOP=""
 [[ -n "$REPO_TOP" ]] || emit_load_fail "not-git-worktree"
 
-archive_ref=""
+snapshot_ref=""
 if [[ -n "$LOG_RECOVERY_BRANCH" ]]; then
     if [[ "$LOG_RECOVERY_BRANCH" == "larch-log-design-recovery-$RUN_ID" ]]; then
         if ! git -C "$REPO_TOP" show-ref --verify --quiet "refs/heads/$LOG_RECOVERY_BRANCH"; then
             emit_load_fail "snapshot-not-found"
         fi
-        archive_ref="$LOG_RECOVERY_BRANCH"
+        snapshot_ref="$LOG_RECOVERY_BRANCH"
     else
         if ! git -C "$REPO_TOP" fetch origin "$LOG_RECOVERY_BRANCH" >/dev/null 2>&1; then
             emit_load_fail "snapshot-not-found"
         fi
-        archive_ref="FETCH_HEAD"
+        snapshot_ref="FETCH_HEAD"
     fi
 else
     ORIGIN_DEFAULT=$(
@@ -225,12 +225,15 @@ else
     if ! git -C "$REPO_TOP" fetch origin "$ORIGIN_DEFAULT" >/dev/null 2>&1; then
         emit_load_fail "snapshot-not-found"
     fi
-    archive_ref="origin/$ORIGIN_DEFAULT"
+    snapshot_ref="origin/$ORIGIN_DEFAULT"
 fi
 
 snapshot_prefix="larch-logs/design/${RUN_ID}/"
-if ! git -C "$REPO_TOP" ls-tree -r -z --name-only "$archive_ref" -- "$snapshot_prefix" >"$enum_tmp"; then
+if ! git -C "$REPO_TOP" ls-tree -r -z --name-only "$snapshot_ref" -- "$snapshot_prefix" >"$enum_tmp"; then
     emit_load_fail "snapshot-extract-failed"
+fi
+if [[ ! -s "$enum_tmp" ]]; then
+    emit_load_fail "snapshot-not-found"
 fi
 while IFS= read -r -d '' path; do
     rel="${path#"$snapshot_prefix"}"
@@ -242,7 +245,7 @@ while IFS= read -r -d '' path; do
     esac
     dest="$restore_tmp/$rel"
     mkdir -p "$(dirname "$dest")" || emit_load_fail "snapshot-extract-failed"
-    if ! git -C "$REPO_TOP" show "$archive_ref:$path" >"$dest"; then
+    if ! git -C "$REPO_TOP" show "$snapshot_ref:$path" >"$dest"; then
         emit_load_fail "snapshot-extract-failed"
     fi
 done <"$enum_tmp"
@@ -305,6 +308,7 @@ fi
 if ! cp -R "$restore_tmp"/. "$DESIGN_TMPDIR"/; then
     emit_load_fail "restore-install-failed"
 fi
+rm -f "$DESIGN_TMPDIR/.pause-requested" || emit_load_fail "restore-install-failed"
 
 : > "$DESIGN_TMPDIR/.resume-loaded" || emit_load_fail "resume-sentinel-write-failed"
 
@@ -317,6 +321,9 @@ emit_kv BRAINSTORM_DONE "${BRAINSTORM_DONE:-false}"
 [[ -n "$CURRENT_REPO" ]] && emit_kv REPO "$CURRENT_REPO"
 [[ -n "$WARN_VALUE" ]] && emit_kv WARN "$WARN_VALUE"
 if ! clear_pause_marker; then
+    emit_kv MARKER_CLEARED false
     emit_kv WARN marker-delete-failed
+else
+    emit_kv MARKER_CLEARED true
 fi
 exit 0
