@@ -44,6 +44,7 @@ import checks
 import ci_monitor
 import config
 import finalize
+import gh
 import git
 import logging_util
 import merge
@@ -80,6 +81,21 @@ class ShipResult:
             "merge_result": self.merge_result,
             "detail": self.detail,
         }
+
+
+@dataclass(frozen=True)
+class ResumePlan:
+    start: str
+    iteration: int
+    rebase_count: int
+    fix_attempts: int
+    transient_retries: int
+    pr_number: int | None
+    pr_url: str
+    merge_result: str
+    branch_name: str
+    durable: run_logs.DurableFlags
+    detail: str = ""
 
 
 def _step_result_to_ship(
@@ -366,13 +382,29 @@ def _postmerge_should_flush(ctx: RunContext) -> bool:
     )
 
 
-def _write_terminal_state(ctx: RunContext, result: Outcome, step: str) -> None:
+def _write_terminal_state(
+    ctx: RunContext,
+    result: Outcome,
+    step: str,
+    *,
+    iteration: int = 0,
+    rebase_count: int = 0,
+    fix_attempts: int = 0,
+    transient_retries: int = 0,
+) -> None:
     finalize.write_finalize_state(
         ctx.with_(stall_tracking=result is Outcome.STALLED, stall_step=step),
         Path(ctx.tmpdir) / "finalize-state.sh",
     )
     phase = "done" if result is Outcome.OK else step or "stalled"
-    _write_ship_state(ctx, phase=phase)
+    _write_ship_state(
+        ctx,
+        phase=phase,
+        iteration=iteration,
+        rebase_count=rebase_count,
+        fix_attempts=fix_attempts,
+        transient_retries=transient_retries,
+    )
 
 
 def _state_bool(*, value: bool) -> str:
@@ -420,6 +452,252 @@ def _write_ship_state(
     tmp = path.with_suffix(path.suffix + ".tmp")
     _ = tmp.write_text("".join(f"{key}={value}\n" for key, value in fields.items()), encoding="utf-8")
     _ = tmp.replace(path)
+
+
+def _try_current_branch(runner: Runner, *, cwd: str | None) -> str:
+    try:
+        return git.current_branch(runner, cwd=cwd)
+    except Exception:  # pylint: disable=broad-except
+        return ""
+
+
+def _fresh_resume_plan(
+    durable: run_logs.DurableFlags,
+    *,
+    branch_name: str = "",
+    detail: str = "",
+) -> ResumePlan:
+    return ResumePlan(
+        start="fresh",
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        transient_retries=0,
+        pr_number=None,
+        pr_url="",
+        merge_result="",
+        branch_name=branch_name,
+        durable=durable,
+        detail=detail,
+    )
+
+
+def _resume_from_state(
+    start: str,
+    counters: run_logs.ResumeCounters,
+    durable: run_logs.DurableFlags,
+    *,
+    pr_number: int | None,
+    pr_url: str,
+    merge_result: str,
+    branch_name: str,
+    detail: str = "",
+) -> ResumePlan:
+    return ResumePlan(
+        start=start,
+        iteration=counters.iteration,
+        rebase_count=counters.rebase_count,
+        fix_attempts=counters.fix_attempts,
+        transient_retries=counters.transient_retries,
+        pr_number=pr_number,
+        pr_url=pr_url,
+        merge_result=merge_result,
+        branch_name=branch_name,
+        durable=durable,
+        detail=detail,
+    )
+
+
+def _state_bool_text(value: str) -> bool:
+    return value.strip() == "true"
+
+
+def _valid_merge_result(value: str) -> str:
+    return value if value in config.POST_MERGE_MERGE_RESULTS else config.MERGE_RESULT_DRIVER_ALREADY_MERGED
+
+
+def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumePlan:
+    counters = run_logs.read_resume_counters(ctx.state_file)
+    durable = run_logs.read_durable_flags(ctx.state_file, ctx)
+    if not ctx.state_file or not Path(ctx.state_file).is_file():
+        return _fresh_resume_plan(durable)
+
+    state_phase = run_logs.read_state_kv(ctx.state_file, "PHASE")
+    resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE")
+    state_branch = run_logs.read_state_kv(ctx.state_file, "BRANCH_NAME").strip()
+    pr_url = run_logs.read_state_kv(ctx.state_file, "PR_URL") or ctx.pr_url
+    merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
+
+    if resume_phase == "ship-pr-rrr-phase14":
+        return _resume_from_state(
+            "blocked-rebase-continuation",
+            counters,
+            durable,
+            pr_number=run_logs.parse_pr_number(ctx.state_file, ctx.pr_number),
+            pr_url=pr_url,
+            merge_result=merge_result,
+            branch_name=state_branch or ctx.branch_name or ctx.branch,
+            detail="Python ship driver cannot resume rebase-conflict continuation",
+        )
+
+    current_branch = _try_current_branch(runner, cwd=cwd)
+    expected_branch = state_branch or ctx.branch_name or ctx.branch
+    if not current_branch:
+        return _resume_from_state(
+            "blocked-checkout-mismatch",
+            counters,
+            durable,
+            pr_number=None,
+            pr_url=pr_url,
+            merge_result=merge_result,
+            branch_name=expected_branch,
+            detail=f"cannot verify current checkout branch; expected {expected_branch or '<unknown>'}",
+        )
+    if expected_branch and current_branch != expected_branch:
+        return _resume_from_state(
+            "blocked-checkout-mismatch",
+            counters,
+            durable,
+            pr_number=None,
+            pr_url=pr_url,
+            merge_result=merge_result,
+            branch_name=expected_branch,
+            detail=f"checkout branch mismatch: expected {expected_branch}, current {current_branch}",
+        )
+    if current_branch in {"main", "master"} and not durable.forked_target and not durable.forked:
+        return _resume_from_state(
+            "blocked-checkout-mismatch",
+            counters,
+            durable,
+            pr_number=None,
+            pr_url=pr_url,
+            merge_result=merge_result,
+            branch_name=current_branch,
+            detail=f"refusing to resume on protected branch {current_branch}",
+        )
+
+    branch_name = current_branch
+    pr_number = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
+    gh_skipped = durable.repo_unavailable or durable.forked or durable.forked_target
+    if pr_number is None and not durable.repo_unavailable:
+        return _fresh_resume_plan(
+            durable,
+            branch_name=branch_name,
+            detail="missing or invalid PR_NUMBER",
+        )
+
+    if not gh_skipped:
+        if pr_number is None:
+            return _fresh_resume_plan(durable, branch_name=branch_name)
+        try:
+            viewed = gh.pr_view(runner, pr_number, repo=ctx.repo, cwd=cwd)
+        except Exception:  # pylint: disable=broad-except
+            return _fresh_resume_plan(
+                durable,
+                branch_name=branch_name,
+                detail="gh pr view failed",
+            )
+        if viewed.head_ref != branch_name:
+            return _fresh_resume_plan(
+                durable,
+                branch_name=branch_name,
+                detail=f"PR head {viewed.head_ref} does not match checkout {branch_name}",
+            )
+        state = viewed.state.upper()
+        if state == "MERGED":
+            start = "done" if state_phase == "done" else "merged"
+            return _resume_from_state(
+                start,
+                counters,
+                durable,
+                pr_number=viewed.number,
+                pr_url=viewed.url or pr_url,
+                merge_result=_valid_merge_result(merge_result),
+                branch_name=branch_name,
+            )
+        if state == "OPEN":
+            return _resume_from_state(
+                "open-pr",
+                counters,
+                durable,
+                pr_number=viewed.number,
+                pr_url=viewed.url or pr_url,
+                merge_result=merge_result,
+                branch_name=branch_name,
+            )
+        return _fresh_resume_plan(
+            durable,
+            branch_name=branch_name,
+            detail=f"PR state {viewed.state} is not resumable",
+        )
+
+    local_merged = (
+        _state_bool_text(run_logs.read_state_kv(ctx.state_file, "PR_CLOSED"))
+        or state_phase == "postmerge"
+        or merge_result in config.POST_MERGE_MERGE_RESULTS
+    )
+    if state_phase == "done":
+        return _resume_from_state(
+            "done",
+            counters,
+            durable,
+            pr_number=pr_number,
+            pr_url=pr_url,
+            merge_result=_valid_merge_result(merge_result),
+            branch_name=branch_name,
+        )
+    if local_merged:
+        return _resume_from_state(
+            "merged",
+            counters,
+            durable,
+            pr_number=pr_number,
+            pr_url=pr_url,
+            merge_result=_valid_merge_result(merge_result),
+            branch_name=branch_name,
+        )
+    if pr_number is not None or durable.repo_unavailable:
+        return _resume_from_state(
+            "open-pr",
+            counters,
+            durable,
+            pr_number=pr_number,
+            pr_url=pr_url,
+            merge_result=merge_result,
+            branch_name=branch_name,
+        )
+    return _fresh_resume_plan(durable, branch_name=branch_name)
+
+
+def _hydrate_resume_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
+    return ctx.with_(
+        branch=resume.branch_name or ctx.branch,
+        branch_name=resume.branch_name or ctx.branch_name or ctx.branch,
+        pr_number=resume.pr_number,
+        pr_url=resume.pr_url,
+        merge_result=resume.merge_result,
+        repo_unavailable=resume.durable.repo_unavailable,
+        forked_target=resume.durable.forked_target,
+        forked=resume.durable.forked,
+        merge=resume.durable.merge,
+        draft=resume.durable.draft,
+    )
+
+
+def _monitor_persisted_counters(
+    *,
+    iteration: int,
+    rebase_count: int,
+    fix_attempts: int,
+    transient_retries: int,
+    monitor: ci_monitor.MonitorResult,
+) -> tuple[int, int, int, int]:
+    return (
+        iteration,
+        rebase_count,
+        fix_attempts + (1 if monitor.did_fixing else 0),
+        transient_retries + (1 if monitor.transient_rerun_attempted else 0),
+    )
 
 
 def _tmpdir_under_allowed_root(tmpdir: str) -> bool:
@@ -485,73 +763,161 @@ def run_ship(
             return ShipResult(Outcome.STALLED, detail="invalid tmpdir")
         codex_present = ctx.codex_present or bool(os.environ.get("CODEX") or os.environ.get("CODEX_HOME") or ctx.tool_label == "codex")
         cursor_present = ctx.cursor_present or bool(os.environ.get("CURSOR") or os.environ.get("CURSOR_AUTH_ARGS") or ctx.tool_label == "cursor")
-        base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
         base_ref = "main"
-        _write_ship_state(ctx, phase="checks")
-        _breadcrumb("checks", "Lint&Tests")
-        checks_result = checks.run_checks_phase(
-            runner,
-            tmpdir=ctx.tmpdir,
-            repo_root=repo_root,
-            codex_present=codex_present,
-            cursor_present=cursor_present,
-            site="step6",
-            checks_site="step6",
-            fix_site="ship-pr-ci-initial",
-        )
-        if checks_result.outcome is not Outcome.OK:
-            _write_terminal_state(ctx, checks_result.outcome, checks_result.detail or "checks")
-            return _step_result_to_ship(checks_result)
-
-        _write_ship_state(ctx, phase="pr-prep")
-        _breadcrumb("pr-prep", "postbump/Flush+Push")
-        postbump = finalize.postbump(runner, ctx, cwd=repo_root)
-        if postbump.outcome is not Outcome.OK:
-            finalize.write_finalize_state(
-                ctx.with_(stall_tracking=postbump.outcome is Outcome.STALLED, stall_step=postbump.status),
-                Path(ctx.tmpdir) / "finalize-state.sh",
-            )
-            return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
-
-        _write_ship_state(ctx, phase="pr-create")
-        _breadcrumb("pr-create", "PR")
-        body = pr_body.compose_pr_body(
-            summary=_summary_from_manifest(ctx),
-            mermaid=ctx.mermaid,
-            test_plan=ctx.test_plan or "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
-            issue_number=int(ctx.issue_number or ctx.issue) if (ctx.issue_number or ctx.issue).isdigit() else None,
-        )
-        materialize_result = _materialize_manifest_oos(runner, ctx, cwd=repo_root)
-        if materialize_result is not None:
-            return materialize_result
-        security_oos = Path(ctx.tmpdir) / "security-oos-observations.md"
-        if security_oos.is_file() and security_oos.stat().st_size > 0:
-            _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
+        resume = _resume_plan(ctx, runner, cwd=repo_root)
+        if resume.start == "blocked-rebase-continuation":
             return ShipResult(
                 Outcome.NEEDS_USER_INPUT,
-                needs_user_reason=config.NEEDS_USER_OOS_FILING,
-                detail=config.NEEDS_USER_OOS_FILING,
+                needs_user_reason="unsupported-rebase-continuation",
+                detail=resume.detail,
+                pr_number=resume.pr_number,
+                pr_url=resume.pr_url,
             )
-        oos_result = _oos_gate(runner, ctx, cwd=repo_root)
-        if oos_result is not None:
-            return oos_result
+        if resume.start == "blocked-checkout-mismatch":
+            return ShipResult(
+                Outcome.NEEDS_USER_INPUT,
+                needs_user_reason="checkout-mismatch",
+                detail=resume.detail,
+            )
+        if resume.start == "done":
+            return ShipResult(
+                Outcome.OK,
+                pr_number=resume.pr_number,
+                pr_url=resume.pr_url,
+                merge_result=resume.merge_result,
+                detail="already done",
+            )
+        if resume.start == "merged":
+            working = _hydrate_resume_context(ctx, resume).with_(pr_closed=True)
+            _write_ship_state(
+                working,
+                phase="postmerge",
+                iteration=resume.iteration,
+                rebase_count=resume.rebase_count,
+                fix_attempts=resume.fix_attempts,
+                transient_retries=resume.transient_retries,
+            )
+            _breadcrumb("post-merge")
+            post = run_postmerge_phase(runner, working, cwd=repo_root)
+            if post.outcome is Outcome.OK:
+                _write_ship_state(
+                    working,
+                    phase="done",
+                    iteration=resume.iteration,
+                    rebase_count=resume.rebase_count,
+                    fix_attempts=resume.fix_attempts,
+                    transient_retries=resume.transient_retries,
+                )
+            return ShipResult(
+                post.outcome,
+                pr_number=working.pr_number,
+                pr_url=working.pr_url,
+                merge_result=working.merge_result,
+                detail=post.detail,
+            )
 
-        title = _pr_title(ctx, runner, cwd=repo_root)
-        ensured = pr.ensure_pr(runner, ctx, body, title=title, cwd=repo_root, base=base_ref)
-        working = ctx.with_(
-            pr_number=ensured.number or None,
-            pr_url=ensured.url,
+        if resume.start == "fresh":
+            fresh_context = (
+                ctx.with_(branch=resume.branch_name, branch_name=resume.branch_name)
+                if resume.branch_name
+                else ctx
+            )
+            _write_ship_state(fresh_context, phase="checks")
+            _breadcrumb("checks", "Lint&Tests")
+            checks_result = checks.run_checks_phase(
+                runner,
+                tmpdir=fresh_context.tmpdir,
+                repo_root=repo_root,
+                codex_present=codex_present,
+                cursor_present=cursor_present,
+                site="step6",
+                checks_site="step6",
+                fix_site="ship-pr-ci-initial",
+            )
+            if checks_result.outcome is not Outcome.OK:
+                _write_terminal_state(
+                    fresh_context,
+                    checks_result.outcome,
+                    checks_result.detail or "checks",
+                )
+                return _step_result_to_ship(checks_result)
+
+            _write_ship_state(fresh_context, phase="pr-prep")
+            _breadcrumb("pr-prep", "postbump/Flush+Push")
+            postbump = finalize.postbump(runner, fresh_context, cwd=repo_root)
+            if postbump.outcome is not Outcome.OK:
+                finalize.write_finalize_state(
+                    fresh_context.with_(stall_tracking=postbump.outcome is Outcome.STALLED, stall_step=postbump.status),
+                    Path(fresh_context.tmpdir) / "finalize-state.sh",
+                )
+                return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
+
+            pr_context = fresh_context
+        else:
+            pr_context = _hydrate_resume_context(ctx, resume)
+
+        _write_ship_state(
+            pr_context,
+            phase="pr-create",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+        _breadcrumb("pr-create", "PR")
+        body = pr_body.compose_pr_body(
+            summary=_summary_from_manifest(pr_context),
+            mermaid=pr_context.mermaid,
+            test_plan=pr_context.test_plan or "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
+            issue_number=int(pr_context.issue_number or pr_context.issue) if (pr_context.issue_number or pr_context.issue).isdigit() else None,
+        )
+        if resume.start == "fresh":
+            materialize_result = _materialize_manifest_oos(runner, pr_context, cwd=repo_root)
+            if materialize_result is not None:
+                return materialize_result
+            security_oos = Path(pr_context.tmpdir) / "security-oos-observations.md"
+            if security_oos.is_file() and security_oos.stat().st_size > 0:
+                _write_ship_state(pr_context.with_(oos_pending=True), phase="pr-create")
+                return ShipResult(
+                    Outcome.NEEDS_USER_INPUT,
+                    needs_user_reason=config.NEEDS_USER_OOS_FILING,
+                    detail=config.NEEDS_USER_OOS_FILING,
+                )
+            oos_result = _oos_gate(runner, pr_context, cwd=repo_root)
+            if oos_result is not None:
+                return oos_result
+
+        title = _pr_title(pr_context, runner, cwd=repo_root)
+        ensured = pr.ensure_pr(runner, pr_context, body, title=title, cwd=repo_root, base=base_ref)
+        working = pr_context.with_(
+            pr_number=ensured.number or pr_context.pr_number,
+            pr_url=ensured.url or pr_context.pr_url,
             pr_title=title,
             pr_closed=False,
         )
-        _write_ship_state(working, phase="ci-initial" if working.merge and not working.draft else "done")
-        try:
-            run_logs.write_final_report_comment(runner, working)
-        except ShipError as exc:
-            _breadcrumb("warning", str(exc))
-        if not working.merge or working.draft or working.forked or working.repo_unavailable:
+        _write_ship_state(
+            working,
+            phase="ci-initial" if working.merge and not working.draft else "done",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+        if resume.start == "fresh":
+            try:
+                run_logs.write_final_report_comment(runner, working)
+            except ShipError as exc:
+                _breadcrumb("warning", str(exc))
+        if not working.merge or working.draft or working.forked or working.forked_target or working.repo_unavailable:
             finalize.write_finalize_state(working, Path(working.tmpdir) / "finalize-state.sh")
-            _write_ship_state(working, phase="done")
+            _write_ship_state(
+                working,
+                phase="done",
+                iteration=resume.iteration,
+                rebase_count=resume.rebase_count,
+                fix_attempts=resume.fix_attempts,
+                transient_retries=resume.transient_retries,
+            )
             return ShipResult(
                 Outcome.OK,
                 pr_number=working.pr_number,
@@ -559,19 +925,12 @@ def run_ship(
                 detail=ensured.status,
             )
 
-        iteration = 0
-        rebase_count = 0
-        fix_attempts = 0
-        transient_retries = 0
+        base_remote = "upstream" if working.forked or working.forked_target else "origin"
+        iteration = resume.iteration if resume.start == "open-pr" else 0
+        rebase_count = resume.rebase_count if resume.start == "open-pr" else 0
+        fix_attempts = resume.fix_attempts if resume.start == "open-pr" else 0
+        transient_retries = resume.transient_retries if resume.start == "open-pr" else 0
         while True:
-            if iteration >= config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
-                _write_terminal_state(working, Outcome.STALLED, "merge-loop-iteration-cap")
-                return ShipResult(
-                    Outcome.STALLED,
-                    pr_number=working.pr_number,
-                    pr_url=working.pr_url,
-                    detail="merge loop iteration cap reached",
-                )
             _write_ship_state(
                 working,
                 phase="ci-initial",
@@ -594,10 +953,21 @@ def run_ship(
                 cwd=repo_root,
             )
             if monitor.result.outcome is not Outcome.OK:
+                persisted = _monitor_persisted_counters(
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                    monitor=monitor,
+                )
                 _write_terminal_state(
                     working,
                     monitor.result.outcome,
                     monitor.result.detail or "ci-monitor",
+                    iteration=persisted[0],
+                    rebase_count=persisted[1],
+                    fix_attempts=persisted[2],
+                    transient_retries=persisted[3],
                 )
                 return _step_result_to_ship(
                     monitor.result,
@@ -606,6 +976,22 @@ def run_ship(
                     pr_url=working.pr_url,
                 )
             if monitor.action not in {"merge", "already_merged"}:
+                if iteration >= config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
+                    _write_terminal_state(
+                        working,
+                        Outcome.STALLED,
+                        "merge-loop-iteration-cap",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                    )
+                    return ShipResult(
+                        Outcome.STALLED,
+                        pr_number=working.pr_number,
+                        pr_url=working.pr_url,
+                        detail="merge loop iteration cap reached",
+                    )
                 if monitor.goto_rebase:
                     _write_ship_state(
                         working,
@@ -618,7 +1004,15 @@ def run_ship(
                     _breadcrumb("rebase", "Flush+Push")
                     pre_rebase = run_logs.flush_logs_pre(runner, working.with_(state_file=None), cwd=repo_root)
                     if pre_rebase.skipped and pre_rebase.reason not in config.REFRESH_SKIP_MERGE_OK:
-                        _write_terminal_state(working, Outcome.STALLED, "pre-rebase")
+                        _write_terminal_state(
+                            working,
+                            Outcome.STALLED,
+                            "pre-rebase",
+                            iteration=iteration,
+                            rebase_count=rebase_count,
+                            fix_attempts=fix_attempts,
+                            transient_retries=transient_retries,
+                        )
                         return ShipResult(
                             Outcome.STALLED,
                             detail=f"pre-rebase flush skipped: {pre_rebase.reason}",
@@ -686,7 +1080,15 @@ def run_ship(
                 )
             _breadcrumb("post-merge")
             post = run_postmerge_phase(runner, working, cwd=repo_root)
-            _write_ship_state(working, phase="done")
+            if post.outcome is Outcome.OK:
+                _write_ship_state(
+                    working,
+                    phase="done",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                )
             return ShipResult(
                 post.outcome,
                 pr_number=working.pr_number,

@@ -146,6 +146,65 @@ def test_effective_run_id_rejects_unvalidated_ctx_run_id(tmp_path: Path) -> None
     assert run_logs.effective_run_id(ctx) == ""
 
 
+def test_read_resume_counters_absent_and_corrupt_values(tmp_path: Path) -> None:
+    assert run_logs.read_resume_counters(None) == run_logs.ResumeCounters(0, 0, 0, 0)
+    state = tmp_path / "state.env"
+    _ = state.write_text(
+        "ITERATION=10\nREBASE_COUNT=bad\nFIX_ATTEMPTS=\nTRANSIENT_RETRIES=3\n",
+        encoding="utf-8",
+    )
+
+    assert run_logs.read_resume_counters(str(state)) == run_logs.ResumeCounters(10, 0, 0, 3)
+
+
+def test_read_durable_flags_state_first_and_forked_target_implies_forked(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path).with_(repo_unavailable=False, forked=False, forked_target=False, merge=True, draft=False)
+    assert run_logs.read_durable_flags(None, ctx) == run_logs.DurableFlags(
+        repo_unavailable=False,
+        forked_target=False,
+        forked=False,
+        merge=True,
+        draft=False,
+    )
+    state = tmp_path / "state.env"
+    _ = state.write_text(
+        "REPO_UNAVAILABLE=true\nFORKED_TARGET=true\nMERGE=false\nDRAFT=maybe\n",
+        encoding="utf-8",
+    )
+
+    assert run_logs.read_durable_flags(str(state), ctx) == run_logs.DurableFlags(
+        repo_unavailable=True,
+        forked_target=True,
+        forked=True,
+        merge=False,
+        draft=False,
+    )
+
+
+def test_parse_pr_number_state_first_and_ctx_fallback(tmp_path: Path) -> None:
+    assert run_logs.parse_pr_number(None, 7) is None
+    state = tmp_path / "state.env"
+    _ = state.write_text("PR_NUMBER=\n", encoding="utf-8")
+    assert run_logs.parse_pr_number(str(state), "8") == 8
+    _ = state.write_text("PR_NUMBER=0\n", encoding="utf-8")
+    assert run_logs.parse_pr_number(str(state), "8") is None
+    _ = state.write_text("PR_NUMBER=9\n", encoding="utf-8")
+    assert run_logs.parse_pr_number(str(state), None) == 9
+
+
+def test_manifest_status_read_only_effective_run_id_path(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=state-run\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state)).with_(run_id="ctx-run")
+    assert run_logs.manifest_status(ctx) == ""
+    manifest = tmp_path / "larch-logs" / "implement" / "state-run" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    _ = manifest.write_text('{"status":"done"}', encoding="utf-8")
+    assert run_logs.manifest_status(ctx) == "done"
+    _ = manifest.write_text("{", encoding="utf-8")
+    assert run_logs.manifest_status(ctx) == ""
+
+
 def test_execution_issues_batch_from_markdown(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")

@@ -51,6 +51,23 @@ class RefreshSkip:
     reason: str
 
 
+@dataclass(frozen=True)
+class ResumeCounters:
+    iteration: int
+    rebase_count: int
+    fix_attempts: int
+    transient_retries: int
+
+
+@dataclass(frozen=True)
+class DurableFlags:
+    repo_unavailable: bool
+    forked_target: bool
+    forked: bool
+    merge: bool
+    draft: bool
+
+
 def _atomic_write(path: Path, content: str) -> None:
     parent = path.parent
     parent.mkdir(parents=True, exist_ok=True)
@@ -74,6 +91,98 @@ def validate_run_id_slug(run_id: str) -> bool:
 def read_state_kv(state_file: str | None, key: str) -> str:
     """Read a single KEY=value from an implement state file."""
     return _read_state_kv(state_file, key)
+
+
+def _parse_nonnegative_int(raw: str) -> int:
+    text = raw.strip()
+    if not re.fullmatch(r"[0-9]+", text):
+        return 0
+    return int(text)
+
+
+def _parse_positive_int(raw: str) -> int | None:
+    text = raw.strip()
+    if not re.fullmatch(r"[0-9]+", text):
+        return None
+    value = int(text)
+    return value if value > 0 else None
+
+
+def read_resume_counters(state_file: str | None) -> ResumeCounters:
+    """Read persisted CI-loop counters without raising on corrupt state."""
+    if not state_file:
+        return ResumeCounters(0, 0, 0, 0)
+    return ResumeCounters(
+        iteration=_parse_nonnegative_int(_read_state_kv(state_file, "ITERATION")),
+        rebase_count=_parse_nonnegative_int(_read_state_kv(state_file, "REBASE_COUNT")),
+        fix_attempts=_parse_nonnegative_int(_read_state_kv(state_file, "FIX_ATTEMPTS")),
+        transient_retries=_parse_nonnegative_int(
+            _read_state_kv(state_file, "TRANSIENT_RETRIES"),
+        ),
+    )
+
+
+def _state_bool_or_default(raw: str, *, default: bool) -> bool:
+    text = raw.strip()
+    if text == "true":
+        return True
+    if text == "false":
+        return False
+    return default
+
+
+def read_durable_flags(state_file: str | None, ctx: RunContext) -> DurableFlags:
+    """Read durable mode flags state-first, falling back to the run context."""
+    if not state_file:
+        return DurableFlags(
+            repo_unavailable=ctx.repo_unavailable,
+            forked_target=ctx.forked_target,
+            forked=ctx.forked,
+            merge=ctx.merge,
+            draft=ctx.draft,
+        )
+    forked_target = _state_bool_or_default(
+        _read_state_kv(state_file, "FORKED_TARGET"),
+        default=ctx.forked_target,
+    )
+    return DurableFlags(
+        repo_unavailable=_state_bool_or_default(
+            _read_state_kv(state_file, "REPO_UNAVAILABLE"),
+            default=ctx.repo_unavailable,
+        ),
+        forked_target=forked_target,
+        forked=ctx.forked or forked_target,
+        merge=_state_bool_or_default(_read_state_kv(state_file, "MERGE"), default=ctx.merge),
+        draft=_state_bool_or_default(_read_state_kv(state_file, "DRAFT"), default=ctx.draft),
+    )
+
+
+def parse_pr_number(state_file: str | None, ctx_pr_number: int | str | None) -> int | None:
+    """Parse a persisted PR number; fall back to ctx only when state is absent/empty."""
+    if not state_file:
+        return None
+    raw = _read_state_kv(state_file, "PR_NUMBER")
+    if raw.strip():
+        return _parse_positive_int(raw)
+    if ctx_pr_number is None:
+        return None
+    return _parse_positive_int(str(ctx_pr_number))
+
+
+def manifest_status(ctx: RunContext) -> str:
+    """Return the run-log manifest status without initializing or recovering it."""
+    path = _manifest_path(ctx)
+    if not path.is_file():
+        return ""
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(loaded, dict):
+        return ""
+    data = cast("dict[str, object]", loaded)
+    status = data.get("status")
+    return str(status) if status is not None else ""
 
 
 def _read_kv_file(path: Path, key: str) -> str:
