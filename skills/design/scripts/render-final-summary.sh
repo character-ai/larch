@@ -99,7 +99,8 @@ if [ "$trc" -ne 0 ] || [ ! -s "$DESIGN_TMPDIR/token-report-final.json" ]; then
 fi
 
 set +e
-LARCH_TIMING_SKILL=design \
+LARCH_TIMING_SKILL=design LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv" \
+    env -u IMPLEMENT_TMPDIR \
     "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json \
     --output "$DESIGN_TMPDIR/timing-report-final.json" 2>"$DESIGN_TMPDIR/timing-report-final.stderr.log"
 tmrc=$?
@@ -200,7 +201,7 @@ else
 fi
 
 if [ -z "$DURATION" ]; then
-    if [ ! -f "$DESIGN_TMPDIR/timing-report-final.json" ] || [ "$tmrc" -ne 0 ]; then
+    if [ ! -f "$DESIGN_TMPDIR/timing-report-final.json" ] || [ "${tmrc:-0}" -ne 0 ]; then
         : >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
         if [ -s "$DESIGN_TMPDIR/timing-report-final.stderr.log" ]; then
             cat "$DESIGN_TMPDIR/timing-report-final.stderr.log" >>"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true

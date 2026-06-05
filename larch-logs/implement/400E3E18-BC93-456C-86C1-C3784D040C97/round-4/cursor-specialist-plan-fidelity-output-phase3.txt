@@ -1,0 +1,131 @@
+---
+
+## Plan Fidelity Review — `sergey-zhupanov/implementing-add-per-review-round-timing-3488`
+
+**Reviewer:** larch:reviewer-plan-fidelity  
+**Scope:** All commits from merge-base with `main` (4 commits: cc0e476b3, 8df9dbc8c, 873fc67b2, plus merge-base)
+
+---
+
+### In-Scope Findings
+
+---
+
+**[FINDING_1]**  
+**Severity:** Nit  
+**Category:** Plan-Fidelity / Correctness  
+**File:** `scripts/timing-report.sh`, lines 385–386, 413  
+**Title:** `emit_round_array` uses `round_num[i] + 0` as AWK array subscript for `round_match_pos` — minor deviation from plan's "never use field values as subscripts" guidance
+
+**Description:**  
+The plan states that dedup in `emit_round_array` should be done by iterating and checking for duplicate `round_num` values, without using field values as array subscripts. The implementation uses `rkey = round_num[i] + 0` as a subscript in `round_match_pos[rkey]`:
+
+```awk
+rkey = round_num[i] + 0
+if (!(rkey in round_match_pos)) {
+    match_idx[++mc] = i
+    round_match_pos[rkey] = mc
+} else {
+    match_idx[round_match_pos[rkey]] = i
+}
+```
+
+This is a minor deviation. The `+ 0` coerces the value to a numeric integer, and round numbers are validated upstream (by `cmd_record_round()`) to be non-negative integers. So the subscript is a bounded, validated integer — not a raw field value. AWK arrays keyed by integer are safe, and the logic correctly deduplicates by round number (last-write-wins keeps most-recent row). The cleanup loop (line 413) also correctly deletes using the same `round_num[match_idx[i]] + 0` form. Behavior is correct; the deviation is stylistic relative to plan guidance.
+
+**Recommendation:** No action required. Document the `+ 0` coercion rationale in a brief inline comment if plan guidance will be enforced strictly in future review rounds.
+
+---
+
+**[FINDING_2]**  
+**Severity:** Nit  
+**Category:** Plan-Fidelity (Unlisted File)  
+**File:** `skills/design/scripts/render-final-summary.sh`  
+**Title:** File modified but absent from plan's "Files to modify/create" list
+
+**Description:**  
+The plan's file list does not include `render-final-summary.sh`. The implementation adds:
+1. A `_SKIP_TIMING_REGATHER` guard that skips re-rendering when `--post-publish-only` mode has a valid `timing-report-final.json` already present.
+2. `LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv"` and `env -u IMPLEMENT_TMPDIR` wiring on the timing render call.
+
+The change is a correct implicit consequence of the plan's design-publish ordering requirement (rendering before publish means `--post-publish-only` re-runs should not clobber a freshly rendered file), but the plan omitted this file from its scope. This is a scope gap, not a behavioral defect.
+
+**Recommendation:** Retroactively add `render-final-summary.sh` to the plan's "Files to modify" list, or document it explicitly in the PR description. No code change needed.
+
+---
+
+**[FINDING_3]**  
+**Severity:** Latent  
+**Category:** Plan-Fidelity (Unlisted File / Untracked Scope)  
+**File:** `scripts/design-pause-save.sh`  
+**Title:** File modified but absent from plan's "Files to modify/create" list
+
+**Description:**  
+The plan's file list does not include `design-pause-save.sh`. The implementation adds `render_fresh_timing_report_for_pause_publish()` — a pattern matching `design-publish.sh`'s `render_fresh_timing_report_for_publish()`. The function: deletes stale `timing-report-final.*` first, renders to a temp dir, atomically moves JSON on success, removes all artifacts on failure.
+
+This is correct behavior (pause-save flows should also have fresh timing JSON). However, it represents untracked scope that was not in the plan. Future implementers iterating on the timing-report pipeline may not know `design-pause-save.sh` is part of the surface.
+
+**Recommendation:** Add `design-pause-save.sh` to the plan's file list, or add a note in the PR description that pause-save mirrors publish. No code change needed.
+
+---
+
+**[FINDING_4]**  
+**Severity:** Nit  
+**Category:** Plan-Fidelity (Single Terminal Hook Contract)  
+**File:** `skills/design/scripts/plan-review-loop.sh`, lines 1470–1487  
+**Title:** `panel-failed` path uses direct `_emit_plan_round_timing_row` + `_terminal_exit` instead of routing through `_snapshot_terminal_exit_preserving_status`
+
+**Description:**  
+The plan explicitly lists `panel-failed` as one of the terminal exit paths that should be consolidated under the `_snapshot_terminal_exit_preserving_status` hook. The implementation instead calls `_emit_plan_round_timing_row` + `_terminal_exit` directly in both the `snapshot-failed` sub-path (lines 1479–1483) and the main `panel-failed` path (lines 1485–1487):
+
+```bash
+if (( _round_rc != 0 )); then
+    ...
+    if ! _snapshot_round_dir "$round_num"; then
+        ...
+        _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
+        _write_round_summary "$round_num" panel-failed snapshot-failed skipped
+        _terminal_exit 1 "$round_num"
+    fi
+    _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
+    _write_round_summary "$round_num" panel-failed panel-failed skipped
+    _terminal_exit 1 "$round_num"
+fi
+```
+
+The timing row IS correctly emitted in both sub-paths. The practical impact is zero — no round timing is lost. The deviation is that future changes to `_snapshot_terminal_exit_preserving_status` (e.g., adding a new side-effect) will not automatically apply to `panel-failed` exits. This is a maintainability concern, not a correctness bug.
+
+**Recommendation:** Consider refactoring `panel-failed` to route through `_snapshot_terminal_exit_preserving_status` (with appropriate `revise_status=skipped` and `rc=1` plumbing) to honor the plan's single-hook invariant. Low urgency.
+
+---
+
+**[FINDING_5]**  
+**Severity:** Nit  
+**Category:** Plan-Fidelity (Test Coverage Gap)  
+**File:** `skills/review-and-fix/scripts/test-record-implement-review-round-timing.sh`  
+**Title:** No explicitly labeled test for "stall exit emits deferred row when resume wrapper is not called"
+
+**Description:**  
+The plan's test requirements include a scenario for stall exits: "stall exit still emits deferred row when resume wrapper is not called." The test file contains tests for fallback counting, `review-tally.env` precedence, idempotency, cross-skill isolation, and ordering before Step 7 — but does not have a test labeled or structured around the stall-exit signal path specifically.
+
+The stall behavior is exercised implicitly through `record-implement-review-round-timing.sh`'s standalone execution (it does not require the resume wrapper), but the scenario where the wrapper is absent is not tested with a named test case. This is a minor test-coverage gap relative to plan requirements.
+
+**Recommendation:** Add a test case named (or commented) "stall exit — deferred row emitted without resume wrapper" that calls `record-implement-review-round-timing.sh` in an environment where `review-implement-step5-loop.sh` has not run, and verifies the row is present in the ledger. Low urgency.
+
+---
+
+### Out-of-Scope Observations
+
+None. All observations above are plan-fidelity concerns, not external-scope issues.
+
+---
+
+### Findings TSV
+
+```tsv
+id	severity	category	file	line	title
+FINDING_1	nit	plan-fidelity	scripts/timing-report.sh	385	emit_round_array uses round_num+0 as AWK array subscript — minor deviation from plan's no-field-subscript guidance
+FINDING_2	nit	plan-fidelity	skills/design/scripts/render-final-summary.sh	—	File modified but absent from plan's Files-to-modify list (_SKIP_TIMING_REGATHER + env wiring)
+FINDING_3	latent	plan-fidelity	scripts/design-pause-save.sh	—	File modified (render_fresh_timing_report_for_pause_publish) but absent from plan's Files-to-modify list
+FINDING_4	nit	plan-fidelity	skills/design/scripts/plan-review-loop.sh	1470	panel-failed path bypasses _snapshot_terminal_exit_preserving_status — plan requires all terminal exits route through it
+FINDING_5	nit	plan-fidelity	skills/review-and-fix/scripts/test-record-implement-review-round-timing.sh	—	No explicitly labeled test for stall-exit-emits-deferred-row-without-resume-wrapper scenario
+```

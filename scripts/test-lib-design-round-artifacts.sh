@@ -44,6 +44,7 @@ assert_included plan-review-slots.ndjson
 assert_included plan-voter-slots.ndjson
 assert_included scout-plan-manifest.json
 assert_included round-summary.env
+assert_included round-start-s
 assert_included plan.txt
 assert_included claude-vote-output-first-pass.txt
 assert_included claude-vote-output.txt

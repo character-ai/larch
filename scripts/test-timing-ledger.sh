@@ -29,6 +29,15 @@ LEDGER="$TMP_BASE/timing.tsv"
 grep -Fq $'v1\tmark\t' "$LEDGER"
 grep -Fq $'v1\tworkflow\t' "$LEDGER"
 grep -Fq $'\tcodex\tcodex-implement\t10\t20\t10\toutput.txt\t0\tcomplete' "$LEDGER"
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-round \
+    --skill implement --step "Step 5 — code review" --round 1 --start-s 40 --end-s 45 --accepted 2 --rejected 3
+round_line=$(awk -F '\t' '$2 == "round" {print; exit}' "$LEDGER")
+[[ -n "$round_line" ]]
+[[ $(printf '%s\n' "$round_line" | awk -F '\t' '{print NF}') == "13" ]]
+printf '%s\n' "$round_line" | grep -Fq $'\timplement\tStep 5 — code review\t1\t40\t45\t5\t2\t3\t-\t-'
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-round \
+    --skill design --step "design Step 3 — plan review" --round 2 --start-s 50 --end-s 45 --accepted 0 --rejected 1 --oos 4
+awk -F '\t' '$2 == "round" && $4 == "design" { if ($9 != 0 || $12 != 4) exit 1; found=1 } END { exit found ? 0 : 1 }' "$LEDGER"
 if grep -Fq '/private/work/output.txt' "$LEDGER"; then
     echo "absolute output path leaked into timing ledger" >&2
     exit 1
@@ -51,6 +60,13 @@ BAD="$TMP_BASE/bad.txt"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
     --vendor codex --task-kind BadKind --start-s 1 --end-s 2 --output x 2>"$BAD"
 grep -Fq 'malformed task-kind' "$BAD"
+ROUND_BAD="$TMP_BASE/round-bad.txt"
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-round \
+    --skill review --step "bad" --round 1 --start-s 1 --end-s 2 --accepted 0 --rejected 0 2>"$ROUND_BAD"
+grep -Fq -- '--skill must be implement or design' "$ROUND_BAD"
+"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-round \
+    --skill implement --step "bad" --round x --start-s 1 --end-s 2 --accepted 0 --rejected 0 2>"$ROUND_BAD"
+grep -Fq -- '--round must be a non-negative integer' "$ROUND_BAD"
 
 OUTSIDE="$TMP_BASE/outside.txt"
 LARCH_TIMING_LEDGER="/not/allowed/timing.tsv" IMPLEMENT_TMPDIR="$TMP_BASE" \

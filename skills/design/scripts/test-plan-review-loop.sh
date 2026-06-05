@@ -14,6 +14,12 @@ PLR="$ROOT/skills/design/scripts/plan-review-loop.sh"
 
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 
+assert_plan_round_timing_row() {
+    local dir="$1" round="$2"
+    awk -F '\t' -v r="$round" '$2 == "round" && $4 == "design" && $6 == r { found=1 } END { exit found ? 0 : 1 }' "$dir/timing-ledger.tsv" \
+        || fail "missing design round timing row for round $round in $dir"
+}
+
 assert_env_has_keys() {
     local path="$1"
     shift
@@ -1146,6 +1152,7 @@ set -e
 printf '%s\n' "$out1p" | grep -q '^LOOP_STATUS=panel-failed$' || fail "expected panel-failed loop status"
 [[ -f "$D1P/plan-review/round-1/findings-classification.tsv" ]] || fail "panel-failed classification TSV missing"
 [[ "$(wc -l < "$D1P/plan-review/round-1/findings-classification.tsv" | tr -d ' ')" == "1" ]] || fail "panel-failed TSV should contain header only"
+assert_plan_round_timing_row "$D1P" 1
 
 echo "=== stubbed driver: failed middle voter preserves canonical tally slot ==="
 D1B="$TMP/z1b"
@@ -1294,7 +1301,7 @@ out_leg=$(run_loop "$DLEG")
 printf '%s\n' "$out_leg" | grep -q '^LOOP_STATUS=complete$' || fail "legacy golden case should complete"
 actual_legacy_layout=$(sorted_file_list "$DLEG")
 actual_legacy_layout=${actual_legacy_layout//$'\ndirty-tree-detected.env'/}
-expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-oos.md\nfindings.md\nfindings.md.tmp\noos-accepted-design.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-slots.ndjson\nplan-review/round-1/findings-classification.tsv\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nscout-plan-manifest.json\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
+expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-oos.md\nfindings.md\nfindings.md.tmp\noos-accepted-design.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-slots.ndjson\nplan-review/round-1/findings-classification.tsv\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
 [[ "$actual_legacy_layout" == "$expected_legacy_layout" ]] || fail "legacy file layout drifted: $actual_legacy_layout"
 [[ ! -d "$DLENV/plan-review/round-1/revise" ]] || fail "env-only round cap should not create revise artifacts"
 
@@ -1317,6 +1324,7 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_z=$(run_loop "$DZ" 1 --round-cap 3)
 printf '%s\n' "$out_z" | grep -q '^LOOP_STATUS=converged$' || fail "expected converged zero-findings"
 printf '%s\n' "$out_z" | grep -q '^REASON=zero-findings$' || fail "expected zero-findings reason"
+assert_plan_round_timing_row "$DZ" 1
 
 echo "=== multi-round: zero findings + degraded panel stays non-converged ==="
 DZD="$TMP/mrzd"
@@ -1394,6 +1402,7 @@ chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_oosc=$(run_loop "$DOOSC" 1 --round-cap 2)
 printf '%s\n' "$out_oosc" | grep -q '^LOOP_STATUS=cap-hit$' || fail "two accepted rounds should cap-hit"
+assert_plan_round_timing_row "$DOOSC" 2
 grep -q 'Round 1 accepted OOS' "$DOOSC/oos-accepted-design.md" || fail "round 1 accepted OOS missing from cumulative file"
 grep -q 'Round 2 accepted OOS' "$DOOSC/oos-accepted-design.md" || fail "round 2 accepted OOS missing from cumulative file"
 
@@ -1556,6 +1565,10 @@ out_ma=$(run_loop "$DMA" 1 --round-cap 2)
 unset LARCH_PLAN_REVIEW_TALLY_SH
 printf '%s\n' "$out_ma" | grep -q '^LOOP_STATUS=main-agent-vote-required$' || fail "main-agent stub should surface main-agent-vote-required"
 grep -q 'Main-agent branch OOS' "$DMA/oos-accepted-design.md" || fail "main-agent branch must preserve accepted OOS artifact"
+if [[ -f "$DMA/timing-ledger.tsv" ]] && awk -F '\t' '$2 == "round" && $4 == "design" && $6 == 1 { found=1 } END { exit !found }' "$DMA/timing-ledger.tsv" 2>/dev/null; then
+    fail "main-agent-vote-required should defer design round timing row"
+fi
+[[ -s "$DMA/plan-review/round-1/round-start-s" ]] || fail "main-agent-vote-required should preserve round-start-s"
 
 echo "=== multi-round: tally-error exits before revise ==="
 DTM="$TMP/mr-tally"
@@ -2018,6 +2031,7 @@ chmod +x "$STUB/revise-plan-with-waterfall.sh"
 export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_s=$(run_loop "$DS" 1 --round-cap 1)
 printf '%s\n' "$out_s" | grep -q '^LOOP_STATUS=cap-hit$' || fail "cap 1 expected cap-hit"
+assert_plan_round_timing_row "$DS" 1
 [[ -f "$DS/plan-review/round-1/findings.md" ]] || fail "findings.md should snapshot"
 [[ ! -f "$DS/plan-review/round-1/cursor-plan-arch-output.txt" ]] || fail "raw reviewer output must not snapshot"
 [[ -f "$DS/plan-review/round-1/findings-classification.tsv" ]] || fail "classification TSV must survive round snapshot"
@@ -2100,6 +2114,7 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_sc=$(run_loop "$DSC" 1 --round-cap 1)
 printf '%s\n' "$out_sc" | grep -q '^LOOP_STATUS=cap-hit$' || fail "snapshot failure on terminal round should preserve cap-hit"
 printf '%s\n' "$out_sc" | grep -q '^REASON=cap-hit,snapshot-failed$' || fail "terminal cap-hit should append snapshot-failed reason"
+assert_plan_round_timing_row "$DSC" 1
 
 echo "=== snapshot failure preserves terminal converged status ==="
 DSNC="$TMP/snap-converged-status"
@@ -2120,6 +2135,7 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_snc=$(run_loop "$DSNC" 1 --round-cap 5)
 printf '%s\n' "$out_snc" | grep -q '^LOOP_STATUS=converged$' || fail "snapshot failure on qualifying round should preserve converged"
 printf '%s\n' "$out_snc" | grep -q '^REASON=converged,snapshot-failed$' || fail "qualifying converged round should append snapshot-failed reason"
+assert_plan_round_timing_row "$DSNC" 1
 
 echo "=== multi-round: degraded round then converged round; dedup failure does not leak ==="
 DDR="$TMP/degraded-reset"
@@ -2167,6 +2183,7 @@ grep -q '^DEGRADED_PANEL=1$' "$DDR/plan-review/round-1/round-summary.env" || fai
 grep -q '^DEGRADED_PANEL=0$' "$DDR/plan-review/round-2/round-summary.env" || fail "round 2 should reset degraded panel"
 grep -q '^LOOP_STATUS=converged$' "$DDR/plan-review/round-2/round-summary.env" || fail "round 2 should record converged terminal status"
 [[ -f "$DDR/plan-review/round-2/findings-classification.tsv" ]] || fail "converged terminal round must keep findings-classification TSV"
+assert_plan_round_timing_row "$DDR" 2
 
 echo "=== multi-round: dedup failure degrades only the failing round ==="
 DDD="$TMP/dedup-reset"

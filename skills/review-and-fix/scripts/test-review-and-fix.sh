@@ -3120,6 +3120,16 @@ STUB
     grep -Fq 'LARCH_STEP5_LOOP_TERMINAL_STDERR_PROBE' "$err_file" \
         || fail "step5 lint-fix terminal arm must surface stderr-tail before envelope"
     step5_assert_envelope "$out_file" stall true lint-fix-main-agent-required 1
+    [[ -f "$case_dir/impl/round-1/round-start-s" ]] \
+        || fail "step5 lint-fix terminal arm must persist round-start-s for deferred orchestrator timing"
+    round_start_s="$(tr -d '\r\n' < "$case_dir/impl/round-1/round-start-s")"
+    CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" \
+        --implement-tmpdir "$case_dir/impl" \
+        --round 1 \
+        --start-s "$round_start_s" \
+        --end-s "$((round_start_s + 1))"
+    awk -F '\t' '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == 1 { found=1 } END { exit found ? 0 : 1 }' "$case_dir/impl/timing-ledger.tsv" \
+        || fail "step5 lint-fix terminal deferred orchestrator timing row missing"
     pass "step5-loop lint-fix-terminal-tail"
 
     # Case: structural_loc uses the relocated pre-coder snapshot, not round_dir.

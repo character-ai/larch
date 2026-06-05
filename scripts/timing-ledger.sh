@@ -230,6 +230,47 @@ cmd_record_vendor_task() {
     append_tsv_line "$ledger" "$row"
 }
 
+cmd_record_round() {
+    local ledger="$1"
+    shift
+    local round="" start_s="" end_s="" accepted="" rejected="" oos="-" skill="" step=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --skill) skill="${2:?--skill requires a value}"; shift 2 ;;
+            --step) step="${2:?--step requires a value}"; shift 2 ;;
+            --round) round="${2:?--round requires a value}"; shift 2 ;;
+            --start-s) start_s="${2:?--start-s requires a value}"; shift 2 ;;
+            --end-s) end_s="${2:?--end-s requires a value}"; shift 2 ;;
+            --accepted) accepted="${2:?--accepted requires a value}"; shift 2 ;;
+            --rejected) rejected="${2:?--rejected requires a value}"; shift 2 ;;
+            --oos) oos="${2:?--oos requires a value}"; shift 2 ;;
+            *) warn "unknown record-round flag: $1"; return 1 ;;
+        esac
+    done
+    case "$skill" in implement|design) ;; *) warn "--skill must be implement or design"; return 1 ;; esac
+    [[ -n "$step" ]] || { warn "--step is required"; return 1; }
+    is_uint "$round" || { warn "--round must be a non-negative integer"; return 1; }
+    is_uint "$start_s" || { warn "--start-s must be a non-negative integer"; return 1; }
+    is_uint "$end_s" || { warn "--end-s must be a non-negative integer"; return 1; }
+    is_uint "$accepted" || { warn "--accepted must be a non-negative integer"; return 1; }
+    is_uint "$rejected" || { warn "--rejected must be a non-negative integer"; return 1; }
+    if [[ "$oos" != "-" ]]; then
+        is_uint "$oos" || { warn "--oos must be a non-negative integer"; return 1; }
+    fi
+    local duration_s ts row
+    if (( end_s < start_s )); then
+        warn "end_s precedes start_s; clamping duration_s to 0"
+        duration_s=0
+    else
+        duration_s=$((end_s - start_s))
+    fi
+    ts=$(date +%s)
+    step=$(sanitize_field "$step")
+    printf -v row 'v1\tround\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t-' \
+        "$ts" "$skill" "$step" "$round" "$start_s" "$end_s" "$duration_s" "$accepted" "$rejected" "$oos"
+    append_tsv_line "$ledger" "$row"
+}
+
 cmd_dump() {
     local ledger="$1"
     emit "$ledger"
@@ -263,9 +304,10 @@ main() {
     case "$cmd" in
         mark) cmd_mark "$ledger" "$@" ;;
         record-vendor-task) cmd_record_vendor_task "$ledger" "$@" ;;
+        record-round) cmd_record_round "$ledger" "$@" ;;
         workflow-path) cmd_workflow_path "$ledger" "$@" ;;
         dump) cmd_dump "$ledger" ;;
-        *) warn "usage: timing-ledger.sh [--ledger PATH] mark <step> | record-vendor-task --vendor V --task-kind K --start-s S --end-s S --output P [--exit-code N] [--status S] | workflow-path HARD|SIMPLE | dump"; return 1 ;;
+        *) warn "usage: timing-ledger.sh [--ledger PATH] mark <step> | record-vendor-task --vendor V --task-kind K --start-s S --end-s S --output P [--exit-code N] [--status S] | record-round --skill implement|design --step LABEL --round N --start-s S --end-s S --accepted N --rejected N [--oos N] | workflow-path HARD|SIMPLE | dump"; return 1 ;;
     esac
 }
 

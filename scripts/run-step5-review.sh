@@ -236,4 +236,8 @@ esac
 [[ -n "$DYNAMIC_ARCHETYPES" ]] && REVIEW_AND_FIX_ARGS+=(--dynamic-archetypes "$DYNAMIC_ARCHETYPES")
 REVIEW_AND_FIX_ARGS+=(--run-id "$RUN_ID")
 
+if [[ "$STEP5_MODE" == "loop" && $((10#$STARTING_ROUND)) -gt 1 ]]; then
+    LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 5 — code review" || true
+fi
+
 "$REVIEW_AND_FIX_SH" "${REVIEW_AND_FIX_ARGS[@]}"

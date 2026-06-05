@@ -84,6 +84,46 @@ step5_surface_lint_stderr_tail() {
     emit_failed_agent_stderr_tail_larch_err "$stem" || true
 }
 
+
+step5_now_s() {
+    date +%s
+}
+
+step5_persist_round_start() {
+    local round_num="$1" start_s="$2" round_dir
+    round_dir="$IMPLEMENT_TMPDIR/round-$((10#$round_num))"
+    mkdir -p "$round_dir"
+    if [[ ! -e "$round_dir/round-start-s" ]]; then
+        printf '%s\n' "$start_s" > "$round_dir/round-start-s" 2>/dev/null || true
+    fi
+}
+
+_emit_implement_round_timing_row() {
+    local round_num="$1" start_s="$2" end_s="$3" accepted="${4:-0}" rejected="${5:-0}"
+    local guard_var="STEP5_ROUND_${round_num}_TIMING_EMITTED"
+    local ledger="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
+    if [[ "${!guard_var:-}" == "true" ]]; then
+        return 0
+    fi
+    [[ "$start_s" =~ ^[0-9]+$ ]] || return 0
+    [[ "$end_s" =~ ^[0-9]+$ ]] || return 0
+    [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
+    [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
+    LARCH_TIMING_LEDGER="$ledger" LARCH_TIMING_SKILL=implement \
+        "$PLUGIN_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+        --round "$((10#$round_num))" \
+        --start-s "$start_s" \
+        --end-s "$end_s" \
+        --accepted "$accepted" \
+        --rejected "$rejected" || true
+    if [[ -f "$ledger" ]] && awk -F '\t' -v r="$((10#$round_num))" -v s="$start_s" -v e="$end_s" \
+        '$2 == "round" && $4 == "implement" && $5 == "Step 5 — code review" && $6 == r && $7 == s && $8 == e { found=1 } END { exit !found }' \
+        "$ledger" 2>/dev/null; then
+        printf -v "$guard_var" '%s' true
+    fi
+}
+
 step5_emit_final_envelope() {
     local step5_status="$1" stall_tracking="$2" stall_reason="$3" rounds_completed="$4" final_round="$5" \
         final_irf="$6" coder_st="$7" files_hint="$8" eff_cap="$9"
@@ -174,6 +214,7 @@ run_implement_loop() {
 
         larch_err "→ Step 5 round ${round_num}/${effective_round_cap}"
 
+        round_start_s=$(step5_now_s)
         ROUND_NUM="$round_num"
         MODE='diff'
         IRF_SUPPRESS_EMIT_KV=1
@@ -190,6 +231,8 @@ run_implement_loop() {
         post_fix="${IRF_LAST_FIX_COUNT:-0}"
         post_round_dir="${IRF_LAST_ROUND_DIR:-}"
         post_accepted="${IRF_LAST_ACCEPTED_FILE:-}"
+        post_accepted_count="${IRF_LAST_ACCEPTED_COUNT:-0}"
+        post_rejected_count="${IRF_LAST_REJECTED_COUNT:-0}"
         last_irf="$post_round_status"
         last_coder="$post_coder"
         last_hint="${IRF_LAST_FILES_HINT:-}"
@@ -197,6 +240,7 @@ run_implement_loop() {
 
         case "$post_round_status" in
             main-agent-vote-required)
+                step5_persist_round_start "$round_num" "$round_start_s"
                 step5_emit_final_envelope main-agent-vote-required false "" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 exit 0
                 ;;
@@ -205,15 +249,18 @@ run_implement_loop() {
                 # accepted-findings application off to the main agent (Step 5
                 # orchestrator) rather than stalling — the Claude tier of the
                 # coder waterfall.
+                step5_persist_round_start "$round_num" "$round_start_s"
                 step5_emit_final_envelope coder-main-agent-required false "" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 exit 0
                 ;;
             panel-failed)
+                _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                 step5_emit_final_envelope stall true panel-failed "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                 exit 2
                 ;;
             aggregator-validation-exhausted)
+                _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                 step5_emit_final_envelope stall true aggregator-validation-exhausted "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                 exit 2
@@ -223,16 +270,19 @@ run_implement_loop() {
                 if [[ "$post_coder" == "submodule-violation" ]]; then
                     stall_reason=submodule-violation
                 fi
+                _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                 step5_emit_final_envelope stall true "$stall_reason" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                 exit 2
                 ;;
             converged-small-changes|no-changes|no-findings|in-scope-filtered-out|complete)
+                _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                 step5_emit_final_envelope complete false "" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 exit 0
                 ;;
             fix-applied) ;;
             *)
+                _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                 step5_emit_final_envelope stall true "round-failed-${post_round_status:-unknown}" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                 exit 2
@@ -256,6 +306,7 @@ run_implement_loop() {
 
         if [[ "$STEP5_CHK_STATUS" == "fail" ]]; then
             if [[ -z "${STEP5_CHK_REDACTED_LOG_FILE:-}" ]]; then
+                _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                 step5_emit_final_envelope stall true "relevant-checks-${STEP5_CHK_FAILURE_REASON:-unknown}" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                 flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                 exit 2
@@ -274,6 +325,7 @@ run_implement_loop() {
                         lint_attempts=$((lint_attempts + 1))
                         if (( lint_attempts >= 10#$lint_max )); then
                             step5_surface_lint_stderr_tail
+                            _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                             step5_emit_final_envelope stall true lint-fix-attempt-cap "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                             flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                             exit 2
@@ -294,12 +346,14 @@ run_implement_loop() {
                         ;;
                     main-agent-required)
                         step5_surface_lint_stderr_tail
+                        step5_persist_round_start "$round_num" "$round_start_s"
                         step5_emit_final_envelope stall true lint-fix-main-agent-required "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                         exit 2
                         ;;
                     failed)
                         step5_surface_lint_stderr_tail
+                        _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                         step5_emit_final_envelope stall true lint-fix-failed "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                         exit 2
@@ -316,12 +370,14 @@ run_implement_loop() {
                             break
                         fi
                         step5_surface_lint_stderr_tail
+                        _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                         step5_emit_final_envelope stall true lint-fix-failed "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                         exit 2
                         ;;
                     *)
                         step5_surface_lint_stderr_tail
+                        _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                         step5_emit_final_envelope stall true lint-fix-failed "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
                         flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
                         exit 2
@@ -367,9 +423,11 @@ run_implement_loop() {
         if [[ "$skip_hit" == true ]]; then
             if (( round_num < effective_round_cap )); then
                 larch_err "⏳ Step 5: bulk-skip-ratio gate triggered (ratio=${skip_ratio}; threshold=${threshold}); continuing"
+                _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                 round_num=$((round_num + 1))
                 continue
             fi
+            _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
             step5_emit_final_envelope stall true bulk-skip-ratio-cap "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
             flush_review_batches "$IMPLEMENT_TMPDIR" "$RUN_ID" "$rounds_completed" 0 0 0 0 2>/dev/null || true
             exit 2
@@ -377,13 +435,16 @@ run_implement_loop() {
 
         if [[ "$substantial" == true ]]; then
             if (( round_num < effective_round_cap )); then
+                _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                 round_num=$((round_num + 1))
                 continue
             fi
+            _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
             step5_emit_final_envelope cap-hit false "" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
             exit 0
         fi
 
+        _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
         step5_emit_final_envelope complete false "" "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"
         exit 0
     done

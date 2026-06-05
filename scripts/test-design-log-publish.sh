@@ -453,6 +453,7 @@ printf '{"x":1,"result":{"y":2}}\n' >"$TMP/design/plain.json"
 printf 'deep\n' >"$TMP/design/render-cache/nested/c.txt"
 printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"$TMP/design/plan-review/round-1/findings-classification.tsv"
 printf '### FINDING_1:\n' >"$TMP/design/plan-review/round-1/findings.md"
+printf '123\n' >"$TMP/design/plan-review/round-1/round-start-s"
 mkdir -p "$TMP/design/plan-review/round-1/revise"
 printf 'prompt\n' >"$TMP/design/plan-review/round-1/revise/prompt.txt"
 printf 'patch\n' >"$TMP/design/plan-review/round-1/revise/codex-output-candidate.patch"
@@ -466,6 +467,8 @@ printf 'OK\n' >"$TMP/design/codex-plan-arch-output.txt.done"
 printf 'launcher prompt body\n' >"$TMP/design/codex-plan-arch-output.txt.prompt"
 printf 'phased launcher prompt\n' >"$TMP/design/codex-plan-arch-output-phase2.txt.prompt"
 printf '{"type":"token_usage","input_tokens":1,"cached_input_tokens":0,"output_tokens":1}\n' >"$TMP/design/codex-plan-arch-output.txt.events.jsonl"
+printf 'timing stderr\n' >"$TMP/design/timing-report-final.stderr.log"
+printf 'timing failure\n' >"$TMP/design/timing-report-final.failure.log"
 # Same suffix family in render-cache must also be denied:
 printf 'rc noisy\n' >"$TMP/design/render-cache/cached-output.txt.sidecar"
 printf '{"type":"token_usage","input_tokens":2,"cached_input_tokens":0,"output_tokens":1}\n' >"$TMP/design/render-cache/cached-output.txt.events.jsonl"
@@ -482,6 +485,7 @@ git -C "$clone" pull -q origin main
 [[ -f "$clone/larch-logs/design/RUNPUB1/render-cache/nested/c.txt" ]] || fail "render-cache nested missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings-classification.tsv" ]] || fail "plan-review classification TSV missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings.md" ]] || fail "plan-review findings.md missing"
+[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/round-start-s" ]] || fail "round-start-s must survive plan-review snapshot pruning"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/revise/prompt.txt" ]] || fail "plan-review revise prompt.txt missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/revise/codex-output-candidate.patch" ]] || fail "plan-review revise candidate patch missing"
 grep -q '^keep$' "$clone/larch-logs/design/RUNPUB1/out.txt.meta" || fail "meta trim failed"
@@ -509,7 +513,9 @@ for denied in \
     "cursor-plan-arch-output.txt.diag" \
     "codex-plan-arch-output.txt.events.jsonl" \
     "codex-plan-arch-output.txt.prompt" \
-    "codex-plan-arch-output-phase2.txt.prompt"; do
+    "codex-plan-arch-output-phase2.txt.prompt" \
+    "timing-report-final.stderr.log" \
+    "timing-report-final.failure.log"; do
     [[ ! -f "$clone/larch-logs/design/RUNPUB1/$denied" ]] || fail "denied basename leaked into top-level: $denied"
 done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"
@@ -721,6 +727,8 @@ export TEST_MERGE_BRANCH="larch-log-design-RUNPAUSEREUSE1"
 unset GH_STUB_CREATE_RC GH_STUB_CREATE_NO_URL GH_STUB_MERGE_RC
 mkdir -p "$TMPPAUSE_REUSE/design/.completed"
 printf 'first\n' >"$TMPPAUSE_REUSE/design/plan.txt"
+printf '{"old":true}\n' >"$TMPPAUSE_REUSE/design/timing-report-final.json"
+printf 'old timing stderr\n' >"$TMPPAUSE_REUSE/design/timing-report-final.stderr.log"
 printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
 (
     cd "$clone_pause_reuse" || exit 1
@@ -731,6 +739,7 @@ printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
     [[ "$rc_seed_reuse" -eq 1 ]] || fail "pause branch reuse seed should exit 1 on merge fail (got $rc_seed_reuse)"
     [[ "$seed_reuse" == *"PUBLISH_OK=false"* && "$seed_reuse" == *"RECOVERY_BRANCH=larch-log-design-RUNPAUSEREUSE1"* ]] || fail "pause branch reuse seed should leave remote branch: $seed_reuse"
     printf 'second\n' >"$TMPPAUSE_REUSE/design/plan.txt"
+    rm -f "$TMPPAUSE_REUSE/design/timing-report-final.json" "$TMPPAUSE_REUSE/design"/timing-report-final.*
     stale_reuse_sha=$(git ls-remote origin larch-log-design-RUNPAUSEREUSE1 | awk '{ print $1; exit }')
     [[ -n "$stale_reuse_sha" ]] || fail "pause branch reuse should resolve stale remote branch SHA"
     reuse_out=$(GH_STUB_PR_HEAD_OID_STALE="$stale_reuse_sha" GH_STUB_PR_HEAD_OID_MISMATCH_FIRST=1 bash "$PUBLISH" --reason pause --design-tmpdir "$TMPPAUSE_REUSE/design" --run-id "RUNPAUSEREUSE1" --issue 42 --repo owner/repo)
@@ -739,6 +748,7 @@ printf 'done\n' >"$TMPPAUSE_REUSE/design/.completed/step-1c"
 )
 git -C "$clone_pause_reuse" pull -q origin main
 grep -Fxq 'second' "$clone_pause_reuse/larch-logs/design/RUNPAUSEREUSE1/plan.txt" || fail "pause branch reuse should publish updated snapshot"
+[[ ! -f "$clone_pause_reuse/larch-logs/design/RUNPAUSEREUSE1/timing-report-final.json" ]] || fail "pause branch reuse must remove stale timing-report-final.json when no fresh replacement exists"
 
 echo "=== pr create non-zero with pr list/view recovery (plan publish path) ==="
 TMPCR=$(mktemp -d "${TMPDIR:-/tmp}/tdlp-createfail.XXXXXX")

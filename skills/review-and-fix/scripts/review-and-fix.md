@@ -136,3 +136,5 @@ The script emits breadcrumbs at major round-loop and coder-dispatch boundaries t
 - `⚠ review-and-fix: round N — coder dispatch exited 0 but did not modify the working tree; halting loop` — when the coder reports success but makes no repo changes
 
 Harness: `skills/review-and-fix/scripts/test-review-and-fix.sh`, wired through `make test-review-and-fix`.
+
+Sourced loop callers can read `IRF_LAST_ACCEPTED_COUNT` and `IRF_LAST_REJECTED_COUNT` after `_implement_round_body` returns; these are current-round counts used by Step 5 round timing rows.

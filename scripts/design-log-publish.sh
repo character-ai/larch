@@ -301,7 +301,7 @@ design_artifact_excluded() {
         esac
     fi
     case "$name" in
-        .design-log-publish-metadata.env|larch-quiet-*-*.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
+        .design-log-publish-metadata.env|larch-quiet-*-*.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt|timing-report-final.stderr.log|timing-report-final.failure.log)
             return 0
             ;;
     esac
@@ -379,6 +379,9 @@ design_publish_breadcrumbs_error() {
 
 RUN_DEST="$WT_DIR/larch-logs/design/$RUN_ID"
 mkdir -p "$RUN_DEST/render-cache"
+if [[ "$REASON" == "pause" ]]; then
+    rm -f "$RUN_DEST"/timing-report-final.json "$RUN_DEST"/timing-report-final.* 2>/dev/null || true
+fi
 
 _top_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-files.XXXXXX")
 ENUM_TOP_TMP="$_top_files"

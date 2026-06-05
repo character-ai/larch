@@ -59,6 +59,72 @@ jq -e '
   (.vendor_task_averages[] | select(.vendor == "codex" and .task_kind == "codex-implement" and .samples == 2 and .min_seconds == 120 and .max_seconds == 180))
 ' "$JSON_OUT" >/dev/null
 
+
+ROUND_LEDGER="$TMP_BASE/rounds.tsv"
+cat > "$ROUND_LEDGER" <<'EOF'
+v1	mark	0	implement	Step 4 — preflight	-	-	-	-	-	-	-	-
+v1	mark	10	implement	Step 5 — code review	-	-	-	-	-	-	-	-
+v1	round	15	implement	Step 5 — code review	2	15	20	5	4	1	-	-
+v1	round	12	implement	Step 5 — code review	1	12	14	2	2	3	-	-
+v1	round	18	implement	Step 5 — code review	2	15	22	7	6	5	-	-
+v1	round	19	implement	Step 5 — code review	6	20	35	15	9	9	-	-
+v1	round	25	implement	Step 6 — checks	3	25	26	1	9	9	-	-
+v1	mark	30	implement	Step 7 — commit	-	-	-	-	-	-	-	-
+v1	round	35	implement	Step 5 — code review	4	35	40	5	8	8	-	-
+v1	mark	45	implement	Step 5 — code review	-	-	-	-	-	-	-	-
+v1	round	46	implement	Step 5 — code review	5	46	49	3	1	0	-	-
+v1	mark	60	implement	Step 8 — ship	-	-	-	-	-	-	-	-
+v1	mark	70	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	round	72	design	design Step 3 — plan review	1	72	80	8	3	2	1	-
+v1	mark	90	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+EOF
+ROUND_JSON="$TMP_BASE/rounds.json"
+LARCH_TEST_TIMING_NOW=100 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$ROUND_LEDGER" --full --format json --output "$ROUND_JSON"
+jq -e '
+  (.per_step[] | select(.skill == "implement" and .step == "Step 5 — code review" and .duration_seconds == 20) | .rounds == [
+    {"round":1,"duration_seconds":2,"accepted":2,"rejected":3},
+    {"round":2,"duration_seconds":7,"accepted":6,"rejected":5},
+    {"round":6,"duration_seconds":15,"accepted":9,"rejected":9}
+  ]) and
+  (.per_step[] | select(.skill == "implement" and .step == "Step 5 — code review" and .duration_seconds == 15) | .rounds == [
+    {"round":5,"duration_seconds":3,"accepted":1,"rejected":0}
+  ]) and
+  (.per_step[] | select(.skill == "implement" and .step == "Step 7 — commit") | has("rounds") | not) and
+  (.per_step[] | select(.skill == "design" and .step == "design Step 3 — plan review") | .rounds == [
+    {"round":1,"duration_seconds":8,"accepted":3,"rejected":2,"oos":1}
+  ])
+' "$ROUND_JSON" >/dev/null
+ROUND_MD="$TMP_BASE/rounds.md"
+LARCH_TEST_TIMING_NOW=100 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$ROUND_LEDGER" --full --markdown > "$ROUND_MD"
+if grep -Fq 'rounds' "$ROUND_MD"; then
+    echo "round rows leaked into markdown timing report" >&2
+    exit 1
+fi
+NO_PARENT_LEDGER="$TMP_BASE/no-parent-round.tsv"
+cat > "$NO_PARENT_LEDGER" <<'EOF'
+v1	round	10	implement	Step 5 — code review	1	10	12	2	1	0	-	-
+v1	mark	20	implement	Step 6 — checks	-	-	-	-	-	-	-	-
+EOF
+NO_PARENT_JSON="$TMP_BASE/no-parent-round.json"
+LARCH_TEST_TIMING_NOW=30 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$NO_PARENT_LEDGER" --full --format json --output "$NO_PARENT_JSON"
+jq -e '(.per_step[] | has("rounds") | not)' "$NO_PARENT_JSON" >/dev/null
+
+NESTED_LEDGER="$TMP_BASE/nested-child.tsv"
+cat > "$NESTED_LEDGER" <<'EOF'
+v1	mark	0	implement	Step 2 — implementation	-	-	-	-	-	-	-	-
+v1	mark	20	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	round	25	design	design Step 3 — plan review	1	22	30	8	3	2	1	-
+v1	mark	100	implement	Step 3 — checks	-	-	-	-	-	-	-	-
+EOF
+NESTED_JSON="$TMP_BASE/nested-child.json"
+LARCH_TEST_TIMING_NOW=110 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$NESTED_LEDGER" --full --format json --output "$NESTED_JSON"
+jq -e '
+  (.per_step[] | select(.skill == "design" and .step == "design Step 3 — plan review") | .rounds == [
+    {"round":1,"duration_seconds":8,"accepted":3,"rejected":2,"oos":1}
+  ]) and
+  (.per_step[] | select(.skill == "implement" and .step == "Step 2 — implementation") | has("rounds") | not)
+' "$NESTED_JSON" >/dev/null
+
 V2_DIR="$TMP_BASE/design-v2"
 mkdir -p "$V2_DIR"
 V2_LEDGER="$V2_DIR/timing.tsv"
