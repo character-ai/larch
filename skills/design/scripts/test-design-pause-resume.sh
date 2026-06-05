@@ -245,6 +245,14 @@ if [ "$_design_classification" = SIMPLE ]; then
   if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if ( grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
+  _simple_artifact_conflict=false
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
+  if [ "$_simple_artifact_conflict" = true ]; then
+    printf "%s\n" "**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    exit 1
+  fi
   if [ "$_simple_artifacts_ok" != true ]; then
     set -e
     printf "%s\n" "NO_SKETCHES_CLASSIFIED_SIMPLE" > "$DESIGN_TMPDIR/approach-synthesis.txt"
@@ -263,6 +271,97 @@ fi
 [[ "$(cat "$DESIGN_LEGACY_SIMPLE/approach-synthesis.txt")" == "NO_SKETCHES_CLASSIFIED_SIMPLE" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair approach sentinel"
 [[ "$(cat "$DESIGN_LEGACY_SIMPLE/contested-decisions.md")" == "NO_CONTESTED_DECISIONS" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair contested sentinel"
 [[ -f "$DESIGN_LEGACY_SIMPLE/dialectic-resolutions.md" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair dialectic sentinel"
+
+echo "=== SIMPLE Step 2a.5 marker-only repair ==="
+DESIGN_SIMPLE_MARKER_ONLY="$TMP/design-simple-marker-only"
+make_design_tmpdir "$DESIGN_SIMPLE_MARKER_ONLY"
+complete_design_steps "$DESIGN_SIMPLE_MARKER_ONLY" 1c 1d 1d.5 1d.7 1e 2a
+printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' >"$DESIGN_SIMPLE_MARKER_ONLY/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_SIMPLE_MARKER_ONLY/contested-decisions.md"
+: >"$DESIGN_SIMPLE_MARKER_ONLY/dialectic-resolutions.md"
+printf 'issue body simple marker-only\n' >"$BODY_FILE"
+out_simple_marker_only=$(bash "$SAVE" --design-tmpdir "$DESIGN_SIMPLE_MARKER_ONLY" --issue 9 --repo owner/repo)
+[[ "$out_simple_marker_only" == *"PAUSE_OK=true"* && "$out_simple_marker_only" == *"STEP=2a.5"* ]] || fail "SIMPLE marker-only fixture should resume at Step 2a.5: $out_simple_marker_only"
+out_simple_marker_only_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-simple-marker-only" --issue 9 --repo owner/repo)
+[[ "$out_simple_marker_only_load" == *"LOAD_OK=true"* && "$out_simple_marker_only_load" == *"STEP=2a.5"* ]] || fail "SIMPLE marker-only load mismatch: $out_simple_marker_only_load"
+DESIGN_TMPDIR="$DESIGN_SIMPLE_MARKER_ONLY" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+if [ "$_design_classification" = SIMPLE ]; then
+  _simple_artifacts_ok=true
+  if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if ( grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
+  _simple_artifact_conflict=false
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
+  if [ "$_simple_artifact_conflict" = true ]; then
+    printf "%s\n" "**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    exit 1
+  fi
+  if [ "$_simple_artifacts_ok" != true ]; then
+    set -e
+    printf "%s\n" "NO_SKETCHES_CLASSIFIED_SIMPLE" > "$DESIGN_TMPDIR/approach-synthesis.txt"
+    printf "%s\n" "NO_CONTESTED_DECISIONS" > "$DESIGN_TMPDIR/contested-decisions.md"
+    : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2a"
+    : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  elif [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] && [ ! -f "$DESIGN_TMPDIR/.completed/step-2a.5" ]; then
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  fi
+fi
+'
+[[ -f "$DESIGN_SIMPLE_MARKER_ONLY/.completed/step-2a.5" ]] || fail "SIMPLE marker-only repair did not write Step 2a.5 marker"
+[[ "$(cat "$DESIGN_SIMPLE_MARKER_ONLY/approach-synthesis.txt")" == "NO_SKETCHES_CLASSIFIED_SIMPLE" ]] || fail "SIMPLE marker-only repair changed approach sentinel"
+
+echo "=== SIMPLE Step 2a.5 refuses non-sentinel artifacts ==="
+DESIGN_SIMPLE_CONFLICT="$TMP/design-simple-conflict"
+make_design_tmpdir "$DESIGN_SIMPLE_CONFLICT"
+complete_design_steps "$DESIGN_SIMPLE_CONFLICT" 1c 1d 1d.5 1d.7 1e 2a
+printf '%s\n' 'real sketch synthesis' >"$DESIGN_SIMPLE_CONFLICT/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_SIMPLE_CONFLICT/contested-decisions.md"
+: >"$DESIGN_SIMPLE_CONFLICT/dialectic-resolutions.md"
+set +e
+out_simple_conflict=$(DESIGN_TMPDIR="$DESIGN_SIMPLE_CONFLICT" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+if [ "$_design_classification" = SIMPLE ]; then
+  _simple_artifacts_ok=true
+  if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if ( grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
+  _simple_artifact_conflict=false
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
+  if [ "$_simple_artifact_conflict" = true ]; then
+    printf "%s\n" "**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    exit 1
+  fi
+fi
+' 2>&1)
+rc_simple_conflict=$?
+set -e
+[[ "$rc_simple_conflict" -ne 0 ]] || fail "SIMPLE conflict repair should exit non-zero"
+[[ "$out_simple_conflict" == *"SIMPLE sentinel repair refused"* ]] || fail "SIMPLE conflict warning missing: $out_simple_conflict"
+[[ "$(cat "$DESIGN_SIMPLE_CONFLICT/approach-synthesis.txt")" == "real sketch synthesis" ]] || fail "SIMPLE conflict repair clobbered non-sentinel synthesis"
+
+echo "=== HARD zero-sketch sentinel layout does not take SIMPLE marker repair ==="
+DESIGN_HARD_SENTINEL="$TMP/design-hard-sentinel"
+make_design_tmpdir "$DESIGN_HARD_SENTINEL"
+printf '{"design_classification":"HARD","brainstorm_requested":false}\n' >"$DESIGN_HARD_SENTINEL/run-params.json"
+complete_design_steps "$DESIGN_HARD_SENTINEL" 1c 1d 1d.5 1d.7 1e 2a
+printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' >"$DESIGN_HARD_SENTINEL/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_HARD_SENTINEL/contested-decisions.md"
+: >"$DESIGN_HARD_SENTINEL/dialectic-resolutions.md"
+DESIGN_TMPDIR="$DESIGN_HARD_SENTINEL" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+if [ "$_design_classification" = SIMPLE ]; then
+  : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+fi
+'
+[[ ! -f "$DESIGN_HARD_SENTINEL/.completed/step-2a.5" ]] || fail "HARD sentinel layout must not take SIMPLE marker-only repair"
 
 echo "=== legacy Step 3b marker without finalize resumes at Step 4 ==="
 DESIGN_LEGACY_FINALIZE="$TMP/design-legacy-finalize"

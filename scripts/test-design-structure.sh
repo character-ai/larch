@@ -117,7 +117,7 @@ assert_step2a_entry_simple_guard() {
   grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-2a.5"' "$tmp" \
     || fail 'Step 2a entry fence missing step-2a.5 completion marker'
   guard_line=$(grep -nF 'if [ "$_design_classification" = SIMPLE ]; then' "$tmp" | head -1 | cut -d: -f1)
-  closing_fi_line=$(awk -v start="$guard_line" 'NR > start && $0 == "fi" { print NR; exit }' "$tmp")
+  closing_fi_line=$(awk -v start="$guard_line" 'NR > start && $0 == "fi" { line=NR } END { if (line) print line }' "$tmp")
   first_artifact_line=$(grep -nF "NO_SKETCHES_CLASSIFIED_SIMPLE" "$tmp" | head -1 | cut -d: -f1)
   last_artifact_line=$(grep -nF ': > "$DESIGN_TMPDIR/dialectic-resolutions.md"' "$tmp" | head -1 | cut -d: -f1)
   first_completion_line=$(grep -nF ': > "$DESIGN_TMPDIR/.completed/step-2a"' "$tmp" | head -1 | cut -d: -f1)
@@ -216,7 +216,7 @@ assert_no_direct_step3b_step4_routes() {
       lower = tolower($0)
     }
     lower ~ /step 3b completion boundary/ { next }
-    lower ~ /step 3b[[:space:]]*(->|, then|,|\/)[[:space:]]*step 4/ { print line; next }
+    lower ~ /step 3b[[:space:]]*(->|→|⇒|, then|,|\/)[[:space:]]*step 4/ { print line; next }
     lower ~ /step 3b\/4/ { print line; next }
     lower ~ /step 3b[[:space:]]+\/[[:space:]]+step 4/ { print line; next }
     lower ~ /(continue|proceed|auto-continue|route|jump|enter|go)/ && lower ~ /step 3b/ && lower ~ /step 4/ { print line; next }
@@ -951,6 +951,7 @@ assert_step2a_entry_simple_guard
 assert_simple_branch_has_no_sentinel_fence
 assert_no_direct_step3b_step4_routes 'SKILL Step 3b slice' "$SKILL_MD" '<!-- step:3b' '<!-- step:4 —'
 assert_no_direct_step3b_step4_routes 'SKILL Step 3/Gate-B-bypass/Gate B slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.6'
+assert_no_direct_step3b_step4_routes 'SKILL Step 3.6 slice' "$SKILL_MD" '<!-- step:3.6' '<!-- step:3b'
 assert_no_direct_step3b_step4_routes 'approval-gates.md' "$APPROVAL_MD"
 assert_no_direct_step3b_step4_routes 'run-step3-review.sh' "$RUN_STEP3_SH"
 assert_no_direct_step3b_step4_routes 'run-step3-review.md' "$RUN_STEP3_MD"

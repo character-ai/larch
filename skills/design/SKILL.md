@@ -612,10 +612,24 @@ At the Gate A success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.compl
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
 _design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf '%s\n' HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
-  set -e
-  printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
-  printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
-  : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
+  _simple_artifacts_ok=true
+  if ( grep -Fxq 'NO_SKETCHES_CLASSIFIED_SIMPLE' "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if ( grep -Fxq 'NO_CONTESTED_DECISIONS' "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
+  _simple_artifact_conflict=false
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq 'NO_SKETCHES_CLASSIFIED_SIMPLE' "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq 'NO_CONTESTED_DECISIONS' "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
+  if [ "$_simple_artifact_conflict" = true ]; then
+    printf '%s\n' '**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**' >&2
+    exit 1
+  fi
+  if [ "$_simple_artifacts_ok" != true ]; then
+    set -e
+    printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
+    printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
+    : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
+  fi
   mkdir -p "$DESIGN_TMPDIR/.completed"
   : > "$DESIGN_TMPDIR/.completed/step-2a"
   : > "$DESIGN_TMPDIR/.completed/step-2a.5"
@@ -630,9 +644,9 @@ A diverge-then-converge phase where multiple agents independently produce short 
 
 ### SIMPLE branch (`design_classification == SIMPLE`) — no sketch agents
 
-Launch no external agents and no Claude fallback agents. The Step 2a entry fence already wrote the SIMPLE sentinels and `.completed/step-2a` / `.completed/step-2a.5` markers when `_design_classification` was `SIMPLE`.
+Launch no external agents and no Claude fallback agents. When `_design_classification` is `SIMPLE`, the Step 2a entry fence either verifies or writes the SIMPLE sentinels and `.completed/step-2a` / `.completed/step-2a.5` markers before this prose is reached. If it sees pre-existing non-sentinel sketch or dialectic artifacts, it refuses to overwrite them and exits for inspection.
 
-Skip Step 2a.5 and proceed directly to Step 2b. Do NOT call `collect-agent-results.sh`.
+Skip Step 2a.5 and proceed directly to Step 2b only after the full SIMPLE sentinel package and both completion markers are present. If a resumed SIMPLE run reaches this branch without that complete package, do not fall through to regular sketch launch; continue to the Step 2a.5 repair guard. Do NOT call `collect-agent-results.sh`.
 
 ### Regular mode (`sketch_budget=4`) — 4 sketch agents
 
@@ -658,7 +672,7 @@ The sketch phase runs **inline** in the orchestrator (no Agent-tool subagent off
 
 ### 2a.2 — Launch Sketches in Parallel
 
-If the Step 2a entry fence already wrote SIMPLE sentinels (that is, `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh "$DESIGN_TMPDIR/run-params.json"` returns `SIMPLE`, `$DESIGN_TMPDIR/approach-synthesis.txt` contains `NO_SKETCHES_CLASSIFIED_SIMPLE`, `$DESIGN_TMPDIR/contested-decisions.md` contains `NO_CONTESTED_DECISIONS`, `$DESIGN_TMPDIR/dialectic-resolutions.md` exists, and both `$DESIGN_TMPDIR/.completed/step-2a` and `$DESIGN_TMPDIR/.completed/step-2a.5` exist), proceed directly to Step 2b. Bare sentinel presence is insufficient because the HARD zero-sketch degraded path writes the same no-sketch artifacts; bare completion-marker presence is insufficient because a stale or corrupt SIMPLE resume must fall through to the Step 2a.5 repair fence before Step 2b.
+If the Step 2a entry fence already verified or wrote SIMPLE sentinels (that is, `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh "$DESIGN_TMPDIR/run-params.json"` returns `SIMPLE`, `$DESIGN_TMPDIR/approach-synthesis.txt` contains `NO_SKETCHES_CLASSIFIED_SIMPLE`, `$DESIGN_TMPDIR/contested-decisions.md` contains `NO_CONTESTED_DECISIONS`, `$DESIGN_TMPDIR/dialectic-resolutions.md` exists, and both `$DESIGN_TMPDIR/.completed/step-2a` and `$DESIGN_TMPDIR/.completed/step-2a.5` exist), proceed directly to Step 2b. Bare sentinel presence is insufficient because the HARD zero-sketch degraded path writes the same no-sketch artifacts; bare completion-marker presence is insufficient because a stale or corrupt SIMPLE resume must fall through to the Step 2a.5 repair fence before Step 2b. If `read-design-classification.sh` returns `SIMPLE` but that full package is incomplete, route to Step 2a.5 repair instead of launching regular sketches.
 
 **Regular mode**: when `sketch_budget=4`, up to 4 sketch slots run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety). A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207).
 
@@ -766,6 +780,14 @@ if [ "$_design_classification" = SIMPLE ]; then
   if ( grep -Fxq 'NO_SKETCHES_CLASSIFIED_SIMPLE' "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if ( grep -Fxq 'NO_CONTESTED_DECISIONS' "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
   if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
+  _simple_artifact_conflict=false
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq 'NO_SKETCHES_CLASSIFIED_SIMPLE' "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq 'NO_CONTESTED_DECISIONS' "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
+  if [ "$_simple_artifact_conflict" = true ]; then
+    printf '%s\n' '**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**' >&2
+    exit 1
+  fi
   if [ "$_simple_artifacts_ok" != true ]; then
     set -e
     printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
