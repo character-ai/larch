@@ -335,6 +335,15 @@ def _run_log_dir(ctx: RunContext) -> Path:
     return Path(ctx.tmpdir) / "larch-logs" / "implement" / effective_run_id(ctx)
 
 
+def _issue_number_from_context(ctx: RunContext) -> int | None:
+    raw = (
+        _read_state_kv(ctx.state_file, "ISSUE_NUMBER")
+        or _read_state_kv(ctx.state_file, "ISSUE")
+        or str(ctx.issue_number or ctx.issue or "")
+    )
+    return int(raw) if raw.isdigit() else None
+
+
 def init_run(
     ctx: RunContext,
     *,
@@ -342,12 +351,18 @@ def init_run(
     recovery_reason: str = "",
 ) -> Manifest:
     rid = run_id or effective_run_id(ctx)
+    extra: dict[str, Any] = {}
+    if recovery_reason:
+        extra["recovery_reason"] = recovery_reason
+        issue_number = _issue_number_from_context(ctx)
+        if issue_number is not None:
+            extra["issue_number"] = issue_number
     manifest = Manifest(
         status=config.MANIFEST_STATUS_PARTIAL,
         version="1",
         run_id=rid,
         steps_ran={},
-        extra={"recovery_reason": recovery_reason} if recovery_reason else None,
+        extra=extra or None,
     )
     _write_manifest(ctx, manifest)
     return manifest
@@ -433,7 +448,7 @@ def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
     return updated
 
 
-def _recover_manifest_from_run_dir(run_id: str, run_dir: Path) -> Manifest | None:
+def _recover_manifest_from_run_dir(ctx: RunContext, run_id: str, run_dir: Path) -> Manifest | None:
     if not run_dir.is_dir():
         return None
     steps: dict[str, Any] = {"recovered": True}
@@ -441,12 +456,16 @@ def _recover_manifest_from_run_dir(run_id: str, run_dir: Path) -> Manifest | Non
         steps["execution_issues"] = True
     if (run_dir / f"{config.RUN_LOG_BATCH_TOKEN_REPORT}.ndjson").is_file():
         steps["token_report"] = True
+    extra: dict[str, Any] = {"recovery_reason": RECOVERY_REASON_MANIFEST_LOST}
+    issue_number = _issue_number_from_context(ctx)
+    if issue_number is not None:
+        extra["issue_number"] = issue_number
     return Manifest(
         status=config.MANIFEST_STATUS_PARTIAL,
         version="1",
         run_id=run_id,
         steps_ran=steps,
-        extra={"recovery_reason": RECOVERY_REASON_MANIFEST_LOST},
+        extra=extra,
     )
 
 
@@ -461,7 +480,7 @@ def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
                 if isinstance(data, dict):
                     return ManifestRecovery(_dict_to_manifest(cast("dict[str, Any]", data)), recovery_ok=True)
             except json.JSONDecodeError:
-                recovered = _recover_manifest_from_run_dir(rid, run_dir)
+                recovered = _recover_manifest_from_run_dir(ctx, rid, run_dir)
                 if recovered is not None:
                     try:
                         _write_manifest(ctx, recovered)
@@ -469,7 +488,7 @@ def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
                         return ManifestRecovery(recovered, recovery_ok=False)
                     return ManifestRecovery(recovered, recovery_ok=True)
         elif run_dir.is_dir():
-            recovered = _recover_manifest_from_run_dir(rid, run_dir)
+            recovered = _recover_manifest_from_run_dir(ctx, rid, run_dir)
             if recovered is not None:
                 try:
                     _write_manifest(ctx, recovered)
@@ -738,10 +757,16 @@ def flush_logs_pre(
     steps_update = dict(manifest.steps_ran)
     if step9a1 is not None:
         steps_update["step9a1"] = step9a1
-    _ = update_manifest(ctx, steps_ran=steps_update)
+    try:
+        _ = update_manifest(ctx, steps_ran=steps_update)
+    except (OSError, ShipError):
+        return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
     if cwd is None:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_REPO_CWD)
-    commit_result = _larch_log_commit(runner, ctx, log_root, cwd=cwd)
+    try:
+        commit_result = _larch_log_commit(runner, ctx, log_root, cwd=cwd)
+    except (OSError, ShipError):
+        return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
     if commit_result.returncode != 0:
         return RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
     if commit_result.argv == ("larch-log-volatile-only",):

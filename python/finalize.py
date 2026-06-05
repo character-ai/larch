@@ -41,17 +41,18 @@ class FinalizeResult:
     rebase_status: str = ""
     force_push_status: str = ""
     log_write_status: str = ""
+    branch_deleted: bool = False
 
 
 def _bool_text(value: object) -> str:
     return "true" if value else "false"
 
 
-def _result_from_error(exc: Exception) -> FinalizeResult:
+def _result_from_error(exc: Exception, *, status: str = "stalled") -> FinalizeResult:
     if isinstance(exc, TransientNetworkError):
         return FinalizeResult(
             Outcome.TRANSIENT,
-            "transient",
+            status,
             str(exc),
             rebase_status="skipped-resume",
             force_push_status="absent",
@@ -60,7 +61,7 @@ def _result_from_error(exc: Exception) -> FinalizeResult:
     if isinstance(exc, NeedsUserInput):
         return FinalizeResult(
             Outcome.NEEDS_USER_INPUT,
-            "needs-user-input",
+            status,
             str(exc),
             rebase_status="skipped-resume",
             force_push_status="absent",
@@ -68,7 +69,7 @@ def _result_from_error(exc: Exception) -> FinalizeResult:
         )
     return FinalizeResult(
         Outcome.STALLED,
-        "stalled",
+        status,
         str(exc),
         rebase_status="skipped-resume",
         force_push_status="absent",
@@ -95,7 +96,7 @@ def postbump_preflight(
         return PostbumpPreflight(ok=False, status="postbump-cwd-not-repo", detail="cwd is not in a repo")
     branch = git.try_current_branch(runner, cwd=cwd)
     target = ctx.branch_name or ctx.branch
-    if branch is None and not repo_root.stdout.strip():
+    if branch is None:
         branch = target
     if not branch or (target and branch != target):
         return PostbumpPreflight(ok=False, status="branch-mismatch", detail="wrong branch", branch=branch or "")
@@ -311,7 +312,7 @@ def postbump(
             log_write_status="skipped",
         )
     except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
-        return _result_from_error(exc)
+        return _result_from_error(exc, status="rebase-failed")
 
 
 def postmerge(
@@ -365,6 +366,7 @@ def postmerge(
         "ok",
         local_cleanup_status=cleanup_status,
         verify_main_status=verify_status,
+        branch_deleted=cleanup.branch_deleted,
     )
 
 
@@ -470,30 +472,41 @@ def _teardown_log_flush(runner: Runner, ctx: RunContext, *, cwd: str | None) -> 
     if not run_id or ctx.repo_unavailable:
         return True
     run_dir = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id
-    run_dir.mkdir(parents=True, exist_ok=True)
-    run_logs.render_execution_issues_batch(
-        ctx,
-        run_dir,
-        step_label="teardown",
-        source_label="execution-issues.md teardown safety-net",
-    )
-    recovery = run_logs.load_or_recover_manifest_checked(ctx)
-    if recovery.recovery_ok and ctx.stall_tracking:
-        _ = run_logs.update_manifest(
+    try:
+        run_dir.mkdir(parents=True, exist_ok=True)
+        run_logs.render_execution_issues_batch(
             ctx,
-            status=config.MANIFEST_STATUS_PARTIAL,
-            stalled_at_step=ctx.stall_step or "unknown",
+            run_dir,
+            step_label="teardown",
+            source_label="execution-issues.md teardown safety-net",
         )
+        recovery = run_logs.load_or_recover_manifest_checked(ctx)
+    except (OSError, ShipError):
+        return False
+    if recovery.recovery_ok and ctx.stall_tracking:
+        try:
+            _ = run_logs.update_manifest(
+                ctx,
+                status=config.MANIFEST_STATUS_PARTIAL,
+                stalled_at_step=ctx.stall_step or "unknown",
+            )
+        except (OSError, ShipError):
+            recovery = run_logs.ManifestRecovery(recovery.manifest, recovery_ok=False)
     post_merge_sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
     if not ctx.no_logs_commit and not post_merge_sentinel.exists():
         branch = git.try_current_branch(runner, cwd=cwd) or ""
         if branch not in {"main", "master"}:
-            _ = run_logs.commit_larch_logs(
-                runner,
-                ctx,
-                Path(ctx.tmpdir) / "larch-logs",
-                cwd=cwd,
-            )
+            try:
+                commit = run_logs.commit_larch_logs(
+                    runner,
+                    ctx,
+                    Path(ctx.tmpdir) / "larch-logs",
+                    cwd=cwd,
+                )
+                if commit.returncode != 0:
+                    recovery = run_logs.ManifestRecovery(recovery.manifest, recovery_ok=False)
+            except (OSError, ShipError):
+                recovery = run_logs.ManifestRecovery(recovery.manifest, recovery_ok=False)
     return recovery.recovery_ok
 
 

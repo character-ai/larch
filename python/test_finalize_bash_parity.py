@@ -10,19 +10,16 @@ from typing import Any
 import pytest
 
 import finalize
+from proc import CommandResult
 from run_context import RunContext
 from test_support import RecordingRunner
 
-
-pytestmark = pytest.mark.skipif(
-    shutil.which("bash") is None,
-    reason="bash unavailable",
-)
 
 IMPLEMENT_FINALIZE_SH = Path(__file__).resolve().parents[1] / "scripts" / "implement-finalize.sh"
 
 
 def test_finalize_bash_reference_script_present() -> None:
+    assert shutil.which("bash") is not None
     assert IMPLEMENT_FINALIZE_SH.is_file()
 
 
@@ -144,3 +141,46 @@ def test_postbump_uses_rebase_without_changelog(monkeypatch: pytest.MonkeyPatch,
     assert result.rebase_status == "already-fresh"
     assert result.log_write_status == "skipped"
     assert calls == ["rebase"]
+
+
+def test_postbump_branch_mismatch_status_matches_bash_subprocess(tmp_path: Path) -> None:
+    state = tmp_path / "postbump-state.sh"
+    _ = state.write_text(
+        "BRANCH_NAME=definitely-not-the-current-branch\n"
+        "ISSUE_NUMBER=1\n"
+        "PR_TITLE=Title\n"
+        "REPO=o/r\n"
+        "FORKED_TARGET=false\n"
+        "REPO_UNAVAILABLE=false\n"
+        "BUMP_TYPE=NONE\n"
+        "NEW_VERSION=\n",
+        encoding="utf-8",
+    )
+    bash = subprocess.run(
+        [
+            "bash",
+            str(IMPLEMENT_FINALIZE_SH),
+            "postbump",
+            "--state-file",
+            str(state),
+            "--implement-tmpdir",
+            str(tmp_path),
+        ],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    bash_kv = dict(line.split("=", 1) for line in bash.stdout.splitlines() if "=" in line)
+    python_result = finalize.postbump(
+        RecordingRunner(
+            responses=[
+                CommandResult(("git", "rev-parse", "--show-toplevel"), 0, "/repo\n", "", 0.01),
+                CommandResult(("git", "symbolic-ref", "--short", "HEAD"), 0, "current\n", "", 0.01),
+            ],
+        ),
+        _ctx(tmp_path, branch_name="definitely-not-the-current-branch"),
+        cwd=str(Path(__file__).resolve().parents[1]),
+    )
+    assert bash.returncode == 0
+    assert bash_kv["STATUS"] == python_result.status
+    assert python_result.rebase_status == "skipped-resume"

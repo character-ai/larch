@@ -948,11 +948,22 @@ def stage_and_push(
                 return False, head, delta_paths, did_rebase, False
         if ctx is not None:
             with suppress(OSError, ShipError):
-                _ = run_logs.flush_logs_pre(runner, ctx.with_(state_file=None), cwd=cwd)
+                skip = run_logs.flush_logs_pre(runner, ctx.with_(state_file=None), cwd=cwd)
+                if skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
+                    _warn_stderr("ship-pr: run-log refresh skipped before force-push: manifest recovery failed")
         _ = git.fetch(runner, "origin", branch, cwd=cwd)
         expected_remote_oid = git.try_rev_parse(runner, f"origin/{branch}", cwd=cwd)
         if not expected_remote_oid:
-            return False, head, delta_paths, did_rebase, True
+            remote = runner.run(
+                ["git", "ls-remote", "--exit-code", "--heads", "origin", branch],
+                cwd=cwd,
+            )
+            if remote.returncode == 0:
+                fields = remote.stdout.split()
+                expected_remote_oid = fields[0] if fields else ""
+        if not expected_remote_oid:
+            _warn_stderr("ship-pr: remote branch OID unavailable after CI-fix rebase; not marking pending")
+            return False, head, delta_paths, did_rebase, False
         force = git.force_push_recovery(
             runner,
             branch=branch,
@@ -1225,12 +1236,25 @@ def evaluate_failure(
                 detail="evaluate_failure: detached HEAD",
             )
         if ci_fix_rebase_pending:
+            pending_classified = last_classified
+            pending_logs = last_logs
+            if pending_classified is None:
+                jobs_raw, jobs_state = read_failed_jobs(
+                    runner,
+                    run_id=run_id,
+                    repo=repo,
+                    cwd=cwd,
+                )
+                if jobs_state == "ready":
+                    pending_classified = classify_failed_jobs(jobs_raw)
+            if pending_logs is None:
+                pending_logs = upfront_ready_stash or upfront_logs
             pending_fix = run_ci_fix(
                 runner,
                 run_id=run_id,
                 repo=repo,
-                classified=last_classified or ClassifiedJobs(0, (), (), ()),
-                logs=last_logs or LogCollectResult(text="", state="ready"),
+                classified=pending_classified or ClassifiedJobs(0, (), (), ()),
+                logs=pending_logs or LogCollectResult(text="", state="ready"),
                 plan_file=plan_file,
                 start_attempt=0,
                 cwd=cwd,
@@ -1492,7 +1516,7 @@ def monitor(
             )
         if fix.status == "waterfall-failed" and fix.ci_fix_rebase_pending:
             return _base_result(
-                did_fixing=True,
+                did_fixing=False,
                 goto=False,
                 step=StepResult(outcome=Outcome.OK),
                 pending=True,

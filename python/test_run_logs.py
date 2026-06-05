@@ -176,17 +176,21 @@ def test_load_or_recover_manifest_from_log_dir(tmp_path: Path) -> None:
 
 def test_load_or_recover_manifest_absent_run_dir_tags_partial(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
-    _ = state.write_text("RUN_ID=lost-run\n", encoding="utf-8")
+    _ = state.write_text("RUN_ID=lost-run\nISSUE_NUMBER=123\n", encoding="utf-8")
     ctx = _ctx(tmp_path, str(state))
     recovered = run_logs.load_or_recover_manifest_checked(ctx)
     assert recovered.recovery_ok
     assert recovered.manifest.status == config.MANIFEST_STATUS_PARTIAL
-    assert recovered.manifest.extra == {"recovery_reason": "manifest_lost_mid_run"}
+    assert recovered.manifest.extra == {
+        "recovery_reason": "manifest_lost_mid_run",
+        "issue_number": 123,
+    }
     manifest_path = tmp_path / "larch-logs" / "implement" / "lost-run" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["version"] == "1"
     assert manifest["run_id"] == "lost-run"
     assert manifest["steps_ran"] == {}
+    assert manifest["issue_number"] == 123
 
 
 def test_effective_run_id_prefers_state_file(tmp_path: Path) -> None:
@@ -482,6 +486,48 @@ def test_flush_logs_pre_happy_path_commits(
         ),
     )
     assert "step9a1" not in manifest["steps_ran"]
+
+
+def test_flush_logs_pre_update_manifest_failure_returns_recovery_skip(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    _ = run_logs.init_run(ctx)
+
+    def fail_update(*_a: object, **_k: object) -> run_logs.Manifest:
+        raise ShipError("manifest recovery failed")
+
+    monkeypatch.setattr(run_logs, "update_manifest", fail_update)
+    skip = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path))
+    assert skip.skipped is True
+    assert skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED
+
+
+def test_flush_logs_pre_commit_exception_returns_commit_skip(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    _ = run_logs.init_run(ctx)
+
+    def fail_commit(*_a: object, **_k: object) -> CommandResult:
+        raise ShipError("commit failed")
+
+    def noop(*_a: object, **_k: object) -> None:
+        return None
+
+    monkeypatch.setattr(run_logs, "_larch_log_commit", fail_commit)
+    monkeypatch.setattr(run_logs, "_write_final_report", noop)
+    monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
+    monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
+    skip = run_logs.flush_logs_pre(RecordingRunner(), ctx, cwd=str(tmp_path))
+    assert skip.skipped is True
+    assert skip.reason == config.REFRESH_SKIP_COMMIT_FAILED
 
 
 @pytest.mark.parametrize(

@@ -22,3 +22,13 @@ def test_finalize_bash_parity_collects_real_tests_when_bash_present() -> None:
     collected = result.stdout
     assert "test_postmerge_draft_status_matches_bash_subprocess" in collected
     assert "test_postbump_uses_rebase_without_changelog" in collected
+    run = subprocess.run(
+        [sys.executable, "-m", "pytest", "-q", str(module)],
+        check=False,
+        text=True,
+        capture_output=True,
+    )
+    assert run.returncode == 0
+    output = run.stdout + run.stderr
+    assert " skipped" not in output
+    assert "7 passed" in output

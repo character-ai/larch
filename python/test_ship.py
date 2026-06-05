@@ -1993,6 +1993,34 @@ def test_postmerge_sentinel_written_before_finalize_postmerge(
     assert result.outcome is Outcome.OK
 
 
+def test_postmerge_flush_only_when_pr_closed(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ctx = _ctx(
+        tmp_path,
+        pr_number=5,
+        pr_url="u",
+        pr_closed=False,
+        merge_result=config.MERGE_RESULT_MERGED,
+    )
+    calls: list[bool] = []
+    monkeypatch.setattr(
+        ship.finalize,
+        "postmerge",
+        lambda *_a, **_k: type("Post", (), {"outcome": Outcome.OK, "detail": "", "status": "ok"})(),
+    )
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        ship.run_logs,
+        "finalize_postmerge_logs",
+        lambda *_a, **_k: calls.append(True) or run_logs.RefreshSkip(skipped=False, reason=""),
+    )
+    result = ship.run_postmerge_phase(RecordingRunner(), ctx, cwd=str(tmp_path))
+    assert result.outcome is Outcome.OK
+    assert not calls
+
+
 def test_python_ship_driver_version_guard_probe() -> None:
     """Pin the /implement Step 8+ and ship.py runtime floor (Python >= 3.11)."""
     assert _meets_python_ship_floor(3, 11)

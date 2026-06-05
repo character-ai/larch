@@ -3122,6 +3122,8 @@ STUB
     step5_assert_envelope "$out_file" stall true lint-fix-main-agent-required 1
     [[ -f "$case_dir/impl/round-1/round-start-s" ]] \
         || fail "step5 lint-fix terminal arm must persist round-start-s for deferred orchestrator timing"
+    [[ ! -e "$case_dir/impl/timing-ledger.tsv" ]] \
+        || fail "step5 lint-fix terminal arm must defer in-loop timing row"
     round_start_s="$(tr -d '\r\n' < "$case_dir/impl/round-1/round-start-s")"
     CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" \
         --implement-tmpdir "$case_dir/impl" \
