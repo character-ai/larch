@@ -252,8 +252,17 @@ printf '**⚠ 3: plan.txt missing or empty; cannot present plan candidate for re
 exit 0
 STUBEOF
 chmod +x "$exact_missing_stub"
-"${launcher_env[@]}" LARCH_QUIET_DISABLE=1 RUN_STEP3_EMIT_PREVIEW_SH="$exact_missing_stub" \
-    "$LAUNCHER" --preview-only --design-tmpdir "$D_PV5" >/dev/null 2>&1 || true
+set +e
+out="$("${launcher_env[@]}" LARCH_QUIET_DISABLE=1 RUN_STEP3_EMIT_PREVIEW_SH="$exact_missing_stub" \
+    "$LAUNCHER" --preview-only --design-tmpdir "$D_PV5" 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then
+    pass '--preview-only exact missing-plan warning exits 0'
+else
+    fail "--preview-only exact missing-plan warning rc=$rc"
+fi
+assert_contains "$out" '**⚠ 3: plan.txt missing or empty; cannot present plan candidate for review**' '--preview-only exact missing-plan warning emits warning'
 if [[ ! -e "$D_PV5/.step3-entry-plan-printed" ]]; then
     pass '--preview-only exact missing-plan warning does not create sentinel'
 else
@@ -271,8 +280,17 @@ printf '**⚠ 3: plan.txt missing or empty; cannot present plan candidate for re
 exit 0
 STUBEOF
 chmod +x "$missing_repair_warning_stub"
-"${launcher_env[@]}" LARCH_QUIET_DISABLE=1 RUN_STEP3_EMIT_PREVIEW_SH="$missing_repair_warning_stub" \
-    "$LAUNCHER" --preview-only --design-tmpdir "$D_PV5B" >/dev/null 2>&1 || true
+set +e
+out="$("${launcher_env[@]}" LARCH_QUIET_DISABLE=1 RUN_STEP3_EMIT_PREVIEW_SH="$missing_repair_warning_stub" \
+    "$LAUNCHER" --preview-only --design-tmpdir "$D_PV5B" 2>&1)"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]]; then
+    pass '--preview-only missing-plan first call exits 0'
+else
+    fail "--preview-only missing-plan first call rc=$rc"
+fi
+assert_contains "$out" '**⚠ 3: plan.txt missing or empty; cannot present plan candidate for review**' '--preview-only missing-plan first call emits warning'
 if [[ ! -e "$D_PV5B/.step3-entry-plan-printed" ]]; then
     pass '--preview-only missing-plan first call leaves sentinel absent'
 else
