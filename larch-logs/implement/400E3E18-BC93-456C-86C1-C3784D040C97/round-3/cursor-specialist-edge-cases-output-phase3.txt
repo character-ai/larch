@@ -1,0 +1,57 @@
+### In-Scope Findings
+
+---
+
+**1. Important — correctness**  
+`skills/design/scripts/plan-review-loop.sh:429`  
+`_emit_plan_round_timing_row` sets the one-shot guard (`printf -v "$guard_var" '%s' true`) on line 429, **before** the `^[0-9]+$` validation checks on lines 430–431. If `start_s` is empty or non-numeric (e.g., `_round_start` is unset via `${_round_start:-}`), the function returns 0 without writing a row, but the guard is already `true`. Any subsequent valid call for the same round — including a recovery retry from a different call site — is silently dropped.
+
+Compare the implement equivalent (`_emit_implement_round_timing_row`, lines 108–125): validation runs first, the ledger write runs second, and `printf -v "$guard_var"` fires only after awk confirms the row is in the ledger. That ordering is safe under any path. The design version inverts the order without a reset on the failure path.
+
+In practice `_round_start` is always assigned just before `_run_plan_review_round`, so `${_round_start:-}` reliably produces a valid timestamp. But the pattern is fragile: any future code path that reaches `_snapshot_terminal_exit_preserving_status` without having set `_round_start` would permanently burn the guard and silently lose that round's timing row.
+
+**Suggested fix:** Move `printf -v "$guard_var" '%s' true` to after the helper call succeeds (mirroring the implement pattern), or at minimum move it to after the two validation guards so a bad-args invocation does not permanently consume the guard:
+
+```bash
+_emit_plan_round_timing_row() {
+    local round_num="$1" start_s="$2" end_s="$3"
+    local guard_var="PLAN_ROUND_${round_num}_TIMING_EMITTED"
+    if [[ "${!guard_var:-}" == "true" ]]; then return 0; fi
+    [[ "$start_s" =~ ^[0-9]+$ ]] || return 0     # guard NOT yet set; invalid args abort cleanly
+    [[ "$end_s" =~ ^[0-9]+$ ]] || return 0
+    printf -v "$guard_var" '%s' true              # set AFTER validation passes
+    "$SCRIPT_DIR/record-plan-review-round-timing.sh" \
+        --design-tmpdir "$DESIGN_TMPDIR" \
+        --round "$round_num" \
+        --start-s "$start_s" \
+        --end-s "$end_s" || true
+}
+```
+
+---
+
+**2. Latent — architecture**  
+`skills/design/scripts/record-plan-review-round-timing.sh` (new file, no explicit line reference)  
+`IMPLEMENT_TMPDIR` is not cleared before invoking `timing-ledger.sh record-round`. The script explicitly sets `LARCH_TIMING_LEDGER` and exports it, so `timing-ledger.sh`'s path-resolution chain (step 2) correctly uses that value. However, if a caller inherits a non-empty `IMPLEMENT_TMPDIR` and `LARCH_TIMING_LEDGER` were ever absent or empty, the resolver would fall through to the `IMPLEMENT_TMPDIR`-derived path (step 3) and write the design round row into the implement ledger. The design-side `design-publish.sh` correctly uses `env -u IMPLEMENT_TMPDIR` in its analog call; the plan-review helper does not.
+
+**Suggested fix:** Add `env -u IMPLEMENT_TMPDIR` before `"$PLUGIN_ROOT/scripts/timing-ledger.sh"` in `record-plan-review-round-timing.sh`, matching the defense applied in `design-publish.sh:255`.
+
+---
+
+**3. Nit — correctness**  
+`scripts/timing-report.sh` — `emit_round_array` function  
+`round_match_pos` and `match_idx` are awk global arrays (no `local` declaration in the function signature). The cleanup loop `for (i=1; i<=mc; i++) { delete round_match_pos[...]; delete match_idx[i] }` is correct when `mc > 0`. When `mc == 0` the early `return` is also correct (nothing was added). However, the cleanup iterates by `round_num[match_idx[i]]` to derive the key to delete from `round_match_pos`, which is the round number of the sorted entry at position `i`, not the original insertion key. After a bubble sort, position `i` and the original insertion position can differ, but the *key* being deleted is still `round_num[match_idx[i]] + 0` — the round number of whatever entry ended up at sorted slot `i`. Because `round_match_pos` is keyed by round number (not position), this correctly purges exactly the round numbers that were added in this call. Verified by tracing the duplicate-round case. This is a readability note: the interplay between the dedup replacement logic and the post-sort cleanup is non-obvious. A comment here would pay for itself.
+
+---
+
+### Out-of-Scope Observations
+
+- `design-publish.sh:265` clears all `timing-report-final.*` on render failure, which guarantees `render-final-summary.sh --post-publish-only`'s `_SKIP_TIMING_REGATHER` check returns false and re-renders. The re-render will write `timing-report-final.stderr.log` to `$DESIGN_TMPDIR` after `design-log-publish.sh` has already run, so that file is never published. The exclusion entries added to `design_artifact_excluded` (`timing-report-final.stderr.log`, `timing-report-final.failure.log`) are defence-in-depth for the pre-publish render path in `render-final-summary.sh`, not for the post-publish path. This is correct but worth noting for future reviewers so the exclusions aren't removed as "apparently dead".
+
+---
+
+```tsv
+round	3	1	Important — correctness: _emit_plan_round_timing_row sets one-shot guard before input validation; invalid-args call permanently consumes guard and silently drops the row on any retry. Implement version sets guard only after ledger verification.	skills/design/scripts/plan-review-loop.sh:429
+round	3	2	Latent — architecture: record-plan-review-round-timing.sh does not clear IMPLEMENT_TMPDIR before calling timing-ledger.sh; if LARCH_TIMING_LEDGER is absent, resolver falls through to implement ledger path. design-publish.sh uses env -u IMPLEMENT_TMPDIR correctly; this helper does not.	skills/design/scripts/record-plan-review-round-timing.sh
+round	3	3	Nit — correctness: emit_round_array uses global awk arrays round_match_pos and match_idx; cleanup logic is correct but the post-sort key derivation for round_match_pos deletion is non-obvious. Comment recommended.	scripts/timing-report.sh
+```
