@@ -36,6 +36,7 @@ Pass **per-bucket** counts (from `token-report.json` `BUCKETS_*`) when available
 - Title uses `## /design run …`.
 - Omits `- **PR**:` and `- **Code review**:` entirely (skipped `printf`s — not empty-string bullets) so stdout matches `--output-file` bytes.
 - Emits `- **Plan review**:` from `--plan-review-line`.
+- Omits `- **Lines (PR diff)**:` entirely (implement-only bullet).
 - **Outcome bullet**: printed when `--outcome` matches `bailed*`, `stalled`,
   `cancelled-*`, or `failed-*` (not printed for `approved` or other happy-path
   implement outcomes).
@@ -70,6 +71,19 @@ renderer’s body inside that upsert payload.
 This script shells to `scripts/token-cost.sh` for per-vendor costs (per-bucket flags when callers supply them). The markdown body includes a **single** `- **Cost**:` bullet with the dollar-primary line (`💰 TOTAL ~$… — Claude $…, Codex $…, Cursor $…  |  Tokens: …k`). There is **no** separate `- **Tokens**:` bullet. On computation failure, emit `- **Cost**: N/A` only.
 
 See `scripts/token-cost.md` for env vars and blended-fallback warning semantics.
+
+## Lines (PR diff) — implement only
+
+Optional flags `--code-added`, `--code-deleted`, `--logs-added`,
+`--logs-deleted` (default empty). When all four are empty, the bullet renders
+`- **Lines (PR diff)**: N/A`. Otherwise:
+
+`- **Lines (PR diff)**: code +<CA>/-<CD>, larch-logs +<LA>/-<LD>`
+
+Emitted only when `--skill implement`, immediately after `- **Code review**:`.
+
+`/design` callers omit the four flags; the bullet is suppressed via skipped
+`printf` (not an empty bullet).
 
 ## Cost unavailable mode
 

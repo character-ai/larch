@@ -47,6 +47,10 @@ PR_NUMBER=""
 PR_URL=""
 PLAN_REVIEW_LINE=""
 CODE_REVIEW_LINE=""
+CODE_ADDED=""
+CODE_DELETED=""
+LOGS_ADDED=""
+LOGS_DELETED=""
 OOS_COUNT=0
 OOS_URLS=""
 EXEC_ISSUES=0
@@ -86,6 +90,10 @@ while [ $# -gt 0 ]; do
         --pr-url) [ $# -ge 2 ] || { usage; exit 2; }; PR_URL=$2; shift 2 ;;
         --plan-review-line) [ $# -ge 2 ] || { usage; exit 2; }; PLAN_REVIEW_LINE=$2; shift 2 ;;
         --code-review-line) [ $# -ge 2 ] || { usage; exit 2; }; CODE_REVIEW_LINE=$2; shift 2 ;;
+        --code-added) [ $# -ge 2 ] || { usage; exit 2; }; CODE_ADDED=$2; shift 2 ;;
+        --code-deleted) [ $# -ge 2 ] || { usage; exit 2; }; CODE_DELETED=$2; shift 2 ;;
+        --logs-added) [ $# -ge 2 ] || { usage; exit 2; }; LOGS_ADDED=$2; shift 2 ;;
+        --logs-deleted) [ $# -ge 2 ] || { usage; exit 2; }; LOGS_DELETED=$2; shift 2 ;;
         --oos-count) [ $# -ge 2 ] || { usage; exit 2; }; OOS_COUNT=$2; shift 2 ;;
         --oos-urls) [ $# -ge 2 ] || { usage; exit 2; }; OOS_URLS=$2; shift 2 ;;
         --exec-issues) [ $# -ge 2 ] || { usage; exit 2; }; EXEC_ISSUES=$2; shift 2 ;;
@@ -205,6 +213,11 @@ fi
 plan_disp="${PLAN_REVIEW_LINE:-N/A}"
 code_disp="${CODE_REVIEW_LINE:-N/A}"
 
+lines_disp="N/A"
+if [ -n "$CODE_ADDED" ] || [ -n "$CODE_DELETED" ] || [ -n "$LOGS_ADDED" ] || [ -n "$LOGS_DELETED" ]; then
+    lines_disp="code +${CODE_ADDED}/-${CODE_DELETED}, larch-logs +${LOGS_ADDED}/-${LOGS_DELETED}"
+fi
+
 oos_disp="0"
 case "$OOS_COUNT" in ''|*[!0-9]*) oos_disp="0" ;; 0) oos_disp="0" ;; *)
     if [ -n "$OOS_URLS" ] && [ "$OOS_URLS" != "N/A" ]; then
@@ -249,6 +262,7 @@ trap cleanup EXIT
     printf -- '- **Plan review**: %s\n' "$plan_disp"
     if [ "$SKILL" != design ]; then
         printf -- '- **Code review**: %s\n' "$code_disp"
+        printf -- '- **Lines (PR diff)**: %s\n' "$lines_disp"
     fi
     printf -- '- **OOS filed**: %s\n' "$oos_disp"
     printf -- '- **Exec issues**: %s\n' "$ex_disp"
