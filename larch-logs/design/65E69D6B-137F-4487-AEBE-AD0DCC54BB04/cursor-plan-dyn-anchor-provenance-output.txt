@@ -1,0 +1,19 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:469	skills/design/scripts/plan-review-loop.sh:119-134	Scope anchor is pre-merge feature-description.txt but that file is written from full issue title+body with no larch:plan stripping	On re-design or replace flows the issue body often still contains a prior larch:plan block; binding scope evidence then embeds the old plan and can defeat [SCOPE-REDUCTION] proportionality (voters/reviewers treat stale plan text as required scope)	Build SCOPE_ANCHOR_FILE from issue narrative with larch:plan markers stripped (reuse plan-block-read.sh / issue-body.txt minus plan block) rather than raw feature-description.txt; keep brainstorm merge out of the anchor
+2	in_scope	latent	architecture	skills/design/references/plan-review.md:7	skills/design/scripts/dispatch-plan-review-panel.sh:58-61	Plan adds issue-anchor/baseline blocks to render-plan-review-prompt.sh but does not pin them after the single-line role row required by append_shared_prompt_tail tail -n +2	Dynamic and generic-fallback prompts strip only line 1; if the new anchor/drift blocks are emitted before the role line, dynamic slots lose scope-anchor/untrusted framing while static slots still get the full prompt	In render-plan-review-prompt.md specify output order role-line then optional anchor/baseline blocks then tier emphasis; extend test-dispatch-plan-review-panel.sh dynamic-path assertions to grep for untrusted-data framing in dyn prompts
+
+### 1. [correctness] Stale `larch:plan` in scope anchor (`skills/design/SKILL.md:469`, `skills/design/scripts/plan-review-loop.sh:119-134`)
+
+The plan correctly splits brainstorm-merged `plan-review-feature-context.txt` from the binding anchor and threads `SCOPE_ANCHOR_FILE` through scout, panel, voters, tally, revise, and MainAgent handoff. The anchor source itself remains `feature-description.txt`, which Step 0b writes from full issue title+body (`skills/design/SKILL.md:469`) without removing embedded `larch:plan` content.
+
+On replace or re-design runs, that file can carry a prior plan block from the issue body. Reviewers and voters would then treat bloated plan text as binding scope evidence, undermining the feature’s scope-reduction goal even when brainstorm merge is fixed.
+
+**Suggested revision:** Compose the anchor from issue narrative with `larch:plan` stripped (e.g. via `plan-block-read.sh` on `$DESIGN_TMPDIR/issue-body.txt`), not from unfiltered `feature-description.txt`.
+
+### 2. [architecture] Dynamic prompt `tail -n +2` contract (`skills/design/references/plan-review.md:7`, `skills/design/scripts/dispatch-plan-review-panel.sh:58-61`)
+
+`append_shared_prompt_tail` strips only the first rendered line (`tail -n +2`); `plan-review.md` documents that line 1 must be the role line. The plan adds issue-anchor and baseline blocks to `render-plan-review-prompt.sh` but does not require they appear after that role line.
+
+If implementation prepends multi-line anchor blocks before the role line, dynamic archetype slots (including `anchor-provenance`) and the generic Claude fallback would drop the first anchor line and may miss scope-anchor instructions entirely, while static slots still receive the full prompt.
+
+**Suggested revision:** Document and test that `--feature-file` / `--baseline-plan-file` blocks emit only after the role line; keep `test-dispatch-plan-review-panel.sh` dynamic-path coverage for untrusted-data framing in rendered dyn prompts.
