@@ -48,10 +48,10 @@ assert_degraded_tools_gate_fence() {
     'plugin-root.env' \
     'LARCH_CLAUDE_PLUGIN_ROOT' \
     'export CLAUDE_PLUGIN_ROOT' \
-    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "false"' \
-    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "false"' \
-    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "false"' \
-    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "false"' \
+    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default ""' \
+    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default ""' \
+    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default ""' \
+    '--file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default ""' \
     '"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill implement' \
     '--codex-present "$CODEX_PRESENT"' \
     '--cursor-present "$CURSOR_PRESENT"' \

@@ -340,6 +340,8 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     --cursor-present true \
     --codex-available false \
     --cursor-available true \
+    --codex-binary-found true \
+    --cursor-binary-found false \
     --claude-pid "$TEST_CLAUDE_PID"
 CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     --output "$out14" \
@@ -355,6 +357,8 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "$CODEX_AVAILABLE" = "false" ] || exit 143
     [ "$CURSOR_PRESENT" = "true" ] || exit 144
     [ "$CURSOR_AVAILABLE" = "true" ] || exit 145
+    [ "$CODEX_BINARY_FOUND" = "true" ] || exit 146
+    [ "$CURSOR_BINARY_FOUND" = "false" ] || exit 147
 ) || fail "case14: partial codex override did not mirror peer or preserve cursor keys (subshell exit $?)"
 
 # Case 15 — prior env recovery accepts only strict boolean exports

@@ -22,6 +22,7 @@
 #   CODEX_STATE=ok|binary-missing|probe-failed
 #   CURSOR_STATE=ok|binary-missing|probe-failed
 #   BOTH_DOWN=true|false
+#   PRESENCE_INPUT_EMPTY=true (conditional, when a presence input resolved empty)
 #   DEGRADED_EXPLANATION_BEGIN
 #   <multi-line explanation lines>
 #   DEGRADED_EXPLANATION_END

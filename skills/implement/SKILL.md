@@ -112,7 +112,7 @@ The Claude Code Bash tool does NOT preserve shell state between calls, and `CLAU
 
 **Pre-bootstrap sites** (Step 0 foreground, dirty-tree recovery, legacy structured-invocation pin) run before or without a fresh `write-session-env.sh` on legacy resume tmpdirs. Prepend the source guard above, then add the one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk extract from `$IMPLEMENT_TMPDIR/session-env.sh` (same pattern as the old 4-line fence, without the `if`/`fi` wrapper) when `plugin-root.env` is still absent, then `export CLAUDE_PLUGIN_ROOT`.
 
-Sourcing the full `session-env.sh` is intentionally avoided because it would pull in the entire session-env namespace and might shadow caller-side state. A plugin-rooted helper script is not feasible until `CLAUDE_PLUGIN_ROOT` is set. A **minimal** `$IMPLEMENT_TMPDIR/plugin-root.env` sidesteps both objections: every post-Step-0 site already knows `$IMPLEMENT_TMPDIR`, and the file carries only the one export. `implement-bootstrap.sh --resume-plan-tail` emits the sibling on legacy tmpdirs when missing. There are **40** executable rehydration sites in this file (37 post-Step-0 source-only + 3 pre-bootstrap source+awk). The `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh` helper is used for OTHER session-env keys (after `CLAUDE_PLUGIN_ROOT` is rehydrated) — see the `LARCH_TOKEN_SESSION_ID` rehydration prose below for that pattern.
+Sourcing the full `session-env.sh` is intentionally avoided because it would pull in the entire session-env namespace and might shadow caller-side state. A plugin-rooted helper script is not feasible until `CLAUDE_PLUGIN_ROOT` is set. A **minimal** `$IMPLEMENT_TMPDIR/plugin-root.env` sidesteps both objections: every post-Step-0 site already knows `$IMPLEMENT_TMPDIR`, and the file carries only the one export. `implement-bootstrap.sh --resume-plan-tail` emits the sibling on legacy tmpdirs when missing. There are **42** executable rehydration sites in this file (38 source-only + 4 source+awk fallback). The `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh` helper is used for OTHER session-env keys (after `CLAUDE_PLUGIN_ROOT` is rehydrated) — see the `LARCH_TOKEN_SESSION_ID` rehydration prose below for that pattern.
 
 ### Verbosity Control
 
@@ -333,21 +333,18 @@ Parse the routing envelope from wrapper stdout and `$IMPLEMENT_TMPDIR/bootstrap-
 
 ```bash
 export IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
-if [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
-  . "$IMPLEMENT_TMPDIR/plugin-root.env"
-elif [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh")
-  export CLAUDE_PLUGIN_ROOT
-fi
+[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+export CLAUDE_PLUGIN_ROOT
 
 CODEX_PRESENT=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
-  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "false")
+  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "")
 CURSOR_PRESENT=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
-  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "false")
+  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "")
 CODEX_BINARY_FOUND=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
-  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "false")
+  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
 CURSOR_BINARY_FOUND=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
-  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "false")
+  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
 
 "$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill implement \
   --codex-present "$CODEX_PRESENT" \

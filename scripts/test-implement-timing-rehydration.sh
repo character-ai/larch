@@ -140,13 +140,13 @@ expected_tmpdir_coupling=$(( token_read_count + step_telemetry_mark_count ))
 
 # shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
 plugin_root_source_count=$(grep -Fxc '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"' "$SKILL_MD" || true)
-[[ "$plugin_root_source_count" == "41" ]] \
-  || fail "plugin-root.env source guard count ($plugin_root_source_count) expected 41"
+[[ "$plugin_root_source_count" == "42" ]] \
+  || fail "plugin-root.env source guard count ($plugin_root_source_count) expected 42"
 
 # shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
 plugin_root_awk_count=$(grep -Fxc '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '\''BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)' "$SKILL_MD" || true)
-[[ "$plugin_root_awk_count" == "3" ]] \
-  || fail "session-env.sh awk fallback count ($plugin_root_awk_count) expected 3"
+[[ "$plugin_root_awk_count" == "4" ]] \
+  || fail "session-env.sh awk fallback count ($plugin_root_awk_count) expected 4"
 
 # shellcheck disable=SC2016 # SKILL.md literal template — single-quoted on purpose.
 legacy_fence_count=$(grep -Fxc 'if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then' "$SKILL_MD" || true)
