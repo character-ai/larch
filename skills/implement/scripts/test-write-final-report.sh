@@ -507,6 +507,33 @@ assert_contains '### Warnings' "$(cat "$impl_bl/execution-issues.md")" 'renderer
 cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
 chmod +x "$plugin/scripts/render-run-summary.sh"
 
+impl_lines_fb="$TMP_ROOT/impl-lines-fb"; mkdir -p "$impl_lines_fb"
+printf 'ISSUE_NUMBER=43\nRUN_ID=run-lines-fb\nADOPTED=true\n' > "$impl_lines_fb/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_lines_fb/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/43\n'
+    printf 'PR_NUMBER=43\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_lines_fb/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_lines_fb/finalize-state.sh"
+cat > "$plugin/scripts/render-run-summary.sh" <<'STUB'
+#!/usr/bin/env bash
+exit 1
+STUB
+chmod +x "$plugin/scripts/render-run-summary.sh"
+lines_fb=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-lines-fb.md" \
+      "$HELPER" --implement-tmpdir "$impl_lines_fb" --print-stdout 2>/dev/null)
+assert_contains '**⚠ Degraded fallback' "$lines_fb" 'renderer fallback stage2 line-counts emits degraded banner'
+assert_contains '<!-- larch:final-summary-fallback v1 -->' "$lines_fb" 'renderer fallback stage2 line-counts emits fallback marker'
+assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$lines_fb" 'renderer fallback stage2 line-counts renders bucketed values'
+assert_contains '- **PR**: #43 — https://example.test/pr/43' "$lines_fb" 'renderer fallback stage2 line-counts emits PR bullet'
+cp "$TMP_ROOT/render-run-summary.real" "$plugin/scripts/render-run-summary.sh"
+chmod +x "$plugin/scripts/render-run-summary.sh"
+
 impl_fork_fb="$TMP_ROOT/impl-fork-fb"; mkdir -p "$impl_fork_fb"
 printf 'ISSUE_NUMBER=18\nRUN_ID=run-fork-fb\nADOPTED=true\n' > "$impl_fork_fb/parent-issue.md"
 printf 'REPO=owner/repo\n' > "$impl_fork_fb/session-env.sh"
