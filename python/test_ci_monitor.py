@@ -1235,6 +1235,63 @@ def test_evaluate_failure_error_logs_defers_fix() -> None:
     assert not any(c[:4] == ("gh", "run", "view", "42") and "--json" in c for c in runner.calls)
 
 
+def test_monitor_push_failed_stalls() -> None:
+    """#3405: vendor-only push failure → STALLED (no CI_FIX_REBASE_PENDING retry)."""
+    launch_calls: list[str] = []
+
+    def launch_fn(tier: str) -> TierAttempt:
+        launch_calls.append(tier)
+        return TierAttempt(tier, 0, 0, LaunchFailure("none", ""))
+
+    baseline_head = "deadbeef" * 5
+    jobs_json = json.dumps({"jobs": []})
+    responses = _status(status="fail")
+    responses[("gh", "run", "view", "999", "--repo", "o/r", "--log-failed")] = _cr(
+        ("gh", "run", "view"),
+        stdout="FAIL test\n",
+    )
+    responses[("gh", "run", "view", "999", "--repo", "o/r", "--json", "jobs")] = _cr(
+        ("gh", "run", "view"),
+        stdout=jobs_json,
+    )
+    responses.update(_baseline_responses(baseline_head))
+    responses[("git", "add", "--", "fixed.py")] = _cr(("git", "add"), 0)
+    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    responses[(commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)")] = _cr(
+        (commit_script,),
+        0,
+    )
+    responses[("git", "symbolic-ref", "--short", "HEAD")] = _cr(
+        ("git", "symbolic-ref"),
+        stdout="feature\n",
+    )
+    responses[("git", "push", "origin", "feature")] = _cr(("git", "push"), rc=1)
+
+    runner = RecordingRunner(responses)
+    runner.sequential[("git", "diff", "--name-only")] = [
+        _cr(("git", "diff"), stdout=""),
+        _cr(("git", "diff"), stdout="fixed.py\n"),
+    ]
+    runner.sequential[("git", "rev-parse", "HEAD")] = [
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+        _cr(("git", "rev-parse", "HEAD"), stdout=f"{baseline_head}\n"),
+    ]
+
+    result = ci_monitor.monitor(
+        runner,
+        pr=1,
+        repo="o/r",
+        sleep_fn=lambda _s: None,
+        launch_fn=launch_fn,
+        transient_retries=1,
+    )
+    assert launch_calls
+    assert result.result.outcome == Outcome.STALLED
+    assert ("gh", "run", "view", "999", "--repo", "o/r", "--log-failed") in runner.calls
+    assert ("gh", "run", "view", "999", "--repo", "o/r", "--json", "jobs") in runner.calls
+
+
 def test_monitor_fix_exhausted_needs_user_input() -> None:
     jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
     responses = _status(status="fail")
