@@ -336,7 +336,7 @@ export IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
 if [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ]; then
   . "$IMPLEMENT_TMPDIR/plugin-root.env"
 elif [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-  CLAUDE_PLUGIN_ROOT=$(awk -F= '$1=="LARCH_CLAUDE_PLUGIN_ROOT"{print $2}' "$IMPLEMENT_TMPDIR/session-env.sh")
+  CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh")
   export CLAUDE_PLUGIN_ROOT
 fi
 
@@ -356,7 +356,7 @@ CURSOR_BINARY_FOUND=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
   --cursor-binary-found "$CURSOR_BINARY_FOUND"
 ```
 
-Use the canonical interactive predicate from that shared procedure. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` (**Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**); on **Continue**, write `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup. On an **autonomous / non-interactive** run (the common `/implement` mode — cron, `claude -p`, `<<autonomous-loop>>`), do NOT prompt: log the explanation to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded — the Step 0 implementer waterfall (codex→cursor→claude per `--coder`) and the reviewer / CI waterfalls already cover every role. Guard with a `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` sentinel so dirty-tree / resume-plan-tail re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
+Use the canonical interactive predicate from that shared procedure. If gate stdout contains `PRESENCE_INPUT_EMPTY=true`, append a `Warnings` entry to `$IMPLEMENT_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output; treat it as a caller rehydration warning, not a normal outage. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` (**Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**); on **Continue**, write `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup. On an **autonomous / non-interactive** run (the common `/implement` mode — cron, `claude -p`, `<<autonomous-loop>>`), do NOT prompt: log the explanation to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded — the Step 0 implementer waterfall (codex→cursor→claude per `--coder`) and the reviewer / CI waterfalls already cover every role. Guard with a `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` sentinel so dirty-tree / resume-plan-tail re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
 
 Step 0 dirty-tree recovery gate:
 

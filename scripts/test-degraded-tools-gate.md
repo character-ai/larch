@@ -14,8 +14,10 @@ implement/review branches), present-only wiring (binary-found omitted, as
 `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` in the child env so inherited runner
 exports cannot skew classification), the `--skill`
 label, empty-presence signaling (`PRESENCE_INPUT_EMPTY=true`), stderr-only
-`resolved empty` diagnostics for caller rehydration bugs, explicit-`false`
-non-signaling, omitted-presence flags with empty ambient env, and the
+`resolved empty` diagnostics for caller rehydration bugs in Case 5a, merged
+stdout/stderr diagnostics for cases that intentionally use `2>&1`,
+explicit-`false` non-signaling, omitted-presence flags with empty ambient env,
+omitted-presence flags with non-empty ambient env, whitespace-only presence, and the
 unknown-flag exit-2 path.
 
 Run via `make test-degraded-tools-gate` (registered in the Makefile `.PHONY` list

@@ -96,6 +96,9 @@ assert_rc "$rc" 0 "empty-codex exit 0"
 assert_contains "$out" "DEGRADED=true" "empty-codex degraded"
 assert_contains "$out" "CODEX_STATE=unavailable" "empty-codex → generic unavailable"
 assert_contains "$out" "BOTH_DOWN=false" "empty-codex BOTH_DOWN=false"
+assert_contains "$out" "PRESENCE_INPUT_EMPTY=true" "empty-codex signal"
+assert_contains "$out" "--codex-present resolved empty" "empty-codex codex diagnostic"
+assert_not_contains "$out" "--cursor-present resolved empty" "empty-codex no cursor diagnostic"
 assert_contains "$out" "/this run" "default skill label"
 
 # --- Case 5a: all presence flags empty → fail-safe down plus empty-presence signal ---
@@ -140,6 +143,26 @@ assert_contains "$out" "--codex-present resolved empty" "omitted-empty-env codex
 assert_contains "$out" "--cursor-present resolved empty" "omitted-empty-env cursor diagnostic"
 assert_not_contains "$out" "WARNING: --codex-present omitted" "omitted-empty-env no codex present warning"
 assert_not_contains "$out" "WARNING: --cursor-present omitted" "omitted-empty-env no cursor present warning"
+
+# --- Case 5e: omitted presence flags with non-empty ambient env → warning, no empty signal ---
+out=$(CODEX_PRESENT=true CURSOR_PRESENT=false bash "$GATE" \
+    --codex-binary-found true --cursor-binary-found true --skill implement 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 0 "omitted-nonempty-env exit 0"
+assert_contains "$out" "WARNING: --codex-present omitted" "omitted-nonempty-env codex present warning"
+assert_contains "$out" "WARNING: --cursor-present omitted" "omitted-nonempty-env cursor present warning"
+assert_contains "$out" "CODEX_STATE=ok" "omitted-nonempty-env codex ok"
+assert_contains "$out" "CURSOR_STATE=probe-failed" "omitted-nonempty-env cursor down"
+assert_not_contains "$out" "PRESENCE_INPUT_EMPTY" "omitted-nonempty-env no empty signal"
+
+# --- Case 5f: whitespace-only presence is explicit false, not empty input ---
+out=$(bash "$GATE" --codex-binary-found true --codex-present " " \
+    --cursor-binary-found true --cursor-present true --skill implement 2>&1) && rc=$? || rc=$?
+assert_rc "$rc" 0 "whitespace-presence exit 0"
+assert_contains "$out" "DEGRADED=true" "whitespace-presence degraded"
+assert_contains "$out" "CODEX_STATE=probe-failed" "whitespace-presence codex probe-failed"
+assert_contains "$out" "CURSOR_STATE=ok" "whitespace-presence cursor ok"
+assert_contains "$out" "BOTH_DOWN=false" "whitespace-presence BOTH_DOWN=false"
+assert_not_contains "$out" "PRESENCE_INPUT_EMPTY" "whitespace-presence no empty signal"
 
 # --- Case 6: present=true but binary-found=false is still binary-missing (binary gate wins) ---
 out=$(bash "$GATE" --codex-binary-found false --codex-present true \

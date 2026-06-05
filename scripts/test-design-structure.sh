@@ -106,10 +106,13 @@ assert_degraded_tools_gate_fence() {
     start && in_fence { print }
   ' "$SKILL_MD" >"$tmp"
   [[ -s "$tmp" ]] || fail "SKILL Degraded-tools gate region missing bash fence"
-  if ! grep -Fq '. "$DESIGN_TMPDIR/source-env.sh"' "$tmp" && \
-      ! grep -Fq 'current-design-env-$PPID.sh' "$tmp"; then
+  grep -Fq 'export DESIGN_TMPDIR="${DESIGN_TMPDIR:?DESIGN_TMPDIR required}"' "$tmp" \
+    || { rm -f "$tmp"; fail 'SKILL Degraded-tools gate fence must export DESIGN_TMPDIR prelude'; }
+  grep -Fq '. "$DESIGN_TMPDIR/source-env.sh"' "$tmp" \
+    || { rm -f "$tmp"; fail 'SKILL Degraded-tools gate fence must source durable design env'; }
+  if grep -Fq 'After the presence parse above' "$SKILL_MD"; then
     rm -f "$tmp"
-    fail 'SKILL Degraded-tools gate fence must source durable design env'
+    fail 'SKILL Degraded-tools gate prose must not refer to session-setup parse above'
   fi
   for needle in \
     '"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill design' \
