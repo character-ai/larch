@@ -1,0 +1,27 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/run-step3-review.sh:167	Plan adds a harness routing assertion for this script but does not list retargeting its cap-reached emit string (Step 3b, Step 4, then Gate C).	A new line-scoped guard will fail CI until the script is edited, or the emit stays as operator-facing text that implies a direct 3b→4 hop without the completion boundary.	Add ### UPDATED: skills/design/scripts/run-step3-review.sh to retarget line 167 to name the Step 3b completion boundary before Step 4 (mirror approval-gates.md), or document an explicit harness exclusion if script text is intentionally out of band.
+2	in_scope	important	correctness	skills/design/SKILL.md:1303	Plan retarget examples use Run the Step 3b completion boundary below, then Continue to Step 4 IMMEDIATELY for all Step 3b exits, but the non-architectural branch sits far above the completion fence and skips diagram sub-branches.	An orchestrator can treat IMMEDIATELY continue to Step 4 (even with boundary below) as permission to enter Step 4 in the same turn before running the end-of-Step-3b FINALIZE fence, recreating FM2 (missing rejected-findings.md).	For ~1303 use completion-boundary-at-end-of-Step-3b wording without a same-line Step 4 jump (e.g. proceed to the Step 3b completion boundary at the end of this step; do not enter Step 4 until it succeeds). Reserve boundary below, then Continue to Step 4 IMMEDIATELY for lines immediately above the fence (~1340).
+3	out_of_scope	latent	risk-integration	skills/design/references/flags.md:48	Step 3b / Step 4 / Gate C routing prose lives outside the three harness surfaces the plan defines.	Docs drift does not change SKILL orchestration but can mislead operators debugging panel-failed or invalid round-cap paths.	Optional doc-only retarget in flags.md and docs/configuration-and-permissions.md for consistency; not required for the boundary fence contract.
+
+**1. [correctness]** `skills/design/scripts/run-step3-review.sh:167` — The plan’s harness work calls out `run-step3-review.sh` annotations but the **Files to modify/create** section never includes this script. Line 167 still emits `continuing to Step 3b, Step 4, then Gate C` with no completion-boundary qualifier; a line-scoped guard will force an edit the plan does not specify.
+
+**2. [correctness]** `skills/design/SKILL.md:1303` — Among current direct Step-3b→Step-4 routing sites, the non-architectural branch is the outlier: it appears before the architectural diagram block and before the planned completion fence. Reusing the blockquote-style template (`boundary below, then Continue to Step 4 IMMEDIATELY`) on this line is unsafe; it should mandate reaching the end-of-step fence without implying an immediate Step-4 entry from the skip branch.
+
+**3. [OUT_OF_SCOPE] [risk-integration]** `skills/design/references/flags.md:48` (and `docs/configuration-and-permissions.md:274`) — Same arrow-style routing as Gate-B bypass prose but outside the plan’s harness slices; doc drift only.
+
+---
+
+**Cross-check (plan vs enumerated SKILL.md routing sites)**
+
+| Location | Current routing | Plan coverage |
+|----------|-----------------|---------------|
+| `SKILL.md:1059` | `jump to Step 3b/4/4b` | Explicit (~item 3) |
+| `SKILL.md:1168` | `Step 3b, then Step 4` / `Step 3b → Step 4 → Gate C` | Gate-B-bypass retarget (item 3a) |
+| `SKILL.md:1303,1334,1336,1338,1340` | `continue` / `IMMEDIATELY continue` / blockquote | Listed; see finding **2** for ~1303 |
+| `SKILL.md:1341` | prose `step-3b` then `entering Step 4` | Replaced by completion fence (item 3) |
+| `approval-gates.md:17,84,100,159,169` | `Step 3b → Step 4` chains | Item 3(b) + harness slice (3) |
+| `run-step3-review.sh:167` | cap breadcrumb | Harness only; see finding **1** |
+
+**Anti-halt:** Plan preserves the exact substring `Continue to Step 4 IMMEDIATELY` inside boundary-qualified text (e.g. at ~1340) and keeps `test-implement-anti-halt.sh` unchanged — satisfies the harness contract.
+
+**Intentional Step-4 entry without Step-3b section:** `resume@4` with Step-4 entry-fence compatibility FINALIZE when `.completed/finalize` is absent — covered in plan item 4; not a bypass of FINALIZE.

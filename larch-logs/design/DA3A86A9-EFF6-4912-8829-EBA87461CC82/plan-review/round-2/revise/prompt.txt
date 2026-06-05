@@ -1,0 +1,298 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Implementation Plan — Fold Step 4 FINALIZE + Step 2a SIMPLE sentinels (#3421)
+
+## Summary
+
+Remove two standalone orchestrator Bash turns in `/design` by folding each into an
+already-running fence. No behavior change. The two relocated operations are pure
+file touches plus the FINALIZE validation; the helper scripts (`finalize-plan.sh`,
+`design-driver.sh`) are not edited — only their caller location moves.
+
+Tier note: SIMPLE-tier design (minimum-change). Fold points were left open by the
+issue ("e.g. Step 3b tail or Gate C preview"); the operator chose "let the plan
+decide" at Step 1c. This plan picks the Step 3b completion boundary for FINALIZE
+(ordering-safe: it runs before Step 4 reads `rejected-findings.md`) and the Step 2a
+entry fence for the SIMPLE sentinels.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/SKILL.md`
+
+Four region edits.
+
+1. **Step 2a entry bash fence** (the first ` ```bash ` fence after `<!-- step:2a —`; the timing fence). After the
+   `timing-ledger.sh mark` line, read `design_classification` (via
+   `read-design-classification.sh "$DESIGN_TMPDIR/run-params.json"`, default `HARD`
+   on read failure). When it is `SIMPLE`, write the three no-sketch artifact
+   sentinels inline — `NO_SKETCHES_CLASSIFIED_SIMPLE` to `approach-synthesis.txt`,
+   `NO_CONTESTED_DECISIONS` to `contested-decisions.md`, empty
+   `dialectic-resolutions.md` — plus `mkdir -p "$DESIGN_TMPDIR/.completed"` and the
+   `.completed/step-2a` + `.completed/step-2a.5` sentinel writes, so the whole SIMPLE
+   Step 2a/2a.5 path is one turn. Keep the existing two-line prelude (env source +
+   `.pause-requested` pause-save) so `assert_bash_fences_have_pause_check` still holds.
+   Guard every write behind the `SIMPLE` branch — HARD must not write these. On
+   `design_classification != SIMPLE`, the entry fence must not write sentinel files.
+
+2. **`### SIMPLE branch (...) — no sketch agents` section**. Delete the dedicated
+   sentinel bash fence (the `printf ... NO_SKETCHES_CLASSIFIED_SIMPLE` block). Replace
+   its prose with a line stating the Step 2a entry fence already wrote the SIMPLE
+   sentinels and `.completed/step-2a` / `.completed/step-2a.5` markers; this subsection
+   must contain **no** ` ```bash ` fence (sentinel writes are entry-fence-only). Keep
+   "Skip Step 2a.5 and proceed directly to Step 2b. Do NOT call
+   `collect-agent-results.sh`." Keep the `NO_SKETCHES_CLASSIFIED_SIMPLE` literal in
+   the entry fence (presence assertion). Update the `2a.2` prose line ("perform the
+   SIMPLE branch sentinel writes above") to point at the entry fence.
+
+3. **Step 3b completion boundary** — **replace** the prose-only line at the current
+   "At the Step 3b success boundary ... `: > .../step-3b`" (do not keep a parallel
+   orchestrator prose write of `.completed/step-3b`). Insert a single explicit
+   ` ```bash ` fence at the end of the Step 3b region (after all diagram branches,
+   before `<!-- step:4 —`) carrying the canonical two-line prelude that: runs
+   `printf '%s\n' 'ACTION=FINALIZE' | design-driver.sh --design-tmpdir "$DESIGN_TMPDIR"`
+   under `set +e`; on non-zero, prints the existing "repair the missing artifact
+   before Step 5" warning, then **`exit "$_finalize_rc"`** (non-zero halt — do not
+   enter Step 4); on success only, writes `mkdir -p .../.completed` +
+   `.completed/step-3b`. No separate prose may write `step-3b` after a failed FINALIZE.
+   **Retarget every Step 3b early-exit** that currently says "continue to Step 4" /
+   "IMMEDIATELY continue to Step 4" (non-architectural skip ~1303, sanitizer-reject
+   ~1336, generation-failed ~1338, diagram-success ~1334) and the cap-reached /
+   Gate-B-bypass prose that names "Step 3b → Step 4" to instead require **run the
+   Step 3b completion boundary below, then Step 4** (or "proceed to the Step 3b
+   completion boundary below"). This fence is the sole convergence point before Step 4.
+
+4. **Step 4 (`<!-- step:4 —` Rejected Plan Review Findings Report)**. Remove item 1
+   (the standalone `ACTION=FINALIZE` bash fence). Renumber the remaining items so
+   Step 4 begins by reading `rejected-findings.md` (now guaranteed to exist by the
+   Step 3b boundary FINALIZE). Update the "it always exists after item 1" parenthetical
+   to reference the Step 3b boundary FINALIZE instead of "item 1". Leave the Step 4
+   entry timing fence and the `.completed/step-4` boundary write unchanged.
+
+5. **`### 2a.5` SIMPLE skip prose** (~line 801). After the existing SIMPLE skip line,
+   add a cross-reference that `.completed/step-2a.5` (and `.completed/step-2a`) were
+   already written by the Step 2a entry fence on SIMPLE runs — satisfies
+   `assert_step_completion_sentinels` for the `2a.5` region without a second write site.
+
+### UPDATED: `scripts/test-design-structure.sh`
+
+Strengthen assertions to pin the new structure (existing presence checks for
+`NO_SKETCHES_CLASSIFIED_SIMPLE`, `ACTION=FINALIZE`, `design-driver.sh` stay and still
+pass):
+
+- Add a region-scoped assertion that `ACTION=FINALIZE` now appears between
+  `<!-- step:3b` and `<!-- step:4 —` (reuse the existing `step3b_between` slice
+  pattern), and is ABSENT from the Step 4 region (`<!-- step:4 —` → `<!-- step:4b`).
+- Add **entry-fence-scoped** SIMPLE assertions (not the whole `<!-- step:2a —` →
+  `### 2a.5` slice): extract the first ` ```bash ` fence body after `<!-- step:2a —`
+  via awk (mirror `assert_step3b_entry_guard_threads_repo`) and require
+  `read-design-classification.sh`, all three sentinel writes, and both
+  `.completed/step-2a` and `.completed/step-2a.5` inside that fence only. Add a
+  **negative** check: no ` ```bash ` block in the `### SIMPLE branch` subsection
+  contains `NO_SKETCHES_CLASSIFIED_SIMPLE`.
+- Add a harness pin that Step 3b prose cannot say "continue to Step 4" /
+  "IMMEDIATELY continue to Step 4" without also referencing the completion boundary
+  (e.g. `completion boundary` token in the Step 3b region).
+- Add a harness pin that the Step 3b completion-boundary fence contains a non-zero
+  `exit` on the FINALIZE failure branch (e.g. `exit "$_finalize_rc"` or equivalent).
+- Keep `assert_bash_fences_have_pause_check` and `assert_step_completion_sentinels`
+  as-is; the new Step 3b fence and the entry-fence writes satisfy them.
+
+### UPDATED: `scripts/test-design-structure.md`
+
+Document the two new/updated assertions (FINALIZE pinned to the Step 3b region;
+SIMPLE sentinels pinned to the Step 2a entry region) in the harness contract.
+
+### UPDATED: `skills/design/references/sketch-launch.md`
+
+**Required** (not conditional): replace the §SIMPLE Mode standalone ` ```bash `
+sentinel block with prose that sentinel + `.completed/step-2a` / `.completed/step-2a.5`
+writes occur **only** in the Step 2a entry fence when `design_classification == SIMPLE`;
+keep sentinel string values as normative reference only; point readers at
+`skills/design/SKILL.md` Step 2a entry fence. Update the Contract / Critical sequencing
+lines that imply a separate SIMPLE bash write site.
+
+### UPDATED: `skills/design/scripts/design-driver.md`
+
+Change the primary-caller line "`/design` Step 4 for `ACTION=FINALIZE`" to name the
+Step 3b completion boundary.
+
+### UPDATED: `skills/design/scripts/finalize-plan.md`
+
+Change the "`/design` Step 4" primary-caller line to the Step 3b completion boundary.
+
+## Approach
+
+The issue's goal is "no dedicated turn" for two trivial file-setup operations. Each
+operation is folded into a fence that already runs on the same path:
+
+- FINALIZE → the Step 3b boundary write. The boundary already runs a bash write on
+  every Step 3b path and sits strictly before Step 4. This is the issue's "Step 3b
+  tail" suggestion. The Gate C preview alternative was rejected: it runs after Step 4,
+  so it would also force Step 4's `rejected-findings.md` read to become
+  absence-tolerant — more change, not less. All Step 3b exit prose must converge on
+  this single boundary fence (no direct "continue to Step 4" bypass). FINALIZE failure
+  is a hard halt (`exit` nonzero) — warnings alone are insufficient.
+- SIMPLE sentinels → the Step 2a entry fence, guarded by `design_classification ==
+  SIMPLE`. HARD is unaffected; the HARD zero-sketches degraded path keeps its own
+  sentinel writes.
+
+`finalize-plan.sh` and `design-driver.sh` are not edited. FINALIZE keeps its own
+`.completed/finalize` idempotency sentinel, so a resumed run never double-runs it.
+
+## Edge cases
+
+- HARD run: entry fence reads `HARD`, writes nothing; existing HARD flow intact.
+- HARD both-tools-down (zero-sketches degraded): still writes the sentinels on its own
+  path (unchanged) — the entry-fence write is SIMPLE-guarded and does not fire.
+- Non-architectural plan at Step 3b: after the `architecture-diagram.skipped` write,
+  orchestrator runs the completion boundary fence (FINALIZE + `step-3b`), then Step 4.
+- Voting skipped (all reviewers clean, no tally): `rejected-findings.md` etc. do not
+  exist; FINALIZE touches them at Step 3b so Step 4's read succeeds.
+- Gate-B-bypass short-circuits (cap-reached, tally-error, panel-failed, …) that jump to
+  Step 3b: diagram/skip branches must still reach the completion boundary fence before
+  Step 4 (retargeted prose).
+
+## Failure modes
+
+1. Ordering regression — FINALIZE folded after Step 4's `rejected-findings.md` read,
+   so the read fails when voting was skipped. Signal: Step 4 read error / empty-file
+   handling. Mitigation: fold at the Step 3b boundary (before Step 4) and pin
+   `ACTION=FINALIZE` to the Step 3b region in the harness.
+2. Early-exit prose bypasses completion boundary — Step 4 runs without FINALIZE after
+   removing Step 4 item 1. Signal: missing `rejected-findings.md` on skip paths.
+   Mitigation: retarget all "continue to Step 4" Step 3b lines to the boundary fence;
+   harness pin for completion-boundary reference.
+3. Missing pause-check on the new fence — `assert_bash_fences_have_pause_check` fails
+   in CI. Signal: structure test failure "(21) current-design-env source lines missing
+   pause-check". Mitigation: copy the canonical two-line prelude verbatim into the new
+   Step 3b fence.
+4. FINALIZE failure treated as warning-only — orchestrator enters Step 4 with missing
+   artifacts. Signal: Step 4/5 reads fail; resume skips re-finalize. Mitigation: `exit`
+   nonzero in the failure branch; write `.completed/step-3b` only after FINALIZE exits 0;
+   remove duplicate prose boundary write.
+5. `assert_step_completion_sentinels` fails for step 2a.5 — sentinel literal absent from
+   `### 2a.5` region. Mitigation: cross-reference line with `.completed/step-2a.5` in
+   SIMPLE skip prose (~801).
+
+## Testing strategy
+
+- `bash scripts/test-design-structure.sh` — updated/added assertions green; pause-check
+  and completion-sentinel machinery green for the new fence layout.
+- `bash skills/design/scripts/test-design-pause-resume.sh` — resume at step-2a / step-3b
+  / step-4 still routes correctly (sentinel names unchanged).
+- `bash skills/design/scripts/test-finalize-plan.sh` and
+  `bash skills/design/scripts/test-design-driver.sh` — unchanged scripts stay green
+  (regression guard; FINALIZE semantics untouched).
+- `make lint` — markdownlint (MD038 code-span hygiene on edited prose), agent-lint,
+  shellcheck, bash32, and the bare-grep-probe linter all green.
+
+diff_lines: 145
+
+</plan>
+
+<findings>
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch, Cursor-dyn-sentinel-flow
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/SKILL.md:1340-1341
+- **Concern**: Step 3b anti-halt blockquote and prose step-3b boundary omitted from explicit retarget list. Scenario: Item 3 retargets ~1303/1334/1336/1338 and adds a completion-boundary fence but leaves `> **Continue to Step 4 IMMEDIATELY.**` and the prose-only `step-3b` write; orchestrator can skip FINALIZE and Step 4 reads missing `rejected-findings.md`
+- **Proposed resolution**: Extend item 3: replace line 1340 to require the Step 3b completion boundary (not direct Step 4); delete the prose `step-3b` write at 1341 (fence owns it after FINALIZE succeeds); broaden the harness pin to match `Continue to Step 4` as well as `continue to Step 4` / `IMMEDIATELY continue to Step 4`
+
+
+### FINDING_2:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: skills/design/SKILL.md:1341-1367
+- **Concern**: Step 4 removal assumes every Step 4 resume has passed the new Step 3b FINALIZE boundary. Scenario: A pre-PR paused run can already have .completed/step-3b but no .completed/finalize; after this PR pause-load resumes at Step 4, Step 4 no longer runs FINALIZE, and rejected-findings.md may be missing when voting was skipped
+- **Proposed resolution**: Fold a compatibility FINALIZE check into the existing Step 4 entry fence when .completed/finalize is absent, or route step-4 resumes without finalize back through the Step 3b boundary; add a pause-resume fixture for the old step-3b-only state
+
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/SKILL.md:1340
+- **Concern**: Step 3b blockquote still says "Continue to Step 4 IMMEDIATELY" but is omitted from the retarget list and the proposed harness pin is case/order-sensitive. Scenario: After Step 4 item 1 is removed, an orchestrator can follow the blockquote and skip the new completion-boundary fence, so FINALIZE never runs and Step 4 reads missing rejected-findings.md on skip paths
+- **Proposed resolution**: Retarget line 1340 to require the Step 3b completion boundary first; extend the harness pin to catch this variant (e.g. case-insensitive match or explicit "Continue to Step 4 IMMEDIATELY" literal)
+
+
+### FINDING_5:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: scripts/test-implement-anti-halt.sh:64
+- **Concern**: Plan retargets Step 3b continuation prose but does not account for the existing anti-halt harness literal. Scenario: Removing or rewriting the current "Continue to Step 4 IMMEDIATELY" banner makes make lint fail even if the new completion boundary is correct
+- **Proposed resolution**: Preserve that literal in the new boundary-qualified Step 3b reminder, or update this harness needle in the same PR to the new completion-boundary wording
+
+
+### FINDING_6:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: skills/design/SKILL.md:1168
+- **Concern**: Proposed Step 3b harness pin only guards phrases "continue to Step 4" / "IMMEDIATELY continue to Step 4" inside the Step 3b region; cap-reached Gate-B-bypass at line 1168 sits in Step 3 and says "Step 3b, then Step 4" / "Step 3b → Step 4" without "completion boundary". Scenario: After Step 4 item 1 is removed, an implementer can pass CI while leaving line 1168 unchanged; cap-reached / skipped-cap-reached runs are a primary no-voting path and may skip the new FINALIZE fence, so Step 4 reads missing rejected-findings.md artifacts
+- **Proposed resolution**: Extend scripts/test-design-structure.sh to scan the Step 3 slice (e.g. <!-- step:3 — through <!-- step:3.5) for Step 3b→Step 4 routing that lacks a completion-boundary reference, or add an explicit pin for line 1168; keep the planned SKILL.md retarget of Gate-B-bypass macro prose in item 3
+
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:90-92; scripts/test-design-structure.sh (new assertion)
+- **Concern**: Proposed Step 3b bypass pin only requires a completion-boundary token somewhere in the Step 3b region, not on each bypass line. Scenario: A stale line such as skills/design/SKILL.md:1303 or :1338 can still say "continue to Step 4" while another line mentions "completion boundary"; CI passes but that branch skips the FINALIZE fence and Step 4 reads artifacts FINALIZE would have created
+- **Proposed resolution**: Make the harness line-scoped: fail any Step 3b-region line matching continue-to-Step-4 (case-insensitive) unless that same line routes through the Step 3b completion boundary
+
+
+### FINDING_8:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: scripts/test-design-structure.sh:705-709
+- **Concern**: Planned Step 3b bypass assertion is too weak if it only checks for a completion-boundary token anywhere in the region. Scenario: A stale line like "Then IMMEDIATELY continue to Step 4" could remain while another Step 3b line mentions "completion boundary", so the harness passes even though that branch can bypass FINALIZE
+- **Proposed resolution**: Make the assertion line-scoped: fail any Step 3b line containing "continue to Step 4" or "IMMEDIATELY continue to Step 4" unless that same line directs the run to the Step 3b completion boundary first
+
+
+### FINDING_9:
+- **Reviewer(s)**: Codex-dyn-sentinel-flow
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:55-60; skills/design/SKILL.md:1334-1340; scripts/test-design-structure.sh:1303-1320
+- **Concern**: Plan omits the current generic Step 3b “Continue to Step 4 IMMEDIATELY” prose path from the explicit retarget list, and the proposed harness check is region-token scoped enough to miss it.. Scenario: If skills/design/SKILL.md:1340 remains as a direct Step 4 instruction, an orchestrator can skip the new FINALIZE completion-boundary fence; Step 4 then reads artifacts that FINALIZE would have created.
+- **Proposed resolution**: Add the skills/design/SKILL.md:1340 continuation line to the retarget list and make the structure test fail any Step 3b line/block that says “continue to Step 4” unless that same continuation explicitly routes through the Step 3b completion boundary.
+
+
+### FINDING_10:
+- **Reviewer(s)**: Cursor-dyn-cross-ref-stale
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:55-60
+- **Concern**: skills/design/SKILL.md:1340. Scenario: Step 3b retarget list omits anti-halt blockquote
+- **Proposed resolution**: Plan item 3 lists early-exit lines (~1303, ~1334, ~1336, ~1338) but not the `> **Continue to Step 4 IMMEDIATELY.**` blockquote at skills/design/SKILL.md:1340. New harness pin forbids bare "continue to Step 4" without "completion boundary"; scripts/test-implement-anti-halt.sh:64 requires the exact substring `Continue to Step 4 IMMEDIATELY` in SKILL.md under make lint (test-harnesses-4). Implementer updates only the enumerated lines; line 1340 stays a direct Step 4 bypass, failing the new structure pin and/or removing the anti-halt literal CI requires. Add ~1340 to item 3 retargets (e.g. completion-boundary-then-Step-4 wording that keeps `Continue to Step 4 IMMEDIATELY`); add `bash scripts/test-implement-anti-halt.sh` to Testing strategy.
+
+
+
+</findings>
+
+<feature>
+# Round II of /design refactor, Phase 6: fold Step 4 FINALIZE + 2a sentinels
+
+**Context.** Part of Round II of the `/design` refactor (rationale in Phase 1).
+
+**Problem.** Two one-line standalone Bash turns do trivial file setup: Step 4 `ACTION=FINALIZE` (`SKILL.md:1339-1344`, ensures `rejected-findings.md` / `accepted-plan-findings.md` / `oos.md` exist) and the Step 2a SIMPLE-branch sketch sentinel writes (`SKILL.md:659-665`). Each is a full orchestrator turn for a couple of file touches.
+
+**Change.** Fold `ACTION=FINALIZE` into an adjacent driver call (e.g. the Step 3b tail or the Gate C preview path) so the artifacts are ensured without a dedicated turn. Fold the SIMPLE sketch-sentinel writes into the Step 2a entry/driver path.
+
+**Why.** ~1 turn each on their paths; small, but every step matters for cost + determinism.
+
+**Scope / acceptance.** The two fences removed as standalone turns with behavior preserved (artifacts still guaranteed before Step 5; SIMPLE sentinels still written); `test-design-structure.sh` sentinel/finalize assertions updated; harnesses + `make lint` green.
+
+**Dependencies.** Blocked by Phase 1.
+
+</feature>
