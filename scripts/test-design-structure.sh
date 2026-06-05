@@ -118,7 +118,7 @@ assert_step2a_entry_simple_guard() {
     || fail 'Step 2a entry fence missing step-2a.5 completion marker'
   guard_line=$(grep -nF 'if [ "$_design_classification" = SIMPLE ]; then' "$tmp" | head -1 | cut -d: -f1)
   closing_fi_line=$(awk -v start="$guard_line" 'NR > start && $0 == "fi" { line=NR } END { if (line) print line }' "$tmp")
-  first_artifact_line=$(grep -nF "NO_SKETCHES_CLASSIFIED_SIMPLE" "$tmp" | head -1 | cut -d: -f1)
+  first_artifact_line=$(grep -m 1 -nF "NO_SKETCHES_CLASSIFIED_SIMPLE" "$tmp" | cut -d: -f1)
   last_artifact_line=$(grep -nF ': > "$DESIGN_TMPDIR/dialectic-resolutions.md"' "$tmp" | head -1 | cut -d: -f1)
   first_completion_line=$(grep -nF ': > "$DESIGN_TMPDIR/.completed/step-2a"' "$tmp" | head -1 | cut -d: -f1)
   [[ -n "$closing_fi_line" ]] || fail 'Step 2a entry fence missing closing fi for SIMPLE guard'
@@ -135,7 +135,7 @@ assert_step2a_entry_simple_guard() {
     "NO_CONTESTED_DECISIONS" \
     ': > "$DESIGN_TMPDIR/dialectic-resolutions.md"'
   do
-    artifact_line=$(grep -nF "$_artifact" "$tmp" | head -1 | cut -d: -f1)
+    artifact_line=$(grep -m 1 -nF "$_artifact" "$tmp" | cut -d: -f1)
     [[ -n "$artifact_line" ]] || fail "Step 2a entry fence missing SIMPLE artifact write: $_artifact"
     (( guard_line < artifact_line && artifact_line < closing_fi_line )) \
       || fail 'Step 2a entry fence SIMPLE artifact writes must stay inside the SIMPLE guard'
