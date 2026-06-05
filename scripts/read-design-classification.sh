@@ -4,7 +4,8 @@
 set -euo pipefail
 
 warn_default() {
-    printf '%s\n' "**⚠ read-design-classification: $1; no valid design_classification found**" >&2
+    printf '%s\n' "**⚠ read-design-classification: $1; defaulting to HARD**" >&2
+    printf '%s\n' HARD
 }
 
 f="${1:-${DESIGN_TMPDIR:-}/run-params.json}"
@@ -22,12 +23,9 @@ if command -v python3 >/dev/null 2>&1; then
 import json, sys
 try:
     with open(sys.argv[1], encoding="utf-8") as fh:
-        data = json.load(fh)
+        v = json.load(fh).get("design_classification")
 except Exception:
     raise SystemExit(1)
-v = data.get("design_classification")
-if v not in ("SIMPLE", "HARD"):
-    v = data.get("workflow_path")
 if v in ("SIMPLE", "HARD"):
     print(v)
 else:
@@ -38,7 +36,7 @@ PY
 fi
 
 if command -v jq >/dev/null 2>&1; then
-    _out=$(jq -r 'if .design_classification=="SIMPLE" or .design_classification=="HARD" then .design_classification elif .workflow_path=="SIMPLE" or .workflow_path=="HARD" then .workflow_path else empty end' "$f" 2>/dev/null || true)
+    _out=$(jq -r 'if .design_classification=="SIMPLE" or .design_classification=="HARD" then .design_classification else empty end' "$f" 2>/dev/null || true)
     case "$_out" in SIMPLE|HARD) printf '%s\n' "$_out"; exit 0 ;; esac
 fi
 
@@ -50,14 +48,5 @@ if grep -qE '"design_classification"[[:space:]]*:[[:space:]]*"HARD"' "$f" 2>/dev
     printf '%s\n' HARD
     exit 0
 fi
-if grep -qE '"workflow_path"[[:space:]]*:[[:space:]]*"SIMPLE"' "$f" 2>/dev/null; then
-    printf '%s\n' SIMPLE
-    exit 0
-fi
-if grep -qE '"workflow_path"[[:space:]]*:[[:space:]]*"HARD"' "$f" 2>/dev/null; then
-    printf '%s\n' HARD
-    exit 0
-fi
 
 warn_default "design_classification missing or invalid"
-exit 1

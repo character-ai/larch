@@ -625,10 +625,7 @@ if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
   printf '%s\n' '**⚠ Step 2a: run-params.json is not readable; cannot resolve design_classification for SIMPLE sentinel fence. Repair run params before continuing.**' >&2
   exit 1
 fi
-if ! _design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")"; then
-  printf '%s\n' '**⚠ Step 2a: run-params.json has no valid design_classification/workflow_path; repair run params before continuing.**' >&2
-  exit 1
-fi
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
   set -e
   _simple_artifacts_ok=true
@@ -796,10 +793,7 @@ if [ ! -r "$DESIGN_TMPDIR/run-params.json" ]; then
   printf '%s\n' '**⚠ Step 2a.5: run-params.json is not readable; cannot resolve design_classification for SIMPLE repair fence. Repair run params before continuing.**' >&2
   exit 1
 fi
-if ! _design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json")"; then
-  printf '%s\n' '**⚠ Step 2a.5: run-params.json has no valid design_classification/workflow_path; repair run params before continuing.**' >&2
-  exit 1
-fi
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" || printf '%s\n' HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
   set -e
   _simple_artifacts_ok=true
