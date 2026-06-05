@@ -1,0 +1,14 @@
+The diff is clean and minimal. Let me verify the `case` statement structure after the branch removal and check for any potential issues in the new test.
+
+The change is straightforward:
+- `run-step3-review.sh`: One `case` branch removed, comment updated — single-branch `case`/`esac` is syntactically valid Bash
+- `run-step3-review.md`: Responsibility 0 extended with the new sentinel-touch contract — accurate and inline with behavior
+- `test-run-step3-review.sh`: Existing test renamed+inverted; new `D_PV5B` regression block added with the two-phase missing→repair scenario
+
+The new test's `assert_contains "$out" '## Plan Candidate for Review'` captures output via `2>&1` — the same pattern already used in the existing disallowed-tmpdir test block visible at the bottom of the diff, so it's a validated idiom in this harness.
+
+Plan fidelity is complete: all three plan-specified files are touched, the `--no-preview` path is untouched, no new flags or result-env keys are introduced.
+
+### In-Scope Findings
+
+No in-scope issues found.
