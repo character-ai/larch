@@ -1,0 +1,36 @@
+{
+  "schema_version": 3,
+  "rounds_completed": 1,
+  "reviewer_output_paths": [
+    "<TMPDIR>/round-1/aggregator-output.txt",
+    "<TMPDIR>/round-1/claude-vote-output.txt",
+    "<TMPDIR>/round-1/codex-vote-output.txt",
+    "<TMPDIR>/round-1/cursor-specialist-correctness-output.txt",
+    "<TMPDIR>/round-1/cursor-specialist-edge-cases-output.txt",
+    "<TMPDIR>/round-1/cursor-specialist-plan-fidelity-output.txt",
+    "<TMPDIR>/round-1/cursor-specialist-security-output.txt",
+    "<TMPDIR>/round-1/cursor-specialist-structure-output.txt",
+    "<TMPDIR>/round-1/cursor-specialist-testing-output.txt",
+    "<TMPDIR>/round-1/cursor-vote-output.txt",
+    "<TMPDIR>/round-1/dyn-bash-parity-output.txt",
+    "<TMPDIR>/round-1/dyn-git-safety-output.txt",
+    "<TMPDIR>/round-1/dyn-runlog-recovery-output.txt",
+    "<TMPDIR>/round-1/dyn-shell-portability-output.txt",
+    "<TMPDIR>/round-1/dyn-state-resume-output.txt",
+    "<TMPDIR>/round-1/dyn-timing-ledger-output.txt"
+  ],
+  "panel": {
+    "scout_status": "ok",
+    "static_slot_count": 6,
+    "dynamic_slot_count": 6,
+    "total_slot_count": 12
+  },
+  "finding_counts": {
+    "total_accepted": 22,
+    "total_rejected": 8,
+    "total_exonerated": 6
+  },
+  "accepted_count": 22,
+  "rejected_count": 8,
+  "exonerated_count": 6
+}
