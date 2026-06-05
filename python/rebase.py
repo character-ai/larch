@@ -90,7 +90,9 @@ def _is_plugin_json_path(path: str) -> bool:
 
 
 def _larch_bump_files() -> frozenset[str]:
-    raw = os.environ.get(config.ENV_LARCH_BUMP_FILES, "")
+    raw = os.environ.get(config.ENV_LARCH_VERSION_FILES, "")
+    if not raw:
+        raw = os.environ.get(config.ENV_LARCH_BUMP_FILES, "")
     return frozenset(segment.strip() for segment in raw.split(os.pathsep) if segment.strip())
 
 
@@ -207,6 +209,7 @@ def _resolve_conflicts(
     run_id: str,
     cwd: str | None,
     tmpdir: str | None = None,
+    enable_pre_push_handoff: bool = False,
 ) -> None:
     _ = repo, run_id
     while True:
@@ -227,7 +230,7 @@ def _resolve_conflicts(
                 )
                 if waterfall.winning_tier is None:
                     conflict_files = tuple(remaining)
-                    if _conflicts_are_non_bump_only(conflict_files):
+                    if enable_pre_push_handoff and _conflicts_are_non_bump_only(conflict_files):
                         _write_handoff_flag(tmpdir)
                         raise PrePushConflictHandoff(
                             conflict_files=conflict_files,
@@ -323,6 +326,7 @@ def rebase_and_push(
     max_attempts: int = config.REBASE_MAX_ATTEMPTS,
     defer_push: bool = False,
     allow_conflict_fix: bool = True,
+    enable_pre_push_handoff: bool = False,
 ) -> RebaseResult:
     """Rebase onto base, resolve conflicts, optionally force-push.
 
@@ -380,6 +384,7 @@ def rebase_and_push(
                 run_id=run_id,
                 cwd=cwd,
                 tmpdir=tmpdir,
+                enable_pre_push_handoff=enable_pre_push_handoff,
             )
         else:
             _abort_rebase(runner, cwd=cwd)

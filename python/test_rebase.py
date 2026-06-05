@@ -234,6 +234,7 @@ def test_waterfall_exhaustion_pre_push_handoff(tmp_path: Path) -> None:
             run_id="run",
             tmpdir=str(tmp_path),
             cwd=str(tmp_path),
+            enable_pre_push_handoff=True,
         )
     err = exc_info.value
     assert err.conflict_files == ("vendor/foo.txt",)
@@ -303,11 +304,100 @@ def test_launch_fn_receives_conflict_csv_and_handoff_flag(tmp_path: Path) -> Non
             run_id="run",
             cwd=None,
             tmpdir=str(tmp_path),
+            enable_pre_push_handoff=True,
         )
     assert seen
     assert seen[0][1] == "vendor/x.txt"
     assert exc_info.value.conflict_files == ("vendor/x.txt",)
     assert (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).is_file()
+
+
+def test_waterfall_exhaustion_without_handoff_enabled_stalls_without_flag(
+    tmp_path: Path,
+) -> None:
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "vendor/x.txt\n",
+            )),
+        ],
+    )
+    with pytest.raises(Stalled, match="fixer waterfall"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=1,
+                failure=LaunchFailure("other", "unknown"),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=None,
+            tmpdir=str(tmp_path),
+        )
+    assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
+
+
+def test_handoff_uses_implement_tmpdir_env_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(tmp_path))
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "vendor/x.txt\n",
+            )),
+        ],
+    )
+    with pytest.raises(PrePushConflictHandoff):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=1,
+                failure=LaunchFailure("other", "unknown"),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=None,
+            tmpdir=None,
+            enable_pre_push_handoff=True,
+        )
+    assert (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).is_file()
+
+
+def test_handoff_without_tmpdir_configuration_stalls_without_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(config.ENV_IMPLEMENT_TMPDIR, raising=False)
+    runner = ScriptRunner(
+        [
+            (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
+                ("git", "diff", "--name-only", "--diff-filter=U"),
+                "vendor/x.txt\n",
+            )),
+        ],
+    )
+    with pytest.raises(Stalled, match="handoff flag tmpdir"):
+        rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
+            runner,
+            lambda tier, _csv: TierAttempt(
+                tier,
+                wrapper_rc=0,
+                launcher_exit=1,
+                failure=LaunchFailure("other", "unknown"),
+            ),
+            repo="o/r",
+            run_id="run",
+            cwd=None,
+            tmpdir=None,
+            enable_pre_push_handoff=True,
+        )
 
 
 def test_bump_only_waterfall_exhaustion_stalls_without_handoff_flag(
@@ -337,6 +427,38 @@ def test_bump_only_waterfall_exhaustion_stalls_without_handoff_flag(
             tmpdir=str(tmp_path),
         )
     assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        config.PLUGIN_JSON_PATH,
+        "nested/.claude-plugin/plugin.json",
+        "version.go",
+        "go.sum",
+    ],
+)
+def test_bump_path_classes_disable_handoff(path: str) -> None:
+    assert rebase._is_bump_path(path)  # pyright: ignore[reportPrivateUsage]
+    assert not rebase._conflicts_are_non_bump_only((path,))  # pyright: ignore[reportPrivateUsage]
+
+
+def test_larch_version_files_is_canonical_for_bump_paths(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv(config.ENV_LARCH_VERSION_FILES, "pkg/version.txt")
+    monkeypatch.setenv(config.ENV_LARCH_BUMP_FILES, "vendor/not-version.txt")
+    assert rebase._is_bump_path("pkg/version.txt")  # pyright: ignore[reportPrivateUsage]
+    assert not rebase._is_bump_path("vendor/not-version.txt")  # pyright: ignore[reportPrivateUsage]
+    assert not rebase._conflicts_are_non_bump_only(("pkg/version.txt",))  # pyright: ignore[reportPrivateUsage]
+
+
+def test_larch_bump_files_legacy_alias_when_version_files_unset(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv(config.ENV_LARCH_VERSION_FILES, raising=False)
+    monkeypatch.setenv(config.ENV_LARCH_BUMP_FILES, "pkg/legacy-version.txt")
+    assert rebase._is_bump_path("pkg/legacy-version.txt")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_mixed_bump_waterfall_exhaustion_stalls_without_handoff_flag(
@@ -430,6 +552,7 @@ def test_unresolvable_handoff_dir_stalls_without_handoff_tokens(tmp_path: Path) 
             run_id="run",
             cwd=str(tmp_path),
             tmpdir=str(missing_tmpdir),
+            enable_pre_push_handoff=True,
         )
     assert not (
         missing_tmpdir / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
