@@ -1235,8 +1235,9 @@ def test_evaluate_failure_error_logs_defers_fix() -> None:
     assert not any(c[:4] == ("gh", "run", "view", "42") and "--json" in c for c in runner.calls)
 
 
-def test_monitor_push_failed_stalls() -> None:
+def test_monitor_push_failed_stalls(monkeypatch: pytest.MonkeyPatch) -> None:
     """#3405: vendor-only push failure → STALLED (no CI_FIX_REBASE_PENDING retry)."""
+    monkeypatch.setattr(config, "CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS", 1)
     launch_calls: list[str] = []
 
     def launch_fn(tier: str) -> TierAttempt:
@@ -1288,6 +1289,7 @@ def test_monitor_push_failed_stalls() -> None:
     )
     assert launch_calls
     assert result.result.outcome == Outcome.STALLED
+    assert runner.calls.count(("git", "push", "origin", "feature")) == 1
     assert ("gh", "run", "view", "999", "--repo", "o/r", "--log-failed") in runner.calls
     assert ("gh", "run", "view", "999", "--repo", "o/r", "--json", "jobs") in runner.calls
 
