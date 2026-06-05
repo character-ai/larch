@@ -1,0 +1,147 @@
+Reviewing codebase details so the revised plan accurately reflects accepted findings.
+--- a/plan.txt
++++ b/plan.txt
+@@ -48,12 +48,16 @@
+ ### NEW: `skills/review-and-fix/scripts/record-implement-review-round-timing.sh`
+ Helper for deferred implement handoff rows.
+ - Args: `--implement-tmpdir PATH --round N --start-s S --end-s E`.
+ - Canonicalize tmpdir and bind ledger explicitly:
+   - `LARCH_TIMING_LEDGER="$implement_tmpdir/timing-ledger.tsv"`
+   - `IMPLEMENT_TMPDIR="$implement_tmpdir"`
+   - `LARCH_TIMING_SKILL=implement`
+-- Prefer `$round_dir/review-tally.env` counts.
+-- Fallback accepted count: `^### FINDING_[0-9]+:`
+-- Fallback rejected count: `^FINDING_[0-9]+_OUTCOME=rejected$`
++- Prefer `$round_dir/review-tally.env` when present: read `ACCEPTED_COUNT` / `REJECTED_COUNT` (or equivalent tally keys) from that round-local file.
++- Fallback accepted count: `grep -cE '^### FINDING_[0-9]+:'` on `$round_dir/accepted-findings.md`.
++- Fallback rejected count: `grep -cE '^([0-9]+:)?FINDING_[0-9]+_OUTCOME=rejected$'` on `$round_dir/rejected-findings.md` (compact rows from `emit-tally.sh` may include `grep -n` line-number prefixes); if still ambiguous, read `REJECTED_COUNT` from `review-summary.json` when present.
+ - Do not use `IRF_LAST_*`.
+ - Call `timing-ledger.sh record-round ... || true`.
+ 
+ ### UPDATED: `skills/implement/SKILL.md`
+ In both `main-agent-vote-required` and `coder-main-agent-required` Step 5 handoff branches:
+-- after adjudication/apply/checks/lint/commit,
+-- immediately before `run-step5-review.sh --starting-round`,
+-- read persisted `round-start-s`,
+-- set fresh `end_s`,
+-- invoke `record-implement-review-round-timing.sh`.
++- after prompt-side adjudication/apply/checks/lint (and MAV re-tally below), but **before** `commit-review-fixes.sh` (so deferred round `end_s` stays inside the Step 5 interval and is not stretched past a Step 7 timing mark emitted by that commit path),
++- read persisted `round-$FINAL_ROUND_NUM/round-start-s`,
++- set fresh `end_s`,
++- invoke `record-implement-review-round-timing.sh` (warn-only on failure),
++- then `git add -A` and `commit-review-fixes.sh`,
++- then re-invoke `run-step5-review.sh --starting-round` on the success path.
++- On **`main-agent-vote-required` only**: after writing `voter-main-agent.txt`, re-run `tally-code-votes.sh` with `--review-tmpdir "$IMPLEMENT_TMPDIR/round-$FINAL_ROUND_NUM"` (plus the existing `--ballot-file` / `--voter-files` / `--session-env-path` wiring) so `review-tally.env` reflects post-MAV counts before the deferred helper runs.
++- On **both** handoff exits — successful resume **and** terminal `stall` after prompt-side checks/lint (before leaving Step 5 without resume) — invoke the same deferred helper with the same persisted `round-start-s` so adjudication/check/lint wall time is not dropped when the wrapper never restarts.
+ Warn but continue on helper failure.
+ 
+ ### NEW: `skills/design/scripts/record-plan-review-round-timing.sh`
+@@ -64,9 +68,9 @@
+   - `LARCH_TIMING_LEDGER="$design_tmpdir/timing-ledger.tsv"`
+   - `DESIGN_TMPDIR="$design_tmpdir"`
+   - `LARCH_TIMING_SKILL=design`
+-- Count accepted findings from `accepted-plan-findings.md`.
+-- Count rejected findings from `rejected-findings.md`.
++- Count accepted findings: `grep -cE '^### FINDING_[0-9]+:'` on `$design_tmpdir/accepted-plan-findings.md` (session-root artifact after tally; zero is valid).
++- Count rejected in-scope plan findings: `grep -cE '^### \[Plan Review\] FINDING_[0-9]+'` on `$design_tmpdir/rejected-findings.md` (byte-preserved template from `plan-review.md`; do not use bare `### FINDING_N` on the rejected file).
+ - Count accepted OOS only from `voting-tally.md` rows where Item matches `OOS_N` and Result is exactly `accepted`; parse pipe fields with trimming.
+ - Never count `oos.md`.
+ - Emit `record-round --skill design --step "design Step 3 — plan review" ... --oos "$oos" || true`.
+ 
+ ### UPDATED: `skills/design/scripts/plan-review-loop.sh`
+ Emit design round rows.
+ - Capture `_round_start` before `_run_plan_review_round`.
+-- Capture `_round_end` late, after revise/post-apply when those run.
++- Capture `_round_end` late, after revise/post-apply when those run on non-terminal paths.
++- Also emit from `_snapshot_terminal_exit_preserving_status` (single terminal hook): when `LOOP_STATUS` is not `main-agent-vote-required`, set `_round_end` immediately before calling `record-plan-review-round-timing.sh`, then proceed with snapshot/`_terminal_exit` (covers `converged`, `cap-hit`, `panel-failed`, `tally-error`, `degraded-empty-collector`, `revision-failed`, and other terminal exits that skip the post-revise path).
+ - Use `record-plan-review-round-timing.sh`.
+ - For `main-agent-vote-required`:
+   - persist `_round_start` no-clobber to `plan-review/round-$round_num/round-start-s`
+@@ -88,11 +92,11 @@
+ Warn but continue on helper failure.
+ 
+ ### UPDATED: `skills/design/scripts/design-publish.sh`
+ Render fresh timing JSON before publishing design logs.
+-- Use unpublished temp paths for stderr and intermediate JSON.
+-- Remove stale top-level `timing-report-final.json` before render.
+-- On successful nonempty JSON, atomically move only `timing-report-final.json` into the publish surface.
+-- On failure, leave no top-level `timing-report-final.*` artifact and append a warning to `execution-issues.md`.
++- Use unpublished temp paths for stderr and intermediate JSON (never write render stderr beside the publish surface).
++- Before render, delete or quarantine **all** existing `$DESIGN_TMPDIR/timing-report-final.*` artifacts (`.json`, `.stderr.log`, `.failure.log`, and any other sidecar basename) so `design-log-publish.sh` cannot copy stale siblings.
++- On successful nonempty JSON, atomically move only the validated `timing-report-final.json` into `$DESIGN_TMPDIR` for publishing.
++- On failure, leave no top-level `timing-report-final.*` under `$DESIGN_TMPDIR` and append a warning to `execution-issues.md`.
+ - Keep `design-log-publish.sh` before `render-final-summary.sh --post-publish-only`.
+ 
+ ### UPDATED: tests
+@@ -118,8 +122,11 @@
+   - output parses with `jq` with and without `rounds`
+   - markdown unchanged
+ - implement deferred helper test
+   - no `review-tally.env`
+-  - rejected fallback counts `FINDING_N_OUTCOME=rejected`
++  - rejected fallback counts `FINDING_N_OUTCOME=rejected` with and without `grep -n` line-number prefix (`^([0-9]+:)?FINDING_…`)
++  - MAV handoff: post-MAV `review-tally.env` under `round-N/` drives counts when present
++  - deferred row recorded before Step 7 parent mark (fixture: commit path must not precede `record-round`)
++  - stall exit still emits deferred row when resume wrapper is not called
+ - design helper test
++  - rejected headings `### [Plan Review] FINDING_N` counted; bare `### FINDING_N` on rejected file does not inflate rejected
+   - accepted/rejected/exonerated OOS rows in `voting-tally.md`
+   - only Result=`accepted` OOS counts
+   - zero-count rounds still emit
++- design plan-review-loop test
++  - terminal exit via `_snapshot_terminal_exit_preserving_status` emits round row (e.g. `converged` / `panel-failed`); MAV path still defers to SKILL.md
+ - design MAV artifact test
+   - `round-start-s` survives snapshot/allowlist pruning
+ - design publish test
+   - pre-publish render happens before `design-log-publish.sh`
+   - stderr temp is not published
+-  - stale JSON is removed on failed render
++  - stale `timing-report-final.*` sidecars are removed on failed render and are not published when only JSON is refreshed
+ 
+ ### UPDATED: docs
+ Update:
+@@ -140,17 +147,22 @@
+ Store per-round timing/counts in the timing ledger as additive `round` rows. Emit rows only when final counts and wall time are known. `timing-report.sh` attaches rows by skill, exact step label, and step interval. Handoff paths defer emission until prompt-side work completes, with helpers explicitly binding tmpdir to the correct timing ledger. Design publish renders fresh timing JSON before the run-log copy surface is published.
+ 
++Implement deferred rows are recorded **before** `commit-review-fixes.sh` so round duration does not span a Step 7 timing mark. Implement MAV handoff re-tallies into the round directory before counting. Design terminal exits record via `_snapshot_terminal_exit_preserving_status` except when deferring MAV to SKILL.md.
++
+ ## Edge cases
+ - Clock skew: clamp negative duration to `0`.
+ - Missing parent mark: keep ledger row, omit from JSON.
+ - Wrong step interval: drop rather than misattach.
+ - Implement resume: timing-only Step 5 re-mark prevents Step 7 misattachment.
++- Implement deferred row: must be written before `commit-review-fixes.sh` Step 7 mark.
++- Implement MAV: round-local `review-tally.env` must be refreshed via `--review-tmpdir` before deferred emit.
++- Implement stall after handoff checks/lint: emit deferred row even when wrapper resume is skipped.
+ - Design MAV: `round-start-s` must survive snapshot pruning.
++- Design terminal loop exit: emit via `_snapshot_terminal_exit_preserving_status` unless `main-agent-vote-required`.
+ - Deferred helpers must not depend on caller-exported ledger env.
+ - Design OOS counts must require Result=`accepted`.
++- Design rejected headings use `### [Plan Review] FINDING_N`, not accepted-file `### FINDING_N:` shape.
++- Implement compact rejected rows may include `grep -n` line-number prefixes.
+ - Failed telemetry must never abort `/implement` or `/design`.
+-- Failed design timing render must not publish stale JSON or stderr logs.
++- Failed design timing render must not publish stale `timing-report-final.*` artifacts.
+ 
+ ## Failure modes
+ 1. Wrong JSON attachment → mitigated by skill + step + interval matching.
+@@ -158,9 +170,14 @@
+ 3. Handoff undercount → mitigated by persisted start and deferred helper emission.
+ 4. Stale implement rejected count → mitigated by correct `FINDING_N_OUTCOME=rejected` fallback.
+ 5. Design MAV start pruned → mitigated by allowlist/stable preserved artifact.
+ 6. Accepted OOS overcount → mitigated by helper-level pipe-field Result parsing tests.
+-7. Stale design timing artifact published → mitigated by temp render and atomic JSON-only move.
++7. Stale design timing artifact published → mitigated by deleting all `timing-report-final.*` before render and atomic JSON-only move.
++8. Deferred implement round spans Step 7 → mitigated by recording before `commit-review-fixes.sh`.
++9. MAV pre-tally counts → mitigated by round-scoped `tally-code-votes.sh` before deferred emit.
++10. Design terminal exit omits round row → mitigated by `_snapshot_terminal_exit_preserving_status` hook.
++11. Handoff stall omits deferred row → mitigated by emit on both resume and stall exits.
+ 
+ ## Testing strategy
+ Run focused shell tests above, then:
+@@ -173,4 +190,4 @@
+ - `make lint-bash32`
+ - `bash scripts/relevant-checks.sh`
+ 
+-diff_lines: 480
++diff_lines: 545

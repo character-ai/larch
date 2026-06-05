@@ -1,0 +1,24 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/plan-review-loop.sh:470-479 (proposed _emit_round_timing_row in plan.txt:56-59)	Design `oos` uses `grep -cE '^\| OOS_[0-9]+ \|'` on the whole Findings table, but tally-plan-review.sh prints every ballot id there with its Result (accepted/rejected/exonerated)	Rejected or exonerated OOS rows still match the grep, so `rounds[].oos` overstates accepted OOS and disagrees with tally semantics / `oos-accepted-design.md`	Count only accepted OOS rows (e.g. awk on `voting-tally.md` Findings lines where the Result field is `accepted`, including security-accepted rows absent from `oos-accepted-design.md`); align `scripts/test-timing-report.sh` fixture expectations
+2	in_scope	important	correctness	skills/design/scripts/plan-review-loop.sh:1502-1526 (plan.txt:60-64)	Post-revise exit coverage omits timing emit before snapshot-failed terminals after a successful `_run_post_apply_pipeline`	When `_snapshot_round_dir` fails but convergence/cap-hit still calls `_terminal_exit` (lines 1517-1521) or the snapshot-failed failure exit (1525-1526), no `_emit_round_timing_row` call is listed—late revise/post-apply wall time and counts can be missing from the ledger	Add explicit emit immediately before each `_terminal_exit` / `_snapshot_terminal_exit_preserving_status` on those branches (same counts sources as other late emits), not only after the `1502` post-apply failure branch
+
+**1. [correctness]** Design `oos` count source (`plan.txt` §`plan-review-loop.sh`, proposed `_emit_round_timing_row`)
+
+The plan requires accepted OOS and points at `voting-tally.md` so security-accepted OOS that never reach `oos-accepted-design.md` are included. The proposed counter is `grep -cE '^\| OOS_[0-9]+ \|'`, which matches every OOS row in the Findings table:
+
+```470:479:skills/design/scripts/tally-plan-review.sh
+    printf '## Findings\n\n'
+    printf '| Item | YES | NO | Exon | JERR | Result |\n'
+    ...
+        printf '| %s | %s | %s | %s | %s | %s |\n' "$id" "$TALLY_YES" "$TALLY_NO" "$TALLY_EXONERATE" "$TALLY_JUDGE_ERROR" "$result"
+```
+
+Rejected OOS (e.g. tests at `skills/design/scripts/test-tally-plan-review.sh:204`) still appear in that table. **Suggested revision:** count rows where Item matches `OOS_<n>` and Result is `accepted` (awk/`grep` on the Result column), and update the planned `test-timing-report.sh` design fixture accordingly.
+
+**2. [correctness]** Design timing emit on snapshot-failed terminals after successful post-apply (`plan-review-loop.sh:1506-1526`)
+
+The plan’s late-emit rule is tied to `_run_post_apply_pipeline` returning (lines 60-63 in `plan.txt`). After a successful post-apply, `_snapshot_round_dir` can still fail and exit via convergence/cap-hit (1517-1521) or `panel-failed`/`snapshot-failed` (1525-1526). Those `_terminal_exit` paths are not listed in the plan’s emit checklist. **Suggested revision:** name those branches explicitly and require `_emit_round_timing_row` immediately before each terminal `_snapshot_*` / `_terminal_exit` there, using the same artifact greps as other late emits.
+
+---
+
+**Exonerated (SIMPLE / minimum-change):** Implement `--mode single` (`review-and-fix.sh:1776-1780`) is not in scope for `record-round` because default Step 5 is `loop` (`run-step5-review.sh:105-110`). Pre-publish `timing-report-final.json` plus `render-final-summary.sh` re-render (`render-final-summary.sh:87-104`) is sufficient for publish freshness. Implement loop emit-before-`case` covers panel-failed, MAV exits without a body, and continuation vs terminal splits as proposed.
