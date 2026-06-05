@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	latent	architecture	.claude-plugin/plugin.json:4	Marketplace description still says post-plan implement steps use the conventional hard workflow path	Operators and marketplace consumers infer implement still has a HARD/SIMPLE workflow knob after this PR removes it entirely	Reword the description to drop hard-workflow-path implement wording; keep design SIMPLE/--hard tier language separate from implement

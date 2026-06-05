@@ -1,0 +1,14 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/timing-report.sh:42-55,102-106; scripts/test-timing-report.sh:128-158	Plan gates resolve_workflow_fallback on LARCH_TIMING_SKILL=design but leaves design harness invocations on default implement	Existing V2_DIR and V1_PATH_DIR cases (lines 128-158) call timing-report.sh without LARCH_TIMING_SKILL; default is implement (timing-report.sh:98). After the gate, run-params.json beside the ledger is never read, workflow stays unknown, and grep for **Workflow path**: SIMPLE fails despite production design callers always exporting LARCH_TIMING_SKILL=design (render-final-summary.sh:102-104, design-publish.sh:256)	Add LARCH_TIMING_SKILL=design to every design fallback harness invocation (V2 and V1_PATH blocks); optionally set DESIGN_TMPDIR to the fixture dir to mirror production env -u IMPLEMENT_TMPDIR hygiene
+
+### 1. [correctness] `scripts/timing-report.sh:42-55,102-106`; `scripts/test-timing-report.sh:128-158`
+
+The plan correctly gates `resolve_workflow_fallback` on `LARCH_TIMING_SKILL=design`, matching production design callers (`render-final-summary.sh` sets `LARCH_TIMING_SKILL=design` before `timing-report.sh`; `design-publish.sh` does the same).
+
+Harness coverage is misaligned: `test-timing-report.sh` unsets `LARCH_TIMING_SKILL` at the top (lines 9–10), so the V2 and V1_PATH design fallback blocks (128–158) run with default `implement`. After the gate, `run-params.json` beside the ledger is never consulted, workflow stays `unknown`, and assertions expecting `**Workflow path**: SIMPLE` fail. The plan says “Keep design run-params fallback cases unchanged” but does not require adding `LARCH_TIMING_SKILL=design` to those invocations.
+
+**Suggested revision:** Prefix the V2 and V1_PATH `timing-report.sh` calls with `LARCH_TIMING_SKILL=design` (and document that production design paths must keep setting it).
+
+---
+
+**Exonerated (SIMPLE tier):** Design-only paths (`write-run-params.sh`, `read-workflow-path.sh`, `skills/design/`) are absent from the modification list. `render-run-summary.sh` value-presence gating preserves design Path bullets when `--workflow-path` is passed. `report_tokens_scan` early-return for implement and golden updates structurally support byte-identical design output. No additional findings on scope creep.

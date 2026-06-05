@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	.claude-plugin/plugin.json:4	Shipped plugin manifest still advertises the retired implement hard workflow path	After the PR removes implement WORKFLOW_PATH plumbing, consumers can still see plugin metadata saying post-plan steps use the conventional hard workflow path, causing stale contract drift in a runtime surface	Update the manifest description to remove hard workflow path wording and describe /implement without a workflow tier/path dimension

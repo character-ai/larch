@@ -1,0 +1,136 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -10,7 +10,7 @@ Scope anchors (Round 1): implement-side only; implement summaries drop the Path b
+ 
+ Delete the classification at three layers:
+ 
+-1. **Producer plumbing** (`/implement` shell): drop `--workflow`, the `WORKFLOW_PATH` run-flags key, and the timing-ledger `workflow-path` subcommand. Fix launcher timeout at 7200s.
+-2. **Render surfaces**: implement run summaries lose `- **Path**:`; implement timing reports never resolve or print design workflow fallback (JSON `workflow_path` stays `"unknown"`). Shared renderers use value-presence conditionals for design. **Implement-owned `timing-report.sh` invocations** (shell and `python/run_logs.py` subprocess env) explicitly set `LARCH_TIMING_SKILL=implement` and omit or clear `DESIGN_TMPDIR` on that invocation so polluted ambient design env cannot leak SIMPLE/HARD into implement reports.
+-3. **report-tokens**: scanner short-circuits implement workflow to `""` before any artifact reads; implement tables/groupings drop workflow; design output byte-identical including golden fixture. **Issue posting** threads `skill` through CLI → `post_issue` / `assemble_issue_body` / `_section_label` so trimmed implement issues use `Aggregate cost`, not the design-only `Aggregate cost by workflow` label.
++1. **Producer plumbing** (`/implement` shell): drop `--workflow`, the `WORKFLOW_PATH` run-flags key, and the timing-ledger `workflow-path` subcommand. Fix launcher timeout at 7200s.
++2. **Render surfaces**: implement run summaries lose `- **Path**:`; implement timing reports never resolve or print design workflow fallback (JSON `workflow_path` stays `"unknown"`). Shared renderers use value-presence conditionals for design. **Implement-owned `timing-ledger.sh` mark and `timing-report.sh` invocations** (shell and `python/run_logs.py` subprocess env) explicitly set `LARCH_TIMING_SKILL=implement` and omit or clear `DESIGN_TMPDIR` on those invocations so polluted ambient design env cannot leak SIMPLE/HARD into implement ledger rows or reports.
++3. **report-tokens**: scanner short-circuits implement workflow to `""` before any artifact reads; implement tables/groupings and cache NDJSON omit workflow; design output byte-identical including golden fixture. **Issue posting** threads `skill` through CLI → `post_issue` / `assemble_issue_body` / `_section_label` so trimmed implement issues use `Aggregate cost`, not the design-only `Aggregate cost by workflow` label.
+ 
+ Orphan cleanup: `timing-ledger.sh workflow-path` and ledger `v1 workflow` row parsing go away; `POST_PLAN_WORKFLOW_PATH` fallback read goes (no writer).
+ 
+-Security/docs: `SECURITY.md` scan-input boundary documents implement no longer reading workflow auxiliary artifacts; `run-analysis.md` documents implement vs design workflow split.
++Security/docs: `SECURITY.md` scan-input boundary documents implement no longer reading workflow auxiliary artifacts; `run-analysis.md` documents implement vs design workflow split. Shipped `.claude-plugin/plugin.json` description drops implement hard-workflow-path wording (design SIMPLE/HARD tier wording unchanged).
+ 
+ Not touched: OOS-triage "SIMPLE" rule in `skills/implement/SKILL.md` (issue sizing, not workflow); `scripts/read-workflow-path.sh`; `scripts/write-run-params.sh` and all `skills/design/`; committed `larch-logs/` artifacts.
+ 
+@@ -28,7 +28,10 @@ Remove `--workflow VALUE` from the flag table; document fixed 7200s coder timeou
+ Remove `WORKFLOW_PATH="HARD"`, its validation case, and `--workflow "$WORKFLOW_PATH"` from dispatcher argv.
+ 
+ ### UPDATED: `skills/implement/scripts/run-step2-dispatch.md`
+ Remove "`--workflow HARD` is always passed" and `POST_PLAN_WORKFLOW_PATH` mention.
+ 
+ ### UPDATED: `scripts/implement-bootstrap.sh`
+-`persist_run_flags` drops workflow parameter and `--workflow-path` pass-through; all `persist_run_flags HARD` call sites become `persist_run_flags`. Remove `timing-ledger.sh workflow-path "HARD"` call.
++`persist_run_flags` drops workflow parameter and `--workflow-path` pass-through; all `persist_run_flags HARD` call sites become `persist_run_flags`. Remove `timing-ledger.sh workflow-path "HARD"` call. Prefix every remaining `timing-ledger.sh mark` invocation in bootstrap (`Step 0 — preflight`, `Step 0 — tracking issue`, `implement Step 0 — plan materialization`, `implement Step 0 — coder select`) with `LARCH_TIMING_SKILL=implement` so marks are not recorded under polluted ambient `design` skill context.
+ 
+ ### UPDATED: `scripts/persist-implement-run-flags.sh`
+ Remove `--workflow-path` flag, validation, and `WORKFLOW_PATH=` line in `run-flags.sh`. Update header comment (sanctioned writer for `NO_ISSUES` and `EMERGENCY_REQUESTED` only).
+@@ -68,10 +71,10 @@ Prose: workflow fallback is design-only; implement reports omit markdown workflo
+ Prefix the pre-ship `timing-report.sh --full --format json` invocation with `LARCH_TIMING_SKILL=implement` and do not forward `DESIGN_TMPDIR` to that subprocess (unset or empty on the same command line).
+ 
+ ### UPDATED: `scripts/refresh-run-logs.sh`
+ Same `LARCH_TIMING_SKILL=implement` prefix (and `DESIGN_TMPDIR` omission) on the implement timing-report refresh invocation (~line 78).
+ 
+ ### UPDATED: `python/run_logs.py`
+ In `_report_subprocess_env` (or the equivalent helper that builds env for implement run-log `timing-report.sh` refresh): set `env["LARCH_TIMING_SKILL"]="implement"` and remove or blank `DESIGN_TMPDIR` before subprocess launch, matching shell caller pin contract.
+ 
+ ### UPDATED: `python/test_run_logs.py`
+ **Add** polluted-env regression: parent has `LARCH_TIMING_SKILL=design` and `DESIGN_TMPDIR` pointing at a fixture `run-params.json` with `design_classification`/`workflow_path` SIMPLE; assert the timing-report subprocess env sets `LARCH_TIMING_SKILL=implement` and does not forward `DESIGN_TMPDIR`.
+ 
+ ### UPDATED: `scripts/implement-finalize.sh`
+-Prefix the teardown `timing-report.sh --since-last-mark --terse` call with `LARCH_TIMING_SKILL=implement`.
++Prefix teardown and `postbump_mark` / `postbump_report_since_mark` `timing-ledger.sh mark` and `timing-report.sh` invocations with `LARCH_TIMING_SKILL=implement` (and omit/clear `DESIGN_TMPDIR` on report subprocesses).
+ 
+ ### UPDATED: `skills/implement/SKILL.md`
+-Drop `--workflow HARD` and `POST_PLAN_WORKFLOW_PATH` from dispatcher-contract prose (~line 569). Drop "and workflow" from redispatch derivation list (~line 618). Leave OOS-triage SIMPLE rule (~line 457) untouched. Step 18 teardown `timing-report.sh` fence: add `LARCH_TIMING_SKILL=implement` alongside existing `LARCH_TIMING_LEDGER` rehydration.
++Drop `--workflow HARD` and `POST_PLAN_WORKFLOW_PATH` from dispatcher-contract prose (~line 569). Drop "and workflow" from redispatch derivation list (~line 618). Leave OOS-triage SIMPLE rule (~line 457) untouched. Step 2 and Step 18 closing-marks fences: prefix every `timing-ledger.sh mark` and `timing-report.sh` call with `LARCH_TIMING_SKILL=implement` alongside existing `LARCH_TIMING_LEDGER` rehydration; unset or omit `DESIGN_TMPDIR` on timing-report subprocess lines.
+ 
+ ### UPDATED: `scripts/run-step5-review.sh`
+ Reword line-182 comment: fixed base round cap of 5; replace "unified hard workflow contract" with neutral wording — the default Step 5 review panel is selected inside `review-and-fix.sh` → `review-core.sh`.
+@@ -113,10 +116,13 @@ Implement fixtures: remove default implement `v1 workflow` row and `**Workflow p
+ ### UPDATED: `scripts/test-implement-timing-rehydration.sh`
+-Extend SKILL.md fence pins: every `timing-report.sh` call in implement fences must also export `LARCH_TIMING_SKILL=implement` in the same fence (alongside existing `LARCH_TIMING_LEDGER` rehydration).
++Extend SKILL.md fence pins: every `timing-ledger.sh` and `timing-report.sh` call in implement fences must also set `LARCH_TIMING_SKILL=implement` in the same fence (alongside existing `LARCH_TIMING_LEDGER` rehydration). Awk invariant B gains a `has_timing_skill_implement` check; fences with timing calls but no `LARCH_TIMING_SKILL=implement` fail.
+ 
+ ### UPDATED: `python/report_tokens_scan.py`
+ `_workflow(run_dir, skill)` returns `""` for implement **before** any `path.is_file()` loop (no artifact reads on implement path). Design path unchanged. `RunRecord.workflow` field retained.
+ 
+ ### UPDATED: `python/report_tokens_render.py`
+-Thread `skill` where needed: design keeps by-workflow aggregate table; implement uses single "All runs" row under `## Aggregate cost` (not `## Aggregate cost by workflow`). Implement per-run table drops Workflow column; per-phase table keys `(vendor, step)` only; JSON appendix omits `workflow` for implement. Design output byte-identical.
++Thread `skill` where needed: design keeps by-workflow aggregate table; implement uses single "All runs" row under `## Aggregate cost` (not `## Aggregate cost by workflow`). Implement per-run table drops Workflow column; per-phase table keys `(vendor, step)` only. `_write_cache` accepts `skill` and omits the `"workflow"` key from cache NDJSON rows when `skill == "implement"`; design cache rows retain `"workflow": record.workflow`. Design markdown output byte-identical.
+ 
+ ### UPDATED: `python/report_tokens_issue.py`
+ Skill-aware `_section_label(section, skill)`: design `aggregate` → `Aggregate cost by workflow`; implement `aggregate` → `Aggregate cost`. Thread `skill` through `_trim_sections`, `assemble_issue_body`, and `post_issue`.
+@@ -131,10 +137,13 @@ Document scan contract: design reads timing-report/run-params workflow auxiliaries
+ ### UPDATED: `python/fixtures/report_tokens_implement_golden.md`
+ Revise to no-workflow implement shape: `## Aggregate cost` with single "All runs" row (replace `## Aggregate cost by workflow` / unknown workflow row); top-runs header without Workflow column; phase table without Workflow column. Leave `report_tokens_design_golden.md` unchanged.
+ 
+ ### UPDATED: `python/test_report_tokens_scan.py`
+-Implement cases: no artifact reads, `workflow == ""`, no warnings. **Add** `test_scan_implement_ignores_legacy_timing_report_json`: implement run dir with only `timing-report.json` `{"workflow_path":"HARD"}`; assert `record.workflow == ""` and no stderr from `_workflow_from` on that path. Design cases unchanged.
++Implement cases: no artifact reads, `workflow == ""`, no warnings. **Add** `test_scan_implement_ignores_legacy_timing_report_json`: implement run dir with only `timing-report.json` `{"workflow_path":"HARD"}`; assert `record.workflow == ""` and no warnings. **Add** `test_scan_implement_skips_malformed_workflow_artifacts`: implement run dir containing only malformed `timing-report.json` (invalid JSON) and/or a symlinked `run-params.json`; assert `record.workflow == ""`, no `_workflow_from` warnings, and no auxiliary-artifact read warnings (proves early-return before `path.is_file()` loop). Design cases unchanged.
+ 
+ ### UPDATED: `python/test_report_tokens_render.py`
+-Implement expectations align with updated golden; design expectations unchanged. Move `test_markdown_table_cells_escape_log_derived_metacharacters` workflow pipe-escape assertion (`SIMPLE|spoof`) to a design render case (or drop workflow column assertion from implement case); keep phase-cell escaping on implement.
++Implement expectations align with updated golden; design expectations unchanged. Move `test_markdown_table_cells_escape_log_derived_metacharacters` workflow pipe-escape assertion (`SIMPLE|spoof`) to a design render case (or drop workflow column assertion from implement case); keep phase-cell escaping on implement. **Add** `test_render_implement_cache_omits_workflow`: after `render("implement", ...)`, parse cache NDJSON and assert no row contains a `"workflow"` key even when input records carry legacy workflow strings. **Add** `test_render_design_cache_retains_workflow`: after `render("design", ...)`, assert cache rows include `"workflow"` with expected SIMPLE/HARD values.
+ 
+ ### UPDATED: `python/test_report_tokens_issue.py`
+ **Add** `test_trim_notice_aggregate_label_implement`: force aggregate-section omission for implement (`assemble_issue_body(..., skill="implement")`); assert omitted-section notice lists `Aggregate cost`, not `Aggregate cost by workflow`. **Add** `test_trim_notice_aggregate_label_design`: same trim path for design (`assemble_issue_body(..., skill="design")`); assert notice still lists `Aggregate cost by workflow`. Update existing `assemble_issue_body` / `post_issue` call sites to pass string literal `skill` values (`"implement"` / `"design"`) where required — `Skill` is a `Literal` alias, not an enum; do not use `Skill.IMPLEMENT` / `Skill.DESIGN` attribute access.
+@@ -149,6 +158,9 @@ Update `post_issue` monkeypatch/fake stubs to accept the new `skill` keyword argu
+ ### UPDATED: `skills/report-tokens/SKILL.md`
+ Line ~11: implement reports carry no workflow dimension; design SIMPLE/HARD split retained.
+ 
++### UPDATED: `.claude-plugin/plugin.json`
++Reword `description` (~line 4): keep `/design` default SIMPLE tier and opt-in `--hard`; describe `/implement` as positional `<issue-N>` with fixed 7200s Step 2 coder timeout and no workflow tier/path dimension. Remove "conventional hard workflow path" / implement hard-panel-as-workflow-path framing; retain accurate Step 5 unified hard review-panel wording without implying a public implement workflow flag.
++
+ ### UPDATED: `docs/run-logs.md`
+ Drop "workflow path" from implement run-summary field list (~line 353); Path bullet is design-only.
+ 
+@@ -159,7 +171,7 @@ Minimal `/report-tokens` scan-input boundary edit: implement runs no longer read
+ - **In-flight tmpdir**: legacy `run-flags.sh` with `WORKFLOW_PATH=HARD` is unread; new files without the key are fine; final-report harness proves stale keys do not emit Path bullets.
+ - **Historical committed logs**: old implement `timing-report.json` may still contain `"HARD"`; scanner ignores for implement (dedicated scan test); no migration.
+ - **Design runs**: `render-final-summary.sh` still passes `--workflow-path`; `resolve_workflow_fallback` runs only under `LARCH_TIMING_SKILL=design`; report-tokens design grouping untouched.
+-- **Old ledgers with workflow rows**: awk ignores unmatched row types; re-render drops workflow markdown line.
+-- **Implement session with polluted design env**: `timing-report.sh` fallback gated on `LARCH_TIMING_SKILL=design`; implement shell callers and `python/run_logs.py` pin `LARCH_TIMING_SKILL=implement` and omit/clear `DESIGN_TMPDIR` on the subprocess invocation (shell `test-timing-report.sh` polluted-env case; `python/test_run_logs.py` env assertion).
++- **Old ledgers with workflow rows**: awk ignores unmatched row types; re-render drops workflow markdown line.
++- **Implement session with polluted design env**: `timing-report.sh` fallback gated on `LARCH_TIMING_SKILL=design`; implement shell callers and `python/run_logs.py` pin `LARCH_TIMING_SKILL=implement` and omit/clear `DESIGN_TMPDIR` on timing-report subprocess invocations; adjacent `timing-ledger.sh mark` calls in bootstrap, Step 2, Step 7a, Step 18, and finalize also pin implement skill so marks are not recorded as `design` and then ignored by implement-scoped reports (shell `test-timing-report.sh` polluted-env case; `test-implement-timing-rehydration.sh`; `python/test_run_logs.py` env assertion).
+ - **Design timing harness default skill**: V2/V1_PATH cases without `LARCH_TIMING_SKILL=design` would skip run-params fallback — harness must export design skill explicitly.
+ - **`workflow_groups()` / plots**: implement already "All runs"; `report_tokens_models.py` / `report_tokens_plot.py` unchanged.
+ - **Trimmed report-tokens issues**: implement omission notices must not reference design-only aggregate heading text.
+@@ -175,6 +187,10 @@ Minimal `/report-tokens` scan-input boundary edit: implement runs no longer read
+ 8. **Legacy scan re-reads implement timing JSON.** Signal: `test_scan_implement_ignores_legacy_timing_report_json`. Mitigation: implement early-return in `_workflow` before artifact loop.
+ 9. **Stale workflow flags leak Path bullet.** Signal: `test_write_final_report_ignores_legacy_workflow_flags`. Mitigation: remove all resolution paths in `write-final-report.sh`.
+ 10. **Python run-log timing refresh leaks design workflow.** Signal: `python/test_run_logs.py` polluted-env case. Mitigation: `_report_subprocess_env` sets `LARCH_TIMING_SKILL=implement` and clears `DESIGN_TMPDIR` for implement timing-report subprocesses.
++11. **Timing marks recorded under polluted design skill.** Signal: `test-implement-timing-rehydration.sh`; implement timing reports missing Step 2/18 intervals when parent env has `LARCH_TIMING_SKILL=design`. Mitigation: pin `LARCH_TIMING_SKILL=implement` on every implement `timing-ledger.sh mark` alongside report pins.
++12. **Implement cache NDJSON still serializes workflow.** Signal: `test_render_implement_cache_omits_workflow`. Mitigation: skill-aware `_write_cache` omits `"workflow"` key for implement.
++13. **Scanner still opens implement workflow artifacts.** Signal: `test_scan_implement_skips_malformed_workflow_artifacts` (no read warnings on malformed/symlink fixtures). Mitigation: `_workflow` early-return before artifact loop.
++14. **Shipped plugin manifest stale contract.** Signal: manual grep of `.claude-plugin/plugin.json`; acceptance stale-term grep. Mitigation: reword marketplace description per plugin.json update above.
+ 
+ ## Testing strategy
+ 
+@@ -182,14 +198,15 @@ Minimal `/report-tokens` scan-input boundary edit: implement runs no longer read
+ - Python: `make py-lint py-test`; `test_report_tokens_render.py` (implement golden); `test_report_tokens_scan.py` (legacy timing JSON ignore); `test_report_tokens_issue.py` (string-literal `skill` trim-label cases); `test_report_tokens_cli.py` (`post_issue` fake accepts/forwards `skill`); `test_run_logs.py` (implement timing subprocess env pin); `test_report_tokens_models.py` / `test_report_tokens_cost.py` unmodified.
+ - Repo: `bash scripts/relevant-checks.sh`; `make lint-bash32` after shell edits.
+-- Acceptance grep (production paths only; exclude `test-*` harnesses that retain `--workflow` literals for legacy rejection): no `--workflow`, `WORKFLOW_PATH`, or `workflow-path` in `skills/implement/scripts/*.sh` (non-test), `scripts/implement-bootstrap.sh`, `scripts/persist-implement-run-flags.sh`; no `workflow-path` subcommand invocations in production scripts; `**Workflow path**` absent from new implement timing reports; implement `timing-report.sh` production callers export `LARCH_TIMING_SKILL=implement`.
++- Acceptance grep (production paths only; exclude `test-*` harnesses that retain `--workflow` literals for legacy rejection): no `--workflow`, `WORKFLOW_PATH`, or `workflow-path` in `skills/implement/scripts/*.sh` (non-test), `scripts/implement-bootstrap.sh`, `scripts/persist-implement-run-flags.sh`; no `workflow-path` subcommand invocations in production scripts; no implement hard-workflow-path / conventional hard workflow path wording in `.claude-plugin/plugin.json`; `**Workflow path**` absent from new implement timing reports; implement `timing-ledger.sh mark` and `timing-report.sh` production callers export `LARCH_TIMING_SKILL=implement`.
+ 
+ ## Acceptance
+ 
+ - `/implement` never passes `--workflow` or persists `WORKFLOW_PATH`; Step 2 launcher timeout is always 7200s.
+-- Implement final summaries and timing reports show no Path / Workflow path lines; timing JSON `workflow_path` is `"unknown"` even with legacy ledger rows or polluted design env (shell callers and `python/run_logs.py` subprocess env both pin implement skill).
+-- report-tokens `--skill=implement` output matches revised golden (no workflow column/grouping); trimmed implement issues use `Aggregate cost` in omission notices.
++- Implement final summaries and timing reports show no Path / Workflow path lines; timing JSON `workflow_path` is `"unknown"` even with legacy ledger rows or polluted design env (shell callers and `python/run_logs.py` subprocess env both pin implement skill on marks and reports).
++- report-tokens `--skill=implement` output matches revised golden (no workflow column/grouping; cache NDJSON rows lack `"workflow"`); trimmed implement issues use `Aggregate cost` in omission notices.
+ - `/design` and report-tokens `--skill=design` behavior unchanged (including design issue trim/omitted-section wording `Aggregate cost by workflow`).
++- `.claude-plugin/plugin.json` description matches no-workflow-path implement contract; design SIMPLE/HARD tier wording preserved.
+ 
+-diff_added: 345
+-diff_deleted: 315
+-diff_lines: 660
++diff_added: 395
++diff_deleted: 325
++diff_lines: 720
