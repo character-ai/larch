@@ -78,7 +78,7 @@ echo "=== (a) full inputs: real plan-goals + diff with test file ==="
 plan_goals="$TMP/plan-goals-test.md"
 cat > "$plan_goals" <<'EOF'
 ## Goal
-Add compose-pr-summary.sh to replace placeholder text on SIMPLE path.
+Add compose-pr-summary.sh to replace placeholder text during PR prep.
 
 ## Implementation Plan
 Create scripts/compose-pr-summary.sh and wire into ship-pr.sh.

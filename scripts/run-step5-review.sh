@@ -179,7 +179,7 @@ case "$CURSOR_PRESENT" in true|false) ;; *) fail "CURSOR_PRESENT must be true or
 REVIEW_AND_FIX_SH="${RUN_STEP5_REVIEW_SH:-$PLUGIN_ROOT/skills/review-and-fix/scripts/review-and-fix.sh}"
 [[ -x "$REVIEW_AND_FIX_SH" ]] || fail "review-and-fix.sh not executable: $REVIEW_AND_FIX_SH"
 
-# Fixed base Step 5 round cap (unified hard workflow contract); see scripts/run-step5-review.md.
+# Fixed base Step 5 round cap; review-and-fix.sh owns panel selection.
 ROUND_CAP_BASE="5"
 
 case "$STEP5_MODE" in

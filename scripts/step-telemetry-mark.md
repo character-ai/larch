@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Collapse the repeated `/implement` step-ENTRY telemetry preamble (three `read-session-env-key.sh` reads, three-key `export`, `token-ledger.sh mark`, `timing-ledger.sh mark`) into one never-fatal helper call.
+Collapse the repeated `/implement` step-ENTRY telemetry preamble (three `read-session-env-key.sh` reads, three-key `export`, `token-ledger.sh mark`, `timing-ledger.sh mark` pinned with `LARCH_TIMING_SKILL=implement`) into one never-fatal helper call.
 
 ## Interface
 
@@ -27,6 +27,7 @@ Reads from `$IMPLEMENT_TMPDIR/session-env.sh` (when tmpdir is set and file exist
 - `LARCH_TIMING_LEDGER`
 
 Exports `IMPLEMENT_TMPDIR` plus those three keys before calling the ledger scripts so `timing-ledger.sh`'s `IMPLEMENT_TMPDIR` fallback matches the old inline fence.
+The timing mark forces `LARCH_TIMING_SKILL=implement` so polluted ambient design env cannot misattribute implement step marks.
 
 ## `/implement` callers
 

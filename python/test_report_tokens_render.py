@@ -165,8 +165,10 @@ def test_markdown_table_cells_escape_log_derived_metacharacters(tmp_path: Path) 
         record.total_cost,
     )
     body, _sections, _cache = render("implement", (record,), temp_root=tmp_path)
-    assert "SIMPLE\\|spoof" in body
+    assert "SIMPLE\\|spoof" not in body
     assert "Phase \\| one spoof" in body
+    design_body, _design_sections, _design_cache = render("design", (record,), temp_root=tmp_path)
+    assert "SIMPLE\\|spoof" in design_body
 
 
 def test_fallback_pricing_is_marked(tmp_path: Path) -> None:
@@ -199,6 +201,20 @@ def test_trends_note_missing_started_at(tmp_path: Path) -> None:
     )
     body, _sections, _cache = render("implement", (record,), temp_root=tmp_path)
     assert "runs lacked a parseable started_at date" in body
+
+
+def test_render_implement_cache_omits_workflow(tmp_path: Path) -> None:
+    _body, _sections, cache = render("implement", (_record("HARD"),), temp_root=tmp_path)
+    rows = cache.read_text(encoding="utf-8").splitlines()
+    assert rows
+    assert all('"workflow"' not in row for row in rows)
+
+
+def test_render_design_cache_retains_workflow(tmp_path: Path) -> None:
+    _body, _sections, cache = render("design", (_record("SIMPLE"), _record("HARD")), temp_root=tmp_path)
+    text = cache.read_text(encoding="utf-8")
+    assert '"workflow": "SIMPLE"' in text
+    assert '"workflow": "HARD"' in text
 
 
 def test_title_for_skill_prefixes() -> None:

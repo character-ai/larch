@@ -29,13 +29,15 @@ v1	mark	140	review	Step 1 — gather context	-	-	-	-	-	-	-	-
 v1	vendor	150	implement	-	codex	codex-implement	100	220	120	out.txt	0	complete
 v1	vendor	180	implement	-	codex	codex-implement	120	300	180	out2.txt	0	complete
 v1	vendor	185	implement	-	cursor	cursor-review-generic	100	160	60	/tmp/secret/full.txt	1	signal
-v1	workflow	240	implement	-	-	-	-	-	-	-	-	HARD
 v1	mark	250	implement	Step 3 — checks first pass	-	-	-	-	-	-	-	-
 EOF
 
 OUT="$TMP_BASE/report.md"
 LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --full --markdown > "$OUT"
-grep -Fq '**Workflow path**: HARD' "$OUT"
+if grep -Fq '**Workflow path**:' "$OUT"; then
+    echo "implement timing report leaked workflow path" >&2
+    exit 1
+fi
 grep -Fq '| implement | Step 1 — design plan | 00:02:10 |' "$OUT"
 grep -Fq '|   ↳ design | Step 0 | 00:01:00 |' "$OUT"
 grep -Fq '|   ↳ design | Step 2a | 00:01:00 |' "$OUT"
@@ -51,7 +53,7 @@ fi
 JSON_OUT="$TMP_BASE/report.json"
 LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --full --format json --output "$JSON_OUT"
 jq -e '
-  .workflow_path == "HARD" and
+  .workflow_path == "unknown" and
   .total_seconds == 250 and
   .total_hms == "00:04:10" and
   (.per_step | length) == 6 and
@@ -135,10 +137,10 @@ EOF
 cat > "$V2_DIR/run-params.json" <<'EOF'
 {"schema_version":2,"design_classification":"SIMPLE","partition_requested":false,"brainstorm_requested":false}
 EOF
-LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V2_LEDGER" --full --markdown > "$TMP_BASE/v2.out"
+LARCH_TIMING_SKILL=design LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V2_LEDGER" --full --markdown > "$TMP_BASE/v2.out"
 grep -Fq '**Workflow path**: SIMPLE' "$TMP_BASE/v2.out"
 V2_JSON="$TMP_BASE/v2.json"
-LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V2_LEDGER" --full --format json --output "$V2_JSON"
+LARCH_TIMING_SKILL=design LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V2_LEDGER" --full --format json --output "$V2_JSON"
 jq -e '.workflow_path == "SIMPLE"' "$V2_JSON" >/dev/null
 
 V1_PATH_DIR="$TMP_BASE/design-v1-path"
@@ -151,11 +153,55 @@ EOF
 cat > "$V1_PATH_DIR/run-params.json" <<'EOF'
 {"schema_version":1,"design_classification":"SIMPLE","workflow_path":"SIMPLE","partition_requested":false}
 EOF
-LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V1_PATH_LEDGER" --full --markdown > "$TMP_BASE/v1-path.out"
+LARCH_TIMING_SKILL=design LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V1_PATH_LEDGER" --full --markdown > "$TMP_BASE/v1-path.out"
 grep -Fq '**Workflow path**: SIMPLE' "$TMP_BASE/v1-path.out"
 V1_PATH_JSON="$TMP_BASE/v1-path.json"
-LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V1_PATH_LEDGER" --full --format json --output "$V1_PATH_JSON"
+LARCH_TIMING_SKILL=design LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$V1_PATH_LEDGER" --full --format json --output "$V1_PATH_JSON"
 jq -e '.workflow_path == "SIMPLE"' "$V1_PATH_JSON" >/dev/null
+
+DESIGN_TMPDIR_ONLY_DIR="$TMP_BASE/design-tmpdir-only"
+DESIGN_TMPDIR_ONLY_LEDGER="$TMP_BASE/design-tmpdir-only-ledger.tsv"
+mkdir -p "$DESIGN_TMPDIR_ONLY_DIR"
+cat > "$DESIGN_TMPDIR_ONLY_LEDGER" <<'EOF'
+v1	mark	10	design	Step 0	-	-	-	-	-	-	-	-
+v1	mark	70	design	Step 2a	-	-	-	-	-	-	-	-
+EOF
+cat > "$DESIGN_TMPDIR_ONLY_DIR/run-params.json" <<'EOF'
+{"schema_version":1,"design_classification":"HARD","workflow_path":"HARD","partition_requested":true}
+EOF
+DESIGN_TMPDIR="$DESIGN_TMPDIR_ONLY_DIR" LARCH_TIMING_SKILL=design LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$DESIGN_TMPDIR_ONLY_LEDGER" --full --markdown > "$TMP_BASE/design-tmpdir-only.out"
+grep -Fq '**Workflow path**: HARD' "$TMP_BASE/design-tmpdir-only.out"
+DESIGN_TMPDIR="$DESIGN_TMPDIR_ONLY_DIR" LARCH_TIMING_SKILL=design LARCH_TEST_TIMING_NOW=130 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$DESIGN_TMPDIR_ONLY_LEDGER" --full --format json --output "$TMP_BASE/design-tmpdir-only.json"
+jq -e '.workflow_path == "HARD"' "$TMP_BASE/design-tmpdir-only.json" >/dev/null
+
+LEGACY_WORKFLOW_LEDGER="$TMP_BASE/legacy-workflow.tsv"
+cat > "$LEGACY_WORKFLOW_LEDGER" <<'EOF'
+v1	mark	0	implement	Step 1	-	-	-	-	-	-	-	-
+v1	workflow	5	implement	-	-	-	-	-	-	-	-	HARD
+v1	mark	10	implement	Step 2	-	-	-	-	-	-	-	-
+EOF
+LARCH_TEST_TIMING_NOW=20 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEGACY_WORKFLOW_LEDGER" --full --markdown > "$TMP_BASE/legacy-workflow.out"
+if grep -Fq '**Workflow path**:' "$TMP_BASE/legacy-workflow.out"; then
+    echo "legacy implement workflow row leaked into markdown" >&2
+    exit 1
+fi
+LEGACY_WORKFLOW_JSON="$TMP_BASE/legacy-workflow.json"
+LARCH_TEST_TIMING_NOW=20 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEGACY_WORKFLOW_LEDGER" --full --format json --output "$LEGACY_WORKFLOW_JSON"
+jq -e '.workflow_path == "unknown"' "$LEGACY_WORKFLOW_JSON" >/dev/null
+
+POLLUTED_DESIGN_DIR="$TMP_BASE/polluted-design"
+mkdir -p "$POLLUTED_DESIGN_DIR"
+cat > "$POLLUTED_DESIGN_DIR/run-params.json" <<'EOF'
+{"schema_version":2,"design_classification":"SIMPLE","workflow_path":"SIMPLE"}
+EOF
+DESIGN_TMPDIR="$POLLUTED_DESIGN_DIR" LARCH_TIMING_SKILL=implement LARCH_TEST_TIMING_NOW=20 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEGACY_WORKFLOW_LEDGER" --full --markdown > "$TMP_BASE/polluted-implement.out"
+if grep -Fq '**Workflow path**:' "$TMP_BASE/polluted-implement.out"; then
+    echo "polluted design env leaked into implement markdown" >&2
+    exit 1
+fi
+POLLUTED_JSON="$TMP_BASE/polluted-implement.json"
+DESIGN_TMPDIR="$POLLUTED_DESIGN_DIR" LARCH_TIMING_SKILL=implement LARCH_TEST_TIMING_NOW=20 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEGACY_WORKFLOW_LEDGER" --full --format json --output "$POLLUTED_JSON"
+jq -e '.workflow_path == "unknown"' "$POLLUTED_JSON" >/dev/null
 
 TERSE=$(LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --since-last-mark --terse)
 # Review FINDING_5: terse mode now counts vendor rows whose --end-s ($9) is
@@ -195,7 +241,10 @@ OUT_FILE="$TMP_BASE/full-output.md"
 [[ ! -e "$OUT_FILE" ]]
 LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$LEDGER" --full --markdown --output "$OUT_FILE"
 [[ -f "$OUT_FILE" ]]
-grep -Fq '**Workflow path**: HARD' "$OUT_FILE"
+if grep -Fq '**Workflow path**:' "$OUT_FILE"; then
+    echo "implement --output timing report leaked workflow path" >&2
+    exit 1
+fi
 grep -Fq '## Per-Step Durations' "$OUT_FILE"
 grep -Fq '## Vendor Task Averages' "$OUT_FILE"
 # No leftover .tmp file from the atomic-write rename.
@@ -208,7 +257,10 @@ mkdir -p "$NONTMP_DIR"
 NONTMP_LEDGER="$NONTMP_DIR/timing-ledger.tsv"
 cp "$LEDGER" "$NONTMP_LEDGER"
 IMPLEMENT_TMPDIR="$NONTMP_DIR" LARCH_TEST_TIMING_NOW=310 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$NONTMP_LEDGER" --full --markdown > "$TMP_BASE/nontmp.out"
-grep -Fq '**Workflow path**: HARD' "$TMP_BASE/nontmp.out"
+if grep -Fq '**Workflow path**:' "$TMP_BASE/nontmp.out"; then
+    echo "implement nontmp report leaked workflow path" >&2
+    exit 1
+fi
 
 # --- --summary mode ---
 

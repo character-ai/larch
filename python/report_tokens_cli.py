@@ -116,6 +116,7 @@ def main(argv: list[str] | None = None) -> int:
                 repo=scanned.repo_slug,
                 title=title_for_skill(skill, timestamp=timestamp),
                 sections=sections,
+                skill=skill,
             )
         except ShipError:
             return config.EXIT_BAIL

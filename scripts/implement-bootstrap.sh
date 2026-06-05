@@ -181,13 +181,11 @@ emit_plan_materialize_breadcrumbs() {
 }
 
 persist_run_flags() {
-    local workflow_path=$1
     local persist_rc
 
     "$SCRIPT_DIR/persist-implement-run-flags.sh" \
         --implement-tmpdir "$IMPLEMENT_TMPDIR" \
         --no-issues false \
-        --workflow-path "$workflow_path" \
         --emergency-requested "$EMERGENCY_REQUESTED" \
         >"$IMPLEMENT_TMPDIR/persist-implement-run-flags.out" \
         2>"$IMPLEMENT_TMPDIR/persist-implement-run-flags.stderr.log"
@@ -569,10 +567,10 @@ phase_infra() {
 
         REPO=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO --default "")
         REPO_UNAVAILABLE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key REPO_UNAVAILABLE --default "false")
-        CODEX_PRESENT=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "false")
-        CURSOR_PRESENT=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "false")
-        CODEX_BINARY_FOUND=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "false")
-        CURSOR_BINARY_FOUND=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "false")
+        CODEX_PRESENT=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "")
+        CURSOR_PRESENT=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "")
+        CODEX_BINARY_FOUND=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
+        CURSOR_BINARY_FOUND=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
         LARCH_TOKEN_SESSION_ID=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
         LARCH_CLAUDE_SOURCE_FILE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
         LARCH_TIMING_LEDGER=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TIMING_LEDGER --default "")
@@ -695,7 +693,7 @@ phase_infra() {
             exit 2
         fi
         "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — preflight" || true
-        "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — preflight" || true
+        LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — preflight" || true
 
         LARCH_TOKEN_SESSION_ID=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_TOKEN_SESSION_ID --default "")
         LARCH_CLAUDE_SOURCE_FILE=$("$SCRIPT_DIR/read-session-env-key.sh" --file "$IMPLEMENT_TMPDIR/session-env.sh" --key LARCH_CLAUDE_SOURCE_FILE --default "")
@@ -747,7 +745,7 @@ phase_tracking() {
     local post_out post_rc posted
 
     "$SCRIPT_DIR/token-ledger.sh" mark "Step 0 — tracking issue" || true
-    "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — tracking issue" || true
+    LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "Step 0 — tracking issue" || true
 
     if [ "${REPO_UNAVAILABLE:-}" = "true" ]; then
         BRANCH_SELECTED=repo-unavailable-skip
@@ -859,7 +857,7 @@ phase_tracking() {
                 RUN_ID=$sentinel_run_id
                 rename_to_implementing "$ISSUE_NUMBER_RESOLVED" "Branch 1 resume"
                 run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 1 resume" || return 0
-                persist_run_flags HARD || return 0
+                persist_run_flags || return 0
                 post_tracking_metadata false "Step 0 tracking adoption — Branch 1 resume metadata post" || return 0
                 emit_tracking_breadcrumb
                 return 0
@@ -913,7 +911,7 @@ phase_tracking() {
     fi
 
     run_larch_log_init "$ISSUE_NUMBER_RESOLVED" "$RUN_ID" "Branch 2 adopt" || return 0
-    persist_run_flags HARD || return 0
+    persist_run_flags || return 0
     post_tracking_metadata true "Step 0 tracking adoption — Branch 2 adopt metadata post" || return 0
 
     emit_tracking_breadcrumb
@@ -941,7 +939,7 @@ phase_plan_materialize() {
         ensure_untracked_baseline_snapshot
 
         "$SCRIPT_DIR/token-ledger.sh" mark "implement Step 0 — plan materialization" || true
-        "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — plan materialization" || true
+        LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "implement Step 0 — plan materialization" || true
 
         if ! append_emergency_bypass_log_if_present; then
             emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
@@ -974,16 +972,14 @@ phase_plan_materialize() {
             exit 2
         fi
 
-        "$SCRIPT_DIR/timing-ledger.sh" workflow-path "HARD" || true
-
-        persist_run_flags HARD || return 0
+        persist_run_flags || return 0
     else
         if ! append_emergency_bypass_log_if_present; then
             emit_kv IMPLEMENT_TMPDIR "${IMPLEMENT_TMPDIR:-}"
             emit_kv STEP_FAILED emergency-bypass-log
             exit 2
         fi
-        persist_run_flags HARD || return 0
+        persist_run_flags || return 0
         if [ "${BRANCH_SELECTED:-}" = "branch-1-resume" ]; then
             post_tracking_metadata false "Step 0 tracking adoption — Branch 1 resume metadata post" || return 0
         fi

@@ -226,6 +226,8 @@ def _read_session_env_key(ctx: RunContext, key: str) -> str:
 def _report_subprocess_env(ctx: RunContext) -> dict[str, str]:
     env = dict(os.environ)
     env["IMPLEMENT_TMPDIR"] = ctx.tmpdir
+    env["LARCH_TIMING_SKILL"] = "implement"
+    _ = env.pop("DESIGN_TMPDIR", None)
     for export_key, file_key in (
         ("LARCH_TOKEN_SESSION_ID", "LARCH_TOKEN_SESSION_ID"),
         ("LARCH_CLAUDE_SOURCE_FILE", "LARCH_CLAUDE_SOURCE_FILE"),

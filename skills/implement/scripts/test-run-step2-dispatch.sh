@@ -45,7 +45,7 @@ assert_file_equals() {
 }
 
 make_tmpdir() {
-    local dir="$1" _workflow="$2" cursor="$3"
+    local dir="$1" cursor="$2"
     mkdir -p "$dir"
     printf '%s\n' "Feature description" > "$dir/feature-description.txt"
     printf '%s\n' "Plan body with enough text for the Step 2 launcher harness." > "$dir/plan.txt"
@@ -78,7 +78,7 @@ assert_contains "$out" "--implement-tmpdir is required" "missing implement tmpdi
 
 echo "=== reject missing answers path ==="
 case_dir="$TMP/missing-answers"
-make_tmpdir "$case_dir" HARD false
+make_tmpdir "$case_dir" false
 set +e
 out="$("${launcher_env[@]}" "$LAUNCHER" --implement-tmpdir "$case_dir" --coder codex --answers "$case_dir/nope.json" 2>&1)"
 rc=$?
@@ -88,7 +88,7 @@ assert_contains "$out" "--answers path does not exist" "missing answers error"
 
 echo "=== first dispatch argv derivation ==="
 case_dir="$TMP/case"
-make_tmpdir "$case_dir" HARD true
+make_tmpdir "$case_dir" true
 argv_file="$TMP/step2.argv"
 out="$(RUN_STEP2_IMPLEMENT_SH="$SPY" RUN_STEP2_ARGV_FILE="$argv_file" "${launcher_env[@]}" "$LAUNCHER" --implement-tmpdir "$case_dir" --coder cursor)"
 assert_contains "$out" "STATUS=claude_fallback" "downstream stdout passes through"
@@ -101,12 +101,10 @@ $case_dir/feature-description.txt
 --coder
 cursor
 --cursor-present
-true
---workflow
-HARD" "first dispatch argv derived"
+true" "first dispatch argv derived"
 
 echo "=== cursor selection drift fails closed ==="
-make_tmpdir "$case_dir" HARD false
+make_tmpdir "$case_dir" false
 set +e
 out="$("${launcher_env[@]}" "$LAUNCHER" --implement-tmpdir "$case_dir" --coder cursor 2>&1)"
 rc=$?
@@ -128,8 +126,6 @@ $case_dir/feature-description.txt
 codex
 --cursor-present
 false
---workflow
-HARD
 --answers
 $answers" "answers argv passed explicitly"
 

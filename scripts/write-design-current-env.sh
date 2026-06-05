@@ -57,6 +57,8 @@ CODEX_PRESENT_SET=false
 CURSOR_PRESENT_SET=false
 CODEX_AVAILABLE_SET=false
 CURSOR_AVAILABLE_SET=false
+CODEX_BINARY_FOUND_SET=false
+CURSOR_BINARY_FOUND_SET=false
 REPO=""
 ISSUE_NUMBER=""
 CLAUDE_PID=""
@@ -77,8 +79,8 @@ while [[ $# -gt 0 ]]; do
     --cursor-present)   CURSOR_PRESENT="$2"; CURSOR_PRESENT_SET=true; shift 2 ;;
     --codex-available)  CODEX_AVAILABLE="$2"; CODEX_AVAILABLE_SET=true; shift 2 ;;
     --cursor-available) CURSOR_AVAILABLE="$2"; CURSOR_AVAILABLE_SET=true; shift 2 ;;
-    --codex-binary-found)  CODEX_BINARY_FOUND="$2"; shift 2 ;;
-    --cursor-binary-found) CURSOR_BINARY_FOUND="$2"; shift 2 ;;
+    --codex-binary-found)  CODEX_BINARY_FOUND="$2"; CODEX_BINARY_FOUND_SET=true; shift 2 ;;
+    --cursor-binary-found) CURSOR_BINARY_FOUND="$2"; CURSOR_BINARY_FOUND_SET=true; shift 2 ;;
     --repo)             REPO="$2"; shift 2 ;;
     --issue-number)     ISSUE_NUMBER="$2"; shift 2 ;;
     --claude-pid)       CLAUDE_PID="$2"; CLAUDE_PID_SPECIFIED=1; shift 2 ;;
@@ -188,7 +190,7 @@ elif [[ "$CURSOR_AVAILABLE_SET" == true && "$CURSOR_PRESENT_SET" != true ]]; the
   CURSOR_PRESENT="$CURSOR_AVAILABLE"
 fi
 
-for _recover_key in CODEX_PRESENT CURSOR_PRESENT CODEX_AVAILABLE CURSOR_AVAILABLE CODEX_BINARY_FOUND CURSOR_BINARY_FOUND; do
+for _recover_key in CODEX_PRESENT CURSOR_PRESENT CODEX_AVAILABLE CURSOR_AVAILABLE; do
   if [[ -z "${!_recover_key}" ]]; then
     _recovered=$(recover_prior_bool_value "$_recover_key" "$OUTPUT") || true
     if [[ -n "$_recovered" ]]; then
@@ -196,6 +198,14 @@ for _recover_key in CODEX_PRESENT CURSOR_PRESENT CODEX_AVAILABLE CURSOR_AVAILABL
     fi
   fi
 done
+if [[ -z "$CODEX_BINARY_FOUND" && "$CODEX_BINARY_FOUND_SET" != true && "$CODEX_PRESENT_SET" != true && "$CODEX_AVAILABLE_SET" != true ]]; then
+  _recovered=$(recover_prior_bool_value CODEX_BINARY_FOUND "$OUTPUT") || true
+  [[ -n "$_recovered" ]] && CODEX_BINARY_FOUND="$_recovered"
+fi
+if [[ -z "$CURSOR_BINARY_FOUND" && "$CURSOR_BINARY_FOUND_SET" != true && "$CURSOR_PRESENT_SET" != true && "$CURSOR_AVAILABLE_SET" != true ]]; then
+  _recovered=$(recover_prior_bool_value CURSOR_BINARY_FOUND "$OUTPUT") || true
+  [[ -n "$_recovered" ]] && CURSOR_BINARY_FOUND="$_recovered"
+fi
 
 validate_bool codex-present "$CODEX_PRESENT"
 validate_bool cursor-present "$CURSOR_PRESENT"

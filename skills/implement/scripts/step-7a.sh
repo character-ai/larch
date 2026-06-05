@@ -132,7 +132,7 @@ run_log_flush() {
     LOG_FLUSH_STATUS=ok
 
     "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 8 — version bump" || true
-    "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 8 — version bump" || true
+    LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 8 — version bump" || true
 
     out_file="$IMPLEMENT_TMPDIR/pre-bump-flush-execution-issues.log"
     set +e
@@ -148,7 +148,7 @@ run_log_flush() {
     fi
 
     "$PLUGIN_ROOT/scripts/token-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/token-report-rendered.json" || true
-    "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/timing-report-rendered.json" || true
+    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json --output "$IMPLEMENT_TMPDIR/timing-report-rendered.json" || true
 
     run_larch_log_write token-report "$IMPLEMENT_TMPDIR/token-report-rendered.json"
     run_larch_log_write timing-report "$IMPLEMENT_TMPDIR/timing-report-rendered.json"
@@ -351,7 +351,7 @@ if [ "${forked_target:-false}" = "true" ]; then
 fi
 
 "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 7a — code flow diagram" || true
-"$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
+LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7a — code flow diagram" || true
 
 if is_small_non_runtime_change; then
     DIAGRAM_STATUS=skip

@@ -39,7 +39,7 @@ err_file="${TMPDIR:-/tmp}/commit-review-fixes.$$.err"
 trap 'rm -f "$out_file" "$err_file"' EXIT
 
 "$PLUGIN_ROOT/scripts/token-ledger.sh" mark "Step 7 — commit review fixes" || true
-"$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7 — commit review fixes" || true
+LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 7 — commit review fixes" || true
 
 if "$PLUGIN_ROOT/scripts/git-commit.sh" -m "$MESSAGE" "${FILES[@]}" >"$out_file" 2>"$err_file"; then
     sha="$(git rev-parse HEAD 2>/dev/null || true)"

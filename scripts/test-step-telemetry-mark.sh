@@ -49,6 +49,22 @@ else
 fi
 
 grep -Fq "$LABEL" "$TIMING_LEDGER" || fail "timing ledger missing mark row for label"
+awk -F '\t' -v step="$LABEL" '$2 == "mark" && $5 == step { if ($4 != "implement") exit 2; found=1 } END { exit found ? 0 : 1 }' "$TIMING_LEDGER" \
+  || fail "timing ledger mark must be pinned to implement"
+
+POLLUTED_TMP="$TMP_BASE/impl-polluted"
+mkdir -p "$POLLUTED_TMP"
+POLLUTED_LEDGER="$POLLUTED_TMP/timing-ledger.tsv"
+cat > "$POLLUTED_TMP/session-env.sh" <<EOF
+LARCH_TOKEN_SESSION_ID=polluted-session-id
+LARCH_CLAUDE_SOURCE_FILE=/dev/null
+LARCH_TIMING_LEDGER=$POLLUTED_LEDGER
+EOF
+POLLUTED_LABEL="Step polluted — harness"
+LARCH_TIMING_SKILL=design "$HELPER" --implement-tmpdir "$POLLUTED_TMP" --label "$POLLUTED_LABEL" \
+  || fail "polluted env should exit 0"
+awk -F '\t' -v step="$POLLUTED_LABEL" '$2 == "mark" && $5 == step { if ($4 != "implement") exit 2; found=1 } END { exit found ? 0 : 1 }' "$POLLUTED_LEDGER" \
+  || fail "polluted env timing mark must still be pinned to implement"
 
 # Bad --implement-tmpdir: never fatal.
 BAD_TMP="$TMP_BASE/no-such-dir"
@@ -59,5 +75,19 @@ BAD_TMP="$TMP_BASE/no-such-dir"
 
 # Missing --label: never fatal.
 "$HELPER" --implement-tmpdir "$IMPL_TMP" || fail "missing --label should exit 0"
+
+# Malformed argv: never fatal, but fail closed instead of binding the next flag
+# as a tmpdir path or silently accepting unknown flags.
+MALFORMED_LABEL="Step malformed — harness"
+"$HELPER" --implement-tmpdir --label "$MALFORMED_LABEL" || fail "missing tmpdir value should exit 0"
+if grep -Fq "$MALFORMED_LABEL" "$TIMING_LEDGER"; then
+  fail "missing tmpdir value must not emit a timing mark"
+fi
+"$HELPER" --unknown "$IMPL_TMP" --label "$MALFORMED_LABEL" || fail "unknown option should exit 0"
+if grep -Fq "$MALFORMED_LABEL" "$TIMING_LEDGER"; then
+  fail "unknown option without required tmpdir must not emit a timing mark"
+fi
+"$HELPER" --unknown ignored --implement-tmpdir "$IMPL_TMP" --label "$MALFORMED_LABEL" || fail "unknown option before valid args should exit 0"
+grep -Fq "$MALFORMED_LABEL" "$TIMING_LEDGER" || fail "unknown option must be ignored without dropping later valid args"
 
 echo "PASS: test-step-telemetry-mark.sh"

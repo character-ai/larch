@@ -79,11 +79,8 @@ export IMPLEMENT_TMPDIR
 
 PLAN_FILE="$IMPLEMENT_TMPDIR/plan.txt"
 CURSOR_PRESENT="$(session_get "$SESSION_ENV_PATH" CURSOR_PRESENT false)"
-WORKFLOW_PATH="HARD"
-
 [[ -f "$PLAN_FILE" ]] || fail "plan file not found at conventional path: $PLAN_FILE"
 case "$CURSOR_PRESENT" in true|false) ;; *) fail "CURSOR_PRESENT must be true or false, got: $CURSOR_PRESENT" ;; esac
-case "$WORKFLOW_PATH" in SIMPLE|HARD) ;; *) fail "WORKFLOW_PATH must be SIMPLE or HARD, got: ${WORKFLOW_PATH:-<empty>}" ;; esac
 if [[ "$CODER" == "cursor" && "$CURSOR_PRESENT" != "true" ]]; then
     fail "cursor coder selected at Step 0 but CURSOR_PRESENT=$CURSOR_PRESENT in session-env; refusing Step 2 dispatch because that would silently override bootstrap routing"
 fi
@@ -97,7 +94,6 @@ argv=(
     --feature-file "$FEATURE_FILE"
     --coder "$CODER"
     --cursor-present "$CURSOR_PRESENT"
-    --workflow "$WORKFLOW_PATH"
 )
 
 if [[ -n "$ANSWERS_FILE" ]]; then

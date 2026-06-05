@@ -34,18 +34,17 @@ Optional environment variables:
 
 The scan uses:
 
-- `larch-logs/design/*/token-report-final.json` and `timing-report-final.json`.
-- `larch-logs/implement/*/token-report.json` and `timing-report.json`.
+- `larch-logs/design/*/token-report-final.json`, `timing-report-final.json`, and `run-params.json` for the design SIMPLE/HARD workflow split.
+- `larch-logs/implement/*/token-report.json`; implement scan short-circuits workflow to an empty value and does not read timing-report/run-params workflow auxiliaries.
 - `manifest.json` for issue number and timestamps.
-- `run-params.json` as a fallback workflow source.
 
 Invalid or incomplete per-run JSON emits a stderr warning and skips that run; it does not abort the whole scan. Valid token-report JSON without numeric vendor totals or `BUCKETS_*` data is skipped instead of being treated as zero cost.
 
 ## Outputs
 
-Stdout contains markdown beginning with `## Report Tokens Analysis` and ending with `Cache JSON: <path>`, where the path points at a durable NDJSON snapshot under a `larch-report-tokens.*` temporary directory. The report includes aggregate workflow costs, vendor totals, top runs, per-day trend tables, display/fallback rates, and cost-reduction suggestions.
+Stdout contains markdown beginning with `## Report Tokens Analysis` and ending with `Cache JSON: <path>`, where the path points at a durable NDJSON snapshot under a `larch-report-tokens.*` temporary directory. Design reports include aggregate workflow costs; implement reports use a single `Aggregate cost` table with no workflow dimension. Both include vendor totals, top runs, per-day trend tables, display/fallback rates, and cost-reduction suggestions.
 
-For `--skill=implement`, plots and per-day tables use one aggregate `All runs` view. For `--skill=design`, SIMPLE/HARD split views are retained. The rendered report does not include a reported-vs-estimated comparison table or raw per-issue JSON block.
+For `--skill=implement`, stdout tables, cache NDJSON, plots, per-day tables, and issue trim labels carry no workflow dimension. For `--skill=design`, SIMPLE/HARD split views and the `Aggregate cost by workflow` issue label are retained. The rendered report does not include a reported-vs-estimated comparison table or raw per-issue JSON block.
 
 Generated plots are written by `plot-cost-over-time.py`, the only matplotlib-importing file. `python/report_tokens_plot.py` passes a JSON payload that follows `plot-cost-over-time.md`, sets `MPLCONFIGDIR` under the persistent plot directory, and treats child failures as visible plot skips.
 

@@ -94,7 +94,6 @@ CODER=""
 CODEX_AVAILABLE=""
 CURSOR_PRESENT_ARG=""
 ANSWERS_FILE=""
-WORKFLOW_PATH=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -105,7 +104,6 @@ while [[ $# -gt 0 ]]; do
         --codex-available)   CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-present)    CURSOR_PRESENT_ARG="${2-}"; shift 2 ;;
         --answers)           ANSWERS_FILE="${2:?--answers requires a value}"; shift 2 ;;
-        --workflow)          WORKFLOW_PATH="${2:?--workflow requires a value}"; shift 2 ;;
         *) larch_err "step2-implement.sh: unknown flag: $1"; exit 2 ;;
     esac
 done
@@ -173,11 +171,6 @@ fi
 [[ -f "$PLAN_FILE" ]]  || { larch_err "step2-implement.sh: --plan-file not found: $PLAN_FILE"; exit 2; }
 [[ -f "$FEATURE_FILE" ]] || { larch_err "step2-implement.sh: --feature-file not found: $FEATURE_FILE"; exit 2; }
 
-WORKFLOW_PATH="${WORKFLOW_PATH:-SIMPLE}"
-case "$WORKFLOW_PATH" in
-    SIMPLE|HARD) ;;
-    *) larch_err "step2-implement.sh: --workflow must be 'SIMPLE' or 'HARD', got: '$WORKFLOW_PATH'"; exit 2 ;;
-esac
 
 # Branch 1: coder=claude → emit claude_fallback and return.
 # Run BEFORE the PLUGIN_ROOT / REPO_ROOT resolution so the fallback path stays
@@ -210,7 +203,7 @@ if [[ "$CODER" == "cursor" && "$CURSOR_PRESENT_ARG" != "true" ]]; then
     exit 0
 fi
 
-"$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
+LARCH_TIMING_SKILL=implement "$PLUGIN_ROOT/scripts/timing-ledger.sh" mark "Step 2 — implementation" || true
 
 REQUIRES_HEAD_UNCHANGED=false
 # Set true at the Step 4 LAUNCHER_EXIT gate when a complete, well-formed
@@ -660,11 +653,8 @@ write_prelaunch_recovery_baseline
 
 # Step 4: launch external implementer. Up to 1 retry on transient failure (timeout / non-zero
 # exit before manifest written) — but only when post-failure state is clean.
-if [[ "$WORKFLOW_PATH" == "HARD" ]]; then
-    LAUNCHER_TIMEOUT=7200
-else
-    LAUNCHER_TIMEOUT=3600
-fi
+# 7200s is the unified /implement coder timeout.
+LAUNCHER_TIMEOUT=7200
 
 run_launcher() {
     local launcher_args=(

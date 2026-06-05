@@ -75,7 +75,7 @@ fi
 "$SCRIPT_DIR/token-report.sh"  --full --format json --output "$IMPL_TMPDIR/token-report-refresh.json"  2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
     --batch token-report --input-file "$IMPL_TMPDIR/token-report-refresh.json" 2>/dev/null || true
-"$SCRIPT_DIR/timing-report.sh" --full --format json --output "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
+DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-report.sh" --full --format json --output "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
 "$SCRIPT_DIR/larch-log.sh" write --log-root "$log_root" --skill implement --run-id "$run_id" \
     --batch timing-report --input-file "$IMPL_TMPDIR/timing-report-refresh.json" 2>/dev/null || true
 # Re-capture session transcript so CI-retry pushes carry the most recent turns.

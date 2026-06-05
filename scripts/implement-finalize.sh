@@ -386,12 +386,12 @@ postbump_mark() {
     export LARCH_TOKEN_SESSION_ID=$token_session
     export LARCH_CLAUDE_SOURCE_FILE=$source_file
     "$SCRIPT_DIR/token-ledger.sh" mark "$label" 2>/dev/null || true
-    "$SCRIPT_DIR/timing-ledger.sh" mark "$label" 2>/dev/null || true
+    LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-ledger.sh" mark "$label" 2>/dev/null || true
 }
 
 postbump_report_since_mark() {
     "$SCRIPT_DIR/token-report.sh" --since-last-mark --terse 2>/dev/null || true
-    "$SCRIPT_DIR/timing-report.sh" --since-last-mark --terse 2>/dev/null || true
+    DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement "$SCRIPT_DIR/timing-report.sh" --since-last-mark --terse 2>/dev/null || true
 }
 
 run_step8b_rebase() {

@@ -69,7 +69,8 @@ RECOVERY_PATHS_FILE=<path-to-step2-recovery-paths.nul>
 | `--codex-available VALUE` | optional (deprecated) | `true` (maps to `--coder codex`) or `false` (maps to `--coder claude`). Emits a stderr deprecation warning. Mutually exclusive with `--coder`. |
 | `--cursor-present VALUE` | optional | `true`, `false`, or empty. Empty/missing normalizes to false. Consulted only on `--coder=cursor`; non-`true` falls back to `STATUS=claude_fallback` before `REPO_ROOT` lookup. |
 | `--answers PATH` | optional | Operator answers to a prior `needs_qa` cycle; presence increments the resume counter |
-| `--workflow VALUE` | optional (default `SIMPLE`) | `SIMPLE` or `HARD`; sets the coder timeout (`SIMPLE`=3600s, `HARD`=7200s). Invalid values exit 2. |
+
+External implementer launches use a fixed 7200-second wall-clock timeout. There is no `--workflow` flag and no SIMPLE/HARD timeout branching; `run-step2-dispatch.sh` forwards the launcher argv and `step2-implement.sh` owns the fixed timeout value.
 
 **Outcomes** (`STATUS` values):
 - `complete` — all post-Codex mechanical checks passed; the dispatcher committed Codex's working-tree edits using `manifest.commit_message` (redacted via `scripts/redact-secrets.sh` immediately before `git commit -F`); on **`CODER=codex`**, the sanitized manifest is emitted at `$TMPDIR/codex-step2-out/manifest.json` (i.e. `$MANIFEST_PATH` after the codex subdir retarget); on **`CODER=cursor`**, it remains at `$TMPDIR/manifest.json` under the tmpdir root.

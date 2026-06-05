@@ -1,8 +1,8 @@
 # compose-pr-summary.sh contract
 
 `scripts/compose-pr-summary.sh` emits 1-3 Markdown bullet lines for the
-`## Summary` section of the PR body, replacing the static placeholder on
-SIMPLE-path `/implement` runs.
+`## Summary` section of the PR body, replacing the static PR body placeholder
+during `/implement` PR prep.
 
 Inputs:
 

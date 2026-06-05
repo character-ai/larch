@@ -22,6 +22,40 @@ def test_env_bool_no_issue(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_main_success_posts_issue_and_keeps_single_cache_trailer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     record = RunRecord(1, "t", "u", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "HARD", VendorTotals(total=1), VendorTotals(), VendorTotals(), (), {})
+    posted: list[tuple[str, str]] = []
+
+    def fake_scan(_runner: object, skill: str, repo_override: str | None = None) -> ScanResult:
+        _ = (skill, repo_override)
+        return ScanResult(tmp_path, "o/r", (record,))
+
+    def fake_price(_runner: object, record: RunRecord) -> RunRecord:
+        return record
+
+    def fake_render(*args: object, **kwargs: object) -> tuple[str, list[object], str]:
+        _ = (args, kwargs)
+        return "## Report Tokens Analysis\n\nCache JSON: /tmp/cache.ndjson", [], "/tmp/cache.ndjson"
+
+    def fake_plot(*args: object, **kwargs: object) -> list[object]:
+        _ = (args, kwargs)
+        return []
+
+    def fake_post(_runner: object, repo: str | None, title: str, sections: list[object], skill: str) -> None:
+        _ = (title, sections, skill)
+        posted.append((repo or "", skill))
+
+    monkeypatch.setattr(report_tokens_cli, "scan", fake_scan)
+    monkeypatch.setattr(report_tokens_cli, "price_run", fake_price)
+    monkeypatch.setattr(report_tokens_cli, "render", fake_render)
+    monkeypatch.setattr(report_tokens_cli, "plot", fake_plot)
+    monkeypatch.setattr(report_tokens_cli, "post_issue", fake_post)
+    assert report_tokens_cli.main(["--skill", "implement"]) == config.EXIT_OK
+    out = capsys.readouterr().out
+    assert out.count("Cache JSON:") == 1
+    assert posted == [("o/r", "implement")]
+
+
+def test_main_design_posts_issue_with_design_skill(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    record = RunRecord(1, "t", "u", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "SIMPLE", VendorTotals(total=1), VendorTotals(), VendorTotals(), (), {})
     posted: list[str] = []
 
     def fake_scan(_runner: object, skill: str, repo_override: str | None = None) -> ScanResult:
@@ -39,19 +73,17 @@ def test_main_success_posts_issue_and_keeps_single_cache_trailer(monkeypatch: py
         _ = (args, kwargs)
         return []
 
-    def fake_post(_runner: object, repo: str | None, title: str, sections: list[object]) -> None:
-        _ = (title, sections)
-        posted.append(repo or "")
+    def fake_post(_runner: object, repo: str | None, title: str, sections: list[object], skill: str) -> None:
+        _ = (repo, title, sections)
+        posted.append(skill)
 
     monkeypatch.setattr(report_tokens_cli, "scan", fake_scan)
     monkeypatch.setattr(report_tokens_cli, "price_run", fake_price)
     monkeypatch.setattr(report_tokens_cli, "render", fake_render)
     monkeypatch.setattr(report_tokens_cli, "plot", fake_plot)
     monkeypatch.setattr(report_tokens_cli, "post_issue", fake_post)
-    assert report_tokens_cli.main(["--skill", "implement"]) == config.EXIT_OK
-    out = capsys.readouterr().out
-    assert out.count("Cache JSON:") == 1
-    assert posted == ["o/r"]
+    assert report_tokens_cli.main(["--skill", "design"]) == config.EXIT_OK
+    assert posted == ["design"]
 
 
 def test_main_fails_before_post_when_repo_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -87,7 +119,7 @@ def test_main_fails_before_post_when_repo_missing(monkeypatch: pytest.MonkeyPatc
 def test_main_no_issue_and_no_plot_forwarding(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     record = RunRecord(1, "t", "u", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "HARD", VendorTotals(total=1), VendorTotals(), VendorTotals(), (), {})
     plotted: list[bool] = []
-    posted: list[str] = []
+    posted: list[tuple[str, str]] = []
 
     def fake_scan(_runner: object, skill: str, repo_override: str | None = None) -> ScanResult:
         _ = (skill, repo_override)
@@ -105,9 +137,9 @@ def test_main_no_issue_and_no_plot_forwarding(monkeypatch: pytest.MonkeyPatch, t
         plotted.append(bool(kwargs.get("no_plot")))
         return []
 
-    def fake_post(_runner: object, repo: str | None, title: str, sections: list[object]) -> None:
-        _ = (title, sections)
-        posted.append(repo or "")
+    def fake_post(_runner: object, repo: str | None, title: str, sections: list[object], skill: str) -> None:
+        _ = (title, sections, skill)
+        posted.append((repo or "", skill))
 
     monkeypatch.setattr(report_tokens_cli, "scan", fake_scan)
     monkeypatch.setattr(report_tokens_cli, "price_run", fake_price)

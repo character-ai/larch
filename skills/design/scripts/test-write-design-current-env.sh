@@ -327,7 +327,8 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "$CURSOR_BINARY_FOUND" = "false" ] || exit 138
 ) || fail "case13: no-flag refresh did not preserve reviewer gate keys or clear MANUAL_REQUESTED (subshell exit $?)"
 
-# Case 14 — partial codex override mirrors alias peer; cursor keys preserved
+# Case 14 — partial codex override mirrors alias peer; omitted binary for the
+# explicitly refreshed tool is not recovered; cursor keys preserved.
 case14_dir="$TMPROOT/case14"
 design14="$case14_dir/design"
 out14="$case14_dir/source-env.sh"
@@ -357,9 +358,9 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "$CODEX_AVAILABLE" = "false" ] || exit 143
     [ "$CURSOR_PRESENT" = "true" ] || exit 144
     [ "$CURSOR_AVAILABLE" = "true" ] || exit 145
-    [ "$CODEX_BINARY_FOUND" = "true" ] || exit 146
+    [ "${CODEX_BINARY_FOUND+x}" != x ] || exit 146
     [ "$CURSOR_BINARY_FOUND" = "false" ] || exit 147
-) || fail "case14: partial codex override did not mirror peer or preserve cursor keys (subshell exit $?)"
+) || fail "case14: partial codex override did not mirror peer, clear stale codex binary, or preserve cursor keys (subshell exit $?)"
 
 # Case 15 — prior env recovery accepts only strict boolean exports
 case15_dir="$TMPROOT/case15"

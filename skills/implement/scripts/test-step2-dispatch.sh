@@ -34,17 +34,12 @@
 #     non-zero exit with a needs_qa manifest (13c) or a status=bailed manifest
 #     (13d) still hard-bails codex-runtime-failure (13d also asserts the
 #     dispatcher token wins over the manifest's own bail_reason).
-#   - --workflow SIMPLE is accepted (STATUS=claude_fallback as normal).
-#   - --workflow HARD is accepted (STATUS=claude_fallback as normal).
-#   - --workflow bogus exits 2 with the exact error message.
+#   - --workflow is rejected as an unknown flag.
 #   - needs_qa repair path: stub-Codex writes a needs_qa manifest without
 #     needs_qa.questions and a qa-pending.json with items[] format; dispatcher
 #     normalizes to questions[] and emits STATUS=needs_qa (not bailed — issue #1883).
-#   - --workflow SIMPLE passed to a stub-Codex run results in --timeout 3600 passed
-#     to the launcher (verified via the .meta file written by run-external-agent.sh).
-#   - --workflow HARD passed to a stub-Codex run results in --timeout 7200.
-#   - --workflow omitted (default) passed to a stub-Codex run results in --timeout 3600
-#     (default workflow resolves to SIMPLE).
+#   - stub-Codex launcher receives the fixed --timeout 7200 (verified via the
+#     .meta file written by run-external-agent.sh).
 #   - Test 19 / 19a / 19b: protected spawn branch (`main` or `master`) +
 #     issue-anchored tmpdir → `main-branch-prohibited` before stub Cursor runs
 #     (19b: `ISSUE_NUMBER` from `parent-issue.md` when absent from session-env).
@@ -914,40 +909,16 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 15a: --workflow SIMPLE is accepted (STATUS=claude_fallback as normal).
-# ---------------------------------------------------------------------------
-TMP15A="$SCRATCH/test15a"; mkdir -p "$TMP15A"
-OUT=$(  "$DISPATCHER" --tmpdir "$TMP15A" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --coder claude --workflow SIMPLE 2>&1)
-if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
-    pass
-else
-    fail 15a "--workflow SIMPLE should be accepted, got: $OUT"
-fi
-
-# ---------------------------------------------------------------------------
-# Test 15b: --workflow HARD is accepted (STATUS=claude_fallback as normal).
-# ---------------------------------------------------------------------------
-TMP15B="$SCRATCH/test15b"; mkdir -p "$TMP15B"
-OUT=$(  "$DISPATCHER" --tmpdir "$TMP15B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --coder claude --workflow HARD 2>&1)
-if [[ "$OUT" == *"STATUS=claude_fallback"* ]] && [[ "$OUT" == *"ORCHESTRATOR_EDIT_AUTHORITY=allowed"* ]]; then
-    pass
-else
-    fail 15b "--workflow HARD should be accepted, got: $OUT"
-fi
-
-# ---------------------------------------------------------------------------
-# Test 15c: --workflow bogus → exit 2.
-# ---------------------------------------------------------------------------
-TMP15C="$SCRATCH/test15c"; mkdir -p "$TMP15C"
+# Test 15: --workflow is retired and rejected as an unknown flag.
+TMP15="$SCRATCH/test15"; mkdir -p "$TMP15"
+printf 'fresh-step2-15
+' > "$TMP15/session-id"
 EXIT=0
-ERR=$("$DISPATCHER" --tmpdir "$TMP15C" --plan-file "$PLAN" --feature-file "$FEATURE" \
-    --coder claude --workflow bogus 2>&1 >/dev/null) || EXIT=$?
-if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"--workflow must be 'SIMPLE' or 'HARD'"* ]]; then
+ERR=$(cd "$REPO_ROOT" && "$DISPATCHER" --tmpdir "$TMP15" --plan-file "$PLAN" --feature-file "$FEATURE"     --coder claude --workflow HARD 2>&1 >/dev/null) || EXIT=$?
+if [[ "$EXIT" == "2" ]] && [[ "$ERR" == *"unknown flag: --workflow"* ]]; then
     pass
 else
-    fail 15c "--workflow bogus should exit 2 with message, got exit=$EXIT err=$ERR"
+    fail 15 "--workflow should exit 2 as unknown flag, got exit=$EXIT err=$ERR"
 fi
 
 # ---------------------------------------------------------------------------
@@ -1027,10 +998,7 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Tests 17a/17b: --workflow SIMPLE/HARD selects the correct --timeout for the
-# launcher. The wiring LAUNCHER_TIMEOUT=3600 (SIMPLE) / 7200 (HARD) in
-# step2-implement.sh is verified via the TIMEOUT= key written by
-# run-external-agent.sh to the .meta sidecar before spawning the subprocess.
+# Test 17: launcher receives the fixed unified 7200s timeout.
 # ---------------------------------------------------------------------------
 STUB17="$SCRATCH/stub-bin-17"; mkdir -p "$STUB17"
 cat > "$STUB17/codex" <<'STUB17_CODEX'
@@ -1045,7 +1013,8 @@ for arg in "$@"; do
     fi
     last="$arg"
 done
-[[ -n "$output_path" ]] && printf 'stub transcript\n' > "$output_path"
+[[ -n "$output_path" ]] && printf 'stub transcript
+' > "$output_path"
 cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
 {
   "schema_version": "1",
@@ -1054,62 +1023,21 @@ cat > "$STEP2_MANIFEST_PATH.tmp" <<'JSON'
 }
 JSON
 mv "$STEP2_MANIFEST_PATH.tmp" "$STEP2_MANIFEST_PATH"
-printf 'stub codex stdout\n'
+printf 'stub codex stdout
+'
 STUB17_CODEX
 chmod +x "$STUB17/codex"
 
-# Test 17a: --workflow SIMPLE → launcher must receive --timeout 3600.
-TMP17A="$SCRATCH/test17a"; mkdir -p "$TMP17A"
-printf 'fresh-step2-17a\n' > "$TMP17A/session-id"
-OUT_17A=$(cd "$REPO_ROOT" && \
-    PATH="$STUB17:$PATH" \
-    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP17A/codex-step2-out/manifest.json" \
-    LARCH_CODEX_MODEL=stub-codex-model \
-    "$DISPATCHER" --tmpdir "$TMP17A" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --coder codex --workflow SIMPLE 2>&1)
-META17A="$TMP17A/codex-step2-out/codex-impl-transcript.txt.meta"
-TIMEOUT17A=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17A" 2>/dev/null || true)
-if [[ "$TIMEOUT17A" == "3600" ]]; then
+TMP17="$SCRATCH/test17"; mkdir -p "$TMP17"
+printf 'fresh-step2-17
+' > "$TMP17/session-id"
+OUT_17=$(cd "$REPO_ROOT" &&     PATH="$STUB17:$PATH"     RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05     STEP2_MANIFEST_PATH="$TMP17/codex-step2-out/manifest.json"     LARCH_CODEX_MODEL=stub-codex-model     "$DISPATCHER" --tmpdir "$TMP17" --plan-file "$PLAN" --feature-file "$FEATURE"         --coder codex 2>&1)
+META17="$TMP17/codex-step2-out/codex-impl-transcript.txt.meta"
+TIMEOUT17=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17" 2>/dev/null || true)
+if [[ "$TIMEOUT17" == "7200" ]]; then
     pass
 else
-    fail 17a "--workflow SIMPLE should set launcher --timeout 3600, got TIMEOUT=$TIMEOUT17A (out=$OUT_17A meta=$(cat "$META17A" 2>/dev/null))"
-fi
-
-# Test 17b: --workflow HARD → launcher must receive --timeout 7200.
-TMP17B="$SCRATCH/test17b"; mkdir -p "$TMP17B"
-printf 'fresh-step2-17b\n' > "$TMP17B/session-id"
-OUT_17B=$(cd "$REPO_ROOT" && \
-    PATH="$STUB17:$PATH" \
-    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP17B/codex-step2-out/manifest.json" \
-    LARCH_CODEX_MODEL=stub-codex-model \
-    "$DISPATCHER" --tmpdir "$TMP17B" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --coder codex --workflow HARD 2>&1)
-META17B="$TMP17B/codex-step2-out/codex-impl-transcript.txt.meta"
-TIMEOUT17B=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17B" 2>/dev/null || true)
-if [[ "$TIMEOUT17B" == "7200" ]]; then
-    pass
-else
-    fail 17b "--workflow HARD should set launcher --timeout 7200, got TIMEOUT=$TIMEOUT17B (out=$OUT_17B meta=$(cat "$META17B" 2>/dev/null))"
-fi
-
-# Test 17c: --workflow omitted (default) → default workflow is SIMPLE → --timeout 3600.
-TMP17C="$SCRATCH/test17c"; mkdir -p "$TMP17C"
-printf 'fresh-step2-17c\n' > "$TMP17C/session-id"
-OUT_17C=$(cd "$REPO_ROOT" && \
-    PATH="$STUB17:$PATH" \
-    RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05 \
-    STEP2_MANIFEST_PATH="$TMP17C/codex-step2-out/manifest.json" \
-    LARCH_CODEX_MODEL=stub-codex-model \
-    "$DISPATCHER" --tmpdir "$TMP17C" --plan-file "$PLAN" --feature-file "$FEATURE" \
-        --coder codex 2>&1)
-META17C="$TMP17C/codex-step2-out/codex-impl-transcript.txt.meta"
-TIMEOUT17C=$(awk -F= '/^TIMEOUT=/{print $2; exit}' "$META17C" 2>/dev/null || true)
-if [[ "$TIMEOUT17C" == "3600" ]]; then
-    pass
-else
-    fail 17c "default --workflow (SIMPLE) should set launcher --timeout 3600, got TIMEOUT=$TIMEOUT17C (out=$OUT_17C meta=$(cat "$META17C" 2>/dev/null))"
+    fail 17 "launcher should receive --timeout 7200, got TIMEOUT=$TIMEOUT17 (out=$OUT_17 meta=$(cat "$META17" 2>/dev/null))"
 fi
 
 # ---------------------------------------------------------------------------

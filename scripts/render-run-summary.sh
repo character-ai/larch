@@ -189,7 +189,7 @@ cost_bullet() {
 }
 
 mode_disp=$(na "$MODE_STR")
-path_disp=$(na "$WORKFLOW_PATH")
+path_disp="$WORKFLOW_PATH"
 dur_disp=$(na "$DURATION")
 
 iss_disp="N/A"
@@ -250,7 +250,9 @@ trap cleanup EXIT
     # --print-stdout and --output-file bodies stay byte-identical (FINDING_20).
     case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*|publish-skipped) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
     printf -- '- **Mode**: %s\n' "$mode_disp"
-    printf -- '- **Path**: %s\n' "$path_disp"
+    if [ -n "$path_disp" ]; then
+        printf -- '- **Path**: %s\n' "$path_disp"
+    fi
     if [ "$EMERGENCY_REQUESTED" = "true" ]; then
         printf -- '- Emergency: true\n'
     fi

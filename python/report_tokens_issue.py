@@ -9,7 +9,7 @@ import gh
 import redact
 from errors import ShipError
 from proc import CommandResult, Runner
-from report_tokens_models import ReportSection, SectionPriority
+from report_tokens_models import ReportSection, SectionPriority, Skill
 
 _TRUNCATION_PREFIX = (
     "## ⚠ Report body trimmed to fit GitHub's size limit\n\n"
@@ -46,11 +46,13 @@ def _posting_body(text: str) -> str:
     return redacted
 
 
-def _section_label(section: ReportSection) -> str:
+def _section_label(section: ReportSection, skill: Skill) -> str:
+    if section.title == "aggregate" and skill == "implement":
+        return "Aggregate cost"
     return _TITLE_BY_SECTION.get(section.title, section.title)
 
 
-def _trim_sections(sections: list[ReportSection], *, limit: int) -> tuple[str, list[str]]:
+def _trim_sections(sections: list[ReportSection], *, limit: int, skill: Skill) -> tuple[str, list[str]]:
     kept = list(sections)
     omitted: list[str] = []
     redacted = _posting_body(_assemble(kept))
@@ -63,7 +65,7 @@ def _trim_sections(sections: list[ReportSection], *, limit: int) -> tuple[str, l
     )
     for candidate in candidates:
         kept.remove(candidate)
-        omitted.append(_section_label(candidate))
+        omitted.append(_section_label(candidate, skill))
         notice = _TRUNCATION_PREFIX + f"Omitted sections: {', '.join(omitted)}.\n\n"
         redacted = _posting_body(notice + _assemble(kept))
         if _bytes(redacted) <= limit:
@@ -72,8 +74,8 @@ def _trim_sections(sections: list[ReportSection], *, limit: int) -> tuple[str, l
     return _posting_body(notice + _assemble(kept)), omitted
 
 
-def assemble_issue_body(sections: list[ReportSection]) -> str:
-    body, _ = _trim_sections(sections, limit=config.GITHUB_ISSUE_BODY_MAX_BYTES)
+def assemble_issue_body(sections: list[ReportSection], *, skill: Skill) -> str:
+    body, _ = _trim_sections(sections, limit=config.GITHUB_ISSUE_BODY_MAX_BYTES, skill=skill)
     return body
 
 
@@ -83,8 +85,9 @@ def post_issue(
     repo: str | None,
     title: str,
     sections: list[ReportSection],
+    skill: Skill,
 ) -> None:
-    body, _omitted = _trim_sections(sections, limit=config.GITHUB_ISSUE_BODY_MAX_BYTES)
+    body, _omitted = _trim_sections(sections, limit=config.GITHUB_ISSUE_BODY_MAX_BYTES, skill=skill)
     if _bytes(body) > config.GITHUB_ISSUE_BODY_MAX_BYTES:
         msg = "ERROR: report issue body remains over GitHub's 65536-byte limit after trimming"
         print(msg, file=sys.stderr)
