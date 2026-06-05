@@ -404,6 +404,25 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
      printf '%s\n' "**⚠ Step 0b: missing or invalid ROUTE after design-route.sh; aborting /design**" >&2
      exit 1
    fi
+   _post_route_env="$DESIGN_TMPDIR/.design-route-result.env"
+   if [[ ! -f "$_post_route_env" || -L "$_post_route_env" ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-route result env missing or is a symlink; refusing to read**" >&2
+     exit 1
+   fi
+   ROUTE=""
+   while IFS= read -r _line || [[ -n "$_line" ]]; do
+     _key="${_line%%=*}"; _value="${_line#*=}"
+     case "$_key" in
+       ROUTE) printf -v ROUTE '%s' "$_value" ;;
+     esac
+   done <"$_post_route_env"
+   case "${ROUTE:-}" in
+     cancel-title-filter|cancel-reentry-guard)
+       if [ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]; then
+         cat "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}"
+       fi
+       exit 1 ;;
+   esac
    ```
 
    After the route fence exits 0, read `$DESIGN_TMPDIR/.design-route-result.env` directly (file-first; refuse symlinks) and parse only allowlisted `ROUTE=`. Do not rely on `_route_out` or merged stdout KVs after the fence. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that file and emit its full body verbatim as plain chat markdown, then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.

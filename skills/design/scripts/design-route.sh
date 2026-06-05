@@ -232,7 +232,7 @@ emit_route_result() {
 }
 
 render_cancel_summary() {
-    local outcome="$1" mode="$2" _render_rc=0
+    local outcome="$1" mode="$2"
     set +e
     if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
         DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="$ISSUE" SESSION_ID="$SESSION_ID_ARG" \
@@ -249,7 +249,7 @@ render_cancel_summary() {
             ${REPO:+--repo "$REPO"} \
             --post-publish-only >/dev/null
     fi
-    _render_rc=$?
+    # Render failure is intentionally tolerated; child diagnostics stay on stderr/FD4.
     set -e
     return 0
 }
@@ -261,7 +261,7 @@ route_emit_cancel_side_effects() {
                 larch_err "**⚠ /design: issue title starts with managed lifecycle marker ${TITLE_FILTER_MARKER:-<token>} — refusing to design. Rename the title (drop the bracket prefix) and re-invoke /design.**"
             else
                 # shellcheck disable=SC2016 # Markdown code spans are literal in this diagnostic.
-                larch_err '**⚠ /design: issue title matches archival report-prefix `[...] Report` — refusing to design. Such titles are reserved for `/research` / `/report-tokens` artifacts. Rename the title and re-invoke /design.**'
+                larch_err '**⚠ /design: issue title matches archival report-prefix `[... Report]` — refusing to design. Such titles are reserved for `/research` / `/report-tokens` artifacts. Rename the title and re-invoke /design.**'
             fi
             render_cancel_summary cancelled-title-filter N/A
             ;;

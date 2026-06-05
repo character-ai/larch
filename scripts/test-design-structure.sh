@@ -27,6 +27,51 @@ fail() {
   exit 1
 }
 
+assert_cancel_route_stdout_kv_only() {
+  local tmp plugin body route_out line
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-design-route-cancel.XXXXXX")
+  plugin="$tmp/plugin"
+  mkdir -p "$plugin/scripts" "$plugin/skills/design/scripts"
+  body="$tmp/issue-body.txt"
+  printf '%s\n' 'cancel route fixture' >"$body"
+  cat >"$plugin/scripts/lib-title-eligibility.sh" <<'EOF_FIXTURE'
+title_has_lifecycle_reject_prefix() {
+  case "$1" in
+    "[IMPLEMENTING]"*) printf '%s\n' '[IMPLEMENTING]'; return 0 ;;
+    *) return 1 ;;
+  esac
+}
+title_has_archival_report_prefix() { return 1; }
+title_starts_with_brainstorm() { return 1; }
+EOF_FIXTURE
+  cat >"$plugin/skills/design/scripts/render-final-summary.sh" <<'EOF_FIXTURE'
+#!/usr/bin/env bash
+printf '%s\n' 'SENTINEL_RENDER_STDOUT'
+exit 0
+EOF_FIXTURE
+  chmod +x "$plugin/skills/design/scripts/render-final-summary.sh"
+
+  if ! route_out=$(CLAUDE_PLUGIN_ROOT="$plugin" "$DESIGN_ROUTE_SH" \
+    --design-tmpdir "$tmp" \
+    --issue 1 \
+    --issue-title "[IMPLEMENTING] fixture" \
+    --issue-body-file "$body" \
+    --has-clarify-label false \
+    --claude-pid "$$" \
+    --session-id "test-session" 2>"$tmp/stderr.log"); then
+    rm -rf "$tmp"
+    fail "design-route.sh cancel smoke fixture failed"
+  fi
+  if printf '%s\n' "$route_out" | grep -Fq 'SENTINEL_RENDER_STDOUT'; then
+    rm -rf "$tmp"
+    fail "design-route.sh cancel render stdout leaked into KV stream"
+  fi
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" == *=* ]] || { rm -rf "$tmp"; fail "design-route.sh cancel stdout must contain only KEY=VALUE lines"; }
+  done <<<"$route_out"
+  rm -rf "$tmp"
+}
+
 contains() {
   local file="$1" needle="$2" label="$3"
   grep -Fq -- "$needle" "$file" || fail "$label"
@@ -1259,6 +1304,11 @@ printf '%s\n' "$step0b_block" | grep -Fq '[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TM
   || fail "(FINDING_2) SKILL.md post-fence cancel summary gate missing"
 printf '%s\n' "$step0b_block" | grep -Fq 'Cancel routes always terminate before sub-step 3' \
   || fail "(FINDING_2) SKILL.md post-fence cancel abort contract missing"
+# shellcheck disable=SC2016 # Markdown literal contains shell variables from SKILL.md prose.
+printf '%s\n' "$step0b_block" | grep -Fq '_post_route_env="$DESIGN_TMPDIR/.design-route-result.env"' \
+  || fail "(FINDING_7) SKILL.md post-fence route result re-read missing"
+printf '%s\n' "$step0b_block" | grep -Fq 'is a symlink; refusing to read' \
+  || fail "(FINDING_7) SKILL.md post-fence result-env read must refuse symlinks"
 # shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
 printf '%s\n' "$step0b_block" | grep -Fq 'printf '\''%s\n'\'' "WARN=$_value"' \
   || fail "(FINDING_1 R5) SKILL.md Step 0b file-first route loop must immediately print WARN breadcrumbs"
@@ -1296,9 +1346,17 @@ grep -Fq 'resume env refresh failed via write-design-current-env.sh' "$DESIGN_RO
 # shellcheck disable=SC2016 # Script literal intentionally checks quiet bridge syntax.
 grep -Fq '[ "${LARCH_QUIET_PID:-}" = "$$" ]' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh missing quiet child conditional"
 grep -Fq '>/dev/null 2>&4' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh missing FD4 bridge for resume/render children"
-bare_devnull_count=$(grep -cE '>/dev/null$' "$DESIGN_ROUTE_SH" || true)
-if (( bare_devnull_count < 2 )); then
-  fail "(FINDING_18) design-route.sh non-quiet resume/render branches must redirect stdout to /dev/null"
+bare_devnull_count=$(grep -cE '(^|[[:space:]])>/dev/null$' "$DESIGN_ROUTE_SH" || true)
+if (( bare_devnull_count != 2 )); then
+  fail "(FINDING_18) design-route.sh non-quiet resume/render branches must redirect stdout to /dev/null exactly twice"
+fi
+assert_cancel_route_stdout_kv_only
+resume_refresh_fail_line=$(grep -nF 'resume env refresh failed via write-design-current-env.sh' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
+resume_route_assign_line=$(grep -nF 'ROUTE="resume@' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
+[[ -n "$resume_refresh_fail_line" && -n "$resume_route_assign_line" ]] \
+  || fail "(FINDING_18) design-route.sh missing resume env-refresh failure / route assignment anchors"
+if (( resume_refresh_fail_line >= resume_route_assign_line )); then
+  fail "(FINDING_18) design-route.sh must abort on resume env-refresh failure before assigning ROUTE=resume"
 fi
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 printf '%s\n' "$step0b_block" | grep -Fq 'only when `ROUTE=proceed`' \
