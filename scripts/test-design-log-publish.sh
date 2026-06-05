@@ -453,22 +453,52 @@ printf '{"x":1,"result":{"y":2}}\n' >"$TMP/design/plain.json"
 printf 'deep\n' >"$TMP/design/render-cache/nested/c.txt"
 printf 'finding_id\tfinding_reviewers\tvoting_result\n' >"$TMP/design/plan-review/round-1/findings-classification.tsv"
 printf '### FINDING_1:\n' >"$TMP/design/plan-review/round-1/findings.md"
+printf 'tally\n' >"$TMP/design/plan-review/round-1/voting-tally.md"
 printf '123\n' >"$TMP/design/plan-review/round-1/round-start-s"
 mkdir -p "$TMP/design/plan-review/round-1/revise"
 printf 'prompt\n' >"$TMP/design/plan-review/round-1/revise/prompt.txt"
 printf 'patch\n' >"$TMP/design/plan-review/round-1/revise/codex-output-candidate.patch"
-# Files that MUST be denied by the suffix deny-list (mirrors /implement's
-# round_artifact_included deny patterns):
-printf 'noisy raw transcript\n' >"$TMP/design/codex-plan-arch-output.txt.sidecar"
-printf 'STATUS=clean\n' >"$TMP/design/codex-plan-arch-output.txt.dirty-tree"
-: >"$TMP/design/codex-plan-arch-output.txt.untracked-baseline"
-printf 'OK\n' >"$TMP/design/codex-plan-arch-output.txt.done"
+# Files that MUST be denied by design_artifact_excluded (suffix + plan-review #3534):
+printf 'noisy raw transcript\n' >"$TMP/design/codex-primary-plan-arch-output.txt.sidecar"
+printf 'STATUS=clean\n' >"$TMP/design/codex-primary-plan-arch-output.txt.dirty-tree"
+: >"$TMP/design/codex-primary-plan-arch-output.txt.untracked-baseline"
+printf 'OK\n' >"$TMP/design/codex-primary-plan-arch-output.txt.done"
 : >"$TMP/design/cursor-plan-arch-output.txt.diag"
-printf 'launcher prompt body\n' >"$TMP/design/codex-plan-arch-output.txt.prompt"
-printf 'phased launcher prompt\n' >"$TMP/design/codex-plan-arch-output-phase2.txt.prompt"
-printf '{"type":"token_usage","input_tokens":1,"cached_input_tokens":0,"output_tokens":1}\n' >"$TMP/design/codex-plan-arch-output.txt.events.jsonl"
+printf 'launcher prompt body\n' >"$TMP/design/codex-primary-plan-arch-output.txt.prompt"
+printf 'phased launcher prompt\n' >"$TMP/design/codex-primary-plan-arch-output-phase2.txt.prompt"
+printf '{"type":"token_usage","input_tokens":1,"cached_input_tokens":0,"output_tokens":1}\n' >"$TMP/design/codex-primary-plan-arch-output.txt.events.jsonl"
 printf 'timing stderr\n' >"$TMP/design/timing-report-final.stderr.log"
 printf 'timing failure\n' >"$TMP/design/timing-report-final.failure.log"
+# Raw plan-review transcripts (top-level; must not flush):
+printf 'codex arch transcript\n' >"$TMP/design/codex-primary-plan-arch-output.txt"
+printf 'cursor arch transcript\n' >"$TMP/design/cursor-plan-arch-output.txt"
+printf 'claude generic transcript\n' >"$TMP/design/claude-plan-generic-output.txt"
+printf 'cursor dyn transcript\n' >"$TMP/design/cursor-plan-dyn-foo-output.txt"
+printf 'codex dyn transcript\n' >"$TMP/design/codex-primary-plan-dyn-foo-output.txt"
+printf 'codex phased transcript\n' >"$TMP/design/codex-primary-plan-arch-output-phase2.txt"
+printf 'codex phased3 transcript\n' >"$TMP/design/codex-primary-plan-arch-output-phase3.txt"
+# Producer-backed sidecars on transcript bases:
+printf 'CMD_JSON=[]\n' >"$TMP/design/claude-plan-generic-output.txt.meta"
+printf 'stderr body\n' >"$TMP/design/claude-plan-generic-output.txt.stderr"
+printf 'stderr tail\n' >"$TMP/design/claude-plan-generic-output.txt.stderr-tail"
+printf '{"x":1}\n' >"$TMP/design/cursor-plan-arch-output.txt.json"
+printf '{"event":1}\n' >"$TMP/design/claude-plan-generic-output.txt.jsonl"
+printf 'launch stderr\n' >"$TMP/design/cursor-plan-arch-output.txt.launch-stderr"
+printf 'launch stderr\n' >"$TMP/design/codex-primary-plan-arch-output.txt.launch-stderr"
+printf 'launch stderr\n' >"$TMP/design/claude-plan-generic-output.txt.launch-stderr"
+printf 'tsv row\n' >"$TMP/design/cursor-plan-arch-output.txt.tsv"
+printf 'meta row\n' >"$TMP/design/codex-primary-plan-arch-output.txt.meta"
+printf 'cap hit\n' >"$TMP/design/cursor-plan-arch-output.txt.cap-hit"
+printf 'cap hit\n' >"$TMP/design/codex-primary-plan-arch-output.txt.cap-hit"
+# Diagnostic surfaces:
+printf 'generic claude prompt\n' >"$TMP/design/claude-plan-generic.prompt"
+printf 'collector fail\n' >"$TMP/design/cursor-plan-arch-collector.failure.log"
+printf 'collector fail\n' >"$TMP/design/codex-plan-arch-collector.failure.log"
+printf 'collector fail\n' >"$TMP/design/dyn-cursor-plan-foo-collector.failure.log"
+printf 'collector fail\n' >"$TMP/design/dyn-codex-plan-harness-fidelity-collector.failure.log"
+printf 'collector fail\n' >"$TMP/design/unknown-slot-collector.failure.log"
+printf 'aggregate stderr\n' >"$TMP/design/plan-review-collector.stderr"
+printf 'dropped slot\n' >"$TMP/design/plan-review-slots.ndjson.output-files.dropped-slots"
 # Same suffix family in render-cache must also be denied:
 printf 'rc noisy\n' >"$TMP/design/render-cache/cached-output.txt.sidecar"
 printf '{"type":"token_usage","input_tokens":2,"cached_input_tokens":0,"output_tokens":1}\n' >"$TMP/design/render-cache/cached-output.txt.events.jsonl"
@@ -485,6 +515,7 @@ git -C "$clone" pull -q origin main
 [[ -f "$clone/larch-logs/design/RUNPUB1/render-cache/nested/c.txt" ]] || fail "render-cache nested missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings-classification.tsv" ]] || fail "plan-review classification TSV missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/findings.md" ]] || fail "plan-review findings.md missing"
+[[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/voting-tally.md" ]] || fail "plan-review voting-tally.md missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/round-start-s" ]] || fail "round-start-s must survive plan-review snapshot pruning"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/revise/prompt.txt" ]] || fail "plan-review revise prompt.txt missing"
 [[ -f "$clone/larch-logs/design/RUNPUB1/plan-review/round-1/revise/codex-output-candidate.patch" ]] || fail "plan-review revise candidate patch missing"
@@ -504,18 +535,45 @@ grep -Fq -- '--admin' "$GH_STUB_LOG" || fail "expected gh pr merge --admin in lo
 grep -Fq -- '--body-file' "$GH_STUB_LOG" || fail "expected gh pr create --body-file in log"
 ! grep -Eq '(^| )--body( |$)' "$GH_STUB_LOG" || fail "gh pr create should not use inline --body" # lint-gh-body-inline: ok gh-stub assertion fixture
 unset GH_STUB_EXPECT_PR_BODY_FILE
-# Verify suffix deny-list dropped each denied basename at both top-level and render-cache:
+# Verify design_artifact_excluded dropped each denied basename at top-level:
 for denied in \
-    "codex-plan-arch-output.txt.sidecar" \
-    "codex-plan-arch-output.txt.dirty-tree" \
-    "codex-plan-arch-output.txt.untracked-baseline" \
-    "codex-plan-arch-output.txt.done" \
+    "codex-primary-plan-arch-output.txt.sidecar" \
+    "codex-primary-plan-arch-output.txt.dirty-tree" \
+    "codex-primary-plan-arch-output.txt.untracked-baseline" \
+    "codex-primary-plan-arch-output.txt.done" \
     "cursor-plan-arch-output.txt.diag" \
-    "codex-plan-arch-output.txt.events.jsonl" \
-    "codex-plan-arch-output.txt.prompt" \
-    "codex-plan-arch-output-phase2.txt.prompt" \
+    "codex-primary-plan-arch-output.txt.events.jsonl" \
+    "codex-primary-plan-arch-output.txt.prompt" \
+    "codex-primary-plan-arch-output-phase2.txt.prompt" \
     "timing-report-final.stderr.log" \
-    "timing-report-final.failure.log"; do
+    "timing-report-final.failure.log" \
+    "codex-primary-plan-arch-output.txt" \
+    "cursor-plan-arch-output.txt" \
+    "claude-plan-generic-output.txt" \
+    "cursor-plan-dyn-foo-output.txt" \
+    "codex-primary-plan-dyn-foo-output.txt" \
+    "codex-primary-plan-arch-output-phase2.txt" \
+    "codex-primary-plan-arch-output-phase3.txt" \
+    "claude-plan-generic-output.txt.meta" \
+    "claude-plan-generic-output.txt.stderr" \
+    "claude-plan-generic-output.txt.stderr-tail" \
+    "cursor-plan-arch-output.txt.json" \
+    "claude-plan-generic-output.txt.jsonl" \
+    "cursor-plan-arch-output.txt.launch-stderr" \
+    "codex-primary-plan-arch-output.txt.launch-stderr" \
+    "claude-plan-generic-output.txt.launch-stderr" \
+    "cursor-plan-arch-output.txt.tsv" \
+    "codex-primary-plan-arch-output.txt.meta" \
+    "cursor-plan-arch-output.txt.cap-hit" \
+    "codex-primary-plan-arch-output.txt.cap-hit" \
+    "claude-plan-generic.prompt" \
+    "cursor-plan-arch-collector.failure.log" \
+    "codex-plan-arch-collector.failure.log" \
+    "dyn-cursor-plan-foo-collector.failure.log" \
+    "dyn-codex-plan-harness-fidelity-collector.failure.log" \
+    "unknown-slot-collector.failure.log" \
+    "plan-review-collector.stderr" \
+    "plan-review-slots.ndjson.output-files.dropped-slots"; do
     [[ ! -f "$clone/larch-logs/design/RUNPUB1/$denied" ]] || fail "denied basename leaked into top-level: $denied"
 done
 [[ ! -f "$clone/larch-logs/design/RUNPUB1/render-cache/cached-output.txt.sidecar" ]] || fail "denied basename leaked into render-cache"

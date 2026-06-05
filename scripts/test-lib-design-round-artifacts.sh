@@ -51,8 +51,9 @@ assert_included claude-vote-output.txt
 assert_included voter1-diag.txt
 
 assert_excluded cursor-plan-arch-output.txt
-assert_excluded codex-plan-edge-output.txt
-assert_excluded dyn-cursor-plan-foo-output.txt
+assert_excluded codex-primary-plan-edge-output.txt
+assert_excluded cursor-plan-dyn-foo-output.txt
+assert_excluded codex-primary-plan-dyn-bar-output.txt
 assert_excluded voter-output.txt.prompt
 assert_excluded voter-output.txt.meta
 assert_excluded voter-output.txt.json
