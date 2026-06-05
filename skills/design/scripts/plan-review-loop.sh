@@ -1607,11 +1607,13 @@ while (( round_num <= ROUND_CAP )); do
         if [[ -n "$_next_terminal_status" ]]; then
             LOOP_STATUS="$_next_terminal_status"
             LOOP_REASON="${_next_terminal_reason},snapshot-failed"
+            _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
             _write_round_summary "$round_num" "$LOOP_STATUS" "$LOOP_REASON" "${revise_status:-ok}"
             _terminal_exit 0 "$round_num"
         fi
         LOOP_STATUS=panel-failed
         LOOP_REASON=snapshot-failed
+        _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
         _write_round_summary "$round_num" panel-failed snapshot-failed "${revise_status:-ok}"
         _terminal_exit 1 "$round_num"
     fi
@@ -1619,15 +1621,13 @@ while (( round_num <= ROUND_CAP )); do
     if _round_qualifies_for_convergence; then
         LOOP_STATUS=converged
         LOOP_REASON=converged
-        _write_round_summary "$round_num" converged converged "${revise_status:-ok}"
-        _terminal_exit 0 "$round_num"
+        _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-ok}"
     fi
 
     if (( round_num == ROUND_CAP )); then
         LOOP_STATUS=cap-hit
         LOOP_REASON=cap-hit
-        _write_round_summary "$round_num" cap-hit cap-hit "${revise_status:-ok}"
-        _terminal_exit 0 "$round_num"
+        _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-ok}"
     fi
 
     _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"

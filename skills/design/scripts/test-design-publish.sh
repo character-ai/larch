@@ -52,6 +52,30 @@ ln -sf "$REPO_ROOT/scripts/lib-quiet.sh" "$STUB/lib-quiet.sh"
 ln -sf "$REPO_ROOT/scripts/lib-net.sh" "$STUB/lib-net.sh" 2>/dev/null || true
 ln -sf "$REPO_ROOT/scripts/append-tool-failure.sh" "$STUB/append-tool-failure.sh"
 ln -sf "$REPO_ROOT/scripts/append-execution-issue.sh" "$STUB/append-execution-issue.sh"
+ln -sf "$REPO_ROOT/scripts/timing-report.sh" "$STUB/timing-report.sh.bak-real" 2>/dev/null || true
+cat >"$STUB/timing-report.sh" <<'TIMING_STUB'
+#!/usr/bin/env bash
+[[ -n "${PUBLISH_ORDER_LOG:-}" ]] && echo "timing-report" >>"$PUBLISH_ORDER_LOG"
+if [[ -n "${TIMING_REPORT_ENV_LOG:-}" ]]; then
+  {
+    echo "LARCH_TIMING_LEDGER=${LARCH_TIMING_LEDGER:-}"
+    echo "IMPLEMENT_TMPDIR=${IMPLEMENT_TMPDIR-unset}"
+  } >>"$TIMING_REPORT_ENV_LOG"
+fi
+out=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$out" ]] || exit 1
+if [[ "${TIMING_REPORT_FAIL:-false}" == true ]]; then
+  exit 1
+fi
+printf '{"workflow_path":"SIMPLE","per_step":[],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}\n' >"$out"
+TIMING_STUB
+chmod +x "$STUB/timing-report.sh"
 cat >"$STUB/redact-secrets.sh" <<'REDACT_STUB'
 #!/usr/bin/env bash
 # Controllable stub: REDACT_STUB_RC=N exits with that code; REDACT_EMPTY_OUTPUT=true emits nothing; else passes stdin through.
@@ -99,6 +123,7 @@ STUB
 #!/usr/bin/env bash
 echo "design-log-publish $*" >>"${PUBLISH_LOG:?}"
 [[ -n "${CALL_LOG:-}" ]] && echo "design-log-publish $*" >>"$CALL_LOG"
+[[ -n "${PUBLISH_ORDER_LOG:-}" ]] && echo "design-log-publish" >>"$PUBLISH_ORDER_LOG"
 design_tmpdir=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -200,12 +225,16 @@ init_publish_logs() {
     export UPSERT_LOG="$TMP/upsert.log"
     export RENDER_LOG="$TMP/render.log"
     export CALL_LOG="$TMP/call.log"
+    export PUBLISH_ORDER_LOG="$TMP/publish-order.log"
+    export TIMING_REPORT_ENV_LOG="$TMP/timing-report-env.log"
     : >"$PLAN_BLOCK_LOG"
     : >"$PUBLISH_LOG"
     : >"$RENAME_LOG"
     : >"$UPSERT_LOG"
     : >"$RENDER_LOG"
     : >"$CALL_LOG"
+    : >"$PUBLISH_ORDER_LOG"
+    : >"$TIMING_REPORT_ENV_LOG"
 }
 
 apply_publish_stub_defaults() {
@@ -495,6 +524,50 @@ grep -q 'upsert-diagrams' "$UPSERT_LOG" || fail "upsert not called on happy path
 test -s "$D_OK/diagrams-architecture-upsert.stdout" || fail "upsert stdout not captured"
 grep -Fq -- '--repo owner/repo' "$PLAN_BLOCK_LOG" \
   || fail "plan-block-write missing resolved --repo"
+awk '/timing-report/ {t=NR} /design-log-publish/ {p=NR} END { exit (t && p && t < p) ? 0 : 1 }' "$PUBLISH_ORDER_LOG" \
+  || fail "timing-report must run before design-log-publish on happy path"
+pass "pre-publish timing render runs before design-log-publish"
+grep -Fq "LARCH_TIMING_LEDGER=${D_OK_CANON}/timing-ledger.tsv" "$TIMING_REPORT_ENV_LOG" \
+  || fail "timing-report must pin LARCH_TIMING_LEDGER to design ledger"
+grep -Fq 'IMPLEMENT_TMPDIR=unset' "$TIMING_REPORT_ENV_LOG" \
+  || fail "timing-report must clear IMPLEMENT_TMPDIR via env -u"
+pass "timing-report pins design ledger and clears IMPLEMENT_TMPDIR"
+
+# --- render_fresh stale sidecar cleanup and failed-render quarantine ---
+D_STALE="$TMP/stale-timing-sidecar"
+setup_design_tmp "$D_STALE"
+: >"$D_STALE/timing-ledger.tsv"
+printf 'stale stderr\n' >"$D_STALE/timing-report-final.stderr.log"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_STALE" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>&1
+rc=$?
+set -e
+assert_rc "stale timing sidecar cleanup publish" 0 "$rc"
+[[ ! -f "$D_STALE/timing-report-final.stderr.log" ]] || fail "stale timing-report-final.stderr.log must be removed before publish"
+[[ -f "$D_STALE/timing-report-final.json" ]] || fail "fresh timing-report-final.json must exist after pre-publish render"
+pass "stale timing-report-final.* sidecars removed; only JSON retained"
+
+D_FAIL_TIMING="$TMP/fail-timing-render"
+setup_design_tmp "$D_FAIL_TIMING"
+: >"$D_FAIL_TIMING/timing-ledger.tsv"
+printf 'old\n' >"$D_FAIL_TIMING/timing-report-final.json"
+printf 'old stderr\n' >"$D_FAIL_TIMING/timing-report-final.stderr.log"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export TIMING_REPORT_FAIL=true
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_FAIL_TIMING" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>&1
+rc=$?
+set -e
+unset TIMING_REPORT_FAIL
+assert_rc "failed timing render still publishes" 0 "$rc"
+[[ ! -f "$D_FAIL_TIMING/timing-report-final.json" ]] || fail "failed render must remove timing-report-final.json"
+[[ ! -f "$D_FAIL_TIMING/timing-report-final.stderr.log" ]] || fail "failed render must remove timing-report-final.stderr.log"
+pass "failed timing render quarantines timing-report-final.* artifacts"
 
 # --- explicit/resolved repo forwarded to plan-block-write ---
 D_PLAN_REPO="$TMP/plan-repo"

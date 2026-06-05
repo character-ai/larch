@@ -14,6 +14,12 @@ PLR="$ROOT/skills/design/scripts/plan-review-loop.sh"
 
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 
+assert_plan_round_timing_row() {
+    local dir="$1" round="$2"
+    awk -F '\t' -v r="$round" '$2 == "round" && $4 == "design" && $6 == r { found=1 } END { exit found ? 0 : 1 }' "$dir/timing-ledger.tsv" \
+        || fail "missing design round timing row for round $round in $dir"
+}
+
 assert_env_has_keys() {
     local path="$1"
     shift
@@ -2120,6 +2126,7 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_snc=$(run_loop "$DSNC" 1 --round-cap 5)
 printf '%s\n' "$out_snc" | grep -q '^LOOP_STATUS=converged$' || fail "snapshot failure on qualifying round should preserve converged"
 printf '%s\n' "$out_snc" | grep -q '^REASON=converged,snapshot-failed$' || fail "qualifying converged round should append snapshot-failed reason"
+assert_plan_round_timing_row "$DSNC" 1
 
 echo "=== multi-round: degraded round then converged round; dedup failure does not leak ==="
 DDR="$TMP/degraded-reset"
@@ -2167,6 +2174,7 @@ grep -q '^DEGRADED_PANEL=1$' "$DDR/plan-review/round-1/round-summary.env" || fai
 grep -q '^DEGRADED_PANEL=0$' "$DDR/plan-review/round-2/round-summary.env" || fail "round 2 should reset degraded panel"
 grep -q '^LOOP_STATUS=converged$' "$DDR/plan-review/round-2/round-summary.env" || fail "round 2 should record converged terminal status"
 [[ -f "$DDR/plan-review/round-2/findings-classification.tsv" ]] || fail "converged terminal round must keep findings-classification TSV"
+assert_plan_round_timing_row "$DDR" 2
 
 echo "=== multi-round: dedup failure degrades only the failing round ==="
 DDD="$TMP/dedup-reset"

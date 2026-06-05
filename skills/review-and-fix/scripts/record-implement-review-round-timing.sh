@@ -68,7 +68,7 @@ if [[ ! "$rejected" =~ ^[0-9]+$ ]]; then
         rejected=0
     fi
 fi
-if [[ ! "$rejected" =~ ^[0-9]+$ || "$rejected" -eq 0 ]]; then
+if [[ ! "$rejected" =~ ^[0-9]+$ ]]; then
     if [[ -s "$round_dir/review-summary.json" ]] && command -v jq >/dev/null 2>&1; then
         _json_rejected=$(jq -r '.rejected_count // .rejected // empty' "$round_dir/review-summary.json" 2>/dev/null || true)
         [[ "$_json_rejected" =~ ^[0-9]+$ ]] && rejected="$_json_rejected"
@@ -76,6 +76,11 @@ if [[ ! "$rejected" =~ ^[0-9]+$ || "$rejected" -eq 0 ]]; then
 fi
 [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
 [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
+
+ledger="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
+if [[ -f "$ledger" ]] && awk -F '\t' -v r="$((10#$ROUND_NUM))" '$2 == "round" && $6 == r { found=1 } END { exit !found }' "$ledger" 2>/dev/null; then
+    exit 0
+fi
 
 export IMPLEMENT_TMPDIR
 export LARCH_TIMING_LEDGER="$IMPLEMENT_TMPDIR/timing-ledger.tsv"

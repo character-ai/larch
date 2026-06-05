@@ -49,11 +49,16 @@ if [[ -s "$DESIGN_TMPDIR/rejected-findings.md" ]]; then
 fi
 if [[ -s "$DESIGN_TMPDIR/voting-tally.md" ]]; then
     oos=$(awk -F'|' '
-        NR < 3 { next }
-        {
-            item=$2; result=$5
+        /^## Findings/ { in_findings=1; next }
+        /^## / && in_findings { in_findings=0 }
+        in_findings && NF >= 7 {
+            item=$2; result=$7
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", item)
             gsub(/^[[:space:]]+|[[:space:]]+$/, "", result)
+            if (result == "" || result ~ /^-+$/) {
+                result=$NF
+                gsub(/^[[:space:]]+|[[:space:]]+$/, "", result)
+            }
             if (item ~ /^OOS_[0-9]+$/ && result == "accepted") c++
         }
         END { print c + 0 }

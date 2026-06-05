@@ -84,8 +84,19 @@ if [ -n "$ISSUE" ] && [ "$ISSUE" != "0" ]; then
 fi
 
 # --- Token + timing JSON (best-effort) ---
-rm -f "$DESIGN_TMPDIR/token-report-final.json" "$DESIGN_TMPDIR/token-report-final.stderr.log" \
-    "$DESIGN_TMPDIR/timing-report-final.json" "$DESIGN_TMPDIR/timing-report-final.stderr.log" 2>/dev/null || true
+_SKIP_TIMING_REGATHER=false
+if [ "$PHASE" = "post" ] && [ -f "$DESIGN_TMPDIR/timing-report-final.json" ] && [ -s "$DESIGN_TMPDIR/timing-report-final.json" ]; then
+    if command -v jq >/dev/null 2>&1 && jq -e . "$DESIGN_TMPDIR/timing-report-final.json" >/dev/null 2>&1; then
+        _SKIP_TIMING_REGATHER=true
+    fi
+fi
+
+if [ "$_SKIP_TIMING_REGATHER" = true ]; then
+    rm -f "$DESIGN_TMPDIR/token-report-final.json" "$DESIGN_TMPDIR/token-report-final.stderr.log" 2>/dev/null || true
+else
+    rm -f "$DESIGN_TMPDIR/token-report-final.json" "$DESIGN_TMPDIR/token-report-final.stderr.log" \
+        "$DESIGN_TMPDIR/timing-report-final.json" "$DESIGN_TMPDIR/timing-report-final.stderr.log" 2>/dev/null || true
+fi
 set +e
 export DESIGN_TMPDIR
 export IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-}"
@@ -98,14 +109,17 @@ if [ "$trc" -ne 0 ] || [ ! -s "$DESIGN_TMPDIR/token-report-final.json" ]; then
     true
 fi
 
-set +e
-LARCH_TIMING_SKILL=design \
-    "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json \
-    --output "$DESIGN_TMPDIR/timing-report-final.json" 2>"$DESIGN_TMPDIR/timing-report-final.stderr.log"
-tmrc=$?
-set -e
-if [ "$tmrc" -ne 0 ] || [ ! -s "$DESIGN_TMPDIR/timing-report-final.json" ]; then
-    true
+if [ "$_SKIP_TIMING_REGATHER" != true ]; then
+    set +e
+    LARCH_TIMING_SKILL=design LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv" \
+        env -u IMPLEMENT_TMPDIR \
+        "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json \
+        --output "$DESIGN_TMPDIR/timing-report-final.json" 2>"$DESIGN_TMPDIR/timing-report-final.stderr.log"
+    tmrc=$?
+    set -e
+    if [ "$tmrc" -ne 0 ] || [ ! -s "$DESIGN_TMPDIR/timing-report-final.json" ]; then
+        true
+    fi
 fi
 
 # --- Duration ---

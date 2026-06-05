@@ -106,6 +106,22 @@ NO_PARENT_JSON="$TMP_BASE/no-parent-round.json"
 LARCH_TEST_TIMING_NOW=30 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$NO_PARENT_LEDGER" --full --format json --output "$NO_PARENT_JSON"
 jq -e '(.per_step[] | has("rounds") | not)' "$NO_PARENT_JSON" >/dev/null
 
+NESTED_LEDGER="$TMP_BASE/nested-child.tsv"
+cat > "$NESTED_LEDGER" <<'EOF'
+v1	mark	0	implement	Step 2 — implementation	-	-	-	-	-	-	-	-
+v1	mark	20	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	round	25	design	design Step 3 — plan review	1	22	30	8	3	2	1	-
+v1	mark	100	implement	Step 3 — checks	-	-	-	-	-	-	-	-
+EOF
+NESTED_JSON="$TMP_BASE/nested-child.json"
+LARCH_TEST_TIMING_NOW=110 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$NESTED_LEDGER" --full --format json --output "$NESTED_JSON"
+jq -e '
+  (.per_step[] | select(.skill == "design" and .step == "design Step 3 — plan review") | .rounds == [
+    {"round":1,"duration_seconds":8,"accepted":3,"rejected":2,"oos":1}
+  ]) and
+  (.per_step[] | select(.skill == "implement" and .step == "Step 2 — implementation") | has("rounds") | not)
+' "$NESTED_JSON" >/dev/null
+
 V2_DIR="$TMP_BASE/design-v2"
 mkdir -p "$V2_DIR"
 V2_LEDGER="$V2_DIR/timing.tsv"

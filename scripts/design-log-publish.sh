@@ -301,7 +301,7 @@ design_artifact_excluded() {
         esac
     fi
     case "$name" in
-        .design-log-publish-metadata.env|larch-quiet-*-*.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt)
+        .design-log-publish-metadata.env|larch-quiet-*-*.log|*.sidecar|*.dirty-tree|*.untracked-baseline|*.done|*.diag|*.events.jsonl|*-output.txt.prompt|*-output-*.txt.prompt|timing-report-final.stderr.log|timing-report-final.failure.log)
             return 0
             ;;
     esac
