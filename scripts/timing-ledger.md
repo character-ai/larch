@@ -37,3 +37,5 @@ Task-kind validation sources `scripts/lib-timing-kinds.sh`. Unknown but syntacti
 Known v1 limitation: direct `scripts/run-external-agent.sh` call sites do not emit vendor timing rows; only the six launch wrappers call `record-vendor-task`.
 
 Regression harness: `scripts/test-timing-ledger.sh` (sibling stub `scripts/test-timing-ledger.md`); wired into `make lint` via the `test-timing-ledger` Makefile target (shard `test-harnesses-4`).
+
+Round rows: `record-round --skill implement|design --step LABEL --round N --start-s S --end-s E --accepted N --rejected N [--oos N]` writes additive `type=round` rows. Columns stay fixed at 13: `v1 round ts skill step round start_s end_s duration_s accepted rejected oos-or- -`. Negative durations are clamped to zero; invalid skill/uint fields are rejected with a warning and the script still exits best-effort.

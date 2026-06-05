@@ -1706,6 +1706,8 @@ _implement_round_body() {
     IRF_LAST_CODER_STATUS="$coder_status"
     IRF_LAST_SKIPPED="${skipped_finding_count:-0}"
     IRF_LAST_FIX_COUNT="${coder_input_count:-0}"
+    IRF_LAST_ACCEPTED_COUNT="$accepted_count"
+    IRF_LAST_REJECTED_COUNT="$rejected_count"
     IRF_LAST_ROUND_DIR="$round_dir"
     IRF_LAST_ACCEPTED_FILE="$accepted_file"
     IRF_LAST_FILES_HINT="${coder_commit_sha:-}"

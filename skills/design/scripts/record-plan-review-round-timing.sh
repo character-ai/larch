@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+# record-plan-review-round-timing.sh — Deferred /design plan-review round timing row writer.
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
+# shellcheck source=scripts/lib-quiet.sh
+source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
+larch_quiet_init
+
+warn() {
+    larch_err "record-plan-review-round-timing.sh: WARNING: $*"
+}
+
+usage() {
+    warn 'Usage: record-plan-review-round-timing.sh --design-tmpdir PATH --round N --start-s S --end-s E'
+}
+
+DESIGN_TMPDIR_ARG=""
+ROUND_NUM=""
+START_S=""
+END_S=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --design-tmpdir) DESIGN_TMPDIR_ARG="${2:?--design-tmpdir requires a value}"; shift 2 ;;
+        --round) ROUND_NUM="${2:?--round requires a value}"; shift 2 ;;
+        --start-s) START_S="${2:?--start-s requires a value}"; shift 2 ;;
+        --end-s) END_S="${2:?--end-s requires a value}"; shift 2 ;;
+        -h|--help) usage; exit 0 ;;
+        *) warn "unknown option: $1"; usage; exit 2 ;;
+    esac
+done
+
+case "$ROUND_NUM" in ''|*[!0-9]*) warn '--round must be a non-negative integer'; exit 2 ;; esac
+case "$START_S" in ''|*[!0-9]*) warn '--start-s must be a non-negative integer'; exit 2 ;; esac
+case "$END_S" in ''|*[!0-9]*) warn '--end-s must be a non-negative integer'; exit 2 ;; esac
+[[ -n "$DESIGN_TMPDIR_ARG" && -d "$DESIGN_TMPDIR_ARG" && ! -L "$DESIGN_TMPDIR_ARG" ]] || { warn '--design-tmpdir must name a directory'; exit 2; }
+
+DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
+accepted=0
+rejected=0
+oos=0
+if [[ -s "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]; then
+    accepted=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)
+fi
+if [[ -s "$DESIGN_TMPDIR/rejected-findings.md" ]]; then
+    rejected=$(grep -cE '^### \[Plan Review\] FINDING_[0-9]+' "$DESIGN_TMPDIR/rejected-findings.md" 2>/dev/null || true)
+fi
+if [[ -s "$DESIGN_TMPDIR/voting-tally.md" ]]; then
+    oos=$(awk -F'|' '
+        NR < 3 { next }
+        {
+            item=$2; result=$5
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", item)
+            gsub(/^[[:space:]]+|[[:space:]]+$/, "", result)
+            if (item ~ /^OOS_[0-9]+$/ && result == "accepted") c++
+        }
+        END { print c + 0 }
+    ' "$DESIGN_TMPDIR/voting-tally.md")
+fi
+[[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
+[[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
+[[ "$oos" =~ ^[0-9]+$ ]] || oos=0
+
+export DESIGN_TMPDIR
+export LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv"
+export LARCH_TIMING_SKILL=design
+"$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round \
+    --skill design \
+    --step "design Step 3 — plan review" \
+    --round "$((10#$ROUND_NUM))" \
+    --start-s "$START_S" \
+    --end-s "$END_S" \
+    --accepted "$accepted" \
+    --rejected "$rejected" \
+    --oos "$oos" || true

@@ -211,6 +211,42 @@ refresh_designed_admission_ready() {
     fi
 }
 
+
+render_fresh_timing_report_for_publish() {
+    local _tmp_dir _tmp_json _tmp_stderr _render_rc=0 _existing
+    _tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/larch-design-timing-report.XXXXXX") || {
+        add_warn '**⚠ 5c: failed to create temporary directory for timing report render.**'
+        return 0
+    }
+    _tmp_json="$_tmp_dir/timing-report-final.json"
+    _tmp_stderr="$_tmp_dir/timing-report-final.stderr.log"
+    for _existing in "$DESIGN_TMPDIR"/timing-report-final.*; do
+        [[ -e "$_existing" ]] || continue
+        rm -f "$_existing" 2>/dev/null || true
+    done
+    set +e
+    LARCH_TIMING_SKILL=design DESIGN_TMPDIR="$DESIGN_TMPDIR" \
+        "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json --output "$_tmp_json" > /dev/null 2>"$_tmp_stderr"
+    _render_rc=$?
+    set -e
+    if [[ "$_render_rc" -eq 0 && -s "$_tmp_json" ]] && { ! command -v jq >/dev/null 2>&1 || jq -e . "$_tmp_json" >/dev/null 2>>"$_tmp_stderr"; }; then
+        mv -f "$_tmp_json" "$DESIGN_TMPDIR/timing-report-final.json"
+        rm -rf "$_tmp_dir"
+        return 0
+    fi
+    rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
+    "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
+        --log "$DESIGN_TMPDIR/execution-issues.md" \
+        --site "design Step 5c timing-report" \
+        --tool "timing-report.sh" \
+        --exit-code "${_render_rc:-1}" \
+        --category Warnings \
+        --output-file "$_tmp_stderr" \
+        --redact >/dev/null 2>&1 || true
+    add_warn '**⚠ 5c: failed to render fresh timing-report-final.json before publishing design logs.**'
+    rm -rf "$_tmp_dir"
+}
+
 write_result_env_and_emit() {
     local -a _kvs=()
     refresh_designed_admission_ready
@@ -392,6 +428,7 @@ if [[ -n "$SESSION_ID" ]]; then
 fi
 
 if [[ -n "$SESSION_ID" ]]; then
+    render_fresh_timing_report_for_publish
     rm -f "$FINAL_SUMMARY_PATH" 2>/dev/null || true
     set +e
     _publish_out=$("$PLUGIN_ROOT/scripts/design-log-publish.sh" \

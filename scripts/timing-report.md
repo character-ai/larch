@@ -26,3 +26,5 @@ Duration rules:
 The renderer is shell/awk-only and has no `jq` dependency. It skips rows whose first column is not `v1`, and warns to stderr when a `v1` row does not have exactly 13 columns.
 
 Regression harness: `scripts/test-timing-report.sh` (sibling stub `scripts/test-timing-report.md`); wired into `make lint` via the `test-timing-report` Makefile target (shard `test-harnesses-4`).
+
+JSON full reports now attach best-effort `rounds` arrays to matching per-step entries when `round` ledger rows match the entry skill, exact step label, and `[start,end)` interval. Implement rounds include `round`, `duration_seconds`, `accepted`, and `rejected`; design rounds add `oos` when numeric. Markdown, `--summary`, and `--terse` output are unchanged.

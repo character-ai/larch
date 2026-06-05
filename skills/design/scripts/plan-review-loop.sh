@@ -180,6 +180,7 @@ write_empty_review_artifacts() {
     : > "$DESIGN_TMPDIR/accepted-plan-findings.md"
     : > "$DESIGN_TMPDIR/rejected-findings.md"
     : > "$DESIGN_TMPDIR/oos.md"
+    : > "$DESIGN_TMPDIR/oos-accepted-design.md"
     {
         printf '# Plan Review Voting Tally\n\n'
         printf '%s\n' "$tally_note"
@@ -402,8 +403,48 @@ _snapshot_round_dir() {
     rm -rf "$tmp"
 }
 
+
+_plan_round_now_s() {
+    date +%s
+}
+
+_plan_round_start_path() {
+    local round_num="$1"
+    printf '%s/plan-review/round-%s/round-start-s' "$DESIGN_TMPDIR" "$round_num"
+}
+
+_persist_plan_round_start() {
+    local round_num="$1" start_s="$2" path
+    path=$(_plan_round_start_path "$round_num")
+    mkdir -p "$(dirname "$path")"
+    if [[ ! -e "$path" ]]; then
+        printf '%s\n' "$start_s" > "$path" 2>/dev/null || true
+    fi
+}
+
+_emit_plan_round_timing_row() {
+    local round_num="$1" start_s="$2" end_s="$3"
+    local guard_var="PLAN_ROUND_${round_num}_TIMING_EMITTED"
+    if [[ "${!guard_var:-}" == "true" ]]; then
+        return 0
+    fi
+    printf -v "$guard_var" '%s' true
+    [[ "$start_s" =~ ^[0-9]+$ ]] || return 0
+    [[ "$end_s" =~ ^[0-9]+$ ]] || return 0
+    "$SCRIPT_DIR/record-plan-review-round-timing.sh" \
+        --design-tmpdir "$DESIGN_TMPDIR" \
+        --round "$round_num" \
+        --start-s "$start_s" \
+        --end-s "$end_s" || true
+}
+
 _snapshot_terminal_exit_preserving_status() {
     local round_num="$1" rc="$2" summary_revise="$3"
+    if [[ "${LOOP_STATUS:-}" == "main-agent-vote-required" ]]; then
+        _persist_plan_round_start "$round_num" "${_round_start:-}"
+    else
+        _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
+    fi
     if ! _snapshot_round_dir "$round_num"; then
         emit_kv WARN "plan-review-snapshot: round-${round_num} snapshot failed after terminal status ${LOOP_STATUS:-unknown}"
         LOOP_REASON="${LOOP_REASON:+${LOOP_REASON},}snapshot-failed"
@@ -1412,6 +1453,7 @@ return 0
 
 # --- Legacy single-pass (no --round-cap on argv) ---
 if (( ROUND_CAP_ARG_SEEN == 0 )); then
+    _round_start=$(_plan_round_now_s)
     set +e
     _run_plan_review_round "$ROUND_NUM"
     _round_rc=$?
@@ -1419,14 +1461,17 @@ if (( ROUND_CAP_ARG_SEEN == 0 )); then
     if (( _round_rc != 0 )); then
         LOOP_STATUS=panel-failed
         IMPORTANT_ACCEPTED_COUNT=0
+        _emit_plan_round_timing_row "$ROUND_NUM" "${_round_start:-}" "$(_plan_round_now_s)"
         _terminal_exit 1 "$ROUND_NUM"
     fi
     IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
     _count_collector_evidence
     if [[ "$TALLY_PLAN_REVIEW_STATUS" == "main-agent-vote-required" ]]; then
         LOOP_STATUS=main-agent-vote-required
+        _persist_plan_round_start "$ROUND_NUM" "${_round_start:-}"
     else
         LOOP_STATUS=complete
+        _emit_plan_round_timing_row "$ROUND_NUM" "${_round_start:-}" "$(_plan_round_now_s)"
     fi
     _terminal_exit 0 "$ROUND_NUM"
 fi
@@ -1448,6 +1493,7 @@ while (( round_num <= ROUND_CAP )); do
     else
         rm -f "$_prior_cum_oos"
     fi
+    _round_start=$(_plan_round_now_s)
     set +e
     _run_plan_review_round "$round_num"
     _round_rc=$?
@@ -1473,9 +1519,11 @@ while (( round_num <= ROUND_CAP )); do
         _count_collector_evidence
         if ! _snapshot_round_dir "$round_num"; then
             LOOP_REASON=snapshot-failed
+            _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
             _write_round_summary "$round_num" panel-failed snapshot-failed skipped
             _terminal_exit 1 "$round_num"
         fi
+        _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
         _write_round_summary "$round_num" panel-failed panel-failed skipped
         _terminal_exit 1 "$round_num"
     fi
@@ -1582,6 +1630,7 @@ while (( round_num <= ROUND_CAP )); do
         _terminal_exit 0 "$round_num"
     fi
 
+    _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
     _write_round_summary "$round_num" "" "" "${revise_status:-ok}"
     round_num=$((round_num + 1))
 done

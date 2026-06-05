@@ -38,3 +38,5 @@ Hardcoded downstream flag:
 Exceptions: none. Missing, empty, or unreadable `$IMPLEMENT_TMPDIR/plan.txt` (or an unreadable session env) is a launcher error.
 
 Harness: `scripts/test-run-step5-review.sh`.
+
+Loop resumes with `--starting-round > 1` emit a timing-only `Step 5 — code review` mark before invoking `review-and-fix.sh`, re-establishing a Step 5 interval without writing token-ledger telemetry.

@@ -73,3 +73,5 @@ Orchestrator handoff: `_publish_out` capture + file-first `.design-publish-resul
 ## Recent contract coverage
 
 - Non-zero `design-log-publish.sh` exits are fail-closed even when stdout contains `PUBLISH_OK=true`; empty `SESSION_ID` renders `publish-skipped`.
+
+Before `design-log-publish.sh`, the driver deletes stale top-level `timing-report-final.*` artifacts, renders fresh timing JSON through temporary unpublished paths, atomically moves only validated `timing-report-final.json` into `$DESIGN_TMPDIR`, and logs a warning without publishing stale siblings when render fails.

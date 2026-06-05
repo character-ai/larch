@@ -183,6 +183,19 @@ render_report() {
         vendor_status[vendor_count] = $13
         next
       }
+      row_ok() && $2 == "round" {
+        round_count++
+        round_skill[round_count] = $4
+        round_step[round_count] = $5
+        round_num[round_count] = $6 + 0
+        round_start[round_count] = $7 + 0
+        round_end[round_count] = $8 + 0
+        round_duration[round_count] = $9 + 0
+        round_accepted[round_count] = $10 + 0
+        round_rejected[round_count] = $11 + 0
+        round_oos[round_count] = $12
+        next
+      }
       row_ok() && $2 == "workflow" {
         workflow = $13
         workflow_ts = $3 + 0
@@ -365,9 +378,38 @@ render_report() {
           }
         }
       }
-      function emit_json_step(skill, step, dur, outlier,    comma) {
+      function emit_round_array(skill, step, start, end,    i, j, tmp, mc, ri, comma, oos) {
+        mc = 0
+        for (i = 1; i <= round_count; i++) {
+          if (round_skill[i] == skill && round_step[i] == step && round_start[i] >= start && round_start[i] < end) {
+            match_idx[++mc] = i
+          }
+        }
+        if (mc == 0) return
+        for (i = 1; i <= mc; i++) {
+          for (j = i + 1; j <= mc; j++) {
+            if (round_num[match_idx[i]] > round_num[match_idx[j]]) {
+              tmp = match_idx[i]; match_idx[i] = match_idx[j]; match_idx[j] = tmp
+            }
+          }
+        }
+        printf ",\"rounds\":["
+        for (i = 1; i <= mc; i++) {
+          ri = match_idx[i]
+          comma = i > 1 ? "," : ""
+          printf "%s{\"round\":%d,\"duration_seconds\":%d,\"accepted\":%d,\"rejected\":%d", comma, round_num[ri], round_duration[ri], round_accepted[ri], round_rejected[ri]
+          oos = round_oos[ri]
+          if (skill == "design" && oos ~ /^[0-9]+$/) printf ",\"oos\":%d", oos + 0
+          printf "}"
+        }
+        printf "]"
+        for (i = 1; i <= mc; i++) delete match_idx[i]
+      }
+      function emit_json_step(skill, step, start, end, dur, outlier,    comma) {
         comma = json_step_count++ ? "," : ""
-        printf "%s{\"skill\":%s,\"step\":%s,\"duration_seconds\":%d,\"duration_hms\":%s,\"outlier\":%s}", comma, js(skill), js(step), dur, js(hms(dur)), outlier ? "true" : "false"
+        printf "%s{\"skill\":%s,\"step\":%s,\"duration_seconds\":%d,\"duration_hms\":%s,\"outlier\":%s", comma, js(skill), js(step), dur, js(hms(dur)), outlier ? "true" : "false"
+        emit_round_array(skill, step, start, end)
+        printf "}"
       }
       function emit_json_child_steps(skill, start, end,    i, s, e, dur, step, outlier) {
         for (i = 1; i <= skill_count[skill]; i++) {
@@ -378,7 +420,7 @@ render_report() {
             step = skill_mark_step[skill SUBSEP i]
             dur = e - s
             outlier = dur > outlier_threshold
-            emit_json_step(skill, step, dur, outlier)
+            emit_json_step(skill, step, s, e, dur, outlier)
           }
         }
       }
@@ -394,7 +436,7 @@ render_report() {
             e = (i < skill_count["implement"]) ? skill_mark_ts["implement" SUBSEP (i + 1)] : last_event_ts()
             dur = e - s
             outlier = dur > outlier_threshold
-            emit_json_step("implement", skill_mark_step["implement" SUBSEP i], dur, outlier)
+            emit_json_step("implement", skill_mark_step["implement" SUBSEP i], s, e, dur, outlier)
             emit_json_child_steps("design", s, e)
             emit_json_child_steps("review", s, e)
           }
@@ -406,7 +448,7 @@ render_report() {
             e = (i < mark_count) ? mark_ts[i + 1] : last_event_ts()
             dur = e - mark_ts[i]
             outlier = dur > outlier_threshold
-            emit_json_step(mark_skill[i], mark_step[i], dur, outlier)
+            emit_json_step(mark_skill[i], mark_step[i], mark_ts[i], e, dur, outlier)
           }
         }
         printf "],\"total_seconds\":%d,\"total_hms\":%s,\"vendor_task_averages\":[", total_duration, js(hms(total_duration))
