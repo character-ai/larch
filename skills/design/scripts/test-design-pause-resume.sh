@@ -241,9 +241,11 @@ out_legacy_simple_2a_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-legacy-si
 DESIGN_TMPDIR="$DESIGN_LEGACY_SIMPLE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
 _design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
 if [ "$_design_classification" = SIMPLE ]; then
-  if ! command grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null \
-    || ! command grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null \
-    || [ ! -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then
+  _simple_artifacts_ok=true
+  if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if ( grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
+  if [ "$_simple_artifacts_ok" != true ]; then
     set -e
     printf "%s\n" "NO_SKETCHES_CLASSIFIED_SIMPLE" > "$DESIGN_TMPDIR/approach-synthesis.txt"
     printf "%s\n" "NO_CONTESTED_DECISIONS" > "$DESIGN_TMPDIR/contested-decisions.md"
@@ -332,6 +334,21 @@ out_gate_b=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B" --issue 9 --repo owne
 [[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass plan-size-trigger writes triple sentinels from empty state: $out_gate_b"
 out_gate_b_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-gate-b" --issue 9 --repo owner/repo)
 [[ "$out_gate_b_load" == *"LOAD_OK=true"* && "$out_gate_b_load" == *"STEP=3b"* ]] || fail "gate B bypass empty-state load mismatch: $out_gate_b_load"
+printf '12\n' >"$DESIGN_GATE_B/diff-lines.txt"
+DESIGN_TMPDIR="$DESIGN_GATE_B" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+set +e
+printf "%s\n" "ACTION=FINALIZE" \
+  | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+_finalize_rc=$?
+set -e
+if [ "$_finalize_rc" -ne 0 ]; then
+  printf "%s\n" "**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"
+  exit "$_finalize_rc"
+fi
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-3b"
+'
+[[ -f "$DESIGN_GATE_B/.completed/finalize" && -f "$DESIGN_GATE_B/.completed/step-3b" ]] || fail "gate B bypass Step 3b completion boundary did not write finalize and step-3b markers"
 
 DESIGN_GATE_B_STEP3="$TMP/design-gate-b-step3-only"
 make_design_tmpdir "$DESIGN_GATE_B_STEP3"
@@ -367,6 +384,24 @@ complete_design_steps "$DESIGN_GATE_B_DONE" 3 3.5 3.6
 printf 'issue body gate b done\n' >"$BODY_FILE"
 out_gate_b_done=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_DONE" --issue 9 --repo owner/repo)
 [[ "$out_gate_b_done" == *"PAUSE_OK=true"* && "$out_gate_b_done" == *"STEP=3b"* ]] || fail "gate B triple touch should resume at 3b: $out_gate_b_done"
+set +e
+out_step3b_boundary_fail=$(DESIGN_TMPDIR="$DESIGN_GATE_B_DONE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+set +e
+printf "%s\n" "ACTION=FINALIZE" \
+  | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+_finalize_rc=$?
+set -e
+if [ "$_finalize_rc" -ne 0 ]; then
+  printf "%s\n" "**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"
+  exit "$_finalize_rc"
+fi
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-3b"
+' 2>&1)
+rc_step3b_boundary_fail=$?
+set -e
+[[ "$rc_step3b_boundary_fail" -ne 0 ]] || fail "fresh Step 3b FINALIZE failure boundary should exit non-zero"
+[[ "$out_step3b_boundary_fail" == *"**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"* ]] || fail "fresh Step 3b FINALIZE failure warning missing: $out_step3b_boundary_fail"
 
 echo "=== body drift warns and continues ==="
 make_design_tmpdir "$DESIGN"

@@ -97,7 +97,7 @@ extract_first_bash_fence_after() {
 }
 
 assert_step2a_entry_simple_guard() {
-  local tmp guard_line closing_fi_line first_artifact_line last_artifact_line first_completion_line completion_line
+  local tmp guard_line closing_fi_line first_artifact_line last_artifact_line first_completion_line completion_line artifact_line
   tmp=$(mktemp "${TMPDIR:-/tmp}/step2a-entry.XXXXXX")
   extract_first_bash_fence_after "$SKILL_MD" '<!-- step:2a —' >"$tmp"
   grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh' "$tmp" \
@@ -130,6 +130,16 @@ assert_step2a_entry_simple_guard() {
     (( guard_line < completion_line && completion_line < closing_fi_line )) \
       || fail 'Step 2a entry fence completion markers must stay inside the SIMPLE guard'
   done < <(grep -nF ': > "$DESIGN_TMPDIR/.completed/step-2a' "$tmp")
+  for _artifact in \
+    "NO_SKETCHES_CLASSIFIED_SIMPLE" \
+    "NO_CONTESTED_DECISIONS" \
+    ': > "$DESIGN_TMPDIR/dialectic-resolutions.md"'
+  do
+    artifact_line=$(grep -nF "$_artifact" "$tmp" | head -1 | cut -d: -f1)
+    [[ -n "$artifact_line" ]] || fail "Step 2a entry fence missing SIMPLE artifact write: $_artifact"
+    (( guard_line < artifact_line && artifact_line < closing_fi_line )) \
+      || fail 'Step 2a entry fence SIMPLE artifact writes must stay inside the SIMPLE guard'
+  done
   rm -f "$tmp"
 }
 
@@ -160,6 +170,8 @@ assert_step3b_finalize_boundary() {
     || fail 'Step 3b completion boundary must invoke design-driver.sh'
   grep -Fq 'exit "$_finalize_rc"' <<<"$step3b_between" \
     || fail 'Step 3b FINALIZE failure branch must exit non-zero'
+  grep -Fq '**⚠ FINALIZE failed; repair the missing artifact before Step 5.**' <<<"$step3b_between" \
+    || fail 'Step 3b FINALIZE failure branch must print repair warning'
   grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3b"' <<<"$step3b_between" \
     || fail 'Step 3b completion boundary must write step-3b after FINALIZE'
   action_line=$(grep -nF 'ACTION=FINALIZE' <<<"$step3b_between" | head -1 | cut -d: -f1)
@@ -181,6 +193,8 @@ assert_step3b_finalize_boundary() {
     || fail 'Step 4 compatibility FINALIZE missing _finalize_rc capture'
   grep -Fq 'exit "$_finalize_rc"' <<<"$step4_between" \
     || fail 'Step 4 compatibility FINALIZE failure branch must exit non-zero'
+  grep -Fq '**⚠ FINALIZE failed; repair the missing artifact before Step 5.**' <<<"$step4_between" \
+    || fail 'Step 4 compatibility FINALIZE failure branch must print repair warning'
 }
 
 assert_no_direct_step3b_step4_routes() {
@@ -936,7 +950,7 @@ assert_step3b_finalize_boundary
 assert_step2a_entry_simple_guard
 assert_simple_branch_has_no_sentinel_fence
 assert_no_direct_step3b_step4_routes 'SKILL Step 3b slice' "$SKILL_MD" '<!-- step:3b' '<!-- step:4 —'
-assert_no_direct_step3b_step4_routes 'SKILL Step 3 Gate-B-bypass slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.5'
+assert_no_direct_step3b_step4_routes 'SKILL Step 3/Gate-B-bypass/Gate B slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.6'
 assert_no_direct_step3b_step4_routes 'approval-gates.md' "$APPROVAL_MD"
 assert_no_direct_step3b_step4_routes 'run-step3-review.sh' "$RUN_STEP3_SH"
 assert_no_direct_step3b_step4_routes 'run-step3-review.md' "$RUN_STEP3_MD"

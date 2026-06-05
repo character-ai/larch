@@ -28,4 +28,4 @@ The harness now pins FINALIZE to the Step 3b completion-boundary region for fres
 
 SIMPLE sentinel writes are pinned to the Step 2a entry fence behind the `design_classification == SIMPLE` guard. The assertions check branch-scoped sentinel writes, fail-fast `set -e`, and completion markers written only after all three SIMPLE artifacts succeed; the `### SIMPLE branch` subsection must not contain its own sentinel Bash block.
 
-The Step 3b, Gate-B-bypass, `approval-gates.md`, `flags.md`, `configuration-and-permissions.md`, and `run-step3-review.sh` routing checks are line-scoped. They reject direct Step 3b-to-Step 4 routes, including comma and spaced-slash shorthand variants, unless the same line names the Step 3b completion boundary.
+The Step 3b, Step 3/Gate-B-bypass/Gate B, `approval-gates.md`, `flags.md`, `configuration-and-permissions.md`, `skills/design/references/plan-review.md`, `run-step3-review.sh`, and `run-step3-review.md` routing checks are line-scoped. They reject direct Step 3b-to-Step 4 routes, including comma and spaced-slash shorthand variants, unless the same line names the Step 3b completion boundary.
