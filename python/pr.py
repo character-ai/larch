@@ -36,6 +36,7 @@ def ensure_pr(
     *,
     title: str,
     cwd: str | None = None,
+    base: str | None = None,
 ) -> PrResult:
     """Create or reuse an open PR for the current branch."""
     if ctx.repo_unavailable:
@@ -72,6 +73,7 @@ def ensure_pr(
         body=linked_body,
         draft=ctx.draft,
         cwd=cwd,
+        base=base,
     )
     status = "created" if was_created else "existing"
     return PrResult(number=created.number, url=created.url, status=status)

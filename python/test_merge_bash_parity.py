@@ -5,8 +5,6 @@ from __future__ import annotations
 import os
 import shutil
 import subprocess
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -18,6 +16,7 @@ import merge as merge_module
 import run_logs
 from proc import CommandResult
 from run_context import RunContext
+from test_support import RecordingRunner
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 MERGE_SH = REPO_ROOT / "scripts" / "merge-pr.sh"
@@ -46,39 +45,6 @@ def _mock_ensure_head_behind(*_a: object, **_k: object) -> gh.MergeState:
 
 def _mock_version_gate_none(*_a: object, **_k: object) -> None:
     return None
-
-
-def _empty_str_lists() -> list[list[str]]:
-    return []
-
-
-def _empty_command_results() -> list[CommandResult]:
-    return []
-
-
-@dataclass
-class RecordingRunner:
-    calls: list[list[str]] = field(default_factory=_empty_str_lists)
-    responses: list[CommandResult] = field(default_factory=_empty_command_results)
-    _index: int = 0
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
-    ) -> CommandResult:
-        self.calls.append(list(argv))
-        if self._index >= len(self.responses):
-            return CommandResult(tuple(argv), 0, "", "", 0.01)
-        result = self.responses[self._index]
-        self._index += 1
-        return result
 
 
 def test_python_merge_behind_emits_admin_merged(

@@ -190,7 +190,7 @@ def _gh_pr_checks(
 
 
 def _warn_stderr(message: str) -> None:
-    logging_util.BreadcrumbWriter().emit(message, quiet=False)
+    logging_util.BreadcrumbWriter().emit(message)
 
 
 def _behind_count(

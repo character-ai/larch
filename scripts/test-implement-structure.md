@@ -35,3 +35,5 @@ backtick key identifiers in the `skills/implement/SKILL.md` “Required keys” 
 strictly between the HTML comment anchors `<!-- write-initial-state-keys:begin -->` and
 `<!-- write-initial-state-keys:end -->`. Missing either marker or extracting fewer than
 20 keys on either side fails closed so accidental parser or doc drift is caught early.
+
+The harness pins the Python Step 8+ cutover contract: stdout JSON plus `finalize-state.sh` stall/PR reads, scoped `ship-pr-state.sh` reads for orchestrator-only keys, Exit 3 `needs_user_reason` / `failed_run_id` JSON dispatch, Exit 4 JSON-only fallback when `finalize-state.sh` is absent, Exit 0/OOS Python reinvocation without `--resume-phase`, the Python-fence `--no-logs-commit` parity flag, and `restore-finalize-state.sh` preservation when `ship-pr-state.sh` seeds `STALL_TRACKING=false`.

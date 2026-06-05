@@ -14,6 +14,8 @@ from typing import Any, TextIO
 import config
 import redact
 
+_self_initialized_quiet = False
+
 
 def _env_truthy(name: str) -> bool:
     return os.environ.get(name, "").lower() in {
@@ -36,6 +38,65 @@ def _quiet_active() -> bool:
     )
 
 
+def _clear_quiet_env() -> None:
+    _ = os.environ.pop(config.ENV_LARCH_QUIET_ACTIVE, None)
+    _ = os.environ.pop(config.ENV_LARCH_QUIET_PID, None)
+
+
+def quiet_init(*, argv0: str | None = None) -> None:
+    """Initialize lib-quiet-style stdout/stderr routing for this process."""
+    global _self_initialized_quiet  # noqa: PLW0603
+    if _quiet_disabled():
+        return
+    active_pid = os.environ.get(config.ENV_LARCH_QUIET_PID, "")
+    if _env_truthy(config.ENV_LARCH_QUIET_ACTIVE) and not active_pid:
+        return
+    if active_pid == str(os.getpid()):
+        return
+    tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not tmpdir or not Path(tmpdir).is_dir():
+        tmpdir = os.environ.get("TMPDIR", "")
+    if not tmpdir or not Path(tmpdir).is_dir():
+        tmpdir = "/tmp"  # noqa: S108 - lib-quiet parity fallback
+    script = Path(argv0 or (sys.argv[0] if sys.argv else "ship.py")).name or "ship.py"
+    log_file = os.environ.get(config.ENV_LARCH_QUIET_LOG_FILE, "") or config.PATH_QUIET_LOG_TEMPLATE.format(
+        tmpdir=tmpdir,
+        script=script,
+        pid=os.getpid(),
+    )
+    try:
+        path = Path(log_file)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8"):
+            pass
+        _ = os.dup2(1, 3)
+        _ = os.dup2(2, 4)
+        log_fd = os.open(path, os.O_WRONLY | os.O_APPEND)
+        try:
+            _ = os.dup2(log_fd, 1)
+            _ = os.dup2(log_fd, 2)
+        finally:
+            os.close(log_fd)
+    except OSError:
+        _clear_quiet_env()
+        _self_initialized_quiet = False
+        return
+    os.environ[config.ENV_LARCH_QUIET_ACTIVE] = "1"
+    os.environ[config.ENV_LARCH_QUIET_PID] = str(os.getpid())
+    os.environ[config.ENV_LARCH_QUIET_LOG_FILE] = log_file
+    _self_initialized_quiet = True
+
+
+def contract_stream() -> TextIO:
+    """Return the contract stream: original stdout fd 3 after self quiet init."""
+    if _self_initialized_quiet:
+        try:
+            return os.fdopen(os.dup(3), "w", encoding="utf-8", closefd=True)
+        except OSError:
+            return sys.stdout
+    return sys.stdout
+
+
 @dataclass
 class BreadcrumbWriter:
     """Progress breadcrumbs; honor lib-quiet routing when LARCH_QUIET_ACTIVE is set."""
@@ -49,9 +110,10 @@ class BreadcrumbWriter:
             routed = False
             log_file = os.environ.get(config.ENV_LARCH_QUIET_LOG_FILE, "")
             if log_file:
-                with Path(log_file).open("a", encoding="utf-8") as handle:
-                    _ = handle.write(line)
-                routed = True
+                with suppress(OSError):
+                    with Path(log_file).open("a", encoding="utf-8") as handle:
+                        _ = handle.write(line)
+                    routed = True
             with suppress(OSError):
                 _ = os.write(4, line.encode("utf-8"))
                 routed = True

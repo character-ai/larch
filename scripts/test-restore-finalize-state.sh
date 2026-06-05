@@ -242,6 +242,19 @@ assert_file_line "$tmp/finalize-state.sh" "STALL_TRACKING=false" "empty restore 
 assert_file_line "$tmp/finalize-state.sh" "BAIL_NEEDS_USER_INPUT=false" "empty restore defaults BAIL_NEEDS_USER_INPUT"
 assert_file_line "$tmp/finalize-state.sh" "DONE_RENAME_APPLIED=false" "empty restore defaults DONE_RENAME_APPLIED"
 
+tmp=$(make_tmpdir)
+write_complete_state "$tmp/ship-pr-state.sh"
+awk '/^STALL_TRACKING=/ { print "STALL_TRACKING=false"; next } /^STALL_STEP=/ { print "STALL_STEP="; next } { print }' "$tmp/ship-pr-state.sh" > "$tmp/ship-pr-state.false-stall" \
+    && mv "$tmp/ship-pr-state.false-stall" "$tmp/ship-pr-state.sh"
+cat > "$tmp/finalize-state.sh" <<'STATE'
+STALL_TRACKING=true
+STALL_STEP=gap-fill
+STATE
+rc=$(run_subject "$tmp" "$tmp/stdout-stall-preserve" "$tmp/stderr-stall-preserve")
+assert_rc "$rc" 0 "existing finalize stall metadata restore succeeds"
+assert_file_line "$tmp/finalize-state.sh" "STALL_TRACKING=true" "restore preserves existing STALL_TRACKING=true over ship-pr false"
+assert_file_line "$tmp/finalize-state.sh" "STALL_STEP=gap-fill" "restore preserves existing STALL_STEP over ship-pr empty"
+
 if [ "$FAIL" -ne 0 ]; then
     echo "FAIL: $FAIL failed, $PASS passed"
     exit 1

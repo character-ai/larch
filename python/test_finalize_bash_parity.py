@@ -13,7 +13,7 @@ import pytest
 
 import finalize
 from run_context import RunContext
-from test_finalize import RecordingRunner
+from test_support import RecordingRunner
 
 
 pytestmark = pytest.mark.skipif(
@@ -37,7 +37,6 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
         no_admin_fallback=False,
         repo_unavailable=False,
         pr_number=2,
-        branch_name="feat",
         pr_title="Title",
         issue_number="1",
     )

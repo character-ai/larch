@@ -1,4 +1,4 @@
-# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false
+# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false
 """Tests for ship.py."""
 
 from __future__ import annotations
@@ -7,8 +7,7 @@ import json
 import os
 import shutil
 import subprocess
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -24,27 +23,7 @@ from proc import CommandResult
 from run_context import RunContext
 
 
-def _empty_calls() -> list[list[str]]:
-    return []
-
-
-@dataclass
-class RecordingRunner:
-    calls: list[list[str]] = field(default_factory=_empty_calls)
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
-    ) -> CommandResult:
-        self.calls.append(list(argv))
-        return CommandResult(tuple(argv), 0, "", "", 0.01)
+from test_support import RecordingRunner
 
 
 def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
@@ -181,7 +160,7 @@ def test_happy_path_stage_order(
     assert "ship.py: checks:" in captured.err
     assert "ship.py: pr-prep:" in captured.err
     assert "ship.py: pr-create:" in captured.err
-    assert "ship.py: ci:" in captured.err
+    assert "ship.py: ci:" not in captured.err
     assert "ship.py: merge" in captured.err
     assert "ship.py: post-merge" in captured.err
 
@@ -643,7 +622,7 @@ def test_main_emits_json_stdout_on_unexpected_exception(
     assert rc == config.EXIT_INTERNAL_ERROR
     payload = json.loads(captured.out)
     assert payload["outcome"] == "INTERNAL_ERROR"
-    assert payload["detail"] == "internal error"
+    assert payload["detail"] == "RuntimeError: unexpected failure"
     assert captured.out.count("\n") == 1
     assert "internal error" in captured.err
     assert "Traceback" in captured.err
@@ -698,3 +677,79 @@ exit 0
     assert completed.returncode == 4
     assert '"outcome":"STALLED"' in completed.stdout
     assert "Python ship driver requires Python 3.11 or newer" in completed.stderr
+
+
+def test_version_supported_gate() -> None:
+    assert ship._version_supported((3, 11))  # pylint: disable=protected-access
+    assert not ship._version_supported((3, 10))  # pylint: disable=protected-access
+
+
+def test_main_argparse_failure_emits_internal_error(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = ship.main(["--unknown-flag"])
+    assert rc == 1
+    captured = capsys.readouterr()
+    payload = json.loads(captured.out)
+    assert payload["outcome"] == "INTERNAL_ERROR"
+    assert "argparse failed" in payload["detail"]
+    assert "usage:" in captured.err
+
+
+def test_main_help_has_no_json(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = ship.main(["--help"])
+    assert rc == 0
+    captured = capsys.readouterr()
+    assert "Run the Python ship-pr driver" in captured.out
+    assert '"outcome"' not in captured.out
+
+
+def test_emit_result_prints_before_journal_failure(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    class FailingJournal:
+        def __init__(self, *_args: object) -> None:
+            pass
+
+        def append(self, *_args: object, **_kwargs: object) -> object:
+            raise OSError("journal blocked")
+
+    monkeypatch.setattr(ship.logging_util, "JsonlJournal", FailingJournal)
+    ctx = _ctx(tmp_path)
+    ship.emit_result(ctx, ship.ShipResult(Outcome.OK, pr_number=1, pr_url="u"))
+    captured = capsys.readouterr()
+    assert json.loads(captured.out)["outcome"] == "OK"
+    assert "journal append skipped" in captured.err
+
+
+def test_emit_result_skips_journal_on_invalid_tmpdir(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    ctx = _ctx(tmp_path, tmpdir="/not/allowed/larch")
+    ship.emit_result(ctx, ship.ShipResult(Outcome.STALLED, detail="invalid tmpdir"))
+    assert json.loads(capsys.readouterr().out)["outcome"] == "STALLED"
+    assert not Path("/not/allowed/larch").exists()
+
+
+def test_persist_stall_metadata_gap_fill_preserves_custom_key(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path, pr_number=2, pr_url="u")
+    target = tmp_path / "finalize-state.sh"
+    finalize_data = {"CUSTOM_PIN": "keep", "PR_NUMBER": "7"}
+    ship.finalize.write_finalize_state_merged(target, finalize_data)
+    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="merge failed"), tmp_path)  # pylint: disable=protected-access
+    data = ship.finalize.read_finalize_state(target)
+    assert data["CUSTOM_PIN"] == "keep"
+    assert data["PR_NUMBER"] == "7"
+    assert data["STALL_TRACKING"] == "true"
+
+
+def test_persist_stall_metadata_uses_state_file_before_ctx(tmp_path: Path) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text("PR_NUMBER=44\nPR_URL=https://example.invalid/pr/44\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, pr_number=None, pr_url="", state_file=str(state))
+    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="rebase stalled"), tmp_path)  # pylint: disable=protected-access
+    data = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
+    assert data["PR_NUMBER"] == "44"
+    assert data["PR_URL"] == "https://example.invalid/pr/44"
+    assert data["STALL_TRACKING"] == "true"
+
+
+def test_persist_stall_metadata_invalid_tmpdir_is_json_only(tmp_path: Path) -> None:
+    invalid = Path("/not/allowed/larch")
+    ctx = _ctx(tmp_path, tmpdir=str(invalid))
+    ship._persist_stall_metadata_if_needed(ctx, ship.ShipResult(Outcome.STALLED, detail="invalid tmpdir"), invalid)  # pylint: disable=protected-access
+    assert not (invalid / "finalize-state.sh").exists()

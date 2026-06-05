@@ -33,3 +33,8 @@ def test_documented_constants_exist() -> None:
     )
     for name in names:
         assert hasattr(config, name)
+
+
+def test_exit_stall_removed_bail_kept() -> None:
+    assert not hasattr(config, "EXIT_STALL")
+    assert config.EXIT_BAIL == 4

@@ -12,6 +12,7 @@ from typing import cast
 import config
 import gh
 import git
+import logging_util
 import redact
 import run_logs
 from errors import ShipError
@@ -167,6 +168,8 @@ def _post_flush(
             result=config.MERGE_RESULT_ERROR,
             error="redaction failed during post-merge run-log flush",
         )
+    if skip.skipped:
+        logging_util.BreadcrumbWriter().emit(f"merge: post-merge flush skipped: {skip.reason}")
     return None
 
 

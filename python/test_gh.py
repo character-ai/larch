@@ -2,8 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -13,39 +12,12 @@ import gh
 from errors import ShipError, TransientNetworkError
 from proc import CommandResult
 
-
-def _empty_str_lists() -> list[list[str]]:
-    return []
-
-
-def _empty_command_results() -> list[CommandResult]:
-    return []
+from test_support import RecordingRunner as _RecordingRunner
 
 
 @dataclass
-class RecordingRunner:
-    calls: list[list[str]] = field(default_factory=_empty_str_lists)
-    responses: list[CommandResult] = field(default_factory=_empty_command_results)
-    _index: int = 0
-
-    def run(
-        self,
-        argv: Sequence[str],
-        *,
-        timeout: float | None = None,  # pylint: disable=unused-argument
-        cwd: str | None = None,  # pylint: disable=unused-argument
-        env: Mapping[str, str] | None = None,  # pylint: disable=unused-argument
-        check: bool = False,  # pylint: disable=unused-argument
-        stdout: int | None = None,  # pylint: disable=unused-argument
-        stderr: int | None = None,  # pylint: disable=unused-argument
-    ) -> CommandResult:
-        self.calls.append(list(argv))
-        if self._index >= len(self.responses):
-            msg = f"no response for call {argv}"
-            raise AssertionError(msg)
-        result = self.responses[self._index]
-        self._index += 1
-        return result
+class RecordingRunner(_RecordingRunner):
+    strict: bool = True
 
 
 def test_pr_view_parses_json() -> None:

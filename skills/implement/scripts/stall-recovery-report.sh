@@ -565,8 +565,9 @@ latest_attempt_signature() {
 
 cmd_classify() {
     local tmpdir="" in_memory="" bail_arg="" detail_log="" attempts_file=""
-    local state_file session_env evidence="" detail_log_valid=false
+    local state_file finalize_file session_env evidence="" detail_log_valid=false
     local state_stall_step="" state_phase="" state_stall_tracking="" state_bail_reason="" state_exit_code=""
+    local finalize_stall_step="" finalize_stall_tracking="" finalize_exit_code=""
     local session_stall_step="" session_phase="" session_stall_tracking="" session_bail_reason="" session_exit_code=""
     local stall_step phase stall_tracking bail_reason exit_code failure_class signature resume_hint last_sig
 
@@ -587,6 +588,7 @@ cmd_classify() {
     fi
 
     state_file="$tmpdir/ship-pr-state.sh"
+    finalize_file="$tmpdir/finalize-state.sh"
     session_env="$tmpdir/session-env.sh"
     if [ -L "$state_file" ]; then
         larch_err "stall-recovery-report.sh: symlinked ship-pr-state.sh"
@@ -603,6 +605,12 @@ cmd_classify() {
         fi
     fi
 
+    if [ -r "$finalize_file" ]; then
+        finalize_stall_step=$(kv_get "$finalize_file" STALL_STEP "")
+        finalize_stall_tracking=$(kv_get "$finalize_file" STALL_TRACKING "false")
+        finalize_exit_code=$(kv_get "$finalize_file" EXIT_CODE "")
+    fi
+
     if [ -r "$session_env" ]; then
         session_stall_step=$(kv_get "$session_env" STALL_STEP "")
         session_phase=$(kv_get "$session_env" PHASE "")
@@ -611,14 +619,16 @@ cmd_classify() {
         session_exit_code=$(kv_get "$session_env" EXIT_CODE "")
     fi
 
-    stall_step=$(first_nonempty "$state_stall_step" "$session_stall_step")
+    stall_step=$(first_nonempty "$state_stall_step" "$finalize_stall_step" "$session_stall_step")
     phase=$(first_nonempty "$state_phase" "$session_phase")
     bail_reason=$(first_nonempty "$bail_arg" "$state_bail_reason" "$session_bail_reason")
-    exit_code=$(first_nonempty "$state_exit_code" "$session_exit_code")
+    exit_code=$(first_nonempty "$state_exit_code" "$finalize_exit_code" "$session_exit_code")
     stall_tracking=false
     if truthy "$in_memory"; then
         stall_tracking=true
     elif truthy "$state_stall_tracking"; then
+        stall_tracking=true
+    elif truthy "$finalize_stall_tracking"; then
         stall_tracking=true
     elif truthy "$session_stall_tracking"; then
         stall_tracking=true
@@ -632,6 +642,10 @@ cmd_classify() {
     if [ "$detail_log_valid" != true ] && [ -r "$state_file" ]; then
         evidence="$evidence
 $(cat "$state_file")"
+    fi
+    if [ "$detail_log_valid" != true ] && [ -r "$finalize_file" ]; then
+        evidence="$evidence
+$(cat "$finalize_file")"
     fi
     if [ "$detail_log_valid" != true ] && [ -r "$session_env" ]; then
         evidence="$evidence
