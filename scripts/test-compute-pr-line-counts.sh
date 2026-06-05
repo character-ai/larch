@@ -81,7 +81,7 @@ pass 'gh-failed unavailable path'
 
 out_bad_pr=$("$HELPER" --repo 'owner/repo' --pr-number 'not-a-number')
 [ "$(read_kv LINES_STATUS "$out_bad_pr")" = skipped ] || fail 'invalid pr skip status'
-[ "$(read_kv REASON "$out_bad_pr")" = invalid-pr-number ] || fail 'invalid pr skip reason'
+[ "$(read_kv REASON "$out_bad_pr")" = no-pr ] || fail 'invalid pr skip reason'
 pass 'invalid pr-number skip path'
 
 out_bad_repo=$("$HELPER" --repo 'bad repo/name' --pr-number 3)
