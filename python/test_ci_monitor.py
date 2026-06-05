@@ -589,6 +589,8 @@ def _baseline_responses(head: str = "abc123") -> dict[tuple[str, ...], CommandRe
         ("git", "diff", "--name-only", "--cached"): _cr(("git", "diff"), stdout=""),
         ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout=f"{head}\n"),
         ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
+        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
     }
     out.update(_python_toolchain_stubs())
     return out
@@ -653,6 +655,166 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
     )
     assert fix.status == "pushed"
     assert launch_calls == ["codex"]
+
+
+def test_stage_and_push_defer_rebase_uses_rebase_push_wrapper(tmp_path: Any) -> None:
+    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    rebase_script = str(SCRIPTS_DIR / "rebase-push.sh")
+    responses = {
+        ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): _cr((commit_script,), 0),
+        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="1\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
+        (
+            rebase_script,
+            "--no-push",
+            "--keep-on-conflict",
+            "--base-remote",
+            "origin",
+            "--base-ref",
+            "main",
+        ): _cr((rebase_script,), 0),
+        ("make", "py-lint"): _cr(("make", "py-lint"), 0),
+        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
+            ("git", "ls-remote"),
+            stdout="remote\trefs/heads/feature\n",
+        ),
+        ("git", "fetch", "origin", "feature", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "status", "--porcelain", "--untracked-files=all"): _cr(("git", "status"), stdout=""),
+        (
+            "git",
+            "push",
+            "--force-with-lease=refs/heads/feature:remote",
+            "origin",
+        ): _cr(("git", "push"), 0),
+    }
+    classified = ci_monitor.classify_failed_jobs(
+        (FailedJob(name="python-lint", conclusion="failure"),),
+    )
+    runner = RecordingRunner(responses)
+    pushed, _head, _delta, did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="codex",
+        delta_paths=("fixed.py",),
+        classified=classified,
+    )
+    assert pushed is True
+    assert did_rebase is True
+    assert pending is False
+    assert any(call[0] == rebase_script for call in runner.calls)
+
+
+def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:
+    responses = {
+        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("make", "py-lint"): _cr(("make", "py-lint"), 1),
+    }
+    classified = ci_monitor.classify_failed_jobs(
+        (FailedJob(name="python-lint", conclusion="failure"),),
+    )
+    runner = RecordingRunner(responses)
+    pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="pending-retry",
+        delta_paths=(),
+        ci_fix_rebase_pending=True,
+        classified=classified,
+    )
+    assert pushed is False
+    assert pending is False
+    assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
+
+
+def test_pending_retry_missing_remote_oid_preserves_pending(tmp_path: Any) -> None:
+    responses = {
+        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("git", "fetch", "origin", "feature", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "rev-parse", "origin/feature"): _cr(("git", "rev-parse"), rc=1),
+        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(("git", "ls-remote"), rc=2),
+    }
+    runner = RecordingRunner(responses)
+    pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="pending-retry",
+        delta_paths=(),
+        ci_fix_rebase_pending=True,
+        classified=ci_monitor.ClassifiedJobs(0, (), (), ()),
+    )
+    assert pushed is False
+    assert pending is True
+
+
+def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: Any) -> None:
+    responses = {
+        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("make", "py-lint"): _cr(("make", "py-lint"), 0),
+        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
+            ("git", "ls-remote"),
+            stdout="remoteoid\trefs/heads/feature\n",
+        ),
+        ("git", "fetch", "origin", "feature", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "status", "--porcelain", "--untracked-files=all"): _cr(("git", "status"), stdout=""),
+        ("git", "push", "--force-with-lease=refs/heads/feature:remoteoid", "origin"): _cr(("git", "push"), 0),
+    }
+    runner = RecordingRunner(responses)
+    pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="pending-retry",
+        delta_paths=(),
+        ci_fix_rebase_pending=True,
+        classified=ci_monitor.classify_failed_jobs(
+            (FailedJob(name="python-lint", conclusion="failure"),),
+        ),
+    )
+    assert pushed is True
+    assert pending is False
+    assert ("git", "push", "--force-with-lease=refs/heads/feature:remoteoid", "origin") in runner.calls
+
+
+def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    monkeypatch.setattr(config, "CI_MONITOR_FIX_WATERFALL_MAX_ATTEMPTS", 1)
+    jobs_json = json.dumps({"jobs": [{"name": "python-lint", "conclusion": "failure"}]})
+    responses = {
+        ("gh", "run", "view", "42", "--repo", "o/r", "--log-failed"): _cr(
+            ("gh", "run", "view"),
+            stdout="FAIL\n",
+        ),
+        ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
+        ("gh", "run", "view", "42", "--repo", "o/r", "--json", "jobs"): _cr(
+            ("gh", "run", "view"),
+            stdout=jobs_json,
+        ),
+        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("make", "py-lint"): _cr(("make", "py-lint"), rc=1),
+    }
+    runner = RecordingRunner(responses)
+    fix = ci_monitor.evaluate_failure(
+        runner,
+        run_id="42",
+        repo="o/r",
+        plan_file=None,
+        transient_retries=1,
+        _fix_attempts=0,
+        cwd=str(tmp_path),
+        sleep_fn=lambda _s: None,
+        ci_fix_rebase_pending=True,
+    )
+    assert fix.ci_fix_rebase_pending is False
+    assert ("make", "py-lint") in runner.calls
+    assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
 
 
 def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
@@ -1550,6 +1712,8 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
         ("git", "diff", "--name-only", "--cached"): _cr(("git", "diff"), stdout=""),
         ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
         ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feat\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
         ("git", "push", "origin", "feat"): _cr(("git", "push"), 0),
         # attempt 1 uses codex (start_attempt=0), attempt 2 uses cursor (start_attempt=1)
         (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): _cr((commit_script,), 0),

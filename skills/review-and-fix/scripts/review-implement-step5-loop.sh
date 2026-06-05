@@ -189,7 +189,7 @@ run_implement_loop() {
     local structural_loc substantial checks_sh lint_sh cap_out lint_out
     local post_round_status="" post_exit=0 post_coder="" post_skipped=0 post_fix=0 post_round_dir="" post_accepted=""
     local lint_attempts lint_max="${LARCH_STEP5_LINT_FIX_MAX_ATTEMPTS:-3}"
-    local rounds_completed=0 last_irf="" last_coder="" last_hint="" stall_track=false stall_reason=""
+    local rounds_completed=0 last_irf="" last_coder="" last_hint="" stall_track=false stall_reason="" round_start_s=""
 
     checks_sh="${REVIEW_AND_FIX_RUN_RELEVANT_CHECKS_SH:-$PLUGIN_ROOT/scripts/run-relevant-checks-captured.sh}"
     lint_sh="${REVIEW_AND_FIX_LINT_FIX_LOOP_SH:-$PLUGIN_ROOT/scripts/lint-fix-loop.sh}"

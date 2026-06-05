@@ -168,6 +168,11 @@ def _post_flush(
             result=config.MERGE_RESULT_ERROR,
             error="redaction failed during post-merge run-log flush",
         )
+    if skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
+        return MergeResult(
+            result=config.MERGE_RESULT_ERROR,
+            error=f"post-merge run-log flush skipped: {skip.reason}",
+        )
     if skip.skipped:
         logging_util.BreadcrumbWriter().emit(f"merge: post-merge flush skipped: {skip.reason}")
     return None

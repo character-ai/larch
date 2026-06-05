@@ -24,6 +24,33 @@ def _env_int(env: dict[str, str], key: str) -> int | None:
         return None
 
 
+def _state_value(path: str | None, key: str) -> str:
+    if not path:
+        return ""
+    try:
+        text = Path(path).read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return ""
+    prefix = f"{key}="
+    value = ""
+    for line in text.splitlines():
+        if line.startswith(prefix):
+            value = line.removeprefix(prefix)
+    return value
+
+
+def _state_bool(path: str | None, key: str) -> bool:
+    return _state_value(path, key).strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _state_int(path: str | None, key: str) -> int:
+    raw = _state_value(path, key).strip()
+    try:
+        return int(raw)
+    except ValueError:
+        return 0
+
+
 @dataclass(frozen=True)
 class RunContext:
     branch: str
@@ -62,6 +89,11 @@ class RunContext:
     final_bail_reason: str = ""
     codex_present: bool = False
     cursor_present: bool = False
+    ci_fix_rebase_pending: bool = False
+    iteration: int = 0
+    rebase_count: int = 0
+    fix_attempts: int = 0
+    transient_retries: int = 0
 
     @classmethod
     def from_env(cls, *, env: dict[str, str] | None = None) -> RunContext:
@@ -77,6 +109,11 @@ class RunContext:
             "LARCH_NO_LOGS_COMMIT",
         )
         default_plan_file = Path(tmpdir) / "plan.txt" if tmpdir else None
+        state_file = source.get("SHIP_PR_STATE_FILE") or None
+        ci_fix_rebase_pending = _env_bool(source, "CI_FIX_REBASE_PENDING") or _state_bool(
+            state_file,
+            "CI_FIX_REBASE_PENDING",
+        )
         return cls(
             branch=branch,
             issue=issue,
@@ -91,7 +128,7 @@ class RunContext:
             no_admin_fallback=_env_bool(source, "NO_ADMIN_FALLBACK"),
             repo_unavailable=_env_bool(source, "REPO_UNAVAILABLE"),
             pr_number=pr_number,
-            state_file=source.get("SHIP_PR_STATE_FILE") or None,
+            state_file=state_file,
             no_logs_commit=no_logs,
             merge_result=source.get("MERGE_RESULT", ""),
             pr_closed=_env_bool(source, "PR_CLOSED"),
@@ -122,6 +159,11 @@ class RunContext:
             final_bail_reason=source.get("FINAL_BAIL_REASON", ""),
             codex_present=_env_bool(source, "CODEX_PRESENT"),
             cursor_present=_env_bool(source, "CURSOR_PRESENT"),
+            ci_fix_rebase_pending=ci_fix_rebase_pending,
+            iteration=_env_int(source, "ITERATION") or _state_int(state_file, "ITERATION"),
+            rebase_count=_env_int(source, "REBASE_COUNT") or _state_int(state_file, "REBASE_COUNT"),
+            fix_attempts=_env_int(source, "FIX_ATTEMPTS") or _state_int(state_file, "FIX_ATTEMPTS"),
+            transient_retries=_env_int(source, "TRANSIENT_RETRIES") or _state_int(state_file, "TRANSIENT_RETRIES"),
         )
 
     @property

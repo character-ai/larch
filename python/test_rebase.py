@@ -596,7 +596,7 @@ def test_non_conflict_rebase_aborts_and_stalls(tmp_path: Path) -> None:
     assert ("git", "rebase", "--abort") in runner.calls
 
 
-def test_fetch_non_transient_aborts_and_stalls(tmp_path: Path) -> None:
+def test_fetch_non_transient_stalls_and_aborts_active_rebase(tmp_path: Path) -> None:
     runner = ScriptRunner(
         [
             (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
@@ -604,7 +604,6 @@ def test_fetch_non_transient_aborts_and_stalls(tmp_path: Path) -> None:
                 ("git", "fetch", "origin", "main", "--quiet"),
                 "repository not found\n",
             )),
-            (("git", "rebase", "--abort"), _ok(("git", "rebase", "--abort"))),
         ],
     )
     with pytest.raises(Stalled, match="fetch failed"):
