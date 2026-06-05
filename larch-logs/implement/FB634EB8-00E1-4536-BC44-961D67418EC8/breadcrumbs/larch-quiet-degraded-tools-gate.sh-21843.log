@@ -1,0 +1,4 @@
+degraded-tools-gate.sh: WARNING: --codex-binary-found omitted; using CODEX_BINARY_FOUND from environment
+degraded-tools-gate.sh: WARNING: --codex-present omitted; using CODEX_PRESENT from environment
+degraded-tools-gate.sh: WARNING: --cursor-binary-found omitted; using CURSOR_BINARY_FOUND from environment
+degraded-tools-gate.sh: WARNING: --cursor-present omitted; using CURSOR_PRESENT from environment
