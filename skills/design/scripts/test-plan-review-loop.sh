@@ -2694,6 +2694,8 @@ dedup_log=$(
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT
         # shellcheck disable=SC1091
         source "$1/skills/design/scripts/lib-plan-optional-trailers.sh"
+        # shellcheck disable=SC1091
+        source "$1/skills/design/scripts/lib-phase-driver.sh"
         eval "$(awk "BEGIN{p=0} /^_run_post_apply_pipeline\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1
     ' _ "$ROOT" "$PLR" 2>&1
@@ -2748,6 +2750,8 @@ dedup_unclosed_log=$(
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT
         # shellcheck disable=SC1091
         source "$1/skills/design/scripts/lib-plan-optional-trailers.sh"
+        # shellcheck disable=SC1091
+        source "$1/skills/design/scripts/lib-phase-driver.sh"
         eval "$(awk "BEGIN{p=0} /^_run_post_apply_pipeline\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1
     ' _ "$ROOT" "$PLR" 2>&1
@@ -2790,6 +2794,8 @@ dedup_pyfail_log=$(
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT PATH
         # shellcheck disable=SC1091
         source "$1/skills/design/scripts/lib-plan-optional-trailers.sh"
+        # shellcheck disable=SC1091
+        source "$1/skills/design/scripts/lib-phase-driver.sh"
         eval "$(awk "BEGIN{p=0} /^_run_post_apply_pipeline\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1 "$3"
     ' _ "$ROOT" "$PLR" "$backup_pyfail" 2>&1
@@ -2834,6 +2840,8 @@ dedup_nonnumeric_log=$(
         export DESIGN_TMPDIR DESIGN_DRIVER_SH INVOKE_PLAN_VALIDATOR_SH CHECK_PLAN_SIZE_SH DEDUP_PLAN_LINES_PY CLAUDE_PLUGIN_ROOT PATH
         # shellcheck disable=SC1091
         source "$1/skills/design/scripts/lib-plan-optional-trailers.sh"
+        # shellcheck disable=SC1091
+        source "$1/skills/design/scripts/lib-phase-driver.sh"
         eval "$(awk "BEGIN{p=0} /^_run_post_apply_pipeline\\(\\)/{p=1} /^_terminal_exit\\(\\)/{exit} p{print}" "$2")"
         _run_post_apply_pipeline 1 "$3"
     ' _ "$ROOT" "$PLR" "$backup_nonnumeric" 2>&1

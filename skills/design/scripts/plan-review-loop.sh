@@ -35,6 +35,8 @@ source "$SCRIPT_DIR/lib-findings-classification.sh"
 source "$SCRIPT_DIR/../../../scripts/lib-design-round-artifacts.sh"
 # shellcheck source=skills/design/scripts/lib-plan-optional-trailers.sh
 source "$SCRIPT_DIR/lib-plan-optional-trailers.sh"
+# shellcheck source=skills/design/scripts/lib-phase-driver.sh
+source "$SCRIPT_DIR/lib-phase-driver.sh"
 
 usage() {
     larch_err "Usage: plan-review-loop.sh --design-tmpdir DIR --plan-file PATH [--feature-file PATH] [--round-num N] [--round-cap N] --codex-present true|false --cursor-present true|false [--timeout SEC] [--help]"
@@ -598,16 +600,7 @@ _run_post_apply_pipeline() {
         return 1
     fi
     local size_out size_rc hard soft diff_added diff_deleted diff_lines partition_requested
-    partition_requested=false
-    if command -v jq >/dev/null 2>&1 && [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
-        case "$(jq -r '.partition_requested // false | tostring' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo false)" in
-            true) partition_requested=true ;;
-        esac
-    elif [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
-        case "$(sed -n 's/.*"partition_requested"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null | head -1)" in
-            true) partition_requested=true ;;
-        esac
-    fi
+    partition_requested="$(phase_driver_json_boolean_or_sed "$DESIGN_TMPDIR/run-params.json" partition_requested false)"
     local size_stderr
     size_stderr="$DESIGN_TMPDIR/.check-plan-size.plan-review.stderr.$$"
     set +e
@@ -633,6 +626,7 @@ _run_post_apply_pipeline() {
             --exit-code "$size_rc" \
             --category Warnings \
             --output-file "$_combined_cap" \
+            --redact \
             >/dev/null 2>&1 || true
         rm -f "$_combined_cap" 2>/dev/null || true
         set -e

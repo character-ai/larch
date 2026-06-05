@@ -648,7 +648,7 @@ At the Gate A success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.compl
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
 ```
 
-Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. Also read `review_budget` (`quick` vs `full`): it gates the Step 2b plan-command validator (skipped on `quick` alongside the full plan-review panel) and is consumed again explicitly in Step 3. Do not re-classify here; Step 0 owns router judgment.
+Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. Step 2b plan-command validation always runs through `design-postplan-emit.sh` after `plan.txt` is written; do not gate it on review budget or re-classify here. Step 0 owns router judgment.
 
 **IMPORTANT: The collaborative sketch phase MUST run for `design_classification == HARD` with the 4 personality sketch slots. Per #3207, a slot whose external tool is unavailable is **skipped** (fewer sketches) — it is NOT padded with a Claude replacement; if both Cursor and Codex are down the phase runs zero sketches and falls through to the no-sketches path. SIMPLE is the only deliberate no-sketch carve-out and must write the `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel. Never abbreviate HARD by choice regardless of how simple or obvious the feature appears.**
 
@@ -879,7 +879,7 @@ Immediately after saving `plan.txt`, run the merged post-plan driver (`design-po
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 set +e
-_postplan_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh" \
+_postplan_out=$(env LARCH_QUIET_DISABLE=1 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-postplan-emit.sh" \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --with-plan-size \
   --snapshot-original)
@@ -952,7 +952,7 @@ On `_postplan_rc=12`, the driver already printed the hard-trigger section. `AskU
 2. Run `check-plan-size.sh` in a Bash subshell with `export LARCH_QUIET_DISABLE=1`, capture **stdout only** into a variable `_plan_size_out` (the `emit_kv` / `emit` contract stream matches `emit-plan.sh` consumers; do not merge stderr into `_plan_size_out` or KV parsing may ingest `larch_err` lines). Example:
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
    set +e
    _plan_size_out=$(env LARCH_QUIET_DISABLE=1 "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/check-plan-size.sh" --design-tmpdir "$DESIGN_TMPDIR")
    _plan_size_rc=$?
@@ -961,8 +961,8 @@ On `_postplan_rc=12`, the driver already printed the hard-trigger section. `AskU
 3. **Return-code handling**:
    - **`_plan_size_rc` is 0** — parse `_plan_size_out` for `HARD_TRIGGER_FIRED=`, `TRIGGER_REASONS=`, `PLAN_LINES=`, `DIFF_LINES=`, `DIFF_ADDED=`, `DIFF_DELETED=`, `MECHANICAL_CHURN=`, `SOFT_ADVISORY=`. Branch steps 4–6 below.
    - **Soft advisory** (after rc=0 parse, before hard/partition/no-trigger branches): when `SOFT_ADVISORY=true` and `HARD_TRIGGER_FIRED=false`, print `⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=<n> DIFF_DELETED=<n> DIFF_LINES=<n>); proceeding` (informational; never prompts/blocks). When `SOFT_ADVISORY=true` and `HARD_TRIGGER_FIRED=true`, print `⏩ 2b.5: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=<n> DIFF_DELETED=<n> DIFF_LINES=<n>); plan-body gate still requires Split/Cancel` (informational; then continue to the hard branch).
-   - **`_plan_size_rc` is 2** — parse `PLAN_SIZE_STATUS=` when present. Print `**⚠ 2b.5: check-plan-size — <status>; proceeding without threshold check**`. Append the full `_plan_size_out` capture to `$DESIGN_TMPDIR/execution-issues.md` under `### Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 2b.5" --tool "check-plan-size.sh" --exit-code "$_plan_size_rc" --category Warnings --output-file "$DESIGN_TMPDIR/check-plan-size.validation.log" >/dev/null 2>&1 || true` after writing the capture to `$DESIGN_TMPDIR/check-plan-size.validation.log` (create/overwrite the log file with the capture first). Then **return** to the caller — no trigger branches fire.
-   - **Any other rc** (including **3** for argv / usage errors from `check-plan-size.sh`, which emit no `PLAN_SIZE_STATUS`) — treat as internal error: append the combined capture to `execution-issues.md` `Warnings` the same way (same `--site` / `--tool` / `--exit-code`, stdout/stderr suppressed with `>/dev/null 2>&1 || true`), ignore any partial KV lines, **return** to the caller.
+   - **`_plan_size_rc` is 2** — parse `PLAN_SIZE_STATUS=` when present. Print `**⚠ 2b.5: check-plan-size — <status>; proceeding without threshold check**`. Append the full `_plan_size_out` capture to `$DESIGN_TMPDIR/execution-issues.md` under `### Warnings` via `"${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh" --log "$DESIGN_TMPDIR/execution-issues.md" --site "design Step 2b.5" --tool "check-plan-size.sh" --exit-code "$_plan_size_rc" --category Warnings --output-file "$DESIGN_TMPDIR/check-plan-size.validation.log" --redact >/dev/null 2>&1 || true` after writing the capture to `$DESIGN_TMPDIR/check-plan-size.validation.log` (create/overwrite the log file with the capture first). Then **return** to the caller — no trigger branches fire.
+   - **Any other rc** (including **3** for argv / usage errors from `check-plan-size.sh`, which emit no `PLAN_SIZE_STATUS`) — treat as internal error: append the combined capture to `execution-issues.md` `Warnings` the same way (same `--site` / `--tool` / `--exit-code`, include `--redact`, stdout/stderr suppressed with `>/dev/null 2>&1 || true`), ignore any partial KV lines, **return** to the caller.
 4. **Hard branch (`HARD_TRIGGER_FIRED=true`)** — fires **regardless** of `PARTITION_REQUESTED`. Print a `## Plan Size — Hard Trigger` section with `PLAN_LINES` and `DIFF_LINES` from the capture; include `DIFF_ADDED` and `DIFF_DELETED` when non-empty. `AskUserQuestion` options are site-aware: initial Step 2b and discussion merged callers offer Split / Cancel only (no **Continue** option — hard triggers are never downgradeable by `--partition`); retained callers (Gate B after validator Override, Step 3 `LOOP_STATUS=plan-size-trigger`, and `plan-review-loop.sh`) offer Split / Override / Cancel. On **Override**, write `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` and return to the retained caller. On **Cancel**: export `SUMMARY_OUTCOME=cancelled-plan-size-hard` and run the **Final summary block** fenced bash block (`### Final summary block`), print `**ℹ /design cancelled by operator (plan-size hard trigger).**`, exit **0**, preserve `$DESIGN_TMPDIR`. On **Split**: run **Split-path** below.
 5. **Partition branch (`PARTITION_REQUESTED=true AND HARD_TRIGGER_FIRED=false`)** — route directly to Split-path (decomposition panel) without an intermediate `AskUserQuestion`. Print a `## Plan Size — Partition requested` section noting `trigger=partition-flag` and the current `PLAN_LINES` / `DIFF_LINES`, then run **Split-path** below.
 6. **No-trigger branch** — when `HARD_TRIGGER_FIRED=false` and `PARTITION_REQUESTED=false`: print `⏩ 2b.5: plan-size — under thresholds (PLAN_LINES=<n> DIFF_LINES=<n>)` and return.
@@ -1121,7 +1121,7 @@ Print: `> **🔶 /design 3.5: gate B**`
 
 **Optional trailer guard (Gate B post-apply)**: Before prompt-side `plan.txt` replacement or dedup, run `gate-b-dedup-plan.sh --snapshot-trailers`; after rewrite run `gate-b-dedup-plan.sh --dedup` (requires the snapshot file — never run `--dedup` alone). Preserve snapshotted optional trailer keys **and values** or explicitly recompute; empty snapshot forbids newly introduced optional trailers. See `approval-gates.md` §Shared post-apply pipeline.
 
-Execute the Gate B body in `approval-gates.md` (which requires **Step 2b.5** immediately after each settled `design-postplan-emit.sh` re-emit — see that reference for the exact Apply-all / Go-through-each wording). Gate B replaces the previous "Design Discussion Round 2" auto-flow: it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation. When Gate B resolves `manual_gate_b=false`, it auto-applies findings only on the `LOOP_STATUS=complete|revision-failed` branches; `LOOP_STATUS=converged|cap-hit` is passive-summary only because the loop already revised `plan.txt`, and `LOOP_STATUS=emit-plan-failed` routes through the warning/manual handling branch. When Gate B resolves `manual_gate_b=true`, revision only happens when the user explicitly picks Apply all or per-finding Apply. See `approval-gates.md` §Gate B for the normative branch. On Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting path (passive-summary auto-continue, auto-apply, Apply all, or full one-by-one without abort) **and Step 2b.5 returns**, proceed to Step 3.6 (HARD-only plan-quality assessor) before Step 3b.
+Execute the Gate B body in `approval-gates.md`. Gate B's merged post-plan fence writes the Step 2b.5 sentinel itself on clean rc 0; standalone Step 2b.5 is retained only for Override-after-defects and Step 3 / `plan-review-loop.sh` plan-size-trigger handoffs. Gate B replaces the previous "Design Discussion Round 2" auto-flow: it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation. When Gate B resolves `manual_gate_b=false`, it auto-applies findings only on the `LOOP_STATUS=complete|revision-failed` branches; `LOOP_STATUS=converged|cap-hit` is passive-summary only because the loop already revised `plan.txt`, and `LOOP_STATUS=emit-plan-failed` routes through the warning/manual handling branch. When Gate B resolves `manual_gate_b=true`, revision only happens when the user explicitly picks Apply all or per-finding Apply. See `approval-gates.md` §Gate B for the normative branch. On Switch-to-discussion-mode (or per-finding Switch), re-enter Step 1e Gate A. After Gate B settles on any non-exiting path (passive-summary auto-continue, auto-apply, Apply all, or full one-by-one without abort) and any retained Step 2b.5 path has returned, proceed to Step 3.6 (HARD-only plan-quality assessor) before Step 3b.
 At the Step 3.5 success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3.5"` before entering Step 3.6.
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the user reaches them via Gate B's **Switch to discussion mode** → Gate A loop. Round 2 is no longer a forced auto-step; users opt in through Gate B.
@@ -1394,37 +1394,11 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 **MANDATORY — READ ENTIRE FILE before composing the final plan block: `skills/design/references/readability-style.md`.**
 
 1. Compose `$DESIGN_TMPDIR/composed-plan.md` containing `## Plan`, `## Acceptance`, and a trailing `diff_lines: <N>` line (integer from `$DESIGN_TMPDIR/diff-lines.txt` or best-effort estimate).
-2. When `review_budget` from `$DESIGN_TMPDIR/run-params.json` is not `quick`, run plan-command validation on the composed plan **before** redaction (Tier 3 dry-run is disabled for `composed-plan.md`; Tier 2 still runs). Same dispatch as Step 2b (`invoke-plan-validator.sh` → `ACTION=VALIDATE_PLAN_COMMANDS` → `design-driver.sh`), but pass `composed-plan.md`:
-
-```bash
-[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-_validate_out=$("${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/invoke-plan-validator.sh" "$DESIGN_TMPDIR/composed-plan.md")
-VALIDATE_STATUS=ok
-VALIDATE_DEFECT_COUNT=0
-VALIDATE_SKIPPED_COUNT=0
-VALIDATE_UNSAFE_TOKEN_COUNT=0
-VALIDATE_LOG_FILE=""
-while IFS= read -r _vl || [[ -n "$_vl" ]]; do
-  _vk="${_vl%%=*}"
-  _vv="${_vl#*=}"
-  case "$_vk" in
-    VALIDATE_STATUS) VALIDATE_STATUS="$_vv" ;;
-    VALIDATE_DEFECT_COUNT) VALIDATE_DEFECT_COUNT="$_vv" ;;
-    VALIDATE_SKIPPED_COUNT) VALIDATE_SKIPPED_COUNT="$_vv" ;;
-    VALIDATE_UNSAFE_TOKEN_COUNT) VALIDATE_UNSAFE_TOKEN_COUNT="$_vv" ;;
-    VALIDATE_LOG_FILE) VALIDATE_LOG_FILE="$_vv" ;;
-  esac
-done <<< "$_validate_out"
-```
-
-When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and **do not** run the remaining Step 5c items (redaction, `plan-block-write.sh`, publish, rename) on this exit branch.
-
-3. Run `cat "$DESIGN_TMPDIR/composed-plan.md" | "${CLAUDE_PLUGIN_ROOT}/scripts/redact-secrets.sh" > "$DESIGN_TMPDIR/composed-plan.redacted.md"`.
+2. Invoke `design-publish.sh` below. It validates `composed-plan.md` unconditionally before redaction and exits 4 with `.design-publish-result.env` populated when `VALIDATE_STATUS=defects-found`; on that exit, execute **### Plan command validator failure (shared)** with `--site` context `design Step 5c` and **Cancel** semantics: preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup, and do not publish, rename, or redact on this exit branch. Fix-and-retry re-invokes `design-publish.sh`; Override re-invokes it with `--skip-validate`.
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
-4. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`, including **Migration limit** for legacy `runid=` diagram comments) for the deterministic publish tail (plan block write, reentry marker, diagrams upsert, log publish, summary render, `[DESIGNED]` rename).
+3. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`, including **Migration limit** for legacy `runid=` diagram comments) for the deterministic publish tail (composed-plan validation, redaction, plan block write, reentry marker, diagrams upsert, log publish, summary render, `[DESIGNED]` rename).
 
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -1444,11 +1418,16 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
    if [[ "${_publish_rc:-0}" -eq 3 ]]; then
      printf '%s\n' "**⚠ Step 5c: design-publish.sh result-env write failed (exit 3); continuing with stdout parse**" >&2
    fi
-   if [[ "${_publish_rc:-0}" -ne 0 && "${_publish_rc:-0}" -ne 1 && "${_publish_rc:-0}" -ne 3 ]]; then
+   if [[ "${_publish_rc:-0}" -ne 0 && "${_publish_rc:-0}" -ne 1 && "${_publish_rc:-0}" -ne 3 && "${_publish_rc:-0}" -ne 4 ]]; then
      printf '%s\n' "**⚠ Step 5c: design-publish.sh failed (exit ${_publish_rc}); aborting /design**" >&2
      exit 1
    fi
    PLAN_WRITE_OK=""
+   VALIDATE_STATUS=""
+   VALIDATE_DEFECT_COUNT=""
+   VALIDATE_SKIPPED_COUNT=""
+   VALIDATE_UNSAFE_TOKEN_COUNT=""
+   VALIDATE_LOG_FILE=""
    PUBLISH_OK=""
    RENAMED=""
    UPSERT_STATUS=""
@@ -1464,7 +1443,7 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
        while IFS= read -r _line || [[ -n "$_line" ]]; do
          _key="${_line%%=*}"; _value="${_line#*=}"
          case "$_key" in
-           PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH) printf -v "$_key" '%s' "$_value" ;;
+           PLAN_WRITE_OK|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH) printf -v "$_key" '%s' "$_value" ;;
            WARN) _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done; if [[ "$_publish_warn_dup" != true ]]; then _publish_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
          esac
        done <"$DESIGN_TMPDIR/.design-publish-result.env"
@@ -1473,7 +1452,7 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
    while IFS= read -r _line || [[ -n "$_line" ]]; do
      _key="${_line%%=*}"; _value="${_line#*=}"
      case "$_key" in
-       PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
+       PLAN_WRITE_OK|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
        WARN)
          if [[ "$_publish_parse_ok" != true ]]; then
            _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done
@@ -1488,7 +1467,9 @@ When `VALIDATE_STATUS=defects-found` after this block, execute **### Plan comman
    fi
    ```
 
-**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1,3}` abort above — **stop `/design` immediately; do not run Step 5c items 5–7, Step 5d, or Step 6.** `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written — parse stdout (`_publish_out`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete. When `_publish_rc` ∈ {0, 1, 3}, always parse `.design-publish-result.env` when present (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
+When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. Fix-and-retry re-runs the same `design-publish.sh` call; Override re-runs it with `--skip-validate`; Cancel preserves `$DESIGN_TMPDIR`, skips Step 6 cleanup, and exits without redaction, plan write, publish, or rename.
+
+**Driver exit-code contract:** `_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}` abort above — **stop `/design` immediately; do not run Step 5c items 5–7, Step 5d, or Step 6.** `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written — parse stdout (`_publish_out`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete. When `_publish_rc` ∈ {0, 1, 3, 4}, always parse `.design-publish-result.env` when present (file-first, stdout fallback) before `PLAN_WRITE_OK` branching; **exit 1 is the normal plan-block-write failure path** — do not abort solely because `_publish_rc`=1.
 
 **Driver WARN replay (top chat):** After the Bash block above, when `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
 

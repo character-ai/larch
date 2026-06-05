@@ -102,6 +102,7 @@ assert_postplan_thin_fence() {
     scoped=true
   fi
   grep -Fq -- '--with-plan-size' "$subject" || fail "$label missing --with-plan-size"
+  grep -Fq -- 'env LARCH_QUIET_DISABLE=1' "$subject" || fail "$label missing LARCH_QUIET_DISABLE display capture"
   # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
   grep -Fq '${_postplan_out:-}' "$subject" || fail "$label missing postplan out display variable"
   grep -Fq 'printf' "$subject" || fail "$label missing postplan display printf"
@@ -115,7 +116,7 @@ assert_postplan_thin_fence() {
   if grep -Fq '<<<"${_postplan_out:-}"' "$subject"; then
     fail "$label must not merge stdout KVs via <<< heredoc"
   fi
-  if awk '/design-postplan-emit\.sh/ && /--repo/ { bad=1 } END { exit bad ? 0 : 1 }' "$subject"; then
+  if awk '/design-postplan-emit\.sh/ && /--repo/ && !/\$\{REPO:\+--repo/ { bad=1 } END { exit bad ? 0 : 1 }' "$subject"; then
     fail "$label must not pass --repo to design-postplan-emit.sh"
   fi
   [[ "$scoped" == true ]] || return 0
@@ -123,6 +124,49 @@ assert_postplan_thin_fence() {
   pause_line=$(awk '/\.pause-requested/ && /design-pause-save\.sh/ && /\$\{REPO:\+--repo/ {print; exit}' "$subject")
   [[ -n "$pause_line" ]] || fail "$label pause-save must thread REPO"
   rm -f "$subject"
+}
+
+assert_postplan_reference_thin_fence() {
+  local file="$1" label="$2" start_marker="$3" end_marker="$4"
+  local start_line end_line subject
+  start_line=$(grep -nF -- "$start_marker" "$file" | head -1 | cut -d: -f1 || true)
+  end_line=$(grep -nF -- "$end_marker" "$file" | awk -F: -v s="${start_line:-0}" '$1 > s {print $1; exit}' || true)
+  [[ -n "$start_line" ]] || fail "$label missing start marker: $start_marker"
+  [[ -n "$end_line" ]] || fail "$label missing end marker after $start_marker: $end_marker"
+  subject=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-postplan-reference.XXXXXX")
+  sed -n "${start_line},$((end_line - 1))p" "$file" >"$subject"
+  grep -Fq 'env LARCH_QUIET_DISABLE=1' "$subject" || fail "$label missing LARCH_QUIET_DISABLE display capture"
+  grep -Fq -- '--with-plan-size' "$subject" || fail "$label missing --with-plan-size"
+  # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
+  grep -Fq '${_postplan_out:-}' "$subject" || fail "$label missing postplan out display variable"
+  # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
+  grep -Fq 'case "${_postplan_rc:-1}" in' "$subject" || fail "$label missing postplan rc case"
+  for arm in 0 10 11 12 13 2 1; do
+    grep -Fq "\`${arm}\`" "$subject" || fail "$label missing delegated case arm ${arm}"
+  done
+  # shellcheck disable=SC2016 # Markdown literal contains a default case marker.
+  grep -Fq 'default-abort `*` arm' "$subject" || fail "$label missing default-abort *) arm"
+  # shellcheck disable=SC2016 # Markdown/bash fence literal must stay unexpanded.
+  grep -Fq '${REPO:+--repo "$REPO"}' "$subject" || fail "$label pause-save must thread REPO"
+  # shellcheck disable=SC2016 # Markdown/bash fence literal must stay unexpanded.
+  if grep -Fq '<<<"${_postplan_out:-}"' "$subject"; then
+    fail "$label must not merge stdout KVs via heredoc"
+  fi
+  if awk '/design-postplan-emit\.sh/ && /--repo/ && !/\$\{REPO:\+--repo/ { bad=1 } END { exit bad ? 0 : 1 }' "$subject"; then
+    fail "$label must not pass --repo to design-postplan-emit.sh"
+  fi
+  rm -f "$subject"
+}
+
+run_postplan_thin_fence_self_tests() {
+  local fixture
+  fixture=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-postplan-self.XXXXXX")
+  awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD" | grep -v '^  13)$' >"$fixture"
+  if (assert_postplan_thin_fence "$fixture" 'postplan thin-fence negative fixture missing rc13') >/dev/null 2>&1; then
+    rm -f "$fixture"
+    fail "postplan thin-fence self-test must fail when a case arm is missing"
+  fi
+  rm -f "$fixture"
 }
 
 assert_gate_b_bypass_branch_sentinels() {
@@ -558,6 +602,9 @@ postplan_val_line=$(grep -nF 'invoke-plan-validator.sh' "$DESIGN_POSTPLAN_EMIT_S
 contains "$SKILL_MD" '.design-postplan-emit-result.env' 'SKILL.md missing postplan result env read'
 contains "$SKILL_MD" 'design-postplan-emit.sh configuration error (exit 2)' 'SKILL.md missing postplan exit-2 abort prose'
 assert_postplan_thin_fence "$SKILL_MD" 'SKILL Step 2b thin-fence' '<!-- step:2b ' '### Step 2b.5'
+run_postplan_thin_fence_self_tests
+assert_postplan_reference_thin_fence "$APPROVAL_MD" 'approval-gates Gate B postplan fence' '### Shared post-apply pipeline' '### Gate B plan revision and Step 2b.5'
+assert_postplan_reference_thin_fence "$DISCUSSION_MD" 'discussion-round2 postplan fence' '**Plan revision authority**' '## Cap'
 # shellcheck disable=SC2016 # Markdown literal contains unexpanded shell syntax.
 contains "$APPROVAL_MD" 'case "${_postplan_rc:-1}" in' 'approval-gates Gate B postplan fence missing rc case'
 contains "$APPROVAL_MD" 'default-abort' 'approval-gates Gate B postplan fence missing default-abort arm'
@@ -683,10 +730,10 @@ step5c_line=$(grep -nF "### 5c — Write \`larch:plan\` to GitHub + publish" "$S
 if (( step5b_line >= step5c_line )); then
   fail "(15b) Step 5b must appear before Step 5c in SKILL.md"
 fi
-red_line=$(awk -v s="$step5c_line" 'NR>s && /redact-secrets\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
-val5=$(awk -v s="$step5c_line" 'NR>s && /invoke-plan-validator\.sh/ && /composed-plan\.md/ {print NR; exit}' "$SKILL_MD" || true)
-[[ -n "$red_line" && -n "$val5" && "$val5" -lt "$red_line" ]] \
-  || fail "(14b11) Step 5c validator must appear before redact-secrets on composed-plan.md"
+publish_red_line=$(grep -n 'redact-secrets\.sh.*composed-plan\.md' "$REPO_ROOT/skills/design/scripts/design-publish.sh" | head -1 | cut -d: -f1 || true)
+publish_val_line=$(grep -n 'invoke-plan-validator\.sh.*composed-plan\.md' "$REPO_ROOT/skills/design/scripts/design-publish.sh" | head -1 | cut -d: -f1 || true)
+[[ -n "$publish_red_line" && -n "$publish_val_line" && "$publish_val_line" -lt "$publish_red_line" ]] \
+  || fail "(14b11) design-publish.sh validator must appear before redact-secrets on composed-plan.md"
 # shellcheck disable=SC2016  # literal backticks + $DESIGN_TMPDIR token must match SKILL.md prose
 needle='preserve `$DESIGN_TMPDIR`, skip Step 6 cleanup'
 grep -Fq "$needle" "$SKILL_MD" \
@@ -759,6 +806,11 @@ printf '%s\n' "$step2b_block" | grep -Fq -- '--with-plan-size' \
 # shellcheck disable=SC2016 # Markdown literal contains unexpanded parameter syntax.
 printf '%s\n' "$step2b_block" | grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-2b.5"' \
   || fail "(FINDING_21) Step 2b rc0 must write step-2b.5 sentinel"
+grep -Fq 'non-exiting Split returns' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md missing non-exiting Split return sentinel prose"
+# shellcheck disable=SC2016 # Markdown literal must stay unexpanded.
+grep -Fq 'Override / clean proceed writes `: > "$DESIGN_TMPDIR/.completed/step-2b.5"`' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md missing plan-size-trigger Override sentinel prose"
 grep -Fq 'Retained callers' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md Step 2b.5 must document retained callers"
 grep -Fq '## Plan Size — Hard Trigger' "$SKILL_MD" \

@@ -44,20 +44,6 @@ parse_kv_from_output() {
     done <<<"$text"
 }
 
-json_boolean_or_sed() {
-    local file="$1" key="$2" default_value="${3:-false}" value=""
-    if command -v jq >/dev/null 2>&1 && [[ -f "$file" ]]; then
-        value=$(jq -r --arg key "$key" 'if (.[$key] | type) == "boolean" then (.[$key] | tostring) else "" end' "$file" 2>/dev/null || echo "")
-    fi
-    if [[ -z "$value" && -f "$file" ]]; then
-        value=$(sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*\(true\|false\).*/\1/p' "$file" 2>/dev/null | head -1)
-    fi
-    case "$value" in
-        true|false) printf '%s\n' "$value" ;;
-        *) printf '%s\n' "$default_value" ;;
-    esac
-}
-
 DESIGN_TMPDIR_ARG=""
 SNAPSHOT_ORIGINAL=false
 WITH_PLAN_SIZE=false
@@ -101,7 +87,7 @@ export CLAUDE_PLUGIN_ROOT="$PLUGIN_ROOT"
 RESULT_ENV="$DESIGN_TMPDIR/.design-postplan-emit-result.env"
 RUN_PARAMS_PATH="$DESIGN_TMPDIR/run-params.json"
 WARN_LINES=()
-PARTITION_REQUESTED="$(json_boolean_or_sed "$RUN_PARAMS_PATH" partition_requested false)"
+PARTITION_REQUESTED="$(phase_driver_json_boolean_or_sed "$RUN_PARAMS_PATH" partition_requested false)"
 READ_CLASSIFICATION_SH="$PLUGIN_ROOT/scripts/read-design-classification.sh"
 if [[ -x "$READ_CLASSIFICATION_SH" ]]; then
     _classification_stderr="$DESIGN_TMPDIR/.read-design-classification.stderr.$$"
@@ -150,13 +136,15 @@ _plan_size_stderr=""
 _postplan_fatal() {
     local status="${1:-emit-failed}"
     shift
+    POSTPLAN_EMIT_STATUS="$status"
+    if [[ "$WITH_PLAN_SIZE" == true ]]; then
+        _postplan_emit_rc1_diagnostic
+        WARN_LINES+=("design-postplan-emit.sh: $*")
+        _postplan_flush || exit 1
+        exit 1
+    fi
     if ((${#WARN_LINES[@]})); then
-        POSTPLAN_EMIT_STATUS="$status"
-        if [[ "$WITH_PLAN_SIZE" == true ]]; then
-            _postplan_write_result_merged || exit 1
-        else
-            _postplan_write_result_and_emit
-        fi
+        _postplan_write_result_and_emit
     fi
     larch_err "design-postplan-emit.sh: $*"
     exit 2
@@ -316,6 +304,7 @@ _postplan_append_plan_size_warning() {
         --exit-code "$_plan_size_rc" \
         --category Warnings \
         --output-file "$_combined_cap" \
+        --redact \
         >/dev/null 2>&1 || true
     rm -f "$_combined_cap" 2>/dev/null || true
     set -e
@@ -348,6 +337,11 @@ _postplan_run_plan_size() {
         return 2
     fi
     rm -f "$_plan_size_stderr" 2>/dev/null || true
+    if [[ "$WITH_PLAN_SIZE" == true ]]; then
+        POSTPLAN_EMIT_STATUS=plan-size-failed
+        PLAN_SIZE_STATUS=failed
+        _postplan_exit_merged_failure
+    fi
     fail "check-plan-size.sh failed unexpectedly (exit ${_plan_size_rc})"
 }
 

@@ -37,6 +37,28 @@ phase_driver_resolve_plugin_root() {
     (cd "$script_dir/../../.." && pwd -P)
 }
 
+phase_driver_json_boolean_or_sed() {
+    local file="$1" key="$2" default_value="${3:-false}" value=""
+    if command -v jq >/dev/null 2>&1 && [[ -f "$file" ]]; then
+        value=$(jq -r --arg key "$key" '
+            if (.[$key] | type) == "boolean" then
+                (.[$key] | tostring)
+            elif (.[$key] | type) == "string" and (.[$key] == "true" or .[$key] == "false") then
+                .[$key]
+            else
+                ""
+            end
+        ' "$file" 2>/dev/null || echo "")
+    fi
+    if [[ -z "$value" && -f "$file" ]]; then
+        value=$(sed -n 's/.*"'"$key"'"[[:space:]]*:[[:space:]]*"\{0,1\}\(true\|false\)"\{0,1\}.*/\1/p' "$file" 2>/dev/null | head -1)
+    fi
+    case "$value" in
+        true|false) printf '%s\n' "$value" ;;
+        *) printf '%s\n' "$default_value" ;;
+    esac
+}
+
 phase_driver_write_result_env() {
     local path="$1"
     shift
