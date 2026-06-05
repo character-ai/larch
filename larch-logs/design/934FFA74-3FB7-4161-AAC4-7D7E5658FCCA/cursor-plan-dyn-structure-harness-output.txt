@@ -1,0 +1,15 @@
+Review could not be completed: every read path failed (`Read`, `Grep`, `Glob`, and read-only shell) with “Service temporarily unavailable,” so `plan.txt` and the repo files named in the plan were never loaded.
+
+I did not compare the proposed structure-test refactor to `scripts/test-design-structure.sh` or related helpers, and I am not emitting `{"no_issues_found": true}` — that would claim a clean review without evidence.
+
+**Please retry** this reviewer slot once file access works, or paste:
+
+```bash
+nl -ba <TMPDIR>/plan.txt
+nl -ba <OPERATOR_REPO_PATH>/scripts/test-design-structure.sh
+find <OPERATOR_REPO_PATH>/scripts <OPERATOR_REPO_PATH>/skills/design/scripts -name '*structure-test*' | sort
+rg -n 'assert_bash_fences|structure_test_host|extract.*fence|folded|pause-check|source-env' \
+  <OPERATOR_REPO_PATH>/scripts <OPERATOR_REPO_PATH>/skills/design/scripts
+```
+
+With that output I can produce the required TSV block (or the JSON sentinel if the plan is sound).

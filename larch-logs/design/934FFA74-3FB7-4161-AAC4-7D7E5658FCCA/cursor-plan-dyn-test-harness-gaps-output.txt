@@ -1,0 +1,37 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:699-764; plan.txt:37-39	HARD zero-sketch path loses `.completed/step-2a` after fold	Item 6 retires the Step 2a success-boundary `: > step-2a` write in favor of the Step 2a.5 prelude host, but the zero-sketch guard still skips Step 2a.5 and jumps to Step 2b; only `step-2a.5` is re-touched at the Step 2b prelude	Add an explicit `step-2a` host for that branch (e.g. also write `step-2a` in the Step 2b prelude, or keep a zero-sketch-only sentinel write in the existing no-sketches prose path)
+2	in_scope	important	correctness	plan.txt:57-59; skills/design/SKILL.md:1562-1567	`assert_folded_sentinel_writes` ordering rule conflicts with the Step 6 cleanup fold	The harness text requires sentinel writes before `design-pause-save.sh` whenever a pause-check exists, but item 19 deliberately places `step-6` after the pause-check and before `cleanup-tmpdir.sh`	Carve out `step-6` (assert after pause-check, before cleanup) or add a second ordering mode in the new helper
+3	in_scope	important	risk-integration	scripts/test-design-structure.sh:1771-1772; plan.txt:48-49	Existing Check (15b) prose pin not listed in harness updates	Check 15b greps for the exact success-boundary prose ``: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true```; item 17 moves the write into the publish fence and rewrites item 6 prose, so CI will fail even if the fold is correct	Add an explicit harness task to retarget or replace the 1771-1772 grep after the in-fence `PLAN_WRITE_OK` gate
+
+## Findings
+
+**1. [correctness] HARD zero-sketch path loses `step-2a` (important)**  
+`skills/design/SKILL.md:699-764`
+
+The plan folds the only HARD-path `step-2a` write into the Step 2a.5 prelude (`plan.txt:37-39`), but the zero-sketch guard still says to skip Step 2a.5 and go straight to Step 2b (`skills/design/SKILL.md:699`). Item 8 only adds `step-2a.5` to the Step 2b prelude, not `step-2a`. On that degraded path, `.completed/step-2a` would never be created even though item 6 claims zero-sketch sentinel behavior stays unchanged.
+
+**Suggested revision:** Also write `step-2a` at the Step 2b prelude, or keep an explicit zero-sketch-only write in the no-sketches branch.
+
+**2. [correctness] `step-6` ordering assertion contradicts the cleanup fold (important)**  
+`plan.txt:57-59`, `skills/design/SKILL.md:1562-1567`
+
+The proposed `assert_folded_sentinel_writes` rule always requires sentinel lines before `design-pause-save.sh`. Item 19 does the opposite for `step-6`: write after the pause-check and before `cleanup-tmpdir.sh`. A naive implementation of the new helper would fail the intended Step 6 layout.
+
+**Suggested revision:** Exempt `step-6` or add an explicit after-pause ordering check for the cleanup fence.
+
+**3. [risk-integration] Check (15b) prose pin omitted from harness plan (important)**  
+`scripts/test-design-structure.sh:1771-1772`, `plan.txt:48-49`
+
+The plan’s `scripts/test-design-structure.sh` section only lists the new folded-write helper and deleted-prelude guard. It does not mention updating the existing grep at lines 1771-1772, which pins the current success-boundary prose for the `PLAN_WRITE_OK=true`-gated `step-5c` write. Item 17 moves that write in-fence and rewrites item 6 prose, so the PR will likely break Check (15b) unless that pin is updated.
+
+**Suggested revision:** Add an explicit harness update for the 1771-1772 assertion (or preserve equivalent prose).
+
+---
+
+## Verified (no issue)
+
+- `extract_first_bash_fence_after` already exists at `scripts/test-design-structure.sh:89-97` and is used with `<!-- step:2a —` at line 102; anchor substrings match the proposed host markers (`### 2a.5`, `<!-- step:2b —`, `<!-- step:3.5`, `<!-- step:3.6`, `<!-- step:5 —`, `<!-- step:6`).
+- All 14 folded sentinel pairs in `plan.txt:57-58` map to the listed host fences; non-folded sentinels (`step-3.6`, `step-3b`, Gate-B-bypass triple, reference-file `step-2b.5`) are intentionally out of scope.
+- The deleted-prelude guard region (`<!-- step:1c` … `<!-- step:2a —`) excludes the Step 2a entry fence (where `timing-ledger.sh` remains at `skills/design/SKILL.md:612`); after deleting 1c–1e/1d.7 preludes, no legitimate `timing-ledger.sh` fences should remain in that span.
+- Conditional pause-check fences (`[ -f … ] && exec … design-pause-save.sh`) are compatible with a line-number check against `design-pause-save.sh`, provided the helper keys off that substring rather than a bare `pause-check` label.
+- `assert_step2a_entry_simple_guard` can stay unchanged: `step-2a` / `step-2a.5` literals remain inside the SIMPLE guard block even after the fold (`skills/design/SKILL.md:637-639`).

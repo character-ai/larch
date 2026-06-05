@@ -1,0 +1,25 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:584-604	Plan deletes the Step 1e prelude fence (item 6) but item 11a requires stale-sentinel clears before a Step 1e entry pause-check on Gate B(c)/Gate C(b) re-entry; after the fold Step 1e has no Bash host until Gate A success prose	Gate C Discuss further or Gate B switch to discussion re-enters Step 1e with step-3 through step-4b still set; a pause during discussion has no entry fence to clear them, so design-pause-save.sh registry walk can record STEP at 5b/5c instead of 1e and resume jumps past the discussion loop	Add a minimal Gate B(c)/Gate C(b) re-entry Bash fence at Step 1e: source-env then rm stale step-1e through step-4b (not only through step-2b) then pause-check; keep the Phase 7 fold for first-time 1e skip paths
+2	in_scope	important	architecture	scripts/test-design-structure.sh:97	skills/design/scripts/test-design-pause-resume.sh:142	Structure and pause-resume tests require discussion re-entry sentinel clears before pause-check, but the SKILL.md update section never names a concrete host fence for Step 1e re-entry (only Step 3 entry and Step 2a entry)	Implementer can satisfy Step 3 backward-loop fixtures while leaving Gate C(b) to Step 1e uncovered; structure grep passes only if clears are misplaced or unconditional on every Step 3 entry	Tie both harnesses to the same Step 1e re-entry host from finding 1; extend assert_folded_sentinel_writes or a dedicated backward-reentry guard to assert rm lines in that fence before pause-check
+
+**1. [correctness] Step 1e re-entry has no Bash host for item 11a** (`skills/design/SKILL.md:584-604`)
+
+Item 6 deletes the Step 1e timing prelude. Item 11a then requires clearing `step-1e`…`step-2b` before a Step 1e entry pause-check on Gate B(c)/Gate C(b) loops. After the fold, Step 1e is LLM/`AskUserQuestion` work with no entry fence.
+
+Gate C **Discuss further** and Gate B **switch to discussion** land in Step 1e while `step-3`…`step-4b` from the prior forward pass still exist. A pause during that discussion has no Bash boundary to run the clear. `design-pause-save.sh` walks the registry for the first missing marker (`scripts/design-pause-save.sh:180-186`) and can record `STEP=5b`/`5c` instead of `1e`. Resume then skips the discussion loop (failure mode #10).
+
+Step 3 entry clears (`plan` item 11) run only after **Ready for review**, too late for pause mid-discussion.
+
+**Suggested revision:** Add a minimal re-entry-only Step 1e fence: `source-env` → `rm -f` stale `step-1e`…`step-4b` → pause-check. Keep the Phase 7 fold for first-time paths that skip Step 1e. Extend item 11a’s minimum span to include `step-3`…`step-4b` on Gate C(b) paths, not only through `step-2b`.
+
+**2. [architecture] Tests require a host the SKILL update section does not name** (`scripts/test-design-structure.sh:97`, `skills/design/scripts/test-design-pause-resume.sh:142`)
+
+Item 8 and test case 9 assert discussion re-entry clears before pause-check. The `### UPDATED: skills/design/SKILL.md` section documents clears at Step 3 entry and mentions Step 1e/2a in item 11a but does not add a Step 1e re-entry fence in items 6–11a.
+
+Without finding 1’s host, tests either fail or pass via unconditional Step 3 `rm` lines that risk forward `resume@3` regressions if item 11’s conditional wording is dropped for grep simplicity.
+
+**Suggested revision:** Name the Step 1e re-entry fence explicitly in the SKILL.md update list and pin it in both harnesses.
+
+---
+
+**Exonerated (SIMPLE tier):** duplicate Step 5c pause-check vs `design-publish.sh:335-337` (harmless defense-in-depth); item 26 audit table (compact contract aid); whitespace-tolerant fence extractor (needed for indented `design-publish` fence); nine pause-resume fixtures (proportional to listed failure modes).

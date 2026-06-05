@@ -1,0 +1,1 @@
+dyn-cursor-plan-structure-harness	cursor	format-gate-miss	Review could not be completed: every read path failed (`Read`, `Grep`, `Glob`, and read-only shell) with “Service temporarily unavailable,” so `plan.txt` and the repo files named in the plan were neve

@@ -1,0 +1,149 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,9 +1,9 @@
+ # Implementation Plan — #3422: Round II /design refactor, Phase 7: prelude/sentinel turn audit
+ 
+ ## Approach
+ 
+-Remove every `/design` Bash turn whose only payload is a prelude (source-env + pause-check + timing mark) or a `.completed/step-N` sentinel write. Fold each removed payload into the adjacent fence that already does real work ("host fence"). Three mechanisms:
++Remove every `/design` Bash turn whose only payload is a prelude (source-env + pause-check + timing mark) or a `.completed/step-N` sentinel write. Fold each removed payload into the adjacent fence that already does real work ("host fence"). Four mechanisms:
+ 
+-1. **Discussion block (1c, 1d, 1d.5, 1d.7, 1e) — maximal fold.** Delete all five standalone prelude fences. One combined timing mark (`design Steps 1c-1e — discussion block`) fires from the Step 0c fence. The four discussion sentinels (`step-1c`, `step-1d`, `step-1d.5`, `step-1e`) batch into the Step 2a entry fence.
++1. **Discussion block (1c, 1d, 1d.5, 1d.7, 1e) — maximal fold.** Delete all five standalone prelude fences. One combined timing mark (`design Steps 1c-1e — discussion block`) fires from a canonical Step 0c driver fence (source-env → pause-check → `step-0c` + block mark). The five discussion sentinels (`step-1c`, `step-1d`, `step-1d.5`, `step-1d.7`, `step-1e`) batch into the Step 2a entry fence before its pause-check so pause-save registry order stays aligned with `step-name-registry.tsv`.
+ 2. **Sentinel absorption.** Each surviving near-empty prose-directed sentinel write moves into the next step's existing fence, placed **after** the source-env line and **before** the pause-check so a pause honored at that boundary resumes forward, never re-running the completed step.
+-3. **Fold principle (constraint).** Only turns whose sole payload is prelude/sentinel/timing are folded. Writes already sharing a fence with real work stay put: the Step 2a SIMPLE-guard writes, Step 3.6 in-fence writes and the rc=10 Continue write, the Step 3b completion boundary (FINALIZE + `step-3b`), the Gate-B-bypass triple-sentinel branch writes, the Step 4 compatibility FINALIZE, and the `.outline-approved` write directed by `design-outline.md`.
++3. **Fold principle (constraint).** Only turns whose sole payload is prelude/sentinel/timing are folded. Writes already sharing a fence with real work stay put: the Step 2a SIMPLE-guard writes, Step 3.6 in-fence writes and the rc=10 Continue write, the Step 3b completion boundary (FINALIZE + `step-3b`), the Gate-B-bypass triple-sentinel branch writes, the Step 4 compatibility FINALIZE, the Step 5b OOS-boundary `step-5b` write, and the `.outline-approved` write directed by `design-outline.md`.
++4. **Deliberate ordering exceptions.** `step-6` is the sole sentinel placed **after** the pause-check and immediately before `cleanup-tmpdir.sh` so a pause before cleanup does not mark Step 6 complete. `step-2a` is also written in the Step 2b prelude (idempotent re-touch) so the HARD zero-sketch degraded path that skips Step 2a.5 still records sketch-phase completion.
+ 
+ Kept fences (consciously not folded — documented in the audit table):
+-- **Step 2b prelude** — kept; gains the `step-2a.5` write (becomes a real-payload boundary before plan drafting).
++- **Step 2b prelude** — kept; gains `step-2a` + `step-2a.5` writes (covers HARD zero-sketch skip of 2a.5; idempotent re-touch on normal paths).
+ - **Step 3 prelude** — kept; pause boundary before the long review; chat order (breadcrumb → timing fence → preview fence) is pinned by `docs/configuration-and-permissions.md` and `docs/issue-anchored-plan.md`.
+ - **Step 3.5 prelude** — kept; gains the `step-3` write.
+ - **Step 3b prelude** — kept; pinned by `assert_step3b_entry_guard_threads_repo` and the only pause boundary between the assessor gate and diagram work; nothing to absorb (`step-3.6` is already in-fence).
+ - **Step 4 prelude** — kept; carries the compatibility FINALIZE (real payload).
+-- **Step 5 prelude** — kept; gains the `step-4b` write.
++- **Step 5 prelude** — kept; gains the `step-4b` write only (`step-5b` stays at the Step 5b boundary — see item 16).
+ - **Step 6 prelude** — kept; gains the `step-5d` write.
+ 
+ The blanket rule "every Bash block from Step 1c onward MUST prepend the canonical two-line prelude" stays. It governs ad-hoc Bash (e.g. the 1d.7 `.outline-approved` write, the 3b `.skipped` write, reference-file fences). Only the guaranteed-near-empty standalone fences are deleted.
+ 
+-**Tradeoff (explicit call, per the issue):** folding trades per-step timing-ledger granularity and pause latency for ~10 fewer near-empty turns per run. The discussion steps 1c–1e share one block mark; per-step durations inside the block are no longer recorded. A pause requested during the discussion is honored at the Step 2a entry fence — after the batched sentinel writes, so pause-save records the discussion complete and resume routes forward (1d.7 router → Step 2a). No discussion redo. This is documented in SKILL.md (see below).
++**Tradeoff (explicit call, per the issue):** folding trades per-step timing-ledger granularity and pause latency for ~10 fewer near-empty turns per run. The discussion steps 1c–1e share one block mark; per-step durations inside the block are no longer recorded. A pause requested during the discussion is honored at the Step 2a entry fence — after the batched sentinel writes (including `step-1d.7`), so pause-save records the correct forward STEP and resume routes to Step 2a without re-running discussion. Restored `.pause-requested` is cleared on successful pause-load so Step 2a does not immediately re-pause. This is documented in SKILL.md (see below).
+ 
+ ## Files to modify/create
+ 
+@@ -14,28 +14,30 @@
+ 1. **"Bash block prelude" section**: keep the blanket two-line-prelude rule for ad-hoc Bash. Add a short paragraph: pure-LLM steps 1c–1e carry no standalone prelude fences (Phase 7, #3422); one block timing mark fires from the Step 0c driver fence; pause requests raised during the discussion block are honored at the next driver fence (Step 2a entry). Name the tradeoff: coarser timing granularity, wider pause latency, accepted to remove near-empty turns.
+ 2. **"Completion sentinels for pause/resume" intro** (currently "Each step section below carries its own boundary-local … write"): reword to the folded contract — each step's section names its sentinel write site; the write may live in the next step's host fence, placed after source-env and before the pause-check (except `step-6`, documented below); sentinel files, registry, and `design-pause-save.sh` routing are unchanged.
+-3. **Step 0c**: extend the existing sentinel directive to one Bash call that writes `step-0c` and emits `LARCH_TIMING_SKILL=design … timing-ledger.sh mark "design Steps 1c-1e — discussion block" || true`.
+-4. **Steps 1c, 1d, 1d.5, 1d.7, 1e**: delete each step's standalone ```bash prelude fence (source-env + pause-check + per-step timing mark). Replace each per-step sentinel directive with one prose line keeping the literal token in-section, e.g. for 1c: "`.completed/step-1c` is batch-written by the Step 2a entry fence (Phase 7 fold)." Same pattern for `step-1d`, `step-1d.5`, `step-1e` (1e notes: first-pass Gate A is skipped by design; re-entry passes find the sentinel already present). 1d.7 stays sentinel-less (resume router via `.outline-approved`).
+-5. **Step 2a entry fence**: after the source-env line and before the pause-check line, insert:
+-   `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-1c"`, `: > …/step-1d`, `: > …/step-1d.5`, `: > …/step-1e`.
++3. **Step 0c**: replace the prose-only sentinel directive with one canonical driver ```bash fence: source-env → pause-check → `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-0c"` → `LARCH_TIMING_SKILL=design … timing-ledger.sh mark "design Steps 1c-1e — discussion block" || true`.
++4. **Steps 1c, 1d, 1d.5, 1d.7, 1e**: delete each step's standalone ```bash prelude fence (source-env + pause-check + per-step timing mark). Replace each per-step sentinel directive with one prose line keeping the literal token in-section, e.g. for 1c: "`.completed/step-1c` is batch-written by the Step 2a entry fence (Phase 7 fold)." Same pattern for `step-1d`, `step-1d.5`, `step-1d.7`, `step-1e` (1e notes: first-pass Gate A is skipped by design; re-entry passes find the sentinel already present). Step 1d.7 outline approval still writes `.outline-approved` per `design-outline.md`; the completion sentinel is batched at Step 2a entry.
++5. **Step 2a entry fence**: after the source-env line and before the pause-check line, insert:
++   `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-1c"`, `: > …/step-1d`, `: > …/step-1d.5`, `: > …/step-1d.7`, `: > …/step-1e`.
+    Do not touch the `read-design-classification.sh` call, the SIMPLE guard, or the in-guard artifact/marker writes (pinned by `assert_step2a_entry_simple_guard`).
+-6. **Step 2a success boundary (HARD path)**: replace the prose-directed `step-2a` write with: "`.completed/step-2a` is written by the Step 2a.5 prelude fence." Keep the HARD zero-sketch degraded path's explicit sentinel writes unchanged.
++6. **Step 2a success boundary (HARD path)**: replace the prose-directed `step-2a` write with: "`.completed/step-2a` is written by the Step 2a.5 prelude fence on normal HARD paths and by the Step 2b prelude on zero-sketch/degraded paths that skip 2a.5." Keep the HARD zero-sketch degraded path's explicit in-branch artifact writes unchanged; add an explicit `: > "$DESIGN_TMPDIR/.completed/step-2a"` in that branch before jumping to Step 2b when Step 2a.5 is skipped.
+ 7. **Step 2a.5 prelude fence**: insert `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-2a"` between source-env and pause-check. Replace the step-2a.5 success-boundary directive with prose: "`.completed/step-2a.5` is written by the Step 2b prelude fence." The SIMPLE legacy-repair guard fence stays unchanged.
+-8. **Step 2b prelude fence**: insert `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-2a.5"` between source-env and pause-check (idempotent re-touch on SIMPLE/degraded paths).
++8. **Step 2b prelude fence**: insert `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-2a"` + `: > "$DESIGN_TMPDIR/.completed/step-2a.5"` between source-env and pause-check (idempotent re-touch on SIMPLE/normal HARD paths; primary `step-2a` host for zero-sketch skip of 2a.5).
+ 9. **Step 3 success boundary**: replace the prose-directed `step-3` write with: "`.completed/step-3` is written by the Step 3.5 prelude fence on the Gate B path; Gate-B-bypass branches keep their explicit triple-sentinel writes." Gate-B-bypass branch lines are untouched (pinned by `assert_gate_b_bypass_branch_sentinels`).
+ 10. **Step 3.5 prelude fence**: insert `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-3"` between source-env and pause-check. Replace the step-3.5 success-boundary directive with prose: "`.completed/step-3.5` is written by the Step 3.6 entry fence."
+ 11. **Step 3.6 fence**: insert `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-3.5"` between the source-env line and the pause-check line (the pause-check stays before `read-design-classification.sh` per `assert_thin_fence`). In-fence `step-3.6` writes and rc=10 Continue/Stop semantics unchanged.
+ 12. **Step 3b**: prelude unchanged. On the non-architectural skip path, direct the orchestrator to write `architecture-diagram.skipped` in the same Bash call as the completion boundary fence (prepend the `: > "$DESIGN_TMPDIR/architecture-diagram.skipped"` line when invoking that fence) instead of a separate turn. The completion-boundary fence text itself is unchanged (pinned by `assert_step3b_finalize_boundary`).
+ 13. **Step 4 success boundary**: replace the prose-directed `step-4` write with: "`.completed/step-4` is written by the Step 4b plan-emit fence." Step 4 prelude (compat FINALIZE) unchanged.
+ 14. **Step 4b**: delete the standalone timing-only prelude fence. Extend the existing `emit-design-plan-preview.sh --variant gatec` fence to: source-env → `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-4"` → pause-check → `timing-ledger.sh mark "design Step 4b — gate C"` → emit call. Replace the step-4b success-boundary directive with prose: "`.completed/step-4b` is written by the Step 5 prelude fence."
+-15. **Step 5 prelude fence**: insert `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-4b"` between source-env and pause-check.
+-16. **Step 5b success boundary**: replace the prose-directed `step-5b` write with: "`.completed/step-5b` is written by the Step 5c publish fence."
+-17. **Step 5c publish fence**: after its source-env line (this fence deliberately has no pause-check; foreground publish), insert `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-5b"`. At the fence tail, after `PLAN_WRITE_OK` is parsed, append: `if [[ "${PLAN_WRITE_OK:-}" == true ]]; then mkdir -p "$DESIGN_TMPDIR/.completed"; : > "$DESIGN_TMPDIR/.completed/step-5c"; fi`. Update item 6's prose to state the in-fence write (keep the literal `.completed/step-5c` token and the `PLAN_WRITE_OK=true`-only condition).
++15. **Step 5 prelude fence**: insert `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-4b"` between source-env and pause-check (no `step-5b` here).
++16. **Step 5b success boundary**: **keep** the explicit boundary-local write — `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-5b"` at Step 5b settlement (not folded into Step 5c) so `design-publish.sh`'s OOS precondition is satisfied only after Step 5b genuinely completes.
++17. **Step 5c publish fence**: at the fence tail, after `PLAN_WRITE_OK` is parsed, append the in-fence conditional:
++   `if [[ "${PLAN_WRITE_OK:-}" == true ]]; then mkdir -p "$DESIGN_TMPDIR/.completed"; : > "$DESIGN_TMPDIR/.completed/step-5c"; fi`.
++   Update item 6's prose to retain the exact Check 15b substring ``: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** `PLAN_WRITE_OK=true`'' while noting the write is in-fence (not a separate turn).
+ 18. **Step 5d success boundary**: replace the prose-directed `step-5d` write with: "`.completed/step-5d` is written by the Step 6 prelude fence."
+-19. **Step 6 prelude fence**: insert `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-5d"` between source-env and pause-check. **Step 6 cleanup fence**: fold the happy-path `step-6` write into the fence itself — `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-6"` between the pause-check and the `cleanup-tmpdir.sh` call; drop the separate "Before invoking… run mkdir…" directive sentence (keep prose noting the in-fence write).
+-20. **Anti-pattern #7** (NEVER omit the pause-check): reword "How to apply" — every surviving fence that sources `current-design-env-$PPID.sh` keeps the pause-check after the source line; ad-hoc Bash keeps the blanket prelude; the deleted standalone preludes for 1c–1e are the intentional Phase 7 exception, with pause honored at the next driver fence.
+-21. **Audit table (new, short)**: a compact list in the "Bash block prelude" area naming each folded write site and each consciously-kept prelude (2b, 3, 3.5, 3b, 4, 5, 6) with one-phrase reasons. Keeps future edits from "fixing" the asymmetry.
++19. **Step 6 prelude fence**: insert `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-5d"` between source-env and pause-check. **Step 6 cleanup fence**: fold the happy-path `step-6` write into the fence itself — `mkdir -p "$DESIGN_TMPDIR/.completed"` + `: > "$DESIGN_TMPDIR/.completed/step-6"` **after** the pause-check and immediately **before** the `cleanup-tmpdir.sh` call (sole deliberate exception to the before-pause folded-write rule); drop the separate "Before invoking… run mkdir…" directive sentence (keep prose noting the in-fence write and the exception).
++20. **Anti-pattern #7** (NEVER omit the pause-check): reword "How to apply" — every surviving fence that sources `current-design-env-$PPID.sh` keeps the pause-check after the source line; ad-hoc Bash keeps the blanket prelude; the deleted standalone preludes for 1c–1e are the intentional Phase 7 exception, with pause honored at the next driver fence; `step-6` is the sole sentinel intentionally written after pause-check.
++21. **Audit table (new, short)**: a compact list in the "Bash block prelude" area naming each folded write site and each consciously-kept prelude (2b, 3, 3.5, 3b, 4, 5, 6) with one-phrase reasons; call out `step-5b` at Step 5b boundary and `step-6` after-pause exception. Keeps future edits from "fixing" the asymmetry.
+ 
+ ### UPDATED: `scripts/test-design-structure.sh`
+ 
+ 1. **Check 21 `assert_step_completion_sentinels`**: unchanged mechanics — every step section keeps its literal `.completed/step-N` token via the new prose lines or in-fence writes. Add a comment noting the folded contract.
+-2. **New `assert_folded_sentinel_writes` (conscious update, same Check 21 block)**: for each (sentinel, host-fence anchor) pair —
+-   `step-1c|step-1d|step-1d.5|step-1e` → first fence after `<!-- step:2a —`; `step-2a` → first fence after `### 2a.5`; `step-2a.5` → first fence after `<!-- step:2b —`; `step-3` → first fence after `<!-- step:3.5`; `step-3.5` → first fence after `<!-- step:3.6`; `step-4` → fence containing `--variant gatec`; `step-4b` → first fence after `<!-- step:5 —`; `step-5b` and `step-5c` → fence containing `design-publish.sh`; `step-5d` → first fence after `<!-- step:6`; `step-6` → fence containing `cleanup-tmpdir.sh` —
+-   assert the literal `: > "$DESIGN_TMPDIR/.completed/<sentinel>"` line exists inside the host fence, and (where the host fence has a pause-check) that the write line number falls after the source-env line and before the `design-pause-save.sh` line. Reuse `extract_first_bash_fence_after`.
+-3. **Deleted-prelude guard**: assert no standalone ```bash fence between `<!-- step:1c` and `<!-- step:2a —` contains `timing-ledger.sh` (prevents the near-empty preludes from creeping back). Assert the Step 0c directive contains the literal `design Steps 1c-1e — discussion block`.
+-4. `assert_bash_fences_have_pause_check`, `assert_step2a_entry_simple_guard`, `assert_thin_fence`, `assert_step3b_finalize_boundary`, `assert_gate_b_bypass_branch_sentinels`, `assert_step3b_entry_guard_threads_repo`: unchanged (deleted fences vanish from the scan; surviving fences keep their pinned shapes).
++2. **New helper `extract_bash_fence_containing_token`**: like `extract_first_bash_fence_after` but accepts optional leading whitespace on fence delimiters and locates the bash fence whose body contains a token (used for the indented Step 5c `design-publish.sh` fence).
++3. **New `assert_folded_sentinel_writes` (conscious update, same Check 21 block)**: for each (sentinel, host-fence anchor) pair —
++   `step-1c|step-1d|step-1d.5|step-1d.7|step-1e` → first fence after `<!-- step:2a —`; `step-2a` → first fence after `### 2a.5` **or** first fence after `<!-- step:2b —` (zero-sketch alternate host); `step-2a.5` → first fence after `<!-- step:2b —`; `step-3` → first fence after `<!-- step:3.5`; `step-3.5` → first fence after `<!-- step:3.6`; `step-4` → fence containing `--variant gatec`; `step-4b` → first fence after `<!-- step:5 —`; `step-5c` → fence containing `design-publish.sh` via `extract_bash_fence_containing_token`; `step-5d` → first fence after `<!-- step:6`; `step-6` → fence containing `cleanup-tmpdir.sh` —
++   assert the literal `: > "$DESIGN_TMPDIR/.completed/<sentinel>"` line exists inside the host fence. For host fences with a pause-check, assert absorbed sentinels (all except `step-6`) fall after the source-env line and before the `design-pause-save.sh` line. For `step-6` only, assert the write falls after `design-pause-save.sh` and before `cleanup-tmpdir.sh`. Reuse `extract_first_bash_fence_after` for unindented anchor hosts.
++4. **Deleted-prelude guard**: assert no standalone ```bash fence between `<!-- step:1c` and `<!-- step:2a —` contains `timing-ledger.sh` (prevents the near-empty preludes from creeping back). Assert the Step 0c fence contains the literal `design Steps 1c-1e — discussion block` and sources `current-design-env-$PPID.sh`.
++5. `assert_bash_fences_have_pause_check`, `assert_step2a_entry_simple_guard`, `assert_thin_fence`, `assert_step3b_finalize_boundary`, `assert_gate_b_bypass_branch_sentinels`, `assert_step3b_entry_guard_threads_repo`: unchanged (deleted fences vanish from the scan; surviving fences keep their pinned shapes). Check 15b `step-5b` grep against `design-publish.sh` unchanged — `step-5b` is not written inside the publish fence.
++
++### UPDATED: `scripts/design-pause-load.sh`
++
++After successful `cp -R` restore and before writing `.resume-loaded`, `rm -f "$DESIGN_TMPDIR/.pause-requested"` so a resumed run does not immediately re-exec pause-save at the Step 2a entry boundary. Pause snapshots may still include the file for forensic continuity; load clears it on success.
+ 
+ ### UPDATED: `docs/configuration-and-permissions.md`
+ 
+ Update the chat-order note: the Gate C clause changes from "runs a `timing-ledger.sh mark` Bash fence, then runs … `emit-design-plan-preview.sh --variant gatec`" to "runs one merged fence (step-4 sentinel + timing mark + `emit-design-plan-preview.sh --variant gatec`)". The Step 3 clause is unchanged.
+ 
++### UPDATED: `skills/design/scripts/test-design-pause-resume.sh`
++
++Add a focused case: discussion sentinels (`step-1c` through `step-1e` including `step-1d.7`) plus `.outline-approved` present, `.pause-requested` in the restored snapshot, load via `design-pause-load.sh`, then simulate the Step 2a entry prelude — assert `.pause-requested` is absent after load and pause-save routes `STEP=2a` (not `1d.7`) without an immediate re-pause loop.
++
+ ## Out of scope (unchanged)
+ 
+-- `scripts/design-pause-save.sh`, `scripts/design-pause-load.sh`, `skills/design/scripts/step-name-registry.tsv`, `skills/design/scripts/test-design-pause-resume.sh` — sentinel files, registry, and resume routing are byte-identical in behavior.
++- `scripts/design-pause-save.sh`, `skills/design/scripts/step-name-registry.tsv` — save-side routing and registry rows unchanged except for the load-side `.pause-requested` clear noted above.
+ - `skills/design/references/brainstorm.md`, `design-outline.md`, `approval-gates.md`, `discussion-rounds.md` fences and sentinel directives (`step-2b.5` writes in Gate B / discussion-round2 flows stay).
+ - `docs/issue-anchored-plan.md` (Step 3 chat-order sentence still accurate).
+ - Step-anchor comments, breadcrumb formats, skip-breadcrumb literals (pinned by checks 19/20).
+ 
+ ## Edge cases
+ 
+-- **Pause requested mid-discussion**: no Bash boundary exists until Step 2a entry; the fence writes the four discussion sentinels before its pause-check, so pause-save records the discussion complete and resume routes forward (1d.7 router → Step 2a). No discussion redo.
++- **Pause requested mid-discussion**: no Bash boundary exists until Step 2a entry; the fence writes all five discussion sentinels (including `step-1d.7`) before its pause-check, so pause-save records `STEP=2a` and resume routes forward without re-running discussion. Load clears restored `.pause-requested`.
+ - **In-flight pre-upgrade paused runs**: resume@N re-enters at N; per-step sentinels already present stay; `: >` re-touches are idempotent; missing downstream sentinels get written by host fences as the run proceeds.
+-- **SIMPLE fresh run**: the Step 2a fence writes 4 discussion sentinels + SIMPLE artifacts + `step-2a`/`step-2a.5` in one turn; Step 2b prelude re-touches `step-2a.5` harmlessly.
+-- **HARD zero-sketch degraded path**: keeps its explicit sentinel writes and still skips the 2a.5 fence; the Step 2b prelude covers `step-2a.5` regardless.
++- **SIMPLE fresh run**: the Step 2a fence writes 5 discussion sentinels + SIMPLE artifacts + `step-2a`/`step-2a.5` in one turn; Step 2b prelude re-touches `step-2a`/`step-2a.5` harmlessly.
++- **HARD zero-sketch degraded path**: keeps its explicit in-branch artifact writes plus explicit `step-2a`; skips the 2a.5 fence; the Step 2b prelude writes `step-2a` and `step-2a.5` regardless.
+ - **Gate C loops** (Discuss further / Re-run review panel): re-passes re-touch `step-4` at the 4b fence and `step-3`/`step-3.5` at their hosts — idempotent.
+ - **WORSE-Stop (rc=10)**: `step-3.5` was written at 3.6 fence entry, matching today's pre-3.6 write ordering; cancel-path state is unchanged.
+-- **Step 5c publish exits 2/4 or abort paths**: the `step-5c` write is gated on `PLAN_WRITE_OK=true` parsed from the result env, so failure paths leave it missing exactly as today; `step-5b` is written at fence top because Step 5b genuinely settled before 5c composition.
++- **Step 5c publish exits 2/4 or abort paths**: the `step-5c` write is gated on `PLAN_WRITE_OK=true` parsed from the result env, so failure paths leave it missing exactly as today; `step-5b` remains at the Step 5b boundary so publish cannot self-satisfy the OOS precondition.
++- **Step 6 pause before cleanup**: `step-6` after pause-check means resume re-enters cleanup without falsely marking Step 6 complete on a pre-cleanup pause.
+ 
+ ## Failure modes
+ 
+-1. **A folded write lands after the pause-check** → pause at that boundary resumes by re-running the completed step (double AskUserQuestion rounds, double FINALIZE). Warning signal: resume lands one step earlier than expected. Mitigation: the new harness assertion pins write-before-pause ordering per host fence.
++1. **A folded write lands after the pause-check (except step-6)** → pause at that boundary resumes by re-running the completed step (double AskUserQuestion rounds, double FINALIZE). Warning signal: resume lands one step earlier than expected. Mitigation: `assert_folded_sentinel_writes` pins before-pause ordering for absorbed sentinels; `step-6` is special-cased after-pause.
+ 2. **Check 21 section grep goes red because a prose line drops the literal token** → CI failure on `test-design-structure.sh`. Mitigation: each replacement prose line embeds the exact `.completed/step-N` literal; the new folded-write assertions make the contract explicit rather than incidental.
+-3. **Future editor re-adds a standalone prelude "for consistency"** → near-empty turns creep back. Mitigation: the deleted-prelude guard assertion + the audit table naming each kept/deleted fence with reasons.
++3. **Future editor re-adds a standalone prelude "for consistency"** → near-empty turns creep back. Mitigation: the deleted-prelude guard assertion + the audit table naming each kept/deleted fence with reasons.
++4. **Restored `.pause-requested` triggers immediate re-pause at Step 2a** → run loops at discussion→2a boundary. Warning signal: second pause marker within seconds of resume. Mitigation: `design-pause-load.sh` clears the sentinel on successful restore; focused harness case in `test-design-pause-resume.sh`.
++5. **HARD zero-sketch skips 2a.5 without writing `step-2a`** → pause-save routes before sketch completion. Mitigation: explicit zero-sketch branch write + Step 2b prelude re-touch; harness accepts 2a.5 or 2b host for `step-2a`.
+ 
+ ## Testing strategy
+ 
+-- Extend `scripts/test-design-structure.sh` as above; run it.
+-- Run `bash skills/design/scripts/test-design-pause-resume.sh` unmodified — must stay green (pause scripts untouched).
++- Extend `scripts/test-design-structure.sh` as above (including `extract_bash_fence_containing_token` and `step-6` after-pause special-case); run it.
++- Extend `bash skills/design/scripts/test-design-pause-resume.sh` with the discussion+`.pause-requested` restore case; existing cases must stay green.
+ - Run `bash scripts/relevant-checks.sh` (covers `make lint`, `lint-bare-grep-probe`, `lint-bash32`, markdownlint).
+ - Manual read-through of the rendered SKILL.md step flow for 1c→2a to confirm no orphaned directives.
+ 
+-diff_added: 135
++diff_added: 175
+ diff_deleted: 100
+-diff_lines: 235
++diff_lines: 275
++mechanical_churn: false
