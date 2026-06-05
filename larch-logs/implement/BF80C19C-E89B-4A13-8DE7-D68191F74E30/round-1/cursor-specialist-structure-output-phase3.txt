@@ -1,0 +1,24 @@
+I have enough context. Here is my review.
+
+---
+
+### In-Scope Findings
+
+1. **code-quality** `skills/design/scripts/design-route.sh:252-254` — `render_cancel_summary` contains a dead-code block: `if [[ "$_render_rc" -ne 0 ]]; then :; fi`. The body is a bare no-op (`:`) so the branch never has any effect; the `return 0` immediately after already ensures the function always succeeds regardless of render exit. **Suggested fix:** Delete the empty `if/fi` block entirely; it adds noise and no reader benefit beyond what the tolerant-render contract comment already communicates.
+
+2. **code-quality** `skills/design/SKILL.md:600-617` — The init fence now has two `_init_rc=1` branches that produce byte-for-byte identical output. The merged-specific branch (`contract-drift || env-refresh-failed`) added on the diff's `+` lines prints `**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS=...)** ` and exits; the pre-existing catch-all `if [[ "${_init_rc:-0}" -eq 1 ]]` a few lines later prints the same string and exits. Since the driver now owns the detailed messages, the specific first branch is redundant with the catch-all — any `_init_rc=1` case reaches the catch-all identically whether or not the first branch is present. **Suggested fix:** Remove the first `if [[ "${_init_rc:-0}" -eq 1 && ( "$INIT_STATUS" == contract-drift || ... ) ]]` branch and rely solely on the existing catch-all; the plan's intent (driver prints details, orchestrator prints only the short generic abort) is fully satisfied by the catch-all alone.
+
+3. **Latent** `code-quality** `scripts/test-design-structure.sh:229-235` — The plan's **Files → `test-design-structure.sh` → step0b_block** section explicitly requires: "pin that cancel case bodies do not contain `exit 1`." The diff adds the positive pin `grep -Fq 'post-fence handles final-summary emit/abort'` to confirm the comment is present, but adds no negative pin asserting that `exit 1` is absent from `cancel-title-filter` and `cancel-reentry-guard` case bodies. A future regression that restores `exit 1` to either body (causing cancel to abort inside the fence rather than post-fence) would pass the harness silently. **Suggested fix:** After the existing positive comment pin, add a scoped negative check that extracts only the cancel case bodies from `step0b_block` (e.g., via `awk` between `cancel-title-filter)` and `cancel-reentry-guard)` markers) and asserts `exit 1` is absent from each.
+
+---
+
+### Out-of-Scope Observations
+
+No pre-existing issues to surface.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	code-quality	skills/design/scripts/design-route.sh:252-254	Dead-code block in render_cancel_summary: if [[ "$_render_rc" -ne 0 ]]; then :; fi does nothing	The branch body is bare : so no observable effect; return 0 already ensures tolerance	Delete the empty if/fi block entirely
+1	in_scope	nit	code-quality	skills/design/SKILL.md:600-617	Redundant _init_rc=1 branch: merged specific branch (contract-drift || env-refresh-failed) produces identical output to pre-existing catch-all third branch	Any _init_rc=1 exits via both; the first branch is unreachable past the catch-all and adds dead orchestrator prose	Remove the first specific if branch; keep only the existing catch-all
+1	in_scope	latent	code-quality	scripts/test-design-structure.sh:229-235	Missing negative pin: plan required asserting cancel case bodies have no exit 1; only a positive comment-text pin was added	A regression restoring exit 1 to cancel-title-filter or cancel-reentry-guard fence body would pass the harness, causing cancel to abort inside the fence instead of delegating to post-fence prose	After the existing positive pin, add a scoped negative grep that extracts cancel case bodies and asserts exit 1 is absent
+```
