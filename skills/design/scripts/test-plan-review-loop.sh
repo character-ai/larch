@@ -717,10 +717,14 @@ write_voters_three() {
 #!/usr/bin/env bash
 set -euo pipefail
 DESIGN_TMPDIR=""
+if [[ -n "${PLAN_REVIEW_VOTER_ARGV_LOG:-}" ]]; then
+    printf '%q ' "$@" >>"$PLAN_REVIEW_VOTER_ARGV_LOG"
+    printf '\n' >>"$PLAN_REVIEW_VOTER_ARGV_LOG"
+fi
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
-        --ballot-file|--codex-available|--cursor-available|--session-env-path) shift 2 ;;
+        --ballot-file|--codex-available|--cursor-available|--session-env-path|--scope-anchor-file) shift 2 ;;
         *) shift 1 ;;
     esac
 done
@@ -1175,7 +1179,7 @@ assert row["v2_tool"] == ""
 assert row["v3_tool"] == "Cursor"
 PY
 
-echo "=== brainstorm context merges into feature file before dispatch ==="
+echo "=== brainstorm context stays non-binding while staged scope anchor dispatches ==="
 DB="$TMP/zb"
 mkdir -p "$DB"
 printf 'plan\n' >"$DB/plan.txt"
@@ -1190,13 +1194,29 @@ EOS
 write_scout
 write_dispatch_one_slot
 write_collect one
+export PLAN_REVIEW_SCOUT_ARGV_LOG="$DB/scout-argv.log"
+: >"$PLAN_REVIEW_SCOUT_ARGV_LOG"
+export PLAN_REVIEW_VOTER_ARGV_LOG="$DB/voter-argv.log"
+: >"$PLAN_REVIEW_VOTER_ARGV_LOG"
 write_voters_three
 outb=$(run_loop "$DB")
 printf '%s\n' "$outb" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status with brainstorm merge"
-grep -Fq '## Feature / issue context (base)' "$DB/feature-file-seen.txt" || fail "merged feature file missing base header"
-grep -Fq 'feat base' "$DB/feature-file-seen.txt" || fail "merged feature file missing base content"
-grep -Fq '## Brainstorm synthesis (additive; optional)' "$DB/feature-file-seen.txt" || fail "merged feature file missing brainstorm header"
-grep -Fq 'extra context' "$DB/feature-file-seen.txt" || fail "merged feature file missing brainstorm content"
+grep -Fq 'feat base' "$DB/feature-file-seen.txt" || fail "scope anchor missing base content"
+if grep -Fq 'extra context' "$DB/feature-file-seen.txt"; then fail "binding scope anchor should not include brainstorm content"; fi
+python3 - "$DB/plan-review-scope-anchor.txt" "$DB/feature-file-path.txt" <<'PY' || fail "panel should receive staged scope anchor path"
+import os, sys
+expected = os.path.realpath(sys.argv[1])
+actual = os.path.realpath(open(sys.argv[2], encoding="utf-8").read().strip())
+if expected != actual:
+    raise SystemExit(1)
+PY
+grep -Fq '## Feature / issue context (base)' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing base header"
+grep -Fq '## Brainstorm synthesis (additive; optional, non-binding)' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing brainstorm header"
+grep -Fq 'extra context' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing brainstorm content"
+grep -Fq -- '--description-file' "$DB/scout-argv.log" || fail "scout argv missing --description-file"
+grep -Fq 'plan-review-scope-anchor.txt' "$DB/scout-argv.log" || fail "scout argv missing raw staged scope anchor path"
+grep -Fq -- '--scope-anchor-file' "$DB/voter-argv.log" || fail "voter argv missing --scope-anchor-file"
+grep -Fq 'plan-review-scope-anchor.txt' "$DB/voter-argv.log" || fail "voter argv missing staged scope anchor path"
 
 echo "=== stubbed tally failure still emits loop KVs ==="
 D2="$TMP/z2"
@@ -1301,7 +1321,7 @@ out_leg=$(run_loop "$DLEG")
 printf '%s\n' "$out_leg" | grep -q '^LOOP_STATUS=complete$' || fail "legacy golden case should complete"
 actual_legacy_layout=$(sorted_file_list "$DLEG")
 actual_legacy_layout=${actual_legacy_layout//$'\ndirty-tree-detected.env'/}
-expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-oos.md\nfindings.md\nfindings.md.tmp\noos-accepted-design.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-slots.ndjson\nplan-review/round-1/findings-classification.tsv\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
+expected_legacy_layout=$'.step3-plan-review-result.env\naccepted-plan-findings.md\nballot.txt\ncursor-plan-arch-output.txt\ncursor-plan-arch-output.txt.tsv\nfeature-description.txt\nfeature-file-path.txt\nfeature-file-seen.txt\nfindings-in-scope.md\nfindings-in-scope.pre-dedup.md\nfindings-oos.md\nfindings-oos.pre-dedup.md\nfindings.md\nfindings.md.tmp\noos-accepted-design.md\noos.md\npanel-paths.txt\nplan-review-collector.stderr\nplan-review-scope-anchor.txt\nplan-review-slots.ndjson\nplan-review/round-1/findings-classification.tsv\nplan.txt\nrejected-findings.md\nrender-plan-cursor-arch.prompt\nscout-plan-manifest.json\ntiming-ledger.tsv\ntiming-ledger.tsv.lock\nvoter-paths.list\nvoting-tally.md\nvstub1.txt\nvstub2.txt\nvstub3.txt'
 [[ "$actual_legacy_layout" == "$expected_legacy_layout" ]] || fail "legacy file layout drifted: $actual_legacy_layout"
 [[ ! -d "$DLENV/plan-review/round-1/revise" ]] || fail "env-only round cap should not create revise artifacts"
 

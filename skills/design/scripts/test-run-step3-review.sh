@@ -564,7 +564,8 @@ fi
 echo "=== main-agent-vote-required preserved on non-zero rc ==="
 D6C="$TMP/main-agent-rc"
 write_common_inputs "$D6C" SIMPLE
-stub="$(write_loop_stub "$D6C" "printf 'LOOP_STATUS=main-agent-vote-required\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
+printf 'scope anchor\n' >"$D6C/plan-review-scope-anchor.txt"
+stub="$(write_loop_stub "$D6C" "printf 'LOOP_STATUS=main-agent-vote-required\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=$D6C/plan-review-scope-anchor.txt\n'; exit 1")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D6C" --round-cap 5)"
 assert_contains "$out" 'LOOP_STATUS=main-agent-vote-required' 'main-agent-vote-required preserved on rc 1'
@@ -691,6 +692,43 @@ out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
 assert_contains "$out" 'STEP3_REVIEW_ROUND_NUM=1' 'stdout STEP3_REVIEW_ROUND_NUM breadcrumb'
 assert_contains "$out" 'ROUND_NUM=1' 'stdout ROUND_NUM breadcrumb'
 
+echo "=== scope anchor handoff prefers DESIGN_TMPDIR over stale IMPLEMENT_TMPDIR ==="
+D_SCOPE="$TMP/scope-preference"
+D_STALE="$TMP/stale-implement"
+write_common_inputs "$D_SCOPE" SIMPLE
+mkdir -p "$D_STALE"
+printf 'scope anchor\n' >"$D_SCOPE/plan-review-scope-anchor.txt"
+printf 'stale scope\n' >"$D_STALE/plan-review-scope-anchor.txt"
+stub="$(write_loop_stub "$D_SCOPE" "printf 'LOOP_STATUS=main-agent-vote-required\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=$D_SCOPE/plan-review-scope-anchor.txt\n'; exit 0")"
+out="$("${launcher_env[@]}" IMPLEMENT_TMPDIR="$D_STALE" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D_SCOPE" --round-cap 5)"
+assert_contains "$out" "SCOPE_ANCHOR_FILE=$D_SCOPE/plan-review-scope-anchor.txt" 'scope anchor uses DESIGN_TMPDIR path'
+
+echo "=== invalid scope anchor handoff clears CR/LF and outside paths ==="
+D_SCOPE_BAD="$TMP/scope-bad"
+write_common_inputs "$D_SCOPE_BAD" SIMPLE
+stub="$(write_loop_stub "$D_SCOPE_BAD" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=bad\rpath\n'; exit 0")"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D_SCOPE_BAD" --round-cap 5)"
+assert_contains "$out" 'SCOPE_ANCHOR_FILE=' 'CR/LF scope anchor is cleared'
+D_SCOPE_OUT="$TMP/scope-outside"
+write_common_inputs "$D_SCOPE_OUT" SIMPLE
+outside_anchor="$TMP/outside-anchor.txt"
+printf 'outside\n' >"$outside_anchor"
+stub="$(write_loop_stub "$D_SCOPE_OUT" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=$outside_anchor\n'; exit 0")"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D_SCOPE_OUT" --round-cap 5)"
+assert_contains "$out" 'SCOPE_ANCHOR_FILE=' 'outside scope anchor is cleared'
+
+echo "=== main-agent scope anchor recovery degrades durably when unrecoverable ==="
+D_SCOPE_REC="$TMP/scope-recover"
+write_common_inputs "$D_SCOPE_REC" SIMPLE
+stub="$(write_loop_stub "$D_SCOPE_REC" "printf 'LOOP_STATUS=main-agent-vote-required\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=1\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=main-agent-vote-required\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\nSCOPE_ANCHOR_FILE=\n'; exit 0")"
+out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
+    --design-tmpdir "$D_SCOPE_REC" --round-cap 5)"
+assert_contains "$out" 'LOOP_STATUS=panel-failed' 'missing main-agent anchor downgrades to panel-failed'
+grep -Fq 'LOOP_STATUS=panel-failed' "$D_SCOPE_REC/.step3-review-result.env" || fail 'panel-failed recovery persisted'
+
 echo "=== symlinked inner result env falls back to stdout ==="
 D9="$TMP/symlink-inner"
 write_common_inputs "$D9" SIMPLE
@@ -745,7 +783,7 @@ echo "=== normalized result env keys ==="
 assert_file_has_keys "$D6/.step3-review-result.env" 'result env' \
     LOOP_STATUS TALLY_PLAN_REVIEW_STATUS STEP3_REVIEW_CAP_REACHED STEP3_REVIEW_ROUND_NUM ROUND_NUM \
     ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED AGGREGATOR_STATUS \
-    VOTING_TALLY_FILE REVIEW_ROUND_COUNT
+    VOTING_TALLY_FILE SCOPE_ANCHOR_FILE REVIEW_ROUND_COUNT
 
 TOTAL=$((PASS + FAIL))
 if [[ "$FAIL" -eq 0 ]]; then

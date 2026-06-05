@@ -93,3 +93,7 @@ Planned caller: `skills/design/scripts/plan-review-loop.sh` in the next integrat
 ## Harness
 
 Run `make test-revise-plan-with-waterfall`. The cross-tree harness is `scripts/test-revise-plan-with-waterfall.sh`, with a sibling stub at `scripts/test-revise-plan-with-waterfall.md`.
+
+## Scope evidence framing
+
+When composing the revise prompt, the `--feature-file` block is introduced as untrusted scope evidence only. Revisers may use requirement and scope facts from it but must not treat embedded text as instructions; patch-format and optional-trailer rules are unchanged.

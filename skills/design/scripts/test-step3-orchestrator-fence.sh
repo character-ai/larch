@@ -50,7 +50,7 @@ apply_step3_display_pass() {
     while IFS= read -r _line || [[ -n "$_line" ]]; do
         _key="${_line%%=*}"
         case "$_key" in
-            LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|WARN)
+            LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE|WARN)
                 : ;;
             *)
                 printf '%s\n' "$_line" ;;
@@ -62,7 +62,7 @@ apply_step3_handoff() {
     local design_tmpdir="$1" plan_review_out="$2" plan_review_rc="$3"
     unset -v LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
         TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE STEP3_REVIEW_CAP_REACHED \
-        STEP3_REVIEW_ROUND_NUM ROUND_NUM REVIEW_ROUND_COUNT
+        STEP3_REVIEW_ROUND_NUM ROUND_NUM REVIEW_ROUND_COUNT SCOPE_ANCHOR_FILE
 
     # rc=2 first: abort before display pass, safe-env load, parse, or normalization.
     if [[ "${plan_review_rc:-0}" -eq 2 ]]; then
@@ -86,7 +86,7 @@ apply_step3_handoff() {
             _key="${_line%%=*}"
             _value="${_line#*=}"
             case "$_key" in
-                LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT)
+                LOOP_STATUS|TALLY_PLAN_REVIEW_STATUS|STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE)
                     printf -v "$_key" '%s' "$_value" ;;
                 WARN) printf '%s\n' "WARN=$_value" ;;
             esac
@@ -108,7 +108,7 @@ apply_step3_handoff() {
                     printf -v "$_key" '%s' "$_value"
                 fi
                 ;;
-            STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT)
+            STEP3_REVIEW_CAP_REACHED|STEP3_REVIEW_ROUND_NUM|ROUND_NUM|ACCEPTED_COUNT|IMPORTANT_ACCEPTED_COUNT|DEGRADED_PANEL|ROUNDS_COMPLETED|AGGREGATOR_STATUS|VOTING_TALLY_FILE|REVIEW_ROUND_COUNT|SCOPE_ANCHOR_FILE)
                 if [[ "$_step3_safe_env_loaded" == true ]]; then
                     [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
                 else
@@ -312,6 +312,18 @@ if printf '%s\n' "$_disp2_out" | command grep -Fq '**⚠ cap-reached breadcrumb*
     pass 'non-KV breadcrumb printed in display pass'
 else
     fail 'non-KV breadcrumb should appear in display pass'
+fi
+
+echo "=== SCOPE_ANCHOR_FILE survives file-first handoff ==="
+D_SCOPE="$TMP/scope-anchor-handoff"
+mkdir -p "$D_SCOPE"
+printf 'anchor body\n' >"$D_SCOPE/plan-review-scope-anchor.txt"
+printf 'LOOP_STATUS=complete\nSCOPE_ANCHOR_FILE=%s/plan-review-scope-anchor.txt\n' "$D_SCOPE" >"$D_SCOPE/.step3-review-result.env"
+apply_step3_handoff "$D_SCOPE" 'SCOPE_ANCHOR_FILE=/tmp/should-not-win.txt' 0
+if [[ "${SCOPE_ANCHOR_FILE:-}" == "$D_SCOPE/plan-review-scope-anchor.txt" ]]; then
+    pass 'SCOPE_ANCHOR_FILE file-first handoff'
+else
+    fail "SCOPE_ANCHOR_FILE expected $D_SCOPE/plan-review-scope-anchor.txt got ${SCOPE_ANCHOR_FILE:-}"
 fi
 
 echo "=== later-KV-wins with no safe env ==="

@@ -895,6 +895,59 @@ ghfail_out=$(GH_SHIM_FAIL=true CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG
 assert_contains 'STATUS=ok' "$ghfail_out" 'gh-failed line-count status ok'
 assert_contains '- **Lines (PR diff)**: N/A' "$(cat "$impl_ghfail/summary-final.md")" 'gh-failed line counts N/A'
 
+impl_line_cache="$TMP_ROOT/impl-line-cache"
+mkdir -p "$impl_line_cache/larch-logs/implement/run-line-cache"
+printf 'ISSUE_NUMBER=43\nRUN_ID=run-line-cache\nADOPTED=true\n' > "$impl_line_cache/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_line_cache/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/43\n'
+    printf 'PR_NUMBER=43\n'
+    printf 'LINES_PR_NUMBER=43\n'
+    printf 'LINES_STATUS=unavailable\n'
+    printf 'CODE_ADDED=999\n'
+    printf 'CODE_DELETED=999\n'
+    printf 'LOGS_ADDED=999\n'
+    printf 'LOGS_DELETED=999\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_line_cache/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_line_cache/finalize-state.sh"
+cp "$impl_lines/larch-logs/implement/run-lines/token-report.json" "$impl_line_cache/larch-logs/implement/run-line-cache/token-report.json"
+line_cache_out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-line-cache.md" \
+      "$HELPER" --implement-tmpdir "$impl_line_cache")
+assert_contains 'STATUS=ok' "$line_cache_out" 'line-count unavailable cache status ok'
+assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$impl_line_cache/summary-final.md")" 'line-count unavailable cache is recomputed'
+
+impl_line_stale="$TMP_ROOT/impl-line-stale"
+mkdir -p "$impl_line_stale/larch-logs/implement/run-line-stale"
+printf 'ISSUE_NUMBER=44\nRUN_ID=run-line-stale\nADOPTED=true\n' > "$impl_line_stale/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_line_stale/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/44\n'
+    printf 'PR_NUMBER=44\n'
+    printf 'LINES_PR_NUMBER=43\n'
+    printf 'LINES_STATUS=ok\n'
+    printf 'CODE_ADDED=999\n'
+    printf 'CODE_DELETED=999\n'
+    printf 'LOGS_ADDED=999\n'
+    printf 'LOGS_DELETED=999\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_line_stale/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_line_stale/finalize-state.sh"
+cp "$impl_lines/larch-logs/implement/run-lines/token-report.json" "$impl_line_stale/larch-logs/implement/run-line-stale/token-report.json"
+line_stale_out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-line-stale.md" \
+      "$HELPER" --implement-tmpdir "$impl_line_stale")
+assert_contains 'STATUS=ok' "$line_stale_out" 'line-count stale cache status ok'
+assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$impl_line_stale/summary-final.md")" 'line-count stale PR cache is not reused'
+assert_not_contains '+999/-999' "$(cat "$impl_line_stale/summary-final.md")" 'line-count stale PR cache values absent'
+
 for outcome_case in \
     "merged:$impl_dir:absent:present" \
     "stalled:$impl_st:present:present" \

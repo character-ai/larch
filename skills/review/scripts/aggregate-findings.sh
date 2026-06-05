@@ -72,6 +72,10 @@ esac
 unset _findings_canon
 # shellcheck source=skills/review/scripts/aggregate-findings-phrases.inc.bash
 source "$PLUGIN_ROOT/skills/review/scripts/aggregate-findings-phrases.inc.bash"
+MARKER_HELPER="$PLUGIN_ROOT/scripts/check-scope-reduction-marker.sh"
+if [[ ! -x "$MARKER_HELPER" ]]; then
+    MARKER_HELPER="$SCRIPT_DIR/../../../scripts/check-scope-reduction-marker.sh"
+fi
 export LARCH_AGGREGATE_INPUT_MODE="$INPUT_MODE"
 export EMPTY_MERGE_ATTESTATION
 
@@ -145,8 +149,47 @@ strip_agent_frontmatter() {
 
 INPUT_COUNT="$(count_finding_blocks "$FINDINGS_FILE")"
 MERGED_COUNT="$INPUT_COUNT"
+AGGREGATE_SOURCE_FILE="$FINDINGS_FILE"
+PLAN_TAGGED_FILE=""
+PLAN_TAGGED_COUNT=0
+if [[ "$INPUT_MODE" == "plan" ]]; then
+    PLAN_TAGGED_FILE="$REVIEW_TMPDIR/aggregate-scope-reduction-tagged.md"
+    _plan_untagged_file="$REVIEW_TMPDIR/aggregate-untagged-input.md"
+    if python3 - "$MARKER_HELPER" "$FINDINGS_FILE" "$_plan_untagged_file" "$PLAN_TAGGED_FILE" <<'PY'
+import os, re, subprocess, sys, tempfile
+helper, src, untagged, tagged_out = sys.argv[1:5]
+text=open(src, encoding='utf-8', errors='replace').read()
+blocks=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', text)]
+def tagged(block):
+    f=tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False); f.write(block); f.close()
+    try:
+        rc = subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        if rc == 0:
+            return True
+        if rc == 1:
+            return False
+        print("scope marker helper failed during plan aggregation split (rc=%d)" % rc, file=sys.stderr)
+        raise SystemExit(2)
+    finally: os.unlink(f.name)
+tag=[]; un=[]
+for b in blocks:
+    (tag if tagged(b) else un).append(b)
+open(untagged, 'w', encoding='utf-8').write('\n\n'.join(un)+('\n' if un else ''))
+open(tagged_out, 'w', encoding='utf-8').write('\n\n'.join(tag)+('\n' if tag else ''))
+PY
+    then
+        AGGREGATE_SOURCE_FILE="$_plan_untagged_file"
+        PLAN_TAGGED_COUNT=$(count_finding_blocks "$PLAN_TAGGED_FILE")
+    else
+        larch_err "aggregate-findings.sh: WARNING: scope marker helper failed during plan split; leaving plan findings unaggregated"
+        REASON="validation-failed"
+        emit_result
+        exit 0
+    fi
+fi
+AGGREGATE_INPUT_COUNT="$(count_finding_blocks "$AGGREGATE_SOURCE_FILE")"
 
-if [[ "$INPUT_COUNT" -lt 2 ]]; then
+if [[ "$AGGREGATE_INPUT_COUNT" -lt 2 ]]; then
     REASON="insufficient-input"
     emit_result
     exit 0
@@ -168,7 +211,13 @@ slots_file="$REVIEW_TMPDIR/aggregator-slots.ndjson"
 {
     strip_agent_frontmatter "$AGGREGATOR_AGENT"
     printf '\n\n## Raw reviewer findings (input)\n\n'
-    cat "$FINDINGS_FILE"
+    cat "$AGGREGATE_SOURCE_FILE"
+    if [[ "$INPUT_MODE" == "plan" && "$PLAN_TAGGED_COUNT" -gt 0 ]]; then
+        printf '
+
+Scope-reduction findings with a leading [SCOPE-REDUCTION] marker were withheld from LLM aggregation and will be appended verbatim after validation. Do not recreate or merge them.
+'
+    fi
 } > "$prompt_file"
 
 validate_py="$REVIEW_TMPDIR/aggregate-validate.py"
@@ -640,7 +689,7 @@ _agg_pipeline_for_candidate() {
     MERGE_PIPELINE_FAILURE_KIND=""
     MERGE_PIPELINE_RC=2
 
-    if ! python3 "$validate_py" "$FINDINGS_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
+    if ! python3 "$validate_py" "$AGGREGATE_SOURCE_FILE" "$cand" 2>"$REVIEW_TMPDIR/aggregator-validate.stderr"; then
         if grep -Eq '^AGGREGATOR_VALIDATION_FAILED=(preamble_finding_substring|nonconforming_heading_with_attestation)$' "$REVIEW_TMPDIR/aggregator-validate.stderr" 2>/dev/null; then
             MERGE_PIPELINE_RC=1
             return 0
@@ -681,6 +730,11 @@ PY
         MERGE_PIPELINE_RC=2
         return 0
     fi
+    _pre_agg_snapshot=""
+    if [[ "$INPUT_MODE" == "plan" ]]; then
+        _pre_agg_snapshot="$REVIEW_TMPDIR/findings-in-scope.pre-aggregation.md"
+        cp -f "$FINDINGS_FILE" "$_pre_agg_snapshot"
+    fi
     if [[ "$ALLOW_FINDINGS_OUTSIDE_TMPDIR" == "true" ]]; then
         if ! mv -f "$merged_tmp" "$FINDINGS_FILE" 2>"$REVIEW_TMPDIR/aggregator-mv.stderr"; then
             rm -f "$merged_tmp"
@@ -691,6 +745,102 @@ PY
         fi
     else
         mv -f "$merged_tmp" "$FINDINGS_FILE"
+    fi
+    if [[ "$INPUT_MODE" == "plan" ]]; then
+        _combined_plan="$REVIEW_TMPDIR/findings.md.plan-combined.$$"
+        {
+            cat "$FINDINGS_FILE"
+            if [[ -n "$PLAN_TAGGED_FILE" && -s "$PLAN_TAGGED_FILE" ]]; then
+                printf '\n'
+                cat "$PLAN_TAGGED_FILE"
+            fi
+        } >"$_combined_plan"
+        if ! python3 - "$MARKER_HELPER" "$FINDINGS_FILE" "$PLAN_TAGGED_FILE" "$_combined_plan" <<'PY' >"${_combined_plan}.renumbered"
+import os, re, subprocess, sys, tempfile
+helper, merged_path, tagged_path, combined_path = sys.argv[1:5]
+text=open(combined_path, encoding='utf-8', errors='replace').read()
+blocks=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', text)]
+def tagged(block):
+    f=tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False); f.write(block); f.close()
+    try:
+        rc = subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        if rc == 0:
+            return True
+        if rc == 1:
+            return False
+        print("scope marker helper failed during plan aggregation parity (rc=%d)" % rc, file=sys.stderr)
+        raise SystemExit(2)
+    finally: os.unlink(f.name)
+def problem_text(block):
+    parts = []
+    if block.splitlines():
+        parts.append(re.sub(r'^### FINDING_[0-9]+:\s*','',block.splitlines()[0]))
+    m=re.search(r'- \*\*Concern\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)', block, re.S)
+    if m:
+        parts.append(m.group(1))
+    for wm in re.finditer(r'(?mi)^\s*what:\s*(.+)$', block):
+        parts.append(wm.group(1))
+    txt="\n".join(parts) if parts else re.sub(r'^### FINDING_[0-9]+:\s*','',block,count=1,flags=re.M)
+    txt=re.sub(r'```.*?```','',txt,flags=re.S)
+    txt=re.sub(r'`[^`\n]*`','',txt)
+    txt=re.sub(r'^\s*\[(?:important|nit|latent)\]\s*','',txt,flags=re.I)
+    txt=re.sub(r'^\s*\[SCOPE-REDUCTION\]\s*','',txt,flags=re.I)
+    return txt
+def tokens(block):
+    return set(re.findall(r'[A-Za-z0-9_]+', problem_text(block).lower()))
+def reviewers(block):
+    m=re.search(r'- \*\*Reviewer\(s\)\*\*:\s*([^\n]+)', block)
+    if not m:
+        m=re.search(r'- \*\*Reviewers?\*\*:\s*([^\n]+)', block)
+    return {x.strip().lower() for x in m.group(1).split(',') if x.strip()} if m else set()
+def score(a,b):
+    at=tokens(a); bt=tokens(b)
+    return (len(at & bt) / len(at | bt)) if at and bt else 0.0
+tagged_inputs=[]
+if os.path.exists(tagged_path):
+    tagged_inputs=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', open(tagged_path, encoding='utf-8', errors='replace').read())]
+combined_tagged=[b for b in blocks if tagged(b)]
+if len(combined_tagged) < len(tagged_inputs):
+    raise SystemExit(1)
+merged_untagged=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', open(merged_path, encoding='utf-8', errors='replace').read()) if not tagged(m.group(0))]
+for untagged in merged_untagged:
+    for tagged_block in tagged_inputs:
+        if score(untagged, tagged_block) >= 0.6:
+            raise SystemExit(1)
+used=set()
+for src in sorted(tagged_inputs, key=lambda b: len(tokens(b)), reverse=True):
+    sr=reviewers(src)
+    candidates=[]
+    for i,b in enumerate(combined_tagged):
+        if i in used:
+            continue
+        br=reviewers(b)
+        if sr and br and not (sr & br):
+            continue
+        candidates.append((score(src,b), i))
+    candidates.sort(reverse=True)
+    if candidates and candidates[0][0] >= 0.5:
+        used.add(candidates[0][1])
+        matched=True
+    else:
+        matched=False
+    if not matched:
+        raise SystemExit(1)
+out=[]
+for i,b in enumerate(blocks,1):
+    out.append(re.sub(r'^### FINDING_[0-9]+:', f'### FINDING_{i}:', b, count=1, flags=re.M))
+sys.stdout.write('\n\n'.join(out)+("\n" if out else ""))
+PY
+        then
+            if [[ -n "$_pre_agg_snapshot" && -f "$_pre_agg_snapshot" ]]; then
+                cp -f "$_pre_agg_snapshot" "$FINDINGS_FILE"
+            fi
+            rm -f "$_combined_plan" "${_combined_plan}.renumbered"
+            MERGE_PIPELINE_RC=2
+            return 0
+        fi
+        mv -f "${_combined_plan}.renumbered" "$FINDINGS_FILE"
+        rm -f "$_combined_plan"
     fi
     MERGE_PIPELINE_RC=0
 }

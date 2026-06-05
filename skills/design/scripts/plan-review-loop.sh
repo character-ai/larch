@@ -22,6 +22,14 @@ DESIGN_DRIVER_SH="$PLUGIN_ROOT/skills/design/scripts/design-driver.sh"
 CHECK_PLAN_SIZE_SH="${LARCH_CHECK_PLAN_SIZE_SH:-${CHECK_PLAN_SIZE_SH:-$PLUGIN_ROOT/skills/design/scripts/check-plan-size.sh}}"
 INVOKE_PLAN_VALIDATOR_SH="$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh"
 DEDUP_PLAN_LINES_PY="${LARCH_DEDUP_PLAN_LINES_PY:-$PLUGIN_ROOT/skills/design/scripts/dedup-plan-lines.py}"
+SCOPE_MARKER_HELPER="$PLUGIN_ROOT/scripts/check-scope-reduction-marker.sh"
+if [[ ! -x "$SCOPE_MARKER_HELPER" ]]; then
+    SCOPE_MARKER_HELPER="$REPO_ROOT/scripts/check-scope-reduction-marker.sh"
+fi
+PLAN_BLOCK_STRIP_BODY_SH="$PLUGIN_ROOT/scripts/plan-block-strip-body.sh"
+if [[ ! -x "$PLAN_BLOCK_STRIP_BODY_SH" ]]; then
+    PLAN_BLOCK_STRIP_BODY_SH="$REPO_ROOT/scripts/plan-block-strip-body.sh"
+fi
 # shellcheck source=scripts/lib-quiet.sh
 source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
@@ -74,6 +82,7 @@ AGGREGATOR_STATUS=""
 ACCEPTED_COUNT=0
 DEGRADED_PANEL=0
 VOTER_1_PARSE_RATE_STATUS=""
+SCOPE_ANCHOR_FILE=""
 LOOP_STATUS="complete"
 _last_collect_out=""
 
@@ -117,20 +126,72 @@ mkdir -p "$DESIGN_TMPDIR"
 export DESIGN_TMPDIR
 
 if [[ -z "$FEATURE_FILE" ]]; then
-    FEATURE_FILE="${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt"
+    FEATURE_FILE="$DESIGN_TMPDIR/feature-description.txt"
 fi
 [[ -f "$FEATURE_FILE" ]] || { larch_err "plan-review-loop.sh: feature file not found: $FEATURE_FILE"; exit 2; }
+ORIGINAL_FEATURE_FILE="$FEATURE_FILE"
+SCOPE_ANCHOR_FILE="$DESIGN_TMPDIR/plan-review-scope-anchor.txt"
+
+_materialize_scope_anchor() {
+    local stripped_tmp anchor_tmp strip_kv strip_err malformed strip_rc
+    stripped_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-review-scope-anchor.XXXXXX")
+    anchor_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-review-scope-anchor-body.XXXXXX")
+    strip_kv=$(mktemp "$DESIGN_TMPDIR/.plan-strip-kv.XXXXXX")
+    strip_err=$(mktemp "$DESIGN_TMPDIR/.plan-strip-stderr.XXXXXX")
+    trap 'rm -f "$stripped_tmp" "$anchor_tmp" "$strip_kv"' RETURN
+    malformed=""
+    set +e
+    LARCH_QUIET_DISABLE=1 "$PLAN_BLOCK_STRIP_BODY_SH" --file "$ORIGINAL_FEATURE_FILE" --output "$stripped_tmp" >"$strip_kv" 2>"$strip_err"
+    strip_rc=$?
+    set -e
+    if [[ "$strip_rc" -ne 0 ]]; then
+        malformed=$(awk -F= '$1=="MALFORMED"{print $2; exit}' "$strip_kv")
+        if [[ -n "$malformed" ]]; then
+            larch_err "plan-review-loop.sh: failed to strip embedded larch:plan block while materializing scope anchor (MALFORMED=$malformed)"
+        else
+            larch_err "plan-review-loop.sh: failed to strip embedded larch:plan block while materializing scope anchor"
+        fi
+        if [[ -s "$strip_err" ]]; then
+            sed 's/^/plan-block-strip-body.sh: /' "$strip_err" >&2 || true
+        fi
+        rm -f "$strip_err"
+        return 2
+    fi
+    rm -f "$strip_kv" "$strip_err"
+    {
+        cat "$stripped_tmp"
+        if [[ -f "$DESIGN_TMPDIR/.outline-approved" && -s "$DESIGN_TMPDIR/design-outline.md" ]]; then
+            printf '\n\n## Approved direction (outline)\n\n'
+            cat "$DESIGN_TMPDIR/design-outline.md"
+        fi
+    } >"$anchor_tmp"
+    if ! grep -q '[^[:space:]]' "$anchor_tmp"; then
+        larch_err "plan-review-loop.sh: scope anchor is empty after stripping embedded larch:plan block"
+        return 2
+    fi
+    "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$anchor_tmp" >"$SCOPE_ANCHOR_FILE"
+    case "$SCOPE_ANCHOR_FILE" in
+        *$'\r'*|*$'\n'*) larch_err "plan-review-loop.sh: scope anchor path contains CR/LF"; return 2 ;;
+    esac
+}
+_materialize_scope_anchor
 
 _brainstorm_file="$DESIGN_TMPDIR/brainstorm.md"
 if [[ -f "$_brainstorm_file" && -s "$_brainstorm_file" ]]; then
     _merged_feature="$DESIGN_TMPDIR/plan-review-feature-context.txt"
+    _feature_context_base="$DESIGN_TMPDIR/.plan-review-feature-context-base.txt"
+    if ! LARCH_QUIET_DISABLE=1 "$PLAN_BLOCK_STRIP_BODY_SH" --file "$ORIGINAL_FEATURE_FILE" --output "$_feature_context_base" >/dev/null; then
+        rm -f "$_feature_context_base"
+        larch_err "plan-review-loop.sh: failed to strip embedded larch:plan block while materializing brainstorm feature context"
+        exit 2
+    fi
     {
         printf '%s\n' "## Feature / issue context (base)"
-        cat "$FEATURE_FILE"
-        printf '\n\n%s\n' "## Brainstorm synthesis (additive; optional)"
+        cat "$_feature_context_base"
+        printf '\n\n%s\n' "## Brainstorm synthesis (additive; optional, non-binding)"
         cat "$_brainstorm_file"
     } >"$_merged_feature"
-    FEATURE_FILE="$_merged_feature"
+    rm -f "$_feature_context_base"
 fi
 
 emit_loop_kvs() {
@@ -144,6 +205,7 @@ emit_loop_kvs() {
     emit_kv TALLY_PLAN_REVIEW_STATUS "$tally_status"
     emit_kv VOTING_TALLY_FILE "$voting_tally_file"
     emit_kv VOTER_1_PARSE_RATE_STATUS "$voter1_parse"
+    emit_kv SCOPE_ANCHOR_FILE "${SCOPE_ANCHOR_FILE:-}"
     emit_kv NIT_ACCEPTED_COUNT "${NIT_ACCEPTED_COUNT:-0}"
     emit_kv NON_NIT_ACCEPTED_COUNT "${NON_NIT_ACCEPTED_COUNT:-0}"
     emit_kv REASON "${LOOP_REASON:-}"
@@ -154,25 +216,26 @@ emit_loop_kvs() {
 
 write_step3_result_env() {
     local out="$DESIGN_TMPDIR/.step3-plan-review-result.env"
-    local tmp="${out}.tmp"
-    {
-        printf 'LOOP_STATUS=%s\n' "${LOOP_STATUS:-}"
-        printf 'ACCEPTED_COUNT=%s\n' "${ACCEPTED_COUNT:-0}"
-        printf 'IMPORTANT_ACCEPTED_COUNT=%s\n' "${IMPORTANT_ACCEPTED_COUNT:-0}"
-        printf 'DEGRADED_PANEL=%s\n' "${DEGRADED_PANEL:-0}"
-        printf 'ROUNDS_COMPLETED=%s\n' "${1:-$ROUND_NUM}"
-        printf 'REASON=%s\n' "${LOOP_REASON:-}"
-        printf 'REVISE_STATUS=%s\n' "${revise_status:-}"
-        printf 'NIT_ACCEPTED_COUNT=%s\n' "${NIT_ACCEPTED_COUNT:-0}"
-        printf 'NON_NIT_ACCEPTED_COUNT=%s\n' "${NON_NIT_ACCEPTED_COUNT:-0}"
-        printf 'AGGREGATOR_STATUS=%s\n' "${AGGREGATOR_STATUS:-}"
-        printf 'TALLY_PLAN_REVIEW_STATUS=%s\n' "${TALLY_PLAN_REVIEW_STATUS:-}"
-        printf 'VOTING_TALLY_FILE=%s\n' "${VOTING_TALLY_FILE:-}"
-        printf 'VOTER_1_PARSE_RATE_STATUS=%s\n' "${VOTER_1_PARSE_RATE_STATUS:-}"
-        printf 'COLLECT_OK_COUNT=%s\n' "${COLLECT_OK_COUNT:-0}"
-        printf 'COLLECT_FAILURE_COUNT=%s\n' "${COLLECT_FAILURE_COUNT:-0}"
-    } >"$tmp"
-    mv -f "$tmp" "$out"
+    if ! phase_driver_write_result_env "$out" \
+        "LOOP_STATUS=${LOOP_STATUS:-}" \
+        "ACCEPTED_COUNT=${ACCEPTED_COUNT:-0}" \
+        "IMPORTANT_ACCEPTED_COUNT=${IMPORTANT_ACCEPTED_COUNT:-0}" \
+        "DEGRADED_PANEL=${DEGRADED_PANEL:-0}" \
+        "ROUNDS_COMPLETED=${1:-$ROUND_NUM}" \
+        "REASON=${LOOP_REASON:-}" \
+        "REVISE_STATUS=${revise_status:-}" \
+        "NIT_ACCEPTED_COUNT=${NIT_ACCEPTED_COUNT:-0}" \
+        "NON_NIT_ACCEPTED_COUNT=${NON_NIT_ACCEPTED_COUNT:-0}" \
+        "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}" \
+        "TALLY_PLAN_REVIEW_STATUS=${TALLY_PLAN_REVIEW_STATUS:-}" \
+        "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
+        "VOTER_1_PARSE_RATE_STATUS=${VOTER_1_PARSE_RATE_STATUS:-}" \
+        "SCOPE_ANCHOR_FILE=${SCOPE_ANCHOR_FILE:-}" \
+        "COLLECT_OK_COUNT=${COLLECT_OK_COUNT:-0}" \
+        "COLLECT_FAILURE_COUNT=${COLLECT_FAILURE_COUNT:-0}"; then
+        larch_err "plan-review-loop.sh: refusing to write invalid or symlinked Step 3 result env"
+        return 1
+    fi
 }
 
 write_empty_review_artifacts() {
@@ -476,6 +539,7 @@ _write_round_summary() {
         printf 'PLAN_HASH_AFTER_REVISE=%s\n' "${PLAN_HASH_AFTER_REVISE:-}"
         printf 'COLLECT_OK_COUNT=%s\n' "${COLLECT_OK_COUNT:-0}"
         printf 'COLLECT_FAILURE_COUNT=%s\n' "${COLLECT_FAILURE_COUNT:-0}"
+        printf 'SCOPE_ANCHOR_FILE=%s\n' "${SCOPE_ANCHOR_FILE:-}"
     } >"$tmp"
     mv -f "$tmp" "$dest"
 }
@@ -545,7 +609,7 @@ _run_revise_with_status_parse() {
         --design-tmpdir "$DESIGN_TMPDIR" \
         --plan-file "$PLAN_FILE" \
         --findings-file "$DESIGN_TMPDIR/accepted-plan-findings.md" \
-        --feature-file "$FEATURE_FILE" \
+        --feature-file "$SCOPE_ANCHOR_FILE" \
         --round-num "$round_num" \
         --codex-present "$CODEX_PRESENT" \
         --cursor-present "$CURSOR_PRESENT" \
@@ -709,7 +773,10 @@ _run_post_apply_pipeline() {
 
 _terminal_exit() {
     local rc="$1" rounds_completed="$2"
-    write_step3_result_env "$rounds_completed"
+    if ! write_step3_result_env "$rounds_completed"; then
+        emit_kv WARN "plan-review-loop: failed to write .step3-plan-review-result.env"
+        exit 2
+    fi
     emit_loop_kvs "$LOOP_STATUS" "$ACCEPTED_COUNT" "$DEGRADED_PANEL" "$AGGREGATOR_STATUS" \
         "$TALLY_PLAN_REVIEW_STATUS" "$VOTING_TALLY_FILE" "$VOTER_1_PARSE_RATE_STATUS" "$rounds_completed"
     exit "$rc"
@@ -839,7 +906,7 @@ _run_plan_review_round() {
 # --- Step 2: scout (fail-open) ---
 "$PLAN_REVIEW_SCOUT_SH" \
     --plan-file "$PLAN_FILE" \
-    --description-file "$FEATURE_FILE" \
+    --description-file "$SCOPE_ANCHOR_FILE" \
     --output "$DESIGN_TMPDIR/scout-plan-manifest.json" \
     --max-archetypes 6 \
     --session-env-path "$DESIGN_TMPDIR/source-env.sh" \
@@ -852,7 +919,7 @@ _panel_raw=$("$PLAN_REVIEW_DISPATCH_PANEL_SH" \
     --codex-present "$CODEX_PRESENT" \
     --cursor-present "$CURSOR_PRESENT" \
     --plan-file "$PLAN_FILE" \
-    --feature-file "$FEATURE_FILE" \
+    --feature-file "$SCOPE_ANCHOR_FILE" \
     --timeout "$PANEL_TIMEOUT")
 
 PANEL_DISPATCH_OK="true"
@@ -1145,26 +1212,25 @@ PY
     fi
 done < <(_parse_collect_records "$_collect_out")
 
+python3 - "$_findings_tmp" "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" "$DESIGN_TMPDIR/findings-oos.pre-dedup.md" <<'PY'
+import re, sys
+src, out_in, out_oos = sys.argv[1:4]
+text = open(src, encoding="utf-8", errors="replace").read()
+fin = [m.group(0).strip() for m in re.finditer(r"(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)", text)]
+oos = [m.group(0).strip() for m in re.finditer(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)", text)]
+open(out_in, "w", encoding="utf-8").write("\n\n".join(fin) + ("\n\n" if fin else ""))
+open(out_oos, "w", encoding="utf-8").write("\n\n".join(oos) + ("\n\n" if oos else ""))
+PY
+
 _dedup_py="$DESIGN_TMPDIR/.plan-review-loop-dedup.py"
 cat > "$_dedup_py" <<'PY'
-import re, sys
+import os
+import re
+import subprocess
+import sys
+import tempfile
 
-# Jaccard token overlap on `what` field text inside FINDING / OOS blocks; merge >0.6.
-# In-scope wins over OOS when same `what` text.
-
-
-def tokens(s):
-    return set(re.findall(r"[A-Za-z0-9_]+", s.lower()))
-
-
-def jaccard(a, b):
-    if not a and not b:
-        return 0.0
-    if not a or not b:
-        return 0.0
-    inter = len(a & b)
-    union = len(a | b)
-    return inter / union if union else 0.0
+helper = os.environ.get("SCOPE_MARKER_HELPER")
 
 
 def split_all_blocks(text):
@@ -1181,77 +1247,132 @@ def split_all_blocks(text):
     return fins, oos
 
 
-def what_text(block):
+def is_tagged(block):
+    if not helper:
+        return False
+    with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as fh:
+        fh.write(block)
+        name = fh.name
+    try:
+        proc = subprocess.run([helper, "--file", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        if proc.returncode == 0:
+            return True
+        if proc.returncode == 1:
+            return False
+        print("ERROR: scope marker helper failed (rc=%d); refusing to dedup scope-reduction findings" % proc.returncode, file=sys.stderr)
+        raise SystemExit(2)
+    finally:
+        try:
+            os.unlink(name)
+        except OSError:
+            pass
+
+
+def problem_text(block):
     for label in ("Concern", "Description"):
-        m = re.search(
-            r"- \*\*%s\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)"
-            % label,
-            block,
-            re.S,
-        )
-        if m:
-            t = m.group(1).strip()
-            if t:
-                return t
-    return block
+        m = re.search(r"- \*\*%s\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)" % label, block, re.S)
+        if m and m.group(1).strip():
+            return m.group(1).strip()
+    head = block.splitlines()[0] if block.splitlines() else block
+    return re.sub(r"^###\s+(?:FINDING|OOS)_[0-9]+:\s*", "", head).strip() or block
+
+
+def comparison_text(block):
+    text = problem_text(block)
+    text = re.sub(r"```.*?```", "", text, flags=re.S)
+    text = re.sub(r"`[^`\n]*`", "", text)
+    text = re.sub(r"^\s*\[(?:important|nit|latent)\]\s*", "", text, flags=re.I)
+    text = re.sub(r"^\s*\[SCOPE-REDUCTION\]\s*", "", text, flags=re.I)
+    return text
+
+
+def tokens(s):
+    return set(re.findall(r"[A-Za-z0-9_]+", s.lower()))
+
+
+def jaccard(a, b):
+    if not a or not b:
+        return 0.0
+    return len(a & b) / len(a | b)
+
+
+def reviewer_line(block):
+    m = re.search(r"(\*\*Reviewer\(s\)\*\*: )([^\n]+)", block)
+    if m:
+        return m
+    return re.search(r"(\*\*Reviewers?\*\*: )([^\n]+)", block)
 
 
 def merge_reviewers(a, b):
-    ma = re.search(r"(\*\*Reviewer\(s\)\*\*: )([^\n]+)", a)
-    mb2 = re.search(r"(\*\*Reviewer\(s\)\*\*: )([^\n]+)", b) or re.search(
-        r"(\*\*Reviewer\*\*: )([^\n]+)", b
-    )
-    if ma and mb2:
-        return re.sub(
-            r"(\*\*Reviewer\(s\)\*\*: )([^\n]+)",
-            lambda m: m.group(1) + m.group(2) + ", " + mb2.group(2),
-            a,
-            count=1,
-        )
-    return a
+    ma = reviewer_line(a)
+    mb = reviewer_line(b)
+    if not ma or not mb:
+        return a
+    existing = [x.strip() for x in ma.group(2).split(",") if x.strip()]
+    for item in [x.strip() for x in mb.group(2).split(",") if x.strip()]:
+        if item not in existing:
+            existing.append(item)
+    return a[:ma.start(2)] + ", ".join(existing) + a[ma.end(2):]
+
+
+def choose_tagged_body(a, b):
+    return b if len(tokens(comparison_text(b))) > len(tokens(comparison_text(a))) else a
 
 
 def dedup(blocks, thresh=0.6):
     kept = []
+    kept_tagged = []
     for blk in blocks:
-        wt = what_text(blk)
-        t = tokens(wt)
+        t = tokens(comparison_text(blk))
+        tagged = is_tagged(blk)
         merged = False
         for i, kb in enumerate(kept):
-            if jaccard(t, tokens(what_text(kb))) > thresh:
-                kept[i] = merge_reviewers(kb, blk)
+            if jaccard(t, tokens(comparison_text(kb))) > thresh:
+                if tagged and kept_tagged[i]:
+                    kept[i] = merge_reviewers(choose_tagged_body(kb, blk), kb if choose_tagged_body(kb, blk) is blk else blk)
+                    kept_tagged[i] = True
+                elif tagged and not kept_tagged[i]:
+                    kept[i] = merge_reviewers(blk, kb)
+                    kept_tagged[i] = True
+                else:
+                    kept[i] = merge_reviewers(kb, blk)
+                    kept_tagged[i] = kept_tagged[i] or tagged
                 merged = True
                 break
         if not merged:
             kept.append(blk)
+            kept_tagged.append(tagged)
     return kept
+
+
+def renumber(fins, oos):
+    out = []
+    for i, b in enumerate(fins, 1):
+        out.append(re.sub(r"^### FINDING_[0-9]+:", "### FINDING_%d:" % i, b, count=1, flags=re.M))
+    for i, b in enumerate(oos, 1):
+        out.append(re.sub(r"^### OOS_[0-9]+:", "### OOS_%d:" % i, b, count=1, flags=re.M))
+    return out
 
 
 def main():
     raw = sys.stdin.read()
     fins, oos = split_all_blocks(raw)
     fins2 = dedup(fins)
-    owt = {what_text(b) for b in fins2}
+    fin_keys = {" ".join(sorted(tokens(comparison_text(b)))) for b in fins2}
     oos2 = []
     for b in dedup(oos):
-        if what_text(b) in owt:
+        if " ".join(sorted(tokens(comparison_text(b)))) in fin_keys:
             continue
         oos2.append(b)
-    out = []
-    for i, b in enumerate(fins2, 1):
-        out.append(re.sub(r"^### FINDING_[0-9]+:", "### FINDING_%d:" % i, b, count=1, flags=re.M))
-    for i, b in enumerate(oos2, 1):
-        out.append(re.sub(r"^### OOS_[0-9]+:", "### OOS_%d:" % i, b, count=1, flags=re.M))
+    out = renumber(fins2, oos2)
     sys.stdout.write("\n\n".join(out))
     if out:
         sys.stdout.write("\n")
 
-
 if __name__ == "__main__":
     main()
 PY
-
-if python3 "$_dedup_py" < "$_findings_tmp" > "$DESIGN_TMPDIR/findings.md"; then
+if SCOPE_MARKER_HELPER="$SCOPE_MARKER_HELPER" python3 "$_dedup_py" < "$_findings_tmp" > "$DESIGN_TMPDIR/findings.md"; then
     :
 else
     _dedup_failed=1
@@ -1290,6 +1411,80 @@ open(out_in, "w", encoding="utf-8").write("\n\n".join(fin) + ("\n\n" if fin else
 open(out_oos, "w", encoding="utf-8").write("\n\n".join(oos) + ("\n\n" if oos else ""))
 PY
 
+set +e
+python3 - "$SCOPE_MARKER_HELPER" "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" "$DESIGN_TMPDIR/findings-in-scope.md" <<'PY'
+import os, re, subprocess, sys, tempfile
+helper, pre, post = sys.argv[1:4]
+def blocks(path):
+    text=open(path, encoding='utf-8', errors='replace').read() if os.path.exists(path) else ''
+    return [m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', text)]
+def tagged(block):
+    f=tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False); f.write(block); f.close()
+    try:
+        rc=subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode
+        if rc == 0:
+            return True
+        if rc == 1:
+            return False
+        print("scope marker helper failed during dedup parity (rc=%d)" % rc, file=sys.stderr)
+        raise SystemExit(2)
+    finally: os.unlink(f.name)
+def prob(block):
+    parts=[]
+    if block.splitlines():
+        parts.append(block.splitlines()[0])
+    m=re.search(r'- \*\*Concern\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)', block, re.S)
+    if m:
+        parts.append(m.group(1))
+    for wm in re.finditer(r'(?mi)^\s*what:\s*(.+)$', block):
+        parts.append(wm.group(1))
+    txt='\n'.join(parts) if parts else block
+    txt=re.sub(r'```.*?```','',txt,flags=re.S); txt=re.sub(r'`[^`\n]*`','',txt)
+    txt=re.sub(r'^\s*\[(?:important|nit|latent)\]\s*','',txt,flags=re.I)
+    txt=re.sub(r'^\s*\[SCOPE-REDUCTION\]\s*','',txt,flags=re.I)
+    return set(re.findall(r'[A-Za-z0-9_]+', txt.lower()))
+def reviewers(block):
+    m=re.search(r'- \*\*Reviewer\(s\)\*\*:\s*([^\n]+)', block)
+    if not m:
+        m=re.search(r'- \*\*Reviewers?\*\*:\s*([^\n]+)', block)
+    if not m:
+        return set()
+    return {x.strip().lower() for x in m.group(1).split(',') if x.strip()}
+post_tag=[b for b in blocks(post) if tagged(b)]
+pre_tag=[b for b in blocks(pre) if tagged(b)]
+if len(post_tag) < len(pre_tag):
+    sys.exit(1)
+used=set()
+for src in pre_tag:
+    st=prob(src); sr=reviewers(src)
+    ok=False
+    for i,dst in enumerate(post_tag):
+        if i in used:
+            continue
+        if not tagged(dst):
+            continue
+        dt=prob(dst); dr=reviewers(dst)
+        if sr and dr and not (sr & dr):
+            continue
+        if st and dt and len(st & dt)/len(st | dt) >= 0.5:
+            used.add(i)
+            ok=True
+            break
+    if not ok:
+        sys.exit(1)
+sys.exit(0)
+PY
+_parity_rc=$?
+set -e
+if [[ "$_parity_rc" -ne 0 ]]; then
+    cp -f "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" "$DESIGN_TMPDIR/findings-in-scope.md"
+    if [[ "$_parity_rc" -eq 2 ]]; then
+        emit_kv WARN "plan-review-dedup: scope marker helper failed during parity check; using pre-dedup in-scope findings"
+    else
+        emit_kv WARN "plan-review-dedup: scope-reduction marker parity failed; using pre-dedup in-scope findings"
+    fi
+fi
+
 AGGREGATOR_STATUS="ok"
 _agg_in="$DESIGN_TMPDIR/findings-in-scope.md"
 _agg_out="$_agg_in"
@@ -1324,13 +1519,66 @@ else
     fi
 fi
 
-cat "$_agg_out" "$DESIGN_TMPDIR/findings-oos.md" > "$DESIGN_TMPDIR/ballot.txt"
+_ballot_renumber_failed=0
+set +e
+python3 - "$_agg_out" "$DESIGN_TMPDIR/findings-oos.md" "$DESIGN_TMPDIR/ballot.txt" <<'PY'
+import re, sys
+inp, oos_path, out_path = sys.argv[1:4]
+text = open(inp, encoding='utf-8', errors='replace').read() if inp else ''
+oos_text = open(oos_path, encoding='utf-8', errors='replace').read()
+fins=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', text)]
+oos=[m.group(0).strip() for m in re.finditer(r'(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)', oos_text)]
+out=[]
+for i,b in enumerate(fins,1): out.append(re.sub(r'^### FINDING_[0-9]+:', f'### FINDING_{i}:', b, count=1, flags=re.M))
+for i,b in enumerate(oos,1): out.append(re.sub(r'^### OOS_[0-9]+:', f'### OOS_{i}:', b, count=1, flags=re.M))
+heads=[]
+for b in out:
+    m=re.match(r'^### ((?:FINDING|OOS)_[0-9]+):', b)
+    if m: heads.append(m.group(1))
+if len(heads) != len(set(heads)):
+    raise SystemExit('duplicate headings after renumber')
+open(out_path,'w',encoding='utf-8').write('\n\n'.join(out)+("\n" if out else ""))
+PY
+_ballot_rc=$?
+set -e
+if [[ "$_ballot_rc" -ne 0 ]]; then
+    emit_kv WARN "plan-review-ballot: renumber failed (rc=$_ballot_rc); falling back to pre-dedup in-scope findings"
+    cp -f "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" "$_agg_out"
+    _ballot_oos_fallback="$DESIGN_TMPDIR/findings-oos.pre-dedup.md"
+    [[ -f "$_ballot_oos_fallback" ]] || _ballot_oos_fallback="$DESIGN_TMPDIR/findings-oos.md"
+    set +e
+    python3 - "$_agg_out" "$_ballot_oos_fallback" "$DESIGN_TMPDIR/ballot.txt" <<'PY'
+import re, sys
+inp, oos_path, out_path = sys.argv[1:4]
+text = open(inp, encoding='utf-8', errors='replace').read() if inp else ''
+oos_text = open(oos_path, encoding='utf-8', errors='replace').read()
+fins=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', text)]
+oos=[m.group(0).strip() for m in re.finditer(r'(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)', oos_text)]
+out=[]
+for i,b in enumerate(fins,1): out.append(re.sub(r'^### FINDING_[0-9]+:', f'### FINDING_{i}:', b, count=1, flags=re.M))
+for i,b in enumerate(oos,1): out.append(re.sub(r'^### OOS_[0-9]+:', f'### OOS_{i}:', b, count=1, flags=re.M))
+heads=[]
+for b in out:
+    m=re.match(r'^### ((?:FINDING|OOS)_[0-9]+):', b)
+    if m: heads.append(m.group(1))
+if len(heads) != len(set(heads)):
+    raise SystemExit('duplicate headings after renumber')
+open(out_path,'w',encoding='utf-8').write('\n\n'.join(out)+("\n" if out else ""))
+PY
+    _ballot_rc=$?
+    set -e
+    if [[ "$_ballot_rc" -ne 0 ]]; then
+        larch_err "plan-review-ballot: renumber failed on pre-dedup fallback (rc=$_ballot_rc)"
+        exit 1
+    fi
+fi
 
 _voter_raw=$("$PLAN_REVIEW_DISPATCH_VOTERS_SH" \
     --ballot-file "$DESIGN_TMPDIR/ballot.txt" \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --codex-available "$CODEX_PRESENT" \
     --cursor-available "$CURSOR_PRESENT" \
+    --scope-anchor-file "$SCOPE_ANCHOR_FILE" \
     --session-env-path "$DESIGN_TMPDIR/source-env.sh")
 
 VOTER_DISPATCH_OK="true"

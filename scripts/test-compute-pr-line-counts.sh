@@ -79,6 +79,16 @@ export GH_SHIM_FAIL
 [ "$(read_kv REASON "$out_fail")" = gh-failed ] || fail 'gh-failed reason'
 pass 'gh-failed unavailable path'
 
+out_bad_pr=$("$HELPER" --repo 'owner/repo' --pr-number 'not-a-number')
+[ "$(read_kv LINES_STATUS "$out_bad_pr")" = skipped ] || fail 'invalid pr skip status'
+[ "$(read_kv REASON "$out_bad_pr")" = no-pr ] || fail 'invalid pr skip reason'
+pass 'invalid pr-number skip path'
+
+out_bad_repo=$("$HELPER" --repo 'bad repo/name' --pr-number 3)
+[ "$(read_kv LINES_STATUS "$out_bad_repo")" = skipped ] || fail 'invalid repo skip status'
+[ "$(read_kv REASON "$out_bad_repo")" = invalid-repo ] || fail 'invalid repo skip reason'
+pass 'invalid repo skip path'
+
 GH_SHIM_FAIL=false
 : >"$GH_LOG"
 "$HELPER" --repo '' --pr-number 7 >/dev/null

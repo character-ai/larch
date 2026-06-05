@@ -166,6 +166,56 @@ EOF
 if is_security_block "$block"; then sec_rc=0; else sec_rc=1; fi
 assert_exit "no-space variant → detected" "$sec_rc" "0"
 
+echo "# is_scope_reduction_block"
+cat > "$block" <<'EOF'
+### FINDING_1:
+- **Concern**: [SCOPE-REDUCTION] reduce plan scope
+EOF
+if is_scope_reduction_block "$block"; then sr_rc=0; else sr_rc=1; fi
+assert_exit "leading Concern marker true" "$sr_rc" "0"
+cat > "$block" <<'EOF'
+### FINDING_1:
+- **Concern**: [important] [SCOPE-REDUCTION] reduce plan scope
+EOF
+if is_scope_reduction_block "$block"; then sr_rc=0; else sr_rc=1; fi
+assert_exit "severity-prefixed Concern marker true" "$sr_rc" "0"
+cat > "$block" <<'EOF'
+what: [SCOPE-REDUCTION] reduce plan scope
+EOF
+if is_scope_reduction_block "$block"; then sr_rc=0; else sr_rc=1; fi
+assert_exit "leading what marker true" "$sr_rc" "0"
+cat > "$block" <<'EOF'
+### FINDING_1: [SCOPE-REDUCTION] reduce plan scope
+EOF
+if is_scope_reduction_block "$block"; then sr_rc=0; else sr_rc=1; fi
+assert_exit "leading heading marker true" "$sr_rc" "0"
+cat > "$block" <<'EOF'
+### FINDING_1:
+```
+- **Concern**: [SCOPE-REDUCTION] fenced only
+```
+EOF
+if is_scope_reduction_block "$block"; then sr_rc=0; else sr_rc=1; fi
+assert_exit "fenced marker false" "$sr_rc" "1"
+cat > "$block" <<'EOF'
+### FINDING_1:
+- **Concern**: `[SCOPE-REDUCTION]` inline only
+EOF
+if is_scope_reduction_block "$block"; then sr_rc=0; else sr_rc=1; fi
+assert_exit "inline-code marker false" "$sr_rc" "1"
+cat > "$block" <<'EOF'
+### FINDING_1:
+- **Concern**: reduce scope [SCOPE-REDUCTION] later
+EOF
+if is_scope_reduction_block "$block"; then sr_rc=0; else sr_rc=1; fi
+assert_exit "non-leading marker false" "$sr_rc" "1"
+cat > "$block" <<'EOF'
+### FINDING_1:
+- **Concern**: ordinary finding
+EOF
+if is_scope_reduction_block "$block"; then sr_rc=0; else sr_rc=1; fi
+assert_exit "absent marker false" "$sr_rc" "1"
+
 echo "# split_ballot_to_blocks"
 ballot="$WORKDIR/ballot.md"
 cat > "$ballot" <<'EOF'

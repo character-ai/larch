@@ -157,4 +157,8 @@ When the loop ends via terminal path, ensure `.brainstorm-done` exists before en
 - **Step 2a**: When substituting `<FEATURE_DESCRIPTION>` into sketch prompts, if `brainstorm.md` exists and is non-empty, **prepend** a concise digest under a `## Brainstorm context` header to the feature text **inside the substitution string** (do not replace the issue body file).
 - **Step 2a.5**: `{FEATURE_DESCRIPTION}` / synthesis MAY incorporate the same additive digest when non-empty.
 - **Step 2b**: Read `brainstorm.md` when present; fold ideas only when they do not conflict with voted dialectic resolutions.
-- **Step 3**: `plan-review-loop.sh` merges non-empty `brainstorm.md` into the feature context file passed to `dispatch-plan-review-panel.sh` — reviewers see plan + merged context.
+- **Step 3**: `plan-review-loop.sh` may stage non-empty `brainstorm.md` as optional feature context, but `plan-review-scope-anchor.txt` remains the binding issue scope for scout, reviewer, voter, and revise decisions.
+
+## Plan-review binding scope
+
+Plan review uses the staged issue plus approved-outline scope anchor. Brainstorm synthesis may be present as optional context, but it is non-binding and does not redefine reviewer, voter, scout, or revise scope.

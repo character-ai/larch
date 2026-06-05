@@ -229,3 +229,7 @@ If no findings were rejected, write an empty `$DESIGN_TMPDIR/rejected-findings.m
 ## Related: decomposition panel
 
 Step **2b.5 Split-path** uses the same **availability-gated `--no-fallback`** dispatch contract as this Step 3 panel (not the legacy three-tier waterfall), with a decomposition manifest (four archetypes × present vendors) built by `skills/design/scripts/decompose-panel-dispatch.sh`. Normative orchestration, degraded presentation, aggregator merge (aggregator slot still uses waterfall), `/larch:issue` batch filing, and original-issue close live in `skills/design/references/decompose-panel.md` — read that file on Split-path entry, not this plan-review reference.
+
+## Scope anchor and scope reductions
+
+Plan review stages use a staged scope anchor under `$DESIGN_TMPDIR`, built from the originating issue text with prior `larch:plan` content stripped and the approved outline appended when present. Scout, panel, voters, and revise consume that anchor; voters receive it inline through `--scope-anchor-file`. No baseline plan file is part of this contract. Scope-reduction findings use a leading `[SCOPE-REDUCTION]` marker and normal vote thresholds. `SCOPE_ANCHOR_FILE` is threaded through Step 3 result env for the MainAgent fallback.

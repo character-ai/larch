@@ -66,3 +66,7 @@ When the panel is degraded, the dispatcher checks whether a failed external vote
 ## Harness
 
 `scripts/test-dispatch-plan-voters.sh`, wired through `make test-dispatch-plan-voters`.
+
+## Scope anchor forwarding
+
+`--scope-anchor-file <path>` is optional. `/design` plan review passes the staged `$DESIGN_TMPDIR/plan-review-scope-anchor.txt`; the dispatcher forwards it to every `render-voter-prompt.sh` invocation, including retry prompts through the shared prompt files. Omitting the flag preserves existing voter prompts.

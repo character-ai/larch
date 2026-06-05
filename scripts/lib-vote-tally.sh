@@ -69,6 +69,17 @@ sys.exit(0 if pattern.search(text_no_backtick) else 1)
 PYEOF
 }
 
+
+# is_scope_reduction_block: 0 (true) when the block file has a leading
+# [SCOPE-REDUCTION] marker in its normalized problem field. The canonical
+# detector strips fenced code, inline code, and one leading severity bracket.
+is_scope_reduction_block() {
+    local block="$1"
+    local script_dir
+    script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+    "$script_dir/check-scope-reduction-marker.sh" --file "$block"
+}
+
 # accept_finding: returns 0 (accept) or 1 (reject) given counts of YES/NO/EXONERATE
 # votes and the panel-level eligible voter count. The eligible count must be
 # the caller's effective quorum for that tally stage, not the per-finding

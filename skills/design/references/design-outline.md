@@ -118,10 +118,14 @@ On **Cancel**:
 - **Step 2a**: When substituting `<FEATURE_DESCRIPTION>` into sketch prompts, prepend a concise `## Approved direction (outline)` section only when `design-outline.md` exists, is non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Do not replace the issue body file. Stack this with the brainstorm digest when both exist.
 - **Step 2a.5**: Prepend a concise `## Approved direction (outline)` section to `{FEATURE_DESCRIPTION}` only when the same approved-outline conditions hold (`design-outline.md` non-empty + `.outline-approved` present), treated like Round 1 user-resolved decisions rather than optional ideation.
 - **Step 2b**: Read `design-outline.md` only when it is present, non-empty, **and** `$DESIGN_TMPDIR/.outline-approved` exists. Honor approved Goals, Non-goals, and Surfaces as binding scope. Let Approach sketch inform plan structure without locking in specific architecture choices; sketches and dialectic own architecture.
-- **Step 3**: `plan-review-loop.sh` MAY merge `design-outline.md` into the feature-context file passed to reviewers alongside `brainstorm.md` only when the approved-outline conditions hold. For L1, Step 2a and Step 2b consumption is sufficient because reviewers see the resulting plan that reflects the approved outline.
+- **Step 3**: `plan-review-loop.sh` appends an approved `design-outline.md` to `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` when `.outline-approved` exists. Brainstorm synthesis remains optional non-binding context in `plan-review-feature-context.txt` only; it is not merged into the binding reviewer scope anchor.
 
 ---
 
 ## Never-written-to-GitHub invariant
 
 `$DESIGN_TMPDIR/design-outline.md` is session-internal with respect to the implementation handoff. It is NOT included in `composed-plan.md`, the `larch:plan` issue-body block, or any artifact consumed by `/implement`. Design-log publishing may still capture the file in the redacted session bundle under `larch-logs/design/<RUN_ID>/`, so do not rely on bundle exclusion as a secrecy boundary.
+
+## Plan-review scope anchor
+
+An approved outline is appended to the staged plan-review scope anchor only when `.outline-approved` exists. Brainstorm/outline context is not treated as a replacement binding feature description for reviewers.

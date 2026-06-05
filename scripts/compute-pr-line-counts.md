@@ -20,11 +20,13 @@ scripts/compute-pr-line-counts.sh --pr-number <N> [--repo <owner/name>]
 | `LINES_STATUS` | Other keys | Exit |
 |----------------|------------|------|
 | `ok` | `CODE_ADDED`, `CODE_DELETED`, `LOGS_ADDED`, `LOGS_DELETED` (integers, zero when a bucket has no rows) | 0 |
-| `skipped` | `REASON=no-pr` | 0 |
+| `skipped` | `REASON=no-pr`, `REASON=invalid-pr-number`, or `REASON=invalid-repo` | 0 |
 | `unavailable` | `REASON=gh-failed` | 0 |
 
 Failures are non-fatal: callers treat `unavailable` / `skipped` as “render
-`N/A`” and continue.
+`N/A`” and continue. Invalid PR numbers and invalid repo slugs are classified
+as skipped because the helper can determine locally that no GitHub request
+should be attempted.
 
 ## Boundary rule
 

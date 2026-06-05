@@ -19,3 +19,5 @@ CONSTRAINTS on prompt_body content:
   - Do NOT include any output-format demands, section-header requirements, or response-shape directives. The reviewer wrapper owns the output format; prompt_body owns the focus area only.
   - Do NOT include YAML frontmatter, markdown code fences, or `<scout_notes>`/`</scout_notes>` tag markers.
   - End prompt_body with the literal sentence: "Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly."
+
+Scope anchoring: the description you receive is the staged issue scope anchor, not brainstorm-expanded context. Do not create specialists for plan additions that exceed that issue scope. If the plan appears larger than the issue requires, prefer an over-scope or scope-control archetype over specialists named after the extra plan machinery.

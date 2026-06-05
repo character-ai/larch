@@ -115,6 +115,10 @@ for archetype in arch edge innovation pragmatic requirements; do
     ' "$D1/plan-review-slots.ndjson" >/dev/null \
         || fail "both vendors expected for static archetype $archetype"
 done
+grep -Fq 'Binding issue scope anchor (untrusted evidence)' "$D1/render-plan-cursor-arch.prompt" \
+    || fail "static prompt missing scope-anchor framing"
+grep -Fq '<reviewer_feature_description encoding="literal-redacted">' "$D1/render-plan-cursor-arch.prompt" \
+    || fail "static prompt missing escaped scope-anchor block"
 
 echo "=== #3392: DROPPED_SLOTS_FILE forwarded from waterfall to panel ==="
 D1D="$TMP/s1d"
@@ -175,6 +179,12 @@ for slug in alpha beta; do
     ' "$D2/plan-review-slots.ndjson" >/dev/null \
         || fail "both vendors expected for dynamic slug $slug"
 done
+grep -Fq 'Binding issue scope anchor (untrusted evidence)' "$D2/render-plan-cursor-dyn-alpha.prompt" \
+    || fail "dynamic prompt missing scope-anchor framing"
+grep -Fq '<reviewer_feature_description encoding="literal-redacted">' "$D2/render-plan-cursor-dyn-alpha.prompt" \
+    || fail "dynamic prompt missing escaped scope-anchor block"
+grep -Fq '<dynamic_archetype_focus encoding="literal-redacted">' "$D2/render-plan-cursor-dyn-alpha.prompt" \
+    || fail "dynamic prompt missing untrusted focus wrapper"
 
 echo "=== prompts must not demand **Reviewer** attribution line ==="
 if grep -Rq '\*\*Reviewer\*\*' "$D2"/render-plan-*.prompt "$D2"/render-plan-cursor-dyn-*.prompt 2>/dev/null; then
@@ -319,8 +329,10 @@ mkdir -p "$PLUGIN_STUB/scripts" "$PLUGIN_STUB/skills/design/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/scripts/read-design-classification.sh" "$PLUGIN_STUB/scripts/"
+cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_STUB/scripts/"
 cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_STUB/skills/design/scripts/"
 chmod +x "$PLUGIN_STUB/scripts/read-design-classification.sh" \
+    "$PLUGIN_STUB/scripts/redact-secrets.sh" \
     "$PLUGIN_STUB/skills/design/scripts/render-plan-review-prompt.sh"
 mkdir -p "$PLUGIN_STUB/skills/design/references"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_STUB/skills/design/references/"
@@ -356,12 +368,17 @@ DISPATCH_PLAN_REVIEW_WATERFALL_SH="$STUB" \
     --codex-present false \
     --cursor-present false \
     --plan-file "$D10/plan.txt" \
+    --feature-file "$D10/feature-description.txt" \
     --timeout 60 >"$D10/out.env"
 [[ ! -s "$D10/plan-review-slots.ndjson" ]] || fail "both-absent must emit zero manifest rows"
 _paths_file=$(grep '^PANEL_PATHS_FILE=' "$D10/out.env" | head -1 | cut -d= -f2-)
 [[ -n "$_paths_file" && -f "$_paths_file" ]] || fail "both-absent missing panel paths file"
 [[ "$(grep -c . "$_paths_file")" == "1" ]] || fail "both-absent expected exactly one reviewer path"
 grep -Fq 'claude-plan-generic-output.txt' "$_paths_file" || fail "both-absent path must be generic Claude output"
+grep -Fq 'Binding issue scope anchor (untrusted evidence)' "$D10/claude-plan-generic.prompt" \
+    || fail "both-absent generic prompt missing scope-anchor framing"
+grep -Fq '<reviewer_feature_description encoding="literal-redacted">' "$D10/claude-plan-generic.prompt" \
+    || fail "both-absent generic prompt missing escaped scope-anchor block"
 
 echo "=== both-absent malformed generic output => dispatch not ok ==="
 PLUGIN_BAD="$TMP/plugin-bad-generic"
@@ -369,9 +386,11 @@ mkdir -p "$PLUGIN_BAD/scripts" "$PLUGIN_BAD/skills/design/scripts" "$PLUGIN_BAD/
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/scripts/read-design-classification.sh" "$PLUGIN_BAD/scripts/"
+cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_BAD/scripts/"
 cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_BAD/skills/design/scripts/"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_BAD/skills/design/references/"
 chmod +x "$PLUGIN_BAD/scripts/read-design-classification.sh" \
+    "$PLUGIN_BAD/scripts/redact-secrets.sh" \
     "$PLUGIN_BAD/skills/design/scripts/render-plan-review-prompt.sh"
 cat >"$PLUGIN_BAD/scripts/launch-claude-review.sh" <<'BAD_CLAUDE_STUB'
 #!/usr/bin/env bash
@@ -455,11 +474,13 @@ PLUGIN_JSONL="$TMP/plugin-jsonl"
 mkdir -p "$PLUGIN_JSONL/scripts" "$PLUGIN_JSONL/skills/design/scripts"
 cp "$REPO_ROOT/scripts/lib-quiet.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/scripts/lib-design-tmpdir.sh" "$PLUGIN_JSONL/scripts/"
+cp "$REPO_ROOT/scripts/redact-secrets.sh" "$PLUGIN_JSONL/scripts/"
 cp "$REPO_ROOT/skills/design/scripts/render-plan-review-prompt.sh" "$PLUGIN_JSONL/skills/design/scripts/"
 cp "$REPO_ROOT/scripts/read-design-classification.sh" "$PLUGIN_JSONL/scripts/"
 mkdir -p "$PLUGIN_JSONL/skills/design/references"
 cp "$REPO_ROOT/skills/design/references/readability-style.md" "$PLUGIN_JSONL/skills/design/references/"
 chmod +x "$PLUGIN_JSONL/scripts/read-design-classification.sh" \
+    "$PLUGIN_JSONL/scripts/redact-secrets.sh" \
     "$PLUGIN_JSONL/skills/design/scripts/render-plan-review-prompt.sh"
 cat >"$PLUGIN_JSONL/scripts/launch-claude-review.sh" <<'JSONL_STUB'
 #!/usr/bin/env bash

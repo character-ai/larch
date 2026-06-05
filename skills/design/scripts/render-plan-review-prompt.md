@@ -35,3 +35,7 @@ Run `make test-plan-review-prompt` or `bash skills/design/scripts/test-plan-revi
 Update `skills/design/SKILL.md`, `skills/design/references/plan-review.md`, `skills/design/references/readability-style.md`, `skills/design/scripts/test-plan-review-prompt.sh`, `Makefile`, and `docs/linting.md` when changing the renderer interface, vendor styles, archetype names, structured-output contract, readability substitution, or output invariants.
 
 On non-zero exit, `FAILURE_LOG=<path>` may appear on stdout.
+
+## Feature/scope anchor
+
+`--feature-file <path>` is optional and, in plan review, points at the staged `$DESIGN_TMPDIR/plan-review-scope-anchor.txt`. When readable, the prompt inlines it as untrusted scope evidence only, treats it as the binding issue scope for proportionality, asks reviewers to flag plans that over-serve the issue, and instructs scope-reduction TSV rows to use a leading `[SCOPE-REDUCTION]` marker in `what` while keeping `scope=in_scope`. There is no baseline-plan prompt support.

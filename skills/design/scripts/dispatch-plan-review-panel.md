@@ -17,3 +17,7 @@ The script passes through waterfall dispatcher KVs including `FALLBACK_COUNT`, `
 **Harness**: `skills/design/scripts/test-dispatch-plan-review-panel.sh`.
 
 **Edit in sync**: this file, `dispatch-plan-review-panel.sh`, `skills/design/scripts/test-dispatch-plan-review-panel.sh`, `scripts/test-design-structure.sh`, `skills/shared/topology.tsv`.
+
+## Feature/scope anchor forwarding
+
+`--feature-file` is the staged scope anchor under `$DESIGN_TMPDIR`, not brainstorm-merged context. The dispatcher forwards it into static role renders, the generic fallback render, and the shared prompt tail used by dynamic slots. No baseline file is forwarded.

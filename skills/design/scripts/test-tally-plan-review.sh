@@ -84,6 +84,25 @@ grep -q '| Reviewer | Proposed | Accepted | Exonerated | Rejected | OOS-Proposed
 # Cursor-Arch: 1 accepted finding (+1), 1 accepted OOS (+1) = score 2.
 grep -q '| Cursor-Arch | 1 | 1 | 0 | 0 | 1 | 1 | 0 | 0 | 2 |' "$DESIGN/voting-tally.md" || fail "scoreboard counts wrong for Cursor-Arch"
 
+BALLOT_SCOPE="$TMPROOT/ballot-scope.md"
+cat > "$BALLOT_SCOPE" <<'EOF'
+### FINDING_1: [SCOPE-REDUCTION] Drop non-required migration work
+- **Reviewer**: Cursor-Arch
+- focus-area = scope
+- Concern: [SCOPE-REDUCTION] The plan adds a migration not required by the originating issue.
+EOF
+SCOPE_V1="$TMPROOT/scope-v1.txt"
+SCOPE_V2="$TMPROOT/scope-v2.txt"
+SCOPE_V3="$TMPROOT/scope-v3.txt"
+printf '%s\n' 'FINDING_1: YES' >"$SCOPE_V1"
+printf '%s\n' 'FINDING_1: YES' >"$SCOPE_V2"
+printf '%s\n' 'FINDING_1: NO' >"$SCOPE_V3"
+DESIGN_SCOPE="$TMPROOT/design-scope"
+mkdir -p "$DESIGN_SCOPE"
+"$SUBJECT" --ballot-file "$BALLOT_SCOPE" --voter-files "$SCOPE_V1" "$SCOPE_V2" "$SCOPE_V3" --design-tmpdir "$DESIGN_SCOPE" >/dev/null
+grep -q 'FINDING_1: \[SCOPE-REDUCTION\]' "$DESIGN_SCOPE/accepted-plan-findings.md" \
+    || fail "scope-reduction finding with 2/3 YES should be accepted under normal voting"
+
 set +e
 out_early_error=$("$SUBJECT" --ballot-file "$BALLOT" 2>/dev/null)
 rc_early_error=$?

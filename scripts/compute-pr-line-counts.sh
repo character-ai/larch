@@ -37,6 +37,16 @@ case "$PR_NUMBER" in
         ;;
 esac
 
+if ! [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+    printf 'LINES_STATUS=skipped\nREASON=invalid-pr-number\n'
+    exit 0
+fi
+
+if [ -n "$REPO" ] && ! [[ "$REPO" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]]; then
+    printf 'LINES_STATUS=skipped\nREASON=invalid-repo\n'
+    exit 0
+fi
+
 if [ -n "$REPO" ]; then
     _repo_owner="${REPO%%/*}"
     _repo_name="${REPO#*/}"
@@ -93,5 +103,5 @@ END {
 ' "$tsv_tmp"
 
 trap - EXIT
-rm -f "$tsv_tmp"
+rm -f "$tsv_tmp" || true
 exit 0

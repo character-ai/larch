@@ -55,3 +55,7 @@ For multi-voter panels, `classify_result` applies exoneration after acceptance a
 ## Edit-in-sync
 
 When changing the threshold rules in `accept_finding`, the security regex in `is_security_block`, or the heading regex in `split_ballot_to_blocks`, update both callers, the harness, and `skills/shared/voting-protocol.md` (Threshold Rules table) in the same PR.
+
+## Scope-reduction marker helper
+
+`is_scope_reduction_block <block>` shells out to `scripts/check-scope-reduction-marker.sh`. The detector only accepts a leading `[SCOPE-REDUCTION]` marker in a finding heading, `what:`, or Concern/problem field after removing fenced code, inline code spans, and one leading severity bracket such as `[important]`, `[nit]`, or `[latent]`. Non-leading prose mentions and code-only mentions are false. The helper does not change tally thresholds; tagged findings are classified by the normal `accept_finding` / `classify_result` rules.

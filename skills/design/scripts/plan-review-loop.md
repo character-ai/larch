@@ -42,6 +42,7 @@ Validates `$DESIGN_TMPDIR` via `larch_design_tmpdir_validate` after the required
 | `TALLY_PLAN_REVIEW_STATUS` | Always |
 | `VOTING_TALLY_FILE` | Always |
 | `VOTER_1_PARSE_RATE_STATUS` | Always |
+| `SCOPE_ANCHOR_FILE` | Always; path to staged binding issue scope anchor |
 | `NIT_ACCEPTED_COUNT` | Multi-round |
 | `NON_NIT_ACCEPTED_COUNT` | Multi-round |
 | `REASON` | When annotated (`zero-findings`, `zero-findings-degraded-panel`, `converged`, `cap-hit`, `revision-failed`, `manual-gate-b`, etc.) |
@@ -58,11 +59,11 @@ When `--round-cap` is present on argv, the driver may exit `LOOP_STATUS=converge
 
 ## Durable handoff: `.step3-plan-review-result.env`
 
-Normalized KVs for SKILL.md Step 3.5 and Gate B across Bash fence boundaries. Values use a controlled vocabulary (no raw user content). See `plan-review-loop.sh` function `write_step3_result_env`.
+Normalized KVs for SKILL.md Step 3.5 and Gate B across Bash fence boundaries. Values use a controlled vocabulary (no raw user content) except `SCOPE_ANCHOR_FILE`, which is a validated path handoff to the staged binding issue scope anchor. See `plan-review-loop.sh` function `write_step3_result_env`.
 
 ## `round-summary.env` schema
 
-Written under `plan-review/round-N/round-summary.env` after each round's outcome is known. Keys: `ROUND_NUM`, `LOOP_STATUS` (terminal rounds only), `REASON`, `NIT_ACCEPTED_COUNT`, `NON_NIT_ACCEPTED_COUNT`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `TALLY_PLAN_REVIEW_STATUS`, `AGGREGATOR_STATUS`, `REVISE_STATUS`, `REVISE_WINNING_TIER`, `PLAN_HASH_BEFORE_REVISE`, `PLAN_HASH_AFTER_REVISE`, `COLLECT_OK_COUNT`, `COLLECT_FAILURE_COUNT`. Successful tier-4 fallback rounds preserve `REVISE_STATUS=ok-fallback` here instead of being normalized to `ok`.
+Written under `plan-review/round-N/round-summary.env` after each round's outcome is known. Keys: `ROUND_NUM`, `LOOP_STATUS` (terminal rounds only), `REASON`, `NIT_ACCEPTED_COUNT`, `NON_NIT_ACCEPTED_COUNT`, `ACCEPTED_COUNT`, `IMPORTANT_ACCEPTED_COUNT`, `DEGRADED_PANEL`, `TALLY_PLAN_REVIEW_STATUS`, `AGGREGATOR_STATUS`, `REVISE_STATUS`, `REVISE_WINNING_TIER`, `PLAN_HASH_BEFORE_REVISE`, `PLAN_HASH_AFTER_REVISE`, `COLLECT_OK_COUNT`, `COLLECT_FAILURE_COUNT`, `SCOPE_ANCHOR_FILE`. Successful tier-4 fallback rounds preserve `REVISE_STATUS=ok-fallback` here instead of being normalized to `ok`.
 
 ## Exit codes
 
@@ -105,3 +106,9 @@ Each Step 3 entry clears `plan-review/round-*/` before launch (SKILL.md); prior 
 Keep this file aligned with `plan-review-loop.sh` behavior and argv.
 
 Multi-round mode records one best-effort design plan-review timing `round` row per completed round. Terminal exits emit through `_snapshot_terminal_exit_preserving_status`; `main-agent-vote-required` persists `round-start-s` under `plan-review/round-N/` and defers emission to `skills/design/SKILL.md` after inline re-tally.
+
+## Scope anchor and scope-reduction preservation
+
+Each plan-review run materializes `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` from the originating feature text after `scripts/plan-block-strip-body.sh` removes any prior `larch:plan` block. An approved `design-outline.md` is appended only when `.outline-approved` exists. Brainstorm synthesis is written to `plan-review-feature-context.txt` as optional non-binding context and is not used as the binding scout/reviewer/voter/revise anchor. The loop emits `SCOPE_ANCHOR_FILE` through `emit_loop_kvs`, the terminal machine-output KV stream, and `.step3-plan-review-result.env` for durable Step 3 handoff.
+
+Collected in-scope findings are snapshotted to `findings-in-scope.pre-dedup.md` before Jaccard dedup. Dedup uses the canonical scope-reduction marker detector, strips severity and `[SCOPE-REDUCTION]` only for comparison, preserves tagged bodies when merging with untagged duplicates, and falls back to the pre-dedup in-scope snapshot if post-dedup tagged parity fails. Ballot input is sequentially renumbered for `FINDING_*` and `OOS_*` headings after aggregation or fallback. `AGGREGATED=false` keeps the current in-scope stream rather than restoring pre-split files. No baseline plan file is created.

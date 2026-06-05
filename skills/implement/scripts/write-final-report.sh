@@ -118,6 +118,12 @@ else
     set +e
     lines_blob=$("$PLUGIN_ROOT/scripts/compute-pr-line-counts.sh" --repo "$REPO" --pr-number "${PR_NUMBER:-0}")
     set -e
+    if [ -f "$SHIP_PR_STATE" ] && [ -w "$SHIP_PR_STATE" ]; then
+        {
+            printf 'LINES_PR_NUMBER=%s\n' "${PR_NUMBER:-0}"
+            printf '%s\n' "$lines_blob" | awk -F= '$1 ~ /^(LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/ { print }'
+        } >>"$SHIP_PR_STATE"
+    fi
     LINES_STATUS=$(read_lines_kv LINES_STATUS "$lines_blob")
     CODE_ADDED=$(read_lines_kv CODE_ADDED "$lines_blob")
     CODE_DELETED=$(read_lines_kv CODE_DELETED "$lines_blob")

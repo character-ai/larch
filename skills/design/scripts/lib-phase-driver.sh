@@ -101,6 +101,11 @@ phase_driver_read_result_env() {
                 case "$value" in
                     *$'\n'* | *$'\r'*)
                         larch_err "phase_driver_read_result_env: value for key ${key} must not contain newline or carriage return"
+                        if [[ "$key" == "SCOPE_ANCHOR_FILE" ]]; then
+                            larch_err "phase_driver_read_result_env: WARN: skipped durable handoff key ${key} due to CR/LF"
+                        else
+                            larch_err "phase_driver_read_result_env: WARN: skipped allowlisted key ${key} due to CR/LF"
+                        fi
                         continue 2
                         ;;
                 esac
