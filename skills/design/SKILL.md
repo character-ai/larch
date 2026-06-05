@@ -610,6 +610,16 @@ At the Gate A success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.compl
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 2a — sketches" || true
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf '%s\n' HARD)"
+if [ "$_design_classification" = SIMPLE ]; then
+  set -e
+  printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
+  printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
+  : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-2a"
+  : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+fi
 ```
 
 Before branching, read `$DESIGN_TMPDIR/run-params.json` and parse `sketch_budget`. Valid values are `0`, `2`, and `4`. If the file is absent or schema-invalid, default to `sketch_budget=4`. Step 2b plan-command validation always runs through `design-postplan-emit.sh` after `plan.txt` is written; do not gate it on review budget or re-classify here. Step 0 owns router judgment.
@@ -620,15 +630,7 @@ A diverge-then-converge phase where multiple agents independently produce short 
 
 ### SIMPLE branch (`design_classification == SIMPLE`) — no sketch agents
 
-Launch no external agents and no Claude fallback agents. Write sentinel artifacts:
-
-```bash
-[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' > "$DESIGN_TMPDIR/approach-synthesis.txt"
-printf '%s\n' 'NO_CONTESTED_DECISIONS' > "$DESIGN_TMPDIR/contested-decisions.md"
-: > "$DESIGN_TMPDIR/dialectic-resolutions.md"
-```
+Launch no external agents and no Claude fallback agents. The Step 2a entry fence already wrote the SIMPLE sentinels and `.completed/step-2a` / `.completed/step-2a.5` markers when `_design_classification` was `SIMPLE`.
 
 Skip Step 2a.5 and proceed directly to Step 2b. Do NOT call `collect-agent-results.sh`.
 
@@ -656,7 +658,7 @@ The sketch phase runs **inline** in the orchestrator (no Agent-tool subagent off
 
 ### 2a.2 — Launch Sketches in Parallel
 
-If `design_classification == SIMPLE`, perform the SIMPLE branch sentinel writes above and proceed directly to Step 2b.
+If the Step 2a entry fence already wrote SIMPLE sentinels (that is, `$DESIGN_TMPDIR/approach-synthesis.txt` contains `NO_SKETCHES_CLASSIFIED_SIMPLE`, or a re-read via `${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh` returns `SIMPLE`), proceed directly to Step 2b. Do not gate this skip on a separate orchestrator-side classification check that can diverge from the entry-fence outcome.
 
 **Regular mode**: when `sketch_budget=4`, up to 4 sketch slots run in parallel: 2 Cursor slots (Architecture/Standards, Edge-cases/Failure-modes) + 2 Codex slots (Innovation/Exploration, Pragmatism/Safety). A slot whose external tool is unavailable is **skipped** (fewer sketches), not Claude-replaced (#3207).
 
@@ -753,7 +755,19 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 Print: `> **🔶 /design 2a.5: dialectic**`
 
-If `design_classification == SIMPLE`, print `⏩ 2a.5: dialectic — skipped (SIMPLE) (<elapsed>)` and proceed directly to Step 2b. Do NOT load `dialectic-execution.md`.
+If `design_classification == SIMPLE`, print `⏩ 2a.5: dialectic — skipped (SIMPLE) (<elapsed>)` and proceed directly to Step 2b. Do NOT load `dialectic-execution.md`. On fresh SIMPLE runs, `.completed/step-2a.5` and `.completed/step-2a` were already written by the Step 2a entry fence.
+
+For pre-existing paused SIMPLE runs where `.completed/step-2a` exists but `.completed/step-2a.5` is absent, write only the missing Step 2a.5 completion marker; do not re-write SIMPLE artifacts (the artifact write site is entry-fence-only):
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf '%s\n' HARD)"
+if [ "$_design_classification" = SIMPLE ] && [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] && [ ! -f "$DESIGN_TMPDIR/.completed/step-2a.5" ]; then
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+fi
+```
 
 Read `$DESIGN_TMPDIR/contested-decisions.md`. If the file contains only `NO_CONTESTED_DECISIONS` (ignoring leading/trailing whitespace and newlines), print `⏩ 2a.5: dialectic — no contested decisions (<elapsed>)` and IMMEDIATELY proceed to Step 2b — do NOT halt after the skip breadcrumb.
 
@@ -970,7 +984,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.sh` lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.sh` (harness contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-emit-design-plan-preview.md`). Script contract: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/emit-design-plan-preview.md`.
 
-**Review-round cap entry guard**: `run-step3-review.sh` is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. The driver runs this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). It persists the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` and normalized KVs to `$DESIGN_TMPDIR/.step3-review-result.env`. Before launching `plan-review-loop.sh`, the driver persists the pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, the driver keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`, when `LOOP_STATUS=tally-error`, or when `LOOP_STATUS=degraded-empty-collector`; on those paths, roll back to the prior count (same semantics as `run-step3-review.sh` persist/rollback). If the cap is reached, the driver prints the warning, skips `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b/4/4b with existing artifacts.
+**Review-round cap entry guard**: `run-step3-review.sh` is the sole writer of `$DESIGN_TMPDIR/review-round-count.txt`; `plan-review-loop.sh` must not read or write that file. The driver runs this guard on every Step 3 entry (initial, Gate C re-run, and Gate A "Ready for review" post-discussion). It persists the guard result to `$DESIGN_TMPDIR/.step3-review-cap.env` and normalized KVs to `$DESIGN_TMPDIR/.step3-review-result.env`. Before launching `plan-review-loop.sh`, the driver persists the pending round to `review-round-count.txt` so crashes, empty statuses, or unrecognized statuses after launch still consume the slot. After the panel path returns, the driver keeps that persisted count for settled launched rounds, including `LOOP_STATUS=panel-failed`, but MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`, when `LOOP_STATUS=tally-error`, or when `LOOP_STATUS=degraded-empty-collector`; on those paths, roll back to the prior count (same semantics as `run-step3-review.sh` persist/rollback). If the cap is reached, the driver prints the warning, skips `plan-review-loop.sh` entirely, skip Gate B, and jump to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with existing artifacts.
 
 **IMPORTANT: When `STEP3_REVIEW_CAP_REACHED=false`, plan review MUST ALWAYS run the full Step 3 panel: **10 static** external slots (5 Cursor + 5 Codex for Arch, Edge, Innovation, Pragmatic, Requirements) plus **up to 12 dynamic** slots (Cursor + Codex per scouted archetype, scout cap 6). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when all sketch agents agreed, the plan is short, or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses. When Cursor is unavailable, each Cursor-assigned slot falls back to Codex; when Codex is unavailable, each Codex-assigned slot falls back to Cursor; when both are unavailable, each slot falls back to a Claude subagent.**
 
@@ -1063,7 +1077,7 @@ The driver runs `check-mid-run-dirty-tree.sh --mode checkpoint` after reviewer c
 
 If **all reviewers** report no in-scope issues and no out-of-scope observations, the driver skips voting (`AGGREGATOR_STATUS=skipped-empty-input` and `TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings`; tally is not executed) — proceed to Step 3.5.
 
-If `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do NOT enter Gate B. Gate B would otherwise re-surface stale accepted findings from an earlier round. On this path, Step 3 short-circuits directly to Step 3b, then Step 4, then Gate C with the existing plan + artifacts (same Step 3b → Step 4 → Gate C route as Gate C "When" prose — not a direct Gate C jump). Step 3.6 is skipped; print `⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)`. Before jumping to Step 3b, write the Gate-B-bypass completion sentinels: `mkdir -p "$DESIGN_TMPDIR/.completed"` plus `: > "$DESIGN_TMPDIR/.completed/step-3"`, `: > "$DESIGN_TMPDIR/.completed/step-3.5"`, and `: > "$DESIGN_TMPDIR/.completed/step-3.6"`. The Step 3.5 continuation block below is bypassed on this path.
+If `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do NOT enter Gate B. Gate B would otherwise re-surface stale accepted findings from an earlier round. On this path, Step 3 short-circuits directly to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with the existing plan + artifacts (same boundary-qualified route as Gate C "When" prose — not a direct Gate C jump). Step 3.6 is skipped; print `⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)`. Before jumping to Step 3b, write the Gate-B-bypass completion sentinels: `mkdir -p "$DESIGN_TMPDIR/.completed"` plus `: > "$DESIGN_TMPDIR/.completed/step-3"`, `: > "$DESIGN_TMPDIR/.completed/step-3.5"`, and `: > "$DESIGN_TMPDIR/.completed/step-3.6"`. The Step 3.5 continuation block below is bypassed on this path.
 
 If `LOOP_STATUS` is `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, or `panel-failed`, do NOT enter Gate B — proceed to Step 3b per the branch matrix above; Step 3.6 is skipped on those short-circuits (status-specific skip breadcrumbs in the branch matrix). Before every Gate-B-bypass jump, write the triple-sentinel bypass layout (`step-3`, `step-3.5`, and `step-3.6`) so pause/resume lands at Step 3b instead of re-entering intentionally skipped Gate B or assessor work.
 
@@ -1198,7 +1212,7 @@ Print: `> **🔶 /design 3b: arch diagram**`
 
 Before generating the diagram, classify the plan type by reading `$DESIGN_TMPDIR/plan.txt`. The plan is **non-architectural** when ALL files to be modified are exclusively: documentation files (`.md`, `docs/**`), configuration files (`.json`, `.yaml`, `.yml`, `.tsv`), or plain text (`.txt`) — with no new behavioral components, public APIs, or cross-skill contracts introduced. Apply a **conservative classifier** — SKILL.md files, `.sh` scripts, and `.py` scripts count as potentially architectural regardless of change size; when uncertain, generate the diagram rather than skip.
 
-If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`; write a zero-byte sentinel at `$DESIGN_TMPDIR/architecture-diagram.skipped`. Print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`. Then IMMEDIATELY continue to Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5c.5 uses the sentinel to clear any stale tracking-issue Architecture section from a prior design run.
+If the plan is non-architectural: do NOT write `$DESIGN_TMPDIR/architecture-diagram.md`; write a zero-byte sentinel at `$DESIGN_TMPDIR/architecture-diagram.skipped`. Print `⏩ 3b: arch diagram status=skip reason=no-architectural-change elapsed=<elapsed>`. Then IMMEDIATELY run the Step 3b completion boundary below, then Step 4. Leaving `architecture-diagram.md` absent is valid; Step 5c.5 uses the sentinel to clear any stale tracking-issue Architecture section from a prior design run.
 
 **Otherwise** (plan is architectural): generate a mermaid Architecture Diagram that represents the high-level system/component structure of the feature based on the finalized implementation plan (revised or original). The diagram should focus on **modules, boundaries, and their relationships** — not runtime behavior or code flow.
 
@@ -1229,14 +1243,31 @@ On `STATUS=ok`, rename the candidate to `$DESIGN_TMPDIR/architecture-diagram.md`
 ```
 ```
 
-**If diagram generation and sanitizer validation succeed**, continue to Step 4.
+**If diagram generation and sanitizer validation succeed**, run the Step 3b completion boundary below, then Step 4.
 
-**If the sanitizer returns `STATUS=rejected` or exits 2**, do NOT promote the candidate. Delete `$DESIGN_TMPDIR/architecture-diagram.candidate.md`. Print `**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=<token>); proceeding without diagram.**`. Capture the sanitizer's full stdout/stderr to `$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log` and append it under `### Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --site "design Step 3b" --tool "sanitize-mermaid-fragment.sh architecture" --exit-code <exit-code-or-2> --category Warnings --output-file "$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log" --redact || true`. Then continue to Step 4.
+**If the sanitizer returns `STATUS=rejected` or exits 2**, do NOT promote the candidate. Delete `$DESIGN_TMPDIR/architecture-diagram.candidate.md`. Print `**⚠ 3b: architecture diagram — rejected by mermaid sanitizer (REASON_TOKEN=<token>); proceeding without diagram.**`. Capture the sanitizer's full stdout/stderr to `$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log` and append it under `### Warnings` in `$DESIGN_TMPDIR/execution-issues.md` via `${CLAUDE_PLUGIN_ROOT}/scripts/append-tool-failure.sh --site "design Step 3b" --tool "sanitize-mermaid-fragment.sh architecture" --exit-code <exit-code-or-2> --category Warnings --output-file "$DESIGN_TMPDIR/architecture-diagram-sanitizer.failure.log" --redact || true`. Then run the Step 3b completion boundary below, then Step 4.
 
-**If diagram generation fails** (e.g., the feature is too abstract to diagram meaningfully), print `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**` and append the full generation failure capture to `$DESIGN_TMPDIR/execution-issues.md` with `append-tool-failure.sh` under `Warnings`. Then IMMEDIATELY continue to Step 4.
+**If diagram generation fails** (e.g., the feature is too abstract to diagram meaningfully), print `**⚠ 3b: arch diagram — generation failed, proceeding without diagram (<elapsed>)**` and append the full generation failure capture to `$DESIGN_TMPDIR/execution-issues.md` with `append-tool-failure.sh` under `Warnings`. Then IMMEDIATELY run the Step 3b completion boundary below, then Step 4.
 
-> **Continue to Step 4 IMMEDIATELY.** The architecture diagram branch is not terminal — rejected-findings reporting and cleanup still must run.
-At the Step 3b success boundary, including the non-architectural skip path, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-3b"` before entering Step 4.
+> **Run the Step 3b completion boundary below, then Continue to Step 4 IMMEDIATELY.** The architecture diagram branch is not terminal — rejected-findings reporting and cleanup still must run.
+
+At the Step 3b completion boundary, including the non-architectural skip path, run FINALIZE and write `step-3b` only after FINALIZE succeeds:
+
+```bash
+[ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
+set +e
+printf '%s\n' 'ACTION=FINALIZE' \
+  | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+_finalize_rc=$?
+set -e
+if [ "$_finalize_rc" -ne 0 ]; then
+  printf '%s\n' '**⚠ FINALIZE failed; repair the missing artifact before Step 5.**'
+  exit "$_finalize_rc"
+fi
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-3b"
+```
 
 <!-- step:4 — Rejected Plan Review Findings Report -->
 
@@ -1246,23 +1277,26 @@ Print: `> **🔶 /design 4: rejected findings**`
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 4 — rejected findings" || true
+if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
+  set +e
+  printf '%s\n' 'ACTION=FINALIZE' \
+    | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+  _finalize_rc=$?
+  set -e
+  if [ "$_finalize_rc" -ne 0 ]; then
+    printf '%s\n' '**⚠ FINALIZE failed; repair the missing artifact before Step 5.**'
+    exit "$_finalize_rc"
+  fi
+fi
 ```
 
 Print any rejected plan review findings:
 
 **MANDATORY — READ ENTIRE FILE before composing rejected findings output: `skills/design/references/readability-style.md`.**
 
-1. Emit `ACTION=FINALIZE` to ensure `$DESIGN_TMPDIR/rejected-findings.md`, `$DESIGN_TMPDIR/accepted-plan-findings.md`, and `$DESIGN_TMPDIR/oos.md` exist and to validate non-empty finalize-required artifacts before Step 5:
-   ```bash
-   [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
-   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER"
-   printf '%s\n' 'ACTION=FINALIZE' \
-     | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
-   ```
-   If this exits non-zero, repair the missing artifact before Step 5.
-2. Check if `$DESIGN_TMPDIR/rejected-findings.md` exists and is non-empty.
-3. If it has content, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
-4. If `$DESIGN_TMPDIR/rejected-findings.md` is empty (it always exists after item 1), continue.
+1. Check if `$DESIGN_TMPDIR/rejected-findings.md` exists and is non-empty (it exists after the Step 3b completion-boundary FINALIZE on fresh runs; the Step 4 entry fence runs a compatibility FINALIZE only for old paused sessions missing `.completed/finalize`).
+2. If it has content, print it under a `## Unimplemented Plan Review Suggestions` header, formatted clearly with the reviewer name, the suggestion, and the reason for each.
+3. If `$DESIGN_TMPDIR/rejected-findings.md` is empty, continue.
 
 After printing rejected findings (or the "all implemented" message), IMMEDIATELY continue to Step 4b — do NOT halt or treat this as the end of the design.
 

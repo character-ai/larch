@@ -229,6 +229,27 @@ out_registry=$(bash "$SAVE" --design-tmpdir "$DESIGN_REGISTRY" --issue 9 --repo 
 out_registry_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-registry" --issue 9 --repo owner/repo)
 [[ "$out_registry_load" == *"LOAD_OK=true"* && "$out_registry_load" == *"STEP=1d"* ]] || fail "registry-order load mismatch: $out_registry_load"
 
+echo "=== legacy SIMPLE Step 2a marker resumes at Step 2a.5 ==="
+DESIGN_LEGACY_SIMPLE="$TMP/design-legacy-simple-2a"
+make_design_tmpdir "$DESIGN_LEGACY_SIMPLE"
+complete_design_steps "$DESIGN_LEGACY_SIMPLE" 1c 1d 1d.5 1d.7 1e 2a
+printf 'issue body legacy simple 2a\n' >"$BODY_FILE"
+out_legacy_simple_2a=$(bash "$SAVE" --design-tmpdir "$DESIGN_LEGACY_SIMPLE" --issue 9 --repo owner/repo)
+[[ "$out_legacy_simple_2a" == *"PAUSE_OK=true"* && "$out_legacy_simple_2a" == *"STEP=2a.5"* ]] || fail "old SIMPLE state with step-2a only should resume at Step 2a.5 compatibility guard: $out_legacy_simple_2a"
+out_legacy_simple_2a_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-legacy-simple-2a" --issue 9 --repo owner/repo)
+[[ "$out_legacy_simple_2a_load" == *"LOAD_OK=true"* && "$out_legacy_simple_2a_load" == *"STEP=2a.5"* ]] || fail "old SIMPLE step-2a-only load mismatch: $out_legacy_simple_2a_load"
+
+echo "=== legacy Step 3b marker without finalize resumes at Step 4 ==="
+DESIGN_LEGACY_FINALIZE="$TMP/design-legacy-finalize"
+make_design_tmpdir "$DESIGN_LEGACY_FINALIZE"
+complete_design_steps "$DESIGN_LEGACY_FINALIZE" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3.6 3b
+[[ ! -f "$DESIGN_LEGACY_FINALIZE/.completed/finalize" ]] || fail "legacy finalize precondition unexpectedly has .completed/finalize"
+printf 'issue body legacy finalize\n' >"$BODY_FILE"
+out_legacy_finalize=$(bash "$SAVE" --design-tmpdir "$DESIGN_LEGACY_FINALIZE" --issue 9 --repo owner/repo)
+[[ "$out_legacy_finalize" == *"PAUSE_OK=true"* && "$out_legacy_finalize" == *"STEP=4"* ]] || fail "old step-3b without finalize should resume at Step 4 compatibility guard: $out_legacy_finalize"
+out_legacy_finalize_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-legacy-finalize" --issue 9 --repo owner/repo)
+[[ "$out_legacy_finalize_load" == *"LOAD_OK=true"* && "$out_legacy_finalize_load" == *"STEP=4"* ]] || fail "old step-3b without finalize load mismatch: $out_legacy_finalize_load"
+
 echo "=== step 3.6 and gate B bypass pause resume ==="
 DESIGN_36="$TMP/design-36"
 make_design_tmpdir "$DESIGN_36"

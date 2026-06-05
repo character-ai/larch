@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Structural regression guard for the /design two-tier contract.
+# shellcheck disable=SC2016 # harness intentionally pins literal Markdown/shell snippets.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
@@ -7,6 +8,7 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
 source "$REPO_ROOT/scripts/lib-p3119-fence-absence.sh"
 SKILL_MD="$REPO_ROOT/skills/design/SKILL.md"
 FLAGS_MD="$REPO_ROOT/skills/design/references/flags.md"
+CONFIG_MD="$REPO_ROOT/docs/configuration-and-permissions.md"
 APPROVAL_MD="$REPO_ROOT/skills/design/references/approval-gates.md"
 PLAN_REVIEW_MD="$REPO_ROOT/skills/design/references/plan-review.md"
 DISCUSSION_MD="$REPO_ROOT/skills/design/references/discussion-rounds.md"
@@ -82,6 +84,116 @@ absent() {
   if grep -Fq -- "$needle" "$file"; then
     fail "$label"
   fi
+}
+
+extract_first_bash_fence_after() {
+  local file="$1" marker="$2"
+  awk -v marker="$marker" '
+    index($0, marker) { start=1; next }
+    start && /^```bash$/ { in_fence=1; next }
+    start && in_fence && /^```$/ { exit }
+    start && in_fence { print }
+  ' "$file"
+}
+
+assert_step2a_entry_simple_guard() {
+  local tmp guard_line first_artifact_line last_artifact_line first_completion_line
+  tmp=$(mktemp "${TMPDIR:-/tmp}/step2a-entry.XXXXXX")
+  extract_first_bash_fence_after "$SKILL_MD" '<!-- step:2a —' >"$tmp"
+  grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh' "$tmp" \
+    || fail 'Step 2a entry fence missing qualified read-design-classification.sh'
+  grep -Fq 'if [ "$_design_classification" = SIMPLE ]; then' "$tmp" \
+    || fail 'Step 2a entry fence missing SIMPLE guard before sentinel writes'
+  grep -Fq 'set -e' "$tmp" \
+    || fail 'Step 2a SIMPLE entry branch must use fail-fast set -e'
+  grep -Fq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$tmp" \
+    || fail 'Step 2a entry fence missing approach sentinel write'
+  grep -Fq "NO_CONTESTED_DECISIONS" "$tmp" \
+    || fail 'Step 2a entry fence missing contested sentinel write'
+  grep -Fq ': > "$DESIGN_TMPDIR/dialectic-resolutions.md"' "$tmp" \
+    || fail 'Step 2a entry fence missing dialectic-resolutions empty write'
+  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-2a"' "$tmp" \
+    || fail 'Step 2a entry fence missing step-2a completion marker'
+  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-2a.5"' "$tmp" \
+    || fail 'Step 2a entry fence missing step-2a.5 completion marker'
+  guard_line=$(grep -nF 'if [ "$_design_classification" = SIMPLE ]; then' "$tmp" | head -1 | cut -d: -f1)
+  first_artifact_line=$(grep -nF "NO_SKETCHES_CLASSIFIED_SIMPLE" "$tmp" | head -1 | cut -d: -f1)
+  last_artifact_line=$(grep -nF ': > "$DESIGN_TMPDIR/dialectic-resolutions.md"' "$tmp" | head -1 | cut -d: -f1)
+  first_completion_line=$(grep -nF ': > "$DESIGN_TMPDIR/.completed/step-2a"' "$tmp" | head -1 | cut -d: -f1)
+  (( guard_line < first_artifact_line )) \
+    || fail 'Step 2a entry fence writes SIMPLE artifacts before the SIMPLE guard'
+  (( last_artifact_line < first_completion_line )) \
+    || fail 'Step 2a entry fence must write completion markers after all SIMPLE artifacts'
+  rm -f "$tmp"
+}
+
+assert_simple_branch_has_no_sentinel_fence() {
+  if awk '
+    /^### SIMPLE branch/ { in_section=1; next }
+    in_section && /^### Regular mode/ { in_section=0 }
+    in_section && /^```bash$/ { in_fence=1; next }
+    in_section && in_fence && /^```$/ { in_fence=0; next }
+    in_section && in_fence && /NO_SKETCHES_CLASSIFIED_SIMPLE/ { found=1 }
+    END { exit found ? 0 : 1 }
+  ' "$SKILL_MD"; then
+    fail 'SIMPLE branch subsection must not contain a standalone NO_SKETCHES_CLASSIFIED_SIMPLE bash fence'
+  fi
+}
+
+assert_step3b_finalize_boundary() {
+  local step3b_line step4_line step3b_between step4b_line step4_between
+  step3b_line=$(grep -nF '<!-- step:3b' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+  step4_line=$(grep -nF '<!-- step:4 —' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+  step4b_line=$(grep -nF '<!-- step:4b' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+  [[ -n "$step3b_line" && -n "$step4_line" && -n "$step4b_line" ]] || fail 'missing Step 3b/4/4b marker for FINALIZE boundary assertions'
+  step3b_between=$(sed -n "$((step3b_line + 1)),$((step4_line - 1))p" "$SKILL_MD")
+  step4_between=$(sed -n "$((step4_line + 1)),$((step4b_line - 1))p" "$SKILL_MD")
+  grep -Fq 'ACTION=FINALIZE' <<<"$step3b_between" \
+    || fail 'Step 3b completion boundary must emit ACTION=FINALIZE before Step 4'
+  grep -Fq 'design-driver.sh' <<<"$step3b_between" \
+    || fail 'Step 3b completion boundary must invoke design-driver.sh'
+  grep -Fq 'exit "$_finalize_rc"' <<<"$step3b_between" \
+    || fail 'Step 3b FINALIZE failure branch must exit non-zero'
+  grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3b"' <<<"$step3b_between" \
+    || fail 'Step 3b completion boundary must write step-3b after FINALIZE'
+  if grep -Fq '1. Emit `ACTION=FINALIZE`' <<<"$step4_between"; then
+    fail 'Step 4 must not retain the standalone FINALIZE item'
+  fi
+  grep -Fq '[ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]' <<<"$step4_between" \
+    || fail 'Step 4 compatibility FINALIZE must be gated on missing .completed/finalize'
+  grep -Fq 'ACTION=FINALIZE' <<<"$step4_between" \
+    || fail 'Step 4 compatibility guard missing ACTION=FINALIZE'
+  grep -Fq 'set +e' <<<"$step4_between" \
+    || fail 'Step 4 compatibility FINALIZE must capture non-zero under set +e'
+  grep -Fq '_finalize_rc=$?' <<<"$step4_between" \
+    || fail 'Step 4 compatibility FINALIZE missing _finalize_rc capture'
+  grep -Fq 'exit "$_finalize_rc"' <<<"$step4_between" \
+    || fail 'Step 4 compatibility FINALIZE failure branch must exit non-zero'
+}
+
+assert_no_direct_step3b_step4_routes() {
+  local label="$1" subject_file="$2" start_marker="${3:-}" end_marker="${4:-}" tmp scoped=false bad
+  tmp="$subject_file"
+  if [[ -n "$start_marker" || -n "$end_marker" ]]; then
+    [[ -n "$start_marker" && -n "$end_marker" ]] || fail "$label route guard markers must be paired"
+    local start_line end_line
+    start_line=$(grep -nF -- "$start_marker" "$subject_file" | head -1 | cut -d: -f1 || true)
+    end_line=$(grep -nF -- "$end_marker" "$subject_file" | awk -F: -v s="${start_line:-0}" '$1 > s {print $1; exit}' || true)
+    [[ -n "$start_line" && -n "$end_line" ]] || fail "$label route guard missing marker"
+    tmp=$(mktemp "${TMPDIR:-/tmp}/step3b-route.XXXXXX")
+    sed -n "${start_line},$((end_line - 1))p" "$subject_file" >"$tmp"
+    scoped=true
+  fi
+  bad=$(awk '
+    BEGIN { IGNORECASE=1 }
+    /Step 3b completion boundary/ { next }
+    /Step 3b[[:space:]]*(→|->|, then|,|\/)[[:space:]]*Step 4/ { print; next }
+    /Step 3b\/4/ { print; next }
+    /Step 3b[[:space:]]+\/[[:space:]]+Step 4/ { print; next }
+    /(continue|proceed|auto-continue|route|jump|enter|go)/ && /Step 3b/ && /Step 4/ { print; next }
+  ' "$tmp")
+  [[ -z "$bad" ]] || fail "$label has direct Step 3b-to-Step 4 route without completion boundary: $bad"
+  [[ "$scoped" == false ]] || rm -f "$tmp"
 }
 
 assert_thin_fence() {
@@ -453,7 +565,7 @@ contains "$SKILL_MD" '`LOOP_STATUS=converged|cap-hit` — proceed to Gate B **pa
 contains "$SKILL_MD" '`LOOP_STATUS=emit-plan-failed` — treat as a Step 3 post-apply failure' 'SKILL missing emit-plan-failed branch matrix entry'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" 'review-round cap (${_round_cap}) reached for ${_tier}' 'run-step3-review.sh missing Step 3 cap breadcrumb emit'
-contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b/4/4b with existing artifacts' 'SKILL missing cap short-circuit Gate B bypass'
+contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with existing artifacts' 'SKILL missing boundary-qualified cap short-circuit Gate B bypass'
 contains "$SKILL_MD" 'Gate B would otherwise re-surface stale accepted findings from an earlier round' 'SKILL missing stale-finding cap rationale'
 contains "$SKILL_MD" 'The Step 3.5 continuation block below is bypassed on this path.' 'SKILL missing explicit Step 3.5 bypass prose'
 contains "$SKILL_MD" 'the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**' 'SKILL missing Gate C four-option prose'
@@ -478,15 +590,15 @@ absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must n
 contains "$FLAGS_MD" 'design-postplan-emit.sh' 'flags.md missing postplan driver validator contract'
 contains "$FLAGS_MD" 'Validation is unconditional: there is no quick-skip path and no force flag.' 'flags.md missing unconditional validator contract'
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
-contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, Step 4, then Gate C.' 'approval-gates.md missing canonical Step 3 cap breadcrumb'
+contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.' 'approval-gates.md missing canonical boundary-qualified Step 3 cap breadcrumb'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'Gate B passive-summary mode (`LOOP_STATUS=converged|cap-hit`)' 'approval-gates.md missing passive-summary section heading'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$APPROVAL_MD" 'do **not** fire an `AskUserQuestion` here — auto-continue to Step 3.6, then Step 3b, then Step 4, then Gate C' 'approval-gates.md passive-summary must be non-blocking auto-continue (no AskUserQuestion)'
+contains "$APPROVAL_MD" 'do **not** fire an `AskUserQuestion` here — auto-continue to Step 3.6, then Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'approval-gates.md passive-summary must be non-blocking boundary-qualified auto-continue (no AskUserQuestion)'
 contains "$APPROVAL_MD" 'do **not** halt the turn on the printed table' 'approval-gates.md passive-summary must not halt on multi-round table'
 contains "$APPROVAL_MD" 'Gate C (Step 4b) is the single decision point' 'approval-gates.md passive-summary must pin Gate C as single decision point'
-contains "$APPROVAL_MD" 'zero-findings short-circuit → Step 3.6 → Step 3b → Step 4 → Step 4b.' 'approval-gates.md missing zero-findings Step 3.6 forward link'
-contains "$APPROVAL_MD" 'passive-summary auto-continue → Step 3.6 → Step 3b → Step 4 → Step 4b' 'approval-gates.md missing passive-summary Gate C Step 3.6 forward link'
+contains "$APPROVAL_MD" 'zero-findings short-circuit → Step 3.6 → Step 3b → Step 3b completion boundary → Step 4 → Step 4b.' 'approval-gates.md missing zero-findings Step 3.6 boundary-qualified forward link'
+contains "$APPROVAL_MD" 'passive-summary auto-continue → Step 3.6 → Step 3b → Step 3b completion boundary → Step 4 → Step 4b' 'approval-gates.md missing passive-summary Gate C Step 3.6 boundary-qualified forward link'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b' 'approval-gates.md missing shared post-apply Step 3.6 forward link'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
@@ -805,6 +917,20 @@ step4_line=$(grep -nF '<!-- step:4 ' "$SKILL_MD" | head -1 | cut -d: -f1 || true
 step3b_between=$(sed -n "$((step3b_line + 1)),$((step4_line - 1))p" "$SKILL_MD")
 grep -Fq 'architecture-diagram.skipped' <<<"$step3b_between" \
   || fail "(15b) Step 3b must document architecture-diagram.skipped sentinel creation"
+assert_step3b_finalize_boundary
+assert_step2a_entry_simple_guard
+assert_simple_branch_has_no_sentinel_fence
+assert_no_direct_step3b_step4_routes 'SKILL Step 3b slice' "$SKILL_MD" '<!-- step:3b' '<!-- step:4 —'
+assert_no_direct_step3b_step4_routes 'SKILL Step 3 Gate-B-bypass slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.5'
+assert_no_direct_step3b_step4_routes 'approval-gates.md' "$APPROVAL_MD"
+assert_no_direct_step3b_step4_routes 'run-step3-review.sh' "$RUN_STEP3_SH"
+assert_no_direct_step3b_step4_routes 'flags.md' "$FLAGS_MD"
+assert_no_direct_step3b_step4_routes 'configuration-and-permissions.md' "$CONFIG_MD"
+contains "$RUN_STEP3_SH" 'skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'run-step3-review.sh missing boundary-qualified cap breadcrumb'
+contains "$FLAGS_MD" 'proceeds to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'flags.md missing boundary-qualified panel-failed route'
+contains "$CONFIG_MD" 'proceeds through Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'configuration docs missing boundary-qualified round-cap route'
+contains "$SKILL_MD" 'pre-existing paused SIMPLE runs where `.completed/step-2a` exists but `.completed/step-2a.5` is absent' 'SKILL missing old SIMPLE Step 2a.5 resume compatibility guard'
+contains "$SKILL_MD" '[ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]' 'SKILL missing old Step 4 finalize compatibility guard'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'write the triple-sentinel bypass layout (`step-3`, `step-3.5`, and `step-3.6`)' 'SKILL missing Gate-B-bypass triple-sentinel prose'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
@@ -815,6 +941,8 @@ contains "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-3.6"' 'SKILL missing G
 contains "$SKILL_MD" '${REPO:+--repo "$REPO"}' 'SKILL Step 3.6 rc=11 pause-save must thread REPO'
 contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'gate B bypass plan-size-trigger writes triple sentinels from empty state' 'pause/resume harness missing Gate-B-bypass empty-state 3b regression'
 contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'missing gate B bypass sentinels should resume at 3.5' 'pause/resume harness missing missing-sentinel regression'
+contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'old SIMPLE state with step-2a only should resume at Step 2a.5 compatibility guard' 'pause/resume harness missing old SIMPLE Step 2a compatibility fixture'
+contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'old step-3b without finalize should resume at Step 4 compatibility guard' 'pause/resume harness missing old Step 3b finalize compatibility fixture'
 assert_gate_b_bypass_branch_sentinels "$SKILL_MD"
 assert_thin_fence "$SKILL_MD" 'SKILL Step 3.6 thin-fence shape' '<!-- step:3.6' '<!-- step:3b'
 assert_step3b_entry_guard_threads_repo "$SKILL_MD"
@@ -1708,7 +1836,7 @@ contains "$SKILL_MD" 'set `TALLY_PLAN_REVIEW_STATUS=ok`, `LOOP_STATUS=complete`,
 # shellcheck disable=SC2016 # $ tokens are literal markdown pins
 contains "$SKILL_MD" '--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/findings-classification.tsv"' 'SKILL.md missing MainAgent re-tally findings-classification-out pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins
-contains "$APPROVAL_MD" 'Step 3 bypasses such as `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, and `panel-failed` skip Gate B (and therefore Step 3.6) but still continue Step 3b → Step 4 → Step 4b with the current plan and artifacts.' 'approval-gates.md missing Gate C panel-failed bypass routing pin'
+contains "$APPROVAL_MD" 'Step 3 bypasses such as `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, and `panel-failed` skip Gate B (and therefore Step 3.6) but still continue Step 3b → Step 3b completion boundary → Step 4 → Step 4b with the current plan and artifacts.' 'approval-gates.md missing Gate C panel-failed boundary routing pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins
 for _bypass_line in \
   "$(grep -F 'Gate-B-bypass short-circuits (' "$SKILL_MD")" \
