@@ -402,12 +402,14 @@ def test_handoff_without_tmpdir_configuration_stalls_without_tokens(
 
 def test_bump_only_waterfall_exhaustion_stalls_without_handoff_flag(
     tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    monkeypatch.setenv(config.ENV_LARCH_VERSION_FILES, "pkg/version.txt")
     runner = ScriptRunner(
         [
             (("git", "diff", "--name-only", "--diff-filter=U"), _ok(
                 ("git", "diff", "--name-only", "--diff-filter=U"),
-                "CHANGELOG.md\n",
+                "pkg/version.txt\n",
             )),
         ],
     )
@@ -425,6 +427,7 @@ def test_bump_only_waterfall_exhaustion_stalls_without_handoff_flag(
             run_id="run",
             cwd=str(tmp_path),
             tmpdir=str(tmp_path),
+            enable_pre_push_handoff=True,
         )
     assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
 
@@ -488,8 +491,14 @@ def test_mixed_bump_waterfall_exhaustion_stalls_without_handoff_flag(
             run_id="run",
             cwd=str(tmp_path),
             tmpdir=str(tmp_path),
+            enable_pre_push_handoff=True,
         )
     assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
+
+
+def test_changelog_conflict_is_non_bump_for_handoff() -> None:
+    assert not rebase._is_bump_path("CHANGELOG.md")  # pyright: ignore[reportPrivateUsage]
+    assert rebase._conflicts_are_non_bump_only(("CHANGELOG.md",))  # pyright: ignore[reportPrivateUsage]
 
 
 def test_waterfall_win_with_remaining_conflicts_stalls_without_handoff_flag(
@@ -733,8 +742,11 @@ def test_waterfall_win_then_rebase_continue(tmp_path: Path) -> None:
         repo="o/r",
         run_id="run",
         cwd=str(tmp_path),
+        tmpdir=str(tmp_path),
+        enable_pre_push_handoff=True,
     )
     assert ("git", "rebase", "--continue") in runner.calls
+    assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
 
 
 def test_continue_with_unmerged_reloops_without_skip() -> None:

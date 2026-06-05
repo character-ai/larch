@@ -20,7 +20,6 @@ from proc import CommandResult, Runner
 _redact_outbound = redact.redact_outbound
 
 ConflictLaunchFn = Callable[[str, str], agents.TierAttempt]
-_CHANGELOG_BASENAMES = frozenset({"CHANGELOG.md", "CHANGELOG.rst", "CHANGELOG"})
 
 
 @dataclass(frozen=True)
@@ -98,8 +97,6 @@ def _larch_bump_files() -> frozenset[str]:
 
 def _is_bump_path(path: str) -> bool:
     base = Path(path).name
-    if base in _CHANGELOG_BASENAMES:
-        return True
     if _is_plugin_json_path(path):
         return True
     if base in ("version.go", "go.sum"):
