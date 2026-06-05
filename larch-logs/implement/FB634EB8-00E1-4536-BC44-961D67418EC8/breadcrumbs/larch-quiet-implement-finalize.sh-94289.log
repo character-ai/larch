@@ -4,3 +4,12 @@ BYTES=634
 SHA256=d3ad15abd46be2348f96205aad05cd2f63ec2009841601fce2e96ae668a9b495
 COMMIT_SHA=
 UNCHANGED=false
+LOG_WRITTEN=true
+LOG_PATH=<OPERATOR_REPO_PATH>/larch-logs/implement/FB634EB8-00E1-4536-BC44-961D67418EC8
+BYTES=0
+SHA256=
+COMMIT_SHA=9b6b639eef5f68d2a861ce857900817d92744b51
+UNCHANGED=false
+ℹ 18: skipping tmpdir cleanup — run stalled; artifacts preserved at <TMPDIR>
+📎 Tracking issue: https://github.com/character-ai/larch/issues/3449
+✅ 18: cleanup status=complete elapsed=48s
