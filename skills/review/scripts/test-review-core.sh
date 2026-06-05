@@ -178,6 +178,22 @@ STATUS=ERROR
 
 EOF
     ;;
+  cap-hit-all)
+    cat > "$rtmp/collector-results.env" <<EOF
+REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
+STATUS=cap_hit
+
+REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
+STATUS=cap_hit
+
+REVIEWER_FILE=$rtmp/codex-specialist-edge-cases-output.txt
+STATUS=cap_hit
+
+REVIEWER_FILE=$rtmp/codex-specialist-testing-output.txt
+STATUS=cap_hit
+
+EOF
+    ;;
   missing-testing-with-drops)
     cat > "$rtmp/collector-results.env" <<EOF
 REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
@@ -587,12 +603,33 @@ out=$(TEST_FINDINGS=0 TEST_CLAUDE_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=cla
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 grep -Fq 'cursor-specialist-security-output-phase3.txt' "$threshold_argv_log" || { echo "FAIL: threshold argv missing Claude fallback output files" >&2; exit 1; }
 
-out=$(TEST_FINDINGS=0 TEST_EXTERNAL_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=external-files-only run_core "$TMP/external-files-coverage")
+both_vendor_threshold_log="$TMP/both-vendor-threshold-argv.log"
+out=$(TEST_FINDINGS=0 TEST_STATIC_SLOT_COUNT=8 TEST_THRESHOLD_ARGV_LOG="$both_vendor_threshold_log" run_core "$TMP/both-vendor-threshold")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
-if grep -Fq 'COVERAGE_GATE_OK=false' "$TMP/external-files-coverage/review-core-threshold.env"; then
-    echo "FAIL: coverage gate should credit substantive external static files outside collector OK rows" >&2
+grep -Fq 'intended=8' "$both_vendor_threshold_log" || { echo "FAIL: both-vendor threshold argv missing intended=8" >&2; exit 1; }
+grep -Fq 'launched=8' "$both_vendor_threshold_log" || { echo "FAIL: both-vendor threshold argv missing launched=8" >&2; exit 1; }
+
+set +e
+out=$(TEST_FINDINGS=0 TEST_EXTERNAL_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=external-files-only run_core "$TMP/external-files-coverage" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "FAIL: coverage gate should reject collector-failed external static files" >&2; echo "$out" >&2; exit 1; }
+assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
+grep -Fq 'COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): security,correctness,edge-cases,testing' "$TMP/external-files-coverage/review-core-threshold.env" || {
+    echo "FAIL: coverage gate should reject stale/collector-rejected static files" >&2
     exit 1
-fi
+}
+
+set +e
+out=$(TEST_FINDINGS=0 TEST_COLLECTOR_VARIANT=cap-hit-all run_core "$TMP/cap-hit-coverage" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "FAIL: cap_hit-only static panel should fail coverage gate" >&2; echo "$out" >&2; exit 1; }
+assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
+grep -Fq 'COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): security,correctness,edge-cases,testing' "$TMP/cap-hit-coverage/review-core-threshold.env" || {
+    echo "FAIL: coverage gate should not credit cap_hit" >&2
+    exit 1
+}
 
 set +e
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_COLLECTOR_VARIANT=missing-testing run_core "$TMP/coverage-failed" 2>&1)

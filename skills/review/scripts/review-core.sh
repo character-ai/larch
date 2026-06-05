@@ -428,22 +428,24 @@ claude_static_output_is_success() {
 }
 
 static_archetype_coverage_ok() {
-    local collector_file="$1" success_file current_reviewer_file="" current_status="" current_base slug missing="" claude_output
+    local collector_file="$1" success_file rejected_file current_reviewer_file="" current_status="" current_base normalized_base slug missing="" static_output
     shift || true
     [[ -n "$collector_file" && -f "$collector_file" ]] || {
         printf 'missing collector results'
         return 1
     }
     success_file="$REVIEW_TMPDIR/static-success-slugs.txt"
+    rejected_file="$REVIEW_TMPDIR/static-collector-rejected-bases.txt"
     : > "$success_file"
+    : > "$rejected_file"
     while IFS= read -r line || [[ -n "$line" ]]; do
         if [[ -z "$line" ]]; then
             if [[ -n "$current_status" ]]; then
                 current_base=$(basename "${current_reviewer_file:-}")
+                normalized_base=$(normalize_reviewer_output_base "$current_base")
                 if slug=$(static_slug_for_reviewer_file "$current_base" 2>/dev/null); then
-                    case "$current_status" in
-                        OK|cap_hit) printf '%s\n' "$slug" >> "$success_file" ;;
-                    esac
+                    [[ "$current_status" == "OK" ]] && printf '%s\n' "$slug" >> "$success_file"
+                    [[ "$current_status" != "OK" ]] && printf '%s\n' "$normalized_base" >> "$rejected_file"
                 fi
             fi
             current_reviewer_file=""
@@ -457,16 +459,17 @@ static_archetype_coverage_ok() {
     done < "$collector_file"
     if [[ -n "$current_status" ]]; then
         current_base=$(basename "${current_reviewer_file:-}")
+        normalized_base=$(normalize_reviewer_output_base "$current_base")
         if slug=$(static_slug_for_reviewer_file "$current_base" 2>/dev/null); then
-            case "$current_status" in
-                OK|cap_hit) printf '%s\n' "$slug" >> "$success_file" ;;
-            esac
+            [[ "$current_status" == "OK" ]] && printf '%s\n' "$slug" >> "$success_file"
+            [[ "$current_status" != "OK" ]] && printf '%s\n' "$normalized_base" >> "$rejected_file"
         fi
     fi
-    for claude_output in "$@"; do
-        current_base=$(basename "$claude_output")
+    for static_output in "$@"; do
+        current_base=$(basename "$static_output")
         if slug=$(static_slug_for_reviewer_file "$current_base" 2>/dev/null); then
-            if claude_static_output_is_success "$claude_output"; then
+            if ! grep -Fxq "$(normalize_reviewer_output_base "$current_base")" "$rejected_file" 2>/dev/null \
+                && claude_static_output_is_success "$static_output"; then
                 printf '%s\n' "$slug" >> "$success_file"
             fi
         fi

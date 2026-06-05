@@ -112,7 +112,51 @@ COUNTED_SLOTS=0
 NOT_SUBSTANTIVE_SLOTS=0
 DROPPED_STATIC_SLOTS=0
 COUNTED_BASES_FILE=$(mktemp "${TMPDIR:-/tmp}/review-threshold-counted.XXXXXX")
-trap 'rm -f "$COUNTED_BASES_FILE"' EXIT
+COUNTED_STATUS_FILE=$(mktemp "${TMPDIR:-/tmp}/review-threshold-status.XXXXXX")
+trap 'rm -f "$COUNTED_BASES_FILE" "$COUNTED_STATUS_FILE"' EXIT
+
+status_is_success() {
+    case "$1" in
+        OK|cap_hit) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+counted_status_for_base() {
+    local base="$1"
+    awk -F '\t' -v base="$base" '$1 == base { print $2; exit }' "$COUNTED_STATUS_FILE" 2>/dev/null || true
+}
+
+replace_counted_status() {
+    local base="$1" status="$2" tmp
+    tmp=$(mktemp "${TMPDIR:-/tmp}/review-threshold-status-replace.XXXXXX")
+    awk -F '\t' -v base="$base" '$1 != base { print }' "$COUNTED_STATUS_FILE" > "$tmp"
+    printf '%s\t%s\n' "$base" "$status" >> "$tmp"
+    mv -f "$tmp" "$COUNTED_STATUS_FILE"
+}
+
+count_static_status_once() {
+    local base="$1" status="$2" old_status
+    old_status=$(counted_status_for_base "$base")
+    if [[ -z "$old_status" ]]; then
+        printf '%s\n' "$base" >> "$COUNTED_BASES_FILE"
+        printf '%s\t%s\n' "$base" "$status" >> "$COUNTED_STATUS_FILE"
+        COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
+        if status_is_success "$status"; then
+            SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1))
+        else
+            FAILED_SLOTS=$((FAILED_SLOTS + 1))
+            [[ "$status" == "NOT_SUBSTANTIVE" ]] && NOT_SUBSTANTIVE_SLOTS=$((NOT_SUBSTANTIVE_SLOTS + 1))
+        fi
+        return 0
+    fi
+    if ! status_is_success "$old_status" && status_is_success "$status"; then
+        FAILED_SLOTS=$((FAILED_SLOTS - 1))
+        [[ "$old_status" == "NOT_SUBSTANTIVE" ]] && NOT_SUBSTANTIVE_SLOTS=$((NOT_SUBSTANTIVE_SLOTS - 1))
+        SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1))
+        replace_counted_status "$base" "$status"
+    fi
+}
 
 if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
     # Parse blank-line-separated records; each has STATUS=<value>.
@@ -126,16 +170,7 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
                     current_reviewer_file=""
                     continue
                 fi
-                printf '%s\n' "$(normalize_reviewer_output_base "$current_base")" >> "$COUNTED_BASES_FILE"
-                COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
-                case "$current_status" in
-                    OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
-                    NOT_SUBSTANTIVE)
-                        FAILED_SLOTS=$((FAILED_SLOTS + 1))
-                        NOT_SUBSTANTIVE_SLOTS=$((NOT_SUBSTANTIVE_SLOTS + 1))
-                        ;;
-                    *)          FAILED_SLOTS=$((FAILED_SLOTS + 1)) ;;
-                esac
+                count_static_status_once "$(normalize_reviewer_output_base "$current_base")" "$current_status"
             fi
             current_status=""
             current_reviewer_file=""
@@ -150,16 +185,7 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
     if [[ -n "${current_status:-}" ]]; then
         current_base=$(basename "${current_reviewer_file:-}")
         if ! is_dynamic_reviewer_basename "$current_base"; then
-            printf '%s\n' "$(normalize_reviewer_output_base "$current_base")" >> "$COUNTED_BASES_FILE"
-            COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
-            case "$current_status" in
-                OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
-                NOT_SUBSTANTIVE)
-                    FAILED_SLOTS=$((FAILED_SLOTS + 1))
-                    NOT_SUBSTANTIVE_SLOTS=$((NOT_SUBSTANTIVE_SLOTS + 1))
-                    ;;
-                *)          FAILED_SLOTS=$((FAILED_SLOTS + 1)) ;;
-            esac
+            count_static_status_once "$(normalize_reviewer_output_base "$current_base")" "$current_status"
         fi
     fi
 fi
@@ -171,15 +197,10 @@ if (( ${#REVIEWER_OUTPUT_FILES[@]} > 0 )); then
             continue
         fi
         normalized_base=$(normalize_reviewer_output_base "$reviewer_base")
-        if grep -Fxq "$normalized_base" "$COUNTED_BASES_FILE" 2>/dev/null; then
-            continue
-        fi
-        printf '%s\n' "$normalized_base" >> "$COUNTED_BASES_FILE"
-        COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
         if output_file_is_success "$reviewer_output_file"; then
-            SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1))
+            count_static_status_once "$normalized_base" OK
         else
-            FAILED_SLOTS=$((FAILED_SLOTS + 1))
+            count_static_status_once "$normalized_base" ERROR
         fi
     done
 fi
@@ -189,6 +210,17 @@ if [[ -n "$DROPPED_SLOTS_FILE" && -s "$DROPPED_SLOTS_FILE" ]]; then
         [[ -n "$dropped_slot" ]] || continue
         if is_dynamic_slot_name "$dropped_slot"; then
             continue
+        fi
+        dropped_base=""
+        case "$_dropped_tool" in
+            codex|cursor) dropped_base="${_dropped_tool}-specialist-${dropped_slot}-output.txt" ;;
+        esac
+        if [[ -n "$dropped_base" ]]; then
+            dropped_base=$(normalize_reviewer_output_base "$dropped_base")
+            if grep -Fxq "$dropped_base" "$COUNTED_BASES_FILE" 2>/dev/null; then
+                continue
+            fi
+            printf '%s\n' "$dropped_base" >> "$COUNTED_BASES_FILE"
         fi
         FAILED_SLOTS=$((FAILED_SLOTS + 1))
         DROPPED_STATIC_SLOTS=$((DROPPED_STATIC_SLOTS + 1))

@@ -12,19 +12,22 @@ trap 'rm -rf "$WORKDIR"' EXIT
 
 emit_records() {
     local file="$1"; shift
-    local raw_status status reviewer_file idx=0
+    local raw_status status reviewer_file idx=0 slot
+    local slots=(security correctness edge-cases testing)
     : > "$file"
     for raw_status in "$@"; do
         idx=$((idx + 1))
+        slot="${slots[$(( (idx - 1) % 4 ))]}"
         status="$raw_status"
-        reviewer_file="$WORKDIR/cursor-specialist-security-output.txt"
+        reviewer_file="$WORKDIR/cursor-specialist-${slot}-output.txt"
         case "$raw_status" in
+            same:*) status="${raw_status#same:}"; reviewer_file="$WORKDIR/cursor-specialist-security-output.txt" ;;
             dyn:*) status="${raw_status#dyn:}"; reviewer_file="$WORKDIR/dyn-extra-output.txt" ;;
             dyn-codex:*) status="${raw_status#dyn-codex:}"; reviewer_file="$WORKDIR/dyn-extra-codex-output.txt" ;;
             dyn-phase2:*) status="${raw_status#dyn-phase2:}"; reviewer_file="$WORKDIR/dyn-extra-output-phase2.txt" ;;
             dyn-phase3:*) status="${raw_status#dyn-phase3:}"; reviewer_file="$WORKDIR/dyn-extra-output-phase3.txt" ;;
             dyn-retry:*) status="${raw_status#dyn-retry:}"; reviewer_file="$WORKDIR/dyn-extra-output-retry.txt" ;;
-            codex:*) status="${raw_status#codex:}"; reviewer_file="$WORKDIR/codex-specialist-security-output.txt" ;;
+            codex:*) status="${raw_status#codex:}"; reviewer_file="$WORKDIR/codex-specialist-${slot}-output.txt" ;;
             phase2:*) status="${raw_status#phase2:}"; reviewer_file="$WORKDIR/cursor-specialist-security-output-phase2.txt" ;;
             phase3:*) status="${raw_status#phase3:}"; reviewer_file="$WORKDIR/cursor-specialist-security-output-phase3.txt" ;;
         esac
@@ -73,17 +76,17 @@ assert_eq "2/4 failures passes" "$(printf '%s\n' "$out" | kv THRESHOLD_OK)" "tru
 out=$(run_case fail_4 hard --intended-slots 4 OK timeout timeout timeout 2>&1)
 assert_eq "3/4 failures fails" "$(printf '%s\n' "$out" | kv THRESHOLD_OK)" "false"
 
-out=$(run_case pass_8 hard --intended-slots 8 OK OK OK OK OK OK OK timeout 2>&1)
+out=$(run_case pass_8 hard --intended-slots 8 OK OK OK OK codex:OK codex:OK codex:OK codex:timeout 2>&1)
 assert_eq "1/8 failures passes" "$(printf '%s\n' "$out" | kv THRESHOLD_OK)" "true"
 assert_eq "explicit INTENDED_SLOTS=8" "$(printf '%s\n' "$out" | kv INTENDED_SLOTS)" "8"
 
-out=$(run_case fail_8 hard --intended-slots 8 OK OK OK timeout timeout timeout timeout timeout 2>&1)
+out=$(run_case fail_8 hard --intended-slots 8 OK OK OK timeout codex:timeout codex:timeout codex:timeout codex:timeout 2>&1)
 assert_eq "5/8 failures fails" "$(printf '%s\n' "$out" | kv THRESHOLD_OK)" "false"
 assert_eq "5/8 FAILED_SLOTS=5" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "5"
 
 echo "# dropped static slots count, dynamic drops excluded"
 drops="$WORKDIR/drops.tsv"
-printf 'security\tcursor\tformat-gate-miss\tpreamble\n' > "$drops"
+printf 'security\tcodex\tformat-gate-miss\tpreamble\n' > "$drops"
 printf 'dyn-api\tcodex\tformat-gate-miss\tpreamble\n' >> "$drops"
 out=$(run_case one_drop_8 hard --intended-slots 8 --dropped-slots-file "$drops" OK OK OK OK OK OK OK 2>&1)
 assert_eq "one static drop counted" "$(printf '%s\n' "$out" | kv DROPPED_STATIC_SLOTS)" "1"
@@ -91,10 +94,14 @@ assert_eq "1 dropped peer of 8 passes" "$(printf '%s\n' "$out" | kv THRESHOLD_OK
 assert_eq "dynamic drop excluded from FAILED_SLOTS" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "1"
 
 drops5="$WORKDIR/drops5.tsv"
-for slot in security correctness edge-cases testing security; do
-    printf '%s\tcursor\tcollector-failure\tbad\n' "$slot" >> "$drops5"
-done
-out=$(run_case five_drops_8 hard --intended-slots 8 --dropped-slots-file "$drops5" OK OK OK 2>&1)
+{
+    printf 'security\tcursor\tcollector-failure\tbad\n'
+    printf 'correctness\tcursor\tcollector-failure\tbad\n'
+    printf 'edge-cases\tcursor\tcollector-failure\tbad\n'
+    printf 'testing\tcursor\tcollector-failure\tbad\n'
+    printf 'security\tcodex\tcollector-failure\tbad\n'
+} >> "$drops5"
+out=$(run_case five_drops_8 hard --intended-slots 8 --dropped-slots-file "$drops5" 2>&1)
 assert_eq "5 dropped static peers of 8 fails" "$(printf '%s\n' "$out" | kv THRESHOLD_OK)" "false"
 assert_eq "DROPPED_STATIC_SLOTS=5" "$(printf '%s\n' "$out" | kv DROPPED_STATIC_SLOTS)" "5"
 
@@ -107,13 +114,22 @@ out=$(run_case no_padding_with_drop hard --intended-slots 4 --launched-slots 0 -
 assert_eq "drop accounting only suppresses accounted never-launched slots" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "4"
 
 echo "# dynamic outputs, including Codex twins and phase/retry variants, are excluded"
-out=$(run_case dynamic_names hard --intended-slots 8 --launched-slots 8 OK OK OK timeout timeout dyn:timeout dyn-codex:timeout dyn-phase2:timeout dyn-phase3:timeout dyn-retry:timeout 2>&1)
+out=$(run_case dynamic_names hard --intended-slots 8 --launched-slots 8 OK OK OK timeout codex:timeout dyn:timeout dyn-codex:timeout dyn-phase2:timeout dyn-phase3:timeout dyn-retry:timeout 2>&1)
 assert_eq "dynamic variants excluded from COUNTED_SLOTS" "$(printf '%s\n' "$out" | kv COUNTED_SLOTS)" "5"
 assert_eq "only static failures contribute" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "2"
 
 out=$(run_case not_substantive hard --intended-slots 4 OK OK NOT_SUBSTANTIVE timeout 2>&1)
 assert_eq "NOT_SUBSTANTIVE counts as failed" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "2"
 assert_eq "NOT_SUBSTANTIVE tracked separately" "$(printf '%s\n' "$out" | kv NOT_SUBSTANTIVE_SLOTS)" "1"
+
+out=$(run_case duplicate_collector_rows hard --intended-slots 4 same:timeout same:timeout same:timeout 2>&1)
+assert_eq "duplicate collector base counted once" "$(printf '%s\n' "$out" | kv COUNTED_SLOTS)" "1"
+assert_eq "duplicate collector failures counted once" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "1"
+
+out=$(run_case duplicate_collector_recovery hard --intended-slots 4 same:timeout same:OK 2>&1)
+assert_eq "duplicate collector recovery counted once" "$(printf '%s\n' "$out" | kv COUNTED_SLOTS)" "1"
+assert_eq "duplicate collector recovery prefers success" "$(printf '%s\n' "$out" | kv SUCCEEDED_SLOTS)" "1"
+assert_eq "duplicate collector recovery clears prior failure" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "0"
 
 out=$(run_case cap_hit hard --intended-slots 4 OK OK cap_hit timeout 2>&1)
 assert_eq "cap_hit counted as success" "$(printf '%s\n' "$out" | kv SUCCEEDED_SLOTS)" "3"
@@ -133,6 +149,27 @@ out_content=$("$TARGET" --collector-results-file "$collector" --panel hard --int
 assert_eq "phase output success counted" "$(printf '%s\n' "$out_content" | kv SUCCEEDED_SLOTS)" "2"
 assert_eq "phase output failure counted" "$(printf '%s\n' "$out_content" | kv FAILED_SLOTS)" "1"
 assert_eq "collector duplicate output not double counted" "$(printf '%s\n' "$out_content" | kv COUNTED_SLOTS)" "3"
+
+collector="$WORKDIR/output-files-recovery.env"
+emit_records "$collector" timeout
+recovered="$WORKDIR/cursor-specialist-security-output.txt"
+printf 'substantive recovered static reviewer\n' > "$recovered"
+out_content=$("$TARGET" --collector-results-file "$collector" --panel hard --intended-slots 4 \
+    --reviewer-output-files "$recovered" \
+    2>&1)
+assert_eq "substantive output overrides collector failure" "$(printf '%s\n' "$out_content" | kv SUCCEEDED_SLOTS)" "1"
+assert_eq "substantive output override removes failure" "$(printf '%s\n' "$out_content" | kv FAILED_SLOTS)" "0"
+
+drops_dup="$WORKDIR/drops-dup.tsv"
+printf 'security\tcursor\tformat-gate-miss\tpreamble\n' > "$drops_dup"
+printf 'security\tcursor\tformat-gate-miss\tpreamble\n' >> "$drops_dup"
+out=$(run_case duplicate_drops hard --intended-slots 4 --dropped-slots-file "$drops_dup" 2>&1)
+assert_eq "duplicate dropped slot counted once" "$(printf '%s\n' "$out" | kv DROPPED_STATIC_SLOTS)" "1"
+
+drops_counted="$WORKDIR/drops-counted.tsv"
+printf 'security\tcursor\tformat-gate-miss\tpreamble\n' > "$drops_counted"
+out=$(run_case counted_drop hard --intended-slots 4 --dropped-slots-file "$drops_counted" OK 2>&1)
+assert_eq "dropped slot already counted from collector is skipped" "$(printf '%s\n' "$out" | kv DROPPED_STATIC_SLOTS)" "0"
 
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-check-reviewer-failure-threshold.sh\n'
