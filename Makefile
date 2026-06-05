@@ -62,7 +62,7 @@ lint-awk-multibyte-regex:
 # test-dispatch-code-voters.sh into two new sections (regressions-r1-r2, regressions-r3-codex),
 # folding Regression 3's claude case into the edge shard as edge-and-r3-claude, and splitting
 # test-review-and-fix into dispatch/convergence sections (plus a parsers slice for Step 5 KV parsing) to shrink shard 13). Rebalanced 2026-05-31: fourth-pass LPT dropped test-ship-pr from CI shards;
-# that harness was then removed entirely in #3335 as the ship-pr.sh bash path is retired in favor of python/.
+# scripts/ship-pr.sh remains the shipped default while python/ parity work stays dev/CI-only until cutover.
 # Suite total 1001s; anchors: shard 1 (test-plan-review-loop 61s), shard 2
 # (test-launch-review 52s); shards 3-20 target ~49s each. When
 # imbalance returns, see docs/linting.md "Refreshing harness shard balance" for the regeneration

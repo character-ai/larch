@@ -52,10 +52,13 @@ def test_postmerge_skips_draft_without_done_manifest(tmp_path: Path) -> None:
 def test_postmerge_verifies_main_title(tmp_path: Path) -> None:
     runner = RecordingRunner(
         responses=[
-            CommandResult(("git", "switch", "main"), 0, "", "", 0.01),
+            CommandResult(("git", "checkout", "main"), 0, "", "", 0.01),
+            CommandResult(("git", "rev-parse", "origin/main"), 0, "base\n", "", 0.01),
+            CommandResult(("git", "fetch", "origin", "main", "--quiet"), 0, "", "", 0.01),
+            CommandResult(("git", "rev-list", "--count", "origin/main..HEAD"), 0, "0\n", "", 0.01),
             CommandResult(("git", "pull", "--ff-only", "origin", "main"), 0, "", "", 0.01),
             CommandResult(("git", "branch", "-D", "feat"), 0, "", "", 0.01),
-            CommandResult(("git", "log", "-1", "--format=%s", "main"), 0, "Implement thing (#7)\n", "", 0.01),
+            CommandResult(("git", "log", "-1", "--format=%s", "HEAD"), 0, "Implement thing (#7)\n", "", 0.01),
         ],
     )
     result = finalize.postmerge(runner, _ctx(tmp_path), cwd=str(tmp_path))
@@ -78,7 +81,7 @@ def test_teardown_stall_preserves_tmpdir_and_writes_manifest(tmp_path: Path) -> 
     )
     result = finalize.teardown(
         runner,
-        _ctx(tmp_path, stall_tracking=True, stall_step="12"),
+        _ctx(tmp_path, stall_tracking=True, stall_step="12", no_logs_commit=True),
         cwd=str(tmp_path),
     )
     assert result.status == "stalled-preserved"

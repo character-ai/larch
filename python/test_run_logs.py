@@ -134,6 +134,16 @@ def test_load_or_recover_manifest_from_log_dir(tmp_path: Path) -> None:
     assert manifest.run_id == ""
 
 
+def test_load_or_recover_manifest_absent_run_dir_tags_partial(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=lost-run\n", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    recovered = run_logs.load_or_recover_manifest_checked(ctx)
+    assert recovered.recovery_ok
+    assert recovered.manifest.status == config.MANIFEST_STATUS_PARTIAL
+    assert recovered.manifest.extra == {"recovery_reason": "manifest_lost_mid_run"}
+
+
 def test_effective_run_id_prefers_state_file(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=state-run\n", encoding="utf-8")

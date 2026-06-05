@@ -52,6 +52,16 @@ class RefreshSkip:
 
 
 @dataclass(frozen=True)
+class ManifestRecovery:
+    manifest: Manifest
+    recovery_ok: bool
+
+
+RECOVERY_REASON_MANIFEST_LOST = "manifest_lost_mid_run"
+REFRESH_SKIP_RECOVERY_FAILED = "manifest-recovery-failed"
+
+
+@dataclass(frozen=True)
 class ResumeCounters:
     iteration: int
     rebase_count: int
@@ -329,6 +339,7 @@ def init_run(
     ctx: RunContext,
     *,
     run_id: str | None = None,
+    recovery_reason: str = "",
 ) -> Manifest:
     rid = run_id or effective_run_id(ctx)
     manifest = Manifest(
@@ -336,6 +347,7 @@ def init_run(
         version="1",
         run_id=rid,
         steps_ran={},
+        extra={"recovery_reason": recovery_reason} if recovery_reason else None,
     )
     _write_manifest(ctx, manifest)
     return manifest
@@ -381,7 +393,11 @@ def _dict_to_manifest(data: dict[str, Any]) -> Manifest:
 
 
 def update_manifest(ctx: RunContext, **changes: object) -> Manifest:
-    current = load_or_recover_manifest(ctx)
+    recovery = load_or_recover_manifest_checked(ctx)
+    if not recovery.recovery_ok:
+        msg = "manifest recovery failed"
+        raise ShipError(msg)
+    current = recovery.manifest
     steps = dict(current.steps_ran)
     status = current.status
     version = current.version
@@ -427,11 +443,11 @@ def _recover_manifest_from_run_dir(run_id: str, run_dir: Path) -> Manifest | Non
         version="1",
         run_id=run_id,
         steps_ran=steps,
-        extra={"recovery_reason": "manifest_lost_mid_run"},
+        extra={"recovery_reason": RECOVERY_REASON_MANIFEST_LOST},
     )
 
 
-def load_or_recover_manifest(ctx: RunContext) -> Manifest:
+def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
     rid = effective_run_id(ctx)
     if rid:
         primary = Path(ctx.tmpdir) / "larch-logs" / "implement" / rid / "manifest.json"
@@ -440,19 +456,51 @@ def load_or_recover_manifest(ctx: RunContext) -> Manifest:
             try:
                 data = json.loads(primary.read_text(encoding="utf-8"))
                 if isinstance(data, dict):
-                    return _dict_to_manifest(cast("dict[str, Any]", data))
+                    return ManifestRecovery(_dict_to_manifest(cast("dict[str, Any]", data)), recovery_ok=True)
             except json.JSONDecodeError:
                 recovered = _recover_manifest_from_run_dir(rid, run_dir)
                 if recovered is not None:
-                    _write_manifest(ctx, recovered)
-                    return recovered
+                    try:
+                        _write_manifest(ctx, recovered)
+                    except OSError:
+                        return ManifestRecovery(recovered, recovery_ok=False)
+                    return ManifestRecovery(recovered, recovery_ok=True)
         elif run_dir.is_dir():
             recovered = _recover_manifest_from_run_dir(rid, run_dir)
             if recovered is not None:
-                _write_manifest(ctx, recovered)
-                return recovered
-        return init_run(ctx, run_id=rid)
-    return init_run(ctx)
+                try:
+                    _write_manifest(ctx, recovered)
+                except OSError:
+                    return ManifestRecovery(recovered, recovery_ok=False)
+                return ManifestRecovery(recovered, recovery_ok=True)
+        manifest = Manifest(
+            status=config.MANIFEST_STATUS_PARTIAL,
+            version="1",
+            run_id=rid,
+            steps_ran={},
+            extra={"recovery_reason": RECOVERY_REASON_MANIFEST_LOST},
+        )
+        try:
+            _write_manifest(ctx, manifest)
+        except OSError:
+            return ManifestRecovery(manifest, recovery_ok=False)
+        return ManifestRecovery(manifest, recovery_ok=True)
+    try:
+        return ManifestRecovery(init_run(ctx), recovery_ok=True)
+    except OSError:
+        return ManifestRecovery(
+            Manifest(
+                status=config.MANIFEST_STATUS_PARTIAL,
+                version="1",
+                run_id="",
+                steps_ran={},
+            ),
+            recovery_ok=False,
+        )
+
+
+def load_or_recover_manifest(ctx: RunContext) -> Manifest:
+    return load_or_recover_manifest_checked(ctx).manifest
 
 
 def _write_manifest(ctx: RunContext, manifest: Manifest) -> None:
@@ -578,6 +626,21 @@ def _render_execution_issues_batch(
     _ = sentinel.write_text(file_sha, encoding="utf-8")
 
 
+def render_execution_issues_batch(
+    ctx: RunContext,
+    batch_dir: Path,
+    *,
+    step_label: str,
+    source_label: str,
+) -> None:
+    _render_execution_issues_batch(
+        ctx,
+        batch_dir,
+        step_label=step_label,
+        source_label=source_label,
+    )
+
+
 def _execution_issue_record(
     body_lines: list[str],
     category: str,
@@ -644,7 +707,10 @@ def flush_logs_pre(
     skip = _pre_push_probe(ctx)
     if skip.skipped:
         return skip
-    manifest = load_or_recover_manifest(ctx)
+    recovery = load_or_recover_manifest_checked(ctx)
+    if not recovery.recovery_ok:
+        return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
+    manifest = recovery.manifest
     log_root = Path(ctx.tmpdir) / "larch-logs"
     run_dir = _run_log_dir(ctx)
     run_dir.mkdir(parents=True, exist_ok=True)
@@ -680,6 +746,16 @@ def flush_logs_pre(
     return RefreshSkip(skipped=False, reason="")
 
 
+def commit_larch_logs(
+    runner: Runner,
+    ctx: RunContext,
+    log_root: Path,
+    *,
+    cwd: str | None,
+) -> CommandResult:
+    return _larch_log_commit(runner, ctx, log_root, cwd=cwd)
+
+
 def flush_logs_post(
     ctx: RunContext,
     *,
@@ -687,7 +763,10 @@ def flush_logs_post(
     runner: Runner | None = None,
 ) -> RefreshSkip:
     """Post-merge tmpdir-only flush; never git-commits."""
-    manifest = load_or_recover_manifest(ctx)
+    recovery = load_or_recover_manifest_checked(ctx)
+    if not recovery.recovery_ok:
+        return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
+    manifest = recovery.manifest
     log_root = Path(ctx.tmpdir) / "larch-logs"
     resolved = merge_result or _read_state_kv(ctx.state_file, "MERGE_RESULT") or ctx.merge_result
     finalize = resolved in config.POST_MERGE_MERGE_RESULTS
@@ -718,6 +797,16 @@ def flush_logs_post(
     )
     _write_manifest(ctx, updated)
     return RefreshSkip(skipped=False, reason="")
+
+
+def finalize_postmerge_logs(
+    ctx: RunContext,
+    *,
+    merge_result: str | None = None,
+    runner: Runner | None = None,
+) -> RefreshSkip:
+    """Central postmerge finalization path: recover, write done/pr, then report."""
+    return flush_logs_post(ctx, merge_result=merge_result, runner=runner)
 
 
 def _token_sidecar_paths(tmpdir: Path) -> tuple[tuple[str, Path], ...]:

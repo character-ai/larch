@@ -1,11 +1,8 @@
-"""Bash-parity smoke tests for finalize.py.
-
-The detailed bash harness remains in scripts/test-implement-finalize.sh; this Python
-smoke keeps the Phase 7 module aligned on the post-#3368 skip decisions.
-"""
+"""Bash-present parity tests for finalize.py high-value decisions."""
 
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 from typing import Any
 
@@ -17,9 +14,15 @@ from test_support import RecordingRunner
 
 
 pytestmark = pytest.mark.skipif(
-    not (Path(__file__).resolve().parents[1] / "scripts" / "implement-finalize.sh").is_file(),
-    reason="bash finalize script unavailable",
+    shutil.which("bash") is None,
+    reason="bash unavailable",
 )
+
+IMPLEMENT_FINALIZE_SH = Path(__file__).resolve().parents[1] / "scripts" / "implement-finalize.sh"
+
+
+def test_finalize_bash_reference_script_present() -> None:
+    assert IMPLEMENT_FINALIZE_SH.is_file()
 
 
 def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
@@ -63,16 +66,20 @@ def test_postmerge_skip_decisions_match_trimmed_bash(
 def test_postbump_uses_rebase_without_changelog(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     calls: list[str] = []
 
-    def fake_flush(*_args: object, **_kwargs: object) -> object:
-        calls.append("flush")
-        return finalize.run_logs.RefreshSkip(skipped=False, reason="")
-
-    def fake_rebase(*_args: object, **_kwargs: object) -> object:
+    def fake_rebase(*_args: object, **_kwargs: object) -> str:
         calls.append("rebase")
-        return type("R", (), {"rebased": False, "pushed": True})()
+        return "already-fresh"
 
-    monkeypatch.setattr(finalize.run_logs, "flush_logs_pre", fake_flush)
-    monkeypatch.setattr(finalize.rebase, "rebase_and_push", fake_rebase)
+    monkeypatch.setattr(finalize, "_rebase_no_push", fake_rebase)
+
+    def fake_remote_state(*_args: Any, **_kwargs: Any) -> str:
+        return "present"
+
+    def fake_force_push(*_args: Any, **_kwargs: Any) -> object:
+        return type("P", (), {"pushed": True, "status": "pushed"})()
+
+    monkeypatch.setattr(finalize, "_remote_branch_state", fake_remote_state)
+    monkeypatch.setattr(finalize.git, "force_push_recovery", fake_force_push)
 
     def fake_branch(*_args: Any, **_kwargs: Any) -> str:
         return "feat"
@@ -83,5 +90,7 @@ def test_postbump_uses_rebase_without_changelog(monkeypatch: pytest.MonkeyPatch,
     monkeypatch.setattr(finalize.git, "try_current_branch", fake_branch)
     monkeypatch.setattr(finalize.git, "try_rev_parse", fake_rev)
     result = finalize.postbump(RecordingRunner(), _ctx(tmp_path), cwd=str(tmp_path))
-    assert result.status == "already-fresh"
-    assert calls == ["flush", "rebase"]
+    assert result.status == "ok"
+    assert result.rebase_status == "already-fresh"
+    assert result.log_write_status == "skipped"
+    assert calls == ["rebase"]

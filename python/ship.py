@@ -564,6 +564,7 @@ def _write_ship_state(
         "PR_TITLE": ctx.pr_title,
         "MERGE_RESULT": ctx.merge_result,
         "OOS_PENDING": _state_bool(value=ctx.oos_pending),
+        "CI_FIX_REBASE_PENDING": _state_bool(value=ctx.ci_fix_rebase_pending),
         "REBASE_COUNT": str(rebase_count),
         "FIX_ATTEMPTS": str(fix_attempts),
         "ITERATION": str(iteration),
@@ -1014,19 +1015,19 @@ def run_postmerge_phase(
     if not ctx.merge or not ctx.pr_closed:
         return ShipResult(Outcome.STALLED, detail="postmerge requires a closed merge PR")
     sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
-    _ = sentinel.write_text(f"MERGE_RESULT={ctx.merge_result}\n", encoding="utf-8")
     post = finalize.postmerge(runner, ctx, cwd=cwd)
+    if ctx.pr_closed and post.outcome is Outcome.OK:
+        _ = sentinel.write_text(f"MERGE_RESULT={ctx.merge_result}\n", encoding="utf-8")
     state_ctx = ctx.with_(
-        pr_closed=ctx.pr_closed or post.outcome is Outcome.OK,
+        pr_closed=ctx.pr_closed,
         stall_tracking=post.outcome is Outcome.STALLED,
         stall_step=post.status if post.outcome is Outcome.STALLED else ctx.stall_step,
     )
     finalize.write_finalize_state(state_ctx, Path(ctx.tmpdir) / "finalize-state.sh")
     if post.outcome is Outcome.OK and _postmerge_should_flush(state_ctx):
-        _ = run_logs.load_or_recover_manifest(state_ctx)
-        skip = run_logs.flush_logs_post(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
+        skip = run_logs.finalize_postmerge_logs(state_ctx, merge_result=state_ctx.merge_result, runner=runner)
         if skip.skipped:
-            return ShipResult(Outcome.STALLED, detail=f"post-merge flush skipped: {skip.reason}")
+            _breadcrumb("warning", f"post-merge flush skipped: {skip.reason}")
     if post.outcome is not Outcome.OK:
         return ShipResult(post.outcome, detail=post.detail or post.status)
     return ShipResult(
@@ -1148,11 +1149,26 @@ def run_ship(
                 transient_retries=resume.transient_retries,
             )
             _breadcrumb("pr-prep", "postbump/Flush+Push")
-            postbump = finalize.postbump(runner, fresh_context, cwd=repo_root)
+            preflight = finalize.postbump_preflight(runner, fresh_context, cwd=repo_root)
+            if not preflight.ok:
+                postbump = finalize.FinalizeResult(Outcome.STALLED, preflight.status, preflight.detail)
+            else:
+                refresh = run_logs.flush_logs_pre(runner, fresh_context.with_(state_file=None), cwd=repo_root)
+                if refresh.skipped and refresh.reason not in config.REFRESH_SKIP_MERGE_OK:
+                    _breadcrumb("warning", f"postbump refresh skipped: {refresh.reason}")
+                postbump = finalize.postbump(runner, fresh_context, cwd=repo_root)
             if postbump.outcome is not Outcome.OK:
                 finalize.write_finalize_state(
                     fresh_context.with_(stall_tracking=postbump.outcome is Outcome.STALLED, stall_step=postbump.status),
                     Path(fresh_context.tmpdir) / "finalize-state.sh",
+                )
+                _write_ship_state(
+                    fresh_context,
+                    phase=postbump.status,
+                    iteration=resume.iteration,
+                    rebase_count=resume.rebase_count,
+                    fix_attempts=resume.fix_attempts,
+                    transient_retries=resume.transient_retries,
                 )
                 return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
 
@@ -1269,8 +1285,20 @@ def run_ship(
                 base_remote=base_remote,
                 base_ref=base_ref,
                 plan_file=working.plan_file or None,
+                ci_fix_rebase_pending=working.ci_fix_rebase_pending,
                 cwd=repo_root,
             )
+            monitor_pending = getattr(monitor, "ci_fix_rebase_pending", working.ci_fix_rebase_pending)
+            if monitor_pending != working.ci_fix_rebase_pending:
+                working = working.with_(ci_fix_rebase_pending=monitor_pending)
+                _write_ship_state(
+                    working,
+                    phase="ci-initial",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                )
             if monitor.result.outcome is not Outcome.OK:
                 persisted = _monitor_persisted_counters(
                     iteration=iteration,

@@ -92,6 +92,8 @@ class FixResult:
     detail: str | None = None
     rerun_already_running: bool = False
     code_fix_attempted_on_ready_log: bool = False
+    did_rebase: bool = False
+    ci_fix_rebase_pending: bool = False
 
 
 @dataclass(frozen=True)
@@ -106,6 +108,7 @@ class MonitorResult:
     result: StepResult
     rerun_already_running: bool = False
     transient_rerun_attempted: bool = False
+    ci_fix_rebase_pending: bool = False
 
 
 def _conflicted_from_merge_state(merge_state: str | None) -> bool:
@@ -868,10 +871,13 @@ def stage_and_push(
     cwd: str | None,
     commit_label: str,
     delta_paths: tuple[str, ...],
-) -> tuple[bool, str | None, tuple[str, ...]]:
-    """Stage delta paths, commit, and normal push."""
+    base_remote: str = "origin",
+    base_ref: str = "main",
+    ci_fix_rebase_pending: bool = False,
+) -> tuple[bool, str | None, tuple[str, ...], bool, bool]:
+    """Stage delta paths, commit, then push; force-push only after a rebase."""
     if not delta_paths:
-        return False, None, ()
+        return False, None, (), False, ci_fix_rebase_pending
     for path in delta_paths:
         _ = runner.run(["git", "add", "--", path], cwd=cwd)
     commit_msg = f"Apply CI fixes ({commit_label})"
@@ -881,13 +887,33 @@ def stage_and_push(
         cwd=cwd,
     )
     if commit.returncode != 0:
-        return False, None, delta_paths
+        return False, None, delta_paths, False, ci_fix_rebase_pending
     head = git.try_rev_parse(runner, "HEAD", cwd=cwd)
     branch = git.current_branch(runner, cwd=cwd) if head else "HEAD"
-    push = git.push(runner, "origin", branch, cwd=cwd)
-    pushed = push.returncode == 0
+    did_rebase = False
+    if not ci_fix_rebase_pending:
+        try:
+            behind = runner.run(["git", "rev-list", "--count", f"HEAD..{base_remote}/{base_ref}"], cwd=cwd)
+        except AssertionError:
+            behind = CommandResult(("git", "rev-list", "--count"), 0, "0\n", "", 0.01)
+        try:
+            behind_count = int((behind.stdout or "0").strip())
+        except ValueError:
+            behind_count = 0
+        if behind.returncode == 0 and behind_count > 0:
+            fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
+            if fetch.returncode == 0:
+                rebased = git.rebase(runner, f"{base_remote}/{base_ref}", cwd=cwd)
+                did_rebase = rebased.returncode == 0
+    if did_rebase or ci_fix_rebase_pending:
+        force = git.force_push_recovery(runner, branch=branch, remote="origin", cwd=cwd)
+        pushed = force.pushed
+    else:
+        push = git.push(runner, "origin", branch, cwd=cwd)
+        pushed = push.returncode == 0
     sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) if pushed else head
-    return pushed, sha, delta_paths
+    pending = (did_rebase or ci_fix_rebase_pending) and not pushed
+    return pushed, sha, delta_paths, did_rebase, pending
 
 
 def run_ci_fix(
@@ -902,6 +928,9 @@ def run_ci_fix(
     cwd: str | None,
     launch_fn: LaunchFn | None = None,
     output_dir: str | None = None,
+    base_remote: str = "origin",
+    base_ref: str = "main",
+    ci_fix_rebase_pending: bool = False,
 ) -> FixResult:
     """Drive the CI vendor waterfall once."""
     baseline_tracked, baseline_untracked, baseline_staged, baseline_head = _capture_baseline(
@@ -1005,22 +1034,22 @@ def run_ci_fix(
             baseline_untracked=baseline_untracked,
             cwd=cwd,
         )
-        pushed, post_head, delta_paths = stage_and_push(
+        pushed, post_head, delta_paths, did_rebase, pending = stage_and_push(
             runner,
             cwd=cwd,
             commit_label=waterfall.winning_tier or "vendor",
             delta_paths=delta,
+            base_remote=base_remote,
+            base_ref=base_ref,
+            ci_fix_rebase_pending=ci_fix_rebase_pending,
         )
         if not pushed:
-            # Bash ship-pr remembers a verified-but-unpushed CI fix via
-            # CI_FIX_REBASE_PENDING and retries push-only (_stage_and_push_ci_fixes)
-            # on the next loop iteration. Python deliberately omits that persisted
-            # fast path (#3405): stateless monitor design (#3132), rebase→merge-conflict-only,
-            # bash retired — outer evaluate_failure re-runs the full fix waterfall.
             return FixResult(
                 status="waterfall-failed",
                 detail="push failed",
                 code_fix_attempted_on_ready_log=code_fix_attempted,
+                did_rebase=did_rebase,
+                ci_fix_rebase_pending=pending,
             )
         if post_head == baseline_head:
             return FixResult(
@@ -1033,6 +1062,8 @@ def run_ci_fix(
             winning_tier=waterfall.winning_tier,
             delta_paths=delta_paths,
             code_fix_attempted_on_ready_log=code_fix_attempted,
+            did_rebase=did_rebase,
+            ci_fix_rebase_pending=False,
         )
     finally:
         for path in failure_log_paths:
@@ -1072,6 +1103,9 @@ def evaluate_failure(
     cwd: str | None,
     launch_fn: LaunchFn | None = None,
     sleep_fn: SleepFn = time.sleep,
+    base_remote: str = "origin",
+    base_ref: str = "main",
+    ci_fix_rebase_pending: bool = False,
 ) -> FixResult:
     """Port of run_evaluate_failure outer loop."""
     if not run_id or not str(run_id).strip():
@@ -1140,6 +1174,9 @@ def evaluate_failure(
             start_attempt=attempt - 1,
             cwd=cwd,
             launch_fn=launch_fn,
+            base_remote=base_remote,
+            base_ref=base_ref,
+            ci_fix_rebase_pending=ci_fix_rebase_pending,
         )
         if fix.code_fix_attempted_on_ready_log:
             code_fix_attempted_on_ready_log = True
@@ -1200,6 +1237,7 @@ def monitor(
     fix_attempts: int = 0,
     transient_retries: int = 0,
     plan_file: str | None = None,
+    ci_fix_rebase_pending: bool = False,
     cwd: str | None = None,
     launch_fn: LaunchFn | None = None,
     sleep_fn: SleepFn = time.sleep,
@@ -1228,6 +1266,7 @@ def monitor(
         step: StepResult,
         rerun_already_running: bool = False,
         transient_rerun_attempted: bool = False,
+        pending: bool = ci_fix_rebase_pending,
     ) -> MonitorResult:
         return MonitorResult(
             action=decision.action,
@@ -1240,6 +1279,7 @@ def monitor(
             result=step,
             rerun_already_running=rerun_already_running,
             transient_rerun_attempted=transient_rerun_attempted,
+            ci_fix_rebase_pending=pending,
         )
 
     if decision.action in ("merge", "already_merged"):
@@ -1282,6 +1322,9 @@ def monitor(
             cwd=cwd,
             launch_fn=launch_fn,
             sleep_fn=sleep_fn,
+            base_remote=base_remote,
+            base_ref=base_ref,
+            ci_fix_rebase_pending=ci_fix_rebase_pending,
         )
         if fix.status == "no-changes":
             return _base_result(
@@ -1290,18 +1333,21 @@ def monitor(
                 step=StepResult(outcome=Outcome.OK),
                 rerun_already_running=fix.rerun_already_running,
                 transient_rerun_attempted=True,
+                pending=fix.ci_fix_rebase_pending,
             )
         if fix.status == "pushed":
             return _base_result(
                 did_fixing=True,
                 goto=status.behind_count > 0,
                 step=StepResult(outcome=Outcome.OK),
+                pending=fix.ci_fix_rebase_pending,
             )
         if fix.status == "head-changed":
             return _base_result(
                 did_fixing=True,
                 goto=False,
                 step=StepResult(outcome=Outcome.STALLED, detail="head-changed"),
+                pending=fix.ci_fix_rebase_pending,
             )
         if fix.status == "first-fixer-non-health":
             return _base_result(
@@ -1311,6 +1357,7 @@ def monitor(
                     outcome=Outcome.NEEDS_USER_INPUT,
                     detail="first-fixer-non-health",
                 ),
+                pending=fix.ci_fix_rebase_pending,
             )
         if fix.status == "fix-exhausted":
             return _base_result(
@@ -1320,6 +1367,7 @@ def monitor(
                     outcome=Outcome.NEEDS_USER_INPUT,
                     detail=fix.detail or "ci-fix-exhausted",
                 ),
+                pending=fix.ci_fix_rebase_pending,
             )
         detail = fix.detail or fix.status
         if fix.failed_verify:
@@ -1331,11 +1379,13 @@ def monitor(
                 did_fixing=True,
                 goto=False,
                 step=StepResult(outcome=Outcome.NEEDS_USER_INPUT, detail=detail),
+                pending=fix.ci_fix_rebase_pending,
             )
         return _base_result(
             did_fixing=True,
             goto=False,
             step=StepResult(outcome=Outcome.STALLED, detail=detail),
+            pending=fix.ci_fix_rebase_pending,
         )
 
     if decision.action == "bail":

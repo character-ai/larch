@@ -143,6 +143,7 @@ def test_happy_path_stage_order(
     assert result.outcome is Outcome.OK
     assert order == [
         "checks",
+        "flush-pre",
         "postbump",
         "pr-body",
         "oos",
@@ -156,7 +157,7 @@ def test_happy_path_stage_order(
     ]
     assert order.count("monitor") == 1
     assert order.count("merge") == 1
-    assert not flush_args
+    assert flush_args == [(None, str(tmp_path))]
     captured = capsys.readouterr()
     assert "ship.py: checks:" in captured.err
     assert "ship.py: pr-prep:" in captured.err
@@ -2121,6 +2122,7 @@ def test_main_ensure_pr_stall_creates_finalize_state(
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
     monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
     monkeypatch.setattr(ship.oos, "disposition_ok", lambda *_a, **_k: type("D", (), {"ok": True})())
