@@ -771,25 +771,52 @@ def tagged(block):
         print("scope marker helper failed during plan aggregation parity (rc=%d)" % rc, file=sys.stderr)
         raise SystemExit(2)
     finally: os.unlink(f.name)
-def norm_body(block):
-    body=re.sub(r'^### FINDING_[0-9]+:\s*','',block,count=1,flags=re.M)
-    body=re.sub(r'^\s*\[(?:important|nit|latent)\]\s*','',body,flags=re.I|re.M)
-    return re.sub(r'\s+',' ',body).strip().lower()
+def problem_text(block):
+    m=re.search(r'- \*\*Concern\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)', block, re.S)
+    txt=m.group(1) if m else re.sub(r'^### FINDING_[0-9]+:\s*','',block,count=1,flags=re.M)
+    txt=re.sub(r'```.*?```','',txt,flags=re.S)
+    txt=re.sub(r'`[^`\n]*`','',txt)
+    txt=re.sub(r'^\s*\[(?:important|nit|latent)\]\s*','',txt,flags=re.I)
+    txt=re.sub(r'^\s*\[SCOPE-REDUCTION\]\s*','',txt,flags=re.I)
+    return txt
+def tokens(block):
+    return set(re.findall(r'[A-Za-z0-9_]+', problem_text(block).lower()))
+def reviewers(block):
+    m=re.search(r'- \*\*Reviewer\(s\)\*\*:\s*([^\n]+)', block)
+    if not m:
+        m=re.search(r'- \*\*Reviewers?\*\*:\s*([^\n]+)', block)
+    return {x.strip().lower() for x in m.group(1).split(',') if x.strip()} if m else set()
+def score(a,b):
+    at=tokens(a); bt=tokens(b)
+    return (len(at & bt) / len(at | bt)) if at and bt else 0.0
 tagged_inputs=[]
 if os.path.exists(tagged_path):
     tagged_inputs=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', open(tagged_path, encoding='utf-8', errors='replace').read())]
 combined_tagged=[b for b in blocks if tagged(b)]
 if len(combined_tagged) < len(tagged_inputs):
     raise SystemExit(1)
+merged_untagged=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', open(merged_path, encoding='utf-8', errors='replace').read()) if not tagged(m.group(0))]
+for untagged in merged_untagged:
+    for tagged_block in tagged_inputs:
+        if score(untagged, tagged_block) >= 0.6:
+            raise SystemExit(1)
 used=set()
-for src in tagged_inputs:
-    src_norm=norm_body(src)
-    matched=False
+for src in sorted(tagged_inputs, key=lambda b: len(tokens(b)), reverse=True):
+    sr=reviewers(src)
+    candidates=[]
     for i,b in enumerate(combined_tagged):
         if i in used:
             continue
-        if tagged(b) and (src_norm == norm_body(b) or src_norm in norm_body(b) or norm_body(b) in src_norm):
-            used.add(i); matched=True; break
+        br=reviewers(b)
+        if sr and br and not (sr & br):
+            continue
+        candidates.append((score(src,b), i))
+    candidates.sort(reverse=True)
+    if candidates and candidates[0][0] >= 0.5:
+        used.add(candidates[0][1])
+        matched=True
+    else:
+        matched=False
     if not matched:
         raise SystemExit(1)
 out=[]

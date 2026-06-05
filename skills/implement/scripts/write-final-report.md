@@ -70,9 +70,12 @@ Still refreshes `summary-final.md` for the upsert but **does not** overwrite `la
 
 After `REPO` and `PR_NUMBER` resolve, when `REPO_UNAVAILABLE=true` the script
 skips `scripts/compute-pr-line-counts.sh` entirely and treats line data as
-unavailable. Otherwise it invokes the helper under `set +e`, parses
-`LINES_STATUS` and the four counter keys, and never aborts the report on helper
-failure.
+unavailable. Otherwise it first reuses cached `LINES_*` values from
+`ship-pr-state.sh` when they match the current `PR_NUMBER`; on cache miss it
+invokes the helper under `set +e`, parses `LINES_STATUS` and the four counter
+keys, appends a cache entry to `ship-pr-state.sh` when writable, and never
+aborts the report on helper failure. This intentionally avoids repeated live
+GitHub file-list calls during `--comment-only` refreshes.
 
 When `LINES_STATUS=ok` and all four counters are non-empty integers, both
 `run_body_render` branches forward `--code-added`, `--code-deleted`,

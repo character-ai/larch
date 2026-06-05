@@ -173,6 +173,28 @@ validate_scope_anchor_handoff() {
     esac
 }
 
+recover_main_agent_scope_anchor() {
+    local staged canon design_canon
+    [[ "${LOOP_STATUS:-}" == "main-agent-vote-required" ]] || return 0
+    [[ -z "${SCOPE_ANCHOR_FILE:-}" ]] || return 0
+    staged="$DESIGN_TMPDIR/plan-review-scope-anchor.txt"
+    if [[ -f "$staged" && ! -L "$staged" ]]; then
+        design_canon="$(cd "$DESIGN_TMPDIR" && pwd -P)"
+        canon="$(cd "$(dirname "$staged")" && pwd -P)/$(basename "$staged")"
+        case "$canon" in
+            "$design_canon"/*)
+                SCOPE_ANCHOR_FILE="$canon"
+                emit_kv WARN "Step 3: recovered SCOPE_ANCHOR_FILE from canonical staged anchor"
+                return 0
+                ;;
+        esac
+    fi
+    emit_kv WARN "Step 3: main-agent-vote-required without valid SCOPE_ANCHOR_FILE"
+    LOOP_STATUS=panel-failed
+    TALLY_PLAN_REVIEW_STATUS=panel-failed
+    return 1
+}
+
 _round_count=0
 if [[ -s "$ROUND_COUNT_FILE" ]]; then
     _raw_count="$(tr -d '[:space:]' <"$ROUND_COUNT_FILE" 2>/dev/null || true)"
@@ -369,6 +391,7 @@ else
 fi
 
 validate_scope_anchor_handoff
+recover_main_agent_scope_anchor
 
 emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
 emit_kv STEP3_REVIEW_CAP_REACHED "${STEP3_REVIEW_CAP_REACHED:-false}"

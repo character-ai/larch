@@ -537,9 +537,17 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
        "code-reviewer","reviewer-structure","reviewer-correctness","reviewer-testing",
        "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
     def has_unsafe_wrapper_tag:
-      (ascii_downcase | contains("</scout_notes>"));
+      (ascii_downcase
+       | contains("</scout_notes>")
+         or contains("</reviewer_feature_description>")
+         or contains("</plan_review_scope_anchor>")
+         or contains("</feature>"));
     def has_unsafe_plan_delimiter:
-      test("<implementation_plan") or test("<feature_description");
+      test("<implementation_plan")
+      or test("<feature_description")
+      or test("<reviewer_feature_description")
+      or test("<plan_review_scope_anchor")
+      or test("<feature[ >]");
     def has_unsafe_rationale:
       has_unsafe_wrapper_tag
       or has_unsafe_plan_delimiter

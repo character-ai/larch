@@ -134,18 +134,18 @@ SCOPE_ANCHOR_FILE="$DESIGN_TMPDIR/plan-review-scope-anchor.txt"
 SCOUT_SCOPE_ANCHOR_FILE="$DESIGN_TMPDIR/plan-review-scope-anchor.scout.txt"
 
 _materialize_scope_anchor() {
-    local stripped_tmp anchor_tmp malformed
+    local stripped_tmp anchor_tmp strip_kv malformed
     stripped_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-review-scope-anchor.XXXXXX")
     anchor_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-review-scope-anchor-body.XXXXXX")
-    malformed=""
     strip_kv=$(mktemp "$DESIGN_TMPDIR/.plan-strip-kv.XXXXXX")
+    trap 'rm -f "$stripped_tmp" "$anchor_tmp" "$strip_kv"' RETURN
+    malformed=""
     set +e
     LARCH_QUIET_DISABLE=1 "$PLAN_BLOCK_STRIP_BODY_SH" --file "$ORIGINAL_FEATURE_FILE" --output "$stripped_tmp" >"$strip_kv" 2>/dev/null
     strip_rc=$?
     set -e
     if [[ "$strip_rc" -ne 0 ]]; then
         malformed=$(awk -F= '$1=="MALFORMED"{print $2; exit}' "$strip_kv")
-        rm -f "$stripped_tmp" "$anchor_tmp" "$strip_kv"
         if [[ -n "$malformed" ]]; then
             larch_err "plan-review-loop.sh: failed to strip embedded larch:plan block while materializing scope anchor (MALFORMED=$malformed)"
         else
@@ -161,13 +161,16 @@ _materialize_scope_anchor() {
             cat "$DESIGN_TMPDIR/design-outline.md"
         fi
     } >"$anchor_tmp"
+    if ! grep -q '[^[:space:]]' "$anchor_tmp"; then
+        larch_err "plan-review-loop.sh: scope anchor is empty after stripping embedded larch:plan block"
+        exit 2
+    fi
     "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$anchor_tmp" >"$SCOPE_ANCHOR_FILE"
     sed -E \
         -e 's/&/\&amp;/g' \
         -e 's/</\&lt;/g' \
         -e 's/>/\&gt;/g' \
         "$SCOPE_ANCHOR_FILE" >"$SCOUT_SCOPE_ANCHOR_FILE"
-    rm -f "$stripped_tmp" "$anchor_tmp"
     case "$SCOPE_ANCHOR_FILE" in
         *$'\r'*|*$'\n'*) larch_err "plan-review-loop.sh: scope anchor path contains CR/LF"; exit 2 ;;
     esac
@@ -1202,12 +1205,14 @@ PY
     fi
 done < <(_parse_collect_records "$_collect_out")
 
-python3 - "$_findings_tmp" "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" <<'PY'
+python3 - "$_findings_tmp" "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" "$DESIGN_TMPDIR/findings-oos.pre-dedup.md" <<'PY'
 import re, sys
-src, out_in = sys.argv[1:3]
+src, out_in, out_oos = sys.argv[1:4]
 text = open(src, encoding="utf-8", errors="replace").read()
 fin = [m.group(0).strip() for m in re.finditer(r"(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)", text)]
+oos = [m.group(0).strip() for m in re.finditer(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)", text)]
 open(out_in, "w", encoding="utf-8").write("\n\n".join(fin) + ("\n\n" if fin else ""))
+open(out_oos, "w", encoding="utf-8").write("\n\n".join(oos) + ("\n\n" if oos else ""))
 PY
 
 _dedup_py="$DESIGN_TMPDIR/.plan-review-loop-dedup.py"
@@ -1313,9 +1318,9 @@ def dedup(blocks, thresh=0.6):
         for i, kb in enumerate(kept):
             if jaccard(t, tokens(comparison_text(kb))) > thresh:
                 if tagged and kept_tagged[i]:
-                    merged = False
-                    break
-                if tagged and not kept_tagged[i]:
+                    kept[i] = merge_reviewers(kb, blk)
+                    kept_tagged[i] = True
+                elif tagged and not kept_tagged[i]:
                     kept[i] = merge_reviewers(blk, kb)
                     kept_tagged[i] = True
                 else:
@@ -1514,8 +1519,10 @@ set -e
 if [[ "$_ballot_rc" -ne 0 ]]; then
     emit_kv WARN "plan-review-ballot: renumber failed (rc=$_ballot_rc); falling back to pre-dedup in-scope findings"
     cp -f "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" "$_agg_out"
+    _ballot_oos_fallback="$DESIGN_TMPDIR/findings-oos.pre-dedup.md"
+    [[ -f "$_ballot_oos_fallback" ]] || _ballot_oos_fallback="$DESIGN_TMPDIR/findings-oos.md"
     set +e
-    python3 - "$_agg_out" "$DESIGN_TMPDIR/findings-oos.md" "$DESIGN_TMPDIR/ballot.txt" <<'PY'
+    python3 - "$_agg_out" "$_ballot_oos_fallback" "$DESIGN_TMPDIR/ballot.txt" <<'PY'
 import re, sys
 inp, oos_path, out_path = sys.argv[1:4]
 text = open(inp, encoding='utf-8', errors='replace').read() if inp else ''
