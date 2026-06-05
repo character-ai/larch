@@ -1,0 +1,29 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/ship.py:763-765	Plan omits catch-all traceback emit from quiet=False removal list	After quiet_init, main()'s except handler emits traceback with quiet=False, bypassing fd4 routing; traceback lands only in the quiet log while contract JSON may still reach fd3 — operators lose the internal-error traceback on caller-visible stderr	Remove quiet=False from the catch-all BreadcrumbWriter.emit at ship.py:763-765 (use default quiet=None); add to plan line 40 enumeration alongside _breadcrumb and run_logs secret-scrub; extend test_ship.py operator-visible fd4 regression to cover internal-error traceback after quiet_init
+
+### 1. [correctness] `python/ship.py:763-765` — catch-all traceback still uses `quiet=False`
+
+The plan (line 40) lists three `quiet=False` removal targets: `_breadcrumb`, `ci_monitor.poll_ci` progress (via `_warn_stderr` at `ci_monitor.py:192-193`), and `run_logs` secret-scrub (`run_logs.py:975`). A fourth site exists in the current `main()` catch-all:
+
+```763:766:python/ship.py
+        logging_util.BreadcrumbWriter().emit(
+            f"ship.py: internal error\n{traceback.format_exc()}",
+            quiet=False,
+        )
+```
+
+This handler runs after `quiet_init()` in the proposed flow. With `quiet=False`, `BreadcrumbWriter` writes to redirected stderr (the quiet log) instead of fd 4, so the traceback is not operator-visible — the same failure mode the plan targets for ship progress and secret-scrub banners (Failure mode 2, line 192).
+
+The plan's B2 bullet updates catch-all `detail=` text but does not require dropping `quiet=False` on this emit. The proposed fd4 regression test (plan line 83) covers ship breadcrumbs or secret-scrub warnings but not internal-error tracebacks.
+
+**Suggested revision:** Add `main()` catch-all traceback emit to the line-40 enumeration; remove `quiet=False` there; extend the fd4 capture regression to assert traceback text is observable after `quiet_init`.
+
+---
+
+**Verified OK (no finding):**
+
+- Single `emit_result` definition; plan routes all paths through `contract_stream()` — sufficient once implemented.
+- `quiet_init` no-op conditions (DISABLE, ACTIVE-without-PID, PID idempotency, setup-failure degrade) match `scripts/lib-quiet.sh:40-71`.
+- Argparse/`--help` ordering (quiet only after successful parse) is correct; pre-quiet paths stay on caller-visible stdout/stderr.
+- Proposed fd3 dup-capture tests (plan lines 182-183, 83) are the right guard against contract JSON falling through to redirected fd 1, provided tests read fd 3 directly rather than relying on capsys alone after dup2.
+- Fixing `ci_monitor._warn_stderr` (not just the poll_ci call site) covers all five `_warn_stderr` callers for CI operator-visible warnings.
