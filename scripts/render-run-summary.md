@@ -75,8 +75,9 @@ See `scripts/token-cost.md` for env vars and blended-fallback warning semantics.
 ## Lines (PR diff) — implement only
 
 Optional flags `--code-added`, `--code-deleted`, `--logs-added`,
-`--logs-deleted` (default empty). When all four are empty, the bullet renders
-`- **Lines (PR diff)**: N/A`. Otherwise:
+`--logs-deleted` (default empty). These are all-or-nothing integer inputs:
+when any value is empty or non-integer, the bullet renders
+`- **Lines (PR diff)**: N/A`. When all four are present:
 
 `- **Lines (PR diff)**: code +<CA>/-<CD>, larch-logs +<LA>/-<LD>`
 

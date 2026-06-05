@@ -214,8 +214,11 @@ plan_disp="${PLAN_REVIEW_LINE:-N/A}"
 code_disp="${CODE_REVIEW_LINE:-N/A}"
 
 lines_disp="N/A"
-if [ -n "$CODE_ADDED" ] || [ -n "$CODE_DELETED" ] || [ -n "$LOGS_ADDED" ] || [ -n "$LOGS_DELETED" ]; then
-    lines_disp="code +${CODE_ADDED}/-${CODE_DELETED}, larch-logs +${LOGS_ADDED}/-${LOGS_DELETED}"
+if [ -n "$CODE_ADDED" ] && [ -n "$CODE_DELETED" ] && [ -n "$LOGS_ADDED" ] && [ -n "$LOGS_DELETED" ]; then
+    case "${CODE_ADDED}${CODE_DELETED}${LOGS_ADDED}${LOGS_DELETED}" in
+        *[!0-9]*) ;;
+        *) lines_disp="code +${CODE_ADDED}/-${CODE_DELETED}, larch-logs +${LOGS_ADDED}/-${LOGS_DELETED}" ;;
+    esac
 fi
 
 oos_disp="0"

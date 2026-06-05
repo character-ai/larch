@@ -17,7 +17,8 @@ TMP_CU_STD=""
 TMP_ZERO_OUT=""
 TMP_CU_NZ_OUT=""
 TMP_LINES_NA=""
-trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR" "$TMP_DES_OUT" "$TMP_DES_STD" "$TMP_CU_OUT" "$TMP_CU_STD" "$TMP_ZERO_OUT" "$TMP_CU_NZ_OUT" "$TMP_LINES_NA"' EXIT
+TMP_LINES_PARTIAL=""
+trap 'rm -f "$TMP" "$notes" "$TMP_DEF" "$TMP_PART" "$TMP_ERR" "$TMP_ERR_STDERR" "$TMP_DES_OUT" "$TMP_DES_STD" "$TMP_CU_OUT" "$TMP_CU_STD" "$TMP_ZERO_OUT" "$TMP_CU_NZ_OUT" "$TMP_LINES_NA" "$TMP_LINES_PARTIAL"' EXIT
 PASS=0
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; PASS=$((PASS+1)); }
@@ -72,7 +73,7 @@ if grep -Fq '**Outcome**:' "$TMP"; then fail 'merged run must not emit Outcome b
 grep -Fq '**PR**:' "$TMP" || fail 'missing PR bullet when URL known'
 grep -Fq -- '- Emergency: true' "$TMP" || fail 'missing emergency line when requested'
 grep -Fq '**Note:** fixture note' "$TMP" || fail 'missing appended note'
-grep -Fq -- '- **Lines (PR diff)**: code +' "$TMP" || fail 'missing Lines (PR diff) bullet'
+grep -Fxq -- '- **Lines (PR diff)**: code +107/-23, larch-logs +50/-10' "$TMP" || fail 'missing full Lines (PR diff) bullet'
 grep -Fq "TOTAL ~\$5.00" "$TMP" || fail 'missing expected total cost line (approx prefix)'
 pass 'render body shape + sentinel + notes + cost + lines'
 
@@ -252,6 +253,31 @@ TMP_LINES_NA="$(mktemp "${TMPDIR:-/tmp}/trs-lines-na.XXXXXX")"
     --output-file "$TMP_LINES_NA" >/dev/null 2>/dev/null
 grep -Fxq -- '- **Lines (PR diff)**: N/A' "$TMP_LINES_NA" || fail 'implement without line flags renders N/A'
 pass 'implement no line-count data renders N/A'
+
+TMP_LINES_PARTIAL="$(mktemp "${TMPDIR:-/tmp}/trs-lines-partial.XXXXXX")"
+"$HELPER" \
+    --skill implement \
+    --outcome merged \
+    --run-id RUN-LINES-PARTIAL \
+    --mode N/A \
+    --workflow-path N/A \
+    --duration N/A \
+    --issue-number 0 \
+    --issue-url N/A \
+    --pr-number 0 \
+    --pr-url N/A \
+    --plan-review-line N/A \
+    --code-review-line N/A \
+    --code-added 107 \
+    --code-deleted 23 \
+    --oos-count 0 \
+    --oos-urls '' \
+    --exec-issues 0 \
+    --warnings 0 \
+    --run-logs-path N/A \
+    --output-file "$TMP_LINES_PARTIAL" >/dev/null 2>/dev/null
+grep -Fxq -- '- **Lines (PR diff)**: N/A' "$TMP_LINES_PARTIAL" || fail 'partial line-count flags render N/A'
+pass 'partial line-count data renders N/A'
 
 TMP_CU_OUT="$(mktemp "${TMPDIR:-/tmp}/trs-cu-out.XXXXXX")"
 TMP_CU_STD="$(mktemp "${TMPDIR:-/tmp}/trs-cu-std.XXXXXX")"

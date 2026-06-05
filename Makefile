@@ -78,7 +78,7 @@ test-harnesses-2: test-launch-review
 
 test-harnesses-3: test-launch-cursor-ci
 
-test-harnesses-4: test-check-reviewers test-implement-admission test-token-ledger test-check-review-changes test-render-debate-retry-prompt test-degraded-tools-gate test-rebase-push-no-push-fetch-retry test-check-stale-plugin test-compose-pr-summary test-compute-pr-line-counts test-compute-pr-line-counts test-ci-status test-lib-implement-round-cap test-implement-anti-halt test-implement-cleanup-roundtrip test-implement-positional-issue
+test-harnesses-4: test-check-reviewers test-implement-admission test-token-ledger test-check-review-changes test-render-debate-retry-prompt test-degraded-tools-gate test-rebase-push-no-push-fetch-retry test-check-stale-plugin test-compose-pr-summary test-compute-pr-line-counts test-ci-status test-lib-implement-round-cap test-implement-anti-halt test-implement-cleanup-roundtrip test-implement-positional-issue
 
 test-harnesses-5: test-harness-shards-coverage test-review-and-fix-dispatch test-gh-pr-body-update test-merge-pr test-plan-review-prompt test-launch-claude-subprocess test-oos-disposition-gate test-session-env-roundtrip test-gate-b-dedup-plan test-lib-quiet test-check-clean-tree test-lint-renderer-substitution-safety test-commit-review-fixes test-refresh-execution-issues test-blocked-by-issue test-implement-step8-exit3-first-fixer
 
@@ -952,8 +952,8 @@ test-write-tally:
 test-compose-collector-failure-log:
 	bash scripts/harness-timer.sh $@ bash scripts/test-compose-collector-failure-log.sh
 
-test-compose-pr-summary test-compute-pr-line-counts:
-	bash scripts/harness-timer.sh $@ bash scripts/test-compose-pr-summary test-compute-pr-line-counts.sh
+test-compose-pr-summary:
+	bash scripts/harness-timer.sh $@ bash scripts/test-compose-pr-summary.sh
 
 test-compute-pr-line-counts:
 	bash scripts/harness-timer.sh $@ bash scripts/test-compute-pr-line-counts.sh

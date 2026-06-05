@@ -783,6 +783,7 @@ lines_out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content
       "$HELPER" --implement-tmpdir "$impl_lines")
 assert_contains 'STATUS=ok' "$lines_out" 'line-count fixture status ok'
 assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$TMP_ROOT/content-lines.md")" 'line-count fixture bucketed values'
+assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$impl_lines/summary-final.md")" 'line-count fixture summary-final bucketed values'
 
 impl_runav="$TMP_ROOT/impl-runav"
 mkdir -p "$impl_runav/larch-logs/implement/run-runav"
@@ -818,6 +819,35 @@ if [ -s "$GH_SHIM_LOG" ]; then
 else
     pass 'repo-unavailable bypasses gh shim'
 fi
+
+impl_ghfail="$TMP_ROOT/impl-ghfail"
+mkdir -p "$impl_ghfail/larch-logs/implement/run-ghfail"
+printf 'ISSUE_NUMBER=42\nRUN_ID=run-ghfail\nADOPTED=true\n' > "$impl_ghfail/parent-issue.md"
+printf 'REPO=owner/repo\n' > "$impl_ghfail/session-env.sh"
+{
+    printf 'PR_URL=https://example.test/pr/42\n'
+    printf 'PR_NUMBER=42\n'
+    printf 'STALL_TRACKING=false\n'
+    printf 'MERGE_RESULT=merged\n'
+    printf 'MERGE=true\n'
+    printf 'DRAFT=false\n'
+    printf 'FORKED_TARGET=false\n'
+} > "$impl_ghfail/ship-pr-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_ghfail/finalize-state.sh"
+cat > "$impl_ghfail/larch-logs/implement/run-ghfail/token-report.json" <<'JSON'
+{
+  "claude": {"totals": {"total": 1000}},
+  "codex": {"totals": {"total": 2000}},
+  "cursor": {"totals": {"total": 3000}},
+  "BUCKETS_claude": {"input": 500, "cache_read": 100, "cache_create_5m": 50, "cache_create_1h": 50, "output": 300},
+  "BUCKETS_codex": {"input": 1000, "cached_input": 500, "output": 500},
+  "BUCKETS_cursor": {"input": 1500, "cache_read": 500, "output": 1000}
+}
+JSON
+ghfail_out=$(GH_SHIM_FAIL=true CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-ghfail.md" \
+      "$HELPER" --implement-tmpdir "$impl_ghfail")
+assert_contains 'STATUS=ok' "$ghfail_out" 'gh-failed line-count status ok'
+assert_contains '- **Lines (PR diff)**: N/A' "$(cat "$impl_ghfail/summary-final.md")" 'gh-failed line counts N/A'
 
 for outcome_case in \
     "merged:$impl_dir:absent:present" \
