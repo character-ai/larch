@@ -141,17 +141,16 @@ def read_durable_flags(state_file: str | None, ctx: RunContext) -> DurableFlags:
             merge=ctx.merge,
             draft=ctx.draft,
         )
-    forked_target = _state_bool_or_default(
-        _read_state_kv(state_file, "FORKED_TARGET"),
-        default=ctx.forked_target,
-    )
+    raw_forked_target = _read_state_kv(state_file, "FORKED_TARGET")
+    forked_target = _state_bool_or_default(raw_forked_target, default=ctx.forked_target)
+    forked = forked_target if raw_forked_target.strip() else ctx.forked
     return DurableFlags(
         repo_unavailable=_state_bool_or_default(
             _read_state_kv(state_file, "REPO_UNAVAILABLE"),
             default=ctx.repo_unavailable,
         ),
         forked_target=forked_target,
-        forked=ctx.forked or forked_target,
+        forked=forked,
         merge=_state_bool_or_default(_read_state_kv(state_file, "MERGE"), default=ctx.merge),
         draft=_state_bool_or_default(_read_state_kv(state_file, "DRAFT"), default=ctx.draft),
     )

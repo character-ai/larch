@@ -181,6 +181,14 @@ def test_read_durable_flags_state_first_and_forked_target_implies_forked(tmp_pat
     )
 
 
+def test_read_durable_flags_persisted_false_overrides_stale_ctx_forked(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path).with_(forked=True, forked_target=True)
+    state = tmp_path / "state.env"
+    _ = state.write_text("FORKED_TARGET=false\n", encoding="utf-8")
+
+    assert run_logs.read_durable_flags(str(state), ctx).forked is False
+
+
 def test_parse_pr_number_state_first_and_ctx_fallback(tmp_path: Path) -> None:
     assert run_logs.parse_pr_number(None, 7) is None
     state = tmp_path / "state.env"

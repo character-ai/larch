@@ -55,7 +55,7 @@ import proc
 import redact
 import rebase
 import run_logs
-from errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
+from errors import NeedsUserInput, PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from outcomes import Outcome, StepResult
 from proc import Runner
 from run_context import RunContext
@@ -94,6 +94,7 @@ class ResumePlan:
     pr_url: str
     merge_result: str
     branch_name: str
+    repo: str
     durable: run_logs.DurableFlags
     detail: str = ""
 
@@ -373,6 +374,18 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
     )
 
 
+def _pending_oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult | None:
+    security_oos = Path(ctx.tmpdir) / "security-oos-observations.md"
+    if security_oos.is_file() and security_oos.stat().st_size > 0:
+        _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
+        return ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason=config.NEEDS_USER_OOS_FILING,
+            detail=config.NEEDS_USER_OOS_FILING,
+        )
+    return _oos_gate(runner, ctx, cwd=cwd)
+
+
 def _postmerge_should_flush(ctx: RunContext) -> bool:
     return bool(
         ctx.run_id
@@ -396,7 +409,8 @@ def _write_terminal_state(
         ctx.with_(stall_tracking=result is Outcome.STALLED, stall_step=step),
         Path(ctx.tmpdir) / "finalize-state.sh",
     )
-    phase = "done" if result is Outcome.OK else step or "stalled"
+    _ = step
+    phase = "done" if result is Outcome.OK else "stalled"
     _write_ship_state(
         ctx,
         phase=phase,
@@ -419,11 +433,18 @@ def _write_ship_state(
     rebase_count: int = 0,
     fix_attempts: int = 0,
     transient_retries: int = 0,
+    resume_phase: str | None = None,
+    caller_kind: str | None = None,
+    extra_fields: dict[str, str] | None = None,
 ) -> None:
     if not ctx.state_file:
         return
     path = Path(ctx.state_file)
     path.parent.mkdir(parents=True, exist_ok=True)
+    if resume_phase is None:
+        resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE") if path.is_file() else ""
+    if caller_kind is None:
+        caller_kind = run_logs.read_state_kv(ctx.state_file, "CALLER_KIND") if path.is_file() else ""
     fields = {
         "PHASE": phase,
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
@@ -446,9 +467,14 @@ def _write_ship_state(
         "FIX_ATTEMPTS": str(fix_attempts),
         "ITERATION": str(iteration),
         "TRANSIENT_RETRIES": str(transient_retries),
-        "RESUME_PHASE": "",
-        "CALLER_KIND": "",
+        "RESUME_PHASE": resume_phase,
+        "CALLER_KIND": caller_kind,
     }
+    if extra_fields:
+        fields.update(extra_fields)
+    for key, value in fields.items():
+        if "\n" in str(value) or "\r" in str(value):
+            raise ShipError(f"invalid newline in ship state value: {key}")
     tmp = path.with_suffix(path.suffix + ".tmp")
     _ = tmp.write_text("".join(f"{key}={value}\n" for key, value in fields.items()), encoding="utf-8")
     _ = tmp.replace(path)
@@ -465,18 +491,22 @@ def _fresh_resume_plan(
     durable: run_logs.DurableFlags,
     *,
     branch_name: str = "",
+    repo: str = "",
+    counters: run_logs.ResumeCounters | None = None,
     detail: str = "",
 ) -> ResumePlan:
+    counters = counters or run_logs.ResumeCounters(0, 0, 0, 0)
     return ResumePlan(
         start="fresh",
-        iteration=0,
-        rebase_count=0,
-        fix_attempts=0,
-        transient_retries=0,
+        iteration=counters.iteration,
+        rebase_count=counters.rebase_count,
+        fix_attempts=counters.fix_attempts,
+        transient_retries=counters.transient_retries,
         pr_number=None,
         pr_url="",
         merge_result="",
         branch_name=branch_name,
+        repo=repo,
         durable=durable,
         detail=detail,
     )
@@ -491,6 +521,7 @@ def _resume_from_state(
     pr_url: str,
     merge_result: str,
     branch_name: str,
+    repo: str,
     detail: str = "",
 ) -> ResumePlan:
     return ResumePlan(
@@ -503,6 +534,7 @@ def _resume_from_state(
         pr_url=pr_url,
         merge_result=merge_result,
         branch_name=branch_name,
+        repo=repo,
         durable=durable,
         detail=detail,
     )
@@ -520,11 +552,12 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     counters = run_logs.read_resume_counters(ctx.state_file)
     durable = run_logs.read_durable_flags(ctx.state_file, ctx)
     if not ctx.state_file or not Path(ctx.state_file).is_file():
-        return _fresh_resume_plan(durable)
+        return _fresh_resume_plan(durable, repo=ctx.repo)
 
     state_phase = run_logs.read_state_kv(ctx.state_file, "PHASE")
     resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE")
     state_branch = run_logs.read_state_kv(ctx.state_file, "BRANCH_NAME").strip()
+    state_repo = run_logs.read_state_kv(ctx.state_file, "REPO").strip() or ctx.repo
     pr_url = run_logs.read_state_kv(ctx.state_file, "PR_URL") or ctx.pr_url
     merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
 
@@ -537,6 +570,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             pr_url=pr_url,
             merge_result=merge_result,
             branch_name=state_branch or ctx.branch_name or ctx.branch,
+            repo=state_repo,
             detail="Python ship driver cannot resume rebase-conflict continuation",
         )
 
@@ -551,6 +585,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             pr_url=pr_url,
             merge_result=merge_result,
             branch_name=expected_branch,
+            repo=state_repo,
             detail=f"cannot verify current checkout branch; expected {expected_branch or '<unknown>'}",
         )
     if expected_branch and current_branch != expected_branch:
@@ -562,6 +597,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             pr_url=pr_url,
             merge_result=merge_result,
             branch_name=expected_branch,
+            repo=state_repo,
             detail=f"checkout branch mismatch: expected {expected_branch}, current {current_branch}",
         )
     if current_branch in {"main", "master"} and not durable.forked_target and not durable.forked:
@@ -573,34 +609,53 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             pr_url=pr_url,
             merge_result=merge_result,
             branch_name=current_branch,
+            repo=state_repo,
             detail=f"refusing to resume on protected branch {current_branch}",
+        )
+    gh_skipped = durable.repo_unavailable or durable.forked or durable.forked_target
+    if not expected_branch and gh_skipped:
+        return _resume_from_state(
+            "blocked-checkout-mismatch",
+            counters,
+            durable,
+            pr_number=None,
+            pr_url=pr_url,
+            merge_result=merge_result,
+            branch_name=current_branch,
+            repo=state_repo,
+            detail="cannot verify gh-skipped resume branch anchor",
         )
 
     branch_name = current_branch
     pr_number = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
-    gh_skipped = durable.repo_unavailable or durable.forked or durable.forked_target
     if pr_number is None and not durable.repo_unavailable:
         return _fresh_resume_plan(
             durable,
             branch_name=branch_name,
+            repo=state_repo,
+            counters=counters,
             detail="missing or invalid PR_NUMBER",
         )
 
     if not gh_skipped:
         if pr_number is None:
-            return _fresh_resume_plan(durable, branch_name=branch_name)
+            return _fresh_resume_plan(durable, branch_name=branch_name, repo=state_repo, counters=counters)
         try:
-            viewed = gh.pr_view(runner, pr_number, repo=ctx.repo, cwd=cwd)
+            viewed = gh.pr_view(runner, pr_number, repo=state_repo, cwd=cwd)
         except Exception:  # pylint: disable=broad-except
             return _fresh_resume_plan(
                 durable,
                 branch_name=branch_name,
+                repo=state_repo,
+                counters=counters,
                 detail="gh pr view failed",
             )
         if viewed.head_ref != branch_name:
             return _fresh_resume_plan(
                 durable,
                 branch_name=branch_name,
+                repo=state_repo,
+                counters=counters,
                 detail=f"PR head {viewed.head_ref} does not match checkout {branch_name}",
             )
         state = viewed.state.upper()
@@ -614,6 +669,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
                 pr_url=viewed.url or pr_url,
                 merge_result=_valid_merge_result(merge_result),
                 branch_name=branch_name,
+                repo=state_repo,
             )
         if state == "OPEN":
             return _resume_from_state(
@@ -624,10 +680,13 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
                 pr_url=viewed.url or pr_url,
                 merge_result=merge_result,
                 branch_name=branch_name,
+                repo=state_repo,
             )
         return _fresh_resume_plan(
             durable,
             branch_name=branch_name,
+            repo=state_repo,
+            counters=counters,
             detail=f"PR state {viewed.state} is not resumable",
         )
 
@@ -645,6 +704,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             pr_url=pr_url,
             merge_result=_valid_merge_result(merge_result),
             branch_name=branch_name,
+            repo=state_repo,
         )
     if local_merged:
         return _resume_from_state(
@@ -655,6 +715,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             pr_url=pr_url,
             merge_result=_valid_merge_result(merge_result),
             branch_name=branch_name,
+            repo=state_repo,
         )
     if pr_number is not None or durable.repo_unavailable:
         return _resume_from_state(
@@ -665,14 +726,16 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             pr_url=pr_url,
             merge_result=merge_result,
             branch_name=branch_name,
+            repo=state_repo,
         )
-    return _fresh_resume_plan(durable, branch_name=branch_name)
+    return _fresh_resume_plan(durable, branch_name=branch_name, repo=state_repo, counters=counters)
 
 
 def _hydrate_resume_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
     return ctx.with_(
         branch=resume.branch_name or ctx.branch,
         branch_name=resume.branch_name or ctx.branch_name or ctx.branch,
+        repo=resume.repo or ctx.repo,
         pr_number=resume.pr_number,
         pr_url=resume.pr_url,
         merge_result=resume.merge_result,
@@ -681,7 +744,23 @@ def _hydrate_resume_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
         forked=resume.durable.forked,
         merge=resume.durable.merge,
         draft=resume.durable.draft,
+        oos_pending=_state_bool_text(run_logs.read_state_kv(ctx.state_file, "OOS_PENDING")),
     )
+
+
+def _hydrate_fresh_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
+    changes: dict[str, object] = {
+        "repo": resume.repo or ctx.repo,
+        "repo_unavailable": resume.durable.repo_unavailable,
+        "forked_target": resume.durable.forked_target,
+        "forked": resume.durable.forked,
+        "merge": resume.durable.merge,
+        "draft": resume.durable.draft,
+    }
+    if resume.branch_name:
+        changes["branch"] = resume.branch_name
+        changes["branch_name"] = resume.branch_name
+    return ctx.with_(**changes)
 
 
 def _monitor_persisted_counters(
@@ -695,9 +774,20 @@ def _monitor_persisted_counters(
     return (
         iteration,
         rebase_count,
-        fix_attempts + (1 if monitor.did_fixing else 0),
+        fix_attempts,
         transient_retries + (1 if monitor.transient_rerun_attempted else 0),
     )
+
+
+def _state_file_under_tmpdir(ctx: RunContext) -> bool:
+    if not ctx.state_file:
+        return True
+    try:
+        state_path = Path(ctx.state_file).resolve(strict=False)
+        tmpdir = Path(ctx.tmpdir).resolve(strict=False)
+    except OSError:
+        return False
+    return state_path == tmpdir or tmpdir in state_path.parents
 
 
 def _tmpdir_under_allowed_root(tmpdir: str) -> bool:
@@ -761,6 +851,8 @@ def run_ship(
         repo_root = cwd or str(Path.cwd())
         if not _tmpdir_under_allowed_root(ctx.tmpdir):
             return ShipResult(Outcome.STALLED, detail="invalid tmpdir")
+        if not _state_file_under_tmpdir(ctx):
+            return ShipResult(Outcome.STALLED, detail="invalid state_file")
         codex_present = ctx.codex_present or bool(os.environ.get("CODEX") or os.environ.get("CODEX_HOME") or ctx.tool_label == "codex")
         cursor_present = ctx.cursor_present or bool(os.environ.get("CURSOR") or os.environ.get("CURSOR_AUTH_ARGS") or ctx.tool_label == "cursor")
         base_ref = "main"
@@ -817,12 +909,15 @@ def run_ship(
             )
 
         if resume.start == "fresh":
-            fresh_context = (
-                ctx.with_(branch=resume.branch_name, branch_name=resume.branch_name)
-                if resume.branch_name
-                else ctx
+            fresh_context = _hydrate_fresh_context(ctx, resume)
+            _write_ship_state(
+                fresh_context,
+                phase="checks",
+                iteration=resume.iteration,
+                rebase_count=resume.rebase_count,
+                fix_attempts=resume.fix_attempts,
+                transient_retries=resume.transient_retries,
             )
-            _write_ship_state(fresh_context, phase="checks")
             _breadcrumb("checks", "Lint&Tests")
             checks_result = checks.run_checks_phase(
                 runner,
@@ -839,10 +934,21 @@ def run_ship(
                     fresh_context,
                     checks_result.outcome,
                     checks_result.detail or "checks",
+                    iteration=resume.iteration,
+                    rebase_count=resume.rebase_count,
+                    fix_attempts=resume.fix_attempts,
+                    transient_retries=resume.transient_retries,
                 )
                 return _step_result_to_ship(checks_result)
 
-            _write_ship_state(fresh_context, phase="pr-prep")
+            _write_ship_state(
+                fresh_context,
+                phase="pr-prep",
+                iteration=resume.iteration,
+                rebase_count=resume.rebase_count,
+                fix_attempts=resume.fix_attempts,
+                transient_retries=resume.transient_retries,
+            )
             _breadcrumb("pr-prep", "postbump/Flush+Push")
             postbump = finalize.postbump(runner, fresh_context, cwd=repo_root)
             if postbump.outcome is not Outcome.OK:
@@ -875,15 +981,11 @@ def run_ship(
             materialize_result = _materialize_manifest_oos(runner, pr_context, cwd=repo_root)
             if materialize_result is not None:
                 return materialize_result
-            security_oos = Path(pr_context.tmpdir) / "security-oos-observations.md"
-            if security_oos.is_file() and security_oos.stat().st_size > 0:
-                _write_ship_state(pr_context.with_(oos_pending=True), phase="pr-create")
-                return ShipResult(
-                    Outcome.NEEDS_USER_INPUT,
-                    needs_user_reason=config.NEEDS_USER_OOS_FILING,
-                    detail=config.NEEDS_USER_OOS_FILING,
-                )
-            oos_result = _oos_gate(runner, pr_context, cwd=repo_root)
+            oos_result = _pending_oos_gate(runner, pr_context, cwd=repo_root)
+            if oos_result is not None:
+                return oos_result
+        elif pr_context.oos_pending or _state_bool_text(run_logs.read_state_kv(pr_context.state_file, "OOS_PENDING")):
+            oos_result = _pending_oos_gate(runner, pr_context, cwd=repo_root)
             if oos_result is not None:
                 return oos_result
 
@@ -1017,29 +1119,65 @@ def run_ship(
                             Outcome.STALLED,
                             detail=f"pre-rebase flush skipped: {pre_rebase.reason}",
                         )
-                    _ = rebase.rebase_and_push(
-                        runner,
-                        repo=working.repo,
-                        run_id=working.run_id,
-                        cwd=repo_root,
-                        tmpdir=working.tmpdir,
-                        base_remote=base_remote,
-                        base_ref=base_ref,
-                        allow_conflict_fix=True,
-                        enable_pre_push_handoff=True,
-                    )
+                    try:
+                        _ = rebase.rebase_and_push(
+                            runner,
+                            repo=working.repo,
+                            run_id=working.run_id,
+                            cwd=repo_root,
+                            tmpdir=working.tmpdir,
+                            base_remote=base_remote,
+                            base_ref=base_ref,
+                            allow_conflict_fix=True,
+                            enable_pre_push_handoff=True,
+                        )
+                    except PrePushConflictHandoff as exc:
+                        _write_ship_state(
+                            working,
+                            phase="rebase",
+                            iteration=iteration,
+                            rebase_count=rebase_count,
+                            fix_attempts=fix_attempts,
+                            transient_retries=transient_retries,
+                            resume_phase=exc.resume_phase,
+                            caller_kind=exc.caller_kind,
+                            extra_fields={"CONFLICT_FILES": exc.conflict_csv},
+                        )
+                        raise
                     rebase_count += 1
                 if monitor.transient_rerun_attempted:
                     transient_retries += 1
                 if monitor.did_fixing:
                     fix_attempts += 1
-                iteration += 1
+                if (
+                    monitor.action == "wait"
+                    or monitor.goto_rebase
+                    or monitor.did_fixing
+                    or monitor.transient_rerun_attempted
+                ):
+                    iteration += 1
+                _write_ship_state(
+                    working,
+                    phase="ci-initial",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                )
                 continue
 
             _breadcrumb("merge")
             merged = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
             if merged.result in {config.MERGE_RESULT_CI_NOT_READY, config.MERGE_RESULT_MAIN_ADVANCED}:
                 iteration += 1
+                _write_ship_state(
+                    working,
+                    phase="ci-initial",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                )
                 continue
             pr_closed = merged.result in config.POST_MERGE_MERGE_RESULTS
             working = working.with_(

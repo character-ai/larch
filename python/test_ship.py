@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 import config
 import run_logs
 import ship
-from errors import ShipError
+from errors import PrePushConflictHandoff, ShipError
 from outcomes import Outcome, StepResult
 from proc import CommandResult
 from run_context import RunContext
@@ -694,6 +694,269 @@ def test_merged_resume_writes_done_only_after_postmerge_ok(
 
     assert result.outcome is Outcome.STALLED
     assert "PHASE=postmerge\n" in state_file.read_text(encoding="utf-8")
+
+
+def test_open_pr_resume_preserves_pending_oos_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nOOS_PENDING=true\nMERGE=true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "u", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("PR work must wait for OOS disposition")),
+    )
+    monkeypatch.setattr(
+        ship.oos,
+        "disposition_ok",
+        lambda *_a, **_k: type("D", (), {"ok": False})(),
+    )
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_OOS_FILING
+
+
+def test_state_file_must_stay_under_tmpdir(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "outside-state.sh"
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(outside)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "invalid state_file"
+
+
+def test_ship_state_rejects_newline_values(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path, state_file=str(tmp_path / "ship-pr-state.sh"), pr_url="https://example.test/pr/1\nBAD=true")
+
+    result = ship.run_ship(ctx, runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert "invalid newline" in result.detail
+
+
+def test_resume_uses_state_repo_for_github_validation(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=state/repo\nMERGE=false\n",
+        encoding="utf-8",
+    )
+    seen: dict[str, str] = {}
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+
+    def fake_view(_runner: RecordingRunner, _number: int, *, repo: str, cwd: str | None) -> object:
+        _ = cwd
+        seen["view_repo"] = repo
+        return type("PR", (), {"number": 7, "url": "u", "state": "OPEN", "head_ref": "feat"})()
+
+    def fake_ensure(_runner: RecordingRunner, ctx: RunContext, *_args: object, **_kwargs: object) -> object:
+        seen["ensure_repo"] = ctx.repo
+        return type("P", (), {"number": 7, "url": "u", "status": "existing"})()
+
+    monkeypatch.setattr(ship.gh, "pr_view", fake_view)
+    monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, repo="argv/repo", state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert seen == {"view_repo": "state/repo", "ensure_repo": "state/repo"}
+
+
+def test_gh_skipped_resume_requires_persisted_branch_anchor(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text("PHASE=ci-initial\nREPO_UNAVAILABLE=true\n", encoding="utf-8")
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "surprise")
+
+    result = ship.run_ship(
+        _ctx(tmp_path, branch="", branch_name="", state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == "checkout-mismatch"
+
+
+def test_terminal_state_uses_canonical_stalled_phase(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.STALLED, "detail with spaces"))
+    state_file = tmp_path / "ship-pr-state.sh"
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert "PHASE=stalled\n" in state_file.read_text(encoding="utf-8")
+
+
+def test_pre_push_conflict_handoff_persists_resume_tokens(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "u", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "u", "status": "existing"})(),
+    )
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "rebase",
+                "goto_rebase": True,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})())
+
+    def fake_rebase(*_args: object, **_kwargs: object) -> object:
+        raise PrePushConflictHandoff(
+            conflict_files=("a.txt",),
+            resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
+            caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
+        )
+
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    state = state_file.read_text(encoding="utf-8")
+    assert result.outcome is Outcome.STALLED
+    assert f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\n" in state
+    assert f"CALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n" in state
+    assert "CONFLICT_FILES=a.txt\n" in state
+
+
+def test_routine_state_write_preserves_resume_markers(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nCALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n",
+        encoding="utf-8",
+    )
+
+    ship._write_ship_state(_ctx(tmp_path, state_file=str(state_file)), phase="ci-initial")  # pyright: ignore[reportPrivateUsage]
+
+    state = state_file.read_text(encoding="utf-8")
+    assert f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\n" in state
+    assert f"CALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n" in state
+
+
+def test_terminal_counter_persistence_does_not_count_failed_fixing(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nFIX_ATTEMPTS=4\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "u", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "u", "status": "existing"})(),
+    )
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.NEEDS_USER_INPUT, "first-fixer-non-health"),
+                "action": "evaluate_failure",
+                "goto_rebase": False,
+                "did_fixing": True,
+                "transient_rerun_attempted": False,
+                "failed_run_id": "99",
+            },
+        )(),
+    )
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert "FIX_ATTEMPTS=4\n" in state_file.read_text(encoding="utf-8")
+
+
+def test_fresh_fallback_hydrates_modes_and_preserves_counters(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nMERGE=false\nDRAFT=true\nITERATION=9\nFIX_ATTEMPTS=3\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.gh, "pr_view", lambda *_a, **_k: (_ for _ in ()).throw(ShipError("gh down")))
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.STALLED, "checks failed"))
+
+    result = ship.run_ship(
+        _ctx(tmp_path, merge=True, draft=False, state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    state = state_file.read_text(encoding="utf-8")
+    assert result.outcome is Outcome.STALLED
+    assert "MERGE=false\n" in state
+    assert "DRAFT=true\n" in state
+    assert "ITERATION=9\n" in state
+    assert "FIX_ATTEMPTS=3\n" in state
 
 
 def test_failed_run_id_surfaces_for_ci_fix_handback() -> None:
