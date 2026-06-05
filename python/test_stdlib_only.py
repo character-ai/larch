@@ -11,7 +11,7 @@ PYTHON_DIR = Path(__file__).resolve().parent
 RUNTIME_MODULES = sorted(
     p.stem
     for p in PYTHON_DIR.glob("*.py")
-    if p.name != "__init__.py" and not p.name.startswith("test_")
+    if p.name != "__init__.py" and not p.name.startswith("test_") and p.name != "conftest.py"
 )
 
 

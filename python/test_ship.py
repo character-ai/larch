@@ -580,6 +580,7 @@ def test_main_emits_json_stdout_and_breadcrumb_stderr(
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
     rc = ship.main(
         [
             "--tmpdir",
@@ -608,6 +609,7 @@ def test_main_emits_json_stdout_on_unexpected_exception(
 
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(ship, "run_ship", fake_run_ship)
+    monkeypatch.setattr(ship.logging_util, "quiet_init", lambda **_: None)
     rc = ship.main(
         [
             "--tmpdir",
