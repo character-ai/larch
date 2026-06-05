@@ -1,0 +1,24 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/test_ship.py (planned tests) / python/ship.py:680-686	Acceptance, edge-case, and journal-failure test prose say contract JSON reaches stdout, but B4 routes post-quiet_init JSON through contract_stream() to FD 3 (lib-quiet caller-visible stream), not FD 1	Journal-failure regression exercised via main() after quiet_init will pass capsys.stdout (the quiet log) while orchestrator-visible FD 3 receives no JSON; the swallowed-contract failure quiet_init is meant to fix can ship undetected	Rename acceptance/edge language to caller-visible contract stream via contract_stream() (FD 3 after quiet_init, sys.stdout before); add an explicit test that dup-captures FD 3 after quiet_init for journal-failure and happy-path emit_result
+
+1. **correctness** — `python/test_ship.py` (planned tests) / `python/ship.py:680-686`: Acceptance ("Contract JSON always reaches stdout"), edge case 175 ("stdout always"), and the planned journal-failure test all say **stdout**, but B4 defines `contract_stream()` as FD 3 after successful `quiet_init` (matching `scripts/lib-quiet.sh` `emit`, which writes to **FD 3**, not FD 1 — see `scripts/lib-quiet.md:18-19`). A `main()`-level journal-failure test with `capsys` would read FD 1 (the quiet log after redirect) and can pass while FD 3 gets no JSON — the exact regression the reorder is meant to prevent.
+
+**Suggested revision:** Use "caller-visible contract stream (`contract_stream()`: FD 3 when self-init succeeded, `sys.stdout` otherwise)" in acceptance/edge prose; add a test that captures FD 3 after `quiet_init` for journal-failure and normal `emit_result` paths (argparse/3.11-guard paths correctly stay on `sys.stdout`).
+
+---
+
+**Sequencing audit (no additional findings):**
+
+| Exit path | `quiet_init` | Contract emission | Plan adequate? |
+|-----------|--------------|-------------------|----------------|
+| 3.11 module guard | N/A (pre-import) | Direct `print` + `SystemExit(4)` | Yes — B3; cannot use `contract_stream` |
+| `--help` | Skipped | No JSON; help on stdout | Yes — B1 / edge 168 |
+| Argparse failure | Skipped | `emit_result` → `contract_stream()` → `sys.stdout` | Yes — B1 + logging_util spec |
+| Normal / catch-all / journal failure | After parse | `emit_result` → `contract_stream()` → FD 3 | Yes — B2/B4 reorder |
+| `quiet_init` setup failure (no-op) | Failed | `contract_stream()` → `sys.stdout`; FD 1 not redirected | Yes — edge 171 + logging_util else branch |
+
+`quiet_init` failure reverting to `sys.stdout` is intentional (not silent divergence): FD 1 was never redirected, so stdout remains caller-visible. B2 journal best-effort (`try`/`except` after unconditional JSON print) covers quiet and non-quiet without a swallow path — only the **wording** above is imprecise.
+
+`emit_result` when `quiet_init` never ran: explicitly covered by logging_util "`else sys.stdout`" and edge 168.
+
+[OUT_OF_SCOPE] `python/test_logging_util.py`: no planned unit tests for `quiet_init()` / `contract_stream()` (only vague "quiet_init permutations" in `test_ship.py`); fdopen/dup2/idempotency could live here but is not a contract hole in the proposed `emit_result` reorder.

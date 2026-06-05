@@ -1,0 +1,358 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+## Plan
+
+Close every orphan tracked in #3446 in one combined change, verified against `main` @ `f81771e9e`. Scope per Round 1: all sections A–F; Python modules + the `LARCH_SHIP_PR_IMPL=python` branch of SKILL.md + structural test pins + docs only. Bash `ship-pr.sh` / `ship-pr-state.sh` stay frozen. Every behavioral change gets a regression test. A wrapped argparse failure maps to INTERNAL_ERROR (exit 1).
+
+## Approach
+
+Group the ~15 checkboxes into five mechanical clusters and keep each fix minimal:
+
+1. **ship.py entrypoint hardening (B)** — one restructured `main()`: in-driver 3.11 guard first (module top), then parse+ctx inside the envelope, then `quiet_init` only after successful parse, then `run_ship`, then stall-metadata finalization, then `emit_result`.
+2. **Diagnostics hygiene (C)** — delete the duplicate per-iteration CI breadcrumb (`ci_monitor` owns poll progress); surface the silently-dropped post-merge flush skip reason at the `merge.py` call site.
+3. **Constants/context cleanup (D)** — remove dead `EXIT_STALL` and bare `pr_view_current`; consolidate `RunContext` alias pairs into canonical fields + read-only alias properties; honor `XDG_CACHE_HOME` via one shared cache-root helper.
+4. **Test consolidation (D)** — one shared indexed-queue `RecordingRunner` in `python/test_support.py` (lenient default: exhausted queue returns `CommandResult(rc=0)`; optional `strict=True` preserves `AssertionError` for `test_gh.py` / `test_push.py`), imported by the **nine** compatible duplicating test files; **exclude** `test_ci_monitor.py` (keyed/prefix/sequential runner stays local).
+5. **Docs/contract pins (A, E, F)** — reconcile the SKILL.md python-branch prose **and** the shared post-invoke exit matrix (~L1045–1065) with dual-path read sources (JSON/`finalize-state.sh` on python; `ship-pr-state.sh` where keys exist on bash); add `--no-logs-commit` to the Python invoke fence; pin exit-code→action routing and argv parity in `scripts/test-implement-structure.sh`; update `docs/linting.md` matrix prose; thread `base=` through `ensure_pr`.
+
+Key verified facts the plan relies on:
+- `emit_result` already redacts the JSON payload (`_redacted_result_payload`, ship.py) and `BreadcrumbWriter.emit` already redacts every message (`logging_util.py`) — B2's remaining gap is generic `detail="internal error"`, not missing redaction plumbing.
+- `run_postmerge_phase` (`ship.py`) already surfaces `RefreshSkip.reason` as STALLED detail; the un-surfaced site is `merge.py` `_post_flush`, which swallows `post-merge-refresh-failed`.
+- `_tmpdir_under_allowed_root` lives in **ship.py** (not finalize.py); the XDG fix covers both via `finalize.cache_sessions_root()` (ship.py already imports finalize).
+- `gh.pr_create` already accepts `base` (since #3268); F is wiring only.
+- `logging_util` already routes breadcrumbs per `LARCH_QUIET_*`; the missing piece is `quiet_init` (FD dup + redirect + env export) for self-initialized quiet sessions — but it must run **after** argparse so `--help` and usage stay caller-visible.
+- `test_ci_monitor.py`'s `RecordingRunner` is a different API (exact/prefix/sequential maps, strict `AssertionError` on miss) — not compatible with the simple queue/fallback helper.
+
+## Files to modify/create
+
+### UPDATED: `python/ship.py`
+
+- **B3 — in-driver 3.11 guard (module top).** Immediately after `from __future__ import annotations` and stdlib imports of `sys`/`json` only, add a version gate: when `sys.version_info < (3, 11)`, print the exact STALLED JSON literal the SKILL.md fence pins (`{"detail":"Python ship driver requires Python 3.11 or newer","failed_run_id":"","merge_result":"","needs_user_reason":"","outcome":"STALLED","pr_number":null,"pr_url":""}`, sorted keys) plus the same stderr error line, then `raise SystemExit(4)`. The guard MUST precede local-module imports (`logging_util` uses `datetime.UTC`). Factor the predicate as `_version_supported(version_info)` for unit tests.
+- **B1 — fold argparse/early exits into the envelope.** Restructure `main()`: move `build_parser()`, `parser.parse_args(argv)`, and `_ctx_from_args(args)` inside the outer `try`. Catch `SystemExit` from argparse: code 0 (`--help`) → return 0 with plain help on stdout, no JSON, **no** `quiet_init`; non-zero → emit INTERNAL_ERROR envelope via `emit_result` (detail names the argparse failure) and return `config.OUTCOME_EXIT_MAP[Outcome.INTERNAL_ERROR]` (= 1). argparse usage stays on stderr. When failure happens before ctx binds, emit with `RunContext.from_env(env={})`.
+- **B4 — quiet-init timing (FINDING_6).** Call `logging_util.quiet_init()` only **after** successful `parse_args` + `_ctx_from_args` and **before** `run_ship` — never before argparse. This keeps `--help` and parse-error usage on caller-visible stdout/stderr; quiet redirect applies only to the ship run body.
+- **B2 — specific, redacted INTERNAL_ERROR detail.** In the catch-all, replace `detail="internal error"` with `detail=f"{type(exc).__name__}: {exc}"`; `emit_result` redacts it. Keep the existing traceback breadcrumb (already redacted by `BreadcrumbWriter.emit`).
+- **B2/B4 — `emit_result` contract-first (FINDING_2).** Reorder `emit_result`: build redacted payload, **always** `print(json.dumps(...), file=logging_util.contract_stream())` first; journal append is best-effort in a `try`/`except` — on failure, emit a warning breadcrumb and continue without changing exit code or suppressing JSON.
+- **FINDING_7 — STALLED finalize-state gap-fill (review FINDING_2).** Add `_persist_stall_metadata_if_needed(ctx, result, tmpdir)` called from `main()` after `run_ship` returns (and after exception→`ShipResult` conversion) and before `emit_result`. **Gap-fill only** — never overwrite canonical stall metadata `run_ship` / in-loop writers already persisted:
+  - **No-op** when `result.outcome` is not `Outcome.STALLED`, tmpdir is outside the allowlist, or `finalize-state.sh` already has `STALL_TRACKING=true` (read via key-based parse; do not source).
+  - **No-op** when `finalize-state.sh` is missing **and** the stall is one `run_ship` already finalizes inline (CI-monitor cap, merge-cap, pre-rebase, invalid-tmpdir JSON-only edge, etc.) — only write for true gap paths (e.g. early `ShipError` from `pr.ensure_pr` before any in-loop writer ran).
+  - When writing: use `finalize.read_finalize_state` (or equivalent key extract) to **preserve** existing `STALL_STEP`, `PR_NUMBER`, `PR_URL`, `MERGE_RESULT`, and other keys; set `STALL_TRACKING=true` and fill `STALL_STEP` only when absent/empty (derive from `result.detail` slug only as last resort). Do not pass stale pre-run `ctx` wholesale — merge into existing finalize-state dict.
+  - Invalid-tmpdir STALLED (outside allowlist) remains JSON-only; A1 documents that edge.
+  - Regression: monkeypatch `pr.ensure_pr` to raise `ShipError` with no pre-existing `finalize-state.sh`, assert `STALL_TRACKING=true`; second test: pre-seed `finalize-state.sh` with `STALL_TRACKING=true` + canonical `STALL_STEP` + `PR_NUMBER`, assert gap-fill does **not** clobber them.
+- **C1 — delete the duplicate CI breadcrumb.** Remove `_breadcrumb("ci", f"poll iteration {iteration}")` from the merge loop; `ci_monitor.poll_ci`'s per-poll line is the single progress source.
+- **D — XDG cache root.** Replace the hardcoded `Path.home() / ".cache" / "larch" / "sessions"` in `_tmpdir_under_allowed_root` with `finalize.cache_sessions_root()`.
+
+### UPDATED: `python/logging_util.py`
+
+- **B4 — `quiet_init()`** port of `larch_quiet_init` (`scripts/lib-quiet.sh`) semantics:
+  - No-op when `LARCH_QUIET_DISABLE` is truthy; when `LARCH_QUIET_ACTIVE` is truthy but `LARCH_QUIET_PID` is empty; when `LARCH_QUIET_PID` equals this process's pid (idempotency).
+  - Otherwise: resolve log file (`LARCH_QUIET_LOG_FILE`, else `config.PATH_QUIET_LOG_TEMPLATE` under `IMPLEMENT_TMPDIR`/`TMPDIR`), create it, `os.dup2(1, 3)` and `os.dup2(2, 4)`, redirect fd 1/2 to the log, export `LARCH_QUIET_ACTIVE=1`, `LARCH_QUIET_PID=<pid>`, `LARCH_QUIET_LOG_FILE`.
+  - Setup failure degrades to no-op (`|| return 0` parity).
+- **`contract_stream()`** — return a text wrapper over fd 3 when this process self-initialized quiet; else `sys.stdout`. `emit_result` routes contract JSON here.
+
+### UPDATED: `python/finalize.py`
+
+- **D — `cache_sessions_root()`** helper: `Path(os.environ.get("XDG_CACHE_HOME") or Path.home() / ".cache") / "larch" / "sessions"` (empty `XDG_CACHE_HOME` falls back per XDG spec). Use in `_cleanup_target_ok`. Exported for ship.py.
+
+### UPDATED: `python/config.py`
+
+- **D — remove `EXIT_STALL`** (zero consumers). Keep `EXIT_BAIL` with a comment distinguishing it from `EXIT_STALLED` (`report_tokens_cli` consumer).
+
+### UPDATED: `python/run_context.py`
+
+- **D — reconcile alias pairs.** Keep `forked` and `branch` as canonical dataclass fields. Remove `forked_target` and `branch_name` *fields*; add read-only `@property` aliases. Update `from_env` / construction to stop passing removed kwargs. Extend `with_` to translate `forked_target` → `forked` and `branch_name` → `branch`. Grep `python/` for `forked_target=` / `branch_name=` constructor/`with_` callsites and migrate in the same change.
+
+### UPDATED: `python/gh.py`
+
+- **D — remove unused bare `pr_view_current`**; keep `pr_view_current_read`.
+
+### UPDATED: `python/pr.py`
+
+- **F — thread `base`.** Add optional `base: str | None = None` to `ensure_pr`, forward to `gh.pr_create(..., base=base)`; pass `base_ref` from ship.py call site.
+
+### UPDATED: `python/merge.py`
+
+- **C2 — surface degraded post-merge flushes.** In `_post_flush`, when `skip.skipped` and reason is not `redaction-failed`, emit warning breadcrumb (`merge: post-merge flush skipped: <reason>`) before returning `None`. `redaction-failed` keeps `MERGE_RESULT_ERROR` escalation.
+
+### NEW: `python/test_support.py`
+
+- **D — shared indexed-queue `RecordingRunner`** (stdlib-only): `calls` list, optional scripted `responses` queue indexed by call order. **Default (`strict=False`)**: when `responses` is exhausted, return configurable default `CommandResult(rc=0)` — matching the majority (`test_merge.py`, `test_finalize.py`, `test_run_logs.py`, etc.). **`strict=True`**: raise `AssertionError` on exhaustion — for `test_gh.py` / `test_push.py` only. When `responses` is empty, always return the default success result. **No** exact/prefix/sequential maps (those stay in `test_ci_monitor.py`). No test functions inside.
+
+### UPDATED: `python/test_ship.py`
+
+- Swap local `RecordingRunner` for shared import (subclasses like `InlineRunner` may extend it).
+- New tests: argparse failure → stdout JSON `outcome=INTERNAL_ERROR`, exit 1, usage on stderr; `--help` → exit 0, no JSON, help on stdout (quiet not initialized); catch-all detail carries exception class and survives redaction; `_version_supported` + guard JSON literal byte-match; `quiet_init` permutations; merge loop no `poll iteration` breadcrumb; `_tmpdir_under_allowed_root` honors `XDG_CACHE_HOME`; journal append failure still emits contract JSON on stdout; `ShipError` from `pr.ensure_pr` → `finalize-state.sh` has `STALL_TRACKING=true`.
+
+### UPDATED: `python/test_run_context.py`
+
+- Alias-drift regression: properties always match canonical fields; `with_` alias translation; unknown fields raise.
+
+### UPDATED: `python/test_finalize.py`
+
+- Shared-runner import swap; remove `branch_name="feat"` from `_ctx` fixture (use `branch="feat"` only).
+- New: `_cleanup_target_ok` accepts tmpdir under `$XDG_CACHE_HOME/larch/sessions`; default `~/.cache` unchanged; empty `XDG_CACHE_HOME` falls back.
+
+### UPDATED: `python/test_finalize_bash_parity.py` (FINDING_3)
+
+- Import `RecordingRunner` from `test_support` (not `test_finalize`).
+- Remove `branch_name="feat"` from `_ctx` fixture; use canonical `branch="feat"` only.
+
+### UPDATED: `python/test_config.py`
+
+- Pin: `EXIT_STALL` gone; `EXIT_BAIL == 4` remains.
+
+### UPDATED: `python/test_merge.py`
+
+- Shared-runner import swap. New: `_post_flush` warning breadcrumb on `post-merge-refresh-failed`; `redaction-failed` still returns `MERGE_RESULT_ERROR`.
+
+### UPDATED: `python/test_pr.py`
+
+- Shared-runner import swap (default lenient). New: `ensure_pr(base="main")` records `--base main` in argv; omitted `base` unchanged.
+
+### UPDATED: `python/test_gh.py`
+
+- Shared-runner import swap with `RecordingRunner(strict=True)` (preserves exhaustion `AssertionError`); drop `pr_view_current` coverage (keep `pr_view_current_read`).
+
+### UPDATED: `python/test_push.py`
+
+- Shared-runner import swap with `RecordingRunner(strict=True)` (preserves exhaustion `AssertionError`).
+
+### UPDATED: `python/test_run_logs.py`
+
+- Shared-runner import swap only.
+
+### UPDATED: `python/test_merge_bash_parity.py`
+
+- Shared-runner import swap only.
+
+### UPDATED: `python/test_tracking_issue.py`
+
+- Shared-runner import swap only.
+
+### UPDATED: `python/test_ci_monitor.py`
+
+- **No import swap (FINDING_1).** Keep the local keyed `RecordingRunner` (exact/prefix/sequential maps, strict unexpected-call failures). Add a one-line module comment pointing maintainers at `test_support.py` for the simple queue-runner pattern.
+
+### UPDATED: `skills/implement/SKILL.md`
+
+- **A1 — reconcile Step 8+ Python prose** (changes only inside `LARCH_SHIP_PR_IMPL=python` branch):
+  - Exit-4 STALLED routing: `STALL_TRACKING` / `STALL_STEP` are read from `finalize-state.sh` when tmpdir is valid and the driver wrote stall metadata; note the invalid-tmpdir JSON-only edge where finalize-state cannot be written.
+  - Correct the over-absolute "Do **not** read `ship-pr-state.sh`" line: routing decisions use JSON + `finalize-state.sh`; exit-6 `PHASE` budgeting and autonomous CI-fix fork flags legitimately still read `ship-pr-state.sh` (Python's `_write_ship_state` persists `PHASE` there).
+  - Fix dependent narrative: persisted phase for exit-6 transient budgeting, fork-flag reads, OOS-checkpoint / `write-final-report.sh` finalize-state fallbacks.
+  - Keep every literal the structural tests pin byte-stable.
+- **A1b — dual-path shared post-invoke exit matrix (~L1045–1065)** (same edit pass; bash bullets unchanged for bash path, python read-source overrides appended inline):
+  - **Post-invoke boundary (~L1045)**: python path parses exit code **and** stdout JSON first; read continuation keys from `finalize-state.sh` (stall/OOS/PR fields) plus scoped `ship-pr-state.sh` keys (`PHASE`, `FORKED_TARGET`, `REPO_UNAVAILABLE`) — not a blanket `ship-pr-state.sh` ban.
+  - **Exit 3 (~L1050–1063)**: autonomous CI-fix reads `failed_run_id` from stdout JSON on python path; `FORKED_TARGET` / `REPO_UNAVAILABLE` still from `ship-pr-state.sh` (or `read_state` equivalent). Bash path unchanged (`FAILED_RUN_ID` from `ship-pr-state.sh`).
+  - **Exit 4 (~L1064)**: python path reads `STALL_TRACKING` / `STALL_STEP` / `RESUME_PHASE` / `CALLER_KIND` from `finalize-state.sh` when present; fall back to JSON `detail` only when finalize-state absent (invalid-tmpdir edge). Bash path unchanged (`ship-pr-state.sh`).
+  - **Exit 6 (~L1065)**: python path reads `PHASE` from `ship-pr-state.sh` for per-phase retry counter; stall promotion on 4th transient still sets `STALL_TRACKING` in `finalize-state.sh` on python path. Bash path unchanged.
+  - **OOS checkpoint (~L1067)**: python path uses `finalize-state.sh` for `FORKED_TARGET` / `REPO_UNAVAILABLE` gate inputs where bash used `ship-pr-state.sh`; `refresh-run-logs.sh --state-file` already dual-pathed at L1060.
+- **FINDING_4 — `--no-logs-commit` argv parity.** Add `--no-logs-commit "$no_logs_commit"` to the Python invoke fence (between existing flags and the closing line), matching the bash `ship-pr.sh` fence at L1040.
+- **B3 cross-reference**: in-driver guard exists for direct/cron invocations; fence guard stays.
+
+### UPDATED: `scripts/test-implement-structure.sh`
+
+- **A2 — pin Python JSON-routing contract**: exit `0`→continue, `6`→transient reinvoke, `3`→`needs_user_reason` dispatch, `4`→stall continue, `1`+`INTERNAL_ERROR`→hard tool failure; exit-4 prose names `finalize-state.sh` for `STALL_TRACKING`/`STALL_STEP`; exit-3 autonomous CI-fix prose names JSON `failed_run_id`; scoped ship-pr-state reads (exit-6 `PHASE` + fork flags) present.
+- **A2b — pin dual-path exit-matrix read sources**: grep asserts Exit 3 python `failed_run_id` from JSON; Exit 4 python `STALL_TRACKING`/`STALL_STEP` from `finalize-state.sh`; Exit 6 `PHASE` from `ship-pr-state.sh`; OOS checkpoint fork/unavailable gate names `finalize-state.sh` on python branch; post-invoke boundary prose names JSON+finalize-state primary reads.
+- **FINDING_4 pin**: assert the Python invoke fence includes `--no-logs-commit "$no_logs_commit"` (or equivalent quoted expansion).
+
+### UPDATED: `scripts/test-implement-structure.md`
+
+- Sibling-doc note for the new contract pins and `--no-logs-commit` parity pin.
+
+### UPDATED: `docs/linting.md`
+
+- **E — matrix prose**: `python-lint` / `python-tests` as `["3.11", "3.12"]` matrix jobs. Distinct from #3449's `test-merge-parity` row.
+
+### UPDATED: `python/README.md`
+
+- Notes: shared list-queue `RecordingRunner` in `test_support.py` (nine files; `test_ci_monitor.py` exempt); `logging_util.quiet_init()` is lib-quiet parity entrypoint.
+
+## Edge cases
+
+- `--help` / argparse failures occur before `quiet_init`; streams stay caller-visible per contract.
+- Version guard emits byte-identical JSON to the SKILL.md fence literal (sorted keys, `"pr_number":null`).
+- 3.10 must hit guard before any 3.11-only import (`datetime.UTC` in logging_util).
+- `quiet_init` failure paths degrade to no-op.
+- `XDG_CACHE_HOME=""` falls back to `~/.cache`; `/tmp` allowlist entries unchanged.
+- `with_(forked_target=...)` / `with_(branch_name=...)` keep working via alias translation.
+- `test_ci_monitor.py` stays on its specialized runner — no behavioral change to CI monitor assertions.
+- Journal append failure must not block contract JSON (best-effort journal, stdout always).
+- Invalid-tmpdir STALLED (outside allowlist) is JSON-only — no finalize-state write possible; Step 8+ must tolerate missing stall metadata for that edge.
+- `_persist_stall_metadata_if_needed` must not overwrite existing `STALL_TRACKING=true` or clobber `PR_NUMBER` / canonical `STALL_STEP` written by `run_ship`.
+- `RecordingRunner(strict=False)` default must not break tests that rely on post-queue success fallback; only `test_gh.py` / `test_push.py` use `strict=True`.
+- `_post_flush` reasons in `REFRESH_SKIP_MERGE_OK` keep merge-continuing semantics; only visibility changes.
+
+## Failure modes
+
+1. **Guard after imports** — 3.10 dies with ImportError before JSON contract. Mitigation: stdlib-only module-top guard + test.
+2. **Quiet redirect eats contract JSON or hides help** — if `quiet_init` runs before argparse or `emit_result` writes to redirected fd 1 without `contract_stream()`. Mitigation: defer `quiet_init` until post-parse; `contract_stream()` routing; journal-failure test; help/usage tests without quiet.
+3. **SKILL.md prose edit breaks pins** — `test-implement-structure.sh` greps exact literals. Mitigation: byte-stable pinned tokens; run harness before push.
+4. **STALLED without finalize-state on valid tmpdir** — Step 18 misclassifies stall on gap paths (e.g. early `ensure_pr` failure). Mitigation: gap-fill `_persist_stall_metadata_if_needed` + `ShipError` regression test.
+5. **Stale ctx overwrites canonical finalize-state** — second write from pre-run `ctx` wipes `PR_NUMBER` or replaces in-loop `STALL_STEP`. Mitigation: skip when `STALL_TRACKING=true` already set; merge/preserve existing keys; no-op for stalls `run_ship` already finalized.
+
+## Testing strategy
+
+- `make py-lint` and `make py-test` locally (3.11); CI matrix re-runs on 3.12.
+- `bash scripts/test-implement-structure.sh` for A2 pins, A1 prose, and `--no-logs-commit` parity.
+- `bash scripts/relevant-checks.sh` for markdown/doc surfaces.
+- New unit tests enumerated per test file above (every behavioral change covered).
+
+## Acceptance
+
+- All #3446 sections A–F checkboxes satisfied on `main`-compatible tree.
+- `make py-lint`, `make py-test`, `bash scripts/test-implement-structure.sh`, and `bash scripts/relevant-checks.sh` pass.
+- Python invoke fence passes `--no-logs-commit` through to `ship.py`.
+- Nine test files use `test_support.RecordingRunner` (lenient default); `test_gh.py` / `test_push.py` pass `strict=True`; `test_ci_monitor.py` unchanged runner API.
+- Gap-path STALLED exits (e.g. early `ensure_pr` `ShipError`) with valid tmpdir leave `finalize-state.sh` with `STALL_TRACKING=true`; in-loop stalls do not get a destructive second write.
+- Shared post-invoke exit matrix documents dual-path read sources (JSON/finalize-state vs scoped ship-pr-state).
+- Contract JSON always reaches stdout even when journal append fails.
+
+## Out of scope
+
+- Bash `ship-pr.sh` / `ship-pr-state.sh` edits (frozen).
+- Pre-push rebase conflict `RESUME_PHASE=ship-pr-rrr-phase14` / `CALLER_KIND=ship_pr_pre_push` handoff on Python path (OOS; tracked in **#3404**).
+- Issue excluded set: already-fixed items, #3448 acceptance matrix, #3449 `test-merge-parity` docs row.
+- Phase 7 cutover (`LARCH_SHIP_PR_IMPL=python` default flip).
+
+diff_added: 900
+diff_deleted: 340
+diff_lines: 1240
+
+</plan>
+
+<findings>
+### FINDING_1: Python OOS routing may read the wrong state source
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: Python OOS checkpoint routing is planned to read finalize-state, but OOS exits currently persist OOS_PENDING, FORKED_TARGET, and REPO_UNAVAILABLE only in ship-pr-state. This can miss continuation or skip-gate inputs when finalize-state is absent or incomplete.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Keep OOS_PENDING, FORKED_TARGET, and REPO_UNAVAILABLE as scoped ship-pr-state reads for Python OOS checkpoint routing, matching the existing helper, or explicitly add finalize-state writes/schema for every OOS exit path
+
+
+### FINDING_2: Shared RecordingRunner migration would drop test_run_logs git_commits behavior
+- **Reviewer(s)**: Codex-Arch, Cursor-Edge, Codex-Innovation, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements
+- **Severity**: important
+- **Concern**: Multiple reviewers identified that python/test_run_logs.py’s local RecordingRunner tracks git_commits and increments it for git commit argv, while the planned shared RecordingRunner import swap lacks that behavior. A blind migration would fail existing assertions or remove commit-count coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Leave a tiny test_run_logs-local subclass that extends the shared queue runner with git_commits tracking, or add an explicit optional call hook/counter to test_support and update those assertions accordingly
+  - From Cursor-Edge: Keep a thin local subclass extending test_support.RecordingRunner with git_commits (and commit argv hook), or document that field in test_support.py; do not treat test_run_logs.py as import-only
+  - From Codex-Innovation: Keep this file's tiny local subclass over test_support.RecordingRunner with git_commits, or replace those assertions with direct call-list checks during the swap.
+  - From Codex-Pragmatic: Keep a small local subclass or fixture in test_run_logs that extends test_support.RecordingRunner with git_commits counting, or leave this file's runner local; avoid expanding the shared helper unless needed
+  - From Cursor-Requirements: Exclude test_run_logs.py from consolidation (keep local runner with git_commits) or extend test_support with optional git_commits counting; update the nine-file count and acceptance wording accordingly
+  - From Codex-Requirements: Add git_commits to test_support.RecordingRunner with the same git commit argv increment semantics before migrating test_run_logs.py, or leave test_run_logs.py on its local runner
+
+
+### FINDING_3: XDG_CACHE_HOME helper may accept relative cache roots
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Concern**: The planned XDG cache helper may treat a relative XDG_CACHE_HOME as an allowlisted root, making cleanup and tmpdir validation cwd-relative contrary to XDG expectations.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Use XDG_CACHE_HOME only when it is non-empty and absolute; otherwise fall back to Path.home() / ".cache"
+
+
+### FINDING_4: Gap-fill can overwrite preserved PR metadata on post-merge flush-skip stalls
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The gap-fill plan lacks a regression for post-merge flush-skip stale-context behavior. A naive write from main() ctx can erase PR_NUMBER or related finalize-state metadata after run_postmerge_phase has already written newer state.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add test_ship regression for post-merge flush-skip stall asserting STALL_TRACKING=true and PR_NUMBER preserved; gap-fill must read-merge-write existing finalize-state and prefer result.pr_number/pr_url/merge_result over main ctx
+
+
+### FINDING_5: Quiet initialization can hide operator-visible warnings and breadcrumbs
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: After quiet_init redirects stderr, call sites that force quiet=False may write ship breadcrumbs, CI progress, or secret-scrub warnings only to the redirected log instead of the caller-visible stream.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Route operator-visible Python breadcrumbs and warnings through the quiet-aware path: remove quiet=False from progress/security warning call sites or add a dedicated fd4 warning helper; add a regression that a secret-scrub warning or ship breadcrumb reaches original stderr after self-initialized quiet
+
+
+### FINDING_6: Contract JSON tests target stdout instead of the caller-visible FD 3 stream
+- **Reviewer(s)**: Cursor-dyn-quiet-fd-contract
+- **Severity**: important
+- **Concern**: Planned acceptance and regression prose says contract JSON reaches stdout, but after quiet_init the contract stream is FD 3. Tests that only inspect stdout can miss swallowed contract output.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-quiet-fd-contract: Rename acceptance/edge language to caller-visible contract stream via contract_stream() (FD 3 after quiet_init, sys.stdout before); add an explicit test that dup-captures FD 3 after quiet_init for journal-failure and happy-path emit_result
+
+
+### FINDING_7: Plan references finalize.read_finalize_state without defining the helper
+- **Reviewer(s)**: Cursor-dyn-stall-gap-fill-boundary, Codex-dyn-stall-gap-fill-boundary
+- **Severity**: important
+- **Concern**: The stall gap-fill plan tells ship.py to use finalize.read_finalize_state, but finalize.py currently lacks that helper and the described finalize.py updates do not add it. Implementers may call a nonexistent API, duplicate private parsing, or rewrite finalize-state from stale context and drop preserved keys.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-stall-gap-fill-boundary: Add read_finalize_state (thin key-based wrapper, no sourcing) under ### UPDATED: python/finalize.py alongside cache_sessions_root()
+  - From Codex-dyn-stall-gap-fill-boundary: Either add read_finalize_state plus an atomic dict writer to finalize.py, or change the plan to require a local key-based parser/writer in ship.py and test preservation of existing keys.
+
+
+### FINDING_8: Stall gap-fill rules are not exhaustive for pre-finalize STALLED paths
+- **Reviewer(s)**: Cursor-dyn-stall-gap-fill-boundary, Codex-dyn-stall-gap-fill-boundary
+- **Severity**: important
+- **Concern**: The gap-fill plan focuses on one early ensure_pr example and omits or underspecifies other valid-tmpdir STALLED exits, including exception conversions and rebase Stalled paths. These paths can lack finalize-state or PR metadata, causing Step 18 to miss stall recovery.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-stall-gap-fill-boundary: In _persist_stall_metadata_if_needed populate PR_NUMBER/PR_URL/MERGE_RESULT from non-empty ShipResult fields then key-parse ship-pr-state.sh (ctx.state_file) when finalize-state lacks them; add one regression for rebase Stalled without pre-existing finalize-state.sh
+  - From Codex-dyn-stall-gap-fill-boundary: Define the rule generically: for any Outcome.STALLED after run_ship/exception conversion with an allowed tmpdir and no existing STALL_TRACKING=true, write merged stall metadata, with invalid-tmpdir as the explicit no-write exception. Add at least one regression outside ensure_pr.
+
+
+### FINDING_9: Invalid-tmpdir Exit 4 path lacks a pinned JSON fallback/no-write regression
+- **Reviewer(s)**: Codex-dyn-stall-gap-fill-boundary
+- **Severity**: latent
+- **Concern**: The plan describes invalid tmpdir behavior as JSON-only, but the test strategy does not pin that finalize-state must remain absent and routing must fall back to JSON details. Future edits could accidentally require finalize-state on a path that deliberately refuses to write it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-stall-gap-fill-boundary: Add a minimal structural pin for “finalize-state absent → JSON detail fallback” on the Python Exit 4 path, and a unit test that invalid tmpdir returns STALLED JSON without writing finalize-state.
+
+
+</findings>
+
+<feature>
+# Finish the Python Step 8+ cutover contract so routing/CI-fix/transient/OOS paths use JSON + finalize-state, not ship-pr-state.sh
+
+## Python ship-driver cutover — consolidated orphan tracker
+
+Originally auto-filed from a #3466 Step-5 OOS observation. **Rewritten** to hold the full set of *genuinely-orphaned* follow-ups for the Python ship driver (`python/ship.py` + modules), distilled from this issue's original contents + a second `/implement` soak on #3466 + a parallel audit session. Verified against `main` @ `f81771e9e`.
+
+**Excluded** (do not re-file here):
+- **Already fixed in `main`** — duplicate `_merge_noop_if_pr_closed`; host-agnostic GH-Enterprise URL recovery (`_repo_matches_pr_url`); `rebase_and_rebump`→`rebase_and_push` naming (already consistent); `run_ship` external-fixer dispatch now flows through `ci_monitor._available_tiers()`.
+- **Tracked in other issues** — Python exit-4 `ship_pr_pre_push` / `CONFLICT_FILES` conflict handoff → **#3404** ([IMPLEMENTING]); driver acceptance test-matrix → **#3448**; the `test-merge-parity` `docs/linting.md` row → **#3449**.
+
+### A. SKILL.md Step 8+ Python contract — doc + structural pin
+
+- [ ] **Reconcile the Step 8+ Python prose to what `ship.py` actually emits** (`skills/implement/SKILL.md`, changes only inside the `LARCH_SHIP_PR_IMPL=python` branch): exit-4 reads `STALL_TRACKING`/`STALL_STEP` from `finalize-state.sh`; exit-3 autonomous CI-fix uses JSON `failed_run_id`; correct the over-absolute "don't read `ship-pr-state.sh`" line — exit-6 `PHASE` budgeting + fork flags legitimately still live there. The same fix covers the related narrative: no persisted phase ⇒ exit-6 transient budgeting can't match bash; the autonomous CI-fix fork-flag reads; and the untested OOS-checkpoint / `write-final-report.sh` `finalize-state.sh` fallbacks for fork/PR keys.
+- [ ] **Pin the Python JSON-routing contract** in `scripts/test-implement-structure.sh` (exit-code→action, `finalize-state` vs `ship-pr-state` read sources, JSON `failed_run_id`) so the prose can't rot. *(The selector / `version_info` / `"outcome":"STALLED"` shape are already pinned; the exit-code→action routing is not.)*
+
+### B. `ship.py` entrypoint & error envelope
+
+- [ ] **argparse / early-exit must emit contract JSON** — `main()` calls `parse_args` outside the `try` that wraps `run_ship` (~L758 vs ~L760), so an argparse failure exits `2` with bare non-JSON stderr, violating the JSON-stdout contract. Fold early exits into the envelope.
+- [ ] **`INTERNAL_ERROR` detail + redaction** — the catch-all (~L767) emits generic `detail="internal error"` and an **unredacted** `traceback.format_exc()` to stderr (~L763). Emit a redacted, specific class/message in `detail`; run the stderr traceback through redaction. *(Traceback-to-stderr surfacing already landed in #3466.)*
+- [ ] **In-driver 3.11 guard** — the interpreter floor lives only in the SKILL.md fence, so a direct / `cron` `python3 ship.py` invocation bypasses it. Add `sys.version_info >= (3, 11)` inside `ship.py`, emitting the same STALLED-JSON-on-failure shape.
+- [ ] **Quiet-routing parity** — the Python ship path never calls `larch_quiet_init`, so quiet / FD-3 progress routing can diverge from `ship-pr.sh`.
+
+### C. Diagnostics / output hygiene
+
+- [ ] **De-duplicate CI breadcrumbs** — `ship.py` and `ci_monitor.py` both emit per-poll progress lines during long CI waits; collapse to a single source.
+- [ ] **Surface the flush skip-reason** — `run_logs.py` (~L595) returns `RefreshSkip(reason="post-merge-refresh-failed" | "redaction-failed")` but never surfaces it; make degraded post-merge flushes operator-visible. *(The skip-reason return already landed in #3466.)*
+
+### D. Constants / context / test cleanup
+
+- [ ] Remove unused `EXIT_STALL`; keep `EXIT_BAIL` (live `report_tokens_cli` consumer at `report_tokens_cli.py:72,111`) + a distinguishing comment. `python/config.py`.
+- [ ] Reconcile `RunContext` alias fields `forked`/`forked_target` and `branch`/`branch_name` so they can't drift; add a regression test. `python/run_context.py`.
+- [ ] Honor `XDG_CACHE_HOME` in **both** `_cleanup_target_ok` and `_tmpdir_under_allowed_root` cache-root allowlists; add a test. `python/finalize.py`.
+- [ ] De-duplicate the `RecordingRunner` test helper copied across 10+ `python/test_*.py` into one shared helper.
+- [ ] Remove the still-unused bare `pr_view_current` in `gh.py` (`pr_view_current_read` is now wired into recovery at `gh.py:264`).
+
+### E. Docs
+
+- [ ] `docs/linting.md` (~L29) still describes `python-lint` / `python-tests` as single CI jobs; #3466 converted them to a `["3.11","3.12"]` matrix — update the prose. *(Distinct from #3449's `test-merge-parity` `docs/linting.md` row.)*
+
+### F. Optional / lowest priority
+
+- [ ] `ensure_pr` → `gh.pr_create` (`pr.py:67`) omits `--base` (`pr_create` has supported it since #3268). Parity nit only — `gh` defaults to the repo default branch, so it is harmless for `main`-default repos.
+
+---
+*Provenance: auto-filed by the larch `/implement` workflow from a #3466 Step-5 OOS observation; body consolidated/rewritten to track the full Python-driver orphan set, verified against `main` @ `f81771e9e`.*
+
+
+</feature>

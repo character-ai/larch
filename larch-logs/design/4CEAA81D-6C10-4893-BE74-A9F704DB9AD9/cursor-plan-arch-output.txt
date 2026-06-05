@@ -1,0 +1,34 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/restore-finalize-state.sh:77-88	FINDING_4 targets the wrong stall-clobber trigger	Motivation and tests say ship-pr lacks stall keys, but Step 8+ always seeds ship-pr-state.sh with STALL_TRACKING=false (skills/implement/SKILL.md:977). Python gap-fill writes finalize-state.sh STALL_TRACKING=true; restore reads ship-pr false first and overwrites finalize. Missing-key paths already fall back to finalize today.	When finalize-state.sh has STALL_TRACKING=true, prefer finalize STALL_TRACKING/STALL_STEP over ship-pr values (including explicit false). Seed ship-pr with STALL_TRACKING=false in restore tests and structural pins.
+1	in_scope	latent	architecture	python/ship.py:37-41	_persist_stall_metadata_if_needed adds a missing-finalize plus inline-stall no-op matrix	Inline stall paths already write finalize-state.sh, so the extra branch is dead or blocks gap-fill when that write fails. It expands a large heuristic without matching a real path.	Keep only: STALLED + allowlisted tmpdir + no existing STALL_TRACKING=true → merge-write stall metadata; drop the missing-finalize inline-stall exception list.
+
+### 1. [correctness] `scripts/restore-finalize-state.sh:77-88` — FINDING_4 targets the wrong stall-clobber trigger
+
+The plan says restore should preserve stall metadata when `ship-pr-state.sh` **lacks** stall keys. That is not the production failure mode.
+
+Step 8+ always seeds `ship-pr-state.sh` with `STALL_TRACKING=false`:
+
+```977:977:skills/implement/SKILL.md
+- `PR_CLOSED=false`, `DONE_RENAME_APPLIED=false`, `STALL_TRACKING=false`, `STALL_STEP=`
+```
+
+Python `_write_ship_state` never updates `STALL_TRACKING` on `ship-pr-state.sh`. After gap-fill writes `finalize-state.sh` with `STALL_TRACKING=true`, restore still does:
+
+```83:86:scripts/restore-finalize-state.sh
+            value=$(read_state "$key" "")
+            if [ -z "$value" ]; then
+                value=$(read_finalize "$key" "$default")
+            fi
+```
+
+Because ship-pr has a non-empty `false`, restore never reads finalize and clobbers Python stall metadata.
+
+Missing-key cases already work today via the empty-string fallback. The proposed test (`ship-pr-state.sh without stall keys`) would not catch this regression.
+
+**Suggested revision:** When pre-restore finalize has `STALL_TRACKING=true`, take finalize `STALL_TRACKING`/`STALL_STEP` over ship-pr (including explicit `false`). Update FINDING_4 tests and structural pins to seed `STALL_TRACKING=false` in ship-pr-state, matching Step 8+ init.
+
+### 2. [architecture] `python/ship.py` (proposed `_persist_stall_metadata_if_needed`) — unnecessary inline-stall no-op matrix
+
+The plan adds a no-op when finalize is missing **and** the stall is one `run_ship` already finalizes inline. Inline stall paths write finalize before return, so finalize should exist whenever that branch applies. The extra rule adds maintainer burden without a clear live path and could skip gap-fill if an inline write failed.
+
+**Suggested revision:** Keep the minimum rule: gap-fill only when `Outcome.STALLED`, tmpdir is allowlisted, and finalize lacks `STALL_TRACKING=true`. Drop the missing-finalize inline-stall exception list.
