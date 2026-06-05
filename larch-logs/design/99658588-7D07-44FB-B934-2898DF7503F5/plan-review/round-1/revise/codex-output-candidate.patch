@@ -1,0 +1,23 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -17,7 +17,7 @@
+ - `compute-pr-line-counts.sh` KV contract: `LINES_STATUS=ok` (+ `CODE_ADDED`, `CODE_DELETED`, `LOGS_ADDED`, `LOGS_DELETED`), `LINES_STATUS=skipped` (`REASON=no-pr` / `REASON=invalid-repo`), `LINES_STATUS=unavailable` (`REASON=gh-failed`). Always exit 0 — metrics are never run-fatal.
+ - Bucketing rule: paths under `larch-logs/` count as logs; everything else (including renames and 0/0 binary rows) counts as code.
+ - Pagination: single `gh api --paginate` call against `repos/<repo>/pulls/<N>/files` (placeholder endpoint `repos/{owner}/{repo}/...` when `--repo` is empty so gh resolves repo context).
+-- Input validation: `PR_NUMBER` must be all digits (empty/`0`/non-numeric → `skipped`/`no-pr`); `REPO` must be exactly `owner/name` (extra slash or missing part → `skipped`/`invalid-repo`). Both values pass to `gh` as argv only — no eval or string-interpolated command surface.
++- Input validation: `PR_NUMBER` must be all digits (empty/`0`/non-numeric → `skipped`/`no-pr`); `REPO` is guarded as a single-slash value with non-empty owner and repo parts (extra slash or missing part → `skipped`/`invalid-repo`), not a broader GitHub slug validator. Both values pass to `gh` as argv only — no eval or string-interpolated command surface.
+ - Integration: `write-final-report.sh` skips the helper entirely when `REPO_UNAVAILABLE=true`, parses the KV blob, derives `LINES_DATA_OK` (all four counters present and numeric), and forwards `--code-added/--code-deleted/--logs-added/--logs-deleted` to `render-run-summary.sh` only when true. The renderer independently re-validates and renders `N/A` otherwise. A two-stage degradation chain follows: renderer failure → retry with `--cost-unavailable` → `compose_self_fallback` (inline body with degraded banner + `larch:final-summary-fallback` marker).
+ - Timeout posture (documented limitation, per Round 1): the `gh api` call has no explicit timeout and no repo-wide gh-timeout convention exists; a network-level hang would stall `write-final-report.sh`. Accepted as-is — failures observed in practice are fast non-zero exits handled by the `gh-failed` path.
+@@ -67,10 +67,10 @@
+ 
+ ## Acceptance criteria
+ 
+-1. Integration: `write-final-report.sh` renders bucketed counts when `LINES_STATUS=ok` and all four counters are numeric, and renders `N/A` on `skipped`, `unavailable`, `REPO_UNAVAILABLE=true`, or partial/non-numeric data — pinned by existing harness cases (happy path, no-PR, repo-unavailable, gh-failed, partial-flags).
++1. Integration: `write-final-report.sh` renders bucketed counts when `LINES_STATUS=ok` and all four counters are numeric, and renders `N/A` on `skipped`, `unavailable`, or `REPO_UNAVAILABLE=true` — pinned by existing write-final-report harness cases (happy path, no-PR, repo-unavailable, gh-failed). Partial/non-numeric line-count flags are renderer-contract coverage, pinned in `scripts/test-render-run-summary.sh`, not claimed as write-final-report integration coverage.
+ 2. Pagination: the files request uses `gh api --paginate` (flag presence test-pinned); multi-page PRs aggregate via a single awk pass. Documented limitation: the GitHub `pulls/files` API caps listings at 3000 files; beyond that, counts reflect the API-returned subset.
+ 3. Timeout: no explicit request timeout (documented limitation, accepted in Round 1); all observed failure modes exit non-zero fast and degrade to `LINES_STATUS=unavailable` → `N/A` render, never failing the run.
+-4. Security validation: digits-only `PR_NUMBER` guard and `owner/name` `REPO` shape guard are test-pinned; inputs reach `gh` as argv only.
++4. Security validation: digits-only `PR_NUMBER` guard is test-pinned; `REPO` validation is the current single-slash/non-empty-parts guard, with the extra-slash invalid case pinned and no claim of full GitHub slug validation. Inputs reach `gh` as argv only.
+ 5. Fallback coverage (the new work): `compose_self_fallback` formats `Lines (PR diff)` from bucketed values when `LINES_DATA_OK=true` — asserted by the new stage2-fallback case; the N/A arm remains pinned by the existing bailed-fixture schema test.
+ 6. Harness doc sibling updated in the same PR.
+ 

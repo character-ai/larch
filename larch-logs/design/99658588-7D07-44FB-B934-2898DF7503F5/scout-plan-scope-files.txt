@@ -1,0 +1,2 @@
+skills/implement/scripts/test-write-final-report.sh
+skills/implement/scripts/test-write-final-report.md
