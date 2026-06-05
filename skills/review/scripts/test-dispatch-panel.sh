@@ -347,8 +347,8 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --panel hard \
     --plan-file "$TMP/dynamic-plan-delimiter/plan.md" \
     --dynamic-archetypes 4)
-grep -Fq 'SCOUT_STATUS=parse-failed' <<< "$out"
-grep -Fq 'SCOUT_FAIL_REASON=dispatch_manifest_validation' <<< "$out"
+grep -Fq 'SCOUT_STATUS=empty' <<< "$out"
+grep -Fq 'WARN=unsafe prompt_body for plan-inject' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
 
 seed_case_inputs "$TMP/dynamic-empty"
@@ -753,9 +753,9 @@ assert_emit_tally_panel() {
         }
 }
 
-assert_emit_tally_panel static-na na 0 7 7
-assert_emit_tally_panel scout-ok ok 4 7 11
-assert_emit_tally_panel scout-skipped skipped-docs-only 0 7 7
+assert_emit_tally_panel static-na na 0 8 8
+assert_emit_tally_panel scout-ok ok 4 8 12
+assert_emit_tally_panel scout-skipped skipped-docs-only 0 8 8
 
 if section_runs core; then
 
