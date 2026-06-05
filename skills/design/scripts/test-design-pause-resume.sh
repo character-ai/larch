@@ -240,12 +240,27 @@ out_legacy_simple_2a_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-legacy-si
 [[ "$out_legacy_simple_2a_load" == *"LOAD_OK=true"* && "$out_legacy_simple_2a_load" == *"STEP=2a.5"* ]] || fail "old SIMPLE step-2a-only load mismatch: $out_legacy_simple_2a_load"
 DESIGN_TMPDIR="$DESIGN_LEGACY_SIMPLE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
 _design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
-if [ "$_design_classification" = SIMPLE ] && [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] && [ ! -f "$DESIGN_TMPDIR/.completed/step-2a.5" ]; then
-  mkdir -p "$DESIGN_TMPDIR/.completed"
-  : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+if [ "$_design_classification" = SIMPLE ]; then
+  if ! command grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null \
+    || ! command grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null \
+    || [ ! -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then
+    set -e
+    printf "%s\n" "NO_SKETCHES_CLASSIFIED_SIMPLE" > "$DESIGN_TMPDIR/approach-synthesis.txt"
+    printf "%s\n" "NO_CONTESTED_DECISIONS" > "$DESIGN_TMPDIR/contested-decisions.md"
+    : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2a"
+    : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  elif [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] && [ ! -f "$DESIGN_TMPDIR/.completed/step-2a.5" ]; then
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  fi
 fi
 '
 [[ -f "$DESIGN_LEGACY_SIMPLE/.completed/step-2a.5" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not write marker"
+[[ "$(cat "$DESIGN_LEGACY_SIMPLE/approach-synthesis.txt")" == "NO_SKETCHES_CLASSIFIED_SIMPLE" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair approach sentinel"
+[[ "$(cat "$DESIGN_LEGACY_SIMPLE/contested-decisions.md")" == "NO_CONTESTED_DECISIONS" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair contested sentinel"
+[[ -f "$DESIGN_LEGACY_SIMPLE/dialectic-resolutions.md" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair dialectic sentinel"
 
 echo "=== legacy Step 3b marker without finalize resumes at Step 4 ==="
 DESIGN_LEGACY_FINALIZE="$TMP/design-legacy-finalize"

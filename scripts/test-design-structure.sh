@@ -97,7 +97,7 @@ extract_first_bash_fence_after() {
 }
 
 assert_step2a_entry_simple_guard() {
-  local tmp guard_line first_artifact_line last_artifact_line first_completion_line
+  local tmp guard_line closing_fi_line first_artifact_line last_artifact_line first_completion_line completion_line
   tmp=$(mktemp "${TMPDIR:-/tmp}/step2a-entry.XXXXXX")
   extract_first_bash_fence_after "$SKILL_MD" '<!-- step:2a —' >"$tmp"
   grep -Fq '${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh' "$tmp" \
@@ -117,13 +117,19 @@ assert_step2a_entry_simple_guard() {
   grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-2a.5"' "$tmp" \
     || fail 'Step 2a entry fence missing step-2a.5 completion marker'
   guard_line=$(grep -nF 'if [ "$_design_classification" = SIMPLE ]; then' "$tmp" | head -1 | cut -d: -f1)
+  closing_fi_line=$(awk -v start="$guard_line" 'NR > start && $0 == "fi" { print NR; exit }' "$tmp")
   first_artifact_line=$(grep -nF "NO_SKETCHES_CLASSIFIED_SIMPLE" "$tmp" | head -1 | cut -d: -f1)
   last_artifact_line=$(grep -nF ': > "$DESIGN_TMPDIR/dialectic-resolutions.md"' "$tmp" | head -1 | cut -d: -f1)
   first_completion_line=$(grep -nF ': > "$DESIGN_TMPDIR/.completed/step-2a"' "$tmp" | head -1 | cut -d: -f1)
+  [[ -n "$closing_fi_line" ]] || fail 'Step 2a entry fence missing closing fi for SIMPLE guard'
   (( guard_line < first_artifact_line )) \
     || fail 'Step 2a entry fence writes SIMPLE artifacts before the SIMPLE guard'
   (( last_artifact_line < first_completion_line )) \
     || fail 'Step 2a entry fence must write completion markers after all SIMPLE artifacts'
+  while IFS=: read -r completion_line _; do
+    (( guard_line < completion_line && completion_line < closing_fi_line )) \
+      || fail 'Step 2a entry fence completion markers must stay inside the SIMPLE guard'
+  done < <(grep -nF ': > "$DESIGN_TMPDIR/.completed/step-2a' "$tmp")
   rm -f "$tmp"
 }
 
@@ -141,7 +147,7 @@ assert_simple_branch_has_no_sentinel_fence() {
 }
 
 assert_step3b_finalize_boundary() {
-  local step3b_line step4_line step3b_between step4b_line step4_between
+  local step3b_line step4_line step3b_between step4b_line step4_between action_line rc_line exit_line marker_line
   step3b_line=$(grep -nF '<!-- step:3b' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
   step4_line=$(grep -nF '<!-- step:4 —' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
   step4b_line=$(grep -nF '<!-- step:4b' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
@@ -156,6 +162,12 @@ assert_step3b_finalize_boundary() {
     || fail 'Step 3b FINALIZE failure branch must exit non-zero'
   grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3b"' <<<"$step3b_between" \
     || fail 'Step 3b completion boundary must write step-3b after FINALIZE'
+  action_line=$(grep -nF 'ACTION=FINALIZE' <<<"$step3b_between" | head -1 | cut -d: -f1)
+  rc_line=$(grep -nF '_finalize_rc=$?' <<<"$step3b_between" | head -1 | cut -d: -f1)
+  exit_line=$(grep -nF 'exit "$_finalize_rc"' <<<"$step3b_between" | head -1 | cut -d: -f1)
+  marker_line=$(grep -nF ': > "$DESIGN_TMPDIR/.completed/step-3b"' <<<"$step3b_between" | head -1 | cut -d: -f1)
+  (( action_line < rc_line && rc_line < exit_line && exit_line < marker_line )) \
+    || fail 'Step 3b completion boundary must write step-3b only after FINALIZE rc capture and failure exit branch'
   if grep -Fq '1. Emit `ACTION=FINALIZE`' <<<"$step4_between"; then
     fail 'Step 4 must not retain the standalone FINALIZE item'
   fi
@@ -190,7 +202,7 @@ assert_no_direct_step3b_step4_routes() {
       lower = tolower($0)
     }
     lower ~ /step 3b completion boundary/ { next }
-    lower ~ /step 3b[[:space:]]*(→|->|, then|,|\/)[[:space:]]*step 4/ { print line; next }
+    lower ~ /step 3b[[:space:]]*(->|, then|,|\/)[[:space:]]*step 4/ { print line; next }
     lower ~ /step 3b\/4/ { print line; next }
     lower ~ /step 3b[[:space:]]+\/[[:space:]]+step 4/ { print line; next }
     lower ~ /(continue|proceed|auto-continue|route|jump|enter|go)/ && lower ~ /step 3b/ && lower ~ /step 4/ { print line; next }
@@ -927,12 +939,14 @@ assert_no_direct_step3b_step4_routes 'SKILL Step 3b slice' "$SKILL_MD" '<!-- ste
 assert_no_direct_step3b_step4_routes 'SKILL Step 3 Gate-B-bypass slice' "$SKILL_MD" '<!-- step:3 —' '<!-- step:3.5'
 assert_no_direct_step3b_step4_routes 'approval-gates.md' "$APPROVAL_MD"
 assert_no_direct_step3b_step4_routes 'run-step3-review.sh' "$RUN_STEP3_SH"
+assert_no_direct_step3b_step4_routes 'run-step3-review.md' "$RUN_STEP3_MD"
+assert_no_direct_step3b_step4_routes 'plan-review.md' "$PLAN_REVIEW_MD"
 assert_no_direct_step3b_step4_routes 'flags.md' "$FLAGS_MD"
 assert_no_direct_step3b_step4_routes 'configuration-and-permissions.md' "$CONFIG_MD"
 contains "$RUN_STEP3_SH" 'skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'run-step3-review.sh missing boundary-qualified cap breadcrumb'
 contains "$FLAGS_MD" 'proceeds to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'flags.md missing boundary-qualified panel-failed route'
 contains "$CONFIG_MD" 'proceeds through Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'configuration docs missing boundary-qualified round-cap route'
-contains "$SKILL_MD" 'pre-existing paused SIMPLE runs where `.completed/step-2a` exists but `.completed/step-2a.5` is absent' 'SKILL missing old SIMPLE Step 2a.5 resume compatibility guard'
+contains "$SKILL_MD" 'repair pre-existing paused SIMPLE runs' 'SKILL missing old SIMPLE Step 2a.5 resume compatibility guard'
 contains "$SKILL_MD" '[ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]' 'SKILL missing old Step 4 finalize compatibility guard'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'write the triple-sentinel bypass layout (`step-3`, `step-3.5`, and `step-3.6`)' 'SKILL missing Gate-B-bypass triple-sentinel prose'
@@ -1294,7 +1308,7 @@ shared_pipeline_reference_count=$(grep -Fc 'Execute `### Shared post-apply pipel
 [[ "$shared_pipeline_reference_count" -eq 2 ]] \
   || fail "(FINDING_20) approval-gates.md must reference the shared post-apply pipeline from exactly two Gate B call sites"
 
-grep -Fq 'Gate B — Post-Review Chooser; the zero-findings short-circuit will pass straight through to Step 3b' "$PLAN_REVIEW_MD" \
+grep -Fq 'Gate B — Post-Review Chooser; the zero-findings short-circuit route is Step 3.6 → Step 3b → Step 3b completion boundary (FINALIZE + step-3b) → Step 4 → Step 4b' "$PLAN_REVIEW_MD" \
   || fail "(FINDING_6) plan-review.md missing zero-findings Gate B forwarding pin"
 # shellcheck disable=SC2016 # Markdown literal; backticks are plan-review prose, not command substitution
 grep -Fq 'findings are surfaced to Gate B, which applies them per `manual_gate_b` mode' "$PLAN_REVIEW_MD" \
@@ -1830,7 +1844,7 @@ contains "$SKILL_MD" 'Passive-summary auto-continue routes through Step 3.6 befo
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
 contains "$APPROVAL_MD" 'refresh the active Step 3 result state (including `.step3-plan-review-result.env`) before continuing to Gate B as complete-equivalent' 'approval-gates.md missing MainAgent re-tally Step 3 state refresh pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
-contains "$SKILL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, or `panel-failed`) bypass Step 3.5 **and Step 3.6** and continue to Step 3b instead' 'SKILL.md missing full Gate-B-bypass short-circuit list in Step 3.5 entry'
+contains "$SKILL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, or `panel-failed`) bypass Step 3.5 **and Step 3.6** and continue to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4' 'SKILL.md missing full Gate-B-bypass short-circuit list in Step 3.5 entry'
 contains "$APPROVAL_MD" 'Passive-summary auto-continue routes through Step 3.6 before Step 3b' 'approval-gates.md missing passive-summary auto-continue Step 3.6 routing pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins
 contains "$APPROVAL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `panel-failed`) bypass Step 3.5 and Step 3.6 before Step 3b' 'approval-gates.md missing Gate-B-bypass Step 3.5/3.6 coverage pin'
