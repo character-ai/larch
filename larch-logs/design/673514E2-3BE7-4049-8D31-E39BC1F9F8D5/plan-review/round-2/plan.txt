@@ -1,0 +1,120 @@
+## Plan
+
+# Implementation Plan — #3420: thin Step 0b (cancel/resume into drivers)
+
+## Goal
+
+Move the non-LLM rendering of Step 0b's two consumption fences out of `SKILL.md` and into the phase drivers, so each driver emits a single STATUS + exit code and the orchestrator fences collapse to capture → emit driver output → branch into only the genuinely-LLM routes (proceed/tier, clarify loop, already-planned prompt, resume continuation). Behavior across all seven routing outcomes is preserved; only WHERE the rendering happens moves.
+
+## Approach
+
+Two phase drivers already own routing/init logic and emit a result-env + stdout KV contract via `lib-phase-driver.sh` (`emit_kv`, `phase_driver_write_result_env`, `larch_err`). This change extends each driver to also own the operator-facing rendering that currently lives inline in `SKILL.md` Step 0b, then thins the SKILL.md fences.
+
+Key moves:
+- `design-route.sh` gains ownership of: cancel-route `render-final-summary.sh` invocation (stdout suppressed, renderer stderr caller-visible under quiet mode), cancel reject banners (`larch_err`/`larch_errf`), reentry-guard banner composition, and resume `write-design-current-env.sh` (including `manual_gate_b` from `run-params.json`).
+- `design-init-runparams.sh` gains ownership of its two failure banners (contract-drift, env-refresh-failed) — it already sets `INIT_STATUS` and exits 1; it will additionally print the detailed operator message itself.
+- `SKILL.md` Step 0b: both consumption fences shrink. The route fence keeps capture, exit-2/exit-1 aborts, file-first result-env read, and `_route_valid`; add `--session-id "$SESSION_ID"` to the driver invocation. The `case "$ROUTE"` bodies for `cancel-title-filter` / `cancel-reentry-guard` collapse to `exit 1` only inside the bash fence; **orchestrator prose immediately after the fence** (same contract as Step 5c item 3) performs the verbatim `final-summary.md` emit when `_route_rc=0` and the route is a cancel. `cancel-pause-load` keeps its orchestrator abort banner. `resume@*` on `_route_rc=0` prints `resumed from STEP=` only (no inline env refresh).
+- **Operator channel split (FINDING_3):** reject banners and resume-failure diagnostics are driver stderr (`larch_err`/`larch_errf`) during the bash tool call; structured summary body is orchestrator chat text read from `${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}` after the fence when non-empty. This intentionally changes visible ordering vs today's inline fence (summary print then banner): cancel runs now surface the reject banner in Bash stderr first, then the orchestrator emits the summary block verbatim before aborting.
+
+Banner text fidelity: equivalent rewording is allowed (Round 1 Decision 3); functional behavior (routing outcomes, exit codes, which artifacts written, which GitHub side effects fire) is preserved.
+
+**Quiet-driver contract (post-`larch_quiet_init`).** Every moved operator-facing banner and resume/init failure diagnostic MUST use `larch_err` / `larch_errf`, not raw `printf`/`echo` `>&2` — otherwise S041 rejects the script and messages land in the quiet log instead of the orchestrator-visible stderr. Raw verbatim `final-summary.md` emission stays orchestrator-side only.
+
+### Critical hazard — render-final-summary.sh stdout vs. the KV contract
+
+`render-final-summary.sh --post-publish-only` does **print + upsert + file** (stdout is the summary body; it also upserts the GitHub summary comment and writes `final-summary.md`). Inside `design-route.sh`, driver stdout IS the KV result-env stream consumed by `_route_out=$(...)`; summary stdout MUST be redirected (`>/dev/null`, **no** `2>&1`) so KV parsing stays clean. Wrap each cancel-route render in `set +e` / `|| true` so a non-zero render does not abort the driver under `set -e` before `emit_route_result` — still emit `ROUTE=cancel-*` and the reject banner. The orchestrator emits `final-summary.md` verbatim only when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]` (same gate as `### Final summary block`).
+
+**Renderer stderr under quiet (FINDING_4).** After `larch_quiet_init`, child stderr of `render-final-summary.sh` must reach the caller-visible stream, not the quiet log. Mirror `render-run-summary.sh` `emit_diag`: when `LARCH_QUIET_PID` matches `$$`, invoke render as `… --post-publish-only >/dev/null 2>&4` (stdout to `/dev/null`, stderr to FD 4); otherwise `>/dev/null` only. Do not claim "live stderr" without the `2>&4` redirect.
+
+**CLI flags (not env-only).** `render-final-summary.sh` requires `--outcome` and `--mode` argv. Cancel branches pass `--outcome cancelled-title-filter` + `--mode N/A`, or `--outcome cancelled-reentry-guard` + `--mode` from `jq -r '.design_classification // "N/A"'` on `run-params.json`, plus exported env (below) and `${REPO:+--repo}`.
+
+### Session / issue identity for render (FINDING_1)
+
+`render-final-summary.sh` reads `DESIGN_TMPDIR`, `ISSUE_NUMBER`, and `SESSION_ID` from the environment (→ RUN_ID). The driver already has module-level `SESSION_ID=""` used for pause-load KVs and must not be clobbered by argv parsing.
+
+- Parse orchestrator `--session-id` into a **separate** `SESSION_ID_ARG` (`validate_plain_scalar`; required argv, symmetric with `design-init-runparams.sh`).
+- Immediately before each `render-final-summary.sh` call on cancel routes, export identity explicitly:
+  - `export DESIGN_TMPDIR`
+  - `export ISSUE_NUMBER="$ISSUE"`
+  - `export SESSION_ID="$SESSION_ID_ARG"`
+- Pause-load may still set module `SESSION_ID` for `SESSION_ID=` result-env KVs on `resume@*`; cancel renders always use `SESSION_ID_ARG` (orchestrator threads Step 0a `$SESSION_ID`). Resume env refresh uses pause-loaded `SESSION_ID` for `--session-id` on `write-design-current-env.sh`, not `SESSION_ID_ARG`.
+
+## Files to modify/create
+
+### UPDATED: `skills/design/scripts/design-route.sh`
+- Add required `--session-id STR` argv → bind `SESSION_ID_ARG` (do **not** assign argv into module `SESSION_ID`; pause-load continues to populate `SESSION_ID` only on resume).
+- **Cancel-title-filter:** export `DESIGN_TMPDIR`, `ISSUE_NUMBER="$ISSUE"`, `SESSION_ID="$SESSION_ID_ARG"`; run `render-final-summary.sh --outcome cancelled-title-filter --mode N/A --post-publish-only >/dev/null 2>&4` (or `>/dev/null` when quiet inactive) under `set +e` / `|| true`; `larch_err` lifecycle vs archival reject text (preserve literals); emit `ROUTE=cancel-title-filter` + `TITLE_FILTER_*` KVs; `exit 0`.
+- **Cancel-reentry-guard:** compute `MARKER_REMAINING` (floor 0), derive `--mode` from `run-params.json` `design_classification` (fallback `N/A`); same export block; `render-final-summary.sh --outcome cancelled-reentry-guard --mode "$MODE_STR" … >/dev/null 2>&4` under `set +e` / `|| true`; `larch_errf` the spurious re-entry line using **`$CLAUDE_PID`** (argv `--claude-pid`), `DESIGN_REENTRY_MARKER_PATH` from `design_reentry_marker_path "$ISSUE" "$CLAUDE_PID"`; emit guard KVs; `exit 0`.
+- **Resume `resume@*`:** before `write-design-current-env.sh`, when `$DESIGN_TMPDIR/run-params.json` exists and `jq` is available, set `_manual_resume=false` and `[[ "$(jq -r '.manual_gate_b // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" == true ]] && _manual_resume=true` (mirror today's SKILL.md guard); pass `--manual-requested true` only when `_manual_resume=true`; use pause-loaded `SESSION_ID` for `--session-id`; on `write-design-current-env.sh` failure, `larch_err` the existing resume env-refresh text and **`exit 1` before emitting `ROUTE=resume@*`** (no `ERROR=` on success path). On success, emit `ROUTE=resume@<STEP>` (+ `RESUME_STEP`, pause KVs); `exit 0`.
+- **`cancel-pause-load`:** unchanged — no summary render; orchestrator keeps pause-load abort banner.
+- Keep existing `larch_err`/`fail` exit-2 config contract, `0` routing-verdict contract, `1` for `phase_driver_write_result_env` refusal **and** resume env-refresh failure.
+
+### UPDATED: `skills/design/scripts/design-route.md`
+- Document required `--session-id` argv (`SESSION_ID_ARG` for cancel renders; pause-loaded `SESSION_ID` for resume KVs/refresh).
+- Responsibilities: cancel summary render (`--outcome`/`--mode`, stdout `>/dev/null`, renderer stderr `2>&4` under quiet), reject banners via `larch_err`/`larch_errf`, resume refresh with `manual_gate_b` jq guard and **exit 1** on env-refresh failure.
+- **Exit codes table (FINDING_5):** extend with explicit row — `1` when `write-design-current-env.sh` fails on resume **before** `ROUTE=resume@*` emit (orchestrator sees generic `_route_rc` abort plus driver `larch_err`); distinguish from cancel routes (`exit 0` + `ROUTE=cancel-*`).
+- LLM boundary / orchestrator handoff: driver owns render side effects + reject stderr; orchestrator thinned fence + post-fence verbatim `final-summary.md` emit (Step 5c item 3 pattern); orchestrator does not call `render-final-summary.sh` or `write-design-current-env.sh` on these routes.
+
+### UPDATED: `skills/design/scripts/design-init-runparams.sh`
+- On `INIT_STATUS=env-refresh-failed`: `larch_err` the detailed env-refresh-failed operator message before `emit_kv` + result-env write + exit 1.
+- On `INIT_STATUS=contract-drift`: `larch_err` the detailed contract-drift message (including `bash scripts/test-write-run-params.sh` repro) before exit 1.
+- No change to env-before-rename ordering, rename best-effort warn, `write-run-params.sh`, or router-flag jq-merge.
+
+### UPDATED: `skills/design/scripts/design-init-runparams.md`
+- Responsibilities: driver prints contract-drift and env-refresh-failed via `larch_err`; orchestrator propagates STATUS + exit with short generic abort only.
+
+### UPDATED: `skills/design/SKILL.md`
+- Sub-step 2.5 intro: cancel reject banners and resume env refresh live in `design-route.sh`; orchestrator emits `final-summary.md` verbatim (when non-empty), `cancel-pause-load` abort, and `AskUserQuestion` gates only.
+- Route fence: add `--session-id "$SESSION_ID"` to `design-route.sh` invocation (alongside existing `${REPO:+--repo "$REPO"}`). Keep `_route_out=` capture, exit-2 abort, **`_route_rc` non-zero abort** (resume refresh `exit 1` → generic `design-route.sh failed (exit N)` plus driver `larch_err`), file-first `.design-route-result.env` read (symlink refusal) + stdout merge, `_route_valid`, BRAINSTORM_PREFIX info banner.
+- Collapse `case "$ROUTE"` bash bodies: `cancel-pause-load` → keep orchestrator abort + exit 1; `cancel-title-filter` / `cancel-reentry-guard` → `exit 1` only (no inline render/banner/export); `resume@*` → on `_route_rc=0` only, print `resumed from STEP=` and continue (no inline `write-design-current-env.sh`).
+- **Post-fence orchestrator prose (FINDING_3):** immediately after the Step 0b route bash fence closes, add explicit text matching Step 5c item 3: when `_route_rc=0` and `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, if `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that path and emit the full body verbatim as plain chat markdown, then abort (exit 1). Do not paraphrase or add prose between bullets.
+- Sub-step 6 init fence: replace inline detailed contract-drift / env-refresh-failed banners with short generic exit-1 abort relying on driver stderr; keep generic `design-init-runparams.sh failed (INIT_STATUS=…)` line (FINDING_9).
+
+### UPDATED: `scripts/test-design-structure.sh`
+- **Replace** global contract-drift pins (≈359–361): `contains "$SKILL_MD"` → `contains "$DESIGN_INIT_SH"` for `contract drift`, `aborting before silent tier downgrade`, and `bash scripts/test-write-run-params.sh`.
+- **FINDING_20_ENV_REFRESH_BANNER** (≈1094–1095): env-refresh-failed text in `$DESIGN_INIT_SH`, not `$SKILL_MD`.
+- **FINDING_9 / FINDING_18 resume pins** (≈1165–1173): `_wdce_resume_args`, `${REPO:+--repo "$REPO"}`, rc capture, `resume env refresh failed via write-design-current-env.sh`, `manual_gate_b`, `--manual-requested` → `$DESIGN_ROUTE_SH`; keep Step 0a `write-design-current-env.sh` pin (≈1367) for Check 21.
+- **Check 20** (≈1287–1290): lifecycle/archival reject literals → `$DESIGN_ROUTE_SH`; keep `$SKILL_MD` `cancelled-title-filter` enum, cancel-before-clarify ordering, brainstorm info banner.
+- **Check 26** (≈1494–1498): reentry guard literals → `$DESIGN_ROUTE_SH` (`$CLAUDE_PID` / marker-path wording).
+- **step0b_block pins (FINDING_1 / harness):** `$step0b_block` (or invocation-line grep) must include `--session-id "$SESSION_ID"` on `design-route.sh`; thinned cancel branches use `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]` in post-fence prose (not inside collapsed `case` bodies); `cancel-pause-load` banner remains in `$SKILL_MD`.
+- **Add `$DESIGN_ROUTE_SH` pins:** `--session-id` argv + `SESSION_ID_ARG`; `export ISSUE_NUMBER="$ISSUE"` (or equivalent) before render; `render-final-summary.sh` with `--outcome` + `--mode`, `>/dev/null`, and `2>&4` (or quiet-aware redirect comment anchor); `larch_err`/`larch_errf` for moved banners; resume **`exit 1`** before `ROUTE=resume@` emit; `manual_gate_b` / `--manual-requested` jq guard.
+- Keep unchanged: FINDING_2 capture/result-env pins, FINDING_3 exit-2 prose, FINDING_9 generic abort prose, FINDING_5 cancel-pause-load, Check 24 ordering, env-before-rename ordering.
+
+### UPDATED: `scripts/test-step0b-router-flag-recovery.sh`
+- Pass `--session-id` in `design-route.sh` fixtures; assert thinned fence shape + driver-owned banners; router-flag jq-merge coverage unchanged in `design-init-runparams.sh`.
+
+## Edge cases
+- **SESSION_ID clobber (FINDING_1):** argv binds `SESSION_ID_ARG` only; pause-load sets module `SESSION_ID` for resume KVs; cancel renders export `SESSION_ID="$SESSION_ID_ARG"`.
+- **render stdout pollution:** redirect stdout only; KV stream stays clean.
+- **render non-zero under set -e:** `set +e` / `|| true` before `emit_route_result`.
+- **Empty final-summary.md:** orchestrator `[ -s … ]` gate; operator still sees driver `larch_err` reject banner.
+- **Empty SESSION_ID_ARG:** `render-final-summary.sh` falls back to RUN_ID=`unknown` (unchanged degradation).
+- **Resume env-refresh failure:** driver `exit 1`, no `ROUTE=resume@*`; orchestrator generic `_route_rc` abort.
+- **manual_gate_b missing run-params.json (FINDING_2):** treat as `false` (same as today's jq default).
+- **Quiet renderer stderr (FINDING_4):** require `2>&4` when `LARCH_QUIET_PID=$$`; document in `design-route.md`.
+- **Operator message order (FINDING_3):** reject banner in Bash stderr during driver; summary verbatim after fence — acceptance checks document the reorder vs inline SKILL.md.
+- **cancel-pause-load:** no driver summary; orchestrator banner only.
+- **Brainstorm-prefix banner:** stays orchestrator-side.
+- **Stale docs:** grep `docs/`, `README.md`, `SECURITY.md` for inline Step 0b cancel/resume rendering references.
+
+## Failure modes
+- **KV stream pollution:** mis-parse `ROUTE` or extra keys. Signal: harness clean result-env assertion; manual cancel dry-run shows single summary emit (orchestrator) not duplicated in `_route_out`. Mitigation: `>/dev/null` on render stdout; allowlisted KV emit only.
+- **Lost GitHub upsert:** switching to `--pre-publish-only` drops comment upsert. Mitigation: keep `--post-publish-only`, redirect stdout only.
+- **Lost renderer diagnostics:** render stderr swallowed by quiet log. Mitigation: `2>&4` under quiet; pin in `$DESIGN_ROUTE_SH`.
+- **Wrong session/issue in summary:** missing exports before render. Mitigation: explicit `export ISSUE_NUMBER` / `SESSION_ID="$SESSION_ID_ARG"`; pin exports in structure test.
+- **Resume without manual flag:** omitted jq guard restores wrong Gate B mode on resume. Mitigation: mirror SKILL.md jq block; pin `manual_gate_b` in `$DESIGN_ROUTE_SH`.
+- **Exit-code doc drift (FINDING_5):** resume failure documented as exit 0. Mitigation: `design-route.md` exit table row for resume refresh `exit 1`.
+- **Pin under-coverage:** relocated grep targets only; do not delete pins without driver replacement.
+
+## Testing strategy
+- `bash scripts/test-design-structure.sh` — reframed FINDING_2-family, Check 20/21/24/26, `--session-id` step0b invocation pin, post-fence verbatim-summary prose pin.
+- `bash scripts/test-step0b-router-flag-recovery.sh` — router-flag recovery + thinned fences + `--session-id`.
+- Driver smoke: `design-route.sh --help`, fixtures for proceed / cancel-title-filter / cancel-reentry-guard / resume (success + env-refresh failure); confirm KV stdout has no summary body; cancel `exit 0` + resume failure `exit 1`.
+- `make lint` (shellcheck, bash 3.2, agent-lint S030, markdownlint).
+- No new harness files (Round 1 Decision 4).
+
+## Diff size estimate
+
+diff_added: 310
+diff_deleted: 290
+diff_lines: 600
