@@ -1,0 +1,113 @@
+## Plan
+
+Issue #3534 — exclude raw plan-review reviewer outputs and related diagnostics from committed top-level `larch-logs/design/<run-id>/` artifacts. Accepted reviewer revisions add Claude `.meta`, collector failure logs, dropped-slot diagnostics, and the real generic Claude prompt sidecar to the publication boundary.
+
+### UPDATED: `scripts/design-log-publish.sh`
+- In `design_artifact_excluded()`, add one explicit plan-review exclusion branch after the existing suffix denylist and before `return 1`.
+- Comment: raw plan-review transcripts/diagnostics are excluded; `findings.md` / `voting-tally.md` are canonical; cite issue #3534.
+- Exclude transcript families:
+  - `cursor-plan-*-output*.txt`
+  - `codex-primary-plan-*-output*.txt`
+  - `claude-plan-*-output*.txt`
+- Exclude sidecars:
+  - Cursor: `.meta`, `.json`, `.cap-hit`, `.tsv`, `.launch-stderr`, `.stderr-tail`, `.stderr`
+  - Codex primary: `.meta`, `.cap-hit`, `.tsv`, `.launch-stderr`, `.stderr-tail`, `.stderr`
+  - Claude: `.meta`, `.tsv`, `.launch-stderr`, `.stderr-tail`, `.stderr`, `.jsonl`
+- Do not add codex `.json` or cursor/codex generic `.jsonl` arms; no current producers.
+- Add narrow exclusions for additional raw-output diagnostic surfaces:
+  - `claude-plan-*.prompt`, including `claude-plan-generic.prompt`
+  - plan-review collector failure logs (slot-derived basenames from `plan-review-loop.sh` manifest slots, not output-file basenames):
+    - `cursor-plan-*-collector.failure.log`
+    - `codex-plan-*-collector.failure.log`
+    - `dyn-cursor-plan-*-collector.failure.log`
+    - `dyn-codex-plan-*-collector.failure.log`
+    - `unknown-slot-collector.failure.log`
+  - aggregate collector stderr: exact `plan-review-collector.stderr` (`plan-review-loop.sh`)
+  - `plan-review-slots.ndjson.output-files.dropped-slots`
+- Keep existing exclusions for `.prompt`, `.sidecar`, `.diag`, `.done`, `.events.jsonl`, `.dirty-tree`, and `.untracked-baseline`.
+
+### UPDATED: `scripts/lib-design-round-artifacts.sh`
+- In `design_round_artifact_included()`, replace dead `codex-plan-*-output.txt` with `codex-primary-plan-*-output.txt`.
+- Leave existing cursor and dynamic exclusions intact.
+
+### UPDATED: `scripts/test-design-log-publish.sh`
+- Rename fictional fixtures from `codex-plan-...` to `codex-primary-plan-...`.
+- Add excluded top-level transcript fixtures:
+  - `codex-primary-plan-arch-output.txt`
+  - `cursor-plan-arch-output.txt`
+  - `claude-plan-generic-output.txt`
+  - `codex-primary-plan-dyn-foo-output.txt`
+  - `cursor-plan-dyn-foo-output.txt`
+  - phased `...-output-phase2.txt` / `...-output-phase3.txt`
+- Add excluded sidecar fixtures covering every new deny arm, including:
+  - `claude-plan-generic-output.txt.meta`
+  - full `.stderr` for all three families
+  - cursor `.json`
+  - Claude `.jsonl`
+  - `.launch-stderr`, `.stderr-tail`, `.tsv`, `.meta`, `.cap-hit` as applicable
+- Add excluded diagnostic fixtures:
+  - `claude-plan-generic.prompt`
+  - slot-derived collector failure logs pinned to real manifest slot names:
+    - `cursor-plan-arch-collector.failure.log`
+    - `codex-plan-arch-collector.failure.log`
+    - `dyn-cursor-plan-foo-collector.failure.log`
+    - `dyn-codex-plan-harness-fidelity-collector.failure.log`
+    - `unknown-slot-collector.failure.log`
+  - `plan-review-collector.stderr`
+  - `plan-review-slots.ndjson.output-files.dropped-slots`
+- Add all new basenames to the deny-list assertion loop.
+- Preserve existing assertions for unrelated included/stripped files such as `out.txt.meta`, `voter-output-1.json`, and `plain.json`.
+
+### UPDATED: `scripts/test-lib-design-round-artifacts.sh`
+- Replace `assert_excluded codex-plan-edge-output.txt` with `assert_excluded codex-primary-plan-edge-output.txt`.
+- Replace fictional `dyn-cursor-plan-foo-output.txt` with `cursor-plan-dyn-foo-output.txt`.
+- Add `assert_excluded codex-primary-plan-dyn-bar-output.txt`.
+- Keep `assert_excluded cursor-plan-arch-output.txt`.
+
+### UPDATED: `SECURITY.md`
+- Near the existing raw Codex `*.events.jsonl` publication-boundary paragraph, document that `design-log-publish.sh` excludes raw plan-review reviewer transcripts, producer-backed sidecars including full `.stderr` and `.meta`, generic Claude prompts, collector failure logs, and dropped-slot diagnostics from committed design logs.
+- Also exclude aggregate `plan-review-collector.stderr`. State that `findings.md` and `voting-tally.md` remain the canonical published artifacts.
+
+### UPDATED: `scripts/design-log-publish.md`
+- Update the `design_artifact_excluded` deny-list documentation with the transcript families and sidecar suffixes.
+- Include Claude `.meta`, `claude-plan-*.prompt`, slot-derived `*-collector.failure.log` patterns (`cursor-plan-*`, `codex-plan-*`, `dyn-cursor-plan-*`, `dyn-codex-plan-*`, `unknown-slot`), exact `plan-review-collector.stderr`, and `plan-review-slots.ndjson.output-files.dropped-slots`.
+- Adjust prose so the gate is no longer described as excluding only sidecars/operational scratch; it now also excludes raw plan-review transcript surfaces.
+
+### UPDATED: `scripts/lib-design-round-artifacts.md`
+- Change `codex-plan-*-output.txt` to `codex-primary-plan-*-output.txt` in the documented exclude patterns.
+
+## Approach
+
+- Keep the top-level publish gate as a denylist; do not rewrite to an allowlist.
+- Anchor exclusions on real producer names and real diagnostic file names.
+- Distinguish manifest slot names (`codex-plan-*`, `dyn-codex-plan-*`, …) from output basenames (`codex-primary-plan-*-output.txt`); collector failure logs follow slot names.
+- Use `*-output*.txt` so phased waterfall outputs like `-output-phase2.txt` remain covered.
+- Keep implementation, tests, sibling docs, and `SECURITY.md` in sync.
+
+## Edge cases
+
+- Phased fallback transcripts are excluded by `*-output*.txt`.
+- `claude-plan-assessor-round-N.txt` does not match `claude-plan-*-output*.txt` and remains out of scope.
+- Vote outputs are not touched.
+- Cursor `.json` sidecars are excluded; codex `.json` is intentionally not added.
+- Existing committed run logs are forensic records and must not be edited.
+- Collector failure logs use slot slugs (`codex-plan-arch-collector.failure.log`), not output basenames (`codex-primary-plan-arch-output.txt`); do not deny `codex-primary-plan-*-collector.failure.log` (no producer).
+- `plan-review-collector.stderr` can contain failed-agent stderr tails and launcher diagnostics.
+- Dropped-slot diagnostics and collector failure logs can contain transcript/stderr snippets, so they are excluded even though they are not transcript files themselves.
+
+## Failure modes
+
+- Over-broad glob excludes canonical artifacts. Mitigation: patterns are anchored to plan-review transcript/diagnostic names; tests keep canonical artifacts published.
+- Missed sidecar or aggregate stderr leaves raw output publishable. Mitigation: tests cover every new deny arm, including Claude `.meta`, full `.stderr`, slot-derived collector failures, `plan-review-collector.stderr`, dropped slots, and generic prompt.
+- Dead pattern reintroduced. Mitigation: use only names verified from producer scripts (`plan-review-loop.sh` slot slugs vs `dispatch-plan-review-panel.sh` output paths) and fixture them with real names.
+- Documentation drift. Mitigation: update `.sh`, sibling `.md`, tests, and `SECURITY.md` in the same change.
+
+## Testing strategy
+
+- `bash scripts/test-design-log-publish.sh`
+- `bash scripts/test-lib-design-round-artifacts.sh`
+- `bash scripts/relevant-checks.sh` or `make lint`
+
+diff_added: 158
+diff_deleted: 22
+diff_lines: 180

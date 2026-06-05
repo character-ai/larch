@@ -1,0 +1,6 @@
+cursor-plan-arch	cursor	collector-failure	STATUS=FAILED
+cursor-plan-innovation	cursor	collector-failure	STATUS=FAILED
+cursor-plan-requirements	cursor	collector-failure	STATUS=FAILED
+dyn-cursor-plan-glob-safety	cursor	collector-failure	STATUS=FAILED
+dyn-cursor-plan-fixture-parity	cursor	collector-failure	STATUS=FAILED
+dyn-cursor-plan-producer-name-audit	cursor	collector-failure	STATUS=FAILED

@@ -1,0 +1,139 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+## Implementation Plan
+
+Issue #3534 — design-log publish commits raw plan-review reviewer transcripts at the top level of `larch-logs/design/<run-id>/`. Round 1 decisions: EXCLUDE the transcripts; scope to plan-review outputs only; fix the dead lib pattern and fictional test fixtures.
+
+Root cause: `design_artifact_excluded()` in `scripts/design-log-publish.sh` is a deny-only denylist. The plan-review panel writes reviewer transcripts to the top level of `$DESIGN_TMPDIR` (`scripts/.../dispatch-plan-review-panel.sh` → `$DESIGN_TMPDIR/codex-primary-plan-<arch>-output.txt`, `cursor-plan-<arch>-output.txt`, `cursor-plan-dyn-<slug>-output.txt`, `codex-primary-plan-dyn-<slug>-output.txt`, and the both-externals-down fallback `claude-plan-generic-output.txt`). None of these match the existing deny patterns, so they fall through to "not excluded" and get committed. The round-N gate (`design_round_artifact_included` in `scripts/lib-design-round-artifacts.sh`) and the implement-log gate (`round_artifact_included` in `scripts/larch-log.sh`) both treat `findings.md` / `voting-tally.md` as canonical and exclude raw reviewer transcripts; the top-level design gate must match.
+
+## Files to modify/create
+
+### UPDATED: `scripts/design-log-publish.sh`
+- In `design_artifact_excluded()`, add one `case` branch that excludes the raw plan-review reviewer transcripts and their not-yet-covered sidecars. Place it after the existing suffix-denylist `case` (before the final `return 1`).
+- New patterns (one alternation list, mirroring `round_artifact_included` in `scripts/larch-log.sh`):
+  - Transcripts: `cursor-plan-*-output*.txt`, `codex-primary-plan-*-output*.txt`, `claude-plan-*-output*.txt`.
+  - Sidecars for cursor-plan-* and codex-primary-plan-* (producer-backed via `launch-review.sh` / `validate-research-output.sh --write-structured`): `.meta`, `.json`, `.cap-hit`, `.tsv`, `.launch-stderr`, `.stderr-tail` (for example `codex-primary-plan-*-output*.txt.tsv`, `cursor-plan-*-output*.txt.launch-stderr`). Do **not** add cursor/codex `.jsonl` arms — structured validation writes `.tsv`; Codex token events use `.events.jsonl`, already excluded by existing globs.
+  - Sidecars for claude-plan-* (both-externals-down generic path via `dispatch-plan-review-panel.sh` → `launch-claude-review.sh` + `validate-research-output.sh --write-structured`): `.tsv`, `.launch-stderr`, `.stderr-tail`, `.jsonl` (collector structured sidecar for unknown-format paths). These are **not** covered by the existing suffix denylist — `design_artifact_excluded` has no `*.launch-stderr` arm today.
+- Use `*-output*.txt` (not `*-output.txt`) so phased waterfall fallbacks (`...-output-phase2.txt` / `-phase3.txt`, produced by `output_for_phase` in `scripts/dispatch-with-waterfall.sh`) and dynamic slugs are both covered — matching the round-N gate, which already excludes those via its catch-all.
+- Add a short comment above the branch: raw transcripts excluded; `findings.md` / `voting-tally.md` are canonical; cite issue #3534.
+- The remaining transcript sidecars (`.prompt`, `.sidecar`, `.diag`, `.done`, `.events.jsonl`, `.dirty-tree`, `.untracked-baseline`) are already excluded by the existing globs; do not duplicate them.
+
+### UPDATED: `scripts/lib-design-round-artifacts.sh`
+- In `design_round_artifact_included()`, change the dead pattern `codex-plan-*-output.txt` to `codex-primary-plan-*-output.txt` (the real producer name). Leave `cursor-plan-*-output.txt` and `dyn-*-output.txt` unchanged — out of this issue's stated scope.
+- Observable behavior is unchanged for real producers (`codex-primary-plan-*` was already excluded via the catch-all); this removes dead code and makes the explicit exclusion match reality.
+
+### UPDATED: `scripts/test-design-log-publish.sh`
+- Rename the fictional sidecar-fixture bases `codex-plan-arch-output.txt*` / `codex-plan-arch-output-phase2.txt.prompt` to `codex-primary-plan-arch-output.txt*` / `codex-primary-plan-arch-output-phase2.txt.prompt` (both the fixture-creation block and the suffix deny-list assertion loop). Keep the existing real `cursor-plan-arch-output.txt.diag`.
+- Add new top-level fixtures that must be EXCLUDED by the new patterns: `codex-primary-plan-arch-output.txt`, `cursor-plan-arch-output.txt`, `claude-plan-generic-output.txt`, `codex-primary-plan-dyn-foo-output.txt`, `cursor-plan-dyn-foo-output.txt`, `codex-primary-plan-arch-output-phase2.txt`, `cursor-plan-arch-output-phase2.txt`, plus `codex-primary-plan-arch-output.txt.meta`, `cursor-plan-arch-output.txt.json`, `codex-primary-plan-arch-output.txt.cap-hit`, `codex-primary-plan-arch-output.txt.tsv`, `cursor-plan-arch-output.txt.tsv`, `cursor-plan-arch-output.txt.launch-stderr`, `claude-plan-generic-output.txt.tsv`, `claude-plan-generic-output.txt.launch-stderr`, `claude-plan-generic-output.txt.stderr-tail`. (Use `cursor-plan-arch-output.txt.json`, not `codex-primary-plan-arch-output.txt.json` — Cursor emits `.json` sidecars for plan slots; Codex does not.)
+- Add those basenames to the deny-list assertion loop so each is asserted absent from the published top level.
+- Do not disturb the existing `out.txt.meta`, `voter-output-1.json`, or `plain.json` assertions; the new prefixes do not collide with them.
+
+### UPDATED: `scripts/test-lib-design-round-artifacts.sh`
+- Replace fictional `assert_excluded codex-plan-edge-output.txt` with `assert_excluded codex-primary-plan-edge-output.txt` (pins the renamed pattern).
+- Replace fictional `assert_excluded dyn-cursor-plan-foo-output.txt` with `assert_excluded cursor-plan-dyn-foo-output.txt` (real dynamic name; matched by the existing `cursor-plan-*-output.txt`).
+- Add `assert_excluded codex-primary-plan-dyn-bar-output.txt` for real dynamic-codex coverage.
+- Keep the existing real `assert_excluded cursor-plan-arch-output.txt`.
+
+### UPDATED: `scripts/design-log-publish.md`
+- In the `design_artifact_excluded` deny-list description, add the plan-review reviewer transcripts (`cursor-plan-*-output*.txt`, `codex-primary-plan-*-output*.txt`, `claude-plan-*-output*.txt`) and their producer-backed sidecars: cursor-plan-* / codex-primary-plan-* — `.meta`, `.json`, `.cap-hit`, `.tsv`, `.launch-stderr`, `.stderr-tail` (not `.jsonl`; Codex uses `.events.jsonl`, already denied); claude-plan-* — `.tsv`, `.launch-stderr`, `.stderr-tail`, `.jsonl`.
+- Adjust the "intentionally NOT included" prose: design now excludes its own plan-review reviewer transcripts (the analog of implement's `cursor-specialist-*` / `codex-specialist-*` exclusion), so the gate is no longer purely "sidecar/operational-scratch only".
+
+### UPDATED: `scripts/lib-design-round-artifacts.md`
+- In the "Exclude patterns" line, change `codex-plan-*-output.txt` to `codex-primary-plan-*-output.txt` to match the `.sh` fix.
+
+## Approach
+
+- Keep the top-level gate as a denylist; add explicit deny patterns rather than flipping to an allowlist (an allowlist rewrite would have to enumerate every top-level design artifact and carries high regression risk — out of scope for this fix).
+- Anchor every new pattern on a real producer name (verified against `dispatch-plan-review-panel.sh`, `launch-review.sh`, and `output_for_phase`) so the fix adds no new dead patterns — the same defect class this issue removes.
+- Make the lib and doc edits in the same change to satisfy the edit-in-sync rule in `scripts/lib-design-round-artifacts.md`.
+
+## Edge cases
+
+- **Phased fallback transcripts**: degraded runs produce `...-output-phase2.txt` / `-phase3.txt` at top level. `*-output*.txt` covers them; `*-output.txt` would not.
+- **Claude assessor outputs**: `claude-plan-assessor-round-N.txt` ends in `-round-N.txt`, not `-output.txt`, so `claude-plan-*-output*.txt` does NOT match it. Assessor transcripts stay out of scope (intended).
+- **Vote outputs**: `*-vote-output.txt` are included by the round-N policy and are NOT touched here.
+- **Claude generic sidecars**: the both-externals-down path writes `claude-plan-generic-output.txt.launch-stderr` (explicit redirect), `.tsv` (via `--write-structured`), and `.stderr-tail` on failure (`launch-claude-review.sh`); `.done` remains excluded by existing globs. These sidecars are **not** transcript-only and are **not** already denied.
+- **Cursor/codex `.jsonl`**: do not add cursor/codex `*-output*.txt.jsonl` deny arms — no current producer; `.events.jsonl` stays on the existing glob.
+- **Existing committed run logs**: occurrences of the old `codex-plan-*` slot token under `larch-logs/design/<run-id>/` are immutable forensic records; do not edit them.
+- **`.json` strip path**: `*-output*.json` is normally `.result`-stripped then committed. The new exclusion fires before staging, so plan-review reviewer `.json` sidecars are skipped entirely; unrelated `.json` files still strip-and-commit as before.
+
+## Failure modes
+
+- **Over-match drops a canonical artifact**: a too-broad glob could exclude a needed file. Mitigation: no canonical artifact begins with `cursor-plan-`, `codex-primary-plan-`, or `claude-plan-` (verified, including `findings-classification.tsv` which lacks these prefixes); patterns are anchored on `-output*.txt`. Earliest signal: `test-design-log-publish.sh` happy-path assertions for `plan.txt` / canonical files fail.
+- **New dead pattern**: a sidecar suffix with no producer would re-introduce the defect. Mitigation: cursor/codex suffixes are verified `launch-review.sh` / `validate-research-output.sh` producers (`.tsv` only — not `.jsonl`); claude-plan-* sidecars (`.tsv`, `.launch-stderr`, `.stderr-tail`, `.jsonl`) are verified against `dispatch-plan-review-panel.sh` and `collect-agent-results.sh`; `.done` / `.events.jsonl` remain on existing globs. Earliest signal: review of producer grep.
+- **Lib/doc drift**: editing `lib-design-round-artifacts.sh` without the sibling `.md` and test breaks the edit-in-sync rule. Mitigation: all four lib-side files are in this plan. Earliest signal: `make lint` / sibling-doc checks.
+
+## Testing strategy
+
+- `bash scripts/test-design-log-publish.sh` — extended with the raw-transcript exclusion fixtures and assertions (new behavior) plus the renamed real-name sidecar fixtures.
+- `bash scripts/test-lib-design-round-artifacts.sh` — real-name fixtures pin the renamed `codex-primary-plan-*` pattern and dynamic coverage.
+- `bash scripts/relevant-checks.sh` (or `make lint`) — sibling-doc / bash32 / bare-grep lints over the touched scripts.
+
+diff_added: 92
+diff_deleted: 18
+diff_lines: 110
+
+</plan>
+
+<findings>
+### FINDING_1: Full `.stderr` plan-review sidecars can still be published
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: The proposed design-log-publish denylist excludes some transcript and sidecar forms, but omits full `.stderr` sidecars for plan-review outputs. Claude generic review and phase3 Claude fallback can write `${output}.stderr`, which could still be staged into committed `larch-logs/design`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add .stderr arms for cursor-plan-*-output*.txt.stderr, codex-primary-plan-*-output*.txt.stderr, and claude-plan-*-output*.txt.stderr; add matching publish tests and docs entries
+
+
+### FINDING_2: SECURITY.md does not document the new publication boundary
+- **Reviewer(s)**: Codex-Edge, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan changes the security-relevant design-log publication boundary by keeping raw plan-review reviewer transcripts and sidecars out of committed logs, but does not update `SECURITY.md` as required by repository instructions.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Add a narrow SECURITY.md note near the raw events exclusion documenting that design-log-publish also excludes plan-review raw reviewer outputs and listed sidecars, with findings.md/voting-tally.md as canonical artifacts
+  - From Codex-Pragmatic: Add one concise SECURITY.md sentence near the raw event-stream note documenting that design-log-publish keeps raw plan-review reviewer transcripts and sidecars session-local while publishing canonical findings and voting artifacts only
+
+
+### FINDING_3: Publish tests do not cover all planned sidecar exclusions
+- **Reviewer(s)**: Codex-Requirements, Cursor-dyn-fixture-assertion-gap, Codex-dyn-fixture-assertion-gap
+- **Severity**: important
+- **Concern**: The planned `scripts/test-design-log-publish.sh` fixtures and assertions omit several sidecar names that the exclusion contract requires. An implementation could miss or typo denylist arms for Claude `.jsonl`, cursor/codex `.stderr-tail`, `.launch-stderr`, `.meta`, or `.cap-hit` files while still passing the proposed tests.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add deny-list fixtures and assertions for claude-plan-generic-output.txt.jsonl and at least one cursor/codex .stderr-tail phased output such as codex-primary-plan-arch-output-phase3.txt.stderr-tail
+  - From Cursor-dyn-fixture-assertion-gap: Add one setup+deny-loop pair per missing producer-backed suffix: `codex-primary-plan-arch-output.txt.launch-stderr`, `codex-primary-plan-arch-output.txt.stderr-tail`, `cursor-plan-arch-output.txt.meta`, `cursor-plan-arch-output.txt.cap-hit`, `cursor-plan-arch-output.txt.stderr-tail` (keep existing cursor `.json`/`.tsv`/`.launch-stderr` and codex `.meta`/`.cap-hit`/`.tsv` entries)
+  - From Codex-dyn-fixture-assertion-gap: Add claude-plan-generic-output.txt.jsonl to both the setup fixture block and the deny-list assertion loop
+
+
+### FINDING_4: Codex `.json` deny pattern is producer-dead
+- **Reviewer(s)**: Codex-dyn-producer-filename-parity, Codex-dyn-sidecar-suffix-scope
+- **Severity**: important
+- **Concern**: The proposed sidecar globs apply `.json` to both cursor and codex plan-review outputs, but only Cursor writes `${OUTPUT}.json`; Codex writes `.events.jsonl` plus other sidecars. A `codex-primary-plan-*-output*.txt.json` deny pattern would be dead and contradict the producer-backed minimum-change goal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-producer-filename-parity: Split the proposed sidecar globs so .json applies only to cursor-plan-*-output*.txt.json; keep codex-primary-plan-* to .meta .cap-hit .tsv .launch-stderr and .stderr-tail, with .events.jsonl left to the existing suffix glob
+  - From Codex-dyn-sidecar-suffix-scope: Split the sidecar list so .json applies only to cursor-plan-*-output*.txt.json; keep codex-primary-plan-* to .meta .cap-hit .tsv .launch-stderr and .stderr-tail.
+
+
+</findings>
+
+<feature>
+Design logs commit raw reviewer outputs (design_artifact_excluded gap)
+
+Design-log publish commits raw plan-review reviewer outputs at top level — align design_artifact_excluded() with the round-N exclusion policy.
+
+Context: surfaced during /design of #3504 (which fixed the analogous implement-log surface in scripts/larch-log.sh). During that design the review panel found the design-log portion of the fix was misframed, so it was deferred to this dedicated issue.
+
+Problem: scripts/design-log-publish.sh stages top-level $DESIGN_TMPDIR files through design_artifact_excluded() (defined in design-log-publish.sh), which does NOT exclude raw plan-review reviewer outputs. The real design plan-review outputs are named codex-primary-plan-<arch>-output.txt and codex-primary-plan-dyn-<slug>-output.txt (see dispatch-plan-review-panel.sh) plus cursor-plan-<arch>-output.txt and cursor-plan-dyn-<slug>-output.txt. Because design_artifact_excluded() only denies sidecars (*.prompt, *.events.jsonl, etc.) and a few metadata files, these raw reviewer transcripts fall through to "not excluded" and get committed to larch-logs/design/<run-id>/ at top level — contrary to the design-log policy that findings.md / voting-tally.md are canonical and raw reviewer outputs are excluded.
+
+Secondary defect: in scripts/lib-design-round-artifacts.sh, design_round_artifact_included() (the plan-review/round-N/ staging gate) has a DEAD explicit pattern codex-plan-*-output.txt — no producer emits that name; real outputs are codex-primary-plan-*-output.txt, currently excluded only via the catch-all *). And scripts/test-lib-design-round-artifacts.sh asserts exclusion of fictional names (codex-plan-edge-output.txt, dyn-cursor-plan-foo-output.txt) that never appear in production, masking the gap.
+
+Proposed fix (decide direction first): If design logs should EXCLUDE raw reviewer outputs (recommended, consistent with the round-N policy and the findings.md-canonical philosophy): add explicit exclusion patterns for cursor-plan-*-output.txt and codex-primary-plan-*-output.txt (static + dynamic) to design_artifact_excluded() in design-log-publish.sh; fix the dead codex-plan-* -> codex-primary-plan-* pattern in lib-design-round-artifacts.sh; pin both with real-name fixtures in scripts/test-design-log-publish.sh and scripts/test-lib-design-round-artifacts.sh (replace the fictional fixture names with codex-primary-plan-*-output.txt and cursor-plan-dyn-*-output.txt). If instead design logs should intentionally INCLUDE these for forensic parity with implement logs, reconcile the round-N catch-all exclusion and update docs/tests accordingly.
+
+Files likely touched: scripts/design-log-publish.sh, scripts/lib-design-round-artifacts.sh, scripts/test-design-log-publish.sh, scripts/test-lib-design-round-artifacts.sh, scripts/lib-design-round-artifacts.md, scripts/design-log-publish.md.
+
+</feature>
