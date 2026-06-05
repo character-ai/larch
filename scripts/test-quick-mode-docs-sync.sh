@@ -22,7 +22,7 @@
 #        - "5 rounds"                    (case-sensitive, grep -F)
 #        - "3-judge panel on every round" (case-INSENSITIVE, grep -iF)
 #        - "--panel hard"               (case-sensitive, grep -F)
-#        - "6 Cursor specialists"       (case-sensitive, grep -F)
+#        - "4 specialists per vendor (Cursor + Codex)"       (case-sensitive, grep -F)
 #
 #   2. NEGATIVE CHECKS (forbidden stale phrases) — the four public-doc
 #      targets (README.md, docs/review-agents.md, docs/workflow-lifecycle.md,
@@ -84,7 +84,7 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
   "3-judge panel on every round|insensitive"
-  "6 Cursor specialists|sensitive"
+  "4 specialists per vendor (Cursor + Codex)|sensitive"
 )
 
 # Stale phrases (forbidden in public docs; SKILL.md exempt).
@@ -95,6 +95,7 @@ readonly POS_MARKERS=(
 # argv on review-and-fix.sh is also removed; SKILL.md may reference it in
 # internal contexts only.
 readonly STALE_PHRASES=(
+  "6 Cursor specialists"
   "1 Claude Code Reviewer subagent, 1 round"
   "no external reviewers"
   "no externals, no voting"
@@ -260,6 +261,21 @@ run_default() {
   # Required cross-reference: Note A in docs/review-agents.md -> voting-protocol.md
   check_xref "$REPO_ROOT/$XREF_DOC" "$XREF_DOC (Note A xref)" "$XREF_PATH" "$REPO_ROOT" || true
 
+  if grep -Fq -- "4 specialists per vendor (Cursor + Codex)" "$REPO_ROOT/skills/review/diagram.svg"; then
+    echo "PASS: skills/review/diagram.svg — canonical review-panel phrase present"
+    PASS_COUNT=$((PASS_COUNT + 1))
+  else
+    echo "FAIL: skills/review/diagram.svg — missing canonical review-panel phrase" >&2
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+  fi
+  if grep -Fq -- "6 Cursor specialists" "$REPO_ROOT/skills/review/diagram.svg"; then
+    echo "FAIL: skills/review/diagram.svg — forbidden stale phrase present: '6 Cursor specialists'" >&2
+    FAIL_COUNT=$((FAIL_COUNT + 1))
+  else
+    echo "PASS: skills/review/diagram.svg — stale review-panel phrase absent"
+    PASS_COUNT=$((PASS_COUNT + 1))
+  fi
+
   # Cutover (#2485): /implement no longer accepts --design-only. The literal
   # is now BANNED from public docs to catch any prose that still advertises
   # the removed flag. SKILL.md is exempt because it may legitimately reference
@@ -304,7 +320,7 @@ This is a fixture describing /implement Step 5.
 Step 5 delegates to review-and-fix.sh --panel hard.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on every round (Claude opus + Codex + Cursor).
-The review loop uses 6 Cursor specialists in the Step 5 posture.
+The review loop uses 4 specialists per vendor (Cursor + Codex) in the Step 5 posture.
 EOF
 
   # Stale-phrase fixture: contains ALL positive markers PLUS exactly one stale
@@ -318,7 +334,7 @@ Stale-phrase fixture: contains every positive marker so only the stale phrase ca
 Step 5 delegates to review-and-fix.sh --panel hard.
 The review loop runs up to 5 rounds.
 The loop runs a 3-judge panel on every round (Claude opus + Codex + Cursor).
-The review loop uses 6 Cursor specialists in the Step 5 posture.
+The review loop uses 4 specialists per vendor (Cursor + Codex) in the Step 5 posture.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF
 

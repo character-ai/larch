@@ -17,9 +17,9 @@ paths:
 
 # Reviewer Archetype Generation
 
-**Adding/modifying any reviewer archetype** → edit
-`skills/shared/reviewer-templates.md` (canonical; update triggers live
-there), then regenerate the affected agent file(s):
+**Adding/modifying any generated reviewer archetype** → edit
+`skills/shared/reviewer-templates.md` (canonical for generated agents; update
+triggers live there), then regenerate the affected agent file(s):
 
 - `bash scripts/generate-code-reviewer-agent.sh` → `agents/code-reviewer.md`
 - `bash scripts/generate-reviewer-plan-fidelity-agent.sh` → `agents/reviewer-plan-fidelity.md`
@@ -27,3 +27,11 @@ there), then regenerate the affected agent file(s):
 - `bash scripts/generate-reviewer-security-structure-tests-agent.sh` → `agents/reviewer-security-structure-tests.md`
 
 CI's `agent-sync` job runs `scripts/check-generators.sh` to enforce drift across all registered generators.
+
+Hand-maintained specialist variants (`agents/reviewer-edge-cases.md`,
+`agents/reviewer-testing.md`, and any `agents/reviewer-*.md` file carrying the
+"specialist variant, hand-maintained" header) are not regenerated from
+`skills/shared/reviewer-templates.md` or the four archetype generators. Fold or
+specialization edits go directly into those agent files, then run
+`scripts/generate-pre-rendered-reviewer-prompts.sh` so
+`agents/pre-rendered/` stays in sync.

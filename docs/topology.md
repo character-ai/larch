@@ -4,7 +4,7 @@
 
 This document is a consumer-doc projection of runtime authorities. The runtime authority listed for each row remains the source of truth; the projection exists so consumer docs can link to stable row anchors instead of repeating drift-prone counts.
 
-`/implement` Step 5 phrases pinned by `scripts/test-quick-mode-docs-sync.sh` (for example `5 rounds`, `--panel hard`, `3-judge panel on every round`, and `6 Cursor specialists`) are intentionally excluded from this projection. They remain owned by that harness's edit-in-sync rule.
+`/implement` Step 5 public phrases are pinned by `scripts/test-quick-mode-docs-sync.sh`; the review-panel shape is also projected here from `skills/shared/topology.tsv` so the topology row and public-doc harness stay aligned.
 
 | Key | Value | Composition | Runtime Authority |
 |---|---:|---|---|
@@ -29,4 +29,4 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="implement.conflict_review.rounds_max"></a>`implement.conflict_review.rounds_max` | 2 total | resolution-review rounds | `skills/implement/references/conflict-resolution.md` |
 | <a id="research.lanes"></a>`research.lanes` | four research lanes | architecture + edge cases + external comparisons + security | `skills/research/references/research-phase.md` |
 | <a id="research.validation_panel"></a>`research.validation_panel` | 3 reviewer lanes | Claude Code Reviewer subagent + Codex + Cursor | `skills/research/references/validation-phase.md` |
-| <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | 6 Cursor specialists | Unified hard review panel layout. SIMPLE/HARD differ only in Step 5 workflow-path classification and review-loop policy | `skills/review/scripts/dispatch-panel.sh` |
+| <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | 4 specialists per vendor | Cursor + Codex | `skills/review/scripts/dispatch-panel.sh` |

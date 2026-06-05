@@ -28,7 +28,7 @@ Registered in `scripts/generators.tsv` as the row `scripts/generate-topology-doc
 
 ## Out Of Scope
 
-`/implement` Step 5 phrases pinned by `scripts/test-quick-mode-docs-sync.sh` (`5 rounds`, `--panel hard`, `3-judge panel on every round`, `6 Cursor specialists`, and adjacent public-doc markers) are excluded from `skills/shared/topology.tsv`. They are owned by `scripts/test-quick-mode-docs-sync.sh` and its sibling contract.
+`/implement` Step 5 public phrases are pinned by `scripts/test-quick-mode-docs-sync.sh`; the review-panel shape row in `skills/shared/topology.tsv` projects the same layout, so neither surface should imply exclusive ownership.
 
 ## Edit In Sync
 

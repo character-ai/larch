@@ -27,7 +27,7 @@ Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mo
 | `5 rounds` | case-sensitive `grep -F` | Pins the base round-cap language shared with public docs. |
 | `3-judge panel on every round` | **case-insensitive** `grep -iF` | Pins the Codex-inclusive judge panel on every code-review round. |
 | `--panel hard` | case-sensitive `grep -F` | Pins the delegated `review-and-fix.sh` posture. |
-| `6 Cursor specialists` | case-sensitive `grep -F` | Pins the static Cursor specialist count in the panel. |
+| `4 specialists per vendor (Cursor + Codex)` | case-sensitive `grep -F` | Pins the static Cursor specialist count in the panel. |
 
 Together these markers encode the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the reviewer or judge composition could ship without the public docs being updated.
 
@@ -118,3 +118,5 @@ Whenever any of the following change, update them in the same PR:
 - All file paths are resolved relative to `REPO_ROOT`, computed via `dirname "${BASH_SOURCE[0]}"`, so the script can be invoked from any working directory.
 - `grep -Fq` is used for all fixed-string checks (portable between GNU and BSD).
 - `mktemp -d` + `trap ... EXIT` ensures self-test fixtures are cleaned up even on failure paths.
+
+- The default harness also checks `skills/review/diagram.svg` for the canonical phrase `4 specialists per vendor (Cursor + Codex)` and rejects the stale phrase `6 Cursor specialists` there.

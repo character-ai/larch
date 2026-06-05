@@ -368,11 +368,23 @@ assert_exit_code "--feature-file nonexistent" "2" bash "$RENDERER" --agent-file 
 # Check that the plan FILE CONTENT is absent (the reviewer body contains literal <implementation_plan> text in instructions).
 output_docsonly_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --diff-mode docs-only --plan-file "$PLAN_F" 2>/dev/null)
 assert_not_contains "--plan-file with diff-mode=docs-only: plan content not injected" "Implement the frobnitz widget" "$output_docsonly_plan"
+output_testonly_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --diff-mode test-only --plan-file "$PLAN_F" 2>/dev/null)
+assert_not_contains "--plan-file with diff-mode=test-only: non-testing plan content not injected" "Implement the frobnitz widget" "$output_testonly_plan"
+output_generated_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode diff --diff-mode generated-only --plan-file "$PLAN_F" 2>/dev/null)
+assert_not_contains "--plan-file with diff-mode=generated-only: non-testing plan content not injected" "Implement the frobnitz widget" "$output_generated_plan"
+output_testing_docsonly_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-testing.md" --mode diff --diff-mode docs-only --plan-file "$PLAN_F" 2>/dev/null)
+assert_contains "reviewer-testing diff-mode=docs-only: plan content injected" "Implement the frobnitz widget" "$output_testing_docsonly_plan"
+output_testing_testonly_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-testing.md" --mode diff --diff-mode test-only --plan-file "$PLAN_F" 2>/dev/null)
+assert_contains "reviewer-testing diff-mode=test-only: plan content injected" "Implement the frobnitz widget" "$output_testing_testonly_plan"
+output_testing_generated_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-testing.md" --mode diff --diff-mode generated-only --plan-file "$PLAN_F" 2>/dev/null)
+assert_contains "reviewer-testing diff-mode=generated-only: plan content injected" "Implement the frobnitz widget" "$output_testing_generated_plan"
 # Flags not embedded when mode=description (files pass validation, but content injection is diff-generic-only).
 SCOPE_F="$TMPDIR_PLANFILE/scope.txt"
 printf 'agents/reviewer-correctness.md\n' > "$SCOPE_F"
 output_desc_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode description --description-text "test" --scope-files "$SCOPE_F" --plan-file "$PLAN_F" 2>/dev/null)
 assert_not_contains "--plan-file in description mode: plan content not injected" "Implement the frobnitz widget" "$output_desc_plan"
+output_testing_desc_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-testing.md" --mode description --description-text "test" --scope-files "$SCOPE_F" --plan-file "$PLAN_F" 2>/dev/null)
+assert_contains "reviewer-testing description mode: plan content injected" "Implement the frobnitz widget" "$output_testing_desc_plan"
 rm -rf "$TMPDIR_PLANFILE"
 
 echo ""

@@ -52,7 +52,7 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 mkdir -p "$tmp"
-external="$tmp/codex-specialist-structure-output.txt"
+external="$tmp/codex-specialist-security-output.txt"
 claude="$tmp/claude-generic-output.txt"
 printf 'reviewer finding\n' > "$external"
 printf 'claude finding\n' > "$claude"
@@ -83,11 +83,12 @@ if [[ -n "${TEST_SCOUT_FAIL_REASON:-}" ]]; then
 fi
 printf 'DYNAMIC_SLOTS=%s\n' "${TEST_DYNAMIC_SLOTS:-0}"
 printf 'SCOUT_MANIFEST=%s/scout-round%s-manifest.json\n' "$tmp" "$round_num"
-printf 'SLOT_COUNT=2\n'
+printf 'STATIC_SLOT_COUNT=%s\n' "${TEST_STATIC_SLOT_COUNT:-4}"
+printf 'SLOT_COUNT=%s\n' "$(( ${TEST_STATIC_SLOT_COUNT:-4} + ${TEST_DYNAMIC_SLOTS:-0} ))"
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\n' "$tmp"
 printf 'DISPATCH_OK=true\n'
 cat > "$tmp/panel-manifest.ndjson" <<EOF
-{"slot":"structure","tool":"cursor","output":"$external","agent":"agents/reviewer-structure.md"}
+{"slot":"security","tool":"codex","output":"$external","agent":"agents/reviewer-security.md"}
 {"slot":"generic","tool":"claude","output":"$claude","agent":"agents/reviewer-generic.md"}
 EOF
 STUB
@@ -107,9 +108,23 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 mkdir -p "$(dirname "$findings")"
+rtmp="${rtmp:-$(dirname "$findings")}"
 : > "$oos"
+cat > "$rtmp/collector-results.env" <<EOF
+REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-edge-cases-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-testing-output.txt
+STATUS=OK
+
+EOF
 if [[ -n "${TEST_REVIEW_CORE_AGG_ORDER:-}" ]]; then
-  rtmp="${rtmp:-$(dirname "$findings")}"
   printf 'collect\n' >> "$rtmp/invoke-order.log"
 fi
 if [[ "${TEST_FINDINGS:-0}" -eq 0 ]]; then
@@ -241,7 +256,7 @@ STUB
 set -euo pipefail
 # Test stub: emit the threshold result from TEST_THRESHOLD_OK (default true).
 ok="${TEST_THRESHOLD_OK:-true}"
-printf 'INTENDED_SLOTS=12\nSUCCEEDED_SLOTS=12\nFAILED_SLOTS=0\nCOUNTED_SLOTS=12\nTHRESHOLD_OK=%s\nTHRESHOLD_REASON=\nNOT_SUBSTANTIVE_SLOTS=%s\n' "$ok" "${TEST_NOT_SUBSTANTIVE_SLOTS:-0}"
+printf 'INTENDED_SLOTS=12\nSUCCEEDED_SLOTS=12\nFAILED_SLOTS=0\nCOUNTED_SLOTS=4\nTHRESHOLD_OK=%s\nTHRESHOLD_REASON=\nNOT_SUBSTANTIVE_SLOTS=%s\n' "$ok" "${TEST_NOT_SUBSTANTIVE_SLOTS:-0}"
 STUB
     cat > "$TMP/dispatch-voters.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -455,14 +470,14 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/zero/findings-classifica
     echo "FAIL: zero-findings round map missing round-1 binding" >&2
     exit 1
 }
-jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "na" and .panel.static_slot_count == 0 and .panel.dynamic_slot_count == 0 and .panel.total_slot_count == 0' \
+jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "na" and .panel.static_slot_count == 4 and .panel.dynamic_slot_count == 0 and .panel.total_slot_count == 4' \
     "$TMP/zero/review-summary.json" >/dev/null || { echo "FAIL: zero-findings review-summary.json missing panel fields" >&2; cat "$TMP/zero/review-summary.json" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=3 run_core "$TMP/zero-scout")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 assert_contains "$out" 'SCOUT_STATUS=ok'
 assert_contains "$out" 'DYNAMIC_SLOTS=3'
-jq -e '.panel.scout_status == "ok" and .panel.dynamic_slot_count == 3 and .panel.total_slot_count == 3' \
+jq -e '.panel.scout_status == "ok" and .panel.dynamic_slot_count == 3 and .panel.total_slot_count == 7' \
     "$TMP/zero-scout/review-summary.json" >/dev/null || { echo "FAIL: zero-scout review-summary.json missing dynamic panel fields" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 TEST_SCOUT_STATUS=parse-failed TEST_SCOUT_FAIL_REASON=json_parse run_core "$TMP/zero-scout-parse-failed")
@@ -550,7 +565,7 @@ fi
 assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
 assert_contains "$out" 'SCOUT_STATUS=ok'
 assert_contains "$out" 'DYNAMIC_SLOTS=2'
-jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "ok" and .panel.dynamic_slot_count == 2 and .panel.total_slot_count == 2' \
+jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "ok" and .panel.dynamic_slot_count == 2 and .panel.total_slot_count == 6' \
     "$TMP/panel-failed/review-summary.json" >/dev/null || { echo "FAIL: panel-failed review-summary.json missing panel telemetry" >&2; exit 1; }
 
 mkdir -p "$TMP/agg-exhaust-core"
@@ -617,7 +632,7 @@ grep -Fq 'RECOVERY_TAKEN=true' "$TMP/dirty/review-dirty-tree-summary.env"
 
 out=$(TEST_FINDINGS=0 TEST_DIRTY_STATUS=unknown TEST_CHECKPOINT_STATUS=unknown run_core "$TMP/unknown")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
-grep -Fq 'LAUNCHERS_DIRTY=codex-specialist-structure-output.txt' "$TMP/unknown/review-dirty-tree-summary.env"
+grep -Fq 'LAUNCHERS_DIRTY=codex-specialist-security-output.txt' "$TMP/unknown/review-dirty-tree-summary.env"
 
 issues_parent="$TMP/issues-parent"
 mkdir -p "$issues_parent"
