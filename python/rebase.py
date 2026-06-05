@@ -361,6 +361,7 @@ def rebase_and_push(
                 _redact_outbound("fetch failed with transient network signature"),
                 result=fetch_result,
             )
+        _abort_rebase(runner, cwd=cwd)
         raise Stalled(_redact_outbound("fetch failed"))
 
     if git.is_ancestor(runner, base_target, "HEAD", cwd=cwd):

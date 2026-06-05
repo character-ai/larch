@@ -2017,7 +2017,8 @@ def test_postmerge_flush_only_when_pr_closed(
         lambda *_a, **_k: calls.append(True) or run_logs.RefreshSkip(skipped=False, reason=""),
     )
     result = ship.run_postmerge_phase(RecordingRunner(), ctx, cwd=str(tmp_path))
-    assert result.outcome is Outcome.OK
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "postmerge requires a closed merge PR"
     assert not calls
 
 

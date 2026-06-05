@@ -467,13 +467,11 @@ def _write_terminal_state(
     fix_attempts: int = 0,
     transient_retries: int = 0,
 ) -> None:
-    finalize.write_finalize_state(
-        ctx.with_(stall_tracking=result is Outcome.STALLED, stall_step=step),
-        Path(ctx.tmpdir) / "finalize-state.sh",
-    )
+    terminal_ctx = ctx.with_(stall_tracking=result is Outcome.STALLED, stall_step=step)
+    finalize.write_finalize_state(terminal_ctx, Path(ctx.tmpdir) / "finalize-state.sh")
     phase = "done" if result is Outcome.OK else "stalled"
     _write_ship_state(
-        ctx,
+        terminal_ctx,
         phase=phase,
         iteration=iteration,
         rebase_count=rebase_count,
@@ -587,6 +585,17 @@ def _write_ship_state(
         "RESUME_PHASE": resume_phase,
         "CALLER_KIND": caller_kind,
     })
+    if phase == "done":
+        fields.update({
+            "STALL_TRACKING": "false",
+            "STALL_STEP": "",
+            "BAIL_REASON": "",
+            "BAIL_FAILURE_DETAIL_LOG": "",
+            "EXIT_CODE": "0",
+        })
+    else:
+        fields["STALL_TRACKING"] = _state_bool(value=ctx.stall_tracking)
+        fields["STALL_STEP"] = ctx.stall_step
     if extra_fields:
         fields.update(extra_fields)
     for key, value in fields.items():
@@ -1044,7 +1053,7 @@ def run_postmerge_phase(
         if skip.skipped:
             _breadcrumb("warning", f"post-merge flush skipped: {skip.reason}")
     if post.outcome is not Outcome.OK:
-        _write_ship_state(state_ctx, phase=post.status or "postmerge")
+        _write_ship_state(state_ctx, phase="postmerge")
         return ShipResult(post.outcome, detail=post.detail or post.status)
     _write_ship_state(state_ctx, phase="done")
     return ShipResult(

@@ -522,7 +522,11 @@ def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
 
 
 def load_or_recover_manifest(ctx: RunContext) -> Manifest:
-    return load_or_recover_manifest_checked(ctx).manifest
+    recovery = load_or_recover_manifest_checked(ctx)
+    if not recovery.recovery_ok:
+        msg = "manifest recovery failed"
+        raise ShipError(msg)
+    return recovery.manifest
 
 
 def _write_manifest(ctx: RunContext, manifest: Manifest) -> None:

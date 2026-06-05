@@ -907,13 +907,13 @@ def stage_and_push(
         try:
             fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
         except AssertionError:
-            fetch = CommandResult(("git", "fetch", base_remote, base_ref, "--quiet"), 0, "", "", 0.01)
+            return False, head, delta_paths, False, ci_fix_rebase_pending
         if fetch.returncode != 0:
             return False, head, delta_paths, False, ci_fix_rebase_pending
         try:
             behind = runner.run(["git", "rev-list", "--count", f"HEAD..{base_remote}/{base_ref}"], cwd=cwd)
         except AssertionError:
-            behind = CommandResult(("git", "rev-list", "--count"), 0, "0\n", "", 0.01)
+            return False, head, delta_paths, False, ci_fix_rebase_pending
         try:
             behind_count = int((behind.stdout or "0").strip())
         except ValueError:
@@ -941,6 +941,9 @@ def stage_and_push(
                     _ = git.rebase(runner, "--abort", cwd=cwd)
                     return False, head, delta_paths, False, False
     if did_rebase or ci_fix_rebase_pending:
+        if ci_fix_rebase_pending and not (classified and classified.fixable):
+            _warn_stderr("ship-pr: pending CI-fix rebase lacks local verification targets; preserving pending retry")
+            return False, head, delta_paths, did_rebase, True
         if (did_rebase or ci_fix_rebase_pending) and classified and classified.fixable:
             failed_verify = [
                 _job_token(job.name, job.shard)
@@ -954,16 +957,15 @@ def stage_and_push(
                 skip = run_logs.flush_logs_pre(runner, ctx.with_(state_file=None), cwd=cwd)
                 if skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
                     _warn_stderr("ship-pr: run-log refresh skipped before force-push: manifest recovery failed")
-        _ = git.fetch(runner, "origin", branch, cwd=cwd)
-        expected_remote_oid = git.try_rev_parse(runner, f"origin/{branch}", cwd=cwd)
-        if not expected_remote_oid:
-            remote = runner.run(
-                ["git", "ls-remote", "--exit-code", "--heads", "origin", branch],
-                cwd=cwd,
-            )
-            if remote.returncode == 0:
-                fields = remote.stdout.split()
-                expected_remote_oid = fields[0] if fields else ""
+                    return False, head, delta_paths, did_rebase, True
+        remote = runner.run(
+            ["git", "ls-remote", "--exit-code", "--heads", "origin", branch],
+            cwd=cwd,
+        )
+        expected_remote_oid = ""
+        if remote.returncode == 0:
+            fields = remote.stdout.split()
+            expected_remote_oid = fields[0] if fields else ""
         if not expected_remote_oid:
             _warn_stderr("ship-pr: remote branch OID unavailable after CI-fix rebase; preserving pending retry")
             return False, head, delta_paths, did_rebase, did_rebase or ci_fix_rebase_pending

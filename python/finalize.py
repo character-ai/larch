@@ -130,6 +130,17 @@ def _postbump_checkpoint_status(ctx: RunContext) -> str:
     return "ok"
 
 
+def _remote_head_oid(runner: Runner, remote: str, branch: str, *, cwd: str | None) -> str:
+    remote_result = runner.run(
+        ["git", "ls-remote", "--exit-code", "--heads", remote, branch],
+        cwd=cwd,
+    )
+    if remote_result.returncode != 0:
+        return ""
+    fields = remote_result.stdout.split()
+    return fields[0] if fields else ""
+
+
 def _retry_fetch(runner: Runner, remote: str, ref: str, *, cwd: str | None) -> bool:
     def attempt() -> tuple[CommandResult, int, str]:
         result = git.fetch(runner, remote, ref, cwd=cwd)
@@ -295,15 +306,9 @@ def postbump(
                 force_push_status="failed",
                 log_write_status="skipped",
             )
-        remote_tip = git.try_rev_parse(runner, f"origin/{branch}", cwd=cwd)
+        remote_tip = _remote_head_oid(runner, "origin", branch, cwd=cwd)
         if not remote_tip:
-            remote = runner.run(
-                ["git", "ls-remote", "--exit-code", "--heads", "origin", branch],
-                cwd=cwd,
-            )
-            if remote.returncode == 0:
-                fields = remote.stdout.split()
-                remote_tip = fields[0] if fields else ""
+            remote_tip = git.try_rev_parse(runner, f"origin/{branch}", cwd=cwd)
         if not remote_tip:
             return FinalizeResult(
                 Outcome.STALLED,
@@ -336,8 +341,23 @@ def postbump(
             force_push_status="failed",
             log_write_status="skipped",
         )
-    except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
+    except TransientNetworkError as exc:
         return _result_from_error(exc, status="rebase-failed")
+    except NeedsUserInput as exc:
+        return _result_from_error(exc, status="needs-user-input")
+    except Stalled as exc:
+        detail = str(exc).lower()
+        if "force" in detail or "push" in detail:
+            status = "push-failed"
+        elif "remote" in detail:
+            status = "remote-check-failed"
+        else:
+            status = "rebase-failed"
+        return _result_from_error(exc, status=status)
+    except ShipError as exc:
+        detail = str(exc).lower()
+        status = "remote-check-failed" if "remote" in detail else "rebase-failed"
+        return _result_from_error(exc, status=status)
 
 
 def postmerge(
@@ -376,14 +396,19 @@ def postmerge(
     cleanup = _local_cleanup(runner, branch, cwd=cwd)
     cleanup_status = "success" if cleanup.cleanup_success else "partial"
 
-    expected_title = ctx.pr_title
+    expected_title = ctx.pr_title or ""
+    expected_with_number = expected_title
     if ctx.pr_number is not None and expected_title:
-        expected_title = f"{expected_title} (#{ctx.pr_number})"
+        expected_with_number = f"{expected_title} (#{ctx.pr_number})"
     actual = git.log_subject(runner, "HEAD", cwd=cwd)
     suffix = f"(#{ctx.pr_number})" if ctx.pr_number is not None else ""
     title_ok = bool(
         expected_title
-        and (actual.startswith(expected_title) or (suffix and actual.endswith(suffix)))
+        and (
+            actual in (expected_title, expected_with_number)
+            or actual.startswith(expected_with_number)
+            or (suffix and suffix in actual)
+        )
     )
     verify_status = "verified" if title_ok else "unexpected"
     return FinalizeResult(
@@ -414,7 +439,7 @@ def _rename_issue(
         return "failed"
     try:
         data = json.loads(result.stdout or "{}")
-        if str(data.get("state", "")).upper() != "OPEN":
+        if state == "stalled" and str(data.get("state", "")).upper() != "OPEN":
             return "skipped"
         current = str(data.get("title") or current)
     except json.JSONDecodeError:
@@ -586,6 +611,7 @@ def teardown(
 
     removed = False
     if tmpdir.exists() and _cleanup_target_ok(ctx, tmpdir, cwd=cwd):
+        _ = kill_session_background_processes(runner, ctx)
         shutil.rmtree(tmpdir, ignore_errors=True)
         removed = not tmpdir.exists()
     status = "cleaned" if removed else "cleanup-skipped"
@@ -651,6 +677,33 @@ def write_finalize_state_merged(path: str | Path, data: dict[str, str]) -> None:
         encoding="utf-8",
     )
     _ = tmp.replace(target)
+
+
+def kill_session_background_processes(runner: Runner, ctx: RunContext) -> bool:
+    tmpdir = ctx.tmpdir
+    if not tmpdir:
+        return False
+    current = runner.run(["sh", "-c", "printf '%s %s' $$ ${PPID:-}"])
+    skip = {pid for pid in current.stdout.split() if pid.isdigit()}
+    physical = ""
+    try:
+        physical = str(Path(tmpdir).resolve(strict=False))
+    except OSError:
+        physical = ""
+    script = (
+        "ps -A -o pid= -o args= | "
+        'awk -v needle="$1" -v physical="$2" '
+        "'index($0, needle)>0 || (physical != \"\" && physical != needle && index($0, physical)>0) {print $1}'"
+    )
+    result = runner.run(["sh", "-c", script, "sh", tmpdir, physical])
+    killed = False
+    for raw in result.stdout.splitlines():
+        pid = raw.strip()
+        if not pid or pid in skip:
+            continue
+        term = runner.run(["kill", "-TERM", pid])
+        killed = killed or term.returncode == 0
+    return killed
 
 
 def _cleanup_target_ok(ctx: RunContext, tmpdir: Path, *, cwd: str | None = None) -> bool:

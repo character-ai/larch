@@ -11,6 +11,14 @@ from pathlib import Path
 def test_finalize_bash_parity_collects_real_tests_when_bash_present() -> None:
     module = Path(__file__).with_name("test_finalize_bash_parity.py")
     if shutil.which("bash") is None:
+        result = subprocess.run(
+            [sys.executable, "-m", "pytest", "--collect-only", "-q", str(module)],
+            check=False,
+            text=True,
+            capture_output=True,
+        )
+        assert result.returncode == 0
+        assert "skipped" in (result.stdout + result.stderr).lower()
         return
     result = subprocess.run(
         [sys.executable, "-m", "pytest", "--collect-only", "-q", str(module)],
@@ -31,4 +39,6 @@ def test_finalize_bash_parity_collects_real_tests_when_bash_present() -> None:
     assert run.returncode == 0
     output = run.stdout + run.stderr
     assert " skipped" not in output
-    assert "7 passed" in output
+    passed = sum(1 for line in collected.splitlines() if line.startswith("test_"))
+    assert passed >= 7
+    assert f"{passed} passed" in output

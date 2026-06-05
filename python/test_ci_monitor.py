@@ -589,6 +589,8 @@ def _baseline_responses(head: str = "abc123") -> dict[tuple[str, ...], CommandRe
         ("git", "diff", "--name-only", "--cached"): _cr(("git", "diff"), stdout=""),
         ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout=f"{head}\n"),
         ("git", "symbolic-ref", "--quiet", "HEAD"): _cr(("git", "symbolic-ref"), 0),
+        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
     }
     out.update(_python_toolchain_stubs())
     return out
@@ -675,8 +677,11 @@ def test_stage_and_push_defer_rebase_uses_rebase_push_wrapper(tmp_path: Any) -> 
             "main",
         ): _cr((rebase_script,), 0),
         ("make", "py-lint"): _cr(("make", "py-lint"), 0),
+        ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
+            ("git", "ls-remote"),
+            stdout="remote\trefs/heads/feature\n",
+        ),
         ("git", "fetch", "origin", "feature", "--quiet"): _cr(("git", "fetch"), 0),
-        ("git", "rev-parse", "origin/feature"): _cr(("git", "rev-parse"), stdout="remote\n"),
         ("git", "status", "--porcelain", "--untracked-files=all"): _cr(("git", "status"), stdout=""),
         (
             "git",
@@ -750,12 +755,12 @@ def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: A
     responses = {
         ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
         ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
-        ("git", "fetch", "origin", "feature", "--quiet"): _cr(("git", "fetch"), 0),
-        ("git", "rev-parse", "origin/feature"): _cr(("git", "rev-parse"), rc=1),
+        ("make", "py-lint"): _cr(("make", "py-lint"), 0),
         ("git", "ls-remote", "--exit-code", "--heads", "origin", "feature"): _cr(
             ("git", "ls-remote"),
             stdout="remoteoid\trefs/heads/feature\n",
         ),
+        ("git", "fetch", "origin", "feature", "--quiet"): _cr(("git", "fetch"), 0),
         ("git", "status", "--porcelain", "--untracked-files=all"): _cr(("git", "status"), stdout=""),
         ("git", "push", "--force-with-lease=refs/heads/feature:remoteoid", "origin"): _cr(("git", "push"), 0),
     }
@@ -766,7 +771,9 @@ def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: A
         commit_label="pending-retry",
         delta_paths=(),
         ci_fix_rebase_pending=True,
-        classified=ci_monitor.ClassifiedJobs(0, (), (), ()),
+        classified=ci_monitor.classify_failed_jobs(
+            (FailedJob(name="python-lint", conclusion="failure"),),
+        ),
     )
     assert pushed is True
     assert pending is False
@@ -1705,6 +1712,8 @@ def test_evaluate_failure_verify_failed_then_pushed(tmp_path: Any) -> None:
         ("git", "diff", "--name-only", "--cached"): _cr(("git", "diff"), stdout=""),
         ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
         ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feat\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
         ("git", "push", "origin", "feat"): _cr(("git", "push"), 0),
         # attempt 1 uses codex (start_attempt=0), attempt 2 uses cursor (start_attempt=1)
         (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): _cr((commit_script,), 0),

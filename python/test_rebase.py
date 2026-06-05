@@ -596,7 +596,7 @@ def test_non_conflict_rebase_aborts_and_stalls(tmp_path: Path) -> None:
     assert ("git", "rebase", "--abort") in runner.calls
 
 
-def test_fetch_non_transient_stalls_without_abort(tmp_path: Path) -> None:
+def test_fetch_non_transient_stalls_and_aborts_active_rebase(tmp_path: Path) -> None:
     runner = ScriptRunner(
         [
             (("git", "symbolic-ref", "--short", "HEAD"), _ok(("git", "symbolic-ref", "--short", "HEAD"), "feat\n")),
@@ -615,7 +615,7 @@ def test_fetch_non_transient_stalls_without_abort(tmp_path: Path) -> None:
             tmpdir=str(tmp_path),
             cwd=str(tmp_path),
         )
-    assert ("git", "rebase", "--abort") not in runner.calls
+    assert ("git", "rebase", "--abort") in runner.calls
 
 
 def test_unmerged_diff_failure_stalls_in_resolve_conflicts() -> None:

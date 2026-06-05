@@ -17,6 +17,8 @@ from test_support import RecordingRunner
 
 IMPLEMENT_FINALIZE_SH = Path(__file__).resolve().parents[1] / "scripts" / "implement-finalize.sh"
 
+pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason="bash required for finalize parity")
+
 
 def test_finalize_bash_reference_script_present() -> None:
     assert shutil.which("bash") is not None
@@ -184,3 +186,10 @@ def test_postbump_branch_mismatch_status_matches_bash_subprocess(tmp_path: Path)
     assert bash.returncode == 0
     assert bash_kv["STATUS"] == python_result.status
     assert python_result.rebase_status == "skipped-resume"
+
+
+def test_postbump_unknown_legacy_checkpoint_is_cleared(tmp_path: Path) -> None:
+    checkpoint = tmp_path / ".postbump-phase"
+    _ = checkpoint.write_text("legacy-phase\n", encoding="utf-8")
+    assert finalize._postbump_checkpoint_status(_ctx(tmp_path)) == "ok"  # pyright: ignore[reportPrivateUsage]
+    assert not checkpoint.exists()

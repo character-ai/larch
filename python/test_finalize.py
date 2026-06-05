@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,10 +12,6 @@ import run_logs
 from errors import ShipError
 from proc import CommandResult
 from run_context import RunContext
-
-if TYPE_CHECKING:
-    import pytest
-
 
 from test_support import RecordingRunner
 
