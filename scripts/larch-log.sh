@@ -74,7 +74,7 @@ round_artifact_included() {
         # (findings.md is the canonical aggregate). Phased static Cursor/Codex
         # fallback outputs and their sidecars remain included via the broad
         # *-output-*.txt patterns below.
-        cursor-specialist-*-output.txt|cursor-specialist-*-output.txt.meta|cursor-specialist-*-output.txt.json|cursor-specialist-*-output.txt.cap-hit|codex-specialist-*-output.txt|codex-specialist-*-output.txt.meta|codex-specialist-*-output.txt.json|codex-specialist-*-output.txt.cap-hit|dyn-*-codex-output.txt|dyn-*-codex-output.txt.meta|dyn-*-codex-output.txt.json|dyn-*-codex-output.txt.cap-hit)
+        cursor-specialist-*-output.txt|cursor-specialist-*-output.txt.meta|cursor-specialist-*-output.txt.json|cursor-specialist-*-output.txt.cap-hit|codex-specialist-*-output.txt|codex-specialist-*-output.txt.meta|codex-specialist-*-output.txt.json|codex-specialist-*-output.txt.cap-hit)
             return 1
             ;;
         # Excluded vote prompts (the ballot is byte-identical across voters

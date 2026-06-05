@@ -137,12 +137,14 @@ synthesize_dynamic_slots() {
     local scout_manifest="$1"
     [[ -s "$scout_manifest" ]] || return 0
     mkdir -p "$REVIEW_TMPDIR/dynamic-archetypes"
-    local row name focus_area weight agent_file rendered_prompt output_file render_args
-    while IFS= read -r row || [[ -n "$row" ]]; do
-        [[ -n "$row" ]] || continue
-        name=$(printf '%s' "$row" | jq -r '.name')
-        focus_area=$(printf '%s' "$row" | jq -r '.focus_area')
-        weight=$(printf '%s' "$row" | jq -r '.weight')
+        local row name focus_area weight agent_file rendered_prompt output_file render_args rationale prompt_body
+        while IFS= read -r row || [[ -n "$row" ]]; do
+            [[ -n "$row" ]] || continue
+            name=$(printf '%s' "$row" | jq -r '.name')
+            focus_area=$(printf '%s' "$row" | jq -r '.focus_area')
+            weight=$(printf '%s' "$row" | jq -r '.weight')
+            rationale=$(printf '%s' "$row" | jq -r '.rationale')
+            prompt_body=$(printf '%s' "$row" | jq -r '.prompt_body')
         agent_file="$REVIEW_TMPDIR/dynamic-archetypes/reviewer-dyn-${name}.md"
         rendered_prompt="$REVIEW_TMPDIR/dynamic-archetypes/dyn-${name}-prompt.md"
         output_file="$REVIEW_TMPDIR/dyn-${name}-output.txt"
@@ -167,9 +169,9 @@ synthesize_dynamic_slots() {
             printf 'NO_ISSUES_FOUND\n\n'
             printf '<scout_notes>\n'
             printf 'rationale: |\n'
-            printf '%s\n' "$(printf '%s' "$row" | jq -r '.rationale' | sed 's/^/  /')"
+            printf '%s\n' "$(escape_scout_field "$rationale" | sed 's/^/  /')"
             printf 'prompt_body: |\n'
-            printf '%s\n' "$(printf '%s' "$row" | jq -r '.prompt_body' | sed 's/^/  /')"
+            printf '%s\n' "$(escape_scout_field "$prompt_body" | sed 's/^/  /')"
             printf '</scout_notes>\n'
         } > "$agent_file"
         render_args=(--agent-file "$agent_file" --mode "$MODE")
@@ -230,6 +232,17 @@ write_empty_scout_manifest() {
     mv -f "$tmp" "$target"
 }
 
+redact_untrusted_stream() {
+    "$PLUGIN_ROOT/scripts/redact-secrets.sh" | sed -E \
+        -e 's/&/\&amp;/g' \
+        -e 's/</\&lt;/g' \
+        -e 's/>/\&gt;/g'
+}
+
+escape_scout_field() {
+    printf '%s' "$1" | redact_untrusted_stream
+}
+
 scout_manifest_is_valid() {
     local scout_manifest="$1" max="${2:-8}"
     [[ -s "$scout_manifest" ]] || return 1
@@ -242,8 +255,11 @@ scout_manifest_is_valid() {
            "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
         def has_unsafe_wrapper_tag:
           (ascii_downcase | contains("</scout_notes>"));
+        def has_unsafe_plan_delimiter:
+          test("<implementation_plan") or test("<feature_description");
         def has_unsafe_rationale:
           has_unsafe_wrapper_tag
+          or has_unsafe_plan_delimiter
           or test("\n")
           or test("(?m)^---$");
         def names:
@@ -269,6 +285,7 @@ scout_manifest_is_valid() {
             and ((.prompt_body | test("(?m)^---$")) | not)
             and ((.prompt_body | ascii_downcase | contains("</reviewer_")) | not)
             and ((.prompt_body | has_unsafe_wrapper_tag) | not)
+            and ((.prompt_body | has_unsafe_plan_delimiter) | not)
         )
     ' "$scout_manifest" >/dev/null 2>&1
 }

@@ -624,10 +624,10 @@ set +e
 out=$(TEST_FINDINGS=0 TEST_COLLECTOR_VARIANT=cap-hit-all run_core "$TMP/cap-hit-coverage" 2>&1)
 rc=$?
 set -e
-[[ "$rc" -eq 2 ]] || { echo "FAIL: cap_hit-only static panel should fail coverage gate" >&2; echo "$out" >&2; exit 1; }
-assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
-grep -Fq 'COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): security,correctness,edge-cases,testing' "$TMP/cap-hit-coverage/review-core-threshold.env" || {
-    echo "FAIL: coverage gate should not credit cap_hit" >&2
+[[ "$rc" -eq 0 ]] || { echo "FAIL: cap_hit static panel should pass coverage gate" >&2; echo "$out" >&2; exit 1; }
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+grep -Fq 'COVERAGE_GATE_REASON=' "$TMP/cap-hit-coverage/review-core-threshold.env" && {
+    echo "FAIL: coverage gate should credit cap_hit" >&2
     exit 1
 }
 

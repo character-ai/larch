@@ -28,8 +28,9 @@ Primary verbs:
   (`codex-specialist-*-output.txt`), including their unphased `.meta`, `.json`,
   and `.cap-hit` sidecars; phased static Cursor/Codex fallback outputs remain
   included. Dynamic Codex twins (`dyn-*-codex-output.txt`) and their unphased
-  `.meta`, `.json`, and `.cap-hit` sidecars are also excluded so committed logs
-  do not retain raw Codex reviewer transcripts outside the aggregate artifacts.
+  `.meta`, `.json`, and `.cap-hit` sidecars follow the same retention path as
+  dynamic Cursor outputs; only unphased static `codex-specialist-*-output.txt`
+  raw transcripts remain excluded.
   The allow-list includes scout artifacts (`scout-round*-status.env`,
   `scout-round*-manifest.json`, `scout-round*-manifest.json.raw`,
   `scout-archetype-yield.tsv`), dynamic-archetype files

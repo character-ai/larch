@@ -75,6 +75,13 @@ CMD_JSON=["codex","exec","dynamic argv"]
 OUTPUT_FILE=/tmp/source/dyn-api-contract-codex-output.txt
 EOF
 printf 'dynamic codex raw body\n' > "$source_dir/dyn-api-contract-codex-output.txt"
+printf 'dynamic cursor raw body\n' > "$source_dir/dyn-api-contract-output.txt"
+cat > "$source_dir/dyn-api-contract-output.txt.meta" <<'EOF'
+TOOL=cursor
+TIMEOUT=1200
+CMD_JSON=["cursor","agent","dynamic argv"]
+OUTPUT_FILE=/tmp/source/dyn-api-contract-output.txt
+EOF
 cat > "$source_dir/dyn-api-contract-codex-output.txt.json" <<'EOF'
 {"result":"dynamic raw codex payload","status":"ok"}
 EOF
@@ -116,9 +123,11 @@ round_dir="$log_root/implement/run123/round-1"
 assert_file "$round_dir/findings.md" "findings"
 assert_not_file "$round_dir/codex-specialist-security-output.txt.meta" "static codex meta sidecar excluded"
 assert_file "$round_dir/cursor-specialist-security-output-phase2.txt.meta" "phase sidecar"
-assert_not_file "$round_dir/dyn-api-contract-codex-output.txt" "dynamic codex raw body excluded"
-assert_not_file "$round_dir/dyn-api-contract-codex-output.txt.meta" "dynamic codex meta sidecar excluded"
-assert_not_file "$round_dir/dyn-api-contract-codex-output.txt.json" "dynamic codex json sidecar excluded"
+assert_file "$round_dir/dyn-api-contract-codex-output.txt" "dynamic codex raw body included"
+assert_file "$round_dir/dyn-api-contract-codex-output.txt.meta" "dynamic codex meta sidecar included"
+assert_file "$round_dir/dyn-api-contract-codex-output.txt.json" "dynamic codex json sidecar included"
+assert_file "$round_dir/dyn-api-contract-output.txt" "dynamic cursor raw body included"
+assert_file "$round_dir/dyn-api-contract-output.txt.meta" "dynamic cursor meta sidecar included"
 assert_file "$round_dir/cursor-vote-output.txt.json" "cursor json sidecar"
 assert_file "$round_dir/codex-vote-output.txt.json" "codex json sidecar"
 assert_file "$round_dir/review-round-summary.md" "summary"

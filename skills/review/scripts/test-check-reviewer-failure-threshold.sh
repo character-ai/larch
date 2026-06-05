@@ -140,6 +140,7 @@ phase_success="$WORKDIR/cursor-specialist-correctness-output-phase3.txt"
 phase_fail="$WORKDIR/codex-specialist-testing-output-phase2.txt"
 printf 'substantive fallback finding\n' > "$phase_success"
 : > "$phase_fail"
+printf 'substantive security finding\n' > "$WORKDIR/cursor-specialist-security-output.txt"
 collector="$WORKDIR/output-files.env"
 emit_records "$collector" OK
 out="$WORKDIR/output-files.out"
@@ -170,6 +171,24 @@ drops_counted="$WORKDIR/drops-counted.tsv"
 printf 'security\tcursor\tformat-gate-miss\tpreamble\n' > "$drops_counted"
 out=$(run_case counted_drop hard --intended-slots 4 --dropped-slots-file "$drops_counted" OK 2>&1)
 assert_eq "dropped slot already counted from collector is skipped" "$(printf '%s\n' "$out" | kv DROPPED_STATIC_SLOTS)" "0"
+
+echo "# collector success downgrades when output file is non-substantive"
+empty_ok="$WORKDIR/cursor-specialist-security-output.txt"
+: > "$empty_ok"
+collector_empty_ok="$WORKDIR/collector-empty-ok.env"
+emit_records "$collector_empty_ok" OK
+out_content=$("$TARGET" --collector-results-file "$collector_empty_ok" --panel hard --intended-slots 4 \
+    --reviewer-output-files "$empty_ok" \
+    2>&1)
+assert_eq "empty output downgrades collector OK" "$(printf '%s\n' "$out_content" | kv SUCCEEDED_SLOTS)" "0"
+assert_eq "empty output counts as failure" "$(printf '%s\n' "$out_content" | kv FAILED_SLOTS)" "1"
+
+echo "# unrecognized dropped tool does not inflate failures"
+drops_unknown="$WORKDIR/drops-unknown.tsv"
+printf 'security\tunknown-tool\tformat-gate-miss\tpreamble\n' > "$drops_unknown"
+out=$(run_case unknown_drop hard --intended-slots 4 --dropped-slots-file "$drops_unknown" OK OK OK 2>&1)
+assert_eq "unknown dropped tool ignored" "$(printf '%s\n' "$out" | kv DROPPED_STATIC_SLOTS)" "0"
+assert_eq "unknown dropped tool does not add failure" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "0"
 
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-check-reviewer-failure-threshold.sh\n'

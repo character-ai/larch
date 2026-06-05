@@ -444,8 +444,8 @@ static_archetype_coverage_ok() {
                 current_base=$(basename "${current_reviewer_file:-}")
                 normalized_base=$(normalize_reviewer_output_base "$current_base")
                 if slug=$(static_slug_for_reviewer_file "$current_base" 2>/dev/null); then
-                    [[ "$current_status" == "OK" ]] && printf '%s\n' "$slug" >> "$success_file"
-                    [[ "$current_status" != "OK" ]] && printf '%s\n' "$normalized_base" >> "$rejected_file"
+                    [[ "$current_status" == "OK" || "$current_status" == "cap_hit" ]] && printf '%s\n' "$slug" >> "$success_file"
+                    [[ "$current_status" != "OK" && "$current_status" != "cap_hit" ]] && printf '%s\n' "$normalized_base" >> "$rejected_file"
                 fi
             fi
             current_reviewer_file=""
@@ -461,8 +461,8 @@ static_archetype_coverage_ok() {
         current_base=$(basename "${current_reviewer_file:-}")
         normalized_base=$(normalize_reviewer_output_base "$current_base")
         if slug=$(static_slug_for_reviewer_file "$current_base" 2>/dev/null); then
-            [[ "$current_status" == "OK" ]] && printf '%s\n' "$slug" >> "$success_file"
-            [[ "$current_status" != "OK" ]] && printf '%s\n' "$normalized_base" >> "$rejected_file"
+            [[ "$current_status" == "OK" || "$current_status" == "cap_hit" ]] && printf '%s\n' "$slug" >> "$success_file"
+            [[ "$current_status" != "OK" && "$current_status" != "cap_hit" ]] && printf '%s\n' "$normalized_base" >> "$rejected_file"
         fi
     fi
     for static_output in "$@"; do

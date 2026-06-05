@@ -155,6 +155,11 @@ count_static_status_once() {
         [[ "$old_status" == "NOT_SUBSTANTIVE" ]] && NOT_SUBSTANTIVE_SLOTS=$((NOT_SUBSTANTIVE_SLOTS - 1))
         SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1))
         replace_counted_status "$base" "$status"
+    elif status_is_success "$old_status" && ! status_is_success "$status"; then
+        SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS - 1))
+        FAILED_SLOTS=$((FAILED_SLOTS + 1))
+        [[ "$status" == "NOT_SUBSTANTIVE" ]] && NOT_SUBSTANTIVE_SLOTS=$((NOT_SUBSTANTIVE_SLOTS + 1))
+        replace_counted_status "$base" "$status"
     fi
 }
 
@@ -215,13 +220,14 @@ if [[ -n "$DROPPED_SLOTS_FILE" && -s "$DROPPED_SLOTS_FILE" ]]; then
         case "$_dropped_tool" in
             codex|cursor) dropped_base="${_dropped_tool}-specialist-${dropped_slot}-output.txt" ;;
         esac
-        if [[ -n "$dropped_base" ]]; then
-            dropped_base=$(normalize_reviewer_output_base "$dropped_base")
-            if grep -Fxq "$dropped_base" "$COUNTED_BASES_FILE" 2>/dev/null; then
-                continue
-            fi
-            printf '%s\n' "$dropped_base" >> "$COUNTED_BASES_FILE"
+        if [[ -z "$dropped_base" ]]; then
+            continue
         fi
+        dropped_base=$(normalize_reviewer_output_base "$dropped_base")
+        if grep -Fxq "$dropped_base" "$COUNTED_BASES_FILE" 2>/dev/null; then
+            continue
+        fi
+        printf '%s\n' "$dropped_base" >> "$COUNTED_BASES_FILE"
         FAILED_SLOTS=$((FAILED_SLOTS + 1))
         DROPPED_STATIC_SLOTS=$((DROPPED_STATIC_SLOTS + 1))
     done < "$DROPPED_SLOTS_FILE"

@@ -538,8 +538,11 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
        "reviewer-security","reviewer-edge-cases","reviewer-plan-fidelity"];
     def has_unsafe_wrapper_tag:
       (ascii_downcase | contains("</scout_notes>"));
+    def has_unsafe_plan_delimiter:
+      test("<implementation_plan") or test("<feature_description");
     def has_unsafe_rationale:
       has_unsafe_wrapper_tag
+      or has_unsafe_plan_delimiter
       or test("\n")
       or test("(?m)^---$");
     reduce .archetypes[] as $a
@@ -565,7 +568,8 @@ if ! jq -c --argjson max "$MAX_ARCHETYPES" '
            .warns += ["empty prompt_body for \($name)"]
          elif (($a.prompt_body | test("(?m)^---$"))
                or ($a.prompt_body | ascii_downcase | contains("</reviewer_"))
-               or ($a.prompt_body | has_unsafe_wrapper_tag)) then
+               or ($a.prompt_body | has_unsafe_wrapper_tag)
+               or ($a.prompt_body | has_unsafe_plan_delimiter)) then
            .warns += ["unsafe prompt_body for \($name)"]
          else
            .seen[$name] = true
