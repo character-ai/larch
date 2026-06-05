@@ -13,6 +13,7 @@
 | `--intended-slots N` | non-negative int | no | Static slot denominator. Default is `4` for single-vendor/back-compat callers; both-vendor review panels pass `8`. |
 | `--launched-slots N` | non-negative int | no | When set, static slots in `[LAUNCHED_SLOTS, INTENDED_SLOTS)` are counted as `never-launched` failures unless dropped-slot accounting is already present. Dynamic scout slots are excluded. |
 | `--dropped-slots-file FILE` | path | no | TSV from `dispatch-with-waterfall.sh --no-fallback` (`slot<TAB>tool<TAB>reason<TAB>snippet`). Static dropped rows count as failures; `dyn-*` rows are excluded. |
+| `--reviewer-output-files FILE...` | paths | no | Additional reviewer transcript files to count when they are static Cursor/Codex specialist outputs not already present in the collector records. This lets callers credit substantive phase-2/phase-3 or otherwise recovered static outputs while still excluding dynamic `dyn-*` reviewers. |
 | `--round-num N` | positive int | no | Round label for diagnostics; default `1`. |
 
 ## Output
@@ -24,7 +25,7 @@ Emits to FD 3 (`emit_kv`):
 | `INTENDED_SLOTS` | caller-supplied static denominator (`4` default; commonly `8` when both vendors are available) |
 | `SUCCEEDED_SLOTS` | count of static-slot records with `STATUS=OK` or `STATUS=cap_hit` |
 | `FAILED_SLOTS` | count of static-slot records with `STATUS != OK && STATUS != cap_hit`, plus dropped static rows and applicable never-launched slots |
-| `COUNTED_SLOTS` | total static-slot record count from the collector file |
+| `COUNTED_SLOTS` | total static slots counted from collector records plus deduped static files supplied via `--reviewer-output-files` |
 | `NOT_SUBSTANTIVE_SLOTS` | count of static-slot records with `STATUS=NOT_SUBSTANTIVE` (subset of `FAILED_SLOTS`; useful for the degraded-panel banner) |
 | `DROPPED_STATIC_SLOTS` | dropped no-fallback static rows counted from `--dropped-slots-file` |
 | `THRESHOLD_OK` | `true` when failures ≤ 50% of intended panel size, else `false` |

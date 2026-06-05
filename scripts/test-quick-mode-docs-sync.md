@@ -1,6 +1,6 @@
 # test-quick-mode-docs-sync.sh
 
-Cross-validation harness with three check families: (1) positive anchors — required markers in `skills/implement/SKILL.md` Step 5 and the public user-facing documentation in `README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, and `docs/skills.md`; (2) negative checks — forbidden stale phrases in the public docs (closes #370; `docs/skills.md` target added per #1002); and (3) required cross-references — currently `docs/review-agents.md` → `skills/shared/voting-protocol.md` (closes #377). See the Target files and Required cross-references sections below for full coverage.
+Cross-validation harness with three check families: (1) positive anchors — the exact markers in `POS_MARKERS` are required in `skills/implement/SKILL.md` Step 5 and the public user-facing documentation in `README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, and `docs/skills.md`; (2) negative checks — forbidden stale phrases in the public docs (closes #370; `docs/skills.md` target added per #1002); and (3) required cross-references — currently `docs/review-agents.md` → `skills/shared/voting-protocol.md` (closes #377). See the Target files and Required cross-references sections below for full coverage.
 
 ## Purpose
 
@@ -24,12 +24,10 @@ Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mo
 
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
-| `5 rounds` | case-sensitive `grep -F` | Pins the base round-cap language shared with public docs. |
 | `3-judge panel on every round` | **case-insensitive** `grep -iF` | Pins the Codex-inclusive judge panel on every code-review round. |
-| `--panel hard` | case-sensitive `grep -F` | Pins the delegated `review-and-fix.sh` posture. |
 | `4 specialists per vendor (Cursor + Codex)` | case-sensitive `grep -F` | Pins the four-archetype static panel emitted once per available vendor. |
 
-Together these markers encode the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the reviewer or judge composition could ship without the public docs being updated.
+Together these markers pin the public Step 5 topology phrases that the harness currently enforces. They do not mechanically pin every related Step 5 phrase, such as the round cap or internal script argv posture; add those strings to `POS_MARKERS` first if they need the same cross-doc enforcement.
 
 ### Negative checks (forbidden in public docs only)
 
@@ -66,7 +64,7 @@ The check is implemented by `check_xref` (a dedicated function kept separate fro
 
 **Audit performed during #370 implementation**: `grep -F` against each stale phrase on the list returned no matches in `skills/implement/SKILL.md`. The exemption is currently factual (no stale phrases present) rather than merely defensive. If a future SKILL.md edit introduces one of these phrases in a historical context, the exemption still holds by design — SKILL.md's positive anchors alone assert that the current contract is stated somewhere in the file; the canonical source-of-truth assertion does not require the file to be free of historical references.
 
-If the canonical contract itself changes (e.g. the round cap changes again, the reviewer topology changes, or the rounds-1-3 topology changes), edit the `POS_MARKERS` array in `test-quick-mode-docs-sync.sh` and this sibling `.md` FIRST, then propagate to the public docs. The positive-anchor check enforces the new contract across all targets once the markers are updated.
+If the canonical contract itself changes (e.g. the reviewer topology changes, or round-cap wording should become a checked public anchor), edit the `POS_MARKERS` array in `test-quick-mode-docs-sync.sh` and this sibling `.md` FIRST, then propagate to the public docs. The positive-anchor check enforces only the listed markers across all targets once the markers are updated.
 
 ## `--self-test` mode
 

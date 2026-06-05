@@ -378,7 +378,7 @@ output_testing_testonly_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/
 assert_contains "reviewer-testing diff-mode=test-only: plan content injected" "Implement the frobnitz widget" "$output_testing_testonly_plan"
 output_testing_generated_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-testing.md" --mode diff --diff-mode generated-only --plan-file "$PLAN_F" 2>/dev/null)
 assert_contains "reviewer-testing diff-mode=generated-only: plan content injected" "Implement the frobnitz widget" "$output_testing_generated_plan"
-# Flags not embedded when mode=description (files pass validation, but content injection is diff-generic-only).
+# Flags not embedded when mode=description; reviewer-testing still receives plan context.
 SCOPE_F="$TMPDIR_PLANFILE/scope.txt"
 printf 'agents/reviewer-correctness.md\n' > "$SCOPE_F"
 output_desc_plan=$(bash "$RENDERER" --agent-file "$REPO_ROOT/agents/reviewer-correctness.md" --mode description --description-text "test" --scope-files "$SCOPE_F" --plan-file "$PLAN_F" 2>/dev/null)

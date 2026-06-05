@@ -18,11 +18,9 @@
 # The harness runs three check families:
 #
 #   1. POSITIVE ANCHORS (required markers) — each target file MUST contain
-#      all of the following strings:
-#        - "5 rounds"                    (case-sensitive, grep -F)
-#        - "3-judge panel on every round" (case-INSENSITIVE, grep -iF)
-#        - "--panel hard"               (case-sensitive, grep -F)
-#        - "4 specialists per vendor (Cursor + Codex)"       (case-sensitive, grep -F)
+#      the strings listed in POS_MARKERS below. These currently pin the
+#      public judge-panel and static-specialist topology phrases; they do not
+#      mechanically pin every Step 5 phrase in the surrounding docs.
 #
 #   2. NEGATIVE CHECKS (forbidden stale phrases) — the four public-doc
 #      targets (README.md, docs/review-agents.md, docs/workflow-lifecycle.md,

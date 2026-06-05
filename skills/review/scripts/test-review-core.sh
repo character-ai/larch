@@ -57,6 +57,16 @@ claude="$tmp/claude-generic-output.txt"
 printf 'reviewer finding\n' > "$external"
 printf 'claude finding\n' > "$claude"
 printf '0\n' > "$claude.done"
+external_outputs="$external"
+if [[ "${TEST_EXTERNAL_STATIC_OUTPUTS:-false}" == "true" ]]; then
+  external_outputs=""
+  for slot in security correctness edge-cases testing; do
+    file="$tmp/codex-specialist-${slot}-output.txt"
+    printf 'external static %s\n' "$slot" > "$file"
+    printf 'STATUS=clean\n' > "$file.dirty-tree"
+    external_outputs="${external_outputs}${external_outputs:+ }$file"
+  done
+fi
 if [[ "${TEST_CLAUDE_STATIC_OUTPUTS:-false}" == "true" ]]; then
   claude_outputs=""
   for slot in security correctness edge-cases testing; do
@@ -84,7 +94,7 @@ case "${TEST_DIRTY_STATUS:-clean}" in
     printf 'STATUS=clean\n' > "$claude.dirty-tree"
     ;;
 esac
-printf 'EXTERNAL_OUTPUT_FILES=%s\n' "$external"
+printf 'EXTERNAL_OUTPUT_FILES=%s\n' "$external_outputs"
 printf 'CLAUDE_OUTPUT_FILES=%s\n' "$claude_outputs"
 printf 'PANEL_MODE=%s\n' "${TEST_PANEL_MODE:-normal}"
 printf 'PANEL_SHAPE=%s\n' "$panel"
@@ -102,6 +112,12 @@ if [[ "${TEST_DROPPED_SLOTS:-false}" == "true" ]]; then
   printf 'security\tcodex\tformat-gate-miss\tpreamble\n' > "$dropped"
   printf 'STATUS=dirty\nTRACKED_PATHS_FILE=%s/tracked.z\n' "$tmp" > "$tmp/codex-specialist-security-output.txt.dirty-tree"
   printf 'dropped\0' > "$tmp/tracked.z"
+  printf 'DROPPED_SLOTS_FILE=%s\n' "$dropped"
+fi
+if [[ "${TEST_DROPPED_ARCHETYPE:-}" == "testing" ]]; then
+  dropped="$tmp/dropped-slots.tsv"
+  printf 'testing\tcodex\tformat-gate-miss\tpreamble\n' > "$dropped"
+  printf 'testing\tcursor\tformat-gate-miss\tpreamble\n' >> "$dropped"
   printf 'DROPPED_SLOTS_FILE=%s\n' "$dropped"
 fi
 printf 'DISPATCH_OK=true\n'
@@ -145,6 +161,35 @@ EOF
     ;;
   claude-fallback)
     : > "$rtmp/collector-results.env"
+    ;;
+  external-files-only)
+    cat > "$rtmp/collector-results.env" <<EOF
+REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
+STATUS=ERROR
+
+REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
+STATUS=ERROR
+
+REVIEWER_FILE=$rtmp/codex-specialist-edge-cases-output.txt
+STATUS=ERROR
+
+REVIEWER_FILE=$rtmp/codex-specialist-testing-output.txt
+STATUS=ERROR
+
+EOF
+    ;;
+  missing-testing-with-drops)
+    cat > "$rtmp/collector-results.env" <<EOF
+REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-edge-cases-output.txt
+STATUS=OK
+
+EOF
     ;;
   *)
     cat > "$rtmp/collector-results.env" <<EOF
@@ -542,6 +587,13 @@ out=$(TEST_FINDINGS=0 TEST_CLAUDE_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=cla
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
 grep -Fq 'cursor-specialist-security-output-phase3.txt' "$threshold_argv_log" || { echo "FAIL: threshold argv missing Claude fallback output files" >&2; exit 1; }
 
+out=$(TEST_FINDINGS=0 TEST_EXTERNAL_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=external-files-only run_core "$TMP/external-files-coverage")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+if grep -Fq 'COVERAGE_GATE_OK=false' "$TMP/external-files-coverage/review-core-threshold.env"; then
+    echo "FAIL: coverage gate should credit substantive external static files outside collector OK rows" >&2
+    exit 1
+fi
+
 set +e
 out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_COLLECTOR_VARIANT=missing-testing run_core "$TMP/coverage-failed" 2>&1)
 rc=$?
@@ -550,6 +602,20 @@ set -e
 assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
 grep -Fq 'COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): testing' "$TMP/coverage-failed/review-core-threshold.env" || {
     echo "FAIL: coverage gate reason missing testing archetype" >&2
+    exit 1
+}
+
+out=$(TEST_FINDINGS=0 TEST_DROPPED_SLOTS=true TEST_THRESHOLD_OK=true TEST_STATIC_SLOT_COUNT=8 run_core "$TMP/partial-static-pass")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+
+set +e
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_COLLECTOR_VARIANT=missing-testing-with-drops TEST_DROPPED_ARCHETYPE=testing TEST_THRESHOLD_OK=true TEST_STATIC_SLOT_COUNT=8 run_core "$TMP/dropped-archetype-coverage" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "FAIL: missing both peers for one static archetype should exit 2" >&2; echo "$out" >&2; exit 1; }
+assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
+grep -Fq 'COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): testing' "$TMP/dropped-archetype-coverage/review-core-threshold.env" || {
+    echo "FAIL: coverage gate should catch missing archetype when aggregate threshold passes" >&2
     exit 1
 }
 

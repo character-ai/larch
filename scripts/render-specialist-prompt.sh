@@ -223,6 +223,20 @@ BODY=$(printf '%s\n' "$BODY" | awk '
 
 AGENT_BASENAME="$(basename "$AGENT_FILE" .md)"
 
+redact_untrusted_stream() {
+  sed -E \
+    -e 's#</([A-Za-z_][A-Za-z0-9_-]*)>#<\/\1>#g' \
+    -e 's/(sk-[A-Za-z0-9_-]{20,})/<REDACTED-TOKEN>/g' \
+    -e 's/((api[_-]?key|token|secret|password)[[:space:]]*[:=][[:space:]]*)[^[:space:]]+/\1<REDACTED>/Ig'
+}
+
+emit_untrusted_file_block() {
+  local tag="$1" file="$2"
+  printf '<%s encoding="literal-redacted">\n' "$tag"
+  redact_untrusted_stream < "$file"
+  printf '\n</%s>\n\n' "$tag"
+}
+
 render_prompt() {
   # Determine whether to include the git-log instruction. Omit when the branch
   # has few commits (≤5): for small branches the diff header already shows the
@@ -288,25 +302,17 @@ PREAMBLE
   # so it receives plan context across diff modes and in description mode.
   if [[ "$AGENT_BASENAME" == "reviewer-testing" && ( -n "$PLAN_FILE" || -n "$FEATURE_FILE" ) ]]; then
     if [[ -n "$FEATURE_FILE" ]]; then
-      printf '<feature_description>\n'
-      cat -- "$FEATURE_FILE"
-      printf '\n</feature_description>\n\n'
+      emit_untrusted_file_block feature_description "$FEATURE_FILE"
     fi
     if [[ -n "$PLAN_FILE" ]]; then
-      printf '<implementation_plan>\n'
-      cat -- "$PLAN_FILE"
-      printf '\n</implementation_plan>\n\n'
+      emit_untrusted_file_block implementation_plan "$PLAN_FILE"
     fi
   elif [[ "$MODE" == "diff" && "$DIFF_MODE" == "generic" && ( -n "$PLAN_FILE" || -n "$FEATURE_FILE" ) ]]; then
     if [[ -n "$FEATURE_FILE" ]]; then
-      printf '<feature_description>\n'
-      cat -- "$FEATURE_FILE"
-      printf '\n</feature_description>\n\n'
+      emit_untrusted_file_block feature_description "$FEATURE_FILE"
     fi
     if [[ -n "$PLAN_FILE" ]]; then
-      printf '<implementation_plan>\n'
-      cat -- "$PLAN_FILE"
-      printf '\n</implementation_plan>\n\n'
+      emit_untrusted_file_block implementation_plan "$PLAN_FILE"
     fi
   fi
 

@@ -8,8 +8,8 @@ reviewer outputs and sidecars, and asserts that:
 - registered artifacts land under `larch-logs/implement/<run-id>/round-<N>/`
 - unregistered files such as session env or arbitrary notes stay out
 - `.meta` sidecars drop `CMD_JSON=...`
-- unphased static `codex-specialist-*-output.txt` sidecars are excluded while
-  dynamic Codex twins (`dyn-*-codex-output.txt`) remain included and sanitized
+- unphased static `codex-specialist-*-output.txt` sidecars and dynamic Codex
+  twin raw outputs/sidecars (`dyn-*-codex-output.txt`) are excluded
 - included `*-output*.json` sidecars drop top-level `.result`
 - the normal tmpdir and secrets redaction still runs
 - excluded prompt/sidecar/sentinel/dirty-tree artifacts never land in `round-<N>/`

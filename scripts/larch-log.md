@@ -26,9 +26,10 @@ Primary verbs:
   Raw static specialist outputs are excluded for both Cursor
   (`cursor-specialist-*-output.txt`) and Codex
   (`codex-specialist-*-output.txt`), including their unphased `.meta`, `.json`,
-  and `.cap-hit` sidecars; phased fallback outputs remain included. Dynamic
-  Codex twins (`dyn-*-codex-output.txt`) are not matched by that static deny
-  rule and remain eligible for round logs.
+  and `.cap-hit` sidecars; phased static Cursor/Codex fallback outputs remain
+  included. Dynamic Codex twins (`dyn-*-codex-output.txt`) and their unphased
+  `.meta`, `.json`, and `.cap-hit` sidecars are also excluded so committed logs
+  do not retain raw Codex reviewer transcripts outside the aggregate artifacts.
   The allow-list includes scout artifacts (`scout-round*-status.env`,
   `scout-round*-manifest.json`, `scout-round*-manifest.json.raw`,
   `scout-archetype-yield.tsv`), dynamic-archetype files

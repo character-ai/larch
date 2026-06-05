@@ -185,6 +185,8 @@ out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATE
     --panel simple \
     --plan-file "$plan_file")
 grep -Fq -- '--no-fallback' "$both_vendor_argv" || { echo "FAIL: both-vendor dispatch must pass --no-fallback" >&2; exit 1; }
+grep -Fq -- '--codex-present true' "$both_vendor_argv" || { echo "FAIL: both-vendor waterfall must receive --codex-present true" >&2; exit 1; }
+grep -Fq -- '--cursor-present true' "$both_vendor_argv" || { echo "FAIL: both-vendor waterfall must receive --cursor-present true" >&2; exit 1; }
 
 single_vendor_argv="$TMP/single-vendor-waterfall.argv"
 out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$single_vendor_argv" "$SCRIPT" \
@@ -198,6 +200,8 @@ if grep -Fq -- '--no-fallback' "$single_vendor_argv"; then
     echo "FAIL: single-vendor dispatch must omit --no-fallback" >&2
     exit 1
 fi
+grep -Fq -- '--codex-present false' "$single_vendor_argv" || { echo "FAIL: single-vendor waterfall must receive --codex-present false" >&2; exit 1; }
+grep -Fq -- '--cursor-present true' "$single_vendor_argv" || { echo "FAIL: single-vendor waterfall must receive --cursor-present true" >&2; exit 1; }
 
 both_down_argv="$TMP/both-down-waterfall.argv"
 out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$both_down_argv" "$SCRIPT" \
@@ -334,7 +338,7 @@ out=$(PATH="$STUB_BIN:$PATH" SCOUT_DYNAMIC_ARCHETYPES_LAUNCH_SH="$scout_launch" 
     --dynamic-archetypes 4)
 grep -Fq 'SCOUT_STATUS=claude-failed' <<< "$out"
 grep -Fq 'DYNAMIC_SLOTS=0' <<< "$out"
-grep -Fq 'SLOT_COUNT=8' <<< "$out"
+grep -Fq 'SLOT_COUNT=4' <<< "$out"
 grep -Fq 'SCOUT_STATUS=claude-failed' "$TMP/dynamic-fail/scout-round1-status.env"
 
 cat > "$TMP/scout-valid8.json" <<'JSON'
