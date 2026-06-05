@@ -1,0 +1,20 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	nit	correctness	plan.txt:29-30	Duplicate WI2+WI3 bullets for `scripts/design-pause-load.md` contract update	Line 29 omits `-z`, temp NUL-buffer capture, and explicit `if ! git ls-tree … >"$enum_tmp"` guard that line 30 and the shell WI2 bullets require; an implementer following only line 29 could ship an incomplete contract paragraph	Collapse to a single bullet: keep line 30’s `-z` + mktemp capture + per-path `if ! git show` wording; delete the redundant line 29 paragraph
+
+1. **correctness** `plan.txt:29-30` — The `### UPDATED: scripts/design-pause-load.md` section repeats the WI2+WI3 contract-update paragraph twice. Line 29 describes `git ls-tree -r` enumeration without `-z`, temp-buffer capture, or the explicit pre-loop `ls-tree` guard; line 30 (and the shell WI2 bullets at lines 13–17) require those details. **Suggested revision:** Remove line 29; keep one consolidated bullet matching line 30 and the script section.
+
+**Doc-scope audit (requested canonical sources):**
+
+| File | Stale `git archive` / export-ignore / delete-on-failure? | In plan file list? |
+|------|--------------------------------------------------------|-------------------|
+| `scripts/design-pause-load.md:33-37` | Yes — `git archive \| tar` restore | Yes (`plan.txt:28-30`) |
+| `SECURITY.md:94-105` | Yes — delete-before-copy; best-effort clear on failure; “archives” recovery ref | Yes (`plan.txt:32-33`) |
+| `skills/design/scripts/test-design-pause-resume.md:4` | Yes — stubs `git archive` | Yes (`plan.txt:51-52`) |
+| `scripts/design-pause-save.md` | No restore/marker-lifecycle prose | N/A (correctly omitted) |
+| `skills/pause/SKILL.md` | No | N/A |
+| `docs/issue-anchored-plan.md:78-104` | Wire format only; no restore primitive or failure delete policy | N/A |
+| `docs/workflow-lifecycle.md` | No pause-restore detail | N/A |
+| `docs/run-logs.md` | No pause-restore detail | N/A |
+| `docs/skills.md:67` | Happy-path “deletes the marker” only; does not document old delete-on-failure or `git archive` | N/A for this defect class |
+
+No other missing-scope doc updates are materially required for WI2/WI3 correctness under SIMPLE minimum-change.
