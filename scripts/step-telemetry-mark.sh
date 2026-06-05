@@ -25,7 +25,7 @@ while [ $# -gt 0 ]; do
             shift 2
             ;;
         *)
-            exit 0
+            shift
             ;;
     esac
 done

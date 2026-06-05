@@ -85,7 +85,9 @@ if grep -Fq "$MALFORMED_LABEL" "$TIMING_LEDGER"; then
 fi
 "$HELPER" --unknown "$IMPL_TMP" --label "$MALFORMED_LABEL" || fail "unknown option should exit 0"
 if grep -Fq "$MALFORMED_LABEL" "$TIMING_LEDGER"; then
-  fail "unknown option must not emit a timing mark"
+  fail "unknown option without required tmpdir must not emit a timing mark"
 fi
+"$HELPER" --unknown ignored --implement-tmpdir "$IMPL_TMP" --label "$MALFORMED_LABEL" || fail "unknown option before valid args should exit 0"
+grep -Fq "$MALFORMED_LABEL" "$TIMING_LEDGER" || fail "unknown option must be ignored without dropping later valid args"
 
 echo "PASS: test-step-telemetry-mark.sh"

@@ -54,6 +54,38 @@ def test_main_success_posts_issue_and_keeps_single_cache_trailer(monkeypatch: py
     assert posted == [("o/r", "implement")]
 
 
+def test_main_design_posts_issue_with_design_skill(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    record = RunRecord(1, "t", "u", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "SIMPLE", VendorTotals(total=1), VendorTotals(), VendorTotals(), (), {})
+    posted: list[str] = []
+
+    def fake_scan(_runner: object, skill: str, repo_override: str | None = None) -> ScanResult:
+        _ = (skill, repo_override)
+        return ScanResult(tmp_path, "o/r", (record,))
+
+    def fake_price(_runner: object, record: RunRecord) -> RunRecord:
+        return record
+
+    def fake_render(*args: object, **kwargs: object) -> tuple[str, list[object], str]:
+        _ = (args, kwargs)
+        return "## Report Tokens Analysis\n\nCache JSON: /tmp/cache.ndjson", [], "/tmp/cache.ndjson"
+
+    def fake_plot(*args: object, **kwargs: object) -> list[object]:
+        _ = (args, kwargs)
+        return []
+
+    def fake_post(_runner: object, repo: str | None, title: str, sections: list[object], skill: str) -> None:
+        _ = (repo, title, sections)
+        posted.append(skill)
+
+    monkeypatch.setattr(report_tokens_cli, "scan", fake_scan)
+    monkeypatch.setattr(report_tokens_cli, "price_run", fake_price)
+    monkeypatch.setattr(report_tokens_cli, "render", fake_render)
+    monkeypatch.setattr(report_tokens_cli, "plot", fake_plot)
+    monkeypatch.setattr(report_tokens_cli, "post_issue", fake_post)
+    assert report_tokens_cli.main(["--skill", "design"]) == config.EXIT_OK
+    assert posted == ["design"]
+
+
 def test_main_fails_before_post_when_repo_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     record = RunRecord(1, "t", "", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "HARD", VendorTotals(total=1), VendorTotals(), VendorTotals(), (), {})
 
