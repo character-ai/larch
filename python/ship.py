@@ -61,6 +61,12 @@ from proc import Runner
 from run_context import RunContext
 
 
+_REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+_ALLOWED_EXTRA_FIELDS = {"CONFLICT_FILES"}
+_ALLOWED_RESUME_PHASES = {"", config.SHIP_PR_RRR_RESUME_PHASE}
+_ALLOWED_CALLER_KINDS = {"", config.SHIP_PR_PRE_PUSH_CALLER_KIND}
+
+
 @dataclass(frozen=True)
 class ShipResult:
     outcome: Outcome
@@ -303,7 +309,16 @@ def _materialize_manifest_oos(runner: Runner, ctx: RunContext, *, cwd: str | Non
     )
 
 
-def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult | None:
+def _oos_gate(
+    runner: Runner,
+    ctx: RunContext,
+    *,
+    cwd: str | None,
+    iteration: int = 0,
+    rebase_count: int = 0,
+    fix_attempts: int = 0,
+    transient_retries: int = 0,
+) -> ShipResult | None:
     tmpdir = Path(ctx.tmpdir)
     design_path = resolve_oos_accepted_design_path(tmpdir)
     accepted = tuple(
@@ -347,7 +362,14 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
         and not (ctx.forked or ctx.forked_target or ctx.repo_unavailable)
         and not run_dir_ndjson.is_file()
     ):
-        _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
+        _write_ship_state(
+            ctx.with_(oos_pending=True),
+            phase="pr-create",
+            iteration=iteration,
+            rebase_count=rebase_count,
+            fix_attempts=fix_attempts,
+            transient_retries=transient_retries,
+        )
         return ShipResult(
             Outcome.NEEDS_USER_INPUT,
             needs_user_reason=config.NEEDS_USER_OOS_FILING,
@@ -364,9 +386,23 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
         repo_unavailable=ctx.repo_unavailable,
     )
     if disposition.ok:
-        _write_ship_state(ctx.with_(oos_pending=False), phase="pr-create")
+        _write_ship_state(
+            ctx.with_(oos_pending=False),
+            phase="pr-create",
+            iteration=iteration,
+            rebase_count=rebase_count,
+            fix_attempts=fix_attempts,
+            transient_retries=transient_retries,
+        )
         return None
-    _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
+    _write_ship_state(
+        ctx.with_(oos_pending=True),
+        phase="pr-create",
+        iteration=iteration,
+        rebase_count=rebase_count,
+        fix_attempts=fix_attempts,
+        transient_retries=transient_retries,
+    )
     return ShipResult(
         Outcome.NEEDS_USER_INPUT,
         needs_user_reason=config.NEEDS_USER_OOS_FILING,
@@ -374,16 +410,40 @@ def _oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult
     )
 
 
-def _pending_oos_gate(runner: Runner, ctx: RunContext, *, cwd: str | None) -> ShipResult | None:
+def _pending_oos_gate(
+    runner: Runner,
+    ctx: RunContext,
+    *,
+    cwd: str | None,
+    iteration: int = 0,
+    rebase_count: int = 0,
+    fix_attempts: int = 0,
+    transient_retries: int = 0,
+) -> ShipResult | None:
     security_oos = Path(ctx.tmpdir) / "security-oos-observations.md"
     if security_oos.is_file() and security_oos.stat().st_size > 0:
-        _write_ship_state(ctx.with_(oos_pending=True), phase="pr-create")
+        _write_ship_state(
+            ctx.with_(oos_pending=True),
+            phase="pr-create",
+            iteration=iteration,
+            rebase_count=rebase_count,
+            fix_attempts=fix_attempts,
+            transient_retries=transient_retries,
+        )
         return ShipResult(
             Outcome.NEEDS_USER_INPUT,
             needs_user_reason=config.NEEDS_USER_OOS_FILING,
             detail=config.NEEDS_USER_OOS_FILING,
         )
-    return _oos_gate(runner, ctx, cwd=cwd)
+    return _oos_gate(
+        runner,
+        ctx,
+        cwd=cwd,
+        iteration=iteration,
+        rebase_count=rebase_count,
+        fix_attempts=fix_attempts,
+        transient_retries=transient_retries,
+    )
 
 
 def _postmerge_should_flush(ctx: RunContext) -> bool:
@@ -425,6 +485,24 @@ def _state_bool(*, value: bool) -> str:
     return "true" if value else "false"
 
 
+def _valid_repo_slug(value: str) -> bool:
+    return bool(value and not value.startswith("-") and _REPO_SLUG_RE.fullmatch(value))
+
+
+def _validate_conflict_csv(value: str) -> None:
+    if not value:
+        raise ShipError("invalid empty CONFLICT_FILES")
+    for item in value.split(","):
+        path = item.strip()
+        if not path or path != item or path.startswith("/") or "\\" in path:
+            raise ShipError("invalid CONFLICT_FILES entry")
+        parts = Path(path).parts
+        if ".." in parts or any(part in {"", "."} for part in parts):
+            raise ShipError("invalid CONFLICT_FILES entry")
+        if not re.fullmatch(r"[A-Za-z0-9._/\-]+", path):
+            raise ShipError("invalid CONFLICT_FILES entry")
+
+
 def _write_ship_state(
     ctx: RunContext,
     *,
@@ -445,6 +523,16 @@ def _write_ship_state(
         resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE") if path.is_file() else ""
     if caller_kind is None:
         caller_kind = run_logs.read_state_kv(ctx.state_file, "CALLER_KIND") if path.is_file() else ""
+    if resume_phase not in _ALLOWED_RESUME_PHASES:
+        resume_phase = ""
+    if caller_kind not in _ALLOWED_CALLER_KINDS:
+        caller_kind = ""
+    if extra_fields:
+        unexpected = set(extra_fields) - _ALLOWED_EXTRA_FIELDS
+        if unexpected:
+            raise ShipError(f"invalid ship state extra field: {sorted(unexpected)[0]}")
+        if "CONFLICT_FILES" in extra_fields:
+            _validate_conflict_csv(extra_fields["CONFLICT_FILES"])
     fields = {
         "PHASE": phase,
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
@@ -561,7 +649,12 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     pr_url = run_logs.read_state_kv(ctx.state_file, "PR_URL") or ctx.pr_url
     merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
 
-    if resume_phase == "ship-pr-rrr-phase14":
+    if not _valid_repo_slug(state_repo):
+        raise ShipError("invalid state REPO")
+    if state_repo != ctx.repo:
+        raise ShipError("state REPO does not match context repo")
+
+    if resume_phase == config.SHIP_PR_RRR_RESUME_PHASE:
         return _resume_from_state(
             "blocked-rebase-continuation",
             counters,
@@ -660,7 +753,12 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             )
         state = viewed.state.upper()
         if state == "MERGED":
-            start = "done" if state_phase == "done" else "merged"
+            start = (
+                "done"
+                if state_phase == "done"
+                and run_logs.manifest_status(ctx) == config.MANIFEST_STATUS_DONE
+                else "merged"
+            )
             return _resume_from_state(
                 start,
                 counters,
@@ -751,6 +849,10 @@ def _hydrate_resume_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
 def _hydrate_fresh_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
     changes: dict[str, object] = {
         "repo": resume.repo or ctx.repo,
+        "pr_number": None,
+        "pr_url": "",
+        "merge_result": "",
+        "pr_closed": False,
         "repo_unavailable": resume.durable.repo_unavailable,
         "forked_target": resume.durable.forked_target,
         "forked": resume.durable.forked,
@@ -787,7 +889,7 @@ def _state_file_under_tmpdir(ctx: RunContext) -> bool:
         tmpdir = Path(ctx.tmpdir).resolve(strict=False)
     except OSError:
         return False
-    return state_path == tmpdir or tmpdir in state_path.parents
+    return tmpdir in state_path.parents
 
 
 def _tmpdir_under_allowed_root(tmpdir: str) -> bool:
@@ -981,11 +1083,27 @@ def run_ship(
             materialize_result = _materialize_manifest_oos(runner, pr_context, cwd=repo_root)
             if materialize_result is not None:
                 return materialize_result
-            oos_result = _pending_oos_gate(runner, pr_context, cwd=repo_root)
+            oos_result = _pending_oos_gate(
+                runner,
+                pr_context,
+                cwd=repo_root,
+                iteration=resume.iteration,
+                rebase_count=resume.rebase_count,
+                fix_attempts=resume.fix_attempts,
+                transient_retries=resume.transient_retries,
+            )
             if oos_result is not None:
                 return oos_result
         elif pr_context.oos_pending or _state_bool_text(run_logs.read_state_kv(pr_context.state_file, "OOS_PENDING")):
-            oos_result = _pending_oos_gate(runner, pr_context, cwd=repo_root)
+            oos_result = _pending_oos_gate(
+                runner,
+                pr_context,
+                cwd=repo_root,
+                iteration=resume.iteration,
+                rebase_count=resume.rebase_count,
+                fix_attempts=resume.fix_attempts,
+                transient_retries=resume.transient_retries,
+            )
             if oos_result is not None:
                 return oos_result
 
@@ -1033,6 +1151,22 @@ def run_ship(
         fix_attempts = resume.fix_attempts if resume.start == "open-pr" else 0
         transient_retries = resume.transient_retries if resume.start == "open-pr" else 0
         while True:
+            if iteration >= config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
+                _write_terminal_state(
+                    working,
+                    Outcome.STALLED,
+                    "merge-loop-iteration-cap",
+                    iteration=iteration,
+                    rebase_count=rebase_count,
+                    fix_attempts=fix_attempts,
+                    transient_retries=transient_retries,
+                )
+                return ShipResult(
+                    Outcome.STALLED,
+                    pr_number=working.pr_number,
+                    pr_url=working.pr_url,
+                    detail="merge loop iteration cap reached",
+                )
             _write_ship_state(
                 working,
                 phase="ci-initial",
@@ -1170,6 +1304,22 @@ def run_ship(
             merged = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
             if merged.result in {config.MERGE_RESULT_CI_NOT_READY, config.MERGE_RESULT_MAIN_ADVANCED}:
                 iteration += 1
+                if iteration >= config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
+                    _write_terminal_state(
+                        working,
+                        Outcome.STALLED,
+                        "merge-loop-iteration-cap",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                    )
+                    return ShipResult(
+                        Outcome.STALLED,
+                        pr_number=working.pr_number,
+                        pr_url=working.pr_url,
+                        detail="merge loop iteration cap reached",
+                    )
                 _write_ship_state(
                     working,
                     phase="ci-initial",
