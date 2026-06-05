@@ -351,6 +351,55 @@ def test_poll_ci_three_consecutive_errors_bail() -> None:
     assert "3 times consecutively" in (decision.bail_reason or "")
 
 
+def test_monitor_local_unfixable_maps_to_needs_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_poll_ci(*_args: object, **_kwargs: object) -> tuple[ci_monitor.CiStatus, ci_monitor.Decision]:
+        return (
+            ci_monitor.CiStatus("fail", 0, "42"),
+            ci_monitor.Decision("evaluate_failure"),
+        )
+
+    def fake_evaluate_failure(*_args: object, **_kwargs: object) -> ci_monitor.FixResult:
+        return ci_monitor.FixResult(
+            status="local-unfixable",
+            unfixable=("gitleaks",),
+        )
+
+    monkeypatch.setattr(
+        ci_monitor,
+        "poll_ci",
+        fake_poll_ci,
+    )
+    monkeypatch.setattr(
+        ci_monitor,
+        "evaluate_failure",
+        fake_evaluate_failure,
+    )
+
+    result = ci_monitor.monitor(RecordingRunner(), pr=1, repo="o/r")
+
+    assert result.result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.result.detail == "local-unfixable: gitleaks"
+
+
+def test_monitor_transient_bail_maps_to_transient(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_poll_ci(*_args: object, **_kwargs: object) -> tuple[ci_monitor.CiStatus, ci_monitor.Decision]:
+        return (
+            ci_monitor.CiStatus("pending", 0, None),
+            ci_monitor.Decision("bail", "HTTP 502 Bad Gateway"),
+        )
+
+    monkeypatch.setattr(
+        ci_monitor,
+        "poll_ci",
+        fake_poll_ci,
+    )
+
+    result = ci_monitor.monitor(RecordingRunner(), pr=1, repo="o/r")
+
+    assert result.result.outcome is Outcome.TRANSIENT
+    assert result.result.detail == "HTTP 502 Bad Gateway"
+
+
 def test_poll_ci_suspend_not_charged() -> None:
     runner = RecordingRunner(_status(status="pending", behind=0))
     clock_values = [0.0, 70.0, 70.0, 140.0, 210.0, 280.0]
