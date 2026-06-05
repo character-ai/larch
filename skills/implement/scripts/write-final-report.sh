@@ -116,11 +116,27 @@ if [ "$REPO_UNAV" = "true" ]; then
     LINES_STATUS=unavailable
 else
     cached_lines_blob=""
-    if [ -f "$SHIP_PR_STATE" ] && [ "$(awk -F= '$1=="LINES_PR_NUMBER"{v=$2} END{print v}' "$SHIP_PR_STATE")" = "${PR_NUMBER:-0}" ]; then
-        cached_status="$(awk -F= '$1=="LINES_STATUS"{v=$2} END{print v}' "$SHIP_PR_STATE")"
-        if [ -n "$cached_status" ]; then
-            cached_lines_blob=$(awk -F= '$1 ~ /^(LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/ { print }' "$SHIP_PR_STATE")
-        fi
+    if [ -f "$SHIP_PR_STATE" ]; then
+        cached_lines_blob=$(awk -F= -v pr="${PR_NUMBER:-0}" '
+            function flush() {
+                if (seen && block_pr == pr && status == "ok") {
+                    best = blob
+                }
+            }
+            $1=="LINES_PR_NUMBER" {
+                flush()
+                seen=1
+                block_pr=$2
+                status=""
+                blob=""
+                next
+            }
+            seen && $1 ~ /^(LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/ {
+                if ($1 == "LINES_STATUS") status=$2
+                blob = blob $0 "\n"
+            }
+            END { flush(); printf "%s", best }
+        ' "$SHIP_PR_STATE")
     fi
     if [ -n "$cached_lines_blob" ]; then
         lines_blob="$cached_lines_blob"

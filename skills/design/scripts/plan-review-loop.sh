@@ -131,17 +131,17 @@ fi
 [[ -f "$FEATURE_FILE" ]] || { larch_err "plan-review-loop.sh: feature file not found: $FEATURE_FILE"; exit 2; }
 ORIGINAL_FEATURE_FILE="$FEATURE_FILE"
 SCOPE_ANCHOR_FILE="$DESIGN_TMPDIR/plan-review-scope-anchor.txt"
-SCOUT_SCOPE_ANCHOR_FILE="$DESIGN_TMPDIR/plan-review-scope-anchor.scout.txt"
 
 _materialize_scope_anchor() {
-    local stripped_tmp anchor_tmp strip_kv malformed
+    local stripped_tmp anchor_tmp strip_kv strip_err malformed strip_rc
     stripped_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-review-scope-anchor.XXXXXX")
     anchor_tmp=$(mktemp "$DESIGN_TMPDIR/.plan-review-scope-anchor-body.XXXXXX")
     strip_kv=$(mktemp "$DESIGN_TMPDIR/.plan-strip-kv.XXXXXX")
+    strip_err=$(mktemp "$DESIGN_TMPDIR/.plan-strip-stderr.XXXXXX")
     trap 'rm -f "$stripped_tmp" "$anchor_tmp" "$strip_kv"' RETURN
     malformed=""
     set +e
-    LARCH_QUIET_DISABLE=1 "$PLAN_BLOCK_STRIP_BODY_SH" --file "$ORIGINAL_FEATURE_FILE" --output "$stripped_tmp" >"$strip_kv" 2>/dev/null
+    LARCH_QUIET_DISABLE=1 "$PLAN_BLOCK_STRIP_BODY_SH" --file "$ORIGINAL_FEATURE_FILE" --output "$stripped_tmp" >"$strip_kv" 2>"$strip_err"
     strip_rc=$?
     set -e
     if [[ "$strip_rc" -ne 0 ]]; then
@@ -151,9 +151,13 @@ _materialize_scope_anchor() {
         else
             larch_err "plan-review-loop.sh: failed to strip embedded larch:plan block while materializing scope anchor"
         fi
-        exit 2
+        if [[ -s "$strip_err" ]]; then
+            sed 's/^/plan-block-strip-body.sh: /' "$strip_err" >&2 || true
+        fi
+        rm -f "$strip_err"
+        return 2
     fi
-    rm -f "$strip_kv"
+    rm -f "$strip_kv" "$strip_err"
     {
         cat "$stripped_tmp"
         if [[ -f "$DESIGN_TMPDIR/.outline-approved" && -s "$DESIGN_TMPDIR/design-outline.md" ]]; then
@@ -163,16 +167,11 @@ _materialize_scope_anchor() {
     } >"$anchor_tmp"
     if ! grep -q '[^[:space:]]' "$anchor_tmp"; then
         larch_err "plan-review-loop.sh: scope anchor is empty after stripping embedded larch:plan block"
-        exit 2
+        return 2
     fi
     "$PLUGIN_ROOT/scripts/redact-secrets.sh" <"$anchor_tmp" >"$SCOPE_ANCHOR_FILE"
-    sed -E \
-        -e 's/&/\&amp;/g' \
-        -e 's/</\&lt;/g' \
-        -e 's/>/\&gt;/g' \
-        "$SCOPE_ANCHOR_FILE" >"$SCOUT_SCOPE_ANCHOR_FILE"
     case "$SCOPE_ANCHOR_FILE" in
-        *$'\r'*|*$'\n'*) larch_err "plan-review-loop.sh: scope anchor path contains CR/LF"; exit 2 ;;
+        *$'\r'*|*$'\n'*) larch_err "plan-review-loop.sh: scope anchor path contains CR/LF"; return 2 ;;
     esac
 }
 _materialize_scope_anchor
@@ -180,12 +179,19 @@ _materialize_scope_anchor
 _brainstorm_file="$DESIGN_TMPDIR/brainstorm.md"
 if [[ -f "$_brainstorm_file" && -s "$_brainstorm_file" ]]; then
     _merged_feature="$DESIGN_TMPDIR/plan-review-feature-context.txt"
+    _feature_context_base="$DESIGN_TMPDIR/.plan-review-feature-context-base.txt"
+    if ! LARCH_QUIET_DISABLE=1 "$PLAN_BLOCK_STRIP_BODY_SH" --file "$ORIGINAL_FEATURE_FILE" --output "$_feature_context_base" >/dev/null; then
+        rm -f "$_feature_context_base"
+        larch_err "plan-review-loop.sh: failed to strip embedded larch:plan block while materializing brainstorm feature context"
+        exit 2
+    fi
     {
         printf '%s\n' "## Feature / issue context (base)"
-        cat "$ORIGINAL_FEATURE_FILE"
+        cat "$_feature_context_base"
         printf '\n\n%s\n' "## Brainstorm synthesis (additive; optional, non-binding)"
         cat "$_brainstorm_file"
     } >"$_merged_feature"
+    rm -f "$_feature_context_base"
 fi
 
 emit_loop_kvs() {
@@ -899,7 +905,7 @@ _run_plan_review_round() {
 # --- Step 2: scout (fail-open) ---
 "$PLAN_REVIEW_SCOUT_SH" \
     --plan-file "$PLAN_FILE" \
-    --description-file "$SCOUT_SCOPE_ANCHOR_FILE" \
+    --description-file "$SCOPE_ANCHOR_FILE" \
     --output "$DESIGN_TMPDIR/scout-plan-manifest.json" \
     --max-archetypes 6 \
     --session-env-path "$DESIGN_TMPDIR/source-env.sh" \
@@ -1308,6 +1314,10 @@ def merge_reviewers(a, b):
     return a[:ma.start(2)] + ", ".join(existing) + a[ma.end(2):]
 
 
+def choose_tagged_body(a, b):
+    return b if len(tokens(comparison_text(b))) > len(tokens(comparison_text(a))) else a
+
+
 def dedup(blocks, thresh=0.6):
     kept = []
     kept_tagged = []
@@ -1318,7 +1328,7 @@ def dedup(blocks, thresh=0.6):
         for i, kb in enumerate(kept):
             if jaccard(t, tokens(comparison_text(kb))) > thresh:
                 if tagged and kept_tagged[i]:
-                    kept[i] = merge_reviewers(kb, blk)
+                    kept[i] = merge_reviewers(choose_tagged_body(kb, blk), kb if choose_tagged_body(kb, blk) is blk else blk)
                     kept_tagged[i] = True
                 elif tagged and not kept_tagged[i]:
                     kept[i] = merge_reviewers(blk, kb)
@@ -1400,7 +1410,8 @@ open(out_in, "w", encoding="utf-8").write("\n\n".join(fin) + ("\n\n" if fin else
 open(out_oos, "w", encoding="utf-8").write("\n\n".join(oos) + ("\n\n" if oos else ""))
 PY
 
-if ! python3 - "$SCOPE_MARKER_HELPER" "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" "$DESIGN_TMPDIR/findings-in-scope.md" <<'PY'
+set +e
+python3 - "$SCOPE_MARKER_HELPER" "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" "$DESIGN_TMPDIR/findings-in-scope.md" <<'PY'
 import os, re, subprocess, sys, tempfile
 helper, pre, post = sys.argv[1:4]
 def blocks(path):
@@ -1418,8 +1429,15 @@ def tagged(block):
         raise SystemExit(2)
     finally: os.unlink(f.name)
 def prob(block):
+    parts=[]
+    if block.splitlines():
+        parts.append(block.splitlines()[0])
     m=re.search(r'- \*\*Concern\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)', block, re.S)
-    txt=m.group(1) if m else block.splitlines()[0]
+    if m:
+        parts.append(m.group(1))
+    for wm in re.finditer(r'(?mi)^\s*what:\s*(.+)$', block):
+        parts.append(wm.group(1))
+    txt='\n'.join(parts) if parts else block
     txt=re.sub(r'```.*?```','',txt,flags=re.S); txt=re.sub(r'`[^`\n]*`','',txt)
     txt=re.sub(r'^\s*\[(?:important|nit|latent)\]\s*','',txt,flags=re.I)
     txt=re.sub(r'^\s*\[SCOPE-REDUCTION\]\s*','',txt,flags=re.I)
@@ -1455,7 +1473,12 @@ for src in pre_tag:
         sys.exit(1)
 sys.exit(0)
 PY
-then
+_parity_rc=$?
+set -e
+if [[ "$_parity_rc" -eq 2 ]]; then
+    larch_err "plan-review-dedup: scope marker helper failed during parity check"
+    exit 2
+elif [[ "$_parity_rc" -ne 0 ]]; then
     cp -f "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" "$DESIGN_TMPDIR/findings-in-scope.md"
     emit_kv WARN "plan-review-dedup: scope-reduction marker parity failed; using pre-dedup in-scope findings"
 fi

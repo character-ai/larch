@@ -772,8 +772,15 @@ def tagged(block):
         raise SystemExit(2)
     finally: os.unlink(f.name)
 def problem_text(block):
+    parts = []
+    if block.splitlines():
+        parts.append(re.sub(r'^### FINDING_[0-9]+:\s*','',block.splitlines()[0]))
     m=re.search(r'- \*\*Concern\*\*:\s*(.+?)(?:\.\s*Scenario:|\s*Scenario:|(?=\n- \*\*)|\Z)', block, re.S)
-    txt=m.group(1) if m else re.sub(r'^### FINDING_[0-9]+:\s*','',block,count=1,flags=re.M)
+    if m:
+        parts.append(m.group(1))
+    for wm in re.finditer(r'(?mi)^\s*what:\s*(.+)$', block):
+        parts.append(wm.group(1))
+    txt="\n".join(parts) if parts else re.sub(r'^### FINDING_[0-9]+:\s*','',block,count=1,flags=re.M)
     txt=re.sub(r'```.*?```','',txt,flags=re.S)
     txt=re.sub(r'`[^`\n]*`','',txt)
     txt=re.sub(r'^\s*\[(?:important|nit|latent)\]\s*','',txt,flags=re.I)
