@@ -809,7 +809,7 @@ cat > "$impl_runav/larch-logs/implement/run-runav/token-report.json" <<'JSON'
 }
 JSON
 : >"$GH_SHIM_LOG"
-GH_SHIM_FAIL=true runav_out=$(GH_SHIM_FAIL=true CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-runav.md" \
+runav_out=$(GH_SHIM_FAIL=true CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-runav.md" \
       "$HELPER" --implement-tmpdir "$impl_runav")
 assert_contains 'STATUS=skipped' "$runav_out" 'repo-unavailable skips tracking upsert'
 assert_contains '- **Lines (PR diff)**: N/A' "$(cat "$impl_runav/summary-final.md")" 'repo-unavailable line counts N/A'
@@ -818,7 +818,6 @@ if [ -s "$GH_SHIM_LOG" ]; then
 else
     pass 'repo-unavailable bypasses gh shim'
 fi
-GH_SHIM_FAIL=false
 
 for outcome_case in \
     "merged:$impl_dir:absent:present" \
