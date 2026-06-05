@@ -302,16 +302,106 @@
           "total": 0
         },
         "skills": []
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 26,
+          "cache_read": 4834852,
+          "cache_create": 46213,
+          "cache_create_5m": 0,
+          "cache_create_1h": 46213,
+          "output": 19486,
+          "total": 4900577
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 8b — rebase",
+            "totals": {
+              "input": 10,
+              "cache_read": 1758518,
+              "cache_create": 15805,
+              "cache_create_5m": 0,
+              "cache_create_1h": 15805,
+              "output": 10304,
+              "total": 1784637
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 16,
+              "cache_read": 3076334,
+              "cache_create": 30408,
+              "cache_create_5m": 0,
+              "cache_create_1h": 30408,
+              "output": 9182,
+              "total": 3115940
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 2,
+          "cache_read": 427008,
+          "cache_create": 1550,
+          "cache_create_5m": 0,
+          "cache_create_1h": 1550,
+          "output": 791,
+          "total": 429351
+        },
+        "skills": [
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 2,
+              "cache_read": 427008,
+              "cache_create": 1550,
+              "cache_create_5m": 0,
+              "cache_create_1h": 1550,
+              "output": 791,
+              "total": 429351
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 8,
+          "cache_read": 1731782,
+          "cache_create": 4916,
+          "cache_create_5m": 0,
+          "cache_create_1h": 4916,
+          "output": 3196,
+          "total": 1739902
+        },
+        "skills": [
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 8,
+              "cache_read": 1731782,
+              "cache_create": 4916,
+              "cache_create_5m": 0,
+              "cache_create_1h": 4916,
+              "output": 3196,
+              "total": 1739902
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 69,
-      "cache_read": 7880507,
-      "cache_create": 198809,
+      "input": 105,
+      "cache_read": 14874149,
+      "cache_create": 251488,
       "cache_create_5m": 0,
-      "cache_create_1h": 198809,
-      "output": 31133,
-      "total": 8110518
+      "cache_create_1h": 251488,
+      "output": 54606,
+      "total": 15180348
     }
   },
   "codex": {
@@ -419,12 +509,36 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 47455,
+          "output": 3735,
+          "total": 345334
+        }
       }
     ],
     "totals": {
-      "input": 1568030,
-      "output": 146861,
-      "total": 45087819
+      "input": 1615485,
+      "output": 150596,
+      "total": 45433153
     }
   },
   "cursor": {
@@ -532,6 +646,30 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 8b — rebase",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -541,18 +679,18 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 69,
-    "cache_read": 7880507,
+    "input": 105,
+    "cache_read": 14874149,
     "cache_create_5m": 0,
-    "cache_create_1h": 198809,
-    "output": 31133,
-    "total": 8110518
+    "cache_create_1h": 251488,
+    "output": 54606,
+    "total": 15180348
   },
   "BUCKETS_codex": {
-    "input": 1568030,
-    "cached_input": 43372928,
-    "output": 146861,
-    "total": 45087819
+    "input": 1615485,
+    "cached_input": 43667072,
+    "output": 150596,
+    "total": 45433153
   },
   "BUCKETS_cursor": {
     "input": 8461269,
