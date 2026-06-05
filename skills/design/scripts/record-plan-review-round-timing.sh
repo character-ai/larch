@@ -74,10 +74,15 @@ export LARCH_TIMING_SKILL=design
 ledger="$DESIGN_TMPDIR/timing-ledger.tsv"
 round_decimal="$((10#$ROUND_NUM))"
 step_label="design Step 3 — plan review"
-if [[ -f "$ledger" ]] && awk -F '\t' -v r="$round_decimal" -v step="$step_label" \
-    '$2 == "round" && $4 == "design" && $5 == step && $6 == r { found=1 } END { exit !found }' \
-    "$ledger" 2>/dev/null; then
-    exit 0
+if [[ -f "$ledger" ]]; then
+    tmp_ledger="${ledger}.tmp.$$"
+    if awk -F '\t' -v r="$round_decimal" -v step="$step_label" \
+        '!($2 == "round" && $4 == "design" && $5 == step && $6 == r)' \
+        "$ledger" >"$tmp_ledger" 2>/dev/null; then
+        mv -f "$tmp_ledger" "$ledger"
+    else
+        rm -f "$tmp_ledger"
+    fi
 fi
 "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round \
     --skill design \
@@ -88,3 +93,9 @@ fi
     --accepted "$accepted" \
     --rejected "$rejected" \
     --oos "$oos" || true
+if [[ -f "$ledger" ]] && awk -F '\t' -v r="$round_decimal" -v s="$START_S" -v e="$END_S" -v step="$step_label" \
+    '$2 == "round" && $4 == "design" && $5 == step && $6 == r && $7 == s && $8 == e { found=1 } END { exit !found }' \
+    "$ledger" 2>/dev/null; then
+    exit 0
+fi
+exit 1

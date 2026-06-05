@@ -41,6 +41,17 @@ awk -F '\t' '$2 == "round" && $6 == 4 && $7 == 30 && $10 == 1 && $11 == 0 { foun
 "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 4 --start-s 40 --end-s 41
 round_rows=$(awk -F '\t' '$2 == "round" && $6 == 4 { c++ } END { print c + 0 }' "$TMP_BASE/timing-ledger.tsv")
 [[ "$round_rows" == 1 ]] || { echo "expected idempotent deferred emit (1 round-4 row), got $round_rows" >&2; exit 1; }
+round7_dir="$TMP_BASE/round-7"
+mkdir -p "$round7_dir"
+cat > "$round7_dir/review-tally.env" <<'F'
+ACCEPTED_COUNT=bad
+REJECTED_COUNT=bad
+F
+cat > "$round7_dir/review-summary.json" <<'F'
+{"rejected_count":11}
+F
+"$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 7 --start-s 70 --end-s 72
+awk -F '\t' '$2 == "round" && $6 == 7 && $10 == 0 && $11 == 11 { found=1 } END { exit found ? 0 : 1 }' "$TMP_BASE/timing-ledger.tsv"
 printf 'v1\tround\t1\tdesign\tdesign Step 3 — plan review\t5\t1\t2\t1\t9\t9\t0\t-\n' >> "$TMP_BASE/timing-ledger.tsv"
 mkdir -p "$TMP_BASE/round-5"
 "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 5 --start-s 50 --end-s 55

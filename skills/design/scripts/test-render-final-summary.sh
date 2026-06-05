@@ -110,13 +110,13 @@ chmod +x "$PLUGIN_STUB/scripts/token-report.sh" "$PLUGIN_STUB/scripts/timing-rep
 
 printf '%s\n' '{"total_hms":"44s"}' >"$D/timing-report-final.json"
 rm -f "$D/timing-report-final.stderr.log" "$D/timing-report-final.failure.log"
-std_reuse_timing="$TMP/std-reuse-timing.log"
+std_fresh_timing="$TMP/std-fresh-timing.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-REUSE-TIMING" \
-    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_reuse_timing" 2>/dev/null
-grep -Fq -- '- **Duration**: 44s' "$D/final-summary.md" || fail 'post-publish path must reuse valid timing-report-final.json duration'
-[[ ! -f "$D/timing-report-final.stderr.log" ]] || fail 'post-publish timing reuse must not regather timing stderr'
-cmp -s "$D/final-summary.md" "$std_reuse_timing" || fail 'post-publish timing reuse stdout/file mismatch'
-pass 'post-publish reuses existing final timing JSON'
+    "$SUBJECT" --outcome approved --mode SIMPLE --post-publish-only >"$std_fresh_timing" 2>/dev/null
+grep -Fq -- '- **Duration**: 12s' "$D/final-summary.md" || fail 'post-publish path must refresh timing-report-final.json duration'
+[[ -f "$D/timing-report-final.stderr.log" ]] || fail 'post-publish timing refresh must capture timing stderr'
+cmp -s "$D/final-summary.md" "$std_fresh_timing" || fail 'post-publish timing refresh stdout/file mismatch'
+pass 'post-publish refreshes final timing JSON'
 
 std_codex="$TMP/std-codex.log"
 CLAUDE_PLUGIN_ROOT="$PLUGIN_STUB" DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-FIX" \

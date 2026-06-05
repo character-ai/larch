@@ -67,6 +67,7 @@ v1	mark	10	implement	Step 5 — code review	-	-	-	-	-	-	-	-
 v1	round	15	implement	Step 5 — code review	2	15	20	5	4	1	-	-
 v1	round	12	implement	Step 5 — code review	1	12	14	2	2	3	-	-
 v1	round	18	implement	Step 5 — code review	2	15	22	7	6	5	-	-
+v1	round	19	implement	Step 5 — code review	6	20	35	15	9	9	-	-
 v1	round	25	implement	Step 6 — checks	3	25	26	1	9	9	-	-
 v1	mark	30	implement	Step 7 — commit	-	-	-	-	-	-	-	-
 v1	round	35	implement	Step 5 — code review	4	35	40	5	8	8	-	-

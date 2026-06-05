@@ -109,10 +109,9 @@ _emit_implement_round_timing_row() {
     [[ "$end_s" =~ ^[0-9]+$ ]] || return 0
     [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
     [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
-    IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR" LARCH_TIMING_LEDGER="$ledger" LARCH_TIMING_SKILL=implement \
-        "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round \
-        --skill implement \
-        --step "Step 5 — code review" \
+    LARCH_TIMING_LEDGER="$ledger" LARCH_TIMING_SKILL=implement \
+        "$PLUGIN_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" \
+        --implement-tmpdir "$IMPLEMENT_TMPDIR" \
         --round "$((10#$round_num))" \
         --start-s "$start_s" \
         --end-s "$end_s" \
