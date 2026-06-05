@@ -1,0 +1,17 @@
+I've now read the complete diff. Let me compile findings.
+
+### In-Scope Findings
+
+1. **Latent** `risk-integration` `scripts/test-design-structure.sh:229-235` — The plan explicitly required "pin that cancel case bodies do not contain `exit 1`" in the `step0b_block` check. The implementation adds only a presence check for the comment (`post-fence handles final-summary emit/abort`) and the post-fence prose pins (`[ -s ... ]`, `Cancel routes always terminate before sub-step 3`), but no `absent` assertion that `cancel-title-filter` or `cancel-reentry-guard` case bodies are free of `exit 1`. If a future commit accidentally restores `exit 1` in either body, the post-fence cancel logic (read result-env → emit summary → abort) would be bypassed without a test failure. **Suggested fix:** Add `if printf '%s\n' "$step0b_block" | grep -q 'cancel-title-filter)' ...; then` style block-scoped absence checks, or use the existing `absent` helper on a narrow excerpt of the case block; at minimum add a comment-anchored check like `if printf '%s\n' "$step0b_block" | awk '/cancel-title-filter\)/,/;;/' | grep -Fq 'exit 1'; then fail "..."; fi`.
+
+2. **Nit** `code-quality` `skills/design/scripts/design-route.sh:1147-1149` — The `render_cancel_summary` function captures `_render_rc=$?` correctly but then has a dead-code block `if [[ "$_render_rc" -ne 0 ]]; then :; fi` that does nothing before `return 0`. The variable capture is fine and serves documentation intent, but the if-block has no effect and creates noise. **Suggested fix:** Remove the `if [[ "$_render_rc" -ne 0 ]]; then :; fi` block; the `return 0` alone is sufficient and the captured `_render_rc` remains available for future diagnostics if needed.
+
+### Out-of-Scope Observations
+
+No pre-existing issues observed that were not introduced or amplified by this change.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	risk-integration	scripts/test-design-structure.sh:229-235	Plan required explicit absence pin for exit 1 in cancel case bodies; only comment-presence check added	Future commit restores exit 1 in cancel-title-filter or cancel-reentry-guard case body — fence exits early, post-fence cancel logic (result-env read + summary emit + abort) never runs, test still passes	Add awk/grep block-scoped absence assertion for exit 1 inside cancel-title-filter and cancel-reentry-guard case blocks in step0b_block
+1	in_scope	nit	code-quality	skills/design/scripts/design-route.sh:1147-1149	Dead-code block if [[ "$_render_rc" -ne 0 ]]; then :; fi in render_cancel_summary — the no-op body has no effect	No behavioral breakage; purely cosmetic noise	Remove the empty if block; retain _render_rc capture and return 0
+```

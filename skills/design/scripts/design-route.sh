@@ -14,7 +14,7 @@ fail() {
 }
 
 usage() {
-    larch_err 'Usage: design-route.sh --design-tmpdir PATH --issue N --issue-title STR --issue-body-file PATH --has-clarify-label true|false --claude-pid N [--repo OWNER/REPO]'
+    larch_err 'Usage: design-route.sh --design-tmpdir PATH --issue N --issue-title STR --issue-body-file PATH --has-clarify-label true|false --claude-pid N --session-id STR [--repo OWNER/REPO]'
 }
 
 MARK_START='^[[:space:]]*<!--[[:space:]]+larch:plan:start[[:space:]]+-->[[:space:]]*$'
@@ -30,6 +30,13 @@ validate_plain_scalar() {
     local label="$1" value="$2"
     case "$value" in
         '' | *$'\n'* | *$'\r'*) fail "invalid $label" ;;
+    esac
+}
+
+validate_session_id_arg() {
+    local value="$1"
+    case "$value" in
+        *$'\n'* | *$'\r'*) fail 'invalid --session-id' ;;
     esac
 }
 
@@ -70,6 +77,8 @@ ISSUE_TITLE=""
 ISSUE_BODY_FILE=""
 HAS_CLARIFY_LABEL=""
 CLAUDE_PID=""
+SESSION_ID_ARG=""
+SESSION_ID_ARG_SEEN=false
 REPO=""
 
 while [[ $# -gt 0 ]]; do
@@ -104,6 +113,12 @@ while [[ $# -gt 0 ]]; do
             CLAUDE_PID="$2"
             shift 2
             ;;
+        --session-id)
+            [[ $# -ge 2 ]] || fail '--session-id requires a value'
+            SESSION_ID_ARG="$2"
+            SESSION_ID_ARG_SEEN=true
+            shift 2
+            ;;
         --repo)
             [[ $# -ge 2 ]] || fail '--repo requires a value'
             REPO="$2"
@@ -126,6 +141,7 @@ done
 [[ -n "$ISSUE_BODY_FILE" ]] || { usage; fail '--issue-body-file is required'; }
 [[ -n "$HAS_CLARIFY_LABEL" ]] || { usage; fail '--has-clarify-label is required'; }
 [[ -n "$CLAUDE_PID" ]] || { usage; fail '--claude-pid is required'; }
+[[ "$SESSION_ID_ARG_SEEN" == true ]] || { usage; fail '--session-id is required'; }
 
 case "$ISSUE" in
     '' | *[!0-9]*) fail '--issue must be a positive integer' ;;
@@ -140,6 +156,7 @@ case "$CLAUDE_PID" in
 esac
 
 validate_plain_scalar issue-title "$ISSUE_TITLE"
+validate_session_id_arg "$SESSION_ID_ARG"
 [[ -n "$REPO" ]] && validate_repo "$REPO"
 
 if [[ -L "$ISSUE_BODY_FILE" ]] || [[ ! -f "$ISSUE_BODY_FILE" ]] || [[ ! -r "$ISSUE_BODY_FILE" ]]; then
@@ -160,7 +177,9 @@ TITLE_FILTER_REASON=""
 TITLE_FILTER_MARKER=""
 MARKER_AGE=""
 MARKER_TTL=""
+MARKER_REMAINING=0
 DESIGN_REENTRY_MARKER_PATH=""
+SUMMARY_MODE_STRING=N/A
 RESUME_STEP=""
 SESSION_ID=""
 RUN_ID=""
@@ -169,33 +188,95 @@ BRAINSTORM_DONE=""
 WARN_LINES=()
 ERROR_LINES=()
 
-emit_route_result() {
-    local -a kvs=("ROUTE=$ROUTE" "BRAINSTORM_PREFIX=$BRAINSTORM_PREFIX")
-    [[ -n "$TITLE_FILTER_REASON" ]] && kvs+=("TITLE_FILTER_REASON=$TITLE_FILTER_REASON")
-    [[ -n "$TITLE_FILTER_MARKER" ]] && kvs+=("TITLE_FILTER_MARKER=$TITLE_FILTER_MARKER")
-    [[ -n "$MARKER_AGE" ]] && kvs+=("MARKER_AGE=$MARKER_AGE")
-    [[ -n "$MARKER_TTL" ]] && kvs+=("MARKER_TTL=$MARKER_TTL")
-    [[ -n "$DESIGN_REENTRY_MARKER_PATH" ]] && kvs+=("DESIGN_REENTRY_MARKER_PATH=$DESIGN_REENTRY_MARKER_PATH")
-    [[ -n "$RESUME_STEP" ]] && kvs+=("RESUME_STEP=$RESUME_STEP")
-    [[ -n "$SESSION_ID" ]] && kvs+=("SESSION_ID=$SESSION_ID")
-    [[ -n "$RUN_ID" ]] && kvs+=("RUN_ID=$RUN_ID")
-    [[ -n "$TIER" ]] && kvs+=("TIER=$TIER")
-    [[ -n "$BRAINSTORM_DONE" ]] && kvs+=("BRAINSTORM_DONE=$BRAINSTORM_DONE")
+ROUTE_KVS=()
+
+route_build_kvs() {
+    ROUTE_KVS=("ROUTE=$ROUTE" "BRAINSTORM_PREFIX=$BRAINSTORM_PREFIX")
+    [[ -n "$TITLE_FILTER_REASON" ]] && ROUTE_KVS+=("TITLE_FILTER_REASON=$TITLE_FILTER_REASON")
+    [[ -n "$TITLE_FILTER_MARKER" ]] && ROUTE_KVS+=("TITLE_FILTER_MARKER=$TITLE_FILTER_MARKER")
+    [[ -n "$MARKER_AGE" ]] && ROUTE_KVS+=("MARKER_AGE=$MARKER_AGE")
+    [[ -n "$MARKER_TTL" ]] && ROUTE_KVS+=("MARKER_TTL=$MARKER_TTL")
+    [[ -n "$DESIGN_REENTRY_MARKER_PATH" ]] && ROUTE_KVS+=("DESIGN_REENTRY_MARKER_PATH=$DESIGN_REENTRY_MARKER_PATH")
+    [[ -n "$RESUME_STEP" ]] && ROUTE_KVS+=("RESUME_STEP=$RESUME_STEP")
+    [[ -n "$SESSION_ID" ]] && ROUTE_KVS+=("SESSION_ID=$SESSION_ID")
+    [[ -n "$RUN_ID" ]] && ROUTE_KVS+=("RUN_ID=$RUN_ID")
+    [[ -n "$TIER" ]] && ROUTE_KVS+=("TIER=$TIER")
+    [[ -n "$BRAINSTORM_DONE" ]] && ROUTE_KVS+=("BRAINSTORM_DONE=$BRAINSTORM_DONE")
     local w e
     for w in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
-        kvs+=("WARN=$w")
+        ROUTE_KVS+=("WARN=$w")
     done
     for e in "${ERROR_LINES[@]+"${ERROR_LINES[@]}"}"; do
-        kvs+=("ERROR=$e")
+        ROUTE_KVS+=("ERROR=$e")
     done
-    if ! phase_driver_write_result_env "$RESULT_ENV" "${kvs[@]}"; then
+}
+
+route_write_result_env() {
+    route_build_kvs
+    if ! phase_driver_write_result_env "$RESULT_ENV" "${ROUTE_KVS[@]}"; then
         exit 1
     fi
+}
+
+route_emit_stdout_and_exit() {
     local kv
-    for kv in "${kvs[@]}"; do
+    for kv in "${ROUTE_KVS[@]}"; do
         emit_kv "${kv%%=*}" "${kv#*=}"
     done
     exit 0
+}
+
+emit_route_result() {
+    route_write_result_env
+    route_emit_stdout_and_exit
+}
+
+render_cancel_summary() {
+    local outcome="$1" mode="$2"
+    set +e
+    if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+        DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="$ISSUE" SESSION_ID="$SESSION_ID_ARG" \
+            "$PLUGIN_ROOT/skills/design/scripts/render-final-summary.sh" \
+            --outcome "$outcome" \
+            --mode "$mode" \
+            ${REPO:+--repo "$REPO"} \
+            --post-publish-only >/dev/null 2>&4
+    else
+        DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="$ISSUE" SESSION_ID="$SESSION_ID_ARG" \
+            "$PLUGIN_ROOT/skills/design/scripts/render-final-summary.sh" \
+            --outcome "$outcome" \
+            --mode "$mode" \
+            ${REPO:+--repo "$REPO"} \
+            --post-publish-only >/dev/null
+    fi
+    # Render failure is intentionally tolerated; child diagnostics stay on stderr/FD4.
+    set -e
+    return 0
+}
+
+route_emit_cancel_side_effects() {
+    case "$ROUTE" in
+        cancel-title-filter)
+            if [[ "$TITLE_FILTER_REASON" == lifecycle ]]; then
+                larch_err "**⚠ /design: issue title starts with managed lifecycle marker ${TITLE_FILTER_MARKER:-<token>} — refusing to design. Rename the title (drop the bracket prefix) and re-invoke /design.**"
+            else
+                # shellcheck disable=SC2016 # Markdown code spans are literal in this diagnostic.
+                larch_err '**⚠ /design: issue title matches archival report-prefix `[... Report]` — refusing to design. Such titles are reserved for `/research` / `/report-tokens` artifacts. Rename the title and re-invoke /design.**'
+            fi
+            render_cancel_summary cancelled-title-filter N/A
+            ;;
+        cancel-reentry-guard)
+            larch_errf '**⚠ /design: refusing spurious re-entry — guard=session-cache issue=#%s ppid=%s marker_age=%ss ttl=%ss. Wait %ss or delete %s to override.**\n' \
+                "$ISSUE" "$CLAUDE_PID" "$MARKER_AGE" "$MARKER_TTL" "$MARKER_REMAINING" "$DESIGN_REENTRY_MARKER_PATH"
+            render_cancel_summary cancelled-reentry-guard "$SUMMARY_MODE_STRING"
+            ;;
+    esac
+}
+
+emit_cancel_route_result() {
+    route_write_result_env
+    route_emit_cancel_side_effects
+    route_emit_stdout_and_exit
 }
 
 step_registry_present() {
@@ -238,6 +319,33 @@ if pause_marker_present "$ISSUE_BODY_FILE"; then
         _step_reg_rc=0
         step_is_registered "$_step" || _step_reg_rc=$?
         if [[ "$_step_reg_rc" -eq 0 ]]; then
+            _manual_resume=false
+            if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
+                [[ "$(jq -r '.manual_gate_b // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo false)" == true ]] && _manual_resume=true
+            fi
+            _wdce_resume_args=(
+                "$PLUGIN_ROOT/scripts/write-design-current-env.sh"
+                --output "$DESIGN_TMPDIR/source-env.sh"
+                --design-tmpdir "$DESIGN_TMPDIR"
+                --session-id "$SESSION_ID"
+                --issue-number "$ISSUE"
+                --claude-pid "$CLAUDE_PID"
+            )
+            [[ -n "$REPO" ]] && _wdce_resume_args+=(--repo "$REPO")
+            [[ "$_manual_resume" == true ]] && _wdce_resume_args+=(--manual-requested true)
+            _wdce_resume_rc=0
+            set +e
+            if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+                "${_wdce_resume_args[@]}" >/dev/null 2>&4
+            else
+                "${_wdce_resume_args[@]}" >/dev/null
+            fi
+            _wdce_resume_rc=$?
+            set -e
+            if [[ "${_wdce_resume_rc:-0}" -ne 0 ]]; then
+                larch_err "**⚠ /design: resume env refresh failed via write-design-current-env.sh (exit ${_wdce_resume_rc}); aborting before resumed STEP=${_step}. Inspect source-env.sh / write-design-current-env.sh diagnostics and re-invoke /design.**"
+                exit 1
+            fi
             ROUTE="resume@${_step}"
             RESUME_STEP="$_step"
             emit_route_result
@@ -264,12 +372,12 @@ if _lifecycle_marker=$(title_has_lifecycle_reject_prefix "$ISSUE_TITLE" 2>/dev/n
     ROUTE=cancel-title-filter
     TITLE_FILTER_REASON=lifecycle
     TITLE_FILTER_MARKER="$_lifecycle_marker"
-    emit_route_result
+    emit_cancel_route_result
 fi
 if title_has_archival_report_prefix "$ISSUE_TITLE"; then
     ROUTE=cancel-title-filter
     TITLE_FILTER_REASON=archival
-    emit_route_result
+    emit_cancel_route_result
 fi
 if title_starts_with_brainstorm "$ISSUE_TITLE"; then
     BRAINSTORM_PREFIX=true
@@ -300,7 +408,16 @@ done
 if [[ "$_marker_hit" == true ]]; then
     ROUTE=cancel-reentry-guard
     DESIGN_REENTRY_MARKER_PATH="$(design_reentry_marker_path "$ISSUE" "$CLAUDE_PID" 2>/dev/null || true)"
-    emit_route_result
+    [[ "$MARKER_AGE" =~ ^[0-9]+$ ]] || MARKER_AGE=0
+    [[ "$MARKER_TTL" =~ ^[0-9]+$ ]] || MARKER_TTL=300
+    MARKER_REMAINING=$((MARKER_TTL - MARKER_AGE))
+    [[ "$MARKER_REMAINING" -lt 0 ]] && MARKER_REMAINING=0
+    SUMMARY_MODE_STRING=N/A
+    if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
+        SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
+    fi
+    [[ -n "$SUMMARY_MODE_STRING" ]] || SUMMARY_MODE_STRING=N/A
+    emit_cancel_route_result
 fi
 
 # 4. Verdict

@@ -173,8 +173,18 @@ if [[ "$MANUAL_REQUESTED" == true ]]; then
     _wdce_args+=(--manual-requested true)
 fi
 [[ -n "$REPO" ]] && _wdce_args+=(--repo "$REPO")
-if ! "${_wdce_args[@]}"; then
+_wdce_rc=0
+set +e
+if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then
+    "${_wdce_args[@]}" >/dev/null 2>&4
+else
+    "${_wdce_args[@]}" >/dev/null
+fi
+_wdce_rc=$?
+set -e
+if [[ "${_wdce_rc:-0}" -ne 0 ]]; then
     INIT_STATUS=env-refresh-failed
+    larch_err "**⚠ /design: write-design-current-env.sh failed during Step 0b env refresh; aborting before rename/run-params. Inspect source-env.sh / write-design-current-env.sh diagnostics, then re-invoke /design.**"
     emit_kv INIT_STATUS "$INIT_STATUS"
     phase_driver_write_result_env "$RESULT_ENV" \
         "INIT_STATUS=$INIT_STATUS" \
@@ -211,6 +221,7 @@ if ! "$PLUGIN_ROOT/scripts/write-run-params.sh" \
     --manual-gate-b "$MANUAL_REQUESTED" \
     --output "$RUN_PARAMS_PATH"; then
     INIT_STATUS=contract-drift
+    larch_err "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. If a prior attempt renamed the issue to [DESIGNING] without writing run-params.json, re-run /design from Step 0b after fixing write-run-params.sh — do not route from a stale or missing run-params.json. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**"
     emit_kv INIT_STATUS contract-drift
     phase_driver_write_result_env "$RESULT_ENV" \
         "INIT_STATUS=contract-drift" \

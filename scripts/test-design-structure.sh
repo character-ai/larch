@@ -16,6 +16,8 @@ RUN_STEP3_SH="$REPO_ROOT/skills/design/scripts/run-step3-review.sh"
 RUN_STEP3_MD="$REPO_ROOT/skills/design/scripts/run-step3-review.md"
 DESIGN_POSTPLAN_EMIT_SH="$REPO_ROOT/skills/design/scripts/design-postplan-emit.sh"
 PARSE_DESIGN_ARGV_SH="$REPO_ROOT/skills/design/scripts/parse-design-argv.sh"
+DESIGN_ROUTE_SH="$REPO_ROOT/skills/design/scripts/design-route.sh"
+DESIGN_INIT_SH="$REPO_ROOT/skills/design/scripts/design-init-runparams.sh"
 DESIGN_PLAN_QUALITY_ASSESSOR_SH="$REPO_ROOT/skills/design/scripts/design-plan-quality-assessor.sh"
 MAKEFILE="$REPO_ROOT/Makefile"
 DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
@@ -23,6 +25,51 @@ DIALEXEC_MD="$REPO_ROOT/skills/design/references/dialectic-execution.md"
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
   exit 1
+}
+
+assert_cancel_route_stdout_kv_only() {
+  local tmp plugin body route_out line
+  tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-design-route-cancel.XXXXXX")
+  plugin="$tmp/plugin"
+  mkdir -p "$plugin/scripts" "$plugin/skills/design/scripts"
+  body="$tmp/issue-body.txt"
+  printf '%s\n' 'cancel route fixture' >"$body"
+  cat >"$plugin/scripts/lib-title-eligibility.sh" <<'EOF_FIXTURE'
+title_has_lifecycle_reject_prefix() {
+  case "$1" in
+    "[IMPLEMENTING]"*) printf '%s\n' '[IMPLEMENTING]'; return 0 ;;
+    *) return 1 ;;
+  esac
+}
+title_has_archival_report_prefix() { return 1; }
+title_starts_with_brainstorm() { return 1; }
+EOF_FIXTURE
+  cat >"$plugin/skills/design/scripts/render-final-summary.sh" <<'EOF_FIXTURE'
+#!/usr/bin/env bash
+printf '%s\n' 'SENTINEL_RENDER_STDOUT'
+exit 0
+EOF_FIXTURE
+  chmod +x "$plugin/skills/design/scripts/render-final-summary.sh"
+
+  if ! route_out=$(CLAUDE_PLUGIN_ROOT="$plugin" "$DESIGN_ROUTE_SH" \
+    --design-tmpdir "$tmp" \
+    --issue 1 \
+    --issue-title "[IMPLEMENTING] fixture" \
+    --issue-body-file "$body" \
+    --has-clarify-label false \
+    --claude-pid "$$" \
+    --session-id "test-session" 2>"$tmp/stderr.log"); then
+    rm -rf "$tmp"
+    fail "design-route.sh cancel smoke fixture failed"
+  fi
+  if printf '%s\n' "$route_out" | grep -Fq 'SENTINEL_RENDER_STDOUT'; then
+    rm -rf "$tmp"
+    fail "design-route.sh cancel render stdout leaked into KV stream"
+  fi
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    [[ "$line" == *=* ]] || { rm -rf "$tmp"; fail "design-route.sh cancel stdout must contain only KEY=VALUE lines"; }
+  done <<<"$route_out"
+  rm -rf "$tmp"
 }
 
 contains() {
@@ -421,9 +468,9 @@ absent "$SKILL_MD" 'read-design-review-budget.sh' 'SKILL must not reference old 
 absent "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_TRIVIAL' 'SKILL must not reference old trivial sentinel'
 absent "$SKILL_MD" 'plan-review-quick.md' 'SKILL must not reference deleted quick review reference'
 absent "$SKILL_MD" 'design-l3-velocity-notified-2670' 'SKILL must not retain Step 5d velocity comment sentinel'
-contains "$SKILL_MD" 'contract drift' 'SKILL missing Step 0b contract-drift abort prose'
-contains "$SKILL_MD" 'aborting before silent tier downgrade' 'SKILL missing silent tier downgrade abort pin'
-contains "$SKILL_MD" 'bash scripts/test-write-run-params.sh' 'SKILL missing contract-drift repro command'
+contains "$DESIGN_INIT_SH" 'contract drift' 'design-init-runparams.sh missing Step 0b contract-drift abort prose'
+contains "$DESIGN_INIT_SH" 'aborting before silent tier downgrade' 'design-init-runparams.sh missing silent tier downgrade abort pin'
+contains "$DESIGN_INIT_SH" 'bash scripts/test-write-run-params.sh' 'design-init-runparams.sh missing contract-drift repro command'
 grep -Fq 'refusing to recreate it with fallback defaults' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
   || fail 'design-init-runparams.sh missing no-fallback run-params warning'
 absent "$SKILL_MD" 'run-params write failed; router-flag recovery' 'SKILL must not retain old HARD fallback recovery reason'
@@ -1037,8 +1084,6 @@ if ! grep -Fq 'append `--manual-requested true` only when `manual_requested=true
   && ! grep -Fq 'Append `--manual-requested true` on that follow-up invocation only when `manual_requested=true`' "$SKILL_MD"; then
   fail "(FINDING_16) SKILL.md must omit --manual-requested on non-manual runs"
 fi
-DESIGN_ROUTE_SH="$REPO_ROOT/skills/design/scripts/design-route.sh"
-DESIGN_INIT_SH="$REPO_ROOT/skills/design/scripts/design-init-runparams.sh"
 [[ -x "$DESIGN_ROUTE_SH" ]] || fail "design-route.sh must be executable"
 [[ -x "$DESIGN_INIT_SH" ]] || fail "design-init-runparams.sh must be executable"
 # shellcheck disable=SC2016 # jq filter literal
@@ -1147,8 +1192,13 @@ grep -Fq '_wdce_args+=(--manual-requested true)' "$DESIGN_INIT_SH" \
   || fail "(FINDING_13) design-init-runparams.sh must add --manual-requested only on manual runs"
 grep -Fq 'INIT_STATUS=env-refresh-failed' "$DESIGN_INIT_SH" \
   || fail "(FINDING_20) design-init-runparams.sh must emit env-refresh-failed on write-design-current-env.sh failure"
-grep -Fq 'write-design-current-env.sh failed during Step 0b env refresh' "$SKILL_MD" \
-  || fail "(FINDING_20) SKILL.md missing dedicated env-refresh-failed operator banner"
+grep -Fq 'write-design-current-env.sh failed during Step 0b env refresh' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_20) design-init-runparams.sh missing dedicated env-refresh-failed operator banner"
+# shellcheck disable=SC2016 # Script literal intentionally checks quiet bridge syntax.
+grep -Fq '[ "${LARCH_QUIET_PID:-}" = "$$" ]' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_20) design-init-runparams.sh missing quiet child conditional"
+grep -Fq '>/dev/null 2>&4' "$DESIGN_INIT_SH" \
+  || fail "(FINDING_20) design-init-runparams.sh missing FD4 bridge for init write-design-current-env.sh"
 init_refresh_line=$(grep -nF 'write-design-current-env.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
 init_rename_line=$(grep -nF 'tracking-issue-write.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
 init_run_params_line=$(grep -nF 'write-run-params.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
@@ -1201,6 +1251,64 @@ grep -Fq 'MARK_START=' "$DESIGN_ROUTE_SH" \
 grep -Fq 'MARK_END=' "$DESIGN_ROUTE_SH" \
   || fail "(FINDING_4) design-route.sh must pin MARK_END plan marker regex"
 step0b_block=$(awk '/^### 0b /,/^### Final summary block$/' "$SKILL_MD")
+grep -Fq 'SESSION_ID_ARG' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_2) design-route.sh missing SESSION_ID_ARG split"
+# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
+printf '%s\n' "$step0b_block" | grep -Fq -- '--session-id "$SESSION_ID"' \
+  || fail "(FINDING_2) SKILL.md Step 0b route invocation missing --session-id"
+# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
+grep -Fq 'ISSUE_NUMBER="$ISSUE" SESSION_ID="$SESSION_ID_ARG"' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_2) design-route.sh render must use command-scoped issue/session identity"
+grep -Fq 'render-final-summary.sh' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_2) design-route.sh missing cancel render-final-summary.sh"
+# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
+grep -Fq -- '--outcome "$outcome"' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_2) design-route.sh cancel render missing --outcome"
+# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
+grep -Fq -- '--mode "$mode"' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_2) design-route.sh cancel render missing --mode"
+grep -Fq 'SUMMARY_MODE_STRING=N/A' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_2) design-route.sh missing tolerant SUMMARY_MODE_STRING=N/A fallback"
+grep -Fq 'route_write_result_env' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_2) design-route.sh missing result-env-before-side-effects helper"
+grep -Fq 'route_emit_cancel_side_effects' "$DESIGN_ROUTE_SH" \
+  || fail "(FINDING_2) design-route.sh missing cancel side effects helper"
+cancel_write_line=$(awk '
+  /^emit_cancel_route_result\(\)/ { in_fn=1; next }
+  in_fn && /^\}/ { exit }
+  in_fn && /route_write_result_env/ { print NR; exit }
+' "$DESIGN_ROUTE_SH")
+cancel_side_effects_line=$(awk '
+  /^emit_cancel_route_result\(\)/ { in_fn=1; next }
+  in_fn && /^\}/ { exit }
+  in_fn && /route_emit_cancel_side_effects/ { print NR; exit }
+' "$DESIGN_ROUTE_SH")
+[[ -n "$cancel_write_line" && -n "$cancel_side_effects_line" ]] \
+  || fail "(FINDING_2) design-route.sh missing cancel result-env / side-effects call sites"
+if (( cancel_write_line >= cancel_side_effects_line )); then
+  fail "(FINDING_2) design-route.sh must write cancel result env before cancel side effects"
+fi
+printf '%s\n' "$step0b_block" | grep -Fq 'post-fence handles final-summary emit/abort' \
+  || fail "(FINDING_2) SKILL.md cancel case bodies must be no-op handoff comments"
+for cancel_branch in cancel-title-filter cancel-reentry-guard; do
+  if printf '%s\n' "$step0b_block" | awk -v branch="$cancel_branch" '
+    $0 ~ branch "\\)" { in_branch=1 }
+    in_branch { print }
+    in_branch && /;;/ { exit }
+  ' | grep -Fq 'exit 1'; then
+    fail "(FINDING_2) SKILL.md $cancel_branch case body must not exit before post-fence cancel handling"
+  fi
+done
+# shellcheck disable=SC2016 # Markdown literal contains shell variables from SKILL.md prose.
+printf '%s\n' "$step0b_block" | grep -Fq '[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]' \
+  || fail "(FINDING_2) SKILL.md post-fence cancel summary gate missing"
+printf '%s\n' "$step0b_block" | grep -Fq 'Cancel routes always terminate before sub-step 3' \
+  || fail "(FINDING_2) SKILL.md post-fence cancel abort contract missing"
+# shellcheck disable=SC2016 # Markdown literal contains shell variables from SKILL.md prose.
+printf '%s\n' "$step0b_block" | grep -Fq '_post_route_env="$DESIGN_TMPDIR/.design-route-result.env"' \
+  || fail "(FINDING_7) SKILL.md post-fence route result re-read missing"
+printf '%s\n' "$step0b_block" | grep -Fq 'is a symlink; refusing to read' \
+  || fail "(FINDING_7) SKILL.md post-fence result-env read must refuse symlinks"
 # shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
 printf '%s\n' "$step0b_block" | grep -Fq 'printf '\''%s\n'\'' "WARN=$_value"' \
   || fail "(FINDING_1 R5) SKILL.md Step 0b file-first route loop must immediately print WARN breadcrumbs"
@@ -1218,15 +1326,38 @@ printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_AGE=0' \
   || fail "(FINDING_7) SKILL.md Step 0b must default MARKER_AGE before reentry guard branch"
 printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_TTL=300' \
   || fail "(FINDING_7) SKILL.md Step 0b must default MARKER_TTL before reentry guard branch"
-printf '%s\n' "$step0b_block" | grep -Fq '_wdce_resume_args' \
-  || fail "(FINDING_9) SKILL.md Step 0b missing resume write-design-current-env args array"
-# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
-printf '%s\n' "$step0b_block" | grep -Fq '${REPO:+--repo "$REPO"}' \
-  || fail "(FINDING_9) SKILL.md Step 0b resume env refresh must thread repo"
-printf '%s\n' "$step0b_block" | grep -Fq '_wdce_resume_rc=$?' \
-  || fail "(FINDING_18) SKILL.md Step 0b resume env refresh must capture rc"
-printf '%s\n' "$step0b_block" | grep -Fq 'resume env refresh failed via write-design-current-env.sh' \
-  || fail "(FINDING_18) SKILL.md Step 0b resume env refresh must handle failure"
+if printf '%s\n' "$step0b_block" | grep -Fq '_wdce_resume_args'; then
+  fail "(FINDING_9) SKILL.md Step 0b must not retain resume write-design-current-env args array"
+fi
+# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
+grep -Fq '_wdce_resume_args=(' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh missing resume write-design-current-env args array"
+# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
+grep -Fq -- '--issue-number "$ISSUE"' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh resume env refresh must pass issue number"
+# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
+grep -Fq -- '--claude-pid "$CLAUDE_PID"' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh resume env refresh must pass Claude PID"
+# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
+grep -Fq -- '--session-id "$SESSION_ID"' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh resume env refresh must pass pause-loaded session ID"
+# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
+grep -Fq '_wdce_resume_args+=(--repo "$REPO")' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh resume env refresh must thread repo"
+grep -Fq '.manual_gate_b // false' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh missing manual_gate_b resume jq guard"
+grep -Fq '_wdce_resume_args+=(--manual-requested true)' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh resume env refresh must pass --manual-requested true"
+grep -Fq '_wdce_resume_rc=$?' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh resume env refresh must capture rc"
+grep -Fq 'resume env refresh failed via write-design-current-env.sh' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh resume env refresh must handle failure"
+# shellcheck disable=SC2016 # Script literal intentionally checks quiet bridge syntax.
+grep -Fq '[ "${LARCH_QUIET_PID:-}" = "$$" ]' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh missing quiet child conditional"
+grep -Fq '>/dev/null 2>&4' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh missing FD4 bridge for resume/render children"
+bare_devnull_count=$(grep -cE '(^|[[:space:]])>/dev/null$' "$DESIGN_ROUTE_SH" || true)
+if (( bare_devnull_count != 2 )); then
+  fail "(FINDING_18) design-route.sh non-quiet resume/render branches must redirect stdout to /dev/null exactly twice"
+fi
+assert_cancel_route_stdout_kv_only
+resume_refresh_fail_line=$(grep -nF 'resume env refresh failed via write-design-current-env.sh' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
+resume_route_assign_line=$(grep -nF 'ROUTE="resume@' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
+[[ -n "$resume_refresh_fail_line" && -n "$resume_route_assign_line" ]] \
+  || fail "(FINDING_18) design-route.sh missing resume env-refresh failure / route assignment anchors"
+if (( resume_refresh_fail_line >= resume_route_assign_line )); then
+  fail "(FINDING_18) design-route.sh must abort on resume env-refresh failure before assigning ROUTE=resume"
+fi
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 printf '%s\n' "$step0b_block" | grep -Fq 'only when `ROUTE=proceed`' \
   || fail "(FINDING_15) SKILL.md Step 0b sub-step 6 must be ROUTE=proceed guarded"
@@ -1337,10 +1468,10 @@ grep -Fq 'title_starts_with_brainstorm' "$DESIGN_ROUTE_SH" \
   || fail "(20) design-route.sh missing title_starts_with_brainstorm"
 grep -Fq 'cancelled-title-filter' "$SKILL_MD" \
   || fail "(20) SKILL.md missing cancelled-title-filter enum"
-grep -Fq 'issue title starts with managed lifecycle marker' "$SKILL_MD" \
-  || fail "(20) SKILL.md missing lifecycle-reject banner text"
-grep -Fq 'issue title matches archival report-prefix' "$SKILL_MD" \
-  || fail "(20) SKILL.md missing archival-report-reject banner text"
+grep -Fq 'issue title starts with managed lifecycle marker' "$DESIGN_ROUTE_SH" \
+  || fail "(20) design-route.sh missing lifecycle-reject banner text"
+grep -Fq 'issue title matches archival report-prefix' "$DESIGN_ROUTE_SH" \
+  || fail "(20) design-route.sh missing archival-report-reject banner text"
 grep -Fq 'detected Brainstorm title prefix — auto-enabling brainstorm mode' "$SKILL_MD" \
   || fail "(20) SKILL.md missing brainstorm info banner text"
 title_cancel_line=$(grep -n 'cancel-title-filter' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
@@ -1502,12 +1633,13 @@ grep -Fq 'do not abort solely because `_publish_rc`=1' "$SKILL_MD" \
 grep -Fq '"${_publish_rc:-0}" -ne 3' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c unexpected-rc guard must exclude exit 3"
 
-grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$SKILL_MD" \
-  || fail "(26) SKILL.md missing literal session-cache banner"
-if ! grep -Fq 'delete <DESIGN_REENTRY_MARKER_PATH> to override.' "$SKILL_MD" \
-  && ! grep -Fq "delete \${DESIGN_REENTRY_MARKER_PATH} to override." "$SKILL_MD"; then
-  fail "(26) SKILL.md must document DESIGN_REENTRY_MARKER_PATH in the session-cache banner literal"
-fi
+grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$DESIGN_ROUTE_SH" \
+  || fail "(26) design-route.sh missing literal session-cache banner"
+grep -Fq 'delete %s to override.**' "$DESIGN_ROUTE_SH" \
+  || fail "(26) design-route.sh must preserve delete-path override hint in the session-cache banner literal"
+# shellcheck disable=SC2016
+grep -Fq '"$ISSUE" "$CLAUDE_PID" "$MARKER_AGE" "$MARKER_TTL" "$MARKER_REMAINING" "$DESIGN_REENTRY_MARKER_PATH"' "$DESIGN_ROUTE_SH" \
+  || fail "(26) design-route.sh session-cache banner must pass DESIGN_REENTRY_MARKER_PATH to delete-path placeholder"
 echo "PASS: (24-26) Step 0b/5c re-entry guard anchors OK"
 
 # Check FINDING_2667 (#2667): Gate B severity precedence prose in approval-gates.md.

@@ -1,0 +1,25 @@
+Now I have a complete picture. Let me write up the findings.
+
+---
+
+### In-Scope Findings
+
+1. **Latent** `correctness` `scripts/test-design-structure.sh:229-243` — The plan requires a pin that `larch_err`/`larch_errf` appears **before** `render-final-summary.sh` within `route_emit_cancel_side_effects`. The test verifies `route_write_result_env` precedes `route_emit_cancel_side_effects` in `emit_cancel_route_result` (cross-function ordering), but there is no ordering check inside `route_emit_cancel_side_effects` verifying that the `larch_err`/`larch_errf` call comes before `render_cancel_summary`. If someone later swaps those two lines in the side-effects function, the harness won't catch it. **Suggested fix:** Add an awk-based ordering check (similar to the existing `cancel_write_line`/`cancel_side_effects_line` check) that scans inside `route_emit_cancel_side_effects` for `larch_err` before `render_cancel_summary`.
+
+2. **Nit** `correctness` `scripts/test-design-structure.sh:225-226` — The plan specifies adding a `$DESIGN_ROUTE_SH` pin for `phase_driver_write_result_env` before reject/render on cancel paths. The test instead pins `route_write_result_env` (the wrapper). The behavior is equivalent since `route_write_result_env` directly calls `phase_driver_write_result_env`, but the exact pin the plan requires is absent. **Suggested fix:** Add `grep -Fq 'phase_driver_write_result_env' "$DESIGN_ROUTE_SH"` alongside the existing `route_write_result_env` check, matching the plan's stated pin list.
+
+3. **Nit** `correctness` `scripts/test-design-structure.sh:256-259` — The plan says the `step0b_block` test should pin that the post-fence prose "reads `$DESIGN_TMPDIR/.design-route-result.env`" and "refuses symlinks". Currently only the `[ -s "${FINAL_SUMMARY_PATH:-…}" ]` gate and `Cancel routes always terminate before sub-step 3` are pinned. The symlink-refusal wording and the result-env re-read phrase are present in SKILL.md but not anchored in the test. **Suggested fix:** Add `grep -Fq '.design-route-result.env' …` and `grep -Fq 'refuse symlinks' …` (or the equivalent wording from SKILL.md) to the `step0b_block` check block.
+
+---
+
+### Out-of-Scope Observations
+
+1. `skills/design/scripts/design-route.sh` — The old SKILL.md fence for `cancel-reentry-guard` set `LARCH_DESIGN_REENTRY_GUARD_PPID="$PPID"` before calling `render-final-summary.sh`. This env var is not forwarded by the new driver's command-scoped render invocation and is not mentioned in the plan at all. If `render-final-summary.sh` reads `LARCH_DESIGN_REENTRY_GUARD_PPID`, the value is now absent. This is a pre-existing coupling concern that may already be dormant; marked out-of-scope because neither file is listed in the plan as requiring this var to be preserved, and the plan's diff shows no evidence `render-final-summary.sh` relies on it.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/test-design-structure.sh:229-243	No ordering pin for larch_err before render_cancel_summary within route_emit_cancel_side_effects	If a future refactor swaps larch_err and render_cancel_summary inside route_emit_cancel_side_effects, the harness won't catch the violation	Add an awk-based ordering check inside route_emit_cancel_side_effects scanning for larch_err line number < render_cancel_summary line number
+1	in_scope	nit	correctness	scripts/test-design-structure.sh:225-226	Plan requires a pin for phase_driver_write_result_env but test pins route_write_result_env (wrapper) instead	Slightly weaker contract coverage; doesn't catch replacement of phase_driver_write_result_env with a non-conforming writer inside the wrapper	Add grep -Fq 'phase_driver_write_result_env' "$DESIGN_ROUTE_SH" alongside the existing route_write_result_env check
+1	in_scope	nit	correctness	scripts/test-design-structure.sh:256-259	step0b_block check omits pins for symlink-refusal and .design-route-result.env re-read wording from post-fence prose	Future edits could remove these key phrases from SKILL.md without test failure	Add grep checks for the .design-route-result.env read and symlink-refusal wording in the step0b_block section
+1	out_of_scope	latent	correctness	skills/design/scripts/design-route.sh	Old SKILL.md exported LARCH_DESIGN_REENTRY_GUARD_PPID before calling render-final-summary.sh; new driver's command-scoped invocation does not include it	Pre-existing coupling; if render-final-summary.sh reads that variable it would now receive an empty value on reentry-guard cancels	Verify render-final-summary.sh does not consume LARCH_DESIGN_REENTRY_GUARD_PPID; if it does add it to the command-scoped env prefix in render_cancel_summary
+```

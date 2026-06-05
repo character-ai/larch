@@ -319,7 +319,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
    - `POSITIONAL_KIND=verbal` → invoke **`/larch:issue`** via the Skill tool with `POSITIONAL_VALUE` as the feature text (forward `--no-dedup` when `no_dedup_requested=true`). Parse the created issue number into `ISSUE_NUMBER`. The route driver at sub-step **2.5** still applies title-eligibility once the issue is fetched — if verbal text matches reject grammar (e.g. `[IMPLEMENTING] foo`), the freshly created issue is rejected and the operator must rename before retrying.
    - `POSITIONAL_KIND=none` → preserve today's empty-invocation / no-positional behavior; this refactor does not add a new usage error.
 2. **Fetch issue**: `gh issue view "$ISSUE_NUMBER" --json body,labels,number,title` with **2× retry** on transient failure. Bind `ISSUE_TITLE` from the JSON `title` field. Write the fetched `body` to `$DESIGN_TMPDIR/issue-body.txt`. Set `HAS_CLARIFY_LABEL=true` when the `needs-design-clarification` label is present, else `HAS_CLARIFY_LABEL=false`. **Resolve `REPO`** once for explicit `gh --repo` threading: prefer `"${CLAUDE_PLUGIN_ROOT}/scripts/resolve-repo.sh"` from the consumer repo working tree; on failure fall back to `gh repo view --json nameWithOwner --jq '.nameWithOwner'`; leave `REPO` empty when both fail so downstream helpers use the hub default.
-2.5. **Route driver** — `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` (contract: `design-route.md`). Resume detection (via `${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-load.sh` when the body carries a pause marker), title-eligibility, re-entry guard, and `ROUTE=` verdict run inside the driver; cancel banners and `AskUserQuestion` gates stay here.
+2.5. **Route driver** — `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-route.sh` (contract: `design-route.md`). Resume detection (via `${CLAUDE_PLUGIN_ROOT}/scripts/design-pause-load.sh` when the body carries a pause marker), title-eligibility, re-entry guard, cancel reject banners, cancel Final summary rendering, resume env refresh, and `ROUTE=` verdict run inside the driver; `AskUserQuestion` gates stay here. After this route fence succeeds, the orchestrator reads `.design-route-result.env` again, emits `final-summary.md` when a cancel route produced a non-empty file, and then aborts unconditionally for those cancel routes. `cancel-pause-load` still aborts inside the fence.
 
    ```bash
    [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -331,6 +331,7 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
      --issue-body-file "$DESIGN_TMPDIR/issue-body.txt" \
      --has-clarify-label "$HAS_CLARIFY_LABEL" \
      --claude-pid "$PPID" \
+     --session-id "$SESSION_ID" \
      ${REPO:+--repo "$REPO"})
    _route_rc=$?
    set -e
@@ -385,64 +386,14 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
        printf '%s\n' "**⚠ /design: pause resume state could not be loaded safely; aborting before fresh routing. Inspect pause-load ERROR breadcrumbs above, fix the pause block, then re-invoke /design.**" >&2
        exit 1 ;;
      cancel-title-filter)
-       export SUMMARY_OUTCOME=cancelled-title-filter
-       export CLAUDE_PLUGIN_ROOT
-       SUMMARY_MODE_STRING=N/A
-       DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
-         "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
-         --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}" \
-         --mode "${SUMMARY_MODE_STRING}" \
-         ${REPO:+--repo "$REPO"} \
-         --post-publish-only
-       if [[ "$TITLE_FILTER_REASON" == lifecycle ]]; then
-         printf '%s\n' "**⚠ /design: issue title starts with managed lifecycle marker ${TITLE_FILTER_MARKER:-<token>} — refusing to design. Rename the title (drop the bracket prefix) and re-invoke /design.**" >&2
-       else
-         printf '%s\n' "**⚠ /design: issue title matches archival report-prefix \`[... Report]\` — refusing to design. Such titles are reserved for \`/research\` / \`/report-tokens\` artifacts. Rename the title and re-invoke /design.**" >&2
-       fi
-       exit 1 ;;
+       # Side effects and stderr live in design-route.sh; post-fence handles final-summary emit/abort.
+       ;;
      cancel-reentry-guard)
-       MARKER_REMAINING=$((MARKER_TTL - MARKER_AGE))
-       [[ "$MARKER_REMAINING" -lt 0 ]] && MARKER_REMAINING=0
-       export SUMMARY_OUTCOME=cancelled-reentry-guard
-       LARCH_DESIGN_REENTRY_GUARD_PPID="$PPID"
-       export CLAUDE_PLUGIN_ROOT
-       SUMMARY_MODE_STRING=""
-       if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
-         SUMMARY_MODE_STRING="$(jq -r '.design_classification // "N/A"' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo N/A)"
-       fi
-       [[ -n "$SUMMARY_MODE_STRING" ]] || SUMMARY_MODE_STRING=N/A
-       DESIGN_TMPDIR="$DESIGN_TMPDIR" ISSUE_NUMBER="${ISSUE_NUMBER:-}" SESSION_ID="${SESSION_ID:-}" \
-         "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
-         --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}" \
-         --mode "${SUMMARY_MODE_STRING}" \
-         ${REPO:+--repo "$REPO"} \
-         --post-publish-only
-       printf '%s\n' "**⚠ /design: refusing spurious re-entry — guard=session-cache issue=#${ISSUE_NUMBER} ppid=${PPID} marker_age=${MARKER_AGE}s ttl=${MARKER_TTL}s. Wait ${MARKER_REMAINING}s or delete ${DESIGN_REENTRY_MARKER_PATH} to override.**" >&2
-       exit 1 ;;
+       # Side effects and stderr live in design-route.sh; post-fence handles final-summary emit/abort.
+       ;;
      resume@*)
        RESUME_STEP="${ROUTE#resume@}"
-       _manual_resume=false
-       if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
-         [[ "$(jq -r '.manual_gate_b // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" == true ]] && _manual_resume=true
-       fi
-       _wdce_resume_args=(
-         "${CLAUDE_PLUGIN_ROOT}/scripts/write-design-current-env.sh"
-         --output "$DESIGN_TMPDIR/source-env.sh"
-         --design-tmpdir "$DESIGN_TMPDIR"
-         --session-id "$SESSION_ID"
-         --issue-number "$ISSUE_NUMBER"
-         --claude-pid "$PPID"
-       )
-       [[ "$_manual_resume" == true ]] && _wdce_resume_args+=(--manual-requested true)
-      set +e
-      "${_wdce_resume_args[@]}" ${REPO:+--repo "$REPO"}
-      _wdce_resume_rc=$?
-      set -e
-      if [[ "${_wdce_resume_rc:-0}" -ne 0 ]]; then
-        printf '%s\n' "**⚠ /design: resume env refresh failed via write-design-current-env.sh (exit ${_wdce_resume_rc}); aborting before resumed STEP=${RESUME_STEP}. Inspect source-env.sh / write-design-current-env.sh diagnostics and re-invoke /design.**" >&2
-        exit 1
-      fi
-      printf '%s\n' "🔓 resumed from STEP=${RESUME_STEP}" ;;
+       printf '%s\n' "🔓 resumed from STEP=${RESUME_STEP}" ;;
    esac
    _route_valid=false
    case "${ROUTE:-}" in
@@ -453,7 +404,28 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
      printf '%s\n' "**⚠ Step 0b: missing or invalid ROUTE after design-route.sh; aborting /design**" >&2
      exit 1
    fi
+   _post_route_env="$DESIGN_TMPDIR/.design-route-result.env"
+   if [[ ! -f "$_post_route_env" || -L "$_post_route_env" ]]; then
+     printf '%s\n' "**⚠ Step 0b: design-route result env missing or is a symlink; refusing to read**" >&2
+     exit 1
+   fi
+   ROUTE=""
+   while IFS= read -r _line || [[ -n "$_line" ]]; do
+     _key="${_line%%=*}"; _value="${_line#*=}"
+     case "$_key" in
+       ROUTE) printf -v ROUTE '%s' "$_value" ;;
+     esac
+   done <"$_post_route_env"
+   case "${ROUTE:-}" in
+     cancel-title-filter|cancel-reentry-guard)
+       if [ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]; then
+         cat "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}"
+       fi
+       exit 1 ;;
+   esac
    ```
+
+   After the route fence exits 0, read `$DESIGN_TMPDIR/.design-route-result.env` directly (file-first; refuse symlinks) and parse only allowlisted `ROUTE=`. Do not rely on `_route_out` or merged stdout KVs after the fence. If `ROUTE` is `cancel-title-filter` or `cancel-reentry-guard`, cancel routes expect fence exit 0: when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that file and emit its full body verbatim as plain chat markdown, then always terminate `/design` before sub-step 3. Summary emit is mandatory when the file is non-empty; abort happens after emit, not before. Cancel routes always terminate before sub-step 3 even if the summary file is empty/missing or render failed.
 
    On `ROUTE` matching `resume@<STEP>` with `RESUME_STEP` other than `0c`, skip sub-steps 3–6 and route directly to the named step (do not rerun title filtering, already-planned routing, tier resolution, `[DESIGNING]` rename, `feature-description.txt`, or `run-params.json` writes). On `resume@0c`, continue to sub-step 3 (Clarify loop), then Step 0c and onward. On `LOAD_OK=false` fallthrough inside the driver, `WARN`/`ERROR` breadcrumbs were emitted above before `ROUTE` branches.
 
@@ -512,14 +484,6 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
        WARN) printf '%s\n' "WARN=$_value" ;;
      esac
    done <<<"${_init_out:-}"
-   if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == contract-drift ]]; then
-     printf '%s\n' "**⚠ /design: SKILL.md ↔ write-run-params.sh contract drift detected; aborting before silent tier downgrade. If a prior attempt renamed the issue to [DESIGNING] without writing run-params.json, re-run /design from Step 0b after fixing write-run-params.sh — do not route from a stale or missing run-params.json. Run \`bash scripts/test-write-run-params.sh\` to repro, then update either SKILL.md or the script to re-align.**" >&2
-     exit 1
-   fi
-   if [[ "${_init_rc:-0}" -eq 1 && "$INIT_STATUS" == env-refresh-failed ]]; then
-     printf '%s\n' "**⚠ /design: write-design-current-env.sh failed during Step 0b env refresh; aborting before rename/run-params. Inspect source-env.sh / write-design-current-env.sh diagnostics, then re-invoke /design.**" >&2
-     exit 1
-   fi
    if [[ "${_init_rc:-0}" -eq 0 && ( "$INIT_STATUS" != ok || ! -f "$DESIGN_TMPDIR/run-params.json" ) ]]; then
      printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh exited 0 without INIT_STATUS=ok and run-params.json; aborting /design**" >&2
      exit 1
