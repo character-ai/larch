@@ -52,8 +52,19 @@ F
 cat > "$round7_dir/review-summary.json" <<'F'
 {"rejected_count":11}
 F
+cat > "$round7_dir/rejected-findings.md" <<'F'
+FINDING_1_OUTCOME=rejected
+FINDING_2_OUTCOME=rejected
+F
 "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 7 --start-s 70 --end-s 72
-awk -F '\t' '$2 == "round" && $6 == 7 && $10 == 0 && $11 == 11 { found=1 } END { exit found ? 0 : 1 }' "$TMP_BASE/timing-ledger.tsv"
+awk -F '\t' '$2 == "round" && $6 == 7 && $10 == 0 && $11 == 2 { found=1 } END { exit found ? 0 : 1 }' "$TMP_BASE/timing-ledger.tsv"
+round8_dir="$TMP_BASE/round-8"
+mkdir -p "$round8_dir"
+cat > "$round8_dir/review-summary.json" <<'F'
+{"rejected_count":11}
+F
+"$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 8 --start-s 80 --end-s 82
+awk -F '\t' '$2 == "round" && $6 == 8 && $10 == 0 && $11 == 11 { found=1 } END { exit found ? 0 : 1 }' "$TMP_BASE/timing-ledger.tsv"
 printf 'v1\tround\t1\tdesign\tdesign Step 3 — plan review\t5\t1\t2\t1\t9\t9\t0\t-\n' >> "$TMP_BASE/timing-ledger.tsv"
 mkdir -p "$TMP_BASE/round-5"
 "$REPO_ROOT/skills/review-and-fix/scripts/record-implement-review-round-timing.sh" --implement-tmpdir "$TMP_BASE" --round 5 --start-s 50 --end-s 55

@@ -80,16 +80,14 @@ if [[ ! "$accepted" =~ ^[0-9]+$ ]]; then
     fi
 fi
 if [[ ! "$rejected" =~ ^[0-9]+$ ]]; then
-    if [[ -s "$round_dir/review-summary.json" ]] && command -v jq >/dev/null 2>&1; then
-        _json_rejected=$(jq -r '.rejected_count // .rejected // empty' "$round_dir/review-summary.json" 2>/dev/null || true)
-        [[ "$_json_rejected" =~ ^[0-9]+$ ]] && rejected="$_json_rejected"
+    if [[ -s "$round_dir/rejected-findings.md" ]]; then
+        rejected=$(grep -cE '^([0-9]+:)?FINDING_[0-9]+_OUTCOME=rejected$' "$round_dir/rejected-findings.md" 2>/dev/null || true)
     fi
 fi
 if [[ ! "$rejected" =~ ^[0-9]+$ ]]; then
-    if [[ -s "$round_dir/rejected-findings.md" ]]; then
-        rejected=$(grep -cE '^([0-9]+:)?FINDING_[0-9]+_OUTCOME=rejected$' "$round_dir/rejected-findings.md" 2>/dev/null || true)
-    else
-        rejected=0
+    if [[ -s "$round_dir/review-summary.json" ]] && command -v jq >/dev/null 2>&1; then
+        _json_rejected=$(jq -r '.rejected_count // .rejected // empty' "$round_dir/review-summary.json" 2>/dev/null || true)
+        [[ "$_json_rejected" =~ ^[0-9]+$ ]] && rejected="$_json_rejected"
     fi
 fi
 [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0

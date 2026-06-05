@@ -214,6 +214,10 @@ refresh_designed_admission_ready() {
 
 render_fresh_timing_report_for_publish() {
     local _tmp_dir _tmp_json _tmp_stderr _render_rc=0 _existing
+    for _existing in "$DESIGN_TMPDIR"/timing-report-final.*; do
+        [[ -e "$_existing" ]] || continue
+        rm -f "$_existing" 2>/dev/null || true
+    done
     _tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/larch-design-timing-report.XXXXXX") || {
         add_warn '**⚠ 5c: failed to create temporary directory for timing report render.**'
         : >"$DESIGN_TMPDIR/timing-report-final.failure.log" 2>/dev/null || true
@@ -226,14 +230,11 @@ render_fresh_timing_report_for_publish() {
             --category Warnings \
             --output-file "$DESIGN_TMPDIR/timing-report-final.failure.log" \
             --redact >/dev/null 2>&1 || true
+        rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
         return 0
     }
     _tmp_json="$_tmp_dir/timing-report-final.json"
     _tmp_stderr="$_tmp_dir/timing-report-final.stderr.log"
-    for _existing in "$DESIGN_TMPDIR"/timing-report-final.*; do
-        [[ -e "$_existing" ]] || continue
-        rm -f "$_existing" 2>/dev/null || true
-    done
     if ! command -v jq >/dev/null 2>&1; then
         add_warn '**⚠ 5c: jq is required to validate timing-report-final.json before publish.**'
         : >"$_tmp_stderr" 2>/dev/null || true
@@ -259,7 +260,6 @@ render_fresh_timing_report_for_publish() {
     if [[ "$_render_rc" -eq 0 && -s "$_tmp_json" ]] && jq -e '
         type == "object" and
         (.per_step | type == "array") and
-        (.per_step[]? | select(.skill == "design" and .step == "design Step 3 — plan review" and (.rounds | type == "array"))) and
         (.total_seconds | type == "number") and
         (.total_hms | type == "string")
     ' "$_tmp_json" >/dev/null 2>>"$_tmp_stderr"; then

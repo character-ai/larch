@@ -77,6 +77,10 @@ if [[ "${TIMING_REPORT_PARTIAL_JSON:-false}" == true ]]; then
   printf '{"per_step":[]}\n' >"$out"
   exit 0
 fi
+if [[ "${TIMING_REPORT_NO_ROUNDS_JSON:-false}" == true ]]; then
+  printf '{"workflow_path":"SIMPLE","per_step":[{"skill":"design","step":"design Step 3 — plan review","duration_seconds":1,"duration_hms":"00:00:01","outlier":false}],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}\n' >"$out"
+  exit 0
+fi
 printf '{"workflow_path":"SIMPLE","per_step":[{"skill":"design","step":"design Step 3 — plan review","duration_seconds":1,"duration_hms":"00:00:01","outlier":false,"rounds":[{"round":1,"duration_seconds":1,"accepted":0,"rejected":0,"oos":0}]}],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}\n' >"$out"
 TIMING_STUB
 chmod +x "$STUB/timing-report.sh"
@@ -219,7 +223,7 @@ reset_publish_stub_env() {
         MARKER_STUB_RC VALIDATOR_STUB_RC VALIDATOR_STATUS_OMIT VALIDATE_STATUS_VALUE \
         VALIDATE_DEFECT_COUNT_VALUE VALIDATE_SKIPPED_COUNT_VALUE \
         VALIDATE_UNSAFE_TOKEN_COUNT_VALUE VALIDATE_LOG_FILE_VALUE \
-        REDACT_STUB_RC REDACT_EMPTY_OUTPUT || true
+        REDACT_STUB_RC REDACT_EMPTY_OUTPUT TIMING_REPORT_NO_ROUNDS_JSON || true
 }
 
 init_publish_logs() {
@@ -590,6 +594,22 @@ unset TIMING_REPORT_PARTIAL_JSON
 assert_rc "partial timing JSON still publishes" 0 "$rc"
 [[ ! -f "$D_BAD_TIMING/timing-report-final.json" ]] || fail "partial timing JSON must not be published as validated"
 pass "partial timing JSON shape is rejected before publish"
+
+D_NO_ROUNDS_TIMING="$TMP/no-rounds-timing-shape"
+setup_design_tmp "$D_NO_ROUNDS_TIMING"
+: >"$D_NO_ROUNDS_TIMING/timing-ledger.tsv"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export TIMING_REPORT_NO_ROUNDS_JSON=true
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_NO_ROUNDS_TIMING" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>&1
+rc=$?
+set -e
+unset TIMING_REPORT_NO_ROUNDS_JSON
+assert_rc "timing JSON without rounds still publishes" 0 "$rc"
+[[ -f "$D_NO_ROUNDS_TIMING/timing-report-final.json" ]] || fail "timing JSON without rounds must be accepted"
+pass "timing JSON rounds array is optional"
 
 # --- explicit/resolved repo forwarded to plan-block-write ---
 D_PLAN_REPO="$TMP/plan-repo"

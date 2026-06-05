@@ -600,6 +600,20 @@ contains "$SKILL_MD" 'The Step 3.5 continuation block below is bypassed on this 
 contains "$SKILL_MD" 'the four primary options are **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**' 'SKILL missing Gate C four-option prose'
 contains "$SKILL_MD" 'Gate C MUST omit **Re-run review panel** and offer only **Approve final design** / **See full plan** / **Discuss further**' 'SKILL missing Gate C cap-omission prose with See full plan'
 contains "$SKILL_MD" 'plan review MUST ALWAYS run the full Step 3 panel' 'SKILL missing full-panel Step 3 contract'
+# shellcheck disable=SC2016 # Markdown literals intentionally pin unexpanded shell snippets.
+contains "$SKILL_MD" 'After successful re-tally, read `$DESIGN_TMPDIR/plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/round-start-s`' 'SKILL missing deferred MAV round-start-s read'
+# shellcheck disable=SC2016 # Markdown literals intentionally pin unexpanded shell snippets.
+contains "$SKILL_MD" 'record-plan-review-round-timing.sh --design-tmpdir "$DESIGN_TMPDIR" --round "${ROUNDS_COMPLETED:-$ROUND_NUM}" --start-s "$round_start_s" --end-s "$end_s" || true' 'SKILL missing deferred MAV timing helper invocation'
+# shellcheck disable=SC2016 # Markdown literal intentionally checks backticked status token.
+step3_main_agent_line=$(grep -nF 'If `TALLY_PLAN_REVIEW_STATUS` is `main-agent-vote-required`' "$SKILL_MD" | head -1 | cut -d: -f1 || true)
+step3_mav_order_ok=$(awk -v s="${step3_main_agent_line:-0}" '
+  NR >= s && /re-run `tally-plan-review\.sh`/ && /record-plan-review-round-timing\.sh --design-tmpdir/ {
+    print (index($0, "re-run `tally-plan-review.sh`") < index($0, "record-plan-review-round-timing.sh --design-tmpdir")) ? "1" : "0"
+    exit
+  }
+' "$SKILL_MD")
+[[ -n "$step3_main_agent_line" && "$step3_mav_order_ok" == "1" ]] \
+  || fail 'SKILL deferred MAV timing helper must run after re-tally'
 
 grep -Fq 'sketch_budget=0' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
   || fail 'design-init-runparams.sh must pin SIMPLE sketch_budget=0'

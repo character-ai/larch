@@ -41,7 +41,14 @@ DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
 round_decimal="$((10#$ROUND_NUM))"
 artifact_root="$DESIGN_TMPDIR"
 round_artifact_root="$DESIGN_TMPDIR/plan-review/round-${round_decimal}"
-if [[ -d "$round_artifact_root" && ! -L "$round_artifact_root" ]]; then
+session_has_tallies=false
+for _tally_file in accepted-plan-findings.md rejected-findings.md voting-tally.md; do
+    if [[ -s "$DESIGN_TMPDIR/$_tally_file" ]]; then
+        session_has_tallies=true
+        break
+    fi
+done
+if [[ "$session_has_tallies" != true && -d "$round_artifact_root" && ! -L "$round_artifact_root" ]]; then
     artifact_root="$round_artifact_root"
 fi
 accepted=0
@@ -80,8 +87,9 @@ export LARCH_TIMING_SKILL=design
 ledger="$DESIGN_TMPDIR/timing-ledger.tsv"
 step_label="design Step 3 — plan review"
 if [[ -f "$ledger" ]]; then
-    if awk -F '\t' -v r="$round_decimal" -v step="$step_label" \
-        '$2 == "round" && $4 == "design" && $5 == step && $6 == r { found=1 } END { exit !found }' \
+    if awk -F '\t' -v r="$round_decimal" -v s="$START_S" -v e="$END_S" -v step="$step_label" \
+        -v a="$accepted" -v rej="$rejected" -v o="$oos" \
+        '$2 == "round" && $4 == "design" && $5 == step && $6 == r && $7 == s && $8 == e && $10 == a && $11 == rej && $12 == o { found=1 } END { exit !found }' \
         "$ledger" 2>/dev/null; then
         exit 0
     fi

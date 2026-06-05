@@ -379,6 +379,9 @@ design_publish_breadcrumbs_error() {
 
 RUN_DEST="$WT_DIR/larch-logs/design/$RUN_ID"
 mkdir -p "$RUN_DEST/render-cache"
+if [[ "$REASON" == "pause" ]]; then
+    rm -f "$RUN_DEST"/timing-report-final.json "$RUN_DEST"/timing-report-final.* 2>/dev/null || true
+fi
 
 _top_files=$(mktemp "${TMPDIR:-/tmp}/design-log-publish-files.XXXXXX")
 ENUM_TOP_TMP="$_top_files"
