@@ -471,7 +471,6 @@ def _write_terminal_state(
         ctx.with_(stall_tracking=result is Outcome.STALLED, stall_step=step),
         Path(ctx.tmpdir) / "finalize-state.sh",
     )
-    _ = step
     phase = "done" if result is Outcome.OK else "stalled"
     _write_ship_state(
         ctx,
@@ -700,10 +699,12 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     state_branch = run_logs.read_state_kv(ctx.state_file, "BRANCH_NAME").strip()
     state_repo = run_logs.read_state_kv(ctx.state_file, "REPO").strip() or ctx.repo
     state_pr_url = run_logs.read_state_kv(ctx.state_file, "PR_URL")
-    pr_url = state_pr_url or ctx.pr_url
+    pr_url = (state_pr_url if _valid_pr_url(state_pr_url) else "") or (ctx.pr_url if _valid_pr_url(ctx.pr_url) else "")
     merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
 
     if resume_phase == config.SHIP_PR_RRR_RESUME_PHASE:
+        if not _valid_repo_slug(state_repo):
+            state_repo = ctx.repo
         return _resume_from_state(
             "blocked-rebase-continuation",
             counters,
@@ -878,6 +879,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
         _state_bool_text(run_logs.read_state_kv(ctx.state_file, "PR_CLOSED"))
         or state_phase == "postmerge"
         or merge_result in config.POST_MERGE_MERGE_RESULTS
+        or (run_logs.manifest_status(ctx) == config.MANIFEST_STATUS_DONE and pr_number is not None)
     )
     if state_phase == "done":
         return _resume_from_state(
@@ -959,9 +961,10 @@ def _monitor_persisted_counters(
     transient_retries: int,
     monitor: ci_monitor.MonitorResult,
 ) -> tuple[int, int, int, int]:
+    monitor_ok = monitor.result.outcome is Outcome.OK
     return (
         iteration,
-        rebase_count + (1 if monitor.goto_rebase else 0),
+        rebase_count + (1 if monitor_ok and monitor.goto_rebase else 0),
         fix_attempts + (1 if monitor.did_fixing else 0),
         transient_retries + (1 if monitor.transient_rerun_attempted else 0),
     )
@@ -1059,6 +1062,8 @@ def run_ship(
                 needs_user_reason="checkout-mismatch",
                 detail=resume.detail,
             )
+        if "\n" in ctx.pr_url or "\r" in ctx.pr_url:
+            raise ShipError("invalid newline in ship state value: PR_URL")
         if resume.start == "done":
             return ShipResult(
                 Outcome.OK,
@@ -1180,19 +1185,6 @@ def run_ship(
             )
             if oos_result is not None:
                 return oos_result
-        elif resume.start == "open-pr":
-            oos_result = _pending_oos_gate(
-                runner,
-                pr_context,
-                cwd=repo_root,
-                iteration=resume.iteration,
-                rebase_count=resume.rebase_count,
-                fix_attempts=resume.fix_attempts,
-                transient_retries=resume.transient_retries,
-            )
-            if oos_result is not None:
-                return oos_result
-
         title = _pr_title(pr_context, runner, cwd=repo_root)
         ensured = pr.ensure_pr(runner, pr_context, body, title=title, cwd=repo_root, base=base_ref)
         working = pr_context.with_(
