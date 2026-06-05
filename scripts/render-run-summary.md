@@ -20,7 +20,7 @@ bash scripts/render-run-summary.sh \
   --outcome <value> \
   --run-id <id> \
   --mode '<flags-or-N/A>' \
-  --workflow-path SIMPLE|HARD|N/A \
+  [--workflow-path SIMPLE|HARD|N/A] \
   [--emergency-requested true|false] \
   --duration '<elapsed-or-N/A>' \
   --claude-tokens <n> --codex-tokens <n> --cursor-tokens <n> \
@@ -28,6 +28,8 @@ bash scripts/render-run-summary.sh \
   --issue-number <n> --issue-url <url> \
   ...
 ```
+
+Omit `--workflow-path` (or pass an empty value) to omit the `- **Path**:` bullet; `/implement` callers omit it, while `/design` callers pass SIMPLE/HARD when available.
 
 Pass **per-bucket** counts (from `token-report.json` `BUCKETS_*`) when available so the cost line matches `token-cost.sh` per-bucket pricing; aggregate `--*-tokens` remains as backward-compatible fallbacks. `--emergency-requested` defaults to `false`; when `true`, the body includes `- Emergency: true`.
 

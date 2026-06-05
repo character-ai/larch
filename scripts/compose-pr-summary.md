@@ -2,7 +2,7 @@
 
 `scripts/compose-pr-summary.sh` emits 1-3 Markdown bullet lines for the
 `## Summary` section of the PR body, replacing the static placeholder on
-SIMPLE-path `/implement` runs.
+The static PR body placeholder is replaced during `/implement` PR prep.
 
 Inputs:
 

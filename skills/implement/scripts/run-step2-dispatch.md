@@ -17,8 +17,7 @@ Derived sources:
 
 - `$IMPLEMENT_TMPDIR/plan.txt`: always forwarded as `--plan-file` (conventional
   path; the launcher does not read `PLAN_FILE` from `session-env.sh`).
-- `--workflow HARD` is always passed (the launcher does not read
-  `POST_PLAN_WORKFLOW_PATH` from `session-env.sh`).
+- No workflow flag is passed; the launcher reads only the conventional plan, feature file, coder, cursor-presence, and optional answers inputs.
 - `$IMPLEMENT_TMPDIR/session-env.sh`
   - `CURSOR_PRESENT`: forwarded as `--cursor-present`.
   - `LARCH_CLAUDE_PLUGIN_ROOT`: resolves the downstream script path when

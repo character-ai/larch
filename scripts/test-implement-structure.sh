@@ -380,10 +380,12 @@ grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$RE
 grep -qE '^[[:space:]]*(source|\.)[[:space:]].*lib-finalize-state-keys\.sh' "$SHIP_PR_SH" \
   || fail "ship-pr.sh must source lib-finalize-state-keys.sh"
 
-# shellcheck disable=SC2016
-{ grep -Fq -- '--workflow-path HARD' "$REPO_ROOT/scripts/implement-bootstrap.sh" || \
-  grep -Fq 'persist_run_flags HARD' "$REPO_ROOT/scripts/implement-bootstrap.sh"; } \
-  || fail "implement-bootstrap.sh must persist HARD workflow path"
+! grep -Fq -- '--workflow-path' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+  || fail "implement-bootstrap.sh must not persist workflow path"
+! grep -Fq 'workflow-path' "$REPO_ROOT/scripts/implement-bootstrap.sh" \
+  || fail "implement-bootstrap.sh must not call timing-ledger workflow-path"
+! grep -Fq -- '--workflow' "$REPO_ROOT/skills/implement/scripts/run-step2-dispatch.sh" \
+  || fail "run-step2-dispatch.sh must not pass --workflow"
 # Post-cutover: /implement no longer accepts --hard, so hard_mode references must be gone.
 ! grep -Fq 'hard_mode' "$SKILL_MD" \
   || fail "Post-plan router must not reference hard_mode (--hard flag removed in cutover)"

@@ -109,6 +109,8 @@ def _workflow_from(path: Path) -> str:
 
 
 def _workflow(run_dir: Path, skill: Skill) -> str:
+    if skill == "implement":
+        return ""
     saw_artifact = False
     for name in (_timing_basename(skill), "run-params.json"):
         path = run_dir / name

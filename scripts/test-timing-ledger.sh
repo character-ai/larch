@@ -2,6 +2,7 @@
 # Regression tests for scripts/timing-ledger.sh.
 
 set -euo pipefail
+export LARCH_QUIET_DISABLE=1
 
 # Hermetic: clear any caller-supplied timing/session env so the test exercises
 # the resolver fallback chain deterministically.
@@ -20,14 +21,12 @@ trap 'rm -rf "$TMP_BASE"' EXIT
 LEDGER="$TMP_BASE/timing.tsv"
 
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" mark "Step 0"
-"$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" workflow-path HARD
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-vendor-task \
     --vendor codex --task-kind codex-implement --start-s 10 --end-s 20 \
     --output "/private/work/output.txt" --exit-code 0 --status complete
 
 [[ $(awk -F '\t' '{print NF}' "$LEDGER" | sort -u) == "13" ]]
 grep -Fq $'v1\tmark\t' "$LEDGER"
-grep -Fq $'v1\tworkflow\t' "$LEDGER"
 grep -Fq $'\tcodex\tcodex-implement\t10\t20\t10\toutput.txt\t0\tcomplete' "$LEDGER"
 "$REPO_ROOT/scripts/timing-ledger.sh" --ledger "$LEDGER" record-round \
     --skill implement --step "Step 5 — code review" --round 1 --start-s 40 --end-s 45 --accepted 2 --rejected 3

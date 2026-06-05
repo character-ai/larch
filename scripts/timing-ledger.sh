@@ -173,21 +173,6 @@ cmd_mark() {
     append_tsv_line "$ledger" "$row"
 }
 
-cmd_workflow_path() {
-    local ledger="$1"
-    shift
-    local path="${1:-}"
-    case "$path" in
-        HARD|SIMPLE) ;;
-        *) warn "workflow-path requires HARD or SIMPLE"; return 1 ;;
-    esac
-    local ts skill row
-    ts=$(date +%s)
-    skill=$(sanitize_field "${LARCH_TIMING_SKILL:-implement}")
-    printf -v row 'v1\tworkflow\t%s\t%s\t-\t-\t-\t-\t-\t-\t-\t-\t%s' "$ts" "$skill" "$path"
-    append_tsv_line "$ledger" "$row"
-}
-
 cmd_record_vendor_task() {
     local ledger="$1"
     shift
@@ -305,9 +290,8 @@ main() {
         mark) cmd_mark "$ledger" "$@" ;;
         record-vendor-task) cmd_record_vendor_task "$ledger" "$@" ;;
         record-round) cmd_record_round "$ledger" "$@" ;;
-        workflow-path) cmd_workflow_path "$ledger" "$@" ;;
         dump) cmd_dump "$ledger" ;;
-        *) warn "usage: timing-ledger.sh [--ledger PATH] mark <step> | record-vendor-task --vendor V --task-kind K --start-s S --end-s S --output P [--exit-code N] [--status S] | record-round --skill implement|design --step LABEL --round N --start-s S --end-s S --accepted N --rejected N [--oos N] | workflow-path HARD|SIMPLE | dump"; return 1 ;;
+        *) warn "usage: timing-ledger.sh [--ledger PATH] mark <step> | record-vendor-task --vendor V --task-kind K --start-s S --end-s S --output P [--exit-code N] [--status S] | record-round --skill implement|design --step LABEL --round N --start-s S --end-s S --accepted N --rejected N [--oos N] | dump"; return 1 ;;
     esac
 }
 

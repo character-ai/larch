@@ -435,7 +435,6 @@ cat >"$out" <<EOF
 
 - **Outcome**: $outcome
 - **Mode**: N/A
-- **Path**: N/A
 - **Duration**: N/A
 - **Cost**: N/A
 - **Issue**: N/A
@@ -478,7 +477,6 @@ assert_schema_ordered "$fallback_stage2" 'renderer fallback stage2 keeps ordered
     '## /implement run run-bl — bailed' \
     '- **Outcome**: bailed' \
     '- **Mode**: N/A' \
-    '- **Path**: N/A' \
     '- **Duration**: N/A' \
     '- **Cost**: N/A' \
     '- **Issue**: #9 — https://github.com/owner/repo/issues/9' \
@@ -623,7 +621,6 @@ assert_schema_ordered "$step18_changed" 'Step 18 body-diff path emits refreshed 
     '## /implement run run-bl — bailed' \
     '- **Outcome**: bailed' \
     '- **Mode**: N/A' \
-    '- **Path**: N/A' \
     '- **Duration**: N/A' \
     '- **Cost**:' \
     '- **Issue**: #9 — https://github.com/owner/repo/issues/9' \

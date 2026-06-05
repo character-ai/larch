@@ -28,8 +28,13 @@ run_case() {
     shift 2
     local dir="$TMP_ROOT/$name"
     mkdir -p "$dir"
-    "$HELPER" --implement-tmpdir "$dir" --no-issues false --workflow-path HARD "$@" >/dev/null
+    "$HELPER" --implement-tmpdir "$dir" --no-issues false "$@" >/dev/null
     assert_file_contains "EMERGENCY_REQUESTED=$expected" "$dir/run-flags.sh" "$name emergency persisted"
+    if grep -q '^WORKFLOW_PATH=' "$dir/run-flags.sh"; then
+        fail "$name workflow path omitted"
+    else
+        pass "$name workflow path omitted"
+    fi
 }
 
 run_case true true --emergency-requested true
@@ -39,7 +44,7 @@ run_case omitted false
 bad_dir="$TMP_ROOT/bad"
 mkdir -p "$bad_dir"
 set +e
-"$HELPER" --implement-tmpdir "$bad_dir" --no-issues false --workflow-path HARD --emergency-requested maybe >/dev/null 2>/dev/null
+"$HELPER" --implement-tmpdir "$bad_dir" --no-issues false --emergency-requested maybe >/dev/null 2>/dev/null
 rc=$?
 set -e
 if [ "$rc" -eq 2 ]; then

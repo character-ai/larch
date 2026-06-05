@@ -22,7 +22,7 @@ def test_env_bool_no_issue(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_main_success_posts_issue_and_keeps_single_cache_trailer(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     record = RunRecord(1, "t", "u", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "HARD", VendorTotals(total=1), VendorTotals(), VendorTotals(), (), {})
-    posted: list[str] = []
+    posted: list[tuple[str, str]] = []
 
     def fake_scan(_runner: object, skill: str, repo_override: str | None = None) -> ScanResult:
         _ = (skill, repo_override)
@@ -39,9 +39,9 @@ def test_main_success_posts_issue_and_keeps_single_cache_trailer(monkeypatch: py
         _ = (args, kwargs)
         return []
 
-    def fake_post(_runner: object, repo: str | None, title: str, sections: list[object]) -> None:
-        _ = (title, sections)
-        posted.append(repo or "")
+    def fake_post(_runner: object, repo: str | None, title: str, sections: list[object], skill: str) -> None:
+        _ = (title, sections, skill)
+        posted.append((repo or "", skill))
 
     monkeypatch.setattr(report_tokens_cli, "scan", fake_scan)
     monkeypatch.setattr(report_tokens_cli, "price_run", fake_price)
@@ -51,7 +51,7 @@ def test_main_success_posts_issue_and_keeps_single_cache_trailer(monkeypatch: py
     assert report_tokens_cli.main(["--skill", "implement"]) == config.EXIT_OK
     out = capsys.readouterr().out
     assert out.count("Cache JSON:") == 1
-    assert posted == ["o/r"]
+    assert posted == [("o/r", "implement")]
 
 
 def test_main_fails_before_post_when_repo_missing(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -87,7 +87,7 @@ def test_main_fails_before_post_when_repo_missing(monkeypatch: pytest.MonkeyPatc
 def test_main_no_issue_and_no_plot_forwarding(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     record = RunRecord(1, "t", "u", "2026-01-01T00:00:00Z", "2026-01-01T00:00:00Z", "HARD", VendorTotals(total=1), VendorTotals(), VendorTotals(), (), {})
     plotted: list[bool] = []
-    posted: list[str] = []
+    posted: list[tuple[str, str]] = []
 
     def fake_scan(_runner: object, skill: str, repo_override: str | None = None) -> ScanResult:
         _ = (skill, repo_override)
@@ -105,9 +105,9 @@ def test_main_no_issue_and_no_plot_forwarding(monkeypatch: pytest.MonkeyPatch, t
         plotted.append(bool(kwargs.get("no_plot")))
         return []
 
-    def fake_post(_runner: object, repo: str | None, title: str, sections: list[object]) -> None:
-        _ = (title, sections)
-        posted.append(repo or "")
+    def fake_post(_runner: object, repo: str | None, title: str, sections: list[object], skill: str) -> None:
+        _ = (title, sections, skill)
+        posted.append((repo or "", skill))
 
     monkeypatch.setattr(report_tokens_cli, "scan", fake_scan)
     monkeypatch.setattr(report_tokens_cli, "price_run", fake_price)

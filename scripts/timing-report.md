@@ -8,10 +8,10 @@ Subcommands:
 - `--summary` prints one grand-total line spanning all marks from the first to the present:
   Used as the default brief output in Step 17 when `LARCH_VERBOSE_TOKENS` is unset.
 - `--full --markdown [--output FILE]` renders the full markdown report.
-- `--full --format json [--output FILE]` renders a JSON object with `workflow_path`, `per_step`, `total_seconds`, `total_hms`, and `vendor_task_averages`. Timing reports preserve the legacy `workflow_path` output key; design v2 callers that only have `design_classification` should map it before writing a workflow row.
+- `--full --format json [--output FILE]` renders a JSON object with `workflow_path`, `per_step`, `total_seconds`, `total_hms`, and `vendor_task_averages`. Timing reports preserve the legacy `workflow_path` output key; implement reports emit `"unknown"`, while design reports may resolve SIMPLE/HARD from design run-params fallback.
 - `--append-timing-section FILE` renders the full report and idempotently replaces the block bracketed by `<!-- timing-report-begin -->` / `<!-- timing-report-end -->`.
 
-Full reports include the latest workflow path (`HARD`, `SIMPLE`, or `unknown`), per-step durations, and vendor task averages by `(vendor, task_kind)`. Failed rows (`status != complete` or `exit_code != 0`) are excluded from averages and summarized below the table.
+Full markdown reports include `**Workflow path**:` only when design fallback resolves `HARD` or `SIMPLE`; implement markdown omits that line and JSON keeps `workflow_path: "unknown"`. Reports also include per-step durations and vendor task averages by `(vendor, task_kind)`. Failed rows (`status != complete` or `exit_code != 0`) are excluded from averages and summarized below the table.
 
 **Quick-mode review rows**: `/implement` quick-mode review rounds no longer emit per-round `LARCH_TIMING_SKILL=review` timing marks; quick-mode review cycles therefore no longer appear as nested `↳ review` rows under implement steps in the `--full` verbose table. The `--summary` and `--since-last-mark --terse` outputs are unaffected.
 
@@ -19,7 +19,7 @@ Duration rules:
 
 - Implement marks are top-level rows when present.
 - Design and review marks are nested under the implement interval in which their timestamp falls.
-- Per-skill intervals are measured to the next mark of the same skill. The final mark of a skill runs until the latest workflow/vendor timestamp, or now.
+- Per-skill intervals are measured to the next mark of the same skill. The final mark of a skill runs until the latest vendor timestamp, or now.
 - Total duration is the last implement mark minus the first implement mark when implement marks exist; otherwise it is the last mark minus the first mark.
 - Steps whose duration exceeds the outlier threshold (default 14 400 s = 4 h, configurable via `LARCH_TIMING_OUTLIER_THRESHOLD_S`) are tagged `[OUTLIER]` in the `--full` table and listed in a trailing note. `--summary` and `--terse` modes are unaffected.
 
@@ -28,3 +28,5 @@ The renderer is shell/awk-only and has no `jq` dependency. It skips rows whose f
 Regression harness: `scripts/test-timing-report.sh` (sibling stub `scripts/test-timing-report.md`); wired into `make lint` via the `test-timing-report` Makefile target (shard `test-harnesses-4`).
 
 JSON full reports now attach best-effort `rounds` arrays to matching per-step entries when `round` ledger rows match the entry skill, exact step label, and `[start,end)` interval. Implement rounds include `round`, `duration_seconds`, `accepted`, and `rejected`; design rounds add `oos` when numeric. Markdown, `--summary`, and `--terse` output are unchanged.
+
+Implement callers should export `LARCH_TIMING_SKILL=implement` and avoid forwarding `DESIGN_TMPDIR` when rendering timing reports from implement run logs. Design fallback requires `LARCH_TIMING_SKILL=design`.

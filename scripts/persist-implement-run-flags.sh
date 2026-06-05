@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # persist-implement-run-flags.sh — Write $IMPLEMENT_TMPDIR/run-flags.sh (KV) atomically.
 #
-# Sanctioned writer for NO_ISSUES, WORKFLOW_PATH, and EMERGENCY_REQUESTED
+# Sanctioned writer for NO_ISSUES and EMERGENCY_REQUESTED
 # (primary consumers in write-final-report.sh).
 # QUICK_MODE is legacy: still written for older tmpdir readers but is not an /implement control
 # surface (quick mode was removed from /implement); omit --quick-mode to persist false.
@@ -10,7 +10,7 @@
 # Usage:
 #   persist-implement-run-flags.sh --implement-tmpdir PATH \
 #       [--quick-mode true|false] [--emergency-requested true|false] \
-#       --no-issues true|false --workflow-path SIMPLE|HARD|N/A
+#       --no-issues true|false
 #
 # When --quick-mode is omitted, QUICK_MODE=false is written. When
 # --emergency-requested is omitted, EMERGENCY_REQUESTED=false is written.
@@ -24,7 +24,6 @@ fail() { printf 'persist-implement-run-flags.sh: %s\n' "$1" >&2; exit 2; }
 IMPLEMENT_TMPDIR=""
 QUICK_MODE=""
 NO_ISSUES=""
-WORKFLOW_PATH=""
 EMERGENCY_REQUESTED=""
 
 while [[ $# -gt 0 ]]; do
@@ -44,11 +43,6 @@ while [[ $# -gt 0 ]]; do
             NO_ISSUES="$2"
             shift 2
             ;;
-        --workflow-path)
-            [[ $# -ge 2 ]] || fail "--workflow-path requires a value"
-            WORKFLOW_PATH="$2"
-            shift 2
-            ;;
         --emergency-requested)
             [[ $# -ge 2 ]] || fail "--emergency-requested requires a value"
             EMERGENCY_REQUESTED="$2"
@@ -65,7 +59,6 @@ done
 case "$QUICK_MODE" in true|false) ;; *) fail "--quick-mode must be true or false" ;; esac
 case "$EMERGENCY_REQUESTED" in true|false) ;; *) fail "--emergency-requested must be true or false" ;; esac
 case "$NO_ISSUES" in true|false) ;; *) fail "--no-issues must be true or false" ;; esac
-case "$WORKFLOW_PATH" in SIMPLE|HARD|N/A) ;; *) fail "--workflow-path must be SIMPLE, HARD, or N/A" ;; esac
 
 out="$IMPLEMENT_TMPDIR/run-flags.sh"
 tmp="$(mktemp "${out}.tmp.XXXXXX")"
@@ -75,7 +68,6 @@ trap cleanup EXIT
 {
     printf 'QUICK_MODE=%s\n' "$QUICK_MODE"
     printf 'NO_ISSUES=%s\n' "$NO_ISSUES"
-    printf 'WORKFLOW_PATH=%s\n' "$WORKFLOW_PATH"
     printf 'EMERGENCY_REQUESTED=%s\n' "$EMERGENCY_REQUESTED"
 } > "$tmp"
 

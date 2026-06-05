@@ -10,12 +10,11 @@ v	type	ts_epoch	skill	step	vendor	task_kind	start_s	end_s	duration_s	output	exit
 ```
 <!-- markdownlint-enable MD010 -->
 
-`type` is `mark`, `vendor`, or `workflow`. `extra` is `-` for mark rows, `complete|signal|unknown` for vendor rows, and `HARD|SIMPLE` for workflow rows. Vendor rows store only `basename(output)`, never absolute output paths, so rendered timing reports do not expose workspace layout.
+`type` is `mark`, `vendor`, or `round`. `extra` is `-` for mark rows and `complete|signal|unknown` for vendor rows. Vendor rows store only `basename(output)`, never absolute output paths, so rendered timing reports do not expose workspace layout.
 
 Subcommands:
 
 - `mark <step-name>` writes a per-step mark for `${LARCH_TIMING_SKILL:-implement}`.
-- `workflow-path HARD|SIMPLE` records the selected `/implement` workflow path. Reporters use the latest workflow row.
 - `dump` prints the resolved ledger path on line 1, followed by the ledger contents when present.
 
 Path resolution:
@@ -28,7 +27,7 @@ Path resolution:
 6. `$REVIEW_TMPDIR/timing-ledger.tsv` when set.
 7. Fails closed with a stderr warning when none of the above are set. Callers MUST set at least one root or pass `--ledger`.
 
-`timing-ledger.sh` is write-only with respect to workflow/tier metadata: it does **not** read `run-params.json` or derive `workflow_path` / `design_classification`. That fallback belongs to readers such as `scripts/timing-report.sh`, which may inspect `run-params.json` beside the resolved ledger.
+`timing-ledger.sh` is write-only with respect to workflow/tier metadata: it does **not** read `run-params.json`, derive `workflow_path` / `design_classification`, or write workflow rows. Design-only fallback belongs to readers such as `scripts/timing-report.sh`, which may inspect design `run-params.json` beside the resolved ledger.
 
 Appends use `flock -w 5` when available. If `flock` is missing entirely, the script warns once per process and falls back to a plain append (single-writer assumption). If `flock` is present but lock acquisition times out, the script warns once per process and skips the append (fail closed — an unlocked append would produce interleaved garbage). The ledger is `chmod 600` after each successful append. All failures warn to stderr and exit 0 so observability never interrupts the workflow. When ledger path resolution fails (no per-run root configured), `dump` writes the warning to stderr and produces no stdout output; callers that assume the first line is always a valid path must handle the empty case.
 

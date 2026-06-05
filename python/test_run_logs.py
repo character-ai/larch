@@ -1050,3 +1050,16 @@ def test_larch_log_commit_volatile_cleanup_resets_staged_before_restore(
     assert reset_call in runner.calls
     assert restore_call in runner.calls
     assert runner.calls.index(reset_call) < runner.calls.index(restore_call)
+
+
+def test_report_subprocess_env_pins_implement_and_clears_design_tmpdir(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    design_tmp = tmp_path / "design"
+    design_tmp.mkdir()
+    _ = (design_tmp / "run-params.json").write_text(json.dumps({"workflow_path": "SIMPLE"}), encoding="utf-8")
+    monkeypatch.setenv("LARCH_TIMING_SKILL", "design")
+    monkeypatch.setenv("DESIGN_TMPDIR", str(design_tmp))
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    env = run_logs._report_subprocess_env(_ctx(tmp_path, str(state)))  # pyright: ignore[reportPrivateUsage]
+    assert env["LARCH_TIMING_SKILL"] == "implement"
+    assert "DESIGN_TMPDIR" not in env

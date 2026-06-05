@@ -145,10 +145,6 @@ case "$EMERGENCY_REQUESTED" in
         EMERGENCY_REQUESTED=false
         ;;
 esac
-WORKFLOW_PATH="$(read_kv WORKFLOW_PATH "$RUN_FLAGS")"
-[ -n "$WORKFLOW_PATH" ] || WORKFLOW_PATH="$(read_kv POST_PLAN_WORKFLOW_PATH "$SESSION_ENV")"
-[ -n "$WORKFLOW_PATH" ] || WORKFLOW_PATH="N/A"
-
 UPSTREAM_ISSUE="$(read_kv UPSTREAM_DESIGN_ISSUE "$SESSION_ENV")"
 
 run_dir="$IMPLEMENT_TMPDIR/larch-logs/implement/$RUN_ID"
@@ -477,7 +473,6 @@ run_body_render() {
         --outcome "$OUTCOME" \
         --run-id "$RUN_ID" \
         --mode "$mode_str" \
-        --workflow-path "$WORKFLOW_PATH" \
         --emergency-requested "$EMERGENCY_REQUESTED" \
         --duration "$DURATION" \
         "${cost_args[@]}" \
@@ -503,7 +498,6 @@ compose_self_fallback() {
         printf '%s\n\n' '**⚠ Degraded fallback — full renderer failed; warning recorded in execution issues.**'
         case "$OUTCOME" in bailed*|stalled|cancelled-*|failed-*) printf -- '- **Outcome**: %s\n' "$OUTCOME" ;; esac
         printf -- '- **Mode**: %s\n' "${mode_str:-N/A}"
-        printf -- '- **Path**: %s\n' "${WORKFLOW_PATH:-N/A}"
         if [ "${EMERGENCY_REQUESTED:-false}" = "true" ]; then
             printf -- '- Emergency: true\n'
         fi

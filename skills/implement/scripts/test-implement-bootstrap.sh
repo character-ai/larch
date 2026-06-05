@@ -401,7 +401,7 @@ while [ $# -gt 0 ]; do
     *) shift ;;
   esac
 done
-[ -n "$tmpdir" ] && printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\nEMERGENCY_REQUESTED=%s\n' "$emergency" >"$tmpdir/run-flags.sh"
+[ -n "$tmpdir" ] && printf 'NO_ISSUES=false\nEMERGENCY_REQUESTED=%s\n' "$emergency" >"$tmpdir/run-flags.sh"
 exit 0
 STUB
     chmod +x "$SANDBOX/scripts/persist-implement-run-flags.sh"
@@ -618,7 +618,7 @@ SANDBOX_TMP=$(mktemp -d /tmp/larch-ib-sess.XXXXXX)
 build_sandbox
 write_gp1_session_setup
 printf 'ISSUE_NUMBER=123\nRUN_ID=resume1\nADOPTED=true\n' > "$SANDBOX_TMP/parent-issue.md"
-printf 'NO_ISSUES=false\nWORKFLOW_PATH=HARD\nEMERGENCY_REQUESTED=true\n' > "$SANDBOX_TMP/run-flags.sh"
+printf 'NO_ISSUES=false\nEMERGENCY_REQUESTED=true\n' > "$SANDBOX_TMP/run-flags.sh"
 out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --emergency-requested false 2>/dev/null) && rc=$? || rc=$?
 assert_rc "$rc" 0 "GP2-persisted-emergency exit 0"
 assert_contains "EMERGENCY_REQUESTED=true" "$out" "GP2-persisted-emergency stdout KV"
@@ -635,7 +635,7 @@ out=$(run_bootstrap --up-to-phase tracking --issue-number 123 --emergency-reques
 assert_rc "$rc" 0 "GP2-emergency exit 0"
 assert_contains "BRANCH_SELECTED=branch-1-resume" "$out" "GP2-emergency branch"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
-assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --workflow-path HARD --emergency-requested true" "$invoke" "GP2-emergency persist arg"
+assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --emergency-requested true" "$invoke" "GP2-emergency persist arg"
 assert_contains "post-tracking-issue --emergency-requested true" "$invoke" "GP2-emergency metadata refresh"
 assert_contains "EMERGENCY_REQUESTED=true" "$(cat "$SANDBOX_TMP/run-flags.sh")" "GP2-emergency run flags"
 rm -rf "$SANDBOX" "$SANDBOX_TMP"
@@ -1031,9 +1031,7 @@ do
     invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
     assert_contains "token-ledger mark implement Step 0 — plan materialization" "$invoke" "B5-plan-green $expected_slug token mark"
     assert_contains "timing-ledger mark implement Step 0 — plan materialization" "$invoke" "B5-plan-green $expected_slug timing mark"
-    assert_contains "timing-ledger workflow-path HARD" "$invoke" "B5-plan-green $expected_slug workflow-path HARD"
-    assert_order "snapshot-untracked" "gh issue view 123" "$invoke" "B5-plan-green $expected_slug snapshot before gh"
-    assert_order "gh issue view 123" "timing-ledger workflow-path HARD" "$invoke" "B5-plan-green $expected_slug gh before workflow-path mark"
+        assert_order "snapshot-untracked" "gh issue view 123" "$invoke" "B5-plan-green $expected_slug snapshot before gh"
     assert_order "persist-implement-run-flags" "check-mid-run-dirty-tree" "$invoke" "B5-plan-green $expected_slug persist before dirty"
     assert_order "check-mid-run-dirty-tree" "create-branch --branch testuser/$expected_slug-123" "$invoke" "B5-plan-green $expected_slug dirty before branch"
     assert_order "create-branch --branch testuser/$expected_slug-123" "git-current-branch" "$invoke" "B5-plan-green $expected_slug branch before capture"
@@ -1053,7 +1051,7 @@ out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergency 
 assert_rc "$rc" 0 "B5-plan-emergency exit 0"
 assert_contains "EMERGENCY_REQUESTED=true" "$out" "B5-plan-emergency stdout KV"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
-assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --workflow-path HARD --emergency-requested true" "$invoke" "B5-plan-emergency persist arg"
+assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --emergency-requested true" "$invoke" "B5-plan-emergency persist arg"
 assert_contains "post-tracking-issue --emergency-requested true" "$invoke" "B5-plan-emergency metadata arg"
 issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_contains "implement-bootstrap emergency-bypass-log" "$issues" "B5-plan-emergency warning site"
@@ -1097,7 +1095,7 @@ out=$(run_bootstrap --up-to-phase plan --issue-number 123 --run-id runEmergencyC
 assert_rc "$rc" 0 "B5-plan-emergency-clean exit 0"
 assert_contains "EMERGENCY_REQUESTED=true" "$out" "B5-plan-emergency-clean stdout KV"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
-assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --workflow-path HARD --emergency-requested true" "$invoke" "B5-plan-emergency-clean persist arg"
+assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --emergency-requested true" "$invoke" "B5-plan-emergency-clean persist arg"
 assert_contains "post-tracking-issue --emergency-requested true" "$invoke" "B5-plan-emergency-clean metadata arg"
 issues=$(cat "$SANDBOX_TMP/execution-issues.md" 2>/dev/null || true)
 assert_not_contains "implement-bootstrap emergency-bypass-log" "$issues" "B5-plan-emergency-clean no bypass warning"
@@ -1910,7 +1908,7 @@ else
     echo "FAIL: B4-plan-dirty-resume no second gh"
     printf '%s\n' "$invoke" | sed 's/^/    /'
 fi
-if [ "$(printf '%s\n' "$invoke" | grep -cF "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --workflow-path HARD --emergency-requested false" || true)" -eq 3 ]; then
+if [ "$(printf '%s\n' "$invoke" | grep -cF "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --emergency-requested false" || true)" -eq 3 ]; then
     PASS=$((PASS + 1))
     echo "PASS: B4-plan-dirty-resume reruns persist on resume"
 else
@@ -1966,7 +1964,7 @@ else
     printf '%s\n' "$issues" | sed 's/^/    /'
 fi
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
-if [ "$(printf '%s\n' "$invoke" | grep -cF "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --workflow-path HARD --emergency-requested true" || true)" -eq 3 ]; then
+if [ "$(printf '%s\n' "$invoke" | grep -cF "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --emergency-requested true" || true)" -eq 3 ]; then
     PASS=$((PASS + 1))
     echo "PASS: B7-plan-dirty-tree emergency resume reruns persist"
 else
@@ -2013,7 +2011,7 @@ out=$(IMPLEMENT_TMPDIR="$SANDBOX_TMP" run_bootstrap --up-to-phase plan --issue-n
 assert_rc "$rc" 0 "B7-plan-dirty-tree inferred-emergency resume exit 0"
 assert_contains "EMERGENCY_REQUESTED=true" "$out" "B7-plan-dirty-tree inferred-emergency resume stdout KV"
 invoke=$(cat "$SANDBOX/invoke-log.txt" 2>/dev/null || true)
-assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --workflow-path HARD --emergency-requested true" "$invoke" "B7-plan-dirty-tree inferred-emergency resume persists true"
+assert_contains "persist-implement-run-flags --implement-tmpdir $SANDBOX_TMP --no-issues false --emergency-requested true" "$invoke" "B7-plan-dirty-tree inferred-emergency resume persists true"
 assert_contains "post-tracking-issue --emergency-requested true" "$invoke" "B7-plan-dirty-tree inferred-emergency resume refreshes metadata"
 rm -rf "$SANDBOX" "$SANDBOX_TMP" "$SANDBOX_TMP_RESUME"
 

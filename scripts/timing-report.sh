@@ -99,10 +99,12 @@ render_report() {
     local outlier_threshold="${LARCH_TIMING_OUTLIER_THRESHOLD_S:-14400}"
     local workflow_override=""
     [[ -f "$ledger" ]] || unavailable "ledger not found"
-    if workflow_override=$(resolve_workflow_fallback "$ledger"); then
-        case "$workflow_override" in SIMPLE|HARD) ;; *) workflow_override="" ;; esac
-    else
-        workflow_override=""
+    if [[ "$skill" == "design" ]]; then
+        if workflow_override=$(resolve_workflow_fallback "$ledger"); then
+            case "$workflow_override" in SIMPLE|HARD) ;; *) workflow_override="" ;; esac
+        else
+            workflow_override=""
+        fi
     fi
     if [[ "$mode" == "terse" || "$mode" == "summary" ]]; then
         awk -F '\t' '$1 == "v1" && $2 == "mark" { found = 1; exit } END { exit found ? 0 : 1 }' "$ledger" \
@@ -196,11 +198,6 @@ render_report() {
         round_oos[round_count] = $12
         next
       }
-      row_ok() && $2 == "workflow" {
-        workflow = $13
-        workflow_ts = $3 + 0
-        next
-      }
       END {
         if (mode == "terse") {
           if (last_terse_ts == "") {
@@ -251,8 +248,10 @@ render_report() {
           emit_json_report()
           exit 0
         }
-        print "**Workflow path**: " workflow
-        print ""
+        if (workflow == "SIMPLE" || workflow == "HARD") {
+          print "**Workflow path**: " workflow
+          print ""
+        }
         print "## Per-Step Durations"
         print ""
         print "| Skill | Step | Duration |"
@@ -351,7 +350,6 @@ render_report() {
       }
       function last_event_ts(    t, i) {
         t = now
-        if (workflow_ts > t) t = workflow_ts
         for (i = 1; i <= vendor_count; i++) if (vendor_ts[i] > t) t = vendor_ts[i]
         return t
       }

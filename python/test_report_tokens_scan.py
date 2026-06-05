@@ -190,3 +190,25 @@ def test_scan_warns_unknown_workflow_artifacts(tmp_path: Path, capsys: pytest.Ca
     result = scan(Runner(tmp_path), skill="design", repo_override="o/r")
     assert result.records[0].workflow == "unknown"
     assert "lacks SIMPLE/HARD workflow classification" in capsys.readouterr().err
+
+
+def test_scan_implement_ignores_legacy_timing_report_json(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_run(tmp_path, skill="implement")
+    run = tmp_path / "larch-logs" / "implement" / "run1"
+    _ = (run / "timing-report.json").write_text(json.dumps({"workflow_path": "HARD"}), encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+    assert result.records[0].workflow == ""
+    assert "workflow" not in capsys.readouterr().err.lower()
+
+
+def test_scan_implement_skips_malformed_workflow_artifacts(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_run(tmp_path, skill="implement")
+    run = tmp_path / "larch-logs" / "implement" / "run1"
+    _ = (run / "timing-report.json").write_text("{", encoding="utf-8")
+    (run / "run-params.json").unlink()
+    (run / "run-params.json").symlink_to(tmp_path / "missing-run-params.json")
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+    assert result.records[0].workflow == ""
+    err = capsys.readouterr().err
+    assert "invalid timing-report.json" not in err
+    assert "run-params.json" not in err

@@ -3,11 +3,11 @@
 Analyzed 1 parseable runs.
 Tracked total estimated cost: $6.00.
 
-## Aggregate cost by workflow
+## Aggregate cost
 
-| Workflow | Runs | Total | Median | Mean | Max |
+| Label | Runs | Total | Median | Mean | Max |
 | --- | ---: | ---: | ---: | ---: | ---: |
-| unknown | 1 | $6.00 | $6.00 | $6.00 | $6.00 |
+| All runs | 1 | $6.00 | $6.00 | $6.00 | $6.00 |
 
 ## Vendor breakdown
 
@@ -19,14 +19,14 @@ Tracked total estimated cost: $6.00.
 
 ## Top runs by estimated cost
 
-| Issue | Workflow | Started | Total | Claude | Codex | Cursor |
-| --- | --- | --- | ---: | ---: | ---: | ---: |
-| [#7](https://example.invalid/7) | unknown | 2026-01-01 | $6.00 (token-cost) | $1.00 | $2.00 | $3.00 |
+| Issue | Started | Total | Claude | Codex | Cursor |
+| --- | --- | ---: | ---: | ---: | ---: |
+| [#7](https://example.invalid/7) | 2026-01-01 | $6.00 (token-cost) | $1.00 | $2.00 | $3.00 |
 
 ## Phase breakdown
 
-| Workflow | Vendor | Phase | Runs | Tokens |
-| --- | --- | --- | ---: | ---: |
+| Vendor | Phase | Runs | Tokens |
+| --- | --- | ---: | ---: |
 
 ## Per-day cost trends
 
