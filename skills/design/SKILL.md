@@ -465,10 +465,6 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
        WARN) printf '%s\n' "WARN=$_value" ;;
      esac
    done <<<"${_init_out:-}"
-   if [[ "${_init_rc:-0}" -eq 1 && ( "$INIT_STATUS" == contract-drift || "$INIT_STATUS" == env-refresh-failed ) ]]; then
-     printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh failed (INIT_STATUS=${INIT_STATUS:-unknown}); aborting /design**" >&2
-     exit 1
-   fi
    if [[ "${_init_rc:-0}" -eq 0 && ( "$INIT_STATUS" != ok || ! -f "$DESIGN_TMPDIR/run-params.json" ) ]]; then
      printf '%s\n' "**⚠ Step 0b: design-init-runparams.sh exited 0 without INIT_STATUS=ok and run-params.json; aborting /design**" >&2
      exit 1

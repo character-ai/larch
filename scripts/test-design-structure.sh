@@ -1228,8 +1228,32 @@ grep -Fq 'route_write_result_env' "$DESIGN_ROUTE_SH" \
   || fail "(FINDING_2) design-route.sh missing result-env-before-side-effects helper"
 grep -Fq 'route_emit_cancel_side_effects' "$DESIGN_ROUTE_SH" \
   || fail "(FINDING_2) design-route.sh missing cancel side effects helper"
+cancel_write_line=$(awk '
+  /^emit_cancel_route_result\(\)/ { in_fn=1; next }
+  in_fn && /^\}/ { exit }
+  in_fn && /route_write_result_env/ { print NR; exit }
+' "$DESIGN_ROUTE_SH")
+cancel_side_effects_line=$(awk '
+  /^emit_cancel_route_result\(\)/ { in_fn=1; next }
+  in_fn && /^\}/ { exit }
+  in_fn && /route_emit_cancel_side_effects/ { print NR; exit }
+' "$DESIGN_ROUTE_SH")
+[[ -n "$cancel_write_line" && -n "$cancel_side_effects_line" ]] \
+  || fail "(FINDING_2) design-route.sh missing cancel result-env / side-effects call sites"
+if (( cancel_write_line >= cancel_side_effects_line )); then
+  fail "(FINDING_2) design-route.sh must write cancel result env before cancel side effects"
+fi
 printf '%s\n' "$step0b_block" | grep -Fq 'post-fence handles final-summary emit/abort' \
   || fail "(FINDING_2) SKILL.md cancel case bodies must be no-op handoff comments"
+for cancel_branch in cancel-title-filter cancel-reentry-guard; do
+  if printf '%s\n' "$step0b_block" | awk -v branch="$cancel_branch" '
+    $0 ~ branch "\\)" { in_branch=1 }
+    in_branch { print }
+    in_branch && /;;/ { exit }
+  ' | grep -Fq 'exit 1'; then
+    fail "(FINDING_2) SKILL.md $cancel_branch case body must not exit before post-fence cancel handling"
+  fi
+done
 # shellcheck disable=SC2016 # Markdown literal contains shell variables from SKILL.md prose.
 printf '%s\n' "$step0b_block" | grep -Fq '[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]' \
   || fail "(FINDING_2) SKILL.md post-fence cancel summary gate missing"
@@ -1272,6 +1296,10 @@ grep -Fq 'resume env refresh failed via write-design-current-env.sh' "$DESIGN_RO
 # shellcheck disable=SC2016 # Script literal intentionally checks quiet bridge syntax.
 grep -Fq '[ "${LARCH_QUIET_PID:-}" = "$$" ]' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh missing quiet child conditional"
 grep -Fq '>/dev/null 2>&4' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh missing FD4 bridge for resume/render children"
+bare_devnull_count=$(grep -cE '>/dev/null$' "$DESIGN_ROUTE_SH" || true)
+if (( bare_devnull_count < 2 )); then
+  fail "(FINDING_18) design-route.sh non-quiet resume/render branches must redirect stdout to /dev/null"
+fi
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 printf '%s\n' "$step0b_block" | grep -Fq 'only when `ROUTE=proceed`' \
   || fail "(FINDING_15) SKILL.md Step 0b sub-step 6 must be ROUTE=proceed guarded"
@@ -1551,6 +1579,9 @@ grep -Fq '**⚠ /design: refusing spurious re-entry — guard=session-cache' "$D
   || fail "(26) design-route.sh missing literal session-cache banner"
 grep -Fq 'delete %s to override.**' "$DESIGN_ROUTE_SH" \
   || fail "(26) design-route.sh must preserve delete-path override hint in the session-cache banner literal"
+# shellcheck disable=SC2016
+grep -Fq '"$ISSUE" "$CLAUDE_PID" "$MARKER_AGE" "$MARKER_TTL" "$MARKER_REMAINING" "$DESIGN_REENTRY_MARKER_PATH"' "$DESIGN_ROUTE_SH" \
+  || fail "(26) design-route.sh session-cache banner must pass DESIGN_REENTRY_MARKER_PATH to delete-path placeholder"
 echo "PASS: (24-26) Step 0b/5c re-entry guard anchors OK"
 
 # Check FINDING_2667 (#2667): Gate B severity precedence prose in approval-gates.md.

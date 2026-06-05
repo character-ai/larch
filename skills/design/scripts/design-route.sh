@@ -177,7 +177,9 @@ TITLE_FILTER_REASON=""
 TITLE_FILTER_MARKER=""
 MARKER_AGE=""
 MARKER_TTL=""
+MARKER_REMAINING=0
 DESIGN_REENTRY_MARKER_PATH=""
+SUMMARY_MODE_STRING=N/A
 RESUME_STEP=""
 SESSION_ID=""
 RUN_ID=""
@@ -249,9 +251,6 @@ render_cancel_summary() {
     fi
     _render_rc=$?
     set -e
-    if [[ "$_render_rc" -ne 0 ]]; then
-        :
-    fi
     return 0
 }
 
@@ -409,8 +408,8 @@ done
 if [[ "$_marker_hit" == true ]]; then
     ROUTE=cancel-reentry-guard
     DESIGN_REENTRY_MARKER_PATH="$(design_reentry_marker_path "$ISSUE" "$CLAUDE_PID" 2>/dev/null || true)"
-    [[ -n "$MARKER_AGE" ]] || MARKER_AGE=0
-    [[ -n "$MARKER_TTL" ]] || MARKER_TTL=300
+    [[ "$MARKER_AGE" =~ ^[0-9]+$ ]] || MARKER_AGE=0
+    [[ "$MARKER_TTL" =~ ^[0-9]+$ ]] || MARKER_TTL=300
     MARKER_REMAINING=$((MARKER_TTL - MARKER_AGE))
     [[ "$MARKER_REMAINING" -lt 0 ]] && MARKER_REMAINING=0
     SUMMARY_MODE_STRING=N/A
