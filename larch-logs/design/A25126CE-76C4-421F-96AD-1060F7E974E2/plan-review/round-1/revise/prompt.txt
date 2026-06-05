@@ -1,0 +1,281 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY a single unified diff in your final response, with no prose, no fences, no narration. Use the canonical form `--- a/plan.txt` / `+++ b/plan.txt` (relative paths, no directory prefix beyond `a/` / `b/`).
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+<plan>
+# Implementation Plan — Python finalize parity (issue #3449)
+
+## Scope and binding decisions (Round 1)
+
+- **Parity-only.** Keep bash (`scripts/ship-pr.sh` / `scripts/implement-finalize.sh`) the shipped default. Do NOT flip `LARCH_SHIP_PR_IMPL` (defaults to `bash` in `python/config.py:56`; enforced by `scripts/test-implement-structure.sh`). Python finalize stays dev/CI-only.
+- **Full behavioral audit.** Match every branch of `scripts/implement-finalize.sh` and `scripts/local-cleanup.sh` in `python/finalize.py`, beyond the enumerated divergences.
+- **Cross-file divergences included.** Fix `python/ship.py` `_postmerge_should_flush` ctx timing and `python/ci_monitor.py` `stage_and_push` force-push gate.
+- **Fail-closed parity gate via `make py-test`.** Add an in-module guard so bash-present runs fail (not silently skip). No new `make test-merge-parity` target.
+- **Bash is the untouched reference.** `implement-finalize.sh`, `local-cleanup.sh`, `merge-pr.sh` must not change behavior. Parity is asserted Python-vs-bash by real subprocess tests.
+
+The user explicitly authorized this full audit, so the plan is comprehensive despite SIMPLE tier. Implement surgically: reuse existing Python helpers (`git`, `rebase`, `run_logs`, `tracking_issue`, `config`), add no speculative abstraction, and touch only what parity requires.
+
+## Files to modify/create
+
+### UPDATED: `python/finalize.py`
+
+Bring all three finalize subcommands to bash parity. Reference bash: `scripts/implement-finalize.sh`.
+
+- **`postmerge()` — local-cleanup parity (bash `run_postmerge` 639-707 + `local-cleanup.sh` 1-149).** Replace the inline `git switch main` / `git pull --ff-only` / `git branch -D` (finalize.py:124-134) with a native reimplementation of `local-cleanup.sh`'s full sequence:
+  1. checkout `main` (match bash step order; on failure set `CURRENT_BRANCH` from `git symbolic-ref --short HEAD`, status `partial`).
+  2. fetch `origin main` with transient retry (see Edge cases — transient retry).
+  3. orphan larch-log flush reset: when ahead of `origin/main` AND every ahead commit subject starts with `config.FLUSH_COMMIT_SUBJECT_PREFIX` AND `git diff --name-only` touches only `larch-logs/`, `git reset --hard origin/main`. Reuse `git.log_subjects` / `git.diff_name_only` and the flush-detection already in `merge.py`.
+  4. pull `--ff-only origin main` with transient retry; on failure emit the ahead-by-N diagnostic (bash `local-cleanup.sh` 125-135) and mark `partial`.
+  5. delete feature branch (`git branch -D`); record `BRANCH_DELETED`.
+  `partial` vs `success` must match bash: `success` only when checkout+pull succeed and the cleanup ran to completion (bash gates on `CLEANUP_SUCCESS=true`), `partial` otherwise. Factor this into a private `_local_cleanup(runner, ctx, branch, *, cwd)` returning `(cleanup_success, current_branch, branch_deleted)` so postmerge stays readable and the unit/parity tests can target it.
+- **`postmerge()` — verify-main parity (bash 686-700 + `scripts/verify-main.sh`).** Keep the title check native but align its matching to `verify-main.sh`: compare `git log -1 --format=%s main` against `"<PR_TITLE> (#<PR_NUMBER>)"`, status `verified` / `unexpected`, `skipped` on the early skip branches. Preserve existing skip decisions (`skipped-draft`, `skipped-merge-false`, `skipped-bail`) — already parity-correct per `test_finalize_bash_parity.py`.
+- **`postbump()` — split rebase / remote-check / force-push-lease gate (bash `run_postbump` 524-582, `run_step8b_rebase` 397-459, `run_force_push_gate` 461-522).** Replace the single combined `rebase.rebase_and_push(...)` (finalize.py:72-82) with the bash three-stage shape: (1) rebase via `rebase`/`rebase_and_push(..., defer_push=True)` or a no-push rebase; (2) remote-branch presence check (bash `check-remote-branch.sh`) using `git.try_rev_parse(origin/<branch>)` + `git ls-remote`; (3) force-push-lease gate using `git.force_push_with_lease` / `force_push_with_lease_expecting`. Map outcomes to bash status tokens so parity holds: `ok`, `rebase-failed`, `push-failed` (lease refused), `remote-check-failed`, `branch-mismatch`, `postbump-cwd-not-repo`, `already-fresh`/`rebased` (+`-push-skipped` when deferred). Preserve the existing branch-protection guard (finalize.py:58-61) and the `flush_logs_pre` refresh-skip gate (finalize.py:62-64).
+- **`teardown()` — manifest recovery fail-closed (bash `run_teardown` 971-1021).** Today `teardown()` (finalize.py:271-278) calls `load_or_recover_manifest` + `update_manifest(status=partial)` on the stall path only and can otherwise proceed without bash's fail-closed recovery. Match bash: when `run_id` is set, `repo_unavailable` is false, and `manifest.json` is absent, run the recovery path (`run_logs.init_run` recovery → tag `status=partial` + `recovery_reason=manifest_lost_mid_run`); on recovery failure, set a `recovery_ok=false` flag and skip the report/commit (bash `larch_recovery_ok` 975-1021). Keep the existing rename A/B/C, auto-stash, sentinel, and `.run-cleaned-up` behavior; verify the rename-branch selection matches bash (A stall, B done-rename, C skip).
+- Keep `auto_stash_stalled_changes`, `_write_stalled_sentinel`, `_cleanup_target_ok`, `write_finalize_state` unchanged unless the audit surfaces a divergence; note any in the PR.
+
+### UPDATED: `python/run_logs.py`
+
+- Give `load_or_recover_manifest` (run_logs.py:323) the fail-closed recovery semantics bash uses: when synthesizing a manifest from the run dir (`_recover_manifest_from_run_dir`, 306), stamp `status=partial` and `recovery_reason=manifest_lost_mid_run` rather than a minimal/`done`-capable manifest, and surface recovery failure to the caller (so `finalize.teardown` / `ship.run_postmerge_phase` can skip the report). Reuse `config.MANIFEST_STATUS_PARTIAL`; add a `recovery_reason` field/constant only if one does not already exist.
+
+### UPDATED: `python/ship.py`
+
+- Fix `_postmerge_should_flush` ctx timing (ship.py:330, called at 431). Bash flushes post-merge based on the post-postmerge result, not pre-postmerge merge state. Confirm against the bash reference whether the existing `post.outcome is Outcome.OK and _postmerge_should_flush(state_ctx)` guard (431) is already correct; if the gate still reads a stale `pr_closed`/merge field from pre-postmerge `ctx`, key the flush decision on the postmerge-updated `state_ctx` (or the postmerge result) so a failed postmerge cannot trigger a flush. Minimal change — do not restructure `run_postmerge_phase`.
+
+### UPDATED: `python/ci_monitor.py`
+
+- Bring CI-fix `stage_and_push` (ci_monitor.py:865, called at 1008) to bash parity: bash force-pushes after a rebase (or sets `CI_FIX_REBASE_PENDING`), where Python does a plain `git.push(origin, branch)` (ci_monitor.py:887). Replace the plain push with the bash force-push-after-rebase path using `git.force_push_with_lease`, and represent the bash `CI_FIX_REBASE_PENDING` deferral (return value / `FixResult` field) so a pending rebase is not lost. Keep the commit + delta-path logic; change only the push semantics and its result plumbing.
+
+### UPDATED: `python/test_finalize.py`
+
+Add the unit branches the issue lists (currently 4 tests, finalize.py covers many more paths):
+- postbump: rebase success / already-fresh / rebase-failed; force-push gate present→pushed / present→lease-refused / absent / remote-check-failed; branch-mismatch and protected-branch guards.
+- postmerge: branch-delete success and partial; verify-main match and mismatch; the draft / merge-false / bail skip branches (assert no done-manifest write).
+- teardown: session-guard pass and refuse (`_cleanup_target_ok`); rename branch B (done) and C (skip); Branch A stalled teardown end-to-end (issue rename, stash, sentinel, partial manifest, cleanup skip — extend the existing stall test).
+- Drive these with `RecordingRunner` response sequences (existing pattern, test_finalize.py:24-46).
+
+### REWRITTEN: `python/test_finalize_bash_parity.py`
+
+Replace the smoke module (currently never invokes bash) with real side-by-side parity modeled on `python/test_merge_bash_parity.py`:
+- Module skip only when bash is genuinely absent: `pytestmark = pytest.mark.skipif(shutil.which("bash") is None, reason=...)` (mirror test_merge_bash_parity.py:25-28). Drop the current script-exists `skipif` (test_finalize_bash_parity.py:19-22) as the all-skip vector.
+- For each high-value decision, run `subprocess.run(["bash", str(IMPLEMENT_FINALIZE_SH), <subcommand>, ...])` with a PATH-stubbed `bin/` (`git`, `gh`, and the leaf scripts `rebase-push.sh` / `check-remote-branch.sh` / `git-force-push.sh` / `local-cleanup.sh` / `verify-main.sh` / `larch-log.sh` as needed) plus a state file, capture the `STATUS` / `LOCAL_CLEANUP_STATUS` / `VERIFY_MAIN_STATUS` / `REBASE_STATUS` / `FORCE_PUSH_STATUS` / `RENAME_BRANCH` KVs, then assert the Python `finalize.<fn>()` result fields equal them.
+- Cover the postmerge skip trio, cleanup success/partial, verify match/mismatch, postbump rebase + force-push outcomes, and teardown rename A/B/C.
+- **Fail-closed guard.** Add a test that runs unconditionally (no skip) asserting that when `shutil.which("bash")` is present the module-level mark did not skip — e.g. a sentinel test that fails if bash is present but the parity body would all-skip. This closes the "exit green via module skip" gap under `make py-test`.
+
+### UPDATED: `Makefile`
+
+- Correct the stale shard-balance comment that claims `test-ship-pr` was removed in favor of Python while `scripts/ship-pr.sh` remains the default path (issue Part B). Comment-only; no target add/remove (Round 1 chose no new `make test-merge-parity`).
+
+### UPDATED: `docs/linting.md`
+
+- Refresh the stale rows surfaced in review: the `test-merge-pr` row still mentions removed same-version race-gate machinery (docs/linting.md:263) — trim it. Document that Python/bash finalize+merge parity runs under `make py-test` and now fails closed when bash is present. Do not add a `make test-merge-parity` row (no such target).
+
+## Approach
+
+Audit-then-port, one subcommand at a time, bash reference open beside the Python. For each bash branch, find or add the matching Python path and reuse the existing helper (`git.fetch`/`force_push_with_lease`, `rebase.rebase_and_push`, `run_logs.*`, `tracking_issue.rename`). Keep `FinalizeResult` status strings identical to bash KV values so the subprocess parity tests compare field-for-field. Land in dependency order: run_logs recovery → finalize.py (postmerge, postbump, teardown) → ship.py → ci_monitor.py → tests → Makefile/docs. Run `make py-test` and `make py-lint` after each module.
+
+## Edge cases
+
+- **Transient retry (the one missing primitive).** `local-cleanup.sh` retries fetch/pull via `lib-net.sh with_transient_retry`; Python has `errors.TransientNetworkError` but no retry wrapper. Add a minimal retry helper (bounded attempts, transient-envelope predicate) reused by the postmerge fetch/pull, or document a narrow parity boundary if a faithful port is infeasible — flag the choice in the PR. This is the riskiest parity item.
+- **forked vs origin remotes.** Preserve `upstream`-vs-`origin` selection (finalize.py:65, 125) in both cleanup and force-push paths.
+- **repo-unavailable / defer-push.** postbump must keep emitting `*-push-skipped` / `skipped-repo-unavailable` when the repo is unavailable or the remote branch is missing.
+- **Empty/clean tree on stall.** auto-stash must stay a no-op on a clean tree (parity with bash 777-779).
+- **Manifest already present.** Recovery tagging must only fire when `manifest.json` is absent; never downgrade an existing `done` manifest to `partial`.
+
+## Failure modes
+
+- **Over-porting bash quirks.** Risk: replicating bash idioms that have no behavioral effect, inflating the diff. Signal: diff grows past parity needs. Mitigation: assert behavior via parity tests, not line-for-line translation.
+- **Status-token drift.** Risk: a Python status string differs from a bash KV, so parity tests fail or (worse) a future cutover changes operator-visible output. Signal: parity test mismatch. Mitigation: centralize the status vocabulary and assert it in tests.
+- **Force-push semantics regression.** Risk: the postbump/CI-fix force-push changes push behavior in CI. Signal: CI-fix or postbump tests fail; unexpected remote moves. Mitigation: use lease-based force-push helpers; keep bash the shipped default so production is unaffected.
+
+## Testing strategy
+
+- `make py-test` (pytest) green, with the new unit branches in `test_finalize.py` and the rewritten real-parity `test_finalize_bash_parity.py`.
+- Fail-closed guard verified: with bash present the parity module must run (not all-skip); confirm by checking the suite reports collected (non-skipped) parity tests locally.
+- `make py-lint` clean for all touched `python/` modules.
+- `make lint` (relevant shards) for Makefile / docs changes; `bash scripts/relevant-checks.sh` after edits.
+- The existing bash harness `scripts/test-implement-finalize.sh` stays green (bash unchanged).
+
+## Out of scope (file as [OOS] only if surfaced)
+
+- Flipping `LARCH_SHIP_PR_IMPL=python` (the actual Phase 7 cutover) — explicitly deferred.
+- Any behavior change to `scripts/implement-finalize.sh`, `scripts/local-cleanup.sh`, `scripts/merge-pr.sh`.
+- A standalone `make test-merge-parity` Makefile target.
+
+diff_lines: 1100
+
+</plan>
+
+<findings>
+### FINDING_1: Postmerge orphan flush must not reuse merge flush detection
+- **Reviewer(s)**: Cursor-Arch, Cursor-dyn-push-cleanup-safety
+- **Severity**: important
+- **Concern**: The planned `_local_cleanup` orphan-reset logic may call merge flush detection whose commit range and diff baseline differ from `local-cleanup.sh`, risking skipped resets or destructive resets of non-log commits on `main`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Port local-cleanup.sh steps 3–4 literally (origin/main range, pre-fetch diff base); do not call merge._flush_recoverable
+  - From Cursor-dyn-push-cleanup-safety: Implement local-cleanup-specific guards in _local_cleanup: match bash subject prefix, ahead count, and diff baseline from pre_fetch_sha (capture before fetch); do not call merge._flush_recoverable.
+
+
+### FINDING_2: Forked cleanup and push paths must keep bash origin semantics
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Codex-Edge, Cursor-Requirements, Codex-Requirements, Codex-dyn-bash-contract, Codex-dyn-push-cleanup-safety
+- **Severity**: important
+- **Concern**: The plan’s fork/upstream edge case conflicts with bash parity by allowing cleanup, branch checks, or force-pushes to use `upstream`; bash uses `origin` for local cleanup and push-remote branch operations, reserving upstream only as a postbump rebase base.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Use origin for postmerge fetch/pull/reset; reserve upstream for postbump rebase only
+  - From Codex-Arch: Revise the edge case: use upstream only as the rebase base; use origin for cleanup fetch/pull and all branch checks/force-pushes
+  - From Codex-Edge: Revise the plan to say postmerge local cleanup always uses origin/main; keep upstream selection only for postbump rebase base_remote.
+  - From Cursor-Requirements: State cleanup must always target origin main; limit upstream-vs-origin to postbump rebase/base-remote only
+  - From Codex-Requirements: Limit upstream-vs-origin preservation to rebase/base-remote paths. State that postmerge local cleanup always uses origin main.
+  - From Codex-dyn-bash-contract: Limit upstream selection to the rebase base remote; keep postmerge cleanup and force-push/check-remote on origin
+  - From Codex-dyn-push-cleanup-safety: Revise the note: fork mode uses upstream only as the rebase base; local cleanup fetch/pull/reset stays on origin/main, and postbump remote check/force-push targets the push remote/origin branch per bash
+
+
+### FINDING_3: Teardown omits bash best-effort larch-log commit path
+- **Reviewer(s)**: Cursor-Arch, Codex-Innovation
+- **Severity**: important
+- **Concern**: Python teardown recovery may recover or tag manifests but not perform bash’s gated best-effort log commit/report step, causing stalled runs to leave pending log batches uncommitted.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add teardown best-effort flush_logs_post/commit path gated by recovery_ok, repo_unavailable, post-merge sentinel, and NO_LOGS_COMMIT
+  - From Codex-Innovation: Add the recovery_ok, LARCH_NO_LOGS_COMMIT, and post-merge-sentinel gated commit/report step to teardown, or explicitly declare that as the only parity boundary and test it.
+
+
+### FINDING_4: CI-fix rebase-pending state and force-push semantics are under-specified
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Requirements, Codex-Requirements, Codex-dyn-push-cleanup-safety
+- **Severity**: important
+- **Concern**: CI-fix handling does not clearly persist and thread `CI_FIX_REBASE_PENDING` across monitor iterations or condition force-with-lease on actual rebase/pending state, risking lost push-only retries, unconditional force-pushes, or untested regressions.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Wire rebase_pending through evaluate_failure entry, ship _write_ship_state, and monitor loop; force-push in stage_and_push when pending or post-rebase
+  - From Codex-Arch: Thread did_rebase/rebase_pending into stage_and_push; keep normal git push without rebase; force-push only after rebase or pending retry
+  - From Cursor-Requirements, Codex-Requirements: Add focused python/test_ci_monitor.py cases for lease force-push and pending-rebase FixResult propagation
+  - From Codex-dyn-push-cleanup-safety: Specify a conditional: preserve plain push for non-rebase CI fixes, and use force-with-lease only for did_rebase or rebase-pending paths with the pending state plumbed explicitly
+
+
+### FINDING_5: Postbump missing cwd-not-repo guard
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: Python postbump lacks the bash guard that returns `postbump-cwd-not-repo` before rebase when the current directory is not inside a git repo.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add git rev-parse --show-toplevel guard mapping to postbump-cwd-not-repo before flush/rebase
+
+
+### FINDING_6: Run-log recovery and postmerge report paths do not fail closed
+- **Reviewer(s)**: Cursor-Arch, Cursor-dyn-run-log-recovery, Codex-dyn-run-log-recovery
+- **Severity**: important
+- **Concern**: Manifest recovery can fall through to local initialization or continue to final report/status writes after failed or partial recovery, including absent run directories, losing bash’s `recovery_ok` semantics and forensic recovery tagging.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Return recovery_ok from load_or_recover_manifest (or dedicated recovery helper) when synthesis/init fails; gate teardown commit and postmerge flush on it per bash
+  - From Cursor-dyn-run-log-recovery: Port scripts/ship-pr.sh:3141-3174 recovery_ok semantics into run_postmerge_phase and/or flush_logs_post; add test_ship.py coverage
+  - From Codex-dyn-run-log-recovery: Make every valid-run-id missing-manifest path, including absent run_dir, create a partial manifest with recovery_reason=manifest_lost_mid_run and surface write failure to callers
+  - From Codex-dyn-run-log-recovery: Reorder or gate flush_logs_post so recovery plus the status=done/pr_number manifest write succeeds before _write_final_report runs; on failure return a skipped/error result before report rendering
+
+
+### FINDING_7: Local cleanup must preserve bash early exits and non-fatal branch delete
+- **Reviewer(s)**: Codex-Arch, Cursor-Edge
+- **Severity**: important
+- **Concern**: Planned `_local_cleanup` semantics may mark branch-delete failures as partial and may continue later cleanup steps after checkout or pull failures, diverging from bash’s early-exit and success rules.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Set cleanup_success true after checkout/fetch/pull complete; return branch_deleted=false separately; only checkout/pull failure should make partial
+  - From Cursor-Edge: State _local_cleanup like bash: return partial immediately on checkout/pull failure (skip fetch/reset/pull/delete as appropriate); set success when checkout and pull succeed regardless of branch_deleted.
+
+
+### FINDING_8: Postbump result model lacks separate bash status KVs
+- **Reviewer(s)**: Codex-Arch, Codex-Edge, Cursor-Requirements, Codex-Requirements, Codex-dyn-bash-contract
+- **Severity**: important
+- **Concern**: `FinalizeResult` still conflates bash `STATUS` with `REBASE_STATUS`, `FORCE_PUSH_STATUS`, and possibly log-write status, making field-for-field parity tests and implementation behavior ambiguous.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add rebase_status and force_push_status to FinalizeResult; reserve status for bash STATUS tokens like ok, rebase-failed, push-failed
+  - From Codex-Edge: Extend FinalizeResult with rebase_status, force_push_status, and log_write_status, then set status only to bash STATUS values such as ok, rebase-failed, push-failed, branch-mismatch, remote-check-failed, or postbump-cwd-not-repo.
+  - From Cursor-Requirements: Add rebase_status and force_push_status (and keep status as bash STATUS); wire postbump() to populate them
+  - From Codex-Requirements: Add minimal FinalizeResult fields such as rebase_status force_push_status and log_write_status. Define result.status as bash STATUS only.
+  - From Codex-dyn-bash-contract: Add explicit rebase_status and force_push_status result fields, plus log_write_status if LOG_WRITE_STATUS is asserted, and compare each to the bash KV separately
+
+
+### FINDING_9: Postbump rebase must not invoke conflict-fixer scope
+- **Reviewer(s)**: Codex-Edge
+- **Severity**: important
+- **Concern**: Reusing the normal rebase helper for postbump could launch conflict-fixer agents on conflicts, while bash `rebase-push.sh --no-push` treats conflicts as `rebase-failed` and exits to cleanup.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Set allow_conflict_fix=False for postbump, or add a no-push rebase helper that returns failed on conflicts without launching fixer agents.
+
+
+### FINDING_10: Postbump and CI force-pushes need git-force-push parity wrapper
+- **Reviewer(s)**: Codex-Edge, Codex-Innovation, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan points postbump and CI rebase pushes at low-level force-with-lease helpers instead of bash’s recovery helper, missing dirty-tree guards, fetch-before-lease, noop recovery, retry behavior, and bash status-token mapping.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Edge: Use git.force_push_recovery or an equivalent wrapper for postbump and CI force-push paths, and map pushed/noop_same_ref to success and dirty_worktree/diverged_retry_failed to the bash failure statuses.
+  - From Codex-Innovation: Port a small git-force-push wrapper that returns the bash STATUS tokens and reuse it in both finalize.postbump and ci_monitor.stage_and_push.
+  - From Codex-Pragmatic: Use git.force_push_recovery for postbump and CI post-rebase pushes, mapping pushed and noop_same_ref to success and other statuses to the existing failure tokens
+
+
+### FINDING_11: Postmerge flush incorrectly treats any OK postmerge as PR closed
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: `run_postmerge_phase` broadens bash `PR_CLOSED` semantics by treating `Outcome.OK` as closed, so skipped draft, skipped merge-false, or skipped bail paths can flush logs when bash would not.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Gate flush on ctx.pr_closed (or post.status==ok after real cleanup), not post.outcome alone.
+  - From Cursor-Pragmatic: In `run_postmerge_phase`, gate flush on `ctx.pr_closed` only (bash `scripts/ship-pr.sh:3107`); remove the `post.outcome is Outcome.OK` OR; do not broaden flush because postmerge returned OK
+
+
+### FINDING_12: Remote branch presence must use live ls-remote as authority
+- **Reviewer(s)**: Codex-Innovation, Codex-Pragmatic, Codex-dyn-bash-contract, Codex-dyn-push-cleanup-safety
+- **Severity**: important
+- **Concern**: The postbump remote-branch gate can still let stale local `origin/<branch>` refs short-circuit live branch presence checks, causing Python to recreate deleted remote branches or mask transport/auth failures where bash would report absent or remote-check-failed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Make the live ls-remote trichotomy authoritative; use rev-parse only after live presence is confirmed if an expected lease OID is needed.
+  - From Codex-Pragmatic: Always run the ls-remote trichotomy for branch presence; use try_rev_parse only for optional OID/diagnostic data, never to short-circuit presence
+  - From Codex-dyn-bash-contract: Use ls-remote against origin heads as the source of truth; use try_rev_parse only after present if needed for lease metadata
+  - From Codex-dyn-push-cleanup-safety: Require ls-remote --exit-code --heads origin <branch> with retry as the sole presence authority; use rev-parse only after a present probe for lease diagnostics; add stale-ref absent/error parity cases
+
+
+### FINDING_13: PATH-stubbed leaf scripts will not intercept $SCRIPT_DIR calls
+- **Reviewer(s)**: Codex-Innovation, Codex-Pragmatic, Codex-dyn-bash-contract
+- **Severity**: important
+- **Concern**: The proposed parity tests rely on PATH stubs for helper scripts, but `implement-finalize.sh` invokes those helpers via `$SCRIPT_DIR`, so tests may accidentally run real scripts or fail to exercise intended branches.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Either run bash from a temporary copied scripts directory containing the leaf stubs, or drop leaf stubs and drive the real leaves only through git/gh stubs.
+  - From Codex-Pragmatic: Copy implement-finalize.sh into a sandbox scripts directory with stub leaf scripts, matching scripts/test-implement-finalize.sh, and run that sandboxed script for bash parity tests
+  - From Codex-dyn-bash-contract: Stub only external commands such as git and gh while running the real helper scripts, or run an isolated copied scripts directory when a leaf helper must be replaced
+
+
+### FINDING_14: Reuse existing transient retry helper
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: nit
+- **Concern**: The plan proposes a new transient retry abstraction even though `python/retry.with_transient_retry` already exists, inflating the diff unnecessarily.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Reuse python/retry.with_transient_retry for postmerge fetch/pull instead of adding a parallel helper
+
+
+</findings>
+
+<feature>
+Python finalize parity: port bash postmerge/local-cleanup/postbump force-push gate into finalize.py, with real fail-closed parity + unit coverage
+
+## Combined issue
+
+Combines #3445 (implementation/parity) and #3443 (test coverage + fail-closed gate) — both touch the Python finalize component (`python/finalize.py` / `python/test_finalize.py` / `python/test_finalize_bash_parity.py`) and are the same Phase 7 cutover work surfaced by the Step 5 review panel (Cursor specialists + dynamic archetypes, rounds 1-5). #3443's real bash-parity tests validate exactly the postmerge/postbump/cleanup parity that #3445 ports, so they ship as one unit.
+
+**Surfaced by**: Step 5 review panel (Cursor specialists + dynamic archetypes), accumulated across rounds 1-5
+**Phase**: review
+**Vote tally**: Accepted (multiple rounds; representative tally YES=3 NO=0)
+
+---
+
+### Part A — Implementation: port bash postmerge / local-cleanup / postbump force-push-gate parity (was #3445)
+
+`finalize.postmerge()` manifest recovery only loads or locally synthesizes a minimal `manifest.json` and can proceed to `status=done`/report without bash's fail-closed path (`larch-log.sh init`, `status=partial` tagging, recovery-failure handling and report-skip). Its cleanup uses a simplified `git switch`/`pull`/`branch -D` and misses bash `local-cleanup.sh` behaviors: fetch, transient retry, orphan larch-log reset, ahead-diagnostics, and verify-main-equivalent checking — yet can still return `OK` on partial cleanup. `_postmerge_should_flush()` evaluates pre-postmerge `ctx`, so a flush can proceed after a failed postmerge based on earlier merge state. The `postbump` path drives a combined rebase+push instead of bash's separate rebase / remote-branch check / force-push (lease) gate, giving divergent failure and lease semantics; relatedly the CI-fix `stage_and_push` uses a plain `git push` where bash force-pushes after a rebase (or sets `CI_FIX_REBASE_PENDING`). Bring these to parity and assert them in tests.
+
+Files: `python/finalize.py`, `python/run_logs.py`, `python/test_finalize.py`, `python/test_finalize_bash_parity.py`.
+
+### Part B — Test coverage: real (non-smoke) unit + bash-parity, fail-closed merge-parity gate, doc refresh (was #3443)
+
+`python/test_finalize.py` does not cover several plan-listed branches: postbump rebase/force-push gate outcomes, postmerge branch-delete success/partial, verify-main match/mismatch, the draft/merge-false/bail skip branches, teardown session-guard pass/refuse, rename branches B/C, and Branch A stalled teardown (issue rename, stash, sentinel, partial manifest, cleanup skip). `python/test_finalize_bash_parity.py` is smoke-only and does not actually invoke `scripts/implement-finalize.sh`, so `finalize.py` postbump/postmerge/teardown decisions can drift from the post-#3368 bash implementation while tests stay green; it should provide real side-by-side parity comparable to `test_merge_bash_parity.py` (with `skipif` only when bash is genuinely absent). Separately, the `test-merge-parity` harness can exit green if every test is skipped via the module-level bash skip marker, undermining the fail-closed parity gate intent — make it fail closed when bash is present. Also refresh stale harness docs/comments surfaced during review: `docs/linting.md` documents `make test-merge-pr` but not the new `make test-merge-parity`; the `test-merge-pr` doc row still mentions removed same-version race-gate machinery; and a Makefile shard-balance comment claims `test-ship-pr` was removed in favor of Python while `scripts/ship-pr.sh` remains the default path.
+
+Files: `python/test_finalize.py`, `python/test_finalize_bash_parity.py`, `Makefile`, `docs/linting.md`.
+
+---
+*Combined from out-of-scope observations #3445 and #3443, automatically created by the larch `/implement` workflow.*
+
+
+</feature>

@@ -1,0 +1,4 @@
+cursor-plan-innovation	cursor	collector-failure	STATUS=FAILED
+cursor-plan-requirements	cursor	collector-failure	STATUS=FAILED
+dyn-cursor-plan-bash-parity-auditor	cursor	collector-failure	STATUS=FAILED
+dyn-cursor-plan-run-log-recovery	cursor	collector-failure	STATUS=FAILED
