@@ -170,9 +170,10 @@ def parse_pr_number(state_file: str | None, ctx_pr_number: int | str | None) -> 
 
 def manifest_status(ctx: RunContext) -> str:
     """Return the run-log manifest status without initializing or recovering it."""
-    if not validate_run_id_slug(ctx.run_id):
+    run_id = effective_run_id(ctx)
+    if not run_id:
         return ""
-    path = Path(ctx.tmpdir) / "larch-logs" / "implement" / ctx.run_id / "manifest.json"
+    path = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id / "manifest.json"
     if not path.is_file():
         return ""
     try:

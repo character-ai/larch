@@ -696,6 +696,35 @@ def test_merged_resume_writes_done_only_after_postmerge_ok(
     assert "PHASE=postmerge\n" in state_file.read_text(encoding="utf-8")
 
 
+def test_merged_resume_with_merge_disabled_does_not_mark_done(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=postmerge\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=false\nDRAFT=false\nMERGE_RESULT=merged\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "MERGED", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(
+        ship.finalize,
+        "postmerge",
+        lambda *_a, **_k: type("PM", (), {"outcome": Outcome.OK, "detail": "", "status": "skipped"})(),
+    )
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    state = state_file.read_text(encoding="utf-8")
+    assert "PHASE=postmerge\n" in state
+    assert "PHASE=done\n" not in state
+
+
 def test_open_pr_resume_skips_pending_oos_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -733,6 +762,46 @@ def test_open_pr_resume_skips_pending_oos_gate(
     assert "REBASE_COUNT=2\n" in state
     assert "FIX_ATTEMPTS=3\n" in state
     assert "TRANSIENT_RETRIES=4\n" in state
+
+
+def test_open_pr_resume_skips_leftover_oos_artifacts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nOOS_PENDING=true\nMERGE=false\n"
+        "ITERATION=10\nREBASE_COUNT=2\nFIX_ATTEMPTS=3\nTRANSIENT_RETRIES=4\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "accepted-design-oos.md").write_text("### OOS_1: leftover\n", encoding="utf-8")
+    _ = (tmp_path / "security-oos-observations.md").write_text("### Security OOS: leftover\n", encoding="utf-8")
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+    monkeypatch.setattr(
+        ship.oos,
+        "disposition_ok",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("OOS gate forbidden on open-pr resume")),
+    )
+    monkeypatch.setattr(ship, "_materialize_manifest_oos", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("manifest OOS forbidden")))
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    state = state_file.read_text(encoding="utf-8")
+    assert "OOS_PENDING=true\n" in state
+    assert "ITERATION=10\n" in state
 
 
 def test_blocked_rebase_continuation_sanitizes_untrusted_url(tmp_path: Path) -> None:
@@ -887,6 +956,83 @@ def test_closed_unmerged_pr_routes_through_fresh_checks(
     assert calls == ["checks"]
 
 
+def test_invalid_pr_identity_routes_through_fresh_checks_without_github(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=not-a-number\nREPO=o/r\nMERGE=false\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    calls: list[str] = []
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.gh, "pr_view", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("gh forbidden")))
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: calls.append("checks") or StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 8, "url": "https://example.test/pr/8", "status": "created"})(),
+    )
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert calls == ["checks"]
+
+
+def test_stale_merged_flags_with_open_pr_resume_open_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=postmerge\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\nMERGE_RESULT=merged\n",
+        encoding="utf-8",
+    )
+    seen: dict[str, object] = {}
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+
+    def ensure_existing(*_args: object, **_kwargs: object) -> object:
+        seen["ensure"] = True
+        return type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})()
+
+    monkeypatch.setattr(ship.pr, "ensure_pr", ensure_existing)
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.STALLED, "ci-monitor"),
+                "action": "wait",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("fresh report forbidden")))
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert seen == {"ensure": True}
+    assert "PHASE=stalled\n" in state_file.read_text(encoding="utf-8")
+
+
 def test_repo_unavailable_blank_pr_open_resume_skips_fresh_work(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -907,6 +1053,7 @@ def test_repo_unavailable_blank_pr_open_resume_skips_fresh_work(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
+    assert "REPO=o/r\n" in state_file.read_text(encoding="utf-8")
 
 
 def test_fresh_postmerge_stall_preserves_postmerge_phase(
@@ -1152,6 +1299,41 @@ def test_routine_state_write_preserves_resume_markers(tmp_path: Path) -> None:
     assert f"CALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n" in state
 
 
+def test_resume_state_write_preserves_persisted_run_id(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text("RUN_ID=state-run\n", encoding="utf-8")
+
+    ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmp_path, run_id="ctx-run", state_file=str(state_file)),
+        phase="ci-initial",
+    )
+
+    assert "RUN_ID=state-run\n" in state_file.read_text(encoding="utf-8")
+
+
+def test_blocked_rebase_second_refusal_preserves_markers_and_counters(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        f"PHASE=rebase\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nCALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n"
+        "ITERATION=8\nREBASE_COUNT=2\nFIX_ATTEMPTS=3\nTRANSIENT_RETRIES=4\n",
+        encoding="utf-8",
+    )
+
+    first = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+    second = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    state = state_file.read_text(encoding="utf-8")
+    assert first.outcome is Outcome.NEEDS_USER_INPUT
+    assert second.outcome is Outcome.NEEDS_USER_INPUT
+    assert f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\n" in state
+    assert f"CALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n" in state
+    assert "ITERATION=8\n" in state
+    assert "REBASE_COUNT=2\n" in state
+    assert "FIX_ATTEMPTS=3\n" in state
+    assert "TRANSIENT_RETRIES=4\n" in state
+
+
 def test_terminal_counter_persistence_counts_failed_fixing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -1194,6 +1376,105 @@ def test_terminal_counter_persistence_counts_failed_fixing(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert "FIX_ATTEMPTS=5\n" in state_file.read_text(encoding="utf-8")
+
+
+def test_terminal_counter_persistence_counts_failed_transient_rerun(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nTRANSIENT_RETRIES=2\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.TRANSIENT, "network"),
+                "action": "rerun",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": True,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.TRANSIENT
+    assert "TRANSIENT_RETRIES=3\n" in state_file.read_text(encoding="utf-8")
+
+
+def test_terminal_counter_round_trip_reuses_persisted_fix_attempts(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nFIX_ATTEMPTS=4\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    seen: list[int] = []
+    outcomes = [Outcome.NEEDS_USER_INPUT, Outcome.STALLED]
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+
+    def monitor(*_args: object, **kwargs: object) -> object:
+        fix_attempts = kwargs["fix_attempts"]
+        assert isinstance(fix_attempts, int)
+        seen.append(fix_attempts)
+        outcome = outcomes.pop(0)
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(outcome, "terminal"),
+                "action": "evaluate_failure",
+                "goto_rebase": False,
+                "did_fixing": outcome is Outcome.NEEDS_USER_INPUT,
+                "transient_rerun_attempted": False,
+                "failed_run_id": "99",
+            },
+        )()
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    first = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+    second = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert first.outcome is Outcome.NEEDS_USER_INPUT
+    assert second.outcome is Outcome.STALLED
+    assert seen == [4, 5]
     assert "FIX_ATTEMPTS=5\n" in state_file.read_text(encoding="utf-8")
 
 
@@ -1297,6 +1578,164 @@ def test_open_pr_resume_at_iteration_cap_still_observes_monitor(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
+
+
+def test_open_pr_resume_at_iteration_cap_wait_stalls_after_monitor(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\nITERATION=50\n",
+        encoding="utf-8",
+    )
+    calls: list[int] = []
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+
+    def monitor(*_args: object, **kwargs: object) -> object:
+        iteration = kwargs["iteration"]
+        assert isinstance(iteration, int)
+        calls.append(iteration)
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "wait",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )()
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert calls == [50]
+    assert "ITERATION=51\n" in state_file.read_text(encoding="utf-8")
+
+
+def test_fix_only_monitor_result_does_not_consume_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\nITERATION=49\n",
+        encoding="utf-8",
+    )
+    actions = ["evaluate_failure", "already_merged"]
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+
+    def monitor(*_args: object, **_kwargs: object) -> object:
+        action = actions.pop(0)
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": action,
+                "goto_rebase": False,
+                "did_fixing": action == "evaluate_failure",
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )()
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(
+        ship.merge,
+        "merge_pr",
+        lambda *_a, **_k: type("MR", (), {"result": config.MERGE_RESULT_DRIVER_ALREADY_MERGED, "error": ""})(),
+    )
+    monkeypatch.setattr(ship, "run_postmerge_phase", lambda *_a, **_k: ship.ShipResult(Outcome.OK))
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    state = state_file.read_text(encoding="utf-8")
+    assert "ITERATION=49\n" in state
+    assert "FIX_ATTEMPTS=1\n" in state
+
+
+def test_transient_rerun_monitor_result_does_not_consume_iteration(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\nITERATION=49\n",
+        encoding="utf-8",
+    )
+    actions = ["rerun", "already_merged"]
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+
+    def monitor(*_args: object, **_kwargs: object) -> object:
+        action = actions.pop(0)
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": action,
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": action == "rerun",
+                "failed_run_id": None,
+            },
+        )()
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(
+        ship.merge,
+        "merge_pr",
+        lambda *_a, **_k: type("MR", (), {"result": config.MERGE_RESULT_DRIVER_ALREADY_MERGED, "error": ""})(),
+    )
+    monkeypatch.setattr(ship, "run_postmerge_phase", lambda *_a, **_k: ship.ShipResult(Outcome.OK))
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    state = state_file.read_text(encoding="utf-8")
+    assert "ITERATION=49\n" in state
+    assert "TRANSIENT_RETRIES=1\n" in state
 
 
 def test_merge_retry_results_do_not_consume_iteration_budget(

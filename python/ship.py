@@ -539,6 +539,7 @@ def _write_ship_state(
         resume_phase = ""
     if caller_kind not in _ALLOWED_CALLER_KINDS:
         caller_kind = ""
+    run_id = run_logs.effective_run_id(ctx)
     if extra_fields:
         unexpected = set(extra_fields) - _ALLOWED_EXTRA_FIELDS
         if unexpected:
@@ -549,7 +550,7 @@ def _write_ship_state(
         "PHASE": phase,
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
         "ISSUE_NUMBER": ctx.issue_number or ctx.issue,
-        "RUN_ID": ctx.run_id,
+        "RUN_ID": run_id,
         "REPO": ctx.repo,
         "REPO_UNAVAILABLE": _state_bool(value=ctx.repo_unavailable),
         "FORKED_TARGET": _state_bool(value=ctx.forked_target or ctx.forked),
@@ -918,7 +919,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
 
 
 def _hydrate_resume_context(ctx: RunContext, resume: ResumePlan) -> RunContext:
+    run_id = run_logs.effective_run_id(ctx) or ctx.run_id
     return ctx.with_(
+        run_id=run_id,
         branch=resume.branch_name or ctx.branch,
         branch_name=resume.branch_name or ctx.branch_name or ctx.branch,
         repo=resume.repo or ctx.repo,
@@ -1008,6 +1011,8 @@ def run_postmerge_phase(
     *,
     cwd: str | None = None,
 ) -> ShipResult:
+    if not ctx.merge or not ctx.pr_closed:
+        return ShipResult(Outcome.STALLED, detail="postmerge requires a closed merge PR")
     sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
     _ = sentinel.write_text(f"MERGE_RESULT={ctx.merge_result}\n", encoding="utf-8")
     post = finalize.postmerge(runner, ctx, cwd=cwd)
@@ -1361,12 +1366,7 @@ def run_ship(
                     transient_retries += 1
                 if monitor.did_fixing:
                     fix_attempts += 1
-                if (
-                    monitor.action == "wait"
-                    or monitor.goto_rebase
-                    or monitor.did_fixing
-                    or monitor.transient_rerun_attempted
-                ):
+                if monitor.action == "wait" or monitor.goto_rebase:
                     iteration += 1
                 _write_ship_state(
                     working,
