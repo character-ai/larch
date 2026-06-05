@@ -200,12 +200,16 @@ def test_parse_pr_number_state_first_and_ctx_fallback(tmp_path: Path) -> None:
     assert run_logs.parse_pr_number(str(state), None) == 9
 
 
-def test_manifest_status_read_only_effective_run_id_path(tmp_path: Path) -> None:
+def test_manifest_status_read_only_uses_context_run_id_path(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=state-run\n", encoding="utf-8")
     ctx = _ctx(tmp_path, str(state)).with_(run_id="ctx-run")
     assert run_logs.manifest_status(ctx) == ""
     manifest = tmp_path / "larch-logs" / "implement" / "state-run" / "manifest.json"
+    manifest.parent.mkdir(parents=True)
+    _ = manifest.write_text('{"status":"done"}', encoding="utf-8")
+    assert run_logs.manifest_status(ctx) == ""
+    manifest = tmp_path / "larch-logs" / "implement" / "ctx-run" / "manifest.json"
     manifest.parent.mkdir(parents=True)
     _ = manifest.write_text('{"status":"done"}', encoding="utf-8")
     assert run_logs.manifest_status(ctx) == "done"

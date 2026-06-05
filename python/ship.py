@@ -62,6 +62,8 @@ from run_context import RunContext
 
 
 _REPO_SLUG_RE = re.compile(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$")
+_BRANCH_NAME_RE = re.compile(r"^[A-Za-z0-9._/\-]+$")
+_PR_URL_RE = re.compile(r"^https?://[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$")
 _ALLOWED_EXTRA_FIELDS = {"CONFLICT_FILES"}
 _ALLOWED_RESUME_PHASES = {"", config.SHIP_PR_RRR_RESUME_PHASE}
 _ALLOWED_CALLER_KINDS = {"", config.SHIP_PR_PRE_PUSH_CALLER_KIND}
@@ -489,6 +491,17 @@ def _valid_repo_slug(value: str) -> bool:
     return bool(value and not value.startswith("-") and _REPO_SLUG_RE.fullmatch(value))
 
 
+def _validate_ship_state_value(key: str, value: str) -> None:
+    if "\n" in value or "\r" in value:
+        raise ShipError(f"invalid newline in ship state value: {key}")
+    if key == "BRANCH_NAME" and value and not _valid_branch_name(value):
+        raise ShipError("invalid ship state BRANCH_NAME")
+    if key == "PR_URL" and not _valid_pr_url(value):
+        raise ShipError("invalid ship state PR_URL")
+    if key == "MERGE_RESULT" and not _valid_state_merge_result(value):
+        raise ShipError("invalid ship state MERGE_RESULT")
+
+
 def _validate_conflict_csv(value: str) -> None:
     if not value:
         raise ShipError("invalid empty CONFLICT_FILES")
@@ -561,8 +574,7 @@ def _write_ship_state(
     if extra_fields:
         fields.update(extra_fields)
     for key, value in fields.items():
-        if "\n" in str(value) or "\r" in str(value):
-            raise ShipError(f"invalid newline in ship state value: {key}")
+        _validate_ship_state_value(key, str(value))
     tmp = path.with_suffix(path.suffix + ".tmp")
     _ = tmp.write_text("".join(f"{key}={value}\n" for key, value in fields.items()), encoding="utf-8")
     _ = tmp.replace(path)
@@ -583,7 +595,8 @@ def _fresh_resume_plan(
     counters: run_logs.ResumeCounters | None = None,
     detail: str = "",
 ) -> ResumePlan:
-    counters = counters or run_logs.ResumeCounters(0, 0, 0, 0)
+    _ = counters
+    counters = run_logs.ResumeCounters(0, 0, 0, 0)
     return ResumePlan(
         start="fresh",
         iteration=counters.iteration,
@@ -636,6 +649,46 @@ def _valid_merge_result(value: str) -> str:
     return value if value in config.POST_MERGE_MERGE_RESULTS else config.MERGE_RESULT_DRIVER_ALREADY_MERGED
 
 
+def _valid_branch_name(value: str) -> bool:
+    if not value or value.startswith("-") or value.endswith("/"):
+        return False
+    return (
+        _BRANCH_NAME_RE.fullmatch(value) is not None
+        and ".." not in value
+        and "//" not in value
+        and "@{" not in value
+    )
+
+
+def _valid_pr_url(value: str) -> bool:
+    return not value or _PR_URL_RE.fullmatch(value) is not None
+
+
+def _valid_state_merge_result(value: str) -> bool:
+    return not value or value in config.MERGE_RESULTS or value in config.POST_MERGE_MERGE_RESULTS
+
+
+def _invalid_state_plan(
+    counters: run_logs.ResumeCounters,
+    durable: run_logs.DurableFlags,
+    *,
+    branch_name: str,
+    repo: str,
+    detail: str,
+) -> ResumePlan:
+    return _resume_from_state(
+        "blocked-checkout-mismatch",
+        counters,
+        durable,
+        pr_number=None,
+        pr_url="",
+        merge_result="",
+        branch_name=branch_name,
+        repo=repo,
+        detail=detail,
+    )
+
+
 def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumePlan:
     counters = run_logs.read_resume_counters(ctx.state_file)
     durable = run_logs.read_durable_flags(ctx.state_file, ctx)
@@ -646,13 +699,9 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     resume_phase = run_logs.read_state_kv(ctx.state_file, "RESUME_PHASE")
     state_branch = run_logs.read_state_kv(ctx.state_file, "BRANCH_NAME").strip()
     state_repo = run_logs.read_state_kv(ctx.state_file, "REPO").strip() or ctx.repo
-    pr_url = run_logs.read_state_kv(ctx.state_file, "PR_URL") or ctx.pr_url
+    state_pr_url = run_logs.read_state_kv(ctx.state_file, "PR_URL")
+    pr_url = state_pr_url or ctx.pr_url
     merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
-
-    if not _valid_repo_slug(state_repo):
-        raise ShipError("invalid state REPO")
-    if state_repo != ctx.repo:
-        raise ShipError("state REPO does not match context repo")
 
     if resume_phase == config.SHIP_PR_RRR_RESUME_PHASE:
         return _resume_from_state(
@@ -665,6 +714,48 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             branch_name=state_branch or ctx.branch_name or ctx.branch,
             repo=state_repo,
             detail="Python ship driver cannot resume rebase-conflict continuation",
+        )
+
+    fallback_branch = ctx.branch_name or ctx.branch
+    if state_branch and not _valid_branch_name(state_branch):
+        return _invalid_state_plan(
+            counters,
+            durable,
+            branch_name=fallback_branch,
+            repo=ctx.repo,
+            detail="invalid state BRANCH_NAME",
+        )
+    if state_pr_url and not _valid_pr_url(state_pr_url):
+        return _invalid_state_plan(
+            counters,
+            durable,
+            branch_name=state_branch or fallback_branch,
+            repo=ctx.repo,
+            detail="invalid state PR_URL",
+        )
+    if not _valid_state_merge_result(merge_result):
+        return _invalid_state_plan(
+            counters,
+            durable,
+            branch_name=state_branch or fallback_branch,
+            repo=ctx.repo,
+            detail="invalid state MERGE_RESULT",
+        )
+    if not _valid_repo_slug(state_repo):
+        return _invalid_state_plan(
+            counters,
+            durable,
+            branch_name=state_branch or fallback_branch,
+            repo=ctx.repo,
+            detail="invalid state REPO",
+        )
+    if state_repo != ctx.repo:
+        return _invalid_state_plan(
+            counters,
+            durable,
+            branch_name=state_branch or fallback_branch,
+            repo=ctx.repo,
+            detail="state REPO does not match context repo",
         )
 
     current_branch = _try_current_branch(runner, cwd=cwd)
@@ -753,12 +844,7 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
             )
         state = viewed.state.upper()
         if state == "MERGED":
-            start = (
-                "done"
-                if state_phase == "done"
-                and run_logs.manifest_status(ctx) == config.MANIFEST_STATUS_DONE
-                else "merged"
-            )
+            start = "done" if state_phase == "done" else "merged"
             return _resume_from_state(
                 start,
                 counters,
@@ -875,8 +961,8 @@ def _monitor_persisted_counters(
 ) -> tuple[int, int, int, int]:
     return (
         iteration,
-        rebase_count,
-        fix_attempts,
+        rebase_count + (1 if monitor.goto_rebase else 0),
+        fix_attempts + (1 if monitor.did_fixing else 0),
         transient_retries + (1 if monitor.transient_rerun_attempted else 0),
     )
 
@@ -1094,7 +1180,7 @@ def run_ship(
             )
             if oos_result is not None:
                 return oos_result
-        elif pr_context.oos_pending or _state_bool_text(run_logs.read_state_kv(pr_context.state_file, "OOS_PENDING")):
+        elif resume.start == "open-pr":
             oos_result = _pending_oos_gate(
                 runner,
                 pr_context,
@@ -1151,7 +1237,7 @@ def run_ship(
         fix_attempts = resume.fix_attempts if resume.start == "open-pr" else 0
         transient_retries = resume.transient_retries if resume.start == "open-pr" else 0
         while True:
-            if iteration >= config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
+            if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
                 _write_terminal_state(
                     working,
                     Outcome.STALLED,
@@ -1212,7 +1298,7 @@ def run_ship(
                     pr_url=working.pr_url,
                 )
             if monitor.action not in {"merge", "already_merged"}:
-                if iteration >= config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
+                if iteration > config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
                     _write_terminal_state(
                         working,
                         Outcome.STALLED,
@@ -1303,23 +1389,6 @@ def run_ship(
             _breadcrumb("merge")
             merged = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
             if merged.result in {config.MERGE_RESULT_CI_NOT_READY, config.MERGE_RESULT_MAIN_ADVANCED}:
-                iteration += 1
-                if iteration >= config.SHIP_MERGE_LOOP_MAX_ITERATIONS:
-                    _write_terminal_state(
-                        working,
-                        Outcome.STALLED,
-                        "merge-loop-iteration-cap",
-                        iteration=iteration,
-                        rebase_count=rebase_count,
-                        fix_attempts=fix_attempts,
-                        transient_retries=transient_retries,
-                    )
-                    return ShipResult(
-                        Outcome.STALLED,
-                        pr_number=working.pr_number,
-                        pr_url=working.pr_url,
-                        detail="merge loop iteration cap reached",
-                    )
                 _write_ship_state(
                     working,
                     phase="ci-initial",
