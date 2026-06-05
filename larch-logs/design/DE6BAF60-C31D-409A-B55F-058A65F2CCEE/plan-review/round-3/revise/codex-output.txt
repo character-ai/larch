@@ -1,0 +1,65 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -81,25 +81,38 @@
+ 
+ All cases go inside the existing `dispatch` section.
+ 
+ 1. Extend the inline heredoc stub generated near the top of `test-review-and-fix.sh` (not a standalone file) with `TEST_AGENT_CODEX_AUTH_LINK_FILE`: when set and `$CODEX_HOME/auth.json` is a symlink, write `readlink` output to the capture file.
+ 2. Add login-mode auth-prep failure case:
+-   - Force prep failure with a test-only `mv` stub on `PATH` (mirroring `skills/implement/scripts/test-codex-implementer.sh`) or an equivalent guaranteed temp-`CODEX_HOME` prep failure; do not rely on a read-only source config alone.
++   - Force prep failure with a test-only conditional/delegating `mv` stub on `PATH` (mirroring `skills/implement/scripts/test-codex-implementer.sh`) or an equivalent guaranteed temp-`CODEX_HOME` prep failure; do not rely on a read-only source config alone.
++   - If using the `mv` stub, fail only the temp `larch-codex-review-fix-home.*` Codex config rewrite/rename and delegate every other `mv` invocation to `/bin/mv` so Cursor fallback and later harness writes are not polluted.
+    - If a read-only fixture is still used as supporting setup, restore `chmod u+w` immediately after the function returns, before assertions.
+-   - Invoke `run_review_and_fix` from a subshell/function-safe environment: `( unset OPENAI_API_KEY; HOME="$fixture_home" ... run_review_and_fix ... )`.
++   - Invoke `run_review_and_fix` from a subshell/function-safe environment: `( unset OPENAI_API_KEY; HOME="$fixture_home" TEST_AGENT_BEHAVIOR=cursor-success ... run_review_and_fix ... )`.
+    - Assert wrapper log contains auth setup failure, codex argv capture is absent, fallback succeeds with `CODER_TOOL=cursor`.
++   - Snapshot the case-private `TMPDIR` before/after with `find "$TMPDIR" -maxdepth 1 -name 'larch-codex-review-fix-home.*'` and fail only on new survivors, because this auth-prep failure path skips Codex dispatch and cannot use a captured `CODEX_HOME` file.
+ 3. Add login fallback with fixture:
+    - Run in a subshell that unsets `OPENAI_API_KEY`, then set `HOME="$fixture_home"` containing `.codex/auth.json`.
+    - Set `TEST_AGENT_ARGV_FILE` and `TEST_AGENT_CODEX_AUTH_LINK_FILE`.
+    - Assert auth symlink points to fixture auth, env-key argv overrides are absent, `CODER_TOOL=codex`.
+-4. Add env-key Codex dispatch failure breadcrumb:
++4. Add env-key auth-prep failure fallback case:
++   - Set `OPENAI_API_KEY=<REDACTED-TOKEN>`, `TEST_AGENT_BEHAVIOR=cursor-success`, and use the same conditional/delegating temp-`CODEX_HOME` prep-failure mechanism as the login auth-prep failure case.
++   - Assert wrapper log and sidecar contain `codex-env-key-failure: Codex auth setup failed on the OPENAI_API_KEY auth path`.
++   - Assert codex argv capture is absent, fallback succeeds with `CODER_TOOL=cursor`.
++   - Assert sentinel absent from wrapper log and sidecar.
++5. Add env-key Codex dispatch failure breadcrumb:
+    - Set `OPENAI_API_KEY=<REDACTED-TOKEN>`, `TEST_AGENT_BEHAVIOR=cursor-success`, and `TEST_AGENT_ARGV_FILE=<capture>`.
++   - Also set `TEST_AGENT_CODEX_HOME_FILE=<capture-home>` in this same case so cleanup is pinned to the env-key dispatch-failure Cursor fallback path.
+    - Assert wrapper log and sidecar contain `codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path`.
+    - Assert `CODER_TOOL=cursor`.
+    - Assert sentinel absent from wrapper log, sidecar, and argv capture.
+-5. Add temp `CODEX_HOME` cleanup assertion after a dispatch case that captures `TEST_AGENT_CODEX_HOME_FILE`: read the captured `larch-codex-review-fix-home.*` path and assert it no longer exists after dispatch returns.
++   - Read the captured `larch-codex-review-fix-home.*` path and assert it no longer exists after `run_review_and_fix` returns.
+ 
+ ### UPDATED: `skills/implement/scripts/test-codex-implementer.sh`
+ 
+ 1. Add guarded `/tmp` snapshot helper for temp homes:
+@@ -125,6 +138,7 @@
+ - Keep all new Bash compatible with Bash 3.2: no `mapfile`, associative arrays, or process features beyond existing harness style.
+ - For read-only fixture failure paths, restore permissions immediately after the child/function call returns, before any assertions.
+ - For shell functions, do not invoke with `env -u`; use a subshell with `unset OPENAI_API_KEY`, especially for login-mode dispatch assertions.
++- When shadowing common tools in review-and-fix tests, use narrowly targeted stubs that trigger only the intended Codex auth-prep operation and delegate all unrelated calls to the system tool.
+ 
+ ## Edge cases
+ 
+@@ -135,6 +149,8 @@
+ - Trusted-project argv checks must prove `-c` adjacency, not merely that the config string appears somewhere in argv.
+ - Temp config capture for check-reviewers stays inside the test-local Codex stub; no shipped probe/config-capture hook is added.
+ - `/tmp` implementer cleanup assertion tolerates pre-existing dirs and only fails on new survivors.
++- Review-and-fix login auth-prep cleanup is asserted with a private-`TMPDIR` before/after snapshot because no Codex child runs to capture `CODEX_HOME`.
++- Review-and-fix env-key dispatch-failure cleanup is asserted in the same fallback case that records the env-key breadcrumb, not in an unrelated Codex-success case.
+ 
+ ## Failure modes
+ 
+@@ -153,6 +169,6 @@
+ - Run mutation sanity checks for one new assertion per harness.
+ - Run `bash scripts/relevant-checks.sh` and `make lint-bash32`.
+ 
+-diff_added: 405
+-diff_deleted: 18
+-diff_lines: 423
++diff_added: 465
++diff_deleted: 22
++diff_lines: 487

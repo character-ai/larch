@@ -1,0 +1,22 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan.txt:14-16	Login-home post-table count expects exactly one retained model_provider line	external_prepare_codex_auth on the copied login fixture (OPENAI_API_KEY unset) strips every top-level model_provider = "openai-larch-env" line; existing harness already asserts removal via assert_top_level_not_line at scripts/test-lib-external-launcher-common.sh:121-122, and grep -Fxc on the stripped file yields 0 whole-line matches (multiline body keeps only example model_provider = "openai-larch-env")	Change the login-home post-table assertion to expect zero grep -Fxc matches for model_provider = "openai-larch-env" (and keep zero env_key), or relocate count assertions to a fixture where one retained selector is the intended post-strip contract
+2	in_scope	important	correctness	plan.txt:41-44	Stamp-isolation login-path subcase lacks binding HOME/.codex fixture contract	With OPENAI_API_KEY unset, external_prepare_codex_auth returns 0 even when ~/.codex/auth.json is missing (scripts/lib-external-launcher-common.sh:705-707); probe can still run without symlink wiring, so argv lacks env-key overrides alone is vacuous and does not prove login-path auth material	Require HOME fixture with .codex/auth.json (and config.toml carrying a strippable larch selector) plus unset OPENAI_API_KEY; assert readlink/CODEX_HOME auth symlink and absence of env-key -c overrides in LARCH_TEST_CODEX_ARGV_LOG
+3	in_scope	latent	architecture	plan.txt:29-31	Trusted-project -c adjacency is scoped only to check-reviewers probe	launch-review.sh and review-and-fix.sh emit the same projects.*.trust_level="trusted" -c pair (scripts/check-reviewers.sh:236-245, skills/review-and-fix/scripts/review-and-fix.sh:304-317); probe-only adjacency leaves launcher/review-and-fix argv regressions on non-adjacent -c pairing undetected	Accept probe-only scope for this issue, or add the same adjacent -c pairing check to skills/review-and-fix/scripts/test-review-and-fix.sh dispatch cases that capture TEST_AGENT_ARGV_FILE
+
+### 1. correctness — `plan.txt:14-16` (login-home `model_provider` count)
+
+The plan asks for exactly one retained `model_provider = "openai-larch-env"` on `login-home/config.toml` after `external_prepare_codex_auth` on the copied login fixture. That conflicts with login-path semantics: the harness already expects **no** top-level selector via `assert_top_level_not_line` at ```121:122:scripts/test-lib-external-launcher-common.sh```, and after strip the only surviving text is the multiline example line (`example model_provider = ...`), which does not match a whole-line `grep -Fxc 'model_provider = "openai-larch-env"'` count of 1.
+
+**Suggested revision:** Assert count **0** for that pattern on the login-home fixture (alongside zero `env_key`), matching existing removal assertions.
+
+### 2. correctness — `plan.txt:41-44` (stamp-isolation login subcase)
+
+The decoy env-key-stamp / unset-`OPENAI_API_KEY` subcase only requires argv to lack env-key overrides “and/or” show login auth material. Login-path prep does not fail closed when `auth.json` is absent (`external_prepare_codex_auth` returns 0 at ```705:707:scripts/lib-external-launcher-common.sh```), so Codex can be probed without ever creating a login symlink—making the login-path wiring assertion vacuous.
+
+**Suggested revision:** Bind `HOME` to a fixture with `.codex/auth.json` (and strippable `config.toml`), unset `OPENAI_API_KEY`, ensure no fresh `codex-login` stamp, then assert symlink target plus absent env-key `-c` overrides in the argv capture.
+
+### 3. architecture — `plan.txt:29-31` (trusted-project adjacency scope)
+
+Adjacency checking is planned only for `t10-env-key-false` in `test-check-reviewers.sh`, while production launchers use the same `-c "$trust_config_arg"` pattern in `check-reviewers.sh`, `review-and-fix.sh`, and `launch-review.sh`. This is acceptable minimum scope for #3476, but it is a deliberate parity gap.
+
+**Suggested revision:** Document as intentional probe-only coverage, or mirror the adjacent `-c` pairing assertion in review-and-fix dispatch argv captures when touching that harness anyway.
