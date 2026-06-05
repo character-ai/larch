@@ -232,9 +232,6 @@ snapshot_prefix="larch-logs/design/${RUN_ID}/"
 if ! git -C "$REPO_TOP" ls-tree -r -z --name-only "$snapshot_ref" -- "$snapshot_prefix" >"$enum_tmp"; then
     emit_load_fail "snapshot-extract-failed"
 fi
-if [[ ! -s "$enum_tmp" ]]; then
-    emit_load_fail "snapshot-not-found"
-fi
 while IFS= read -r -d '' path; do
     rel="${path#"$snapshot_prefix"}"
     if [[ "$rel" == "$path" || -z "$rel" ]]; then

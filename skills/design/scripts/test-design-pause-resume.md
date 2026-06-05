@@ -28,8 +28,10 @@ Do not satisfy this case by calling `complete_design_steps … 3 3.5 3.6` or by 
 - Covers real-git export-ignore restoration in a stub-free-PATH subshell that
   `cd`s into the initialized repo so `git rev-parse` binds `REPO_TOP` to the
   snapshot worktree.
-- Covers marker delete-on-success for round-trip and body-drift resumes, plus
+- Covers marker delete-on-success for round-trip and body-drift resumes,
+  restored `.pause-requested` cleanup, `MARKER_CLEARED=true|false`, and
   `WARN=marker-delete-failed` when post-success marker deletion fails.
-- Covers marker keep-on-failure for late-step and deleted-subtree
-  `missing-restored-artifact` paths plus a dedicated `snapshot-extract-failed`
-  fixture.
+- Covers marker keep-on-failure for late-step and deleted-subtree empty
+  enumeration `missing-restored-artifact` paths plus dedicated
+  `snapshot-extract-failed` fixtures for failed `ls-tree` and per-path
+  `git show`.

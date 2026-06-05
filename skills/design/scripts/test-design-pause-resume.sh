@@ -802,7 +802,7 @@ out_bad_branch=$(bash "$LOAD" --design-tmpdir "$TMP/bad-branch" --issue 9 --repo
 
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNMISSING1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_missing_snapshot=$(bash "$LOAD" --design-tmpdir "$TMP/missing-snapshot" --issue 9 --repo owner/repo)
-[[ "$out_missing_snapshot" == *"ERROR=snapshot-not-found"* ]] || fail "missing snapshot mismatch: $out_missing_snapshot"
+[[ "$out_missing_snapshot" == *"ERROR=missing-restored-artifact"* ]] || fail "missing snapshot mismatch: $out_missing_snapshot"
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "missing snapshot should keep marker"
 
 rm -f "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/plan.txt"
@@ -867,11 +867,11 @@ rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
 FAIL_RESTORE="$TMP/unloadable-restore"
 mkdir -p "$FAIL_RESTORE"
 out_unloadable=$(bash "$LOAD" --design-tmpdir "$FAIL_RESTORE" --issue 9 --repo owner/repo)
-[[ "$out_unloadable" == *"ERROR=snapshot-not-found"* ]] || fail "missing snapshot subtree mismatch: $out_unloadable"
+[[ "$out_unloadable" == *"ERROR=missing-restored-artifact"* ]] || fail "missing snapshot subtree mismatch: $out_unloadable"
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "missing snapshot subtree should keep marker"
 ! [[ -f "$FAIL_RESTORE/.resume-loaded" ]] || fail "missing snapshot subtree should not install resume sentinel"
 
-echo "=== snapshot extract failure keeps marker ==="
+echo "=== snapshot ls-tree failure keeps marker ==="
 make_design_tmpdir "$DESIGN"
 printf '%s\n' 'body extract fail' >"$BODY_FILE"
 bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
@@ -881,6 +881,17 @@ out_extract_fail=$(GIT_STUB_LS_TREE_FAIL=1 bash "$LOAD" --design-tmpdir "$EXTRAC
 [[ "$out_extract_fail" == *"ERROR=snapshot-extract-failed"* ]] || fail "snapshot extract failure mismatch: $out_extract_fail"
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "snapshot extract failure should keep marker"
 ! [[ -f "$EXTRACT_FAIL_RESTORE/.resume-loaded" ]] || fail "snapshot extract failure should not install resume sentinel"
+
+echo "=== snapshot show failure keeps marker ==="
+make_design_tmpdir "$DESIGN"
+printf '%s\n' 'body show fail' >"$BODY_FILE"
+bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
+SHOW_FAIL_RESTORE="$TMP/show-fail-restore"
+mkdir -p "$SHOW_FAIL_RESTORE"
+out_show_fail=$(GIT_STUB_SHOW_FAIL=1 bash "$LOAD" --design-tmpdir "$SHOW_FAIL_RESTORE" --issue 9 --repo owner/repo)
+[[ "$out_show_fail" == *"ERROR=snapshot-extract-failed"* ]] || fail "snapshot show failure mismatch: $out_show_fail"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "snapshot show failure should keep marker"
+! [[ -f "$SHOW_FAIL_RESTORE/.resume-loaded" ]] || fail "snapshot show failure should not install resume sentinel"
 
 echo "=== marker name validation ==="
 set +e

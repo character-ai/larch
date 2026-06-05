@@ -185,6 +185,7 @@ SESSION_ID=""
 RUN_ID=""
 TIER=""
 BRAINSTORM_DONE=""
+MARKER_CLEARED=""
 WARN_LINES=()
 ERROR_LINES=()
 
@@ -202,6 +203,7 @@ route_build_kvs() {
     [[ -n "$RUN_ID" ]] && ROUTE_KVS+=("RUN_ID=$RUN_ID")
     [[ -n "$TIER" ]] && ROUTE_KVS+=("TIER=$TIER")
     [[ -n "$BRAINSTORM_DONE" ]] && ROUTE_KVS+=("BRAINSTORM_DONE=$BRAINSTORM_DONE")
+    [[ -n "$MARKER_CLEARED" ]] && ROUTE_KVS+=("MARKER_CLEARED=$MARKER_CLEARED")
     local w e
     for w in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
         ROUTE_KVS+=("WARN=$w")
@@ -307,6 +309,7 @@ if pause_marker_present "$ISSUE_BODY_FILE"; then
             RUN_ID) RUN_ID="$_pval" ;;
             TIER) TIER="$_pval" ;;
             BRAINSTORM_DONE) BRAINSTORM_DONE="$_pval" ;;
+            MARKER_CLEARED) MARKER_CLEARED="$_pval" ;;
             WARN) WARN_LINES+=("$_pval") ;;
             ERROR) ERROR_LINES+=("$_pval") ;;
         esac

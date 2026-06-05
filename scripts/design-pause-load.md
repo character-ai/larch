@@ -38,7 +38,11 @@ parent directory under the staging tmpdir, and copies each blob with guarded
 per-file `git show <ref>:<path>` calls that route failures through
 `emit_load_fail "snapshot-extract-failed"`. This guarded capture is required
 under `set -euo pipefail`; process substitution alone would not reliably turn a
-failed `ls-tree` into the structured failure token. Remote recovery refs
+failed `ls-tree` into the structured failure token. If the ref resolves and
+`ls-tree` succeeds but enumerates no blobs under the snapshot subtree, the
+loader continues to required-artifact checks and emits
+`ERROR=missing-restored-artifact`; `ERROR=snapshot-not-found` is reserved for
+ref/fetch failures before enumeration. Remote recovery refs
 `larch-log-design-<RUN_ID>` are fetched from `origin` first; local-only
 recovery refs `larch-log-design-recovery-<RUN_ID>` are restored from the local
 branch in the current clone. Otherwise the origin default branch is used.
@@ -51,7 +55,11 @@ materialization. Missing required artifacts emit `LOAD_OK=false`
 restore, extract, validation, and snapshot-content failure so the same marker is
 retryable. It deletes the marker only after installing the staged restore into
 the caller tmpdir and writing `.resume-loaded`; if that post-success delete
-fails, the load still reports success and emits `WARN=marker-delete-failed`.
+fails, the load still reports success, emits `MARKER_CLEARED=false`, and emits
+`WARN=marker-delete-failed`. A successful post-load marker delete emits
+`MARKER_CLEARED=true`. Successful load also removes restored
+`$DESIGN_TMPDIR/.pause-requested` so the resumed run does not immediately
+re-pause from stale local state.
 
 `jq` is required for `manifest.json` validation. When it is unavailable, the
 loader fails closed with `LOAD_OK=false` `ERROR=jq-missing` instead of a shell
@@ -60,8 +68,9 @@ error.
 ## Output Contract
 
 - Success: `LOAD_OK=true`, `STEP=<id>`, `SESSION_ID=<id>`, `RUN_ID=<id>`,
-  `TIER=<value>`, `BRAINSTORM_DONE=true|false`, optional `WARN=body-drift`
-  and/or `WARN=marker-delete-failed`, exit 0.
+  `TIER=<value>`, `BRAINSTORM_DONE=true|false`,
+  `MARKER_CLEARED=true|false`, optional `WARN=body-drift` and/or
+  `WARN=marker-delete-failed`, exit 0.
 - Expected failure: `LOAD_OK=false`, `ERROR=<token>`, exit 0.
 
 The marker is deleted only after validation, artifact assertions, restore
