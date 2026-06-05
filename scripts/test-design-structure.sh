@@ -1394,6 +1394,11 @@ esac
 
 publish_marker_line=$(grep -nF 'design_reentry_marker_write' "$DESIGN_PUBLISH_SH" | head -1 | cut -d: -f1 || true)
 publish_rename_line=$(grep -n 'tracking-issue-write.sh' "$DESIGN_PUBLISH_SH" | grep 'state designed' | head -1 | cut -d: -f1 || true)
+publish_rename_count=$(grep -c 'tracking-issue-write.sh.*state designed' "$DESIGN_PUBLISH_SH" || true)
+[[ "$publish_rename_count" -eq 1 ]] \
+  || fail "(FINDING_2) design-publish.sh must contain exactly one tracking-issue-write.sh rename --state designed call site"
+[[ -n "$publish_upsert_line" && -n "$publish_rename_line" && -n "$publish_log_line" && "$publish_upsert_line" -lt "$publish_rename_line" && "$publish_rename_line" -lt "$publish_log_line" ]] \
+  || fail "(25) design-publish.sh rename --state designed must run after upsert-diagrams-comment.sh and before design-log-publish.sh"
 [[ -n "$publish_marker_line" && -n "$publish_log_line" && "$publish_log_line" -lt "$publish_marker_line" ]] \
   || fail "(25) design-publish.sh design_reentry_marker_write must run only after design-log-publish.sh"
 [[ -n "$publish_marker_line" && -n "$publish_rename_line" && "$publish_rename_line" -lt "$publish_marker_line" ]] \
@@ -1428,6 +1433,12 @@ grep -Fq 'export SESSION_ID' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must export SESSION_ID before render-final-summary.sh"
 grep -Fq 'render-final-summary.sh' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must invoke render-final-summary.sh"
+# shellcheck disable=SC2016 # Markdown literal intentionally contains $DESIGN_TMPDIR.
+grep -Fq '[DESIGNED] is set; log publish incomplete; retry log publish manually from the preserved $DESIGN_TMPDIR before /implement when the session may contain secrets' "$SKILL_MD" \
+  || fail "(26) SKILL.md missing RENAMED/admission-ready failed-publish footer"
+# shellcheck disable=SC2016 # Markdown literal intentionally contains $DESIGN_TMPDIR.
+grep -Fq '[DESIGNED] rename not confirmed; log publish incomplete; fix the issue title before /implement and retry log publish manually from the preserved $DESIGN_TMPDIR' "$SKILL_MD" \
+  || fail "(27) SKILL.md missing rename-not-confirmed failed-publish footer"
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 grep -Fq 'phase_driver_write_result_env "$RESULT_ENV"' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must write result env via phase_driver_write_result_env"
@@ -1442,9 +1453,9 @@ grep -Fq '.completed/step-5b' "$DESIGN_PUBLISH_SH" \
 grep -Fq 'exit 1 is the normal plan-block-write failure path' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing exit 1 parse-then-branch contract"
 # shellcheck disable=SC2016 # Markdown literal contains backticks and shell variables intentionally.
-contains "$SKILL_MD" '`SESSION_ID` empty **or** `PUBLISH_OK=true`' '(FINDING_8_SENTINEL_SUCCESS_GATE) SKILL.md Step 5c missing publish-success sentinel gate'
+contains "$SKILL_MD" 'design-log publish runs after rename and is best-effort for `/implement` admission' '(FINDING_8_SENTINEL_SUCCESS_GATE) SKILL.md Step 5c missing best-effort publish admission contract'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK != true`, do **not** write `step-5c`' '(FINDING_8_SENTINEL_FAILED_PUBLISH) SKILL.md Step 5c missing failed-publish no-sentinel retry prose'
+contains "$SKILL_MD" 'Automation that requires scrubbed/published logs must gate on `PUBLISH_OK=true`, not on the `[DESIGNED]` title alone.' '(FINDING_8_SENTINEL_FAILED_PUBLISH) SKILL.md Step 5c missing published-log automation gate prose'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
 contains "$SKILL_MD" 'When `_publish_rc` is non-zero, force `PUBLISH_OK=false`' '(28a) SKILL.md clarify publish must fail closed on nonzero rc'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.

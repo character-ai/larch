@@ -29,6 +29,19 @@ assert_rc() {
     pass "$name"
 }
 
+assert_rename_before_publish() {
+    local name="$1" log="$2"
+    if awk '
+      /tracking-issue-write .*--state designed/ && !rename_pos { rename_pos=NR }
+      /design-log-publish / && !publish_pos { publish_pos=NR }
+      END { exit (rename_pos && publish_pos && rename_pos < publish_pos) ? 0 : 1 }
+    ' "$log"; then
+        pass "$name"
+    else
+        fail "$name"
+    fi
+}
+
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-design-publish.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
 
@@ -131,6 +144,7 @@ if [[ "${RENAMED_OMIT_LINE:-false}" == true ]]; then
   exit 0
 fi
 echo "RENAMED=${RENAMED_VALUE:-true}"
+echo "NEW_TITLE=${NEW_TITLE_VALUE:-[DESIGNED] Example issue}"
 STUB
     cat >"$STUB/resolve-repo.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -157,7 +171,7 @@ STUB
     cat >"$FAKE_PLUGIN/skills/design/scripts/render-final-summary.sh" <<'STUB'
 #!/usr/bin/env bash
 {
-  echo "render ISSUE_NUMBER=${ISSUE_NUMBER:-} SESSION_ID=${SESSION_ID:-} DESIGN_TMPDIR=${DESIGN_TMPDIR:-} DESIGN_LOG_PR_NUMBER=${DESIGN_LOG_PR_NUMBER:-} DESIGN_LOG_PR_URL=${DESIGN_LOG_PR_URL:-} DESIGN_LOG_RECOVERY_BRANCH=${DESIGN_LOG_RECOVERY_BRANCH:-} $*"
+  echo "render ISSUE_NUMBER=${ISSUE_NUMBER:-} SESSION_ID=${SESSION_ID:-} DESIGN_TMPDIR=${DESIGN_TMPDIR:-} DESIGN_LOG_PR_NUMBER=${DESIGN_LOG_PR_NUMBER:-} DESIGN_LOG_PR_URL=${DESIGN_LOG_PR_URL:-} DESIGN_LOG_RECOVERY_BRANCH=${DESIGN_LOG_RECOVERY_BRANCH:-} RENAMED=${RENAMED:-} NEW_TITLE=${NEW_TITLE:-} DESIGNED_ADMISSION_READY=${DESIGNED_ADMISSION_READY:-} $*"
 } >>"${RENDER_LOG:?}"
 printf '# summary\n' >"${DESIGN_TMPDIR:?}/final-summary.md"
 STUB
@@ -172,7 +186,7 @@ reset_publish_stub_env() {
     unset PLAN_BLOCK_RC PUBLISH_STUB_RC PUBLISH_EMIT_OK PUBLISH_OK_VALUE \
         PUBLISH_PR_NUMBER PUBLISH_PR_URL PUBLISH_RECOVERY_BRANCH \
         UPSERT_STUB_RC UPSERT_STATUS_VALUE ARCH_SOURCE_VALUE \
-        RENAME_STUB_RC RENAMED_OMIT_LINE RENAMED_VALUE RESOLVE_REPO_VALUE \
+        RENAME_STUB_RC RENAMED_OMIT_LINE RENAMED_VALUE NEW_TITLE_VALUE RESOLVE_REPO_VALUE \
         MARKER_STUB_RC VALIDATOR_STUB_RC VALIDATOR_STATUS_OMIT VALIDATE_STATUS_VALUE \
         VALIDATE_DEFECT_COUNT_VALUE VALIDATE_SKIPPED_COUNT_VALUE \
         VALIDATE_UNSAFE_TOKEN_COUNT_VALUE VALIDATE_LOG_FILE_VALUE \
@@ -293,6 +307,7 @@ grep -q 'VALIDATE_STATUS=defects-found' "$D_DEF/.design-publish-result.env" || f
 grep -q 'VALIDATE_STATUS=defects-found' "$D_DEF/stdout.txt" || fail "defects stdout status fallback"
 if [[ -e "$D_DEF/composed-plan.redacted.md" ]]; then fail "defects must not redact"; else pass "defects skipped redaction"; fi
 if grep -q 'plan-block-write' "$PLAN_BLOCK_LOG" 2>/dev/null; then fail "defects must not publish"; else pass "defects skipped publish tail"; fi
+if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then fail "defects must not rename"; else pass "defects skipped rename"; fi
 
 # --- validator infra failure ---
 D_VINFRA="$TMP/validator-infra"
@@ -324,6 +339,7 @@ assert_rc "validator missing status" 2 "$rc"
 # --- skip validate publishes and marks status skipped ---
 D_SKIP="$TMP/skip-validate"
 setup_design_tmp "$D_SKIP"
+printf 'graph TD\n' >"$D_SKIP/architecture-diagram.md"
 reset_publish_stub_env
 init_publish_logs
 apply_publish_stub_defaults
@@ -336,6 +352,17 @@ assert_rc "skip validate" 0 "$rc"
 grep -q 'VALIDATE_STATUS=skipped' "$D_SKIP/.design-publish-result.env" || fail "skip validate status"
 if grep -q 'validator' "$CALL_LOG" 2>/dev/null; then fail "skip validate must not call validator"; else pass "skip validate did not call validator"; fi
 [[ -s "$D_SKIP/composed-plan.redacted.md" ]] || fail "skip validate must redact"
+skip_plan_pos=$(grep -n 'plan-block-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+skip_upsert_pos=$(grep -n 'upsert-diagrams' "$CALL_LOG" | head -1 | cut -d: -f1)
+skip_rename_pos=$(grep -n 'tracking-issue-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+skip_publish_pos=$(grep -n 'design-log-publish' "$CALL_LOG" | head -1 | cut -d: -f1)
+if [[ -z "$skip_plan_pos" || -z "$skip_upsert_pos" || -z "$skip_rename_pos" || -z "$skip_publish_pos" ]]; then
+    fail "skip validate call log missing plan/upsert/rename/publish entries"
+elif [[ "$skip_plan_pos" -ge "$skip_upsert_pos" || "$skip_upsert_pos" -ge "$skip_rename_pos" || "$skip_rename_pos" -ge "$skip_publish_pos" ]]; then
+    fail "skip validate call-log ordering plan→upsert→rename→publish"
+else
+    pass "skip validate call-log ordering plan→upsert→rename→publish"
+fi
 
 # --- pause before validator/publish ---
 D_PAUSE="$TMP/pause"
@@ -423,6 +450,8 @@ grep -q 'SESSION_ID=sid-1' "$RENDER_LOG" \
 D_FAIL_CANON=$(cd "$D_FAIL" && pwd -P)
 grep -q "DESIGN_TMPDIR=${D_FAIL_CANON}" "$RENDER_LOG" \
   || fail "failed-plan-write render missing DESIGN_TMPDIR"
+if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then fail "failed plan write must not rename"; else pass "failed plan write skipped rename"; fi
+if grep -q 'tracking-issue-write' "$CALL_LOG" 2>/dev/null; then fail "failed plan write call log must not rename"; else pass "failed plan write call log skipped rename"; fi
 
 # --- happy path ---
 D_OK="$TMP/happy"
@@ -442,13 +471,15 @@ plan_pos=$(grep -n 'plan-block-write' "$CALL_LOG" | head -1 | cut -d: -f1)
 upsert_pos=$(grep -n 'upsert-diagrams' "$CALL_LOG" | head -1 | cut -d: -f1)
 publish_pos=$(grep -n 'design-log-publish' "$CALL_LOG" | head -1 | cut -d: -f1)
 rename_pos=$(grep -n 'tracking-issue-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+rename_count=$(grep -c 'tracking-issue-write .*--state designed' "$CALL_LOG" || true)
 marker_pos=$(grep -n 'design-reentry-marker-write' "$CALL_LOG" | head -1 | cut -d: -f1)
+[[ "$rename_count" -eq 1 ]] || fail "happy path must call tracking-issue-write rename --state designed exactly once"
 if [[ -z "$plan_pos" || -z "$upsert_pos" || -z "$publish_pos" || -z "$rename_pos" || -z "$marker_pos" ]]; then
     fail "happy path call log missing plan/marker/upsert/publish entries"
-elif [[ "$plan_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$publish_pos" || "$publish_pos" -ge "$rename_pos" || "$rename_pos" -ge "$marker_pos" ]]; then
-    fail "happy path call-log ordering plan→upsert→publish→rename→marker"
+elif [[ "$plan_pos" -ge "$upsert_pos" || "$upsert_pos" -ge "$rename_pos" || "$rename_pos" -ge "$publish_pos" || "$publish_pos" -ge "$marker_pos" ]]; then
+    fail "happy path call-log ordering plan→upsert→rename→publish→marker"
 else
-    pass "happy path call-log ordering plan→upsert→publish→rename→marker"
+    pass "happy path call-log ordering plan→upsert→rename→publish→marker"
 fi
 grep -q 'design-log-publish' "$PUBLISH_LOG" || fail "design-log-publish.sh should run on happy path"
 
@@ -550,13 +581,14 @@ grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "PUBLISH_OK=false sh
 grep -q 'DESIGN_LOG_PR_NUMBER=456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_NUMBER"
 grep -q 'DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/456' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_PR_URL"
 grep -q 'DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing DESIGN_LOG_RECOVERY_BRANCH"
+grep -q 'RENAMED=true' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing RENAMED"
+grep -q 'DESIGNED_ADMISSION_READY=true' "$RENDER_LOG" || fail "PUBLISH_OK=false render missing admission-ready hint"
 grep -q 'design-log-publish.sh failed (exit 1)' "$D_PFAIL/execution-issues.md" 2>/dev/null || fail "PUBLISH_OK=false should record nonzero publish failure exit"
 grep -q 'design log publish failed; recovery metadata' "$D_PFAIL/.design-publish-result.env" || fail "PUBLISH_OK=false should emit recovery WARN"
-if ! grep -q 'tracking-issue-write' "$RENAME_LOG"; then
-    pass "rename skipped on PUBLISH_OK=false"
-else
-    fail "rename should be skipped"
-fi
+grep -q 'tracking-issue-write' "$RENAME_LOG" || fail "rename should run before PUBLISH_OK=false"
+assert_rename_before_publish "PUBLISH_OK=false call-log ordering rename→publish" "$CALL_LOG"
+grep -q 'RENAMED=true' "$D_PFAIL/.design-publish-result.env" || fail "PUBLISH_OK=false should persist RENAMED=true"
+grep -q 'DESIGNED_ADMISSION_READY=true' "$D_PFAIL/.design-publish-result.env" || fail "PUBLISH_OK=false should persist admission-ready hint"
 if grep -q 'design-reentry-marker-write' "$CALL_LOG"; then
     fail "reentry marker should be skipped on PUBLISH_OK=false"
 else
@@ -575,6 +607,27 @@ else
     pass "orchestrator sentinel simulation withholds step-5c on failed publish"
 fi
 
+# --- PUBLISH_OK=false after idempotent [DESIGNED] rename ---
+D_PFAIL_IDEM="$TMP/pub-fail-idempotent"
+setup_design_tmp "$D_PFAIL_IDEM"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_OK_VALUE=false
+export RENAMED_VALUE=false
+export NEW_TITLE_VALUE='[DESIGNED] Existing issue'
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PFAIL_IDEM" --issue 1 --session-id sid --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "PUBLISH_OK=false idempotent rename" 0 "$rc"
+grep -q 'RENAMED=false' "$D_PFAIL_IDEM/.design-publish-result.env" || fail "idempotent publish failure should persist RENAMED=false"
+grep -q 'NEW_TITLE=\[DESIGNED\] Existing issue' "$D_PFAIL_IDEM/.design-publish-result.env" || fail "idempotent publish failure should persist NEW_TITLE"
+grep -q 'DESIGNED_ADMISSION_READY=true' "$D_PFAIL_IDEM/.design-publish-result.env" || fail "idempotent publish failure should persist admission-ready hint"
+grep -q 'RENAMED=false' "$RENDER_LOG" || fail "idempotent publish failure render missing RENAMED=false"
+grep -q 'NEW_TITLE=\[DESIGNED\] Existing issue' "$RENDER_LOG" || fail "idempotent publish failure render missing NEW_TITLE"
+grep -q 'DESIGNED_ADMISSION_READY=true' "$RENDER_LOG" || fail "idempotent [DESIGNED] rename should be admission-ready"
+
 # --- unexpected publish (nonzero, no PUBLISH_OK line) ---
 D_UNEXP="$TMP/pub-unexp"
 setup_design_tmp "$D_UNEXP"
@@ -591,11 +644,8 @@ assert_rc "unexpected publish rc" 0 "$rc"
 grep -q 'PUBLISH_OK=false' "$D_UNEXP/.design-publish-result.env" || fail "unexpected publish must set PUBLISH_OK=false"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "unexpected publish should render post-publish summary"
 grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "unexpected publish rc should render failed-publish outcome"
-if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
-    fail "rename should be skipped after unexpected publish rc"
-else
-    pass "rename skipped after unexpected publish rc"
-fi
+grep -q 'tracking-issue-write' "$RENAME_LOG" || fail "rename should run before unexpected publish rc"
+grep -q 'RENAMED=true' "$D_UNEXP/.design-publish-result.env" || fail "unexpected publish should persist RENAMED=true"
 grep -q 'design-log-publish.sh' "$D_UNEXP/execution-issues.md" 2>/dev/null   || fail "unexpected publish must append to execution-issues.md"
 
 # --- nonzero publish rc with PUBLISH_OK=true is fail-closed ---
@@ -620,11 +670,10 @@ grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "nonzero publish rc 
 grep -q 'DESIGN_LOG_PR_NUMBER=456' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep PR number"
 grep -q 'DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/456' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep PR URL"
 grep -q 'DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep recovery branch"
-if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
-    fail "rename should be skipped when publish rc is nonzero despite PUBLISH_OK=true"
-else
-    pass "rename skipped when publish rc is nonzero despite PUBLISH_OK=true"
-fi
+grep -q 'tracking-issue-write' "$RENAME_LOG" \
+  || fail "rename should run before nonzero publish rc despite PUBLISH_OK=true"
+grep -q 'RENAMED=true' "$D_RC_TRUE/.design-publish-result.env" \
+  || fail "nonzero publish rc should persist RENAMED=true from pre-publish rename"
 if grep -q 'design-reentry-marker-write' "$CALL_LOG" 2>/dev/null; then
     fail "reentry marker should be skipped when publish rc is nonzero despite PUBLISH_OK=true"
 else
@@ -647,11 +696,8 @@ assert_rc "missing PUBLISH_OK on exit 0" 0 "$rc"
 grep -q 'PUBLISH_OK=false' "$D_NO_PUB_KV/.design-publish-result.env"   || fail "exit 0 without PUBLISH_OK= must set PUBLISH_OK=false"
 grep -q 'post-publish-only' "$RENDER_LOG" || fail "exit 0 without PUBLISH_OK should render post-publish summary"
 grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "exit 0 without PUBLISH_OK should render failed-publish outcome"
-if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
-    fail "rename should be skipped when PUBLISH_OK is missing"
-else
-    pass "rename skipped when PUBLISH_OK is missing"
-fi
+grep -q 'tracking-issue-write' "$RENAME_LOG" || fail "rename should run before missing PUBLISH_OK handling"
+grep -q 'RENAMED=true' "$D_NO_PUB_KV/.design-publish-result.env" || fail "missing PUBLISH_OK should persist RENAMED=true"
 grep -q 'design-log-publish.sh' "$D_NO_PUB_KV/execution-issues.md" 2>/dev/null   || fail "exit 0 without PUBLISH_OK= must append to execution-issues.md"
 
 # --- result-env write failure (exit 3) ---
@@ -702,6 +748,13 @@ grep -q 'PLAN_WRITE_OK=true' "$D_UPSERT_FAIL/.design-publish-result.env" \
   || fail "upsert failure must still complete publish tail"
 grep -q 'upsert-diagrams-comment.sh' "$D_UPSERT_FAIL/execution-issues.md" 2>/dev/null \
   || fail "upsert failure must append to execution-issues.md"
+grep -q 'tracking-issue-write .*--state designed' "$RENAME_LOG" \
+  || fail "upsert failure must still attempt [DESIGNED] rename"
+assert_rename_before_publish "upsert failure call-log ordering rename→publish" "$CALL_LOG"
+grep -q 'RENAMED=true' "$D_UPSERT_FAIL/.design-publish-result.env" \
+  || fail "upsert failure must record rename outcome"
+grep -q 'DESIGNED_ADMISSION_READY=false' "$D_UPSERT_FAIL/.design-publish-result.env" \
+  || fail "upsert failure must not mark admission ready"
 
 # --- empty architecture-diagram.md (no upsert) ---
 D_EMPTY_ARCH="$TMP/empty-arch-file"
@@ -747,6 +800,30 @@ set -e
 assert_rc "rename failure non-blocking" 0 "$rc"
 grep -q 'WARN=.*\[DESIGNED\].*rename failed' "$D_REN_FAIL/.design-publish-result.env" \
   || fail "rename failure must emit [DESIGNED] WARN in result env"
+grep -q 'WARN=.*plan block was written.*diagram upsert skipped' "$D_REN_FAIL/.design-publish-result.env" \
+  || fail "rename failure WARN must not assert diagram was posted when upsert skipped"
+awk '
+  /tracking-issue-write .*--state designed/ { seen_rename=1 }
+  /design-log-publish / && seen_rename { seen_publish_after_rename=1 }
+  END { exit seen_publish_after_rename ? 0 : 1 }
+' "$CALL_LOG" || fail "rename failure must continue to design-log-publish"
+
+# --- rename failure warns with failed upsert detail ---
+D_REN_FAIL_UPSERT="$TMP/rename-fail-upsert"
+setup_design_tmp "$D_REN_FAIL_UPSERT"
+printf 'graph TD\n' >"$D_REN_FAIL_UPSERT/architecture-diagram.md"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export RENAME_STUB_RC=1
+export UPSERT_STATUS_VALUE=failed
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_REN_FAIL_UPSERT" --issue 42 --session-id sid-1 --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "rename failure after upsert failure non-blocking" 0 "$rc"
+grep -q 'WARN=.*plan block was written.*diagram upsert failed' "$D_REN_FAIL_UPSERT/.design-publish-result.env" \
+  || fail "rename failure WARN must include diagram upsert failed when UPSERT_STATUS=failed"
 
 # --- rename success without RENAMED= line ---
 D_REN_OMIT="$TMP/rename-omit"
@@ -762,6 +839,36 @@ set -e
 assert_rc "rename omit RENAMED line" 0 "$rc"
 grep -q 'WARN=.*omitted RENAMED=' "$D_REN_OMIT/.design-publish-result.env" \
   || fail "success without RENAMED= must emit WARN in result env"
+if grep -q '^RENAMED=false$' "$D_REN_OMIT/.design-publish-result.env"; then
+    fail "success without RENAMED= must not persist RENAMED=false"
+else
+    pass "success without RENAMED= leaves RENAMED unknown"
+fi
+grep -q '^DESIGNED_ADMISSION_READY=false$' "$D_REN_OMIT/.design-publish-result.env" \
+  || fail "success without RENAMED= must persist admission-ready false"
+
+# --- failed publish after rename failure does not emit admission-ready branch ---
+D_PFAIL_REN_FAIL="$TMP/pub-fail-rename-fail"
+setup_design_tmp "$D_PFAIL_REN_FAIL"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export PUBLISH_OK_VALUE=false
+export RENAME_STUB_RC=1
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_PFAIL_REN_FAIL" --issue 42 --session-id sid-1 --claude-pid 1 2>/dev/null
+rc=$?
+set -e
+assert_rc "PUBLISH_OK=false after rename failure" 0 "$rc"
+grep -q '^RENAMED=false$' "$D_PFAIL_REN_FAIL/.design-publish-result.env" \
+  || fail "publish failure after rename failure must persist RENAMED=false"
+grep -q '^DESIGNED_ADMISSION_READY=false$' "$D_PFAIL_REN_FAIL/.design-publish-result.env" \
+  || fail "publish failure after rename failure must persist admission-ready false"
+grep -q 'DESIGNED_ADMISSION_READY=false' "$RENDER_LOG" \
+  || fail "publish failure after rename failure render missing admission-ready false"
+grep -q 'WARN=.*\[DESIGNED\].*rename failed' "$D_PFAIL_REN_FAIL/.design-publish-result.env" \
+  || fail "publish failure after rename failure must warn about rename failure"
+pass "publish failure after rename failure omits admission-ready recovery prose"
 
 # --- marker write failure non-blocking ---
 D_MARKER_FAIL="$TMP/marker-fail"
@@ -859,6 +966,11 @@ if grep -q 'upsert-diagrams' "$UPSERT_LOG" 2>/dev/null; then
 else
     pass "upsert skipped when neither diagram nor sentinel"
 fi
+grep -q 'tracking-issue-write .*--state designed' "$RENAME_LOG" \
+  || fail "missing diagram artifacts must still attempt [DESIGNED] rename"
+assert_rename_before_publish "no architecture call-log ordering rename→publish" "$CALL_LOG"
+grep -q 'RENAMED=true' "$D_NO_ARCH/.design-publish-result.env" \
+  || fail "missing diagram artifacts must record rename outcome"
 
 if [[ "$FAIL" -gt 0 ]]; then
     echo "FAIL: $FAIL test(s) failed ($PASS passed)" >&2

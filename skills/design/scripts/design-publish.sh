@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# design-publish.sh — /design Step 5c publish-tail phase driver (plan write, diagrams, log publish, rename).
+# design-publish.sh — /design Step 5c publish-tail phase driver (plan write, diagrams, rename, log publish).
 
 set -euo pipefail
 
@@ -46,7 +46,6 @@ parse_kv_from_output() {
             PR_NUMBER) PR_NUMBER="$_value" ;;
             PR_URL) PR_URL="$_value" ;;
             RECOVERY_BRANCH) RECOVERY_BRANCH="$_value" ;;
-            RENAMED) RENAMED="$_value" ;;
             UPSERT_STATUS) UPSERT_STATUS="$_value" ;;
             ARCHITECTURE_SOURCE) ARCHITECTURE_SOURCE="$_value" ;;
             VALIDATE_STATUS) VALIDATE_STATUS="$_value" ;;
@@ -165,8 +164,11 @@ PR_NUMBER=""
 PR_URL=""
 RECOVERY_BRANCH=""
 RENAMED=""
+NEW_TITLE=""
+DESIGNED_ADMISSION_READY=false
 UPSERT_STATUS=""
 ARCHITECTURE_SOURCE=""
+UPSERT_RAN=false
 VALIDATE_STATUS=not-run
 VALIDATE_DEFECT_COUNT=0
 VALIDATE_SKIPPED_COUNT=0
@@ -193,8 +195,25 @@ publish_recovery_detail() {
     fi
 }
 
+renamed_admission_ready() {
+    [[ "${RENAMED:-}" == true ]] && return 0
+    [[ "${RENAMED:-}" == false && "${NEW_TITLE:-}" == "[DESIGNED] "* ]] && return 0
+    return 1
+}
+
+refresh_designed_admission_ready() {
+    DESIGNED_ADMISSION_READY=false
+    if [[ "${UPSERT_RAN:-}" == true && "${UPSERT_STATUS:-}" != ok ]]; then
+        return 0
+    fi
+    if renamed_admission_ready; then
+        DESIGNED_ADMISSION_READY=true
+    fi
+}
+
 write_result_env_and_emit() {
     local -a _kvs=()
+    refresh_designed_admission_ready
     _kvs+=("PLAN_WRITE_OK=$PLAN_WRITE_OK")
     _kvs+=("VALIDATE_STATUS=$VALIDATE_STATUS")
     _kvs+=("VALIDATE_DEFECT_COUNT=$VALIDATE_DEFECT_COUNT")
@@ -207,6 +226,8 @@ write_result_env_and_emit() {
     [[ -n "${RECOVERY_BRANCH:-}" ]] && _kvs+=("RECOVERY_BRANCH=$RECOVERY_BRANCH")
     [[ -n "${RECOVERY_BRANCH:-}" ]] && _kvs+=("LOG_RECOVERY_BRANCH=$RECOVERY_BRANCH")
     [[ -n "${RENAMED:-}" ]] && _kvs+=("RENAMED=$RENAMED")
+    [[ -n "${NEW_TITLE:-}" ]] && _kvs+=("NEW_TITLE=$NEW_TITLE")
+    _kvs+=("DESIGNED_ADMISSION_READY=$DESIGNED_ADMISSION_READY")
     [[ -n "${UPSERT_STATUS:-}" ]] && _kvs+=("UPSERT_STATUS=$UPSERT_STATUS")
     [[ -n "${ARCHITECTURE_SOURCE:-}" ]] && _kvs+=("ARCHITECTURE_SOURCE=$ARCHITECTURE_SOURCE")
     _kvs+=("FINAL_SUMMARY_PATH=$FINAL_SUMMARY_PATH")
@@ -226,6 +247,8 @@ write_result_env_and_emit() {
     [[ -n "${RECOVERY_BRANCH:-}" ]] && emit_kv RECOVERY_BRANCH "$RECOVERY_BRANCH"
     [[ -n "${RECOVERY_BRANCH:-}" ]] && emit_kv LOG_RECOVERY_BRANCH "$RECOVERY_BRANCH"
     [[ -n "${RENAMED:-}" ]] && emit_kv RENAMED "$RENAMED"
+    [[ -n "${NEW_TITLE:-}" ]] && emit_kv NEW_TITLE "$NEW_TITLE"
+    emit_kv DESIGNED_ADMISSION_READY "$DESIGNED_ADMISSION_READY"
     [[ -n "${UPSERT_STATUS:-}" ]] && emit_kv UPSERT_STATUS "$UPSERT_STATUS"
     [[ -n "${ARCHITECTURE_SOURCE:-}" ]] && emit_kv ARCHITECTURE_SOURCE "$ARCHITECTURE_SOURCE"
     emit_kv FINAL_SUMMARY_PATH "$FINAL_SUMMARY_PATH"
@@ -317,6 +340,7 @@ elif [[ ! -f "$_arch_file" ]] && [[ -f "$_arch_skipped" ]]; then
 fi
 
 if [[ "$_run_upsert" == true ]]; then
+    UPSERT_RAN=true
     set +e
     _upsert_out=$("$PLUGIN_ROOT/scripts/upsert-diagrams-comment.sh" "${_upsert_args[@]}" 2>"$DESIGN_TMPDIR/diagrams-architecture-upsert.stderr")
     _upsert_rc=$?
@@ -332,6 +356,38 @@ if [[ "$_run_upsert" == true ]]; then
             --category Warnings \
             --output-file "$DESIGN_TMPDIR/diagrams-architecture-upsert.stderr" \
             --redact >/dev/null 2>&1 || true
+    fi
+fi
+
+if [[ -n "$SESSION_ID" ]]; then
+    _rename_seen=false
+    if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designed ${REPO:+--repo "$REPO"}); then
+        RENAMED=""
+        NEW_TITLE=""
+        while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
+            case "$_rename_line" in
+                RENAMED=true) RENAMED=true; _rename_seen=true ;;
+                RENAMED=false) RENAMED=false; _rename_seen=true ;;
+                NEW_TITLE=*) NEW_TITLE="${_rename_line#NEW_TITLE=}" ;;
+            esac
+        done <<<"${_rename_out:-}"
+        if [[ "$_rename_seen" != true ]]; then
+            add_warn "**⚠ 5c: tracking-issue-write.sh rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
+        fi
+    else
+        RENAMED=false
+        NEW_TITLE=""
+        _diagram_detail="diagram upsert skipped"
+        if [[ "$UPSERT_RAN" == true ]]; then
+            if [[ "${UPSERT_STATUS:-}" == failed ]]; then
+                _diagram_detail="diagram upsert failed"
+            elif [[ -n "${UPSERT_STATUS:-}" ]]; then
+                _diagram_detail="diagram upsert status=${UPSERT_STATUS}"
+            else
+                _diagram_detail="diagram upsert ran without UPSERT_STATUS"
+            fi
+        fi
+        add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan block was written; ${_diagram_detail}; the issue title was not updated. Rename manually with gh issue edit or tracking-issue-write.sh, or drop the lifecycle prefix before re-running /design.**"
     fi
 fi
 
@@ -411,6 +467,12 @@ fi
 export DESIGN_LOG_PR_NUMBER="${PR_NUMBER:-}"
 export DESIGN_LOG_PR_URL="${PR_URL:-}"
 export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
+export RENAMED="${RENAMED:-}"
+export NEW_TITLE="${NEW_TITLE:-}"
+export UPSERT_RAN="${UPSERT_RAN:-false}"
+export UPSERT_STATUS="${UPSERT_STATUS:-}"
+refresh_designed_admission_ready
+export DESIGNED_ADMISSION_READY
 "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \
     --outcome "$SUMMARY_OUTCOME" \
     --mode "$MODE" \
@@ -418,22 +480,6 @@ export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
     --post-publish-only || true
 
 if [[ -n "$SESSION_ID" ]] && [[ "${PUBLISH_OK:-}" == true ]]; then
-    _rename_seen=false
-    if _rename_out=$("$PLUGIN_ROOT/scripts/tracking-issue-write.sh" rename --issue "$ISSUE" --state designed ${REPO:+--repo "$REPO"}); then
-        RENAMED=false
-        while IFS= read -r _rename_line || [[ -n "$_rename_line" ]]; do
-            case "$_rename_line" in
-                RENAMED=true) RENAMED=true; _rename_seen=true ;;
-                RENAMED=false) RENAMED=false; _rename_seen=true ;;
-            esac
-        done <<<"${_rename_out:-}"
-        if [[ "$_rename_seen" != true ]]; then
-            add_warn "**⚠ 5c: tracking-issue-write.sh rename succeeded but omitted RENAMED= line; treating rename outcome as unknown.**"
-        fi
-    else
-        add_warn "**⚠ 5c: [DESIGNED] rename failed (tracking-issue-write.sh); plan and logs may have published but the issue title was not updated. Re-invoke /design or rename manually if the title is still wrong.**"
-    fi
-
     # shellcheck source=scripts/lib-design-reentry-guard.sh
     source "$PLUGIN_ROOT/scripts/lib-design-reentry-guard.sh"
     set +e

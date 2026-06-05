@@ -14,10 +14,12 @@ this helper).
 Step 0b title-filter refuse (`cancelled-title-filter`), clarify exit, already-planned cancel, reentry-guard cancel
 (`cancelled-reentry-guard`); Step 1c/1d sprawl
 cancel; Step 1d.7 outline cancel (`cancelled-outline`); Step 2b.5 hard cancel; Step 2b.5 Split-path terminal cancels / successful
-partition filing (`cancelled-decompose`, `approved-partition`, `cancelled-assessor-worse`); Step 5c happy path (two-phase: `--pre-publish-only`
-before `design-log-publish.sh`, `--post-publish-only` after); Step 5c
-plan-block-write failure (`--outcome failed-plan-write`), and log-publish failure
-after Gate-C approval (`--outcome failed-publish`).
+partition filing (`cancelled-decompose`, `approved-partition`, `cancelled-assessor-worse`); Step 5c happy path (`--post-publish-only` after
+the publish outcome is known); Step 5c plan-block-write failure (`--outcome
+failed-plan-write`), and log-publish failure after Gate-C approval (`--outcome
+failed-publish`). The current `design-publish.sh` success path orders Step 5c as
+plan write → diagram upsert → `[DESIGNED]` rename → design-log publish →
+`--post-publish-only` final-summary render → reentry marker.
 
 The shell enum keeps file-order with newest cancelled entries appended before the `failed-*` outcomes; `SKILL.md` Step 0b documents the same token set alphabetically within `cancelled-*`.
 
@@ -28,13 +30,16 @@ Pre–Step 0a aborts have no `$DESIGN_TMPDIR`.
 
 ## Publish-tail render behavior
 
-`design-publish.sh` removes any stale `final-summary.md` before invoking
-`design-log-publish.sh`, then renders the terminal summary after the publish
-outcome is known. This avoids committing an approved summary into an open
-failed-publish flush PR. If the post-publish render fails or leaves the file
-empty, the helper appends a Warning and writes the self-composed fallback
-schema. On post-phase failures it refreshes `Exec issues` / `Warnings` from
-`execution-issues.md` and only carries forward the prior non-`N/A`
+`design-publish.sh` removes any stale `final-summary.md`, writes the plan block,
+best-effort upserts the architecture diagram, attempts the `[DESIGNED]` rename,
+then invokes `design-log-publish.sh`. It exports the publish metadata and rename
+admission hint (`RENAMED`, `NEW_TITLE`, `DESIGNED_ADMISSION_READY`) before
+rendering the terminal summary with `--post-publish-only`, so failed-publish
+notes can distinguish "logs still need recovery but /implement may proceed" from
+"fix the issue title before /implement". If the post-publish render fails or
+leaves the file empty, the helper appends a Warning and writes the self-composed
+fallback schema. On post-phase failures it refreshes `Exec issues` / `Warnings`
+from `execution-issues.md` and only carries forward the prior non-`N/A`
 `- **Cost**:` line when one already existed; it does not preserve the rest of a
 stale body.
 

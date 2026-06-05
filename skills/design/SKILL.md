@@ -1410,7 +1410,7 @@ Print: `> **🔶 /design 5: finalize**`
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 5 — finalize" || true
 ```
 
-**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5c** (`larch:plan` write + publish + rename).
+**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5c** (`larch:plan` write + diagram upsert + rename + publish).
 
 ### 5a — Update Reviewer Presence Status
 
@@ -1463,7 +1463,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
-2. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`, including composed-plan validation, redaction, **Migration limit** for legacy `runid=` diagram comments, and exit 4 validator hand-back) for the deterministic publish tail.
+2. Invoke `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-publish.sh` (contract: `design-publish.md`, including composed-plan validation, redaction, **Migration limit** for legacy `runid=` diagram comments, and exit 4 validator hand-back) for the deterministic publish tail (plan block write, diagrams upsert, `[DESIGNED]` rename, log publish, summary render, reentry marker).
 
    Before **each** attempt (initial, auto-repair retry, Apply proposed fix, or Accept / proceed-anyway), prepend the canonical session prelude and pause checkpoint, then remove any stale `.design-publish-result.env` so an earlier exit-4 result cannot satisfy the file-first parser. Retry recaptures must replace `_publish_out`, `_publish_rc`, and every parsed result-env field through this same parse path; do not call `design-publish.sh` bare on retries.
 
@@ -1494,6 +1494,8 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
    PLAN_WRITE_OK=""
    PUBLISH_OK=""
    RENAMED=""
+   NEW_TITLE=""
+   DESIGNED_ADMISSION_READY=""
    UPSERT_STATUS=""
    ARCHITECTURE_SOURCE=""
    FINAL_SUMMARY_PATH=""
@@ -1512,7 +1514,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
        while IFS= read -r _line || [[ -n "$_line" ]]; do
          _key="${_line%%=*}"; _value="${_line#*=}"
          case "$_key" in
-           PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE) printf -v "$_key" '%s' "$_value" ;;
+           PLAN_WRITE_OK|PUBLISH_OK|RENAMED|NEW_TITLE|DESIGNED_ADMISSION_READY|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE) printf -v "$_key" '%s' "$_value" ;;
            WARN) _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done; if [[ "$_publish_warn_dup" != true ]]; then _publish_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
          esac
        done <"$DESIGN_TMPDIR/.design-publish-result.env"
@@ -1521,7 +1523,7 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
    while IFS= read -r _line || [[ -n "$_line" ]]; do
      _key="${_line%%=*}"; _value="${_line#*=}"
      case "$_key" in
-       PLAN_WRITE_OK|PUBLISH_OK|RENAMED|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
+       PLAN_WRITE_OK|PUBLISH_OK|RENAMED|NEW_TITLE|DESIGNED_ADMISSION_READY|UPSERT_STATUS|ARCHITECTURE_SOURCE|FINAL_SUMMARY_PATH|PR_NUMBER|PR_URL|RECOVERY_BRANCH|LOG_RECOVERY_BRANCH|VALIDATE_STATUS|VALIDATE_DEFECT_COUNT|VALIDATE_SKIPPED_COUNT|VALIDATE_UNSAFE_TOKEN_COUNT|VALIDATE_LOG_FILE) [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
        WARN)
          if [[ "$_publish_parse_ok" != true ]]; then
            _publish_warn_dup=false; for _w in "${_publish_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _publish_warn_dup=true; break; }; done
@@ -1543,8 +1545,8 @@ Step 4b Gate C already returned **Approve**. Proceed without an additional promp
 **Driver WARN replay (top chat):** After the Bash block above, when the latest `_publish_rc` ∈ {0, 1, 3} and driver WARN bodies were parsed, emit each distinct WARN `_value` verbatim to top chat (same visibility as external-reviewer warnings — do not leave them only as `WARN=` machine lines inside Bash output).
 
 3. **Regardless of `PLAN_WRITE_OK` after the latest `_publish_rc` ∈ {0, 1, 3}:** when `[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]`, read that path and emit its full body verbatim as plain chat markdown (via Read, or via Bash `cat` whose output is then re-emitted as orchestrator text). Do NOT paraphrase, summarize, reorder, or add prose between bullets. Apply this emit **before** the plan-write failure warning or success footer decisions below. **Not** gated on `render-final-summary.sh` exit 0 (the driver may `exit 1` after writing a failed-plan-write summary). Do not emit while `_publish_rc` is still 4; the retry loop must settle to `{0,1,3}` first.
-4. **Only when the latest `_publish_rc` ∈ {0, 1, 3} and driver output was parsed (file and/or stdout):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** the latest `_publish_rc` ∈ {0,1,3} **and** `PLAN_WRITE_OK=true` **and** the publish step did not fail (`SESSION_ID` empty **or** `PUBLISH_OK=true`) **before** Step 5d. The `step-5c` sentinel writer is the orchestrator, not `design-publish.sh`. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately (see Step 6).
-5. **Only when the latest `_publish_rc` ∈ {0, 1, 3} and driver output was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`). When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK != true`, do **not** write `step-5c`, so pause/resume re-enters Step 5c and retries the publish tail; `plan-block-write.sh` is idempotent and OOS filing already completed in Step 5b.
+4. **Only when the latest `_publish_rc` ∈ {0, 1, 3} and driver output was parsed (file and/or stdout):** On `PLAN_WRITE_OK=true`: print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`; at the Step 5c success boundary run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5c"` **only when** the latest `_publish_rc` ∈ {0,1,3} **and** `PLAN_WRITE_OK=true` **before** Step 5d. The `[DESIGNED]` rename is already attempted by the driver after diagram upsert and is not gated on `PUBLISH_OK`; design-log publish runs after rename and is best-effort for `/implement` admission. Automation that requires scrubbed/published logs must gate on `PUBLISH_OK=true`, not on the `[DESIGNED]` title alone.
+5. **Only when the latest `_publish_rc` ∈ {0, 1, 3} and driver output was parsed (or stdout fallback populated `PLAN_WRITE_OK`):** When `PLAN_WRITE_OK=false` (explicitly false after parse — not merely unset): print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup (do **not** write `step-5c`).
 
 ### 5d — Final warning replay + footer
 
@@ -1571,9 +1573,13 @@ When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=true`, the
 
 `➡️ 5: finalize — plan written to issue #<N>; NEXT REQUIRED: continue`
 
-When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, the footer line is:
+When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and the issue title is confirmed `[DESIGNED]` with the diagram upsert confirmed when it ran (`DESIGNED_ADMISSION_READY=true`, derived from `RENAMED=true` or idempotent `RENAMED=false` with `NEW_TITLE` already prefixed by `[DESIGNED]` plus a required space, and forced false when `UPSERT_RAN=true && UPSERT_STATUS!=ok`), the footer line is:
 
-`➡️ 5: finalize — plan written to issue #<N>; log publish incomplete; NEXT REQUIRED: continue`
+`➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] is set; log publish incomplete; retry log publish manually from the preserved $DESIGN_TMPDIR before /implement when the session may contain secrets; NEXT REQUIRED: continue`
+
+When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and the issue title is not confirmed `[DESIGNED]` or the diagram upsert was not confirmed (`DESIGNED_ADMISSION_READY` is not `true`), the footer line is:
+
+`➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] rename not confirmed; log publish incomplete; fix the issue title before /implement and retry log publish manually from the preserved $DESIGN_TMPDIR; NEXT REQUIRED: continue`
 
 > **Continue to Step 6 IMMEDIATELY** after the Step 5 footer when `PLAN_WRITE_OK=true`. Step 6 decides whether cleanup is allowed from `PUBLISH_OK`; do not remove `$DESIGN_TMPDIR` from Step 5d when log publish failed.
 At the Step 5d success boundary, immediately run `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-5d"` before entering Step 6.
@@ -1588,7 +1594,7 @@ Print: `> **🔶 /design 6: cleanup**`
 LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark "design Step 6 — cleanup" || true
 ```
 
-Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 5). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout. Do not run the cleanup fence below when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
+Remove the session temp directory and all files within it. Run `cleanup-tmpdir.sh` **only after** the Step 5 machine footer when `PLAN_WRITE_OK=true`, and only when `STANDALONE_HEAVY_FAILED` is unset or `false` **and** either `SESSION_ID` is empty (no design log publish was attempted in Step 5c), or `PUBLISH_OK=true` after a Step 5c publish when `SESSION_ID` was non-empty; otherwise skip cleanup so `$DESIGN_TMPDIR` is preserved for inspection, manual `design-log-publish.sh` retry, or redaction diagnostics. When `PLAN_WRITE_OK=false` (plan-block-write failure), **skip** this cleanup (Step 5c item 5). When publish failed after a successful plan write, point operators at `$DESIGN_TMPDIR/design-log-publish.failure.log` (and `$DESIGN_TMPDIR/execution-issues.md` when populated) plus the recovery branch notes from `design-log-publish.sh` stderr/stdout. Log recovery must use a manual `design-log-publish.sh` retry from the preserved `$DESIGN_TMPDIR`; re-invoking `/design` on a `[DESIGNED]` issue is blocked by title eligibility unless the operator first renames the title to drop `[DESIGNED]` for a full `/design` re-run. Do not run the cleanup fence below when `SESSION_ID` is non-empty and `PUBLISH_OK=false`.
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec "$CLAUDE_PLUGIN_ROOT/scripts/design-pause-save.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
