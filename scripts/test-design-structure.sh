@@ -1453,9 +1453,9 @@ grep -Fq '.completed/step-5b' "$DESIGN_PUBLISH_SH" \
 grep -Fq 'exit 1 is the normal plan-block-write failure path' "$SKILL_MD" \
   || fail "(15b) SKILL.md Step 5c missing exit 1 parse-then-branch contract"
 # shellcheck disable=SC2016 # Markdown literal contains backticks and shell variables intentionally.
-contains "$SKILL_MD" '`SESSION_ID` empty **or** `PUBLISH_OK=true`' '(FINDING_8_SENTINEL_SUCCESS_GATE) SKILL.md Step 5c missing publish-success sentinel gate'
+contains "$SKILL_MD" 'design-log publish runs after rename and is best-effort for `/implement` admission' '(FINDING_8_SENTINEL_SUCCESS_GATE) SKILL.md Step 5c missing best-effort publish admission contract'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
-contains "$SKILL_MD" 'When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK != true`, do **not** write `step-5c`' '(FINDING_8_SENTINEL_FAILED_PUBLISH) SKILL.md Step 5c missing failed-publish no-sentinel retry prose'
+contains "$SKILL_MD" 'Automation that requires scrubbed/published logs must gate on `PUBLISH_OK=true`, not on the `[DESIGNED]` title alone.' '(FINDING_8_SENTINEL_FAILED_PUBLISH) SKILL.md Step 5c missing published-log automation gate prose'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
 contains "$SKILL_MD" 'When `_publish_rc` is non-zero, force `PUBLISH_OK=false`' '(28a) SKILL.md clarify publish must fail closed on nonzero rc'
 # shellcheck disable=SC2016 # Markdown literal contains shell variables intentionally.
