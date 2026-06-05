@@ -541,7 +541,7 @@ DESIGNED_ADMISSION_READY=true \
 DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-RECOVERY" \
     "$SUBJECT" --outcome failed-publish --mode SIMPLE --post-publish-only >"$failed_publish_stdout" 2>/dev/null
 grep -Fq -- "- **Log recovery branch**: \`larch-log-design-RUNRECOVERY\`" "$D/final-summary.md" || fail 'failed-publish missing recovery branch'
-grep -Fq -- '- **Log flush PR**: #456 — https://github.example/pull/456' "$D/final-summary.md" || fail 'failed-publish missing flush PR'
+grep -Fq -- '- **Log flush PR**: #456 — https://github.com/owner/repo/pull/456' "$D/final-summary.md" || fail 'failed-publish missing flush PR'
 grep -Fq -- '- **Publish recovery**: design logs did not finish publishing and the issue is [DESIGNED]; retry log publish from the preserved design tmpdir before starting /implement when the session may contain secrets.' "$D/final-summary.md" || fail 'failed-publish missing admission-ready recovery guidance'
 cmp -s "$D/final-summary.md" "$failed_publish_stdout" || fail 'failed-publish recovery stdout/file mismatch'
 failed_publish_not_ready_stdout="$TMP/std-failed-publish-not-ready.log"
