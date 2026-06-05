@@ -1,0 +1,2 @@
+degraded-tools-gate.sh: WARNING: --codex-present omitted; using CODEX_PRESENT from environment
+degraded-tools-gate.sh: WARNING: --cursor-present omitted; using CURSOR_PRESENT from environment
