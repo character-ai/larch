@@ -7,7 +7,7 @@
 ## Primary Callers
 
 - `skills/design/scripts/design-driver.sh` for `ACTION=FINALIZE`
-- `/design` Step 4
+- `/design` Step 3b completion boundary; `/design` Step 4 entry may invoke FINALIZE only as a compatibility guard for old paused sessions missing `.completed/finalize`.
 
 ## Invariants
 

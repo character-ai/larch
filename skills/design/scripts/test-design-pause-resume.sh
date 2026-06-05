@@ -229,6 +229,188 @@ out_registry=$(bash "$SAVE" --design-tmpdir "$DESIGN_REGISTRY" --issue 9 --repo 
 out_registry_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-registry" --issue 9 --repo owner/repo)
 [[ "$out_registry_load" == *"LOAD_OK=true"* && "$out_registry_load" == *"STEP=1d"* ]] || fail "registry-order load mismatch: $out_registry_load"
 
+echo "=== legacy SIMPLE Step 2a marker resumes at Step 2a.5 ==="
+DESIGN_LEGACY_SIMPLE="$TMP/design-legacy-simple-2a"
+make_design_tmpdir "$DESIGN_LEGACY_SIMPLE"
+complete_design_steps "$DESIGN_LEGACY_SIMPLE" 1c 1d 1d.5 1d.7 1e 2a
+printf 'issue body legacy simple 2a\n' >"$BODY_FILE"
+out_legacy_simple_2a=$(bash "$SAVE" --design-tmpdir "$DESIGN_LEGACY_SIMPLE" --issue 9 --repo owner/repo)
+[[ "$out_legacy_simple_2a" == *"PAUSE_OK=true"* && "$out_legacy_simple_2a" == *"STEP=2a.5"* ]] || fail "old SIMPLE state with step-2a only should resume at Step 2a.5 compatibility guard: $out_legacy_simple_2a"
+out_legacy_simple_2a_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-legacy-simple-2a" --issue 9 --repo owner/repo)
+[[ "$out_legacy_simple_2a_load" == *"LOAD_OK=true"* && "$out_legacy_simple_2a_load" == *"STEP=2a.5"* ]] || fail "old SIMPLE step-2a-only load mismatch: $out_legacy_simple_2a_load"
+DESIGN_TMPDIR="$DESIGN_LEGACY_SIMPLE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+if [ "$_design_classification" = SIMPLE ]; then
+  _simple_artifacts_ok=true
+  if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if ( grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
+  _simple_artifact_conflict=false
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
+  if [ "$_simple_artifact_conflict" = true ]; then
+    printf "%s\n" "**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    exit 1
+  fi
+  if [ "$_simple_artifacts_ok" != true ]; then
+    set -e
+    printf "%s\n" "NO_SKETCHES_CLASSIFIED_SIMPLE" > "$DESIGN_TMPDIR/approach-synthesis.txt"
+    printf "%s\n" "NO_CONTESTED_DECISIONS" > "$DESIGN_TMPDIR/contested-decisions.md"
+    : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2a"
+    : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  elif [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] && [ ! -f "$DESIGN_TMPDIR/.completed/step-2a.5" ]; then
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  fi
+fi
+'
+[[ -f "$DESIGN_LEGACY_SIMPLE/.completed/step-2a.5" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not write marker"
+[[ "$(cat "$DESIGN_LEGACY_SIMPLE/approach-synthesis.txt")" == "NO_SKETCHES_CLASSIFIED_SIMPLE" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair approach sentinel"
+[[ "$(cat "$DESIGN_LEGACY_SIMPLE/contested-decisions.md")" == "NO_CONTESTED_DECISIONS" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair contested sentinel"
+[[ -f "$DESIGN_LEGACY_SIMPLE/dialectic-resolutions.md" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not repair dialectic sentinel"
+
+echo "=== SIMPLE Step 2a.5 marker-only repair ==="
+DESIGN_SIMPLE_MARKER_ONLY="$TMP/design-simple-marker-only"
+make_design_tmpdir "$DESIGN_SIMPLE_MARKER_ONLY"
+complete_design_steps "$DESIGN_SIMPLE_MARKER_ONLY" 1c 1d 1d.5 1d.7 1e 2a
+printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' >"$DESIGN_SIMPLE_MARKER_ONLY/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_SIMPLE_MARKER_ONLY/contested-decisions.md"
+: >"$DESIGN_SIMPLE_MARKER_ONLY/dialectic-resolutions.md"
+printf 'issue body simple marker-only\n' >"$BODY_FILE"
+out_simple_marker_only=$(bash "$SAVE" --design-tmpdir "$DESIGN_SIMPLE_MARKER_ONLY" --issue 9 --repo owner/repo)
+[[ "$out_simple_marker_only" == *"PAUSE_OK=true"* && "$out_simple_marker_only" == *"STEP=2a.5"* ]] || fail "SIMPLE marker-only fixture should resume at Step 2a.5: $out_simple_marker_only"
+out_simple_marker_only_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-simple-marker-only" --issue 9 --repo owner/repo)
+[[ "$out_simple_marker_only_load" == *"LOAD_OK=true"* && "$out_simple_marker_only_load" == *"STEP=2a.5"* ]] || fail "SIMPLE marker-only load mismatch: $out_simple_marker_only_load"
+DESIGN_TMPDIR="$DESIGN_SIMPLE_MARKER_ONLY" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+if [ "$_design_classification" = SIMPLE ]; then
+  _simple_artifacts_ok=true
+  if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if ( grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
+  _simple_artifact_conflict=false
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
+  if [ "$_simple_artifact_conflict" = true ]; then
+    printf "%s\n" "**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    exit 1
+  fi
+  if [ "$_simple_artifacts_ok" != true ]; then
+    set -e
+    printf "%s\n" "NO_SKETCHES_CLASSIFIED_SIMPLE" > "$DESIGN_TMPDIR/approach-synthesis.txt"
+    printf "%s\n" "NO_CONTESTED_DECISIONS" > "$DESIGN_TMPDIR/contested-decisions.md"
+    : > "$DESIGN_TMPDIR/dialectic-resolutions.md"
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2a"
+    : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  elif [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] && [ ! -f "$DESIGN_TMPDIR/.completed/step-2a.5" ]; then
+    mkdir -p "$DESIGN_TMPDIR/.completed"
+    : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+  fi
+fi
+'
+[[ -f "$DESIGN_SIMPLE_MARKER_ONLY/.completed/step-2a.5" ]] || fail "SIMPLE marker-only repair did not write Step 2a.5 marker"
+[[ "$(cat "$DESIGN_SIMPLE_MARKER_ONLY/approach-synthesis.txt")" == "NO_SKETCHES_CLASSIFIED_SIMPLE" ]] || fail "SIMPLE marker-only repair changed approach sentinel"
+
+echo "=== SIMPLE Step 2a.5 refuses non-sentinel artifacts ==="
+DESIGN_SIMPLE_CONFLICT="$TMP/design-simple-conflict"
+make_design_tmpdir "$DESIGN_SIMPLE_CONFLICT"
+complete_design_steps "$DESIGN_SIMPLE_CONFLICT" 1c 1d 1d.5 1d.7 1e 2a
+printf '%s\n' 'real sketch synthesis' >"$DESIGN_SIMPLE_CONFLICT/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_SIMPLE_CONFLICT/contested-decisions.md"
+: >"$DESIGN_SIMPLE_CONFLICT/dialectic-resolutions.md"
+set +e
+out_simple_conflict=$(DESIGN_TMPDIR="$DESIGN_SIMPLE_CONFLICT" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+if [ "$_design_classification" = SIMPLE ]; then
+  _simple_artifacts_ok=true
+  if ( grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if ( grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null ); then :; else _simple_artifacts_ok=false; fi
+  if [ -f "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then :; else _simple_artifacts_ok=false; fi
+  _simple_artifact_conflict=false
+  if [ -s "$DESIGN_TMPDIR/approach-synthesis.txt" ] && ! grep -Fxq "NO_SKETCHES_CLASSIFIED_SIMPLE" "$DESIGN_TMPDIR/approach-synthesis.txt" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/contested-decisions.md" ] && ! grep -Fxq "NO_CONTESTED_DECISIONS" "$DESIGN_TMPDIR/contested-decisions.md" 2>/dev/null; then _simple_artifact_conflict=true; fi
+  if [ -s "$DESIGN_TMPDIR/dialectic-resolutions.md" ]; then _simple_artifact_conflict=true; fi
+  if [ "$_simple_artifact_conflict" = true ]; then
+    printf "%s\n" "**⚠ SIMPLE sentinel repair refused: non-sentinel sketch artifacts already exist. Inspect run-params.json before continuing.**" >&2
+    exit 1
+  fi
+fi
+' 2>&1)
+rc_simple_conflict=$?
+set -e
+[[ "$rc_simple_conflict" -ne 0 ]] || fail "SIMPLE conflict repair should exit non-zero"
+[[ "$out_simple_conflict" == *"SIMPLE sentinel repair refused"* ]] || fail "SIMPLE conflict warning missing: $out_simple_conflict"
+[[ "$(cat "$DESIGN_SIMPLE_CONFLICT/approach-synthesis.txt")" == "real sketch synthesis" ]] || fail "SIMPLE conflict repair clobbered non-sentinel synthesis"
+
+echo "=== HARD zero-sketch sentinel layout does not take SIMPLE marker repair ==="
+DESIGN_HARD_SENTINEL="$TMP/design-hard-sentinel"
+make_design_tmpdir "$DESIGN_HARD_SENTINEL"
+printf '{"design_classification":"HARD","brainstorm_requested":false}\n' >"$DESIGN_HARD_SENTINEL/run-params.json"
+complete_design_steps "$DESIGN_HARD_SENTINEL" 1c 1d 1d.5 1d.7 1e 2a
+printf '%s\n' 'NO_SKETCHES_CLASSIFIED_SIMPLE' >"$DESIGN_HARD_SENTINEL/approach-synthesis.txt"
+printf '%s\n' 'NO_CONTESTED_DECISIONS' >"$DESIGN_HARD_SENTINEL/contested-decisions.md"
+: >"$DESIGN_HARD_SENTINEL/dialectic-resolutions.md"
+DESIGN_TMPDIR="$DESIGN_HARD_SENTINEL" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+if [ "$_design_classification" = SIMPLE ]; then
+  : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+fi
+'
+[[ ! -f "$DESIGN_HARD_SENTINEL/.completed/step-2a.5" ]] || fail "HARD sentinel layout must not take SIMPLE marker-only repair"
+
+echo "=== legacy Step 3b marker without finalize resumes at Step 4 ==="
+DESIGN_LEGACY_FINALIZE="$TMP/design-legacy-finalize"
+make_design_tmpdir "$DESIGN_LEGACY_FINALIZE"
+complete_design_steps "$DESIGN_LEGACY_FINALIZE" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3.6 3b
+[[ ! -f "$DESIGN_LEGACY_FINALIZE/.completed/finalize" ]] || fail "legacy finalize precondition unexpectedly has .completed/finalize"
+printf 'issue body legacy finalize\n' >"$BODY_FILE"
+out_legacy_finalize=$(bash "$SAVE" --design-tmpdir "$DESIGN_LEGACY_FINALIZE" --issue 9 --repo owner/repo)
+[[ "$out_legacy_finalize" == *"PAUSE_OK=true"* && "$out_legacy_finalize" == *"STEP=4"* ]] || fail "old step-3b without finalize should resume at Step 4 compatibility guard: $out_legacy_finalize"
+out_legacy_finalize_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-legacy-finalize" --issue 9 --repo owner/repo)
+[[ "$out_legacy_finalize_load" == *"LOAD_OK=true"* && "$out_legacy_finalize_load" == *"STEP=4"* ]] || fail "old step-3b without finalize load mismatch: $out_legacy_finalize_load"
+printf '12\n' >"$DESIGN_LEGACY_FINALIZE/diff-lines.txt"
+DESIGN_TMPDIR="$DESIGN_LEGACY_FINALIZE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
+  set +e
+  printf "%s\n" "ACTION=FINALIZE" \
+    | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+  _finalize_rc=$?
+  set -e
+  if [ "$_finalize_rc" -ne 0 ]; then
+    printf "%s\n" "**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"
+    exit "$_finalize_rc"
+  fi
+fi
+'
+[[ -f "$DESIGN_LEGACY_FINALIZE/.completed/finalize" ]] || fail "old Step 4 FINALIZE compatibility guard did not write finalize marker"
+
+DESIGN_LEGACY_FINALIZE_FAIL="$TMP/design-legacy-finalize-fail"
+make_design_tmpdir "$DESIGN_LEGACY_FINALIZE_FAIL"
+complete_design_steps "$DESIGN_LEGACY_FINALIZE_FAIL" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3.6 3b
+set +e
+out_legacy_finalize_fail=$(DESIGN_TMPDIR="$DESIGN_LEGACY_FINALIZE_FAIL" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
+  set +e
+  printf "%s\n" "ACTION=FINALIZE" \
+    | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+  _finalize_rc=$?
+  set -e
+  if [ "$_finalize_rc" -ne 0 ]; then
+    printf "%s\n" "**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"
+    exit "$_finalize_rc"
+  fi
+fi
+' 2>&1)
+rc_legacy_finalize_fail=$?
+set -e
+[[ "$rc_legacy_finalize_fail" -ne 0 ]] || fail "old Step 4 FINALIZE failure guard should exit non-zero"
+[[ "$out_legacy_finalize_fail" == *"**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"* ]] || fail "old Step 4 FINALIZE failure warning missing: $out_legacy_finalize_fail"
+
 echo "=== step 3.6 and gate B bypass pause resume ==="
 DESIGN_36="$TMP/design-36"
 make_design_tmpdir "$DESIGN_36"
@@ -251,6 +433,21 @@ out_gate_b=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B" --issue 9 --repo owne
 [[ "$out_gate_b" == *"PAUSE_OK=true"* && "$out_gate_b" == *"STEP=3b"* ]] || fail "gate B bypass plan-size-trigger writes triple sentinels from empty state: $out_gate_b"
 out_gate_b_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-gate-b" --issue 9 --repo owner/repo)
 [[ "$out_gate_b_load" == *"LOAD_OK=true"* && "$out_gate_b_load" == *"STEP=3b"* ]] || fail "gate B bypass empty-state load mismatch: $out_gate_b_load"
+printf '12\n' >"$DESIGN_GATE_B/diff-lines.txt"
+DESIGN_TMPDIR="$DESIGN_GATE_B" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+set +e
+printf "%s\n" "ACTION=FINALIZE" \
+  | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+_finalize_rc=$?
+set -e
+if [ "$_finalize_rc" -ne 0 ]; then
+  printf "%s\n" "**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"
+  exit "$_finalize_rc"
+fi
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-3b"
+'
+[[ -f "$DESIGN_GATE_B/.completed/finalize" && -f "$DESIGN_GATE_B/.completed/step-3b" ]] || fail "gate B bypass Step 3b completion boundary did not write finalize and step-3b markers"
 
 DESIGN_GATE_B_STEP3="$TMP/design-gate-b-step3-only"
 make_design_tmpdir "$DESIGN_GATE_B_STEP3"
@@ -286,6 +483,24 @@ complete_design_steps "$DESIGN_GATE_B_DONE" 3 3.5 3.6
 printf 'issue body gate b done\n' >"$BODY_FILE"
 out_gate_b_done=$(bash "$SAVE" --design-tmpdir "$DESIGN_GATE_B_DONE" --issue 9 --repo owner/repo)
 [[ "$out_gate_b_done" == *"PAUSE_OK=true"* && "$out_gate_b_done" == *"STEP=3b"* ]] || fail "gate B triple touch should resume at 3b: $out_gate_b_done"
+set +e
+out_step3b_boundary_fail=$(DESIGN_TMPDIR="$DESIGN_GATE_B_DONE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+set +e
+printf "%s\n" "ACTION=FINALIZE" \
+  | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+_finalize_rc=$?
+set -e
+if [ "$_finalize_rc" -ne 0 ]; then
+  printf "%s\n" "**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"
+  exit "$_finalize_rc"
+fi
+mkdir -p "$DESIGN_TMPDIR/.completed"
+: > "$DESIGN_TMPDIR/.completed/step-3b"
+' 2>&1)
+rc_step3b_boundary_fail=$?
+set -e
+[[ "$rc_step3b_boundary_fail" -ne 0 ]] || fail "fresh Step 3b FINALIZE failure boundary should exit non-zero"
+[[ "$out_step3b_boundary_fail" == *"**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"* ]] || fail "fresh Step 3b FINALIZE failure warning missing: $out_step3b_boundary_fail"
 
 echo "=== body drift warns and continues ==="
 make_design_tmpdir "$DESIGN"

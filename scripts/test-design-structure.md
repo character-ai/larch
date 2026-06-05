@@ -21,3 +21,11 @@ The Step 3b region check slices `<!-- step:3b` through `<!-- step:4` and pins th
 ## Recent contract coverage
 
 - Covers the Step 5c publish gate, clarify fail-closed publish/recovery metadata, clarify sub-step 6 summary outcome branch, pause-check `--repo` forwarding, and init `--repo` persistence pins.
+
+## Step 3b FINALIZE and SIMPLE sentinel routing
+
+The harness now pins FINALIZE to the Step 3b completion-boundary region for fresh runs. Step 4 may contain only the gated compatibility FINALIZE in its entry fence for old paused sessions where `.completed/finalize` is absent, and both FINALIZE failure branches must exit with the captured non-zero status after printing the repair warning.
+
+SIMPLE sentinel writes are pinned to the Step 2a entry fence behind the `design_classification == SIMPLE` guard. The assertions check branch-scoped sentinel writes, fail-fast `set -e`, and completion markers written only after all three SIMPLE artifacts succeed; the `### SIMPLE branch` subsection must not contain its own sentinel Bash block.
+
+The Step 3b, Step 3/Gate-B-bypass/Gate B, `approval-gates.md`, `flags.md`, `configuration-and-permissions.md`, `skills/design/references/plan-review.md`, `run-step3-review.sh`, and `run-step3-review.md` routing checks are line-scoped. They reject direct Step 3b-to-Step 4 routes, including comma and spaced-slash shorthand variants, unless the same line names the Step 3b completion boundary.

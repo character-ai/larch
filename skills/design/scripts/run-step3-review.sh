@@ -163,7 +163,7 @@ case "$_tier" in
 esac
 
 if ((_round_count >= _round_cap)); then
-    emit "**⚠ Step 3: review-round cap (${_round_cap}) reached for ${_tier}; skipping panel and continuing to Step 3b, Step 4, then Gate C.**"
+    emit "**⚠ Step 3: review-round cap (${_round_cap}) reached for ${_tier}; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.**"
     emit '⏩ 3: plan review — cap reached; skipping'
     STEP3_REVIEW_CAP_REACHED=true
     STEP3_REVIEW_ROUND_NUM=""

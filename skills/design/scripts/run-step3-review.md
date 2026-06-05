@@ -27,6 +27,8 @@ The driver does **not** re-read `LARCH_DESIGN_*` env vars (except `RUN_STEP3_EMI
 
 0. **`--preview-only`** — live FD-3 preview via `emit`; driver owns `.step3-entry-plan-printed` with output-string + allowlist touch rules. The sentinel is touched only when rendered output contains the `## Plan Candidate for Review` header; the missing-plan warning never touches it, so a later `plan.txt` repair re-renders the preview on the next Step 3 entry. `--preview-only` needs only `--design-tmpdir` (raw path to renderer); `--round-cap` and canonicalized tmpdir `cd` apply only to `--no-preview`. `larch_design_tmpdir_validate` gates sentinel read/write/touch; stale sentinel on invalid tmpdir does not suppress warnings. Renderer path: `RUN_STEP3_EMIT_PREVIEW_SH` override seam (default: `emit-design-plan-preview.sh`).
 1. Review-round cap entry guard → `.step3-review-cap.env`
+   - When the cap is reached, stdout includes the boundary-qualified breadcrumb: `**⚠ Step 3: review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.**`
+   - The normalized route is `LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, and `STEP3_REVIEW_CAP_REACHED=true`; the caller skips Gate B/Step 3.6 and follows Step 3b → Step 3b completion boundary → Step 4 → Gate C.
 2. Symlink-safe `plan-review/round-*` cleanup
 3. HARD round-cursor read/advance via `snapshot-plan-round.sh`
 4. Pending round persist to `review-round-count.txt` before launch

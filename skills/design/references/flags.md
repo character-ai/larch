@@ -51,11 +51,11 @@ The historical **ownership-domains** sprawl heuristic from early design notes is
 
 ## Multi-round loop env vars
 
-Normative argv validation lives in `skills/design/scripts/plan-review-loop.sh` (`--round-cap` only). SKILL.md Step 3 (via `run-step3-review.sh`) passes `"${LARCH_DESIGN_ROUND_CAP:-5}"` when the env var is unset or empty. Invalid explicit values cause `plan-review-loop.sh` argv validation to fail before any review round launches. Step 3 normalizes that failure to the `panel-failed` branch, skips Gate B, and proceeds to Step 3b / Step 4 / Gate C with the pre-review `plan.txt` unchanged. There is no silent fallback or clamping. See `docs/configuration-and-permissions.md` § Environment Variables.
+Normative argv validation lives in `skills/design/scripts/plan-review-loop.sh` (`--round-cap` only). SKILL.md Step 3 (via `run-step3-review.sh`) passes `"${LARCH_DESIGN_ROUND_CAP:-5}"` when the env var is unset or empty. Invalid explicit values cause `plan-review-loop.sh` argv validation to fail before any review round launches. Step 3 normalizes that failure to the `panel-failed` branch, skips Gate B, and proceeds to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with the pre-review `plan.txt` unchanged. There is no silent fallback or clamping. See `docs/configuration-and-permissions.md` § Environment Variables.
 
 | Variable | Default (unset/empty) | Invalid explicit values | Semantics |
 |---|---|---|---|
-| `LARCH_DESIGN_ROUND_CAP` | `5` | Non-numeric or non-positive → `plan-review-loop.sh` argv validation exit `2`; Step 3 surfaces `panel-failed` and continues at Step 3b (Gate B skipped) | Upper bound on **inner** plan-review rounds inside one Step 3 `plan-review-loop.sh` invocation. The Step 3 **review-run counter** (tier-derived cap: SIMPLE = `3`, HARD = `5`) limits Gate C re-entries separately — `LARCH_DESIGN_ROUND_CAP` is **not** clamped against that tier cap; the two layers compose. |
+| `LARCH_DESIGN_ROUND_CAP` | `5` | Non-numeric or non-positive → `plan-review-loop.sh` argv validation exit `2`; Step 3 surfaces `panel-failed` and continues at Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C (Gate B skipped) | Upper bound on **inner** plan-review rounds inside one Step 3 `plan-review-loop.sh` invocation. The Step 3 **review-run counter** (tier-derived cap: SIMPLE = `3`, HARD = `5`) limits Gate C re-entries separately — `LARCH_DESIGN_ROUND_CAP` is **not** clamped against that tier cap; the two layers compose. |
 
 ## Helper output — `TRIGGER_REASONS`
 

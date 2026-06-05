@@ -1,0 +1,98 @@
+### In-Scope Findings
+
+#### FINDING_1 — nit / robustness
+**File**: `scripts/test-design-structure.sh` · `assert_simple_branch_has_no_sentinel_fence`
+
+**Concern**: The function uses an inverted awk exit to assert the SIMPLE sentinel bash fence was removed:
+
+```awk
+if awk '/SIMPLE Mode/{in_s=1} in_s && /NO_SKETCHES_CLASSIFIED_SIMPLE/{found=1} END{exit found ? 0 : 1}' "$SKILL_MD"; then
+  fail "..."
+fi
+```
+
+In bash, the `if` branch fires for exit code `0` and does not fire for **any** non-zero code. awk only exits `1` when `found=0` (the deliberate "pattern not found" signal), but it exits `>1` for I/O errors, parse errors, and other failure modes. A temporary filesystem hiccup or a `$SKILL_MD` path that becomes unreadable mid-run would cause awk to exit non-zero for reasons unrelated to the pattern check — the `if` body would not execute, `fail` would not be called, and the assertion would silently pass.
+
+**Fix**: add a separate awk-error check, or use `||` to distinguish the two cases:
+
+```bash
+awk_rc=0
+awk '...' "$SKILL_MD"; awk_rc=$?
+[ "$awk_rc" -gt 1 ] && fail "awk exited $awk_rc (unexpected error)"
+[ "$awk_rc" -eq 0 ] && fail "SIMPLE branch still has standalone sentinel fence"
+```
+
+---
+
+#### FINDING_2 — nit / code-quality
+**File**: `scripts/test-design-structure.sh` · `assert_step2a_entry_simple_guard`
+
+**Concern**: The function extracts the Step 2a entry fence body and then checks that `set -e` appears anywhere in that text:
+
+```bash
+command grep -q 'set -e' "$_tmp_fence"
+```
+
+This checks for `set -e` in the extracted fence body as a whole. It does **not** verify that `set -e` appears inside the `if [ "$_design_classification" = SIMPLE ]; then … fi` block rather than, say, in the prelude or after `fi`. A future refactor that hoists `set -e` to the fence preamble (so HARD paths also see `set -e`) would pass this harness assertion while silently changing the safety contract: HARD sketch paths would gain `set -e` unexpectedly, potentially turning benign non-zero exits into fatal failures.
+
+**Fix**: scope the `set -e` check to the lines between the SIMPLE `if` and its matching `fi`, e.g. by narrowing the `extract_first_bash_fence_after` slice further or by running a bounded awk check:
+
+```awk
+/if \[ "\$_design_classification" = SIMPLE \]/{in_block=1}
+in_block && /set -e/{found=1}
+/^fi/{in_block=0}
+END{exit found ? 0 : 1}
+```
+
+---
+
+#### FINDING_3 — latent / correctness
+**File**: `scripts/test-design-structure.sh` · `assert_no_direct_step3b_step4_routes`
+
+**Concern**: The escape hatch is implemented as a whole-line skip:
+
+```awk
+/Step 3b completion boundary/ { next }
+```
+
+This skips an entire input line whenever it contains the phrase "Step 3b completion boundary", regardless of what else that line contains. A hypothetical doc line such as `"proceed to Step 3b → Step 4 — see Step 3b completion boundary first"` would be silently skipped even though it also contains the banned bare routing token `Step 3b → Step 4`. In current committed text this combination does not appear, but because the harness scans 6 surfaces (including prose-heavy references), a future author could inadvertently write such a line and the guard would give it a false pass.
+
+**Fix**: either use a negative lookahead that requires the escape-phrase to be the **only** Step 3b reference on the line, or tighten the banned pattern to only match the short form when the completion-boundary phrase is absent:
+
+```awk
+/Step 3b completion boundary/ { next }
+/Step 3b.*Step 4/ { print FILENAME ":" NR ": direct Step 3b→4 route"; fail=1 }
+```
+would already be mostly safe today, but adding a comment documenting the edge-case assumption would prevent the latent break.
+
+---
+
+#### FINDING_4 — nit / code-quality
+**File**: `scripts/test-design-structure.sh` · `mktemp` call sites
+
+**Concern**: The harness creates one or more temp files via `mktemp` (at minimum for `assert_step2a_entry_simple_guard`'s `_tmp_fence` and `assert_no_direct_step3b_step4_routes`'s scratch files) but registers no `trap … EXIT` or `trap … ERR` to clean them up. When `fail()` calls `exit 1`, those files remain in `$TMPDIR`. During iterative local development (running the harness repeatedly against failing feature branches), they accumulate.
+
+**Fix**: immediately after each `mktemp`, add a targeted trap:
+
+```bash
+_tmp_fence="$(mktemp)"
+trap 'rm -f "$_tmp_fence"' EXIT
+```
+
+or use a single function-level cleanup variable and a shared EXIT trap.
+
+---
+
+### Out-of-Scope Observations
+
+None. No pre-existing issues outside the diff's scope were identified during this review that were amplified or made worse by the change.
+
+---
+
+```tsv
+file	region	severity	category	title
+scripts/test-design-structure.sh	assert_simple_branch_has_no_sentinel_fence	nit	robustness	awk non-zero exit silently treated as "pattern not found"; I/O or parse errors produce false-pass
+scripts/test-design-structure.sh	assert_step2a_entry_simple_guard	nit	code-quality	set -e placement check is fence-wide, not scoped to SIMPLE branch; preamble hoist would pass undetected
+scripts/test-design-structure.sh	assert_no_direct_step3b_step4_routes	latent	correctness	line-level escape hatch masks lines containing both "Step 3b completion boundary" and a banned routing token
+scripts/test-design-structure.sh	mktemp call sites	nit	code-quality	no EXIT trap for temp-file cleanup; files accumulate in TMPDIR on fail() exit
+```
