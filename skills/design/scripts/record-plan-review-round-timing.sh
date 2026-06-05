@@ -38,16 +38,22 @@ case "$END_S" in ''|*[!0-9]*) warn '--end-s must be a non-negative integer'; exi
 [[ -n "$DESIGN_TMPDIR_ARG" && -d "$DESIGN_TMPDIR_ARG" && ! -L "$DESIGN_TMPDIR_ARG" ]] || { warn '--design-tmpdir must name a directory'; exit 2; }
 
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR_ARG" && pwd -P)"
+round_decimal="$((10#$ROUND_NUM))"
+artifact_root="$DESIGN_TMPDIR"
+round_artifact_root="$DESIGN_TMPDIR/plan-review/round-${round_decimal}"
+if [[ -d "$round_artifact_root" && ! -L "$round_artifact_root" ]]; then
+    artifact_root="$round_artifact_root"
+fi
 accepted=0
 rejected=0
 oos=0
-if [[ -s "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]; then
-    accepted=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)
+if [[ -s "$artifact_root/accepted-plan-findings.md" ]]; then
+    accepted=$(grep -cE '^### FINDING_[0-9]+:' "$artifact_root/accepted-plan-findings.md" 2>/dev/null || true)
 fi
-if [[ -s "$DESIGN_TMPDIR/rejected-findings.md" ]]; then
-    rejected=$(grep -cE '^### \[Plan Review\] FINDING_[0-9]+' "$DESIGN_TMPDIR/rejected-findings.md" 2>/dev/null || true)
+if [[ -s "$artifact_root/rejected-findings.md" ]]; then
+    rejected=$(grep -cE '^### \[Plan Review\] FINDING_[0-9]+' "$artifact_root/rejected-findings.md" 2>/dev/null || true)
 fi
-if [[ -s "$DESIGN_TMPDIR/voting-tally.md" ]]; then
+if [[ -s "$artifact_root/voting-tally.md" ]]; then
     oos=$(awk -F'|' '
         /^## Findings/ { in_findings=1; next }
         /^## / && in_findings { in_findings=0 }
@@ -62,7 +68,7 @@ if [[ -s "$DESIGN_TMPDIR/voting-tally.md" ]]; then
             if (item ~ /^OOS_[0-9]+$/ && result == "accepted") c++
         }
         END { print c + 0 }
-    ' "$DESIGN_TMPDIR/voting-tally.md")
+    ' "$artifact_root/voting-tally.md")
 fi
 [[ "$accepted" =~ ^[0-9]+$ ]] || accepted=0
 [[ "$rejected" =~ ^[0-9]+$ ]] || rejected=0
@@ -72,16 +78,12 @@ export DESIGN_TMPDIR
 export LARCH_TIMING_LEDGER="$DESIGN_TMPDIR/timing-ledger.tsv"
 export LARCH_TIMING_SKILL=design
 ledger="$DESIGN_TMPDIR/timing-ledger.tsv"
-round_decimal="$((10#$ROUND_NUM))"
 step_label="design Step 3 — plan review"
 if [[ -f "$ledger" ]]; then
-    tmp_ledger="${ledger}.tmp.$$"
     if awk -F '\t' -v r="$round_decimal" -v step="$step_label" \
-        '!($2 == "round" && $4 == "design" && $5 == step && $6 == r)' \
-        "$ledger" >"$tmp_ledger" 2>/dev/null; then
-        mv -f "$tmp_ledger" "$ledger"
-    else
-        rm -f "$tmp_ledger"
+        '$2 == "round" && $4 == "design" && $5 == step && $6 == r { found=1 } END { exit !found }' \
+        "$ledger" 2>/dev/null; then
+        exit 0
     fi
 fi
 "$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round \

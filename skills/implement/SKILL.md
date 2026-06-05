@@ -793,7 +793,7 @@ Branch on `STEP5_REVIEW_STATUS`:
 "${CLAUDE_PLUGIN_ROOT}/scripts/run-relevant-checks-captured.sh" --tmpdir "$IMPLEMENT_TMPDIR" --site step5-review-fixes
 ```
 
-Before leaving the main-agent handoff path, read `$IMPLEMENT_TMPDIR/round-$FINAL_ROUND_NUM/round-start-s`, set `end_s=$(date +%s)`, and invoke `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/record-implement-review-round-timing.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --round "$FINAL_ROUND_NUM" --start-s "$round_start_s" --end-s "$end_s" || true` after prompt-side adjudication/application/checks/lint. Do this on both the successful resume path and any terminal stall after those checks/lint so handoff wall time is not dropped; warn but continue if the helper fails. If checks/lint end in a terminal stall, stop Step 5 after this timing emit and skip the commit/reinvoke block below. Only on the successful resume path, stage and commit the main-agent-applied fixes before re-invoking the loop wrapper — the review diff is computed from `git diff MERGE_BASE...HEAD` (committed only), so unstaged changes are invisible to the next round's reviewers and must land in a commit first. `git add -A` stages the working-tree edits; `commit-review-fixes.sh` commits them:
+Before leaving the main-agent handoff path, read `$IMPLEMENT_TMPDIR/round-$FINAL_ROUND_NUM/round-start-s`, set `end_s=$(date +%s)`, and invoke `${CLAUDE_PLUGIN_ROOT}/skills/review-and-fix/scripts/record-implement-review-round-timing.sh --implement-tmpdir "$IMPLEMENT_TMPDIR" --round "$FINAL_ROUND_NUM" --start-s "$round_start_s" --end-s "$end_s" || true` after prompt-side adjudication/application/checks/lint. Do this on both the successful resume path and any terminal stall after those checks/lint so handoff wall time is not dropped; warn but continue if the helper fails. If checks/lint end in a terminal stall, stop Step 5 after this timing emit and skip the commit/reinvoke block below. Only on the successful resume path, set `STEP5_HANDOFF_READY_TO_COMMIT=true`, then stage and commit the main-agent-applied fixes before re-invoking the loop wrapper — the review diff is computed from `git diff MERGE_BASE...HEAD` (committed only), so unstaged changes are invisible to the next round's reviewers and must land in a commit first. `git add -A` stages the working-tree edits; `commit-review-fixes.sh` commits them:
 
 ```bash
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
@@ -807,8 +807,10 @@ if [ -f "$round_start_file" ]; then
     --start-s "$round_start_s" \
     --end-s "$end_s" || true
 fi
-git add -A
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-review-fixes.sh"
+if [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = "true" ]; then
+  git add -A
+  "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/commit-review-fixes.sh"
+fi
 ```
 
 Then re-invoke the loop wrapper:

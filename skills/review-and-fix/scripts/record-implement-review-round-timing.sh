@@ -99,13 +99,10 @@ ledger="$IMPLEMENT_TMPDIR/timing-ledger.tsv"
 round_decimal="$((10#$ROUND_NUM))"
 step_label="Step 5 — code review"
 if [[ -f "$ledger" ]]; then
-    tmp_ledger="${ledger}.tmp.$$"
     if awk -F '\t' -v r="$round_decimal" -v step="$step_label" \
-        '!($2 == "round" && $4 == "implement" && $5 == step && $6 == r)' \
-        "$ledger" >"$tmp_ledger" 2>/dev/null; then
-        mv -f "$tmp_ledger" "$ledger"
-    else
-        rm -f "$tmp_ledger"
+        '$2 == "round" && $4 == "implement" && $5 == step && $6 == r { found=1 } END { exit !found }' \
+        "$ledger" 2>/dev/null; then
+        exit 0
     fi
 fi
 

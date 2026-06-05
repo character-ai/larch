@@ -226,7 +226,6 @@ render_fresh_timing_report_for_publish() {
             --category Warnings \
             --output-file "$DESIGN_TMPDIR/timing-report-final.failure.log" \
             --redact >/dev/null 2>&1 || true
-        rm -f "$DESIGN_TMPDIR"/timing-report-final.* 2>/dev/null || true
         return 0
     }
     _tmp_json="$_tmp_dir/timing-report-final.json"
@@ -257,7 +256,13 @@ render_fresh_timing_report_for_publish() {
         "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json --output "$_tmp_json" > /dev/null 2>"$_tmp_stderr"
     _render_rc=$?
     set -e
-    if [[ "$_render_rc" -eq 0 && -s "$_tmp_json" ]] && jq -e . "$_tmp_json" >/dev/null 2>>"$_tmp_stderr"; then
+    if [[ "$_render_rc" -eq 0 && -s "$_tmp_json" ]] && jq -e '
+        type == "object" and
+        (.per_step | type == "array") and
+        (.per_step[]? | select(.skill == "design" and .step == "design Step 3 — plan review" and (.rounds | type == "array"))) and
+        (.total_seconds | type == "number") and
+        (.total_hms | type == "string")
+    ' "$_tmp_json" >/dev/null 2>>"$_tmp_stderr"; then
         mv -f "$_tmp_json" "$DESIGN_TMPDIR/timing-report-final.json"
         rm -rf "$_tmp_dir"
         return 0

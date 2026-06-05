@@ -83,7 +83,8 @@ LARCH_TEST_TIMING_NOW=100 "$REPO_ROOT/scripts/timing-report.sh" --ledger "$ROUND
 jq -e '
   (.per_step[] | select(.skill == "implement" and .step == "Step 5 — code review" and .duration_seconds == 20) | .rounds == [
     {"round":1,"duration_seconds":2,"accepted":2,"rejected":3},
-    {"round":2,"duration_seconds":7,"accepted":6,"rejected":5}
+    {"round":2,"duration_seconds":7,"accepted":6,"rejected":5},
+    {"round":6,"duration_seconds":15,"accepted":9,"rejected":9}
   ]) and
   (.per_step[] | select(.skill == "implement" and .step == "Step 5 — code review" and .duration_seconds == 15) | .rounds == [
     {"round":5,"duration_seconds":3,"accepted":1,"rejected":0}

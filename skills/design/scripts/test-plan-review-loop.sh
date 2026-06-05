@@ -2112,6 +2112,7 @@ export LARCH_PLAN_REVIEW_REVISE_SH="$STUB/revise-plan-with-waterfall.sh"
 out_sc=$(run_loop "$DSC" 1 --round-cap 1)
 printf '%s\n' "$out_sc" | grep -q '^LOOP_STATUS=cap-hit$' || fail "snapshot failure on terminal round should preserve cap-hit"
 printf '%s\n' "$out_sc" | grep -q '^REASON=cap-hit,snapshot-failed$' || fail "terminal cap-hit should append snapshot-failed reason"
+assert_plan_round_timing_row "$DSC" 1
 
 echo "=== snapshot failure preserves terminal converged status ==="
 DSNC="$TMP/snap-converged-status"

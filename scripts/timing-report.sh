@@ -381,7 +381,7 @@ render_report() {
       function emit_round_array(skill, step, start, end,    i, j, tmp, mc, ri, comma, oos, rkey) {
         mc = 0
         for (i = 1; i <= round_count; i++) {
-          if (round_skill[i] == skill && round_step[i] == step && round_start[i] >= start && round_start[i] < end && round_end[i] <= end) {
+          if (round_skill[i] == skill && round_step[i] == step && round_start[i] >= start && round_start[i] < end) {
             rkey = round_num[i] + 0
             if (!(rkey in round_match_pos)) {
               match_idx[++mc] = i

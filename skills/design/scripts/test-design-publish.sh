@@ -73,7 +73,11 @@ done
 if [[ "${TIMING_REPORT_FAIL:-false}" == true ]]; then
   exit 1
 fi
-printf '{"workflow_path":"SIMPLE","per_step":[],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}\n' >"$out"
+if [[ "${TIMING_REPORT_PARTIAL_JSON:-false}" == true ]]; then
+  printf '{"per_step":[]}\n' >"$out"
+  exit 0
+fi
+printf '{"workflow_path":"SIMPLE","per_step":[{"skill":"design","step":"design Step 3 — plan review","duration_seconds":1,"duration_hms":"00:00:01","outlier":false,"rounds":[{"round":1,"duration_seconds":1,"accepted":0,"rejected":0,"oos":0}]}],"total_seconds":1,"total_hms":"00:00:01","vendor_task_averages":[]}\n' >"$out"
 TIMING_STUB
 chmod +x "$STUB/timing-report.sh"
 cat >"$STUB/redact-secrets.sh" <<'REDACT_STUB'
@@ -570,6 +574,22 @@ assert_rc "failed timing render still publishes" 0 "$rc"
 [[ ! -f "$D_FAIL_TIMING/timing-report-final.stderr.log" ]] || fail "failed render must remove timing-report-final.stderr.log"
 [[ ! -f "$D_FAIL_TIMING/timing-report-final.failure.log" ]] || fail "failed render must remove timing-report-final.failure.log"
 pass "failed timing render quarantines timing-report-final.* artifacts"
+
+D_BAD_TIMING="$TMP/bad-timing-shape"
+setup_design_tmp "$D_BAD_TIMING"
+: >"$D_BAD_TIMING/timing-ledger.tsv"
+reset_publish_stub_env
+init_publish_logs
+apply_publish_stub_defaults
+export TIMING_REPORT_PARTIAL_JSON=true
+set +e
+bash "$SUBJECT" --design-tmpdir "$D_BAD_TIMING" --issue 42 --session-id sid-1 --claude-pid 9999 >/dev/null 2>&1
+rc=$?
+set -e
+unset TIMING_REPORT_PARTIAL_JSON
+assert_rc "partial timing JSON still publishes" 0 "$rc"
+[[ ! -f "$D_BAD_TIMING/timing-report-final.json" ]] || fail "partial timing JSON must not be published as validated"
+pass "partial timing JSON shape is rejected before publish"
 
 # --- explicit/resolved repo forwarded to plan-block-write ---
 D_PLAN_REPO="$TMP/plan-repo"
