@@ -1,0 +1,212 @@
+You are revising an /design implementation plan based on accepted reviewer findings.
+
+Emit ONLY the complete replacement plan in your final response, beginning with `## Plan` and ending with `diff_lines: <N>`.
+
+Hard rules: the revised plan must end with `diff_lines: <N>`. When the original plan has `### NEW:`, `### UPDATED:`, or `### REWRITTEN:` headings, preserve at least one such heading.
+
+When the original plan has optional size trailers (`diff_added:`, `diff_deleted:`, `mechanical_churn:`) in the final metadata block immediately above `diff_lines:`, preserve each with strict trailer grammar or explicitly recompute the estimates — do not collapse to total-churn-only legacy behavior.
+
+<plan>
+# Implementation Plan — Issue #3476: Codex auth test harness gaps
+
+## Context
+
+PR #3477 (Fixes #3411) added shared Codex auth helpers (`external_codex_env_key_enabled`, `external_strip_codex_larch_env_provider`, `external_strip_codex_literal_credentials`, `external_prepare_codex_auth`, `external_codex_auth_config_args`) and wired them into the probe, review-fix, and implement launch paths. Issue #3476 lists harness gaps that remained at merge. An audit of current HEAD (commit b35eeb335 and later) shows some listed gaps were already closed by #3477's review-fix rounds. This plan adds only the genuinely missing assertions (user decision: audit-first) across 4 harnesses (user decision: include `test-codex-implementer.sh`).
+
+Audit results driving scope:
+
+- ALREADY COVERED (skip): strip-failure fail-closed (`scripts/test-lib-external-launcher-common.sh:168-187`); review-and-fix temp `CODEX_HOME` + env-key argv + argv/events sentinel leaks (`skills/review-and-fix/scripts/test-review-and-fix.sh:773-816`); implementer login fallback, empty/unset env-key fallback, login-mode auth-prep failure with KV envelope (`skills/implement/scripts/test-codex-implementer.sh` cases 4b-4h).
+- DEFECTIVE (fix): the post-table selector assertion at `scripts/test-lib-external-launcher-common.sh:162` greps `strip-edge-config.toml` for the needle `model_provider = "openai-larch-env" # strip nested selector`, which exists only in `copied-config.toml` — it passes trivially and pins nothing.
+- UNREACHABLE BY DESIGN (document, no test): the env-key auth-prep-failure breadcrumbs in `check-reviewers.sh` (`codex-env-key-failure: failed to prepare`) and `launch-codex-implement.sh` cannot fire via fixtures: in env-key mode `external_prepare_codex_auth` runs both strips best-effort (`|| true`) and fails only when `mkdir -p` on a freshly `mktemp`-created dir fails. Do not add tests for these branches.
+
+## Files to modify/create
+
+### UPDATED: `scripts/test-lib-external-launcher-common.sh`
+
+Strip-semantics coverage for `external_strip_codex_larch_env_provider` (issue gap 1).
+
+1. **Fix the defective post-table assertion (line 162).** Replace the trivially-passing needle with real post-table pins on `strip-edge-config.toml`:
+   - Assert exactly **one** `model_provider = "openai-larch-env"` line survives the strip (the copy inside the `instructions = """` multiline body). Use a `grep -Fxc` count comparison, not `assert_file_not_contains` (which cannot distinguish the retained multiline copy from leaked nested ones).
+   - Assert zero `env_key = "OPENAI_API_KEY"` lines survive (the fixture has no in-multiline `env_key` copy).
+   - Move the `# strip nested selector` needle assertion to `login-home/config.toml`, where the `copied-config.toml` fixture line actually lands and is stripped.
+2. **Add multiline-state corruption fixtures** (new small config fixtures + strip + assertions), pinning `update_multiline_state` interaction with the strip rules:
+   - A stripped selector line whose trailing comment contains `"""` (e.g. `model_provider = "openai-larch-env" # note """ here`) must not toggle multiline state: a later top-level selector line is still stripped and a later `name =` line is retained.
+   - A `'''`-delimited (single-quote) multiline body containing a selector line and a `[model_providers.openai-larch-env]` header line: both retained verbatim; the table-skip must not engage inside the `'''` body.
+   - A multiline body that closes on the same line a new larch table header would start the skip: after the closing `"""`, a real `[model_providers.openai-larch-env]` header is stripped together with its body, proving state exits cleanly.
+
+### UPDATED: `scripts/test-check-reviewers.sh`
+
+Probe-hygiene coverage for the Codex probe in `check-reviewers.sh` (issue gap 2).
+
+1. **Temp `CODEX_HOME` cleanup on all exit paths.** Each `run_cr` invocation uses a private per-test `TMPDIR`, and probe homes are created as `${TMPDIR}/larch-codex-probe-home.XXXXXX`. Add a small helper `assert_no_probe_homes <label> <tmpdir>` (a `find "$tmpdir" -maxdepth 1 -name 'larch-codex-probe-home.*'` emptiness check) and call it after:
+   - t6 (probe success),
+   - t7 (non-auth probe failure),
+   - t9 (auth-retry `return 2` loop exhausted — multiple homes created and removed),
+   - t7a (auth-prep helper failure).
+2. **Trusted-project `-c` in probe argv.** Extend the existing argv-capturing case (t10-env-key-false, `LARCH_TEST_CODEX_ARGV_LOG`) with `grep -Fq 'trust_level="trusted"'` and `grep -Fq 'projects.'` assertions on the argv log.
+3. **Sentinel-absent sweep.** After the env-key live-probe case (t10-env-key-false), run a recursive fixed-string grep for `<REDACTED-TOKEN>` across that case's private `TMPDIR` and fail on any hit. This covers argv logs, leftover sidecars, and stamp files in one assertion.
+4. **Legacy env_key strip behavior (env-key mode).** New case: fixture `HOME/.codex/config.toml` containing legacy lines (`model_provider = "openai-larch-env"`, `env_key = "OPENAI_API_KEY"`, a literal `api_key = "<REDACTED-TOKEN>"`, plus a `[profiles.keep]` marker), `OPENAI_API_KEY` set, codex stub copies `$CODEX_HOME/config.toml` to a capture path named by a new `LARCH_TEST_CODEX_CONFIG_CAPTURE` env var. Assert the captured temp config has the larch selector/env_key/literal-credential lines stripped and `[profiles.keep]` retained; assert the fixture `HOME` config is unchanged (strip operates on the copy).
+5. **Auth-mode stamp write-side isolation.**
+   - After an env-key live probe (t10-env-key-false), assert `larch-codex-env-key-present-<user>.stamp` exists with content `true` and `larch-codex-login-present-<user>.stamp` does **not** exist.
+   - After a login-mode live probe (t6), assert the login stamp exists and the env-key stamp does not.
+   - New read-side reverse case: fresh `larch-codex-env-key-present-<user>.stamp` containing `true`, run **without** `OPENAI_API_KEY` against a failing codex stub with `LARCH_PROBE_TTL_SECONDS=3600`; assert `CODEX_PRESENT=false` (login mode must not read the env-key stamp).
+
+### UPDATED: `skills/review-and-fix/scripts/test-review-and-fix.sh`
+
+Codex dispatch coverage in `run_coder_dispatch` (issue gap 3). All new cases go inside the existing `dispatch` section (`if section_runs dispatch;` block) so the `test-review-and-fix-dispatch` CI shard runs them.
+
+1. **Stub extension.** In `run-external-agent-stub.sh`, add an optional `TEST_AGENT_CODEX_AUTH_LINK_FILE` capture: when set and `$CODEX_HOME/auth.json` is a symlink, write `readlink` output to the capture path (mirrors `STUB_CODEX_AUTH_LINK_FILE` in `test-codex-implementer.sh:239-240`).
+2. **Auth-prep failure dispatch path (login mode).** New case: fixture `HOME` with `.codex/config.toml` containing `model_provider = "openai-larch-env"` made read-only (`chmod a-w`, same mechanism as `test-check-reviewers.sh` t7a), `env -u OPENAI_API_KEY`, `TEST_AGENT_BEHAVIOR=cursor-success`, `TEST_AGENT_ARGV_FILE` set. Assert:
+   - `round-1/coder-codex.wrapper.log` contains `codex-auth-setup: failed to prepare Codex auth material`,
+   - the codex stub was never invoked (argv capture file absent),
+   - dispatch falls back (`CODER_TOOL=cursor`, exit 0),
+   - restore write permission after the run for scratch cleanup.
+3. **Login fallback with fixture.** New case: fixture `HOME` with `.codex/auth.json` (and a benign `config.toml`), `env -u OPENAI_API_KEY`, `TEST_AGENT_BEHAVIOR=codex-success`, `TEST_AGENT_ARGV_FILE` + `TEST_AGENT_CODEX_AUTH_LINK_FILE` set. Assert:
+   - the auth-link capture equals `<fixture-home>/.codex/auth.json` (temp `CODEX_HOME/auth.json` symlinked from the fixture),
+   - argv contains no `model_providers.openai-larch-env.env_key="OPENAI_API_KEY"` override,
+   - `CODER_TOOL=codex`.
+4. **Env-key Codex dispatch failure breadcrumb.** New case: `OPENAI_API_KEY=<REDACTED-TOKEN>`, `TEST_AGENT_BEHAVIOR=cursor-success` (codex stub fails, cursor succeeds). Assert:
+   - `round-1/coder-codex.wrapper.log` and `round-1/coder-codex.sidecar` both contain `codex-env-key-failure: Codex dispatch failed on the OPENAI_API_KEY auth path`,
+   - `CODER_TOOL=cursor`, exit 0,
+   - **sentinel-absent widening**: `<REDACTED-TOKEN>` absent from the wrapper log, the sidecar, and the argv capture.
+
+### UPDATED: `skills/implement/scripts/test-codex-implementer.sh`
+
+Temp-home leak coverage for `launch-codex-implement.sh` (user-added scope; source finding r3 FINDING_11). Login-mode auth-prep failure (case 4h) and the KV envelope are already covered; the env-key auth-prep-failure breadcrumb is unreachable by design (see Context) — add no test for it.
+
+1. **Temp-home cleanup assertions.** `CODEX_HOME_DIR` uses a fixed `/tmp/larch-codex-home-XXXXXX` prefix (not `TMPDIR`-scoped), so use a snapshot diff: capture `ls -d /tmp/larch-codex-home-* 2>/dev/null` before and after a launcher run and assert no new entries survive. Apply to:
+   - the existing happy-path launch (stub codex success),
+   - the existing 4h auth-prep-failure launch (EXIT-trap cleanup on the early-return path).
+   This pins the `mktemp`/`trap` ordering at `scripts/launch-codex-implement.sh:289-291`: moving the trap later (or dropping it) leaks homes and fails the new assertions.
+
+## Approach
+
+- Tests and fixtures only; no production-script changes. All four harnesses are already wired into the Makefile and CI shards (`test-harnesses-4/5/8/10` + the `test-review-and-fix-dispatch` section target); extending the files in place needs no wiring edits.
+- Reuse each harness's existing conventions: `pass`/`fail` helpers and fixture style in `test-lib-external-launcher-common.sh`; `run_cr` + per-test `TMPDIR` + `assert_line` in `test-check-reviewers.sh`; `make_work_repo` + `run_review_and_fix` + `TEST_AGENT_*` stub env in `test-review-and-fix.sh`; `STUB_*` capture files and numbered `fail N` labels in `test-codex-implementer.sh`.
+- Forcing auth-prep failure uses the proven read-only `config.toml` mechanism (`chmod a-w` on a fixture `HOME` copy source; `cp` preserves the read-only mode on the destination, and `external_strip_codex_larch_env_provider` fails its `-w` precheck). No function shims are needed in the two harnesses that exec their target as a child process.
+- Bash 3.2 compatible: plain arrays, `grep -F` needles, `find`/`ls` snapshots; no `mapfile`, no associative arrays (`BASH_AUTHORING.md` §3).
+- Trade-off: the `/tmp` snapshot diff in `test-codex-implementer.sh` tolerates pre-existing third-party `larch-codex-home-*` dirs by asserting only on **new** survivors, at the cost of a small race window if a concurrent launcher run creates homes mid-test. CI shards run harnesses sequentially, so the window is acceptable.
+
+## Edge cases
+
+- `grep -c` exits 1 on zero matches while still printing `0`; guard count probes with `|| true` and compare the captured count (BASH_AUTHORING.md §1).
+- The read-only `config.toml` fixture must be `chmod u+w`-restored after each failure-path case so the scratch `trap 'rm -rf'` cleanup does not fail on Linux runners.
+- macOS vs Linux `stat`/`touch` differences are already handled by existing stamp tests; new stamp assertions only check file existence and first-line content, which is portable.
+- The login-mode reverse stamp case must keep `LARCH_LIB_CURSOR_AUTH_TEST_MODE=1` and a cursor stub exiting 127 like sibling cases, so only the codex lane is exercised.
+- The review-and-fix login-fallback case must not assume the developer machine has `~/.codex/auth.json`: the fixture `HOME` fully controls both `config.toml` and `auth.json`.
+- The multiline `'''` fixture must be written with a quoted heredoc delimiter so the test file itself stays parseable (BASH_AUTHORING.md §2).
+
+## Failure modes
+
+1. **False-green count assertions.** A `grep -Fxc` needle that drifts from the fixture byte-for-byte (quoting, spacing) counts 0 and may still satisfy a `-eq 0` comparison written for the wrong expectation. Warning signal: a new assertion passes both before and after reverting the fixture. Mitigation: during implementation, flip each new assertion's expectation once locally to confirm it can fail (mutation sanity check), mirroring the audit finding that motivated this plan (line 162).
+2. **Shared-`/tmp` flakiness in the snapshot diff.** A concurrent local `launch-codex-implement.sh` run could add `larch-codex-home-*` dirs between snapshots, failing the cleanup assertion spuriously. Warning signal: failures only on developer machines with parallel larch sessions, never in CI. Mitigation: compare sorted before/after lists and fail only on entries absent from the before-snapshot; document the single-runner expectation in the test comment.
+3. **Fixture-permission cleanup breakage.** A failing assertion between `chmod a-w` and the restoring `chmod u+w` leaves a read-only file that breaks `rm -rf` scratch cleanup on some filesystems. Warning signal: harness reports pass/fail correctly but leaves `larch-test-*` litter. Mitigation: perform `chmod u+w` immediately after the `run_review_and_fix` invocation returns, before any assertions (the existing t7a/4h cases already follow this order).
+
+## Testing strategy
+
+The change **is** tests. Verification:
+
+- Run the four harnesses directly: `make test-lib-external-launcher-common test-check-reviewers test-codex-implementer` and `bash skills/review-and-fix/scripts/test-review-and-fix.sh --section dispatch`.
+- Mutation sanity: temporarily invert one new assertion per harness (or revert one fixture) and confirm the harness fails, then restore.
+- `bash scripts/relevant-checks.sh` (pre-commit lint surface) and `make lint-bash32` for Bash 3.2 conformance of the edited test scripts.
+
+diff_added: 330
+diff_deleted: 12
+diff_lines: 342
+
+</plan>
+
+<findings>
+### FINDING_1: Env-key dispatch-failure assertion can pass without argv capture
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The env-key dispatch-failure test checks that the sentinel is absent from argv capture, but the planned case never sets `TEST_AGENT_ARGV_FILE`, so the stub does not write argv and the grep can pass vacuously on a missing file.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add TEST_AGENT_ARGV_FILE=<capture-path> to the new env-key dispatch-failure case env (mirror the codex-telemetry case at line 786) and grep that file for <REDACTED-TOKEN>
+
+
+### FINDING_2: `/tmp` cleanup snapshot can abort on empty glob under `set -e`
+- **Reviewer(s)**: Codex-Arch, Codex-dyn-harness-topology
+- **Severity**: important
+- **Concern**: The planned `/tmp/larch-codex-home-*` snapshot uses raw `ls -d` on a glob that may have no matches. In a `set -e` harness, a clean runner can abort before exercising the launcher cleanup behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Use a snapshot helper that guards empty matches, e.g. { ls -d /tmp/larch-codex-home-* 2>/dev/null || true; } | LC_ALL=C sort, then diff before vs after
+  - From Codex-dyn-harness-topology: Specify a guarded snapshot helper, e.g. { ls -d /tmp/larch-codex-home-* 2>/dev/null || true; } | sort, or use find which exits 0 on no matches
+
+
+### FINDING_3: Stub hook is aimed at a nonexistent standalone file
+- **Reviewer(s)**: Cursor-Innovation, Cursor-dyn-harness-topology
+- **Severity**: important
+- **Concern**: The planned stub extension refers to a nonexistent `run-external-agent-stub.sh`, so the auth-link capture hook may be added nowhere and login-fallback assertions would never exercise the intended stub behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Document the heredoc at test-review-and-fix.sh:63-193 as the stub surface (same pattern as STUB_CODEX_AUTH_LINK_FILE in test-codex-implementer.sh:239-240)
+  - From Cursor-dyn-harness-topology: Edit the heredoc stub created at lines 63-192 (same block as TEST_AGENT_CODEX_HOME_FILE / TEST_AGENT_CODEX_CONFIG_FILE), not a standalone run-external-agent-stub.sh file
+
+
+### FINDING_4: Chmod restore ordering is internally inconsistent
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The plan contradicts itself on whether writable permissions are restored before or after assertions. If an assertion fails before restore, read-only fixture trees can remain and break scratch cleanup.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: A failed assertion between chmod a-w and restore can leave read-only fixture trees that break scratch trap rm -rf; align item 2 with t7a (restore before assertions)
+
+
+### FINDING_5: Legacy env-key strip case would run in login-mode semantics
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The planned legacy env-key strip case omits `run_cr_with_env`; if it uses `run_cr`, `OPENAI_API_KEY` is unset and the case exercises login-mode stripping rather than env-key copy/strip behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Invoke the legacy strip case via run_cr_with_env (or a direct TMPDIR= wrapper like t10-env-key-false) with OPENAI_API_KEY set and HOME aimed at the fixture
+
+
+### FINDING_7: `env -u` cannot directly invoke a shell function
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Concern**: The plan specifies `env -u OPENAI_API_KEY run_review_and_fix`, but `run_review_and_fix` is a shell function, not an executable, so the harness would fail before testing dispatch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Use a function-safe unset in a subshell, e.g. ( unset OPENAI_API_KEY; HOME="$fixture_home" TEST_AGENT_BEHAVIOR=cursor-success TEST_AGENT_ARGV_FILE="$argv" run_review_and_fix ... ), then restore chmod immediately after the function returns.
+
+
+### FINDING_8: New dispatch cases may use the developer HOME instead of fixture HOME
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The proposed review-and-fix dispatch cases depend on fixture `~/.codex` trees but do not export `HOME`, so auth/config operations may bind to the real user home, causing flakiness or false greens.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: New dispatch cases rely on fixture ~/.codex trees but never export HOME on run_review_and_fix run_review_and_fix inherits the developer HOME; review-and-fix copies/links via literal ~/.codex so fixture chmod/read-only and auth.json paths bind to the real user home — flaky or false-green on CI vs laptops Add HOME="$fixture_home" (absolute scratch path) to each new run_review_and_fix invocation; mirror test-codex-implementer.sh:381-393 / test-check-reviewers.sh:282
+
+
+### FINDING_9: Probe-home cleanup assertion omits timeout branch
+- **Reviewer(s)**: Codex-Requirements, Codex-dyn-auth-contract-drift
+- **Severity**: important
+- **Concern**: The planned probe temp `CODEX_HOME` cleanup coverage does not include the existing timeout path, so timeout cleanup could regress and leave copied config/auth material without failing tests.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add assert_no_probe_homes after the existing t-probe-to timeout case, or narrow the plan wording if timeout cleanup is intentionally out of scope.
+  - From Codex-dyn-auth-contract-drift: Add assert_no_probe_homes after the existing t-probe-to case so the timeout branch is pinned too
+
+
+### FINDING_12: Review-and-fix temp `CODEX_HOME` cleanup remains unpinned
+- **Reviewer(s)**: Codex-dyn-auth-contract-drift
+- **Severity**: important
+- **Concern**: Existing review-and-fix telemetry captures the temp `CODEX_HOME` prefix but does not assert the temporary home is removed, so copied auth/config material could be left behind without test failure.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-auth-contract-drift: After a dispatch case that captures TEST_AGENT_CODEX_HOME_FILE, assert the captured larch-codex-review-fix-home.* path no longer exists
+
+
+</findings>
+
+<feature>
+Codex auth test harness gaps (strip failure, probe coverage, review-and-fix dispatch)
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Multiple review rounds (FINDING_10 r1, FINDING_10 r3, FINDING_11 r3, FINDING_29 r3)
+**Phase**: review
+**Vote tally**: YES=9 NO=0 — auto-filed per combine pass
+
+## Description
+
+Several harness gaps remain after this PR: (1) `scripts/test-lib-external-launcher-common.sh` lacks coverage for strip failure (no-symlink fail-closed), post-table selector retention, and multiline string corruption cases for `external_strip_codex_larch_env_provider`. (2) `scripts/test-check-reviewers.sh` lacks assertions for temp `CODEX_HOME` cleanup on all exit paths (success, failure, auth-retry `return 2`, helper failure), trusted-project `-c` in probe argv, sentinel-absent-from-sidecar checks, legacy env_key strip behavior, and auth-mode stamp isolation. (3) `skills/review-and-fix/scripts/test-review-and-fix.sh` lacks coverage for auth-prep failure dispatch failure path, login fallback with fixture, env-key Codex dispatch failure breadcrumb, and sentinel-absent checks. All three test scripts need new test cases per `launcher-argv-test-coverage.md` and the plan acceptance criteria.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+</feature>

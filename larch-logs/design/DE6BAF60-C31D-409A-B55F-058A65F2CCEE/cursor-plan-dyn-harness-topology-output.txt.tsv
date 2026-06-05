@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/test-review-and-fix.sh:63-192	Stub extension targets nonexistent run-external-agent-stub.sh	TEST_AGENT_CODEX_AUTH_LINK_FILE would be added to a repo path that does not exist; dispatch shard never gains the capture hook	Edit the heredoc stub created at lines 63-192 (same block as TEST_AGENT_CODEX_HOME_FILE / TEST_AGENT_CODEX_CONFIG_FILE), not a standalone run-external-agent-stub.sh file

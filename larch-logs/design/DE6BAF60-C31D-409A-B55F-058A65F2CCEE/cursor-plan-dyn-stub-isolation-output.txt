@@ -1,0 +1,53 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lib-external-launcher-common.sh:694-699	skills/review-and-fix/scripts/review-and-fix.sh:284-286	plan.txt:56-60	Proposed env-key auth-prep failure case uses the same mv-based prep-failure mechanism as login, but external_prepare_codex_auth always returns 0 on the OPENAI_API_KEY branch (strip errors are swallowed with || true) and review-and-fix already mktemps codex_home before calling it, so mkdir cannot fail either. The case cannot emit codex-env-key-failure auth-setup breadcrumbs; it contradicts the same plan’s implementer note that env-key auth-prep breadcrumb is unreachable (plan.txt:77).	Drop the env-key auth-prep failure case, or retarget it to the dispatch-failure breadcrumb already covered in plan item 5 (cursor-success stub) unless production is changed to fail closed on env-key strip.
+2	in_scope	important	correctness	skills/review-and-fix/scripts/review-and-fix.sh:277	skills/review-and-fix/scripts/test-review-and-fix.sh:308-318	plan.txt:51-52	plan.txt:67	Cleanup uses find on a case-private TMPDIR, but run_review_and_fix does not export TMPDIR, so larch-codex-review-fix-home.* dirs are created under ${TMPDIR:-/tmp} (usually /tmp) while the snapshot searches an unset or wrong directory—false-green cleanup or flaky failures under concurrent /tmp use.	Export TMPDIR to a per-case scratch dir (e.g. $TMP/auth-prep-case) on every subshell that runs run_review_and_fix for cleanup assertions; snapshot that same path before/after.
+3	in_scope	important	risk-integration	skills/implement/scripts/test-codex-implementer.sh:445-448	skills/review-and-fix/scripts/review-and-fix.sh:814-1143	plan.txt:46-47	Plan says “mirroring” implementer’s mv stub, but implementer uses an unconditional exit-99 mv that fails every rename; review-and-fix continues to Cursor fallback and still calls mv for JSON/output writes. Copying the implementer stub verbatim would break unrelated harness output moves or mask the intended auth-prep-only failure.	Keep the plan’s conditional rule explicit: fail mv only when dest (or src/dest pair) is config.toml under larch-codex-review-fix-home.*; exec /bin/mv for all other argv. Do not copy test-codex-implementer.sh:445-448 verbatim into review-and-fix cases.
+4	in_scope	latent	risk-integration	skills/review-and-fix/scripts/test-review-and-fix.sh:308-318	plan.txt:49-50	plan.txt:57-58	Subsidiary example shows ( unset OPENAI_API_KEY; HOME=... run_review_and_fix ) but omits PATH=$auth_prep_bin:$PATH even though mv stub teardown depends on subshell-scoped PATH; a top-level PATH export would leak the stub into later dispatch cases.	Add PATH="$case_auth_prep_bin:/usr/bin:/bin" (or equivalent) inside the same subshell as the mv stub, matching implementer’s scoped PATH="$AUTH_PREP_BIN:$PATH" invocation at test-codex-implementer.sh:455-456.
+
+### 1. [correctness] Env-key auth-prep failure case is unreachable as specified
+
+The plan’s item 4 (plan.txt:56-60) reuses the login-mode mv prep-failure trick while `OPENAI_API_KEY` is set. On the env-key branch, `external_prepare_codex_auth` never propagates strip/mv failures:
+
+```694:699:scripts/lib-external-launcher-common.sh
+    if external_codex_env_key_enabled; then
+        if [[ -f "$home_dir/config.toml" ]]; then
+            external_strip_codex_larch_env_provider "$home_dir/config.toml" || true
+            external_strip_codex_literal_credentials "$home_dir/config.toml" || true
+        fi
+        return 0
+```
+
+`review-and-fix.sh` only sets `codex_auth_setup_failed` when that helper returns non-zero (lines 284-286), and the env-key breadcrumb requires `codex_auth_setup_failed=true` (lines 326-329). After `mktemp -d` creates `codex_home`, `mkdir -p` inside the helper cannot fail. The same plan explicitly leaves implementer env-key auth-prep breadcrumb untested as unreachable (plan.txt:77). Item 4 conflicts with that and cannot be made to pass without production changes.
+
+**Suggested revision:** Remove item 4 or fold env-key coverage into item 5’s dispatch-failure path only.
+
+### 2. [correctness] Cleanup snapshots need an exported case TMPDIR
+
+Item 2 (plan.txt:51-52) and item 5 (plan.txt:67) snapshot `find "$TMPDIR" … 'larch-codex-review-fix-home.*'`, but homes are created with `mktemp -d "${TMPDIR:-/tmp}/larch-codex-review-fix-home.XXXXXX"` (review-and-fix.sh:277) while `run_review_and_fix` never sets `TMPDIR` (test-review-and-fix.sh:308-318). Default placement is `/tmp`, not the case scratch dir the plan describes.
+
+**Suggested revision:** `export TMPDIR="$case_dir"` (under `$SCRATCH/...`) on each auth-prep/cleanup case before `run_review_and_fix`.
+
+### 3. [risk-integration] Implementer mv stub must not be copied verbatim
+
+Implementer test 4h uses a blanket failing `mv`:
+
+```445:448:skills/implement/scripts/test-codex-implementer.sh
+cat > "$AUTH_PREP_BIN/mv" <<'EOF'
+#!/usr/bin/env bash
+exit 99
+EOF
+```
+
+That works only because Codex never spawns afterward. Review-and-fix auth-prep failure still runs Cursor fallback and later `mv -f` for composed output (review-and-fix.sh:814, 1143). The plan’s delegate-to-`/bin/mv` rule (plan.txt:47, 86-87) is correct; the “mirroring implementer” wording (plan.txt:46) is misleading and risks a false-green or broken harness if followed literally.
+
+**Suggested revision:** Document the conditional dest-path predicate explicitly and treat implementer as a login-only, no-fallback analogue—not a byte-copy source.
+
+### 4. [risk-integration] PATH stub teardown should appear in the subshell contract
+
+Plan subshell examples unset `OPENAI_API_KEY` and set `HOME` but do not show `PATH="$auth_prep_bin:…"` (plan.txt:49-50, 57-58). Implementer scopes stub PATH to a single command subshell (test-codex-implementer.sh:455-456). Without the same scoping, a leaked `PATH` stub would affect later dispatch cases in the shared harness process.
+
+**Suggested revision:** Include `PATH="$case_auth_prep_bin:/usr/bin:/bin"` in the same subshell that enables the mv stub.
+
+---
+
+**Exonerated (SIMPLE bias):** check-reviewers codex stubs that exit 0 without delegating to the real `codex` binary match existing probe-harness idioms (test-check-reviewers.sh:232-236, 354-358); per-case `run_cr`/`run_cr_with_env` subshells already isolate `PATH` and `TMPDIR` (test-check-reviewers.sh:28-39). Legacy config capture on codex invocation (plan.txt:31) is sufficient because `external_prepare_codex_auth` runs inside `check-reviewers.sh` before the stub is executed.

@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/test-codex-implementer.sh:8; <TMPDIR>/plan.txt:68-70	Planned /tmp snapshot uses raw ls under a set -e harness	A clean runner with no /tmp/larch-codex-home-* makes ls return nonzero before the launcher runs, so the new cleanup test can abort instead of asserting leaks	Specify a guarded snapshot helper, e.g. { ls -d /tmp/larch-codex-home-* 2>/dev/null || true; } | sort, or use find which exits 0 on no matches

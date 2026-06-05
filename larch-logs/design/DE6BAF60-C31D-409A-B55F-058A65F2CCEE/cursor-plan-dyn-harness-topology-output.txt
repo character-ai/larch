@@ -1,0 +1,29 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review-and-fix/scripts/test-review-and-fix.sh:63-192	Stub extension targets nonexistent run-external-agent-stub.sh	TEST_AGENT_CODEX_AUTH_LINK_FILE would be added to a repo path that does not exist; dispatch shard never gains the capture hook	Edit the heredoc stub created at lines 63-192 (same block as TEST_AGENT_CODEX_HOME_FILE / TEST_AGENT_CODEX_CONFIG_FILE), not a standalone run-external-agent-stub.sh file
+2	in_scope	important	correctness	skills/review-and-fix/scripts/test-review-and-fix.sh:308-318	Review-and-fix dispatch cases omit required HOME= wiring	run_review_and_fix never sets HOME; without HOME=<fixture> on the new login/auth-prep invocations, ~/.codex on the runner is used and fixture auth.json/config.toml are ignored	Prefix each new case with HOME=<fixture-home> (and env -u OPENAI_API_KEY where needed) on the run_review_and_fix call, matching skills/implement/scripts/test-codex-implementer.sh:384-388
+3	in_scope	important	correctness	skills/review-and-fix/scripts/review-and-fix.sh:280-285	Auth-prep failure plan misstates chmod/cp strip mechanism	Approach claims cp preserves read-only and strip -w precheck fails; production uses plain cp into a fresh mktemp dir (writable dest). t7a-style fixtures without auth.json fail at auth.json symlink (lib-external-launcher-common.sh:705-707), not strip -w. Adding auth.json while relying on chmod a-w would let prep succeed and break auth-setup assertions	State explicitly that case 2 omits fixture auth.json (symlink failure), or reuse test-codex-implementer.sh:445-449 mv-shim PATH override for deterministic strip failure; drop the incorrect cp-preserves-read-only claim
+
+## Findings
+
+### 1. risk-integration — `skills/review-and-fix/scripts/test-review-and-fix.sh:63-192`
+Plan item 1 names `run-external-agent-stub.sh` as the edit target. The dispatch harness only materializes that script as a heredoc at lines 63-192 inside `test-review-and-fix.sh`; there is no standalone file on disk. Implementing against the named path would miss CI (`test-review-and-fix-dispatch` / `test-harnesses-5`).
+
+**Suggested revision:** Add `TEST_AGENT_CODEX_AUTH_LINK_FILE` beside the existing `TEST_AGENT_CODEX_*_FILE` hooks in the heredoc stub (mirror `skills/implement/scripts/test-codex-implementer.sh:239-240`).
+
+### 2. correctness — `skills/review-and-fix/scripts/test-review-and-fix.sh:308-318`
+New dispatch cases (auth-prep failure, login fallback) depend on fixture `HOME/.codex/{config.toml,auth.json}`, but `run_review_and_fix` only `cd`s into the work repo and never sets `HOME`. No existing dispatch test sets `HOME` either. Without an explicit `HOME=<fixture>` prefix, `review-and-fix.sh:280-281` reads the developer machine’s `~/.codex`, making the new cases flaky and non-hermetic.
+
+**Suggested revision:** Document and implement `HOME="$fixture_home"` on each new `run_review_and_fix` invocation (login fallback must also ship fixture `auth.json`, as the plan already implies at Edge cases).
+
+### 3. correctness — `skills/review-and-fix/scripts/review-and-fix.sh:280-285` / `scripts/check-reviewers.sh:212`
+The Approach section says `chmod a-w` + `cp` preserves read-only on the destination so `external_strip_codex_larch_env_provider` fails its `-w` precheck (`lib-external-launcher-common.sh:539`). Both production copy sites use plain `cp` into a new temp directory, which creates a writable destination. `test-check-reviewers.sh` t7a (lines 280-286) has the same shape: read-only source, no `auth.json`, so login-mode prep fails at the symlink step, not strip. `test-codex-implementer.sh` case 4h actually forces strip failure via an `mv` shim (lines 445-449), not chmod alone.
+
+**Suggested revision:** For review-and-fix case 2, either (a) state clearly that the fixture omits `auth.json` and the test pins symlink-time prep failure, or (b) use the mv-shim technique from 4h. Do not add fixture `auth.json` while assuming chmod alone blocks prep.
+
+## Exonerated / verified
+
+- Makefile shard wiring (`test-harnesses-4/5/8/10`, `test-review-and-fix-dispatch`) matches the four harness files; no Makefile edits required.
+- New review-and-fix cases belong in the `if section_runs dispatch` block (lines 321-1848); placement near existing codex telemetry cases (~773-851) is correct for shard 5.
+- Line 162 false-green on `strip-edge-config.toml` is real; the proposed `grep -Fxc` + `login-home` pin aligns with fixture layout (`copied-config.toml:77` vs `strip-edge-config.toml:135-166`).
+- `codex-fallback-telemetry` (line 843) runs without `OPENAI_API_KEY`; the planned env-key dispatch breadcrumb case is not a duplicate.
+- Temp-home snapshot diff for `launch-codex-implement.sh:289-291` is the right harness/section; implementer happy-path + 4h targets are appropriate minimum scope.
