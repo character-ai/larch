@@ -1,0 +1,29 @@
+I've read the full diff, verified the plan requirements, and tested the `IGNORECASE=1` awk behavior on the macOS system awk. Here is the review.
+
+---
+
+### In-Scope Findings
+
+1. **Latent** `correctness` `scripts/test-design-structure.sh:141` — `IGNORECASE=1` is a gawk-only extension; the macOS system `awk` (BSD nawk 20200816, confirmed above) silently ignores it, so `/(continue|proceed|auto-continue|route|jump|enter|go)/` in `assert_no_direct_step3b_step4_routes` matches only lowercase on this platform. The plan explicitly requires case-insensitive matching of routing verbs. A future commit that adds routing prose with a capitalized verb (e.g., "Proceed to Step 3b → Step 4") would pass on macOS but fail in gawk-based CI, making the guard unreliable as a local development check. **Suggested fix:** replace `BEGIN { IGNORECASE=1 }` with a `tolower`-based pattern: `tolower($0) ~ /(continue|proceed|auto-continue|route|jump|enter|go)/ && /Step 3b/ && /Step 4/` and likewise lower-case the `/Step 3b completion boundary/` guard line. This is POSIX portable and produces consistent behaviour across awk implementations.
+
+---
+
+### Out-of-Scope Observations
+
+No pre-existing issues to surface.
+
+---
+
+Plan fidelity is otherwise complete. All twelve plan deliverables are implemented correctly:
+
+- **SKILL.md**: five region edits present and correct — Step 2a entry fence with `read-design-classification.sh` → SIMPLE guard → fail-fast sentinel + completion-marker writes in order; SIMPLE branch subsection stripped of its bash block; Step 3b completion boundary fence with `set +e` / `_finalize_rc` / `exit "$_finalize_rc"` / `step-3b` only on FINALIZE success; Step 4 entry fence with compatibility guard gated on `.completed/finalize` absence; Step 2a.5 resume compatibility guard.
+- **approval-gates.md, flags.md, configuration-and-permissions.md, run-step3-review.sh**: all routing chains retargeted; no bare Step 3b→Step 4 routes remain.
+- **test-design-structure.sh**: `assert_step3b_finalize_boundary`, `assert_step2a_entry_simple_guard`, `assert_simple_branch_has_no_sentinel_fence`, `assert_no_direct_step3b_step4_routes` on six surfaces, updated positive pins, and `contains`/`absent` pins for pause/resume compatibility all present and correct.
+- **test-design-pause-resume.sh**: both compatibility fixtures added.
+- **sketch-launch.md, design-driver.md, finalize-plan.md**: caller references updated to Step 3b boundary.
+- Anti-halt literal `Continue to Step 4 IMMEDIATELY` preserved; `test-implement-anti-halt.sh` unmodified as planned.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/test-design-structure.sh:141	IGNORECASE=1 is gawk-only; silently no-ops on macOS BSD awk (confirmed: version 20200816 ignores it), so the routing-verb pattern /(continue|proceed|auto-continue|route|jump|enter|go)/ only matches lowercase on macOS	A future commit adding routing prose with a capitalized verb such as "Proceed to Step 3b → Step 4" passes locally on macOS but fails on Linux gawk, making the guard unreliable as a development-environment check — the plan explicitly requires case-insensitive matching	Replace BEGIN { IGNORECASE=1 } with a tolower-based pattern: tolower($0) ~ /(continue|proceed|auto-continue|route|jump|enter|go)/ && /Step 3b/ && /Step 4/; apply tolower($0) ~ /step 3b completion boundary/ for the skip guard too
+```

@@ -107,14 +107,6 @@ Change the primary-caller line "`/design` Step 4 for `ACTION=FINALIZE`" to name 
 
 Change the "`/design` Step 4" primary-caller line to the Step 3b completion boundary, with the same Step 4 compatibility-guard note.
 
-### UPDATED: `skills/design/references/plan-review.md`
-
-Retarget any review-result routing prose that summarizes zero-findings or rejected-all paths to include Step 3.6, Step 3b, the Step 3b completion boundary (FINALIZE + step-3b), Step 4, and Step 4b before Gate C.
-
-### UPDATED: `docs/collaborative-sketches.md`
-
-Retarget any high-level `/design` routing prose that mentions Gate B/Gate C re-entry or Step 3b-to-Step 4 progression so it names the Step 3b completion boundary before Step 4.
-
 ## Approach
 
 The issue's goal is "no dedicated turn" for two trivial file-setup operations. Each operation is folded into a fence that already runs on the same path:
