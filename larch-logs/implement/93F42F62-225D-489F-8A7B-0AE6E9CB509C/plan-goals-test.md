@@ -54,15 +54,6 @@ Touch only if the sibling stub enumerates specific covered cases; add a one-line
 ### UPDATED: `skills/design/scripts/test-design-pause-resume.md`
 Update stub description (`ls-tree`/`show` instead of `git archive`). Add one-line coverage notes: real-git export-ignore reproduction runs in a stub-free-PATH subshell with `cd` into the init repo (bypasses line-140 prepend; cwd binds `REPO_TOP` for `git rev-parse`); marker delete-on-success (round-trip, body-drift); marker keep-on-failure (`missing-restored-artifact` late-step + deleted subtree, dedicated `snapshot-extract-failed` fixture).
 
-### UPDATED: `skills/design/scripts/design-route.sh`
-Propagate loader `MARKER_CLEARED=true|false` through the resume route KV allowlist when present on successful pause load.
-
-### UPDATED: `skills/design/SKILL.md`
-Step 0b resume breadcrumb and route allowlist must surface loader `MARKER_CLEARED` alongside existing resume KVs.
-
-### UPDATED: `scripts/test-design-structure.sh`
-Structure tests assert Step 0b allowlist and resume breadcrumb include `MARKER_CLEARED`.
-
 ## Approach
 Fix each defect at its own locus, change nothing else. WI1 relaxes one over-strict validation in the publisher. WI2 swaps the restore primitive in the loader for an attribute-independent one. WI3 inverts the loader's marker-deletion polarity (keep-on-failure, delete-on-success) and stops swallowing the post-success delete result. The committed `larch-logs/ export-ignore` is untouched. `design-pause-save.sh`'s resume-step walk reads only `.completed/step-N` registry sentinels, so it is unaffected by any choice here.
 
