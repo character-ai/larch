@@ -315,6 +315,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh` and refreshes the stable symlink `~/.
 ```bash
 export DESIGN_TMPDIR="${DESIGN_TMPDIR:?DESIGN_TMPDIR required}"
 . "$DESIGN_TMPDIR/source-env.sh"
+[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$DESIGN_TMPDIR/source-env.sh" 2>/dev/null || true)
+export CLAUDE_PLUGIN_ROOT
 "$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill design \
   --codex-present "${CODEX_PRESENT:-false}" \
   --cursor-present "${CURSOR_PRESENT:-false}" \

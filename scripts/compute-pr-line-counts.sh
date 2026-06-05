@@ -30,12 +30,20 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-if [ -z "$PR_NUMBER" ] || [ "$PR_NUMBER" = "0" ]; then
-    printf 'LINES_STATUS=skipped\nREASON=no-pr\n'
-    exit 0
-fi
+case "$PR_NUMBER" in
+    '' | 0 | *[!0-9]*)
+        printf 'LINES_STATUS=skipped\nREASON=no-pr\n'
+        exit 0
+        ;;
+esac
 
 if [ -n "$REPO" ]; then
+    _repo_owner="${REPO%%/*}"
+    _repo_name="${REPO#*/}"
+    if [ "$_repo_owner" = "$REPO" ] || [ -z "$_repo_name" ] || [ "$_repo_name" != "${_repo_name#*/}" ] || [ -z "$_repo_owner" ]; then
+        printf 'LINES_STATUS=skipped\nREASON=invalid-repo\n'
+        exit 0
+    fi
     endpoint="repos/${REPO}/pulls/${PR_NUMBER}/files"
 else
     endpoint="repos/{owner}/{repo}/pulls/${PR_NUMBER}/files"

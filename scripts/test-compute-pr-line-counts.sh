@@ -88,5 +88,25 @@ else
     fail "empty --repo endpoint shape (log: $(cat "$GH_LOG"))"
 fi
 
+# Inline-triage rule 2: validate --paginate is passed in the gh api call (FINDING_18)
+: >"$GH_LOG"
+"$HELPER" --repo 'owner/repo' --pr-number 55 >/dev/null
+if command grep -Fq -- '--paginate' "$GH_LOG" 2>/dev/null; then
+    pass 'gh api --paginate flag used'
+else
+    fail "gh api --paginate flag missing (log: $(cat "$GH_LOG"))"
+fi
+
+# Inline-triage rule 2: non-numeric PR number is treated as no-pr (FINDING_7)
+out_nonnumeric=$("$HELPER" --repo 'owner/repo' --pr-number 'abc')
+[ "$(read_kv LINES_STATUS "$out_nonnumeric")" = skipped ] || fail 'non-numeric pr-number skip status'
+[ "$(read_kv REASON "$out_nonnumeric")" = no-pr ] || fail 'non-numeric pr-number skip reason'
+pass 'non-numeric pr-number skip path'
+
+# Inline-triage rule 2: invalid REPO format (extra slash) is rejected (FINDING_7)
+out_badrepo=$("$HELPER" --repo 'owner/repo/extra' --pr-number 1)
+[ "$(read_kv LINES_STATUS "$out_badrepo")" = skipped ] || fail 'extra-slash repo skip status'
+pass 'extra-slash repo skip path'
+
 [ "$FAIL" -eq 0 ] || exit 1
 printf 'PASS=%s\n' "$PASS"
