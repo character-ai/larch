@@ -35,6 +35,7 @@ import argparse
 import os
 import re
 import traceback
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, TextIO, cast
@@ -708,7 +709,8 @@ def _journal_path(ctx: RunContext) -> Path:
 
 def _close_contract_stream(stream: TextIO) -> None:
     if stream is not sys.stdout:
-        stream.close()
+        with suppress(Exception):
+            stream.close()
 
 
 def emit_result(ctx: RunContext, result: ShipResult) -> None:
@@ -776,7 +778,9 @@ def _first_present(*values: object) -> str:
         if value is None:
             continue
         if isinstance(value, int):
-            return str(value)
+            if value != 0:
+                return str(value)
+            continue
         text = str(value)
         if text:
             return text
@@ -822,8 +826,9 @@ def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdi
         data["STALL_TRACKING"] = "true"
         _fill_if_empty(data, "STALL_STEP", state.get("STALL_STEP"), ctx.stall_step, _slug_from_detail(result.detail))
         finalize.write_finalize_state_merged(path, data)
-    except (OSError, ShipError) as exc:
-        logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill skipped: {exc}")
+    except Exception as exc:
+        with suppress(Exception):
+            logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill skipped: {exc}")
 
 
 def _ctx_from_args(args: argparse.Namespace) -> RunContext:
@@ -861,22 +866,23 @@ def _ctx_from_args(args: argparse.Namespace) -> RunContext:
 
 
 def main(argv: list[str] | None = None) -> int:
-    ctx = RunContext.from_env()
+    ctx = RunContext.from_env(env={})
     result: ShipResult
+    parser = build_parser()
     try:
-        parser = build_parser()
-        try:
-            args = parser.parse_args(argv)
-        except SystemExit as exc:
-            code = exc.code if isinstance(exc.code, int) else 1
-            if code == 0:
-                return 0
-            result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"argparse failed with exit {code}")
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        code = exc.code if isinstance(exc.code, int) else 1
+        if code == 0:
+            return 0
+        result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"argparse failed with exit {code}")
+        with suppress(Exception):
             emit_result(ctx, result)
-            return config.OUTCOME_EXIT_MAP[Outcome.INTERNAL_ERROR]
+        return config.OUTCOME_EXIT_MAP[Outcome.INTERNAL_ERROR]
+    try:
         ctx = _ctx_from_args(args)
         if _tmpdir_under_allowed_root(ctx.tmpdir):
-            _ = os.environ.setdefault(config.ENV_IMPLEMENT_TMPDIR, ctx.tmpdir)
+            os.environ[config.ENV_IMPLEMENT_TMPDIR] = ctx.tmpdir
             logging_util.quiet_init(argv0="ship.py")
         result = run_ship(ctx, runner=proc, cwd=str(Path.cwd()))
     except Exception as exc:  # top-level contract envelope
@@ -884,7 +890,11 @@ def main(argv: list[str] | None = None) -> int:
             f"ship.py: internal error\n{traceback.format_exc()}",
         )
         result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"{type(exc).__name__}: {exc}")
-    _persist_stall_metadata_if_needed(ctx, result, Path(ctx.tmpdir))
+    try:
+        _persist_stall_metadata_if_needed(ctx, result, Path(ctx.tmpdir))
+    except Exception as exc:
+        with suppress(Exception):
+            logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill skipped: {exc}")
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

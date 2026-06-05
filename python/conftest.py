@@ -19,4 +19,4 @@ def _quiet_test_isolation(monkeypatch: pytest.MonkeyPatch) -> None:
     LARCH_QUIET_DISABLE and set up their own env via monkeypatch.setenv.
     """
     monkeypatch.setenv(config.ENV_LARCH_QUIET_DISABLE, "1")
-    monkeypatch.setattr(logging_util, "_self_initialized_quiet", False)
+    logging_util.reset_quiet_state()

@@ -17,6 +17,12 @@ import redact
 _self_initialized_quiet = False
 
 
+def reset_quiet_state() -> None:
+    """Reset process-local quiet state for tests and subprocess re-entry."""
+    global _self_initialized_quiet  # noqa: PLW0603
+    _self_initialized_quiet = False
+
+
 def _env_truthy(name: str) -> bool:
     return os.environ.get(name, "").lower() in {
         "1",

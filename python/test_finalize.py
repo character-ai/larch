@@ -96,8 +96,8 @@ def test_write_finalize_state_contains_teardown_keys(tmp_path: Path) -> None:
     target = tmp_path / "finalize-state.sh"
     finalize.write_finalize_state(_ctx(tmp_path, pr_closed=True), target)
     text = target.read_text(encoding="utf-8")
-    assert "PR_CLOSED=true\n" in text
-    assert "NO_LOGS_COMMIT=false\n" in text
+    assert "PR_CLOSED='true'\n" in text
+    assert "NO_LOGS_COMMIT='false'\n" in text
 
 
 def test_cache_sessions_root_honors_absolute_xdg(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -118,6 +118,25 @@ def test_write_finalize_state_merged_preserves_custom_keys(tmp_path: Path) -> No
     data = finalize.read_finalize_state(target)
     assert data["CUSTOM_PIN"] == "keep"
     assert data["STALL_TRACKING"] == "true"
+
+
+def test_write_finalize_state_merged_shell_quotes_values(tmp_path: Path) -> None:
+    target = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state_merged(
+        target,
+        {"PR_TITLE": "Implement feature $(echo unsafe) 'quoted'"},
+    )
+    text = target.read_text(encoding="utf-8")
+    assert text == "PR_TITLE='Implement feature $(echo unsafe) '\\''quoted'\\'''\n"
+    assert finalize.read_finalize_state(target)["PR_TITLE"] == "Implement feature $(echo unsafe) 'quoted'"
+
+
+def test_write_finalize_state_shell_quotes_values(tmp_path: Path) -> None:
+    target = tmp_path / "finalize-state.sh"
+    finalize.write_finalize_state(_ctx(tmp_path, pr_title="Implement feature $(echo unsafe)"), target)
+    text = target.read_text(encoding="utf-8")
+    assert "PR_TITLE='Implement feature $(echo unsafe)'\n" in text
+    assert finalize.read_finalize_state(target)["PR_TITLE"] == "Implement feature $(echo unsafe)"
 
 
 def test_write_finalize_state_merged_rejects_newline_values(tmp_path: Path) -> None:

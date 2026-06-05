@@ -319,6 +319,11 @@ def cache_sessions_root() -> Path:
 _FINALIZE_KEY_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
 
 
+def _shell_single_quote(value: object) -> str:
+    text = str(value)
+    return "'" + text.replace("'", "'\\''") + "'"
+
+
 def read_finalize_state(path: str | Path) -> dict[str, str]:
     target = Path(path)
     if not target.is_file():
@@ -353,7 +358,10 @@ def write_finalize_state_merged(path: str | Path, data: dict[str, str]) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")
-    _ = tmp.write_text("".join(f"{key}={data[key]}\n" for key in sorted(data)), encoding="utf-8")
+    _ = tmp.write_text(
+        "".join(f"{key}={_shell_single_quote(data[key])}\n" for key in sorted(data)),
+        encoding="utf-8",
+    )
     _ = tmp.replace(target)
 
 
@@ -424,5 +432,8 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")
-    _ = tmp.write_text("".join(f"{key}={value}\n" for key, value in data.items()), encoding="utf-8")
+    _ = tmp.write_text(
+        "".join(f"{key}={_shell_single_quote(value)}\n" for key, value in data.items()),
+        encoding="utf-8",
+    )
     _ = tmp.replace(target)
