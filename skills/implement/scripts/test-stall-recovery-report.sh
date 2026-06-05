@@ -221,6 +221,7 @@ printf '%s\n' 'gh: API rate limit exceeded' >"$dir/failure.log"
 run_capture "$SANDBOX/case_finalize_fallback.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/failure.log"
 assert_eq 0 "$RC" "finalize fallback classify exits 0"
 assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case_finalize_fallback.out")" "finalize fallback classifies from finalize-state stall keys"
+assert_eq step8-shippr "$(kv RESUME_HINT "$SANDBOX/case_finalize_fallback.out")" "finalize fallback resume hint"
 assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case_finalize_fallback.out")" "finalize fallback reports stall tracking"
 assert_eq 8 "$(kv STALL_STEP "$SANDBOX/case_finalize_fallback.out")" "finalize fallback reports stall step"
 
@@ -240,6 +241,7 @@ assert_eq 0 "$RC" "8: finalize-only stall exits 0"
 assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case8finalize.out")" "8: finalize-only stall tracking consulted"
 assert_eq 8 "$(kv STALL_STEP "$SANDBOX/case8finalize.out")" "8: finalize-only stall step consulted"
 assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case8finalize.out")" "8: finalize-only evidence classifies"
+assert_eq step8-shippr "$(kv RESUME_HINT "$SANDBOX/case8finalize.out")" "8: finalize-only resume hint"
 
 dir=$(make_tmp case8b)
 cat >"$dir/session-env.sh" <<'EOF'
@@ -1050,6 +1052,7 @@ printf '%s\n' 'gh: API rate limit exceeded' >"$dir/failure.log"
 run_capture "$SANDBOX/case_finalize_fallback.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$dir/failure.log"
 assert_eq 0 "$RC" "finalize fallback classify exits 0"
 assert_eq transient-infra "$(kv FAILURE_CLASS "$SANDBOX/case_finalize_fallback.out")" "finalize fallback classifies from finalize-state stall keys"
+assert_eq step8-shippr "$(kv RESUME_HINT "$SANDBOX/case_finalize_fallback.out")" "finalize fallback resume hint"
 assert_eq true "$(kv STALL_TRACKING "$SANDBOX/case_finalize_fallback.out")" "finalize fallback reports stall tracking"
 assert_eq 8 "$(kv STALL_STEP "$SANDBOX/case_finalize_fallback.out")" "finalize fallback reports stall step"
 

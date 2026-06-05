@@ -637,8 +637,8 @@ def _write_ship_state(
                 key, _, value = line.partition("=")
                 if key and "\n" not in key and "\r" not in key:
                     fields[key] = value
-        except (OSError, UnicodeDecodeError):
-            fields = {}
+        except (OSError, UnicodeDecodeError) as exc:
+            raise ShipError(f"cannot read existing ship state: {path}") from exc
     fields.update({
         "PHASE": phase,
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
@@ -700,6 +700,37 @@ def _write_ship_state(
     tmp = path.with_suffix(path.suffix + ".tmp")
     _ = tmp.write_text("".join(f"{key}={value}\n" for key, value in fields.items()), encoding="utf-8")
     _ = tmp.replace(path)
+
+
+def _context_with_state_overlay(ctx: RunContext) -> RunContext:
+    state = _state_file_kv(ctx.state_file)
+    changes: dict[str, object] = {}
+    for key, field in (
+        ("BRANCH_NAME", "branch_name"),
+        ("ISSUE_NUMBER", "issue_number"),
+        ("RUN_ID", "run_id"),
+        ("REPO", "repo"),
+        ("PR_URL", "pr_url"),
+        ("PR_TITLE", "pr_title"),
+        ("MERGE_RESULT", "merge_result"),
+        ("STALL_STEP", "stall_step"),
+    ):
+        value = state.get(key, "")
+        if value:
+            changes[field] = value
+    pr_number = run_logs.parse_pr_number(ctx.state_file, ctx.pr_number)
+    if pr_number is not None:
+        changes["pr_number"] = pr_number
+    for key, field in (
+        ("FORKED_TARGET", "forked_target"),
+        ("REPO_UNAVAILABLE", "repo_unavailable"),
+        ("DRAFT", "draft"),
+        ("MERGE", "merge"),
+    ):
+        value = state.get(key, "")
+        if value:
+            changes[field] = _truthy(value)
+    return ctx.with_(**changes) if changes else ctx
 
 
 def _try_current_branch(runner: Runner, *, cwd: str | None) -> str:
@@ -825,7 +856,8 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
     pr_url = (state_pr_url if _valid_pr_url(state_pr_url) else "") or (ctx.pr_url if _valid_pr_url(ctx.pr_url) else "")
     merge_result = run_logs.read_state_kv(ctx.state_file, "MERGE_RESULT")
 
-    if resume_phase == config.SHIP_PR_RRR_RESUME_PHASE:
+    phase14_flag = Path(ctx.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    if resume_phase == config.SHIP_PR_RRR_RESUME_PHASE and not phase14_flag.is_file():
         if not _valid_repo_slug(state_repo):
             state_repo = ctx.repo
         return _resume_from_state(
@@ -1445,6 +1477,46 @@ def run_ship(
                 if working.ci_fix_rebase_pending
                 else "",
             )
+            phase14_flag = Path(working.tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+            if phase14_flag.is_file():
+                try:
+                    _ = rebase.rebase_and_push(
+                        runner,
+                        repo=working.repo,
+                        run_id=working.run_id,
+                        cwd=repo_root,
+                        tmpdir=working.tmpdir,
+                        base_remote=base_remote,
+                        base_ref=base_ref,
+                        allow_conflict_fix=True,
+                        enable_pre_push_handoff=True,
+                    )
+                    phase14_flag.unlink(missing_ok=True)
+                    rebase_count += 1
+                    _write_ship_state(
+                        working,
+                        phase="ci-initial",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                        resume_phase="",
+                        caller_kind="",
+                    )
+                    continue
+                except PrePushConflictHandoff as exc:
+                    _write_ship_state(
+                        working,
+                        phase="rebase",
+                        iteration=iteration,
+                        rebase_count=rebase_count,
+                        fix_attempts=fix_attempts,
+                        transient_retries=transient_retries,
+                        resume_phase=exc.resume_phase,
+                        caller_kind=exc.caller_kind,
+                        extra_fields={"CONFLICT_FILES": exc.conflict_csv},
+                    )
+                    raise
             monitor = ci_monitor.monitor(
                 runner,
                 pr=working.pr_number or 0,
@@ -1665,10 +1737,12 @@ def run_ship(
             )
     except (NeedsUserInput, ShipError, Stalled, TransientNetworkError) as exc:
         result = _error_to_result(exc)
-        if result.outcome is Outcome.STALLED:
-            step = ctx.stall_step or _slug_from_detail(result.detail)
-            with suppress(Exception):
-                _write_terminal_state(ctx.with_(stall_tracking=True, stall_step=step), Outcome.STALLED, step)
+        if result.outcome is Outcome.STALLED and not isinstance(exc, PrePushConflictHandoff):
+            latest_ctx = _context_with_state_overlay(ctx)
+            if "\n" in latest_ctx.pr_url or "\r" in latest_ctx.pr_url:
+                latest_ctx = latest_ctx.with_(pr_url="")
+            step = latest_ctx.stall_step or _slug_from_detail(result.detail)
+            _write_terminal_state(latest_ctx.with_(stall_tracking=True, stall_step=step), Outcome.STALLED, step)
         return result
 
 
@@ -1801,8 +1875,8 @@ def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdi
         _fill_if_empty(data, "STALL_STEP", state.get("STALL_STEP"), ctx.stall_step, _slug_from_detail(result.detail))
         finalize.write_finalize_state_merged(path, data)
     except Exception as exc:
-        with suppress(Exception):
-            logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill skipped: {exc}")
+        logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill failed: {exc}")
+        raise
 
 
 def _ctx_from_args(args: argparse.Namespace) -> RunContext:
@@ -1867,8 +1941,8 @@ def main(argv: list[str] | None = None) -> int:
     try:
         _persist_stall_metadata_if_needed(ctx, result, Path(ctx.tmpdir))
     except Exception as exc:
-        with suppress(Exception):
-            logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill skipped: {exc}")
+        logging_util.BreadcrumbWriter().emit(f"ship.py: stall metadata gap-fill failed: {exc}")
+        result = ShipResult(Outcome.INTERNAL_ERROR, detail=f"stall metadata gap-fill failed: {exc}")
     emit_result(ctx, result)
     return config.OUTCOME_EXIT_MAP[result.outcome]
 

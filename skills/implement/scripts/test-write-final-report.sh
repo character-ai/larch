@@ -947,6 +947,8 @@ line_stale_out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/co
 assert_contains 'STATUS=ok' "$line_stale_out" 'line-count stale cache status ok'
 assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$impl_line_stale/summary-final.md")" 'line-count stale PR cache is not reused'
 assert_not_contains '+999/-999' "$(cat "$impl_line_stale/summary-final.md")" 'line-count stale PR cache values absent'
+assert_eq "1" "$(grep -c '^LINES_STATUS=' "$impl_line_stale/ship-pr-state.sh")" 'line-count state merge replaces LINES_STATUS'
+assert_eq "17" "$(awk -F= '$1=="CODE_ADDED"{print $2; exit}' "$impl_line_stale/ship-pr-state.sh")" 'line-count state merge stores latest CODE_ADDED'
 
 for outcome_case in \
     "merged:$impl_dir:absent:present" \

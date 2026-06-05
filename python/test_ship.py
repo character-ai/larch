@@ -10,10 +10,7 @@ import subprocess
 import sys
 from collections.abc import Sequence
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 import config
 import run_logs
@@ -1277,6 +1274,7 @@ def test_pre_push_conflict_handoff_persists_resume_tokens(
     assert f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\n" in state
     assert f"CALLER_KIND={config.SHIP_PR_PRE_PUSH_CALLER_KIND}\n" in state
     assert "CONFLICT_FILES=a.txt\n" in state
+    assert not (tmp_path / "finalize-state.sh").exists()
 
 
 def test_rebase_continuation_wins_over_state_repo_mismatch(tmp_path: Path) -> None:
@@ -2250,7 +2248,7 @@ def test_persist_stall_metadata_preserves_existing_tracking(tmp_path: Path) -> N
     assert data == {"STALL_TRACKING": "true", "STALL_STEP": "existing"}
 
 
-def test_main_stalled_json_survives_stall_metadata_write_failure(
+def test_main_stalled_metadata_write_failure_surfaces_internal_error(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -2265,9 +2263,9 @@ def test_main_stalled_json_survives_stall_metadata_write_failure(
     rc = ship.main(["--tmpdir", str(tmp_path), "--manifest-path", str(tmp_path / "manifest.json")])
     captured = capsys.readouterr()
     payload = json.loads(captured.out)
-    assert rc == config.OUTCOME_EXIT_MAP[Outcome.STALLED]
-    assert payload["outcome"] == "STALLED"
-    assert payload["detail"] == "ensure-pr"
+    assert rc == config.OUTCOME_EXIT_MAP[Outcome.INTERNAL_ERROR]
+    assert payload["outcome"] == "INTERNAL_ERROR"
+    assert payload["detail"] == "stall metadata gap-fill failed: blocked"
 
 
 def test_main_ensure_pr_stall_creates_finalize_state(
@@ -2326,6 +2324,22 @@ def test_ship_state_merge_preserves_orchestrator_keys(tmp_path: Path) -> None:
     assert "PR_NUMBER=12\n" in state
 
 
+def test_ship_state_read_error_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text("STALL_TRACKING=true\nEXPECTED_SESSION_ID=session-1\n", encoding="utf-8")
+
+    def fail_read(*_args: object, **_kwargs: object) -> str:
+        raise OSError("blocked")
+
+    monkeypatch.setattr(Path, "read_text", fail_read)
+
+    with pytest.raises(ShipError, match="cannot read existing ship state"):
+        ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
+            _ctx(tmp_path, state_file=str(state_file), pr_number=12),
+            phase="ci-initial",
+        )
+
+
 def test_invalid_tmpdir_writes_no_state_files(tmp_path: Path) -> None:
     invalid_tmpdir = tmp_path / ".." / "not-allowed"
     ctx = _ctx(tmp_path, tmpdir=str(invalid_tmpdir), state_file=str(invalid_tmpdir / "ship-pr-state.sh"))
@@ -2368,6 +2382,29 @@ def test_postmerge_flush_skip_writes_stall_shape(monkeypatch: pytest.MonkeyPatch
     state = state_file.read_text(encoding="utf-8")
     assert "PHASE=postmerge\n" in state
     assert "PHASE=done\n" not in state
+    assert "STALL_TRACKING=true\n" in state
+
+
+def test_postbump_stall_writes_terminal_finalize(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: StepResult(Outcome.OK))
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(
+        ship.finalize,
+        "postbump",
+        lambda *_a, **_k: type("R", (), {"outcome": Outcome.STALLED, "status": "rebase-failed", "detail": "conflict"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})())
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    finalize_state = ship.finalize.read_finalize_state(tmp_path / "finalize-state.sh")
+    assert finalize_state["STALL_TRACKING"] == "true"
+    assert finalize_state["STALL_STEP"] == "rebase-failed"
+    assert finalize_state["EXIT_CODE"] == "4"
+    state = state_file.read_text(encoding="utf-8")
+    assert "PHASE=rebase-failed\n" in state
     assert "STALL_TRACKING=true\n" in state
 
 

@@ -84,6 +84,12 @@ case "$TIMEOUT" in ''|*[!0-9]*|0) larch_err "revise-plan-with-waterfall.sh: --ti
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
+reject_crlf_path() {
+    case "$1" in
+        *$'\n'*|*$'\r'*) larch_err "revise-plan-with-waterfall.sh: path contains CR/LF"; exit 2 ;;
+    esac
+}
+
 canonical_path() {
     local path="$1" dir base target
     dir=$(dirname "$path")
@@ -104,6 +110,9 @@ canonical_path() {
 }
 
 CANONICAL_DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
+reject_crlf_path "$PLAN_FILE"
+reject_crlf_path "$FINDINGS_FILE"
+reject_crlf_path "$FEATURE_FILE"
 CANONICAL_PLAN_FILE=$(canonical_path "$PLAN_FILE")
 EXPECTED_PLAN_FILE="$CANONICAL_DESIGN_TMPDIR/plan.txt"
 if [[ "$CANONICAL_PLAN_FILE" != "$EXPECTED_PLAN_FILE" ]]; then
@@ -113,6 +122,18 @@ if [[ "$CANONICAL_PLAN_FILE" != "$EXPECTED_PLAN_FILE" ]]; then
     exit 2
 fi
 PLAN_FILE="$CANONICAL_PLAN_FILE"
+for _prompt_input in FINDINGS_FILE FEATURE_FILE; do
+    _value="${!_prompt_input}"
+    _flag_name="--findings-file"
+    [[ "$_prompt_input" == "FEATURE_FILE" ]] && _flag_name="--feature-file"
+    [[ -f "$_value" && ! -L "$_value" && -r "$_value" ]] || { larch_err "revise-plan-with-waterfall.sh: $_flag_name must be a readable regular non-symlink file"; exit 2; }
+    _canon=$(canonical_path "$_value")
+    case "$_canon" in
+        "$CANONICAL_DESIGN_TMPDIR"/*) ;;
+        *) larch_err "revise-plan-with-waterfall.sh: $_flag_name must resolve under DESIGN_TMPDIR"; exit 2 ;;
+    esac
+    printf -v "$_prompt_input" '%s' "$_canon"
+done
 DESIGN_TMPDIR="$CANONICAL_DESIGN_TMPDIR"
 
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$REPO_ROOT}"

@@ -112,6 +112,16 @@ read_lines_kv() {
     local key=$1 blob=$2
     printf '%s\n' "$blob" | awk -F= -v k="$key" '$1==k{print $2; exit}'
 }
+merge_replace_state_keys() {
+    local file=$1 blob=$2 tmp
+    tmp="${file}.tmp.$$"
+    awk -F= '$1 !~ /^(LINES_PR_NUMBER|LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/' "$file" >"$tmp"
+    {
+        printf 'LINES_PR_NUMBER=%s\n' "${PR_NUMBER:-0}"
+        printf '%s\n' "$blob" | awk -F= '$1 ~ /^(LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/ { print }'
+    } >>"$tmp"
+    mv -f "$tmp" "$file"
+}
 if [ "$REPO_UNAV" = "true" ]; then
     LINES_STATUS=unavailable
 else
@@ -119,10 +129,7 @@ else
     lines_blob=$("$PLUGIN_ROOT/scripts/compute-pr-line-counts.sh" --repo "$REPO" --pr-number "${PR_NUMBER:-0}")
     set -e
     if [ -f "$SHIP_PR_STATE" ] && [ -w "$SHIP_PR_STATE" ]; then
-        {
-            printf 'LINES_PR_NUMBER=%s\n' "${PR_NUMBER:-0}"
-            printf '%s\n' "$lines_blob" | awk -F= '$1 ~ /^(LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/ { print }'
-        } >>"$SHIP_PR_STATE"
+        merge_replace_state_keys "$SHIP_PR_STATE" "$lines_blob"
     fi
     LINES_STATUS=$(read_lines_kv LINES_STATUS "$lines_blob")
     CODE_ADDED=$(read_lines_kv CODE_ADDED "$lines_blob")

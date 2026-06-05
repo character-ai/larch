@@ -140,15 +140,25 @@ printf '%s
 printf '%s
 ' "$python_selector_window" | grep -Fq 'oos-filing' \
   || fail "Python selector window must include oos-filing routing"
+printf '%s
+' "$python_selector_window" | grep -Fq '4th failure → treat as Exit 4 stall and persist stall keys in `$IMPLEMENT_TMPDIR/ship-pr-state.sh`' \
+  || fail "Python selector window must pin fourth Exit 6 stall-state persistence"
 
 bash_matrix_gate_window=$(awk '
   /Apply the following exit matrix \*\*only when `LARCH_SHIP_PR_IMPL=bash`\*\*/ { in_region = 1 }
   in_region { print }
-  in_region && /Parse the process exit code and then read/ { exit }
+  in_region && /\*\*Exit 5\*\*/ { exit }
 ' "$SKILL_MD")
 printf '%s
 ' "$bash_matrix_gate_window" | grep -Fq 'Apply the following exit matrix **only when `LARCH_SHIP_PR_IMPL=bash`**' \
   || fail "SKILL.md must gate bash exit matrix behind LARCH_SHIP_PR_IMPL=bash"
+printf '%s
+' "$bash_matrix_gate_window" | grep -Fq 'Phase 4 exit 0 re-invokes the active Step 8+ selector: default Python foreground argv including `--state-file`, no `--resume-phase`; only when `LARCH_SHIP_PR_IMPL=bash`, re-invoke `ship-pr.sh --resume-phase ship-pr-rrr-phase14`' \
+  || fail "SKILL.md Exit 4 ship_pr_pre_push handoff must document Python selector plus bash-only --resume-phase"
+if printf '%s
+' "$bash_matrix_gate_window" | grep -Fq 'Phase 4 exit 0 re-invokes `ship-pr.sh --resume-phase ship-pr-rrr-phase14`'; then
+  fail "SKILL.md Exit 4 must not make bash --resume-phase the sole Phase 4 resume instruction"
+fi
 
 
 grep -Fq 'scripts/larch-log.sh' "$SKILL_MD" \
@@ -171,6 +181,26 @@ grep -Fq '### Step 18b — Teardown' "$SKILL_MD" \
   || fail "SKILL.md must retain Step 18b teardown heading"
 grep -Fq '⏩ 18a: stall recovery — no stall detected' "$SKILL_MD" \
   || fail "SKILL.md must retain the Step 18a no-stall fast-path line"
+step18_restore_window=$(awk '
+  /_restore_finalize=false/ { in_region = 1 }
+  in_region { print }
+  in_region && /implement-finalize.sh" teardown/ { exit }
+' "$SKILL_MD")
+printf '%s
+' "$step18_restore_window" | grep -Fq '_restore_finalize=false' \
+  || fail "SKILL.md Step 18 restore gate must initialize _restore_finalize"
+printf '%s
+' "$step18_restore_window" | grep -Fq '[ "${LARCH_SHIP_PR_IMPL:-python}" = "bash" ]' \
+  || fail "SKILL.md Step 18 restore gate must retain bash-only restore qualifier"
+printf '%s
+' "$step18_restore_window" | grep -Fq '_ship_stall_truthy' \
+  || fail "SKILL.md Step 18 restore gate must evaluate truthy stall tracking"
+printf '%s
+' "$step18_restore_window" | grep -Fq '_ship_bail_truthy' \
+  || fail "SKILL.md Step 18 restore gate must evaluate truthy bail user-input"
+printf '%s
+' "$step18_restore_window" | grep -Fq '[ "$_ship_step" != "$_final_step" ]' \
+  || fail "SKILL.md Step 18 restore gate must restore on differing STALL_STEP"
 STALL_RECOVERY_MD="$REPO_ROOT/skills/implement/references/stall-recovery.md"
 STALL_RECOVERY_HELPER_SH="$REPO_ROOT/skills/implement/scripts/stall-recovery-report.sh"
 grep -Fq 'BAIL_FAILURE_DETAIL_LOG' "$STALL_RECOVERY_MD" \

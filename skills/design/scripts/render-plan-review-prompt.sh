@@ -104,6 +104,33 @@ fi
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
+canonical_path() {
+    local path="$1" dir base
+    dir=$(dirname "$path")
+    base=$(basename "$path")
+    dir=$(cd "$dir" && pwd -P)
+    printf '%s/%s\n' "$dir" "$base"
+}
+
+validate_design_prompt_file() {
+    local path="$1" label="$2" canon design_canon
+    case "$path" in
+        *$'\n'*|*$'\r'*) larch_err "render-plan-review-prompt.sh: $label path contains CR/LF"; exit 2 ;;
+    esac
+    [[ -f "$path" && ! -L "$path" && -r "$path" ]] || { larch_err "render-plan-review-prompt.sh: $label must be a readable regular non-symlink file"; exit 2; }
+    design_canon="$(cd "$DESIGN_TMPDIR" && pwd -P)"
+    canon="$(canonical_path "$path")"
+    case "$canon" in
+        "$design_canon"/*) printf '%s\n' "$canon" ;;
+        *) larch_err "render-plan-review-prompt.sh: $label must resolve under DESIGN_TMPDIR"; exit 2 ;;
+    esac
+}
+
+PLAN_FILE="$(validate_design_prompt_file "$PLAN_FILE" "--plan-file")"
+if [[ -n "$FEATURE_FILE" ]]; then
+    FEATURE_FILE="$(validate_design_prompt_file "$FEATURE_FILE" "--feature-file")"
+fi
+
 redact_untrusted_stream() {
     "$REDACT_SECRETS_SH" | sed -E \
         -e 's/&/\&amp;/g' \

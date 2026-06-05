@@ -415,6 +415,18 @@ validate_tmpdir_write_file() {
     validate_tmpdir_path "$1" "$2" "$3" write "$4"
 }
 
+validate_optional_state_evidence_file() {
+    local path=$1 label=$2 size
+    [ -e "$path" ] || return 1
+    [ ! -L "$path" ] || { larch_err "stall-recovery-report.sh: symlinked $label"; exit 3; }
+    [ -f "$path" ] || { larch_err "stall-recovery-report.sh: $label must be regular"; exit 3; }
+    [ -r "$path" ] || { larch_err "stall-recovery-report.sh: $label must be readable"; exit 3; }
+    size=$(wc -c <"$path" 2>/dev/null | awk '{print $1}' || printf '65537')
+    case "$size" in ''|*[!0-9]*) size=65537 ;; esac
+    [ "$size" -le 65536 ] || { larch_err "stall-recovery-report.sh: $label exceeds 64KiB"; exit 3; }
+    return 0
+}
+
 read_validated_failure_detail_log() {
     local tmpdir=$1 path=$2
     validate_tmpdir_local_file "$tmpdir" "$path" "--failure-detail-log" || return 1
@@ -605,7 +617,7 @@ cmd_classify() {
         fi
     fi
 
-    if [ -r "$finalize_file" ]; then
+    if validate_optional_state_evidence_file "$finalize_file" "finalize-state.sh"; then
         finalize_stall_step=$(kv_get "$finalize_file" STALL_STEP "")
         finalize_stall_tracking=$(kv_get "$finalize_file" STALL_TRACKING "false")
         finalize_exit_code=$(kv_get "$finalize_file" EXIT_CODE "")

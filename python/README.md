@@ -15,8 +15,9 @@ Flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3.11). `
 - `rebase.py` — CI-fix rebase decision and verification surfaces used by the default Python ship driver.
 - `checks.py` — local relevant-checks runner and lint-fix loop (Phase 4); local
   fixer dispatch does **not** call `agents.classify_launch_failure` (bash #3207 parity)
-- `ci_monitor.py` — Phase 6 CI poll + classify + collect + fixer-waterfall + GOTO-Rebase signal
-  (not wired into the live `/implement` path until Phase 7)
+- `ci_monitor.py` — live on the default Python Step 8+ path; `python/ship.py` calls it from
+  the merge loop after PR creation to poll CI, classify failures, collect failed-job data,
+  run the fixer waterfall, and return the GOTO-Rebase signal.
 - **Phase 5** (live via default Python ship driver): `run_logs.py`, `tokens.py`, `tracking_issue.py`,
   `pr_body.py`, `push.py`, `pr.py`, `oos.py`, `merge.py` — PR/merge/logging ports with split
   `flush_logs_pre` (may commit log batches) vs `flush_logs_post` (tmpdir-only). `merge.py`
@@ -64,9 +65,19 @@ files plus the `ship-pr-rrr-phase14` / `ship_pr_pre_push` tokens. Bump-only or
 mixed conflicts, conflicts that remain after a tier reported success, and flag
 write failures all raise plain `Stalled` instead.
 
-Phase 7 driver wiring remains deferred: no Python path currently emits exit 4,
-writes `RESUME_PHASE` / `CALLER_KIND` state, emits `CONFLICT_FILES`, or parses
-`--resume-phase ship-pr-rrr-phase14`.
+`python/ship.py` now persists the handoff state for the default path. The
+`PrePushConflictHandoff` handler writes `RESUME_PHASE=ship-pr-rrr-phase14`,
+`CALLER_KIND=ship_pr_pre_push`, and `CONFLICT_FILES` to `ship-pr-state.sh`, then
+returns the normal stalled JSON/exit-4 contract. After the prompt-side
+`skills/implement/references/conflict-resolution.md` Phase 1-4 procedure
+succeeds, re-invoking the Python selector without `--resume-phase` sees
+`ship-pr-rrr-after-phase14.flag`, re-enters `run_rebase_rebump` through
+`rebase.rebase_and_push`, clears the flag plus resume tokens after a successful
+force-push, and continues CI/merge processing. If the resume tokens exist but
+the flag is absent, the Python path still returns
+`needs_user_reason=unsupported-rebase-continuation` so stale or partial handoffs
+fail closed. See `skills/implement/references/conflict-resolution.md` and issue
+`#3404` for the cross-driver handoff contract.
 
 ## Phase 1 wiring outside `python/`
 
