@@ -192,7 +192,7 @@ recover_main_agent_scope_anchor() {
     emit_kv WARN "Step 3: main-agent-vote-required without valid SCOPE_ANCHOR_FILE"
     LOOP_STATUS=panel-failed
     TALLY_PLAN_REVIEW_STATUS=panel-failed
-    return 1
+    return 0
 }
 
 _round_count=0

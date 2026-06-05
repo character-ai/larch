@@ -14,13 +14,13 @@ design_round_artifact_included() {
         *-output.txt.prompt|*-output.txt.meta|*-output.txt.json|*-output.txt.cap-hit|*-vote-prompt.txt)
             return 1
             ;;
-        findings.md|findings-in-scope.md|findings-oos.md|findings-classification.tsv)
+        findings.md|findings-in-scope.md|findings-in-scope.pre-dedup.md|findings-oos.md|findings-classification.tsv)
             return 0
             ;;
         accepted-plan-findings.md|rejected-findings.md|oos.md|oos-accepted-design.md|ballot.txt|voting-tally.md)
             return 0
             ;;
-        plan-review-slots.ndjson|plan-voter-slots.ndjson|scout-plan-manifest.json|round-summary.env|round-start-s|plan.txt)
+        plan-review-slots.ndjson|plan-voter-slots.ndjson|scout-plan-manifest.json|round-summary.env|round-start-s|plan.txt|plan-review-scope-anchor.txt)
             return 0
             ;;
         *-vote-output.txt|*-vote-output-first-pass.txt)

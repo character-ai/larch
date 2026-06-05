@@ -70,7 +70,7 @@ PYEOF
 }
 
 
-# is_scope_reduction_block: 0 (true) when the block has a leading
+# is_scope_reduction_block: 0 (true) when the block file has a leading
 # [SCOPE-REDUCTION] marker in its normalized problem field. The canonical
 # detector strips fenced code, inline code, and one leading severity bracket.
 is_scope_reduction_block() {

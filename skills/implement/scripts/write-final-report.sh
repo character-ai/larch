@@ -115,41 +115,14 @@ read_lines_kv() {
 if [ "$REPO_UNAV" = "true" ]; then
     LINES_STATUS=unavailable
 else
-    cached_lines_blob=""
-    if [ -f "$SHIP_PR_STATE" ]; then
-        cached_lines_blob=$(awk -F= -v pr="${PR_NUMBER:-0}" '
-            function flush() {
-                if (seen && block_pr == pr && status == "ok") {
-                    best = blob
-                }
-            }
-            $1=="LINES_PR_NUMBER" {
-                flush()
-                seen=1
-                block_pr=$2
-                status=""
-                blob=""
-                next
-            }
-            seen && $1 ~ /^(LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/ {
-                if ($1 == "LINES_STATUS") status=$2
-                blob = blob $0 "\n"
-            }
-            END { flush(); printf "%s", best }
-        ' "$SHIP_PR_STATE")
-    fi
-    if [ -n "$cached_lines_blob" ]; then
-        lines_blob="$cached_lines_blob"
-    else
-        set +e
-        lines_blob=$("$PLUGIN_ROOT/scripts/compute-pr-line-counts.sh" --repo "$REPO" --pr-number "${PR_NUMBER:-0}")
-        set -e
-        if [ -f "$SHIP_PR_STATE" ] && [ -w "$SHIP_PR_STATE" ]; then
-            {
-                printf 'LINES_PR_NUMBER=%s\n' "${PR_NUMBER:-0}"
-                printf '%s\n' "$lines_blob" | awk -F= '$1 ~ /^(LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/ { print }'
-            } >>"$SHIP_PR_STATE"
-        fi
+    set +e
+    lines_blob=$("$PLUGIN_ROOT/scripts/compute-pr-line-counts.sh" --repo "$REPO" --pr-number "${PR_NUMBER:-0}")
+    set -e
+    if [ -f "$SHIP_PR_STATE" ] && [ -w "$SHIP_PR_STATE" ]; then
+        {
+            printf 'LINES_PR_NUMBER=%s\n' "${PR_NUMBER:-0}"
+            printf '%s\n' "$lines_blob" | awk -F= '$1 ~ /^(LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/ { print }'
+        } >>"$SHIP_PR_STATE"
     fi
     LINES_STATUS=$(read_lines_kv LINES_STATUS "$lines_blob")
     CODE_ADDED=$(read_lines_kv CODE_ADDED "$lines_blob")

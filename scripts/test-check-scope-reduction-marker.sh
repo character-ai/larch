@@ -22,6 +22,7 @@ assert_rc() {
 }
 
 assert_rc "leading Concern marker" 0 $'### FINDING_1:\n- **Concern**: [SCOPE-REDUCTION] remove extra work'
+assert_rc "plain Concern marker" 0 $'### FINDING_1:\n- Concern: [SCOPE-REDUCTION] remove extra work'
 assert_rc "leading what marker" 0 $'what: [SCOPE-REDUCTION] reduce scope'
 assert_rc "leading heading marker" 0 $'### FINDING_1: [SCOPE-REDUCTION] reduce scope\n- **Concern**: details'
 assert_rc "OOS heading marker ignored" 1 $'### OOS_1: [SCOPE-REDUCTION] no special handling\n- **Description**: details'

@@ -774,7 +774,8 @@ _run_post_apply_pipeline() {
 _terminal_exit() {
     local rc="$1" rounds_completed="$2"
     if ! write_step3_result_env "$rounds_completed"; then
-        emit_kv WARN "plan-review-loop: failed to write .step3-plan-review-result.env; continuing with terminal stdout KVs"
+        emit_kv WARN "plan-review-loop: failed to write .step3-plan-review-result.env"
+        exit 2
     fi
     emit_loop_kvs "$LOOP_STATUS" "$ACCEPTED_COUNT" "$DEGRADED_PANEL" "$AGGREGATOR_STATUS" \
         "$TALLY_PLAN_REVIEW_STATUS" "$VOTING_TALLY_FILE" "$VOTER_1_PARSE_RATE_STATUS" "$rounds_completed"
@@ -1475,12 +1476,13 @@ sys.exit(0)
 PY
 _parity_rc=$?
 set -e
-if [[ "$_parity_rc" -eq 2 ]]; then
-    larch_err "plan-review-dedup: scope marker helper failed during parity check"
-    exit 2
-elif [[ "$_parity_rc" -ne 0 ]]; then
+if [[ "$_parity_rc" -ne 0 ]]; then
     cp -f "$DESIGN_TMPDIR/findings-in-scope.pre-dedup.md" "$DESIGN_TMPDIR/findings-in-scope.md"
-    emit_kv WARN "plan-review-dedup: scope-reduction marker parity failed; using pre-dedup in-scope findings"
+    if [[ "$_parity_rc" -eq 2 ]]; then
+        emit_kv WARN "plan-review-dedup: scope marker helper failed during parity check; using pre-dedup in-scope findings"
+    else
+        emit_kv WARN "plan-review-dedup: scope-reduction marker parity failed; using pre-dedup in-scope findings"
+    fi
 fi
 
 AGGREGATOR_STATUS="ok"

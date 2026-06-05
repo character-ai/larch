@@ -88,6 +88,18 @@ grep -Fq 'OOS_COUNT=1' <<< "$out"
 grep -Fq 'correctness: scripts/foo.sh:42' "$TMP/findings-inline-tsv.md"
 grep -Fq 'code-quality: scripts/bar.sh:10' "$TMP/findings-inline-tsv.md"
 grep -Fq '[OUT_OF_SCOPE] code-quality: scripts/bar.sh:10' "$TMP/oos-inline-tsv.md"
+
+scope_marker="$TMP/codex-scope-marker-output.txt"
+cat > "$scope_marker" <<'EOF'
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	code-quality	skills/design/SKILL.md:1	[SCOPE-REDUCTION] Remove unrelated plan work	Plan exceeds originating issue scope	Trim the extra work
+EOF
+out=$(WAIT_FOR_REVIEWERS_POLL_INTERVAL=0.01 "$SCRIPT" --external-output-files "$scope_marker" --mode description --timeout 1 --findings-file "$TMP/findings-scope-marker.md" --oos-file "$TMP/oos-scope-marker.md")
+assert_stdout_cap "$out"
+grep -Fq 'FINDINGS_COUNT=1' <<< "$out"
+grep -Fq '[SCOPE-REDUCTION] Remove unrelated plan work' "$TMP/findings-scope-marker.md"
+"$REPO_ROOT/scripts/check-scope-reduction-marker.sh" --file "$TMP/findings-scope-marker.md" \
+    || { echo "FAIL: collected scope-reduction marker should remain detectable" >&2; exit 1; }
 # collect-findings pins LARCH_QUIET_DISABLE=1 on the collector so §3.8 larch_err lines reach the tee.
 # shellcheck disable=SC2016 # single-quoted grep literal matches unexpanded "$PLUGIN_ROOT" in source
 if ! grep -Fq 'LARCH_QUIET_DISABLE=1 "$PLUGIN_ROOT/scripts/collect-agent-results.sh"' "$SCRIPT"; then
