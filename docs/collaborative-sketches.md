@@ -12,7 +12,7 @@ The sketch phase runs the topology selected by `/design`'s run-depth router. Per
 
 ### Simple Mode
 
-For SIMPLE work, `/design` uses [0 sketch agents](topology.md#design.sketch.simple_slots). It writes sentinel synthesis artifacts and proceeds directly to plan writing; no collector runs on this path.
+For SIMPLE work, `/design` uses [0 sketch agents](topology.md#design.sketch.simple_slots). The Step 2a entry fence is the sole write site for SIMPLE sentinel synthesis artifacts and completion markers; after that, the flow proceeds directly to plan writing and no collector runs on this path.
 
 ### Hard Mode
 
@@ -52,7 +52,7 @@ The handling of unavailable external tools differs across workflow phases:
 ```text
 flowchart TD
     START([Feature description]) --> TIER{Design tier}
-    TIER -->|SIMPLE| SIMPLE_SENTINEL[Write SIMPLE sentinel artifacts]
+    TIER -->|SIMPLE| SIMPLE_SENTINEL[Step 2a entry fence writes SIMPLE sentinel artifacts]
     TIER -->|HARD| HARD_LAUNCH[Launch 4 personality sketches]
     HARD_LAUNCH --> HARD_WAIT[Wait for sketches]
     HARD_WAIT --> SYNTHESIS[Approach synthesis]
@@ -64,7 +64,7 @@ flowchart TD
     PLAN --> REVIEW[Full plan review panel]
 ```
 
-1. **Parallel launch** — HARD launches all **available** external sketches simultaneously: all Cursor slots first (slowest), then all Codex slots; a slot whose tool is unavailable is skipped (no Claude substitution, #3207). SIMPLE launches nothing and writes sentinel artifacts instead.
+1. **Parallel launch** — HARD launches all **available** external sketches simultaneously: all Cursor slots first (slowest), then all Codex slots; a slot whose tool is unavailable is skipped (no Claude substitution, #3207). SIMPLE launches nothing; the Step 2a entry fence has already written the sentinel artifacts.
 
 2. **Each agent produces** a short sketch covering:
    - Key architectural decisions and approach

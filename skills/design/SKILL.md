@@ -101,7 +101,7 @@ Consolidated NEVER rules collected from the procedural steps below. Each rule st
 
 Read `skills/design/references/readability-style.md` as the single source of style truth before composing user-facing `/design` prose.
 
-1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE` (write `NO_SKETCHES_CLASSIFIED_SIMPLE` sentinel); HARD always runs 4 personality sketches. SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
+1. **NEVER skip Step 2a** (the sketch phase), except for SIMPLE. **Why:** anchoring bias locks architectural direction before alternatives are considered. **How to apply:** Skip sketches only when `design_classification == SIMPLE`; the Step 2a entry fence is the only place that writes `NO_SKETCHES_CLASSIFIED_SIMPLE`, related SIMPLE artifacts, and `.completed/step-2a` / `.completed/step-2a.5` markers. HARD always runs 4 personality sketches. SIMPLE's no-sketch path is the user-confirmed minimum-change carve-out.
 
 2. **NEVER substitute Claude into a dialectic debate as the PRIMARY or 1ST-RETRY debater.** **Why:** the debate path uses externals (Cursor/Codex) because model-specific writing style could encode tool identity into adversarial arguments; see GitHub issue #98. **How to apply:** the original launch and the 1st-retry launch in the per-side waterfall both target external tools only. **Exception:** Claude IS permitted as the 2nd-retry (FINAL) waterfall step for a side that has already failed with both externals — this trades a small attribution-leak risk for the chance to actually hear the antithesis instead of always defaulting to synthesis. The judge-panel path remains under the repo-wide replacement-first pattern (Claude permitted as a panel slot per `dialectic-protocol.md`).
 
@@ -755,9 +755,7 @@ LARCH_TIMING_SKILL=design "${CLAUDE_PLUGIN_ROOT}/scripts/timing-ledger.sh" mark 
 
 Print: `> **🔶 /design 2a.5: dialectic**`
 
-If `design_classification == SIMPLE`, print `⏩ 2a.5: dialectic — skipped (SIMPLE) (<elapsed>)` and proceed directly to Step 2b. Do NOT load `dialectic-execution.md`. On fresh SIMPLE runs, `.completed/step-2a.5` and `.completed/step-2a` were already written by the Step 2a entry fence.
-
-For pre-existing paused SIMPLE runs where `.completed/step-2a` exists but `.completed/step-2a.5` is absent, write only the missing Step 2a.5 completion marker; do not re-write SIMPLE artifacts (the artifact write site is entry-fence-only):
+Before taking the SIMPLE skip, repair pre-existing paused SIMPLE runs where `.completed/step-2a` exists but `.completed/step-2a.5` is absent: write only the missing Step 2a.5 completion marker; do not re-write SIMPLE artifacts (the artifact write site is entry-fence-only):
 
 ```bash
 [ -f ~/.cache/larch/sessions/current-design-env-$PPID.sh ] && source ~/.cache/larch/sessions/current-design-env-$PPID.sh
@@ -768,6 +766,8 @@ if [ "$_design_classification" = SIMPLE ] && [ -f "$DESIGN_TMPDIR/.completed/ste
   : > "$DESIGN_TMPDIR/.completed/step-2a.5"
 fi
 ```
+
+If `design_classification == SIMPLE`, print `⏩ 2a.5: dialectic — skipped (SIMPLE) (<elapsed>)` and proceed directly to Step 2b. Do NOT load `dialectic-execution.md`. On fresh SIMPLE runs, `.completed/step-2a.5` and `.completed/step-2a` were already written by the Step 2a entry fence; legacy SIMPLE resumes are repaired by the guard above before this skip.
 
 Read `$DESIGN_TMPDIR/contested-decisions.md`. If the file contains only `NO_CONTESTED_DECISIONS` (ignoring leading/trailing whitespace and newlines), print `⏩ 2a.5: dialectic — no contested decisions (<elapsed>)` and IMMEDIATELY proceed to Step 2b — do NOT halt after the skip breadcrumb.
 

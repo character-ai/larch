@@ -238,6 +238,14 @@ out_legacy_simple_2a=$(bash "$SAVE" --design-tmpdir "$DESIGN_LEGACY_SIMPLE" --is
 [[ "$out_legacy_simple_2a" == *"PAUSE_OK=true"* && "$out_legacy_simple_2a" == *"STEP=2a.5"* ]] || fail "old SIMPLE state with step-2a only should resume at Step 2a.5 compatibility guard: $out_legacy_simple_2a"
 out_legacy_simple_2a_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-legacy-simple-2a" --issue 9 --repo owner/repo)
 [[ "$out_legacy_simple_2a_load" == *"LOAD_OK=true"* && "$out_legacy_simple_2a_load" == *"STEP=2a.5"* ]] || fail "old SIMPLE step-2a-only load mismatch: $out_legacy_simple_2a_load"
+DESIGN_TMPDIR="$DESIGN_LEGACY_SIMPLE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+_design_classification="$("${CLAUDE_PLUGIN_ROOT}/scripts/read-design-classification.sh" "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || printf "%s\n" HARD)"
+if [ "$_design_classification" = SIMPLE ] && [ -f "$DESIGN_TMPDIR/.completed/step-2a" ] && [ ! -f "$DESIGN_TMPDIR/.completed/step-2a.5" ]; then
+  mkdir -p "$DESIGN_TMPDIR/.completed"
+  : > "$DESIGN_TMPDIR/.completed/step-2a.5"
+fi
+'
+[[ -f "$DESIGN_LEGACY_SIMPLE/.completed/step-2a.5" ]] || fail "old SIMPLE Step 2a.5 compatibility guard did not write marker"
 
 echo "=== legacy Step 3b marker without finalize resumes at Step 4 ==="
 DESIGN_LEGACY_FINALIZE="$TMP/design-legacy-finalize"
@@ -249,6 +257,43 @@ out_legacy_finalize=$(bash "$SAVE" --design-tmpdir "$DESIGN_LEGACY_FINALIZE" --i
 [[ "$out_legacy_finalize" == *"PAUSE_OK=true"* && "$out_legacy_finalize" == *"STEP=4"* ]] || fail "old step-3b without finalize should resume at Step 4 compatibility guard: $out_legacy_finalize"
 out_legacy_finalize_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-legacy-finalize" --issue 9 --repo owner/repo)
 [[ "$out_legacy_finalize_load" == *"LOAD_OK=true"* && "$out_legacy_finalize_load" == *"STEP=4"* ]] || fail "old step-3b without finalize load mismatch: $out_legacy_finalize_load"
+printf '12\n' >"$DESIGN_LEGACY_FINALIZE/diff-lines.txt"
+DESIGN_TMPDIR="$DESIGN_LEGACY_FINALIZE" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
+  set +e
+  printf "%s\n" "ACTION=FINALIZE" \
+    | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+  _finalize_rc=$?
+  set -e
+  if [ "$_finalize_rc" -ne 0 ]; then
+    printf "%s\n" "**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"
+    exit "$_finalize_rc"
+  fi
+fi
+'
+[[ -f "$DESIGN_LEGACY_FINALIZE/.completed/finalize" ]] || fail "old Step 4 FINALIZE compatibility guard did not write finalize marker"
+
+DESIGN_LEGACY_FINALIZE_FAIL="$TMP/design-legacy-finalize-fail"
+make_design_tmpdir "$DESIGN_LEGACY_FINALIZE_FAIL"
+complete_design_steps "$DESIGN_LEGACY_FINALIZE_FAIL" 1c 1d 1d.5 1d.7 1e 2a 2a.5 2b 2b.5 3 3.5 3.6 3b
+set +e
+out_legacy_finalize_fail=$(DESIGN_TMPDIR="$DESIGN_LEGACY_FINALIZE_FAIL" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" bash -euo pipefail -c '
+if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
+  set +e
+  printf "%s\n" "ACTION=FINALIZE" \
+    | "${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-driver.sh" --design-tmpdir "$DESIGN_TMPDIR"
+  _finalize_rc=$?
+  set -e
+  if [ "$_finalize_rc" -ne 0 ]; then
+    printf "%s\n" "**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"
+    exit "$_finalize_rc"
+  fi
+fi
+' 2>&1)
+rc_legacy_finalize_fail=$?
+set -e
+[[ "$rc_legacy_finalize_fail" -ne 0 ]] || fail "old Step 4 FINALIZE failure guard should exit non-zero"
+[[ "$out_legacy_finalize_fail" == *"**⚠ FINALIZE failed; repair the missing artifact before Step 5.**"* ]] || fail "old Step 4 FINALIZE failure warning missing: $out_legacy_finalize_fail"
 
 echo "=== step 3.6 and gate B bypass pause resume ==="
 DESIGN_36="$TMP/design-36"

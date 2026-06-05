@@ -185,12 +185,15 @@ assert_no_direct_step3b_step4_routes() {
     scoped=true
   fi
   bad=$(awk '
-    BEGIN { IGNORECASE=1 }
-    /Step 3b completion boundary/ { next }
-    /Step 3b[[:space:]]*(→|->|, then|,|\/)[[:space:]]*Step 4/ { print; next }
-    /Step 3b\/4/ { print; next }
-    /Step 3b[[:space:]]+\/[[:space:]]+Step 4/ { print; next }
-    /(continue|proceed|auto-continue|route|jump|enter|go)/ && /Step 3b/ && /Step 4/ { print; next }
+    {
+      line = $0
+      lower = tolower($0)
+    }
+    lower ~ /step 3b completion boundary/ { next }
+    lower ~ /step 3b[[:space:]]*(→|->|, then|,|\/)[[:space:]]*step 4/ { print line; next }
+    lower ~ /step 3b\/4/ { print line; next }
+    lower ~ /step 3b[[:space:]]+\/[[:space:]]+step 4/ { print line; next }
+    lower ~ /(continue|proceed|auto-continue|route|jump|enter|go)/ && lower ~ /step 3b/ && lower ~ /step 4/ { print line; next }
   ' "$tmp")
   [[ -z "$bad" ]] || fail "$label has direct Step 3b-to-Step 4 route without completion boundary: $bad"
   [[ "$scoped" == false ]] || rm -f "$tmp"
