@@ -1573,11 +1573,11 @@ When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=true`, the
 
 `➡️ 5: finalize — plan written to issue #<N>; NEXT REQUIRED: continue`
 
-When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and the issue title is confirmed `[DESIGNED]` (`DESIGNED_ADMISSION_READY=true`, derived from `RENAMED=true` or idempotent `RENAMED=false` with `NEW_TITLE` already prefixed `[DESIGNED]`), the footer line is:
+When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and the issue title is confirmed `[DESIGNED]` with the diagram upsert confirmed when it ran (`DESIGNED_ADMISSION_READY=true`, derived from `RENAMED=true` or idempotent `RENAMED=false` with `NEW_TITLE` already prefixed by `[DESIGNED]` plus a required space, and forced false when `UPSERT_RAN=true && UPSERT_STATUS!=ok`), the footer line is:
 
 `➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] is set; log publish incomplete; retry log publish manually from the preserved $DESIGN_TMPDIR before /implement when the session may contain secrets; NEXT REQUIRED: continue`
 
-When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and the issue title is not confirmed `[DESIGNED]` (`DESIGNED_ADMISSION_READY` is not `true`), the footer line is:
+When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, `PUBLISH_OK=false`, and the issue title is not confirmed `[DESIGNED]` or the diagram upsert was not confirmed (`DESIGNED_ADMISSION_READY` is not `true`), the footer line is:
 
 `➡️ 5: finalize — plan written to issue #<N>; [DESIGNED] rename not confirmed; log publish incomplete; fix the issue title before /implement and retry log publish manually from the preserved $DESIGN_TMPDIR; NEXT REQUIRED: continue`
 

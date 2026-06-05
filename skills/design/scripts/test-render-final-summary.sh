@@ -549,7 +549,13 @@ DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-RECOVERY" \
     "$SUBJECT" --outcome failed-publish --mode SIMPLE --post-publish-only >"$failed_publish_not_ready_stdout" 2>/dev/null
 grep -Fq -- '- **Publish recovery**: design logs did not finish publishing and the [DESIGNED] rename was not confirmed; fix the issue title before /implement, then retry logs manually from the preserved design tmpdir.' "$D/final-summary.md" || fail 'failed-publish missing rename-not-confirmed recovery guidance'
 cmp -s "$D/final-summary.md" "$failed_publish_not_ready_stdout" || fail 'failed-publish not-ready stdout/file mismatch'
-unset DESIGN_LOG_PR_NUMBER DESIGN_LOG_PR_URL DESIGN_LOG_RECOVERY_BRANCH RENAMED DESIGNED_ADMISSION_READY
+failed_publish_diagram_stdout="$TMP/std-failed-publish-diagram.log"
+RENAMED=true UPSERT_RAN=true UPSERT_STATUS=failed \
+DESIGN_TMPDIR="$D" ISSUE_NUMBER="" SESSION_ID="RUN-RECOVERY" \
+    "$SUBJECT" --outcome failed-publish --mode SIMPLE --post-publish-only >"$failed_publish_diagram_stdout" 2>/dev/null
+grep -Fq -- "- **Publish recovery**: design logs did not finish publishing and the issue title is [DESIGNED], but the diagram comment was not confirmed; verify or repair \`larch:diagrams\` before starting /implement, then retry logs manually from the preserved design tmpdir." "$D/final-summary.md" || fail 'failed-publish missing diagram recovery guidance'
+cmp -s "$D/final-summary.md" "$failed_publish_diagram_stdout" || fail 'failed-publish diagram stdout/file mismatch'
+unset DESIGN_LOG_PR_NUMBER DESIGN_LOG_PR_URL DESIGN_LOG_RECOVERY_BRANCH RENAMED DESIGNED_ADMISSION_READY UPSERT_RAN UPSERT_STATUS
 pass 'failed-publish recovery bullets'
 
 cp "$ROOT/scripts/render-run-summary.sh" "$PLUGIN_STUB/scripts/render-run-summary.sh"

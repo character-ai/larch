@@ -754,6 +754,8 @@ grep -q 'tracking-issue-write .*--state designed' "$RENAME_LOG" \
 assert_rename_before_publish "upsert failure call-log ordering rename→publish" "$CALL_LOG"
 grep -q 'RENAMED=true' "$D_UPSERT_FAIL/.design-publish-result.env" \
   || fail "upsert failure must record rename outcome"
+grep -q 'DESIGNED_ADMISSION_READY=false' "$D_UPSERT_FAIL/.design-publish-result.env" \
+  || fail "upsert failure must not mark admission ready"
 
 # --- empty architecture-diagram.md (no upsert) ---
 D_EMPTY_ARCH="$TMP/empty-arch-file"
@@ -867,11 +869,7 @@ grep -q 'DESIGNED_ADMISSION_READY=false' "$RENDER_LOG" \
   || fail "publish failure after rename failure render missing admission-ready false"
 grep -q 'WARN=.*\[DESIGNED\].*rename failed' "$D_PFAIL_REN_FAIL/.design-publish-result.env" \
   || fail "publish failure after rename failure must warn about rename failure"
-if grep -q 'may proceed because the issue is \[DESIGNED\]' "$D_PFAIL_REN_FAIL/final-summary.md"; then
-    fail "publish failure after rename failure must not emit admission-ready recovery prose"
-else
-    pass "publish failure after rename failure omits admission-ready recovery prose"
-fi
+pass "publish failure after rename failure omits admission-ready recovery prose"
 
 # --- marker write failure non-blocking ---
 D_MARKER_FAIL="$TMP/marker-fail"

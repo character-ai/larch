@@ -46,8 +46,6 @@ parse_kv_from_output() {
             PR_NUMBER) PR_NUMBER="$_value" ;;
             PR_URL) PR_URL="$_value" ;;
             RECOVERY_BRANCH) RECOVERY_BRANCH="$_value" ;;
-            RENAMED) RENAMED="$_value" ;;
-            NEW_TITLE) NEW_TITLE="$_value" ;;
             UPSERT_STATUS) UPSERT_STATUS="$_value" ;;
             ARCHITECTURE_SOURCE) ARCHITECTURE_SOURCE="$_value" ;;
             VALIDATE_STATUS) VALIDATE_STATUS="$_value" ;;
@@ -199,12 +197,15 @@ publish_recovery_detail() {
 
 renamed_admission_ready() {
     [[ "${RENAMED:-}" == true ]] && return 0
-    [[ "${RENAMED:-}" == false && "${NEW_TITLE:-}" == "[DESIGNED]"* ]] && return 0
+    [[ "${RENAMED:-}" == false && "${NEW_TITLE:-}" == "[DESIGNED] "* ]] && return 0
     return 1
 }
 
 refresh_designed_admission_ready() {
     DESIGNED_ADMISSION_READY=false
+    if [[ "${UPSERT_RAN:-}" == true && "${UPSERT_STATUS:-}" != ok ]]; then
+        return 0
+    fi
     if renamed_admission_ready; then
         DESIGNED_ADMISSION_READY=true
     fi
@@ -468,6 +469,8 @@ export DESIGN_LOG_PR_URL="${PR_URL:-}"
 export DESIGN_LOG_RECOVERY_BRANCH="${RECOVERY_BRANCH:-}"
 export RENAMED="${RENAMED:-}"
 export NEW_TITLE="${NEW_TITLE:-}"
+export UPSERT_RAN="${UPSERT_RAN:-false}"
+export UPSERT_STATUS="${UPSERT_STATUS:-}"
 refresh_designed_admission_ready
 export DESIGNED_ADMISSION_READY
 "${PLUGIN_ROOT}/skills/design/scripts/render-final-summary.sh" \

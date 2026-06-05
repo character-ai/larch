@@ -334,8 +334,10 @@ append_failed_publish_notes() {
             printf -- '- **Log flush PR**: %s\n' "$DESIGN_LOG_PR_URL" >>"$out"
         fi
     fi
-    if [ "${DESIGNED_ADMISSION_READY:-false}" = true ] || [ "${RENAMED:-}" = true ]; then
+    if [ "${DESIGNED_ADMISSION_READY:-false}" = true ] || { [ "${RENAMED:-}" = true ] && { [ "${UPSERT_RAN:-false}" != true ] || [ "${UPSERT_STATUS:-}" = ok ]; }; }; then
         printf -- '- **Publish recovery**: design logs did not finish publishing and the issue is [DESIGNED]; retry log publish from the preserved design tmpdir before starting /implement when the session may contain secrets.\n' >>"$out"
+    elif { [ "${RENAMED:-}" = true ] || { [ "${RENAMED:-}" = false ] && [ "${NEW_TITLE#"[DESIGNED] "}" != "$NEW_TITLE" ]; }; } && [ "${UPSERT_RAN:-false}" = true ] && [ "${UPSERT_STATUS:-}" != ok ]; then
+        printf -- "%s\n" "- **Publish recovery**: design logs did not finish publishing and the issue title is [DESIGNED], but the diagram comment was not confirmed; verify or repair \`larch:diagrams\` before starting /implement, then retry logs manually from the preserved design tmpdir." >>"$out"
     else
         printf -- '- **Publish recovery**: design logs did not finish publishing and the [DESIGNED] rename was not confirmed; fix the issue title before /implement, then retry logs manually from the preserved design tmpdir.\n' >>"$out"
     fi

@@ -1435,10 +1435,10 @@ grep -Fq 'render-final-summary.sh' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must invoke render-final-summary.sh"
 # shellcheck disable=SC2016 # Markdown literal intentionally contains $DESIGN_TMPDIR.
 grep -Fq '[DESIGNED] is set; log publish incomplete; retry log publish manually from the preserved $DESIGN_TMPDIR before /implement when the session may contain secrets' "$SKILL_MD" \
-  || fail "(FINDING_6) SKILL.md missing RENAMED/admission-ready failed-publish footer"
+  || fail "(26) SKILL.md missing RENAMED/admission-ready failed-publish footer"
 # shellcheck disable=SC2016 # Markdown literal intentionally contains $DESIGN_TMPDIR.
 grep -Fq '[DESIGNED] rename not confirmed; log publish incomplete; fix the issue title before /implement and retry log publish manually from the preserved $DESIGN_TMPDIR' "$SKILL_MD" \
-  || fail "(FINDING_6) SKILL.md missing rename-not-confirmed failed-publish footer"
+  || fail "(27) SKILL.md missing rename-not-confirmed failed-publish footer"
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 grep -Fq 'phase_driver_write_result_env "$RESULT_ENV"' "$DESIGN_PUBLISH_SH" \
   || fail "(15b) design-publish.sh must write result env via phase_driver_write_result_env"
