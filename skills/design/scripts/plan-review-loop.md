@@ -105,3 +105,9 @@ Each Step 3 entry clears `plan-review/round-*/` before launch (SKILL.md); prior 
 Keep this file aligned with `plan-review-loop.sh` behavior and argv.
 
 Multi-round mode records one best-effort design plan-review timing `round` row per completed round. Terminal exits emit through `_snapshot_terminal_exit_preserving_status`; `main-agent-vote-required` persists `round-start-s` under `plan-review/round-N/` and defers emission to `skills/design/SKILL.md` after inline re-tally.
+
+## Scope anchor and scope-reduction preservation
+
+Each plan-review run materializes `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` from the originating feature text after `scripts/plan-block-strip-body.sh` removes any prior `larch:plan` block. An approved `design-outline.md` is appended only when `.outline-approved` exists. Brainstorm synthesis is written to `plan-review-feature-context.txt` as optional non-binding context and is not used as the binding scout/reviewer/voter/revise anchor. The loop emits `SCOPE_ANCHOR_FILE` through `emit_loop_kvs` and `.step3-plan-review-result.env` for durable Step 3 handoff.
+
+Collected in-scope findings are snapshotted to `findings-in-scope.pre-dedup.md` before Jaccard dedup. Dedup uses the canonical scope-reduction marker detector, strips severity and `[SCOPE-REDUCTION]` only for comparison, preserves tagged bodies when merging with untagged duplicates, and falls back to the pre-dedup in-scope snapshot if post-dedup tagged parity fails. Ballot input is sequentially renumbered for `FINDING_*` and `OOS_*` headings after aggregation or fallback. `AGGREGATED=false` keeps the current in-scope stream rather than restoring pre-split files. No baseline plan file is created.

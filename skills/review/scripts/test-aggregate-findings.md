@@ -19,3 +19,7 @@ Exercises the aggregator's empty-merge attestation contract across rejection and
 ## Edit-in-sync rule
 
 When changing the aggregator's empty-merge contract (`EMPTY_MERGE_ATTESTATION` token, validator strip ordering, persistence-strip predicate, or attestation-line shapes), update this harness, its sibling `aggregate-findings.md`, `SECURITY.md`, and docs in the same PR.
+
+## Scope-reduction plan-mode regression
+
+The harness includes a plan-mode case where a leading `[SCOPE-REDUCTION]` block is withheld from the LLM merge, untagged blocks are merged, the tagged block is appended verbatim, and the combined output is sequentially renumbered.

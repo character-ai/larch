@@ -34,3 +34,7 @@ even when a script-level stub is missing. Per-section `LARCH_PLAN_REVIEW_*_SH`
 overrides still call their stub scripts by absolute path and are unaffected.
 The `real panel dispatch` case prepends a section-local `EXTSTUB` ahead of this
 global backstop when it needs specialized cursor/codex behavior.
+
+## Scope anchor regressions
+
+The brainstorm case now asserts that `plan-review-scope-anchor.txt` is the binding feature file passed to panel dispatch, while `plan-review-feature-context.txt` retains brainstorm synthesis as non-binding context. Layout expectations include `findings-in-scope.pre-dedup.md` and the staged scope anchor.

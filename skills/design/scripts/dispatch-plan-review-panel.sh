@@ -55,10 +55,18 @@ larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
 DESIGN_TMPDIR=$(cd "$DESIGN_TMPDIR" && pwd -P)
 
+render_plan_review_prompt() {
+    local archetype="$1" vendor="$2" plan_path="$3"
+    local args=(--archetype "$archetype" --vendor "$vendor" --plan-file "$plan_path" --design-tmpdir "$DESIGN_TMPDIR")
+    if [[ -n "$FEATURE_FILE" && -f "$FEATURE_FILE" ]]; then
+        args+=(--feature-file "$FEATURE_FILE")
+    fi
+    bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" "${args[@]}"
+}
+
 append_shared_prompt_tail() {
     local plan_path="$1"
-    bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-        --archetype arch --vendor cursor --plan-file "$plan_path" --design-tmpdir "$DESIGN_TMPDIR" | tail -n +2
+    render_plan_review_prompt arch cursor "$plan_path" | tail -n +2
 }
 
 write_dynamic_prompt() {
@@ -102,8 +110,7 @@ if [[ "$CODEX_PRESENT" == "false" && "$CURSOR_PRESENT" == "false" ]]; then
         printf '%s\n' "You are a combined plan-review panel applying all five standard archetype lenses in a single pass. Address each lens below, then follow the shared output contract."
         printf '\n'
         for _archetype in arch edge innovation pragmatic requirements; do
-            _role_render=$(bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-                --archetype "$_archetype" --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR")
+            _role_render=$(render_plan_review_prompt "$_archetype" cursor "$PLAN_FILE")
             _role_line="${_role_render%%$'\n'*}"
             printf '%s\n\n' "$_role_line"
         done
@@ -167,13 +174,11 @@ fi
 
 for _archetype in arch edge innovation pragmatic requirements; do
     if [[ "$CURSOR_PRESENT" == "true" ]]; then
-        bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-            --archetype "$_archetype" --vendor cursor --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR" \
+        render_plan_review_prompt "$_archetype" cursor "$PLAN_FILE" \
             >"$DESIGN_TMPDIR/render-plan-cursor-${_archetype}.prompt"
     fi
     if [[ "$CODEX_PRESENT" == "true" ]]; then
-        bash "${PLUGIN_ROOT}/skills/design/scripts/render-plan-review-prompt.sh" \
-            --archetype "$_archetype" --vendor codex --plan-file "$PLAN_FILE" --design-tmpdir "$DESIGN_TMPDIR" \
+        render_plan_review_prompt "$_archetype" codex "$PLAN_FILE" \
             >"$DESIGN_TMPDIR/render-plan-codex-${_archetype}.prompt"
     fi
 done

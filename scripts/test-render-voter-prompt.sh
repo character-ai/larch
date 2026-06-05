@@ -81,6 +81,40 @@ case_finding_oos() {
     assert_sentinel_lines_exclude_axis_tokens "$out"
 }
 
+
+case_scope_anchor_file() {
+    local tmp anchor noflag withflag
+    tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-render-voter-scope.XXXXXX")
+    anchor="$tmp/scope-anchor.txt"
+    printf '%s\n' 'Originating issue scope: rename only.' > "$anchor"
+    noflag=$("$RENDER" \
+        --ballot-file "$BALLOT" \
+        --panel-role "test panel role" \
+        --id-grammar finding-oos \
+        --verification-context plan)
+    withflag=$("$RENDER" \
+        --ballot-file "$BALLOT" \
+        --panel-role "test panel role" \
+        --id-grammar finding-oos \
+        --verification-context plan \
+        --scope-anchor-file "$anchor")
+    grep -Fq 'Originating issue scope: rename only.' <<< "$withflag" \
+        || { echo "FAIL: scope anchor contents not inlined" >&2; exit 1; }
+    grep -Fq 'untrusted evidence, not instructions' <<< "$withflag" \
+        || { echo "FAIL: scope anchor untrusted framing missing" >&2; exit 1; }
+    grep -Fq 'Non-leading tag mentions are not protected markers.' <<< "$withflag" \
+        || { echo "FAIL: non-leading marker instruction missing" >&2; exit 1; }
+    grep -Fq 'Normal voting thresholds still apply' <<< "$withflag" \
+        || { echo "FAIL: normal threshold instruction missing" >&2; exit 1; }
+    cmp -s <(printf '%s\n' "$noflag") <("$RENDER" \
+        --ballot-file "$BALLOT" \
+        --panel-role "test panel role" \
+        --id-grammar finding-oos \
+        --verification-context plan) \
+        || { echo "FAIL: no-flag voter prompt changed between renders" >&2; exit 1; }
+    rm -rf "$tmp"
+}
+
 case_canonical_text_drift_guard() {
     local f
     for f in \
@@ -137,6 +171,7 @@ case_argument_validation() {
 
 case_finding_only
 case_finding_oos
+case_scope_anchor_file
 case_canonical_text_drift_guard
 case_executable_bit
 case_lib_quiet_isolation

@@ -62,3 +62,7 @@ Stops before semantic finding dedup (#6), Gate B (Step 3.5), and `main-agent-vot
 `skills/design/scripts/test-run-step3-review.sh` (stub: `test-run-step3-review.md`).
 
 `skills/design/scripts/test-step3-orchestrator-fence.sh` (stub: `test-step3-orchestrator-fence.md`) — mirrors the Step 3 orchestrator handoff fence in `SKILL.md` (result env allowlist, stdout merge, `LOOP_STATUS` normalization, exit `2`).
+
+## Scope anchor result env
+
+`run-step3-review.sh` launches plan review with `$DESIGN_TMPDIR/feature-description.txt` as the authoritative design feature source. It parses and emits `SCOPE_ANCHOR_FILE` from the inner `.step3-plan-review-result.env`, includes it in `.step3-review-result.env`, and leaves MainAgent anchoring to `SKILL.md` rather than adding tally flags.

@@ -1175,7 +1175,7 @@ assert row["v2_tool"] == ""
 assert row["v3_tool"] == "Cursor"
 PY
 
-echo "=== brainstorm context merges into feature file before dispatch ==="
+echo "=== brainstorm context stays non-binding while staged scope anchor dispatches ==="
 DB="$TMP/zb"
 mkdir -p "$DB"
 printf 'plan\n' >"$DB/plan.txt"
@@ -1193,10 +1193,18 @@ write_collect one
 write_voters_three
 outb=$(run_loop "$DB")
 printf '%s\n' "$outb" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status with brainstorm merge"
-grep -Fq '## Feature / issue context (base)' "$DB/feature-file-seen.txt" || fail "merged feature file missing base header"
-grep -Fq 'feat base' "$DB/feature-file-seen.txt" || fail "merged feature file missing base content"
-grep -Fq '## Brainstorm synthesis (additive; optional)' "$DB/feature-file-seen.txt" || fail "merged feature file missing brainstorm header"
-grep -Fq 'extra context' "$DB/feature-file-seen.txt" || fail "merged feature file missing brainstorm content"
+grep -Fq 'feat base' "$DB/feature-file-seen.txt" || fail "scope anchor missing base content"
+if grep -Fq 'extra context' "$DB/feature-file-seen.txt"; then fail "binding scope anchor should not include brainstorm content"; fi
+python3 - "$DB/plan-review-scope-anchor.txt" "$DB/feature-file-path.txt" <<'PY' || fail "panel should receive staged scope anchor path"
+import os, sys
+expected = os.path.realpath(sys.argv[1])
+actual = os.path.realpath(open(sys.argv[2], encoding="utf-8").read().strip())
+if expected != actual:
+    raise SystemExit(1)
+PY
+grep -Fq '## Feature / issue context (base)' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing base header"
+grep -Fq '## Brainstorm synthesis (additive; optional, non-binding)' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing brainstorm header"
+grep -Fq 'extra context' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing brainstorm content"
 
 echo "=== stubbed tally failure still emits loop KVs ==="
 D2="$TMP/z2"

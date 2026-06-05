@@ -51,3 +51,7 @@ With this opt-in, callers can place `--findings-file` outside `--review-tmpdir`,
 - `FAILURE_LOG` — optional path to captured stderr / validator diagnostics
 
 Harness: `skills/review/scripts/test-aggregate-findings.sh` (via `make test-aggregate-findings`).
+
+## Plan-mode scope-reduction handling
+
+In `--input-mode plan`, leading `[SCOPE-REDUCTION]` findings are detected with `scripts/check-scope-reduction-marker.sh`, withheld from the LLM merge prompt, then appended verbatim to a successful untagged merge. The combined stream is validated for tagged-marker preservation and sequentially renumbered. If marker validation fails, aggregation reports failure and leaves the original in-scope input for the caller. Code mode is unchanged.

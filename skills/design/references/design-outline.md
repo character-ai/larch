@@ -125,3 +125,7 @@ On **Cancel**:
 ## Never-written-to-GitHub invariant
 
 `$DESIGN_TMPDIR/design-outline.md` is session-internal with respect to the implementation handoff. It is NOT included in `composed-plan.md`, the `larch:plan` issue-body block, or any artifact consumed by `/implement`. Design-log publishing may still capture the file in the redacted session bundle under `larch-logs/design/<RUN_ID>/`, so do not rely on bundle exclusion as a secrecy boundary.
+
+## Plan-review scope anchor
+
+An approved outline is appended to the staged plan-review scope anchor only when `.outline-approved` exists. Brainstorm/outline context is not treated as a replacement binding feature description for reviewers.

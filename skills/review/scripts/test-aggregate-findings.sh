@@ -1669,4 +1669,61 @@ AGGREGATE_STUB_MERGE_KIND=merge_missing_severity \
 grep -Fq 'AGGREGATED=true' "$TMP/out-plan-mode.env" || fail "plan mode missing-severity merge should aggregate"
 grep -Fq 'REASON=ok' "$TMP/out-plan-mode.env" || fail "plan mode REASON ok"
 
+
+echo "=== input-mode plan preserves scope-reduction blocks outside LLM merge ==="
+PLAN_SCOPE="$TMP/plan-scope"
+mkdir -p "$PLAN_SCOPE"
+cat >"$PLAN_SCOPE/in.md" <<'EOF'
+### FINDING_1:
+- **Reviewer(s)**: scope-slot
+- **Severity**: important
+- **Concern**: [SCOPE-REDUCTION] remove unrelated scope. Scenario: bloat
+- **Proposed resolution**: remove it
+
+### FINDING_2:
+- **Reviewer(s)**: merge-a
+- **Severity**: important
+- **Concern**: add missing regression test. Scenario: bug returns
+- **Proposed resolution**: add test
+
+### FINDING_3:
+- **Reviewer(s)**: merge-b
+- **Severity**: important
+- **Concern**: add missing regression test duplicate. Scenario: bug returns
+- **Proposed resolution**: add test
+EOF
+cat >"$PLAN_SCOPE/dispatch.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+slots=""
+while [ "$#" -gt 0 ]; do
+    case "$1" in
+        --slots-file) slots="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+out=$(jq -r '.output' "$slots")
+cat >"$out" <<'OUT'
+### FINDING_1:
+- **Reviewer(s)**: merge-a, merge-b
+- **Concern**: add missing regression test. Scenario: bug returns
+- **Proposed resolution**: add test
+OUT
+printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\n' "$out"
+EOF
+chmod +x "$PLAN_SCOPE/dispatch.sh"
+AGGREGATE_DISPATCH_SH="$PLAN_SCOPE/dispatch.sh" \
+"$AGG" \
+    --findings-file "$PLAN_SCOPE/in.md" \
+    --review-tmpdir "$PLAN_SCOPE" \
+    --codex-present true \
+    --cursor-present false \
+    --mode description \
+    --input-mode plan \
+    --allow-findings-outside-tmpdir true >"$PLAN_SCOPE/out.env"
+grep -Fq 'AGGREGATED=true' "$PLAN_SCOPE/out.env" || fail "plan scope aggregation did not succeed"
+grep -Fq '[SCOPE-REDUCTION] remove unrelated scope' "$PLAN_SCOPE/in.md" || fail "tagged scope-reduction block was not preserved"
+grep -Fq '### FINDING_2:' "$PLAN_SCOPE/in.md" || fail "combined plan findings were not sequentially renumbered"
+if grep -Fq '### FINDING_3:' "$PLAN_SCOPE/in.md"; then fail "expected tagged block to be appended after one merged untagged block"; fi
+
 echo "All aggregate-findings harness assertions passed."

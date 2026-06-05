@@ -60,3 +60,7 @@ The canonical OOS problem-vs-solution clause exists in **six** logical places:
 5. `skills/design/references/plan-review.md` — Voter 1 instruction (`finding-oos`).
 
 The drift harness `case_canonical_text_drift_guard` greps a **shared substring** (identical tail of both grammar variants) across the four Markdown / SKILL locations (2–5). When you change OOS wording, update all six locations and run `make test-render-voter-prompt`.
+
+## Scope anchor option
+
+`--scope-anchor-file <path>` is plan-review-only and defaults off, preserving byte-compatible prompts when omitted. When supplied, the renderer inlines the staged scope anchor as untrusted evidence, instructs voters to evaluate proportionality against the originating issue scope, treats leading `[SCOPE-REDUCTION]` findings problem-first, states that non-leading tag mentions are not markers, and confirms normal quorum/threshold behavior remains unchanged.

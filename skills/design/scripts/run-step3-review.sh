@@ -143,6 +143,7 @@ VOTING_TALLY_FILE=""
 STEP3_REVIEW_CAP_REACHED=false
 STEP3_REVIEW_ROUND_NUM=""
 REVIEW_ROUND_COUNT="0"
+SCOPE_ANCHOR_FILE=""
 
 _round_count=0
 if [[ -s "$ROUND_COUNT_FILE" ]]; then
@@ -242,7 +243,8 @@ else
                         "ROUNDS_COMPLETED=${ROUNDS_COMPLETED:-}" \
                         "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}" \
                         "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
-                        "REVIEW_ROUND_COUNT=${REVIEW_ROUND_COUNT:-0}"
+                        "REVIEW_ROUND_COUNT=${REVIEW_ROUND_COUNT:-0}" \
+                        "SCOPE_ANCHOR_FILE=${SCOPE_ANCHOR_FILE:-}"
                     emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
                     emit_kv TALLY_PLAN_REVIEW_STATUS "${TALLY_PLAN_REVIEW_STATUS:-}"
                     emit_kv REVIEW_ROUND_COUNT "${REVIEW_ROUND_COUNT:-0}"
@@ -257,7 +259,7 @@ else
             printf '%s\n' "$STEP3_REVIEW_ROUND_NUM" >"$ROUND_COUNT_FILE"
             REVIEW_ROUND_COUNT="$STEP3_REVIEW_ROUND_NUM"
         fi
-        _feature_file="${IMPLEMENT_TMPDIR:-$DESIGN_TMPDIR}/feature-description.txt"
+        _feature_file="$DESIGN_TMPDIR/feature-description.txt"
         _plan_loop_sh="${RUN_STEP3_PLAN_REVIEW_LOOP_SH:-$PLUGIN_ROOT/skills/design/scripts/plan-review-loop.sh}"
         [[ -x "$_plan_loop_sh" ]] || fail "plan-review-loop.sh not executable: $_plan_loop_sh"
         if [[ -e "$INNER_RESULT_ENV" && ! -L "$INNER_RESULT_ENV" ]]; then
@@ -291,14 +293,14 @@ else
                     _key="${_line%%=*}"
                     _value="${_line#*=}"
                     case "$_key" in
-                        LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | CONVERGENCE_STREAK | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS)
+                        LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | CONVERGENCE_STREAK | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS | SCOPE_ANCHOR_FILE)
                             printf -v "$_key" '%s' "$_value"
                             ;;
                     esac
                 done < <(phase_driver_read_result_env "$INNER_RESULT_ENV" \
                     LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
                     REASON REVISE_STATUS CONVERGENCE_STREAK COLLECT_OK_COUNT COLLECT_FAILURE_COUNT \
-                    TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS)
+                    TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS SCOPE_ANCHOR_FILE)
                 while IFS= read -r _line || [[ -n "$_line" ]]; do
                     _key="${_line%%=*}"
                     _value="${_line#*=}"
@@ -310,7 +312,7 @@ else
             _key="${_line%%=*}"
             _value="${_line#*=}"
             case "$_key" in
-                LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | CONVERGENCE_STREAK | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS)
+                LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | CONVERGENCE_STREAK | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS | SCOPE_ANCHOR_FILE)
                     [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
                     ;;
                 WARN) emit_kv WARN "$_value" ;;
@@ -349,6 +351,7 @@ emit_kv ROUNDS_COMPLETED "${ROUNDS_COMPLETED:-}"
 emit_kv TALLY_PLAN_REVIEW_STATUS "${TALLY_PLAN_REVIEW_STATUS:-}"
 emit_kv AGGREGATOR_STATUS "${AGGREGATOR_STATUS:-}"
 emit_kv VOTING_TALLY_FILE "${VOTING_TALLY_FILE:-}"
+emit_kv SCOPE_ANCHOR_FILE "${SCOPE_ANCHOR_FILE:-}"
 emit_kv REVIEW_ROUND_COUNT "${REVIEW_ROUND_COUNT:-0}"
 
 if ! phase_driver_write_result_env "$RESULT_ENV" \
@@ -363,6 +366,7 @@ if ! phase_driver_write_result_env "$RESULT_ENV" \
     "ROUNDS_COMPLETED=${ROUNDS_COMPLETED:-}" \
     "AGGREGATOR_STATUS=${AGGREGATOR_STATUS:-}" \
     "VOTING_TALLY_FILE=${VOTING_TALLY_FILE:-}" \
+    "SCOPE_ANCHOR_FILE=${SCOPE_ANCHOR_FILE:-}" \
     "REVIEW_ROUND_COUNT=${REVIEW_ROUND_COUNT:-0}"; then
     emit_kv WARN "Step 3: refusing to write symlinked result env $(basename "$RESULT_ENV")"
     exit 1

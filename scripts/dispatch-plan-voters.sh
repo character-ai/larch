@@ -18,7 +18,7 @@ source "$SCRIPT_DIR/lib-design-tmpdir.sh"
 source "$SCRIPT_DIR/lib-external-launcher-common.sh"
 
 usage() {
-    larch_err "Usage: dispatch-plan-voters.sh --ballot-file FILE --design-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE]"
+    larch_err "Usage: dispatch-plan-voters.sh --ballot-file FILE --design-tmpdir DIR --codex-available true|false --cursor-available true|false [--session-env-path FILE] [--scope-anchor-file FILE]"
 }
 
 BALLOT_FILE=""
@@ -26,6 +26,7 @@ DESIGN_TMPDIR=""
 CODEX_AVAILABLE=""
 CURSOR_AVAILABLE=""
 SESSION_ENV_PATH="${SESSION_ENV_PATH:-}"
+SCOPE_ANCHOR_FILE=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -34,6 +35,7 @@ while [[ $# -gt 0 ]]; do
         --codex-available) CODEX_AVAILABLE="${2:?--codex-available requires a value}"; shift 2 ;;
         --cursor-available) CURSOR_AVAILABLE="${2:?--cursor-available requires a value}"; shift 2 ;;
         --session-env-path) SESSION_ENV_PATH="${2:?--session-env-path requires a value}"; shift 2 ;;
+        --scope-anchor-file) SCOPE_ANCHOR_FILE="${2:?--scope-anchor-file requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "dispatch-plan-voters.sh: unknown option: $1"; usage; exit 2 ;;
     esac
@@ -43,6 +45,10 @@ done
 [[ -n "$DESIGN_TMPDIR" ]] || { larch_err "dispatch-plan-voters.sh: --design-tmpdir is required"; exit 2; }
 [[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "dispatch-plan-voters.sh: --codex-available must be true or false"; exit 2; }
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-plan-voters.sh: --cursor-available must be true or false"; exit 2; }
+if [[ -n "$SCOPE_ANCHOR_FILE" && ! -r "$SCOPE_ANCHOR_FILE" ]]; then
+    larch_err "dispatch-plan-voters.sh: --scope-anchor-file must be readable when provided"
+    exit 2
+fi
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 mkdir -p "$DESIGN_TMPDIR"
 export DESIGN_TMPDIR
@@ -59,11 +65,16 @@ LARCH_VPR_CTX=()
 make_prompt_file() {
     local tool="$1"
     local prompt_file="$DESIGN_TMPDIR/${tool}-plan-voter-prompt.txt"
-    "$PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
-        --ballot-file "$BALLOT_FILE" \
-        --panel-role "senior engineer on a voting panel deciding which proposed plan modifications should be accepted" \
-        --id-grammar finding-oos \
-        --verification-context plan > "$prompt_file"
+    _render_args=(
+        --ballot-file "$BALLOT_FILE"
+        --panel-role "senior engineer on a voting panel deciding which proposed plan modifications should be accepted"
+        --id-grammar finding-oos
+        --verification-context plan
+    )
+    if [[ -n "$SCOPE_ANCHOR_FILE" ]]; then
+        _render_args+=(--scope-anchor-file "$SCOPE_ANCHOR_FILE")
+    fi
+    "$PLUGIN_ROOT/skills/shared/scripts/render-voter-prompt.sh" "${_render_args[@]}" > "$prompt_file"
     printf '%s' "$prompt_file"
 }
 
