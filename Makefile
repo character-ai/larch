@@ -84,7 +84,7 @@ test-harnesses-5: test-harness-shards-coverage test-review-and-fix-dispatch test
 
 test-harnesses-6: test-run-external-agent test-findings-classification test-stall-recovery-report test-step-18b-final-report test-render-final-summary test-review-findings-classification test-session-setup-presence-defaults test-check-topology-rule-paths test-preflight-args test-decompose-file-issues test-flush-execution-issues test-run-research-planner test-render-reviewer-prompt test-references-headers test-alias-target-resolution test-write-rejected-findings test-extract-plan-scope-paths test-keepalive-sentinel test-token-report-dedup test-body-file-title test-effort-prose
 
-test-harnesses-7: test-step2-dispatch test-aggregate-findings test-refresh-run-logs test-check-contains-pins test-oos-issue-cap test-file-design-oos test-ci-wait test-ci-wait-exit-trap test-plan-block test-redact-tmpdir-paths test-relevant-checks-validation test-snapshot-plan-round test-implement-fork-env test-research-structure test-rebase-push-force-lease test-research-banner test-review-relevant-checks-helper test-step3-orchestrator-fence
+test-harnesses-7: test-step2-dispatch test-aggregate-findings test-refresh-run-logs test-check-contains-pins test-oos-issue-cap test-file-design-oos test-ci-wait test-ci-wait-exit-trap test-plan-block test-plan-block-strip-body test-check-scope-reduction-marker test-plan-review-scope-anchor test-redact-tmpdir-paths test-relevant-checks-validation test-snapshot-plan-round test-implement-fork-env test-research-structure test-rebase-push-force-lease test-research-banner test-review-relevant-checks-helper test-step3-orchestrator-fence
 
 test-harnesses-8: test-review-and-fix-convergence test-collect-agent-bash32 test-dispatch-code-voters-edge-and-r3-claude test-design-pause-resume test-audit-runs test-create-pr test-run-step3-review test-finalize-sanity-check test-parse-codex-usage test-token-tally test-sentinel-write test-render-cost-line test-review-structure test-lib-external-launcher-common test-render-run-summary-format test-render-voter-prompt test-intra-batch-deps test-brainstorm-prompts
 
@@ -205,6 +205,15 @@ test-check-main-sync:
 
 test-plan-block:
 	bash scripts/harness-timer.sh $@ bash scripts/test-plan-block.sh
+
+test-plan-block-strip-body:
+	bash scripts/harness-timer.sh $@ bash scripts/test-plan-block-strip-body.sh
+
+test-check-scope-reduction-marker:
+	bash scripts/harness-timer.sh $@ bash scripts/test-check-scope-reduction-marker.sh
+
+test-plan-review-scope-anchor:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-plan-review-scope-anchor.sh
 
 test-clarify-comment:
 	bash scripts/harness-timer.sh $@ bash scripts/test-clarify-comment.sh

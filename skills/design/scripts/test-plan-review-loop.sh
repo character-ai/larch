@@ -717,10 +717,14 @@ write_voters_three() {
 #!/usr/bin/env bash
 set -euo pipefail
 DESIGN_TMPDIR=""
+if [[ -n "${PLAN_REVIEW_VOTER_ARGV_LOG:-}" ]]; then
+    printf '%q ' "$@" >>"$PLAN_REVIEW_VOTER_ARGV_LOG"
+    printf '\n' >>"$PLAN_REVIEW_VOTER_ARGV_LOG"
+fi
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;;
-        --ballot-file|--codex-available|--cursor-available|--session-env-path) shift 2 ;;
+        --ballot-file|--codex-available|--cursor-available|--session-env-path|--scope-anchor-file) shift 2 ;;
         *) shift 1 ;;
     esac
 done
@@ -1190,6 +1194,10 @@ EOS
 write_scout
 write_dispatch_one_slot
 write_collect one
+export PLAN_REVIEW_SCOUT_ARGV_LOG="$DB/scout-argv.log"
+: >"$PLAN_REVIEW_SCOUT_ARGV_LOG"
+export PLAN_REVIEW_VOTER_ARGV_LOG="$DB/voter-argv.log"
+: >"$PLAN_REVIEW_VOTER_ARGV_LOG"
 write_voters_three
 outb=$(run_loop "$DB")
 printf '%s\n' "$outb" | grep -q '^TALLY_PLAN_REVIEW_STATUS=ok$' || fail "expected ok tally status with brainstorm merge"
@@ -1205,6 +1213,10 @@ PY
 grep -Fq '## Feature / issue context (base)' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing base header"
 grep -Fq '## Brainstorm synthesis (additive; optional, non-binding)' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing brainstorm header"
 grep -Fq 'extra context' "$DB/plan-review-feature-context.txt" || fail "non-binding brainstorm context missing brainstorm content"
+grep -Fq -- '--description-file' "$DB/scout-argv.log" || fail "scout argv missing --description-file"
+grep -Fq 'plan-review-scope-anchor.txt' "$DB/scout-argv.log" || fail "scout argv missing staged scope anchor path"
+grep -Fq -- '--scope-anchor-file' "$DB/voter-argv.log" || fail "voter argv missing --scope-anchor-file"
+grep -Fq 'plan-review-scope-anchor.txt' "$DB/voter-argv.log" || fail "voter argv missing staged scope anchor path"
 
 echo "=== stubbed tally failure still emits loop KVs ==="
 D2="$TMP/z2"

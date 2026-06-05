@@ -145,6 +145,34 @@ STEP3_REVIEW_ROUND_NUM=""
 REVIEW_ROUND_COUNT="0"
 SCOPE_ANCHOR_FILE=""
 
+validate_scope_anchor_handoff() {
+    local path="${SCOPE_ANCHOR_FILE:-}" canon design_canon
+    [[ -z "$path" ]] && return 0
+    case "$path" in
+        *$'\n'*|*$'\r'*)
+            emit_kv WARN "Step 3: SCOPE_ANCHOR_FILE contains CR/LF; clearing"
+            SCOPE_ANCHOR_FILE=""
+            return 0
+            ;;
+    esac
+    if [[ ! -f "$path" ]] || [[ -L "$path" ]]; then
+        emit_kv WARN "Step 3: SCOPE_ANCHOR_FILE missing or symlink; clearing"
+        SCOPE_ANCHOR_FILE=""
+        return 0
+    fi
+    design_canon="$(cd "$DESIGN_TMPDIR" && pwd -P)"
+    canon="$(cd "$(dirname "$path")" && pwd -P)/$(basename "$path")"
+    case "$canon" in
+        "$design_canon"/*|"$design_canon")
+            SCOPE_ANCHOR_FILE="$canon"
+            ;;
+        *)
+            emit_kv WARN "Step 3: SCOPE_ANCHOR_FILE outside DESIGN_TMPDIR; clearing"
+            SCOPE_ANCHOR_FILE=""
+            ;;
+    esac
+}
+
 _round_count=0
 if [[ -s "$ROUND_COUNT_FILE" ]]; then
     _raw_count="$(tr -d '[:space:]' <"$ROUND_COUNT_FILE" 2>/dev/null || true)"
@@ -339,6 +367,8 @@ else
             fi
         fi
 fi
+
+validate_scope_anchor_handoff
 
 emit_kv LOOP_STATUS "${LOOP_STATUS:-}"
 emit_kv STEP3_REVIEW_CAP_REACHED "${STEP3_REVIEW_CAP_REACHED:-false}"

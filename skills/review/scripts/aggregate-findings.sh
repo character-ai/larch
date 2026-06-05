@@ -722,6 +722,11 @@ PY
         MERGE_PIPELINE_RC=2
         return 0
     fi
+    _pre_agg_snapshot=""
+    if [[ "$INPUT_MODE" == "plan" ]]; then
+        _pre_agg_snapshot="$REVIEW_TMPDIR/findings-in-scope.pre-aggregation.md"
+        cp -f "$FINDINGS_FILE" "$_pre_agg_snapshot"
+    fi
     if [[ "$ALLOW_FINDINGS_OUTSIDE_TMPDIR" == "true" ]]; then
         if ! mv -f "$merged_tmp" "$FINDINGS_FILE" 2>"$REVIEW_TMPDIR/aggregator-mv.stderr"; then
             rm -f "$merged_tmp"
@@ -751,17 +756,36 @@ def tagged(block):
     f=tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False); f.write(block); f.close()
     try: return subprocess.run([helper, '--file', f.name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode == 0
     finally: os.unlink(f.name)
-expected=0
+def norm_body(block):
+    body=re.sub(r'^### FINDING_[0-9]+:\s*','',block,count=1,flags=re.M)
+    body=re.sub(r'^\s*\[(?:important|nit|latent)\]\s*','',body,flags=re.I|re.M)
+    return re.sub(r'\s+',' ',body).strip().lower()
+tagged_inputs=[]
 if os.path.exists(tagged_path):
-    expected=sum(1 for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', open(tagged_path, encoding='utf-8', errors='replace').read()))
-if sum(1 for b in blocks if tagged(b)) < expected:
+    tagged_inputs=[m.group(0).strip() for m in re.finditer(r'(?ms)^### FINDING_[0-9]+:.*?(?=^### |\Z)', open(tagged_path, encoding='utf-8', errors='replace').read())]
+combined_tagged=[b for b in blocks if tagged(b)]
+if len(combined_tagged) < len(tagged_inputs):
     raise SystemExit(1)
+used=set()
+for src in tagged_inputs:
+    src_norm=norm_body(src)
+    matched=False
+    for i,b in enumerate(combined_tagged):
+        if i in used:
+            continue
+        if tagged(b) and (src_norm == norm_body(b) or src_norm in norm_body(b) or norm_body(b) in src_norm):
+            used.add(i); matched=True; break
+    if not matched:
+        raise SystemExit(1)
 out=[]
 for i,b in enumerate(blocks,1):
     out.append(re.sub(r'^### FINDING_[0-9]+:', f'### FINDING_{i}:', b, count=1, flags=re.M))
 sys.stdout.write('\n\n'.join(out)+("\n" if out else ""))
 PY
         then
+            if [[ -n "$_pre_agg_snapshot" && -f "$_pre_agg_snapshot" ]]; then
+                cp -f "$_pre_agg_snapshot" "$FINDINGS_FILE"
+            fi
             rm -f "$_combined_plan" "${_combined_plan}.renumbered"
             MERGE_PIPELINE_RC=2
             return 0
