@@ -1,0 +1,55 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -35,9 +35,14 @@
+ ### UPDATED: `scripts/test-larch-log-write-round.sh`
+ - Add fixtures + assertions:
+-  - `dyn-api-contract-codex-output-phase2.txt` (+ `.meta`, `.json`) → assert INCLUDED
++  - `dyn-api-contract-codex-output-phase2.txt` (+ `.meta`, `.json`, `.cap-hit`) → assert INCLUDED
+     (phased dynamic Codex — the missing coverage).
++  - `dyn-api-contract-codex-output.txt.prompt` and `dyn-api-contract-codex-output-phase2.txt.prompt`
++    → assert NOT included (explicit negative coverage for dyn-Codex prompt sidecars;
++    mirrors the static Codex `.prompt` deny assertions already in the harness).
++  - `dyn-api-contract-codex-output.txt.cap-hit` → assert INCLUDED (unphased `.cap-hit`
++    coverage; complements the phased `.cap-hit` above).
+   - `codex-specialist-security-output-phase2.txt` (+ `.meta`) → assert INCLUDED (phased
+     static Codex fallback — locks Round 1 Decision 1: phased static stays included).
+ - Leave existing unphased dyn-Codex inclusion and unphased static-Codex exclusion
+   assertions unchanged.
+ 
+@@ -48,5 +53,8 @@
+ - Keep `cursor-plan-*-output.txt` (already matches real static + dynamic Cursor names)
+   and `dyn-*-output.txt` (retained defensively).
+-- Add a comment naming the `codex-primary-plan-*` producer and restating the design-log
+-  policy (exclude all raw reviewer outputs; `findings.md` is canonical).
++- Add a comment naming the `codex-primary-plan-*` producer and restating the
++  design-log policy for `plan-review/round-N`: raw reviewer outputs are excluded
++  there; `findings.md` is the canonical round snapshot. Do not claim top-level
++  design-tmpdir raw outputs are excluded — that scope is outside this function's
++  purview.
+ 
+@@ -62,3 +70,5 @@
+ ### UPDATED: `scripts/lib-design-round-artifacts.md`
+ - Update the exclude-patterns list: `codex-plan-*-output.txt` → `codex-primary-plan-*-output.txt`.
++- Narrow the design-log policy description to scope it to `plan-review/round-N` raw reviewer
++  outputs, not all design-log artifacts.
+ 
+@@ -80,4 +90,5 @@
+ ### Edge cases
+ - `.prompt` / `.diag` / `.done` / `.events.jsonl` sidecars of dyn-Codex outputs must stay
+-  excluded — guaranteed because the earlier deny clauses precede the new allow.
++  excluded — guaranteed because the earlier deny clauses precede the new allow. New
++  `assert_not_file` fixtures for phased and unphased `.prompt` sidecars make this explicit.
+ - Phased and unphased dyn-Codex are both covered (`dyn-*-codex-output.txt` and
+ 
+@@ -100,5 +111,6 @@
+ ### Testing strategy
+ - Extend both regression harnesses as above (phased dyn-Codex + phased static Codex
+-  inclusion; real Codex design filenames excluded).
++  inclusion; real Codex design filenames excluded; explicit dyn-Codex `.prompt` sidecar
++  denial and `.cap-hit` inclusion for both phased and unphased).
+ - Run `bash scripts/test-larch-log-write-round.sh`, `bash scripts/test-lib-design-round-artifacts.sh`,
+   `bash scripts/test-larch-log.sh`, and `bash scripts/relevant-checks.sh`.
+ 
+@@ -109,1 +121,1 @@
+-diff_lines: 85
++diff_lines: 110
