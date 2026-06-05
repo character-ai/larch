@@ -1,0 +1,50 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -23,6 +23,9 @@
+ - Add negative prompt-sidecar coverage:
+   - `dyn-api-contract-codex-output.txt.prompt` → excluded
+   - `dyn-api-contract-codex-output-phase2.txt.prompt` → excluded
++- Add negative `.events.jsonl` coverage:
++  - `dyn-api-contract-codex-output.txt.events.jsonl` → excluded
++  - `dyn-api-contract-codex-output-phase2.txt.events.jsonl` → excluded
+ - Add phased static Codex fallback coverage:
+   - `codex-specialist-security-output-phase2.txt`
+   - `codex-specialist-security-output-phase2.txt.meta`
+@@ -46,8 +49,13 @@
+   - `codex-plan-*-output.txt` → `codex-primary-plan-*-output.txt`.
+ - Scope wording to `plan-review/round-N` artifacts and avoid global design-log raw-output claims.
+ 
++### UPDATED: `scripts/test-larch-log-write-round.md`
++- Document phased dynamic Codex inclusion: phase-suffixed `.txt`, `.meta`, `.json`, and `.cap-hit` sidecars are included.
++- Document `.cap-hit` inclusion for unphased dynamic Codex.
++- Document that `.prompt` and `.events.jsonl` sidecars are excluded for both phased and unphased dynamic Codex outputs.
++
+ ### UPDATED: `scripts/larch-log.md`
+ - Clarify that dynamic Codex retention is now an explicit implement-log allow clause; behavior is unchanged.
+-- Sync `scripts/test-larch-log-write-round.md` and `scripts/test-lib-design-round-artifacts.md` only if their summaries name the changed fixtures.
++- Sync `scripts/test-lib-design-round-artifacts.md` only if its summary names the changed fixtures; `scripts/test-larch-log-write-round.md` is updated unconditionally (see dedicated step above).
+ 
+ ### Approach
+@@ -57,6 +65,6 @@
+ 
+ ### Edge cases
+-- Dynamic Codex `.prompt` files must remain excluded even when matching the new dynamic Codex family.
++- Dynamic Codex `.prompt` and `.events.jsonl` files must remain excluded even when matching the new dynamic Codex family.
+ - `.cap-hit` must be included for both phased and unphased dynamic Codex outputs.
+ - `codex-primary-plan-*-output.txt` intentionally excludes both static and dynamic Codex plan-review raw outputs.
+ - `codex-plan-assessor-round-<N>.txt` is unaffected because it does not match `*-output.txt`.
+@@ -63,6 +71,6 @@
+ 
+ ### Failure modes
+-- Placing the dynamic Codex allow before prompt/diagnostic denies could leak prompts; new negative tests catch this.
++- Placing the dynamic Codex allow before prompt/diagnostic/telemetry denies could leak prompts or `.events.jsonl` raw telemetry; new negative tests catch both.
+ - Omitting `.cap-hit` from the allow would silently lose cap-hit forensic data; new assertions catch this.
+ - Overstating design-log exclusion could mislead future maintainers; docs/comments must say `plan-review/round-N` only.
+@@ -75,5 +83,5 @@
+ 
+ ### Diff size estimate
+-Six files, small implementation/doc edits plus additional fixtures and assertions.
++Seven files, small implementation/doc edits plus additional fixtures and assertions.
+ 
+-diff_lines: 105
++diff_lines: 120
