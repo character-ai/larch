@@ -4,7 +4,7 @@
 
 This document is a consumer-doc projection of runtime authorities. The runtime authority listed for each row remains the source of truth; the projection exists so consumer docs can link to stable row anchors instead of repeating drift-prone counts.
 
-`/implement` Step 5 public topology anchors listed in `scripts/test-quick-mode-docs-sync.sh` are checked across public docs; the review-panel shape is also projected here from `skills/shared/topology.tsv` so the topology row and public-doc harness stay aligned.
+`/implement` Step 5 public phrases are pinned by `scripts/test-quick-mode-docs-sync.sh`; the review-panel shape is also projected here from `skills/shared/topology.tsv` so the topology row and public-doc harness stay aligned.
 
 | Key | Value | Composition | Runtime Authority |
 |---|---:|---|---|
