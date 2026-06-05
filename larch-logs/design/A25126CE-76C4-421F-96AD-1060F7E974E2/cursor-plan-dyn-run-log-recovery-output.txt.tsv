@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	python/ship.py:416-434	Post-merge recovery fail-closed gate omitted from planned ship.py changes	Bash skips status=done and write-final-report.sh when larch-log init fails; Python flush_logs_post can still write done and run the report after a failed or minimal recovery	Port scripts/ship-pr.sh:3141-3174 recovery_ok semantics into run_postmerge_phase and/or flush_logs_post; add test_ship.py coverage
