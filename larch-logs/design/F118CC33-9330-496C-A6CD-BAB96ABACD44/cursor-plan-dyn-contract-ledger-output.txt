@@ -1,0 +1,15 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/test-timing-ledger.sh:23-30	Plan drops timing-ledger workflow-path subcommand but omits this harness from Files to modify/create and Testing strategy	Removing cmd_workflow_path breaks make test-timing-ledger (test-harnesses-16) on the first workflow-path invocation; grep for v1\\tworkflow\\t also fails once the subcommand is gone	Add scripts/test-timing-ledger.sh to the plan: remove the workflow-path call and workflow-row assertion (or replace with a mark/vendor/round-only fixture) and list the harness in Testing strategy
+2	in_scope	latent	architecture	skills/report-tokens/scripts/run-analysis.md:40-46	Report-tokens sibling contract still documents implement workflow scanning while SKILL.md is updated	Operators or maintainers reading run-analysis.md expect run-params/timing-report workflow fallback and aggregate workflow costs for implement after the scanner short-circuits	Add ### UPDATED: skills/report-tokens/scripts/run-analysis.md — note implement ignores workflow artifacts (workflow field empty), design keeps run-params fallback, and implement aggregate output is a single All runs table without workflow grouping
+
+### 1 · `risk-integration` · `scripts/test-timing-ledger.sh:23-30`
+
+The plan removes `timing-ledger.sh workflow-path` as orphan cleanup (`scripts/timing-ledger.sh:176-182`, `scripts/timing-ledger.sh:308`) but never lists `scripts/test-timing-ledger.sh`. That harness still invokes the subcommand at line 23 and asserts a `v1\tworkflow\t` row at line 30. `Makefile` registers it on `test-harnesses-16` (`Makefile:296-297`), so the PR will fail CI even if all plan-listed harnesses pass.
+
+**Suggested revision:** Add `scripts/test-timing-ledger.sh` to the plan file list and testing strategy; drop or replace the workflow-path exercise while keeping mark/vendor/round coverage.
+
+### 2 · `architecture` · `skills/report-tokens/scripts/run-analysis.md:40-46`
+
+The plan updates `skills/report-tokens/SKILL.md:11` for implement (no workflow dimension) and `python/report_tokens_scan.py` (short-circuit), but leaves `skills/report-tokens/scripts/run-analysis.md` stating that scans use `run-params.json` as a fallback workflow source and that stdout includes “aggregate workflow costs” for all skills. That is a producer/consumer doc mismatch after landing.
+
+**Suggested revision:** Add a small `run-analysis.md` update mirroring the SKILL.md implement vs design split so the script sibling contract stays aligned.

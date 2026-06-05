@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	scripts/test-timing-ledger.sh:23-30	Harness still exercises removed workflow-path subcommand	Deleting cmd_workflow_path leaves test-timing-ledger.sh calling a dead subcommand and grepping workflow rows; make test-timing-ledger fails	Add ### UPDATED: scripts/test-timing-ledger.sh — drop the workflow-path invocation and workflow-row grep (or replace with a mark-only ledger smoke test); include it in Testing strategy

@@ -1,0 +1,3 @@
+## Summary
+
+Remove the notion of HARD and SIMPLE workflow classification entirely from the `/implement` skill.

@@ -1,0 +1,19 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-timing-report.sh:128-158	Design run-params fallback cases invoke timing-report.sh without LARCH_TIMING_SKILL=design	After gating resolve_workflow_fallback to design-only (plan timing-report.sh ~100-106), V2/V1_PATH invocations keep the default implement skill; run-params fallback never runs and workflow_path becomes unknown while greps/jq still expect SIMPLE	Export LARCH_TIMING_SKILL=design (and DESIGN_TMPDIR when using a design tmpdir) on every design fallback timing-report.sh invocation in those cases; keep SIMPLE expectations unchanged
+
+**1. correctness** — `scripts/test-timing-report.sh:128-158`
+
+The plan gates `resolve_workflow_fallback` behind `LARCH_TIMING_SKILL=design` (`plan.txt` lines 60-61). Production design callers already set that (`skills/design/scripts/design-publish.sh:256-257`, `skills/design/scripts/render-final-summary.sh:102-104`, `scripts/design-pause-save.sh:112-114`).
+
+The V2 and V1_PATH harness blocks invoke `timing-report.sh` with no `LARCH_TIMING_SKILL` (`scripts/test-timing-report.sh:138-141`, `154-157`), so the default is `implement` (`scripts/timing-report.sh:98`). After the gate, those cases will emit `workflow_path: "unknown"` and drop the `**Workflow path**:` line, while lines 139 and 155 still require SIMPLE — a regression the plan’s “keep design run-params fallback cases unchanged” line does not fix unless those invocations export `LARCH_TIMING_SKILL=design`.
+
+**Suggested revision:** Prefix the four V2/V1_PATH `timing-report.sh` calls with `LARCH_TIMING_SKILL=design` (and `DESIGN_TMPDIR="$V2_DIR"` / `DESIGN_TMPDIR="$V1_PATH_DIR"` if you want parity with production env).
+
+---
+
+**Exonerated (verified against plan + current code):**
+
+- **timing-report JSON `workflow_path` for implement:** Removing the awk `workflow` row handler plus skipping fallback for non-design skills leaves `workflow` unset in awk; the END block still sets `workflow = "unknown"` (`scripts/timing-report.sh:246-248`, `437`), so legacy `v1\tworkflow\tHARD` rows are ignored as intended.
+- **Legacy ledger + new harness case:** The planned `LARCH_TIMING_SKILL=implement` + `DESIGN_TMPDIR` + SIMPLE `run-params.json` case (`plan.txt` lines 99-100) correctly guards against design fallback bleed.
+- **report-tokens `RunRecord.workflow`:** Field is a required `str` (`python/report_tokens_models.py:61`); no `None` path. Implement `workflow == ""` is safe if render paths are skill-aware as planned (`_aggregate` / `_top_runs` / `_phase_breakdown` / `_write_cache`); empty string is not treated like `None` anywhere in the Python tree.
+- **Golden vs scanner:** Revised `report_tokens_implement_golden.md` (`## Aggregate cost`, “All runs”, no Workflow column) matches the planned render changes; `_workflow()` returning `""` for implement without artifact reads is consistent with dropping the workflow dimension while keeping the dataclass field.
