@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	architecture	<TMPDIR>/plan.txt:1	The plan adds design-only round `oos` data that the feature acceptance does not require	This expands the public timing-report JSON shape and adds voting-tally parsing/tests beyond the SIMPLE minimum-change contract	Drop `--oos`, the design OOS counting/parser, and related tests/docs unless the feature description is updated to require OOS counts

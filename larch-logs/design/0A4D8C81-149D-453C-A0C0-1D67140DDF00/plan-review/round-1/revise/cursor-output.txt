@@ -1,0 +1,127 @@
+Incorporating the accepted findings into the plan. Checking the codebase for accurate revision details.
+--- a/plan.txt
++++ b/plan.txt
+@@ -15,8 +15,9 @@
+ - `timing-report.json` is rendered from the session timing-ledger TSV by `scripts/timing-report.sh` (`refresh-run-logs.sh:78` runs `timing-report.sh --full --format json`, then `larch-log.sh --batch timing-report` commits it). So per-round data must live in the **ledger** to reach the committed batch. No new flush site is needed.
+ - Ledger rows are fixed at **13 tab-columns**; `timing-report.sh row_ok()` skips any row with `NF != 13` and dispatches by column 2 (`mark`/`vendor`/`workflow`). A new `round` row kind must be exactly 13 columns and is naturally ignored by the markdown path.
+ - The implement Step 5 round loop is `run_implement_loop` in `review-implement-step5-loop.sh` (sourced by `review-and-fix.sh`); it calls `_implement_round_body` once per round. `_implement_round_body` already computes `accepted_count`/`rejected_count` (from review-core `ACCEPTED_COUNT`/`REJECTED_COUNT`).
+-- The design Step 3 round loop is `while (( round_num <= ROUND_CAP ))` in `plan-review-loop.sh`; `_run_plan_review_round` is the round body. Per-round counts come from `$DESIGN_TMPDIR` session artifacts: `### FINDING_N:` in `accepted-plan-findings.md` (same grep as ~1347–1348), `### [Plan Review] FINDING_N` in `rejected-findings.md` (`tally-plan-review.sh` ~499 — not the accepted heading schema), and `### OOS_N:` in `oos.md`.
+-- The `Step 5 — code review` mark (implement) and `design Step 3 — plan review` mark (design) are emitted by the parents; round rows attach to the matching `per_step` entry by **skill + timestamp interval** (round start within the step's `[start,end)`), which is robust to step-label drift and to Gate-C re-entry.
++- The design Step 3 round loop is `while (( round_num <= ROUND_CAP ))` in `plan-review-loop.sh`; `_run_plan_review_round` is the round body. Per-round accepted/rejected counts come from `$DESIGN_TMPDIR/accepted-plan-findings.md` and `rejected-findings.md` (same greps as ~1456–1457). Per-round **accepted OOS** counts come from `voting-tally.md` Findings rows (`grep -cE '^\| OOS_[0-9]+ \|'` with `[[ -f ... ]]` guard) so security-accepted OOS that never land in `oos.md` are included; do **not** count `oos.md` (rejected-OOS prose) for `--oos`.
++- Parent step marks: implement `Step 5 — code review` (`step-telemetry-mark.sh` before `run-step5-review.sh`; re-emitted when `--starting-round` > 1 — see below); design `design Step 3 — plan review`. JSON attachment requires **skill + recorded `round_step` label + interval**: `emit_round_array(skill, step, s, e)` keeps a row only when `round_skill == skill`, `round_step == step`, and `round_start ∈ [s,e)`. Prevents resumed Step 5 rounds or Step 7 intervals from stealing rows. Gate-C re-entry still yields distinct parent-mark intervals per pass.
++- `design-publish.sh` calls `design-log-publish.sh` before `render-final-summary.sh`, which today renders `$DESIGN_TMPDIR/timing-report-final.json` post-publish; publish copies top-level tmpdir files, so Gate-C must render timing JSON **immediately before** `design-log-publish.sh` when `SESSION_ID` is set (`LARCH_TIMING_SKILL=design timing-report.sh --full --format json --output …/timing-report-final.json`; best-effort `|| true`). `render-final-summary.sh --post-publish-only` remains for chat/summary only.
+ - Backward compat verified: timing-report batch validation is `none`; `measure-realized-cost.sh` and `python/report_tokens_scan.py` read timing-report.json via `.get()` and tolerate the additive field.
+ 
+ ## Files to modify/create
+@@ -34,10 +35,13 @@
+ 
+ ### UPDATED: `scripts/timing-report.sh`
+ Aggregate `round` rows into a `rounds` array on the JSON `per_step` entries only (markdown path untouched).
+-- Add a parse block `row_ok() && $2 == "round" { ... next }` that collects into parallel arrays keyed by an incrementing index: `round_skill[$4]`, `round_step[$5]`, `round_num_arr[$6]`, `round_start[$7]`, `round_dur[$9]`, `round_accepted[$10]`, `round_rejected[$11]`, `round_oos_raw[$12]` (keep raw to distinguish `-` from an integer).
+-- Add awk function `emit_round_array(skill, s, e)` (declare loop/sort locals in the param list) that selects round rows where `round_skill == skill` and `round_start >= s && round_start < e`, insertion-sorts them by `round_num_arr`, and prints `,"rounds":[{...}]`. Each object: `{"round":N,"duration_seconds":D,"accepted":A,"rejected":R}` and append `,"oos":O` only when `round_oos_raw ~ /^[0-9]+$/`. Print nothing when no rows match (keeps non-review per_step entries byte-identical).
+-- Extend `emit_json_step` to take `(skill, step, dur, outlier, s, e)` and call `emit_round_array(skill, s, e)` after the base fields and before the closing `}`. Update all callers to pass the step interval: the implement branch (`emit_json_step("implement", ..., s, e)`), the no-implement branch (`emit_json_step(mark_skill[i], ..., e=...; s=mark_ts[i])`), and `emit_json_child_steps` (already has `s`/`e`).
++- Add a parse block `row_ok() && $2 == "round" { round_count++; round_skill[round_count]=$4; round_step[round_count]=$5; round_num_arr[round_count]=$6+0; round_start[round_count]=$7+0; round_end[round_count]=$8+0; round_dur[round_count]=$9+0; round_accepted[round_count]=$10+0; round_rejected[round_count]=$11+0; round_oos_raw[round_count]=$12; next }` — **never** use field values (`$4`, `$7`, …) as awk array subscripts (overwrites/collisions).
++- Add awk function `emit_round_array(skill, step, s, e, …)` that scans `i = 1 .. round_count`, keeps rows where `round_skill[i] == skill && round_step[i] == step && round_start[i] >= s && round_start[i] < e`, insertion-sorts matches by `round_num_arr`, and prints `,"rounds":[{...}]`. Each object: `{"round":N,"duration_seconds":D,"accepted":A,"rejected":R}`; append `,"oos":O` only when `round_oos_raw[i] ~ /^[0-9]+$/`. Print nothing when no rows match (non-review `per_step` entries stay byte-identical).
++- Extend `emit_json_step(skill, step, dur, outlier, s, e)` to call `emit_round_array(skill, step, s, e)` after base fields. Update callers to pass parent **step label** plus interval: implement branch (`emit_json_step("implement", skill_mark_step["implement" SUBSEP i], …, s, e)`), no-implement branch (`emit_json_step(mark_skill[i], mark_step[i], …, s, e)`), and `emit_json_child_steps` (pass child `step` string).
+ - Do **not** touch the markdown renderer (`emit_child_rows`, per-step table) or `--summary`/`--terse` paths.
++
++### UPDATED: `scripts/run-step5-review.sh`
++When `STEP5_MODE=loop` and `--starting-round` > 1 (MAV / resume re-entry), best-effort re-establish the Step 5 parent mark before invoking `review-and-fix.sh` so interval attachment has a fresh `[start,end)` even though Step 7 may have advanced the ledger: `"$PLUGIN_ROOT/scripts/step-telemetry-mark.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true`. Round rows still carry `--step "Step 5 — code review"`; `emit_round_array` triple-match is the primary guard against Step 7 mis-attachment.
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/review-and-fix.sh`
+ Expose per-round counts to the loop. Next to the existing `IRF_LAST_ACCEPTED_FILE="$accepted_file"` assignment in `_implement_round_body`, add `IRF_LAST_ACCEPTED_COUNT="$accepted_count"` and `IRF_LAST_REJECTED_COUNT="$rejected_count"` (both already computed local vars). No contract/SKILL change.
+@@ -50,25 +54,32 @@
+ - Best-effort only: `|| true`, never gate the loop on the timing write.
+ 
+ ### UPDATED: `skills/design/scripts/plan-review-loop.sh`
+-Emit one round row per plan-review round.
+-- Add helper `_emit_round_timing_row(round_num, start_s, end_s)` that counts the just-finished round's `$DESIGN_TMPDIR` artifacts (mirror existing tally guards at ~1347–1348; never bare filenames — under `set -euo pipefail`, unguarded `grep` in the caller cwd can exit 1 before `record-round` `|| true`): `ACCEPTED=0`; `[[ -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]] && ACCEPTED=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)`; `REJECTED=0`; `[[ -f "$DESIGN_TMPDIR/rejected-findings.md" ]] && REJECTED=$(grep -cE '^### \[Plan Review\] FINDING_[0-9]+' "$DESIGN_TMPDIR/rejected-findings.md" 2>/dev/null || true)` (rejected headers from `tally-plan-review.sh`, not `^### FINDING_`); `OOS=0`; `[[ -f "$DESIGN_TMPDIR/oos.md" ]] && OOS=$(grep -cE '^### OOS_[0-9]+:' "$DESIGN_TMPDIR/oos.md" 2>/dev/null || true)`; default each count to `0` when the file is absent; then call `"$PLUGIN_ROOT/scripts/timing-ledger.sh" record-round --skill design --step "design Step 3 — plan review" --round "$round_num" --start-s "$start_s" --end-s "$end_s" --accepted "$ACCEPTED" --rejected "$REJECTED" --oos "$OOS" || true`.
+-- In the multi-round loop, set `_round_start=$(date +%s)` before `_run_plan_review_round "$round_num"` and `_round_end=$(date +%s)` after `_round_rc=$?`; call `_emit_round_timing_row "$round_num" "$_round_start" "$_round_end"` right after `_round_end` is captured (before the panel-failed / tally-error / convergence branches), so every round emits exactly once.
+-- Apply the same wrap to the legacy single-pass call site for parity. Best-effort `|| true`.
++Emit one round row per plan-review round; duration must include auto-revise + post-apply when those run.
++- In `write_empty_review_artifacts`, add `: > "$DESIGN_TMPDIR/oos-accepted-design.md"` alongside the other empty artifacts so panel-failed rounds that skip tally do not leave cumulative accepted-OOS from a prior round on disk (tally normally rebuilds this file per round at `tally-plan-review.sh:378-381).
++- Add `_emit_round_timing_row(round_num, start_s, end_s)` (never bare artifact basenames — `[[ -f ... ]]` guards before every `grep`): accepted `grep -cE '^### FINDING_[0-9]+:'` on `$DESIGN_TMPDIR/accepted-plan-findings.md`; rejected `grep -cE '^### \[Plan Review\] FINDING_[0-9]+'` on `$DESIGN_TMPDIR/rejected-findings.md`; **OOS** `grep -cE '^\| OOS_[0-9]+ \|'` on `$DESIGN_TMPDIR/voting-tally.md` (tally Findings table — not `oos.md`). Then `record-round --skill design --step "design Step 3 — plan review" … --oos "$OOS" || true`.
++- Multi-round loop: set `_round_start=$(date +%s)` immediately before `_run_plan_review_round "$round_num"`. **Do not** emit timing immediately after `_round_rc`; capture `_round_end=$(date +%s)` and call `_emit_round_timing_row` on each round exit path **immediately before** the call (so revise/post-apply time is included when they run):
++  - Branches that **skip** revise (`panel-failed`, `tally-error`, `main-agent-vote-required`, zero-findings / degraded / manual-gate-b / convergence before revise): emit right after those branches settle counts (early wall clock).
++  - Branches that run `_run_revise_with_status_parse` and `_run_post_apply_pipeline`: emit only **after** post-apply returns (success or `_snapshot_terminal_exit_preserving_status` on failure).
++  - Before `round_num=$((round_num + 1))` on continuation: emit after post-apply / snapshot on the non-terminal path.
++- Legacy single-pass (`ROUND_CAP_ARG_SEEN == 0`): same `_round_start` / late `_round_end` + `_emit_round_timing_row` on its terminal exit paths. Best-effort `|| true` throughout.
++
++### UPDATED: `skills/design/scripts/design-publish.sh`
++When `SESSION_ID` is non-empty, **before** `design-log-publish.sh`, best-effort render fresh timing JSON into the tmpdir copy surface: `LARCH_TIMING_SKILL=design "$PLUGIN_ROOT/scripts/timing-report.sh" --full --format json --output "$DESIGN_TMPDIR/timing-report-final.json" 2>"$DESIGN_TMPDIR/timing-report-final.stderr.log" || true` (append failures to `execution-issues.md` under `Warnings` when non-zero / empty output). Keep existing publish → `render-final-summary.sh --post-publish-only` order; summary may re-render the same file for chat cost lines.
+ 
+ ### UPDATED: `scripts/test-timing-ledger.sh`
+ Cover the new subcommand: valid `record-round` writes a 13-column `round` row with the documented column layout; `--oos` omitted yields `-` in the oos column; non-`implement|design` skill is rejected; non-uint `--round`/`--accepted`/`--rejected`/`--oos` rejected; `end_s < start_s` clamps `duration_s` to 0.
+ 
+ ### UPDATED: `scripts/test-timing-report.sh`
+ Add round-aggregation coverage (fixture-ledger driven, like the existing cases):
+-- Implement fixture: a `Step 5 — code review` mark plus two `round` rows (skill=implement). Assert the JSON `per_step` entry for that step has `rounds` with two objects carrying the right `round`/`duration_seconds`/`accepted`/`rejected`, ordered by round, and **no** `oos` key.
+-- Design fixture: a `design Step 3 — plan review` mark plus `round` rows (skill=design, with oos and at least one row whose rejected count reflects `### [Plan Review] FINDING_N` in the fixture ledger source, not the accepted `### FINDING_N:` heading). Assert `rounds` includes `oos` and correct rejected counts.
+-- Backward compat: a step with no matching round rows has no `rounds` key; assert the existing markdown report is unchanged (round rows do not leak into the per-step or vendor tables).
++- Implement fixture: `Step 5 — code review` mark + two implement `round` rows on that step label; assert `rounds` on the Step 5 entry only. **Mis-attachment guard**: ledger with Step 5 round 1, a later `Step 7 — commit` (or other implement) mark, then Step 5 round 2 — round 2 must not attach to Step 7; only Step 5 entry gets both rounds, ordered, no `oos`.
++- Design fixture: `design Step 3 — plan review` mark + design `round` rows (rejected count from `### [Plan Review] FINDING_N` in fixture source, not accepted `### FINDING_N:`); assert `oos` from tally-semantics (`| OOS_N |` in `voting-tally.md`, not `oos.md`). **Absent parent mark**: round rows with no matching mark emit no `rounds` on any other step.
++- Backward compat: no matching round rows → no `rounds` key; markdown unchanged. Add `scripts/test-design-structure.sh` or design-publish harness assertion that `timing-report.sh --output …/timing-report-final.json` appears before `design-log-publish.sh` in `design-publish.sh`.
+ 
+ ### UPDATED: `scripts/timing-ledger.md`
+ Document the `record-round` subcommand, its flags, the 13-column `round` row layout, the duration clamp, the optional-`oos` → `-` rule, and that it is non-fatal telemetry.
+ 
+ ### UPDATED: `scripts/timing-report.md`
+-Document the additive `rounds` array on JSON `per_step` entries, the skill+interval attachment rule, and that markdown output is unchanged.
++Document the additive `rounds` array, **skill + step label + interval** attachment (`round_step` must equal parent `per_step.step`), sequential `round_count` indexing, and unchanged markdown output.
+ 
+ ### UPDATED: `skills/review-and-fix/scripts/review-and-fix.md`
+ Note the new `IRF_LAST_ACCEPTED_COUNT` / `IRF_LAST_REJECTED_COUNT` round-scoped vars consumed by the Step 5 loop.
+@@ -77,33 +88,43 @@
+ Note the per-round `record-round` emission (skill=implement, step `Step 5 — code review`), its best-effort contract, and round start/end capture.
+ 
+ ### UPDATED: `skills/design/scripts/plan-review-loop.md`
+-Note the per-round `record-round` emission (skill=design, step `design Step 3 — plan review`, includes `oos`) and the `_emit_round_timing_row` helper (`$DESIGN_TMPDIR`-qualified paths with `[[ -f ... ]]` guards; accepted `### FINDING_N:`, rejected `### [Plan Review] FINDING_N`, oos `### OOS_N:`).
++Note per-round `record-round` (late `_round_end` after revise/post-apply when those run), `_emit_round_timing_row` guards, accepted/rejected greps, OOS from `voting-tally.md` `| OOS_N |` rows, and `write_empty_review_artifacts` clearing `oos-accepted-design.md`.
++
++### UPDATED: `skills/design/scripts/design-publish.md`
++Document pre-publish `timing-report-final.json` render before `design-log-publish.sh` and that post-publish `render-final-summary.sh` does not substitute for publish-time timing JSON.
++
++### UPDATED: `scripts/run-step5-review.md`
++Document `--starting-round` > 1 Step 5 mark re-emission before loop entry.
+ 
+ ### UPDATED: `docs/run-logs.md`
+ Add a one-line note that the committed `timing-report` batch now carries a per-round `rounds` sub-array under the Step 5 / Step 3 entries (only if the file documents timing-report content; otherwise skip — no behavior change).
+ 
+ ## Approach
+-Place per-round timing+counts in the ledger as a new 13-column `round` row kind, emitted once per round by the two existing review loops at the points where counts are already available. `timing-report.sh` attaches those rows to the matching `per_step` JSON entry by skill + start-timestamp interval. Counts reuse established loop sources: implement vars from `review-and-fix.sh`; design accepted/oos greps mirror ~1347–1348 on `$DESIGN_TMPDIR` paths with `[[ -f ... ]]` guards; design rejected uses the `[Plan Review]` header schema from `tally-plan-review.sh`, not the accepted `### FINDING_N:` pattern. Emission is strictly best-effort (`|| true`; ledger is already non-fatal) so a telemetry write never disturbs an in-flight review.
++Place per-round timing+counts in the ledger as a new 13-column `round` row kind, emitted once per round by the two existing review loops at the points where counts are already available. `timing-report.sh` attaches by skill + recorded step label + interval; implement resumes re-mark Step 5 when `--starting-round` > 1. Counts: implement from `IRF_LAST_*`; design accepted/rejected from plan-review artifacts; design OOS from `voting-tally.md` Findings rows. Design durations end after revise/post-apply when those run. Gate-C renders `timing-report-final.json` before publish so committed design logs include round rows. Emission is strictly best-effort (`|| true`; ledger is already non-fatal) so a telemetry write never disturbs an in-flight review.
+ 
+ ## Edge cases
+ - `end_s < start_s` (clock skew): clamp `duration_s` to 0 in `record-round` (mirrors vendor rows).
+ - No round rows for a step: `emit_round_array` prints nothing, so the per_step entry is byte-identical to today (backward compatible).
+ - Parent step mark absent: round rows match no interval and are silently omitted from JSON (they still exist in the ledger). The emitters use the canonical parent labels and interval matching to minimize this.
+-- Gate-C re-entry produces a second `design Step 3 — plan review` interval: interval matching attaches each pass's rounds to its own entry (string-only matching would not).
++- Gate-C re-entry: distinct parent-mark intervals; pre-publish timing render picks up all ledger rows through Step 5c.
++- Step label mismatch / wrong interval: triple-match drops orphan round rows rather than attaching to Step 7 or another skill interval.
++- Resumed implement Step 5 (`--starting-round` > 1): without re-mark + `round_step`, round 2+ could fall into Step 7's interval — mitigated by `run-step5-review.sh` mark + `emit_round_array` step equality.
+ - Implement round rows never carry `oos`; the report omits the field for them.
+-- Design `_emit_round_timing_row` must not grep bare artifact basenames: wrong cwd or missing-file `grep` exit under `set -euo pipefail` can abort the loop before `|| true` on `record-round`.
++- Design timing emit must not run before revise on paths that will revise (under-counts wall time); early emit only on skip-revise branches.
++- Design `_emit_round_timing_row` must not grep bare artifact basenames or `oos.md` for accepted OOS; use `voting-tally.md` with `[[ -f ... ]]` guards.
+ - Markdown / `--summary` / `--terse` unaffected: `round` rows are not `mark`/`vendor`/`workflow`, so those code paths ignore them.
+ 
+ ## Failure modes
+-1. **Round row written but parent mark missing** → `rounds` silently absent from JSON despite a multi-round run. Earliest signal: a multi-round review whose Step 5/Step 3 entry has no `rounds`. Mitigation: emit the canonical step label; match by skill+interval; document the mark dependency.
+-2. **Count drift** (artifact heading format changes) → wrong accepted/rejected/oos. Signal: per-round counts disagree with `voting-tally.md` / `review-tally.env`. Mitigation: reuse the loops' own `grep -cE '^### FINDING_[0-9]+:'` pattern; tests assert counts.
+-2. **Count drift** (artifact heading format changes) → wrong accepted/rejected/oos. Signal: per-round counts disagree with `voting-tally.md` / `review-tally.env`. Mitigation: `$DESIGN_TMPDIR`-qualified greps with `[[ -f ... ]]` guards; separate accepted (`### FINDING_N:`) vs rejected (`### [Plan Review] FINDING_N`) patterns; tests assert counts.
+-3. **Telemetry failure aborts the loop** → would break `/implement` or `/design` mid-review. Signal: review loop exits on a timing write. Mitigation: `|| true` on every `record-round` call; `timing-ledger.sh` already exits 0 unconditionally; never gate loop control flow on the timing write.
++1. **Round row attached to wrong `per_step`** (skill-only interval match) → Step 5 rounds appear under Step 7 or another interval. Signal: `rounds` on unexpected step. Mitigation: `round_step` column + `emit_round_array(skill, step, …)`; implement resume re-mark; fixture with Step 5 / Step 7 / Step 5.
++2. **Count drift** (artifact heading format changes) → wrong accepted/rejected/oos. Signal: per-round counts disagree with `voting-tally.md` / `review-tally.env`. Mitigation: accepted/rejected greps + OOS from `| OOS_N |` tally rows; tests assert counts.
++3. **Design duration under-count** → sum of `rounds[].duration_seconds` < parent Step 3 duration. Signal: rounds emitted before revise/post-apply. Mitigation: late `_round_end` on revise paths only.
++4. **Stale timing JSON in published design logs** → committed `timing-report-final.json` missing late Step 4/5 marks and round rows. Signal: publish artifact predates final ledger. Mitigation: pre-publish render in `design-publish.sh`.
++5. **Telemetry failure aborts the loop** → would break `/implement` or `/design` mid-review. Mitigation: `|| true` on every `record-round` and timing-report render; never gate loop control flow on telemetry.
+ 
+ ## Testing strategy
+ - Extend `scripts/test-timing-ledger.sh` (record-round row format + validation + clamp).
+-- Extend `scripts/test-timing-report.sh` (implement + design round fixtures; additive `rounds`; markdown-unchanged + no-rounds backward-compat assertions).
++- Extend `scripts/test-timing-report.sh` (implement + design fixtures, mis-attachment + absent-mark guards, markdown unchanged) and design-publish ordering assertion.
+ - Keep green: `scripts/test-review-and-fix.sh`, `scripts/test-design-multi-round-integration.sh`, `scripts/test-run-step5-review.sh`, `skills/design/scripts/test-run-step3-review.sh` (round emission is additive/best-effort; adjust only if a harness asserts exact ledger contents).
+ - Run `make lint-bash32` and `bash scripts/relevant-checks.sh` after edits.
+ 
+-diff_lines: 265
++diff_lines: 310
