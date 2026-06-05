@@ -1,0 +1,34 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/design-pause-load.sh:4-15	WI2 does not pin a set -euo pipefail-safe enumeration loop; piping ls-tree into while read runs the loop in a subshell and can abort on read EOF	The loader uses set -euo pipefail (line 4). A common git ls-tree … | while IFS= read -r -d '' path loop makes emit_load_fail exit only the subshell (parent continues with a partial restore_tmp), and with pipefail an EOF read after the last NUL record can make the pipeline non-zero and abort before missing-restored-artifact — including when enumeration is empty	In WI2 spell the loop as while IFS= read -r -d '' path; do …; done < <(git -C "$REPO_TOP" ls-tree -r -z --name-only "$archive_ref" -- "larch-logs/design/$RUN_ID/") (same pattern as scripts/design-log-publish.sh:609), wrap each git show in if ! …; then emit_load_fail snapshot-extract-failed; fi, and pin prefix strip as prefix=larch-logs/design/${RUN_ID}/ then rel=${path#"$prefix"} with [[ "$rel" == "$path" ]] && emit_load_fail snapshot-extract-failed before writing
+
+### 1. [correctness] `scripts/design-pause-load.sh` — WI2 loop wiring under `set -euo pipefail`
+
+The plan’s WI2 algorithm (`plan.txt` lines 13–17) correctly chooses NUL-delimited `git ls-tree -z` plus `IFS= read -r -d ''`, which is Bash 3.2-safe per `BASH_AUTHORING.md` §3 and matches established repo usage (`scripts/scrub-log-secrets.sh:185`, `scripts/lint-bash32.sh:120`). The edge-case note at plan line 46 is accurate for path contents.
+
+What the plan omits is how to feed the loop in a script that already runs with `set -euo pipefail`:
+
+```4:4:scripts/design-pause-load.sh
+set -euo pipefail
+```
+
+Piping `git ls-tree` into `while read` is risky here for two reasons:
+
+1. **Subshell** — a piped `while` body runs in a subshell, so `emit_load_fail` (which `exit 0`s) would not stop the parent loader; the parent could proceed to artifact checks with a partially populated `$restore_tmp`.
+2. **`pipefail` + EOF** — the final `read -d ''` returns non-zero at EOF; with `pipefail` the pipeline can fail under `set -e` before `missing-restored-artifact` runs, including when enumeration is empty (the plan’s intended empty-subtree path at lines 17 and 47).
+
+The sibling publisher already avoids this by using process substitution:
+
+```609:609:scripts/design-log-publish.sh
+    done < <(find "$completed_root" -type f | LC_ALL=C sort)
+```
+
+**Suggested revision:** In WI2, mandate `while … done < <(git -C "$REPO_TOP" ls-tree …)` (not a pipe), per-iteration `if ! git show …; then emit_load_fail snapshot-extract-failed; fi`, and pin prefix stripping as `prefix="larch-logs/design/${RUN_ID}/"` / `rel="${path#"$prefix"}"` with `[[ "$rel" == "$path" ]] && emit_load_fail snapshot-extract-failed` so a prefix mismatch cannot silently recreate `larch-logs/design/…` under `$restore_tmp` instead of the flat staging root that `tar --strip-components=3` produced today (`scripts/design-pause-load.sh:233-234`).
+
+---
+
+**Focus-area walk (no additional findings):**
+
+- **Code-quality:** `read -d ''` + `IFS=` is appropriate; no Bash 4+ constructs proposed.
+- **Risk-integration:** Test-plan stub `ls-tree`/`show` updates and the real-`git` export-ignore case (`plan.txt` lines 35–36) cover the new primitive; WI3 correctly inverts today’s “unloadable snapshot clears marker” harness expectation (`skills/design/scripts/test-design-pause-resume.sh:781-790`).
+- **Architecture:** Per-file `git show` matches the export-ignore motivation; scope stays localized to the loader.
+- **Security:** No new path-trust surface beyond the existing archive trust model; `RUN_ID` slug validation (`scripts/lib-larch-log.sh:31-36`) keeps the strip prefix well-formed.

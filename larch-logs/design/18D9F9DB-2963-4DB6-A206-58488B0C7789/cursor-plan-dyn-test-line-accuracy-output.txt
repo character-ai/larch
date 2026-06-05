@@ -1,0 +1,25 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/test-design-pause-resume.sh:781-791	Unloadable fixture still expects snapshot-extract-failed after WI2 ls-tree/show restore	After WI2 deleting SNAPSHOT_ROOT yields empty ls-tree enumeration which the loader maps to missing-restored-artifact (plan edge case line 55) not snapshot-extract-failed; flipping only line 790 polarity leaves a failing or wrong-signal test	Rewrite the unloadable block to force ls-tree or git show failure (stub exit non-zero) for snapshot-extract-failed or retarget expectations to missing-restored-artifact and use a separate fixture for extract failures
+1	in_scope	important	risk-integration	skills/design/scripts/test-design-pause-resume.sh:140	Real-git export-ignore test has no stub-bypass contract	Harness prepends STUB to PATH so a new real-git case still invokes the git stub and never exercises export-ignore; WI2 regression gap persists	Specify running the reproduction in a subshell with stub-free PATH (keep gh stub if needed) and document that requirement in the test block
+1	in_scope	nit	correctness	skills/design/scripts/test-design-pause-resume.sh:750-752	Plan add missing-restored-artifact case overlaps existing late-step test	Lines 750-752 already assert ERROR=missing-restored-artifact but not LOAD_OK=false or marker retention; a second block duplicates setup	Extend 750-752 with LOAD_OK=false and marker-present assertions instead of adding a parallel case
+
+**Polarity verification (plan current-state claims vs file)**
+
+1. **Line 192** (`skills/design/scripts/test-design-pause-resume.sh:192`) — Plan accurate. `grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "marker should remain until terminal cleanup"` asserts the marker **remains** after successful load; WI3 invert target is marker **absent**.
+
+2. **Lines 514–521** (`skills/design/scripts/test-design-pause-resume.sh:521`) — Plan accurate. `grep -Fq ... || fail "body-drift restore should keep marker"` asserts marker **remains** on `LOAD_OK=true` + `WARN=body-drift`; invert target is marker **absent**.
+
+3. **Lines 781–791** (`skills/design/scripts/test-design-pause-resume.sh:789-790`) — Line 790 polarity description is accurate: `! grep -Fq ... || fail "unloadable snapshot should clear marker"` asserts marker **absent** on extract failure; invert target is marker **remains**. Line 789 already expects `ERROR=snapshot-extract-failed` but not `LOAD_OK=false` (minor; `emit_load_fail` emits both today).
+
+**Duplicate-case check**
+
+- **`missing-restored-artifact` marker retention**: No test currently asserts marker kept on that path. Lines 750–752 cover the error only. Plan “add case” is not a duplicate but overlaps; prefer extending 750–752 (finding 3).
+- **`marker-delete-failed` stub**: No existing coverage; optional addition is not duplicate.
+
+**Numbered findings**
+
+1. **[correctness]** `skills/design/scripts/test-design-pause-resume.sh:781-791` — WI2 changes the unloadable fixture (`rm -rf "$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"`) from `snapshot-extract-failed` (archive/tar failure today) to `missing-restored-artifact` (empty enumeration per plan Approach/Edge cases). Plan WI3 only inverts marker polarity while keeping `ERROR=snapshot-extract-failed`; implementer will get a failing or mislabeled test unless the fixture or expected ERROR changes.
+
+2. **[risk-integration]** `skills/design/scripts/test-design-pause-resume.sh:140` — Dedicated real-`git` export-ignore reproduction cannot work under global `PATH="$STUB:$PATH"` without an explicit bypass; plan mandates the test but not how to escape the stub.
+
+3. **[correctness/nit]** `skills/design/scripts/test-design-pause-resume.sh:750-752` — Extend the existing late-step `missing-restored-artifact` assertions (add `LOAD_OK=false` + marker retention) rather than adding a redundant parallel case, consistent with SIMPLE minimum-change scope.

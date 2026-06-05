@@ -1,0 +1,16 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -26,8 +26,7 @@ WI1. Update the `.completed/` staging contract bullet (currently "files … wit
+ 
+ ### UPDATED: `scripts/design-pause-load.md`
+-WI2 + WI3. Update the restore-mechanism paragraph: snapshot restore now uses `git ls-tree -r` enumeration + per-file `git show` (export-ignore-independent) instead of `git archive | tar`; document the process-substitution `read -d ''` loop and explicit `emit_load_fail` guards required under `set -euo pipefail`. Update the marker-lifecycle contract: the loader keeps the marker on every restore/extract/snapshot-content failure (retryable) and deletes it only after a successful install; a post-success delete failure surfaces as `WARN=marker-delete-failed` with `LOAD_OK=true`. Note in the output contract that `WARN` may carry `marker-delete-failed` in addition to `body-drift`.
+ WI2 + WI3. Update the restore-mechanism paragraph: snapshot restore now uses a guarded `git ls-tree -r -z` capture to a temp NUL buffer + per-path `read -d ''` iteration + per-file `git show` (export-ignore-independent) instead of `git archive | tar`; document the explicit `if ! git … ls-tree … >"$enum_tmp"` guard (must run before the read loop — process substitution alone is insufficient under `set -euo pipefail`) and per-path `if ! git show …` guards that call `emit_load_fail`. Update the marker-lifecycle contract: the loader keeps the marker on every restore/extract/snapshot-content failure (retryable) and deletes it only after a successful install; a post-success delete failure surfaces as `WARN=marker-delete-failed` with `LOAD_OK=true`. Note in the output contract that `WARN` may carry `marker-delete-failed` in addition to `body-drift`.
+ 
+ ### UPDATED: `SECURITY.md`
+@@ -88,5 +87,5 @@ Fix each defect at its own locus, change nothing else. WI1 relaxes one over-st
+ 
+ diff_added: 242
+-diff_deleted: 54
+-diff_lines: 296
++diff_deleted: 55
++diff_lines: 295
