@@ -55,12 +55,17 @@ After extraction, `manifest.json`, `run-params.json`, and `pause-state.txt`
 must exist at the staging root. `plan.txt` is required only once the saved
 resume step is after Step `2b`, because earlier pauses legitimately predate plan
 materialization. Missing required artifacts emit `LOAD_OK=false`
-`ERROR=missing-restored-artifact`. The loader keeps the marker on every
-restore, extract, validation, and snapshot-content failure so the same marker is
-retryable. It deletes the marker only after installing the staged restore into
-the caller tmpdir and writing `.resume-loaded`; if that post-success delete
+`ERROR=missing-restored-artifact`. The loader keeps the marker on retryable
+restore, extract, and snapshot-content failures (`snapshot-not-found`,
+`snapshot-extract-failed`, `missing-restored-artifact`, install failures, and
+transient `issue-body-read-failed` / `not-git-worktree`). Permanent validation
+or binding failures (marker field errors, issue/repo mismatches,
+restored-* mismatches, corrupt manifest) clear the marker before returning
+`LOAD_OK=false`. It deletes the marker only after installing the staged restore
+into the caller tmpdir and writing `.resume-loaded`; if that post-success delete
 fails, the load still reports success, emits `MARKER_CLEARED=false`, and emits
-`WARN=marker-delete-failed`. A successful post-load marker delete emits
+`WARN=marker-delete-failed` (the route driver refuses `resume@*` until the
+marker is removed manually). A successful post-load marker delete emits
 `MARKER_CLEARED=true`. Successful load also removes restored
 `$DESIGN_TMPDIR/.pause-requested` so the resumed run does not immediately
 re-pause from stale local state.

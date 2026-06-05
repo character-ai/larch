@@ -741,9 +741,13 @@ out_rec=$(PUBLISH_MODE=recovery bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9
 grep -Fq 'LOG_RECOVERY_BRANCH=larch-log-design-RUNPAUSE1' "$BODY_FILE" || fail "recovery branch missing from marker"
 : >"$FETCH_LOG"
 : >"$REV_PARSE_LOG"
-bash "$LOAD" --design-tmpdir "$TMP/restore-recovery" --issue 9 --repo owner/repo >/dev/null
+out_recovery_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-recovery" --issue 9 --repo owner/repo)
+[[ "$out_recovery_load" == *"LOAD_OK=true"* ]] || fail "recovery load failed: $out_recovery_load"
+[[ "$out_recovery_load" == *"MARKER_CLEARED=true"* ]] || fail "recovery load should emit MARKER_CLEARED=true: $out_recovery_load"
 grep -Fq 'fetch origin larch-log-design-RUNPAUSE1' "$FETCH_LOG" || fail "load did not fetch recovery branch"
 grep -Fq 'rev-parse --verify FETCH_HEAD^{commit}' "$REV_PARSE_LOG" || fail "recovery fetch path should pin FETCH_HEAD via rev-parse"
+[[ -f "$TMP/restore-recovery/plan.txt" && -f "$TMP/restore-recovery/.resume-loaded" ]] || fail "recovery restore artifacts missing"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "recovery load should delete marker after success"
 
 make_design_tmpdir "$DESIGN"
 printf 'body\n' >"$BODY_FILE"
@@ -770,7 +774,11 @@ out_local_recovery=$(PUBLISH_MODE=local-recovery bash "$SAVE" --design-tmpdir "$
 [[ "$out_local_recovery" == *"PAUSE_OK=true"* && "$out_local_recovery" == *"WARN=recovery-branch-only"* ]] || fail "local recovery publish should stay resumable: $out_local_recovery"
 grep -Fq 'LOG_RECOVERY_BRANCH=larch-log-design-recovery-RUNPAUSE1' "$BODY_FILE" || fail "local recovery branch missing from marker"
 : >"$FETCH_LOG"
-bash "$LOAD" --design-tmpdir "$TMP/restore-local-recovery" --issue 9 --repo owner/repo >/dev/null
+out_local_recovery_load=$(bash "$LOAD" --design-tmpdir "$TMP/restore-local-recovery" --issue 9 --repo owner/repo)
+[[ "$out_local_recovery_load" == *"LOAD_OK=true"* ]] || fail "local recovery load failed: $out_local_recovery_load"
+[[ "$out_local_recovery_load" == *"MARKER_CLEARED=true"* ]] || fail "local recovery load should emit MARKER_CLEARED=true: $out_local_recovery_load"
+[[ -f "$TMP/restore-local-recovery/plan.txt" && -f "$TMP/restore-local-recovery/.resume-loaded" ]] || fail "local recovery restore artifacts missing"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "local recovery load should delete marker after success"
 ! grep -Fq 'fetch origin larch-log-design-recovery-RUNPAUSE1' "$FETCH_LOG" || fail "local recovery load should not fetch origin"
 
 echo "=== mismatched recovery branch and jq missing fail closed ==="
@@ -786,6 +794,7 @@ path.write_text(text.replace("LOG_RECOVERY_BRANCH=larch-log-design-RUNPAUSE1", "
 PY
 out_bad_branch=$(bash "$LOAD" --design-tmpdir "$TMP/restore-bad-branch" --issue 9 --repo owner/repo)
 [[ "$out_bad_branch" == *"LOAD_OK=false"* && "$out_bad_branch" == *"ERROR=invalid-recovery-branch"* ]] || fail "bad recovery branch mismatch: $out_bad_branch"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "tampered recovery branch should delete marker"
 
 # Reset body to a valid recovery branch for the jq-missing test (the bad-branch
 # test above modified BODY_FILE to have an invalid ref; restore it first).
@@ -857,23 +866,23 @@ echo "=== value validation and missing artifact ==="
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=8\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_issue=$(bash "$LOAD" --design-tmpdir "$TMP/bad-issue" --issue 9 --repo owner/repo)
 [[ "$out_bad_issue" == *"ERROR=issue-mismatch"* ]] || fail "issue binding mismatch failed open: $out_bad_issue"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "issue mismatch should keep marker"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "issue mismatch should delete marker"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=other/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_repo=$(bash "$LOAD" --design-tmpdir "$TMP/bad-repo" --issue 9 --repo owner/repo)
 [[ "$out_bad_repo" == *"ERROR=repo-mismatch"* ]] || fail "repo binding mismatch failed open: $out_bad_repo"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "repo mismatch should keep marker"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "repo mismatch should delete marker"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=../bad\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_run=$(bash "$LOAD" --design-tmpdir "$TMP/bad-run" --issue 9 --repo owner/repo)
 [[ "$out_bad_run" == *"LOAD_OK=false"* && "$out_bad_run" == *"ERROR=invalid-run-id"* ]] || fail "bad run validation mismatch: $out_bad_run"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid run id should keep marker"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid run id should delete marker"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=nope\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_step=$(bash "$LOAD" --design-tmpdir "$TMP/bad-step" --issue 9 --repo owner/repo)
 [[ "$out_bad_step" == *"ERROR=invalid-step"* ]] || fail "bad step validation mismatch: $out_bad_step"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid step should keep marker"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid step should delete marker"
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nLOG_RECOVERY_BRANCH=badbranch\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_bad_branch=$(bash "$LOAD" --design-tmpdir "$TMP/bad-branch" --issue 9 --repo owner/repo)
 [[ "$out_bad_branch" == *"ERROR=invalid-recovery-branch"* ]] || fail "bad branch validation mismatch: $out_bad_branch"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid recovery branch should keep marker"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid recovery branch should delete marker"
 
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNMISSING1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_missing_snapshot=$(bash "$LOAD" --design-tmpdir "$TMP/missing-snapshot" --issue 9 --repo owner/repo)
@@ -895,17 +904,19 @@ printf 'ISSUE_NUMBER=8\nRUN_ID=RUNPAUSE1\n' >"$SNAPSHOT_ROOT/larch-logs/design/R
 printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_restored_issue=$(bash "$LOAD" --design-tmpdir "$TMP/restored-issue" --issue 9 --repo owner/repo)
 [[ "$out_restored_issue" == *"ERROR=restored-issue-mismatch"* ]] || fail "restored issue mismatch failed open: $out_restored_issue"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restored issue mismatch should keep marker"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restored issue mismatch should delete marker"
 
 printf 'ISSUE_NUMBER=9\nRUN_ID=OTHER\n' >"$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/pause-state.txt"
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_restored_run=$(bash "$LOAD" --design-tmpdir "$TMP/restored-run" --issue 9 --repo owner/repo)
 [[ "$out_restored_run" == *"ERROR=restored-run-id-mismatch"* ]] || fail "restored run mismatch failed open: $out_restored_run"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restored run mismatch should keep marker"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restored run mismatch should delete marker"
 
 printf 'ISSUE_NUMBER=9\nRUN_ID=RUNPAUSE1\nREPO=other/repo\n' >"$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/pause-state.txt"
+printf '<!-- larch:design-pause:start -->\nISSUE_NUMBER=9\nREPO=owner/repo\nRUN_ID=RUNPAUSE1\nSTEP=1d\nBODY_HASH=x\n<!-- larch:design-pause:end -->\n' >"$BODY_FILE"
 out_restored_repo=$(bash "$LOAD" --design-tmpdir "$TMP/restored-repo" --issue 9 --repo owner/repo)
 [[ "$out_restored_repo" == *"ERROR=restored-repo-mismatch"* ]] || fail "restored repo mismatch failed open: $out_restored_repo"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restored repo mismatch should keep marker"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "restored repo mismatch should delete marker"
 
 LEGACY_HARD="$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1"
 rm -rf "$LEGACY_HARD"
@@ -988,7 +999,7 @@ BAD_MANIFEST_RESTORE="$TMP/bad-manifest-restore"
 mkdir -p "$BAD_MANIFEST_RESTORE"
 out_bad_manifest=$(bash "$LOAD" --design-tmpdir "$BAD_MANIFEST_RESTORE" --issue 9 --repo owner/repo)
 [[ "$out_bad_manifest" == *"LOAD_OK=false"* && "$out_bad_manifest" == *"ERROR=invalid-restored-manifest"* ]] || fail "invalid manifest mismatch: $out_bad_manifest"
-grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid manifest should keep marker"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid manifest should delete marker"
 ! [[ -f "$BAD_MANIFEST_RESTORE/.resume-loaded" ]] || fail "invalid manifest should not install resume sentinel"
 
 echo "=== marker name validation ==="

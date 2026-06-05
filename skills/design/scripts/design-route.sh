@@ -322,6 +322,11 @@ if pause_marker_present "$ISSUE_BODY_FILE"; then
         _step_reg_rc=0
         step_is_registered "$_step" || _step_reg_rc=$?
         if [[ "$_step_reg_rc" -eq 0 ]]; then
+            if [[ "$MARKER_CLEARED" == false ]]; then
+                ERROR_LINES+=("pause-marker-not-cleared")
+                ROUTE=cancel-pause-load
+                emit_route_result
+            fi
             _manual_resume=false
             if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
                 [[ "$(jq -r '.manual_gate_b // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo false)" == true ]] && _manual_resume=true
@@ -365,6 +370,8 @@ if pause_marker_present "$ISSUE_BODY_FILE"; then
         ROUTE=cancel-pause-load
         emit_route_result
     fi
+    ROUTE=cancel-pause-load
+    emit_route_result
 fi
 
 # 2. Title-eligibility

@@ -22,12 +22,6 @@ usage() {
     larch_err "Usage: design-pause-load.sh --design-tmpdir PATH --issue N [--repo OWNER/REPO]"
 }
 
-emit_load_fail() {
-    emit_kv LOAD_OK false
-    emit_kv ERROR "$1"
-    exit 0
-}
-
 clear_pause_marker() {
     local clear_args=(
         "$SCRIPT_DIR/named-block-write.sh"
@@ -37,6 +31,27 @@ clear_pause_marker() {
     )
     [[ -n "$REPO" ]] && clear_args+=(--repo "$REPO")
     "${clear_args[@]}" >/dev/null 2>&1
+}
+
+load_fail_retryable() {
+    case "$1" in
+        snapshot-not-found|snapshot-extract-failed|missing-restored-artifact|issue-body-read-failed|tmpdir-create-failed|restore-install-failed|resume-sentinel-write-failed|not-git-worktree)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
+emit_load_fail() {
+    local error="$1"
+    if ! load_fail_retryable "$error"; then
+        clear_pause_marker >/dev/null 2>&1 || true
+    fi
+    emit_kv LOAD_OK false
+    emit_kv ERROR "$error"
+    exit 0
 }
 
 kv_get() {

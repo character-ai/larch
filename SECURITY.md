@@ -96,13 +96,14 @@ the snapshot subtree, and verifies required artifacts before installing into the
 caller tmpdir. This prevents an edited issue body from silently retargeting
 resume to another run or leaving a partially-restored local state behind. The
 loader keeps the marker on retryable restore, extract, and snapshot-content
-failures such as `snapshot-not-found`, `snapshot-extract-failed`,
-`missing-restored-artifact`, and restored-* mismatches; it deletes the marker
-only after a successful install and `.resume-loaded` write. A successful load
-also removes restored `$DESIGN_TMPDIR/.pause-requested` before resuming. A
-post-success marker deletion failure is non-fatal and surfaces as
-`MARKER_CLEARED=false` plus `WARN=marker-delete-failed` with `LOAD_OK=true` so
-operators can clean up the stale marker manually; successful marker deletion
+failures such as `snapshot-not-found`, `snapshot-extract-failed`, and
+`missing-restored-artifact`; permanent validation or binding failures clear the
+marker before returning `LOAD_OK=false`. It deletes the marker only after a
+successful install and `.resume-loaded` write. A successful load also removes
+restored `$DESIGN_TMPDIR/.pause-requested` before resuming. A post-success
+marker deletion failure is non-fatal and surfaces as `MARKER_CLEARED=false` plus
+`WARN=marker-delete-failed` with `LOAD_OK=true`; `design-route.sh` refuses
+`resume@*` until the stale marker is removed manually. Successful marker deletion
 surfaces `MARKER_CLEARED=true`.
 Supported recovery-branch prefixes are both `larch-log-design-<RUN_ID>` and
 `larch-log-design-recovery-<RUN_ID>`. Remote recovery fetches the branch, then
