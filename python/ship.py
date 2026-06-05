@@ -603,6 +603,7 @@ def run_ship(
                         base_remote=base_remote,
                         base_ref=base_ref,
                         allow_conflict_fix=True,
+                        enable_pre_push_handoff=True,
                     )
                     rebase_count += 1
                 if monitor.transient_rerun_attempted:

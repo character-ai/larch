@@ -21,3 +21,25 @@ class NeedsUserInput(ShipError):
 
 class Stalled(ShipError):
     """Run stalled waiting on external preconditions."""
+
+
+class PrePushConflictHandoff(Stalled):
+    """Pre-push rebase conflicts need the legacy conflict-resolution handoff."""
+
+    def __init__(
+        self,
+        *,
+        conflict_files: tuple[str, ...],
+        resume_phase: str,
+        caller_kind: str,
+        message: str = "fixer waterfall could not resolve non-bump conflicts",
+    ) -> None:
+        super().__init__(message)
+        self.conflict_files = conflict_files
+        self.resume_phase = resume_phase
+        self.caller_kind = caller_kind
+
+    @property
+    def conflict_csv(self) -> str:
+        """Comma-separated conflict list matching the bash ``CONFLICT_FILES`` shape."""
+        return ",".join(self.conflict_files)

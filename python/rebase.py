@@ -13,7 +13,7 @@ import config
 import git
 import redact
 import retry
-from errors import NeedsUserInput, ShipError, Stalled, TransientNetworkError
+from errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
 from outcomes import Outcome
 from proc import CommandResult, Runner
 
@@ -86,6 +86,38 @@ def _is_plugin_json_path(path: str) -> bool:
     return path == config.PLUGIN_JSON_PATH or path.endswith(
         f"/{config.PLUGIN_JSON_PATH}",
     )
+
+
+def _larch_bump_files() -> frozenset[str]:
+    raw = os.environ.get(config.ENV_LARCH_VERSION_FILES, "")
+    if not raw:
+        raw = os.environ.get(config.ENV_LARCH_BUMP_FILES, "")
+    return frozenset(segment.strip() for segment in raw.split(os.pathsep) if segment.strip())
+
+
+def _is_bump_path(path: str) -> bool:
+    base = Path(path).name
+    if _is_plugin_json_path(path):
+        return True
+    if base in ("version.go", "go.sum"):
+        return True
+    return path in _larch_bump_files()
+
+
+def _conflicts_are_non_bump_only(paths: tuple[str, ...]) -> bool:
+    return bool(paths) and not any(_is_bump_path(path) for path in paths)
+
+
+def _write_handoff_flag(tmpdir: str | None) -> None:
+    root = tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR)
+    if not root:
+        raise Stalled(_redact_outbound("handoff flag tmpdir not configured"))
+    flag = Path(root) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    try:
+        _ = flag.write_text("", encoding="utf-8")
+    except OSError as exc:
+        msg = f"cannot write {config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME}"
+        raise Stalled(_redact_outbound(msg)) from exc
 
 
 def _deterministic_prepass(
@@ -173,6 +205,8 @@ def _resolve_conflicts(
     repo: str,
     run_id: str,
     cwd: str | None,
+    tmpdir: str | None = None,
+    enable_pre_push_handoff: bool = False,
 ) -> None:
     _ = repo, run_id
     while True:
@@ -192,17 +226,19 @@ def _resolve_conflicts(
                     cwd=cwd,
                 )
                 if waterfall.winning_tier is None:
-                    raise NeedsUserInput(
-                        _redact_outbound(
-                            "fixer waterfall could not resolve conflicts",
-                        ),
+                    conflict_files = tuple(remaining)
+                    if enable_pre_push_handoff and _conflicts_are_non_bump_only(conflict_files):
+                        _write_handoff_flag(tmpdir)
+                        raise PrePushConflictHandoff(
+                            conflict_files=conflict_files,
+                            resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
+                            caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
+                        )
+                    raise Stalled(
+                        _redact_outbound("fixer waterfall could not resolve conflicts"),
                     )
                 if _unmerged_paths(runner, cwd=cwd):
-                    raise NeedsUserInput(
-                        _redact_outbound(
-                            "conflicts remain after fixer waterfall",
-                        ),
-                    )
+                    raise Stalled(_redact_outbound("conflicts remain after fixer waterfall"))
 
         continue_result = git.rebase_continue(runner, cwd=cwd)
         if continue_result.returncode == 0:
@@ -287,6 +323,7 @@ def rebase_and_push(
     max_attempts: int = config.REBASE_MAX_ATTEMPTS,
     defer_push: bool = False,
     allow_conflict_fix: bool = True,
+    enable_pre_push_handoff: bool = False,
 ) -> RebaseResult:
     """Rebase onto base, resolve conflicts, optionally force-push.
 
@@ -343,6 +380,8 @@ def rebase_and_push(
                 repo=repo,
                 run_id=run_id,
                 cwd=cwd,
+                tmpdir=tmpdir,
+                enable_pre_push_handoff=enable_pre_push_handoff,
             )
         else:
             _abort_rebase(runner, cwd=cwd)
