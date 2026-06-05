@@ -114,7 +114,31 @@ def test_flush_logs_post_no_git_commit(tmp_path: Path) -> None:
     manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["status"] == config.MANIFEST_STATUS_DONE
-    assert manifest["steps_ran"]["pr_number"] == 17
+    assert manifest["pr_number"] == 17
+    assert "pr_number" not in manifest["steps_ran"]
+
+
+def test_flush_logs_post_writes_done_manifest_before_reports(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ctx = _ctx(tmp_path).with_(pr_number=17)
+    _ = run_logs.init_run(ctx)
+
+    def fail_report(*_a: object, **_k: object) -> None:
+        raise ShipError("write-final-report failed")
+
+    monkeypatch.setattr(run_logs, "_write_final_report", fail_report)
+    skip = run_logs.flush_logs_post(
+        ctx,
+        merge_result=config.MERGE_RESULT_MERGED,
+        runner=RecordingRunner(),
+    )
+    manifest_path = tmp_path / "larch-logs" / "implement" / "run-abc" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert skip.skipped is True
+    assert manifest["status"] == config.MANIFEST_STATUS_DONE
+    assert manifest["pr_number"] == 17
 
 
 def test_flush_logs_post_manifest_write_oserror_returns_recovery_skip(
@@ -158,6 +182,11 @@ def test_load_or_recover_manifest_absent_run_dir_tags_partial(tmp_path: Path) ->
     assert recovered.recovery_ok
     assert recovered.manifest.status == config.MANIFEST_STATUS_PARTIAL
     assert recovered.manifest.extra == {"recovery_reason": "manifest_lost_mid_run"}
+    manifest_path = tmp_path / "larch-logs" / "implement" / "lost-run" / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["version"] == "1"
+    assert manifest["run_id"] == "lost-run"
+    assert manifest["steps_ran"] == {}
 
 
 def test_effective_run_id_prefers_state_file(tmp_path: Path) -> None:

@@ -55,7 +55,7 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
         ({"final_bail_reason": "blocked"}, "skipped-bail"),
     ],
 )
-def test_postmerge_skip_decisions_match_trimmed_bash(
+def test_postmerge_skip_decisions_match_python_contract(
     tmp_path: Path,
     changes: dict[str, object],
     expected: str,

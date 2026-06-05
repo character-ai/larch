@@ -655,6 +655,76 @@ def test_run_ci_fix_pushed_after_winning_tier(tmp_path: Any) -> None:
     assert launch_calls == ["codex"]
 
 
+def test_stage_and_push_defer_rebase_uses_rebase_push_wrapper(tmp_path: Any) -> None:
+    commit_script = str(SCRIPTS_DIR / "git-commit.sh")
+    rebase_script = str(SCRIPTS_DIR / "rebase-push.sh")
+    responses = {
+        ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (codex)"): _cr((commit_script,), 0),
+        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="1\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
+        (
+            rebase_script,
+            "--no-push",
+            "--keep-on-conflict",
+            "--base-remote",
+            "origin",
+            "--base-ref",
+            "main",
+        ): _cr((rebase_script,), 0),
+        ("make", "py-lint"): _cr(("make", "py-lint"), 0),
+        ("git", "fetch", "origin", "feature", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "rev-parse", "origin/feature"): _cr(("git", "rev-parse"), stdout="remote\n"),
+        ("git", "status", "--porcelain", "--untracked-files=all"): _cr(("git", "status"), stdout=""),
+        (
+            "git",
+            "push",
+            "--force-with-lease=refs/heads/feature:remote",
+            "origin",
+        ): _cr(("git", "push"), 0),
+    }
+    classified = ci_monitor.classify_failed_jobs(
+        (FailedJob(name="python-lint", conclusion="failure"),),
+    )
+    runner = RecordingRunner(responses)
+    pushed, _head, _delta, did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="codex",
+        delta_paths=("fixed.py",),
+        classified=classified,
+    )
+    assert pushed is True
+    assert did_rebase is True
+    assert pending is False
+    assert any(call[0] == rebase_script for call in runner.calls)
+
+
+def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:
+    responses = {
+        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("make", "py-lint"): _cr(("make", "py-lint"), 1),
+    }
+    classified = ci_monitor.classify_failed_jobs(
+        (FailedJob(name="python-lint", conclusion="failure"),),
+    )
+    runner = RecordingRunner(responses)
+    pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="pending-retry",
+        delta_paths=(),
+        ci_fix_rebase_pending=True,
+        classified=classified,
+    )
+    assert pushed is False
+    assert pending is False
+    assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
+
+
 def test_run_ci_fix_first_fixer_non_health_after_stage(tmp_path: Any) -> None:
     head = "deadbeef" * 5
 

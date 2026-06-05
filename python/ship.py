@@ -1030,9 +1030,9 @@ def run_postmerge_phase(
     if not ctx.merge or not ctx.pr_closed:
         return ShipResult(Outcome.STALLED, detail="postmerge requires a closed merge PR")
     sentinel = Path(ctx.tmpdir) / "post-merge-sentinel"
-    post = finalize.postmerge(runner, ctx, cwd=cwd)
-    if ctx.pr_closed and post.outcome is Outcome.OK:
+    if ctx.pr_closed:
         _ = sentinel.write_text(f"MERGE_RESULT={ctx.merge_result}\n", encoding="utf-8")
+    post = finalize.postmerge(runner, ctx, cwd=cwd)
     state_ctx = ctx.with_(
         pr_closed=ctx.pr_closed,
         stall_tracking=post.outcome is Outcome.STALLED,
@@ -1068,11 +1068,6 @@ def run_ship(
         codex_present = ctx.codex_present or bool(os.environ.get("CODEX") or os.environ.get("CODEX_HOME") or ctx.tool_label == "codex")
         cursor_present = ctx.cursor_present or bool(os.environ.get("CURSOR") or os.environ.get("CURSOR_AUTH_ARGS") or ctx.tool_label == "cursor")
         base_ref = "main"
-        if ctx.ci_fix_rebase_pending:
-            expected_pending_head = run_logs.read_state_kv(ctx.state_file, "CI_FIX_REBASE_PENDING_HEAD")
-            current_head = git.try_rev_parse(runner, "HEAD", cwd=repo_root)
-            if not expected_pending_head or expected_pending_head != current_head:
-                ctx = ctx.with_(ci_fix_rebase_pending=False)
         resume = _resume_plan(ctx, runner, cwd=repo_root)
         if resume.start == "blocked-rebase-continuation":
             return ShipResult(

@@ -1905,7 +1905,7 @@ def test_postmerge_should_flush_false_without_run_id(tmp_path: Path) -> None:
     assert ship._postmerge_should_flush(ctx) is False  # pyright: ignore[reportPrivateUsage]
 
 
-def test_ci_fix_rebase_pending_cleared_when_head_mismatch(
+def test_ci_fix_rebase_pending_survives_head_mismatch(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1955,7 +1955,42 @@ def test_ci_fix_rebase_pending_cleared_when_head_mismatch(
         )(),
     )
     _ = ship.run_ship(ctx, runner=RecordingRunner(), cwd=str(tmp_path))
-    assert written == ["false"]
+    assert written == ["true"]
+
+
+def test_postmerge_sentinel_written_before_finalize_postmerge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ctx = _ctx(
+        tmp_path,
+        pr_number=5,
+        pr_url="u",
+        pr_closed=True,
+        merge_result=config.MERGE_RESULT_MERGED,
+    )
+
+    def observe_postmerge(_runner: RecordingRunner, ctx_arg: RunContext, **_kwargs: object) -> object:
+        assert (Path(ctx_arg.tmpdir) / "post-merge-sentinel").is_file()
+        return type(
+            "Post",
+            (),
+            {
+                "outcome": Outcome.OK,
+                "detail": "",
+                "status": "ok",
+            },
+        )()
+
+    monkeypatch.setattr(ship.finalize, "postmerge", observe_postmerge)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(
+        ship.run_logs,
+        "finalize_postmerge_logs",
+        lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""),
+    )
+    result = ship.run_postmerge_phase(RecordingRunner(), ctx, cwd=str(tmp_path))
+    assert result.outcome is Outcome.OK
 
 
 def test_python_ship_driver_version_guard_probe() -> None:

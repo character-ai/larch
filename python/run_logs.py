@@ -476,16 +476,16 @@ def load_or_recover_manifest_checked(ctx: RunContext) -> ManifestRecovery:
                 except OSError:
                     return ManifestRecovery(recovered, recovery_ok=False)
                 return ManifestRecovery(recovered, recovery_ok=True)
-        manifest = Manifest(
-            status=config.MANIFEST_STATUS_PARTIAL,
-            version="1",
-            run_id=rid,
-            steps_ran={},
-            extra={"recovery_reason": RECOVERY_REASON_MANIFEST_LOST},
-        )
         try:
-            _write_manifest(ctx, manifest)
+            manifest = init_run(ctx, run_id=rid, recovery_reason=RECOVERY_REASON_MANIFEST_LOST)
         except OSError:
+            manifest = Manifest(
+                status=config.MANIFEST_STATUS_PARTIAL,
+                version="1",
+                run_id=rid,
+                steps_ran={},
+                extra={"recovery_reason": RECOVERY_REASON_MANIFEST_LOST},
+            )
             return ManifestRecovery(manifest, recovery_ok=False)
         return ManifestRecovery(manifest, recovery_ok=True)
     try:
@@ -773,12 +773,24 @@ def flush_logs_post(
     log_root = Path(ctx.tmpdir) / "larch-logs"
     resolved = merge_result or _read_state_kv(ctx.state_file, "MERGE_RESULT") or ctx.merge_result
     finalize = resolved in config.POST_MERGE_MERGE_RESULTS
-    steps = dict(manifest.steps_ran)
     pr_number = _read_state_kv(ctx.state_file, "PR_NUMBER") if ctx.state_file else ""
     if not pr_number and ctx.pr_number is not None:
         pr_number = str(ctx.pr_number)
-    if pr_number and str(pr_number).isdigit():
-        steps["pr_number"] = int(pr_number)
+    status = config.MANIFEST_STATUS_DONE if finalize else manifest.status
+    extra = {**(manifest.extra or {}), **({"pr_number": int(pr_number)} if str(pr_number).isdigit() else {})}
+    updated = Manifest(
+        status=status,
+        version=manifest.version,
+        run_id=manifest.run_id,
+        steps_ran=dict(manifest.steps_ran),
+        created_at=manifest.created_at,
+        updated_at=manifest.updated_at,
+        extra=extra,
+    )
+    try:
+        _write_manifest(ctx, updated)
+    except OSError:
+        return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
     try:
         if runner is not None:
             _write_final_report(runner, ctx)
@@ -788,20 +800,6 @@ def flush_logs_post(
     except ShipError as exc:
         reason = "redaction-failed" if "redaction" in str(exc).lower() else "post-merge-refresh-failed"
         return RefreshSkip(skipped=True, reason=reason)
-    status = config.MANIFEST_STATUS_DONE if finalize else manifest.status
-    updated = Manifest(
-        status=status,
-        version=manifest.version,
-        run_id=manifest.run_id,
-        steps_ran=steps,
-        created_at=manifest.created_at,
-        updated_at=manifest.updated_at,
-        extra={**(manifest.extra or {}), **({"pr_number": int(pr_number)} if str(pr_number).isdigit() else {})},
-    )
-    try:
-        _write_manifest(ctx, updated)
-    except OSError:
-        return RefreshSkip(skipped=True, reason=REFRESH_SKIP_RECOVERY_FAILED)
     return RefreshSkip(skipped=False, reason="")
 
 

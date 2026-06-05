@@ -919,16 +919,26 @@ def stage_and_push(
             else:
                 fetch = git.fetch(runner, base_remote, base_ref, cwd=cwd)
                 if fetch.returncode == 0:
-                    rebased = git.rebase(runner, f"{base_remote}/{base_ref}", cwd=cwd)
+                    rebase_script = str(_SCRIPTS_DIR / "rebase-push.sh")
+                    rebased = runner.run(
+                        [
+                            rebase_script,
+                            "--no-push",
+                            "--keep-on-conflict",
+                            "--base-remote",
+                            base_remote,
+                            "--base-ref",
+                            base_ref,
+                        ],
+                        cwd=cwd,
+                    )
                     did_rebase = rebased.returncode == 0
                     if not did_rebase:
-                        _abort_rebase_result = git.rebase(runner, "--abort", cwd=cwd)
-                        _ = _abort_rebase_result
                         return False, head, delta_paths, False, False
                 else:
                     return False, head, delta_paths, False, False
     if did_rebase or ci_fix_rebase_pending:
-        if did_rebase and classified and classified.fixable:
+        if (did_rebase or ci_fix_rebase_pending) and classified and classified.fixable:
             failed_verify = [
                 _job_token(job.name, job.shard)
                 for job in classified.fixable

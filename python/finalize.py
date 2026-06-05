@@ -119,7 +119,8 @@ def _postbump_checkpoint_status(ctx: RunContext) -> str:
     ):
         return "corrupt"
     if text != "force-push-gate":
-        return "corrupt"
+        path.unlink(missing_ok=True)
+        return "ok"
     path.unlink(missing_ok=True)
     return "ok"
 
@@ -173,12 +174,10 @@ def _numeric_stdout(result: CommandResult) -> int:
 
 def _local_cleanup(
     runner: Runner,
-    ctx: RunContext,
     branch: str,
     *,
     cwd: str | None,
 ) -> LocalCleanupResult:
-    _ = ctx
     checkout = runner.run(["git", "checkout", "main"], cwd=cwd)
     if checkout.returncode != 0:
         current = git.try_current_branch(runner, cwd=cwd) or "unknown"
@@ -189,16 +188,14 @@ def _local_cleanup(
     ahead = _numeric_stdout(runner.run(["git", "rev-list", "--count", "origin/main..HEAD"], cwd=cwd))
     if ahead > 0:
         subjects = runner.run(["git", "log", "origin/main..HEAD", "--format=%s"], cwd=cwd)
-        all_flushes = subjects.returncode == 0 and all(
-            line.startswith(config.FLUSH_COMMIT_SUBJECT_PREFIX)
-            for line in subjects.stdout.splitlines()
-            if line
+        subject_lines = [line for line in subjects.stdout.splitlines() if line]
+        all_flushes = bool(subject_lines) and subjects.returncode == 0 and all(
+            line.startswith(config.FLUSH_COMMIT_SUBJECT_PREFIX) for line in subject_lines
         )
         diff = runner.run(["git", "diff", "--name-only", pre_fetch_sha, "HEAD"], cwd=cwd)
-        larch_only = diff.returncode == 0 and all(
-            line.startswith("larch-logs/")
-            for line in diff.stdout.splitlines()
-            if line
+        diff_lines = [line for line in diff.stdout.splitlines() if line]
+        larch_only = bool(diff_lines) and diff.returncode == 0 and all(
+            line.startswith("larch-logs/") for line in diff_lines
         )
         if all_flushes and larch_only:
             _ = runner.run(["git", "reset", "--hard", "origin/main"], cwd=cwd)
@@ -350,7 +347,7 @@ def postmerge(
     if not branch or branch == "main":
         return FinalizeResult(Outcome.STALLED, "branch-invalid", "invalid branch")
 
-    cleanup = _local_cleanup(runner, ctx, branch, cwd=cwd)
+    cleanup = _local_cleanup(runner, branch, cwd=cwd)
     cleanup_status = "success" if cleanup.cleanup_success else "partial"
 
     expected_title = ctx.pr_title
@@ -469,9 +466,10 @@ def _write_stalled_sentinel(
 
 
 def _teardown_log_flush(runner: Runner, ctx: RunContext, *, cwd: str | None) -> bool:
-    if not ctx.run_id or ctx.repo_unavailable:
+    run_id = run_logs.effective_run_id(ctx)
+    if not run_id or ctx.repo_unavailable:
         return True
-    run_dir = Path(ctx.tmpdir) / "larch-logs" / "implement" / ctx.run_id
+    run_dir = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id
     run_dir.mkdir(parents=True, exist_ok=True)
     run_logs.render_execution_issues_batch(
         ctx,
@@ -519,7 +517,7 @@ def teardown(
     _ = (tmpdir / ".run-cleaned-up").write_text("", encoding="utf-8")
     stash_ref = ""
     sentinel_written = False
-    if ctx.run_id:
+    if run_logs.effective_run_id(ctx):
         _ = _teardown_log_flush(runner, ctx, cwd=cwd)
     if ctx.stall_tracking:
         stash_ref = auto_stash_stalled_changes(runner, ctx, cwd=cwd)
