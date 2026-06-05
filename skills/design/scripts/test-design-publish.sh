@@ -670,11 +670,10 @@ grep -q -- '--outcome failed-publish' "$RENDER_LOG" || fail "nonzero publish rc 
 grep -q 'DESIGN_LOG_PR_NUMBER=456' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep PR number"
 grep -q 'DESIGN_LOG_PR_URL=https://github.com/owner/repo/pull/456' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep PR URL"
 grep -q 'DESIGN_LOG_RECOVERY_BRANCH=larch-log-design-sid' "$RENDER_LOG" || fail "nonzero PUBLISH_OK=true render should keep recovery branch"
-if grep -q 'tracking-issue-write' "$RENAME_LOG" 2>/dev/null; then
-    fail "rename should be skipped when publish rc is nonzero despite PUBLISH_OK=true"
-else
-    pass "rename skipped when publish rc is nonzero despite PUBLISH_OK=true"
-fi
+grep -q 'tracking-issue-write' "$RENAME_LOG" \
+  || fail "rename should run before nonzero publish rc despite PUBLISH_OK=true"
+grep -q 'RENAMED=true' "$D_RC_TRUE/.design-publish-result.env" \
+  || fail "nonzero publish rc should persist RENAMED=true from pre-publish rename"
 if grep -q 'design-reentry-marker-write' "$CALL_LOG" 2>/dev/null; then
     fail "reentry marker should be skipped when publish rc is nonzero despite PUBLISH_OK=true"
 else
