@@ -57,6 +57,17 @@ claude="$tmp/claude-generic-output.txt"
 printf 'reviewer finding\n' > "$external"
 printf 'claude finding\n' > "$claude"
 printf '0\n' > "$claude.done"
+if [[ "${TEST_CLAUDE_STATIC_OUTPUTS:-false}" == "true" ]]; then
+  claude_outputs=""
+  for slot in security correctness edge-cases testing; do
+    file="$tmp/cursor-specialist-${slot}-output-phase3.txt"
+    printf 'claude static %s\n' "$slot" > "$file"
+    printf '0\n' > "$file.done"
+    claude_outputs="${claude_outputs}${claude_outputs:+ }$file"
+  done
+else
+  claude_outputs="$claude"
+fi
 case "${TEST_DIRTY_STATUS:-clean}" in
   missing) : ;;
   dirty)
@@ -74,7 +85,7 @@ case "${TEST_DIRTY_STATUS:-clean}" in
     ;;
 esac
 printf 'EXTERNAL_OUTPUT_FILES=%s\n' "$external"
-printf 'CLAUDE_OUTPUT_FILES=%s\n' "$claude"
+printf 'CLAUDE_OUTPUT_FILES=%s\n' "$claude_outputs"
 printf 'PANEL_MODE=%s\n' "${TEST_PANEL_MODE:-normal}"
 printf 'PANEL_SHAPE=%s\n' "$panel"
 printf 'SCOUT_STATUS=%s\n' "${TEST_SCOUT_STATUS:-na}"
@@ -86,9 +97,17 @@ printf 'SCOUT_MANIFEST=%s/scout-round%s-manifest.json\n' "$tmp" "$round_num"
 printf 'STATIC_SLOT_COUNT=%s\n' "${TEST_STATIC_SLOT_COUNT:-4}"
 printf 'SLOT_COUNT=%s\n' "$(( ${TEST_STATIC_SLOT_COUNT:-4} + ${TEST_DYNAMIC_SLOTS:-0} ))"
 printf 'PANEL_MANIFEST=%s/panel-manifest.ndjson\n' "$tmp"
+if [[ "${TEST_DROPPED_SLOTS:-false}" == "true" ]]; then
+  dropped="$tmp/dropped-slots.tsv"
+  printf 'security\tcodex\tformat-gate-miss\tpreamble\n' > "$dropped"
+  printf 'STATUS=dirty\nTRACKED_PATHS_FILE=%s/tracked.z\n' "$tmp" > "$tmp/codex-specialist-security-output.txt.dirty-tree"
+  printf 'dropped\0' > "$tmp/tracked.z"
+  printf 'DROPPED_SLOTS_FILE=%s\n' "$dropped"
+fi
 printf 'DISPATCH_OK=true\n'
 cat > "$tmp/panel-manifest.ndjson" <<EOF
 {"slot":"security","tool":"codex","output":"$external","agent":"agents/reviewer-security.md"}
+{"slot":"security","tool":"cursor","output":"$tmp/cursor-specialist-security-output.txt","agent":"agents/reviewer-security.md"}
 {"slot":"generic","tool":"claude","output":"$claude","agent":"agents/reviewer-generic.md"}
 EOF
 STUB
@@ -110,7 +129,25 @@ done
 mkdir -p "$(dirname "$findings")"
 rtmp="${rtmp:-$(dirname "$findings")}"
 : > "$oos"
-cat > "$rtmp/collector-results.env" <<EOF
+case "${TEST_COLLECTOR_VARIANT:-ok-all}" in
+  missing-testing)
+    cat > "$rtmp/collector-results.env" <<EOF
+REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-correctness-output.txt
+STATUS=OK
+
+REVIEWER_FILE=$rtmp/codex-specialist-edge-cases-output.txt
+STATUS=OK
+
+EOF
+    ;;
+  claude-fallback)
+    : > "$rtmp/collector-results.env"
+    ;;
+  *)
+    cat > "$rtmp/collector-results.env" <<EOF
 REVIEWER_FILE=$rtmp/codex-specialist-security-output.txt
 STATUS=OK
 
@@ -124,6 +161,8 @@ REVIEWER_FILE=$rtmp/codex-specialist-testing-output.txt
 STATUS=OK
 
 EOF
+    ;;
+esac
 if [[ -n "${TEST_REVIEW_CORE_AGG_ORDER:-}" ]]; then
   printf 'collect\n' >> "$rtmp/invoke-order.log"
 fi
@@ -254,9 +293,34 @@ STUB
     cat > "$TMP/check-threshold.sh" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
+intended=""
+launched=""
+dropped=""
+reviewer_files=()
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --intended-slots) intended="$2"; shift 2 ;;
+    --launched-slots) launched="$2"; shift 2 ;;
+    --dropped-slots-file) dropped="$2"; shift 2 ;;
+    --reviewer-output-files) shift; while [[ $# -gt 0 && "$1" != --* ]]; do reviewer_files+=("$1"); shift; done ;;
+    *) shift 2 ;;
+  esac
+done
+if [[ -n "${TEST_THRESHOLD_ARGV_LOG:-}" ]]; then
+  {
+    printf 'intended=%s\n' "$intended"
+    printf 'launched=%s\n' "$launched"
+    printf 'dropped=%s\n' "$dropped"
+    printf 'reviewer_files=%s\n' "${reviewer_files[*]-}"
+  } >> "$TEST_THRESHOLD_ARGV_LOG"
+fi
+if [[ -n "${TEST_EXPECT_DROPPED_SLOTS_FILE:-}" && "$dropped" != "$TEST_EXPECT_DROPPED_SLOTS_FILE" ]]; then
+  echo "missing expected dropped slots file" >&2
+  exit 9
+fi
 # Test stub: emit the threshold result from TEST_THRESHOLD_OK (default true).
 ok="${TEST_THRESHOLD_OK:-true}"
-printf 'INTENDED_SLOTS=12\nSUCCEEDED_SLOTS=12\nFAILED_SLOTS=0\nCOUNTED_SLOTS=4\nTHRESHOLD_OK=%s\nTHRESHOLD_REASON=\nNOT_SUBSTANTIVE_SLOTS=%s\n' "$ok" "${TEST_NOT_SUBSTANTIVE_SLOTS:-0}"
+printf 'INTENDED_SLOTS=%s\nSUCCEEDED_SLOTS=12\nFAILED_SLOTS=0\nCOUNTED_SLOTS=4\nDROPPED_STATIC_SLOTS=%s\nTHRESHOLD_OK=%s\nTHRESHOLD_REASON=\nNOT_SUBSTANTIVE_SLOTS=%s\n' "${intended:-12}" "$([[ -n "$dropped" ]] && printf 1 || printf 0)" "$ok" "${TEST_NOT_SUBSTANTIVE_SLOTS:-0}"
 STUB
     cat > "$TMP/dispatch-voters.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -472,6 +536,28 @@ grep -Fq "FINDINGS_CLASSIFICATION_TSV_FILE_ROUND_1=$TMP/zero/findings-classifica
 }
 jq -e '.schema_version == 2 and .accepted_count == 0 and .rejected_count == 0 and .panel.scout_status == "na" and .panel.static_slot_count == 4 and .panel.dynamic_slot_count == 0 and .panel.total_slot_count == 4' \
     "$TMP/zero/review-summary.json" >/dev/null || { echo "FAIL: zero-findings review-summary.json missing panel fields" >&2; cat "$TMP/zero/review-summary.json" >&2; exit 1; }
+
+threshold_argv_log="$TMP/threshold-argv.log"
+out=$(TEST_FINDINGS=0 TEST_CLAUDE_STATIC_OUTPUTS=true TEST_COLLECTOR_VARIANT=claude-fallback TEST_THRESHOLD_ARGV_LOG="$threshold_argv_log" run_core "$TMP/claude-fallback")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+grep -Fq 'cursor-specialist-security-output-phase3.txt' "$threshold_argv_log" || { echo "FAIL: threshold argv missing Claude fallback output files" >&2; exit 1; }
+
+set +e
+out=$(TEST_FINDINGS=1 TEST_ACCEPTED=1 TEST_COLLECTOR_VARIANT=missing-testing run_core "$TMP/coverage-failed" 2>&1)
+rc=$?
+set -e
+[[ "$rc" -eq 2 ]] || { echo "FAIL: missing static archetype coverage should exit 2" >&2; echo "$out" >&2; exit 1; }
+assert_contains "$out" 'REVIEW_CORE_STATUS=panel-failed'
+grep -Fq 'COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): testing' "$TMP/coverage-failed/review-core-threshold.env" || {
+    echo "FAIL: coverage gate reason missing testing archetype" >&2
+    exit 1
+}
+
+dropped_argv_log="$TMP/dropped-threshold-argv.log"
+out=$(TEST_FINDINGS=0 TEST_DROPPED_SLOTS=true TEST_CHECKPOINT_STATUS=dirty TEST_THRESHOLD_ARGV_LOG="$dropped_argv_log" TEST_EXPECT_DROPPED_SLOTS_FILE="$TMP/dropped-wire/dropped-slots.tsv" run_core "$TMP/dropped-wire")
+assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'
+grep -Fq "dropped=$TMP/dropped-wire/dropped-slots.tsv" "$dropped_argv_log" || { echo "FAIL: dropped slots file not forwarded to threshold" >&2; exit 1; }
+grep -Fq 'LAUNCHERS_DIRTY=codex-specialist-security-output.txt' "$TMP/dropped-wire/review-dirty-tree-summary.env" || { echo "FAIL: dropped static dirty-tree sidecar not recovered" >&2; exit 1; }
 
 out=$(TEST_FINDINGS=0 TEST_SCOUT_STATUS=ok TEST_DYNAMIC_SLOTS=3 run_core "$TMP/zero-scout")
 assert_contains "$out" 'REVIEW_CORE_STATUS=zero-findings'

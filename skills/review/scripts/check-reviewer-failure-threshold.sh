@@ -10,7 +10,7 @@ source "$PLUGIN_ROOT/scripts/lib-quiet.sh"
 larch_quiet_init
 
 usage() {
-    larch_err "Usage: check-reviewer-failure-threshold.sh --collector-results-file FILE --panel hard|simple [--intended-slots N] [--launched-slots N] [--dropped-slots-file FILE] [--round-num N]"
+    larch_err "Usage: check-reviewer-failure-threshold.sh --collector-results-file FILE --panel hard|simple [--intended-slots N] [--launched-slots N] [--dropped-slots-file FILE] [--reviewer-output-files FILE...] [--round-num N]"
 }
 
 COLLECTOR_RESULTS_FILE=""
@@ -19,6 +19,7 @@ INTENDED_SLOTS="4"
 LAUNCHED_SLOTS=""
 DROPPED_SLOTS_FILE=""
 ROUND_NUM="1"
+REVIEWER_OUTPUT_FILES=()
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -27,6 +28,13 @@ while [[ $# -gt 0 ]]; do
         --intended-slots) INTENDED_SLOTS="${2:?--intended-slots requires a value}"; shift 2 ;;
         --launched-slots) LAUNCHED_SLOTS="${2:?--launched-slots requires a value}"; shift 2 ;;
         --dropped-slots-file) DROPPED_SLOTS_FILE="${2:?--dropped-slots-file requires a value}"; shift 2 ;;
+        --reviewer-output-files)
+            shift
+            while [[ $# -gt 0 && "$1" != --* ]]; do
+                REVIEWER_OUTPUT_FILES+=("$1")
+                shift
+            done
+            ;;
         --round-num) ROUND_NUM="${2:?--round-num requires a value}"; shift 2 ;;
         --help) usage; exit 0 ;;
         *) larch_err "check-reviewer-failure-threshold.sh: unknown option: $1"; usage; exit 2 ;;
@@ -58,6 +66,42 @@ is_dynamic_slot_name() {
     esac
 }
 
+normalize_reviewer_output_base() {
+    local base="$1" stem ext=""
+    base="${base##*/}"
+    case "$base" in
+        *.txt) stem="${base%.txt}"; ext=".txt" ;;
+        *) stem="$base" ;;
+    esac
+    while :; do
+        case "$stem" in
+            *-phase2) stem="${stem%-phase2}" ;;
+            *-phase3) stem="${stem%-phase3}" ;;
+            *-retry) stem="${stem%-retry}" ;;
+            *) break ;;
+        esac
+    done
+    printf '%s%s' "$stem" "$ext"
+}
+
+is_static_reviewer_basename() {
+    local base
+    base=$(normalize_reviewer_output_base "$1")
+    case "$base" in
+        cursor-specialist-*-output.txt|codex-specialist-*-output.txt) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+output_file_is_success() {
+    local file="$1"
+    [[ -s "$file" ]] || return 1
+    if grep -Eq '(^|[^A-Z_])NOT_SUBSTANTIVE([^A-Z_]|$)' "$file" 2>/dev/null; then
+        return 1
+    fi
+    return 0
+}
+
 # Count slots whose STATUS != OK and STATUS != cap_hit. Slots that never launched
 # because the vendor was unhealthy are counted via INTENDED_SLOTS - LAUNCHED_SLOTS
 # (the orchestrator passes --launched-slots when known; otherwise we use the
@@ -67,6 +111,8 @@ FAILED_SLOTS=0
 COUNTED_SLOTS=0
 NOT_SUBSTANTIVE_SLOTS=0
 DROPPED_STATIC_SLOTS=0
+COUNTED_BASES_FILE=$(mktemp "${TMPDIR:-/tmp}/review-threshold-counted.XXXXXX")
+trap 'rm -f "$COUNTED_BASES_FILE"' EXIT
 
 if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
     # Parse blank-line-separated records; each has STATUS=<value>.
@@ -80,6 +126,7 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
                     current_reviewer_file=""
                     continue
                 fi
+                printf '%s\n' "$(normalize_reviewer_output_base "$current_base")" >> "$COUNTED_BASES_FILE"
                 COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
                 case "$current_status" in
                     OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
@@ -103,6 +150,7 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
     if [[ -n "${current_status:-}" ]]; then
         current_base=$(basename "${current_reviewer_file:-}")
         if ! is_dynamic_reviewer_basename "$current_base"; then
+            printf '%s\n' "$(normalize_reviewer_output_base "$current_base")" >> "$COUNTED_BASES_FILE"
             COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
             case "$current_status" in
                 OK|cap_hit) SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1)) ;;
@@ -114,6 +162,26 @@ if [[ -n "$COLLECTOR_RESULTS_FILE" && -f "$COLLECTOR_RESULTS_FILE" ]]; then
             esac
         fi
     fi
+fi
+
+if (( ${#REVIEWER_OUTPUT_FILES[@]} > 0 )); then
+    for reviewer_output_file in "${REVIEWER_OUTPUT_FILES[@]}"; do
+        reviewer_base=$(basename "$reviewer_output_file")
+        if ! is_static_reviewer_basename "$reviewer_base"; then
+            continue
+        fi
+        normalized_base=$(normalize_reviewer_output_base "$reviewer_base")
+        if grep -Fxq "$normalized_base" "$COUNTED_BASES_FILE" 2>/dev/null; then
+            continue
+        fi
+        printf '%s\n' "$normalized_base" >> "$COUNTED_BASES_FILE"
+        COUNTED_SLOTS=$((COUNTED_SLOTS + 1))
+        if output_file_is_success "$reviewer_output_file"; then
+            SUCCEEDED_SLOTS=$((SUCCEEDED_SLOTS + 1))
+        else
+            FAILED_SLOTS=$((FAILED_SLOTS + 1))
+        fi
+    done
 fi
 
 if [[ -n "$DROPPED_SLOTS_FILE" && -s "$DROPPED_SLOTS_FILE" ]]; then
@@ -132,9 +200,9 @@ if [[ -n "$LAUNCHED_SLOTS" ]]; then
     case "$LAUNCHED_SLOTS" in ''|*[!0-9]*) larch_err "check-reviewer-failure-threshold.sh: --launched-slots must be a non-negative integer"; exit 2 ;; esac
     NEVER_LAUNCHED=$(( INTENDED_SLOTS - LAUNCHED_SLOTS ))
     (( NEVER_LAUNCHED < 0 )) && NEVER_LAUNCHED=0
-    if (( DROPPED_STATIC_SLOTS == 0 )); then
-        FAILED_SLOTS=$(( FAILED_SLOTS + NEVER_LAUNCHED ))
-    fi
+    UNACCOUNTED_NEVER_LAUNCHED=$(( NEVER_LAUNCHED - DROPPED_STATIC_SLOTS ))
+    (( UNACCOUNTED_NEVER_LAUNCHED < 0 )) && UNACCOUNTED_NEVER_LAUNCHED=0
+    FAILED_SLOTS=$(( FAILED_SLOTS + UNACCOUNTED_NEVER_LAUNCHED ))
 fi
 
 # Threshold: >50% of intended panel size. 4 slots → fail at 3; 8 slots → fail at 5.

@@ -418,8 +418,18 @@ static_slug_for_reviewer_file() {
     esac
 }
 
+claude_static_output_is_success() {
+    local file="$1"
+    [[ -s "$file" ]] || return 1
+    if grep -Eq '(^|[^A-Z_])NOT_SUBSTANTIVE([^A-Z_]|$)' "$file" 2>/dev/null; then
+        return 1
+    fi
+    return 0
+}
+
 static_archetype_coverage_ok() {
-    local collector_file="$1" success_file current_reviewer_file="" current_status="" current_base slug missing=""
+    local collector_file="$1" success_file current_reviewer_file="" current_status="" current_base slug missing="" claude_output
+    shift || true
     [[ -n "$collector_file" && -f "$collector_file" ]] || {
         printf 'missing collector results'
         return 1
@@ -453,6 +463,14 @@ static_archetype_coverage_ok() {
             esac
         fi
     fi
+    for claude_output in "$@"; do
+        current_base=$(basename "$claude_output")
+        if slug=$(static_slug_for_reviewer_file "$current_base" 2>/dev/null); then
+            if claude_static_output_is_success "$claude_output"; then
+                printf '%s\n' "$slug" >> "$success_file"
+            fi
+        fi
+    done
     for slug in security correctness edge-cases testing; do
         if ! grep -Fxq "$slug" "$success_file" 2>/dev/null; then
             missing="${missing}${missing:+,}$slug"
@@ -603,13 +621,17 @@ if [[ -n "$dropped_slots_file" && -r "$dropped_slots_file" ]]; then
     log_dropped_slots "$dropped_slots_file"
     threshold_args+=(--dropped-slots-file "$dropped_slots_file")
 fi
+if (( ${#external_array[@]} > 0 || ${#claude_array[@]} > 0 )); then
+    threshold_args+=(--reviewer-output-files)
+    threshold_args+=("${external_array[@]+"${external_array[@]}"}" "${claude_array[@]+"${claude_array[@]}"}")
+fi
 "$CHECK_THRESHOLD_SH" "${threshold_args[@]}" > "$threshold_out"
 threshold_ok=$(kv_get "$threshold_out" THRESHOLD_OK)
 threshold_reason=$(kv_get "$threshold_out" THRESHOLD_REASON)
 not_substantive_slots=$(kv_get "$threshold_out" NOT_SUBSTANTIVE_SLOTS)
 not_substantive_slots="${not_substantive_slots:-0}"
 if [[ "$threshold_ok" != "false" ]]; then
-    coverage_reason=$(static_archetype_coverage_ok "$collector_results_file" || true)
+    coverage_reason=$(static_archetype_coverage_ok "$collector_results_file" "${claude_array[@]+"${claude_array[@]}"}" || true)
     if [[ -n "$coverage_reason" ]]; then
         threshold_ok=false
         threshold_reason="$coverage_reason"

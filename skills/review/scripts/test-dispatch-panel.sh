@@ -146,7 +146,81 @@ printf 'DIFF_MODE=%s\n' "${TEST_DIFF_MODE:-generic}"
 STUB
 chmod +x "$classifier_stub"
 
+waterfall_argv_stub="$TMP/dispatch-waterfall-argv-stub.sh"
+cat > "$waterfall_argv_stub" <<'STUB'
+#!/usr/bin/env bash
+set -euo pipefail
+slots=""
+printf '%s\n' "$*" >> "${TEST_WATERFALL_ARGV_LOG:?TEST_WATERFALL_ARGV_LOG required}"
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --slots-file) slots="$2"; shift 2 ;;
+        *) shift ;;
+    esac
+done
+[[ -n "$slots" ]] || exit 2
+outputs=$(jq -r '.output' "$slots" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+tools=$(jq -r '.tool' "$slots" | tr '\n' ' ' | sed 's/[[:space:]]*$//')
+while IFS= read -r output || [[ -n "$output" ]]; do
+    [[ -n "$output" ]] || continue
+    mkdir -p "$(dirname "$output")"
+    printf 'stub output\n' > "$output"
+done < <(jq -r '.output' "$slots")
+if [[ "${TEST_WATERFALL_EMIT_DROPPED:-false}" == "true" ]]; then
+    dropped="$(dirname "$slots")/dropped-slots.tsv"
+    printf 'security\tcodex\tformat-gate-miss\tpreamble\n' > "$dropped"
+    printf 'DROPPED_SLOTS_FILE=%s\n' "$dropped"
+fi
+printf 'ALL_OUTPUT_FILES=%s\nALL_OUTPUT_TOOLS=%s\nDISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\n' "$outputs" "$tools"
+STUB
+chmod +x "$waterfall_argv_stub"
+
 if section_runs core; then
+both_vendor_argv="$TMP/both-vendor-waterfall.argv"
+out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$both_vendor_argv" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/no-fallback-both" \
+    --codex-available true \
+    --cursor-available true \
+    --panel simple \
+    --plan-file "$plan_file")
+grep -Fq -- '--no-fallback' "$both_vendor_argv" || { echo "FAIL: both-vendor dispatch must pass --no-fallback" >&2; exit 1; }
+
+single_vendor_argv="$TMP/single-vendor-waterfall.argv"
+out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$single_vendor_argv" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/no-fallback-single" \
+    --codex-available false \
+    --cursor-available true \
+    --panel simple \
+    --plan-file "$plan_file")
+if grep -Fq -- '--no-fallback' "$single_vendor_argv"; then
+    echo "FAIL: single-vendor dispatch must omit --no-fallback" >&2
+    exit 1
+fi
+
+both_down_argv="$TMP/both-down-waterfall.argv"
+out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$both_down_argv" "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/no-fallback-both-down" \
+    --codex-available false \
+    --cursor-available false \
+    --panel simple \
+    --plan-file "$plan_file")
+if grep -Fq -- '--no-fallback' "$both_down_argv"; then
+    echo "FAIL: both-down dispatch must omit --no-fallback" >&2
+    exit 1
+fi
+
+dropped_out=$(PATH="$STUB_BIN:$PATH" DISPATCH_WATERFALL="$waterfall_argv_stub" TEST_WATERFALL_ARGV_LOG="$TMP/dropped-waterfall.argv" TEST_WATERFALL_EMIT_DROPPED=true "$SCRIPT" \
+    --mode diff \
+    --review-tmpdir "$TMP/dropped-peer" \
+    --codex-available true \
+    --cursor-available true \
+    --panel simple \
+    --plan-file "$plan_file")
+grep -Fq "DROPPED_SLOTS_FILE=$TMP/dropped-peer/dropped-slots.tsv" <<< "$dropped_out" || { echo "FAIL: dispatch-panel must re-emit DROPPED_SLOTS_FILE" >&2; exit 1; }
+
 out=$(PATH="$STUB_BIN:$PATH" "$SCRIPT" \
     --mode diff \
     --review-tmpdir "$TMP/simple" \

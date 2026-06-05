@@ -27,7 +27,7 @@ Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mo
 | `5 rounds` | case-sensitive `grep -F` | Pins the base round-cap language shared with public docs. |
 | `3-judge panel on every round` | **case-insensitive** `grep -iF` | Pins the Codex-inclusive judge panel on every code-review round. |
 | `--panel hard` | case-sensitive `grep -F` | Pins the delegated `review-and-fix.sh` posture. |
-| `4 specialists per vendor (Cursor + Codex)` | case-sensitive `grep -F` | Pins the static Cursor specialist count in the panel. |
+| `4 specialists per vendor (Cursor + Codex)` | case-sensitive `grep -F` | Pins the four-archetype static panel emitted once per available vendor. |
 
 Together these markers encode the canonical Step 5 contract. Without them, a SKILL.md edit that re-shuffled the reviewer or judge composition could ship without the public docs being updated.
 

@@ -98,13 +98,13 @@ out=$(run_case five_drops_8 hard --intended-slots 8 --dropped-slots-file "$drops
 assert_eq "5 dropped static peers of 8 fails" "$(printf '%s\n' "$out" | kv THRESHOLD_OK)" "false"
 assert_eq "DROPPED_STATIC_SLOTS=5" "$(printf '%s\n' "$out" | kv DROPPED_STATIC_SLOTS)" "5"
 
-echo "# launched padding applies only without drop accounting"
+echo "# launched padding subtracts dropped slots already accounted for"
 out=$(run_case never_launched hard --intended-slots 4 --launched-slots 0 2>&1)
 assert_eq "0 launched of 4 pads failures" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "4"
 assert_eq "0 launched of 4 fails" "$(printf '%s\n' "$out" | kv THRESHOLD_OK)" "false"
 
 out=$(run_case no_padding_with_drop hard --intended-slots 4 --launched-slots 0 --dropped-slots-file "$drops" 2>&1)
-assert_eq "drop accounting suppresses never-launched padding" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "1"
+assert_eq "drop accounting only suppresses accounted never-launched slots" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "4"
 
 echo "# dynamic outputs, including Codex twins and phase/retry variants, are excluded"
 out=$(run_case dynamic_names hard --intended-slots 8 --launched-slots 8 OK OK OK timeout timeout dyn:timeout dyn-codex:timeout dyn-phase2:timeout dyn-phase3:timeout dyn-retry:timeout 2>&1)
@@ -118,6 +118,21 @@ assert_eq "NOT_SUBSTANTIVE tracked separately" "$(printf '%s\n' "$out" | kv NOT_
 out=$(run_case cap_hit hard --intended-slots 4 OK OK cap_hit timeout 2>&1)
 assert_eq "cap_hit counted as success" "$(printf '%s\n' "$out" | kv SUCCEEDED_SLOTS)" "3"
 assert_eq "cap_hit not a failure" "$(printf '%s\n' "$out" | kv FAILED_SLOTS)" "1"
+
+echo "# reviewer output files count phase fallback static slots without double-counting collector rows"
+phase_success="$WORKDIR/cursor-specialist-correctness-output-phase3.txt"
+phase_fail="$WORKDIR/codex-specialist-testing-output-phase2.txt"
+printf 'substantive fallback finding\n' > "$phase_success"
+: > "$phase_fail"
+collector="$WORKDIR/output-files.env"
+emit_records "$collector" OK
+out="$WORKDIR/output-files.out"
+out_content=$("$TARGET" --collector-results-file "$collector" --panel hard --intended-slots 4 \
+    --reviewer-output-files "$WORKDIR/cursor-specialist-security-output.txt" "$phase_success" "$phase_fail" \
+    2>&1)
+assert_eq "phase output success counted" "$(printf '%s\n' "$out_content" | kv SUCCEEDED_SLOTS)" "2"
+assert_eq "phase output failure counted" "$(printf '%s\n' "$out_content" | kv FAILED_SLOTS)" "1"
+assert_eq "collector duplicate output not double counted" "$(printf '%s\n' "$out_content" | kv COUNTED_SLOTS)" "3"
 
 if [[ "$FAIL" -eq 0 ]]; then
     printf 'PASS: test-check-reviewer-failure-threshold.sh\n'
