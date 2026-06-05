@@ -1,0 +1,17 @@
+Now I have enough context. Let me complete the review.
+
+### In-Scope Findings
+
+1. **correctness** `scripts/render-run-summary.sh`, `scripts/compute-pr-line-counts.sh`, `skills/implement/scripts/write-final-report.sh` — **Important** — These files are modified by the diff but **not named in the implementation plan for #3514**, which scopes to the degraded-tools gate fix only (plan listed `diff_added: 190`; actual diff is 3–4× that size). New scripts `compute-pr-line-counts.sh`, `render-run-summary.sh` line-count flags, and `write-final-report.sh` PR-line-counts integration form an entirely separate feature that was added alongside the planned gate fix without a plan entry. A reviewer assessing plan-fidelity would find this code has no corresponding plan requirement to verify against, and a CI shard failure in the compute-pr-line-counts or render-run-summary paths could not be tied back to the plan. **Suggested fix:** separate this feature into its own issue/plan and PR; remove it from this branch until scoped and reviewed independently.
+
+2. **correctness** `scripts/test-implement-structure.sh:assert_degraded_tools_gate_fence` — **Nit** — The early-fail paths `[[ -n "$region" ]] || fail "…"` (line ~50) and `[[ -s "$tmp" ]] || fail "…"` (line ~60) call `fail()` (which calls `exit 1`) without cleaning up `$tmp` and `$tmp.region` first. The cleanup `rm -f "$tmp" "$tmp.region"` only appears at function end and on the needle-loop failure branch. **Suggested fix:** add `rm -f "$tmp" "$tmp.region"` before each early `fail` call, or use a `trap` inside the function.
+
+### Out-of-Scope Observations
+
+No pre-existing issues to surface.
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/compute-pr-line-counts.sh,scripts/render-run-summary.sh,skills/implement/scripts/write-final-report.sh	Files modified by the diff but entirely absent from the implementation plan for #3514; constitute a separate "Lines (PR diff)" feature not scoped, reviewed, or acceptance-tested in the plan	Any CI failure in compute-pr-line-counts or render-run-summary line-count paths cannot be traced to a plan requirement; plan predicted diff_added=190, actual is 3-4x larger; plan-fidelity reviewers have no spec to verify against	Move the compute-pr-line-counts feature and its integrations into a separate issue and PR with its own plan; remove from this branch
+1	in_scope	nit	correctness	scripts/test-implement-structure.sh:assert_degraded_tools_gate_fence	Early-fail paths before function end do not clean up $tmp and $tmp.region temp files	When region is empty or fence is missing, exit 1 fires before rm -f leaving temp files behind	Add rm -f "$tmp" "$tmp.region" before each early fail call, or install a trap cleanup inside the function
+```

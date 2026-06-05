@@ -125,25 +125,12 @@ else
     LOGS_DELETED=$(read_lines_kv LOGS_DELETED "$lines_blob")
 fi
 if [ "$LINES_STATUS" = "ok" ]; then
-    case "$CODE_ADDED" in
-        ''|*[!0-9]*) ;;
-        *)
-            case "$CODE_DELETED" in
-                ''|*[!0-9]*) ;;
-                *)
-                    case "$LOGS_ADDED" in
-                        ''|*[!0-9]*) ;;
-                        *)
-                            case "$LOGS_DELETED" in
-                                ''|*[!0-9]*) ;;
-                                *) LINES_DATA_OK=true ;;
-                            esac
-                            ;;
-                    esac
-                    ;;
-            esac
-            ;;
-    esac
+    if [ -n "$CODE_ADDED" ] && [ -n "$CODE_DELETED" ] && [ -n "$LOGS_ADDED" ] && [ -n "$LOGS_DELETED" ]; then
+        case "${CODE_ADDED}${CODE_DELETED}${LOGS_ADDED}${LOGS_DELETED}" in
+            *[!0-9]*) ;;
+            *) LINES_DATA_OK=true ;;
+        esac
+    fi
 fi
 
 NO_ISSUES="$(read_kv NO_ISSUES "$RUN_FLAGS")"; [ -n "$NO_ISSUES" ] || NO_ISSUES="false"

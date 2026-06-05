@@ -23,7 +23,7 @@ Launch eligibility requires `*_PRESENT=true`. Runtime failures do not mutate `se
 
 ## Degraded-tools gate (Step 0)
 
-Issue #3207: when an external tool is unhealthy at session start, the skill MUST surface what is down and the expected degradation — not silently proceed degraded. On interactive runs, prompt via `AskUserQuestion` only when **both** tools are down (`BOTH_DOWN` is not exactly `false`); when exactly one tool is down (`BOTH_DOWN=false`), print the explanation as a notice and proceed automatically. Immediately after presence detection, run the gate detector with **all four** `--check-reviewers` keys on every invocation (contract: `scripts/degraded-tools-gate.md`). Do not rely on exported env from an earlier skill in the same shell — re-parse `session-setup.sh` stdout in the current Step 0 block and pass explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags:
+Issue #3207: when an external tool is unhealthy at session start, the skill MUST surface what is down and the expected degradation — not silently proceed degraded. On interactive runs, prompt via `AskUserQuestion` only when **both** tools are down (`BOTH_DOWN` is not exactly `false`); when exactly one tool is down (`BOTH_DOWN=false`), print the explanation as a notice and proceed automatically. Immediately after presence detection, run the gate detector with **all four** `--check-reviewers` keys on every invocation (contract: `scripts/degraded-tools-gate.md`). Do not rely on exported env from an earlier skill in the same shell — re-parse `session-setup.sh` stdout in the current Step 0 block and pass explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags. When the gate runs in a different Bash block from `session-setup.sh`, first read the four keys from the skill's durable session-env file (`read-session-env-key.sh --default "false"` for `/implement`; the sourced `source-env.sh` for `/design`) and then pass explicit flags. `PRESENCE_INPUT_EMPTY=true` is the loud symptom that this separate-block rehydration rule was violated:
 
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh \
@@ -32,7 +32,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh \
   --skill <design|implement|review|research>
 ```
 
-Parse `DEGRADED`, `CODEX_STATE`, `CURSOR_STATE`, `BOTH_DOWN`.
+Parse `DEGRADED`, `CODEX_STATE`, `CURSOR_STATE`, `BOTH_DOWN`, and `PRESENCE_INPUT_EMPTY`.
 
 **Canonical interactive predicate**: a run is interactive for this gate when the skill is allowed to call `AskUserQuestion` in the invoking context. `/design`, `/implement`, and `/research` use the skill's normal interactive branch; `/review` uses the same branch only outside `--subagent` mode. Subagents, `claude -p`, cron, eval, and autonomous-loop runs are non-interactive and must use the non-blocking notice/log path below.
 
@@ -40,6 +40,7 @@ Then apply the gate result:
 
 - **`DEGRADED=false`** — both tools healthy; proceed silently (the per-tool warning prints above are unaffected).
 - **`DEGRADED=true`** — lift the explanation block between `DEGRADED_EXPLANATION_BEGIN` / `DEGRADED_EXPLANATION_END`, then:
+  - **`PRESENCE_INPUT_EMPTY=true`** — append a `Warnings` entry to the session `execution-issues.md` before applying the normal degraded branch. Treat this as a caller rehydration bug warning, not as a normal tool outage; preserve the gate stderr diagnostics in operator-visible output when available.
   - **Interactive run, `BOTH_DOWN=false`** (exactly one tool unavailable) — print the explanation block as a plain notice and proceed without prompting. Write the `.degraded-tools-gate-prompted` sentinel under the session tmpdir after printing the notice (same sentinel as the ask-path) so re-entry does not re-warn.
   - **Interactive run, `BOTH_DOWN` is not exactly `false`** (both tools unavailable, or empty/unset/parse failed) — present the explanation block and fire `AskUserQuestion`. **`/design` and `/implement`** use **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**, and on **Continue** proceed with reduced-panel dispatch. **`/review`** uses **Continue (degraded waterfall)** / **Abort**, and on **Continue** proceeds with its Step 0 dispatch waterfall. **`/research`** uses **Continue (degraded)** / **Abort**, and on **Continue** proceeds with its Codex-first / Claude-fallback lane topology. On **Continue**, write the `.degraded-tools-gate-prompted` sentinel under the session tmpdir (same sentinel as the notice path) so re-entry does not re-prompt. On **Abort**, print `**⚠ /<skill>: aborted by operator — external tool unhealthy; re-run once it recovers.**`, clean up the session tmpdir, and stop the skill (run no further steps).
   - **Fail-safe polarity** — auto-proceed only when `BOTH_DOWN` is **exactly** `false`; when `BOTH_DOWN` is empty, unset, or any other value, treat as `BOTH_DOWN=true` and prompt. Callers must use `[[ "$BOTH_DOWN" == "false" ]]` (exact-string check), not `[[ "$BOTH_DOWN" != "true" ]]`, to avoid silent auto-proceed on empty parse.

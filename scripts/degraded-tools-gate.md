@@ -37,11 +37,20 @@ Any value other than the literal `true` normalizes to not-true.
 
 **Caller contract:** every Step 0 invocation should pass all four probe flags from
 the **current** `session-setup.sh --check-reviewers` parse in that same Bash
-block (canonical example in `skills/shared/external-reviewers.md`). Env vars
-(`CODEX_BINARY_FOUND`, etc.) are initialized before argv parsing as a fallback
-only; if a flag is omitted while the corresponding env var is set, the script
-prints a stderr `WARNING` (stale or cross-skill inheritance in long-lived
-orchestrator shells).
+block (canonical example in `skills/shared/external-reviewers.md`). When the
+gate call runs in a different Bash block from `session-setup.sh`, rehydrate the
+four keys from durable session env first (`read-session-env-key.sh --default
+"false"` for `/implement`; prelude-sourced `source-env.sh` for `/design`) and
+then pass explicit flags. Env vars (`CODEX_BINARY_FOUND`, etc.) are initialized
+before argv parsing as a fallback only; if a flag is omitted while the
+corresponding env var is set, the script prints a stderr `WARNING` (stale or
+cross-skill inheritance in long-lived orchestrator shells).
+
+If `--codex-present` or `--cursor-present` resolves to an empty string (passed
+empty, or omitted with an empty ambient env), the detector emits one stderr
+`ERROR` diagnostic per empty presence input naming the rehydration bug class and
+continues treating that tool as down (fail-safe). This empty-input signal never
+fires for explicit `false`, which remains the legitimate outage value.
 
 ## Output (stdout KV)
 
@@ -49,6 +58,8 @@ orchestrator shells).
 - `CODEX_STATE=ok|binary-missing|probe-failed`
 - `CURSOR_STATE=ok|binary-missing|probe-failed`
 - `BOTH_DOWN=true|false` — `true` iff **both** `CODEX_STATE != ok` AND `CURSOR_STATE != ok`; `false` when exactly one tool is down or both are ok.
+- `PRESENCE_INPUT_EMPTY=true` — conditional; emitted immediately after
+  `BOTH_DOWN` only when at least one presence input resolved empty.
 - When `DEGRADED=true`, a multi-line explanation block bracketed by
   `DEGRADED_EXPLANATION_BEGIN` / `DEGRADED_EXPLANATION_END` (lifted verbatim by
   the orchestrator for presentation).
@@ -63,7 +74,11 @@ Exit code is `0` on valid argv (degraded or not); `2` on an unknown flag
 `BOTH_DOWN` KV, explanation-block presence/absence (including Cases 13–16:
 single-tool-down auto-proceed notice vs both-down Continue prompt, design and
 non-design `--skill` branches), the `--skill` label, and the unknown-flag
-exit-2 path. Wired into `make lint` via the `test-degraded-tools-gate` target.
+exit-2 path. It also covers empty presence input diagnostics, stream
+separation (`PRESENCE_INPUT_EMPTY=true` on stdout only; `resolved empty`
+diagnostics on stderr only), explicit-`false` non-signaling, and omitted
+presence flags with empty ambient env. Wired into `make lint` via the
+`test-degraded-tools-gate` target in the `test-harnesses-4` shard.
 
 ## Edit-in-sync
 

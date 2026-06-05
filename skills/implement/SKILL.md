@@ -112,7 +112,7 @@ The Claude Code Bash tool does NOT preserve shell state between calls, and `CLAU
 
 **Pre-bootstrap sites** (Step 0 foreground, dirty-tree recovery, legacy structured-invocation pin) run before or without a fresh `write-session-env.sh` on legacy resume tmpdirs. Prepend the source guard above, then add the one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk extract from `$IMPLEMENT_TMPDIR/session-env.sh` (same pattern as the old 4-line fence, without the `if`/`fi` wrapper) when `plugin-root.env` is still absent, then `export CLAUDE_PLUGIN_ROOT`.
 
-Sourcing the full `session-env.sh` is intentionally avoided because it would pull in the entire session-env namespace and might shadow caller-side state. A plugin-rooted helper script is not feasible until `CLAUDE_PLUGIN_ROOT` is set. A **minimal** `$IMPLEMENT_TMPDIR/plugin-root.env` sidesteps both objections: every post-Step-0 site already knows `$IMPLEMENT_TMPDIR`, and the file carries only the one export. `implement-bootstrap.sh --resume-plan-tail` emits the sibling on legacy tmpdirs when missing. There are **40** executable rehydration sites in this file (37 post-Step-0 source-only + 3 pre-bootstrap source+awk). The `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh` helper is used for OTHER session-env keys (after `CLAUDE_PLUGIN_ROOT` is rehydrated) — see the `LARCH_TOKEN_SESSION_ID` rehydration prose below for that pattern.
+Sourcing the full `session-env.sh` is intentionally avoided because it would pull in the entire session-env namespace and might shadow caller-side state. A plugin-rooted helper script is not feasible until `CLAUDE_PLUGIN_ROOT` is set. A **minimal** `$IMPLEMENT_TMPDIR/plugin-root.env` sidesteps both objections: every post-Step-0 site already knows `$IMPLEMENT_TMPDIR`, and the file carries only the one export. `implement-bootstrap.sh --resume-plan-tail` emits the sibling on legacy tmpdirs when missing. There are **42** executable rehydration sites in this file (38 source-only + 4 source+awk fallback). The `${CLAUDE_PLUGIN_ROOT}/scripts/read-session-env-key.sh` helper is used for OTHER session-env keys (after `CLAUDE_PLUGIN_ROOT` is rehydrated) — see the `LARCH_TOKEN_SESSION_ID` rehydration prose below for that pattern.
 
 ### Verbosity Control
 
@@ -329,7 +329,31 @@ Parse the routing envelope from wrapper stdout and `$IMPLEMENT_TMPDIR/bootstrap-
 | `STALL_TRACKING=true` with any other bail value | Skip to Step 18 cleanup. |
 | `REPO_UNAVAILABLE=true`, empty `PLAN_FILE`, missing `$IMPLEMENT_TMPDIR/plan.txt`, or missing `$IMPLEMENT_TMPDIR/feature-description.txt` | Do not enter Step 2; skip to Step 18 cleanup after any local-only cleanup required for the run. |
 
-**Degraded-tools gate (#3207).** On the continue path (first routing row: `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty), before Rebase Macro 1.r, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` from the bootstrap parse above (not env-only inheritance) and `--skill implement`. Use the canonical interactive predicate from that shared procedure. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` (**Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**); on **Continue**, write `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup. On an **autonomous / non-interactive** run (the common `/implement` mode — cron, `claude -p`, `<<autonomous-loop>>`), do NOT prompt: log the explanation to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded — the Step 0 implementer waterfall (codex→cursor→claude per `--coder`) and the reviewer / CI waterfalls already cover every role. Guard with a `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` sentinel so dirty-tree / resume-plan-tail re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
+**Degraded-tools gate (#3207).** On the continue path (first routing row: `IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, `PLAN_FILE` readable, `coder` non-empty), before Rebase Macro 1.r, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `${CLAUDE_PLUGIN_ROOT}/scripts/degraded-tools-gate.sh` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` rehydrated from durable `$IMPLEMENT_TMPDIR/session-env.sh` in the same Bash block as the gate call, and `--skill implement`.
+
+```bash
+export IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:?IMPLEMENT_TMPDIR required}"
+[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
+[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+export CLAUDE_PLUGIN_ROOT
+
+CODEX_PRESENT=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
+  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_PRESENT --default "")
+CURSOR_PRESENT=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
+  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_PRESENT --default "")
+CODEX_BINARY_FOUND=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
+  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CODEX_BINARY_FOUND --default "")
+CURSOR_BINARY_FOUND=$("$CLAUDE_PLUGIN_ROOT/scripts/read-session-env-key.sh" \
+  --file "$IMPLEMENT_TMPDIR/session-env.sh" --key CURSOR_BINARY_FOUND --default "")
+
+"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill implement \
+  --codex-present "$CODEX_PRESENT" \
+  --cursor-present "$CURSOR_PRESENT" \
+  --codex-binary-found "$CODEX_BINARY_FOUND" \
+  --cursor-binary-found "$CURSOR_BINARY_FOUND"
+```
+
+Use the canonical interactive predicate from that shared procedure. If gate stdout contains `PRESENCE_INPUT_EMPTY=true`, append a `Warnings` entry to `$IMPLEMENT_TMPDIR/execution-issues.md` and preserve the gate diagnostics in operator-visible output; treat it as a caller rehydration warning, not a normal outage. If `DEGRADED=true` on an **interactive** run: when `BOTH_DOWN` is **exactly** `false` (one tool unavailable), print the explanation block as a notice, write the `.degraded-tools-gate-prompted` sentinel, and proceed; when `BOTH_DOWN` is not exactly `false` (both tools unavailable or parse failed), present the explanation block and fire `AskUserQuestion` (**Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**); on **Continue**, write `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, set `STALL_TRACKING=true` and skip to Step 18 cleanup. On an **autonomous / non-interactive** run (the common `/implement` mode — cron, `claude -p`, `<<autonomous-loop>>`), do NOT prompt: log the explanation to `$IMPLEMENT_TMPDIR/execution-issues.md` under `Warnings` and proceed degraded — the Step 0 implementer waterfall (codex→cursor→claude per `--coder`) and the reviewer / CI waterfalls already cover every role. Guard with a `$IMPLEMENT_TMPDIR/.degraded-tools-gate-prompted` sentinel so dirty-tree / resume-plan-tail re-entry does not re-prompt. The gate does not flip `codex_available` / `cursor_available`.
 
 Step 0 dirty-tree recovery gate:
 

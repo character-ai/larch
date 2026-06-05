@@ -1,0 +1,29 @@
+I've reviewed the full diff against the plan. Here is my assessment.
+
+---
+
+### In-Scope Findings
+
+1. - **architecture** `scripts/write-design-current-env.sh` — Plan requires preserving all four gate keys during refresh, but the implementation also adds `validate_bool codex-binary-found "$CODEX_BINARY_FOUND"` / `validate_bool cursor-binary-found "$CURSOR_BINARY_FOUND"`. If `validate_bool` rejects empty strings, a no-flag refresh on a session env that lacks those keys (e.g., a pre-#3514 `/design` session) would fail: the recovery loop returns empty when the prior file has no such key, and `validate_bool` would then exit 1 before any write occurs. The test Case 13 only seeds/verifies the happy path where both keys are present. **Suggested fix:** confirm `validate_bool` allows empty (if so, add a self-test that seeds a prior env file without `CODEX_BINARY_FOUND`, performs a no-flag refresh, and verifies the script exits 0 and writes the other keys correctly).
+
+2. - **architecture** `scripts/compute-pr-line-counts.sh`, `scripts/compute-pr-line-counts.md`, `scripts/test-compute-pr-line-counts.sh`, `scripts/test-compute-pr-line-counts.md`, `scripts/render-run-summary.sh`, `scripts/render-run-summary.md`, `skills/implement/scripts/write-final-report.sh`, `skills/implement/scripts/write-final-report.md`, `skills/implement/scripts/test-write-final-report.sh` — None of these files are listed in the #3514 implementation plan's "Files to modify/create" section, yet all appear in the branch diff (plan estimated `diff_added: 190`; the actual diff is several hundred lines larger due to this PR-line-count feature). These changes are from issue #3506 bundled onto this branch. They don't contradict any #3514 plan constraint, but their presence makes the diff significantly larger than the plan represents and adds review surface unrelated to the degraded-tools gate fix. **Suggested fix:** if these changes are intentional carry-alongs, document them in the PR description as a co-bundled feature; if not, move them to a separate branch.
+
+No in-scope issues found for the core #3514 plan requirements. Every acceptance criterion was checked:
+
+- `scripts/degraded-tools-gate.sh`: `PRESENCE_INPUT_EMPTY=true` emitted after `BOTH_DOWN` on stdout; `larch_err` diagnostics on stderr only when presence is empty (not for explicit `false`). ✅  
+- `scripts/test-degraded-tools-gate.sh`: all required cases present — all-empty (5a, stdout/stderr separated), one-empty (5b), explicit-false non-signal (5c), omitted-with-empty-env (5d), omitted-with-nonempty-env WARNING (5e), whitespace non-signal (5f), healthy regression pin (Case 1). ✅  
+- `skills/implement/SKILL.md` gate fence: root/tmpdir prelude, four `read-session-env-key.sh --file "$IMPLEMENT_TMPDIR/session-env.sh" --key X --default "false"` reads, gate invocation with all four operands; "from the bootstrap parse above" is gone. ✅  
+- `scripts/test-implement-structure.sh`: `assert_degraded_tools_gate_fence()` pins all 13 required tokens in the extracted fence, includes negative pin for "from the bootstrap parse above". ✅  
+- `skills/design/SKILL.md` gate fence: `export DESIGN_TMPDIR="${DESIGN_TMPDIR:?…}"`, `. "$DESIGN_TMPDIR/source-env.sh"`, gate invocation with `${CODEX_PRESENT:-false}` / `${CURSOR_PRESENT:-false}` / `${CODEX_BINARY_FOUND:-false}` / `${CURSOR_BINARY_FOUND:-false}`. ✅  
+- `scripts/test-design-structure.sh`: `assert_degraded_tools_gate_fence()` verifies source line, DESIGN_TMPDIR prelude, all four flag operands, and negative pin for old prose. ✅  
+- `scripts/write-design-current-env.sh`: `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` added to the recovery loop (now six keys). ✅  
+- `skills/design/scripts/test-write-design-current-env.sh` Case 13: seeds and asserts all four gate keys including binary-found. ✅  
+- `skills/shared/external-reviewers.md`: separate-block rehydration rule and `PRESENCE_INPUT_EMPTY=true` violation symptom documented. ✅  
+- `scripts/degraded-tools-gate.md`: empty-input signal documented, shard reference corrected from `test-harnesses-1` to `test-harnesses-4`. ✅  
+- `/research` and `/review` gate call sites: not modified. ✅
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	latent	correctness	scripts/write-design-current-env.sh	validate_bool called with potentially-empty CODEX_BINARY_FOUND / CURSOR_BINARY_FOUND after no-flag refresh on a legacy session env lacking those keys	If validate_bool rejects empty, a design refresh on any session created before CODEX_BINARY_FOUND was written will fail before writing; test Case 13 only covers the populated case	Confirm validate_bool allows empty; add a Case 13-variant that omits binary-found keys from the prior env and verifies exit 0 and correct output
+1	in_scope	nit	architecture	scripts/compute-pr-line-counts.sh scripts/render-run-summary.sh skills/implement/scripts/write-final-report.sh (and siblings)	PR-line-count feature (#3506) bundled onto the #3514 branch adds hundreds of lines not in the #3514 plan	Plan states diff_added:190 but actual diff is substantially larger due to these additions; makes PR diff harder to scope-check against #3514 acceptance criteria	If intentional carry-along, note in PR description; otherwise move to a separate branch
+```

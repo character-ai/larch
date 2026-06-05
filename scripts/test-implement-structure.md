@@ -10,9 +10,11 @@ For Step 0, it pins the collapsed Session Setup subsection: foreground
 `implement-bootstrap-invoke.sh --mode initial|resume` call sites (no direct
 `implement-bootstrap.sh` in SKILL bash blocks), script-side `phase_coder_select`,
 `scripts/parse-bootstrap-routing-envelope.sh` (file-first `bootstrap-routing.env` + stdout fallback), `set +e` / `set -e` wrapper fences, non-zero `_inv_rc` exit before parse
-fences around wrapper substitution, absence of inline `_ib_*` helpers, and
-absence of the deleted prompt-side tracking, plan-materialization, and
-implementer-waterfall headings.
+fences around wrapper substitution, absence of inline `_ib_*` helpers, absence
+of the deleted prompt-side tracking, plan-materialization, and
+implementer-waterfall headings, and the degraded-tools gate fence that
+rehydrates all four presence/binary keys from `$IMPLEMENT_TMPDIR/session-env.sh`
+with `read-session-env-key.sh --default "false"` before invoking the gate.
 
 It also pins the finalize-state teardown contract: the SKILL.md NEVER bullet
 for prompt-side writes, Step 18's restore-before-teardown invocation order, the

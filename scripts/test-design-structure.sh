@@ -96,6 +96,36 @@ extract_first_bash_fence_after() {
   ' "$file"
 }
 
+assert_degraded_tools_gate_fence() {
+  local tmp
+  tmp=$(mktemp "${TMPDIR:-/tmp}/design-degraded-gate.XXXXXX")
+  awk '
+    /\*\*Degraded-tools gate \(#3207\)\.\*\*/ { start = 1; next }
+    start && /^```bash$/ { in_fence = 1; next }
+    start && in_fence && /^```$/ { exit }
+    start && in_fence { print }
+  ' "$SKILL_MD" >"$tmp"
+  [[ -s "$tmp" ]] || fail "SKILL Degraded-tools gate region missing bash fence"
+  grep -Fq 'export DESIGN_TMPDIR="${DESIGN_TMPDIR:?DESIGN_TMPDIR required}"' "$tmp" \
+    || { rm -f "$tmp"; fail 'SKILL Degraded-tools gate fence must export DESIGN_TMPDIR prelude'; }
+  grep -Fq '. "$DESIGN_TMPDIR/source-env.sh"' "$tmp" \
+    || { rm -f "$tmp"; fail 'SKILL Degraded-tools gate fence must source durable design env'; }
+  if grep -Fq 'from the session-setup parse above' "$SKILL_MD"; then
+    rm -f "$tmp"
+    fail 'SKILL Degraded-tools gate prose must not refer to session-setup parse above'
+  fi
+  for needle in \
+    '"$CLAUDE_PLUGIN_ROOT/scripts/degraded-tools-gate.sh" --skill design' \
+    '--codex-present "${CODEX_PRESENT:-false}"' \
+    '--cursor-present "${CURSOR_PRESENT:-false}"' \
+    '--codex-binary-found "${CODEX_BINARY_FOUND:-false}"' \
+    '--cursor-binary-found "${CURSOR_BINARY_FOUND:-false}"'
+  do
+    grep -Fq -- "$needle" "$tmp" || { rm -f "$tmp"; fail "SKILL Degraded-tools gate fence missing: $needle"; }
+  done
+  rm -f "$tmp"
+}
+
 assert_step2a_entry_simple_guard() {
   local tmp guard_line closing_fi_line first_artifact_line last_artifact_line first_completion_line completion_line artifact_line
   tmp=$(mktemp "${TMPDIR:-/tmp}/step2a-entry.XXXXXX")
@@ -545,6 +575,7 @@ contains "$SKILL_MD" 'unrecognized or disallowed leading public `--` flag is a h
 contains "$SKILL_MD" 'before invoking the Step 0a Bash block' 'SKILL must validate public argv before session-setup'
 absent "$APPROVAL_MD" 'Step 0 tier-gate' 'approval-gates.md must not retain retired Step 0 tier-gate contrast'
 contains "$SKILL_MD" 'design_classification == SIMPLE' 'SKILL missing SIMPLE branch prose'
+assert_degraded_tools_gate_fence
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'unless `design_classification == SIMPLE`, where the user-confirmed no-sketch carve-out applies' 'SKILL missing SIMPLE Design Mindset carve-out'
 contains "$SKILL_MD" 'NO_SKETCHES_CLASSIFIED_SIMPLE' 'SKILL missing SIMPLE sketch sentinel'

@@ -22,6 +22,7 @@
 #   CODEX_STATE=ok|binary-missing|probe-failed
 #   CURSOR_STATE=ok|binary-missing|probe-failed
 #   BOTH_DOWN=true|false
+#   PRESENCE_INPUT_EMPTY=true (conditional, when a presence input resolved empty)
 #   DEGRADED_EXPLANATION_BEGIN
 #   <multi-line explanation lines>
 #   DEGRADED_EXPLANATION_END
@@ -69,6 +70,16 @@ if [[ "$CURSOR_PRESENT_SET" == "false" && -n "${CURSOR_PRESENT:-}" ]]; then
     larch_err "degraded-tools-gate.sh: WARNING: --cursor-present omitted; using CURSOR_PRESENT from environment"
 fi
 
+PRESENCE_INPUT_EMPTY=false
+if [[ -z "${CODEX_PRESENT:-}" ]]; then
+    larch_err "degraded-tools-gate.sh: ERROR: --codex-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)"
+    PRESENCE_INPUT_EMPTY=true
+fi
+if [[ -z "${CURSOR_PRESENT:-}" ]]; then
+    larch_err "degraded-tools-gate.sh: ERROR: --cursor-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)"
+    PRESENCE_INPUT_EMPTY=true
+fi
+
 # Normalize. Presence is always known (every skill parses it): true|false.
 # Binary-found is OPTIONAL — skills that do not parse it leave it `unknown`,
 # which yields a generic `unavailable` state instead of a precise reason.
@@ -112,6 +123,9 @@ emit_kv DEGRADED "$DEGRADED"
 emit_kv CODEX_STATE "$CODEX_STATE"
 emit_kv CURSOR_STATE "$CURSOR_STATE"
 emit_kv BOTH_DOWN "$BOTH_DOWN"
+if [ "$PRESENCE_INPUT_EMPTY" = "true" ]; then
+    emit_kv PRESENCE_INPUT_EMPTY true
+fi
 
 [ "$DEGRADED" = "true" ] || exit 0
 

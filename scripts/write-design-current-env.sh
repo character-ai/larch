@@ -188,7 +188,7 @@ elif [[ "$CURSOR_AVAILABLE_SET" == true && "$CURSOR_PRESENT_SET" != true ]]; the
   CURSOR_PRESENT="$CURSOR_AVAILABLE"
 fi
 
-for _recover_key in CODEX_PRESENT CURSOR_PRESENT CODEX_AVAILABLE CURSOR_AVAILABLE; do
+for _recover_key in CODEX_PRESENT CURSOR_PRESENT CODEX_AVAILABLE CURSOR_AVAILABLE CODEX_BINARY_FOUND CURSOR_BINARY_FOUND; do
   if [[ -z "${!_recover_key}" ]]; then
     _recovered=$(recover_prior_bool_value "$_recover_key" "$OUTPUT") || true
     if [[ -n "$_recovered" ]]; then
@@ -201,6 +201,8 @@ validate_bool codex-present "$CODEX_PRESENT"
 validate_bool cursor-present "$CURSOR_PRESENT"
 validate_bool codex-available "$CODEX_AVAILABLE"
 validate_bool cursor-available "$CURSOR_AVAILABLE"
+validate_bool codex-binary-found "$CODEX_BINARY_FOUND"
+validate_bool cursor-binary-found "$CURSOR_BINARY_FOUND"
 
 {
   printf '#!/usr/bin/env bash\n'

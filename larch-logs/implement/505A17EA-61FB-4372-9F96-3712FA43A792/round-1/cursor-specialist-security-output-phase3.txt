@@ -1,0 +1,29 @@
+I've read the full diff from the pre-computed context file. Here is my security-focused review.
+
+---
+
+### In-Scope Findings
+
+No in-scope security issues found.
+
+**Rationale for each surface examined:**
+
+- **`scripts/degraded-tools-gate.sh` — new empty-presence detection.** The two new `larch_err` calls emit fully hardcoded strings; no user-controlled data is interpolated. The `PRESENCE_INPUT_EMPTY` KV uses a literal `true`. No injection vector.
+
+- **`scripts/compute-pr-line-counts.sh` — new script.** `PR_NUMBER` and `REPO` are double-quoted throughout (`"$endpoint"`), preventing word-splitting/glob injection. Even with a non-integer `PR_NUMBER`, the failure path is handled: `gh api` returns non-zero, `gh_rc != 0` triggers `LINES_STATUS=unavailable`, and the caller never aborts. The awk `END` block uses `printf "%d"` for all counters, so attacker-supplied additions/deletions fields from the API response can only produce integers in the output KV. Temp-file cleanup via `mktemp` + EXIT trap is correct; the `trap - EXIT` + explicit `rm` on the clean path avoids double-deletion.
+
+- **`scripts/write-design-current-env.sh` — binary-found key preservation.** The new for-loop uses `${!_recover_key}` indirect expansion, but `_recover_key` is sourced only from a hardcoded list of six safe identifiers. The `recover_prior_bool_value` grep pattern `^export ${key}=(true|false)$` enforces anchored matching; `${line#*=}` strips the prefix to yield only `true`/`false`; the follow-up `validate_bool` calls reject anything else. No injection path.
+
+- **`skills/implement/SKILL.md` / `skills/design/SKILL.md` fence changes.** The rehydrated values are passed as quoted shell arguments to the gate script, not evaluated as code. The `${CODEX_PRESENT:-false}` expansions in the design fence only produce `false` on empty, not arbitrary shell.
+
+- **`skills/implement/scripts/write-final-report.sh` — PR line counts.** Data flows: `gh api` → awk (`%d`-formatted integers) → KV blob → `read_lines_kv` (awk field parse, key is hardcoded) → four integer variables → nested POSIX `case` integer guards → display-only `printf`. No point in this chain executes user-supplied data as code or shell.
+
+- **Test harness gh shims.** Standard test pattern: a stub binary written to a mktemp directory, prepended to PATH with `export`, using `${GH_SHIM_LOG:?}` to require the env var to be set. No security concern in test-only code.
+
+- **Secret scanning.** No hard-coded secrets, tokens, or credentials introduced. Error messages name only flag identifiers and bug class descriptions.
+
+---
+
+### Out-of-Scope Observations
+
+None.

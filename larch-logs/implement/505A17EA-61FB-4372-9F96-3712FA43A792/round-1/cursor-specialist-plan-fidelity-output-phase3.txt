@@ -1,0 +1,27 @@
+The full diff was provided in the context. I have enough to write the review.
+
+### In-Scope Findings
+
+1. **Important** `architecture` `Makefile`, `scripts/compute-pr-line-counts.sh`, `scripts/compute-pr-line-counts.md`, `scripts/test-compute-pr-line-counts.sh`, `scripts/test-compute-pr-line-counts.md`, `scripts/render-run-summary.sh`, `scripts/render-run-summary.md`, `scripts/test-render-run-summary.sh`, `skills/implement/scripts/write-final-report.sh`, `skills/implement/scripts/write-final-report.md`, `skills/implement/scripts/test-write-final-report.sh`, `agent-lint.toml` — The PR ships an entirely unplanned feature (PR diff line counts: `compute-pr-line-counts.sh`, `Lines (PR diff)` bullet in `render-run-summary.sh`, integration in `write-final-report.sh`, and all associated tests/docs/Makefile/agent-lint entries), none of which appear in the plan's "Files to modify/create" list. The plan scoped to 12 named files and estimated `diff_added: 190`; the implementation adds roughly 400+ lines across 10+ additional files for a different feature entirely. Any bug or behavioral change in the line-counts path (e.g., the `set +e` / `set -e` wrapper around `compute-pr-line-counts.sh` that leaves `lines_blob=""` on tool error) ships without plan-level review or acceptance criteria. **Suggested fix:** Separate the PR line counts feature into its own issue and PR; this PR should contain only the plan-scoped degraded-tools gate and rehydration changes.
+
+2. **Nit** `correctness` `scripts/test-degraded-tools-gate.sh:94-97` (Case 5b) — Case 5b uses `2>&1` (merged streams) and asserts `PRESENCE_INPUT_EMPTY=true` appears in the merged output; the plan asked that in merged-output cases the stderr diagnostic substrings be exercised. The assertion `assert_contains "$out" "PRESENCE_INPUT_EMPTY=true"` is satisfied whether the KV appears on stdout or stderr, so the stdout-only invariant for that KV is only proven by Case 5a (the split case). This is a weak test for the merged case but the split case covers the separation contract; not a blocking gap. **Suggested fix:** No change required; Case 5a provides the authoritative stream-separation proof.
+
+---
+
+All plan-required deliverables are present and correctly implemented:
+- `degraded-tools-gate.sh`: empty-presence detection (`[[ -z "${CODEX_PRESENT:-}" ]]`) fires before normalization; `PRESENCE_INPUT_EMPTY=true` emitted after `BOTH_DOWN` only when true; valid-input stdout byte-identical ✓
+- `degraded-tools-gate.md`: Caller contract extended; `PRESENCE_INPUT_EMPTY=true` KV documented; shard reference corrected to `test-harnesses-4` ✓
+- `test-degraded-tools-gate.sh`: All required cases (5a all-empty/split streams, 5b one-empty/merged, 5c explicit-false non-signal, 5d omitted-with-empty-env, Case 1 regression pin) ✓
+- `skills/implement/SKILL.md`: Self-contained fence with root/tmpdir prelude + four `read-session-env-key.sh` reads + gate invocation; "from the bootstrap parse above" removed ✓
+- `skills/design/SKILL.md`: Sources `$DESIGN_TMPDIR/source-env.sh` then passes four `${VAR:-false}` flags ✓
+- `scripts/write-design-current-env.sh`: `CODEX_BINARY_FOUND`/`CURSOR_BINARY_FOUND` added to recovery loop and validation ✓
+- `test-write-design-current-env.sh` Case 13: asserts all six gate keys survive no-flag refresh ✓
+- `skills/shared/external-reviewers.md`: Separate-block rehydration rule added; `PRESENCE_INPUT_EMPTY=true` named as violation symptom ✓
+- `test-implement-structure.sh`: `assert_degraded_tools_gate_fence` scoped to gate region; checks all four assignments, four operands, prelude tokens, and negative pin ✓
+- `test-design-structure.sh`: `assert_degraded_tools_gate_fence` checks source + gate + four `:-false` operands ✓
+
+```tsv
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	architecture	scripts/compute-pr-line-counts.sh, scripts/render-run-summary.sh, skills/implement/scripts/write-final-report.sh, scripts/test-compute-pr-line-counts.sh, Makefile, agent-lint.toml (and 5 related files)	Entire PR-diff-line-counts feature added with no plan coverage	Feature ships ~400 lines across 10+ files not in the plan; bugs in compute-pr-line-counts.sh (e.g., set +e wrapper leaving lines_blob empty on tool error) land without plan-level acceptance criteria; plan estimated diff_added:190	Separate the line-counts feature into its own issue and PR; this PR should contain only the plan-scoped gate and rehydration changes
+1	in_scope	nit	correctness	scripts/test-degraded-tools-gate.sh:94-97	Case 5b merged-stream assertion for PRESENCE_INPUT_EMPTY=true satisfies stdout-only invariant coincidentally rather than proving it	If the KV were accidentally emitted on stderr instead of stdout, Case 5b would still pass; only Case 5a (split capture) proves the stream invariant	No change required; Case 5a is authoritative; nit only
+```
