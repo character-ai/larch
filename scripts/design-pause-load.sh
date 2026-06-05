@@ -228,8 +228,9 @@ else
     snapshot_ref="origin/$ORIGIN_DEFAULT"
 fi
 
+snapshot_sha=$(git -C "$REPO_TOP" rev-parse --verify "${snapshot_ref}^{commit}" 2>/dev/null) || emit_load_fail "snapshot-not-found"
 snapshot_prefix="larch-logs/design/${RUN_ID}/"
-if ! git -C "$REPO_TOP" ls-tree -r -z --name-only "$snapshot_ref" -- "$snapshot_prefix" >"$enum_tmp"; then
+if ! git -C "$REPO_TOP" ls-tree -r -z --name-only "$snapshot_sha" -- "$snapshot_prefix" >"$enum_tmp"; then
     emit_load_fail "snapshot-extract-failed"
 fi
 while IFS= read -r -d '' path; do
@@ -242,7 +243,7 @@ while IFS= read -r -d '' path; do
     esac
     dest="$restore_tmp/$rel"
     mkdir -p "$(dirname "$dest")" || emit_load_fail "snapshot-extract-failed"
-    if ! git -C "$REPO_TOP" show "$snapshot_ref:$path" >"$dest"; then
+    if ! git -C "$REPO_TOP" show "$snapshot_sha:$path" >"$dest"; then
         emit_load_fail "snapshot-extract-failed"
     fi
 done <"$enum_tmp"
@@ -302,12 +303,13 @@ if [[ -z "$manifest_run_id" || "$manifest_run_id" != "$RUN_ID" ]]; then
     emit_load_fail "restored-run-id-mismatch"
 fi
 
+rm -f "$restore_tmp/.pause-requested" || emit_load_fail "restore-install-failed"
+
+: > "$restore_tmp/.resume-loaded" || emit_load_fail "resume-sentinel-write-failed"
+
 if ! cp -R "$restore_tmp"/. "$DESIGN_TMPDIR"/; then
     emit_load_fail "restore-install-failed"
 fi
-rm -f "$DESIGN_TMPDIR/.pause-requested" || emit_load_fail "restore-install-failed"
-
-: > "$DESIGN_TMPDIR/.resume-loaded" || emit_load_fail "resume-sentinel-write-failed"
 
 emit_kv LOAD_OK true
 emit_kv STEP "$STEP"

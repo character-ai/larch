@@ -887,14 +887,6 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
                 counters=counters,
                 detail="gh pr view failed",
             )
-        if viewed.head_ref != branch_name:
-            return _fresh_resume_plan(
-                durable,
-                branch_name=branch_name,
-                repo=state_repo,
-                counters=counters,
-                detail=f"PR head {viewed.head_ref} does not match checkout {branch_name}",
-            )
         state = viewed.state.upper()
         if state == "MERGED":
             start = "done" if state_phase == "done" else "merged"
@@ -907,6 +899,14 @@ def _resume_plan(ctx: RunContext, runner: Runner, *, cwd: str | None) -> ResumeP
                 merge_result=_valid_merge_result(merge_result),
                 branch_name=branch_name,
                 repo=state_repo,
+            )
+        if viewed.head_ref != branch_name:
+            return _fresh_resume_plan(
+                durable,
+                branch_name=branch_name,
+                repo=state_repo,
+                counters=counters,
+                detail=f"PR head {viewed.head_ref} does not match checkout {branch_name}",
             )
         if state == "OPEN":
             return _resume_from_state(
@@ -1483,6 +1483,7 @@ def run_ship(
             _breadcrumb("merge")
             merged = merge.merge_pr(runner, working, cwd=repo_root, post_flush=False)
             if merged.result in {config.MERGE_RESULT_CI_NOT_READY, config.MERGE_RESULT_MAIN_ADVANCED}:
+                iteration += 1
                 _write_ship_state(
                     working,
                     phase="ci-initial",

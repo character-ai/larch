@@ -1527,6 +1527,10 @@ printf '%s\n' "$step0b_block" | grep -Fq '_route_warn_lines' \
   || fail "(FINDING_10) SKILL.md Step 0b missing route warning collection"
 printf '%s\n' "$step0b_block" | grep -Fq '_route_error_lines' \
   || fail "(FINDING_10) SKILL.md Step 0b missing route error collection"
+printf '%s\n' "$step0b_block" | grep -Fq 'BRAINSTORM_DONE|MARKER_CLEARED' \
+  || fail "(FINDING_1) SKILL.md Step 0b route allowlist must include MARKER_CLEARED"
+printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_CLEARED=${MARKER_CLEARED}' \
+  || fail "(FINDING_1) SKILL.md Step 0b resume breadcrumb must surface MARKER_CLEARED"
 printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_AGE=0' \
   || fail "(FINDING_7) SKILL.md Step 0b must default MARKER_AGE before reentry guard branch"
 printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_TTL=300' \

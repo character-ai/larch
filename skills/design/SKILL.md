@@ -374,7 +374,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
        while IFS= read -r _line || [[ -n "$_line" ]]; do
          _key="${_line%%=*}"; _value="${_line#*=}"
          case "$_key" in
-           ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
+           ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE|MARKER_CLEARED)
              printf -v "$_key" '%s' "$_value" ;;
            WARN) _route_warn_dup=false; for _w in "${_route_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _route_warn_dup=true; break; }; done; if [[ "$_route_warn_dup" != true ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
            ERROR) _route_err_dup=false; for _e in "${_route_error_lines[@]}"; do [[ "$_e" == "$_value" ]] && { _route_err_dup=true; break; }; done; if [[ "$_route_err_dup" != true ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
@@ -385,7 +385,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
    while IFS= read -r _line || [[ -n "$_line" ]]; do
      _key="${_line%%=*}"; _value="${_line#*=}"
      case "$_key" in
-       ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE)
+       ROUTE|BRAINSTORM_PREFIX|TITLE_FILTER_REASON|TITLE_FILTER_MARKER|MARKER_AGE|MARKER_TTL|DESIGN_REENTRY_MARKER_PATH|RESUME_STEP|SESSION_ID|RUN_ID|TIER|BRAINSTORM_DONE|MARKER_CLEARED)
          [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value" ;;
       WARN) _route_warn_dup=false; for _w in "${_route_warn_lines[@]}"; do [[ "$_w" == "$_value" ]] && { _route_warn_dup=true; break; }; done; if [[ "$_route_warn_dup" != true ]]; then _route_warn_lines+=("$_value"); printf '%s\n' "WARN=$_value"; fi ;;
       ERROR) _route_err_dup=false; for _e in "${_route_error_lines[@]}"; do [[ "$_e" == "$_value" ]] && { _route_err_dup=true; break; }; done; if [[ "$_route_err_dup" != true ]]; then _route_error_lines+=("$_value"); printf '%s\n' "ERROR=$_value"; fi ;;
@@ -407,6 +407,7 @@ Use the canonical interactive predicate from that shared procedure. If gate stdo
        ;;
      resume@*)
        RESUME_STEP="${ROUTE#resume@}"
+       [[ -z "${MARKER_CLEARED:-}" ]] || printf '%s\n' "MARKER_CLEARED=${MARKER_CLEARED}"
        printf '%s\n' "🔓 resumed from STEP=${RESUME_STEP}" ;;
    esac
    _route_valid=false

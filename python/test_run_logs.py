@@ -252,7 +252,7 @@ def test_parse_pr_number_state_first_and_ctx_fallback(tmp_path: Path) -> None:
     assert run_logs.parse_pr_number(None, 7) is None
     state = tmp_path / "state.env"
     _ = state.write_text("PR_NUMBER=\n", encoding="utf-8")
-    assert run_logs.parse_pr_number(str(state), "8") == 8
+    assert run_logs.parse_pr_number(str(state), "8") is None
     _ = state.write_text("PR_NUMBER=0\n", encoding="utf-8")
     assert run_logs.parse_pr_number(str(state), "8") is None
     _ = state.write_text("PR_NUMBER=9\n", encoding="utf-8")

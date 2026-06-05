@@ -619,6 +619,30 @@ DRAFT=false
     assert "TRANSIENT_RETRIES=1\n" in state
 
 
+def test_merged_pr_resume_ignores_head_ref_mismatch(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        "MERGE=true\nDRAFT=false\nITERATION=4\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "MERGED", "head_ref": "stale-head"})(),
+    )
+    monkeypatch.setattr(ship, "run_postmerge_phase", lambda *_a, **_k: ship.ShipResult(Outcome.OK, detail="postmerge"))
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert result.detail == "postmerge"
+
+
 def test_resume_branch_mismatch_safe_refuses_without_fresh_work(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -891,7 +915,7 @@ def test_open_pr_resume_wrong_head_routes_through_fresh_checks(
     monkeypatch.setattr(
         ship.gh,
         "pr_view",
-        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "MERGED", "head_ref": "other"})(),
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "other"})(),
     )
     monkeypatch.setattr(ship.checks, "run_checks_phase", lambda *_a, **_k: calls.append("checks") or StepResult(Outcome.OK))
     monkeypatch.setattr(
@@ -1742,7 +1766,7 @@ def test_transient_rerun_monitor_result_does_not_consume_iteration(
     assert "TRANSIENT_RETRIES=1\n" in state
 
 
-def test_merge_retry_results_do_not_consume_iteration_budget(
+def test_merge_retry_results_consume_iteration_budget(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -1793,7 +1817,7 @@ def test_merge_retry_results_do_not_consume_iteration_budget(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
-    assert "ITERATION=49\n" in state_file.read_text(encoding="utf-8")
+    assert "ITERATION=50\n" in state_file.read_text(encoding="utf-8")
 
 
 def test_failed_run_id_surfaces_for_ci_fix_handback() -> None:

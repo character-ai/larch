@@ -89,7 +89,14 @@ if [[ "\${1:-}" == "-C" ]]; then
   case "\${1:-}" in
     rev-parse) printf '%s\n' "$TMP/repo"; exit 0 ;;
     symbolic-ref) printf '%s\n' 'refs/remotes/origin/main'; exit 0 ;;
-    fetch) printf '%s\n' "\$*" >>"$FETCH_LOG"; exit 0 ;;
+    fetch)
+      if [[ "\${GIT_STUB_FETCH_FAIL:-0}" == "1" ]]; then
+        echo "stub git fetch forced failure" >&2
+        exit 97
+      fi
+      printf '%s\n' "\$*" >>"$FETCH_LOG"
+      exit 0
+      ;;
     show-ref)
       if [[ "\${2:-}" == "--verify" && "\${3:-}" == "--quiet" && "\${4:-}" == "refs/heads/larch-log-design-recovery-RUNPAUSE1" ]]; then
         exit 0
@@ -238,9 +245,27 @@ printf '%s\n' '<!-- larch:design-pause:start -->' 'ISSUE_NUMBER=9' 'REPO=owner/r
   cd "$EXPORT_REPO" || exit 1
   out_export=$(PATH="$GH_ONLY:$ORIGINAL_PATH" bash "$LOAD" --design-tmpdir "$EXPORT_RESTORE" --issue 9 --repo owner/repo)
   [[ "$out_export" == *"LOAD_OK=true"* && "$out_export" == *"RUN_ID=RUNEXPORT1"* ]] || fail "export-ignore restore failed: $out_export"
+  [[ "$out_export" == *"MARKER_CLEARED=true"* ]] || fail "export-ignore restore should emit MARKER_CLEARED=true: $out_export"
 )
 [[ -f "$EXPORT_RESTORE/plan.txt" && -f "$EXPORT_RESTORE/.completed/step-1c" ]] || fail "export-ignore restore artifacts missing"
 ! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "export-ignore restore should delete marker after success"
+
+echo "=== real-git origin main restore succeeds ==="
+EXPORT_ORIGIN_RESTORE="$TMP/export-origin-restore"
+mkdir -p "$EXPORT_ORIGIN_RESTORE"
+"$REAL_GIT" -C "$EXPORT_REPO" remote remove origin >/dev/null 2>&1 || true
+"$REAL_GIT" -C "$EXPORT_REPO" remote add origin "$EXPORT_REPO"
+"$REAL_GIT" -C "$EXPORT_REPO" fetch -q origin main
+"$REAL_GIT" -C "$EXPORT_REPO" symbolic-ref refs/remotes/origin/HEAD refs/remotes/origin/main
+printf '%s\n' '<!-- larch:design-pause:start -->' 'ISSUE_NUMBER=9' 'REPO=owner/repo' 'RUN_ID=RUNEXPORT1' 'STEP=1d' '<!-- larch:design-pause:end -->' >"$BODY_FILE"
+(
+  cd "$EXPORT_REPO" || exit 1
+  out_origin=$(PATH="$GH_ONLY:$ORIGINAL_PATH" bash "$LOAD" --design-tmpdir "$EXPORT_ORIGIN_RESTORE" --issue 9 --repo owner/repo)
+  [[ "$out_origin" == *"LOAD_OK=true"* && "$out_origin" == *"RUN_ID=RUNEXPORT1"* ]] || fail "origin/main restore failed: $out_origin"
+  [[ "$out_origin" == *"MARKER_CLEARED=true"* ]] || fail "origin/main restore should emit MARKER_CLEARED=true: $out_origin"
+)
+[[ -f "$EXPORT_ORIGIN_RESTORE/plan.txt" && -f "$EXPORT_ORIGIN_RESTORE/.completed/step-1c" ]] || fail "origin/main restore artifacts missing"
+! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "origin/main restore should delete marker after success"
 
 echo "=== restore install failure keeps marker ==="
 make_design_tmpdir "$DESIGN"
@@ -567,6 +592,7 @@ bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
 printf '\noperator edit\n' >>"$BODY_FILE"
 out_drift=$(bash "$LOAD" --design-tmpdir "$TMP/restore-drift" --issue 9 --repo owner/repo)
 [[ "$out_drift" == *"LOAD_OK=true"* && "$out_drift" == *"WARN=body-drift"* ]] || fail "expected body drift warning: $out_drift"
+[[ "$out_drift" == *"MARKER_CLEARED=true"* ]] || fail "body-drift restore should emit MARKER_CLEARED=true: $out_drift"
 ! grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "body-drift restore should delete marker after success"
 
 echo "=== marker delete failure warns after successful load ==="
@@ -882,6 +908,17 @@ out_extract_fail=$(GIT_STUB_LS_TREE_FAIL=1 bash "$LOAD" --design-tmpdir "$EXTRAC
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "snapshot extract failure should keep marker"
 ! [[ -f "$EXTRACT_FAIL_RESTORE/.resume-loaded" ]] || fail "snapshot extract failure should not install resume sentinel"
 
+echo "=== snapshot fetch failure keeps marker ==="
+make_design_tmpdir "$DESIGN"
+printf '%s\n' 'body fetch fail' >"$BODY_FILE"
+bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
+FETCH_FAIL_RESTORE="$TMP/fetch-fail-restore"
+mkdir -p "$FETCH_FAIL_RESTORE"
+out_fetch_fail=$(GIT_STUB_FETCH_FAIL=1 bash "$LOAD" --design-tmpdir "$FETCH_FAIL_RESTORE" --issue 9 --repo owner/repo)
+[[ "$out_fetch_fail" == *"LOAD_OK=false"* && "$out_fetch_fail" == *"ERROR=snapshot-not-found"* ]] || fail "snapshot fetch failure mismatch: $out_fetch_fail"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "snapshot fetch failure should keep marker"
+! [[ -f "$FETCH_FAIL_RESTORE/.resume-loaded" ]] || fail "snapshot fetch failure should not install resume sentinel"
+
 echo "=== snapshot show failure keeps marker ==="
 make_design_tmpdir "$DESIGN"
 printf '%s\n' 'body show fail' >"$BODY_FILE"
@@ -892,6 +929,18 @@ out_show_fail=$(GIT_STUB_SHOW_FAIL=1 bash "$LOAD" --design-tmpdir "$SHOW_FAIL_RE
 [[ "$out_show_fail" == *"ERROR=snapshot-extract-failed"* ]] || fail "snapshot show failure mismatch: $out_show_fail"
 grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "snapshot show failure should keep marker"
 ! [[ -f "$SHOW_FAIL_RESTORE/.resume-loaded" ]] || fail "snapshot show failure should not install resume sentinel"
+
+echo "=== invalid restored manifest keeps marker ==="
+make_design_tmpdir "$DESIGN"
+printf '%s\n' 'body invalid manifest' >"$BODY_FILE"
+bash "$SAVE" --design-tmpdir "$DESIGN" --issue 9 --repo owner/repo >/dev/null
+printf '%s\n' '{' >"$SNAPSHOT_ROOT/larch-logs/design/RUNPAUSE1/manifest.json"
+BAD_MANIFEST_RESTORE="$TMP/bad-manifest-restore"
+mkdir -p "$BAD_MANIFEST_RESTORE"
+out_bad_manifest=$(bash "$LOAD" --design-tmpdir "$BAD_MANIFEST_RESTORE" --issue 9 --repo owner/repo)
+[[ "$out_bad_manifest" == *"LOAD_OK=false"* && "$out_bad_manifest" == *"ERROR=invalid-restored-manifest"* ]] || fail "invalid manifest mismatch: $out_bad_manifest"
+grep -Fq '<!-- larch:design-pause:start -->' "$BODY_FILE" || fail "invalid manifest should keep marker"
+! [[ -f "$BAD_MANIFEST_RESTORE/.resume-loaded" ]] || fail "invalid manifest should not install resume sentinel"
 
 echo "=== marker name validation ==="
 set +e
