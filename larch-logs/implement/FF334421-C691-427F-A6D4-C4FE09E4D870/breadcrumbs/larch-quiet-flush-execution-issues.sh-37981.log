@@ -1,1 +1,0 @@
-Usage: flush-execution-issues.sh --log-root PATH --run-id RUN_ID --issue-log PATH [--batch execution-issues]
