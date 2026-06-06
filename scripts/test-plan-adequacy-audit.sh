@@ -21,6 +21,7 @@ grep -Fq '**Few-shot A — pass**' "$SKILL" || fail "missing few-shot pass examp
 grep -Fq '**Few-shot B — refuse**' "$SKILL" || fail "missing few-shot refuse example"
 grep -Fq '**⚠ --forked and --merge are mutually exclusive. Aborting.**' "$SKILL" || fail "missing forked/merge mutex"
 grep -Fq '**⚠ --draft and --merge are mutually exclusive. Aborting.**' "$SKILL" || fail "missing draft/merge mutex"
+# shellcheck disable=SC2016
 grep -Fq '`--emergency` and `--merge` are **compatible**' "$SKILL" || fail "missing emergency/merge compatibility note"
 grep -Fq '**⚠ --emergency and --draft are mutually exclusive. Aborting.**' "$SKILL" || fail "missing emergency/draft mutex"
 # shellcheck disable=SC2016
