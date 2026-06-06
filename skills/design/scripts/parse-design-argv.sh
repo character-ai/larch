@@ -21,7 +21,6 @@ assert_safe_kv_value() {
 hard_requested=false
 partition_requested=false
 brainstorm_requested=false
-manual_requested=false
 no_dedup_requested=false
 run_id=""
 first_positional=""
@@ -46,10 +45,6 @@ while [ "$#" -gt 0 ]; do
             ;;
         --brainstorm)
             brainstorm_requested=true
-            shift
-            ;;
-        --manual | -m)
-            manual_requested=true
             shift
             ;;
         --no-dedup)
@@ -104,7 +99,6 @@ assert_safe_kv_value "$positional_value"
 printf '%s\n' "HARD_REQUESTED=$hard_requested"
 printf '%s\n' "PARTITION_REQUESTED=$partition_requested"
 printf '%s\n' "BRAINSTORM_REQUESTED=$brainstorm_requested"
-printf '%s\n' "MANUAL_REQUESTED=$manual_requested"
 printf '%s\n' "NO_DEDUP_REQUESTED=$no_dedup_requested"
 printf '%s\n' "RUN_ID=$run_id"
 printf '%s\n' "POSITIONAL_KIND=$positional_kind"

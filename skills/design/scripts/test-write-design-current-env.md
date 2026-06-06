@@ -5,7 +5,7 @@ Regression harness for `scripts/write-design-current-env.sh`.
 ## Coverage
 
 1. Sourceable output sets `DESIGN_TMPDIR`, `SESSION_TMPDIR`, `SESSION_ID`,
-   `MANUAL_REQUESTED`, `ISSUE_NUMBER`, reviewer booleans (including binary-found gate keys), and `CLAUDE_PLUGIN_ROOT` exactly as
+   `removed manual env key`, `ISSUE_NUMBER`, reviewer booleans (including binary-found gate keys), and `CLAUDE_PLUGIN_ROOT` exactly as
    passed; PID-keyed stable symlink `current-design-env-<pid>.sh` points at
    `--output`.
 2. Shell-quoting via `printf '%q'` survives a `--design-tmpdir` value
@@ -26,7 +26,7 @@ Regression harness for `scripts/write-design-current-env.sh`.
    and emits a stderr transition warning.
 9. No-flag refresh preserves all degraded-tools gate keys, including
    `CODEX_BINARY_FOUND` and `CURSOR_BINARY_FOUND`, while still clearing
-   `MANUAL_REQUESTED` when omitted.
+   `removed manual env key` when omitted.
 
 ## Edit-in-sync
 

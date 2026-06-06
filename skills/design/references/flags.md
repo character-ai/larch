@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` argument parsing (loaded before Step 0 via the MANDATORY directive adjacent to the compact flag table in `SKILL.md`).
 
-**Contract**: normative rules for **public** `/design` argv (`--hard`, `--partition` / `-p`, `--brainstorm`, `--manual` / `-m`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
+**Contract**: normative rules for **public** `/design` argv (`--hard`, `--partition` / `-p`, `--brainstorm`, `--no-dedup`, `--run-id`) plus **internal** orchestration tokens retained for nested hosts and CI harness pins.
 
 **When to load**: once at the top of `/design` invocation, before Step 0 executes, via the MANDATORY directive adjacent to the compact flag table. Do NOT load mid-flow; flag parsing runs once and the decisions are sticky.
 
@@ -20,19 +20,24 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 - `--run-id <ID>`: optional stable run id. Default empty.
 - `--partition` / `-p`: public boolean flag, default `false`. Semantics: when set, Step **2b.5** routes directly to the **Split-path** (decomposition panel) when no hard threshold fired — no Continue option, no threshold inspection. Hard plans still show the hard **Split/Cancel** prompt before entering Split-path automatically; `--partition` is the user-initiated override that fires the same path on small plans. The flag is persisted to `$DESIGN_TMPDIR/run-params.json` as `partition_requested` (boolean) via `scripts/write-run-params.sh` so Gate B and post-plan discussion re-entries read it from a fresh Bash subshell without re-parsing argv.
 - `--brainstorm`: public boolean flag, default `false`. When set, Step **1d.5** runs after Round 1 discussion and before Step **1d.7** outline-approval (Gate A re-entry only post-plan) (see `references/brainstorm.md`). Persisted as `brainstorm_requested` (boolean) in `run-params.json` via `scripts/write-run-params.sh`.
-- `--manual` / `-m`: public boolean flag, default `false`. When set, restores today's Gate B 3-option `AskUserQuestion` (Apply all / Go through each / Switch to discussion mode) on every Gate B entry. Default (`false`) makes Gate B auto-apply every accepted finding to `$DESIGN_TMPDIR/plan.txt` after printing a compact findings list. Persisted as `manual_gate_b` (boolean) in `run-params.json` via `scripts/write-run-params.sh`. Scope: Gate B only — Gate A (Step 1e) discussion sub-rounds and Gate C (Step 4b) final approval are unchanged in both modes. Whole-run sticky: parsed once at argv, read on every Gate B entry including Step 3 re-entries from Gate C(c) "Re-run review panel". Independent of all tier/partition/brainstorm flags (no mutual exclusion).
+- `--manual` / `-m`: removed. These flags are rejected as unknown public flags before Step 0; Gate B is always explicit.
 
 `scripts/write-run-params.sh` writes schema v3 `run-params.json`. In addition to the v2 boolean fields, it persists nullable `design_classification_reason`, `design_classification_source`, `sketch_budget`, and `workflow_path` fields for Step 2 and Step 3 rehydration.
 
-**Mutual exclusion**: at most one `--hard` on argv; duplicate `--hard` → hard error before Step 0. Any unrecognized or disallowed leading public `--` flag → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` is independent of all other public flags.
+**Mutual exclusion**: at most one `--hard` on argv; duplicate `--hard` → hard error before Step 0. Any unrecognized or disallowed leading public `--` flag → hard error before Step 0 (never swallowed as positional/verbal feature text). `--manual` / `-m` are no longer public flags.
 
 **Positional tail**: after flags, either `^[0-9]+$` (existing issue) or verbal feature text (create issue via `/larch:issue` first). When the first positional token is all digits, only that token becomes `POSITIONAL_VALUE`; any later tokens are ignored (see `parse-design-argv.md`).
 
 ## Plan-size thresholds (Step 2b.5)
 
-**Merged post-plan sites** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) call `design-postplan-emit.sh --with-plan-size`, which runs `check-plan-size.sh` internally and maps verdicts to thin-fence exit codes (`0`, `10`, `11`, `12`, `13`, `1`, `2`). **`check-plan-size.sh` remains standalone** for retained Step 2b.5 callers (Override-after-defects, Step 3 `LOOP_STATUS=plan-size-trigger`, `plan-review-loop.sh`).
+**Merged post-plan sites** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) call `design-postplan-emit.sh --with-plan-size`, which runs `check-plan-size.sh` internally and maps verdicts to thin-fence exit codes (`0`, `10`, `11`, `12`, `13`, `14`, `1`, `2`). **`check-plan-size.sh` remains standalone** for retained Step 2b.5 callers such as Override-after-defects and recovery paths.
 
-**Site-aware hard prompts**: initial Step 2b and discussion paths use Split/Cancel only; Gate B, Step 3 `LOOP_STATUS=plan-size-trigger`, and `plan-review-loop.sh` retain Split/Override/Cancel.
+**Site-aware hard prompts**: initial Step 2b and discussion paths use Split/Cancel only; retained Gate B paths use Split/Override/Cancel.
+
+
+### `LARCH_DESIGN_DRIFT_MULTIPLE`
+
+Default `2` (positive integer; invalid values fall back to `2`). `check-plan-size.sh` compares current plan lines and diff lines against `drift-baseline.env`; drift fires when the plan ratio **or** diff ratio exceeds the multiple. Merged `design-postplan-emit.sh --with-plan-size` maps drift to exit code `14` after hard-size and partition checks.
 
 Merged fence pause-save preludes and `_postplan_rc=11` `exec` arms thread `${REPO:+--repo "$REPO"}`; `design-postplan-emit.sh` itself is not passed `--repo`.
 
@@ -49,21 +54,17 @@ The historical **ownership-domains** sprawl heuristic from early design notes is
 
 **`--partition` / `-p` (Step 2b.5)**: when `partition_requested=true` in `run-params.json`, Step 2b.5 routes directly to the **Split-path** even if no hard threshold fired. That path runs the **real decomposition panel** (8 external slots via `scripts/dispatch-with-waterfall.sh`). Full procedure, idempotent sentinels, and filing semantics live in `skills/design/references/decompose-panel.md`.
 
-## Multi-round loop env vars
+## Step 3 review env vars
 
 Normative argv validation lives in `skills/design/scripts/plan-review-loop.sh` (`--round-cap` only). SKILL.md Step 3 (via `run-step3-review.sh`) passes `"${LARCH_DESIGN_ROUND_CAP:-5}"` when the env var is unset or empty. Invalid explicit values cause `plan-review-loop.sh` argv validation to fail before any review round launches. Step 3 normalizes that failure to the `panel-failed` branch, skips Gate B, and proceeds to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with the pre-review `plan.txt` unchanged. There is no silent fallback or clamping. See `docs/configuration-and-permissions.md` § Environment Variables.
 
 | Variable | Default (unset/empty) | Invalid explicit values | Semantics |
 |---|---|---|---|
-| `LARCH_DESIGN_ROUND_CAP` | `5` | Non-numeric or non-positive → `plan-review-loop.sh` argv validation exit `2`; Step 3 surfaces `panel-failed` and continues at Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C (Gate B skipped) | Upper bound on **inner** plan-review rounds inside one Step 3 `plan-review-loop.sh` invocation. The Step 3 **review-run counter** (tier-derived cap: SIMPLE = `3`, HARD = `5`) limits Gate C re-entries separately — `LARCH_DESIGN_ROUND_CAP` is **not** clamped against that tier cap; the two layers compose. |
+| `LARCH_DESIGN_ROUND_CAP` | `5` | Non-numeric or non-positive → `plan-review-loop.sh` argv validation exit `2`; Step 3 surfaces `panel-failed` and continues at Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C (Gate B skipped) | Deprecated inner-loop cap; accepted and validated for compatibility, but Step 3 review is single-pass. The Step 3 **review-run counter** (tier-derived cap: SIMPLE = `3`, HARD = `5`) limits Gate C re-entries separately. |
 
 ## Helper output — `TRIGGER_REASONS`
 
 The helper emits comma-separated reason tokens in **fixed priority order** `plan-body-lines`, then `diff-added` (new-style) or `diff-lines` (legacy) — the order hard thresholds are evaluated, **not** lexicographic.
-
-## Per-round velocity (deferred)
-
-Between-review-round velocity (>20% plan growth **and** >10 accepted findings) is deferred to L3 / issue **#2672** and does **not** ship in L1. A best-effort gated tracking comment may reference this scope from `/design` issue **#2670** only; see `SKILL.md` Step **5d**.
 
 ## `check-plan-size.sh` contract (summary)
 

@@ -71,9 +71,9 @@ Emitted keys (exit **0** only):
 ## Callers
 
 - **Merged**: `design-postplan-emit.sh --with-plan-size` (initial Step 2b, Gate B, discussion-round2 / Gate A after-discussion).
-- **Retained**: `SKILL.md` Step 2b.5 procedure (Override-after-defects, Step 3 `LOOP_STATUS=plan-size-trigger`), `plan-review-loop.sh` post-revise pipeline.
+- **Retained**: `SKILL.md` Step 2b.5 procedure (Override-after-defects), `plan-review-loop.sh` post-revise pipeline.
 
-**Site-aware retained hard prompts**: initial/discussion Step 2b.5 uses Split/Cancel only; Gate B, Step 3 `LOOP_STATUS=plan-size-trigger`, and `plan-review-loop.sh` use Split/Override/Cancel.
+**Site-aware retained hard prompts**: initial/discussion Step 2b.5 uses Split/Cancel only; Gate B, use Split/Override/Cancel.
 
 Merged mode treats rc 2/3 nonfatally in the driver; `plan-review-loop.sh` uses the same warn-and-continue contract and gates `partition_requested` handoff on plan-size rc=0.
 

@@ -119,6 +119,80 @@ if [[ "$plan_lines" -lt 0 ]]; then
     plan_lines=0
 fi
 
+
+_drift_multiple="${LARCH_DESIGN_DRIFT_MULTIPLE:-2}"
+case "$_drift_multiple" in
+    ''|*[!0-9]*) _drift_multiple=2 ;;
+esac
+_drift_multiple=$((10#$_drift_multiple))
+if (( _drift_multiple <= 0 )); then
+    _drift_multiple=2
+fi
+
+ratio_token() {
+    local current="$1" baseline="$2"
+    if (( baseline == 0 )); then
+        if (( current > 0 )); then
+            printf 'inf'
+        else
+            printf '1'
+        fi
+        return 0
+    fi
+    python3 - "$current" "$baseline" <<'PYR'
+import sys
+cur = int(sys.argv[1])
+base = int(sys.argv[2])
+val = cur / base
+if val.is_integer():
+    print(str(int(val)))
+else:
+    print(("%.2f" % val).rstrip("0").rstrip("."))
+PYR
+}
+
+drift_exceeds() {
+    local current="$1" baseline="$2" multiple="$3"
+    if (( baseline == 0 )); then
+        (( current > 0 )) && return 0
+        return 1
+    fi
+    (( current > baseline * multiple ))
+}
+
+baseline_plan_lines="$plan_lines"
+baseline_diff_lines="$diff_lines"
+drift_trigger=false
+_drift_baseline="$DESIGN_TMPDIR/drift-baseline.env"
+if [[ -f "$_drift_baseline" && ! -L "$_drift_baseline" ]]; then
+    _bp=$(awk -F= '$1 == "BASELINE_PLAN_LINES" { print $2; found=1; exit } END { if (!found) print "" }' "$_drift_baseline" 2>/dev/null || true)
+    _bd=$(awk -F= '$1 == "BASELINE_DIFF_LINES" { print $2; found=1; exit } END { if (!found) print "" }' "$_drift_baseline" 2>/dev/null || true)
+    case "$_bp" in ''|*[!0-9]*) emit_kv WARN "check-plan-size: drift baseline unreadable; proceeding without drift trigger" ;;
+        *) baseline_plan_lines=$((10#$_bp)) ;;
+    esac
+    case "$_bd" in ''|*[!0-9]*) emit_kv WARN "check-plan-size: drift baseline unreadable; proceeding without drift trigger" ;;
+        *) baseline_diff_lines=$((10#$_bd)) ;;
+    esac
+    if [[ "$baseline_plan_lines" != "$plan_lines" || "$baseline_diff_lines" != "$diff_lines" ]]; then
+        if drift_exceeds "$plan_lines" "$baseline_plan_lines" "$_drift_multiple" || drift_exceeds "$diff_lines" "$baseline_diff_lines" "$_drift_multiple"; then
+            drift_trigger=true
+        fi
+    fi
+elif [[ -e "$_drift_baseline" ]]; then
+    emit_kv WARN "check-plan-size: drift baseline unreadable; proceeding without drift trigger"
+else
+    _baseline_tmp="${_drift_baseline}.tmp.$$"
+    if { printf 'BASELINE_PLAN_LINES=%s\n' "$plan_lines"; printf 'BASELINE_DIFF_LINES=%s\n' "$diff_lines"; } >"$_baseline_tmp" 2>/dev/null && mv -f "$_baseline_tmp" "$_drift_baseline" 2>/dev/null; then
+        :
+    else
+        rm -f "$_baseline_tmp" 2>/dev/null || true
+        emit_kv WARN "check-plan-size: could not write drift baseline; proceeding without drift trigger"
+    fi
+fi
+
+drift_plan_ratio=$(ratio_token "$plan_lines" "$baseline_plan_lines")
+drift_diff_ratio=$(ratio_token "$diff_lines" "$baseline_diff_lines")
+
 hard_plan=0
 if (( plan_lines > 800 )); then hard_plan=1; fi
 
@@ -158,6 +232,13 @@ if [[ "${#reasons[@]}" -gt 0 ]]; then
     TRIGGER_REASONS="${reasons[*]}"
     IFS=$' \t\n'
 fi
+
+emit_kv DRIFT_TRIGGER_FIRED "$drift_trigger"
+emit_kv DRIFT_MULTIPLE "$_drift_multiple"
+emit_kv DRIFT_PLAN_RATIO "$drift_plan_ratio"
+emit_kv DRIFT_DIFF_RATIO "$drift_diff_ratio"
+emit_kv BASELINE_PLAN_LINES "$baseline_plan_lines"
+emit_kv BASELINE_DIFF_LINES "$baseline_diff_lines"
 
 if [[ "$hard_trigger" -eq 1 ]]; then
     emit_kv HARD_TRIGGER_FIRED true

@@ -52,8 +52,7 @@ jq -e '
   has("review_budget") == false and
   .workflow_path == null and
   .partition_requested == false and
-  .brainstorm_requested == false and
-  .manual_gate_b == false
+  .brainstorm_requested == false
 ' "$OUT" >/dev/null || fail "valid JSON did not match expected schema"
 
 if "$WRITER" \
@@ -82,22 +81,6 @@ if "$WRITER" \
     fail "invalid brainstorm-requested was accepted"
 fi
 
-if "$WRITER" \
-    --classification SIMPLE \
-    --manual-gate-b maybe \
-    --output "$TMPROOT/bad-manual-gate-b.json" >/dev/null 2>&1; then
-    fail "invalid manual-gate-b was accepted"
-fi
-
-assert_rejected_with manual-gate-b-empty 'write-run-params.sh: --manual-gate-b requires a value' \
-    --classification SIMPLE \
-    --manual-gate-b "" \
-    --output "$TMPROOT/manual-gate-b-empty.json"
-
-assert_rejected_with manual-gate-b-missing 'write-run-params.sh: --manual-gate-b requires a value' \
-    --classification SIMPLE \
-    --output "$TMPROOT/manual-gate-b-missing.json" \
-    --manual-gate-b
 
 assert_rejected_with partition-requested-empty 'write-run-params.sh: --partition-requested requires a value' \
     --classification SIMPLE \
@@ -164,28 +147,14 @@ jq -e '.partition_requested == true' "$TMPROOT/partition-true.json" >/dev/null \
 jq -e '.brainstorm_requested == true' "$TMPROOT/brainstorm-true.json" >/dev/null \
     || fail "--brainstorm-requested true did not set JSON true"
 
-"$WRITER" \
-    --classification SIMPLE \
-    --manual-gate-b true \
-    --output "$TMPROOT/manual-gate-b-true.json" >/dev/null
-jq -e '.manual_gate_b == true' "$TMPROOT/manual-gate-b-true.json" >/dev/null \
-    || fail "--manual-gate-b true did not set JSON true"
-
-"$WRITER" \
-    --classification SIMPLE \
-    --manual-gate-b false \
-    --output "$TMPROOT/manual-gate-b-false.json" >/dev/null
-jq -e '.manual_gate_b == false' "$TMPROOT/manual-gate-b-false.json" >/dev/null \
-    || fail "--manual-gate-b false did not set JSON false"
 
 "$WRITER" \
     --classification SIMPLE \
     --partition-requested true \
     --brainstorm-requested true \
-    --manual-gate-b true \
     --output "$TMPROOT/all-flags-true.json" >/dev/null
-jq -e '.partition_requested == true and .brainstorm_requested == true and .manual_gate_b == true' "$TMPROOT/all-flags-true.json" >/dev/null \
-    || fail "partition + brainstorm + manual Gate B all true was not persisted"
+jq -e '.partition_requested == true and .brainstorm_requested == true' "$TMPROOT/all-flags-true.json" >/dev/null \
+    || fail "partition + brainstorm true was not persisted"
 
 "$WRITER" \
     --classification HARD \
@@ -195,7 +164,6 @@ jq -e '.partition_requested == true and .brainstorm_requested == true and .manua
     --workflow-path HARD \
     --partition-requested true \
     --brainstorm-requested true \
-    --manual-gate-b true \
     --output "$TMPROOT/all-v3-flags.json" >/dev/null
 jq -e '
   .schema_version == 3 and
@@ -206,8 +174,7 @@ jq -e '
   has("review_budget") == false and
   .workflow_path == "HARD" and
   .partition_requested == true and
-  .brainstorm_requested == true and
-  .manual_gate_b == true
+  .brainstorm_requested == true
 ' "$TMPROOT/all-v3-flags.json" >/dev/null || fail "full v3 flag set was not persisted"
 
 "$WRITER" \

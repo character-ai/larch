@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
-# plan-review-loop.sh — Multi-round /design plan-review driver (legacy single-pass when --round-cap omitted).
+# plan-review-loop.sh — Single-pass /design plan-review driver.
 # --round-num is a stateless integer supplied by the caller; this script does
-# not read or write review-round-count.txt.
+# not read or write review-round-count.txt. --round-cap is accepted for
+# backward-compatible argv validation only; it does not enable inner loops.
 
 set -euo pipefail
 
@@ -17,11 +18,6 @@ PLAN_REVIEW_DISPATCH_PANEL_SH="${LARCH_PLAN_REVIEW_DISPATCH_PANEL_SH:-$PLUGIN_RO
 PLAN_REVIEW_COLLECT_SH="${LARCH_PLAN_REVIEW_COLLECT_SH:-$PLUGIN_ROOT/scripts/collect-agent-results.sh}"
 PLAN_REVIEW_DISPATCH_VOTERS_SH="${LARCH_PLAN_REVIEW_DISPATCH_VOTERS_SH:-$PLUGIN_ROOT/scripts/dispatch-plan-voters.sh}"
 PLAN_REVIEW_TALLY_SH="${LARCH_PLAN_REVIEW_TALLY_SH:-$PLUGIN_ROOT/skills/design/scripts/tally-plan-review.sh}"
-PLAN_REVIEW_REVISE_SH="${LARCH_PLAN_REVIEW_REVISE_SH:-$PLUGIN_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh}"
-DESIGN_DRIVER_SH="$PLUGIN_ROOT/skills/design/scripts/design-driver.sh"
-CHECK_PLAN_SIZE_SH="${LARCH_CHECK_PLAN_SIZE_SH:-${CHECK_PLAN_SIZE_SH:-$PLUGIN_ROOT/skills/design/scripts/check-plan-size.sh}}"
-INVOKE_PLAN_VALIDATOR_SH="$PLUGIN_ROOT/skills/design/scripts/invoke-plan-validator.sh"
-DEDUP_PLAN_LINES_PY="${LARCH_DEDUP_PLAN_LINES_PY:-$PLUGIN_ROOT/skills/design/scripts/dedup-plan-lines.py}"
 SCOPE_MARKER_HELPER="$PLUGIN_ROOT/scripts/check-scope-reduction-marker.sh"
 if [[ ! -x "$SCOPE_MARKER_HELPER" ]]; then
     SCOPE_MARKER_HELPER="$REPO_ROOT/scripts/check-scope-reduction-marker.sh"
@@ -41,8 +37,6 @@ source "$SCRIPT_DIR/lib-findings-classification.sh"
 # shellcheck source=scripts/lib-design-round-artifacts.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/../../../scripts/lib-design-round-artifacts.sh"
-# shellcheck source=skills/design/scripts/lib-plan-optional-trailers.sh
-source "$SCRIPT_DIR/lib-plan-optional-trailers.sh"
 # shellcheck source=skills/design/scripts/lib-phase-driver.sh
 source "$SCRIPT_DIR/lib-phase-driver.sh"
 
@@ -55,8 +49,6 @@ PLAN_FILE=""
 FEATURE_FILE=""
 ROUND_NUM="1"
 ROUND_CAP="${LARCH_DESIGN_ROUND_CAP:-5}"
-readonly CONVERGENCE_NON_NIT_MAX=5
-ROUND_CAP_ARG_SEEN=0
 CODEX_PRESENT=""
 CURSOR_PRESENT=""
 COLLECT_TIMEOUT="1860"
@@ -66,16 +58,13 @@ _paths_readable=0
 loop_status_override=""
 collect_ok_count=0
 collect_failure_count=0
-revise_status=""
-revise_winning_tier=""
+revise_status="skipped"
 LOOP_REASON=""
 IMPORTANT_ACCEPTED_COUNT=0
 NIT_ACCEPTED_COUNT=0
 NON_NIT_ACCEPTED_COUNT=0
 COLLECT_OK_COUNT=0
 COLLECT_FAILURE_COUNT=0
-PLAN_HASH_BEFORE_REVISE=""
-PLAN_HASH_AFTER_REVISE=""
 TALLY_PLAN_REVIEW_STATUS=""
 VOTING_TALLY_FILE=""
 AGGREGATOR_STATUS=""
@@ -92,7 +81,7 @@ while [[ $# -gt 0 ]]; do
         --plan-file) PLAN_FILE="${2:?}"; shift 2 ;;
         --feature-file) FEATURE_FILE="${2:?}"; shift 2 ;;
         --round-num) ROUND_NUM="${2:?}"; shift 2 ;;
-        --round-cap) ROUND_CAP="${2:?}"; ROUND_CAP_ARG_SEEN=1; shift 2 ;;
+        --round-cap) ROUND_CAP="${2:?}"; shift 2 ;;
         --codex-present) CODEX_PRESENT="${2:?}"; shift 2 ;;
         --cursor-present) CURSOR_PRESENT="${2:?}"; shift 2 ;;
         --timeout) PANEL_TIMEOUT="${2:?}"; COLLECT_TIMEOUT="${2:?}"; shift 2 ;;
@@ -109,15 +98,9 @@ case "$ROUND_NUM" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-num mu
 ROUND_NUM=$((10#$ROUND_NUM))
 (( ROUND_NUM > 0 )) || { larch_err "plan-review-loop.sh: --round-num must be a positive integer"; exit 2; }
 case "$COLLECT_TIMEOUT" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --timeout must be a positive integer"; exit 2 ;; esac
-if (( ROUND_CAP_ARG_SEEN )); then
-    case "$ROUND_CAP" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-cap must be a positive integer"; exit 2 ;; esac
-    ROUND_CAP=$((10#$ROUND_CAP))
-    (( ROUND_CAP > 0 )) || { larch_err "plan-review-loop.sh: --round-cap must be a positive integer"; exit 2; }
-    if (( ROUND_NUM > ROUND_CAP )); then
-        larch_err "plan-review-loop.sh: --round-num must not exceed --round-cap"
-        exit 2
-    fi
-fi
+case "$ROUND_CAP" in ''|*[!0-9]*) larch_err "plan-review-loop.sh: --round-cap must be a positive integer"; exit 2 ;; esac
+ROUND_CAP=$((10#$ROUND_CAP))
+(( ROUND_CAP > 0 )) || { larch_err "plan-review-loop.sh: --round-cap must be a positive integer"; exit 2; }
 
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 
@@ -300,32 +283,6 @@ _update_nit_accepted_counts() {
         NIT_ACCEPTED_COUNT=$ACCEPTED_COUNT
     fi
     NON_NIT_ACCEPTED_COUNT=$((ACCEPTED_COUNT - NIT_ACCEPTED_COUNT))
-}
-
-_round_qualifies_for_convergence() {
-    [[ "${DEGRADED_PANEL:-0}" -ne 1 ]] \
-        && (( NON_NIT_ACCEPTED_COUNT <= CONVERGENCE_NON_NIT_MAX )) \
-        && [[ "${IMPORTANT_ACCEPTED_COUNT:-0}" -eq 0 ]]
-}
-
-_read_manual_gate_b() {
-    local params="$1"
-    [[ -f "$params" ]] || { printf 'false'; return 0; }
-    python3 - "$params" <<'PY' 2>/dev/null || awk '
-        BEGIN { found=0 }
-        /"manual_gate_b"[[:space:]]*:[[:space:]]*true/ { found=1 }
-        END { print found ? "true" : "false" }
-    ' "$params"
-import json, sys
-
-try:
-    with open(sys.argv[1], encoding="utf-8") as fh:
-        data = json.load(fh)
-except Exception:
-    raise SystemExit(1)
-
-print("true" if data.get("manual_gate_b") is True else "false")
-PY
 }
 
 _count_collector_evidence() {
@@ -542,8 +499,6 @@ _write_round_summary() {
         printf 'AGGREGATOR_STATUS=%s\n' "${AGGREGATOR_STATUS:-}"
         printf 'REVISE_STATUS=%s\n' "$revise_st"
         printf 'REVISE_WINNING_TIER=%s\n' "${revise_winning_tier:-}"
-        printf 'PLAN_HASH_BEFORE_REVISE=%s\n' "${PLAN_HASH_BEFORE_REVISE:-}"
-        printf 'PLAN_HASH_AFTER_REVISE=%s\n' "${PLAN_HASH_AFTER_REVISE:-}"
         printf 'COLLECT_OK_COUNT=%s\n' "${COLLECT_OK_COUNT:-0}"
         printf 'COLLECT_FAILURE_COUNT=%s\n' "${COLLECT_FAILURE_COUNT:-0}"
         printf 'SCOPE_ANCHOR_FILE=%s\n' "${SCOPE_ANCHOR_FILE:-}"
@@ -604,178 +559,6 @@ if body:
     body += "\n\n"
 open(current_path, "w", encoding="utf-8").write(body)
 PY
-}
-
-_run_revise_with_status_parse() {
-    local round_num="$1"
-    revise_status="failed-no-patch"
-    revise_winning_tier=""
-    local revise_out rc
-    set +e
-    revise_out=$("$PLAN_REVIEW_REVISE_SH" \
-        --design-tmpdir "$DESIGN_TMPDIR" \
-        --plan-file "$PLAN_FILE" \
-        --findings-file "$DESIGN_TMPDIR/accepted-plan-findings.md" \
-        --feature-file "$SCOPE_ANCHOR_FILE" \
-        --round-num "$round_num" \
-        --codex-present "$CODEX_PRESENT" \
-        --cursor-present "$CURSOR_PRESENT" \
-        --timeout "$COLLECT_TIMEOUT")
-    rc=$?
-    set -e
-    local k v
-    while IFS= read -r _ln || [[ -n "$_ln" ]]; do
-        [[ -z "$_ln" ]] && continue
-        k="${_ln%%=*}"
-        v="${_ln#*=}"
-        case "$k" in
-            REVISE_STATUS) revise_status="$v" ;;
-            REVISE_WINNING_TIER) revise_winning_tier="$v" ;;
-        esac
-    done <<<"$revise_out"
-    if (( rc != 0 )); then
-        revise_status="failed-apply"
-        return 1
-    fi
-    [[ "$revise_status" == "ok" || "$revise_status" == "ok-fallback" ]] && return 0
-    return 1
-}
-
-_run_post_apply_pipeline() {
-    local round_num="$1"
-    local plan_backup="${2:-}"
-    export DESIGN_TMPDIR
-    export CLAUDE_PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$PLUGIN_ROOT}"
-    local plan_path="$DESIGN_TMPDIR/plan.txt"
-    local optional_keys_file dedup_rc
-    optional_keys_file=$(mktemp "$DESIGN_TMPDIR/.plan-optional-trailer-keys.XXXXXX")
-    snapshot_optional_trailer_keys "$plan_path" "$optional_keys_file"
-    local optional_had_trailers=0
-    [[ -s "$optional_keys_file" ]] && optional_had_trailers=1
-    dedup_rc=0
-    dedup_plan_preserve_optional_trailers "$plan_path" "$optional_keys_file" "$DESIGN_TMPDIR" "$DEDUP_PLAN_LINES_PY" || dedup_rc=$?
-    case "$dedup_rc" in
-        1)
-            rm -f "$optional_keys_file" "$(_optional_trailer_values_file "$optional_keys_file")"
-            if (( optional_had_trailers == 0 )) && [[ -n "$plan_backup" ]]; then
-                cp -f "$plan_backup" "$plan_path"
-            fi
-            rm -f "$plan_backup"
-            LOOP_STATUS=optional-trailer-dedup-loss
-            LOOP_REASON=optional-trailer-dedup-loss
-            return 1
-            ;;
-        2)
-            rm -f "$optional_keys_file" "$(_optional_trailer_values_file "$optional_keys_file")"
-            [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
-            rm -f "$plan_backup"
-            LOOP_STATUS=emit-plan-failed
-            LOOP_REASON=dedup-python-failed
-            return 1
-            ;;
-    esac
-    rm -f "$optional_keys_file" "$(_optional_trailer_values_file "$optional_keys_file")"
-    local emit_out emit_rc
-    set +e
-    emit_out=$(printf 'ACTION=EMIT_PLAN\n' | "$DESIGN_DRIVER_SH" --design-tmpdir "$DESIGN_TMPDIR")
-    emit_rc=$?
-    set -e
-    if (( emit_rc != 0 )); then
-        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
-        rm -f "$plan_backup"
-        LOOP_STATUS=emit-plan-failed
-        LOOP_REASON=emit-plan-driver-failed
-        return 1
-    fi
-    local emit_st
-    emit_st=$(printf '%s\n' "$emit_out" | awk -F= '$1 == "EMIT_PLAN_STATUS" { print $2; found=1 } END { if (!found) print "" }')
-    if [[ "$emit_st" == "missing-diff-lines" ]]; then
-        [[ -n "$plan_backup" ]] && cp -f "$plan_backup" "$plan_path"
-        rm -f "$plan_backup"
-        LOOP_STATUS=emit-plan-failed
-        LOOP_REASON=emit-plan-failed
-        return 1
-    fi
-    local val_out val_rc val_st
-    set +e
-    val_out=$("$INVOKE_PLAN_VALIDATOR_SH" "$plan_path")
-    val_rc=$?
-    set -e
-    val_st=$(printf '%s\n' "$val_out" | awk -F= '$1 == "VALIDATE_STATUS" { split($2, parts, /[[:space:]]+/); print parts[1]; found=1; exit } END { if (!found) print "" }')
-    if (( val_rc != 0 )) || [[ "$val_st" == "defects-found" ]]; then
-        LOOP_STATUS="plan-validator-defects"
-        if [[ "$val_st" == "defects-found" ]]; then
-            LOOP_REASON=validator-defects
-        else
-            LOOP_REASON=validator-driver-failed
-        fi
-        rm -f "$plan_backup"
-        return 1
-    fi
-    local size_out size_rc hard soft diff_added diff_deleted diff_lines partition_requested
-    partition_requested="$(phase_driver_json_boolean_or_sed "$DESIGN_TMPDIR/run-params.json" partition_requested false)"
-    local size_stderr
-    size_stderr="$DESIGN_TMPDIR/.check-plan-size.plan-review.stderr.$$"
-    set +e
-    size_out=$("$CHECK_PLAN_SIZE_SH" --design-tmpdir "$DESIGN_TMPDIR" --plan-file "$plan_path" 2>"$size_stderr")
-    size_rc=$?
-    set -e
-    if [[ "$size_rc" -eq 2 || "$size_rc" -eq 3 ]]; then
-        local _plan_size_status _validation_log _combined_cap
-        _validation_log="$DESIGN_TMPDIR/check-plan-size.validation.log"
-        {
-            printf '%s\n' "$size_out"
-            [[ -s "$size_stderr" ]] && cat "$size_stderr"
-        } >"$_validation_log" 2>/dev/null || true
-        _plan_size_status=$(printf '%s\n' "$size_out" | awk -F= '$1 == "PLAN_SIZE_STATUS" { print $2; found=1 } END { if (!found) print "" }')
-        printf '**⚠ plan-review: check-plan-size — %s; proceeding without threshold check**\n' "${_plan_size_status:-unknown}"
-        set +e
-        _combined_cap=$(mktemp "${TMPDIR:-/tmp}/plan-review-plan-size.XXXXXX")
-        cp -f "$_validation_log" "$_combined_cap" 2>/dev/null || printf '%s\n' "$size_out" >"$_combined_cap"
-        "$PLUGIN_ROOT/scripts/append-tool-failure.sh" \
-            --log "$DESIGN_TMPDIR/execution-issues.md" \
-            --site "design Step 3 plan-review-loop" \
-            --tool "check-plan-size.sh" \
-            --exit-code "$size_rc" \
-            --category Warnings \
-            --output-file "$_combined_cap" \
-            --redact \
-            >/dev/null 2>&1 || true
-        rm -f "$_combined_cap" 2>/dev/null || true
-        set -e
-        rm -f "$size_stderr" 2>/dev/null || true
-        rm -f "$plan_backup"
-        return 0
-    fi
-    rm -f "$size_stderr" 2>/dev/null || true
-    hard=$(printf '%s\n' "$size_out" | awk -F= '$1 == "HARD_TRIGGER_FIRED" { print $2; found=1 } END { if (!found) print "false" }')
-    soft=$(printf '%s\n' "$size_out" | awk -F= '$1 == "SOFT_ADVISORY" { print $2; found=1 } END { if (!found) print "false" }')
-    if [[ "$soft" == "true" ]]; then
-        diff_added=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_ADDED" { print $2; found=1 } END { if (!found) print "" }')
-        diff_deleted=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_DELETED" { print $2; found=1 } END { if (!found) print "" }')
-        diff_lines=$(printf '%s\n' "$size_out" | awk -F= '$1 == "DIFF_LINES" { print $2; found=1 } END { if (!found) print "" }')
-        if [[ "$hard" == "true" ]]; then
-            printf '⏩ plan-review: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=%s DIFF_DELETED=%s DIFF_LINES=%s); plan-body gate still requires the Split / Override / Cancel prompt\n' \
-                "${diff_added:-}" "${diff_deleted:-}" "${diff_lines:-}"
-        else
-            printf '⏩ plan-review: plan-size — mechanical-churn advisory: diff gate downgraded (DIFF_ADDED=%s DIFF_DELETED=%s DIFF_LINES=%s); proceeding\n' \
-                "${diff_added:-}" "${diff_deleted:-}" "${diff_lines:-}"
-        fi
-    fi
-    if [[ "$hard" == "true" ]]; then
-        LOOP_STATUS="plan-size-trigger"
-        LOOP_REASON="plan-size-hard"
-        rm -f "$plan_backup"
-        return 1
-    fi
-    if [[ "$partition_requested" == true ]]; then
-        LOOP_STATUS="plan-size-trigger"
-        LOOP_REASON="plan-size-partition"
-        rm -f "$plan_backup"
-        return 1
-    fi
-    rm -f "$plan_backup"
-    return 0
 }
 
 _terminal_exit() {
@@ -1728,188 +1511,79 @@ LOOP_STATUS="complete"
 return 0
 }
 
-# --- Legacy single-pass (no --round-cap on argv) ---
-if (( ROUND_CAP_ARG_SEEN == 0 )); then
-    _round_start=$(_plan_round_now_s)
-    set +e
-    _run_plan_review_round "$ROUND_NUM"
-    _round_rc=$?
-    set -e
-    if (( _round_rc != 0 )); then
-        LOOP_STATUS=panel-failed
-        IMPORTANT_ACCEPTED_COUNT=0
-        _emit_plan_round_timing_row "$ROUND_NUM" "${_round_start:-}" "$(_plan_round_now_s)"
-        _terminal_exit 1 "$ROUND_NUM"
-    fi
+# --- Single-pass mode ---
+_clear_session_root_review_artifacts
+_last_collect_out=""
+_prior_cum_oos="$DESIGN_TMPDIR/.oos-accepted-design.prev.md"
+if [[ -f "$DESIGN_TMPDIR/oos-accepted-design.md" ]]; then
+    cp -f "$DESIGN_TMPDIR/oos-accepted-design.md" "$_prior_cum_oos"
+else
+    rm -f "$_prior_cum_oos"
+fi
+
+_round_start=$(_plan_round_now_s)
+set +e
+_run_plan_review_round "$ROUND_NUM"
+_round_rc=$?
+set -e
+
+_count_collector_evidence
+
+if (( _round_rc != 0 )) || [[ "${LOOP_STATUS:-}" == "panel-failed" ]]; then
+    _restore_prior_round_oos "$_prior_cum_oos"
+    LOOP_STATUS=panel-failed
+    LOOP_REASON=panel-failed
+    revise_status=skipped
+    IMPORTANT_ACCEPTED_COUNT=0
+    NIT_ACCEPTED_COUNT=0
+    NON_NIT_ACCEPTED_COUNT=0
+    _snapshot_terminal_exit_preserving_status "$ROUND_NUM" 1 skipped
+fi
+
+if [[ "${loop_status_override:-}" == "main-agent-vote-required" || "${TALLY_PLAN_REVIEW_STATUS:-}" == "main-agent-vote-required" ]]; then
+    LOOP_STATUS=main-agent-vote-required
+    LOOP_REASON=""
+    revise_status=skipped
     IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
-    _count_collector_evidence
-    if [[ "$TALLY_PLAN_REVIEW_STATUS" == "main-agent-vote-required" ]]; then
-        LOOP_STATUS=main-agent-vote-required
-        _persist_plan_round_start "$ROUND_NUM" "${_round_start:-}"
-    else
-        LOOP_STATUS=complete
-        _emit_plan_round_timing_row "$ROUND_NUM" "${_round_start:-}" "$(_plan_round_now_s)"
-    fi
-    _terminal_exit 0 "$ROUND_NUM"
-fi
-
-# --- Multi-round mode ---
-round_num=$ROUND_NUM
-manual_mode=false
-if [[ -f "$DESIGN_TMPDIR/run-params.json" ]]; then
-    _mg=$(_read_manual_gate_b "$DESIGN_TMPDIR/run-params.json")
-    [[ "$_mg" == "true" ]] && manual_mode=true
-fi
-
-while (( round_num <= ROUND_CAP )); do
-    _clear_session_root_review_artifacts
-    _last_collect_out=""
-    _prior_cum_oos="$DESIGN_TMPDIR/.oos-accepted-design.prev.md"
-    if [[ -f "$DESIGN_TMPDIR/oos-accepted-design.md" ]]; then
-        cp -f "$DESIGN_TMPDIR/oos-accepted-design.md" "$_prior_cum_oos"
-    else
-        rm -f "$_prior_cum_oos"
-    fi
-    _round_start=$(_plan_round_now_s)
-    set +e
-    _run_plan_review_round "$round_num"
-    _round_rc=$?
-    set -e
-
-    if [[ "$loop_status_override" == "main-agent-vote-required" ]]; then
-        LOOP_STATUS=main-agent-vote-required
-        LOOP_REASON=""
-        IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
-        _count_collector_evidence
-        _accumulate_round_oos "$round_num" "$_prior_cum_oos"
-        _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
-    fi
-
-    if (( _round_rc != 0 )); then
-        _restore_prior_round_oos "$_prior_cum_oos"
-        LOOP_STATUS=panel-failed
-        LOOP_REASON=panel-failed
-        revise_status=skipped
-        IMPORTANT_ACCEPTED_COUNT=0
-        NIT_ACCEPTED_COUNT=0
-        NON_NIT_ACCEPTED_COUNT=0
-        _count_collector_evidence
-        if ! _snapshot_round_dir "$round_num"; then
-            LOOP_REASON=snapshot-failed
-            _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
-            _write_round_summary "$round_num" panel-failed snapshot-failed skipped
-            _terminal_exit 1 "$round_num"
-        fi
-        _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
-        _write_round_summary "$round_num" panel-failed panel-failed skipped
-        _terminal_exit 1 "$round_num"
-    fi
-
-    if [[ "$TALLY_PLAN_REVIEW_STATUS" == "tally-error" ]]; then
-        _restore_prior_round_oos "$_prior_cum_oos"
-        LOOP_STATUS=tally-error
-        LOOP_REASON=tally-error
-        revise_status=skipped
-        IMPORTANT_ACCEPTED_COUNT=0
-        NIT_ACCEPTED_COUNT=0
-        NON_NIT_ACCEPTED_COUNT=0
-        _count_collector_evidence
-        _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
-    fi
-
-    _accumulate_round_oos "$round_num" "$_prior_cum_oos"
-    _count_collector_evidence
     ACCEPTED_COUNT=0
     if [[ -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]; then
         ACCEPTED_COUNT=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)
     fi
-    IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
     _update_nit_accepted_counts "$DESIGN_TMPDIR/accepted-plan-findings.md"
-    PLAN_HASH_BEFORE_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
+    _accumulate_round_oos "$ROUND_NUM" "$_prior_cum_oos"
+    _snapshot_terminal_exit_preserving_status "$ROUND_NUM" 0 skipped
+fi
 
-    if [[ "$ACCEPTED_COUNT" -eq 0 ]]; then
-        if [[ "$collect_ok_count" -eq 0 ]]; then
-            LOOP_STATUS=degraded-empty-collector
-            LOOP_REASON=degraded-empty-collector
-            DEGRADED_PANEL=1
-            revise_status=skipped
-            _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
-        fi
-        if [[ "$DEGRADED_PANEL" -eq 1 ]]; then
-            LOOP_STATUS=zero-findings-degraded-panel
-            LOOP_REASON=zero-findings-degraded-panel
-        else
-            LOOP_STATUS=converged
-            LOOP_REASON=zero-findings
-        fi
-        revise_status=skipped
-        _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
-    fi
+if [[ "${TALLY_PLAN_REVIEW_STATUS:-}" == "tally-error" ]]; then
+    _restore_prior_round_oos "$_prior_cum_oos"
+    LOOP_STATUS=tally-error
+    LOOP_REASON=tally-error
+    revise_status=skipped
+    IMPORTANT_ACCEPTED_COUNT=0
+    NIT_ACCEPTED_COUNT=0
+    NON_NIT_ACCEPTED_COUNT=0
+    _snapshot_terminal_exit_preserving_status "$ROUND_NUM" 0 skipped
+fi
 
-    if [[ "$manual_mode" == true ]]; then
-        LOOP_STATUS=complete
-        LOOP_REASON=manual-gate-b
-        revise_status=skipped
-        _snapshot_terminal_exit_preserving_status "$round_num" 0 skipped
-    fi
+_accumulate_round_oos "$ROUND_NUM" "$_prior_cum_oos"
+ACCEPTED_COUNT=0
+if [[ -f "$DESIGN_TMPDIR/accepted-plan-findings.md" ]]; then
+    ACCEPTED_COUNT=$(grep -cE '^### FINDING_[0-9]+:' "$DESIGN_TMPDIR/accepted-plan-findings.md" 2>/dev/null || true)
+fi
+IMPORTANT_ACCEPTED_COUNT=$(_count_important_findings "$DESIGN_TMPDIR/accepted-plan-findings.md")
+_update_nit_accepted_counts "$DESIGN_TMPDIR/accepted-plan-findings.md"
+revise_status=skipped
 
-    _pre_revise_plan_backup=$(mktemp "$DESIGN_TMPDIR/.plan-before-revise.XXXXXX")
-    cp -f "$PLAN_FILE" "$_pre_revise_plan_backup"
-    if ! _run_revise_with_status_parse "$round_num"; then
-        rm -f "$_pre_revise_plan_backup"
-        DEGRADED_PANEL=1
-        PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
-        LOOP_STATUS=revision-failed
-        LOOP_REASON=revision-failed
-        _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-failed-no-patch}"
-    fi
-    PLAN_HASH_AFTER_REVISE=$(git hash-object --no-filters "$PLAN_FILE" 2>/dev/null || printf '')
-    revise_status="${revise_status:-ok}"
+if [[ "$ACCEPTED_COUNT" -eq 0 && "$collect_ok_count" -eq 0 ]]; then
+    LOOP_STATUS=degraded-empty-collector
+    LOOP_REASON=degraded-empty-collector
+    DEGRADED_PANEL=1
+elif [[ "$ACCEPTED_COUNT" -eq 0 && "$DEGRADED_PANEL" -eq 1 ]]; then
+    LOOP_STATUS=zero-findings-degraded-panel
+    LOOP_REASON=zero-findings-degraded-panel
+else
+    LOOP_STATUS=complete
+    LOOP_REASON=""
+fi
 
-    if ! _run_post_apply_pipeline "$round_num" "$_pre_revise_plan_backup"; then
-        _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-ok}"
-    fi
-
-    _next_terminal_status=""
-    _next_terminal_reason=""
-    if ! _snapshot_round_dir "$round_num"; then
-        if _round_qualifies_for_convergence; then
-            _next_terminal_status=converged
-            _next_terminal_reason=converged
-        fi
-        if [[ -z "$_next_terminal_status" && $round_num -eq $ROUND_CAP ]]; then
-            _next_terminal_status=cap-hit
-            _next_terminal_reason=cap-hit
-        fi
-        if [[ -n "$_next_terminal_status" ]]; then
-            LOOP_STATUS="$_next_terminal_status"
-            LOOP_REASON="${_next_terminal_reason},snapshot-failed"
-            _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
-            _write_round_summary "$round_num" "$LOOP_STATUS" "$LOOP_REASON" "${revise_status:-ok}"
-            _terminal_exit 0 "$round_num"
-        fi
-        LOOP_STATUS=panel-failed
-        LOOP_REASON=snapshot-failed
-        _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
-        _write_round_summary "$round_num" panel-failed snapshot-failed "${revise_status:-ok}"
-        _terminal_exit 1 "$round_num"
-    fi
-
-    if _round_qualifies_for_convergence; then
-        LOOP_STATUS=converged
-        LOOP_REASON=converged
-        _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-ok}"
-    fi
-
-    if (( round_num == ROUND_CAP )); then
-        LOOP_STATUS=cap-hit
-        LOOP_REASON=cap-hit
-        _snapshot_terminal_exit_preserving_status "$round_num" 0 "${revise_status:-ok}"
-    fi
-
-    _emit_plan_round_timing_row "$round_num" "${_round_start:-}" "$(_plan_round_now_s)"
-    _write_round_summary "$round_num" "" "" "${revise_status:-ok}"
-    round_num=$((round_num + 1))
-done
-
-_terminal_exit 0 "$ROUND_CAP"
+_snapshot_terminal_exit_preserving_status "$ROUND_NUM" 0 skipped

@@ -7,8 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 LAUNCHER="$SCRIPT_DIR/run-step3-review.sh"
 
-mkdir -p "${HOME}/.cache/larch/sessions"
-TMP="$(mktemp -d "${HOME}/.cache/larch/sessions/test-run-step3-review.XXXXXX")"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-run-step3-review.XXXXXX")"
 TMP="$(cd "$TMP" && pwd -P)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -548,18 +547,14 @@ out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D6" --round-cap 5)"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'unknown status normalized'
 
-echo "=== unexpected LOOP_STATUS preserved on non-zero rc ==="
+echo "=== removed loop-only LOOP_STATUS normalizes on non-zero rc ==="
 D6B="$TMP/revision-failed-rc"
 write_common_inputs "$D6B" SIMPLE
 stub="$(write_loop_stub "$D6B" "printf 'LOOP_STATUS=revision-failed\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D6B" --round-cap 5)"
-assert_contains "$out" 'LOOP_STATUS=revision-failed' 'revision-failed preserved on rc 1'
-if [[ "$out" == *'treating as panel-failed'* && "$out" != *'missing or invalid LOOP_STATUS'* ]]; then
-    fail 'unexpected rc should not coerce revision-failed to panel-failed'
-else
-    pass 'revision-failed not coerced to panel-failed'
-fi
+assert_contains "$out" 'LOOP_STATUS=panel-failed' 'removed revision-failed normalizes on rc 1'
+assert_contains "$out" 'missing or invalid LOOP_STATUS' 'removed revision-failed emits invalid-status warning'
 
 echo "=== main-agent-vote-required preserved on non-zero rc ==="
 D6C="$TMP/main-agent-rc"

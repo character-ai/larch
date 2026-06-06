@@ -19,7 +19,7 @@ On success, stdout contains exactly these eight KVs, one per line:
 - `HARD_REQUESTED=true|false`
 - `PARTITION_REQUESTED=true|false`
 - `BRAINSTORM_REQUESTED=true|false`
-- `MANUAL_REQUESTED=true|false`
+- `removed manual env key=true|false`
 - `NO_DEDUP_REQUESTED=true|false`
 - `RUN_ID=<value>` (empty when absent)
 - `POSITIONAL_KIND=issue|verbal|none`

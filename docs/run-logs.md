@@ -179,7 +179,7 @@ for the authoritative producer contract and harness coverage.
 
 ### design plan-review per-round artifacts
 
-Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each inner round of the multi-round plan-review loop produces forensic artifacts. The list below is a **representative** selection grouped by producer — `scripts/lib-design-round-artifacts.md` is the **authoritative** allowlist for the complete file set, and the `SECURITY.md` design-log publish-allowlist paragraph enforces what may be committed.
+Under `larch-logs/design/<RUN_ID>/plan-review/round-<N>/`, each single-pass Step 3 review entry produces forensic artifacts. The list below is a **representative** selection grouped by producer — `scripts/lib-design-round-artifacts.md` is the **authoritative** allowlist for the complete file set, and the `SECURITY.md` design-log publish-allowlist paragraph enforces what may be committed.
 
 #### Findings
 

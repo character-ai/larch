@@ -38,6 +38,12 @@ parse_kv_from_output() {
             DIFF_DELETED) DIFF_DELETED="$_value" ;;
             MECHANICAL_CHURN) MECHANICAL_CHURN="$_value" ;;
             SOFT_ADVISORY) SOFT_ADVISORY="$_value" ;;
+            DRIFT_TRIGGER_FIRED) DRIFT_TRIGGER_FIRED="$_value" ;;
+            DRIFT_MULTIPLE) DRIFT_MULTIPLE="$_value" ;;
+            DRIFT_PLAN_RATIO) DRIFT_PLAN_RATIO="$_value" ;;
+            DRIFT_DIFF_RATIO) DRIFT_DIFF_RATIO="$_value" ;;
+            BASELINE_PLAN_LINES) BASELINE_PLAN_LINES="$_value" ;;
+            BASELINE_DIFF_LINES) BASELINE_DIFF_LINES="$_value" ;;
             PLAN_SIZE_STATUS) PLAN_SIZE_STATUS="$_value" ;;
             WARN) WARN_LINES+=("$_value") ;;
         esac
@@ -130,6 +136,12 @@ DIFF_ADDED=""
 DIFF_DELETED=""
 MECHANICAL_CHURN=false
 SOFT_ADVISORY=false
+DRIFT_TRIGGER_FIRED=false
+DRIFT_MULTIPLE="${LARCH_DESIGN_DRIFT_MULTIPLE:-2}"
+DRIFT_PLAN_RATIO=1
+DRIFT_DIFF_RATIO=1
+BASELINE_PLAN_LINES=""
+BASELINE_DIFF_LINES=""
 _plan_size_out=""
 _plan_size_stderr=""
 
@@ -180,6 +192,12 @@ _postplan_build_kvs() {
         _kvs+=("MECHANICAL_CHURN=$MECHANICAL_CHURN")
         _kvs+=("SOFT_ADVISORY=$SOFT_ADVISORY")
         _kvs+=("PARTITION_REQUESTED=$PARTITION_REQUESTED")
+        _kvs+=("DRIFT_TRIGGER_FIRED=$DRIFT_TRIGGER_FIRED")
+        _kvs+=("DRIFT_MULTIPLE=$DRIFT_MULTIPLE")
+        _kvs+=("DRIFT_PLAN_RATIO=$DRIFT_PLAN_RATIO")
+        _kvs+=("DRIFT_DIFF_RATIO=$DRIFT_DIFF_RATIO")
+        _kvs+=("BASELINE_PLAN_LINES=$BASELINE_PLAN_LINES")
+        _kvs+=("BASELINE_DIFF_LINES=$BASELINE_DIFF_LINES")
     fi
     local _warn
     for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
@@ -277,6 +295,26 @@ _postplan_emit_hard_section() {
     fi
 }
 
+
+_postplan_emit_drift_section() {
+    emit "## Plan Size — Drift"
+    emit "PLAN_LINES=${PLAN_LINES:-} BASELINE_PLAN_LINES=${BASELINE_PLAN_LINES:-} DRIFT_PLAN_RATIO=${DRIFT_PLAN_RATIO:-1}"
+    emit "DIFF_LINES=${DIFF_LINES:-} BASELINE_DIFF_LINES=${BASELINE_DIFF_LINES:-} DRIFT_DIFF_RATIO=${DRIFT_DIFF_RATIO:-1} DRIFT_MULTIPLE=${DRIFT_MULTIPLE:-2}"
+}
+
+_postplan_snapshot_drift_baseline() {
+    [[ "$SNAPSHOT_ORIGINAL" == true ]] || return 0
+    [[ -n "${PLAN_LINES:-}" && -n "${DIFF_LINES:-}" ]] || return 0
+    local _baseline="$DESIGN_TMPDIR/drift-baseline.env" _tmp
+    [[ ! -e "$_baseline" ]] || return 0
+    _tmp="${_baseline}.tmp.$$"
+    if { printf 'BASELINE_PLAN_LINES=%s\n' "$PLAN_LINES"; printf 'BASELINE_DIFF_LINES=%s\n' "$DIFF_LINES"; } >"$_tmp" 2>/dev/null; then
+        mv -f "$_tmp" "$_baseline" 2>/dev/null || rm -f "$_tmp" 2>/dev/null || true
+    else
+        rm -f "$_tmp" 2>/dev/null || true
+    fi
+}
+
 _postplan_emit_partition_section() {
     emit "## Plan Size — Partition requested"
     emit "trigger=partition-flag PLAN_LINES=${PLAN_LINES:-} DIFF_LINES=${DIFF_LINES:-}"
@@ -367,6 +405,13 @@ _postplan_finish_merged_plan_size() {
         PLAN_SIZE_STATUS=partition-requested
         _postplan_flush || exit 1
         exit 13
+    fi
+    if [[ "$DRIFT_TRIGGER_FIRED" == true ]]; then
+        _postplan_emit_drift_section
+        POSTPLAN_EMIT_STATUS=ok
+        PLAN_SIZE_STATUS=drift-trigger
+        _postplan_flush || exit 1
+        exit 14
     fi
     POSTPLAN_EMIT_STATUS=ok
     PLAN_SIZE_STATUS=under-threshold
@@ -522,4 +567,7 @@ fi
 _postplan_pause_checkpoint
 _plan_size_run_rc=0
 _postplan_run_plan_size || _plan_size_run_rc=$?
+if [[ "$_plan_size_run_rc" -eq 0 ]]; then
+    _postplan_snapshot_drift_baseline
+fi
 _postplan_finish_merged_plan_size "$_plan_size_run_rc"

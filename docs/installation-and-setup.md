@@ -232,7 +232,7 @@ For the at-rest secret-persistence tradeoff (the API key appears in `.meta` `CMD
 
 ### SIMPLE-tier `/design` cost
 
-With the multi-round plan-review loop landed, `/design` (SIMPLE, the default) runs the full plan-review panel and up to `LARCH_DESIGN_ROUND_CAP`-bounded inner rounds with the plan-revision waterfall between rounds. Real-world runs therefore take roughly tens of minutes (inner-round count is operator-tunable via `LARCH_DESIGN_ROUND_CAP`; the Step 3 review-run counter caps Gate C re-entries separately at the tier-derived cap of `3` for SIMPLE). See [configuration-and-permissions.md](configuration-and-permissions.md) § Environment Variables for the env var contracts.
+`/design` (SIMPLE, the default) runs the full plan-review panel once per Step 3 entry; accepted findings are applied only through explicit Gate B operator choices. Real-world runs can still take tens of minutes because the external panel and voting run before Gate B; the Step 3 review-run counter caps Gate C re-entries separately at the tier-derived cap of `3` for SIMPLE. See [configuration-and-permissions.md](configuration-and-permissions.md) § Environment Variables for the env var contracts.
 
 ## `scripts/relevant-checks.sh` — required consumer contract
 

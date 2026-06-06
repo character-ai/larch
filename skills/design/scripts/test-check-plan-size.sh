@@ -592,4 +592,35 @@ assert_kv_eq DIFF_ADDED "" "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
 
+
+# --- Case 34: drift baseline seed and OR-trigger comparisons ---
+d="$TMPROOT/c34"
+mkdir -p "$d"
+{ fill_lines 10 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED false "$out"
+assert_kv_eq BASELINE_PLAN_LINES 10 "$out"
+assert_kv_eq BASELINE_DIFF_LINES 10 "$out"
+{ fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
+assert_kv_eq DRIFT_PLAN_RATIO 2.1 "$out"
+{ fill_lines 10 'b'; printf 'diff_lines: 21\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
+assert_kv_eq DRIFT_DIFF_RATIO 2.1 "$out"
+
+# --- Case 35: zero baseline avoids division by zero ---
+d="$TMPROOT/c35"
+mkdir -p "$d"
+printf 'BASELINE_PLAN_LINES=0\nBASELINE_DIFF_LINES=0\n' >"$d/drift-baseline.env"
+printf 'diff_lines: 0\n' >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED false "$out"
+assert_kv_eq DRIFT_PLAN_RATIO 1 "$out"
+printf 'body\ndiff_lines: 1\n' >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
+assert_kv_eq DRIFT_DIFF_RATIO inf "$out"
+
 echo "PASS: test-check-plan-size.sh"

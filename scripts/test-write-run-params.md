@@ -7,9 +7,9 @@ Coverage:
 - Valid `SIMPLE` and `HARD` writes.
 - Rejection of invalid `design_classification` enum values.
 - Rejection of relative output paths.
-- Missing/empty-value rejection for all required and boolean flags: `--classification`, `--output`, `--partition-requested`, `--brainstorm-requested`, and `--manual-gate-b` (each exits 2 with a `requires a value` message).
-- Explicit `--manual-gate-b true` and `--manual-gate-b false` persistence.
-- Triple-flag persistence: `--partition-requested true` plus `--brainstorm-requested true` plus `--manual-gate-b true`.
+- Missing/empty-value rejection for all required and boolean flags: `--classification`, `--output`, `--partition-requested`, `--brainstorm-requested`, and `legacy manual Gate B flag` (each exits 2 with a `requires a value` message).
+- Explicit `legacy manual Gate B flag true` and `legacy manual Gate B flag false` persistence.
+- Triple-flag persistence: `--partition-requested true` plus `--brainstorm-requested true` plus `legacy manual Gate B flag true`.
 
 ## Callers
 
