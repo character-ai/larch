@@ -125,6 +125,15 @@ EOF_FIXTURE
   chmod +x "$plugin/scripts/design-pause-load.sh"
   cat >"$plugin/scripts/write-design-current-env.sh" <<'EOF_FIXTURE'
 #!/usr/bin/env bash
+out=""
+while [[ $# -gt 0 ]]; do
+  printf '%s\n' "$1" >>"${WDCE_ARG_LOG:?}"
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$out" ]] && printf 'export SESSION_ID=RUNTEST\n' >"$out"
 exit 0
 EOF_FIXTURE
   chmod +x "$plugin/scripts/write-design-current-env.sh"
@@ -136,6 +145,8 @@ EOF_FIXTURE
     'STEP=1d' \
     '<!-- larch:design-pause:end -->' >"$body"
   mkdir -p "$tmp/design-tmpdir"
+  printf '{"manual_gate_b":true}\n' >"$tmp/design-tmpdir/run-params.json"
+  export WDCE_ARG_LOG="$tmp/wdce-args.log"
 
   if ! route_out=$(STUB_PAUSE_LOAD_MODE=ok CLAUDE_PLUGIN_ROOT="$plugin" "$DESIGN_ROUTE_SH" \
     --design-tmpdir "$tmp/design-tmpdir" \
@@ -152,6 +163,10 @@ EOF_FIXTURE
     || { rm -rf "$tmp"; fail "design-route.sh must resume on lifecycle title when pause load succeeds: $route_out"; }
   printf '%s\n' "$route_out" | grep -Fq 'ROUTE=cancel-title-filter' \
     && { rm -rf "$tmp"; fail "design-route.sh must not title-filter when pause resume succeeds: $route_out"; }
+  grep -Fq -- '--manual-requested' "$WDCE_ARG_LOG" \
+    && { rm -rf "$tmp"; fail "design-route.sh resume must ignore stale manual_gate_b and omit --manual-requested"; }
+  grep -Fq 'MANUAL_REQUESTED' "$tmp/design-tmpdir/source-env.sh" \
+    && { rm -rf "$tmp"; fail "design-route.sh resume source-env must omit MANUAL_REQUESTED"; }
 
   mkdir -p "$tmp/design-tmpdir-stale"
   if ! route_out=$(STUB_PAUSE_LOAD_MODE=stale CLAUDE_PLUGIN_ROOT="$plugin" "$DESIGN_ROUTE_SH" \
@@ -450,9 +465,11 @@ assert_postplan_thin_fence() {
   grep -Fq 'printf' "$subject" || fail "$label missing postplan display printf"
   # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
   grep -Fq 'case "${_postplan_rc:-1}" in' "$subject" || fail "$label missing postplan rc case"
-  for arm in 0 10 11 12 13 2 1; do
+  for arm in 0 10 11 12 13 14 2 1; do
     grep -Fq "  ${arm})" "$subject" || fail "$label missing case arm ${arm}"
   done
+  grep -Fq 'DRIFT_' "$subject" || fail "$label missing drift trigger parse"
+  grep -Fq 'BASELINE_' "$subject" || fail "$label missing drift baseline parse"
   grep -Fq '  *)' "$subject" || fail "$label missing default-abort *) arm"
   # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
   if grep -Fq '<<<"${_postplan_out:-}"' "$subject"; then
@@ -483,9 +500,11 @@ assert_postplan_reference_thin_fence() {
   grep -Fq '${_postplan_out:-}' "$subject" || fail "$label missing postplan out display variable"
   # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
   grep -Fq 'case "${_postplan_rc:-1}" in' "$subject" || fail "$label missing postplan rc case"
-  for arm in 0 10 11 12 13 2 1; do
+  for arm in 0 10 11 12 13 14 2 1; do
     grep -Fq "\`${arm}\`" "$subject" || fail "$label missing delegated case arm ${arm}"
   done
+  grep -Fq 'DRIFT_' "$subject" || fail "$label missing drift trigger parse"
+  grep -Fq 'BASELINE_' "$subject" || fail "$label missing drift baseline parse"
   # shellcheck disable=SC2016 # Markdown literal contains a default case marker.
   grep -Fq 'default-abort `*` arm' "$subject" || fail "$label missing default-abort *) arm"
   # shellcheck disable=SC2016 # Markdown/bash fence literal must stay unexpanded.
@@ -503,8 +522,8 @@ assert_postplan_reference_thin_fence() {
 run_postplan_thin_fence_self_tests() {
   local fixture
   fixture=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-postplan-self.XXXXXX")
-  awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD" | grep -v '^  13)$' >"$fixture"
-  if (assert_postplan_thin_fence "$fixture" 'postplan thin-fence negative fixture missing rc13') >/dev/null 2>&1; then
+  awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD" | grep -v '^  14)$' >"$fixture"
+  if (assert_postplan_thin_fence "$fixture" 'postplan thin-fence negative fixture missing rc14') >/dev/null 2>&1; then
     rm -f "$fixture"
     fail "postplan thin-fence self-test must fail when a case arm is missing"
   fi
@@ -512,7 +531,22 @@ run_postplan_thin_fence_self_tests() {
 }
 
 assert_gate_b_bypass_branch_sentinels() {
-  return 0
+  local file="$1" label="${2:-Gate-B-bypass branch matrix}" start_marker="${3:-**Post-loop branch matrix**}" end_marker="${4:-<!-- step:3.5}"
+  local start_line end_line subject
+  start_line=$(grep -nF -- "$start_marker" "$file" | head -1 | cut -d: -f1 || true)
+  end_line=$(grep -nF -- "$end_marker" "$file" | awk -F: -v s="${start_line:-0}" '$1 > s {print $1; exit}' || true)
+  [[ -n "$start_line" ]] || fail "$label missing start marker: $start_marker"
+  [[ -n "$end_line" ]] || fail "$label missing end marker after $start_marker: $end_marker"
+  subject=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-gate-b-bypass.XXXXXX")
+  sed -n "${start_line},$((end_line - 1))p" "$file" >"$subject"
+  grep -Fq 'design-step3-state.sh' "$subject" || fail "$label missing design-step3-state helper"
+  grep -Fq -- '--gate-b-bypass' "$subject" || fail "$label missing --gate-b-bypass helper action"
+  grep -Fq 'refused-partial-gate-b-bypass' "$subject" || fail "$label missing refused partial state handling"
+  grep -Fq 'STEP3_STATE=' "$subject" || fail "$label missing STEP3_STATE parse"
+  if grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3.5"' "$subject"; then
+    fail "$label must not use inline Gate-B-bypass sentinel writes"
+  fi
+  rm -f "$subject"
 }
 
 assert_step3b_entry_guard_threads_repo() {
@@ -619,7 +653,20 @@ write_gate_b_bypass_fixture() {
 }
 
 run_gate_b_bypass_branch_sentinel_self_tests() {
-  return 0
+  local fixture
+  fixture=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-gate-b-bypass-self.XXXXXX")
+  cat >"$fixture" <<'EOF_SELF'
+**Post-loop branch matrix**
+- `LOOP_STATUS=tally-error` — run `"$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --gate-b-bypass`, parse `STEP3_STATE=`, and abort on `STEP3_STATE=refused-partial-gate-b-bypass`.
+### Step 3.5
+EOF_SELF
+  assert_gate_b_bypass_branch_sentinels "$fixture" 'gate-b-bypass self-test valid' '**Post-loop branch matrix**' '### Step 3.5'
+  sed 's/refused-partial-gate-b-bypass/missing-state/' "$fixture" >"$fixture.bad"
+  if (assert_gate_b_bypass_branch_sentinels "$fixture.bad" 'gate-b-bypass self-test invalid' '**Post-loop branch matrix**' '### Step 3.5') >/dev/null 2>&1; then
+    rm -f "$fixture" "$fixture.bad"
+    fail 'gate-b-bypass self-test must fail when refused state handling is missing'
+  fi
+  rm -f "$fixture" "$fixture.bad"
 }
 
 run_thin_fence_self_tests
@@ -1062,10 +1109,9 @@ contains "$SKILL_MD" 'repair pre-existing paused SIMPLE runs' 'SKILL missing old
 contains "$SKILL_MD" '[ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]' 'SKILL missing old Step 4 finalize compatibility guard'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'design-step3-state.sh --gate-b-bypass' 'SKILL missing Gate-B-bypass executable helper prose'
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-contains "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-3.5"' 'SKILL missing Gate-B-bypass step-3.5 sentinel write'
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-contains "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-3.6"' 'SKILL missing Gate-B-bypass step-3.6 sentinel write'
+[[ -x "$REPO_ROOT/skills/design/scripts/design-step3-state.sh" ]] \
+  || fail 'design-step3-state.sh must be committed executable helper'
+contains "$REPO_ROOT/skills/design/scripts/design-step3-state.sh" 'STEP3_STATE=refused-partial-gate-b-bypass' 'design-step3-state.sh missing refused partial Gate-B-bypass state'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$SKILL_MD" '${REPO:+--repo "$REPO"}' 'SKILL Step 3.6 rc=11 pause-save must thread REPO'
 contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'gate B bypass' 'pause/resume harness missing Gate-B-bypass regression'

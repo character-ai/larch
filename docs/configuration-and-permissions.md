@@ -269,7 +269,11 @@ Default `120` (positive integer). When the `$DESIGN_TMPDIR/plan.txt` line count 
 
 **Mechanical contract:** large-plan preview behavior lives in `skills/design/scripts/emit-design-plan-preview.sh` as invoked from `skills/design/SKILL.md`; greps and harnesses should key off that script path rather than expecting duplicated inline fenced bodies for the same logic.
 
-### `LARCH_DESIGN_ROUND_CAP`
+### `LARCH_DESIGN_DRIFT_MULTIPLE`
+
+Default `2` (positive integer). `/design` Step 2b.5 compares the current plan and diff sizes against the first drift baseline captured for the run. When either ratio is greater than this multiple, `design-postplan-emit.sh --with-plan-size` exits `14`, prints `## Plan Size — Drift`, and the orchestrator asks Continue / Cancel before proceeding. Empty, non-numeric, and non-positive values fall back to `2`.
+
+### `LARCH_DESIGN_ROUND_CAP` (deprecated)
 
 Default `5` (positive integer). The value is still validated and passed through `--round-cap` for compatibility, but Step 3 review is single-pass and no longer has an inner auto-revision loop. Invalid explicit values cause `plan-review-loop.sh` argv validation to exit `2`; Step 3 treats that as `panel-failed` and proceeds through Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with Gate B skipped. The Step 3 **review-run counter** (SIMPLE = `3`, HARD = `5`) remains the Gate C re-entry cap. See `skills/design/references/flags.md` § Step 3 review env vars and `skills/design/references/plan-review.md` § Single-pass review.
 

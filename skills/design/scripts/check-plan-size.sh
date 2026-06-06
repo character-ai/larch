@@ -139,7 +139,8 @@ ratio_token() {
         fi
         return 0
     fi
-    python3 - "$current" "$baseline" <<'PYR'
+    if command -v python3 >/dev/null 2>&1; then
+        python3 - "$current" "$baseline" <<'PYR'
 import sys
 cur = int(sys.argv[1])
 base = int(sys.argv[2])
@@ -149,6 +150,23 @@ if val.is_integer():
 else:
     print(("%.2f" % val).rstrip("0").rstrip("."))
 PYR
+        return 0
+    fi
+    if command -v awk >/dev/null 2>&1; then
+        awk -v cur="$current" -v base="$baseline" 'BEGIN {
+            val = cur / base
+            if (val == int(val)) {
+                printf "%d\n", val
+            } else {
+                out = sprintf("%.2f", val)
+                sub(/0+$/, "", out)
+                sub(/\.$/, "", out)
+                print out
+            }
+        }'
+        return 0
+    fi
+    printf '%s\n' $(( (current + baseline - 1) / baseline ))
 }
 
 drift_exceeds() {
@@ -162,6 +180,8 @@ drift_exceeds() {
 
 baseline_plan_lines="$plan_lines"
 baseline_diff_lines="$diff_lines"
+baseline_plan_display="$baseline_plan_lines"
+baseline_diff_display="$baseline_diff_lines"
 drift_trigger=false
 _drift_baseline="$DESIGN_TMPDIR/drift-baseline.env"
 if [[ -f "$_drift_baseline" && ! -L "$_drift_baseline" ]]; then
@@ -169,9 +189,13 @@ if [[ -f "$_drift_baseline" && ! -L "$_drift_baseline" ]]; then
     _bd=$(awk -F= '$1 == "BASELINE_DIFF_LINES" { print $2; found=1; exit } END { if (!found) print "" }' "$_drift_baseline" 2>/dev/null || true)
     if [[ "$_bp" == '' || "$_bp" == *[!0-9]* || "$_bd" == '' || "$_bd" == *[!0-9]* ]]; then
         emit_kv WARN "check-plan-size: drift baseline unreadable; proceeding without drift trigger"
+        baseline_plan_display=unknown
+        baseline_diff_display=unknown
     else
         baseline_plan_lines=$((10#$_bp))
         baseline_diff_lines=$((10#$_bd))
+        baseline_plan_display="$baseline_plan_lines"
+        baseline_diff_display="$baseline_diff_lines"
     fi
     if [[ "$baseline_plan_lines" != "$plan_lines" || "$baseline_diff_lines" != "$diff_lines" ]] \
         && [[ "$_bp" != '' && "$_bp" != *[!0-9]* && "$_bd" != '' && "$_bd" != *[!0-9]* ]]; then
@@ -179,8 +203,10 @@ if [[ -f "$_drift_baseline" && ! -L "$_drift_baseline" ]]; then
             drift_trigger=true
         fi
     fi
-elif [[ -e "$_drift_baseline" ]]; then
+elif [[ -e "$_drift_baseline" || -L "$_drift_baseline" ]]; then
     emit_kv WARN "check-plan-size: drift baseline unreadable; proceeding without drift trigger"
+    baseline_plan_display=unknown
+    baseline_diff_display=unknown
 else
     _baseline_tmp="${_drift_baseline}.tmp.$$"
     if { printf 'BASELINE_PLAN_LINES=%s\n' "$plan_lines"; printf 'BASELINE_DIFF_LINES=%s\n' "$diff_lines"; } >"$_baseline_tmp" 2>/dev/null && mv -f "$_baseline_tmp" "$_drift_baseline" 2>/dev/null; then
@@ -191,6 +217,9 @@ else
     fi
 fi
 
+if ! command -v python3 >/dev/null 2>&1; then
+    emit_kv WARN "check-plan-size: python3 unavailable; using awk drift ratio fallback"
+fi
 drift_plan_ratio=$(ratio_token "$plan_lines" "$baseline_plan_lines")
 drift_diff_ratio=$(ratio_token "$diff_lines" "$baseline_diff_lines")
 
@@ -238,8 +267,8 @@ emit_kv DRIFT_TRIGGER_FIRED "$drift_trigger"
 emit_kv DRIFT_MULTIPLE "$_drift_multiple"
 emit_kv DRIFT_PLAN_RATIO "$drift_plan_ratio"
 emit_kv DRIFT_DIFF_RATIO "$drift_diff_ratio"
-emit_kv BASELINE_PLAN_LINES "$baseline_plan_lines"
-emit_kv BASELINE_DIFF_LINES "$baseline_diff_lines"
+emit_kv BASELINE_PLAN_LINES "$baseline_plan_display"
+emit_kv BASELINE_DIFF_LINES "$baseline_diff_display"
 
 if [[ "$hard_trigger" -eq 1 ]]; then
     emit_kv HARD_TRIGGER_FIRED true

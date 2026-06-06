@@ -630,9 +630,21 @@ printf 'BASELINE_PLAN_LINES=10\nBASELINE_DIFF_LINES=oops\n' >"$d/drift-baseline.
 { fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
 out=$(run_ok "$d")
 assert_kv_eq DRIFT_TRIGGER_FIRED false "$out"
-assert_kv_eq BASELINE_PLAN_LINES 21 "$out"
-assert_kv_eq BASELINE_DIFF_LINES 10 "$out"
+assert_kv_eq BASELINE_PLAN_LINES unknown "$out"
+assert_kv_eq BASELINE_DIFF_LINES unknown "$out"
 printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; proceeding without drift trigger' \
     || fail "case36: expected unreadable baseline warning"
+
+# --- Case 37: symlink baseline is not treated as anchored current metrics ---
+d="$TMPROOT/c37"
+mkdir -p "$d"
+ln -s /tmp/not-a-real-baseline "$d/drift-baseline.env"
+{ fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED false "$out"
+assert_kv_eq BASELINE_PLAN_LINES unknown "$out"
+assert_kv_eq BASELINE_DIFF_LINES unknown "$out"
+printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; proceeding without drift trigger' \
+    || fail "case37: expected symlink baseline warning"
 
 echo "PASS: test-check-plan-size.sh"

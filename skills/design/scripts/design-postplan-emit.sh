@@ -315,21 +315,6 @@ _postplan_snapshot_drift_baseline() {
     fi
 }
 
-_postplan_seed_initial_drift_baseline() {
-    [[ "$SNAPSHOT_ORIGINAL" == true && "$WITH_PLAN_SIZE" == true ]] || return 0
-    local _baseline="$DESIGN_TMPDIR/drift-baseline.env"
-    [[ ! -e "$_baseline" ]] || return 0
-    local _check_sh="$PLUGIN_ROOT/skills/design/scripts/check-plan-size.sh"
-    local _seed_rc
-    [[ -x "$_check_sh" ]] || return 0
-    set +e
-    env LARCH_QUIET_DISABLE=1 "$_check_sh" --design-tmpdir "$DESIGN_TMPDIR" >/dev/null 2>"$DESIGN_TMPDIR/.check-plan-size.seed.stderr.$$"
-    _seed_rc=$?
-    rm -f "$DESIGN_TMPDIR/.check-plan-size.seed.stderr.$$" 2>/dev/null || true
-    set -e
-    return 0
-}
-
 _postplan_emit_partition_section() {
     emit "## Plan Size — Partition requested"
     emit "trigger=partition-flag PLAN_LINES=${PLAN_LINES:-} DIFF_LINES=${DIFF_LINES:-}"
@@ -511,8 +496,6 @@ if [[ "$EMIT_PLAN_STATUS" != ok ]]; then
     _postplan_write_result_and_emit
     exit 1
 fi
-_postplan_seed_initial_drift_baseline
-
 _postplan_pause_checkpoint
 if [[ "$SNAPSHOT_ORIGINAL" == true ]]; then
     if [[ "$WORKFLOW_PATH" == HARD ]]; then

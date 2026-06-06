@@ -756,6 +756,43 @@ assert_rc "merged validate driver failed rc1" 1 "$rc"
 assert_file_kv "$D29/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS validate-driver-failed "merged validate driver failed status"
 assert_contains "$D29/stdout.txt" 'plan-command validator infrastructure failed' "merged validate driver failed diagnostic"
 
+D30="$TMP/drift-baseline-seed"
+setup_design_tmp "$D30" full HARD
+set +e
+run_subject "$D30" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "drift baseline seed rc" 0 "$rc"
+assert_file_kv "$D30/drift-baseline.env" BASELINE_PLAN_LINES 2 "drift baseline seed plan lines"
+assert_file_kv "$D30/drift-baseline.env" BASELINE_DIFF_LINES 12 "drift baseline seed diff lines"
+
+D31="$TMP/drift-baseline-preserved"
+setup_design_tmp "$D31" full HARD
+printf 'BASELINE_PLAN_LINES=5\nBASELINE_DIFF_LINES=6\n' >"$D31/drift-baseline.env"
+set +e
+run_subject "$D31" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "drift baseline preserved rc" 0 "$rc"
+assert_file_kv "$D31/drift-baseline.env" BASELINE_PLAN_LINES 5 "drift baseline preserves plan lines"
+assert_file_kv "$D31/drift-baseline.env" BASELINE_DIFF_LINES 6 "drift baseline preserves diff lines"
+
+D32="$TMP/drift-trigger"
+setup_design_tmp "$D32" full HARD
+printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D32/drift-baseline.env"
+{
+    printf '# Plan\n'
+    fill_plan_lines /dev/stdout 7 b
+    printf 'diff_lines: 25\n'
+} >"$D32/plan.txt"
+set +e
+run_subject "$D32" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "drift trigger rc" 14 "$rc"
+assert_file_kv "$D32/.design-postplan-emit-result.env" PLAN_SIZE_STATUS drift-trigger "drift trigger status"
+assert_contains "$D32/stdout.txt" '## Plan Size — Drift' "drift trigger section"
+
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2
     exit 1
