@@ -34,7 +34,6 @@ Step 0-pre validation and positional classification are implemented by `skills/d
 
 **Site-aware hard prompts**: initial Step 2b and discussion paths use Split/Cancel only; retained Gate B paths use Split/Override/Cancel.
 
-
 ### `LARCH_DESIGN_DRIFT_MULTIPLE`
 
 Default `2` (positive integer; invalid values fall back to `2`). `check-plan-size.sh` compares current plan lines and diff lines against `drift-baseline.env`; drift fires when the plan ratio **or** diff ratio exceeds the multiple. Merged `design-postplan-emit.sh --with-plan-size` maps drift to exit code `14` after hard-size and partition checks.
