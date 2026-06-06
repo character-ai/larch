@@ -26,6 +26,10 @@ codex_launcher_append_outer_meta() {
     external_launcher_append_outer_meta "$@"
 }
 
+codex_launcher_append_codex_exec_outer_meta() {
+    external_launcher_append_codex_exec_outer_meta "$@"
+}
+
 codex_launcher_record_usage_from_events() {
     external_launcher_record_usage_from_events "$@"
 }

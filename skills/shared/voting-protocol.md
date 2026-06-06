@@ -160,16 +160,14 @@ Use `run_in_background: true` and `timeout: 1260000` only for skill-specific dir
 ```bash
 # Same temp-file pattern as the Cursor block above — propagate
 # agent-model-args.sh failures and use the Bash 3.2-safe expansion.
-CODEX_MODEL_ARGS_TMP=$(mktemp)
-trap 'rm -f "$CODEX_MODEL_ARGS_TMP"' EXIT
-"${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex --with-effort > "$CODEX_MODEL_ARGS_TMP" || exit $?
-CODEX_MODEL_ARGS=()
-while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < "$CODEX_MODEL_ARGS_TMP"
-
-${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex --output "<tmpdir>/codex-vote-output.txt" --timeout 1200 -- \
-  codex exec --sandbox read-only -C "$PWD" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
-    --output-last-message "<tmpdir>/codex-vote-output.txt" \
-    "<voter prompt with ballot>."
+"${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
+  --output "<tmpdir>/codex-vote-output.txt" \
+  --timeout 1200 \
+  --workdir "$PWD" \
+  --add-dir "$PWD" \
+  --sandbox read-only \
+  --with-effort \
+  --prompt "<voter prompt with ballot>."
 ```
 
 Use `run_in_background: true` and `timeout: 1260000` only for skill-specific direct-launch paths. `/design` plan review runs `dispatch-plan-voters.sh` in the foreground via `plan-review-loop.sh`; do not background that dispatcher.

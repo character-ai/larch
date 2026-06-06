@@ -36,6 +36,7 @@ SITE=""
 CHECKS_LOG=""
 TARGET_CMD_ARGS_FILE=""
 RUN_EXTERNAL_AGENT_SH="${LINT_FIX_LOOP_RUN_EXTERNAL_AGENT_SH:-$SCRIPT_DIR/run-external-agent.sh}"
+LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH="${LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH:-$SCRIPT_DIR/launch-codex-exec.sh}"
 
 usage() {
     larch_err "Usage: lint-fix-loop.sh --tmpdir IMPLEMENT_TMPDIR --site step3|step5|step6|ship-pr-ci-initial|ship-pr-ci-merge|ship-pr-ci-per-job --checks-log REDACTED_LOG_FILE [--target-cmd-args-file PATH]"
@@ -362,29 +363,30 @@ delta_paths_after_dispatch() {
 
 run_codex() {
     local run_dir="$1" prompt_body="$2"
-    local codex_events="$run_dir/codex.events.jsonl"
-    local codex_wrapper_log="$run_dir/codex.wrapper.log"
-    local codex_telemetry_sidecar="$run_dir/codex.sidecar"
-    local codex_rc=0
-    local _SERIAL_LOCK=""
-    external_serial_lock_acquire _SERIAL_LOCK "codex"
-    external_serial_lock_release_after "$_SERIAL_LOCK" "${LARCH_EXTERNAL_SERIAL_LOCK_DELAY:-0.5}"
-    rm -f "$codex_events" "$codex_wrapper_log" "$codex_telemetry_sidecar"
-    # shellcheck disable=SC2094 # --stderr-sink intentionally names the same fd2 sink used by this invocation.
-    "$RUN_EXTERNAL_AGENT_SH" --tool codex --output "$run_dir/codex.log" --timeout 1800 \
-        --stderr-sink "$codex_wrapper_log" -- \
-        codex exec --full-auto -C "$REPO_ROOT" --add-dir "$run_dir" --add-dir "$REPO_ROOT" \
-        --output-last-message "$run_dir/codex.log" \
-        --json \
-        -- \
-        "$prompt_body" \
-        >"$codex_events" 2>"$codex_wrapper_log" || codex_rc=$?
-    if (( codex_rc != 0 )); then
-        write_failed_agent_stderr_tail "$codex_wrapper_log" "$run_dir/codex.log" || true
+    local launcher_stdout launcher_rc=0 parsed_exit=1
+    launcher_stdout=$(mktemp "${TMPDIR:-/tmp}/lint-fix-codex-launcher.XXXXXX") || return 1
+    rm -f "$run_dir/codex.log.events.jsonl" "$run_dir/codex.log.sidecar"
+    set +e
+    "$LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH" \
+        --output "$run_dir/codex.log" \
+        --timeout 1800 \
+        --workdir "$REPO_ROOT" \
+        --add-dir "$run_dir" \
+        --add-dir "$REPO_ROOT" \
+        --usage-label codex_lint_fix \
+        --prompt "$prompt_body" >"$launcher_stdout"
+    launcher_rc=$?
+    set -e
+    parsed_exit=$(awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}' "$launcher_stdout")
+    [[ -n "$parsed_exit" ]] || parsed_exit=1
+    rm -f "$launcher_stdout"
+    if (( parsed_exit != 0 )); then
+        if [[ -s "${run_dir}/codex.log.sidecar" ]]; then
+            write_failed_agent_stderr_tail "${run_dir}/codex.log.sidecar" "$run_dir/codex.log" || true
+        fi
         _lint_fix_set_stderr_tail_stem "$run_dir/codex.log"
     fi
-    codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_telemetry_sidecar" "codex_lint_fix" || true
-    return "$codex_rc"
+    return "$parsed_exit"
 }
 
 _run_cursor_record_early_fail() {

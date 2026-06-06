@@ -228,19 +228,13 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 ```bash
 # Same temp-file pattern as the Cursor block above — propagate
 # agent-model-args.sh failures and use the Bash 3.2-safe expansion.
-CODEX_MODEL_ARGS_TMP=$(mktemp)
-trap 'rm -f "$CODEX_MODEL_ARGS_TMP"' EXIT
-"${CLAUDE_PLUGIN_ROOT}/scripts/agent-model-args.sh" --tool codex --with-effort > "$CODEX_MODEL_ARGS_TMP" || exit $?
-CODEX_MODEL_ARGS=()
-while IFS= read -r arg; do CODEX_MODEL_ARGS+=("$arg"); done < "$CODEX_MODEL_ARGS_TMP"
-
-${CLAUDE_PLUGIN_ROOT}/scripts/run-external-agent.sh --tool codex \
+"${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
   --output "$DIALECTIC_TMPDIR/codex-judge-output.txt" \
-  --timeout 1800 -- \
-  codex exec --full-auto -C "$PWD" \
-    ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} \
-    --output-last-message "$DIALECTIC_TMPDIR/codex-judge-output.txt" \
-    "<judge prompt from template above>."
+  --timeout 1800 \
+  --workdir "$PWD" \
+  --add-dir "$PWD" \
+  --with-effort \
+  --prompt "<judge prompt from template above>."
 ```
 
 Use `run_in_background: true` and `timeout: 1860000`.

@@ -75,5 +75,6 @@ TIMING_TASK_KINDS_ALLOWED=(
     claude-debate-antithesis-retry2
     codex-judge
     cursor-judge
+    codex-exec
     vendor-misc
 )

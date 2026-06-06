@@ -1,0 +1,61 @@
+#!/usr/bin/env bash
+# test-lint-codex-exec-auth.sh — regression harness for lint-codex-exec-auth.sh.
+
+set -euo pipefail
+
+REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+LINT="$REPO_ROOT/scripts/lint-codex-exec-auth.sh"
+TMPROOT="$(mktemp -d "${TMPDIR:-/tmp}/test-lint-codex-exec-auth.XXXXXX")"
+trap 'rm -rf "$TMPROOT"' EXIT
+
+PASS=0
+FAIL=0
+
+reset_tree() {
+    find "$TMPROOT" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    mkdir -p "$TMPROOT/scripts" "$TMPROOT/skills/foo"
+}
+
+write_file() {
+    local path="$1"
+    shift
+    mkdir -p "$(dirname "$path")"
+    printf '%s\n' "$@" >"$path"
+}
+
+run_lint() {
+    set +e
+    bash "$LINT" --root "$TMPROOT" 2>"$1"
+    local rc=$?
+    set -e
+    printf '%s\n' "$rc"
+}
+
+stderr_file="$(mktemp)"
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -eq 0 ]]; then echo "PASS clean tree"; PASS=$((PASS+1)); else echo "FAIL clean tree"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/bad.sh" '#!/bin/bash' 'codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS unwired shell fails"; PASS=$((PASS+1)); else echo "FAIL unwired shell fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/launch-codex-exec.sh" '#!/bin/bash' 'codex exec --full-auto -C . hi'
+chmod +x "$TMPROOT/scripts/launch-codex-exec.sh"
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -eq 0 ]]; then echo "PASS allowlisted basename"; PASS=$((PASS+1)); else echo "FAIL allowlisted basename"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/pragma.sh" 'codex exec --full-auto -C . hi # lint-codex-exec-auth: ok fixture'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -eq 0 ]]; then echo "PASS pragma suppression"; PASS=$((PASS+1)); else echo "FAIL pragma suppression"; FAIL=$((FAIL+1)); fi
+
+set +e
+bash "$LINT" --root /no/such 2>"$stderr_file"
+rc=$?
+set -e
+if [[ "$rc" -eq 2 ]]; then echo "PASS invalid --root"; PASS=$((PASS+1)); else echo "FAIL invalid --root"; FAIL=$((FAIL+1)); fi
+
+echo "Results: $PASS passed, $FAIL failed"
+[[ "$FAIL" -eq 0 ]]
