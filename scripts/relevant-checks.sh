@@ -65,10 +65,10 @@ maybe_append_py_lint_target() {
 }
 
 maybe_append_py_test_target() {
-    if ! command -v pytest >/dev/null 2>&1; then
+    if ! command -v python3.12 >/dev/null 2>&1 || ! python3.12 -m pytest --version >/dev/null 2>&1; then
         PY_TEST_SKIPPED=1
         if [ "${PY_TEST_SKIP_WARNED:-0}" -eq 0 ]; then
-            echo "WARNING: pytest not found on PATH — skipping py-test direct relevant target"
+            echo "WARNING: Python 3.12 pytest not found — skipping py-test direct relevant target"
             PY_TEST_SKIP_WARNED=1
         fi
         return 0

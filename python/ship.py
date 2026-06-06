@@ -8,11 +8,11 @@ import sys
 
 
 def _version_supported(version_info: object) -> bool:
-    return tuple(version_info) >= (3, 11)  # type: ignore[arg-type]
+    return tuple(version_info) >= (3, 12)  # type: ignore[arg-type]
 
 
 if not _version_supported(sys.version_info):
-    _VERSION_ERROR = "Python ship driver requires Python 3.11 or newer"
+    _VERSION_ERROR = "Python ship driver requires Python 3.12 or newer"
     print(
         json.dumps(
             {
@@ -72,6 +72,7 @@ _TERMINAL_ONLY_STATE_KEYS = frozenset({
     "FAILED_RUN_ID",
     "BAIL_FAILURE_DETAIL_LOG",
 })
+_NON_STALL_STATE_KEYS = frozenset({"STALL_TRACKING", "STALL_STEP"})
 _ALLOWED_RESUME_PHASES = {"", config.SHIP_PR_RRR_RESUME_PHASE}
 _ALLOWED_CALLER_KINDS = {"", config.SHIP_PR_PRE_PUSH_CALLER_KIND}
 _MIN_GH_SKIPPED_MERGE_SIGNALS = 2
@@ -669,6 +670,9 @@ def _write_ship_state(
     if terminal_outcome is None and phase != "done":
         for key in _TERMINAL_ONLY_STATE_KEYS:
             _ = fields.pop(key, None)
+        if not ctx.stall_tracking:
+            for key in _NON_STALL_STATE_KEYS:
+                _ = fields.pop(key, None)
     fields.update({
         "PHASE": phase,
         "BRANCH_NAME": ctx.branch_name or ctx.branch,
@@ -728,8 +732,27 @@ def _write_ship_state(
     for key, value in fields.items():
         _validate_ship_state_value(key, str(value))
     tmp = path.with_suffix(path.suffix + ".tmp")
-    _ = tmp.write_text("".join(f"{key}={value}\n" for key, value in fields.items()), encoding="utf-8")
-    _ = tmp.replace(path)
+    if path.is_symlink() or tmp.is_symlink():
+        raise ShipError(f"refusing to write symlinked ship state path: {path}")
+    data = "".join(f"{key}={value}\n" for key, value in fields.items())
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd: int | None = None
+    try:
+        fd = os.open(tmp, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = None
+            _ = handle.write(data)
+        _ = tmp.replace(path)
+    except FileExistsError as exc:
+        raise ShipError(f"refusing to overwrite existing ship state temp file: {tmp}") from exc
+    finally:
+        if fd is not None:
+            os.close(fd)
+        with suppress(OSError):
+            if tmp.exists() and not tmp.is_symlink():
+                tmp.unlink()
 
 
 def _context_with_state_overlay(ctx: RunContext) -> RunContext:

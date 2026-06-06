@@ -323,7 +323,7 @@ esac
 # Python Step 8+ cutover contract pins (#3446).
 grep -Fq 'Default-path routing uses only stdout JSON plus the process exit code; do not parse `ship-pr-state.sh` for driver continuation and do not apply the bash exit matrix.' "$SKILL_MD" \
   || fail "SKILL.md must document JSON-only default-path continuation routing"
-grep -Fq 'Scoped `ship-pr-state.sh` reads remain valid for OOS checkpoint inputs and Exit 4 `ship_pr_pre_push` classification evidence after Python refreshed it via `--state-file`.' "$SKILL_MD" \
+grep -Fq 'Scoped `ship-pr-state.sh` reads remain valid for OOS checkpoint inputs and Exit 4 `ship_pr_pre_push` classification evidence after Python refreshed it via `--state-file`; for that Python Exit 4 handoff, read `CONFLICT_FILES` from `ship-pr-state.sh` after the merge.' "$SKILL_MD" \
   || fail "SKILL.md must document scoped ship-pr-state reads for Python"
 grep -Fq 'Python-only exit `1` with `outcome=INTERNAL_ERROR` is a driver bug path' "$SKILL_MD" \
   || fail "SKILL.md must route Python INTERNAL_ERROR exit 1 as hard tool failure"
@@ -331,14 +331,22 @@ grep -Fq 'on the Python path, dispatch on stdout JSON `needs_user_reason` and re
   || fail "SKILL.md must dispatch Python Exit 3 from JSON needs_user_reason and failed_run_id"
 grep -Fq 'on the Python path, read `STALL_TRACKING` and `STALL_STEP` from `finalize-state.sh` when present, with stdout JSON `detail` as the fallback when `finalize-state.sh` is absent (invalid-tmpdir JSON-only edge).' "$SKILL_MD" \
   || fail "SKILL.md must document Python Exit 4 finalize-state stall keys plus JSON-only fallback"
-grep -Fq 'Read `RESUME_PHASE` and `CALLER_KIND` from `ship-pr-state.sh` on both paths.' "$SKILL_MD" \
-  || fail "SKILL.md must document Exit 4 RESUME_PHASE/CALLER_KIND scoped ship-pr-state reads"
-grep -Fq 'Read `PHASE` from `ship-pr-state.sh` for orchestrator-side per-phase retry budgeting only; `ship.py` does not read `PHASE` on startup.' "$SKILL_MD" \
+grep -Fq 'Read `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES` from `ship-pr-state.sh` on both paths.' "$SKILL_MD" \
+  || fail "SKILL.md must document Exit 4 RESUME_PHASE/CALLER_KIND/CONFLICT_FILES scoped ship-pr-state reads"
+grep -Fq 'Read `PHASE` from `ship-pr-state.sh` for bash orchestrator-side per-phase retry budgeting only; `ship.py` does not read `PHASE` on startup.' "$SKILL_MD" \
   || fail "SKILL.md must document Exit 6 PHASE as orchestrator retry input only"
 grep -Fq 'On the Python path, read `OOS_PENDING`, `FORKED_TARGET`, and `REPO_UNAVAILABLE` from `ship-pr-state.sh`, then re-invoke the same `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` foreground fence without `--resume-phase`; do not substitute `finalize-state.sh` for those OOS gate inputs.' "$SKILL_MD" \
   || fail "SKILL.md must document Python OOS checkpoint scoped ship-pr-state reads and no --resume-phase re-entry"
 grep -Fq 'on the Python path, re-invoke the same `python3 "${CLAUDE_PLUGIN_ROOT}/python/ship.py"` foreground fence without `--resume-phase`.' "$SKILL_MD" \
   || fail "SKILL.md must document Python Exit 0/OOS re-entry without --resume-phase"
+grep -Fq 'Restore finalize-state.sh only when required. Bash opt-in always restores from' "$SKILL_MD" \
+  || fail "SKILL.md must document conditional Step 18 restore gate"
+grep -Fq 'if [ "${LARCH_SHIP_PR_IMPL:-python}" = "bash" ]; then' "$SKILL_MD" \
+  || fail "SKILL.md Step 18 restore gate must cover bash opt-in"
+grep -Fq 'elif [ ! -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then' "$SKILL_MD" \
+  || fail "SKILL.md Step 18 restore gate must cover missing finalize-state on Python path"
+grep -Fq '[ -n "$_ship_step" ] && [ "$_ship_step" != "$_final_step" ]' "$SKILL_MD" \
+  || fail "SKILL.md Step 18 restore gate must cover stale finalize-state on Python path"
 python_fence=$(awk '
   /if \[ "\$\{LARCH_SHIP_PR_IMPL:-python\}" != "bash" \]; then/ { in_py=1 }
   in_py { print }

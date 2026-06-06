@@ -1414,7 +1414,7 @@ def test_routine_state_write_clears_stale_terminal_keys(tmp_path: Path) -> None:
     )
 
     ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
-        _ctx(tmp_path, state_file=str(state_file), pr_number=12),
+        _ctx(tmp_path, state_file=str(state_file), pr_number=12, stall_tracking=True),
         phase="ci-initial",
     )
 
@@ -2269,8 +2269,8 @@ exit 0
 
 
 def test_version_supported_gate() -> None:
-    assert ship._version_supported((3, 11))  # pylint: disable=protected-access
-    assert not ship._version_supported((3, 10))  # pylint: disable=protected-access
+    assert ship._version_supported((3, 12))  # pylint: disable=protected-access
+    assert not ship._version_supported((3, 11))  # pylint: disable=protected-access
 
 
 def test_main_argparse_failure_emits_internal_error(capsys: pytest.CaptureFixture[str]) -> None:
@@ -2483,12 +2483,12 @@ def test_persist_stall_metadata_invalid_tmpdir_is_json_only(tmp_path: Path) -> N
     assert not (invalid / "finalize-state.sh").exists()
 
 
-def test_ship_state_merge_preserves_orchestrator_keys(tmp_path: Path) -> None:
+def test_ship_state_merge_preserves_active_orchestrator_stall_keys(tmp_path: Path) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text("STALL_TRACKING=true\nEXPECTED_SESSION_ID=session-1\n", encoding="utf-8")
 
     ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
-        _ctx(tmp_path, state_file=str(state_file), pr_number=12),
+        _ctx(tmp_path, state_file=str(state_file), pr_number=12, stall_tracking=True),
         phase="ci-initial",
     )
 
@@ -2497,6 +2497,35 @@ def test_ship_state_merge_preserves_orchestrator_keys(tmp_path: Path) -> None:
     assert "EXPECTED_SESSION_ID=session-1\n" in state
     assert "PHASE=ci-initial\n" in state
     assert "PR_NUMBER=12\n" in state
+
+
+def test_ship_state_merge_clears_stale_stall_keys_on_healthy_write(tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text("STALL_TRACKING=true\nSTALL_STEP=old\nEXPECTED_SESSION_ID=session-1\n", encoding="utf-8")
+
+    ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
+        _ctx(tmp_path, state_file=str(state_file), pr_number=12, stall_tracking=False),
+        phase="ci-initial",
+    )
+
+    state = state_file.read_text(encoding="utf-8")
+    assert "STALL_TRACKING=true\n" not in state
+    assert "STALL_STEP=old\n" not in state
+    assert "EXPECTED_SESSION_ID=session-1\n" in state
+
+
+def test_ship_state_write_refuses_symlink_leaf(tmp_path: Path) -> None:
+    target = tmp_path / "target-state.sh"
+    state_file = tmp_path / "ship-pr-state.sh"
+    state_file.symlink_to(target)
+
+    with pytest.raises(ShipError, match="symlinked ship state path"):
+        ship._write_ship_state(  # pyright: ignore[reportPrivateUsage]
+            _ctx(tmp_path, state_file=str(state_file), pr_number=12),
+            phase="ci-initial",
+        )
+
+    assert not target.exists()
 
 
 def test_ship_state_read_error_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

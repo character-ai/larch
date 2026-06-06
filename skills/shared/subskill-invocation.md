@@ -61,6 +61,8 @@ Canonical examples:
   ```bash
   # Parse STATUS, PHASE, OOS_PENDING, STALL_TRACKING, STALL_STEP, RESUME_PHASE,
   # CALLER_KIND, and CONFLICT_FILES (when present) from ship-pr stdout on the bash opt-in path.
+  # On the default Python path, parse JSON stdout first and read CONFLICT_FILES from
+  # $IMPLEMENT_TMPDIR/ship-pr-state.sh only for the scoped Exit 4 ship_pr_pre_push handoff.
   # On Exit 4 with RESUME_PHASE=ship-pr-rrr-phase14 and CALLER_KIND=ship_pr_pre_push,
   # run conflict-resolution.md before re-invoking the active Step 8+ driver (Python selector by default; bash uses ship-pr.sh --resume-phase ship-pr-rrr-phase14).
   ```
