@@ -52,46 +52,49 @@ if is_scope_reduction_block "$TMP/oos.md"; then
     : # detector can see the marker, but tally callers do not special-case OOS blocks.
 fi
 
-echo "=== negative scope-anchor validation rejects invalid voter paths ==="
+echo "=== negative scope-anchor validation: non-fatal warn+skip, ballot pointer preserved ==="
 outside="$HOME/larch-test-outside-scope-anchor.txt"
 printf 'outside\n' >"$outside"
 trap 'rm -rf "$TMP" "$outside"' EXIT
 set +e
-"$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
+_out=$("$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
     --ballot-file "$TMP/ballot.txt" \
     --panel-role "scope voter" \
     --id-grammar finding-oos \
     --verification-context plan \
-    --scope-anchor-file "$outside" >/dev/null 2>"$TMP/voter-invalid.err"
+    --scope-anchor-file "$outside" 2>"$TMP/voter-invalid.err")
 vrc=$?
 set -e
-[[ "$vrc" -eq 2 ]] || fail "outside scope anchor should exit 2"
+[[ "$vrc" -eq 0 ]] || fail "outside scope anchor should exit 0 (non-fatal warn+skip), got $vrc"
 grep -Fq 'allowed local workspace' "$TMP/voter-invalid.err" || fail "outside scope anchor missing containment error"
+grep -Fq 'Read the ballot from this path' <<<"$_out" || fail "outside scope anchor: ballot pointer missing from output"
 
 set +e
-"$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
+_crlf_out=$("$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
     --ballot-file "$TMP/ballot.txt" \
     --panel-role "scope voter" \
     --id-grammar finding-oos \
     --verification-context plan \
-    --scope-anchor-file $'bad\rpath' >/dev/null 2>"$TMP/voter-crlf.err"
+    --scope-anchor-file $'bad\rpath' 2>/dev/null)
 vrc=$?
 set -e
-[[ "$vrc" -eq 2 ]] || fail "CR/LF scope anchor should exit 2"
+[[ "$vrc" -eq 0 ]] || fail "CR/LF scope anchor should exit 0 (non-fatal warn+skip), got $vrc"
+grep -Fq 'Read the ballot from this path' <<<"$_crlf_out" || fail "CR/LF scope anchor: ballot pointer missing from output"
 
 big_anchor="$TMP/big-scope.txt"
 python3 - <<'PY' >"$big_anchor"
 print("x" * 70000)
 PY
 set +e
-"$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
+_big_out=$("$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh" \
     --ballot-file "$TMP/ballot.txt" \
     --panel-role "scope voter" \
     --id-grammar finding-oos \
     --verification-context plan \
-    --scope-anchor-file "$big_anchor" >/dev/null 2>"$TMP/voter-big.err"
+    --scope-anchor-file "$big_anchor" 2>/dev/null)
 vrc=$?
 set -e
-[[ "$vrc" -eq 2 ]] || fail "oversize scope anchor should exit 2"
+[[ "$vrc" -eq 0 ]] || fail "oversize scope anchor should exit 0 (non-fatal warn+skip), got $vrc"
+grep -Fq 'Read the ballot from this path' <<<"$_big_out" || fail "oversize scope anchor: ballot pointer missing from output"
 
 echo "PASS: test-plan-review-scope-anchor.sh"
