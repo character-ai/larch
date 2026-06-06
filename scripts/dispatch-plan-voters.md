@@ -32,6 +32,10 @@ Sources `scripts/lib-voter-parse-rate.sh` with `LARCH_VPR_*` set for plan ballot
 
 `DISPATCH_OK` mirrors the waterfall value but is forced to `false` when **Voter 1** ends in `failed` (parity with `dispatch-code-voters.sh`).
 
+## Prompt integrity
+
+`make_prompt_file` checks the exit code of `render-voter-prompt.sh` and asserts that the rendered prompt contains `Read the ballot from this path` before launching any voter. Either failure aborts with a loud `larch_err` message and exit 2, preventing silently truncated prompts from reaching voters.
+
 ## Inputs
 
 `--ballot-file`, `--design-tmpdir`, `--codex-available`, `--cursor-available`, optional `--session-env-path`. The ballot is referenced by path in the generated voter prompts.
