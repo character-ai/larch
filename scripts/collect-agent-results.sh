@@ -687,9 +687,6 @@ launch_outer_retry_or_mark() {
         [[ -n "$META_OUTER_LAUNCHER_TIMING_KIND" ]] || {
             mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: missing OUTER_LAUNCHER_TIMING_KIND"; return 1
         }
-        if ! printf '%s' "$META_OUTER_LAUNCHER_ADD_DIRS_JSON" | jq -e 'type=="array"' >/dev/null 2>&1; then
-            mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed"; return 1
-        fi
         _codex_exec_retry_args=(
             --output "$retry_output"
             --timeout "$timeout_value"
@@ -700,10 +697,17 @@ launch_outer_retry_or_mark() {
             --timing-task-kind "$META_OUTER_LAUNCHER_TIMING_KIND"
         )
         [[ "$META_OUTER_LAUNCHER_WITH_EFFORT" == true ]] && _codex_exec_retry_args+=(--with-effort)
-        _add_dir=""
-        while IFS= read -r _add_dir; do
-            [[ -n "$_add_dir" ]] && _codex_exec_retry_args+=(--add-dir "$_add_dir")
-        done < <(printf '%s' "$META_OUTER_LAUNCHER_ADD_DIRS_JSON" | jq -r '.[]?')
+        if command -v jq >/dev/null 2>&1; then
+            if ! printf '%s' "$META_OUTER_LAUNCHER_ADD_DIRS_JSON" | jq -e 'type=="array"' >/dev/null 2>&1; then
+                mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed"; return 1
+            fi
+            _add_dir=""
+            while IFS= read -r _add_dir; do
+                [[ -n "$_add_dir" ]] && _codex_exec_retry_args+=(--add-dir "$_add_dir")
+            done < <(printf '%s' "$META_OUTER_LAUNCHER_ADD_DIRS_JSON" | jq -r '.[]?')
+        else
+            _codex_exec_retry_args+=(--add-dir "$META_OUTER_LAUNCHER_WORKDIR")
+        fi
         (
             cd "$META_OUTER_LAUNCHER_WORKDIR" || exit 1
             env -u LARCH_ALLOW_TEST_HOOKS \

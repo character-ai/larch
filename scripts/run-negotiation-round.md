@@ -1,8 +1,12 @@
 # scripts/run-negotiation-round.sh — contract
 
-`scripts/run-negotiation-round.sh` is the per-round driver for the Negotiation Protocol described in `skills/shared/external-reviewers.md`. It wraps the Codex stdin-pipe and Cursor `--agent-prompt` invocation styles behind a uniform interface so callers don't repeat the per-tool argv shape. Removes the previous output file before invoking the tool (fresh-result invariant). Inputs: `--tool codex|cursor`, `--prompt-file`, `--output`, `--workspace`. Stdout emits `RESPONSE_FILE=<path>`. Exit 0 on success, 1 on usage error, 2 on reviewer command failure, and 3 on `cursor_auth_preflight` failure. Model-arg resolution failures from `scripts/agent-model-args.sh` propagate that helper's exit code (typically 1); its stderr diagnostic is the authoritative anchor. Used by `/design` Steps 1d / 3.5 (interactive design discussion rounds) when an external reviewer is the negotiator.
+`scripts/run-negotiation-round.sh` is the per-round driver for the Negotiation Protocol described in `skills/shared/external-reviewers.md`. It wraps the Codex stdin-pipe and Cursor `--agent-prompt` invocation styles behind a uniform interface so callers don't repeat the per-tool argv shape. Removes the previous output file before invoking the tool (fresh-result invariant). Inputs: `--tool codex|cursor`, `--prompt-file`, `--output`, `--workspace`. Stdout emits `RESPONSE_FILE=<path>`. Exit 0 on success, 1 on usage error, 2 on reviewer command failure or Codex auth setup failure, and 3 on `cursor_auth_preflight` failure. Model-arg resolution failures from `scripts/agent-model-args.sh` propagate that helper's exit code (typically 1); its stderr diagnostic is the authoritative anchor. Used by `/design` Steps 1d / 3.5 (interactive design discussion rounds) when an external reviewer is the negotiator.
 
 For Codex, the script preserves the final response via `--output-last-message "$OUTPUT_FILE"` while writing `--json` stdout to the local-only `${OUTPUT_FILE%.txt}.events.jsonl` and stderr to `${OUTPUT_FILE%.txt}.sidecar`. Those two Codex side artifacts are removed before each run so stale events cannot be parsed. The event stream is parsed best-effort into the sanitized token-ledger raw bucket `codex_negotiation`; telemetry failures do not change the reviewer exit behavior.
+
+## Codex auth handling
+
+The Codex branch creates a temp `CODEX_HOME`, copies existing config when present, runs `external_prepare_codex_auth`, and exits 2 if auth setup fails. With `OPENAI_API_KEY` set, `external_codex_auth_config_args` supplies env-key provider overrides without putting the key value on argv; without the env key, the temp home uses the login material prepared by the shared helper. The temp home is removed on exit.
 
 ## KeyChain serial lock
 
@@ -18,7 +22,7 @@ Sources `scripts/lib-cursor-auth.sh` in the Cursor branch and runs `cursor_auth_
 |------|---------|
 | 0 | Response written |
 | 1 | Usage / argument error, or the typical `scripts/agent-model-args.sh` validation failure propagated from that helper |
-| 2 | Reviewer command failed |
+| 2 | Reviewer command failed, or Codex auth setup failed before launch |
 | 3 | `cursor_auth_preflight` failed before `cursor agent` launched |
 | other | Propagated from `scripts/agent-model-args.sh`; inspect that helper's stderr diagnostic |
 

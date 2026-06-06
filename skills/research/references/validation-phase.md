@@ -125,8 +125,7 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/render-reviewer-prompt.sh \
 **On success**, launch in background:
 
 ```bash
-# Same temp-file pattern as the Cursor block above — propagate
-# agent-model-args.sh failures and use the Bash 3.2-safe expansion.
+# launch-codex-exec.sh owns Codex model args, trust, auth, and retry metadata.
 "${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
   --output "$RESEARCH_TMPDIR/codex-validation-output.txt" \
   --timeout 1800 \

@@ -10,9 +10,6 @@ larch_quiet_init
 # shellcheck source=scripts/lib-cursor-launcher-common.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-cursor-launcher-common.sh"
-# shellcheck source=scripts/lib-codex-launcher-common.sh
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib-codex-launcher-common.sh"
 # shellcheck source=scripts/lib-submodule-prohibition.sh
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib-submodule-prohibition.sh"
@@ -361,8 +358,8 @@ delta_paths_after_dispatch() {
 }
 
 run_codex() {
-    local run_dir="$1" prompt_body="$2"
-    local launcher_stdout launcher_rc=0 parsed_exit=1
+    local run_dir="$1"
+    local launcher_stdout parsed_exit=1
     launcher_stdout=$(mktemp "${TMPDIR:-/tmp}/lint-fix-codex-launcher.XXXXXX") || return 1
     rm -f "$run_dir/codex.log.events.jsonl" "$run_dir/codex.log.sidecar"
     set +e
@@ -373,11 +370,10 @@ run_codex() {
         --add-dir "$run_dir" \
         --add-dir "$REPO_ROOT" \
         --usage-label codex_lint_fix \
-        --prompt "$prompt_body" >"$launcher_stdout"
-    launcher_rc=$?
+        --prompt-file "$run_dir/prompt.md" >"$launcher_stdout"
     set -e
     parsed_exit=$(awk -F= '$1=="LAUNCHER_EXIT"{print $2; exit}' "$launcher_stdout")
-    [[ -n "$parsed_exit" ]] || parsed_exit="$launcher_rc"
+    [[ -n "$parsed_exit" ]] || parsed_exit=1
     rm -f "$launcher_stdout"
     if (( parsed_exit != 0 )); then
         if [[ -s "${run_dir}/codex.log.sidecar" ]]; then

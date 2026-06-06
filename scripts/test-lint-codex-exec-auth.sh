@@ -51,6 +51,31 @@ write_file "$TMPROOT/scripts/pragma.sh" 'codex exec --full-auto -C . hi # lint-c
 rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -eq 0 ]]; then echo "PASS pragma suppression"; PASS=$((PASS+1)); else echo "FAIL pragma suppression"; FAIL=$((FAIL+1)); fi
 
+reset_tree
+write_file "$TMPROOT/scripts/continued.sh" '#!/bin/bash' "codex \\" '  exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS shell continuation fails"; PASS=$((PASS+1)); else echo "FAIL shell continuation fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/env-value.sh" '#!/bin/bash' 'B=codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS env value codex fails"; PASS=$((PASS+1)); else echo "FAIL env value codex fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/env-value-chain.sh" '#!/bin/bash' 'A=1 B=codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS chained env value codex fails"; PASS=$((PASS+1)); else echo "FAIL chained env value codex fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/env-prefix.sh" '#!/bin/bash' 'CODEX_HOME=/tmp/codex codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS env prefix raw codex fails"; PASS=$((PASS+1)); else echo "FAIL env prefix raw codex fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/skills/foo/SKILL.md" '```bash' "codex \\" '  exec --full-auto -C . hi' '```'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS markdown continuation fails"; PASS=$((PASS+1)); else echo "FAIL markdown continuation fails"; FAIL=$((FAIL+1)); fi
+
 set +e
 bash "$LINT" --root /no/such 2>"$stderr_file"
 rc=$?

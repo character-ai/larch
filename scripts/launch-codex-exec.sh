@@ -57,6 +57,23 @@ write_preflight_bundle() {
     exit 0
 }
 
+json_array_from_args() {
+    local sep="" item
+    printf '['
+    for item in "$@"; do
+        case "$item" in
+            *$'\n'*|*$'\r'*|*$'\t'*)
+                return 1
+                ;;
+        esac
+        item=${item//\\/\\\\}
+        item=${item//\"/\\\"}
+        printf '%s"%s"' "$sep" "$item"
+        sep=","
+    done
+    printf ']'
+}
+
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --output) [ $# -ge 2 ] || die "--output requires a value"; OUTPUT=$2; shift 2 ;;
@@ -219,8 +236,12 @@ fi
 codex_launcher_record_usage_from_events "$PLUGIN_ROOT" "$CODEX_EVENTS" "$SIDECAR_LOG" "$USAGE_LABEL" "${OUTPUT}.token-record"
 
 _add_dirs_json="[]"
-if command -v jq >/dev/null 2>&1 && [[ ${#ADD_DIRS[@]} -gt 0 ]]; then
-    _add_dirs_json=$(printf '%s\n' "${ADD_DIRS[@]}" | jq -R . | jq -s -c .)
+if [[ ${#ADD_DIRS[@]} -gt 0 ]]; then
+    if command -v jq >/dev/null 2>&1; then
+        _add_dirs_json=$(printf '%s\n' "${ADD_DIRS[@]}" | jq -R . | jq -s -c .)
+    elif ! _add_dirs_json=$(json_array_from_args "${ADD_DIRS[@]}"); then
+        write_preflight_bundle 2 "launch-codex-exec.sh failed to serialize --add-dir metadata without jq"
+    fi
 fi
 codex_launcher_append_codex_exec_outer_meta \
     "${OUTPUT}.meta" \

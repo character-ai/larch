@@ -46,7 +46,16 @@ stub_bin="$TMPDIR_BASE/stub-bin"
 mkdir -p "$stub_bin"
 cat >"$stub_bin/codex" <<'EOF'
 #!/usr/bin/env bash
-printf 'stub transcript\n' > "${@: -1}"
+out=""
+last=""
+for arg in "$@"; do
+    if [[ "$last" == "--output-last-message" ]]; then
+        out="$arg"
+    fi
+    last="$arg"
+done
+[[ -n "$out" ]] || exit 9
+printf 'stub transcript\n' > "$out"
 printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
 exit 0
 EOF
@@ -65,6 +74,26 @@ else
     fail "happy path emits LAUNCHER_EXIT"
 fi
 if [[ -f "${OUT}.prompt" ]]; then ok "writes prompt sidecar"; else fail "writes prompt sidecar"; fi
+if [[ -f "${OUT}.done" && ! -f "${OUT}.inner.done" ]]; then ok "promotes inner sentinel"; else fail "promotes inner sentinel"; fi
+if grep -Fq 'OUTER_LAUNCHER_KIND=codex-exec' "${OUT}.meta" && grep -Fq "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$REPO_ROOT\"]" "${OUT}.meta"; then
+    ok "records codex-exec outer metadata"
+else
+    fail "records codex-exec outer metadata"
+fi
+
+OUT_ADD="$TMPDIR_BASE/exec-add-out.txt"
+set +e
+(cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" \
+    bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
+    --output "$OUT_ADD" --timeout 60 --workdir "$REPO_ROOT" --add-dir "$TMPDIR_BASE" --add-dir "$REPO_ROOT" --prompt "hello") \
+    >"$TMPDIR_BASE/launcher-add.stdout" 2>"$TMPDIR_BASE/launcher-add.stderr"
+rc=$?
+set -e
+if [[ "$rc" -eq 0 ]] && grep -Fq "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$TMPDIR_BASE\",\"$REPO_ROOT\"]" "${OUT_ADD}.meta"; then
+    ok "round-trips repeated add-dir metadata"
+else
+    fail "round-trips repeated add-dir metadata"
+fi
 
 echo "Results: $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

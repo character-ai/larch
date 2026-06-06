@@ -227,7 +227,7 @@ Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
 
 ```bash
 # Same temp-file pattern as the Cursor block above — propagate
-# agent-model-args.sh failures and use the Bash 3.2-safe expansion.
+# launch-codex-exec.sh owns Codex model args, trust, auth, and retry metadata.
 "${CLAUDE_PLUGIN_ROOT:?}/scripts/launch-codex-exec.sh" \
   --output "$DIALECTIC_TMPDIR/codex-judge-output.txt" \
   --timeout 1800 \
@@ -247,7 +247,7 @@ Use `run_in_background: true` and `timeout: 1860000`.
 
 External judges and inline Claude judges use different collection paths. This split is **required** because `collect-agent-results.sh` polls `.done` sentinels produced by `run-external-agent.sh`; inline Agent-tool subagents produce no sentinel.
 
-Timing note: v1 timing rows are emitted by the launch-wrapper scripts, not by direct `run-external-agent.sh` invocations. The Cursor and Codex judge calls below therefore do not emit `codex-judge` / `cursor-judge` timing rows yet; those task kinds are reserved in `scripts/lib-timing-kinds.sh` for a future run-external-agent execution-boundary instrumentation.
+Timing note: v1 timing rows are emitted by launch-wrapper scripts. Codex judge calls through `launch-codex-exec.sh` currently record the launcher's default `codex-exec` task kind unless the caller passes an explicit `--timing-task-kind codex-judge`; Cursor judge rows remain tied to their launcher surface.
 
 1. **Inline judges (Claude subagent + any Claude replacements)**: vote text is returned in the Agent tool's return value. Parse per-decision vote lines directly from the returned text. Inline judges are always eligible (local execution does not fail in the `collect-agent-results.sh` sense).
 

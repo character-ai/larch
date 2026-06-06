@@ -122,18 +122,42 @@ scan_shell_file() {
     fi
     set +e
     awk -v rel="$rel" '
-        function report() {
-            printf("lint-codex-exec-auth: %s:%s: unwired Codex dispatch without auth wiring; use launch-codex-exec.sh or # lint-codex-exec-auth: ok <reason>\n", rel, FNR) > "/dev/stderr"
+        function report(nr) {
+            printf("lint-codex-exec-auth: %s:%s: unwired Codex dispatch without auth wiring; use launch-codex-exec.sh or # lint-codex-exec-auth: ok <reason>\n", rel, nr) > "/dev/stderr"
             violations = 1
+        }
+        function scan(line, nr, stripped) {
+            if (line ~ /#[[:space:]]*lint-codex-exec-auth:[[:space:]]*ok/) return
+            if (line ~ /^[[:space:]]*#/) return
+            if (line ~ /codex[[:space:]]+exec/) {
+                report(nr)
+                return
+            }
+            stripped = line
+            sub(/^([[:space:]]*[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]*)+/, "", stripped)
+            if (stripped ~ /codex[[:space:]]+exec/) report(nr)
         }
         {
             line = $0
-            if (line ~ /#[[:space:]]*lint-codex-exec-auth:[[:space:]]*ok/) next
-            if (line ~ /^[[:space:]]*#/) next
-            sub(/^([[:space:]]*[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]*)+/, "", line)
-            if (line ~ /codex[[:space:]]+exec/) report()
+            if (pending != "") {
+                line = pending line
+                nr = pending_nr
+                pending = ""
+            } else {
+                nr = FNR
+            }
+            if (line ~ /\\[[:space:]]*$/) {
+                sub(/\\[[:space:]]*$/, " ", line)
+                pending = line
+                pending_nr = nr
+                next
+            }
+            scan(line, nr)
         }
-        END { exit violations ? 1 : 0 }
+        END {
+            if (pending != "") scan(pending, pending_nr)
+            exit violations ? 1 : 0
+        }
     ' "$path"
     rc=$?
     set -e
@@ -149,9 +173,26 @@ scan_markdown_file() {
     set +e
     awk -v rel="$rel" '
         BEGIN { in_fence = 0; violations = 0 }
-        function report() {
-            printf("lint-codex-exec-auth: %s:%s: unwired Codex dispatch in bash fence; use launch-codex-exec.sh\n", rel, FNR) > "/dev/stderr"
+        function report(nr) {
+            printf("lint-codex-exec-auth: %s:%s: unwired Codex dispatch in bash fence; use launch-codex-exec.sh\n", rel, nr) > "/dev/stderr"
             violations = 1
+        }
+        function scan(line, nr, stripped) {
+            if (line ~ /#[[:space:]]*lint-codex-exec-auth:[[:space:]]*ok/) return
+            if (line ~ /^[[:space:]]*#/) return
+            if (line ~ /codex[[:space:]]+exec/) {
+                report(nr)
+                return
+            }
+            stripped = line
+            sub(/^([[:space:]]*[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]*)+/, "", stripped)
+            if (stripped ~ /codex[[:space:]]+exec/) report(nr)
+        }
+        function flush_pending() {
+            if (pending != "") {
+                scan(pending, pending_nr)
+                pending = ""
+            }
         }
         {
             line = $0
@@ -160,15 +201,30 @@ scan_markdown_file() {
                 next
             }
             if (in_fence && line ~ /^[[:space:]]*```[[:space:]]*$/) {
+                flush_pending()
                 in_fence = 0
                 next
             }
             if (!in_fence) next
-            if (line ~ /#[[:space:]]*lint-codex-exec-auth:[[:space:]]*ok/) next
-            if (line ~ /^[[:space:]]*#/) next
-            if (line ~ /codex[[:space:]]+exec/) report()
+            if (pending != "") {
+                line = pending line
+                nr = pending_nr
+                pending = ""
+            } else {
+                nr = FNR
+            }
+            if (line ~ /\\[[:space:]]*$/) {
+                sub(/\\[[:space:]]*$/, " ", line)
+                pending = line
+                pending_nr = nr
+                next
+            }
+            scan(line, nr)
         }
-        END { exit violations ? 1 : 0 }
+        END {
+            flush_pending()
+            exit violations ? 1 : 0
+        }
     ' "$path"
     rc=$?
     set -e
