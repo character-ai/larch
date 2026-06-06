@@ -7,6 +7,7 @@ import os
 import re
 import shlex
 import shutil
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -670,13 +671,39 @@ def write_finalize_state_merged(path: str | Path, data: dict[str, str]) -> None:
             msg = f"finalize-state value for {key} contains a newline"
             raise ShipError(msg)
     target = Path(path)
+    _write_finalize_text_safely(
+        target,
+        "".join(f"{key}={_shell_single_quote(data[key])}\n" for key in sorted(data)),
+    )
+
+
+def _write_finalize_text_safely(target: Path, text: str) -> None:
+    if target.is_symlink():
+        raise ShipError(f"refusing to write symlinked finalize-state path: {target}")
     target.parent.mkdir(parents=True, exist_ok=True)
     tmp = target.with_suffix(target.suffix + ".tmp")
-    _ = tmp.write_text(
-        "".join(f"{key}={_shell_single_quote(data[key])}\n" for key in sorted(data)),
-        encoding="utf-8",
-    )
-    _ = tmp.replace(target)
+    if tmp.is_symlink():
+        raise ShipError(f"refusing to write symlinked finalize-state temp path: {tmp}")
+    with suppress(FileNotFoundError):
+        tmp.unlink()
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
+    if hasattr(os, "O_NOFOLLOW"):
+        flags |= os.O_NOFOLLOW
+    fd: int | None = None
+    try:
+        fd = os.open(tmp, flags, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            fd = None
+            _ = handle.write(text)
+        if target.is_symlink():
+            raise ShipError(f"refusing to replace symlinked finalize-state path: {target}")
+        _ = tmp.replace(target)
+    finally:
+        if fd is not None:
+            os.close(fd)
+        with suppress(OSError):
+            if tmp.exists() and not tmp.is_symlink():
+                tmp.unlink()
 
 
 def kill_session_background_processes(runner: Runner, ctx: RunContext) -> bool:
@@ -771,10 +798,7 @@ def write_finalize_state(ctx: RunContext, path: str | Path) -> None:
             msg = f"finalize-state value for {key} contains a newline"
             raise ShipError(msg)
     target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    tmp = target.with_suffix(target.suffix + ".tmp")
-    _ = tmp.write_text(
+    _write_finalize_text_safely(
+        target,
         "".join(f"{key}={_shell_single_quote(value)}\n" for key, value in data.items()),
-        encoding="utf-8",
     )
-    _ = tmp.replace(target)

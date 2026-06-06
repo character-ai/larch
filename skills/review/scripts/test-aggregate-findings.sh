@@ -1806,7 +1806,7 @@ AGGREGATE_DISPATCH_SH="$PLAN_SCOPE_PLAIN/dispatch.sh" \
     --mode description \
     --input-mode plan \
     --allow-findings-outside-tmpdir true >"$PLAN_SCOPE_PLAIN/out.env"
-grep -Fq 'AGGREGATED=false' "$PLAN_SCOPE_PLAIN/out.env" || fail "plain Concern plan scope fallback did not preserve original input"
+grep -Fq 'AGGREGATED=true' "$PLAN_SCOPE_PLAIN/out.env" || fail "plain Concern plan scope marker should be withheld then recombined"
 grep -Fq '[SCOPE-REDUCTION] remove unrelated plain concern' "$PLAN_SCOPE_PLAIN/in.md" || fail "plain Concern scope marker was not preserved"
 
 echo "=== code mode does not apply plan scope-marker preservation ==="

@@ -1500,6 +1500,7 @@ else
         --plan-file "$PLAN_FILE" \
         --session-env-path "$DESIGN_TMPDIR/source-env.sh" \
         --input-mode plan \
+        --scope-anchor-file "$SCOPE_ANCHOR_FILE" \
         --allow-findings-outside-tmpdir true)
     AGGREGATED="false"
     REASON="ok"

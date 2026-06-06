@@ -527,7 +527,7 @@ make_stub_dir "$STUB_3L" present absent
 run_checks "$REPO_3L" "$(controlled_path_no_py_tools "$STUB_3L")"
 assert_exit_eq "3l: Python source change exits 0 without pytest" "$RUN_EXIT" 0
 assert_stdout_contains "3l: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
-assert_stdout_contains "3l: missing pytest warning" "$RUN_OUT" "WARNING: Python 3.12 pytest not found"
+assert_stdout_contains "3l: missing pytest warning" "$RUN_OUT" "WARNING: python3 >= 3.12 not found"
 assert_stdout_not_contains "3l: no fail-closed error when python/*.py changed" "$RUN_OUT" "ERROR: python/*.py changed but Python lint/test tools are missing from PATH"
 assert_stdout_not_contains "3l: does not invoke py-test when pytest is missing" "$RUN_OUT" "make stub: py-test"
 
@@ -543,6 +543,19 @@ exit 0
 EOF
         chmod +x "$dir/$tool"
     done
+    cat > "$dir/python3" <<'EOF'
+#!/usr/bin/env bash
+if [[ "$1" == "-m" && "$2" == "pytest" ]]; then
+    echo "pytest stub: ${*:3}"
+    exit 0
+fi
+if [[ "$1" == "-" ]]; then
+    cat >/dev/null
+    exit 0
+fi
+exec /usr/bin/python3 "$@"
+EOF
+    chmod +x "$dir/python3"
 }
 
 controlled_path_with_py_tools() {
@@ -558,7 +571,7 @@ make_stub_dir "$STUB_3M" present absent
 run_checks "$REPO_3M" "$(controlled_path_no_py_tools "$STUB_3M")"
 assert_exit_eq "3m: .pylintrc-only change exits 0 without Python tools" "$RUN_EXIT" 0
 assert_stdout_contains "3m: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
-assert_stdout_contains "3m: missing pytest warning" "$RUN_OUT" "WARNING: Python 3.12 pytest not found"
+assert_stdout_contains "3m: missing pytest warning" "$RUN_OUT" "WARNING: python3 >= 3.12 not found"
 
 echo "=== Section 3n: Python direct targets with all tools on PATH ==="
 
@@ -571,7 +584,7 @@ assert_exit_eq "3n: Python source change exits 0 with py tools" "$RUN_EXIT" 0
 assert_stdout_not_contains "3n: no missing lint tools warning" "$RUN_OUT" \
     "WARNING: Python lint tools not found on PATH"
 assert_stdout_not_contains "3n: no missing pytest warning" "$RUN_OUT" \
-    "WARNING: Python 3.12 pytest not found"
+    "WARNING: python3 pytest not found"
 assert_stdout_contains "3n: routes py-lint and py-test" "$RUN_OUT" \
     "=== Running direct relevant make target(s): py-lint py-test ==="
 assert_stdout_contains "3n: make invokes py-lint and py-test" "$RUN_OUT" \

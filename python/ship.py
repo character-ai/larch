@@ -34,6 +34,7 @@ if not _version_supported(sys.version_info):
 import argparse
 import os
 import re
+import time
 import traceback
 from contextlib import suppress
 from dataclasses import dataclass
@@ -76,6 +77,8 @@ _NON_STALL_STATE_KEYS = frozenset({"STALL_TRACKING", "STALL_STEP"})
 _ALLOWED_RESUME_PHASES = {"", config.SHIP_PR_RRR_RESUME_PHASE}
 _ALLOWED_CALLER_KINDS = {"", config.SHIP_PR_PRE_PUSH_CALLER_KIND}
 _MIN_GH_SKIPPED_MERGE_SIGNALS = 2
+_STALE_STATE_TMP_MAX_AGE_SEC = 3600
+_PYTHON_TRANSIENT_STALL_ATTEMPT = 4
 
 
 @dataclass(frozen=True)
@@ -150,7 +153,8 @@ def _step_result_to_ship(
 
 
 def _is_infrastructure_ship_error(exc: Exception) -> bool:
-    return isinstance(exc, ShipError) and str(exc).startswith("cannot read existing ship state")
+    _ = exc
+    return False
 
 
 def _is_active_pre_push_handoff(ctx: RunContext) -> bool:
@@ -734,6 +738,15 @@ def _write_ship_state(
     tmp = path.with_suffix(path.suffix + ".tmp")
     if path.is_symlink() or tmp.is_symlink():
         raise ShipError(f"refusing to write symlinked ship state path: {path}")
+    if tmp.exists():
+        try:
+            age = time.time() - tmp.stat().st_mtime
+        except OSError as exc:
+            raise ShipError(f"refusing unreadable ship state temp file: {tmp}") from exc
+        if age > _STALE_STATE_TMP_MAX_AGE_SEC:
+            tmp.unlink()
+        else:
+            raise ShipError(f"refusing to overwrite existing ship state temp file: {tmp}")
     data = "".join(f"{key}={value}\n" for key, value in fields.items())
     flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     if hasattr(os, "O_NOFOLLOW"):
@@ -758,6 +771,10 @@ def _write_ship_state(
 def _context_with_state_overlay(ctx: RunContext) -> RunContext:
     state = _state_file_kv(ctx.state_file)
     changes: dict[str, object] = {}
+    for key in ("BRANCH_NAME", "PR_URL"):
+        value = state.get(key, "")
+        if value:
+            _validate_ship_state_value(key, value)
     for key, field in (
         ("BRANCH_NAME", "branch_name"),
         ("ISSUE_NUMBER", "issue_number"),
@@ -1320,6 +1337,8 @@ def run_ship(
         if "\n" in ctx.pr_url or "\r" in ctx.pr_url:
             raise ShipError("invalid newline in ship state value: PR_URL")
         if resume.start == "done":
+            done_ctx = _hydrate_resume_context(ctx, resume).with_(pr_closed=True)
+            _write_terminal_finalize_if_terminal(done_ctx, Outcome.OK, "done")
             return ShipResult(
                 Outcome.OK,
                 pr_number=resume.pr_number,
@@ -1610,6 +1629,27 @@ def run_ship(
                     transient_retries=transient_retries,
                     monitor=monitor,
                 )
+                if (
+                    monitor.result.outcome is Outcome.TRANSIENT
+                    and persisted[3] >= _PYTHON_TRANSIENT_STALL_ATTEMPT
+                ):
+                    _write_terminal_state(
+                        working,
+                        Outcome.STALLED,
+                        "transient-retry-cap",
+                        iteration=persisted[0],
+                        rebase_count=persisted[1],
+                        fix_attempts=persisted[2],
+                        transient_retries=persisted[3],
+                        failed_run_id=monitor.failed_run_id or "",
+                    )
+                    return ShipResult(
+                        Outcome.STALLED,
+                        failed_run_id=monitor.failed_run_id or "",
+                        pr_number=working.pr_number,
+                        pr_url=working.pr_url,
+                        detail=monitor.result.detail or "transient retry cap",
+                    )
                 _write_terminal_state(
                     working,
                     monitor.result.outcome,
@@ -1923,7 +1963,10 @@ def _persist_stall_metadata_if_needed(ctx: RunContext, result: ShipResult, tmpdi
         _fill_if_empty(data, "REPO", state.get("REPO"), ctx.repo)
         _fill_if_empty(data, "RUN_ID", state.get("RUN_ID"), ctx.run_id)
         _fill_if_empty(data, "PR_NUMBER", result.pr_number, state.get("PR_NUMBER"), ctx.pr_number)
-        _fill_if_empty(data, "PR_URL", result.pr_url, state.get("PR_URL"), ctx.pr_url)
+        state_pr_url = state.get("PR_URL", "")
+        if state_pr_url and not _valid_pr_url(state_pr_url):
+            state_pr_url = ""
+        _fill_if_empty(data, "PR_URL", result.pr_url, state_pr_url, ctx.pr_url)
         _fill_if_empty(data, "PR_TITLE", state.get("PR_TITLE"), ctx.pr_title)
         _fill_if_empty(data, "MERGE_RESULT", result.merge_result, state.get("MERGE_RESULT"), ctx.merge_result)
         _fill_if_empty(data, "FORKED_TARGET", state.get("FORKED_TARGET"), "true" if ctx.forked else "false")

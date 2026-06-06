@@ -114,12 +114,17 @@ read_lines_kv() {
 }
 merge_replace_state_keys() {
     local file=$1 blob=$2 tmp
+    [ -f "$file" ] || return 1
+    [ ! -L "$file" ] || return 1
     tmp="${file}.tmp.$$"
+    [ ! -e "$tmp" ] || return 1
+    [ ! -L "$tmp" ] || return 1
     awk -F= '$1 !~ /^(LINES_PR_NUMBER|LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/' "$file" >"$tmp"
     {
         printf 'LINES_PR_NUMBER=%s\n' "${PR_NUMBER:-0}"
         printf '%s\n' "$blob" | awk -F= '$1 ~ /^(LINES_STATUS|CODE_ADDED|CODE_DELETED|LOGS_ADDED|LOGS_DELETED)$/ { print }'
     } >>"$tmp"
+    [ ! -L "$file" ] || { rm -f "$tmp"; return 1; }
     mv -f "$tmp" "$file"
 }
 if [ "$REPO_UNAV" = "true" ]; then

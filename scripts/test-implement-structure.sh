@@ -111,6 +111,10 @@ grep -Fq 'phantom-probe-with-warn.sh" --step 8-pre-bump' "$SKILL_MD" \
 
 grep -Fq 'default `LARCH_SHIP_PR_IMPL=python` runs' "$SKILL_MD" \
   || fail "SKILL.md must document Python ship driver as the default"
+grep -Fq 'Critical boundary: after the active Step 8+ driver (`python3 …/python/ship.py` unless `LARCH_SHIP_PR_IMPL=bash`) exits on the default Python path, route only from process exit code + JSON stdout per the Python driver selector' "$SKILL_MD" \
+  || fail "SKILL.md anti-halt reminder must pin default-Python JSON routing"
+grep -Fq 'on the default path, `python/ship.py` writes `$IMPLEMENT_TMPDIR/finalize-state.sh` on terminal driver outcomes' "$SKILL_MD" \
+  || fail "SKILL.md NEVER #11 must pin default-Python finalize-state writer"
 grep -Fq 'When `LARCH_SHIP_PR_IMPL=bash`, run the bash contract below byte-for-byte' "$SKILL_MD" \
   || fail "SKILL.md must document bash as explicit opt-in"
 grep -Fq 'driven by the **Python driver selector** below' "$SKILL_MD" \
@@ -1080,7 +1084,7 @@ real_python3="$(command -v python3)"
 [[ -n "$real_python3" ]] || fail "python3 required for ship-driver guard runtime probe"
 cat > "$guard_tmp/python3" <<SHIM
 #!/usr/bin/env bash
-if [ "\$1" = "-c" ] && printf '%s\n' "\$2" | grep -Fq 'sys.version_info >= (3, 11)'; then
+if [ "\$1" = "-c" ] && printf '%s\n' "\$2" | grep -Fq 'sys.version_info >= (3, 12)'; then
   exit 1
 fi
 exec "$real_python3" "\$@"

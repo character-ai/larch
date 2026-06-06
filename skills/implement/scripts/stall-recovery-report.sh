@@ -623,7 +623,7 @@ cmd_classify() {
         finalize_exit_code=$(kv_get "$finalize_file" EXIT_CODE "")
     fi
 
-    if [ -r "$session_env" ]; then
+    if validate_optional_state_evidence_file "$session_env" "session-env.sh"; then
         session_stall_step=$(kv_get "$session_env" STALL_STEP "")
         session_phase=$(kv_get "$session_env" PHASE "")
         session_stall_tracking=$(kv_get "$session_env" STALL_TRACKING "false")
@@ -651,15 +651,15 @@ cmd_classify() {
             detail_log_valid=true
         fi
     fi
-    if [ "$detail_log_valid" != true ] && [ -r "$state_file" ]; then
+    if [ "$detail_log_valid" != true ] && validate_optional_state_evidence_file "$state_file" "ship-pr-state.sh"; then
         evidence="$evidence
 $(cat "$state_file")"
     fi
-    if [ "$detail_log_valid" != true ] && [ -r "$finalize_file" ]; then
+    if [ "$detail_log_valid" != true ] && validate_optional_state_evidence_file "$finalize_file" "finalize-state.sh"; then
         evidence="$evidence
 $(cat "$finalize_file")"
     fi
-    if [ "$detail_log_valid" != true ] && [ -r "$session_env" ]; then
+    if [ "$detail_log_valid" != true ] && validate_optional_state_evidence_file "$session_env" "session-env.sh"; then
         evidence="$evidence
 $(cat "$session_env")"
     fi
