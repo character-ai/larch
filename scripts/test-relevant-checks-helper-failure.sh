@@ -96,4 +96,35 @@ out=$(XDG_CACHE_HOME="$xdg" CLAUDE_PROJECT_DIR="$repo_broken_symlink" "$HELPER" 
 [[ "$out" == *"STATUS=fail"* ]] || fail "broken symlink missing fail envelope: $out"
 [[ "$out" == *"FAILURE_REASON=check-script-symlink-broken"* ]] || fail "broken symlink missing failure reason: $out"
 
+# Regression pin: LARCH_QUIET_* env vars are scrubbed before relevant-checks.sh
+# runs, so a quiet-asserting harness passes even when the caller exports them.
+repo_quiet="$tmp/repo-quiet-scrub"
+mkdir -p "$repo_quiet/scripts"
+cat > "$repo_quiet/scripts/relevant-checks.sh" <<'SCRIPT'
+#!/usr/bin/env bash
+echo "=== Running pre-commit on 1 changed file(s) ==="
+echo "=== Running agent-lint ==="
+# Fail if LARCH_QUIET_DISABLE was not scrubbed — simulates a quiet-asserting harness.
+if [ "${LARCH_QUIET_DISABLE:-}" = "1" ]; then
+    echo "ERROR: LARCH_QUIET_DISABLE leaked into checks pipeline"
+    exit 1
+fi
+SCRIPT
+chmod +x "$repo_quiet/scripts/relevant-checks.sh"
+xdg_quiet="$tmp/cache-quiet"
+session_quiet="$xdg_quiet/larch/sessions/claude-implement-repo-QUIET"
+mkdir -p "$session_quiet"
+rc_quiet=0
+out_quiet=$(
+    LARCH_QUIET_DISABLE=1 \
+    LARCH_QUIET_ACTIVE=1 \
+    LARCH_QUIET_PID=$$ \
+    LARCH_QUIET_LOG_FILE="$tmp/caller-quiet.log" \
+    LARCH_QUIET_LOG="$tmp/caller-quiet.log" \
+    XDG_CACHE_HOME="$xdg_quiet" CLAUDE_PROJECT_DIR="$repo_quiet" \
+    "$HELPER" --site step3 --tmpdir "$session_quiet"
+) || rc_quiet=$?
+[[ "$rc_quiet" -eq 0 ]] || fail "quiet-scrub: expected exit 0 with LARCH_QUIET_* exported; got $rc_quiet; out=$out_quiet"
+[[ "$out_quiet" == *"RELEVANT_CHECKS_OK=true"* ]] || fail "quiet-scrub: expected RELEVANT_CHECKS_OK=true; got: $out_quiet"
+
 echo "test-relevant-checks-helper-failure: ok"

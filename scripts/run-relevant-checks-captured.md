@@ -9,6 +9,7 @@ Inputs: `--site <label>` is a slash-free label matching `[A-Za-z0-9._-]+` with n
 Invariants:
 
 - The helper uses `set -euo pipefail` and captures the underlying check exit code with an `if command; then rc=0; else rc=$?; fi` block.
+- Before spawning `scripts/relevant-checks.sh`, the helper unsets the full `LARCH_QUIET_*` family (`LARCH_QUIET_DISABLE`, `LARCH_QUIET_ACTIVE`, `LARCH_QUIET_PID`, `LARCH_QUIET_LOG_FILE`, `LARCH_QUIET_LOG`) inside the subshell so test harnesses downstream run hermetically regardless of the invoking skill session's quiet state. Per-harness guards remain as defense-in-depth.
 - It resolves the repo root from `CLAUDE_PROJECT_DIR`, falling back to `git -C "$PWD" rev-parse --show-toplevel`.
 - After tmpdir validation, `--site step3` and `--site step6` mark `Step 3 — checks first pass` and `Step 6 — checks second pass` respectively through `scripts/token-ledger.sh` and `scripts/timing-ledger.sh`, using the canonical session tmpdir as `IMPLEMENT_TMPDIR`. These audit marks are best-effort and do not change the checks result. The `step5-review-fixes` site is intentionally not marked here because Step 5 is marked by the parent `/implement` Step 5 preamble before `scripts/run-step5-review.sh` dispatches `review-and-fix.sh`.
 - It creates `$tmpdir/relevant-checks/` with mode `700` under `umask 077`; log and redacted-log files are mode `600`. After `mkdir -p`, the helper rejects a pre-existing symlink at the log dir with `STATUS=fail FAILURE_REASON=log-dir-symlink-rejected`.
