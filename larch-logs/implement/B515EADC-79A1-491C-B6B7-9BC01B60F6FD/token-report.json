@@ -241,6 +241,32 @@
       {
         "step": "Step 8 — version bump",
         "totals": {
+          "input": 5,
+          "cache_read": 820205,
+          "cache_create": 2615,
+          "cache_create_5m": 2615,
+          "cache_create_1h": 0,
+          "output": 2669,
+          "total": 825494
+        },
+        "skills": [
+          {
+            "skill": "larch:implement",
+            "totals": {
+              "input": 5,
+              "cache_read": 820205,
+              "cache_create": 2615,
+              "cache_create_5m": 2615,
+              "cache_create_1h": 0,
+              "output": 2669,
+              "total": 825494
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 6 — checks second pass",
+        "totals": {
           "input": 0,
           "cache_read": 0,
           "cache_create": 0,
@@ -253,22 +279,22 @@
       }
     ],
     "totals": {
-      "input": 35,
-      "cache_read": 4932631,
-      "cache_create": 57668,
-      "cache_create_5m": 57668,
+      "input": 40,
+      "cache_read": 5752836,
+      "cache_create": 60283,
+      "cache_create_5m": 60283,
       "cache_create_1h": 0,
-      "output": 28996,
-      "total": 5019330
+      "output": 31665,
+      "total": 5844824
     }
   },
   "BUCKETS_claude": {
-    "input": 35,
-    "cache_read": 4932631,
-    "cache_create_5m": 57668,
+    "input": 40,
+    "cache_read": 5752836,
+    "cache_create_5m": 60283,
     "cache_create_1h": 0,
-    "output": 28996,
-    "total": 5019330
+    "output": 31665,
+    "total": 5844824
   },
   "BUCKETS_codex": {
     "input": 0,
