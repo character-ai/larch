@@ -1,0 +1,14 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	out_of_scope	latent	correctness	python/oos.py:32-33	Proposed `_OOS_HEADER_RE` is not semantically equivalent to the awk FINDING branch for tag-after-title headers	Awk uses `index($0,"[OUT_OF_SCOPE]")` anywhere on the line after `^###[[:space:]]+FINDING_[0-9]+:`; Python `FINDING_\d+:\s*\[OUT_OF_SCOPE\]` requires the tag immediately after the colon (whitespace only). Headers like `### FINDING_1: Some Title [OUT_OF_SCOPE]` count in awk but not in Python, so bash and Python gates can disagree on defense-in-depth inputs even though the plan claims lockstep parity	Only worth fixing if that header shape must be supported: split FINDING detection in Python to `^###\s+FINDING_\d+:` plus `'[OUT_OF_SCOPE]' in line` (mirror awk), or narrow awk to the same anchored tag rule and document the canonical header grammar
+
+### 1. [OUT_OF_SCOPE] latent / correctness — `python/oos.py:32-33`
+
+The plan’s awk FINDING branch (`index($0,"[OUT_OF_SCOPE]")` after a `FINDING_[0-9]+:` prefix) and the proposed Python alternation `FINDING_\d+:\s*\[OUT_OF_SCOPE\]` diverge when `[OUT_OF_SCOPE]` appears after title text on the same line (`### FINDING_1: Some Title [OUT_OF_SCOPE]`). Canonical producers (`collect-findings.sh`, aggregator output, committed run logs) always emit `### FINDING_N: [OUT_OF_SCOPE] …` with the tag immediately after the colon, so this does not block the #3550 fix. For the shapes the plan targets — bare `### FINDING_1: [OUT_OF_SCOPE]`, extra whitespace before the tag, and `### FINDING_N: [OUT_OF_SCOPE] Title` — awk and Python agree.
+
+**Verified (no finding):**
+
+- **File-level guard** (`python/oos.py:76-85`): extending `_OOS_HEADER_RE` to the FINDING alternation makes `_OOS_HEADER_RE.search(text)` true for files containing only legacy tagged FINDING headers; `re.MULTILINE` anchors `^` at line starts, so the guard no longer short-circuits to 0 before `_count_non_security_markdown` runs.
+- **Canonical header shapes** in fixtures and logs (`skills/review/scripts/test-tally-code-votes.sh:39`, `larch-logs/implement/*/oos-accepted-review.md`) match both parsers after the proposed change.
+- **Security exclusion parity** for recognized blocks: awk line 13 (`**focus-area**: security` bullet) and Python `_SECURITY_FOCUS_RE` (`python/oos.py:33-37`, applied at lines 69-70) use the same dedicated-field predicate; a `### FINDING_N: [OUT_OF_SCOPE]` block with `- **focus-area**: security` is started then excluded in both paths.
+- **Producer normalization** (`tally-code-votes.sh` accepted branch) rewrites any `### <WORD>_<n>:` header to `### OOS_<seq>:`, which is the primary fix; reader hardening intentionally requires `[OUT_OF_SCOPE]` on FINDING headers and skips bare scope-drift `### FINDING_N:` per plan edge cases.
+- **Scope** stays minimum-change: no gate math, tally voting, or `/issue` schema changes.
