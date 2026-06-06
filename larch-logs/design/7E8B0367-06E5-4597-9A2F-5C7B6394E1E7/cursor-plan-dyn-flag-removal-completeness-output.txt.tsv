@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/write-run-params.sh:23,100-102,192-202	Plan misnames the writer CLI flag as `--manual-requested`; production flag is `--manual-gate-b`	Implementer drops a nonexistent flag and leaves `--manual-gate-b` parsing/emission in place — `manual_gate_b` keeps flowing into run-params.json	In `write-run-params.sh` step name `--manual-gate-b` explicitly; remove `MANUAL_GATE_B`, usage line, `require_enum`, and jq `--arg manual_gate_b`

@@ -1,0 +1,93 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,6 +1,6 @@
+ # Implementation Plan: Stop the /design scope-creep ratchet (#3512)
+ 
+-Three coupled loop-level changes, plus the operator-chosen full removal of the `--manual` surface, with KV plumbing and step-boundary contracts for merged drift.
++Three coupled loop-level changes, plus the operator-chosen full removal of the `--manual` surface, with KV plumbing, FD3 drift-section emission, and step-boundary contracts for merged drift.
+ 
+ ## Approach
+ 
+@@ -14,7 +14,7 @@ Three coupled loop-level changes, plus the operator-chosen full removal of the
+ 
+ 3. **Remove `--manual` / `-m` / `manual_gate_b` entirely** (operator decision). With no auto-apply on either tier, the `manual_gate_b=false` auto-apply branch is deleted; Gate B always presents accepted findings for explicit operator choice.
+ 
+-4. **Wire drift through the merged post-plan fence.** Gate B apply and discussion re-emits use `design-postplan-emit.sh --with-plan-size`, not standalone Step 2b.5. Extend `_postplan_finish_merged_plan_size` (after hard/partition checks, before under-threshold rc 0) to parse `DRIFT_*` KVs and exit **14** when `DRIFT_TRIGGER_FIRED=true`; mirror the Step 2b.5 Continue/Cancel prompt in `SKILL.md`, `approval-gates.md`, and `discussion-rounds.md` case arms.
++4. **Wire drift through the merged post-plan fence.** Gate B apply and discussion re-emits use `design-postplan-emit.sh --with-plan-size`, not standalone Step 2b.5. Extend `_postplan_finish_merged_plan_size` (after hard/partition checks, before under-threshold rc 0) to parse `DRIFT_*` KVs and exit **14** when `DRIFT_TRIGGER_FIRED=true`; call `_postplan_emit_drift_section` (baseline + ratios on FD3) before flush/exit 14 like hard/partition; mirror the Step 2b.5 Continue/Cancel prompt in `SKILL.md`, `approval-gates.md`, and `discussion-rounds.md` case arms.
+ 
+ Reuse decisions (keep the change minimal):
+ - Drift logic lives in the existing `check-plan-size.sh` + Step 2b.5 plumbing, not a new helper.
+@@ -30,6 +30,7 @@ Coordination: the issue-anchoring sibling also edits `plan-review-loop.sh` but i
+ ### UPDATED: `skills/design/scripts/plan-review-loop.sh`
+ - **Collapse to one single-pass path:** remove the `ROUND_CAP_ARG_SEEN==0` vs multi-round bifurcation (`if (( ROUND_CAP_ARG_SEEN == 0 ))` at ~1704). Always run exactly one `_run_plan_review_round`, then terminal-exit — **do not** treat the legacy `ROUND_CAP_ARG_SEEN==0` branch (~1704-1725) as the collapse template; `/design` always passes `--round-cap` via `run-step3-review.sh`, so deleting only the while-loop without collapsing the gate would leave production with no review round.
++- **Pre-round artifact clearing:** keep one `_clear_session_root_review_artifacts` call immediately before `_run_plan_review_round` in the collapsed path (same as the first multi-round iteration today) so Gate C re-entry does not leave stale `accepted-plan-findings.md` / `ballot.txt` at session root.
+ - Delete the inter-round auto-apply: the `_run_revise_with_status_parse` call, `_run_post_apply_pipeline` call, the `manual_mode` branch, and the convergence-driven `round_num++` loop-again (lines ~1730-1734, ~1821-1884).
+ - **Hoist post-round status mapping** from the multi-round body (~1780-1818) into the single-pass exit path: after one `_run_plan_review_round`, before `_terminal_exit`, apply the same post-round checks that set `LOOP_STATUS=tally-error`, `degraded-empty-collector`, and `zero-findings-degraded-panel` (do not leave `LOOP_STATUS=complete` on tally failure). Then map outcomes: findings present → `complete`; zero findings + healthy panel → `complete` (empty `accepted-plan-findings.md`); keep `zero-findings-degraded-panel`, `degraded-empty-collector`, `panel-failed`, `tally-error`, `main-agent-vote-required`.
+ - Drop the revise-derived statuses `converged`, `cap-hit`, `revision-failed`, `emit-plan-failed`, `optional-trailer-dedup-loss`, and the loop-internal `plan-size-trigger` / `plan-validator-defects` (validation now happens only at Step 2b + Gate B).
+@@ -52,11 +53,14 @@ Coordination: the issue-anchoring sibling also edits `plan-review-loop.sh` but i
+ - **Step 3 post-loop branch matrix**: remove the `converged|cap-hit` passive-summary row, the `revision-failed` / `emit-plan-failed` / `optional-trailer-dedup-loss` rows, and the loop-internal `plan-size-trigger` / `plan-validator-defects` rows. **Keep the `cap-reached` row** (outer Gate-C cap guard). `LOOP_STATUS=complete` always routes to Gate B for explicit apply. Update the `LOOP_STATUS` validation regex to the reduced enum **including `cap-reached`**.
+ - **Step 2b / Gate B / discussion merged fence case arms**: extend the existing `case "${_postplan_rc:-1}" in` to handle `_postplan_rc=14` (drift) with the same Continue/Cancel `AskUserQuestion` as standalone Step 2b.5; on Continue log `Warnings`, `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-2b.5"` (mirror rc=0 merged paths), then proceed; on Cancel export `SUMMARY_OUTCOME=cancelled-sprawl`, run Final summary, print `**ℹ /design cancelled by operator (plan drift).**`, exit 0. Parse `DRIFT_*` / `BASELINE_*` from `.design-postplan-emit-result.env` on merged paths; rely on `_postplan_emit_drift_section` FD3 output (do not re-run standalone Step 2b.5 display).
+-- **Step 2b.5** (retained standalone callers): add a drift branch (precedence: hard size trigger → partition → drift → no-trigger). When `DRIFT_TRIGGER_FIRED=true` and `HARD_TRIGGER_FIRED=false` and `PARTITION_REQUESTED=false`, print `## Plan Size — Drift` and fire `AskUserQuestion` (Continue / Cancel); on Continue log `Warnings`, `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-2b.5"`, then proceed.
++- **Step 2b.5** (retained standalone callers): extend item 3 rc=0 parse to bind `DRIFT_TRIGGER_FIRED`, `DRIFT_MULTIPLE`, `DRIFT_PLAN_RATIO`, `DRIFT_DIFF_RATIO`, `BASELINE_PLAN_LINES`, and `BASELINE_DIFF_LINES` from `_plan_size_out` (mirror `HARD_TRIGGER_FIRED` wiring). Add a drift branch (precedence: hard size trigger → partition → drift → no-trigger). When `DRIFT_TRIGGER_FIRED=true` and `HARD_TRIGGER_FIRED=false` and `PARTITION_REQUESTED=false`, print `## Plan Size — Drift` and fire `AskUserQuestion` (Continue / Cancel); on Continue log `Warnings`, `mkdir -p "$DESIGN_TMPDIR/.completed"` and `: > "$DESIGN_TMPDIR/.completed/step-2b.5"`, then proceed.
+ - **Step 2b**: note that `design-postplan-emit.sh --snapshot-original` writes the tier-agnostic drift baseline after plan-size computation.
+ - **Flag surface**: remove the `--manual` / `-m` row from the flag table and prose; remove the `manual_requested` Step 0b binding.
+-- **Step 0-pre block**: remove `MANUAL_REQUESTED` from the parse `case`, the `_seen_MANUAL_REQUESTED` guard, and change `_success_kv_count -ne 8` to `-ne 7`. **Step 0a/0b writer**: remove the `--manual-requested` append.
++- **Step 0-pre block**: remove `MANUAL_REQUESTED` from the parse `case`, the `_seen_MANUAL_REQUESTED` guard, and change `_success_kv_count -ne 8` to `-ne 7`. **Step 0a/0b writer**: remove the `--manual-requested` append.
++- **Step 0b sub-steps 5–6**: drop `manual_requested` from the Step 0-pre consume list and tier-resolution prose (`keep manual_requested=true` only when Step 0-pre binding is true); remove `--manual-requested "$manual_requested"` from the `design-init-runparams.sh` fenced invocation.
+ - **Gate B references**: align Step 3.5 prose with the always-explicit Gate B (no `manual_gate_b` mode).
+ 
+ ### UPDATED: `skills/design/references/approval-gates.md`
+@@ -78,8 +82,8 @@ Coordination: the issue-anchoring sibling also edits `plan-review-loop.sh` but i
+ - Remove the `--manual | -m` case (so `--manual` now hits the `--*` hard-error path) and the `MANUAL_REQUESTED=` output line. Drop `manual_requested`.
+ 
+ ### UPDATED: `skills/design/scripts/parse-design-argv.md`
+-- Drop `MANUAL_REQUESTED` from Machine output and exit-code table; change mandated success KV count from eight to seven. Update `test-parse-design-argv.md` if it pins the old count.
++- Drop `MANUAL_REQUESTED` from Machine output and exit-code table; change mandated success KV count from eight to seven. Update `test-parse-design-argv.md` if it pins the old count.
+ 
+-### UPDATED: `scripts/write-run-params.sh`
+-- Stop writing the `manual_gate_b` field. Drop the `--manual-requested` flag. Keep `schema_version: 3` (readers tolerate the absent field; the only readers are being removed).
++### UPDATED: `scripts/write-run-params.sh`
++- Stop writing the `manual_gate_b` field. Drop `--manual-gate-b` explicitly: remove `MANUAL_GATE_B` env binding, usage line, `require_enum`, and jq `--arg manual_gate_b`. Keep `schema_version: 3` (readers tolerate the absent field; the only readers are being removed).
+ 
+ ### UPDATED: `scripts/write-run-params.md`
+ - Remove `manual_gate_b` from the documented schema.
+@@ -118,9 +122,11 @@ Coordination: the issue-anchoring sibling also edits `plan-review-loop.sh` but i
+ - **KV plumbing (required for exit 14):** extend `parse_kv_from_output` with `DRIFT_*` / `BASELINE_*` parse arms (mirror `HARD_TRIGGER_FIRED` wiring); extend `_postplan_build_kvs` with matching defaults and forwarding so `_postplan_run_plan_size` binds drift KVs from `check-plan-size.sh` stdout into shell state and `.design-postplan-emit-result.env`.
+-- **Merged drift:** in `_postplan_finish_merged_plan_size`, after hard (`exit 12`) and partition (`exit 13`) checks and before under-threshold `exit 0`, branch on `DRIFT_TRIGGER_FIRED=true` → set `PLAN_SIZE_STATUS=drift-trigger`, flush `DRIFT_*` / `BASELINE_*` into `.design-postplan-emit-result.env`, `exit 14`.
+-- **Baseline write (timing):** on `--snapshot-original` only, after `_postplan_run_plan_size` succeeds (when `PLAN_LINES` / `DIFF_LINES` are populated), write `$DESIGN_TMPDIR/drift-baseline.env` on **both** tiers with a write-once guard (`[[ -e drift-baseline.env ]]` → skip). Do **not** write inside the early HARD `plan.txt-original` snapshot block (~456-484). Keep the existing HARD `plan.txt-original` snapshot unchanged.
++- **Merged drift:** in `_postplan_finish_merged_plan_size`, after hard (`exit 12`) and partition (`exit 13`) checks and before under-threshold `exit 0`, branch on `DRIFT_TRIGGER_FIRED=true` → call `_postplan_emit_drift_section` (baseline + ratios on FD3, mirroring `_postplan_emit_hard_section` / `_postplan_emit_partition_section`), set `PLAN_SIZE_STATUS=drift-trigger`, flush `DRIFT_*` / `BASELINE_*` into `.design-postplan-emit-result.env`, `exit 14`.
++- **Baseline write (timing + on-disk keys):** on `--snapshot-original` only, after `_postplan_run_plan_size` succeeds (when `PLAN_LINES` / `DIFF_LINES` are populated), write `$DESIGN_TMPDIR/drift-baseline.env` on **both** tiers with a write-once guard (`[[ -e drift-baseline.env ]]` → skip). Use keys matching `check-plan-size.sh` reads: `printf 'BASELINE_PLAN_LINES=%s\nBASELINE_DIFF_LINES=%s\n' "$PLAN_LINES" "$DIFF_LINES" > "$DESIGN_TMPDIR/drift-baseline.env"` (not `PLAN_LINES=` / `DIFF_LINES=`). Do **not** write inside the early HARD `plan.txt-original` snapshot block (~456-484). Keep the existing HARD `plan.txt-original` snapshot unchanged.
+ 
+ ### UPDATED: `skills/design/scripts/design-postplan-emit.md`
+-- Document tier-agnostic `drift-baseline.env` under `--snapshot-original` (post-`_postplan_run_plan_size`, write-once). Document merged `exit 14` / `PLAN_SIZE_STATUS=drift-trigger` and `DRIFT_*` / `BASELINE_*` result-env forwarding; add `DRIFT_*` / `BASELINE_*` to the `parse_kv_from_output` / `_postplan_build_kvs` allowlist.
++- Document tier-agnostic `drift-baseline.env` under `--snapshot-original` (post-`_postplan_run_plan_size`, write-once; on-disk keys `BASELINE_PLAN_LINES` / `BASELINE_DIFF_LINES`). Document `_postplan_emit_drift_section`, merged `exit 14` / `PLAN_SIZE_STATUS=drift-trigger`, and `DRIFT_*` / `BASELINE_*` result-env forwarding; add `DRIFT_*` / `BASELINE_*` to the `parse_kv_from_output` / `_postplan_build_kvs` allowlist.
+ 
+ ### UPDATED: `skills/design/references/plan-review.md`
+ - Rewrite Multi-round / legacy / `manual_gate_b` sections for single-pass review: one round per Step 3 entry, no inter-round auto-apply, inert/deprecated `--round-cap`, always-explicit Gate B apply. Update finding templates to remove `manual_gate_b` application wording.
+@@ -149,6 +155,7 @@ Coordination: the issue-anchoring sibling also edits `plan-review-loop.sh` but i
+ - **Merged drift exit 14 without KV plumbing.** `DRIFT_TRIGGER_FIRED` never binds if `parse_kv_from_output` / `_postplan_build_kvs` omit `DRIFT_*` / `BASELINE_*`. Mitigation: extend both helpers (mirror `HARD_TRIGGER_FIRED`) and add `test-design-postplan-emit.sh` drift-exit-14 case.
+ - **Merged fence omits drift exit 14.** Gate B growth past drift multiple silently continues. Mitigation: update `_postplan_finish_merged_plan_size`, `approval-gates.md`, `discussion-rounds.md`, and `SKILL.md` case arms together; add `test-design-postplan-emit.sh` drift-exit-14 case.
++- **Standalone Step 2b.5 omits DRIFT_* parse.** Unbound `DRIFT_TRIGGER_FIRED` silently continues on retained direct `check-plan-size.sh` callers. Mitigation: extend Step 2b.5 item 3 parse list and `test-design-structure.sh` grep pins (same pattern as existing `HARD_TRIGGER_FIRED` pins).
++- **Thin-fence harness omits exit arm 14.** `assert_postplan_thin_fence` / `assert_postplan_reference_thin_fence` still mandate only rc arms 0, 10, 11, 12, 13, 2, 1. Mitigation: extend both loops (and exit 12/13 contains checks ~830-831) to include arm 14 and `exit 14` in `design-postplan-emit.sh`.
+ 
+ ## Testing strategy
+ 
+@@ -156,11 +163,13 @@ Coordination: the issue-anchoring sibling also edits `plan-review-loop.sh` but i
+ - **integration**: `scripts/test-design-multi-round-integration.sh` — retire or re-scope to single-pass (rename intent if the harness name implies multi-round).
+ - **cap guard**: `skills/design/scripts/test-step3-review-cap.sh` — confirm the outer Gate-C counter still persists/rolls back; remove inner-round assumptions.
+-- **drift (new coverage)**: extend `skills/design/scripts/test-check-plan-size.sh` with baseline-present-no-drift, drift-fires, baseline-absent-graceful, invalid-multiple-coercion, hard-trigger-precedence, and zero-baseline cases; extend `skills/design/scripts/test-design-postplan-emit.sh` with baseline-written-after-plan-size-on-snapshot, not-overwritten-on-reemit, and merged `exit 14` when `DRIFT_TRIGGER_FIRED=true`.
+-- **flag / resume removal**: `skills/design/scripts/test-parse-design-argv.sh` (drop `MANUAL_REQUESTED`, assert `--manual` rejected, 7-KV output), `skills/design/scripts/test-parse-design-argv.md` if count-pinned, `scripts/test-write-run-params.sh` (no `manual_gate_b`), `scripts/test-step0b-router-flag-recovery.sh`, `skills/design/scripts/test-write-design-current-env.sh`, `skills/design/scripts/test-design-route.sh` / `scripts/test-design-structure.sh` (drop `manual_gate_b` resume pin ~1547-1548; assert stale `manual_gate_b:true` resume succeeds without `--manual-requested`).
++- **drift (new coverage)**: extend `skills/design/scripts/test-check-plan-size.sh` with baseline-present-no-drift, drift-fires, baseline-absent-graceful, invalid-multiple-coercion, hard-trigger-precedence, and zero-baseline cases; extend `skills/design/scripts/test-design-postplan-emit.sh` with baseline-written-after-plan-size-on-snapshot (`BASELINE_PLAN_LINES` / `BASELINE_DIFF_LINES` keys), not-overwritten-on-reemit, merged `exit 14` when `DRIFT_TRIGGER_FIRED=true`, and FD3 `## Plan Size — Drift` output from `_postplan_emit_drift_section`.
++- **flag / resume removal**: `skills/design/scripts/test-parse-design-argv.sh` (drop `MANUAL_REQUESTED`, assert `--manual` rejected, 7-KV output), `skills/design/scripts/test-parse-design-argv.md` if count-pinned, `scripts/test-write-run-params.sh` (no `manual_gate_b`), `scripts/test-lint-skill-md-flag-signature.sh` (drop `--manual-gate-b` signature pin / lint stub shapes), `scripts/test-step0b-router-flag-recovery.sh`, `skills/design/scripts/test-write-design-current-env.sh`, `scripts/test-design-structure.sh` (drop `manual_gate_b` resume pin ~1547-1548; assert stale `manual_gate_b:true` resume succeeds without `--manual-requested`; extend `assert_postplan_thin_fence` / `assert_postplan_reference_thin_fence` and exit 12/13 contains checks to include arm 14; add Step 2b.5 `DRIFT_*` / `BASELINE_*` parse grep pins).
+ - **single-pass collapse**: `test-plan-review-loop.sh` assert `--round-cap` callers still execute one review round (no `ROUND_CAP_ARG_SEEN` fall-through); assert post-round mapping sets `tally-error` / `degraded-empty-collector` / `zero-findings-degraded-panel` (not bare `complete` on failure paths).
+ - **cap-reached retention**: `skills/design/scripts/test-step3-orchestrator-fence.sh` — reduced `LOOP_STATUS` regex **retains `cap-reached`**; assert cap-reached short-circuit unchanged.
+ - **structure / prompt invariants**: `scripts/test-design-structure.sh`, `scripts/test-prompt-template-invariants.sh` — update SKILL.md/reference assertions (branch matrix incl. `cap-reached`, flag table, Step 0-pre count, Gate B prose, plan-review.md single-pass contract, parse-design-argv.md seven-KV contract, public doc pins).
+@@ -171,5 +180,5 @@ Coordination: the issue-anchoring sibling also edits `plan-review-loop.sh` but i
+ 
+ - Remove the now-orphaned `skills/design/scripts/revise-plan-with-waterfall.sh` (+ `.md` + `scripts/test-revise-plan-with-waterfall.sh`) once no caller remains. Left in place here to keep this change contained.
+ 
+-diff_added: 640
++diff_added: 720
+ diff_deleted: 540
+-diff_lines: 1180
++diff_lines: 1260
