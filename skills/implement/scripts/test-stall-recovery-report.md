@@ -31,7 +31,7 @@ Case map:
   - mixed create plus invalid dedup URL: valid create URL retained instead of being overwritten by the invalid duplicate URL;
   - dedup without any valid URL: `NORMALIZED=false`, `REASON=issue-url-missing`, and stale env removal;
   - failed counters, per-item failure, non-zero `/issue` exit, missing exit code, and write failure: `NORMALIZED=false`, the expected `REASON` token, and stale env removal.
-- Case 21 covers exit-code boundaries, malformed and symlinked state rejection, and rejection of out-of-tmpdir or symlinked classification/body/output files.
+- Case 21 covers exit-code boundaries, malformed and symlinked state rejection, rejection of out-of-tmpdir or symlinked classification/body/output files, and path-containment enforcement for `normalize-issue-env` (out-of-tmpdir `--issue-stdout-file` and `--output-file` each exit 1 with a clear stderr message).
 - Case 22 covers clear/seed durability: keyed and keyless clear paths, symlink and malformed guards, atomic temp-read / `mv` / destination-read failure simulations, seed rewrite/seed modes, destination assertions, and classification fallback for keyless state.
 
 The classify harness includes a finalize-only stall case: when `finalize-state.sh` carries `STALL_TRACKING`, `STALL_STEP`, `BAIL_REASON`, and `EXIT_CODE` while `ship-pr-state.sh` lacks stall keys, classification still returns sanitized bail/step output and a non-`none` resume hint from the four-layer Step 18a evidence order.

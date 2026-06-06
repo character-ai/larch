@@ -469,6 +469,7 @@ PY
 
 resume_hint_for() {
     local class=$1 step=$2 phase=$3
+    step=$(safe_step_value "$step")
     case "$class" in
         contract-failure|same-cause-repeat|unrecoverable) printf 'none\n'; return 0 ;;
     esac
@@ -1023,7 +1024,8 @@ cmd_issue_input_file() {
     validate_tmpdir_write_file "$tmpdir" "$out_file" "--output-file" false || exit 1
     failure_class=$(safe_class_value "$(kv_get "$class_file" FAILURE_CLASS "unrecoverable")")
     step=$(safe_step_value "$(kv_get "$class_file" STALL_STEP "unknown")")
-    { printf '### [Bug] /implement stall: %s at %s\n\n' "$failure_class" "$step"; cat "$body_file"; } >"$out_file.tmp.$$"
+    { printf '### [Bug] /implement stall: %s at %s\n\n' "$failure_class" "$step"; cat "$body_file"; } \
+        | "$SCRIPTS_DIR/redact-secrets.sh" >"$out_file.tmp.$$"
     mv -f "$out_file.tmp.$$" "$out_file"
     truthy "${LARCH_STALL_RECOVERY_DRY_RUN:-}" && dry_run=true
     emit_kv INPUT_FILE "$out_file"

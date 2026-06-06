@@ -1059,6 +1059,20 @@ assert_eq 1 "$RC" "21: issue-input-file rejects output file outside tmpdir"
 assert_contains "--output-file outside implement tmpdir" "$(cat "$SANDBOX/case21-issue-out.out.err")" "21: issue-input-file output outside tmpdir stderr"
 rm -f "$outside_out"
 
+dir=$(make_tmp case21-normalize-issue-stdout-outside)
+outside_stdout=$(mktemp "${TMPDIR:-/tmp}/stall-recovery-normalize-stdout-outside.XXXXXX")
+printf 'ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=1\nISSUE_1_URL=https://github.com/x/y/issues/1\n' >"$outside_stdout"
+run_capture "$SANDBOX/case21-normalize-issue-stdout-outside.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$outside_stdout" --issue-exit-code 0
+assert_eq 1 "$RC" "21: normalize-issue-env rejects issue-stdout-file outside tmpdir"
+assert_contains "--issue-stdout-file outside implement tmpdir" "$(cat "$SANDBOX/case21-normalize-issue-stdout-outside.out.err")" "21: normalize-issue-env outside stdout stderr"
+rm -f "$outside_stdout"
+outside_normalize_out=$(mktemp "${TMPDIR:-/tmp}/stall-recovery-normalize-out-outside.XXXXXX")
+printf 'ISSUES_CREATED=1\nISSUES_FAILED=0\nISSUES_DEDUPLICATED=0\nISSUE_1_NUMBER=1\nISSUE_1_URL=https://github.com/x/y/issues/1\n' >"$dir/issue.out"
+run_capture "$SANDBOX/case21-normalize-output-outside.out" "$SCRIPT" normalize-issue-env --implement-tmpdir "$dir" --issue-stdout-file "$dir/issue.out" --issue-exit-code 0 --output-file "$outside_normalize_out"
+assert_eq 1 "$RC" "21: normalize-issue-env rejects output-file outside tmpdir"
+assert_contains "--output-file outside implement tmpdir" "$(cat "$SANDBOX/case21-normalize-output-outside.out.err")" "21: normalize-issue-env outside output stderr"
+rm -f "$outside_normalize_out"
+
 dir=$(make_tmp case22-clear-success)
 write_state "$dir" 8 ci-initial "adopted-issue-closed" "BAIL_FAILURE_DETAIL_LOG=$dir/failure.log"
 run_capture "$SANDBOX/case22-clear-success.out" "$SCRIPT" clear-stall --implement-tmpdir "$dir"
