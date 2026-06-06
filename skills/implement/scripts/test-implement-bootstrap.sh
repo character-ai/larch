@@ -2671,12 +2671,12 @@ write_preflight_plan
 out=$(run_bootstrap --up-to-phase coder --issue-number 123 --run-id runBreadcrumbCoder --preflight-tmpdir "$SANDBOX/preflight" 2>&1) && rc=$? || rc=$?
 assert_rc "$rc" 0 "Edge-breadcrumb-count-coder-green exit 0"
 n=$(printf '%s\n' "$out" | grep -cF '→ step0:' || true)
-if [ "$n" -eq 5 ]; then
+if [ "$n" -eq 6 ]; then
     PASS=$((PASS + 1))
-    echo "PASS: Edge-breadcrumb-count-coder-green exactly five step0 breadcrumbs"
+    echo "PASS: Edge-breadcrumb-count-coder-green exactly six step0 breadcrumbs"
 else
     FAIL=$((FAIL + 1))
-    echo "FAIL: Edge-breadcrumb-count-coder-green expected 5 got $n"
+    echo "FAIL: Edge-breadcrumb-count-coder-green expected 6 got $n"
     printf '%s\n' "$out" | sed 's/^/    /'
 fi
 n=$(printf '%s\n' "$out" | grep -cF '→ step0: coder=codex' || true)
