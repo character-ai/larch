@@ -1,6 +1,18 @@
 #!/usr/bin/env bash
 # Unified offline regression harness for scripts/launch-review.sh.
 set -euo pipefail
+
+# --section codex|cursor-core|cursor-retry selects a sub-suite for shard distribution.
+# With no --section all suites run sequentially (backward-compatible).
+SECTION=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --section) SECTION="${2:?--section requires an argument}"; shift 2 ;;
+        *) echo "Unknown arg: $1" >&2; exit 2 ;;
+    esac
+done
+section_runs() { [[ -z "$SECTION" || "$SECTION" == "$1" ]]; }
+
 unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR || true
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
@@ -44,6 +56,7 @@ assert_tool_validation() {
 
 assert_tool_validation
 
+if section_runs codex; then
 echo 'Running launch-review codex suite'
 (
 # Offline regression harness for scripts/launch-review.sh --tool codex.
@@ -1625,8 +1638,10 @@ fi
 printf 'PASS: test-launch-review.sh --tool codex - %s assertions passed\n' "$PASS"
 
 ) || OVERALL_FAIL=1
+fi  # end section: codex
 
-echo 'Running launch-review cursor suite'
+if section_runs cursor-core; then
+echo 'Running launch-review cursor-core suite'
 (
 # Regression test for launch-review.sh --tool cursor sentinel ownership and retry metadata.
 #
@@ -1654,7 +1669,9 @@ export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
 
 # shellcheck disable=SC2030,SC2031
 export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
+# shellcheck disable=SC2030
 export LARCH_CURSOR_MODEL=test-cursor-model
+# shellcheck disable=SC2030
 export LARCH_CURSOR_LAUNCH_JITTER_MS=0
 
 PASS=0
@@ -1689,30 +1706,6 @@ assert_grep() {
         pass
     else
         fail "$label: expected $path to match $pattern"
-    fi
-}
-
-assert_regex() {
-    local label="$1"
-    local pattern="$2"
-    local path="$3"
-    if grep -Eq -- "$pattern" "$path"; then
-        pass
-    else
-        fail "$label: expected $path to match regex $pattern"
-    fi
-}
-
-assert_meta_stderr_sink_before_outer_launcher() {
-    local label="$1"
-    local meta="$2"
-    local sink_ln outer_ln
-    sink_ln=$(grep -m 1 -n '^STDERR_SINK=' "$meta" 2>/dev/null | cut -d: -f1)
-    outer_ln=$(grep -m 1 -n '^OUTER_LAUNCHER=' "$meta" 2>/dev/null | cut -d: -f1)
-    if [[ -n "$sink_ln" && -n "$outer_ln" && "$sink_ln" -lt "$outer_ln" ]]; then
-        pass
-    else
-        fail "$label"
     fi
 }
 
@@ -2714,19 +2707,79 @@ else
     fail "cap-hit path must not invoke the underlying Cursor binary (pid file written)"
 fi
 
-# ── Serial lock regression (issue #1960) ──────────────────────────────────────
-# cursor reads cursor-user/cursor-access-token from the macOS keychain at
-# startup even when --api-key is provided; 5 parallel launchers race that read
-# and some fail (exit 1, ~10s). The fix serializes cursor starts via a
-# POSIX-atomic mkdir lock. These cases use LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME
-# to exercise the Darwin path on any OS.
-IMPLEMENT_TMPDIR_SL="$TMPDIR/implement-sl"
-mkdir -p "$IMPLEMENT_TMPDIR_SL"
-SERIAL_LOCK_USER="larch-test-sl-$$"
-SERIAL_LOCK_PATH="/tmp/larch-cursor-serial-${SERIAL_LOCK_USER}.lock"
-rm -rf "$SERIAL_LOCK_PATH"
+if [[ "$FAIL" -ne 0 ]]; then
+    printf 'FAIL: test-launch-review.sh --tool cursor-core - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
+    printf '  %s\n' "${FAIL_DETAILS[@]}" >&2
+    exit 1
+fi
 
-# Restore a minimal cursor stub that produces valid JSON output.
+printf 'PASS: test-launch-review.sh --tool cursor-core - %s assertions passed\n' "$PASS"
+
+) || OVERALL_FAIL=1
+fi  # end section: cursor-core
+
+if section_runs cursor-retry; then
+echo 'Running launch-review cursor-retry suite'
+(
+set -euo pipefail
+REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
+LARCH_TEST_REPO_ROOT="$REPO_ROOT"
+export LARCH_TEST_REPO_ROOT
+LAUNCHER="$TMPROOT/bin/launch-review-cursor"
+mkdir -p "$(dirname "$LAUNCHER")"
+cat > "$LAUNCHER" <<'LARCH_REVIEW_CURSOR_SHIM'
+#!/usr/bin/env bash
+exec "$LARCH_TEST_REPO_ROOT/scripts/launch-review.sh" --tool cursor "$@"
+LARCH_REVIEW_CURSOR_SHIM
+chmod +x "$LAUNCHER"
+# shellcheck disable=SC2030
+TMPDIR="$(mktemp -d /tmp/larch-test-launch-cursor-retry-XXXXXX)"
+trap 'rm -rf "$TMPDIR"' EXIT
+unset LARCH_EXECUTION_ISSUES_LOG SESSION_ENV_PATH IMPLEMENT_TMPDIR REVIEW_TMPDIR || true
+# shellcheck disable=SC2030,SC2031
+export LARCH_EXECUTION_ISSUES_LOG="$TMPDIR/execution-issues.md"
+# shellcheck disable=SC2030,SC2031
+export LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT=0
+# shellcheck disable=SC2030,SC2031
+export RUN_EXTERNAL_AGENT_POLL_INTERVAL=0.05
+# shellcheck disable=SC2030,SC2031
+export LARCH_CURSOR_MODEL=test-cursor-model
+# shellcheck disable=SC2030,SC2031
+export LARCH_CURSOR_LAUNCH_JITTER_MS=0
+
+PASS=0
+FAIL=0
+FAIL_DETAILS=()
+
+pass() { PASS=$((PASS + 1)); }
+fail() { FAIL=$((FAIL + 1)); FAIL_DETAILS+=("$1"); }
+
+assert_equals() {
+    local label="$1" expected="$2" actual="$3"
+    if [[ "$actual" == "$expected" ]]; then pass; else fail "$label: expected '$expected', got '$actual'"; fi
+}
+
+assert_grep() {
+    local label="$1" pattern="$2" path="$3"
+    if grep -q -- "$pattern" "$path"; then pass; else fail "$label: expected $path to match $pattern"; fi
+}
+
+# shellcheck disable=SC2329
+assert_regex() {
+    local label="$1" pattern="$2" path="$3"
+    if grep -Eq -- "$pattern" "$path"; then pass; else fail "$label: expected $path to match regex $pattern"; fi
+}
+
+# shellcheck disable=SC2329
+assert_meta_stderr_sink_before_outer_launcher() {
+    local label="$1" meta="$2" sink_ln outer_ln
+    sink_ln=$(grep -m 1 -n '^STDERR_SINK=' "$meta" 2>/dev/null | cut -d: -f1)
+    outer_ln=$(grep -m 1 -n '^OUTER_LAUNCHER=' "$meta" 2>/dev/null | cut -d: -f1)
+    if [[ -n "$sink_ln" && -n "$outer_ln" && "$sink_ln" -lt "$outer_ln" ]]; then pass; else fail "$label"; fi
+}
+
+STUB_BIN="$TMPDIR/bin"
+mkdir -p "$STUB_BIN"
 cat > "$STUB_BIN/cursor-sl" <<'STUB_SL'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -2735,6 +2788,19 @@ printf '{"result":"SL OK","usage":{"inputTokens":1,"outputTokens":2,"cacheReadTo
 STUB_SL
 chmod +x "$STUB_BIN/cursor-sl"
 ln -sf "$STUB_BIN/cursor-sl" "$STUB_BIN/cursor"
+
+IMPLEMENT_TMPDIR_SL="$TMPDIR/implement-sl"
+mkdir -p "$IMPLEMENT_TMPDIR_SL"
+
+# ── Serial lock regression (issue #1960) ──────────────────────────────────────
+# cursor reads cursor-user/cursor-access-token from the macOS keychain at
+# startup even when --api-key is provided; 5 parallel launchers race that read
+# and some fail (exit 1, ~10s). The fix serializes cursor starts via a
+# POSIX-atomic mkdir lock. These cases use LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME
+# to exercise the Darwin path on any OS.
+SERIAL_LOCK_USER="larch-test-sl-$$"
+SERIAL_LOCK_PATH="/tmp/larch-cursor-serial-${SERIAL_LOCK_USER}.lock"
+rm -rf "$SERIAL_LOCK_PATH"
 
 # Case SL-parallel: two concurrent launchers with FORCE_UNAME=Darwin and
 # DELAY=0 (lock released immediately) both complete successfully — neither
@@ -3374,15 +3440,17 @@ else
 fi
 
 if [[ "$FAIL" -ne 0 ]]; then
-    printf 'FAIL: test-launch-review.sh --tool cursor - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
+    printf 'FAIL: test-launch-review.sh --tool cursor-retry - %s failed, %s passed\n' "$FAIL" "$PASS" >&2
     printf '  %s\n' "${FAIL_DETAILS[@]}" >&2
     exit 1
 fi
 
-printf 'PASS: test-launch-review.sh --tool cursor - %s assertions passed\n' "$PASS"
+printf 'PASS: test-launch-review.sh --tool cursor-retry - %s assertions passed\n' "$PASS"
 
 ) || OVERALL_FAIL=1
+fi  # end section: cursor-retry
 
+if section_runs cursor-core; then
 # --plan-file and --feature-file: flag recognition tests (offline, no vendor launch).
 # REPO_ROOT may have been shadowed inside subshell groups above; capture afresh here.
 _PLAN_FILE_TESTS_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
@@ -3508,6 +3576,7 @@ CFGSTUB
     return "$fail"
 }
 _cursor_config_dir_tests || OVERALL_FAIL=1
+fi  # end section: cursor-core (post-subshell tests)
 
 if [[ "$OVERALL_FAIL" -ne 0 ]]; then
     echo "FAIL: test-launch-review.sh" >&2

@@ -7,15 +7,18 @@ import pytest
 from harness_shard_packer import pack
 
 
-def test_pack_basic_round_robin() -> None:
+def test_pack_basic_greedy() -> None:
     # 4 tests, 2 shards — sorted slowest-first: a(10), b(8), c(6), d(4)
-    # round-robin: a→1, b→2, c→1, d→2
+    # greedy LPT: a→1 (totals: 1=10, 2=0), b→2 (1=10, 2=8),
+    #             c→2 (lightest at 8; totals: 1=10, 2=14),
+    #             d→1 (lightest at 10; totals: 1=14, 2=14)
+    # Result: shard 1={a,d}=14, shard 2={b,c}=14 — perfectly balanced.
     medians = {"test-a": 10.0, "test-b": 8.0, "test-c": 6.0, "test-d": 4.0}
     shards = pack(medians, 2, guard="")
     assert "test-a" in shards[1]
     assert "test-b" in shards[2]
-    assert "test-c" in shards[1]
-    assert "test-d" in shards[2]
+    assert "test-c" in shards[2]
+    assert "test-d" in shards[1]
 
 
 def test_pack_slowest_tests_in_different_shards() -> None:
