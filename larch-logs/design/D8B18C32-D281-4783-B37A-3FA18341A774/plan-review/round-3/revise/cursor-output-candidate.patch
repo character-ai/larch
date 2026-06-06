@@ -1,0 +1,93 @@
+--- a/plan.txt
++++ b/plan.txt
+@@ -18,24 +18,30 @@
+ ### UPDATED: `skills/implement/references/stall-recovery.md`
+ Rewrite step 4 ("First-detection issue filing") so the dev-clone path routes
+ through `issue-input-file`:
+ - After `bug-body` writes `$IMPLEMENT_TMPDIR/stall-recovery-bug-body.md`, call
++  `stall-recovery-report.sh bug-body`, then parse `DRY_RUN_DECISION` from
++  `bug-body` stdout (authoritative gate — same as current step 4).
++- Next call
+   `stall-recovery-report.sh issue-input-file --implement-tmpdir "$IMPLEMENT_TMPDIR"
+   --classification-file "$IMPLEMENT_TMPDIR/stall-recovery-classification.env"
+   --body-file "$IMPLEMENT_TMPDIR/stall-recovery-bug-body.md"` to produce
+   `$IMPLEMENT_TMPDIR/stall-recovery-issue-input.md` (the `INPUT_FILE`, with the
+-  `### [Bug] …` heading).
+-- Change the dev-clone filing to `/larch:issue --input-file
+-  $IMPLEMENT_TMPDIR/stall-recovery-issue-input.md` — the heading-bearing
+-  `INPUT_FILE`, NOT the raw `bug-body` output.
+-- After `/larch:issue --input-file` completes, normalize the batch-mode stdout
++  `### [Bug] …` heading). Local compose only; safe to run before the dry-run
++  gate.
++- When `DRY_RUN_DECISION=true`, keep `$IMPLEMENT_TMPDIR/stall-recovery-bug-body.dry-run.md`,
++  skip `/larch:issue`, and skip `stall-recovery-issue.env` normalization — do not
++  file or persist issue keys under dry-run.
++- When `DRY_RUN_DECISION=false` on the non-forked larch dev-clone path, file via
++  `/larch:issue --input-file $IMPLEMENT_TMPDIR/stall-recovery-issue-input.md`
++  on **one physical line** in `stall-recovery.md` (heading-bearing `INPUT_FILE`,
++  NOT the raw `bug-body` output). This same-line requirement matches the
++  `test-implement-structure.sh` grep pin
++  (`grep -E '/larch:issue --input-file.*stall-recovery-issue-input\.md'`).
++- After `/larch:issue --input-file` completes on that non-dry-run dev-clone path,
++  normalize the batch-mode stdout
+   into `$IMPLEMENT_TMPDIR/stall-recovery-issue.env` (mirror
+   `oos-pipeline.md` create-or-dedup URL semantics):
+   - Write `ISSUE_NUMBER` from `ISSUE_1_NUMBER` when present, else from
+@@ -47,8 +53,8 @@
+     able to load canonical `ISSUE_NUMBER`/`ISSUE_URL` from this env file on
+     both create and dedup paths.
+ - Leave unchanged: the `attempt_count==0` + non-terminal first-detection gate,
+-  the `DRY_RUN_DECISION` short-circuit (issue-input-file also emits it; compose
+-  is local-only so it is safe to run before the dry-run gate), and the
++  and the
+   consumer/`--forked` verbatim `## Action required — file larch bug` chat-print
+   path (which still prints the `bug-body` body, not the input file).
+ 
+@@ -108,10 +114,12 @@
+ durable:
+ - `test-stall-recovery-report.sh` pins the *parser contract* — the generated
+   input file is batch-parseable (`ITEMS_TOTAL=1`), the heading-less body is not
+   (`=0`).
+ - `test-stall-recovery-report.sh` also pins the *sanitizer contract* — production
+   hyphenated/suffixed stall tokens survive unchanged while injected trailing
+   bytes (`8a<script>`) sanitize to `unknown`.
+ - `test-implement-structure.sh` pins the *wiring* — step 4 names
+-  `stall-recovery-issue-input.md` on the `--input-file` line, not just the
+-  `issue-input-file` token. The parser pin alone would still pass if step 4
+-  reverted to `bug-body`; the filename-specific wiring pin prevents that.
++  `stall-recovery-issue-input.md` on the same physical line as
++  `/larch:issue --input-file`, not just the `issue-input-file` token. The
++  parser pin alone would still pass if step 4 reverted to `bug-body`; the
++  filename-specific same-line wiring pin prevents that.
+ 
+ ## Edge cases
+ 
+-- **Dry-run** (`LARCH_STALL_RECOVERY_DRY_RUN=1`): `issue-input-file` emits
+-  `DRY_RUN_DECISION=true` like `bug-body`; the compose is a local file write, so
+-  running it before the dry-run gate is safe and GitHub is still skipped. The
+-  batch-key normalization step is also a local env-file write and runs safely
+-  before the gate. (Test case 18 already covers dry-run `issue-input-file`.)
++- **Dry-run** (`LARCH_STALL_RECOVERY_DRY_RUN=1`): parse `DRY_RUN_DECISION=true`
++  from `bug-body` stdout and skip `/larch:issue` plus
++  `stall-recovery-issue.env` normalization. `issue-input-file` may still run
++  (local compose only; it also emits `DRY_RUN_DECISION=true`). (Test case 18
++  already covers dry-run `issue-input-file`.)
+ - **Consumer / `--forked` repo**: unchanged — prints the `bug-body` body
+   verbatim; the `INPUT_FILE` and the normalization step are unused on that path.
+ - **Terminal classes / `attempt_count>0`**: step 4 still skipped; gate untouched.
+@@ -161,8 +169,9 @@
+ ## Diff size estimate
+ 
+-~58 changed lines: step-4 prose rewrite (with create-or-dedup normalization),
++~62 changed lines: step-4 prose rewrite (DRY_RUN_DECISION gate restatement,
++single-line `/larch:issue` invocation, create-or-dedup normalization),
+ targeted `safe_step_value` full-string tightening, three additional test cases,
+ and doc additions.
+ Additions-heavy; modest new deletions from the sanitizer rewrite; not mechanical
+ churn.
+ 
+-diff_added: 52
++diff_added: 56
+ diff_deleted: 6
+-diff_lines: 58
++diff_lines: 62

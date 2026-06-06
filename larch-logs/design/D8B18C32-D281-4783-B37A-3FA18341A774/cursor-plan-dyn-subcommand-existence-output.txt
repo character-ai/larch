@@ -1,0 +1,11 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/scripts/test-stall-recovery-report.sh:121-128; skills/implement/scripts/stall-recovery-report.sh:792-798	Production-token regression omits bump-branch-guard though plan grammar and ship-pr inventory include it	Current safe_step_value maps bump-branch-guard to unknown (resume_hint_for accepts it at stall-recovery-report.sh:465); post-fix grammar adds the token but case 2 only pins 10-max-retries/12d/10-detached-head so bump-branch-guard can regress to unknown stall titles	Add bump-branch-guard to production-token preservation asserts (direct safe_step_value or issue-input-file heading) alongside the listed hyphenated/suffixed tokens
+
+1. **correctness** (`skills/implement/scripts/test-stall-recovery-report.sh:121-128`, `skills/implement/scripts/stall-recovery-report.sh:792-798`): The plan’s `safe_step_value` rewrite explicitly adds `bump-branch-guard` (documented in `scripts/ship-pr.md` and `resume_hint_for` at `stall-recovery-report.sh:465`), but proposed regression case 2 only asserts `10-max-retries`, `12d`, and `10-detached-head`. Today `safe_step_value` already emits `unknown` for `bump-branch-guard`, so a heading would read `at unknown` instead of `at bump-branch-guard`. **Suggested revision:** Include `bump-branch-guard` in the production-token preservation test.
+
+**Subcommand-existence verification (no additional findings):**
+
+- `issue-input-file` is dispatched at `skills/implement/scripts/stall-recovery-report.sh:1119`; heading synthesis is `printf '### [Bug] /implement stall: %s at %s\n\n'` at lines 991-993.
+- `--classification-file` and `--body-file` are already required/parsed at lines 978-988; the plan does not need new flag plumbing.
+- `skills/issue/scripts/parse-input.sh:411` uses generic boundary `^\#\#\#[[:space:]]+(.+)$`, which matches the `### [Bug] …` heading (not the stricter `### OOS_N:` pattern at line 377).
+- Core wiring gap is real: `skills/implement/references/stall-recovery.md:19` still routes `/larch:issue --input-file <generated>` without calling `issue-input-file`; the plan addresses that.
