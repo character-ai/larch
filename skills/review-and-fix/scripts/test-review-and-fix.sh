@@ -1977,6 +1977,8 @@ grep -Fq 'sk-larch-rf-env-key-sentinel' "$rf_env_key_impl/round-1/coder-codex.si
     && fail "rf env-key dispatch failure sidecar leaked sentinel"
 grep -Fq 'sk-larch-rf-env-key-sentinel' "$rf_env_key_argv" 2>/dev/null \
     && fail "rf env-key dispatch failure argv leaked sentinel"
+grep -Fq 'sk-larch-rf-env-key-sentinel' "$rf_env_key_impl/round-1/coder-codex.events.jsonl" 2>/dev/null \
+    && fail "rf env-key dispatch failure events.jsonl leaked sentinel"
 rf_env_key_home=$(cat "$rf_env_key_home_capture" 2>/dev/null || true)
 if [[ -n "$rf_env_key_home" && -e "$rf_env_key_home" ]]; then
     fail "rf env-key dispatch failure should remove temp CODEX_HOME ($rf_env_key_home)"
