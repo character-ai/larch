@@ -29,6 +29,21 @@ assert_contains() {
     fi
 }
 
+assert_section_contains() {
+    local label=$1 file=$2 header=$3 needle=$4
+    if awk -v header="$header" -v needle="$needle" '
+        $0 == header { in_section = 1; next }
+        in_section && /^### / { exit }
+        in_section && index($0, needle) { found = 1 }
+        END { exit found ? 0 : 1 }
+    ' "$file"; then
+        ok "$label"
+    else
+        fail "$label"
+        sed 's/^/    /' "$file" || true
+    fi
+}
+
 assert_rc() {
     local label=$1 actual=$2 expected=$3
     if [ "$actual" = "$expected" ]; then
@@ -58,12 +73,13 @@ assert_contains "missing category USAGE" "$missing_category_out" "USAGE=append-e
 
 happy_log="$TMPDIR_BASE/happy-execution-issues.md"
 happy_out="$TMPDIR_BASE/happy.out"
-printf '### Tool Failures\n\n- existing failure\n\n### Warnings\n\n- old warning\n' > "$happy_log"
+printf '### Tool Failures\n\n- existing failure\n\n### Warnings\n\n- old warning\n\n### Q/A\n\n- existing question\n' > "$happy_log"
 "$SCRIPT" --log "$happy_log" --category "Warnings" --entry "- **Step 5**: new warning" >"$happy_out"
 assert_contains "happy path APPENDED" "$happy_out" "APPENDED=true"
 assert_contains "happy path LOG" "$happy_out" "LOG=$happy_log"
 assert_contains "happy path keeps Warnings" "$happy_log" "### Warnings"
-assert_contains "happy path appends under Warnings" "$happy_log" "- **Step 5**: new warning"
+assert_contains "happy path keeps following section" "$happy_log" "### Q/A"
+assert_section_contains "happy path appends under Warnings" "$happy_log" "### Warnings" "- **Step 5**: new warning"
 
 if [ "$FAIL_COUNT" -ne 0 ]; then
     echo "test-append-execution-issue: $FAIL_COUNT failure(s), $PASS_COUNT pass(es)" >&2

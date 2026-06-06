@@ -773,12 +773,13 @@ IMPLEMENT_TMPDIR="$IMPLEMENT_TMPDIR"
 export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"
 "${CLAUDE_PLUGIN_ROOT}/scripts/step-telemetry-mark.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
-dynamic_archetypes_cap="${dynamic_archetypes_value:-}"
+dynamic_archetypes_cap=""
+if [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
+  dynamic_archetypes_cap=$(awk 'BEGIN{p="LARCH_DYNAMIC_ARCHETYPES_MAX="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
+fi
 if [ -z "$dynamic_archetypes_cap" ]; then
   if [ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]; then
     dynamic_archetypes_cap="$LARCH_DYNAMIC_ARCHETYPES_MAX"
-  elif [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ]; then
-    dynamic_archetypes_cap=$(awk 'BEGIN{p="LARCH_DYNAMIC_ARCHETYPES_MAX="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
   fi
 fi
 # Implement-mode default when no dynamic-archetypes override is present.
@@ -809,7 +810,7 @@ printf 'EFFECTIVE_ROUND_CAP=%s\n' "$effective_round_cap"
 
 Nested review token-context propagation through `review-and-fix.sh` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
-Use the `DYNAMIC_ARCHETYPES_CAP`, `PRIOR_DEGRADED_ROUNDS`, `ROUND_CAP`, and `EFFECTIVE_ROUND_CAP` lines emitted by the Step 5 telemetry fence above for the banner variables. The fence derives `dynamic_archetypes_cap` with the same precedence `review-and-fix.sh` uses at runtime: `dynamic_archetypes_value` when Step 0 inherited a validated session-env cap; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise `6` (implement mode default, valid up to 8). For the Step 5 banner only, `round_cap` is the fixed base **5** and `effective_round_cap=$((round_cap + prior_degraded_rounds))` is an **upper-bound hint** for operator-facing copy (the loop re-reads degraded state each round). Treat a non-zero fence exit or non-integer `PRIOR_DEGRADED_ROUNDS` as a hard Step 5 preflight failure and log it to `Warnings`; do not recompute degraded rounds in a separate Bash invocation.
+Use the `DYNAMIC_ARCHETYPES_CAP`, `PRIOR_DEGRADED_ROUNDS`, `ROUND_CAP`, and `EFFECTIVE_ROUND_CAP` lines emitted by the Step 5 telemetry fence above for the banner variables. The fence derives `dynamic_archetypes_cap` with the same precedence the launcher forwards to `review-and-fix.sh` at runtime: `LARCH_DYNAMIC_ARCHETYPES_MAX` from `$IMPLEMENT_TMPDIR/session-env.sh`; otherwise non-empty process `LARCH_DYNAMIC_ARCHETYPES_MAX`; otherwise `6` (implement mode default, valid up to 8). For the Step 5 banner only, `round_cap` is the fixed base **5** and `effective_round_cap=$((round_cap + prior_degraded_rounds))` is an **upper-bound hint** for operator-facing copy (the loop re-reads degraded state each round). Treat a non-zero fence exit or non-integer `PRIOR_DEGRADED_ROUNDS` as a hard Step 5 preflight failure and log it to `Warnings`; do not recompute degraded rounds in a separate Bash invocation.
 
 Print once before the `run-step5-review.sh` invocation:
 

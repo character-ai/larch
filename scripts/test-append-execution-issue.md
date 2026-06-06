@@ -11,4 +11,4 @@ scripts/test-append-execution-issue.sh
 ```
 
 The test verifies usage envelopes with `USAGE=`, missing required arguments, and
-successful appends under the `Warnings` category.
+successful appends under the `Warnings` category before the next section header.
