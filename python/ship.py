@@ -1391,7 +1391,7 @@ def run_ship(
                 detail=resume.detail,
             )
         if "\n" in ctx.pr_url or "\r" in ctx.pr_url:
-            raise ShipError("invalid newline in ship state value: PR_URL")
+            raise Stalled("invalid newline in ship state value: PR_URL")
         if resume.start == "done":
             done_ctx = _hydrate_resume_context(ctx, resume).with_(pr_closed=True)
             _write_terminal_finalize_if_terminal(done_ctx, Outcome.OK, "done")

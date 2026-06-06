@@ -45,21 +45,13 @@ done
 [[ -n "$DESIGN_TMPDIR" ]] || { larch_err "dispatch-plan-voters.sh: --design-tmpdir is required"; exit 2; }
 [[ "$CODEX_AVAILABLE" == "true" || "$CODEX_AVAILABLE" == "false" ]] || { larch_err "dispatch-plan-voters.sh: --codex-available must be true or false"; exit 2; }
 [[ "$CURSOR_AVAILABLE" == "true" || "$CURSOR_AVAILABLE" == "false" ]] || { larch_err "dispatch-plan-voters.sh: --cursor-available must be true or false"; exit 2; }
+if [[ -n "$SCOPE_ANCHOR_FILE" && ! -r "$SCOPE_ANCHOR_FILE" ]]; then
+    larch_err "dispatch-plan-voters.sh: --scope-anchor-file must be readable when provided"
+    exit 2
+fi
 larch_design_tmpdir_validate "$DESIGN_TMPDIR" || exit $?
 mkdir -p "$DESIGN_TMPDIR"
 export DESIGN_TMPDIR
-if [[ -n "$SCOPE_ANCHOR_FILE" ]]; then
-    case "$SCOPE_ANCHOR_FILE" in
-        *$'\n'*|*$'\r'*) larch_err "dispatch-plan-voters.sh: --scope-anchor-file contains CR/LF"; exit 2 ;;
-    esac
-    [[ -f "$SCOPE_ANCHOR_FILE" && ! -L "$SCOPE_ANCHOR_FILE" && -r "$SCOPE_ANCHOR_FILE" ]] || { larch_err "dispatch-plan-voters.sh: --scope-anchor-file must be a readable regular non-symlink file"; exit 2; }
-    design_canon="$(cd "$DESIGN_TMPDIR" && pwd -P)"
-    scope_canon="$(cd "$(dirname "$SCOPE_ANCHOR_FILE")" && pwd -P)/$(basename "$SCOPE_ANCHOR_FILE")"
-    case "$scope_canon" in
-        "$design_canon"/*) SCOPE_ANCHOR_FILE="$scope_canon" ;;
-        *) larch_err "dispatch-plan-voters.sh: --scope-anchor-file must resolve under DESIGN_TMPDIR"; exit 2 ;;
-    esac
-fi
 
 LARCH_VPR_BALLOT_FILE="$BALLOT_FILE"
 LARCH_VPR_ID_GRAMMAR=finding-oos

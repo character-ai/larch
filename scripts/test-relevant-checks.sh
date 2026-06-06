@@ -524,6 +524,13 @@ REPO_3L="$TMPROOT/repo-python-no-pytest"
 STUB_3L="$TMPROOT/stub-python-no-pytest"
 setup_python_source_repo "$REPO_3L"
 make_stub_dir "$STUB_3L" present absent
+# Shadow system python3 so the >=3.12 version probe fails deterministically on
+# every host (controlled_path_no_py_tools keeps /usr/bin, where CI python3 is >=3.12).
+cat > "$STUB_3L/python3" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$STUB_3L/python3"
 run_checks "$REPO_3L" "$(controlled_path_no_py_tools "$STUB_3L")"
 assert_exit_eq "3l: Python source change exits 0 without pytest" "$RUN_EXIT" 0
 assert_stdout_contains "3l: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
@@ -568,6 +575,12 @@ REPO_3M="$TMPROOT/repo-python-pylintrc"
 STUB_3M="$TMPROOT/stub-python-pylintrc"
 setup_python_pylintrc_repo "$REPO_3M"
 make_stub_dir "$STUB_3M" present absent
+# Shadow system python3 — same deterministic version-probe failure as 3l.
+cat > "$STUB_3M/python3" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$STUB_3M/python3"
 run_checks "$REPO_3M" "$(controlled_path_no_py_tools "$STUB_3M")"
 assert_exit_eq "3m: .pylintrc-only change exits 0 without Python tools" "$RUN_EXIT" 0
 assert_stdout_contains "3m: missing Python lint tools warning" "$RUN_OUT" "WARNING: Python lint tools not found on PATH"
