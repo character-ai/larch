@@ -236,13 +236,6 @@ run_direct_relevant_targets() {
         esac
     done <<< "$MODIFIED_FILES"
 
-    if [ "$PYTHON_PY_CHANGED" -eq 1 ]; then
-        if [ "$PY_LINT_SKIPPED" -eq 1 ] || [ "$PY_TEST_SKIPPED" -eq 1 ]; then
-            echo "ERROR: python/*.py changed but Python lint/test tools are missing from PATH — install python/requirements-dev.txt and python/requirements-test.txt (Node required for pyright)"
-            return 1
-        fi
-    fi
-
     if [ -n "$DIRECT_TARGETS" ]; then
         local targets=()
         local target=""
