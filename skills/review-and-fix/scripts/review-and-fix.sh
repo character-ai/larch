@@ -1376,7 +1376,7 @@ _implement_round_body() {
     coder_rc=0
     if [[ "$accepted_count" -gt 0 && -s "$accepted_file" ]]; then
         in_scope_file="$round_dir/accepted-in-scope-findings.md"
-        awk '/^### FINDING_[0-9]+: \[OUT_OF_SCOPE\]/{skip=1} /^### FINDING_[0-9]+:/ && !/\[OUT_OF_SCOPE\]/{skip=0} !skip{print}' \
+        awk '/^### FINDING_[0-9]+:.*\[(OUT_OF_SCOPE|OOS)\]/{skip=1} /^### FINDING_[0-9]+:/ && !/\[(OUT_OF_SCOPE|OOS)\]/{skip=0} !skip{print}' \
             "$accepted_file" > "$in_scope_file" || true
         in_scope_count=$(count_findings "$in_scope_file")
         if (( in_scope_count > 0 )); then
@@ -1421,7 +1421,7 @@ _implement_round_body() {
         # round skipped OOS stay monotonic.
         OOS_WRITE_SEQ=0
         if [[ -s "$oos_markdown" ]]; then
-            OOS_WRITE_SEQ=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$oos_markdown" 2>/dev/null || printf '0')
+            OOS_WRITE_SEQ=$(awk -f "$PLUGIN_ROOT/skills/implement/scripts/oos-accumulated-seq-seed.awk" "$oos_markdown" 2>/dev/null || printf '0')
             case "$OOS_WRITE_SEQ" in ''|*[!0-9]*) OOS_WRITE_SEQ=0 ;; esac
         fi
         while IFS= read -r skip_id || [[ -n "$skip_id" ]]; do

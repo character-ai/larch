@@ -165,6 +165,9 @@ if (( oos_accepted_count > 0 && oos_sink_count == oos_accepted_count )); then
     # without [OUT_OF_SCOPE]/[OOS] tags), and the missing-oos.md truncate
     # would wipe tally output; both branches are skipped.
     :
+elif (( oos_sink_count > 0 && oos_sink_count != oos_accepted_count )); then
+    larch_err "emit-tally.sh: OOS_ACCEPTED_COUNT=$oos_accepted_count but accepted sink has $oos_sink_count non-security block(s); refusing destructive rebuild"
+    exit 1
 elif [[ -n "$OOS_FILE" && -f "$OOS_FILE" ]]; then
     if (( oos_accepted_count > 0 )); then
         larch_err "emit-tally.sh: warning: OOS_ACCEPTED_COUNT=$oos_accepted_count but accepted sink has $oos_sink_count non-security block(s); rebuilding from oos.md"

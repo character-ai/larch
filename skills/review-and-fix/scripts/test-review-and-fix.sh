@@ -10,6 +10,7 @@ unset LARCH_QUIET_BREADCRUMB_FD LARCH_QUIET_BREADCRUMBS LARCH_QUIET_PID \
     IMPLEMENT_TMPDIR REVIEW_TMPDIR DESIGN_TMPDIR RESEARCH_TMPDIR 2>/dev/null || true
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
+LEGACY_OPENER_AWK="$REPO_ROOT/skills/implement/scripts/oos-has-legacy-finding-block-opener.awk"
 SCRIPT="$REPO_ROOT/skills/review-and-fix/scripts/review-and-fix.sh"
 
 fail() {
@@ -1270,6 +1271,22 @@ grep -Fq 'CODER_TOOL=none' <<< "$out" || fail "scrubbed-out tool"
 grep -Fq 'CODER_STATUS=skipped' <<< "$out" || fail "scrubbed-out coder skipped"
 grep -Fq 'SUBMODULE_SCRUB_COUNT=1' <<< "$out" || fail "scrubbed-out scrub count"
 
+cat > "$TMP/mixed-accepted-oos-filter.md" <<'EOF'
+### FINDING_1: In-scope fix
+- **Concern**: Apply me.
+
+### FINDING_2: [OOS] shorthand out of scope
+- **Concern**: Skip me.
+
+### FINDING_3: [OUT_OF_SCOPE] full tag out of scope
+- **Concern**: Skip me too.
+EOF
+awk '/^### FINDING_[0-9]+:.*\[(OUT_OF_SCOPE|OOS)\]/{skip=1} /^### FINDING_[0-9]+:/ && !/\[(OUT_OF_SCOPE|OOS)\]/{skip=0} !skip{print}' \
+    "$TMP/mixed-accepted-oos-filter.md" > "$TMP/in-scope-only.md"
+grep -Fq 'FINDING_1' "$TMP/in-scope-only.md" || fail "[OOS] filter must retain in-scope finding"
+grep -Fq 'FINDING_2' "$TMP/in-scope-only.md" && fail "[OOS] filter must drop [OOS] shorthand finding"
+grep -Fq 'FINDING_3' "$TMP/in-scope-only.md" && fail "[OOS] filter must drop [OUT_OF_SCOPE] finding"
+
 cat > "$TMP/scrub-fails-stub.sh" <<'EOF_SCRUB'
 #!/usr/bin/env bash
 printf 'SCRUB_OK=false\n'
@@ -1521,12 +1538,12 @@ grep -Fq 'Security skipped finding' "$implement_tmp/skipped-security-findings.md
 grep -Fq 'Security skipped heading tag' "$implement_tmp/skipped-security-findings.md" || fail "skipped-routing heading-tag security finding missing from local audit"
 # #3550: skipped non-security block normalized to canonical ### OOS_<seq>: header.
 grep -Eq '^### OOS_[0-9]+: Non-security skipped finding' "$implement_tmp/oos-accepted-review.md" || fail "skipped-routing header not normalized to canonical ### OOS_"
-if grep -Eq '^### FINDING_' "$implement_tmp/oos-accepted-review.md"; then
+if awk -f "$LEGACY_OPENER_AWK" "$implement_tmp/oos-accepted-review.md"; then
     fail "skipped-routing bare FINDING_ header survived in oos-accepted-review.md"
 fi
 jsonl_body=$(jq -r '.body' "$implement_tmp/accumulated-oos.jsonl")
 grep -Eq '^### OOS_[0-9]+: Non-security skipped finding' <<< "$jsonl_body" || fail "skipped-routing jsonl body header not normalized"
-if grep -Eq '^### FINDING_' <<< "$jsonl_body"; then
+if awk -f "$LEGACY_OPENER_AWK" <<< "$jsonl_body"; then
     fail "skipped-routing jsonl body retained bare FINDING_ header"
 fi
 oos_awk_count=$(awk -f "$REPO_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$implement_tmp/oos-accepted-review.md")

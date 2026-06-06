@@ -120,12 +120,12 @@ fi
 # sinks, regardless of its ballot header (tagged FINDING_, scope-drift bare
 # FINDING_, or a pre-existing OOS_ id being renumbered into the run sequence).
 NORMALIZE_OOS_HELPER="$SCRIPT_DIR/../../shared/scripts/normalize-oos-block-header.sh"
-OOS_COUNT_HELPER="$PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk"
+OOS_SEQ_SEED_HELPER="$PLUGIN_ROOT/skills/implement/scripts/oos-accumulated-seq-seed.awk"
 OOS_WRITE_SEQ=0
 if [[ -n "$SESSION_ENV_PATH" ]]; then
     accumulated_oos="$(dirname "$SESSION_ENV_PATH")/accumulated-oos.md"
     if [[ -s "$accumulated_oos" ]]; then
-        OOS_WRITE_SEQ=$(awk -f "$OOS_COUNT_HELPER" "$accumulated_oos" 2>/dev/null || printf '0')
+        OOS_WRITE_SEQ=$(awk -f "$OOS_SEQ_SEED_HELPER" "$accumulated_oos" 2>/dev/null || printf '0')
         case "$OOS_WRITE_SEQ" in ''|*[!0-9]*) OOS_WRITE_SEQ=0 ;; esac
     fi
 fi

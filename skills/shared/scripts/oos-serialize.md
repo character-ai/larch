@@ -10,4 +10,6 @@ Security holdback recognizes unfenced `focus-area = security`, dedicated line-st
 
 Stdout is `OOS_ACCEPTED` and `OOS_HELD_SECURITY`.
 
+When any tagged OOS block is present, security classification requires a working `python3` interpreter (shared contract with `scripts/lib-vote-tally.sh::is_security_block`). Classifier smoke-test, block read (`OSError`), or routing failures exit **2** and leave `--output-file` empty so callers such as `emit-tally.sh` fail closed instead of emitting a partial public sink.
+
 Harness: `skills/shared/scripts/test-oos-serialize.sh`, wired through `make test-oos-serialize`.

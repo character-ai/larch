@@ -625,6 +625,34 @@ else
   fail "checkpoint disposition gap missing Tool Failures log entry or gate stderr"
 fi
 
+# --- Case: checkpoint legacy tagged FINDING disposition gap (#3550) ---
+_impl_gap_legacy=$(mkitmp)
+cat >"$_impl_gap_legacy/oos-accepted-main-agent.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Legacy checkpoint orphan
+- **Description**: no disposition
+- **Phase**: implement
+EOF
+printf 'run-gap-legacy\n' >"$_impl_gap_legacy/session-id"
+mkdir -p "$_impl_gap_legacy/larch-logs/implement/run-gap-legacy"
+: >"$_impl_gap_legacy/larch-logs/implement/run-gap-legacy/oos-issues.ndjson"
+set +e
+(
+  cd "$ORPHAN_TMP"
+  "$CHECKPOINT" --implement-tmpdir "$_impl_gap_legacy" >/dev/null 2>&1
+)
+rc=$?
+set -e
+assert_rc "checkpoint legacy FINDING disposition gap exit 1" 1 "$rc"
+if grep -Fq 'step-8-oos-checkpoint' "$_impl_gap_legacy/execution-issues.md" \
+  && ! grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_gap_legacy/execution-issues.md" \
+  && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_gap_legacy/execution-issues.md" \
+  && grep -Fq 'Tool Failures' "$_impl_gap_legacy/execution-issues.md" \
+  && [ -s "$_impl_gap_legacy/oos-disposition-gate.stderr.log" ]; then
+  pass "checkpoint legacy FINDING disposition gap logs Tool Failures"
+else
+  fail "checkpoint legacy FINDING disposition gap missing Tool Failures log entry or gate stderr"
+fi
+
 # --- Case: checkpoint fork-mode skip ---
 _impl_fork=$(mkitmp)
 printf 'FORKED_TARGET=true\n' >"$_impl_fork/ship-pr-state.sh"

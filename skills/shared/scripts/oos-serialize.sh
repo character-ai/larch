@@ -42,7 +42,11 @@ is_security_tagged_block() {
 import re
 import sys
 
-text = open(sys.argv[1], encoding="utf-8").read()
+try:
+    text = open(sys.argv[1], encoding="utf-8").read()
+except OSError as exc:
+    print(f"oos-serialize.sh: security classifier read failed: {exc}", file=sys.stderr)
+    sys.exit(2)
 text_no_fence = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
 text_no_backtick = re.sub(r"`[^`\n]*`", "", text_no_fence)
 canonical_token = re.compile(r"focus-area\s*=\s*security", re.IGNORECASE)

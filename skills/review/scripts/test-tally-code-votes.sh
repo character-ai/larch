@@ -8,6 +8,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 CLAUDE_PLUGIN_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 export CLAUDE_PLUGIN_ROOT
 SCRIPT="$SCRIPT_DIR/tally-code-votes.sh"
+LEGACY_OPENER_AWK="$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-has-legacy-finding-block-opener.awk"
 
 FAIL=0
 WORKDIR=$(mktemp -d "${TMPDIR:-/tmp}/test-tally-code-votes.XXXXXX")
@@ -74,7 +75,7 @@ grep -Fq 'FINDING_2' "$TMP/rejected-findings.md" || { FAIL=1; printf '  FAIL rej
 grep -Fq 'OOS observation' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL oos-accepted missing FINDING_3\n'; }
 # #3550: accepted OOS header normalized to canonical ### OOS_<seq>:.
 grep -Eq '^### OOS_1: \[OUT_OF_SCOPE\] OOS observation$' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL oos-accepted header not normalized to ### OOS_1:\n'; }
-if grep -Eq '^### FINDING_' "$TMP/oos-accepted-review.md"; then
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/oos-accepted-review.md"; then
     FAIL=1; printf '  FAIL oos-accepted-review.md still carries a FINDING_ header\n'
 else
     printf '  ok   no FINDING_ headers in oos-accepted-review.md\n'
@@ -449,11 +450,38 @@ classification_file=$(awk -F= '$1=="FINDINGS_CLASSIFICATION_TSV_FILE"{print $2}'
 assert_eq "session-bound nested round uses flat TSV" "$classification_file" "$TMP/round-2/findings-classification.tsv"
 grep -Eq '^### OOS_2: \[OUT_OF_SCOPE\] Session mirrored OOS$' "$TMP/round-2/oos-accepted-review.md" || { FAIL=1; printf '  FAIL session-bound round sink missing continued normalized OOS\n'; }
 cmp -s "$TMP/round-2/oos-accepted-review.md" "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL session-bound parent OOS mirror differs from round sink\n'; }
-if grep -Eq '^### FINDING_' "$TMP/oos-accepted-review.md"; then
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/oos-accepted-review.md"; then
     FAIL=1; printf '  FAIL session-bound parent OOS mirror has legacy FINDING header\n'
 fi
 got=$(awk -f "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/oos-accepted-review.md")
 assert_eq "session-bound parent OOS awk count=1" "$got" "1"
+
+echo "# Case: legacy bare FINDING in accumulated-oos seeds OOS_WRITE_SEQ without collision"
+TMP="$WORKDIR/case_legacy_accumulated"
+mkdir -p "$TMP/round-2"
+cat > "$TMP/round-2/ballot.md" <<'EOF'
+### FINDING_1: [OUT_OF_SCOPE] Continued OOS after legacy resume
+- **Reviewer**: Codex-Plan-fidelity
+- **Concern**: Pre-existing legacy item.
+- **Suggested revision**: File it.
+EOF
+printf 'FINDING_1: YES\n' > "$TMP/round-2/cursor-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/round-2/codex-vote-output.txt"
+printf 'FINDING_1: YES\n' > "$TMP/round-2/claude-vote-output.txt"
+: > "$TMP/session.env"
+cat > "$TMP/accumulated-oos.md" <<'EOF'
+### FINDING_1: Legacy bare header resume
+- **Concern**: Pre-normalization accumulated item.
+EOF
+out="$TMP/round-2/out.env"
+"$SCRIPT" --ballot-file "$TMP/round-2/ballot.md" \
+    --voter-files "$TMP/round-2/cursor-vote-output.txt" "$TMP/round-2/codex-vote-output.txt" "$TMP/round-2/claude-vote-output.txt" \
+    --review-tmpdir "$TMP/round-2" --session-env-path "$TMP/session.env" --round-num 2 > "$out"
+grep -Eq '^### OOS_2: \[OUT_OF_SCOPE\] Continued OOS after legacy resume$' "$TMP/round-2/oos-accepted-review.md" \
+    || { FAIL=1; printf '  FAIL legacy accumulated seed did not continue at OOS_2\n'; }
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/round-2/oos-accepted-review.md"; then
+    FAIL=1; printf '  FAIL legacy accumulated seed left FINDING_ block opener in round sink\n'
+fi
 
 echo "# Case: --both-down true → main-agent-vote-required"
 TMP="$WORKDIR/case4e"
@@ -559,13 +587,23 @@ got=$(awk -F= '$1=="OUT_OF_SCOPE_DRIFT_COUNT"{print $2}' "$out"); assert_eq "dri
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$out"); assert_eq "drift-norm: accepted OOS count=1" "$got" "1"
 got=$(awk -F= '$1=="OOS_ACCEPTED_COUNT"{print $2}' "$TMP/review-tally.env"); assert_eq "drift-norm: review-tally.env accepted OOS count=1" "$got" "1"
 grep -Eq '^### OOS_1: ' "$TMP/oos-accepted-review.md" || { FAIL=1; printf '  FAIL drift-norm: missing canonical ### OOS_1: header\n'; }
-if grep -Eq '^### FINDING_' "$TMP/oos-accepted-review.md"; then
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/oos-accepted-review.md"; then
     FAIL=1; printf '  FAIL drift-norm: bare FINDING_ header survived normalization\n'
 else
     printf '  ok   drift-norm: no FINDING_ header in oos-accepted-review.md\n'
 fi
 got=$(awk -f "$CLAUDE_PLUGIN_ROOT/skills/implement/scripts/oos-non-security-block-count.awk" "$TMP/oos-accepted-review.md")
 assert_eq "drift-norm: awk non-security count=1" "$got" "1"
+
+cat > "$TMP/body-citation-oos.md" <<'EOF'
+### OOS_1: Normalized title
+- **Concern**: See also ### FINDING_5: prior cited work.
+EOF
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/body-citation-oos.md"; then
+    FAIL=1; printf '  FAIL body FINDING citation false-positive as legacy opener\n'
+else
+    printf '  ok   body FINDING citation does not false-fail legacy opener check\n'
+fi
 
 echo "# Case: scope-fit gate — finding about file IN diff is NOT reclassified"
 TMP="$WORKDIR/case6b"

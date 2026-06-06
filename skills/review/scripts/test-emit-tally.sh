@@ -6,6 +6,7 @@ set -euo pipefail
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)
 export CLAUDE_PLUGIN_ROOT="$REPO_ROOT"
 SCRIPT="$REPO_ROOT/skills/review/scripts/emit-tally.sh"
+LEGACY_OPENER_AWK="$REPO_ROOT/skills/implement/scripts/oos-has-legacy-finding-block-opener.awk"
 TALLY_SCRIPT="$REPO_ROOT/skills/review/scripts/tally-code-votes.sh"
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-emit-tally.XXXXXX")
 trap 'rm -rf "$TMP"' EXIT
@@ -120,7 +121,7 @@ printf '### FINDING_4: [OUT_OF_SCOPE] serialize me\n- **Description**: from oos.
 "$SCRIPT" --tally-file "$TMP/serialize0/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/serialize0/oos.md" --review-tmpdir "$TMP/serialize0" --round 1 --mode diff >/dev/null
 grep -Fq 'serialize me' "$TMP/serialize0/oos-accepted-review.md" || { echo "FAIL: count=0 path no longer serializes oos.md" >&2; exit 1; }
 grep -Eq '^### OOS_1:' "$TMP/serialize0/oos-accepted-review.md" || { echo "FAIL: count=0 path must normalize serialized header" >&2; exit 1; }
-if grep -Eq '^### FINDING_' "$TMP/serialize0/oos-accepted-review.md"; then
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/serialize0/oos-accepted-review.md"; then
     echo "FAIL: count=0 path emitted legacy FINDING header" >&2
     exit 1
 fi
@@ -164,6 +165,43 @@ partial_rc=$?
 set -e
 [[ "$partial_rc" -ne 0 ]] || { echo "FAIL: partial accepted sink must fail closed when rebuild count mismatches tally" >&2; exit 1; }
 echo "  ok   partial accepted sink fails closed"
+
+echo "# Case: partial accepted sink is not destructively rebuilt"
+mkdir -p "$TMP/partial-preserve"
+cat > "$TMP/partial-preserve/tally.env" <<'EOF'
+ACCEPTED_COUNT=0
+REJECTED_COUNT=0
+EXONERATED_COUNT=0
+OOS_ACCEPTED_COUNT=2
+EOF
+printf '### OOS_1: Tally-normalized only\n- **Description**: must survive failed emit.\n' > "$TMP/partial-preserve/oos-accepted-review.md"
+cp "$TMP/partial-preserve/oos-accepted-review.md" "$TMP/partial-preserve/expected.md"
+printf '### FINDING_7: bare scope drift\n- **Description**: no OOS tag for serializer.\n' > "$TMP/partial-preserve/oos.md"
+set +e
+"$SCRIPT" --tally-file "$TMP/partial-preserve/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/partial-preserve/oos.md" --review-tmpdir "$TMP/partial-preserve" --round 1 --mode diff >/dev/null 2>&1
+partial_preserve_rc=$?
+set -e
+[[ "$partial_preserve_rc" -ne 0 ]] || { echo "FAIL: partial sink mismatch must fail closed" >&2; exit 1; }
+cmp -s "$TMP/partial-preserve/oos-accepted-review.md" "$TMP/partial-preserve/expected.md" || { echo "FAIL: partial sink was destructively rebuilt" >&2; exit 1; }
+echo "  ok   partial accepted sink preserved on fail-closed"
+
+echo "# Case: OOS_ACCEPTED_COUNT=0 propagates oos-serialize classifier failure"
+mkdir -p "$TMP/serialize-fail0"
+mkdir -p "$TMP/fail-python-bin"
+cat > "$TMP/fail-python-bin/python3" <<'EOF'
+#!/usr/bin/env bash
+exit 1
+EOF
+chmod +x "$TMP/fail-python-bin/python3"
+cp "$TMP/serialize0/tally.env" "$TMP/serialize-fail0/tally.env"
+printf '### FINDING_4: [OUT_OF_SCOPE] needs classifier\n- **Description**: from oos.md.\n' > "$TMP/serialize-fail0/oos.md"
+set +e
+PATH="$TMP/fail-python-bin:$PATH" "$SCRIPT" --tally-file "$TMP/serialize-fail0/tally.env" --accepted-findings-file "$TMP/accepted.md" --oos-file "$TMP/serialize-fail0/oos.md" --review-tmpdir "$TMP/serialize-fail0" --round 1 --mode diff >/dev/null 2>&1
+serialize_fail_rc=$?
+set -e
+[[ "$serialize_fail_rc" -ne 0 ]] || { echo "FAIL: count=0 path must propagate oos-serialize classifier failure" >&2; exit 1; }
+[[ ! -s "$TMP/serialize-fail0/oos-accepted-review.md" ]] || { echo "FAIL: classifier failure must not leave partial accepted sink" >&2; exit 1; }
+echo "  ok   count=0 path propagates oos-serialize classifier failure"
 
 echo "# Case: security-only accepted OOS count stays zero and emit leaves public sink empty"
 mkdir -p "$TMP/security-only"
@@ -209,7 +247,7 @@ if grep -Fq 'conflicting serialize fallback' "$TMP/chained/round-1/oos-accepted-
     echo "FAIL: chained tally→emit path rebuilt from oos.md instead of preserving sink" >&2
     exit 1
 fi
-if grep -Eq '^### FINDING_' "$TMP/chained/round-1/oos-accepted-review.md"; then
+if awk -f "$LEGACY_OPENER_AWK" "$TMP/chained/round-1/oos-accepted-review.md"; then
     echo "FAIL: chained tally→emit path emitted legacy FINDING header" >&2
     exit 1
 fi
