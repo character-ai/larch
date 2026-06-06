@@ -69,14 +69,14 @@ assert_excluded cursor-plan-arch-output.txt.sidecar
 assert_excluded cursor-plan-arch-output.txt.prompt
 assert_excluded unknown.bin
 
-assert_revise_included codex-output.txt
-assert_revise_included cursor-output.txt
-assert_revise_included claude-output.txt
-assert_revise_included revise.env
-assert_revise_included prompt.txt
-assert_revise_included codex-output-candidate.patch
-assert_revise_included cursor-output-candidate.patch
-assert_revise_included claude-output-candidate.patch
+assert_revise_excluded codex-output.txt
+assert_revise_excluded cursor-output.txt
+assert_revise_excluded claude-output.txt
+assert_revise_excluded revise.env
+assert_revise_excluded prompt.txt
+assert_revise_excluded codex-output-candidate.patch
+assert_revise_excluded cursor-output-candidate.patch
+assert_revise_excluded claude-output-candidate.patch
 assert_revise_excluded extra-revise.log
 
 printf '%s\n' 'test-lib-design-round-artifacts: ok'

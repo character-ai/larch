@@ -43,23 +43,19 @@ Step 3 **may** extend the fixed 10-slot static panel with up to 6 scout-proposed
 
 ---
 
-## Multi-round loop
+## Single-pass review
 
-When `plan-review-loop.sh` is invoked with explicit `--round-cap` on argv (SKILL.md Step 3 passes `"${LARCH_DESIGN_ROUND_CAP:-5}"`), the driver runs an inner loop: scout → panel → collect → tally → auto-apply via `revise-plan-with-waterfall.sh` → post-apply pipeline, up to the cap. Convergence requires **one non-degraded round** with non-nit `ACCEPTED_COUNT <= 5` and `IMPORTANT_ACCEPTED_COUNT == 0` (nit-severity accepted findings are excluded from the count; only `### FINDING_N:` blocks marked `- **Severity**: important` in `accepted-plan-findings.md` count toward the important gate). Zero-findings convergence additionally requires `COLLECT_OK_COUNT > 0` (collector `STATUS=OK` evidence); otherwise the loop exits `LOOP_STATUS=degraded-empty-collector`. `TALLY_PLAN_REVIEW_STATUS=tally-error` aborts before revise/convergence checks.
+`plan-review-loop.sh` runs exactly one review pass per Step 3 entry: scout → panel → collect → aggregate → ballot → voter dispatch → tally. It never calls `revise-plan-with-waterfall.sh`, never applies findings to `plan.txt`, and never loops internally. `--round-cap` is accepted for caller/back-compat validation but is inert; the outer Step 3 driver (`run-step3-review.sh`) owns the Gate-C review-round cap via `review-round-count.txt`.
 
-- **Env vars**: `LARCH_DESIGN_ROUND_CAP` (default 5).
-- **Manual Gate B**: when `manual_gate_b=true` in `run-params.json`, the loop runs one round and exits `LOOP_STATUS=complete REASON=manual-gate-b` without inner auto-apply; Gate B applies findings per the normal manual/auto contract.
-- **Revision failures**: non-zero revise rc or `REVISE_STATUS` not in (`ok`, `ok-fallback`) → `LOOP_STATUS=revision-failed`; Gate B falls back to the 3-option prompt.
-- **Post-apply failures**: failed `ACTION=EMIT_PLAN` → `LOOP_STATUS=emit-plan-failed` (Gate B warning/manual handling); validator defects → `LOOP_STATUS=plan-validator-defects`; hard size threshold → `LOOP_STATUS=plan-size-trigger`.
+Terminal `LOOP_STATUS` values are limited to `complete`, `zero-findings-degraded-panel`, `tally-error`, `degraded-empty-collector`, `panel-failed`, and `main-agent-vote-required`; the outer driver may also surface `cap-reached` before launching the loop. Gate B is the sole apply point for accepted findings.
+
+- **Env vars**: `LARCH_DESIGN_ROUND_CAP` is deprecated for the inner loop; it remains only as the outer Step 3 cap input.
+- **Zero-findings evidence**: zero accepted findings with no successful collectors exits `LOOP_STATUS=degraded-empty-collector`; zero accepted findings with a degraded but non-empty panel exits `LOOP_STATUS=zero-findings-degraded-panel`; healthy zero-findings rounds exit `LOOP_STATUS=complete`.
+- **Tally failures**: `TALLY_PLAN_REVIEW_STATUS=tally-error` aborts before Gate B and preserves the current plan.
 - **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.
-- **`oos-accepted-design.md` cumulation**: within a single multi-round loop, `oos-accepted-design.md` accumulates across rounds via the in-script `_accumulate_round_oos` helper. When Step 3 re-enters from Gate C(c), those artifacts are overwritten — see `approval-gates.md` State Invariants (**No preserved findings across review runs** covers cross-Gate-C-re-run behavior only).
-- **Severity precedence (Gate B)**: see `approval-gates.md` **Severity classification rubric** for the **Severity precedence rule** used by Gate B presentation.
-- **Dedup divergence**: the loop's post-apply pipeline uses whitespace-key dedup via `skills/design/scripts/dedup-plan-lines.py` (called by `_run_post_apply_pipeline` through `$DEDUP_PLAN_LINES_PY`); Gate B uses LLM-driven dedup in the shared post-apply pipeline. Loop dedup is whitespace-key based (`" ".join(line.strip().split())` normalization) and may keep semantic duplicates that Gate B's LLM-driven dedup would have removed; this divergence is observable on `LOOP_STATUS=converged` and `LOOP_STATUS=cap-hit` outputs that bypass Gate B.
-- **Artifacts**: per-round forensics under `plan-review/round-N/` plus `round-summary.env`; canonical allowlist in `scripts/lib-design-round-artifacts.md`. Gate B passive-summary reads `round-summary.env` when `LOOP_STATUS=converged|cap-hit` (see `approval-gates.md`).
-
-## Legacy single-pass mode
-
-Callers that **omit** `--round-cap` on argv get exactly the pre-multi-round contract: one panel pass, `LOOP_STATUS=complete`, no inner auto-apply, no `converged`/`cap-hit` emissions. `--round-cap 1` is **not** legacy mode — it is multi-round with a one-round cap (auto-apply still runs when findings exist). The SKILL.md Step 3 caller always passes `--round-cap`, so legacy single-pass mode is reachable only via direct script invocation (offline harness, `skills/design/scripts/test-plan-review-loop.sh`, ad-hoc runs) and not through normal `/design` orchestration.
+- **`oos-accepted-design.md` cumulation**: `_accumulate_round_oos` still appends accepted OOS findings before successful terminal status mapping so cumulative OOS survives single-pass reruns. When Step 3 re-enters from Gate C(c), those artifacts are overwritten — see `approval-gates.md` State Invariants (**No preserved findings across review runs** covers cross-Gate-C re-run behavior only).
+- **Severity precedence (Gate B)**: see `approval-gates.md` **Severity classification rubric** for the rule used by Gate B presentation.
+- **Artifacts**: per-entry forensics are stored under `plan-review/round-N/` plus `round-summary.env`; canonical allowlist in `scripts/lib-design-round-artifacts.md`. Gate B reads the active accepted/rejected/OOS artifacts, not a passive post-apply summary.
 
 ---
 
@@ -174,7 +170,7 @@ Axis tokens must precede any optional `-- reason`; the parser ignores axis-looki
 
 If any in-scope findings were **accepted by vote**:
 1. Print them under a `## Plan Review Findings (Voted In)` header with vote counts.
-2. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Gate B — Post-Review Chooser) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below. If no in-scope findings were accepted, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md`. **Finalize Plan Review itself does not revise `$DESIGN_TMPDIR/plan.txt`.** In legacy/manual Step 3 outcomes, findings are surfaced to Gate B, which applies them per `manual_gate_b` mode as documented in `approval-gates.md` §Gate B. In multi-round auto-apply outcomes, `plan-review-loop.sh` may already have revised `plan.txt` between rounds before Finalize writes the settled artifacts. Treat Finalize as artifact publication only; do not run an extra plan rewrite here.
+2. Write the accepted in-scope findings to `$DESIGN_TMPDIR/accepted-plan-findings.md` so Step 3.5 (Gate B — Post-Review Chooser) has a stable artifact to read. **Only include in-scope `FINDING_*` items — do not include OOS items.** Use the `FINDING_N` template below. If no in-scope findings were accepted, write an empty `$DESIGN_TMPDIR/accepted-plan-findings.md`. **Finalize Plan Review itself does not revise `$DESIGN_TMPDIR/plan.txt`.** Findings are surfaced to Gate B, which always asks explicitly before applying them as documented in `approval-gates.md` §Gate B. Treat Finalize as artifact publication only; do not run an extra plan rewrite here.
 
 **OOS items accepted by vote**: These are accepted for GitHub issue filing, NOT for plan revision. Write accepted OOS items to `$DESIGN_TMPDIR/oos-accepted-design.md` using the `oos-accepted-design.md` format block below, excluding security-tagged findings. Security-tagged findings are held locally and NEVER written to this public OOS issue artifact (per SECURITY.md). The canonical token match is `focus-area\s*=\s*security` anywhere inside the accepted `### OOS_N:` block, case-insensitively, with optional whitespace around `=`; if prose indicates security without the literal token, apply the same "if uncertain whether security, do not file publicly" guidance. **Match discrimination (false-positive guard)**: for every literal occurrence of the canonical token in the block, classify as **fenced** when inside an inline backtick code span or triple-backtick fenced code region, and **unfenced** otherwise. Route as security only when at least one unfenced occurrence exists; if every occurrence is fenced, the block is meta-discussion and routes through the normal public OOS path. **Security counter-invariant**: real security findings MUST include at least one unfenced occurrence.
 
@@ -191,10 +187,10 @@ If voting rejects all in-scope findings, write an empty `$DESIGN_TMPDIR/accepted
 - **Focus area**: <focus>
 - **Location**: <location>
 - **Concern**: <what was raised>
-- **Proposed resolution**: <suggested change to the plan; surfaced to Step 3.5 Gate B for application per `manual_gate_b` mode>
+- **Proposed resolution**: <suggested change to the plan; surfaced to Step 3.5 Gate B for application after explicit operator approval>
 ```
 
-When the TSV row omits `severity`, `plan-review-loop.sh` renders `- **Severity**: nit` (see **Severity default** under Multi-round loop). The loop also appends `. Scenario: <text>` to the `- **Concern**:` line when the TSV row includes a non-empty scenario column; manually authored blocks that omit this suffix are still valid.
+When the TSV row omits `severity`, `plan-review-loop.sh` renders `- **Severity**: nit` (see **Severity default** under Single-pass review). The loop also appends `. Scenario: <text>` to the `- **Concern**:` line when the TSV row includes a non-empty scenario column; manually authored blocks that omit this suffix are still valid.
 
 ### Accepted OOS format (byte-preserved)
 
@@ -232,4 +228,4 @@ Step **2b.5 Split-path** uses the same **availability-gated `--no-fallback`** di
 
 ## Scope anchor and scope reductions
 
-Plan review stages use a staged scope anchor under `$DESIGN_TMPDIR`, built from the originating issue text with prior `larch:plan` content stripped and the approved outline appended when present. Scout, panel, voters, and revise consume that anchor; voters receive it inline through `--scope-anchor-file`. No baseline plan file is part of this contract. Scope-reduction findings use a leading `[SCOPE-REDUCTION]` marker and normal vote thresholds. `SCOPE_ANCHOR_FILE` is threaded through Step 3 result env for the MainAgent fallback.
+Plan review stages use a staged scope anchor under `$DESIGN_TMPDIR`, built from the originating issue text with prior `larch:plan` content stripped and the approved outline appended when present. Scout, panel, voters, and the MainAgent fallback consume that anchor; voters receive it inline through `--scope-anchor-file`. No baseline plan file is part of this contract. Scope-reduction findings use a leading `[SCOPE-REDUCTION]` marker and normal vote thresholds. `SCOPE_ANCHOR_FILE` is threaded through Step 3 result env for the MainAgent fallback.

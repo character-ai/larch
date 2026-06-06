@@ -53,7 +53,7 @@ assert_kv() {
 
 assert_no_flag_kvs() {
     local label="$1"
-    if printf '%s\n' "$OUT" | grep -Eq '^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|MANUAL_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)='; then
+    if printf '%s\n' "$OUT" | grep -Eq '^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)='; then
         fail "$label emitted success KVs on validation failure"
     else
         pass "$label emitted no success KVs"
@@ -62,7 +62,7 @@ assert_no_flag_kvs() {
 
 assert_success_kv_count() {
     local label="$1" want="$2" got
-    got=$(printf '%s\n' "$OUT" | awk -F= '/^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|MANUAL_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)=/ {count++} END {print count + 0}')
+    got=$(printf '%s\n' "$OUT" | awk -F= '/^(HARD_REQUESTED|PARTITION_REQUESTED|BRAINSTORM_REQUESTED|NO_DEDUP_REQUESTED|RUN_ID|POSITIONAL_KIND|POSITIONAL_VALUE)=/ {count++} END {print count + 0}')
     if [ "$got" = "$want" ]; then
         pass "$label success KV count"
     else
@@ -75,7 +75,6 @@ assert_common_false() {
     assert_kv "$label" HARD_REQUESTED false
     assert_kv "$label" PARTITION_REQUESTED false
     assert_kv "$label" BRAINSTORM_REQUESTED false
-    assert_kv "$label" MANUAL_REQUESTED false
     assert_kv "$label" NO_DEDUP_REQUESTED false
     assert_kv "$label" RUN_ID ""
 }
@@ -83,7 +82,7 @@ assert_common_false() {
 # bare numeric tail
 run_case 3249
 assert_rc 'numeric tail' 0
-assert_success_kv_count 'numeric tail' 8
+assert_success_kv_count 'numeric tail' 7
 assert_common_false 'numeric tail'
 assert_kv 'numeric tail' POSITIONAL_KIND issue
 assert_kv 'numeric tail' POSITIONAL_VALUE 3249
@@ -119,12 +118,14 @@ assert_rc '--brainstorm' 0
 assert_kv '--brainstorm' BRAINSTORM_REQUESTED true
 
 run_case --manual
-assert_rc '--manual' 0
-assert_kv '--manual' MANUAL_REQUESTED true
+assert_rc '--manual' 3
+assert_kv '--manual' VALIDATION_ERROR --manual
+assert_no_flag_kvs '--manual'
 
 run_case -m
-assert_rc '-m' 0
-assert_kv '-m' MANUAL_REQUESTED true
+assert_rc '-m' 3
+assert_kv '-m' VALIDATION_ERROR -m
+assert_no_flag_kvs '-m'
 
 run_case --no-dedup
 assert_rc '--no-dedup' 0

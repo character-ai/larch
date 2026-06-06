@@ -327,10 +327,6 @@ if pause_marker_present "$ISSUE_BODY_FILE"; then
                 ROUTE=cancel-pause-load
                 emit_route_result
             fi
-            _manual_resume=false
-            if [[ -f "$DESIGN_TMPDIR/run-params.json" ]] && command -v jq >/dev/null 2>&1; then
-                [[ "$(jq -r '.manual_gate_b // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null || echo false)" == true ]] && _manual_resume=true
-            fi
             _wdce_resume_args=(
                 "$PLUGIN_ROOT/scripts/write-design-current-env.sh"
                 --output "$DESIGN_TMPDIR/source-env.sh"
@@ -340,7 +336,6 @@ if pause_marker_present "$ISSUE_BODY_FILE"; then
                 --claude-pid "$CLAUDE_PID"
             )
             [[ -n "$REPO" ]] && _wdce_resume_args+=(--repo "$REPO")
-            [[ "$_manual_resume" == true ]] && _wdce_resume_args+=(--manual-requested true)
             _wdce_resume_rc=0
             set +e
             if [ "${LARCH_QUIET_PID:-}" = "$$" ]; then

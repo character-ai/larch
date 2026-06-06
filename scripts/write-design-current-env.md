@@ -2,7 +2,7 @@
 
 Writes a sourceable bash file that re-establishes the `/design` session
 context (`$DESIGN_TMPDIR`, `$SESSION_TMPDIR`, `$SESSION_ID`,
-`$MANUAL_REQUESTED`, `$CLAUDE_PLUGIN_ROOT`, reviewer presence/availability booleans,
+`$CLAUDE_PLUGIN_ROOT`, reviewer presence/availability booleans,
 `$ISSUE_NUMBER`) after each `Bash` tool call returns to a fresh subshell.
 The Claude Code Bash tool does NOT preserve shell state between calls;
 this writer plus the canonical conditional prelude in
@@ -26,7 +26,7 @@ restores it on every block from Step 1c onward.
 ## Keys
 
 Always writes `DESIGN_TMPDIR`, `SESSION_TMPDIR`, and `SESSION_ID`.
-Optionally writes `MANUAL_REQUESTED`, `ISSUE_NUMBER`, `CODEX_PRESENT`, `CURSOR_PRESENT`,
+Optionally writes `ISSUE_NUMBER`, `CODEX_PRESENT`, `CURSOR_PRESENT`,
 `CODEX_AVAILABLE`, `CURSOR_AVAILABLE`, `CODEX_BINARY_FOUND`, and
 `CURSOR_BINARY_FOUND`. Always writes
 `LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT` (default `30`, inheriting a numeric
@@ -45,8 +45,7 @@ reviewer keys (`CODEX_PRESENT`, `CURSOR_PRESENT`, `CODEX_AVAILABLE`, `CURSOR_AVA
 An explicit flag overrides the recovered value. When exactly one side of a
 `*_PRESENT` / `*_AVAILABLE` alias pair is passed, the writer mirrors that value to
 the omitted peer so a partial override cannot leave a stale peer (see harness Case 14).
-`MANUAL_REQUESTED`, `REPO`, and `ISSUE_NUMBER` keep clear-on-omit behavior (harness
-Case 12 for `MANUAL_REQUESTED`).
+`REPO` and `ISSUE_NUMBER` keep clear-on-omit behavior.
 ## `--claude-pid`
 
 Required for normal `/design` operation: pass the Bash-tool subshell parent
@@ -102,7 +101,6 @@ find ~/.cache/larch/sessions -name 'current-design-env-*.sh' -type l \
 - `--design-tmpdir` and `--output` must be absolute paths.
 - `--issue-number` matches `^[0-9]+$` when present.
 - `CLAUDE_PLUGIN_ROOT`, when set, must be an absolute path of 512 characters or fewer using `[A-Za-z0-9_./~+-]`.
-- `--manual-requested`, when present, must be `true` or `false`.
 - When `--claude-pid` is passed, its value must be non-empty and match `^[1-9][0-9]{0,6}$`. Omitting the flag entirely selects the legacy shim (stderr warning).
 - Presence, availability, and binary-found booleans must be `true` or `false`.
 

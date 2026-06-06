@@ -38,7 +38,6 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     --output "$out_file" \
     --design-tmpdir "$design_tmpdir" \
     --session-id "ABC-123" \
-    --manual-requested true \
     --claude-pid "$TEST_CLAUDE_PID" \
     --codex-present true \
     --cursor-present false \
@@ -57,7 +56,6 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     [ "$DESIGN_TMPDIR" = "$design_tmpdir" ] || exit 11
     [ "$SESSION_TMPDIR" = "$design_tmpdir" ] || exit 12
     [ "$SESSION_ID" = "ABC-123" ] || exit 13
-    [ "$MANUAL_REQUESTED" = "true" ] || exit 14
     [ "$ISSUE_NUMBER" = "2588" ] || exit 15
     [ "$CODEX_PRESENT" = "true" ] || exit 16
     [ "$CURSOR_PRESENT" = "false" ] || exit 17
@@ -219,123 +217,15 @@ done
         fail "case8: stderr missing transition warning"
 ) || fail "case8: shim subshell failed (exit $?)"
 
-# Case 9 — omitted manual flag leaves MANUAL_REQUESTED unset
-case9_dir="$TMPROOT/case9"
+# Case 9 — partial codex override mirrors alias peer; omitted binary for the
+# explicitly refreshed tool is not recovered; cursor keys preserved.
+case9_dir="$TMPROOT/case14"
 design9="$case9_dir/design"
 out9="$case9_dir/source-env.sh"
 mkdir -p "$design9"
 CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     --output "$out9" \
     --design-tmpdir "$design9" \
-    --session-id "NO-MANUAL" \
-    --claude-pid "$TEST_CLAUDE_PID"
-(
-    set -u
-    # shellcheck disable=SC1090,SC2153
-    source "$out9"
-    [ "${MANUAL_REQUESTED+x}" != x ] || exit 91
-) || fail "case9: omitted --manual-requested should leave MANUAL_REQUESTED unset (subshell exit $?)"
-
-# Case 10 — explicit false is accepted and exported literally
-case10_dir="$TMPROOT/case10"
-design10="$case10_dir/design"
-out10="$case10_dir/source-env.sh"
-mkdir -p "$design10"
-CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
-    --output "$out10" \
-    --design-tmpdir "$design10" \
-    --session-id "MANUAL-FALSE" \
-    --manual-requested false \
-    --claude-pid "$TEST_CLAUDE_PID"
-(
-    # shellcheck disable=SC1090,SC2153
-    source "$out10"
-    [ "$MANUAL_REQUESTED" = "false" ] || exit 101
-) || fail "case10: explicit false manual flag was not preserved (subshell exit $?)"
-
-# Case 11 — invalid manual-requested enum rejected
-bad_manual_err="$TMPROOT/wdce-bad-manual.err"
-if CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
-        --output "$TMPROOT/bad-manual.sh" \
-        --design-tmpdir "$TMPROOT/bad-manual-dir" \
-        --session-id "BAD-MANUAL" \
-        --manual-requested maybe \
-        --claude-pid "$TEST_CLAUDE_PID" \
-        2>"$bad_manual_err"; then
-    fail "case11: invalid --manual-requested value was accepted"
-fi
-grep -q "Invalid --manual-requested" "$bad_manual_err" || \
-    fail "case11: invalid --manual-requested missing expected error"
-
-# Case 12 — re-run without manual flag clears stale true from the rewritten env file
-case12_dir="$TMPROOT/case12"
-design12="$case12_dir/design"
-out12="$case12_dir/source-env.sh"
-mkdir -p "$design12"
-CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
-    --output "$out12" \
-    --design-tmpdir "$design12" \
-    --session-id "MANUAL-TRUE" \
-    --manual-requested true \
-    --claude-pid "$TEST_CLAUDE_PID"
-CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
-    --output "$out12" \
-    --design-tmpdir "$design12" \
-    --session-id "MANUAL-CLEARED" \
-    --claude-pid "$TEST_CLAUDE_PID"
-(
-    set -u
-    # shellcheck disable=SC1090,SC2153
-    source "$out12"
-    [ "$SESSION_ID" = "MANUAL-CLEARED" ] || exit 121
-    [ "${MANUAL_REQUESTED+x}" != x ] || exit 122
-) || fail "case12: stale MANUAL_REQUESTED=true was not cleared by omitted follow-up write (subshell exit $?)"
-
-# Case 13 — no-flag refresh preserves reviewer keys; MANUAL_REQUESTED still clears
-case13_dir="$TMPROOT/case13"
-design13="$case13_dir/design"
-out13="$case13_dir/source-env.sh"
-mkdir -p "$design13"
-CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
-    --output "$out13" \
-    --design-tmpdir "$design13" \
-    --session-id "PRESERVE-SEED" \
-    --manual-requested true \
-    --codex-present true \
-    --cursor-present false \
-    --codex-available true \
-    --cursor-available false \
-    --codex-binary-found true \
-    --cursor-binary-found false \
-    --claude-pid "$TEST_CLAUDE_PID"
-CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
-    --output "$out13" \
-    --design-tmpdir "$design13" \
-    --session-id "PRESERVE-REFRESH" \
-    --claude-pid "$TEST_CLAUDE_PID"
-(
-    set -u
-    # shellcheck disable=SC1090,SC2153
-    source "$out13"
-    [ "$SESSION_ID" = "PRESERVE-REFRESH" ] || exit 131
-    [ "${MANUAL_REQUESTED+x}" != x ] || exit 132
-    [ "$CODEX_PRESENT" = "true" ] || exit 133
-    [ "$CURSOR_PRESENT" = "false" ] || exit 134
-    [ "$CODEX_AVAILABLE" = "true" ] || exit 135
-    [ "$CURSOR_AVAILABLE" = "false" ] || exit 136
-    [ "$CODEX_BINARY_FOUND" = "true" ] || exit 137
-    [ "$CURSOR_BINARY_FOUND" = "false" ] || exit 138
-) || fail "case13: no-flag refresh did not preserve reviewer gate keys or clear MANUAL_REQUESTED (subshell exit $?)"
-
-# Case 14 — partial codex override mirrors alias peer; omitted binary for the
-# explicitly refreshed tool is not recovered; cursor keys preserved.
-case14_dir="$TMPROOT/case14"
-design14="$case14_dir/design"
-out14="$case14_dir/source-env.sh"
-mkdir -p "$design14"
-CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
-    --output "$out14" \
-    --design-tmpdir "$design14" \
     --session-id "PARTIAL-SEED" \
     --codex-present true \
     --cursor-present true \
@@ -345,29 +235,29 @@ CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
     --cursor-binary-found false \
     --claude-pid "$TEST_CLAUDE_PID"
 CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
-    --output "$out14" \
-    --design-tmpdir "$design14" \
+    --output "$out9" \
+    --design-tmpdir "$design9" \
     --session-id "PARTIAL-OVERRIDE" \
     --codex-present false \
     --claude-pid "$TEST_CLAUDE_PID"
 (
     # shellcheck disable=SC1090,SC2153
-    source "$out14"
-    [ "$SESSION_ID" = "PARTIAL-OVERRIDE" ] || exit 141
-    [ "$CODEX_PRESENT" = "false" ] || exit 142
-    [ "$CODEX_AVAILABLE" = "false" ] || exit 143
-    [ "$CURSOR_PRESENT" = "true" ] || exit 144
-    [ "$CURSOR_AVAILABLE" = "true" ] || exit 145
-    [ "${CODEX_BINARY_FOUND+x}" != x ] || exit 146
-    [ "$CURSOR_BINARY_FOUND" = "false" ] || exit 147
-) || fail "case14: partial codex override did not mirror peer, clear stale codex binary, or preserve cursor keys (subshell exit $?)"
+    source "$out9"
+    [ "$SESSION_ID" = "PARTIAL-OVERRIDE" ] || exit 91
+    [ "$CODEX_PRESENT" = "false" ] || exit 92
+    [ "$CODEX_AVAILABLE" = "false" ] || exit 93
+    [ "$CURSOR_PRESENT" = "true" ] || exit 94
+    [ "$CURSOR_AVAILABLE" = "true" ] || exit 95
+    [ "${CODEX_BINARY_FOUND+x}" != x ] || exit 96
+    [ "$CURSOR_BINARY_FOUND" = "false" ] || exit 97
+) || fail "case9: partial codex override did not mirror peer, clear stale codex binary, or preserve cursor keys (subshell exit $?)"
 
-# Case 15 — prior env recovery accepts only strict boolean exports
-case15_dir="$TMPROOT/case15"
-design15="$case15_dir/design"
-out15="$case15_dir/source-env.sh"
-mkdir -p "$design15"
-cat >"$out15" <<'EOF'
+# Case 10 — prior env recovery accepts only strict boolean exports
+case10_dir="$TMPROOT/case10"
+design10="$case10_dir/design"
+out10="$case10_dir/source-env.sh"
+mkdir -p "$design10"
+cat >"$out10" <<'EOF'
 #!/usr/bin/env bash
 export CODEX_PRESENT=true
 export CURSOR_PRESENT=$(touch /tmp/larch-wdce-should-not-exist)
@@ -376,38 +266,38 @@ export CURSOR_AVAILABLE=false
 EOF
 rm -f /tmp/larch-wdce-should-not-exist
 CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
-    --output "$out15" \
-    --design-tmpdir "$design15" \
+    --output "$out10" \
+    --design-tmpdir "$design10" \
     --session-id "STRICT-RECOVERY" \
     --claude-pid "$TEST_CLAUDE_PID"
 [ ! -e /tmp/larch-wdce-should-not-exist ] || \
-    fail "case15: prior env command substitution was executed during recovery"
+    fail "case10: prior env command substitution was executed during recovery"
 (
     set -u
     # shellcheck disable=SC1090,SC2153
-    source "$out15"
-    [ "$CODEX_PRESENT" = "true" ] || exit 151
-    [ "$CURSOR_AVAILABLE" = "false" ] || exit 152
-    [ "${CURSOR_PRESENT+x}" != x ] || exit 153
-    [ "${CODEX_AVAILABLE+x}" != x ] || exit 154
-) || fail "case15: strict boolean recovery did not preserve expected values (subshell exit $?)"
+    source "$out10"
+    [ "$CODEX_PRESENT" = "true" ] || exit 101
+    [ "$CURSOR_AVAILABLE" = "false" ] || exit 102
+    [ "${CURSOR_PRESENT+x}" != x ] || exit 103
+    [ "${CODEX_AVAILABLE+x}" != x ] || exit 104
+) || fail "case10: strict boolean recovery did not preserve expected values (subshell exit $?)"
 
-# Case 16 — invalid repo is rejected before writing output
-case16_dir="$TMPROOT/case16"
-design16="$case16_dir/design"
-out16="$case16_dir/source-env.sh"
-mkdir -p "$design16"
+# Case 11 — invalid repo is rejected before writing output
+case11_dir="$TMPROOT/case11"
+design11="$case11_dir/design"
+out11="$case11_dir/source-env.sh"
+mkdir -p "$design11"
 set +e
 bad_repo_out=$(CLAUDE_PLUGIN_ROOT="$REPO_ROOT" "$SUBJECT" \
-    --output "$out16" \
-    --design-tmpdir "$design16" \
+    --output "$out11" \
+    --design-tmpdir "$design11" \
     --session-id "BAD-REPO" \
     --repo bad..repo \
     --claude-pid "$TEST_CLAUDE_PID" 2>&1)
 bad_repo_rc=$?
 set -e
-[ "$bad_repo_rc" = "1" ] || fail "case16: invalid repo exit $bad_repo_rc"
-[[ "$bad_repo_out" == *"ERROR=Invalid --repo"* ]] || fail "case16: invalid repo error missing: $bad_repo_out"
-[ ! -e "$out16" ] || fail "case16: invalid repo should not write output"
+[ "$bad_repo_rc" = "1" ] || fail "case11: invalid repo exit $bad_repo_rc"
+[[ "$bad_repo_out" == *"ERROR=Invalid --repo"* ]] || fail "case11: invalid repo error missing: $bad_repo_out"
+[ ! -e "$out11" ] || fail "case11: invalid repo should not write output"
 
 echo "PASS: test-write-design-current-env.sh"

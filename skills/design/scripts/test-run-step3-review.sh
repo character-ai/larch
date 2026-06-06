@@ -7,8 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd -P)"
 LAUNCHER="$SCRIPT_DIR/run-step3-review.sh"
 
-mkdir -p "${HOME}/.cache/larch/sessions"
-TMP="$(mktemp -d "${HOME}/.cache/larch/sessions/test-run-step3-review.XXXXXX")"
+TMP="$(mktemp -d "${TMPDIR:-/tmp}/test-run-step3-review.XXXXXX")"
 TMP="$(cd "$TMP" && pwd -P)"
 trap 'rm -rf "$TMP"' EXIT
 
@@ -433,6 +432,12 @@ printf '3\n' >"$D1B/review-round-count.txt"
 mkdir -p "$D1B/plan-review/round-1" "$D1B/plan-review/round-2"
 printf 'stale\n' >"$D1B/plan-review/round-1/stale.txt"
 printf 'stale\n' >"$D1B/plan-review/round-2/stale.txt"
+printf 'stale accepted\n' >"$D1B/accepted-plan-findings.md"
+printf 'stale rejected\n' >"$D1B/rejected-findings.md"
+printf 'stale oos\n' >"$D1B/oos.md"
+printf 'cumulative oos\n' >"$D1B/oos-accepted-design.md"
+printf 'stale tally\n' >"$D1B/voting-tally.md"
+printf 'stale ballot\n' >"$D1B/ballot.txt"
 stub="$(write_loop_stub "$D1B" 'exit 97')"
 set +e
 "${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
@@ -446,6 +451,12 @@ else
 fi
 [[ ! -e "$D1B/plan-review/round-1" ]] || fail 'cap-reached should remove stale round-1'
 [[ ! -e "$D1B/plan-review/round-2" ]] || fail 'cap-reached should remove stale round-2'
+[[ ! -e "$D1B/accepted-plan-findings.md" ]] || fail 'cap-reached should clear stale accepted findings'
+[[ ! -e "$D1B/rejected-findings.md" ]] || fail 'cap-reached should clear stale rejected findings'
+[[ ! -e "$D1B/oos.md" ]] || fail 'cap-reached should clear stale round OOS'
+[[ ! -e "$D1B/voting-tally.md" ]] || fail 'cap-reached should clear stale voting tally'
+[[ ! -e "$D1B/ballot.txt" ]] || fail 'cap-reached should clear stale ballot'
+grep -Fq 'cumulative oos' "$D1B/oos-accepted-design.md" || fail 'cap-reached should preserve cumulative accepted OOS'
 
 echo "=== symlinked plan-review round dir skipped during cleanup ==="
 D1S="$TMP/symlink-round"
@@ -548,18 +559,14 @@ out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D6" --round-cap 5)"
 assert_contains "$out" 'LOOP_STATUS=panel-failed' 'unknown status normalized'
 
-echo "=== unexpected LOOP_STATUS preserved on non-zero rc ==="
+echo "=== removed loop-only LOOP_STATUS normalizes on non-zero rc ==="
 D6B="$TMP/revision-failed-rc"
 write_common_inputs "$D6B" SIMPLE
 stub="$(write_loop_stub "$D6B" "printf 'LOOP_STATUS=revision-failed\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
 out="$("${launcher_env[@]}" RUN_STEP3_PLAN_REVIEW_LOOP_SH="$stub" "$LAUNCHER" \
     --design-tmpdir "$D6B" --round-cap 5)"
-assert_contains "$out" 'LOOP_STATUS=revision-failed' 'revision-failed preserved on rc 1'
-if [[ "$out" == *'treating as panel-failed'* && "$out" != *'missing or invalid LOOP_STATUS'* ]]; then
-    fail 'unexpected rc should not coerce revision-failed to panel-failed'
-else
-    pass 'revision-failed not coerced to panel-failed'
-fi
+assert_contains "$out" 'LOOP_STATUS=panel-failed' 'removed revision-failed normalizes on rc 1'
+assert_contains "$out" 'missing or invalid LOOP_STATUS' 'removed revision-failed emits invalid-status warning'
 
 echo "=== main-agent-vote-required preserved on non-zero rc ==="
 D6C="$TMP/main-agent-rc"

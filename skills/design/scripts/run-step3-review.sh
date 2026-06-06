@@ -254,6 +254,9 @@ elif [[ -L "$DESIGN_TMPDIR/plan-review" ]]; then
 fi
 
 if [[ "$STEP3_REVIEW_CAP_REACHED" == true ]]; then
+    for _stale_review_artifact in accepted-plan-findings.md rejected-findings.md oos.md voting-tally.md findings-classification.tsv ballot.txt; do
+        rm -f "$DESIGN_TMPDIR/$_stale_review_artifact"
+    done
     LOOP_STATUS=cap-reached
     TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached
 else
@@ -343,13 +346,13 @@ else
                     _key="${_line%%=*}"
                     _value="${_line#*=}"
                     case "$_key" in
-                        LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | CONVERGENCE_STREAK | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS | SCOPE_ANCHOR_FILE)
+                        LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS | SCOPE_ANCHOR_FILE)
                             printf -v "$_key" '%s' "$_value"
                             ;;
                     esac
                 done < <(phase_driver_read_result_env "$INNER_RESULT_ENV" \
                     LOOP_STATUS ACCEPTED_COUNT IMPORTANT_ACCEPTED_COUNT DEGRADED_PANEL ROUNDS_COMPLETED \
-                    REASON REVISE_STATUS CONVERGENCE_STREAK COLLECT_OK_COUNT COLLECT_FAILURE_COUNT \
+                    REASON REVISE_STATUS COLLECT_OK_COUNT COLLECT_FAILURE_COUNT \
                     TALLY_PLAN_REVIEW_STATUS AGGREGATOR_STATUS VOTING_TALLY_FILE VOTER_1_PARSE_RATE_STATUS SCOPE_ANCHOR_FILE)
                 while IFS= read -r _line || [[ -n "$_line" ]]; do
                     _key="${_line%%=*}"
@@ -362,14 +365,14 @@ else
             _key="${_line%%=*}"
             _value="${_line#*=}"
             case "$_key" in
-                LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | CONVERGENCE_STREAK | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS | SCOPE_ANCHOR_FILE)
+                LOOP_STATUS | ACCEPTED_COUNT | IMPORTANT_ACCEPTED_COUNT | DEGRADED_PANEL | ROUNDS_COMPLETED | REASON | REVISE_STATUS | COLLECT_OK_COUNT | COLLECT_FAILURE_COUNT | TALLY_PLAN_REVIEW_STATUS | AGGREGATOR_STATUS | VOTING_TALLY_FILE | VOTER_1_PARSE_RATE_STATUS | SCOPE_ANCHOR_FILE)
                     [[ -n "${!_key:-}" ]] || printf -v "$_key" '%s' "$_value"
                     ;;
                 WARN) emit_kv WARN "$_value" ;;
             esac
         done <<<"${_plan_review_out:-}"
 
-        if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|zero-findings-degraded-panel|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|emit-plan-failed|optional-trailer-dedup-loss|panel-failed|main-agent-vote-required)$ ]]; then
+        if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required)$ ]]; then
             LOOP_STATUS=panel-failed
             emit '**⚠ Step 3: missing or invalid LOOP_STATUS after plan-review-loop.sh; treating as panel-failed**'
         fi

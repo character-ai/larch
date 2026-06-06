@@ -16,8 +16,8 @@ unaffected. Drift is caught by the full jq-filter pin in `scripts/test-design-st
 
 **Run**: `bash scripts/test-step0b-router-flag-recovery.sh` or `make test-step0b-router-flag-recovery`.
 
-**Coverage gap closed**: #3008 — `--manual-only` argv after successful
-`write-run-params.sh` (case 1), the outer guard's false-branch no-op (case 5),
+**Coverage gap closed**: router flag true-branch recovery after successful
+`write-run-params.sh` (cases 1-4), the outer guard's false-branch no-op (case 5),
 and the missing-`run-params.json` degraded warning path (case 6). #3161 — a hard
 `write-run-params.sh` failure aborts before the recovery merge runs (case 7); case 7b
 proves the composed `write_then_recover()` path still reaches and completes recovery

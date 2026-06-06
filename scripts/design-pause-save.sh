@@ -168,7 +168,9 @@ STEP_REGISTRY="$REPO_ROOT/skills/design/scripts/step-name-registry.tsv"
 [[ -f "$STEP_REGISTRY" ]] || emit_fail "missing-step-registry"
 
 STEP=""
-if [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/step-3.5" && -f "$DESIGN_TMPDIR/.completed/step-3.6" && ! -f "$DESIGN_TMPDIR/.completed/step-3b" ]]; then
+if [[ -f "$DESIGN_TMPDIR/.step3-reentry" ]]; then
+    STEP="3"
+elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/step-3.5" && -f "$DESIGN_TMPDIR/.completed/step-3.6" && ! -f "$DESIGN_TMPDIR/.completed/step-3b" ]]; then
     STEP="3b"
 elif [[ -f "$DESIGN_TMPDIR/.completed/step-3" && -f "$DESIGN_TMPDIR/.completed/step-3.5" && ! -f "$DESIGN_TMPDIR/.completed/step-3.6" ]]; then
     STEP="3.6"
@@ -250,6 +252,10 @@ cp "$redacted_state_tmp" "$DESIGN_TMPDIR/pause-state.txt"
 
 publish_cmd="${LARCH_DESIGN_LOG_PUBLISH:-$SCRIPT_DIR/design-log-publish.sh}"
 render_fresh_timing_report_for_pause_publish
+if [[ -f "$DESIGN_TMPDIR/.step3-reentry" ]]; then
+    "$REPO_ROOT/skills/design/scripts/design-step3-state.sh" \
+        --design-tmpdir "$DESIGN_TMPDIR" --direct-review-pause-hygiene >/dev/null 2>&1 || true
+fi
 publish_args=(
     "$publish_cmd"
     --reason pause

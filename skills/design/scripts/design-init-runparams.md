@@ -15,13 +15,12 @@
 | `--classification SIMPLE\|HARD` | yes | From orchestrator tier resolution |
 | `--partition-requested true\|false` | yes | |
 | `--brainstorm-requested true\|false` | yes | Includes title-prefix auto-enable |
-| `--manual-requested true\|false` | yes | |
 | `--repo OWNER/REPO` | no | Forwarded for `tracking-issue-write.sh` rename |
 
 ## Responsibilities
 
 1. Tier map: SIMPLE → `sketch_budget=0`, `workflow_path=SIMPLE`; HARD → `sketch_budget=4`, `workflow_path=HARD`; `source=caller-forwarded`.
-2. **Single** `write-design-current-env.sh` **before** `[DESIGNING]` rename (`--manual-requested true` only when manual); child diagnostics preserve quiet mode with the same `[ "${LARCH_QUIET_PID:-}" = "$$" ]` / FD 4 bridge (`>/dev/null 2>&4` only under quiet, `>/dev/null` otherwise); non-zero → detailed `larch_err` banner, `INIT_STATUS=env-refresh-failed`, exit `1`.
+2. **Single** `write-design-current-env.sh` **before** `[DESIGNING]` rename; child diagnostics preserve quiet mode with the same `[ "${LARCH_QUIET_PID:-}" = "$$" ]` / FD 4 bridge (`>/dev/null 2>&4` only under quiet, `>/dev/null` otherwise); non-zero → detailed `larch_err` banner, `INIT_STATUS=env-refresh-failed`, exit `1`.
 3. `tracking-issue-write.sh rename --state designing` with `${REPO:+--repo}`; rename failure → `WARN=`.
 4. `write-run-params.sh` → `run-params.json`; non-zero → detailed `larch_err` contract-drift banner including `contract drift`, `aborting before silent tier downgrade`, and `bash scripts/test-write-run-params.sh`, then `INIT_STATUS=contract-drift`, exit `1`.
 5. Full router-flag jq-merge block (guard, `mktemp` paths, filter, `mv`, `append-tool-failure.sh` on jq failure, both warning strings).

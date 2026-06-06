@@ -84,7 +84,7 @@ finding_id \t finding_reviewers \t voting_result \t v1_vote \t v1_correctness \t
 
 ## Per-round `--design-tmpdir` Routing
 
-Callers may pass a per-round subdirectory as `--design-tmpdir`. The tally writes `voting-tally.md`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, and the forensic TSV selected by `--findings-classification-out` inside that directory. When `--findings-classification-out` is omitted, the backward-compatible default still suffixes `plan-review/round-1/findings-classification.tsv` to the design tmpdir; multi-round callers must pass `--findings-classification-out` explicitly per round. `skills/design/scripts/plan-review-loop.sh` already does so.
+Callers may pass a per-round subdirectory as `--design-tmpdir`. The tally writes `voting-tally.md`, `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`, and the forensic TSV selected by `--findings-classification-out` inside that directory. When `--findings-classification-out` is omitted, the backward-compatible default still suffixes `plan-review/round-1/findings-classification.tsv` to the design tmpdir; callers should pass `--findings-classification-out` explicitly per round. `skills/design/scripts/plan-review-loop.sh` already does so for the active Step 3 round.
 
 ## Makefile Wiring
 

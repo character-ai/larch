@@ -81,6 +81,7 @@ ln -sf "$SCRIPT_DIR/lib-phase-driver.sh" "$FAKE_DESIGN/lib-phase-driver.sh"
 ln -sf "$SCRIPT_DIR/check-plan-size.sh" "$FAKE_DESIGN/check-plan-size.sh"
 ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.sh" "$FAKE_DESIGN/lib-plan-optional-trailers.sh"
 ln -sf "$SCRIPT_DIR/lib-plan-optional-trailers.awk" "$FAKE_DESIGN/lib-plan-optional-trailers.awk"
+ln -sf "$SCRIPT_DIR/lib-drift-baseline.sh" "$FAKE_DESIGN/lib-drift-baseline.sh"
 
 cat >"$FAKE_DESIGN/design-driver.sh" <<'STUB'
 #!/usr/bin/env bash
@@ -654,7 +655,7 @@ set +e
 run_subject "$D22" --with-plan-size
 rc=$?
 set -e
-assert_rc "merged plan-size rc2" 0 "$rc"
+assert_rc "merged plan-size rc2" 1 "$rc"
 assert_contains "$D22/stdout.txt" 'proceeding without threshold check' "merged rc2 warn display"
 assert_not_contains "$D22/stdout.txt" 'APPENDED=' "merged rc2 no APPENDED"
 [[ -f "$D22/check-plan-size.validation.log" ]] || fail "merged rc2 validation log"
@@ -723,7 +724,7 @@ set +e
 run_subject "$D27" --with-plan-size
 rc=$?
 set -e
-assert_rc "merged plan-size append failure is nonfatal" 0 "$rc"
+assert_rc "merged plan-size append failure is fatal" 1 "$rc"
 assert_contains "$D27/stdout.txt" 'proceeding without threshold check' "merged append failure warning display"
 assert_contains "$D27/check-plan-size.validation.log" 'stderr detail from check-plan-size' "merged append failure preserves stderr"
 assert_not_contains "$D27/stdout.txt" 'APPENDED=' "merged append failure no APPENDED leak"
@@ -755,6 +756,106 @@ set -e
 assert_rc "merged validate driver failed rc1" 1 "$rc"
 assert_file_kv "$D29/.design-postplan-emit-result.env" POSTPLAN_EMIT_STATUS validate-driver-failed "merged validate driver failed status"
 assert_contains "$D29/stdout.txt" 'plan-command validator infrastructure failed' "merged validate driver failed diagnostic"
+
+D30="$TMP/drift-baseline-seed"
+setup_design_tmp "$D30" full HARD
+set +e
+run_subject "$D30" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "drift baseline seed rc" 0 "$rc"
+assert_file_kv "$D30/drift-baseline.env" BASELINE_PLAN_LINES 2 "drift baseline seed plan lines"
+assert_file_kv "$D30/drift-baseline.env" BASELINE_DIFF_LINES 12 "drift baseline seed diff lines"
+
+D31="$TMP/drift-baseline-preserved"
+setup_design_tmp "$D31" full HARD
+printf 'BASELINE_PLAN_LINES=5\nBASELINE_DIFF_LINES=6\n' >"$D31/drift-baseline.env"
+set +e
+run_subject "$D31" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "drift baseline preserved rc" 0 "$rc"
+assert_file_kv "$D31/drift-baseline.env" BASELINE_PLAN_LINES 5 "drift baseline preserves plan lines"
+assert_file_kv "$D31/drift-baseline.env" BASELINE_DIFF_LINES 6 "drift baseline preserves diff lines"
+
+D32="$TMP/drift-trigger"
+setup_design_tmp "$D32" full HARD
+printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D32/drift-baseline.env"
+{
+    printf '# Plan\n'
+    fill_plan_lines /dev/stdout 7 b
+    printf 'diff_lines: 25\n'
+} >"$D32/plan.txt"
+set +e
+run_subject "$D32" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "drift trigger rc" 14 "$rc"
+assert_file_kv "$D32/.design-postplan-emit-result.env" PLAN_SIZE_STATUS drift-trigger "drift trigger status"
+assert_contains "$D32/stdout.txt" '## Plan Size — Drift' "drift trigger section"
+
+D33="$TMP/drift-hard-precedence"
+setup_design_tmp "$D33" full HARD
+printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D33/drift-baseline.env"
+{
+    printf '# Plan\n'
+    fill_plan_lines /dev/stdout 801 b
+    printf 'diff_lines: 25\n'
+} >"$D33/plan.txt"
+set +e
+run_subject "$D33" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "drift hard precedence rc" 12 "$rc"
+assert_file_kv "$D33/.design-postplan-emit-result.env" PLAN_SIZE_STATUS hard-trigger "drift hard precedence status"
+assert_not_contains "$D33/stdout.txt" '## Plan Size — Drift' "drift hard precedence no drift section"
+
+D34="$TMP/drift-partition-precedence"
+setup_design_tmp "$D34" full SIMPLE
+printf '{"review_budget":"full","workflow_path":"SIMPLE","design_classification":"SIMPLE","partition_requested":true}\n' >"$D34/run-params.json"
+printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D34/drift-baseline.env"
+{
+    printf '# Plan\n'
+    fill_plan_lines /dev/stdout 7 b
+    printf 'diff_lines: 25\n'
+} >"$D34/plan.txt"
+set +e
+run_subject "$D34" --with-plan-size --snapshot-original
+rc=$?
+set -e
+assert_rc "drift partition precedence rc" 13 "$rc"
+assert_file_kv "$D34/.design-postplan-emit-result.env" PLAN_SIZE_STATUS partition-requested "drift partition precedence status"
+assert_not_contains "$D34/stdout.txt" '## Plan Size — Drift' "drift partition precedence no drift section"
+
+D35="$TMP/defects-seed-drift-baseline"
+setup_design_tmp "$D35" full HARD
+reset_env
+export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
+set +e
+bash "$SUBJECT" --design-tmpdir "$D35" --with-plan-size --snapshot-original >"$D35/stdout.txt" 2>"$D35/stderr.txt"
+rc=$?
+set -e
+assert_rc "defects seed drift baseline rc" 10 "$rc"
+assert_file_kv "$D35/drift-baseline.env" BASELINE_PLAN_LINES 2 "defects seed drift baseline plan"
+assert_file_kv "$D35/drift-baseline.env" BASELINE_DIFF_LINES 12 "defects seed drift baseline diff"
+
+D36="$TMP/defects-drift-trigger"
+setup_design_tmp "$D36" full HARD
+printf 'BASELINE_PLAN_LINES=3\nBASELINE_DIFF_LINES=12\n' >"$D36/drift-baseline.env"
+{
+    printf '# Plan\n'
+    fill_plan_lines /dev/stdout 7 b
+    printf 'diff_lines: 25\n'
+} >"$D36/plan.txt"
+reset_env
+export VALIDATE_STATUS_VALUE=defects-found VALIDATE_DEFECT_COUNT_VALUE=2
+set +e
+bash "$SUBJECT" --design-tmpdir "$D36" --with-plan-size >"$D36/stdout.txt" 2>"$D36/stderr.txt"
+rc=$?
+set -e
+assert_rc "defects drift trigger rc" 10 "$rc"
+assert_file_kv "$D36/.design-postplan-emit-result.env" PLAN_SIZE_STATUS skipped-defects "defects win over drift trigger status"
+assert_not_contains "$D36/stdout.txt" '## Plan Size — Drift' "defects win over drift trigger section"
 
 if [[ "$FAIL" -ne 0 ]]; then
     printf 'FAIL: test-design-postplan-emit.sh (%s failed, %s passed)\n' "$FAIL" "$PASS" >&2

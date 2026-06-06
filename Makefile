@@ -22,7 +22,7 @@ PYTHON ?= python3
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature
 .PHONY: test-persist-implement-run-flags
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
-.PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence
+.PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state
 .PHONY: test-no-grouped-reuse-guard test-record-implement-review-round-timing test-review-implement-step5-loop-timing test-record-plan-review-round-timing
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
@@ -89,7 +89,7 @@ test-harnesses-5: test-harness-shards-coverage test-review-and-fix-dispatch test
 
 test-harnesses-6: test-run-external-agent test-findings-classification test-stall-recovery-report test-step-18b-final-report test-render-final-summary test-review-findings-classification test-session-setup-presence-defaults test-check-topology-rule-paths test-preflight-args test-decompose-file-issues test-flush-execution-issues test-run-research-planner test-render-reviewer-prompt test-references-headers test-alias-target-resolution test-write-rejected-findings test-extract-plan-scope-paths test-keepalive-sentinel test-token-report-dedup test-body-file-title test-effort-prose
 
-test-harnesses-7: test-step2-dispatch test-aggregate-findings test-refresh-run-logs test-check-contains-pins test-oos-issue-cap test-file-design-oos test-ci-wait test-ci-wait-exit-trap test-plan-block test-plan-block-strip-body test-check-scope-reduction-marker test-plan-review-scope-anchor test-redact-tmpdir-paths test-relevant-checks-validation test-snapshot-plan-round test-implement-fork-env test-research-structure test-rebase-push-force-lease test-research-banner test-review-relevant-checks-helper test-step3-orchestrator-fence
+test-harnesses-7: test-step2-dispatch test-aggregate-findings test-refresh-run-logs test-check-contains-pins test-oos-issue-cap test-file-design-oos test-ci-wait test-ci-wait-exit-trap test-plan-block test-plan-block-strip-body test-check-scope-reduction-marker test-plan-review-scope-anchor test-redact-tmpdir-paths test-relevant-checks-validation test-snapshot-plan-round test-implement-fork-env test-research-structure test-rebase-push-force-lease test-research-banner test-review-relevant-checks-helper test-step3-orchestrator-fence test-design-step3-state
 
 test-harnesses-8: test-review-and-fix-convergence test-collect-agent-bash32 test-dispatch-code-voters-edge-and-r3-claude test-design-pause-resume test-audit-runs test-create-pr test-run-step3-review test-finalize-sanity-check test-parse-codex-usage test-token-tally test-sentinel-write test-render-cost-line test-review-structure test-lib-external-launcher-common test-render-run-summary-format test-render-voter-prompt test-intra-batch-deps test-brainstorm-prompts
 
@@ -541,6 +541,9 @@ test-run-step3-review:
 
 test-step3-orchestrator-fence:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-step3-orchestrator-fence.sh
+
+test-design-step3-state:
+	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-design-step3-state.sh
 
 test-lib-phase-driver:
 	bash scripts/harness-timer.sh $@ bash skills/design/scripts/test-lib-phase-driver.sh

@@ -75,12 +75,16 @@ echo "=== cap reached bypasses loop ==="
 D2="$TMPROOT/cap-reached"
 write_common_inputs "$D2" SIMPLE
 printf '3\n' >"$D2/review-round-count.txt"
+printf 'stale accepted\n' >"$D2/accepted-plan-findings.md"
+printf 'stale tally\n' >"$D2/voting-tally.md"
 stub="$(write_loop_stub "$D2" 'exit 97')"
 driver_out=$(run_driver "$D2" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expected cap-reached loop status'
 printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' || fail 'expected skipped-cap-reached tally status'
 printf '%s\n' "$driver_out" | grep -q 'cap reached; skipping' || fail 'expected cap-reached skip breadcrumb'
 [[ "$(cat "$D2/review-round-count.txt")" == "3" ]] || fail 'cap-reached path must leave counter unchanged'
+[[ ! -e "$D2/accepted-plan-findings.md" ]] || fail 'cap-reached path must clear stale accepted findings'
+[[ ! -e "$D2/voting-tally.md" ]] || fail 'cap-reached path must clear stale voting tally'
 
 echo "=== panel-failed consumes the pending round ==="
 D3="$TMPROOT/panel-failed"
@@ -100,23 +104,25 @@ driver_out=$(run_driver "$D3B" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=panel-failed' || fail 'invalid loop status should be normalized to panel-failed'
 [[ "$(cat "$D3B/review-round-count.txt")" == "2" ]] || fail 'unrecognized post-launch status should keep pending round consumed'
 
-echo "=== passive-summary statuses parse and persist across Step 3 entries ==="
-DP="$TMPROOT/passive-summary"
+echo "=== removed passive-summary statuses normalize to panel-failed ==="
+DP="$TMPROOT/removed-passive-summary"
 write_common_inputs "$DP" HARD
 mkdir -p "$DP/plan-review/round-1" "$DP/plan-review/round-2"
 printf 'stale\n' >"$DP/plan-review/round-1/stale.txt"
 printf 'stale\n' >"$DP/plan-review/round-2/stale.txt"
 stub="$(write_loop_stub "$DP" "mkdir -p \"$DP/plan-review/round-1\"; printf 'fresh\n' >\"$DP/plan-review/round-1/new.txt\"; printf 'LOOP_STATUS=converged\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=1\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 driver_out=$(run_driver "$DP" "$stub")
-printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=converged' || fail 'expected converged passive-summary status'
-[[ "$(cat "$DP/review-round-count.txt")" == "1" ]] || fail 'first passive-summary entry should persist round 1'
+printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=panel-failed' || fail 'removed converged status should normalize to panel-failed'
+printf '%s\n' "$driver_out" | grep -q 'missing or invalid LOOP_STATUS' || fail 'removed converged status should emit invalid-status warning'
+[[ "$(cat "$DP/review-round-count.txt")" == "1" ]] || fail 'removed converged status should still consume round 1'
 [[ -f "$DP/plan-review/round-1/new.txt" ]] || fail 'fresh round-1 artifact missing after first entry'
 [[ ! -e "$DP/plan-review/round-1/stale.txt" ]] || fail 'stale round-1 artifact should be cleaned before launch'
 [[ ! -e "$DP/plan-review/round-2/stale.txt" ]] || fail 'stale round-2 artifact should be cleaned before launch'
 stub="$(write_loop_stub "$DP" "mkdir -p \"$DP/plan-review/round-2\"; printf 'fresh\n' >\"$DP/plan-review/round-2/new.txt\"; printf 'LOOP_STATUS=cap-hit\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 0")"
 driver_out=$(run_driver "$DP" "$stub")
-printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-hit' || fail 'expected cap-hit passive-summary status'
-[[ "$(cat "$DP/review-round-count.txt")" == "2" ]] || fail 'second passive-summary entry should persist round 2'
+printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=panel-failed' || fail 'removed cap-hit status should normalize to panel-failed'
+printf '%s\n' "$driver_out" | grep -q 'missing or invalid LOOP_STATUS' || fail 'removed cap-hit status should emit invalid-status warning'
+[[ "$(cat "$DP/review-round-count.txt")" == "2" ]] || fail 'removed cap-hit status should still consume round 2'
 [[ -f "$DP/plan-review/round-2/new.txt" ]] || fail 'fresh round-2 artifact missing after second entry'
 
 echo "=== hard path advances round 2 after successful round-1 snapshot ==="

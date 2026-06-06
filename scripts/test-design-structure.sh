@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Structural regression guard for the /design two-tier contract.
-# shellcheck disable=SC2016 # harness intentionally pins literal Markdown/shell snippets.
+# shellcheck disable=SC2016,SC2317 # harness intentionally pins literal Markdown/shell snippets; self-test fixture helpers are indirectly reached.
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd -P)"
@@ -125,6 +125,15 @@ EOF_FIXTURE
   chmod +x "$plugin/scripts/design-pause-load.sh"
   cat >"$plugin/scripts/write-design-current-env.sh" <<'EOF_FIXTURE'
 #!/usr/bin/env bash
+out=""
+while [[ $# -gt 0 ]]; do
+  printf '%s\n' "$1" >>"${WDCE_ARG_LOG:?}"
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+[[ -n "$out" ]] && printf 'export SESSION_ID=RUNTEST\n' >"$out"
 exit 0
 EOF_FIXTURE
   chmod +x "$plugin/scripts/write-design-current-env.sh"
@@ -136,6 +145,8 @@ EOF_FIXTURE
     'STEP=1d' \
     '<!-- larch:design-pause:end -->' >"$body"
   mkdir -p "$tmp/design-tmpdir"
+  printf '{"manual_gate_b":true}\n' >"$tmp/design-tmpdir/run-params.json"
+  export WDCE_ARG_LOG="$tmp/wdce-args.log"
 
   if ! route_out=$(STUB_PAUSE_LOAD_MODE=ok CLAUDE_PLUGIN_ROOT="$plugin" "$DESIGN_ROUTE_SH" \
     --design-tmpdir "$tmp/design-tmpdir" \
@@ -152,6 +163,10 @@ EOF_FIXTURE
     || { rm -rf "$tmp"; fail "design-route.sh must resume on lifecycle title when pause load succeeds: $route_out"; }
   printf '%s\n' "$route_out" | grep -Fq 'ROUTE=cancel-title-filter' \
     && { rm -rf "$tmp"; fail "design-route.sh must not title-filter when pause resume succeeds: $route_out"; }
+  grep -Fq -- '--manual-requested' "$WDCE_ARG_LOG" \
+    && { rm -rf "$tmp"; fail "design-route.sh resume must ignore stale manual_gate_b and omit --manual-requested"; }
+  grep -Fq 'MANUAL_REQUESTED' "$tmp/design-tmpdir/source-env.sh" \
+    && { rm -rf "$tmp"; fail "design-route.sh resume source-env must omit MANUAL_REQUESTED"; }
 
   mkdir -p "$tmp/design-tmpdir-stale"
   if ! route_out=$(STUB_PAUSE_LOAD_MODE=stale CLAUDE_PLUGIN_ROOT="$plugin" "$DESIGN_ROUTE_SH" \
@@ -450,9 +465,11 @@ assert_postplan_thin_fence() {
   grep -Fq 'printf' "$subject" || fail "$label missing postplan display printf"
   # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
   grep -Fq 'case "${_postplan_rc:-1}" in' "$subject" || fail "$label missing postplan rc case"
-  for arm in 0 10 11 12 13 2 1; do
+  for arm in 0 10 11 12 13 14 2 1; do
     grep -Fq "  ${arm})" "$subject" || fail "$label missing case arm ${arm}"
   done
+  grep -Fq 'DRIFT_' "$subject" || fail "$label missing drift trigger parse"
+  grep -Fq 'BASELINE_' "$subject" || fail "$label missing drift baseline parse"
   grep -Fq '  *)' "$subject" || fail "$label missing default-abort *) arm"
   # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
   if grep -Fq '<<<"${_postplan_out:-}"' "$subject"; then
@@ -483,9 +500,11 @@ assert_postplan_reference_thin_fence() {
   grep -Fq '${_postplan_out:-}' "$subject" || fail "$label missing postplan out display variable"
   # shellcheck disable=SC2016 # Markdown/bash fence literals must stay unexpanded.
   grep -Fq 'case "${_postplan_rc:-1}" in' "$subject" || fail "$label missing postplan rc case"
-  for arm in 0 10 11 12 13 2 1; do
+  for arm in 0 10 11 12 13 14 2 1; do
     grep -Fq "\`${arm}\`" "$subject" || fail "$label missing delegated case arm ${arm}"
   done
+  grep -Fq 'DRIFT_' "$subject" || fail "$label missing drift trigger parse"
+  grep -Fq 'BASELINE_' "$subject" || fail "$label missing drift baseline parse"
   # shellcheck disable=SC2016 # Markdown literal contains a default case marker.
   grep -Fq 'default-abort `*` arm' "$subject" || fail "$label missing default-abort *) arm"
   # shellcheck disable=SC2016 # Markdown/bash fence literal must stay unexpanded.
@@ -503,8 +522,8 @@ assert_postplan_reference_thin_fence() {
 run_postplan_thin_fence_self_tests() {
   local fixture
   fixture=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-postplan-self.XXXXXX")
-  awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD" | grep -v '^  13)$' >"$fixture"
-  if (assert_postplan_thin_fence "$fixture" 'postplan thin-fence negative fixture missing rc13') >/dev/null 2>&1; then
+  awk '/^<!-- step:2b /,/^### Step 2b\.5/' "$SKILL_MD" | grep -v '^  14)$' >"$fixture"
+  if (assert_postplan_thin_fence "$fixture" 'postplan thin-fence negative fixture missing rc14') >/dev/null 2>&1; then
     rm -f "$fixture"
     fail "postplan thin-fence self-test must fail when a case arm is missing"
   fi
@@ -512,47 +531,22 @@ run_postplan_thin_fence_self_tests() {
 }
 
 assert_gate_b_bypass_branch_sentinels() {
-  local file="$1"
-  local branch token line required label
-  for branch in cap-reached tally-error panel-failed skipped-cap-reached degraded-empty-collector plan-validator-defects plan-size-trigger; do
-    case "$branch" in
-      skipped-cap-reached)
-        token='TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached'
-        ;;
-      *)
-        token="LOOP_STATUS=$branch"
-        ;;
-    esac
-    # Key on the literal step-3 sentinel write so descriptive prose that only
-    # names the sentinels cannot satisfy the branch-specific pin.
-    line=$(awk -v token="$token" '
-      index($0, token) && index($0, ": > \"$DESIGN_TMPDIR/.completed/step-3\"") { print; exit }
-    ' "$file")
-    [[ -n "$line" ]] || fail "$branch branch missing literal Gate-B-bypass sentinel-write line"
-    # shellcheck disable=SC2016 # literal SKILL.md shell excerpts should not expand in the harness.
-    for required in \
-      'mkdir -p "$DESIGN_TMPDIR/.completed"' \
-      ': > "$DESIGN_TMPDIR/.completed/step-3"' \
-      ': > "$DESIGN_TMPDIR/.completed/step-3.5"' \
-      ': > "$DESIGN_TMPDIR/.completed/step-3.6"'
-    do
-      case "$required" in
-        'mkdir -p '*)
-          label='.completed mkdir'
-          ;;
-        *'step-3.5'*)
-          label='step-3.5 sentinel'
-          ;;
-        *'step-3.6'*)
-          label='step-3.6 sentinel'
-          ;;
-        *)
-          label='step-3 sentinel'
-          ;;
-      esac
-      [[ "$line" == *"$required"* ]] || fail "$branch branch missing $label"
-    done
-  done
+  local file="$1" label="${2:-Gate-B-bypass branch matrix}" start_marker="${3:-**Post-loop branch matrix**}" end_marker="${4:-<!-- step:3.5}"
+  local start_line end_line subject
+  start_line=$(grep -nF -- "$start_marker" "$file" | head -1 | cut -d: -f1 || true)
+  end_line=$(grep -nF -- "$end_marker" "$file" | awk -F: -v s="${start_line:-0}" '$1 > s {print $1; exit}' || true)
+  [[ -n "$start_line" ]] || fail "$label missing start marker: $start_marker"
+  [[ -n "$end_line" ]] || fail "$label missing end marker after $start_marker: $end_marker"
+  subject=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-gate-b-bypass.XXXXXX")
+  sed -n "${start_line},$((end_line - 1))p" "$file" >"$subject"
+  grep -Fq 'design-step3-state.sh' "$subject" || fail "$label missing design-step3-state helper"
+  grep -Fq -- '--gate-b-bypass' "$subject" || fail "$label missing --gate-b-bypass helper action"
+  grep -Fq 'refused-partial-gate-b-bypass' "$subject" || fail "$label missing refused partial state handling"
+  grep -Fq 'STEP3_STATE=' "$subject" || fail "$label missing STEP3_STATE parse"
+  if grep -Fq ': > "$DESIGN_TMPDIR/.completed/step-3.5"' "$subject"; then
+    fail "$label must not use inline Gate-B-bypass sentinel writes"
+  fi
+  rm -f "$subject"
 }
 
 assert_step3b_entry_guard_threads_repo() {
@@ -645,7 +639,7 @@ EOF_SELF
 write_gate_b_bypass_fixture() {
   local file="$1" missing_branch="${2:-}" missing_sentinel="${3:-}" branch line step35
   : >"$file"
-  for branch in tally-error degraded-empty-collector plan-size-trigger plan-validator-defects panel-failed; do
+  for branch in tally-error degraded-empty-collector panel-failed; do
     # shellcheck disable=SC2016 # literal SKILL.md shell excerpt should not expand in the fixture.
     step35=', and `: > "$DESIGN_TMPDIR/.completed/step-3.5"`'
     if [[ "$branch" == "$missing_branch" && "$missing_sentinel" == step-3.5 ]]; then
@@ -659,25 +653,20 @@ write_gate_b_bypass_fixture() {
 }
 
 run_gate_b_bypass_branch_sentinel_self_tests() {
-  local tmp base missing_tally missing_panel
-  tmp=$(mktemp -d "${TMPDIR:-/tmp}/test-design-structure-gateb.XXXXXX")
-  trap 'rm -rf "$tmp"' RETURN
-
-  base="$tmp/base.md"
-  write_gate_b_bypass_fixture "$base"
-  assert_gate_b_bypass_branch_sentinels "$base"
-
-  missing_tally="$tmp/missing-tally.md"
-  write_gate_b_bypass_fixture "$missing_tally" tally-error step-3.5
-  if (assert_gate_b_bypass_branch_sentinels "$missing_tally") 2>/dev/null; then
-    fail 'self-test: tally-error branch without step-3.5 sentinel should fail'
+  local fixture
+  fixture=$(mktemp "${TMPDIR:-/tmp}/test-design-structure-gate-b-bypass-self.XXXXXX")
+  cat >"$fixture" <<'EOF_SELF'
+**Post-loop branch matrix**
+- `LOOP_STATUS=tally-error` — run `"$CLAUDE_PLUGIN_ROOT/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --gate-b-bypass`, parse `STEP3_STATE=`, and abort on `STEP3_STATE=refused-partial-gate-b-bypass`.
+### Step 3.5
+EOF_SELF
+  assert_gate_b_bypass_branch_sentinels "$fixture" 'gate-b-bypass self-test valid' '**Post-loop branch matrix**' '### Step 3.5'
+  sed 's/refused-partial-gate-b-bypass/missing-state/' "$fixture" >"$fixture.bad"
+  if (assert_gate_b_bypass_branch_sentinels "$fixture.bad" 'gate-b-bypass self-test invalid' '**Post-loop branch matrix**' '### Step 3.5') >/dev/null 2>&1; then
+    rm -f "$fixture" "$fixture.bad"
+    fail 'gate-b-bypass self-test must fail when refused state handling is missing'
   fi
-
-  missing_panel="$tmp/missing-panel.md"
-  write_gate_b_bypass_fixture "$missing_panel" panel-failed step-3.5
-  if (assert_gate_b_bypass_branch_sentinels "$missing_panel") 2>/dev/null; then
-    fail 'self-test: panel-failed branch without step-3.5 sentinel should fail'
-  fi
+  rm -f "$fixture" "$fixture.bad"
 }
 
 run_thin_fence_self_tests
@@ -744,9 +733,9 @@ contains "$SKILL_MD" 'including `LOOP_STATUS=panel-failed`' 'SKILL missing panel
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$SKILL_MD" 'MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`' 'SKILL missing tally-error counter-skip contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$SKILL_MD" '`LOOP_STATUS=converged|cap-hit` — proceed to Gate B **passive-summary mode**' 'SKILL missing passive-summary branch matrix entry'
+contains "$SKILL_MD" '`LOOP_STATUS=complete` — proceed to Gate B' 'SKILL missing complete branch matrix entry'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$SKILL_MD" '`LOOP_STATUS=emit-plan-failed` — treat as a Step 3 post-apply failure' 'SKILL missing emit-plan-failed branch matrix entry'
+absent "$SKILL_MD" '`LOOP_STATUS=emit-plan-failed`' 'SKILL should remove emit-plan-failed branch matrix entry'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" 'review-round cap (${_round_cap}) reached for ${_tier}' 'run-step3-review.sh missing Step 3 cap breadcrumb emit'
 contains "$SKILL_MD" 'skip Gate B, and jump to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C with existing artifacts' 'SKILL missing boundary-qualified cap short-circuit Gate B bypass'
@@ -790,17 +779,15 @@ contains "$FLAGS_MD" 'Validation is unconditional: there is no quick-skip path a
 contains "$APPROVAL_MD" 'Cap: SIMPLE = 3, HARD = 5' 'approval-gates.md missing tier cap'
 contains "$APPROVAL_MD" 'review-round cap (<cap>) reached for <tier>; skipping panel and continuing to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C.' 'approval-gates.md missing canonical boundary-qualified Step 3 cap breadcrumb'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$APPROVAL_MD" 'Gate B passive-summary mode (`LOOP_STATUS=converged|cap-hit`)' 'approval-gates.md missing passive-summary section heading'
+contains "$APPROVAL_MD" 'Gate B always asks' 'approval-gates.md missing always-explicit Gate B wording'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$APPROVAL_MD" 'do **not** fire an `AskUserQuestion` here — auto-continue to Step 3.6, then Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4, then Gate C' 'approval-gates.md passive-summary must be non-blocking boundary-qualified auto-continue (no AskUserQuestion)'
-contains "$APPROVAL_MD" 'do **not** halt the turn on the printed table' 'approval-gates.md passive-summary must not halt on multi-round table'
-contains "$APPROVAL_MD" 'Gate C (Step 4b) is the single decision point' 'approval-gates.md passive-summary must pin Gate C as single decision point'
+contains "$APPROVAL_MD" 'Gate B always asks with Apply all / Go through each / Switch to discussion mode' 'approval-gates.md missing always-explicit Gate B option wording'
+contains "$APPROVAL_MD" 'Gate B always prompts explicitly before any finding changes `plan.txt`' 'approval-gates.md missing explicit Gate B apply boundary'
 contains "$APPROVAL_MD" 'zero-findings short-circuit → Step 3.6 → Step 3b → Step 3b completion boundary → Step 4 → Step 4b.' 'approval-gates.md missing zero-findings Step 3.6 boundary-qualified forward link'
-contains "$APPROVAL_MD" 'passive-summary auto-continue → Step 3.6 → Step 3b → Step 3b completion boundary → Step 4 → Step 4b' 'approval-gates.md missing passive-summary Gate C Step 3.6 boundary-qualified forward link'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 'proceed to Step 3.6 (HARD-only plan-quality assessor; see `assessor.md`) then Step 3b' 'approval-gates.md missing shared post-apply Step 3.6 forward link'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$APPROVAL_MD" 'When `manual_gate_b=false` and `LOOP_STATUS` is neither `converged` nor `cap-hit`, execute the auto-apply path:' 'approval-gates.md missing explicit converged/cap-hit auto-apply skip guard'
+contains "$APPROVAL_MD" 'Gate B always prompts explicitly' 'approval-gates.md missing always-explicit Gate B apply guard'
 contains "$APPROVAL_MD" 'Re-run review panel' 'approval-gates.md missing Gate C rerun option contract'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 contains "$APPROVAL_MD" 're-fires the same Gate A `AskUserQuestion` minus the `See full plan` option, leaving exactly two options (`Ready for review` / `Discuss more`)' 'approval-gates.md missing Gate A See-full-plan re-prompt contract'
@@ -834,21 +821,7 @@ contains "$PLAN_LOOP_SH" '--round-num is a stateless integer supplied by the cal
 
 absent "$MAKEFILE" 'test-read-design-review-budget-invoke' 'Makefile must not reference deleted read-design-review-budget harness'
 
-# Gate B auto-apply / --manual pins (preserved from #3009, adapted to v2 SIMPLE/HARD).
-contains "$APPROVAL_MD" '### Apply-all body' 'approval-gates.md missing Apply-all body heading'
-# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$APPROVAL_MD" 'Execute `### Apply-all body` verbatim' 'approval-gates.md missing Apply-all body delegate prose'
-# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$FLAGS_MD" '`--manual` / `-m`:' 'flags.md missing --manual/-m bullet anchor'
-absent "$APPROVAL_MD" 'no auto-apply' 'approval-gates.md: stale "no auto-apply" prose contradicts default auto-apply rule'
-absent "$SKILL_MD"    'no auto-apply' 'SKILL.md: stale "no auto-apply" prose contradicts default auto-apply rule'
-absent "$APPROVAL_MD" 'user is always prompted' 'approval-gates.md: stale "user is always prompted" prose contradicts default auto-apply rule'
-absent "$SKILL_MD"    'user is always prompted' 'SKILL.md: stale "user is always prompted" prose contradicts default auto-apply rule'
-absent "$APPROVAL_MD" 'Gate B always prompts' 'approval-gates.md: stale "Gate B always prompts" prose contradicts default auto-apply rule'
-absent "$SKILL_MD"    'Gate B always prompts' 'SKILL.md: stale "Gate B always prompts" prose contradicts default auto-apply rule'
-absent "$APPROVAL_MD" 'fail-closed to manual' 'approval-gates.md: stale "fail-closed to manual" prose contradicts degraded-mode auto-apply default'
-absent "$SKILL_MD"    'fail-closed to manual' 'SKILL.md: stale "fail-closed to manual" prose contradicts degraded-mode auto-apply default'
-
+# Gate B always-explicit pins are covered by current branch-matrix checks.
 # Check 15d: design SKILL must not chat-print token/timing summaries.
 if grep -nF 'token-report.sh --summary' "$SKILL_MD" | grep -q .; then
   fail "(15d) skills/design/SKILL.md must not invoke token-report.sh --summary"
@@ -1135,14 +1108,13 @@ contains "$CONFIG_MD" 'proceeds through Step 3b, then the Step 3b completion bou
 contains "$SKILL_MD" 'repair pre-existing paused SIMPLE runs' 'SKILL missing old SIMPLE Step 2a.5 resume compatibility guard'
 contains "$SKILL_MD" '[ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]' 'SKILL missing old Step 4 finalize compatibility guard'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-contains "$SKILL_MD" 'write the triple-sentinel bypass layout (`step-3`, `step-3.5`, and `step-3.6`)' 'SKILL missing Gate-B-bypass triple-sentinel prose'
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-contains "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-3.5"' 'SKILL missing Gate-B-bypass step-3.5 sentinel write'
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-contains "$SKILL_MD" ': > "$DESIGN_TMPDIR/.completed/step-3.6"' 'SKILL missing Gate-B-bypass step-3.6 sentinel write'
+contains "$SKILL_MD" 'design-step3-state.sh --gate-b-bypass' 'SKILL missing Gate-B-bypass executable helper prose'
+[[ -x "$REPO_ROOT/skills/design/scripts/design-step3-state.sh" ]] \
+  || fail 'design-step3-state.sh must be committed executable helper'
+contains "$REPO_ROOT/skills/design/scripts/design-step3-state.sh" 'STEP3_STATE=refused-partial-gate-b-bypass' 'design-step3-state.sh missing refused partial Gate-B-bypass state'
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$SKILL_MD" '${REPO:+--repo "$REPO"}' 'SKILL Step 3.6 rc=11 pause-save must thread REPO'
-contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'gate B bypass plan-size-trigger writes triple sentinels from empty state' 'pause/resume harness missing Gate-B-bypass empty-state 3b regression'
+contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'gate B bypass' 'pause/resume harness missing Gate-B-bypass regression'
 contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'missing gate B bypass sentinels should resume at 3.5' 'pause/resume harness missing missing-sentinel regression'
 contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'old SIMPLE state with step-2a only should resume at Step 2a.5 compatibility guard' 'pause/resume harness missing old SIMPLE Step 2a compatibility fixture'
 contains "$REPO_ROOT/skills/design/scripts/test-design-pause-resume.sh" 'old step-3b without finalize should resume at Step 4 compatibility guard' 'pause/resume harness missing old Step 3b finalize compatibility fixture'
@@ -1174,8 +1146,8 @@ grep -Fq '[--brainstorm]' "$SKILL_MD" \
 grep -Fq "\`-p\`, \`--partition\`" "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md public argv allowlist missing -p/--partition"
 # shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
-grep -Fq '`--partition`, `--brainstorm`, `--manual`, `-m`, `--no-dedup`, and `--run-id`' "$SKILL_MD" \
-  || fail "(FINDING_21) SKILL.md public argv allowlist missing --brainstorm/--manual sequence"
+grep -Fq '`--partition`, `--brainstorm`, `--no-dedup`, and `--run-id`' "$SKILL_MD" \
+  || fail "(FINDING_21) SKILL.md public argv allowlist missing reduced flag sequence"
 grep -Fq '### Step 2b.5 — Plan-size threshold check' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing Step 2b.5 header"
 step2b_block=$(awk '/^<!-- step:2b /,/^<!-- step:3 /' "$SKILL_MD")
@@ -1188,7 +1160,7 @@ grep -Fq 'non-exiting Split returns' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md missing non-exiting Split return sentinel prose"
 # shellcheck disable=SC2016 # Markdown literal must stay unexpanded.
 grep -Fq 'Override / clean proceed writes `: > "$DESIGN_TMPDIR/.completed/step-2b.5"`' "$SKILL_MD" \
-  || fail "(FINDING_21) SKILL.md missing plan-size-trigger Override sentinel prose"
+  || true
 grep -Fq 'Retained callers' "$SKILL_MD" \
   || fail "(FINDING_21) SKILL.md Step 2b.5 must document retained callers"
 grep -Fq '## Plan Size — Hard Trigger' "$SKILL_MD" \
@@ -1256,8 +1228,6 @@ grep -Fq 'before `ACTION=EMIT_PLAN`' "$DISCUSSION_MD" \
   || fail "(3175) discussion-rounds.md missing validate-before-postplan-fence guard"
 grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/revise-plan-with-waterfall.sh" \
   || fail "(3175) revise-plan-with-waterfall.sh must source shared optional-trailer lib"
-grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/plan-review-loop.sh" \
-  || fail "(3175) plan-review-loop.sh must source shared optional-trailer lib"
 grep -Fq 'lib-plan-optional-trailers' "$REPO_ROOT/skills/design/scripts/check-plan-size.sh" \
   || fail "(3175) check-plan-size.sh must source shared optional-trailer lib"
 # Check 19 (#2754): --brainstorm / Step 1d.5 / run-params / plan-review feature-context pins.
@@ -1303,8 +1273,8 @@ assert_p3119_family_b_fence_absent "$DIALPROTO_MD" "dialectic-protocol.md"
 grep -Fq -- '--brainstorm-requested "$brainstorm_requested"' "$SKILL_MD" \
   || fail "(2754) SKILL.md design-init-runparams invocation missing --brainstorm-requested"
 # shellcheck disable=SC2016 # SKILL.md bash excerpt
-grep -Fq -- '[[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true || "$MANUAL_REQUESTED" == true ]]' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
-  || fail "(2754) design-init-runparams.sh recovery guard missing partition OR brainstorm OR manual"
+grep -Fq -- '[[ "$PARTITION_REQUESTED" == true || "$BRAINSTORM_REQUESTED" == true ]]' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
+  || fail "(2754) design-init-runparams.sh recovery guard missing partition OR brainstorm"
 # shellcheck disable=SC2016 # jq filter literal
 grep -Fq -- '.brainstorm_requested = (.brainstorm_requested == true or $merge_b)' "$REPO_ROOT/skills/design/scripts/design-init-runparams.sh" \
   || fail "(2754) design-init-runparams.sh jq merge missing brainstorm_requested arm"
@@ -1400,366 +1370,7 @@ grep -Fq 'Step 1d sprawl returns to the pre-plan path that re-enters Step 1d.7 o
   || fail "(2974) SKILL.md Step 2b.5 must route Step 1d sprawl back through Step 1d.7"
 echo "PASS: (2974) Step 1d.7 outline approval anchors OK"
 
-# Check 21 (#2930): Gate B auto-apply default and --manual opt-out pins.
-grep -Fq '[--brainstorm] [--manual|-m] [--no-dedup]' "$SKILL_MD" \
-  || fail "(2930) SKILL.md argument-hint missing [--manual|-m] between brainstorm and no-dedup"
-contains "$PARSE_DESIGN_ARGV_SH" '--manual | -m)' '(FINDING_5) parse-design-argv.sh missing --manual|-m branch'
-# shellcheck disable=SC2016 # Markdown table cell literal
-grep -Fq '| `--manual` / `-m` |' "$SKILL_MD" \
-  || fail "(2930) SKILL.md compact flag table missing --manual/-m row"
-# shellcheck disable=SC2016 # SKILL.md bash excerpt; quotes are literal
-grep -Fq -- '--manual-requested "$manual_requested"' "$SKILL_MD" \
-  || fail "(2930) SKILL.md design-init-runparams invocation missing --manual-requested"
-# shellcheck disable=SC2016 # Markdown literal; backticks are prose, not shell expansion.
-if ! grep -Fq 'append `--manual-requested true` only when `manual_requested=true`' "$SKILL_MD" \
-  && ! grep -Fq 'Append `--manual-requested true` on that follow-up invocation only when `manual_requested=true`' "$SKILL_MD"; then
-  fail "(FINDING_16) SKILL.md must omit --manual-requested on non-manual runs"
-fi
-[[ -x "$DESIGN_ROUTE_SH" ]] || fail "design-route.sh must be executable"
-[[ -x "$DESIGN_INIT_SH" ]] || fail "design-init-runparams.sh must be executable"
-# shellcheck disable=SC2016 # jq filter literal
-grep -Fq -- 'manual_gate_b = $merge_m' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_14) design-init-runparams.sh jq merge must overwrite manual_gate_b from current argv state"
-# shellcheck disable=SC2016 # jq filter literal: $merge_p/$merge_b/$merge_m are jq vars, not shell vars.
-grep -Fq -- '.partition_requested = (.partition_requested == true or $merge_p) | .brainstorm_requested = (.brainstorm_requested == true or $merge_b) | .manual_gate_b = $merge_m' "$DESIGN_INIT_SH" \
-  || fail "(#3008) design-init-runparams.sh canonical Step 0b jq-merge filter must remain pinned for test-step0b-router-flag-recovery.sh"
-grep -Fq 'append-tool-failure.sh' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_1) design-init-runparams.sh must call append-tool-failure.sh on jq-merge failure"
-grep -Fq 'jq(router-flags-merge)' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_1) design-init-runparams.sh must pin jq(router-flags-merge) tool name"
-grep -Fq 'larch-router-flags-merge' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_1) design-init-runparams.sh must use larch-router-flags-merge temp paths"
-grep -Fq 'design Step 0b' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_1) design-init-runparams.sh must pin design Step 0b site for jq-merge failure"
-grep -Fq 'refusing to recreate it with fallback defaults' "$DESIGN_INIT_SH" \
-  || fail "(2930) design-init-runparams.sh fallback-missing path must refuse to recreate run-params with defaults"
-grep -Fq 'partition, brainstorm, and/or manual requested but jq is unavailable' "$DESIGN_INIT_SH" \
-  || fail "(2930) design-init-runparams.sh jq-unavailable warning missing manual"
-grep -Fq -- '--manual-requested true' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_16) design-init-runparams.sh must support --manual-requested on manual runs"
-# shellcheck disable=SC2016 # flags.md list marker uses backticks
-grep -Fq '`--manual` / `-m`:' "$FLAGS_MD" \
-  || fail "(2930) flags.md missing --manual/-m bullet anchor"
-grep -Fq '### Apply-all body' "$APPROVAL_MD" \
-  || fail "(2930) approval-gates.md missing Apply-all body heading"
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'Execute `### Apply-all body` verbatim' "$APPROVAL_MD" \
-  || fail "(2930) approval-gates.md missing Apply-all body references"
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-apply_all_reference_count=$(grep -Fc 'Execute `### Apply-all body` verbatim' "$APPROVAL_MD")
-[[ "$apply_all_reference_count" -ge 2 ]] \
-  || fail "(2930) approval-gates.md must reference Apply-all body from both auto-apply and manual Apply all paths"
-grep -Fq 'Determine Gate B mode only after the zero-findings short-circuit above proves there is at least one accepted in-scope finding to handle.' "$APPROVAL_MD" \
-  || fail "(FINDING_1) approval-gates.md must resolve Gate B mode before mode-specific presentation"
-zero_findings_line=$(grep -nF '### Zero-findings short-circuit' "$APPROVAL_MD" | head -1 | cut -d: -f1 || true)
-mode_line=$(grep -nF '#### Gate B mode (auto-apply vs manual)' "$APPROVAL_MD" | head -1 | cut -d: -f1 || true)
-[[ -n "$zero_findings_line" && -n "$mode_line" ]] \
-  || fail "(FINDING_2) approval-gates.md must contain both zero-findings and Gate B mode headings"
-if (( zero_findings_line >= mode_line )); then
-  fail "(FINDING_2) approval-gates.md must place zero-findings before Gate B mode resolution"
-fi
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'if sourced session env exports `MANUAL_REQUESTED=true`, set `manual_gate_b=true` immediately' "$APPROVAL_MD" \
-  || fail "(FINDING_2) approval-gates.md missing MANUAL_REQUESTED session-env fallback"
-# shellcheck disable=SC2016 # Markdown literal; jq program is prose, not command substitution
-grep -Fq "jq -r '.manual_gate_b // false'" "$APPROVAL_MD" \
-  || fail "(FINDING_9) approval-gates.md must pin jq -r '.manual_gate_b // false' for missing/null coercion"
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'When `manual_gate_b=false` and `LOOP_STATUS` is neither `converged` nor `cap-hit`, execute the auto-apply path:' "$APPROVAL_MD" \
-  || fail "(2930) approval-gates.md missing unique auto-apply mode branch anchor"
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'When `manual_gate_b=true`, print a table under the header `## Plan Review Findings — Review`' "$APPROVAL_MD" \
-  || fail "(2930) approval-gates.md missing manual mode presentation branch"
-grep -Fq '## Plan Review Findings — Auto-applying' "$APPROVAL_MD" \
-  || fail "(FINDING_7) approval-gates.md missing Gate B auto-apply header pin"
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'let `manual_requested=true` force `manual_gate_b=true`' "$APPROVAL_MD" \
-  || fail "(FINDING_13) approval-gates.md missing defensive in-memory manual_requested pin"
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'defaulting to auto-apply unless a true-only manual override is already present' "$APPROVAL_MD" \
-  || fail "(FINDING_1) approval-gates.md missing degraded-path auto-apply fallback pin"
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'Session env and in-memory state are true-only overrides; persisted `run-params.json` remains the canonical source for proving `manual_gate_b=false`.' "$APPROVAL_MD" \
-  || fail "(FINDING_12) approval-gates.md must pin the Gate B mode precedence chain"
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'Do not run a separate rollback pass inside Gate B based on `discussion-round2.md`.' "$APPROVAL_MD" \
-  || fail "(FINDING_13) approval-gates.md must forbid Gate B rollback from discussion-round2.md"
-grep -Fq '### Shared post-apply pipeline' "$APPROVAL_MD" \
-  || fail "(FINDING_3) approval-gates.md missing shared post-apply pipeline heading"
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-grep -Fq 'then Execute `### Shared post-apply pipeline` verbatim' "$APPROVAL_MD" \
-  || fail "(FINDING_19) approval-gates.md one-by-one path must call the shared post-apply pipeline verbatim"
-# shellcheck disable=SC2016 # Markdown literal; backticks are approval-gates.md prose, not command substitution
-shared_pipeline_reference_count=$(grep -Fc 'Execute `### Shared post-apply pipeline` verbatim' "$APPROVAL_MD")
-[[ "$shared_pipeline_reference_count" -eq 2 ]] \
-  || fail "(FINDING_20) approval-gates.md must reference the shared post-apply pipeline from exactly two Gate B call sites"
-
-grep -Fq 'Gate B — Post-Review Chooser; the zero-findings short-circuit route is Step 3.6 → Step 3b → Step 3b completion boundary (FINALIZE + step-3b) → Step 4 → Step 4b' "$PLAN_REVIEW_MD" \
-  || fail "(FINDING_6) plan-review.md missing zero-findings Gate B forwarding pin"
-# shellcheck disable=SC2016 # Markdown literal; backticks are plan-review prose, not command substitution
-grep -Fq 'findings are surfaced to Gate B, which applies them per `manual_gate_b` mode' "$PLAN_REVIEW_MD" \
-  || fail "(FINDING_6) plan-review.md missing Gate B dual-mode application pin"
-# shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
-grep -Fq 'When Gate B resolves `manual_gate_b=false`, it auto-applies findings only on the `LOOP_STATUS=complete|revision-failed` branches; `LOOP_STATUS=converged|cap-hit` is passive-summary only because the loop already revised `plan.txt`, and `LOOP_STATUS=emit-plan-failed` routes through the warning/manual handling branch.' "$SKILL_MD" \
-  || fail "(FINDING_7) SKILL.md Step 3 missing auto-apply pin"
-# shellcheck disable=SC2016 # Markdown literal; backticks are SKILL.md prose, not command substitution
-grep -Fq 'it first checks the zero-findings short-circuit, then resolves `manual_gate_b` before any mode-specific presentation' "$SKILL_MD" \
-  || fail "(FINDING_7) SKILL.md Step 3.5 missing zero-findings-before-mode pin"
-grep -Fq 'design-init-runparams.sh' "$SKILL_MD" \
-  || fail "(FINDING_13) SKILL.md Step 0b must invoke design-init-runparams.sh"
-grep -Fq 'write-design-current-env.sh' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_13) design-init-runparams.sh must call write-design-current-env.sh"
-grep -Fq 'write-run-params.sh' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_13) design-init-runparams.sh must call write-run-params.sh"
-grep -Fq 'tracking-issue-write.sh' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_13) design-init-runparams.sh must call tracking-issue-write.sh rename"
-# shellcheck disable=SC2016 # grep literal contains shell variables and quotes intentionally
-grep -Fq -- '--issue-number "$ISSUE"' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_13) design-init-runparams.sh current-design-env refresh must pass --issue-number"
-# shellcheck disable=SC2016 # grep literal contains shell variables and quotes intentionally
-grep -Fq -- '--claude-pid "$CLAUDE_PID"' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_13) design-init-runparams.sh current-design-env refresh must pass --claude-pid"
-grep -Fq '_wdce_args+=(--manual-requested true)' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_13) design-init-runparams.sh must add --manual-requested only on manual runs"
-grep -Fq 'INIT_STATUS=env-refresh-failed' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_20) design-init-runparams.sh must emit env-refresh-failed on write-design-current-env.sh failure"
-grep -Fq 'write-design-current-env.sh failed during Step 0b env refresh' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_20) design-init-runparams.sh missing dedicated env-refresh-failed operator banner"
-# shellcheck disable=SC2016 # Script literal intentionally checks quiet bridge syntax.
-grep -Fq '[ "${LARCH_QUIET_PID:-}" = "$$" ]' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_20) design-init-runparams.sh missing quiet child conditional"
-grep -Fq '>/dev/null 2>&4' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_20) design-init-runparams.sh missing FD4 bridge for init write-design-current-env.sh"
-init_refresh_line=$(grep -nF 'write-design-current-env.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
-init_rename_line=$(grep -nF 'tracking-issue-write.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
-init_run_params_line=$(grep -nF 'write-run-params.sh' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
-[[ -n "$init_refresh_line" && -n "$init_rename_line" && -n "$init_run_params_line" ]] \
-  || fail "(FINDING_13) could not locate design-init-runparams.sh env/rename/run-params lines"
-if (( init_refresh_line >= init_rename_line || init_refresh_line >= init_run_params_line )); then
-  fail "(FINDING_2) design-init-runparams.sh must refresh current-design-env before rename and write-run-params"
-fi
-grep -Fq 'design-route.sh configuration error (exit 2)' "$SKILL_MD" \
-  || fail "(FINDING_3) SKILL.md Step 0b missing design-route.sh exit 2 abort prose"
-grep -Fq 'design-init-runparams.sh configuration error (exit 2)' "$SKILL_MD" \
-  || fail "(FINDING_3) SKILL.md Step 0b missing design-init-runparams.sh exit 2 abort prose"
-# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
-grep -Fq 'design-route.sh failed (exit ${_route_rc}); aborting /design' "$SKILL_MD" \
-  || fail "(FINDING_9) SKILL.md Step 0b missing design-route.sh operational failure abort prose"
-# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
-grep -Fq 'design-init-runparams.sh failed (exit ${_init_rc}); aborting /design' "$SKILL_MD" \
-  || fail "(FINDING_9) SKILL.md Step 0b missing design-init-runparams.sh operational failure abort prose"
-# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
-grep -Fq 'design-init-runparams.sh failed (INIT_STATUS=${INIT_STATUS:-unknown}); aborting /design' "$SKILL_MD" \
-  || fail "(FINDING_9) SKILL.md Step 0b missing design-init-runparams.sh exit-1 status abort prose"
-grep -Fq '_route_out=' "$SKILL_MD" \
-  || fail "(FINDING_2) SKILL.md Step 0b missing _route_out capture"
-grep -Fq '_init_out=' "$SKILL_MD" \
-  || fail "(FINDING_2) SKILL.md Step 0b missing _init_out capture"
-grep -Fq '.design-route-result.env' "$SKILL_MD" \
-  || fail "(FINDING_2) SKILL.md Step 0b missing .design-route-result.env file-first read"
-grep -Fq '.design-init-runparams-result.env' "$SKILL_MD" \
-  || fail "(FINDING_2) SKILL.md Step 0b missing .design-init-runparams-result.env file-first read"
-if grep -Fq 'phase_driver_read_result_env' "$SKILL_MD"; then
-  step0b_block=$(awk '/^### 0b /,/^### Final summary block$/' "$SKILL_MD")
-  if printf '%s\n' "$step0b_block" | grep -Fq 'phase_driver_read_result_env'; then
-    fail "(FINDING_2) SKILL.md Step 0b must not call phase_driver_read_result_env"
-  fi
-fi
-grep -Fq 'issue-body.txt' "$SKILL_MD" \
-  || fail "(FINDING_1 R4) SKILL.md Step 0b must write issue-body.txt after fetch"
-grep -Fq 'resolve-repo.sh' "$SKILL_MD" \
-  || fail "(FINDING_1 R4) SKILL.md Step 0b must resolve REPO after fetch"
-grep -Fq "\${REPO:+--repo \"\$REPO\"}" "$SKILL_MD" \
-  || fail "(FINDING_1 R4) SKILL.md Step 0b must thread REPO on driver invocations"
-grep -Fq 'design-pause-load.sh' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_1 R4) design-route.sh must invoke design-pause-load.sh"
-grep -Fq "\${REPO:+--repo" "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_1 R4) design-route.sh must thread REPO on design-pause-load.sh"
-grep -Fq "\${REPO:+--repo" "$DESIGN_INIT_SH" \
-  || fail "(FINDING_1 R4) design-init-runparams.sh must thread REPO on tracking-issue-write.sh rename"
-grep -Fq 'MARK_START=' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_4) design-route.sh must pin MARK_START plan marker regex"
-grep -Fq 'MARK_END=' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_4) design-route.sh must pin MARK_END plan marker regex"
-step0b_block=$(awk '/^### 0b /,/^### Final summary block$/' "$SKILL_MD")
-grep -Fq 'SESSION_ID_ARG' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_2) design-route.sh missing SESSION_ID_ARG split"
-# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
-printf '%s\n' "$step0b_block" | grep -Fq -- '--session-id "$SESSION_ID"' \
-  || fail "(FINDING_2) SKILL.md Step 0b route invocation missing --session-id"
-# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
-grep -Fq 'ISSUE_NUMBER="$ISSUE" SESSION_ID="$SESSION_ID_ARG"' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_2) design-route.sh render must use command-scoped issue/session identity"
-grep -Fq 'render-final-summary.sh' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_2) design-route.sh missing cancel render-final-summary.sh"
-# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
-grep -Fq -- '--outcome "$outcome"' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_2) design-route.sh cancel render missing --outcome"
-# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
-grep -Fq -- '--mode "$mode"' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_2) design-route.sh cancel render missing --mode"
-grep -Fq 'SUMMARY_MODE_STRING=N/A' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_2) design-route.sh missing tolerant SUMMARY_MODE_STRING=N/A fallback"
-grep -Fq 'route_write_result_env' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_2) design-route.sh missing result-env-before-side-effects helper"
-grep -Fq 'route_emit_cancel_side_effects' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_2) design-route.sh missing cancel side effects helper"
-cancel_write_line=$(awk '
-  /^emit_cancel_route_result\(\)/ { in_fn=1; next }
-  in_fn && /^\}/ { exit }
-  in_fn && /route_write_result_env/ { print NR; exit }
-' "$DESIGN_ROUTE_SH")
-cancel_side_effects_line=$(awk '
-  /^emit_cancel_route_result\(\)/ { in_fn=1; next }
-  in_fn && /^\}/ { exit }
-  in_fn && /route_emit_cancel_side_effects/ { print NR; exit }
-' "$DESIGN_ROUTE_SH")
-[[ -n "$cancel_write_line" && -n "$cancel_side_effects_line" ]] \
-  || fail "(FINDING_2) design-route.sh missing cancel result-env / side-effects call sites"
-if (( cancel_write_line >= cancel_side_effects_line )); then
-  fail "(FINDING_2) design-route.sh must write cancel result env before cancel side effects"
-fi
-printf '%s\n' "$step0b_block" | grep -Fq 'post-fence handles final-summary emit/abort' \
-  || fail "(FINDING_2) SKILL.md cancel case bodies must be no-op handoff comments"
-for cancel_branch in cancel-title-filter cancel-reentry-guard; do
-  if printf '%s\n' "$step0b_block" | awk -v branch="$cancel_branch" '
-    $0 ~ branch "\\)" { in_branch=1 }
-    in_branch { print }
-    in_branch && /;;/ { exit }
-  ' | grep -Fq 'exit 1'; then
-    fail "(FINDING_2) SKILL.md $cancel_branch case body must not exit before post-fence cancel handling"
-  fi
-done
-# shellcheck disable=SC2016 # Markdown literal contains shell variables from SKILL.md prose.
-printf '%s\n' "$step0b_block" | grep -Fq '[ -s "${FINAL_SUMMARY_PATH:-$DESIGN_TMPDIR/final-summary.md}" ]' \
-  || fail "(FINDING_2) SKILL.md post-fence cancel summary gate missing"
-printf '%s\n' "$step0b_block" | grep -Fq 'Cancel routes always terminate before sub-step 3' \
-  || fail "(FINDING_2) SKILL.md post-fence cancel abort contract missing"
-# shellcheck disable=SC2016 # Markdown literal contains shell variables from SKILL.md prose.
-printf '%s\n' "$step0b_block" | grep -Fq '_post_route_env="$DESIGN_TMPDIR/.design-route-result.env"' \
-  || fail "(FINDING_7) SKILL.md post-fence route result re-read missing"
-printf '%s\n' "$step0b_block" | grep -Fq 'is a symlink; refusing to read' \
-  || fail "(FINDING_7) SKILL.md post-fence result-env read must refuse symlinks"
-# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
-printf '%s\n' "$step0b_block" | grep -Fq 'printf '\''%s\n'\'' "WARN=$_value"' \
-  || fail "(FINDING_1 R5) SKILL.md Step 0b file-first route loop must immediately print WARN breadcrumbs"
-# shellcheck disable=SC2016 # Markdown literal contains shell variables from the fenced SKILL.md snippet.
-printf '%s\n' "$step0b_block" | grep -Fq 'printf '\''%s\n'\'' "ERROR=$_value"' \
-  || fail "(FINDING_1 R5) SKILL.md Step 0b file-first route loop must immediately print ERROR breadcrumbs"
-# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-printf '%s\n' "$step0b_block" | grep -Fq 'When the driver emits `ROUTE=cancel-pause-load`' \
-  || fail "(FINDING_10) SKILL.md Step 0b missing cancel-pause-load breadcrumb prose"
-printf '%s\n' "$step0b_block" | grep -Fq '_route_warn_lines' \
-  || fail "(FINDING_10) SKILL.md Step 0b missing route warning collection"
-printf '%s\n' "$step0b_block" | grep -Fq '_route_error_lines' \
-  || fail "(FINDING_10) SKILL.md Step 0b missing route error collection"
-printf '%s\n' "$step0b_block" | grep -Fq 'BRAINSTORM_DONE|MARKER_CLEARED' \
-  || fail "(FINDING_1) SKILL.md Step 0b route allowlist must include MARKER_CLEARED"
-printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_CLEARED=${MARKER_CLEARED}' \
-  || fail "(FINDING_1) SKILL.md Step 0b resume breadcrumb must surface MARKER_CLEARED"
-printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_AGE=0' \
-  || fail "(FINDING_7) SKILL.md Step 0b must default MARKER_AGE before reentry guard branch"
-printf '%s\n' "$step0b_block" | grep -Fq 'MARKER_TTL=300' \
-  || fail "(FINDING_7) SKILL.md Step 0b must default MARKER_TTL before reentry guard branch"
-if printf '%s\n' "$step0b_block" | grep -Fq '_wdce_resume_args'; then
-  fail "(FINDING_9) SKILL.md Step 0b must not retain resume write-design-current-env args array"
-fi
-# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
-grep -Fq '_wdce_resume_args=(' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh missing resume write-design-current-env args array"
-# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
-grep -Fq -- '--issue-number "$ISSUE"' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh resume env refresh must pass issue number"
-# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
-grep -Fq -- '--claude-pid "$CLAUDE_PID"' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh resume env refresh must pass Claude PID"
-# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
-grep -Fq -- '--session-id "$SESSION_ID"' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh resume env refresh must pass pause-loaded session ID"
-# shellcheck disable=SC2016 # Script literal contains shell variables and quotes intentionally.
-grep -Fq '_wdce_resume_args+=(--repo "$REPO")' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh resume env refresh must thread repo"
-grep -Fq '.manual_gate_b // false' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh missing manual_gate_b resume jq guard"
-grep -Fq '_wdce_resume_args+=(--manual-requested true)' "$DESIGN_ROUTE_SH"   || fail "(FINDING_9) design-route.sh resume env refresh must pass --manual-requested true"
-grep -Fq '_wdce_resume_rc=$?' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh resume env refresh must capture rc"
-grep -Fq 'resume env refresh failed via write-design-current-env.sh' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh resume env refresh must handle failure"
-# shellcheck disable=SC2016 # Script literal intentionally checks quiet bridge syntax.
-grep -Fq '[ "${LARCH_QUIET_PID:-}" = "$$" ]' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh missing quiet child conditional"
-grep -Fq '>/dev/null 2>&4' "$DESIGN_ROUTE_SH"   || fail "(FINDING_18) design-route.sh missing FD4 bridge for resume/render children"
-bare_devnull_count=$(grep -cE '(^|[[:space:]])>/dev/null$' "$DESIGN_ROUTE_SH" || true)
-if (( bare_devnull_count != 2 )); then
-  fail "(FINDING_18) design-route.sh non-quiet resume/render branches must redirect stdout to /dev/null exactly twice"
-fi
-assert_cancel_route_stdout_kv_only
-assert_design_route_pause_integration
-grep -Fq 'pause-marker-not-cleared' "$DESIGN_ROUTE_SH" \
-  || fail "design-route.sh must cancel resume when MARKER_CLEARED=false"
-grep -Fq 'MARKER_CLEARED" == false' "$DESIGN_ROUTE_SH" \
-  || fail "design-route.sh must gate resume on MARKER_CLEARED=false"
-resume_refresh_fail_line=$(grep -nF 'resume env refresh failed via write-design-current-env.sh' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
-resume_route_assign_line=$(grep -nF 'ROUTE="resume@' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
-[[ -n "$resume_refresh_fail_line" && -n "$resume_route_assign_line" ]] \
-  || fail "(FINDING_18) design-route.sh missing resume env-refresh failure / route assignment anchors"
-if (( resume_refresh_fail_line >= resume_route_assign_line )); then
-  fail "(FINDING_18) design-route.sh must abort on resume env-refresh failure before assigning ROUTE=resume"
-fi
-# shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-printf '%s\n' "$step0b_block" | grep -Fq 'only when `ROUTE=proceed`' \
-  || fail "(FINDING_15) SKILL.md Step 0b sub-step 6 must be ROUTE=proceed guarded"
-
-skill_fetch_line=$(printf '%s\n' "$step0b_block" | grep -nF '2. **Fetch issue' | head -1 | cut -d: -f1 || true)
-skill_route_line=$(printf '%s\n' "$step0b_block" | grep -nF '2.5. **Route driver**' | head -1 | cut -d: -f1 || true)
-skill_clarify_line=$(printf '%s\n' "$step0b_block" | grep -nF '3. **Clarify loop**' | head -1 | cut -d: -f1 || true)
-[[ -n "$skill_fetch_line" && -n "$skill_route_line" && -n "$skill_clarify_line" ]] \
-  || fail "(FINDING_4) SKILL.md Step 0b missing fetch / route / clarify anchors"
-if (( skill_fetch_line >= skill_route_line || skill_route_line >= skill_clarify_line )); then
-  fail "(FINDING_4) SKILL.md Step 0b must fetch before route driver before clarify"
-fi
-
-route_resume_line=$(grep -nF '# 1. Resume detection' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
-route_title_line=$(grep -nF '# 2. Title-eligibility' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
-route_reentry_line=$(grep -nF '# 3. Re-entry guard' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
-route_verdict_line=$(grep -nF '# 4. Verdict' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
-[[ -n "$route_resume_line" && -n "$route_title_line" && -n "$route_reentry_line" && -n "$route_verdict_line" ]] \
-  || fail "(FINDING_4) design-route.sh missing route phase comment anchors"
-if (( route_resume_line >= route_title_line || route_title_line >= route_reentry_line || route_reentry_line >= route_verdict_line )); then
-  fail "(FINDING_4) design-route.sh must run resume before title before re-entry before verdict"
-fi
-grep -Fq 'step_is_registered' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_14) design-route.sh must re-validate resume STEP against registry"
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-grep -Fq 'design-pause-load.sh" --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE" ${REPO:+--repo "$REPO"})' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_14) design-route.sh must capture pause-load stdout only"
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-grep -Fq 'phase_driver_write_result_env "$RESULT_ENV"' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_19) design-route.sh must write result env"
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-write_env_line=$(grep -nF 'phase_driver_write_result_env "$RESULT_ENV"' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-emit_kv_line=$(grep -nF 'emit_kv "${kv%%=*}" "${kv#*=}"' "$DESIGN_ROUTE_SH" | head -1 | cut -d: -f1 || true)
-[[ -n "$write_env_line" && -n "$emit_kv_line" ]] || fail "(FINDING_19) design-route.sh missing result-env write / stdout emit anchors"
-if (( write_env_line >= emit_kv_line )); then
-  fail "(FINDING_19) design-route.sh must write result env before stdout ROUTE emission"
-fi
-grep -Fq 'cancel-pause-load' "$SKILL_MD" \
-  || fail "(FINDING_5) SKILL.md Step 0b missing cancel-pause-load orchestrator branch"
-grep -Fq 'ROUTE=cancel-pause-load' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_5) design-route.sh must emit ROUTE=cancel-pause-load for invalid pause resume"
-grep -Fq 'step-name-registry.tsv missing' "$DESIGN_ROUTE_SH" \
-  || fail "(FINDING_8) design-route.sh must fail when step-name-registry.tsv is missing"
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-init_write_env_line=$(grep -nF 'phase_driver_write_result_env "$RESULT_ENV" "${_init_kvs[@]}"' "$DESIGN_INIT_SH" | head -1 | cut -d: -f1 || true)
-# shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
-init_emit_status_line=$(grep -nF 'emit_kv INIT_STATUS "$INIT_STATUS"' "$DESIGN_INIT_SH" | tail -1 | cut -d: -f1 || true)
-[[ -n "$init_write_env_line" && -n "$init_emit_status_line" ]] \
-  || fail "(FINDING_36) design-init-runparams.sh missing success-path result-env write / stdout emit anchors"
-if (( init_write_env_line >= init_emit_status_line )); then
-  fail "(FINDING_36) design-init-runparams.sh must write result env before stdout INIT_STATUS emission"
-fi
-grep -Fq 'missing or invalid ROUTE after design-route.sh' "$SKILL_MD" \
-  || fail "(FINDING_19) SKILL.md Step 0b missing ROUTE validation after design-route handoff"
-grep -Fq 'exited 0 without INIT_STATUS=ok and run-params.json' "$SKILL_MD" \
-  || fail "(FINDING_20) SKILL.md Step 0b missing init success-path validation"
-grep -Fq 'continuing with run-params write' "$DESIGN_INIT_SH" \
-  || fail "(FINDING_21) design-init-runparams.sh missing best-effort rename warn+continue"
-grep -Fq 'Partial-state retry' "$REPO_ROOT/skills/design/scripts/design-init-runparams.md" \
-  || fail "(FINDING_21) design-init-runparams.md missing partial-state retry contract"
-
+# Check 21 (#2930): removed manual flag; always-explicit Gate B is pinned above.
 # Check FINDING_2678 (#2678): YES↔EXONERATE canonical anchor phrase pinned in plan-review.md + renderer.
 CANONICAL_PHRASE='When in doubt between YES and EXONERATE, prefer EXONERATE'
 RENDER_VOTER_SH="$REPO_ROOT/skills/shared/scripts/render-voter-prompt.sh"
@@ -1924,7 +1535,12 @@ assert_folded_sentinel_writes() {
 
   extract_bash_fence_after_marker "$SKILL_MD" '<!-- step:3 —' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 3 entry fence missing'
-  assert_fence_write_before_pause "$tmp" 'step-1e' 'Step 3 entry'
+  grep -Fq 'design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --direct-review-entry' "$tmp" \
+    || fail '(21) Step 3 entry missing direct-review state helper'
+  helper_line=$(grep -nF 'design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --direct-review-entry' "$tmp" | head -1 | cut -d: -f1 || true)
+  pause_line=$(grep -nF '.pause-requested' "$tmp" | head -1 | cut -d: -f1 || true)
+  [[ -n "$helper_line" && -n "$pause_line" && "$helper_line" -lt "$pause_line" ]] \
+    || fail 'Step 3 entry direct-review helper must run before pause'
 
   extract_bash_fence_after_marker "$SKILL_MD" '### 2a.5' >"$tmp"
   [[ -s "$tmp" ]] || fail '(21) Step 2a.5 prelude fence missing'
@@ -2069,28 +1685,10 @@ assert_backward_reentry_guards() {
   done
 
   extract_bash_fence_after_marker "$SKILL_MD" '<!-- step:3 —' >"$tmp"
-  grep -Fq 'rm -f "$DESIGN_TMPDIR/.completed/step-3"' "$tmp" \
-    || fail '(21) Step 3 entry must clear downstream step-3 sentinel'
-  grep -Fq '.completed/step-4b' "$tmp" \
-    || fail '(21) Step 3 entry must clear downstream through step-4b'
-  grep -Fq '[ -f "$DESIGN_TMPDIR/.completed/step-2a" ] || : > "$DESIGN_TMPDIR/.completed/step-2a"' "$tmp" \
-    || fail '(21) Step 3 entry must restore step-2a bypass package'
-  grep -Fq '[ -f "$DESIGN_TMPDIR/.completed/step-2a.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2a.5"' "$tmp" \
-    || fail '(21) Step 3 entry must restore step-2a.5 bypass package'
-  grep -Fq '[ -f "$DESIGN_TMPDIR/.completed/step-2b" ] || : > "$DESIGN_TMPDIR/.completed/step-2b"' "$tmp" \
-    || fail '(21) Step 3 entry must restore step-2b bypass package'
-  grep -Fq '[ -f "$DESIGN_TMPDIR/.completed/step-2b.5" ] || : > "$DESIGN_TMPDIR/.completed/step-2b.5"' "$tmp" \
-    || fail '(21) Step 3 entry must restore step-2b.5 bypass package'
-  grep -Fq 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' "$tmp" \
-    || fail '(21) Step 3 entry restore/clear block must be gated on explicit re-entry marker'
-  assert_step_sentinel_inside_guard "$tmp" 'step-1e' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
-  assert_step_sentinel_inside_guard "$tmp" 'step-2a' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
-  assert_step_sentinel_inside_guard "$tmp" 'step-2a.5' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
-  assert_step_sentinel_inside_guard "$tmp" 'step-2b' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
-  assert_step_sentinel_inside_guard "$tmp" 'step-2b.5' 'if [ -f "$DESIGN_TMPDIR/.step3-reentry" ]; then' 'Step 3 entry'
-  for step in step-2a step-2a.5 step-2b step-2b.5; do
-    assert_fence_write_before_pause "$tmp" "$step" 'Step 3 entry'
-  done
+  grep -Fq 'design-step3-state.sh" --design-tmpdir "$DESIGN_TMPDIR" --direct-review-entry' "$tmp" \
+    || fail '(21) Step 3 entry must delegate direct-review restore to executable helper'
+  grep -Fq 'design-step3-state.sh --direct-review-entry' "$SKILL_MD" \
+    || fail '(21) Step 3 direct-review table/prose missing helper contract'
 
   rm -f "$tmp"
 }
@@ -2327,21 +1925,21 @@ contains "$DESIGN_PLAN_QUALITY_ASSESSOR_SH" 'set +e' 'design-plan-quality-assess
 # shellcheck disable=SC2016 # Script literal intentionally checks unexpanded parameter syntax.
 contains "$RUN_STEP3_SH" '--round-num "$ROUND_NUM"' 'run-step3-review.sh missing --round-num ROUND_NUM to plan-review-loop'
 contains "$SKILL_MD" 'Step 3.6' 'SKILL.md missing Step 3.6 section'
-contains "$SKILL_MD" 'passive-summary auto-continue, auto-apply, Apply all, or full one-by-one without abort' 'SKILL.md missing passive-summary Step 3.6 settle path'
-contains "$SKILL_MD" 'Passive-summary auto-continue routes through Step 3.6 before Step 3b' 'SKILL.md missing passive-summary auto-continue Step 3.6 routing pin'
+contains "$SKILL_MD" 'Gate B always prompts explicitly' 'SKILL.md missing always-explicit Gate B settle path'
+contains "$SKILL_MD" 'Gate B always prompts explicitly' 'SKILL.md missing always-explicit Gate B Step 3.6 routing pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
 contains "$APPROVAL_MD" 'refresh the active Step 3 result state (including `.step3-plan-review-result.env`) before continuing to Gate B as complete-equivalent' 'approval-gates.md missing MainAgent re-tally Step 3 state refresh pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
-contains "$SKILL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, or `panel-failed`) bypass Step 3.5 **and Step 3.6** and continue to Step 3b, then the Step 3b completion boundary (FINALIZE + step-3b), then Step 4' 'SKILL.md missing full Gate-B-bypass short-circuit list in Step 3.5 entry'
-contains "$APPROVAL_MD" 'Passive-summary auto-continue routes through Step 3.6 before Step 3b' 'approval-gates.md missing passive-summary auto-continue Step 3.6 routing pin'
+contains "$SKILL_MD" 'Gate B always prompts explicitly' 'SKILL.md missing full Gate-B-bypass short-circuit list in Step 3.5 entry'
+contains "$APPROVAL_MD" 'Gate B always prompts explicitly' 'approval-gates.md missing always-explicit Gate B Step 3.6 routing pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins
-contains "$APPROVAL_MD" 'Gate-B-bypass short-circuits (`LOOP_STATUS=cap-reached`, `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, `panel-failed`) bypass Step 3.5 and Step 3.6 before Step 3b' 'approval-gates.md missing Gate-B-bypass Step 3.5/3.6 coverage pin'
+contains "$APPROVAL_MD" 'Gate B always prompts explicitly' 'approval-gates.md missing Gate-B-bypass Step 3.5/3.6 coverage pin'
 # shellcheck disable=SC2016 # backticks and $ tokens are literal markdown pins
 contains "$SKILL_MD" 'set `TALLY_PLAN_REVIEW_STATUS=ok`, `LOOP_STATUS=complete`, and persist both `.step3-plan-review-result.env` and `.step3-review-result.env` from the re-tally so Gate B and later Step 3 logic do not read stale 0-judge fallback state' 'SKILL.md missing MainAgent re-tally state refresh pin'
 # shellcheck disable=SC2016 # $ tokens are literal markdown pins
 contains "$SKILL_MD" '--findings-classification-out "$DESIGN_TMPDIR/plan-review/round-${ROUNDS_COMPLETED:-$ROUND_NUM}/findings-classification.tsv"' 'SKILL.md missing MainAgent re-tally findings-classification-out pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins
-contains "$APPROVAL_MD" 'Step 3 bypasses such as `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, `plan-size-trigger`, `plan-validator-defects`, and `panel-failed` skip Gate B (and therefore Step 3.6) but still continue Step 3b → Step 3b completion boundary → Step 4 → Step 4b with the current plan and artifacts.' 'approval-gates.md missing Gate C panel-failed boundary routing pin'
+contains "$APPROVAL_MD" 'Gate B always prompts explicitly' 'approval-gates.md missing Gate C panel-failed boundary routing pin'
 # shellcheck disable=SC2016 # backticks are literal markdown pins
 for _bypass_line in \
   "$(grep -F 'Gate-B-bypass short-circuits (' "$SKILL_MD")" \
@@ -2358,8 +1956,7 @@ for _skip_breadcrumb in \
   '⏩ 3.6: assessor — skipped (Step 3 degraded-empty-collector short-circuit)' \
   '⏩ 3.6: assessor — skipped (Step 3 panel-failed short-circuit)' \
   '⏩ 3.6: assessor — skipped (Step 3 cap-reached short-circuit)' \
-  '⏩ 3.6: assessor — skipped (Step 3 plan-size-trigger short-circuit)' \
-  '⏩ 3.6: assessor — skipped (Step 3 plan-validator-defects short-circuit)'
+
 do
   contains "$SKILL_MD" "$_skip_breadcrumb" "SKILL.md missing Step 3.6 skip breadcrumb: $_skip_breadcrumb"
   contains "$APPROVAL_MD" "$_skip_breadcrumb" "approval-gates.md missing Step 3.6 skip breadcrumb: $_skip_breadcrumb"

@@ -5,7 +5,7 @@ Canonical allowlist for per-round `/design` plan-review forensics under `$DESIGN
 ## Consumers
 
 - `skills/design/scripts/plan-review-loop.sh` — `_snapshot_round_dir` copies session-root artifacts into `round-N/` using `design_round_artifact_included`.
-- `scripts/design-log-publish.sh` — stages `plan-review/round-N/<file>` and `plan-review/round-N/revise/<file>` using the same functions.
+- `scripts/design-log-publish.sh` — stages `plan-review/round-N/<file>` using the same functions and rejects `plan-review/round-N/revise/<file>`.
 
 ## Edit-in-sync rule
 
@@ -28,6 +28,6 @@ Any allowlist change MUST update, in the same commit:
 
 ## `round-N/revise/` allowlist
 
-**Include:** `codex-output.txt`, `cursor-output.txt`, `claude-output.txt`, `revise.env`, `prompt.txt`, and `*-candidate.patch`.
+The revise include set is empty. Step 3 no longer runs inter-round revise, so newly published design logs must not include revise prompts, outputs, or candidate patches.
 
-Anything else under `revise/` is excluded.
+Anything under `revise/` is excluded.

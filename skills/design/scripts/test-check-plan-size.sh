@@ -42,6 +42,12 @@ assert_always_emitted_keys() {
     printf '%s\n' "$blob" | grep -q '^DIFF_DELETED=' || fail "exit 0 must emit DIFF_DELETED (output: $blob)"
     printf '%s\n' "$blob" | grep -q '^MECHANICAL_CHURN=' || fail "exit 0 must emit MECHANICAL_CHURN (output: $blob)"
     printf '%s\n' "$blob" | grep -q '^SOFT_ADVISORY=' || fail "exit 0 must emit SOFT_ADVISORY (output: $blob)"
+    printf '%s\n' "$blob" | grep -q '^DRIFT_TRIGGER_FIRED=' || fail "exit 0 must emit DRIFT_TRIGGER_FIRED (output: $blob)"
+    printf '%s\n' "$blob" | grep -q '^DRIFT_MULTIPLE=' || fail "exit 0 must emit DRIFT_MULTIPLE (output: $blob)"
+    printf '%s\n' "$blob" | grep -q '^DRIFT_PLAN_RATIO=' || fail "exit 0 must emit DRIFT_PLAN_RATIO (output: $blob)"
+    printf '%s\n' "$blob" | grep -q '^DRIFT_DIFF_RATIO=' || fail "exit 0 must emit DRIFT_DIFF_RATIO (output: $blob)"
+    printf '%s\n' "$blob" | grep -q '^BASELINE_PLAN_LINES=' || fail "exit 0 must emit BASELINE_PLAN_LINES (output: $blob)"
+    printf '%s\n' "$blob" | grep -q '^BASELINE_DIFF_LINES=' || fail "exit 0 must emit BASELINE_DIFF_LINES (output: $blob)"
 }
 
 run_ok() {
@@ -591,5 +597,74 @@ assert_kv_eq DIFF_DELETED 9999 "$out"
 assert_kv_eq DIFF_ADDED "" "$out"
 assert_kv_eq HARD_TRIGGER_FIRED true "$out"
 assert_kv_eq TRIGGER_REASONS "diff-lines" "$out"
+
+
+# --- Case 34: drift baseline seed and OR-trigger comparisons ---
+d="$TMPROOT/c34"
+mkdir -p "$d"
+{ fill_lines 10 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED false "$out"
+assert_kv_eq BASELINE_PLAN_LINES 10 "$out"
+assert_kv_eq BASELINE_DIFF_LINES 10 "$out"
+{ fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
+assert_kv_eq DRIFT_PLAN_RATIO 2.1 "$out"
+{ fill_lines 10 'b'; printf 'diff_lines: 21\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
+assert_kv_eq DRIFT_DIFF_RATIO 2.1 "$out"
+
+# --- Case 35: zero baseline avoids division by zero ---
+d="$TMPROOT/c35"
+mkdir -p "$d"
+printf 'BASELINE_PLAN_LINES=0\nBASELINE_DIFF_LINES=0\n' >"$d/drift-baseline.env"
+printf 'diff_lines: 0\n' >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED false "$out"
+assert_kv_eq DRIFT_PLAN_RATIO 1 "$out"
+printf 'body\ndiff_lines: 1\n' >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
+assert_kv_eq DRIFT_DIFF_RATIO inf "$out"
+
+# --- Case 36: partial corrupt baseline fails closed on drift ---
+d="$TMPROOT/c36"
+mkdir -p "$d"
+printf 'BASELINE_PLAN_LINES=10\nBASELINE_DIFF_LINES=oops\n' >"$d/drift-baseline.env"
+{ fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
+assert_kv_eq BASELINE_PLAN_LINES "" "$out"
+assert_kv_eq BASELINE_DIFF_LINES "" "$out"
+assert_kv_eq DRIFT_PLAN_RATIO inf "$out"
+assert_kv_eq DRIFT_DIFF_RATIO inf "$out"
+printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; failing closed on drift trigger' \
+    || fail "case36: expected fail-closed unreadable baseline warning"
+
+# --- Case 37: symlink baseline fails closed on drift ---
+d="$TMPROOT/c37"
+mkdir -p "$d"
+ln -s /tmp/not-a-real-baseline "$d/drift-baseline.env"
+{ fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
+out=$(run_ok "$d")
+assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
+assert_kv_eq BASELINE_PLAN_LINES "" "$out"
+assert_kv_eq BASELINE_DIFF_LINES "" "$out"
+assert_kv_eq DRIFT_PLAN_RATIO inf "$out"
+assert_kv_eq DRIFT_DIFF_RATIO inf "$out"
+[[ ! -L "$d/drift-baseline.env" ]] || fail "case37: expected symlink baseline removal attempt"
+printf '%s\n' "$out" | grep -Fq 'WARN=check-plan-size: drift baseline unreadable; failing closed on drift trigger' \
+    || fail "case37: expected fail-closed symlink baseline warning"
+
+# --- Case 38: invalid drift multiple coerces to default 2 ---
+d="$TMPROOT/c38"
+mkdir -p "$d"
+printf 'BASELINE_PLAN_LINES=10\nBASELINE_DIFF_LINES=10\n' >"$d/drift-baseline.env"
+{ fill_lines 21 'b'; printf 'diff_lines: 10\n'; } >"$d/plan.txt"
+out=$(LARCH_DESIGN_DRIFT_MULTIPLE=bogus run_ok "$d")
+assert_kv_eq DRIFT_MULTIPLE 2 "$out"
+assert_kv_eq DRIFT_TRIGGER_FIRED true "$out"
 
 echo "PASS: test-check-plan-size.sh"

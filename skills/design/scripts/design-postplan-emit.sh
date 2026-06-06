@@ -6,6 +6,8 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 # shellcheck source=skills/design/scripts/lib-phase-driver.sh
 source "$SCRIPT_DIR/lib-phase-driver.sh"
+# shellcheck source=skills/design/scripts/lib-drift-baseline.sh
+source "$SCRIPT_DIR/lib-drift-baseline.sh"
 larch_quiet_init
 
 fail() {
@@ -38,6 +40,12 @@ parse_kv_from_output() {
             DIFF_DELETED) DIFF_DELETED="$_value" ;;
             MECHANICAL_CHURN) MECHANICAL_CHURN="$_value" ;;
             SOFT_ADVISORY) SOFT_ADVISORY="$_value" ;;
+            DRIFT_TRIGGER_FIRED) DRIFT_TRIGGER_FIRED="$_value" ;;
+            DRIFT_MULTIPLE) DRIFT_MULTIPLE="$_value" ;;
+            DRIFT_PLAN_RATIO) DRIFT_PLAN_RATIO="$_value" ;;
+            DRIFT_DIFF_RATIO) DRIFT_DIFF_RATIO="$_value" ;;
+            BASELINE_PLAN_LINES) BASELINE_PLAN_LINES="$_value" ;;
+            BASELINE_DIFF_LINES) BASELINE_DIFF_LINES="$_value" ;;
             PLAN_SIZE_STATUS) PLAN_SIZE_STATUS="$_value" ;;
             WARN) WARN_LINES+=("$_value") ;;
         esac
@@ -130,6 +138,12 @@ DIFF_ADDED=""
 DIFF_DELETED=""
 MECHANICAL_CHURN=false
 SOFT_ADVISORY=false
+DRIFT_TRIGGER_FIRED=false
+DRIFT_MULTIPLE="${LARCH_DESIGN_DRIFT_MULTIPLE:-2}"
+DRIFT_PLAN_RATIO=1
+DRIFT_DIFF_RATIO=1
+BASELINE_PLAN_LINES=""
+BASELINE_DIFF_LINES=""
 _plan_size_out=""
 _plan_size_stderr=""
 
@@ -180,6 +194,12 @@ _postplan_build_kvs() {
         _kvs+=("MECHANICAL_CHURN=$MECHANICAL_CHURN")
         _kvs+=("SOFT_ADVISORY=$SOFT_ADVISORY")
         _kvs+=("PARTITION_REQUESTED=$PARTITION_REQUESTED")
+        _kvs+=("DRIFT_TRIGGER_FIRED=$DRIFT_TRIGGER_FIRED")
+        _kvs+=("DRIFT_MULTIPLE=$DRIFT_MULTIPLE")
+        _kvs+=("DRIFT_PLAN_RATIO=$DRIFT_PLAN_RATIO")
+        _kvs+=("DRIFT_DIFF_RATIO=$DRIFT_DIFF_RATIO")
+        _kvs+=("BASELINE_PLAN_LINES=$BASELINE_PLAN_LINES")
+        _kvs+=("BASELINE_DIFF_LINES=$BASELINE_DIFF_LINES")
     fi
     local _warn
     for _warn in "${WARN_LINES[@]+"${WARN_LINES[@]}"}"; do
@@ -277,6 +297,19 @@ _postplan_emit_hard_section() {
     fi
 }
 
+
+_postplan_emit_drift_section() {
+    emit "## Plan Size — Drift"
+    emit "PLAN_LINES=${PLAN_LINES:-} BASELINE_PLAN_LINES=${BASELINE_PLAN_LINES:-} DRIFT_PLAN_RATIO=${DRIFT_PLAN_RATIO:-1}"
+    emit "DIFF_LINES=${DIFF_LINES:-} BASELINE_DIFF_LINES=${BASELINE_DIFF_LINES:-} DRIFT_DIFF_RATIO=${DRIFT_DIFF_RATIO:-1} DRIFT_MULTIPLE=${DRIFT_MULTIPLE:-2}"
+}
+
+_postplan_snapshot_drift_baseline() {
+    [[ "$SNAPSHOT_ORIGINAL" == true ]] || return 0
+    [[ -n "${PLAN_LINES:-}" && -n "${DIFF_LINES:-}" ]] || return 0
+    larch_drift_baseline_write_once "$DESIGN_TMPDIR" "$PLAN_LINES" "$DIFF_LINES" || true
+}
+
 _postplan_emit_partition_section() {
     emit "## Plan Size — Partition requested"
     emit "trigger=partition-flag PLAN_LINES=${PLAN_LINES:-} DIFF_LINES=${DIFF_LINES:-}"
@@ -334,6 +367,11 @@ _postplan_run_plan_size() {
         TRIGGER_REASONS=""
         SOFT_ADVISORY=false
         rm -f "$_plan_size_stderr" 2>/dev/null || true
+        if [[ "$WITH_PLAN_SIZE" == true ]]; then
+            POSTPLAN_EMIT_STATUS=plan-size-failed
+            PLAN_SIZE_STATUS=failed
+            _postplan_exit_merged_failure
+        fi
         return 2
     fi
     rm -f "$_plan_size_stderr" 2>/dev/null || true
@@ -347,11 +385,11 @@ _postplan_run_plan_size() {
 
 _postplan_finish_merged_plan_size() {
     local _plan_size_rc=$1
-    if [[ "$_plan_size_rc" -eq 2 ]]; then
-        POSTPLAN_EMIT_STATUS=ok
-        PLAN_SIZE_STATUS="${PLAN_SIZE_STATUS:-unknown}"
-        _postplan_flush || exit 1
-        exit 0
+    local _defects_exit="${2:-}"
+    if [[ "$_plan_size_rc" -ne 0 ]]; then
+        POSTPLAN_EMIT_STATUS=plan-size-failed
+        PLAN_SIZE_STATUS=failed
+        _postplan_exit_merged_failure
     fi
     _postplan_emit_soft_advisory
     if [[ "$HARD_TRIGGER_FIRED" == true ]]; then
@@ -367,6 +405,19 @@ _postplan_finish_merged_plan_size() {
         PLAN_SIZE_STATUS=partition-requested
         _postplan_flush || exit 1
         exit 13
+    fi
+    if [[ -n "$_defects_exit" ]]; then
+        POSTPLAN_EMIT_STATUS=ok
+        PLAN_SIZE_STATUS=skipped-defects
+        _postplan_flush || exit 1
+        exit "$_defects_exit"
+    fi
+    if [[ "$DRIFT_TRIGGER_FIRED" == true ]]; then
+        _postplan_emit_drift_section
+        POSTPLAN_EMIT_STATUS=ok
+        PLAN_SIZE_STATUS=drift-trigger
+        _postplan_flush || exit 1
+        exit 14
     fi
     POSTPLAN_EMIT_STATUS=ok
     PLAN_SIZE_STATUS=under-threshold
@@ -451,7 +502,6 @@ if [[ "$EMIT_PLAN_STATUS" != ok ]]; then
     _postplan_write_result_and_emit
     exit 1
 fi
-
 _postplan_pause_checkpoint
 if [[ "$SNAPSHOT_ORIGINAL" == true ]]; then
     if [[ "$WORKFLOW_PATH" == HARD ]]; then
@@ -514,6 +564,14 @@ fi
 
 POSTPLAN_EMIT_STATUS=ok
 if [[ "$VALIDATE_STATUS" == defects-found ]]; then
+    if [[ "$WITH_PLAN_SIZE" == true ]]; then
+        _plan_size_run_rc=0
+        _postplan_run_plan_size || _plan_size_run_rc=$?
+        if [[ "$_plan_size_run_rc" -eq 0 ]]; then
+            _postplan_snapshot_drift_baseline
+        fi
+        _postplan_finish_merged_plan_size "$_plan_size_run_rc" 10
+    fi
     PLAN_SIZE_STATUS=skipped-defects
     _postplan_flush || exit 1
     exit 10
@@ -522,4 +580,7 @@ fi
 _postplan_pause_checkpoint
 _plan_size_run_rc=0
 _postplan_run_plan_size || _plan_size_run_rc=$?
+if [[ "$_plan_size_run_rc" -eq 0 ]]; then
+    _postplan_snapshot_drift_baseline
+fi
 _postplan_finish_merged_plan_size "$_plan_size_run_rc"

@@ -118,7 +118,7 @@ assert_lint_ok waiver "$waiver"
 
 multiline_bad="$TMPROOT/multiline-bad"
 make_skill "$multiline_bad" design
-write_script "$multiline_bad/scripts/write-run-params.sh" classification output source sketch-budget workflow-path partition-requested brainstorm-requested manual-gate-b
+write_script "$multiline_bad/scripts/write-run-params.sh" classification output source sketch-budget workflow-path partition-requested brainstorm-requested
 cat > "$multiline_bad/skills/design/SKILL.md" <<'EOF'
 ```bash
 ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
@@ -128,28 +128,26 @@ ${CLAUDE_PLUGIN_ROOT}/scripts/write-run-params.sh \
   --sketch-budget "$sketch_budget" \
   --workflow-path "$workflow_path" \
   --partition-requested "$partition_requested" \
-  --brainstorm-requested "$brainstorm_requested" \
-  --manual-gate-b "$manual_requested" \
-  --output "$DESIGN_TMPDIR/run-params.json"
+  --brainstorm-requested "$brainstorm_requested" \  --output "$DESIGN_TMPDIR/run-params.json"
 ```
 EOF
 assert_lint_fails_for multiline-bad "$multiline_bad" 'skills/design/SKILL.md:2: invocation uses --reason but scripts/write-run-params.sh does not declare it'
 
 multiline_good="$TMPROOT/multiline-good"
 make_skill "$multiline_good" design
-write_script "$multiline_good/scripts/write-run-params.sh" classification reason source sketch-budget workflow-path partition-requested brainstorm-requested manual-gate-b output
+write_script "$multiline_good/scripts/write-run-params.sh" classification reason source sketch-budget workflow-path partition-requested brainstorm-requested output
 cp "$multiline_bad/skills/design/SKILL.md" "$multiline_good/skills/design/SKILL.md"
 assert_lint_ok multiline-good "$multiline_good"
 
 regression_bad="$TMPROOT/regression-bad"
 make_skill "$regression_bad" design
-write_script "$regression_bad/scripts/write-run-params.sh" classification output partition-requested brainstorm-requested manual-gate-b
+write_script "$regression_bad/scripts/write-run-params.sh" classification output partition-requested brainstorm-requested
 cp "$multiline_bad/skills/design/SKILL.md" "$regression_bad/skills/design/SKILL.md"
 assert_lint_fails_for regression-bad "$regression_bad" 'skills/design/SKILL.md:2: invocation uses --reason but scripts/write-run-params.sh does not declare it'
 
 regression_fixed="$TMPROOT/regression-fixed"
 make_skill "$regression_fixed" design
-write_script "$regression_fixed/scripts/write-run-params.sh" classification reason source sketch-budget workflow-path partition-requested brainstorm-requested manual-gate-b output
+write_script "$regression_fixed/scripts/write-run-params.sh" classification reason source sketch-budget workflow-path partition-requested brainstorm-requested output
 cp "$multiline_bad/skills/design/SKILL.md" "$regression_fixed/skills/design/SKILL.md"
 assert_lint_ok regression-fixed "$regression_fixed"
 

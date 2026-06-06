@@ -5,20 +5,9 @@ set -euo pipefail
 
 apply_gate_b_bypass_sentinels() {
     local design_tmpdir="$1"
-    if [[ -f "$design_tmpdir/.completed/step-3.5" \
-        || -f "$design_tmpdir/.completed/step-3.6" ]]; then
-        return 1
-    fi
-    local DESIGN_TMPDIR="$design_tmpdir"
-    mkdir -p "$DESIGN_TMPDIR/.completed"
-    if [[ -f "$design_tmpdir/.completed/step-3" ]]; then
-        : >"$DESIGN_TMPDIR/.completed/step-3.5"
-        : >"$DESIGN_TMPDIR/.completed/step-3.6"
-        return 0
-    fi
-    : >"$DESIGN_TMPDIR/.completed/step-3"
-    : >"$DESIGN_TMPDIR/.completed/step-3.5"
-    : >"$DESIGN_TMPDIR/.completed/step-3.6"
+    local _repo_root
+    _repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
+    "$_repo_root/skills/design/scripts/design-step3-state.sh" --design-tmpdir "$design_tmpdir" --gate-b-bypass >/dev/null
 }
 export -f apply_gate_b_bypass_sentinels
 
@@ -119,7 +108,7 @@ apply_step3_handoff() {
         esac
     done <<<"${plan_review_out:-}"
 
-    if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|converged|cap-hit|cap-reached|zero-findings-degraded-panel|revision-failed|tally-error|degraded-empty-collector|plan-size-trigger|plan-validator-defects|emit-plan-failed|optional-trailer-dedup-loss|panel-failed|main-agent-vote-required)$ ]]; then
+    if [[ -z "${LOOP_STATUS:-}" || ! "${LOOP_STATUS}" =~ ^(complete|cap-reached|zero-findings-degraded-panel|tally-error|degraded-empty-collector|panel-failed|main-agent-vote-required)$ ]]; then
         LOOP_STATUS=panel-failed
     fi
 }
@@ -177,10 +166,10 @@ D3="$TMP/symlink"
 mkdir -p "$D3"
 ln -sf "$D3/target.env" "$D3/.step3-review-result.env"
 apply_step3_handoff "$D3" $'LOOP_STATUS=revision-failed\nREVIEW_ROUND_COUNT=2\n' 0
-if [[ "${LOOP_STATUS:-}" == revision-failed && "${REVIEW_ROUND_COUNT:-}" == 2 ]]; then
-    pass 'symlink fallback to stdout'
+if [[ "${LOOP_STATUS:-}" == panel-failed && "${REVIEW_ROUND_COUNT:-}" == 2 ]]; then
+    pass 'symlink fallback normalizes removed stdout status'
 else
-    fail 'symlink should fall back to stdout KVs'
+    fail 'symlink should normalize removed stdout LOOP_STATUS'
 fi
 
 echo "=== missing file and stdout uses panel-failed default ==="
@@ -223,14 +212,14 @@ fi
 echo "=== safe-env rc!=0 file wins over stdout LOOP_STATUS ==="
 D6B="$TMP/safe-env-rc1-file-wins"
 mkdir -p "$D6B"
-printf 'LOOP_STATUS=converged\nREVIEW_ROUND_COUNT=3\n' >"$D6B/.step3-review-result.env"
+printf 'LOOP_STATUS=complete\nREVIEW_ROUND_COUNT=3\n' >"$D6B/.step3-review-result.env"
 apply_step3_handoff "$D6B" 'LOOP_STATUS=panel-failed
 REVIEW_ROUND_COUNT=0
 ' 1
-if [[ "${LOOP_STATUS:-}" == converged && "${REVIEW_ROUND_COUNT:-}" == 3 ]]; then
+if [[ "${LOOP_STATUS:-}" == complete && "${REVIEW_ROUND_COUNT:-}" == 3 ]]; then
     pass 'safe-env rc!=0 file LOOP_STATUS wins over stdout'
 else
-    fail "safe-env rc!=0 expected converged/3 got ${LOOP_STATUS:-}/${REVIEW_ROUND_COUNT:-}"
+    fail "safe-env rc!=0 expected complete/3 got ${LOOP_STATUS:-}/${REVIEW_ROUND_COUNT:-}"
 fi
 
 echo "=== safe-env rc=2 returns 2 before parse (no LOOP_STATUS from file) ==="
