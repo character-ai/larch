@@ -90,6 +90,7 @@ build_sandbox() {
 #!/usr/bin/env bash
 printf 'stub argv: %s\n' "$*" >>"${STUB_LOG:-/dev/null}"
 printf 'stub-env IMPLEMENT_TMPDIR=%s\n' "${IMPLEMENT_TMPDIR:-}" >>"${STUB_LOG:-/dev/null}"
+printf 'stub-env CLAUDE_PLUGIN_ROOT=%s\n' "${CLAUDE_PLUGIN_ROOT:-}" >>"${STUB_LOG:-/dev/null}"
 case "${STUB_MODE:-success}" in
   success)
     printf 'IMPLEMENT_TMPDIR=%s\n' "${STUB_TMPDIR:-/tmp/larch-stub-tmpdir}"
@@ -201,6 +202,25 @@ if [ -f "$STUB_TMPDIR/bootstrap-routing.env" ]; then
 else
   FAIL=$((FAIL + 1))
   echo "FAIL: initial routing env file exists"
+fi
+rm -rf "$SANDBOX" "$STUB_TMPDIR"
+
+# --- absolute wrapper derives CLAUDE_PLUGIN_ROOT when unset ---
+build_sandbox
+STUB_TMPDIR=$(mktemp -d /tmp/larch-ibi-derived-root.XXXXXX)
+set +e
+out=$(env -u CLAUDE_PLUGIN_ROOT STUB_LOG="$SANDBOX/stub-invoke.log" STUB_TMPDIR="$STUB_TMPDIR" "$SANDBOX/scripts/implement-bootstrap-invoke.sh" --mode initial 2>/dev/null)
+rc=$?
+set -e
+stub_log=$(cat "$SANDBOX/stub-invoke.log" 2>/dev/null || true)
+assert_rc "$rc" 0 'initial absolute wrapper derives CLAUDE_PLUGIN_ROOT rc'
+assert_contains 'IMPLEMENT_TMPDIR=' "$out" 'initial derived root stdout envelope has IMPLEMENT_TMPDIR'
+assert_contains "stub-env CLAUDE_PLUGIN_ROOT=$SANDBOX" "$stub_log" 'bootstrap stub observes derived CLAUDE_PLUGIN_ROOT'
+if [ -f "$STUB_TMPDIR/bootstrap-routing.env" ]; then
+  assert_contains 'REPO=owner/repo' "$(cat "$STUB_TMPDIR/bootstrap-routing.env")" 'initial derived root routing env file has REPO'
+else
+  FAIL=$((FAIL + 1))
+  echo "FAIL: initial derived root routing env file exists"
 fi
 rm -rf "$SANDBOX" "$STUB_TMPDIR"
 

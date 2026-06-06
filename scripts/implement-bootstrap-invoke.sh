@@ -29,7 +29,11 @@ case "$MODE" in
     ;;
 esac
 
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+  CLAUDE_PLUGIN_ROOT="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)" || CLAUDE_PLUGIN_ROOT=""
+fi
 : "${CLAUDE_PLUGIN_ROOT:?CLAUDE_PLUGIN_ROOT must be set}"
+export CLAUDE_PLUGIN_ROOT
 
 if [ "$MODE" = resume ]; then
   [ -n "${IMPLEMENT_TMPDIR:-}" ] || {

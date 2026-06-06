@@ -28,6 +28,21 @@ Prints a single decimal integer line to **stdout** (no trailing diagnostics): th
 
 The helper does **not** validate that `current_round` is numeric; callers must enforce positive integer semantics. Non-integer `current_round` may produce unexpected loop bounds — callers normalize first.
 
+## CLI (direct execution)
+
+Direct execution exposes the degraded-round counter without sourcing the
+library:
+
+```bash
+scripts/lib-implement-round-cap.sh --count-prior-degraded <IMPLEMENT_TMPDIR> <current_round>
+```
+
+The CLI prints one decimal integer to stdout and exits `0` on success. It exits
+`2` with a stderr usage line when the flag is missing or unknown, the argument
+count is wrong, or `<current_round>` is not a positive integer. The direct-entry
+guard uses `BASH_SOURCE[0] == $0`, so sourcing the file remains inert and only
+defines `count_prior_degraded_rounds`.
+
 ## Consumers
 
 - `scripts/run-step5-review.sh` — `--mode single` pre-inflates `--round-cap` before dispatching `--mode diff`.

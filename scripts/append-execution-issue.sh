@@ -11,6 +11,7 @@ larch_quiet_init
 fail_usage() {
     emit_kv FAILED "true"
     emit_kv ERROR "usage: $1"
+    emit_kv USAGE "append-execution-issue.sh --log FILE --category CAT (--entry STR | --entry-file FILE)"
     exit 1
 }
 

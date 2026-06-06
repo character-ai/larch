@@ -37,3 +37,24 @@ count_prior_degraded_rounds() {
     done
     printf '%s\n' "$count"
 }
+
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    set -euo pipefail
+    _lib_round_cap_usage() {
+        printf 'usage: lib-implement-round-cap.sh --count-prior-degraded <IMPLEMENT_TMPDIR> <current_round>\n' >&2
+        exit 2
+    }
+    case "${1:-}" in
+        --count-prior-degraded)
+            [ "$#" -eq 3 ] || _lib_round_cap_usage
+            case "$3" in
+                ''|*[!0-9]*) _lib_round_cap_usage ;;
+            esac
+            [ "$3" -ge 1 ] || _lib_round_cap_usage
+            count_prior_degraded_rounds "$2" "$3"
+            ;;
+        *)
+            _lib_round_cap_usage
+            ;;
+    esac
+fi
