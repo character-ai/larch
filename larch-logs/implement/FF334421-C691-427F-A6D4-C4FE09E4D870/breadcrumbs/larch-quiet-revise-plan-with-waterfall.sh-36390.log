@@ -1,0 +1,2 @@
+revise-plan-with-waterfall.sh: --plan-file is required
+usage: revise-plan-with-waterfall.sh --design-tmpdir DIR --plan-file FILE --findings-file FILE --feature-file FILE --round-num N --codex-present true|false --cursor-present true|false [--timeout SECS] [--patch-format unified-diff|file-replacement]

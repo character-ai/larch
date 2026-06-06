@@ -229,25 +229,102 @@
       {
         "step": "Step 6 — checks second pass",
         "totals": {
-          "input": 0,
-          "cache_read": 0,
-          "cache_create": 0,
+          "input": 137,
+          "cache_read": 1029158,
+          "cache_create": 7377,
           "cache_create_5m": 0,
-          "cache_create_1h": 0,
-          "output": 0,
-          "total": 0
+          "cache_create_1h": 7377,
+          "output": 5119,
+          "total": 1041791
         },
-        "skills": []
+        "skills": [
+          {
+            "skill": "inferred:Step 6 — checks second pass",
+            "totals": {
+              "input": 137,
+              "cache_read": 1029158,
+              "cache_create": 7377,
+              "cache_create_5m": 0,
+              "cache_create_1h": 7377,
+              "output": 5119,
+              "total": 1041791
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 4,
+          "cache_read": 526359,
+          "cache_create": 3317,
+          "cache_create_5m": 0,
+          "cache_create_1h": 3317,
+          "output": 2023,
+          "total": 531703
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 16 — rejected findings",
+            "totals": {
+              "input": 4,
+              "cache_read": 526359,
+              "cache_create": 3317,
+              "cache_create_5m": 0,
+              "cache_create_1h": 3317,
+              "output": 2023,
+              "total": 531703
+            }
+          }
+        ]
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 1864,
+          "cache_read": 10693394,
+          "cache_create": 142553,
+          "cache_create_5m": 0,
+          "cache_create_1h": 142553,
+          "output": 52753,
+          "total": 10890564
+        },
+        "skills": [
+          {
+            "skill": "inferred:Step 17 — final report",
+            "totals": {
+              "input": 141,
+              "cache_read": 1628332,
+              "cache_create": 16533,
+              "cache_create_5m": 0,
+              "cache_create_1h": 16533,
+              "output": 9784,
+              "total": 1654790
+            }
+          },
+          {
+            "skill": "larch:issue",
+            "totals": {
+              "input": 1723,
+              "cache_read": 9065062,
+              "cache_create": 126020,
+              "cache_create_5m": 0,
+              "cache_create_1h": 126020,
+              "output": 42969,
+              "total": 9235774
+            }
+          }
+        ]
       }
     ],
     "totals": {
-      "input": 4307,
-      "cache_read": 7119885,
-      "cache_create": 289338,
+      "input": 6312,
+      "cache_read": 19368796,
+      "cache_create": 442585,
       "cache_create_5m": 0,
-      "cache_create_1h": 289338,
-      "output": 57410,
-      "total": 7470940
+      "cache_create_1h": 442585,
+      "output": 117305,
+      "total": 19934998
     }
   },
   "codex": {
@@ -334,6 +411,22 @@
       },
       {
         "step": "Step 6 — checks second pass",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
         "totals": {
           "input": 0,
           "output": 0,
@@ -436,6 +529,22 @@
           "output": 0,
           "total": 0
         }
+      },
+      {
+        "step": "Step 16 — rejected findings",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
+      },
+      {
+        "step": "Step 17 — final report",
+        "totals": {
+          "input": 0,
+          "output": 0,
+          "total": 0
+        }
       }
     ],
     "totals": {
@@ -445,12 +554,12 @@
     }
   },
   "BUCKETS_claude": {
-    "input": 4307,
-    "cache_read": 7119885,
+    "input": 6312,
+    "cache_read": 19368796,
     "cache_create_5m": 0,
-    "cache_create_1h": 289338,
-    "output": 57410,
-    "total": 7470940
+    "cache_create_1h": 442585,
+    "output": 117305,
+    "total": 19934998
   },
   "BUCKETS_codex": {
     "input": 2435659,
