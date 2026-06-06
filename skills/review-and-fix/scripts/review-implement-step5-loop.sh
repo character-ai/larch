@@ -324,6 +324,21 @@ run_implement_loop() {
                     applied)
                         lint_attempts=$((lint_attempts + 1))
                         if (( lint_attempts >= 10#$lint_max )); then
+                            # Re-verify the final applied fix before declaring the cap stall.
+                            # The Nth repair may have already fixed the tree (#3592 bug a).
+                            cap_out="$IMPLEMENT_TMPDIR/.step5-checks-capture.$$.$RANDOM.log"
+                            rm -f "$cap_out"
+                            set +e
+                            "$checks_sh" --tmpdir "$IMPLEMENT_TMPDIR" --site step5-review-fixes >"$cap_out" 2>&1
+                            set -e
+                            step5_parse_checks_capture_file "$cap_out"
+                            rm -f "$cap_out"
+                            if [[ "$STEP5_CHK_RELEVANT_CHECKS_SKIPPED" == "true" || "$STEP5_CHK_RELEVANT_CHECKS_OK" == "true" ]]; then
+                                break
+                            fi
+                            if [[ "$STEP5_CHK_STATUS" != "fail" ]]; then
+                                break
+                            fi
                             step5_surface_lint_stderr_tail
                             _emit_implement_round_timing_row "$round_num" "$round_start_s" "$(step5_now_s)" "${post_accepted_count:-0}" "${post_rejected_count:-0}"
                             step5_emit_final_envelope stall true lint-fix-attempt-cap "$rounds_completed" "$round_num" "$post_round_status" "$post_coder" "$last_hint" "$effective_round_cap"

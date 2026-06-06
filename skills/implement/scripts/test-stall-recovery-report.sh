@@ -197,6 +197,21 @@ write_state "$dir" 2 implementation
 run_capture "$SANDBOX/case7l.out" "$SCRIPT" classify --implement-tmpdir "$dir" --bail-reason main-branch-post-dispatch
 assert_eq dispatch-failure "$(kv FAILURE_CLASS "$SANDBOX/case7l.out")" "7: main-branch-post-dispatch classifies dispatch"
 assert_eq main-branch-post-dispatch "$(kv BAIL_REASON "$SANDBOX/case7l.out")" "7: main-branch-post-dispatch renders allowlisted bail"
+
+# #3592 bug b: distinct failure evidence produces distinct signatures.
+dir=$(make_tmp case7m)
+write_state "$dir" 5 review
+log_a="$dir/failure-a.log"
+log_b="$dir/failure-b.log"
+printf 'shellcheck: SC2034 unused variable in hooks.sh\n' >"$log_a"
+printf 'markdownlint MD038 failed in SKILL.md\n' >"$log_b"
+run_capture "$SANDBOX/case7m-a.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$log_a"
+run_capture "$SANDBOX/case7m-b.out" "$SCRIPT" classify --implement-tmpdir "$dir" --failure-detail-log "$log_b"
+sig_a=$(kv FAILURE_SIGNATURE "$SANDBOX/case7m-a.out")
+sig_b=$(kv FAILURE_SIGNATURE "$SANDBOX/case7m-b.out")
+assert_eq lint-failure "$(kv FAILURE_CLASS "$SANDBOX/case7m-a.out")" "7m: evidence-a classifies lint-failure"
+assert_eq lint-failure "$(kv FAILURE_CLASS "$SANDBOX/case7m-b.out")" "7m: evidence-b classifies lint-failure"
+if [ "$sig_a" != "$sig_b" ]; then pass "7m: distinct evidence produces distinct signatures"; else fail "7m: distinct evidence produces distinct signatures" "sig_a=$sig_a sig_b=$sig_b"; fi
 while IFS='|' read -r klass attempts delay; do
     run_capture "$SANDBOX/retry-$klass.out" "$SCRIPT" retry-policy --class "$klass"
     assert_eq "$klass" "$(kv FAILURE_CLASS "$SANDBOX/retry-$klass.out")" "7: retry-policy class $klass"

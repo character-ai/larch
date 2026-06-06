@@ -595,7 +595,7 @@ cmd_classify() {
     local state_stall_step="" state_phase="" state_stall_tracking="" state_bail_reason="" state_exit_code=""
     local finalize_stall_step="" finalize_phase="" finalize_stall_tracking="" finalize_bail_reason="" finalize_exit_code=""
     local session_stall_step="" session_phase="" session_stall_tracking="" session_bail_reason="" session_exit_code=""
-    local stall_step phase stall_tracking bail_reason exit_code failure_class signature resume_hint last_sig
+    local stall_step phase stall_tracking bail_reason exit_code failure_class signature resume_hint last_sig evidence_digest
 
     while [ $# -gt 0 ]; do
         case "$1" in
@@ -688,7 +688,15 @@ $(cat "$session_env")"
         failure_class=$(classify_from_evidence "$stall_step" "$phase" "$bail_reason" "$evidence" "$detail_log_valid")
     fi
     resume_hint=$(resume_hint_for "$failure_class" "$stall_step" "$phase")
-    signature=$(printf '%s\n' "class=$failure_class" "hint=$resume_hint" "step=$stall_step" "phase=$phase" "bail=$bail_reason" | hash_text)
+    # Mix a bounded evidence digest into the signature so distinct failures with
+    # identical class/step/phase/bail hash differently and avoid collapsing into
+    # same-cause-repeat (#3592 bug b). Never emitted publicly.
+    evidence_digest=""
+    if [ -n "$evidence" ]; then
+        evidence_digest=$(printf '%s\n' "$evidence" | head -c 2048 | hash_text)
+        evidence_digest="${evidence_digest:0:16}"
+    fi
+    signature=$(printf '%s\n' "class=$failure_class" "hint=$resume_hint" "step=$stall_step" "phase=$phase" "bail=$bail_reason" "evidence=$evidence_digest" | hash_text)
 
     if [ -n "$attempts_file" ] && [ "$failure_class" != contract-failure ] && [ "$failure_class" != unrecoverable ]; then
         last_sig=$(latest_attempt_signature "$attempts_file")
