@@ -228,7 +228,8 @@ if [[ ${#ADD_DIRS[@]} -gt 0 ]]; then
     if launcher_jq_available; then
         _add_dirs_json=$(printf '%s\n' "${ADD_DIRS[@]}" | jq -R . | jq -s -c .)
     elif ! _add_dirs_json=$(json_array_from_args "${ADD_DIRS[@]}"); then
-        write_preflight_bundle 1 "failed to serialize --add-dir metadata without jq"
+        larch_err "launch-codex-exec.sh: failed to serialize --add-dir metadata without jq; retry metadata will fall back to workdir only"
+        _add_dirs_json=$(json_array_from_args "$WORKDIR") || _add_dirs_json="[]"
     fi
 fi
 codex_launcher_append_codex_exec_outer_meta \

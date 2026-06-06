@@ -195,6 +195,21 @@ for pair in \
   fi
 done
 
+# ---------- Check 11: Codex research telemetry wording ----------
+
+if grep -Fq 'Non-fallback Codex lanes receive best-effort usage records' "$RESEARCH_MD" \
+  && grep -Fq "\${OUTPUT}.token-record" "$RESEARCH_MD"; then
+  PASS=$((PASS + 1))
+else
+  fail "[codex telemetry] research-phase.md must pin best-effort Codex usage records"
+fi
+
+if grep -Fqi 'Codex telemetry is unmeasurable' "$RESEARCH_MD"; then
+  fail "[codex telemetry] research-phase.md must not claim Codex telemetry is unmeasurable"
+else
+  PASS=$((PASS + 1))
+fi
+
 # ---------- Summary ----------
 
 if (( FAIL > 0 )); then

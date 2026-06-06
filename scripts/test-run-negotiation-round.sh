@@ -80,7 +80,11 @@ if [[ -n "${CODEX_STUB_AUTH_LINK_FILE:-}" && -n "${CODEX_HOME:-}" ]]; then
     fi
 fi
 printf 'codex negotiation final\n' > "$output"
-printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
+if [[ -n "${CODEX_STUB_QUOTA_EVENT:-}" ]]; then
+    printf '{"type":"error","message":"usage limit exceeded; reset later"}\n'
+else
+    printf '{"type":"token_usage","input_tokens":1000,"cached_input_tokens":900,"output_tokens":50}\n'
+fi
 printf 'codex sidecar diagnostic\n' >&2
 exit "${CODEX_STUB_RC:-0}"
 EOF
@@ -154,6 +158,11 @@ if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_negotiati
     pass
 else
     fail "codex token ledger should contain codex_negotiation row"
+fi
+if find "$TMPROOT" -maxdepth 1 -type d -name 'larch-codex-negotiation-home-*' | grep -q .; then
+    fail "codex success should clean temp CODEX_HOME"
+else
+    pass
 fi
 if grep -Fxq -- '--output-last-message' "$CODEX_ARGV"; then
     pass
@@ -352,6 +361,7 @@ CODEX_FAIL_STDOUT="$TMPROOT/codex-fail.stdout"
 CODEX_FAIL_ARGV="$TMPROOT/codex-fail.argv"
 CODEX_FAIL_LOCK_SEEN="$TMPROOT/codex-fail.lock-seen"
 CODEX_FAIL_LEDGER="$TMPROOT/codex-fail-token-ledger.jsonl"
+CODEX_FAIL_HOME="$TMPROOT/codex-fail.home"
 rm -f "${CODEX_FAIL_OUTPUT%.txt}.events.jsonl"
 printf 'stale events\n' > "${CODEX_FAIL_OUTPUT%.txt}.events.jsonl"
 set +e
@@ -360,6 +370,8 @@ PATH="$STUB_BIN:$PATH" \
     CODEX_STUB_ARGV_LOG="$CODEX_FAIL_ARGV" \
     CODEX_STUB_LOCK_PATH="$CODEX_LOCK_PATH" \
     CODEX_STUB_LOCK_SEEN_FILE="$CODEX_FAIL_LOCK_SEEN" \
+    CODEX_STUB_HOME_LOG="$CODEX_FAIL_HOME" \
+    CODEX_STUB_QUOTA_EVENT=1 \
     CODEX_STUB_RC=42 \
     LARCH_TOKEN_LEDGER="$CODEX_FAIL_LEDGER" \
     LARCH_EXTERNAL_SERIAL_LOCK_FORCE_UNAME=Darwin \
@@ -379,10 +391,21 @@ if [[ -s "${CODEX_FAIL_OUTPUT%.txt}.events.jsonl" ]] && ! grep -Fq 'stale events
 else
     fail "failing codex should overwrite stale events"
 fi
-if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_negotiation" and .total==1050)' "$CODEX_FAIL_LEDGER" >/dev/null; then
+if jq -e 'select(.type=="vendor" and .vendor=="codex" and .raw=="codex_negotiation" and .total==1050)' "$CODEX_FAIL_LEDGER" >/dev/null 2>&1; then
+    fail "quota-only failing codex should not record a token ledger row"
+else
+    pass
+fi
+if grep -Fq 'usage limit / quota reported' "${CODEX_FAIL_OUTPUT%.txt}.sidecar"; then
     pass
 else
-    fail "failing codex should still record token ledger row"
+    fail "failing codex should mirror quota events into sidecar"
+fi
+codex_fail_home_dir=$(cat "$CODEX_FAIL_HOME" 2>/dev/null || true)
+if [[ -n "$codex_fail_home_dir" ]] && [[ ! -e "$codex_fail_home_dir" ]]; then
+    pass
+else
+    fail "failing codex should clean temp CODEX_HOME"
 fi
 
 CODEX_MODEL_FAIL_OUTPUT="$TMPROOT/codex-model-fail.txt"

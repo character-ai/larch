@@ -27,6 +27,13 @@ assert_fails() {
 
 OUT="$TMPDIR_BASE/exec-out.txt"
 assert_fails "rejects relative output" --output relative --timeout 60 --prompt hi
+UNSAFE_ABS_OUT="$TMPDIR_BASE/unsafe"$'\t'"out.txt"
+assert_fails "rejects unsafe absolute output" --output "$UNSAFE_ABS_OUT" --timeout 60 --prompt hi
+if [[ ! -e "$UNSAFE_ABS_OUT" && ! -e "${UNSAFE_ABS_OUT}.meta" && ! -e "${UNSAFE_ABS_OUT}.diag" && ! -e "${UNSAFE_ABS_OUT}.done" ]]; then
+    ok "unsafe absolute output creates no sidecars"
+else
+    fail "unsafe absolute output creates no sidecars"
+fi
 assert_fails "rejects missing prompt" --output "$OUT" --timeout 60
 assert_fails "rejects both prompt flags" --output "$OUT" --timeout 60 --prompt hi --prompt-file "$OUT"
 
@@ -59,6 +66,18 @@ for arg in "$@"; do
 done
 if [[ -n "${CODEX_STUB_HOME_LOG:-}" ]]; then
     printf '%s\n' "${CODEX_HOME:-}" > "$CODEX_STUB_HOME_LOG"
+fi
+if [[ -n "${CODEX_STUB_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
+    cp "$CODEX_HOME/config.toml" "$CODEX_STUB_CONFIG_FILE"
+fi
+if [[ -n "${CODEX_STUB_AUTH_LINK_FILE:-}" && -n "${CODEX_HOME:-}" ]]; then
+    if [[ -L "$CODEX_HOME/auth.json" ]]; then
+        readlink "$CODEX_HOME/auth.json" > "$CODEX_STUB_AUTH_LINK_FILE"
+    elif [[ -e "$CODEX_HOME/auth.json" ]]; then
+        printf 'not-symlink\n' > "$CODEX_STUB_AUTH_LINK_FILE"
+    else
+        : > "$CODEX_STUB_AUTH_LINK_FILE"
+    fi
 fi
 [[ -n "$out" ]] || exit 9
 printf 'stub transcript\n' > "$out"
@@ -111,10 +130,10 @@ set +e
     >"$TMPDIR_BASE/launcher-add-fail.stdout" 2>"$TMPDIR_BASE/launcher-add-fail.stderr"
 rc=$?
 set -e
-if [[ "$rc" -eq 0 ]] && grep -Fq 'LAUNCHER_EXIT=1' "$TMPDIR_BASE/launcher-add-fail.stdout" && grep -Fq 'failed to serialize --add-dir metadata without jq' "${OUT_ADD_FAIL}.diag"; then
-    ok "fails closed when add-dir metadata cannot be serialized"
+if [[ "$rc" -eq 0 ]] && grep -Fq 'LAUNCHER_EXIT=0' "$TMPDIR_BASE/launcher-add-fail.stdout" && grep -Fq "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$REPO_ROOT\"]" "${OUT_ADD_FAIL}.meta" && [[ -s "$OUT_ADD_FAIL" ]]; then
+    ok "falls back to workdir metadata when add-dir metadata cannot be serialized"
 else
-    fail "fails closed when add-dir metadata cannot be serialized"
+    fail "falls back to workdir metadata when add-dir metadata cannot be serialized"
 fi
 
 OUT_READONLY="$TMPDIR_BASE/exec-readonly-out.txt"
@@ -211,6 +230,18 @@ done
 if [[ -n "${CODEX_STUB_HOME_LOG:-}" ]]; then
     printf '%s\n' "${CODEX_HOME:-}" > "$CODEX_STUB_HOME_LOG"
 fi
+if [[ -n "${CODEX_STUB_CONFIG_FILE:-}" && -n "${CODEX_HOME:-}" && -f "$CODEX_HOME/config.toml" ]]; then
+    cp "$CODEX_HOME/config.toml" "$CODEX_STUB_CONFIG_FILE"
+fi
+if [[ -n "${CODEX_STUB_AUTH_LINK_FILE:-}" && -n "${CODEX_HOME:-}" ]]; then
+    if [[ -L "$CODEX_HOME/auth.json" ]]; then
+        readlink "$CODEX_HOME/auth.json" > "$CODEX_STUB_AUTH_LINK_FILE"
+    elif [[ -e "$CODEX_HOME/auth.json" ]]; then
+        printf 'not-symlink\n' > "$CODEX_STUB_AUTH_LINK_FILE"
+    else
+        : > "$CODEX_STUB_AUTH_LINK_FILE"
+    fi
+fi
 [[ -n "$out" ]] || exit 9
 printf 'stub transcript\n' > "$out"
 printf '{"msg":{"usage":{"input_tokens":1,"output_tokens":1}}}\n'
@@ -276,11 +307,20 @@ OUT_LOGIN="$TMPDIR_BASE/exec-login-out.txt"
 ARGV_LOGIN="$TMPDIR_BASE/login.argv"
 HOME_LOGIN="$TMPDIR_BASE/home-login"
 HOME_LOGIN_OBSERVED="$TMPDIR_BASE/login.home"
+CONFIG_LOGIN="$TMPDIR_BASE/login.config.toml"
+AUTH_LINK_LOGIN="$TMPDIR_BASE/login.auth-link"
 mkdir -p "$HOME_LOGIN/.codex"
 printf '{"tokens":"stub"}\n' > "$HOME_LOGIN/.codex/auth.json"
+printf '%s\n' \
+    '[model_providers.openai-larch-env]' \
+    'name = "strip stale env provider"' \
+    '[model_providers.keep]' \
+    'name = "keep provider"' \
+    'model_provider = "openai-larch-env"' > "$HOME_LOGIN/.codex/config.toml"
 set +e
 (cd "$REPO_ROOT" && PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" HOME="$HOME_LOGIN" \
     CODEX_STUB_ARGV_LOG="$ARGV_LOGIN" CODEX_STUB_HOME_LOG="$HOME_LOGIN_OBSERVED" \
+    CODEX_STUB_CONFIG_FILE="$CONFIG_LOGIN" CODEX_STUB_AUTH_LINK_FILE="$AUTH_LINK_LOGIN" \
     env -u OPENAI_API_KEY bash "$REPO_ROOT/scripts/launch-codex-exec.sh" \
     --output "$OUT_LOGIN" --timeout 60 --workdir "$REPO_ROOT" --prompt "hello") \
     >"$TMPDIR_BASE/launcher-login.stdout" 2>"$TMPDIR_BASE/launcher-login.stderr"
@@ -296,6 +336,19 @@ if [[ -n "$codex_login_home_dir" && ! -e "$codex_login_home_dir" ]]; then
     ok "removes temp CODEX_HOME after login run"
 else
     fail "removes temp CODEX_HOME after login run"
+fi
+expected_auth_link=$(cd "$HOME_LOGIN/.codex" && pwd)/auth.json
+if [[ "$(cat "$AUTH_LINK_LOGIN" 2>/dev/null || true)" == "$expected_auth_link" ]]; then
+    ok "login auth symlinks auth.json"
+else
+    fail "login auth symlinks auth.json"
+fi
+if [[ -s "$CONFIG_LOGIN" ]] && grep -Fq 'name = "keep provider"' "$CONFIG_LOGIN" \
+    && ! grep -Fq 'strip stale env provider' "$CONFIG_LOGIN" \
+    && ! grep -Fq 'model_provider = "openai-larch-env"' "$CONFIG_LOGIN"; then
+    ok "login auth strips copied larch config"
+else
+    fail "login auth strips copied larch config"
 fi
 
 OUT_AUTH_FAIL="$TMPDIR_BASE/exec-auth-fail-out.txt"

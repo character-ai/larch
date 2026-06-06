@@ -77,7 +77,11 @@ case "$TOOL" in
         codex_home=$(mktemp -d "${TMPDIR:-/tmp}/larch-codex-negotiation-home-XXXXXX")
         trap '_negotiation_codex_cleanup' EXIT
         if [[ -f ~/.codex/config.toml ]]; then
-            cp ~/.codex/config.toml "$codex_home/config.toml"
+            if ! cp ~/.codex/config.toml "$codex_home/config.toml"; then
+                _negotiation_codex_cleanup
+                emit_kv RESPONSE_FILE "$OUTPUT_FILE"
+                exit 2
+            fi
         fi
         if ! external_prepare_codex_auth "$codex_home"; then
             _negotiation_codex_cleanup
@@ -113,6 +117,9 @@ case "$TOOL" in
         rm -f "$codex_events" "$codex_sidecar"
         codex_rc=0
         CODEX_HOME="$codex_home" codex exec --full-auto -C "$WORKSPACE" ${CODEX_MODEL_ARGS[@]+"${CODEX_MODEL_ARGS[@]}"} -c "$trust_config_arg" ${CODEX_AUTH_ARGS[@]+"${CODEX_AUTH_ARGS[@]}"} --output-last-message "$OUTPUT_FILE" --json -- - < "$PROMPT_FILE" >"$codex_events" 2>"$codex_sidecar" || codex_rc=$? # lint-codex-exec-auth: ok inline stdin-pipe dispatch; auth wired per check-reviewers.sh:211-245
+        if [[ "$codex_rc" -ne 0 ]]; then
+            external_launcher_mirror_quota_from_events "$codex_events" "$codex_sidecar"
+        fi
         external_launcher_record_usage_from_events "$PLUGIN_ROOT" "$codex_events" "$codex_sidecar" "codex_negotiation" || true
         _negotiation_codex_cleanup
         if [[ "$codex_rc" -ne 0 ]]; then

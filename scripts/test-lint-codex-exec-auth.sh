@@ -44,7 +44,12 @@ reset_tree
 write_file "$TMPROOT/scripts/launch-codex-exec.sh" '#!/bin/bash' 'codex exec --full-auto -C . hi'
 chmod +x "$TMPROOT/scripts/launch-codex-exec.sh"
 rc="$(run_lint "$stderr_file")"
-if [[ "$rc" -eq 0 ]]; then echo "PASS allowlisted basename"; PASS=$((PASS+1)); else echo "FAIL allowlisted basename"; FAIL=$((FAIL+1)); fi
+if [[ "$rc" -eq 0 ]]; then echo "PASS canonical launch-codex-exec path"; PASS=$((PASS+1)); else echo "FAIL canonical launch-codex-exec path"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/review-and-fix.sh" '#!/bin/bash' 'codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS misplaced allowlisted basename fails"; PASS=$((PASS+1)); else echo "FAIL misplaced allowlisted basename fails"; FAIL=$((FAIL+1)); fi
 
 reset_tree
 write_file "$TMPROOT/scripts/pragma.sh" 'codex exec --full-auto -C . hi # lint-codex-exec-auth: ok fixture'
@@ -55,6 +60,11 @@ reset_tree
 write_file "$TMPROOT/scripts/embedded-pragma.sh" 'printf "%s\n" "# lint-codex-exec-auth: ok fixture"; codex exec --full-auto -C . hi'
 rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -ne 0 ]]; then echo "PASS embedded pragma does not suppress"; PASS=$((PASS+1)); else echo "FAIL embedded pragma does not suppress"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/quoted-pragma.sh" 'dummy=" # lint-codex-exec-auth: ok fixture"; codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS quoted pragma does not suppress"; PASS=$((PASS+1)); else echo "FAIL quoted pragma does not suppress"; FAIL=$((FAIL+1)); fi
 
 reset_tree
 write_file "$TMPROOT/scripts/mixed-auth.sh" '#!/bin/bash' '/repo/scripts/launch-codex-exec.sh --output /tmp/out --timeout 60 --prompt ok' 'codex exec --full-auto -C . hi'
@@ -92,6 +102,21 @@ rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -ne 0 ]]; then echo "PASS multi env prefix raw codex fails"; PASS=$((PASS+1)); else echo "FAIL multi env prefix raw codex fails"; FAIL=$((FAIL+1)); fi
 
 reset_tree
+write_file "$TMPROOT/scripts/quoted-command.sh" '#!/bin/bash' '"codex" exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS double-quoted command fails"; PASS=$((PASS+1)); else echo "FAIL double-quoted command fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/single-quoted-command.sh" '#!/bin/bash' "'codex' exec --full-auto -C . hi"
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS single-quoted command fails"; PASS=$((PASS+1)); else echo "FAIL single-quoted command fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/scripts/escaped-command.sh" '#!/bin/bash' '\codex exec --full-auto -C . hi'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS escaped command fails"; PASS=$((PASS+1)); else echo "FAIL escaped command fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
 write_file "$TMPROOT/scripts/negotiation-pragma.sh" '#!/bin/bash' "CODEX_HOME=\"\$codex_home\" codex exec --full-auto -C \"\$workspace\" -c \"projects.\\\"\$workspace\\\".trust_level=\\\"trusted\\\"\" --output-last-message \"\$output\" --json -- \"\$prompt\" # lint-codex-exec-auth: ok auth prepared by external_prepare_codex_auth"
 rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -eq 0 ]]; then echo "PASS negotiation pragma suppression"; PASS=$((PASS+1)); else echo "FAIL negotiation pragma suppression"; FAIL=$((FAIL+1)); fi
@@ -105,6 +130,16 @@ reset_tree
 write_file "$TMPROOT/skills/foo/SKILL.md" '```bash' 'codex exec --full-auto -C . hi' '```'
 rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -ne 0 ]]; then echo "PASS one-line markdown fence fails"; PASS=$((PASS+1)); else echo "FAIL one-line markdown fence fails"; FAIL=$((PASS+1)); fi
+
+reset_tree
+write_file "$TMPROOT/skills/foo/SKILL.md" '```Bash' 'codex exec --full-auto -C . hi' '```'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS uppercase markdown fence fails"; PASS=$((PASS+1)); else echo "FAIL uppercase markdown fence fails"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+write_file "$TMPROOT/skills/foo/SKILL.md" '```SH session' 'codex exec --full-auto -C . hi' '```'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS trailing-info markdown fence fails"; PASS=$((PASS+1)); else echo "FAIL trailing-info markdown fence fails"; FAIL=$((FAIL+1)); fi
 
 reset_tree
 write_file "$TMPROOT/skills/foo/SKILL.md" \
@@ -130,6 +165,12 @@ write_file "$TMPROOT/docs/out-of-scope.md" '```bash' 'codex exec --full-auto -C 
 write_file "$TMPROOT/hooks/out-of-scope.sh" '#!/bin/bash' 'codex exec --full-auto -C . hi'
 rc="$(run_lint "$stderr_file")"
 if [[ "$rc" -eq 0 ]]; then echo "PASS out-of-scope paths ignored"; PASS=$((PASS+1)); else echo "FAIL out-of-scope paths ignored"; FAIL=$((FAIL+1)); fi
+
+reset_tree
+mkdir -p "$TMPROOT/.claude/rules"
+write_file "$TMPROOT/.claude/rules/bad.md" '```bash' 'codex exec --full-auto -C . hi' '```'
+rc="$(run_lint "$stderr_file")"
+if [[ "$rc" -ne 0 ]]; then echo "PASS claude rules markdown fence fails"; PASS=$((PASS+1)); else echo "FAIL claude rules markdown fence fails"; FAIL=$((FAIL+1)); fi
 
 set +e
 bash "$LINT" --root /no/such 2>"$stderr_file"

@@ -770,8 +770,20 @@ write_outer_meta "$OUT_U1_CODEX_JQ" "$REPO_ROOT/scripts/launch-codex-exec.sh" "$
     'OUTER_LAUNCHER_TIMING_KIND=codex-exec' \
     "OUTER_LAUNCHER_ADD_DIRS_JSON=[\"$WORKDIR_U1_CODEX_JQ\",\"$EXTRA_U1_CODEX_JQ\"]"
 RESULT_U1_CODEX_JQ=$(LARCH_TEST_FORCE_NO_JQ=1 run_collector bash "$OUT_U1_CODEX_JQ" "$TMPROOT/case-u1-codex-jq.stderr")
-assert_line "case U1 codex jq-less status" "STATUS=EMPTY_OUTPUT" "$RESULT_U1_CODEX_JQ"
-assert_line "case U1 codex jq-less reason" "FAILURE_REASON=Retry metadata invalid: jq unavailable for multi add-dir retry metadata" "$RESULT_U1_CODEX_JQ"
+assert_line "case U1 codex jq-less status" "STATUS=OK" "$RESULT_U1_CODEX_JQ"
+assert_equals "case U1 codex jq-less output" "OK" "$(cat "${OUT_U1_CODEX_JQ%.txt}-retry.txt")"
+
+OUT_U1_CODEX_BAD_JSON="$TMPROOT/codex-u1-bad-json.txt"
+prepare_outer_candidate "$OUT_U1_CODEX_BAD_JSON"
+write_outer_meta "$OUT_U1_CODEX_BAD_JSON" "$REPO_ROOT/scripts/launch-codex-exec.sh" "${OUT_U1_CODEX_BAD_JSON}.prompt" "$WORKDIR_U1_CODEX_JQ" \
+    'TOOL=codex' \
+    'OUTER_LAUNCHER_KIND=codex-exec' \
+    'OUTER_LAUNCHER_SANDBOX=read-only' \
+    'OUTER_LAUNCHER_WITH_EFFORT=false' \
+    'OUTER_LAUNCHER_USAGE_LABEL=codex_exec_retry_test' \
+    'OUTER_LAUNCHER_TIMING_KIND=codex-exec' \
+    'OUTER_LAUNCHER_ADD_DIRS_JSON=["unterminated"'
+assert_fail_closed "case-u1-codex-bad-add-dir-json" "$OUT_U1_CODEX_BAD_JSON" "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed"
 
 OUT_U2="$TMPROOT/cursor-u2.txt"
 write_empty_candidate "$OUT_U2"

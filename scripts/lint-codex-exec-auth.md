@@ -2,9 +2,13 @@
 
 Static guard for unwired `codex exec` call sites.
 
-## Allowlist (basename)
+## Allowlist
 
-`launch-review.sh`, `launch-codex-ci.sh`, `launch-codex-implement.sh`, `check-reviewers.sh`, `review-and-fix.sh`, `launch-codex-exec.sh`
+Only these canonical paths are exempt from raw-dispatch scanning:
+`scripts/launch-review.sh`, `scripts/launch-codex-ci.sh`,
+`scripts/launch-codex-implement.sh`, `scripts/check-reviewers.sh`,
+`scripts/launch-codex-exec.sh`, and
+`skills/review-and-fix/scripts/review-and-fix.sh`.
 
 ## Pragma
 

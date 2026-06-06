@@ -8,36 +8,19 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 ROOT="$REPO_ROOT"
 VIOLATIONS=0
 
-ALLOWED_BASENAMES=(
-    launch-review.sh
-    launch-codex-ci.sh
-    launch-codex-implement.sh
-    check-reviewers.sh
-    review-and-fix.sh
-    launch-codex-exec.sh
-)
-
 usage() {
     printf 'Usage: %s [--root PATH]\n' "$(basename "$0")" >&2
-}
-
-is_allowed_basename() {
-    local base="$1"
-    local allowed
-    for allowed in "${ALLOWED_BASENAMES[@]}"; do
-        [[ "$base" == "$allowed" ]] && return 0
-    done
-    return 1
 }
 
 is_allowed_shell_file() {
     local rel="$1"
     case "$rel" in
+        scripts/launch-review.sh) return 0 ;;
+        scripts/launch-codex-ci.sh) return 0 ;;
+        scripts/launch-codex-implement.sh) return 0 ;;
+        scripts/check-reviewers.sh) return 0 ;;
+        scripts/launch-codex-exec.sh) return 0 ;;
         skills/review-and-fix/scripts/review-and-fix.sh) return 0 ;;
-        scripts/*)
-            is_allowed_basename "$(basename "$rel")"
-            return $?
-            ;;
     esac
     return 1
 }
@@ -125,7 +108,7 @@ list_markdown_files() {
 scan_shell_file() {
     local rel="$1"
     local path="$ROOT/$rel"
-    local base rc
+    local rc
 
     [[ -f "$path" && ! -L "$path" ]] || return 0
     if is_allowed_shell_file "$rel"; then
@@ -138,18 +121,21 @@ scan_shell_file() {
             violations = 1
         }
         function has_trailing_pragma(line) {
-            return line ~ /[[:space:]]#[[:space:]]*lint-codex-exec-auth:[[:space:]]*ok([[:space:]]|$)/
+            return line ~ /[[:space:]]#[^"\047`]*lint-codex-exec-auth:[[:space:]]*ok([[:space:]]|$)[^"\047`]*$/
+        }
+        function has_codex_exec(line) {
+            return line ~ /(^|[^A-Za-z0-9_])["\047\\]?codex["\047\\]?[[:space:]]+exec/
         }
         function scan(line, nr, stripped) {
             if (has_trailing_pragma(line)) return
             if (line ~ /^[[:space:]]*#/) return
-            if (line ~ /codex[[:space:]]+exec/) {
+            if (has_codex_exec(line)) {
                 report(nr)
                 return
             }
             stripped = line
             sub(/^([[:space:]]*[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]*)+/, "", stripped)
-            if (stripped ~ /codex[[:space:]]+exec/) report(nr)
+            if (has_codex_exec(stripped)) report(nr)
         }
         {
             line = $0
@@ -192,19 +178,22 @@ scan_markdown_file() {
             violations = 1
         }
         function has_trailing_pragma(line) {
-            return line ~ /[[:space:]]#[[:space:]]*lint-codex-exec-auth:[[:space:]]*ok([[:space:]]|$)/
+            return line ~ /[[:space:]]#[^"\047`]*lint-codex-exec-auth:[[:space:]]*ok([[:space:]]|$)[^"\047`]*$/
+        }
+        function has_codex_exec(line) {
+            return line ~ /(^|[^A-Za-z0-9_])["\047\\]?codex["\047\\]?[[:space:]]+exec/
         }
         function scan(line, nr, stripped) {
             if (has_trailing_pragma(line)) return
             if (line ~ /^[[:space:]]*#/) return
-            if (line ~ /codex[[:space:]]+exec/) {
+            if (has_codex_exec(line)) {
                 report(nr)
                 return
             }
             stripped = line
             sub(/^([[:space:]]*[A-Za-z_][A-Za-z0-9_]*=[^[:space:]]*[[:space:]]*)+/, "", stripped)
-            if (stripped ~ /codex[[:space:]]+exec/) report(nr)
-        }
+            if (has_codex_exec(stripped)) report(nr)
+	        }
         function flush_pending() {
             if (pending != "") {
                 scan(pending, pending_nr)
@@ -213,7 +202,8 @@ scan_markdown_file() {
         }
         {
             line = $0
-            if (line ~ /^[[:space:]]*```[[:space:]]*(bash|sh|shell)[[:space:]]*$/) {
+	            line_lc = tolower(line)
+	            if (line_lc ~ /^[[:space:]]*```[[:space:]]*(bash|sh|shell)([[:space:]].*)?$/) {
                 fence_depth++
                 next
             }

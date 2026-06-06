@@ -588,6 +588,50 @@ retry_jq_available() {
     command -v jq >/dev/null 2>&1
 }
 
+parse_json_string_array_no_jq() {
+    local json="$1"
+    local __array_name="$2"
+    local inner item rest
+    printf -v "$__array_name" '%s' ""
+    [[ "$json" == \[*\] ]] || return 1
+    inner="${json:1:${#json}-2}"
+    [[ -n "$inner" ]] || return 0
+    rest="$inner"
+    while [[ -n "$rest" ]]; do
+        [[ "$rest" == \"* ]] || return 1
+        rest="${rest:1}"
+        item=""
+        while [[ -n "$rest" ]]; do
+            case "$rest" in
+                \"*)
+                    rest="${rest:1}"
+                    eval "$__array_name+=(\"\$item\")"
+                    if [[ -z "$rest" ]]; then
+                        return 0
+                    fi
+                    [[ "$rest" == ,* ]] || return 1
+                    rest="${rest:1}"
+                    break
+                    ;;
+                \\\\*)
+                    item+="\\"
+                    rest="${rest:2}"
+                    ;;
+                \\\"*)
+                    item+="\""
+                    rest="${rest:2}"
+                    ;;
+                \\*) return 1 ;;
+                *)
+                    item+="${rest:0:1}"
+                    rest="${rest:1}"
+                    ;;
+            esac
+        done
+    done
+    return 1
+}
+
 build_codex_exec_outer_retry_args_or_mark() {
     local idx="$1"
     local orig_output="$2"
@@ -633,13 +677,13 @@ build_codex_exec_outer_retry_args_or_mark() {
             [[ -n "$_add_dir" ]] && _codex_exec_retry_args+=(--add-dir "$_add_dir")
         done < <(printf '%s' "$META_OUTER_LAUNCHER_ADD_DIRS_JSON" | jq -r '.[]?')
     else
-        _workdir_json=$(json_array_from_args "$META_OUTER_LAUNCHER_WORKDIR") || {
-            mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: jq unavailable and workdir cannot be serialized"; return 1
-        }
-        if [[ "$META_OUTER_LAUNCHER_ADD_DIRS_JSON" != "$_workdir_json" ]]; then
-            mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: jq unavailable for multi add-dir retry metadata"; return 1
+        _add_dirs_no_jq=()
+        if ! parse_json_string_array_no_jq "$META_OUTER_LAUNCHER_ADD_DIRS_JSON" _add_dirs_no_jq; then
+            mark_retry_metadata_invalid "$idx" "$orig_output" "Retry metadata invalid: OUTER_LAUNCHER_ADD_DIRS_JSON malformed"; return 1
         fi
-        _codex_exec_retry_args+=(--add-dir "$META_OUTER_LAUNCHER_WORKDIR")
+        for _add_dir in "${_add_dirs_no_jq[@]}"; do
+            [[ -n "$_add_dir" ]] && _codex_exec_retry_args+=(--add-dir "$_add_dir")
+        done
     fi
     return 0
 }
@@ -912,25 +956,14 @@ for i in "${!OUTPUT_FILES[@]}"; do
         && [[ -f "${OUTPUT}.diag" ]] \
         && is_transient_net_signature "$FAILURE_REASON" \
         && [[ -f "$META" ]]; then
-        ORIG_TIMEOUT=""
-        while IFS= read -r meta_line || [[ -n "$meta_line" ]]; do
-            meta_key="${meta_line%%=*}"
-            meta_val="${meta_line#*=}"
-            [[ "$meta_key" == "TIMEOUT" ]] && ORIG_TIMEOUT="$meta_val"
-        done < "$META"
-        case "$ORIG_TIMEOUT" in
-            ''|*[!0-9]*) ;;
-            *)
-                if (( 10#$ORIG_TIMEOUT >= 1 )); then
-                    ORIG_TIMEOUT=$((10#$ORIG_TIMEOUT))
-                    STATUS="EMPTY_OUTPUT"
-                    larch_err "collect-agent-results.sh: transient diagnostic for $(basename "$OUTPUT"); retrying once"
-                    RETRY_FILES+=("$OUTPUT")
-                    RETRY_INDICES+=("$i")
-                    RETRY_TIMEOUTS+=("$ORIG_TIMEOUT")
-                fi
-                ;;
-        esac
+        parse_retry_meta "$META"
+        if validate_retry_timeout_or_mark "$i" "$OUTPUT" "$META_TIMEOUT"; then
+            STATUS="EMPTY_OUTPUT"
+            larch_err "collect-agent-results.sh: transient diagnostic for $(basename "$OUTPUT"); retrying once"
+            RETRY_FILES+=("$OUTPUT")
+            RETRY_INDICES+=("$i")
+            RETRY_TIMEOUTS+=("$META_TIMEOUT")
+        fi
     fi
 
     if [[ "$STATUS" == "OK" ]] && _classify_sentinel_status "$OUTPUT"; then

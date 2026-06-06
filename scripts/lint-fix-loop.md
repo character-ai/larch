@@ -79,7 +79,9 @@ Behavior:
    `$run_dir/codex.log`, JSONL events to `$run_dir/codex.log.events.jsonl`,
    diagnostics to `$run_dir/codex.log.sidecar`, and retry metadata to
    `$run_dir/codex.log.meta`.
-   `run_cursor()` uses `--capture-stdout`; `run-external-agent.sh` writes
+   Codex serial locking and `run-external-agent.sh` dispatch are owned by
+   `scripts/launch-codex-exec.sh`. `run_cursor()` uses `--capture-stdout`;
+   `run-external-agent.sh` writes
    `${run_dir}/cursor.log.stderr-tail` on failure. Model-args, auth, and
    wrap-prompt failures before spawn are captured in
    `$run_dir/cursor.preflight.log` and may be written to
@@ -91,11 +93,14 @@ Behavior:
    redirects (for example `run_lint_fix_loop_capture` with `2>"$fail_file"`)
    capture FD 2; `ship-pr.sh` and Step 5 parse `STDERR_TAIL_PATH` and surface
    in caller scope.
-   Both `run_cursor()` and `run_codex()` acquire the
-   per-tool KeyChain serial lock (`external_serial_lock_acquire` from
+   `run_cursor()` acquires the per-tool KeyChain serial lock
+   (`external_serial_lock_acquire` from
    `scripts/lib-cursor-launcher-common.sh` → `lib-external-launcher-common.sh`)
    immediately before each `run-external-agent.sh` call and release it
    asynchronously via `external_serial_lock_release_after`.
+   Test harnesses may override the Codex launcher path with
+   `LINT_FIX_LOOP_LAUNCH_CODEX_EXEC_SH`; the default is
+   `$SOURCE_SCRIPTS/launch-codex-exec.sh`.
 6. Before dispatch, capture the tracked/untracked dirty-tree baseline, the
    current `HEAD`, and the symbolic branch name. After dispatch, unchanged
    `HEAD` follows the working-tree path: mechanically revert any `.gitmodules`
